@@ -6,3 +6,4 @@ app/state/
 *.log
 .DS_Store
 model-output/
+data/humidity/
