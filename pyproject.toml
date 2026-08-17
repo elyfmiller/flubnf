@@ -22,4 +22,4 @@ dev = ["pytest"]
 include = ["flubnf*", "app*"]
 
 [tool.pytest.ini_options]
-addopts = "-q --ignore=tests/test_weekly_loop.py"
+addopts = "-q"

@@ -77,5 +77,10 @@ ok &= test("untrusted week still probes first", calls[0]=="probe")
 
 print("\nALL PASS" if ok else "\nFAILURES ABOVE")
 
-sys.exit(0 if ok else 1)
+def test_schedule_suite():
+    """pytest entry: the module-level checks above already ran at import."""
+    assert ok, "one or more schedule checks failed (see stdout)"
+
+if __name__ == "__main__":
+    sys.exit(0 if ok else 1)
 
