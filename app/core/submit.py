@@ -78,3 +78,28 @@ def write_submission(all_rows: Iterable[dict], model_id: str, team: str,
     p = d / f"{reference_date}-{team}-{model_id}.csv"
     df.to_csv(p, index=False)
     return p
+
+
+def rows_from_quantiles(qs: dict, location_fips: str, reference_date: str) -> list:
+    """FluSight rows from horizon -> {level: value} (quantile-native members)."""
+    ref = pd.Timestamp(reference_date)
+    rows = []
+    for h in (0, 1, 2, 3):
+        q = qs.get(str(h + 1))
+        if not q:
+            continue
+        target_end = ref + pd.Timedelta(weeks=h)
+        for level in QUANTILES:
+            if float(level) not in q:
+                continue
+            rows.append({
+                "reference_date": reference_date,
+                "target": "wk inc flu hosp",
+                "horizon": h,
+                "target_end_date": str(target_end.date()),
+                "location": location_fips,
+                "output_type": "quantile",
+                "output_type_id": level,
+                "value": float(q[float(level)]),
+            })
+    return rows

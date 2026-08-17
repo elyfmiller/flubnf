@@ -1,0 +1,15 @@
+numpy
+pandas
+scipy
+pydantic
+rich
+
+[app]
+fastapi
+uvicorn
+jinja2
+python-multipart
+plotly
+
+[dev]
+pytest

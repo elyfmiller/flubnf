@@ -97,14 +97,15 @@ def main() -> None:
 
     yr = pd.Timestamp(a.through).year
     ss = a.season_start or solstice(yr if pd.Timestamp(a.through).month >= 6 else yr - 1)
-    priors, prev_obj, history = dict(MIN_PRIORS), None, []
+    pstate = {s: dict(MIN_PRIORS) for s in a.states}
+    prev_obj, history = None, []
     t0 = time.time()
     print(f"[preseason] {len(a.states)} states | solstice {ss} -> {a.through} | "
           f"{a.chains} chains | up to {a.max_rounds} rounds of {a.iters}", flush=True)
 
     for rnd in range(a.max_rounds):
         jobs = [(s, a.through, ss, a.root, a.iters, a.timeout,
-                 priors, rnd > 0, bool(a.min_model), a.chains) for s in a.states]
+                 pstate[s], rnd > 0, bool(a.min_model), a.chains) for s in a.states]
         recs = []
         with ProcessPoolExecutor(max_workers=a.jobs) as ex:
             for fu in as_completed([ex.submit(one_fit, j) for j in jobs]):
@@ -129,20 +130,30 @@ def main() -> None:
         if not pins:
             print("  converged: nothing pinned", flush=True)
             break
-        if prev_obj is not None and np.isfinite(obj) and np.isfinite(prev_obj):
+        if (not pins and prev_obj is not None
+                and np.isfinite(obj) and np.isfinite(prev_obj)):
+            # tol alone must NEVER stop a seed that still has pins: a pinned
+            # posterior can plateau its objective against the wall. Measured
+            # 2026-08-17 -- the first seed with a finite objective stopped at
+            # round 1 with eps1/mult/r pinned and week 1 opened at 100% pins.
             if abs(prev_obj - obj) / max(abs(prev_obj), 1e-9) < a.tol:
-                print(f"  stopping: objective improved < {a.tol:.1%}", flush=True)
+                print(f"  stopping: pin-free and objective improved < {a.tol:.1%}",
+                      flush=True)
                 break
         prev_obj = obj
 
-        med = {k: float(np.median([r["medians"][k] for r in ok if "medians" in r]))
-               for k in priors}
-        newp = next_priors(diagnose(pins, med, priors), priors)
-        newp = {k: newp.get(k, priors[k]) for k in priors}   # widen only
-        if newp == priors:
+        any_widened = False
+        for r in ok:                       # PER-STATE: own pins, own medians
+            if r.get("pinned") and "medians" in r:
+                pr = pstate[r["state"]]
+                newp = next_priors(diagnose(list(r["pinned"]), r["medians"], pr), pr)
+                newp = {k: newp.get(k, pr[k]) for k in pr}   # widen only
+                if newp != pr:
+                    pstate[r["state"]] = newp
+                    any_widened = True
+        if not any_widened:
             print("  stopping: bounds could not be widened further", flush=True)
             break
-        priors = newp
         print(f"    widened -> "
               f"{ {k: tuple(round(x,4) for x in v) for k,v in priors.items()} }",
               flush=True)
@@ -152,7 +163,8 @@ def main() -> None:
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     Path(a.out).write_text(json.dumps(
         {"season_start": ss, "through": a.through, "chains": a.chains,
-         "final_priors": {k: list(v) for k, v in priors.items()},
+         "final_priors": {s: {k: list(v) for k, v in pr.items()}
+                          for s, pr in pstate.items()},
          "history": history, "warm_root": str(a.root),
          "minutes": (time.time() - t0) / 60}, indent=1))
     print(f"[preseason] done in {(time.time()-t0)/60:.0f} min. "

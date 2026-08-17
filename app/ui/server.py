@@ -21,7 +21,7 @@ from app.core.runs import Ledger, RunSpec, lease_workroot       # noqa: E402
 app = FastAPI(title="FluBNF")
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
-ENGINES = ("pf", "analogue", "einn", "amcmc")       # ascending cost order
+ENGINES = ("all", "pf", "amcmc")     # "all" = pf + analogue + ensemble
 _status: dict = {"running": None, "log": []}
 
 
@@ -52,26 +52,87 @@ def freshness(request: Request):
     })
 
 
-def _run_pf(spec: RunSpec) -> None:
+def _run_all(spec: RunSpec) -> None:
+    """The competition path: engines in ascending cost, then ensemble,
+    submissions, and the weekly report. Every step lands in ONE workroot and
+    ONE ledger row."""
+    import pandas as pd
+    from app.core import ensemble as ens
+    from app.core import scoring
+    from app.core.engines import analogue as an_engine
     from app.core.engines import pf as pf_engine
+    from app.core.submit import (quantile_rows, rows_from_quantiles,
+                                 write_submission)
+
     ledger = Ledger()
-    try:
-        import bngsim_version_probe  # noqa: F401  (placeholder; versions via runner)
-    except ImportError:
-        pass
-    run_id = ledger.open_run(spec, Path("pending"), {"engine": "pf"})
+    run_id = ledger.open_run(spec, Path("pending"), {"engines": "pf,analogue"})
     workroot = lease_workroot(run_id)
-    _status["running"] = f"pf:{run_id}"
+    _status["running"] = f"all:{run_id}"
+    outcome = {}
     try:
+        # 1. PF (primary)
         pf_engine.prepare(spec, workroot)
         status = pf_engine.execute(workroot)
         fails = {k: v for k, v in status.items() if v != "ok"}
-        ledger.close_run(run_id, "failed" if fails else "ok",
-                         {"cells": len(status), "failures": fails})
-        _status["log"].append(f"{run_id}: {len(status)} cells, "
-                              f"{len(fails)} failures")
+        outcome["pf_cells"] = len(status)
+        outcome["pf_failures"] = fails
+        pf_samples = pf_engine.collect(workroot)
+        # 2. analogue (instant)
+        an_q = an_engine.run(spec)
+        # 3. ensemble (vincentize, frozen weights)
+        members_by_loc = {}
+        for loc in spec.locations:
+            m = {}
+            if loc in pf_samples:
+                m["pf"] = ens.member_quantiles_from_samples(pf_samples[loc])
+            if loc in an_q:
+                m["analogue"] = an_q[loc]
+            if m:
+                members_by_loc[loc] = ens.vincentize(m)
+        # 4. submissions (identity in the path)
+        locs = pd.read_csv(__import__("flubnf.settings",
+                                      fromlist=["LOCATIONS"]).LOCATIONS,
+                           dtype=str)
+        n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
+        subs = {}
+        for model_id, rows in (
+            ("PF-SIHRS", [r for loc, s in pf_samples.items()
+                          for r in quantile_rows(s, n2f[loc], spec.forecast_date)]),
+            ("Ensemble", [r for loc, q in members_by_loc.items()
+                          for r in rows_from_quantiles(q, n2f[loc],
+                                                       spec.forecast_date)]),
+        ):
+            if rows:
+                subs[model_id] = str(write_submission(
+                    rows, model_id, "NAU", spec.forecast_date,
+                    workroot / "submission"))
+        outcome["submissions"] = subs
+        # 5. retrospective scoring (populates once truth exists)
+        truth, name2fips = scoring.load_truth()
+        df = scoring.score_samples(pf_samples, spec.forecast_date,
+                                   name2fips, truth)
+        if not df.empty:
+            outcome["pf_relwis"] = round(float(df.wis.sum() / df.base_wis.sum()), 3)
+        df.to_json(workroot / "scores_pf.json")
+        # 6. results index for the run page
+        import json as _json
+        (workroot / "results.json").write_text(_json.dumps({
+            "spec": spec.to_json(), "models": {
+                "pf": {loc: {h: float(pd.Series(s[h]).median())
+                             for h in ("1", "2", "3", "4")}
+                       for loc, s in pf_samples.items()},
+                "analogue": {loc: {h: q[h][0.5] for h in q}
+                             for loc, q in an_q.items()},
+                "ensemble": {loc: {h: q[h][0.5] for h in q}
+                             for loc, q in members_by_loc.items()},
+            }}))
+        ledger.close_run(run_id, "failed" if fails else "ok", outcome)
+        _status["log"].append(
+            f"{run_id}: pf {len(pf_samples)} loc, analogue {len(an_q)}, "
+            f"ensemble {len(members_by_loc)}"
+            + (f", relWIS {outcome['pf_relwis']}" if "pf_relwis" in outcome else ""))
     except Exception as e:
-        ledger.close_run(run_id, "error", {"error": str(e)[:300]})
+        ledger.close_run(run_id, "error", {"error": str(e)[:300], **outcome})
         _status["log"].append(f"{run_id}: ERROR {e}")
     finally:
         _status["running"] = None
@@ -91,8 +152,21 @@ def run_models(background: BackgroundTasks,
                    weeks_to_drop=weeks_to_drop,
                    weeks_to_nowcast=weeks_to_nowcast,
                    replicates=replicates)
-    if engine == "pf":
-        background.add_task(_run_pf, spec)
+    if engine in ("all", "pf"):
+        background.add_task(_run_all, spec)
+    elif engine == "amcmc":
+        from app.core.engines import amcmc as am_engine
+        def _bg():
+            ledger = Ledger()
+            rid = ledger.open_run(spec, Path("pending"), {"engine": "amcmc"})
+            w = lease_workroot(rid)
+            try:
+                out = am_engine.execute(spec, w)
+                n_ok = sum(1 for r in out["records"] if r.get("ok"))
+                ledger.close_run(rid, "ok", {"ok_states": n_ok})
+            except Exception as e:
+                ledger.close_run(rid, "error", {"error": str(e)[:300]})
+        background.add_task(_bg)
     else:
         _status["log"].append(f"{engine}: engine not wired yet")
     return RedirectResponse("/", status_code=303)
