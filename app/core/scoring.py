@@ -33,32 +33,20 @@ def load_truth() -> tuple:
     return truth, n2f
 
 
-def baseline_wis(truth: Mapping, fips: str, forecast_date: str,
-                 horizon: int) -> float | None:
-    """FluSight-baseline WIS for one cell: flat forecast at the last observed
-    value with symmetrized historical one-step noise (the hub's construction,
-    simplified to the flat-median property that dominates its WIS)."""
-    T = pd.Timestamp(forecast_date)
-    hist = [v for (l, d), v in truth.items() if l == fips and d <= T]
-    if len(hist) < 5:
-        return None
-    series = pd.Series(
-        {d: v for (l, d), v in truth.items() if l == fips and d <= T}
-    ).sort_index()
-    last = float(series.iloc[-1])
-    diffs = series.diff().dropna().to_numpy()
-    diffs = np.concatenate([diffs, -diffs])            # symmetrize
-    rng = np.random.default_rng(0)
-    steps = rng.choice(diffs, size=(4000, horizon)).sum(axis=1)
-    samp = np.maximum(last + steps, 0.0)
-    actual = truth.get((fips, T + timedelta(days=7 * horizon)))
-    if actual is None or actual <= 0:
-        return None
-    q = {float(L): float(np.quantile(samp, L)) for L in QL}
-    try:
-        return float(wis(q, actual).wis)
-    except Exception:
-        return None
+def _baseline_cells(forecast_date: str, fips_set, truth):
+    """The VALIDATED baseline construction (scripts/anchor_analysis.py) --
+    the hand-rolled version scored ~40% easier and was retired the day it
+    was calibrated (2026-08-17)."""
+    import importlib.util
+    from pathlib import Path
+    sp = importlib.util.spec_from_file_location(
+        "aa", Path(__file__).resolve().parents[2] / "scripts/anchor_analysis.py")
+    AA = importlib.util.module_from_spec(sp)
+    sp.loader.exec_module(AA)
+    b = AA.baseline_cells([forecast_date], set(fips_set), truth)
+    b["k"] = list(zip(b.location, b["asof"], b.horizon))
+    s = b.set_index("k").wis
+    return s[~s.index.duplicated()]
 
 
 def score_samples(samples_by_loc: Mapping, forecast_date: str,
@@ -83,11 +71,17 @@ def score_samples(samples_by_loc: Mapping, forecast_date: str,
                 w = float(wis(q, actual).wis)
             except Exception:
                 continue
-            b = baseline_wis(truth, fips, forecast_date, h)
-            if b and np.isfinite(w):
-                rows.append({"location": loc, "horizon": h,
-                             "wis": w, "base_wis": b, "rel": w / b})
-    return pd.DataFrame(rows)
+            rows.append({"location": loc, "fips": fips, "horizon": h,
+                         "wis": w})
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    bs = _baseline_cells(forecast_date, set(df.fips), truth)
+    df["base_wis"] = [bs.get((r.fips, forecast_date, r.horizon - 1), np.nan)
+                      for r in df.itertuples()]
+    df = df.dropna(subset=["base_wis"])
+    df["rel"] = df.wis / df.base_wis
+    return df
 
 
 def summary_table_html(df: pd.DataFrame) -> str:
