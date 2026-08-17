@@ -171,6 +171,9 @@ def main() -> None:
                          "4 was chosen on a measured 2x2 (ESS 44 vs 9 at 1 chain) "
                          "but that was COLD; warm starts may change it. R-hat "
                          "cannot be computed at all with 1.")
+    ap.add_argument("--assume-warm", action="store_true",
+                    help="warm dirs already exist (resume after a crash); "
+                         "start week 1 warm without rerunning the seed")
     ap.add_argument("--seed-iters", type=int, default=0,
                     help="one long COLD run before week 1, to converge before "
                          "the weekly loop ever starts. 0 disables.")
@@ -250,7 +253,7 @@ def main() -> None:
             if iters < 500:
                 break
 
-            warm = bool(a.seed_iters) or (wi > 0) or rounds > 0
+            warm = a.assume_warm or bool(a.seed_iters) or (wi > 0) or rounds > 0
             jobs = [(s, asof, a.season_start, a.root, iters, a.timeout,
                      pstate[s], warm, bool(a.min_model), a.chains) for s in a.states]
             recs = []
@@ -303,8 +306,10 @@ def main() -> None:
             prune(state_dir(Path(a.root), s) / "res")
         Path(a.out).parent.mkdir(parents=True, exist_ok=True)
         Path(a.out).write_text(json.dumps(results))
-        print(f"  {asof} done: {len(best)} states kept, priors now "
-              f"{ {k: tuple(round(x,4) for x in v) for k,v in priors.items()} }",
+        n_wide = sum(1 for s in a.states
+                     if pstate[s] != dict(MIN_PRIORS))
+        print(f"  {asof} done: {len(best)} states kept, "
+              f"{n_wide} state(s) on widened bounds, trusted={trusted}",
               flush=True)
 
     print(f"[loop] {len(results)} records, {(time.time()-t0)/60:.1f} min")
