@@ -1,0 +1,81 @@
+begin model
+begin parameters###
+
+###-smooth logistic beta: baseline + signed amplitudes at FIXED centers-###
+b0 b0__FREE        # baseline transmission rate (per week, per-capita)
+db1 db1__FREE      # signed amplitude of transition 1 (up=onset, down=decline)
+
+###-FIXED transition centers + shared ramp width (substituted per state; NOT fitted)-###
+tc1 {{TC1}}        # center week of transition 1
+tc2 {{TC2}}        # center week of transition 2
+tc3 {{TC3}}        # center week of transition 3
+sw  {{SW}}         # shared ramp width (weeks)
+
+###-epidemiology / observation-###
+gamma gamma__FREE  # removal rate (1/infectious period, per week)
+mult mult__FREE     # ascertainment * IHR fraction (infections -> reported hosp.)
+r r__FREE           # neg-binomial dispersion for AMCMC noise
+I0 I0__FREE         # initial infected COUNT (absolute persons)
+
+###-FIXED structural constants (substituted per state)-###
+N {{POP}}           # absolute population
+omega {{OMEGA}}     # FIXED waning rate R->S (~52-wk mean immunity). NOT __FREE.
+S0 N-I0             # derived initial susceptibles (absolute)
+
+end parameters###
+
+begin molecule types###
+
+S() # susceptible persons (absolute count)
+I() # infected persons (absolute count)
+R() # removed/recovered persons (absolute count)
+counter()
+
+end molecule types###
+
+begin seed species###
+S() S0
+I() I0
+R() 0
+counter() 0
+end seed species
+
+begin observables
+Molecules S S()
+Molecules I I()
+Molecules R R()
+Molecules t counter()
+
+end observables###
+
+begin functions###
+
+###-smooth time-dependent beta (sum of fixed-center logistics; single line)-###
+beta()=b0 + db1/(1+exp(-(t-tc1)/sw))
+
+###-NEW weekly hospitalizations: frequency-dependent incidence * ascertainment-###
+H_weekly()=mult*beta()*S*I/N
+
+end functions###
+
+begin reaction rules###
+
+# timer
+0->counter() 1
+# infection (FREQUENCY-DEPENDENT: rate constant beta()/N -> flux beta*S*I/N)
+S()+I()->I()+I() beta()/N
+# removal
+I()->R() gamma
+# waning immunity (SIRS): R back to S at FIXED omega
+R()->S() omega
+
+end reaction rules###
+
+end model
+
+begin actions###
+
+generate_network({overwrite=>1})
+simulate({suffix=>"Alabama_flu",method=>"ode",t_start=>0,t_end=>44,n_steps=>44,print_functions=>1})
+
+end actions###

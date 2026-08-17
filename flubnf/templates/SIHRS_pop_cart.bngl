@@ -1,0 +1,178 @@
+begin model
+# =====================================================================
+# FluBNF SIHRS — CARTESIAN SEASONAL BETA
+# ---------------------------------------------------------------------
+# Identical science to SIHRS_pop.bngl. The ONLY change is the coordinate
+# system of the seasonal term, from polar (amplitude, phase) to Cartesian.
+# Same number of fitted parameters (4 seasonal either way), same model.
+#
+#   eps*cos(2*pi*(t-phi)/P)  ==  a*cos(2*pi*t/P) + b*sin(2*pi*t/P)
+#     with a = eps*cos(2*pi*phi/P),  b = eps*sin(2*pi*phi/P)
+#
+# Verified an EXACT identity to 2.6e-15 over 2000 random (eps, phi).
+#
+# WHY (measured 2026-08-05 on 680 sweep fits + raw chain inspection)
+# ------------------------------------------------------------------
+# The polar form makes this posterior unsamplable by an adaptive Metropolis
+# sampler, and phase carries nearly all the damage:
+#
+#     phi1  median R-hat 58.8, ESS 26      Reff  3.35
+#     phi2  median R-hat 26.8, ESS 26      eps1  2.90
+#     ...100% of 680 fits fail R-hat > 1.1
+#
+# Raw chains (Alabama 2026-01-24, 4 chains x 8000 iters) show the mechanism:
+# the chains are NOT stuck -- acceptance is a healthy 15.1% -- but each is
+# sealed into a narrow local mode. phi1 chain means land at 31.6 / 1.2 /
+# 17.3 / 44.8, four different phases across the whole circle, and each chain
+# explores just 1.4% of the phi1 prior range. Circular R-hat is 64.3 against
+# linear 127.2, so the linear diagnostic overstates it ~2x but the
+# disagreement is real, not an artifact.
+#
+# Note acceptance is IDENTICAL (15.1%) for every parameter: PyBNF's AM is a
+# joint block proposal, so the worst-conditioned direction throttles all of
+# them. That is why Reff sits at R-hat 3.55 despite being well behaved alone,
+# and why fixing the phase geometry is expected to lift every parameter.
+#
+# THREE DEFECTS OF THE POLAR FORM, all removed here
+# -------------------------------------------------
+# 1. FUNNEL. As eps -> 0 the harmonic vanishes and phi becomes completely
+#    unidentified. Measured: phi1 R-hat 68.3 when eps1<0.05 vs 24.7 when
+#    eps1 in [0.30,0.60]. 46% of fits sit below eps1=0.05, i.e. inside the
+#    funnel. In (a,b) the origin is an ordinary interior point.
+# 2. CIRCULAR WALL. phi's prior is (0,52) but 0 and 52 are the SAME phase.
+#    PyBNF treats them as hard bounds, so proposals crossing are rejected and
+#    a chain near either end cannot migrate across. (a,b) has no wall.
+# 3. PRIOR ARTIFACT. Uniform on (eps,phi) implies a density proportional to
+#    1/eps in Cartesian coordinates (the polar Jacobian is eps) -- the prior
+#    actively pushes the amplitude toward zero. Uniform on (a,b) instead
+#    gives p(eps) proportional to eps, the standard non-informative choice
+#    for a harmonic. This may explain much of the long-standing "eps1
+#    collapses to ~0 in 30-50% of single-season fits" result, which has been
+#    read as evidence ABOUT seasonality rather than about coordinates.
+#
+# It also supplies something polar coordinates structurally lack: a
+# LOW-BARRIER PATH BETWEEN PHASE MODES. Going from phase 1 to phase 31 in
+# polar form means crossing the phi axis at fixed amplitude (straight through
+# low-likelihood territory) or collapsing eps to 0 and rotating (singular).
+# In (a,b) those modes are directions from the origin, and the origin is a
+# short, ordinary corridor between them.
+#
+# INTERPRETABILITY IS NOT LOST. Recover the reportable quantities post hoc:
+#     eps1 = hypot(a1, b1)          phi1 = atan2(b1, a1) * 52/(2*pi)  mod 52
+#     eps2 = hypot(a2, b2)          phi2 = atan2(b2, a2) * 26/(2*pi)  mod 26
+# See flubnf.seasonal.to_polar(), which is round-trip tested.
+#
+# Tokens substituted per state at materialization (unchanged):
+#   {{POP}} {{S0FRAC}} {{I0FRAC}} {{GAMMA}} {{RHO}} {{GAMMAH}} {{OMEGA}}
+# Fitted (8): Reff, a1, b1, a2, b2, mult, impr, r.
+#
+# Fit the REPORTED admission flux (rho*mult*gamma*I), never the census H(t).
+# =====================================================================
+begin parameters
+
+### -- transmission: scale-free reproduction number + seasonal forcing -- ###
+Reff    Reff__FREE     # EFFECTIVE reproduction number at season start. Fit this,
+                       # NOT R0: admissions identify Reff via the growth rate, and
+                       # with S(0)=N*s0 the classic R0 = Reff/s0 is only recoverable
+                       # post hoc.
+
+# Annual harmonic in Cartesian form. Prior box [-1,1] on each matches the old
+# eps1 ceiling of 1.0: the reachable amplitude is hypot(a1,b1), so the corners
+# admit up to sqrt(2), which is a mild and harmless widening.
+a1      a1__FREE       # annual  cos coefficient
+b1      b1__FREE       # annual  sin coefficient
+# Semi-annual harmonic, matching the old eps2 ceiling of 0.4.
+a2      a2__FREE       # semi-annual cos coefficient
+b2      b2__FREE       # semi-annual sin coefficient
+
+### -- progression / removal -- ###
+gamma   {{GAMMA}}      # FIXED: 7/3.2 d generation time, Chan 2024 doi:10.1101/2024.08.17.24312064
+rho     {{RHO}}        # FIXED: true IHR = biological branching fraction I->H.
+                       # Used ONLY in the reaction rules, never in the observable.
+mult    mult__FREE     # ASCERTAINMENT: reported / modelled admissions.
+gammaH  {{GAMMAH}}     # FIXED: discharge rate; does not enter the admissions target.
+omega   {{OMEGA}}      # FIXED: waning R->S. Weakly identified from <3 seasons.
+
+### -- external force of infection (reseeding) -- ###
+# Required, not cosmetic: waning refills the FUEL (S) but supplies no SPARK (I),
+# and infection is S+I->I+I i.e. proportional to I. Written S()->I() (not 0->I())
+# so total population is conserved.
+impr    impr__FREE     # per-susceptible per-week external infection hazard
+
+### -- observation noise -- ###
+r       r__FREE        # negative-binomial dispersion (AMCMC)
+
+### -- derived -- ###
+beta0   Reff*gamma/s0
+pi      3.141592653589793  # avoid BNGL _pi(): bngsim codegen emits M_PI(), which will not compile
+
+### -- FIXED per-state structural constants (known data, never fitted) -- ###
+N       {{POP}}        # state population (absolute people)
+s0      {{S0FRAC}}     # initial susceptible fraction
+i0      {{I0FRAC}}     # initial infected fraction
+
+end parameters
+
+begin molecule types
+S()         # susceptible people
+I()         # infectious people
+H()         # hospitalized census / occupancy
+R()         # recovered / immune people
+Hadm()      # cumulative admissions accumulator (never decays)
+counter()   # clock: observable t = weeks
+end molecule types
+
+begin seed species
+S() N*s0
+I() N*i0
+H() 0
+R() N*(1-s0-i0)
+Hadm() 0
+counter() 0
+end seed species
+
+begin observables
+Molecules S     S()
+Molecules I     I()
+Molecules H     H()        # census -- do NOT fit to an admissions target
+Molecules R     R()
+Molecules H_Cum Hadm()     # cumulative admissions; neg_bin_dynamic differences '_Cum' -> weekly
+Molecules t     counter()
+end observables
+
+begin functions
+
+### -- seasonal transmission, CARTESIAN. exp() keeps beta > 0, exactly as before -- ###
+beta() = beta0*exp( a1*cos(2*pi*t/52) + b1*sin(2*pi*t/52) \
+                  + a2*cos(4*pi*t/52) + b2*sin(4*pi*t/52) )
+
+### -- weekly REPORTED admissions = ascertained flux into H -- ###
+H_weekly() = rho*mult*gamma*I
+
+end functions
+
+begin reaction rules
+# clock
+0 -> counter() 1
+# infection, FREQUENCY-DEPENDENT: rate constant beta()/N -> flux beta*S*I/N
+S() + I() -> I() + I()   beta()/N
+# hospitalization branch: fraction rho of the gamma removal
+I() -> H()   rho*gamma
+# direct-recovery branch
+I() -> R()   (1-rho)*gamma
+# discharge
+H() -> R()   gammaH
+# waning immunity (the second S in SIHRS)
+R() -> S()   omega
+# external reseeding: keeps I off the numerical floor between seasons
+S() -> I()   impr
+# cumulative-admissions accumulator (counts I->H without consuming I)
+I() -> I() + Hadm()   rho*gamma
+end reaction rules
+
+end model
+
+begin actions
+generate_network({overwrite=>1})
+simulate({suffix=>"SIHRS_flu",method=>"ode",t_start=>0,t_end=>48,n_steps=>48,print_functions=>1})
+end actions

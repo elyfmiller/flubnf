@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+app/state/
+*.sqlite
+*.log
+.DS_Store
+model-output/

@@ -1,0 +1,67 @@
+begin model
+begin parameters###
+
+###-adjustable parameter values-###
+b0 b0__FREE # beta for first period (t0)
+t0 t0__FREE # initial start (in weeks) for b0
+mult mult__FREE # dimensionless scaler to real data
+gamma gamma__FREE # removal
+r r__FREE #sampling parameter for AMCMC
+
+###-settings for fixed parameter values-###
+I0 I0__FREE #0.004514841816448475 # initial population scaled 0 < I0 < 1
+
+end parameters###
+
+begin molecule types###
+
+S() # (number of susceptible persons)/(initial number of susceptible persons)
+I() # (number of infected persons)/(initial number of susceptible persons)
+R() 
+counter()
+
+end molecule types### 
+
+begin seed species###
+S() 1 
+I() I0 
+R() 0
+end seed species
+begin observables
+Molecules S S()
+Molecules I I()
+Molecules R R()
+Molecules t counter()
+
+end observables###
+
+begin functions###
+
+###-time-dependent beta (piecewise)-###
+beta()=if(t>=t0,b0,\
+	0)
+
+###-NEW weekly hospitalizations-###
+H_weekly()=I*S*mult*beta()
+
+end functions###
+
+begin reaction rules###
+
+# timer
+0->counter() 1
+# infection
+S()+I()->I()+I() beta()
+# removal
+I()->R() gamma
+
+end reaction rules###
+
+end model
+
+begin actions###
+
+generate_network({overwrite=>1})
+simulate({suffix=>"Alabama_flu",method=>"ode",t_start=>0,t_end=>12,n_steps=>12,print_functions=>1})
+
+end actions###

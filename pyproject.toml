@@ -1,0 +1,24 @@
+[project]
+name = "flubnf"
+version = "0.1.0"
+description = "Mechanistic influenza forecasting for CDC FluSight: SIHRS in BNGL, fitted with PyBNF (particle filter + adaptive MCMC) on the bngsim engine"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "pandas",
+    "scipy",
+    "pydantic",
+    "rich",
+]
+
+[project.optional-dependencies]
+app = ["fastapi", "uvicorn", "jinja2", "python-multipart", "plotly"]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+include = ["flubnf*", "app*"]
+
+[tool.pytest.ini_options]
+addopts = "-q --ignore=tests/test_weekly_loop.py"
