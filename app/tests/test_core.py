@@ -100,3 +100,17 @@ def test_vincentize_blends_and_renormalizes():
 def _levels():
     from flubnf.quantiles import FLUSIGHT_QUANTILES as QL
     return [float(q) for q in QL]
+
+
+def test_run_page_renders_sealed_run():
+    """The /runs/{id} page renders any ledger run with a results.json."""
+    from fastapi.testclient import TestClient
+    from app.core.runs import APP_STATE
+    from app.ui.server import app as srv
+    runs = sorted((APP_STATE / "workroots").glob("*/results.json"))
+    if not runs:
+        pytest.skip("no sealed runs on this machine")
+    rid = runs[-1].parent.name
+    c = TestClient(srv)
+    r = c.get(f"/runs/{rid}")
+    assert r.status_code == 200 and "submissions" in r.text

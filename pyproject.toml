@@ -19,7 +19,7 @@ dependencies = [
 
 [project.optional-dependencies]
 app = ["fastapi", "uvicorn", "jinja2", "python-multipart", "plotly"]
-dev = ["pytest"]
+dev = ["pytest", "httpx2"]
 
 [project.scripts]
 flubnf = "flubnf.cli:app"

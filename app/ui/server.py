@@ -114,6 +114,44 @@ def _run_all(spec: RunSpec) -> None:
         if not df.empty:
             outcome["pf_relwis"] = round(float(df.wis.sum() / df.base_wis.sum()), 3)
         df.to_json(workroot / "scores_pf.json")
+        # 5b. weekly report: map + hover cards + WIS card (fans arrive with
+        # the per-state drill-down pages; keep the report honest meanwhile)
+        try:
+            from app.core.report import categorical_probs
+            from app.core.report_v2 import CATS, build_report
+            from app.core.scoring import summary_table_html
+            n2a = dict(zip(locs.location_name, locs.abbreviation))
+            n2p = dict(zip(locs.location_name,
+                           locs.population.astype(float)))
+            cards = {}
+            for loc, s in pf_samples.items():
+                import numpy as _np
+                med1 = float(_np.median(_np.asarray(s["1"], float)))
+                lo = next(c["last_observed"] for c in
+                          __import__("json").loads(
+                              (workroot / "cells.json").read_text())
+                          if c["location"] == loc)
+                probs = categorical_probs(s["1"], lo, int(n2p[loc]), 1)
+                hover = (f"<b>{loc}</b><br>current: {lo:.0f}"
+                         f"<br>1-wk median: {med1:.0f}<br>" +
+                         "<br>".join(f"{c.replace('_',' ')}: "
+                                     f"{probs.get(c,0):.0%}" for c in CATS))
+                cards[n2a[loc]] = {"probs": probs, "name": loc,
+                                   "abbr": n2a[loc], "fips": n2f[loc],
+                                   "hover_html": hover}
+            for name, abbr in n2a.items():
+                cards.setdefault(abbr, {"name": name, "abbr": abbr,
+                                        "fips": n2f.get(name, "")})
+            wis_html = ("<div class='card'><h2>forecast accuracy "
+                        "(retrospective)</h2>" + summary_table_html(df)
+                        + "</div>")
+            build_report(spec.forecast_date, cards, {},
+                         {"fan": None, "acc": None,
+                          "summary_html": wis_html},
+                         workroot / "report.html")
+            outcome["report"] = str(workroot / "report.html")
+        except Exception as e:
+            outcome["report_error"] = str(e)[:200]
         # 6. results index for the run page
         import json as _json
         (workroot / "results.json").write_text(_json.dumps({
@@ -136,6 +174,29 @@ def _run_all(spec: RunSpec) -> None:
         _status["log"].append(f"{run_id}: ERROR {e}")
     finally:
         _status["running"] = None
+
+
+@app.get("/runs/{run_id}", response_class=HTMLResponse)
+def run_page(request: Request, run_id: str):
+    import json as _json
+    from app.core.runs import APP_STATE
+    w = APP_STATE / "workroots" / run_id
+    res = {}
+    if (w / "results.json").is_file():
+        res = _json.loads((w / "results.json").read_text())
+    subs = sorted(str(p.relative_to(w)) for p in w.glob("submission/*/*.csv"))
+    report = (w / "report.html").name if (w / "report.html").is_file() else None
+    return templates.TemplateResponse(request, "run.html", {
+        "run_id": run_id, "models": res.get("models", {}),
+        "subs": subs, "report": report})
+
+
+@app.get("/runs/{run_id}/report", response_class=HTMLResponse)
+def run_report(run_id: str):
+    from app.core.runs import APP_STATE
+    f = APP_STATE / "workroots" / run_id / "report.html"
+    return HTMLResponse(f.read_text() if f.is_file()
+                        else "<p>no report for this run</p>")
 
 
 @app.post("/run")
