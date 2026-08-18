@@ -1,14 +1,7 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><title>FluBNF run</title>
-<style>
- body{font:15px/1.5 system-ui;margin:0;background:#faf9f6;color:#1e1e1c}
- main{max-width:880px;margin:0 auto;padding:2rem 1rem}
- .card{background:#fff;border:1px solid #e4e1da;border-radius:12px;padding:1.2rem;margin:1rem 0}
- table{border-collapse:collapse;font-size:.85rem}
- td,th{padding:.3rem .7rem;border-bottom:1px solid #e4e1da;text-align:left}
- code{background:#f2f0ea;padding:.1rem .3rem;border-radius:4px}
- h2{font-size:1rem}
-</style></head><body><main>
+<link rel="stylesheet" href="/static/nau.css"></head><body><main>
+<nav><a href="/" class="active">console</a><a href="/retro">retrospectives</a></nav>
 <p><a href="/">&larr; console</a></p>
 <h1>run <code>{{ run_id }}</code></h1>
 {% if report %}<div class="card"><a href="/runs/{{ run_id }}/report">open weekly report</a></div>{% endif %}

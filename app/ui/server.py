@@ -19,6 +19,9 @@ from app.core import data as data_mod                           # noqa: E402
 from app.core.runs import Ledger, RunSpec, lease_workroot       # noqa: E402
 
 app = FastAPI(title="FluBNF")
+from fastapi.staticfiles import StaticFiles
+app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")),
+          name="static")
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 ENGINES = ("all", "pf", "amcmc")     # "all" = pf + analogue + ensemble
@@ -35,6 +38,7 @@ def landing(request: Request):
         "status": _status,
         "ledger": Ledger().rows(10),
         "freshness": None,
+        "missing": __import__("flubnf.settings", fromlist=["check"]).check(verbose=False),
     })
 
 
@@ -49,6 +53,7 @@ def freshness(request: Request):
         "status": _status,
         "ledger": Ledger().rows(10),
         "freshness": f,
+        "missing": __import__("flubnf.settings", fromlist=["check"]).check(verbose=False),
     })
 
 
@@ -200,6 +205,117 @@ def run_report(run_id: str):
     f = APP_STATE / "workroots" / run_id / "report.html"
     return HTMLResponse(f.read_text() if f.is_file()
                         else "<p>no report for this run</p>")
+
+
+RETRO_ROOT = Path(__file__).resolve().parents[1] / "state" / "retro"
+_retro_status: dict = {}
+
+
+@app.get("/retro", response_class=HTMLResponse)
+def retro_index(request: Request):
+    from app.core.retro import SEASON_BOUNDS, season_vintages
+    seasons = []
+    for s in SEASON_BOUNDS:
+        total = len(season_vintages(s))
+        root = RETRO_ROOT / s
+        done = len(list((root / "weeks").glob("*/samples.json"))) if root.exists() else 0
+        seasons.append({"name": s, "total": total, "done": done,
+                        "running": _retro_status.get(s) == "running",
+                        "scored": (root / "scores.json").exists()})
+    return templates.TemplateResponse(request, "retro.html",
+                                      {"seasons": seasons})
+
+
+def _retro_bg(season: str, locations: list, width: int):
+    from app.core import retro
+    _retro_status[season] = "running"
+    try:
+        root = RETRO_ROOT / season
+        retro.run_season(root, season, locations, width=width)
+        df = retro.score_season(root, season)
+        df.to_json(root / "scores.json")
+        _retro_status[season] = "done"
+    except Exception as e:
+        _retro_status[season] = f"error: {str(e)[:150]}"
+
+
+@app.post("/retro/run")
+def retro_run(background: BackgroundTasks, season: str = Form(...),
+              locations: str = Form("panel6"), width: int = Form(4)):
+    import pandas as pd
+    from flubnf.settings import LOCATIONS
+    if locations == "all":
+        locs = pd.read_csv(LOCATIONS, dtype=str)
+        names = list(locs.location_name[(locs.location.str.len() == 2)
+                                        & (locs.abbreviation != "US")])
+    else:
+        names = ["Alaska", "New York", "Wyoming", "Pennsylvania",
+                 "Vermont", "California"]
+    background.add_task(_retro_bg, season, names, width)
+    return RedirectResponse("/retro", status_code=303)
+
+
+@app.get("/retro/{season}", response_class=HTMLResponse)
+def retro_results(request: Request, season: str, week: str = ""):
+    import json as _json
+    import numpy as np
+    import pandas as pd
+    from app.core import retro
+    root = RETRO_ROOT / season
+    weeks = sorted(p.parent.name for p in (root / "weeks").glob("*/samples.json"))
+    if not weeks:
+        return HTMLResponse("<p style='color:#e9ecf2;background:#0a1626;"
+                            "padding:2rem'>no completed weeks yet</p>")
+    sf = root / "scores.json"
+    if not sf.exists() or sf.stat().st_mtime < max(
+            (root / "weeks" / w / "samples.json").stat().st_mtime for w in weeks):
+        retro.score_season(root, season).to_json(sf)
+    df = pd.read_json(sf)
+    heads, curve = {}, []
+    for m in ("pf", "analogue", "ensemble"):
+        g = df[df.model == m]
+        if len(g):
+            heads[m] = g.wis.sum() / g.base_wis.sum()
+    for a in sorted(df["asof"].unique()):
+        g = df[(df.model == "ensemble") & (df["asof"] <= a)]
+        if len(g):
+            curve.append((str(a)[:10], g.wis.sum() / g.base_wis.sum()))
+    states = []
+    for loc in sorted(df.location.unique()):
+        row = {"name": loc}
+        for m in ("pf", "analogue", "ensemble"):
+            g = df[(df.model == m) & (df.location == loc)]
+            row[m] = g.wis.sum() / g.base_wis.sum() if len(g) else None
+        states.append(row)
+    wk = week if week in weeks else weeks[-1]
+    d = _json.loads((root / "weeks" / wk / "samples.json").read_text())
+    from app.core.report import categorical_probs
+    from app.core.report_v2 import CATS
+    from app.core.usmap import svg_map
+    locs = pd.read_csv(__import__("flubnf.settings",
+                                  fromlist=["LOCATIONS"]).LOCATIONS, dtype=str)
+    n2a = dict(zip(locs.location_name, locs.abbreviation))
+    n2p = dict(zip(locs.location_name, locs.population.astype(float)))
+    n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
+    cards = {}
+    for loc, s in d["pf"].items():
+        arr = np.asarray(s["1"], float)
+        origin = np.asarray(s["0"], float)
+        lo = float(np.median(origin[np.isfinite(origin)]))
+        probs = categorical_probs(arr, lo, int(n2p[loc]), 1)
+        hover = (f"<b>{loc}</b><br>1-wk median: "
+                 f"{float(np.median(arr[np.isfinite(arr)])):.0f}<br>" +
+                 "<br>".join(f"{c.replace('_',' ')}: {probs.get(c,0):.0%}"
+                             for c in CATS))
+        cards[n2f[loc]] = {"probs": probs, "name": loc, "abbr": n2a[loc],
+                           "fips": n2f[loc], "hover_html": hover}
+    for name, abbr in n2a.items():
+        cards.setdefault(n2f.get(name, name), {"name": name, "abbr": abbr,
+                                               "fips": n2f.get(name, "")})
+    return templates.TemplateResponse(request, "retro_season.html", {
+        "season": season, "heads": heads, "curve": curve, "states": states,
+        "weeks": weeks, "week": wk, "map_html": svg_map(cards),
+        "n_weeks": len(weeks)})
 
 
 @app.post("/run")

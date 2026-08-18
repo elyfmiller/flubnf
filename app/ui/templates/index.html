@@ -1,22 +1,11 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><title>FluBNF</title>
-<style>
- :root{--ink:#1e1e1c;--paper:#faf9f6;--line:#e4e1da;--accent:#1a66a8}
- body{font:15px/1.5 system-ui;margin:0;background:var(--paper);color:var(--ink)}
- main{max-width:880px;margin:0 auto;padding:2rem 1rem}
- h1{font-size:1.4rem;letter-spacing:.01em}
- .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:1.2rem;margin:1rem 0}
- .row{display:flex;gap:1rem;flex-wrap:wrap;align-items:end}
- label{display:block;font-size:.8rem;color:#666;margin-bottom:.2rem}
- input,select{padding:.45rem .6rem;border:1px solid var(--line);border-radius:8px;font:inherit}
- button{padding:.5rem 1rem;border:0;border-radius:8px;background:var(--accent);color:#fff;font:inherit;cursor:pointer}
- button.quiet{background:#eee;color:var(--ink)}
- .ok{color:#177245}.warn{color:#b3541e}
- table{border-collapse:collapse;width:100%;font-size:.85rem}
- td,th{padding:.35rem .5rem;border-bottom:1px solid var(--line);text-align:left}
- code{background:#f2f0ea;padding:.1rem .3rem;border-radius:4px}
-</style></head><body><main>
-<h1>FluBNF <span style="color:#999;font-weight:400">operations console</span></h1>
+<link rel="stylesheet" href="/static/nau.css"></head><body><main>
+<nav><a href="/" class="active">console</a><a href="/retro">retrospectives</a></nav>
+<h1><span class="brand">FluBNF</span> operations console</h1>
+{% if missing %}<div class="card"><h2>setup</h2>
+{% for m in missing %}<p class="warn">missing {{ m[0] }}: <code>{{ m[1] }}</code> — {{ m[2] }}</p>{% endfor %}
+<p class="hint">run <code>./setup.sh</code> to fix</p></div>{% endif %}
 
 <div class="card">
   <div class="row">

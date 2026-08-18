@@ -1,0 +1,40 @@
+<!doctype html><html><head><meta charset="utf-8">
+<title>FluBNF retro {{ season }}</title>
+<link rel="stylesheet" href="/static/nau.css"></head><body><main>
+<nav><a href="/">console</a><a href="/retro" class="active">retrospectives</a></nav>
+<h1><span class="brand">{{ season }}</span> — {{ n_weeks }} weeks scored</h1>
+<div class="grid2">
+ {% for m, v in heads.items() %}
+ <div class="card"><h2>{{ m }}</h2><div class="big
+   {% if v < 1 %}ok{% else %}bad{% endif %}">{{ "%.3f"|format(v) }}</div>
+   <p class="hint">relWIS vs FluSight baseline (&lt;1 beats it)</p></div>
+ {% endfor %}
+</div>
+<div class="card"><h2>cumulative ensemble relWIS through the season</h2>
+<svg viewBox="0 0 720 180" style="width:100%">
+ {% set xs = 680 / (curve|length if curve|length > 1 else 1) %}
+ <line x1="20" y1="90" x2="700" y2="90" stroke="#93a1b5" stroke-dasharray="3"/>
+ <text x="702" y="94" fill="#93a1b5" font-size="10">1.0</text>
+ <polyline fill="none" stroke="#ffc72c" stroke-width="2.5" points="
+  {% for d, v in curve %}{{ 20 + loop.index0 * xs }},{{ 170 - (v * 80) }} {% endfor %}"/>
+ {% for d, v in curve %}
+  <circle cx="{{ 20 + loop.index0 * xs }}" cy="{{ 170 - (v * 80) }}" r="3"
+          fill="#ffc72c"><title>{{ d }}: {{ "%.3f"|format(v) }}</title></circle>
+ {% endfor %}
+</svg></div>
+<div class="card"><h2>weekly playback</h2>
+ <form method="get" class="row">
+  <div><label>week</label><select name="week" onchange="this.form.submit()">
+   {% for w in weeks %}<option {% if w == week %}selected{% endif %}>{{ w }}</option>{% endfor %}
+  </select></div><noscript><button>go</button></noscript>
+ </form>
+ {{ map_html | safe }}
+</div>
+<div class="card"><h2>per state</h2>
+<table><tr><th>state</th><th>pf</th><th>analogue</th><th>ensemble</th></tr>
+{% for r in states %}<tr><td>{{ r.name }}</td>
+ {% for m in ["pf","analogue","ensemble"] %}
+ <td class="{% if r[m] and r[m] < 1 %}ok{% elif r[m] %}bad{% endif %}">
+  {{ "%.3f"|format(r[m]) if r[m] else "—" }}</td>{% endfor %}</tr>
+{% endfor %}</table></div>
+</main></body></html>
