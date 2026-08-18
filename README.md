@@ -1,5 +1,7 @@
 # flubnf
 
+[![tests](https://github.com/elyfmiller/flubnf/actions/workflows/tests.yml/badge.svg)](https://github.com/elyfmiller/flubnf/actions/workflows/tests.yml)
+
 Mechanistic influenza forecasting for [CDC FluSight](https://github.com/cdcepi/FluSight-forecast-hub),
 built on rule-based modeling: an SIHRS compartmental model written in
 [BNGL](https://bionetgen.org), fitted with [PyBNF](https://github.com/lanl/PyBNF)

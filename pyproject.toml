@@ -12,11 +12,17 @@ dependencies = [
     "pydantic",
     "rich",
     "pyyaml",
+    "typer",
+    "pymmwr",
+    "requests",
 ]
 
 [project.optional-dependencies]
 app = ["fastapi", "uvicorn", "jinja2", "python-multipart", "plotly"]
 dev = ["pytest"]
+
+[project.scripts]
+flubnf = "flubnf.cli:app"
 
 [tool.setuptools.packages.find]
 include = ["flubnf*", "app*"]

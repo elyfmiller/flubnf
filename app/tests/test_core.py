@@ -72,6 +72,9 @@ def test_choropleth_renders_gaps_explicitly():
 
 
 def test_analogue_engine_runs_real_vintage():
+    from flubnf.settings import ARCHIVE
+    if not ARCHIVE.is_dir():
+        pytest.skip("FluSight hub clone not present")
     from app.core.engines import analogue
     from app.core.runs import RunSpec
     spec = RunSpec(engine="analogue", forecast_date="2026-01-24",

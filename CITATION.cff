@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+title: flubnf
+message: If you use this software, please cite it as below.
+type: software
+authors:
+  - family-names: Miller
+    given-names: Ely F.
+repository-code: https://github.com/elyfmiller/flubnf
+license: MIT
+abstract: >-
+  Mechanistic influenza forecasting for CDC FluSight: an SIHRS model in BNGL
+  fitted with PyBNF (sequential particle filter and adaptive MCMC) on the
+  bngsim engine, with an operations console, reproducible run ledger, and
+  hubverse-format submissions.

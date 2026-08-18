@@ -99,10 +99,27 @@ _REQUIRED_PACKAGES: tuple[tuple[str, str], ...] = (
     ("rich", "rich"),
     ("requests", "requests"),
     ("pymmwr", "pymmwr"),
-    ("altair", "altair"),
-    ("streamlit", "streamlit"),
-    ("pybnf", "pybnf"),
 )
+
+# pybnf/bngsim live in the ENGINE venv, never this one (two-venv architecture:
+# the analysis and engine environments must not import each other's world).
+# The doctor probes them where they actually live.
+
+
+def _check_engine_venv() -> "CheckResult":
+    import subprocess
+    from flubnf.settings import PY_ENGINE
+    if not PY_ENGINE.exists():
+        return CheckResult("engine venv", Status.FAIL,
+                           f"{PY_ENGINE} missing (set FLUBNF_PY_ENGINE)")
+    r = subprocess.run([str(PY_ENGINE), "-c",
+                        "import pybnf, bngsim; print(bngsim.__version__)"],
+                       capture_output=True, text=True, timeout=60)
+    if r.returncode != 0:
+        return CheckResult("engine venv", Status.FAIL,
+                           f"pybnf/bngsim not importable: {r.stderr[-120:]}")
+    return CheckResult("engine venv", Status.OK,
+                       f"bngsim {r.stdout.strip()}")
 
 
 def _check_imports() -> list[CheckResult]:
