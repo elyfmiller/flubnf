@@ -13,8 +13,10 @@
 </head><body>
 <header class="nav">
   <span class="brand">Flu<em>BNF</em></span>
-  {% set tabs = [("/","Home"),("/forecast","Forecast"),("/retro","Retrospective"),
-                 ("/runs","Runs"),("/data","Data")] %}
+  {% set tabs = [("/","Home"),("/forecast","Forecast"),
+                 ("/model/pf","PF-SIHRS"),("/model/analogue","Calendar analogue"),
+                 ("/model/ensemble","Ensemble"),
+                 ("/retro","Retrospective"),("/runs","Runs"),("/data","Data")] %}
   {% for href, name in tabs %}
     <a class="tab {% if active == name %}active{% endif %}" href="{{ href }}">{{ name }}</a>
   {% endfor %}

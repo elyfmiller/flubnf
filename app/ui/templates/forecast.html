@@ -7,13 +7,20 @@
   <form method="post" action="/run">
    <label>Forecast date</label>
    <input name="forecast_date" value="{{ form.forecast_date }}">
-   <label>Locations <span class="hint">(⌘-click for several)</span></label>
-   <select name="locations" multiple size="9">
-     <option value="all" {% if "all" in form.locations %}selected{% endif %}>— all 52 jurisdictions —</option>
+   <label>Locations</label>
+   <div class="checklist">
+     <label class="ck"><input type="checkbox" id="ck-all" value="all" name="locations"
+       {% if "all" in form.locations %}checked{% endif %}> <b>all 52 jurisdictions</b></label>
      {% for l in all_locs %}
-       <option {% if l in form.locations %}selected{% endif %}>{{ l }}</option>
+     <label class="ck"><input type="checkbox" class="ck-one" name="locations" value="{{ l }}"
+       {% if l in form.locations %}checked{% endif %}> {{ l }}</label>
      {% endfor %}
-   </select>
+   </div>
+   <script>
+    document.getElementById('ck-all').addEventListener('change', function(){
+      document.querySelectorAll('.ck-one').forEach(c => {c.checked=false; c.disabled=this.checked;});
+    });
+   </script>
    <label>Engine</label>
    <select name="engine">{% for e in engines %}
      <option {% if e == form.engine %}selected{% endif %}>{{ e }}</option>{% endfor %}</select>
@@ -25,7 +32,23 @@
    <input name="replicates" type="number" value="{{ form.replicates }}" min="1" max="9">
    <button class="gold">Run models</button>
   </form>
-  {% if status.running %}<p class="warn">running: <code>{{ status.running }}</code></p>{% endif %}
+  {% if status.running %}
+   <div class="runbox">
+    <p class="warn">running: <code>{{ status.running }}</code></p>
+    <div class="runbar"><div></div></div>
+    <p class="hint" id="quip">{{ status.phase or "warming up" }}</p>
+   </div>
+   <script>
+    const quips=["teaching 10,000 particles to sneeze responsibly",
+      "resampling the unlucky","negotiating with a negative binomial",
+      "asking last winter for advice","jittering, but only a little",
+      "consulting the vincentization elders","herding susceptibles",
+      "checking the calendar twice","integrating quietly since 1927 (Kermack & McKendrick)"];
+    let qi=0; const phase={{ (status.phase or "")|tojson }};
+    setInterval(()=>{document.getElementById('quip').textContent =
+      (phase? phase+" · " : "") + quips[qi++ % quips.length];}, 2600);
+   </script>
+  {% endif %}
  </div></div>
  <div>
   <div class="card"><h2>Latest run</h2>
@@ -37,6 +60,19 @@
    {% else %}<p class="hint">no runs yet — settings on the left, gold button, go.</p>{% endif %}
   </div>
   {% for line in status.log[-5:] %}<p class="hint">{{ line }}</p>{% endfor %}
+  {% if observed %}
+  <div class="card"><h2>Data & forecasts — latest run</h2>
+   <p class="hint">observed line, forecast fan (10–90 / 25–75, gold median).
+   Raw numbers in the table.</p>
+   <div class="grid3">
+    {% for loc, svg in fans.items() %}
+     <div><h3 style="margin:.2rem 0">{{ loc }}</h3>{{ svg | safe }}
+      <table><tr><th>week</th><th>admissions</th></tr>
+      {% for d, v in observed[loc][-6:] %}<tr><td>{{ d }}</td><td>{{ "%.0f"|format(v) }}</td></tr>{% endfor %}
+      </table></div>
+    {% endfor %}
+   </div></div>
+  {% endif %}
  </div>
 </div>
 {% endblock %}

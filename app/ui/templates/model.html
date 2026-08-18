@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% block title %}FluBNF — {{ title }}{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+<p class="sub">{{ blurb }}</p>
+{% if name == "ensemble" %}
+<form method="post" action="/model/ensemble/generate">
+ <button class="gold">Generate ensemble from latest run</button>
+</form>
+{% endif %}
+{% if fans %}
+<p class="hint">latest run <code>{{ rid }}</code> · forecast date {{ date }} ·
+observed tail (line) + forecast fan (bands: 10–90, 25–75; gold median)</p>
+<div class="grid3">
+ {% for loc, svg in fans.items() %}
+  <div class="card"><h2>{{ loc }}</h2>{{ svg | safe }}</div>
+ {% endfor %}
+</div>
+{% else %}
+<div class="card"><p class="hint">No forecasts from this model yet — run it
+from the Forecast tab{% if name == "ensemble" %} or press the button above
+after a run{% endif %}.</p></div>
+{% endif %}
+{% endblock %}

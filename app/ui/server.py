@@ -72,9 +72,17 @@ def forecast_page(request: Request):
                                 "locations": ["Ohio"], "engine": "all",
                                 "weeks_to_drop": 0, "weeks_to_nowcast": 0,
                                 "replicates": 3}
+    rid, res = _latest_results()
+    fans, observed = {}, {}
+    if res:
+        observed = res.get("observed", {})
+        ens_m = res["models"].get("ensemble") or res["models"].get("pf") or {}
+        for loc, qs in ens_m.items():
+            fans[loc] = _fan_svg(observed.get(loc, []), qs)
     return templates.TemplateResponse(request, "forecast.html", {
         "active": "Forecast", "engines": ENGINES, "status": _status,
-        "ledger": Ledger().rows(5), "all_locs": all_locs, "form": form})
+        "ledger": Ledger().rows(5), "all_locs": all_locs, "form": form,
+        "fans": fans, "observed": observed})
 
 
 @app.get("/data", response_class=HTMLResponse)
@@ -108,6 +116,10 @@ def freshness(request: Request):
         "n_vintages": len(vs), "freshness": f})
 
 
+def _phase(msg):
+    _status["phase"] = msg
+
+
 def _run_all(spec: RunSpec) -> None:
     """The competition path: engines in ascending cost, then ensemble,
     submissions, and the weekly report. Every step lands in ONE workroot and
@@ -133,7 +145,10 @@ def _run_all(spec: RunSpec) -> None:
         fails = {}
         pf_samples = {}
         if PY_ENGINE.exists() and PYBNF.exists():
+            _phase("materializing models (BNG network generation)")
             pf_engine.prepare(spec, workroot)
+            _phase(f"filtering: {len(spec.locations)} location(s) x "
+                   f"{spec.replicates} replicate(s) x {spec.particles:,} particles")
             status = pf_engine.execute(workroot)
             fails = {k: v for k, v in status.items() if v != "ok"}
             outcome["pf_cells"] = len(status)
@@ -142,7 +157,7 @@ def _run_all(spec: RunSpec) -> None:
         else:
             outcome["pf_skipped"] = "engine venv not installed (Tier A)"
             (workroot / "cells.json").write_text("[]")
-        # 2. analogue (instant)
+        _phase("consulting the calendar analogue")
         an_q = an_engine.run(spec)
         # 3. ensemble (vincentize, frozen per-horizon/per-state weights)
         import pandas as _pd
@@ -157,6 +172,7 @@ def _run_all(spec: RunSpec) -> None:
                 m["analogue"] = an_q[loc]
             if m:
                 members_by_loc[loc] = ens.vincentize(m, location_fips=n2f_pre.get(loc, ''))
+        _phase("vincentizing the ensemble and writing submissions")
         # 4. submissions (identity in the path)
         locs = pd.read_csv(__import__("flubnf.settings",
                                       fromlist=["LOCATIONS"]).LOCATIONS,
@@ -222,15 +238,40 @@ def _run_all(spec: RunSpec) -> None:
             outcome["report_error"] = str(e)[:200]
         # 6. results index for the run page
         import json as _json
+        import numpy as _np
+        from app.core.data import vintage_path as _vp
+        def _qs_from_samples(s):
+            out = {}
+            for h in ("1", "2", "3", "4"):
+                a = _np.asarray(s.get(h, []), float); a = a[_np.isfinite(a)]
+                if a.size:
+                    out[h] = {q: float(_np.quantile(a, float(q)))
+                              for q in ("0.1", "0.25", "0.5", "0.75", "0.9")}
+            return out
+        def _qs_from_q(qd):
+            return {h: {q: qd[h][float(q)]
+                        for q in ("0.1", "0.25", "0.5", "0.75", "0.9")}
+                    for h in qd}
+        obs = {}
+        try:
+            tdf = pd.read_csv(_vp(spec.forecast_date), dtype={"location": str})
+            tdf["location"] = tdf["location"].str.zfill(2)
+            f2n = {v: k for k, v in n2f.items()}
+            for loc in spec.locations:
+                fips = n2f.get(loc)
+                g = tdf[tdf.location == fips].sort_values("date").tail(15)
+                obs[loc] = [[str(r.date)[:10], float(r.value)]
+                            for r in g.itertuples()
+                            if _np.isfinite(r.value)]
+        except Exception:
+            pass
         (workroot / "results.json").write_text(_json.dumps({
-            "spec": spec.to_json(), "models": {
-                "pf": {loc: {h: float(pd.Series(s[h]).median())
-                             for h in ("1", "2", "3", "4")}
-                       for loc, s in pf_samples.items()},
-                "analogue": {loc: {h: q[h][0.5] for h in q}
-                             for loc, q in an_q.items()},
-                "ensemble": {loc: {h: q[h][0.5] for h in q}
-                             for loc, q in members_by_loc.items()},
+            "spec": spec.to_json(), "forecast_date": spec.forecast_date,
+            "observed": obs,
+            "models": {
+                "pf": {loc: _qs_from_samples(s) for loc, s in pf_samples.items()},
+                "analogue": {loc: _qs_from_q(q) for loc, q in an_q.items()},
+                "ensemble": {loc: _qs_from_q(q) for loc, q in members_by_loc.items()},
             }}))
         ledger.close_run(run_id, "failed" if fails else "ok", outcome)
         _status["log"].append(
@@ -242,6 +283,7 @@ def _run_all(spec: RunSpec) -> None:
         _status["log"].append(f"{run_id}: ERROR {e}")
     finally:
         _status["running"] = None
+        _status["phase"] = ""
 
 
 @app.get("/runs/{run_id}", response_class=HTMLResponse)
@@ -265,6 +307,104 @@ def run_report(run_id: str):
     f = APP_STATE / "workroots" / run_id / "report.html"
     return HTMLResponse(f.read_text() if f.is_file()
                         else "<p>no report for this run</p>")
+
+
+def _latest_results():
+    import json as _json
+    from app.core.runs import APP_STATE
+    roots = sorted((APP_STATE / "workroots").glob("*/results.json"))
+    if not roots:
+        return None, None
+    rid = roots[-1].parent.name
+    return rid, _json.loads(roots[-1].read_text())
+
+
+def _fan_svg(observed, qs):
+    """Tiny inline SVG: observed tail + forecast fan (10-90, 25-75, median)."""
+    if not qs:
+        return ""
+    obs_v = [v for _, v in observed][-10:] if observed else []
+    hs = sorted(qs, key=int)
+    hi = max([qs[h]["0.9"] for h in hs] + obs_v + [1.0])
+    W, H, n_obs = 320, 90, len(obs_v)
+    n = n_obs + len(hs)
+    def x(i): return 10 + i * (W - 20) / max(n - 1, 1)
+    def y(v): return H - 10 - (v / hi) * (H - 22)
+    def pts(seq): return " ".join(f"{x(i):.1f},{y(v):.1f}" for i, v in seq)
+    band = lambda lo_k, hi_k, op: (
+        f'<polygon fill="var(--gold-bright)" fill-opacity="{op}" points="'
+        + pts([(n_obs - 1 + k + 1, qs[h][hi_k]) for k, h in enumerate(hs)])
+        + " " + pts(reversed([(n_obs - 1 + k + 1, qs[h][lo_k])
+                              for k, h in enumerate(hs)])) + '"/>')
+    parts = [f'<svg viewBox="0 0 {W} {H}" style="width:100%;max-width:{W}px">']
+    if obs_v:
+        parts.append(f'<polyline fill="none" stroke="var(--ink)" stroke-width="1.6" '
+                     f'points="{pts(list(enumerate(obs_v)))}"/>')
+    parts += [band("0.1", "0.9", 0.18), band("0.25", "0.75", 0.35)]
+    parts.append('<polyline fill="none" stroke="var(--gold)" stroke-width="2" points="'
+                 + pts([(n_obs - 1 + k + 1, qs[h]["0.5"]) for k, h in enumerate(hs)]) + '"/>')
+    parts.append('</svg>')
+    return "".join(parts)
+
+
+@app.get("/model/{name}", response_class=HTMLResponse)
+def model_page(request: Request, name: str):
+    blurbs = {
+        "pf": ("PF-SIHRS", "Sequential particle filter over the SIHRS model: "
+               "10,000 particles per replicate, Liu-West jitter, systematic "
+               "resampling. The primary engine (relWIS 0.675 ± 0.012)."),
+        "analogue": ("Calendar analogue", "Empirical donor distribution from "
+                     "matching calendar weeks of past seasons (relWIS ~0.81 "
+                     "full-grid; strongest at short horizons)."),
+        "ensemble": ("Ensemble", "Vincentized blend of PF-SIHRS and the "
+                     "analogue with per-horizon weights frozen pre-season "
+                     "(PF share 0.4→0.8 by horizon; LOSO 0.717)."),
+    }
+    if name not in blurbs:
+        return HTMLResponse("unknown model", status_code=404)
+    rid, res = _latest_results()
+    fans = {}
+    if res and name in res.get("models", {}):
+        for loc, qs in res["models"][name].items():
+            fans[loc] = _fan_svg(res.get("observed", {}).get(loc, []), qs)
+    return templates.TemplateResponse(request, "model.html", {
+        "active": blurbs[name][0], "name": name,
+        "title": blurbs[name][0], "blurb": blurbs[name][1],
+        "rid": rid, "date": (res or {}).get("forecast_date", ""),
+        "fans": fans, "status": _status})
+
+
+@app.post("/model/ensemble/generate")
+def generate_ensemble():
+    """(Re)blend from the latest run's stored member outputs — no engine rerun."""
+    import json as _json
+    from app.core import ensemble as ens
+    from app.core.runs import APP_STATE
+    rid, res = _latest_results()
+    if not res:
+        _status["log"].append("ensemble: no run to blend")
+        return RedirectResponse("/model/ensemble", status_code=303)
+    import pandas as pd
+    locs = pd.read_csv(__import__("flubnf.settings",
+                                  fromlist=["LOCATIONS"]).LOCATIONS, dtype=str)
+    n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
+    blended = {}
+    for loc in set(res["models"].get("pf", {})) | set(res["models"].get("analogue", {})):
+        members = {}
+        for m in ("pf", "analogue"):
+            qd = res["models"].get(m, {}).get(loc)
+            if qd:
+                members[m] = {h: {float(q): v for q, v in qs.items()}
+                              for h, qs in qd.items()}
+        if members:
+            b = ens.vincentize(members, location_fips=n2f.get(loc, ""))
+            blended[loc] = {h: {q: b[h][float(q)]
+                                for q in ("0.1", "0.25", "0.5", "0.75", "0.9")}
+                            for h in b}
+    res["models"]["ensemble"] = blended
+    (APP_STATE / "workroots" / rid / "results.json").write_text(_json.dumps(res))
+    _status["log"].append(f"ensemble re-blended for {len(blended)} location(s)")
+    return RedirectResponse("/model/ensemble", status_code=303)
 
 
 RETRO_ROOT = Path(__file__).resolve().parents[1] / "state" / "retro"
