@@ -1401,3 +1401,30 @@ def _root(verbose: bool = typer.Option(False, "--verbose", "-v")):
 
 if __name__ == "__main__":
     app()
+
+
+@app.command("app")
+def app_serve(port: int = 8710):
+    """Launch the operations console."""
+    import uvicorn
+    uvicorn.run("app.ui.server:app", port=port, host="127.0.0.1")
+
+
+@app.command("retro")
+def retro_cmd(season: str, locations: str = "all", width: int = 4,
+              replicates: int = 3, root: str = ""):
+    """Run a season-as-competition retrospective (resumable)."""
+    import pandas as pd
+    from pathlib import Path as _P
+    from app.core import retro
+    from flubnf.settings import LOCATIONS
+    locs = pd.read_csv(LOCATIONS, dtype=str)
+    names = (list(locs.location_name[locs.location.str.len() == 2]
+                  [locs.abbreviation != "US"])
+             if locations == "all" else
+             [x.strip() for x in locations.split(",")])
+    r = _P(root) if root else _P("app/state/retro") / season
+    done = retro.run_season(r, season, names, replicates=replicates,
+                            width=width,
+                            progress=lambda a: print(f"  {a} done", flush=True))
+    print(f"{season}: {len(done)} weeks complete -> {r}")
