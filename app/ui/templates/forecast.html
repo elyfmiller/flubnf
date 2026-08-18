@@ -6,17 +6,23 @@
  <div><div class="card"><h2>Settings</h2>
   <form method="post" action="/run">
    <label>Forecast date</label>
-   <input name="forecast_date" value="{{ default_date }}">
-   <label>Locations (comma-separated, or "all")</label>
-   <input name="locations" value="Ohio, California, New York">
+   <input name="forecast_date" value="{{ form.forecast_date }}">
+   <label>Locations <span class="hint">(⌘-click for several)</span></label>
+   <select name="locations" multiple size="9">
+     <option value="all" {% if "all" in form.locations %}selected{% endif %}>— all 52 jurisdictions —</option>
+     {% for l in all_locs %}
+       <option {% if l in form.locations %}selected{% endif %}>{{ l }}</option>
+     {% endfor %}
+   </select>
    <label>Engine</label>
-   <select name="engine">{% for e in engines %}<option>{{ e }}</option>{% endfor %}</select>
+   <select name="engine">{% for e in engines %}
+     <option {% if e == form.engine %}selected{% endif %}>{{ e }}</option>{% endfor %}</select>
    <label>Weeks to drop</label>
-   <input name="weeks_to_drop" type="number" value="0" min="0" max="4">
+   <input name="weeks_to_drop" type="number" value="{{ form.weeks_to_drop }}" min="0" max="4">
    <label>Weeks to nowcast <span class="hint">(framework; no-op this season)</span></label>
-   <input name="weeks_to_nowcast" type="number" value="0" min="0" max="4">
+   <input name="weeks_to_nowcast" type="number" value="{{ form.weeks_to_nowcast }}" min="0" max="4">
    <label>Replicates</label>
-   <input name="replicates" type="number" value="3" min="1" max="9">
+   <input name="replicates" type="number" value="{{ form.replicates }}" min="1" max="9">
    <button class="gold">Run models</button>
   </form>
   {% if status.running %}<p class="warn">running: <code>{{ status.running }}</code></p>{% endif %}

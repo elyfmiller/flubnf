@@ -26,12 +26,19 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 ENGINES = ("all", "pf", "amcmc")     # "all" = pf + analogue + ensemble
 _status: dict = {"running": None, "log": []}
+_last_form: dict = {}
 
 
-def _latest_saturday() -> str:
+def _default_forecast_date() -> str:
+    """Latest Saturday, clamped to the latest ARCHIVED vintage — during the
+    off-season the hub stops publishing, and a default that points at a
+    nonexistent vintage greets the user with an error (laptop field test,
+    2026-08-18)."""
     import datetime as dt
     d = dt.date.today()
-    return str(d - dt.timedelta(days=(d.weekday() - 5) % 7))
+    sat = str(d - dt.timedelta(days=(d.weekday() - 5) % 7))
+    vs = data_mod.vintages()
+    return min(sat, vs[-1]) if vs else sat
 
 
 @app.get("/favicon.ico", include_in_schema=False)
@@ -53,9 +60,21 @@ def home(request: Request):
 
 @app.get("/forecast", response_class=HTMLResponse)
 def forecast_page(request: Request):
+    import pandas as pd
+    from flubnf.settings import LOCATIONS
+    try:
+        _l = pd.read_csv(LOCATIONS, dtype=str)
+        all_locs = list(_l.location_name[(_l.location.str.len() == 2)
+                                         & (_l.abbreviation != "US")])
+    except Exception:
+        all_locs = []
+    form = dict(_last_form) or {"forecast_date": _default_forecast_date(),
+                                "locations": ["Ohio"], "engine": "all",
+                                "weeks_to_drop": 0, "weeks_to_nowcast": 0,
+                                "replicates": 3}
     return templates.TemplateResponse(request, "forecast.html", {
-        "active": "Forecast", "default_date": _latest_saturday(),
-        "engines": ENGINES, "status": _status, "ledger": Ledger().rows(5)})
+        "active": "Forecast", "engines": ENGINES, "status": _status,
+        "ledger": Ledger().rows(5), "all_locs": all_locs, "form": form})
 
 
 @app.get("/data", response_class=HTMLResponse)
@@ -365,19 +384,23 @@ def retro_results(request: Request, season: str, week: str = ""):
 @app.post("/run")
 def run_models(background: BackgroundTasks,
                forecast_date: str = Form(...),
-               locations: str = Form("Ohio"),
+               locations: list = Form(["Ohio"]),
                weeks_to_drop: int = Form(0),
                weeks_to_nowcast: int = Form(0),
                replicates: int = Form(3),
-               engine: str = Form("pf")):
-    if locations.strip().lower() == "all":
+               engine: str = Form("all")):
+    _last_form.update({"forecast_date": forecast_date, "locations": locations,
+                       "engine": engine, "weeks_to_drop": weeks_to_drop,
+                       "weeks_to_nowcast": weeks_to_nowcast,
+                       "replicates": replicates})
+    if "all" in [l.lower() for l in locations]:
         import pandas as _pd
         _l = _pd.read_csv(__import__("flubnf.settings",
                                      fromlist=["LOCATIONS"]).LOCATIONS, dtype=str)
         locs_list = list(_l.location_name[(_l.location.str.len() == 2)
                                           & (_l.abbreviation != "US")])
     else:
-        locs_list = [l.strip() for l in locations.split(",") if l.strip()]
+        locs_list = [l for l in locations if l.strip()]
     spec = RunSpec(engine=engine, forecast_date=forecast_date,
                    locations=locs_list,
                    season_start="2025-08-01",
