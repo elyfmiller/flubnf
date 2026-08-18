@@ -1,23 +1,81 @@
 {% extends "base.html" %}{% block title %}FluBNF — {{ title }}{% endblock %}
+{% block head %}<script src="/static/plotly.min.js"></script>{% endblock %}
 {% block content %}
 <h1>{{ title }}</h1>
 <p class="sub">{{ blurb }}</p>
-{% if name == "ensemble" %}
-<form method="post" action="/model/ensemble/generate">
- <button class="gold">Generate ensemble from latest run</button>
-</form>
-{% endif %}
-{% if fans %}
-<p class="hint">latest run <code>{{ rid }}</code> · forecast date {{ date }} ·
-observed tail (line) + forecast fan (bands: 10–90, 25–75; gold median)</p>
-<div class="grid3">
- {% for loc, svg in fans.items() %}
-  <div class="card"><h2>{{ loc }}</h2>{{ svg | safe }}</div>
- {% endfor %}
+<div class="cols">
+ <div><div class="card"><h2>Settings</h2>
+  {% if name == "ensemble" %}
+   <p class="hint">The ensemble aggregates whatever members the latest run
+   produced, using the frozen per-horizon weights.</p>
+   <form method="post" action="/model/ensemble/generate">
+    <button class="gold">Generate ensemble from latest run</button></form>
+  {% else %}
+   <form method="post" action="/run">
+    <label>Forecast date</label>
+    <input name="forecast_date" value="{{ form.forecast_date }}">
+    <label>Locations</label>
+    <input name="locations" value="{{ form.locations | join(', ') if form.locations != ['all'] else 'all' }}"
+           title='state names, comma-separated, or "all"'>
+    <label>Replicates</label>
+    <input name="replicates" type="number" value="{{ form.replicates }}" min="1" max="9">
+    <input type="hidden" name="engine" value="{{ 'pf' if name == 'pf' else 'analogue' }}">
+    <input type="hidden" name="weeks_to_drop" value="0">
+    <input type="hidden" name="weeks_to_nowcast" value="0">
+    <button class="gold">Run {{ title }} only</button>
+   </form>
+  {% endif %}
+  {% if status.running %}<p class="warn">a run is in progress — see Forecast</p>{% endif %}
+ </div></div>
+ <div>
+  <div class="card"><h2>Forecasts</h2>
+   <div id="mfan"><p class="hint">No forecasts from this model yet.</p></div>
+   {% if rid %}<p class="hint">latest run: {{ label }} · {{ date }}</p>{% endif %}
+  </div>
+ </div>
 </div>
-{% else %}
-<div class="card"><p class="hint">No forecasts from this model yet — run it
-from the Forecast tab{% if name == "ensemble" %} or press the button above
-after a run{% endif %}.</p></div>
-{% endif %}
+<script>
+ const FANQ = {{ fanq_json | safe }};
+ const SERIES = {};
+ const isDark = () => document.documentElement.getAttribute('data-theme')==='dark';
+ function lay(t,h){return {title:{text:t,font:{size:14}},height:h||400,
+  margin:{l:50,r:20,t:34,b:40},paper_bgcolor:'rgba(0,0,0,0)',
+  plot_bgcolor:'rgba(0,0,0,0)',font:{color:isDark()?'#e9ecf2':'#1c2430'},
+  xaxis:{gridcolor:isDark()?'#1d3a5f':'#dde5ee'},
+  yaxis:{gridcolor:isDark()?'#1d3a5f':'#dde5ee',rangemode:'tozero'}};}
+ const LOCS=Object.keys(FANQ); let IDX=0;
+ async function draw(){
+   if(!LOCS.length) return;
+   const el=document.getElementById('mfan');
+   el.innerHTML='<div class="carousel"><button type="button" class="quiet cnav" id="pv">◀</button>'
+     +'<span class="hint" id="pos"></span>'
+     +'<button type="button" class="quiet cnav" id="nx">▶</button></div><div id="plot"></div>';
+   IDX=((IDX%LOCS.length)+LOCS.length)%LOCS.length;
+   const loc=LOCS[IDX], qs=FANQ[loc];
+   document.getElementById('pos').textContent=loc+' · '+(IDX+1)+'/'+LOCS.length;
+   if(!SERIES[loc]){
+     const r=await fetch('/api/series?locs='+encodeURIComponent(loc));
+     Object.assign(SERIES, await r.json());
+   }
+   const s=SERIES[loc]||{dates:[],values:[]};
+   const hs=Object.keys(qs).sort();
+   const base=new Date({{ date | tojson }});
+   const xs=hs.map(h=>{const d=new Date(base);d.setDate(d.getDate()+7*parseInt(h));
+     return d.toISOString().slice(0,10);});
+   const obsX=s.dates.slice(-12), obsY=s.values.slice(-12);
+   const fx=[...(obsX.slice(-1)),...xs];
+   const med=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.5'])];
+   const lo=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.1'])];
+   const hi=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.9'])];
+   Plotly.newPlot(document.getElementById('plot'),[
+    {x:obsX,y:obsY,mode:'lines+markers',name:'observed',line:{color:isDark()?'#e9ecf2':'#1c2430'}},
+    {x:fx,y:hi,mode:'lines',line:{width:0},showlegend:false,hoverinfo:'skip'},
+    {x:fx,y:lo,mode:'lines',fill:'tonexty',fillcolor:'rgba(255,199,44,.25)',line:{width:0},name:'10–90%'},
+    {x:fx,y:med,mode:'lines+markers',name:'median',line:{color:'#b58200',width:2.5}},
+   ],lay(loc,420),{responsive:true,displaylogo:false});
+   document.getElementById('pv').onclick=()=>{IDX--;draw();};
+   document.getElementById('nx').onclick=()=>{IDX++;draw();};
+ }
+ draw();
+</script>
 {% endblock %}

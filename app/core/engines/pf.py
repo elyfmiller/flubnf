@@ -108,17 +108,39 @@ loguniform_var = r__FREE 0.1 40.0
     return cells
 
 
+class RunStopped(Exception):
+    pass
+
+
 def execute(workroot: Path, timeout: float = 3600.0) -> dict:
-    """Run every prepared cell in the py3.10 venv. Returns key -> status."""
+    """Run every prepared cell in the engine venv. Cancelable: touching
+    <workroot>/STOP terminates the runner between cells."""
+    import time
     runner = workroot / "pf_runner.py"
     out_json = workroot / "pf_status.json"
     runner.write_text(_RUNNER.format(pybnf_path=str(PYBNF_PF),
                                      cells_json=str(workroot / "cells.json"),
                                      out_json=str(out_json)))
-    r = subprocess.run([str(PY310), str(runner)], capture_output=True,
-                       text=True, timeout=timeout)
+    proc = subprocess.Popen([str(PY310), str(runner)],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                            text=True)
+    t0 = time.time()
+    stop = workroot / "STOP"
+    while proc.poll() is None:
+        if stop.exists():
+            proc.terminate()
+            try:
+                proc.wait(10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            raise RunStopped("stopped by user")
+        if time.time() - t0 > timeout:
+            proc.kill()
+            raise RuntimeError("PF runner timed out")
+        time.sleep(1)
     if not out_json.is_file():
-        raise RuntimeError(f"PF runner produced no status: {r.stderr[-400:]}")
+        raise RuntimeError(f"PF runner produced no status: "
+                           f"{(proc.stderr.read() if proc.stderr else '')[-400:]}")
     return json.loads(out_json.read_text())
 
 

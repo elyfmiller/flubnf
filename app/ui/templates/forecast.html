@@ -34,8 +34,10 @@
      document.getElementById('lcount').textContent =
        all? '(all 52)' : n? '('+n+' selected)' : '';
    }
+   // 'all' and specific states are mutually exclusive, both directions,
+   // with nothing ever disabled (you can always click your intent)
    document.getElementById('ck-all').addEventListener('change', function(){
-     document.querySelectorAll('.ck-one').forEach(c => {c.checked=false; c.disabled=this.checked;});
+     if(this.checked) document.querySelectorAll('.ck-one').forEach(c => c.checked=false);
      updCount();
    });
    let fetchTimer=null;
@@ -54,17 +56,20 @@
        }catch(e){}
      },350);
    }
-   document.querySelectorAll('.ck-one').forEach(c=>c.addEventListener('change',()=>{updCount();refetchSeries();}));
+   document.querySelectorAll('.ck-one').forEach(c=>c.addEventListener('change',()=>{
+     if(c.checked) document.getElementById('ck-all').checked=false;
+     updCount();refetchSeries();}));
    document.getElementById('ck-all').addEventListener('change',refetchSeries);
    updCount();
   </script>
  </div></div>
- <div>
+ <div id="results">
   {% if status.running %}
   <div class="card"><h2>Running</h2>
    <p id="runlabel" class="runlabel">{{ status.run_label or "" }}</p>
    <div class="runbar"><div id="runfill" style="animation:none;width:3%"></div></div>
    <p class="hint" id="prog"></p>
+   <form method="post" action="/run/stop"><button class="quiet">Stop run</button></form>
    <p class="quip" id="quip"></p>
   </div>
   <script>
@@ -91,7 +96,7 @@
      const frac=Math.min(0.95,(Date.now()-D.t)/1000/Math.max(per,1));
      const pct=Math.max(3,Math.min(99,100*(D.done+frac)/D.total));
      document.getElementById('runfill').style.width=pct+'%';
-     let s=D.done+'/'+D.total+' fits';
+     let s=Math.round(pct)+'% · '+D.done+'/'+D.total+' fits';
      if(D.eta_s!=null){const rem=Math.max(0,D.eta_s-(Date.now()-D.t)/1000);
        const m=Math.floor(rem/60);
        s+=' · ~'+(m>0?m+' min':Math.round(rem)+' s')+' left';}
@@ -145,7 +150,7 @@
  let SHOWPTS=false, CURMODE='season', DIDX=0;
  const PCONF={responsive:true, displaylogo:false};
  const ALLMODE={{ ("all" in form.locations) | tojson }};
- const LOCS=ALLMODE? ALL_LOCS.slice() : Object.keys(SERIES);
+ const LOCS=ALLMODE? ['US (national)',...ALL_LOCS] : Object.keys(SERIES);
  function drawData(mode){
    CURMODE=mode;
    const lm=SHOWPTS?'lines+markers':'lines';

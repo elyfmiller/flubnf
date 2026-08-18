@@ -25,6 +25,10 @@
 </header>
 <main>{% block content %}{% endblock %}</main>
 <script>
+ // preserve scroll across form posts/reloads
+ addEventListener('beforeunload',()=>sessionStorage.setItem('scy',scrollY));
+ addEventListener('load',()=>{const y=sessionStorage.getItem('scy');
+   if(y && !location.hash) scrollTo(0,parseInt(y));});
  document.getElementById('themebtn').onclick=function(){
   var h=document.documentElement,
       t=h.getAttribute('data-theme')==='dark'?'light':'dark';

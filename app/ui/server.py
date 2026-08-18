@@ -93,7 +93,7 @@ def forecast_page(request: Request):
     except Exception:
         pass
     fanq = {}
-    if res:
+    if res and _status.get("session_ran"):
         for mname, md in res["models"].items():
             good = {loc: qs for loc, qs in md.items()
                     if all(isinstance(v, dict) for v in qs.values())}
@@ -131,6 +131,15 @@ def runs_page(request: Request):
             r["status"] = "interrupted"
     return templates.TemplateResponse(request, "runs.html", {
         "active": "Runs", "ledger": rows})
+
+
+@app.post("/run/stop")
+def run_stop():
+    w = _status.get("workroot")
+    if w and _status.get("running"):
+        (Path(w) / "STOP").touch()
+        _status["phase"] = "stopping…"
+    return RedirectResponse("/forecast#results", status_code=303)
 
 
 @app.post("/data/pull")
@@ -309,14 +318,20 @@ def _run_all(spec: RunSpec) -> None:
                 "analogue": {loc: _qs_from_q(q) for loc, q in an_q.items()},
                 "ensemble": {loc: _qs_from_q(q) for loc, q in members_by_loc.items()},
             }}))
+        _status["session_ran"] = run_id
         ledger.close_run(run_id, "failed" if fails else "ok", outcome)
         _status["log"].append(
             f"{run_id}: pf {len(pf_samples)} loc, analogue {len(an_q)}, "
             f"ensemble {len(members_by_loc)}"
             + (f", relWIS {outcome['pf_relwis']}" if "pf_relwis" in outcome else ""))
     except Exception as e:
-        ledger.close_run(run_id, "error", {"error": str(e)[:300], **outcome})
-        _status["log"].append(f"{run_id}: ERROR {e}")
+        from app.core.engines.pf import RunStopped
+        if isinstance(e, RunStopped):
+            ledger.close_run(run_id, "stopped", outcome)
+            _status["log"].append("run stopped by user")
+        else:
+            ledger.close_run(run_id, "error", {"error": str(e)[:300], **outcome})
+            _status["log"].append(f"{run_id}: ERROR {e}")
     finally:
         _status["running"] = None
         _status["phase"] = ""
@@ -358,6 +373,7 @@ def api_series(locs: str = ""):
         _l = pd.read_csv(__import__("flubnf.settings",
                                     fromlist=["LOCATIONS"]).LOCATIONS, dtype=str)
         n2f_ = dict(zip(_l.location_name, _l.location.str.zfill(2)))
+        n2f_["US (national)"] = "US"
         vs = data_mod.vintages()
         tdf = pd.read_csv(data_mod.vintage_path(vs[-1]), dtype={"location": str})
         tdf["location"] = tdf["location"].str.zfill(2)
@@ -524,11 +540,19 @@ def model_page(request: Request, name: str):
     if res and name in res.get("models", {}):
         for loc, qs in res["models"][name].items():
             fans[loc] = _fan_svg(res.get("observed", {}).get(loc, []), qs)
+    fanq = {}
+    if res and name in res.get("models", {}):
+        fanq = {loc: qs for loc, qs in res["models"][name].items()
+                if all(isinstance(v, dict) for v in qs.values())}
+    form = dict(_last_form) or {"forecast_date": _default_forecast_date(),
+                                "locations": ["all"], "replicates": 3}
     return templates.TemplateResponse(request, "model.html", {
         "active": blurbs[name][0], "name": name,
         "title": blurbs[name][0], "blurb": blurbs[name][1],
-        "rid": rid, "date": (res or {}).get("forecast_date", ""),
-        "fans": fans, "status": _status})
+        "rid": rid, "label": _run_label(rid) if rid else "",
+        "date": (res or {}).get("forecast_date", ""),
+        "fanq_json": __import__("json").dumps(fanq),
+        "form": form, "status": _status})
 
 
 @app.post("/model/ensemble/generate")
@@ -692,12 +716,14 @@ def run_models(background: BackgroundTasks,
                        "replicates": replicates})
     if _status.get("running"):
         _status["log"].append("a run is already in progress — not starting another")
-        return RedirectResponse("/forecast", status_code=303)
+        return RedirectResponse("/forecast#results", status_code=303)
     # BackgroundTasks fire AFTER the redirect renders; claim the running slot
     # NOW so the page the user lands on shows the run (double-click race,
     # laptop field test 2026-08-18)
     _status["running"] = "starting"
     _status["run_label"] = f"{forecast_date} · queued"
+    if isinstance(locations, str):
+        locations = [x.strip() for x in locations.split(",") if x.strip()]
     if "all" in [l.lower() for l in locations]:
         import pandas as _pd
         _l = _pd.read_csv(__import__("flubnf.settings",
@@ -732,4 +758,4 @@ def run_models(background: BackgroundTasks,
         background.add_task(_bg)
     else:
         _status["log"].append(f"{engine}: engine not wired yet")
-    return RedirectResponse("/forecast", status_code=303)
+    return RedirectResponse("/forecast#results", status_code=303)
