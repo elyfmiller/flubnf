@@ -87,14 +87,20 @@ def test_analogue_engine_runs_real_vintage():
     assert all(b >= a for a, b in zip(vals, vals[1:]))       # monotone
 
 
-def test_vincentize_blends_and_renormalizes():
-    from app.core.ensemble import vincentize
+def test_vincentize_uses_frozen_per_horizon_weights():
+    from app.core.ensemble import frozen_weights, pf_share, vincentize
+    w = frozen_weights()
+    assert w["global"]["0"] == 0.4 and w["global"]["3"] == 0.8   # the freeze
+    assert "50" in w["per_state"]                                # Vermont earned one
     qa = {"1": {L: 100.0 for L in _levels()}, "2": {L: 100.0 for L in _levels()}}
-    qb = {"1": {L: 200.0 for L in _levels()}}                # member missing h2
-    out = vincentize({"pf": qa, "analogue": qb},
-                     weights={"pf": 0.6, "analogue": 0.4})
-    assert abs(out["1"][0.5] - 140.0) < 1e-9                 # 0.6*100 + 0.4*200
-    assert abs(out["2"][0.5] - 100.0) < 1e-9                 # renormalized to pf alone
+    qb = {"1": {L: 200.0 for L in _levels()}}
+    out = vincentize({"pf": qa, "analogue": qb})
+    s0 = pf_share(w, 0)
+    assert abs(out["1"][0.5] - (s0*100 + (1-s0)*200)) < 1e-9
+    assert abs(out["2"][0.5] - 100.0) < 1e-9                     # lone member = weight 1
+    vt = vincentize({"pf": qa, "analogue": qb}, location_fips="50")
+    s_vt = pf_share(w, 0, "50")
+    assert abs(vt["1"][0.5] - (s_vt*100 + (1-s_vt)*200)) < 1e-9  # override applied
 
 
 def _levels():

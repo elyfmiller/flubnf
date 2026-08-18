@@ -79,7 +79,10 @@ def _run_all(spec: RunSpec) -> None:
         pf_samples = pf_engine.collect(workroot)
         # 2. analogue (instant)
         an_q = an_engine.run(spec)
-        # 3. ensemble (vincentize, frozen weights)
+        # 3. ensemble (vincentize, frozen per-horizon/per-state weights)
+        import pandas as _pd
+        _l = _pd.read_csv(__import__("flubnf.settings", fromlist=["LOCATIONS"]).LOCATIONS, dtype=str)
+        n2f_pre = dict(zip(_l.location_name, _l.location.str.zfill(2)))
         members_by_loc = {}
         for loc in spec.locations:
             m = {}
@@ -88,7 +91,7 @@ def _run_all(spec: RunSpec) -> None:
             if loc in an_q:
                 m["analogue"] = an_q[loc]
             if m:
-                members_by_loc[loc] = ens.vincentize(m)
+                members_by_loc[loc] = ens.vincentize(m, location_fips=n2f_pre.get(loc, ''))
         # 4. submissions (identity in the path)
         locs = pd.read_csv(__import__("flubnf.settings",
                                       fromlist=["LOCATIONS"]).LOCATIONS,

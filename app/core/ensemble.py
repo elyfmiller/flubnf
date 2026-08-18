@@ -15,13 +15,23 @@ import numpy as np
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL
 
 WEIGHTS_FILE = Path(__file__).resolve().parents[1] / "state" / "ensemble_weights.json"
-DEFAULT_WEIGHTS = {"pf": 0.6, "analogue": 0.4}   # 2025-26 LOSO grid pick; re-freeze pre-season
+SHIPPED_WEIGHTS = Path(__file__).resolve().parents[1] / "state_defaults_ensemble_weights.json"
 
 
 def frozen_weights() -> dict:
-    if WEIGHTS_FILE.is_file():
-        return json.loads(WEIGHTS_FILE.read_text())
-    return dict(DEFAULT_WEIGHTS)
+    """The 2026-08-17 freeze: per-horizon PF share rising 0.4->0.8 (analogue
+    wins short-range, dynamics win long-range; LOSO 0.717), with 12 per-state
+    overrides that each cleared a 2-of-3 held-out-season gain gate. A local
+    state file overrides the shipped freeze; re-freezing is an explicit,
+    dated act."""
+    f = WEIGHTS_FILE if WEIGHTS_FILE.is_file() else SHIPPED_WEIGHTS
+    return json.loads(f.read_text())
+
+
+def pf_share(weights: dict, horizon: int, location_fips: str = "") -> float:
+    per = weights.get("per_state", {}).get(str(location_fips))
+    table = per or weights.get("global", {})
+    return float(table.get(str(horizon), 0.6))
 
 
 def member_quantiles_from_samples(samples_by_h: dict) -> dict:
@@ -35,19 +45,23 @@ def member_quantiles_from_samples(samples_by_h: dict) -> dict:
     return out
 
 
-def vincentize(members: dict, weights: dict | None = None) -> dict:
-    """members: name -> {horizon: {level: value}}. Returns the blended set.
-
-    Members missing a horizon are excluded from that horizon with weights
-    renormalized -- a member's gap must not drag the blend toward zero.
-    """
+def vincentize(members: dict, weights: dict | None = None,
+               location_fips: str = "") -> dict:
+    """members: {"pf": ..., "analogue": ...} of horizon->quantiles. Blends with
+    the frozen per-horizon (and per-state, where earned) PF share. A member
+    missing a horizon leaves the other at weight 1."""
     w = weights or frozen_weights()
     out = {}
     for h in ("1", "2", "3", "4"):
-        have = {m: q[h] for m, q in members.items() if h in q and w.get(m, 0) > 0}
+        share = pf_share(w, int(h) - 1, location_fips)   # freeze keys horizons 0..3
+        have = {m: q[h] for m, q in members.items() if h in q}
         if not have:
             continue
-        tot = sum(w[m] for m in have)
-        out[h] = {float(L): float(sum(w[m] * have[m][float(L)] for m in have) / tot)
-                  for L in QL}
+        if set(have) == {"pf", "analogue"}:
+            out[h] = {float(L): float(share * have["pf"][float(L)]
+                                      + (1 - share) * have["analogue"][float(L)])
+                      for L in QL}
+        else:
+            only = next(iter(have.values()))
+            out[h] = {float(L): float(only[float(L)]) for L in QL}
     return out
