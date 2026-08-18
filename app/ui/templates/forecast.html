@@ -40,26 +40,11 @@
      if(this.checked) document.querySelectorAll('.ck-one').forEach(c => c.checked=false);
      updCount();
    });
-   let fetchTimer=null;
-   function refetchSeries(){
-     clearTimeout(fetchTimer);
-     fetchTimer=setTimeout(async ()=>{
-       const all=document.getElementById('ck-all').checked;
-       const sel=all? [] : [...document.querySelectorAll('.ck-one:checked')].map(c=>c.value);
-       const q=(all? ['Ohio'] : (sel.length? sel : ['Ohio'])).slice(0,8).join('|');
-       try{const r=await fetch('/api/series?locs='+encodeURIComponent(q));
-         const d=await r.json();
-         Object.keys(SERIES).forEach(k=>delete SERIES[k]);
-         Object.assign(SERIES,d);
-         LOCS.length=0; LOCS.push(...Object.keys(SERIES));
-         DIDX=0; drawData(CURMODE);
-       }catch(e){}
-     },350);
-   }
+   // the checklist decides what RUNS (and what the fans show) -- the data
+   // panel below has its own dropdown and no longer follows these boxes
    document.querySelectorAll('.ck-one').forEach(c=>c.addEventListener('change',()=>{
      if(c.checked) document.getElementById('ck-all').checked=false;
-     updCount();refetchSeries();}));
-   document.getElementById('ck-all').addEventListener('change',refetchSeries);
+     updCount();}));
    updCount();
   </script>
  </div></div>
@@ -69,6 +54,8 @@
    <p id="runlabel" class="runlabel">{{ status.run_label or "" }}</p>
    <div class="runbar"><div id="runfill" style="animation:none;width:3%"></div></div>
    <p class="hint" id="prog"></p>
+   <canvas id="pfviz" aria-hidden="true"
+     style="display:block;width:100%;height:90px;margin:.6rem 0 .1rem"></canvas>
    <form method="post" action="/run/stop"><button class="quiet">Stop run</button></form>
    <p class="quip" id="quip"></p>
   </div>
@@ -76,14 +63,46 @@
    const quips=["teaching 10,000 particles to sneeze responsibly",
      "resampling the unlucky","negotiating with a negative binomial",
      "asking last winter for advice","herding susceptibles",
-     "integrating quietly since 1927"];
+     "integrating quietly since 1927","jittering, but only a little",
+     "waiting for the posterior to settle down",
+     "politely declining a degenerate proposal",
+     "weighing particles by how well they coughed",
+     "asking the prior to loosen its grip",
+     "letting the likelihood do the talking",
+     "quarantining a few outlier trajectories",
+     "rewinding the epidemic to watch it again",
+     "convincing beta to stay seasonal",
+     "counting hospital beds twice, to be sure",
+     "seeding infections at the solstice, as tradition demands",
+     "drawing quantiles with a steady hand","burning in, gently",
+     "checking whether Rt has recovered",
+     "wandering the parameter space, mostly on purpose",
+     "shrinking toward the mean, emotionally as well",
+     "giving every trajectory a fair cough",
+     "propagating uncertainty with confidence"];
    let qi=0;
    setInterval(()=>{document.getElementById('quip').textContent=quips[qi++%quips.length];},2600);
+   // honest progress: the displayed % is monotone non-decreasing, and the ETA
+   // is EMA-smoothed (alpha .3) so it ticks down instead of oscillating; a
+   // genuine upward correction is accepted only after 3 consecutive polls
+   // above the displayed value. All state resets when a new run takes over.
    let D={done:0,total:0,eta_s:null,t:Date.now()};
+   let PS;
+   function resetProg(){PS={label:null,disp:0,ema:null,shown:null,shownT:0,up:0};}
+   resetProg();
    async function poll(){
      try{const r=await fetch('/api/progress'); const d=await r.json();
        if(!d.running){location.reload(); return;}
+       if(PS.label!==null && d.label!==PS.label) resetProg();  // a new run started
+       PS.label=d.label;
        D={...d, t:Date.now()};
+       if(d.eta_s!=null){
+         PS.ema = PS.ema==null ? d.eta_s : 0.3*d.eta_s + 0.7*PS.ema;
+         const cur = PS.shown==null ? null
+           : Math.max(0, PS.shown-(Date.now()-PS.shownT)/1000);
+         if(cur==null || PS.ema<=cur){PS.shown=PS.ema; PS.shownT=Date.now(); PS.up=0;}
+         else if(++PS.up>=3){PS.shown=PS.ema; PS.shownT=Date.now(); PS.up=0;}
+       }
        if(!d.total) document.getElementById('prog').textContent=d.phase||'starting';
      }catch(e){}
      setTimeout(poll,2000);
@@ -94,15 +113,62 @@
      if(!D.total) return;
      const per=D.eta_s!=null && D.total>D.done ? D.eta_s/(D.total-D.done) : 20;
      const frac=Math.min(0.95,(Date.now()-D.t)/1000/Math.max(per,1));
-     const pct=Math.max(3,Math.min(99,100*(D.done+frac)/D.total));
+     let pct=Math.max(3,Math.min(99,100*(D.done+frac)/D.total));
+     pct=Math.max(PS.disp,pct); PS.disp=pct;      // never regress
      document.getElementById('runfill').style.width=pct+'%';
      let s=Math.round(pct)+'% · '+D.done+'/'+D.total+' fits';
-     if(D.eta_s!=null){const rem=Math.max(0,D.eta_s-(Date.now()-D.t)/1000);
+     if(PS.shown!=null){const rem=Math.max(0,PS.shown-(Date.now()-PS.shownT)/1000);
        const m=Math.floor(rem/60);
        s+=' · ~'+(m>0?m+' min':Math.round(rem)+' s')+' left';}
      document.getElementById('prog').textContent=s;
    },400);
    poll();
+   // particle-filter vignette: dots drift along a faint epidemic curve; now
+   // and then one is resampled -- it fades out and reappears near the crowd.
+   // Theme-aware (reads the CSS variables each frame) and static under
+   // prefers-reduced-motion.
+   (function(){
+     const cv=document.getElementById('pfviz'); if(!cv||!cv.getContext) return;
+     const ctx=cv.getContext('2d');
+     const css=v=>getComputedStyle(document.documentElement)
+       .getPropertyValue(v).trim()||'#888';
+     const dpr=window.devicePixelRatio||1;
+     function size(){cv.width=Math.max(cv.clientWidth,1)*dpr; cv.height=90*dpr;}
+     const bump=t=>Math.exp(-Math.pow((t-0.55)/0.21,2));
+     const xy=t=>[t*cv.width, cv.height*0.88-bump(t)*cv.height*0.7];
+     function drawCurve(){
+       ctx.clearRect(0,0,cv.width,cv.height);
+       ctx.strokeStyle=css('--line'); ctx.lineWidth=1.5*dpr; ctx.beginPath();
+       for(let i=0;i<=60;i++){const q=xy(i/60); i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]);}
+       ctx.stroke();
+     }
+     const P=Array.from({length:40},()=>({t:Math.random(),
+       o:(Math.random()-0.5)*12, a:0.3+Math.random()*0.7, f:0}));
+     function drawDots(){
+       ctx.fillStyle=css('--gold-bright');
+       for(const p of P){
+         const q=xy(p.t);
+         ctx.globalAlpha=Math.max(0,Math.min(1,p.a))*0.85;
+         ctx.beginPath(); ctx.arc(q[0],q[1]+p.o*dpr,2.1*dpr,0,6.2832); ctx.fill();
+       }
+       ctx.globalAlpha=1;
+     }
+     function step(){
+       for(const p of P){
+         p.t+=0.0011+0.0009*Math.random(); if(p.t>1.03) p.t=-0.03;
+         if(!p.f && Math.random()<0.0025) p.f=1;         // chosen for resampling
+         if(p.f){p.a-=0.05;
+           if(p.a<=0){const m=P.reduce((s,q)=>s+q.t,0)/P.length;
+             p.t=Math.max(0,Math.min(1,m+(Math.random()-0.5)*0.12));
+             p.o=(Math.random()-0.5)*12; p.f=0;}}       // reborn near the crowd
+         else if(p.a<1) p.a+=0.03;
+       }
+     }
+     function frame(){drawCurve(); drawDots(); step(); requestAnimationFrame(frame);}
+     size(); addEventListener('resize',size);
+     if(matchMedia('(prefers-reduced-motion: reduce)').matches){drawCurve(); drawDots();}
+     else requestAnimationFrame(frame);
+   })();
   </script>
   {% elif ledger %}
   <div class="card"><h2>Latest run</h2>
@@ -114,8 +180,15 @@
   {% endif %}
 
   <details class="card" open><summary><h2 style="display:inline">Data</h2>
-   <span class="hint"> — admissions for the selected locations (latest vintage)</span></summary>
-   <div class="row" style="margin:.6rem 0">
+   <span class="hint"> — raw admissions, any location (latest vintage)</span></summary>
+   <div style="margin:.6rem 0 .2rem">
+    <select id="data-loc" aria-label="data panel location"
+      style="width:auto;min-width:230px;max-width:100%">
+     <option selected>US (national)</option>
+     {% for l in all_locs | sort %}<option>{{ l }}</option>{% endfor %}
+    </select>
+   </div>
+   <div class="row" style="margin:.4rem 0">
     <button type="button" class="quiet" id="mode-raw">full series</button>
     <button type="button" class="quiet" id="mode-season">season over season</button>
     <button type="button" class="quiet" id="mode-pts">● points</button>
@@ -134,7 +207,6 @@
 <script>
  const SERIES = {{ series_json | safe }};
  const FANQ = {{ fanq_json | safe }};   // {model: {loc: {h: {q: v}}}}
- const ALL_LOCS = {{ all_locs | tojson }};
  const FCDATE = {{ fc_date | tojson }};
  const isDark = () => document.documentElement.getAttribute('data-theme')==='dark';
  function lay(title, h){ return {title:{text:title,font:{size:14}},
@@ -149,8 +221,8 @@
    return Math.round((d-new Date(y,7,1))/(7*864e5));}
  let SHOWPTS=false, CURMODE='season', DIDX=0;
  const PCONF={responsive:true, displaylogo:false};
- const ALLMODE={{ ("all" in form.locations) | tojson }};
- const LOCS=ALLMODE? ['US (national)',...ALL_LOCS] : Object.keys(SERIES);
+ const DATA_SEL=document.getElementById('data-loc');
+ const LOCS=[DATA_SEL.value];   // data panel follows its own dropdown only
  function drawData(mode){
    CURMODE=mode;
    const lm=SHOWPTS?'lines+markers':'lines';
@@ -165,7 +237,7 @@
      return;
    }
    const s=SERIES[loc];
-   document.getElementById('data-pos').textContent=loc+' · '+(DIDX+1)+'/'+LOCS.length;
+   document.getElementById('data-pos').textContent=loc;
    const div=document.createElement('div'); el.appendChild(div);
    if(mode==='raw'){
      Plotly.newPlot(div,[{x:s.dates,y:s.values,mode:lm,
@@ -183,8 +255,14 @@
      Plotly.newPlot(div,traces,L,PCONF);
    }
  }
- document.getElementById('data-prev').onclick=()=>{DIDX--;drawData(CURMODE);};
- document.getElementById('data-next').onclick=()=>{DIDX++;drawData(CURMODE);};
+ function setDataLoc(i){
+   const n=DATA_SEL.options.length;
+   DATA_SEL.selectedIndex=((i%n)+n)%n;
+   LOCS.length=0; LOCS.push(DATA_SEL.value); DIDX=0; drawData(CURMODE);
+ }
+ DATA_SEL.addEventListener('change',()=>setDataLoc(DATA_SEL.selectedIndex));
+ document.getElementById('data-prev').onclick=()=>setDataLoc(DATA_SEL.selectedIndex-1);
+ document.getElementById('data-next').onclick=()=>setDataLoc(DATA_SEL.selectedIndex+1);
  document.getElementById('mode-raw').onclick=()=>drawData('raw');
  document.getElementById('mode-season').onclick=()=>drawData('season');
  document.getElementById('mode-pts').onclick=function(){

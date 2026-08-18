@@ -31,20 +31,31 @@ CAT_COLOR = {"large_decrease": "#2e7d4f", "decrease": "#7fc97f",
              "large_increase": "#c0392b"}
 NO_DATA = "#0a0a0a"
 CAT_LABEL = {c: c.replace("_", " ") for c in CATS}
-QBANDS = ((0.025, 0.975, "rgba(106,165,216,0.13)"),
-          (0.10, 0.90, "rgba(106,165,216,0.20)"),
-          (0.25, 0.75, "rgba(106,165,216,0.30)"))
+QBANDS = ((0.025, 0.975, "rgba(106,165,216,0.13)", "95% interval"),
+          (0.10, 0.90, "rgba(106,165,216,0.20)", "80% interval"),
+          (0.25, 0.75, "rgba(106,165,216,0.30)", "50% interval"))
+
+# Shared embed config: wheel zooms both ways, double-click resets, hover
+# modebar offers zoom-out/reset (lasso/box-select/autoscale pruned).
+PLOTLY_CONFIG = {"scrollZoom": True, "doubleClick": "reset+autosize",
+                 "displayModeBar": "hover", "displaylogo": False,
+                 "modeBarButtonsToRemove": ["lasso2d", "select2d",
+                                            "autoScale2d"]}
 
 
-def _fig_layout(fig, height=340, title=""):
+def _fig_layout(fig, height=340, title="", legend=False):
     fig.update_layout(
         template=None, paper_bgcolor=CARD, plot_bgcolor=CARD,
         font=dict(color=INK, family="system-ui", size=13),
-        margin=dict(l=44, r=16, t=40 if title else 16, b=36),
+        margin=dict(l=44, r=16, t=40 if title else 16, b=64 if legend else 36),
         height=height, title=dict(text=title, font=dict(size=15)),
         xaxis=dict(gridcolor=LINE, zerolinecolor=LINE),
         yaxis=dict(gridcolor=LINE, zerolinecolor=LINE),
-        showlegend=False)
+        showlegend=legend,
+        legend=dict(orientation="h", x=0, xanchor="left",
+                    y=-0.18, yanchor="top",
+                    font=dict(size=11, color=INK),
+                    bgcolor="rgba(0,0,0,0)"))
     return fig
 
 
@@ -54,7 +65,7 @@ def fan_figure(observed_times, observed, forecast_times, samples_by_h,
     import plotly.graph_objects as go
     fig = go.Figure()
     med = []
-    for lo, hi, color in QBANDS:
+    for lo, hi, color, band_name in QBANDS:
         upper, lower = [], []
         for h in forecast_times:
             s = np.asarray(samples_by_h[str(h)], float)
@@ -63,24 +74,25 @@ def fan_figure(observed_times, observed, forecast_times, samples_by_h,
             lower.append(float(np.quantile(s, lo)))
         fig.add_scatter(x=list(forecast_times) + list(forecast_times)[::-1],
                         y=upper + lower[::-1], fill="toself", fillcolor=color,
-                        line=dict(width=0), hoverinfo="skip")
+                        line=dict(width=0), hoverinfo="skip",
+                        name=band_name, showlegend=True)
     med = [float(np.median(np.asarray(samples_by_h[str(h)], float)))
            for h in forecast_times]
     fig.add_scatter(x=list(forecast_times), y=med, mode="lines+markers",
                     line=dict(color=ACCENT, width=2.2),
-                    name="forecast median",
+                    name="median forecast",
                     hovertemplate="wk %{x}: %{y:.0f}<extra>forecast</extra>")
     fig.add_scatter(x=list(observed_times), y=list(observed),
                     mode="lines+markers",
                     line=dict(color=INK, width=1.6),
-                    marker=dict(size=5),
+                    marker=dict(size=5), name="observed",
                     hovertemplate="wk %{x}: %{y:.0f}<extra>observed</extra>")
     for g in gaps:
         fig.add_vrect(x0=g - 0.5, x1=g + 0.5, fillcolor="#3a3a40",
                       opacity=0.5, line_width=0,
                       annotation_text="no data", annotation_font_color=MUT,
                       annotation_font_size=10)
-    return _fig_layout(fig, title=title)
+    return _fig_layout(fig, title=title, legend=True)
 
 
 def accuracy_figure(dates, relwis, title="forecast accuracy (relWIS vs baseline)"):
@@ -89,7 +101,7 @@ def accuracy_figure(dates, relwis, title="forecast accuracy (relWIS vs baseline)
     fig.add_hline(y=1.0, line=dict(color=MUT, dash="dot", width=1),
                   annotation_text="baseline", annotation_font_color=MUT)
     fig.add_scatter(x=list(dates), y=list(relwis), mode="lines+markers",
-                    line=dict(color=ACCENT, width=2),
+                    line=dict(color=ACCENT, width=2), name="relWIS",
                     hovertemplate="%{x}: %{y:.2f}<extra></extra>")
     f = _fig_layout(fig, height=260, title=title)
     f.update_yaxes(rangemode="tozero")
@@ -110,7 +122,7 @@ def cat_bar(probs):
 def _html(fig, include_js=False, div_id=None):
     return fig.to_html(full_html=False,
                        include_plotlyjs=True if include_js else False,
-                       div_id=div_id, config={"displayModeBar": False})
+                       div_id=div_id, config=dict(PLOTLY_CONFIG))
 
 
 def build_report(reference_date: str, state_cards: dict, state_details: dict,

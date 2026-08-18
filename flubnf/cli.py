@@ -1451,12 +1451,33 @@ def app_window(port: int = 8710):
     except ImportError:
         print("pywebview not installed: .venv/bin/pip install pywebview")
         raise SystemExit(1)
+    import socket
+    import time
     threading.Thread(target=lambda: uvicorn.run("app.ui.server:app",
                      port=port, host="127.0.0.1", log_level="warning"),
                      daemon=True).start()
+    # The window must not open before uvicorn listens: WKWebView caches the
+    # connection-refused page and the first window comes up dead (nothing to
+    # click, tabs inert) until the app is closed and reopened.
+    t0 = time.time()
+    while time.time() - t0 < 30:
+        try:
+            with socket.create_connection(("127.0.0.1", port), 0.5):
+                break
+        except OSError:
+            time.sleep(0.2)
     webview.create_window("FluBNF", f"http://localhost:{port}",
-                          width=1120, height=800)
-    webview.start()
+                          width=1120, height=800, min_size=(760, 520))
+    def _activate():
+        # Launched from a .command script the process is not a bundled app,
+        # so macOS may leave the window deactivated (clicks ignored until
+        # the user switches away and back). Ask Cocoa to front us.
+        try:
+            from AppKit import NSApplication  # pyobjc ships with pywebview
+            NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+        except Exception:
+            pass
+    webview.start(_activate)
 
 
 @app.command("retro")

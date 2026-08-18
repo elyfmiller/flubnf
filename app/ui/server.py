@@ -134,14 +134,16 @@ def forecast_page(request: Request):
     # from the latest vintage -- visible before any run (deciding what to
     # drop requires seeing the data)
     import json as _json
-    sel = ([l for l in form["locations"] if l != "all"]
-           or all_locs[:1] or ["Alabama"])
+    # the data panel's own dropdown defaults to US national -- seed it so the
+    # panel paints without a fetch; form locations stay seeded for the fans
+    sel = ["US (national)"] + [l for l in form["locations"] if l != "all"]
     series = {}
     try:
         vs = data_mod.vintages()
         tdf = pd.read_csv(data_mod.vintage_path(vs[-1]), dtype={"location": str})
         tdf["location"] = tdf["location"].str.zfill(2)
         n2f_ = dict(zip(_l.location_name, _l.location.str.zfill(2)))
+        n2f_["US (national)"] = "US"
         for loc in sel[:8]:
             g = tdf[tdf.location == n2f_.get(loc, "")].sort_values("date")
             g = g[pd.to_numeric(g.value, errors="coerce").notna()]
@@ -553,10 +555,16 @@ def api_progress():
                 t0 = min(t0 or d["t0"], d["t0"])
             except Exception:
                 pass
+        # stable denominator claimed at run start (locations x replicates);
+        # discovered shard totals only ever grow toward it
+        total = max(total, int(_status.get("expected_total") or 0))
         out["done"], out["total"] = done, total
         if done and total and t0:
             rate = (_time.time() - t0) / done
             out["eta_s"] = int(rate * (total - done))
+    elif _status.get("expected_total"):
+        # run claimed but workroot not created yet: report 0/N, not silence
+        out["done"], out["total"] = 0, int(_status["expected_total"])
     return out
 
 
@@ -933,6 +941,12 @@ def run_models(background: BackgroundTasks,
         locs_list = [l for l in locations if l.strip()]
     if not any(str(l).upper() in ("US", "US (NATIONAL)") for l in locs_list):
         locs_list.append("US")   # national fitted directly, always
+    # honest progress: the denominator (locations x replicates) is known NOW,
+    # from the spec -- shard .prog files only ever grow toward it, so pct can
+    # never regress when a late shard registers. Also drop the previous run's
+    # workroot so its finished .prog files never flash as this run's progress.
+    _status["workroot"] = None
+    _status["expected_total"] = len(locs_list) * int(replicates)
     spec = RunSpec(engine=engine, forecast_date=forecast_date,
                    locations=locs_list,
                    weeks_to_drop=weeks_to_drop,
