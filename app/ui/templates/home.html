@@ -8,7 +8,10 @@
 
 <div class="card">{{ map_svg | safe }}
  <p class="hint">The weekly outlook map — each state colored by where its
- admissions are most likely headed. It fills in when you run a forecast.</p>
+ admissions are most likely headed.
+ {% if outlook_date %}From the latest run ({{ outlook_date }}); hover a state
+ for its category probabilities.
+ {% else %}It fills in when you run a forecast.{% endif %}</p>
 </div>
 
 <div class="grid3">

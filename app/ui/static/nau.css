@@ -97,3 +97,15 @@ details.card[open] > summary::before{content:"▾ "}
 .carousel{display:flex;gap:.8rem;align-items:center;margin:.3rem 0}
 .cnav{padding:.25rem .7rem;margin-top:0}
 .quip{color:var(--gold);font-style:italic;font-size:.95rem;margin:.2rem 0}
+/* ---- output tab: downloads + csv previews ---- */
+button.linkish{background:none;border:0;padding:0;margin:0;color:var(--mut);
+  font-size:.78rem;font-weight:600;text-decoration:underline;cursor:pointer}
+button.linkish:hover{background:none;color:var(--ink)}
+.subfile{border-bottom:1px solid var(--line);padding-bottom:.35rem;margin-bottom:.35rem}
+.subfile:last-of-type{border-bottom:0;margin-bottom:0;padding-bottom:0}
+details.preview > summary{cursor:pointer;list-style:none;user-select:none}
+details.preview > summary::-webkit-details-marker{display:none}
+details.preview > summary::before{content:"▸ ";color:var(--gold)}
+details.preview[open] > summary::before{content:"▾ "}
+details.preview table{font-size:.76rem;margin-top:.4rem}
+details.preview td,details.preview th{padding:.25rem .5rem;white-space:nowrap}

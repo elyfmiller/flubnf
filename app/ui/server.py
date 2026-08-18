@@ -51,26 +51,67 @@ def favicon():
     return Response(svg, media_type="image/svg+xml")
 
 
+def _outlook_cards(res: dict | None) -> dict:
+    """fips -> hover card for svg_map, colored by the latest run's categorical
+    outlook (ensemble if present, else pf). States without results — and the
+    no-results-at-all case — get empty cards, so the caller always renders the
+    full silhouette."""
+    import pandas as pd
+    from app.core.report import categorical_probs
+    from app.core.report_v2 import CATS
+    _l = pd.read_csv(__import__("flubnf.settings",
+                                fromlist=["LOCATIONS"]).LOCATIONS, dtype=str)
+    n2f = dict(zip(_l.location_name, _l.location.str.zfill(2)))
+    n2a = dict(zip(_l.location_name, _l.abbreviation))
+    n2p = dict(zip(_l.location_name, _l.population.astype(float)))
+    models = (res or {}).get("models", {})
+    picked = models.get("ensemble") or models.get("pf") or {}
+    observed = (res or {}).get("observed", {})
+    cards = {}
+    for loc, qd in picked.items():
+        fips = n2f.get(loc, "")
+        q1 = (qd or {}).get("1")
+        obs = observed.get(loc) or []
+        # tolerate the pre-quantile results schema (medians-only floats)
+        if len(fips) != 2 or not isinstance(q1, dict) or not obs:
+            continue
+        lo = float(obs[-1][1])
+        vals = [float(v) for v in q1.values()]
+        probs = categorical_probs(vals, lo, int(n2p[loc]), 1)
+        med1 = float(q1.get("0.5", vals[len(vals) // 2]))
+        hover = (f"<b>{loc}</b><br>current: {lo:.0f}"
+                 f"<br>1-wk median: {med1:.0f}<br>" +
+                 "<br>".join(f"{c.replace('_',' ')}: {probs.get(c,0):.0%}"
+                             for c in CATS))
+        cards[fips] = {"probs": probs, "name": loc, "abbr": n2a.get(loc, ""),
+                       "fips": fips, "hover_html": hover}
+    for name, fips in n2f.items():
+        if len(fips) == 2:
+            cards.setdefault(fips, {"name": name, "abbr": n2a.get(name, ""),
+                                    "fips": fips})
+    return cards
+
+
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     # a real map as the hero graphic: latest run's outlook if one exists,
     # otherwise the empty-country silhouette
-    map_svg = ""
+    map_svg, outlook_date = "", ""
     try:
-        import pandas as pd
-        from app.core.report import categorical_probs
         from app.core.usmap import svg_map
-        _l = pd.read_csv(__import__("flubnf.settings",
-                                    fromlist=["LOCATIONS"]).LOCATIONS, dtype=str)
-        n2f = dict(zip(_l.location_name, _l.location.str.zfill(2)))
-        n2a = dict(zip(_l.location_name, _l.abbreviation))
-        cards = {n2f[n]: {"name": n, "abbr": n2a[n], "fips": n2f[n]}
-                 for n in n2f if len(n2f[n]) == 2}
+        cards = {}
+        try:
+            _, res = _latest_results()
+            cards = _outlook_cards(res)
+            if any(c.get("probs") for c in cards.values()):
+                outlook_date = (res or {}).get("forecast_date", "")
+        except Exception:
+            pass                      # no LOCATIONS/hub -> bare silhouette
         map_svg = svg_map(cards)
     except Exception:
         pass
     return templates.TemplateResponse(request, "home.html", {
-        "active": "Home", "map_svg": map_svg,
+        "active": "Home", "map_svg": map_svg, "outlook_date": outlook_date,
         "missing": __import__("flubnf.settings", fromlist=["check"]).check(verbose=False)})
 
 
@@ -290,10 +331,34 @@ def _run_all(spec: RunSpec) -> None:
             wis_html = ("<div class='card'><h2>forecast accuracy "
                         "(retrospective)</h2>" + summary_table_html(df)
                         + "</div>")
+            nat_html = ""
+            try:
+                from app.core.usmap import national_svg
+                us_names = [n for n in pf_samples if n2f.get(n) == "US"] or                            [n for n in pf_samples if "US" in n or "national" in n.lower()]
+                if us_names:
+                    un = us_names[0]
+                    import numpy as _np2
+                    arr = _np2.asarray(pf_samples[un]["1"], float)
+                    lo_us = next((c["last_observed"] for c in
+                                  __import__("json").loads(
+                                      (workroot / "cells.json").read_text())
+                                  if c["location"] == un), 0.0)
+                    us_pop = float(_l0 := 340_000_000)
+                    probs_us = categorical_probs(arr, lo_us, int(us_pop), 1)
+                    hover_us = ("<b>United States</b><br>current: "
+                                f"{lo_us:.0f}<br>1-wk median: "
+                                f"{float(_np2.median(arr)):.0f}")
+                    nat_html = national_svg({"probs": probs_us,
+                                             "name": "United States",
+                                             "abbr": "US", "fips": "US",
+                                             "hover_html": hover_us})
+            except Exception:
+                nat_html = ""
             build_report(spec.forecast_date, cards, {},
                          {"fan": None, "acc": None,
                           "summary_html": wis_html},
-                         workroot / "report.html")
+                         workroot / "report.html",
+                         national_map_html=nat_html)
             outcome["report"] = str(workroot / "report.html")
         except Exception as e:
             outcome["report_error"] = str(e)[:200]
@@ -334,6 +399,11 @@ def _run_all(spec: RunSpec) -> None:
                 "analogue": {loc: _qs_from_q(q) for loc, q in an_q.items()},
                 "ensemble": {loc: _qs_from_q(q) for loc, q in members_by_loc.items()},
             }}))
+        # 7. forecast archive: one folder per forecast_date, latest run wins
+        try:
+            outcome["archived"] = _archive_run(workroot, spec.forecast_date)
+        except Exception as e:
+            outcome["archive_error"] = str(e)[:200]
         _status["session_ran"] = run_id
         ledger.close_run(run_id, "failed" if fails else "ok", outcome)
         _status["log"].append(
@@ -351,6 +421,38 @@ def _run_all(spec: RunSpec) -> None:
     finally:
         _status["running"] = None
         _status["phase"] = ""
+
+
+def _archive_run(workroot: Path, forecast_date: str) -> str:
+    """Copy the run's deliverables to app/state/archive/<forecast_date>/,
+    replacing any earlier archive for the same date."""
+    import shutil
+    from app.core.runs import APP_STATE
+    arch = APP_STATE / "archive" / forecast_date
+    if arch.exists():
+        shutil.rmtree(arch)
+    arch.mkdir(parents=True)
+    for name in ("results.json", "report.html"):
+        if (workroot / name).is_file():
+            shutil.copy2(workroot / name, arch / name)
+    if (workroot / "submission").is_dir():
+        shutil.copytree(workroot / "submission", arch / "submission")
+    return str(arch)
+
+
+def _archive_dates() -> list:
+    import re
+    from app.core.runs import APP_STATE
+    root = APP_STATE / "archive"
+    if not root.is_dir():
+        return []
+    return sorted(p.name for p in root.iterdir()
+                  if p.is_dir() and re.fullmatch(r"\d{4}-\d{2}-\d{2}", p.name))
+
+
+@app.get("/api/archive/dates")
+def api_archive_dates():
+    return _archive_dates()
 
 
 @app.get("/runs/{run_id}", response_class=HTMLResponse)
@@ -496,24 +598,48 @@ def _fan_svg(observed, qs):
     return "".join(parts)
 
 
+PREVIEW_ROWS = 12
+
+
 @app.get("/output", response_class=HTMLResponse)
 def output_page(request: Request):
+    import pandas as pd
     from app.core.runs import APP_STATE
     rid, res = _latest_results()
     files = []
     if rid:
         w = APP_STATE / "workroots" / rid
         for f in sorted(w.glob("submission/*/*.csv")):
-            files.append({"model": f.parent.name, "name": f.name,
-                          "path": str(f)})
-        report = w / "report.html"
+            entry = {"model": f.parent.name, "name": f.name, "path": str(f),
+                     "cols": [], "rows": [], "more": 0}
+            try:
+                df = pd.read_csv(f, dtype=str)
+                entry["cols"] = list(df.columns)
+                entry["rows"] = df.head(PREVIEW_ROWS).fillna("").values.tolist()
+                entry["more"] = max(len(df) - PREVIEW_ROWS, 0)
+            except Exception:
+                pass
+            files.append(entry)
     return templates.TemplateResponse(request, "output.html", {
         "active": "Output", "rid": rid,
         "label": _run_label(rid) if rid else "",
         "date": (res or {}).get("forecast_date", ""),
         "has_ensemble": bool((res or {}).get("models", {}).get("ensemble")),
         "files": files,
+        "archive_dates": list(reversed(_archive_dates())),
         "has_report": bool(rid and (APP_STATE / "workroots" / rid / "report.html").is_file())})
+
+
+@app.get("/output/download")
+def output_download(path: str):
+    """Hand the submission CSV to the browser as a real download."""
+    from fastapi.responses import FileResponse
+    from app.core.runs import APP_STATE
+    p = Path(path).resolve()
+    if p.is_relative_to(APP_STATE.resolve()) and p.is_file():   # stay inside our state
+        return FileResponse(p, filename=p.name, media_type="text/csv",
+                            content_disposition_type="attachment")
+    return HTMLResponse("<p>file not found in app state</p>", status_code=404)
 
 
 @app.post("/output/reveal")
@@ -528,8 +654,17 @@ def output_reveal(path: str = Form(...)):
 
 
 @app.get("/output/report", response_class=HTMLResponse)
-def output_report():
+def output_report(date: str = ""):
+    """Latest run's report by default; ?date=YYYY-MM-DD serves the archive."""
+    import re
     from app.core.runs import APP_STATE
+    if date:
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+            return HTMLResponse("<p>bad date — expected YYYY-MM-DD</p>",
+                                status_code=400)
+        f = APP_STATE / "archive" / date / "report.html"
+        return HTMLResponse(f.read_text() if f.is_file()
+                            else f"<p>no archived report for {date}</p>")
     rid, _ = _latest_results()
     f = APP_STATE / "workroots" / (rid or "") / "report.html"
     return HTMLResponse(f.read_text() if f.is_file()
@@ -762,6 +897,9 @@ def run_models(background: BackgroundTasks,
                                      fromlist=["LOCATIONS"]).LOCATIONS, dtype=str)
         locs_list = list(_l.location_name[(_l.location.str.len() == 2)
                                           & (_l.abbreviation != "US")])
+        us = _l.location_name[_l.abbreviation == "US"]
+        if len(us):
+            locs_list.append(str(us.iloc[0]))   # national, fitted directly
     else:
         locs_list = [l for l in locations if l.strip()]
     spec = RunSpec(engine=engine, forecast_date=forecast_date,

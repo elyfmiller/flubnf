@@ -3,11 +3,15 @@
 One self-contained file per week (plotly.js embedded once, no network):
   * geographic US choropleth, states shaded by modal rate-change category,
     intensity by its probability; hover = full stats card
+  * optional national map view (one shared fill = national modal category),
+    toggled with 'state view' / 'national view' buttons above the map
   * CLICK a state -> its section: forecast fan vs observed, categorical bar,
-    accuracy over time (relWIS vs baseline), recent-data table
+    accuracy over time (relWIS vs baseline), recent-data table; every section
+    has a '<- back to map' button (window.backToMap)
   * a National section with the same drill-down
-  * reporting gaps render as explicit hatched/грey states and annotated gaps
-    in fans (constitutional rule 10), never smoothed over
+  * reporting gaps render as explicit black states (#0a0a0a) and annotated
+    gaps in fans (constitutional rule 10), never smoothed over
+  * fluid layout: no fixed max-width, the map scales with the window
   * forced dark: single-theme by design; every color painted explicitly
 
 Deliberately dark-only per Ely's spec (2026-08-17).
@@ -22,8 +26,10 @@ import numpy as np
 INK = "#e9ecf2"; MUT = "#93a1b5"; PAPER = "#0a1626"; CARD = "#0f2440"
 LINE = "#1d3a5f"; ACCENT = "#ffc72c"
 CATS = ("large_decrease", "decrease", "stable", "increase", "large_increase")
-CAT_COLOR = {"large_decrease": "#3d7ab8", "decrease": "#79a8cf",
-             "stable": "#8a8a82", "increase": "#d99a6b", "large_increase": "#c65744"}
+CAT_COLOR = {"large_decrease": "#2e7d4f", "decrease": "#7fc97f",
+             "stable": "#b9b09b", "increase": "#e8a33d",
+             "large_increase": "#c0392b"}
+NO_DATA = "#0a0a0a"
 CAT_LABEL = {c: c.replace("_", " ") for c in CATS}
 QBANDS = ((0.025, 0.975, "rgba(106,165,216,0.13)"),
           (0.10, 0.90, "rgba(106,165,216,0.20)"),
@@ -108,10 +114,13 @@ def _html(fig, include_js=False, div_id=None):
 
 
 def build_report(reference_date: str, state_cards: dict, state_details: dict,
-                 national: dict, out_path: Path) -> Path:
+                 national: dict, out_path: Path,
+                 national_map_html: str = "") -> Path:
     """state_cards: abbr -> hover-card data (choropleth).
     state_details: abbr -> dict(name, fan=…, cat=…, acc=…, table_rows=[…]).
-    national: dict(fan=…, acc=…, summary_html=str)."""
+    national: dict(fan=…, acc=…, summary_html=str).
+    national_map_html: pre-rendered usmap.national_svg(...) output; when given,
+    a 'state view' / 'national view' toggle appears above the map."""
     # Build-time SVG map (see usmap.py) -- the plotly geo choropleth fetched
     # its geometry from cdn.plot.ly at runtime and rendered empty offline/CSP.
     from app.core.usmap import svg_map
@@ -124,11 +133,14 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
         h = _html(fig, include_js=_first[0])
         _first[0] = False
         return h
+    back_btn = ('<button class="backbtn" onclick="backToMap()">'
+                '&larr; back to map</button>')
     for a, d in state_details.items():
         rows = "".join(f"<tr><td>{r[0]}</td><td>{r[1]:.0f}</td></tr>"
                        for r in d.get("table_rows", []))
         sections.append(f"""
 <section class="state" id="st-{a}" hidden>
+  {back_btn}
   <h2>{d['name']}</h2>
   <div class="grid2">
     <div class="card">{_sec_html(d['fan'])}</div>
@@ -140,18 +152,31 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
 
     nat = f"""
 <section class="state" id="st-US" hidden>
+  {back_btn}
   <h2>United States</h2>
   {national.get('summary_html', '')}
   <div class="card">{_html(national['fan']) if national.get('fan') else ''}</div>
   <div class="card">{_html(national['acc']) if national.get('acc') else ''}</div>
 </section>"""
 
+    # view toggle + second (national) map, only when a national map was given
+    view_toggle = ""
+    nat_map_div = ""
+    if national_map_html:
+        view_toggle = """
+<div class="viewtoggle">
+ <button id="btn-state-view" class="on">state view</button>
+ <button id="btn-national-view">national view</button>
+</div>"""
+        nat_map_div = f'<div id="map-national" hidden>{national_map_html}</div>'
+
     html = f"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FluBNF — week of {reference_date}</title>
 <style>
  body{{margin:0;background:{PAPER};color:{INK};font:15px/1.55 system-ui}}
- main{{max-width:1020px;margin:0 auto;padding:1.6rem 1rem 4rem}}
+ main{{width:100%;box-sizing:border-box;margin:0 auto;
+       padding:1.6rem 1.4rem 4rem}}
  h1{{font-size:1.45rem;margin:.2rem 0}} h2{{font-size:1.15rem}}
  .sub{{color:{MUT};margin:.2rem 0 1rem}}
  .card{{background:{CARD};border:1px solid {LINE};border-radius:14px;
@@ -169,18 +194,25 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
          border-radius:9px;padding:.45rem .9rem;font:inherit;cursor:pointer}}
  button:hover{{border-color:{ACCENT}}}
  button:focus-visible{{outline:2px solid {ACCENT};outline-offset:2px}}
+ .viewtoggle{{display:flex;gap:.5rem;margin:1rem 0 0}}
+ .viewtoggle .on{{border-color:{ACCENT};color:{ACCENT}}}
+ .backbtn{{margin:.2rem 0 .6rem}}
  .hint{{color:{MUT};font-size:.85rem}}
 </style></head><body><main>
 <h1>US influenza forecast</h1>
 <p class="sub">week of {reference_date} · PF-SIHRS · click a state for detail
- · <button id="natbtn">national view</button></p>
-<div class="card">{map_html}
+ · zoom with the mouse wheel, drag to pan, double-click to reset
+ · <button id="natbtn">national detail</button></p>
+{view_toggle}
+<div class="card" id="map-anchor">
+ <div id="map-state">{map_html}</div>
+ {nat_map_div}
  <div class="legend">
   {"".join(f'<span><i class="sw" style="background:{CAT_COLOR[c]}"></i>{CAT_LABEL[c]}</span>' for c in CATS)}
-  <span><i class="sw" style="background:#232327"></i>no data (reporting gap)</span>
+  <span><i class="sw" style="background:{NO_DATA}"></i>no data (reporting gap)</span>
  </div>
 </div>
-<p class="hint">Hover a state for its full outlook. Grey states reported no
+<p class="hint">Hover a state for its full outlook. Black states reported no
 data this week — shown as gaps, never interpolated.</p>
 {"".join(sections)}
 {nat}
@@ -191,7 +223,27 @@ function show(id) {{
   const el = document.getElementById(id);
   if (el) {{ el.hidden = false; el.scrollIntoView({{behavior: 'smooth'}}); }}
 }}
+window.backToMap = function() {{
+  document.querySelectorAll('section.state').forEach(s => s.hidden = true);
+  const m = document.getElementById('map-anchor');
+  if (m) m.scrollIntoView({{behavior: 'smooth'}});
+}};
 document.getElementById('natbtn').addEventListener('click', () => show('st-US'));
+(function() {{
+  const mS = document.getElementById('map-state'),
+        mN = document.getElementById('map-national'),
+        bS = document.getElementById('btn-state-view'),
+        bN = document.getElementById('btn-national-view');
+  if (!mN || !bS || !bN) return;
+  const setView = v => {{
+    mS.hidden = (v === 'national');
+    mN.hidden = (v === 'state');
+    bS.classList.toggle('on', v === 'state');
+    bN.classList.toggle('on', v === 'national');
+  }};
+  bS.addEventListener('click', () => setView('state'));
+  bN.addEventListener('click', () => setView('national'));
+}})();
 </script>
 </main></body></html>"""
     out_path = Path(out_path)

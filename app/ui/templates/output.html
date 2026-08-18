@@ -20,19 +20,48 @@ outputs will collect here.</p></div>
  <div>
   <div class="card"><h2>Submission files — {{ date }}</h2>
    {% for f in files %}
-    <div class="row" style="justify-content:space-between;margin:.45rem 0">
-     <span><b>{{ f.model }}</b><br><code>{{ f.name }}</code></span>
-     <form method="post" action="/output/reveal">
-      <input type="hidden" name="path" value="{{ f.path }}">
-      <button class="quiet" style="margin-top:0">Show in Finder</button></form>
+    <div class="subfile">
+     <div class="row" style="display:flex;justify-content:space-between;align-items:center;gap:.8rem;margin:.45rem 0">
+      <span><b>{{ f.model }}</b><br><code>{{ f.name }}</code></span>
+      <span style="display:flex;align-items:center;gap:.9rem;white-space:nowrap">
+       <a href="/output/download?path={{ f.path | urlencode }}" download><button
+        class="gold" type="button" style="margin-top:0">Download</button></a>
+       <form method="post" action="/output/reveal" style="display:inline">
+        <input type="hidden" name="path" value="{{ f.path }}">
+        <button class="linkish" type="submit">Show in Finder</button></form>
+      </span>
+     </div>
+     {% if f.cols %}
+     <details class="preview">
+      <summary class="hint">preview — first {{ f.rows | length }} rows</summary>
+      <div style="overflow-x:auto;max-width:100%">
+       <table>
+        <tr>{% for c in f.cols %}<th>{{ c }}</th>{% endfor %}</tr>
+        {% for r in f.rows %}
+         <tr>{% for v in r %}<td>{{ v }}</td>{% endfor %}</tr>
+        {% endfor %}
+       </table>
+      </div>
+      {% if f.more %}<p class="hint">… {{ f.more }} more rows</p>{% endif %}
+     </details>
+     {% endif %}
     </div>
    {% else %}<p class="hint">no submission files in the latest run</p>{% endfor %}
   </div>
   <div class="card"><h2>Weekly report</h2>
    <p class="hint">The shareable: US categorical outlook map with per-state
    drill-down.</p>
-   {% if has_report %}<a href="/output/report" target="_blank"><button class="quiet" type="button">Open report</button></a>
-   {% else %}<p class="hint">generated automatically with each full run</p>{% endif %}
+   <div style="display:flex;align-items:center;gap:.9rem;flex-wrap:wrap;margin-top:.4rem">
+   {% if has_report %}<a href="/output/report" target="_blank"><button class="quiet" type="button" style="margin-top:0">Open report</button></a>
+   {% else %}<p class="hint" style="margin:0">generated automatically with each full run</p>{% endif %}
+   {% if archive_dates %}
+    <select style="width:auto" aria-label="archived reports"
+     onchange="if(this.value){window.open('/output/report?date='+this.value,'_blank');this.selectedIndex=0}">
+     <option value="">archived reports…</option>
+     {% for d in archive_dates %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+    </select>
+   {% endif %}
+   </div>
   </div>
  </div>
 </div>
