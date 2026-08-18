@@ -1405,19 +1405,53 @@ if __name__ == "__main__":
 
 @app.command("app")
 def app_serve(port: int = 8710):
-    """Launch the operations console (opens your browser)."""
+    """Launch the operations console. Opens your browser once the server
+    answers (or a native window with --window, if pywebview is installed)."""
+    import socket
     import threading
     import time
     import webbrowser
 
     import uvicorn
 
+    url = f"http://localhost:{port}"
+
+    def _wait_ready(timeout=30.0):
+        t0 = time.time()
+        while time.time() - t0 < timeout:
+            try:
+                with socket.create_connection(("127.0.0.1", port), 0.5):
+                    return True
+            except OSError:
+                time.sleep(0.3)
+        return False
+
     def _open():
-        time.sleep(1.5)
-        webbrowser.open(f"http://localhost:{port}")
+        if _wait_ready():
+            webbrowser.open(url)
 
     threading.Thread(target=_open, daemon=True).start()
     uvicorn.run("app.ui.server:app", port=port, host="127.0.0.1")
+
+
+@app.command("window")
+def app_window(port: int = 8710):
+    """The console in its own native window (no browser). Needs pywebview:
+    .venv/bin/pip install pywebview"""
+    import threading
+
+    import uvicorn
+    try:
+        import webview
+    except ImportError:
+        print("pywebview not installed: .venv/bin/pip install pywebview")
+        raise SystemExit(1)
+    threading.Thread(target=lambda: uvicorn.run("app.ui.server:app",
+                     port=port, host="127.0.0.1", log_level="warning"),
+                     daemon=True).start()
+    webview.create_window("FluBNF", f"http://localhost:{port}",
+                          width=1120, height=800)
+    webview.start()
 
 
 @app.command("retro")

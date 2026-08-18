@@ -28,13 +28,23 @@ ENGINES = ("all", "pf", "amcmc")     # "all" = pf + analogue + ensemble
 _status: dict = {"running": None, "log": []}
 
 
-@app.get("/", response_class=HTMLResponse)
 def _latest_saturday() -> str:
     import datetime as dt
     d = dt.date.today()
     return str(d - dt.timedelta(days=(d.weekday() - 5) % 7))
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    from fastapi.responses import Response
+    svg = ("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'>"
+           "<rect width='16' height='16' rx='3' fill='#003466'/>"
+           "<text x='8' y='12' text-anchor='middle' font-size='11' "
+           "fill='#ffc72c' font-family='sans-serif' font-weight='bold'>F</text></svg>")
+    return Response(svg, media_type="image/svg+xml")
+
+
+@app.get("/", response_class=HTMLResponse)
 def landing(request: Request):
     vs = data_mod.vintages()
     return templates.TemplateResponse(request, "index.html", {
