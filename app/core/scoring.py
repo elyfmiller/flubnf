@@ -44,9 +44,13 @@ def _baseline_cells(forecast_date: str, fips_set, truth):
     AA = importlib.util.module_from_spec(sp)
     sp.loader.exec_module(AA)
     b = AA.baseline_cells([forecast_date], set(fips_set), truth)
+    if b.empty:
+        # early-season weeks: <5 history points -> no baseline, no cells.
+        # An empty frame has no columns; guard or every caller crashes.
+        return {}
     b["k"] = list(zip(b.location, b["asof"], b.horizon))
     s = b.set_index("k").wis
-    return s[~s.index.duplicated()]
+    return s[~s.index.duplicated()].to_dict()
 
 
 def score_samples(samples_by_loc: Mapping, forecast_date: str,

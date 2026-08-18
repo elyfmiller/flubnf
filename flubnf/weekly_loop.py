@@ -82,7 +82,7 @@ class LoopPlan:
     commit_iters_cap: int = 40_000
     clean_rounds_required: int = 2
     max_probe_rounds: int = 4
-    fits_per_min: float = 2.1             # measured I/O ceiling
+    fits_per_min: float = 0.45             # measured I/O ceiling
     n_states: int = 52
 
     def round_cost_s(self, iters: int) -> float:
