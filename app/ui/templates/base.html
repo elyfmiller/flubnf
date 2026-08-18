@@ -27,8 +27,12 @@
 <script>
  // preserve scroll across form posts/reloads
  addEventListener('beforeunload',()=>sessionStorage.setItem('scy',scrollY));
+ // pin scroll across ANY in-page redraw: record on every click, re-assert next frame
+ addEventListener('click',e=>{const y=scrollY;
+   requestAnimationFrame(()=>requestAnimationFrame(()=>{
+     if(Math.abs(scrollY-y)>50 && !e.target.closest('a')) scrollTo(0,y);}));},true);
  addEventListener('load',()=>{const y=sessionStorage.getItem('scy');
-   if(y && !location.hash) scrollTo(0,parseInt(y));});
+   if(y) scrollTo(0,parseInt(y));});
  document.getElementById('themebtn').onclick=function(){
   var h=document.documentElement,
       t=h.getAttribute('data-theme')==='dark'?'light':'dark';

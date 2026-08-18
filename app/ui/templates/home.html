@@ -1,24 +1,52 @@
 {% extends "base.html" %}{% block content %}
-<div class="hero"><h1>The <span class="gold">FluBNF</span> forecasting console</h1>
-<p>Real-time probabilistic influenza forecasts from a mechanistic SIHRS model —
-fitted with a sequential particle filter and adaptive MCMC in PyBNF on the
-BNGsim engine, blended with a calendar analogue, and scored the way the
-competition scores.</p></div>
+<div class="hero">
+ <h1>Forecast the flu season, <span class="gold">mechanistically</span>.</h1>
+ <p>FluBNF turns a compartmental disease model into weekly probabilistic
+ forecasts for all 52 US jurisdictions — run, blended, scored, and packaged
+ for the CDC FluSight competition, from one window.</p>
+</div>
+
+<div class="card">{{ map_svg | safe }}
+ <p class="hint">The weekly outlook map — each state colored by where its
+ admissions are most likely headed. It fills in when you run a forecast.</p>
+</div>
+
 <div class="grid3">
- <div class="card"><h2>Forecast</h2><p>Run the ensemble for a forecast date:
-  particle filter first, analogue instantly, vincentized blend with frozen
-  per-horizon weights.</p><a href="/forecast">Open →</a></div>
- <div class="card"><h2>Retrospective</h2><p>Replay a season week by week as a
-  real competition — vintage data in, submissions out, WIS-scored against the
-  FluSight baseline.</p><a href="/retro">Open →</a></div>
- <div class="card"><h2>Setup</h2>
+ <div class="card"><h2>How it works</h2>
+  <p>A SIHRS model — Susceptible, Infected, Hospitalized, Recovered — written
+  in <a href="https://bionetgen.org">BNGL</a> and fitted with
+  <a href="https://github.com/lanl/PyBNF">PyBNF</a>'s sequential particle
+  filter on the BNGsim engine. Ten thousand candidate epidemics per state are
+  reweighted each week by the newest data; their spread <i>is</i> the
+  forecast uncertainty.</p></div>
+ <div class="card"><h2>Two heads, one forecast</h2>
+  <p>The mechanistic model is paired with a calendar analogue — pure
+  historical memory. Their errors disagree in useful ways, so the blended
+  ensemble beats either alone. Weights are frozen before the season from
+  held-out years; nothing is tuned on the season being forecast.</p></div>
+ <div class="card"><h2>Honest by construction</h2>
+  <p>Every run uses the data <i>as it looked</i> that week, never revised
+  history. Every run is seeded and reproducible from its ledger entry.
+  Missing weeks stay missing. Scores are weighted interval scores against
+  the official FluSight baseline — the competition's own yardstick.</p></div>
+</div>
+
+<div class="cols">
+ <div><div class="card"><h2>Start here</h2>
+  <p>1. <a href="/data">Data</a> — check the feed is fresh</p>
+  <p>2. <a href="/forecast">Forecast</a> — pick a date, run the models</p>
+  <p>3. <a href="/output">Output</a> — collect submissions and the report</p>
+  <p class="hint">Or replay a whole season on the
+  <a href="/retro">Retrospective</a> tab.</p>
+ </div></div>
+ <div><div class="card"><h2>Setup</h2>
   {% if missing %}
-   <p class="hint">This machine runs the console, analogue forecasts, and
-   reports. Not yet installed:</p>
+   <p class="hint">This machine runs the console, the analogue, and reports.
+   Not yet installed:</p>
    {% for m in missing %}<p class="warn">• {{ m[2] }}</p>{% endfor %}
-   <p class="hint">to add the PF engine:
-   double-click <code>SetupEngine.command</code> — then relaunch.
-   General fixes: <code>./setup.sh</code></p>
-  {% else %}<p class="ok">all externals present — full engine capability</p>{% endif %}</div>
+   <p class="hint">to add the particle-filter engine: double-click
+   <code>SetupEngine.command</code>, then relaunch.</p>
+  {% else %}<p class="ok">everything installed — full engine capability</p>{% endif %}
+ </div></div>
 </div>
 {% endblock %}

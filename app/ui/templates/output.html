@@ -1,23 +1,27 @@
 {% extends "base.html" %}{% block title %}FluBNF — output{% endblock %}
 {% block content %}
 <h1>Output</h1>
-{% if not rid %}<div class="card"><p class="hint">No runs yet — outputs appear
-here after your first forecast run.</p></div>
+<p class="sub">Everything a submission day produces, ready to hand over:
+hub-format CSVs per model and the weekly report.</p>
+{% if not rid %}<div class="card"><p class="hint">Run a forecast first — its
+outputs will collect here.</p></div>
 {% else %}
-<p class="sub">latest run: {{ label }} · forecast date {{ date }}</p>
 <div class="cols">
- <div><div class="card"><h2>Steps</h2>
-  <p>1. Run models (Forecast tab)</p>
+ <div><div class="card"><h2>Checklist</h2>
+  <p>1. <span class="ok">models run ✓</span> <span class="hint">({{ label }})</span></p>
   <p>2. {% if has_ensemble %}<span class="ok">ensemble generated ✓</span>
      {% else %}<form method="post" action="/model/ensemble/generate" style="display:inline">
-     <button class="gold">Generate ensemble</button></form>{% endif %}</p>
-  <p>3. Collect the submission files →</p>
+     <button class="gold" style="margin-top:0">Generate ensemble</button></form>{% endif %}</p>
+  <p>3. Collect files →</p>
+  <p class="hint">Submission format: one CSV per model_id, 23 quantiles ×
+  4 horizons per location, validated before writing (monotone, non-negative,
+  no degenerate cells).</p>
  </div></div>
  <div>
-  <div class="card"><h2>FluSight submission files</h2>
+  <div class="card"><h2>Submission files — {{ date }}</h2>
    {% for f in files %}
-    <div class="row" style="justify-content:space-between;margin:.4rem 0">
-     <span><b>{{ f.model }}</b> · <code>{{ f.name }}</code></span>
+    <div class="row" style="justify-content:space-between;margin:.45rem 0">
+     <span><b>{{ f.model }}</b><br><code>{{ f.name }}</code></span>
      <form method="post" action="/output/reveal">
       <input type="hidden" name="path" value="{{ f.path }}">
       <button class="quiet" style="margin-top:0">Show in Finder</button></form>
@@ -25,8 +29,10 @@ here after your first forecast run.</p></div>
    {% else %}<p class="hint">no submission files in the latest run</p>{% endfor %}
   </div>
   <div class="card"><h2>Weekly report</h2>
-   {% if has_report %}<a href="/output/report" target="_blank"><button class="quiet">Open report</button></a>
-   {% else %}<p class="hint">report not generated for this run</p>{% endif %}
+   <p class="hint">The shareable: US categorical outlook map with per-state
+   drill-down.</p>
+   {% if has_report %}<a href="/output/report" target="_blank"><button class="quiet" type="button">Open report</button></a>
+   {% else %}<p class="hint">generated automatically with each full run</p>{% endif %}
   </div>
  </div>
 </div>

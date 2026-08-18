@@ -1,28 +1,37 @@
 {% extends "base.html" %}{% block title %}FluBNF — retrospective{% endblock %}
 {% block head %}{% if seasons | selectattr("running") | list %}<meta http-equiv="refresh" content="15">{% endif %}{% endblock %}
 {% block content %}
-<h1>Retrospectives</h1>
-{% if not engine_ok %}<p class="hint warn">Retrospectives need the PF engine
-(Tier B) — the console, analogue forecasts, and reports work without it.
-setup.sh printed the install steps.</p>{% endif %}
-<p class="sub">Replay a season week by week as a real competition — vintage
-data in, hub-format submissions out, scored against settled truth.</p>
-{% for s in seasons %}
-<div class="card"><div class="cols">
-  <div><h2>{{ s.name }}</h2>
-    <progress value="{{ s.done }}" max="{{ s.total }}"></progress>
-    <p class="hint">{{ s.done }}/{{ s.total }} weeks
-      {% if s.running %}<span class="warn">running…</span>{% endif %}</p></div>
-  <div style="display:flex;gap:1rem;align-items:end;flex-wrap:wrap">
-    {% if s.done > 0 %}<a href="/retro/{{ s.name }}"><button class="quiet" type="button">results</button></a>{% endif %}
-    <form method="post" action="/retro/run">
-      <input type="hidden" name="season" value="{{ s.name }}">
-      <label>scope</label>
-      <select name="locations"><option value="panel6">6-state panel</option>
-        <option value="all">all 52 jurisdictions</option></select>
-      <button {% if s.running or not engine_ok %}disabled{% endif %}>
-        {% if s.done > 0 and s.done < s.total %}resume{% else %}run{% endif %}</button>
-    </form></div>
-</div></div>
-{% endfor %}
+<h1>Retrospective</h1>
+<p class="sub">Replay a past season exactly as the competition happened: each
+week the models see only that Saturday's data, submit, and move on. Scores
+come later, against what the truth settled to.</p>
+<div class="cols">
+ <div><div class="card"><h2>Settings</h2>
+  {% if not engine_ok %}<p class="warn">Needs the PF engine — double-click
+  <code>SetupEngine.command</code> first. Everything else in the app works
+  without it.</p>{% endif %}
+  <form method="post" action="/retro/run">
+   <label>Season</label>
+   <select name="season">{% for s in seasons %}<option>{{ s.name }}</option>{% endfor %}</select>
+   <label>Scope</label>
+   <select name="locations"><option value="panel6">6-state panel (fast)</option>
+     <option value="all">all 52 jurisdictions</option></select>
+   <button class="gold" {% if not engine_ok or (seasons | selectattr("running") | list) %}disabled{% endif %}>
+     Run retrospective</button>
+  </form>
+  <p class="hint">Runs are resumable — a completed week is never redone.</p>
+ </div></div>
+ <div>
+  {% for s in seasons %}
+  <div class="card"><h2>{{ s.name }}</h2>
+   <progress value="{{ s.done }}" max="{{ s.total }}"></progress>
+   <div class="row" style="justify-content:space-between">
+    <span class="hint">{{ s.done }}/{{ s.total }} weeks
+     {% if s.running %}<span class="warn">· running</span>{% endif %}</span>
+    {% if s.done > 0 %}<a href="/retro/{{ s.name }}"><button class="quiet" type="button" style="margin-top:0">results →</button></a>{% endif %}
+   </div>
+  </div>
+  {% endfor %}
+ </div>
+</div>
 {% endblock %}

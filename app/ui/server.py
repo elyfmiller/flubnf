@@ -53,8 +53,24 @@ def favicon():
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
+    # a real map as the hero graphic: latest run's outlook if one exists,
+    # otherwise the empty-country silhouette
+    map_svg = ""
+    try:
+        import pandas as pd
+        from app.core.report import categorical_probs
+        from app.core.usmap import svg_map
+        _l = pd.read_csv(__import__("flubnf.settings",
+                                    fromlist=["LOCATIONS"]).LOCATIONS, dtype=str)
+        n2f = dict(zip(_l.location_name, _l.location.str.zfill(2)))
+        n2a = dict(zip(_l.location_name, _l.abbreviation))
+        cards = {n2f[n]: {"name": n, "abbr": n2a[n], "fips": n2f[n]}
+                 for n in n2f if len(n2f[n]) == 2}
+        map_svg = svg_map(cards)
+    except Exception:
+        pass
     return templates.TemplateResponse(request, "home.html", {
-        "active": "Home",
+        "active": "Home", "map_svg": map_svg,
         "missing": __import__("flubnf.settings", fromlist=["check"]).check(verbose=False)})
 
 
@@ -523,15 +539,31 @@ def output_report():
 @app.get("/model/{name}", response_class=HTMLResponse)
 def model_page(request: Request, name: str):
     blurbs = {
-        "pf": ("PF-SIHRS", "Sequential particle filter over the SIHRS model: "
-               "10,000 particles per replicate, Liu-West jitter, systematic "
-               "resampling. The primary engine (relWIS 0.675 ± 0.012)."),
-        "analogue": ("Calendar analogue", "Empirical donor distribution from "
-                     "matching calendar weeks of past seasons (relWIS ~0.81 "
-                     "full-grid; strongest at short horizons)."),
-        "ensemble": ("Ensemble", "Vincentized blend of PF-SIHRS and the "
-                     "analogue with per-horizon weights frozen pre-season "
-                     "(PF share 0.4→0.8 by horizon; LOSO 0.717)."),
+        "pf": ("PF-SIHRS",
+               "Our mechanistic model. People move through Susceptible → "
+               "Infected → Hospitalized → Recovered compartments, and 10,000 "
+               "simulated 'particles' — each a slightly different version of "
+               "the epidemic — are reweighted every week by how well they "
+               "explain the newest admissions. Written in BNGL, fitted by "
+               "PyBNF's particle filter on the BNGsim engine. It runs a full "
+               "state-season in seconds and beats the FluSight baseline by "
+               "about a third (relWIS 0.675 ± 0.012)."),
+        "analogue": ("Calendar analogue",
+                     "The empirical memory of the system. For each forecast "
+                     "week it asks: in past seasons, what happened after "
+                     "weeks that looked like this one on the calendar? No "
+                     "epidemiology, no equations — just history, weighted "
+                     "and resampled. It is hard to beat at one week ahead "
+                     "and keeps the ensemble honest when a season behaves "
+                     "unusually."),
+        "ensemble": ("Ensemble",
+                     "The submission. It averages the two members' forecast "
+                     "quantiles with weights chosen before the season from "
+                     "held-out years: the analogue carries more weight at "
+                     "short horizons, the mechanistic model takes over "
+                     "further out (PF share 0.4 → 0.8 across horizons). "
+                     "Twelve states earned their own weights where the data "
+                     "justified it."),
     }
     if name not in blurbs:
         return HTMLResponse("unknown model", status_code=404)

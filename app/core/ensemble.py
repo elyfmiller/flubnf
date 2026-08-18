@@ -57,11 +57,15 @@ def vincentize(members: dict, weights: dict | None = None,
         have = {m: q[h] for m, q in members.items() if h in q}
         if not have:
             continue
+        # blend over the levels the members actually share: the live run
+        # carries all 23 FluSight levels, a re-blend from stored results
+        # carries the display set -- both must work (KeyError 0.01 otherwise)
         if set(have) == {"pf", "analogue"}:
-            out[h] = {float(L): float(share * have["pf"][float(L)]
-                                      + (1 - share) * have["analogue"][float(L)])
-                      for L in QL}
+            levels = sorted(set(have["pf"]) & set(have["analogue"]))
+            out[h] = {float(L): float(share * have["pf"][L]
+                                      + (1 - share) * have["analogue"][L])
+                      for L in levels}
         else:
             only = next(iter(have.values()))
-            out[h] = {float(L): float(only[float(L)]) for L in QL}
+            out[h] = {float(L): float(v) for L, v in only.items()}
     return out
