@@ -26,17 +26,34 @@ _FLOOR_REP = 7777  # replicate slot reserved for floor noise, disjoint from fits
 
 
 def floor_samples(samples_by_h: dict, location: str, date: str,
-                  lam: float = LAM) -> dict:
-    """Add seeded Poisson(lam) noise to every predictive sample.
+                  lam: float = LAM, recent=None) -> dict:
+    """Add seeded Poisson noise to every predictive sample.
 
     `samples_by_h` maps horizon -> list/array of admission samples; the
     same structure comes back with noise added. Non-finite samples pass
     through untouched.
+
+    Adaptive rate: when the model's predictive mass has fully collapsed
+    (q90 = 0 at every horizon -- a burned-out epidemic, no importation
+    term), a fixed tiny lam still medians at 0, which contradicts the
+    observed summer background (sporadic 1-4 admissions most weeks). In
+    that case the floor takes its rate from `recent` (last observed
+    values): lam = clip(mean(last 4), LAM, 5). Arkansas July: recent
+    1,1,4,0 -> Poisson(1.5) -> median 1, q97.5 ~4. A healthy in-season
+    fit never triggers the adaptive branch.
     """
+    arrs = {h: np.asarray(v, dtype=float) for h, v in samples_by_h.items()}
+    fins = [a[np.isfinite(a)] for a in arrs.values()]
+    collapsed = all(a.size and np.quantile(a, 0.9) <= 0 for a in fins) \
+        and any(a.size for a in fins)
+    if collapsed and recent is not None:
+        tail = [float(v) for v in list(recent)[-4:] if np.isfinite(v)]
+        if tail:
+            lam = float(np.clip(np.mean(tail), lam, 5.0))
     rng = np.random.default_rng(derive_seed(location, date, _FLOOR_REP))
     out = {}
-    for h in sorted(samples_by_h):
-        a = np.asarray(samples_by_h[h], dtype=float)
+    for h in sorted(arrs):
+        a = arrs[h]
         noise = rng.poisson(lam, size=a.shape)
         fin = np.isfinite(a)
         b = a.copy()

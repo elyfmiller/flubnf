@@ -1471,10 +1471,20 @@ def app_window(port: int = 8710):
     def _activate():
         # Launched from a .command script the process is not a bundled app,
         # so macOS may leave the window deactivated (clicks ignored until
-        # the user switches away and back). Ask Cocoa to front us.
+        # the user switches away and back). The start callback runs on a
+        # SECONDARY thread; Cocoa activation must happen on the main run
+        # loop or it works only intermittently -- hence callAfter.
         try:
             from AppKit import NSApplication  # pyobjc ships with pywebview
-            NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+            from PyObjCTools import AppHelper
+
+            def _front():
+                app = NSApplication.sharedApplication()
+                app.activateIgnoringOtherApps_(True)
+            AppHelper.callAfter(_front)
+            import time as _t
+            _t.sleep(1.0)          # once more after the window settles
+            AppHelper.callAfter(_front)
         except Exception:
             pass
     webview.start(_activate)

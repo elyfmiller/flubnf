@@ -10,9 +10,29 @@ def test_degenerate_cell_gains_width_median_stays_zero():
     out = floor_samples(dead, "Arkansas", "2026-07-04")
     for h in ("1", "2"):
         a = np.asarray(out[h])
-        assert np.quantile(a, 0.5) == 0          # dead week: median 0 is right
+        assert np.quantile(a, 0.5) == 0          # no recent data: tiny floor
         assert np.quantile(a, 0.975) >= 1        # but never a point mass
         assert a.max() >= 2
+
+
+def test_collapsed_cell_adopts_recent_background():
+    dead = {str(h): [0.0] * 10_000 for h in (1, 2, 3, 4)}
+    out = floor_samples(dead, "Arkansas", "2026-07-04",
+                        recent=[6, 2, 1, 1, 4, 0])   # summer background ~1.5
+    a = np.asarray(out["1"])
+    assert np.quantile(a, 0.5) >= 1              # median lifts off zero
+    assert np.quantile(a, 0.975) >= 3
+    assert np.quantile(a, 0.5) <= 3              # but stays a background rate
+
+
+def test_healthy_fit_never_triggers_adaptive_branch():
+    rng = np.random.default_rng(2)
+    live = {"1": rng.negative_binomial(20, 0.1, 10_000).astype(float)}
+    out = floor_samples(live, "Ohio", "2026-01-24",
+                        recent=[150, 200, 250, 300])
+    before = np.quantile(np.asarray(live["1"]), 0.5)
+    after = np.quantile(np.asarray(out["1"]), 0.5)
+    assert abs(after - before) <= 2              # lam stays tiny in season
 
 
 def test_in_season_shift_is_negligible():

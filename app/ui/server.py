@@ -247,6 +247,25 @@ def _run_all(spec: RunSpec) -> None:
         # erroring on the first click of a fresh install.
         from flubnf.settings import PY_ENGINE, PYBNF
         fails = {}
+        # observed admissions per location (vintage-true) -- used by the
+        # output floor, the report's state pages, and the run page
+        obs = {}
+        try:
+            from flubnf.settings import LOCATIONS as _LOCCSV
+            from app.core.data import vintage_path as _vpo
+            _lo = pd.read_csv(_LOCCSV, dtype=str)
+            _n2fo = dict(zip(_lo.location_name, _lo.location.str.zfill(2)))
+            tdf = pd.read_csv(_vpo(spec.forecast_date),
+                              dtype={"location": str})
+            tdf["location"] = tdf["location"].str.zfill(2)
+            import numpy as _npo
+            for loc in spec.locations:
+                g = tdf[tdf.location == _n2fo.get(loc, "")].sort_values("date").tail(15)
+                obs[loc] = [[str(r.date)[:10], float(r.value)]
+                            for r in g.itertuples()
+                            if _npo.isfinite(r.value)]
+        except Exception:
+            pass
         pf_samples = {}
         if PY_ENGINE.exists() and PYBNF.exists():
             _phase("materializing models (BNG network generation)")
@@ -260,7 +279,9 @@ def _run_all(spec: RunSpec) -> None:
             pf_samples = pf_engine.collect(workroot)
             # output floor: no cell leaves as a point mass (see app/core/floor.py)
             from app.core.floor import floor_samples
-            pf_samples = {loc: floor_samples(s, loc, spec.forecast_date)
+            pf_samples = {loc: floor_samples(
+                              s, loc, spec.forecast_date,
+                              recent=[v for _, v in obs.get(loc, [])])
                           for loc, s in pf_samples.items()}
         else:
             outcome["pf_skipped"] = "engine venv not installed (Tier A)"
@@ -307,22 +328,6 @@ def _run_all(spec: RunSpec) -> None:
         if not df.empty:
             outcome["pf_relwis"] = round(float(df.wis.sum() / df.base_wis.sum()), 3)
         df.to_json(workroot / "scores_pf.json")
-        # observed admissions per location (vintage-true), used by the
-        # report's state pages and by the run page's results.json
-        obs = {}
-        try:
-            import numpy as _npo
-            from app.core.data import vintage_path as _vpo
-            tdf = pd.read_csv(_vpo(spec.forecast_date),
-                              dtype={"location": str})
-            tdf["location"] = tdf["location"].str.zfill(2)
-            for loc in spec.locations:
-                g = tdf[tdf.location == n2f.get(loc)].sort_values("date").tail(15)
-                obs[loc] = [[str(r.date)[:10], float(r.value)]
-                            for r in g.itertuples()
-                            if _npo.isfinite(r.value)]
-        except Exception:
-            pass
         # 5b. weekly report: map + hover cards + WIS card (fans arrive with
         # the per-state drill-down pages; keep the report honest meanwhile)
         try:
@@ -377,9 +382,9 @@ def _run_all(spec: RunSpec) -> None:
                     meds = [float(_np3.median(_np3.asarray(s[str(h)], float)))
                             for h in (1, 2, 3, 4)]
                     note = ("off-season: the model finds no sustained "
-                            "transmission, so the median is 0; the interval "
-                            "shows the reporting-noise floor."
-                            if max(meds) <= 0 else "")
+                            "transmission; this forecast reflects the recent "
+                            "reporting background, not epidemic growth."
+                            if max(meds) <= 2 else "")
                     details[key] = {
                         "name": "United States" if fips_l == "US" else loc,
                         "note": note,
