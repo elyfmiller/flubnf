@@ -29,8 +29,8 @@ header.nav .spacer{flex:1}
 #themebtn{background:transparent;border:1px solid rgba(255,255,255,.35);
   color:var(--nav-ink);border-radius:8px;padding:.3rem .6rem;cursor:pointer}
 /* ---- layout ---- */
-main{max-width:1320px;margin:0 auto;padding:1.4rem 1rem 4rem}
-.cols{display:grid;grid-template-columns:1fr 2fr;gap:1rem;align-items:start}
+main{max-width:none;margin:0 auto;padding:1.4rem 2.2vw 4rem}
+.cols{display:grid;grid-template-columns:minmax(280px,400px) 1fr;gap:1rem;align-items:start}
 @media(max-width:900px){.cols{grid-template-columns:1fr}}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
       padding:1.1rem;margin-bottom:1rem;box-shadow:var(--shadow);overflow-x:auto}
@@ -91,3 +91,5 @@ details.card > summary{cursor:pointer;list-style:none}
 details.card > summary::-webkit-details-marker{display:none}
 details.card > summary::before{content:"▸ ";color:var(--gold)}
 details.card[open] > summary::before{content:"▾ "}
+
+.runlabel{font-size:1.15rem;font-weight:750}

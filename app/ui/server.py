@@ -100,6 +100,8 @@ def forecast_page(request: Request):
     for r in ledger_rows:
         r["label"] = _run_label(r["run_id"], r.get("spec", ""))
         r["chips"] = _outcome_chips(r.get("outcome", ""))
+        if r["status"] == "running" and not _status.get("running", "").endswith(r["run_id"]):
+            r["status"] = "interrupted"
     return templates.TemplateResponse(request, "forecast.html", {
         "active": "Forecast", "engines": ENGINES, "status": _status,
         "ledger": ledger_rows, "all_locs": all_locs, "form": form,
@@ -121,6 +123,9 @@ def runs_page(request: Request):
     for r in rows:
         r["label"] = _run_label(r["run_id"], r.get("spec", ""))
         r["chips"] = _outcome_chips(r.get("outcome", ""))
+        # a 'running' row with no live worker = the app was closed mid-run
+        if r["status"] == "running" and not _status.get("running", "").endswith(r["run_id"]):
+            r["status"] = "interrupted"
     return templates.TemplateResponse(request, "runs.html", {
         "active": "Runs", "ledger": rows})
 
@@ -175,8 +180,8 @@ def _run_all(spec: RunSpec) -> None:
         if PY_ENGINE.exists() and PYBNF.exists():
             _phase("materializing models (BNG network generation)")
             pf_engine.prepare(spec, workroot)
-            _phase(f"filtering: {len(spec.locations)} location(s) x "
-                   f"{spec.replicates} replicate(s) x {spec.particles:,} particles")
+            _phase(f"filtering {len(spec.locations)} location(s) × "
+                   f"{spec.replicates} replicate(s)")
             status = pf_engine.execute(workroot)
             fails = {k: v for k, v in status.items() if v != "ok"}
             outcome["pf_cells"] = len(status)
@@ -325,7 +330,8 @@ def run_page(request: Request, run_id: str):
     subs = sorted(str(p.relative_to(w)) for p in w.glob("submission/*/*.csv"))
     report = (w / "report.html").name if (w / "report.html").is_file() else None
     return templates.TemplateResponse(request, "run.html", {
-        "active": "Runs", "run_id": run_id, "models": res.get("models", {}),
+        "active": "Runs", "run_id": run_id,
+        "label": _run_label(run_id), "models": res.get("models", {}),
         "subs": subs, "report": report})
 
 

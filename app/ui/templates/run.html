@@ -2,13 +2,16 @@
 {% block content %}
 
 
-<h1>run <code>{{ run_id }}</code></h1>
+<h1>Run — {{ label or run_id }}</h1>
+<p class="hint"><code>{{ run_id }}</code></p>
 {% if report %}<div class="card"><a href="/runs/{{ run_id }}/report">open weekly report</a></div>{% endif %}
 {% for model, locs in models.items() %}
 <div class="card"><h2>{{ model }} — h1..h4 medians</h2>
 <table><tr><th>location</th><th>h1</th><th>h2</th><th>h3</th><th>h4</th></tr>
 {% for loc, m in locs.items() %}
-<tr><td>{{ loc }}</td>{% for h in ["1","2","3","4"] %}<td>{{ "%.0f"|format(m.get(h, 0)) }}</td>{% endfor %}</tr>
+<tr><td>{{ loc }}</td>{% for h in ["1","2","3","4"] %}
+  {% set v = m.get(h) %}
+  <td>{{ "%.0f"|format(v["0.5"] if v is mapping else (v or 0)) }}</td>{% endfor %}</tr>
 {% endfor %}</table></div>
 {% endfor %}
 <div class="card"><h2>submissions</h2>
