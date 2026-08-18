@@ -52,6 +52,14 @@ class RunSpec:
     observable_mode: str = "integrated"
     extra: dict = field(default_factory=dict)
 
+    def __post_init__(self):
+        # Aug-Jul season: a blank season_start derives from the forecast
+        # date so specs built anywhere (routes, scripts, tests) agree and
+        # nothing hardcodes a season year.
+        if not self.season_start and self.forecast_date:
+            y, m = int(self.forecast_date[:4]), int(self.forecast_date[5:7])
+            self.season_start = f"{y if m >= 8 else y - 1}-08-01"
+
     def to_json(self) -> str:
         return json.dumps(asdict(self), sort_keys=True)
 

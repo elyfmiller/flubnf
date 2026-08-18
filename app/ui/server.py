@@ -107,7 +107,7 @@ def home(request: Request):
                 outlook_date = (res or {}).get("forecast_date", "")
         except Exception:
             pass                      # no LOCATIONS/hub -> bare silhouette
-        map_svg = svg_map(cards)
+        map_svg = ("<div style='max-width:880px;margin:0 auto'>" + svg_map(cards, interactive=False) + "</div>")
     except Exception:
         pass
     return templates.TemplateResponse(request, "home.html", {
@@ -300,6 +300,22 @@ def _run_all(spec: RunSpec) -> None:
         if not df.empty:
             outcome["pf_relwis"] = round(float(df.wis.sum() / df.base_wis.sum()), 3)
         df.to_json(workroot / "scores_pf.json")
+        # observed admissions per location (vintage-true), used by the
+        # report's state pages and by the run page's results.json
+        obs = {}
+        try:
+            import numpy as _npo
+            from app.core.data import vintage_path as _vpo
+            tdf = pd.read_csv(_vpo(spec.forecast_date),
+                              dtype={"location": str})
+            tdf["location"] = tdf["location"].str.zfill(2)
+            for loc in spec.locations:
+                g = tdf[tdf.location == n2f.get(loc)].sort_values("date").tail(15)
+                obs[loc] = [[str(r.date)[:10], float(r.value)]
+                            for r in g.itertuples()
+                            if _npo.isfinite(r.value)]
+        except Exception:
+            pass
         # 5b. weekly report: map + hover cards + WIS card (fans arrive with
         # the per-state drill-down pages; keep the report honest meanwhile)
         try:
@@ -331,6 +347,33 @@ def _run_all(spec: RunSpec) -> None:
             wis_html = ("<div class='card'><h2>forecast accuracy "
                         "(retrospective)</h2>" + summary_table_html(df)
                         + "</div>")
+            # state pages: fan + categorical bar + recent-data table per location
+            from app.core.report_v2 import cat_bar, fan_figure
+            details = {}
+            for loc, s in pf_samples.items():
+                fips_l = n2f.get(loc, "")
+                obs_pairs = (obs.get(loc) or [])[-12:]
+                o_t = list(range(len(obs_pairs)))
+                o_v = [v for _, v in obs_pairs]
+                f_t = [len(obs_pairs) - 1 + h for h in (1, 2, 3, 4)]
+                samples_h = {str(len(obs_pairs) - 1 + h): s[str(h)]
+                             for h in (1, 2, 3, 4)}
+                try:
+                    fan = fan_figure(o_t, o_v, f_t, samples_h,
+                                     title=f"{loc} — weekly admissions")
+                    lo_l = o_v[-1] if o_v else 0.0
+                    import numpy as _np3
+                    probs_l = categorical_probs(
+                        _np3.asarray(s["1"], float), lo_l,
+                        int(n2p.get(loc, 1e6)), 1)
+                    key = "US" if fips_l == "US" else n2a.get(loc, loc)
+                    details[key] = {
+                        "name": "United States" if fips_l == "US" else loc,
+                        "fan": fan, "cat": cat_bar(probs_l),
+                        "acc": cat_bar(probs_l),
+                        "table_rows": [(d, v) for d, v in obs_pairs[-6:]]}
+                except Exception:
+                    continue
             nat_html = ""
             try:
                 from app.core.usmap import national_svg
@@ -354,7 +397,7 @@ def _run_all(spec: RunSpec) -> None:
                                              "hover_html": hover_us})
             except Exception:
                 nat_html = ""
-            build_report(spec.forecast_date, cards, {},
+            build_report(spec.forecast_date, cards, details,
                          {"fan": None, "acc": None,
                           "summary_html": wis_html},
                          workroot / "report.html",
@@ -365,7 +408,6 @@ def _run_all(spec: RunSpec) -> None:
         # 6. results index for the run page
         import json as _json
         import numpy as _np
-        from app.core.data import vintage_path as _vp
         def _qs_from_samples(s):
             out = {}
             for h in ("1", "2", "3", "4"):
@@ -378,19 +420,6 @@ def _run_all(spec: RunSpec) -> None:
             return {h: {q: qd[h][float(q)]
                         for q in ("0.1", "0.25", "0.5", "0.75", "0.9")}
                     for h in qd}
-        obs = {}
-        try:
-            tdf = pd.read_csv(_vp(spec.forecast_date), dtype={"location": str})
-            tdf["location"] = tdf["location"].str.zfill(2)
-            f2n = {v: k for k, v in n2f.items()}
-            for loc in spec.locations:
-                fips = n2f.get(loc)
-                g = tdf[tdf.location == fips].sort_values("date").tail(15)
-                obs[loc] = [[str(r.date)[:10], float(r.value)]
-                            for r in g.itertuples()
-                            if _np.isfinite(r.value)]
-        except Exception:
-            pass
         (workroot / "results.json").write_text(_json.dumps({
             "spec": spec.to_json(), "forecast_date": spec.forecast_date,
             "observed": obs,
@@ -902,9 +931,10 @@ def run_models(background: BackgroundTasks,
             locs_list.append(str(us.iloc[0]))   # national, fitted directly
     else:
         locs_list = [l for l in locations if l.strip()]
+    if not any(str(l).upper() in ("US", "US (NATIONAL)") for l in locs_list):
+        locs_list.append("US")   # national fitted directly, always
     spec = RunSpec(engine=engine, forecast_date=forecast_date,
                    locations=locs_list,
-                   season_start="2025-08-01",
                    weeks_to_drop=weeks_to_drop,
                    weeks_to_nowcast=weeks_to_nowcast,
                    replicates=replicates)

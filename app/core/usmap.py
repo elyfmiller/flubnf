@@ -143,7 +143,7 @@ _JS = """
 </script>"""
 
 
-def _shell(dom_id: str, inner: str, ink: str, paper: str) -> str:
+def _shell(dom_id: str, inner: str, ink: str, paper: str, interactive=True) -> str:
     """Wrap SVG body in the fluid container + tooltip div + interaction JS."""
     return f"""
 <div id="{dom_id}-wrap" style="position:relative">
@@ -161,11 +161,11 @@ def _shell(dom_id: str, inner: str, ink: str, paper: str) -> str:
  background:#1d1d21;border:1px solid #2c2c31;border-radius:10px;
  padding:.6rem .8rem;font-size:.82rem;line-height:1.45;color:{ink};
  max-width:240px;box-shadow:0 6px 24px rgba(0,0,0,.5);z-index:10"></div>
-</div>""" + _JS.replace("__ID__", dom_id)
+</div>""" + (_JS.replace("__ID__", dom_id) if interactive else "")
 
 
 def svg_map(cards_by_fips: dict, ink="#e9ecf2", paper="#0a1626",
-            dom_id: str = "usmap") -> str:
+            dom_id: str = "usmap", interactive=True) -> str:
     """cards_by_fips: fips -> {probs, name, abbr, hover_html} ({} = no data).
 
     Emits the full SVG + tooltip div + interaction script (hover card, click
@@ -191,7 +191,7 @@ def svg_map(cards_by_fips: dict, ink="#e9ecf2", paper="#0a1626",
             f'<path d="{d}" fill="{fill}" fill-opacity="{op:.2f}" '
             f'stroke="{paper}" stroke-width="1" class="st" '
             f'data-abbr="{abbr}" data-hover="{_esc(hover)}"/>')
-    return _shell(dom_id, "".join(paths), ink, paper)
+    return _shell(dom_id, "".join(paths), ink, paper, interactive)
 
 
 def national_svg(us_card: dict, ink="#e9ecf2", paper="#0a1626",
