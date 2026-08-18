@@ -100,7 +100,7 @@ def forecast_page(request: Request):
     for r in ledger_rows:
         r["label"] = _run_label(r["run_id"], r.get("spec", ""))
         r["chips"] = _outcome_chips(r.get("outcome", ""))
-        if r["status"] == "running" and not _status.get("running", "").endswith(r["run_id"]):
+        if r["status"] == "running" and not (_status.get("running") or "").endswith(r["run_id"]):
             r["status"] = "interrupted"
     return templates.TemplateResponse(request, "forecast.html", {
         "active": "Forecast", "engines": ENGINES, "status": _status,
@@ -124,7 +124,7 @@ def runs_page(request: Request):
         r["label"] = _run_label(r["run_id"], r.get("spec", ""))
         r["chips"] = _outcome_chips(r.get("outcome", ""))
         # a 'running' row with no live worker = the app was closed mid-run
-        if r["status"] == "running" and not _status.get("running", "").endswith(r["run_id"]):
+        if r["status"] == "running" and not (_status.get("running") or "").endswith(r["run_id"]):
             r["status"] = "interrupted"
     return templates.TemplateResponse(request, "runs.html", {
         "active": "Runs", "ledger": rows})

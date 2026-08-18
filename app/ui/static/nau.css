@@ -93,3 +93,7 @@ details.card > summary::before{content:"▸ ";color:var(--gold)}
 details.card[open] > summary::before{content:"▾ "}
 
 .runlabel{font-size:1.15rem;font-weight:750}
+
+.carousel{display:flex;gap:.8rem;align-items:center;margin:.3rem 0}
+.cnav{padding:.25rem .7rem;margin-top:0}
+.quip{color:var(--gold);font-style:italic;font-size:.95rem;margin:.2rem 0}

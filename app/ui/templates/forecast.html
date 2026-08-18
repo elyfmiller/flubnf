@@ -7,7 +7,7 @@
   <form method="post" action="/run">
    <label>Forecast date</label>
    <input name="forecast_date" value="{{ form.forecast_date }}">
-   <label>Locations</label>
+   <label>Locations <span id="lcount" class="hint"></span></label>
    <div class="checklist">
      <label class="ck"><input type="checkbox" id="ck-all" value="all" name="locations"
        {% if "all" in form.locations %}checked{% endif %}> <b>all 52 jurisdictions</b></label>
@@ -28,9 +28,18 @@
    <button class="gold">Run models</button>
   </form>
   <script>
+   function updCount(){
+     const all=document.getElementById('ck-all').checked;
+     const n=document.querySelectorAll('.ck-one:checked').length;
+     document.getElementById('lcount').textContent =
+       all? '(all 52)' : n? '('+n+' selected)' : '';
+   }
    document.getElementById('ck-all').addEventListener('change', function(){
      document.querySelectorAll('.ck-one').forEach(c => {c.checked=false; c.disabled=this.checked;});
+     updCount();
    });
+   document.querySelectorAll('.ck-one').forEach(c=>c.addEventListener('change',updCount));
+   updCount();
   </script>
  </div></div>
  <div>
@@ -38,7 +47,8 @@
   <div class="card"><h2>Running</h2>
    <p id="runlabel" class="runlabel">{{ status.run_label or "" }}</p>
    <div class="runbar"><div id="runfill" style="animation:none;width:3%"></div></div>
-   <p class="hint"><span id="prog"></span> <span id="quip"></span></p>
+   <p class="hint" id="prog"></p>
+   <p class="quip" id="quip"></p>
   </div>
   <script>
    const quips=["teaching 10,000 particles to sneeze responsibly",
@@ -46,7 +56,7 @@
      "asking last winter for advice","herding susceptibles",
      "integrating quietly since 1927"];
    let qi=0;
-   setInterval(()=>{document.getElementById('quip').textContent='· '+quips[qi++%quips.length];},2600);
+   setInterval(()=>{document.getElementById('quip').textContent=quips[qi++%quips.length];},2600);
    let D={done:0,total:0,eta_s:null,t:Date.now()};
    async function poll(){
      try{const r=await fetch('/api/progress'); const d=await r.json();
@@ -88,6 +98,11 @@
     <button type="button" class="quiet" id="mode-season">season over season</button>
     <button type="button" class="quiet" id="mode-pts">● points</button>
    </div>
+   <div class="carousel">
+    <button type="button" class="quiet cnav" id="data-prev">◀</button>
+    <span class="hint" id="data-pos"></span>
+    <button type="button" class="quiet cnav" id="data-next">▶</button>
+   </div>
    <div id="dataplots"></div>
   </details>
 
@@ -109,60 +124,78 @@
    return y+'-'+String((y+1)%100).padStart(2,'0');}
  function weekOfSeason(ds){const d=new Date(ds); const y=d.getMonth()>=7?d.getFullYear():d.getFullYear()-1;
    return Math.round((d-new Date(y,7,1))/(7*864e5));}
- let SHOWPTS=false, CURMODE='season';
+ let SHOWPTS=false, CURMODE='season', DIDX=0;
+ const PCONF={responsive:true, displaylogo:false};
+ const LOCS=Object.keys(SERIES);
  function drawData(mode){
    CURMODE=mode;
    const lm=SHOWPTS?'lines+markers':'lines';
    const el=document.getElementById('dataplots'); el.innerHTML='';
-   for(const [loc,s] of Object.entries(SERIES)){
-     const div=document.createElement('div'); el.appendChild(div);
-     if(mode==='raw'){
-       Plotly.newPlot(div,[{x:s.dates,y:s.values,mode:lm,
-         line:{color:'#b58200',width:2},marker:{size:5},name:loc}],lay(loc));
-     }else{
-       const by={};
-       s.dates.forEach((d,i)=>{const k=seasonOf(d);(by[k]=by[k]||{x:[],y:[]});
-         by[k].x.push(weekOfSeason(d)); by[k].y.push(s.values[i]);});
-       const seasons=Object.keys(by).sort(); 
-       const traces=seasons.map((k,i)=>({x:by[k].x,y:by[k].y,mode:lm,marker:{size:4},name:k,
-         line:{width:i===seasons.length-1?3:1.5,
-               color:i===seasons.length-1?'#b58200':undefined}}));
-       const L=lay(loc+' — season over season');
-       L.xaxis.title={text:'weeks since Aug 1'};
-       Plotly.newPlot(div,traces,L);
-     }
+   if(!LOCS.length){el.innerHTML='<p class="hint">select locations to see their data</p>';return;}
+   DIDX=((DIDX%LOCS.length)+LOCS.length)%LOCS.length;
+   const loc=LOCS[DIDX], s=SERIES[loc];
+   document.getElementById('data-pos').textContent=loc+' · '+(DIDX+1)+'/'+LOCS.length;
+   const div=document.createElement('div'); el.appendChild(div);
+   if(mode==='raw'){
+     Plotly.newPlot(div,[{x:s.dates,y:s.values,mode:lm,
+       line:{color:'#b58200',width:2},marker:{size:5},name:loc}],lay(loc,380),PCONF);
+   }else{
+     const by={};
+     s.dates.forEach((d,i)=>{const k=seasonOf(d);(by[k]=by[k]||{x:[],y:[]});
+       by[k].x.push(weekOfSeason(d)); by[k].y.push(s.values[i]);});
+     const seasons=Object.keys(by).sort();
+     const traces=seasons.map((k,i)=>({x:by[k].x,y:by[k].y,mode:lm,marker:{size:4},name:k,
+       line:{width:i===seasons.length-1?3:1.5,
+             color:i===seasons.length-1?'#b58200':undefined}}));
+     const L=lay(loc+' — season over season',380);
+     L.xaxis.title={text:'weeks since Aug 1'};
+     Plotly.newPlot(div,traces,L,PCONF);
    }
  }
+ document.getElementById('data-prev').onclick=()=>{DIDX--;drawData(CURMODE);};
+ document.getElementById('data-next').onclick=()=>{DIDX++;drawData(CURMODE);};
  document.getElementById('mode-raw').onclick=()=>drawData('raw');
  document.getElementById('mode-season').onclick=()=>drawData('season');
  document.getElementById('mode-pts').onclick=function(){
    SHOWPTS=!SHOWPTS; this.textContent=SHOWPTS?'○ points':'● points'; drawData(CURMODE);};
  drawData('season');
  // forecast fans (interactive, full width)
- if(Object.keys(FANQ).length){
+ const FLOCS=Object.keys(FANQ);
+ let FIDX=0;
+ function drawFan(){
+   const card=document.getElementById('fancard'); if(!card) return;
+   const el=document.getElementById('fanplot'); el.innerHTML='';
+   FIDX=((FIDX%FLOCS.length)+FLOCS.length)%FLOCS.length;
+   const loc=FLOCS[FIDX], qs=FANQ[loc], s=SERIES[loc];
+   document.getElementById('fan-pos').textContent=loc+' · '+(FIDX+1)+'/'+FLOCS.length;
+   const hs=Object.keys(qs).sort();
+   const obsX=s? s.dates.slice(-12):[], obsY=s? s.values.slice(-12):[];
+   const base=new Date(FCDATE);
+   const xs=hs.map(h=>{const d=new Date(base); d.setDate(d.getDate()+7*parseInt(h));
+     return d.toISOString().slice(0,10);});
+   const fx=[...(obsX.slice(-1)),...xs];
+   const med=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.5'])];
+   const lo9=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.1'])];
+   const hi9=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.9'])];
+   const div=document.createElement('div'); el.appendChild(div);
+   Plotly.newPlot(div,[
+     {x:obsX,y:obsY,mode:'lines+markers',name:'observed',line:{color:isDark()?'#e9ecf2':'#1c2430'}},
+     {x:fx,y:hi9,mode:'lines',line:{width:0},showlegend:false,hoverinfo:'skip'},
+     {x:fx,y:lo9,mode:'lines',fill:'tonexty',fillcolor:'rgba(255,199,44,.25)',
+      line:{width:0},name:'10–90%'},
+     {x:fx,y:med,mode:'lines+markers',name:'median',line:{color:'#b58200',width:2.5}},
+   ],lay(loc,400),PCONF);
+ }
+ if(FLOCS.length){
    const wrap=document.getElementById('fanwrap');
-   const card=document.createElement('div'); card.className='card';
-   card.innerHTML='<h2>Forecasts — latest run ('+FCDATE+')</h2>';
-   wrap.appendChild(card);
-   for(const [loc,qs] of Object.entries(FANQ)){
-     const s=SERIES[loc]; const div=document.createElement('div'); card.appendChild(div);
-     const hs=Object.keys(qs).sort();
-     const obsX=s? s.dates.slice(-12):[], obsY=s? s.values.slice(-12):[];
-     const base=new Date(FCDATE);
-     const xs=hs.map(h=>{const d=new Date(base); d.setDate(d.getDate()+7*parseInt(h));
-       return d.toISOString().slice(0,10);});
-     const fx=[...(obsX.slice(-1)),...xs];
-     const med=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.5'])];
-     const lo9=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.1'])];
-     const hi9=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.9'])];
-     Plotly.newPlot(div,[
-       {x:obsX,y:obsY,mode:'lines+markers',name:'observed',line:{color:isDark()?'#e9ecf2':'#1c2430'}},
-       {x:fx,y:hi9,mode:'lines',line:{width:0},showlegend:false,hoverinfo:'skip'},
-       {x:fx,y:lo9,mode:'lines',fill:'tonexty',fillcolor:'rgba(255,199,44,.25)',
-        line:{width:0},name:'10–90%'},
-       {x:fx,y:med,mode:'lines+markers',name:'median',line:{color:'#b58200',width:2.5}},
-     ],lay(loc,360));
-   }
+   wrap.innerHTML='<div class="card" id="fancard"><h2>Forecasts — latest run ('+FCDATE+')</h2>'
+     +'<div class="carousel"><button type="button" class="quiet cnav" id="fan-prev">◀</button>'
+     +'<span class="hint" id="fan-pos"></span>'
+     +'<button type="button" class="quiet cnav" id="fan-next">▶</button></div>'
+     +'<div id="fanplot"></div></div>';
+   document.getElementById('fan-prev').onclick=()=>{FIDX--;drawFan();};
+   document.getElementById('fan-next').onclick=()=>{FIDX++;drawFan();};
+   drawFan();
  }
 </script>
 {% endblock %}
