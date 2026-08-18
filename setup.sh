@@ -24,14 +24,18 @@ say "analysis venv (.venv) + package"
 say "FluSight hub data"
 if [ -d "$HUB/.git" ]; then
   ok "hub present: $HUB"
+elif [ "${FLUBNF_NO_DATA:-0}" = "1" ]; then
+  warn "data skipped (FLUBNF_NO_DATA=1) -- set FLUBNF_HUB later"
 else
-  read -r -p "  clone cdcepi/FluSight-forecast-hub (~1-2 GB) to $HUB? [y/N] " a
-  if [ "${a:-n}" = "y" ]; then
-    git clone --depth 1 https://github.com/cdcepi/FluSight-forecast-hub "$HUB" \
-      && ok "hub cloned (shallow)"
-  else
-    warn "skipped -- set FLUBNF_HUB to an existing clone before running models"
-  fi
+  # No questions: sparse checkout pulls ONLY the data directories the app
+  # reads (~10x smaller than the full hub, which is mostly other teams'
+  # forecast files).
+  echo "  fetching FluSight data (sparse, ~150 MB)…"
+  git clone --filter=blob:none --sparse --depth 1 \
+      https://github.com/cdcepi/FluSight-forecast-hub "$HUB" 2>/dev/null \
+    && (cd "$HUB" && git sparse-checkout set auxiliary-data target-data) \
+    && ok "hub data ready (sparse): $HUB" \
+    || warn "data fetch failed (offline?) -- rerun setup.sh when connected"
 fi
 
 say "engine venv (pybnf + bngsim)"

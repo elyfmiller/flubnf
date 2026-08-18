@@ -62,7 +62,9 @@ curl -sL https://raw.githubusercontent.com/elyfmiller/flubnf/main/install.sh | b
 ```
 
 **Or from a clone**: double-click **`FluBNF.app`** (or `FluBNF.command`) —
-first run performs setup, then the console opens in your browser. macOS
+first run sets everything up unattended (including a ~158 MB sparse fetch of
+the FluSight data — no questions asked), then the console opens in your
+browser. macOS
 Gatekeeper note: the bundle is unsigned, so the first launch needs
 right-click → Open.
 
