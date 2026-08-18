@@ -29,10 +29,17 @@ _status: dict = {"running": None, "log": []}
 
 
 @app.get("/", response_class=HTMLResponse)
+def _latest_saturday() -> str:
+    import datetime as dt
+    d = dt.date.today()
+    return str(d - dt.timedelta(days=(d.weekday() - 5) % 7))
+
+
 def landing(request: Request):
     vs = data_mod.vintages()
     return templates.TemplateResponse(request, "index.html", {
         "latest_vintage": vs[-1] if vs else "none",
+        "default_date": _latest_saturday(),
         "n_vintages": len(vs),
         "engines": ENGINES,
         "status": _status,
@@ -40,6 +47,14 @@ def landing(request: Request):
         "freshness": None,
         "missing": __import__("flubnf.settings", fromlist=["check"]).check(verbose=False),
     })
+
+
+@app.post("/data/pull")
+def data_pull():
+    """Explicit hub update -- looking never pulls; pulling is a button."""
+    msg = data_mod.pull_hub()
+    _status["log"].append(f"data pull: {msg[:120]}")
+    return RedirectResponse("/", status_code=303)
 
 
 @app.post("/freshness", response_class=HTMLResponse)
@@ -53,6 +68,7 @@ def freshness(request: Request):
         "status": _status,
         "ledger": Ledger().rows(10),
         "freshness": f,
+        "default_date": _latest_saturday(),
         "missing": __import__("flubnf.settings", fromlist=["check"]).check(verbose=False),
     })
 

@@ -21,7 +21,7 @@ CATS = ("large_decrease", "decrease", "stable", "increase", "large_increase")
 CAT_COLOR = {"large_decrease": "#3d7ab8", "decrease": "#79a8cf",
              "stable": "#8a8a82", "increase": "#d99a6b",
              "large_increase": "#c65744"}
-NO_DATA = "#232327"
+NO_DATA = "#132c4d"
 
 
 @lru_cache(maxsize=1)
@@ -55,7 +55,7 @@ def state_paths() -> dict:
     return out
 
 
-def svg_map(cards_by_fips: dict, ink="#e8e6e1", paper="#141416") -> str:
+def svg_map(cards_by_fips: dict, ink="#e9ecf2", paper="#0a1626") -> str:
     """cards_by_fips: fips -> {probs, name, abbr, hover_html} ({} = no data).
 
     Emits the full SVG + tooltip div + interaction script. Each state path

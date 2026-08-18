@@ -19,8 +19,8 @@ from pathlib import Path
 
 import numpy as np
 
-INK = "#e8e6e1"; MUT = "#9a978f"; PAPER = "#141416"; CARD = "#1d1d21"
-LINE = "#2c2c31"; ACCENT = "#6aa5d8"
+INK = "#e9ecf2"; MUT = "#93a1b5"; PAPER = "#0a1626"; CARD = "#0f2440"
+LINE = "#1d3a5f"; ACCENT = "#ffc72c"
 CATS = ("large_decrease", "decrease", "stable", "increase", "large_increase")
 CAT_COLOR = {"large_decrease": "#3d7ab8", "decrease": "#79a8cf",
              "stable": "#8a8a82", "increase": "#d99a6b", "large_increase": "#c65744"}

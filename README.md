@@ -53,7 +53,19 @@ Two virtual environments are deliberate: the analysis venv (this package,
 pandas/fastapi/plotly) and the engine venv (pybnf, bngsim). The app dispatches
 between them; they never import each other's world.
 
-## Running
+## Quickstart
+
+```bash
+git clone git@github.com:elyfmiller/flubnf.git && cd flubnf
+./setup.sh          # builds venvs, offers the data clone, ends with a doctor report
+.venv/bin/flubnf app   # open http://localhost:8710
+```
+
+`setup.sh` is idempotent — re-run it any time to fix a broken environment.
+The console runs (browse, analogue engine, reports) even before every
+external is installed; the landing page shows exactly what is missing.
+
+## Running pieces individually
 
 ```bash
 # operations console
