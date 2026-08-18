@@ -125,8 +125,11 @@
    poll();
    // particle-filter vignette: dots drift along a faint epidemic curve; now
    // and then one is resampled -- it fades out and reappears near the crowd.
-   // Theme-aware (reads the CSS variables each frame) and static under
-   // prefers-reduced-motion.
+   // A moving contact map: SIHRS kinetics, literally. Susceptibles wander,
+   // contact with an infectious dot transmits (brief spark), some infections
+   // hospitalize (the dot stops moving), all recover, immunity wanes back to
+   // susceptible. Theme-aware (CSS variables read each frame); static
+   // snapshot under prefers-reduced-motion.
    (function(){
      const cv=document.getElementById('pfviz'); if(!cv||!cv.getContext) return;
      const ctx=cv.getContext('2d');
@@ -134,40 +137,69 @@
        .getPropertyValue(v).trim()||'#888';
      const dpr=window.devicePixelRatio||1;
      function size(){cv.width=Math.max(cv.clientWidth,1)*dpr; cv.height=90*dpr;}
-     const bump=t=>Math.exp(-Math.pow((t-0.55)/0.21,2));
-     const xy=t=>[t*cv.width, cv.height*0.88-bump(t)*cv.height*0.7];
-     function drawCurve(){
-       ctx.clearRect(0,0,cv.width,cv.height);
-       ctx.strokeStyle=css('--line'); ctx.lineWidth=1.5*dpr; ctx.beginPath();
-       for(let i=0;i<=60;i++){const q=xy(i/60); i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]);}
-       ctx.stroke();
+     const COL={S:'--mut', I:'--gold-bright', H:'--bad', R:'--ok'};
+     const N=46, R2=Math.pow(9*dpr,2);
+     const A=Array.from({length:N},(_,i)=>({
+       x:Math.random(), y:Math.random(), vx:0, vy:0,
+       st:i<3?'I':'S', tt:120+Math.random()*240}));
+     const sparks=[];
+     function step(){
+       for(const a of A){
+         if(a.st!=='H'){                       // hospitalized dots stay put
+           a.vx=Math.max(-1,Math.min(1,a.vx+(Math.random()-0.5)*0.14));
+           a.vy=Math.max(-1,Math.min(1,a.vy+(Math.random()-0.5)*0.14));
+           a.x+=a.vx*0.004; a.y+=a.vy*0.010;
+           if(a.x<0.01||a.x>0.99){a.vx*=-1; a.x=Math.max(0.01,Math.min(0.99,a.x));}
+           if(a.y<0.06||a.y>0.94){a.vy*=-1; a.y=Math.max(0.06,Math.min(0.94,a.y));}
+         }
+         if(--a.tt<=0){                        // kinetics: I->H|R, H->R, R->S
+           if(a.st==='I'){a.st=Math.random()<0.18?'H':'R'; a.tt=a.st==='H'?160:400+Math.random()*300;}
+           else if(a.st==='H'){a.st='R'; a.tt=400+Math.random()*300;}
+           else if(a.st==='R'){a.st='S'; a.tt=1e9;}
+         }
+       }
+       const inf=A.filter(a=>a.st==='I');
+       if(!inf.length){const s=A.find(a=>a.st==='S')||A[0];  // importation
+         s.st='I'; s.tt=200+Math.random()*240;}
+       for(const i of inf) for(const a of A){
+         if(a.st!=='S') continue;
+         const dx=(a.x-i.x)*cv.width, dy=(a.y-i.y)*cv.height;
+         if(dx*dx+dy*dy<R2 && Math.random()<0.06){
+           a.st='I'; a.tt=200+Math.random()*240;
+           sparks.push({a:[a.x,a.y], b:[i.x,i.y], f:14});
+         }
+       }
+       for(let k=sparks.length-1;k>=0;k--) if(--sparks[k].f<=0) sparks.splice(k,1);
      }
-     const P=Array.from({length:40},()=>({t:Math.random(),
-       o:(Math.random()-0.5)*12, a:0.3+Math.random()*0.7, f:0}));
-     function drawDots(){
-       ctx.fillStyle=css('--gold-bright');
-       for(const p of P){
-         const q=xy(p.t);
-         ctx.globalAlpha=Math.max(0,Math.min(1,p.a))*0.85;
-         ctx.beginPath(); ctx.arc(q[0],q[1]+p.o*dpr,2.1*dpr,0,6.2832); ctx.fill();
+     function draw(){
+       ctx.clearRect(0,0,cv.width,cv.height);
+       ctx.strokeStyle=css('--gold-bright'); ctx.lineWidth=1*dpr;
+       for(const sp of sparks){
+         ctx.globalAlpha=sp.f/14*0.7; ctx.beginPath();
+         ctx.moveTo(sp.a[0]*cv.width, sp.a[1]*cv.height);
+         ctx.lineTo(sp.b[0]*cv.width, sp.b[1]*cv.height); ctx.stroke();
        }
        ctx.globalAlpha=1;
-     }
-     function step(){
-       for(const p of P){
-         p.t+=0.0011+0.0009*Math.random(); if(p.t>1.03) p.t=-0.03;
-         if(!p.f && Math.random()<0.0025) p.f=1;         // chosen for resampling
-         if(p.f){p.a-=0.05;
-           if(p.a<=0){const m=P.reduce((s,q)=>s+q.t,0)/P.length;
-             p.t=Math.max(0,Math.min(1,m+(Math.random()-0.5)*0.12));
-             p.o=(Math.random()-0.5)*12; p.f=0;}}       // reborn near the crowd
-         else if(p.a<1) p.a+=0.03;
+       for(const a of A){
+         ctx.fillStyle=css(COL[a.st]);
+         const r=(a.st==='I'?2.6:2.1)*dpr;
+         ctx.beginPath();
+         ctx.arc(a.x*cv.width, a.y*cv.height, r, 0, 6.2832); ctx.fill();
+         if(a.st==='H'){ctx.strokeStyle=css('--bad'); ctx.lineWidth=0.8*dpr;
+           ctx.beginPath(); ctx.arc(a.x*cv.width, a.y*cv.height, r+2.5*dpr, 0, 6.2832); ctx.stroke();}
+       }
+       ctx.font=`${9*dpr}px system-ui`; let lx=6*dpr;
+       for(const st of ['S','I','H','R']){
+         ctx.fillStyle=css(COL[st]);
+         ctx.beginPath(); ctx.arc(lx, cv.height-8*dpr, 2*dpr, 0, 6.2832); ctx.fill();
+         ctx.fillText(st, lx+5*dpr, cv.height-5*dpr); lx+=24*dpr;
        }
      }
-     function frame(){drawCurve(); drawDots(); step(); requestAnimationFrame(frame);}
+     function frame(){step(); draw(); requestAnimationFrame(frame);}
      size(); addEventListener('resize',size);
-     if(matchMedia('(prefers-reduced-motion: reduce)').matches){drawCurve(); drawDots();}
-     else requestAnimationFrame(frame);
+     if(matchMedia('(prefers-reduced-motion: reduce)').matches){
+       for(let i=0;i<200;i++) step(); draw();
+     } else requestAnimationFrame(frame);
    })();
   </script>
   {% elif ledger %}

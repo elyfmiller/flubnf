@@ -258,11 +258,16 @@ def _run_all(spec: RunSpec) -> None:
             outcome["pf_cells"] = len(status)
             outcome["pf_failures"] = fails
             pf_samples = pf_engine.collect(workroot)
+            # output floor: no cell leaves as a point mass (see app/core/floor.py)
+            from app.core.floor import floor_samples
+            pf_samples = {loc: floor_samples(s, loc, spec.forecast_date)
+                          for loc, s in pf_samples.items()}
         else:
             outcome["pf_skipped"] = "engine venv not installed (Tier A)"
             (workroot / "cells.json").write_text("[]")
         _phase("consulting the calendar analogue")
-        an_q = an_engine.run(spec)
+        from app.core.floor import floor_quantiles
+        an_q = {loc: floor_quantiles(q) for loc, q in an_engine.run(spec).items()}
         # 3. ensemble (vincentize, frozen per-horizon/per-state weights)
         import pandas as _pd
         _l = _pd.read_csv(__import__("flubnf.settings", fromlist=["LOCATIONS"]).LOCATIONS, dtype=str)
