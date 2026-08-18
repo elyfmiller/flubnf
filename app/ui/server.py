@@ -45,18 +45,31 @@ def favicon():
 
 
 @app.get("/", response_class=HTMLResponse)
-def landing(request: Request):
+def home(request: Request):
+    return templates.TemplateResponse(request, "home.html", {
+        "active": "Home",
+        "missing": __import__("flubnf.settings", fromlist=["check"]).check(verbose=False)})
+
+
+@app.get("/forecast", response_class=HTMLResponse)
+def forecast_page(request: Request):
+    return templates.TemplateResponse(request, "forecast.html", {
+        "active": "Forecast", "default_date": _latest_saturday(),
+        "engines": ENGINES, "status": _status, "ledger": Ledger().rows(5)})
+
+
+@app.get("/data", response_class=HTMLResponse)
+def data_page(request: Request):
     vs = data_mod.vintages()
-    return templates.TemplateResponse(request, "index.html", {
-        "latest_vintage": vs[-1] if vs else "none",
-        "default_date": _latest_saturday(),
-        "n_vintages": len(vs),
-        "engines": ENGINES,
-        "status": _status,
-        "ledger": Ledger().rows(10),
-        "freshness": None,
-        "missing": __import__("flubnf.settings", fromlist=["check"]).check(verbose=False),
-    })
+    return templates.TemplateResponse(request, "data.html", {
+        "active": "Data", "latest_vintage": vs[-1] if vs else "none",
+        "n_vintages": len(vs), "freshness": None})
+
+
+@app.get("/runs", response_class=HTMLResponse)
+def runs_page(request: Request):
+    return templates.TemplateResponse(request, "runs.html", {
+        "active": "Runs", "ledger": Ledger().rows(50)})
 
 
 @app.post("/data/pull")
@@ -64,23 +77,16 @@ def data_pull():
     """Explicit hub update -- looking never pulls; pulling is a button."""
     msg = data_mod.pull_hub()
     _status["log"].append(f"data pull: {msg[:120]}")
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse("/data", status_code=303)
 
 
 @app.post("/freshness", response_class=HTMLResponse)
 def freshness(request: Request):
     f = data_mod.check_freshness()
     vs = data_mod.vintages()
-    return templates.TemplateResponse(request, "index.html", {
-        "latest_vintage": vs[-1] if vs else "none",
-        "n_vintages": len(vs),
-        "engines": ENGINES,
-        "status": _status,
-        "ledger": Ledger().rows(10),
-        "freshness": f,
-        "default_date": _latest_saturday(),
-        "missing": __import__("flubnf.settings", fromlist=["check"]).check(verbose=False),
-    })
+    return templates.TemplateResponse(request, "data.html", {
+        "active": "Data", "latest_vintage": vs[-1] if vs else "none",
+        "n_vintages": len(vs), "freshness": f})
 
 
 def _run_all(spec: RunSpec) -> None:
@@ -230,7 +236,7 @@ def run_page(request: Request, run_id: str):
     subs = sorted(str(p.relative_to(w)) for p in w.glob("submission/*/*.csv"))
     report = (w / "report.html").name if (w / "report.html").is_file() else None
     return templates.TemplateResponse(request, "run.html", {
-        "run_id": run_id, "models": res.get("models", {}),
+        "active": "Runs", "run_id": run_id, "models": res.get("models", {}),
         "subs": subs, "report": report})
 
 
@@ -259,7 +265,7 @@ def retro_index(request: Request):
                         "scored": (root / "scores.json").exists()})
     from flubnf.settings import PY_ENGINE, PYBNF
     return templates.TemplateResponse(request, "retro.html",
-                                      {"seasons": seasons,
+                                      {"active": "Retrospective", "seasons": seasons,
                                        "engine_ok": PY_ENGINE.exists()
                                        and PYBNF.exists()})
 
@@ -351,7 +357,7 @@ def retro_results(request: Request, season: str, week: str = ""):
         cards.setdefault(n2f.get(name, name), {"name": name, "abbr": abbr,
                                                "fips": n2f.get(name, "")})
     return templates.TemplateResponse(request, "retro_season.html", {
-        "season": season, "heads": heads, "curve": curve, "states": states,
+        "active": "Retrospective", "season": season, "heads": heads, "curve": curve, "states": states,
         "weeks": weeks, "week": wk, "map_html": svg_map(cards),
         "n_weeks": len(weeks)})
 
@@ -364,8 +370,16 @@ def run_models(background: BackgroundTasks,
                weeks_to_nowcast: int = Form(0),
                replicates: int = Form(3),
                engine: str = Form("pf")):
+    if locations.strip().lower() == "all":
+        import pandas as _pd
+        _l = _pd.read_csv(__import__("flubnf.settings",
+                                     fromlist=["LOCATIONS"]).LOCATIONS, dtype=str)
+        locs_list = list(_l.location_name[(_l.location.str.len() == 2)
+                                          & (_l.abbreviation != "US")])
+    else:
+        locs_list = [l.strip() for l in locations.split(",") if l.strip()]
     spec = RunSpec(engine=engine, forecast_date=forecast_date,
-                   locations=[l.strip() for l in locations.split(",") if l.strip()],
+                   locations=locs_list,
                    season_start="2025-08-01",
                    weeks_to_drop=weeks_to_drop,
                    weeks_to_nowcast=weeks_to_nowcast,
@@ -387,4 +401,4 @@ def run_models(background: BackgroundTasks,
         background.add_task(_bg)
     else:
         _status["log"].append(f"{engine}: engine not wired yet")
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse("/forecast", status_code=303)

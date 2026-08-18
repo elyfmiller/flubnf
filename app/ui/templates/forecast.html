@@ -1,0 +1,36 @@
+{% extends "base.html" %}{% block title %}FluBNF — forecast{% endblock %}
+{% block head %}{% if status.running %}<meta http-equiv="refresh" content="10">{% endif %}{% endblock %}
+{% block content %}
+<h1>Forecast</h1>
+<div class="cols">
+ <div><div class="card"><h2>Settings</h2>
+  <form method="post" action="/run">
+   <label>Forecast date</label>
+   <input name="forecast_date" value="{{ default_date }}">
+   <label>Locations (comma-separated, or "all")</label>
+   <input name="locations" value="Ohio, California, New York">
+   <label>Engine</label>
+   <select name="engine">{% for e in engines %}<option>{{ e }}</option>{% endfor %}</select>
+   <label>Weeks to drop</label>
+   <input name="weeks_to_drop" type="number" value="0" min="0" max="4">
+   <label>Weeks to nowcast <span class="hint">(framework; no-op this season)</span></label>
+   <input name="weeks_to_nowcast" type="number" value="0" min="0" max="4">
+   <label>Replicates</label>
+   <input name="replicates" type="number" value="3" min="1" max="9">
+   <button class="gold">Run models</button>
+  </form>
+  {% if status.running %}<p class="warn">running: <code>{{ status.running }}</code></p>{% endif %}
+ </div></div>
+ <div>
+  <div class="card"><h2>Latest run</h2>
+   {% if ledger %}
+     {% set r = ledger[0] %}
+     <p><a href="/runs/{{ r.run_id }}"><code>{{ r.run_id }}</code></a>
+     <span class="pill {% if r.status == 'ok' %}ok{% else %}bad{% endif %}">{{ r.status }}</span></p>
+     <p class="hint">{{ r.outcome }}</p>
+   {% else %}<p class="hint">no runs yet — settings on the left, gold button, go.</p>{% endif %}
+  </div>
+  {% for line in status.log[-5:] %}<p class="hint">{{ line }}</p>{% endfor %}
+ </div>
+</div>
+{% endblock %}

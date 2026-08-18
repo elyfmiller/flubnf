@@ -1,0 +1,31 @@
+<!doctype html>
+<html><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}FluBNF{% endblock %}</title>
+<link rel="icon" href="/favicon.ico">
+<link rel="stylesheet" href="/static/nau.css">
+<script>
+ (function(){var t=localStorage.getItem('theme');
+  if(!t) t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
+  document.documentElement.setAttribute('data-theme',t);})();
+</script>
+{% block head %}{% endblock %}
+</head><body>
+<header class="nav">
+  <span class="brand">Flu<em>BNF</em></span>
+  {% set tabs = [("/","Home"),("/forecast","Forecast"),("/retro","Retrospective"),
+                 ("/runs","Runs"),("/data","Data")] %}
+  {% for href, name in tabs %}
+    <a class="tab {% if active == name %}active{% endif %}" href="{{ href }}">{{ name }}</a>
+  {% endfor %}
+  <span class="spacer"></span>
+  <button id="themebtn" title="toggle light/dark">◐</button>
+</header>
+<main>{% block content %}{% endblock %}</main>
+<script>
+ document.getElementById('themebtn').onclick=function(){
+  var h=document.documentElement,
+      t=h.getAttribute('data-theme')==='dark'?'light':'dark';
+  h.setAttribute('data-theme',t);localStorage.setItem('theme',t);};
+</script>
+</body></html>

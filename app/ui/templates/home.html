@@ -1,0 +1,19 @@
+{% extends "base.html" %}{% block content %}
+<div class="hero"><h1>The <span class="gold">FluBNF</span> forecasting console</h1>
+<p>Real-time probabilistic influenza forecasts from a mechanistic SIHRS model —
+fitted with a sequential particle filter and adaptive MCMC in PyBNF on the
+BNGsim engine, blended with a calendar analogue, and scored the way the
+competition scores.</p></div>
+<div class="grid3">
+ <div class="card"><h2>Forecast</h2><p>Run the ensemble for a forecast date:
+  particle filter first, analogue instantly, vincentized blend with frozen
+  per-horizon weights.</p><a href="/forecast">Open →</a></div>
+ <div class="card"><h2>Retrospective</h2><p>Replay a season week by week as a
+  real competition — vintage data in, submissions out, WIS-scored against the
+  FluSight baseline.</p><a href="/retro">Open →</a></div>
+ <div class="card"><h2>Setup</h2>
+  {% if missing %}{% for m in missing %}<p class="warn">missing {{ m[0] }} — {{ m[2] }}</p>{% endfor %}
+  <p class="hint">run <code>./setup.sh</code> to fix</p>
+  {% else %}<p class="ok">all externals present — full Tier B capability</p>{% endif %}</div>
+</div>
+{% endblock %}
