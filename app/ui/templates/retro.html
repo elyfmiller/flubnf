@@ -4,6 +4,9 @@
 <link rel="stylesheet" href="/static/nau.css"></head><body><main>
 <nav><a href="/">console</a><a href="/retro" class="active">retrospectives</a></nav>
 <h1><span class="brand">FluBNF</span> retrospectives</h1>
+{% if not engine_ok %}<p class="hint warn">Retrospectives need the PF engine
+(Tier B) — the console, forecasts via the analogue, and reports work without
+it. setup.sh printed the install steps.</p>{% endif %}
 <p class="sub">Replay a season week by week as a real competition — vintage data
 in, hub-format submissions out, scored against settled truth.</p>
 {% for s in seasons %}
@@ -18,7 +21,7 @@ in, hub-format submissions out, scored against settled truth.</p>
       <input type="hidden" name="season" value="{{ s.name }}">
       <select name="locations"><option value="panel6">6-state panel</option>
         <option value="all">all 52 jurisdictions</option></select>
-      <button {% if s.running %}disabled{% endif %}>
+      <button {% if s.running or not engine_ok %}disabled{% endif %} {% if not engine_ok %}title="requires the PF engine (Tier B) — see setup.sh output"{% endif %}>
         {% if s.done > 0 and s.done < s.total %}resume{% else %}run{% endif %}</button>
     </form></div>
 </div></div>

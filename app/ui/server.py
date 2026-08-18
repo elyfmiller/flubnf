@@ -91,13 +91,22 @@ def _run_all(spec: RunSpec) -> None:
     _status["running"] = f"all:{run_id}"
     outcome = {}
     try:
-        # 1. PF (primary)
-        pf_engine.prepare(spec, workroot)
-        status = pf_engine.execute(workroot)
-        fails = {k: v for k, v in status.items() if v != "ok"}
-        outcome["pf_cells"] = len(status)
-        outcome["pf_failures"] = fails
-        pf_samples = pf_engine.collect(workroot)
+        # 1. PF (primary) -- gracefully absent on Tier-A machines (no engine
+        # venv): the run proceeds with the analogue and says so, rather than
+        # erroring on the first click of a fresh install.
+        from flubnf.settings import PY_ENGINE, PYBNF
+        fails = {}
+        pf_samples = {}
+        if PY_ENGINE.exists() and PYBNF.exists():
+            pf_engine.prepare(spec, workroot)
+            status = pf_engine.execute(workroot)
+            fails = {k: v for k, v in status.items() if v != "ok"}
+            outcome["pf_cells"] = len(status)
+            outcome["pf_failures"] = fails
+            pf_samples = pf_engine.collect(workroot)
+        else:
+            outcome["pf_skipped"] = "engine venv not installed (Tier A)"
+            (workroot / "cells.json").write_text("[]")
         # 2. analogue (instant)
         an_q = an_engine.run(spec)
         # 3. ensemble (vincentize, frozen per-horizon/per-state weights)
@@ -238,8 +247,11 @@ def retro_index(request: Request):
         seasons.append({"name": s, "total": total, "done": done,
                         "running": _retro_status.get(s) == "running",
                         "scored": (root / "scores.json").exists()})
+    from flubnf.settings import PY_ENGINE, PYBNF
     return templates.TemplateResponse(request, "retro.html",
-                                      {"seasons": seasons})
+                                      {"seasons": seasons,
+                                       "engine_ok": PY_ENGINE.exists()
+                                       and PYBNF.exists()})
 
 
 def _retro_bg(season: str, locations: list, width: int):
