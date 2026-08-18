@@ -343,6 +343,31 @@ def run_report(run_id: str):
                         else "<p>no report for this run</p>")
 
 
+@app.get("/api/series")
+def api_series(locs: str = ""):
+    """Data-panel series for arbitrary locations — lets the checkboxes drive
+    the plots live instead of waiting for a Run click."""
+    import json as _json
+    import pandas as pd
+    sel = [l for l in locs.split("|") if l][:8] or ["Ohio"]
+    out = {}
+    try:
+        _l = pd.read_csv(__import__("flubnf.settings",
+                                    fromlist=["LOCATIONS"]).LOCATIONS, dtype=str)
+        n2f_ = dict(zip(_l.location_name, _l.location.str.zfill(2)))
+        vs = data_mod.vintages()
+        tdf = pd.read_csv(data_mod.vintage_path(vs[-1]), dtype={"location": str})
+        tdf["location"] = tdf["location"].str.zfill(2)
+        for loc in sel:
+            g = tdf[tdf.location == n2f_.get(loc, "")].sort_values("date")
+            g = g[pd.to_numeric(g.value, errors="coerce").notna()]
+            out[loc] = {"dates": [str(d)[:10] for d in g.date],
+                        "values": [float(v) for v in g.value]}
+    except Exception:
+        pass
+    return out
+
+
 @app.get("/api/progress")
 def api_progress():
     import glob
@@ -622,6 +647,14 @@ def run_models(background: BackgroundTasks,
                        "engine": engine, "weeks_to_drop": weeks_to_drop,
                        "weeks_to_nowcast": weeks_to_nowcast,
                        "replicates": replicates})
+    if _status.get("running"):
+        _status["log"].append("a run is already in progress — not starting another")
+        return RedirectResponse("/forecast", status_code=303)
+    # BackgroundTasks fire AFTER the redirect renders; claim the running slot
+    # NOW so the page the user lands on shows the run (double-click race,
+    # laptop field test 2026-08-18)
+    _status["running"] = "starting"
+    _status["run_label"] = f"{forecast_date} · queued"
     if "all" in [l.lower() for l in locations]:
         import pandas as _pd
         _l = _pd.read_csv(__import__("flubnf.settings",
@@ -643,6 +676,7 @@ def run_models(background: BackgroundTasks,
         def _bg():
             ledger = Ledger()
             rid = ledger.open_run(spec, Path("pending"), {"engine": "amcmc"})
+            _status["running"] = f"amcmc:{rid}"
             w = lease_workroot(rid)
             try:
                 out = am_engine.execute(spec, w)
@@ -650,6 +684,8 @@ def run_models(background: BackgroundTasks,
                 ledger.close_run(rid, "ok", {"ok_states": n_ok})
             except Exception as e:
                 ledger.close_run(rid, "error", {"error": str(e)[:300]})
+            finally:
+                _status["running"] = None
         background.add_task(_bg)
     else:
         _status["log"].append(f"{engine}: engine not wired yet")

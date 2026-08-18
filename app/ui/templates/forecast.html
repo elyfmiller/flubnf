@@ -38,7 +38,24 @@
      document.querySelectorAll('.ck-one').forEach(c => {c.checked=false; c.disabled=this.checked;});
      updCount();
    });
-   document.querySelectorAll('.ck-one').forEach(c=>c.addEventListener('change',updCount));
+   let fetchTimer=null;
+   function refetchSeries(){
+     clearTimeout(fetchTimer);
+     fetchTimer=setTimeout(async ()=>{
+       const all=document.getElementById('ck-all').checked;
+       const sel=all? [] : [...document.querySelectorAll('.ck-one:checked')].map(c=>c.value);
+       const q=(all? ['Ohio'] : (sel.length? sel : ['Ohio'])).slice(0,8).join('|');
+       try{const r=await fetch('/api/series?locs='+encodeURIComponent(q));
+         const d=await r.json();
+         Object.keys(SERIES).forEach(k=>delete SERIES[k]);
+         Object.assign(SERIES,d);
+         LOCS.length=0; LOCS.push(...Object.keys(SERIES));
+         DIDX=0; drawData(CURMODE);
+       }catch(e){}
+     },350);
+   }
+   document.querySelectorAll('.ck-one').forEach(c=>c.addEventListener('change',()=>{updCount();refetchSeries();}));
+   document.getElementById('ck-all').addEventListener('change',refetchSeries);
    updCount();
   </script>
  </div></div>
@@ -126,7 +143,7 @@
    return Math.round((d-new Date(y,7,1))/(7*864e5));}
  let SHOWPTS=false, CURMODE='season', DIDX=0;
  const PCONF={responsive:true, displaylogo:false};
- const LOCS=Object.keys(SERIES);
+ const LOCS=Object.keys(SERIES);  // mutated live by refetchSeries
  function drawData(mode){
    CURMODE=mode;
    const lm=SHOWPTS?'lines+markers':'lines';
