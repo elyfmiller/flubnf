@@ -7,3 +7,5 @@ app/state/
 .DS_Store
 model-output/
 data/humidity/
+.flubnf.env
+*.egg-info/
