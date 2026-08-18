@@ -1405,8 +1405,18 @@ if __name__ == "__main__":
 
 @app.command("app")
 def app_serve(port: int = 8710):
-    """Launch the operations console."""
+    """Launch the operations console (opens your browser)."""
+    import threading
+    import time
+    import webbrowser
+
     import uvicorn
+
+    def _open():
+        time.sleep(1.5)
+        webbrowser.open(f"http://localhost:{port}")
+
+    threading.Thread(target=_open, daemon=True).start()
     uvicorn.run("app.ui.server:app", port=port, host="127.0.0.1")
 
 

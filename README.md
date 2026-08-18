@@ -53,12 +53,25 @@ Two virtual environments are deliberate: the analysis venv (this package,
 pandas/fastapi/plotly) and the engine venv (pybnf, bngsim). The app dispatches
 between them; they never import each other's world.
 
-## Quickstart
+## Install
+
+**One line** (clones + sets up):
 
 ```bash
-git clone git@github.com:elyfmiller/flubnf.git && cd flubnf
-./setup.sh          # builds venvs, offers the data clone, ends with a doctor report
-.venv/bin/flubnf app   # open http://localhost:8710
+curl -sL https://raw.githubusercontent.com/elyfmiller/flubnf/main/install.sh | bash
+```
+
+**Or from a clone**: double-click **`FluBNF.app`** (or `FluBNF.command`) —
+first run performs setup, then the console opens in your browser. macOS
+Gatekeeper note: the bundle is unsigned, so the first launch needs
+right-click → Open.
+
+**Or by hand**:
+
+```bash
+git clone https://github.com/elyfmiller/flubnf && cd flubnf
+./setup.sh
+.venv/bin/flubnf app
 ```
 
 `setup.sh` is idempotent — re-run it any time to fix a broken environment.

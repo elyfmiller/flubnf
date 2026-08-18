@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Resolve the repo root (the .app lives inside the clone) and hand off to the
+# terminal launcher so setup output is visible on first run.
+REPO="$(cd "$(dirname "$0")/../../.." && pwd)"
+open -a Terminal "$REPO/FluBNF.command"
