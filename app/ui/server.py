@@ -69,7 +69,7 @@ def forecast_page(request: Request):
     except Exception:
         all_locs = []
     form = dict(_last_form) or {"forecast_date": _default_forecast_date(),
-                                "locations": ["Ohio"], "engine": "all",
+                                "locations": ["all"], "engine": "all",
                                 "weeks_to_drop": 0, "weeks_to_nowcast": 0,
                                 "replicates": 3}
     rid, res = _latest_results()
@@ -77,7 +77,8 @@ def forecast_page(request: Request):
     # from the latest vintage -- visible before any run (deciding what to
     # drop requires seeing the data)
     import json as _json
-    sel = [l for l in form["locations"] if l != "all"] or ["Ohio"]
+    sel = ([l for l in form["locations"] if l != "all"]
+           or all_locs[:1] or ["Alabama"])
     series = {}
     try:
         vs = data_mod.vintages()
@@ -93,9 +94,11 @@ def forecast_page(request: Request):
         pass
     fanq = {}
     if res:
-        m = res["models"].get("ensemble") or res["models"].get("pf") or {}
-        fanq = {loc: qs for loc, qs in m.items()
-                if all(isinstance(v, dict) for v in qs.values())}
+        for mname, md in res["models"].items():
+            good = {loc: qs for loc, qs in md.items()
+                    if all(isinstance(v, dict) for v in qs.values())}
+            if good:
+                fanq[mname] = good
     ledger_rows = Ledger().rows(5)
     for r in ledger_rows:
         r["label"] = _run_label(r["run_id"], r.get("spec", ""))
@@ -459,6 +462,46 @@ def _fan_svg(observed, qs):
                  + pts([(n_obs - 1 + k + 1, qs[h]["0.5"]) for k, h in enumerate(hs)]) + '"/>')
     parts.append('</svg>')
     return "".join(parts)
+
+
+@app.get("/output", response_class=HTMLResponse)
+def output_page(request: Request):
+    from app.core.runs import APP_STATE
+    rid, res = _latest_results()
+    files = []
+    if rid:
+        w = APP_STATE / "workroots" / rid
+        for f in sorted(w.glob("submission/*/*.csv")):
+            files.append({"model": f.parent.name, "name": f.name,
+                          "path": str(f)})
+        report = w / "report.html"
+    return templates.TemplateResponse(request, "output.html", {
+        "active": "Output", "rid": rid,
+        "label": _run_label(rid) if rid else "",
+        "date": (res or {}).get("forecast_date", ""),
+        "has_ensemble": bool((res or {}).get("models", {}).get("ensemble")),
+        "files": files,
+        "has_report": bool(rid and (APP_STATE / "workroots" / rid / "report.html").is_file())})
+
+
+@app.post("/output/reveal")
+def output_reveal(path: str = Form(...)):
+    """Local desktop app: show the file in Finder rather than fake a download."""
+    import subprocess
+    from app.core.runs import APP_STATE
+    p = Path(path).resolve()
+    if str(APP_STATE.resolve()) in str(p) and p.exists():   # stay inside our state
+        subprocess.Popen(["open", "-R", str(p)])
+    return RedirectResponse("/output", status_code=303)
+
+
+@app.get("/output/report", response_class=HTMLResponse)
+def output_report():
+    from app.core.runs import APP_STATE
+    rid, _ = _latest_results()
+    f = APP_STATE / "workroots" / (rid or "") / "report.html"
+    return HTMLResponse(f.read_text() if f.is_file()
+                        else "<p>no report yet — run models first</p>")
 
 
 @app.get("/model/{name}", response_class=HTMLResponse)

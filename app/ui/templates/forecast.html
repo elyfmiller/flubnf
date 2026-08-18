@@ -128,7 +128,8 @@
 </div>
 <script>
  const SERIES = {{ series_json | safe }};
- const FANQ = {{ fanq_json | safe }};
+ const FANQ = {{ fanq_json | safe }};   // {model: {loc: {h: {q: v}}}}
+ const ALL_LOCS = {{ all_locs | tojson }};
  const FCDATE = {{ fc_date | tojson }};
  const isDark = () => document.documentElement.getAttribute('data-theme')==='dark';
  function lay(title, h){ return {title:{text:title,font:{size:14}},
@@ -143,14 +144,22 @@
    return Math.round((d-new Date(y,7,1))/(7*864e5));}
  let SHOWPTS=false, CURMODE='season', DIDX=0;
  const PCONF={responsive:true, displaylogo:false};
- const LOCS=Object.keys(SERIES);  // mutated live by refetchSeries
+ const ALLMODE={{ ("all" in form.locations) | tojson }};
+ const LOCS=ALLMODE? ALL_LOCS.slice() : Object.keys(SERIES);
  function drawData(mode){
    CURMODE=mode;
    const lm=SHOWPTS?'lines+markers':'lines';
    const el=document.getElementById('dataplots'); el.innerHTML='';
    if(!LOCS.length){el.innerHTML='<p class="hint">select locations to see their data</p>';return;}
    DIDX=((DIDX%LOCS.length)+LOCS.length)%LOCS.length;
-   const loc=LOCS[DIDX], s=SERIES[loc];
+   const loc=LOCS[DIDX];
+   if(!SERIES[loc]){
+     fetch('/api/series?locs='+encodeURIComponent(loc)).then(r=>r.json())
+       .then(d=>{Object.assign(SERIES,d); drawData(CURMODE);});
+     document.getElementById('data-pos').textContent=loc+' · loading…';
+     return;
+   }
+   const s=SERIES[loc];
    document.getElementById('data-pos').textContent=loc+' · '+(DIDX+1)+'/'+LOCS.length;
    const div=document.createElement('div'); el.appendChild(div);
    if(mode==='raw'){
@@ -177,13 +186,24 @@
    SHOWPTS=!SHOWPTS; this.textContent=SHOWPTS?'○ points':'● points'; drawData(CURMODE);};
  drawData('season');
  // forecast fans (interactive, full width)
- const FLOCS=Object.keys(FANQ);
+ const MODELS=Object.keys(FANQ);
+ let FMODEL=MODELS.includes('ensemble')?'ensemble':MODELS[0];
+ let FLOCS=FMODEL?Object.keys(FANQ[FMODEL]):[];
  let FIDX=0;
- function drawFan(){
+ async function ensureSeries(loc){
+   if(SERIES[loc]) return;
+   try{const r=await fetch('/api/series?locs='+encodeURIComponent(loc));
+     Object.assign(SERIES, await r.json());}catch(e){}
+ }
+ async function drawFan(){
    const card=document.getElementById('fancard'); if(!card) return;
+   FLOCS=Object.keys(FANQ[FMODEL]||{});
+   if(!FLOCS.length) return;
    const el=document.getElementById('fanplot'); el.innerHTML='';
    FIDX=((FIDX%FLOCS.length)+FLOCS.length)%FLOCS.length;
-   const loc=FLOCS[FIDX], qs=FANQ[loc], s=SERIES[loc];
+   const loc=FLOCS[FIDX], qs=FANQ[FMODEL][loc];
+   await ensureSeries(loc);
+   const s=SERIES[loc];
    document.getElementById('fan-pos').textContent=loc+' · '+(FIDX+1)+'/'+FLOCS.length;
    const hs=Object.keys(qs).sort();
    const obsX=s? s.dates.slice(-12):[], obsY=s? s.values.slice(-12):[];
@@ -203,13 +223,20 @@
      {x:fx,y:med,mode:'lines+markers',name:'median',line:{color:'#b58200',width:2.5}},
    ],lay(loc,400),PCONF);
  }
- if(FLOCS.length){
+ if(MODELS.length){
    const wrap=document.getElementById('fanwrap');
+   const mbtns=MODELS.map(m=>'<button type="button" class="quiet mbtn" data-m="'+m+'">'+m+'</button>').join('');
    wrap.innerHTML='<div class="card" id="fancard"><h2>Forecasts — latest run ('+FCDATE+')</h2>'
+     +'<div class="carousel">'+mbtns+'</div>'
      +'<div class="carousel"><button type="button" class="quiet cnav" id="fan-prev">◀</button>'
      +'<span class="hint" id="fan-pos"></span>'
      +'<button type="button" class="quiet cnav" id="fan-next">▶</button></div>'
      +'<div id="fanplot"></div></div>';
+   document.querySelectorAll('.mbtn').forEach(b=>{
+     if(b.dataset.m===FMODEL) b.classList.add('gold');
+     b.onclick=()=>{FMODEL=b.dataset.m;
+       document.querySelectorAll('.mbtn').forEach(x=>x.classList.remove('gold'));
+       b.classList.add('gold'); FIDX=0; drawFan();};});
    document.getElementById('fan-prev').onclick=()=>{FIDX--;drawFan();};
    document.getElementById('fan-next').onclick=()=>{FIDX++;drawFan();};
    drawFan();
