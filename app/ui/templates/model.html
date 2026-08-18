@@ -37,12 +37,12 @@
 <script>
  const FANQ = {{ fanq_json | safe }};
  const SERIES = {};
- const isDark = () => document.documentElement.getAttribute('data-theme')==='dark';
+ const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
  function lay(t,h){return {title:{text:t,font:{size:14}},height:h||400,
   margin:{l:50,r:20,t:34,b:40},paper_bgcolor:'rgba(0,0,0,0)',
-  plot_bgcolor:'rgba(0,0,0,0)',font:{color:isDark()?'#e9ecf2':'#1c2430'},
-  xaxis:{gridcolor:isDark()?'#1d3a5f':'#dde5ee'},
-  yaxis:{gridcolor:isDark()?'#1d3a5f':'#dde5ee',rangemode:'tozero'}};}
+  plot_bgcolor:'rgba(0,0,0,0)',font:{color:css('--ink')},
+  xaxis:{gridcolor:css('--line')},
+  yaxis:{gridcolor:css('--line'),rangemode:'tozero'}};}
  const LOCS=Object.keys(FANQ); let IDX=0;
  async function draw(){
    if(!LOCS.length) return;
@@ -68,14 +68,15 @@
    const lo=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.1'])];
    const hi=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.9'])];
    Plotly.newPlot(document.getElementById('plot'),[
-    {x:obsX,y:obsY,mode:'lines+markers',name:'observed',line:{color:isDark()?'#e9ecf2':'#1c2430'}},
+    {x:obsX,y:obsY,mode:'lines+markers',name:'observed',line:{color:css('--ink')}},
     {x:fx,y:hi,mode:'lines',line:{width:0},showlegend:false,hoverinfo:'skip'},
     {x:fx,y:lo,mode:'lines',fill:'tonexty',fillcolor:'rgba(255,199,44,.25)',line:{width:0},name:'10–90%'},
-    {x:fx,y:med,mode:'lines+markers',name:'median',line:{color:'#b58200',width:2.5}},
+    {x:fx,y:med,mode:'lines+markers',name:'median',line:{color:css('--gold'),width:2.5}},
    ],lay(loc,420),{responsive:true,displaylogo:false});
    document.getElementById('pv').onclick=()=>{IDX--;draw();};
    document.getElementById('nx').onclick=()=>{IDX++;draw();};
  }
  draw();
+ addEventListener('themechange',()=>draw());
 </script>
 {% endblock %}

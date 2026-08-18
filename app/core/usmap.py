@@ -8,7 +8,8 @@ domain, pre-projected Albers composite with AK/HI insets on a 975x610 plane).
 
 Hover card, click drill-down, and pan/zoom are vanilla JS on the inline SVG --
 no library, works from file://, artifacts, or any static host. Pan/zoom mutates
-the SVG viewBox: wheel zooms about the cursor, drag pans, double-click resets.
+the SVG viewBox: Ctrl/Cmd+wheel zooms about the cursor (plain scroll keeps
+scrolling the page), drag pans within a clamped extent, double-click resets.
 A press that travels < 5px still counts as a state click (drag never
 click-throughs).
 
@@ -31,7 +32,9 @@ CATS = ("large_decrease", "decrease", "stable", "increase", "large_increase")
 CAT_COLOR = {"large_decrease": "#2e7d4f", "decrease": "#7fc97f",
              "stable": "#b9b09b", "increase": "#e8a33d",
              "large_increase": "#c0392b"}
-NO_DATA = "#0a0a0a"
+# Emitted as a CSS variable so host pages can soften it per theme (the app's
+# light theme uses a pale neutral; the fixed-dark report falls back to black).
+NO_DATA = "var(--map-nodata, #0a0a0a)"
 
 VIEWBOX = "0 0 975 610"
 
@@ -68,8 +71,10 @@ def state_paths() -> dict:
 
 
 # Pan/zoom + tooltip + click, scoped per map instance via __ID__.
-# Zoom clamps between the full extent (1x) and 40x. Drag distance is measured
-# from the mousedown point; a press that never travels 5px is still a click.
+# Zoom (Ctrl/Cmd+wheel) clamps between the full extent (1x) and 40x; pan is
+# clamped so ~20% of the country always stays in view. Drag distance is
+# measured from the mousedown point; a press that never travels 5px is still
+# a click, and its drill-down waits 250ms so double-click (reset) can cancel.
 _JS = """
 <script>
 (function() {
@@ -80,19 +85,30 @@ _JS = """
   const VB = [0, 0, 975, 610];
   let vb = VB.slice();
   const apply = () => svg.setAttribute('viewBox', vb.join(' '));
+  // keep >= 20% of the base extent in view; fully zoomed out snaps home
+  const clamp = () => {
+    if (vb[2] >= VB[2]) { vb = VB.slice(); return; }
+    vb[0] = Math.min(Math.max(vb[0], VB[0] - vb[2] * 0.8),
+                     VB[0] + VB[2] - vb[2] * 0.2);
+    vb[1] = Math.min(Math.max(vb[1], VB[1] - vb[3] * 0.8),
+                     VB[1] + VB[3] - vb[3] * 0.2);
+  };
   const toSvg = ev => {
     const r = svg.getBoundingClientRect();
     return [vb[0] + (ev.clientX - r.left) / r.width * vb[2],
             vb[1] + (ev.clientY - r.top) / r.height * vb[3]];
   };
-  // mouse-wheel zoom centered on the cursor
+  // Ctrl/Cmd + wheel zooms about the cursor; plain scroll keeps scrolling
+  // the page (trackpad pinch arrives as wheel with ctrlKey=true)
   svg.addEventListener('wheel', ev => {
+    if (!ev.ctrlKey && !ev.metaKey) return;
     ev.preventDefault();
     const [sx, sy] = toSvg(ev);
     let f = ev.deltaY > 0 ? 1.25 : 0.8;
     f = Math.min(Math.max(vb[2] * f, VB[2] / 40), VB[2]) / vb[2];
     vb = [sx - (sx - vb[0]) * f, sy - (sy - vb[1]) * f,
           vb[2] * f, vb[3] * f];
+    clamp();
     apply();
   }, {passive: false});
   // click-drag pan
@@ -109,12 +125,16 @@ _JS = """
     vb[0] -= (ev.clientX - down[0]) * vb[2] / r.width;
     vb[1] -= (ev.clientY - down[1]) * vb[3] / r.height;
     down = [ev.clientX, ev.clientY];
+    clamp();
     apply();
     if (dist >= 5) tip.style.display = 'none';
   });
   window.addEventListener('mouseup', () => { down = null; });
-  // double-click resets to the full extent
+  // double-click resets to the full extent (and cancels the pending
+  // single-click drill-down so it never yanks the user to a state page)
+  let clickTimer = null;
   svg.addEventListener('dblclick', ev => {
+    clearTimeout(clickTimer);
     ev.preventDefault();
     vb = VB.slice();
     apply();
@@ -127,17 +147,23 @@ _JS = """
     tip.innerHTML = t.dataset.hover;
     tip.style.display = 'block';
     const r = wrap.getBoundingClientRect();
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
     let x = ev.clientX - r.left + 14, y = ev.clientY - r.top + 14;
-    if (x + 250 > r.width) x -= 270;
+    if (x + tw > r.width) x = Math.max(4, ev.clientX - r.left - tw - 14);
+    if (y + th > r.height) y = Math.max(4, ev.clientY - r.top - th - 14);
     tip.style.left = x + 'px'; tip.style.top = y + 'px';
   });
   svg.addEventListener('mouseleave', () => tip.style.display = 'none');
   // click drill-down, suppressed after a real drag (pointer moved >= 5px)
+  // and delayed 250ms so a double-click resets instead of drilling down
   svg.addEventListener('click', ev => {
     if (dist >= 5) return;
     const t = ev.target.closest ? ev.target.closest('[data-abbr]') : null;
     const a = t && t.dataset.abbr;
-    if (a && window.showState) window.showState('st-' + a);
+    if (a && window.showState) {
+      clearTimeout(clickTimer);
+      clickTimer = setTimeout(() => window.showState('st-' + a), 250);
+    }
   });
 })();
 </script>"""
@@ -151,6 +177,7 @@ def _shell(dom_id: str, inner: str, ink: str, paper: str, interactive=True) -> s
      style="width:100%;height:auto;display:block;touch-action:none">
 <style>
  #{dom_id} .st{{cursor:pointer;transition:fill-opacity .12s}}
+ #{dom_id} .st.noclick{{cursor:default}}
  #{dom_id} .st:hover{{stroke:{ink};stroke-width:1.6}}
  #{dom_id} .nat{{cursor:pointer}}
  #{dom_id} .nat:hover path{{stroke:{ink};stroke-width:1.2}}
@@ -165,13 +192,16 @@ def _shell(dom_id: str, inner: str, ink: str, paper: str, interactive=True) -> s
 
 
 def svg_map(cards_by_fips: dict, ink="#e9ecf2", paper="#0a1626",
-            dom_id: str = "usmap", interactive=True) -> str:
+            dom_id: str = "usmap", interactive=True, clickable=None) -> str:
     """cards_by_fips: fips -> {probs, name, abbr, hover_html} ({} = no data).
 
     Emits the full SVG + tooltip div + interaction script (hover card, click
     drill-down, wheel-zoom / drag-pan / dblclick-reset). Each state path
     carries data-attributes; JS is dependency-free. `dom_id` must be unique
-    per page when several maps are embedded together.
+    per page when several maps are embedded together. `clickable` (a set of
+    abbrs) limits drill-down to states that have somewhere to go: the rest
+    keep their hover card but lose the pointer cursor, the data-abbr hook,
+    and the 'click for details' hint. None = every state is clickable.
     """
     paths = []
     for fips, (topo_name, d) in state_paths().items():
@@ -180,17 +210,22 @@ def svg_map(cards_by_fips: dict, ink="#e9ecf2", paper="#0a1626",
         if probs:
             modal = max(probs, key=probs.get)
             fill = CAT_COLOR[modal]
-            op = 0.35 + 0.65 * probs[modal]
+            op = 0.55 + 0.45 * probs[modal]
         else:
             fill, op = NO_DATA, 1.0
         hover = card.get("hover_html") or (
             f"<b>{card.get('name', topo_name)}</b><br>no reported data "
             f"(reporting gap)")
         abbr = card.get("abbr", "")
+        can_click = bool(abbr) and (clickable is None or abbr in clickable)
+        if can_click:
+            hover += "<br>click for details"
+        cls = "st" if can_click else "st noclick"
+        click_attr = f'data-abbr="{abbr}" ' if can_click else ""
         paths.append(
             f'<path d="{d}" fill="{fill}" fill-opacity="{op:.2f}" '
-            f'stroke="{paper}" stroke-width="1" class="st" '
-            f'data-abbr="{abbr}" data-hover="{_esc(hover)}"/>')
+            f'stroke="{paper}" stroke-width="1" class="{cls}" '
+            f'{click_attr}data-hover="{_esc(hover)}"/>')
     return _shell(dom_id, "".join(paths), ink, paper, interactive)
 
 
@@ -209,7 +244,7 @@ def national_svg(us_card: dict, ink="#e9ecf2", paper="#0a1626",
     if probs:
         modal = max(probs, key=probs.get)
         fill = CAT_COLOR[modal]
-        op = 0.35 + 0.65 * probs[modal]
+        op = 0.55 + 0.45 * probs[modal]
     else:
         fill, op = NO_DATA, 1.0
     hover = card.get("hover_html") or (

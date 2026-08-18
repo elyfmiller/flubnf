@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")),
           name="static")
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+templates.env.globals["pop_flash"] = lambda: _status.pop("flash", None)
 
 ENGINES = ("all", "pf", "amcmc")     # "all" = pf + analogue + ensemble
 _status: dict = {"running": None, "log": []}
@@ -195,9 +196,22 @@ def runs_page(request: Request):
 @app.post("/run/stop")
 def run_stop():
     w = _status.get("workroot")
-    if w and _status.get("running"):
+    running = _status.get("running") or ""
+    if w and running.startswith("amcmc"):
+        # the adaptive-MCMC engine runs as one subprocess and ignores STOP
+        # files -- say so instead of letting the button silently no-op
+        _status["phase"] = ("adaptive MCMC cannot be stopped mid-run — "
+                            "it finishes on its own and records its result")
+    elif w and running:
         (Path(w) / "STOP").touch()
         _status["phase"] = "stopping…"
+    elif running == "starting" and not w:
+        # a claim with no worker behind it (engine setup never happened) --
+        # release it so one stray click doesn't wedge the console
+        _status["running"] = None
+        _status["run_label"] = ""
+        _status["expected_total"] = None
+        _status["phase"] = ""
     return RedirectResponse("/forecast#results", status_code=303)
 
 
@@ -205,7 +219,8 @@ def run_stop():
 def data_pull():
     """Explicit hub update -- looking never pulls; pulling is a button."""
     msg = data_mod.pull_hub()
-    _status["log"].append(f"data pull: {msg[:120]}")
+    vs = data_mod.vintages()
+    _flash(f"{msg[:160]}" + (f" — latest vintage {vs[-1]}" if vs else ""))
     return RedirectResponse("/data", status_code=303)
 
 
@@ -222,6 +237,22 @@ def _phase(msg):
     _status["phase"] = msg
 
 
+def _flash(msg: str) -> None:
+    """Human-voiced notice for the next page the user sees; the log keeps
+    the permanent record."""
+    _status["flash"] = msg
+    _status["log"].append(msg)
+
+
+def _back(request: Request, fallback: str) -> RedirectResponse:
+    """Redirect to the page the form was posted from (validated local path),
+    so a button never yanks the user off the page they were on."""
+    from urllib.parse import urlsplit
+    path = urlsplit(request.headers.get("referer", "")).path
+    ok = path.startswith("/") and not path.startswith("//")
+    return RedirectResponse(path if ok else fallback, status_code=303)
+
+
 def _run_all(spec: RunSpec) -> None:
     """The competition path: engines in ascending cost, then ensemble,
     submissions, and the weekly report. Every step lands in ONE workroot and
@@ -235,13 +266,21 @@ def _run_all(spec: RunSpec) -> None:
                                  write_submission)
 
     ledger = Ledger()
-    run_id = ledger.open_run(spec, Path("pending"), {"engines": "pf,analogue"})
-    workroot = lease_workroot(run_id)
-    _status["running"] = f"all:{run_id}"
-    _status["workroot"] = str(workroot)
-    _status["run_label"] = f"{spec.forecast_date} · {len(spec.locations)} location(s)"
+    run_id = None
     outcome = {}
+    n_states = sum(1 for l in spec.locations
+                   if str(l).upper() not in ("US", "US (NATIONAL)"))
+    _status["run_label"] = (
+        f"{spec.forecast_date} · {n_states} state(s) + US"
+        if n_states < len(spec.locations)
+        else f"{spec.forecast_date} · {len(spec.locations)} location(s)")
     try:
+        # setup INSIDE the try: a failed ledger insert or workroot lease must
+        # release the running claim in the finally, not wedge it until restart
+        run_id = ledger.open_run(spec, Path("pending"), {"engines": "pf,analogue"})
+        workroot = lease_workroot(run_id)
+        _status["running"] = f"all:{run_id}"
+        _status["workroot"] = str(workroot)
         # 1. PF (primary) -- gracefully absent on Tier-A machines (no engine
         # venv): the run proceeds with the analogue and says so, rather than
         # erroring on the first click of a fresh install.
@@ -267,7 +306,7 @@ def _run_all(spec: RunSpec) -> None:
         except Exception:
             pass
         pf_samples = {}
-        if PY_ENGINE.exists() and PYBNF.exists():
+        if spec.engine in ("all", "pf") and PY_ENGINE.exists() and PYBNF.exists():
             _phase("materializing models (BNG network generation)")
             pf_engine.prepare(spec, workroot)
             _phase(f"filtering {len(spec.locations)} location(s) × "
@@ -284,7 +323,9 @@ def _run_all(spec: RunSpec) -> None:
                               recent=[v for _, v in obs.get(loc, [])])
                           for loc, s in pf_samples.items()}
         else:
-            outcome["pf_skipped"] = "engine venv not installed (Tier A)"
+            outcome["pf_skipped"] = ("analogue-only run"
+                                     if spec.engine == "analogue"
+                                     else "engine venv not installed (Tier A)")
             (workroot / "cells.json").write_text("[]")
         _phase("consulting the calendar analogue")
         from app.core.floor import floor_quantiles
@@ -321,13 +362,19 @@ def _run_all(spec: RunSpec) -> None:
                     rows, model_id, "NAU", spec.forecast_date,
                     workroot / "submission"))
         outcome["submissions"] = subs
-        # 5. retrospective scoring (populates once truth exists)
-        truth, name2fips = scoring.load_truth()
-        df = scoring.score_samples(pf_samples, spec.forecast_date,
-                                   name2fips, truth)
-        if not df.empty:
-            outcome["pf_relwis"] = round(float(df.wis.sum() / df.base_wis.sum()), 3)
-        df.to_json(workroot / "scores_pf.json")
+        # 5. retrospective scoring (populates once truth exists). Contained:
+        # a scoring hiccup must never erase the forecast itself -- results.json
+        # and the archive land after this point (same pattern as step 5b).
+        df = pd.DataFrame()
+        try:
+            truth, name2fips = scoring.load_truth()
+            df = scoring.score_samples(pf_samples, spec.forecast_date,
+                                       name2fips, truth)
+            if not df.empty:
+                outcome["pf_relwis"] = round(float(df.wis.sum() / df.base_wis.sum()), 3)
+            df.to_json(workroot / "scores_pf.json")
+        except Exception as e:
+            outcome["score_error"] = str(e)[:200]
         # 5b. weekly report: map + hover cards + WIS card (fans arrive with
         # the per-state drill-down pages; keep the report honest meanwhile)
         try:
@@ -365,11 +412,14 @@ def _run_all(spec: RunSpec) -> None:
             for loc, s in pf_samples.items():
                 fips_l = n2f.get(loc, "")
                 obs_pairs = (obs.get(loc) or [])[-12:]
-                o_t = list(range(len(obs_pairs)))
+                from datetime import date as _dd, timedelta as _tdd
+                o_t = [d for d, _ in obs_pairs]
                 o_v = [v for _, v in obs_pairs]
-                f_t = [len(obs_pairs) - 1 + h for h in (1, 2, 3, 4)]
-                samples_h = {str(len(obs_pairs) - 1 + h): s[str(h)]
-                             for h in (1, 2, 3, 4)}
+                _base = (_dd.fromisoformat(o_t[-1]) if o_t
+                         else _dd.fromisoformat(spec.forecast_date))
+                f_t = [(_base + _tdd(days=7 * h)).isoformat()
+                       for h in (1, 2, 3, 4)]
+                samples_h = {f_t[h - 1]: s[str(h)] for h in (1, 2, 3, 4)}
                 try:
                     fan = fan_figure(o_t, o_v, f_t, samples_h,
                                      title=f"{loc} — weekly admissions")
@@ -389,7 +439,6 @@ def _run_all(spec: RunSpec) -> None:
                         "name": "United States" if fips_l == "US" else loc,
                         "note": note,
                         "fan": fan, "cat": cat_bar(probs_l),
-                        "acc": cat_bar(probs_l),
                         "table_rows": [(d, v) for d, v in obs_pairs[-6:]]}
                 except Exception:
                     continue
@@ -416,8 +465,10 @@ def _run_all(spec: RunSpec) -> None:
                                              "hover_html": hover_us})
             except Exception:
                 nat_html = ""
+            us_d = details.get("US", {})
             build_report(spec.forecast_date, cards, details,
-                         {"fan": None, "acc": None,
+                         {"fan": us_d.get("fan"), "acc": None,
+                          "note": us_d.get("note", ""),
                           "summary_html": wis_html},
                          workroot / "report.html",
                          national_map_html=nat_html)
@@ -439,7 +490,9 @@ def _run_all(spec: RunSpec) -> None:
             return {h: {q: qd[h][float(q)]
                         for q in ("0.1", "0.25", "0.5", "0.75", "0.9")}
                     for h in qd}
-        (workroot / "results.json").write_text(_json.dumps({
+        import os as _os
+        _tmp = workroot / "results.json.tmp"
+        _tmp.write_text(_json.dumps({
             "spec": spec.to_json(), "forecast_date": spec.forecast_date,
             "observed": obs,
             "models": {
@@ -447,6 +500,7 @@ def _run_all(spec: RunSpec) -> None:
                 "analogue": {loc: _qs_from_q(q) for loc, q in an_q.items()},
                 "ensemble": {loc: _qs_from_q(q) for loc, q in members_by_loc.items()},
             }}))
+        _os.replace(_tmp, workroot / "results.json")   # readers never see a half-write
         # 7. forecast archive: one folder per forecast_date, latest run wins
         try:
             outcome["archived"] = _archive_run(workroot, spec.forecast_date)
@@ -460,7 +514,9 @@ def _run_all(spec: RunSpec) -> None:
             + (f", relWIS {outcome['pf_relwis']}" if "pf_relwis" in outcome else ""))
     except Exception as e:
         from app.core.engines.pf import RunStopped
-        if isinstance(e, RunStopped):
+        if run_id is None:
+            _status["log"].append(f"run setup failed: {str(e)[:200]}")
+        elif isinstance(e, RunStopped):
             ledger.close_run(run_id, "stopped", outcome)
             _status["log"].append("run stopped by user")
         else:
@@ -469,6 +525,9 @@ def _run_all(spec: RunSpec) -> None:
     finally:
         _status["running"] = None
         _status["phase"] = ""
+        _status["workroot"] = None
+        _status["run_label"] = ""
+        _status["expected_total"] = None
 
 
 def _archive_run(workroot: Path, forecast_date: str) -> str:
@@ -506,15 +565,25 @@ def api_archive_dates():
 @app.get("/runs/{run_id}", response_class=HTMLResponse)
 def run_page(request: Request, run_id: str):
     import json as _json
-    from app.core.runs import APP_STATE
+    from app.core.runs import APP_STATE, Ledger
     w = APP_STATE / "workroots" / run_id
     res = {}
     if (w / "results.json").is_file():
         res = _json.loads((w / "results.json").read_text())
-    subs = sorted(str(p.relative_to(w)) for p in w.glob("submission/*/*.csv"))
+    subs = [{"model": p.parent.name, "file": p.name, "abs": str(p)}
+            for p in sorted(w.glob("submission/*/*.csv"))]
     report = (w / "report.html").name if (w / "report.html").is_file() else None
+    status, err = "", ""
+    for r in Ledger().rows(200):
+        if r.get("run_id") == run_id:
+            status = r.get("status", "")
+            try:
+                err = _json.loads(r.get("outcome") or "{}").get("error", "")
+            except Exception:
+                err = ""
+            break
     return templates.TemplateResponse(request, "run.html", {
-        "active": "Runs", "run_id": run_id,
+        "active": "Runs", "run_id": run_id, "status": status, "error": err,
         "label": _run_label(run_id), "models": res.get("models", {}),
         "subs": subs, "report": report})
 
@@ -603,7 +672,9 @@ def _outcome_chips(outcome_json: str) -> str:
     except Exception:
         return ""
     bits = []
-    if "pf_cells" in o: bits.append(f"PF {o['pf_cells']} cells")
+    if "pf_cells" in o:
+        n = o["pf_cells"]
+        bits.append(f"PF {n} fit{'s' if n != 1 else ''}")
     if o.get("pf_failures"): bits.append(f"{len(o['pf_failures'])} failures")
     if o.get("pf_skipped"): bits.append("PF skipped (no engine)")
     if o.get("submissions"): bits.append(f"{len(o['submissions'])} submissions")
@@ -616,11 +687,15 @@ def _outcome_chips(outcome_json: str) -> str:
 def _latest_results():
     import json as _json
     from app.core.runs import APP_STATE
-    roots = sorted((APP_STATE / "workroots").glob("*/results.json"))
-    if not roots:
-        return None, None
-    rid = roots[-1].parent.name
-    return rid, _json.loads(roots[-1].read_text())
+    # newest first; a half-written or corrupt results.json falls back to the
+    # next run instead of turning five routes into a 500
+    for f in sorted((APP_STATE / "workroots").glob("*/results.json"),
+                    reverse=True):
+        try:
+            return f.parent.name, _json.loads(f.read_text())
+        except (_json.JSONDecodeError, OSError):
+            continue
+    return None, None
 
 
 def _fan_svg(observed, qs):
@@ -777,20 +852,22 @@ def model_page(request: Request, name: str):
 
 
 @app.post("/model/ensemble/generate")
-def generate_ensemble():
+def generate_ensemble(request: Request):
     """(Re)blend from the latest run's stored member outputs — no engine rerun."""
     import json as _json
+    import os as _os
     from app.core import ensemble as ens
     from app.core.runs import APP_STATE
+    from app.core.submit import rows_from_quantiles, write_submission
     rid, res = _latest_results()
     if not res:
-        _status["log"].append("ensemble: no run to blend")
-        return RedirectResponse("/model/ensemble", status_code=303)
+        _flash("nothing to blend yet — run the models first")
+        return _back(request, "/model/ensemble")
     import pandas as pd
     locs = pd.read_csv(__import__("flubnf.settings",
                                   fromlist=["LOCATIONS"]).LOCATIONS, dtype=str)
     n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
-    blended = {}
+    blended, sub_rows = {}, []
     for loc in set(res["models"].get("pf", {})) | set(res["models"].get("analogue", {})):
         members = {}
         for m in ("pf", "analogue"):
@@ -803,13 +880,43 @@ def generate_ensemble():
             blended[loc] = {h: {q: b[h][float(q)]
                                 for q in ("0.1", "0.25", "0.5", "0.75", "0.9")}
                             for h in b}
+            if n2f.get(loc):
+                sub_rows += rows_from_quantiles(b, n2f[loc], res["forecast_date"])
     res["models"]["ensemble"] = blended
-    (APP_STATE / "workroots" / rid / "results.json").write_text(_json.dumps(res))
-    _status["log"].append(f"ensemble re-blended for {len(blended)} location(s)")
-    return RedirectResponse("/model/ensemble", status_code=303)
+    rp = APP_STATE / "workroots" / rid / "results.json"
+    _tmp = rp.parent / "results.json.tmp"
+    _tmp.write_text(_json.dumps(res))
+    _os.replace(_tmp, rp)             # readers never see a half-write
+    note = f"ensemble re-blended for {len(blended)} location(s)"
+    # the Output checklist points at this CSV -- write it, and be honest that
+    # a re-blend from stored results carries the 5 display quantiles, not the
+    # hub's full 23 (only a full run has the member samples for all 23)
+    if sub_rows:
+        try:
+            write_submission(sub_rows, "Ensemble", "NAU", res["forecast_date"],
+                             APP_STATE / "workroots" / rid / "submission")
+            note += (" · submission CSV written from the 5 stored "
+                     "quantiles — a full run writes all 23 hub quantiles")
+        except Exception as e:
+            note += f" · submission CSV skipped: {str(e)[:120]}"
+    _flash(note)
+    return _back(request, "/model/ensemble")
 
 
 RETRO_ROOT = Path(__file__).resolve().parents[1] / "state" / "retro"
+RETRO_SEAL = Path(__file__).resolve().parents[1] / "state" / "retro_seal"
+
+
+def _season_root(season: str) -> tuple:
+    """(root, is_seal): a season may live under the app's retro root or the
+    full-grid seal root; show whichever has more completed weeks so flagship
+    validation runs are never invisible in the app."""
+    def _done(r):
+        return len(list((r / "weeks").glob("*/samples.json"))) if r.exists() else 0
+    app_root, seal_root = RETRO_ROOT / season, RETRO_SEAL / season
+    if _done(seal_root) > _done(app_root):
+        return seal_root, True
+    return app_root, False
 _retro_status: dict = {}
 
 
@@ -819,9 +926,10 @@ def retro_index(request: Request):
     seasons = []
     for s in SEASON_BOUNDS:
         total = len(season_vintages(s))
-        root = RETRO_ROOT / s
+        root, is_seal = _season_root(s)
         done = len(list((root / "weeks").glob("*/samples.json"))) if root.exists() else 0
         seasons.append({"name": s, "total": total, "done": done,
+                        "seal": is_seal,
                         "running": _retro_status.get(s) == "running",
                         "scored": (root / "scores.json").exists()})
     from flubnf.settings import PY_ENGINE, PYBNF
@@ -849,6 +957,9 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
               locations: str = Form("panel6"), width: int = Form(4)):
     import pandas as pd
     from flubnf.settings import LOCATIONS
+    if _retro_status.get(season) == "running":
+        _flash(f"{season} is already replaying — one season worker at a time")
+        return RedirectResponse("/retro", status_code=303)
     if locations == "all":
         locs = pd.read_csv(LOCATIONS, dtype=str)
         names = list(locs.location_name[(locs.location.str.len() == 2)
@@ -856,6 +967,9 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
     else:
         names = ["Alaska", "New York", "Wyoming", "Pennsylvania",
                  "Vermont", "California"]
+    # claim inside the request, not the background task, so a double submit
+    # can't race two season workers over the same tree
+    _retro_status[season] = "running"
     background.add_task(_retro_bg, season, names, width)
     return RedirectResponse("/retro", status_code=303)
 
@@ -866,32 +980,42 @@ def retro_results(request: Request, season: str, week: str = ""):
     import numpy as np
     import pandas as pd
     from app.core import retro
-    root = RETRO_ROOT / season
+    root, _is_seal = _season_root(season)
     weeks = sorted(p.parent.name for p in (root / "weeks").glob("*/samples.json"))
     if not weeks:
-        return HTMLResponse("<p style='color:#e9ecf2;background:#0a1626;"
-                            "padding:2rem'>no completed weeks yet</p>")
+        # a raw unthemed dead-end helps nobody: back to the season list,
+        # which already knows how to show a 0-weeks season
+        _flash(f"{season}: no completed weeks yet — start the replay and "
+               "check back in a little while")
+        return RedirectResponse("/retro", status_code=303)
     sf = root / "scores.json"
-    if not sf.exists() or sf.stat().st_mtime < max(
-            (root / "weeks" / w / "samples.json").stat().st_mtime for w in weeks):
-        retro.score_season(root, season).to_json(sf)
-    df = pd.read_json(sf)
-    heads, curve = {}, []
-    for m in ("pf", "analogue", "ensemble"):
-        g = df[df.model == m]
-        if len(g):
-            heads[m] = g.wis.sum() / g.base_wis.sum()
-    for a in sorted(df["asof"].unique()):
-        g = df[(df.model == "ensemble") & (df["asof"] <= a)]
-        if len(g):
-            curve.append((str(a)[:10], g.wis.sum() / g.base_wis.sum()))
-    states = []
-    for loc in sorted(df.location.unique()):
-        row = {"name": loc}
+    try:
+        if not sf.exists() or sf.stat().st_mtime < max(
+                (root / "weeks" / w / "samples.json").stat().st_mtime for w in weeks):
+            retro.score_season(root, season).to_json(sf)
+    except Exception:
+        pass        # rescore hiccup -> fall back to the stale scores below
+    try:
+        df = pd.read_json(sf) if sf.exists() else pd.DataFrame()
+    except Exception:
+        df = pd.DataFrame()
+    heads, curve, states = {}, [], []
+    scoreable = (not df.empty) and ("model" in df.columns)
+    if scoreable:
         for m in ("pf", "analogue", "ensemble"):
-            g = df[(df.model == m) & (df.location == loc)]
-            row[m] = g.wis.sum() / g.base_wis.sum() if len(g) else None
-        states.append(row)
+            g = df[df.model == m]
+            if len(g):
+                heads[m] = g.wis.sum() / g.base_wis.sum()
+        for a in sorted(df["asof"].unique()):
+            g = df[(df.model == "ensemble") & (df["asof"] <= a)]
+            if len(g):
+                curve.append((str(a)[:10], g.wis.sum() / g.base_wis.sum()))
+        for loc in sorted(df.location.unique()):
+            row = {"name": loc}
+            for m in ("pf", "analogue", "ensemble"):
+                g = df[(df.model == m) & (df.location == loc)]
+                row[m] = g.wis.sum() / g.base_wis.sum() if len(g) else None
+            states.append(row)
     wk = week if week in weeks else weeks[-1]
     d = _json.loads((root / "weeks" / wk / "samples.json").read_text())
     from app.core.report import categorical_probs
@@ -917,24 +1041,60 @@ def retro_results(request: Request, season: str, week: str = ""):
     for name, abbr in n2a.items():
         cards.setdefault(n2f.get(name, name), {"name": name, "abbr": abbr,
                                                "fips": n2f.get(name, "")})
+    map_html = svg_map(cards)
+    if not scoreable:
+        map_html = ("<p class='hint'>no scoreable weeks yet — truth for "
+                    "these forecast dates hasn't settled, so relWIS arrives "
+                    "later; the weekly maps below work now.</p>") + map_html
     return templates.TemplateResponse(request, "retro_season.html", {
         "active": "Retrospective", "season": season, "heads": heads, "curve": curve, "states": states,
-        "weeks": weeks, "week": wk, "map_html": svg_map(cards),
-        "n_weeks": len(weeks)})
+        "weeks": weeks, "week": wk, "map_html": map_html,
+        "n_weeks": len(weeks) if scoreable else 0})
 
 
 @app.post("/run")
-def run_models(background: BackgroundTasks,
+def run_models(request: Request,
+               background: BackgroundTasks,
                forecast_date: str = Form(...),
-               locations: list = Form(["Ohio"]),
+               locations: list = Form([]),
                weeks_to_drop: int = Form(0),
                weeks_to_nowcast: int = Form(0),
                replicates: int = Form(3),
                engine: str = Form("all")):
+    # the pipeline's contract is Saturdays with an archived vintage; hold
+    # the user to it kindly instead of failing three phases into the run
+    from datetime import date as _date, timedelta as _td
+    try:
+        _d = _date.fromisoformat(forecast_date)
+        if _d.weekday() != 5:
+            _d -= _td(days=(_d.weekday() - 5) % 7)
+            _flash(f"snapped {forecast_date} to Saturday {_d} — forecasts "
+                   "align to FluSight's weekly cadence")
+            forecast_date = _d.isoformat()
+    except ValueError:
+        pass
+    try:
+        data_mod.vintage_path(forecast_date)
+    except Exception:
+        vs = data_mod.vintages()
+        near = min(vs, key=lambda v: abs(_date.fromisoformat(v) - _date.fromisoformat(forecast_date))) if vs else None
+        _flash(f"no archived data for {forecast_date}"
+               + (f" — nearest available: {near}" if near else
+                  " — pull the FluSight hub on the Data tab first"))
+        return _back(request, "/forecast")
     _last_form.update({"forecast_date": forecast_date, "locations": locations,
                        "engine": engine, "weeks_to_drop": weeks_to_drop,
                        "weeks_to_nowcast": weeks_to_nowcast,
                        "replicates": replicates})
+    # checkboxes arrive as a list, the model pages' text input as one
+    # comma-separated string inside it -- flatten both to clean names
+    locations = [x.strip() for l in locations
+                 for x in str(l).split(",") if x.strip()]
+    if not locations:
+        # nothing checked used to silently run Ohio -- ask instead
+        _flash("pick at least one location (or all 52 jurisdictions) — "
+               "nothing was run")
+        return _back(request, "/forecast")
     if _status.get("running"):
         _status["log"].append("a run is already in progress — not starting another")
         return RedirectResponse("/forecast#results", status_code=303)
@@ -943,8 +1103,6 @@ def run_models(background: BackgroundTasks,
     # laptop field test 2026-08-18)
     _status["running"] = "starting"
     _status["run_label"] = f"{forecast_date} · queued"
-    if isinstance(locations, str):
-        locations = [x.strip() for x in locations.split(",") if x.strip()]
     if "all" in [l.lower() for l in locations]:
         import pandas as _pd
         _l = _pd.read_csv(__import__("flubnf.settings",
@@ -955,38 +1113,64 @@ def run_models(background: BackgroundTasks,
         if len(us):
             locs_list.append(str(us.iloc[0]))   # national, fitted directly
     else:
-        locs_list = [l for l in locations if l.strip()]
+        locs_list = list(locations)
     if not any(str(l).upper() in ("US", "US (NATIONAL)") for l in locs_list):
         locs_list.append("US")   # national fitted directly, always
+    # the label owns the arithmetic: N states the user picked, plus the
+    # national fit we always add -- no phantom extra location in the count
+    n_states = sum(1 for l in locs_list
+                   if str(l).upper() not in ("US", "US (NATIONAL)"))
+    _status["run_label"] = f"{forecast_date} · {n_states} state(s) + US · queued"
     # honest progress: the denominator (locations x replicates) is known NOW,
     # from the spec -- shard .prog files only ever grow toward it, so pct can
     # never regress when a late shard registers. Also drop the previous run's
     # workroot so its finished .prog files never flash as this run's progress.
+    # Engines without per-fit shards (amcmc, analogue) get NO denominator:
+    # /api/progress then reports the phase instead of fabricating 0/N.
     _status["workroot"] = None
-    _status["expected_total"] = len(locs_list) * int(replicates)
+    _status["expected_total"] = (len(locs_list) * int(replicates)
+                                 if engine in ("all", "pf") else None)
     spec = RunSpec(engine=engine, forecast_date=forecast_date,
                    locations=locs_list,
                    weeks_to_drop=weeks_to_drop,
                    weeks_to_nowcast=weeks_to_nowcast,
                    replicates=replicates)
-    if engine in ("all", "pf"):
+    if engine in ("all", "pf", "analogue"):
+        # 'analogue' rides the same pipeline with the PF block skipped --
+        # the model page's "Run Calendar analogue only" button posts it
         background.add_task(_run_all, spec)
     elif engine == "amcmc":
         from app.core.engines import amcmc as am_engine
         def _bg():
             ledger = Ledger()
-            rid = ledger.open_run(spec, Path("pending"), {"engine": "amcmc"})
-            _status["running"] = f"amcmc:{rid}"
-            w = lease_workroot(rid)
+            rid = None
             try:
+                rid = ledger.open_run(spec, Path("pending"), {"engine": "amcmc"})
+                _status["running"] = f"amcmc:{rid}"
+                w = lease_workroot(rid)
+                _status["workroot"] = str(w)
+                _status["phase"] = ("adaptive MCMC — this engine does not "
+                                    "report per-fit progress")
                 out = am_engine.execute(spec, w)
                 n_ok = sum(1 for r in out["records"] if r.get("ok"))
                 ledger.close_run(rid, "ok", {"ok_states": n_ok})
             except Exception as e:
-                ledger.close_run(rid, "error", {"error": str(e)[:300]})
+                if rid is not None:
+                    ledger.close_run(rid, "error", {"error": str(e)[:300]})
+                _status["log"].append(f"adaptive MCMC run failed: {str(e)[:200]}")
             finally:
                 _status["running"] = None
+                _status["workroot"] = None
+                _status["phase"] = ""
+                _status["run_label"] = ""
+                _status["expected_total"] = None
         background.add_task(_bg)
     else:
-        _status["log"].append(f"{engine}: engine not wired yet")
+        # an engine we don't know: release the claim instead of wedging the
+        # console until restart, and say so
+        _status["running"] = None
+        _status["run_label"] = ""
+        _status["expected_total"] = None
+        _flash(f"'{engine}' isn't one of the available engines — "
+               "nothing was run")
     return RedirectResponse("/forecast#results", status_code=303)

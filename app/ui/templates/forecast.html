@@ -6,7 +6,8 @@
  <div><div class="card"><h2>Settings</h2>
   <form method="post" action="/run">
    <label>Forecast date</label>
-   <input name="forecast_date" value="{{ form.forecast_date }}">
+   <input type="date" name="forecast_date" value="{{ form.forecast_date }}">
+   <span class="hint">a Saturday — each forecast uses that week's archived data</span>
    <label>Locations <span id="lcount" class="hint"></span></label>
    <div class="checklist">
      <label class="ck"><input type="checkbox" id="ck-all" value="all" name="locations"
@@ -17,12 +18,15 @@
      {% endfor %}
    </div>
    <label>Engine</label>
+   {% set engine_names = {"all": "All models — PF + analogue + ensemble (recommended)",
+                          "pf": "Particle filter only",
+                          "amcmc": "Adaptive MCMC (experimental)"} %}
    <select name="engine">{% for e in engines %}
-     <option {% if e == form.engine %}selected{% endif %}>{{ e }}</option>{% endfor %}</select>
+     <option value="{{ e }}" {% if e == form.engine %}selected{% endif %}>{{ engine_names.get(e, e) }}</option>{% endfor %}</select>
    <label title="trim the newest N weeks before fitting (vintage-edge guard)">Weeks to drop</label>
    <input name="weeks_to_drop" type="number" value="{{ form.weeks_to_drop }}" min="0" max="4">
-   <label title="reserved for the nowcasting method">Weeks to nowcast</label>
-   <input name="weeks_to_nowcast" type="number" value="{{ form.weeks_to_nowcast }}" min="0" max="4">
+   <input type="hidden" name="weeks_to_nowcast" value="0">
+   <p class="hint" style="margin:.6rem 0 0">Nowcasting: coming soon — not yet used.</p>
    <label>Replicates</label>
    <input name="replicates" type="number" value="{{ form.replicates }}" min="1" max="9">
    <button class="gold">Run models</button>
@@ -56,7 +60,8 @@
    <p class="hint" id="prog"></p>
    <canvas id="pfviz" aria-hidden="true"
      style="display:block;width:100%;height:90px;margin:.6rem 0 .1rem"></canvas>
-   <form method="post" action="/run/stop"><button class="quiet">Stop run</button></form>
+   <form method="post" action="/run/stop"
+     onsubmit="this.querySelector('button').disabled=true"><button class="quiet">Stop run</button></form>
    <p class="quip" id="quip"></p>
   </div>
   <script>
@@ -87,6 +92,7 @@
    // genuine upward correction is accepted only after 3 consecutive polls
    // above the displayed value. All state resets when a new run takes over.
    let D={done:0,total:0,eta_s:null,t:Date.now()};
+   let STOPPING=false;
    let PS;
    function resetProg(){PS={label:null,disp:0,ema:null,shown:null,shownT:0,up:0};}
    resetProg();
@@ -95,7 +101,9 @@
        if(!d.running){location.reload(); return;}
        if(PS.label!==null && d.label!==PS.label) resetProg();  // a new run started
        PS.label=d.label;
-       D={...d, t:Date.now()};
+       if(d.label) document.getElementById('runlabel').textContent=d.label;
+       STOPPING=(d.phase||'').startsWith('stopping');
+       D={...d, t: d.done===D.done ? D.t : Date.now()};  // glide anchors to the last done-change
        if(d.eta_s!=null){
          PS.ema = PS.ema==null ? d.eta_s : 0.3*d.eta_s + 0.7*PS.ema;
          const cur = PS.shown==null ? null
@@ -103,13 +111,15 @@
          if(cur==null || PS.ema<=cur){PS.shown=PS.ema; PS.shownT=Date.now(); PS.up=0;}
          else if(++PS.up>=3){PS.shown=PS.ema; PS.shownT=Date.now(); PS.up=0;}
        }
-       if(!d.total) document.getElementById('prog').textContent=d.phase||'starting';
+       if(STOPPING) document.getElementById('prog').textContent='stopping — finishing the current fit…';
+       else if(!d.total) document.getElementById('prog').textContent=d.phase||'starting';
      }catch(e){}
      setTimeout(poll,2000);
    }
    // smooth: advance within the current fit using the measured per-fit rate,
    // so 2-fit runs glide instead of jumping 0 -> 50 -> 100
    setInterval(()=>{
+     if(STOPPING) return;               // bar frozen; poll() owns the message
      if(!D.total) return;
      const per=D.eta_s!=null && D.total>D.done ? D.eta_s/(D.total-D.done) : 20;
      const frac=Math.min(0.95,(Date.now()-D.t)/1000/Math.max(per,1));
@@ -240,13 +250,13 @@
  const SERIES = {{ series_json | safe }};
  const FANQ = {{ fanq_json | safe }};   // {model: {loc: {h: {q: v}}}}
  const FCDATE = {{ fc_date | tojson }};
- const isDark = () => document.documentElement.getAttribute('data-theme')==='dark';
+ const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
  function lay(title, h){ return {title:{text:title,font:{size:14}},
    height:h||340, margin:{l:50,r:20,t:34,b:40},
    paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)',
-   font:{color:isDark()?'#e9ecf2':'#1c2430'},
-   xaxis:{gridcolor:isDark()?'#1d3a5f':'#dde5ee'},
-   yaxis:{gridcolor:isDark()?'#1d3a5f':'#dde5ee', rangemode:'tozero'}};}
+   font:{color:css('--ink')},
+   xaxis:{gridcolor:css('--line')},
+   yaxis:{gridcolor:css('--line'), rangemode:'tozero'}};}
  function seasonOf(ds){const d=new Date(ds); const y=d.getMonth()>=7?d.getFullYear():d.getFullYear()-1;
    return y+'-'+String((y+1)%100).padStart(2,'0');}
  function weekOfSeason(ds){const d=new Date(ds); const y=d.getMonth()>=7?d.getFullYear():d.getFullYear()-1;
@@ -262,18 +272,23 @@
    if(!LOCS.length){el.innerHTML='<p class="hint">select locations to see their data</p>';return;}
    DIDX=((DIDX%LOCS.length)+LOCS.length)%LOCS.length;
    const loc=LOCS[DIDX];
+   const NODATA='<p class="hint">no data yet — pull the FluSight hub on the Data tab</p>';
    if(!SERIES[loc]){
      fetch('/api/series?locs='+encodeURIComponent(loc)).then(r=>r.json())
-       .then(d=>{Object.assign(SERIES,d); drawData(CURMODE);});
+       .then(d=>{if(!d[loc]) d[loc]={dates:[],values:[]};  // sentinel: never re-fetch a miss
+         Object.assign(SERIES,d); drawData(CURMODE);})
+       .catch(()=>{el.innerHTML=NODATA;
+         document.getElementById('data-pos').textContent=loc;});
      document.getElementById('data-pos').textContent=loc+' · loading…';
      return;
    }
    const s=SERIES[loc];
    document.getElementById('data-pos').textContent=loc;
+   if(!s.dates.length){el.innerHTML=NODATA; return;}
    const div=document.createElement('div'); el.appendChild(div);
    if(mode==='raw'){
      Plotly.newPlot(div,[{x:s.dates,y:s.values,mode:lm,
-       line:{color:'#b58200',width:2},marker:{size:5},name:loc}],lay(loc,380),PCONF);
+       line:{color:css('--gold'),width:2},marker:{size:5},name:loc}],lay(loc,380),PCONF);
    }else{
      const by={};
      s.dates.forEach((d,i)=>{const k=seasonOf(d);(by[k]=by[k]||{x:[],y:[]});
@@ -281,7 +296,7 @@
      const seasons=Object.keys(by).sort();
      const traces=seasons.map((k,i)=>({x:by[k].x,y:by[k].y,mode:lm,marker:{size:4},name:k,
        line:{width:i===seasons.length-1?3:1.5,
-             color:i===seasons.length-1?'#b58200':undefined}}));
+             color:i===seasons.length-1?css('--gold'):undefined}}));
      const L=lay(loc+' — season over season',380);
      L.xaxis.title={text:'weeks since Aug 1'};
      Plotly.newPlot(div,traces,L,PCONF);
@@ -310,14 +325,17 @@
    try{const r=await fetch('/api/series?locs='+encodeURIComponent(loc));
      Object.assign(SERIES, await r.json());}catch(e){}
  }
+ let fanSeq=0;
  async function drawFan(){
    const card=document.getElementById('fancard'); if(!card) return;
    FLOCS=Object.keys(FANQ[FMODEL]||{});
    if(!FLOCS.length) return;
-   const el=document.getElementById('fanplot'); el.innerHTML='';
+   const tok=++fanSeq;
    FIDX=((FIDX%FLOCS.length)+FLOCS.length)%FLOCS.length;
    const loc=FLOCS[FIDX], qs=FANQ[FMODEL][loc];
    await ensureSeries(loc);
+   if(tok!==fanSeq) return;             // a newer drawFan superseded this one
+   const el=document.getElementById('fanplot'); el.innerHTML='';
    const s=SERIES[loc];
    document.getElementById('fan-pos').textContent=loc+' · '+(FIDX+1)+'/'+FLOCS.length;
    const hs=Object.keys(qs).sort();
@@ -331,11 +349,11 @@
    const hi9=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.9'])];
    const div=document.createElement('div'); el.appendChild(div);
    Plotly.newPlot(div,[
-     {x:obsX,y:obsY,mode:'lines+markers',name:'observed',line:{color:isDark()?'#e9ecf2':'#1c2430'}},
+     {x:obsX,y:obsY,mode:'lines+markers',name:'observed',line:{color:css('--ink')}},
      {x:fx,y:hi9,mode:'lines',line:{width:0},showlegend:false,hoverinfo:'skip'},
      {x:fx,y:lo9,mode:'lines',fill:'tonexty',fillcolor:'rgba(255,199,44,.25)',
       line:{width:0},name:'10–90%'},
-     {x:fx,y:med,mode:'lines+markers',name:'median',line:{color:'#b58200',width:2.5}},
+     {x:fx,y:med,mode:'lines+markers',name:'median',line:{color:css('--gold'),width:2.5}},
    ],lay(loc,400),PCONF);
  }
  if(MODELS.length){
@@ -356,5 +374,6 @@
    document.getElementById('fan-next').onclick=()=>{FIDX++;drawFan();};
    drawFan();
  }
+ addEventListener('themechange',()=>{drawData(CURMODE); drawFan();});
 </script>
 {% endblock %}

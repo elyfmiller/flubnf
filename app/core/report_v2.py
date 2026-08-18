@@ -29,15 +29,17 @@ CATS = ("large_decrease", "decrease", "stable", "increase", "large_increase")
 CAT_COLOR = {"large_decrease": "#2e7d4f", "decrease": "#7fc97f",
              "stable": "#b9b09b", "increase": "#e8a33d",
              "large_increase": "#c0392b"}
-NO_DATA = "#0a0a0a"
+NO_DATA = "var(--map-nodata, #0a0a0a)"   # falls back to black in the fixed-dark report
 CAT_LABEL = {c: c.replace("_", " ") for c in CATS}
 QBANDS = ((0.025, 0.975, "rgba(106,165,216,0.13)", "95% interval"),
           (0.10, 0.90, "rgba(106,165,216,0.20)", "80% interval"),
           (0.25, 0.75, "rgba(106,165,216,0.30)", "50% interval"))
 
 # Shared embed config: wheel zooms both ways, double-click resets, hover
-# modebar offers zoom-out/reset (lasso/box-select/autoscale pruned).
+# modebar offers zoom-out/reset (lasso/box-select/autoscale pruned);
+# responsive so figures track their container when it appears or resizes.
 PLOTLY_CONFIG = {"scrollZoom": True, "doubleClick": "reset+autosize",
+                 "responsive": True,
                  "displayModeBar": "hover", "displaylogo": False,
                  "modeBarButtonsToRemove": ["lasso2d", "select2d",
                                             "autoScale2d"]}
@@ -81,14 +83,20 @@ def fan_figure(observed_times, observed, forecast_times, samples_by_h,
     fig.add_scatter(x=list(forecast_times), y=med, mode="lines+markers",
                     line=dict(color=ACCENT, width=2.2),
                     name="median forecast",
-                    hovertemplate="wk %{x}: %{y:.0f}<extra>forecast</extra>")
+                    hovertemplate="%{x|%b %-d}: %{y:.0f}<extra>forecast</extra>")
     fig.add_scatter(x=list(observed_times), y=list(observed),
                     mode="lines+markers",
                     line=dict(color=INK, width=1.6),
                     marker=dict(size=5), name="observed",
-                    hovertemplate="wk %{x}: %{y:.0f}<extra>observed</extra>")
+                    hovertemplate="%{x|%b %-d}: %{y:.0f}<extra>observed</extra>")
     for g in gaps:
-        fig.add_vrect(x0=g - 0.5, x1=g + 0.5, fillcolor="#3a3a40",
+        if isinstance(g, str):          # ISO week date -> +/- 3.5 days
+            import pandas as _pd
+            t = _pd.Timestamp(g)
+            g0, g1 = t - _pd.Timedelta(days=3.5), t + _pd.Timedelta(days=3.5)
+        else:
+            g0, g1 = g - 0.5, g + 0.5
+        fig.add_vrect(x0=g0, x1=g1, fillcolor="#3a3a40",
                       opacity=0.5, line_width=0,
                       annotation_text="no data", annotation_font_color=MUT,
                       annotation_font_size=10)
@@ -137,17 +145,15 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
     # its geometry from cdn.plot.ly at runtime and rendered empty offline/CSP.
     from app.core.usmap import svg_map
     cards_by_fips = {c["fips"]: c for c in state_cards.values() if "fips" in c}
-    map_html = svg_map(cards_by_fips)
+    # only states that actually have a detail section invite a click
+    map_html = svg_map(cards_by_fips, clickable=set(state_details))
 
     sections = []
-    _first = [True]
-    def _sec_html(fig):
-        h = _html(fig, include_js=_first[0])
-        _first[0] = False
-        return h
     back_btn = ('<button class="backbtn" onclick="backToMap()">'
                 '&larr; back to map</button>')
     for a, d in state_details.items():
+        if a == "US":          # national renders in its own curated section
+            continue
         rows = "".join(f"<tr><td>{r[0]}</td><td>{r[1]:.0f}</td></tr>"
                        for r in d.get("table_rows", []))
         sections.append(f"""
@@ -156,20 +162,30 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
   <h2>{d['name']}</h2>
   {('<p class="offseason">' + d['note'] + '</p>') if d.get('note') else ''}
   <div class="grid2">
-    <div class="card">{_sec_html(d['fan'])}</div>
+    <div class="card">{_html(d['fan'])}</div>
     <div class="card">{_html(d['cat'])}
       <table><tr><th>week</th><th>admissions</th></tr>{rows}</table></div>
   </div>
-  <div class="card">{_html(d['acc'])}</div>
+  {('<div class="card">' + _html(d['acc']) + '</div>') if d.get('acc') else ''}
 </section>""")
 
+    # emit each national chart card only when its figure exists -- two empty
+    # bordered boxes say less than one honest hint line
+    nat_cards = []
+    if national.get("fan"):
+        nat_cards.append(f'<div class="card">{_html(national["fan"])}</div>')
+    if national.get("acc"):
+        nat_cards.append(f'<div class="card">{_html(national["acc"])}</div>')
+    nat_body = "\n  ".join(nat_cards) or (
+        '<p class="hint">National fan and accuracy charts appear once the '
+        'national model run lands.</p>')
     nat = f"""
 <section class="state" id="st-US" hidden>
   {back_btn}
   <h2>United States</h2>
+  {('<p class="offseason">' + national['note'] + '</p>') if national.get('note') else ''}
   {national.get('summary_html', '')}
-  <div class="card">{_html(national['fan']) if national.get('fan') else ''}</div>
-  <div class="card">{_html(national['acc']) if national.get('acc') else ''}</div>
+  {nat_body}
 </section>"""
 
     # view toggle + second (national) map, only when a national map was given
@@ -183,9 +199,19 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
 </div>"""
         nat_map_div = f'<div id="map-national" hidden>{national_map_html}</div>'
 
+    # plotly.js goes in the head, once, iff any figure is embedded: a chart
+    # must never render without its library, and a chartless report should
+    # not carry the payload.
+    if state_details or national.get("fan") or national.get("acc"):
+        from plotly.offline import get_plotlyjs
+        plotly_js = "<script>" + get_plotlyjs() + "</script>"
+    else:
+        plotly_js = ""
+
     html = f"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FluBNF — week of {reference_date}</title>
+{plotly_js}
 <style>
  body{{margin:0;background:{PAPER};color:{INK};font:15px/1.55 system-ui}}
  main{{width:100%;box-sizing:border-box;margin:0 auto;
@@ -215,7 +241,7 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
 </style></head><body><main>
 <h1>US influenza forecast</h1>
 <p class="sub">week of {reference_date} · PF-SIHRS · click a state for detail
- · zoom with the mouse wheel, drag to pan, double-click to reset
+ · Ctrl+scroll to zoom (⌘ on Mac), drag to pan, double-click to reset
  · <button id="natbtn">national detail</button></p>
 {view_toggle}
 <div class="card" id="map-anchor">
@@ -225,6 +251,12 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
   {"".join(f'<span><i class="sw" style="background:{CAT_COLOR[c]}"></i>{CAT_LABEL[c]}</span>' for c in CATS)}
   <span><i class="sw" style="background:{NO_DATA}"></i>no data (reporting gap)</span>
  </div>
+ <div class="legend">
+  <span><i class="sw" style="background:{CAT_COLOR['increase']};opacity:.64"></i>leaning</span>
+  <span><i class="sw" style="background:{CAT_COLOR['increase']};opacity:.82"></i>likely</span>
+  <span><i class="sw" style="background:{CAT_COLOR['increase']};opacity:1"></i>confident</span>
+  <span>deeper shade = more confident</span>
+ </div>
 </div>
 <p class="hint">Hover a state for its full outlook. Black states reported no
 data this week — shown as gaps, never interpolated.</p>
@@ -233,9 +265,13 @@ data this week — shown as gaps, never interpolated.</p>
 <script>
 window.showState = show;
 function show(id) {{
-  document.querySelectorAll('section.state').forEach(s => s.hidden = true);
   const el = document.getElementById(id);
-  if (el) {{ el.hidden = false; el.scrollIntoView({{behavior: 'smooth'}}); }}
+  if (!el) return;
+  document.querySelectorAll('section.state').forEach(s => s.hidden = true);
+  el.hidden = false;
+  if (window.Plotly)
+    el.querySelectorAll('.js-plotly-plot').forEach(g => Plotly.Plots.resize(g));
+  el.scrollIntoView({{behavior: 'smooth'}});
 }}
 window.backToMap = function() {{
   document.querySelectorAll('section.state').forEach(s => s.hidden = true);

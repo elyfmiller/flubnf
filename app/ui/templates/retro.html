@@ -26,7 +26,7 @@ come later, against what the truth settled to.</p>
   <div class="card"><h2>{{ s.name }}</h2>
    <progress value="{{ s.done }}" max="{{ s.total }}"></progress>
    <div class="row" style="justify-content:space-between">
-    <span class="hint">{{ s.done }}/{{ s.total }} weeks
+    <span class="hint">{{ s.done }}/{{ s.total }} weeks{% if s.seal %} · full-grid validation run{% endif %}
      {% if s.running %}<span class="warn">· running</span>{% endif %}</span>
     {% if s.done > 0 %}<a href="/retro/{{ s.name }}"><button class="quiet" type="button" style="margin-top:0">results →</button></a>{% endif %}
    </div>

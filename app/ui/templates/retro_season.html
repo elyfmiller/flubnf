@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% block title %}FluBNF retro {{ season }}{% endblock %}
 {% block content %}
 
-<h1><span class="brand">{{ season }}</span> — {{ n_weeks }} weeks scored</h1>
+<h1><span class="accent">{{ season }}</span> — {{ n_weeks }} weeks scored</h1>
 <div class="grid2">
  {% for m, v in heads.items() %}
  <div class="card"><h2>{{ m }}</h2><div class="big
@@ -12,13 +12,17 @@
 <div class="card"><h2>cumulative ensemble relWIS through the season</h2>
 <svg viewBox="0 0 720 180" style="width:100%">
  {% set xs = 680 / (curve|length if curve|length > 1 else 1) %}
- <line x1="20" y1="90" x2="700" y2="90" stroke="#93a1b5" stroke-dasharray="3"/>
- <text x="702" y="94" fill="#93a1b5" font-size="10">1.0</text>
- <polyline fill="none" stroke="#ffc72c" stroke-width="2.5" points="
-  {% for d, v in curve %}{{ 20 + loop.index0 * xs }},{{ 170 - (v * 80) }} {% endfor %}"/>
+ <line x1="20" y1="90" x2="700" y2="90" stroke="var(--mut)" stroke-dasharray="3"/>
+ <text x="702" y="94" fill="var(--mut)" font-size="10">1.0</text>
+ <polyline fill="none" stroke="var(--gold)" stroke-width="2.5" points="
+  {% for d, v in curve %}{{ 20 + loop.index0 * xs }},{{ [170 - (v * 80), 8] | max }} {% endfor %}"/>
  {% for d, v in curve %}
-  <circle cx="{{ 20 + loop.index0 * xs }}" cy="{{ 170 - (v * 80) }}" r="3"
-          fill="#ffc72c"><title>{{ d }}: {{ "%.3f"|format(v) }}</title></circle>
+  {# off-scale weeks are clamped to the top edge and drawn hollow; the
+     tooltip still carries the exact value #}
+  {% set clipped = 170 - (v * 80) < 8 %}
+  <circle cx="{{ 20 + loop.index0 * xs }}" cy="{{ [170 - (v * 80), 8] | max }}" r="3"
+          fill="{{ 'none' if clipped else 'var(--gold)' }}"
+          {% if clipped %}stroke="var(--gold)" stroke-width="1.5"{% endif %}><title>{{ d }}: {{ "%.3f"|format(v) }}</title></circle>
  {% endfor %}
 </svg></div>
 <div class="card"><h2>weekly playback</h2>

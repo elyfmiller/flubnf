@@ -37,6 +37,7 @@ main{max-width:none;margin:0 auto;padding:1.4rem 2.2vw 4rem}
 .card h2{font-size:.95rem;margin:.1rem 0 .7rem;text-transform:uppercase;
          letter-spacing:.05em;color:var(--mut)}
 h1{font-size:1.35rem;margin:.3rem 0 .9rem}
+h1 .accent{color:var(--gold)}
 .sub{color:var(--mut);margin:.2rem 0 1rem}
 /* ---- controls ---- */
 label{display:block;font-size:.8rem;color:var(--mut);margin:.6rem 0 .25rem}
@@ -59,7 +60,8 @@ table{border-collapse:collapse;width:100%;font-size:.86rem;
 td,th{padding:.5rem .8rem;border-bottom:1px solid var(--line);text-align:left}
 th{color:var(--mut);font-weight:600;font-size:.78rem;text-transform:uppercase;
    letter-spacing:.04em}
-code{background:var(--bg);padding:.12rem .35rem;border-radius:5px;font-size:.85em}
+code{background:var(--bg);padding:.12rem .35rem;border-radius:5px;font-size:.85em;
+     overflow-wrap:anywhere}
 .ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
 .hint{color:var(--mut);font-size:.85rem}
 .big{font-size:1.9rem;font-weight:750;font-variant-numeric:tabular-nums}
@@ -73,7 +75,10 @@ progress{width:100%;height:10px;accent-color:var(--gold-bright)}
 .hero p{color:#cdd9ea;max-width:46rem;margin:0}
 .hero .gold{color:var(--gold-bright)}
 .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1rem}
-@media(max-width:900px){.grid3{grid-template-columns:1fr}}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem}
+@media(max-width:900px){.grid3,.grid2{grid-template-columns:1fr}}
+.row{display:flex;align-items:center;gap:.8rem;flex-wrap:wrap}
+.row button{margin-top:0}
 
 .checklist{max-height:230px;overflow-y:auto;border:1px solid var(--line);
   border-radius:9px;padding:.4rem .6rem;background:var(--bg)}
@@ -109,3 +114,11 @@ details.preview > summary::before{content:"▸ ";color:var(--gold)}
 details.preview[open] > summary::before{content:"▾ "}
 details.preview table{font-size:.76rem;margin-top:.4rem}
 details.preview td,details.preview th{padding:.25rem .5rem;white-space:nowrap}
+
+.banner{background:color-mix(in srgb, var(--gold) 16%, var(--card));
+ border:1px solid color-mix(in srgb, var(--gold) 45%, transparent);
+ color:var(--ink); border-radius:10px; padding:.65rem .9rem;
+ margin:0 0 1rem; font-size:.92rem}
+
+:root{--map-nodata:#c7cedb}
+[data-theme="dark"]{--map-nodata:#0a0a0a}

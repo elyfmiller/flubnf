@@ -1,19 +1,43 @@
 {% extends "base.html" %}{% block title %}FluBNF run{% endblock %}
 {% block content %}
 
+<h1>Run — {{ label or "details" }}
+ {% if status and status not in ("ok", "done") %}
+  <span class="pill {{ 'warn' if status in ('stopped','interrupted') else 'bad' }}">{{ status }}</span>
+ {% elif status %}<span class="pill ok">{{ status }}</span>{% endif %}
+</h1>
 
-<h1>Run — {{ label or run_id }}</h1>
-<p class="hint"><code>{{ run_id }}</code></p>
-{% if report %}<div class="card"><a href="/runs/{{ run_id }}/report">open weekly report</a></div>{% endif %}
+{% if error %}
+<div class="card">
+ <h2>what happened</h2>
+ <p>{{ error }}</p>
+ <p class="hint">Nothing from this run was submitted. Adjust the settings on the
+ <a href="/forecast">Forecast</a> tab and run again — completed weeks are never
+ lost, every run gets a fresh workspace.</p>
+</div>
+{% endif %}
+
+{% if report %}<div class="card"><a href="/runs/{{ run_id }}/report">open the weekly report</a></div>{% endif %}
+
 {% for model, locs in models.items() %}
-<div class="card"><h2>{{ model }} — h1..h4 medians</h2>
-<table><tr><th>location</th><th>h1</th><th>h2</th><th>h3</th><th>h4</th></tr>
+<div class="card"><h2>{{ model }} — median admissions, 1–4 weeks ahead</h2>
+<table><tr><th>location</th><th>1 wk</th><th>2 wk</th><th>3 wk</th><th>4 wk</th></tr>
 {% for loc, m in locs.items() %}
 <tr><td>{{ loc }}</td>{% for h in ["1","2","3","4"] %}
   {% set v = m.get(h) %}
   <td>{{ "%.0f"|format(v["0.5"] if v is mapping else (v or 0)) }}</td>{% endfor %}</tr>
 {% endfor %}</table></div>
+{% else %}
+{% if not error %}
+<div class="card"><p class="hint">No results were stored for this run
+{% if status == 'running' %} yet — it is still going; watch progress on the
+ <a href="/forecast">Forecast</a> tab{% endif %}.</p></div>
+{% endif %}
 {% endfor %}
-<div class="card"><h2>submissions</h2>
-{% for s in subs %}<p><code>{{ s }}</code></p>{% else %}<p>none</p>{% endfor %}</div>
+
+<div class="card"><h2>submission files</h2>
+{% for s in subs %}
+ <p>{{ s.model }} — <a href="/output/download?path={{ s.abs | urlencode }}">{{ s.file }}</a></p>
+{% else %}<p class="hint">none — submissions appear when a full run (models +
+ ensemble) completes.</p>{% endfor %}</div>
 {% endblock %}

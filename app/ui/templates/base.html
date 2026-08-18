@@ -23,19 +23,24 @@
   <span class="spacer"></span>
   <button id="themebtn" title="toggle light/dark">◐</button>
 </header>
-<main>{% block content %}{% endblock %}</main>
+<main>{% set _f = pop_flash() %}{% if _f %}
+ <div class="banner" role="status">{{ _f }}</div>
+{% endif %}{% block content %}{% endblock %}</main>
 <script>
- // preserve scroll across form posts/reloads
- addEventListener('beforeunload',()=>sessionStorage.setItem('scy',scrollY));
+ // preserve scroll across form posts/reloads -- keyed by page so it never
+ // carries to a different tab, and never stomps a deliberate #anchor redirect
+ addEventListener('beforeunload',()=>sessionStorage.setItem('scy:'+location.pathname,scrollY));
  // pin scroll across ANY in-page redraw: record on every click, re-assert next frame
  addEventListener('click',e=>{const y=scrollY;
    requestAnimationFrame(()=>requestAnimationFrame(()=>{
      if(Math.abs(scrollY-y)>50 && !e.target.closest('a')) scrollTo(0,y);}));},true);
- addEventListener('load',()=>{const y=sessionStorage.getItem('scy');
-   if(y) scrollTo(0,parseInt(y));});
+ addEventListener('load',()=>{const k='scy:'+location.pathname,y=sessionStorage.getItem(k);
+   sessionStorage.removeItem(k);
+   if(y && !location.hash) scrollTo(0,parseInt(y));});
  document.getElementById('themebtn').onclick=function(){
   var h=document.documentElement,
       t=h.getAttribute('data-theme')==='dark'?'light':'dark';
-  h.setAttribute('data-theme',t);localStorage.setItem('theme',t);};
+  h.setAttribute('data-theme',t);localStorage.setItem('theme',t);
+  dispatchEvent(new Event('themechange'));};
 </script>
 </body></html>
