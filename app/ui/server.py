@@ -374,8 +374,15 @@ def _run_all(spec: RunSpec) -> None:
                         _np3.asarray(s["1"], float), lo_l,
                         int(n2p.get(loc, 1e6)), 1)
                     key = "US" if fips_l == "US" else n2a.get(loc, loc)
+                    meds = [float(_np3.median(_np3.asarray(s[str(h)], float)))
+                            for h in (1, 2, 3, 4)]
+                    note = ("off-season: the model finds no sustained "
+                            "transmission, so the median is 0; the interval "
+                            "shows the reporting-noise floor."
+                            if max(meds) <= 0 else "")
                     details[key] = {
                         "name": "United States" if fips_l == "US" else loc,
+                        "note": note,
                         "fan": fan, "cat": cat_bar(probs_l),
                         "acc": cat_bar(probs_l),
                         "table_rows": [(d, v) for d, v in obs_pairs[-6:]]}

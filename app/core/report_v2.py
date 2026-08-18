@@ -154,6 +154,7 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
 <section class="state" id="st-{a}" hidden>
   {back_btn}
   <h2>{d['name']}</h2>
+  {('<p class="offseason">' + d['note'] + '</p>') if d.get('note') else ''}
   <div class="grid2">
     <div class="card">{_sec_html(d['fan'])}</div>
     <div class="card">{_html(d['cat'])}
@@ -195,6 +196,7 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
         padding:.8rem;margin:.8rem 0;overflow-x:auto}}
  .grid2{{display:grid;grid-template-columns:1fr 1fr;gap:.8rem}}
  @media(max-width:820px){{.grid2{{grid-template-columns:1fr}}}}
+ .offseason{{color:{MUT};font-size:.85rem;font-style:italic;margin:.2rem 0 .8rem}}
  .legend{{display:flex;gap:1.1rem;flex-wrap:wrap;color:{MUT};font-size:.82rem;
           margin:.4rem 0 0 .2rem}}
  .legend span{{display:inline-flex;align-items:center;gap:.35rem}}
