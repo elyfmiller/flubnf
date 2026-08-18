@@ -27,7 +27,9 @@ sys.path.insert(0, {pybnf_path!r})
 from pathlib import Path
 cells = json.load(open({cells_json!r}))
 results = {{}}
-for c in cells:
+import time as _t
+_t0 = _t.time()
+for _i, c in enumerate(cells, 1):
     d = Path(c["dir"])
     shutil.rmtree(d / "out", ignore_errors=True)
     (d / "out" / "Results").mkdir(parents=True)
@@ -41,6 +43,8 @@ for c in cells:
         results[c["key"]] = f"FAIL: {{e}}"[:200]
     finally:
         os.chdir(cwd)
+    json.dump({{"done": _i, "total": len(cells), "t0": _t0,
+               "now": _t.time()}}, open({out_json!r} + ".prog", "w"))
 json.dump(results, open({out_json!r}, "w"))
 '''
 

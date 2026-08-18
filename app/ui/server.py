@@ -73,16 +73,38 @@ def forecast_page(request: Request):
                                 "weeks_to_drop": 0, "weeks_to_nowcast": 0,
                                 "replicates": 3}
     rid, res = _latest_results()
-    fans, observed = {}, {}
+    # data panel: full series for the CURRENTLY SELECTED locations, straight
+    # from the latest vintage -- visible before any run (deciding what to
+    # drop requires seeing the data)
+    import json as _json
+    sel = [l for l in form["locations"] if l != "all"] or ["Ohio"]
+    series = {}
+    try:
+        vs = data_mod.vintages()
+        tdf = pd.read_csv(data_mod.vintage_path(vs[-1]), dtype={"location": str})
+        tdf["location"] = tdf["location"].str.zfill(2)
+        n2f_ = dict(zip(_l.location_name, _l.location.str.zfill(2)))
+        for loc in sel[:8]:
+            g = tdf[tdf.location == n2f_.get(loc, "")].sort_values("date")
+            g = g[pd.to_numeric(g.value, errors="coerce").notna()]
+            series[loc] = {"dates": [str(d)[:10] for d in g.date],
+                           "values": [float(v) for v in g.value]}
+    except Exception:
+        pass
+    fanq = {}
     if res:
-        observed = res.get("observed", {})
-        ens_m = res["models"].get("ensemble") or res["models"].get("pf") or {}
-        for loc, qs in ens_m.items():
-            fans[loc] = _fan_svg(observed.get(loc, []), qs)
+        m = res["models"].get("ensemble") or res["models"].get("pf") or {}
+        fanq = {loc: qs for loc, qs in m.items()
+                if all(isinstance(v, dict) for v in qs.values())}
+    ledger_rows = Ledger().rows(5)
+    for r in ledger_rows:
+        r["label"] = _run_label(r["run_id"], r.get("spec", ""))
+        r["chips"] = _outcome_chips(r.get("outcome", ""))
     return templates.TemplateResponse(request, "forecast.html", {
         "active": "Forecast", "engines": ENGINES, "status": _status,
-        "ledger": Ledger().rows(5), "all_locs": all_locs, "form": form,
-        "fans": fans, "observed": observed})
+        "ledger": ledger_rows, "all_locs": all_locs, "form": form,
+        "series_json": _json.dumps(series), "fanq_json": _json.dumps(fanq),
+        "fc_date": (res or {}).get("forecast_date", "")})
 
 
 @app.get("/data", response_class=HTMLResponse)
@@ -95,8 +117,12 @@ def data_page(request: Request):
 
 @app.get("/runs", response_class=HTMLResponse)
 def runs_page(request: Request):
+    rows = Ledger().rows(50)
+    for r in rows:
+        r["label"] = _run_label(r["run_id"], r.get("spec", ""))
+        r["chips"] = _outcome_chips(r.get("outcome", ""))
     return templates.TemplateResponse(request, "runs.html", {
-        "active": "Runs", "ledger": Ledger().rows(50)})
+        "active": "Runs", "ledger": rows})
 
 
 @app.post("/data/pull")
@@ -136,6 +162,8 @@ def _run_all(spec: RunSpec) -> None:
     run_id = ledger.open_run(spec, Path("pending"), {"engines": "pf,analogue"})
     workroot = lease_workroot(run_id)
     _status["running"] = f"all:{run_id}"
+    _status["workroot"] = str(workroot)
+    _status["run_label"] = f"{spec.forecast_date} · {len(spec.locations)} location(s)"
     outcome = {}
     try:
         # 1. PF (primary) -- gracefully absent on Tier-A machines (no engine
@@ -307,6 +335,60 @@ def run_report(run_id: str):
     f = APP_STATE / "workroots" / run_id / "report.html"
     return HTMLResponse(f.read_text() if f.is_file()
                         else "<p>no report for this run</p>")
+
+
+@app.get("/api/progress")
+def api_progress():
+    import glob
+    import json as _json
+    import time as _time
+    w = _status.get("workroot")
+    out = {"running": bool(_status.get("running")),
+           "phase": _status.get("phase", ""),
+           "label": _status.get("run_label", "")}
+    if w:
+        done = total = 0
+        t0 = None
+        for f in glob.glob(w + "/status_*.json.prog") + glob.glob(w + "/pf_status.json.prog"):
+            try:
+                d = _json.loads(open(f).read())
+                done += d["done"]; total += d["total"]
+                t0 = min(t0 or d["t0"], d["t0"])
+            except Exception:
+                pass
+        out["done"], out["total"] = done, total
+        if done and total and t0:
+            rate = (_time.time() - t0) / done
+            out["eta_s"] = int(rate * (total - done))
+    return out
+
+
+def _run_label(run_id: str, spec_json: str = "") -> str:
+    """Humans read dates, not hashes: '2026-07-04 · Aug 18 09:31'."""
+    import json as _json
+    when = f"{run_id[4:6]}-{run_id[6:8]} {run_id[9:11]}:{run_id[11:13]}"
+    try:
+        s = _json.loads(spec_json)
+        return f"{s.get('forecast_date','run')} · {when}"
+    except Exception:
+        return when
+
+
+def _outcome_chips(outcome_json: str) -> str:
+    import json as _json
+    try:
+        o = _json.loads(outcome_json) if isinstance(outcome_json, str) else outcome_json
+    except Exception:
+        return ""
+    bits = []
+    if "pf_cells" in o: bits.append(f"PF {o['pf_cells']} cells")
+    if o.get("pf_failures"): bits.append(f"{len(o['pf_failures'])} failures")
+    if o.get("pf_skipped"): bits.append("PF skipped (no engine)")
+    if o.get("submissions"): bits.append(f"{len(o['submissions'])} submissions")
+    if o.get("report"): bits.append("report ✓")
+    if o.get("pf_relwis"): bits.append(f"relWIS {o['pf_relwis']}")
+    if o.get("error"): bits.append("error: " + str(o["error"])[:80])
+    return " · ".join(bits)
 
 
 def _latest_results():

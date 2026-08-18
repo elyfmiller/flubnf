@@ -29,7 +29,7 @@ header.nav .spacer{flex:1}
 #themebtn{background:transparent;border:1px solid rgba(255,255,255,.35);
   color:var(--nav-ink);border-radius:8px;padding:.3rem .6rem;cursor:pointer}
 /* ---- layout ---- */
-main{max-width:1180px;margin:0 auto;padding:1.4rem 1rem 4rem}
+main{max-width:1320px;margin:0 auto;padding:1.4rem 1rem 4rem}
 .cols{display:grid;grid-template-columns:1fr 2fr;gap:1rem;align-items:start}
 @media(max-width:900px){.cols{grid-template-columns:1fr}}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
@@ -56,7 +56,7 @@ a:hover{text-decoration:underline}
 /* ---- data ---- */
 table{border-collapse:collapse;width:100%;font-size:.86rem;
       font-variant-numeric:tabular-nums}
-td,th{padding:.4rem .6rem;border-bottom:1px solid var(--line);text-align:left}
+td,th{padding:.5rem .8rem;border-bottom:1px solid var(--line);text-align:left}
 th{color:var(--mut);font-weight:600;font-size:.78rem;text-transform:uppercase;
    letter-spacing:.04em}
 code{background:var(--bg);padding:.12rem .35rem;border-radius:5px;font-size:.85em}
@@ -72,7 +72,7 @@ progress{width:100%;height:10px;accent-color:var(--gold-bright)}
 .hero h1{color:#fff;font-size:1.7rem;margin:0 0 .5rem}
 .hero p{color:#cdd9ea;max-width:46rem;margin:0}
 .hero .gold{color:var(--gold-bright)}
-.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1rem}
 @media(max-width:900px){.grid3{grid-template-columns:1fr}}
 
 .checklist{max-height:230px;overflow-y:auto;border:1px solid var(--line);
@@ -86,3 +86,8 @@ progress{width:100%;height:10px;accent-color:var(--gold-bright)}
   animation:scan 1.6s ease-in-out infinite alternate}
 @keyframes scan{from{margin-left:-5%}to{margin-left:67%}}
 @media (prefers-reduced-motion: reduce){.runbar div{animation:none;width:100%}}
+
+details.card > summary{cursor:pointer;list-style:none}
+details.card > summary::-webkit-details-marker{display:none}
+details.card > summary::before{content:"▸ ";color:var(--gold)}
+details.card[open] > summary::before{content:"▾ "}
