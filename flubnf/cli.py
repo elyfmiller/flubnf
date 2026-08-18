@@ -1405,8 +1405,13 @@ if __name__ == "__main__":
 
 @app.command("app")
 def app_serve(port: int = 8710):
-    """Launch the operations console. Opens your browser once the server
-    answers (or a native window with --window, if pywebview is installed)."""
+    """Launch the operations console. Prefers a native desktop window
+    (pywebview) and falls back to the browser without it."""
+    try:
+        import webview  # noqa: F401
+        return app_window(port=port)
+    except ImportError:
+        pass
     import socket
     import threading
     import time
