@@ -34,8 +34,19 @@ HUB = _path("FLUBNF_HUB", "~/Documents/GitHub/FluSight-forecast-hub")
 ARCHIVE = HUB / "auxiliary-data/target-data-archive"
 LOCATIONS = HUB / "auxiliary-data/locations.csv"
 
+def _bng_candidates():
+    """BNG2.pl from `pip install bionetgen`, wherever this app's venv lives --
+    the resolution a fresh lab machine actually needs."""
+    here = Path(__file__).resolve().parents[1]
+    for venv in (here / ".venv",):
+        for plat in ("bng-mac", "bng-linux"):
+            yield str(venv / "lib" / f"python3.{__import__('sys').version_info[1]}"
+                      / "site-packages" / "bionetgen" / plat / "BNG2.pl")
+
+
 BNG = _path(
     "FLUBNF_BNG",
+    *_bng_candidates(),
     "/opt/anaconda3/lib/python3.12/site-packages/bionetgen/bng-mac/BNG2.pl",
     "/opt/anaconda3/lib/python3.12/site-packages/bionetgen/bng-linux/BNG2.pl",
     shutil.which("BNG2.pl") or "BNG2.pl",
