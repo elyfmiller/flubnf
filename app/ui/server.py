@@ -321,7 +321,8 @@ def _latest_results():
 
 def _fan_svg(observed, qs):
     """Tiny inline SVG: observed tail + forecast fan (10-90, 25-75, median)."""
-    if not qs:
+    # tolerate the pre-quantile results schema (medians-only floats)
+    if not qs or not all(isinstance(v, dict) and "0.9" in v for v in qs.values()):
         return ""
     obs_v = [v for _, v in observed][-10:] if observed else []
     hs = sorted(qs, key=int)
