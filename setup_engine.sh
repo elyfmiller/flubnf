@@ -11,23 +11,34 @@ BNGSIM_REMOTE="${FLUBNF_BNGSIM_REMOTE:-https://github.com/elyfmiller/bngsim}"
 ENGINE_VENV="${FLUBNF_ENGINE_VENV:-$HOME/.venvs/flubnf-engine}"
 PY=$(command -v python3.12 || command -v python3.11 || command -v python3)
 
-say "fork access"
-if git ls-remote "$PYBNF_REMOTE" HEAD >/dev/null 2>&1; then
-  ok "can reach $PYBNF_REMOTE"
-else
-  warn "cannot authenticate to $PYBNF_REMOTE"
-  warn "1) ask Ely for a collaborator invite to PyBNF-Private"
-  warn "2) add an SSH key: ssh-keygen -t ed25519; then paste ~/.ssh/id_ed25519.pub"
-  warn "   at github.com -> Settings -> SSH and GPG keys -> New SSH key"
-  warn "3) re-run this script"
-  exit 1
-fi
-
 say "PyBNF fork (feature/particle-filter)"
 if [ -d "$PYBNF/.git" ]; then
+  # An existing checkout needs NO remote auth -- use what is on disk.
   ok "checkout present: $PYBNF"
+  BR=$(git -C "$PYBNF" branch --show-current)
+  if [ "$BR" != "feature/particle-filter" ]; then
+    if git -C "$PYBNF" rev-parse --verify feature/particle-filter >/dev/null 2>&1        || git -C "$PYBNF" rev-parse --verify origin/feature/particle-filter >/dev/null 2>&1; then
+      git -C "$PYBNF" checkout -q feature/particle-filter         && ok "switched to feature/particle-filter (was $BR)"         || { warn "could not switch branch (uncommitted changes?) -- on '$BR'"; exit 1; }
+    else
+      warn "branch feature/particle-filter not found in $PYBNF"
+      warn "re-clone with: git clone -b feature/particle-filter $PYBNF_REMOTE $PYBNF"
+      exit 1
+    fi
+  else
+    ok "on feature/particle-filter"
+  fi
 else
-  git clone -b feature/particle-filter "$PYBNF_REMOTE" "$PYBNF" && ok "cloned"
+  say "fork access (needed to clone)"
+  if git ls-remote "$PYBNF_REMOTE" HEAD >/dev/null 2>&1; then
+    git clone -b feature/particle-filter "$PYBNF_REMOTE" "$PYBNF" && ok "cloned"
+  else
+    warn "cannot authenticate to $PYBNF_REMOTE and no local checkout exists"
+    warn "1) ask Ely for a collaborator invite to PyBNF-Private"
+    warn "2) add an SSH key: ssh-keygen -t ed25519; then paste ~/.ssh/id_ed25519.pub"
+    warn "   at github.com -> Settings -> SSH and GPG keys -> New SSH key"
+    warn "3) re-run this script  (or clone by any means and re-run)"
+    exit 1
+  fi
 fi
 
 say "engine venv"
