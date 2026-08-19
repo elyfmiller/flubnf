@@ -115,8 +115,11 @@ Molecules Ra    Ra()
 Molecules Sb    Sb()
 Molecules Ib    Ib()
 Molecules Rb    Rb()
-Molecules H_CumA HadmA()   # per-strain cumulative admissions; '_Cum' -> weekly
-Molecules H_CumB HadmB()
+# ONE '_Cum' observable only: the engine's integrated mode globs the first
+# '_Cum' column, so the combined accumulator must be the only one. BNGL
+# observables sum multiple patterns natively. Per-strain admissions are
+# recoverable as rho*gamma*Ia / rho*gamma*Ib if ever needed.
+Molecules H_Cum HadmA() HadmB()
 Molecules t     counter()
 end observables
 
