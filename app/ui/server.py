@@ -1,4 +1,4 @@
-"""FastAPI operations console — landing, freshness, settings, run, tabs.
+"""FastAPI operations console -- landing, freshness, settings, run, tabs.
 
 Server-rendered (locked decision: FastAPI + templates, no build chain).
 Run:  .venv/bin/uvicorn app.ui.server:app --port 8710
@@ -30,8 +30,55 @@ _status: dict = {"running": None, "log": []}
 _last_form: dict = {}
 
 
+def _component_versions() -> dict:
+    """Installed versions of the components named in user-facing copy,
+    resolved once per process at import. Console packages come from this
+    interpreter (importlib.metadata); pybnf and bngsim from the engine venv's
+    interpreter; BioNetGen from the VERSION file beside BNG2.pl. Anything
+    unresolvable reports 'not installed' instead of raising."""
+    from importlib.metadata import PackageNotFoundError, version
+    out = {}
+    for pkg in ("fastapi", "jinja2", "plotly", "pandas", "numpy"):
+        try:
+            out[pkg] = version(pkg)
+        except PackageNotFoundError:
+            out[pkg] = "not installed"
+    out["bionetgen"] = "not installed"
+    try:
+        from flubnf.settings import BNG
+        vf = Path(BNG).parent / "VERSION"
+        if vf.is_file():
+            out["bionetgen"] = vf.read_text().strip()
+        elif Path(BNG).exists():
+            out["bionetgen"] = "installed"
+    except Exception:
+        pass
+    out["pybnf"] = out["bngsim"] = "not installed"
+    try:
+        import json as _json
+        import subprocess
+        from flubnf.settings import PY_ENGINE
+        if Path(PY_ENGINE).exists():
+            code = ("import json\n"
+                    "from importlib.metadata import version\n"
+                    "d = {}\n"
+                    "for p in ('pybnf', 'bngsim'):\n"
+                    "    try: d[p] = version(p)\n"
+                    "    except Exception: d[p] = 'not installed'\n"
+                    "print(json.dumps(d))")
+            r = subprocess.run([str(PY_ENGINE), "-c", code],
+                               capture_output=True, text=True, timeout=15)
+            out.update(_json.loads(r.stdout.strip() or "{}"))
+    except Exception:
+        pass
+    return out
+
+
+VERSIONS = _component_versions()
+
+
 def _default_forecast_date() -> str:
-    """Latest Saturday, clamped to the latest ARCHIVED vintage — during the
+    """Latest Saturday, clamped to the latest ARCHIVED vintage -- during the
     off-season the hub stops publishing, and a default that points at a
     nonexistent vintage greets the user with an error (laptop field test,
     2026-08-18)."""
@@ -54,8 +101,8 @@ def favicon():
 
 def _outlook_cards(res: dict | None) -> dict:
     """fips -> hover card for svg_map, colored by the latest run's categorical
-    outlook (ensemble if present, else pf). States without results — and the
-    no-results-at-all case — get empty cards, so the caller always renders the
+    outlook (ensemble if present, else pf). States without results -- and the
+    no-results-at-all case -- get empty cards, so the caller always renders the
     full silhouette."""
     import pandas as pd
     from app.core.report import categorical_probs
@@ -116,7 +163,16 @@ def home(request: Request):
         pass
     return templates.TemplateResponse(request, "home.html", {
         "active": "Home", "map_svg": map_svg, "outlook_date": outlook_date,
+        "versions": VERSIONS,
         "missing": __import__("flubnf.settings", fromlist=["check"]).check(verbose=False)})
+
+
+@app.get("/methods", response_class=HTMLResponse)
+def methods_page(request: Request):
+    """Methodology reference: the SIHRS model, the fitting machinery, the
+    ensemble, and the data and verification policies."""
+    return templates.TemplateResponse(request, "methods.html", {
+        "active": "Methods", "versions": VERSIONS})
 
 
 @app.get("/forecast", response_class=HTMLResponse)
@@ -204,8 +260,8 @@ def run_stop():
     if w and running.startswith("amcmc"):
         # the adaptive-MCMC engine runs as one subprocess and ignores STOP
         # files -- say so instead of letting the button silently no-op
-        _status["phase"] = ("adaptive MCMC cannot be stopped mid-run — "
-                            "it finishes on its own and records its result")
+        _status["phase"] = ("Adaptive MCMC cannot be stopped mid-run. "
+                            "It finishes on its own and records its result.")
     elif w and running:
         (Path(w) / "STOP").touch()
         _status["phase"] = "stopping…"
@@ -224,7 +280,7 @@ def data_pull():
     """Explicit hub update -- looking never pulls; pulling is a button."""
     msg = data_mod.pull_hub()
     vs = data_mod.vintages()
-    _flash(f"{msg[:160]}" + (f" — latest vintage {vs[-1]}" if vs else ""))
+    _flash(f"{msg[:160]}" + (f" · latest vintage {vs[-1]}" if vs else ""))
     return RedirectResponse("/data", status_code=303)
 
 
@@ -449,7 +505,7 @@ def _run_all(spec: RunSpec) -> None:
                 samples_h = {f_t[h - 1]: s[str(h)] for h in (1, 2, 3, 4)}
                 try:
                     fan = fan_figure(o_t, o_v, f_t, samples_h,
-                                     title=f"{loc} — weekly admissions",
+                                     title=f"{loc}: weekly admissions",
                                      settled=settled_by_loc.get(loc))
                     lo_l = o_v[-1] if o_v else 0.0
                     import numpy as _np3
@@ -459,8 +515,8 @@ def _run_all(spec: RunSpec) -> None:
                     key = "US" if fips_l == "US" else n2a.get(loc, loc)
                     meds = [float(_np3.median(_np3.asarray(s[str(h)], float)))
                             for h in (1, 2, 3, 4)]
-                    note = ("off-season: the model finds no sustained "
-                            "transmission; this forecast reflects the recent "
+                    note = ("Off-season: the model finds no sustained "
+                            "transmission. This forecast reflects the recent "
                             "reporting background, not epidemic growth."
                             if max(meds) <= 2 else "")
                     details[key] = {
@@ -626,7 +682,7 @@ def run_report(run_id: str):
 
 @app.get("/api/series")
 def api_series(locs: str = ""):
-    """Data-panel series for arbitrary locations — lets the checkboxes drive
+    """Data-panel series for arbitrary locations -- lets the checkboxes drive
     the plots live instead of waiting for a Run click."""
     import json as _json
     import pandas as pd
@@ -817,45 +873,57 @@ def output_report(date: str = ""):
     from app.core.runs import APP_STATE
     if date:
         if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
-            return HTMLResponse("<p>bad date — expected YYYY-MM-DD</p>",
+            return HTMLResponse("<p>Invalid date. Expected YYYY-MM-DD.</p>",
                                 status_code=400)
         f = APP_STATE / "archive" / date / "report.html"
         return HTMLResponse(f.read_text() if f.is_file()
-                            else f"<p>no archived report for {date}</p>")
+                            else f"<p>No archived report for {date}.</p>")
     rid, _ = _latest_results()
     f = APP_STATE / "workroots" / (rid or "") / "report.html"
     return HTMLResponse(f.read_text() if f.is_file()
-                        else "<p>no report yet — run models first</p>")
+                        else "<p>No report yet. Run the models first.</p>")
 
 
 @app.get("/model/{name}", response_class=HTMLResponse)
 def model_page(request: Request, name: str):
     blurbs = {
         "pf": ("PF-SIHRS",
-               "Our mechanistic model. People move through Susceptible → "
-               "Infected → Hospitalized → Recovered compartments, and 10,000 "
-               "simulated 'particles' — each a slightly different version of "
-               "the epidemic — are reweighted every week by how well they "
-               "explain the newest admissions. Written in BNGL, fitted by "
-               "PyBNF's particle filter on the BNGsim engine. It runs a full "
-               "state-season in seconds and beats the FluSight baseline by "
-               "about a third (relWIS 0.675 ± 0.012)."),
+               "The mechanistic member. It assumes influenza moves people "
+               "through Susceptible, Infected, Hospitalized, and Recovered "
+               "compartments, with seasonally varying transmission and "
+               "immunity that wanes back to susceptibility. The model is "
+               "written in BNGL and fitted by PyBNF's sequential particle "
+               "filter on the bngsim engine: each week, 10,000 candidate "
+               "epidemics per state are reweighted by how well they explain "
+               "the newest hospital admissions, and their spread is the "
+               "forecast uncertainty. It fits weekly NHSN admissions exactly "
+               "as archived on each forecast date. Measured three-season "
+               "retrospective relWIS against the FluSight baseline "
+               "(values below 1 beat it): 1.023 in 2023-24, 0.636 in "
+               "2024-25, 0.825 in 2025-26."),
         "analogue": ("Calendar analogue",
-                     "The empirical memory of the system. For each forecast "
-                     "week it asks: in past seasons, what happened after "
-                     "weeks that looked like this one on the calendar? No "
-                     "epidemiology, no equations — just history, weighted "
-                     "and resampled. It is hard to beat at one week ahead "
-                     "and keeps the ensemble honest when a season behaves "
-                     "unusually."),
+                     "The empirical member. It assumes the current season "
+                     "will resemble past seasons at the same point in the "
+                     "calendar: for each forecast week it asks what happened "
+                     "after historically similar weeks and resamples those "
+                     "outcomes, with no epidemiological mechanism. It uses "
+                     "the full archive of weekly NHSN admissions and nothing "
+                     "else. It is difficult to beat at one week ahead and "
+                     "anchors the ensemble when a season behaves unusually. "
+                     "Measured three-season retrospective relWIS: 1.105 in "
+                     "2023-24, 0.835 in 2024-25, 0.641 in 2025-26."),
         "ensemble": ("Ensemble",
-                     "The submission. It averages the two members' forecast "
-                     "quantiles with weights chosen before the season from "
-                     "held-out years: the analogue carries more weight at "
-                     "short horizons, the mechanistic model takes over "
-                     "further out (PF share 0.4 → 0.8 across horizons). "
-                     "Twelve states earned their own weights where the data "
-                     "justified it."),
+                     "The submitted forecast. It averages the two members' "
+                     "forecast quantiles with per-horizon weights frozen "
+                     "before the season from held-out years: the analogue "
+                     "carries more weight at short horizons and the "
+                     "mechanistic model takes over further out (PF share "
+                     "0.4 to 0.8 across horizons 1 to 4), with twelve "
+                     "state-specific overrides where the data justified "
+                     "them. The members' errors disagree in useful ways, "
+                     "which is why the blend beats either alone. Measured "
+                     "three-season retrospective relWIS: 0.848 in 2023-24, "
+                     "0.651 in 2024-25, 0.691 in 2025-26; pooled 0.704."),
     }
     if name not in blurbs:
         return HTMLResponse("unknown model", status_code=404)
@@ -882,7 +950,7 @@ def model_page(request: Request, name: str):
 
 @app.post("/model/ensemble/generate")
 def generate_ensemble(request: Request):
-    """(Re)blend from the latest run's stored member outputs — no engine rerun."""
+    """(Re)blend from the latest run's stored member outputs -- no engine rerun."""
     import json as _json
     import os as _os
     from app.core import ensemble as ens
@@ -890,7 +958,7 @@ def generate_ensemble(request: Request):
     from app.core.submit import rows_from_quantiles, write_submission
     rid, res = _latest_results()
     if not res:
-        _flash("nothing to blend yet — run the models first")
+        _flash("Nothing to blend yet. Run the models first.")
         return _back(request, "/model/ensemble")
     import pandas as pd
     locs = pd.read_csv(__import__("flubnf.settings",
@@ -916,7 +984,7 @@ def generate_ensemble(request: Request):
     _tmp = rp.parent / "results.json.tmp"
     _tmp.write_text(_json.dumps(res))
     _os.replace(_tmp, rp)             # readers never see a half-write
-    note = f"ensemble re-blended for {len(blended)} location(s)"
+    note = f"Ensemble re-blended for {len(blended)} location(s)"
     # the Output checklist points at this CSV -- write it, and be honest that
     # a re-blend from stored results carries the 5 display quantiles, not the
     # hub's full 23 (only a full run has the member samples for all 23)
@@ -925,7 +993,7 @@ def generate_ensemble(request: Request):
             write_submission(sub_rows, "Ensemble", "NAU", res["forecast_date"],
                              APP_STATE / "workroots" / rid / "submission")
             note += (" · submission CSV written from the 5 stored "
-                     "quantiles — a full run writes all 23 hub quantiles")
+                     "quantiles; a full run writes all 23 hub quantiles")
         except Exception as e:
             note += f" · submission CSV skipped: {str(e)[:120]}"
     _flash(note)
@@ -987,7 +1055,7 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
     import pandas as pd
     from flubnf.settings import LOCATIONS
     if _retro_status.get(season) == "running":
-        _flash(f"{season} is already replaying — one season worker at a time")
+        _flash(f"{season} is already replaying. One season worker runs at a time.")
         return RedirectResponse("/retro", status_code=303)
     if locations == "all":
         locs = pd.read_csv(LOCATIONS, dtype=str)
@@ -1014,8 +1082,8 @@ def retro_results(request: Request, season: str, week: str = ""):
     if not weeks:
         # a raw unthemed dead-end helps nobody: back to the season list,
         # which already knows how to show a 0-weeks season
-        _flash(f"{season}: no completed weeks yet — start the replay and "
-               "check back in a little while")
+        _flash(f"{season}: no completed weeks yet. Start the replay and "
+               "check back shortly.")
         return RedirectResponse("/retro", status_code=303)
     sf = root / "scores.json"
     try:
@@ -1072,9 +1140,9 @@ def retro_results(request: Request, season: str, week: str = ""):
                                                "fips": n2f.get(name, "")})
     map_html = svg_map(cards)
     if not scoreable:
-        map_html = ("<p class='hint'>no scoreable weeks yet — truth for "
-                    "these forecast dates hasn't settled, so relWIS arrives "
-                    "later; the weekly maps below work now.</p>") + map_html
+        map_html = ("<p class='hint'>No scoreable weeks yet. Truth for "
+                    "these forecast dates has not settled, so relWIS arrives "
+                    "later; the weekly maps below are available now.</p>") + map_html
     return templates.TemplateResponse(request, "retro_season.html", {
         "active": "Retrospective", "season": season, "heads": heads, "curve": curve, "states": states,
         "weeks": weeks, "week": wk, "map_html": map_html,
@@ -1097,8 +1165,8 @@ def run_models(request: Request,
         _d = _date.fromisoformat(forecast_date)
         if _d.weekday() != 5:
             _d -= _td(days=(_d.weekday() - 5) % 7)
-            _flash(f"snapped {forecast_date} to Saturday {_d} — forecasts "
-                   "align to FluSight's weekly cadence")
+            _flash(f"Snapped {forecast_date} to Saturday {_d}. Forecasts "
+                   "align to FluSight's weekly cadence.")
             forecast_date = _d.isoformat()
     except ValueError:
         pass
@@ -1107,9 +1175,9 @@ def run_models(request: Request,
     except Exception:
         vs = data_mod.vintages()
         near = min(vs, key=lambda v: abs(_date.fromisoformat(v) - _date.fromisoformat(forecast_date))) if vs else None
-        _flash(f"no archived data for {forecast_date}"
-               + (f" — nearest available: {near}" if near else
-                  " — pull the FluSight hub on the Data tab first"))
+        _flash(f"No archived data for {forecast_date}."
+               + (f" Nearest available: {near}." if near else
+                  " Pull the FluSight hub on the Data tab first."))
         return _back(request, "/forecast")
     _last_form.update({"forecast_date": forecast_date, "locations": locations,
                        "engine": engine, "weeks_to_drop": weeks_to_drop,
@@ -1121,11 +1189,11 @@ def run_models(request: Request,
                  for x in str(l).split(",") if x.strip()]
     if not locations:
         # nothing checked used to silently run Ohio -- ask instead
-        _flash("pick at least one location (or all 52 jurisdictions) — "
-               "nothing was run")
+        _flash("Select at least one location, or all 52 jurisdictions. "
+               "Nothing was run.")
         return _back(request, "/forecast")
     if _status.get("running"):
-        _status["log"].append("a run is already in progress — not starting another")
+        _status["log"].append("A run is already in progress; not starting another.")
         return RedirectResponse("/forecast#results", status_code=303)
     # BackgroundTasks fire AFTER the redirect renders; claim the running slot
     # NOW so the page the user lands on shows the run (double-click race,
@@ -1178,8 +1246,8 @@ def run_models(request: Request,
                 _status["running"] = f"amcmc:{rid}"
                 w = lease_workroot(rid)
                 _status["workroot"] = str(w)
-                _status["phase"] = ("adaptive MCMC — this engine does not "
-                                    "report per-fit progress")
+                _status["phase"] = ("Adaptive MCMC: this engine does not "
+                                    "report per-fit progress.")
                 out = am_engine.execute(spec, w)
                 n_ok = sum(1 for r in out["records"] if r.get("ok"))
                 ledger.close_run(rid, "ok", {"ok_states": n_ok})
@@ -1200,6 +1268,6 @@ def run_models(request: Request,
         _status["running"] = None
         _status["run_label"] = ""
         _status["expected_total"] = None
-        _flash(f"'{engine}' isn't one of the available engines — "
-               "nothing was run")
+        _flash(f"'{engine}' is not one of the available engines. "
+               "Nothing was run.")
     return RedirectResponse("/forecast#results", status_code=303)

@@ -1,9 +1,9 @@
-{% extends "base.html" %}{% block title %}FluBNF — output{% endblock %}
+{% extends "base.html" %}{% block title %}FluBNF · Output{% endblock %}
 {% block content %}
 <h1>Output</h1>
 <p class="sub">Everything a submission day produces, ready to hand over:
 hub-format CSVs per model and the weekly report.</p>
-{% if not rid %}<div class="card"><p class="hint">Run a forecast first — its
+{% if not rid %}<div class="card"><p class="hint">Run a forecast first; its
 outputs will collect here.</p></div>
 {% else %}
 <div class="cols">
@@ -18,14 +18,14 @@ outputs will collect here.</p></div>
   no degenerate cells).</p>
  </div></div>
  <div>
-  <div class="card"><h2>Submission files — {{ date }}</h2>
+  <div class="card"><h2>Submission files: {{ date }}</h2>
    {% for f in files %}
     <div class="subfile">
      <div class="row" style="justify-content:space-between;margin:.45rem 0">
       <span><b>{{ f.model }}</b><br><code>{{ f.name }}</code></span>
       <span style="display:flex;align-items:center;gap:.9rem;white-space:nowrap">
        <a href="/output/download?path={{ f.path | urlencode }}" download><button
-        class="gold" type="button" style="margin-top:0">Download</button></a>
+        type="button" style="margin-top:0">Download</button></a>
        <form method="post" action="/output/reveal" style="display:inline">
         <input type="hidden" name="path" value="{{ f.path }}">
         <button class="linkish" type="submit">Show in Finder</button></form>
@@ -33,7 +33,7 @@ outputs will collect here.</p></div>
      </div>
      {% if f.cols %}
      <details class="preview">
-      <summary class="hint">preview — first {{ f.rows | length }} rows</summary>
+      <summary class="hint">Preview: first {{ f.rows | length }} rows</summary>
       <div style="overflow-x:auto;max-width:100%">
        <table>
         <tr>{% for c in f.cols %}<th>{{ c }}</th>{% endfor %}</tr>
@@ -46,14 +46,14 @@ outputs will collect here.</p></div>
      </details>
      {% endif %}
     </div>
-   {% else %}<p class="hint">no submission files in the latest run</p>{% endfor %}
+   {% else %}<p class="hint">No submission files in the latest run.</p>{% endfor %}
   </div>
   <div class="card"><h2>Weekly report</h2>
-   <p class="hint">The shareable: US categorical outlook map with per-state
-   drill-down.</p>
+   <p class="hint">The report for distribution: a US categorical outlook map
+   with per-state detail.</p>
    <div style="display:flex;align-items:center;gap:.9rem;flex-wrap:wrap;margin-top:.4rem">
    {% if has_report %}<a href="/output/report" target="_blank"><button class="quiet" type="button" style="margin-top:0">Open report</button></a>
-   {% else %}<p class="hint" style="margin:0">generated automatically with each full run</p>{% endif %}
+   {% else %}<p class="hint" style="margin:0">Generated automatically with each full run.</p>{% endif %}
    {% if archive_dates %}
     <select style="width:auto" aria-label="archived reports"
      onchange="if(this.value){window.open('/output/report?date='+this.value,'_blank');this.selectedIndex=0}">

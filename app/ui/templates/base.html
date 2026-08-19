@@ -16,12 +16,13 @@
   {% set tabs = [("/","Home"),("/forecast","Forecast"),
                  ("/model/pf","PF-SIHRS"),("/model/analogue","Calendar analogue"),
                  ("/model/ensemble","Ensemble"),
-                 ("/retro","Retrospective"),("/output","Output"),("/runs","Runs"),("/data","Data")] %}
+                 ("/retro","Retrospective"),("/output","Output"),("/runs","Runs"),("/data","Data"),
+                 ("/methods","Methods")] %}
   {% for href, name in tabs %}
     <a class="tab {% if active == name %}active{% endif %}" href="{{ href }}">{{ name }}</a>
   {% endfor %}
   <span class="spacer"></span>
-  <button id="themebtn" title="toggle light/dark">◐</button>
+  <button id="themebtn" title="Toggle light or dark theme">◐</button>
 </header>
 <main>{% set _f = pop_flash() %}{% if _f %}
  <div class="banner" role="status">{{ _f }}</div>

@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% block title %}FluBNF — forecast{% endblock %}
+{% extends "base.html" %}{% block title %}FluBNF · Forecast{% endblock %}
 {% block head %}<script src="/static/plotly.min.js"></script>{% endblock %}
 {% block content %}
 <h1>Forecast</h1>
@@ -7,7 +7,7 @@
   <form method="post" action="/run">
    <label>Forecast date</label>
    <input type="date" name="forecast_date" value="{{ form.forecast_date }}">
-   <span class="hint">a Saturday — each forecast uses that week's archived data</span>
+   <span class="hint">A Saturday; each forecast uses the data archived for that week.</span>
    <label>Locations <span id="lcount" class="hint"></span></label>
    <div class="checklist">
      <label class="ck"><input type="checkbox" id="ck-all" value="all" name="locations"
@@ -18,7 +18,7 @@
      {% endfor %}
    </div>
    <label>Engine</label>
-   {% set engine_names = {"all": "All models — PF + analogue + ensemble (recommended)",
+   {% set engine_names = {"all": "All models: PF, analogue, and ensemble (recommended)",
                           "pf": "Particle filter only",
                           "amcmc": "Adaptive MCMC (experimental)"} %}
    <select name="engine">{% for e in engines %}
@@ -26,7 +26,7 @@
    <label title="trim the newest N weeks before fitting (vintage-edge guard)">Weeks to drop</label>
    <input name="weeks_to_drop" type="number" value="{{ form.weeks_to_drop }}" min="0" max="4">
    <input type="hidden" name="weeks_to_nowcast" value="0">
-   <p class="hint" style="margin:.6rem 0 0">Nowcasting: coming soon — not yet used.</p>
+   <p class="hint" style="margin:.6rem 0 0">Nowcasting: planned; not yet in use.</p>
    <label>Replicates</label>
    <input name="replicates" type="number" value="{{ form.replicates }}" min="1" max="9">
    <button class="gold">Run models</button>
@@ -56,10 +56,8 @@
   {% if status.running %}
   <div class="card"><h2>Running</h2>
    <p id="runlabel" class="runlabel">{{ status.run_label or "" }}</p>
-   <div class="runbar"><div id="runfill" style="animation:none;width:3%"></div></div>
-   <p class="hint" id="prog"></p>
-   <canvas id="pfviz" aria-hidden="true"
-     style="display:block;width:100%;height:120px;margin:.6rem 0 .1rem"></canvas>
+   <div class="runbar"><div id="runfill" style="width:3%"></div></div>
+   <p class="runstat" id="prog"></p>
    <form method="post" action="/run/stop"
      onsubmit="this.querySelector('button').disabled=true"><button class="quiet">Stop run</button></form>
    <p class="quip" id="quip"></p>
@@ -84,7 +82,33 @@
      "wandering the parameter space, mostly on purpose",
      "shrinking toward the mean, emotionally as well",
      "giving every trajectory a fair cough",
-     "propagating uncertainty with confidence"];
+     "propagating uncertainty with confidence",
+     "consulting the negative binomial about its variance",
+     "asking the particles to form an orderly quantile",
+     "estimating how much winter is left",
+     "keeping the ensemble members from agreeing too much",
+     "resampling with all due ceremony",
+     "checking the waning-immunity clock",
+     "letting ten thousand epidemics bloom, then pruning",
+     "holding the baseline to account",
+     "measuring this season against its ancestors",
+     "teaching beta to respect the calendar",
+     "auditing the attack rate",
+     "reweighting optimism by evidence",
+     "keeping the vintage data honest",
+     "asking each state how its winter is going",
+     "updating priors, gently but firmly",
+     "asking the effective sample size to stay effective",
+     "walking the weekly data in, one saturday at a time",
+     "smoothing the epidemic curve without flattering it",
+     "granting each particle one more week of relevance",
+     "comparing this week to every winter on record",
+     "letting the evidence outvote the prior",
+     "thinning the herd of implausible epidemics",
+     "watching the credible interval breathe",
+     "escorting stray trajectories back to the data",
+     "renormalizing the weights, as one does",
+     "budgeting uncertainty across four horizons"];
    let qi=0;
    setInterval(()=>{document.getElementById('quip').textContent=quips[qi++%quips.length];},2600);
    // honest progress: the displayed % is monotone non-decreasing, and the ETA
@@ -111,7 +135,7 @@
          if(cur==null || PS.ema<=cur){PS.shown=PS.ema; PS.shownT=Date.now(); PS.up=0;}
          else if(++PS.up>=3){PS.shown=PS.ema; PS.shownT=Date.now(); PS.up=0;}
        }
-       if(STOPPING) document.getElementById('prog').textContent='stopping — finishing the current fit…';
+       if(STOPPING) document.getElementById('prog').textContent='Stopping; finishing the current fit…';
        else if(!d.total) document.getElementById('prog').textContent=d.phase||'starting';
      }catch(e){}
      setTimeout(poll,2000);
@@ -133,84 +157,6 @@
      document.getElementById('prog').textContent=s;
    },400);
    poll();
-   // particle-filter vignette: dots drift along a faint epidemic curve; now
-   // and then one is resampled -- it fades out and reappears near the crowd.
-   // A moving contact map: SIHRS kinetics, literally. Susceptibles wander,
-   // contact with an infectious dot transmits (brief spark), some infections
-   // hospitalize (the dot stops moving), all recover, immunity wanes back to
-   // susceptible. Theme-aware (CSS variables read each frame); static
-   // snapshot under prefers-reduced-motion.
-   (function(){
-     const cv=document.getElementById('pfviz'); if(!cv||!cv.getContext) return;
-     const ctx=cv.getContext('2d');
-     const css=v=>getComputedStyle(document.documentElement)
-       .getPropertyValue(v).trim()||'#888';
-     const dpr=window.devicePixelRatio||1;
-     function size(){cv.width=Math.max(cv.clientWidth,1)*dpr; cv.height=120*dpr;}
-     const COL={S:'--mut', I:'--gold-bright', H:'--bad', R:'--ok'};
-     const N=46, R2=Math.pow(9*dpr,2);
-     const A=Array.from({length:N},(_,i)=>({
-       x:Math.random(), y:Math.random(), vx:0, vy:0,
-       st:i<3?'I':'S', tt:120+Math.random()*240}));
-     const sparks=[];
-     function step(){
-       for(const a of A){
-         if(a.st!=='H'){                       // hospitalized dots stay put
-           a.vx=Math.max(-1,Math.min(1,a.vx+(Math.random()-0.5)*0.14));
-           a.vy=Math.max(-1,Math.min(1,a.vy+(Math.random()-0.5)*0.14));
-           a.x+=a.vx*0.004; a.y+=a.vy*0.010;
-           if(a.x<0.01||a.x>0.99){a.vx*=-1; a.x=Math.max(0.01,Math.min(0.99,a.x));}
-           if(a.y<0.06||a.y>0.94){a.vy*=-1; a.y=Math.max(0.06,Math.min(0.94,a.y));}
-         }
-         if(--a.tt<=0){                        // kinetics: I->H|R, H->R, R->S
-           if(a.st==='I'){a.st=Math.random()<0.18?'H':'R'; a.tt=a.st==='H'?160:400+Math.random()*300;}
-           else if(a.st==='H'){a.st='R'; a.tt=400+Math.random()*300;}
-           else if(a.st==='R'){a.st='S'; a.tt=1e9;}
-         }
-       }
-       const inf=A.filter(a=>a.st==='I');
-       if(!inf.length){const s=A.find(a=>a.st==='S')||A[0];  // importation
-         s.st='I'; s.tt=200+Math.random()*240;}
-       for(const i of inf) for(const a of A){
-         if(a.st!=='S') continue;
-         const dx=(a.x-i.x)*cv.width, dy=(a.y-i.y)*cv.height;
-         if(dx*dx+dy*dy<R2 && Math.random()<0.06){
-           a.st='I'; a.tt=200+Math.random()*240;
-           sparks.push({a:[a.x,a.y], b:[i.x,i.y], f:14});
-         }
-       }
-       for(let k=sparks.length-1;k>=0;k--) if(--sparks[k].f<=0) sparks.splice(k,1);
-     }
-     function draw(){
-       ctx.clearRect(0,0,cv.width,cv.height);
-       ctx.strokeStyle=css('--gold-bright'); ctx.lineWidth=1*dpr;
-       for(const sp of sparks){
-         ctx.globalAlpha=sp.f/14*0.7; ctx.beginPath();
-         ctx.moveTo(sp.a[0]*cv.width, sp.a[1]*cv.height);
-         ctx.lineTo(sp.b[0]*cv.width, sp.b[1]*cv.height); ctx.stroke();
-       }
-       ctx.globalAlpha=1;
-       for(const a of A){
-         ctx.fillStyle=css(COL[a.st]);
-         const r=(a.st==='I'?2.6:2.1)*dpr;
-         ctx.beginPath();
-         ctx.arc(a.x*cv.width, a.y*cv.height, r, 0, 6.2832); ctx.fill();
-         if(a.st==='H'){ctx.strokeStyle=css('--bad'); ctx.lineWidth=0.8*dpr;
-           ctx.beginPath(); ctx.arc(a.x*cv.width, a.y*cv.height, r+2.5*dpr, 0, 6.2832); ctx.stroke();}
-       }
-       ctx.font=`600 ${12*dpr}px system-ui`; let lx=8*dpr;
-       for(const st of ['S','I','H','R']){
-         ctx.fillStyle=css(COL[st]);
-         ctx.beginPath(); ctx.arc(lx, cv.height-10*dpr, 3*dpr, 0, 6.2832); ctx.fill();
-         ctx.fillText(st, lx+7*dpr, cv.height-6*dpr); lx+=32*dpr;
-       }
-     }
-     function frame(){step(); draw(); requestAnimationFrame(frame);}
-     size(); addEventListener('resize',size);
-     if(matchMedia('(prefers-reduced-motion: reduce)').matches){
-       for(let i=0;i<200;i++) step(); draw();
-     } else requestAnimationFrame(frame);
-   })();
   </script>
   {% elif ledger %}
   <div class="card"><h2>Latest run</h2>
@@ -222,7 +168,7 @@
   {% endif %}
 
   <details class="card" open><summary><h2 style="display:inline">Data</h2>
-   <span class="hint"> — raw admissions, any location (latest vintage)</span></summary>
+   <span class="hint">: raw admissions, any location (latest vintage)</span></summary>
    <div style="margin:.6rem 0 .2rem">
     <select id="data-loc" aria-label="data panel location"
       style="width:auto;min-width:230px;max-width:100%">
@@ -273,7 +219,7 @@
    if(!LOCS.length){el.innerHTML='<p class="hint">select locations to see their data</p>';return;}
    DIDX=((DIDX%LOCS.length)+LOCS.length)%LOCS.length;
    const loc=LOCS[DIDX];
-   const NODATA='<p class="hint">no data yet — pull the FluSight hub on the Data tab</p>';
+   const NODATA='<p class="hint">No data yet. Pull the FluSight hub on the Data tab.</p>';
    if(!SERIES[loc]){
      fetch('/api/series?locs='+encodeURIComponent(loc)).then(r=>r.json())
        .then(d=>{if(!d[loc]) d[loc]={dates:[],values:[]};  // sentinel: never re-fetch a miss
@@ -298,7 +244,7 @@
      const traces=seasons.map((k,i)=>({x:by[k].x,y:by[k].y,mode:lm,marker:{size:4},name:k,
        line:{width:i===seasons.length-1?3:1.5,
              color:i===seasons.length-1?css('--gold'):undefined}}));
-     const L=lay(loc+' — season over season',380);
+     const L=lay(loc+': season over season',380);
      L.xaxis.title={text:'weeks since Aug 1'};
      Plotly.newPlot(div,traces,L,PCONF);
    }
@@ -366,18 +312,18 @@
      {x:obsX,y:obsY,mode:'lines+markers',name:'observed (as of '+FCDATE+')',line:{color:css('--ink')}},
      {x:fx,y:hi9,mode:'lines',line:{width:0},showlegend:false,hoverinfo:'skip'},
      {x:fx,y:lo9,mode:'lines',fill:'tonexty',fillcolor:'rgba(255,199,44,.25)',
-      line:{width:0},name:'10–90%'},
+      line:{width:0},name:'10-90% interval'},
      {x:fx,y:med,mode:'lines+markers',name:'median',line:{color:css('--gold'),width:2.5}},
    ];
    if(aftX.length) traces.push({x:aftX,y:aftY,mode:'lines+markers',
-     name:'what happened (settled)',line:{color:css('--ink'),dash:'dot',width:1.4},
+     name:'settled outcome',line:{color:css('--ink'),dash:'dot',width:1.4},
      marker:{size:4}});
    Plotly.newPlot(div,traces,lay(loc,400),PCONF);
  }
  if(MODELS.length){
    const wrap=document.getElementById('fanwrap');
    const mbtns=MODELS.map(m=>'<button type="button" class="quiet mbtn" data-m="'+m+'">'+m+'</button>').join('');
-   wrap.innerHTML='<div class="card" id="fancard"><h2>Forecasts — latest run ('+FCDATE+')</h2>'
+   wrap.innerHTML='<div class="card" id="fancard"><h2>Forecasts: latest run ('+FCDATE+')</h2>'
      +'<div class="carousel">'+mbtns+'</div>'
      +'<div class="carousel"><button type="button" class="quiet cnav" id="fan-prev">◀</button>'
      +'<span class="hint" id="fan-pos"></span>'

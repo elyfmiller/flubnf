@@ -7,5 +7,7 @@ app/state/
 .DS_Store
 model-output/
 data/humidity/
+data/covgates/
 .flubnf.env
 *.egg-info/
+.pytest_cache/

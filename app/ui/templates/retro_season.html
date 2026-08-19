@@ -1,15 +1,15 @@
-{% extends "base.html" %}{% block title %}FluBNF retro {{ season }}{% endblock %}
+{% extends "base.html" %}{% block title %}FluBNF · Retrospective {{ season }}{% endblock %}
 {% block content %}
 
-<h1><span class="accent">{{ season }}</span> — {{ n_weeks }} weeks scored</h1>
+<h1><span class="accent">{{ season }}</span>: {{ n_weeks }} weeks scored</h1>
 <div class="grid2">
  {% for m, v in heads.items() %}
  <div class="card"><h2>{{ m }}</h2><div class="big
    {% if v < 1 %}ok{% else %}bad{% endif %}">{{ "%.3f"|format(v) }}</div>
-   <p class="hint">relWIS vs FluSight baseline (&lt;1 beats it)</p></div>
+   <p class="hint">relWIS vs the FluSight baseline (values below 1 beat it)</p></div>
  {% endfor %}
 </div>
-<div class="card"><h2>cumulative ensemble relWIS through the season</h2>
+<div class="card"><h2>Cumulative ensemble relWIS through the season</h2>
 <svg viewBox="0 0 720 180" style="width:100%">
  {% set xs = 680 / (curve|length if curve|length > 1 else 1) %}
  <line x1="20" y1="90" x2="700" y2="90" stroke="var(--mut)" stroke-dasharray="3"/>
@@ -25,19 +25,19 @@
           {% if clipped %}stroke="var(--gold)" stroke-width="1.5"{% endif %}><title>{{ d }}: {{ "%.3f"|format(v) }}</title></circle>
  {% endfor %}
 </svg></div>
-<div class="card"><h2>weekly playback</h2>
+<div class="card"><h2>Weekly playback</h2>
  <form method="get" class="row">
-  <div><label>week</label><select name="week" onchange="this.form.submit()">
+  <div><label>Week</label><select name="week" onchange="this.form.submit()">
    {% for w in weeks %}<option {% if w == week %}selected{% endif %}>{{ w }}</option>{% endfor %}
-  </select></div><noscript><button>go</button></noscript>
+  </select></div><noscript><button>Go</button></noscript>
  </form>
  {{ map_html | safe }}
 </div>
-<div class="card"><h2>per state</h2>
-<table><tr><th>state</th><th>pf</th><th>analogue</th><th>ensemble</th></tr>
+<div class="card"><h2>Per-state scores</h2>
+<table><tr><th>State</th><th>PF</th><th>Analogue</th><th>Ensemble</th></tr>
 {% for r in states %}<tr><td>{{ r.name }}</td>
  {% for m in ["pf","analogue","ensemble"] %}
  <td class="{% if r[m] and r[m] < 1 %}ok{% elif r[m] %}bad{% endif %}">
-  {{ "%.3f"|format(r[m]) if r[m] else "—" }}</td>{% endfor %}</tr>
+  {{ "%.3f"|format(r[m]) if r[m] else "n/a" }}</td>{% endfor %}</tr>
 {% endfor %}</table></div>
 {% endblock %}

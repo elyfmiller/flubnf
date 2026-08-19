@@ -1,15 +1,15 @@
-{% extends "base.html" %}{% block title %}FluBNF — retrospective{% endblock %}
+{% extends "base.html" %}{% block title %}FluBNF · Retrospective{% endblock %}
 {% block head %}{% if seasons | selectattr("running") | list %}<meta http-equiv="refresh" content="15">{% endif %}{% endblock %}
 {% block content %}
 <h1>Retrospective</h1>
-<p class="sub">Replay a past season exactly as the competition happened: each
+<p class="sub">Replay a past season exactly as the competition unfolded: each
 week the models see only that Saturday's data, submit, and move on. Scores
-come later, against what the truth settled to.</p>
+are computed later, against the values the truth data settled to.</p>
 <div class="cols">
  <div><div class="card"><h2>Settings</h2>
-  {% if not engine_ok %}<p class="warn">Needs the PF engine — double-click
-  <code>SetupEngine.command</code> first. Everything else in the app works
-  without it.</p>{% endif %}
+  {% if not engine_ok %}<p class="warn">Requires the particle-filter engine.
+  Run <code>SetupEngine.command</code> first; everything else in the
+  application works without it.</p>{% endif %}
   <form method="post" action="/retro/run">
    <label>Season</label>
    <select name="season">{% for s in seasons %}<option>{{ s.name }}</option>{% endfor %}</select>
@@ -19,7 +19,7 @@ come later, against what the truth settled to.</p>
    <button class="gold" {% if not engine_ok or (seasons | selectattr("running") | list) %}disabled{% endif %}>
      Run retrospective</button>
   </form>
-  <p class="hint">Runs are resumable — a completed week is never redone.</p>
+  <p class="hint">Runs are resumable; a completed week is never redone.</p>
  </div></div>
  <div>
   {% for s in seasons %}
@@ -28,7 +28,7 @@ come later, against what the truth settled to.</p>
    <div class="row" style="justify-content:space-between">
     <span class="hint">{{ s.done }}/{{ s.total }} weeks{% if s.seal %} · full-grid validation run{% endif %}
      {% if s.running %}<span class="warn">· running</span>{% endif %}</span>
-    {% if s.done > 0 %}<a href="/retro/{{ s.name }}"><button class="quiet" type="button" style="margin-top:0">results →</button></a>{% endif %}
+    {% if s.done > 0 %}<a href="/retro/{{ s.name }}"><button class="quiet" type="button" style="margin-top:0">Results →</button></a>{% endif %}
    </div>
   </div>
   {% endfor %}

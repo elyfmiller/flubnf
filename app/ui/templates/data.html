@@ -1,18 +1,20 @@
-{% extends "base.html" %}{% block title %}FluBNF — data{% endblock %}{% block content %}
+{% extends "base.html" %}{% block title %}FluBNF · Data{% endblock %}{% block content %}
 <h1>Data</h1>
 <div class="cols">
  <div><div class="card"><h2>FluSight hub</h2>
-  <p>latest vintage <code>{{ latest_vintage }}</code></p>
+  <p>Latest vintage: <code>{{ latest_vintage }}</code></p>
   <p class="hint">{{ n_vintages }} archived truth vintages</p>
   <form method="post" action="/freshness"><button class="quiet">Check for new data</button></form>
   <form method="post" action="/data/pull" onsubmit="return confirm('Pull the FluSight hub now?')">
-   <button>Update data</button></form>
+   <button class="gold">Update data</button></form>
   {% if freshness %}<p class="{% if freshness.is_fresh %}ok{% else %}warn{% endif %}">
    {{ freshness.detail }}</p>{% endif %}
  </div></div>
  <div><div class="card"><h2>Policies</h2>
-  <p class="hint">Real-time runs use vintage data only. Missing weeks are
-  dropped as rows with calendar-true offsets — never imputed. A vintage that
-  does not exist fails loudly with the nearest alternatives.</p></div></div>
+  <p class="hint">Real-time runs use vintage data only: each forecast sees
+  the data exactly as archived on its forecast date. Missing weeks are
+  dropped as rows with calendar-true offsets and are never imputed. A
+  request for a vintage that does not exist fails loudly and lists the
+  nearest alternatives.</p></div></div>
 </div>
 {% endblock %}

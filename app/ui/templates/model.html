@@ -1,13 +1,15 @@
-{% extends "base.html" %}{% block title %}FluBNF — {{ title }}{% endblock %}
+{% extends "base.html" %}{% block title %}FluBNF · {{ title }}{% endblock %}
 {% block head %}<script src="/static/plotly.min.js"></script>{% endblock %}
 {% block content %}
 <h1>{{ title }}</h1>
 <p class="sub">{{ blurb }}</p>
+<p class="hint">Full methodology, including the SIHRS compartment diagram:
+<a href="/methods">Methods</a>.</p>
 <div class="cols">
  <div><div class="card"><h2>Settings</h2>
   {% if name == "ensemble" %}
-   <p class="hint">The ensemble aggregates whatever members the latest run
-   produced, using the frozen per-horizon weights.</p>
+   <p class="hint">The ensemble aggregates the members produced by the
+   latest run, using the frozen per-horizon weights.</p>
    <form method="post" action="/model/ensemble/generate">
     <button class="gold">Generate ensemble from latest run</button></form>
   {% else %}
@@ -25,7 +27,7 @@
     <button class="gold">Run {{ title }} only</button>
    </form>
   {% endif %}
-  {% if status.running %}<p class="warn">a run is in progress — see Forecast</p>{% endif %}
+  {% if status.running %}<p class="warn">A run is in progress. See the <a href="/forecast">Forecast</a> tab.</p>{% endif %}
  </div></div>
  <div>
   <div class="card"><h2>Forecasts</h2>
@@ -82,11 +84,11 @@
    const traces=[
     {x:obsX,y:obsY,mode:'lines+markers',name:'observed (as of '+FD+')',line:{color:css('--ink')}},
     {x:fx,y:hi,mode:'lines',line:{width:0},showlegend:false,hoverinfo:'skip'},
-    {x:fx,y:lo,mode:'lines',fill:'tonexty',fillcolor:'rgba(255,199,44,.25)',line:{width:0},name:'10–90%'},
+    {x:fx,y:lo,mode:'lines',fill:'tonexty',fillcolor:'rgba(255,199,44,.25)',line:{width:0},name:'10-90% interval'},
     {x:fx,y:med,mode:'lines+markers',name:'median',line:{color:css('--gold'),width:2.5}},
    ];
    if(aftX.length) traces.push({x:aftX,y:aftY,mode:'lines+markers',
-    name:'what happened (settled)',line:{color:css('--ink'),dash:'dot',width:1.4},marker:{size:4}});
+    name:'settled outcome',line:{color:css('--ink'),dash:'dot',width:1.4},marker:{size:4}});
    Plotly.newPlot(document.getElementById('plot'),traces,lay(loc,420),{responsive:true,displaylogo:false});
    document.getElementById('pv').onclick=()=>{IDX--;draw();};
    document.getElementById('nx').onclick=()=>{IDX++;draw();};

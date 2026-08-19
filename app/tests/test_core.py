@@ -119,4 +119,4 @@ def test_run_page_renders_sealed_run():
     rid = runs[-1].parent.name
     c = TestClient(srv)
     r = c.get(f"/runs/{rid}")
-    assert r.status_code == 200 and "submission files" in r.text
+    assert r.status_code == 200 and "Submission files" in r.text

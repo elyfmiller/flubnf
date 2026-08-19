@@ -1,0 +1,196 @@
+{% extends "base.html" %}{% block title %}FluBNF · Methods{% endblock %}
+{% block content %}
+<h1>Methods</h1>
+<p class="sub">What FluBNF is built on, how the SIHRS model works, and the
+policies that keep every number verifiable.</p>
+
+<div class="card"><h2>Purpose</h2>
+ <p>FluBNF generates real-time probabilistic forecasts of weekly influenza
+ hospital admissions for all 52 US jurisdictions, in the quantile format
+ required by the CDC <a href="https://github.com/cdcepi/FluSight-forecast-hub">FluSight
+ forecast hub</a>. Two models run each week: a mechanistic SIHRS model fitted
+ by a sequential particle filter, and a calendar analogue built from
+ historical seasons. Their blend, the ensemble, is the submitted forecast.</p>
+</div>
+
+<div class="card"><h2>The SIHRS model</h2>
+ <p><b>SIHRS</b> is a compartmental model of influenza transmission.
+ Individuals move from <b>Susceptible</b> to <b>Infected</b>; most infections
+ recover directly, while a small severe fraction is admitted to
+ <b>Hospitalized</b> before reaching <b>Recovered</b>. Immunity wanes, so
+ recovered individuals eventually return to the susceptible pool. The model
+ is written in <a href="https://bionetgen.org">BNGL</a>, the BioNetGen
+ model-specification language.</p>
+
+ <svg viewBox="0 0 820 320" role="img" aria-labelledby="sihrs-t sihrs-d"
+      style="width:100%;max-width:760px;display:block;margin:1rem auto;color:inherit">
+  <title id="sihrs-t">SIHRS compartment diagram</title>
+  <desc id="sihrs-d">Susceptible to Infected via seasonal transmission;
+  Infected splits to Hospitalized (the fitted admissions stream) and directly
+  to Recovered; Hospitalized discharges to Recovered; waning immunity returns
+  Recovered to Susceptible.</desc>
+  <defs>
+   <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7"
+           markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+   </marker>
+  </defs>
+  <!-- flows -->
+  <g fill="none" stroke="currentColor" stroke-width="1.7">
+   <path d="M145,130 H253" marker-end="url(#arr)"/>
+   <path d="M370,130 H478" marker-end="url(#arr)"/>
+   <path d="M595,130 H703" marker-end="url(#arr)"/>
+   <path d="M312,100 C312,28 762,28 762,98" marker-end="url(#arr)"/>
+   <path d="M762,162 C762,290 87,290 87,164" marker-end="url(#arr)"/>
+  </g>
+  <!-- compartments -->
+  <g stroke-width="2">
+   <rect x="30"  y="100" width="115" height="60" rx="10"
+         fill="var(--mut)"  fill-opacity=".14" stroke="var(--mut)"/>
+   <rect x="255" y="100" width="115" height="60" rx="10"
+         fill="var(--gold)" fill-opacity=".14" stroke="var(--gold)"/>
+   <rect x="480" y="100" width="115" height="60" rx="10"
+         fill="var(--bad)"  fill-opacity=".14" stroke="var(--bad)"/>
+   <rect x="705" y="100" width="115" height="60" rx="10"
+         fill="var(--ok)"   fill-opacity=".14" stroke="var(--ok)"/>
+  </g>
+  <g text-anchor="middle" font-weight="700" font-size="20">
+   <text x="87"  y="127" fill="var(--mut)">S</text>
+   <text x="312" y="127" fill="var(--gold)">I</text>
+   <text x="537" y="127" fill="var(--bad)">H</text>
+   <text x="762" y="127" fill="var(--ok)">R</text>
+  </g>
+  <g text-anchor="middle" font-size="11" fill="currentColor">
+   <text x="87"  y="148">Susceptible</text>
+   <text x="312" y="148">Infected</text>
+   <text x="537" y="148">Hospitalized</text>
+   <text x="762" y="148">Recovered</text>
+  </g>
+  <!-- rate labels: symbol above each arrow, meaning in words below -->
+  <g text-anchor="middle" fill="currentColor">
+   <text x="199" y="118" font-size="13">&#946;(t)</text>
+   <text x="199" y="180" font-size="11">seasonal</text>
+   <text x="199" y="193" font-size="11">transmission</text>
+   <text x="424" y="118" font-size="13">&#961;&#183;&#947;</text>
+   <text x="424" y="180" font-size="11">hospital admission</text>
+   <text x="424" y="193" font-size="11">(the fitted data stream)</text>
+   <text x="649" y="118" font-size="13">&#947;&#8341;</text>
+   <text x="649" y="180" font-size="11">discharge</text>
+   <text x="537" y="46" font-size="13">(1-&#961;)&#183;&#947;</text>
+   <text x="537" y="62" font-size="11">recovery without admission (most infections)</text>
+   <text x="424" y="248" font-size="13">&#969;</text>
+   <text x="424" y="264" font-size="11">waning immunity: recovered individuals become susceptible again</text>
+  </g>
+ </svg>
+
+ <p><b>Rates.</b> Transmission &#946;(t) varies over the season as a smooth
+ annual harmonic, so the model can produce the winter wave without hand-set
+ breakpoints. Infections resolve at rate &#947; (fixed from the measured
+ influenza generation time); a fixed severe fraction &#961; (the
+ infection-hospitalization ratio) is admitted, and the remaining
+ (1-&#961;) recover directly. Hospitalized individuals discharge at
+ &#947;&#8341;, and immunity wanes at &#969;, returning people to the
+ susceptible pool.</p>
+ <p><b>Why this structure.</b> Three reasons, each tied to the forecasting
+ target. First, hospital admissions are the FluSight target, so H is an
+ explicit compartment: the model fits the actual I to H admission flux,
+ scaled by a fitted reporting ascertainment, rather than a scaled proxy of
+ infections. Second, waning immunity (R back to S) permits repeat seasonal
+ waves, which single-pass SIR-type structures cannot produce. Third,
+ seasonal transmission lets the data determine when transmissibility peaks
+ in each state. Five parameters are fitted per state; every fixed parameter
+ is sourced from published estimates.</p>
+</div>
+
+<div class="card"><h2>Fitting: a sequential particle filter</h2>
+ <p>FluBNF fits the SIHRS model with a particle filter, implemented as
+ <code>fit_type=pf</code> in a fork of
+ <a href="https://github.com/lanl/PyBNF">PyBNF</a>, Los Alamos National
+ Laboratory's parameter-fitting suite for BioNetGen models. The filter
+ maintains about 10,000 candidate epidemics per state, each a complete
+ SIHRS trajectory with its own parameters. Every week the newest admissions
+ reweight the candidates by how well they explain the data
+ (Liu-West jitter and systematic resampling keep the population diverse),
+ and the surviving spread of trajectories is the forecast uncertainty. This
+ sequential design matches the operational cadence: forecasts update weekly
+ as data arrive, rather than refitting from scratch.</p>
+ <p>Simulations run on <a href="https://pypi.org/project/bngsim/">bngsim</a>,
+ an in-process BioNetGen simulation engine. Running simulations in-process
+ removes the per-simulation overhead of launching BNG2.pl, so a full
+ state-season fit completes in seconds. BioNetGen's BNG2.pl performs the
+ one-time network generation for each model.</p>
+</div>
+
+<div class="card"><h2>The ensemble</h2>
+ <p>The submitted forecast blends the particle filter with a calendar
+ analogue: a purely empirical model that, for each forecast week, resamples
+ what happened after historically similar calendar weeks. The two members
+ fail differently; the mechanistic model tracks turning points the analogue
+ cannot anticipate, while the analogue is difficult to beat at short
+ horizons. Blending weights are per-horizon (PF share 0.4 to 0.8 across
+ horizons 1 to 4, with twelve state-specific overrides) and are frozen
+ before the season from held-out years, so nothing is tuned on the season
+ being forecast.</p>
+</div>
+
+<div class="card"><h2>Measured performance</h2>
+ <p>Three full seasons were replayed in real-time conditions: each week the
+ models saw only that week's archived data vintage, submitted, and moved on.
+ Scores are relative weighted interval scores (relWIS) against the official
+ FluSight baseline model; values below 1 beat the baseline.</p>
+ <div style="overflow-x:auto"><table>
+  <tr><th>Model</th><th>2023-24</th><th>2024-25</th><th>2025-26</th></tr>
+  <tr><td>PF-SIHRS</td><td>1.023</td><td>0.636</td><td>0.825</td></tr>
+  <tr><td>Calendar analogue</td><td>1.105</td><td>0.835</td><td>0.641</td></tr>
+  <tr><td>Ensemble</td><td class="ok">0.848</td><td class="ok">0.651</td><td class="ok">0.691</td></tr>
+ </table></div>
+ <p class="hint">Ensemble pooled across the three seasons: relWIS 0.704.
+ Scored against the real 2024-25 field, the ensemble would have placed 4th
+ of the 40 participating teams.</p>
+</div>
+
+<div class="card"><h2>Under the hood</h2>
+ <div style="overflow-x:auto"><table>
+  <tr><th>Component</th><th>Version</th><th>Role</th></tr>
+  <tr><td><a href="https://github.com/lanl/PyBNF">PyBNF</a></td>
+      <td>{{ versions.pybnf }}</td>
+      <td>Parameter-fitting suite for BioNetGen models. FluBNF runs a fork
+      that adds <code>fit_type=pf</code>, the sequential particle filter
+      described above.</td></tr>
+  <tr><td><a href="https://pypi.org/project/bngsim/">bngsim</a></td>
+      <td>{{ versions.bngsim }}</td>
+      <td>In-process BioNetGen simulation engine; removes per-simulation
+      BNG2.pl process overhead.</td></tr>
+  <tr><td><a href="https://bionetgen.org">BioNetGen</a></td>
+      <td>{{ versions.bionetgen }}</td>
+      <td>BNG2.pl network generation for the BNGL model definition.</td></tr>
+  <tr><td><a href="https://fastapi.tiangolo.com">FastAPI</a> +
+      Jinja2</td>
+      <td>{{ versions.fastapi }} / {{ versions.jinja2 }}</td>
+      <td>This console: server-rendered pages, no build chain.</td></tr>
+  <tr><td><a href="https://plotly.com/javascript/">Plotly</a></td>
+      <td>{{ versions.plotly }}</td>
+      <td>Interactive charts, self-hosted; the app loads no external
+      assets.</td></tr>
+  <tr><td>pandas / numpy</td>
+      <td>{{ versions.pandas }} / {{ versions.numpy }}</td>
+      <td>Data handling and scoring.</td></tr>
+ </table></div>
+ <p class="hint">Two-venv design: the console venv runs the application, the
+ calendar analogue, and report generation; a separate engine venv (PyBNF and
+ bngsim, installed by <code>SetupEngine.command</code>) runs the particle
+ filter. The application works without the engine; a component reported as
+ "not installed" above means the engine venv has not been set up on this
+ machine.</p>
+</div>
+
+<div class="card"><h2>Data and verification policies</h2>
+ <p>Every run uses vintage data: the data exactly as archived on its
+ forecast date, never revised history. Every run is seeded and reproducible
+ from its ledger entry. Missing weeks are never imputed; they are dropped as
+ rows with calendar-true offsets. All scoring uses the weighted interval
+ score against the official FluSight baseline, the competition's own
+ yardstick, and evaluation touches only data that was available at forecast
+ time.</p>
+</div>
+{% endblock %}

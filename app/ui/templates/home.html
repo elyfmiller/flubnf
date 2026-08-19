@@ -1,14 +1,15 @@
 {% extends "base.html" %}{% block content %}
 <div class="hero">
- <h1>Forecast the flu season, <span class="gold">mechanistically</span>.</h1>
- <p>FluBNF turns a compartmental disease model into weekly probabilistic
- forecasts for all 52 US jurisdictions — run, blended, scored, and packaged
- for the CDC FluSight competition, from one window.</p>
+ <h1>Influenza forecasting, <span class="gold">operational and verifiable</span>.</h1>
+ <p>FluBNF produces weekly probabilistic forecasts of influenza hospital
+ admissions for all 52 US jurisdictions, packaged in the CDC FluSight
+ submission format together with a shareable weekly report. Runs, blending,
+ scoring, and packaging are managed from this console.</p>
 </div>
 
 <div class="card">{{ map_svg | safe }}
- <p class="hint">The weekly outlook map — each state colored by where its
- admissions are most likely headed.
+ <p class="hint">The weekly outlook map. Each state is colored by the
+ direction its admissions are most likely headed.
  {% if outlook_date %}From the latest run ({{ outlook_date }}); hover a state
  for its category probabilities.
  {% else %}It fills in when you run a forecast.{% endif %}</p>
@@ -16,40 +17,49 @@
 
 <div class="grid3">
  <div class="card"><h2>How it works</h2>
-  <p>A SIHRS model — Susceptible, Infected, Hospitalized, Recovered — written
-  in <a href="https://bionetgen.org">BNGL</a> and fitted with
+  <p>A SIHRS compartmental model (Susceptible, Infected, Hospitalized,
+  Recovered, with waning immunity) is written in
+  <a href="https://bionetgen.org">BNGL</a> and fitted with
   <a href="https://github.com/lanl/PyBNF">PyBNF</a>'s sequential particle
-  filter on the BNGsim engine. Ten thousand candidate epidemics per state are
-  reweighted each week by the newest data; their spread <i>is</i> the
-  forecast uncertainty.</p></div>
- <div class="card"><h2>Two heads, one forecast</h2>
-  <p>The mechanistic model is paired with a calendar analogue — pure
-  historical memory. Their errors disagree in useful ways, so the blended
-  ensemble beats either alone. Weights are frozen before the season from
-  held-out years; nothing is tuned on the season being forecast.</p></div>
- <div class="card"><h2>Honest by construction</h2>
-  <p>Every run uses the data <i>as it looked</i> that week, never revised
-  history. Every run is seeded and reproducible from its ledger entry.
-  Missing weeks stay missing. Scores are weighted interval scores against
-  the official FluSight baseline — the competition's own yardstick.</p></div>
+  filter on the bngsim engine. Each week, 10,000 candidate epidemics per
+  state are reweighted by the newest admissions data; their spread is the
+  forecast uncertainty. The full method, including a compartment diagram,
+  is documented on the <a href="/methods">Methods</a> page.</p></div>
+ <div class="card"><h2>Two models, one forecast</h2>
+  <p>The mechanistic model is paired with a calendar analogue, a purely
+  empirical model of past seasons. Their errors disagree in useful ways,
+  so the blended ensemble beats either member alone. Weights are frozen
+  before the season from held-out years; nothing is tuned on the season
+  being forecast.</p></div>
+ <div class="card"><h2>Measured performance</h2>
+  <p>In a three-season real-time retrospective (2023-24 through 2025-26),
+  the ensemble beat the official CDC FluSight baseline in every season,
+  with a pooled relative weighted interval score of 0.704. Scored against
+  the real 2024-25 field, it would have placed 4th of the 40 participating
+  teams. Every evaluation uses only the data available on each forecast
+  date.</p></div>
 </div>
 
 <div class="cols">
- <div><div class="card"><h2>Start here</h2>
-  <p>1. <a href="/data">Data</a> — check the feed is fresh</p>
-  <p>2. <a href="/forecast">Forecast</a> — pick a date, run the models</p>
-  <p>3. <a href="/output">Output</a> — collect submissions and the report</p>
-  <p class="hint">Or replay a whole season on the
+ <div><div class="card"><h2>Weekly workflow</h2>
+  <p>1. <a href="/data">Data</a>: confirm the feed is current</p>
+  <p>2. <a href="/forecast">Forecast</a>: select a date and run the models</p>
+  <p>3. <a href="/output">Output</a>: collect submission files and the report</p>
+  <p class="hint">A full past season can be replayed on the
   <a href="/retro">Retrospective</a> tab.</p>
  </div></div>
  <div><div class="card"><h2>Setup</h2>
   {% if missing %}
-   <p class="hint">This machine runs the console, the analogue, and reports.
-   Not yet installed:</p>
+   <p class="hint">This machine runs the console, the calendar analogue, and
+   report generation. Not yet installed:</p>
    {% for m in missing %}<p class="warn">• {{ m[2] }}</p>{% endfor %}
-   <p class="hint">to add the particle-filter engine: double-click
-   <code>SetupEngine.command</code>, then relaunch.</p>
-  {% else %}<p class="ok">everything installed — full engine capability</p>{% endif %}
+   <p class="hint">To add the particle-filter engine, run
+   <code>SetupEngine.command</code> and relaunch the console.</p>
+  {% else %}<p class="ok">All components are installed; full engine
+   capability is available.</p>{% endif %}
+  <p class="hint">PyBNF {{ versions.pybnf }} · bngsim {{ versions.bngsim }} ·
+  BioNetGen {{ versions.bionetgen }} · FastAPI {{ versions.fastapi }} ·
+  Plotly {{ versions.plotly }}</p>
  </div></div>
 </div>
 {% endblock %}
