@@ -1,0 +1,166 @@
+begin model
+# =====================================================================
+# FluBNF SIHRS — TWO-STRAIN (A/B), POPULATION-PARAMETERIZED — DRAFT
+# ---------------------------------------------------------------------
+# Motivation (measured, seal 2026-08-19): the single-strain model's one
+# catastrophic phase is the late-season type turn. Feb 2024: A declines,
+# B rises, NHSN admissions (the sum) plateau for 5 weeks; a single-strain
+# fit forecasts decline and bleeds relWIS 1.485 for a month. NREVSS
+# clinical percent-positive SEES the turn as it happens (A 11%->5% while
+# B 2.7%->6.9%, crossing at week 202411) — but only a two-strain state
+# can use it.
+#
+# Structure: TWO INDEPENDENT SIHRS CIRCUITS over the same population N
+# (independent co-circulation: infection with one type does not protect
+# against the other — defensible for A vs B, different genera; the cost
+# is expectation-level double counting, standard for two-strain forecast
+# ODEs). Shared: population, ascertainment (mult), importation hazard,
+# NB dispersion, seasonal AMPLITUDE. Strain-specific: reproduction
+# numbers and seasonal PHASE — the B phase sitting later in the season
+# is the mechanism that generates spring B waves.
+#
+# TWO observation channels:
+#   H_weekly  = rho*mult*gamma*(Ia+Ib)      -> NHSN admissions, NB(r)
+#   A_share   = Ia/(Ia+Ib)                  -> NREVSS total_a/(total_a+total_b),
+#                                              beta-binomial channel (engine work:
+#                                              reuse the PF+ED second-observable
+#                                              plumbing with a binomial likelihood)
+#
+# Tokens substituted per state at materialization:
+#   {{POP}} {{S0FRAC}} {{I0FRAC}} {{A0SHARE}} {{GAMMA}} {{RHO}} {{GAMMAH}} {{OMEGA}}
+# {{A0SHARE}} is KNOWN DATA (first NREVSS reading of the season as-of the
+# forecast date), never fitted — the initial strain mix comes from
+# surveillance, the model only evolves it.
+#
+# Fitted (8): ReffA, ReffB, eps1, phi1A, phi1B, mult, impr, r.
+# The semi-annual harmonic (eps2/phi2) is DROPPED: the second strain now
+# carries the two-wave/asymmetric-season structure mechanistically, which
+# is the hypothesis under test.
+# =====================================================================
+begin parameters
+
+### -- transmission: per-strain Reff + shared-amplitude seasonal forcing -- ###
+ReffA   ReffA__FREE    # strain-A effective reproduction number at season start
+ReffB   ReffB__FREE    # strain-B; usually < ReffA but with a LATER phase
+eps1    eps1__FREE     # seasonal amplitude, SHARED (both types ride the same
+                       # winter environment; splitting it is unidentified from
+                       # one season of split data)
+phi1A   phi1A__FREE    # strain-A week of peak transmissibility (circular, 0=52)
+phi1B   phi1B__FREE    # strain-B phase — the spring-wave mechanism; prior
+                       # centered ~6-10 weeks after phi1A from NREVSS history
+
+### -- progression / removal (shared across strains for the draft) -- ###
+gamma   {{GAMMA}}      # FIXED: generation time (Chan 2024), shared A/B
+rho     {{RHO}}        # FIXED: IHR. NOTE: B severity differs from A; a
+                       # refinement is rhoB = c*rho with c fixed from
+                       # FluSurv-NET typed burden — kept shared in the draft
+                       # so the fitted param count stays at 8.
+mult    mult__FREE     # ascertainment, shared: one reporting system observes both
+gammaH  {{GAMMAH}}     # FIXED: discharge (census only, unidentified)
+omega   {{OMEGA}}      # FIXED: waning, per-strain circuit R->S
+
+### -- external force of infection, shared -- ###
+impr    impr__FREE     # per-susceptible weekly reseeding hazard (see SIHRS_pop.bngl)
+
+### -- observation noise -- ###
+r       r__FREE        # NB dispersion for the admissions channel
+
+### -- derived -- ###
+beta0A  ReffA*gamma/s0
+beta0B  ReffB*gamma/s0
+pi      3.141592653589793  # avoid BNGL _pi(): bngsim codegen emits M_PI()
+
+### -- FIXED per-state structural constants -- ###
+N       {{POP}}
+s0      {{S0FRAC}}     # initial susceptible fraction, applied to BOTH circuits
+i0      {{I0FRAC}}     # total initial infected fraction
+a0      {{A0SHARE}}    # strain-A share of i0: KNOWN DATA from the season's
+                       # first as-of NREVSS reading, never fitted
+
+end parameters
+
+begin molecule types
+Sa()        # susceptible to A          Sb()  handled below
+Ia()        # infectious with A
+Ha()        # hospitalized (A) census
+Ra()        # immune to A
+Sb()
+Ib()
+Hb()
+Rb()
+HadmA()     # cumulative A admissions accumulator
+HadmB()     # cumulative B admissions accumulator
+counter()   # clock: observable t = weeks
+end molecule types
+
+begin seed species
+# Each circuit spans the whole population (independent co-circulation).
+Sa() N*s0
+Ia() N*i0*a0
+Ha() 0
+Ra() N*(1-s0-i0*a0)
+Sb() N*s0
+Ib() N*i0*(1-a0)
+Hb() 0
+Rb() N*(1-s0-i0*(1-a0))
+HadmA() 0
+HadmB() 0
+counter() 0
+end seed species
+
+begin observables
+Molecules Sa    Sa()
+Molecules Ia    Ia()
+Molecules Ra    Ra()
+Molecules Sb    Sb()
+Molecules Ib    Ib()
+Molecules Rb    Rb()
+Molecules H_CumA HadmA()   # per-strain cumulative admissions; '_Cum' -> weekly
+Molecules H_CumB HadmB()
+Molecules t     counter()
+end observables
+
+begin functions
+
+### -- per-strain seasonal transmission (shared amplitude, own phase) -- ###
+betaA() = beta0A*exp( eps1*cos(2*pi*(t-phi1A)/52) )
+betaB() = beta0B*exp( eps1*cos(2*pi*(t-phi1B)/52) )
+
+### -- channel 1: combined reported weekly admissions (NHSN target) -- ###
+H_weekly() = rho*mult*gamma*(Ia+Ib)
+
+### -- channel 2: strain-A share of typed lab positives (NREVSS target) -- ###
+# Assumes equal per-infection test-positivity ascertainment for A and B;
+# the shared factors cancel in the ratio, which is why mult does NOT
+# appear here — the two channels identify different things by design.
+A_share() = Ia/(Ia+Ib)
+
+end functions
+
+begin reaction rules
+# clock
+0 -> counter() 1
+# --- strain A circuit (frequency-dependent, as SIHRS_pop.bngl) ---
+Sa() + Ia() -> Ia() + Ia()   betaA()/N
+Ia() -> Ha()   rho*gamma
+Ia() -> Ra()   (1-rho)*gamma
+Ha() -> Ra()   gammaH
+Ra() -> Sa()   omega
+Sa() -> Ia()   impr
+Ia() -> Ia() + HadmA()   rho*gamma
+# --- strain B circuit ---
+Sb() + Ib() -> Ib() + Ib()   betaB()/N
+Ib() -> Hb()   rho*gamma
+Ib() -> Rb()   (1-rho)*gamma
+Hb() -> Rb()   gammaH
+Rb() -> Sb()   omega
+Sb() -> Ib()   impr
+Ib() -> Ib() + HadmB()   rho*gamma
+end reaction rules
+
+end model
+
+begin actions
+generate_network({overwrite=>1})
+simulate({suffix=>"SIHRS_flu",method=>"ode",t_start=>0,t_end=>48,n_steps=>48,print_functions=>1})
+end actions
