@@ -160,6 +160,11 @@ _JS = """
     if (dist >= 5) return;
     const t = ev.target.closest ? ev.target.closest('[data-abbr]') : null;
     const a = t && t.dataset.abbr;
+    if (a && !window.showState && window.MAP_LINK) {
+      clearTimeout(clickTimer);
+      clickTimer = setTimeout(() => { location = window.MAP_LINK + '#st-' + a; }, 250);
+      return;
+    }
     if (a && window.showState) {
       clearTimeout(clickTimer);
       clickTimer = setTimeout(() => window.showState('st-' + a), 250);

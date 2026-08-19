@@ -197,7 +197,7 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
  <button id="btn-state-view" class="on">state view</button>
  <button id="btn-national-view">national view</button>
 </div>"""
-        nat_map_div = f'<div id="map-national" hidden>{national_map_html}</div>'
+        nat_map_div = f'<div id="map-national" class="mapcap" hidden>{national_map_html}</div>'
 
     # plotly.js goes in the head, once, iff any figure is embedded: a chart
     # must never render without its library, and a chartless report should
@@ -223,6 +223,8 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
  .grid2{{display:grid;grid-template-columns:1fr 1fr;gap:.8rem}}
  @media(max-width:820px){{.grid2{{grid-template-columns:1fr}}}}
  .offseason{{color:{MUT};font-size:.85rem;font-style:italic;margin:.2rem 0 .8rem}}
+ .mapcap{{max-width:min(880px,72vw);margin:0 auto}}
+ .mapcap svg{{max-height:58vh}}
  .legend{{display:flex;gap:1.1rem;flex-wrap:wrap;color:{MUT};font-size:.82rem;
           margin:.4rem 0 0 .2rem}}
  .legend span{{display:inline-flex;align-items:center;gap:.35rem}}
@@ -245,7 +247,7 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
  · <button id="natbtn">national detail</button></p>
 {view_toggle}
 <div class="card" id="map-anchor">
- <div id="map-state">{map_html}</div>
+ <div id="map-state" class="mapcap">{map_html}</div>
  {nat_map_div}
  <div class="legend">
   {"".join(f'<span><i class="sw" style="background:{CAT_COLOR[c]}"></i>{CAT_LABEL[c]}</span>' for c in CATS)}
@@ -264,6 +266,10 @@ data this week — shown as gaps, never interpolated.</p>
 {nat}
 <script>
 window.showState = show;
+if (location.hash && location.hash.startsWith('#st-') &&
+    document.getElementById(location.hash.slice(1))) {{
+  show(location.hash.slice(1));
+}}
 function show(id) {{
   const el = document.getElementById(id);
   if (!el) return;

@@ -249,6 +249,7 @@
 <script>
  const SERIES = {{ series_json | safe }};
  const FANQ = {{ fanq_json | safe }};   // {model: {loc: {h: {q: v}}}}
+ const ROBS = {{ run_obs_json | safe }};  // loc -> [[date, value]...] AS OF the run's vintage
  const FCDATE = {{ fc_date | tojson }};
  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
  function lay(title, h){ return {title:{text:title,font:{size:14}},
@@ -339,22 +340,39 @@
    const s=SERIES[loc];
    document.getElementById('fan-pos').textContent=loc+' · '+(FIDX+1)+'/'+FLOCS.length;
    const hs=Object.keys(qs).sort();
-   const obsX=s? s.dates.slice(-12):[], obsY=s? s.values.slice(-12):[];
+   // observed must be AS OF the run's vintage -- a backdated run once mixed
+   // February forecasts with July's observed tail and drew month-spanning
+   // triangles. Fall back to the latest series clipped at the run date.
+   let obsX=[], obsY=[];
+   const ro=ROBS[loc]||[];
+   if(ro.length){obsX=ro.map(p=>p[0]); obsY=ro.map(p=>p[1]);}
+   else if(s){s.dates.forEach((d,i)=>{if(d<=FCDATE){obsX.push(d);obsY.push(s.values[i]);}});}
+   obsX=obsX.slice(-12); obsY=obsY.slice(-12);
    const base=new Date(FCDATE);
    const xs=hs.map(h=>{const d=new Date(base); d.setDate(d.getDate()+7*parseInt(h));
      return d.toISOString().slice(0,10);});
+   // what actually happened after the origin (settled, latest data), framed
+   // to the forecast horizon so backdated runs can be eyeballed vs outcome
+   const lim=new Date(base); lim.setDate(lim.getDate()+35);
+   const limIso=lim.toISOString().slice(0,10);
+   const aftX=[],aftY=[];
+   if(s){s.dates.forEach((d,i)=>{if(d>FCDATE&&d<=limIso){aftX.push(d);aftY.push(s.values[i]);}});}
    const fx=[...(obsX.slice(-1)),...xs];
    const med=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.5'])];
    const lo9=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.1'])];
    const hi9=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.9'])];
    const div=document.createElement('div'); el.appendChild(div);
-   Plotly.newPlot(div,[
-     {x:obsX,y:obsY,mode:'lines+markers',name:'observed',line:{color:css('--ink')}},
+   const traces=[
+     {x:obsX,y:obsY,mode:'lines+markers',name:'observed (as of '+FCDATE+')',line:{color:css('--ink')}},
      {x:fx,y:hi9,mode:'lines',line:{width:0},showlegend:false,hoverinfo:'skip'},
      {x:fx,y:lo9,mode:'lines',fill:'tonexty',fillcolor:'rgba(255,199,44,.25)',
       line:{width:0},name:'10–90%'},
      {x:fx,y:med,mode:'lines+markers',name:'median',line:{color:css('--gold'),width:2.5}},
-   ],lay(loc,400),PCONF);
+   ];
+   if(aftX.length) traces.push({x:aftX,y:aftY,mode:'lines+markers',
+     name:'what happened (settled)',line:{color:css('--ink'),dash:'dot',width:1.4},
+     marker:{size:4}});
+   Plotly.newPlot(div,traces,lay(loc,400),PCONF);
  }
  if(MODELS.length){
    const wrap=document.getElementById('fanwrap');

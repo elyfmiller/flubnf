@@ -36,6 +36,7 @@
 </div>
 <script>
  const FANQ = {{ fanq_json | safe }};
+ const ROBS = {{ run_obs_json | safe }};
  const SERIES = {};
  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
  function lay(t,h){return {title:{text:t,font:{size:14}},height:h||400,
@@ -59,20 +60,34 @@
    }
    const s=SERIES[loc]||{dates:[],values:[]};
    const hs=Object.keys(qs).sort();
-   const base=new Date({{ date | tojson }});
+   const FD={{ date | tojson }};
+   const base=new Date(FD);
    const xs=hs.map(h=>{const d=new Date(base);d.setDate(d.getDate()+7*parseInt(h));
      return d.toISOString().slice(0,10);});
-   const obsX=s.dates.slice(-12), obsY=s.values.slice(-12);
+   // observed as of the run's vintage (never the latest tail -- backdated
+   // runs otherwise mix months); settled-afterwards drawn separately
+   let obsX=[],obsY=[];
+   const ro=ROBS[loc]||[];
+   if(ro.length){obsX=ro.map(q=>q[0]);obsY=ro.map(q=>q[1]);}
+   else{s.dates.forEach((d,i)=>{if(d<=FD){obsX.push(d);obsY.push(s.values[i]);}});}
+   obsX=obsX.slice(-12);obsY=obsY.slice(-12);
+   const lim=new Date(base); lim.setDate(lim.getDate()+35);
+   const limIso=lim.toISOString().slice(0,10);
+   const aftX=[],aftY=[];
+   s.dates.forEach((d,i)=>{if(d>FD&&d<=limIso){aftX.push(d);aftY.push(s.values[i]);}});
    const fx=[...(obsX.slice(-1)),...xs];
    const med=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.5'])];
    const lo=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.1'])];
    const hi=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.9'])];
-   Plotly.newPlot(document.getElementById('plot'),[
-    {x:obsX,y:obsY,mode:'lines+markers',name:'observed',line:{color:css('--ink')}},
+   const traces=[
+    {x:obsX,y:obsY,mode:'lines+markers',name:'observed (as of '+FD+')',line:{color:css('--ink')}},
     {x:fx,y:hi,mode:'lines',line:{width:0},showlegend:false,hoverinfo:'skip'},
     {x:fx,y:lo,mode:'lines',fill:'tonexty',fillcolor:'rgba(255,199,44,.25)',line:{width:0},name:'10–90%'},
     {x:fx,y:med,mode:'lines+markers',name:'median',line:{color:css('--gold'),width:2.5}},
-   ],lay(loc,420),{responsive:true,displaylogo:false});
+   ];
+   if(aftX.length) traces.push({x:aftX,y:aftY,mode:'lines+markers',
+    name:'what happened (settled)',line:{color:css('--ink'),dash:'dot',width:1.4},marker:{size:4}});
+   Plotly.newPlot(document.getElementById('plot'),traces,lay(loc,420),{responsive:true,displaylogo:false});
    document.getElementById('pv').onclick=()=>{IDX--;draw();};
    document.getElementById('nx').onclick=()=>{IDX++;draw();};
  }

@@ -108,7 +108,10 @@ def home(request: Request):
                 outlook_date = (res or {}).get("forecast_date", "")
         except Exception:
             pass                      # no LOCATIONS/hub -> bare silhouette
-        map_svg = ("<div style='max-width:880px;margin:0 auto'>" + svg_map(cards, interactive=False) + "</div>")
+        with_data = {c["abbr"] for c in cards.values() if c.get("probs")}
+        map_svg = ("<div style='max-width:880px;margin:0 auto'>"
+                   "<script>window.MAP_LINK='/output/report';</script>"
+                   + svg_map(cards, clickable=with_data) + "</div>")
     except Exception:
         pass
     return templates.TemplateResponse(request, "home.html", {
@@ -169,6 +172,7 @@ def forecast_page(request: Request):
         "active": "Forecast", "engines": ENGINES, "status": _status,
         "ledger": ledger_rows, "all_locs": all_locs, "form": form,
         "series_json": _json.dumps(series), "fanq_json": _json.dumps(fanq),
+        "run_obs_json": _json.dumps((res or {}).get("observed", {})),
         "fc_date": (res or {}).get("forecast_date", "")})
 
 
@@ -848,6 +852,7 @@ def model_page(request: Request, name: str):
         "rid": rid, "label": _run_label(rid) if rid else "",
         "date": (res or {}).get("forecast_date", ""),
         "fanq_json": __import__("json").dumps(fanq),
+        "run_obs_json": __import__("json").dumps((res or {}).get("observed", {})),
         "form": form, "status": _status})
 
 
