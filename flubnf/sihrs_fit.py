@@ -173,10 +173,13 @@ def resolve_state(state: str, *, truth_csv: str | Path, locations_csv: str | Pat
 
 
 def materialize_model(setup: StateSetup, template: str | Path, out_path: str | Path,
-                      suffix: str, t_end: int | None = None) -> Path:
-    """Write the per-state .bngl with every token resolved. Unresolved => error."""
+                      suffix: str, t_end: int | None = None,
+                      extra_tokens: dict | None = None) -> Path:
+    """Write the per-state .bngl with every token resolved. Unresolved => error.
+    `extra_tokens` lets variant templates carry tokens StateSetup doesn't know
+    (e.g. the two-strain {{A0SHARE}})."""
     txt = Path(template).read_text()
-    for tok, val in {
+    for tok, val in {**(extra_tokens or {}),
         "{{POP}}": str(int(setup.population)),
         "{{S0FRAC}}": f"{setup.s0:g}",
         "{{I0FRAC}}": f"{setup.i0:.8e}",

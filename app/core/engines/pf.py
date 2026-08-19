@@ -20,6 +20,26 @@ from flubnf.settings import PY_ENGINE as PY310, PYBNF as PYBNF_PF
 TEMPLATE = REPO / "flubnf/templates/SIHRS_pop_min.bngl"   # H stays: verdict 2026-08-17
 DEFAULTS_BLOCK = ("begin parameters\nReff__FREE 1.20\neps1__FREE 0.15\n"
                   "phi1__FREE 22.0\nmult__FREE 0.05\nr__FREE 8.0\n")
+# Two-strain candidate (spec.extra["variant"] == "2strain"): A/B circuits +
+# the NREVSS typed-positives binomial channel. Same trim as min.
+TEMPLATE_2S = REPO / "flubnf/templates/SIHRS_pop_2strain_min.bngl"
+DEFAULTS_2S = ("begin parameters\nReffA__FREE 1.20\nReffB__FREE 0.95\n"
+               "eps1__FREE 0.15\nphi1A__FREE 22.0\nphi1B__FREE 30.0\n"
+               "mult__FREE 0.05\nr__FREE 8.0\n")
+VARS_1S = """uniform_var = Reff__FREE 0.6 2.5
+uniform_var = eps1__FREE 0.0 1.0
+uniform_var = phi1__FREE 0.0 52.0
+loguniform_var = mult__FREE 0.002 1.0
+loguniform_var = r__FREE 0.1 40.0
+"""
+VARS_2S = """loguniform_var = ReffA__FREE 0.6 2.5
+loguniform_var = ReffB__FREE 0.3 2.5
+uniform_var = eps1__FREE 0.0 1.0
+uniform_var = phi1A__FREE 0.0 52.0
+uniform_var = phi1B__FREE 0.0 52.0
+loguniform_var = mult__FREE 0.002 1.0
+loguniform_var = r__FREE 0.1 40.0
+"""
 
 _RUNNER = '''"""Auto-generated PF runner. Executes every prepared cell sequentially."""
 import json, os, shutil, sys
@@ -57,6 +77,18 @@ def prepare(spec, workroot: Path) -> list:
     from app.core.runs import derive_seed
 
     vintage = vintage_path(spec.forecast_date)
+    two_strain = (spec.extra or {}).get("variant") == "2strain"
+    if two_strain:
+        from datetime import date as _d, timedelta as _td
+
+        import pandas as _pd
+
+        from flubnf import nrevss
+        # NREVSS release cadence: week ending Saturday D publishes the
+        # following Friday, i.e. AFTER the FluSight deadline for reference
+        # date D. Honest as-of uses typed data through D-7.
+        nrevss_asof = (_d.fromisoformat(spec.forecast_date)
+                       - _td(days=7)).isoformat()
     cells = []
     for loc in spec.locations:
         s = resolve_state(loc, truth_csv=vintage, locations_csv=LOCATIONS,
@@ -67,15 +99,38 @@ def prepare(spec, workroot: Path) -> list:
             s.observed = s.observed[:-spec.weeks_to_drop]
             s.times = s.times[:-spec.weeks_to_drop]
             s.n_obs = len(s.observed)
+        typed_by_t, a0 = {}, 0.85
+        if two_strain:
+            try:
+                ser = nrevss.a_share_series(loc, spec.season_start, nrevss_asof)
+                for row in ser.itertuples():
+                    t_off = int((_pd.Timestamp(row.date)
+                                 - _pd.Timestamp(spec.season_start)).days // 7)
+                    typed_by_t[t_off] = (int(row.total_a),
+                                         int(row.total_a) + int(row.total_b))
+                a0 = nrevss.a0_share(loc, spec.season_start, nrevss_asof)
+            except Exception:
+                typed_by_t, a0 = {}, 0.85   # typed feed down: channel 2 just
+                                            # has no rows; the fit still runs
         for rep in range(spec.replicates):
             tag = f"{loc.replace(' ', '_')}_r{rep}"
             d = workroot / tag
             d.mkdir(parents=True)
             sfx = f"{loc.replace(' ', '_')}_flu"
-            m = materialize_model(s, TEMPLATE, d / "m.bngl", sfx)
+            m = materialize_model(
+                s, TEMPLATE_2S if two_strain else TEMPLATE, d / "m.bngl", sfx,
+                extra_tokens={"{{A0SHARE}}": f"{a0:.4f}"} if two_strain else None)
             m.write_text(m.read_text().replace("begin parameters\n",
-                                               DEFAULTS_BLOCK, 1))
-            write_exp(s, d / f"{sfx}.exp")
+                                               DEFAULTS_2S if two_strain
+                                               else DEFAULTS_BLOCK, 1))
+            if two_strain:
+                lines = ["# time H_weekly A_share_bin A_share_n"]
+                for t_off, v in zip(s.times, s.observed):
+                    a_k, n_k = typed_by_t.get(int(t_off), (-1, -1))
+                    lines.append(f"{int(t_off)} {v:.6f} {a_k} {n_k}")
+                (d / f"{sfx}.exp").write_text("\n".join(lines) + "\n")
+            else:
+                write_exp(s, d / f"{sfx}.exp")
             r = subprocess.run(["perl", BNG, "m.bngl"], capture_output=True,
                                text=True, cwd=str(d), timeout=300)
             if not (d / "m.net").is_file():
@@ -93,14 +148,14 @@ pf_forecast_weeks = 4
 population_size = 1
 max_iterations = 1
 seed = {seed}
-uniform_var = Reff__FREE 0.6 2.5
-uniform_var = eps1__FREE 0.0 1.0
-uniform_var = phi1__FREE 0.0 52.0
-loguniform_var = mult__FREE 0.002 1.0
-loguniform_var = r__FREE 0.1 40.0
-""")
+{VARS_2S if two_strain else VARS_1S}"""
++ (f"pf_binom_neff_cap = {(spec.extra or {}).get('neff_cap', 300)}\n"
+   if two_strain else ""))
             cells.append({"key": tag, "dir": str(d), "location": loc,
                           "replicate": rep, "seed": seed,
+                          "variant": "2strain" if two_strain else "1strain",
+                          "a0": a0 if two_strain else None,
+                          "typed_weeks": len(typed_by_t) if two_strain else None,
                           "n_obs": int(s.n_obs),
                           "last_week_offset": int(s.last_week_offset),
                           "last_observed": float(s.observed[-1])})

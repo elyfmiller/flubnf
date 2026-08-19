@@ -1,0 +1,127 @@
+begin model
+# =====================================================================
+# FluBNF SIHRS — TWO-STRAIN (A/B) MIN — the PF production variant
+# ---------------------------------------------------------------------
+# The two-strain candidate in the same trim as SIHRS_pop_min.bngl (the
+# single-strain model the PF actually runs): no impr (single-season fits;
+# the filter re-conditions weekly), no semi-annual harmonic (the B
+# circuit carries two-wave structure mechanistically — the hypothesis
+# under test). See SIHRS_pop_2strain.bngl for the fully-annotated draft
+# and design rationale (Feb-2024 plateau, NREVSS crossover).
+#
+# Fitted (7): ReffA, ReffB, eps1, phi1A, phi1B, mult, r
+# Tokens:     {{POP}} {{S0FRAC}} {{I0FRAC}} {{A0SHARE}} {{GAMMA}} {{RHO}}
+#             {{GAMMAH}} {{OMEGA}}
+# {{A0SHARE}} = strain-A share of initial infections, KNOWN DATA from the
+# season's first as-of NREVSS reading — never fitted.
+#
+# Channels: H_weekly (NHSN admissions, NB) + A_share (NREVSS typed
+# positives ratio, binomial via the engine's `_bin`/`_n` exp columns).
+# mult cancels in A_share — the channels identify different things.
+# =====================================================================
+begin parameters
+
+ReffA   ReffA__FREE    # strain-A effective reproduction number at season start
+ReffB   ReffB__FREE    # strain-B — typically smaller, LATER phase
+eps1    eps1__FREE     # seasonal amplitude, SHARED across strains
+phi1A   phi1A__FREE    # strain-A week of peak transmissibility (circular)
+phi1B   phi1B__FREE    # strain-B phase — the spring-wave mechanism
+
+gamma   {{GAMMA}}      # FIXED (Chan 2024), shared A/B
+rho     {{RHO}}        # FIXED IHR, shared for the draft (refinement: rhoB=c*rho)
+mult    mult__FREE     # ascertainment, shared: one reporting system
+gammaH  {{GAMMAH}}     # FIXED discharge (census only)
+omega   {{OMEGA}}      # FIXED waning, per circuit
+
+r       r__FREE        # NB dispersion, admissions channel
+
+beta0A  ReffA*gamma/s0
+beta0B  ReffB*gamma/s0
+pi      3.141592653589793  # avoid BNGL _pi(): bngsim codegen emits M_PI()
+
+N       {{POP}}
+s0      {{S0FRAC}}     # applied to BOTH circuits (independent co-circulation)
+i0      {{I0FRAC}}
+a0      {{A0SHARE}}    # A-share of i0: known data, never fitted
+
+end parameters
+
+begin molecule types
+Sa()
+Ia()
+Ha()
+Ra()
+Sb()
+Ib()
+Hb()
+Rb()
+HadmA()
+HadmB()
+counter()
+end molecule types
+
+begin seed species
+# Each circuit spans the whole population N (independent co-circulation:
+# infection with one type confers no protection against the other).
+Sa() N*s0
+Ia() N*i0*a0
+Ha() 0
+Ra() N*(1-s0-i0*a0)
+Sb() N*s0
+Ib() N*i0*(1-a0)
+Hb() 0
+Rb() N*(1-s0-i0*(1-a0))
+HadmA() 0
+HadmB() 0
+counter() 0
+end seed species
+
+begin observables
+Molecules Ia    Ia()
+Molecules Ib    Ib()
+Molecules Sa    Sa()
+Molecules Sb    Sb()
+# ONE '_Cum' observable: the engine's integrated mode globs the first
+# '_Cum' column, so only the COMBINED accumulator may carry the suffix.
+Molecules H_Cum HadmA() HadmB()
+Molecules t     counter()
+end observables
+
+begin functions
+
+betaA() = beta0A*exp( eps1*cos(2*pi*(t-phi1A)/52) )
+betaB() = beta0B*exp( eps1*cos(2*pi*(t-phi1B)/52) )
+
+### channel 1: combined reported weekly admissions (NHSN, NB) ###
+H_weekly() = rho*mult*gamma*(Ia+Ib)
+
+### channel 2: strain-A share of typed positives (NREVSS, binomial) ###
+# mult cancels in the ratio by design.
+A_share() = Ia/(Ia+Ib)
+
+end functions
+
+begin reaction rules
+0 -> counter() 1
+# strain A circuit (frequency-dependent, as SIHRS_pop_min.bngl)
+Sa() + Ia() -> Ia() + Ia()   betaA()/N
+Ia() -> Ha()   rho*gamma
+Ia() -> Ra()   (1-rho)*gamma
+Ha() -> Ra()   gammaH
+Ra() -> Sa()   omega
+Ia() -> Ia() + HadmA()   rho*gamma
+# strain B circuit
+Sb() + Ib() -> Ib() + Ib()   betaB()/N
+Ib() -> Hb()   rho*gamma
+Ib() -> Rb()   (1-rho)*gamma
+Hb() -> Rb()   gammaH
+Rb() -> Sb()   omega
+Ib() -> Ib() + HadmB()   rho*gamma
+end reaction rules
+
+end model
+
+begin actions
+generate_network({overwrite=>1})
+simulate({suffix=>"SIHRS_flu",method=>"ode",t_start=>0,t_end=>48,n_steps=>48,print_functions=>1})
+end actions
