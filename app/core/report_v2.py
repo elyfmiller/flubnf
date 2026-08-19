@@ -62,8 +62,11 @@ def _fig_layout(fig, height=340, title="", legend=False):
 
 
 def fan_figure(observed_times, observed, forecast_times, samples_by_h,
-               gaps=(), title=""):
-    """Quantile fan vs observed. `gaps` = week offsets with no data."""
+               gaps=(), title="", settled=None):
+    """Quantile fan vs observed. `gaps` = week offsets with no data.
+    `settled`: optional [(date, value)...] of what actually happened after
+    the forecast origin (backdated runs) -- drawn dotted; the legend entry
+    doubles as its on/off toggle."""
     import plotly.graph_objects as go
     fig = go.Figure()
     med = []
@@ -89,6 +92,13 @@ def fan_figure(observed_times, observed, forecast_times, samples_by_h,
                     line=dict(color=INK, width=1.6),
                     marker=dict(size=5), name="observed",
                     hovertemplate="%{x|%b %-d}: %{y:.0f}<extra>observed</extra>")
+    if settled:
+        fig.add_scatter(x=[d for d, _ in settled], y=[v for _, v in settled],
+                        mode="lines+markers", name="what happened (settled)",
+                        line=dict(color=INK, width=1.3, dash="dot"),
+                        marker=dict(size=4),
+                        hovertemplate="%{x|%b %-d}: %{y:.0f}"
+                                      "<extra>settled</extra>")
     for g in gaps:
         if isinstance(g, str):          # ISO week date -> +/- 3.5 days
             import pandas as _pd
@@ -223,6 +233,9 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
  .grid2{{display:grid;grid-template-columns:1fr 1fr;gap:.8rem}}
  @media(max-width:820px){{.grid2{{grid-template-columns:1fr}}}}
  .offseason{{color:{MUT};font-size:.85rem;font-style:italic;margin:.2rem 0 .8rem}}
+ #appback{{position:fixed;top:.7rem;left:.8rem;z-index:60;
+  background:{CARD};border:1px solid {LINE};border-radius:99px;
+  padding:.3rem .8rem;color:{INK};text-decoration:none;font-size:.85rem}}
  .mapcap{{max-width:min(880px,72vw);margin:0 auto}}
  .mapcap svg{{max-height:58vh}}
  .legend{{display:flex;gap:1.1rem;flex-wrap:wrap;color:{MUT};font-size:.82rem;
@@ -247,7 +260,9 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
  · <button id="natbtn">national detail</button></p>
 {view_toggle}
 <div class="card" id="map-anchor">
- <div id="map-state" class="mapcap">{map_html}</div>
+ <a id="appback" href="#" hidden
+ onclick="history.back();return false">&larr; back to FluBNF</a>
+<div id="map-state" class="mapcap">{map_html}</div>
  {nat_map_div}
  <div class="legend">
   {"".join(f'<span><i class="sw" style="background:{CAT_COLOR[c]}"></i>{CAT_LABEL[c]}</span>' for c in CATS)}
@@ -266,6 +281,8 @@ data this week — shown as gaps, never interpolated.</p>
 {nat}
 <script>
 window.showState = show;
+var _ab = document.getElementById('appback');
+if (_ab && history.length > 1) {{ _ab.hidden = false; }}
 if (location.hash && location.hash.startsWith('#st-') &&
     document.getElementById(location.hash.slice(1))) {{
   show(location.hash.slice(1));

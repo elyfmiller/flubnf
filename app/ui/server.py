@@ -412,6 +412,29 @@ def _run_all(spec: RunSpec) -> None:
                         + "</div>")
             # state pages: fan + categorical bar + recent-data table per location
             from app.core.report_v2 import cat_bar, fan_figure
+            # settled outcomes for backdated runs: the LATEST vintage's values
+            # past the forecast origin, framed to the 4-week horizon
+            settled_by_loc = {}
+            try:
+                _vs_all = data_mod.vintages()
+                if _vs_all and _vs_all[-1] > spec.forecast_date:
+                    from datetime import date as _sd, timedelta as _st
+                    _lim = (_sd.fromisoformat(spec.forecast_date)
+                            + _st(days=35)).isoformat()
+                    ldf = pd.read_csv(data_mod.vintage_path(_vs_all[-1]),
+                                      dtype={"location": str})
+                    ldf["location"] = ldf["location"].str.zfill(2)
+                    for loc in spec.locations:
+                        g = ldf[(ldf.location == n2f.get(loc, "")) &
+                                (ldf.date > spec.forecast_date) &
+                                (ldf.date <= _lim)].sort_values("date")
+                        pts = [(str(r.date)[:10], float(r.value))
+                               for r in g.itertuples()
+                               if pd.notna(r.value)]
+                        if pts:
+                            settled_by_loc[loc] = pts
+            except Exception:
+                settled_by_loc = {}
             details = {}
             for loc, s in pf_samples.items():
                 fips_l = n2f.get(loc, "")
@@ -426,7 +449,8 @@ def _run_all(spec: RunSpec) -> None:
                 samples_h = {f_t[h - 1]: s[str(h)] for h in (1, 2, 3, 4)}
                 try:
                     fan = fan_figure(o_t, o_v, f_t, samples_h,
-                                     title=f"{loc} — weekly admissions")
+                                     title=f"{loc} — weekly admissions",
+                                     settled=settled_by_loc.get(loc))
                     lo_l = o_v[-1] if o_v else 0.0
                     import numpy as _np3
                     probs_l = categorical_probs(
