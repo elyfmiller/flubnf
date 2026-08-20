@@ -1201,11 +1201,21 @@ _retro_status: dict = {}
 
 
 def _retro_state_names() -> list:
+    """State list for the retro config form. Falls back to the packaged
+    locations table when the hub is not cloned yet (fresh machine, CI), so
+    the page renders instead of erroring before setup."""
     import pandas as pd
     from flubnf.settings import LOCATIONS
-    locs = pd.read_csv(LOCATIONS, dtype=str)
-    return list(locs.location_name[(locs.location.str.len() == 2)
-                                   & (locs.abbreviation != "US")])
+    from pathlib import Path as _P
+    packaged = _P(__file__).resolve().parents[2] / "flubnf/data/locations.csv"
+    for src in (LOCATIONS, packaged):
+        try:
+            locs = pd.read_csv(src, dtype=str)
+            return list(locs.location_name[(locs.location.str.len() == 2)
+                                           & (locs.abbreviation != "US")])
+        except Exception:
+            continue
+    return []
 
 
 @app.get("/retro", response_class=HTMLResponse)
