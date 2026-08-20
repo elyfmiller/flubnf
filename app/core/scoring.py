@@ -55,6 +55,12 @@ def _baseline_cells(forecast_date: str, fips_set, truth):
         "aa", Path(__file__).resolve().parents[2] / "scripts/anchor_analysis.py")
     AA = importlib.util.module_from_spec(sp)
     sp.loader.exec_module(AA)
+    from flubnf.settings import HUB as _HUB
+    if not (_HUB / "model-output" / "FluSight-baseline").is_dir():
+        raise FileNotFoundError(
+            "the hub clone has no model-output/FluSight-baseline (sparse "
+            "checkout predates the baseline requirement). Press Update data "
+            "on the Data tab to fetch it, then rescore.")
     b = AA.baseline_cells([forecast_date], set(fips_set), truth)
     if b.empty:
         # early-season weeks: <5 history points -> no baseline, no cells.

@@ -33,7 +33,7 @@ else
   echo "  fetching FluSight data (sparse, ~150 MB)…"
   git clone --filter=blob:none --sparse --depth 1 \
       https://github.com/cdcepi/FluSight-forecast-hub "$HUB" 2>/dev/null \
-    && (cd "$HUB" && git sparse-checkout set auxiliary-data target-data) \
+    && (cd "$HUB" && git sparse-checkout set auxiliary-data target-data model-output/FluSight-baseline) \
     && ok "hub data ready (sparse): $HUB" \
     || warn "data fetch failed (offline?) -- rerun setup.sh when connected"
 fi
