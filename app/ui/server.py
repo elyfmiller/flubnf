@@ -1438,9 +1438,32 @@ def retro_results(request: Request, season: str, week: str = ""):
             pos_med = sum(1 for loc, sm in d0.get("pf", {}).items()
                           for h in ("1",)
                           if _dn.median(_dn.asarray(sm[h], float)) > 0)
-            probe = (f"truth rows loaded: {len(truth_d)}; sample locations with "
-                     f"positive 1-week medians (mid-season week {weeks[len(weeks)//2]}): "
-                     f"{pos_med}; weeks stored: {len(weeks)}")
+            # walk ONE cell through every scoring step and name its killer
+            import traceback as _tb
+            import pandas as _dp
+            from app.core import ensemble as _de
+            from app.core.scoring import _baseline_cells as _dbc
+            from flubnf.wis import wis as _dwis
+            wk_mid = weeks[len(weeks)//2]
+            loc0 = sorted(d0.get("pf", {}))[0]
+            fips0 = n2f_d.get(loc0)
+            T0 = _dp.Timestamp(d0["asof"])
+            q0 = _de.member_quantiles_from_samples(d0["pf"][loc0]).get("1", {})
+            act = truth_d.get((fips0, T0 + _dp.Timedelta(days=7)))
+            med = q0.get(0.5, "KEY-MISSING")
+            try:
+                wv = float(_dwis(q0, act).wis) if act else "skipped"
+            except Exception as we:
+                wv = f"WIS-THREW {type(we).__name__}: {str(we)[:90]}"
+            try:
+                bb = _dbc(d0["asof"], {fips0}, truth_d)
+                bv = bb.get((fips0, d0["asof"], 0), "BASELINE-MISSING")
+            except Exception as be:
+                bv = f"BASELINE-THREW {type(be).__name__}: {str(be)[:90]}"
+            probe = (f"probe cell {loc0} asof {d0['asof']} h1: actual={act}, "
+                     f"median={med}, wis={wv}, baseline={bv}; truth rows "
+                     f"{len(truth_d)}, positive-median locs {pos_med}, "
+                     f"weeks {len(weeks)}")
         except Exception as pe:
             probe = f"diagnostic probe failed: {type(pe).__name__}: {str(pe)[:120]}"
         score_error = "scored zero cells with no exception. " + probe
