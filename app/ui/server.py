@@ -1353,9 +1353,22 @@ def retro_results(request: Request, season: str, week: str = ""):
         return RedirectResponse("/retro", status_code=303)
     sf = root / "scores.json"
     score_error = ""
+    def _stored_empty():
+        try:
+            import pandas as _p
+            d = _p.read_json(sf)
+            return d.empty or "model" not in d.columns
+        except Exception:
+            return True
     try:
-        if not sf.exists() or sf.stat().st_mtime < max(
-                (root / "weeks" / w / "samples.json").stat().st_mtime for w in weeks):
+        # Rescore when stale, when asked (?rescore=1), or when the stored file
+        # is EMPTY: an early failed run writes an empty scores.json whose
+        # fresh mtime would otherwise block rescoring forever (seen in the
+        # field on the first laptop retrospective).
+        if (not sf.exists() or request.query_params.get("rescore")
+                or _stored_empty()
+                or sf.stat().st_mtime < max(
+                (root / "weeks" / w / "samples.json").stat().st_mtime for w in weeks)):
             retro.score_season(
                 root, season,
                 ensemble_weights={"pf": 0.5, "analogue": 0.5}).to_json(sf)
@@ -1410,6 +1423,27 @@ def retro_results(request: Request, season: str, week: str = ""):
         cards.setdefault(n2f.get(name, name), {"name": name, "abbr": abbr,
                                                "fips": n2f.get(name, "")})
     map_html = svg_map(cards)
+    if not scoreable and not score_error:
+        # scored zero cells with no exception: diagnose WHICH input is empty
+        try:
+            import json as _dj
+            from datetime import date as _dd, timedelta as _dt
+            from app.core.scoring import load_truth as _lt
+            truth_d, n2f_d = _lt()
+            season_dates = {w for w in weeks}
+            t_rows = sum(1 for (f, d) in truth_d
+                         if any(str(d.date()) > w for w in list(season_dates)[:1]))
+            d0 = _dj.loads((root / "weeks" / weeks[len(weeks)//2] / "samples.json").read_text())
+            import numpy as _dn
+            pos_med = sum(1 for loc, sm in d0.get("pf", {}).items()
+                          for h in ("1",)
+                          if _dn.median(_dn.asarray(sm[h], float)) > 0)
+            probe = (f"truth rows loaded: {len(truth_d)}; sample locations with "
+                     f"positive 1-week medians (mid-season week {weeks[len(weeks)//2]}): "
+                     f"{pos_med}; weeks stored: {len(weeks)}")
+        except Exception as pe:
+            probe = f"diagnostic probe failed: {type(pe).__name__}: {str(pe)[:120]}"
+        score_error = "scored zero cells with no exception. " + probe
     if not scoreable and score_error:
         map_html = ("<p class='hint'>Scoring failed: <code>"
                     + score_error + "</code>. The fitted forecasts below are "
