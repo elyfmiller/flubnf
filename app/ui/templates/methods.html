@@ -41,7 +41,7 @@ policies that keep every number verifiable.</p>
  waves, which single-pass SIR-type structures cannot produce. Third,
  seasonal transmission lets the data determine when transmissibility peaks
  in each state. Five parameters are fitted per state; every fixed parameter
- is sourced from published estimates.</p>
+ carries a citation or a recorded data derivation.</p>
  <p class="hint">Model tab: <a href="/model/pf">PF-SIHRS</a>. The Home page
  carries an interactive version of this diagram annotated with the latest
  fitted values.</p>
@@ -52,7 +52,7 @@ policies that keep every number verifiable.</p>
  <code>fit_type=pf</code> in a fork of
  <a href="https://github.com/lanl/PyBNF" target="_blank" rel="noopener">PyBNF</a>, Los Alamos National
  Laboratory's parameter-fitting suite for BioNetGen models. The filter
- maintains about 10,000 candidate epidemics per state, each a complete
+ maintains 10,000 candidate epidemics per state, each a complete
  SIHRS trajectory with its own parameters. Every week the newest admissions
  reweight the candidates by how well they explain the data
  (Liu-West jitter and systematic resampling keep the population diverse),
@@ -94,24 +94,32 @@ policies that keep every number verifiable.</p>
 
 <div class="card" id="analogue"><h2>The calendar analogue</h2>
  <p>The analogue is a purely empirical member with no epidemiological
- mechanism. For each forecast week it finds historically similar calendar
- weeks in the archive of past seasons and resamples what happened in the
- weeks that followed; the weighted spread of those resampled continuations
- is its forecast distribution. It uses the full archive of weekly NHSN
- admissions and nothing else, is difficult to beat at one week ahead, and
- anchors the ensemble when a season behaves unusually.</p>
+ mechanism. For a forecast at horizon h it collects donor weeks: every week
+ from strictly earlier seasons, in any state, whose calendar week falls
+ within two weeks of the forecast date. For each donor it records the growth
+ ratio between admissions h weeks after the donor week and admissions in the
+ donor week itself. The forecast distribution is the last observed value
+ scaled by the empirical quantiles of those growth ratios; a cell with fewer
+ than 30 usable donors produces no forecast. Donors are pooled across states
+ because a single state supplies only about one donor per prior season, and
+ they never come from the season being forecast. The analogue uses the
+ archive of weekly NHSN admissions and nothing else, is difficult to beat at
+ one week ahead, and anchors the ensemble when a season behaves
+ unusually.</p>
  <p class="hint">Model tab: <a href="/model/analogue">Calendar analogue</a>.</p>
 </div>
 
 <div class="card" id="ensemble"><h2>The ensemble</h2>
  <p>The submitted forecast blends the particle filter with the calendar
- analogue described above. The two members
- fail differently; the mechanistic model tracks turning points the analogue
- cannot anticipate, while the analogue is difficult to beat at short
- horizons. Blending weights are per-horizon (PF share 0.4 to 0.8 across
- horizons 1 to 4, with twelve state-specific overrides) and are frozen
- before the season from held-out years, so nothing is tuned on the season
- being forecast.</p>
+ analogue described above by averaging their forecast quantiles. The two
+ members fail differently; the mechanistic model can track turning points
+ the analogue cannot anticipate, while the analogue is difficult to beat at
+ short horizons. The members carry equal, unfitted weights: 50/50 for the
+ two-member blend, equal thirds when the optional two-strain member joins.
+ Fitting the weights was evaluated and rejected: a leave-one-season-out
+ weight fit scored worse than the equal blend in the three-season replay
+ (pooled relWIS 0.717 against 0.704), so no weight is tuned on any
+ season.</p>
  <p class="hint">Model tab: <a href="/model/ensemble">Ensemble</a>.</p>
 </div>
 

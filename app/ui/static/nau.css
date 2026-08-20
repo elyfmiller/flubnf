@@ -36,19 +36,16 @@ body{margin:0;background:var(--bg);color:var(--ink);
 /* ---- top navbar: surface strip, brand lockup, roomy 1rem tabs ---- */
 header.nav{background:var(--nav-bg);color:var(--nav-ink);
   border-bottom:1px solid var(--line);box-shadow:var(--shadow);
-  display:flex;align-items:center;gap:.3rem;padding:.3rem 1.1rem;flex-wrap:wrap}
+  display:flex;align-items:center;gap:.15rem;padding:.3rem 1rem;flex-wrap:wrap}
 header.nav .brand{display:flex;align-items:center;gap:.55rem;
-  font-size:1.3rem;font-weight:700;letter-spacing:.01em;
-  color:var(--nav-ink);text-decoration:none;padding:.5rem .9rem .5rem 0}
+  font-size:1.45rem;font-weight:700;letter-spacing:.01em;
+  color:var(--nav-ink);text-decoration:none;padding:.5rem .8rem .5rem 0}
 header.nav .brand:hover{text-decoration:none}
 header.nav .brand em{color:var(--gold-bright);font-style:normal}
-header.nav .brand img.mark{height:30px;width:30px;display:block}
-/* theme-correct mark: bare mark on the light surface, blue tile on dark */
-header.nav .mark-dark{display:none}
-[data-theme="dark"] header.nav .mark-light{display:none}
-[data-theme="dark"] header.nav .mark-dark{display:block}
-header.nav a.tab{color:var(--nav-ink);text-decoration:none;padding:.8rem .75rem;
-  font-weight:500;font-size:1rem;border-bottom:3px solid transparent}
+/* ONE mark: the blue-tile icon reads on both the light and dark strip */
+header.nav .brand img.mark{height:32px;width:32px;display:block}
+header.nav a.tab{color:var(--nav-ink);text-decoration:none;padding:.8rem .5rem;
+  font-weight:500;font-size:1.05rem;border-bottom:3px solid transparent}
 header.nav a.tab:hover{background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
 header.nav a.tab.active{border-bottom-color:var(--gold-bright);font-weight:700}
 header.nav .spacer{flex:1}
@@ -59,7 +56,7 @@ header.nav .spacer{flex:1}
 #themebtn:hover{background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
 /* text-size control (A- / A / A+), persistent via localStorage */
 .fontsize{display:inline-flex;border:1px solid color-mix(in srgb,var(--nav-ink) 35%,transparent);
-  border-radius:7px;overflow:hidden;margin-right:.5rem}
+  border-radius:7px;overflow:hidden;margin-left:auto;margin-right:.5rem}
 .fontsize button{margin:0;padding:.3rem .55rem;border:0;border-radius:0;
   background:transparent;color:var(--nav-ink);font-size:.8rem;font-weight:600;
   cursor:pointer}
@@ -193,6 +190,19 @@ details.intro > summary{color:var(--ink);font-size:.92rem;font-weight:500}
 details.intro[open] > summary{margin-bottom:.15rem}
 /* mechanism diagrams inherit the page ink for currentColor strokes */
 .mech svg{color:var(--ink)}
+/* fitted/observed values panel beneath the mechanism diagram: a compact
+   two-column definition list in the sunken well tone, so numbers of any
+   length flow in the page instead of floating over the SVG */
+.valpanel{display:grid;grid-template-columns:max-content 1fr;
+  gap:.18rem 1.1rem;align-items:baseline;max-width:800px;
+  margin:.35rem auto .2rem;padding:.55rem .85rem;
+  background:var(--bg);border:1px solid var(--line);border-radius:9px;
+  font-size:.85rem}
+.valpanel:empty{display:none}
+.valpanel dt{color:var(--mut)}
+.valpanel dd{margin:0;font-weight:650;font-variant-numeric:tabular-nums;
+  overflow-wrap:anywhere}
+.valpanel dd.allmissing{grid-column:1 / -1;color:var(--mut);font-weight:400}
 
 /* map data colors stay categorical; only the no-data tone follows the
    ground so it reads as an explicit gap on both surfaces */

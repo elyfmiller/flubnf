@@ -31,18 +31,20 @@
   <button type="button" class="quiet" id="diag-2s">Two strain (A/B)</button>
   {% endif %}
  </div>
- <div id="diag-wrap-1">{{ dg.sihrs(uid='d1', ann='d1') }}</div>
+ <div id="diag-wrap-1">{{ dg.sihrs(uid='d1') }}
+  <dl class="valpanel" id="vals-1"></dl></div>
  {% if diagram.has_pf2s %}
- <div id="diag-wrap-2" style="display:none">{{ dg.sihrs2(uid='d2', ann='d2') }}</div>
+ <div id="diag-wrap-2" style="display:none">{{ dg.sihrs2(uid='d2') }}
+  <dl class="valpanel" id="vals-2"></dl></div>
  {% endif %}
  {% if diagram.order %}
  <p class="hint">The SIHRS compartment structure behind the mechanistic
- member, annotated with the selected region's latest fitted values
- (run of {{ diagram.date }}). The full method is documented under
- <a href="/methods#sihrs">Methods</a>.</p>
+ member. The panel beneath the diagram lists the selected region's latest
+ fitted and observed values (run of {{ diagram.date }}). The full method is
+ documented under <a href="/methods#sihrs">Methods</a>.</p>
  {% else %}
  <p class="hint">The SIHRS compartment structure behind the mechanistic
- member. Once a forecast run exists, this diagram annotates itself with each
+ member. Once a forecast run exists, the panel beneath the diagram lists each
  region's fitted values. The full method is documented under
  <a href="/methods#sihrs">Methods</a>.</p>
  {% endif %}
@@ -53,42 +55,54 @@
   const $ = id => document.getElementById(id);
   const fmt = v => v >= 100 ? String(Math.round(v))
                  : v >= 10 ? v.toFixed(1) : v.toFixed(2);
-  const T = (id, s) => { const e = $(id); if (e) e.textContent = s || ''; };
+  const num = v => Math.round(v).toLocaleString('en-US');
+  // values panel: fitted rows first, then observed; each row omitted when
+  // absent, and a single hint line stands in when NO fitted parameter is
+  // present (runs from before the parameter harvest)
+  function fill(id, fitted, observed){
+   const dl = $(id);
+   if (!dl) return;
+   dl.textContent = '';
+   const add = (label, value) => {
+    const dt = document.createElement('dt'); dt.textContent = label;
+    const dd = document.createElement('dd'); dd.textContent = value;
+    dl.append(dt, dd);
+   };
+   const have = fitted.filter(r => r[1] != null);
+   if (have.length){ have.forEach(r => add(r[0], r[1])); }
+   else {
+    const d = document.createElement('dd');
+    d.className = 'allmissing';
+    d.textContent = 'Fitted parameters appear after the next run.';
+    dl.append(d);
+   }
+   observed.filter(r => r[1] != null).forEach(r => add(r[0], r[1]));
+  }
   function annotate(){
    const sel = $('diag-loc');
    const L = (sel && DIAG.locations[sel.value]) || {};
    const p = L.pf || {};
-   const b1 = [];
-   if (p.Reff != null) b1.push('Reff ' + fmt(p.Reff));
-   if (p.eps1 != null) b1.push('ε₁ ' + fmt(p.eps1));
-   T('d1-beta1', b1.join(' · '));
-   T('d1-beta2', p.phi1 != null
-     ? 'seasonal peak φ₁: week ' + fmt(p.phi1) : '');
-   const m = [];
-   if (p.mult != null) m.push('ascertainment mult ' + fmt(p.mult));
-   if (p.r != null) m.push('dispersion r ' + fmt(p.r));
-   T('d1-mult', m.join(' · '));
-   const o = [];
-   if (L.obs) o.push('last observed ' + Math.round(L.obs[1])
-                     + ' (' + L.obs[0] + ')');
-   if (L.med1 != null) o.push('1-wk median ' + Math.round(L.med1));
-   T('d1-obs1', o[0] || '');
-   T('d1-obs2', o.length > 1 ? o[1] : '');
+   const obs = [
+    ['Last observed', L.obs != null
+      ? num(L.obs[1]) + ' (' + L.obs[0] + ')' : null],
+    ['1-week median', L.med1 != null ? num(L.med1) : null]];
+   fill('vals-1', [
+    ['Reff', p.Reff != null ? fmt(p.Reff) : null],
+    ['Seasonal peak week (φ₁)', p.phi1 != null ? 'week ' + fmt(p.phi1) : null],
+    ['Ascertainment (mult)', p.mult != null ? fmt(p.mult) : null]], obs);
    const q = L.pf2s || {};
-   const ra = [];
-   if (q.ReffA != null) ra.push('Reff A ' + fmt(q.ReffA));
-   if (q.phi1A != null) ra.push('peak φ1A week ' + fmt(q.phi1A));
-   T('d2-rA', ra.join(' · '));
-   const rb = [];
-   if (q.ReffB != null) rb.push('Reff B ' + fmt(q.ReffB));
-   if (q.phi1B != null) rb.push('peak φ1B week ' + fmt(q.phi1B));
-   T('d2-rB', rb.join(' · '));
-   const o2 = o.slice();
-   if (q.mult != null) o2.unshift('ascertainment mult ' + fmt(q.mult));
-   T('d2-obs2', o2.join(' · '));
+   fill('vals-2', [
+    ['Reff, influenza A', q.ReffA != null ? fmt(q.ReffA) : null],
+    ['Reff, influenza B', q.ReffB != null ? fmt(q.ReffB) : null],
+    ['Seasonal peak week A (φ₁A)',
+     q.phi1A != null ? 'week ' + fmt(q.phi1A) : null],
+    ['Seasonal peak week B (φ₁B)',
+     q.phi1B != null ? 'week ' + fmt(q.phi1B) : null],
+    ['Ascertainment (mult)', q.mult != null ? fmt(q.mult) : null]], obs);
   }
   const sel = $('diag-loc');
-  if (sel){ sel.addEventListener('change', annotate); annotate(); }
+  if (sel) sel.addEventListener('change', annotate);
+  annotate();
   const b1 = $('diag-1s'), b2 = $('diag-2s');
   if (b1 && b2){
    const show = two => {

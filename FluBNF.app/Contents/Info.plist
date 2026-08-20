@@ -4,5 +4,6 @@
   <key>CFBundleName</key><string>FluBNF</string>
   <key>CFBundleIdentifier</key><string>edu.nau.flubnf</string>
   <key>CFBundleExecutable</key><string>flubnf-launch</string>
+  <key>CFBundleIconFile</key><string>FluBNF</string>
   <key>CFBundleVersion</key><string>0.1.0</string>
 </dict></plist>

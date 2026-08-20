@@ -19,7 +19,7 @@
  <div><div class="card"><h2>Settings</h2>
   {% if name == "ensemble" %}
    <p class="hint">The ensemble aggregates the members produced by the
-   latest run, using the frozen per-horizon weights.</p>
+   latest run into a quantile average of their stored forecasts.</p>
    <form method="post" action="/model/ensemble/generate">
     <button class="gold">Generate ensemble from latest run</button></form>
   {% elif name == "pf2s" %}

@@ -204,7 +204,7 @@ def _shell(dom_id: str, inner: str, ink: str, paper: str, interactive=True) -> s
 {inner}
 </svg>
 <div id="{dom_id}-tip" style="position:absolute;pointer-events:none;display:none;
- background:#1d1d21;border:1px solid #2c2c31;border-radius:10px;
+ background:#151729;border:1px solid #262A45;border-radius:10px;
  padding:.6rem .8rem;font-size:.82rem;line-height:1.45;color:{ink};
  max-width:240px;box-shadow:0 6px 24px rgba(0,0,0,.5);z-index:10"></div>
 </div>""" + (_JS.replace("__ID__", dom_id) if interactive else "")

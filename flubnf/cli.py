@@ -1475,12 +1475,29 @@ def app_window(port: int = 8710):
         # SECONDARY thread; Cocoa activation must happen on the main run
         # loop or it works only intermittently -- hence callAfter.
         try:
-            from AppKit import NSApplication  # pyobjc ships with pywebview
+            # pyobjc ships with pywebview
+            from AppKit import NSApplication, NSImage
             from PyObjCTools import AppHelper
+
+            # Runtime dock icon: launched through a plain interpreter the
+            # process inherits the generic Python icon, so hand Cocoa the
+            # brand icon explicitly. NSImage cannot load the SVG mark;
+            # a 512px PNG from the brand kit lives next to it.
+            icon_png = (Path(__file__).resolve().parents[1]
+                        / "app" / "ui" / "static" / "brand"
+                        / "pybnf_icon_512.png")
 
             def _front():
                 app = NSApplication.sharedApplication()
                 app.activateIgnoringOtherApps_(True)
+                try:
+                    if icon_png.is_file():
+                        img = NSImage.alloc().initWithContentsOfFile_(
+                            str(icon_png))
+                        if img:
+                            app.setApplicationIconImage_(img)
+                except Exception:
+                    pass
             AppHelper.callAfter(_front)
             import time as _t
             _t.sleep(1.0)          # once more after the window settles

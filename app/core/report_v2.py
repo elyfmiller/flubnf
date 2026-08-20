@@ -109,7 +109,7 @@ def fan_figure(observed_times, observed, forecast_times, samples_by_h,
             g0, g1 = t - _pd.Timedelta(days=3.5), t + _pd.Timedelta(days=3.5)
         else:
             g0, g1 = g - 0.5, g + 0.5
-        fig.add_vrect(x0=g0, x1=g1, fillcolor="#3a3a40",
+        fig.add_vrect(x0=g0, x1=g1, fillcolor=LINE,
                       opacity=0.5, line_width=0,
                       annotation_text="no data", annotation_font_color=MUT,
                       annotation_font_size=10)
@@ -239,9 +239,11 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
  .grid2{{display:grid;grid-template-columns:1fr 1fr;gap:.8rem}}
  @media(max-width:820px){{.grid2{{grid-template-columns:1fr}}}}
  .offseason{{color:{MUT};font-size:.85rem;font-style:italic;margin:.2rem 0 .8rem}}
- #appback{{position:fixed;top:.7rem;left:.8rem;z-index:60;
-  background:{CARD};border:1px solid {LINE};border-radius:99px;
-  padding:.3rem .8rem;color:{INK};text-decoration:none;font-size:.85rem}}
+ /* in the header flow (not fixed) so it can never cover the title */
+ #appback{{display:inline-block;background:{CARD};border:1px solid {LINE};
+  border-radius:99px;padding:.3rem .8rem;color:{INK};text-decoration:none;
+  font-size:.85rem;margin:0 0 .5rem}}
+ #appback:hover{{border-color:{ACCENT}}}
  .mapcap{{max-width:min(880px,72vw);margin:0 auto}}
  .mapcap svg{{max-height:58vh}}
  .legend{{display:flex;gap:1.1rem;flex-wrap:wrap;color:{MUT};font-size:.82rem;
@@ -260,14 +262,14 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
  .backbtn{{margin:.2rem 0 .6rem}}
  .hint{{color:{MUT};font-size:.85rem}}
 </style></head><body><main>
+<a id="appback" href="#" hidden
+ onclick="history.back();return false">&larr; back to FluBNF</a>
 <h1>US influenza forecast</h1>
 <p class="sub">week of {reference_date} · PF-SIHRS · click a state for detail
  · Ctrl+scroll to zoom (⌘ on Mac), drag to pan, double-click to reset
  · <button id="natbtn">national detail</button></p>
 {view_toggle}
 <div class="card" id="map-anchor">
- <a id="appback" href="#" hidden
- onclick="history.back();return false">&larr; back to FluBNF</a>
 <div id="map-state" class="mapcap">{map_html}</div>
  {nat_map_div}
  <div class="legend">

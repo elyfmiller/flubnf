@@ -1035,12 +1035,16 @@ def model_page(request: Request, name: str):
         "analogue": ("Calendar analogue",
                      "The empirical member. It assumes the current season "
                      "will resemble past seasons at the same point in the "
-                     "calendar: for each forecast week it asks what happened "
-                     "after historically similar weeks and resamples those "
-                     "outcomes, with no epidemiological mechanism. It uses "
-                     "the full archive of weekly NHSN admissions and nothing "
-                     "else. It is difficult to beat at one week ahead and "
-                     "anchors the ensemble when a season behaves unusually. "
+                     "calendar: for each forecast it pools, across all "
+                     "states, the weeks from strictly earlier seasons that "
+                     "fall within two calendar weeks of the forecast date, "
+                     "measures the growth from each of those weeks to the "
+                     "target horizon, and scales the latest observed value "
+                     "by the quantiles of those growth ratios. No "
+                     "epidemiological mechanism is involved. It uses the "
+                     "archive of weekly NHSN admissions and nothing else. "
+                     "It is difficult to beat at one week ahead and anchors "
+                     "the ensemble when a season behaves unusually. "
                      "Measured three-season retrospective relWIS: 1.105 in "
                      "2023-24, 0.835 in 2024-25, 0.641 in 2025-26."),
         "pf2s": ("Two-strain SIHRS",
@@ -1061,15 +1065,16 @@ def model_page(request: Request, name: str):
                  "default submission ensemble remains the two-member blend "
                  "until full-grid validation passes."),
         "ensemble": ("Ensemble",
-                     "The submitted forecast. It averages the two members' "
-                     "forecast quantiles with per-horizon weights frozen "
-                     "before the season from held-out years: the analogue "
-                     "carries more weight at short horizons and the "
-                     "mechanistic model takes over further out (PF share "
-                     "0.4 to 0.8 across horizons 1 to 4), with twelve "
-                     "state-specific overrides where the data justified "
-                     "them. The members' errors disagree in useful ways, "
-                     "which is why the blend beats either alone. Measured "
+                     "The submitted forecast. It averages the members' "
+                     "forecast quantiles with equal, unfitted weights: "
+                     "50/50 across the particle filter and the analogue, "
+                     "equal thirds when the two-strain member joins. "
+                     "Fitting the weights on held-out seasons was evaluated "
+                     "and scored worse than the equal blend (pooled relWIS "
+                     "0.717 against 0.704), so no weight is tuned. The "
+                     "members' errors disagree in useful ways: the blend "
+                     "beats the baseline in all three replayed seasons, "
+                     "which neither member does alone. Measured "
                      "three-season retrospective relWIS: 0.848 in 2023-24, "
                      "0.651 in 2024-25, 0.691 in 2025-26; pooled 0.704."),
     }
@@ -1077,12 +1082,13 @@ def model_page(request: Request, name: str):
     onelines = {
         "pf": ("The mechanistic member: an SIHRS compartmental model fitted "
                "weekly by a sequential particle filter."),
-        "analogue": ("The empirical member: it resamples what followed "
-                     "historically similar calendar weeks."),
+        "analogue": ("The empirical member: it scales the latest observation "
+                     "by historical growth ratios from matching calendar "
+                     "weeks."),
         "pf2s": ("The candidate member: influenza A and B as parallel SIHRS "
                  "circuits fitted to two data channels."),
-        "ensemble": ("The submitted forecast: a weighted quantile average "
-                     "of the member forecasts."),
+        "ensemble": ("The submitted forecast: an equal-weight quantile "
+                     "average of the member forecasts."),
     }
     # where each model tab points into the Methods page
     manchor = {"pf": "fitting", "analogue": "analogue",

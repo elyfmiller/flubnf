@@ -17,7 +17,8 @@ def test_home_renders_mechanism_and_component_cards():
     assert r.status_code == 200
     assert "mechanistically" in r.text              # tagline restored
     assert "SIHRS compartment diagram" in r.text    # inline diagram present
-    assert 'id="d1-beta1"' in r.text                # annotation slots
+    assert 'id="vals-1"' in r.text                  # values panel beside SVG
+    assert 'id="d1-beta1"' not in r.text            # no slots inside the SVG
     assert "const DIAG" in r.text                   # interactive feed
     # component cards with home links and versions
     assert "github.com/lanl/PyBNF" in r.text

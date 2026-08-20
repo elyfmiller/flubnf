@@ -32,8 +32,8 @@ are computed later, against the values the truth data settled to.</p>
    <input type="number" name="width" value="4" min="1" max="16">
    <label>Engine preset</label>
    <select name="engine"><option value="pf">PF (particle filter)</option></select>
-   <p class="hint">The two-strain member will join the preset list once it is
-   validated for retrospective replays.</p>
+   <p class="hint">The two-strain member joins the preset list once full-grid
+   validation passes; its state-panel validation is complete.</p>
    <button class="gold" {% if not engine_ok or (seasons | selectattr("running") | list) %}disabled{% endif %}>
      Run retrospective</button>
   </form>
