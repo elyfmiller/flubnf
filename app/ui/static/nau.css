@@ -208,3 +208,31 @@ details.intro[open] > summary{margin-bottom:.15rem}
    ground so it reads as an explicit gap on both surfaces */
 :root{--map-nodata:#C9C5D8}
 [data-theme="dark"]{--map-nodata:#232741}
+
+/* ---- home rework (additive): workflow pipeline, performance table,
+   component-card glyphs, numbered start flow ---- */
+/* the weekly pipeline SVG rides the page ink for currentColor strokes */
+.pipe svg{color:var(--ink);width:100%;max-width:820px;display:block;
+  margin:.4rem auto .1rem}
+/* seal-results table: tight rows, right-aligned tabular numerals */
+.perf{max-width:640px}
+.perf td,.perf th{padding:.28rem .6rem}
+.perf td.num,.perf th.num{text-align:right}
+.perf td.rel{font-weight:650}
+.perf tr.total td{font-weight:750;border-top:2px solid var(--line);
+  border-bottom:0}
+/* component-card lead visual: fixed-height stage so the three cards align */
+.cardviz{display:flex;align-items:center;justify-content:center;height:60px;
+  margin:.15rem 0 .5rem}
+.cardviz svg{color:var(--ink);height:56px;width:auto;max-width:100%}
+.cardviz img{height:50px;width:50px;border-radius:11px}
+/* start-here flow: numbered badges joined by the pipeline's arrow language */
+.stepflow{display:flex;align-items:center;gap:.6rem .8rem;flex-wrap:wrap;
+  margin:.5rem 0 .2rem}
+.stepflow .step{display:flex;align-items:center;gap:.55rem;min-width:0}
+.stepflow .step .hint{display:block}
+.stepnum{flex:none;width:1.6rem;height:1.6rem;border-radius:50%;
+  display:inline-flex;align-items:center;justify-content:center;
+  font-weight:750;font-size:.85rem;color:var(--gold);
+  border:2px solid var(--gold)}
+.stepsep{flex:none;width:28px;height:12px;color:var(--mut)}

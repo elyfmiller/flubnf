@@ -1,5 +1,6 @@
-"""Page renders: home mechanism visual, model-tab diagrams and collapsible
-intros, methods anchors and backlinks, ensemble member overlay wiring."""
+"""Page renders: home workflow diagram and performance table, model-tab
+diagrams and collapsible intros, methods anchors and backlinks, ensemble
+member overlay wiring."""
 import sys
 from pathlib import Path
 
@@ -12,20 +13,36 @@ from app.ui.server import app as srv                # noqa: E402
 client = TestClient(srv)
 
 
-def test_home_renders_mechanism_and_component_cards():
+def test_home_renders_workflow_performance_and_component_cards():
     r = client.get("/")
     assert r.status_code == 200
-    assert "mechanistically" in r.text              # tagline restored
-    assert "SIHRS compartment diagram" in r.text    # inline diagram present
-    assert 'id="vals-1"' in r.text                  # values panel beside SVG
-    assert 'id="d1-beta1"' not in r.text            # no slots inside the SVG
-    assert "const DIAG" in r.text                   # interactive feed
-    # component cards with home links and versions
+    assert "mechanistically" in r.text              # tagline kept
+    # the interactive mechanism panel is gone from home; it stays on the
+    # model pages and under Methods
+    assert "SIHRS compartment diagram" not in r.text
+    assert 'id="diag-loc"' not in r.text            # no region select
+    assert 'id="vals-1"' not in r.text              # no values panel
+    assert "const DIAG" not in r.text               # no diagram feed script
+    # weekly workflow pipeline diagram
+    assert "Weekly forecasting workflow" in r.text
+    assert "10,000 candidate epidemics" in r.text
+    assert "Equal-weight blend" in r.text
+    # measured performance: the three-season seal table
+    assert 'class="perf"' in r.text
+    for cell in ("0.848", "0.651", "0.691", "0.704",
+                 "14 of 34 teams", "4 of 40 teams"):
+        assert cell in r.text, cell
+    # component cards lead with a visual and keep links and versions
+    assert 'alt="PyBNF brand mark"' in r.text
+    assert "Simulation-trace glyph" in r.text
+    assert "Contact-map glyph" in r.text
     assert "github.com/lanl/PyBNF" in r.text
     assert "github.com/lanl/bngsim" in r.text
     assert "bionetgen.org" in r.text
     assert 'target="_blank"' in r.text
     assert "/methods#sihrs" in r.text               # anchor into methods
+    # start-here numbered flow
+    assert 'class="stepflow"' in r.text
 
 
 def test_model_pages_render_mechanism_and_collapsed_intro():
