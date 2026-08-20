@@ -212,7 +212,7 @@ details.intro[open] > summary{margin-bottom:.15rem}
 /* ---- home rework (additive): workflow pipeline, performance table,
    component-card glyphs, numbered start flow ---- */
 /* the weekly pipeline SVG rides the page ink for currentColor strokes */
-.pipe svg{color:var(--ink);width:100%;max-width:820px;display:block;
+.pipe svg{color:var(--ink);width:100%;max-width:940px;display:block;
   margin:.4rem auto .1rem}
 /* seal-results table: tight rows, right-aligned tabular numerals */
 .perf{max-width:640px}
@@ -236,3 +236,15 @@ details.intro[open] > summary{margin-bottom:.15rem}
   font-weight:750;font-size:.85rem;color:var(--gold);
   border:2px solid var(--gold)}
 .stepsep{flex:none;width:28px;height:12px;color:var(--mut)}
+/* start-here vertical stepper: badge + title + one-line hint per row, a
+   connecting line between badges; stacks cleanly at every width */
+.steps{list-style:none;margin:.5rem 0 .2rem;padding:0}
+.steps .step{position:relative;display:flex;align-items:flex-start;
+  gap:.65rem;padding:0 0 .95rem}
+.steps .step:last-child{padding-bottom:0}
+.steps .step::before{content:"";position:absolute;
+  left:calc(.8rem - 1px);top:1.75rem;bottom:.15rem;width:2px;
+  background:var(--line)}
+.steps .step:last-child::before{display:none}
+.steps .steptext{min-width:0;line-height:1.35;padding-top:.05rem}
+.steps .steptext .hint{display:block}

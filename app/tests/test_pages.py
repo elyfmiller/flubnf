@@ -41,8 +41,11 @@ def test_home_renders_workflow_performance_and_component_cards():
     assert "bionetgen.org" in r.text
     assert 'target="_blank"' in r.text
     assert "/methods#sihrs" in r.text               # anchor into methods
-    # start-here numbered flow
-    assert 'class="stepflow"' in r.text
+    # start-here numbered flow: vertical stepper, equal-weight copy honest
+    assert 'class="steps"' in r.text
+    assert 'class="stepnum"' in r.text
+    assert "never fitted" in r.text
+    assert "frozen" not in r.text
 
 
 def test_model_pages_render_mechanism_and_collapsed_intro():

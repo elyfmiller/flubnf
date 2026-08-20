@@ -393,6 +393,25 @@ def _harvest_params(workroot: Path) -> dict:
             for loc, by_name in pooled.items()}
 
 
+def _sleep_guard():
+    """Hold macOS awake while a long background run works: spawn
+    `caffeinate -i -w <this pid>`, which blocks idle sleep until this
+    process exits. Returns the Popen for the caller to terminate() when the
+    work ends, or None off macOS or on any spawn failure -- no run may ever
+    depend on the guard (overnight laptop retrospectives die to closed-lid
+    or idle sleep otherwise)."""
+    import os
+    import subprocess
+    if sys.platform != "darwin":
+        return None
+    try:
+        return subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())],
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL)
+    except Exception:
+        return None
+
+
 def _run_all(spec: RunSpec) -> None:
     """The competition path: engines in ascending cost, then ensemble,
     submissions, and the weekly report. Every step lands in ONE workroot and
@@ -408,6 +427,7 @@ def _run_all(spec: RunSpec) -> None:
     ledger = Ledger()
     run_id = None
     outcome = {}
+    guard = _sleep_guard()          # macOS: no idle sleep mid-run
     n_states = sum(1 for l in spec.locations
                    if str(l).upper() not in ("US", "US (NATIONAL)"))
     _status["run_label"] = (
@@ -506,7 +526,7 @@ def _run_all(spec: RunSpec) -> None:
         _phase("consulting the calendar analogue")
         from app.core.floor import floor_quantiles
         an_q = {loc: floor_quantiles(q) for loc, q in an_engine.run(spec).items()}
-        # 3. ensemble (vincentize, frozen per-horizon/per-state weights)
+        # 3. ensemble (vincentize: equal weights, never fitted)
         import pandas as _pd
         _l = _pd.read_csv(__import__("flubnf.settings", fromlist=["LOCATIONS"]).LOCATIONS, dtype=str)
         n2f_pre = dict(zip(_l.location_name, _l.location.str.zfill(2)))
@@ -520,12 +540,12 @@ def _run_all(spec: RunSpec) -> None:
             if loc in pf2s_samples:
                 m["pf2s"] = ens.member_quantiles_from_samples(pf2s_samples[loc])
             if m:
-                # three-member runs blend with equal weights (the panel-
-                # validated recipe); the default two-member path keeps the
-                # frozen per-horizon/per-state PF share untouched
+                # equal, never-fitted weights at every member count: 50/50
+                # for the two-member blend, equal thirds with the two-strain
+                # member (the sealed recipe; fitting the weights scored
+                # worse, pooled relWIS 0.717 against 0.704)
                 members_by_loc[loc] = ens.vincentize(
-                    m,
-                    weights=ens.equal_weights(m) if pf2s_samples else None,
+                    m, weights=ens.equal_weights(m),
                     location_fips=n2f_pre.get(loc, ''))
         _phase("vincentizing the ensemble and writing submissions")
         # 4. submissions (identity in the path)
@@ -736,6 +756,11 @@ def _run_all(spec: RunSpec) -> None:
             ledger.close_run(run_id, "error", {"error": str(e)[:300], **outcome})
             _status["log"].append(f"{run_id}: ERROR {e}")
     finally:
+        if guard is not None:
+            try:
+                guard.terminate()
+            except Exception:
+                pass
         _status["running"] = None
         _status["phase"] = ""
         _status["workroot"] = None
@@ -1063,7 +1088,7 @@ def model_page(request: Request, name: str):
                  "single-strain filter. It runs alongside the validated pair "
                  "as an optional third member with equal weights; the "
                  "default submission ensemble remains the two-member blend "
-                 "until full-grid validation passes."),
+                 "while full-grid validation is in progress."),
         "ensemble": ("Ensemble",
                      "The submitted forecast. It averages the members' "
                      "forecast quantiles with equal, unfitted weights: "
@@ -1157,11 +1182,9 @@ def generate_ensemble(request: Request):
                 members[m] = {h: {float(q): v for q, v in qs.items()}
                               for h, qs in qd.items()}
         if members:
-            # a stored two-strain member means the run was three-way: re-blend
-            # the same way (equal weights); otherwise the frozen 2-member path
+            # equal, never-fitted weights, matching the live run's blend
             b = ens.vincentize(members,
-                               weights=(ens.equal_weights(members)
-                                        if "pf2s" in members else None),
+                               weights=ens.equal_weights(members),
                                location_fips=n2f.get(loc, ""))
             blended[loc] = {h: {q: b[h][float(q)]
                                 for q in ("0.1", "0.25", "0.5", "0.75", "0.9")}
@@ -1248,15 +1271,24 @@ def _retro_bg(season: str, locations: list, width: int,
               replicates: int = 3, particles: int = 10_000):
     from app.core import retro
     _retro_status[season] = "running"
+    guard = _sleep_guard()          # overnight replays must outlive the lid
     try:
         root = RETRO_ROOT / season
         retro.run_season(root, season, locations, replicates=replicates,
                          particles=particles, width=width)
-        df = retro.score_season(root, season)
+        # equal, never-fitted member weights (the sealed recipe)
+        df = retro.score_season(root, season,
+                                ensemble_weights={"pf": 0.5, "analogue": 0.5})
         df.to_json(root / "scores.json")
         _retro_status[season] = "done"
     except Exception as e:
         _retro_status[season] = f"error: {str(e)[:150]}"
+    finally:
+        if guard is not None:
+            try:
+                guard.terminate()
+            except Exception:
+                pass
 
 
 @app.post("/retro/run")
@@ -1323,7 +1355,9 @@ def retro_results(request: Request, season: str, week: str = ""):
     try:
         if not sf.exists() or sf.stat().st_mtime < max(
                 (root / "weeks" / w / "samples.json").stat().st_mtime for w in weeks):
-            retro.score_season(root, season).to_json(sf)
+            retro.score_season(
+                root, season,
+                ensemble_weights={"pf": 0.5, "analogue": 0.5}).to_json(sf)
     except Exception:
         pass        # rescore hiccup -> fall back to the stale scores below
     try:

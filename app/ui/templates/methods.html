@@ -59,11 +59,13 @@ policies that keep every number verifiable.</p>
  and the surviving spread of trajectories is the forecast uncertainty. This
  sequential design matches the operational cadence: forecasts update weekly
  as data arrive, rather than refitting from scratch.</p>
- <p>Simulations run on <a href="https://pypi.org/project/bngsim/" target="_blank" rel="noopener">bngsim</a>,
- an in-process BioNetGen simulation engine. Running simulations in-process
- removes the per-simulation overhead of launching BNG2.pl, so a full
- state-season fit completes in seconds. BioNetGen's BNG2.pl performs the
- one-time network generation for each model.</p>
+ <p>BioNetGen's BNG2.pl is invoked once per state cell when a run is
+ prepared, expanding the BNGL model into its reaction network. During
+ fitting, the particle filter integrates that network's differential
+ equations with <a href="https://pypi.org/project/bngsim/" target="_blank" rel="noopener">bngsim</a>,
+ an in-process BioNetGen simulation engine: no per-simulation BNG2.pl
+ subprocess is launched, so a full state-season fit completes in
+ seconds.</p>
  <p class="hint">Model tab: <a href="/model/pf">PF-SIHRS</a>.</p>
 </div>
 
@@ -88,7 +90,7 @@ policies that keep every number verifiable.</p>
  optional third ensemble member, blended with equal weights. The submitted
  ensemble remains the two-member blend by default: the three-member margin
  on the panel (0.6151 against 0.6202) is inside the measured noise floor,
- so promotion waits on full-grid validation.</p>
+ so promotion waits on the full-grid validation now in progress.</p>
  <p class="hint">Model tab: <a href="/model/pf2s">Two-strain SIHRS</a>.</p>
 </div>
 
@@ -135,8 +137,9 @@ policies that keep every number verifiable.</p>
   <tr><td>Ensemble</td><td class="ok">0.848</td><td class="ok">0.651</td><td class="ok">0.691</td></tr>
  </table></div>
  <p class="hint">Ensemble pooled across the three seasons: relWIS 0.704.
- Scored against the real 2024-25 field, the ensemble would have placed 4th
- of the 40 participating teams.</p>
+ Scored against the real FluSight fields, the ensemble would have placed
+ 14th of the 34 participating teams in 2023-24 and 4th of the 40 in
+ 2024-25.</p>
 </div>
 
 <div class="card"><h2>Under the hood</h2>
@@ -149,11 +152,14 @@ policies that keep every number verifiable.</p>
       described above.</td></tr>
   <tr><td><a href="https://pypi.org/project/bngsim/" target="_blank" rel="noopener">bngsim</a></td>
       <td>{{ versions.bngsim }}</td>
-      <td>In-process BioNetGen simulation engine; removes per-simulation
-      BNG2.pl process overhead.</td></tr>
+      <td>In-process BioNetGen simulation engine. The particle filter
+      integrates the model's differential equations on it during fitting,
+      with no per-simulation BNG2.pl subprocess.</td></tr>
   <tr><td><a href="https://bionetgen.org" target="_blank" rel="noopener">BioNetGen</a></td>
       <td>{{ versions.bionetgen }}</td>
-      <td>BNG2.pl network generation for the BNGL model definition.</td></tr>
+      <td>The BNGL model language and its toolchain. BNG2.pl runs once per
+      state cell at run preparation to generate the reaction network the
+      filter then simulates.</td></tr>
   <tr><td><a href="https://fastapi.tiangolo.com" target="_blank" rel="noopener">FastAPI</a> +
       Jinja2</td>
       <td>{{ versions.fastapi }} / {{ versions.jinja2 }}</td>
@@ -167,9 +173,10 @@ policies that keep every number verifiable.</p>
       <td>Data handling and scoring.</td></tr>
  </table></div>
  <p class="hint">Two-venv design: the console venv runs the application, the
- calendar analogue, and report generation; a separate engine venv (PyBNF and
- bngsim, installed by <code>SetupEngine.command</code>) runs the particle
- filter. The application works without the engine; a component reported as
+ calendar analogue, report generation, and the one-time BNG2.pl network
+ generation at run preparation; a separate engine venv (PyBNF and bngsim,
+ installed by <code>SetupEngine.command</code>) runs the particle filter.
+ The application works without the engine; a component reported as
  "not installed" above means the engine venv has not been set up on this
  machine.</p>
 </div>
