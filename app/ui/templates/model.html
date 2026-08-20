@@ -1,10 +1,20 @@
-{% extends "base.html" %}{% block title %}FluBNF · {{ title }}{% endblock %}
+{% extends "base.html" %}{% import "diagrams.html" as dg %}
+{% block title %}FluBNF · {{ title }}{% endblock %}
 {% block head %}<script src="/static/plotly.min.js"></script>{% endblock %}
 {% block content %}
 <h1>{{ title }}</h1>
-<p class="sub">{{ blurb }}</p>
-<p class="hint">Full methodology, including the SIHRS compartment diagram:
-<a href="/methods">Methods</a>.</p>
+<details class="card intro">
+ <summary>{{ oneline }}</summary>
+ <p class="sub" style="margin-top:.55rem">{{ blurb }}</p>
+</details>
+<div class="card mech">
+ {% if name == "pf" %}{{ dg.sihrs(uid='m') }}
+ {% elif name == "pf2s" %}{{ dg.sihrs2(uid='m') }}
+ {% elif name == "analogue" %}{{ dg.analogue_mech(uid='m') }}
+ {% else %}{{ dg.ensemble_mech(uid='m') }}{% endif %}
+ <p class="hint">The mechanism of this member. Full methodology:
+ <a href="/methods#{{ manchor }}">Methods</a>.</p>
+</div>
 <div class="cols">
  <div><div class="card"><h2>Settings</h2>
   {% if name == "ensemble" %}
@@ -44,6 +54,10 @@
 <script>
  const FANQ = {{ fanq_json | safe }};
  const ROBS = {{ run_obs_json | safe }};
+ // ensemble page only: raw member medians, toggled via the plotly legend
+ const OVERLAY = {{ overlay_json | safe }};
+ const MCOL = {pf:'--slate', analogue:'--warn', pf2s:'--mut'};
+ const MDASH = {pf:'solid', analogue:'dash', pf2s:'dot'};
  const SERIES = {};
  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
  function lay(t,h){return {title:{text:t,font:{size:14}},height:h||400,
@@ -94,6 +108,14 @@
    ];
    if(aftX.length) traces.push({x:aftX,y:aftY,mode:'lines+markers',
     name:'settled outcome',line:{color:css('--ink'),dash:'dot',width:1.4},marker:{size:4}});
+   // raw member medians over the ensemble: thin distinct lines, hidden until
+   // toggled on via their legend items (ensemble band + median stay primary)
+   for(const m of Object.keys(OVERLAY)){
+     const md=(OVERLAY[m]||{})[loc]; if(!md) continue;
+     traces.push({x:xs,y:hs.map(h=>md[h]!=null?md[h]:null),mode:'lines',
+      name:m+' median',visible:'legendonly',
+      line:{color:css(MCOL[m]||'--mut'),width:1.4,dash:MDASH[m]||'dot'}});
+   }
    Plotly.newPlot(document.getElementById('plot'),traces,lay(loc,420),{responsive:true,displaylogo:false});
    document.getElementById('pv').onclick=()=>{IDX--;draw();};
    document.getElementById('nx').onclick=()=>{IDX++;draw();};

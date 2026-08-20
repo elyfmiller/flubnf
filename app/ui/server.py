@@ -91,12 +91,11 @@ def _default_forecast_date() -> str:
 
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon():
-    from fastapi.responses import Response
-    svg = ("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'>"
-           "<rect width='16' height='16' rx='3' fill='#003466'/>"
-           "<text x='8' y='12' text-anchor='middle' font-size='11' "
-           "fill='#ffc72c' font-family='sans-serif' font-weight='bold'>F</text></svg>")
-    return Response(svg, media_type="image/svg+xml")
+    """PyBNF brand kit favicon (the small-size mark, loop omitted per the
+    kit's minimum-size rule)."""
+    from fastapi.responses import FileResponse
+    ico = Path(__file__).parent / "static" / "brand" / "favicon.ico"
+    return FileResponse(ico, media_type="image/x-icon")
 
 
 def _outlook_cards(res: dict | None) -> dict:
@@ -140,8 +139,52 @@ def _outlook_cards(res: dict | None) -> dict:
     return cards
 
 
+def _diagram_data(res: dict | None) -> dict:
+    """Annotation feed for the home page's interactive SIHRS diagram: per
+    location, the latest run's fitted-parameter posterior medians (harvested
+    into results.json at run time), the last observed admissions point, and
+    the 1-week median from the same model the outlook cards use. Empty when
+    no run exists; the diagram then renders unannotated with a hint."""
+    out = {"date": "", "has_pf2s": False, "locations": {}, "order": []}
+    if not res:
+        return out
+    try:
+        out["date"] = res.get("forecast_date", "") or ""
+        params = res.get("params") or {}
+        pf_p = params.get("pf") or {}
+        p2_p = params.get("pf2s") or {}
+        models = res.get("models") or {}
+        out["has_pf2s"] = bool(p2_p) or bool(models.get("pf2s"))
+        observed = res.get("observed") or {}
+        picked = models.get("ensemble") or models.get("pf") or {}
+        for loc in set(pf_p) | set(p2_p) | set(observed) | set(picked):
+            e = {}
+            if isinstance(pf_p.get(loc), dict) and pf_p[loc]:
+                e["pf"] = pf_p[loc]
+            if isinstance(p2_p.get(loc), dict) and p2_p[loc]:
+                e["pf2s"] = p2_p[loc]
+            obs = observed.get(loc) or []
+            if obs:
+                e["obs"] = obs[-1]
+            q1 = (picked.get(loc) or {}).get("1")
+            if isinstance(q1, dict) and q1.get("0.5") is not None:
+                e["med1"] = float(q1["0.5"])
+            if e:
+                out["locations"][str(loc)] = e
+        out["order"] = sorted(
+            out["locations"],
+            key=lambda l: (l.upper() not in ("US", "US (NATIONAL)"), l))
+    except Exception:
+        return {"date": "", "has_pf2s": False, "locations": {}, "order": []}
+    return out
+
+
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
+    try:
+        _, res = _latest_results()
+    except Exception:
+        res = None
     # a real map as the hero graphic: latest run's outlook if one exists,
     # otherwise the empty-country silhouette
     map_svg, outlook_date = "", ""
@@ -149,7 +192,6 @@ def home(request: Request):
         from app.core.usmap import svg_map
         cards = {}
         try:
-            _, res = _latest_results()
             cards = _outlook_cards(res)
             if any(c.get("probs") for c in cards.values()):
                 outlook_date = (res or {}).get("forecast_date", "")
@@ -163,7 +205,7 @@ def home(request: Request):
         pass
     return templates.TemplateResponse(request, "home.html", {
         "active": "Home", "map_svg": map_svg, "outlook_date": outlook_date,
-        "versions": VERSIONS,
+        "versions": VERSIONS, "diagram": _diagram_data(res),
         "missing": __import__("flubnf.settings", fromlist=["check"]).check(verbose=False)})
 
 
@@ -315,6 +357,42 @@ def _back(request: Request, fallback: str) -> RedirectResponse:
     return RedirectResponse(path if ok else fallback, status_code=303)
 
 
+def _harvest_params(workroot: Path) -> dict:
+    """Per-location posterior medians of the fitted PF parameters, pooled
+    across replicates (every params_<rep>.txt under each cell's
+    out/Results/A_MCMC/Runs). Feeds the interactive model diagram.
+    Non-fatal by design: an unreadable cell is skipped, and a location with
+    no readable params files is simply absent from the result."""
+    import json as _json
+    import numpy as _np
+    try:
+        cells = _json.loads((workroot / "cells.json").read_text())
+    except Exception:
+        return {}
+    pooled: dict = {}
+    for c in cells:
+        try:
+            loc = c["location"]
+            runs = Path(c["dir"]) / "out" / "Results" / "A_MCMC" / "Runs"
+            for pfile in sorted(runs.glob("params_*.txt")):
+                with open(pfile) as fh:
+                    names = fh.readline().replace("#", " ").split()
+                arr = _np.atleast_2d(_np.loadtxt(str(pfile), skiprows=1))
+                if arr.size == 0 or arr.shape[1] != len(names):
+                    continue
+                for j, name in enumerate(names):
+                    col = arr[:, j]
+                    col = col[_np.isfinite(col)]
+                    if col.size:
+                        pooled.setdefault(loc, {}).setdefault(
+                            name.removesuffix("__FREE"), []).append(col)
+        except Exception:
+            continue
+    return {loc: {name: float(_np.median(_np.concatenate(chunks)))
+                  for name, chunks in by_name.items()}
+            for loc, by_name in pooled.items()}
+
+
 def _run_all(spec: RunSpec) -> None:
     """The competition path: engines in ascending cost, then ensemble,
     submissions, and the weekly report. Every step lands in ONE workroot and
@@ -368,6 +446,7 @@ def _run_all(spec: RunSpec) -> None:
         except Exception:
             pass
         pf_samples = {}
+        params: dict = {}     # fitted-parameter medians per member/location
         if spec.engine in ("all", "pf") and PY_ENGINE.exists() and PYBNF.exists():
             _phase("materializing models (BNG network generation)")
             pf_engine.prepare(spec, workroot)
@@ -378,6 +457,10 @@ def _run_all(spec: RunSpec) -> None:
             outcome["pf_cells"] = len(status)
             outcome["pf_failures"] = fails
             pf_samples = pf_engine.collect(workroot)
+            try:
+                params["pf"] = _harvest_params(workroot)
+            except Exception:
+                pass          # the diagram goes without; the forecast stands
             # output floor: no cell leaves as a point mass (see app/core/floor.py)
             from app.core.floor import floor_samples
             pf_samples = {loc: floor_samples(
@@ -411,6 +494,10 @@ def _run_all(spec: RunSpec) -> None:
             outcome["pf2s_failures"] = fails2s
             fails.update({f"pf2s:{k}": v for k, v in fails2s.items()})
             pf2s_samples = pf_engine.collect(w2)
+            try:
+                params["pf2s"] = _harvest_params(w2)
+            except Exception:
+                pass
             from app.core.floor import floor_samples as _floor2s
             pf2s_samples = {loc: _floor2s(
                                 s, loc, spec.forecast_date,
@@ -616,6 +703,7 @@ def _run_all(spec: RunSpec) -> None:
         _tmp.write_text(_json.dumps({
             "spec": spec.to_json(), "forecast_date": spec.forecast_date,
             "observed": obs,
+            "params": params,
             "models": {
                 "pf": {loc: _qs_from_samples(s) for loc, s in pf_samples.items()},
                 "analogue": {loc: _qs_from_q(q) for loc, q in an_q.items()},
@@ -985,6 +1073,20 @@ def model_page(request: Request, name: str):
                      "three-season retrospective relWIS: 0.848 in 2023-24, "
                      "0.651 in 2024-25, 0.691 in 2025-26; pooled 0.704."),
     }
+    # one-line summaries: the collapsed <details> summary on each model tab
+    onelines = {
+        "pf": ("The mechanistic member: an SIHRS compartmental model fitted "
+               "weekly by a sequential particle filter."),
+        "analogue": ("The empirical member: it resamples what followed "
+                     "historically similar calendar weeks."),
+        "pf2s": ("The candidate member: influenza A and B as parallel SIHRS "
+                 "circuits fitted to two data channels."),
+        "ensemble": ("The submitted forecast: a weighted quantile average "
+                     "of the member forecasts."),
+    }
+    # where each model tab points into the Methods page
+    manchor = {"pf": "fitting", "analogue": "analogue",
+               "pf2s": "two-strain", "ensemble": "ensemble"}
     if name not in blurbs:
         return HTMLResponse("unknown model", status_code=404)
     rid, res = _latest_results()
@@ -996,14 +1098,28 @@ def model_page(request: Request, name: str):
     if res and name in res.get("models", {}):
         fanq = {loc: qs for loc, qs in res["models"][name].items()
                 if all(isinstance(v, dict) for v in qs.values())}
+    # ensemble page: member medians for the raw-member overlay on the fan
+    overlay = {}
+    if name == "ensemble" and res:
+        for m, md in (res.get("models") or {}).items():
+            if m == "ensemble":
+                continue
+            for loc, qs in md.items():
+                if all(isinstance(v, dict) for v in qs.values()):
+                    meds = {h: v.get("0.5") for h, v in qs.items()
+                            if isinstance(v, dict) and v.get("0.5") is not None}
+                    if meds:
+                        overlay.setdefault(m, {})[loc] = meds
     form = dict(_last_form) or {"forecast_date": _default_forecast_date(),
                                 "locations": ["all"], "replicates": 3}
     return templates.TemplateResponse(request, "model.html", {
         "active": blurbs[name][0], "name": name,
         "title": blurbs[name][0], "blurb": blurbs[name][1],
+        "oneline": onelines[name], "manchor": manchor[name],
         "rid": rid, "label": _run_label(rid) if rid else "",
         "date": (res or {}).get("forecast_date", ""),
         "fanq_json": __import__("json").dumps(fanq),
+        "overlay_json": __import__("json").dumps(overlay),
         "run_obs_json": __import__("json").dumps((res or {}).get("observed", {})),
         "form": form, "status": _status})
 
@@ -1084,11 +1200,19 @@ def _season_root(season: str) -> tuple:
 _retro_status: dict = {}
 
 
+def _retro_state_names() -> list:
+    import pandas as pd
+    from flubnf.settings import LOCATIONS
+    locs = pd.read_csv(LOCATIONS, dtype=str)
+    return list(locs.location_name[(locs.location.str.len() == 2)
+                                   & (locs.abbreviation != "US")])
+
+
 @app.get("/retro", response_class=HTMLResponse)
 def retro_index(request: Request):
-    from app.core.retro import SEASON_BOUNDS, season_vintages
+    from app.core.retro import available_seasons, season_vintages
     seasons = []
-    for s in SEASON_BOUNDS:
+    for s in available_seasons():
         total = len(season_vintages(s))
         root, is_seal = _season_root(s)
         done = len(list((root / "weeks").glob("*/samples.json"))) if root.exists() else 0
@@ -1099,16 +1223,19 @@ def retro_index(request: Request):
     from flubnf.settings import PY_ENGINE, PYBNF
     return templates.TemplateResponse(request, "retro.html",
                                       {"active": "Retrospective", "seasons": seasons,
+                                       "state_names": _retro_state_names(),
                                        "engine_ok": PY_ENGINE.exists()
                                        and PYBNF.exists()})
 
 
-def _retro_bg(season: str, locations: list, width: int):
+def _retro_bg(season: str, locations: list, width: int,
+              replicates: int = 3, particles: int = 10_000):
     from app.core import retro
     _retro_status[season] = "running"
     try:
         root = RETRO_ROOT / season
-        retro.run_season(root, season, locations, width=width)
+        retro.run_season(root, season, locations, replicates=replicates,
+                         particles=particles, width=width)
         df = retro.score_season(root, season)
         df.to_json(root / "scores.json")
         _retro_status[season] = "done"
@@ -1118,23 +1245,47 @@ def _retro_bg(season: str, locations: list, width: int):
 
 @app.post("/retro/run")
 def retro_run(background: BackgroundTasks, season: str = Form(...),
-              locations: str = Form("panel6"), width: int = Form(4)):
-    import pandas as pd
-    from flubnf.settings import LOCATIONS
+              locations: str = Form("panel6"),
+              custom_locations: list = Form([]),
+              particles: int = Form(10_000),
+              replicates: int = Form(3),
+              width: int = Form(4),
+              engine: str = Form("pf")):
+    from app.core.retro import available_seasons
     if _retro_status.get(season) == "running":
         _flash(f"{season} is already replaying. One season worker runs at a time.")
         return RedirectResponse("/retro", status_code=303)
+    if season not in available_seasons():
+        _flash(f"Season {season} is not available. A season appears once its "
+               "vintage archive exists.")
+        return RedirectResponse("/retro", status_code=303)
+    if engine != "pf":
+        # pf2s slots in HERE later: accept engine == "pf2s", thread a
+        # {"variant": "2strain"} extra through retro.run_week's RunSpec, and
+        # collect the member alongside pf in samples.json.
+        _flash("Only the PF engine preset is available for retrospectives "
+               "at present.")
+        return RedirectResponse("/retro", status_code=303)
+    all_states = _retro_state_names()
     if locations == "all":
-        locs = pd.read_csv(LOCATIONS, dtype=str)
-        names = list(locs.location_name[(locs.location.str.len() == 2)
-                                        & (locs.abbreviation != "US")])
+        names = all_states
+    elif locations == "custom":
+        names = [n for n in custom_locations if n in set(all_states)]
+        if not names:
+            _flash("Custom scope selected but no locations were checked. "
+                   "Check at least one state and try again.")
+            return RedirectResponse("/retro", status_code=303)
     else:
         names = ["Alaska", "New York", "Wyoming", "Pennsylvania",
                  "Vermont", "California"]
+    # keep the knobs inside what the machine survives (budget: 0.45 fits/min)
+    particles = max(1_000, min(int(particles), 100_000))
+    replicates = max(1, min(int(replicates), 10))
+    width = max(1, min(int(width), 16))
     # claim inside the request, not the background task, so a double submit
     # can't race two season workers over the same tree
     _retro_status[season] = "running"
-    background.add_task(_retro_bg, season, names, width)
+    background.add_task(_retro_bg, season, names, width, replicates, particles)
     return RedirectResponse("/retro", status_code=303)
 
 

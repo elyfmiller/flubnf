@@ -2,17 +2,28 @@
 <html><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{% block title %}FluBNF{% endblock %}</title>
-<link rel="icon" href="/favicon.ico">
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/brand/favicon-32.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet"
+ href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap">
 <link rel="stylesheet" href="/static/nau.css">
 <script>
  (function(){var t=localStorage.getItem('theme');
   if(!t) t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
-  document.documentElement.setAttribute('data-theme',t);})();
+  document.documentElement.setAttribute('data-theme',t);
+  // text size before first paint: no flash of the wrong scale
+  var m={s:'87.5%',m:'100%',l:'115%'},f=localStorage.getItem('fontsize');
+  document.documentElement.style.fontSize=m[f]||'100%';})();
 </script>
 {% block head %}{% endblock %}
 </head><body>
 <header class="nav">
-  <span class="brand">Flu<em>BNF</em></span>
+  <a class="brand" href="/" aria-label="FluBNF home">
+    <img class="mark mark-light" src="/static/brand/pybnf_mark.svg" alt="">
+    <img class="mark mark-dark" src="/static/brand/pybnf_icon.svg" alt="">
+    <span><em>Flu</em>BNF</span></a>
   {% set tabs = [("/","Home"),("/forecast","Forecast"),
                  ("/model/pf","PF-SIHRS"),("/model/analogue","Calendar analogue"),
                  ("/model/pf2s","Two-strain SIHRS"),
@@ -23,12 +34,30 @@
     <a class="tab {% if active == name %}active{% endif %}" href="{{ href }}">{{ name }}</a>
   {% endfor %}
   <span class="spacer"></span>
+  <div class="fontsize" role="group" aria-label="Text size">
+    <button type="button" data-fs="s" title="Smaller text">A-</button>
+    <button type="button" data-fs="m" title="Standard text">A</button>
+    <button type="button" data-fs="l" title="Larger text">A+</button>
+  </div>
   <button id="themebtn" title="Toggle light or dark theme">◐</button>
 </header>
 <main>{% set _f = pop_flash() %}{% if _f %}
  <div class="banner" role="status">{{ _f }}</div>
 {% endif %}{% block content %}{% endblock %}</main>
 <script>
+ // external links must never navigate the app shell away: the native window
+ // (pywebview/WKWebView) has no back control, so a plain external anchor is a
+ // dead end there. Forcing target=_blank makes pywebview hand the URL to the
+ // system browser (OPEN_EXTERNAL_LINKS_IN_BROWSER default); in a normal
+ // browser it simply opens a new tab. Runs in the capture phase so it also
+ // covers anchors injected after load.
+ addEventListener('click',function(e){
+   var a=e.target&&e.target.closest?e.target.closest('a[href]'):null;
+   if(!a)return;
+   if(a.protocol!=='http:'&&a.protocol!=='https:')return;
+   if(a.host===location.host||a.hostname==='localhost'||a.hostname==='127.0.0.1')return;
+   a.target='_blank';a.rel='noopener';
+ },true);
  // preserve scroll across form posts/reloads -- keyed by page so it never
  // carries to a different tab, and never stomps a deliberate #anchor redirect
  addEventListener('beforeunload',()=>sessionStorage.setItem('scy:'+location.pathname,scrollY));
@@ -44,5 +73,16 @@
       t=h.getAttribute('data-theme')==='dark'?'light':'dark';
   h.setAttribute('data-theme',t);localStorage.setItem('theme',t);
   dispatchEvent(new Event('themechange'));};
+ // text-size control: root font percentage, saved so every page keeps it
+ (function(){
+  var m={s:'87.5%',m:'100%',l:'115%'},
+      btns=document.querySelectorAll('.fontsize button');
+  function mark(f){btns.forEach(function(b){
+    b.setAttribute('aria-pressed',String(b.dataset.fs===f));});}
+  mark(localStorage.getItem('fontsize')||'m');
+  btns.forEach(function(b){b.onclick=function(){
+    var f=b.dataset.fs;
+    document.documentElement.style.fontSize=m[f];
+    localStorage.setItem('fontsize',f);mark(f);};});})();
 </script>
 </body></html>

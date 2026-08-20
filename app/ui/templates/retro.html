@@ -13,12 +13,38 @@ are computed later, against the values the truth data settled to.</p>
   <form method="post" action="/retro/run">
    <label>Season</label>
    <select name="season">{% for s in seasons %}<option>{{ s.name }}</option>{% endfor %}</select>
-   <label>Scope</label>
-   <select name="locations"><option value="panel6">6-state panel (fast)</option>
-     <option value="all">all 52 jurisdictions</option></select>
+   <label>Location scope</label>
+   <select name="locations" id="retro-scope">
+     <option value="panel6">6-state panel (fast)</option>
+     <option value="all">all 52 jurisdictions</option>
+     <option value="custom">custom selection</option></select>
+   <div class="checklist" id="retro-custom" style="display:none">
+     {% for l in state_names %}
+     <label class="ck"><input type="checkbox" name="custom_locations"
+       value="{{ l }}"> {{ l }}</label>
+     {% endfor %}
+   </div>
+   <label>Particles</label>
+   <input type="number" name="particles" value="10000" min="1000" max="100000" step="1000">
+   <label>Replicates</label>
+   <input type="number" name="replicates" value="3" min="1" max="10">
+   <label>Shard width (parallel runners)</label>
+   <input type="number" name="width" value="4" min="1" max="16">
+   <label>Engine preset</label>
+   <select name="engine"><option value="pf">PF (particle filter)</option></select>
+   <p class="hint">The two-strain member will join the preset list once it is
+   validated for retrospective replays.</p>
    <button class="gold" {% if not engine_ok or (seasons | selectattr("running") | list) %}disabled{% endif %}>
      Run retrospective</button>
   </form>
+  <script>
+   (function(){
+     var s=document.getElementById('retro-scope'),
+         c=document.getElementById('retro-custom');
+     s.addEventListener('change',function(){
+       c.style.display=(s.value==='custom')?'':'none';});
+   })();
+  </script>
   <p class="hint">Runs are resumable; a completed week is never redone.</p>
  </div></div>
  <div>

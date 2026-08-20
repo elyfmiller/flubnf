@@ -9,7 +9,7 @@ One self-contained file per week (plotly.js embedded once, no network):
     accuracy over time (relWIS vs baseline), recent-data table; every section
     has a '<- back to map' button (window.backToMap)
   * a National section with the same drill-down
-  * reporting gaps render as explicit black states (#0a0a0a) and annotated
+  * reporting gaps render as explicit near-black states and annotated
     gaps in fans (constitutional rule 10), never smoothed over
   * fluid layout: no fixed max-width, the map scales with the window
   * forced dark: single-theme by design; every color painted explicitly
@@ -23,17 +23,20 @@ from pathlib import Path
 
 import numpy as np
 
-INK = "#e9ecf2"; MUT = "#93a1b5"; PAPER = "#0a1626"; CARD = "#0f2440"
-LINE = "#1d3a5f"; ACCENT = "#ffc72c"
+# PyBNF brand palette (dark): Near-Black ground, stepped indigo card,
+# Cyan #34C0F0 as the single accent
+INK = "#E9EAF4"; MUT = "#9AA1C4"; PAPER = "#0C0D17"; CARD = "#151729"
+LINE = "#262A45"; ACCENT = "#34C0F0"
 CATS = ("large_decrease", "decrease", "stable", "increase", "large_increase")
 CAT_COLOR = {"large_decrease": "#2e7d4f", "decrease": "#7fc97f",
              "stable": "#b9b09b", "increase": "#e8a33d",
              "large_increase": "#c0392b"}
 NO_DATA = "var(--map-nodata, #0a0a0a)"   # falls back to black in the fixed-dark report
 CAT_LABEL = {c: c.replace("_", " ") for c in CATS}
-QBANDS = ((0.025, 0.975, "rgba(106,165,216,0.13)", "95% interval"),
-          (0.10, 0.90, "rgba(106,165,216,0.20)", "80% interval"),
-          (0.25, 0.75, "rgba(106,165,216,0.30)", "50% interval"))
+# fan bands in Blue Slate #6E8FD0, the kit's data accent
+QBANDS = ((0.025, 0.975, "rgba(110,143,208,0.13)", "95% interval"),
+          (0.10, 0.90, "rgba(110,143,208,0.20)", "80% interval"),
+          (0.25, 0.75, "rgba(110,143,208,0.30)", "50% interval"))
 
 # Shared embed config: wheel zooms both ways, double-click resets, hover
 # modebar offers zoom-out/reset (lasso/box-select/autoscale pruned);
@@ -223,6 +226,9 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
 <title>FluBNF — week of {reference_date}</title>
 {plotly_js}
 <style>
+ /* tokens the inline usmap SVG reads: state borders match the card surface,
+    no-data reads as an explicit near-black gap against it */
+ :root{{--card:{CARD};--accent:{ACCENT};--map-nodata:#05060A}}
  body{{margin:0;background:{PAPER};color:{INK};font:15px/1.55 system-ui}}
  main{{width:100%;box-sizing:border-box;margin:0 auto;
        padding:1.6rem 1.4rem 4rem}}

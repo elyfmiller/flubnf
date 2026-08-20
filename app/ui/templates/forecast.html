@@ -325,6 +325,19 @@
    if(aftX.length) traces.push({x:aftX,y:aftY,mode:'lines+markers',
      name:'settled outcome',line:{color:css('--ink'),dash:'dot',width:1.4},
      marker:{size:4}});
+   // ensemble selected: raw member medians as thin distinct lines, hidden
+   // until toggled on via their legend items (band + median stay primary)
+   if(FMODEL==='ensemble'){
+     const MCOL={pf:'--slate',analogue:'--warn',pf2s:'--mut'};
+     const MDASH={pf:'solid',analogue:'dash',pf2s:'dot'};
+     for(const m of MODELS){
+       if(m==='ensemble') continue;
+       const mq=(FANQ[m]||{})[loc]; if(!mq) continue;
+       traces.push({x:xs,y:hs.map(h=>mq[h]?mq[h]['0.5']:null),mode:'lines',
+         name:m+' median',visible:'legendonly',
+         line:{color:css(MCOL[m]||'--mut'),width:1.4,dash:MDASH[m]||'dot'}});
+     }
+   }
    Plotly.newPlot(div,traces,lay(loc,400),PCONF);
  }
  if(MODELS.length){

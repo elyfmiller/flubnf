@@ -1,10 +1,12 @@
-{% extends "base.html" %}{% block content %}
+{% extends "base.html" %}{% import "diagrams.html" as dg %}{% block content %}
 <div class="hero">
- <h1>Influenza forecasting, <span class="gold">operational and verifiable</span>.</h1>
+ <h1>Forecast the flu season, <span class="gold">mechanistically</span>.</h1>
  <p>FluBNF produces weekly probabilistic forecasts of influenza hospital
  admissions for all 52 US jurisdictions, packaged in the CDC FluSight
- submission format together with a shareable weekly report. Runs, blending,
- scoring, and packaging are managed from this console.</p>
+ submission format together with a shareable weekly report. At its core is a
+ mechanistic transmission model, fitted to each week's data and blended with
+ an empirical companion. Runs, blending, scoring, and packaging are managed
+ from this console.</p>
 </div>
 
 <div class="card">{{ map_svg | safe }}
@@ -15,22 +17,106 @@
  {% else %}It fills in when you run a forecast.{% endif %}</p>
 </div>
 
+<div class="card"><h2>The mechanism</h2>
+ <div class="row" style="margin:.2rem 0 .1rem">
+  {% if diagram.order %}
+  <label for="diag-loc" style="margin:0">Region</label>
+  <select id="diag-loc" aria-label="diagram region"
+          style="width:auto;min-width:220px;max-width:100%">
+   {% for loc in diagram.order %}<option>{{ loc }}</option>{% endfor %}
+  </select>
+  {% endif %}
+  {% if diagram.has_pf2s %}
+  <button type="button" class="quiet gold" id="diag-1s">Single strain</button>
+  <button type="button" class="quiet" id="diag-2s">Two strain (A/B)</button>
+  {% endif %}
+ </div>
+ <div id="diag-wrap-1">{{ dg.sihrs(uid='d1', ann='d1') }}</div>
+ {% if diagram.has_pf2s %}
+ <div id="diag-wrap-2" style="display:none">{{ dg.sihrs2(uid='d2', ann='d2') }}</div>
+ {% endif %}
+ {% if diagram.order %}
+ <p class="hint">The SIHRS compartment structure behind the mechanistic
+ member, annotated with the selected region's latest fitted values
+ (run of {{ diagram.date }}). The full method is documented under
+ <a href="/methods#sihrs">Methods</a>.</p>
+ {% else %}
+ <p class="hint">The SIHRS compartment structure behind the mechanistic
+ member. Once a forecast run exists, this diagram annotates itself with each
+ region's fitted values. The full method is documented under
+ <a href="/methods#sihrs">Methods</a>.</p>
+ {% endif %}
+</div>
+<script>
+ const DIAG = {{ diagram | tojson }};
+ (function(){
+  const $ = id => document.getElementById(id);
+  const fmt = v => v >= 100 ? String(Math.round(v))
+                 : v >= 10 ? v.toFixed(1) : v.toFixed(2);
+  const T = (id, s) => { const e = $(id); if (e) e.textContent = s || ''; };
+  function annotate(){
+   const sel = $('diag-loc');
+   const L = (sel && DIAG.locations[sel.value]) || {};
+   const p = L.pf || {};
+   const b1 = [];
+   if (p.Reff != null) b1.push('Reff ' + fmt(p.Reff));
+   if (p.eps1 != null) b1.push('ε₁ ' + fmt(p.eps1));
+   T('d1-beta1', b1.join(' · '));
+   T('d1-beta2', p.phi1 != null
+     ? 'seasonal peak φ₁: week ' + fmt(p.phi1) : '');
+   const m = [];
+   if (p.mult != null) m.push('ascertainment mult ' + fmt(p.mult));
+   if (p.r != null) m.push('dispersion r ' + fmt(p.r));
+   T('d1-mult', m.join(' · '));
+   const o = [];
+   if (L.obs) o.push('last observed ' + Math.round(L.obs[1])
+                     + ' (' + L.obs[0] + ')');
+   if (L.med1 != null) o.push('1-wk median ' + Math.round(L.med1));
+   T('d1-obs1', o[0] || '');
+   T('d1-obs2', o.length > 1 ? o[1] : '');
+   const q = L.pf2s || {};
+   const ra = [];
+   if (q.ReffA != null) ra.push('Reff A ' + fmt(q.ReffA));
+   if (q.phi1A != null) ra.push('peak φ1A week ' + fmt(q.phi1A));
+   T('d2-rA', ra.join(' · '));
+   const rb = [];
+   if (q.ReffB != null) rb.push('Reff B ' + fmt(q.ReffB));
+   if (q.phi1B != null) rb.push('peak φ1B week ' + fmt(q.phi1B));
+   T('d2-rB', rb.join(' · '));
+   const o2 = o.slice();
+   if (q.mult != null) o2.unshift('ascertainment mult ' + fmt(q.mult));
+   T('d2-obs2', o2.join(' · '));
+  }
+  const sel = $('diag-loc');
+  if (sel){ sel.addEventListener('change', annotate); annotate(); }
+  const b1 = $('diag-1s'), b2 = $('diag-2s');
+  if (b1 && b2){
+   const show = two => {
+    $('diag-wrap-1').style.display = two ? 'none' : '';
+    $('diag-wrap-2').style.display = two ? '' : 'none';
+    b1.classList.toggle('gold', !two); b2.classList.toggle('gold', two);
+   };
+   b1.onclick = () => show(false); b2.onclick = () => show(true);
+  }
+ })();
+</script>
+
 <div class="grid3">
  <div class="card"><h2>How it works</h2>
   <p>A SIHRS compartmental model (Susceptible, Infected, Hospitalized,
   Recovered, with waning immunity) is written in
-  <a href="https://bionetgen.org">BNGL</a> and fitted with
-  <a href="https://github.com/lanl/PyBNF">PyBNF</a>'s sequential particle
+  <a href="https://bionetgen.org" target="_blank" rel="noopener">BNGL</a> and fitted with
+  <a href="https://github.com/lanl/PyBNF" target="_blank" rel="noopener">PyBNF</a>'s sequential particle
   filter on the bngsim engine. Each week, 10,000 candidate epidemics per
   state are reweighted by the newest admissions data; their spread is the
-  forecast uncertainty. The full method, including a compartment diagram,
-  is documented on the <a href="/methods">Methods</a> page.</p></div>
+  forecast uncertainty. The full method, including the compartment diagram
+  above, is documented on the <a href="/methods#sihrs">Methods</a> page.</p></div>
  <div class="card"><h2>Two models, one forecast</h2>
   <p>The mechanistic model is paired with a calendar analogue, a purely
   empirical model of past seasons. Their errors disagree in useful ways,
-  so the blended ensemble beats either member alone. Weights are frozen
-  before the season from held-out years; nothing is tuned on the season
-  being forecast.</p></div>
+  so the blended <a href="/methods#ensemble">ensemble</a> beats either member
+  alone. Weights are frozen before the season from held-out years; nothing
+  is tuned on the season being forecast.</p></div>
  <div class="card"><h2>Measured performance</h2>
   <p>In a three-season real-time retrospective (2023-24 through 2025-26),
   the ensemble beat the official CDC FluSight baseline in every season,
@@ -38,6 +124,34 @@
   the real 2024-25 field, it would have placed 4th of the 40 participating
   teams. Every evaluation uses only the data available on each forecast
   date.</p></div>
+</div>
+
+<div class="grid3">
+ <div class="card"><h2>PyBNF</h2>
+  <p>PyBNF is Los Alamos National Laboratory's parameter fitting and
+  uncertainty quantification suite for rule-based models. FluBNF runs a fork
+  that adds a sequential particle filter (<code>fit_type=pf</code>), which
+  reweights about 10,000 candidate epidemics per state each week as new
+  admissions data arrive. It supplies the fitting machinery behind the
+  mechanistic member.</p>
+  <p class="hint">Installed: {{ versions.pybnf }} ·
+  <a href="https://github.com/lanl/PyBNF" target="_blank" rel="noopener">github.com/lanl/PyBNF</a></p></div>
+ <div class="card"><h2>bngsim</h2>
+  <p>bngsim is an embeddable, in-process simulation engine for BioNetGen
+  reaction networks. Running simulations inside the fitting process removes
+  the per-simulation overhead of launching BNG2.pl, so a full state-season
+  particle filter pass completes in seconds. Every candidate epidemic the
+  filter weighs is simulated by bngsim.</p>
+  <p class="hint">Installed: {{ versions.bngsim }} ·
+  <a href="https://github.com/lanl/bngsim" target="_blank" rel="noopener">github.com/lanl/bngsim</a></p></div>
+ <div class="card"><h2>BNGL and BioNetGen</h2>
+  <p>BNGL is the BioNetGen model specification language, in which the SIHRS
+  transmission model is written. BioNetGen's BNG2.pl performs the one-time
+  network generation that turns the rule-based definition into the reaction
+  network the engine simulates. Keeping the model in BNGL makes its
+  structure explicit, portable, and independently checkable.</p>
+  <p class="hint">Installed BioNetGen: {{ versions.bionetgen }} ·
+  <a href="https://bionetgen.org" target="_blank" rel="noopener">bionetgen.org</a></p></div>
 </div>
 
 <div class="cols">

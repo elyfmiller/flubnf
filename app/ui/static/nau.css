@@ -1,50 +1,87 @@
-/* FluBNF console. Light default, dark via [data-theme=dark].
-   NAU navy = primary structure, NAU gold = emphasis, spent only on the
-   primary action, the active tab, and key data accents. */
+/* FluBNF console theme: PyBNF brand kit (LANL Mesa-aligned).
+   Light on Light #F1EFF7, dark on Near-Black #0C0D17.
+   LANL Blue #000F7E carries structure and primary text; Cyan #34C0F0 is THE
+   accent (primary action, active tab, links, focus, progress); Blue Slate
+   #6E8FD0 is the secondary/data accent; Inhibition Red #FB4653 is strictly
+   semantic (errors, failed status).
+   Legacy token names (--gold, --gold-bright, --navy) are kept as live hooks
+   because templates and plot code read them via getComputedStyle; they now
+   hold the cyan accent (readable and pure variants) and LANL Blue. Every
+   token is defined LITERALLY in both theme blocks: plot code resolves raw
+   values, so no var() aliases here. */
 :root{
-  --bg:#f4f7fb; --card:#ffffff; --ink:#1c2430; --mut:#5b6878;
-  --line:#dde5ee; --track:#d5deea; --navy:#003466; --navy-deep:#00254a;
-  --gold:#b58200; --gold-bright:#ffc72c; --nav-ink:#eaf0f7;
-  --ok:#177245; --warn:#a66a1f; --bad:#b3403a;
-  --shadow:0 1px 3px rgba(16,32,54,.08);
+  --bg:#F1EFF7; --card:#FFFFFF; --ink:#000F7E; --mut:#565E96;
+  --line:#DCD8E9; --track:#DBD7E8;
+  --navy:#000F7E; --navy-deep:#000A56;
+  --accent:#34C0F0; --accent-ink:#0173A9; --slate:#6E8FD0;
+  --gold:#0173A9; --gold-bright:#34C0F0;
+  --nav-bg:#FFFFFF; --nav-ink:#000F7E;
+  --ok:#177245; --warn:#8A5A14; --bad:#C42840;
+  --shadow:0 1px 2px rgba(12,13,23,.06),0 2px 8px rgba(12,13,23,.05);
 }
 [data-theme="dark"]{
-  --bg:#0a1626; --card:#0f2440; --ink:#e9ecf2; --mut:#93a1b5;
-  --line:#1d3a5f; --track:#122b4d; --navy:#00254a; --navy-deep:#001832;
-  --gold:#ffc72c; --gold-bright:#ffc72c; --nav-ink:#eaf0f7;
-  --ok:#4cc38a; --warn:#e5a55d; --bad:#e5726a;
-  --shadow:0 1px 3px rgba(0,0,0,.4);
+  --bg:#0C0D17; --card:#151729; --ink:#E9EAF4; --mut:#9AA1C4;
+  --line:#262A45; --track:#191C31;
+  --navy:#000F7E; --navy-deep:#000A56;
+  --accent:#34C0F0; --accent-ink:#34C0F0; --slate:#6E8FD0;
+  --gold:#34C0F0; --gold-bright:#34C0F0;
+  --nav-bg:#151729; --nav-ink:#E9EAF4;
+  --ok:#4CC38A; --warn:#E5A55D; --bad:#FB4653;
+  --shadow:0 1px 3px rgba(0,0,0,.5),0 4px 14px rgba(0,0,0,.35);
 }
 *{box-sizing:border-box}
+/* body text in rem so the navbar text-size control (root %) scales it */
 body{margin:0;background:var(--bg);color:var(--ink);
-     font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
-/* ---- top navbar ---- */
-header.nav{background:var(--navy);color:var(--nav-ink);
-  display:flex;align-items:center;gap:.15rem;padding:0 .9rem;flex-wrap:wrap}
-header.nav .brand{font-size:1.05rem;font-weight:800;letter-spacing:.02em;
-  color:#fff;padding:.55rem .55rem .55rem 0}
+     font:400 .875rem/1.5 "DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif}
+/* ---- top navbar: surface strip, brand lockup, roomy 1rem tabs ---- */
+header.nav{background:var(--nav-bg);color:var(--nav-ink);
+  border-bottom:1px solid var(--line);box-shadow:var(--shadow);
+  display:flex;align-items:center;gap:.3rem;padding:.3rem 1.1rem;flex-wrap:wrap}
+header.nav .brand{display:flex;align-items:center;gap:.55rem;
+  font-size:1.3rem;font-weight:700;letter-spacing:.01em;
+  color:var(--nav-ink);text-decoration:none;padding:.5rem .9rem .5rem 0}
+header.nav .brand:hover{text-decoration:none}
 header.nav .brand em{color:var(--gold-bright);font-style:normal}
-header.nav a.tab{color:var(--nav-ink);text-decoration:none;padding:.62rem .65rem;
-  font-weight:600;font-size:.85rem;border-bottom:3px solid transparent}
-header.nav a.tab:hover{background:var(--navy-deep)}
-header.nav a.tab.active{border-bottom-color:var(--gold-bright);color:#fff}
+header.nav .brand img.mark{height:30px;width:30px;display:block}
+/* theme-correct mark: bare mark on the light surface, blue tile on dark */
+header.nav .mark-dark{display:none}
+[data-theme="dark"] header.nav .mark-light{display:none}
+[data-theme="dark"] header.nav .mark-dark{display:block}
+header.nav a.tab{color:var(--nav-ink);text-decoration:none;padding:.8rem .75rem;
+  font-weight:500;font-size:1rem;border-bottom:3px solid transparent}
+header.nav a.tab:hover{background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
+header.nav a.tab.active{border-bottom-color:var(--gold-bright);font-weight:700}
 header.nav .spacer{flex:1}
-#themebtn{background:transparent;border:1px solid rgba(255,255,255,.35);
-  color:var(--nav-ink);border-radius:7px;padding:.25rem .55rem;cursor:pointer;
+#themebtn{background:transparent;
+  border:1px solid color-mix(in srgb,var(--nav-ink) 35%,transparent);
+  color:var(--nav-ink);border-radius:7px;padding:.3rem .6rem;cursor:pointer;
   margin-top:0}
-#themebtn:hover{background:var(--navy-deep)}
-/* ---- layout: fixed, consistent max-width; day-to-day-tool density ---- */
-main{max-width:1200px;margin:0 auto;padding:1rem 1.25rem 3rem}
+#themebtn:hover{background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
+/* text-size control (A- / A / A+), persistent via localStorage */
+.fontsize{display:inline-flex;border:1px solid color-mix(in srgb,var(--nav-ink) 35%,transparent);
+  border-radius:7px;overflow:hidden;margin-right:.5rem}
+.fontsize button{margin:0;padding:.3rem .55rem;border:0;border-radius:0;
+  background:transparent;color:var(--nav-ink);font-size:.8rem;font-weight:600;
+  cursor:pointer}
+.fontsize button+button{border-left:1px solid color-mix(in srgb,var(--nav-ink) 25%,transparent)}
+.fontsize button:hover{background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
+.fontsize button[aria-pressed="true"]{
+  background:color-mix(in srgb,var(--accent) 25%,transparent)}
+/* ---- layout: fluid to a wide cap; padding grows with the window ---- */
+main{max-width:1500px;margin:0 auto;
+     padding:1.1rem clamp(1rem,2.5vw,2.5rem) 3rem}
 .cols{display:grid;grid-template-columns:minmax(260px,360px) 1fr;gap:.75rem;
       align-items:start}
 @media(max-width:900px){.cols{grid-template-columns:1fr}}
+/* surfaces are stepped shades of the ground hue: ground -> raised card ->
+   sunken wells (inputs, code, tracks use the ground tone inside a card) */
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;
       padding:.85rem 1rem;margin-bottom:.75rem;box-shadow:var(--shadow);
       overflow-x:auto}
 .card h2{font-size:.8rem;margin:0 0 .55rem;text-transform:uppercase;
          letter-spacing:.05em;color:var(--mut)}
 .card p{margin:.45rem 0}
-h1{font-size:1.25rem;margin:.1rem 0 .6rem}
+h1{font-size:1.25rem;font-weight:700;margin:.1rem 0 .6rem}
 h1 .accent{color:var(--gold)}
 .sub{color:var(--mut);margin:.1rem 0 .8rem;font-size:.92rem}
 /* ---- controls ---- */
@@ -53,7 +90,8 @@ input,select{width:100%;padding:.42rem .6rem;border:1px solid var(--line);
   border-radius:8px;font:inherit;background:var(--bg);color:var(--ink)}
 input:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible{
   outline:2px solid var(--gold);outline-offset:2px}
-/* button system: default = secondary outline, .gold = primary, .quiet = quiet */
+/* button system: default = secondary outline, .gold = primary (legacy class
+   name; now the cyan accent), .quiet = quiet */
 button{padding:.45rem .95rem;border:1px solid var(--navy);border-radius:8px;
   background:transparent;color:var(--navy);font:inherit;font-weight:650;
   cursor:pointer;margin-top:.7rem}
@@ -67,11 +105,11 @@ button.quiet:hover,[data-theme="dark"] button.quiet:hover{
   background:var(--bg);color:var(--ink)}
 /* .gold after .quiet: toggle buttons carry both classes when selected */
 button.gold,[data-theme="dark"] button.gold{
-  background:var(--gold-bright);border-color:var(--gold-bright);color:#231a00}
+  background:var(--gold-bright);border-color:var(--gold-bright);color:#0C0D17}
 button.gold:hover,[data-theme="dark"] button.gold:hover{
   background:color-mix(in srgb,#000 12%,var(--gold-bright))}
 button[disabled]{opacity:.45;cursor:not-allowed}
-a{color:var(--navy);font-weight:600;text-decoration:none}
+a{color:var(--gold);font-weight:600;text-decoration:none}
 [data-theme="dark"] a{color:var(--gold)}
 a:hover{text-decoration:underline}
 /* ---- data ---- */
@@ -93,11 +131,11 @@ progress{width:100%;height:12px;appearance:none;-webkit-appearance:none;
 progress::-webkit-progress-bar{background:var(--track);border-radius:99px}
 progress::-webkit-progress-value{background:var(--gold-bright);border-radius:99px}
 progress::-moz-progress-bar{background:var(--gold-bright);border-radius:99px}
-/* ---- home hero ---- */
+/* ---- home hero: LANL Blue tile, cyan emphasis ---- */
 .hero{background:linear-gradient(135deg,var(--navy) 0%,var(--navy-deep) 100%);
   color:#fff;border-radius:10px;padding:1.3rem 1.4rem;margin-bottom:.75rem}
 .hero h1{color:#fff;font-size:1.45rem;margin:0 0 .4rem}
-.hero p{color:#cdd9ea;max-width:52rem;margin:0;font-size:.95rem}
+.hero p{color:#C6CFEE;max-width:52rem;margin:0;font-size:.95rem}
 .hero .gold{color:var(--gold-bright)}
 .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:.75rem}
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}
@@ -110,7 +148,7 @@ progress::-moz-progress-bar{background:var(--gold-bright);border-radius:99px}
 .ck{display:flex;gap:.5rem;align-items:center;font-size:.85rem;color:var(--ink);
   margin:.12rem 0;cursor:pointer}
 .ck input{width:auto;accent-color:var(--gold-bright)}
-/* run progress: one solid gold fill on a clearly visible track */
+/* run progress: one solid cyan fill on a clearly visible track */
 .runbar{height:14px;border-radius:99px;background:var(--track);
   border:1px solid var(--line);overflow:hidden;margin:.45rem 0}
 .runbar div{height:100%;width:0;border-radius:99px;background:var(--gold-bright)}
@@ -129,7 +167,7 @@ details.card[open] > summary::before{content:"▾ "}
 .cnav{padding:.2rem .6rem;margin-top:0}
 .quip{text-align:center;margin:.7rem 0 .1rem;
  font-size:.98rem;font-style:italic;color:var(--gold)}
-[data-theme="dark"] .quip{color:var(--gold-bright)}
+[data-theme="dark"] .quip{color:var(--gold)}
 /* ---- output tab: downloads + csv previews ---- */
 button.linkish,[data-theme="dark"] button.linkish{background:none;border:0;
   padding:0;margin:0;color:var(--mut);font-size:.78rem;font-weight:600;
@@ -145,10 +183,18 @@ details.preview[open] > summary::before{content:"▾ "}
 details.preview table{font-size:.76rem;margin-top:.35rem}
 details.preview td,details.preview th{padding:.22rem .45rem;white-space:nowrap}
 
-.banner{background:color-mix(in srgb, var(--gold) 16%, var(--card));
- border:1px solid color-mix(in srgb, var(--gold) 45%, transparent);
+.banner{background:color-mix(in srgb, var(--accent) 14%, var(--card));
+ border:1px solid color-mix(in srgb, var(--accent) 45%, transparent);
  color:var(--ink); border-radius:9px; padding:.55rem .85rem;
  margin:0 0 .75rem; font-size:.9rem}
 
-:root{--map-nodata:#c7cedb}
-[data-theme="dark"]{--map-nodata:#0a0a0a}
+/* model-page intro: one-line summary, collapsed by default */
+details.intro > summary{color:var(--ink);font-size:.92rem;font-weight:500}
+details.intro[open] > summary{margin-bottom:.15rem}
+/* mechanism diagrams inherit the page ink for currentColor strokes */
+.mech svg{color:var(--ink)}
+
+/* map data colors stay categorical; only the no-data tone follows the
+   ground so it reads as an explicit gap on both surfaces */
+:root{--map-nodata:#C9C5D8}
+[data-theme="dark"]{--map-nodata:#232741}

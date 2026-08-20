@@ -7,7 +7,10 @@ app/core/assets/states-albers-10m.json (us-atlas, US Census-derived, public
 domain, pre-projected Albers composite with AK/HI insets on a 975x610 plane).
 
 Hover card, click drill-down, and pan/zoom are vanilla JS on the inline SVG --
-no library, works from file://, artifacts, or any static host. Pan/zoom mutates
+no library, works from file://, artifacts, or any static host. A clicked
+(selected) state keeps its categorical fill and gains a cyan #34C0F0 OUTLINE
+(brand accent, stroke only) so selection never collides with the green
+category colors. Pan/zoom mutates
 the SVG viewBox: Ctrl/Cmd+wheel zooms about the cursor (plain scroll keeps
 scrolling the page), drag pans within a clamped extent, double-click resets.
 A press that travels < 5px still counts as a state click (drag never
@@ -15,7 +18,8 @@ click-throughs).
 
 Two render modes:
   * svg_map(cards_by_fips)  -- per-state choropleth (modal category color,
-    opacity by its probability; no-data states are black #0a0a0a)
+    opacity by its probability; no-data states take --map-nodata, falling
+    back to near-black)
   * national_svg(us_card)   -- same geography, one shared fill = the national
     card's modal category; hover anywhere shows the national card, click
     anywhere opens the st-US section
@@ -160,6 +164,11 @@ _JS = """
     if (dist >= 5) return;
     const t = ev.target.closest ? ev.target.closest('[data-abbr]') : null;
     const a = t && t.dataset.abbr;
+    if (t) {                       // mark selection: cyan ring, fill untouched
+      svg.querySelectorAll('.sel').forEach(n => n.classList.remove('sel'));
+      t.classList.add('sel');
+      if (t.parentNode === svg) svg.appendChild(t);  // ring above neighbors
+    }
     if (a && !window.showState && window.MAP_LINK) {
       clearTimeout(clickTimer);
       clickTimer = setTimeout(() => { location = window.MAP_LINK + '#st-' + a; }, 250);
@@ -183,9 +192,14 @@ def _shell(dom_id: str, inner: str, ink: str, paper: str, interactive=True) -> s
 <style>
  #{dom_id} .st{{cursor:pointer;transition:fill-opacity .12s}}
  #{dom_id} .st.noclick{{cursor:default}}
- #{dom_id} .st:hover{{stroke:{ink};stroke-width:1.6}}
+ #{dom_id} .st:hover{{stroke:var(--accent,{ink});stroke-width:1.6}}
  #{dom_id} .nat{{cursor:pointer}}
- #{dom_id} .nat:hover path{{stroke:{ink};stroke-width:1.2}}
+ #{dom_id} .nat:hover path{{stroke:var(--accent,{ink});stroke-width:1.2}}
+ /* selection = cyan brand-accent RING (stroke, never fill), so the
+    categorical color underneath stays legible */
+ #{dom_id} .st.sel{{stroke:var(--accent,#34C0F0);stroke-width:2.6;
+   stroke-linejoin:round}}
+ #{dom_id} .nat.sel path{{stroke:var(--accent,#34C0F0);stroke-width:2}}
 </style>
 {inner}
 </svg>
@@ -196,7 +210,8 @@ def _shell(dom_id: str, inner: str, ink: str, paper: str, interactive=True) -> s
 </div>""" + (_JS.replace("__ID__", dom_id) if interactive else "")
 
 
-def svg_map(cards_by_fips: dict, ink="#e9ecf2", paper="#0a1626",
+def svg_map(cards_by_fips: dict, ink="#e9ecf2",
+            paper="var(--card, #0C0D17)",
             dom_id: str = "usmap", interactive=True, clickable=None) -> str:
     """cards_by_fips: fips -> {probs, name, abbr, hover_html} ({} = no data).
 
@@ -234,7 +249,8 @@ def svg_map(cards_by_fips: dict, ink="#e9ecf2", paper="#0a1626",
     return _shell(dom_id, "".join(paths), ink, paper, interactive)
 
 
-def national_svg(us_card: dict, ink="#e9ecf2", paper="#0a1626",
+def national_svg(us_card: dict, ink="#e9ecf2",
+                 paper="var(--card, #0C0D17)",
                  dom_id: str = "usmap-nat") -> str:
     """National mode: same geography, one shared fill.
 

@@ -35,8 +35,38 @@ SEASON_BOUNDS = {"2023-24": ("2023-08-01", "2024-06-15"),
                  "2025-26": ("2025-08-01", "2026-06-15")}
 
 
+def season_bounds(season: str) -> tuple:
+    """(start, end) for a season string 'YYYY-YY'. Known seasons keep their
+    recorded bounds; any other well-formed season gets the same formulaic
+    August-through-mid-June window, so a new season needs no code change."""
+    if season in SEASON_BOUNDS:
+        return SEASON_BOUNDS[season]
+    y = int(season[:4])
+    return (f"{y}-08-01", f"{y + 1}-06-15")
+
+
+def available_seasons() -> list:
+    """Seasons derived from the hub's vintage archive: a vintage dated inside
+    a season's window makes that season available, so a future season appears
+    automatically once its vintages exist. Falls back to the hardcoded season
+    list if derivation fails or the archive is empty."""
+    try:
+        seasons = set()
+        for p in ARCHIVE.glob("target-hospital-admissions_*.csv"):
+            v = p.name.split("_")[-1].removesuffix(".csv")
+            y, m = int(v[:4]), int(v[5:7])
+            start = y if m >= 8 else y - 1
+            s = f"{start}-{(start + 1) % 100:02d}"
+            lo, hi = season_bounds(s)
+            if lo <= v <= hi:            # off-window vintages (July) make no season
+                seasons.add(s)
+        return sorted(seasons) or sorted(SEASON_BOUNDS)
+    except Exception:
+        return sorted(SEASON_BOUNDS)
+
+
 def season_vintages(season: str) -> list:
-    lo, hi = SEASON_BOUNDS[season]
+    lo, hi = season_bounds(season)
     return [v for v in sorted(p.name.split("_")[-1].removesuffix(".csv")
                               for p in ARCHIVE.glob("target-hospital-admissions_*.csv"))
             if lo <= v <= hi]
@@ -59,7 +89,7 @@ def run_week(root: Path, season: str, asof: str, locations: list,
         return json.loads((wd / "samples.json").read_text())
     wd.mkdir(parents=True, exist_ok=True)
     spec = RunSpec(engine="retro", forecast_date=asof, locations=locations,
-                   season_start=SEASON_BOUNDS[season][0],
+                   season_start=season_bounds(season)[0],
                    replicates=replicates, particles=particles)
     cells = pf_engine.prepare(spec, wd)
     # shard cells across width runner subprocesses
