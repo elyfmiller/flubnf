@@ -12,6 +12,11 @@
    latest run, using the frozen per-horizon weights.</p>
    <form method="post" action="/model/ensemble/generate">
     <button class="gold">Generate ensemble from latest run</button></form>
+  {% elif name == "pf2s" %}
+   <p class="hint">The two-strain member runs alongside the validated pair:
+   on the <a href="/forecast">Forecast</a> tab, set Ensemble members to
+   "PF + analogue + two-strain" and run. Its forecasts then appear here and
+   in the equal-weights ensemble for that run.</p>
   {% else %}
    <form method="post" action="/run">
     <label>Forecast date</label>

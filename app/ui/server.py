@@ -188,7 +188,7 @@ def forecast_page(request: Request):
     form = dict(_last_form) or {"forecast_date": _default_forecast_date(),
                                 "locations": ["all"], "engine": "all",
                                 "weeks_to_drop": 0, "weeks_to_nowcast": 0,
-                                "replicates": 3}
+                                "replicates": 3, "members": 2}
     rid, res = _latest_results()
     # data panel: full series for the CURRENTLY SELECTED locations, straight
     # from the latest vintage -- visible before any run (deciding what to
@@ -264,6 +264,8 @@ def run_stop():
                             "It finishes on its own and records its result.")
     elif w and running:
         (Path(w) / "STOP").touch()
+        if (Path(w) / "pf2s").is_dir():        # the two-strain pass polls its
+            (Path(w) / "pf2s" / "STOP").touch()  # own subdir for the flag
         _status["phase"] = "stopping…"
     elif running == "starting" and not w:
         # a claim with no worker behind it (engine setup never happened) --
@@ -387,6 +389,33 @@ def _run_all(spec: RunSpec) -> None:
                                      if spec.engine == "analogue"
                                      else "engine venv not installed (Tier A)")
             (workroot / "cells.json").write_text("[]")
+        # 1b. optional third member: the two-strain SIHRS (panel-validated).
+        # Same engine, spec.extra variant switch, sibling subdir of the SAME
+        # workroot so the run stays one ledger row and one archive entry.
+        pf2s_samples = {}
+        if ((spec.extra or {}).get("members") == 3
+                and spec.engine in ("all", "pf")
+                and PY_ENGINE.exists() and PYBNF.exists()):
+            from dataclasses import replace as _dc_replace
+            spec2s = _dc_replace(spec, extra={**(spec.extra or {}),
+                                              "variant": "2strain"})
+            w2 = workroot / "pf2s"
+            w2.mkdir()
+            _phase("materializing the two-strain member (BNG network generation)")
+            pf_engine.prepare(spec2s, w2)
+            _phase(f"fitting the two-strain member: {len(spec.locations)} "
+                   f"location(s) × {spec.replicates} replicate(s)")
+            status2s = pf_engine.execute(w2)
+            fails2s = {k: v for k, v in status2s.items() if v != "ok"}
+            outcome["pf2s_cells"] = len(status2s)
+            outcome["pf2s_failures"] = fails2s
+            fails.update({f"pf2s:{k}": v for k, v in fails2s.items()})
+            pf2s_samples = pf_engine.collect(w2)
+            from app.core.floor import floor_samples as _floor2s
+            pf2s_samples = {loc: _floor2s(
+                                s, loc, spec.forecast_date,
+                                recent=[v for _, v in obs.get(loc, [])])
+                            for loc, s in pf2s_samples.items()}
         _phase("consulting the calendar analogue")
         from app.core.floor import floor_quantiles
         an_q = {loc: floor_quantiles(q) for loc, q in an_engine.run(spec).items()}
@@ -401,8 +430,16 @@ def _run_all(spec: RunSpec) -> None:
                 m["pf"] = ens.member_quantiles_from_samples(pf_samples[loc])
             if loc in an_q:
                 m["analogue"] = an_q[loc]
+            if loc in pf2s_samples:
+                m["pf2s"] = ens.member_quantiles_from_samples(pf2s_samples[loc])
             if m:
-                members_by_loc[loc] = ens.vincentize(m, location_fips=n2f_pre.get(loc, ''))
+                # three-member runs blend with equal weights (the panel-
+                # validated recipe); the default two-member path keeps the
+                # frozen per-horizon/per-state PF share untouched
+                members_by_loc[loc] = ens.vincentize(
+                    m,
+                    weights=ens.equal_weights(m) if pf2s_samples else None,
+                    location_fips=n2f_pre.get(loc, ''))
         _phase("vincentizing the ensemble and writing submissions")
         # 4. submissions (identity in the path)
         locs = pd.read_csv(__import__("flubnf.settings",
@@ -582,6 +619,9 @@ def _run_all(spec: RunSpec) -> None:
             "models": {
                 "pf": {loc: _qs_from_samples(s) for loc, s in pf_samples.items()},
                 "analogue": {loc: _qs_from_q(q) for loc, q in an_q.items()},
+                **({"pf2s": {loc: _qs_from_samples(s)
+                             for loc, s in pf2s_samples.items()}}
+                   if pf2s_samples else {}),
                 "ensemble": {loc: _qs_from_q(q) for loc, q in members_by_loc.items()},
             }}))
         _os.replace(_tmp, workroot / "results.json")   # readers never see a half-write
@@ -594,7 +634,8 @@ def _run_all(spec: RunSpec) -> None:
         ledger.close_run(run_id, "failed" if fails else "ok", outcome)
         _status["log"].append(
             f"{run_id}: pf {len(pf_samples)} loc, analogue {len(an_q)}, "
-            f"ensemble {len(members_by_loc)}"
+            + (f"pf2s {len(pf2s_samples)}, " if pf2s_samples else "")
+            + f"ensemble {len(members_by_loc)}"
             + (f", relWIS {outcome['pf_relwis']}" if "pf_relwis" in outcome else ""))
     except Exception as e:
         from app.core.engines.pf import RunStopped
@@ -718,7 +759,9 @@ def api_progress():
     if w:
         done = total = 0
         t0 = None
-        for f in glob.glob(w + "/status_*.json.prog") + glob.glob(w + "/pf_status.json.prog"):
+        for f in (glob.glob(w + "/status_*.json.prog")
+                  + glob.glob(w + "/pf_status.json.prog")
+                  + glob.glob(w + "/pf2s/pf_status.json.prog")):
             try:
                 d = _json.loads(open(f).read())
                 done += d["done"]; total += d["total"]
@@ -912,6 +955,23 @@ def model_page(request: Request, name: str):
                      "anchors the ensemble when a season behaves unusually. "
                      "Measured three-season retrospective relWIS: 1.105 in "
                      "2023-24, 0.835 in 2024-25, 0.641 in 2025-26."),
+        "pf2s": ("Two-strain SIHRS",
+                 "The panel-validated candidate member. It models influenza "
+                 "A and influenza B as independent SIHRS circuits, each with "
+                 "its own seasonally varying transmission, and reports "
+                 "admissions as the sum of the two. Fitting uses two data "
+                 "channels, both vintage-true: weekly NHSN hospital "
+                 "admissions, and NREVSS typed positives entering the "
+                 "likelihood as binomial counts of influenza A among typed "
+                 "specimens. The initial A/B mix at the season start comes "
+                 "from the same typed surveillance series. Measured "
+                 "state-panel relWIS across the three replayed seasons: "
+                 "0.849 in 2023-24, 0.554 in 2024-25, 0.685 in 2025-26; on "
+                 "turning-point weeks it scores 1.039 against 1.122 for the "
+                 "single-strain filter. It runs alongside the validated pair "
+                 "as an optional third member with equal weights; the "
+                 "default submission ensemble remains the two-member blend "
+                 "until full-grid validation passes."),
         "ensemble": ("Ensemble",
                      "The submitted forecast. It averages the two members' "
                      "forecast quantiles with per-horizon weights frozen "
@@ -965,15 +1025,22 @@ def generate_ensemble(request: Request):
                                   fromlist=["LOCATIONS"]).LOCATIONS, dtype=str)
     n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
     blended, sub_rows = {}, []
-    for loc in set(res["models"].get("pf", {})) | set(res["models"].get("analogue", {})):
+    for loc in (set(res["models"].get("pf", {}))
+                | set(res["models"].get("analogue", {}))
+                | set(res["models"].get("pf2s", {}))):
         members = {}
-        for m in ("pf", "analogue"):
+        for m in ("pf", "analogue", "pf2s"):
             qd = res["models"].get(m, {}).get(loc)
             if qd:
                 members[m] = {h: {float(q): v for q, v in qs.items()}
                               for h, qs in qd.items()}
         if members:
-            b = ens.vincentize(members, location_fips=n2f.get(loc, ""))
+            # a stored two-strain member means the run was three-way: re-blend
+            # the same way (equal weights); otherwise the frozen 2-member path
+            b = ens.vincentize(members,
+                               weights=(ens.equal_weights(members)
+                                        if "pf2s" in members else None),
+                               location_fips=n2f.get(loc, ""))
             blended[loc] = {h: {q: b[h][float(q)]
                                 for q in ("0.1", "0.25", "0.5", "0.75", "0.9")}
                             for h in b}
@@ -1157,7 +1224,8 @@ def run_models(request: Request,
                weeks_to_drop: int = Form(0),
                weeks_to_nowcast: int = Form(0),
                replicates: int = Form(3),
-               engine: str = Form("all")):
+               engine: str = Form("all"),
+               members: int = Form(2)):
     # the pipeline's contract is Saturdays with an archived vintage; hold
     # the user to it kindly instead of failing three phases into the run
     from datetime import date as _date, timedelta as _td
@@ -1182,7 +1250,7 @@ def run_models(request: Request,
     _last_form.update({"forecast_date": forecast_date, "locations": locations,
                        "engine": engine, "weeks_to_drop": weeks_to_drop,
                        "weeks_to_nowcast": weeks_to_nowcast,
-                       "replicates": replicates})
+                       "replicates": replicates, "members": members})
     # checkboxes arrive as a list, the model pages' text input as one
     # comma-separated string inside it -- flatten both to clean names
     locations = [x.strip() for l in locations
@@ -1226,12 +1294,14 @@ def run_models(request: Request,
     # /api/progress then reports the phase instead of fabricating 0/N.
     _status["workroot"] = None
     _status["expected_total"] = (len(locs_list) * int(replicates)
+                                 * (2 if members == 3 else 1)
                                  if engine in ("all", "pf") else None)
     spec = RunSpec(engine=engine, forecast_date=forecast_date,
                    locations=locs_list,
                    weeks_to_drop=weeks_to_drop,
                    weeks_to_nowcast=weeks_to_nowcast,
-                   replicates=replicates)
+                   replicates=replicates,
+                   extra={"members": 3} if members == 3 else {})
     if engine in ("all", "pf", "analogue"):
         # 'analogue' rides the same pipeline with the PF block skipped --
         # the model page's "Run Calendar analogue only" button posts it

@@ -121,6 +121,30 @@ policies that keep every number verifiable.</p>
  one-time network generation for each model.</p>
 </div>
 
+<div class="card"><h2>The two-strain variant</h2>
+ <p>A two-strain SIHRS variant models influenza A and influenza B as
+ independent transmission circuits, each with its own seasonally varying
+ transmission rate and its own peak timing. Observed admissions are the sum
+ of the two circuits' admission fluxes, which lets the model represent
+ seasons in which an early A wave is followed by a late B wave.</p>
+ <p>Fitting adds a second likelihood channel to the particle filter. In
+ addition to weekly NHSN admissions, each candidate epidemic is weighed by
+ weekly typed positives from NREVSS clinical laboratories, treated as
+ binomial counts of influenza A among typed specimens, so the filter learns
+ the A/B mix as well as the admissions level. The initial A/B mix at the
+ season start is also set from this typed surveillance series rather than
+ fitted. Both channels use vintage data; typed counts enter only through
+ the week preceding the forecast date, matching the NREVSS release
+ cadence.</p>
+ <p>In a state-panel replay of the three seasons the two-strain member
+ scored relWIS 0.849, 0.554, and 0.685, and on turning-point weeks scored
+ 1.039 against 1.122 for the single-strain filter. It is available as an
+ optional third ensemble member, blended with equal weights. The submitted
+ ensemble remains the two-member blend by default: the three-member margin
+ on the panel (0.6151 against 0.6202) is inside the measured noise floor,
+ so promotion waits on full-grid validation.</p>
+</div>
+
 <div class="card"><h2>The ensemble</h2>
  <p>The submitted forecast blends the particle filter with a calendar
  analogue: a purely empirical model that, for each forecast week, resamples

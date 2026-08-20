@@ -23,6 +23,13 @@
                           "amcmc": "Adaptive MCMC (experimental)"} %}
    <select name="engine">{% for e in engines %}
      <option value="{{ e }}" {% if e == form.engine %}selected{% endif %}>{{ engine_names.get(e, e) }}</option>{% endfor %}</select>
+   <label>Ensemble members</label>
+   <select name="members">
+     <option value="2" {% if form.get('members', 2) != 3 %}selected{% endif %}>PF + analogue (validated full-grid)</option>
+     <option value="3" {% if form.get('members', 2) == 3 %}selected{% endif %}>PF + analogue + two-strain (panel-validated)</option>
+   </select>
+   <span class="hint">Three members fit the two-strain SIHRS as a second
+   particle-filter pass; the ensemble then blends with equal weights.</span>
    <label title="trim the newest N weeks before fitting (vintage-edge guard)">Weeks to drop</label>
    <input name="weeks_to_drop" type="number" value="{{ form.weeks_to_drop }}" min="0" max="4">
    <input type="hidden" name="weeks_to_nowcast" value="0">

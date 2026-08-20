@@ -4,6 +4,10 @@ The validated recipe (docs/RESULTS.md): average QUANTILES, not densities;
 weights chosen leave-one-season-out BEFORE the season and never retuned
 in-season (rule: in-season weight search is leakage). Weights live in
 app/state/ensemble_weights.json so re-freezing is an explicit, dated act.
+
+vincentize() also takes an explicit {member_name: weight} dict for N-member
+blends (the optional three-member run with the two-strain candidate);
+equal_weights() builds the uniform case.
 """
 from __future__ import annotations
 
@@ -45,27 +49,57 @@ def member_quantiles_from_samples(samples_by_h: dict) -> dict:
     return out
 
 
+def equal_weights(members: dict) -> dict:
+    """Uniform weights over the given members: {name: 1/N}."""
+    n = max(len(members), 1)
+    return {name: 1.0 / n for name in members}
+
+
 def vincentize(members: dict, weights: dict | None = None,
                location_fips: str = "") -> dict:
-    """members: {"pf": ..., "analogue": ...} of horizon->quantiles. Blends with
-    the frozen per-horizon (and per-state, where earned) PF share. A member
-    missing a horizon leaves the other at weight 1."""
-    w = weights or frozen_weights()
+    """members: {name: horizon->quantiles}. Two blending modes:
+
+    * weights None (or the frozen-format dict with "global"/"per_state"):
+      the validated 2-member path -- {"pf", "analogue"} blend with the frozen
+      per-horizon (and per-state, where earned) PF share. A member missing a
+      horizon leaves the other at weight 1.
+    * weights {member_name: weight}: N-member quantile average, weights
+      renormalized over the members present at each horizon.
+    """
+    member_weighted = weights is not None and not (
+        "global" in weights or "per_state" in weights)
+    w = weights if member_weighted else (weights or frozen_weights())
     out = {}
     for h in ("1", "2", "3", "4"):
-        share = pf_share(w, int(h) - 1, location_fips)   # freeze keys horizons 0..3
         have = {m: q[h] for m, q in members.items() if h in q}
         if not have:
             continue
         # blend over the levels the members actually share: the live run
         # carries all 23 FluSight levels, a re-blend from stored results
         # carries the display set -- both must work (KeyError 0.01 otherwise)
-        if set(have) == {"pf", "analogue"}:
+        if member_weighted:
+            named = {m: float(w.get(m, 0.0)) for m in have}
+            tot = sum(named.values())
+            if tot <= 0:                       # nothing weighted -> uniform
+                named, tot = equal_weights(have), 1.0
+            levels = sorted(set.intersection(*(set(q) for q in have.values())))
+            out[h] = {float(L): float(sum(named[m] * have[m][L]
+                                          for m in have) / tot)
+                      for L in levels}
+        elif set(have) == {"pf", "analogue"}:
+            share = pf_share(w, int(h) - 1, location_fips)   # freeze keys horizons 0..3
             levels = sorted(set(have["pf"]) & set(have["analogue"]))
             out[h] = {float(L): float(share * have["pf"][L]
                                       + (1 - share) * have["analogue"][L])
                       for L in levels}
-        else:
+        elif len(have) == 1:
             only = next(iter(have.values()))
             out[h] = {float(L): float(v) for L, v in only.items()}
+        else:
+            # frozen weights know nothing about this member set: average
+            # equally rather than silently picking an arbitrary member
+            levels = sorted(set.intersection(*(set(q) for q in have.values())))
+            out[h] = {float(L): float(sum(q[L] for q in have.values())
+                                      / len(have))
+                      for L in levels}
     return out
