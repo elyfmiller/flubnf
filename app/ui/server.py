@@ -1352,14 +1352,17 @@ def retro_results(request: Request, season: str, week: str = ""):
                "check back shortly.")
         return RedirectResponse("/retro", status_code=303)
     sf = root / "scores.json"
+    score_error = ""
     try:
         if not sf.exists() or sf.stat().st_mtime < max(
                 (root / "weeks" / w / "samples.json").stat().st_mtime for w in weeks):
             retro.score_season(
                 root, season,
                 ensemble_weights={"pf": 0.5, "analogue": 0.5}).to_json(sf)
-    except Exception:
-        pass        # rescore hiccup -> fall back to the stale scores below
+    except Exception as e:
+        # A hidden failure here once masqueraded as "truth not settled" on a
+        # fresh laptop. Show the truth: what broke, so it can be fixed.
+        score_error = f"{type(e).__name__}: {str(e)[:220]}"
     try:
         df = pd.read_json(sf) if sf.exists() else pd.DataFrame()
     except Exception:
@@ -1407,14 +1410,19 @@ def retro_results(request: Request, season: str, week: str = ""):
         cards.setdefault(n2f.get(name, name), {"name": name, "abbr": abbr,
                                                "fips": n2f.get(name, "")})
     map_html = svg_map(cards)
-    if not scoreable:
+    if not scoreable and score_error:
+        map_html = ("<p class='hint'>Scoring failed: <code>"
+                    + score_error + "</code>. The fitted forecasts below are "
+                    "intact; fix the scoring input (usually the FluSight hub "
+                    "clone, via the Data tab) and reload this page.</p>")
+    elif not scoreable:
         map_html = ("<p class='hint'>No scoreable weeks yet. Truth for "
                     "these forecast dates has not settled, so relWIS arrives "
                     "later; the weekly maps below are available now.</p>") + map_html
     return templates.TemplateResponse(request, "retro_season.html", {
         "active": "Retrospective", "season": season, "heads": heads, "curve": curve, "states": states,
         "weeks": weeks, "week": wk, "map_html": map_html,
-        "n_weeks": len(weeks) if scoreable else 0})
+        "n_weeks": len(weeks) if scoreable else 0, "score_error": score_error})
 
 
 @app.post("/run")

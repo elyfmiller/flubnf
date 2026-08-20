@@ -22,8 +22,20 @@ from flubnf.settings import HUB
 def load_truth() -> tuple:
     """(location_fips, week_ending Timestamp) -> value, from the hub's
     current target file; plus name->fips."""
-    t = pd.read_csv(HUB / "target-data/target-hospital-admissions.csv",
-                    dtype={"location": str})
+    target = HUB / "target-data/target-hospital-admissions.csv"
+    if not target.is_file():
+        # Sparse or stale hub clones sometimes lack the current target file.
+        # The NEWEST dated vintage is settled truth for anything older than a
+        # few months, which is exactly what retrospectives score against.
+        from app.core.data import vintage_path, vintages
+        vs = vintages()
+        if not vs:
+            raise FileNotFoundError(
+                f"no settled truth: {target} missing and no dated vintages in "
+                f"{HUB}/auxiliary-data/target-data-archive. Update the hub "
+                "clone from the Data tab.")
+        target = vintage_path(vs[-1])
+    t = pd.read_csv(target, dtype={"location": str})
     t["location"] = t["location"].str.zfill(2)
     t["date"] = pd.to_datetime(t["date"])
     locs = pd.read_csv(HUB / "auxiliary-data/locations.csv", dtype=str)
