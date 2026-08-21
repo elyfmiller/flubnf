@@ -23,3 +23,35 @@ jobs:
             done
             exit 1
           }
+
+  # EXPERIMENTAL Windows CI: this is the lab's stand-in for a Windows box
+  # while the native Windows port is brought up. continue-on-error keeps a
+  # red run from failing the check suite; the ::error:: annotations still
+  # surface every failure for diagnosis. Promote to required (delete
+  # continue-on-error and the "experimental" name suffix) once it has been
+  # green for a few consecutive weeks.
+  test-windows:
+    name: "test-windows (experimental)"
+    runs-on: windows-latest
+    continue-on-error: true
+    strategy:
+      matrix: {python-version: ["3.11", "3.12"]}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "${{ matrix.python-version }}"}
+      - run: pip install -e ".[app,dev]" bionetgen
+      # Same skip story as the ubuntu job: no FluSight hub clone and no BNG
+      # engine venv, so hub- and engine-dependent tests skip themselves via
+      # flubnf.settings checks. shell: bash (Git Bash ships on the runner)
+      # keeps the annotation pipeline identical to the ubuntu job.
+      - name: tests (failures become annotations)
+        shell: bash
+        run: |
+          set -o pipefail
+          FLUBNF_HUB=/nonexistent pytest tests/ app/tests/ -rf -o addopts="" | tee pytest.out || {
+            grep -E "^(FAILED|ERROR)" pytest.out | head -20 | while read -r line; do
+              echo "::error::${line}"
+            done
+            exit 1
+          }

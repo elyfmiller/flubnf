@@ -1,0 +1,299 @@
+begin model
+# =====================================================================
+# FluBNF SIHRS — TWO-AGE-CLASS (children / adults) MIN — PF candidate
+# ---------------------------------------------------------------------
+# Same trim as SIHRS_pop_min.bngl (the single-class model the PF actually
+# runs): no impr, no semi-annual harmonic, single-season fits, the filter
+# re-conditions weekly.
+#
+# HYPOTHESIS UNDER TEST
+# ---------------------
+# Paediatric admissions LEAD adult admissions, and the lead is internal to
+# the target stream, so it is immune to the ED trap (a concurrent external
+# correlate that only echoes the latent state). Measured before writing this
+# model, on NHSN age strata 2024-25, full grid: paediatric admissions growth
+# at week t predicts ADULT admissions growth at week t+1 with median partial
+# correlation +0.315 after conditioning on two lags of adult growth (71% of
+# 31 jurisdictions above +0.2, sign-consistent). The paediatric SHARE LEVEL
+# is null on the same test (+0.09, sign-incoherent) -- the information is in
+# the growth, which is what a two-class mechanism converts into an earlier
+# turn without anyone specifying a growth statistic.
+#
+# Fitted (6): Reff, eps1, phi1, theta, mult, r   -- ONE more than production,
+# against six new observables per week (the age strata).
+#
+# Tokens: 39431263 0.85 5.71134304e-05 2.187500 1.17 0.019
+#         0.214226 2.0000 1.0000 0.0050227499 0.03439439 0.490078
+#
+# Channels: H_weekly (NHSN total admissions, NB)
+#         + Ped_share (paediatric fraction of age-coded admissions, binomial
+#           via the fork's `_bin`/`_n` exp columns).
+# `mult` and the hospital reporting completeness BOTH cancel in Ped_share:
+# numerator and denominator come from the SAME NHSN records, which is a
+# stronger cancellation than the NREVSS channel achieves (that one runs a
+# parallel surveillance stream against the admissions stream).
+#
+# ---------------------------------------------------------------------
+# MIXING: ONE fitted parameter, and Reff keeps its production meaning
+# ---------------------------------------------------------------------
+# Class a in {k = 0-17, a = 18+}. Frequency-dependent force of infection
+#   lambda_a(t) = beta(t) * sum_b c_ab * I_b / N_b
+# with the contact matrix a convex mix of proportionate and assortative
+# mixing, both carrying the SAME per-person total contact budget q_a:
+#   c_ab(theta) = (1-theta) * q_a q_b f_b / Q  +  theta * q_a * delta_ab
+#   Q = sum_c q_c f_c            (so sum_b c_ab = q_a for every theta)
+# theta = 0 proportionate (random) mixing; theta -> 1 the classes decouple.
+# Reciprocity N_a c_ab = N_b c_ba holds identically.
+#
+# beta0 is divided by lam, the leading eigenvalue of the next-generation
+# matrix M_ab = u_a * G_ab, G_ab = c_ab * f_a / f_b. VERIFIED NUMERICALLY:
+# with the eigenvector seeding below, the realised early growth rate is
+# invariant to 4 decimal places across qk in {1,2,3} x theta in {0,0.4,0.8}
+# (0.7738-0.7754 /wk at Reff=1.35, eps1=0), so the production Reff prior
+# transfers UNCHANGED and theta does not compete with Reff for the growth
+# rate. That orthogonality is the whole identifiability argument for adding
+# theta at all.
+#
+# lam uses the manifestly non-negative discriminant (m11-m22)^2 + 4 m12 m21
+# rather than trace^2 - 4 det, which can go slightly negative in floating
+# point and would make sqrt() return NaN. sqrt() IS supported: BNG2.pl
+# parses it and run_network/CVODE integrates it (smoke-tested 2026-08-21).
+#
+# ---------------------------------------------------------------------
+# SEEDING: eigenvector split, and why it is a TOKEN and not an expression
+# ---------------------------------------------------------------------
+# MEASURED, and it matters. Seeding the infection split at an arbitrary
+# observed paediatric share (the A0SHARE convention borrowed from the
+# two-strain model -- braces omitted here on purpose, a literal unresolved
+# token in a comment trips materialize_model's completeness check) leaves
+# the system off the dominant eigenvector, and the
+# transient DEPRESSES early growth badly: at qk=2, theta=0.8 the week-1-to-3
+# growth rate came out 0.496/wk against an asymptotic 0.766/wk, converging
+# only by week 6-10. A filter starting at season start would absorb that
+# transient into Reff, i.e. theta would silently bias Reff -- exactly the
+# ridge this project fixes elsewhere by pinning products. So the split must
+# be seeded on the NGM's dominant eigenvector, v = [m12, lam - m11]
+# (lam - m11 >= 0 always, from the sqrt bound).
+#
+# It CANNOT be written as an expression in theta, even though that is the
+# natural thing to write. PyBNF-pf's _init_cloud does
+#     engine.reset(); x0 = engine.get_state(); species = tile(x0, (P,1))
+# so EVERY particle starts from ONE species vector, evaluated at the .net's
+# default parameters. Per-particle theta reaches the rate laws (those are
+# re-evaluated from the ConstantExpression graph on every simulate_segment)
+# but NEVER reaches the initial condition. A theta-dependent seed would
+# therefore be silently frozen at the default -- the model would look
+# self-consistent and not be.
+#
+# So 0.490078 is computed OFFLINE at the anchor theta and shared, which is
+# what the engine actually does anyway. Cost, measured, as relative error in
+# the week-1-to-3 growth rate against each particle's own correct seed:
+#
+#     theta   0.00    0.20    0.45    0.70    0.90
+#     qk=1.5 +0.11%  +0.20%   0.00%  -4.37%  -17.97%
+#     qk=2.0 +0.30%  +0.49%   0.00%  -3.87%   -9.97%
+#     qk=3.0 +0.51%  +0.59%   0.00%  -1.86%   -4.05%
+#
+# The error is strongly ASYMMETRIC -- cheap below the anchor, expensive
+# above it -- so the anchor sits ABOVE the prior mean, at theta=0.45, and
+# the prior is capped at 0.7. That pair bounds the worst-case early-growth
+# bias at 4.4%, well inside the Reff prior width. THIS is where the 0.7 cap
+# comes from; it is not a round number chosen for tidiness.
+#
+# ---------------------------------------------------------------------
+# WHAT THE TOKEN GENERATOR MUST GUARANTEE (read before wiring this up)
+# ---------------------------------------------------------------------
+# 0.214226    child (0-17) population fraction, census. Not fitted.
+# 2.0000    children's per-person contact intensity RELATIVE to adults
+#             (adults are 1 by construction). Sourced from published US
+#             contact matrices, FIXED. This is what generates the lead:
+#             at qk=1 the two classes are dynamically identical and the
+#             lead is exactly zero (verified: 0.00 weeks at every theta).
+#             Measured lead in peak timing: 0.26-1.72 weeks over
+#             qk in [1.5,3.0] x theta in [0.2,0.8].
+# 1.0000    children's susceptible fraction relative to the population
+#             mean. HARD CONSTRAINT: uk <= 1/s0, or the child R seed goes
+#             NEGATIVE (at s0=0.85 the ceiling is 1.176). Default 1.0.
+#             There is very little headroom here -- s0=0.85 already puts
+#             most of the population in S -- which is precisely why the
+#             lead is carried by contact intensity, not susceptibility.
+# 0.0050227499, 0.03439439
+#             class-specific IHRs. Only their RATIO affects Ped_share and
+#             only their I-weighted mean affects H_weekly (where it is
+#             product-identified with mult, as in production). Choose the
+#             ratio so that, at the dominant-eigenvector infection split
+#             with theta at its prior mean, the modelled admission share
+#             equals that state's observed pre-season paediatric share.
+#             Otherwise the binomial channel spends its weight fighting the
+#             LEVEL -- which the triage showed carries no information --
+#             instead of the DYNAMICS, which carry all of it.
+# 0.490078   paediatric share of initial INFECTIONS, from the NGM dominant
+#             eigenvector at theta=0.45. Depends only on fk, qk, uk, so it
+#             is a pure function of fixed constants -- compute it in the
+#             token generator with the same four lines used for lam.
+#             NOT the observed paediatric ADMISSION share: those differ by
+#             the factor rhoK/rhoA, and using the admission share here is
+#             the exact error the seeding note above measures.
+#
+# Fit the REPORTED admission flux, never the census H(t). As production.
+# =====================================================================
+begin parameters
+Reff__FREE 1.1130008305417864
+eps1__FREE 0.08866425507969908
+phi1__FREE 23.825310500538983
+theta__FREE 0.7
+mult__FREE 0.3799024463825452
+r__FREE 27.188122453001526
+
+### -- transmission (as production; same priors, unchanged meaning) -- ###
+Reff    Reff__FREE     # EFFECTIVE reproduction number at season start
+eps1    eps1__FREE     # annual-harmonic amplitude
+phi1    phi1__FREE     # annual-harmonic phase
+
+### -- the ONE new fitted parameter -- ###
+theta   theta__FREE    # assortativity: 0 proportionate, ->1 classes decouple
+
+### -- observation -- ###
+mult    mult__FREE     # ascertainment; CANCELS in Ped_share by construction
+r       r__FREE        # negative-binomial dispersion, admissions channel
+
+### -- progression / removal (FIXED, shared across classes) -- ###
+gamma   2.187500      # 7/3.2 d generation time, Chan 2024
+gammaH  1.17     # discharge; census only, does not enter the fit target
+omega   0.019      # waning R->S
+
+### -- class-specific IHR (FIXED; see header for the calibration rule) -- ###
+rhoK    0.0050227499
+rhoA    0.03439439
+
+### -- FIXED per-state structural constants (known data, never fitted) -- ###
+N       39431263
+s0      0.85
+i0      5.71134304e-05
+fk      0.214226       # child population fraction
+qk      2.0000       # child relative contact intensity (adults = 1)
+uk      1.0000       # child relative susceptibility; REQUIRE uk <= 1/s0
+
+pi      3.141592653589793  # avoid BNGL _pi(): bngsim emits M_PI(), won't compile
+
+### -- derived: population split -- ###
+fa      1-fk
+ua      (1-uk*fk)/fa   # enforces uk*fk + ua*fa = 1, so the population-mean
+                       # susceptible fraction is exactly s0 for any uk
+s0k     s0*uk
+s0a     s0*ua
+Nk      N*fk
+Na      N*fa
+
+### -- derived: contact matrix, per-person budget preserved -- ###
+Q       qk*fk+fa
+ckk     (1-theta)*qk*qk*fk/Q+theta*qk
+cka     (1-theta)*qk*fa/Q
+cak     (1-theta)*qk*fk/Q
+caa     (1-theta)*fa/Q+theta
+
+### -- derived: next-generation matrix and its leading eigenvalue -- ###
+m11     uk*((1-theta)*qk*qk*fk/Q+theta*qk)
+m12     uk*(1-theta)*qk*fk/Q
+m21     ua*(1-theta)*qk*fa/Q
+m22     ua*((1-theta)*fa/Q+theta)
+disc    (m11-m22)*(m11-m22)+4*m12*m21
+lam     ((m11+m22)+sqrt(disc))/2
+
+beta0   Reff*gamma/(s0*lam)   # reduces to production's Reff*gamma/s0 at lam=1
+
+### -- seed split: NGM dominant eigenvector, computed offline -- ###
+# MUST be a token, not an expression in theta -- see the header. Value is
+#   v = [m12, lam-m11] at theta = 0.45 (the anchor), normalised.
+pedI0   0.490078             # paediatric share of INITIAL INFECTIONS
+Ik0     N*i0*pedI0
+Ia0     N*i0*(1-pedI0)
+
+end parameters
+
+begin molecule types
+Sk()        # susceptible children 0-17
+Ik()        # infectious children
+Hk()        # hospitalized children (census)
+Rk()        # recovered / immune children
+Sa()        # susceptible adults 18+   (a = ADULT here, NOT influenza A --
+Ia()        #   this template has no strain structure)
+Ha()
+Ra()
+HadmK()     # cumulative paediatric admissions accumulator
+HadmA()     # cumulative adult admissions accumulator
+counter()   # clock: observable t = weeks
+end molecule types
+
+begin seed species
+Sk() Nk*s0k
+Ik() Ik0
+Hk() 0
+Rk() Nk-Nk*s0k-Ik0
+Sa() Na*s0a
+Ia() Ia0
+Ha() 0
+Ra() Na-Na*s0a-Ia0
+HadmK() 0
+HadmA() 0
+counter() 0
+end seed species
+
+begin observables
+Molecules Sk    Sk()
+Molecules Ik    Ik()
+Molecules Sa    Sa()
+Molecules Ia    Ia()
+# ONE '_Cum' observable: the engine's integrated mode globs the first
+# '_Cum' column, so only the COMBINED accumulator may carry the suffix.
+Molecules H_Cum HadmK() HadmA()
+Molecules t     counter()
+end observables
+
+begin functions
+
+beta() = beta0*exp( eps1*cos(2*pi*(t-phi1)/52) )
+
+### channel 1: total reported weekly admissions (NHSN, NB) ###
+H_weekly() = mult*gamma*(rhoK*Ik + rhoA*Ia)
+
+### channel 2: paediatric share of age-coded admissions (NHSN, binomial) ###
+# mult and reporting completeness cancel in the ratio by construction.
+# Instantaneous flux ratio, matching the two-strain A_share convention:
+# the fork reads aux/binomial model columns at the segment END row, so this
+# approximates the within-week admission share rather than integrating it.
+Ped_share() = rhoK*Ik/(rhoK*Ik + rhoA*Ia + 1e-30)
+
+end functions
+
+begin reaction rules
+# clock
+0 -> counter() 1
+# infection, frequency-dependent: rate constant beta()*c_ab/N_b
+Sk() + Ik() -> Ik() + Ik()   beta()*ckk/Nk
+Sk() + Ia() -> Ik() + Ia()   beta()*cka/Na
+Sa() + Ia() -> Ia() + Ia()   beta()*caa/Na
+Sa() + Ik() -> Ia() + Ik()   beta()*cak/Nk
+# hospitalization branch, class-specific IHR
+Ik() -> Hk()   rhoK*gamma
+Ia() -> Ha()   rhoA*gamma
+# direct-recovery branch
+Ik() -> Rk()   (1-rhoK)*gamma
+Ia() -> Ra()   (1-rhoA)*gamma
+# discharge
+Hk() -> Rk()   gammaH
+Ha() -> Ra()   gammaH
+# waning immunity
+Rk() -> Sk()   omega
+Ra() -> Sa()   omega
+# cumulative-admissions accumulators (count I->H without consuming I)
+Ik() -> Ik() + HadmK()   rhoK*gamma
+Ia() -> Ia() + HadmA()   rhoA*gamma
+end reaction rules
+
+end model
+
+begin actions
+generate_network({overwrite=>1})
+simulate({suffix=>"California_flu",method=>"ode",t_start=>0,t_end=>48,n_steps=>48,print_functions=>1})
+end actions

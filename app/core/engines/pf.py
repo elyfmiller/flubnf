@@ -23,6 +23,11 @@ DEFAULTS_BLOCK = ("begin parameters\nReff__FREE 1.20\neps1__FREE 0.15\n"
 # Two-strain candidate (spec.extra["variant"] == "2strain"): A/B circuits +
 # the NREVSS typed-positives binomial channel. Same trim as min.
 TEMPLATE_2S = REPO / "flubnf/templates/SIHRS_pop_2strain_min.bngl"
+# National-growth candidate (spec.extra["variant"] == "natg"): production `min`
+# plus exp(iota*(g_nat^-s - g_s)) on beta(t), iota FROZEN a priori. Same 5
+# fitted parameters, same defaults, same vars -- the arm adds no dimension, so
+# DEFAULTS_BLOCK and VARS_1S are reused verbatim. See flubnf/natgrowth.py.
+TEMPLATE_NATG = REPO / "flubnf/templates/SIHRS_pop_natg.bngl"
 DEFAULTS_2S = ("begin parameters\nReffA__FREE 1.20\nReffB__FREE 0.95\n"
                "eps1__FREE 0.15\nphi1A__FREE 22.0\nphi1B__FREE 30.0\n"
                "mult__FREE 0.05\nr__FREE 8.0\n")
@@ -77,7 +82,15 @@ def prepare(spec, workroot: Path) -> list:
     from app.core.runs import derive_seed
 
     vintage = vintage_path(spec.forecast_date)
-    two_strain = (spec.extra or {}).get("variant") == "2strain"
+    variant = (spec.extra or {}).get("variant")
+    two_strain = variant == "2strain"
+    natg = variant == "natg"
+    if natg:
+        from flubnf.natgrowth import IOTA_FROZEN, growth_gap_series, natg_tokens
+        # The ledger's copy of the spec is the record of record, so the frozen
+        # value travels in spec.extra. Absent, it falls back to the constant --
+        # it is never derived here and never fitted.
+        iota = float((spec.extra or {}).get("iota", IOTA_FROZEN))
     if two_strain:
         from datetime import date as _d, timedelta as _td
 
@@ -99,6 +112,16 @@ def prepare(spec, workroot: Path) -> list:
             s.observed = s.observed[:-spec.weeks_to_drop]
             s.times = s.times[:-spec.weeks_to_drop]
             s.n_obs = len(s.observed)
+        gg = None
+        if natg:
+            # Vintage-true on BOTH sides: the same file the state's own
+            # likelihood reads. Truncated to the filter's real last week so the
+            # "hold the last gap over h=1..4" branch begins exactly where the
+            # forecast does, even when weeks_to_drop trimmed the tail.
+            gg = growth_gap_series(
+                loc, truth_csv=vintage, locations_csv=LOCATIONS,
+                season_start=spec.season_start, as_of=spec.forecast_date
+            ).truncate(int(s.last_week_offset))
         typed_by_t, a0 = {}, 0.85
         if two_strain:
             try:
@@ -117,9 +140,13 @@ def prepare(spec, workroot: Path) -> list:
             d = workroot / tag
             d.mkdir(parents=True)
             sfx = f"{loc.replace(' ', '_')}_flu"
-            m = materialize_model(
-                s, TEMPLATE_2S if two_strain else TEMPLATE, d / "m.bngl", sfx,
-                extra_tokens={"{{A0SHARE}}": f"{a0:.4f}"} if two_strain else None)
+            if two_strain:
+                tmpl, tok = TEMPLATE_2S, {"{{A0SHARE}}": f"{a0:.4f}"}
+            elif natg:
+                tmpl, tok = TEMPLATE_NATG, natg_tokens(gg, iota)
+            else:
+                tmpl, tok = TEMPLATE, None
+            m = materialize_model(s, tmpl, d / "m.bngl", sfx, extra_tokens=tok)
             m.write_text(m.read_text().replace("begin parameters\n",
                                                DEFAULTS_2S if two_strain
                                                else DEFAULTS_BLOCK, 1))
@@ -153,9 +180,14 @@ seed = {seed}
    if two_strain else ""))
             cells.append({"key": tag, "dir": str(d), "location": loc,
                           "replicate": rep, "seed": seed,
-                          "variant": "2strain" if two_strain else "1strain",
+                          "variant": ("2strain" if two_strain
+                                      else "natg" if natg else "1strain"),
                           "a0": a0 if two_strain else None,
                           "typed_weeks": len(typed_by_t) if two_strain else None,
+                          "iota": iota if natg else None,
+                          "natg_last_gap": gg.last_gap if natg else None,
+                          "natg_active_weeks": gg.n_active if natg else None,
+                          "natg_clipped_weeks": gg.n_clipped if natg else None,
                           "n_obs": int(s.n_obs),
                           "last_week_offset": int(s.last_week_offset),
                           "last_observed": float(s.observed[-1])})
@@ -180,10 +212,10 @@ def execute(workroot: Path, timeout: float = 3600.0) -> dict:
     # so the application stays usable during a multi-hour run. `nice` execs
     # the interpreter, so this Popen still refers to the real runner process
     # and the STOP handling below is unchanged. See app/core/proc.py.
-    from app.core.proc import low_priority_cmd
+    from app.core.proc import low_priority_cmd, low_priority_popen_kwargs
     proc = subprocess.Popen(low_priority_cmd([str(PY310), str(runner)]),
                             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                            text=True)
+                            text=True, **low_priority_popen_kwargs())
     t0 = time.time()
     stop = workroot / "STOP"
     while proc.poll() is None:

@@ -10,9 +10,13 @@ Engineering rules (each one paid for):
     scored (self-grading); callers pass weights fitted elsewhere.
   * parallel width: PF cells sharded across N runner subprocesses (entry-point
     files, never stdin -- macOS spawn rule).
-  * CONTROLLABLE: STOP and PAUSE are files in the season root, polled between
-    weeks -- the same flag mechanism the PF engine uses for console runs. A
-    stop finishes the current week, so no half-week is wasted or corrupted.
+  * CONTROLLABLE: STOP and PAUSE are files in the season root, polled at FIT
+    resolution -- between individual (location, replicate) fits inside a
+    week, not just between weeks -- the same flag mechanism the PF engine
+    uses for console runs. A press lets only the fits already in flight
+    finish (seconds to one fit's duration, never a full week), and every
+    finished fit is checkpointed in the week's cells_done/, so a stopped
+    week resumes by refitting only the cells that never ran.
   * TIMED: run_meta.json in the season root records wall time as the replay
     goes, accumulating across resumes rather than restarting the clock.
 """
@@ -117,9 +121,9 @@ _META_LOCK = threading.RLock()
 
 
 class SeasonStopped(Exception):
-    """Raised inside run_season when a stop was requested. The current week
-    is already checkpointed; completed weeks are kept and a later replay
-    resumes from there."""
+    """Raised when a stop was requested. Completed weeks are kept, and a
+    week interrupted mid-way keeps every finished fit's checkpoint, so a
+    later replay resumes by refitting only the cells that never ran."""
 
 
 def _now() -> float:
@@ -164,8 +168,9 @@ def write_meta(root: Path, meta: dict) -> None:
 
 
 def request_stop(root: Path) -> bool:
-    """Ask the worker to finish its current week and exit. Clears PAUSE too,
-    so a paused worker wakes up and stops instead of holding forever.
+    """Ask the worker to finish only the fits in flight and exit. Clears
+    PAUSE too, so a paused worker wakes up and stops instead of holding
+    forever.
 
     Never creates the season tree: a live worker has already made it, and a
     request against a season that was never replayed should leave no trace.
@@ -364,12 +369,56 @@ def _record_week(root: Path, asof: str, seconds: float) -> None:
         m = read_meta(root)
         now = _now()
         _fold(m, now)
+        # a week completed across a mid-week stop gets ONE week_seconds
+        # entry covering the work of every segment: the seconds its earlier
+        # stopped segments banked are folded in here and retired
+        wp = dict(m.get("week_partial_s") or {})
+        try:
+            seconds = float(seconds) + float(wp.pop(asof, 0.0) or 0.0)
+        except (TypeError, ValueError):
+            pass
+        m["week_partial_s"] = wp
         ws = dict(m.get("week_seconds") or {})
         ws[asof] = round(float(seconds), 3)
         m["week_seconds"] = ws
         m["weeks_completed"] = _weeks_on_disk(root)
         m["heartbeat_utc"] = now
         write_meta(root, m)
+
+
+def _record_partial(root: Path, asof: str, seconds: float) -> None:
+    """Bank a stopped week's ACTIVE seconds without writing a week_seconds
+    entry: the week is incomplete, and timing an unfinished week would drag
+    the mean per week toward zero. The banked seconds join the entry the
+    week finally earns when a resume completes it (see _record_week).
+    Accumulates across repeated stop-and-resume of the same week."""
+    with _META_LOCK:
+        m = read_meta(root)
+        now = _now()
+        _fold(m, now)
+        wp = dict(m.get("week_partial_s") or {})
+        try:
+            prior = float(wp.get(asof, 0.0) or 0.0)
+        except (TypeError, ValueError):
+            prior = 0.0
+        wp[asof] = round(prior + max(0.0, float(seconds)), 3)
+        m["week_partial_s"] = wp
+        m["heartbeat_utc"] = now
+        write_meta(root, m)
+
+
+def _clear_partial(root: Path, asof: str) -> None:
+    """Retire a week's banked partial seconds without spending them. Called
+    when the week's tree is rebuilt from scratch (its settings changed, or
+    its preparation was unusable): the banked work belonged to fits that no
+    longer exist, and timing the fresh week with them would overstate it."""
+    with _META_LOCK:
+        m = read_meta(root)
+        wp = dict(m.get("week_partial_s") or {})
+        if asof in wp:
+            del wp[asof]
+            m["week_partial_s"] = wp
+            write_meta(root, m)
 
 
 def _set_paused(root: Path, paused: bool) -> None:
@@ -424,37 +473,208 @@ def hold_while_paused(root: Path, poll_s: float = PAUSE_POLL_S) -> bool:
     return True
 
 
-def run_week(root: Path, season: str, asof: str, locations: list,
-             replicates: int = 3, particles: int = 10_000,
-             width: int = 4) -> dict:
-    """One submission day: PF (sharded) + analogue; store samples+quantiles."""
+# --------------------------------------------------------------------------
+# fit-level execution of one week
+#
+# A full-grid week is roughly 150 fits and ten minutes of work; a Stop or
+# Pause that only lands at the week boundary is not a control at all. So the
+# unit of control inside a week is the individual fit: every finished
+# (location, replicate) cell leaves an atomic marker in <week>/cells_done/,
+# the flags are polled while the runners work, and the first sighting stops
+# the DISPATCH of further fits -- the runners finish only the fit each has in
+# flight (a HALT file they check between cells) and exit. With width 6 and
+# 15-25 s per fit, a press lands in well under a minute.
+#
+# The markers double as the mid-week resume: a later run of the same week
+# reuses its prepared cells (when the manifest matches) and refits only the
+# cells with no marker. samples.json still appears only when every cell is
+# done, so the atomic-week guarantee downstream is untouched.
+# --------------------------------------------------------------------------
+
+CELL_DONE_DIRNAME = "cells_done"
+HALT_NAME = "HALT"
+PREP_NAME = "prep.json"
+WEEK_TIMEOUT_S = 7200.0
+FIT_POLL_S = 1.0
+
+#: The week runner: like the PF engine's console runner it executes its
+#: shard's cells sequentially in the engine venv (an entry-point FILE, never
+#: stdin -- macOS spawn rule), but it records each finished cell atomically
+#: the moment the fit ends and it exits between cells once HALT appears.
+_RETRO_RUNNER = '''"""Auto-generated retro PF runner: runs its shard's cells
+sequentially, marks each finished cell, halts between cells on HALT."""
+import json, os, shutil, sys
+sys.path.insert(0, {pybnf_path!r})
+from pathlib import Path
+cells = json.load(open({cells_json!r}))
+halt = Path({halt_path!r})
+done = Path({done_dir!r})
+for c in cells:
+    if halt.exists():
+        break                     # drain: only the fit in flight was finished
+    d = Path(c["dir"])
+    shutil.rmtree(d / "out", ignore_errors=True)
+    (d / "out" / "Results").mkdir(parents=True)
+    cwd = os.getcwd(); os.chdir(d)
+    try:
+        from pybnf.parse import load_config
+        from pybnf.pf import ParticleFilter
+        ParticleFilter(load_config(str(d / "pf.conf"))).run(None)
+        status = "ok"
+    except Exception as e:
+        status = ("FAIL: " + str(e))[:200]
+    finally:
+        os.chdir(cwd)
+    tmp = done / (c["key"] + ".tmp")
+    tmp.write_text(json.dumps({{"key": c["key"], "status": status}}))
+    os.replace(tmp, done / (c["key"] + ".json"))
+'''
+
+
+def _cell_done_dir(wd: Path) -> Path:
+    return Path(wd) / CELL_DONE_DIRNAME
+
+
+def cells_done(wd: Path) -> set:
+    """Keys of the week's finished fits. Each marker is written atomically
+    (beside-then-replace) by the runner the moment its fit ends, so this is
+    exactly the set a resumed week may skip."""
+    d = _cell_done_dir(wd)
+    return {p.stem for p in d.glob("*.json")} if d.is_dir() else set()
+
+
+def mark_cell_done(wd: Path, key: str, status: str = "ok") -> None:
+    """Record one finished fit the way the runner does: atomically, keyed by
+    the cell tag. Kept here so tests and tools mark cells identically."""
+    d = _cell_done_dir(wd)
+    d.mkdir(parents=True, exist_ok=True)
+    tmp = d / f"{key}.tmp"
+    tmp.write_text(json.dumps({"key": key, "status": status}))
+    os.replace(tmp, d / f"{key}.json")
+
+
+def _prepare_week(root: Path, asof: str, spec, manifest: dict) -> list:
+    """The week's prepared cells, reusing a previous segment's preparation
+    when it matches. A mid-week stop leaves models, confs, and finished-fit
+    markers behind; when this run's manifest (locations, replicates,
+    particles, season start) equals the one recorded beside them, they all
+    survive and only the unfitted cells will run. Anything else -- no
+    manifest, a different one, an unreadable tree -- rebuilds the week from
+    scratch, and retires any partial seconds the dead tree had banked."""
     wd = _week_dir(root, asof)
-    if week_done(root, asof):
-        return json.loads((wd / "samples.json").read_text())
-    wd.mkdir(parents=True, exist_ok=True)
-    spec = RunSpec(engine="retro", forecast_date=asof, locations=locations,
-                   season_start=season_bounds(season)[0],
-                   replicates=replicates, particles=particles)
+    cj, mf = wd / "cells.json", wd / PREP_NAME
+    if cj.is_file() and mf.is_file():
+        try:
+            if json.loads(mf.read_text()) == manifest:
+                return json.loads(cj.read_text())
+        except Exception:
+            pass
+    if wd.exists():
+        shutil.rmtree(wd)              # half-prepared or foreign: start clean
+    _clear_partial(root, asof)
+    wd.mkdir(parents=True)
     cells = pf_engine.prepare(spec, wd)
-    # shard cells across width runner subprocesses
-    shards = [cells[i::width] for i in range(width) if cells[i::width]]
+    _cell_done_dir(wd).mkdir(exist_ok=True)
+    mf.write_text(json.dumps(manifest, sort_keys=True))
+    return cells
+
+
+def _launch_runners(wd: Path, shards: list, halt: Path) -> list:
+    """One runner subprocess per shard, started at reduced priority so the
+    console stays responsive while a season replays (see app/core/proc.py).
+    Split out so tests can stand in fake fits; returns Popen-like objects
+    exposing poll() and kill()."""
     procs = []
+    done = _cell_done_dir(wd)
+    done.mkdir(parents=True, exist_ok=True)   # the runners write into it
     for i, shard in enumerate(shards):
         sj = wd / f"cells_{i}.json"
         sj.write_text(json.dumps(shard))
         runner = wd / f"runner_{i}.py"
-        runner.write_text(pf_engine._RUNNER.format(
+        runner.write_text(_RETRO_RUNNER.format(
             pybnf_path=str(pf_engine.PYBNF_PF), cells_json=str(sj),
-            out_json=str(wd / f"status_{i}.json")))
-        # started at reduced priority so the console stays responsive while a
-        # season replays: see app/core/proc.py for the trade and its cost
+            halt_path=str(halt), done_dir=str(done)))
         procs.append(subprocess.Popen(proc_mod.low_priority_cmd(
                      [str(pf_engine.PY_ENGINE
                       if hasattr(pf_engine, 'PY_ENGINE') else pf_engine.PY310),
                       str(runner)]), stdout=subprocess.DEVNULL,
-                     stderr=subprocess.DEVNULL))
-    for p in procs:
-        p.wait(timeout=7200)
+                     stderr=subprocess.DEVNULL,
+                     **proc_mod.low_priority_popen_kwargs()))
+    return procs
+
+
+def _run_round(root: Path, wd: Path, pending: list, width: int) -> None:
+    """Dispatch the pending cells across runners and wait for them to drain.
+
+    The STOP and PAUSE flags are polled every FIT_POLL_S while the runners
+    work; the first sighting touches the week's HALT file, each runner then
+    finishes only the fit it has in flight and exits. The caller decides
+    what the flag means (stop raises, pause holds); this function guarantees
+    only the drain, and that every finished fit left its marker."""
+    wd = Path(wd)
+    halt = wd / HALT_NAME
+    halt.unlink(missing_ok=True)          # stale from an earlier segment
+    before = len(cells_done(wd))
+    width = max(1, int(width))
+    shards = [pending[i::width] for i in range(width) if pending[i::width]]
+    procs = _launch_runners(wd, shards, halt)
+    flagged = False
+    deadline = time.time() + WEEK_TIMEOUT_S
+    try:
+        while any(p.poll() is None for p in procs):
+            if not flagged and (stop_path(root).exists()
+                                or pause_path(root).exists()):
+                halt.touch()          # dispatch no further fits; drain
+                flagged = True
+            if time.time() > deadline:
+                raise RuntimeError("PF runners timed out")
+            _sleep(FIT_POLL_S)
+    except BaseException:
+        for p in procs:               # never leave engine processes orphaned
+            try:
+                if p.poll() is None:
+                    p.kill()
+            except Exception:
+                pass
+        raise
+    if not flagged and len(cells_done(wd)) <= before:
+        # the runners exited unflagged without finishing a single fit:
+        # dispatching again would spin forever on the same broken engine
+        raise RuntimeError("PF runners exited without completing any fit")
+
+
+def run_week(root: Path, season: str, asof: str, locations: list,
+             replicates: int = 3, particles: int = 10_000,
+             width: int = 4) -> dict:
+    """One submission day: PF (sharded) + analogue; store samples+quantiles.
+
+    Fit-level control and resume: the STOP and PAUSE flags are honoured
+    BETWEEN individual fits (the fits in flight drain first -- a stop raises
+    SeasonStopped without writing samples.json, a pause holds right here
+    with the processes alive), and a later run of an interrupted week refits
+    only the cells with no marker in cells_done/. samples.json still appears
+    only when every cell is done, so week atomicity is unchanged."""
+    root = Path(root)
+    wd = _week_dir(root, asof)
+    if week_done(root, asof):
+        return json.loads((wd / "samples.json").read_text())
+    spec = RunSpec(engine="retro", forecast_date=asof, locations=locations,
+                   season_start=season_bounds(season)[0],
+                   replicates=replicates, particles=particles)
+    manifest = {"locations": [str(l) for l in locations],
+                "replicates": int(replicates), "particles": int(particles),
+                "season_start": spec.season_start}
+    _check_stop(root)         # a standing flag must not even prepare a week
+    hold_while_paused(root)
+    cells = _prepare_week(root, asof, spec, manifest)
+    while True:
+        done_keys = cells_done(wd)
+        pending = [c for c in cells if c["key"] not in done_keys]
+        if not pending:
+            break             # every fit is in; assembling costs nothing now
+        _check_stop(root)     # the flag a drained round saw lands HERE, at
+        hold_while_paused(root)   # fit resolution, not at the week boundary
+        _run_round(root, wd, pending, width)
     pf_samples = pf_engine.collect(wd)
     an_q = an_engine.run(spec)
     out = {"asof": asof,
@@ -470,12 +690,15 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
                particles=10_000, width=4, progress=None,
                settings: dict | None = None) -> list:
     """Replay a season week by week, recording timing and honouring the STOP
-    and PAUSE flags between weeks.
+    and PAUSE flags at fit resolution.
 
-    Control points sit BETWEEN weeks by design: a stop lands only once the
-    current week's checkpoint is on disk, so no half-week is wasted or
-    corrupted, and the next replay resumes exactly where this one left off.
-    A pause holds inside this call, keeping the process (and the caller's
+    Control points sit BETWEEN FITS: run_week polls the same flags while its
+    runners work, so a press waits only for the fits in flight (well under a
+    minute at the usual widths), never for a ten-minute full-grid week. A
+    stop leaves the interrupted week's finished fits checkpointed and its
+    samples.json unwritten -- the week stays incomplete, downstream sees
+    nothing -- and the next replay refits only the cells that never ran. A
+    pause holds inside this call, keeping the process (and the caller's
     sleep guard) alive.
 
     `settings` is what the caller was asked for (the scope the user picked,
@@ -509,14 +732,24 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
                     progress(asof)
                 continue          # never redone, and never timed: a skipped
                                   # week would drag the mean toward zero
-            t0 = _now()
+            # week timing by ACTIVE-seconds delta, not wall clock: a pause
+            # can now hold INSIDE the week, and elapsed_now already excludes
+            # held time, so the week's entry measures only work
+            e0 = elapsed_now(read_meta(root))
             try:
                 run_week(root, season, asof, locations, replicates, particles,
                          width)
                 done.append(asof)
+            except SeasonStopped:
+                # a fit-level stop: bank the segment's seconds so the week's
+                # eventual week_seconds entry covers BOTH segments, but write
+                # no entry now -- the week is incomplete, and timing it would
+                # corrupt the mean seconds per week
+                _record_partial(root, asof, elapsed_now(read_meta(root)) - e0)
+                raise
             except Exception as e:              # a bad week never kills the season
                 (root / "failures.log").open("a").write(f"{asof}: {e}\n")
-            _record_week(root, asof, _now() - t0)
+            _record_week(root, asof, elapsed_now(read_meta(root)) - e0)
             if progress:
                 progress(asof)
     except SeasonStopped:

@@ -36,12 +36,17 @@ LOCATIONS = HUB / "auxiliary-data/locations.csv"
 
 def _bng_candidates():
     """BNG2.pl from `pip install bionetgen`, wherever this app's venv lives --
-    the resolution a fresh lab machine actually needs."""
+    the resolution a fresh lab machine actually needs. Covers the POSIX venv
+    layout (lib/pythonX.Y/site-packages) and the Windows one
+    (Lib/site-packages); the platform order keeps bng-mac winning on macOS
+    (candidates are tried in order, first existing path wins)."""
+    minor = __import__("sys").version_info[1]
     here = Path(__file__).resolve().parents[1]
     for venv in (here / ".venv",):
-        for plat in ("bng-mac", "bng-linux"):
-            yield str(venv / "lib" / f"python3.{__import__('sys').version_info[1]}"
-                      / "site-packages" / "bionetgen" / plat / "BNG2.pl")
+        for sp in (venv / "lib" / f"python3.{minor}" / "site-packages",
+                   venv / "Lib" / "site-packages"):
+            for plat in ("bng-mac", "bng-linux", "bng-win"):
+                yield str(sp / "bionetgen" / plat / "BNG2.pl")
 
 
 BNG = _path(
@@ -52,7 +57,11 @@ BNG = _path(
     shutil.which("BNG2.pl") or "BNG2.pl",
 )
 
-PY_ENGINE = _path("FLUBNF_PY_ENGINE", "~/.venvs/flubnf/bin/python")
+# The Scripts variants are the same venvs as Windows lays them out; on
+# POSIX they never exist, so the first fallback keeps winning there.
+PY_ENGINE = _path("FLUBNF_PY_ENGINE", "~/.venvs/flubnf/bin/python",
+                  "~/.venvs/flubnf/Scripts/python.exe",
+                  "~/.venvs/flubnf-engine/Scripts/python.exe")
 PYBNF = _path("FLUBNF_PYBNF", "~/Documents/GitHub/PyBNF-pf")
 
 

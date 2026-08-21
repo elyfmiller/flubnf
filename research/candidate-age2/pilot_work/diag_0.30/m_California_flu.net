@@ -1,0 +1,106 @@
+# Created by BioNetGen 2.9.2
+begin parameters
+    1 Reff__FREE     1.1130008305417864  # Constant
+    2 eps1__FREE     0.08866425507969908  # Constant
+    3 phi1__FREE     23.825310500538983  # Constant
+    4 theta__FREE    0.3  # Constant
+    5 mult__FREE     0.3799024463825452  # Constant
+    6 r__FREE        27.188122453001526  # Constant
+    7 Reff           Reff__FREE  # ConstantExpression
+    8 eps1           eps1__FREE  # ConstantExpression
+    9 phi1           phi1__FREE  # ConstantExpression
+   10 theta          theta__FREE  # ConstantExpression
+   11 mult           mult__FREE  # ConstantExpression
+   12 r              r__FREE  # ConstantExpression
+   13 gamma          2.187500  # Constant
+   14 gammaH         1.17  # Constant
+   15 omega          0.019  # Constant
+   16 rhoK           0.0050227499  # Constant
+   17 rhoA           0.03439439  # Constant
+   18 N              39431263  # Constant
+   19 s0             0.85  # Constant
+   20 i0             5.71134304e-05  # Constant
+   21 fk             0.214226  # Constant
+   22 qk             2.0000  # Constant
+   23 uk             1.0000  # Constant
+   24 pi             3.141592653589793  # Constant
+   25 fa             1-fk  # ConstantExpression
+   26 ua             (1-(uk*fk))/fa  # ConstantExpression
+   27 s0k            s0*uk  # ConstantExpression
+   28 s0a            s0*ua  # ConstantExpression
+   29 Nk             N*fk  # ConstantExpression
+   30 Na             N*fa  # ConstantExpression
+   31 Q              (qk*fk)+fa  # ConstantExpression
+   32 ckk            (((((1-theta)*qk)*qk)*fk)/Q)+(theta*qk)  # ConstantExpression
+   33 cka            (((1-theta)*qk)*fa)/Q  # ConstantExpression
+   34 cak            (((1-theta)*qk)*fk)/Q  # ConstantExpression
+   35 caa            (((1-theta)*fa)/Q)+theta  # ConstantExpression
+   36 m11            uk*((((((1-theta)*qk)*qk)*fk)/Q)+(theta*qk))  # ConstantExpression
+   37 m12            (((uk*(1-theta))*qk)*fk)/Q  # ConstantExpression
+   38 m21            (((ua*(1-theta))*qk)*fa)/Q  # ConstantExpression
+   39 m22            ua*((((1-theta)*fa)/Q)+theta)  # ConstantExpression
+   40 disc           ((m11-m22)*(m11-m22))+((4*m12)*m21)  # ConstantExpression
+   41 lam            ((m11+m22)+sqrt(disc))/2  # ConstantExpression
+   42 beta0          (Reff*gamma)/(s0*lam)  # ConstantExpression
+   43 pedI0          0.490078  # Constant
+   44 Ik0            (N*i0)*pedI0  # ConstantExpression
+   45 Ia0            (N*i0)*(1-pedI0)  # ConstantExpression
+   46 _InitialConc1  Nk*s0k  # ConstantExpression
+   47 _InitialConc2  (Nk-(Nk*s0k))-Ik0  # ConstantExpression
+   48 _InitialConc3  Na*s0a  # ConstantExpression
+   49 _InitialConc4  (Na-(Na*s0a))-Ia0  # ConstantExpression
+   50 _rateLaw1      1  # Constant
+   51 _rateLaw6      rhoK*gamma  # ConstantExpression
+   52 _rateLaw7      rhoA*gamma  # ConstantExpression
+   53 _rateLaw8      (1-rhoK)*gamma  # ConstantExpression
+   54 _rateLaw9      (1-rhoA)*gamma  # ConstantExpression
+   55 _rateLaw10     rhoK*gamma  # ConstantExpression
+   56 _rateLaw11     rhoA*gamma  # ConstantExpression
+end parameters
+begin functions
+    1 beta() beta0*exp((eps1*cos((((2*pi)*(t-phi1))/52))))
+    2 H_weekly() (mult*gamma)*((rhoK*Ik)+(rhoA*Ia))
+    3 Ped_share() (rhoK*Ik)/(((rhoK*Ik)+(rhoA*Ia))+1e-30)
+    4 _rateLaw2() (beta()*ckk)/Nk
+    5 _rateLaw3() (beta()*cka)/Na
+    6 _rateLaw4() (beta()*caa)/Na
+    7 _rateLaw5() (beta()*cak)/Nk
+end functions
+begin species
+    1 Sk() _InitialConc1
+    2 Ik() Ik0
+    3 Hk() 0
+    4 Rk() _InitialConc2
+    5 Sa() _InitialConc3
+    6 Ia() Ia0
+    7 Ha() 0
+    8 Ra() _InitialConc4
+    9 HadmK() 0
+   10 HadmA() 0
+   11 counter() 0
+end species
+begin reactions
+    1 0 11 _rateLaw1 #_R1
+    2 1,2 2,2 _rateLaw2 #_R2
+    3 1,6 2,6 _rateLaw3 #_R3
+    4 5,6 6,6 _rateLaw4 #_R4
+    5 5,2 6,2 _rateLaw5 #_R5
+    6 2 3 _rateLaw6 #_R6
+    7 6 7 _rateLaw7 #_R7
+    8 2 4 _rateLaw8 #_R8
+    9 6 8 _rateLaw9 #_R9
+   10 3 4 gammaH #_R10
+   11 7 8 gammaH #_R11
+   12 4 1 omega #_R12
+   13 8 5 omega #_R13
+   14 2 2,9 _rateLaw10 #_R14
+   15 6 6,10 _rateLaw11 #_R15
+end reactions
+begin groups
+    1 Sk                   1
+    2 Ik                   2
+    3 Sa                   5
+    4 Ia                   6
+    5 H_Cum                9,10
+    6 t                    11
+end groups
