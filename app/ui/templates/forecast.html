@@ -175,6 +175,18 @@
    <p class="hint">{{ r.chips | safe }}</p>
    {# straight to the run's outputs, so the tab never dead-ends here #}
    <p class="hint">{% if r.has_report %}<a href="/runs/{{ r.run_id }}/report" target="_blank">Weekly report</a> · {% endif %}<a href="/output">Submission files</a></p>
+   {% if r.spec and r.status in ("stopped", "error", "failed", "interrupted") %}
+   {# one-click re-run from the ledger row's recorded spec: no re-filling
+      the form. Worded honestly: console fits hold no checkpoint, so this
+      is a fresh run, never a resume. Same guard as the Run models button;
+      /run applies the same server-side busy cross-checks. #}
+   <form method="post" action="/runs/{{ r.run_id }}/rerun" class="rerun-run">
+    <button class="gold" data-guard="console-run">Run again with these settings</button>
+   </form>
+   <p class="hint">Console runs hold no checkpoint: this starts a fresh run
+    with the settings recorded for this run. It does not resume the earlier
+    one.</p>
+   {% endif %}
   </div>
   {% endif %}
 

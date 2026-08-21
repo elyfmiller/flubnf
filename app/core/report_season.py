@@ -26,6 +26,7 @@ matching the playback payload cache convention.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from app.core import playback, retro
@@ -290,7 +291,10 @@ def build_season_report(root: Path, season: str, archive: str = "",
         html = _compose(season, weeks, data_json, plotly_js, player_js,
                         size_note=note, timing_note=timing_note,
                         summary=summary)
-    out.write_text(html)
+    # atomic: two concurrent downloads must never interleave a garbled file
+    tmp = out.with_suffix(".html.tmp")
+    tmp.write_text(html, encoding="utf-8")
+    os.replace(tmp, out)
     return out
 
 

@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% block content %}
+{% extends "base.html" %}{% import "diagrams.html" as dg %}{% block content %}
 <div class="hero">
  <h1>Forecast the flu season, <span class="gold">mechanistically</span>.</h1>
  <p>FluBNF produces weekly probabilistic forecasts of influenza hospital
@@ -92,6 +92,7 @@
    <i>&#966;</i><sub>1</sub>)&#8202;/&#8202;52&#8239;)&#8239;)</span>
    <span class="eqnote">the seasonal forcing inside the particle-filter fits:
    the curve the filter bends each week</span></p>
+  {{ dg.harmonic() }}
   <p><span class="math"><i>q</i><sub>ens</sub>(<i>&#964;</i>) =
    mean<sub>m</sub>&#8239;<i>q</i><sub>m</sub>(<i>&#964;</i>)</span>
    <span class="eqnote">the submitted quantile: an equal-weight mean of the

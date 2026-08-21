@@ -110,6 +110,30 @@ and move on; scores come later, against settled truth.</p>
       the progress readouts and secondary to them. Absent for the sealed
       validation runs, which predate the record. #}
    {{ settings_html(s.settings) | safe }}
+   {% if not s.active and s.resume_fields %}
+   {# a stopped or interrupted replay resumes in one click, with the
+      settings its own run record holds (server-fed hidden fields): no
+      re-filling the form. mode=resume keeps every completed week, and an
+      interrupted week refits only the cells that never ran. The button
+      carries the same guard as the form it shortcuts, and /retro/run
+      applies the same server-side busy cross-checks. Seasons that predate
+      the record get no button; the form path remains for those. #}
+   <div class="row">
+    <form method="post" action="/retro/run" class="resume-run">
+     {% for k, v in s.resume_fields.items() if k != "custom_locations" %}
+     <input type="hidden" name="{{ k }}" value="{{ v }}">
+     {% endfor %}
+     {% for l in s.resume_fields.custom_locations %}
+     <input type="hidden" name="custom_locations" value="{{ l }}">
+     {% endfor %}
+     <input type="hidden" name="confirm" value="">
+     <button class="gold" data-guard="retro-run">Resume</button>
+    </form>
+   </div>
+   <p class="hint">Resumes with the recorded settings shown above. Completed
+    weeks are kept and skipped; an interrupted week refits only the cells
+    that never ran.</p>
+   {% endif %}
    {% if s.active %}
    {# stopping and pausing are safe: only the fits in flight finish, each
       finished fit is checkpointed, so neither needs a confirmation modal #}
