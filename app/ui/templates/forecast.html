@@ -13,6 +13,7 @@
    <div class="checklist">
      <label class="ck"><input type="checkbox" id="ck-all" value="all" name="locations"
        {% if "all" in form.locations %}checked{% endif %}> <b>all 52 jurisdictions</b></label>
+     {% if locations_error %}<p class="warn">{{ locations_error }}</p>{% endif %}
      {% for l in all_locs %}
      <label class="ck"><input type="checkbox" class="ck-one" name="locations" value="{{ l }}"
        {% if l in form.locations %}checked{% endif %}> {{ l }}</label>
