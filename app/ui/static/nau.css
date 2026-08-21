@@ -29,10 +29,39 @@
   --ok:#4CC38A; --warn:#E5A55D; --bad:#FB4653;
   --shadow:0 1px 3px rgba(0,0,0,.5),0 4px 14px rgba(0,0,0,.35);
 }
+/* ---- fluid type scale ----------------------------------------------------
+   Every step is clamp(floor, rem-anchor + vw, ceiling). The rem terms are
+   relative to the root font size, which is exactly what the navbar's
+   A- / A / A+ control sets (87.5% / 100% / 115%), so that control keeps
+   multiplying the whole scale; the vw term adds the viewport response on
+   top of it.
+   The split matters: the rem anchor deliberately carries the MAJORITY of
+   every step (at least ~2/3 at a 1280px viewport, and all of it once the
+   ceiling is reached), because the vw term does not answer to the root
+   font size. A steeper vw slope reads better on a wide monitor but leaves
+   the accessibility control moving the text by a percent or two, which is
+   the same as breaking it.
+   The floors match the previous fixed sizes, so a narrow window never
+   renders smaller than it did before; the ceilings are reached around
+   1700-1800px.
+   These are size tokens only. The color tokens above stay literal in both
+   theme blocks because plot code resolves them through getComputedStyle. */
+:root{
+  --fs-body:clamp(.875rem,.83rem + .15vw,1rem);       /* 14   -> 16px   */
+  --fs-h1:clamp(1.25rem,1.1rem + .6vw,1.7rem);        /* 20   -> 27.2px */
+  --fs-h2:clamp(.8rem,.765rem + .12vw,.9rem);         /* 12.8 -> 14.4px */
+  --fs-hero-h1:clamp(1.45rem,1.2rem + .75vw,2rem);    /* 23.2 -> 32px   */
+  --fs-lead:clamp(.95rem,.88rem + .24vw,1.15rem);     /* 15.2 -> 18.4px */
+  --fs-sub:clamp(.92rem,.875rem + .2vw,1.1rem);       /* 14.7 -> 17.6px */
+  --fs-hint:clamp(.82rem,.785rem + .12vw,.92rem);     /* 13.1 -> 14.7px */
+  --fs-table:clamp(.84rem,.805rem + .12vw,.94rem);    /* 13.4 -> 15px   */
+  --fs-big:clamp(1.7rem,1.475rem + .6vw,2.15rem);     /* 27.2 -> 34.4px */
+}
 *{box-sizing:border-box}
-/* body text in rem so the navbar text-size control (root %) scales it */
+/* body text on the fluid scale; every card, table cell, and paragraph that
+   does not name its own size inherits from here */
 body{margin:0;background:var(--bg);color:var(--ink);
-     font:400 .875rem/1.5 "DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif}
+     font:400 var(--fs-body)/1.5 "DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif}
 /* ---- top navbar: surface strip, brand lockup, roomy 1rem tabs ---- */
 header.nav{background:var(--nav-bg);color:var(--nav-ink);
   border-bottom:1px solid var(--line);box-shadow:var(--shadow);
@@ -75,12 +104,15 @@ main{max-width:1500px;margin:0 auto;
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;
       padding:.85rem 1rem;margin-bottom:.75rem;box-shadow:var(--shadow);
       overflow-x:auto}
-.card h2{font-size:.8rem;margin:0 0 .55rem;text-transform:uppercase;
+.card h2{font-size:var(--fs-h2);margin:0 0 .55rem;text-transform:uppercase;
          letter-spacing:.05em;color:var(--mut)}
+/* card body text: no explicit size, so it inherits the fluid body step and
+   never overrides the smaller .hint / .sub steps nested inside a card */
 .card p{margin:.45rem 0}
-h1{font-size:1.25rem;font-weight:700;margin:.1rem 0 .6rem}
+h1{font-size:var(--fs-h1);font-weight:700;margin:.1rem 0 .6rem;
+   text-wrap:balance}
 h1 .accent{color:var(--gold)}
-.sub{color:var(--mut);margin:.1rem 0 .8rem;font-size:.92rem}
+.sub{color:var(--mut);margin:.1rem 0 .8rem;font-size:var(--fs-sub)}
 /* ---- controls ---- */
 label{display:block;font-size:.78rem;color:var(--mut);margin:.5rem 0 .2rem}
 input,select{width:100%;padding:.42rem .6rem;border:1px solid var(--line);
@@ -110,7 +142,7 @@ a{color:var(--gold);font-weight:600;text-decoration:none}
 [data-theme="dark"] a{color:var(--gold)}
 a:hover{text-decoration:underline}
 /* ---- data ---- */
-table{border-collapse:collapse;width:100%;font-size:.84rem;
+table{border-collapse:collapse;width:100%;font-size:var(--fs-table);
       font-variant-numeric:tabular-nums}
 td,th{padding:.38rem .6rem;border-bottom:1px solid var(--line);text-align:left}
 th{color:var(--mut);font-weight:600;font-size:.72rem;text-transform:uppercase;
@@ -118,8 +150,8 @@ th{color:var(--mut);font-weight:600;font-size:.72rem;text-transform:uppercase;
 code{background:var(--bg);padding:.12rem .35rem;border-radius:5px;font-size:.85em;
      overflow-wrap:anywhere}
 .ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
-.hint{color:var(--mut);font-size:.82rem}
-.big{font-size:1.7rem;font-weight:750;font-variant-numeric:tabular-nums}
+.hint{color:var(--mut);font-size:var(--fs-hint)}
+.big{font-size:var(--fs-big);font-weight:750;font-variant-numeric:tabular-nums}
 .pill{display:inline-block;padding:.1rem .55rem;border-radius:99px;
   border:1px solid var(--line);font-size:.76rem}
 progress{width:100%;height:12px;appearance:none;-webkit-appearance:none;
@@ -131,8 +163,10 @@ progress::-moz-progress-bar{background:var(--gold-bright);border-radius:99px}
 /* ---- home hero: LANL Blue tile, cyan emphasis ---- */
 .hero{background:linear-gradient(135deg,var(--navy) 0%,var(--navy-deep) 100%);
   color:#fff;border-radius:10px;padding:1.3rem 1.4rem;margin-bottom:.75rem}
-.hero h1{color:#fff;font-size:1.45rem;margin:0 0 .4rem}
-.hero p{color:#C6CFEE;max-width:52rem;margin:0;font-size:.95rem}
+.hero h1{color:#fff;font-size:var(--fs-hero-h1);margin:0 0 .4rem}
+/* the lead reflows inside a measure that grows with the type, so it never
+   clips: max-width is in rem and the text wraps rather than overflowing */
+.hero p{color:#C6CFEE;max-width:56rem;margin:0;font-size:var(--fs-lead)}
 .hero .gold{color:var(--gold-bright)}
 .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:.75rem}
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}
@@ -186,7 +220,8 @@ details.preview td,details.preview th{padding:.22rem .45rem;white-space:nowrap}
  margin:0 0 .75rem; font-size:.9rem}
 
 /* model-page intro: one-line summary, collapsed by default */
-details.intro > summary{color:var(--ink);font-size:.92rem;font-weight:500}
+details.intro > summary{color:var(--ink);font-size:var(--fs-sub);
+  font-weight:500}
 details.intro[open] > summary{margin-bottom:.15rem}
 /* mechanism diagrams inherit the page ink for currentColor strokes */
 .mech svg{color:var(--ink)}

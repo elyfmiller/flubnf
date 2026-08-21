@@ -16,7 +16,9 @@
                    build lazily from the first payload that arrives
      seasonOfficials optional list of official models that submitted in at
                    least one week of the season; drives the two-tier
-                   availability of the official toggles. Omitted, it falls
+                   availability of the official toggles, and with the
+                   week's own official dict it separates "no submission"
+                   from "pending" in the stats table. Omitted, it falls
                    back to catalog.officials (the static host's union) and
                    then to client-side accumulation as payloads load
      palette       optional function() -> theme colors, re-read per redraw
@@ -143,6 +145,18 @@ function availabilityTier(weekHas, seasonHas){
   return {disabled: true, note: UNAVAIL_NOTE};
 }
 
+// what one WEEK cell of the stats table reads. A real score always wins.
+// Otherwise the two blank cases are distinguished: a season-cataloged
+// official that filed nothing this week did not compete ("no submission"),
+// while anything else is a score that has not been computed ("pending").
+// weekKnown is false when the week's payload never arrived, in which case
+// nothing can be concluded about who submitted and "pending" stands.
+function weekCellState(v, isOfficial, weekKnown, weekHas, seasonHas){
+  if(typeof v === 'number' && isFinite(v)) return 'score';
+  if(isOfficial && weekKnown && !weekHas && seasonHas) return 'nosub';
+  return 'pending';
+}
+
 // ---------------------------------------------------------------- player
 
 function createPlayer(cfg){
@@ -263,12 +277,24 @@ function createPlayer(cfg){
     if(pl) buildControls(pl);
     updateAvailability(pl);
     var tb = el.stats.querySelector('tbody');
-    // a missing score is quiet "pending", never NaN or a crashed panel
+    // a missing score is quiet, never NaN or a crashed panel: "pending" for
+    // a score not yet computed, "no submission" for a cataloged official
+    // that simply filed nothing this week
     var fmt = function(v){
       return (typeof v === 'number' && isFinite(v))
         ? '<td class="num ' + (v < 1 ? 'ok' : 'bad') + '">'
           + v.toFixed(3) + '</td>'
         : '<td class="num hint">pending</td>';
+    };
+    // the week cell alone distinguishes the two blanks; the cumulative cell
+    // keeps showing the real running number across the weeks that did have
+    // a submission, so a gap week never blanks the season total
+    var av = pl ? officialAvailability(pl, OFFS) : null;
+    var weekCell = function(v, m){
+      var s = weekCellState(v, OFFS.indexOf(m) >= 0, !!av,
+                            !!(av && av[m]), !!seasonOffs[m]);
+      return s === 'nosub' ? '<td class="num hint">no submission</td>'
+                           : fmt(s === 'score' ? v : null);
     };
     var rows = [];
     ALLM.forEach(function(m){
@@ -279,7 +305,8 @@ function createPlayer(cfg){
           + String(st.debug).replace(/</g, '&lt;') + '</td></tr>'
         : '';
       rows.push('<tr><td><span class="sw" style="background:' + colorOf(m)
-        + '"></span>' + nameOf(m) + '</td>' + fmt(st ? st.week_rel : null)
+        + '"></span>' + nameOf(m) + '</td>'
+        + weekCell(st ? st.week_rel : null, m)
         + fmt(st ? st.cum_rel : null) + '</tr>' + dbg);
     });
     tb.innerHTML = rows.join('')
@@ -540,6 +567,7 @@ var FluBNFPlayer = {
     UNAVAIL_NOTE: UNAVAIL_NOTE,
     WEEK_NOTE: WEEK_NOTE,
     availabilityTier: availabilityTier,
+    weekCellState: weekCellState,
     rgba: rgba,
     addDays: addDays,
     dashOf: dashOf,

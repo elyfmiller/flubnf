@@ -11,9 +11,9 @@
  <a href="/retro/{{ season }}/report" download>Download season report</a>
  <button type="button" class="quiet" id="rev-report" style="margin-top:0"
    data-season="{{ season }}">Reveal in Finder</button>
- <span class="hint">one self-contained interactive HTML file: the season
- player with all forecast data embedded, usable offline. Forecast detail and
- stats only; the outlook maps stay in this console.</span></p>
+ <span class="hint">One self-contained HTML file, usable offline: the season
+ player with every forecast embedded. Forecast detail and stats only, no
+ outlook maps.</span></p>
 <script>
  // belt and braces for the native window: generate the report if absent
  // (same builder as the download route), then reveal the file in Finder
@@ -38,7 +38,7 @@
  {% for m, v in heads.items() %}
  <div class="card"><h2>{{ m }}</h2><div class="big
    {% if v < 1 %}ok{% else %}bad{% endif %}">{{ "%.3f"|format(v) }}</div>
-   <p class="hint">relWIS vs the FluSight baseline (values below 1 beat it)</p></div>
+   <p class="hint">relWIS vs the FluSight baseline</p></div>
  {% endfor %}
 </div>
 <div class="card"><h2>Cumulative ensemble relWIS through the season</h2>
@@ -100,9 +100,9 @@
    <p class="hint" id="pb-status"></p>
    <p class="hint" id="pb-offhint" hidden>official comparators appear after
     Update data fetches their submissions</p>
-   <p class="hint">relWIS below 1 beats the CDC FluSight baseline. Week scores
-    the current forecast's cells; cumulative pools every week through the
-    playback position.</p>
+   <p class="hint">relWIS below 1 beats the CDC FluSight baseline. Week
+    scores this forecast; cumulative pools every week to the playback
+    position.</p>
   </div>
  </div>
 </div>

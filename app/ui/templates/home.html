@@ -2,19 +2,16 @@
 <div class="hero">
  <h1>Forecast the flu season, <span class="gold">mechanistically</span>.</h1>
  <p>FluBNF produces weekly probabilistic forecasts of influenza hospital
- admissions for all 52 US jurisdictions, packaged in the CDC FluSight
- submission format together with a shareable weekly report. At its core is a
- mechanistic transmission model, fitted to each week's data and blended with
- an empirical companion. Runs, blending, scoring, and packaging are managed
- from this console.</p>
+ admissions for all 52 US jurisdictions, in the CDC FluSight submission
+ format and with a shareable weekly report. A mechanistic transmission model
+ is fitted to each week's data and blended with an empirical companion.</p>
 </div>
 
 <div class="card">{{ map_svg | safe }}
- <p class="hint">The weekly outlook map. Each state is colored by the
- direction its admissions are most likely headed.
- {% if outlook_date %}From the latest run ({{ outlook_date }}); hover a state
- for its category probabilities.
- {% else %}It fills in when you run a forecast.{% endif %}</p>
+ <p class="hint">Most likely direction of admissions.
+ {% if outlook_date %}Latest run, {{ outlook_date }}; hover a state for its
+ category probabilities.
+ {% else %}Fills in when you run a forecast.{% endif %}</p>
 </div>
 
 <div class="card"><h2>How it works</h2>
@@ -79,11 +76,7 @@
   </g>
  </svg>
  </div>
- <p class="hint">One console run each week: the same data pull feeds two
- independent members, their quantiles are averaged with equal weights that
- are fixed by design and never fitted, and the result is packaged for CDC
- FluSight; the full method is documented under
- <a href="/methods">Methods</a>.</p>
+ <p class="hint">Full method: <a href="/methods">Methods</a>.</p>
 </div>
 
 <div class="grid2">
@@ -97,17 +90,15 @@
     <tr><td>2024-25</td><td class="num rel">0.651</td>
      <td class="num">1.000</td><td>4 of 40 teams</td></tr>
     <tr><td>2025-26</td><td class="num rel">0.691</td>
-     <td class="num">1.000</td><td></td></tr>
+     <td class="num">1.000</td><td>19 of 47 teams</td></tr>
     <tr class="total"><td>Pooled</td><td class="num rel">0.704</td>
      <td class="num">1.000</td><td></td></tr>
    </tbody>
   </table>
-  <p class="hint">Three-season real-time retrospective of the two-member
-  ensemble; every forecast uses only the data available on its date, and a
-  relative weighted interval score below 1 beats the CDC FluSight baseline.
-  In 2024-25 it also placed ahead of the official FluSight ensemble. The
-  two-strain member is panel-validated, with full-grid validation in
-  progress.</p></div>
+  <p class="hint">Two-member ensemble, three seasons replayed on vintage
+  data only; relWIS below 1 beats the CDC FluSight baseline. In 2024-25 it
+  also beat the official FluSight ensemble. The two-strain member is
+  panel-validated; full-grid validation is in progress.</p></div>
  <div class="card"><h2>Start here</h2>
   <ol class="steps">
    <li class="step"><span class="stepnum">1</span>
@@ -115,12 +106,12 @@
      <span class="hint">confirm the feed is current</span></span></li>
    <li class="step"><span class="stepnum">2</span>
     <span class="steptext"><a href="/forecast">Forecast</a>
-     <span class="hint">select a date, run the models</span></span></li>
+     <span class="hint">pick a date, run the models</span></span></li>
    <li class="step"><span class="stepnum">3</span>
     <span class="steptext"><a href="/output">Output</a>
-     <span class="hint">collect submission files and the report</span></span></li>
+     <span class="hint">submission files and the report</span></span></li>
   </ol>
-  <p class="hint">A full past season can be replayed on the
+  <p class="hint">Replay a past season on the
   <a href="/retro">Retrospective</a> tab.</p></div>
 </div>
 
@@ -128,14 +119,11 @@
  <div class="card"><h2>PyBNF</h2>
   <div class="cardviz">
    <img src="/static/brand/pybnf_icon.svg" alt="PyBNF brand mark"></div>
-  <p>PyBNF is Los Alamos National Laboratory's parameter fitting and
-  uncertainty quantification suite for rule-based models, and it is the
-  fitting framework behind the mechanistic member. FluBNF runs a fork that
-  adds a sequential particle filter (<code>fit_type=pf</code>), which
-  reweights about 10,000 candidate epidemics per state each week as new
-  admissions data arrive.</p>
-  <p class="hint">Installed: {{ versions.pybnf }} ·
-  <a href="https://github.com/lanl/PyBNF" target="_blank" rel="noopener">github.com/lanl/PyBNF</a></p></div>
+  <p>Los Alamos National Laboratory's parameter-fitting and
+  uncertainty-quantification suite for rule-based models, and the fitting
+  framework behind the mechanistic member. FluBNF runs a fork that adds the
+  sequential particle filter (<code>fit_type=pf</code>).</p>
+  <p class="hint"><a href="https://github.com/lanl/PyBNF" target="_blank" rel="noopener">github.com/lanl/PyBNF</a></p></div>
  <div class="card"><h2>bngsim</h2>
   <div class="cardviz">
    <svg viewBox="0 0 250 64" role="img" aria-labelledby="bs-t">
@@ -149,14 +137,12 @@
           fill="none" stroke="var(--gold)" stroke-width="2.4"/>
     <path d="M10,58 H242" stroke="currentColor" stroke-width="1.3" fill="none"/>
    </svg></div>
-  <p>bngsim is an embeddable, in-process simulation engine for BioNetGen
-  reaction networks, and the engine the particle filter runs on. During
-  fitting it integrates the model's ODEs directly inside the fitting
-  process, with no per-simulation BNG2.pl subprocess, so every candidate
-  epidemic the filter weighs is simulated in seconds rather than
+  <p>An embeddable, in-process simulation engine for BioNetGen reaction
+  networks, and the engine the particle filter runs on. It integrates the
+  model's ODEs inside the fitting process, with no per-simulation BNG2.pl
+  subprocess, so each candidate epidemic simulates in seconds rather than
   minutes.</p>
-  <p class="hint">Installed: {{ versions.bngsim }} ·
-  <a href="https://github.com/lanl/bngsim" target="_blank" rel="noopener">github.com/lanl/bngsim</a></p></div>
+  <p class="hint"><a href="https://github.com/lanl/bngsim" target="_blank" rel="noopener">github.com/lanl/bngsim</a></p></div>
  <div class="card"><h2>BNGL and BioNetGen</h2>
   <div class="cardviz">
    <svg viewBox="0 0 250 64" role="img" aria-labelledby="cm-t">
@@ -186,26 +172,22 @@
      <text x="223" y="36">C</text>
     </g>
    </svg></div>
-  <p>BNGL is the BioNetGen model specification language, in which the
-  <a href="/methods#sihrs">SIHRS transmission model</a> is written. When a
-  run is prepared, BioNetGen's BNG2.pl is invoked once per state cell to
-  generate the reaction network from the rule-based definition; bngsim then
-  integrates that network throughout the fit. Keeping the model in BNGL
-  makes its structure explicit, portable, and independently
-  checkable.</p>
-  <p class="hint">Installed BioNetGen: {{ versions.bionetgen }} ·
-  <a href="https://bionetgen.org" target="_blank" rel="noopener">bionetgen.org</a></p></div>
+  <p>The BioNetGen model specification language, in which the
+  <a href="/methods#sihrs">SIHRS transmission model</a> is written. At run
+  preparation BNG2.pl expands the rule-based definition into a reaction
+  network, once per state cell, which bngsim then integrates throughout the
+  fit. Keeping the model in BNGL makes its structure explicit and
+  independently checkable.</p>
+  <p class="hint"><a href="https://bionetgen.org" target="_blank" rel="noopener">bionetgen.org</a></p></div>
 </div>
 
 <div class="card"><h2>Setup</h2>
  {% if missing %}
-  <p class="hint">This machine runs the console, the calendar analogue, and
-  report generation. Not yet installed:</p>
+  <p class="hint">Not installed on this machine:</p>
   {% for m in missing %}<p class="warn">• {{ m[2] }}</p>{% endfor %}
   <p class="hint">To add the particle-filter engine, run
   <code>SetupEngine.command</code> and relaunch the console.</p>
- {% else %}<p class="ok">All components are installed; full engine
-  capability is available.</p>{% endif %}
+ {% else %}<p class="ok">All components installed.</p>{% endif %}
  <p class="hint">PyBNF {{ versions.pybnf }} · bngsim {{ versions.bngsim }} ·
  BioNetGen {{ versions.bionetgen }} · FastAPI {{ versions.fastapi }} ·
  Plotly {{ versions.plotly }}</p>

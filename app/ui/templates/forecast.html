@@ -7,7 +7,7 @@
   <form method="post" action="/run">
    <label>Forecast date</label>
    <input type="date" name="forecast_date" value="{{ form.forecast_date }}">
-   <span class="hint">A Saturday; each forecast uses the data archived for that week.</span>
+   <span class="hint">A Saturday; the forecast uses that week's archived data.</span>
    <label>Locations <span id="lcount" class="hint"></span></label>
    <div class="checklist">
      <label class="ck"><input type="checkbox" id="ck-all" value="all" name="locations"
@@ -28,8 +28,8 @@
      <option value="2" {% if form.get('members', 2) != 3 %}selected{% endif %}>PF + analogue (validated full-grid)</option>
      <option value="3" {% if form.get('members', 2) == 3 %}selected{% endif %}>PF + analogue + two-strain (research: turn-validated, not ensemble-validated)</option>
    </select>
-   <span class="hint">Three members fit the two-strain SIHRS as a second
-   particle-filter pass; the ensemble then blends with equal weights.</span>
+   <span class="hint">The third member costs a second particle-filter pass;
+   weights stay equal.</span>
    <label title="trim the newest N weeks before fitting (vintage-edge guard)">Weeks to drop</label>
    <input name="weeks_to_drop" type="number" value="{{ form.weeks_to_drop }}" min="0" max="4">
    <input type="hidden" name="weeks_to_nowcast" value="0">

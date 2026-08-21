@@ -11,10 +11,9 @@
    {{ freshness.detail }}</p>{% endif %}
  </div></div>
  <div><div class="card"><h2>Policies</h2>
-  <p class="hint">Real-time runs use vintage data only: each forecast sees
-  the data exactly as archived on its forecast date. Missing weeks are
-  dropped as rows with calendar-true offsets and are never imputed. A
-  request for a vintage that does not exist fails loudly and lists the
-  nearest alternatives.</p></div></div>
+  <p class="hint">Vintage data only: each forecast sees the data exactly as
+  archived on its forecast date. Missing weeks are dropped with
+  calendar-true offsets, never imputed. A missing vintage fails loudly with
+  the nearest alternatives.</p></div></div>
 </div>
 {% endblock %}
