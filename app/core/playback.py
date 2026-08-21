@@ -292,7 +292,19 @@ def build_week(root: Path, season: str, asof: str) -> dict:
                     if (root / "scores.json").is_file() else []))
     if cf.is_file() and cf.stat().st_mtime >= newest:
         try:
-            return json.loads(cf.read_text())
+            payload = json.loads(cf.read_text())
+            # A payload cached before the official comparator files were
+            # fetched must rebuild once they exist: Update data healing the
+            # sparse clone changes no samples mtime, so timestamps alone
+            # cannot see it (field-found on the first laptop).
+            from datetime import date as _d, timedelta as _td
+            ref = (_d.fromisoformat(asof) + _td(days=7)).isoformat()
+            missing_now_present = any(
+                name not in payload.get("official", {})
+                and (HUB / "model-output" / name / f"{ref}-{name}.csv").is_file()
+                for name in ("FluSight-baseline", "FluSight-ensemble"))
+            if not missing_now_present:
+                return payload
         except Exception:
             pass                       # corrupt cache: rebuild below
 

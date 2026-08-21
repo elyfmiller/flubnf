@@ -343,7 +343,12 @@ def data_pull():
     """Explicit hub update -- looking never pulls; pulling is a button."""
     msg = data_mod.pull_hub()
     vs = data_mod.vintages()
-    _flash(f"{msg[:160]}" + (f" · latest vintage {vs[-1]}" if vs else ""))
+    from flubnf.settings import HUB as _H
+    comp = (" · comparators: baseline "
+            + ("ok" if (_H / "model-output/FluSight-baseline").is_dir() else "missing")
+            + ", official ensemble "
+            + ("ok" if (_H / "model-output/FluSight-ensemble").is_dir() else "missing"))
+    _flash(f"{msg[:140]}" + (f" · latest vintage {vs[-1]}" if vs else "") + comp)
     return RedirectResponse("/data", status_code=303)
 
 

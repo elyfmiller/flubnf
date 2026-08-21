@@ -149,7 +149,9 @@ def test_cache_written_served_and_invalidated(tmp_path, monkeypatch):
     cf = root / "playback_cache" / f"{ASOF}.json"
     assert cf.is_file()
     # fresh cache is served verbatim
-    cf.write_text(json.dumps({"asof": "sentinel"}))
+    cf.write_text(json.dumps({"asof": "sentinel",
+                              "official": {"FluSight-baseline": {},
+                                           "FluSight-ensemble": {}}}))
     future = cf.stat().st_mtime + 60
     os.utime(cf, (future, future))
     assert playback.build_week(root, SEASON, ASOF)["asof"] == "sentinel"
