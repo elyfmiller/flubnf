@@ -295,7 +295,44 @@ def _stats(root: Path, season: str, asof: str, truth: dict, n2f: dict,
             cb = sum(aggs[w][m]["base"] for w in upto if m in aggs[w])
             stats[m] = {"week_rel": _rel(wk["wis"], wk["base"]) if wk else None,
                         "cum_rel": _rel(cw, cb)}
+            if m in OFFICIAL and stats[m]["cum_rel"] is None:
+                # A cataloged official with no cumulative score is the
+                # field bug that keeps resurfacing; explain the first
+                # file-bearing week's pipeline instead of showing "pending".
+                stats[m]["debug"] = _official_debug(root, m, upto, n2f)
     return stats
+
+
+def _official_debug(root: Path, model: str, upto: list, n2f: dict) -> str:
+    """One line naming where the official-scoring pipeline starves."""
+    try:
+        f2n = {v: k for k, v in n2f.items()}
+        f2n["US"] = "US"
+        weeks_with_file = [w for w in upto if model in _official_files_present(w)]
+        if not weeks_with_file:
+            return (f"no {model} submission files for any of the {len(upto)} "
+                    "weeks (hub clone missing model-output or outside the "
+                    "competition window)")
+        w = weeks_with_file[len(weeks_with_file) // 2]
+        oq = _official_quantiles(model, w, f2n)
+        if not oq:
+            return f"file for {w} exists but parsed to zero quantile rows"
+        truth, _ = load_truth()
+        states = [k for k in oq if k != "US"]
+        fips_set = {n2f[l] for l in states if l in n2f}
+        try:
+            bases = _baseline_cells(w, fips_set, truth)
+        except Exception as e:
+            return f"baseline construction failed for {w}: {str(e)[:120]}"
+        if not bases:
+            return f"baseline produced zero cells for {w} ({len(fips_set)} locations)"
+        ws, bs, n = _score_block({k: v for k, v in oq.items() if k != "US"},
+                                 w, truth, n2f, bases)
+        return (f"probe week {w}: files {len(weeks_with_file)}/{len(upto)}, "
+                f"parsed locations {len(states)}, baseline cells {len(bases)}, "
+                f"scored cells {n}, wis {ws:.1f}, base {bs:.1f}")
+    except Exception as e:
+        return f"debug probe failed: {type(e).__name__}: {str(e)[:120]}"
 
 
 # ------------------------------------------------------------------- payload
