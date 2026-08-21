@@ -153,8 +153,9 @@ def test_guarded_attributes_on_exactly_the_classified_controls():
         "<form", 1)[-1]
 
     # the model-page run buttons post to the same /run endpoint and carry
-    # the same guard; they were the unguarded back door
-    for page in ("/model/pf", "/model/analogue"):
+    # the same guard; they were the unguarded back door. The canonical
+    # /models route serves the PF view, so it carries the same guard.
+    for page in ("/model/pf", "/model/analogue", "/models"):
         mp = client.get(page).text
         assert mp.count('data-guard="') == 1, page
         assert 'data-guard="console-run"' in mp, page

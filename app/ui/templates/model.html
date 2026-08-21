@@ -3,6 +3,24 @@
 {% block head %}<script src="/static/plotly.min.js"></script>{% endblock %}
 {% block content %}
 <h1>{{ title }}</h1>
+{# the Models tab's in-page switcher: plain buttons stating aria-pressed,
+   the same honest-toggle pattern the season player's view tabs carry. Each
+   button navigates to its model's page (the data behind the fans is
+   rendered server-side per model); the PF button points at the canonical
+   /models route, the rest at the /model/<name> routes that stay live for
+   exported reports and bookmarks. The two-strain page keeps its existing
+   label and is marked as the research option; it has no navigation tab. #}
+<div class="row viewtabs" role="group" aria-label="Model view">
+ {% for mn, mlabel, mhref in [("pf", "PF-SIHRS", "/models"),
+                              ("analogue", "Calendar analogue", "/model/analogue"),
+                              ("ensemble", "Ensemble", "/model/ensemble"),
+                              ("pf2s", "Two-strain SIHRS", "/model/pf2s")] %}
+ <button type="button" class="quiet{% if name == mn %} gold{% endif %}"
+   aria-pressed="{{ 'true' if name == mn else 'false' }}"
+   data-model="{{ mn }}"
+   {% if name != mn %}onclick="location='{{ mhref }}'"{% endif %}>{{ mlabel }}{% if mn == "pf2s" %} <span class="hint">(research)</span>{% endif %}</button>
+ {% endfor %}
+</div>
 <details class="card intro">
  <summary>{{ oneline }}</summary>
  <p class="sub" style="margin-top:.55rem">{{ blurb }}</p>
@@ -63,9 +81,15 @@
  const MDASH = {pf:'solid', analogue:'dash', pf2s:'dot'};
  const SERIES = {};
  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
- function lay(t,h){return {title:{text:t,font:{size:14}},height:h||400,
+ // chart text rides the type system: the brand face with a system fallback,
+ // sized from the root font size so the A-/A/A+ control reaches it
+ const rootPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+ function lay(t,h){const fs=rootPx();
+  return {title:{text:t,font:{size:Math.round(fs*.875)}},height:h||400,
   margin:{l:50,r:20,t:34,b:40},paper_bgcolor:'rgba(0,0,0,0)',
-  plot_bgcolor:'rgba(0,0,0,0)',font:{color:css('--ink')},
+  plot_bgcolor:'rgba(0,0,0,0)',
+  font:{color:css('--ink'),family:'"DM Sans",system-ui,sans-serif',
+        size:Math.round(fs*.8)},
   xaxis:{gridcolor:css('--line')},
   yaxis:{gridcolor:css('--line'),rangemode:'tozero'}};}
  const LOCS=Object.keys(FANQ); let IDX=0;
@@ -125,5 +149,6 @@
  }
  draw();
  addEventListener('themechange',()=>draw());
+ addEventListener('fontsizechange',()=>draw());
 </script>
 {% endblock %}

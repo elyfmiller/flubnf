@@ -61,6 +61,60 @@ def test_two_strain_is_off_the_navbar_but_still_routed():
     assert client.get("/model/pf2s").status_code == 200
 
 
+# --------------------------------------------- navigation (operational loop)
+
+import re                                           # noqa: E402
+
+
+def _nav_tabs(html):
+    return re.findall(r'<a class="tab[^"]*" href="([^"]+)">([^<]+)</a>',
+                      html)
+
+
+def _pressed_model(html):
+    m = re.search(r'aria-pressed="true"\s+data-model="(\w+)"', html)
+    return m.group(1) if m else None
+
+
+def test_nav_is_the_operational_loop():
+    """The tab set walks the workflow the home page teaches, and the three
+    model reference pages collapse behind the one Models tab."""
+    tabs = _nav_tabs(client.get("/").text)
+    assert [h for h, _ in tabs] == ["/", "/data", "/forecast", "/output",
+                                    "/retro", "/runs", "/models",
+                                    "/methods"]
+    assert [n for _, n in tabs] == ["Home", "Data", "Forecast", "Output",
+                                    "Retrospective", "Runs", "Models",
+                                    "Methods"]
+
+
+def test_models_route_defaults_to_pf_and_owns_the_active_tab():
+    r = client.get("/models")
+    assert r.status_code == 200
+    assert "PF-SIHRS" in r.text
+    assert _pressed_model(r.text) == "pf"
+    assert re.search(r'<a class="tab active" href="/models">Models</a>',
+                     r.text)
+
+
+def test_old_model_routes_stay_live_with_the_right_switcher_state():
+    """Exported reports and bookmarks link /model/<name>; each still serves
+    the page, presses its own switcher button, and lights the Models tab."""
+    for name in ("pf", "analogue", "ensemble", "pf2s"):
+        t = client.get(f"/model/{name}").text
+        assert _pressed_model(t) == name, name
+        assert t.count('aria-pressed="true"') == 1, name
+        assert re.search(r'<a class="tab active" href="/models">Models</a>',
+                         t), name
+
+
+def test_switcher_lists_two_strain_as_the_research_option():
+    t = client.get("/models").text
+    assert t.count("data-model=") == 4
+    assert "Two-strain SIHRS" in t
+    assert "(research)" in t
+
+
 def test_model_pages_render_mechanism_and_collapsed_intro():
     markers = {
         "pf": "SIHRS compartment diagram",

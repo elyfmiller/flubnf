@@ -4,7 +4,10 @@
    so no label touches an arrow. Each macro takes a uid so marker ids stay
    unique per page. The SVGs carry ONLY structural labels (rates on arrows);
    fitted and observed values live in the values panel the host page renders
-   beside the diagram, so numbers never overlap the artwork. #}
+   beside the diagram, so numbers never overlap the artwork.
+   Text is sized through the svgt-* rem classes in nau.css, never through
+   fixed viewBox-unit font-size attributes, so the A-/A/A+ control reaches
+   every label and the smallest step holds the app's hint floor. #}
 
 {% macro sihrs(uid='s') -%}
 <svg viewBox="0 0 840 348" role="img" aria-labelledby="sihrs-t-{{ uid }}"
@@ -39,13 +42,13 @@
   <rect x="705" y="120" width="115" height="60" rx="10"
         fill="var(--ok)"   fill-opacity=".14" stroke="var(--ok)"/>
  </g>
- <g text-anchor="middle" font-weight="700" font-size="20">
+ <g text-anchor="middle" font-weight="700" class="svgt-xl">
   <text x="87"  y="147" fill="var(--mut)">S</text>
   <text x="312" y="147" fill="var(--gold)">I</text>
   <text x="537" y="147" fill="var(--bad)">H</text>
   <text x="762" y="147" fill="var(--ok)">R</text>
  </g>
- <g text-anchor="middle" font-size="11" fill="currentColor">
+ <g text-anchor="middle" class="svgt-sm" fill="currentColor">
   <text x="87"  y="168">Susceptible</text>
   <text x="312" y="168">Infected</text>
   <text x="537" y="168">Hospitalized</text>
@@ -53,24 +56,24 @@
  </g>
  <!-- rate symbols above each arrow; meanings in words clear of every path -->
  <g text-anchor="middle" fill="currentColor">
-  <text x="199" y="138" font-size="13">&#946;(t)</text>
-  <text x="424" y="138" font-size="13">&#961;&#183;&#947;</text>
-  <text x="649" y="138" font-size="13">&#947;&#8341;</text>
-  <text x="537" y="84"  font-size="13">(1-&#961;)&#183;&#947;</text>
-  <text x="537" y="100" font-size="11">recovery without admission (most infections)</text>
-  <text x="199" y="204" font-size="11">seasonal transmission</text>
-  <text x="424" y="204" font-size="11">hospital admission</text>
-  <text x="424" y="217" font-size="11">(the fitted data stream)</text>
-  <text x="649" y="204" font-size="11">discharge</text>
-  <text x="424" y="318" font-size="13">&#969;</text>
-  <text x="424" y="336" font-size="11">waning immunity: recovered individuals become susceptible again</text>
+  <text x="199" y="138" class="svgt-md">&#946;(t)</text>
+  <text x="424" y="138" class="svgt-md">&#961;&#183;&#947;</text>
+  <text x="649" y="138" class="svgt-md">&#947;&#8341;</text>
+  <text x="537" y="84"  class="svgt-md">(1-&#961;)&#183;&#947;</text>
+  <text x="537" y="100" class="svgt-sm">recovery without admission (most infections)</text>
+  <text x="199" y="204" class="svgt-sm">seasonal transmission</text>
+  <text x="424" y="204" class="svgt-sm">hospital admission</text>
+  <text x="424" y="217" class="svgt-sm">(the fitted data stream)</text>
+  <text x="649" y="204" class="svgt-sm">discharge</text>
+  <text x="424" y="318" class="svgt-md">&#969;</text>
+  <text x="424" y="336" class="svgt-sm">waning immunity: recovered individuals become susceptible again</text>
  </g>
 </svg>
 {%- endmacro %}
 
 {% macro _sihrs_row(oy, strain, uid) -%}
  <g transform="translate(90,{{ oy }})">
-  <text x="0" y="16" font-size="12" font-weight="700"
+  <text x="0" y="16" class="svgt-md" font-weight="700"
         fill="currentColor">Influenza {{ strain }} circuit</text>
   <g fill="none" stroke="currentColor" stroke-width="1.6">
    <path d="M122,90 H198" marker-end="url(#arr-{{ uid }})"/>
@@ -89,27 +92,27 @@
    <rect x="560" y="68" width="100" height="44" rx="8"
          fill="var(--ok)"   fill-opacity=".14" stroke="var(--ok)"/>
   </g>
-  <g text-anchor="middle" font-weight="700" font-size="15">
-   <text x="70"  y="89" fill="var(--mut)">S<tspan dy="3" font-size="10">{{ strain }}</tspan></text>
-   <text x="250" y="89" fill="var(--gold)">I<tspan dy="3" font-size="10">{{ strain }}</tspan></text>
-   <text x="430" y="89" fill="var(--bad)">H<tspan dy="3" font-size="10">{{ strain }}</tspan></text>
-   <text x="610" y="89" fill="var(--ok)">R<tspan dy="3" font-size="10">{{ strain }}</tspan></text>
+  <g text-anchor="middle" font-weight="700" class="svgt-lg">
+   <text x="70"  y="89" fill="var(--mut)">S<tspan dy="3" class="svgt-sub">{{ strain }}</tspan></text>
+   <text x="250" y="89" fill="var(--gold)">I<tspan dy="3" class="svgt-sub">{{ strain }}</tspan></text>
+   <text x="430" y="89" fill="var(--bad)">H<tspan dy="3" class="svgt-sub">{{ strain }}</tspan></text>
+   <text x="610" y="89" fill="var(--ok)">R<tspan dy="3" class="svgt-sub">{{ strain }}</tspan></text>
   </g>
-  <g text-anchor="middle" font-size="9" fill="currentColor">
+  <g text-anchor="middle" class="svgt-sm" fill="currentColor">
    <text x="70"  y="104">Susceptible {{ strain }}</text>
    <text x="250" y="104">Infected {{ strain }}</text>
    <text x="430" y="104">Hospitalized {{ strain }}</text>
    <text x="610" y="104">Recovered {{ strain }}</text>
   </g>
   <g text-anchor="middle" fill="currentColor">
-   <text x="160" y="78" font-size="12">&#946;<tspan dy="3" font-size="9">{{ strain }}</tspan><tspan dy="-3">(t)</tspan></text>
-   <text x="340" y="78" font-size="12">&#961;&#183;&#947;</text>
-   <text x="520" y="78" font-size="12">&#947;&#8341;</text>
-   <text x="425" y="14" font-size="11">(1-&#961;)&#183;&#947;</text>
-   <text x="160" y="128" font-size="10">seasonal transmission</text>
-   <text x="340" y="128" font-size="10">admission flux {{ strain }}</text>
-   <text x="520" y="128" font-size="10">discharge</text>
-   <text x="340" y="184" font-size="10">&#969; &#183; waning immunity</text>
+   <text x="160" y="78" class="svgt-md">&#946;<tspan dy="3" class="svgt-sub">{{ strain }}</tspan><tspan dy="-3">(t)</tspan></text>
+   <text x="340" y="78" class="svgt-md">&#961;&#183;&#947;</text>
+   <text x="520" y="78" class="svgt-md">&#947;&#8341;</text>
+   <text x="425" y="14" class="svgt-sm">(1-&#961;)&#183;&#947;</text>
+   <text x="160" y="128" class="svgt-sm">seasonal transmission</text>
+   <text x="340" y="128" class="svgt-sm">admission flux {{ strain }}</text>
+   <text x="520" y="128" class="svgt-sm">discharge</text>
+   <text x="340" y="184" class="svgt-sm">&#969; &#183; waning immunity</text>
   </g>
  </g>
 {%- endmacro %}
@@ -131,7 +134,7 @@
  </defs>
  {{ _sihrs_row(8, 'A', uid) }}
  {{ _sihrs_row(206, 'B', uid) }}
- <text x="420" y="424" text-anchor="middle" font-size="11" fill="currentColor">Observed
+ <text x="420" y="424" text-anchor="middle" class="svgt-sm" fill="currentColor">Observed
  admissions sum the A and B fluxes; NREVSS typed positives set the initial
  mix and fit the A/B share.</text>
 </svg>
@@ -156,9 +159,9 @@
   <path d="M50,255 H800" marker-end="url(#arr-{{ uid }})"/>
   <path d="M50,255 V45"  marker-end="url(#arr-{{ uid }})"/>
  </g>
- <text x="430" y="284" text-anchor="middle" font-size="11"
+ <text x="430" y="284" text-anchor="middle" class="svgt-sm"
        fill="currentColor">weeks since August 1</text>
- <text x="24" y="150" text-anchor="middle" font-size="11" fill="currentColor"
+ <text x="24" y="150" text-anchor="middle" class="svgt-sm" fill="currentColor"
        transform="rotate(-90 24 150)">weekly admissions</text>
  <!-- past seasons, faint -->
  <g fill="none" stroke="var(--mut)" stroke-opacity=".4" stroke-width="1.6">
@@ -178,7 +181,7 @@
  <!-- forecast date -->
  <path d="M430,58 V255" stroke="var(--mut)" stroke-width="1.2"
        stroke-dasharray="5 4" fill="none"/>
- <text x="430" y="48" text-anchor="middle" font-size="11"
+ <text x="430" y="48" text-anchor="middle" class="svgt-sm"
        fill="var(--mut)">forecast date</text>
  <!-- forecast fan: the anchor scaled by donor growth-ratio quantiles -->
  <polygon points="430,140 545,96 545,190" fill="var(--gold-bright)"
@@ -186,7 +189,7 @@
  <path d="M430,140 C470,132 510,140 545,150" fill="none"
        stroke="var(--gold)" stroke-width="2.4"/>
  <!-- key, placed in the clear zone away from every curve -->
- <g font-size="11">
+ <g class="svgt-sm">
   <path d="M580,61 H612" stroke="currentColor" stroke-width="2.6" fill="none"/>
   <text x="620" y="65" fill="currentColor">this season so far</text>
   <path d="M580,79 H612" stroke="var(--mut)" stroke-opacity=".4"
@@ -224,12 +227,12 @@
   <rect x="40" y="162" width="200" height="46" rx="9" stroke-dasharray="5 4"
         fill="var(--mut)" fill-opacity=".08" stroke="var(--mut)"/>
  </g>
- <g text-anchor="middle" font-size="12" font-weight="600" fill="currentColor">
+ <g text-anchor="middle" class="svgt-md" font-weight="600" fill="currentColor">
   <text x="140" y="49">PF-SIHRS</text>
   <text x="140" y="119">Calendar analogue</text>
   <text x="140" y="182">Two-strain SIHRS</text>
  </g>
- <text x="140" y="197" text-anchor="middle" font-size="10"
+ <text x="140" y="197" text-anchor="middle" class="svgt-sm"
        fill="var(--mut)">(optional third member)</text>
  <!-- arrows into the blend node -->
  <g fill="none" stroke="currentColor" stroke-width="1.6">
@@ -238,22 +241,22 @@
   <path d="M242,185 L384,132" marker-end="url(#arr-{{ uid }})"/>
   <path d="M577,120 H637"     marker-end="url(#arr-{{ uid }})"/>
  </g>
- <text x="313" y="34" text-anchor="middle" font-size="10"
+ <text x="313" y="34" text-anchor="middle" class="svgt-sm"
        fill="var(--mut)">member quantiles</text>
  <!-- blend node -->
  <rect x="390" y="88" width="185" height="64" rx="10"
        fill="var(--gold)" fill-opacity=".12" stroke="var(--gold)"
        stroke-width="2"/>
  <g text-anchor="middle" fill="currentColor">
-  <text x="482" y="112" font-size="12" font-weight="700">quantile average</text>
-  <text x="482" y="128" font-size="10">equal weights, 50/50,</text>
-  <text x="482" y="142" font-size="10">not fitted to any season</text>
+  <text x="482" y="112" class="svgt-md" font-weight="700">quantile average</text>
+  <text x="482" y="128" class="svgt-sm">equal weights, 50/50,</text>
+  <text x="482" y="142" class="svgt-sm">not fitted to any season</text>
  </g>
  <!-- submitted forecast -->
  <rect x="640" y="88" width="170" height="64" rx="10"
        fill="var(--gold-bright)" fill-opacity=".14"
        stroke="var(--gold-bright)" stroke-width="2"/>
- <text x="725" y="112" text-anchor="middle" font-size="12" font-weight="700"
+ <text x="725" y="112" text-anchor="middle" class="svgt-md" font-weight="700"
        fill="currentColor">submitted forecast</text>
  <polygon points="662,144 788,126 788,142 662,150"
           fill="var(--gold-bright)" fill-opacity=".35"/>
