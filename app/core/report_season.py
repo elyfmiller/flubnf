@@ -56,7 +56,7 @@ def _plotlyjs() -> str:
 
 
 def _player_js() -> str:
-    return PLAYER_SRC.read_text()
+    return PLAYER_SRC.read_text(encoding="utf-8")
 
 
 def _newest_input(root: Path) -> float:
@@ -163,7 +163,7 @@ def build_season_report(root: Path, season: str, archive: str = "",
         # the label part of the freshness test. The settings block joins it,
         # so a report built before the settings were recorded is rebuilt
         # rather than served without them.
-        head = out.read_text()[:8192]
+        head = out.read_text(encoding="utf-8")[:8192]
         if ((not archive or ARCHIVE_MARK in head)
                 and (not settings_note or SETTINGS_MARK in head)):
             return out

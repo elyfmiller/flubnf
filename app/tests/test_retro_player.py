@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from app.ui.server import templates                 # noqa: E402
 
 PLAYER_JS = (Path(__file__).resolve().parents[1] / "ui" / "static"
-             / "player.js").read_text()
+             / "player.js").read_text(encoding="utf-8")
 
 CONTEXT = dict(
     active="Retrospective", season="2098-99",
