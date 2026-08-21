@@ -80,14 +80,28 @@ window.FLUBNF_QUIPS = [
 // Rotate quips into an element. Returns a small controller so a paused run
 // can hold its quip still: a rotating line beside a frozen bar would read as
 // progress that is not happening.
+//
+// Motion accommodation (WCAG 2.2.2): under prefers-reduced-motion the line
+// holds one static quip and never rotates, and in every mode a click on the
+// quip pauses the rotation (click again to resume). A multi-hour run parked
+// on a second monitor must not blink every 2.6 seconds at someone who asked
+// it not to.
 window.flubnfQuips = function (target, ms) {
   var el = (typeof target === "string")
     ? document.getElementById(target) : target;
-  var q = window.FLUBNF_QUIPS, i = 0, running = true;
+  var q = window.FLUBNF_QUIPS, i = 0, running = true, held = false;
   if (!el || !q || !q.length) return {pause: function () {}, resume: function () {}};
-  setInterval(function () {
-    if (running) el.textContent = q[i++ % q.length];
-  }, ms || 2600);
+  el.textContent = q[i++ % q.length];   // paint at once, not after a delay
+  el.title = "Click to pause or resume this line";
+  el.style.cursor = "pointer";
+  el.addEventListener("click", function () { held = !held; });
+  var reduce = typeof matchMedia === "function"
+    && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!reduce) {
+    setInterval(function () {
+      if (running && !held) el.textContent = q[i++ % q.length];
+    }, ms || 2600);
+  }
   return {
     pause: function () { running = false; },
     resume: function () { running = true; }

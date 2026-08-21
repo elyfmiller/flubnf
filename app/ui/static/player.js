@@ -497,9 +497,15 @@ function createPlayer(cfg){
       if(cfg.preload) cfg.preload(nw);
     }
   }
+  // the accessible name must track the state: a static "Play or pause"
+  // label would misreport the control on every other press (WCAG 4.1.2)
+  function labelPlay(on){
+    el.play.setAttribute('aria-label', on ? 'Pause' : 'Play');
+  }
   function setPlay(on){
     P.playing = on;
     el.play.textContent = on ? '❚❚ Pause' : '▶ Play';
+    labelPlay(on);
     clearInterval(P.timer);
     if(on) P.timer = setInterval(function(){
       if(P.idx >= weeks.length - 1){ setPlay(false); return; }
@@ -543,6 +549,8 @@ function createPlayer(cfg){
     renderStats(P.pl);
     if(detailVisible()) drawFC();
   });
+
+  labelPlay(false);      // the initial, paused state names itself correctly
 
   // the static host passes the full-season catalog, so its controls exist
   // before the first frame; the live host builds from the first payload

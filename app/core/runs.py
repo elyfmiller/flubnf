@@ -236,6 +236,14 @@ class Ledger:
         self._db.commit()
         return run_id
 
+    def set_workroot(self, run_id: str, workroot: Path) -> None:
+        """Replace the placeholder recorded at open time with the leased
+        workroot. The row is the record of record for reproducing a run;
+        a row whose workroot forever reads 'pending' cannot honor that."""
+        self._db.execute("UPDATE runs SET workroot=? WHERE run_id=?",
+                         (str(workroot), run_id))
+        self._db.commit()
+
     def close_run(self, run_id: str, status: str, outcome: dict) -> None:
         """Record the outcome and the run's wall time. elapsed_s is derived
         in SQL from the row's own created_utc, so the number can never drift

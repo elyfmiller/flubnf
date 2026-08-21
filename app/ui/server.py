@@ -276,9 +276,9 @@ def home(request: Request):
         res = None
     # a real map as the hero graphic: latest run's outlook if one exists,
     # otherwise the empty-country silhouette
-    map_svg, outlook_date = "", ""
+    map_svg, outlook_date, outlook_n = "", "", 0
     try:
-        from app.core.usmap import svg_map
+        from app.core.usmap import map_legend, svg_map
         cards = {}
         try:
             cards = _outlook_cards(res)
@@ -287,13 +287,20 @@ def home(request: Request):
         except Exception:
             pass                      # no LOCATIONS/hub -> bare silhouette
         with_data = {c["abbr"] for c in cards.values() if c.get("probs")}
+        # the national fit has no state shape on the map: the caption counts
+        # only jurisdictions a reader can actually see colored
+        outlook_n = len(with_data - {"US"})
+        # legend under the map, from the same module that colors it: the
+        # five categories plus the no-data tone are readable without hovering
         map_svg = ("<div style='max-width:880px;margin:0 auto'>"
                    "<script>window.MAP_LINK='/output/report';</script>"
-                   + svg_map(cards, clickable=with_data) + "</div>")
+                   + svg_map(cards, clickable=with_data)
+                   + map_legend() + "</div>")
     except Exception:
         pass
     return templates.TemplateResponse(request, "home.html", {
         "active": "Home", "map_svg": map_svg, "outlook_date": outlook_date,
+        "outlook_n": outlook_n,
         "versions": VERSIONS, "diagram": _diagram_data(res),
         "missing": __import__("flubnf.settings", fromlist=["check"]).check(verbose=False)})
 
@@ -630,6 +637,7 @@ def _run_all(spec: RunSpec) -> None:
         # release the running claim in the finally, not wedge it until restart
         run_id = ledger.open_run(spec, Path("pending"), {"engines": "pf,analogue"})
         workroot = lease_workroot(run_id)
+        ledger.set_workroot(run_id, workroot)   # the row must name the real one
         _status["running"] = f"all:{run_id}"
         _status["workroot"] = str(workroot)
         # 1. PF (primary) -- gracefully absent on Tier-A machines (no engine
@@ -1140,7 +1148,30 @@ def _run_label(run_id: str, spec_json: str = "") -> str:
         return when
 
 
+def relwis_chip(value, cells=None, member: str = "PF") -> str:
+    """The one relWIS rendering outside a scores table: the member it
+    describes, tabular numerals, the ok/bad below-1-beats-baseline classes
+    every other surface teaches, and the cell coverage the score rests on,
+    e.g. 'PF relWIS <span class="relwis bad">4.067</span> (2 cells)'.
+    Returns markup built from fixed phrases and numbers only."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return ""
+    cov = ""
+    if cells:
+        n = int(cells)
+        cov = f" ({n} cell{'s' if n != 1 else ''})"
+    return (f'{member} relWIS <span class="relwis '
+            f'{"ok" if v < 1 else "bad"}">{v:.3f}</span>{cov}')
+
+
 def _outcome_chips(outcome_json: str) -> str:
+    """One run's outcome as short chips. Returns MARKUP (rendered with
+    |safe): every fragment is a fixed phrase or a number, never free text,
+    so nothing user- or exception-supplied can reach the page from here.
+    The raw error string is deliberately NOT printed; it stays on the run
+    page, and the chip says where to find it in plain language."""
     import json as _json
     try:
         o = _json.loads(outcome_json) if isinstance(outcome_json, str) else outcome_json
@@ -1150,12 +1181,18 @@ def _outcome_chips(outcome_json: str) -> str:
     if "pf_cells" in o:
         n = o["pf_cells"]
         bits.append(f"PF {n} fit{'s' if n != 1 else ''}")
-    if o.get("pf_failures"): bits.append(f"{len(o['pf_failures'])} failures")
+    if o.get("pf_failures"):
+        nf = len(o["pf_failures"])
+        bits.append(f'<span class="bad">{nf} failure'
+                    f'{"s" if nf != 1 else ""}</span>')
     if o.get("pf_skipped"): bits.append("PF skipped (no engine)")
     if o.get("submissions"): bits.append(f"{len(o['submissions'])} submissions")
     if o.get("report"): bits.append("report ✓")
-    if o.get("pf_relwis"): bits.append(f"relWIS {o['pf_relwis']}")
-    if o.get("error"): bits.append("error: " + str(o["error"])[:80])
+    if o.get("pf_relwis"):
+        bits.append(relwis_chip(o["pf_relwis"], cells=o.get("pf_cells")))
+    if o.get("error"):
+        bits.append('<span class="bad">failed</span>; the full error is on '
+                    'the run page')
     return " · ".join(bits)
 
 
@@ -1760,18 +1797,32 @@ def api_retro_startover(season: str = ""):
     results page shows, and it is never at stake here.
 
     weeks == 0 means Run starts immediately with no prompt: no friction on
-    the common path."""
+    the common path. The one exception is a season whose page shows a
+    SEALED validation run while the live tree is empty: the card reads
+    complete, so a silent instant start would violate the stated contract.
+    `sealed` is then true and `weeks` counts the sealed run's weeks, so the
+    client prompts with copy naming the situation; the choices collapse to
+    cancel or a fresh replay, because resume, archive, and discard have no
+    live tree to act on and the seal is never touched."""
     from app.core import retro
     from app.core.retro import season_vintages
     if not _valid_season(season):
         return {"season": season, "weeks": 0, "total": 0, "complete": False,
                 "elapsed_s": None, "elapsed_hms": "", "finished": "",
-                "status": "", "active": False, "archives": 0}
+                "status": "", "active": False, "archives": 0,
+                "sealed": False}
     root = _live_root(season)
     s = retro.run_summary(root)
     total = len(season_vintages(season))
     status = _season_status(season)
+    sealed = False
+    if not s["weeks"]:
+        shown_root, is_seal = _season_root(season)
+        if is_seal and _weeks_done(shown_root):
+            sealed = True
+            s = retro.run_summary(shown_root)
     return {"season": season,
+            "sealed": sealed,
             "weeks": s["weeks"],
             "total": total,
             "complete": bool(total and s["weeks"] >= total),
@@ -2000,6 +2051,23 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
         _flash(f"{season} is already replaying (status: "
                f"{_season_status(season)}). One season worker runs at a "
                "time; stop it first if you want to start over.")
+        return RedirectResponse("/retro", status_code=303)
+    # The mirror of /api/busy, server-side: the per-button guard is client
+    # convenience, and a POST that bypassed it (second tab, stale page,
+    # script) must not double-book the engine over a console run or another
+    # season's worker.
+    if _status.get("running"):
+        _flash("A console run holds the engine ("
+               + (_status.get("run_label") or str(_status.get("running")))
+               + "). Stop it from the Forecast tab first; nothing was "
+               "started.")
+        return RedirectResponse("/retro", status_code=303)
+    other = sorted(x for x in _known_seasons()
+                   if x != season and _season_status(x) in _RETRO_ACTIVE)
+    if other:
+        _flash("Another season is already replaying ("
+               + ", ".join(other) + "). One season worker runs at a time; "
+               "stop it first. Nothing was started.")
         return RedirectResponse("/retro", status_code=303)
     if mode not in ("resume", "archive", "discard"):
         _flash(f"'{mode}' is not one of resume, archive, or discard. "
@@ -2356,6 +2424,17 @@ def run_models(request: Request,
     if _status.get("running"):
         _status["log"].append("A run is already in progress; not starting another.")
         return RedirectResponse("/forecast#results", status_code=303)
+    # The mirror of /api/busy, server-side: a client that bypassed the
+    # per-button guard (a second tab, a stale page, a script) must not
+    # double-book the engine over a live season replay. The client guard is
+    # convenience; this check is the protection.
+    live_retro = sorted(x for x in _known_seasons()
+                        if _season_status(x) in _RETRO_ACTIVE)
+    if live_retro:
+        _flash("A retrospective replay holds the engine ("
+               + ", ".join(live_retro) + "). Stop or pause it from the "
+               "Retrospective tab first; nothing was run.")
+        return _back(request, "/forecast")
     # BackgroundTasks fire AFTER the redirect renders; claim the running slot
     # NOW so the page the user lands on shows the run (double-click race,
     # laptop field test 2026-08-18)
@@ -2409,6 +2488,7 @@ def run_models(request: Request,
                 rid = ledger.open_run(spec, Path("pending"), {"engine": "amcmc"})
                 _status["running"] = f"amcmc:{rid}"
                 w = lease_workroot(rid)
+                ledger.set_workroot(rid, w)   # the row must name the real one
                 _status["workroot"] = str(w)
                 _status["phase"] = ("Adaptive MCMC: this engine does not "
                                     "report per-fit progress.")

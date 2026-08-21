@@ -253,7 +253,7 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
  <div class="row playerbar">
   <button type="button" id="pb-prev" title="Previous week (left arrow)"
     aria-label="Previous week">&#9664;</button>
-  <button type="button" id="pb-play" aria-label="Play or pause">&#9654; Play</button>
+  <button type="button" id="pb-play">&#9654; Play</button>
   <button type="button" id="pb-next" title="Next week (right arrow)"
     aria-label="Next week">&#9654;</button>
   <select id="pb-speed" aria-label="Playback speed">
@@ -263,7 +263,7 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
   </select>
   <input type="range" id="pb-scrub" min="0" max="@@MAXIDX@@" step="1"
          value="0" aria-label="Week scrubber">
-  <span class="hint" id="pb-week"></span>
+  <span class="hint" id="pb-week" aria-live="polite"></span>
  </div>
  <div class="playgrid">
   <div>
@@ -282,7 +282,7 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
    <h2>Live relWIS</h2>
    <table id="pb-stats"><thead><tr><th>Model</th><th class="num">Week</th>
     <th class="num">Cumulative</th></tr></thead><tbody></tbody></table>
-   <p class="hint" id="pb-status"></p>
+   <p class="hint" id="pb-status" aria-live="polite"></p>
    <p class="hint" id="pb-offhint" hidden>official comparators appear after
     Update data fetches their submissions</p>
    <p class="hint">relWIS below 1 beats the CDC FluSight baseline. Week

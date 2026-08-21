@@ -278,6 +278,22 @@ def national_svg(us_card: dict, ink="#e9ecf2",
     return _shell(dom_id, inner, ink, paper)
 
 
+def map_legend() -> str:
+    """One-line legend for the categorical choropleth: the five outlook
+    categories in their fixed colors plus the no-data tone, each as a swatch
+    (the .sw class the season player's toggles already use) with its label.
+    Emitted beside every map that colors by category, so the encoding never
+    has to be learned by hovering."""
+    items = [
+        (CAT_COLOR[c], c.replace("_", " ")) for c in CATS
+    ] + [(NO_DATA, "no data")]
+    spans = "".join(
+        f'<span><span class="sw" style="background:{color}"></span>'
+        f'{label}</span>'
+        for color, label in items)
+    return f'<p class="hint maplegend">{spans}</p>'
+
+
 def _esc(s: str) -> str:
     return (s.replace("&", "&amp;").replace('"', "&quot;")
             .replace("<b>", "&lt;b&gt;__B__").replace("</b>", "__/B__")

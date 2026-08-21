@@ -11,7 +11,7 @@
    values, so no var() aliases here. */
 :root{
   --bg:#F1EFF7; --card:#FFFFFF; --ink:#000F7E; --mut:#565E96;
-  --line:#DCD8E9; --track:#DBD7E8;
+  --line:#DCD8E9; --track:#DBD7E8; --field-line:#DCD8E9;
   --navy:#000F7E; --navy-deep:#000A56;
   --accent:#34C0F0; --accent-ink:#0173A9; --slate:#6E8FD0;
   --gold:#0173A9; --gold-bright:#34C0F0;
@@ -21,7 +21,7 @@
 }
 [data-theme="dark"]{
   --bg:#0C0D17; --card:#151729; --ink:#E9EAF4; --mut:#9AA1C4;
-  --line:#262A45; --track:#191C31;
+  --line:#262A45; --track:#191C31; --field-line:#5B639E;
   --navy:#000F7E; --navy-deep:#000A56;
   --accent:#34C0F0; --accent-ink:#34C0F0; --slate:#6E8FD0;
   --gold:#34C0F0; --gold-bright:#34C0F0;
@@ -70,13 +70,15 @@ header.nav .brand{display:flex;align-items:center;gap:.55rem;
   font-size:1.45rem;font-weight:700;letter-spacing:.01em;
   color:var(--nav-ink);text-decoration:none;padding:.5rem .8rem .5rem 0}
 header.nav .brand:hover{text-decoration:none}
-header.nav .brand em{color:var(--gold-bright);font-style:normal}
+/* structural cyan reads through --accent-ink: #0173A9 in light (raw cyan
+   fails 3:1 against the light surfaces), pure cyan in dark */
+header.nav .brand em{color:var(--accent-ink);font-style:normal}
 /* ONE mark: the blue-tile icon reads on both the light and dark strip */
 header.nav .brand img.mark{height:32px;width:32px;display:block}
 header.nav a.tab{color:var(--nav-ink);text-decoration:none;padding:.8rem .5rem;
   font-weight:500;font-size:1.05rem;border-bottom:3px solid transparent}
 header.nav a.tab:hover{background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
-header.nav a.tab.active{border-bottom-color:var(--gold-bright);font-weight:700}
+header.nav a.tab.active{border-bottom-color:var(--accent-ink);font-weight:700}
 header.nav .spacer{flex:1}
 #themebtn{background:transparent;
   border:1px solid color-mix(in srgb,var(--nav-ink) 35%,transparent);
@@ -107,15 +109,22 @@ main{max-width:1500px;margin:0 auto;
 .card h2{font-size:var(--fs-h2);margin:0 0 .55rem;text-transform:uppercase;
          letter-spacing:.05em;color:var(--mut)}
 /* card body text: no explicit size, so it inherits the fluid body step and
-   never overrides the smaller .hint / .sub steps nested inside a card */
-.card p{margin:.45rem 0}
+   never overrides the smaller .hint / .sub steps nested inside a card.
+   Running prose holds a readable measure (72ch); hints and captions keep
+   the full card width, and tables are untouched (they are not paragraphs). */
+.card p{margin:.45rem 0;max-width:72ch}
+.card p.hint{max-width:none}
 h1{font-size:var(--fs-h1);font-weight:700;margin:.1rem 0 .6rem;
    text-wrap:balance}
 h1 .accent{color:var(--gold)}
 .sub{color:var(--mut);margin:.1rem 0 .8rem;font-size:var(--fs-sub)}
 /* ---- controls ---- */
 label{display:block;font-size:.78rem;color:var(--mut);margin:.5rem 0 .2rem}
-input,select{width:100%;padding:.42rem .6rem;border:1px solid var(--line);
+/* form fields keep the sunken-well fill but carry their own boundary token:
+   in dark mode --line vanishes against the well (measured 1.38:1), so
+   --field-line holds #5B639E there (3.43:1, passing the 3:1 control
+   boundary); the light theme keeps its measured-adequate --line value */
+input,select{width:100%;padding:.42rem .6rem;border:1px solid var(--field-line);
   border-radius:8px;font:inherit;background:var(--bg);color:var(--ink)}
 input:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible{
   outline:2px solid var(--gold);outline-offset:2px}
@@ -137,6 +146,16 @@ button.gold,[data-theme="dark"] button.gold{
   background:var(--gold-bright);border-color:var(--gold-bright);color:#0C0D17}
 button.gold:hover,[data-theme="dark"] button.gold:hover{
   background:color-mix(in srgb,#000 12%,var(--gold-bright))}
+/* destructive tier: the semantic red, reserved for the stop-and-think
+   confirms (delete permanently, stop run and proceed). Text color follows
+   the theme's --bad lightness: white on the deep light-mode red, near-black
+   on the bright dark-mode red, both measured above 4.5:1. */
+button.danger,[data-theme="dark"] button.danger{
+  background:var(--bad);border-color:var(--bad);color:#fff}
+[data-theme="dark"] button.danger{color:#0C0D17}
+button.danger:hover,[data-theme="dark"] button.danger:hover{
+  background:color-mix(in srgb,#000 12%,var(--bad));
+  border-color:color-mix(in srgb,#000 12%,var(--bad))}
 button[disabled]{opacity:.45;cursor:not-allowed}
 a{color:var(--gold);font-weight:600;text-decoration:none}
 [data-theme="dark"] a{color:var(--gold)}
@@ -150,6 +169,9 @@ th{color:var(--mut);font-weight:600;font-size:.72rem;text-transform:uppercase;
 code{background:var(--bg);padding:.12rem .35rem;border-radius:5px;font-size:.85em;
      overflow-wrap:anywhere}
 .ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+/* the one relWIS rendering outside tables: tabular numerals so scores align
+   in running chips; pair with .ok/.bad for the below-1-beats-baseline rule */
+.relwis{font-variant-numeric:tabular-nums;font-weight:650}
 .hint{color:var(--mut);font-size:var(--fs-hint)}
 .big{font-size:var(--fs-big);font-weight:750;font-variant-numeric:tabular-nums}
 .pill{display:inline-block;padding:.1rem .55rem;border-radius:99px;
@@ -158,8 +180,8 @@ progress{width:100%;height:12px;appearance:none;-webkit-appearance:none;
   border:1px solid var(--line);border-radius:99px;background:var(--track);
   overflow:hidden}
 progress::-webkit-progress-bar{background:var(--track);border-radius:99px}
-progress::-webkit-progress-value{background:var(--gold-bright);border-radius:99px}
-progress::-moz-progress-bar{background:var(--gold-bright);border-radius:99px}
+progress::-webkit-progress-value{background:var(--accent-ink);border-radius:99px}
+progress::-moz-progress-bar{background:var(--accent-ink);border-radius:99px}
 /* ---- home hero: LANL Blue tile, cyan emphasis ---- */
 /* the tile sizes itself to the window: padding is a clamp, so the inner
    width grows with the viewport instead of stepping at a breakpoint */
@@ -185,10 +207,11 @@ progress::-moz-progress-bar{background:var(--gold-bright);border-radius:99px}
 .ck{display:flex;gap:.5rem;align-items:center;font-size:.85rem;color:var(--ink);
   margin:.12rem 0;cursor:pointer}
 .ck input{width:auto;accent-color:var(--gold-bright)}
-/* run progress: one solid cyan fill on a clearly visible track */
+/* run progress: one solid accent fill on a clearly visible track (the fill
+   follows --accent-ink so it passes 3:1 against the track in light mode) */
 .runbar{height:14px;border-radius:99px;background:var(--track);
   border:1px solid var(--line);overflow:hidden;margin:.45rem 0}
-.runbar div{height:100%;width:0;border-radius:99px;background:var(--gold-bright)}
+.runbar div{height:100%;width:0;border-radius:99px;background:var(--accent-ink)}
 /* percent + ETA readout: prominent, tabular */
 .runstat{font-size:1.3rem;font-weight:700;font-variant-numeric:tabular-nums;
   margin:.35rem 0}
@@ -249,6 +272,11 @@ details.intro[open] > summary{margin-bottom:.15rem}
    ground so it reads as an explicit gap on both surfaces */
 :root{--map-nodata:#C9C5D8}
 [data-theme="dark"]{--map-nodata:#232741}
+/* outlook-map legend: one line of category swatches plus the no-data tone,
+   emitted by app/core/usmap.py under the map it explains */
+.maplegend{display:flex;flex-wrap:wrap;gap:.15rem 1rem;
+  justify-content:center;margin:.5rem 0 .1rem}
+.maplegend span{white-space:nowrap}
 
 /* ---- home rework (additive): workflow pipeline, performance table,
    component-card glyphs, numbered start flow ---- */
@@ -334,3 +362,17 @@ details.intro[open] > summary{margin-bottom:.15rem}
 .archrow .grow{flex:1;min-width:12rem}
 .archrow form{display:inline;margin:0}
 .archrow button{margin-top:0;padding:.22rem .6rem;font-size:.78rem}
+
+/* skip link: first tab stop on every page, visually hidden until focused */
+a.skip{position:absolute;left:-9999px;top:0;z-index:100;
+  background:var(--card);color:var(--ink);border:1px solid var(--line);
+  border-radius:0 0 8px 0;padding:.5rem .9rem;font-weight:650}
+a.skip:focus{left:0}
+
+/* reduced motion: transitions and animated fills settle instantly, and the
+   scripted quip rotation holds one line (see static/quips.js) */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{transition-duration:.01ms!important;
+    animation-duration:.01ms!important;animation-iteration-count:1!important;
+    scroll-behavior:auto!important}
+}

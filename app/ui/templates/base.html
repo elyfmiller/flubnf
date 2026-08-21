@@ -1,5 +1,5 @@
 <!doctype html>
-<html><head>
+<html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{% block title %}FluBNF{% endblock %}</title>
 <link rel="icon" href="/favicon.ico" sizes="48x48">
@@ -19,6 +19,7 @@
 </script>
 {% block head %}{% endblock %}
 </head><body>
+<a class="skip" href="#main">Skip to content</a>
 <header class="nav">
   <a class="brand" href="/" aria-label="FluBNF home">
     <img class="mark" src="/static/brand/pybnf_icon.svg" alt="">
@@ -42,7 +43,7 @@
   </div>
   <button id="themebtn" title="Toggle light or dark theme">◐</button>
 </header>
-<main>{% if restart_needed() %}
+<main id="main">{% if restart_needed() %}
  <div class="banner" role="alert"><strong>Update pulled.</strong> This window
  still runs build {{ running_sha() }}. Quit the app fully and reopen; a page
  reload refreshes the look, not the server logic.</div>
@@ -58,7 +59,7 @@
    a console run stopped now restarts from scratch.</p>
   <div class="row">
    <button type="button" class="quiet" id="guard-cancel">Cancel</button>
-   <button type="button" class="gold" id="guard-stop">Stop run and proceed</button>
+   <button type="button" class="danger" id="guard-stop">Stop run and proceed</button>
   </div>
  </div>
 </div>
@@ -81,7 +82,7 @@
   </div>
   <div class="row" id="so-confirm" hidden>
    <button type="button" class="quiet" id="so-cancel2">Cancel</button>
-   <button type="button" class="gold" id="so-ok">Delete permanently</button>
+   <button type="button" class="danger" id="so-ok">Delete permanently</button>
   </div>
  </div>
 </div>
@@ -141,6 +142,29 @@
       stopBtn=document.getElementById('guard-stop'),
       cancel=document.getElementById('guard-cancel'),
       pending=null;
+  // ---- modal focus contract (WCAG 2.4.3): opening moves focus onto the
+  // dialog's Cancel button, Tab cycles inside the dialog instead of
+  // escaping into the inert page, and closing returns focus to the element
+  // that opened it. Escape handling is unchanged. ----
+  var guardRet=null;
+  function trapTab(modal){
+    modal.addEventListener('keydown',function(e){
+      if(e.key!=='Tab')return;
+      var f=Array.prototype.filter.call(modal.querySelectorAll('button'),
+        function(b){return !b.disabled&&b.offsetParent!==null;});
+      if(!f.length)return;
+      var first=f[0],last=f[f.length-1],cur=document.activeElement;
+      if(e.shiftKey&&(cur===first||f.indexOf(cur)<0)){
+        last.focus();e.preventDefault();
+      }else if(!e.shiftKey&&(cur===last||f.indexOf(cur)<0)){
+        first.focus();e.preventDefault();
+      }
+    });
+  }
+  function refocus(el){
+    if(el&&el.focus&&document.contains(el)){try{el.focus();}catch(e){}}
+  }
+  trapTab(back);
   function retroConflict(b){
     var seasons=Object.keys(b.retro||{});
     return seasons.length?{label:'retrospective '+seasons.join(', '),
@@ -164,8 +188,10 @@
     el.click();
     delete el.dataset.guardOk;
   }
-  function close(){back.hidden=true;window.GUARD_BUSY=false;pending=null;
-    stopBtn.disabled=false;stopBtn.textContent='Stop run and proceed';}
+  function close(){var t=guardRet;guardRet=null;
+    back.hidden=true;window.GUARD_BUSY=false;pending=null;
+    stopBtn.disabled=false;stopBtn.textContent='Stop run and proceed';
+    refocus(t);}
   cancel.onclick=close;
 
   // ---- start-over prompt ----------------------------------------------
@@ -184,11 +210,13 @@
           discard:document.getElementById('so-discard'),
           archive:document.getElementById('so-archive'),
           ok:document.getElementById('so-ok'),
-          el:null,info:null,onOk:null};
+          el:null,info:null,onOk:null,ret:null};
+  trapTab(so.back);
   function soForm(el){return el.form||(el.closest?el.closest('form'):null);}
-  function soClose(){so.back.hidden=true;window.GUARD_BUSY=false;
+  function soClose(){var t=so.ret;so.ret=null;
+    so.back.hidden=true;window.GUARD_BUSY=false;
     so.el=null;so.info=null;so.onOk=null;
-    so.choice.hidden=false;so.confirmRow.hidden=true;}
+    so.choice.hidden=false;so.confirmRow.hidden=true;refocus(t);}
   function soSubmit(mode){
     var f=soForm(so.el),info=so.info||{};
     if(!f){soClose();return;}
@@ -205,6 +233,8 @@
   so.archive.onclick=function(){soSubmit('archive');};
   so.discard.onclick=function(){
     var i=so.info||{};
+    so.ok.className='danger';
+    setTimeout(function(){document.getElementById('so-cancel2').focus();},0);
     so.title.textContent='Delete '+(i.season||'these results')+' permanently?';
     so.msg.textContent='This deletes '+(i.weeks||0)+' completed week'
       +(i.weeks===1?'':'s')+' of '+(i.season||'')+', with every fit, score, '
@@ -227,6 +257,32 @@
      .then(function(r){return r.json();})
      .then(function(info){
       if(!info||!info.weeks){done();return;}   // nothing to lose: just run
+      if(info.sealed){
+       // The results on show come from a SEALED validation run: the live
+       // tree is empty, so resume, archive, and discard have nothing to act
+       // on. Run starts a fresh replay from week one and never touches the
+       // seal; say so before the hours start, instead of starting silently.
+       so.el=el;so.info=info;
+       so.onOk=function(){
+        if(f){if(f.mode)f.mode.value='resume';
+              if(f.confirm)f.confirm.value='';
+              f.submit();}};
+       so.title.textContent='Start a fresh replay of '+info.season+'?';
+       so.msg.textContent='The results shown for '+info.season+' come from a '
+         +'sealed validation run ('+info.weeks+' of '+info.total+' completed '
+         +'weeks). Run starts a fresh replay from week one and does not '
+         +'touch them.';
+       so.hint.textContent='The sealed results stay exactly as they are, and '
+         +'they remain on the season page until the new replay has completed '
+         +'more weeks.';
+       so.ok.textContent='Run a fresh replay';
+       so.ok.className='gold';
+       so.choice.hidden=true;so.confirmRow.hidden=false;
+       so.ret=el;
+       window.GUARD_BUSY=true;so.back.hidden=false;
+       document.getElementById('so-cancel2').focus();
+       return;
+      }
       so.el=el;so.info=info;so.onOk=null;
       so.choice.hidden=false;so.confirmRow.hidden=true;
       so.title.textContent='Start over on '+info.season+'?';
@@ -243,7 +299,9 @@
         +(info.archives?' '+info.archives+' archived run'
           +(info.archives===1?'':'s')+' already kept.':'');
       so.resume.hidden=!!info.complete;
+      so.ret=el;
       window.GUARD_BUSY=true;so.back.hidden=false;
+      document.getElementById('so-cancel').focus();
      })
      .catch(function(){done();});   // check down: never block the user
   }
@@ -254,9 +312,12 @@
     so.title.textContent=o.title||'Are you sure?';
     so.msg.textContent=o.msg||'';
     so.hint.textContent=o.hint||'';
+    so.ok.className='danger';
     so.ok.textContent=o.okLabel||'Delete permanently';
     so.choice.hidden=true;so.confirmRow.hidden=false;
+    so.ret=document.activeElement;
     window.GUARD_BUSY=true;so.back.hidden=false;
+    document.getElementById('so-cancel2').focus();
   };
   back.addEventListener('click',function(e){if(e.target===back)close();});
   addEventListener('keydown',function(e){
@@ -296,7 +357,9 @@
       if(!c){startOverGate(el,function(){proceed(el);});return;}
       pending={el:el,conflict:c};
       msg.textContent='This will stop the running '+c.label+'.';
+      guardRet=el;
       window.GUARD_BUSY=true;back.hidden=false;
+      cancel.focus();
      })
      // busy check down: never block the user, but still offer start-over
      .catch(function(){startOverGate(el,function(){proceed(el);});});

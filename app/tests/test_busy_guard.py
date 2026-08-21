@@ -136,7 +136,7 @@ def test_guard_modal_present_on_every_page():
 
 
 def test_guarded_attributes_on_exactly_the_classified_controls():
-    # the three interfering actions carry a guard; nothing else does
+    # the interfering actions carry a guard; nothing else does
     fc = client.get("/forecast").text
     assert fc.count('data-guard="') == 1
     assert 'data-guard="console-run">Run models' in fc
@@ -152,9 +152,76 @@ def test_guarded_attributes_on_exactly_the_classified_controls():
     assert 'data-guard' not in dt.split("Check for new data")[0].rsplit(
         "<form", 1)[-1]
 
+    # the model-page run buttons post to the same /run endpoint and carry
+    # the same guard; they were the unguarded back door
+    for page in ("/model/pf", "/model/analogue"):
+        mp = client.get(page).text
+        assert mp.count('data-guard="') == 1, page
+        assert 'data-guard="console-run"' in mp, page
+
     # safe pages: viewing, generating from stored results, downloads
-    for page in ("/", "/output", "/runs", "/model/ensemble"):
+    for page in ("/", "/output", "/runs", "/model/ensemble", "/model/pf2s"):
         assert 'data-guard="' not in client.get(page).text, page
+
+
+# ---------------------------------------- server-side busy cross-checks
+# The client-side guard is convenience; these prove the server refuses a
+# double-booking on its own, so a second tab, a stale page, or a script
+# cannot start a run over a fitting worker.
+
+def test_post_run_refused_while_a_retrospective_replays(tmp_path,
+                                                        monkeypatch):
+    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(srv.data_mod, "vintage_path", lambda d: tmp_path)
+    started = []
+    monkeypatch.setattr(srv, "_run_all", lambda spec: started.append(spec))
+    form_before = dict(srv._last_form)
+    srv._retro_status[SEASON] = "running"
+    try:
+        r = client.post("/run", data={"forecast_date": "2098-01-04",
+                                      "locations": ["Ohio"]},
+                        follow_redirects=False)
+        assert r.status_code == 303
+        assert srv._status.get("running") is None    # no claim was made
+        assert started == []                         # no worker was launched
+        flash = srv._status.get("flash", "")
+        assert "retrospective replay holds the engine" in flash
+        assert SEASON in flash
+    finally:
+        srv._last_form.clear()
+        srv._last_form.update(form_before)
+
+
+def test_post_retro_run_refused_over_a_console_run(tmp_path, monkeypatch):
+    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    srv._retro_status.clear()
+    srv._status.update({"running": "all:20990101T000000-abc",
+                        "run_label": "2099-01-02 · 3 state(s) + US"})
+    r = client.post("/retro/run", data={"season": SEASON},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    assert SEASON not in srv._retro_status           # no season was claimed
+    flash = srv._status.get("flash", "")
+    assert "console run holds the engine" in flash
+    assert "2099-01-02" in flash                     # names what holds it
+
+
+def test_post_retro_run_refused_over_another_season(tmp_path, monkeypatch):
+    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    srv._retro_status.clear()
+    srv._status.update({"running": None})
+    srv._retro_status["2097-98"] = "running"
+    r = client.post("/retro/run", data={"season": SEASON},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    assert SEASON not in srv._retro_status
+    assert srv._retro_status["2097-98"] == "running"  # untouched
+    flash = srv._status.get("flash", "")
+    assert "Another season is already replaying" in flash
+    assert "2097-98" in flash
 
 
 def test_retro_run_button_clickable_while_running():

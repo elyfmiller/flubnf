@@ -39,7 +39,10 @@
     <input type="hidden" name="engine" value="{{ 'pf' if name == 'pf' else 'analogue' }}">
     <input type="hidden" name="weeks_to_drop" value="0">
     <input type="hidden" name="weeks_to_nowcast" value="0">
-    <button class="gold">Run {{ title }} only</button>
+    {# the same interference guard as the Forecast tab's Run button: this
+       posts to the same /run endpoint, and starting it over a fitting
+       retrospective would double-book the engine just the same #}
+    <button class="gold" data-guard="console-run">Run {{ title }} only</button>
    </form>
   {% endif %}
   {% if status.running %}<p class="warn">A run is in progress. See the <a href="/forecast">Forecast</a> tab.</p>{% endif %}
