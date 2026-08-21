@@ -105,6 +105,10 @@ if ($EngineReady) {
 Say "environment"
 # The Windows analogue of setup.sh's .flubnf.env: user-level environment
 # variables, read by every future FluBNF.bat launch without any sourcing.
+# UTF-8 mode: Windows defaults text I/O to cp1252, which breaks reads of
+# the app's UTF-8 assets. This makes every Python launch behave like
+# macOS/Linux.
+[Environment]::SetEnvironmentVariable("PYTHONUTF8", "1", "User")
 [Environment]::SetEnvironmentVariable("FLUBNF_HUB", $Hub, "User")
 [Environment]::SetEnvironmentVariable("FLUBNF_PY_ENGINE", $EnginePy, "User")
 [Environment]::SetEnvironmentVariable("FLUBNF_PYBNF", $PyBnf, "User")

@@ -16,7 +16,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 PLAYER = Path(__file__).resolve().parents[1] / "ui" / "static" / "player.js"
-SRC = PLAYER.read_text()
+SRC = PLAYER.read_text(encoding="utf-8")
 JSC = Path("/System/Library/Frameworks/JavaScriptCore.framework/"
            "Versions/Current/Helpers/jsc")
 needs_jsc = pytest.mark.skipif(not JSC.is_file(),

@@ -43,6 +43,7 @@ jobs:
     name: "test-windows (experimental)"
     runs-on: windows-latest
     continue-on-error: true
+    env: {PYTHONUTF8: "1"}
     strategy:
       matrix: {python-version: ["3.11", "3.12"]}
     steps:

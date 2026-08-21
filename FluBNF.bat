@@ -1,4 +1,6 @@
 @echo off
+rem UTF-8 mode: Windows' cp1252 default breaks reads of UTF-8 assets
+set PYTHONUTF8=1
 rem Double-click me. Self-updates, sets up on first run, launches the console.
 rem Windows twin of FluBNF.command; setup.ps1 is the full first-time setup
 rem (hub data, engine checks) and is worth running once.
