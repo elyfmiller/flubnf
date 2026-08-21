@@ -28,13 +28,28 @@
  <p class="sub" style="margin-top:.55rem">{{ blurb }}</p>
 </details>
 <div class="card mech">
- {% if name == "pf" %}{{ dg.sihrs(uid='m') }}
- {% elif name == "pf2s" %}{{ dg.sihrs2(uid='m') }}
- {% elif name == "analogue" %}{{ dg.analogue_mech(uid='m') }}
- {% else %}{{ dg.ensemble_mech(uid='m') }}{% endif %}
+ {# each mechanism drawing carries its defining equation directly beneath
+    it: the compact line that states what the picture computes #}
+ {% if name == "pf" %}{{ dg.sihrs(uid='m') }}{{ dg.eq_pf() }}
+ {% elif name == "pf2s" %}{{ dg.sihrs2(uid='m') }}{{ dg.eq_pf2s() }}
+ {% elif name == "analogue" %}{{ dg.analogue_mech(uid='m') }}{{ dg.eq_analogue() }}
+ {% else %}{{ dg.ensemble_mech(uid='m') }}{{ dg.eq_ensemble() }}{% endif %}
  <p class="hint">Full methodology:
  <a href="/methods#{{ manchor }}">Methods</a>.</p>
 </div>
+{% if bngl_src %}
+{# the model definition itself, read from the template file at render time
+   and shown as stored; presentation only, never written from here. The
+   analogue has no BNGL and renders no such block. #}
+<details class="card bngl">
+ <summary>View model source (BNGL)</summary>
+ <p class="hint">flubnf/templates/{{ bngl_file }}, shown exactly as stored.
+ Tokens in double braces, such as <code>{{ '{{POP}}' }}</code> and
+ <code>{{ '{{GAMMA}}' }}</code>, are filled in per state and week at run
+ time.</p>
+ <pre>{{ bngl_src }}</pre>
+</details>
+{% endif %}
 <div class="cols">
  <div><div class="card"><h2>Settings</h2>
   {% if name == "ensemble" %}

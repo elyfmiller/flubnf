@@ -1460,6 +1460,18 @@ def model_page(request: Request, name: str):
                         overlay.setdefault(m, {})[loc] = meds
     form = dict(_last_form) or {"forecast_date": _default_forecast_date(),
                                 "locations": ["all"], "replicates": 3}
+    # BNGL-backed models show their template source, read-only, read at
+    # render time so the page always mirrors the file on disk. The analogue
+    # has no BNGL and gets nothing.
+    bngl_files = {"pf": "SIHRS_pop_min.bngl",
+                  "pf2s": "SIHRS_pop_2strain_min.bngl"}
+    bngl_src, bngl_file = "", bngl_files.get(name, "")
+    if bngl_file:
+        try:
+            bngl_src = (REPO / "flubnf" / "templates" / bngl_file).read_text(
+                encoding="utf-8")
+        except OSError:
+            bngl_src, bngl_file = "", ""
     return templates.TemplateResponse(request, "model.html", {
         "active": "Models", "name": name,
         # the page title comes from the shared model-name map, so the h1,
@@ -1473,6 +1485,7 @@ def model_page(request: Request, name: str):
         "fanq_json": __import__("json").dumps(fanq),
         "overlay_json": __import__("json").dumps(overlay),
         "run_obs_json": __import__("json").dumps((res or {}).get("observed", {})),
+        "bngl_src": bngl_src, "bngl_file": bngl_file,
         "form": form, "status": _status})
 
 

@@ -20,10 +20,14 @@
 </div>
 
 <div class="card"><h2>How it works</h2>
+ {# label boxes are audited at the A+ text step (the rem classes resolve in
+    viewBox units): every line fits its box at 115%, and each arrow label
+    sits centered in its own gap, clear of the boxes beside it. The svg
+    carries aria-label, not <title>: the title tooltip pops over the
+    drawing on hover. #}
  <div class="pipe">
- <svg viewBox="0 0 960 264" role="img" aria-labelledby="wf-t wf-d">
-  <title id="wf-t">Weekly forecasting workflow</title>
-  <desc id="wf-d">One weekly data pull feeds the particle-filter fits and the
+ <svg viewBox="0 0 990 264" role="img" aria-label="Weekly forecasting workflow">
+  <desc>One weekly data pull feeds the particle-filter fits and the
   calendar analogue; their quantiles combine in an equal-weight blend, never
   fitted, which is packaged as the FluSight CSV and the weekly report.</desc>
   <defs>
@@ -34,52 +38,64 @@
   </defs>
   <!-- flows -->
   <g fill="none" stroke="currentColor" stroke-width="1.7">
-   <path d="M140,112 L244,66"  marker-end="url(#wf-arr)"/>
-   <path d="M140,152 L244,198" marker-end="url(#wf-arr)"/>
-   <path d="M460,66 L564,112"  marker-end="url(#wf-arr)"/>
-   <path d="M460,198 L564,152" marker-end="url(#wf-arr)"/>
-   <path d="M760,132 H824"     marker-end="url(#wf-arr)"/>
+   <path d="M146,112 L252,66"  marker-end="url(#wf-arr)"/>
+   <path d="M146,152 L252,198" marker-end="url(#wf-arr)"/>
+   <path d="M506,66 L604,110"  marker-end="url(#wf-arr)"/>
+   <path d="M506,198 L604,154" marker-end="url(#wf-arr)"/>
+   <path d="M796,132 H830"     marker-end="url(#wf-arr)"/>
   </g>
-  <!-- arrow labels: each centered in a gap at least 110 units wide -->
+  <!-- arrow labels, centered in their gaps -->
   <g text-anchor="middle" class="svgt-sm" fill="var(--mut)">
-   <text x="195" y="127">same data,</text>
-   <text x="195" y="140">both members</text>
-   <text x="512" y="127">member</text>
-   <text x="512" y="140">quantiles</text>
-   <text x="792" y="124">blended</text>
+   <text x="202" y="125">same data,</text>
+   <text x="202" y="143">both members</text>
+   <text x="555" y="125">member</text>
+   <text x="555" y="143">quantiles</text>
   </g>
   <!-- stages -->
   <g stroke-width="2">
-   <rect x="10"  y="96"  width="130" height="72" rx="10"
+   <rect x="10"  y="96"  width="136" height="72" rx="10"
          fill="var(--mut)"   fill-opacity=".12" stroke="var(--mut)"/>
-   <rect x="250" y="22"  width="210" height="72" rx="10"
+   <rect x="258" y="22"  width="248" height="72" rx="10"
          fill="var(--slate)" fill-opacity=".12" stroke="var(--slate)"/>
-   <rect x="250" y="170" width="210" height="72" rx="10"
+   <rect x="258" y="170" width="248" height="72" rx="10"
          fill="var(--warn)"  fill-opacity=".12" stroke="var(--warn)"/>
-   <rect x="570" y="96"  width="190" height="72" rx="10"
+   <rect x="610" y="96"  width="186" height="72" rx="10"
          fill="var(--gold)"  fill-opacity=".12" stroke="var(--gold)"/>
-   <rect x="830" y="96"  width="122" height="72" rx="10"
+   <rect x="836" y="96"  width="144" height="72" rx="10"
          fill="var(--gold-bright)" fill-opacity=".14"
          stroke="var(--gold-bright)"/>
   </g>
   <g text-anchor="middle" fill="currentColor">
-   <text x="75"  y="119" class="svgt-md" font-weight="700">Data pull</text>
-   <text x="75"  y="137" class="svgt-sm">NHSN admissions,</text>
-   <text x="75"  y="151" class="svgt-sm">latest weekly vintage</text>
-   <text x="355" y="45"  class="svgt-md" font-weight="700">Particle-filter fits</text>
-   <text x="355" y="63"  class="svgt-sm">10,000 candidate epidemics</text>
-   <text x="355" y="77"  class="svgt-sm">per state, reweighted weekly</text>
-   <text x="355" y="193" class="svgt-md" font-weight="700">Calendar analogue</text>
-   <text x="355" y="211" class="svgt-sm">growth ratios from matched</text>
-   <text x="355" y="225" class="svgt-sm">weeks of past seasons</text>
-   <text x="665" y="119" class="svgt-md" font-weight="700">Equal-weight blend</text>
-   <text x="665" y="137" class="svgt-sm">quantile average, 50/50,</text>
-   <text x="665" y="151" class="svgt-sm">never fitted</text>
-   <text x="891" y="119" class="svgt-md" font-weight="700">FluSight CSV</text>
-   <text x="891" y="135" class="svgt-md" font-weight="700">+ weekly report</text>
-   <text x="891" y="151" class="svgt-sm">ready to submit</text>
+   <text x="78"  y="117" class="svgt-md" font-weight="700">Data pull</text>
+   <text x="78"  y="138" class="svgt-sm">NHSN admissions</text>
+   <text x="78"  y="156" class="svgt-sm">latest vintage</text>
+   <text x="382" y="45"  class="svgt-md" font-weight="700">Particle-filter fits</text>
+   <text x="382" y="64"  class="svgt-sm">10,000 candidate epidemics</text>
+   <text x="382" y="81"  class="svgt-sm">per state, reweighted weekly</text>
+   <text x="382" y="193" class="svgt-md" font-weight="700">Calendar analogue</text>
+   <text x="382" y="212" class="svgt-sm">growth ratios from matched</text>
+   <text x="382" y="229" class="svgt-sm">weeks of past seasons</text>
+   <text x="703" y="117" class="svgt-md" font-weight="700">Equal-weight blend</text>
+   <text x="703" y="138" class="svgt-sm">quantile average,</text>
+   <text x="703" y="156" class="svgt-sm">50/50, never fitted</text>
+   <text x="908" y="115" class="svgt-md" font-weight="700">FluSight CSV</text>
+   <text x="908" y="133" class="svgt-sm" font-weight="600">+ weekly report</text>
+   <text x="908" y="153" class="svgt-sm">ready to submit</text>
   </g>
  </svg>
+ </div>
+ {# the two defining equations behind the pipeline: the seasonal forcing
+    the SIHRS fits bend, and the ensemble's equal-weight quantile mean #}
+ <div class="eqpanel">
+  <p><span class="math"><i>&#946;</i>(<i>t</i>) = <i>&#946;</i><sub>0</sub>
+   exp(&#8239;<i>&#949;</i><sub>1</sub> cos(&#8239;2&#960;(<i>t</i> &#8722;
+   <i>&#966;</i><sub>1</sub>)&#8202;/&#8202;52&#8239;)&#8239;)</span>
+   <span class="eqnote">the seasonal forcing inside the particle-filter fits:
+   the curve the filter bends each week</span></p>
+  <p><span class="math"><i>q</i><sub>ens</sub>(<i>&#964;</i>) =
+   mean<sub>m</sub>&#8239;<i>q</i><sub>m</sub>(<i>&#964;</i>)</span>
+   <span class="eqnote">the submitted quantile: an equal-weight mean of the
+   member quantiles at the same level, never fitted</span></p>
  </div>
  <p class="hint">Full method: <a href="/methods">Methods</a>.</p>
 </div>
@@ -140,8 +156,7 @@
   <p class="hint"><a href="https://github.com/lanl/PyBNF" target="_blank" rel="noopener">github.com/lanl/PyBNF</a></p></div>
  <div class="card"><h2>bngsim</h2>
   <div class="cardviz">
-   <svg viewBox="0 0 250 64" role="img" aria-labelledby="bs-t">
-    <title id="bs-t">Simulation-trace glyph</title>
+   <svg viewBox="0 0 250 64" role="img" aria-label="Simulation-trace glyph">
     <g fill="none" stroke="var(--mut)" stroke-opacity=".45" stroke-width="1.4">
      <path d="M12,54 C60,50 90,26 125,22 C165,18 200,44 240,50"/>
      <path d="M12,54 C55,52 95,38 135,30 C175,24 210,40 240,46"/>
@@ -159,8 +174,7 @@
   <p class="hint"><a href="https://github.com/lanl/bngsim" target="_blank" rel="noopener">github.com/lanl/bngsim</a></p></div>
  <div class="card"><h2>BNGL and BioNetGen</h2>
   <div class="cardviz">
-   <svg viewBox="0 0 250 64" role="img" aria-labelledby="cm-t">
-    <title id="cm-t">Contact-map glyph</title>
+   <svg viewBox="0 0 250 64" role="img" aria-label="Contact-map glyph">
     <g stroke="currentColor" stroke-width="1.7">
      <line x1="78"  y1="32" x2="94"  y2="32"/>
      <line x1="182" y1="32" x2="198" y2="32"/>

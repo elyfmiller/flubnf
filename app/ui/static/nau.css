@@ -206,7 +206,10 @@ progress::-moz-progress-bar{background:var(--accent-ink);border-radius:99px}
 .hero p{color:#C6CFEE;max-width:none;margin:0;font-size:var(--fs-lead)}
 .hero .gold{color:var(--gold-bright)}
 .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:.75rem}
-.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}
+/* grid2 cards keep their content height: the default stretch left the short
+   card (Start here beside the performance table) with a dead bottom band */
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:.75rem;align-items:start}
 @media(max-width:900px){.grid3,.grid2{grid-template-columns:1fr}}
 .row{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap}
 .row button{margin-top:0}
@@ -274,6 +277,26 @@ svg .svgt-lg{font-size:1rem}
 svg .svgt-md{font-size:.92rem}
 svg .svgt-sm{font-size:.875rem}
 svg .svgt-sub{font-size:.68em}
+/* defining equations under a mechanism diagram: one or two lines of styled
+   text (no math library; italic variables, Unicode operators) plus a muted
+   tie-in note. The math never wraps mid-formula; a narrow window scrolls the
+   panel instead, like every other wide block */
+.eqpanel{max-width:800px;margin:.45rem auto .25rem;padding:.5rem .85rem;
+  background:var(--bg);border:1px solid var(--line);border-radius:9px;
+  overflow-x:auto}
+.eqpanel p{margin:.24rem 0;max-width:none}
+.eqpanel .math{font-size:.98rem;font-weight:600;white-space:nowrap}
+.eqpanel .math sub{font-size:.68em}
+.eqpanel .eqnote{color:var(--mut);font-size:var(--fs-hint);font-weight:400}
+/* read-only BNGL source on the BNGL-backed model pages: collapsed by
+   default, monospace, scrolling in both directions inside its own well */
+details.bngl > summary{cursor:pointer;list-style:none;font-weight:600}
+details.bngl > summary::-webkit-details-marker{display:none}
+details.bngl > summary::before{content:"▸ ";color:var(--gold)}
+details.bngl[open] > summary::before{content:"▾ "}
+details.bngl pre{background:var(--bg);border:1px solid var(--line);
+  border-radius:8px;padding:.6rem .8rem;margin:.4rem 0 .1rem;
+  overflow:auto;max-height:28rem;font-size:.78rem;line-height:1.45}
 /* fitted/observed values panel beneath the mechanism diagram: a compact
    two-column definition list in the sunken well tone, so numbers of any
    length flow in the page instead of floating over the SVG */
