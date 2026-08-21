@@ -1,5 +1,6 @@
 {% extends "base.html" %}{% block title %}FluBNF · Forecast{% endblock %}
-{% block head %}<script src="/static/plotly.min.js"></script>{% endblock %}
+{% block head %}<script src="/static/plotly.min.js"></script>
+<script src="/static/quips.js"></script>{% endblock %}
 {% block content %}
 <h1>Forecast</h1>
 <div class="cols">
@@ -61,59 +62,19 @@
    <p id="runlabel" class="runlabel">{{ status.run_label or "" }}</p>
    <div class="runbar"><div id="runfill" style="width:3%"></div></div>
    <p class="runstat" id="prog"></p>
+   {# wall time, ticked client-side from the server's start timestamp: the
+      poll re-anchors it every two seconds, so it cannot drift, and a page
+      reloaded an hour in shows the true total rather than starting over #}
+   <p class="runstat" id="elapsed"></p>
    <form method="post" action="/run/stop"
      onsubmit="this.querySelector('button').disabled=true"><button class="quiet">Stop run</button></form>
    <p class="quip" id="quip"></p>
   </div>
   <script>
-   const quips=["teaching 10,000 particles to sneeze responsibly",
-     "resampling the unlucky","negotiating with a negative binomial",
-     "asking last winter for advice","herding susceptibles",
-     "integrating quietly since 1927","jittering, but only a little",
-     "waiting for the posterior to settle down",
-     "politely declining a degenerate proposal",
-     "weighing particles by how well they coughed",
-     "asking the prior to loosen its grip",
-     "letting the likelihood do the talking",
-     "quarantining a few outlier trajectories",
-     "rewinding the epidemic to watch it again",
-     "convincing beta to stay seasonal",
-     "counting hospital beds twice, to be sure",
-     "seeding infections at the solstice, as tradition demands",
-     "drawing quantiles with a steady hand","burning in, gently",
-     "checking whether Rt has recovered",
-     "wandering the parameter space, mostly on purpose",
-     "shrinking toward the mean, emotionally as well",
-     "giving every trajectory a fair cough",
-     "propagating uncertainty with confidence",
-     "consulting the negative binomial about its variance",
-     "asking the particles to form an orderly quantile",
-     "estimating how much winter is left",
-     "keeping the ensemble members from agreeing too much",
-     "resampling with all due ceremony",
-     "checking the waning-immunity clock",
-     "letting ten thousand epidemics bloom, then pruning",
-     "holding the baseline to account",
-     "measuring this season against its ancestors",
-     "teaching beta to respect the calendar",
-     "auditing the attack rate",
-     "reweighting optimism by evidence",
-     "keeping the vintage data honest",
-     "asking each state how its winter is going",
-     "updating priors, gently but firmly",
-     "asking the effective sample size to stay effective",
-     "walking the weekly data in, one saturday at a time",
-     "smoothing the epidemic curve without flattering it",
-     "granting each particle one more week of relevance",
-     "comparing this week to every winter on record",
-     "letting the evidence outvote the prior",
-     "thinning the herd of implausible epidemics",
-     "watching the credible interval breathe",
-     "escorting stray trajectories back to the data",
-     "renormalizing the weights, as one does",
-     "budgeting uncertainty across four horizons"];
-   let qi=0;
-   setInterval(()=>{document.getElementById('quip').textContent=quips[qi++%quips.length];},2600);
+   // quips come from the shared list (static/quips.js), the same one the
+   // retrospective page rotates, so neither page's humour drifts from the
+   // other's
+   flubnfQuips('quip');
    // honest progress: the displayed % is monotone non-decreasing, and the ETA
    // is EMA-smoothed (alpha .3) so it ticks down instead of oscillating; a
    // genuine upward correction is accepted only after 3 consecutive polls
@@ -121,6 +82,18 @@
    let D={done:0,total:0,eta_s:null,t:Date.now()};
    let STOPPING=false;
    let PS;
+   // wall clock: the server owns the truth (elapsed_s), the browser only
+   // interpolates between polls, so the reading can never drift and a reload
+   // mid-run picks up the real total instead of restarting at zero
+   let EL={s:{{ (elapsed0 if elapsed0 is not none else 0) | tojson }},at:Date.now()};
+   function hms(t){t=Math.max(0,Math.round(t));
+     return Math.floor(t/3600)+':'+String(Math.floor(t/60)%60).padStart(2,'0')
+       +':'+String(t%60).padStart(2,'0');}
+   setInterval(()=>{
+     const el=document.getElementById('elapsed');
+     if(!el||EL.s==null) return;
+     el.textContent='elapsed '+hms(EL.s+(Date.now()-EL.at)/1000);
+   },500);
    function resetProg(){PS={label:null,disp:0,ema:null,shown:null,shownT:0,up:0};}
    resetProg();
    async function poll(){
@@ -129,6 +102,7 @@
        if(PS.label!==null && d.label!==PS.label) resetProg();  // a new run started
        PS.label=d.label;
        if(d.label) document.getElementById('runlabel').textContent=d.label;
+       if(d.elapsed_s!=null) EL={s:d.elapsed_s,at:Date.now()};   // re-anchor
        STOPPING=(d.phase||'').startsWith('stopping');
        D={...d, t: d.done===D.done ? D.t : Date.now()};  // glide anchors to the last done-change
        if(d.eta_s!=null){

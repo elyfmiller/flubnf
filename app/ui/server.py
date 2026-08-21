@@ -16,7 +16,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse    # noqa: E402
 from fastapi.templating import Jinja2Templates                  # noqa: E402
 
 from app.core import data as data_mod                           # noqa: E402
-from app.core.runs import Ledger, RunSpec, lease_workroot       # noqa: E402
+from app.core.runs import (Ledger, RunSpec, fmt_hms,            # noqa: E402
+                           lease_workroot)
 
 app = FastAPI(title="FluBNF")
 from fastapi.staticfiles import StaticFiles
@@ -24,6 +25,8 @@ app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")
           name="static")
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.globals["pop_flash"] = lambda: _status.pop("flash", None)
+# one wall-time format everywhere the console shows a duration
+templates.env.filters["hms"] = fmt_hms
 
 def _repo_sha(short: bool = True) -> str:
     import subprocess
@@ -295,6 +298,7 @@ def forecast_page(request: Request):
     return templates.TemplateResponse(request, "forecast.html", {
         "active": "Forecast", "engines": ENGINES, "status": _status,
         "ledger": ledger_rows, "all_locs": all_locs, "form": form,
+        "elapsed0": _console_elapsed(),
         "series_json": _json.dumps(series), "fanq_json": _json.dumps(fanq),
         "run_obs_json": _json.dumps((res or {}).get("observed", {})),
         "fc_date": (res or {}).get("forecast_date", "")})
@@ -341,6 +345,7 @@ def run_stop():
         _status["running"] = None
         _status["run_label"] = ""
         _status["expected_total"] = None
+        _status["started_utc"] = None
         _status["phase"] = ""
     return RedirectResponse("/forecast#results", status_code=303)
 
@@ -349,17 +354,24 @@ def run_stop():
 def api_busy():
     """Per-button guard support: what would a click interrupt right now?
     console_run is the running console run's label (null when idle), retro
-    maps season to status for seasons currently running or stopping, and
-    phase is the console run's current phase string. The Update-data guard
+    maps season to status for seasons currently running, stopping, or paused,
+    and phase is the console run's current phase string. The Update-data guard
     fires only while the phase contains 'materializing' or 'preparing':
     those phases read hub files that a pull mutates, whereas a pull during
-    pure fitting is safe."""
+    pure fitting is safe.
+
+    A PAUSED season counts as a conflict: the worker still holds the engine
+    and its workroots, so starting a run over it must warn."""
     running = _status.get("running")
+    live = {}
+    for s in list(_retro_status):
+        st = _season_status(s)
+        if st in _RETRO_ACTIVE:
+            live[s] = st
     return {
         "console_run": ((_status.get("run_label") or str(running))
                         if running else None),
-        "retro": {s: st for s, st in _retro_status.items()
-                  if st in ("running", "stopping")},
+        "retro": live,
         "phase": _status.get("phase", "") or "",
     }
 
@@ -474,10 +486,16 @@ def _run_all(spec: RunSpec) -> None:
     from app.core.submit import (quantile_rows, rows_from_quantiles,
                                  write_submission)
 
+    import time as _time
     ledger = Ledger()
     run_id = None
     outcome = {}
     guard = _sleep_guard()          # macOS: no idle sleep mid-run
+    # the route claims the clock when the user clicks; a direct call (scripts,
+    # tests) starts it here instead, so elapsed is never missing
+    if not _status.get("started_utc"):
+        _status["started_utc"] = _time.time()
+    t_start = float(_status["started_utc"])
     n_states = sum(1 for l in spec.locations
                    if str(l).upper() not in ("US", "US (NATIONAL)"))
     _status["run_label"] = (
@@ -751,7 +769,8 @@ def _run_all(spec: RunSpec) -> None:
                           "note": us_d.get("note", ""),
                           "summary_html": wis_html},
                          workroot / "report.html",
-                         national_map_html=nat_html)
+                         national_map_html=nat_html,
+                         elapsed_s=_time.time() - t_start)
             outcome["report"] = str(workroot / "report.html")
         except Exception as e:
             outcome["report_error"] = str(e)[:200]
@@ -818,6 +837,7 @@ def _run_all(spec: RunSpec) -> None:
         _status["workroot"] = None
         _status["run_label"] = ""
         _status["expected_total"] = None
+        _status["started_utc"] = None
 
 
 def _archive_run(workroot: Path, forecast_date: str) -> str:
@@ -912,6 +932,17 @@ def api_series(locs: str = ""):
     return out
 
 
+def _console_elapsed(now: float | None = None) -> float | None:
+    """Seconds since the running console run claimed its slot, or None when
+    nothing is running. The clock starts at the CLAIM, not at the first fit:
+    engine setup is part of the wait the user is sitting through."""
+    import time as _time
+    t0 = _status.get("started_utc")
+    if not t0 or not _status.get("running"):
+        return None
+    return max(0.0, (now if now is not None else _time.time()) - float(t0))
+
+
 @app.get("/api/progress")
 def api_progress():
     import glob
@@ -920,7 +951,11 @@ def api_progress():
     w = _status.get("workroot")
     out = {"running": bool(_status.get("running")),
            "phase": _status.get("phase", ""),
-           "label": _status.get("run_label", "")}
+           "label": _status.get("run_label", ""),
+           # the browser ticks the seconds itself; these two anchor it, so a
+           # page reloaded an hour into a run shows the true elapsed time
+           "started_utc": _status.get("started_utc"),
+           "elapsed_s": _console_elapsed()}
     if w:
         done = total = 0
         t0 = None
@@ -1283,9 +1318,87 @@ def _season_root(season: str) -> tuple:
 _retro_status: dict = {}
 _retro_stop: set = set()
 
+#: statuses that mean a season worker is alive and holding the engine
+_RETRO_ACTIVE = ("running", "stopping", "paused")
+
 
 class _RetroStopRequested(Exception):
     """Raised inside the season worker between weeks when a stop was asked."""
+
+
+def _valid_season(season: str) -> bool:
+    """Season names name directories. Anything that is not YYYY-YY is refused
+    before it can reach the filesystem."""
+    import re
+    return bool(re.fullmatch(r"\d{4}-\d{2}", season or ""))
+
+
+def _live_root(season: str) -> Path:
+    """Where THIS app's season worker runs, and therefore where the control
+    flags and the run record live."""
+    return RETRO_ROOT / season
+
+
+def _season_meta(season: str) -> dict:
+    """The season's run record: the live retro root first, then whichever
+    root the season page shows (a sealed full-grid run keeps its own)."""
+    from app.core import retro
+    m = retro.read_meta(_live_root(season))
+    if m:
+        return m
+    root, _is_seal = _season_root(season)
+    return retro.read_meta(root)
+
+
+def _season_status(season: str) -> str:
+    """One truthful status per season: running, paused, stopping, stopped,
+    done, interrupted, error: …, or "" for a season never replayed here.
+
+    Truthfulness across an app restart is the whole point. A worker lives
+    inside this process, so if the process died its season must stop
+    claiming to run: the record's heartbeat decides, not the claim."""
+    from app.core import retro
+    mem = _retro_status.get(season, "")
+    meta = _season_meta(season)
+    disk = retro.effective_status(meta) if meta else ""
+    if mem in _RETRO_ACTIVE:
+        if disk == "interrupted":
+            # the worker died without releasing the in-memory claim
+            _retro_status[season] = "interrupted"
+            return "interrupted"
+        if mem == "stopping":
+            return "stopping"
+        # the record refines running into paused as the worker holds
+        return disk if disk in ("running", "paused") else mem
+    return mem or disk
+
+
+def _retro_progress(season: str) -> dict:
+    """Live progress and timing for one season, in the shape the retro pages
+    poll. ETA comes from the MEASURED mean seconds per week times the weeks
+    still to run -- far steadier than a fit-level estimate, and honest about
+    how many weeks it rests on."""
+    from app.core import retro
+    status = _season_status(season)
+    meta = _season_meta(season)
+    t = retro.timing(meta) if meta else {}
+    root, _is_seal = _season_root(season)
+    done = len(list((root / "weeks").glob("*/samples.json"))) if root.exists() else 0
+    total = t.get("total_weeks") or len(retro.season_vintages(season))
+    mean_s = t.get("mean_s")
+    eta_s = None
+    if status == "running" and mean_s and total and done < total:
+        eta_s = mean_s * (total - done)
+    return {"season": season, "status": status, "done": done,
+            "total": int(total or 0),
+            "elapsed_s": t.get("elapsed_s"),
+            "weeks_measured": t.get("weeks_measured") or 0,
+            "mean_s": mean_s, "eta_s": eta_s,
+            "slowest_week": t.get("slowest_week"),
+            "slowest_s": t.get("slowest_s"),
+            "started_utc": t.get("started_utc"),
+            "finished_utc": t.get("finished_utc"),
+            "active": status in _RETRO_ACTIVE}
 
 
 def _retro_state_names() -> list:
@@ -1314,10 +1427,19 @@ def retro_index(request: Request):
         total = len(season_vintages(s))
         root, is_seal = _season_root(s)
         done = len(list((root / "weeks").glob("*/samples.json"))) if root.exists() else 0
+        prog = _retro_progress(s)
+        status = prog["status"]
         seasons.append({"name": s, "total": total, "done": done,
                         "seal": is_seal,
-                        "running": _retro_status.get(s) in ("running",
-                                                            "stopping"),
+                        "status": status,
+                        "running": status in ("running", "stopping"),
+                        "paused": status == "paused",
+                        "active": status in _RETRO_ACTIVE,
+                        "elapsed_s": prog["elapsed_s"],
+                        "mean_s": prog["mean_s"],
+                        "weeks_measured": prog["weeks_measured"],
+                        "eta_s": prog["eta_s"],
+                        "finished_utc": prog["finished_utc"],
                         "scored": (root / "scores.json").exists()})
     from flubnf.settings import PY_ENGINE, PYBNF
     return templates.TemplateResponse(request, "retro.html",
@@ -1327,15 +1449,34 @@ def retro_index(request: Request):
                                        and PYBNF.exists()})
 
 
+@app.get("/api/retro/progress")
+def api_retro_progress(season: str = ""):
+    """Live retro progress for the pages' tickers: one season when named,
+    otherwise every season with a run record or an in-memory claim. The
+    pages poll this instead of reloading, so a bar can tick without wiping a
+    pending guard modal."""
+    from app.core.retro import available_seasons
+    if season:
+        if not _valid_season(season):
+            return {}
+        return {season: _retro_progress(season)}
+    out = {}
+    for s in available_seasons():
+        p = _retro_progress(s)
+        if p["status"] or p["done"]:
+            out[s] = p
+    return out
+
+
 def _retro_bg(season: str, locations: list, width: int,
               replicates: int = 3, particles: int = 10_000):
     from app.core import retro
+    root = RETRO_ROOT / season
     _retro_status[season] = "running"
     _retro_stop.discard(season)     # no stale stop flag from a past run
+    retro.clear_flags(root)         # nor a stale STOP/PAUSE file from one
     guard = _sleep_guard()          # overnight replays must outlive the lid
     try:
-        root = RETRO_ROOT / season
-
         def _tick(_asof):
             # run_season calls this after every week: the clean stop point.
             # Completed weeks are on disk and a restarted replay skips them.
@@ -1348,13 +1489,16 @@ def _retro_bg(season: str, locations: list, width: int,
                                 ensemble_weights={"pf": 0.5, "analogue": 0.5})
         df.to_json(root / "scores.json")
         _retro_status[season] = "done"
-    except _RetroStopRequested:
+    except (_RetroStopRequested, retro.SeasonStopped):
         # completed weeks stay; the results page scores whatever exists
         _retro_status[season] = "stopped"
     except Exception as e:
         _retro_status[season] = f"error: {str(e)[:150]}"
     finally:
         _retro_stop.discard(season)
+        # the flags are requests, not state: leaving one behind would stop or
+        # hold the NEXT replay before it ran a week
+        retro.clear_flags(root)
         if guard is not None:
             try:
                 guard.terminate()
@@ -1364,20 +1508,76 @@ def _retro_bg(season: str, locations: list, width: int,
 
 @app.post("/retro/stop")
 def retro_stop():
-    """Ask every running season replay to stop after its current week.
+    """Ask every live season replay to stop after its current week.
     Completed weeks stay on disk; a restarted replay resumes where this one
-    left off (a completed week is never redone)."""
+    left off (a completed week is never redone). A PAUSED season stops too:
+    request_stop clears the pause so the worker wakes and exits."""
+    from app.core import retro
     stopping = []
     for season, st in list(_retro_status.items()):
-        if st == "running":
-            _retro_stop.add(season)
-            _retro_status[season] = "stopping"
-            stopping.append(season)
+        if st != "running" and _season_status(season) not in ("running",
+                                                              "paused"):
+            continue
+        _retro_stop.add(season)
+        _retro_status[season] = "stopping"
+        stopping.append(season)
+        retro.request_stop(_live_root(season))
     if stopping:
         _flash("Stopping " + ", ".join(sorted(stopping)) + " after the "
                "current week. Completed weeks are kept; the replay resumes "
                "from there next time.")
     return RedirectResponse("/retro", status_code=303)
+
+
+@app.post("/retro/{season}/stop")
+def retro_season_stop(request: Request, season: str):
+    """Stop ONE season after its current week. Safe by construction: the
+    week in flight is finished and checkpointed first, so nothing is
+    half-written, and pressing Run again resumes from there."""
+    from app.core import retro
+    if not _valid_season(season):
+        _flash("Unrecognized season name. Nothing was stopped.")
+        return _back(request, "/retro")
+    if _season_status(season) not in _RETRO_ACTIVE:
+        _flash(f"{season} is not replaying, so there was nothing to stop.")
+        return _back(request, "/retro")
+    retro.request_stop(_live_root(season))
+    _retro_stop.add(season)
+    _retro_status[season] = "stopping"
+    _flash(f"Stopping {season} after the current week. Completed weeks are "
+           "kept; Run resumes from there.")
+    return _back(request, "/retro")
+
+
+@app.post("/retro/{season}/pause")
+def retro_season_pause(request: Request, season: str):
+    """Hold after the current week. The process stays alive and the sleep
+    guard stays held, so an overnight replay resumes on the same machine
+    state it paused on."""
+    from app.core import retro
+    if not _valid_season(season):
+        _flash("Unrecognized season name. Nothing was paused.")
+        return _back(request, "/retro")
+    if _season_status(season) not in ("running", "paused"):
+        _flash(f"{season} is not replaying, so there was nothing to pause.")
+        return _back(request, "/retro")
+    retro.request_pause(_live_root(season))
+    _flash(f"Pausing {season} after the current week. The replay holds; "
+           "Resume continues it.")
+    return _back(request, "/retro")
+
+
+@app.post("/retro/{season}/resume")
+def retro_season_resume(request: Request, season: str):
+    """Release a hold. The worker picks up at the next week; the elapsed
+    clock resumes where it stopped rather than restarting."""
+    from app.core import retro
+    if not _valid_season(season):
+        _flash("Unrecognized season name. Nothing was resumed.")
+        return _back(request, "/retro")
+    retro.clear_pause(_live_root(season))
+    _flash(f"Resuming {season}.")
+    return _back(request, "/retro")
 
 
 @app.post("/retro/run")
@@ -1577,7 +1777,7 @@ def retro_results(request: Request, season: str, week: str = ""):
     return templates.TemplateResponse(request, "retro_season.html", {
         "active": "Retrospective", "season": season, "heads": heads, "curve": curve, "states": states,
         "weeks": weeks, "week": wk, "map_html": map_html,
-        "official_catalog": official_catalog,
+        "official_catalog": official_catalog, "prog": _retro_progress(season),
         "n_weeks": len(weeks) if scoreable else 0, "score_error": score_error})
 
 
@@ -1678,6 +1878,7 @@ def run_models(request: Request,
     # NOW so the page the user lands on shows the run (double-click race,
     # laptop field test 2026-08-18)
     _status["running"] = "starting"
+    _status["started_utc"] = __import__("time").time()   # the wall clock starts here
     _status["run_label"] = f"{forecast_date} · queued"
     if "all" in [l.lower() for l in locations]:
         import pandas as _pd
@@ -1742,6 +1943,7 @@ def run_models(request: Request,
                 _status["phase"] = ""
                 _status["run_label"] = ""
                 _status["expected_total"] = None
+                _status["started_utc"] = None
         background.add_task(_bg)
     else:
         # an engine we don't know: release the claim instead of wedging the
@@ -1749,6 +1951,7 @@ def run_models(request: Request,
         _status["running"] = None
         _status["run_label"] = ""
         _status["expected_total"] = None
+        _status["started_utc"] = None
         _flash(f"'{engine}' is not one of the available engines. "
                "Nothing was run.")
     return RedirectResponse("/forecast#results", status_code=303)
