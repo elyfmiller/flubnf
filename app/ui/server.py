@@ -61,6 +61,18 @@ templates.env.globals["restart_needed"] = _restart_needed
 # console never has to reconcile two wordings (see app/core/runs.py)
 templates.env.globals["settings_html"] = settings_html
 
+
+def _model_names() -> dict:
+    """The one model-name map: the JSON literal in the shared player core
+    (app/ui/static/player.js), parsed by app/core/report_season.py. Every
+    surface that prints a model name reads it, so pf/analogue/ensemble
+    stop appearing under different names on different surfaces."""
+    from app.core.report_season import MODEL_NAMES
+    return MODEL_NAMES
+
+
+templates.env.globals["model_name"] = lambda m: _model_names().get(m, m)
+
 ENGINES = ("all", "pf", "amcmc")     # "all" = pf + analogue + ensemble
 _status: dict = {"running": None, "log": []}
 _last_form: dict = {}
@@ -355,7 +367,11 @@ def forecast_page(request: Request):
     except Exception:
         pass
     fanq = {}
-    if res and _status.get("session_ran"):
+    # no session gate: the latest STORED run's fans render after an app
+    # restart exactly as the model pages already do, and the card's title
+    # names the stored run's date, so the Forecast tab never dead-ends at a
+    # one-line summary while the forecasts sit on disk
+    if res:
         for mname, md in res["models"].items():
             good = {loc: qs for loc, qs in md.items()
                     if all(isinstance(v, dict) for v in qs.values())}
@@ -365,6 +381,13 @@ def forecast_page(request: Request):
     for r in ledger_rows:
         r["label"] = _run_label(r["run_id"], r.get("spec", ""))
         r["chips"] = _outcome_chips(r.get("outcome", ""))
+        # whether the run produced a weekly report, so the latest-run card
+        # can link straight to it instead of leaving the reader to guess
+        try:
+            r["has_report"] = bool(_json.loads(r.get("outcome")
+                                               or "{}").get("report"))
+        except Exception:
+            r["has_report"] = False
         if r["status"] == "running" and not (_status.get("running") or "").endswith(r["run_id"]):
             r["status"] = "interrupted"
     return templates.TemplateResponse(request, "forecast.html", {
@@ -373,6 +396,7 @@ def forecast_page(request: Request):
         "locations_error": locations_error, "form": form,
         "elapsed0": _console_elapsed(),
         "series_json": _json.dumps(series), "fanq_json": _json.dumps(fanq),
+        "model_names_json": _json.dumps(_model_names()),
         "run_obs_json": _json.dumps((res or {}).get("observed", {})),
         "fc_date": (res or {}).get("forecast_date", "")})
 
@@ -943,7 +967,9 @@ def _run_all(spec: RunSpec) -> None:
             outcome["archived"] = _archive_run(workroot, spec.forecast_date)
         except Exception as e:
             outcome["archive_error"] = str(e)[:200]
-        _status["session_ran"] = run_id
+        # note: nothing gates on "this session ran" anymore -- the Forecast
+        # tab renders the latest STORED results unconditionally, like the
+        # model pages always did
         ledger.close_run(run_id, "failed" if fails else "ok", outcome)
         _status["log"].append(
             f"{run_id}: pf {len(pf_samples)} loc, analogue {len(an_q)}, "
@@ -1436,7 +1462,11 @@ def model_page(request: Request, name: str):
                                 "locations": ["all"], "replicates": 3}
     return templates.TemplateResponse(request, "model.html", {
         "active": "Models", "name": name,
-        "title": blurbs[name][0], "blurb": blurbs[name][1],
+        # the page title comes from the shared model-name map, so the h1,
+        # the switcher, and every other surface agree on the name
+        "title": _model_names().get(name, blurbs[name][0]),
+        "blurb": blurbs[name][1],
+        "model_names_json": __import__("json").dumps(_model_names()),
         "oneline": onelines[name], "manchor": manchor[name],
         "rid": rid, "label": _run_label(rid) if rid else "",
         "date": (res or {}).get("forecast_date", ""),
@@ -1747,6 +1777,7 @@ def _retro_state_names() -> list:
 
 @app.get("/retro", response_class=HTMLResponse)
 def retro_index(request: Request):
+    from app.core import retro as _retro
     from app.core.retro import available_seasons, season_vintages
     seasons = []
     for s in available_seasons():
@@ -1755,8 +1786,11 @@ def retro_index(request: Request):
         done = _weeks_done(root)
         prog = _retro_progress(s)
         status = prog["status"]
+        # the head score (season ensemble relWIS), so a completed season
+        # shows its verdict on the index instead of a ceremonial 100% bar
+        rel = _retro.run_summary(root)["headline_rel"]
         seasons.append({"name": s, "total": total, "done": done,
-                        "seal": is_seal,
+                        "seal": is_seal, "rel": rel,
                         "settings": prog["settings"],
                         "archives": _archive_entries(s),
                         "status": status,

@@ -71,17 +71,24 @@ and move on; scores come later, against settled truth.</p>
        data-done="{{ s.done }}" data-total="{{ s.total }}"
        data-results="{{ 1 if s.done > 0 else 0 }}">
    <h2>{{ s.name }}</h2>
+   {# a completed season's bar says nothing (it is always 100%); the number
+      anyone comes to compare is the season relWIS, so a scored complete
+      season prints it instead, in the same archived-row style the sub-rows
+      below already use. Active and unfinished seasons keep their bars. #}
+   {% set s_complete = (s.rel is defined) and (s.rel is not none)
+      and s.total and s.done >= s.total and not s.active %}
    {% if s.active %}
    {# a live replay gets the console's run treatment: one solid fill on a
       visible track, driven by weeks completed out of the season's weeks #}
    <div class="runbar"><div class="rfill" style="width:2%"></div></div>
    <p class="runstat rstat">{{ s.done }}/{{ s.total }} weeks</p>
    <p class="hint rbasis"></p>
-   {% else %}
+   {% elif not s_complete %}
    <progress value="{{ s.done }}" max="{{ s.total }}"></progress>
    {% endif %}
    <div class="row" style="justify-content:space-between">
     <span class="hint">{{ s.done }}/{{ s.total }} weeks{% if s.seal %} · full-grid validation run{% endif %}
+     {% if s_complete %} · relWIS <span class="{{ 'ok' if s.rel < 1 else 'bad' }}">{{ "%.3f"|format(s.rel) }}</span>{% endif %}
      {% if s.status == 'running' %}<span class="warn">· running</span>
      {% elif s.status == 'stopping' %}<span class="warn">· stopping after the fits in flight</span>
      {% elif s.status == 'paused' %}<span class="warn">· paused</span>

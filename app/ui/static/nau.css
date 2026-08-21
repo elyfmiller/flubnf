@@ -170,6 +170,9 @@ a:hover{text-decoration:underline}
 table{border-collapse:collapse;width:100%;font-size:var(--fs-table);
       font-variant-numeric:tabular-nums}
 td,th{padding:.38rem .6rem;border-bottom:1px solid var(--line);text-align:left}
+/* numeric columns right-align wherever they appear (.perf and .playstats
+   restate this for their own scopes; this is the general rule) */
+td.num,th.num{text-align:right}
 th{color:var(--mut);font-weight:600;font-size:.72rem;text-transform:uppercase;
    letter-spacing:.04em}
 code{background:var(--bg);padding:.12rem .35rem;border-radius:5px;font-size:.85em;

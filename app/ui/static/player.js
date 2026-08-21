@@ -46,6 +46,22 @@ var MARKER = 'FluBNF shared season player core (flubnf-player-v1)';
 // even when a week's payload carries no official submissions yet
 var OFFICIALS = ['FluSight-baseline', 'FluSight-ensemble'];
 
+// THE one model-name map: every surface that prints a model name reads
+// this, so pf/analogue/ensemble never appear under different names on
+// different surfaces. The player's legend, toggles, and stats table use it
+// directly; the console templates and the season report builder read the
+// SAME literal through Python (app/core/report_season.py, model_names),
+// which parses the marked JSON below. Keep it a pure JSON object between
+// the markers for that reason.
+var MODEL_NAMES = /*MODEL_NAMES_JSON*/{
+  "ensemble": "NAU ensemble",
+  "pf": "PF-SIHRS",
+  "analogue": "Calendar analogue",
+  "pf2s": "Two-strain SIHRS",
+  "FluSight-ensemble": "FluSight ensemble (official)",
+  "FluSight-baseline": "FluSight baseline (official)"
+}/*END_MODEL_NAMES_JSON*/;
+
 // an official model absent for the WHOLE season gets a disabled toggle
 // carrying this note instead of silently drawing nothing
 var UNAVAIL_NOTE = ' (fetch via Update data on the Data tab)';
@@ -103,13 +119,10 @@ function dashOf(m){
        : m === 'FluSight-ensemble' ? 'dash' : 'solid';
 }
 
-// display names keep the two ensembles unmistakable in the legend, the
-// model toggles, and the stats table
+// display names come from the shared map above, keeping the two ensembles
+// unmistakable in the legend, the model toggles, and the stats table
 function nameOf(m){
-  var names = {ensemble: 'NAU ensemble',
-               'FluSight-ensemble': 'FluSight ensemble (official)',
-               'FluSight-baseline': 'FluSight baseline (official)'};
-  return names[m] || m;
+  return MODEL_NAMES[m] || m;
 }
 
 // a user-set range from a plotly relayout event, in either of the two
@@ -590,8 +603,10 @@ function createPlayer(cfg){
 var FluBNFPlayer = {
   MARKER: MARKER,
   init: createPlayer,
+  MODEL_NAMES: MODEL_NAMES,
   _internals: {
     OFFICIALS: OFFICIALS,
+    MODEL_NAMES: MODEL_NAMES,
     UNAVAIL_NOTE: UNAVAIL_NOTE,
     WEEK_NOTE: WEEK_NOTE,
     availabilityTier: availabilityTier,

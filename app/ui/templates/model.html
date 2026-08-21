@@ -11,14 +11,16 @@
    exported reports and bookmarks. The two-strain page keeps its existing
    label and is marked as the research option; it has no navigation tab. #}
 <div class="row viewtabs" role="group" aria-label="Model view">
- {% for mn, mlabel, mhref in [("pf", "PF-SIHRS", "/models"),
-                              ("analogue", "Calendar analogue", "/model/analogue"),
-                              ("ensemble", "Ensemble", "/model/ensemble"),
-                              ("pf2s", "Two-strain SIHRS", "/model/pf2s")] %}
+ {# labels come from the shared model-name map (the player's own), so the
+    switcher, the fan toggles, and the season head cards agree #}
+ {% for mn, mhref in [("pf", "/models"),
+                      ("analogue", "/model/analogue"),
+                      ("ensemble", "/model/ensemble"),
+                      ("pf2s", "/model/pf2s")] %}
  <button type="button" class="quiet{% if name == mn %} gold{% endif %}"
    aria-pressed="{{ 'true' if name == mn else 'false' }}"
    data-model="{{ mn }}"
-   {% if name != mn %}onclick="location='{{ mhref }}'"{% endif %}>{{ mlabel }}{% if mn == "pf2s" %} <span class="hint">(research)</span>{% endif %}</button>
+   {% if name != mn %}onclick="location='{{ mhref }}'"{% endif %}>{{ model_name(mn) }}{% if mn == "pf2s" %} <span class="hint">(research)</span>{% endif %}</button>
  {% endfor %}
 </div>
 <details class="card intro">
@@ -77,10 +79,28 @@
  const ROBS = {{ run_obs_json | safe }};
  // ensemble page only: raw member medians, toggled via the plotly legend
  const OVERLAY = {{ overlay_json | safe }};
- const MCOL = {pf:'--slate', analogue:'--warn', pf2s:'--mut'};
  const MDASH = {pf:'solid', analogue:'dash', pf2s:'dot'};
+ // this page's model, and the one model-name map (the shared player's,
+ // via the server)
+ const MNAME = {{ name | tojson }};
+ const MNAMES = {{ model_names_json | safe }};
  const SERIES = {};
  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+ // the member color language the season player teaches: ensemble rides the
+ // accent token, pf the slate token; analogue and the research member keep
+ // their fixed member colors on both themes. Re-read per draw so a theme
+ // change repaints correctly.
+ function memberColor(m){
+   return m==='ensemble'?css('--gold')
+        : m==='pf'?(css('--slate')||'#6E8FD0')
+        : m==='analogue'?'#FFC72C'
+        : m==='pf2s'?'#2BB5A0':css('--mut');
+ }
+ function rgba(c,a){
+   if(c&&c[0]==='#'&&c.length===7){const n=parseInt(c.slice(1),16);
+     return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';}
+   return c;
+ }
  // chart text rides the type system: the brand face with a system fallback,
  // sized from the root font size so the A-/A/A+ control reaches it
  const rootPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
@@ -127,21 +147,25 @@
    const med=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.5'])];
    const lo=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.1'])];
    const hi=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.9'])];
+   // the fan wears THIS page's member color: band at .2 alpha, median full
+   // strength, so the PF fan no longer wears the analogue's color
+   const mc=memberColor(MNAME);
    const traces=[
     {x:obsX,y:obsY,mode:'lines+markers',name:'observed (as of '+FD+')',line:{color:css('--ink')}},
     {x:fx,y:hi,mode:'lines',line:{width:0},showlegend:false,hoverinfo:'skip'},
-    {x:fx,y:lo,mode:'lines',fill:'tonexty',fillcolor:'rgba(255,199,44,.25)',line:{width:0},name:'10-90% interval'},
-    {x:fx,y:med,mode:'lines+markers',name:'median',line:{color:css('--gold'),width:2.5}},
+    {x:fx,y:lo,mode:'lines',fill:'tonexty',fillcolor:rgba(mc,.2),line:{width:0},name:'10-90% interval'},
+    {x:fx,y:med,mode:'lines+markers',name:'median',line:{color:mc,width:2.5}},
    ];
    if(aftX.length) traces.push({x:aftX,y:aftY,mode:'lines+markers',
     name:'settled outcome',line:{color:css('--ink'),dash:'dot',width:1.4},marker:{size:4}});
    // raw member medians over the ensemble: thin distinct lines, hidden until
-   // toggled on via their legend items (ensemble band + median stay primary)
+   // toggled on via their legend items (ensemble band + median stay
+   // primary), each in its member's own color and shared display name
    for(const m of Object.keys(OVERLAY)){
      const md=(OVERLAY[m]||{})[loc]; if(!md) continue;
      traces.push({x:xs,y:hs.map(h=>md[h]!=null?md[h]:null),mode:'lines',
-      name:m+' median',visible:'legendonly',
-      line:{color:css(MCOL[m]||'--mut'),width:1.4,dash:MDASH[m]||'dot'}});
+      name:(MNAMES[m]||m)+' median',visible:'legendonly',
+      line:{color:memberColor(m),width:1.4,dash:MDASH[m]||'dot'}});
    }
    Plotly.newPlot(document.getElementById('plot'),traces,lay(loc,420),{responsive:true,displaylogo:false});
    document.getElementById('pv').onclick=()=>{IDX--;draw();};

@@ -38,16 +38,35 @@ LINE = "#262A45"; ACCENT = "#34C0F0"
 MODEL_COLORS = {"ensemble": ACCENT, "pf": "#6E8FD0",
                 "analogue": "#FFC72C", "pf2s": "#2BB5A0"}
 
-# display names for the static summary, matching the player's own legend
-MODEL_NAMES = {"ensemble": "NAU ensemble", "pf": "PF-SIHRS",
-               "analogue": "Calendar analogue", "pf2s": "Two-strain SIHRS"}
-
 SIZE_WARN_BYTES = 25 * 1024 * 1024
 
 # the shared player: the very file the console's season page loads. It is
 # inlined verbatim at build time so both hosts run identical player code.
 PLAYER_SRC = Path(__file__).resolve().parents[1] / "ui" / "static" \
     / "player.js"
+
+
+def model_names() -> dict:
+    """The one model-name map, read from the shared player core.
+
+    player.js carries the map as a marked JSON literal; the player's own
+    legend and toggles read it directly, and this parse hands the SAME
+    names to every Python surface (this report's summary tiles, and the
+    console templates via app/ui/server.py), so pf/analogue/ensemble can
+    never drift apart across surfaces again. Degrades to an empty map
+    (raw ids print) rather than raising."""
+    import re
+    try:
+        src = PLAYER_SRC.read_text(encoding="utf-8")
+        m = re.search(r"/\*MODEL_NAMES_JSON\*/\s*(\{.*?\})"
+                      r"\s*/\*END_MODEL_NAMES_JSON\*/", src, re.S)
+        return json.loads(m.group(1)) if m else {}
+    except Exception:
+        return {}
+
+
+# display names for the static summary: the player's own map, one source
+MODEL_NAMES = model_names()
 
 
 def report_path(root: Path, season: str) -> Path:

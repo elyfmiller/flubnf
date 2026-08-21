@@ -61,7 +61,12 @@
  {# the download attribute makes the native window (WKWebView) treat the
     click as a download rather than a navigation; pywebview needs
     ALLOW_DOWNLOADS on as well, set at window launch in flubnf/cli.py #}
- <a href="/retro/{{ season }}/report{{ aq }}" download>Download season report</a>
+ {# the flagship deliverable carries the primary tier; Reveal stays quiet.
+    Button-in-anchor is the app's established download idiom (see the
+    Output tab); the click bubbles to the anchor, whose download attribute
+    does the work. #}
+ <a href="/retro/{{ season }}/report{{ aq }}" download><button class="gold"
+   type="button" style="margin-top:0">Download season report</button></a>
  <button type="button" class="quiet" id="rev-report" style="margin-top:0"
    data-season="{{ season }}" data-archive="{{ archive }}">Reveal in Finder</button>
  <span class="hint">One self-contained HTML file, usable offline: the season
@@ -89,28 +94,51 @@
  })();
 </script>
 <div class="grid2">
+ {# card titles come from the shared model-name map (the player's own), so
+    the head cards, the fan toggles, and the report tiles all agree #}
  {% for m, v in heads.items() %}
- <div class="card"><h2>{{ m }}</h2><div class="big
+ <div class="card"><h2>{{ model_name(m) }}</h2><div class="big
    {% if v < 1 %}ok{% else %}bad{% endif %}">{{ "%.3f"|format(v) }}</div>
    <p class="hint">relWIS vs the FluSight baseline</p></div>
  {% endfor %}
 </div>
 <div class="card"><h2>Cumulative ensemble relWIS through the season</h2>
+{% if curve %}
+{# the chart states its own scale: the y range hugs the data (always
+   including the 1.0 and 0.5 gridlines), the first and last week dates sit
+   under the corners, and the final cumulative value is printed at the
+   line's endpoint, so the season verdict reads without hovering a dot #}
+{% set vals = curve | map('last') | list %}
+{% set n = curve | length %}
+{% set hi = [vals | max, 1.05] | max %}
+{% set lo = [vals | min, 0.45] | min %}
+{% set yspan = hi - lo %}
+{% set xs = 635 / (n - 1 if n > 1 else 1) %}
+{% set lx = 20 + (n - 1) * xs %}
+{% set ly = 12 + (hi - vals[-1]) * 124 / yspan %}
 <svg viewBox="0 0 720 180" style="width:100%">
- {% set xs = 680 / (curve|length if curve|length > 1 else 1) %}
- <line x1="20" y1="90" x2="700" y2="90" stroke="var(--mut)" stroke-dasharray="3"/>
- <text x="702" y="94" fill="var(--mut)" class="svgt-sm">1.0</text>
- <polyline fill="none" stroke="var(--gold)" stroke-width="2.5" points="
-  {% for d, v in curve %}{{ 20 + loop.index0 * xs }},{{ [170 - (v * 80), 8] | max }} {% endfor %}"/>
- {% for d, v in curve %}
-  {# off-scale weeks are clamped to the top edge and drawn hollow; the
-     tooltip still carries the exact value #}
-  {% set clipped = 170 - (v * 80) < 8 %}
-  <circle cx="{{ 20 + loop.index0 * xs }}" cy="{{ [170 - (v * 80), 8] | max }}" r="3"
-          fill="{{ 'none' if clipped else 'var(--gold)' }}"
-          {% if clipped %}stroke="var(--gold)" stroke-width="1.5"{% endif %}><title>{{ d }}: {{ "%.3f"|format(v) }}</title></circle>
+ {% for gv, gl in [(1.0, "1.0"), (0.5, "0.5")] %}
+ {% set gy = (12 + (hi - gv) * 124 / yspan) | round(1) %}
+ <line x1="20" y1="{{ gy }}" x2="655" y2="{{ gy }}" stroke="var(--mut)" stroke-dasharray="3"/>
+ <text x="660" y="{{ gy + 4 }}" fill="var(--mut)" class="svgt-sm">{{ gl }}</text>
  {% endfor %}
-</svg></div>
+ <polyline fill="none" stroke="var(--gold)" stroke-width="2.5" points="
+  {% for d, v in curve %}{{ (20 + loop.index0 * xs) | round(1) }},{{ (12 + (hi - v) * 124 / yspan) | round(1) }} {% endfor %}"/>
+ {% for d, v in curve %}
+  <circle cx="{{ (20 + loop.index0 * xs) | round(1) }}" cy="{{ (12 + (hi - v) * 124 / yspan) | round(1) }}" r="3"
+          fill="var(--gold)"><title>{{ d }}: {{ "%.3f"|format(v) }}</title></circle>
+ {% endfor %}
+ <text x="{{ (lx - 8) | round(1) }}" y="{{ ((ly - 8) if ly - 8 >= 20 else (ly + 18)) | round(1) }}"
+       text-anchor="end" font-weight="700" class="svgt-md"
+       fill="var(--gold)">{{ "%.3f"|format(vals[-1]) }}</text>
+ <text x="20" y="168" fill="var(--mut)" class="svgt-sm">{{ curve[0][0] }}</text>
+ {% if n > 1 %}
+ <text x="655" y="168" text-anchor="end" fill="var(--mut)" class="svgt-sm">{{ (curve|last)[0] }}</text>
+ {% endif %}
+</svg>
+{% else %}
+<p class="hint">Arrives with the first scored week.</p>
+{% endif %}</div>
 
 <div class="card"><h2>Season player</h2>
  <div class="row playerbar">
@@ -171,10 +199,14 @@
 </div>
 
 <div class="card"><h2>Per-state scores</h2>
-<table><tr><th>State</th><th>PF</th><th>Analogue</th><th>Ensemble</th></tr>
+{# color marks exceptions in a dense table: only scores at or above 1
+   (lost to the baseline) are colored; beating it is the norm and stays
+   quiet. Numeric columns carry the .num right alignment every other
+   numeric table uses. #}
+<table><tr><th>State</th><th class="num">PF</th><th class="num">Analogue</th><th class="num">Ensemble</th></tr>
 {% for r in states %}<tr><td>{{ r.name }}</td>
  {% for m in ["pf","analogue","ensemble"] %}
- <td class="{% if r[m] and r[m] < 1 %}ok{% elif r[m] %}bad{% endif %}">
+ <td class="num{% if r[m] and r[m] >= 1 %} bad{% endif %}">
   {{ "%.3f"|format(r[m]) if r[m] else "n/a" }}</td>{% endfor %}</tr>
 {% endfor %}</table></div>
 

@@ -1,6 +1,7 @@
 {# Mechanism diagrams, shared across Home, Methods, and the model tabs.
    All inline SVG on theme tokens: structure strokes ride currentColor (the
-   page ink), compartment fills use the semantic tokens. Layouts are spread
+   page ink), compartment fills use accent and neutral tokens, never --bad
+   (red is semantic; a compartment is not a failure state). Layouts are spread
    so no label touches an arrow. Each macro takes a uid so marker ids stay
    unique per page. The SVGs carry ONLY structural labels (rates on arrows);
    fitted and observed values live in the values panel the host page renders
@@ -37,15 +38,17 @@
         fill="var(--mut)"  fill-opacity=".14" stroke="var(--mut)"/>
   <rect x="255" y="120" width="115" height="60" rx="10"
         fill="var(--gold)" fill-opacity=".14" stroke="var(--gold)"/>
+  {# Hospitalized rides the slate data accent, not Inhibition Red: red is
+     semantic (errors, failures) and the model's centerpiece is neither #}
   <rect x="480" y="120" width="115" height="60" rx="10"
-        fill="var(--bad)"  fill-opacity=".14" stroke="var(--bad)"/>
+        fill="var(--slate)" fill-opacity=".14" stroke="var(--slate)"/>
   <rect x="705" y="120" width="115" height="60" rx="10"
         fill="var(--ok)"   fill-opacity=".14" stroke="var(--ok)"/>
  </g>
  <g text-anchor="middle" font-weight="700" class="svgt-xl">
   <text x="87"  y="147" fill="var(--mut)">S</text>
   <text x="312" y="147" fill="var(--gold)">I</text>
-  <text x="537" y="147" fill="var(--bad)">H</text>
+  <text x="537" y="147" fill="var(--slate)">H</text>
   <text x="762" y="147" fill="var(--ok)">R</text>
  </g>
  <g text-anchor="middle" class="svgt-sm" fill="currentColor">
@@ -87,15 +90,17 @@
          fill="var(--mut)"  fill-opacity=".14" stroke="var(--mut)"/>
    <rect x="200" y="68" width="100" height="44" rx="8"
          fill="var(--gold)" fill-opacity=".14" stroke="var(--gold)"/>
+   {# Hospitalized in slate, as in the single-strain diagram: red stays
+      reserved for genuine failure states #}
    <rect x="380" y="68" width="100" height="44" rx="8"
-         fill="var(--bad)"  fill-opacity=".14" stroke="var(--bad)"/>
+         fill="var(--slate)" fill-opacity=".14" stroke="var(--slate)"/>
    <rect x="560" y="68" width="100" height="44" rx="8"
          fill="var(--ok)"   fill-opacity=".14" stroke="var(--ok)"/>
   </g>
   <g text-anchor="middle" font-weight="700" class="svgt-lg">
    <text x="70"  y="89" fill="var(--mut)">S<tspan dy="3" class="svgt-sub">{{ strain }}</tspan></text>
    <text x="250" y="89" fill="var(--gold)">I<tspan dy="3" class="svgt-sub">{{ strain }}</tspan></text>
-   <text x="430" y="89" fill="var(--bad)">H<tspan dy="3" class="svgt-sub">{{ strain }}</tspan></text>
+   <text x="430" y="89" fill="var(--slate)">H<tspan dy="3" class="svgt-sub">{{ strain }}</tspan></text>
    <text x="610" y="89" fill="var(--ok)">R<tspan dy="3" class="svgt-sub">{{ strain }}</tspan></text>
   </g>
   <g text-anchor="middle" class="svgt-sm" fill="currentColor">
