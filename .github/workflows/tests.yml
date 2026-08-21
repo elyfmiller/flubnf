@@ -17,10 +17,19 @@ jobs:
       - name: tests (failures become annotations)
         run: |
           set -o pipefail
-          FLUBNF_HUB=/nonexistent pytest tests/ app/tests/ -rf -o addopts="" | tee pytest.out || {
+          FLUBNF_HUB=/nonexistent pytest tests/ app/tests/ -ra -o addopts="" | tee pytest.out || {
             grep -E "^(FAILED|ERROR)" pytest.out | head -20 | while read -r line; do
               echo "::error::${line}"
             done
+            # a collection or import crash produces no summary lines at all;
+            # surface the tail so the failure is never a bare exit code 1
+            if ! grep -qE "^(FAILED|ERROR)" pytest.out; then
+              tail -n 40 pytest.out | while read -r line; do
+                echo "::error::${line}"
+              done
+            fi
+            { echo "## pytest tail (${{ runner.os }}, py${{ matrix.python-version }})";
+              echo '```'; tail -n 60 pytest.out; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           }
 
@@ -49,9 +58,18 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          FLUBNF_HUB=/nonexistent pytest tests/ app/tests/ -rf -o addopts="" | tee pytest.out || {
+          FLUBNF_HUB=/nonexistent pytest tests/ app/tests/ -ra -o addopts="" | tee pytest.out || {
             grep -E "^(FAILED|ERROR)" pytest.out | head -20 | while read -r line; do
               echo "::error::${line}"
             done
+            # a collection or import crash produces no summary lines at all;
+            # surface the tail so the failure is never a bare exit code 1
+            if ! grep -qE "^(FAILED|ERROR)" pytest.out; then
+              tail -n 40 pytest.out | while read -r line; do
+                echo "::error::${line}"
+              done
+            fi
+            { echo "## pytest tail (${{ runner.os }}, py${{ matrix.python-version }})";
+              echo '```'; tail -n 60 pytest.out; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           }
