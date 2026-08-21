@@ -69,6 +69,14 @@ def _newest_input(root: Path) -> float:
         times.append(sf.stat().st_mtime)
     if PLAYER_SRC.is_file():
         times.append(PLAYER_SRC.stat().st_mtime)
+    # Rebuilt playback payloads must refresh the export too: official
+    # comparator files arriving (Update data on a sparse clone) rebuild the
+    # per-week caches without touching any input above, and a report built
+    # earlier would keep serving "pending" stats forever (field-found, the
+    # third organ of the same staleness disease).
+    pc = root / "playback_cache"
+    if pc.is_dir():
+        times.extend(f.stat().st_mtime for f in pc.glob("*.json"))
     return max(times)
 
 
