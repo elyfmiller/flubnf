@@ -161,12 +161,18 @@ progress::-webkit-progress-bar{background:var(--track);border-radius:99px}
 progress::-webkit-progress-value{background:var(--gold-bright);border-radius:99px}
 progress::-moz-progress-bar{background:var(--gold-bright);border-radius:99px}
 /* ---- home hero: LANL Blue tile, cyan emphasis ---- */
+/* the tile sizes itself to the window: padding is a clamp, so the inner
+   width grows with the viewport instead of stepping at a breakpoint */
 .hero{background:linear-gradient(135deg,var(--navy) 0%,var(--navy-deep) 100%);
-  color:#fff;border-radius:10px;padding:1.3rem 1.4rem;margin-bottom:.75rem}
+  color:#fff;border-radius:10px;
+  padding:clamp(1.1rem,1.9vw,2.1rem) clamp(1.2rem,2.4vw,2.6rem);
+  margin-bottom:.75rem}
 .hero h1{color:#fff;font-size:var(--fs-hero-h1);margin:0 0 .4rem}
-/* the lead reflows inside a measure that grows with the type, so it never
-   clips: max-width is in rem and the text wraps rather than overflowing */
-.hero p{color:#C6CFEE;max-width:56rem;margin:0;font-size:var(--fs-lead)}
+/* the lead carries NO measure cap: it reflows to the full inner width of the
+   tile at every window size, so a wide monitor leaves no dead column on the
+   right. The text still wraps rather than overflowing, because the paragraph
+   is a plain block in the tile's content box. */
+.hero p{color:#C6CFEE;max-width:none;margin:0;font-size:var(--fs-lead)}
 .hero .gold{color:var(--gold-bright)}
 .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:.75rem}
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}
@@ -249,8 +255,10 @@ details.intro[open] > summary{margin-bottom:.15rem}
 /* the weekly pipeline SVG rides the page ink for currentColor strokes */
 .pipe svg{color:var(--ink);width:100%;max-width:940px;display:block;
   margin:.4rem auto .1rem}
-/* seal-results table: tight rows, right-aligned tabular numerals */
-.perf{max-width:640px}
+/* seal-results table: tight rows, right-aligned tabular numerals. No width
+   cap, so the columns spread across the whole card instead of leaving a dead
+   column beside them. */
+.perf{width:100%}
 .perf td,.perf th{padding:.28rem .6rem}
 .perf td.num,.perf th.num{text-align:right}
 .perf td.rel{font-weight:650}

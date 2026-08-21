@@ -542,7 +542,9 @@ def _run_all(spec: RunSpec) -> None:
                                      if spec.engine == "analogue"
                                      else "engine venv not installed (Tier A)")
             (workroot / "cells.json").write_text("[]")
-        # 1b. optional third member: the two-strain SIHRS (panel-validated).
+        # 1b. research third member: the two-strain SIHRS. It failed the
+        # full-grid ensemble gate and has no UI control; members=3 is still
+        # accepted here so the variant can be run and scored for research.
         # Same engine, spec.extra variant switch, sibling subdir of the SAME
         # workroot so the run stays one ledger row and one archive entry.
         pf2s_samples = {}
@@ -1123,22 +1125,24 @@ def model_page(request: Request, name: str):
                      "Measured three-season retrospective relWIS: 1.105 in "
                      "2023-24, 0.835 in 2024-25, 0.641 in 2025-26."),
         "pf2s": ("Two-strain SIHRS",
-                 "The panel-validated candidate member. It models influenza "
-                 "A and influenza B as independent SIHRS circuits, each with "
-                 "its own seasonally varying transmission, and reports "
-                 "admissions as the sum of the two. Fitting uses two data "
-                 "channels, both vintage-true: weekly NHSN hospital "
-                 "admissions, and NREVSS typed positives entering the "
-                 "likelihood as binomial counts of influenza A among typed "
-                 "specimens. The initial A/B mix at the season start comes "
-                 "from the same typed surveillance series. Measured "
-                 "state-panel relWIS across the three replayed seasons: "
-                 "0.849 in 2023-24, 0.554 in 2024-25, 0.685 in 2025-26; on "
-                 "turning-point weeks it scores 1.039 against 1.122 for the "
-                 "single-strain filter. It runs alongside the validated pair "
-                 "as an optional third member with equal weights; the "
-                 "default submission ensemble remains the two-member blend "
-                 "while full-grid validation is in progress."),
+                 "A research variant, not a shipped ensemble member. It "
+                 "models influenza A and influenza B as independent SIHRS "
+                 "circuits, each with its own seasonally varying "
+                 "transmission, and reports admissions as the sum of the "
+                 "two. Fitting uses two data channels, both vintage-true: "
+                 "weekly NHSN hospital admissions, and NREVSS typed "
+                 "positives entering the likelihood as binomial counts of "
+                 "influenza A among typed specimens. The initial A/B mix at "
+                 "the season start comes from the same typed surveillance "
+                 "series. It cleared the turning-point gate twice, on the "
+                 "state panel and again on the full grid, scoring relWIS "
+                 "0.953 on turn cells against 0.993 for the single-strain "
+                 "filter, and 0.968 against 1.023 on the plateau season. It "
+                 "failed the gate that decides membership: on identical "
+                 "full-grid cells the equal-weight three-member ensemble "
+                 "scored 0.719 against 0.704 for the two-member blend, so "
+                 "the submitted ensemble stays at two members and this "
+                 "engine is kept for research runs only."),
         "ensemble": ("Ensemble",
                      "The submitted forecast. It averages the members' "
                      "forecast quantiles with equal, unfitted weights: "
@@ -1160,8 +1164,8 @@ def model_page(request: Request, name: str):
         "analogue": ("The empirical member: it scales the latest observation "
                      "by historical growth ratios from matching calendar "
                      "weeks."),
-        "pf2s": ("The candidate member: influenza A and B as parallel SIHRS "
-                 "circuits fitted to two data channels."),
+        "pf2s": ("A research variant, not shipped: influenza A and B as "
+                 "parallel SIHRS circuits fitted to two data channels."),
         "ensemble": ("The submitted forecast: an equal-weight quantile "
                      "average of the member forecasts."),
     }

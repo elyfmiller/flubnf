@@ -27,11 +27,15 @@ def test_home_renders_workflow_performance_and_component_cards():
     assert "Weekly forecasting workflow" in r.text
     assert "10,000 candidate epidemics" in r.text
     assert "Equal-weight blend" in r.text
-    # measured performance: the three-season seal table
+    # measured performance: the three-season seal table, now carrying the
+    # field percentile per season and a mean on the pooled row
     assert 'class="perf"' in r.text
     for cell in ("0.848", "0.651", "0.691", "0.704",
-                 "14 of 34 teams", "4 of 40 teams"):
+                 "14 of 34 teams", "4 of 40 teams", "19 of 47 teams",
+                 "Percentile", "61st", "92nd", "mean 71st"):
         assert cell in r.text, cell
+    # the two-strain member is settled, not pending
+    assert "full-grid validation is in progress" not in r.text
     # component cards lead with a visual and keep links and versions
     assert 'alt="PyBNF brand mark"' in r.text
     assert "Simulation-trace glyph" in r.text
@@ -46,6 +50,15 @@ def test_home_renders_workflow_performance_and_component_cards():
     assert 'class="stepnum"' in r.text
     assert "never fitted" in r.text
     assert "frozen" not in r.text
+
+
+def test_two_strain_is_off_the_navbar_but_still_routed():
+    """It failed the full-grid ensemble gate: the nav affordance goes, the
+    route stays so existing links and the research path survive."""
+    home = client.get("/")
+    assert 'href="/model/pf2s"' not in home.text
+    assert "Two-strain SIHRS</a>" not in home.text
+    assert client.get("/model/pf2s").status_code == 200
 
 
 def test_model_pages_render_mechanism_and_collapsed_intro():

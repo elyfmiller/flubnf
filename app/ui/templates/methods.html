@@ -64,29 +64,50 @@
  seconds.</p>
 </div>
 
-<div class="card" id="two-strain"><h2>The two-strain variant</h2>
- <p>A two-strain SIHRS variant models influenza A and influenza B as
- independent transmission circuits, each with its own seasonally varying
- transmission rate and its own peak timing. Observed admissions are the sum
- of the two circuits' admission fluxes, which lets the model represent
- seasons in which an early A wave is followed by a late B wave.</p>
- <p>Fitting adds a second likelihood channel to the particle filter. In
- addition to weekly NHSN admissions, each candidate epidemic is weighed by
- weekly typed positives from NREVSS clinical laboratories, treated as
- binomial counts of influenza A among typed specimens, so the filter learns
- the A/B mix as well as the admissions level. The initial A/B mix at the
- season start is also set from this typed surveillance series rather than
- fitted. Both channels use vintage data; typed counts enter only through
- the week preceding the forecast date, matching the NREVSS release
- cadence.</p>
- <p>In a state-panel replay of the three seasons the two-strain member
- scored relWIS 0.849, 0.554, and 0.685, and on turning-point weeks scored
- 1.039 against 1.122 for the single-strain filter. It is available as an
- optional third ensemble member, blended with equal weights. The submitted
- ensemble remains the two-member blend by default: the three-member margin
- on the panel (0.6151 against 0.6202) is inside the measured noise floor,
- so promotion waits on the full-grid validation now in progress.</p>
- <p class="hint">Model tab: <a href="/model/pf2s">Two-strain SIHRS</a>.</p>
+<div class="card" id="two-strain">
+ <h2>Research: the two-strain variant
+  <span class="pill">not in the shipped ensemble</span></h2>
+ <p>This section documents a research variant. It is <b>not</b> part of the
+ submitted forecast, and it has no tab in the primary navigation. It is
+ recorded here because it passed the turning-point gate twice while failing
+ the ensemble gate, which is a result worth keeping.</p>
+
+ <p><b>What it does.</b> The two-strain SIHRS variant models influenza A and
+ influenza B as independent transmission circuits, each with its own
+ seasonally varying transmission rate and its own peak timing. Each circuit
+ carries its own susceptible, hospitalized, and recovered pools spanning the
+ whole population, so infection with one strain confers no protection
+ against the other. Observed admissions are the sum of the two circuits'
+ admission fluxes, which lets the model represent seasons in which an early
+ A wave is followed by a late B wave.</p>
+
+ {{ dg.sihrs2(uid='m2') }}
+
+ <p><b>A second observation channel.</b> Fitting adds a second likelihood
+ channel to the particle filter. In addition to weekly NHSN admissions, each
+ candidate epidemic is weighed by weekly typed positives from NREVSS
+ clinical laboratories, treated as binomial counts of influenza A among
+ typed specimens, so the filter learns the A/B mix as well as the admissions
+ level. The initial A/B mix at the season start is also set from this typed
+ surveillance series rather than fitted. Both channels use vintage data;
+ typed counts enter only through the week preceding the forecast date,
+ matching the NREVSS release cadence.</p>
+
+ <p><b>The verdict.</b> On turning-point cells the two-strain member scored
+ relWIS 0.953 against 0.993 for the single-strain particle filter, and it
+ cleared that turn-phase gate twice, first on the state panel and then on
+ the full grid. On the plateau season, the season the single-strain filter
+ handles worst, it scored 0.968 against 1.023. The gate it failed is the one
+ that decides membership: on identical full-grid cells the equal-weight
+ three-member ensemble scored 0.719 against 0.704 for the two-member blend.
+ Adding it therefore makes the submitted forecast worse, so it is not part
+ of the shipped ensemble and the blend stays at two members.</p>
+
+ <p>The engine remains available for research runs. The
+ <a href="/model/pf2s">two-strain model page</a> stays reachable by direct
+ URL, and the run endpoint still accepts a three-member request, so the
+ variant can be scored and developed further without appearing in the
+ operational path.</p>
 </div>
 
 <div class="card" id="analogue"><h2>The calendar analogue</h2>
@@ -111,12 +132,13 @@
  analogue described above by averaging their forecast quantiles. The two
  members fail differently; the mechanistic model can track turning points
  the analogue cannot anticipate, while the analogue is difficult to beat at
- short horizons. The members carry equal, unfitted weights: 50/50 for the
- two-member blend, equal thirds when the optional two-strain member joins.
- Fitting the weights was evaluated and rejected: a leave-one-season-out
- weight fit scored worse than the equal blend in the three-season replay
- (pooled relWIS 0.717 against 0.704), so no weight is tuned on any
- season.</p>
+ short horizons. The members carry equal, unfitted weights: 50/50 across the
+ two shipped members, and equal thirds if a research run adds the
+ <a href="#two-strain">two-strain variant</a>, which the submitted ensemble
+ does not. Fitting the weights was evaluated and rejected: a
+ leave-one-season-out weight fit scored worse than the equal blend in the
+ three-season replay (pooled relWIS 0.717 against 0.704), so no weight is
+ tuned on any season.</p>
  <p class="hint">Model tab: <a href="/model/ensemble">Ensemble</a>.</p>
 </div>
 
