@@ -26,6 +26,8 @@
  <div class="runbar"><div class="rfill" style="width:2%"></div></div>
  <p class="runstat rstat">{{ prog.done }}/{{ prog.total }} weeks</p>
  <p class="hint rbasis"></p>
+ {# the settings this replay runs under, from its run record #}
+ {{ settings_html(prog.settings) | safe }}
  {# stopping and pausing are safe: the week in flight is finished and
     checkpointed first, so neither needs a confirmation modal #}
  <div class="row">
@@ -52,6 +54,7 @@
  kept and Run resumes from there.{% elif prog.status == 'interrupted' %}The
  application closed mid-replay; completed weeks are kept and Run resumes from
  there.{% endif %}</p>
+{{ settings_html(prog.settings) | safe }}
 {% endif %}
 <p class="row" style="gap:.55rem">
  {# the download attribute makes the native window (WKWebView) treat the

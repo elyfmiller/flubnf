@@ -148,14 +148,18 @@ def _html(fig, include_js=False, div_id=None):
 
 def build_report(reference_date: str, state_cards: dict, state_details: dict,
                  national: dict, out_path: Path,
-                 national_map_html: str = "", elapsed_s=None) -> Path:
+                 national_map_html: str = "", elapsed_s=None,
+                 settings_html: str = "") -> Path:
     """state_cards: abbr -> hover-card data (choropleth).
     state_details: abbr -> dict(name, fan=…, cat=…, acc=…, table_rows=[…]).
     national: dict(fan=…, acc=…, summary_html=str).
     national_map_html: pre-rendered usmap.national_svg(...) output; when given,
     a 'state view' / 'national view' toggle appears above the map.
     elapsed_s: this run's wall time in seconds; when given, the footer states
-    it. Omitted rather than guessed when the caller does not know."""
+    it. Omitted rather than guessed when the caller does not know.
+    settings_html: the run-settings block (app.core.runs.settings_html),
+    rendered beside the wall-time line so the report states exactly what
+    produced it. Omitted when the caller does not supply it."""
     # Build-time SVG map (see usmap.py) -- the plotly geo choropleth fetched
     # its geometry from cdn.plot.ly at runtime and rendered empty offline/CSP.
     from app.core.usmap import svg_map
@@ -223,12 +227,16 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
     else:
         plotly_js = ""
 
-    # footer: what this report cost to produce, stated plainly
+    # footer: what this report cost to produce, and what produced it. The
+    # settings sit with the wall time because they answer the same question
+    # a reader asks of an artifact months later: which run was this?
     footer = ""
     if elapsed_s is not None:
         from app.core.runs import fmt_hms
         footer = (f'<p class="hint" id="runtime">Run wall time: '
                   f'{fmt_hms(elapsed_s)} (h:mm:ss).</p>')
+    if settings_html:
+        footer += settings_html
 
     html = f"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">

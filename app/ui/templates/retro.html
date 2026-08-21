@@ -96,6 +96,10 @@ and move on; scores come later, against settled truth.</p>
       readout above, and two clocks on one card would only disagree #}
    <p class="hint timing">total wall time {{ s.elapsed_s | hms }}{% if s.mean_s %} · mean {{ "%.0f"|format(s.mean_s) }} s per week over {{ s.weeks_measured }} timed{% endif %}</p>
    {% endif %}
+   {# the settings this replay runs under, from its own run record: under
+      the progress readouts and secondary to them. Absent for the sealed
+      validation runs, which predate the record. #}
+   {{ settings_html(s.settings) | safe }}
    {% if s.active %}
    {# stopping and pausing are safe: the current week is finished and
       checkpointed first, so neither needs a confirmation modal #}

@@ -104,7 +104,8 @@ def test_retro_bg_stops_between_weeks_and_keeps_weeks(monkeypatch, tmp_path):
     seen = []
 
     def fake_run_season(root, season, locations, replicates=3,
-                        particles=10_000, width=4, progress=None):
+                        particles=10_000, width=4, progress=None,
+                        settings=None):
         seen.append("week1")                 # first week lands on disk
         srv._retro_stop.add(season)          # then a stop request arrives
         progress("2098-11-07")               # the between-weeks stop point
@@ -191,7 +192,7 @@ def test_report_path_endpoint_builds_and_returns_path(tmp_path, monkeypatch):
     from app.core import report_season
     calls = []
 
-    def fake_build(root, season, archive=""):
+    def fake_build(root, season, archive="", build="", versions=None):
         calls.append((root, season))
         p = root / f"{season}-FluBNF-season-report.html"
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -211,7 +212,7 @@ def test_report_path_endpoint_builds_and_returns_path(tmp_path, monkeypatch):
 def test_report_path_unknown_season_is_404(tmp_path, monkeypatch):
     from app.core import playback, report_season
 
-    def raise_unknown(root, season, archive=""):
+    def raise_unknown(root, season, archive="", build="", versions=None):
         raise playback.UnknownWeek(f"no weeks for {season}")
 
     monkeypatch.setattr(report_season, "build_season_report", raise_unknown)

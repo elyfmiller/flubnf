@@ -27,7 +27,7 @@ import json
 from pathlib import Path
 
 from app.core import playback, retro
-from app.core.runs import fmt_hms
+from app.core.runs import fmt_hms, settings_html, version_pairs
 
 # PyBNF brand palette (dark), shared with report_v2
 INK = "#E9EAF4"; MUT = "#9AA1C4"; PAPER = "#0C0D17"; CARD = "#151729"
@@ -105,6 +105,27 @@ def _timing_note(root: Path) -> str:
     return '<p class="sub">' + ", ".join(bits) + ".</p>"
 
 
+#: the settings block's own marker, used both to render it and to decide
+#: that a cached report predates it (see build_season_report)
+SETTINGS_MARK = "Run settings"
+
+
+def _settings_note(root: Path, build: str = "",
+                   versions: dict | None = None) -> str:
+    """The replay's settings, the application build, and the engine
+    versions, so the export states exactly what produced it.
+
+    Read from the season's own run record, which means an archived run's
+    export describes that run and not the live season. Absent, never
+    invented, when the record carries no settings: the sealed validation
+    runs predate the record."""
+    pairs = retro.settings_summary(retro.read_meta(root))
+    if not pairs:
+        return ""
+    return settings_html(pairs + version_pairs(build, versions),
+                         title=SETTINGS_MARK, cls="sub")
+
+
 ARCHIVE_MARK = "Archived run"
 
 
@@ -119,11 +140,14 @@ def _archive_note(archive: str) -> str:
             + ", kept aside from the live season.</p>")
 
 
-def build_season_report(root: Path, season: str, archive: str = "") -> Path:
+def build_season_report(root: Path, season: str, archive: str = "",
+                        build: str = "", versions: dict | None = None) -> Path:
     """Build (or reuse, when fresh) the self-contained season report.
 
     `archive` is the identifier of an archived run whose tree `root` is; it
-    only labels the header, since the data all comes from `root`."""
+    only labels the header, since the data all comes from `root`. `build`
+    and `versions` name the code that produced the export; both are omitted
+    from the header rather than guessed when the caller does not know."""
     root = Path(root)
     weeks = playback.season_weeks(root)
     if not weeks:
@@ -132,11 +156,16 @@ def build_season_report(root: Path, season: str, archive: str = "") -> Path:
             "report to build.")
     out = report_path(root, season)
     newest = _newest_input(root)
+    settings_note = _settings_note(root, build, versions)
     if out.is_file() and out.stat().st_mtime >= newest:
         # a report that travelled INTO an archive with the season tree keeps
         # its old mtime, so freshness alone would serve it unlabelled: make
-        # the label part of the freshness test
-        if not archive or ARCHIVE_MARK in out.read_text()[:8192]:
+        # the label part of the freshness test. The settings block joins it,
+        # so a report built before the settings were recorded is rebuilt
+        # rather than served without them.
+        head = out.read_text()[:8192]
+        if ((not archive or ARCHIVE_MARK in head)
+                and (not settings_note or SETTINGS_MARK in head)):
             return out
     payloads = {w: playback.build_week(root, season, w) for w in weeks}
     data = {"season": season, "weeks": weeks, "payloads": payloads}
@@ -144,7 +173,8 @@ def build_season_report(root: Path, season: str, archive: str = "") -> Path:
     data_json = json.dumps(data, separators=(",", ":")).replace("</", "<\\/")
     plotly_js = _plotlyjs()
     player_js = _player_js()
-    timing_note = _archive_note(archive) + _timing_note(root)
+    timing_note = (_archive_note(archive) + _timing_note(root)
+                   + settings_note)
     html = _compose(season, weeks, data_json, plotly_js, player_js,
                     size_note="", timing_note=timing_note)
     size = len(html.encode("utf-8"))

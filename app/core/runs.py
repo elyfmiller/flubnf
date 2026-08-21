@@ -40,6 +40,114 @@ def fmt_hms(seconds) -> str:
     return f"{s // 3600:d}:{(s % 3600) // 60:02d}:{s % 60:02d}"
 
 
+#: A location list this long or shorter is named in full; longer ones are
+#: counted. Naming six states is useful, naming forty is noise.
+LOCATION_LIST_LIMIT = 8
+
+#: The FluSight jurisdiction count (50 states, DC, Puerto Rico). A run
+#: covering all of them says so instead of reporting a bare number.
+ALL_JURISDICTIONS = 52
+
+ENGINE_LABELS = {"all": "all models (PF, analogue, ensemble)",
+                 "pf": "particle filter only",
+                 "analogue": "calendar analogue only",
+                 "amcmc": "adaptive MCMC",
+                 "retro": "particle filter (retrospective)"}
+
+
+def _is_national(loc) -> bool:
+    return str(loc).upper() in ("US", "US (NATIONAL)")
+
+
+def locations_phrase(locations) -> str:
+    """How a run's location scope reads to a person: the count always, the
+    names too when the list is short enough to be worth reading. The
+    national fit is reported separately from the state count, because it is
+    always added and would otherwise inflate every number by one."""
+    locs = [str(l) for l in (locations or [])]
+    states = [l for l in locs if not _is_national(l)]
+    tail = " plus US national" if len(states) != len(locs) else ""
+    if not states:
+        return ("US national only" if tail else "none")
+    if len(states) >= ALL_JURISDICTIONS:
+        return f"all {len(states)} jurisdictions{tail}"
+    noun = "state" if len(states) == 1 else "states"
+    if len(states) <= LOCATION_LIST_LIMIT:
+        return f"{len(states)} {noun}{tail}: " + ", ".join(states)
+    return f"{len(states)} {noun}{tail}"
+
+
+def spec_settings(spec) -> list:
+    """The settings that produced a console run, as (label, value) pairs.
+
+    One formatter, three audiences: the live progress card, the run page,
+    and the weekly report all render this same list, so a reader comparing
+    an artifact against the console never has to reconcile two wordings.
+
+    `spec` may be a RunSpec, the dict the ledger stores, or that dict's JSON
+    text (the ledger row carries the JSON verbatim, which is the record of
+    record). An unreadable spec yields an empty list rather than raising:
+    settings are context, and context must never take a page down.
+    """
+    if isinstance(spec, RunSpec):
+        d = asdict(spec)
+    elif isinstance(spec, str):
+        try:
+            d = json.loads(spec or "{}")
+        except (ValueError, TypeError):
+            return []
+    elif isinstance(spec, dict):
+        d = spec
+    else:
+        return []
+    if not isinstance(d, dict) or not d:
+        return []
+    extra = d.get("extra") if isinstance(d.get("extra"), dict) else {}
+    engine = str(d.get("engine", "") or "")
+    pairs = [("forecast date", str(d.get("forecast_date", "") or "unknown")),
+             ("locations", locations_phrase(d.get("locations"))),
+             ("engine", ENGINE_LABELS.get(engine, engine or "unknown")),
+             ("replicates", str(d.get("replicates", "") or "")),
+             ("particles", f"{int(d.get('particles') or 0):,}")]
+    pairs.append(("weeks dropped", str(int(d.get("weeks_to_drop") or 0))))
+    pairs.append(("ensemble members", str(int(extra.get("members") or 2))))
+    return [(k, v) for k, v in pairs if v not in ("", None)]
+
+
+def version_pairs(build: str = "", versions: dict | None = None) -> list:
+    """What produced an artifact, beyond its settings: the application build
+    and the engine versions. Recorded in the artifacts so a report states
+    exactly which code wrote it; omitted, never guessed, when unknown."""
+    v = versions or {}
+    pairs = []
+    if build:
+        pairs.append(("app build", str(build)))
+    for key, label in (("pybnf", "pybnf"), ("bngsim", "bngsim"),
+                       ("bionetgen", "BioNetGen")):
+        if v.get(key):
+            pairs.append((label, str(v[key])))
+    return pairs
+
+
+def settings_html(pairs, title: str = "Run settings",
+                  cls: str = "hint runsettings", el_id: str = "") -> str:
+    """The one rendering of a settings block, used by the console cards, the
+    run page, and both report exports. Compact and secondary by design: it
+    sits under the readouts a reader came for, never above them.
+
+    Everything is escaped; the values include user-supplied location names.
+    """
+    import html as _html
+    items = [(k, v) for k, v in (pairs or []) if v not in ("", None)]
+    if not items:
+        return ""
+    body = " · ".join(f"{_html.escape(str(k))} {_html.escape(str(v))}"
+                      for k, v in items)
+    ident = f' id="{_html.escape(el_id)}"' if el_id else ""
+    return (f'<p class="{_html.escape(cls)}"{ident}>'
+            f'<strong>{_html.escape(title)}:</strong> {body}</p>')
+
+
 def derive_seed(location: str, forecast_date: str, replicate: int) -> int:
     """Deterministic per-(location, date, replicate) seed.
 
