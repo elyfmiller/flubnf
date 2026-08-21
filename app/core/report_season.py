@@ -105,8 +105,25 @@ def _timing_note(root: Path) -> str:
     return '<p class="sub">' + ", ".join(bits) + ".</p>"
 
 
-def build_season_report(root: Path, season: str) -> Path:
-    """Build (or reuse, when fresh) the self-contained season report."""
+ARCHIVE_MARK = "Archived run"
+
+
+def _archive_note(archive: str) -> str:
+    """One line saying the export came from an archived run, not the live
+    season. Without it two exports of the same season are indistinguishable
+    once they leave the machine."""
+    if not archive:
+        return ""
+    return ('<p class="sub">' + ARCHIVE_MARK + " "
+            + retro.stamp_human(archive)
+            + ", kept aside from the live season.</p>")
+
+
+def build_season_report(root: Path, season: str, archive: str = "") -> Path:
+    """Build (or reuse, when fresh) the self-contained season report.
+
+    `archive` is the identifier of an archived run whose tree `root` is; it
+    only labels the header, since the data all comes from `root`."""
     root = Path(root)
     weeks = playback.season_weeks(root)
     if not weeks:
@@ -116,14 +133,18 @@ def build_season_report(root: Path, season: str) -> Path:
     out = report_path(root, season)
     newest = _newest_input(root)
     if out.is_file() and out.stat().st_mtime >= newest:
-        return out
+        # a report that travelled INTO an archive with the season tree keeps
+        # its old mtime, so freshness alone would serve it unlabelled: make
+        # the label part of the freshness test
+        if not archive or ARCHIVE_MARK in out.read_text()[:8192]:
+            return out
     payloads = {w: playback.build_week(root, season, w) for w in weeks}
     data = {"season": season, "weeks": weeks, "payloads": payloads}
     # "</" would end the embedding <script> early; "<\/" is the same JSON
     data_json = json.dumps(data, separators=(",", ":")).replace("</", "<\\/")
     plotly_js = _plotlyjs()
     player_js = _player_js()
-    timing_note = _timing_note(root)
+    timing_note = _archive_note(archive) + _timing_note(root)
     html = _compose(season, weeks, data_json, plotly_js, player_js,
                     size_note="", timing_note=timing_note)
     size = len(html.encode("utf-8"))
