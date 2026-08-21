@@ -19,9 +19,18 @@ QUANTILES = (0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45,
              0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.975, 0.99)
 
 
-def quantile_rows(samples: dict, location_fips: str, reference_date: str) -> list:
-    """FluSight rows for one location from horizon->samples arrays."""
-    ref = pd.Timestamp(reference_date)
+def quantile_rows(samples: dict, location_fips: str, asof: str) -> list:
+    """FluSight rows for one location from horizon->samples arrays.
+
+    THE FROZEN JOIN (must match scripts/anchor_analysis.py, the formula the
+    seal's scoring validated): hub reference_date = our as-of Saturday + 7
+    days, and hub horizon 0..3 carries our samples "1".."4". Callers pass
+    the AS-OF date (spec.forecast_date); the reference is computed here, in
+    exactly one place. Passing the as-of straight through as the reference
+    mislabeled every exported CSV by one week (caught 2026-08-21, before
+    any real submission)."""
+    ref = pd.Timestamp(asof) + pd.Timedelta(days=7)
+    reference_date = str(ref.date())
     rows = []
     for h in (0, 1, 2, 3):
         s = np.asarray(samples.get(str(h + 1), []), float)
@@ -80,9 +89,11 @@ def write_submission(all_rows: Iterable[dict], model_id: str, team: str,
     return p
 
 
-def rows_from_quantiles(qs: dict, location_fips: str, reference_date: str) -> list:
-    """FluSight rows from horizon -> {level: value} (quantile-native members)."""
-    ref = pd.Timestamp(reference_date)
+def rows_from_quantiles(qs: dict, location_fips: str, asof: str) -> list:
+    """FluSight rows from horizon -> {level: value} (quantile-native members).
+    Same frozen join as quantile_rows: reference = as-of + 7 days."""
+    ref = pd.Timestamp(asof) + pd.Timedelta(days=7)
+    reference_date = str(ref.date())
     rows = []
     for h in (0, 1, 2, 3):
         q = qs.get(str(h + 1))
