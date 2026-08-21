@@ -1,6 +1,8 @@
 """Retrospective season player: the template renders with the playback
-controls, both views, and the live stats table, and the player JS reads only
-fields the playback API contract defines."""
+controls, both views, and the live stats table. The player logic itself is
+the shared app/ui/static/player.js (one file, loaded by this page and
+inlined into the season report), and the combined page-plus-player JS reads
+only fields the playback API contract defines."""
 import re
 import sys
 from pathlib import Path
@@ -8,6 +10,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.ui.server import templates                 # noqa: E402
+
+PLAYER_JS = (Path(__file__).resolve().parents[1] / "ui" / "static"
+             / "player.js").read_text()
 
 CONTEXT = dict(
     active="Retrospective", season="2098-99",
@@ -33,25 +38,30 @@ def test_player_controls_present():
         assert speed in html, speed
     # scrubber bound to the week list: max = n-1, initial = index of week
     assert 'max="1"' in html and 'value="1"' in html
-    # keyboard stepping
-    assert "ArrowLeft" in html and "ArrowRight" in html
+    # the page loads the shared player and hands it the live host config
+    assert '<script src="/static/player.js"></script>' in html
+    assert "FluBNFPlayer.init" in html
+    # keyboard stepping lives in the shared player
+    assert "ArrowLeft" in PLAYER_JS and "ArrowRight" in PLAYER_JS
     # view tabs and both views
     for marker in ('id="tab-map"', 'id="tab-fc"', 'id="view-map"',
                    'id="view-fc"', "Outlook map", "Forecast detail"):
         assert marker in html, marker
     # forecast detail: location select, model toggles, plot, US labeling
-    for marker in ('id="fd-loc"', 'id="fd-models"', 'id="fd-plot"',
-                   "US (official models only)"):
+    for marker in ('id="fd-loc"', 'id="fd-models"', 'id="fd-plot"'):
         assert marker in html, marker
+    assert "US (official models only)" in PLAYER_JS
     # official models are toggleable alongside ours
-    assert "FluSight-baseline" in html and "FluSight-ensemble" in html
+    assert "FluSight-baseline" in PLAYER_JS
+    assert "FluSight-ensemble" in PLAYER_JS
     # live stats table and the baseline note
     assert 'id="pb-stats"' in html
     assert "beats the CDC FluSight baseline" in html
-    # plotly config consistent with the app, plus scroll zoom and
+    # plotly config consistent across hosts, plus scroll zoom and
     # double-click reset
-    assert "displaylogo: false" in html and "scrollZoom: true" in html
-    assert "doubleClick: 'reset'" in html
+    assert "displaylogo: false" in PLAYER_JS
+    assert "scrollZoom: true" in PLAYER_JS
+    assert "doubleClick: 'reset'" in PLAYER_JS
     # the server-rendered map for the initial week is embedded
     assert "usmap-wrap" in html
 
@@ -61,19 +71,21 @@ def test_js_reads_only_contract_fields():
     # the playback endpoint path matches the contract exactly
     assert "/api/retro/" in html and "/playback/" in html
     # every payload access uses the `pl` variable; its fields must all be
-    # top-level keys of the contract payload
+    # top-level keys of the contract payload. The page and the shared
+    # player are one JS surface, so both are checked together.
+    both = html + PLAYER_JS
     contract = {"asof", "locations", "truth", "models", "official", "stats"}
-    fields = set(re.findall(r"\bpl\.(\w+)", html))
+    fields = set(re.findall(r"\bpl\.(\w+)", both))
     assert fields, "expected the player JS to read payload fields via pl.*"
     assert fields <= contract, fields - contract
     # stats entries expose exactly week_rel and cum_rel
-    stat_fields = set(re.findall(r"\bst\.(\w+)", html))
+    stat_fields = set(re.findall(r"\bst\.(\w+)", both))
     assert stat_fields <= {"week_rel", "cum_rel"}, stat_fields
     assert {"week_rel", "cum_rel"} <= stat_fields
     # our members and the officials all appear as model handles
     for m in ("ensemble", "pf", "analogue", "pf2s",
               "FluSight-baseline", "FluSight-ensemble"):
-        assert m in html, m
+        assert m in both, m
 
 
 def test_template_renders_shared_playback_state():
@@ -83,3 +95,8 @@ def test_template_renders_shared_playback_state():
     assert 'const SEASON = "2098-99"' in html
     # graceful loading and unavailable states are wired in
     assert "unavailable" in html and "loading" in html
+    # the live host feeds the player the fetch-backed payload getter and
+    # keeps the map view and error text on its side of the config
+    for marker in ("getPayload: ensurePayload", "payloadError:",
+                   "isCached:", "detailVisible:", "onSeek:", "preload:"):
+        assert marker in html, marker

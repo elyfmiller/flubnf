@@ -2,9 +2,12 @@
 
 The console's season player, frozen into a downloadable artifact. The file
 carries plotly.js inline (the report_v2 pattern), every stored week's
-playback payload embedded as one JSON block, and the player implemented in
-inline JS against that block. No server and no network are needed; the file
-works from a desktop or an email attachment.
+playback payload embedded as one JSON block, and the SHARED player
+(app/ui/static/player.js, the same file the console's season page loads)
+inlined verbatim, fed by a getPayload backed by the embedded block. Every
+future player feature lands in the console and in this export
+automatically. No server and no network are needed; the file works from a
+desktop or an email attachment.
 
 Scope, by design: the export carries the forecast detail view and the live
 relWIS table. The categorical weekly maps are omitted, since 30-plus inline
@@ -36,6 +39,11 @@ MODEL_COLORS = {"ensemble": ACCENT, "pf": "#6E8FD0",
 
 SIZE_WARN_BYTES = 25 * 1024 * 1024
 
+# the shared player: the very file the console's season page loads. It is
+# inlined verbatim at build time so both hosts run identical player code.
+PLAYER_SRC = Path(__file__).resolve().parents[1] / "ui" / "static" \
+    / "player.js"
+
 
 def report_path(root: Path, season: str) -> Path:
     return Path(root) / f"{season}-FluBNF-season-report.html"
@@ -46,13 +54,21 @@ def _plotlyjs() -> str:
     return get_plotlyjs()
 
 
+def _player_js() -> str:
+    return PLAYER_SRC.read_text()
+
+
 def _newest_input(root: Path) -> float:
-    """mtime of the newest report input: any samples.json, or scores.json."""
+    """mtime of the newest report input: any samples.json, scores.json, or
+    the shared player source itself (a player fix must refresh the export).
+    """
     times = [(root / "weeks" / w / "samples.json").stat().st_mtime
              for w in playback.season_weeks(root)]
     sf = root / "scores.json"
     if sf.is_file():
         times.append(sf.stat().st_mtime)
+    if PLAYER_SRC.is_file():
+        times.append(PLAYER_SRC.stat().st_mtime)
     return max(times)
 
 
@@ -73,20 +89,23 @@ def build_season_report(root: Path, season: str) -> Path:
     # "</" would end the embedding <script> early; "<\/" is the same JSON
     data_json = json.dumps(data, separators=(",", ":")).replace("</", "<\\/")
     plotly_js = _plotlyjs()
-    html = _compose(season, weeks, data_json, plotly_js, size_note="")
+    player_js = _player_js()
+    html = _compose(season, weeks, data_json, plotly_js, player_js,
+                    size_note="")
     size = len(html.encode("utf-8"))
     if size > SIZE_WARN_BYTES:
         note = ('<p class="warn">Size notice: this file is %.0f MB, above '
                 'the 25 MB guideline. It remains fully functional, but it '
                 'may open slowly and some mail systems will refuse to '
                 'attach it.</p>' % (size / (1024 * 1024)))
-        html = _compose(season, weeks, data_json, plotly_js, size_note=note)
+        html = _compose(season, weeks, data_json, plotly_js, player_js,
+                        size_note=note)
     out.write_text(html)
     return out
 
 
 def _compose(season: str, weeks: list, data_json: str, plotly_js: str,
-             size_note: str) -> str:
+             player_js: str, size_note: str) -> str:
     return (_PAGE
             .replace("@@SEASON@@", season)
             .replace("@@NWEEKS@@", str(len(weeks)))
@@ -95,6 +114,7 @@ def _compose(season: str, weeks: list, data_json: str, plotly_js: str,
             .replace("@@MAXIDX@@", str(len(weeks) - 1))
             .replace("@@SIZENOTE@@", size_note)
             .replace("@@PLOTLY@@", plotly_js)
+            .replace("@@PLAYERJS@@", player_js)
             .replace("@@DATA@@", data_json))
 
 
@@ -186,289 +206,36 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 </div>
 <script id="pbdata" type="application/json">@@DATA@@</script>
 <script>
-// FluBNF season player (export build): the same playback experience as the
-// console's season page, driven by the embedded JSON block above instead of
-// the playback API. The payload variable is ALWAYS named `pl` so the
-// contract test can verify the JS reads only fields the API defines.
+@@PLAYERJS@@
+</script>
+<script>
+// FluBNF season player (export host): the shared player above is inlined
+// verbatim from the console's player.js at build time; this block only
+// feeds it the embedded JSON block and the static host configuration. The
+// payload variable is ALWAYS named `pl` so the contract test can verify
+// the JS reads only fields the API defines.
 'use strict';
 var DATA = JSON.parse(document.getElementById('pbdata').textContent);
 var WEEKS = DATA.weeks, PAY = DATA.payloads;
-var INK = '#E9EAF4', MUT = '#9AA1C4', LINE = '#262A45';
-var COLORS = {ensemble: '#34C0F0', pf: '#6E8FD0',
-              analogue: '#FFC72C', pf2s: '#2BB5A0'};
-var PCONF = {responsive: true, displaylogo: false, scrollZoom: true,
-             doubleClick: 'reset'};
-var scrub = document.getElementById('pb-scrub');
-var P = {idx: 0, playing: false, timer: null, loc: null, on: {}};
-// the two CDC comparators are a fixed part of the UI: their toggles exist
-// even when no week's payload carries official submissions
-var OFFICIALS = ['FluSight-baseline', 'FluSight-ensemble'];
-var ALLM = [], OFFS = OFFICIALS.slice();
-
-// ours: brand colors, solid; officials: greys, dashed or dotted. Display
-// names keep the two ensembles unmistakable in the legend, the model
-// toggles, and the stats table.
-function colorOf(m){
-  if(m === 'FluSight-ensemble') return '#C7CCDD';
-  return COLORS[m] || MUT;
-}
-function dashOf(m){
-  return m === 'FluSight-baseline' ? 'dot'
-       : m === 'FluSight-ensemble' ? 'dash' : 'solid';
-}
-function nameOf(m){
-  var names = {ensemble: 'NAU ensemble',
-               'FluSight-ensemble': 'FluSight ensemble (official)',
-               'FluSight-baseline': 'FluSight baseline (official)'};
-  return names[m] || m;
-}
-function rgba(c, a){
-  var n = parseInt(c.slice(1), 16);
-  return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ','
-    + (n & 255) + ',' + a + ')';
-}
-function addDays(iso, n){
-  var d = new Date(iso + 'T00:00:00Z');
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
-
-// controls are built once, from the union across every embedded week, so a
-// model or location present in only part of the season still gets a toggle
-(function buildControls(){
-  var models = {}, offs = {}, locs = {};
-  WEEKS.forEach(function(w){
-    var pl = PAY[w];
-    if(!pl) return;
-    Object.keys(pl.models || {}).forEach(function(k){ models[k] = 1; });
-    Object.keys(pl.official || {}).forEach(function(k){ offs[k] = 1; });
-    (pl.locations || []).forEach(function(l){ locs[l] = 1; });
-  });
-  OFFICIALS.forEach(function(k){ offs[k] = 1; });
-  OFFS = Object.keys(offs).sort();
-  var ours = ['ensemble', 'pf', 'analogue', 'pf2s']
-    .filter(function(k){ return models[k]; });
-  ALLM = ours.concat(OFFS);
-  var dflt = {ensemble: true, pf: true, analogue: true};
-  ALLM.forEach(function(k){ P.on[k] = !!dflt[k]; });
-  var box = document.getElementById('fd-models');
-  box.innerHTML = ALLM.map(function(k){
-    return '<label><input type="checkbox" data-m="' + k + '"'
-      + (P.on[k] ? ' checked' : '') + '> <span class="sw" style="background:'
-      + colorOf(k) + '"></span>' + nameOf(k) + '</label>';
-  }).join('');
-  box.querySelectorAll('input').forEach(function(c){
-    c.addEventListener('change', function(){
-      P.on[c.dataset.m] = c.checked;
-      draw();
-    });
-  });
-  // our retrospective members are per-state; the US entry is served by the
-  // official models only, and says so
-  var sel = document.getElementById('fd-loc');
-  var names = Object.keys(locs).sort();
-  sel.innerHTML = '<option value="US">US (official models only)</option>'
-    + names.map(function(l){ return '<option>' + l + '</option>'; }).join('');
-  P.loc = names[0] || 'US';
-  sel.value = P.loc;
-  sel.addEventListener('change', function(){ P.loc = sel.value; draw(); });
-})();
-
-// ---- live stats table: per enabled model, this week and cumulative ----
-function renderStats(pl){
-  var tb = document.querySelector('#pb-stats tbody');
-  // a missing score is quiet "pending", never NaN or a crashed panel
-  var fmt = function(v){
-    return (typeof v === 'number' && isFinite(v))
-      ? '<td class="num ' + (v < 1 ? 'ok' : 'bad') + '">'
-        + v.toFixed(3) + '</td>'
-      : '<td class="num hint">pending</td>';
-  };
-  var rows = [];
-  ALLM.forEach(function(m){
-    if(!P.on[m]) return;
-    var st = pl && pl.stats ? pl.stats[m] : null;
-    rows.push('<tr><td><span class="sw" style="background:' + colorOf(m)
-      + '"></span>' + nameOf(m) + '</td>' + fmt(st ? st.week_rel : null)
-      + fmt(st ? st.cum_rel : null) + '</tr>');
-  });
-  tb.innerHTML = rows.join('')
-    || '<tr><td colspan="3" class="hint">no models enabled</td></tr>';
-  document.getElementById('pb-status').textContent =
-    pl ? '' : 'stats unavailable for this week';
-  document.getElementById('pb-offhint').hidden =
-    !pl || Object.keys(pl.official || {}).length > 0;
-}
-
-// ---- forecast fan for one model: median plus 50% and 90% bands ----
-function fan(m, byH, w, ax, ay){
-  var hs = Object.keys(byH).filter(function(k){ return /^[1-4]$/.test(k); })
-    .sort();
-  if(!hs.length) return [];
-  var xs = hs.map(function(h){ return addDays(w, 7 * (+h)); });
-  var lv = function(h, t){
-    var q = byH[h] || {};
-    for(var k in q){ if(Math.abs(parseFloat(k) - t) < 1e-9) return q[k]; }
-    return null;
-  };
-  var seq = function(t){ return hs.map(function(h){ return lv(h, t); }); };
-  var med = seq(.5), lo5 = seq(.05), hi95 = seq(.95),
-      lo25 = seq(.25), hi75 = seq(.75);
-  var anchored = ax != null;
-  var X = anchored ? [ax].concat(xs) : xs;
-  var pad = function(a){ return anchored ? [ay].concat(a) : a; };
-  var col = colorOf(m), out = [];
-  var band = function(hi, lo, a){
-    if(!hi.some(function(v){ return v != null; })
-       || !lo.some(function(v){ return v != null; })) return;
-    out.push({x: X, y: pad(hi), mode: 'lines', line: {width: 0},
-      showlegend: false, hoverinfo: 'skip', legendgroup: m});
-    out.push({x: X, y: pad(lo), mode: 'lines', line: {width: 0},
-      fill: 'tonexty', fillcolor: rgba(col, a),
-      showlegend: false, hoverinfo: 'skip', legendgroup: m});
-  };
-  // ours: full bands; the official ensemble: a very faint band; the
-  // official baseline: a bare dotted median, no band at all
-  var official = OFFS.indexOf(m) >= 0;
-  if(m !== 'FluSight-baseline'){
-    band(hi95, lo5, official ? .05 : .10);
-    band(hi75, lo25, official ? .08 : .18);
-  }
-  out.push({x: X, y: pad(med), mode: 'lines+markers', name: nameOf(m),
-    line: {color: col, width: 2.2, dash: dashOf(m)}, marker: {size: 5},
-    legendgroup: m});
-  return out;
-}
-
-// ---- axis lock: fixed ranges per location so playback never jumps.
-// x spans the season window (first truth date to last asof + 28 days);
-// y spans [0, 1.15 x the season's truth peak for the location]. Computed
-// once from the payload's full-season truth series and reused until the
-// location changes ----
-var AXR = {loc: null, x: null, y: null};
-function lockRanges(pl, loc){
-  if(AXR.loc === loc && AXR.x) return AXR;
-  var truth = (pl.truth || {})[loc] || [];
-  AXR.loc = loc; AXR.x = null; AXR.y = null;
-  if(truth.length){
-    var mx = 0;
-    truth.forEach(function(r){ if(r[1] > mx) mx = r[1]; });
-    AXR.x = [truth[0][0], addDays(WEEKS[WEEKS.length - 1], 28)];
-    AXR.y = [0, 1.15 * (mx || 1)];
-  }
-  return AXR;
-}
-
-// ---- forecast detail: settled truth, a now marker, fans per model ----
-function draw(){
-  var w = WEEKS[P.idx];
-  var pl = PAY[w] || null;
-  renderStats(pl);
-  var msg = document.getElementById('fd-msg');
-  var el = document.getElementById('fd-plot');
-  if(!pl){
-    if(el.data) Plotly.purge(el);
-    msg.textContent = 'forecast data unavailable for ' + w;
-    return;
-  }
-  msg.textContent = '';
-  var loc = P.loc || 'US';
-  var truth = (pl.truth || {})[loc] || [];
-  var pastX = [], pastY = [], futX = [], futY = [];
-  truth.forEach(function(r){
-    if(r[0] <= w){ pastX.push(r[0]); pastY.push(r[1]); }
-    if(r[0] >= w){ futX.push(r[0]); futY.push(r[1]); }
-  });
-  var ax = pastX.length ? pastX[pastX.length - 1] : null;
-  var ay = pastY.length ? pastY[pastY.length - 1] : null;
-  var traces = [];
-  ALLM.forEach(function(m){
-    if(!P.on[m]) return;
-    var src = OFFS.indexOf(m) >= 0 ? (pl.official || {})[m]
-                                   : (pl.models || {})[m];
-    var byH = src ? src[loc] : null;
-    if(!byH) return;
-    fan(m, byH, w, ax, ay).forEach(function(t){ traces.push(t); });
-  });
-  // truth drawn last so it sits on top; the tail beyond the now marker
-  // stays visible so forecast accuracy is legible at a glance
-  traces.push({x: pastX, y: pastY, mode: 'lines', name: 'truth (settled)',
-    line: {color: INK, width: 2}});
-  if(futX.length) traces.push({x: futX, y: futY, mode: 'lines',
-    name: 'truth beyond now', opacity: .65,
-    line: {color: INK, width: 1.3, dash: 'dot'}});
-  // locked: explicit ranges on every redraw, so nothing jumps between
-  // weeks. Unlocked: autoscale per frame
-  var lock = document.getElementById('fd-lock').checked
-    ? lockRanges(pl, loc) : null;
-  var xa = {gridcolor: LINE};
-  var ya = {gridcolor: LINE, rangemode: 'tozero'};
-  if(lock && lock.x){ xa.range = lock.x.slice(); xa.autorange = false; }
-  if(lock && lock.y){ ya.range = lock.y.slice(); ya.autorange = false; }
-  var L = {title: {text: loc + ' \\u00b7 forecasts as of ' + w,
-                   font: {size: 14}},
-    height: 420, margin: {l: 50, r: 20, t: 34, b: 40},
-    paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
-    font: {color: INK},
-    xaxis: xa,
-    yaxis: ya,
-    shapes: [{type: 'line', x0: w, x1: w, yref: 'paper', y0: 0, y1: 1,
-              line: {color: MUT, width: 1.2, dash: 'dot'}}],
-    annotations: [{x: w, yref: 'paper', y: 1, yanchor: 'bottom',
-              showarrow: false, text: 'now',
-              font: {size: 11, color: MUT}}]};
-  Plotly.react(el, traces, L, PCONF);
-}
-
-// ---- the player: prev / play-pause / next, speed, scrubber, arrows ----
-function labelWeek(){
-  document.getElementById('pb-week').textContent =
-    WEEKS[P.idx] + ' \\u00b7 week ' + (P.idx + 1) + ' of ' + WEEKS.length;
-}
-function seek(i, fromScrub){
-  P.idx = Math.max(0, Math.min(WEEKS.length - 1, i));
-  if(!fromScrub) scrub.value = P.idx;
-  labelWeek();
-  draw();
-}
-function setPlay(on){
-  P.playing = on;
-  document.getElementById('pb-play').textContent =
-    on ? '\\u275a\\u275a Pause' : '\\u25b6 Play';
-  clearInterval(P.timer);
-  if(on) P.timer = setInterval(function(){
-    if(P.idx >= WEEKS.length - 1){ setPlay(false); return; }
-    seek(P.idx + 1);
-  }, +document.getElementById('pb-speed').value);
-}
-document.getElementById('pb-prev').onclick = function(){ seek(P.idx - 1); };
-document.getElementById('pb-next').onclick = function(){ seek(P.idx + 1); };
-document.getElementById('pb-play').onclick = function(){
-  if(!P.playing && P.idx >= WEEKS.length - 1) seek(0);  // replay from the top
-  setPlay(!P.playing);
-};
-document.getElementById('pb-speed').onchange = function(){
-  if(P.playing) setPlay(true);
-};
-// axis lock defaults ON and persists across openings; localStorage can be
-// unavailable (file: contexts, private windows), so every touch is guarded
-var lockBox = document.getElementById('fd-lock');
-try{ lockBox.checked = localStorage.getItem('flubnf-axis-lock') !== '0'; }
-catch(e){}
-lockBox.addEventListener('change', function(){
-  try{
-    localStorage.setItem('flubnf-axis-lock', lockBox.checked ? '1' : '0');
-  }catch(e){}
-  draw();
+// controls build from the union across every embedded week, so a model or
+// location present in only part of the season still gets a toggle
+var UNION = {models: {}, offs: {}, locs: {}};
+WEEKS.forEach(function(w){
+  var pl = PAY[w];
+  if(!pl) return;
+  Object.keys(pl.models || {}).forEach(function(k){ UNION.models[k] = 1; });
+  Object.keys(pl.official || {}).forEach(function(k){ UNION.offs[k] = 1; });
+  (pl.locations || []).forEach(function(l){ UNION.locs[l] = 1; });
 });
-scrub.addEventListener('input', function(){ seek(+scrub.value, true); });
-addEventListener('keydown', function(e){
-  if(e.altKey || e.ctrlKey || e.metaKey) return;
-  var t = e.target && e.target.tagName;
-  if(t === 'INPUT' || t === 'SELECT' || t === 'TEXTAREA') return;
-  if(e.key === 'ArrowLeft'){ seek(P.idx - 1); e.preventDefault(); }
-  else if(e.key === 'ArrowRight'){ seek(P.idx + 1); e.preventDefault(); }
+var player = FluBNFPlayer.init({
+  weeks: WEEKS,
+  mode: 'static',
+  getPayload: function(w){ return Promise.resolve(PAY[w] || null); },
+  catalog: {models: Object.keys(UNION.models),
+            officials: Object.keys(UNION.offs),
+            locations: Object.keys(UNION.locs).sort()},
+  plotHeight: 420
 });
-seek(0);
+player.seek(0);
 </script>
 </main></body></html>"""

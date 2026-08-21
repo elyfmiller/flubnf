@@ -1,5 +1,6 @@
 {% extends "base.html" %}{% block title %}FluBNF · Retrospective {{ season }}{% endblock %}
-{% block head %}<script src="/static/plotly.min.js"></script>{% endblock %}
+{% block head %}<script src="/static/plotly.min.js"></script>
+<script src="/static/player.js"></script>{% endblock %}
 {% block content %}
 
 <h1><span class="accent">{{ season }}</span>: {{ n_weeks }} weeks scored</h1>
@@ -115,54 +116,19 @@
 {% endfor %}</table></div>
 
 <script>
- // one shared playback state drives the outlook map, the forecast detail
- // view, and the live stats table. Forecast and stats data come from the
- // season playback API: /api/retro/{season}/playback/{asof}, whose payload
- // fields are asof, locations, truth, models, official, stats. The payload
- // variable is ALWAYS named `pl` so the contract test can verify the JS
- // reads only fields the API defines.
+ // live host for the shared season player (loaded above from player.js in
+ // the app's static directory): this page supplies the network-backed
+ // payload getter, the outlook-map view, and the console palette; the
+ // player itself (controls wiring, forecast detail, view-state
+ // persistence, per-model availability) is the shared implementation.
+ // Forecast and stats data come from the season playback API:
+ // /api/retro/{season}/playback/{asof}, whose payload fields are asof,
+ // locations, truth, models, official, stats. The payload variable is
+ // ALWAYS named `pl` so the contract test can verify the JS reads only
+ // fields the API defines.
  const SEASON = {{ season | tojson }};
  const WEEKS = {{ weeks | tojson }};
  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
- const PCONF = {responsive: true, displaylogo: false, scrollZoom: true,
-                doubleClick: 'reset'};
- const scrub = document.getElementById('pb-scrub');
- const P = {idx: +scrub.value || 0, playing: false, timer: null, view: 'map',
-            loc: null, built: false, on: {}, pl: null};
- // the two CDC comparators are a fixed part of the UI: their toggles exist
- // even when a week's payload carries no official submissions yet
- const OFFICIALS = ['FluSight-baseline', 'FluSight-ensemble'];
- let ALLM = [], OFFS = OFFICIALS.slice();
-
- // ours: cyan family plus gold, solid; officials: greys, dashed or dotted.
- // Display names keep the two ensembles unmistakable in the legend, the
- // model toggles, and the stats table.
- function colorOf(m){
-   const ours = {ensemble: css('--gold'), pf: css('--slate') || '#6E8FD0',
-                 analogue: '#FFC72C', pf2s: '#2BB5A0'};
-   if(m === 'FluSight-ensemble') return '#AAB1C9';
-   return ours[m] || css('--mut');
- }
- function dashOf(m){
-   return m === 'FluSight-baseline' ? 'dot'
-        : m === 'FluSight-ensemble' ? 'dash' : 'solid';
- }
- function nameOf(m){
-   const names = {ensemble: 'NAU ensemble',
-                  'FluSight-ensemble': 'FluSight ensemble (official)',
-                  'FluSight-baseline': 'FluSight baseline (official)'};
-   return names[m] || m;
- }
- function rgba(c, a){
-   if(c && c[0] === '#' && c.length === 7){
-     const n = parseInt(c.slice(1), 16);
-     return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ','
-       + (n & 255) + ',' + a + ')';
-   }
-   return c;
- }
- const addDays = (iso, n) => {const d = new Date(iso + 'T00:00:00Z');
-   d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10);};
 
  // ---- playback payload cache, with in-flight dedupe. A failed fetch keeps
  // the server's own message (or the network error) in PERR so the panel can
@@ -214,7 +180,7 @@
    if(host.dataset.week === w) return;
    const tok = ++mapSeq;
    fetchMap(w).then(mc => {
-     if(tok !== mapSeq || WEEKS[P.idx] !== w) return;
+     if(tok !== mapSeq || player.week() !== w) return;
      host.dataset.week = w;
      if(!mc){
        host.innerHTML = '<p class="hint">map unavailable for ' + w + '</p>';
@@ -228,215 +194,28 @@
    });
  }
 
- // ---- forecast detail controls (built once, from the first payload) ----
- function buildControls(pl){
-   if(P.built) return;
-   P.built = true;
-   OFFS = OFFICIALS.slice();
-   const ours = ['ensemble', 'pf', 'analogue', 'pf2s']
-     .filter(m => (pl.models || {})[m]);
-   ALLM = ours.concat(OFFS);
-   const dflt = {ensemble: true, pf: true, analogue: true};
-   ALLM.forEach(m => {if(!(m in P.on)) P.on[m] = !!dflt[m];});
-   const box = document.getElementById('fd-models');
-   box.innerHTML = ALLM.map(m =>
-     '<label class="ck"><input type="checkbox" data-m="' + m + '"'
-     + (P.on[m] ? ' checked' : '') + '> <span class="sw" style="background:'
-     + colorOf(m) + '"></span>' + nameOf(m) + '</label>').join('');
-   box.querySelectorAll('input').forEach(c => c.addEventListener('change', () => {
-     P.on[c.dataset.m] = c.checked;
-     if(P.view === 'fc') drawFC(); else renderStats(P.pl);
-   }));
-   // our retrospective members are per-state; the US entry is served by the
-   // official models only, and says so
-   const sel = document.getElementById('fd-loc');
-   const locs = pl.locations || [];
-   sel.innerHTML = '<option value="US">US (official models only)</option>'
-     + locs.map(l => '<option>' + l + '</option>').join('');
-   P.loc = P.loc || locs[0] || 'US';
-   sel.value = P.loc;
-   sel.addEventListener('change', () => {P.loc = sel.value; drawFC();});
- }
-
- // ---- live stats table: per enabled model, this week and cumulative ----
- function renderStats(pl){
-   P.pl = pl || null;
-   if(pl) buildControls(pl);
-   const tb = document.querySelector('#pb-stats tbody');
-   // a missing score is quiet "pending", never NaN or a crashed panel
-   const fmt = v => (typeof v === 'number' && isFinite(v))
-     ? '<td class="num ' + (v < 1 ? 'ok' : 'bad') + '">' + v.toFixed(3) + '</td>'
-     : '<td class="num hint">pending</td>';
-   const rows = [];
-   for(const m of ALLM){
-     if(!P.on[m]) continue;
-     const st = pl && pl.stats ? pl.stats[m] : null;
-     rows.push('<tr><td><span class="sw" style="background:' + colorOf(m)
-       + '"></span>' + nameOf(m) + '</td>' + fmt(st ? st.week_rel : null)
-       + fmt(st ? st.cum_rel : null) + '</tr>');
-   }
-   tb.innerHTML = rows.join('')
-     || '<tr><td colspan="3" class="hint">no models enabled</td></tr>';
-   document.getElementById('pb-status').textContent =
-     pl ? '' : (PERR[WEEKS[P.idx]] || 'stats unavailable for this week');
-   document.getElementById('pb-offhint').hidden =
-     !pl || Object.keys(pl.official || {}).length > 0;
- }
-
- // ---- forecast fan for one model: median plus 50% and 90% bands ----
- function fan(m, byH, w, ax, ay){
-   const hs = Object.keys(byH).filter(k => /^[1-4]$/.test(k)).sort();
-   if(!hs.length) return [];
-   const xs = hs.map(h => addDays(w, 7 * (+h)));
-   const lv = (h, t) => {const q = byH[h] || {};
-     for(const k in q){if(Math.abs(parseFloat(k) - t) < 1e-9) return q[k];}
-     return null;};
-   const seq = t => hs.map(h => lv(h, t));
-   const med = seq(.5), lo5 = seq(.05), hi95 = seq(.95),
-         lo25 = seq(.25), hi75 = seq(.75);
-   const anchored = ax != null;
-   const X = anchored ? [ax].concat(xs) : xs;
-   const pad = a => anchored ? [ay].concat(a) : a;
-   const col = colorOf(m), out = [];
-   const band = (hi, lo, a) => {
-     if(!hi.some(v => v != null) || !lo.some(v => v != null)) return;
-     out.push({x: X, y: pad(hi), mode: 'lines', line: {width: 0},
-       showlegend: false, hoverinfo: 'skip', legendgroup: m});
-     out.push({x: X, y: pad(lo), mode: 'lines', line: {width: 0},
-       fill: 'tonexty', fillcolor: rgba(col, a),
-       showlegend: false, hoverinfo: 'skip', legendgroup: m});
-   };
-   // ours: full bands; the official ensemble: a very faint band; the
-   // official baseline: a bare dotted median, no band at all
-   const official = OFFS.indexOf(m) >= 0;
-   if(m !== 'FluSight-baseline'){
-     band(hi95, lo5, official ? .05 : .10);
-     band(hi75, lo25, official ? .08 : .18);
-   }
-   out.push({x: X, y: pad(med), mode: 'lines+markers', name: nameOf(m),
-     line: {color: col, width: 2.2, dash: dashOf(m)}, marker: {size: 5},
-     legendgroup: m});
-   return out;
- }
-
- // ---- axis lock: fixed ranges per location so playback never jumps.
- // x spans the season window (first truth date to last asof + 28 days);
- // y spans [0, 1.15 x the season's truth peak for the location]. Computed
- // once from the payload's full-season truth series and reused until the
- // location changes ----
- const AXR = {loc: null, x: null, y: null};
- function lockRanges(pl, loc){
-   if(AXR.loc === loc && AXR.x) return AXR;
-   const truth = (pl.truth || {})[loc] || [];
-   AXR.loc = loc; AXR.x = null; AXR.y = null;
-   if(truth.length){
-     let mx = 0;
-     truth.forEach(r => {if(r[1] > mx) mx = r[1];});
-     AXR.x = [truth[0][0], addDays(WEEKS[WEEKS.length - 1], 28)];
-     AXR.y = [0, 1.15 * (mx || 1)];
-   }
-   return AXR;
- }
-
- // ---- forecast detail: settled truth, a now marker, fans per model ----
- let fcSeq = 0;
- async function drawFC(){
-   const tok = ++fcSeq, w = WEEKS[P.idx];
-   const msg = document.getElementById('fd-msg');
-   const el = document.getElementById('fd-plot');
-   if(!(w in PAY)) msg.textContent = 'loading ' + w + '…';
-   const pl = await ensurePayload(w);
-   if(tok !== fcSeq) return;
-   renderStats(pl);
-   if(!pl){
-     if(el.data) Plotly.purge(el);
-     msg.textContent = PERR[w] || ('forecast data unavailable for ' + w);
-     return;
-   }
-   msg.textContent = '';
-   const loc = P.loc || 'US';
-   const truth = (pl.truth || {})[loc] || [];
-   const pastX = [], pastY = [], futX = [], futY = [];
-   truth.forEach(r => {
-     if(r[0] <= w){pastX.push(r[0]); pastY.push(r[1]);}
-     if(r[0] >= w){futX.push(r[0]); futY.push(r[1]);}
-   });
-   const ax = pastX.length ? pastX[pastX.length - 1] : null;
-   const ay = pastY.length ? pastY[pastY.length - 1] : null;
-   const traces = [];
-   for(const m of ALLM){
-     if(!P.on[m]) continue;
-     const src = OFFS.indexOf(m) >= 0 ? (pl.official || {})[m]
-                                      : (pl.models || {})[m];
-     const byH = src ? src[loc] : null;
-     if(!byH) continue;
-     traces.push(...fan(m, byH, w, ax, ay));
-   }
-   // truth drawn last so it sits on top; the tail beyond the now marker
-   // stays visible so forecast accuracy is legible at a glance
-   traces.push({x: pastX, y: pastY, mode: 'lines', name: 'truth (settled)',
-     line: {color: css('--ink'), width: 2}});
-   if(futX.length) traces.push({x: futX, y: futY, mode: 'lines',
-     name: 'truth beyond now', opacity: .65,
-     line: {color: css('--ink'), width: 1.3, dash: 'dot'}});
-   // locked: explicit ranges on every redraw, so nothing jumps between
-   // weeks. Unlocked: autoscale per frame (the old behavior)
-   const lock = document.getElementById('fd-lock').checked
-     ? lockRanges(pl, loc) : null;
-   const xa = {gridcolor: css('--line')};
-   const ya = {gridcolor: css('--line'), rangemode: 'tozero'};
-   if(lock && lock.x){xa.range = lock.x.slice(); xa.autorange = false;}
-   if(lock && lock.y){ya.range = lock.y.slice(); ya.autorange = false;}
-   const L = {title: {text: loc + ' · forecasts as of ' + w, font: {size: 14}},
-     height: 400, margin: {l: 50, r: 20, t: 34, b: 40},
-     paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
-     font: {color: css('--ink')},
-     xaxis: xa,
-     yaxis: ya,
-     shapes: [{type: 'line', x0: w, x1: w, yref: 'paper', y0: 0, y1: 1,
-               line: {color: css('--mut'), width: 1.2, dash: 'dot'}}],
-     annotations: [{x: w, yref: 'paper', y: 1, yanchor: 'bottom',
-               showarrow: false, text: 'now',
-               font: {size: 11, color: css('--mut')}}]};
-   Plotly.react(el, traces, L, PCONF);
- }
-
- // ---- the player: prev / play-pause / next, speed, scrubber, arrows ----
- function labelWeek(){
-   document.getElementById('pb-week').textContent =
-     WEEKS[P.idx] + ' · week ' + (P.idx + 1) + ' of ' + WEEKS.length;
- }
- function seek(i, fromScrub){
-   P.idx = Math.max(0, Math.min(WEEKS.length - 1, i));
-   if(!fromScrub) scrub.value = P.idx;
-   labelWeek();
-   const w = WEEKS[P.idx];
-   if(!(w in PAY))
-     document.getElementById('pb-status').textContent = 'loading ' + w + '…';
-   if(P.view === 'map'){
-     showMap(w);
-     ensurePayload(w).then(pl => {if(WEEKS[P.idx] === w) renderStats(pl);});
-   } else {
-     drawFC();
-   }
-   if(P.idx + 1 < WEEKS.length){        // prefetch: stepping stays smooth
-     const nw = WEEKS[P.idx + 1];
-     ensurePayload(nw);
-     if(P.view === 'map') fetchMap(nw);
-   }
- }
- function setPlay(on){
-   P.playing = on;
-   document.getElementById('pb-play').textContent =
-     on ? '❚❚ Pause' : '▶ Play';
-   clearInterval(P.timer);
-   if(on) P.timer = setInterval(() => {
-     if(P.idx >= WEEKS.length - 1){setPlay(false); return;}
-     seek(P.idx + 1);
-   }, +document.getElementById('pb-speed').value);
- }
+ // ---- the two page views (outlook map, forecast detail) stay host-side;
+ // the shared player drives everything inside the forecast detail view ----
+ const V = {view: 'map'};
+ const player = FluBNFPlayer.init({
+   weeks: WEEKS,
+   mode: 'live',
+   getPayload: ensurePayload,
+   payloadError: w => PERR[w],
+   isCached: w => (w in PAY),
+   detailVisible: () => V.view === 'fc',
+   onSeek: w => {if(V.view === 'map') showMap(w);},
+   preload: w => {if(V.view === 'map') fetchMap(w);},
+   // ours: cyan family plus gold, solid; officials: greys, dashed or
+   // dotted. Re-read per redraw so a theme change repaints correctly.
+   palette: () => ({ink: css('--ink'), mut: css('--mut'),
+     line: css('--line'),
+     models: {ensemble: css('--gold'), pf: css('--slate') || '#6E8FD0',
+              analogue: '#FFC72C', pf2s: '#2BB5A0'},
+     flusightEnsemble: '#AAB1C9'})
+ });
  function setView(v){
-   P.view = v;
+   V.view = v;
    document.getElementById('view-map').hidden = v !== 'map';
    document.getElementById('view-fc').hidden = v !== 'fc';
    const tm = document.getElementById('tab-map'),
@@ -445,47 +224,19 @@
    tm.setAttribute('aria-selected', String(v === 'map'));
    tf.classList.toggle('gold', v === 'fc');
    tf.setAttribute('aria-selected', String(v === 'fc'));
-   seek(P.idx);
+   player.seek(player.idx());
  }
- document.getElementById('pb-prev').onclick = () => seek(P.idx - 1);
- document.getElementById('pb-next').onclick = () => seek(P.idx + 1);
- document.getElementById('pb-play').onclick = () => {
-   if(!P.playing && P.idx >= WEEKS.length - 1) seek(0);  // replay from the top
-   setPlay(!P.playing);
- };
- document.getElementById('pb-speed').onchange = () => {if(P.playing) setPlay(true);};
- // axis lock defaults ON and persists across visits; localStorage can be
- // unavailable (private windows), so every touch is guarded
- const lockBox = document.getElementById('fd-lock');
- try{lockBox.checked = localStorage.getItem('flubnf-axis-lock') !== '0';}
- catch(e){}
- lockBox.addEventListener('change', () => {
-   try{localStorage.setItem('flubnf-axis-lock', lockBox.checked ? '1' : '0');}
-   catch(e){}
-   if(P.view === 'fc') drawFC();
- });
- scrub.addEventListener('input', () => seek(+scrub.value, true));
  document.getElementById('tab-map').onclick = () => setView('map');
  document.getElementById('tab-fc').onclick = () => setView('fc');
- addEventListener('keydown', e => {
-   if(e.altKey || e.ctrlKey || e.metaKey) return;
-   const t = e.target && e.target.tagName;
-   if(t === 'INPUT' || t === 'SELECT' || t === 'TEXTAREA') return;
-   if(e.key === 'ArrowLeft'){seek(P.idx - 1); e.preventDefault();}
-   else if(e.key === 'ArrowRight'){seek(P.idx + 1); e.preventDefault();}
- });
- addEventListener('themechange', () => {
-   renderStats(P.pl);
-   if(P.view === 'fc') drawFC();
- });
  // seed the map cache with the server-rendered map for the initial week so
  // returning to it never refetches, then start on the map view
  (function(){
    const host = document.getElementById('view-map');
    const wr = host.querySelector('#usmap-wrap');
    const sc = host.querySelector('script');
-   if(wr) MAPC[WEEKS[P.idx]] = {h: wr.outerHTML, js: sc ? sc.textContent : ''};
-   host.dataset.week = WEEKS[P.idx];
+   if(wr) MAPC[WEEKS[player.idx()]] = {h: wr.outerHTML,
+                                       js: sc ? sc.textContent : ''};
+   host.dataset.week = WEEKS[player.idx()];
  })();
  setView('map');
 </script>

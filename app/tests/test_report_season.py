@@ -114,17 +114,51 @@ def test_report_self_contained_with_player_and_data(tmp_path, monkeypatch):
 def test_report_js_reads_only_contract_fields(tmp_path, monkeypatch):
     root = _mk_root(tmp_path, monkeypatch)
     html = report_season.build_season_report(root, SEASON).read_text()
-    # inspect only the player script (real builds prepend minified plotly)
-    player = html.split("// FluBNF season player", 1)[1]
+    # the report's player JS is the inlined shared player plus the export
+    # host block (real builds prepend minified plotly, so slice past it)
+    player = report_season.PLAYER_SRC.read_text()
+    host = html.split("// FluBNF season player", 1)[1]
+    js = player + host
     contract = {"asof", "locations", "truth", "models", "official", "stats"}
-    fields = set(re.findall(r"\bpl\.(\w+)", player))
+    fields = set(re.findall(r"\bpl\.(\w+)", js))
     assert fields, "expected the player JS to read payload fields via pl.*"
     assert fields <= contract, fields - contract
-    stat_fields = set(re.findall(r"\bst\.(\w+)", player))
+    stat_fields = set(re.findall(r"\bst\.(\w+)", js))
     assert {"week_rel", "cum_rel"} == stat_fields, stat_fields
     for m in ("ensemble", "pf", "analogue", "pf2s",
               "FluSight-baseline", "FluSight-ensemble"):
-        assert m in player, m
+        assert m in js, m
+
+
+def test_report_inlines_shared_player_verbatim(tmp_path, monkeypatch):
+    root = _mk_root(tmp_path, monkeypatch)
+    html = report_season.build_season_report(root, SEASON).read_text()
+    # the unique marker from player.js appears in the built report ...
+    assert "flubnf-player-v1" in html
+    # ... because the whole shared file is inlined verbatim, so every
+    # future player feature lands in the export automatically
+    assert report_season.PLAYER_SRC.read_text() in html
+    # the export host wires the player to the embedded JSON block
+    assert "FluBNFPlayer.init" in html
+    assert "mode: 'static'" in html
+
+
+def test_report_rebuilds_when_player_source_changes(tmp_path, monkeypatch):
+    root = _mk_root(tmp_path, monkeypatch)
+    fake = tmp_path / "player.js"
+    fake.write_text(report_season.PLAYER_SRC.read_text())
+    monkeypatch.setattr(report_season, "PLAYER_SRC", fake)
+    p = report_season.build_season_report(root, SEASON)
+    p.write_text("sentinel")
+    future = p.stat().st_mtime + 60
+    os.utime(p, (future, future))
+    # fresh: reused
+    assert report_season.build_season_report(root, SEASON).read_text() \
+        == "sentinel"
+    # a newer player.js invalidates the cached report
+    os.utime(fake, (future + 60, future + 60))
+    html = report_season.build_season_report(root, SEASON).read_text()
+    assert html != "sentinel" and "flubnf-player-v1" in html
 
 
 def test_real_plotly_embedded(tmp_path, monkeypatch):
