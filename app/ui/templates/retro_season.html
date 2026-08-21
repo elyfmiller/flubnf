@@ -1,7 +1,12 @@
 {% extends "base.html" %}{% block title %}FluBNF · Retrospective {{ season }}{% endblock %}
+{% block head %}<script src="/static/plotly.min.js"></script>{% endblock %}
 {% block content %}
 
 <h1><span class="accent">{{ season }}</span>: {{ n_weeks }} weeks scored</h1>
+<p><a href="/retro/{{ season }}/report">Download season report</a>
+ <span class="hint">one self-contained interactive HTML file: the season
+ player with all forecast data embedded, usable offline. Forecast detail and
+ stats only; the outlook maps stay in this console.</span></p>
 <div class="grid2">
  {% for m, v in heads.items() %}
  <div class="card"><h2>{{ m }}</h2><div class="big
@@ -25,14 +30,52 @@
           {% if clipped %}stroke="var(--gold)" stroke-width="1.5"{% endif %}><title>{{ d }}: {{ "%.3f"|format(v) }}</title></circle>
  {% endfor %}
 </svg></div>
-<div class="card"><h2>Weekly playback</h2>
- <form method="get" class="row">
-  <div><label>Week</label><select name="week" onchange="this.form.submit()">
-   {% for w in weeks %}<option {% if w == week %}selected{% endif %}>{{ w }}</option>{% endfor %}
-  </select></div><noscript><button>Go</button></noscript>
- </form>
- {{ map_html | safe }}
+
+<div class="card"><h2>Season player</h2>
+ <div class="row playerbar">
+  <button type="button" class="quiet" id="pb-prev" title="Previous week (left arrow)"
+    aria-label="Previous week">&#9664;</button>
+  <button type="button" class="quiet" id="pb-play" aria-label="Play or pause">&#9654; Play</button>
+  <button type="button" class="quiet" id="pb-next" title="Next week (right arrow)"
+    aria-label="Next week">&#9654;</button>
+  <select id="pb-speed" aria-label="Playback speed">
+   <option value="500">0.5 s / week</option>
+   <option value="1000" selected>1 s / week</option>
+   <option value="2000">2 s / week</option>
+  </select>
+  <input type="range" id="pb-scrub" min="0" max="{{ (weeks|length) - 1 }}" step="1"
+         value="{{ weeks.index(week) if week in weeks else 0 }}" aria-label="Week scrubber">
+  <span class="hint" id="pb-week"></span>
+ </div>
+ <div class="row viewtabs" role="tablist" aria-label="Playback view">
+  <button type="button" class="quiet" id="tab-map" role="tab" aria-selected="true">Outlook map</button>
+  <button type="button" class="quiet" id="tab-fc" role="tab" aria-selected="false">Forecast detail</button>
+ </div>
+ <div class="playgrid">
+  <div>
+   <div id="view-map" class="playmap">{{ map_html | safe }}</div>
+   <div id="view-fc" hidden>
+    <div class="row" style="margin:.2rem 0 .4rem">
+     <select id="fd-loc" aria-label="Forecast location"
+       style="width:auto;min-width:230px;max-width:100%"></select>
+    </div>
+    <div class="fdmodels" id="fd-models"></div>
+    <div id="fd-plot"></div>
+    <p class="hint" id="fd-msg">loading&hellip;</p>
+   </div>
+  </div>
+  <div class="playstats">
+   <h2>Live relWIS</h2>
+   <table id="pb-stats"><thead><tr><th>Model</th><th class="num">Week</th>
+    <th class="num">Cumulative</th></tr></thead><tbody></tbody></table>
+   <p class="hint" id="pb-status"></p>
+   <p class="hint">relWIS below 1 beats the CDC FluSight baseline. Week scores
+    the current forecast's cells; cumulative pools every week through the
+    playback position.</p>
+  </div>
+ </div>
 </div>
+
 <div class="card"><h2>Per-state scores</h2>
 <table><tr><th>State</th><th>PF</th><th>Analogue</th><th>Ensemble</th></tr>
 {% for r in states %}<tr><td>{{ r.name }}</td>
@@ -40,4 +83,316 @@
  <td class="{% if r[m] and r[m] < 1 %}ok{% elif r[m] %}bad{% endif %}">
   {{ "%.3f"|format(r[m]) if r[m] else "n/a" }}</td>{% endfor %}</tr>
 {% endfor %}</table></div>
+
+<script>
+ // one shared playback state drives the outlook map, the forecast detail
+ // view, and the live stats table. Forecast and stats data come from the
+ // season playback API: /api/retro/{season}/playback/{asof}, whose payload
+ // fields are asof, locations, truth, models, official, stats. The payload
+ // variable is ALWAYS named `pl` so the contract test can verify the JS
+ // reads only fields the API defines.
+ const SEASON = {{ season | tojson }};
+ const WEEKS = {{ weeks | tojson }};
+ const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+ const PCONF = {responsive: true, displaylogo: false, scrollZoom: true,
+                doubleClick: 'reset'};
+ const scrub = document.getElementById('pb-scrub');
+ const P = {idx: +scrub.value || 0, playing: false, timer: null, view: 'map',
+            loc: null, built: false, on: {}, pl: null};
+ let ALLM = [], OFFS = [];
+
+ // ours: cyan family plus gold; officials: greys, drawn dashed
+ function colorOf(m){
+   const ours = {ensemble: css('--gold'), pf: css('--slate') || '#6E8FD0',
+                 analogue: '#FFC72C', pf2s: '#2BB5A0'};
+   return ours[m] || css('--mut');
+ }
+ function dashOf(m){
+   return m === 'FluSight-baseline' ? 'dot'
+        : m === 'FluSight-ensemble' ? 'dash' : 'solid';
+ }
+ function rgba(c, a){
+   if(c && c[0] === '#' && c.length === 7){
+     const n = parseInt(c.slice(1), 16);
+     return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ','
+       + (n & 255) + ',' + a + ')';
+   }
+   return c;
+ }
+ const addDays = (iso, n) => {const d = new Date(iso + 'T00:00:00Z');
+   d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10);};
+
+ // ---- playback payload cache, with in-flight dedupe ----
+ const PAY = {}, PPROM = {};
+ function ensurePayload(w){
+   if(w in PAY) return Promise.resolve(PAY[w]);
+   if(PPROM[w]) return PPROM[w];
+   PPROM[w] = fetch('/api/retro/' + encodeURIComponent(SEASON)
+                    + '/playback/' + encodeURIComponent(w))
+     .then(r => {if(!r.ok) throw new Error(String(r.status)); return r.json();})
+     .then(d => {PAY[w] = d; return d;})
+     .catch(() => {PAY[w] = null; return null;})
+     .finally(() => {delete PPROM[w];});
+   return PPROM[w];
+ }
+
+ // ---- categorical map per week: reuse the server-rendered map by fetching
+ // this page for the target week and lifting out the map block ----
+ const MAPC = {}, MPROM = {};
+ function fetchMap(w){
+   if(w in MAPC) return Promise.resolve(MAPC[w]);
+   if(MPROM[w]) return MPROM[w];
+   MPROM[w] = fetch('/retro/' + encodeURIComponent(SEASON)
+                    + '?week=' + encodeURIComponent(w))
+     .then(r => {if(!r.ok) throw new Error(String(r.status)); return r.text();})
+     .then(t => {
+       const doc = new DOMParser().parseFromString(t, 'text/html');
+       const wr = doc.getElementById('usmap-wrap');
+       let js = '';
+       if(wr && wr.nextElementSibling && wr.nextElementSibling.tagName === 'SCRIPT')
+         js = wr.nextElementSibling.textContent;
+       MAPC[w] = wr ? {h: wr.outerHTML, js: js} : null;
+       return MAPC[w];
+     })
+     .catch(() => {MAPC[w] = null; return null;})
+     .finally(() => {delete MPROM[w];});
+   return MPROM[w];
+ }
+ let mapSeq = 0;
+ function showMap(w){
+   const host = document.getElementById('view-map');
+   if(host.dataset.week === w) return;
+   const tok = ++mapSeq;
+   fetchMap(w).then(mc => {
+     if(tok !== mapSeq || WEEKS[P.idx] !== w) return;
+     host.dataset.week = w;
+     if(!mc){
+       host.innerHTML = '<p class="hint">map unavailable for ' + w + '</p>';
+       return;
+     }
+     host.innerHTML = mc.h;
+     // innerHTML never executes scripts; re-create the interaction script so
+     // the fresh map keeps its tooltips, zoom, and pan
+     if(mc.js){const s = document.createElement('script');
+       s.textContent = mc.js; host.appendChild(s);}
+   });
+ }
+
+ // ---- forecast detail controls (built once, from the first payload) ----
+ function buildControls(pl){
+   if(P.built) return;
+   P.built = true;
+   OFFS = Object.keys(pl.official || {});
+   const ours = ['ensemble', 'pf', 'analogue', 'pf2s']
+     .filter(m => (pl.models || {})[m]);
+   ALLM = ours.concat(OFFS);
+   const dflt = {ensemble: true, pf: true, analogue: true};
+   ALLM.forEach(m => {if(!(m in P.on)) P.on[m] = !!dflt[m];});
+   const box = document.getElementById('fd-models');
+   box.innerHTML = ALLM.map(m =>
+     '<label class="ck"><input type="checkbox" data-m="' + m + '"'
+     + (P.on[m] ? ' checked' : '') + '> <span class="sw" style="background:'
+     + colorOf(m) + '"></span>' + m
+     + (OFFS.indexOf(m) >= 0 ? ' (official)' : '') + '</label>').join('');
+   box.querySelectorAll('input').forEach(c => c.addEventListener('change', () => {
+     P.on[c.dataset.m] = c.checked;
+     if(P.view === 'fc') drawFC(); else renderStats(P.pl);
+   }));
+   // our retrospective members are per-state; the US entry is served by the
+   // official models only, and says so
+   const sel = document.getElementById('fd-loc');
+   const locs = pl.locations || [];
+   sel.innerHTML = '<option value="US">US (official models only)</option>'
+     + locs.map(l => '<option>' + l + '</option>').join('');
+   P.loc = P.loc || locs[0] || 'US';
+   sel.value = P.loc;
+   sel.addEventListener('change', () => {P.loc = sel.value; drawFC();});
+ }
+
+ // ---- live stats table: per enabled model, this week and cumulative ----
+ function renderStats(pl){
+   P.pl = pl || null;
+   if(pl) buildControls(pl);
+   const tb = document.querySelector('#pb-stats tbody');
+   const fmt = v => v == null
+     ? '<td class="num hint">n/a</td>'
+     : '<td class="num ' + (v < 1 ? 'ok' : 'bad') + '">' + v.toFixed(3) + '</td>';
+   const rows = [];
+   for(const m of ALLM){
+     if(!P.on[m]) continue;
+     const st = pl && pl.stats ? pl.stats[m] : null;
+     rows.push('<tr><td><span class="sw" style="background:' + colorOf(m)
+       + '"></span>' + m + '</td>' + fmt(st ? st.week_rel : null)
+       + fmt(st ? st.cum_rel : null) + '</tr>');
+   }
+   tb.innerHTML = rows.join('')
+     || '<tr><td colspan="3" class="hint">no models enabled</td></tr>';
+   document.getElementById('pb-status').textContent =
+     pl ? '' : 'stats unavailable for this week';
+ }
+
+ // ---- forecast fan for one model: median plus 50% and 90% bands ----
+ function fan(m, byH, w, ax, ay){
+   const hs = Object.keys(byH).filter(k => /^[1-4]$/.test(k)).sort();
+   if(!hs.length) return [];
+   const xs = hs.map(h => addDays(w, 7 * (+h)));
+   const lv = (h, t) => {const q = byH[h] || {};
+     for(const k in q){if(Math.abs(parseFloat(k) - t) < 1e-9) return q[k];}
+     return null;};
+   const seq = t => hs.map(h => lv(h, t));
+   const med = seq(.5), lo5 = seq(.05), hi95 = seq(.95),
+         lo25 = seq(.25), hi75 = seq(.75);
+   const anchored = ax != null;
+   const X = anchored ? [ax].concat(xs) : xs;
+   const pad = a => anchored ? [ay].concat(a) : a;
+   const col = colorOf(m), out = [];
+   const band = (hi, lo, a) => {
+     if(!hi.some(v => v != null) || !lo.some(v => v != null)) return;
+     out.push({x: X, y: pad(hi), mode: 'lines', line: {width: 0},
+       showlegend: false, hoverinfo: 'skip', legendgroup: m});
+     out.push({x: X, y: pad(lo), mode: 'lines', line: {width: 0},
+       fill: 'tonexty', fillcolor: rgba(col, a),
+       showlegend: false, hoverinfo: 'skip', legendgroup: m});
+   };
+   band(hi95, lo5, .10);
+   band(hi75, lo25, .18);
+   out.push({x: X, y: pad(med), mode: 'lines+markers', name: m,
+     line: {color: col, width: 2.2, dash: dashOf(m)}, marker: {size: 5},
+     legendgroup: m});
+   return out;
+ }
+
+ // ---- forecast detail: settled truth, a now marker, fans per model ----
+ let fcSeq = 0;
+ async function drawFC(){
+   const tok = ++fcSeq, w = WEEKS[P.idx];
+   const msg = document.getElementById('fd-msg');
+   const el = document.getElementById('fd-plot');
+   if(!(w in PAY)) msg.textContent = 'loading ' + w + '…';
+   const pl = await ensurePayload(w);
+   if(tok !== fcSeq) return;
+   renderStats(pl);
+   if(!pl){
+     if(el.data) Plotly.purge(el);
+     msg.textContent = 'forecast data unavailable for ' + w;
+     return;
+   }
+   msg.textContent = '';
+   const loc = P.loc || 'US';
+   const truth = (pl.truth || {})[loc] || [];
+   const pastX = [], pastY = [], futX = [], futY = [];
+   truth.forEach(r => {
+     if(r[0] <= w){pastX.push(r[0]); pastY.push(r[1]);}
+     if(r[0] >= w){futX.push(r[0]); futY.push(r[1]);}
+   });
+   const ax = pastX.length ? pastX[pastX.length - 1] : null;
+   const ay = pastY.length ? pastY[pastY.length - 1] : null;
+   const traces = [];
+   for(const m of ALLM){
+     if(!P.on[m]) continue;
+     const src = OFFS.indexOf(m) >= 0 ? (pl.official || {})[m]
+                                      : (pl.models || {})[m];
+     const byH = src ? src[loc] : null;
+     if(!byH) continue;
+     traces.push(...fan(m, byH, w, ax, ay));
+   }
+   // truth drawn last so it sits on top; the tail beyond the now marker
+   // stays visible so forecast accuracy is legible at a glance
+   traces.push({x: pastX, y: pastY, mode: 'lines', name: 'truth (settled)',
+     line: {color: css('--ink'), width: 2}});
+   if(futX.length) traces.push({x: futX, y: futY, mode: 'lines',
+     name: 'truth beyond now', opacity: .65,
+     line: {color: css('--ink'), width: 1.3, dash: 'dot'}});
+   const L = {title: {text: loc + ' · forecasts as of ' + w, font: {size: 14}},
+     height: 400, margin: {l: 50, r: 20, t: 34, b: 40},
+     paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+     font: {color: css('--ink')},
+     xaxis: {gridcolor: css('--line')},
+     yaxis: {gridcolor: css('--line'), rangemode: 'tozero'},
+     shapes: [{type: 'line', x0: w, x1: w, yref: 'paper', y0: 0, y1: 1,
+               line: {color: css('--mut'), width: 1.2, dash: 'dot'}}],
+     annotations: [{x: w, yref: 'paper', y: 1, yanchor: 'bottom',
+               showarrow: false, text: 'now',
+               font: {size: 11, color: css('--mut')}}]};
+   Plotly.react(el, traces, L, PCONF);
+ }
+
+ // ---- the player: prev / play-pause / next, speed, scrubber, arrows ----
+ function labelWeek(){
+   document.getElementById('pb-week').textContent =
+     WEEKS[P.idx] + ' · week ' + (P.idx + 1) + ' of ' + WEEKS.length;
+ }
+ function seek(i, fromScrub){
+   P.idx = Math.max(0, Math.min(WEEKS.length - 1, i));
+   if(!fromScrub) scrub.value = P.idx;
+   labelWeek();
+   const w = WEEKS[P.idx];
+   if(!(w in PAY))
+     document.getElementById('pb-status').textContent = 'loading ' + w + '…';
+   if(P.view === 'map'){
+     showMap(w);
+     ensurePayload(w).then(pl => {if(WEEKS[P.idx] === w) renderStats(pl);});
+   } else {
+     drawFC();
+   }
+   if(P.idx + 1 < WEEKS.length){        // prefetch: stepping stays smooth
+     const nw = WEEKS[P.idx + 1];
+     ensurePayload(nw);
+     if(P.view === 'map') fetchMap(nw);
+   }
+ }
+ function setPlay(on){
+   P.playing = on;
+   document.getElementById('pb-play').textContent =
+     on ? '❚❚ Pause' : '▶ Play';
+   clearInterval(P.timer);
+   if(on) P.timer = setInterval(() => {
+     if(P.idx >= WEEKS.length - 1){setPlay(false); return;}
+     seek(P.idx + 1);
+   }, +document.getElementById('pb-speed').value);
+ }
+ function setView(v){
+   P.view = v;
+   document.getElementById('view-map').hidden = v !== 'map';
+   document.getElementById('view-fc').hidden = v !== 'fc';
+   const tm = document.getElementById('tab-map'),
+         tf = document.getElementById('tab-fc');
+   tm.classList.toggle('gold', v === 'map');
+   tm.setAttribute('aria-selected', String(v === 'map'));
+   tf.classList.toggle('gold', v === 'fc');
+   tf.setAttribute('aria-selected', String(v === 'fc'));
+   seek(P.idx);
+ }
+ document.getElementById('pb-prev').onclick = () => seek(P.idx - 1);
+ document.getElementById('pb-next').onclick = () => seek(P.idx + 1);
+ document.getElementById('pb-play').onclick = () => {
+   if(!P.playing && P.idx >= WEEKS.length - 1) seek(0);  // replay from the top
+   setPlay(!P.playing);
+ };
+ document.getElementById('pb-speed').onchange = () => {if(P.playing) setPlay(true);};
+ scrub.addEventListener('input', () => seek(+scrub.value, true));
+ document.getElementById('tab-map').onclick = () => setView('map');
+ document.getElementById('tab-fc').onclick = () => setView('fc');
+ addEventListener('keydown', e => {
+   if(e.altKey || e.ctrlKey || e.metaKey) return;
+   const t = e.target && e.target.tagName;
+   if(t === 'INPUT' || t === 'SELECT' || t === 'TEXTAREA') return;
+   if(e.key === 'ArrowLeft'){seek(P.idx - 1); e.preventDefault();}
+   else if(e.key === 'ArrowRight'){seek(P.idx + 1); e.preventDefault();}
+ });
+ addEventListener('themechange', () => {
+   renderStats(P.pl);
+   if(P.view === 'fc') drawFC();
+ });
+ // seed the map cache with the server-rendered map for the initial week so
+ // returning to it never refetches, then start on the map view
+ (function(){
+   const host = document.getElementById('view-map');
+   const wr = host.querySelector('#usmap-wrap');
+   const sc = host.querySelector('script');
+   if(wr) MAPC[WEEKS[P.idx]] = {h: wr.outerHTML, js: sc ? sc.textContent : ''};
+   host.dataset.week = WEEKS[P.idx];
+ })();
+ setView('map');
+</script>
 {% endblock %}

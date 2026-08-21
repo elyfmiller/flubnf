@@ -92,13 +92,17 @@ def pull_hub() -> str:
     # Self-heal sparse clones that predate the baseline requirement: the
     # validated relWIS baseline scores the CDC's own submitted files, so a
     # clone without model-output/FluSight-baseline cannot score anything.
-    try:
-        if not (HUB / "model-output" / "FluSight-baseline").is_dir():
-            subprocess.run(["git", "-C", str(HUB), "sparse-checkout", "add",
-                            "model-output/FluSight-baseline"],
-                           capture_output=True, text=True, timeout=600)
-    except Exception:
-        pass
+    # FluSight-ensemble joined the set for the playback comparison feature
+    # (same pattern: the hub's own submitted files, parsed per week).
+    for sub in ("model-output/FluSight-baseline",
+                "model-output/FluSight-ensemble"):
+        try:
+            if not (HUB / sub).is_dir():
+                subprocess.run(["git", "-C", str(HUB), "sparse-checkout",
+                                "add", sub],
+                               capture_output=True, text=True, timeout=600)
+        except Exception:
+            pass
     r = subprocess.run(["git", "pull", "--ff-only", "origin", "main"],
                        cwd=HUB, capture_output=True, text=True, timeout=300)
     return r.stdout.strip() or r.stderr.strip()

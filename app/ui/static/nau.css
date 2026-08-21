@@ -248,3 +248,25 @@ details.intro[open] > summary{margin-bottom:.15rem}
 .steps .step:last-child::before{display:none}
 .steps .steptext{min-width:0;line-height:1.35;padding-top:.05rem}
 .steps .steptext .hint{display:block}
+
+/* ---- retrospective season player (additive) ---- */
+.playerbar{margin:.1rem 0 .5rem}
+.playerbar button{margin-top:0}
+.playerbar select{width:auto}
+.playerbar input[type="range"]{flex:1;min-width:150px;width:auto;padding:0;
+  border:0;background:transparent;accent-color:var(--gold-bright)}
+.viewtabs{margin:0 0 .6rem}
+.viewtabs button{margin-top:0}
+.playgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(230px,300px);
+  gap:.9rem;align-items:start}
+@media(max-width:1000px){.playgrid{grid-template-columns:1fr}}
+/* the playback map stays compact: cap the svg height; the svg letterboxes
+   its content (preserveAspectRatio), so the geography keeps its shape.
+   !important is required to beat the map's inline width/height style */
+.playmap svg{max-height:40vh!important}
+.playstats .num{text-align:right}
+.playstats table{font-variant-numeric:tabular-nums}
+.sw{display:inline-block;width:.7rem;height:.7rem;border-radius:3px;
+  margin-right:.35rem;vertical-align:-1px}
+.fdmodels{display:flex;gap:.3rem 1rem;flex-wrap:wrap;margin:0 0 .4rem}
+.fdmodels .ck input{width:auto}

@@ -1482,6 +1482,36 @@ def retro_results(request: Request, season: str, week: str = ""):
         "n_weeks": len(weeks) if scoreable else 0, "score_error": score_error})
 
 
+@app.get("/api/retro/{season}/playback/{asof}")
+def api_retro_playback(season: str, asof: str):
+    """One stored retrospective week as a playback payload: member and
+    ensemble quantile fans, settled truth, the CDC's submitted comparators,
+    and running relWIS stats. Cached under <season_root>/playback_cache/."""
+    from fastapi.responses import PlainTextResponse
+    from app.core import playback
+    root, _is_seal = _season_root(season)
+    try:
+        return playback.build_week(root, season, asof)
+    except playback.UnknownWeek as e:
+        return PlainTextResponse(str(e), status_code=404)
+
+
+@app.get("/retro/{season}/report")
+def retro_season_report(season: str):
+    """Generate (cached by mtime) and download the self-contained season
+    report: the season player with every week's data embedded, one HTML
+    file, no server needed."""
+    from fastapi.responses import FileResponse, PlainTextResponse
+    from app.core import playback, report_season
+    root, _is_seal = _season_root(season)
+    try:
+        p = report_season.build_season_report(root, season)
+    except playback.UnknownWeek as e:
+        return PlainTextResponse(str(e), status_code=404)
+    return FileResponse(p, filename=p.name, media_type="text/html",
+                        content_disposition_type="attachment")
+
+
 @app.post("/run")
 def run_models(request: Request,
                background: BackgroundTasks,
