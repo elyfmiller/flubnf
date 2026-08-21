@@ -200,7 +200,9 @@ def materialize_model(setup: StateSetup, template: str | Path, out_path: str | P
         txt = re.sub(r"n_steps=>\d+", f"n_steps=>{int(t_end)}", txt)
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(txt)
+    # newline and encoding pinned: the engine consumes these bytes, and
+    # Windows text mode would otherwise translate \n to \r\n
+    out.write_text(txt, encoding="utf-8", newline="\n")
     return out
 
 
