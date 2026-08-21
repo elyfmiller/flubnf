@@ -51,7 +51,26 @@ window.FluBNFRetroTicker = (function () {
       };
     });
 
+    // Polling discipline, which matters most exactly when the server is
+    // slowest (a replay has the cores): a HIDDEN tab drops to a slow
+    // heartbeat rather than asking every three seconds for readouts nobody
+    // can see, and a request still in flight suppresses the next tick
+    // instead of stacking a second one behind a slow reply. Returning to
+    // the tab polls at once, so the bar is current when it is looked at.
+    var hiddenMs = opts.pollHiddenMs || 20000;
+    var inflight = false, timer = null;
+    function schedule(ms) {
+      clearTimeout(timer);
+      timer = setTimeout(poll, ms);
+    }
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) schedule(0);
+    });
+
     function poll() {
+      if (inflight) { schedule(pollMs); return; }
+      if (document.hidden) { schedule(hiddenMs); return; }
+      inflight = true;
       fetch("/api/retro/progress")
         .then(function (r) { return r.json(); })
         .then(function (all) {
@@ -84,10 +103,14 @@ window.FluBNFRetroTicker = (function () {
           }
         })
         .catch(function () {})
-        .then(function () { setTimeout(poll, pollMs); });
+        .then(function () {
+          inflight = false;
+          schedule(document.hidden ? hiddenMs : pollMs);
+        });
     }
 
     function paint() {
+      if (document.hidden) return;          // nothing to see: do no work
       Object.keys(S).forEach(function (n) {
         var st = S[n], d = st.d, c = st.card;
         var paused = (d.status === "paused");

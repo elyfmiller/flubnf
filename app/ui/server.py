@@ -5,6 +5,7 @@ Run:  .venv/bin/uvicorn app.ui.server:app --port 8710
 """
 from __future__ import annotations
 
+import time
 import sys
 from pathlib import Path
 
@@ -16,8 +17,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse    # noqa: E402
 from fastapi.templating import Jinja2Templates                  # noqa: E402
 
 from app.core import data as data_mod                           # noqa: E402
+from app.core import ttlcache                                   # noqa: E402
 from app.core.runs import (Ledger, RunSpec, fmt_hms,            # noqa: E402
-                           lease_workroot)
+                           lease_workroot, settings_html,
+                           spec_settings, version_pairs)
 
 app = FastAPI(title="FluBNF")
 from fastapi.staticfiles import StaticFiles
@@ -53,6 +56,10 @@ def _restart_needed() -> bool:
 
 templates.env.globals["running_sha"] = lambda: RUNNING_SHA
 templates.env.globals["restart_needed"] = _restart_needed
+# one renderer for the settings blocks, shared by the progress cards, the run
+# page, and both report exports: a reader comparing an artifact against the
+# console never has to reconcile two wordings (see app/core/runs.py)
+templates.env.globals["settings_html"] = settings_html
 
 ENGINES = ("all", "pf", "amcmc")     # "all" = pf + analogue + ensemble
 _status: dict = {"running": None, "log": []}
@@ -84,7 +91,7 @@ def _component_versions() -> dict:
         pass
     out["pybnf"] = out["bngsim"] = "not installed"
     try:
-        import json as _json
+        import json
         import subprocess
         from flubnf.settings import PY_ENGINE
         if Path(PY_ENGINE).exists():
@@ -97,7 +104,7 @@ def _component_versions() -> dict:
                     "print(json.dumps(d))")
             r = subprocess.run([str(PY_ENGINE), "-c", code],
                                capture_output=True, text=True, timeout=15)
-            out.update(_json.loads(r.stdout.strip() or "{}"))
+            out.update(json.loads(r.stdout.strip() or "{}"))
     except Exception:
         pass
     return out
@@ -116,6 +123,60 @@ def _default_forecast_date() -> str:
     sat = str(d - dt.timedelta(days=(d.weekday() - 5) % 7))
     vs = data_mod.vintages()
     return min(sat, vs[-1]) if vs else sat
+
+
+# --------------------------------------------------------------------------
+# cached filesystem scans
+#
+# The console asks the same directory questions many times per render (how
+# many weeks a season has, which workroots hold results, what is archived),
+# and every answer stats a file per week. Measured idle, /retro spent 68 ms
+# of its 71 ms there, and under the load of a real fitting run that cost
+# multiplies. Each scan below is therefore cached for a couple of seconds
+# (app/core/ttlcache.py), which is invisible against pollers that run every
+# two to three seconds, and every action that changes the underlying state
+# calls _invalidate_scans() so the interface is never stale after a click.
+# --------------------------------------------------------------------------
+
+@ttlcache.ttl_cache()
+def _weeks_done(root: Path) -> int:
+    """Completed weeks in a season tree: the count of stored samples.json.
+
+    THE hot scan of the retrospective pages. Every caller goes through here
+    so one page render pays for it once."""
+    root = Path(root)
+    try:
+        return len(list((root / "weeks").glob("*/samples.json")))
+    except OSError:
+        return 0
+
+
+@ttlcache.ttl_cache()
+def _scan_results(workroots: Path) -> list:
+    """results.json paths under a workroots directory, newest run first."""
+    try:
+        return sorted(Path(workroots).glob("*/results.json"), reverse=True)
+    except OSError:
+        return []
+
+
+def _workroot_results() -> list:
+    """Workroot results.json paths, newest run first. The scan is cached;
+    the files themselves are read fresh by the caller, so a run that
+    rewrites its results is never served a stale forecast.
+
+    KEYED BY PATH, never by nothing: the state root is switchable (tests
+    redirect it, and a cached answer from one root must never be served for
+    another). Every cache below follows the same rule."""
+    from app.core.runs import APP_STATE
+    return _scan_results(APP_STATE / "workroots")
+
+
+def _invalidate_scans() -> None:
+    """Drop every cached scan. Called by the actions that change what the
+    scans describe, so a count on the page after a click is always the count
+    on disk."""
+    ttlcache.clear_all()
 
 
 @app.get("/favicon.ico", include_in_schema=False)
@@ -326,6 +387,7 @@ def runs_page(request: Request):
 
 @app.post("/run/stop")
 def run_stop():
+    _invalidate_scans()        # the run's state is about to change
     w = _status.get("workroot")
     running = _status.get("running") or ""
     if w and running.startswith("amcmc"):
@@ -507,6 +569,10 @@ def _run_all(spec: RunSpec) -> None:
         f"{spec.forecast_date} · {n_states} state(s) + US"
         if n_states < len(spec.locations)
         else f"{spec.forecast_date} · {len(spec.locations)} location(s)")
+    # the settings that produced this run, shown on the progress card and
+    # recorded in its artifacts. Set here as well as in the route so a direct
+    # call (scripts, tests) is described too.
+    _status["settings"] = spec_settings(spec)
     try:
         # setup INSIDE the try: a failed ledger insert or workroot lease must
         # release the running claim in the finally, not wedge it until restart
@@ -603,7 +669,7 @@ def _run_all(spec: RunSpec) -> None:
         an_q = {loc: floor_quantiles(q) for loc, q in an_engine.run(spec).items()}
         # 3. ensemble (vincentize: equal weights, never fitted)
         import pandas as _pd
-        _l = ___import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
+        _l = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
         n2f_pre = dict(zip(_l.location_name, _l.location.str.zfill(2)))
         members_by_loc = {}
         for loc in spec.locations:
@@ -773,7 +839,12 @@ def _run_all(spec: RunSpec) -> None:
                           "summary_html": wis_html},
                          workroot / "report.html",
                          national_map_html=nat_html,
-                         elapsed_s=_time.time() - t_start)
+                         elapsed_s=_time.time() - t_start,
+                         # what produced this report: the run's own settings,
+                         # the application build, and the engine versions
+                         settings_html=settings_html(
+                             spec_settings(spec)
+                             + version_pairs(RUNNING_SHA, VERSIONS)))
             outcome["report"] = str(workroot / "report.html")
         except Exception as e:
             outcome["report_error"] = str(e)[:200]
@@ -835,8 +906,12 @@ def _run_all(spec: RunSpec) -> None:
                 guard.terminate()
             except Exception:
                 pass
+        # the run wrote results.json and may have archived a forecast date:
+        # every cached scan that describes those is now out of date
+        _invalidate_scans()
         _status["running"] = None
         _status["phase"] = ""
+        _status["settings"] = []
         _status["workroot"] = None
         _status["run_label"] = ""
         _status["expected_total"] = None
@@ -860,14 +935,22 @@ def _archive_run(workroot: Path, forecast_date: str) -> str:
     return str(arch)
 
 
-def _archive_dates() -> list:
+@ttlcache.ttl_cache()
+def _scan_archive_dates(root: Path) -> list:
     import re
-    from app.core.runs import APP_STATE
-    root = APP_STATE / "archive"
+    root = Path(root)
     if not root.is_dir():
         return []
     return sorted(p.name for p in root.iterdir()
                   if p.is_dir() and re.fullmatch(r"\d{4}-\d{2}-\d{2}", p.name))
+
+
+def _archive_dates() -> list:
+    """Forecast archive listing, cached by the directory it describes: the
+    Output page and its date picker both ask, and a run archiving a new date
+    invalidates it."""
+    from app.core.runs import APP_STATE
+    return _scan_archive_dates(APP_STATE / "archive")
 
 
 @app.get("/api/archive/dates")
@@ -886,18 +969,25 @@ def run_page(request: Request, run_id: str):
     subs = [{"model": p.parent.name, "file": p.name, "abs": str(p)}
             for p in sorted(w.glob("submission/*/*.csv"))]
     report = (w / "report.html").name if (w / "report.html").is_file() else None
-    status, err = "", ""
+    status, err, spec_json = "", "", ""
     for r in Ledger().rows(200):
         if r.get("run_id") == run_id:
             status = r.get("status", "")
+            spec_json = r.get("spec", "") or ""
             try:
                 err = _json.loads(r.get("outcome") or "{}").get("error", "")
             except Exception:
                 err = ""
             break
+    # The settings come from the LEDGER ROW's spec, which is the record of
+    # record for a run; nothing is duplicated to show them here. The build
+    # and engine versions are this process's, stated so the page says what
+    # produced the run rather than implying it.
     return templates.TemplateResponse(request, "run.html", {
         "active": "Runs", "run_id": run_id, "status": status, "error": err,
-        "label": _run_label(run_id), "models": res.get("models", {}),
+        "label": _run_label(run_id, spec_json), "models": res.get("models", {}),
+        "settings": spec_settings(spec_json),
+        "versions": version_pairs(RUNNING_SHA, VERSIONS),
         "subs": subs, "report": report})
 
 
@@ -957,7 +1047,11 @@ def api_progress():
            # the browser ticks the seconds itself; these two anchor it, so a
            # page reloaded an hour into a run shows the true elapsed time
            "started_utc": _status.get("started_utc"),
-           "elapsed_s": _console_elapsed()}
+           "elapsed_s": _console_elapsed(),
+           # the settings that produced this run, as (label, value) pairs:
+           # the card renders them server-side, and a client that arrived
+           # mid-run can fill them in from here
+           "settings": list(_status.get("settings") or [])}
     if w:
         done = total = 0
         t0 = None
@@ -1015,11 +1109,11 @@ def _outcome_chips(outcome_json: str) -> str:
 
 def _latest_results():
     import json as _json
-    from app.core.runs import APP_STATE
     # newest first; a half-written or corrupt results.json falls back to the
-    # next run instead of turning five routes into a 500
-    for f in sorted((APP_STATE / "workroots").glob("*/results.json"),
-                    reverse=True):
+    # next run instead of turning five routes into a 500. The workroot SCAN
+    # is cached (five routes ask for it); the file is read fresh every time,
+    # so a re-blended ensemble is never served from a stale parse.
+    for f in _workroot_results():
         try:
             return f.parent.name, _json.loads(f.read_text())
         except (_json.JSONDecodeError, OSError):
@@ -1282,6 +1376,7 @@ def generate_ensemble(request: Request):
             if n2f.get(loc):
                 sub_rows += rows_from_quantiles(b, n2f[loc], res["forecast_date"])
     res["models"]["ensemble"] = blended
+    _invalidate_scans()               # results.json is about to change
     rp = APP_STATE / "workroots" / rid / "results.json"
     _tmp = rp.parent / "results.json.tmp"
     _tmp.write_text(_json.dumps(res))
@@ -1317,14 +1412,14 @@ def _season_root(season: str, archive: str = "") -> tuple:
     if archive:
         from app.core import retro
         return retro.archive_dir(RETRO_ROOT, season, archive), False
-    def _done(r):
-        return len(list((r / "weeks").glob("*/samples.json"))) if r.exists() else 0
     app_root, seal_root = RETRO_ROOT / season, RETRO_SEAL / season
-    if _done(seal_root) > _done(app_root):
+    if _weeks_done(seal_root) > _weeks_done(app_root):
         return seal_root, True
     return app_root, False
 _retro_status: dict = {}
 _retro_stop: set = set()
+_retro_claim_at: dict = {}   # season -> when its in-memory claim was made
+_retro_claim_at: dict = {}   # season -> when its in-memory claim was made
 
 #: statuses that mean a season worker is alive and holding the engine
 _RETRO_ACTIVE = ("running", "stopping", "paused")
@@ -1359,30 +1454,39 @@ def _live_root(season: str) -> Path:
     return RETRO_ROOT / season
 
 
-def _known_seasons() -> list:
-    """Seasons this process might have to speak for: the in-memory claims
-    plus every season under the live retro root carrying a run record. A
-    record on disk outlives the claim (an app restart drops the claim but not
-    the file), and a season with a worker must never read as idle."""
+@ttlcache.ttl_cache()
+def _seasons_on_disk(retro_root: Path) -> tuple:
+    """Seasons under a retro root carrying a run record. Cached by that
+    root: the busy guard asks on every poll and on every guarded click, and
+    an answer for one root must never be served for another."""
     from app.core import retro
-    names = set(_retro_status)
+    names = set()
     try:
-        for p in RETRO_ROOT.iterdir():
+        for p in Path(retro_root).iterdir():
             if (_valid_season(p.name) and p.is_dir()
                     and retro.meta_path(p).is_file()):
                 names.add(p.name)
     except OSError:
         pass                          # no retro root yet: the claims are all
-    return sorted(names)
+    return tuple(sorted(names))
 
 
-def _archive_entries(season: str) -> list:
-    """Archived runs of one season, newest first, in the shape the retro
-    index lists them: when they ran, how much they contain, and what they
-    scored."""
+def _known_seasons() -> list:
+    """Seasons this process might have to speak for: the in-memory claims
+    plus every season under the live retro root carrying a run record. A
+    record on disk outlives the claim (an app restart drops the claim but not
+    the file), and a season with a worker must never read as idle.
+
+    The claims are read live, never cached: a claim is made in the request
+    that starts a replay, and the very next busy check must see it."""
+    return sorted(set(_retro_status) | set(_seasons_on_disk(RETRO_ROOT)))
+
+
+@ttlcache.ttl_cache()
+def _scan_archive_entries(retro_root: Path, season: str) -> list:
     from app.core import retro
     out = []
-    for p in retro.list_archive_dirs(RETRO_ROOT, season):
+    for p in retro.list_archive_dirs(retro_root, season):
         stamp = retro.archive_stamp_of(p.name, season)
         s = retro.run_summary(p)
         size = retro.dir_size(p)
@@ -1393,6 +1497,19 @@ def _archive_entries(season: str) -> list:
     return out
 
 
+def _archive_entries(season: str) -> list:
+    """Archived runs of one season, newest first, in the shape the retro
+    index lists them: when they ran, how much they contain, and what they
+    scored.
+
+    Cached, because this walks every archived tree to size it, which is the
+    most expensive scan the retro index makes. The cache key is the RETRO
+    ROOT as well as the season: a season name alone would let an answer
+    computed against one tree be served for another, and archiving and
+    deleting both invalidate it anyway."""
+    return _scan_archive_entries(RETRO_ROOT, season)
+
+
 def _archive_progress(root: Path, season: str) -> dict:
     """The timing block for an archived run, shaped like _retro_progress so
     the season template needs no second code path. Never active: an archived
@@ -1400,8 +1517,11 @@ def _archive_progress(root: Path, season: str) -> dict:
     from app.core import retro
     meta = retro.read_meta(root)
     t = retro.timing(meta) if meta else {}
-    done = len(list((root / "weeks").glob("*/samples.json"))) if root.exists() else 0
+    done = _weeks_done(root)
     return {"season": season, "status": "archived", "done": done,
+            # an archived tree carries its own record, so the settings shown
+            # are the ones that produced THESE weeks, not the live season's
+            "settings": retro.settings_summary(meta),
             "total": int(t.get("total_weeks") or done),
             "elapsed_s": t.get("elapsed_s"),
             "weeks_measured": t.get("weeks_measured") or 0,
@@ -1435,11 +1555,35 @@ def _season_status(season: str) -> str:
     mem = _retro_status.get(season, "")
     meta = _season_meta(season)
     disk = retro.effective_status(meta) if meta else ""
+    if mem not in _RETRO_ACTIVE:
+        _retro_claim_at.pop(season, None)   # stamp never outlives its claim
     if mem in _RETRO_ACTIVE:
         if disk == "interrupted":
             # the worker died without releasing the in-memory claim
             _retro_status[season] = "interrupted"
             return "interrupted"
+        claimed_at = _retro_claim_at.get(season)
+        finished = float((meta or {}).get("finished_utc") or 0)
+        if (disk and (disk in ("stopped", "done") or disk.startswith("error"))
+                and claimed_at and finished >= claimed_at):
+            # The worker THIS claim refers to has finished (its record was
+            # closed after the claim was made), so the claim is dead. Without
+            # this, a "stopping" claim outlived its worker and made every
+            # later Run refuse with "already replaying", wedging the season
+            # until the app restarted (field-found 2026-08-21). The
+            # finished-after-claimed test keeps the startup window safe: a
+            # fresh claim over an older record still reads as live.
+            _retro_status[season] = disk
+            _retro_stop.discard(season)
+            _retro_claim_at.pop(season, None)
+            return disk
+        if not meta and claimed_at and time.time() - claimed_at > 120:
+            # claimed but no record after two minutes: the worker never got
+            # going, so the claim must not outlive it either
+            _retro_status[season] = ""
+            _retro_stop.discard(season)
+            _retro_claim_at.pop(season, None)
+            return ""
         if mem == "stopping":
             return "stopping"
         # the record refines running into paused as the worker holds
@@ -1457,7 +1601,7 @@ def _retro_progress(season: str) -> dict:
     meta = _season_meta(season)
     t = retro.timing(meta) if meta else {}
     root, _is_seal = _season_root(season)
-    done = len(list((root / "weeks").glob("*/samples.json"))) if root.exists() else 0
+    done = _weeks_done(root)
     total = t.get("total_weeks") or len(retro.season_vintages(season))
     mean_s = t.get("mean_s")
     eta_s = None
@@ -1465,6 +1609,8 @@ def _retro_progress(season: str) -> dict:
         eta_s = mean_s * (total - done)
     return {"season": season, "status": status, "done": done,
             "total": int(total or 0),
+            # what this replay was started with, from its run record
+            "settings": retro.settings_summary(meta),
             "elapsed_s": t.get("elapsed_s"),
             "weeks_measured": t.get("weeks_measured") or 0,
             "mean_s": mean_s, "eta_s": eta_s,
@@ -1500,11 +1646,12 @@ def retro_index(request: Request):
     for s in available_seasons():
         total = len(season_vintages(s))
         root, is_seal = _season_root(s)
-        done = len(list((root / "weeks").glob("*/samples.json"))) if root.exists() else 0
+        done = _weeks_done(root)
         prog = _retro_progress(s)
         status = prog["status"]
         seasons.append({"name": s, "total": total, "done": done,
                         "seal": is_seal,
+                        "settings": prog["settings"],
                         "archives": _archive_entries(s),
                         "status": status,
                         "running": status in ("running", "stopping"),
@@ -1588,6 +1735,7 @@ def retro_archive_delete(request: Request, season: str, stamp: str,
     deleted out from under a listing it may be reading), and the confirmation
     field must name the season. The LIVE season is never touched."""
     from app.core import retro
+    _invalidate_scans()        # an archive listing is about to change
     if not _valid_season(season) or not _valid_archive(stamp):
         _flash("Unrecognized season or archive identifier. Nothing was "
                "deleted.")
@@ -1619,7 +1767,13 @@ def retro_archive_delete(request: Request, season: str, stamp: str,
 
 
 def _retro_bg(season: str, locations: list, width: int,
-              replicates: int = 3, particles: int = 10_000):
+              replicates: int = 3, particles: int = 10_000,
+              settings: dict | None = None):
+    """The season worker. `settings` is what the user actually chose on the
+    form (the scope label and the engine preset); run_season folds in
+    everything else and records the lot in run_meta.json before the first
+    week, so the record says what produced these weeks even if the replay is
+    interrupted."""
     from app.core import retro
     root = RETRO_ROOT / season
     _retro_status[season] = "running"
@@ -1633,7 +1787,8 @@ def _retro_bg(season: str, locations: list, width: int,
             if season in _retro_stop:
                 raise _RetroStopRequested()
         retro.run_season(root, season, locations, replicates=replicates,
-                         particles=particles, width=width, progress=_tick)
+                         particles=particles, width=width, progress=_tick,
+                         settings=settings)
         # equal, never-fitted member weights (the sealed recipe)
         df = retro.score_season(root, season,
                                 ensemble_weights={"pf": 0.5, "analogue": 0.5})
@@ -1646,6 +1801,7 @@ def _retro_bg(season: str, locations: list, width: int,
         _retro_status[season] = f"error: {str(e)[:150]}"
     finally:
         _retro_stop.discard(season)
+        _invalidate_scans()          # the season's counts and status settled
         # the flags are requests, not state: leaving one behind would stop or
         # hold the NEXT replay before it ran a week
         retro.clear_flags(root)
@@ -1663,6 +1819,7 @@ def retro_stop():
     left off (a completed week is never redone). A PAUSED season stops too:
     request_stop clears the pause so the worker wakes and exits."""
     from app.core import retro
+    _invalidate_scans()
     stopping = []
     for season, st in list(_retro_status.items()):
         if st != "running" and _season_status(season) not in ("running",
@@ -1685,6 +1842,7 @@ def retro_season_stop(request: Request, season: str):
     week in flight is finished and checkpointed first, so nothing is
     half-written, and pressing Run again resumes from there."""
     from app.core import retro
+    _invalidate_scans()
     if not _valid_season(season):
         _flash("Unrecognized season name. Nothing was stopped.")
         return _back(request, "/retro")
@@ -1693,9 +1851,17 @@ def retro_season_stop(request: Request, season: str):
         return _back(request, "/retro")
     retro.request_stop(_live_root(season))
     _retro_stop.add(season)
-    _retro_status[season] = "stopping"
-    _flash(f"Stopping {season} after the current week. Completed weeks are "
-           "kept; Run resumes from there.")
+    if _season_status(season) in ("running", "paused"):
+        _retro_status[season] = "stopping"
+        _flash(f"Stopping {season} after the current week. Completed weeks "
+               "are kept; Run resumes from there.")
+    else:
+        # nothing was actually replaying: resolve now rather than leaving a
+        # "stopping" claim nobody will ever clear
+        _retro_status[season] = "stopped"
+        _retro_stop.discard(season)
+        _flash(f"{season} was not replaying; it is marked stopped and Run "
+               "will start it fresh or resume it.")
     return _back(request, "/retro")
 
 
@@ -1705,6 +1871,7 @@ def retro_season_pause(request: Request, season: str):
     guard stays held, so an overnight replay resumes on the same machine
     state it paused on."""
     from app.core import retro
+    _invalidate_scans()
     if not _valid_season(season):
         _flash("Unrecognized season name. Nothing was paused.")
         return _back(request, "/retro")
@@ -1722,6 +1889,7 @@ def retro_season_resume(request: Request, season: str):
     """Release a hold. The worker picks up at the next week; the elapsed
     clock resumes where it stopped rather than restarting."""
     from app.core import retro
+    _invalidate_scans()
     if not _valid_season(season):
         _flash("Unrecognized season name. Nothing was resumed.")
         return _back(request, "/retro")
@@ -1753,11 +1921,15 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
     hand, and discard refuses without a confirmation naming the season."""
     from app.core import retro
     from app.core.retro import available_seasons
+    # a start may archive or discard a tree: nothing cached about it survives
+    _invalidate_scans()
     if not _valid_season(season):
         _flash("Unrecognized season name. Nothing was started.")
         return RedirectResponse("/retro", status_code=303)
     if _season_status(season) in _RETRO_ACTIVE:
-        _flash(f"{season} is already replaying. One season worker runs at a time.")
+        _flash(f"{season} is already replaying (status: "
+               f"{_season_status(season)}). One season worker runs at a "
+               "time; stop it first if you want to start over.")
         return RedirectResponse("/retro", status_code=303)
     if mode not in ("resume", "archive", "discard"):
         _flash(f"'{mode}' is not one of resume, archive, or discard. "
@@ -1793,8 +1965,7 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
     # Start-over handling comes AFTER every validation above: a rejected
     # form must never have moved or removed anything first.
     live = _live_root(season)
-    existing = len(list((live / "weeks").glob("*/samples.json"))) \
-        if live.exists() else 0
+    existing = _weeks_done(live)
     if mode == "discard":
         if confirm != season:
             _flash(f"Discarding {season} was not confirmed, so nothing was "
@@ -1827,8 +1998,13 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                "Starting a fresh replay.")
     # claim inside the request, not the background task, so a double submit
     # can't race two season workers over the same tree
+    _invalidate_scans()       # an archive or discard just moved the tree
     _retro_status[season] = "running"
-    background.add_task(_retro_bg, season, names, width, replicates, particles)
+    _retro_claim_at[season] = time.time()
+    # the settings recorded with the run: the scope the user picked and the
+    # engine preset, which the location list alone cannot say
+    background.add_task(_retro_bg, season, names, width, replicates, particles,
+                        {"scope": locations, "engine": engine})
     return RedirectResponse("/retro", status_code=303)
 
 
@@ -2033,7 +2209,9 @@ def retro_season_report(season: str, archive: str = ""):
                                  status_code=404)
     root, _is_seal = _season_root(season, archive)
     try:
-        p = report_season.build_season_report(root, season, archive=archive)
+        p = report_season.build_season_report(
+            root, season, archive=archive,
+            build=RUNNING_SHA, versions=VERSIONS)
     except playback.UnknownWeek as e:
         return PlainTextResponse(str(e), status_code=404)
     return FileResponse(p, filename=p.name, media_type="text/html",
@@ -2053,7 +2231,9 @@ def api_retro_report_path(season: str, archive: str = ""):
                                  status_code=404)
     root, _is_seal = _season_root(season, archive)
     try:
-        p = report_season.build_season_report(root, season, archive=archive)
+        p = report_season.build_season_report(
+            root, season, archive=archive,
+            build=RUNNING_SHA, versions=VERSIONS)
     except playback.UnknownWeek as e:
         return PlainTextResponse(str(e), status_code=404)
     return {"path": str(p)}
@@ -2110,11 +2290,12 @@ def run_models(request: Request,
     # NOW so the page the user lands on shows the run (double-click race,
     # laptop field test 2026-08-18)
     _status["running"] = "starting"
+    _invalidate_scans()         # a run is starting: nothing cached survives it
     _status["started_utc"] = __import__("time").time()   # the wall clock starts here
     _status["run_label"] = f"{forecast_date} · queued"
     if "all" in [l.lower() for l in locations]:
         import pandas as _pd
-        _l = ___import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
+        _l = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
         locs_list = list(_l.location_name[(_l.location.str.len() == 2)
                                           & (_l.abbreviation != "US")])
         us = _l.location_name[_l.abbreviation == "US"]

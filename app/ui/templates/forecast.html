@@ -66,6 +66,11 @@
       poll re-anchors it every two seconds, so it cannot drift, and a page
       reloaded an hour in shows the true total rather than starting over #}
    <p class="runstat" id="elapsed"></p>
+   {# what produced this run, under the readouts and secondary to them: the
+      same settings the run page and the weekly report state, from the live
+      spec. A run watched for an hour must never leave the watcher guessing
+      which settings it is watching. #}
+   <div id="runsettings">{{ settings_html(status.settings) | safe }}</div>
    <form method="post" action="/run/stop"
      onsubmit="this.querySelector('button').disabled=true"><button class="quiet">Stop run</button></form>
    <p class="quip" id="quip"></p>
@@ -90,13 +95,26 @@
      return Math.floor(t/3600)+':'+String(Math.floor(t/60)%60).padStart(2,'0')
        +':'+String(t%60).padStart(2,'0');}
    setInterval(()=>{
+     if(document.hidden) return;          // nothing to see: do no work
      const el=document.getElementById('elapsed');
      if(!el||EL.s==null) return;
      el.textContent='elapsed '+hms(EL.s+(Date.now()-EL.at)/1000);
    },500);
    function resetProg(){PS={label:null,disp:0,ema:null,shown:null,shownT:0,up:0};}
    resetProg();
+   // Polling discipline, which matters most exactly when the server is
+   // slowest (a fitting run has the cores): a HIDDEN tab drops to a slow
+   // heartbeat instead of asking every two seconds for readouts nobody can
+   // see, and a request still in flight suppresses the next tick rather
+   // than stacking a second one behind a slow reply. Returning to the tab
+   // polls immediately, so the readouts are current the moment they matter.
+   const POLL_MS=2000, POLL_HIDDEN_MS=20000;
+   let INFLIGHT=false, PTIMER=null;
+   function schedule(ms){clearTimeout(PTIMER); PTIMER=setTimeout(poll,ms);}
    async function poll(){
+     if(INFLIGHT){schedule(POLL_MS); return;}      // never stack requests
+     if(document.hidden){schedule(POLL_HIDDEN_MS); return;}
+     INFLIGHT=true;
      try{const r=await fetch('/api/progress'); const d=await r.json();
        if(!d.running){location.reload(); return;}
        if(PS.label!==null && d.label!==PS.label) resetProg();  // a new run started
@@ -105,6 +123,13 @@
        if(d.elapsed_s!=null) EL={s:d.elapsed_s,at:Date.now()};   // re-anchor
        STOPPING=(d.phase||'').startsWith('stopping');
        D={...d, t: d.done===D.done ? D.t : Date.now()};  // glide anchors to the last done-change
+       // settings arrive with the poll too, so a card rendered before the
+       // spec existed fills itself in rather than staying blank
+       const sb=document.getElementById('runsettings');
+       if(sb && !sb.textContent.trim() && d.settings && d.settings.length){
+         sb.innerHTML='<p class="hint runsettings"><strong>Run settings:</strong> '
+           + d.settings.map(p=>p[0]+' '+p[1]).join(' · ') + '</p>';
+       }
        if(d.eta_s!=null){
          PS.ema = PS.ema==null ? d.eta_s : 0.3*d.eta_s + 0.7*PS.ema;
          const cur = PS.shown==null ? null
@@ -115,11 +140,15 @@
        if(STOPPING) document.getElementById('prog').textContent='Stopping; finishing the current fit…';
        else if(!d.total) document.getElementById('prog').textContent=d.phase||'starting';
      }catch(e){}
-     setTimeout(poll,2000);
+     finally{INFLIGHT=false;}
+     schedule(document.hidden?POLL_HIDDEN_MS:POLL_MS);
    }
+   document.addEventListener('visibilitychange',function(){
+     if(!document.hidden) schedule(0);});
    // smooth: advance within the current fit using the measured per-fit rate,
    // so 2-fit runs glide instead of jumping 0 -> 50 -> 100
    setInterval(()=>{
+     if(document.hidden) return;        // nothing to see: do no work
      if(STOPPING) return;               // bar frozen; poll() owns the message
      if(!D.total) return;
      const per=D.eta_s!=null && D.total>D.done ? D.eta_s/(D.total-D.done) : 20;

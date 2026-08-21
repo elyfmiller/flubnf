@@ -17,6 +17,17 @@
 </div>
 {% endif %}
 
+{% if settings %}
+{# What produced this run, read from the ledger row's stored spec (the
+   record of record) plus the running build and engine versions. Nothing is
+   duplicated to show it here, so the page can never disagree with the
+   ledger. #}
+<div class="card"><h2>Run settings</h2>
+ {{ settings_html(settings, title="Settings") | safe }}
+ {{ settings_html(versions, title="Produced by") | safe }}
+</div>
+{% endif %}
+
 {% if report %}<div class="card"><a href="/runs/{{ run_id }}/report">Open the weekly report</a></div>{% endif %}
 
 {% for model, locs in models.items() %}

@@ -39,7 +39,9 @@ from app.core.data import ARCHIVE, LOCATIONS          # noqa: E402
 from app.core.engines import analogue as an_engine    # noqa: E402
 from app.core.engines import pf as pf_engine          # noqa: E402
 from app.core import ensemble as ens                  # noqa: E402
-from app.core.runs import RunSpec                     # noqa: E402
+from app.core import proc as proc_mod                 # noqa: E402
+from app.core.runs import (LOCATION_LIST_LIMIT,       # noqa: E402
+                           RunSpec, locations_phrase)
 
 SEASON_BOUNDS = {"2023-24": ("2023-08-01", "2024-06-15"),
                  "2024-25": ("2024-08-01", "2025-06-15"),
@@ -297,15 +299,55 @@ class _Heartbeat(threading.Thread):
         self._done.set()
 
 
-def _start_record(root: Path, season: str, total_weeks: int) -> dict:
+#: How the retro form's location scopes read when a replay had no explicit
+#: location list to name (the label is what the user actually chose).
+SCOPE_LABELS = {"panel6": "6-state panel", "all": "all 52 jurisdictions",
+                "custom": "custom selection"}
+
+
+def settings_summary(meta: dict) -> list:
+    """The settings that produced a replay, as (label, value) pairs, read
+    from its own run record.
+
+    Absent for a season with no recorded settings, which is the honest
+    answer for the sealed validation runs: they predate the record, and
+    inventing their configuration would be worse than saying nothing.
+    """
+    s = (meta or {}).get("settings")
+    if not isinstance(s, dict) or not s:
+        return []
+    locs = [str(l) for l in (s.get("locations") or [])]
+    scope = str(s.get("scope") or "")
+    where = locations_phrase(locs) if locs else SCOPE_LABELS.get(scope, scope)
+    if scope == "custom" and len(locs) > LOCATION_LIST_LIMIT:
+        where = f"{SCOPE_LABELS['custom']}, {where}"
+    pairs = [("season", str(s.get("season") or (meta or {}).get("season") or "")),
+             ("locations", where),
+             ("particles", f"{int(s.get('particles') or 0):,}"
+              if s.get("particles") else ""),
+             ("replicates", str(s.get("replicates") or "")),
+             ("shard width", str(s.get("width") or "")),
+             ("engine preset", str(s.get("engine") or ""))]
+    return [(k, v) for k, v in pairs if v not in ("", None)]
+
+
+def _start_record(root: Path, season: str, total_weeks: int,
+                  settings: dict | None = None) -> dict:
     """Open (or reopen) the season's run record. A resume keeps started_utc
-    and elapsed_s: the clock accumulates, it never restarts."""
+    and elapsed_s: the clock accumulates, it never restarts.
+
+    The settings of the replay that is starting are recorded here, at the
+    start, so the record answers 'what produced these weeks' even for a run
+    that never finished. A resume records the settings it is resuming WITH,
+    which is what the weeks from here on were actually fitted under."""
     with _META_LOCK:
         m = read_meta(root)
         now = _now()
         m["season"] = season
         m["status"] = "running"
         m["total_weeks"] = int(total_weeks)
+        if settings:
+            m["settings"] = dict(settings)
         m["started_utc"] = m.get("started_utc") or now
         m["segment_start_utc"] = now
         m["finished_utc"] = None
@@ -404,9 +446,12 @@ def run_week(root: Path, season: str, asof: str, locations: list,
         runner.write_text(pf_engine._RUNNER.format(
             pybnf_path=str(pf_engine.PYBNF_PF), cells_json=str(sj),
             out_json=str(wd / f"status_{i}.json")))
-        procs.append(subprocess.Popen([str(pf_engine.PY_ENGINE
-                     if hasattr(pf_engine, 'PY_ENGINE') else pf_engine.PY310),
-                     str(runner)], stdout=subprocess.DEVNULL,
+        # started at reduced priority so the console stays responsive while a
+        # season replays: see app/core/proc.py for the trade and its cost
+        procs.append(subprocess.Popen(proc_mod.low_priority_cmd(
+                     [str(pf_engine.PY_ENGINE
+                      if hasattr(pf_engine, 'PY_ENGINE') else pf_engine.PY310),
+                      str(runner)]), stdout=subprocess.DEVNULL,
                      stderr=subprocess.DEVNULL))
     for p in procs:
         p.wait(timeout=7200)
@@ -422,7 +467,8 @@ def run_week(root: Path, season: str, asof: str, locations: list,
 
 
 def run_season(root: Path, season: str, locations: list, replicates=3,
-               particles=10_000, width=4, progress=None) -> list:
+               particles=10_000, width=4, progress=None,
+               settings: dict | None = None) -> list:
     """Replay a season week by week, recording timing and honouring the STOP
     and PAUSE flags between weeks.
 
@@ -431,12 +477,26 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
     corrupted, and the next replay resumes exactly where this one left off.
     A pause holds inside this call, keeping the process (and the caller's
     sleep guard) alive.
+
+    `settings` is what the caller was asked for (the scope the user picked,
+    the engine preset); everything this function was actually given is
+    folded in, so the record describes the run even when the caller passes
+    nothing.
     """
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
     clear_flags(root)              # no stale STOP/PAUSE from an earlier replay
     vintages = season_vintages(season)
-    _start_record(root, season, len(vintages))
+    # the settings this replay actually runs under, recorded before the first
+    # week so an interrupted run still says what produced its weeks
+    rec = dict(settings or {})
+    rec.setdefault("season", season)
+    rec.setdefault("locations", [str(l) for l in locations])
+    rec.setdefault("replicates", int(replicates))
+    rec.setdefault("particles", int(particles))
+    rec.setdefault("width", int(width))
+    rec.setdefault("engine", "pf")
+    _start_record(root, season, len(vintages), rec)
     beat = _Heartbeat(root)
     beat.start()
     done = []

@@ -176,7 +176,12 @@ def execute(workroot: Path, timeout: float = 3600.0) -> dict:
     runner.write_text(_RUNNER.format(pybnf_path=str(PYBNF_PF),
                                      cells_json=str(workroot / "cells.json"),
                                      out_json=str(out_json)))
-    proc = subprocess.Popen([str(PY310), str(runner)],
+    # reduced scheduling priority: the fit yields to the interactive server
+    # so the application stays usable during a multi-hour run. `nice` execs
+    # the interpreter, so this Popen still refers to the real runner process
+    # and the STOP handling below is unchanged. See app/core/proc.py.
+    from app.core.proc import low_priority_cmd
+    proc = subprocess.Popen(low_priority_cmd([str(PY310), str(runner)]),
                             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                             text=True)
     t0 = time.time()
