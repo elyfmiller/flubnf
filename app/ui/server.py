@@ -25,6 +25,32 @@ app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.globals["pop_flash"] = lambda: _status.pop("flash", None)
 
+def _repo_sha(short: bool = True) -> str:
+    import subprocess
+    try:
+        r = subprocess.run(["git", "rev-parse", "--short" if short else "HEAD",
+                            "HEAD"], capture_output=True, text=True, timeout=5,
+                           cwd=str(Path(__file__).resolve().parents[2]))
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
+RUNNING_SHA = _repo_sha()   # the code THIS process actually executes
+
+
+def _restart_needed() -> bool:
+    """True when the repo on disk is ahead of the running process: a pull
+    landed but Python in memory is still the old build. The page reload
+    shows fresh templates and static files while server logic stays stale,
+    which cost days of confused field debugging; the banner ends that."""
+    sha = _repo_sha()
+    return bool(sha and RUNNING_SHA and sha != RUNNING_SHA)
+
+
+templates.env.globals["running_sha"] = lambda: RUNNING_SHA
+templates.env.globals["restart_needed"] = _restart_needed
+
 ENGINES = ("all", "pf", "amcmc")     # "all" = pf + analogue + ensemble
 _status: dict = {"running": None, "log": []}
 _last_form: dict = {}
