@@ -10,8 +10,11 @@
  href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap">
 <link rel="stylesheet" href="/static/nau.css">
 <script>
+ // theme before first paint: four themes (light, paper, dim, dark); an
+ // unknown stored value falls back to the system preference
  (function(){var t=localStorage.getItem('theme');
-  if(!t) t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
+  if(['light','paper','dim','dark'].indexOf(t)<0)
+   t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
   document.documentElement.setAttribute('data-theme',t);
   // text size before first paint: no flash of the wrong scale
   var m={s:'87.5%',m:'100%',l:'115%'},f=localStorage.getItem('fontsize');
@@ -45,7 +48,12 @@
     <button type="button" data-fs="m" title="Standard text">A</button>
     <button type="button" data-fs="l" title="Larger text">A+</button>
   </div>
-  <button id="themebtn" title="Toggle light or dark theme">◐</button>
+  <div class="themepick" role="group" aria-label="Color theme">
+    <button type="button" data-th="light" title="Light theme">Light</button>
+    <button type="button" data-th="paper" title="Paper theme: warm off-white">Paper</button>
+    <button type="button" data-th="dim" title="Dim theme: softened dark">Dim</button>
+    <button type="button" data-th="dark" title="Dark theme">Dark</button>
+  </div>
 </header>
 <main id="main">{% if restart_needed() %}
  <div class="banner" role="alert"><strong>Update pulled.</strong> This window
@@ -114,11 +122,21 @@
  addEventListener('load',()=>{const k='scy:'+location.pathname,y=sessionStorage.getItem(k);
    sessionStorage.removeItem(k);
    if(y && !location.hash) scrollTo(0,parseInt(y));});
- document.getElementById('themebtn').onclick=function(){
-  var h=document.documentElement,
-      t=h.getAttribute('data-theme')==='dark'?'light':'dark';
-  h.setAttribute('data-theme',t);localStorage.setItem('theme',t);
-  dispatchEvent(new Event('themechange'));};
+ // theme picker: four options stating aria-pressed, mirroring the text-size
+ // control beside it. Each press restyles the page through the data-theme
+ // token blocks, persists the choice, and dispatches themechange so chart
+ // code (Plotly and the season player resolve tokens via getComputedStyle)
+ // redraws in the new palette.
+ (function(){
+  var picks=document.querySelectorAll('.themepick button');
+  function mark(t){picks.forEach(function(b){
+    b.setAttribute('aria-pressed',String(b.dataset.th===t));});}
+  mark(document.documentElement.getAttribute('data-theme'));
+  picks.forEach(function(b){b.onclick=function(){
+    var t=b.dataset.th;
+    document.documentElement.setAttribute('data-theme',t);
+    localStorage.setItem('theme',t);mark(t);
+    dispatchEvent(new Event('themechange'));};});})();
  // text-size control: root font percentage, saved so every page keeps it.
  // Each press dispatches fontsizechange, mirroring themechange, so chart
  // code (Plotly sizes text in px, not rem) can redraw at the new scale.

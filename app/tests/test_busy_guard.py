@@ -136,13 +136,21 @@ def test_guard_modal_present_on_every_page():
 
 
 def test_guarded_attributes_on_exactly_the_classified_controls():
-    # the interfering actions carry a guard; nothing else does
+    import re
+
+    def kinds(html):
+        return set(re.findall(r'data-guard="([^"]+)"', html))
+
+    # the interfering actions carry a guard, and only their own kind; the
+    # resume and re-run shortcuts (rendered when a stopped run exists in
+    # the live state) carry the SAME kind as the form they shortcut, so the
+    # kind set stays fixed whatever the ledger holds
     fc = client.get("/forecast").text
-    assert fc.count('data-guard="') == 1
+    assert kinds(fc) == {"console-run"}
     assert 'data-guard="console-run">Run models' in fc
 
     rt = client.get("/retro").text
-    assert rt.count('data-guard="') == 1
+    assert kinds(rt) == {"retro-run"}
     assert 'data-guard="retro-run"' in rt
 
     dt = client.get("/data").text

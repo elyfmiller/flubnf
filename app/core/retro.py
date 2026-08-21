@@ -336,6 +336,51 @@ def settings_summary(meta: dict) -> list:
     return [(k, v) for k, v in pairs if v not in ("", None)]
 
 
+def resume_form_fields(meta: dict) -> dict | None:
+    """The /retro/run form fields that resume a recorded replay with the
+    settings its own run record holds, so a stopped or interrupted season
+    can offer one-click resumption instead of asking the user to re-fill
+    the form identically.
+
+    The scope the user picked is passed through when the record names one
+    (panel6 and all are recomputed server-side exactly as the form path
+    does); a record carrying only the location list resubmits it as a
+    custom selection, which reproduces the run's locations verbatim.
+
+    None when the record holds no settings (seasons replayed before the
+    record existed) or not enough to name a scope: the caller must then
+    offer no shortcut and leave the form path as the only way, which is the
+    honest answer for a run whose configuration was never recorded."""
+    s = (meta or {}).get("settings")
+    if not isinstance(s, dict) or not s:
+        return None
+    season = str(s.get("season") or (meta or {}).get("season") or "")
+    if not season:
+        return None
+    locs = [str(l) for l in (s.get("locations") or [])]
+    scope = str(s.get("scope") or "")
+    out = {"season": season, "mode": "resume"}
+    if scope in ("panel6", "all"):
+        out["locations"] = scope
+        out["custom_locations"] = []
+    elif locs:
+        out["locations"] = "custom"
+        out["custom_locations"] = locs
+    else:
+        return None
+    for key in ("particles", "replicates", "width"):
+        try:
+            v = int(s.get(key) or 0)
+        except (TypeError, ValueError):
+            v = 0
+        if v > 0:
+            out[key] = v
+    engine = str(s.get("engine") or "")
+    if engine:
+        out["engine"] = engine
+    return out
+
+
 def _start_record(root: Path, season: str, total_weeks: int,
                   settings: dict | None = None) -> dict:
     """Open (or reopen) the season's run record. A resume keeps started_utc

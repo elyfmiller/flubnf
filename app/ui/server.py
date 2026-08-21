@@ -73,9 +73,56 @@ def _model_names() -> dict:
 
 templates.env.globals["model_name"] = lambda m: _model_names().get(m, m)
 
+
+def _harmonic_fig(eps: float = 0.35, phis=(22.0,), x0: float = 62.0,
+                  x1: float = 540.0, y_bot: float = 170.0, y_top: float = 20.0,
+                  r_lo: float = 0.55, r_hi: float = 1.55, n: int = 104) -> dict:
+    """Geometry for the seasonal-harmonic figure in diagrams.html.
+
+    The curve is the model's seasonal forcing relative to its base rate,
+    exp(eps * cos(2*pi*(t - phi)/52)) for t in [0, 52] weeks since August 1.
+    Weeks map linearly onto the pixel span [x0, x1]; the relative rate maps
+    the value band [r_lo, r_hi] onto the pixel band [y_bot, y_top]. Returns
+    one SVG path per phi in phis, the pixel rows of the amplitude extremes
+    exp(+eps) and exp(-eps) and of the 1.0 reference, each peak's pixel x,
+    and the week-axis tick positions. Illustrative figure geometry only;
+    the fitted model computes its own curve.
+    """
+    import math
+
+    def y(rel: float) -> float:
+        return y_bot + (y_top - y_bot) * (rel - r_lo) / (r_hi - r_lo)
+
+    def x(t: float) -> float:
+        return x0 + (x1 - x0) * t / 52.0
+
+    paths = []
+    for phi in phis:
+        pts = []
+        for i in range(n + 1):
+            t = 52.0 * i / n
+            rel = math.exp(eps * math.cos(2.0 * math.pi * (t - phi) / 52.0))
+            pts.append(("M" if i == 0 else "L") + f"{x(t):.1f},{y(rel):.1f}")
+        paths.append(" ".join(pts))
+    return {"paths": paths,
+            "y_hi": round(y(math.exp(eps)), 1),
+            "y_lo": round(y(math.exp(-eps)), 1),
+            "y_one": round(y(1.0), 1),
+            "peaks": [round(x(p), 1) for p in phis],
+            "ticks": [(w, round(x(w), 1)) for w in (0, 13, 26, 39, 52)]}
+
+
+templates.env.globals["harmonic_fig"] = _harmonic_fig
+
 ENGINES = ("all", "pf", "amcmc")     # "all" = pf + analogue + ensemble
 _status: dict = {"running": None, "log": []}
 _last_form: dict = {}
+
+#: Ledger statuses whose run page and latest-run card offer the one-click
+#: re-run: the run ended without completing. Console fits hold no
+#: checkpoint, so the offer is a FRESH run with the recorded settings, and
+#: every surface that shows it is worded that way (never "resume").
+RERUN_STATUSES = ("stopped", "error", "failed", "interrupted")
 
 
 def _component_versions() -> dict:
@@ -1095,6 +1142,12 @@ def run_page(request: Request, run_id: str):
             except Exception:
                 err = ""
             break
+    # a 'running' row with no live worker = the app was closed mid-run: the
+    # same correction the ledger pages make, so this page never claims a
+    # live worker that does not exist (and never offers to re-run one that
+    # actually does)
+    if status == "running" and not (_status.get("running") or "").endswith(run_id):
+        status = "interrupted"
     # The settings come from the LEDGER ROW's spec, which is the record of
     # record for a run; nothing is duplicated to show them here. The build
     # and engine versions are this process's, stated so the page says what
@@ -1104,6 +1157,7 @@ def run_page(request: Request, run_id: str):
         "label": _run_label(run_id, spec_json), "models": res.get("models", {}),
         "settings": spec_settings(spec_json),
         "versions": version_pairs(RUNNING_SHA, VERSIONS),
+        "can_rerun": bool(spec_json) and status in RERUN_STATUSES,
         "subs": subs, "report": report})
 
 
@@ -1116,6 +1170,67 @@ def run_report(run_id: str):
     # same freshness treatment as /output/report: the run page's open link
     # is the file the user saves
     return HTMLResponse(_report_for_serving(d))
+
+
+@app.post("/runs/{run_id}/rerun")
+def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
+    """One-click re-run of a recorded console run, from its ledger row.
+
+    Honesty first: console fits hold no checkpoint, so this starts a FRESH
+    run with the recorded settings; it never resumes, and every surface that
+    offers it says so. The row's spec JSON is the record of record, and the
+    run this starts must carry exactly that spec: the fields below feed the
+    same /run path as the form (inheriting its vintage check and both busy
+    cross-checks), and a recorded option that path cannot reproduce refuses
+    loudly instead of silently running something else."""
+    import json as _json
+    from dataclasses import asdict as _asdict
+    from datetime import date as _date
+    row = next((r for r in Ledger().rows(500)
+                if r.get("run_id") == run_id), None)
+    try:
+        d = _json.loads((row or {}).get("spec") or "")
+    except (ValueError, TypeError):
+        d = None
+    if not isinstance(d, dict) or not d.get("forecast_date"):
+        _flash("That run's settings were not recorded, so it cannot be "
+               "re-run from here. Set the run up on the Forecast form "
+               "instead. Nothing was started.")
+        return _back(request, "/forecast")
+    members = 3 if (d.get("extra") or {}).get("members") == 3 else 2
+    locs = [str(l) for l in (d.get("locations") or [])]
+    # the spec the /run path will actually build from these fields, compared
+    # against the stored one field by field before anything starts
+    candidate = RunSpec(
+        engine=str(d.get("engine") or ""),
+        forecast_date=str(d.get("forecast_date") or ""),
+        locations=(locs if any(l.upper() in ("US", "US (NATIONAL)")
+                               for l in locs) else locs + ["US"]),
+        weeks_to_drop=int(d.get("weeks_to_drop") or 0),
+        weeks_to_nowcast=int(d.get("weeks_to_nowcast") or 0),
+        replicates=int(d.get("replicates") or 3),
+        extra={"members": 3} if members == 3 else {})
+    recon = _asdict(candidate)
+    off = [k for k in sorted(d) if recon.get(k) != d[k]]
+    try:
+        if _date.fromisoformat(candidate.forecast_date).weekday() != 5:
+            off.append("forecast_date")   # /run would snap it: not verbatim
+    except ValueError:
+        off.append("forecast_date")
+    if off:
+        _flash("This run's recorded settings cannot be reproduced from the "
+               "console path (" + ", ".join(dict.fromkeys(off)) + " differ "
+               "from what the form would run), so nothing was started. "
+               "Re-run it from a script using its ledger row.")
+        return _back(request, "/forecast")
+    return run_models(request, background,
+                      forecast_date=candidate.forecast_date,
+                      locations=locs,
+                      weeks_to_drop=candidate.weeks_to_drop,
+                      weeks_to_nowcast=candidate.weeks_to_nowcast,
+                      replicates=candidate.replicates,
+                      engine=candidate.engine,
+                      members=members)
 
 
 @app.get("/api/series")
@@ -1885,8 +2000,18 @@ def retro_index(request: Request):
         # the head score (season ensemble relWIS), so a completed season
         # shows its verdict on the index instead of a ceremonial 100% bar
         rel = _retro.run_summary(root)["headline_rel"]
+        # a stopped or interrupted replay offers one-click resumption with
+        # the settings its own run record holds. The fields come from the
+        # LIVE root's record, never the seal's: the live tree is the only
+        # one a Run can resume. Absent for seasons that predate the record,
+        # whose only path remains the form.
+        resume_fields = None
+        if status in ("stopped", "interrupted"):
+            resume_fields = _retro.resume_form_fields(
+                _retro.read_meta(_live_root(s)))
         seasons.append({"name": s, "total": total, "done": done,
                         "seal": is_seal, "rel": rel,
+                        "resume_fields": resume_fields,
                         "settings": prog["settings"],
                         "archives": _archive_entries(s),
                         "status": status,
@@ -2046,7 +2171,13 @@ def _retro_bg(season: str, locations: list, width: int,
         # equal, never-fitted member weights (the sealed recipe)
         df = retro.score_season(root, season,
                                 ensemble_weights={"pf": 0.5, "analogue": 0.5})
-        df.to_json(root / "scores.json")
+        # write beside, then replace: the results page can rescore the same
+        # file on a stale view, and the player stats read it; neither may
+        # ever see (or race) a half-written scores.json
+        import os as _os
+        _tmp = root / "scores.json.tmp"
+        df.to_json(_tmp)
+        _os.replace(_tmp, root / "scores.json")
         _retro_status[season] = "done"
     except (_RetroStopRequested, retro.SeasonStopped):
         # completed weeks stay; the results page scores whatever exists
@@ -2326,9 +2457,17 @@ def retro_results(request: Request, season: str, week: str = "",
                 or _stored_empty()
                 or sf.stat().st_mtime < max(
                 (root / "weeks" / w / "samples.json").stat().st_mtime for w in weeks)):
-            retro.score_season(
+            # write beside, then replace: this rescore can run while the
+            # season worker is finishing (it writes the same file once the
+            # replay completes), and a concurrent viewer reads it; nobody
+            # may ever see a half-written scores.json
+            import os as _os
+            _df = retro.score_season(
                 root, season,
-                ensemble_weights={"pf": 0.5, "analogue": 0.5}).to_json(sf)
+                ensemble_weights={"pf": 0.5, "analogue": 0.5})
+            _tmp = sf.with_name(sf.name + ".tmp")
+            _df.to_json(_tmp)
+            _os.replace(_tmp, sf)
     except Exception as e:
         # A hidden failure here once masqueraded as "truth not settled" on a
         # fresh laptop. Show the truth: what broke, so it can be fixed.

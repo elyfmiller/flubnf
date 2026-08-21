@@ -1,5 +1,11 @@
 /* FluBNF console theme: PyBNF brand kit (LANL Mesa-aligned).
-   Light on Light #F1EFF7, dark on Near-Black #0C0D17.
+   Four user-selectable themes, brightest to darkest:
+     light -- Light on Light #F1EFF7 (the default light look);
+     paper -- warm off-white ground, LANL Blue ink, the accent-ink cyan;
+     dim   -- softened dark on slate-gray grounds, reduced overall contrast
+              with every measured pair still at or above WCAG AA (4.5:1
+              text, 3:1 boundaries and fills);
+     dark  -- dark on Near-Black #0C0D17.
    LANL Blue #000F7E carries structure and primary text; Cyan #34C0F0 is THE
    accent (primary action, active tab, links, focus, progress); Blue Slate
    #6E8FD0 is the secondary/data accent; Inhibition Red #FB4653 is strictly
@@ -7,8 +13,11 @@
    Legacy token names (--gold, --gold-bright, --navy) are kept as live hooks
    because templates and plot code read them via getComputedStyle; they now
    hold the cyan accent (readable and pure variants) and LANL Blue. Every
-   token is defined LITERALLY in both theme blocks: plot code resolves raw
-   values, so no var() aliases here. */
+   token is defined LITERALLY in every theme block, --map-nodata included:
+   plot code resolves raw values, so no var() aliases and no token may fall
+   through to another theme's value (a parity test compares the four
+   blocks). Map data colors stay categorical; only --map-nodata follows the
+   ground so a data gap reads as explicit on every surface. */
 :root{
   --bg:#F1EFF7; --card:#FFFFFF; --ink:#000F7E; --mut:#565E96;
   --line:#DCD8E9; --track:#DBD7E8; --field-line:#DCD8E9;
@@ -17,6 +26,7 @@
   --gold:#0173A9; --gold-bright:#34C0F0;
   --nav-bg:#FFFFFF; --nav-ink:#000F7E;
   --ok:#177245; --warn:#8A5A14; --bad:#C42840;
+  --map-nodata:#C9C5D8;
   --shadow:0 1px 2px rgba(12,13,23,.06),0 2px 8px rgba(12,13,23,.05);
 }
 [data-theme="dark"]{
@@ -27,7 +37,40 @@
   --gold:#34C0F0; --gold-bright:#34C0F0;
   --nav-bg:#151729; --nav-ink:#E9EAF4;
   --ok:#4CC38A; --warn:#E5A55D; --bad:#FB4653;
+  --map-nodata:#232741;
   --shadow:0 1px 3px rgba(0,0,0,.5),0 4px 14px rgba(0,0,0,.35);
+}
+/* paper: warm off-white ground with a brighter warm card, LANL Blue ink,
+   links and structural cyan through the same readable accent-ink the light
+   theme carries. Measured on both surfaces: ink 13.7/14.7:1, mut 5.9/6.3:1,
+   accent-ink 4.7/5.0:1 text and 4.0:1 as the progress fill on the track;
+   the warm field boundary holds 3.3:1 against the well. */
+[data-theme="paper"]{
+  --bg:#F7F2E5; --card:#FDFAF1; --ink:#000F7E; --mut:#555A88;
+  --line:#DFD7C2; --track:#E7E0CD; --field-line:#8E8468;
+  --navy:#000F7E; --navy-deep:#000A56;
+  --accent:#34C0F0; --accent-ink:#0173A9; --slate:#6E8FD0;
+  --gold:#0173A9; --gold-bright:#34C0F0;
+  --nav-bg:#FDFAF1; --nav-ink:#000F7E;
+  --ok:#177245; --warn:#8A5A14; --bad:#C42840;
+  --map-nodata:#DCD3BD;
+  --shadow:0 1px 2px rgba(63,54,28,.08),0 2px 8px rgba(63,54,28,.06);
+}
+/* dim: the softened dark. Slate-gray grounds lifted well off the near-black,
+   ink pulled down from #E9EAF4 so the page glows less, every measured pair
+   still at or above AA: ink 10.2/8.8:1 and mut 6.1/5.3:1 on bg/card, the
+   semantic trio 4.8:1 or better on both surfaces, field boundary 4.2:1
+   against the well, accent fill 6.6:1 on the track. */
+[data-theme="dim"]{
+  --bg:#212536; --card:#2A2F45; --ink:#CDD3E6; --mut:#9BA3C4;
+  --line:#3C4263; --track:#262B3F; --field-line:#7A84B8;
+  --navy:#000F7E; --navy-deep:#000A56;
+  --accent:#34C0F0; --accent-ink:#34C0F0; --slate:#6E8FD0;
+  --gold:#34C0F0; --gold-bright:#34C0F0;
+  --nav-bg:#2A2F45; --nav-ink:#CDD3E6;
+  --ok:#57C893; --warn:#E2A968; --bad:#FF6B76;
+  --map-nodata:#333952;
+  --shadow:0 1px 3px rgba(0,0,0,.35),0 4px 12px rgba(0,0,0,.25);
 }
 /* ---- fluid type scale ----------------------------------------------------
    Every step is clamp(floor, rem-anchor + vw, ceiling). The rem terms are
@@ -86,11 +129,19 @@ header.nav a.tab.active{border-bottom-color:var(--accent-ink);font-weight:700}
   header.nav a.tab{font-size:.95rem;padding:.8rem .4rem}
 }
 header.nav .spacer{flex:1}
-#themebtn{background:transparent;
+/* theme picker (Light / Paper / Dim / Dark): the same compact segmented
+   group as the text-size control beside it, honest aria-pressed states,
+   persistent via localStorage like the text size */
+.themepick{display:inline-flex;
   border:1px solid color-mix(in srgb,var(--nav-ink) 35%,transparent);
-  color:var(--nav-ink);border-radius:7px;padding:.3rem .6rem;cursor:pointer;
-  margin-top:0}
-#themebtn:hover{background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
+  border-radius:7px;overflow:hidden}
+.themepick button{margin:0;padding:.3rem .5rem;border:0;border-radius:0;
+  background:transparent;color:var(--nav-ink);font-size:.8rem;font-weight:600;
+  cursor:pointer}
+.themepick button+button{border-left:1px solid color-mix(in srgb,var(--nav-ink) 25%,transparent)}
+.themepick button:hover{background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
+.themepick button[aria-pressed="true"]{
+  background:color-mix(in srgb,var(--accent) 25%,transparent)}
 /* text-size control (A- / A / A+), persistent via localStorage */
 .fontsize{display:inline-flex;border:1px solid color-mix(in srgb,var(--nav-ink) 35%,transparent);
   border-radius:7px;overflow:hidden;margin-left:auto;margin-right:.5rem}
@@ -140,26 +191,35 @@ button{padding:.45rem .95rem;border:1px solid var(--navy);border-radius:8px;
   background:transparent;color:var(--navy);font:inherit;font-weight:650;
   cursor:pointer;margin-top:.7rem}
 button:hover{background:color-mix(in srgb,var(--navy) 9%,transparent)}
-[data-theme="dark"] button{border-color:var(--gold);color:var(--gold)}
-[data-theme="dark"] button:hover{
+/* the two dark-ground themes swap the LANL Blue outline for the accent:
+   #000F7E vanishes against the slate and near-black grounds */
+[data-theme="dark"] button,[data-theme="dim"] button{
+  border-color:var(--gold);color:var(--gold)}
+[data-theme="dark"] button:hover,[data-theme="dim"] button:hover{
   background:color-mix(in srgb,var(--gold) 14%,transparent)}
-button.quiet,[data-theme="dark"] button.quiet{
+button.quiet,[data-theme="dark"] button.quiet,[data-theme="dim"] button.quiet{
   background:transparent;border:1px solid var(--line);color:var(--mut)}
-button.quiet:hover,[data-theme="dark"] button.quiet:hover{
+button.quiet:hover,[data-theme="dark"] button.quiet:hover,
+[data-theme="dim"] button.quiet:hover{
   background:var(--bg);color:var(--ink)}
 /* .gold after .quiet: toggle buttons carry both classes when selected */
-button.gold,[data-theme="dark"] button.gold{
+button.gold,[data-theme="dark"] button.gold,[data-theme="dim"] button.gold{
   background:var(--gold-bright);border-color:var(--gold-bright);color:#0C0D17}
-button.gold:hover,[data-theme="dark"] button.gold:hover{
+button.gold:hover,[data-theme="dark"] button.gold:hover,
+[data-theme="dim"] button.gold:hover{
   background:color-mix(in srgb,#000 12%,var(--gold-bright))}
 /* destructive tier: the semantic red, reserved for the stop-and-think
    confirms (delete permanently, stop run and proceed). Text color follows
-   the theme's --bad lightness: white on the deep light-mode red, near-black
-   on the bright dark-mode red, both measured above 4.5:1. */
-button.danger,[data-theme="dark"] button.danger{
+   the theme's --bad lightness: white on the deep light-mode reds,
+   near-black on the bright dark- and dim-mode reds, all measured above
+   4.5:1. */
+button.danger,[data-theme="dark"] button.danger,
+[data-theme="dim"] button.danger{
   background:var(--bad);border-color:var(--bad);color:#fff}
-[data-theme="dark"] button.danger{color:#0C0D17}
-button.danger:hover,[data-theme="dark"] button.danger:hover{
+[data-theme="dark"] button.danger,[data-theme="dim"] button.danger{
+  color:#0C0D17}
+button.danger:hover,[data-theme="dark"] button.danger:hover,
+[data-theme="dim"] button.danger:hover{
   background:color-mix(in srgb,#000 12%,var(--bad));
   border-color:color-mix(in srgb,#000 12%,var(--bad))}
 button[disabled]{opacity:.45;cursor:not-allowed}
@@ -241,10 +301,12 @@ details.card[open] > summary::before{content:"▾ "}
  font-size:.98rem;font-style:italic;color:var(--gold)}
 [data-theme="dark"] .quip{color:var(--gold)}
 /* ---- output tab: downloads + csv previews ---- */
-button.linkish,[data-theme="dark"] button.linkish{background:none;border:0;
+button.linkish,[data-theme="dark"] button.linkish,
+[data-theme="dim"] button.linkish{background:none;border:0;
   padding:0;margin:0;color:var(--mut);font-size:.78rem;font-weight:600;
   text-decoration:underline;cursor:pointer}
-button.linkish:hover,[data-theme="dark"] button.linkish:hover{
+button.linkish:hover,[data-theme="dark"] button.linkish:hover,
+[data-theme="dim"] button.linkish:hover{
   background:none;color:var(--ink)}
 .subfile{border-bottom:1px solid var(--line);padding-bottom:.3rem;margin-bottom:.3rem}
 .subfile:last-of-type{border-bottom:0;margin-bottom:0;padding-bottom:0}
@@ -311,10 +373,8 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
   overflow-wrap:anywhere}
 .valpanel dd.allmissing{grid-column:1 / -1;color:var(--mut);font-weight:400}
 
-/* map data colors stay categorical; only the no-data tone follows the
-   ground so it reads as an explicit gap on both surfaces */
-:root{--map-nodata:#C9C5D8}
-[data-theme="dark"]{--map-nodata:#232741}
+/* --map-nodata lives in the theme token blocks at the top of this file,
+   one literal value per theme like every other token */
 /* outlook-map legend: one line of category swatches plus the no-data tone,
    emitted by app/core/usmap.py under the map it explains */
 .maplegend{display:flex;flex-wrap:wrap;gap:.15rem 1rem;

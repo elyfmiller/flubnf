@@ -287,6 +287,128 @@
 </svg>
 {%- endmacro %}
 
+{# ---- the seasonal-harmonic figure ----------------------------------------
+   beta(t) relative to beta0 over one season (weeks since August 1), drawn
+   from the same cosine-exponential the equation states: the geometry comes
+   from the harmonic_fig template global (app/ui/server.py), so the curve is
+   computed, never traced by hand. One parameterized macro serves every
+   surface: the single-strain form under eq_pf and the home workflow card,
+   and the two-strain form (two phase-shifted curves sharing the amplitude)
+   under eq_pf2s. Parameter values are illustrative and the caption says so;
+   the fit produces its own values per state and week.
+   Label boxes are audited at the A+ text step like every other diagram:
+   the amplitude labels sit in the top-left and bottom-left pockets both
+   variants keep clear of the curves, the peak labels ride above the band
+   where no curve ever reaches, and the two-strain legend occupies the
+   top-right pocket above the band's upper edge. No marker defs, so the
+   macro needs no uid. #}
+
+{% macro harmonic(two=false, eps=0.35, phi=22, phi_a=20, phi_b=30) -%}
+{% set g = harmonic_fig(eps, [phi_a, phi_b] if two else [phi]) %}
+<svg viewBox="0 0 560 232" role="img"
+     aria-label="{{ 'Two-strain seasonal harmonic: phase-shifted relative transmission rates over one season' if two else 'Seasonal harmonic: relative transmission rate over one season' }}"
+     style="width:100%;max-width:560px;display:block;margin:.4rem auto 0;color:inherit">
+ <desc>{% if two %}Two phase-shifted copies of the same seasonal harmonic,
+ one per strain. Both share the amplitude set by epsilon-1, swinging between
+ exp of minus epsilon-1 and exp of plus epsilon-1 times the base rate; each
+ strain peaks at its own fitted week, phi-A and phi-B; a dashed reference
+ marks 1.0, the base rate beta-0.{% else %}The transmission rate relative to
+ its base value over one season. A shaded band spans the amplitude set by
+ epsilon-1, between exp of minus epsilon-1 and exp of plus epsilon-1; a
+ dashed reference marks 1.0, the base rate beta-0; the curve peaks at the
+ fitted peak week phi-1.{% endif %}</desc>
+ <!-- amplitude band: the swing epsilon-1 buys, edges dashed and labeled -->
+ <rect x="62" y="{{ g.y_hi }}" width="478"
+       height="{{ (g.y_lo - g.y_hi) | round(1) }}"
+       fill="var(--gold-bright)" fill-opacity=".08"/>
+ <g stroke="var(--mut)" stroke-width="1.1" stroke-dasharray="5 4" fill="none">
+  <path d="M62,{{ g.y_hi }} H540"/>
+  <path d="M62,{{ g.y_lo }} H540"/>
+ </g>
+ <!-- the 1.0 reference: beta equals its base rate -->
+ <path d="M62,{{ g.y_one }} H540" stroke="var(--mut)" stroke-width="1.2"
+       stroke-dasharray="2 5" fill="none"/>
+ <text x="536" y="{{ (g.y_one - 5) | round(1) }}" text-anchor="end"
+       class="svgt-sm" fill="var(--mut)">1.0 (&#946;<tspan class="svgt-sub"
+       dy="3">0</tspan><tspan dy="-3">)</tspan></text>
+ <!-- axes and week ticks -->
+ <g stroke="currentColor" stroke-width="1.4" fill="none">
+  <path d="M62,170 H540"/>
+  <path d="M62,170 V20"/>
+  {% for w, xp in g.ticks %}<path d="M{{ xp }},170 v5"/>{% endfor %}
+ </g>
+ <g text-anchor="middle" class="svgt-sm" fill="currentColor">
+  {% for w, xp in g.ticks %}<text x="{{ xp }}" y="190">{{ w }}</text>{% endfor %}
+  <text x="301" y="212">weeks since August 1</text>
+ </g>
+ <text x="22" y="95" text-anchor="middle" class="svgt-sm" fill="currentColor"
+       transform="rotate(-90 22 95)">&#946;(t) / &#946;<tspan
+       class="svgt-sub" dy="3">0</tspan></text>
+ <!-- amplitude extremes, in the pockets the curves keep clear -->
+ <g class="svgt-sm" fill="currentColor">
+  <text x="68" y="33">&#946;<tspan class="svgt-sub" dy="3">0</tspan><tspan
+   dy="-3">&#8202;&#183;&#8202;e</tspan><tspan class="svgt-sub"
+   dy="-7">+&#949;&#8321;</tspan></text>
+  <text x="68" y="164">&#946;<tspan class="svgt-sub" dy="3">0</tspan><tspan
+   dy="-3">&#8202;&#183;&#8202;e</tspan><tspan class="svgt-sub"
+   dy="-7">&#8722;&#949;&#8321;</tspan></text>
+ </g>
+ {% if two %}
+ <!-- the two circuits: one harmonic form, per-strain peak timing -->
+ <g stroke-width="1.2" stroke-dasharray="4 4" fill="none">
+  <path d="M{{ g.peaks[0] }},168 V{{ (g.y_hi + 6) | round(1) }}"
+        stroke="var(--gold)"/>
+  <path d="M{{ g.peaks[1] }},168 V{{ (g.y_hi + 6) | round(1) }}"
+        stroke="var(--slate)"/>
+ </g>
+ <path d="{{ g.paths[0] }}" fill="none" stroke="var(--gold)"
+       stroke-width="2.2"/>
+ <path d="{{ g.paths[1] }}" fill="none" stroke="var(--slate)"
+       stroke-width="2.2"/>
+ <circle cx="{{ g.peaks[0] }}" cy="{{ g.y_hi }}" r="4" fill="var(--gold)"/>
+ <circle cx="{{ g.peaks[1] }}" cy="{{ g.y_hi }}" r="4" fill="var(--slate)"/>
+ <g text-anchor="middle" class="svgt-sm" font-weight="600">
+  <text x="{{ g.peaks[0] }}" y="24" fill="var(--gold)">&#966;<tspan
+   class="svgt-sub" dy="3">A</tspan></text>
+  <text x="{{ g.peaks[1] }}" y="24" fill="var(--slate)">&#966;<tspan
+   class="svgt-sub" dy="3">B</tspan></text>
+ </g>
+ <g class="svgt-sm">
+  <path d="M424,12 H452" stroke="var(--gold)" stroke-width="2.2" fill="none"/>
+  <text x="458" y="16" fill="currentColor">influenza A</text>
+  <path d="M424,30 H452" stroke="var(--slate)" stroke-width="2.2" fill="none"/>
+  <text x="458" y="34" fill="currentColor">influenza B</text>
+ </g>
+ {% else %}
+ <!-- the fitted curve and its peak week -->
+ <path d="M{{ g.peaks[0] }},168 V{{ (g.y_hi + 6) | round(1) }}"
+       stroke="var(--gold)" stroke-width="1.2" stroke-dasharray="4 4"
+       fill="none"/>
+ <path d="{{ g.paths[0] }}" fill="none" stroke="var(--gold)"
+       stroke-width="2.4"/>
+ <circle cx="{{ g.peaks[0] }}" cy="{{ g.y_hi }}" r="4" fill="var(--gold)"/>
+ <text x="{{ g.peaks[0] }}" y="24" text-anchor="middle" class="svgt-sm"
+       font-weight="600" fill="var(--gold)">&#966;<tspan class="svgt-sub"
+       dy="3">1</tspan><tspan dy="-3"> &#183; peak week</tspan></text>
+ {% endif %}
+</svg>
+{% if two %}
+<p class="eqnote" style="text-align:center;margin:.1rem auto .35rem;max-width:560px">One
+ harmonic form, phase-shifted per strain: A and B share the amplitude
+ <i>&#949;</i><sub>1</sub>, and each fits its own peak week
+ <i>&#966;</i><sub>A</sub>, <i>&#966;</i><sub>B</sub>. Values shown are
+ illustrative (<i>&#949;</i><sub>1</sub> = 0.35, <i>&#966;</i><sub>A</sub> =
+ week 20, <i>&#966;</i><sub>B</sub> = week 30); all are fitted per state and
+ week.</p>
+{% else %}
+<p class="eqnote" style="text-align:center;margin:.1rem auto .35rem;max-width:560px">The
+ curve the filter bends each week: <i>&#949;</i><sub>1</sub> sets its depth,
+ <i>&#966;</i><sub>1</sub> its peak week. Values shown are illustrative
+ (<i>&#949;</i><sub>1</sub> = 0.35, <i>&#966;</i><sub>1</sub> = week 22);
+ both are fitted per state and week.</p>
+{% endif %}
+{%- endmacro %}
+
 {# ---- defining equations ---------------------------------------------------
    One compact panel per model: the equation that defines it, as styled text
    (no math library; italic variables, Unicode operators), with a one-line
@@ -300,6 +422,7 @@
   <i>&#966;</i><sub>1</sub>)&#8202;/&#8202;52&#8239;)&#8239;)</span>
   <span class="eqnote">the fitted seasonal forcing: this is the curve the
   filter bends each week</span></p>
+ {{ harmonic() }}
  <p><span class="math">admissions &#8764;
   NegBin(&#8239;<i>&#961;</i>&#183;<i>mult</i>&#183;<i>&#947;</i>&#183;<i>I</i>(<i>t</i>),
   <i>r</i>&#8239;)</span>
@@ -321,6 +444,7 @@
   <i>s</i> &#8712; {A, B}</span>
   <span class="eqnote">one harmonic form shared by both circuits; each strain
   fits its own <i>R</i><sub>eff</sub> and phase</span></p>
+ {{ harmonic(two=true) }}
  <p><span class="math">typed positives: <i>k</i><sub>A</sub> &#8764;
   Binomial(&#8239;<i>n</i>, share&#8202;A&#8202;/&#8202;(A&#8202;+&#8202;B)&#8239;)</span>
   <span class="eqnote">the second likelihood channel; observed admissions sum

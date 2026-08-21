@@ -28,6 +28,20 @@
 </div>
 {% endif %}
 
+{% if can_rerun %}
+{# one-click re-run from this run's ledger row: no re-filling the Forecast
+   form. Worded honestly: console fits hold no checkpoint, so this is a
+   fresh run, never a resume. The button carries the console-run guard and
+   /run applies the same server-side busy cross-checks. #}
+<div class="card">
+ <form method="post" action="/runs/{{ run_id }}/rerun" class="rerun-run">
+  <button class="gold" data-guard="console-run">Run again with these settings</button>
+ </form>
+ <p class="hint">Console runs hold no checkpoint: this starts a fresh run
+  with the settings recorded above. It does not resume the earlier one.</p>
+</div>
+{% endif %}
+
 {% if report %}<div class="card"><a href="/runs/{{ run_id }}/report">Open the weekly report</a></div>{% endif %}
 
 {% for model, locs in models.items() %}
