@@ -36,6 +36,22 @@ def _q23(center, spread=10.0):
     return {str(L): center + (L - 0.5) * spread for L in QL}
 
 
+def _write_official(hub, om, asof=ASOF):
+    """One synthetic submitted hub file for an official model."""
+    ref = (pd.Timestamp(asof) + pd.Timedelta(days=7)).date().isoformat()
+    rows = [OFFICIAL_HEADER]
+    for fips, base in (("39", 100.0), ("US", 1000.0)):
+        for h in (-1, 0, 1):              # -1 must be dropped by the parser
+            actual = base + h + 1
+            ted = (pd.Timestamp(ref) + pd.Timedelta(days=7 * h)).date()
+            for L in QL:
+                rows.append(f"{ref},{h},wk inc flu hosp,{ted},{fips},"
+                            f"quantile,{L},{actual + (L - 0.5) * 20}")
+    d = hub / "model-output" / om
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{ref}-{om}.csv").write_text("\n".join(rows) + "\n")
+
+
 def _mk_root(tmp_path, monkeypatch, with_pf2s=True, official_models=("FluSight-baseline",)):
     """A one-week synthetic season root plus a synthetic hub; truth and the
     baseline denominator are monkeypatched so no real data is touched."""
@@ -47,19 +63,8 @@ def _mk_root(tmp_path, monkeypatch, with_pf2s=True, official_models=("FluSight-b
                                                     for h in range(4)})
     hub = tmp_path / "hub"
     monkeypatch.setattr(playback, "HUB", hub)
-    ref = (pd.Timestamp(ASOF) + pd.Timedelta(days=7)).date().isoformat()
     for om in official_models:
-        rows = [OFFICIAL_HEADER]
-        for fips, base in (("39", 100.0), ("US", 1000.0)):
-            for h in (-1, 0, 1):          # -1 must be dropped by the parser
-                actual = base + h + 1
-                ted = (pd.Timestamp(ref) + pd.Timedelta(days=7 * h)).date()
-                for L in QL:
-                    rows.append(f"{ref},{h},wk inc flu hosp,{ted},{fips},"
-                                f"quantile,{L},{actual + (L - 0.5) * 20}")
-        d = hub / "model-output" / om
-        d.mkdir(parents=True)
-        (d / f"{ref}-{om}.csv").write_text("\n".join(rows) + "\n")
+        _write_official(hub, om)
 
     root = tmp_path / "seasonroot"
     wd = root / "weeks" / ASOF
@@ -178,6 +183,54 @@ def test_stats_prefer_scores_json_for_covered_models(tmp_path, monkeypatch):
     # uncovered models still get on-the-fly stats
     assert p["stats"]["analogue"]["week_rel"] is not None
     assert p["stats"]["FluSight-baseline"]["week_rel"] is not None
+
+
+# ---------------------------------------------------- stats cache staleness
+
+def test_stats_cache_refreshes_when_scores_json_arrives(tmp_path, monkeypatch):
+    """The field case: scoring succeeded AFTER the caches were built. The
+    stats cache checked sample mtimes only, so the late scores.json never
+    propagated and relWIS stayed pending forever."""
+    root = _mk_root(tmp_path, monkeypatch)
+    p1 = playback.build_week(root, SEASON, ASOF)     # no scores.json yet
+    assert p1["stats"]["pf"]["week_rel"] is not None  # on-the-fly, cached
+    sf = root / "scores.json"
+    pd.DataFrame([
+        {"model": "pf", "location": "Ohio", "asof": ASOF,
+         "horizon": 0, "wis": 4.0, "base_wis": 2.0},
+    ]).to_json(sf)
+    p2 = playback.build_week(root, SEASON, ASOF)
+    # stats now come from scores.json (wis/base = 4/2), not the stale cache
+    assert p2["stats"]["pf"]["week_rel"] == pytest.approx(2.0)
+    assert p2["stats"]["pf"]["cum_rel"] == pytest.approx(2.0)
+    # and the cache entry was revalidated against the new scores.json
+    cells = json.loads((root / "playback_cache"
+                        / "stats_cells.json").read_text())
+    assert cells["weeks"][ASOF]["scores_mtime"] == sf.stat().st_mtime
+
+
+def test_stats_cache_gains_late_official_files(tmp_path, monkeypatch):
+    """Update data healing the sparse hub clone changes no samples mtime;
+    the official-file existence set must be part of the cache validity or
+    the comparators never join the stats."""
+    root = _mk_root(tmp_path, monkeypatch, official_models=())
+    p1 = playback.build_week(root, SEASON, ASOF)
+    assert "FluSight-baseline" not in p1["stats"]
+    _write_official(tmp_path / "hub", "FluSight-baseline")
+    p2 = playback.build_week(root, SEASON, ASOF)
+    assert "FluSight-baseline" in p2["official"]
+    st = p2["stats"]["FluSight-baseline"]
+    assert st["week_rel"] is not None and st["cum_rel"] is not None
+
+
+def test_season_official_catalog(tmp_path, monkeypatch):
+    root = _mk_root(tmp_path, monkeypatch)           # baseline only
+    assert playback.season_official_catalog(root) == ["FluSight-baseline"]
+
+
+def test_season_official_catalog_empty_hub(tmp_path, monkeypatch):
+    root = _mk_root(tmp_path, monkeypatch, official_models=())
+    assert playback.season_official_catalog(root) == []
 
 
 # ---------------------------------------------------------------- route + real

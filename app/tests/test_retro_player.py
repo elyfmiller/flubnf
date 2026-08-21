@@ -21,6 +21,7 @@ CONTEXT = dict(
     states=[{"name": "Ohio", "pf": 0.9, "analogue": 1.1, "ensemble": 0.95}],
     weeks=["2098-11-07", "2098-11-14"], week="2098-11-14",
     map_html="<div id='usmap-wrap'></div>",
+    official_catalog=["FluSight-baseline"],
     n_weeks=2, score_error="")
 
 
@@ -100,3 +101,15 @@ def test_template_renders_shared_playback_state():
     for marker in ("getPayload: ensurePayload", "payloadError:",
                    "isCached:", "detailVisible:", "onSeek:", "preload:"):
         assert marker in html, marker
+
+
+def test_template_passes_season_official_catalog():
+    # the server-computed season catalog reaches the player before playback
+    # starts, driving the two-tier official toggles
+    html = _render()
+    assert 'seasonOfficials: ["FluSight-baseline"]' in html
+    # render sites that predate the catalog (and any error path that omits
+    # it) degrade to an empty list, never a template crash
+    ctx = {k: v for k, v in CONTEXT.items() if k != "official_catalog"}
+    html2 = templates.env.get_template("retro_season.html").render(**ctx)
+    assert "seasonOfficials: []" in html2

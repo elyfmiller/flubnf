@@ -96,6 +96,32 @@ def test_official_availability_empty_payload(tmp_path):
     assert got == {"FluSight-baseline": False, "FluSight-ensemble": False}
 
 
+# ------------------------------------------ two-tier availability (fix 2)
+
+@needs_jsc
+def test_availability_tier_three_states(tmp_path):
+    got = _js(tmp_path, "[I.availabilityTier(true, true),"
+                        " I.availabilityTier(false, true),"
+                        " I.availabilityTier(false, false)]")
+    assert got == [
+        # present this week: enabled, no note
+        {"disabled": False, "note": ""},
+        # in-season gap (outside the competition window): the toggle stays
+        # live; the transient note explains the empty frame
+        {"disabled": False, "note": " (no official submission this week)"},
+        # absent all season: the existing disabled + Update-data state
+        {"disabled": True, "note": " (fetch via Update data on the Data tab)"},
+    ]
+
+
+@needs_jsc
+def test_availability_tier_week_presence_wins(tmp_path):
+    # a week-present model is enabled regardless of the season flag (the
+    # degenerate true/false combination cannot arise, but must not disable)
+    got = _js(tmp_path, "I.availabilityTier(true, false)")
+    assert got == {"disabled": False, "note": ""}
+
+
 @needs_jsc
 def test_add_days_utc(tmp_path):
     assert _js(tmp_path, "I.addDays('2098-12-02', 28)") == "2098-12-30"
@@ -123,14 +149,24 @@ def test_marker_and_exports():
 
 
 def test_availability_rendering_wired():
-    # every model toggle carries an availability note span; an official
-    # absent from the current payload disables its checkbox and fills the
-    # note with the fetch hint, refreshed on every payload
+    # every model toggle carries an availability note span, refreshed on
+    # every payload through the two-tier verdict: week-absent but
+    # season-present stays enabled with the transient note, whole-season
+    # absent keeps the disabled + Update-data state
     assert "data-avail" in SRC
     assert "(fetch via Update data on the Data tab)" in SRC
-    assert "box.disabled = !av[m]" in SRC
+    assert "(no official submission this week)" in SRC
+    assert "availabilityTier(av[m], !!seasonOffs[m])" in SRC
+    assert "box.disabled = tier.disabled" in SRC
     assert "officialAvailability(pl, OFFS)" in SRC
     assert "updateAvailability(pl)" in SRC
+    # the user's checked state is never touched by availability updates
+    assert "box.checked" not in SRC
+    # season availability: host-provided (seasonOfficials, or the static
+    # host's catalog union) and grown from every payload seen
+    assert "cfg.seasonOfficials || (cfg.catalog && cfg.catalog.officials)" \
+        in SRC
+    assert "seasonOffs[m] = 1" in SRC
 
 
 def test_view_state_clear_sites():

@@ -200,6 +200,9 @@
  const player = FluBNFPlayer.init({
    weeks: WEEKS,
    mode: 'live',
+   // season-level official availability, computed server-side so the
+   // two-tier toggles are correct before the first payload arrives
+   seasonOfficials: {{ (official_catalog or []) | tojson }},
    getPayload: ensurePayload,
    payloadError: w => PERR[w],
    isCached: w => (w in PAY),

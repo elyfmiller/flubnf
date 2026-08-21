@@ -19,7 +19,11 @@ Caching: each built payload lands in <season_root>/playback_cache/<asof>.json
 and is served from there while fresh (mtime vs every samples.json at or
 before the asof, and vs scores.json). Per-week score aggregates for models
 not covered by scores.json live in playback_cache/stats_cells.json so
-cumulative stats never rescore old weeks twice.
+cumulative stats never rescore old weeks twice; each entry stays valid only
+while its samples mtime, the scores.json mtime, and the week's set of
+present official files are all unchanged (a scores.json that lands after
+the cache was built, or officials a later Update data fetched, must
+propagate rather than leave relWIS pending forever).
 """
 from __future__ import annotations
 
@@ -105,6 +109,27 @@ def _week_model_quantiles(root: Path, asof: str) -> dict:
 
 
 # ----------------------------------------------------------- official models
+
+def _official_files_present(asof: str) -> list:
+    """Official models whose submitted hub file exists for this asof (the
+    frozen join: reference_date = asof + 7). Existence only, no parsing:
+    this doubles as the stats-cache validity key, so it must be cheap."""
+    ref = (pd.Timestamp(asof) + timedelta(days=7)).date().isoformat()
+    return [om for om in OFFICIAL
+            if (HUB / "model-output" / om / f"{ref}-{om}.csv").is_file()]
+
+
+def season_official_catalog(root: Path) -> list:
+    """Official models that submitted in at least one week of the season.
+    The season page hands this to the player as its two-tier availability
+    catalog: a model on this list keeps a live toggle even in weeks it
+    skipped (outside the competition window), while a model absent here is
+    disabled with the Update-data note. Computed server-side so it is
+    correct before playback starts."""
+    weeks = season_weeks(root)
+    return [om for om in OFFICIAL
+            if any(om in _official_files_present(w) for w in weeks)]
+
 
 def _official_quantiles(model: str, asof: str, f2n: dict) -> dict | None:
     """{location_name_or_US: {"1".."4": {float level: value}}} parsed from the
@@ -222,19 +247,29 @@ def _stats(root: Path, season: str, asof: str, truth: dict, n2f: dict,
         cache = {"weeks": {}}
     f2n_all = {v: k for k, v in n2f.items()}
     f2n_all["US"] = "US"
+    # cache validity mirrors the payload-cache rules in build_week: sample
+    # mtimes alone cannot see a scores.json that landed AFTER the cache was
+    # built (scoring succeeding late, the field case) or official files a
+    # later Update data fetched, so both join the per-week validity key
+    sf = root / "scores.json"
+    scores_mtime = sf.stat().st_mtime if sf.is_file() else None
     dirty = False
     aggs = {}
     for w in upto:
         m = _samples_path(root, w).stat().st_mtime
+        offs = _official_files_present(w)
         e = cache["weeks"].get(w)
-        if e and e.get("mtime") == m:
+        if (e and e.get("mtime") == m
+                and e.get("scores_mtime") == scores_mtime
+                and e.get("officials") == offs):
             aggs[w] = e["agg"]
             continue
         mq = model_q if w == asof else _week_model_quantiles(root, w)
         oq = (official_q if w == asof else
               {om: _official_quantiles(om, w, f2n_all) for om in OFFICIAL})
         aggs[w] = _week_aggregates(w, truth, n2f, mq, oq)
-        cache["weeks"][w] = {"mtime": m, "agg": aggs[w]}
+        cache["weeks"][w] = {"mtime": m, "scores_mtime": scores_mtime,
+                             "officials": offs, "agg": aggs[w]}
         dirty = True
     if dirty:
         cf.parent.mkdir(parents=True, exist_ok=True)

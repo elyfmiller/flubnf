@@ -14,6 +14,11 @@
      catalog       optional {models, officials, locations}: build the
                    controls immediately from this union; omitted, they
                    build lazily from the first payload that arrives
+     seasonOfficials optional list of official models that submitted in at
+                   least one week of the season; drives the two-tier
+                   availability of the official toggles. Omitted, it falls
+                   back to catalog.officials (the static host's union) and
+                   then to client-side accumulation as payloads load
      palette       optional function() -> theme colors, re-read per redraw
      payloadError  optional function(week) -> message for a failed week
      isCached      optional function(week) -> true when getPayload(week)
@@ -39,9 +44,15 @@ var MARKER = 'FluBNF shared season player core (flubnf-player-v1)';
 // even when a week's payload carries no official submissions yet
 var OFFICIALS = ['FluSight-baseline', 'FluSight-ensemble'];
 
-// an official model absent from the current payload gets a disabled toggle
+// an official model absent for the WHOLE season gets a disabled toggle
 // carrying this note instead of silently drawing nothing
 var UNAVAIL_NOTE = ' (fetch via Update data on the Data tab)';
+
+// an official model that submitted somewhere in the season but not this
+// week (the competition window: mid-September and June weeks legitimately
+// lack files) keeps a live toggle with this transient annotation; there is
+// simply nothing to draw for it this frame
+var WEEK_NOTE = ' (no official submission this week)';
 
 var DEFAULT_IDS = {prev: 'pb-prev', play: 'pb-play', next: 'pb-next',
   speed: 'pb-speed', scrub: 'pb-scrub', week: 'pb-week', loc: 'fd-loc',
@@ -119,6 +130,19 @@ function officialAvailability(pl, officials){
   return out;
 }
 
+// two-tier availability verdict for one official model's toggle:
+//   present this week            -> enabled, no note
+//   absent this week, but the model submitted somewhere in the season
+//                                -> enabled, transient no-submission note
+//   absent across the whole season
+//                                -> disabled, the Update-data fix note
+// the toggle's checked state is never touched in any tier
+function availabilityTier(weekHas, seasonHas){
+  if(weekHas) return {disabled: false, note: ''};
+  if(seasonHas) return {disabled: false, note: WEEK_NOTE};
+  return {disabled: true, note: UNAVAIL_NOTE};
+}
+
 // ---------------------------------------------------------------- player
 
 function createPlayer(cfg){
@@ -140,6 +164,14 @@ function createPlayer(cfg){
            user: {x: null, y: null}, bound: false, applying: false,
            suppress: false};
   var ALLM = [], OFFS = OFFICIALS.slice();
+
+  // season-level official availability: seeded once from the host (the
+  // live host passes the server catalog, the static host's catalog union
+  // covers it), then grown by every payload seen, so a hostless setup
+  // still converges as weeks load
+  var seasonOffs = {};
+  ((cfg.seasonOfficials || (cfg.catalog && cfg.catalog.officials)) || [])
+    .forEach(function(m){ seasonOffs[m] = 1; });
 
   function colorOf(m){
     var p = pal();
@@ -202,18 +234,26 @@ function createPlayer(cfg){
     });
   }
 
-  // ---- per-model availability, refreshed on every payload: an official
-  // model absent from this week's payload gets its toggle disabled with a
-  // note saying how to get it; the whole-dict hint stays separate ----
+  // ---- per-model availability, refreshed on every payload, two tiers:
+  // absent this week but submitted somewhere in the season keeps a LIVE
+  // toggle (with the transient no-submission note; the official simply
+  // did not submit outside its competition window), while absent for the
+  // whole season disables it with the Update-data fix. The user's checked
+  // state is never touched either way ----
   function updateAvailability(pl){
-    if(!P.built || !pl) return;
+    if(!pl) return;
+    Object.keys(pl.official || {}).forEach(function(m){
+      seasonOffs[m] = 1;
+    });
+    if(!P.built) return;
     var av = officialAvailability(pl, OFFS);
     OFFS.forEach(function(m){
       var box = el.models.querySelector('input[data-m="' + m + '"]');
       var note = el.models.querySelector('[data-avail="' + m + '"]');
       if(!box) return;
-      box.disabled = !av[m];
-      if(note) note.textContent = av[m] ? '' : UNAVAIL_NOTE;
+      var tier = availabilityTier(av[m], !!seasonOffs[m]);
+      box.disabled = tier.disabled;
+      if(note) note.textContent = tier.note;
     });
   }
 
@@ -242,8 +282,12 @@ function createPlayer(cfg){
       || '<tr><td colspan="3" class="hint">no models enabled</td></tr>';
     el.status.textContent =
       pl ? '' : failMsg(weeks[P.idx], 'stats unavailable for this week');
+    // the whole-panel Update-data hint belongs only to a season with NO
+    // official submissions at all; a mere in-season gap week is already
+    // explained by the per-toggle notes and must not read as breakage
     if(el.offhint)
-      el.offhint.hidden = !pl || Object.keys(pl.official || {}).length > 0;
+      el.offhint.hidden = !pl || Object.keys(pl.official || {}).length > 0
+        || Object.keys(seasonOffs).length > 0;
   }
 
   // ---- forecast fan for one model: median plus 50% and 90% bands ----
@@ -490,6 +534,8 @@ var FluBNFPlayer = {
   _internals: {
     OFFICIALS: OFFICIALS,
     UNAVAIL_NOTE: UNAVAIL_NOTE,
+    WEEK_NOTE: WEEK_NOTE,
+    availabilityTier: availabilityTier,
     rgba: rgba,
     addDays: addDays,
     dashOf: dashOf,

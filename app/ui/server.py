@@ -1535,9 +1535,19 @@ def retro_results(request: Request, season: str, week: str = ""):
         map_html = ("<p class='hint'>No scoreable weeks yet. Truth for "
                     "these forecast dates has not settled, so relWIS arrives "
                     "later; the weekly maps below are available now.</p>") + map_html
+    # season-level official availability for the player's two-tier toggles:
+    # which comparators submitted at least once this season, known before
+    # playback starts (a week they skipped then reads as a gap, not
+    # breakage)
+    from app.core import playback as _playback
+    try:
+        official_catalog = _playback.season_official_catalog(root)
+    except Exception:
+        official_catalog = []
     return templates.TemplateResponse(request, "retro_season.html", {
         "active": "Retrospective", "season": season, "heads": heads, "curve": curve, "states": states,
         "weeks": weeks, "week": wk, "map_html": map_html,
+        "official_catalog": official_catalog,
         "n_weeks": len(weeks) if scoreable else 0, "score_error": score_error})
 
 

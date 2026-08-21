@@ -1403,6 +1403,181 @@ if __name__ == "__main__":
     app()
 
 
+# ---------------------------------------------------------------------------
+# Console launch survival: single instance, free-port fallback, load watchdog
+# ---------------------------------------------------------------------------
+# A relaunched console could bind its window to a dying predecessor's server
+# (the port probe passes, then the old process exits) or lose the port to it
+# outright, leaving a randomly dead window. Three guards, all field-driven:
+# take over from the predecessor via a pidfile, fall back to a nearby free
+# port when the preferred one stays bound, and watch the window's loaded
+# event so a page that never arrived is reloaded instead of shown dead.
+
+# the pidfile lives with the app's other state, next to retro/ and ledger
+APP_PID_FILE = (Path(__file__).resolve().parents[1]
+                / "app" / "state" / "app.pid")
+# the predecessor check requires one of these substrings in the process
+# command line before anything is signalled. They are command-shaped on
+# purpose: a bare "flubnf" would match ANY process started from this venv
+# (the interpreter path contains it), so a recycled pid landing on, say, a
+# multi-hour PyBNF fit could be killed. "flubnf app" and "flubnf window"
+# cover every launch path (FluBNF.command's `.venv/bin/flubnf app`, a
+# manual `flubnf window`, extra flags after the command)
+APP_ENTRY_MARKERS = ("flubnf app", "flubnf window")
+
+# shown by the load watchdog when every reload attempt fails; loaded with
+# window.load_html because pywebview 6.2.1 misroutes data: URLs (its
+# is_local_url treats them as file paths and spins up an internal server)
+_SERVER_FAIL_PAGE = """<!doctype html><html><head><title>FluBNF</title></head>
+<body style="font-family:-apple-system,Helvetica,sans-serif;background:#101223;
+color:#E9EAF4;padding:2.5rem;max-width:34rem">
+<h2>The console server did not start</h2>
+<p>The FluBNF window opened, but the local server behind it never answered.
+Close this window and relaunch FluBNF. If it happens again, start it from
+Terminal (<code>.venv/bin/flubnf app</code>) to see the error output.</p>
+</body></html>"""
+
+
+def _pid_cmdline(pid: int) -> str:
+    """The command line of a live process, or '' when it does not exist
+    (or cannot be inspected). ps ships with macOS; no psutil dependency."""
+    import subprocess
+    try:
+        out = subprocess.run(["ps", "-p", str(int(pid)), "-o", "command="],
+                             capture_output=True, text=True, timeout=5)
+        return out.stdout.strip() if out.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
+def _terminate_predecessor(pidfile: Optional[Path] = None,
+                           markers: tuple = APP_ENTRY_MARKERS,
+                           wait: float = 5.0) -> bool:
+    """Single-instance takeover: if the pidfile names a live process whose
+    command line contains our entry point, terminate it (SIGTERM, up to
+    `wait` seconds, then SIGKILL) so the relaunch owns the port outright.
+    The stale pidfile is removed either way. Never raises; returns True
+    when a predecessor was actually signalled."""
+    import os
+    import signal
+    import time
+    pidfile = pidfile if pidfile is not None else APP_PID_FILE
+    signalled = False
+    try:
+        if not pidfile.is_file():
+            return False
+        pid = int(pidfile.read_text().strip())
+        if pid != os.getpid():
+            cmd = _pid_cmdline(pid)
+            if cmd and any(mk in cmd for mk in markers):
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                    signalled = True
+                    t0 = time.time()
+                    while time.time() - t0 < wait and _pid_cmdline(pid):
+                        time.sleep(0.1)
+                    if _pid_cmdline(pid):
+                        os.kill(pid, signal.SIGKILL)
+                except (ProcessLookupError, PermissionError):
+                    pass
+    except Exception:
+        pass
+    try:
+        pidfile.unlink(missing_ok=True)
+    except Exception:
+        pass
+    return signalled
+
+
+def _write_pidfile(pidfile: Optional[Path] = None):
+    """Record this process for the next launch's takeover check, and remove
+    the record at clean exit (atexit). Returns the cleanup function so the
+    logic is unit-testable; the cleanup only removes a pidfile this process
+    still owns. Never raises."""
+    import atexit
+    import os
+    pidfile = pidfile if pidfile is not None else APP_PID_FILE
+    me = str(os.getpid())
+
+    def _cleanup():
+        try:
+            if pidfile.is_file() and pidfile.read_text().strip() == me:
+                pidfile.unlink()
+        except Exception:
+            pass
+
+    try:
+        pidfile.parent.mkdir(parents=True, exist_ok=True)
+        pidfile.write_text(me)
+        atexit.register(_cleanup)
+    except Exception:
+        pass
+    return _cleanup
+
+
+def _pick_port(preferred: int = 8710, tries: int = 10) -> int:
+    """The first bindable port in preferred..preferred+tries-1. Probing
+    binds with SO_REUSEADDR, exactly as uvicorn will: a TIME_WAIT ghost
+    passes, a live listener fails. When every probe fails the preferred
+    port is returned so uvicorn reports the real conflict loudly."""
+    import socket
+    for port in range(preferred, preferred + max(1, tries)):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                s.bind(("127.0.0.1", port))
+            return port
+        except OSError:
+            continue
+    return preferred
+
+
+def _window_watchdog(window, url: str, wait: float = 4.0, retries: int = 3,
+                     fail_page: str = _SERVER_FAIL_PAGE) -> str:
+    """Run on a small thread after webview.start's callback fires: wait for
+    the window's loaded event; when the page never arrived (WKWebView cached
+    a connection-refused page from a dying predecessor), call load_url again,
+    up to `retries` times `wait` seconds apart. Only when every retry fails
+    is the inline failure page shown; nothing is surfaced before that.
+
+    Verified against the installed pywebview 6.2.1 source: events.loaded is
+    a webview.event.Event whose += appends a handler invoked from set(), and
+    set() fires only after a successful navigation (cocoa
+    webView_didFinishNavigation_ -> inject_pywebview -> events.loaded.set),
+    so a refused connection leaves it unset; load_url is @_shown_call, clears
+    events.loaded first, and dispatches to the Cocoa main run loop via
+    AppHelper.callAfter, so calling it from this thread is safe.
+
+    Returns 'loaded', 'recovered', or 'failed' (for tests)."""
+    import threading
+    loaded = threading.Event()
+
+    def _mark():
+        loaded.set()
+
+    try:
+        window.events.loaded += _mark
+        if window.events.loaded.is_set():   # fired before we attached
+            loaded.set()
+    except Exception:
+        return "failed"
+    if loaded.wait(wait):
+        return "loaded"
+    for _ in range(max(1, retries)):
+        loaded.clear()
+        try:
+            window.load_url(url)
+        except Exception:
+            pass
+        if loaded.wait(wait):
+            return "recovered"
+    try:
+        window.load_html(fail_page)
+    except Exception:
+        pass
+    return "failed"
+
+
 @app.command("app")
 def app_serve(port: int = 8710):
     """Launch the operations console. Prefers a native desktop window
@@ -1419,6 +1594,11 @@ def app_serve(port: int = 8710):
 
     import uvicorn
 
+    # take over from a dying predecessor, then bind a port that is really
+    # free (the same guards the native window path applies)
+    _terminate_predecessor()
+    _write_pidfile()
+    port = _pick_port(port)
     url = f"http://localhost:{port}"
 
     def _wait_ready(timeout=30.0):
@@ -1461,6 +1641,14 @@ def app_window(port: int = 8710):
     # Without it the "Download season report" link is a dead end in the
     # native window.
     webview.settings['ALLOW_DOWNLOADS'] = True
+    # single instance: a dying predecessor can pass the port probe below and
+    # then exit, leaving this window bound to nothing (the random dead
+    # window on reopen). Take its place explicitly, then bind a port that
+    # is really free.
+    _terminate_predecessor()
+    _write_pidfile()
+    port = _pick_port(port)
+    url = f"http://localhost:{port}"
     threading.Thread(target=lambda: uvicorn.run("app.ui.server:app",
                      port=port, host="127.0.0.1", log_level="warning"),
                      daemon=True).start()
@@ -1474,14 +1662,20 @@ def app_window(port: int = 8710):
                 break
         except OSError:
             time.sleep(0.2)
-    webview.create_window("FluBNF", f"http://localhost:{port}",
-                          width=1120, height=800, min_size=(760, 520))
+    window = webview.create_window("FluBNF", url,
+                                   width=1120, height=800,
+                                   min_size=(760, 520))
     def _activate():
         # Launched from a .command script the process is not a bundled app,
         # so macOS may leave the window deactivated (clicks ignored until
         # the user switches away and back). The start callback runs on a
         # SECONDARY thread; Cocoa activation must happen on the main run
         # loop or it works only intermittently -- hence callAfter.
+        # Load watchdog: if the page never arrives (a predecessor died
+        # between the port probe and this load, or activation raced the
+        # first navigation), reload it rather than sit dead.
+        threading.Thread(target=_window_watchdog, args=(window, url),
+                         daemon=True).start()
         try:
             # pyobjc ships with pywebview
             from AppKit import NSApplication, NSImage
