@@ -624,6 +624,154 @@ def _sleep_guard():
     return None
 
 
+def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
+                         df, locs, n2f: dict, elapsed_s: float,
+                         outcome: dict) -> None:
+    """Step 5b of _run_all: the weekly report, via its inputs bundle.
+
+    Builds the pure-data bundle (map cards, per-state fan quantiles and
+    categorical probabilities, the WIS summary card, the run settings),
+    persists it as report_inputs.json next to report.html, then renders the
+    report FROM the bundle. One render path, run time and serve time: after
+    a later design change, _report_for_serving rebuilds the stored report
+    from this bundle instead of leaving the old face on screen.
+
+    Factored out of _run_all so the build path is testable with synthetic
+    samples. Mutates `outcome` like the other run steps; the caller's
+    try/except owns failure containment."""
+    import json as _json
+    from datetime import date as _dd
+    from datetime import timedelta as _tdd
+
+    import numpy as _np
+    import pandas as pd
+
+    from app.core import report_v2
+    from app.core.report import categorical_probs
+    from app.core.report_v2 import CATS
+    from app.core.scoring import summary_table_html
+    n2a = dict(zip(locs.location_name, locs.abbreviation))
+    n2p = dict(zip(locs.location_name, locs.population.astype(float)))
+    # hover cards for the choropleth (cells.json is only consulted when
+    # there are fitted samples to describe, as before)
+    cells = (_json.loads((workroot / "cells.json").read_text())
+             if pf_samples else [])
+    cards = {}
+    for loc, s in pf_samples.items():
+        med1 = float(_np.median(_np.asarray(s["1"], float)))
+        lo = next(c["last_observed"] for c in cells if c["location"] == loc)
+        probs = categorical_probs(s["1"], lo, int(n2p[loc]), 1)
+        hover = (f"<b>{loc}</b><br>current: {lo:.0f}"
+                 f"<br>1-wk median: {med1:.0f}<br>" +
+                 "<br>".join(f"{c.replace('_',' ')}: "
+                             f"{probs.get(c,0):.0%}" for c in CATS))
+        cards[n2a[loc]] = {"probs": probs, "name": loc,
+                           "abbr": n2a[loc], "fips": n2f[loc],
+                           "hover_html": hover}
+    for name, abbr in n2a.items():
+        cards.setdefault(abbr, {"name": name, "abbr": abbr,
+                                "fips": n2f.get(name, "")})
+    wis_html = ("<div class='card'><h2>forecast accuracy "
+                "(retrospective)</h2>" + summary_table_html(df)
+                + "</div>")
+    # settled outcomes for backdated runs: the LATEST vintage's values
+    # past the forecast origin, framed to the 4-week horizon
+    settled_by_loc = {}
+    try:
+        _vs_all = data_mod.vintages()
+        if _vs_all and _vs_all[-1] > spec.forecast_date:
+            _lim = (_dd.fromisoformat(spec.forecast_date)
+                    + _tdd(days=35)).isoformat()
+            ldf = pd.read_csv(data_mod.vintage_path(_vs_all[-1]),
+                              dtype={"location": str})
+            ldf["location"] = ldf["location"].str.zfill(2)
+            for loc in spec.locations:
+                g = ldf[(ldf.location == n2f.get(loc, "")) &
+                        (ldf.date > spec.forecast_date) &
+                        (ldf.date <= _lim)].sort_values("date")
+                pts = [(str(r.date)[:10], float(r.value))
+                       for r in g.itertuples()
+                       if pd.notna(r.value)]
+                if pts:
+                    settled_by_loc[loc] = pts
+    except Exception:
+        settled_by_loc = {}
+    # state pages as DATA: fan quantiles, categorical probabilities, and
+    # the recent-data table per location. The figures themselves are drawn
+    # by render_bundle, so a rebuilt report wears the current chart design.
+    details = {}
+    for loc, s in pf_samples.items():
+        fips_l = n2f.get(loc, "")
+        obs_pairs = (obs.get(loc) or [])[-12:]
+        o_t = [d for d, _ in obs_pairs]
+        o_v = [v for _, v in obs_pairs]
+        _base = (_dd.fromisoformat(o_t[-1]) if o_t
+                 else _dd.fromisoformat(spec.forecast_date))
+        f_t = [(_base + _tdd(days=7 * h)).isoformat()
+               for h in (1, 2, 3, 4)]
+        samples_h = {f_t[h - 1]: s[str(h)] for h in (1, 2, 3, 4)}
+        try:
+            q_by_t = report_v2.fan_quantiles(f_t, samples_h)
+            lo_l = o_v[-1] if o_v else 0.0
+            probs_l = categorical_probs(
+                _np.asarray(s["1"], float), lo_l,
+                int(n2p.get(loc, 1e6)), 1)
+            key = "US" if fips_l == "US" else n2a.get(loc, loc)
+            meds = [q_by_t[t]["0.5"] for t in f_t]
+            note = ("Off-season: the model finds no sustained "
+                    "transmission. This forecast reflects the recent "
+                    "reporting background, not epidemic growth."
+                    if max(meds) <= 2 else "")
+            details[key] = {
+                "name": "United States" if fips_l == "US" else loc,
+                "note": note,
+                "fan": {"observed_times": o_t, "observed": o_v,
+                        "forecast_times": f_t, "quantiles": q_by_t,
+                        "title": f"{loc}: weekly admissions",
+                        "settled": settled_by_loc.get(loc)},
+                "cat_probs": probs_l,
+                "table_rows": [(d, v) for d, v in obs_pairs[-6:]]}
+        except Exception:
+            continue
+    nat_card = None
+    try:
+        us_names = [n for n in pf_samples if n2f.get(n) == "US"] or \
+                   [n for n in pf_samples
+                    if "US" in n or "national" in n.lower()]
+        if us_names:
+            un = us_names[0]
+            arr = _np.asarray(pf_samples[un]["1"], float)
+            lo_us = next((c["last_observed"] for c in cells
+                          if c["location"] == un), 0.0)
+            probs_us = categorical_probs(arr, lo_us, 340_000_000, 1)
+            hover_us = ("<b>United States</b><br>current: "
+                        f"{lo_us:.0f}<br>1-wk median: "
+                        f"{float(_np.median(arr)):.0f}")
+            nat_card = {"probs": probs_us, "name": "United States",
+                        "abbr": "US", "fips": "US",
+                        "hover_html": hover_us}
+    except Exception:
+        nat_card = None
+    bundle = {"version": report_v2.BUNDLE_VERSION,
+              "reference_date": spec.forecast_date,
+              "cards": cards, "details": details,
+              "national": {"summary_html": wis_html},
+              "national_map_card": nat_card,
+              "elapsed_s": elapsed_s,
+              # what produced this report: the run's own settings, the
+              # application build, and the engine versions
+              "settings_html": settings_html(
+                  spec_settings(spec)
+                  + version_pairs(RUNNING_SHA, VERSIONS))}
+    try:
+        bp = report_v2.save_bundle(bundle, workroot)
+        outcome["report_inputs_bytes"] = bp.stat().st_size
+    except Exception as e:    # the report is never hostage to its bundle
+        outcome["report_inputs_error"] = str(e)[:200]
+    report_v2.render_bundle(bundle, workroot / "report.html")
+    outcome["report"] = str(workroot / "report.html")
+
+
 def _run_all(spec: RunSpec) -> None:
     """The competition path: engines in ascending cost, then ensemble,
     submissions, and the weekly report. Every step lands in ONE workroot and
@@ -802,134 +950,13 @@ def _run_all(spec: RunSpec) -> None:
             df.to_json(workroot / "scores_pf.json")
         except Exception as e:
             outcome["score_error"] = str(e)[:200]
-        # 5b. weekly report: map + hover cards + WIS card (fans arrive with
-        # the per-state drill-down pages; keep the report honest meanwhile)
+        # 5b. weekly report, rendered from its persisted inputs bundle
+        # (map + hover cards + WIS card + per-state drill-down pages): see
+        # _write_weekly_report. Contained: a report hiccup must never erase
+        # the forecast itself.
         try:
-            from app.core.report import categorical_probs
-            from app.core.report_v2 import CATS, build_report
-            from app.core.scoring import summary_table_html
-            n2a = dict(zip(locs.location_name, locs.abbreviation))
-            n2p = dict(zip(locs.location_name,
-                           locs.population.astype(float)))
-            cards = {}
-            for loc, s in pf_samples.items():
-                import numpy as _np
-                med1 = float(_np.median(_np.asarray(s["1"], float)))
-                lo = next(c["last_observed"] for c in
-                          __import__("json").loads(
-                              (workroot / "cells.json").read_text())
-                          if c["location"] == loc)
-                probs = categorical_probs(s["1"], lo, int(n2p[loc]), 1)
-                hover = (f"<b>{loc}</b><br>current: {lo:.0f}"
-                         f"<br>1-wk median: {med1:.0f}<br>" +
-                         "<br>".join(f"{c.replace('_',' ')}: "
-                                     f"{probs.get(c,0):.0%}" for c in CATS))
-                cards[n2a[loc]] = {"probs": probs, "name": loc,
-                                   "abbr": n2a[loc], "fips": n2f[loc],
-                                   "hover_html": hover}
-            for name, abbr in n2a.items():
-                cards.setdefault(abbr, {"name": name, "abbr": abbr,
-                                        "fips": n2f.get(name, "")})
-            wis_html = ("<div class='card'><h2>forecast accuracy "
-                        "(retrospective)</h2>" + summary_table_html(df)
-                        + "</div>")
-            # state pages: fan + categorical bar + recent-data table per location
-            from app.core.report_v2 import cat_bar, fan_figure
-            # settled outcomes for backdated runs: the LATEST vintage's values
-            # past the forecast origin, framed to the 4-week horizon
-            settled_by_loc = {}
-            try:
-                _vs_all = data_mod.vintages()
-                if _vs_all and _vs_all[-1] > spec.forecast_date:
-                    from datetime import date as _sd, timedelta as _st
-                    _lim = (_sd.fromisoformat(spec.forecast_date)
-                            + _st(days=35)).isoformat()
-                    ldf = pd.read_csv(data_mod.vintage_path(_vs_all[-1]),
-                                      dtype={"location": str})
-                    ldf["location"] = ldf["location"].str.zfill(2)
-                    for loc in spec.locations:
-                        g = ldf[(ldf.location == n2f.get(loc, "")) &
-                                (ldf.date > spec.forecast_date) &
-                                (ldf.date <= _lim)].sort_values("date")
-                        pts = [(str(r.date)[:10], float(r.value))
-                               for r in g.itertuples()
-                               if pd.notna(r.value)]
-                        if pts:
-                            settled_by_loc[loc] = pts
-            except Exception:
-                settled_by_loc = {}
-            details = {}
-            for loc, s in pf_samples.items():
-                fips_l = n2f.get(loc, "")
-                obs_pairs = (obs.get(loc) or [])[-12:]
-                from datetime import date as _dd, timedelta as _tdd
-                o_t = [d for d, _ in obs_pairs]
-                o_v = [v for _, v in obs_pairs]
-                _base = (_dd.fromisoformat(o_t[-1]) if o_t
-                         else _dd.fromisoformat(spec.forecast_date))
-                f_t = [(_base + _tdd(days=7 * h)).isoformat()
-                       for h in (1, 2, 3, 4)]
-                samples_h = {f_t[h - 1]: s[str(h)] for h in (1, 2, 3, 4)}
-                try:
-                    fan = fan_figure(o_t, o_v, f_t, samples_h,
-                                     title=f"{loc}: weekly admissions",
-                                     settled=settled_by_loc.get(loc))
-                    lo_l = o_v[-1] if o_v else 0.0
-                    import numpy as _np3
-                    probs_l = categorical_probs(
-                        _np3.asarray(s["1"], float), lo_l,
-                        int(n2p.get(loc, 1e6)), 1)
-                    key = "US" if fips_l == "US" else n2a.get(loc, loc)
-                    meds = [float(_np3.median(_np3.asarray(s[str(h)], float)))
-                            for h in (1, 2, 3, 4)]
-                    note = ("Off-season: the model finds no sustained "
-                            "transmission. This forecast reflects the recent "
-                            "reporting background, not epidemic growth."
-                            if max(meds) <= 2 else "")
-                    details[key] = {
-                        "name": "United States" if fips_l == "US" else loc,
-                        "note": note,
-                        "fan": fan, "cat": cat_bar(probs_l),
-                        "table_rows": [(d, v) for d, v in obs_pairs[-6:]]}
-                except Exception:
-                    continue
-            nat_html = ""
-            try:
-                from app.core.usmap import national_svg
-                us_names = [n for n in pf_samples if n2f.get(n) == "US"] or                            [n for n in pf_samples if "US" in n or "national" in n.lower()]
-                if us_names:
-                    un = us_names[0]
-                    import numpy as _np2
-                    arr = _np2.asarray(pf_samples[un]["1"], float)
-                    lo_us = next((c["last_observed"] for c in
-                                  __import__("json").loads(
-                                      (workroot / "cells.json").read_text())
-                                  if c["location"] == un), 0.0)
-                    us_pop = float(_l0 := 340_000_000)
-                    probs_us = categorical_probs(arr, lo_us, int(us_pop), 1)
-                    hover_us = ("<b>United States</b><br>current: "
-                                f"{lo_us:.0f}<br>1-wk median: "
-                                f"{float(_np2.median(arr)):.0f}")
-                    nat_html = national_svg({"probs": probs_us,
-                                             "name": "United States",
-                                             "abbr": "US", "fips": "US",
-                                             "hover_html": hover_us})
-            except Exception:
-                nat_html = ""
-            us_d = details.get("US", {})
-            build_report(spec.forecast_date, cards, details,
-                         {"fan": us_d.get("fan"), "acc": None,
-                          "note": us_d.get("note", ""),
-                          "summary_html": wis_html},
-                         workroot / "report.html",
-                         national_map_html=nat_html,
-                         elapsed_s=_time.time() - t_start,
-                         # what produced this report: the run's own settings,
-                         # the application build, and the engine versions
-                         settings_html=settings_html(
-                             spec_settings(spec)
-                             + version_pairs(RUNNING_SHA, VERSIONS)))
-            outcome["report"] = str(workroot / "report.html")
+            _write_weekly_report(spec, workroot, pf_samples, obs, df, locs,
+                                 n2f, _time.time() - t_start, outcome)
         except Exception as e:
             outcome["report_error"] = str(e)[:200]
         # 6. results index for the run page
@@ -1008,12 +1035,15 @@ def _archive_run(workroot: Path, forecast_date: str) -> str:
     """Copy the run's deliverables to app/state/archive/<forecast_date>/,
     replacing any earlier archive for the same date."""
     import shutil
+    from app.core.report_v2 import BUNDLE_NAME
     from app.core.runs import APP_STATE
     arch = APP_STATE / "archive" / forecast_date
     if arch.exists():
         shutil.rmtree(arch)
     arch.mkdir(parents=True)
-    for name in ("results.json", "report.html"):
+    # the report travels WITH its inputs bundle so the archived copy can be
+    # rebuilt after a design change, exactly like the workroot's
+    for name in ("results.json", "report.html", BUNDLE_NAME):
         if (workroot / name).is_file():
             shutil.copy2(workroot / name, arch / name)
     if (workroot / "submission").is_dir():
@@ -1080,9 +1110,12 @@ def run_page(request: Request, run_id: str):
 @app.get("/runs/{run_id}/report", response_class=HTMLResponse)
 def run_report(run_id: str):
     from app.core.runs import APP_STATE
-    f = APP_STATE / "workroots" / run_id / "report.html"
-    return HTMLResponse(f.read_text() if f.is_file()
-                        else "<p>no report for this run</p>")
+    d = APP_STATE / "workroots" / run_id
+    if not (d / "report.html").is_file():
+        return HTMLResponse("<p>no report for this run</p>")
+    # same freshness treatment as /output/report: the run page's open link
+    # is the file the user saves
+    return HTMLResponse(_report_for_serving(d))
 
 
 @app.get("/api/series")
@@ -1328,22 +1361,72 @@ def output_reveal(path: str = Form(...)):
     return RedirectResponse("/output", status_code=303)
 
 
+#: rebuilds already attempted and failed, keyed by report path -> the
+#: builder-sources mtime the attempt was against. A broken bundle is tried
+#: once per builder change, never per request; the stored file serves
+#: meanwhile.
+_REPORT_REBUILD_FAILED: dict = {}
+
+
+def _report_for_serving(dirpath: Path) -> str:
+    """The stored weekly report, refreshed when the builder moved on.
+
+    The report_season freshness standard applied to the weekly report:
+    report.html older than the builder sources (report_v2.py, scoring.py,
+    usmap.py) is stale. With an inputs bundle beside it (report_inputs.json,
+    written by every run since the bundle landed) the report is rebuilt in
+    place from the bundle, once, and served fresh; a fresh report is served
+    untouched. Without a bundle, report_v2.legacy_theme_carry decides
+    between a conservative serve-time restyle and a quiet header line,
+    never touching the stored file. Any failure serves the stored file
+    unchanged: staleness is cosmetic and must never cost a 500."""
+    from app.core import report_v2
+    f = Path(dirpath) / "report.html"
+    text = f.read_text()
+    try:
+        src_m = report_v2.builder_sources_mtime()
+        if f.stat().st_mtime >= src_m:
+            return text                                    # fresh: verbatim
+        b = Path(dirpath) / report_v2.BUNDLE_NAME
+        if not b.is_file():
+            return report_v2.legacy_theme_carry(text)
+        if _REPORT_REBUILD_FAILED.get(str(f)) == src_m:
+            return text
+        try:
+            import json as _json
+            bundle = _json.loads(b.read_text())
+            if bundle.get("version") != report_v2.BUNDLE_VERSION:
+                raise ValueError("unknown report bundle version "
+                                 f"{bundle.get('version')!r}")
+            report_v2.render_bundle(bundle, f)
+            return f.read_text()
+        except Exception:
+            _REPORT_REBUILD_FAILED[str(f)] = src_m
+            return text
+    except Exception:
+        return text
+
+
 @app.get("/output/report", response_class=HTMLResponse)
 def output_report(date: str = ""):
-    """Latest run's report by default; ?date=YYYY-MM-DD serves the archive."""
+    """Latest run's report by default; ?date=YYYY-MM-DD serves the archive.
+    Both forms refresh a stale stored report before serving it (see
+    _report_for_serving)."""
     import re
     from app.core.runs import APP_STATE
     if date:
         if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
             return HTMLResponse("<p>Invalid date. Expected YYYY-MM-DD.</p>",
                                 status_code=400)
-        f = APP_STATE / "archive" / date / "report.html"
-        return HTMLResponse(f.read_text() if f.is_file()
-                            else f"<p>No archived report for {date}.</p>")
+        d = APP_STATE / "archive" / date
+        if not (d / "report.html").is_file():
+            return HTMLResponse(f"<p>No archived report for {date}.</p>")
+        return HTMLResponse(_report_for_serving(d))
     rid, _ = _latest_results()
-    f = APP_STATE / "workroots" / (rid or "") / "report.html"
-    return HTMLResponse(f.read_text() if f.is_file()
-                        else "<p>No report yet. Run the models first.</p>")
+    d = APP_STATE / "workroots" / (rid or "")
+    if not (d / "report.html").is_file():
+        return HTMLResponse("<p>No report yet. Run the models first.</p>")
+    return HTMLResponse(_report_for_serving(d))
 
 
 @app.get("/models", response_class=HTMLResponse)
