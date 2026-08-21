@@ -160,6 +160,15 @@ def test_report_rebuilds_when_player_source_changes(tmp_path, monkeypatch):
     assert html != "sentinel" and "flubnf-player-v1" in html
 
 
+def test_builder_source_is_a_report_input(tmp_path, monkeypatch):
+    # the builder is an input to its own output: a restyle here must
+    # refresh every cached export, exactly as a player fix does; otherwise
+    # a season whose data never changes serves the old face forever
+    root = _mk_root(tmp_path, monkeypatch)
+    src_mtime = Path(report_season.__file__).stat().st_mtime
+    assert report_season._newest_input(root) >= src_mtime
+
+
 def test_real_plotly_embedded(tmp_path, monkeypatch):
     root = _mk_root(tmp_path, monkeypatch, stub_plotly=False)
     html = report_season.build_season_report(root, SEASON).read_text()
@@ -253,6 +262,40 @@ def test_report_wears_the_console_identity(tmp_path, monkeypatch):
     assert ".ok{color:#4CC38A}" in html
     assert ".bad{color:#FB4653}" in html
     assert "#7FC97F" not in html and "#E8A33D" not in html
+    # the nau.css dark tokens, verbatim, and the wordmark exactly as the
+    # console's navbar writes it
+    for token in ("--bg:#0C0D17", "--card:#151729", "--ink:#E9EAF4",
+                  "--mut:#9AA1C4", "--line:#262A45", "--accent:#34C0F0"):
+        assert token in html, token
+    assert "<em>Flu</em>BNF" in html
+    assert "font-variant-numeric:tabular-nums" in html
+
+
+def test_report_carries_a_print_stylesheet(tmp_path, monkeypatch):
+    root = _mk_root(tmp_path, monkeypatch)
+    html = report_season.build_season_report(root, SEASON).read_text()
+    assert "@media print" in html
+    pr = html.split("@media print", 1)[1].split("</style>", 1)[0]
+    # on paper the console's light theme takes over: light surface, the
+    # LANL Blue ink, and the light-theme ok/bad pair
+    for v in ("#FFFFFF", "#000F7E",
+              ".ok{color:#177245}", ".bad{color:#C42840}"):
+        assert v in pr, v
+    # the player's interactive chrome stays on screen
+    assert "display:none!important" in pr
+
+
+def test_report_verdict_states_cell_coverage_when_scored(tmp_path,
+                                                         monkeypatch):
+    root = _mk_root(tmp_path, monkeypatch)
+    _write_scores(root)
+    html = report_season.build_season_report(root, SEASON).read_text()
+    # 2 weeks x 2 states of synthetic ensemble rows
+    assert "the season's 4 scored ensemble cells" in html
+    # unscored: the generic phrase stands, never an invented count
+    root2 = _mk_root(tmp_path / "b", monkeypatch)
+    html2 = report_season.build_season_report(root2, SEASON).read_text()
+    assert "every scored cell of the season" in html2
 
 
 # ------------------------------------------------------------------- caching

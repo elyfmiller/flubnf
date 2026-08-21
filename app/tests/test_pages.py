@@ -200,6 +200,92 @@ def test_home_outlook_caption_states_coverage_when_a_run_exists():
     assert "of 52" not in empty
 
 
+# ----------------- defining equations, tied to the models they define
+
+def test_model_pages_carry_their_defining_equations():
+    wanted = {
+        "pf": ("NegBin(", "filter bends each week", "Fitted per state"),
+        "pf2s": ("Binomial(", "one harmonic form shared by both circuits",
+                 "second likelihood channel"),
+        "analogue": ("calendar-matched historical growth",),
+        "ensemble": ("equal-weight mean of the",),
+    }
+    for name, needles in wanted.items():
+        t = client.get(f"/model/{name}").text
+        assert 'class="eqpanel"' in t, name
+        for needle in needles:
+            assert needle in t, (name, needle)
+
+
+def test_methods_carries_the_pf_and_two_strain_equations():
+    t = client.get("/methods").text
+    assert t.count('class="eqpanel"') == 2       # SIHRS card + two-strain card
+    assert "NegBin(" in t
+    assert "Binomial(" in t
+
+
+def test_home_workflow_carries_the_forcing_and_blend_equations():
+    t = client.get("/").text
+    assert 'class="eqpanel"' in t
+    assert "the curve the filter bends each week" in t
+    assert "mean<sub>m</sub>" in t               # the ensemble quantile mean
+
+
+# --------------------------- read-only BNGL source on BNGL-backed pages
+
+def test_bngl_source_is_shown_escaped_on_bngl_backed_pages():
+    pf = client.get("/models").text
+    assert "View model source (BNGL)" in pf
+    assert "SIHRS_pop_min.bngl" in pf
+    # collapsed by default: a details block without `open`
+    assert '<details class="card bngl">' in pf
+    # contents escaped into text, never interpreted as markup
+    assert "S() + I() -&gt; I() + I()" in pf
+    # substitution tokens shown as-is, with the hint that explains them
+    assert "{{POP}}" in pf
+    assert "filled in per state and week" in pf
+    p2 = client.get("/model/pf2s").text
+    assert "View model source (BNGL)" in p2
+    assert "SIHRS_pop_2strain_min.bngl" in p2
+    assert "{{POP}}" in p2
+
+
+def test_models_without_bngl_get_no_source_block():
+    for name in ("analogue", "ensemble"):
+        t = client.get(f"/model/{name}").text
+        assert "View model source" not in t, name
+        assert 'class="card bngl"' not in t, name
+
+
+# ------------------------------------------- diagram macro conventions
+
+def test_diagram_svgs_use_aria_label_not_hover_title():
+    """<svg><title> doubles as a hover tooltip that pops over the artwork;
+    the accessible name rides aria-label instead."""
+    t = (Path(__file__).resolve().parents[1] / "ui" / "templates"
+         / "diagrams.html").read_text(encoding="utf-8")
+    assert "<title" not in t
+    for label in ("SIHRS compartment diagram",
+                  "Two-strain SIHRS compartment diagram",
+                  "Calendar analogue mechanism",
+                  "Ensemble blending diagram"):
+        assert f'aria-label="{label}"' in t, label
+
+
+def test_analogue_legend_wraps_inside_the_viewbox():
+    """The single-line legend entries clipped at the right viewBox edge once
+    the A+ text step multiplied the rem-sized labels; long entries now wrap
+    onto continuation lines."""
+    t = client.get("/model/analogue").text
+    assert "same calendar weeks,</text>" in t
+    assert "same calendar weeks, prior seasons" not in t
+
+
+def test_two_strain_caption_is_two_drawn_lines():
+    t = client.get("/model/pf2s").text
+    assert "Observed admissions sum the A and B fluxes;</text>" in t
+
+
 def test_diagram_data_shapes():
     from app.ui.server import _diagram_data
     assert _diagram_data(None) == {"date": "", "has_pf2s": False,

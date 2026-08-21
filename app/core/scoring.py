@@ -107,16 +107,36 @@ def score_samples(samples_by_loc: Mapping, forecast_date: str,
 
 
 def summary_table_html(df: pd.DataFrame) -> str:
-    """The report's WIS-breakdown card. Empty df -> honest placeholder."""
+    """The report's WIS-breakdown card, under the one-relWIS rule: the
+    member is named in the header, every score wears the ok/bad
+    below-1-beats-baseline classes, the table style supplies tabular
+    numerals, and each score states the cell count it rests on. Empty
+    df -> honest placeholder."""
     if df.empty:
-        return ("<p class='hint'>No scored weeks yet — WIS appears once "
+        return ("<p class='hint'>No scored weeks yet. relWIS appears once "
                 "truth for forecast weeks is published.</p>")
+    try:                       # the shared name map, one source (no drift)
+        from app.core.report_season import MODEL_NAMES
+        member = MODEL_NAMES.get("pf", "PF-SIHRS")
+    except Exception:
+        member = "PF-SIHRS"
     per_loc = (df.groupby("location")
                  .apply(lambda g: g.wis.sum() / g.base_wis.sum(),
                         include_groups=False)
                  .sort_values())
+    cells = df.groupby("location").size()
     total = df.wis.sum() / df.base_wis.sum()
-    rows = "".join(f"<tr><td>{l}</td><td>{v:.3f}</td></tr>"
-                   for l, v in per_loc.items())
-    return (f"<table><tr><th>location</th><th>relWIS</th></tr>{rows}"
-            f"<tr><th>all</th><th>{total:.3f}</th></tr></table>")
+
+    def score_td(v):
+        return f'<td class="num {"ok" if v < 1 else "bad"}">{v:.3f}</td>'
+
+    rows = "".join(
+        f"<tr><td>{l}</td>{score_td(v)}"
+        f'<td class="num hint">{int(cells.get(l, 0))}</td></tr>'
+        for l, v in per_loc.items())
+    return ('<table><thead><tr><th>Location</th>'
+            f'<th class="num">{member} relWIS</th>'
+            '<th class="num">Cells</th></tr></thead><tbody>'
+            + rows
+            + f'<tr class="total"><td>All locations</td>{score_td(total)}'
+            f'<td class="num hint">{len(df)}</td></tr></tbody></table>')

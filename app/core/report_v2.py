@@ -14,7 +14,11 @@ One self-contained file per week (plotly.js embedded once, no network):
   * fluid layout: no fixed max-width, the map scales with the window
   * forced dark: single-theme by design; every color painted explicitly
 
-Deliberately dark-only per Ely's spec (2026-08-17).
+Deliberately dark-only on screen per Ely's spec (2026-08-17). The colors
+and type are the console's own identity (nau.css dark tokens, DM Sans with
+a system fallback and no webfont fetch), and a print stylesheet flips the
+page to the console's light theme so the report prints as dark ink on a
+light surface.
 """
 from __future__ import annotations
 
@@ -23,10 +27,18 @@ from pathlib import Path
 
 import numpy as np
 
-# PyBNF brand palette (dark): Near-Black ground, stepped indigo card,
-# Cyan #34C0F0 as the single accent
+# Console identity (nau.css dark theme, LANL Mesa-aligned): Near-Black
+# ground, stepped indigo card, Cyan #34C0F0 as THE accent. The values below
+# mirror the [data-theme="dark"] tokens in app/ui/static/nau.css so a color
+# means the same thing in the console and in this export; the print
+# stylesheet flips to the console's light-theme values.
 INK = "#E9EAF4"; MUT = "#9AA1C4"; PAPER = "#0C0D17"; CARD = "#151729"
 LINE = "#262A45"; ACCENT = "#34C0F0"
+OK = "#4CC38A"; BAD = "#FB4653"
+# the brand face with a system fallback: the report stays fully offline
+# (no webfont fetch), so the stack simply upgrades to DM Sans wherever
+# the font is installed
+FONT_STACK = '"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif'
 CATS = ("large_decrease", "decrease", "stable", "increase", "large_increase")
 CAT_COLOR = {"large_decrease": "#2e7d4f", "decrease": "#7fc97f",
              "stable": "#b9b09b", "increase": "#e8a33d",
@@ -51,7 +63,7 @@ PLOTLY_CONFIG = {"scrollZoom": True, "doubleClick": "reset+autosize",
 def _fig_layout(fig, height=340, title="", legend=False):
     fig.update_layout(
         template=None, paper_bgcolor=CARD, plot_bgcolor=CARD,
-        font=dict(color=INK, family="system-ui", size=13),
+        font=dict(color=INK, family=FONT_STACK, size=13),
         margin=dict(l=44, r=16, t=40 if title else 16, b=64 if legend else 36),
         height=height, title=dict(text=title, font=dict(size=15)),
         xaxis=dict(gridcolor=LINE, zerolinecolor=LINE),
@@ -173,8 +185,8 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
     for a, d in state_details.items():
         if a == "US":          # national renders in its own curated section
             continue
-        rows = "".join(f"<tr><td>{r[0]}</td><td>{r[1]:.0f}</td></tr>"
-                       for r in d.get("table_rows", []))
+        rows = "".join(f'<tr><td>{r[0]}</td><td class="num">{r[1]:.0f}</td>'
+                       "</tr>" for r in d.get("table_rows", []))
         sections.append(f"""
 <section class="state" id="st-{a}" hidden>
   {back_btn}
@@ -183,7 +195,7 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
   <div class="grid2">
     <div class="card">{_html(d['fan'])}</div>
     <div class="card">{_html(d['cat'])}
-      <table><tr><th>week</th><th>admissions</th></tr>{rows}</table></div>
+      <table><tr><th>week</th><th class="num">admissions</th></tr>{rows}</table></div>
   </div>
   {('<div class="card">' + _html(d['acc']) + '</div>') if d.get('acc') else ''}
 </section>""")
@@ -238,49 +250,94 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
     if settings_html:
         footer += settings_html
 
-    html = f"""<!doctype html><html><head><meta charset="utf-8">
+    html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FluBNF — week of {reference_date}</title>
+<title>FluBNF weekly report · {reference_date}</title>
 {plotly_js}
 <style>
- /* tokens the inline usmap SVG reads: state borders match the card surface,
-    no-data reads as an explicit near-black gap against it */
- :root{{--card:{CARD};--accent:{ACCENT};--map-nodata:#05060A}}
- body{{margin:0;background:{PAPER};color:{INK};font:15px/1.55 system-ui}}
- main{{width:100%;box-sizing:border-box;margin:0 auto;
-       padding:1.6rem 1.4rem 4rem}}
- h1{{font-size:1.45rem;margin:.2rem 0}} h2{{font-size:1.15rem}}
- .sub{{color:{MUT};margin:.2rem 0 1rem}}
- .card{{background:{CARD};border:1px solid {LINE};border-radius:14px;
-        padding:.8rem;margin:.8rem 0;overflow-x:auto}}
- .grid2{{display:grid;grid-template-columns:1fr 1fr;gap:.8rem}}
+ /* console identity, fixed dark on screen: the tokens mirror nau.css
+    [data-theme="dark"]; the print block below flips them to the console's
+    light theme so the page prints as dark ink on a light surface. The
+    inline usmap SVG reads --card, --accent, and --map-nodata: state
+    borders match the card surface, and no-data reads as an explicit
+    near-black gap against it (pale neutral on paper). */
+ :root{{--bg:{PAPER};--card:{CARD};--ink:{INK};--mut:{MUT};--line:{LINE};
+  --accent:{ACCENT};--gold:{ACCENT};--ok:{OK};--bad:{BAD};
+  --map-nodata:#05060A;
+  --shadow:0 1px 3px rgba(0,0,0,.5),0 4px 14px rgba(0,0,0,.35)}}
+ *{{box-sizing:border-box}}
+ body{{margin:0;background:var(--bg);color:var(--ink);
+      font:400 15px/1.55 {FONT_STACK}}}
+ main{{width:100%;margin:0 auto;padding:1.4rem 1.4rem 4rem}}
+ .brandrow{{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap;
+  margin:0 0 .8rem}}
+ .brand{{font-size:1.45rem;font-weight:700;letter-spacing:.01em}}
+ .brand em{{color:var(--accent);font-style:normal}}
+ .brandsub{{color:var(--mut);font-size:.9rem}}
+ .brandrow .spacer{{flex:1}}
+ h1{{font-size:1.45rem;font-weight:700;margin:.1rem 0 .3rem;
+     text-wrap:balance}}
+ h2{{font-size:1.15rem;font-weight:700;margin:.2rem 0 .6rem}}
+ .card h2{{font-size:.8rem;margin:0 0 .55rem;text-transform:uppercase;
+    letter-spacing:.05em;color:var(--mut);font-weight:600}}
+ .sub{{color:var(--mut);margin:.2rem 0 1rem}}
+ .card{{background:var(--card);border:1px solid var(--line);
+        border-radius:10px;padding:.85rem 1rem;margin:.8rem 0;
+        box-shadow:var(--shadow);overflow-x:auto}}
+ .grid2{{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}}
  @media(max-width:820px){{.grid2{{grid-template-columns:1fr}}}}
- .offseason{{color:{MUT};font-size:.85rem;font-style:italic;margin:.2rem 0 .8rem}}
+ .offseason{{color:var(--mut);font-size:.85rem;font-style:italic;
+             margin:.2rem 0 .8rem}}
  /* in the header flow (not fixed) so it can never cover the title */
- #appback{{display:inline-block;background:{CARD};border:1px solid {LINE};
-  border-radius:99px;padding:.3rem .8rem;color:{INK};text-decoration:none;
-  font-size:.85rem;margin:0 0 .5rem}}
- #appback:hover{{border-color:{ACCENT}}}
+ #appback{{display:inline-block;background:var(--card);
+  border:1px solid var(--line);border-radius:99px;padding:.3rem .8rem;
+  color:var(--ink);text-decoration:none;font-size:.85rem}}
+ #appback:hover{{border-color:var(--accent)}}
  .mapcap{{max-width:min(880px,72vw);margin:0 auto}}
  .mapcap svg{{max-height:58vh}}
- .legend{{display:flex;gap:1.1rem;flex-wrap:wrap;color:{MUT};font-size:.82rem;
-          margin:.4rem 0 0 .2rem}}
+ .legend{{display:flex;gap:1.1rem;flex-wrap:wrap;color:var(--mut);
+          font-size:.82rem;margin:.4rem 0 0 .2rem}}
  .legend span{{display:inline-flex;align-items:center;gap:.35rem}}
- .sw{{width:13px;height:13px;border-radius:3px;display:inline-block}}
+ .sw{{width:13px;height:13px;border-radius:3px;display:inline-block;
+     -webkit-print-color-adjust:exact;print-color-adjust:exact}}
  table{{border-collapse:collapse;font-size:.85rem;margin:.6rem .4rem;
         font-variant-numeric:tabular-nums}}
- td,th{{padding:.25rem .7rem;border-bottom:1px solid {LINE};text-align:left}}
- button{{background:{CARD};color:{INK};border:1px solid {LINE};
-         border-radius:9px;padding:.45rem .9rem;font:inherit;cursor:pointer}}
- button:hover{{border-color:{ACCENT}}}
- button:focus-visible{{outline:2px solid {ACCENT};outline-offset:2px}}
+ td,th{{padding:.38rem .6rem;border-bottom:1px solid var(--line);
+        text-align:left}}
+ th{{color:var(--mut);font-weight:600;font-size:.72rem;
+     text-transform:uppercase;letter-spacing:.04em}}
+ td.num,th.num{{text-align:right}}
+ tr.total td{{font-weight:750;border-top:2px solid var(--line);
+              border-bottom:0}}
+ /* the console's alert pair: below 1 beats baseline, everywhere */
+ .ok{{color:var(--ok)}}.bad{{color:var(--bad)}}
+ .relwis{{font-variant-numeric:tabular-nums;font-weight:650}}
+ .num.hint{{color:var(--mut)}}
+ button{{background:transparent;color:var(--gold);
+         border:1px solid var(--gold);border-radius:8px;
+         padding:.45rem .95rem;font:inherit;font-weight:650;cursor:pointer}}
+ button:hover{{background:rgba(52,192,240,.14)}}
+ button:focus-visible{{outline:2px solid var(--gold);outline-offset:2px}}
  .viewtoggle{{display:flex;gap:.5rem;margin:1rem 0 0}}
- .viewtoggle .on{{border-color:{ACCENT};color:{ACCENT}}}
+ .viewtoggle .on{{background:var(--gold);border-color:var(--gold);
+                  color:{PAPER}}}
  .backbtn{{margin:.2rem 0 .6rem}}
- .hint{{color:{MUT};font-size:.85rem}}
+ .hint{{color:var(--mut);font-size:.85rem}}
+ @media print{{
+  :root{{--bg:#FFFFFF;--card:#FFFFFF;--ink:#000F7E;--mut:#565E96;
+   --line:#DCD8E9;--accent:#0173A9;--gold:#0173A9;
+   --ok:#177245;--bad:#C42840;--map-nodata:#C9C5D8;--shadow:none}}
+  body{{background:#FFFFFF;color:#000F7E}}
+  button,select,.viewtoggle,#appback,.backbtn{{display:none!important}}
+  .card{{box-shadow:none;break-inside:avoid}}
+ }}
 </style></head><body><main>
-<a id="appback" href="#" hidden
- onclick="history.back();return false">&larr; back to FluBNF</a>
+<header class="brandrow"><span class="brand"><em>Flu</em>BNF</span>
+ <span class="brandsub">weekly forecast report</span>
+ <span class="spacer"></span>
+ <a id="appback" href="#" hidden
+  onclick="history.back();return false">&larr; back to FluBNF</a>
+</header>
 <h1>US influenza forecast</h1>
 <p class="sub">week of {reference_date} · PF-SIHRS · click a state for detail
  · Ctrl+scroll to zoom (⌘ on Mac), drag to pan, double-click to reset
@@ -300,8 +357,8 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
   <span>deeper shade = more confident</span>
  </div>
 </div>
-<p class="hint">Hover a state for its full outlook. Black states reported no
-data this week — shown as gaps, never interpolated.</p>
+<p class="hint">Hover a state for its full outlook. States in the no-data
+shade reported nothing this week: shown as gaps, never interpolated.</p>
 {"".join(sections)}
 {nat}
 <script>

@@ -8,12 +8,17 @@
    beside the diagram, so numbers never overlap the artwork.
    Text is sized through the svgt-* rem classes in nau.css, never through
    fixed viewBox-unit font-size attributes, so the A-/A/A+ control reaches
-   every label and the smallest step holds the app's hint floor. #}
+   every label and the smallest step holds the app's hint floor.
+   Because the rem classes resolve in viewBox units, label boxes are audited
+   at the LARGEST text step (A+, 115%): every line must fit its box and the
+   viewBox at that size, so nothing ever clips at any text setting.
+   Accessible names ride aria-label, never a nested svg title element: that
+   element doubles as a hover tooltip popping over the artwork, while the
+   label reads the same to assistive tech without covering the drawing. #}
 
 {% macro sihrs(uid='s') -%}
-<svg viewBox="0 0 840 348" role="img" aria-labelledby="sihrs-t-{{ uid }}"
+<svg viewBox="0 0 840 348" role="img" aria-label="SIHRS compartment diagram"
      style="width:100%;max-width:800px;display:block;margin:.6rem auto;color:inherit">
- <title id="sihrs-t-{{ uid }}">SIHRS compartment diagram</title>
  <desc>Susceptible to Infected via seasonal transmission; Infected splits to
  Hospitalized (the fitted admissions stream) and directly to Recovered;
  Hospitalized discharges to Recovered; waning immunity returns Recovered to
@@ -62,11 +67,11 @@
   <text x="199" y="138" class="svgt-md">&#946;(t)</text>
   <text x="424" y="138" class="svgt-md">&#961;&#183;&#947;</text>
   <text x="649" y="138" class="svgt-md">&#947;&#8341;</text>
-  <text x="537" y="84"  class="svgt-md">(1-&#961;)&#183;&#947;</text>
+  <text x="537" y="80"  class="svgt-md">(1-&#961;)&#183;&#947;</text>
   <text x="537" y="100" class="svgt-sm">recovery without admission (most infections)</text>
   <text x="199" y="204" class="svgt-sm">seasonal transmission</text>
   <text x="424" y="204" class="svgt-sm">hospital admission</text>
-  <text x="424" y="217" class="svgt-sm">(the fitted data stream)</text>
+  <text x="424" y="220" class="svgt-sm">(the fitted data stream)</text>
   <text x="649" y="204" class="svgt-sm">discharge</text>
   <text x="424" y="318" class="svgt-md">&#969;</text>
   <text x="424" y="336" class="svgt-sm">waning immunity: recovered individuals become susceptible again</text>
@@ -79,22 +84,24 @@
   <text x="0" y="16" class="svgt-md" font-weight="700"
         fill="currentColor">Influenza {{ strain }} circuit</text>
   <g fill="none" stroke="currentColor" stroke-width="1.6">
-   <path d="M122,90 H198" marker-end="url(#arr-{{ uid }})"/>
-   <path d="M302,90 H378" marker-end="url(#arr-{{ uid }})"/>
-   <path d="M482,90 H558" marker-end="url(#arr-{{ uid }})"/>
+   <path d="M128,90 H192" marker-end="url(#arr-{{ uid }})"/>
+   <path d="M308,90 H372" marker-end="url(#arr-{{ uid }})"/>
+   <path d="M488,90 H552" marker-end="url(#arr-{{ uid }})"/>
    <path d="M250,66 C250,24 596,24 596,66" marker-end="url(#arr-{{ uid }})"/>
    <path d="M610,114 C610,178 70,178 70,114" marker-end="url(#arr-{{ uid }})"/>
   </g>
+  {# compartment boxes hold their widest sublabel at the A+ text step; the
+     strain lives in the subscripted symbol, not repeated in the sublabel #}
   <g stroke-width="1.8">
-   <rect x="20"  y="68" width="100" height="44" rx="8"
+   <rect x="15"  y="68" width="110" height="44" rx="8"
          fill="var(--mut)"  fill-opacity=".14" stroke="var(--mut)"/>
-   <rect x="200" y="68" width="100" height="44" rx="8"
+   <rect x="195" y="68" width="110" height="44" rx="8"
          fill="var(--gold)" fill-opacity=".14" stroke="var(--gold)"/>
    {# Hospitalized in slate, as in the single-strain diagram: red stays
       reserved for genuine failure states #}
-   <rect x="380" y="68" width="100" height="44" rx="8"
+   <rect x="375" y="68" width="110" height="44" rx="8"
          fill="var(--slate)" fill-opacity=".14" stroke="var(--slate)"/>
-   <rect x="560" y="68" width="100" height="44" rx="8"
+   <rect x="555" y="68" width="110" height="44" rx="8"
          fill="var(--ok)"   fill-opacity=".14" stroke="var(--ok)"/>
   </g>
   <g text-anchor="middle" font-weight="700" class="svgt-lg">
@@ -104,10 +111,10 @@
    <text x="610" y="89" fill="var(--ok)">R<tspan dy="3" class="svgt-sub">{{ strain }}</tspan></text>
   </g>
   <g text-anchor="middle" class="svgt-sm" fill="currentColor">
-   <text x="70"  y="104">Susceptible {{ strain }}</text>
-   <text x="250" y="104">Infected {{ strain }}</text>
-   <text x="430" y="104">Hospitalized {{ strain }}</text>
-   <text x="610" y="104">Recovered {{ strain }}</text>
+   <text x="70"  y="104">Susceptible</text>
+   <text x="250" y="104">Infected</text>
+   <text x="430" y="104">Hospitalized</text>
+   <text x="610" y="104">Recovered</text>
   </g>
   <g text-anchor="middle" fill="currentColor">
    <text x="160" y="78" class="svgt-md">&#946;<tspan dy="3" class="svgt-sub">{{ strain }}</tspan><tspan dy="-3">(t)</tspan></text>
@@ -123,9 +130,9 @@
 {%- endmacro %}
 
 {% macro sihrs2(uid='t') -%}
-<svg viewBox="0 0 840 436" role="img" aria-labelledby="sihrs2-t-{{ uid }}"
+<svg viewBox="0 0 840 440" role="img"
+     aria-label="Two-strain SIHRS compartment diagram"
      style="width:100%;max-width:800px;display:block;margin:.6rem auto;color:inherit">
- <title id="sihrs2-t-{{ uid }}">Two-strain SIHRS compartment diagram</title>
  <desc>Two parallel SIHRS circuits, one for influenza A and one for influenza
  B, each with its own seasonal transmission and peak timing. Each circuit has
  its own susceptible, hospitalized, and recovered pools spanning the whole
@@ -139,16 +146,18 @@
  </defs>
  {{ _sihrs_row(8, 'A', uid) }}
  {{ _sihrs_row(206, 'B', uid) }}
- <text x="420" y="424" text-anchor="middle" class="svgt-sm" fill="currentColor">Observed
- admissions sum the A and B fluxes; NREVSS typed positives set the initial
- mix and fit the A/B share.</text>
+ {# the closing caption holds two drawn lines: one long line overran the
+    viewBox once the A+ text step multiplied the rem classes #}
+ <g text-anchor="middle" class="svgt-sm" fill="currentColor">
+  <text x="420" y="412">Observed admissions sum the A and B fluxes;</text>
+  <text x="420" y="430">NREVSS typed positives set the initial mix and fit the A/B share.</text>
+ </g>
 </svg>
 {%- endmacro %}
 
 {% macro analogue_mech(uid='a') -%}
-<svg viewBox="0 0 840 310" role="img" aria-labelledby="anlg-t-{{ uid }}"
+<svg viewBox="0 0 840 296" role="img" aria-label="Calendar analogue mechanism"
      style="width:100%;max-width:800px;display:block;margin:.6rem auto;color:inherit">
- <title id="anlg-t-{{ uid }}">Calendar analogue mechanism</title>
  <desc>Faint historical season curves, the current season observed so far, and
  a forecast fan formed by scaling the last observed value by quantiles of the
  growth ratios recorded at the same calendar weeks in prior seasons, pooled
@@ -193,30 +202,38 @@
           fill-opacity=".22"/>
  <path d="M430,140 C470,132 510,140 545,150" fill="none"
        stroke="var(--gold)" stroke-width="2.4"/>
- <!-- key, placed in the clear zone away from every curve -->
+ {# key, in the clear zone away from every curve. Long entries wrap onto
+    continuation lines: at the A+ text step a single-line entry ran past the
+    right viewBox edge and clipped mid-word #}
  <g class="svgt-sm">
-  <path d="M580,61 H612" stroke="currentColor" stroke-width="2.6" fill="none"/>
-  <text x="620" y="65" fill="currentColor">this season so far</text>
-  <path d="M580,79 H612" stroke="var(--mut)" stroke-opacity=".4"
+  <path d="M560,54 H592" stroke="currentColor" stroke-width="2.6" fill="none"/>
+  <text x="600" y="58" fill="currentColor">this season so far</text>
+  <path d="M560,72 H592" stroke="var(--mut)" stroke-opacity=".4"
         stroke-width="1.6" fill="none"/>
-  <text x="620" y="83" fill="var(--mut)">past seasons</text>
-  <path d="M580,97 H612" stroke="var(--slate)" stroke-width="2.4" fill="none"/>
-  <text x="620" y="101" fill="var(--slate)">same calendar weeks, prior seasons</text>
-  <rect x="580" y="110" width="32" height="9" fill="var(--gold-bright)"
+  <text x="600" y="76" fill="var(--mut)">past seasons</text>
+  <path d="M560,90 H592" stroke="var(--slate)" stroke-width="2.4" fill="none"/>
+  <text x="600" y="94" fill="var(--slate)">same calendar weeks,</text>
+  <text x="600" y="111" fill="var(--slate)">prior seasons</text>
+  <rect x="560" y="122" width="32" height="9" fill="var(--gold-bright)"
         fill-opacity=".3"/>
-  <path d="M580,114 H612" stroke="var(--gold)" stroke-width="2.2" fill="none"/>
-  <text x="620" y="119" fill="var(--gold)">quantiles of their growth ratios</text>
-  <text x="620" y="133" fill="var(--gold)">scale the last value: the forecast</text>
+  <path d="M560,126 H592" stroke="var(--gold)" stroke-width="2.2" fill="none"/>
+  <text x="600" y="130" fill="var(--gold)">growth-ratio quantiles</text>
+  <text x="600" y="147" fill="var(--gold)">scale the last value:</text>
+  <text x="600" y="164" fill="var(--gold)">the forecast fan</text>
  </g>
 </svg>
 {%- endmacro %}
 
 {% macro ensemble_mech(uid='e') -%}
-<svg viewBox="0 0 840 230" role="img" aria-labelledby="ens-t-{{ uid }}"
+{# members sit side by side and their quantiles flow DOWN into the blend:
+   the row layout fills the drawing's width (the old left-hand stack left
+   two thirds of the canvas empty), and the fan-in leaves a clear pocket
+   beside the middle arrow where its label sits against the arrow it names #}
+<svg viewBox="0 0 780 244" role="img" aria-label="Ensemble blending diagram"
      style="width:100%;max-width:800px;display:block;margin:.6rem auto;color:inherit">
- <title id="ens-t-{{ uid }}">Ensemble blending diagram</title>
- <desc>Member forecast quantiles flow into an equal-weight quantile average,
- which produces the submitted ensemble forecast.</desc>
+ <desc>Three member forecasts side by side; their quantiles flow down into an
+ equal-weight quantile average, which produces the submitted ensemble
+ forecast.</desc>
  <defs>
   <marker id="arr-{{ uid }}" viewBox="0 0 10 10" refX="9" refY="5"
           markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -225,47 +242,109 @@
  </defs>
  <!-- members -->
  <g stroke-width="1.8">
-  <rect x="40" y="22"  width="200" height="46" rx="9"
+  <rect x="10"  y="14" width="240" height="64" rx="9"
         fill="var(--slate)" fill-opacity=".12" stroke="var(--slate)"/>
-  <rect x="40" y="92"  width="200" height="46" rx="9"
+  <rect x="270" y="14" width="240" height="64" rx="9"
         fill="var(--warn)" fill-opacity=".12" stroke="var(--warn)"/>
-  <rect x="40" y="162" width="200" height="46" rx="9" stroke-dasharray="5 4"
+  <rect x="530" y="14" width="240" height="64" rx="9" stroke-dasharray="5 4"
         fill="var(--mut)" fill-opacity=".08" stroke="var(--mut)"/>
  </g>
  <g text-anchor="middle" class="svgt-md" font-weight="600" fill="currentColor">
-  <text x="140" y="49">PF-SIHRS</text>
-  <text x="140" y="119">Calendar analogue</text>
-  <text x="140" y="182">Two-strain SIHRS</text>
+  <text x="130" y="52">PF-SIHRS</text>
+  <text x="390" y="52">Calendar analogue</text>
+  <text x="650" y="44">Two-strain SIHRS</text>
  </g>
- <text x="140" y="197" text-anchor="middle" class="svgt-sm"
+ <text x="650" y="64" text-anchor="middle" class="svgt-sm"
        fill="var(--mut)">(optional third member)</text>
- <!-- arrows into the blend node -->
+ <!-- quantiles converge on the blend node -->
  <g fill="none" stroke="currentColor" stroke-width="1.6">
-  <path d="M242,45 L384,108"  marker-end="url(#arr-{{ uid }})"/>
-  <path d="M242,115 L384,120" marker-end="url(#arr-{{ uid }})"/>
-  <path d="M242,185 L384,132" marker-end="url(#arr-{{ uid }})"/>
-  <path d="M577,120 H637"     marker-end="url(#arr-{{ uid }})"/>
+  <path d="M130,82 L350,164" marker-end="url(#arr-{{ uid }})"/>
+  <path d="M390,82 V164"     marker-end="url(#arr-{{ uid }})"/>
+  <path d="M650,82 L430,164" marker-end="url(#arr-{{ uid }})"/>
+  <path d="M490,200 H546"    marker-end="url(#arr-{{ uid }})"/>
  </g>
- <text x="313" y="34" text-anchor="middle" class="svgt-sm"
-       fill="var(--mut)">member quantiles</text>
+ <!-- the edge label hugs the middle arrow it annotates -->
+ <text x="402" y="104" class="svgt-sm" fill="var(--mut)">member quantiles</text>
  <!-- blend node -->
- <rect x="390" y="88" width="185" height="64" rx="10"
+ <rect x="290" y="168" width="200" height="64" rx="10"
        fill="var(--gold)" fill-opacity=".12" stroke="var(--gold)"
        stroke-width="2"/>
  <g text-anchor="middle" fill="currentColor">
-  <text x="482" y="112" class="svgt-md" font-weight="700">quantile average</text>
-  <text x="482" y="128" class="svgt-sm">equal weights, 50/50,</text>
-  <text x="482" y="142" class="svgt-sm">not fitted to any season</text>
+  <text x="390" y="190" class="svgt-md" font-weight="700">quantile average</text>
+  <text x="390" y="208" class="svgt-sm">equal weights, 50/50,</text>
+  <text x="390" y="226" class="svgt-sm">never fitted</text>
  </g>
  <!-- submitted forecast -->
- <rect x="640" y="88" width="170" height="64" rx="10"
+ <rect x="554" y="168" width="216" height="64" rx="10"
        fill="var(--gold-bright)" fill-opacity=".14"
        stroke="var(--gold-bright)" stroke-width="2"/>
- <text x="725" y="112" text-anchor="middle" class="svgt-md" font-weight="700"
+ <text x="662" y="192" text-anchor="middle" class="svgt-md" font-weight="700"
        fill="currentColor">submitted forecast</text>
- <polygon points="662,144 788,126 788,142 662,150"
+ <polygon points="576,214 748,198 748,212 576,222"
           fill="var(--gold-bright)" fill-opacity=".35"/>
- <path d="M662,147 L788,134" fill="none" stroke="var(--gold)"
+ <path d="M576,218 L748,206" fill="none" stroke="var(--gold)"
        stroke-width="2"/>
 </svg>
+{%- endmacro %}
+
+{# ---- defining equations ---------------------------------------------------
+   One compact panel per model: the equation that defines it, as styled text
+   (no math library; italic variables, Unicode operators), with a one-line
+   tie-in to the mechanism the host page draws. Host pages place these
+   directly under the diagram they annotate. #}
+
+{% macro eq_pf() -%}
+<div class="eqpanel">
+ <p><span class="math"><i>&#946;</i>(<i>t</i>) = <i>&#946;</i><sub>0</sub>
+  exp(&#8239;<i>&#949;</i><sub>1</sub> cos(&#8239;2&#960;(<i>t</i> &#8722;
+  <i>&#966;</i><sub>1</sub>)&#8202;/&#8202;52&#8239;)&#8239;)</span>
+  <span class="eqnote">the fitted seasonal forcing: this is the curve the
+  filter bends each week</span></p>
+ <p><span class="math">admissions &#8764;
+  NegBin(&#8239;<i>&#961;</i>&#183;<i>mult</i>&#183;<i>&#947;</i>&#183;<i>I</i>(<i>t</i>),
+  <i>r</i>&#8239;)</span>
+  <span class="eqnote">the observation mean: the ascertained admission
+  flux</span></p>
+ <p class="eqnote">Fitted per state: <i>R</i><sub>eff</sub>,
+ <i>&#949;</i><sub>1</sub>, <i>&#966;</i><sub>1</sub>, <i>mult</i>, <i>r</i>.
+ Fixed from sourced values: <i>&#947;</i>, <i>&#961;</i>,
+ <i>&#947;</i><sub>H</sub>, <i>&#969;</i>.</p>
+</div>
+{%- endmacro %}
+
+{% macro eq_pf2s() -%}
+<div class="eqpanel">
+ <p><span class="math"><i>&#946;</i><sub>s</sub>(<i>t</i>) =
+  <i>&#946;</i><sub>0,s</sub> exp(&#8239;<i>&#949;</i><sub>1</sub>
+  cos(&#8239;2&#960;(<i>t</i> &#8722;
+  <i>&#966;</i><sub>s</sub>)&#8202;/&#8202;52&#8239;)&#8239;),
+  <i>s</i> &#8712; {A, B}</span>
+  <span class="eqnote">one harmonic form shared by both circuits; each strain
+  fits its own <i>R</i><sub>eff</sub> and phase</span></p>
+ <p><span class="math">typed positives: <i>k</i><sub>A</sub> &#8764;
+  Binomial(&#8239;<i>n</i>, share&#8202;A&#8202;/&#8202;(A&#8202;+&#8202;B)&#8239;)</span>
+  <span class="eqnote">the second likelihood channel; observed admissions sum
+  the two circuits</span></p>
+</div>
+{%- endmacro %}
+
+{% macro eq_analogue() -%}
+<div class="eqpanel">
+ <p><span class="math"><i>q</i><sub>h</sub>(<i>&#964;</i>) =
+  <i>y</i><sub>last</sub> &#183; <i>Q</i><sub><i>&#964;</i></sub>(&#8239;growth
+  ratios at matched calendar weeks&#8239;)</span>
+  <span class="eqnote">each forecast quantile scales the last observed value
+  by the empirical quantiles of calendar-matched historical growth
+  ratios</span></p>
+</div>
+{%- endmacro %}
+
+{% macro eq_ensemble() -%}
+<div class="eqpanel">
+ <p><span class="math"><i>q</i><sub>ens</sub>(<i>&#964;</i>) =
+  mean<sub>m</sub>&#8239;<i>q</i><sub>m</sub>(<i>&#964;</i>)</span>
+  <span class="eqnote">each submitted quantile is the equal-weight mean of the
+  member quantiles at the same level <i>&#964;</i>; the weights are never
+  fitted</span></p>
+</div>
 {%- endmacro %}

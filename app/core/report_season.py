@@ -14,8 +14,10 @@ relWIS table. The categorical weekly maps are omitted, since 30-plus inline
 SVG maps would multiply the file size for a view the console already serves
 live; the header note says so.
 
-Fixed dark kit theme, like report_v2: single-theme by design, every color
-painted explicitly.
+Fixed dark on screen, like report_v2: the console's identity (nau.css dark
+tokens, DM Sans with a system fallback and no webfont fetch), every color
+painted explicitly. A print stylesheet flips the page to the console's
+light theme so the report prints as dark ink on a light surface.
 
 Caching: the report lands at <season_root>/<season>-FluBNF-season-report.html
 and is reused while fresh (mtime vs every samples.json and scores.json),
@@ -29,7 +31,7 @@ from pathlib import Path
 from app.core import playback, retro
 from app.core.runs import fmt_hms, settings_html, version_pairs
 
-# PyBNF brand palette (dark), shared with report_v2
+# console identity (nau.css dark theme), shared with report_v2
 INK = "#E9EAF4"; MUT = "#9AA1C4"; PAPER = "#0C0D17"; CARD = "#151729"
 LINE = "#262A45"; ACCENT = "#34C0F0"
 
@@ -93,6 +95,13 @@ def _newest_input(root: Path) -> float:
         times.append(sf.stat().st_mtime)
     if PLAYER_SRC.is_file():
         times.append(PLAYER_SRC.stat().st_mtime)
+    # this builder is an input to its own output: a restyle or template fix
+    # here must refresh every cached export, exactly as a player fix does
+    # (without this, seasons whose data never changes serve the old face
+    # forever)
+    src = Path(__file__)
+    if src.is_file():
+        times.append(src.stat().st_mtime)
     # Rebuilt playback payloads must refresh the export too: official
     # comparator files arriving (Update data on a sparse clone) rebuild the
     # per-week caches without touching any input above, and a report built
@@ -179,7 +188,14 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
             line += (", total wall time "
                      + fmt_hms(t["elapsed_s"]) + " (h:mm:ss)")
     rows = []
+    cover = "every scored cell of the season"
     df = playback._season_scores(root)
+    if df is not None and "model" in getattr(df, "columns", ()):
+        # cell coverage, stated when the scores file can supply it and
+        # omitted (the generic phrase stands) rather than invented
+        n = int((df.model == "ensemble").sum())
+        if n:
+            cover = f"the season's {n} scored ensemble cells"
     if df is not None and "location" in df.columns:
         for loc in sorted(df.location.unique()):
             cells = [f"<td>{loc}</td>"]
@@ -207,8 +223,8 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
             '<h2>Season verdict</h2>'
             '<div class="tiles">' + "".join(tiles) + "</div>"
             + f'<p class="sub">{line}.</p>'
-            '<p class="hint">Final relWIS pooled over every scored cell of '
-            "the season; below 1 beats the CDC FluSight baseline. The tiles "
+            f'<p class="hint">Final relWIS pooled over {cover}; '
+            "below 1 beats the CDC FluSight baseline. The tiles "
             "match the cumulative column of the player's table at the final "
             "week.</p>" + states + "</div>")
 
@@ -302,52 +318,91 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <title>FluBNF season report @@SEASON@@</title>
 <script>@@PLOTLY@@</script>
 <style>
- /* the console's face with a system fallback: the report stays fully
-    offline (no webfont fetch), so the stack simply upgrades to DM Sans
-    wherever the font is installed */
- body{margin:0;background:#0C0D17;color:#E9EAF4;
-      font:15px/1.55 "DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif}
+ /* console identity, fixed dark on screen: the tokens mirror nau.css
+    [data-theme="dark"], and the print block at the end flips them to the
+    console's light theme so the report prints as dark ink on a light
+    surface. The face is the console's own with a system fallback: the
+    report stays fully offline (no webfont fetch), so the stack simply
+    upgrades to DM Sans wherever the font is installed */
+ :root{--bg:#0C0D17;--card:#151729;--ink:#E9EAF4;--mut:#9AA1C4;
+  --line:#262A45;--accent:#34C0F0;--gold:#34C0F0;--field-line:#5B639E;
+  --shadow:0 1px 3px rgba(0,0,0,.5),0 4px 14px rgba(0,0,0,.35)}
+ *{box-sizing:border-box}
+ body{margin:0;background:var(--bg);color:var(--ink);
+      font:400 15px/1.55 "DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif}
  main{max-width:1180px;margin:0 auto;padding:1.4rem 1.2rem 3rem}
- h1{font-size:1.4rem;margin:.2rem 0}
- h2{font-size:1.05rem;margin:.2rem 0 .6rem}
- .accent{color:#34C0F0}
- .sub{color:#9AA1C4;margin:.2rem 0 1rem;font-size:.92rem}
+ .brandrow{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap;
+  margin:0 0 .8rem}
+ .brand{font-size:1.45rem;font-weight:700;letter-spacing:.01em}
+ .brand em{color:var(--accent);font-style:normal}
+ .brandsub{color:var(--mut);font-size:.9rem}
+ h1{font-size:1.45rem;font-weight:700;margin:.1rem 0 .3rem;
+    text-wrap:balance}
+ h2{font-size:.8rem;margin:.2rem 0 .55rem;text-transform:uppercase;
+    letter-spacing:.05em;color:var(--mut);font-weight:600}
+ .accent{color:var(--accent)}
+ .sub{color:var(--mut);margin:.2rem 0 1rem;font-size:.92rem}
  .warn{background:#2A2313;border:1px solid #8A6D3B;color:#F0C36D;
        border-radius:10px;padding:.6rem .8rem;font-size:.9rem}
- .card{background:#151729;border:1px solid #262A45;border-radius:12px;
-       padding:.9rem;margin:.8rem 0}
+ .card{background:var(--card);border:1px solid var(--line);
+       border-radius:10px;padding:.85rem 1rem;margin:.8rem 0;
+       box-shadow:var(--shadow)}
  .row{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}
- button,select{background:#151729;color:#E9EAF4;border:1px solid #262A45;
-   border-radius:9px;padding:.4rem .8rem;font:inherit;cursor:pointer}
- button:hover{border-color:#34C0F0}
- button:focus-visible{outline:2px solid #34C0F0;outline-offset:2px}
- input[type=range]{flex:1;min-width:160px;accent-color:#34C0F0}
- .hint{color:#9AA1C4;font-size:.82rem}
+ button{background:transparent;color:var(--gold);
+   border:1px solid var(--gold);border-radius:8px;padding:.4rem .8rem;
+   font:inherit;font-weight:650;cursor:pointer}
+ button:hover{background:rgba(52,192,240,.14)}
+ select{background:var(--bg);color:var(--ink);
+   border:1px solid var(--field-line);border-radius:8px;
+   padding:.4rem .6rem;font:inherit;cursor:pointer}
+ button:focus-visible,select:focus-visible,input:focus-visible{
+   outline:2px solid var(--gold);outline-offset:2px}
+ input[type=range]{flex:1;min-width:160px;accent-color:var(--gold)}
+ .hint{color:var(--mut);font-size:.82rem}
  .playgrid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:1rem}
  @media(max-width:1000px){.playgrid{grid-template-columns:1fr}}
  table{border-collapse:collapse;font-size:.85rem;width:100%;
        font-variant-numeric:tabular-nums}
- td,th{padding:.3rem .5rem;border-bottom:1px solid #262A45;text-align:left}
- th{color:#9AA1C4;font-weight:600;font-size:.72rem;text-transform:uppercase}
+ td,th{padding:.38rem .6rem;border-bottom:1px solid var(--line);
+       text-align:left}
+ th{color:var(--mut);font-weight:600;font-size:.72rem;
+    text-transform:uppercase;letter-spacing:.04em}
  td.num,th.num{text-align:right}
  /* the console's own dark-theme ok/bad values, so a number wears the same
-    alert color in the application and in this export */
+    alert color in the application and in this export; the print block
+    restates the light-theme pair */
  .ok{color:#4CC38A}.bad{color:#FB4653}
- .num.hint{color:#9AA1C4}
+ .num.hint{color:var(--mut)}
  .tiles{display:flex;gap:.9rem;flex-wrap:wrap;margin:.2rem 0 .5rem}
- .tile{background:#0C0D17;border:1px solid #262A45;border-radius:10px;
-       padding:.55rem .95rem;min-width:130px}
- .tilename{color:#9AA1C4;font-size:.74rem;text-transform:uppercase;
+ .tile{background:var(--bg);border:1px solid var(--line);
+       border-radius:10px;padding:.55rem .95rem;min-width:130px}
+ .tilename{color:var(--mut);font-size:.74rem;text-transform:uppercase;
            letter-spacing:.05em}
  .tileval{font-size:1.65rem;font-weight:750;
           font-variant-numeric:tabular-nums}
  .sw{width:11px;height:11px;border-radius:3px;display:inline-block;
-     margin-right:.3rem;vertical-align:-1px}
+     margin-right:.3rem;vertical-align:-1px;
+     -webkit-print-color-adjust:exact;print-color-adjust:exact}
  .fdmodels{display:flex;gap:.9rem;flex-wrap:wrap;margin:.3rem 0 .5rem}
  .fdmodels label{font-size:.85rem;display:inline-flex;align-items:center;
                  gap:.25rem}
+ @media print{
+  :root{--bg:#FFFFFF;--card:#FFFFFF;--ink:#000F7E;--mut:#565E96;
+   --line:#DCD8E9;--accent:#0173A9;--gold:#0173A9;--field-line:#DCD8E9;
+   --shadow:none}
+  body{background:#FFFFFF;color:#000F7E}
+  .ok{color:#177245}.bad{color:#C42840}
+  .warn{background:#FFFFFF;border-color:#8A5A14;color:#8A5A14}
+  button,select,input,label,.playerbar,.fdmodels{display:none!important}
+  /* cards may break across pages (the per-state table outgrows one), but
+     rows and tiles stay whole */
+  .card{box-shadow:none}
+  tr,.tile{break-inside:avoid}
+ }
 </style></head><body><main>
-<h1>FluBNF season report <span class="accent">@@SEASON@@</span></h1>
+<header class="brandrow"><span class="brand"><em>Flu</em>BNF</span>
+ <span class="brandsub">season report export</span></header>
+<h1>Season report <span class="accent">@@SEASON@@</span></h1>
 <p class="sub">@@NWEEKS@@ stored weeks, @@FIRST@@ to @@LAST@@. This file is
  self-contained: all forecast data is embedded and no server or network is
  needed. The export carries the forecast detail view and the live relWIS
