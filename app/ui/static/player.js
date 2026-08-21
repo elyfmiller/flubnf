@@ -274,9 +274,13 @@ function createPlayer(cfg){
     ALLM.forEach(function(m){
       if(!P.on[m]) return;
       var st = pl && pl.stats ? pl.stats[m] : null;
+      var dbg = (st && st.debug)
+        ? '<tr><td colspan="3" class="hint" style="font-size:.78rem">'
+          + String(st.debug).replace(/</g, '&lt;') + '</td></tr>'
+        : '';
       rows.push('<tr><td><span class="sw" style="background:' + colorOf(m)
         + '"></span>' + nameOf(m) + '</td>' + fmt(st ? st.week_rel : null)
-        + fmt(st ? st.cum_rel : null) + '</tr>');
+        + fmt(st ? st.cum_rel : null) + '</tr>' + dbg);
     });
     tb.innerHTML = rows.join('')
       || '<tr><td colspan="3" class="hint">no models enabled</td></tr>';

@@ -81,7 +81,7 @@ def test_js_reads_only_contract_fields():
     assert fields <= contract, fields - contract
     # stats entries expose exactly week_rel and cum_rel
     stat_fields = set(re.findall(r"\bst\.(\w+)", both))
-    assert stat_fields <= {"week_rel", "cum_rel"}, stat_fields
+    assert stat_fields <= {"week_rel", "cum_rel", "debug"}, stat_fields
     assert {"week_rel", "cum_rel"} <= stat_fields
     # our members and the officials all appear as model handles
     for m in ("ensemble", "pf", "analogue", "pf2s",

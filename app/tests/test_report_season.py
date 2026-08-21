@@ -124,7 +124,7 @@ def test_report_js_reads_only_contract_fields(tmp_path, monkeypatch):
     assert fields, "expected the player JS to read payload fields via pl.*"
     assert fields <= contract, fields - contract
     stat_fields = set(re.findall(r"\bst\.(\w+)", js))
-    assert {"week_rel", "cum_rel"} == stat_fields, stat_fields
+    assert {"week_rel", "cum_rel"} <= stat_fields <= {"week_rel", "cum_rel", "debug"}, stat_fields
     for m in ("ensemble", "pf", "analogue", "pf2s",
               "FluSight-baseline", "FluSight-ensemble"):
         assert m in js, m
