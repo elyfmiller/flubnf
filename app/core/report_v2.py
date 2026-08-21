@@ -23,6 +23,7 @@ light surface.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -59,6 +60,19 @@ PLOTLY_CONFIG = {"scrollZoom": True, "doubleClick": "reset+autosize",
                  "modeBarButtonsToRemove": ["lasso2d", "select2d",
                                             "autoScale2d"]}
 
+# ---------------------------------------------------------------------------
+# Inputs bundle: everything render_bundle needs to rebuild report.html,
+# persisted next to it as report_inputs.json. The raw forecast samples
+# (10,000 per horizon per state) never enter the bundle; fans are reduced
+# to the quantile grid below, which keeps the file around 100 KB while
+# still covering every band the fan draws plus room for future band
+# choices (the FluSight 23-level grid).
+BUNDLE_NAME = "report_inputs.json"
+BUNDLE_VERSION = 1
+FAN_LEVELS = (0.01, 0.025, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35,
+              0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80,
+              0.85, 0.90, 0.95, 0.975, 0.99)
+
 
 def _fig_layout(fig, height=340, title="", legend=False):
     fig.update_layout(
@@ -76,28 +90,60 @@ def _fig_layout(fig, height=340, title="", legend=False):
     return fig
 
 
+def fan_quantiles(forecast_times, samples_by_h, levels=FAN_LEVELS) -> dict:
+    """Reduce raw fan samples to the bundle's quantile grid.
+
+    Returns {str(time): {str(level): value}}: the pure-data form of a fan,
+    small enough to persist in report_inputs.json and rich enough to redraw
+    the fan with fan_figure_from_quantiles."""
+    out = {}
+    for t in forecast_times:
+        s = np.asarray(samples_by_h[str(t)], float)
+        s = s[np.isfinite(s)]
+        out[str(t)] = {str(lv): round(float(np.quantile(s, lv)), 4)
+                       for lv in levels}
+    return out
+
+
+def _q_at(qmap: dict, level: float) -> float:
+    """One stored quantile, tolerating float-format drift in the keys."""
+    key = str(level)
+    if key in qmap:
+        return float(qmap[key])
+    best = min(qmap, key=lambda k: abs(float(k) - level))
+    return float(qmap[best])
+
+
 def fan_figure(observed_times, observed, forecast_times, samples_by_h,
                gaps=(), title="", settled=None):
-    """Quantile fan vs observed. `gaps` = week offsets with no data.
-    `settled`: optional [(date, value)...] of what actually happened after
-    the forecast origin (backdated runs) -- drawn dotted; the legend entry
-    doubles as its on/off toggle."""
+    """Quantile fan vs observed, from raw samples. `gaps` = week offsets
+    with no data. `settled`: optional [(date, value)...] of what actually
+    happened after the forecast origin (backdated runs) -- drawn dotted;
+    the legend entry doubles as its on/off toggle."""
+    return fan_figure_from_quantiles(
+        observed_times, observed, forecast_times,
+        fan_quantiles(forecast_times, samples_by_h),
+        gaps=gaps, title=title, settled=settled)
+
+
+def fan_figure_from_quantiles(observed_times, observed, forecast_times,
+                              quantiles_by_time, gaps=(), title="",
+                              settled=None):
+    """The same fan, drawn from a stored quantile grid (see fan_quantiles).
+    This is the path render_bundle takes, so a rebuilt report draws its
+    fans with the current design code rather than replaying baked figures."""
     import plotly.graph_objects as go
     fig = go.Figure()
-    med = []
     for lo, hi, color, band_name in QBANDS:
-        upper, lower = [], []
-        for h in forecast_times:
-            s = np.asarray(samples_by_h[str(h)], float)
-            s = s[np.isfinite(s)]
-            upper.append(float(np.quantile(s, hi)))
-            lower.append(float(np.quantile(s, lo)))
+        upper = [_q_at(quantiles_by_time[str(t)], hi)
+                 for t in forecast_times]
+        lower = [_q_at(quantiles_by_time[str(t)], lo)
+                 for t in forecast_times]
         fig.add_scatter(x=list(forecast_times) + list(forecast_times)[::-1],
                         y=upper + lower[::-1], fill="toself", fillcolor=color,
                         line=dict(width=0), hoverinfo="skip",
                         name=band_name, showlegend=True)
-    med = [float(np.median(np.asarray(samples_by_h[str(h)], float)))
-           for h in forecast_times]
+    med = [_q_at(quantiles_by_time[str(t)], 0.5) for t in forecast_times]
     fig.add_scatter(x=list(forecast_times), y=med, mode="lines+markers",
                     line=dict(color=ACCENT, width=2.2),
                     name="median forecast",
@@ -156,6 +202,101 @@ def _html(fig, include_js=False, div_id=None):
     return fig.to_html(full_html=False,
                        include_plotlyjs=True if include_js else False,
                        div_id=div_id, config=dict(PLOTLY_CONFIG))
+
+
+def page_header() -> str:
+    """The report's header lockup, one source: build_report embeds it, and
+    legacy_theme_carry inserts it into stored reports that predate it."""
+    return """<header class="brandrow"><span class="brand"><em>Flu</em>BNF</span>
+ <span class="brandsub">weekly forecast report</span>
+ <span class="spacer"></span>
+ <a id="appback" href="#" hidden
+  onclick="history.back();return false">&larr; back to FluBNF</a>
+</header>"""
+
+
+def page_style() -> str:
+    """The report's stylesheet, one source: build_report embeds it, and
+    legacy_theme_carry swaps it into stored reports whose markup still
+    matches (see the class-coverage check there)."""
+    return f"""<style>
+ /* console identity, fixed dark on screen: the tokens mirror nau.css
+    [data-theme="dark"]; the print block below flips them to the console's
+    light theme so the page prints as dark ink on a light surface. The
+    inline usmap SVG reads --card, --accent, and --map-nodata: state
+    borders match the card surface, and no-data reads as an explicit
+    near-black gap against it (pale neutral on paper). */
+ :root{{--bg:{PAPER};--card:{CARD};--ink:{INK};--mut:{MUT};--line:{LINE};
+  --accent:{ACCENT};--gold:{ACCENT};--ok:{OK};--bad:{BAD};
+  --map-nodata:#05060A;
+  --shadow:0 1px 3px rgba(0,0,0,.5),0 4px 14px rgba(0,0,0,.35)}}
+ *{{box-sizing:border-box}}
+ body{{margin:0;background:var(--bg);color:var(--ink);
+      font:400 15px/1.55 {FONT_STACK}}}
+ main{{width:100%;margin:0 auto;padding:1.4rem 1.4rem 4rem}}
+ .brandrow{{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap;
+  margin:0 0 .8rem}}
+ .brand{{font-size:1.45rem;font-weight:700;letter-spacing:.01em}}
+ .brand em{{color:var(--accent);font-style:normal}}
+ .brandsub{{color:var(--mut);font-size:.9rem}}
+ .brandrow .spacer{{flex:1}}
+ h1{{font-size:1.45rem;font-weight:700;margin:.1rem 0 .3rem;
+     text-wrap:balance}}
+ h2{{font-size:1.15rem;font-weight:700;margin:.2rem 0 .6rem}}
+ .card h2{{font-size:.8rem;margin:0 0 .55rem;text-transform:uppercase;
+    letter-spacing:.05em;color:var(--mut);font-weight:600}}
+ .sub{{color:var(--mut);margin:.2rem 0 1rem}}
+ .card{{background:var(--card);border:1px solid var(--line);
+        border-radius:10px;padding:.85rem 1rem;margin:.8rem 0;
+        box-shadow:var(--shadow);overflow-x:auto}}
+ .grid2{{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}}
+ @media(max-width:820px){{.grid2{{grid-template-columns:1fr}}}}
+ .offseason{{color:var(--mut);font-size:.85rem;font-style:italic;
+             margin:.2rem 0 .8rem}}
+ /* in the header flow (not fixed) so it can never cover the title */
+ #appback{{display:inline-block;background:var(--card);
+  border:1px solid var(--line);border-radius:99px;padding:.3rem .8rem;
+  color:var(--ink);text-decoration:none;font-size:.85rem}}
+ #appback:hover{{border-color:var(--accent)}}
+ .mapcap{{max-width:min(880px,72vw);margin:0 auto}}
+ .mapcap svg{{max-height:58vh}}
+ .legend{{display:flex;gap:1.1rem;flex-wrap:wrap;color:var(--mut);
+          font-size:.82rem;margin:.4rem 0 0 .2rem}}
+ .legend span{{display:inline-flex;align-items:center;gap:.35rem}}
+ .sw{{width:13px;height:13px;border-radius:3px;display:inline-block;
+     -webkit-print-color-adjust:exact;print-color-adjust:exact}}
+ table{{border-collapse:collapse;font-size:.85rem;margin:.6rem .4rem;
+        font-variant-numeric:tabular-nums}}
+ td,th{{padding:.38rem .6rem;border-bottom:1px solid var(--line);
+        text-align:left}}
+ th{{color:var(--mut);font-weight:600;font-size:.72rem;
+     text-transform:uppercase;letter-spacing:.04em}}
+ td.num,th.num{{text-align:right}}
+ tr.total td{{font-weight:750;border-top:2px solid var(--line);
+              border-bottom:0}}
+ /* the console's alert pair: below 1 beats baseline, everywhere */
+ .ok{{color:var(--ok)}}.bad{{color:var(--bad)}}
+ .relwis{{font-variant-numeric:tabular-nums;font-weight:650}}
+ .num.hint{{color:var(--mut)}}
+ button{{background:transparent;color:var(--gold);
+         border:1px solid var(--gold);border-radius:8px;
+         padding:.45rem .95rem;font:inherit;font-weight:650;cursor:pointer}}
+ button:hover{{background:rgba(52,192,240,.14)}}
+ button:focus-visible{{outline:2px solid var(--gold);outline-offset:2px}}
+ .viewtoggle{{display:flex;gap:.5rem;margin:1rem 0 0}}
+ .viewtoggle .on{{background:var(--gold);border-color:var(--gold);
+                  color:{PAPER}}}
+ .backbtn{{margin:.2rem 0 .6rem}}
+ .hint{{color:var(--mut);font-size:.85rem}}
+ @media print{{
+  :root{{--bg:#FFFFFF;--card:#FFFFFF;--ink:#000F7E;--mut:#565E96;
+   --line:#DCD8E9;--accent:#0173A9;--gold:#0173A9;
+   --ok:#177245;--bad:#C42840;--map-nodata:#C9C5D8;--shadow:none}}
+  body{{background:#FFFFFF;color:#000F7E}}
+  button,select,.viewtoggle,#appback,.backbtn{{display:none!important}}
+  .card{{box-shadow:none;break-inside:avoid}}
+ }}
+</style>"""
 
 
 def build_report(reference_date: str, state_cards: dict, state_details: dict,
@@ -254,90 +395,8 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FluBNF weekly report · {reference_date}</title>
 {plotly_js}
-<style>
- /* console identity, fixed dark on screen: the tokens mirror nau.css
-    [data-theme="dark"]; the print block below flips them to the console's
-    light theme so the page prints as dark ink on a light surface. The
-    inline usmap SVG reads --card, --accent, and --map-nodata: state
-    borders match the card surface, and no-data reads as an explicit
-    near-black gap against it (pale neutral on paper). */
- :root{{--bg:{PAPER};--card:{CARD};--ink:{INK};--mut:{MUT};--line:{LINE};
-  --accent:{ACCENT};--gold:{ACCENT};--ok:{OK};--bad:{BAD};
-  --map-nodata:#05060A;
-  --shadow:0 1px 3px rgba(0,0,0,.5),0 4px 14px rgba(0,0,0,.35)}}
- *{{box-sizing:border-box}}
- body{{margin:0;background:var(--bg);color:var(--ink);
-      font:400 15px/1.55 {FONT_STACK}}}
- main{{width:100%;margin:0 auto;padding:1.4rem 1.4rem 4rem}}
- .brandrow{{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap;
-  margin:0 0 .8rem}}
- .brand{{font-size:1.45rem;font-weight:700;letter-spacing:.01em}}
- .brand em{{color:var(--accent);font-style:normal}}
- .brandsub{{color:var(--mut);font-size:.9rem}}
- .brandrow .spacer{{flex:1}}
- h1{{font-size:1.45rem;font-weight:700;margin:.1rem 0 .3rem;
-     text-wrap:balance}}
- h2{{font-size:1.15rem;font-weight:700;margin:.2rem 0 .6rem}}
- .card h2{{font-size:.8rem;margin:0 0 .55rem;text-transform:uppercase;
-    letter-spacing:.05em;color:var(--mut);font-weight:600}}
- .sub{{color:var(--mut);margin:.2rem 0 1rem}}
- .card{{background:var(--card);border:1px solid var(--line);
-        border-radius:10px;padding:.85rem 1rem;margin:.8rem 0;
-        box-shadow:var(--shadow);overflow-x:auto}}
- .grid2{{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}}
- @media(max-width:820px){{.grid2{{grid-template-columns:1fr}}}}
- .offseason{{color:var(--mut);font-size:.85rem;font-style:italic;
-             margin:.2rem 0 .8rem}}
- /* in the header flow (not fixed) so it can never cover the title */
- #appback{{display:inline-block;background:var(--card);
-  border:1px solid var(--line);border-radius:99px;padding:.3rem .8rem;
-  color:var(--ink);text-decoration:none;font-size:.85rem}}
- #appback:hover{{border-color:var(--accent)}}
- .mapcap{{max-width:min(880px,72vw);margin:0 auto}}
- .mapcap svg{{max-height:58vh}}
- .legend{{display:flex;gap:1.1rem;flex-wrap:wrap;color:var(--mut);
-          font-size:.82rem;margin:.4rem 0 0 .2rem}}
- .legend span{{display:inline-flex;align-items:center;gap:.35rem}}
- .sw{{width:13px;height:13px;border-radius:3px;display:inline-block;
-     -webkit-print-color-adjust:exact;print-color-adjust:exact}}
- table{{border-collapse:collapse;font-size:.85rem;margin:.6rem .4rem;
-        font-variant-numeric:tabular-nums}}
- td,th{{padding:.38rem .6rem;border-bottom:1px solid var(--line);
-        text-align:left}}
- th{{color:var(--mut);font-weight:600;font-size:.72rem;
-     text-transform:uppercase;letter-spacing:.04em}}
- td.num,th.num{{text-align:right}}
- tr.total td{{font-weight:750;border-top:2px solid var(--line);
-              border-bottom:0}}
- /* the console's alert pair: below 1 beats baseline, everywhere */
- .ok{{color:var(--ok)}}.bad{{color:var(--bad)}}
- .relwis{{font-variant-numeric:tabular-nums;font-weight:650}}
- .num.hint{{color:var(--mut)}}
- button{{background:transparent;color:var(--gold);
-         border:1px solid var(--gold);border-radius:8px;
-         padding:.45rem .95rem;font:inherit;font-weight:650;cursor:pointer}}
- button:hover{{background:rgba(52,192,240,.14)}}
- button:focus-visible{{outline:2px solid var(--gold);outline-offset:2px}}
- .viewtoggle{{display:flex;gap:.5rem;margin:1rem 0 0}}
- .viewtoggle .on{{background:var(--gold);border-color:var(--gold);
-                  color:{PAPER}}}
- .backbtn{{margin:.2rem 0 .6rem}}
- .hint{{color:var(--mut);font-size:.85rem}}
- @media print{{
-  :root{{--bg:#FFFFFF;--card:#FFFFFF;--ink:#000F7E;--mut:#565E96;
-   --line:#DCD8E9;--accent:#0173A9;--gold:#0173A9;
-   --ok:#177245;--bad:#C42840;--map-nodata:#C9C5D8;--shadow:none}}
-  body{{background:#FFFFFF;color:#000F7E}}
-  button,select,.viewtoggle,#appback,.backbtn{{display:none!important}}
-  .card{{box-shadow:none;break-inside:avoid}}
- }}
-</style></head><body><main>
-<header class="brandrow"><span class="brand"><em>Flu</em>BNF</span>
- <span class="brandsub">weekly forecast report</span>
- <span class="spacer"></span>
- <a id="appback" href="#" hidden
-  onclick="history.back();return false">&larr; back to FluBNF</a>
-</header>
+{page_style()}</head><body><main>
+{page_header()}
 <h1>US influenza forecast</h1>
 <p class="sub">week of {reference_date} · PF-SIHRS · click a state for detail
  · Ctrl+scroll to zoom (⌘ on Mac), drag to pan, double-click to reset
@@ -404,5 +463,145 @@ document.getElementById('natbtn').addEventListener('click', () => show('st-US'))
 </main></body></html>"""
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(html)
+    # atomic: a reader mid-refresh (the stale-report rebuild on serve)
+    # never sees a half-write, and a failed build leaves the stored file
+    tmp = out_path.with_name(out_path.name + ".tmp")
+    tmp.write_text(html)
+    os.replace(tmp, out_path)
     return out_path
+
+
+def save_bundle(bundle: dict, dirpath: Path) -> Path:
+    """Persist the report's inputs bundle next to report.html, atomically.
+
+    The bundle carries everything render_bundle needs (fans already reduced
+    to their quantile grid, never the raw samples), so the stored report can
+    be rebuilt after any builder change without rerunning the models."""
+    p = Path(dirpath) / BUNDLE_NAME
+    tmp = p.with_name(p.name + ".tmp")
+    tmp.write_text(json.dumps(bundle, separators=(",", ":"), default=float))
+    os.replace(tmp, p)
+    return p
+
+
+def render_bundle(bundle: dict, out_path: Path) -> Path:
+    """Render the weekly report from its pure-data inputs bundle.
+
+    The one render path: the live run (server step 5b) and the stale-report
+    refresh on /output/report both come through here, so rebuilding a
+    stored bundle reproduces exactly what a fresh run would render with the
+    current builder code, fans and map included."""
+    details = {}
+    for key, d in (bundle.get("details") or {}).items():
+        fan_in = d.get("fan") or {}
+        try:
+            settled = [tuple(p) for p in (fan_in.get("settled") or [])]
+            fan = fan_figure_from_quantiles(
+                fan_in.get("observed_times") or [],
+                fan_in.get("observed") or [],
+                fan_in["forecast_times"], fan_in["quantiles"],
+                title=fan_in.get("title", ""), settled=settled or None)
+            details[key] = {
+                "name": d.get("name", key), "note": d.get("note", ""),
+                "fan": fan, "cat": cat_bar(d.get("cat_probs") or {}),
+                "table_rows": [tuple(r) for r in (d.get("table_rows") or [])]}
+        except Exception:
+            continue      # one broken state must not sink the whole report
+    nat_map_html = ""
+    card = bundle.get("national_map_card")
+    if card:
+        try:
+            from app.core.usmap import national_svg
+            nat_map_html = national_svg(card)
+        except Exception:
+            nat_map_html = ""
+    us_d = details.get("US", {})
+    national = bundle.get("national") or {}
+    return build_report(
+        bundle["reference_date"], bundle.get("cards") or {}, details,
+        {"fan": us_d.get("fan"), "acc": None,
+         "note": us_d.get("note", ""),
+         "summary_html": national.get("summary_html", "")},
+        Path(out_path), national_map_html=nat_map_html,
+        elapsed_s=bundle.get("elapsed_s"),
+        settings_html=bundle.get("settings_html", ""))
+
+
+def builder_sources_mtime() -> float:
+    """Newest mtime of the weekly report's builder sources: this module,
+    the scoring module (the embedded WIS summary card), and the map
+    renderer. The report_season freshness pattern applied to the weekly
+    report: a stored report.html older than this was built by an earlier
+    design and is stale."""
+    times = [0.0]
+    for mod in ("report_v2", "scoring", "usmap"):
+        p = Path(__file__).with_name(mod + ".py")
+        if p.is_file():
+            times.append(p.stat().st_mtime)
+    return max(times)
+
+
+#: marks a served legacy page as already annotated (and keeps the carry
+#: idempotent should an annotated page ever come back through)
+STALE_NOTE_ID = "earlier-design-note"
+
+
+def _css_class_names(css: str) -> set:
+    import re
+    return set(re.findall(r"\.([A-Za-z_][A-Za-z0-9_-]*)", css))
+
+
+def legacy_theme_carry(html: str) -> str:
+    """Serve-time refresh for a stored report that predates the inputs
+    bundle.
+
+    Such a report cannot be rebuilt honestly: results.json keeps five
+    quantile levels per horizon, no samples, and no categorical
+    probabilities, so the 95 percent bands and the map's category shading
+    would have to be invented. Instead this swaps in the current stylesheet
+    and header lockup, but only when every class the old stylesheet styled
+    and the body still uses is also styled by the current stylesheet (the
+    compatibility check the swap rests on). The embedded charts keep the
+    palette they were built with, and one quiet line says so. When the swap
+    cannot be proven safe, only the quiet line is added. The transform is
+    applied to the served page only; the stored file is never modified.
+    Returns the input unchanged on any surprise."""
+    import re
+    try:
+        if 'class="brandrow"' in html or STALE_NOTE_ID in html:
+            return html            # already current, or already annotated
+        head_end = html.find("</head>")
+        body = html[head_end:] if head_end >= 0 else html
+        carried = None
+        if head_end >= 0:
+            s0 = html.rfind("<style>", 0, head_end)
+            s1 = html.find("</style>", max(s0, 0))
+            if 0 <= s0 < s1 < head_end:
+                new_css = page_style()
+                old_styled = _css_class_names(html[s0:s1])
+                used = {c for m in re.findall(r'class="([^"]+)"', body)
+                        for c in m.split()}
+                if (used & old_styled) <= _css_class_names(new_css):
+                    out = html[:s0] + new_css + html[s1 + len("</style>"):]
+                    # the current lockup carries its own back link; the old
+                    # floating one would duplicate its id
+                    out = re.sub(r'<a id="appback".*?</a>', "", out,
+                                 count=1, flags=re.S)
+                    carried = out
+        out = html if carried is None else carried
+        i = out.find("<main>")
+        if i < 0:
+            return html
+        note = ('<p class="hint" id="' + STALE_NOTE_ID + '">'
+                + ("This report was restyled to the current design when "
+                   "served; its charts keep the design of the run that "
+                   "produced them. A new run will refresh them."
+                   if carried is not None else
+                   "This report was generated with an earlier design. "
+                   "A new run will refresh it.")
+                + "</p>")
+        ins = ("\n" + (page_header() + "\n" if carried is not None else "")
+               + note)
+        return out[:i + len("<main>")] + ins + out[i + len("<main>"):]
+    except Exception:
+        return html
