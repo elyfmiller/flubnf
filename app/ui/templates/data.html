@@ -5,7 +5,11 @@
   <p>Latest vintage: <code>{{ latest_vintage }}</code></p>
   <p class="hint">{{ n_vintages }} archived truth vintages</p>
   <form method="post" action="/freshness"><button class="quiet">Check for new data</button></form>
-  <form method="post" action="/data/pull" onsubmit="return confirm('Pull the FluSight hub now?')">
+  {# no confirmation: pulling is safe and resumable, the flash banner on
+     return says what happened, and a native confirm() was the one dialog
+     outside the app's themed shell. The data-pull guard still intercepts
+     a pull during a run's preparation phase. #}
+  <form method="post" action="/data/pull">
    <button class="gold" data-guard="data-pull">Update data</button></form>
   {% if freshness %}<p class="{% if freshness.is_fresh %}ok{% else %}warn{% endif %}">
    {{ freshness.detail }}</p>{% endif %}
