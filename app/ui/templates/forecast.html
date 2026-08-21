@@ -217,6 +217,28 @@
   <div id="fanwrap"></div>
  </div>
 </div>
+{# The expanded forecast view: the same modal shell as the run-interference
+   guard (base.html), sized to the viewport by .modal.fanx. The pager row
+   mirrors the fan card's and both drive the one selection state, so
+   closing returns to the Forecast tab exactly as it was: same location,
+   same scroll position, focus back on the opener. #}
+<div id="fanx-modal" class="modal-back" hidden>
+ <div class="modal fanx card" role="dialog" aria-modal="true"
+      aria-labelledby="fanx-title">
+  <div class="row" style="justify-content:space-between;align-items:baseline;margin-top:0">
+   <h2 id="fanx-title" style="margin:0">Forecasts</h2>
+   <button type="button" class="quiet" id="fanx-close">Close</button>
+  </div>
+  <div class="carousel">
+   <button type="button" class="quiet cnav" id="fanx-prev">◀</button>
+   <select id="fanx-loc" aria-label="forecast location, expanded view"
+     style="width:auto;min-width:230px;max-width:100%"></select>
+   <button type="button" class="quiet cnav" id="fanx-next">▶</button>
+   <span class="hint" id="fanx-pos"></span>
+  </div>
+  <div id="fanxplot"></div>
+ </div>
+</div>
 <script>
  const SERIES = {{ series_json | safe }};
  const FANQ = {{ fanq_json | safe }};   // {model: {loc: {h: {q: v}}}}
@@ -225,6 +247,9 @@
  // the one model-name map (the shared player's, via the server), so the
  // fan selector buttons say what every other surface says
  const MNAMES = {{ model_names_json | safe }};
+ // [month label, week offset from August 1] from the one server-side
+ // offset list, so the season-over-season axis reads as calendar months
+ const SEASON_MONTHS = {{ season_months | tojson }};
  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
  // the member color language the season player teaches: ensemble rides the
  // accent token, pf the slate token; analogue and the research member keep
@@ -256,6 +281,11 @@
    return y+'-'+String((y+1)%100).padStart(2,'0');}
  function weekOfSeason(ds){const d=new Date(ds); const y=d.getMonth()>=7?d.getFullYear():d.getFullYear()-1;
    return Math.round((d-new Date(y,7,1))/(7*864e5));}
+ // hover dates format from the ISO string, never through Date: a UTC parse
+ // shifted one day behind in western timezones would misdate every Saturday
+ const MONNAMES=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+ function fmtDate(ds){const p=ds.slice(0,10).split('-');
+   return MONNAMES[+p[1]-1]+' '+(+p[2])+', '+p[0];}
  let SHOWPTS=false, CURMODE='season', DIDX=0;
  const PCONF={responsive:true, displaylogo:false};
  const DATA_SEL=document.getElementById('data-loc');
@@ -270,12 +300,15 @@
      b.setAttribute('aria-pressed', String(mode===m));
    });
    const lm=SHOWPTS?'lines+markers':'lines';
-   const el=document.getElementById('dataplots'); el.innerHTML='';
+   const el=document.getElementById('dataplots');
    if(!LOCS.length){el.innerHTML='<p class="hint">select locations to see their data</p>';return;}
    DIDX=((DIDX%LOCS.length)+LOCS.length)%LOCS.length;
    const loc=LOCS[DIDX];
    const NODATA='<p class="hint">No data yet. Pull the FluSight hub on the Data tab.</p>';
    if(!SERIES[loc]){
+     // the current chart stays in place while the fetch runs: emptying the
+     // panel here collapsed the page height mid-fetch, and the browser
+     // clamped the scroll position upward (a visible jump on slow fetches)
      fetch('/api/series?locs='+encodeURIComponent(loc)).then(r=>r.json())
        .then(d=>{if(!d[loc]) d[loc]={dates:[],values:[]};  // sentinel: never re-fetch a miss
          Object.assign(SERIES,d); drawData(CURMODE);})
@@ -287,21 +320,34 @@
    const s=SERIES[loc];
    document.getElementById('data-pos').textContent=loc;
    if(!s.dates.length){el.innerHTML=NODATA; return;}
-   const div=document.createElement('div'); el.appendChild(div);
+   // react repaints one persistent div in place (recreated only after a
+   // NODATA hint replaced it), so switching location or mode never
+   // collapses the panel's height or moves the page scroll
+   let div=el.firstElementChild;
+   if(!div||!div.classList.contains('js-plotly-plot')){
+     el.innerHTML=''; div=document.createElement('div'); el.appendChild(div);}
    if(mode==='raw'){
-     Plotly.newPlot(div,[{x:s.dates,y:s.values,mode:lm,
+     Plotly.react(div,[{x:s.dates,y:s.values,mode:lm,
        line:{color:css('--gold'),width:2},marker:{size:5},name:loc}],lay(loc,380),PCONF);
    }else{
      const by={};
-     s.dates.forEach((d,i)=>{const k=seasonOf(d);(by[k]=by[k]||{x:[],y:[]});
-       by[k].x.push(weekOfSeason(d)); by[k].y.push(s.values[i]);});
+     s.dates.forEach((d,i)=>{const k=seasonOf(d);(by[k]=by[k]||{x:[],y:[],d:[]});
+       by[k].x.push(weekOfSeason(d)); by[k].y.push(s.values[i]);
+       by[k].d.push(fmtDate(d));});
      const seasons=Object.keys(by).sort();
+     // seasons share the week alignment but not the calendar, so each
+     // trace's hover carries its own season's actual Saturday date
      const traces=seasons.map((k,i)=>({x:by[k].x,y:by[k].y,mode:lm,marker:{size:4},name:k,
+       customdata:by[k].d,
+       hovertemplate:k+' · %{customdata} · %{y:,.0f}<extra></extra>',
        line:{width:i===seasons.length-1?3:1.5,
              color:i===seasons.length-1?css('--gold'):undefined}}));
      const L=lay(loc+': season over season',380);
-     L.xaxis.title={text:'weeks since Aug 1'};
-     Plotly.newPlot(div,traces,L,PCONF);
+     // month names at the month-boundary week offsets; the exact date per
+     // point lives in the hover, so nobody does calendar arithmetic
+     L.xaxis.tickvals=SEASON_MONTHS.map(m=>m[1]);
+     L.xaxis.ticktext=SEASON_MONTHS.map(m=>m[0]);
+     Plotly.react(div,traces,L,PCONF);
    }
  }
  function setDataLoc(i){
@@ -340,9 +386,9 @@
    const loc=FLOCS[FIDX], qs=FANQ[FMODEL][loc];
    await ensureSeries(loc);
    if(tok!==fanSeq) return;             // a newer drawFan superseded this one
-   const el=document.getElementById('fanplot'); el.innerHTML='';
    const s=SERIES[loc];
-   document.getElementById('fan-pos').textContent=loc+' · '+(FIDX+1)+'/'+FLOCS.length;
+   document.getElementById('fan-pos').textContent=(FIDX+1)+'/'+FLOCS.length;
+   syncLocSel(document.getElementById('fan-loc'));
    const hs=Object.keys(qs).sort();
    // observed must be AS OF the run's vintage -- a backdated run once mixed
    // February forecasts with July's observed tail and drew month-spanning
@@ -365,7 +411,6 @@
    const med=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.5'])];
    const lo9=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.1'])];
    const hi9=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.9'])];
-   const div=document.createElement('div'); el.appendChild(div);
    // the fan wears the DISPLAYED member's color: band at .2 alpha, median
    // full strength, so a PF fan never wears the analogue's color
    const mc=memberColor(FMODEL);
@@ -392,7 +437,35 @@
          line:{color:memberColor(m),width:1.4,dash:MDASH[m]||'dot'}});
      }
    }
-   Plotly.newPlot(div,traces,lay(loc,400),PCONF);
+   // react repaints the persistent fanplot div in place: the old chart
+   // stands until the new one is ready, so a page flip never collapses
+   // the card's height and never moves the page scroll
+   Plotly.react(document.getElementById('fanplot'),traces,lay(loc,400),PCONF);
+   // the expanded view mirrors the card: same traces (copied, so the two
+   // plots never share mutable state), viewport-sized height, its own
+   // pager row kept in step with the card's
+   const xb=document.getElementById('fanx-modal');
+   if(xb&&!xb.hidden){
+     document.getElementById('fanx-pos').textContent=(FIDX+1)+'/'+FLOCS.length;
+     syncLocSel(document.getElementById('fanx-loc'));
+     Plotly.react(document.getElementById('fanxplot'),
+       JSON.parse(JSON.stringify(traces)),
+       lay(loc,Math.max(420,Math.round(innerHeight*.68))),PCONF);
+   }
+ }
+ // both location selects (the card's and the expanded view's) list the
+ // run's locations for the displayed model and follow the arrows; the
+ // arrows keep stepping, the select jumps straight to any state
+ function syncLocSel(sel){
+   if(!sel) return;
+   const key=FLOCS.join('|');
+   if(sel.dataset.locs!==key){
+     sel.innerHTML='';
+     FLOCS.forEach(l=>{const o=document.createElement('option');
+       o.textContent=l; sel.appendChild(o);});
+     sel.dataset.locs=key;
+   }
+   sel.selectedIndex=FIDX;
  }
  if(MODELS.length){
    const wrap=document.getElementById('fanwrap');
@@ -402,9 +475,13 @@
    wrap.innerHTML='<div class="card" id="fancard"><h2>Forecasts: latest stored run, '+FCDATE+'</h2>'
      +'<div class="carousel">'+mbtns+'</div>'
      +'<div class="carousel"><button type="button" class="quiet cnav" id="fan-prev">◀</button>'
+     +'<select id="fan-loc" aria-label="forecast location"'
+     +' style="width:auto;min-width:230px;max-width:100%"></select>'
+     +'<button type="button" class="quiet cnav" id="fan-next">▶</button>'
      +'<span class="hint" id="fan-pos"></span>'
-     +'<button type="button" class="quiet cnav" id="fan-next">▶</button></div>'
-     +'<div id="fanplot"></div></div>';
+     +'<button type="button" class="quiet" id="fan-expand"'
+     +' aria-haspopup="dialog">⤢ expand</button></div>'
+     +'<div id="fanplot" style="min-height:400px"></div></div>';
    document.querySelectorAll('.mbtn').forEach(b=>{
      if(b.dataset.m===FMODEL) b.classList.add('gold');
      b.onclick=()=>{FMODEL=b.dataset.m;
@@ -412,6 +489,47 @@
        b.classList.add('gold'); FIDX=0; drawFan();};});
    document.getElementById('fan-prev').onclick=()=>{FIDX--;drawFan();};
    document.getElementById('fan-next').onclick=()=>{FIDX++;drawFan();};
+   document.getElementById('fan-loc').onchange=function(){FIDX=this.selectedIndex;drawFan();};
+   // ---- expanded view: the same fan in the app's modal shell, with the
+   // guard modal's focus contract (WCAG 2.4.3): opening moves focus onto
+   // Close, Tab cycles inside the dialog (buttons and the select), Escape
+   // closes, and closing returns focus to the opener without scrolling,
+   // so the page is exactly where the reader left it
+   const xb=document.getElementById('fanx-modal');
+   let xRet=null;
+   function fanxOpen(){
+     xRet=document.activeElement;
+     document.getElementById('fanx-title').textContent=
+       'Forecasts: latest stored run, '+FCDATE;
+     xb.hidden=false;
+     drawFan();
+     document.getElementById('fanx-close').focus();
+   }
+   function fanxClose(){
+     xb.hidden=true;
+     const t=xRet; xRet=null;
+     if(t&&t.focus&&document.contains(t)){
+       try{t.focus({preventScroll:true});}catch(e){try{t.focus();}catch(_){}}}
+   }
+   document.getElementById('fan-expand').onclick=fanxOpen;
+   document.getElementById('fanx-close').onclick=fanxClose;
+   document.getElementById('fanx-prev').onclick=()=>{FIDX--;drawFan();};
+   document.getElementById('fanx-next').onclick=()=>{FIDX++;drawFan();};
+   document.getElementById('fanx-loc').onchange=function(){FIDX=this.selectedIndex;drawFan();};
+   addEventListener('keydown',e=>{
+     if(e.key==='Escape'&&!xb.hidden)fanxClose();});
+   xb.addEventListener('keydown',e=>{
+     if(e.key!=='Tab')return;
+     const f=[...xb.querySelectorAll('button,select')]
+       .filter(b=>!b.disabled&&b.offsetParent!==null);
+     if(!f.length)return;
+     const first=f[0],last=f[f.length-1],cur=document.activeElement;
+     if(e.shiftKey&&(cur===first||f.indexOf(cur)<0)){
+       last.focus();e.preventDefault();
+     }else if(!e.shiftKey&&(cur===last||f.indexOf(cur)<0)){
+       first.focus();e.preventDefault();
+     }
+   });
    drawFan();
  }
  addEventListener('themechange',()=>{drawData(CURMODE); drawFan();});

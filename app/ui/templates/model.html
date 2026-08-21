@@ -128,12 +128,23 @@
   xaxis:{gridcolor:css('--line')},
   yaxis:{gridcolor:css('--line'),rangemode:'tozero'}};}
  const LOCS=Object.keys(FANQ); let IDX=0;
+ // the pager shell renders ONCE and only the plot content changes:
+ // rebuilding the shell on every flip destroyed the plot while the series
+ // fetch was in flight, the page briefly lost the chart's height, and the
+ // browser clamped the scroll position upward (a visible jump to the top
+ // on slow fetches). The plot div reserves the chart's height for the
+ // same reason, and Plotly.react below repaints in place.
+ if(LOCS.length){
+   document.getElementById('mfan').innerHTML=
+     '<div class="carousel"><button type="button" class="quiet cnav" id="pv">◀</button>'
+     +'<span class="hint" id="pos"></span>'
+     +'<button type="button" class="quiet cnav" id="nx">▶</button></div>'
+     +'<div id="plot" style="min-height:420px"></div>';
+   document.getElementById('pv').onclick=()=>{IDX--;draw();};
+   document.getElementById('nx').onclick=()=>{IDX++;draw();};
+ }
  async function draw(){
    if(!LOCS.length) return;
-   const el=document.getElementById('mfan');
-   el.innerHTML='<div class="carousel"><button type="button" class="quiet cnav" id="pv">◀</button>'
-     +'<span class="hint" id="pos"></span>'
-     +'<button type="button" class="quiet cnav" id="nx">▶</button></div><div id="plot"></div>';
    IDX=((IDX%LOCS.length)+LOCS.length)%LOCS.length;
    const loc=LOCS[IDX], qs=FANQ[loc];
    document.getElementById('pos').textContent=loc+' · '+(IDX+1)+'/'+LOCS.length;
@@ -182,9 +193,7 @@
       name:(MNAMES[m]||m)+' median',visible:'legendonly',
       line:{color:memberColor(m),width:1.4,dash:MDASH[m]||'dot'}});
    }
-   Plotly.newPlot(document.getElementById('plot'),traces,lay(loc,420),{responsive:true,displaylogo:false});
-   document.getElementById('pv').onclick=()=>{IDX--;draw();};
-   document.getElementById('nx').onclick=()=>{IDX++;draw();};
+   Plotly.react(document.getElementById('plot'),traces,lay(loc,420),{responsive:true,displaylogo:false});
  }
  draw();
  addEventListener('themechange',()=>draw());

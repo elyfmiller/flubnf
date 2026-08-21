@@ -173,8 +173,17 @@
   <path d="M50,255 H800" marker-end="url(#arr-{{ uid }})"/>
   <path d="M50,255 V45"  marker-end="url(#arr-{{ uid }})"/>
  </g>
- <text x="430" y="284" text-anchor="middle" class="svgt-sm"
-       fill="currentColor">weeks since August 1</text>
+ {# month ticks from the shared season_months offsets: week 0 (August 1)
+    sits at x=50 and week 52 at x=795, the span the curves draw over, so
+    the axis reads as calendar months with no caption needed #}
+ <g stroke="currentColor" stroke-width="1.2" fill="none">
+  {% for lab, wk in season_months %}<path d="M{{ (50 + wk * 745 / 52) | round(1) }},255 v5"/>
+  {% endfor %}
+ </g>
+ <g text-anchor="middle" class="svgt-sm" fill="currentColor">
+  {% for lab, wk in season_months %}<text x="{{ (50 + wk * 745 / 52) | round(1) }}" y="277">{{ lab }}</text>
+  {% endfor %}
+ </g>
  <text x="24" y="150" text-anchor="middle" class="svgt-sm" fill="currentColor"
        transform="rotate(-90 24 150)">weekly admissions</text>
  <!-- past seasons, faint -->
@@ -288,7 +297,8 @@
 {%- endmacro %}
 
 {# ---- the seasonal-harmonic figure ----------------------------------------
-   beta(t) relative to beta0 over one season (weeks since August 1), drawn
+   beta(t) relative to beta0 over one season (August to August, the axis
+   ticked in month names from the shared season month offsets), drawn
    from the same cosine-exponential the equation states: the geometry comes
    from the harmonic_fig template global (app/ui/server.py), so the curve is
    computed, never traced by hand. One parameterized macro serves every
@@ -331,15 +341,15 @@
  <text x="536" y="{{ (g.y_one - 5) | round(1) }}" text-anchor="end"
        class="svgt-sm" fill="var(--mut)">1.0 (&#946;<tspan class="svgt-sub"
        dy="3">0</tspan><tspan dy="-3">)</tspan></text>
- <!-- axes and week ticks -->
+ <!-- axes and month ticks (quarterly month starts, via harmonic_fig) -->
  <g stroke="currentColor" stroke-width="1.4" fill="none">
   <path d="M62,170 H540"/>
   <path d="M62,170 V20"/>
-  {% for w, xp in g.ticks %}<path d="M{{ xp }},170 v5"/>{% endfor %}
+  {% for lab, xp in g.ticks %}<path d="M{{ xp }},170 v5"/>{% endfor %}
  </g>
  <g text-anchor="middle" class="svgt-sm" fill="currentColor">
-  {% for w, xp in g.ticks %}<text x="{{ xp }}" y="190">{{ w }}</text>{% endfor %}
-  <text x="301" y="212">weeks since August 1</text>
+  {% for lab, xp in g.ticks %}<text x="{{ xp }}" y="190">{{ lab }}</text>{% endfor %}
+  <text x="301" y="212">month of season</text>
  </g>
  <text x="22" y="95" text-anchor="middle" class="svgt-sm" fill="currentColor"
        transform="rotate(-90 22 95)">&#946;(t) / &#946;<tspan
@@ -389,7 +399,8 @@
  <circle cx="{{ g.peaks[0] }}" cy="{{ g.y_hi }}" r="4" fill="var(--gold)"/>
  <text x="{{ g.peaks[0] }}" y="24" text-anchor="middle" class="svgt-sm"
        font-weight="600" fill="var(--gold)">&#966;<tspan class="svgt-sub"
-       dy="3">1</tspan><tspan dy="-3"> &#183; peak week</tspan></text>
+       dy="3">1</tspan><tspan dy="-3"> &#183; peak week
+       ({{ season_week_name(phi) }})</tspan></text>
  {% endif %}
 </svg>
 {% if two %}
@@ -398,14 +409,15 @@
  <i>&#949;</i><sub>1</sub>, and each fits its own peak week
  <i>&#966;</i><sub>A</sub>, <i>&#966;</i><sub>B</sub>. Values shown are
  illustrative (<i>&#949;</i><sub>1</sub> = 0.35, <i>&#966;</i><sub>A</sub> =
- week 20, <i>&#966;</i><sub>B</sub> = week 30); all are fitted per state and
- week.</p>
+ week {{ phi_a }}, {{ season_week_name(phi_a) }}; <i>&#966;</i><sub>B</sub> =
+ week {{ phi_b }}, {{ season_week_name(phi_b) }}); all are fitted per state
+ and week.</p>
 {% else %}
 <p class="eqnote" style="text-align:center;margin:.1rem auto .35rem;max-width:560px">The
  curve the filter bends each week: <i>&#949;</i><sub>1</sub> sets its depth,
  <i>&#966;</i><sub>1</sub> its peak week. Values shown are illustrative
- (<i>&#949;</i><sub>1</sub> = 0.35, <i>&#966;</i><sub>1</sub> = week 22);
- both are fitted per state and week.</p>
+ (<i>&#949;</i><sub>1</sub> = 0.35, <i>&#966;</i><sub>1</sub> = week {{ phi }},
+ {{ season_week_name(phi) }}); both are fitted per state and week.</p>
 {% endif %}
 {%- endmacro %}
 
