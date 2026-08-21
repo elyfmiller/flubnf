@@ -74,7 +74,7 @@ def _component_versions() -> dict:
             out[pkg] = "not installed"
     out["bionetgen"] = "not installed"
     try:
-        from flubnf.settings import BNG
+        from flubnf.settings import load_locations, BNG
         vf = Path(BNG).parent / "VERSION"
         if vf.is_file():
             out["bionetgen"] = vf.read_text().strip()
@@ -135,8 +135,7 @@ def _outlook_cards(res: dict | None) -> dict:
     import pandas as pd
     from app.core.report import categorical_probs
     from app.core.report_v2 import CATS
-    _l = pd.read_csv(__import__("flubnf.settings",
-                                fromlist=["LOCATIONS"]).LOCATIONS, dtype=str)
+    _l = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
     n2f = dict(zip(_l.location_name, _l.location.str.zfill(2)))
     n2a = dict(zip(_l.location_name, _l.abbreviation))
     n2p = dict(zip(_l.location_name, _l.population.astype(float)))
@@ -251,7 +250,7 @@ def forecast_page(request: Request):
     import pandas as pd
     from flubnf.settings import LOCATIONS
     try:
-        _l = pd.read_csv(LOCATIONS, dtype=str)
+        _l = load_locations()
         all_locs = list(_l.location_name[(_l.location.str.len() == 2)
                                          & (_l.abbreviation != "US")])
     except Exception:
@@ -604,7 +603,7 @@ def _run_all(spec: RunSpec) -> None:
         an_q = {loc: floor_quantiles(q) for loc, q in an_engine.run(spec).items()}
         # 3. ensemble (vincentize: equal weights, never fitted)
         import pandas as _pd
-        _l = _pd.read_csv(__import__("flubnf.settings", fromlist=["LOCATIONS"]).LOCATIONS, dtype=str)
+        _l = ___import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
         n2f_pre = dict(zip(_l.location_name, _l.location.str.zfill(2)))
         members_by_loc = {}
         for loc in spec.locations:
@@ -625,9 +624,7 @@ def _run_all(spec: RunSpec) -> None:
                     location_fips=n2f_pre.get(loc, ''))
         _phase("vincentizing the ensemble and writing submissions")
         # 4. submissions (identity in the path)
-        locs = pd.read_csv(__import__("flubnf.settings",
-                                      fromlist=["LOCATIONS"]).LOCATIONS,
-                           dtype=str)
+        locs = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
         n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
         subs = {}
         for model_id, rows in (
@@ -921,8 +918,7 @@ def api_series(locs: str = ""):
     sel = [l for l in locs.split("|") if l][:8] or ["Ohio"]
     out = {}
     try:
-        _l = pd.read_csv(__import__("flubnf.settings",
-                                    fromlist=["LOCATIONS"]).LOCATIONS, dtype=str)
+        _l = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
         n2f_ = dict(zip(_l.location_name, _l.location.str.zfill(2)))
         n2f_["US (national)"] = "US"
         vs = data_mod.vintages()
@@ -1263,8 +1259,7 @@ def generate_ensemble(request: Request):
         _flash("Nothing to blend yet. Run the models first.")
         return _back(request, "/model/ensemble")
     import pandas as pd
-    locs = pd.read_csv(__import__("flubnf.settings",
-                                  fromlist=["LOCATIONS"]).LOCATIONS, dtype=str)
+    locs = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
     n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
     blended, sub_rows = {}, []
     for loc in (set(res["models"].get("pf", {}))
@@ -1911,8 +1906,7 @@ def retro_results(request: Request, season: str, week: str = "",
     from app.core.report import categorical_probs
     from app.core.report_v2 import CATS
     from app.core.usmap import svg_map
-    locs = pd.read_csv(__import__("flubnf.settings",
-                                  fromlist=["LOCATIONS"]).LOCATIONS, dtype=str)
+    locs = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
     n2a = dict(zip(locs.location_name, locs.abbreviation))
     n2p = dict(zip(locs.location_name, locs.population.astype(float)))
     n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
@@ -2120,8 +2114,7 @@ def run_models(request: Request,
     _status["run_label"] = f"{forecast_date} · queued"
     if "all" in [l.lower() for l in locations]:
         import pandas as _pd
-        _l = _pd.read_csv(__import__("flubnf.settings",
-                                     fromlist=["LOCATIONS"]).LOCATIONS, dtype=str)
+        _l = ___import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
         locs_list = list(_l.location_name[(_l.location.str.len() == 2)
                                           & (_l.abbreviation != "US")])
         us = _l.location_name[_l.abbreviation == "US"]

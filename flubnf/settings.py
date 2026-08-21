@@ -71,3 +71,22 @@ def check(verbose: bool = True) -> list:
             if verbose:
                 print(f"  MISSING {name}: {p}  ({why})")
     return missing
+
+
+def load_locations(dtype=str):
+    """The locations table, from the hub when present and from the packaged
+    copy otherwise. Every UI read goes through this: a page that only needs
+    names, abbreviations, and populations must not 500 on a machine whose
+    hub clone is missing or still fetching (CI and fresh laptops both hit
+    this, twice)."""
+    import pandas as pd
+    packaged = Path(__file__).resolve().parent / "data/locations.csv"
+    last = None
+    for src in (LOCATIONS, packaged):
+        try:
+            return pd.read_csv(src, dtype=dtype)
+        except Exception as e:
+            last = e
+    raise FileNotFoundError(
+        f"no locations table: neither {LOCATIONS} nor {packaged} is readable"
+    ) from last
