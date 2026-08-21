@@ -1440,14 +1440,40 @@ Terminal (<code>.venv/bin/flubnf app</code>) to see the error output.</p>
 
 def _pid_cmdline(pid: int) -> str:
     """The command line of a live process, or '' when it does not exist
-    (or cannot be inspected). ps ships with macOS; no psutil dependency."""
+    (or cannot be inspected). Linux reads the kernel's own record
+    (/proc/<pid>/cmdline, exact and immune to ps formatting or zombie
+    <defunct> rewriting, which broke the takeover on CI); everywhere else
+    falls back to ps, which ships with macOS. No psutil dependency."""
     import subprocess
+    proc_path = Path(f"/proc/{int(pid)}/cmdline")
+    try:
+        if proc_path.exists():
+            raw = proc_path.read_bytes()
+            return raw.replace(b"\0", b" ").decode(errors="replace").strip()
+    except Exception:
+        pass
     try:
         out = subprocess.run(["ps", "-p", str(int(pid)), "-o", "command="],
                              capture_output=True, text=True, timeout=5)
         return out.stdout.strip() if out.returncode == 0 else ""
     except Exception:
         return ""
+
+
+def _pid_alive(pid: int) -> bool:
+    """Signal-0 liveness: true for running OR zombie; the takeover's wait
+    loop pairs it with the cmdline check so an unreaped zombie (Linux:
+    the parent has not called wait) does not stall the full timeout."""
+    import os
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except Exception:
+        return False
 
 
 def _terminate_predecessor(pidfile: Optional[Path] = None,
@@ -1474,9 +1500,10 @@ def _terminate_predecessor(pidfile: Optional[Path] = None,
                     os.kill(pid, signal.SIGTERM)
                     signalled = True
                     t0 = time.time()
-                    while time.time() - t0 < wait and _pid_cmdline(pid):
+                    while (time.time() - t0 < wait and _pid_alive(pid)
+                           and _pid_cmdline(pid)):
                         time.sleep(0.1)
-                    if _pid_cmdline(pid):
+                    if _pid_alive(pid) and _pid_cmdline(pid):
                         os.kill(pid, signal.SIGKILL)
                 except (ProcessLookupError, PermissionError):
                     pass
