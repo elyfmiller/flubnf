@@ -22,9 +22,11 @@
    <form method="post" action="/model/ensemble/generate">
     <button class="gold">Generate ensemble from latest run</button></form>
   {% elif name == "pf2s" %}
-   <p class="hint">Run it from the <a href="/forecast">Forecast</a> tab:
-   set Ensemble members to "PF + analogue + two-strain". Its forecasts then
-   join that run's ensemble.</p>
+   <p class="hint">A research engine, not a shipped ensemble member: it
+   failed the full-grid ensemble gate, so it has no navigation tab and no
+   control on the Forecast form. The run endpoint still accepts a
+   three-member request for research use. Full verdict and numbers:
+   <a href="/methods#two-strain">Methods</a>.</p>
   {% else %}
    <form method="post" action="/run">
     <label>Forecast date</label>

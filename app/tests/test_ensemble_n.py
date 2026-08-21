@@ -74,18 +74,37 @@ def test_pf2s_model_page_renders():
     assert "Two-strain SIHRS" in r.text and "NREVSS" in r.text
 
 
-def test_forecast_form_offers_member_select():
+def test_forecast_form_drops_member_select_but_server_accepts_three():
+    """The two-strain member failed its full-grid ensemble gate, so the UI
+    affordance is gone; members=3 stays a valid request for research use."""
+    import inspect
+
     from fastapi.testclient import TestClient
+    from app.ui import server as srv_mod
     from app.ui.server import app as srv
     r = TestClient(srv).get("/forecast")
     assert r.status_code == 200
-    assert "Ensemble members" in r.text
-    assert "PF + analogue + two-strain (research: turn-validated, not ensemble-validated)" in r.text
+    assert "Ensemble members" not in r.text
+    assert "two-strain" not in r.text
+    assert 'name="members"' not in r.text
+    # the endpoint still takes a members parameter, defaulting to the two
+    # shipped members
+    sig = inspect.signature(srv_mod.run_models)
+    assert "members" in sig.parameters
+    assert sig.parameters["members"].default.default == 2
 
 
-def test_methods_page_covers_two_strain():
+def test_methods_page_carries_two_strain_research_section():
     from fastapi.testclient import TestClient
     from app.ui.server import app as srv
     r = TestClient(srv).get("/methods")
     assert r.status_code == 200
-    assert "The two-strain variant" in r.text and "NREVSS" in r.text
+    assert "the two-strain variant" in r.text and "NREVSS" in r.text
+    # the A/B parallel-circuit diagram moved here with the section
+    assert "Two-strain SIHRS compartment diagram" in r.text
+    # the honest verdict, with the numbers on both sides of it
+    for n in ("0.953", "0.993", "0.968", "1.023", "0.719", "0.704"):
+        assert n in r.text, n
+    assert "not in the shipped ensemble" in r.text
+    assert "validation is in progress" not in r.text
+    assert "validation now in progress" not in r.text
