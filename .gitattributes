@@ -1,0 +1,12 @@
+# Line-ending policy: every platform checks out the same bytes.
+#
+# The fitting pipeline is byte-oriented: BNGL templates are materialized by
+# token substitution and fed to the engine, conf and exp files are parsed
+# line-wise, and the app inlines js/css assets verbatim into exported
+# reports. Windows Git's default CRLF conversion changes those bytes at
+# checkout (found by the Windows CI job as a byte-identity test failure),
+# so text checks out LF everywhere, with the two Windows launcher scripts
+# as the deliberate exceptions.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
