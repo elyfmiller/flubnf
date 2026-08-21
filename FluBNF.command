@@ -28,4 +28,25 @@ if [ ! -x "${FLUBNF_PY_ENGINE:-/nonexistent}" ]; then
 fi
 
 echo "FluBNF console starting — a window (or browser tab) will open. Ctrl-C here to stop."
-exec .venv/bin/flubnf app
+.venv/bin/flubnf app
+STATUS=$?
+
+# On a clean exit (including Ctrl-C), close this Terminal window rather than
+# leaving a dead one behind. On a real error, hold the window open so the
+# message can be read. The osascript targets only the window whose tab owns
+# this tty, and the shell exits before it fires, so Terminal closes without
+# a "process still running" prompt.
+case "$STATUS" in
+  0|130|143)
+    if [ "${TERM_PROGRAM:-}" = "Apple_Terminal" ]; then
+      THIS_TTY=$(tty)
+      ( sleep 0.3; osascript -e "tell application \"Terminal\" to close (every window whose selected tab's tty is \"$THIS_TTY\") saving no" ) >/dev/null 2>&1 &
+    fi
+    ;;
+  *)
+    echo
+    echo "FluBNF exited with an error (code $STATUS). Press enter to close."
+    read -r
+    ;;
+esac
+exit "$STATUS"
