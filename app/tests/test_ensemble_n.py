@@ -80,7 +80,7 @@ def test_forecast_form_offers_member_select():
     r = TestClient(srv).get("/forecast")
     assert r.status_code == 200
     assert "Ensemble members" in r.text
-    assert "PF + analogue + two-strain (panel-validated)" in r.text
+    assert "PF + analogue + two-strain (research: turn-validated, not ensemble-validated)" in r.text
 
 
 def test_methods_page_covers_two_strain():
