@@ -41,9 +41,9 @@
   <button id="themebtn" title="Toggle light or dark theme">◐</button>
 </header>
 <main>{% if restart_needed() %}
- <div class="banner" role="alert"><strong>Update pulled.</strong> This window is
- still running build {{ running_sha() }}; quit the app fully and reopen to apply
- the new code. Page reloads refresh the look but not the server logic.</div>
+ <div class="banner" role="alert"><strong>Update pulled.</strong> This window
+ still runs build {{ running_sha() }}. Quit the app fully and reopen; a page
+ reload refreshes the look, not the server logic.</div>
 {% endif %}{% set _f = pop_flash() %}{% if _f %}
  <div class="banner" role="status">{{ _f }}</div>
 {% endif %}{% block content %}{% endblock %}</main>
@@ -52,8 +52,8 @@
       aria-labelledby="guard-title">
   <h2 id="guard-title">A run is in progress</h2>
   <p id="guard-msg"></p>
-  <p class="hint">Retrospective weeks already completed are kept and resume
-   later; a console run stopped now restarts from scratch.</p>
+  <p class="hint">Completed retrospective weeks are kept and resume later;
+   a console run stopped now restarts from scratch.</p>
   <div class="row">
    <button type="button" class="quiet" id="guard-cancel">Cancel</button>
    <button type="button" class="gold" id="guard-stop">Stop run and proceed</button>

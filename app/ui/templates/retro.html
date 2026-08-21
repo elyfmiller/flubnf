@@ -9,9 +9,8 @@
 </script>{% endif %}{% endblock %}
 {% block content %}
 <h1>Retrospective</h1>
-<p class="sub">Replay a past season exactly as the competition unfolded: each
-week the models see only that Saturday's data, submit, and move on. Scores
-are computed later, against the values the truth data settled to.</p>
+<p class="sub">Each week the models see only that Saturday's data, submit,
+and move on; scores come later, against settled truth.</p>
 <div class="cols">
  <div><div class="card"><h2>Settings</h2>
   {% if not engine_ok %}<p class="warn">Requires the particle-filter engine.
@@ -39,8 +38,8 @@ are computed later, against the values the truth data settled to.</p>
    <input type="number" name="width" value="4" min="1" max="16">
    <label>Engine preset</label>
    <select name="engine"><option value="pf">PF (particle filter)</option></select>
-   <p class="hint">The two-strain member joins the preset list once full-grid
-   validation passes; its state-panel validation is complete.</p>
+   <p class="hint">The two-strain member joins once full-grid validation
+   passes; state-panel validation is complete.</p>
    {# a running season no longer disables this button: the per-button guard
       checks /api/busy on click and offers stop-and-proceed instead #}
    <button class="gold" data-guard="retro-run" {% if not engine_ok %}disabled{% endif %}>

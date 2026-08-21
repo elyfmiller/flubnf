@@ -122,6 +122,41 @@ def test_availability_tier_week_presence_wins(tmp_path):
     assert got == {"disabled": False, "note": ""}
 
 
+# ------------------------------ week-cell reading: pending vs no submission
+
+@needs_jsc
+def test_week_cell_score_always_wins(tmp_path):
+    # a real number is rendered as a score no matter what the availability
+    # flags say (officials included)
+    got = _js(tmp_path, "[I.weekCellState(0.9, false, true, false, false),"
+                        " I.weekCellState(1.2, true, true, false, true)]")
+    assert got == ["score", "score"]
+
+
+@needs_jsc
+def test_week_cell_cataloged_official_without_a_file_reads_no_submission(
+        tmp_path):
+    # season-cataloged, no file for THIS week: it did not compete, which is
+    # not the same as an uncomputed score
+    got = _js(tmp_path, "I.weekCellState(null, true, true, false, true)")
+    assert got == "nosub"
+
+
+@needs_jsc
+def test_week_cell_pending_cases(tmp_path):
+    # every remaining blank is a genuinely uncomputed score:
+    #   our own member with no score yet;
+    #   an official present this week but unscored;
+    #   an official absent all season (the disabled-toggle case);
+    #   a week whose payload never arrived, where nothing is known about
+    #   who submitted, so no no-submission claim may be made
+    got = _js(tmp_path, "[I.weekCellState(null, false, true, false, false),"
+                        " I.weekCellState(null, true, true, true, true),"
+                        " I.weekCellState(null, true, true, false, false),"
+                        " I.weekCellState(null, true, false, false, true)]")
+    assert got == ["pending", "pending", "pending", "pending"]
+
+
 @needs_jsc
 def test_add_days_utc(tmp_path):
     assert _js(tmp_path, "I.addDays('2098-12-02', 28)") == "2098-12-30"
@@ -167,6 +202,21 @@ def test_availability_rendering_wired():
     assert "cfg.seasonOfficials || (cfg.catalog && cfg.catalog.officials)" \
         in SRC
     assert "seasonOffs[m] = 1" in SRC
+
+
+def test_stats_table_distinguishes_no_submission_from_pending():
+    # the week cell carries both readings, muted; the cumulative cell is
+    # rendered by fmt alone, so a cataloged official keeps its real running
+    # number through a week it skipped
+    assert '<td class="num hint">no submission</td>' in SRC
+    assert '<td class="num hint">pending</td>' in SRC
+    assert "weekCell(st ? st.week_rel : null, m)" in SRC
+    assert "fmt(st ? st.cum_rel : null)" in SRC
+    # the verdict is driven by this week's official dict and the season
+    # catalog the host supplies, never by a separate payload field
+    assert "officialAvailability(pl, OFFS)" in SRC
+    assert "weekCellState(v, OFFS.indexOf(m) >= 0" in SRC
+    assert "!!seasonOffs[m]" in SRC
 
 
 def test_view_state_clear_sites():

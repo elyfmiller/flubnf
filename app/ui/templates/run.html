@@ -11,9 +11,9 @@
 <div class="card">
  <h2>What happened</h2>
  <p>{{ error }}</p>
- <p class="hint">Nothing from this run was submitted. Adjust the settings on the
- <a href="/forecast">Forecast</a> tab and run again. Completed weeks are never
- lost; every run receives a fresh workspace.</p>
+ <p class="hint">Nothing from this run was submitted. Adjust the settings on
+ the <a href="/forecast">Forecast</a> tab and run again; every run receives a
+ fresh workspace.</p>
 </div>
 {% endif %}
 
@@ -30,7 +30,7 @@
 {% else %}
 {% if not error %}
 <div class="card"><p class="hint">No results were stored for this run
-{% if status == 'running' %} yet. It is still in progress; watch it on the
+{% if status == 'running' %} yet. Still running; watch it on the
  <a href="/forecast">Forecast</a> tab{% endif %}.</p></div>
 {% endif %}
 {% endfor %}

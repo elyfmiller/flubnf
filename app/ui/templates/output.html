@@ -1,10 +1,8 @@
 {% extends "base.html" %}{% block title %}FluBNF · Output{% endblock %}
 {% block content %}
 <h1>Output</h1>
-<p class="sub">Everything a submission day produces, ready to hand over:
-hub-format CSVs per model and the weekly report.</p>
-{% if not rid %}<div class="card"><p class="hint">Run a forecast first; its
-outputs will collect here.</p></div>
+{% if not rid %}<div class="card"><p class="hint">Run a forecast first;
+outputs collect here.</p></div>
 {% else %}
 <div class="cols">
  <div><div class="card"><h2>Checklist</h2>
@@ -13,9 +11,9 @@ outputs will collect here.</p></div>
      {% else %}<form method="post" action="/model/ensemble/generate" style="display:inline">
      <button class="gold" style="margin-top:0">Generate ensemble</button></form>{% endif %}</p>
   <p>3. Collect files →</p>
-  <p class="hint">Submission format: one CSV per model_id, 23 quantiles ×
-  4 horizons per location, validated before writing (monotone, non-negative,
-  no degenerate cells).</p>
+  <p class="hint">One CSV per model_id, 23 quantiles × 4 horizons per
+  location, validated on write: monotone, non-negative, no degenerate
+  cells.</p>
  </div></div>
  <div>
   <div class="card"><h2>Submission files: {{ date }}</h2>
@@ -49,8 +47,7 @@ outputs will collect here.</p></div>
    {% else %}<p class="hint">No submission files in the latest run.</p>{% endfor %}
   </div>
   <div class="card"><h2>Weekly report</h2>
-   <p class="hint">The report for distribution: a US categorical outlook map
-   with per-state detail.</p>
+   <p class="hint">US categorical outlook map with per-state detail.</p>
    <div style="display:flex;align-items:center;gap:.9rem;flex-wrap:wrap;margin-top:.4rem">
    {% if has_report %}<a href="/output/report" target="_blank"><button class="quiet" type="button" style="margin-top:0">Open report</button></a>
    {% else %}<p class="hint" style="margin:0">Generated automatically with each full run.</p>{% endif %}

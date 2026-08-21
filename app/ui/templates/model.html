@@ -12,21 +12,19 @@
  {% elif name == "pf2s" %}{{ dg.sihrs2(uid='m') }}
  {% elif name == "analogue" %}{{ dg.analogue_mech(uid='m') }}
  {% else %}{{ dg.ensemble_mech(uid='m') }}{% endif %}
- <p class="hint">The mechanism of this member. Full methodology:
+ <p class="hint">Full methodology:
  <a href="/methods#{{ manchor }}">Methods</a>.</p>
 </div>
 <div class="cols">
  <div><div class="card"><h2>Settings</h2>
   {% if name == "ensemble" %}
-   <p class="hint">The ensemble aggregates the members produced by the
-   latest run into a quantile average of their stored forecasts.</p>
+   <p class="hint">A quantile average of the latest run's members.</p>
    <form method="post" action="/model/ensemble/generate">
     <button class="gold">Generate ensemble from latest run</button></form>
   {% elif name == "pf2s" %}
-   <p class="hint">The two-strain member runs alongside the validated pair:
-   on the <a href="/forecast">Forecast</a> tab, set Ensemble members to
-   "PF + analogue + two-strain" and run. Its forecasts then appear here and
-   in the equal-weights ensemble for that run.</p>
+   <p class="hint">Run it from the <a href="/forecast">Forecast</a> tab:
+   set Ensemble members to "PF + analogue + two-strain". Its forecasts then
+   join that run's ensemble.</p>
   {% else %}
    <form method="post" action="/run">
     <label>Forecast date</label>

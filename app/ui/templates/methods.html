@@ -2,8 +2,6 @@
 {% block title %}FluBNF · Methods{% endblock %}
 {% block content %}
 <h1>Methods</h1>
-<p class="sub">What FluBNF is built on, how the SIHRS model works, and the
-policies that keep every number verifiable.</p>
 
 <div class="card" id="purpose"><h2>Purpose</h2>
  <p>FluBNF generates real-time probabilistic forecasts of weekly influenza
@@ -42,9 +40,7 @@ policies that keep every number verifiable.</p>
  seasonal transmission lets the data determine when transmissibility peaks
  in each state. Five parameters are fitted per state; every fixed parameter
  carries a citation or a recorded data derivation.</p>
- <p class="hint">Model tab: <a href="/model/pf">PF-SIHRS</a>. The Home page
- carries an interactive version of this diagram annotated with the latest
- fitted values.</p>
+ <p class="hint">Model tab: <a href="/model/pf">PF-SIHRS</a>.</p>
 </div>
 
 <div class="card" id="fitting"><h2>Fitting: a sequential particle filter</h2>
@@ -66,7 +62,6 @@ policies that keep every number verifiable.</p>
  an in-process BioNetGen simulation engine: no per-simulation BNG2.pl
  subprocess is launched, so a full state-season fit completes in
  seconds.</p>
- <p class="hint">Model tab: <a href="/model/pf">PF-SIHRS</a>.</p>
 </div>
 
 <div class="card" id="two-strain"><h2>The two-strain variant</h2>
@@ -126,19 +121,18 @@ policies that keep every number verifiable.</p>
 </div>
 
 <div class="card"><h2>Measured performance</h2>
- <p>Three full seasons were replayed in real-time conditions: each week the
- models saw only that week's archived data vintage, submitted, and moved on.
- Scores are relative weighted interval scores (relWIS) against the official
- FluSight baseline model; values below 1 beat the baseline.</p>
+ <p>Three seasons replayed in real-time conditions: each week the models saw
+ only that week's archived data vintage, submitted, and moved on. Scores are
+ relative weighted interval scores (relWIS) against the official FluSight
+ baseline; values below 1 beat the baseline.</p>
  <div style="overflow-x:auto"><table>
   <tr><th>Model</th><th>2023-24</th><th>2024-25</th><th>2025-26</th></tr>
   <tr><td>PF-SIHRS</td><td>1.023</td><td>0.636</td><td>0.825</td></tr>
   <tr><td>Calendar analogue</td><td>1.105</td><td>0.835</td><td>0.641</td></tr>
   <tr><td>Ensemble</td><td class="ok">0.848</td><td class="ok">0.651</td><td class="ok">0.691</td></tr>
  </table></div>
- <p class="hint">Ensemble pooled across the three seasons: relWIS 0.704.
- Scored against the real FluSight fields, the ensemble would have placed
- 14th of the 34 participating teams in 2023-24 and 4th of the 40 in
+ <p class="hint">Pooled ensemble relWIS: 0.704. Against the real FluSight
+ fields it would have placed 14th of 34 teams in 2023-24 and 4th of 40 in
  2024-25.</p>
 </div>
 
@@ -172,13 +166,10 @@ policies that keep every number verifiable.</p>
       <td>{{ versions.pandas }} / {{ versions.numpy }}</td>
       <td>Data handling and scoring.</td></tr>
  </table></div>
- <p class="hint">Two-venv design: the console venv runs the application, the
- calendar analogue, report generation, and the one-time BNG2.pl network
- generation at run preparation; a separate engine venv (PyBNF and bngsim,
- installed by <code>SetupEngine.command</code>) runs the particle filter.
- The application works without the engine; a component reported as
- "not installed" above means the engine venv has not been set up on this
- machine.</p>
+ <p class="hint">Two venvs: the console venv runs everything except the
+ particle filter, which needs the engine venv (PyBNF and bngsim, installed
+ by <code>SetupEngine.command</code>). A component reported as
+ "not installed" above means that engine venv is absent.</p>
 </div>
 
 <div class="card"><h2>Data and verification policies</h2>
