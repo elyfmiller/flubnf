@@ -72,6 +72,17 @@ var PCONF = {responsive: true, displaylogo: false, scrollZoom: true,
 
 // ---------------------------------------------------------- pure helpers
 
+// chart text rides the host's type system: the root font size in px, so
+// plotly sizes (which are px, never rem) track the console's A-/A/A+
+// control. The static report has no such control; there this simply reads
+// the report's own fixed root size once per redraw.
+function rootFont(){
+  try{
+    return parseFloat(
+      getComputedStyle(document.documentElement).fontSize) || 16;
+  }catch(e){ return 16; }
+}
+
 function rgba(c, a){
   if(c && c[0] === '#' && c.length === 7){
     var n = parseInt(c.slice(1), 16);
@@ -452,19 +463,21 @@ function createPlayer(cfg){
       if(lock && lock.y){ ya.range = lock.y.slice(); ya.autorange = false; }
       if(P.user.x){ xa.range = P.user.x.slice(); xa.autorange = false; }
       if(P.user.y){ ya.range = P.user.y.slice(); ya.autorange = false; }
+      var fs = rootFont();
       var L = {title: {text: loc + ' · forecasts as of ' + w,
-                       font: {size: 14}},
+                       font: {size: Math.round(fs * .875)}},
         height: cfg.plotHeight || 400,
         margin: {l: 50, r: 20, t: 34, b: 40},
         paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
-        font: {color: p.ink},
+        font: {color: p.ink, family: '"DM Sans",system-ui,sans-serif',
+               size: Math.round(fs * .8)},
         xaxis: xa,
         yaxis: ya,
         shapes: [{type: 'line', x0: w, x1: w, yref: 'paper', y0: 0, y1: 1,
                   line: {color: p.mut, width: 1.2, dash: 'dot'}}],
         annotations: [{x: w, yref: 'paper', y: 1, yanchor: 'bottom',
                   showarrow: false, text: 'now',
-                  font: {size: 11, color: p.mut}}]};
+                  font: {size: Math.round(fs * .69), color: p.mut}}]};
       P.applying = true;
       var done = function(){ P.applying = false; bindPlot(); };
       var pr = Plotly.react(el.plot, traces, L, PCONF);
@@ -547,6 +560,13 @@ function createPlayer(cfg){
   });
   addEventListener('themechange', function(){
     renderStats(P.pl);
+    if(detailVisible()) drawFC();
+  });
+  // the console's A-/A/A+ control dispatches this after moving the root
+  // font size; the redraw picks the new size up through rootFont(). The
+  // static report host has no fontsize control, so the event never fires
+  // there and this listener is a graceful no-op.
+  addEventListener('fontsizechange', function(){
     if(detailVisible()) drawFC();
   });
 

@@ -24,13 +24,17 @@
   <a class="brand" href="/" aria-label="FluBNF home">
     <img class="mark" src="/static/brand/pybnf_icon.svg" alt="">
     <span><em>Flu</em>BNF</span></a>
-  {# /model/pf2s stays routed and reachable by direct URL for research use;
-     it is off the primary navigation because the two-strain member failed
-     its full-grid ensemble gate and does not ship. See Methods. #}
-  {% set tabs = [("/","Home"),("/forecast","Forecast"),
-                 ("/model/pf","PF-SIHRS"),("/model/analogue","Calendar analogue"),
-                 ("/model/ensemble","Ensemble"),
-                 ("/retro","Retrospective"),("/output","Output"),("/runs","Runs"),("/data","Data"),
+  {# The tab order is the operational loop the home page teaches: Data,
+     Forecast, Output, then the review surfaces. The three model reference
+     pages live behind the one Models tab (canonical /models, defaulting to
+     the PF view, with an in-page switcher); the old /model/<name> routes
+     stay live for exported reports and bookmarks. /model/pf2s stays routed
+     and reachable by direct URL for research use; it is off the primary
+     navigation because the two-strain member failed its full-grid ensemble
+     gate and does not ship. See Methods. #}
+  {% set tabs = [("/","Home"),("/data","Data"),("/forecast","Forecast"),
+                 ("/output","Output"),("/retro","Retrospective"),
+                 ("/runs","Runs"),("/models","Models"),
                  ("/methods","Methods")] %}
   {% for href, name in tabs %}
     <a class="tab {% if active == name %}active{% endif %}" href="{{ href }}">{{ name }}</a>
@@ -115,7 +119,9 @@
       t=h.getAttribute('data-theme')==='dark'?'light':'dark';
   h.setAttribute('data-theme',t);localStorage.setItem('theme',t);
   dispatchEvent(new Event('themechange'));};
- // text-size control: root font percentage, saved so every page keeps it
+ // text-size control: root font percentage, saved so every page keeps it.
+ // Each press dispatches fontsizechange, mirroring themechange, so chart
+ // code (Plotly sizes text in px, not rem) can redraw at the new scale.
  (function(){
   var m={s:'87.5%',m:'100%',l:'115%'},
       btns=document.querySelectorAll('.fontsize button');
@@ -125,7 +131,8 @@
   btns.forEach(function(b){b.onclick=function(){
     var f=b.dataset.fs;
     document.documentElement.style.fontSize=m[f];
-    localStorage.setItem('fontsize',f);mark(f);};});})();
+    localStorage.setItem('fontsize',f);mark(f);
+    dispatchEvent(new Event('fontsizechange'));};});})();
  // per-button run-interference guards: a control marked data-guard checks
  // /api/busy on click. Only a genuine conflict raises the modal; otherwise
  // the click proceeds untouched (including any onsubmit confirm it had).

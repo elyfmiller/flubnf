@@ -209,10 +209,15 @@
  const ROBS = {{ run_obs_json | safe }};  // loc -> [[date, value]...] AS OF the run's vintage
  const FCDATE = {{ fc_date | tojson }};
  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
- function lay(title, h){ return {title:{text:title,font:{size:14}},
+ // chart text rides the type system: the brand face with a system fallback,
+ // sized from the root font size so the A-/A/A+ control reaches it
+ const rootPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+ function lay(title, h){ const fs=rootPx();
+   return {title:{text:title,font:{size:Math.round(fs*.875)}},
    height:h||340, margin:{l:50,r:20,t:34,b:40},
    paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)',
-   font:{color:css('--ink')},
+   font:{color:css('--ink'),family:'"DM Sans",system-ui,sans-serif',
+         size:Math.round(fs*.8)},
    xaxis:{gridcolor:css('--line')},
    yaxis:{gridcolor:css('--line'), rangemode:'tozero'}};}
  function seasonOf(ds){const d=new Date(ds); const y=d.getMonth()>=7?d.getFullYear():d.getFullYear()-1;
@@ -373,5 +378,6 @@
    drawFan();
  }
  addEventListener('themechange',()=>{drawData(CURMODE); drawFan();});
+ addEventListener('fontsizechange',()=>{drawData(CURMODE); drawFan();});
 </script>
 {% endblock %}

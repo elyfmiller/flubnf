@@ -1320,6 +1320,15 @@ def output_report(date: str = ""):
                         else "<p>No report yet. Run the models first.</p>")
 
 
+@app.get("/models", response_class=HTMLResponse)
+def models_page(request: Request):
+    """The canonical Models tab: one page for the model reference views,
+    defaulting to the PF view. The in-page switcher (model.html) selects
+    the others; the /model/<name> routes stay live underneath it, because
+    exported reports and bookmarks link them directly."""
+    return model_page(request, "pf")
+
+
 @app.get("/model/{name}", response_class=HTMLResponse)
 def model_page(request: Request, name: str):
     blurbs = {
@@ -1426,7 +1435,7 @@ def model_page(request: Request, name: str):
     form = dict(_last_form) or {"forecast_date": _default_forecast_date(),
                                 "locations": ["all"], "replicates": 3}
     return templates.TemplateResponse(request, "model.html", {
-        "active": blurbs[name][0], "name": name,
+        "active": "Models", "name": name,
         "title": blurbs[name][0], "blurb": blurbs[name][1],
         "oneline": onelines[name], "manchor": manchor[name],
         "rid": rid, "label": _run_label(rid) if rid else "",

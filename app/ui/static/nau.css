@@ -79,6 +79,12 @@ header.nav a.tab{color:var(--nav-ink);text-decoration:none;padding:.8rem .5rem;
   font-weight:500;font-size:1.05rem;border-bottom:3px solid transparent}
 header.nav a.tab:hover{background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
 header.nav a.tab.active{border-bottom-color:var(--accent-ink);font-weight:700}
+/* below 1100px the tab row runs out of room before the layout does: step the
+   tab type to .95rem so the row holds one line at 900, and still at 1280
+   with the A+ text size (which multiplies the rem step to ~1.09rem) */
+@media(max-width:1100px){
+  header.nav a.tab{font-size:.95rem;padding:.8rem .4rem}
+}
 header.nav .spacer{flex:1}
 #themebtn{background:transparent;
   border:1px solid color-mix(in srgb,var(--nav-ink) 35%,transparent);
@@ -254,6 +260,17 @@ details.intro > summary{color:var(--ink);font-size:var(--fs-sub);
 details.intro[open] > summary{margin-bottom:.15rem}
 /* mechanism diagrams inherit the page ink for currentColor strokes */
 .mech svg{color:var(--ink)}
+/* SVG labels join the type system: rem classes replace the old fixed
+   viewBox-unit font-size attributes, so the A-/A/A+ control reaches the
+   smallest text in the diagrams. The small step is sized so its effective
+   render (after the artwork's viewBox scale, 840 units drawn at up to
+   800px) stays at or above the app's 13.1px hint floor; svgt-sub is the
+   subscript step, relative to its parent text. */
+svg .svgt-xl{font-size:1.3rem}
+svg .svgt-lg{font-size:1rem}
+svg .svgt-md{font-size:.92rem}
+svg .svgt-sm{font-size:.875rem}
+svg .svgt-sub{font-size:.68em}
 /* fitted/observed values panel beneath the mechanism diagram: a compact
    two-column definition list in the sunken well tone, so numbers of any
    length flow in the page instead of floating over the SVG */

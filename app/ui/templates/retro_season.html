@@ -99,7 +99,7 @@
 <svg viewBox="0 0 720 180" style="width:100%">
  {% set xs = 680 / (curve|length if curve|length > 1 else 1) %}
  <line x1="20" y1="90" x2="700" y2="90" stroke="var(--mut)" stroke-dasharray="3"/>
- <text x="702" y="94" fill="var(--mut)" font-size="10">1.0</text>
+ <text x="702" y="94" fill="var(--mut)" class="svgt-sm">1.0</text>
  <polyline fill="none" stroke="var(--gold)" stroke-width="2.5" points="
   {% for d, v in curve %}{{ 20 + loop.index0 * xs }},{{ [170 - (v * 80), 8] | max }} {% endfor %}"/>
  {% for d, v in curve %}
