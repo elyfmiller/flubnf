@@ -235,7 +235,14 @@ def test_reveal_spawns_open_for_app_state_paths_only(tmp_path, monkeypatch):
     r = client.post("/output/reveal", data={"path": str(inside)},
                     follow_redirects=False)
     assert r.status_code == 303
-    assert spawned == [["open", "-R", str(inside.resolve())]]
+    # the reveal command is platform-dispatched; assert the branch for the
+    # platform the suite is running on (CI runs this on Linux and Windows too)
+    resolved = str(inside.resolve())
+    expected = {
+        "darwin": [["open", "-R", resolved]],
+        "win32": [["explorer", f"/select,{inside.resolve()}"]],
+    }.get(sys.platform, [["xdg-open", str(inside.resolve().parent)]])
+    assert spawned == expected
     # a path outside the app state is refused without side effects
     spawned.clear()
     r = client.post("/output/reveal", data={"path": "/etc/hosts"},
