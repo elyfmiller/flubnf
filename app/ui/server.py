@@ -74,6 +74,68 @@ def _model_names() -> dict:
 templates.env.globals["model_name"] = lambda m: _model_names().get(m, m)
 
 
+# ---- season month axis: the one source of month-boundary week offsets ----
+#: Month lengths of the season in order from August, on a non-leap reference
+#: year: at week resolution the leap-day drift is invisible. Every surface
+#: that draws a season-week axis derives its month ticks from this table
+#: (the harmonic figure, the analogue mechanism diagram, the forecast data
+#: panel's season-over-season view, the retrospective's cumulative chart),
+#: so the offsets are computed exactly once and never hand-typed.
+_MONTH_DAYS = (("Aug", 31), ("Sep", 30), ("Oct", 31), ("Nov", 30),
+               ("Dec", 31), ("Jan", 31), ("Feb", 28), ("Mar", 31),
+               ("Apr", 30), ("May", 31), ("Jun", 30), ("Jul", 31))
+
+#: calendar month number -> label, in the season's own order
+_MON_NAME = {i % 12 + 1: name
+             for i, (name, _) in enumerate(_MONTH_DAYS, start=7)}
+
+
+def _season_months() -> list:
+    """[(label, weeks since August 1)] for each month start of the season."""
+    out, day = [], 0
+    for name, ndays in _MONTH_DAYS:
+        out.append((name, round(day / 7.0, 2)))
+        day += ndays
+    return out
+
+
+SEASON_MONTHS = _season_months()
+templates.env.globals["season_months"] = SEASON_MONTHS
+
+
+def _season_week_name(week: float) -> str:
+    """A week offset from August 1 as calendar language: 'early Jan' for
+    week 22. Peak-week annotations read as months, and the precise week
+    number stays in the caption beside them."""
+    day = int(round(week * 7)) % 365
+    for name, ndays in _MONTH_DAYS:
+        if day < ndays:
+            third = ("early" if day < ndays / 3
+                     else "mid" if day < 2 * ndays / 3 else "late")
+            return f"{third} {name}"
+        day -= ndays
+    return ""
+
+
+templates.env.globals["season_week_name"] = _season_week_name
+
+
+def _month_ticks_for_dates(dates) -> list:
+    """[(index, month label)] at every month change across an ordered list
+    of ISO dates: a date-indexed axis (the cumulative relWIS chart) places
+    its month ticks at the first point of each new month."""
+    out, prev = [], None
+    for i, d in enumerate(dates):
+        mm = str(d)[5:7]
+        if prev is not None and mm != prev and mm.isdigit():
+            out.append((i, _MON_NAME.get(int(mm), "")))
+        prev = mm
+    return out
+
+
+templates.env.globals["month_ticks_for_dates"] = _month_ticks_for_dates
+
+
 def _harmonic_fig(eps: float = 0.35, phis=(22.0,), x0: float = 62.0,
                   x1: float = 540.0, y_bot: float = 170.0, y_top: float = 20.0,
                   r_lo: float = 0.55, r_hi: float = 1.55, n: int = 104) -> dict:
@@ -85,7 +147,8 @@ def _harmonic_fig(eps: float = 0.35, phis=(22.0,), x0: float = 62.0,
     the value band [r_lo, r_hi] onto the pixel band [y_bot, y_top]. Returns
     one SVG path per phi in phis, the pixel rows of the amplitude extremes
     exp(+eps) and exp(-eps) and of the 1.0 reference, each peak's pixel x,
-    and the week-axis tick positions. Illustrative figure geometry only;
+    and the axis ticks as (month label, pixel x) at quarterly month starts
+    from SEASON_MONTHS, closing with the wrap-around August at week 52. Illustrative figure geometry only;
     the fitted model computes its own curve.
     """
     import math
@@ -109,7 +172,8 @@ def _harmonic_fig(eps: float = 0.35, phis=(22.0,), x0: float = 62.0,
             "y_lo": round(y(math.exp(-eps)), 1),
             "y_one": round(y(1.0), 1),
             "peaks": [round(x(p), 1) for p in phis],
-            "ticks": [(w, round(x(w), 1)) for w in (0, 13, 26, 39, 52)]}
+            "ticks": ([(m, round(x(wk), 1)) for m, wk in SEASON_MONTHS[::3]]
+                      + [("Aug", round(x(52.0), 1))])}
 
 
 templates.env.globals["harmonic_fig"] = _harmonic_fig

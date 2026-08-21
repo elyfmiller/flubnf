@@ -77,9 +77,14 @@ def test_harmonic_figure_carries_the_design_conventions():
     # accessible name and long description
     assert 'role="img"' in html and ARIA_ONE in html
     assert "<desc>" in html
-    # the stated axes and annotations
-    assert "weeks since August 1" in html
+    # the stated axes and annotations: the axis reads as calendar months
+    # (from the shared season month offsets), never as week indices
+    assert "month of season" in html
+    for m in ("Aug", "Nov", "Feb", "May"):
+        assert f">{m}</text>" in html, m
+    assert "weeks since August 1" not in html
     assert "peak week" in html                      # phi-1 marked and named
+    assert "(early Jan)" in html                    # and placed on the calendar
     assert html.count("&#949;&#8321;") == 2         # both amplitude extremes
     assert "1.0 (&#946;" in html                    # the beta0 reference
     # the caption ties the curve to the model and owns its honesty note

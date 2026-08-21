@@ -454,6 +454,8 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
 /* the start-over prompt carries four choices; give them room to sit on one
    line and let them wrap rather than overflow when they cannot */
 .modal.wide{max-width:620px}
+/* the expanded forecast view fills the viewport: same shell, full panel */
+.modal.fanx{max-width:min(1500px,96vw);max-height:94vh;overflow:auto}
 .modal .row{justify-content:flex-end;margin-top:.6rem;flex-wrap:wrap}
 .modal .row button{margin-top:0}
 /* .row sets display:flex, which outranks the user agent's [hidden] rule:

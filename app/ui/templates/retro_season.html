@@ -131,6 +131,14 @@
  <text x="{{ (lx - 8) | round(1) }}" y="{{ ((ly - 8) if ly - 8 >= 20 else (ly + 18)) | round(1) }}"
        text-anchor="end" font-weight="700" class="svgt-md"
        fill="var(--gold)">{{ "%.3f"|format(vals[-1]) }}</text>
+ {# month ticks between the corner dates, in their style: each tick sits on
+    the first scored week of a new month (month_ticks_for_dates, the shared
+    month helper's date-indexed form), so mid-season reading needs no
+    interpolation between the corners #}
+ {% for i, lab in month_ticks_for_dates(curve | map('first') | list) %}
+ <line x1="{{ (20 + i * xs) | round(1) }}" y1="136" x2="{{ (20 + i * xs) | round(1) }}" y2="142" stroke="var(--mut)"/>
+ <text x="{{ (20 + i * xs) | round(1) }}" y="154" text-anchor="middle" fill="var(--mut)" class="svgt-sm">{{ lab }}</text>
+ {% endfor %}
  <text x="20" y="168" fill="var(--mut)" class="svgt-sm">{{ curve[0][0] }}</text>
  {% if n > 1 %}
  <text x="655" y="168" text-anchor="end" fill="var(--mut)" class="svgt-sm">{{ (curve|last)[0] }}</text>
