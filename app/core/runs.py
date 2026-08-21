@@ -163,7 +163,11 @@ def derive_seed(location: str, forecast_date: str, replicate: int) -> int:
 @dataclass
 class RunSpec:
     """Everything that defines one model run. The ledger stores this verbatim."""
-    engine: str                      # 'pf' | 'analogue' | 'amcmc' | 'einn'
+    # 'einn' was listed here as an aspiration; it is RETIRED and must not be
+    # revived without new evidence. EINN as published emits no quantiles at
+    # all, and no neural model has topped a FluSight hospital-admissions
+    # season. See research/2026-08-21-nn-landscape.md.
+    engine: str                      # 'pf' | 'analogue' | 'amcmc'
     forecast_date: str               # YYYY-MM-DD, a Saturday
     locations: list = field(default_factory=list)
     season_start: str = ""

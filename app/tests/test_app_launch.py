@@ -217,3 +217,100 @@ def test_watchdog_catches_load_event_fired_between_attach_and_wait():
     w.events.loaded._set = True
     assert cli._window_watchdog(w, "http://x", wait=0.05) == "loaded"
     assert w.load_url_calls == []
+
+
+# ------------------------------------- Windows liveness + cmdline shims
+# The Windows branches run on every platform through injected stubs, so
+# the macOS suite exercises them without a Windows box.
+
+class _StubKernel32:
+    """Emulates the OpenProcess / GetExitCodeProcess / CloseHandle trio."""
+
+    def __init__(self, open_result=1234, exit_code=259, last_error=0):
+        self.open_result = open_result
+        self.exit_code = exit_code
+        self.last_error = last_error
+        self.closed = []
+
+    def OpenProcess(self, access, inherit, pid):
+        return self.open_result
+
+    def GetLastError(self):
+        return self.last_error
+
+    def GetExitCodeProcess(self, handle, code_ref):
+        code_ref._obj.value = self.exit_code
+        return 1
+
+    def CloseHandle(self, handle):
+        self.closed.append(handle)
+        return 1
+
+
+def test_windows_alive_for_a_running_process():
+    k32 = _StubKernel32(exit_code=259)             # STILL_ACTIVE
+    assert cli._pid_alive_windows(4242, kernel32=k32) is True
+    assert k32.closed == [1234]                    # handle released
+
+
+def test_windows_dead_for_an_exited_process():
+    k32 = _StubKernel32(exit_code=0)
+    assert cli._pid_alive_windows(4242, kernel32=k32) is False
+    assert k32.closed == [1234]
+
+
+def test_windows_dead_when_no_such_process():
+    k32 = _StubKernel32(open_result=0, last_error=87)
+    assert cli._pid_alive_windows(4242, kernel32=k32) is False
+
+
+def test_windows_access_denied_means_alive_but_not_ours():
+    # the pid exists under another account: alive (so no pidfile reuse),
+    # and the empty cmdline downstream keeps the takeover's hands off it
+    k32 = _StubKernel32(open_result=0, last_error=5)
+    assert cli._pid_alive_windows(4242, kernel32=k32) is True
+
+
+def test_windows_cmdline_parses_the_wmic_list_format(monkeypatch):
+    def fake_run(q, **kw):
+        assert q[0] == "wmic"
+        return types.SimpleNamespace(
+            returncode=0,
+            stdout="\n\nCommandLine=C:\\r\\.venv\\Scripts\\flubnf.exe app\n\n")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    assert (cli._pid_cmdline_windows(1)
+            == "C:\\r\\.venv\\Scripts\\flubnf.exe app")
+
+
+def test_windows_cmdline_falls_back_to_powershell(monkeypatch):
+    def fake_run(q, **kw):
+        if q[0] == "wmic":                         # removed on new Win11
+            raise FileNotFoundError("wmic not found")
+        assert q[0] == "powershell"
+        return types.SimpleNamespace(returncode=0, stdout="py.exe -m thing\n")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    assert cli._pid_cmdline_windows(1) == "py.exe -m thing"
+
+
+def test_windows_cmdline_empty_result_fails_safe(monkeypatch):
+    # "could not inspect" must come back as '' so the takeover never kills
+    # a pid it could not positively identify
+    monkeypatch.setattr(
+        subprocess, "run",
+        lambda q, **kw: types.SimpleNamespace(returncode=1, stdout=""))
+    assert cli._pid_cmdline_windows(1) == ""
+
+
+def test_entry_markers_match_the_windows_exe_spelling():
+    cmd = r"C:\repo\.venv\Scripts\flubnf.exe app"
+    assert any(mk in cmd for mk in cli.APP_ENTRY_MARKERS)
+
+
+def test_pid_helpers_dispatch_on_windows(monkeypatch):
+    monkeypatch.setattr(os, "name", "nt")
+    monkeypatch.setattr(cli, "_pid_cmdline_windows", lambda pid: f"win:{pid}")
+    monkeypatch.setattr(cli, "_pid_alive_windows", lambda pid: True)
+    assert cli._pid_cmdline(7) == "win:7"
+    assert cli._pid_alive(7) is True

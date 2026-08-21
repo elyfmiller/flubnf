@@ -57,8 +57,9 @@ and move on; scores come later, against settled truth.</p>
        c.style.display=(s.value==='custom')?'':'none';});
    })();
   </script>
-  <p class="hint">Runs are resumable; a completed week is never redone.
-   Stopping finishes the week in flight first, so no week is wasted. A season
+  <p class="hint">Runs are resumable; a completed week is never redone, and
+   an interrupted week keeps its finished fits. Stopping and pausing wait
+   only for the fits in flight, so both land in well under a minute. A season
    that already has results asks first whether to resume, archive, or discard
    them, so a clean rerun is always available and nothing is lost by
    accident.</p>
@@ -82,7 +83,7 @@ and move on; scores come later, against settled truth.</p>
    <div class="row" style="justify-content:space-between">
     <span class="hint">{{ s.done }}/{{ s.total }} weeks{% if s.seal %} · full-grid validation run{% endif %}
      {% if s.status == 'running' %}<span class="warn">· running</span>
-     {% elif s.status == 'stopping' %}<span class="warn">· stopping after the current week</span>
+     {% elif s.status == 'stopping' %}<span class="warn">· stopping after the fits in flight</span>
      {% elif s.status == 'paused' %}<span class="warn">· paused</span>
      {% elif s.status == 'interrupted' %}<span class="bad">· interrupted; the application closed mid-replay</span>
      {% elif s.status == 'stopped' %}<span>· stopped; Run resumes it</span>
@@ -91,9 +92,11 @@ and move on; scores come later, against settled truth.</p>
      {% endif %}</span>
     {% if s.done > 0 %}<a href="/retro/{{ s.name }}"><button class="quiet" type="button" style="margin-top:0">Results →</button></a>{% endif %}
    </div>
-   {% if s.elapsed_s and not s.active %}
+   {% if s.elapsed_s and s.elapsed_s >= 1 and not s.active %}
    {# a finished replay reports its total; a live one has the ticking
-      readout above, and two clocks on one card would only disagree #}
+      readout above, and two clocks on one card would only disagree. A
+      sub-second record (a season replayed before timing existed, touched
+      since) would render as a fabricated 0:00:00: say nothing instead #}
    <p class="hint timing">total wall time {{ s.elapsed_s | hms }}{% if s.mean_s %} · mean {{ "%.0f"|format(s.mean_s) }} s per week over {{ s.weeks_measured }} timed{% endif %}</p>
    {% endif %}
    {# the settings this replay runs under, from its own run record: under
@@ -101,8 +104,8 @@ and move on; scores come later, against settled truth.</p>
       validation runs, which predate the record. #}
    {{ settings_html(s.settings) | safe }}
    {% if s.active %}
-   {# stopping and pausing are safe: the current week is finished and
-      checkpointed first, so neither needs a confirmation modal #}
+   {# stopping and pausing are safe: only the fits in flight finish, each
+      finished fit is checkpointed, so neither needs a confirmation modal #}
    <div class="row">
     {% if s.paused %}
     <form method="post" action="/retro/{{ s.name }}/resume"><button class="gold">Resume</button></form>
@@ -122,7 +125,7 @@ and move on; scores come later, against settled truth.</p>
    <div class="archrow">
     <span class="grow"><strong>{{ a.when }}</strong>
      <span class="hint">· {{ a.weeks }} week{{ "" if a.weeks == 1 else "s" }}{%
-      if a.elapsed_s %} · {{ a.elapsed_s | hms }}{% endif %}{%
+      if a.elapsed_s and a.elapsed_s >= 1 %} · {{ a.elapsed_s | hms }}{% endif %}{%
       if a.rel is not none %} · relWIS <span class="{{ 'ok' if a.rel < 1 else 'bad' }}">{{
       "%.3f"|format(a.rel) }}</span>{% endif %} · {{ a.size_h }}</span></span>
     <a href="/retro/{{ s.name }}?archive={{ a.id }}"><button class="quiet"

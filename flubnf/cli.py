@@ -1422,8 +1422,11 @@ APP_PID_FILE = (Path(__file__).resolve().parents[1]
 # (the interpreter path contains it), so a recycled pid landing on, say, a
 # multi-hour PyBNF fit could be killed. "flubnf app" and "flubnf window"
 # cover every launch path (FluBNF.command's `.venv/bin/flubnf app`, a
-# manual `flubnf window`, extra flags after the command)
-APP_ENTRY_MARKERS = ("flubnf app", "flubnf window")
+# manual `flubnf window`, extra flags after the command). The .exe forms
+# are the same entry points as Windows spells them (FluBNF.bat launches
+# `.venv\Scripts\flubnf.exe app`); they never match elsewhere.
+APP_ENTRY_MARKERS = ("flubnf app", "flubnf window",
+                     "flubnf.exe app", "flubnf.exe window")
 
 # shown by the load watchdog when every reload attempt fails; loaded with
 # window.load_html because pywebview 6.2.1 misroutes data: URLs (its
@@ -1438,13 +1441,49 @@ Terminal (<code>.venv/bin/flubnf app</code>) to see the error output.</p>
 </body></html>"""
 
 
+def _pid_cmdline_windows(pid: int) -> str:
+    """Windows: the command line via WMI -- wmic where present, PowerShell
+    CIM otherwise (wmic is removed from newer Windows 11 builds). An empty
+    result fails safe: the takeover only ever signals a process whose
+    command line matched an entry marker, so "could not inspect" means
+    "do not touch", and the relaunch falls back to a nearby free port
+    instead of killing a possibly-recycled pid."""
+    import subprocess
+    queries = (
+        ["wmic", "process", "where", f"ProcessId={int(pid)}",
+         "get", "CommandLine", "/format:list"],
+        ["powershell", "-NoProfile", "-Command",
+         f"(Get-CimInstance Win32_Process -Filter "
+         f"'ProcessId={int(pid)}').CommandLine"],
+    )
+    for q in queries:
+        try:
+            out = subprocess.run(q, capture_output=True, text=True,
+                                 timeout=10)
+        except Exception:
+            continue
+        if out.returncode != 0:
+            continue
+        text = out.stdout.strip()
+        if text.startswith("CommandLine="):     # wmic /format:list shape
+            text = text.split("=", 1)[1]
+        text = text.strip()
+        if text:
+            return text
+    return ""
+
+
 def _pid_cmdline(pid: int) -> str:
     """The command line of a live process, or '' when it does not exist
     (or cannot be inspected). Linux reads the kernel's own record
     (/proc/<pid>/cmdline, exact and immune to ps formatting or zombie
-    <defunct> rewriting, which broke the takeover on CI); everywhere else
-    falls back to ps, which ships with macOS. No psutil dependency."""
+    <defunct> rewriting, which broke the takeover on CI); Windows asks WMI
+    (see _pid_cmdline_windows); everywhere else falls back to ps, which
+    ships with macOS. No psutil dependency."""
+    import os
     import subprocess
+    if os.name == "nt":
+        return _pid_cmdline_windows(pid)
     proc_path = Path(f"/proc/{int(pid)}/cmdline")
     try:
         if proc_path.exists():
@@ -1460,11 +1499,46 @@ def _pid_cmdline(pid: int) -> str:
         return ""
 
 
+def _pid_alive_windows(pid: int, kernel32=None) -> bool:
+    """Windows liveness via OpenProcess + GetExitCodeProcess. Signal 0 is
+    not an option there: os.kill(pid, 0) on Windows calls TerminateProcess
+    unconditionally, so the POSIX probe would KILL the probed process.
+    `kernel32` is injectable for tests on other platforms."""
+    try:
+        import ctypes
+        import ctypes.wintypes as wintypes
+        if kernel32 is None:
+            kernel32 = ctypes.windll.kernel32
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        ERROR_ACCESS_DENIED = 5
+        handle = kernel32.OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+        if not handle:
+            # access denied: the pid exists but belongs to someone else --
+            # alive, though never ours to signal (its cmdline comes back
+            # empty, so the takeover leaves it alone)
+            return kernel32.GetLastError() == ERROR_ACCESS_DENIED
+        try:
+            code = wintypes.DWORD()
+            if kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return code.value == STILL_ACTIVE
+            return True
+        finally:
+            kernel32.CloseHandle(handle)
+    except Exception:
+        return False
+
+
 def _pid_alive(pid: int) -> bool:
     """Signal-0 liveness: true for running OR zombie; the takeover's wait
     loop pairs it with the cmdline check so an unreaped zombie (Linux:
-    the parent has not called wait) does not stall the full timeout."""
+    the parent has not called wait) does not stall the full timeout.
+    Windows dispatches to _pid_alive_windows -- signal 0 does not exist
+    there and os.kill would terminate the probed process."""
     import os
+    if os.name == "nt":
+        return _pid_alive_windows(pid)
     try:
         os.kill(int(pid), 0)
         return True
@@ -1504,7 +1578,11 @@ def _terminate_predecessor(pidfile: Optional[Path] = None,
                            and _pid_cmdline(pid)):
                         time.sleep(0.1)
                     if _pid_alive(pid) and _pid_cmdline(pid):
-                        os.kill(pid, signal.SIGKILL)
+                        # SIGKILL does not exist on Windows; there the
+                        # SIGTERM above was already TerminateProcess (hard),
+                        # so re-sending it is the same escalation
+                        os.kill(pid, getattr(signal, "SIGKILL",
+                                             signal.SIGTERM))
                 except (ProcessLookupError, PermissionError):
                     pass
     except Exception:

@@ -65,9 +65,10 @@ def _default_pybnf_binary() -> str:
     multiple Python installs (anaconda etc.) often ship their own pybnf
     that doesn't match our installed bionetgen / numpy patches."""
     here = Path(__file__).resolve().parents[1]  # FluBNF/
-    venv_pybnf = here / ".venv" / "bin" / "pybnf"
-    if venv_pybnf.exists():
-        return str(venv_pybnf)
+    for venv_pybnf in (here / ".venv" / "bin" / "pybnf",
+                       here / ".venv" / "Scripts" / "pybnf.exe"):
+        if venv_pybnf.exists():
+            return str(venv_pybnf)
     return "pybnf"
 
 

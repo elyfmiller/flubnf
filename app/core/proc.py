@@ -56,3 +56,26 @@ def low_priority_cmd(cmd: list, niceness: int = NICENESS) -> list:
     """`cmd` rewritten to start at reduced priority where the platform
     allows it, and returned unchanged where it does not."""
     return low_priority_prefix(niceness) + list(cmd)
+
+
+def low_priority_popen_kwargs(niceness: int = NICENESS) -> dict:
+    """Extra Popen keyword arguments that start a child at reduced priority
+    on platforms where a command prefix cannot, or {}.
+
+    Windows has no `nice`: priority there is a creation flag on the process
+    itself (BELOW_NORMAL_PRIORITY_CLASS, the closest analogue of a small
+    positive niceness). A call site combines both forms and each platform
+    activates exactly one of them:
+
+        Popen(low_priority_cmd(cmd), **low_priority_popen_kwargs())
+
+    On POSIX this returns {} (the nice prefix already did the work), and on
+    any failure it returns {} so the process starts unmodified -- same rule
+    as low_priority_prefix: an optimization, never a precondition."""
+    if os.name != "nt" or not niceness:
+        return {}
+    try:
+        import subprocess
+        return {"creationflags": subprocess.BELOW_NORMAL_PRIORITY_CLASS}
+    except Exception:
+        return {}

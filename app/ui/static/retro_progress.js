@@ -136,7 +136,7 @@ window.FluBNFRetroTicker = (function () {
         if (stat) stat.textContent = line;
         var basis = c.querySelector(".rbasis");
         if (basis) basis.textContent = paused
-          ? "Paused after the completed week. The clock is held and resumes with the replay."
+          ? "Paused; the fits in flight finished first. The clock is held and resumes with the replay."
           : (d.weeks_measured
              ? "estimate from " + d.weeks_measured + " completed week" +
                (d.weeks_measured === 1 ? "" : "s")

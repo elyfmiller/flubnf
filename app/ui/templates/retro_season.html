@@ -28,8 +28,8 @@
  <p class="hint rbasis"></p>
  {# the settings this replay runs under, from its run record #}
  {{ settings_html(prog.settings) | safe }}
- {# stopping and pausing are safe: the week in flight is finished and
-    checkpointed first, so neither needs a confirmation modal #}
+ {# stopping and pausing are safe: only the fits in flight finish, each
+    finished fit is checkpointed, so neither needs a confirmation modal #}
  <div class="row">
   {% if prog.status == 'paused' %}
   <form method="post" action="/retro/{{ season }}/resume"><button class="gold">Resume</button></form>
@@ -45,13 +45,14 @@
  // GUARD_BUSY is set nothing reloads, so a pending stop-and-proceed survives
  FluBNFRetroTicker.init({busy: function(){return !!window.GUARD_BUSY;}});
 </script>
-{% elif prog and prog.elapsed_s %}
+{% elif prog and prog.elapsed_s and prog.elapsed_s >= 1 %}
+{# a sub-second record would render a fabricated 0:00:00: say nothing #}
 <p class="hint">Replay wall time {{ prog.elapsed_s | hms }} (h:mm:ss) over
  {{ prog.done }} weeks{% if prog.mean_s %}, mean {{ "%.0f"|format(prog.mean_s) }} s
  per week over {{ prog.weeks_measured }} timed{% endif %}{% if prog.slowest_week %};
  slowest week {{ prog.slowest_week }} at {{ "%.0f"|format(prog.slowest_s) }} s{% endif %}.
- {% if prog.status == 'stopped' %}The replay was stopped; completed weeks are
- kept and Run resumes from there.{% elif prog.status == 'interrupted' %}The
+ {% if prog.status == 'stopped' %}The replay was stopped; completed weeks and
+ finished fits are kept and Run resumes from there.{% elif prog.status == 'interrupted' %}The
  application closed mid-replay; completed weeks are kept and Run resumes from
  there.{% endif %}</p>
 {{ settings_html(prog.settings) | safe }}

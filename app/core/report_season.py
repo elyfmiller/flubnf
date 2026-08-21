@@ -95,8 +95,8 @@ def _timing_note(root: Path) -> str:
     if not meta:
         return ""
     t = retro.timing(meta)
-    if not t["elapsed_s"]:
-        return ""
+    if not t["elapsed_s"] or t["elapsed_s"] < 1.0:
+        return ""          # a sub-second record would print a fabricated zero
     bits = [f"Total wall time {fmt_hms(t['elapsed_s'])} (h:mm:ss)",
             f"{t['weeks_completed']} weeks completed"]
     if t["mean_s"]:

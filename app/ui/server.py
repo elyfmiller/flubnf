@@ -522,23 +522,69 @@ def _harvest_params(workroot: Path) -> dict:
             for loc, by_name in pooled.items()}
 
 
-def _sleep_guard():
-    """Hold macOS awake while a long background run works: spawn
-    `caffeinate -i -w <this pid>`, which blocks idle sleep until this
-    process exits. Returns the Popen for the caller to terminate() when the
-    work ends, or None off macOS or on any spawn failure -- no run may ever
-    depend on the guard (overnight laptop retrospectives die to closed-lid
-    or idle sleep otherwise)."""
-    import os
-    import subprocess
-    if sys.platform != "darwin":
-        return None
+# SetThreadExecutionState flags (Windows). ES_CONTINUOUS makes the
+# requirement persist until explicitly cleared; ES_SYSTEM_REQUIRED blocks
+# idle system sleep (the caffeinate -i equivalent). Clearing is
+# ES_CONTINUOUS alone.
+_ES_CONTINUOUS = 0x80000000
+_ES_SYSTEM_REQUIRED = 0x00000001
+
+
+class _WinSleepGuard:
+    """Windows sleep inhibitor mirroring the only part of the Popen
+    interface the callers use: .terminate(). The execution-state flag is
+    thread-affine, and both call sites create and terminate the guard on
+    the same worker thread (the finally of the function that created it),
+    which is exactly what the ES_CONTINUOUS contract requires."""
+
+    def __init__(self, kernel32):
+        self._kernel32 = kernel32
+
+    def terminate(self):
+        try:
+            self._kernel32.SetThreadExecutionState(_ES_CONTINUOUS)
+        except Exception:
+            pass
+
+
+def _windows_sleep_guard(kernel32=None):
+    """SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED) on the
+    calling (worker) thread; returns a guard with .terminate() or None on
+    any failure. `kernel32` is injectable for tests on other platforms."""
     try:
-        return subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())],
-                                stdout=subprocess.DEVNULL,
-                                stderr=subprocess.DEVNULL)
+        if kernel32 is None:
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+        prev = kernel32.SetThreadExecutionState(
+            _ES_CONTINUOUS | _ES_SYSTEM_REQUIRED)
+        if not prev:                    # 0 means the call failed
+            return None
+        return _WinSleepGuard(kernel32)
     except Exception:
         return None
+
+
+def _sleep_guard():
+    """Hold the machine awake while a long background run works. macOS:
+    spawn `caffeinate -i -w <this pid>`, which blocks idle sleep until this
+    process exits. Windows: SetThreadExecutionState (see
+    _windows_sleep_guard). Returns an object with .terminate() for the
+    caller to end the guard when the work ends, or None on any other
+    platform or on any failure -- no run may ever depend on the guard
+    (overnight laptop retrospectives die to closed-lid or idle sleep
+    otherwise)."""
+    import os
+    import subprocess
+    if sys.platform == "darwin":
+        try:
+            return subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())],
+                                    stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL)
+        except Exception:
+            return None
+    if sys.platform == "win32":
+        return _windows_sleep_guard()
+    return None
 
 
 def _run_all(spec: RunSpec) -> None:
@@ -1196,12 +1242,20 @@ def output_download(path: str):
 
 @app.post("/output/reveal")
 def output_reveal(path: str = Form(...)):
-    """Local desktop app: show the file in Finder rather than fake a download."""
+    """Local desktop app: show the file in the platform's file manager
+    (Finder / Explorer) rather than fake a download."""
     import subprocess
     from app.core.runs import APP_STATE
     p = Path(path).resolve()
     if str(APP_STATE.resolve()) in str(p) and p.exists():   # stay inside our state
-        subprocess.Popen(["open", "-R", str(p)])
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", "-R", str(p)])
+        elif sys.platform == "win32":
+            # /select, takes the rest of the argument as the path; one
+            # combined argv element avoids Explorer's comma quoting rules
+            subprocess.Popen(["explorer", f"/select,{p}"])
+        else:
+            subprocess.Popen(["xdg-open", str(p.parent)])
     return RedirectResponse("/output", status_code=303)
 
 
@@ -1716,7 +1770,11 @@ def api_retro_startover(season: str = ""):
             "total": total,
             "complete": bool(total and s["weeks"] >= total),
             "elapsed_s": s["elapsed_s"],
-            "elapsed_hms": fmt_hms(s["elapsed_s"]) if s["elapsed_s"] else "",
+            # sub-second records render as 0:00:00, and a fabricated zero is
+            # worse than saying nothing (pre-timing seasons carry none)
+            "elapsed_hms": (fmt_hms(s["elapsed_s"])
+                            if s["elapsed_s"] and s["elapsed_s"] >= 1.0
+                            else ""),
             "finished": retro.utc_human(s["finished_utc"]
                                         or s["started_utc"]),
             "status": status,
@@ -1814,10 +1872,13 @@ def _retro_bg(season: str, locations: list, width: int,
 
 @app.post("/retro/stop")
 def retro_stop():
-    """Ask every live season replay to stop after its current week.
-    Completed weeks stay on disk; a restarted replay resumes where this one
-    left off (a completed week is never redone). A PAUSED season stops too:
-    request_stop clears the pause so the worker wakes and exits."""
+    """Ask every live season replay to stop after the fits now in flight.
+    The flag is polled between individual fits, so the stop lands in well
+    under a minute, not at the week boundary. Completed weeks stay on disk,
+    an interrupted week keeps its finished fits, and a restarted replay
+    resumes from exactly there (nothing completed is redone). A PAUSED
+    season stops too: request_stop clears the pause so the worker wakes and
+    exits."""
     from app.core import retro
     _invalidate_scans()
     stopping = []
@@ -1831,16 +1892,17 @@ def retro_stop():
         retro.request_stop(_live_root(season))
     if stopping:
         _flash("Stopping " + ", ".join(sorted(stopping)) + " after the "
-               "current week. Completed weeks are kept; the replay resumes "
-               "from there next time.")
+               "fits now in flight. Completed weeks and finished fits are "
+               "kept; the replay resumes from there next time.")
     return RedirectResponse("/retro", status_code=303)
 
 
 @app.post("/retro/{season}/stop")
 def retro_season_stop(request: Request, season: str):
-    """Stop ONE season after its current week. Safe by construction: the
-    week in flight is finished and checkpointed first, so nothing is
-    half-written, and pressing Run again resumes from there."""
+    """Stop ONE season after the fits now in flight. Safe by construction:
+    every finished fit is checkpointed and the interrupted week's
+    samples.json is never written, so nothing downstream sees a half-week,
+    and pressing Run again refits only the cells that never ran."""
     from app.core import retro
     _invalidate_scans()
     if not _valid_season(season):
@@ -1853,8 +1915,8 @@ def retro_season_stop(request: Request, season: str):
     _retro_stop.add(season)
     if _season_status(season) in ("running", "paused"):
         _retro_status[season] = "stopping"
-        _flash(f"Stopping {season} after the current week. Completed weeks "
-               "are kept; Run resumes from there.")
+        _flash(f"Stopping {season} after the fits now in flight. Completed "
+               "weeks and finished fits are kept; Run resumes from there.")
     else:
         # nothing was actually replaying: resolve now rather than leaving a
         # "stopping" claim nobody will ever clear
@@ -1867,9 +1929,11 @@ def retro_season_stop(request: Request, season: str):
 
 @app.post("/retro/{season}/pause")
 def retro_season_pause(request: Request, season: str):
-    """Hold after the current week. The process stays alive and the sleep
-    guard stays held, so an overnight replay resumes on the same machine
-    state it paused on."""
+    """Hold after the fits now in flight -- the flag is polled between
+    individual fits, so the hold lands in well under a minute and the user
+    gets the machine back. The process stays alive and the sleep guard stays
+    held, so an overnight replay resumes on the same machine state it paused
+    on."""
     from app.core import retro
     _invalidate_scans()
     if not _valid_season(season):
@@ -1879,8 +1943,8 @@ def retro_season_pause(request: Request, season: str):
         _flash(f"{season} is not replaying, so there was nothing to pause.")
         return _back(request, "/retro")
     retro.request_pause(_live_root(season))
-    _flash(f"Pausing {season} after the current week. The replay holds; "
-           "Resume continues it.")
+    _flash(f"Pausing {season} after the fits now in flight. The replay "
+           "holds; Resume continues it.")
     return _back(request, "/retro")
 
 
