@@ -26,7 +26,7 @@
    <label>Ensemble members</label>
    <select name="members">
      <option value="2" {% if form.get('members', 2) != 3 %}selected{% endif %}>PF + analogue (validated full-grid)</option>
-     <option value="3" {% if form.get('members', 2) == 3 %}selected{% endif %}>PF + analogue + two-strain (panel-validated)</option>
+     <option value="3" {% if form.get('members', 2) == 3 %}selected{% endif %}>PF + analogue + two-strain (research: turn-validated, not ensemble-validated)</option>
    </select>
    <span class="hint">Three members fit the two-strain SIHRS as a second
    particle-filter pass; the ensemble then blends with equal weights.</span>
