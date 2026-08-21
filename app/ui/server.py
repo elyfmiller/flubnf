@@ -309,13 +309,18 @@ def methods_page(request: Request):
 @app.get("/forecast", response_class=HTMLResponse)
 def forecast_page(request: Request):
     import pandas as pd
-    from flubnf.settings import LOCATIONS
+    from flubnf.settings import load_locations
+    # an empty state list must be visible, never silent: with no checklist the
+    # form's every run quietly launches all 52 jurisdictions
+    locations_error = ""
     try:
         _l = load_locations()
         all_locs = list(_l.location_name[(_l.location.str.len() == 2)
                                          & (_l.abbreviation != "US")])
-    except Exception:
+    except Exception as e:
         all_locs = []
+        locations_error = (f"State list unavailable ({type(e).__name__}); "
+                           "runs will cover all 52 jurisdictions.")
     form = dict(_last_form) or {"forecast_date": _default_forecast_date(),
                                 "locations": ["all"], "engine": "all",
                                 "weeks_to_drop": 0, "weeks_to_nowcast": 0,
@@ -357,7 +362,8 @@ def forecast_page(request: Request):
             r["status"] = "interrupted"
     return templates.TemplateResponse(request, "forecast.html", {
         "active": "Forecast", "engines": ENGINES, "status": _status,
-        "ledger": ledger_rows, "all_locs": all_locs, "form": form,
+        "ledger": ledger_rows, "all_locs": all_locs,
+        "locations_error": locations_error, "form": form,
         "elapsed0": _console_elapsed(),
         "series_json": _json.dumps(series), "fanq_json": _json.dumps(fanq),
         "run_obs_json": _json.dumps((res or {}).get("observed", {})),
