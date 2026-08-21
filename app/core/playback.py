@@ -40,6 +40,7 @@ from flubnf.settings import HUB
 from flubnf.wis import wis as wis_fn
 
 OFFICIAL = ("FluSight-baseline", "FluSight-ensemble")
+CACHE_V = 2   # bump when cached shapes or scoring logic change
 TARGET = "wk inc flu hosp"
 HORIZONS = ("1", "2", "3", "4")
 
@@ -230,6 +231,22 @@ def _season_scores(root: Path):
     return df
 
 
+def _stats_fresh(root: Path, asof: str, payload: dict,
+                 truth: dict, n2f: dict) -> dict:
+    """Recompute the stats block for a cache-served payload: quantile keys
+    come back from JSON as strings; _stats wants floats."""
+    def _fl(hq):
+        return {h: {float(k): v for k, v in q.items()} for h, q in hq.items()}
+    model_q = {m: {loc: _fl(hq) for loc, hq in locs.items()}
+               for m, locs in payload.get("models", {}).items()}
+    official_q = {om: ({loc: _fl(hq) for loc, hq in locs.items()} or None)
+                  for om, locs in payload.get("official", {}).items()}
+    for om in OFFICIAL:
+        official_q.setdefault(om, None)
+    season = root.name
+    return _stats(root, season, asof, truth, n2f, model_q, official_q)
+
+
 def _stats(root: Path, season: str, asof: str, truth: dict, n2f: dict,
            model_q: dict, official_q: dict) -> dict:
     """{model: {"week_rel", "cum_rel"}}. Members already covered by the
@@ -259,7 +276,7 @@ def _stats(root: Path, season: str, asof: str, truth: dict, n2f: dict,
         m = _samples_path(root, w).stat().st_mtime
         offs = _official_files_present(w)
         e = cache["weeks"].get(w)
-        if (e and e.get("mtime") == m
+        if (e and e.get("v") == CACHE_V and e.get("mtime") == m
                 and e.get("scores_mtime") == scores_mtime
                 and e.get("officials") == offs):
             aggs[w] = e["agg"]
@@ -268,9 +285,15 @@ def _stats(root: Path, season: str, asof: str, truth: dict, n2f: dict,
         oq = (official_q if w == asof else
               {om: _official_quantiles(om, w, f2n_all) for om in OFFICIAL})
         aggs[w] = _week_aggregates(w, truth, n2f, mq, oq)
-        cache["weeks"][w] = {"mtime": m, "scores_mtime": scores_mtime,
-                             "officials": offs, "agg": aggs[w]}
-        dirty = True
+        suspect = any(om in aggs[w] and aggs[w][om].get("base", 0) == 0
+                      and oq.get(om) for om in OFFICIAL)
+        if not suspect:
+            # a zero-base official aggregate with a parsed file is a
+            # transient scoring failure; recompute next request instead of
+            # freezing "pending" into the cache (the field bug, act three)
+            cache["weeks"][w] = {"mtime": m, "scores_mtime": scores_mtime,
+                                 "officials": offs, "agg": aggs[w], "v": CACHE_V}
+            dirty = True
     if dirty:
         cf.parent.mkdir(parents=True, exist_ok=True)
         cf.write_text(json.dumps(cache))
@@ -365,6 +388,8 @@ def build_week(root: Path, season: str, asof: str) -> dict:
     if cf.is_file() and cf.stat().st_mtime >= newest:
         try:
             payload = json.loads(cf.read_text())
+            if payload.get("_v") != CACHE_V:
+                raise ValueError("cache version bump")
             # A payload cached before the official comparator files were
             # fetched must rebuild once they exist: Update data healing the
             # sparse clone changes no samples mtime, so timestamps alone
@@ -376,6 +401,13 @@ def build_week(root: Path, season: str, asof: str) -> dict:
                 and (HUB / "model-output" / name / f"{ref}-{name}.csv").is_file()
                 for name in ("FluSight-baseline", "FluSight-ensemble"))
             if not missing_now_present:
+                # Stats are recomputed EVERY serve: they depend on scores,
+                # officials, and scoring code, and caching them once froze a
+                # broken "pending" into the payload files for days in the
+                # field. Only the heavy quantiles/truth stay cached.
+                truth_c, n2f_c = load_truth()
+                payload["stats"] = _stats_fresh(root, asof, payload,
+                                                truth_c, n2f_c)
                 return payload
         except Exception:
             pass                       # corrupt cache: rebuild below
@@ -401,6 +433,7 @@ def build_week(root: Path, season: str, asof: str) -> dict:
             truth_out[name] = _truth_series(truth, fips, lo, hi_ext)
 
     payload = {
+        "_v": CACHE_V,
         "asof": asof,
         "locations": locs,
         "truth": truth_out,

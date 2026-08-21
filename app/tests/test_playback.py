@@ -90,7 +90,7 @@ def _mk_root(tmp_path, monkeypatch, with_pf2s=True, official_models=("FluSight-b
 def test_payload_structure_members_official_truth_stats(tmp_path, monkeypatch):
     root = _mk_root(tmp_path, monkeypatch)
     p = playback.build_week(root, SEASON, ASOF)
-    assert set(p) == {"asof", "locations", "truth", "models", "official",
+    assert set(p) == {"_v", "asof", "locations", "truth", "models", "official",
                       "stats"}
     assert p["asof"] == ASOF
     assert p["locations"] == ["Ohio", "Utah"]
@@ -154,7 +154,8 @@ def test_cache_written_served_and_invalidated(tmp_path, monkeypatch):
     cf = root / "playback_cache" / f"{ASOF}.json"
     assert cf.is_file()
     # fresh cache is served verbatim
-    cf.write_text(json.dumps({"asof": "sentinel",
+    cf.write_text(json.dumps({"_v": playback.CACHE_V, "asof": "sentinel",
+                              "models": {},
                               "official": {"FluSight-baseline": {},
                                            "FluSight-ensemble": {}}}))
     future = cf.stat().st_mtime + 60
