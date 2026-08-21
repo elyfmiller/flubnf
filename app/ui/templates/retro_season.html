@@ -3,10 +3,36 @@
 {% block content %}
 
 <h1><span class="accent">{{ season }}</span>: {{ n_weeks }} weeks scored</h1>
-<p><a href="/retro/{{ season }}/report">Download season report</a>
+<p class="row" style="gap:.55rem">
+ {# the download attribute makes the native window (WKWebView) treat the
+    click as a download rather than a navigation; pywebview needs
+    ALLOW_DOWNLOADS on as well, set at window launch in flubnf/cli.py #}
+ <a href="/retro/{{ season }}/report" download>Download season report</a>
+ <button type="button" class="quiet" id="rev-report" style="margin-top:0"
+   data-season="{{ season }}">Reveal in Finder</button>
  <span class="hint">one self-contained interactive HTML file: the season
  player with all forecast data embedded, usable offline. Forecast detail and
  stats only; the outlook maps stay in this console.</span></p>
+<script>
+ // belt and braces for the native window: generate the report if absent
+ // (same builder as the download route), then reveal the file in Finder
+ // via the existing /output/reveal endpoint.
+ (function(){
+  var b=document.getElementById('rev-report');
+  if(!b)return;
+  b.addEventListener('click',function(){
+    var t=b.textContent;
+    b.disabled=true;b.textContent='Preparing…';
+    fetch('/api/retro/'+encodeURIComponent(b.dataset.season)+'/report_path')
+      .then(function(r){if(!r.ok)throw new Error('report unavailable');
+        return r.json();})
+      .then(function(d){return fetch('/output/reveal',{method:'POST',
+        body:new URLSearchParams({path:d.path})});})
+      .then(function(){b.disabled=false;b.textContent=t;})
+      .catch(function(){b.disabled=false;b.textContent=t;});
+  });
+ })();
+</script>
 <div class="grid2">
  {% for m, v in heads.items() %}
  <div class="card"><h2>{{ m }}</h2><div class="big
@@ -58,6 +84,8 @@
     <div class="row" style="margin:.2rem 0 .4rem">
      <select id="fd-loc" aria-label="Forecast location"
        style="width:auto;min-width:230px;max-width:100%"></select>
+     <label class="ck" style="margin:0"><input type="checkbox" id="fd-lock"
+       checked> Lock axes</label>
     </div>
     <div class="fdmodels" id="fd-models"></div>
     <div id="fd-plot"></div>
@@ -69,6 +97,8 @@
    <table id="pb-stats"><thead><tr><th>Model</th><th class="num">Week</th>
     <th class="num">Cumulative</th></tr></thead><tbody></tbody></table>
    <p class="hint" id="pb-status"></p>
+   <p class="hint" id="pb-offhint" hidden>official comparators appear after
+    Update data fetches their submissions</p>
    <p class="hint">relWIS below 1 beats the CDC FluSight baseline. Week scores
     the current forecast's cells; cumulative pools every week through the
     playback position.</p>
@@ -99,17 +129,29 @@
  const scrub = document.getElementById('pb-scrub');
  const P = {idx: +scrub.value || 0, playing: false, timer: null, view: 'map',
             loc: null, built: false, on: {}, pl: null};
- let ALLM = [], OFFS = [];
+ // the two CDC comparators are a fixed part of the UI: their toggles exist
+ // even when a week's payload carries no official submissions yet
+ const OFFICIALS = ['FluSight-baseline', 'FluSight-ensemble'];
+ let ALLM = [], OFFS = OFFICIALS.slice();
 
- // ours: cyan family plus gold; officials: greys, drawn dashed
+ // ours: cyan family plus gold, solid; officials: greys, dashed or dotted.
+ // Display names keep the two ensembles unmistakable in the legend, the
+ // model toggles, and the stats table.
  function colorOf(m){
    const ours = {ensemble: css('--gold'), pf: css('--slate') || '#6E8FD0',
                  analogue: '#FFC72C', pf2s: '#2BB5A0'};
+   if(m === 'FluSight-ensemble') return '#AAB1C9';
    return ours[m] || css('--mut');
  }
  function dashOf(m){
    return m === 'FluSight-baseline' ? 'dot'
         : m === 'FluSight-ensemble' ? 'dash' : 'solid';
+ }
+ function nameOf(m){
+   const names = {ensemble: 'NAU ensemble',
+                  'FluSight-ensemble': 'FluSight ensemble (official)',
+                  'FluSight-baseline': 'FluSight baseline (official)'};
+   return names[m] || m;
  }
  function rgba(c, a){
    if(c && c[0] === '#' && c.length === 7){
@@ -122,16 +164,24 @@
  const addDays = (iso, n) => {const d = new Date(iso + 'T00:00:00Z');
    d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10);};
 
- // ---- playback payload cache, with in-flight dedupe ----
- const PAY = {}, PPROM = {};
+ // ---- playback payload cache, with in-flight dedupe. A failed fetch keeps
+ // the server's own message (or the network error) in PERR so the panel can
+ // say what actually went wrong instead of going blank ----
+ const PAY = {}, PPROM = {}, PERR = {};
  function ensurePayload(w){
    if(w in PAY) return Promise.resolve(PAY[w]);
    if(PPROM[w]) return PPROM[w];
    PPROM[w] = fetch('/api/retro/' + encodeURIComponent(SEASON)
                     + '/playback/' + encodeURIComponent(w))
-     .then(r => {if(!r.ok) throw new Error(String(r.status)); return r.json();})
-     .then(d => {PAY[w] = d; return d;})
-     .catch(() => {PAY[w] = null; return null;})
+     .then(r => r.text().then(t => {
+       if(!r.ok) throw new Error((t || '').trim().slice(0, 300)
+                                 || ('HTTP ' + r.status));
+       return JSON.parse(t);
+     }))
+     .then(d => {PAY[w] = d; delete PERR[w]; return d;})
+     .catch(e => {PAY[w] = null;
+                  PERR[w] = (e && e.message) || 'fetch failed';
+                  return null;})
      .finally(() => {delete PPROM[w];});
    return PPROM[w];
  }
@@ -182,7 +232,7 @@
  function buildControls(pl){
    if(P.built) return;
    P.built = true;
-   OFFS = Object.keys(pl.official || {});
+   OFFS = OFFICIALS.slice();
    const ours = ['ensemble', 'pf', 'analogue', 'pf2s']
      .filter(m => (pl.models || {})[m]);
    ALLM = ours.concat(OFFS);
@@ -192,8 +242,7 @@
    box.innerHTML = ALLM.map(m =>
      '<label class="ck"><input type="checkbox" data-m="' + m + '"'
      + (P.on[m] ? ' checked' : '') + '> <span class="sw" style="background:'
-     + colorOf(m) + '"></span>' + m
-     + (OFFS.indexOf(m) >= 0 ? ' (official)' : '') + '</label>').join('');
+     + colorOf(m) + '"></span>' + nameOf(m) + '</label>').join('');
    box.querySelectorAll('input').forEach(c => c.addEventListener('change', () => {
      P.on[c.dataset.m] = c.checked;
      if(P.view === 'fc') drawFC(); else renderStats(P.pl);
@@ -214,21 +263,24 @@
    P.pl = pl || null;
    if(pl) buildControls(pl);
    const tb = document.querySelector('#pb-stats tbody');
-   const fmt = v => v == null
-     ? '<td class="num hint">n/a</td>'
-     : '<td class="num ' + (v < 1 ? 'ok' : 'bad') + '">' + v.toFixed(3) + '</td>';
+   // a missing score is quiet "pending", never NaN or a crashed panel
+   const fmt = v => (typeof v === 'number' && isFinite(v))
+     ? '<td class="num ' + (v < 1 ? 'ok' : 'bad') + '">' + v.toFixed(3) + '</td>'
+     : '<td class="num hint">pending</td>';
    const rows = [];
    for(const m of ALLM){
      if(!P.on[m]) continue;
      const st = pl && pl.stats ? pl.stats[m] : null;
      rows.push('<tr><td><span class="sw" style="background:' + colorOf(m)
-       + '"></span>' + m + '</td>' + fmt(st ? st.week_rel : null)
+       + '"></span>' + nameOf(m) + '</td>' + fmt(st ? st.week_rel : null)
        + fmt(st ? st.cum_rel : null) + '</tr>');
    }
    tb.innerHTML = rows.join('')
      || '<tr><td colspan="3" class="hint">no models enabled</td></tr>';
    document.getElementById('pb-status').textContent =
-     pl ? '' : 'stats unavailable for this week';
+     pl ? '' : (PERR[WEEKS[P.idx]] || 'stats unavailable for this week');
+   document.getElementById('pb-offhint').hidden =
+     !pl || Object.keys(pl.official || {}).length > 0;
  }
 
  // ---- forecast fan for one model: median plus 50% and 90% bands ----
@@ -254,12 +306,36 @@
        fill: 'tonexty', fillcolor: rgba(col, a),
        showlegend: false, hoverinfo: 'skip', legendgroup: m});
    };
-   band(hi95, lo5, .10);
-   band(hi75, lo25, .18);
-   out.push({x: X, y: pad(med), mode: 'lines+markers', name: m,
+   // ours: full bands; the official ensemble: a very faint band; the
+   // official baseline: a bare dotted median, no band at all
+   const official = OFFS.indexOf(m) >= 0;
+   if(m !== 'FluSight-baseline'){
+     band(hi95, lo5, official ? .05 : .10);
+     band(hi75, lo25, official ? .08 : .18);
+   }
+   out.push({x: X, y: pad(med), mode: 'lines+markers', name: nameOf(m),
      line: {color: col, width: 2.2, dash: dashOf(m)}, marker: {size: 5},
      legendgroup: m});
    return out;
+ }
+
+ // ---- axis lock: fixed ranges per location so playback never jumps.
+ // x spans the season window (first truth date to last asof + 28 days);
+ // y spans [0, 1.15 x the season's truth peak for the location]. Computed
+ // once from the payload's full-season truth series and reused until the
+ // location changes ----
+ const AXR = {loc: null, x: null, y: null};
+ function lockRanges(pl, loc){
+   if(AXR.loc === loc && AXR.x) return AXR;
+   const truth = (pl.truth || {})[loc] || [];
+   AXR.loc = loc; AXR.x = null; AXR.y = null;
+   if(truth.length){
+     let mx = 0;
+     truth.forEach(r => {if(r[1] > mx) mx = r[1];});
+     AXR.x = [truth[0][0], addDays(WEEKS[WEEKS.length - 1], 28)];
+     AXR.y = [0, 1.15 * (mx || 1)];
+   }
+   return AXR;
  }
 
  // ---- forecast detail: settled truth, a now marker, fans per model ----
@@ -274,7 +350,7 @@
    renderStats(pl);
    if(!pl){
      if(el.data) Plotly.purge(el);
-     msg.textContent = 'forecast data unavailable for ' + w;
+     msg.textContent = PERR[w] || ('forecast data unavailable for ' + w);
      return;
    }
    msg.textContent = '';
@@ -303,12 +379,20 @@
    if(futX.length) traces.push({x: futX, y: futY, mode: 'lines',
      name: 'truth beyond now', opacity: .65,
      line: {color: css('--ink'), width: 1.3, dash: 'dot'}});
+   // locked: explicit ranges on every redraw, so nothing jumps between
+   // weeks. Unlocked: autoscale per frame (the old behavior)
+   const lock = document.getElementById('fd-lock').checked
+     ? lockRanges(pl, loc) : null;
+   const xa = {gridcolor: css('--line')};
+   const ya = {gridcolor: css('--line'), rangemode: 'tozero'};
+   if(lock && lock.x){xa.range = lock.x.slice(); xa.autorange = false;}
+   if(lock && lock.y){ya.range = lock.y.slice(); ya.autorange = false;}
    const L = {title: {text: loc + ' · forecasts as of ' + w, font: {size: 14}},
      height: 400, margin: {l: 50, r: 20, t: 34, b: 40},
      paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
      font: {color: css('--ink')},
-     xaxis: {gridcolor: css('--line')},
-     yaxis: {gridcolor: css('--line'), rangemode: 'tozero'},
+     xaxis: xa,
+     yaxis: ya,
      shapes: [{type: 'line', x0: w, x1: w, yref: 'paper', y0: 0, y1: 1,
                line: {color: css('--mut'), width: 1.2, dash: 'dot'}}],
      annotations: [{x: w, yref: 'paper', y: 1, yanchor: 'bottom',
@@ -370,6 +454,16 @@
    setPlay(!P.playing);
  };
  document.getElementById('pb-speed').onchange = () => {if(P.playing) setPlay(true);};
+ // axis lock defaults ON and persists across visits; localStorage can be
+ // unavailable (private windows), so every touch is guarded
+ const lockBox = document.getElementById('fd-lock');
+ try{lockBox.checked = localStorage.getItem('flubnf-axis-lock') !== '0';}
+ catch(e){}
+ lockBox.addEventListener('change', () => {
+   try{localStorage.setItem('flubnf-axis-lock', lockBox.checked ? '1' : '0');}
+   catch(e){}
+   if(P.view === 'fc') drawFC();
+ });
  scrub.addEventListener('input', () => seek(+scrub.value, true));
  document.getElementById('tab-map').onclick = () => setView('map');
  document.getElementById('tab-fc').onclick = () => setView('fc');

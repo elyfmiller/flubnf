@@ -6,7 +6,7 @@
   <p class="hint">{{ n_vintages }} archived truth vintages</p>
   <form method="post" action="/freshness"><button class="quiet">Check for new data</button></form>
   <form method="post" action="/data/pull" onsubmit="return confirm('Pull the FluSight hub now?')">
-   <button class="gold">Update data</button></form>
+   <button class="gold" data-guard="data-pull">Update data</button></form>
   {% if freshness %}<p class="{% if freshness.is_fresh %}ok{% else %}warn{% endif %}">
    {{ freshness.detail }}</p>{% endif %}
  </div></div>

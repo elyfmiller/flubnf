@@ -43,6 +43,19 @@
 <main>{% set _f = pop_flash() %}{% if _f %}
  <div class="banner" role="status">{{ _f }}</div>
 {% endif %}{% block content %}{% endblock %}</main>
+<div id="guard-modal" class="modal-back" hidden>
+ <div class="modal card" role="dialog" aria-modal="true"
+      aria-labelledby="guard-title">
+  <h2 id="guard-title">A run is in progress</h2>
+  <p id="guard-msg"></p>
+  <p class="hint">Retrospective weeks already completed are kept and resume
+   later; a console run stopped now restarts from scratch.</p>
+  <div class="row">
+   <button type="button" class="quiet" id="guard-cancel">Cancel</button>
+   <button type="button" class="gold" id="guard-stop">Stop run and proceed</button>
+  </div>
+ </div>
+</div>
 <script>
  // external links must never navigate the app shell away: the native window
  // (pywebview/WKWebView) has no back control, so a plain external anchor is a
@@ -83,5 +96,88 @@
     var f=b.dataset.fs;
     document.documentElement.style.fontSize=m[f];
     localStorage.setItem('fontsize',f);mark(f);};});})();
+ // per-button run-interference guards: a control marked data-guard checks
+ // /api/busy on click. Only a genuine conflict raises the modal; otherwise
+ // the click proceeds untouched (including any onsubmit confirm it had).
+ // Guard kinds and their conflicts:
+ //   console-run: starting a console run while a retrospective is fitting
+ //   retro-run:   starting a retrospective while a console run is fitting,
+ //                or while another retrospective runs
+ //   data-pull:   Update data while a fit is in its preparation phase
+ //                (phase contains "materializing" or "preparing"; a pull
+ //                during pure fitting is safe and passes through)
+ (function(){
+  var back=document.getElementById('guard-modal'),
+      msg=document.getElementById('guard-msg'),
+      stopBtn=document.getElementById('guard-stop'),
+      cancel=document.getElementById('guard-cancel'),
+      pending=null;
+  function retroConflict(b){
+    var seasons=Object.keys(b.retro||{});
+    return seasons.length?{label:'retrospective '+seasons.join(', '),
+      stop:'/retro/stop',
+      done:function(x){return Object.keys(x.retro||{}).length===0;}}:null;
+  }
+  function consoleConflict(b){
+    return b.console_run?{label:'console run ('+b.console_run+')',
+      stop:'/run/stop',
+      done:function(x){return !x.console_run;}}:null;
+  }
+  function conflictFor(kind,b){
+    if(kind==='console-run') return retroConflict(b);
+    if(kind==='retro-run') return consoleConflict(b)||retroConflict(b);
+    if(kind==='data-pull'&&/materializing|preparing/i.test(b.phase||''))
+      return consoleConflict(b);
+    return null;
+  }
+  function proceed(el){
+    el.dataset.guardOk='1';
+    el.click();
+    delete el.dataset.guardOk;
+  }
+  function close(){back.hidden=true;window.GUARD_BUSY=false;pending=null;
+    stopBtn.disabled=false;stopBtn.textContent='Stop run and proceed';}
+  cancel.onclick=close;
+  back.addEventListener('click',function(e){if(e.target===back)close();});
+  addEventListener('keydown',function(e){
+    if(e.key==='Escape'&&!back.hidden&&!stopBtn.disabled)close();});
+  stopBtn.onclick=function(){
+    if(!pending)return;
+    var p=pending,t0=Date.now();
+    stopBtn.disabled=true;stopBtn.textContent='Stopping…';
+    msg.textContent='Stopping the '+p.conflict.label
+      +'… waiting for it to release the engine.';
+    fetch(p.conflict.stop,{method:'POST'}).catch(function(){});
+    (function poll(){
+      if(pending!==p)return;                    // modal was dismissed
+      fetch('/api/busy').then(function(r){return r.json();})
+       .then(function(b){
+        if(pending!==p)return;
+        if(p.conflict.done(b)){var el=p.el;close();proceed(el);return;}
+        if(Date.now()-t0>15*60*1000){
+          msg.textContent='The run has not stopped yet. Adaptive MCMC '
+            +'cannot be stopped mid-run; other runs stop at the next safe '
+            +'point. Close this and try again once the run ends.';
+          stopBtn.disabled=false;stopBtn.textContent='Stop run and proceed';
+          return;}
+        setTimeout(poll,1500);
+       }).catch(function(){setTimeout(poll,3000);});
+    })();
+  };
+  addEventListener('click',function(e){
+    var el=e.target&&e.target.closest?e.target.closest('[data-guard]'):null;
+    if(!el||el.dataset.guardOk)return;
+    e.preventDefault();e.stopPropagation();
+    fetch('/api/busy').then(function(r){return r.json();})
+     .then(function(b){
+      var c=conflictFor(el.dataset.guard,b);
+      if(!c){proceed(el);return;}
+      pending={el:el,conflict:c};
+      msg.textContent='This will stop the running '+c.label+'.';
+      window.GUARD_BUSY=true;back.hidden=false;
+     })
+     .catch(function(){proceed(el);}); // busy check down: never block the user
+  },true);
+ })();
 </script>
 </body></html>

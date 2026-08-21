@@ -1453,6 +1453,14 @@ def app_window(port: int = 8710):
         raise SystemExit(1)
     import socket
     import time
+    # pywebview refuses downloads unless this is set (verified against the
+    # installed pywebview 6.2.1: webview.settings['ALLOW_DOWNLOADS'] defaults
+    # to False in webview/__init__.py; platforms/cocoa.py honors it both for
+    # anchors carrying the download attribute, which become a WKDownload with
+    # a save panel, and for attachment responses WKWebView cannot display).
+    # Without it the "Download season report" link is a dead end in the
+    # native window.
+    webview.settings['ALLOW_DOWNLOADS'] = True
     threading.Thread(target=lambda: uvicorn.run("app.ui.server:app",
                      port=port, host="127.0.0.1", log_level="warning"),
                      daemon=True).start()

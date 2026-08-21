@@ -319,6 +319,25 @@ def run_stop():
     return RedirectResponse("/forecast#results", status_code=303)
 
 
+@app.get("/api/busy")
+def api_busy():
+    """Per-button guard support: what would a click interrupt right now?
+    console_run is the running console run's label (null when idle), retro
+    maps season to status for seasons currently running or stopping, and
+    phase is the console run's current phase string. The Update-data guard
+    fires only while the phase contains 'materializing' or 'preparing':
+    those phases read hub files that a pull mutates, whereas a pull during
+    pure fitting is safe."""
+    running = _status.get("running")
+    return {
+        "console_run": ((_status.get("run_label") or str(running))
+                        if running else None),
+        "retro": {s: st for s, st in _retro_status.items()
+                  if st in ("running", "stopping")},
+        "phase": _status.get("phase", "") or "",
+    }
+
+
 @app.post("/data/pull")
 def data_pull():
     """Explicit hub update -- looking never pulls; pulling is a button."""
@@ -1227,6 +1246,11 @@ def _season_root(season: str) -> tuple:
         return seal_root, True
     return app_root, False
 _retro_status: dict = {}
+_retro_stop: set = set()
+
+
+class _RetroStopRequested(Exception):
+    """Raised inside the season worker between weeks when a stop was asked."""
 
 
 def _retro_state_names() -> list:
@@ -1257,7 +1281,8 @@ def retro_index(request: Request):
         done = len(list((root / "weeks").glob("*/samples.json"))) if root.exists() else 0
         seasons.append({"name": s, "total": total, "done": done,
                         "seal": is_seal,
-                        "running": _retro_status.get(s) == "running",
+                        "running": _retro_status.get(s) in ("running",
+                                                            "stopping"),
                         "scored": (root / "scores.json").exists()})
     from flubnf.settings import PY_ENGINE, PYBNF
     return templates.TemplateResponse(request, "retro.html",
@@ -1271,24 +1296,53 @@ def _retro_bg(season: str, locations: list, width: int,
               replicates: int = 3, particles: int = 10_000):
     from app.core import retro
     _retro_status[season] = "running"
+    _retro_stop.discard(season)     # no stale stop flag from a past run
     guard = _sleep_guard()          # overnight replays must outlive the lid
     try:
         root = RETRO_ROOT / season
+
+        def _tick(_asof):
+            # run_season calls this after every week: the clean stop point.
+            # Completed weeks are on disk and a restarted replay skips them.
+            if season in _retro_stop:
+                raise _RetroStopRequested()
         retro.run_season(root, season, locations, replicates=replicates,
-                         particles=particles, width=width)
+                         particles=particles, width=width, progress=_tick)
         # equal, never-fitted member weights (the sealed recipe)
         df = retro.score_season(root, season,
                                 ensemble_weights={"pf": 0.5, "analogue": 0.5})
         df.to_json(root / "scores.json")
         _retro_status[season] = "done"
+    except _RetroStopRequested:
+        # completed weeks stay; the results page scores whatever exists
+        _retro_status[season] = "stopped"
     except Exception as e:
         _retro_status[season] = f"error: {str(e)[:150]}"
     finally:
+        _retro_stop.discard(season)
         if guard is not None:
             try:
                 guard.terminate()
             except Exception:
                 pass
+
+
+@app.post("/retro/stop")
+def retro_stop():
+    """Ask every running season replay to stop after its current week.
+    Completed weeks stay on disk; a restarted replay resumes where this one
+    left off (a completed week is never redone)."""
+    stopping = []
+    for season, st in list(_retro_status.items()):
+        if st == "running":
+            _retro_stop.add(season)
+            _retro_status[season] = "stopping"
+            stopping.append(season)
+    if stopping:
+        _flash("Stopping " + ", ".join(sorted(stopping)) + " after the "
+               "current week. Completed weeks are kept; the replay resumes "
+               "from there next time.")
+    return RedirectResponse("/retro", status_code=303)
 
 
 @app.post("/retro/run")
@@ -1300,7 +1354,7 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
               width: int = Form(4),
               engine: str = Form("pf")):
     from app.core.retro import available_seasons
-    if _retro_status.get(season) == "running":
+    if _retro_status.get(season) in ("running", "stopping"):
         _flash(f"{season} is already replaying. One season worker runs at a time.")
         return RedirectResponse("/retro", status_code=303)
     if season not in available_seasons():
@@ -1510,6 +1564,22 @@ def retro_season_report(season: str):
         return PlainTextResponse(str(e), status_code=404)
     return FileResponse(p, filename=p.name, media_type="text/html",
                         content_disposition_type="attachment")
+
+
+@app.get("/api/retro/{season}/report_path")
+def api_retro_report_path(season: str):
+    """Build the season report if absent (same builder as the download
+    route, cached by mtime) and return its absolute path. The results
+    page's Reveal-in-Finder button feeds this path to /output/reveal, the
+    belt-and-braces route for the native window."""
+    from fastapi.responses import PlainTextResponse
+    from app.core import playback, report_season
+    root, _is_seal = _season_root(season)
+    try:
+        p = report_season.build_season_report(root, season)
+    except playback.UnknownWeek as e:
+        return PlainTextResponse(str(e), status_code=404)
+    return {"path": str(p)}
 
 
 @app.post("/run")

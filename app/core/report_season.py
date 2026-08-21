@@ -163,6 +163,9 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
    <div class="row" style="margin:.2rem 0 .4rem">
     <select id="fd-loc" aria-label="Forecast location"
       style="width:auto;min-width:230px;max-width:100%"></select>
+    <label style="display:inline-flex;align-items:center;gap:.35rem;
+      font-size:.85rem;cursor:pointer"><input type="checkbox" id="fd-lock"
+      checked> Lock axes</label>
    </div>
    <div class="fdmodels" id="fd-models"></div>
    <div id="fd-plot"></div>
@@ -173,6 +176,8 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
    <table id="pb-stats"><thead><tr><th>Model</th><th class="num">Week</th>
     <th class="num">Cumulative</th></tr></thead><tbody></tbody></table>
    <p class="hint" id="pb-status"></p>
+   <p class="hint" id="pb-offhint" hidden>official comparators appear after
+    Update data fetches their submissions</p>
    <p class="hint">relWIS below 1 beats the CDC FluSight baseline. Week
     scores the current forecast's cells; cumulative pools every week through
     the playback position.</p>
@@ -195,12 +200,27 @@ var PCONF = {responsive: true, displaylogo: false, scrollZoom: true,
              doubleClick: 'reset'};
 var scrub = document.getElementById('pb-scrub');
 var P = {idx: 0, playing: false, timer: null, loc: null, on: {}};
-var ALLM = [], OFFS = [];
+// the two CDC comparators are a fixed part of the UI: their toggles exist
+// even when no week's payload carries official submissions
+var OFFICIALS = ['FluSight-baseline', 'FluSight-ensemble'];
+var ALLM = [], OFFS = OFFICIALS.slice();
 
-function colorOf(m){ return COLORS[m] || MUT; }
+// ours: brand colors, solid; officials: greys, dashed or dotted. Display
+// names keep the two ensembles unmistakable in the legend, the model
+// toggles, and the stats table.
+function colorOf(m){
+  if(m === 'FluSight-ensemble') return '#C7CCDD';
+  return COLORS[m] || MUT;
+}
 function dashOf(m){
   return m === 'FluSight-baseline' ? 'dot'
        : m === 'FluSight-ensemble' ? 'dash' : 'solid';
+}
+function nameOf(m){
+  var names = {ensemble: 'NAU ensemble',
+               'FluSight-ensemble': 'FluSight ensemble (official)',
+               'FluSight-baseline': 'FluSight baseline (official)'};
+  return names[m] || m;
 }
 function rgba(c, a){
   var n = parseInt(c.slice(1), 16);
@@ -224,6 +244,7 @@ function addDays(iso, n){
     Object.keys(pl.official || {}).forEach(function(k){ offs[k] = 1; });
     (pl.locations || []).forEach(function(l){ locs[l] = 1; });
   });
+  OFFICIALS.forEach(function(k){ offs[k] = 1; });
   OFFS = Object.keys(offs).sort();
   var ours = ['ensemble', 'pf', 'analogue', 'pf2s']
     .filter(function(k){ return models[k]; });
@@ -234,8 +255,7 @@ function addDays(iso, n){
   box.innerHTML = ALLM.map(function(k){
     return '<label><input type="checkbox" data-m="' + k + '"'
       + (P.on[k] ? ' checked' : '') + '> <span class="sw" style="background:'
-      + colorOf(k) + '"></span>' + k
-      + (OFFS.indexOf(k) >= 0 ? ' (official)' : '') + '</label>';
+      + colorOf(k) + '"></span>' + nameOf(k) + '</label>';
   }).join('');
   box.querySelectorAll('input').forEach(function(c){
     c.addEventListener('change', function(){
@@ -257,24 +277,27 @@ function addDays(iso, n){
 // ---- live stats table: per enabled model, this week and cumulative ----
 function renderStats(pl){
   var tb = document.querySelector('#pb-stats tbody');
+  // a missing score is quiet "pending", never NaN or a crashed panel
   var fmt = function(v){
-    return v == null
-      ? '<td class="num hint">n/a</td>'
-      : '<td class="num ' + (v < 1 ? 'ok' : 'bad') + '">'
-        + v.toFixed(3) + '</td>';
+    return (typeof v === 'number' && isFinite(v))
+      ? '<td class="num ' + (v < 1 ? 'ok' : 'bad') + '">'
+        + v.toFixed(3) + '</td>'
+      : '<td class="num hint">pending</td>';
   };
   var rows = [];
   ALLM.forEach(function(m){
     if(!P.on[m]) return;
     var st = pl && pl.stats ? pl.stats[m] : null;
     rows.push('<tr><td><span class="sw" style="background:' + colorOf(m)
-      + '"></span>' + m + '</td>' + fmt(st ? st.week_rel : null)
+      + '"></span>' + nameOf(m) + '</td>' + fmt(st ? st.week_rel : null)
       + fmt(st ? st.cum_rel : null) + '</tr>');
   });
   tb.innerHTML = rows.join('')
     || '<tr><td colspan="3" class="hint">no models enabled</td></tr>';
   document.getElementById('pb-status').textContent =
     pl ? '' : 'stats unavailable for this week';
+  document.getElementById('pb-offhint').hidden =
+    !pl || Object.keys(pl.official || {}).length > 0;
 }
 
 // ---- forecast fan for one model: median plus 50% and 90% bands ----
@@ -304,12 +327,36 @@ function fan(m, byH, w, ax, ay){
       fill: 'tonexty', fillcolor: rgba(col, a),
       showlegend: false, hoverinfo: 'skip', legendgroup: m});
   };
-  band(hi95, lo5, .10);
-  band(hi75, lo25, .18);
-  out.push({x: X, y: pad(med), mode: 'lines+markers', name: m,
+  // ours: full bands; the official ensemble: a very faint band; the
+  // official baseline: a bare dotted median, no band at all
+  var official = OFFS.indexOf(m) >= 0;
+  if(m !== 'FluSight-baseline'){
+    band(hi95, lo5, official ? .05 : .10);
+    band(hi75, lo25, official ? .08 : .18);
+  }
+  out.push({x: X, y: pad(med), mode: 'lines+markers', name: nameOf(m),
     line: {color: col, width: 2.2, dash: dashOf(m)}, marker: {size: 5},
     legendgroup: m});
   return out;
+}
+
+// ---- axis lock: fixed ranges per location so playback never jumps.
+// x spans the season window (first truth date to last asof + 28 days);
+// y spans [0, 1.15 x the season's truth peak for the location]. Computed
+// once from the payload's full-season truth series and reused until the
+// location changes ----
+var AXR = {loc: null, x: null, y: null};
+function lockRanges(pl, loc){
+  if(AXR.loc === loc && AXR.x) return AXR;
+  var truth = (pl.truth || {})[loc] || [];
+  AXR.loc = loc; AXR.x = null; AXR.y = null;
+  if(truth.length){
+    var mx = 0;
+    truth.forEach(function(r){ if(r[1] > mx) mx = r[1]; });
+    AXR.x = [truth[0][0], addDays(WEEKS[WEEKS.length - 1], 28)];
+    AXR.y = [0, 1.15 * (mx || 1)];
+  }
+  return AXR;
 }
 
 // ---- forecast detail: settled truth, a now marker, fans per model ----
@@ -350,13 +397,21 @@ function draw(){
   if(futX.length) traces.push({x: futX, y: futY, mode: 'lines',
     name: 'truth beyond now', opacity: .65,
     line: {color: INK, width: 1.3, dash: 'dot'}});
+  // locked: explicit ranges on every redraw, so nothing jumps between
+  // weeks. Unlocked: autoscale per frame
+  var lock = document.getElementById('fd-lock').checked
+    ? lockRanges(pl, loc) : null;
+  var xa = {gridcolor: LINE};
+  var ya = {gridcolor: LINE, rangemode: 'tozero'};
+  if(lock && lock.x){ xa.range = lock.x.slice(); xa.autorange = false; }
+  if(lock && lock.y){ ya.range = lock.y.slice(); ya.autorange = false; }
   var L = {title: {text: loc + ' \\u00b7 forecasts as of ' + w,
                    font: {size: 14}},
     height: 420, margin: {l: 50, r: 20, t: 34, b: 40},
     paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
     font: {color: INK},
-    xaxis: {gridcolor: LINE},
-    yaxis: {gridcolor: LINE, rangemode: 'tozero'},
+    xaxis: xa,
+    yaxis: ya,
     shapes: [{type: 'line', x0: w, x1: w, yref: 'paper', y0: 0, y1: 1,
               line: {color: MUT, width: 1.2, dash: 'dot'}}],
     annotations: [{x: w, yref: 'paper', y: 1, yanchor: 'bottom',
@@ -395,6 +450,17 @@ document.getElementById('pb-play').onclick = function(){
 document.getElementById('pb-speed').onchange = function(){
   if(P.playing) setPlay(true);
 };
+// axis lock defaults ON and persists across openings; localStorage can be
+// unavailable (file: contexts, private windows), so every touch is guarded
+var lockBox = document.getElementById('fd-lock');
+try{ lockBox.checked = localStorage.getItem('flubnf-axis-lock') !== '0'; }
+catch(e){}
+lockBox.addEventListener('change', function(){
+  try{
+    localStorage.setItem('flubnf-axis-lock', lockBox.checked ? '1' : '0');
+  }catch(e){}
+  draw();
+});
 scrub.addEventListener('input', function(){ seek(+scrub.value, true); });
 addEventListener('keydown', function(e){
   if(e.altKey || e.ctrlKey || e.metaKey) return;

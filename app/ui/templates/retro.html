@@ -1,5 +1,12 @@
 {% extends "base.html" %}{% block title %}FluBNF · Retrospective{% endblock %}
-{% block head %}{% if seasons | selectattr("running") | list %}<meta http-equiv="refresh" content="15">{% endif %}{% endblock %}
+{% block head %}{% if seasons | selectattr("running") | list %}<script>
+ // progress auto-refresh while a replay runs. A script timer, not a meta
+ // refresh: it pauses while the run-interference guard modal is open, so a
+ // pending stop-and-proceed is never wiped mid-wait by a page reload.
+ (function tick(){setTimeout(function(){
+   if(window.GUARD_BUSY){tick();return;}
+   location.reload();},15000);})();
+</script>{% endif %}{% endblock %}
 {% block content %}
 <h1>Retrospective</h1>
 <p class="sub">Replay a past season exactly as the competition unfolded: each
@@ -34,7 +41,9 @@ are computed later, against the values the truth data settled to.</p>
    <select name="engine"><option value="pf">PF (particle filter)</option></select>
    <p class="hint">The two-strain member joins the preset list once full-grid
    validation passes; its state-panel validation is complete.</p>
-   <button class="gold" {% if not engine_ok or (seasons | selectattr("running") | list) %}disabled{% endif %}>
+   {# a running season no longer disables this button: the per-button guard
+      checks /api/busy on click and offers stop-and-proceed instead #}
+   <button class="gold" data-guard="retro-run" {% if not engine_ok %}disabled{% endif %}>
      Run retrospective</button>
   </form>
   <script>
