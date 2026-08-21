@@ -320,5 +320,17 @@ details.intro[open] > summary{margin-bottom:.15rem}
   display:flex;align-items:center;justify-content:center}
 .modal-back[hidden]{display:none}
 .modal{max-width:440px;width:100%;margin:0}
-.modal .row{justify-content:flex-end;margin-top:.6rem}
+/* the start-over prompt carries four choices; give them room to sit on one
+   line and let them wrap rather than overflow when they cannot */
+.modal.wide{max-width:620px}
+.modal .row{justify-content:flex-end;margin-top:.6rem;flex-wrap:wrap}
 .modal .row button{margin-top:0}
+/* .row sets display:flex, which outranks the user agent's [hidden] rule:
+   without this the hidden second row would show alongside the first */
+.row[hidden]{display:none}
+/* archived runs on the retro index: secondary entries under their season */
+.archrow{display:flex;gap:.6rem;align-items:baseline;flex-wrap:wrap;
+  padding:.35rem 0;border-top:1px solid var(--line)}
+.archrow .grow{flex:1;min-width:12rem}
+.archrow form{display:inline;margin:0}
+.archrow button{margin-top:0;padding:.22rem .6rem;font-size:.78rem}

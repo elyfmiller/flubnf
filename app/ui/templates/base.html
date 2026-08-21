@@ -62,6 +62,29 @@
   </div>
  </div>
 </div>
+{# The start-over prompt: the same modal component as the run-interference
+   guard above, with the four choices a season that already has results
+   offers. It doubles as the confirmation shell for any destructive control
+   (window.FluBNFConfirm), so a delete confirmation looks and behaves like
+   every other stop-and-think in the application. #}
+<div id="startover-modal" class="modal-back" hidden>
+ <div class="modal wide card" role="dialog" aria-modal="true"
+      aria-labelledby="so-title">
+  <h2 id="so-title">This season already has results</h2>
+  <p id="so-msg"></p>
+  <p class="hint" id="so-hint"></p>
+  <div class="row" id="so-choice">
+   <button type="button" class="quiet" id="so-cancel">Cancel</button>
+   <button type="button" class="quiet" id="so-resume">Resume</button>
+   <button type="button" class="quiet" id="so-discard">Discard and start fresh</button>
+   <button type="button" class="gold" id="so-archive">Archive and start fresh</button>
+  </div>
+  <div class="row" id="so-confirm" hidden>
+   <button type="button" class="quiet" id="so-cancel2">Cancel</button>
+   <button type="button" class="gold" id="so-ok">Delete permanently</button>
+  </div>
+ </div>
+</div>
 <script>
  // external links must never navigate the app shell away: the native window
  // (pywebview/WKWebView) has no back control, so a plain external anchor is a
@@ -144,6 +167,97 @@
   function close(){back.hidden=true;window.GUARD_BUSY=false;pending=null;
     stopBtn.disabled=false;stopBtn.textContent='Stop run and proceed';}
   cancel.onclick=close;
+
+  // ---- start-over prompt ----------------------------------------------
+  // A control marked data-startover asks the server what pressing it would
+  // actually do before it does it. With no completed weeks the click passes
+  // straight through: no friction on the common path. With results, the
+  // four choices appear, and Discard needs a second confirmation before the
+  // form is allowed to carry mode=discard.
+  var so={back:document.getElementById('startover-modal'),
+          title:document.getElementById('so-title'),
+          msg:document.getElementById('so-msg'),
+          hint:document.getElementById('so-hint'),
+          choice:document.getElementById('so-choice'),
+          confirmRow:document.getElementById('so-confirm'),
+          resume:document.getElementById('so-resume'),
+          discard:document.getElementById('so-discard'),
+          archive:document.getElementById('so-archive'),
+          ok:document.getElementById('so-ok'),
+          el:null,info:null,onOk:null};
+  function soForm(el){return el.form||(el.closest?el.closest('form'):null);}
+  function soClose(){so.back.hidden=true;window.GUARD_BUSY=false;
+    so.el=null;so.info=null;so.onOk=null;
+    so.choice.hidden=false;so.confirmRow.hidden=true;}
+  function soSubmit(mode){
+    var f=soForm(so.el),info=so.info||{};
+    if(!f){soClose();return;}
+    if(f.mode)f.mode.value=mode;
+    if(f.confirm)f.confirm.value=(mode==='discard')?(info.season||''):'';
+    so.back.hidden=true;window.GUARD_BUSY=false;
+    f.submit();                 // form.submit() bypasses this click guard
+  }
+  so.ok.onclick=function(){
+    if(so.onOk){var fn=so.onOk;soClose();fn();return;}
+    soSubmit('discard');
+  };
+  so.resume.onclick=function(){soSubmit('resume');};
+  so.archive.onclick=function(){soSubmit('archive');};
+  so.discard.onclick=function(){
+    var i=so.info||{};
+    so.title.textContent='Delete '+(i.season||'these results')+' permanently?';
+    so.msg.textContent='This deletes '+(i.weeks||0)+' completed week'
+      +(i.weeks===1?'':'s')+' of '+(i.season||'')+', with every fit, score, '
+      +'and cached payload in the tree. It cannot be undone. Archiving keeps '
+      +'the same results and still starts fresh.';
+    so.hint.textContent='';
+    so.ok.textContent='Delete permanently';
+    so.choice.hidden=true;so.confirmRow.hidden=false;
+  };
+  document.getElementById('so-cancel').onclick=soClose;
+  document.getElementById('so-cancel2').onclick=soClose;
+  so.back.addEventListener('click',function(e){if(e.target===so.back)soClose();});
+  addEventListener('keydown',function(e){
+    if(e.key==='Escape'&&!so.back.hidden)soClose();});
+  function startOverGate(el,done){
+    if(!el.dataset.startover){done();return;}
+    var f=soForm(el),season=(f&&f.season)?f.season.value:'';
+    if(!season){done();return;}
+    fetch('/api/retro/startover?season='+encodeURIComponent(season))
+     .then(function(r){return r.json();})
+     .then(function(info){
+      if(!info||!info.weeks){done();return;}   // nothing to lose: just run
+      so.el=el;so.info=info;so.onOk=null;
+      so.choice.hidden=false;so.confirmRow.hidden=true;
+      so.title.textContent='Start over on '+info.season+'?';
+      so.msg.textContent=info.season+' has '+info.weeks+' completed week'
+        +(info.weeks===1?'':'s')+' of '+info.total
+        +(info.finished?' from a run on '+info.finished:'')
+        +(info.elapsed_hms?', total wall time '+info.elapsed_hms+' (h:mm:ss)':'')
+        +'.';
+      so.hint.textContent=(info.complete
+        ? 'This season is complete, so there is nothing left to resume. '
+        : 'Resuming keeps those weeks and continues from there. ')
+        +'Archiving moves them to a timestamped copy that stays viewable in '
+        +'the season list, then runs a clean season from week one.'
+        +(info.archives?' '+info.archives+' archived run'
+          +(info.archives===1?'':'s')+' already kept.':'');
+      so.resume.hidden=!!info.complete;
+      window.GUARD_BUSY=true;so.back.hidden=false;
+     })
+     .catch(function(){done();});   // check down: never block the user
+  }
+  // Any destructive control can borrow the same shell: title, message, the
+  // button wording, and what to do on confirmation.
+  window.FluBNFConfirm=function(o){
+    so.el=null;so.info=null;so.onOk=o.onOk||null;
+    so.title.textContent=o.title||'Are you sure?';
+    so.msg.textContent=o.msg||'';
+    so.hint.textContent=o.hint||'';
+    so.ok.textContent=o.okLabel||'Delete permanently';
+    so.choice.hidden=true;so.confirmRow.hidden=false;
+    window.GUARD_BUSY=true;so.back.hidden=false;
+  };
   back.addEventListener('click',function(e){if(e.target===back)close();});
   addEventListener('keydown',function(e){
     if(e.key==='Escape'&&!back.hidden&&!stopBtn.disabled)close();});
@@ -159,7 +273,8 @@
       fetch('/api/busy').then(function(r){return r.json();})
        .then(function(b){
         if(pending!==p)return;
-        if(p.conflict.done(b)){var el=p.el;close();proceed(el);return;}
+        if(p.conflict.done(b)){var el=p.el;close();
+          startOverGate(el,function(){proceed(el);});return;}
         if(Date.now()-t0>15*60*1000){
           msg.textContent='The run has not stopped yet. Adaptive MCMC '
             +'cannot be stopped mid-run; other runs stop at the next safe '
@@ -177,12 +292,14 @@
     fetch('/api/busy').then(function(r){return r.json();})
      .then(function(b){
       var c=conflictFor(el.dataset.guard,b);
-      if(!c){proceed(el);return;}
+      // no interference: the start-over prompt gets the next word
+      if(!c){startOverGate(el,function(){proceed(el);});return;}
       pending={el:el,conflict:c};
       msg.textContent='This will stop the running '+c.label+'.';
       window.GUARD_BUSY=true;back.hidden=false;
      })
-     .catch(function(){proceed(el);}); // busy check down: never block the user
+     // busy check down: never block the user, but still offer start-over
+     .catch(function(){startOverGate(el,function(){proceed(el);});});
   },true);
  })();
 </script>

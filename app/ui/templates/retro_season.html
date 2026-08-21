@@ -4,8 +4,17 @@
 <script src="/static/quips.js"></script>
 <script src="/static/retro_progress.js"></script>{% endblock %}
 {% block content %}
-
+{# every link and fetch on this page carries the archive identifier when one
+   is in play, so the page, the playback API, and the report all read the
+   same frozen tree #}
+{% set aq = ('?archive=' ~ archive) if archive else '' %}
 <h1><span class="accent">{{ season }}</span>: {{ n_weeks }} weeks scored</h1>
+{% if archive %}
+<p class="banner" role="status"><strong>Archived run{% if archive_when %} from
+ {{ archive_when }}{% endif %}.</strong> These results were set aside so a
+ fresh replay could start; nothing here changes when the live season runs.
+ <a href="/retro/{{ season }}">Open the live {{ season }} season</a>.</p>
+{% endif %}
 {% if prog and prog.active %}
 {# a live replay, driven by the shared ticker in /static/retro_progress.js:
    the same bar, readouts, and quips the console's run card uses #}
@@ -48,9 +57,9 @@
  {# the download attribute makes the native window (WKWebView) treat the
     click as a download rather than a navigation; pywebview needs
     ALLOW_DOWNLOADS on as well, set at window launch in flubnf/cli.py #}
- <a href="/retro/{{ season }}/report" download>Download season report</a>
+ <a href="/retro/{{ season }}/report{{ aq }}" download>Download season report</a>
  <button type="button" class="quiet" id="rev-report" style="margin-top:0"
-   data-season="{{ season }}">Reveal in Finder</button>
+   data-season="{{ season }}" data-archive="{{ archive }}">Reveal in Finder</button>
  <span class="hint">One self-contained HTML file, usable offline: the season
  player with every forecast embedded. Forecast detail and stats only, no
  outlook maps.</span></p>
@@ -64,7 +73,8 @@
   b.addEventListener('click',function(){
     var t=b.textContent;
     b.disabled=true;b.textContent='Preparing…';
-    fetch('/api/retro/'+encodeURIComponent(b.dataset.season)+'/report_path')
+    fetch('/api/retro/'+encodeURIComponent(b.dataset.season)+'/report_path'
+          +(b.dataset.archive?'?archive='+encodeURIComponent(b.dataset.archive):''))
       .then(function(r){if(!r.ok)throw new Error('report unavailable');
         return r.json();})
       .then(function(d){return fetch('/output/reveal',{method:'POST',
@@ -168,6 +178,10 @@
  // fields the API defines.
  const SEASON = {{ season | tojson }};
  const WEEKS = {{ weeks | tojson }};
+ // an archived run is read through the very same routes, identified by one
+ // query parameter that every fetch below appends
+ const ARCHIVE = {{ (archive or '') | tojson }};
+ const AQ = ARCHIVE ? 'archive=' + encodeURIComponent(ARCHIVE) : '';
  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 
  // ---- playback payload cache, with in-flight dedupe. A failed fetch keeps
@@ -178,7 +192,8 @@
    if(w in PAY) return Promise.resolve(PAY[w]);
    if(PPROM[w]) return PPROM[w];
    PPROM[w] = fetch('/api/retro/' + encodeURIComponent(SEASON)
-                    + '/playback/' + encodeURIComponent(w))
+                    + '/playback/' + encodeURIComponent(w)
+                    + (AQ ? '?' + AQ : ''))
      .then(r => r.text().then(t => {
        if(!r.ok) throw new Error((t || '').trim().slice(0, 300)
                                  || ('HTTP ' + r.status));
@@ -199,7 +214,8 @@
    if(w in MAPC) return Promise.resolve(MAPC[w]);
    if(MPROM[w]) return MPROM[w];
    MPROM[w] = fetch('/retro/' + encodeURIComponent(SEASON)
-                    + '?week=' + encodeURIComponent(w))
+                    + '?week=' + encodeURIComponent(w)
+                    + (AQ ? '&' + AQ : ''))
      .then(r => {if(!r.ok) throw new Error(String(r.status)); return r.text();})
      .then(t => {
        const doc = new DOMParser().parseFromString(t, 'text/html');

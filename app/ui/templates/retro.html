@@ -35,10 +35,18 @@ and move on; scores come later, against settled truth.</p>
    <p class="hint">The two-strain member is not part of the ensemble: it was
    tested on the full grid and made the blend worse. See
    <a href="/methods#two-strain">Methods</a>.</p>
+   {# what the start-over prompt resolves to. 'resume' is the historical
+      behaviour and the value a keyboard submit carries, so the form is
+      always safe even if the prompt never runs. #}
+   <input type="hidden" name="mode" value="resume">
+   <input type="hidden" name="confirm" value="">
    {# a running season no longer disables this button: the per-button guard
       checks /api/busy on click and offers stop-and-proceed instead. A PAUSED
-      season is reported busy there too, so starting over one still warns. #}
-   <button class="gold" data-guard="retro-run" {% if not engine_ok %}disabled{% endif %}>
+      season is reported busy there too, so starting over one still warns.
+      data-startover adds the second question: a season that already has
+      completed weeks asks whether to resume, archive, or discard them. #}
+   <button class="gold" data-guard="retro-run" data-startover="1"
+     {% if not engine_ok %}disabled{% endif %}>
      Run retrospective</button>
   </form>
   <script>
@@ -50,7 +58,10 @@ and move on; scores come later, against settled truth.</p>
    })();
   </script>
   <p class="hint">Runs are resumable; a completed week is never redone.
-   Stopping finishes the week in flight first, so no week is wasted.</p>
+   Stopping finishes the week in flight first, so no week is wasted. A season
+   that already has results asks first whether to resume, archive, or discard
+   them, so a clean rerun is always available and nothing is lost by
+   accident.</p>
  </div></div>
  <div>
   {% for s in seasons %}
@@ -98,10 +109,57 @@ and move on; scores come later, against settled truth.</p>
    </div>
    <p class="quip rquip"></p>
    {% endif %}
+   {% if s.archives %}
+   {# archived runs: secondary entries under their season. Each one is a
+      complete frozen tree, so its results page, player, and report all work
+      exactly as the live season's do. #}
+   <p class="hint" style="margin:.8rem 0 .2rem">{{ s.archives|length }} archived run{{ "" if s.archives|length == 1 else "s" }} kept</p>
+   {% for a in s.archives %}
+   <div class="archrow">
+    <span class="grow"><strong>{{ a.when }}</strong>
+     <span class="hint">· {{ a.weeks }} week{{ "" if a.weeks == 1 else "s" }}{%
+      if a.elapsed_s %} · {{ a.elapsed_s | hms }}{% endif %}{%
+      if a.rel is not none %} · relWIS <span class="{{ 'ok' if a.rel < 1 else 'bad' }}">{{
+      "%.3f"|format(a.rel) }}</span>{% endif %} · {{ a.size_h }}</span></span>
+    <a href="/retro/{{ s.name }}?archive={{ a.id }}"><button class="quiet"
+      type="button">Results →</button></a>
+    <form method="post"
+      action="/retro/{{ s.name }}/archive/{{ a.id }}/delete">
+     <input type="hidden" name="confirm" value="">
+     <button type="button" class="quiet" data-del-archive
+       data-season="{{ s.name }}" data-when="{{ a.when }}"
+       data-weeks="{{ a.weeks }}" data-size="{{ a.size_h }}">Delete</button>
+    </form>
+   </div>
+   {% endfor %}
+   {% endif %}
   </div>
   {% endfor %}
  </div>
 </div>
+<script>
+ // Deleting an archived run is permanent, so it goes through the shared
+ // confirmation shell in base.html, naming the season, the run, its week
+ // count, and what it occupies on disk. The confirmation field is filled in
+ // only on confirmation; the server refuses the POST without it.
+ (function(){
+  document.querySelectorAll('[data-del-archive]').forEach(function(b){
+   b.addEventListener('click',function(){
+    var d=b.dataset,f=b.form;
+    if(!f||!window.FluBNFConfirm)return;
+    window.FluBNFConfirm({
+     title:'Delete this archived run?',
+     msg:'This permanently removes the archived '+d.season+' run from '
+       +d.when+': '+d.weeks+' completed week'+(d.weeks==='1'?'':'s')+', '
+       +d.size+' on disk. It cannot be undone.',
+     hint:'The live '+d.season+' season is not touched.',
+     okLabel:'Delete permanently',
+     onOk:function(){f.confirm.value=d.season;f.submit();}
+    });
+   });
+  });
+ })();
+</script>
 {% if seasons | selectattr("running") | list or seasons | selectattr("paused") | list %}
 <script>
  // Live replay tickers, from the shared implementation in

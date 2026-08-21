@@ -361,10 +361,16 @@ def api_busy():
     pure fitting is safe.
 
     A PAUSED season counts as a conflict: the worker still holds the engine
-    and its workroots, so starting a run over it must warn."""
+    and its workroots, so starting a run over it must warn.
+
+    Seasons are taken from the in-memory claims AND from every run record on
+    disk, so a live replay is reported even when the claim is missing. That
+    matters for the archive and discard controls, whose whole safety rests on
+    this answer: a season must never read as idle while a worker is writing
+    into its tree."""
     running = _status.get("running")
     live = {}
-    for s in list(_retro_status):
+    for s in _known_seasons():
         st = _season_status(s)
         if st in _RETRO_ACTIVE:
             live[s] = st
@@ -1305,10 +1311,17 @@ RETRO_ROOT = Path(__file__).resolve().parents[1] / "state" / "retro"
 RETRO_SEAL = Path(__file__).resolve().parents[1] / "state" / "retro_seal"
 
 
-def _season_root(season: str) -> tuple:
+def _season_root(season: str, archive: str = "") -> tuple:
     """(root, is_seal): a season may live under the app's retro root or the
     full-grid seal root; show whichever has more completed weeks so flagship
-    validation runs are never invisible in the app."""
+    validation runs are never invisible in the app.
+
+    With an archive identifier the answer is exactly one directory -- the
+    archived run's own tree -- so every page, the playback API, and the
+    report builder read the same frozen files."""
+    if archive:
+        from app.core import retro
+        return retro.archive_dir(RETRO_ROOT, season, archive), False
     def _done(r):
         return len(list((r / "weeks").glob("*/samples.json"))) if r.exists() else 0
     app_root, seal_root = RETRO_ROOT / season, RETRO_SEAL / season
@@ -1333,10 +1346,76 @@ def _valid_season(season: str) -> bool:
     return bool(re.fullmatch(r"\d{4}-\d{2}", season or ""))
 
 
+def _valid_archive(stamp: str) -> bool:
+    """Archive identifiers name directories too. Anything that is not the
+    stamp format is refused before it can reach the filesystem."""
+    from app.core import retro
+    return retro.valid_stamp(stamp or "")
+
+
 def _live_root(season: str) -> Path:
     """Where THIS app's season worker runs, and therefore where the control
-    flags and the run record live."""
+    flags and the run record live.
+
+    This is also the ONLY tree a Run can resume, archive, or discard. A
+    sealed full-grid run under RETRO_SEAL may be what the results page shows,
+    but a replay never writes there, so it is never at risk from any of the
+    start-over choices."""
     return RETRO_ROOT / season
+
+
+def _known_seasons() -> list:
+    """Seasons this process might have to speak for: the in-memory claims
+    plus every season under the live retro root carrying a run record. A
+    record on disk outlives the claim (an app restart drops the claim but not
+    the file), and a season with a worker must never read as idle."""
+    from app.core import retro
+    names = set(_retro_status)
+    try:
+        for p in RETRO_ROOT.iterdir():
+            if (_valid_season(p.name) and p.is_dir()
+                    and retro.meta_path(p).is_file()):
+                names.add(p.name)
+    except OSError:
+        pass                          # no retro root yet: the claims are all
+    return sorted(names)
+
+
+def _archive_entries(season: str) -> list:
+    """Archived runs of one season, newest first, in the shape the retro
+    index lists them: when they ran, how much they contain, and what they
+    scored."""
+    from app.core import retro
+    out = []
+    for p in retro.list_archive_dirs(RETRO_ROOT, season):
+        stamp = retro.archive_stamp_of(p.name, season)
+        s = retro.run_summary(p)
+        size = retro.dir_size(p)
+        out.append({"id": stamp, "when": retro.stamp_human(stamp),
+                    "weeks": s["weeks"], "elapsed_s": s["elapsed_s"],
+                    "rel": s["headline_rel"], "scored": s["scored"],
+                    "size": size, "size_h": retro.human_bytes(size)})
+    return out
+
+
+def _archive_progress(root: Path, season: str) -> dict:
+    """The timing block for an archived run, shaped like _retro_progress so
+    the season template needs no second code path. Never active: an archived
+    tree has no worker and can never gain one."""
+    from app.core import retro
+    meta = retro.read_meta(root)
+    t = retro.timing(meta) if meta else {}
+    done = len(list((root / "weeks").glob("*/samples.json"))) if root.exists() else 0
+    return {"season": season, "status": "archived", "done": done,
+            "total": int(t.get("total_weeks") or done),
+            "elapsed_s": t.get("elapsed_s"),
+            "weeks_measured": t.get("weeks_measured") or 0,
+            "mean_s": t.get("mean_s"), "eta_s": None,
+            "slowest_week": t.get("slowest_week"),
+            "slowest_s": t.get("slowest_s"),
+            "started_utc": t.get("started_utc"),
+            "finished_utc": t.get("finished_utc"),
+            "active": False}
 
 
 def _season_meta(season: str) -> dict:
@@ -1431,6 +1510,7 @@ def retro_index(request: Request):
         status = prog["status"]
         seasons.append({"name": s, "total": total, "done": done,
                         "seal": is_seal,
+                        "archives": _archive_entries(s),
                         "status": status,
                         "running": status in ("running", "stopping"),
                         "paused": status == "paused",
@@ -1466,6 +1546,81 @@ def api_retro_progress(season: str = ""):
         if p["status"] or p["done"]:
             out[s] = p
     return out
+
+
+@app.get("/api/retro/startover")
+def api_retro_startover(season: str = ""):
+    """What pressing Run on this season would actually do.
+
+    The answer rests on the LIVE root only: that is the only tree a replay
+    writes into, so it is the only one a Run would resume and the only one
+    the start-over choices touch. A sealed full-grid run may be what the
+    results page shows, and it is never at stake here.
+
+    weeks == 0 means Run starts immediately with no prompt: no friction on
+    the common path."""
+    from app.core import retro
+    from app.core.retro import season_vintages
+    if not _valid_season(season):
+        return {"season": season, "weeks": 0, "total": 0, "complete": False,
+                "elapsed_s": None, "elapsed_hms": "", "finished": "",
+                "status": "", "active": False, "archives": 0}
+    root = _live_root(season)
+    s = retro.run_summary(root)
+    total = len(season_vintages(season))
+    status = _season_status(season)
+    return {"season": season,
+            "weeks": s["weeks"],
+            "total": total,
+            "complete": bool(total and s["weeks"] >= total),
+            "elapsed_s": s["elapsed_s"],
+            "elapsed_hms": fmt_hms(s["elapsed_s"]) if s["elapsed_s"] else "",
+            "finished": retro.utc_human(s["finished_utc"]
+                                        or s["started_utc"]),
+            "status": status,
+            "active": status in _RETRO_ACTIVE,
+            "archives": len(_archive_entries(season))}
+
+
+@app.post("/retro/{season}/archive/{stamp}/delete")
+def retro_archive_delete(request: Request, season: str, stamp: str,
+                         confirm: str = Form("")):
+    """Delete one archived run, permanently.
+
+    Three gates, all server-side, because a mis-click here costs a season of
+    compute: the season and stamp must be well formed, the season must not be
+    replaying (a worker writing into the live tree must not have archives
+    deleted out from under a listing it may be reading), and the confirmation
+    field must name the season. The LIVE season is never touched."""
+    from app.core import retro
+    if not _valid_season(season) or not _valid_archive(stamp):
+        _flash("Unrecognized season or archive identifier. Nothing was "
+               "deleted.")
+        return _back(request, "/retro")
+    if _season_status(season) in _RETRO_ACTIVE:
+        _flash(f"{season} is replaying. Stop it first; nothing was deleted.")
+        return _back(request, "/retro")
+    if confirm != season:
+        _flash("The deletion was not confirmed, so nothing was deleted.")
+        return _back(request, "/retro")
+    p = retro.archive_dir(RETRO_ROOT, season, stamp)
+    if not (p.is_dir() or p.is_symlink()):
+        _flash(f"No archived {season} run from {retro.stamp_human(stamp)}. "
+               "Nothing was deleted.")
+        return _back(request, "/retro")
+    weeks = retro.run_summary(p)["weeks"]
+    size_h = retro.human_bytes(retro.dir_size(p))
+    try:
+        retro.delete_tree(p)
+    except Exception as e:
+        _flash(f"Could not delete the archived {season} run: "
+               f"{type(e).__name__}: {str(e)[:160]}. Nothing else changed.")
+        return _back(request, "/retro")
+    _flash(f"Deleted the archived {season} run from "
+           f"{retro.stamp_human(stamp)}: {weeks} completed week"
+           f"{'' if weeks == 1 else 's'}, {size_h} freed. The live "
+           f"{season} season was not touched.")
+    return _back(request, "/retro")
 
 
 def _retro_bg(season: str, locations: list, width: int,
@@ -1587,10 +1742,31 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
               particles: int = Form(10_000),
               replicates: int = Form(3),
               width: int = Form(4),
-              engine: str = Form("pf")):
+              engine: str = Form("pf"),
+              mode: str = Form("resume"),
+              confirm: str = Form("")):
+    """Start (or resume) a season replay.
+
+    `mode` is what the start-over prompt resolved to, and it is the only way
+    an existing season tree is ever moved or removed:
+
+      resume   the historical behaviour: completed weeks are kept and skipped
+      archive  move the current tree to a timestamped sibling, then run clean
+      discard  delete the current tree (confirmation required), then run clean
+
+    Nothing here destroys work silently: archive is a move and reversible by
+    hand, and discard refuses without a confirmation naming the season."""
+    from app.core import retro
     from app.core.retro import available_seasons
-    if _retro_status.get(season) in ("running", "stopping"):
+    if not _valid_season(season):
+        _flash("Unrecognized season name. Nothing was started.")
+        return RedirectResponse("/retro", status_code=303)
+    if _season_status(season) in _RETRO_ACTIVE:
         _flash(f"{season} is already replaying. One season worker runs at a time.")
+        return RedirectResponse("/retro", status_code=303)
+    if mode not in ("resume", "archive", "discard"):
+        _flash(f"'{mode}' is not one of resume, archive, or discard. "
+               "Nothing was started and nothing was changed.")
         return RedirectResponse("/retro", status_code=303)
     if season not in available_seasons():
         _flash(f"Season {season} is not available. A season appears once its "
@@ -1619,6 +1795,41 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
     particles = max(1_000, min(int(particles), 100_000))
     replicates = max(1, min(int(replicates), 10))
     width = max(1, min(int(width), 16))
+    # Start-over handling comes AFTER every validation above: a rejected
+    # form must never have moved or removed anything first.
+    live = _live_root(season)
+    existing = len(list((live / "weeks").glob("*/samples.json"))) \
+        if live.exists() else 0
+    if mode == "discard":
+        if confirm != season:
+            _flash(f"Discarding {season} was not confirmed, so nothing was "
+                   "deleted and nothing was started.")
+            return RedirectResponse("/retro", status_code=303)
+        if existing:
+            try:
+                retro.delete_tree(live)
+            except Exception as e:
+                _flash(f"Could not delete the {season} results: "
+                       f"{type(e).__name__}: {str(e)[:160]}. Nothing was "
+                       "started; the existing results are intact.")
+                return RedirectResponse("/retro", status_code=303)
+            _flash(f"Discarded {existing} completed week"
+                   f"{'' if existing == 1 else 's'} of {season}. Starting a "
+                   "fresh replay.")
+    elif mode == "archive" and existing:
+        try:
+            dst = retro.archive_run(RETRO_ROOT, season)
+        except Exception as e:
+            # the move is atomic, so a failure leaves the original whole --
+            # say so loudly rather than replaying over an unarchived season
+            _flash(f"Could not archive {season}: {type(e).__name__}: "
+                   f"{str(e)[:160]}. Nothing was started; the existing "
+                   "results are intact.")
+            return RedirectResponse("/retro", status_code=303)
+        _flash(f"Archived {existing} completed week"
+               f"{'' if existing == 1 else 's'} of {season} as "
+               f"{dst.name}; it stays viewable from the season list. "
+               "Starting a fresh replay.")
     # claim inside the request, not the background task, so a double submit
     # can't race two season workers over the same tree
     _retro_status[season] = "running"
@@ -1627,18 +1838,27 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
 
 
 @app.get("/retro/{season}", response_class=HTMLResponse)
-def retro_results(request: Request, season: str, week: str = ""):
+def retro_results(request: Request, season: str, week: str = "",
+                  archive: str = ""):
+    """The season results page. `archive` selects an archived run instead of
+    the live season; everything below (scores, player, per-state table, the
+    report link) then reads that run's own tree."""
     import json as _json
     import numpy as np
     import pandas as pd
     from app.core import retro
-    root, _is_seal = _season_root(season)
+    if archive and not (_valid_season(season) and _valid_archive(archive)):
+        _flash("Unrecognized archived run identifier.")
+        return RedirectResponse("/retro", status_code=303)
+    root, _is_seal = _season_root(season, archive)
     weeks = sorted(p.parent.name for p in (root / "weeks").glob("*/samples.json"))
     if not weeks:
         # a raw unthemed dead-end helps nobody: back to the season list,
         # which already knows how to show a 0-weeks season
         _flash(f"{season}: no completed weeks yet. Start the replay and "
-               "check back shortly.")
+               "check back shortly." if not archive else
+               f"{season}: that archived run has no completed weeks, or it "
+               "has been deleted.")
         return RedirectResponse("/retro", status_code=303)
     sf = root / "scores.json"
     score_error = ""
@@ -1777,18 +1997,29 @@ def retro_results(request: Request, season: str, week: str = ""):
     return templates.TemplateResponse(request, "retro_season.html", {
         "active": "Retrospective", "season": season, "heads": heads, "curve": curve, "states": states,
         "weeks": weeks, "week": wk, "map_html": map_html,
-        "official_catalog": official_catalog, "prog": _retro_progress(season),
+        "official_catalog": official_catalog,
+        "prog": (_archive_progress(root, season) if archive
+                 else _retro_progress(season)),
+        "archive": archive,
+        "archive_when": retro.stamp_human(archive) if archive else "",
         "n_weeks": len(weeks) if scoreable else 0, "score_error": score_error})
 
 
 @app.get("/api/retro/{season}/playback/{asof}")
-def api_retro_playback(season: str, asof: str):
+def api_retro_playback(season: str, asof: str, archive: str = ""):
     """One stored retrospective week as a playback payload: member and
     ensemble quantile fans, settled truth, the CDC's submitted comparators,
-    and running relWIS stats. Cached under <season_root>/playback_cache/."""
+    and running relWIS stats. Cached under <season_root>/playback_cache/.
+
+    `archive` reads an archived run instead of the live season -- the same
+    identifier the season page carries, so the player replays a frozen run
+    exactly as it replays a live one."""
     from fastapi.responses import PlainTextResponse
     from app.core import playback
-    root, _is_seal = _season_root(season)
+    if archive and not (_valid_season(season) and _valid_archive(archive)):
+        return PlainTextResponse("unrecognized archived run identifier",
+                                 status_code=404)
+    root, _is_seal = _season_root(season, archive)
     try:
         return playback.build_week(root, season, asof)
     except playback.UnknownWeek as e:
@@ -1796,15 +2027,19 @@ def api_retro_playback(season: str, asof: str):
 
 
 @app.get("/retro/{season}/report")
-def retro_season_report(season: str):
+def retro_season_report(season: str, archive: str = ""):
     """Generate (cached by mtime) and download the self-contained season
     report: the season player with every week's data embedded, one HTML
-    file, no server needed."""
+    file, no server needed. `archive` builds the report for an archived run
+    instead, inside that run's own tree."""
     from fastapi.responses import FileResponse, PlainTextResponse
     from app.core import playback, report_season
-    root, _is_seal = _season_root(season)
+    if archive and not (_valid_season(season) and _valid_archive(archive)):
+        return PlainTextResponse("unrecognized archived run identifier",
+                                 status_code=404)
+    root, _is_seal = _season_root(season, archive)
     try:
-        p = report_season.build_season_report(root, season)
+        p = report_season.build_season_report(root, season, archive=archive)
     except playback.UnknownWeek as e:
         return PlainTextResponse(str(e), status_code=404)
     return FileResponse(p, filename=p.name, media_type="text/html",
@@ -1812,16 +2047,19 @@ def retro_season_report(season: str):
 
 
 @app.get("/api/retro/{season}/report_path")
-def api_retro_report_path(season: str):
+def api_retro_report_path(season: str, archive: str = ""):
     """Build the season report if absent (same builder as the download
     route, cached by mtime) and return its absolute path. The results
     page's Reveal-in-Finder button feeds this path to /output/reveal, the
     belt-and-braces route for the native window."""
     from fastapi.responses import PlainTextResponse
     from app.core import playback, report_season
-    root, _is_seal = _season_root(season)
+    if archive and not (_valid_season(season) and _valid_archive(archive)):
+        return PlainTextResponse("unrecognized archived run identifier",
+                                 status_code=404)
+    root, _is_seal = _season_root(season, archive)
     try:
-        p = report_season.build_season_report(root, season)
+        p = report_season.build_season_report(root, season, archive=archive)
     except playback.UnknownWeek as e:
         return PlainTextResponse(str(e), status_code=404)
     return {"path": str(p)}

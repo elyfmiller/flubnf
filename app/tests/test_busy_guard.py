@@ -191,7 +191,7 @@ def test_report_path_endpoint_builds_and_returns_path(tmp_path, monkeypatch):
     from app.core import report_season
     calls = []
 
-    def fake_build(root, season):
+    def fake_build(root, season, archive=""):
         calls.append((root, season))
         p = root / f"{season}-FluBNF-season-report.html"
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -211,7 +211,7 @@ def test_report_path_endpoint_builds_and_returns_path(tmp_path, monkeypatch):
 def test_report_path_unknown_season_is_404(tmp_path, monkeypatch):
     from app.core import playback, report_season
 
-    def raise_unknown(root, season):
+    def raise_unknown(root, season, archive=""):
         raise playback.UnknownWeek(f"no weeks for {season}")
 
     monkeypatch.setattr(report_season, "build_season_report", raise_unknown)

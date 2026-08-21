@@ -20,10 +20,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -526,3 +529,199 @@ def score_season(root: Path, season: str, ensemble_weights: dict | None = None) 
     df = df.dropna(subset=["base_wis"])
     df["rel"] = df.wis / df.base_wis
     return df
+
+
+# --------------------------------------------------------------------------
+# archived runs
+#
+# Resumability protects an overnight replay, but it becomes a trap the moment
+# the user wants a genuinely clean run (an unseeded replication against an
+# existing result, say). The escape is to move the season tree aside rather
+# than overwrite it: an archived run keeps every file it had, stays viewable,
+# and the fresh replay starts on an empty tree.
+#
+# An archive is a SIBLING of the live season under the same retro root,
+# named <season>__archived_<UTC stamp>. That naming carries the season and
+# the moment in the directory name itself, so the set of archives is
+# discoverable with one glob and needs no index file to fall out of date.
+# --------------------------------------------------------------------------
+
+ARCHIVE_SEP = "__archived_"
+
+#: <8 digit date>T<6 digit time>Z, with a -N suffix only when two archives of
+#: the same season land inside one second. Everything reaching the filesystem
+#: is checked against this, so an archive identifier from a URL can never
+#: name a path outside the retro root.
+_STAMP_RE = re.compile(r"\d{8}T\d{6}Z(-\d+)?")
+
+#: headline relWIS is read from scores.json, which is large; keep the last
+#: value per root, invalidated by the file's mtime and the week count
+_SUMMARY_CACHE: dict = {}
+
+
+def utc_stamp(now: float | None = None) -> str:
+    """The archive naming stamp: UTC, second resolution, sortable."""
+    t = datetime.fromtimestamp(now if now is not None else _now(),
+                               tz=timezone.utc)
+    return t.strftime("%Y%m%dT%H%M%SZ")
+
+
+def valid_stamp(stamp: str) -> bool:
+    return bool(_STAMP_RE.fullmatch(stamp or ""))
+
+
+def stamp_human(stamp: str) -> str:
+    """'20260821T143012Z' -> '2026-08-21 14:30 UTC'. An unparseable stamp is
+    returned unchanged rather than guessed at."""
+    try:
+        base = (stamp or "").split("-")[0]
+        t = datetime.strptime(base, "%Y%m%dT%H%M%SZ")
+        return t.strftime("%Y-%m-%d %H:%M UTC")
+    except ValueError:
+        return stamp or ""
+
+
+def utc_human(epoch: float | None) -> str:
+    """A run record's epoch seconds as a readable UTC moment, or ''."""
+    try:
+        return datetime.fromtimestamp(float(epoch), tz=timezone.utc).strftime(
+            "%Y-%m-%d %H:%M UTC")
+    except (TypeError, ValueError):
+        return ""
+
+
+def archive_dir(retro_root: Path, season: str, stamp: str) -> Path:
+    return Path(retro_root) / f"{season}{ARCHIVE_SEP}{stamp}"
+
+
+def archive_stamp_of(name: str, season: str) -> str:
+    """The stamp inside an archive directory name, or '' when the name is not
+    an archive of this season."""
+    prefix = f"{season}{ARCHIVE_SEP}"
+    if not name.startswith(prefix):
+        return ""
+    stamp = name[len(prefix):]
+    return stamp if valid_stamp(stamp) else ""
+
+
+def list_archive_dirs(retro_root: Path, season: str) -> list:
+    """Archive directories for one season, newest first. The stamp sorts
+    lexicographically in time order, so reversing the sort is the ordering."""
+    root = Path(retro_root)
+    if not root.is_dir():
+        return []
+    out = []
+    for p in root.iterdir():
+        if not archive_stamp_of(p.name, season):
+            continue
+        if p.is_dir() or p.is_symlink():
+            out.append(p)
+    return sorted(out, key=lambda p: p.name, reverse=True)
+
+
+def _headline_rel(scores_path: Path, model: str = "ensemble"):
+    """Pooled relWIS for one model from a stored scores.json, or None when
+    the file is absent, empty, or does not cover the model."""
+    try:
+        df = pd.read_json(scores_path)
+        if df.empty or "model" not in df.columns:
+            return None
+        g = df[df.model == model]
+        base = float(g.base_wis.sum()) if len(g) else 0.0
+        return float(g.wis.sum() / base) if base else None
+    except Exception:
+        return None
+
+
+def run_summary(root: Path) -> dict:
+    """What one run -- live or archived -- amounts to: completed weeks, wall
+    time, when it ran, whether it was scored, and its headline relWIS.
+
+    Every field degrades to None or 0 rather than raising: a season tree may
+    be missing, half-written, or predate the run record entirely, and none of
+    those may take a page down."""
+    root = Path(root)
+    meta = read_meta(root)
+    t = timing(meta) if meta else {}
+    weeks = _weeks_on_disk(root) if root.is_dir() else 0
+    sf = root / "scores.json"
+    scored = sf.is_file()
+    key = ((sf.stat().st_mtime if scored else None), weeks)
+    hit = _SUMMARY_CACHE.get(str(root))
+    if hit is not None and hit[0] == key:
+        rel = hit[1]
+    else:
+        rel = _headline_rel(sf) if scored else None
+        _SUMMARY_CACHE[str(root)] = (key, rel)
+    return {"weeks": weeks,
+            "elapsed_s": t.get("elapsed_s"),
+            "started_utc": t.get("started_utc"),
+            "finished_utc": t.get("finished_utc"),
+            "status": effective_status(meta) if meta else "",
+            "scored": scored,
+            "headline_rel": rel}
+
+
+def dir_size(path: Path) -> int:
+    """Bytes held under a tree. Symlinks are measured as links, never
+    followed: a season parked on another volume must not report that
+    volume's size, and must not be walked."""
+    p = Path(path)
+    if p.is_symlink() or not p.exists():
+        return 0
+    total = 0
+    for dirpath, _dirnames, filenames in os.walk(p, followlinks=False):
+        for f in filenames:
+            try:
+                total += os.lstat(os.path.join(dirpath, f)).st_size
+            except OSError:
+                pass                       # a file vanishing mid-walk is fine
+    return total
+
+
+def human_bytes(n: int) -> str:
+    n = float(n or 0)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024 or unit == "TB":
+            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
+        n /= 1024
+    return f"{n:.1f} TB"
+
+
+def archive_run(retro_root: Path, season: str, stamp: str | None = None,
+                now: float | None = None) -> Path:
+    """Move <retro_root>/<season> aside to <season>__archived_<stamp>/.
+
+    A same-parent os.rename, deliberately: it is atomic and instant, so the
+    tree is either wholly live or wholly archived and never both. A copy
+    would be the obvious alternative and the wrong one -- copying a 12 GB
+    season can half-fill the volume and leave two partial trees behind.
+
+    A failure raises with the original left exactly where it was; the caller
+    must report it rather than start a replay over an unarchived season."""
+    src = Path(retro_root) / season
+    if not (src.is_dir() or src.is_symlink()):
+        raise FileNotFoundError(f"no season tree to archive at {src}")
+    stamp = stamp or utc_stamp(now)
+    dst = archive_dir(retro_root, season, stamp)
+    n = 1
+    while dst.exists() or dst.is_symlink():       # same-second collision
+        n += 1
+        dst = archive_dir(retro_root, season, f"{stamp}-{n}")
+    os.rename(src, dst)
+    _SUMMARY_CACHE.pop(str(src), None)
+    return dst
+
+
+def delete_tree(path: Path) -> None:
+    """Remove a season or archive tree permanently.
+
+    A symlinked tree (a season parked on another volume) loses its link and
+    nothing else: shutil.rmtree refuses a symlink outright, and following one
+    would delete data this application does not own."""
+    p = Path(path)
+    _SUMMARY_CACHE.pop(str(p), None)
+    if p.is_symlink():
+        p.unlink()
+        return
+    shutil.rmtree(p)
