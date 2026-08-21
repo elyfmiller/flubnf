@@ -148,12 +148,14 @@ def _html(fig, include_js=False, div_id=None):
 
 def build_report(reference_date: str, state_cards: dict, state_details: dict,
                  national: dict, out_path: Path,
-                 national_map_html: str = "") -> Path:
+                 national_map_html: str = "", elapsed_s=None) -> Path:
     """state_cards: abbr -> hover-card data (choropleth).
     state_details: abbr -> dict(name, fan=…, cat=…, acc=…, table_rows=[…]).
     national: dict(fan=…, acc=…, summary_html=str).
     national_map_html: pre-rendered usmap.national_svg(...) output; when given,
-    a 'state view' / 'national view' toggle appears above the map."""
+    a 'state view' / 'national view' toggle appears above the map.
+    elapsed_s: this run's wall time in seconds; when given, the footer states
+    it. Omitted rather than guessed when the caller does not know."""
     # Build-time SVG map (see usmap.py) -- the plotly geo choropleth fetched
     # its geometry from cdn.plot.ly at runtime and rendered empty offline/CSP.
     from app.core.usmap import svg_map
@@ -220,6 +222,13 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
         plotly_js = "<script>" + get_plotlyjs() + "</script>"
     else:
         plotly_js = ""
+
+    # footer: what this report cost to produce, stated plainly
+    footer = ""
+    if elapsed_s is not None:
+        from app.core.runs import fmt_hms
+        footer = (f'<p class="hint" id="runtime">Run wall time: '
+                  f'{fmt_hms(elapsed_s)} (h:mm:ss).</p>')
 
     html = f"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -326,6 +335,7 @@ document.getElementById('natbtn').addEventListener('click', () => show('st-US'))
   bN.addEventListener('click', () => setView('national'));
 }})();
 </script>
+{footer}
 </main></body></html>"""
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)

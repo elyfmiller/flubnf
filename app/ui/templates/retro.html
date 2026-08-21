@@ -1,12 +1,6 @@
 {% extends "base.html" %}{% block title %}FluBNF · Retrospective{% endblock %}
-{% block head %}{% if seasons | selectattr("running") | list %}<script>
- // progress auto-refresh while a replay runs. A script timer, not a meta
- // refresh: it pauses while the run-interference guard modal is open, so a
- // pending stop-and-proceed is never wiped mid-wait by a page reload.
- (function tick(){setTimeout(function(){
-   if(window.GUARD_BUSY){tick();return;}
-   location.reload();},15000);})();
-</script>{% endif %}{% endblock %}
+{% block head %}<script src="/static/quips.js"></script>
+<script src="/static/retro_progress.js"></script>{% endblock %}
 {% block content %}
 <h1>Retrospective</h1>
 <p class="sub">Each week the models see only that Saturday's data, submit,
@@ -42,7 +36,8 @@ and move on; scores come later, against settled truth.</p>
    tested on the full grid and made the blend worse. See
    <a href="/methods#two-strain">Methods</a>.</p>
    {# a running season no longer disables this button: the per-button guard
-      checks /api/busy on click and offers stop-and-proceed instead #}
+      checks /api/busy on click and offers stop-and-proceed instead. A PAUSED
+      season is reported busy there too, so starting over one still warns. #}
    <button class="gold" data-guard="retro-run" {% if not engine_ok %}disabled{% endif %}>
      Run retrospective</button>
   </form>
@@ -54,19 +49,66 @@ and move on; scores come later, against settled truth.</p>
        c.style.display=(s.value==='custom')?'':'none';});
    })();
   </script>
-  <p class="hint">Runs are resumable; a completed week is never redone.</p>
+  <p class="hint">Runs are resumable; a completed week is never redone.
+   Stopping finishes the week in flight first, so no week is wasted.</p>
  </div></div>
  <div>
   {% for s in seasons %}
-  <div class="card"><h2>{{ s.name }}</h2>
+  <div class="card season-card" data-season="{{ s.name }}"
+       data-status="{{ s.status }}" data-active="{{ 1 if s.active else 0 }}"
+       data-done="{{ s.done }}" data-total="{{ s.total }}"
+       data-results="{{ 1 if s.done > 0 else 0 }}">
+   <h2>{{ s.name }}</h2>
+   {% if s.active %}
+   {# a live replay gets the console's run treatment: one solid fill on a
+      visible track, driven by weeks completed out of the season's weeks #}
+   <div class="runbar"><div class="rfill" style="width:2%"></div></div>
+   <p class="runstat rstat">{{ s.done }}/{{ s.total }} weeks</p>
+   <p class="hint rbasis"></p>
+   {% else %}
    <progress value="{{ s.done }}" max="{{ s.total }}"></progress>
+   {% endif %}
    <div class="row" style="justify-content:space-between">
     <span class="hint">{{ s.done }}/{{ s.total }} weeks{% if s.seal %} · full-grid validation run{% endif %}
-     {% if s.running %}<span class="warn">· running</span>{% endif %}</span>
+     {% if s.status == 'running' %}<span class="warn">· running</span>
+     {% elif s.status == 'stopping' %}<span class="warn">· stopping after the current week</span>
+     {% elif s.status == 'paused' %}<span class="warn">· paused</span>
+     {% elif s.status == 'interrupted' %}<span class="bad">· interrupted; the application closed mid-replay</span>
+     {% elif s.status == 'stopped' %}<span>· stopped; Run resumes it</span>
+     {% elif s.status == 'done' %}<span class="ok">· complete</span>
+     {% elif s.status and s.status.startswith('error') %}<span class="bad">· {{ s.status }}</span>
+     {% endif %}</span>
     {% if s.done > 0 %}<a href="/retro/{{ s.name }}"><button class="quiet" type="button" style="margin-top:0">Results →</button></a>{% endif %}
    </div>
+   {% if s.elapsed_s and not s.active %}
+   {# a finished replay reports its total; a live one has the ticking
+      readout above, and two clocks on one card would only disagree #}
+   <p class="hint timing">total wall time {{ s.elapsed_s | hms }}{% if s.mean_s %} · mean {{ "%.0f"|format(s.mean_s) }} s per week over {{ s.weeks_measured }} timed{% endif %}</p>
+   {% endif %}
+   {% if s.active %}
+   {# stopping and pausing are safe: the current week is finished and
+      checkpointed first, so neither needs a confirmation modal #}
+   <div class="row">
+    {% if s.paused %}
+    <form method="post" action="/retro/{{ s.name }}/resume"><button class="gold">Resume</button></form>
+    {% else %}
+    <form method="post" action="/retro/{{ s.name }}/pause"><button class="quiet">Pause</button></form>
+    {% endif %}
+    <form method="post" action="/retro/{{ s.name }}/stop"><button class="quiet">Stop</button></form>
+   </div>
+   <p class="quip rquip"></p>
+   {% endif %}
   </div>
   {% endfor %}
  </div>
 </div>
+{% if seasons | selectattr("running") | list or seasons | selectattr("paused") | list %}
+<script>
+ // Live replay tickers, from the shared implementation in
+ // /static/retro_progress.js (the season page runs the very same code).
+ // It yields to an open run-interference guard modal: while GUARD_BUSY is
+ // set nothing reloads, so a pending stop-and-proceed survives the wait.
+ FluBNFRetroTicker.init({busy: function(){return !!window.GUARD_BUSY;}});
+</script>
+{% endif %}
 {% endblock %}

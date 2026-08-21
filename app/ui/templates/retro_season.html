@@ -1,9 +1,49 @@
 {% extends "base.html" %}{% block title %}FluBNF · Retrospective {{ season }}{% endblock %}
 {% block head %}<script src="/static/plotly.min.js"></script>
-<script src="/static/player.js"></script>{% endblock %}
+<script src="/static/player.js"></script>
+<script src="/static/quips.js"></script>
+<script src="/static/retro_progress.js"></script>{% endblock %}
 {% block content %}
 
 <h1><span class="accent">{{ season }}</span>: {{ n_weeks }} weeks scored</h1>
+{% if prog and prog.active %}
+{# a live replay, driven by the shared ticker in /static/retro_progress.js:
+   the same bar, readouts, and quips the console's run card uses #}
+<div class="card season-card" data-season="{{ season }}"
+     data-status="{{ prog.status }}" data-active="1"
+     data-done="{{ prog.done }}" data-total="{{ prog.total }}"
+     data-results="1">
+ <h2>{% if prog.status == 'paused' %}Replay paused{% else %}Replay in progress{% endif %}</h2>
+ <div class="runbar"><div class="rfill" style="width:2%"></div></div>
+ <p class="runstat rstat">{{ prog.done }}/{{ prog.total }} weeks</p>
+ <p class="hint rbasis"></p>
+ {# stopping and pausing are safe: the week in flight is finished and
+    checkpointed first, so neither needs a confirmation modal #}
+ <div class="row">
+  {% if prog.status == 'paused' %}
+  <form method="post" action="/retro/{{ season }}/resume"><button class="gold">Resume</button></form>
+  {% else %}
+  <form method="post" action="/retro/{{ season }}/pause"><button class="quiet">Pause</button></form>
+  {% endif %}
+  <form method="post" action="/retro/{{ season }}/stop"><button class="quiet">Stop</button></form>
+ </div>
+ <p class="quip rquip"></p>
+</div>
+<script>
+ // the ticker yields to an open run-interference guard modal: while
+ // GUARD_BUSY is set nothing reloads, so a pending stop-and-proceed survives
+ FluBNFRetroTicker.init({busy: function(){return !!window.GUARD_BUSY;}});
+</script>
+{% elif prog and prog.elapsed_s %}
+<p class="hint">Replay wall time {{ prog.elapsed_s | hms }} (h:mm:ss) over
+ {{ prog.done }} weeks{% if prog.mean_s %}, mean {{ "%.0f"|format(prog.mean_s) }} s
+ per week over {{ prog.weeks_measured }} timed{% endif %}{% if prog.slowest_week %};
+ slowest week {{ prog.slowest_week }} at {{ "%.0f"|format(prog.slowest_s) }} s{% endif %}.
+ {% if prog.status == 'stopped' %}The replay was stopped; completed weeks are
+ kept and Run resumes from there.{% elif prog.status == 'interrupted' %}The
+ application closed mid-replay; completed weeks are kept and Run resumes from
+ there.{% endif %}</p>
+{% endif %}
 <p class="row" style="gap:.55rem">
  {# the download attribute makes the native window (WKWebView) treat the
     click as a download rather than a navigation; pywebview needs

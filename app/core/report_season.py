@@ -26,7 +26,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from app.core import playback
+from app.core import playback, retro
+from app.core.runs import fmt_hms
 
 # PyBNF brand palette (dark), shared with report_v2
 INK = "#E9EAF4"; MUT = "#9AA1C4"; PAPER = "#0C0D17"; CARD = "#151729"
@@ -77,7 +78,31 @@ def _newest_input(root: Path) -> float:
     pc = root / "playback_cache"
     if pc.is_dir():
         times.extend(f.stat().st_mtime for f in pc.glob("*.json"))
+    # the run record carries the header's wall-time line: a replay that
+    # resumed and finished must refresh the export, not serve the old total
+    mp = root / retro.META_NAME
+    if mp.is_file():
+        times.append(mp.stat().st_mtime)
     return max(times)
+
+
+def _timing_note(root: Path) -> str:
+    """One factual line for the header: total wall time, weeks measured, and
+    the mean per week. Absent when the season carries no run record (the
+    sealed validation runs predate the record, and inventing a number for
+    them would be worse than saying nothing)."""
+    meta = retro.read_meta(root)
+    if not meta:
+        return ""
+    t = retro.timing(meta)
+    if not t["elapsed_s"]:
+        return ""
+    bits = [f"Total wall time {fmt_hms(t['elapsed_s'])} (h:mm:ss)",
+            f"{t['weeks_completed']} weeks completed"]
+    if t["mean_s"]:
+        bits.append(f"mean {t['mean_s']:.0f} s per week "
+                    f"over {t['weeks_measured']} timed")
+    return '<p class="sub">' + ", ".join(bits) + ".</p>"
 
 
 def build_season_report(root: Path, season: str) -> Path:
@@ -98,8 +123,9 @@ def build_season_report(root: Path, season: str) -> Path:
     data_json = json.dumps(data, separators=(",", ":")).replace("</", "<\\/")
     plotly_js = _plotlyjs()
     player_js = _player_js()
+    timing_note = _timing_note(root)
     html = _compose(season, weeks, data_json, plotly_js, player_js,
-                    size_note="")
+                    size_note="", timing_note=timing_note)
     size = len(html.encode("utf-8"))
     if size > SIZE_WARN_BYTES:
         note = ('<p class="warn">Size notice: this file is %.0f MB, above '
@@ -107,19 +133,20 @@ def build_season_report(root: Path, season: str) -> Path:
                 'may open slowly and some mail systems will refuse to '
                 'attach it.</p>' % (size / (1024 * 1024)))
         html = _compose(season, weeks, data_json, plotly_js, player_js,
-                        size_note=note)
+                        size_note=note, timing_note=timing_note)
     out.write_text(html)
     return out
 
 
 def _compose(season: str, weeks: list, data_json: str, plotly_js: str,
-             player_js: str, size_note: str) -> str:
+             player_js: str, size_note: str, timing_note: str = "") -> str:
     return (_PAGE
             .replace("@@SEASON@@", season)
             .replace("@@NWEEKS@@", str(len(weeks)))
             .replace("@@FIRST@@", weeks[0])
             .replace("@@LAST@@", weeks[-1])
             .replace("@@MAXIDX@@", str(len(weeks) - 1))
+            .replace("@@TIMING@@", timing_note)
             .replace("@@SIZENOTE@@", size_note)
             .replace("@@PLOTLY@@", plotly_js)
             .replace("@@PLAYERJS@@", player_js)
@@ -169,6 +196,7 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
  self-contained: all forecast data is embedded and no server or network is
  needed. The export carries the forecast detail view and the live relWIS
  table; interactive maps live in the console.</p>
+@@TIMING@@
 @@SIZENOTE@@
 <div class="card">
  <div class="row playerbar">

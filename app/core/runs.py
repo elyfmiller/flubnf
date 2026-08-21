@@ -25,6 +25,21 @@ from typing import Optional
 APP_STATE = Path(__file__).resolve().parents[1] / "state"
 
 
+def fmt_hms(seconds) -> str:
+    """Wall time as h:mm:ss -- the one formatter the console, the retro
+    pages, and both report exports share, so a duration reads identically
+    wherever it appears. None or a negative value renders as an em space
+    dash rather than a fake zero."""
+    try:
+        s = float(seconds)
+    except (TypeError, ValueError):
+        return "--"
+    if s < 0 or s != s:                     # negative or NaN: no fake zero
+        return "--"
+    s = int(round(s))
+    return f"{s // 3600:d}:{(s % 3600) // 60:02d}:{s % 60:02d}"
+
+
 def derive_seed(location: str, forecast_date: str, replicate: int) -> int:
     """Deterministic per-(location, date, replicate) seed.
 
@@ -85,14 +100,24 @@ class Ledger:
             run_id TEXT PRIMARY KEY, created_utc REAL, spec_json TEXT,
             flubnf_sha TEXT, pybnf_sha TEXT, engine_versions TEXT,
             workroot TEXT, status TEXT, outcome_json TEXT)""")
+        # wall time per run: created_utc alone cannot say how long a run took.
+        # Added by migration so an existing ledger keeps every historical row
+        # (they simply report no elapsed time, which is the truth about them).
+        have = {r[1] for r in self._db.execute("PRAGMA table_info(runs)")}
+        for col in ("finished_utc", "elapsed_s"):
+            if col not in have:
+                self._db.execute(f"ALTER TABLE runs ADD COLUMN {col} REAL")
         self._db.commit()
 
     def open_run(self, spec: RunSpec, workroot: Path,
                  engine_versions: dict) -> str:
         run_id = time.strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:6]
         root = Path(__file__).resolve().parents[2]
+        # named columns, never positional: the table grows by migration
         self._db.execute(
-            "INSERT INTO runs VALUES (?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO runs (run_id, created_utc, spec_json, flubnf_sha, "
+            "pybnf_sha, engine_versions, workroot, status, outcome_json) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
             (run_id, time.time(), spec.to_json(), _git_sha(root),
              _git_sha(__import__("flubnf.settings", fromlist=["PYBNF"]).PYBNF),
              json.dumps(engine_versions), str(workroot), "running", "{}"))
@@ -100,16 +125,24 @@ class Ledger:
         return run_id
 
     def close_run(self, run_id: str, status: str, outcome: dict) -> None:
-        self._db.execute("UPDATE runs SET status=?, outcome_json=? WHERE run_id=?",
-                         (status, json.dumps(outcome), run_id))
+        """Record the outcome and the run's wall time. elapsed_s is derived
+        in SQL from the row's own created_utc, so the number can never drift
+        from the timestamp the ledger already holds."""
+        now = time.time()
+        self._db.execute(
+            "UPDATE runs SET status=?, outcome_json=?, finished_utc=?, "
+            "elapsed_s=MAX(0, ? - created_utc) WHERE run_id=?",
+            (status, json.dumps(outcome), now, now, run_id))
         self._db.commit()
 
     def rows(self, limit: int = 50) -> list:
         cur = self._db.execute(
-            "SELECT run_id, created_utc, spec_json, status, outcome_json "
+            "SELECT run_id, created_utc, spec_json, status, outcome_json, "
+            "finished_utc, elapsed_s "
             "FROM runs ORDER BY created_utc DESC LIMIT ?", (limit,))
-        return [dict(zip(("run_id", "created_utc", "spec", "status", "outcome"),
-                         r)) for r in cur.fetchall()]
+        return [dict(zip(("run_id", "created_utc", "spec", "status", "outcome",
+                          "finished_utc", "elapsed_s"), r))
+                for r in cur.fetchall()]
 
 
 def lease_workroot(run_id: str, base: Optional[Path] = None) -> Path:
