@@ -14,4 +14,12 @@ jobs:
       - run: pip install -e ".[app,dev]" bionetgen
       # No FluSight hub clone and no BNG in CI: hub-dependent and
       # engine-dependent tests skip themselves via flubnf.settings checks.
-      - run: FLUBNF_HUB=/nonexistent pytest tests/ app/tests/ -q
+      - name: tests (failures become annotations)
+        run: |
+          set -o pipefail
+          FLUBNF_HUB=/nonexistent pytest tests/ app/tests/ -rf -o addopts="" | tee pytest.out || {
+            grep -E "^(FAILED|ERROR)" pytest.out | head -20 | while read -r line; do
+              echo "::error::${line}"
+            done
+            exit 1
+          }
