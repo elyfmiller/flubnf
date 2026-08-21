@@ -170,7 +170,9 @@
    {% set r = ledger[0] %}
    <p><a href="/runs/{{ r.run_id }}">{{ r.label }}</a>
    <span class="pill {% if r.status == 'ok' %}ok{% elif r.status == 'interrupted' %}warn{% else %}bad{% endif %}">{{ r.status }}</span></p>
-   <p class="hint">{{ r.chips }}</p>
+   {# chips are markup built by the server from fixed phrases and numbers
+      only; the raw error text never travels through them #}
+   <p class="hint">{{ r.chips | safe }}</p>
   </div>
   {% endif %}
 
@@ -183,10 +185,12 @@
      {% for l in all_locs | sort %}<option>{{ l }}</option>{% endfor %}
     </select>
    </div>
+   {# the selected mode wears gold and states aria-pressed, exactly as the
+      season player's view tabs do; drawData() keeps both in step #}
    <div class="row" style="margin:.4rem 0">
-    <button type="button" class="quiet" id="mode-raw">full series</button>
-    <button type="button" class="quiet" id="mode-season">season over season</button>
-    <button type="button" class="quiet" id="mode-pts">● points</button>
+    <button type="button" class="quiet" id="mode-raw" aria-pressed="false">full series</button>
+    <button type="button" class="quiet" id="mode-season" aria-pressed="false">season over season</button>
+    <button type="button" class="quiet" id="mode-pts" aria-pressed="false">● points</button>
    </div>
    <div class="carousel">
     <button type="button" class="quiet cnav" id="data-prev">◀</button>
@@ -221,6 +225,13 @@
  const LOCS=[DATA_SEL.value];   // data panel follows its own dropdown only
  function drawData(mode){
    CURMODE=mode;
+   // the switcher exposes its state: gold marks the active mode (the same
+   // treatment the season player's view tabs carry) and aria-pressed says so
+   ['raw','season'].forEach(m=>{
+     const b=document.getElementById('mode-'+m);
+     b.classList.toggle('gold', mode===m);
+     b.setAttribute('aria-pressed', String(mode===m));
+   });
    const lm=SHOWPTS?'lines+markers':'lines';
    const el=document.getElementById('dataplots'); el.innerHTML='';
    if(!LOCS.length){el.innerHTML='<p class="hint">select locations to see their data</p>';return;}
@@ -267,7 +278,10 @@
  document.getElementById('mode-raw').onclick=()=>drawData('raw');
  document.getElementById('mode-season').onclick=()=>drawData('season');
  document.getElementById('mode-pts').onclick=function(){
-   SHOWPTS=!SHOWPTS; this.textContent=SHOWPTS?'○ points':'● points'; drawData(CURMODE);};
+   SHOWPTS=!SHOWPTS; this.textContent=SHOWPTS?'○ points':'● points';
+   this.classList.toggle('gold', SHOWPTS);
+   this.setAttribute('aria-pressed', String(SHOWPTS));
+   drawData(CURMODE);};
  drawData('season');
  // forecast fans (interactive, full width)
  const MODELS=Object.keys(FANQ);

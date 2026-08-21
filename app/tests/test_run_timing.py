@@ -498,7 +498,41 @@ def test_runs_page_shows_elapsed_per_completed_run():
              "chips": "", "elapsed_s": None}])
     assert "<th>elapsed</th>" in html
     assert "1:02:05" in html
-    assert "n/a" in html                          # a pre-timing row says so
+    # a pre-timing row is dashed out, never given a fabricated duration and
+    # never the flat contradiction of an all-n/a column under the footnote
+    assert '<td class="elapsed">--</td>' in html
+    assert "n/a" not in html
+    assert ("recorded before this measurement existed show a dash"
+            in " ".join(html.split()))
+
+
+def test_run_all_closes_its_ledger_row_end_to_end(tmp_path, monkeypatch):
+    """The whole close-out contract, through the real pipeline: a completing
+    run must leave its ledger row closed (status settled, finished_utc and
+    elapsed_s written) and must replace the 'pending' workroot placeholder
+    with the leased workroot, so the row the footnote describes is true and
+    the row remains the record of record for reproducing the run."""
+    import sqlite3
+    import app.core.runs as runs_mod
+    from app.core.engines import analogue as an_engine
+    from app.core.runs import RunSpec
+    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
+    monkeypatch.setattr(srv, "_sleep_guard", lambda: None)
+    monkeypatch.setattr(an_engine, "run", lambda spec: {})
+    spec = RunSpec(engine="analogue", forecast_date="2098-01-03",
+                   locations=["Ohio"])
+    srv._run_all(spec)
+    row = sqlite3.connect(tmp_path / "ledger.sqlite").execute(
+        "SELECT run_id, status, created_utc, finished_utc, elapsed_s, "
+        "workroot FROM runs").fetchall()
+    assert len(row) == 1
+    run_id, status, created, finished, elapsed, workroot = row[0]
+    assert status == "ok"
+    assert finished is not None and finished >= created
+    assert elapsed is not None and elapsed >= 0
+    assert workroot != "pending"                  # the placeholder is closed out
+    assert workroot == str(tmp_path / "workroots" / run_id)
+    assert Path(workroot).is_dir()
 
 
 # ------------------------------------------------------------ report timing

@@ -7,10 +7,15 @@
  is fitted to each week's data and blended with an empirical companion.</p>
 </div>
 
-<div class="card">{{ map_svg | safe }}
+<div class="card">
+ {# the h2 names the payload and dates it, like every other card; the run
+    date is a heading fact, not a footnote afterthought #}
+ <h2>US outlook{% if outlook_date %} · {{ outlook_date }}{% endif %}</h2>
+ {{ map_svg | safe }}
  <p class="hint">Most likely direction of admissions.
- {% if outlook_date %}Latest run, {{ outlook_date }}; hover a state for its
- category probabilities.
+ {% if outlook_date %}Fitted results cover {{ outlook_n }} of 52
+ jurisdictions in the latest run; the rest show as no data. Hover a state
+ for its category probabilities.
  {% else %}Fills in when you run a forecast.{% endif %}</p>
 </div>
 

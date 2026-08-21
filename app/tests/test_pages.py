@@ -103,6 +103,49 @@ def test_methods_anchors_and_backlinks():
     assert "M762,182 C762,330 87,330 87,182" in r.text
 
 
+def test_map_legend_carries_all_categories_and_the_no_data_swatch():
+    from app.core.usmap import CAT_COLOR, map_legend
+    lg = map_legend()
+    for color in CAT_COLOR.values():
+        assert color in lg, color
+    for label in ("large decrease", "decrease", "stable", "increase",
+                  "large increase", "no data"):
+        assert label in lg, label
+    assert "var(--map-nodata" in lg               # theme-following gap tone
+    assert lg.count('class="sw"') == 6            # five categories + no data
+    assert 'class="hint maplegend"' in lg
+
+
+def test_home_outlook_card_has_heading_and_legend():
+    r = client.get("/")
+    assert r.status_code == 200
+    # the card names its payload like every other card in the app
+    assert "US outlook" in r.text
+    # and the legend rides with the map, so the encoding is readable
+    # without hovering
+    assert 'class="hint maplegend"' in r.text
+    assert "no data" in r.text
+
+
+def test_home_outlook_caption_states_coverage_when_a_run_exists():
+    from app.ui.server import templates
+    html = templates.env.get_template("home.html").render(
+        active="Home", map_svg="<svg></svg>", outlook_date="2026-01-24",
+        outlook_n=1, missing=[],
+        versions={"pybnf": "x", "bngsim": "x", "bionetgen": "x",
+                  "fastapi": "x", "plotly": "x"})
+    assert "US outlook · 2026-01-24" in html      # dated in the heading
+    assert "cover 1 of 52" in html                # one green state is not a
+    assert "the rest show as no data" in html     # national outlook
+    # without a run, the card stays honest about being empty
+    empty = templates.env.get_template("home.html").render(
+        active="Home", map_svg="", outlook_date="", outlook_n=0, missing=[],
+        versions={"pybnf": "x", "bngsim": "x", "bionetgen": "x",
+                  "fastapi": "x", "plotly": "x"})
+    assert "Fills in when you run a forecast." in empty
+    assert "of 52" not in empty
+
+
 def test_diagram_data_shapes():
     from app.ui.server import _diagram_data
     assert _diagram_data(None) == {"date": "", "has_pf2s": False,

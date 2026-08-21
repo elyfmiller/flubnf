@@ -116,7 +116,10 @@
  <div class="row playerbar">
   <button type="button" class="quiet" id="pb-prev" title="Previous week (left arrow)"
     aria-label="Previous week">&#9664;</button>
-  <button type="button" class="quiet" id="pb-play" aria-label="Play or pause">&#9654; Play</button>
+  {# the play button's aria-label is state-managed by the shared player
+     (Play when paused, Pause when playing); a static label here would
+     misreport the state on every other press #}
+  <button type="button" class="quiet" id="pb-play">&#9654; Play</button>
   <button type="button" class="quiet" id="pb-next" title="Next week (right arrow)"
     aria-label="Next week">&#9654;</button>
   <select id="pb-speed" aria-label="Playback speed">
@@ -126,11 +129,17 @@
   </select>
   <input type="range" id="pb-scrub" min="0" max="{{ (weeks|length) - 1 }}" step="1"
          value="{{ weeks.index(week) if week in weeks else 0 }}" aria-label="Week scrubber">
-  <span class="hint" id="pb-week"></span>
+  {# playback announces itself: the week readout and the status line are
+     polite live regions, so assistive tech hears the player advance #}
+  <span class="hint" id="pb-week" aria-live="polite"></span>
  </div>
- <div class="row viewtabs" role="tablist" aria-label="Playback view">
-  <button type="button" class="quiet" id="tab-map" role="tab" aria-selected="true">Outlook map</button>
-  <button type="button" class="quiet" id="tab-fc" role="tab" aria-selected="false">Forecast detail</button>
+ {# plain toggle buttons with aria-pressed, not an ARIA tablist: the tab
+    pattern promises aria-controls, tabpanel roles, and arrow-key roving
+    focus, machinery these two buttons do not carry; a pressed-state button
+    is the honest contract and setView() keeps it true #}
+ <div class="row viewtabs" role="group" aria-label="Playback view">
+  <button type="button" class="quiet" id="tab-map" aria-pressed="true">Outlook map</button>
+  <button type="button" class="quiet" id="tab-fc" aria-pressed="false">Forecast detail</button>
  </div>
  <div class="playgrid">
   <div>
@@ -151,7 +160,7 @@
    <h2>Live relWIS</h2>
    <table id="pb-stats"><thead><tr><th>Model</th><th class="num">Week</th>
     <th class="num">Cumulative</th></tr></thead><tbody></tbody></table>
-   <p class="hint" id="pb-status"></p>
+   <p class="hint" id="pb-status" aria-live="polite"></p>
    <p class="hint" id="pb-offhint" hidden>official comparators appear after
     Update data fetches their submissions</p>
    <p class="hint">relWIS below 1 beats the CDC FluSight baseline. Week
@@ -284,9 +293,9 @@
    const tm = document.getElementById('tab-map'),
          tf = document.getElementById('tab-fc');
    tm.classList.toggle('gold', v === 'map');
-   tm.setAttribute('aria-selected', String(v === 'map'));
+   tm.setAttribute('aria-pressed', String(v === 'map'));
    tf.classList.toggle('gold', v === 'fc');
-   tf.setAttribute('aria-selected', String(v === 'fc'));
+   tf.setAttribute('aria-pressed', String(v === 'fc'));
    player.seek(player.idx());
  }
  document.getElementById('tab-map').onclick = () => setView('map');

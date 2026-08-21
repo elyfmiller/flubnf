@@ -147,10 +147,13 @@
  only that week's archived data vintage, submitted, and moved on. Scores are
  relative weighted interval scores (relWIS) against the official FluSight
  baseline; values below 1 beat the baseline.</p>
+ {# the one relWIS rule: every printed score wears the ok/bad classes by the
+    below-1-beats-baseline test, members included; a member season that lost
+    to the baseline must not read as neutral #}
  <div style="overflow-x:auto"><table>
   <tr><th>Model</th><th>2023-24</th><th>2024-25</th><th>2025-26</th></tr>
-  <tr><td>PF-SIHRS</td><td>1.023</td><td>0.636</td><td>0.825</td></tr>
-  <tr><td>Calendar analogue</td><td>1.105</td><td>0.835</td><td>0.641</td></tr>
+  <tr><td>PF-SIHRS</td><td class="bad">1.023</td><td class="ok">0.636</td><td class="ok">0.825</td></tr>
+  <tr><td>Calendar analogue</td><td class="bad">1.105</td><td class="ok">0.835</td><td class="ok">0.641</td></tr>
   <tr><td>Ensemble</td><td class="ok">0.848</td><td class="ok">0.651</td><td class="ok">0.691</td></tr>
  </table></div>
  <p class="hint">Pooled ensemble relWIS: 0.704. Against the real FluSight

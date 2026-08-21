@@ -267,6 +267,51 @@ def test_a_complete_season_offers_no_resume(tmp_path, monkeypatch):
     assert "so.resume.hidden=!!info.complete" in html
 
 
+def test_startover_prompts_for_a_sealed_season(tmp_path, monkeypatch):
+    """A season whose page shows a sealed validation run reads complete on
+    its card, yet its live tree is empty: without this, Run started a
+    multi-hour replay instantly, violating the stated prompt contract. The
+    API must report the seal so the client can ask first; the seal itself
+    is never a start-over target."""
+    _roots(tmp_path, monkeypatch)
+    seal = tmp_path / "seal"
+    monkeypatch.setattr(srv, "RETRO_SEAL", seal)
+    for w in (W1, W2):
+        _write_week(seal / SEASON, w)
+    b = client.get(f"/api/retro/startover?season={SEASON}").json()
+    assert b["sealed"] is True
+    assert b["weeks"] == 2 and b["total"] == 3   # the SEAL's weeks, named
+    assert b["active"] is False
+
+
+def test_startover_prefers_the_live_tree_over_the_seal(tmp_path,
+                                                       monkeypatch):
+    """Once the live tree holds weeks, the ordinary resume, archive, and
+    discard choices apply to it, and the seal stays out of the answer."""
+    rr = _roots(tmp_path, monkeypatch)
+    seal = tmp_path / "seal"
+    monkeypatch.setattr(srv, "RETRO_SEAL", seal)
+    for w in VINTAGES:
+        _write_week(seal / SEASON, w)
+    _season_tree(rr, SEASON)                      # two live weeks
+    b = client.get(f"/api/retro/startover?season={SEASON}").json()
+    assert b["sealed"] is False
+    assert b["weeks"] == 2                        # the LIVE tree's weeks
+
+
+def test_base_template_carries_the_sealed_prompt_branch(tmp_path,
+                                                        monkeypatch):
+    _roots(tmp_path, monkeypatch)
+    html = client.get("/retro").text
+    assert "info.sealed" in html                 # the branch exists
+    assert "sealed validation run" in html       # and names the situation
+    assert "Run a fresh replay" in html          # one clear, safe confirm
+    # the confirm submits mode=resume: the live tree is empty, so a resume
+    # IS a fresh start, and no destructive mode can reach the form here
+    seg = html.split("info.sealed")[1].split("so.title.textContent")[0]
+    assert "f.mode.value='resume'" in seg
+
+
 def test_startover_counts_archives_and_refuses_a_bad_season_name(tmp_path,
                                                                  monkeypatch):
     rr = _roots(tmp_path, monkeypatch)
