@@ -4,17 +4,182 @@
 {# elapsed is recorded when a run closes; rows written before the ledger
    carried a finish time hold no measurement and show a dash, never a
    fabricated duration (the hms filter renders None as the dash) #}
-<table><tr><th>run</th><th>status</th><th>elapsed</th><th>summary</th></tr>
+<table><tr><th>run</th><th>status</th><th>elapsed</th><th>on disk</th><th>summary</th></tr>
 {% for r in ledger %}
- <tr><td><a href="/runs/{{ r.run_id }}">{{ r.label }}</a></td>
+ <tr><td><a href="/runs/{{ r.run_id }}">{{ r.label }}</a>
+ {# the research badge: a run whose recorded spec asked for the two-strain
+    third member is tagged wherever it appears; here it rides the row #}
+ {% if r.research %} <span class="pill">research</span>{% endif %}</td>
  <td><span class="pill {% if r.status == 'ok' %}ok{% elif r.status == 'running' %}warn{% else %}bad{% endif %}">{{ r.status }}</span></td>
  <td class="elapsed">{{ r.elapsed_s | hms }}</td>
+ {# a dash here is a DANGLING ROW read honestly: the ledger record stands
+    while its workroot was deleted in the storage panel below #}
+ <td class="num">{{ r.disk_h or "--" }}</td>
  {# chips are markup built by the server from fixed phrases and numbers
     only; the raw error text never travels through them #}
  <td>{{ r.chips | safe }}</td></tr>
-{% else %}<tr><td colspan="4" class="hint">No runs yet.</td></tr>{% endfor %}
+{% else %}<tr><td colspan="5" class="hint">No runs yet.</td></tr>{% endfor %}
 </table>
 <p class="hint">Elapsed is wall time from the run claiming its slot to the
  ledger closing its row, as h:mm:ss. Runs recorded before this measurement
- existed show a dash.</p></div>
+ existed show a dash. A dash under "on disk" means the run's workroot was
+ deleted; the ledger row remains as the run's record.</p>
+{% if clear_count %}
+{# clearing goes through the shared confirmation shell, naming the count it
+   removes; the server refuses a stale count, never touches the active
+   run's row, and never deletes workroot data (the storage panel below is
+   where disk space is reclaimed) #}
+<form method="post" action="/runs/clear" id="clear-ledger">
+ <input type="hidden" name="confirm" value="">
+ <button type="button" class="quiet" id="clear-ledger-btn"
+   data-count="{{ clear_count }}">Clear {{ clear_count }} completed
+   row{{ "" if clear_count == 1 else "s" }}</button>
+</form>
+<script>
+ (function(){
+  var b=document.getElementById('clear-ledger-btn');
+  if(!b)return;
+  b.addEventListener('click',function(){
+   var f=b.form,n=b.dataset.count;
+   if(!f||!window.FluBNFConfirm)return;
+   window.FluBNFConfirm({
+    title:'Clear the run ledger?',
+    msg:'This removes '+n+' completed row'+(n==='1'?'':'s')+' (statuses ok, '
+      +'failed, stopped, error, and interrupted) from the ledger. A row '
+      +'whose run is still active is never removed.',
+    hint:'Clearing the ledger does NOT delete run data on disk: every '
+      +'workroot stays exactly where it is and remains listed in the '
+      +'storage panel until deleted there.',
+    okLabel:'Clear '+n+' row'+(n==='1'?'':'s'),
+    onOk:function(){f.confirm.value=n;f.submit();}
+   });
+  });
+ })();
+</script>
+{% endif %}
+</div>
+
+{% if storage %}
+<div class="card"><h2>Storage</h2>
+ <p class="hint">What this application holds on disk. Deleting an entry is
+ permanent and goes through the same name-and-size confirmation as every
+ other destructive control; nothing running or paused can be deleted. The
+ sealed validation record and the FluSight hub clone are protected and
+ carry no delete control.</p>
+
+ <h3 class="hint" style="margin:.8rem 0 .2rem">Run workroots</h3>
+ {% for w in storage.workroots %}
+ <div class="archrow">
+  <span class="grow"><strong>{{ w.id }}</strong>
+   <span class="hint">· {{ w.size_h }}{% if w.busy %} · <span class="warn">running now</span>{% endif %}</span></span>
+  {% if not w.busy %}
+  <form method="post" action="/storage/delete">
+   <input type="hidden" name="kind" value="workroot">
+   <input type="hidden" name="ident" value="{{ w.id }}">
+   <input type="hidden" name="confirm" value="">
+   <button type="button" class="quiet" data-del-storage
+     data-what="workroot {{ w.id }}" data-size="{{ w.size_h }}"
+     data-hint="The run's ledger row is kept and will show a dash for disk use.">Delete</button>
+  </form>
+  {% endif %}
+ </div>
+ {% else %}<p class="hint">No workroots on disk.</p>{% endfor %}
+
+ <h3 class="hint" style="margin:.8rem 0 .2rem">Retrospective seasons</h3>
+ {% for s in storage.retro %}
+ <div class="archrow">
+  <span class="grow"><strong>{{ s.id }}</strong>
+   <span class="hint">· {{ s.size_h }}{% if s.busy %} · <span class="warn">{{ s.status }}</span>{% endif %}</span></span>
+  {% if not s.busy %}
+  <form method="post" action="/storage/delete">
+   <input type="hidden" name="kind" value="retro-season">
+   <input type="hidden" name="ident" value="{{ s.id }}">
+   <input type="hidden" name="confirm" value="">
+   <button type="button" class="quiet" data-del-storage
+     data-what="{{ s.id }} season results" data-size="{{ s.size_h }}"
+     data-hint="Archived runs of this season and the sealed record are separate trees and are not touched.">Delete</button>
+  </form>
+  {% endif %}
+ </div>
+ {% else %}<p class="hint">No live season trees on disk.</p>{% endfor %}
+
+ {% if storage.retro_archives %}
+ <h3 class="hint" style="margin:.8rem 0 .2rem">Archived retrospective runs</h3>
+ {% for a in storage.retro_archives %}
+ <div class="archrow">
+  <span class="grow"><strong>{{ a.season }} · {{ a.when }}</strong>
+   <span class="hint">· {{ a.size_h }}{% if a.busy %} · <span class="warn">season replaying</span>{% endif %}</span></span>
+  {% if not a.busy %}
+  <form method="post" action="/storage/delete">
+   <input type="hidden" name="kind" value="retro-archive">
+   <input type="hidden" name="ident" value="{{ a.id }}">
+   <input type="hidden" name="confirm" value="">
+   <button type="button" class="quiet" data-del-storage
+     data-what="archived {{ a.season }} run from {{ a.when }}"
+     data-size="{{ a.size_h }}"
+     data-hint="The live {{ a.season }} season is not touched.">Delete</button>
+  </form>
+  {% endif %}
+ </div>
+ {% endfor %}
+ {% endif %}
+
+ {% if storage.report_archives %}
+ <h3 class="hint" style="margin:.8rem 0 .2rem">Report archives</h3>
+ {% for f in storage.report_archives %}
+ <div class="archrow">
+  <span class="grow"><strong>{{ f.id }}</strong>
+   <span class="hint">· {{ f.size_h }}{% if f.busy %} · <span class="warn">a console run is in progress</span>{% endif %}</span></span>
+  {% if not f.busy %}
+  <form method="post" action="/storage/delete">
+   <input type="hidden" name="kind" value="report-archive">
+   <input type="hidden" name="ident" value="{{ f.id }}">
+   <input type="hidden" name="confirm" value="">
+   <button type="button" class="quiet" data-del-storage
+     data-what="archived {{ f.id }} report and submissions"
+     data-size="{{ f.size_h }}"
+     data-hint="The workroot that produced it is a separate entry above.">Delete</button>
+  </form>
+  {% endif %}
+ </div>
+ {% endfor %}
+ {% endif %}
+
+ {% if storage.protected %}
+ <h3 class="hint" style="margin:.8rem 0 .2rem">Protected</h3>
+ {% for p in storage.protected %}
+ {# no form, no button, by design: these trees are never deletable from the
+    interface, and the server refuses them again on any crafted request #}
+ <div class="archrow">
+  <span class="grow"><strong>{{ p.label }}</strong>
+   <span class="hint">· {{ p.size_h }} · <span class="pill">protected</span></span></span>
+ </div>
+ {% endfor %}
+ <p class="hint">The sealed validation record is the three-season evidence
+  the shipped configuration rests on; the hub clone is shared source data.
+  Neither can be deleted from here.</p>
+ {% endif %}
+</div>
+<script>
+ // every storage delete borrows the shared confirmation shell: the name and
+ // size of exactly what goes, and the confirm field filled in only on the
+ // second confirmation (the server refuses the POST without it)
+ (function(){
+  document.querySelectorAll('[data-del-storage]').forEach(function(b){
+   b.addEventListener('click',function(){
+    var f=b.form,d=b.dataset;
+    if(!f||!window.FluBNFConfirm)return;
+    window.FluBNFConfirm({
+     title:'Delete '+d.what+'?',
+     msg:'This permanently deletes '+d.what+' ('+d.size+' on disk). '
+       +'It cannot be undone.',
+     hint:d.hint||'',
+     okLabel:'Delete permanently',
+     onOk:function(){f.confirm.value=f.ident.value;f.submit();}
+    });
+   });
+  });
+ })();
+</script>
+{% endif %}
 {% endblock %}

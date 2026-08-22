@@ -276,10 +276,12 @@ def test_rerun_refused_when_settings_were_not_recorded(tmp_path, monkeypatch):
 
 def test_rerun_refuses_a_spec_the_form_path_cannot_reproduce(tmp_path,
                                                              monkeypatch):
-    # a research row (non-default particles) must refuse rather than
-    # silently run with the console defaults
+    # a row with a non-default jitter must refuse rather than silently run
+    # with the console defaults. (Particles, once the example here, became
+    # reproducible when the research run control gained its particles
+    # field; test_research_run covers that path re-running verbatim.)
     spec = runs_mod.RunSpec(engine="pf", forecast_date=SATURDAY,
-                            locations=["Ohio", "US"], particles=5000)
+                            locations=["Ohio", "US"], jitter=0.55)
     rid = _ledger_row(tmp_path, monkeypatch, spec)
     started = []
     monkeypatch.setattr(srv, "_run_all", lambda s: started.append(s))
@@ -288,7 +290,7 @@ def test_rerun_refuses_a_spec_the_form_path_cannot_reproduce(tmp_path,
     assert started == []
     assert srv._status.get("running") is None
     flash = srv._status.get("flash", "")
-    assert "cannot be reproduced" in flash and "particles" in flash
+    assert "cannot be reproduced" in flash and "jitter" in flash
 
 
 def test_rerun_refused_while_a_retrospective_replays(tmp_path, monkeypatch):

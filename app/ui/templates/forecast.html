@@ -267,20 +267,27 @@
    return c;
  }
  // chart text rides the type system: the brand face with a system fallback,
- // sized from the root font size so the A-/A/A+ control reaches it
+ // sized from the root font size so the A-/A/A+ control reaches it. Ticks
+ // and legend sit at .85rem (above the .82rem hint floor), the title one
+ // step up; automargin lets the tick labels own their margins, so the
+ // tight base margins leave no dead band and nothing clips at A+.
  const rootPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
  // the chart background is the card surface it sits on, stated EXPLICITLY
  // (not transparent): on screen it composites identically, and the
  // modebar's save-PNG export then carries an opaque theme ground inside
  // the file, so the exported image stays readable on its own
  function lay(title, h){ const fs=rootPx(), surf=css('--card');
-   return {title:{text:title,font:{size:Math.round(fs*.875)}},
-   height:h||340, margin:{l:50,r:20,t:34,b:40},
+   return {title:{text:title,font:{size:Math.round(fs*.95)}},
+   height:h||340, margin:{l:8,r:8,t:Math.round(fs*2.2),b:8},
    paper_bgcolor:surf, plot_bgcolor:surf,
    font:{color:css('--ink'),family:'"DM Sans",system-ui,sans-serif',
-         size:Math.round(fs*.8)},
-   xaxis:{gridcolor:css('--line')},
-   yaxis:{gridcolor:css('--line'), rangemode:'tozero'}};}
+         size:Math.round(fs*.85)},
+   // the legend runs horizontally UNDER the plot (it pushes the bottom
+   // margin out for itself): a right-hand legend of long entries was
+   // eating up to a third of the card width as a dead band
+   legend:{orientation:'h',x:0,xanchor:'left',y:-0.22,yanchor:'top'},
+   xaxis:{gridcolor:css('--line'), automargin:true},
+   yaxis:{gridcolor:css('--line'), rangemode:'tozero', automargin:true}};}
  function seasonOf(ds){const d=new Date(ds); const y=d.getMonth()>=7?d.getFullYear():d.getFullYear()-1;
    return y+'-'+String((y+1)%100).padStart(2,'0');}
  function weekOfSeason(ds){const d=new Date(ds); const y=d.getMonth()>=7?d.getFullYear():d.getFullYear()-1;

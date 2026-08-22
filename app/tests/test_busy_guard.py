@@ -162,14 +162,18 @@ def test_guarded_attributes_on_exactly_the_classified_controls():
 
     # the model-page run buttons post to the same /run endpoint and carry
     # the same guard; they were the unguarded back door. The canonical
-    # /models route serves the PF view, so it carries the same guard.
-    for page in ("/model/pf", "/model/analogue", "/models"):
+    # /models route serves the PF view, so it carries the same guard. The
+    # pf2s view's research run control books the engine through /run too,
+    # so it carries the very same guard.
+    for page in ("/model/pf", "/model/analogue", "/models", "/model/pf2s"):
         mp = client.get(page).text
         assert mp.count('data-guard="') == 1, page
         assert 'data-guard="console-run"' in mp, page
 
-    # safe pages: viewing, generating from stored results, downloads
-    for page in ("/", "/output", "/runs", "/model/ensemble", "/model/pf2s"):
+    # safe pages: viewing, generating from stored results, downloads. The
+    # storage panel's deletes ride the confirmation shell plus server-side
+    # busy checks, never a data-guard, so /runs stays in this set.
+    for page in ("/", "/output", "/runs", "/model/ensemble"):
         assert 'data-guard="' not in client.get(page).text, page
 
 

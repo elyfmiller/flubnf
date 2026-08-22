@@ -72,7 +72,11 @@ var MODEL_NAMES = /*MODEL_NAMES_JSON*/{
 // pair measured 27), and pf/pf2s hold 3:1 or better against all eight
 // theme grounds. The gold and cyan identities are the anchors; on light
 // grounds the console draws the ensemble through --gold (the readable
-// accent-ink variant), which the audit also covers. Keep it a pure JSON
+// accent-ink variant), which the audit also covers. Because the palette
+// is dichromat-safe by construction, the CV-safe mode deliberately does
+// NOT swap these member colors: only the semantic ok/bad pair and the
+// outlook category scale change under data-vision="cvd", and a member
+// line keeps its one identity in every mode. Keep it a pure JSON
 // object between the markers.
 var MODEL_COLORS = /*MODEL_COLORS_JSON*/{
   "ensemble": "#34C0F0",
@@ -503,28 +507,43 @@ function createPlayer(cfg){
       // weeks. Unlocked: autoscale per frame. A stored user view beats
       // both until it is cleared
       var lock = (el.lock && el.lock.checked) ? lockRanges(pl, loc) : null;
-      var xa = {gridcolor: p.line};
-      var ya = {gridcolor: p.line, rangemode: 'tozero'};
+      // automargin: tick labels size the margins, so the tightened base
+      // margins below leave no dead band and nothing clips at the A+
+      // text step (locked ranges keep the ticks, and so the margins,
+      // stable across playback frames)
+      var xa = {gridcolor: p.line, automargin: true};
+      var ya = {gridcolor: p.line, rangemode: 'tozero', automargin: true};
       if(lock && lock.x){ xa.range = lock.x.slice(); xa.autorange = false; }
       if(lock && lock.y){ ya.range = lock.y.slice(); ya.autorange = false; }
       if(P.user.x){ xa.range = P.user.x.slice(); xa.autorange = false; }
       if(P.user.y){ ya.range = P.user.y.slice(); ya.autorange = false; }
       var fs = rootFont();
       var surf = p.card || '#151729';
+      // chart text on the app's type scale, in root-proportional px so the
+      // A-/A/A+ control multiplies it: ticks and legend at .85rem (above
+      // the .82rem hint floor), the title one step up, the now marker at
+      // the hint floor itself. Base margins are tight (automargin above
+      // owns the tick sides); the top band is proportional so the title
+      // and the now label never collide or clip at A+.
       var L = {title: {text: loc + ' · forecasts as of ' + w,
-                       font: {size: Math.round(fs * .875)}},
+                       font: {size: Math.round(fs * .95)}},
         height: cfg.plotHeight || 400,
-        margin: {l: 50, r: 20, t: 34, b: 40},
+        margin: {l: 8, r: 8, t: Math.round(fs * 2.4), b: 8},
         paper_bgcolor: surf, plot_bgcolor: surf,
         font: {color: p.ink, family: '"DM Sans",system-ui,sans-serif',
-               size: Math.round(fs * .8)},
+               size: Math.round(fs * .85)},
+        // horizontal legend under the plot (it pushes the bottom margin
+        // out for itself): a right-hand legend of long model names was
+        // eating a third of the panel width as a dead band
+        legend: {orientation: 'h', x: 0, xanchor: 'left',
+                 y: -0.22, yanchor: 'top'},
         xaxis: xa,
         yaxis: ya,
         shapes: [{type: 'line', x0: w, x1: w, yref: 'paper', y0: 0, y1: 1,
                   line: {color: p.mut, width: 1.2, dash: 'dot'}}],
         annotations: [{x: w, yref: 'paper', y: 1, yanchor: 'bottom',
                   showarrow: false, text: 'now',
-                  font: {size: Math.round(fs * .69), color: p.mut}}]};
+                  font: {size: Math.round(fs * .82), color: p.mut}}]};
       P.applying = true;
       var done = function(){ P.applying = false; bindPlot(); };
       var pr = Plotly.react(el.plot, traces, L, frameConf(loc, w));

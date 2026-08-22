@@ -189,6 +189,29 @@ def test_legacy_report_gets_theme_carry_and_disk_untouched(tmp_path,
     assert (d / "report.html").read_bytes() == before
 
 
+def test_legacy_carry_injects_the_retint_pass_for_charted_pages():
+    # a carried page with embedded charts gains the retint pass, so its
+    # baked category bars follow the reader's theme and color-vision mode
+    # (the field-found gap: pre-bundle reports served green-to-red bars
+    # that ignored the CV-safe toggle); the carried tokens it resolves
+    # arrive with the swapped stylesheet
+    charted = LEGACY.replace(
+        "<p class=\"hint\">map here</p>",
+        "<p class=\"hint\">map here</p>\n<div id=\"fig1\"></div>"
+        "<script>Plotly.newPlot('fig1',[],{});</script>")
+    out = report_v2.legacy_theme_carry(charted)
+    assert 'class="brandrow"' in out                 # the swap happened
+    assert "Plotly.react(g,g.data,g.layout)" in out  # retint rides along
+    assert 'css("--cat-stable"' in out               # cvd reach included
+    assert "addEventListener('themechange',pass)" in out
+    # a chartless page stays retint-free (dead weight otherwise)
+    plain = report_v2.legacy_theme_carry(LEGACY)
+    assert 'class="brandrow"' in plain
+    assert "Plotly.react(g,g.data,g.layout)" not in plain
+    # the stored-file contract is untouched: annotated pages pass through
+    assert report_v2.legacy_theme_carry(out) == out
+
+
 def test_legacy_carry_declines_incompatible_markup():
     html = LEGACY.replace(" .hint{", " .gone{color:red}\n .hint{") \
                  .replace('class="hint"', 'class="hint gone"')

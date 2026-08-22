@@ -565,25 +565,401 @@ def forecast_page(request: Request):
         "fc_date": (res or {}).get("forecast_date", "")})
 
 
-@app.get("/data", response_class=HTMLResponse)
-def data_page(request: Request):
+# --------------------------------------------------------------------------
+# the Data page's read-only vintage views
+#
+# Every scan below reads one archived vintage CSV (~600 KB). The files are
+# immutable once archived, so the caches carry a long TTL; they are keyed by
+# the vintage PATH as well as the date (the archive root is switchable in
+# tests, and an answer from one root must never serve another), and every
+# action that changes the archive (the hub pull) calls _invalidate_scans().
+# --------------------------------------------------------------------------
+
+VINTAGE_TTL_S = 300.0
+
+
+@ttlcache.ttl_cache(ttl_s=VINTAGE_TTL_S)
+def _vintage_summary(path: str, date: str) -> dict:
+    return data_mod.vintage_summary(date)
+
+
+@ttlcache.ttl_cache(ttl_s=VINTAGE_TTL_S)
+def _vintage_locations(path: str, date: str) -> tuple:
+    return tuple(data_mod.vintage_location_names(date))
+
+
+@ttlcache.ttl_cache(ttl_s=VINTAGE_TTL_S)
+def _vintage_series(path: str, date: str, loc: str) -> dict:
+    return data_mod.vintage_series(date, loc)
+
+
+def _spark_svg(values, label: str = "") -> str:
+    """Compact server-rendered admissions sparkline for the Data page: the
+    whole archived series as one ink line on theme tokens, the newest point
+    marked in the accent (the _fan_svg conventions). Empty series render
+    nothing; the template says so in words instead."""
+    import html as _html
+    vals = [float(v) for v in (values or [])]
+    if not vals:
+        return ""
+    W, H, pad = 640, 110, 8
+    hi = max(max(vals), 1.0)
+    n = len(vals)
+
+    def x(i):
+        return pad + i * (W - 2 * pad) / max(n - 1, 1)
+
+    def y(v):
+        return H - 14 - (v / hi) * (H - 26)
+
+    pts = " ".join(f"{x(i):.1f},{y(v):.1f}" for i, v in enumerate(vals))
+    return (f'<svg viewBox="0 0 {W} {H}" role="img" '
+            f'aria-label="{_html.escape(label)}" '
+            f'style="width:100%;max-width:{W}px;display:block">'
+            f'<path d="M{pad},{H - 14} H{W - pad}" stroke="var(--line)" '
+            'stroke-width="1" fill="none"/>'
+            f'<polyline fill="none" stroke="var(--ink)" stroke-width="1.6" '
+            f'points="{pts}"/>'
+            f'<circle cx="{x(n - 1):.1f}" cy="{y(vals[-1]):.1f}" r="3.2" '
+            'fill="var(--gold)"/></svg>')
+
+
+def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
+    """Everything the Data page renders: the freshness panel (the LATEST
+    vintage's stats, always), and the vintage browser's selected view (any
+    archived vintage, any location it covers). Read-only by construction:
+    nothing here writes. Bad selections fall back to the defaults with a
+    note, never an error page."""
+    import re as _re
     vs = data_mod.vintages()
-    return templates.TemplateResponse(request, "data.html", {
-        "active": "Data", "latest_vintage": vs[-1] if vs else "none",
-        "n_vintages": len(vs), "freshness": None})
+    ctx = {"active": "Data", "latest_vintage": vs[-1] if vs else "none",
+           "n_vintages": len(vs), "freshness": freshness,
+           "latest": None, "vintages": list(reversed(vs)),
+           "sel_vintage": "", "sel_loc": "", "loc_names": [],
+           "sel_summary": None, "series_table": [], "series_n": 0,
+           "spark_svg": "", "peak": None, "view_note": ""}
+    if not vs:
+        return ctx
+    latest = vs[-1]
+    try:
+        ctx["latest"] = _vintage_summary(
+            str(data_mod.vintage_path(latest)), latest)
+    except Exception as e:
+        ctx["view_note"] = ("Could not read the latest vintage "
+                            f"({type(e).__name__}). The archive may still "
+                            "be updating; try again shortly.")
+        return ctx
+    sel_v = (vintage if _re.fullmatch(r"\d{4}-\d{2}-\d{2}", vintage or "")
+             and vintage in vs else latest)
+    if vintage and sel_v != vintage:
+        ctx["view_note"] = (f"No archived vintage for {vintage}; showing "
+                            f"the latest, {latest}.")
+    try:
+        pv = str(data_mod.vintage_path(sel_v))
+        names = list(_vintage_locations(pv, sel_v))
+        sel_loc = loc if loc in names else (names[0] if names else "")
+        if loc and sel_loc != loc:
+            note = (f"{ctx['view_note']} " if ctx["view_note"] else "")
+            ctx["view_note"] = (note + "That location is not in the "
+                                f"{sel_v} vintage; showing {sel_loc}.")
+        ctx["sel_vintage"], ctx["sel_loc"] = sel_v, sel_loc
+        ctx["loc_names"] = names
+        ctx["sel_summary"] = _vintage_summary(pv, sel_v)
+        series = _vintage_series(pv, sel_v, sel_loc) if sel_loc else {}
+        dates = list(series.get("dates") or [])
+        values = list(series.get("values") or [])
+        ctx["series_n"] = len(dates)
+        # recent weeks, newest first: the table a person actually reads
+        ctx["series_table"] = list(zip(dates, values))[-12:][::-1]
+        if values:
+            pk = max(range(len(values)), key=lambda i: values[i])
+            ctx["peak"] = (dates[pk], values[pk])
+        ctx["spark_svg"] = _spark_svg(
+            values, f"{sel_loc}: weekly admissions as archived {sel_v}")
+    except Exception as e:
+        ctx["view_note"] = (f"Could not read the {sel_v} vintage "
+                            f"({type(e).__name__}).")
+    return ctx
+
+
+@app.get("/data", response_class=HTMLResponse)
+def data_page(request: Request, loc: str = "", vintage: str = ""):
+    return templates.TemplateResponse(request, "data.html",
+                                      _data_context(loc, vintage))
+
+
+# --------------------------------------------------------------------------
+# storage management: what is on disk, what it costs, what may be deleted
+#
+# One inventory feeds the Runs page's storage panel. Two trees are HARD
+# protected and never even render a delete control: the sealed validation
+# record (app/state/retro_seal, the three-season evidence the shipped
+# configuration rests on) and the FluSight hub clone (shared source data,
+# not this application's to delete). The server refuses them again on POST,
+# so no crafted request can reach either. Everything running or paused is
+# refused server-side as well; the client confirm is convenience.
+# --------------------------------------------------------------------------
+
+@ttlcache.ttl_cache(ttl_s=60.0)
+def _tree_size(path: str) -> int:
+    from app.core import retro
+    return retro.dir_size(Path(path))
+
+
+def _storage_protected(p: Path) -> bool:
+    """True when a path lies inside a tree the interface must never delete:
+    the sealed validation record or the FluSight hub clone."""
+    from flubnf.settings import HUB
+    try:
+        rp = Path(p).resolve()
+    except OSError:
+        return True                      # unresolvable: refuse, never guess
+    for root in (RETRO_SEAL, HUB):
+        try:
+            r = Path(root).resolve()
+            if rp == r or rp.is_relative_to(r):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def _live_workroot_ids() -> set:
+    """Workroot directory names a worker may be writing into right now."""
+    out = set()
+    running = _status.get("running") or ""
+    if running and ":" in running:
+        out.add(running.split(":", 1)[1])
+    w = _status.get("workroot")
+    if w:
+        out.add(Path(w).name)
+    return out
+
+
+def _storage_inventory() -> dict:
+    """Everything the storage panel lists, with sizes: workroots per run,
+    live retro season trees, archived retro runs, and the forecast report
+    archive -- each row saying whether it is deletable right now and why
+    not when it is not. The two protected trees are listed with sizes and
+    no controls."""
+    import re as _re
+    from app.core import retro
+    from app.core.runs import APP_STATE
+    from flubnf.settings import HUB
+    inv = {"workroots": [], "retro": [], "retro_archives": [],
+           "report_archives": [], "protected": []}
+    live_ids = _live_workroot_ids()
+    console_busy = bool(_status.get("running"))
+    wr = APP_STATE / "workroots"
+    if wr.is_dir():
+        for p in sorted((d for d in wr.iterdir() if d.is_dir()),
+                        key=lambda d: d.name, reverse=True):
+            size = _tree_size(str(p))
+            inv["workroots"].append({
+                "id": p.name, "size_h": retro.human_bytes(size),
+                "busy": p.name in live_ids})
+    if RETRO_ROOT.is_dir():
+        for p in sorted(RETRO_ROOT.iterdir()):
+            if not p.is_dir() and not p.is_symlink():
+                continue
+            if _valid_season(p.name):
+                st = _season_status(p.name)
+                inv["retro"].append({
+                    "id": p.name, "size_h": retro.human_bytes(_tree_size(str(p))),
+                    "status": st, "busy": st in _RETRO_ACTIVE})
+                continue
+            m = _re.match(r"(\d{4}-\d{2})", p.name)
+            if m and retro.archive_stamp_of(p.name, m.group(1)):
+                season = m.group(1)
+                stamp = retro.archive_stamp_of(p.name, season)
+                inv["retro_archives"].append({
+                    "id": p.name, "season": season,
+                    "when": retro.stamp_human(stamp),
+                    "size_h": retro.human_bytes(_tree_size(str(p))),
+                    "busy": _season_status(season) in _RETRO_ACTIVE})
+    arch = APP_STATE / "archive"
+    for d in reversed(_scan_archive_dates(arch)):
+        inv["report_archives"].append({
+            "id": d, "size_h": retro.human_bytes(_tree_size(str(arch / d))),
+            "busy": console_busy})
+    for label, p in (("Sealed validation record", RETRO_SEAL),
+                     ("FluSight hub clone", HUB)):
+        if Path(p).exists():
+            inv["protected"].append({
+                "label": label, "path": str(p),
+                "size_h": retro.human_bytes(_tree_size(str(p)))})
+    return inv
+
+
+def _clearable_run_ids(ledger) -> list:
+    """Ledger rows the clear control may remove: every completed row --
+    ok, failed, stopped, error, and interrupted (a 'running' row with no
+    live worker behind it). The one active run's row is never included."""
+    live = _status.get("running") or ""
+    out = []
+    for r in ledger.rows(100_000):
+        rid = r.get("run_id") or ""
+        if r.get("status") == "running" and live.endswith(rid) and rid:
+            continue
+        out.append(rid)
+    return out
 
 
 @app.get("/runs", response_class=HTMLResponse)
 def runs_page(request: Request):
-    rows = Ledger().rows(50)
+    from app.core.runs import APP_STATE, is_research
+    from app.core import retro
+    ledger = Ledger()
+    rows = ledger.rows(50)
     for r in rows:
-        r["label"] = _run_label(r["run_id"], r.get("spec", ""))
+        # the styled research badge carries the tag here, so the label
+        # itself stays untagged (never say it twice on one row)
+        r["label"] = _run_label(r["run_id"], r.get("spec", ""), tag=False)
+        r["research"] = is_research(r.get("spec", ""))
         r["chips"] = _outcome_chips(r.get("outcome", ""))
         # a 'running' row with no live worker = the app was closed mid-run
         if r["status"] == "running" and not (_status.get("running") or "").endswith(r["run_id"]):
             r["status"] = "interrupted"
+        # honest dangling-row display: a row whose workroot was deleted in
+        # the storage panel keeps its record and shows a dash for disk use
+        w = APP_STATE / "workroots" / r["run_id"]
+        r["disk_h"] = (retro.human_bytes(_tree_size(str(w)))
+                       if w.is_dir() else None)
     return templates.TemplateResponse(request, "runs.html", {
-        "active": "Runs", "ledger": rows})
+        "active": "Runs", "ledger": rows,
+        "clear_count": len(_clearable_run_ids(ledger)),
+        "storage": _storage_inventory()})
+
+
+@app.post("/runs/clear")
+def runs_clear(request: Request, confirm: str = Form("")):
+    """Clear every completed row from the run ledger.
+
+    The confirmation names the COUNT the user saw; if the ledger changed
+    between the page render and the click (a run finished, another was
+    cleared elsewhere), the counts disagree and nothing is deleted -- the
+    user must see the current state before confirming it away. The active
+    run's row is never touched, and clearing the ledger never deletes
+    workroot data on disk (the confirm copy says so; the storage panel is
+    where disk space is reclaimed)."""
+    _invalidate_scans()
+    ledger = Ledger()
+    ids = _clearable_run_ids(ledger)
+    if not ids:
+        _flash("The run ledger has no completed rows to clear.")
+        return _back(request, "/runs")
+    if confirm != str(len(ids)):
+        _flash("The ledger changed since this page was rendered "
+               f"({len(ids)} clearable row{'' if len(ids) == 1 else 's'} "
+               "now). Nothing was cleared; review and confirm again.")
+        return _back(request, "/runs")
+    n = ledger.delete_runs(ids)
+    _invalidate_scans()
+    _flash(f"Cleared {n} completed row{'' if n == 1 else 's'} from the run "
+           "ledger. No data on disk was deleted: the runs' workroots stay "
+           "in the storage panel until deleted there.")
+    return _back(request, "/runs")
+
+
+#: storage kinds -> identifier validator; the identifier is always the
+#: directory name inside that kind's one fixed parent, so nothing a form
+#: posts can name a path outside it (containment is re-checked on resolve).
+_STORAGE_KINDS = ("workroot", "retro-season", "retro-archive",
+                  "report-archive")
+
+
+def _storage_target(kind: str, ident: str):
+    """(path, busy_reason) for one storage delete request, after all
+    validation EXCEPT the confirmation; (None, message) when refused."""
+    import re as _re
+    from app.core import retro
+    from app.core.runs import APP_STATE
+    if kind == "workroot":
+        if not _re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", ident or ""):
+            return None, "Unrecognized workroot name."
+        p = APP_STATE / "workroots" / ident
+        if ident in _live_workroot_ids():
+            return None, (f"The run {ident} is active; its workroot cannot "
+                          "be deleted while it runs.")
+        base = APP_STATE / "workroots"
+    elif kind == "retro-season":
+        if not _valid_season(ident):
+            return None, "Unrecognized season name."
+        if _season_status(ident) in _RETRO_ACTIVE:
+            return None, (f"{ident} is replaying (status: "
+                          f"{_season_status(ident)}); stop it first.")
+        p = RETRO_ROOT / ident
+        base = RETRO_ROOT
+    elif kind == "retro-archive":
+        m = _re.match(r"(\d{4}-\d{2})", ident or "")
+        stamp = (retro.archive_stamp_of(ident, m.group(1)) if m else "")
+        if not stamp:
+            return None, "Unrecognized archived run identifier."
+        season = m.group(1)
+        if _season_status(season) in _RETRO_ACTIVE:
+            return None, (f"{season} is replaying; stop it before deleting "
+                          "its archived runs.")
+        p = RETRO_ROOT / ident
+        base = RETRO_ROOT
+    elif kind == "report-archive":
+        if not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", ident or ""):
+            return None, "Unrecognized report archive date."
+        if _status.get("running"):
+            return None, ("A console run is in progress and may be writing "
+                          "the archive; stop it first.")
+        p = APP_STATE / "archive" / ident
+        base = APP_STATE / "archive"
+    else:
+        return None, "Unrecognized storage kind."
+    # Containment is BY CONSTRUCTION: every identifier above passed a
+    # separator-free pattern, so base / ident cannot leave base. The path
+    # is deliberately not resolved here -- a season parked elsewhere via a
+    # symlink is legitimate (delete_tree removes only the link) -- but a
+    # link that POINTS INTO a protected tree is still caught below, where
+    # _storage_protected resolves before comparing.
+    assert p.parent == Path(base), "storage target escaped its parent"
+    if _storage_protected(p):
+        return None, ("That tree is protected (the sealed validation "
+                      "record and the hub clone are never deletable from "
+                      "the interface).")
+    if not (p.is_dir() or p.is_symlink()):
+        return None, "Nothing is on disk under that name."
+    return p, ""
+
+
+@app.post("/storage/delete")
+def storage_delete(request: Request, kind: str = Form(""),
+                   ident: str = Form(""), confirm: str = Form("")):
+    """Delete one storage panel entry, permanently.
+
+    The same gate order as the archived-run delete: identify and validate
+    the target, refuse anything busy or protected, and only then check the
+    confirmation (which must name the entry exactly). Every refusal states
+    that nothing was deleted."""
+    from app.core import retro
+    _invalidate_scans()          # sizes and listings are about to change
+    p, why = _storage_target(kind, ident)
+    if p is None:
+        _flash(f"{why} Nothing was deleted.")
+        return _back(request, "/runs")
+    if confirm != ident:
+        _flash("The deletion was not confirmed, so nothing was deleted.")
+        return _back(request, "/runs")
+    size_h = retro.human_bytes(retro.dir_size(p))
+    try:
+        retro.delete_tree(p)
+    except Exception as e:
+        _flash(f"Could not delete {ident}: {type(e).__name__}: "
+               f"{str(e)[:160]}. Nothing else changed.")
+        return _back(request, "/runs")
+    _invalidate_scans()
+    noun = {"workroot": "workroot", "retro-season": "retrospective season",
+            "retro-archive": "archived retrospective run",
+            "report-archive": "report archive"}.get(kind, "entry")
+    tail = (" Its ledger row remains as the run's record."
+            if kind == "workroot" else "")
+    _flash(f"Deleted the {noun} {ident}: {size_h} freed.{tail}")
+    return _back(request, "/runs")
 
 
 @app.post("/run/stop")
@@ -648,6 +1024,7 @@ def api_busy():
 def data_pull():
     """Explicit hub update -- looking never pulls; pulling is a button."""
     msg = data_mod.pull_hub()
+    _invalidate_scans()      # new vintages: nothing cached about them survives
     vs = data_mod.vintages()
     from flubnf.settings import HUB as _H
     comp = (" · comparators: baseline "
@@ -661,10 +1038,8 @@ def data_pull():
 @app.post("/freshness", response_class=HTMLResponse)
 def freshness(request: Request):
     f = data_mod.check_freshness()
-    vs = data_mod.vintages()
-    return templates.TemplateResponse(request, "data.html", {
-        "active": "Data", "latest_vintage": vs[-1] if vs else "none",
-        "n_vintages": len(vs), "freshness": f})
+    return templates.TemplateResponse(request, "data.html",
+                                      _data_context(freshness=f))
 
 
 def _phase(msg):
@@ -1335,9 +1710,14 @@ def run_page(request: Request, run_id: str):
     # record for a run; nothing is duplicated to show them here. The build
     # and engine versions are this process's, stated so the page says what
     # produced the run rather than implying it.
+    from app.core.runs import is_research
     return templates.TemplateResponse(request, "run.html", {
         "active": "Runs", "run_id": run_id, "status": status, "error": err,
-        "label": _run_label(run_id, spec_json), "models": res.get("models", {}),
+        # the page renders a styled research badge, so the label itself
+        # stays untagged here
+        "label": _run_label(run_id, spec_json, tag=False),
+        "research": is_research(spec_json),
+        "models": res.get("models", {}),
         "settings": spec_settings(spec_json),
         "versions": version_pairs(RUNNING_SHA, VERSIONS),
         "can_rerun": bool(spec_json) and status in RERUN_STATUSES,
@@ -1392,6 +1772,7 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
         weeks_to_drop=int(d.get("weeks_to_drop") or 0),
         weeks_to_nowcast=int(d.get("weeks_to_nowcast") or 0),
         replicates=int(d.get("replicates") or 3),
+        particles=int(d.get("particles") or 10_000),
         extra={"members": 3} if members == 3 else {})
     recon = _asdict(candidate)
     off = [k for k in sorted(d) if recon.get(k) != d[k]]
@@ -1400,6 +1781,8 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
             off.append("forecast_date")   # /run would snap it: not verbatim
     except ValueError:
         off.append("forecast_date")
+    if not (1_000 <= candidate.particles <= 100_000):
+        off.append("particles")           # /run would clamp it: not verbatim
     if off:
         _flash("This run's recorded settings cannot be reproduced from the "
                "console path (" + ", ".join(dict.fromkeys(off)) + " differ "
@@ -1413,7 +1796,8 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
                       weeks_to_nowcast=candidate.weeks_to_nowcast,
                       replicates=candidate.replicates,
                       engine=candidate.engine,
-                      members=members)
+                      members=members,
+                      particles=candidate.particles)
 
 
 @app.get("/api/series")
@@ -1494,15 +1878,23 @@ def api_progress():
     return out
 
 
-def _run_label(run_id: str, spec_json: str = "") -> str:
-    """Humans read dates, not hashes: '2026-07-04 · Aug 18 09:31'."""
+def _run_label(run_id: str, spec_json: str = "", tag: bool = True) -> str:
+    """Humans read dates, not hashes: '2026-07-04 · Aug 18 09:31'.
+
+    A research run (the three-member spec, kept out of the shipped
+    ensemble) carries ' · research' in the label text, so the tag follows
+    the run onto every surface that prints the label, including the ones
+    that render it as plain text. Pages that show a styled research badge
+    beside the label pass tag=False so the tag is never said twice."""
     import json as _json
+    from app.core.runs import is_research
     when = f"{run_id[4:6]}-{run_id[6:8]} {run_id[9:11]}:{run_id[11:13]}"
+    suffix = " · research" if (tag and is_research(spec_json)) else ""
     try:
         s = _json.loads(spec_json)
-        return f"{s.get('forecast_date','run')} · {when}"
+        return f"{s.get('forecast_date','run')} · {when}{suffix}"
     except Exception:
-        return when
+        return when + suffix
 
 
 def relwis_chip(value, cells=None, member: str = "PF") -> str:
@@ -1620,7 +2012,9 @@ def output_page(request: Request):
             files.append(entry)
     return templates.TemplateResponse(request, "output.html", {
         "active": "Output", "rid": rid,
-        "label": _run_label(rid) if rid else "",
+        # results.json stores the run's spec verbatim; passing it lets the
+        # label carry the research tag on this surface too
+        "label": _run_label(rid, (res or {}).get("spec", "")) if rid else "",
         "date": (res or {}).get("forecast_date", ""),
         "has_ensemble": bool((res or {}).get("models", {}).get("ensemble")),
         "files": files,
@@ -1863,7 +2257,14 @@ def model_page(request: Request, name: str):
         "model_names_json": __import__("json").dumps(_model_names()),
         "member_colors_json": __import__("json").dumps(_member_colors()),
         "oneline": onelines[name], "manchor": manchor[name],
-        "rid": rid, "label": _run_label(rid) if rid else "",
+        # the two-strain view alone carries the research run control
+        # (research_run.html via base.html): the two-strain engine failed
+        # its ensemble gate, so the control lives ONLY here, clearly
+        # badged, and the flagship Forecast form never grows a third-member
+        # option
+        "research_panel": name == "pf2s",
+        "rid": rid,
+        "label": _run_label(rid, (res or {}).get("spec", "")) if rid else "",
         "date": (res or {}).get("forecast_date", ""),
         "fanq_json": __import__("json").dumps(fanq),
         "overlay_json": __import__("json").dumps(overlay),
@@ -2849,7 +3250,8 @@ def run_models(request: Request,
                weeks_to_nowcast: int = Form(0),
                replicates: int = Form(3),
                engine: str = Form("all"),
-               members: int = Form(2)):
+               members: int = Form(2),
+               particles: int = Form(10_000)):
     # the pipeline's contract is Saturdays with an archived vintage; hold
     # the user to it kindly instead of failing three phases into the run
     from datetime import date as _date, timedelta as _td
@@ -2932,11 +3334,16 @@ def run_models(request: Request,
     _status["expected_total"] = (len(locs_list) * int(replicates)
                                  * (2 if members == 3 else 1)
                                  if engine in ("all", "pf") else None)
+    # particles is posted only by the research run form (the flagship forms
+    # never send it and default to the sit-down verdict's 10,000); clamped
+    # to what the machine survives, exactly like the retrospective form
+    particles = max(1_000, min(int(particles), 100_000))
     spec = RunSpec(engine=engine, forecast_date=forecast_date,
                    locations=locs_list,
                    weeks_to_drop=weeks_to_drop,
                    weeks_to_nowcast=weeks_to_nowcast,
                    replicates=replicates,
+                   particles=particles,
                    extra={"members": 3} if members == 3 else {})
     if engine in ("all", "pf", "analogue"):
         # 'analogue' rides the same pipeline with the PF block skipped --

@@ -2,7 +2,14 @@
 <h1>Data</h1>
 <div class="cols">
  <div><div class="card"><h2>FluSight hub</h2>
+  {# the freshness panel: the LATEST vintage's own numbers, read from the
+     archived file itself, so "fresh" is stated in facts a reader can check #}
   <p>Latest vintage: <code>{{ latest_vintage }}</code></p>
+  {% if latest %}
+  <p class="hint">{{ "{:,}".format(latest.rows) }} reported rows ·
+   {{ latest.locations }} jurisdictions covered · newest week
+   {{ latest.newest_week }}</p>
+  {% endif %}
   <p class="hint">{{ n_vintages }} archived truth vintages</p>
   <form method="post" action="/freshness"><button class="quiet">Check for new data</button></form>
   {# no confirmation: pulling is safe and resumable, the flash banner on
@@ -19,5 +26,49 @@
   archived on its forecast date. Missing weeks are dropped with
   calendar-true offsets, never imputed. A missing vintage fails loudly with
   the nearest alternatives.</p></div></div>
+</div>
+
+<div class="card"><h2>Vintage browser</h2>
+ <p class="hint">A read-only view of the archived truth vintages, the exact
+ files every run fits. Pick a vintage to see what that week knew; pick a
+ location to see its series as archived then. Nothing here writes.</p>
+ {# plain GET form: each control re-renders the page server-side, the URL
+    stays shareable, and the view needs no scripting to work #}
+ <form method="get" action="/data" class="row" style="align-items:flex-end">
+  <span><label for="dv-vintage">Vintage</label>
+   <select id="dv-vintage" name="vintage" onchange="this.form.submit()">
+    {% for v in vintages %}<option {% if v == sel_vintage %}selected{% endif %}>{{ v }}</option>{% endfor %}
+   </select></span>
+  <span><label for="dv-loc">Location</label>
+   <select id="dv-loc" name="loc" onchange="this.form.submit()">
+    {% for n in loc_names %}<option {% if n == sel_loc %}selected{% endif %}>{{ n }}</option>{% endfor %}
+   </select></span>
+  <button class="quiet">Show</button>
+ </form>
+ {% if view_note %}<p class="warn">{{ view_note }}</p>{% endif %}
+ {% if sel_summary %}
+ <p class="hint">As archived on {{ sel_vintage }}: {{ "{:,}".format(sel_summary.rows) }}
+  reported rows · {{ sel_summary.locations }} jurisdictions · weeks
+  {{ sel_summary.oldest_week }} to {{ sel_summary.newest_week }}</p>
+ {% endif %}
+ {% if spark_svg %}
+ {{ spark_svg | safe }}
+ <p class="hint">{{ sel_loc }}: {{ series_n }} reported weeks in this
+  vintage{% if peak %} · peak {{ "{:,.0f}".format(peak[1]) }} admissions in
+  the week of {{ peak[0] }}{% endif %} · the marked point is the newest
+  week this vintage held.</p>
+ {% elif sel_loc %}
+ <p class="hint">This vintage holds no reported weeks for {{ sel_loc }}.</p>
+ {% endif %}
+ {% if series_table %}
+ <div style="overflow-x:auto"><table>
+  <tr><th>week</th><th>admissions</th></tr>
+  {% for d, v in series_table %}
+  <tr><td>{{ d }}</td><td class="num">{{ "{:,.0f}".format(v) }}</td></tr>
+  {% endfor %}
+ </table></div>
+ <p class="hint">Newest {{ series_table | length }} reported weeks, as this
+  vintage archived them; later revisions never appear here.</p>
+ {% endif %}
 </div>
 {% endblock %}
