@@ -128,8 +128,14 @@
        // spec existed fills itself in rather than staying blank
        const sb=document.getElementById('runsettings');
        if(sb && !sb.textContent.trim() && d.settings && d.settings.length){
-         sb.innerHTML='<p class="hint runsettings"><strong>Run settings:</strong> '
-           + d.settings.map(p=>p[0]+' '+p[1]).join(' · ') + '</p>';
+         // same markup as app.core.runs.settings_html: the compact
+         // two-column grid, values escaped (they include location names)
+         const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+           .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+         sb.innerHTML='<div class="hint runsettings"><strong>Run settings</strong>'
+           + '<dl class="kv">'
+           + d.settings.map(p=>'<dt>'+esc(p[0])+'</dt><dd>'+esc(p[1])+'</dd>').join('')
+           + '</dl></div>';
        }
        if(d.eta_s!=null){
          PS.ema = PS.ema==null ? d.eta_s : 0.3*d.eta_s + 0.7*PS.ema;
@@ -173,6 +179,9 @@
    {# chips are markup built by the server from fixed phrases and numbers
       only; the raw error text never travels through them #}
    <p class="hint">{{ r.chips | safe }}</p>
+   {# what produced this run: the shared settings table (the same renderer
+      the run page and the reports use), from the ledger row's spec #}
+   {{ settings_html(r.settings) | safe }}
    {# straight to the run's outputs, so the tab never dead-ends here #}
    <p class="hint">{% if r.has_report %}<a href="/runs/{{ r.run_id }}/report" target="_blank">Weekly report</a> · {% endif %}<a href="/output">Submission files</a></p>
    {% if r.spec and r.status in ("stopped", "error", "failed", "interrupted") %}
@@ -257,13 +266,16 @@
  // the readable accent-ink variant of the same cyan identity. Re-read
  // per draw so a theme change repaints correctly.
  const MCOLORS = {{ member_colors_json | safe }};
- // the one season-line palette (the shared player's marked JSON, via the
- // server): colorblind-safe BY CONSTRUCTION -- cyclically adjacent colors,
- // and the first color against the gold the newest season wears, sit 60+
- // apart under both Vienot dichromacy matrices and in normal vision, and
- // every color holds 3:1+ on all eight theme grounds -- so the CV-safe
- // toggle deliberately does not remap it (see SEASON_COLORS in player.js)
+ // the season-line palette's red-green-safe set (the shared player's
+ // marked JSON, via the server). The colors actually drawn resolve from
+ // the --season-N tokens per draw: the normal-vision tab10-adjacent
+ // default, remapped to the cvd-safe set (these SCOLORS literals) under
+ // data-vision="cvd" -- so the CV-safe toggle visibly recolors the
+ // season lines on the themechange redraw. SCOLORS stays the fallback
+ // where the tokens are absent (see SEASON_COLORS in player.js).
  const SCOLORS = {{ season_colors_json | safe }};
+ const seasonColor = i => css('--season-' + ((i % SCOLORS.length) + 1))
+                          || SCOLORS[i % SCOLORS.length];
  function memberColor(m){
    return m==='ensemble'?(css('--gold')||MCOLORS.ensemble)
         : MCOLORS[m]||css('--mut');
@@ -362,17 +374,18 @@
      // seasons share the week alignment but not the calendar, so each
      // trace's hover carries its own season's actual Saturday date.
      // Colors: the newest season wears the gold accent (thicker line);
-     // earlier seasons take SCOLORS newest-first (the season just before
-     // the gold one is always SCOLORS[0], cycling when seasons outnumber
-     // colors), so every drawn-adjacent pair is one the palette audit
-     // measured -- never the plotly default colorway, whose green/red
-     // pair the CV-safe mode does not reach
+     // earlier seasons resolve --season-N newest-first (the season just
+     // before the gold one is always index 0, cycling when seasons
+     // outnumber colors), so every drawn-adjacent pair is one the
+     // palette audit measured -- never the plotly default colorway. The
+     // tokens resolve per draw, so the CV-safe toggle's themechange
+     // redraw swaps the whole set between the normal and cvd palettes.
      const traces=seasons.map((k,i)=>({x:by[k].x,y:by[k].y,mode:lm,marker:{size:4},name:k,
        customdata:by[k].d,
        hovertemplate:k+' · %{customdata} · %{y:,.0f}<extra></extra>',
        line:{width:i===seasons.length-1?3:1.5,
              color:i===seasons.length-1?(css('--gold')||MCOLORS.analogue)
-                  :SCOLORS[(seasons.length-2-i)%SCOLORS.length]}}));
+                  :seasonColor(seasons.length-2-i)}}));
      const L=lay(loc+': season over season',380);
      // month names at the month-boundary week offsets; the exact date per
      // point lives in the hover, so nobody does calendar arithmetic

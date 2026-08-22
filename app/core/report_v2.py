@@ -99,12 +99,14 @@ def season_colors() -> list:
 
     The model_colors contract applied to the season-over-season charts:
     player.js carries the palette as a marked JSON literal (SEASON_COLORS),
-    and this parse hands the SAME values to every Python surface, so a
-    season wears one color everywhere one is drawn. The palette is
-    STATIC-SAFE BY CONSTRUCTION (dichromat-spaced and ground-audited; see
-    the SEASON_COLORS comment in player.js), which is why the CV-safe mode
-    deliberately does not remap it. Degrades to the equal fallback literals
-    rather than raising."""
+    and this parse hands the SAME values to every Python surface. Since
+    2026-08-21 these literals are the RED-GREEN-SAFE set: the console
+    resolves the --season-N tokens per draw (normal-vision tab10-adjacent
+    by default, remapped onto these values under data-vision="cvd"), and
+    this list is the fallback where the tokens are absent, so a surface
+    without the stylesheet still wears the dichromat-spaced, ground-audited
+    palette (see the SEASON_COLORS comment in player.js). Degrades to the
+    equal fallback literals rather than raising."""
     try:
         src = PLAYER_SRC.read_text(encoding="utf-8")
         m = re.search(r"/\*SEASON_COLORS_JSON\*/\s*(\[.*?\])"
@@ -483,6 +485,17 @@ def page_style() -> str:
  .card h2{{font-size:.8rem;margin:0 0 .55rem;text-transform:uppercase;
     letter-spacing:.05em;color:var(--mut);font-weight:600}}
  .sub{{color:var(--mut);margin:.2rem 0 1rem}}
+ /* run-settings block: the console's compact two-column grid (see
+    nau.css .runsettings), restated here because the report is
+    self-contained */
+ .runsettings{{margin:.45rem 0}}
+ .runsettings .kv{{display:grid;
+    grid-template-columns:max-content max-content;
+    gap:.14rem 1.1rem;align-items:baseline;width:max-content;
+    max-width:100%;margin:.25rem 0 0}}
+ .runsettings .kv dt{{color:var(--mut)}}
+ .runsettings .kv dd{{margin:0;font-weight:650;
+    font-variant-numeric:tabular-nums;overflow-wrap:anywhere}}
  .card{{background:var(--card);border:1px solid var(--line);
         border-radius:10px;padding:.85rem 1rem;margin:.8rem 0;
         box-shadow:var(--shadow);overflow-x:auto}}
@@ -575,9 +588,14 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
     map_html = svg_map(cards_by_fips, clickable=set(state_details))
     model_label = model_label or MODEL_LABEL["pf"]
     # the outlook model toggle (v3 bundles): rendered only when the bundle
-    # actually carries cards for two or more models
+    # actually carries SWAPPABLE cards (probs-bearing, fips-keyed -- the
+    # same bar the home outlook's _outlook_models applies) for two or more
+    # models; a model whose cards hold no data would render an inert
+    # button, so it is dropped here and the emitter guards again
     model_toggle_html = ""
-    cbm = {m: c for m, c in (cards_by_model or {}).items() if c}
+    cbm = {m: c for m, c in (cards_by_model or {}).items()
+           if any(isinstance(v, dict) and v.get("fips") and v.get("probs")
+                  for v in (c or {}).values())}
     if len(cbm) >= 2:
         order = [m for m in MODEL_ORDER if m in cbm] \
             + [m for m in cbm if m not in MODEL_ORDER]

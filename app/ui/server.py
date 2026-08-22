@@ -607,6 +607,9 @@ def forecast_page(request: Request):
     for r in ledger_rows:
         r["label"] = _run_label(r["run_id"], r.get("spec", ""))
         r["chips"] = _outcome_chips(r.get("outcome", ""))
+        # the latest-run card states what produced the run, in the shared
+        # settings table (the run page's rendering), from the row's spec
+        r["settings"] = spec_settings(r.get("spec", ""))
         # whether the run produced a weekly report, so the latest-run card
         # can link straight to it instead of leaving the reader to guess
         try:
@@ -657,37 +660,6 @@ def _vintage_series(path: str, date: str, loc: str) -> dict:
     return data_mod.vintage_series(date, loc)
 
 
-def _spark_svg(values, label: str = "") -> str:
-    """Compact server-rendered admissions sparkline for the Data page: the
-    whole archived series as one ink line on theme tokens, the newest point
-    marked in the accent (the _fan_svg conventions). Empty series render
-    nothing; the template says so in words instead."""
-    import html as _html
-    vals = [float(v) for v in (values or [])]
-    if not vals:
-        return ""
-    W, H, pad = 640, 110, 8
-    hi = max(max(vals), 1.0)
-    n = len(vals)
-
-    def x(i):
-        return pad + i * (W - 2 * pad) / max(n - 1, 1)
-
-    def y(v):
-        return H - 14 - (v / hi) * (H - 26)
-
-    pts = " ".join(f"{x(i):.1f},{y(v):.1f}" for i, v in enumerate(vals))
-    return (f'<svg viewBox="0 0 {W} {H}" role="img" '
-            f'aria-label="{_html.escape(label)}" '
-            f'style="width:100%;max-width:{W}px;display:block">'
-            f'<path d="M{pad},{H - 14} H{W - pad}" stroke="var(--line)" '
-            'stroke-width="1" fill="none"/>'
-            f'<polyline fill="none" stroke="var(--ink)" stroke-width="1.6" '
-            f'points="{pts}"/>'
-            f'<circle cx="{x(n - 1):.1f}" cy="{y(vals[-1]):.1f}" r="3.2" '
-            'fill="var(--gold)"/></svg>')
-
-
 def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
     """Everything the Data page renders: the freshness panel (the LATEST
     vintage's stats, always), and the vintage browser's selected view (any
@@ -701,7 +673,7 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
            "latest": None, "vintages": list(reversed(vs)),
            "sel_vintage": "", "sel_loc": "", "loc_names": [],
            "sel_summary": None, "series_table": [], "series_n": 0,
-           "spark_svg": "", "peak": None, "view_note": ""}
+           "series_json": "null", "peak": None, "view_note": ""}
     if not vs:
         return ctx
     latest = vs[-1]
@@ -738,8 +710,14 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
         if values:
             pk = max(range(len(values)), key=lambda i: values[i])
             ctx["peak"] = (dates[pk], values[pk])
-        ctx["spark_svg"] = _spark_svg(
-            values, f"{sel_loc}: weekly admissions as archived {sel_v}")
+        # the full archived series for the template's Plotly chart (the
+        # forecast tab's charting framework replaced the old sparkline,
+        # user report 2026-08-21): dates and values only, JSON-ready
+        if values:
+            import json as _json
+            ctx["series_json"] = _json.dumps(
+                {"dates": [str(d)[:10] for d in dates],
+                 "values": [float(v) for v in values]})
     except Exception as e:
         ctx["view_note"] = (f"Could not read the {sel_v} vintage "
                             f"({type(e).__name__}).")

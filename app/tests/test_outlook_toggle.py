@@ -252,3 +252,53 @@ def test_swap_payload_matches_the_server_render(tmp_path, monkeypatch):
     # a no-data state carries the explicit no-data tone in the payload too
     assert pay["04"]["f"].startswith("var(--map-nodata")
     assert "no reported data" in pay["04"]["h"]
+
+
+# ---------------------------------------- the emitter's own inert guard
+
+def test_model_toggle_emitter_refuses_fewer_than_two_swappable_models():
+    """User report 2026-08-21 (a toggle-like control above the outlook map
+    that did nothing): the emitter now enforces the two-swappable-models
+    contract itself. A model whose payload carries no per-state fills is
+    dropped -- its button could only sit inert -- and with fewer than two
+    left, nothing is emitted at all: a pre-v3 or partial bundle renders
+    label only, never a dead control."""
+    from app.core import usmap
+    labels = {"ensemble": "NAU ensemble outlook", "pf": "PF-SIHRS outlook"}
+    states = {"39": {"f": "#111111", "o": 0.8, "h": "x"}}
+    # both models swappable: the toggle renders
+    ok = usmap.model_toggle(
+        ["ensemble", "pf"], labels, "ensemble",
+        {"ensemble": {"states": states, "us": {}},
+         "pf": {"states": states, "us": {}}})
+    assert 'data-mmodel="ensemble"' in ok and 'data-mmodel="pf"' in ok
+    # one model's payload is empty: no toggle at all, not a one-button row
+    for empty in ({}, {"states": {}, "us": {}}):
+        html = usmap.model_toggle(
+            ["ensemble", "pf"], labels, "ensemble",
+            {"ensemble": {"states": states, "us": {}}, "pf": empty})
+        assert html == "", empty
+    # a default that is itself unswappable falls to the first live model
+    html = usmap.model_toggle(
+        ["analogue", "ensemble", "pf"], labels, "analogue",
+        {"analogue": {}, "ensemble": {"states": states, "us": {}},
+         "pf": {"states": states, "us": {}}})
+    assert 'data-mmodel="ensemble" aria-pressed="true"' in html
+    assert 'data-mmodel="analogue"' not in html
+
+
+def test_report_drops_models_whose_cards_carry_no_data(tmp_path):
+    """The report-side twin of the server's _outlook_models bar: a v3-shaped
+    bundle whose extra model carries only prob-less cards renders no
+    toggle (the one real model, label only), never an inert button."""
+    _synth_run_all_models(tmp_path)
+    bundle = json.loads((tmp_path / report_v2.BUNDLE_NAME).read_text())
+    # strip every prob from two of the three models' cards
+    for m in ("pf", "analogue"):
+        for card in bundle["cards_by_model"][m].values():
+            card.pop("probs", None)
+    report_v2.render_bundle(bundle, tmp_path / "report2.html")
+    html = (tmp_path / "report2.html").read_text()
+    assert 'id="outlook-model"' not in html
+    assert "data-mmodel=" not in html
+    assert "NAU ensemble outlook" in html            # label stays honest

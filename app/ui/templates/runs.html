@@ -1,6 +1,16 @@
 {% extends "base.html" %}{% block title %}FluBNF · Runs{% endblock %}{% block content %}
 <h1>Run ledger</h1>
 <div class="card">
+{# the full ledger collapses behind a one-line summary (row count and the
+   newest entry) so the storage panel below leads the page; the open state
+   persists per localStorage. An empty ledger keeps the plain hint line
+   with nothing to fold. #}
+{% if ledger %}
+<details class="ledgerfold" id="ledgerfold">
+ <summary>{{ ledger | length }} run{{ "" if ledger | length == 1 else "s" }}
+  recorded<span class="hint"> · newest {{ ledger[0].label }}
+  ({{ ledger[0].status }})</span></summary>
+{% endif %}
 {# elapsed is recorded when a run closes; rows written before the ledger
    carried a finish time hold no measurement and show a dash, never a
    fabricated duration (the hms filter renders None as the dash) #}
@@ -54,6 +64,21 @@
     onOk:function(){f.confirm.value=n;f.submit();}
    });
   });
+ })();
+</script>
+{% endif %}
+{% if ledger %}
+</details>
+<script>
+ // the fold remembers its state: closed by default, and a reader who
+ // opens it keeps it open on the next visit (localStorage, like the
+ // theme and text-size controls)
+ (function(){
+  var d=document.getElementById('ledgerfold');
+  if(!d)return;
+  if(localStorage.getItem('ledgerfold-open')==='1')d.open=true;
+  d.addEventListener('toggle',function(){
+   localStorage.setItem('ledgerfold-open',d.open?'1':'0');});
  })();
 </script>
 {% endif %}

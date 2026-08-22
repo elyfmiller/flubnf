@@ -160,8 +160,17 @@ def version_pairs(build: str = "", versions: dict | None = None) -> list:
 def settings_html(pairs, title: str = "Run settings",
                   cls: str = "hint runsettings", el_id: str = "") -> str:
     """The one rendering of a settings block, used by the console cards, the
-    run page, and both report exports. Compact and secondary by design: it
-    sits under the readouts a reader came for, never above them.
+    run page, the retrospective surfaces, and both report exports -- every
+    surface renders settings through here, so they cannot drift apart.
+    Compact and secondary by design: it sits under the readouts a reader
+    came for, never above them.
+
+    A tight two-column label/value grid (dl.kv, the definition-grid style
+    in nau.css: natural width, values in tabular figures at the standard
+    body size), replacing the old one-line small-print prose per user
+    report 2026-08-21. The wrapper keeps the runsettings class the grid
+    styles hang from; the title keeps the literal text callers and the
+    report freshness check (report_season.SETTINGS_MARK) key on.
 
     Everything is escaped; the values include user-supplied location names.
     """
@@ -169,11 +178,14 @@ def settings_html(pairs, title: str = "Run settings",
     items = [(k, v) for k, v in (pairs or []) if v not in ("", None)]
     if not items:
         return ""
-    body = " · ".join(f"{_html.escape(str(k))} {_html.escape(str(v))}"
-                      for k, v in items)
+    body = "".join(f"<dt>{_html.escape(str(k))}</dt>"
+                   f"<dd>{_html.escape(str(v))}</dd>" for k, v in items)
     ident = f' id="{_html.escape(el_id)}"' if el_id else ""
-    return (f'<p class="{_html.escape(cls)}"{ident}>'
-            f'<strong>{_html.escape(title)}:</strong> {body}</p>')
+    base = _html.escape(cls)
+    wrap = f"{base} runsettings" if "runsettings" not in cls else base
+    return (f'<div class="{wrap}"{ident}>'
+            f'<strong>{_html.escape(title)}</strong>'
+            f'<dl class="kv">{body}</dl></div>')
 
 
 def derive_seed(location: str, forecast_date: str, replicate: int) -> int:

@@ -60,6 +60,18 @@
   --cat-cvd-large-decrease:#2C7BB6; --cat-cvd-decrease:#ABD9E9;
   --cat-cvd-stable:#B9B09B; --cat-cvd-increase:#FDAE61;
   --cat-cvd-large-increase:#D7191C;
+  /* season-line palette (the season-over-season charts), categorical and
+     deliberately identical in every theme like --cat-*: a normal-vision
+     default (tab10-adjacent hues fitted to 3:1 on all eight theme
+     grounds) plus the dichromat-spaced red-green-safe set (the audited
+     SEASON_COLORS literals) that data-vision="cvd" remaps onto.
+     Charts resolve --season-N per draw via getComputedStyle, so the
+     CV-safe toggle visibly recolors the season lines. Audited in
+     test_season_palette.py; any value change must re-clear that audit. */
+  --season-1:#DC6700; --season-2:#217FC1; --season-3:#2B9D2B;
+  --season-4:#DC4142; --season-5:#9467BD; --season-6:#A86A5D;
+  --season-cvd-1:#A87300; --season-cvd-2:#3375FB; --season-cvd-3:#C9568C;
+  --season-cvd-4:#0087AF; --season-cvd-5:#B96D36; --season-cvd-6:#8568E3;
 }
 [data-theme="dark"]{
   --bg:#0C0D17; --card:#151729; --ink:#E9EAF4; --mut:#9AA1C4;
@@ -82,6 +94,10 @@
   --cat-cvd-large-decrease:#2C7BB6; --cat-cvd-decrease:#ABD9E9;
   --cat-cvd-stable:#B9B09B; --cat-cvd-increase:#FDAE61;
   --cat-cvd-large-increase:#D7191C;
+  --season-1:#DC6700; --season-2:#217FC1; --season-3:#2B9D2B;
+  --season-4:#DC4142; --season-5:#9467BD; --season-6:#A86A5D;
+  --season-cvd-1:#A87300; --season-cvd-2:#3375FB; --season-cvd-3:#C9568C;
+  --season-cvd-4:#0087AF; --season-cvd-5:#B96D36; --season-cvd-6:#8568E3;
 }
 /* paper: warm off-white ground with a brighter warm card, LANL Blue ink,
    links and structural cyan through the same readable accent-ink the light
@@ -109,6 +125,10 @@
   --cat-cvd-large-decrease:#2C7BB6; --cat-cvd-decrease:#ABD9E9;
   --cat-cvd-stable:#B9B09B; --cat-cvd-increase:#FDAE61;
   --cat-cvd-large-increase:#D7191C;
+  --season-1:#DC6700; --season-2:#217FC1; --season-3:#2B9D2B;
+  --season-4:#DC4142; --season-5:#9467BD; --season-6:#A86A5D;
+  --season-cvd-1:#A87300; --season-cvd-2:#3375FB; --season-cvd-3:#C9568C;
+  --season-cvd-4:#0087AF; --season-cvd-5:#B96D36; --season-cvd-6:#8568E3;
 }
 /* dim: the softened dark. Slate-gray grounds lifted well off the near-black,
    ink pulled down from #E9EAF4 so the page glows less, every measured pair
@@ -136,6 +156,10 @@
   --cat-cvd-large-decrease:#2C7BB6; --cat-cvd-decrease:#ABD9E9;
   --cat-cvd-stable:#B9B09B; --cat-cvd-increase:#FDAE61;
   --cat-cvd-large-increase:#D7191C;
+  --season-1:#DC6700; --season-2:#217FC1; --season-3:#2B9D2B;
+  --season-4:#DC4142; --season-5:#9467BD; --season-6:#A86A5D;
+  --season-cvd-1:#A87300; --season-cvd-2:#3375FB; --season-cvd-3:#C9568C;
+  --season-cvd-4:#0087AF; --season-cvd-5:#B96D36; --season-cvd-6:#8568E3;
 }
 /* ---- fluid type scale ----------------------------------------------------
    Every step is clamp(floor, rem-anchor + vw, ceiling). The rem terms are
@@ -179,17 +203,20 @@
    with both modifiers on, --ok/--bad follow the cvd pair while the
    contrast block retargets that pair's own -hc variants.
 
-   WHAT THE CV-SAFE TOGGLE DOES AND DOES NOT MOVE: it remaps exactly the
-   semantic ok/bad pair and the outlook map's --cat-* scale, because those
-   palettes carry a red/green language. Two chart palettes are STATIC-SAFE
-   BY CONSTRUCTION and are deliberately NOT remapped here -- do not expect
-   the toggle to move them: the member-line map (player.js MODEL_COLORS,
-   dichromat-spaced 2026-08-21, audited in test_a11y_modes.py) and the
-   season-line palette (player.js SEASON_COLORS, spaced 2026-08-21,
-   audited in test_season_palette.py). Both hold 60+ simulated distance
-   under the Vienot deuteranopia and protanopia matrices for every pair
-   that can share a chart, in every vision mode, so a line keeps its one
-   identity whether or not the toggle is on. */
+   WHAT THE CV-SAFE TOGGLE DOES AND DOES NOT MOVE: it remaps the semantic
+   ok/bad pair, the outlook map's --cat-* scale, and the season-line
+   --season-* palette (normal-vision tab10-adjacent by default, the
+   dichromat-spaced --season-cvd-* set under the toggle; charts resolve
+   the tokens per draw and redraw on themechange, so the swap is visible;
+   audited in test_season_palette.py). ONE chart palette is STATIC-SAFE
+   BY CONSTRUCTION and is deliberately NOT remapped here -- do not expect
+   the toggle to move it: the member-line map (player.js MODEL_COLORS,
+   dichromat-spaced 2026-08-21, audited in test_a11y_modes.py). It holds
+   60+ simulated distance under the Vienot deuteranopia and protanopia
+   matrices for every pair that can share a chart, in every vision mode,
+   so a member line keeps its one identity whether or not the toggle is
+   on. SEASON_COLORS in player.js carries the cvd-set literals as the
+   fallback for surfaces without the tokens (the fixed-dark report). */
 [data-contrast="high"]{
   --ink:var(--ink-hc); --mut:var(--mut-hc); --nav-ink:var(--nav-ink-hc);
   --line:var(--line-hc); --field-line:var(--field-line-hc);
@@ -205,6 +232,9 @@
   --cat-stable:var(--cat-cvd-stable);
   --cat-increase:var(--cat-cvd-increase);
   --cat-large-increase:var(--cat-cvd-large-increase);
+  --season-1:var(--season-cvd-1); --season-2:var(--season-cvd-2);
+  --season-3:var(--season-cvd-3); --season-4:var(--season-cvd-4);
+  --season-5:var(--season-cvd-5); --season-6:var(--season-cvd-6);
 }
 *{box-sizing:border-box}
 /* body text on the fluid scale; every card, table cell, and paragraph that
@@ -274,8 +304,14 @@ main{max-width:1500px;margin:0 auto;
    and the figures, equation panels, and captions ride along at the same
    left content edge (their scoped alignment rules are unchanged).
    Operational pages (Forecast, Runs, Data, Retrospective) keep the
-   full-width shell. */
-main.reading{max-width:880px}
+   full-width shell.
+   FLUID, not fixed (user report 2026-08-21: a fixed 880px stopped
+   breathing with the window): the column tracks 92% of the viewport up
+   to a 68rem cap, so it narrows at 900px, widens through 1280, and
+   settles at the cap on wide monitors -- centered at every size by the
+   base main's margin:0 auto. The 72ch prose measure still governs the
+   text inside. */
+main.reading{width:min(92%,68rem)}
 .cols{display:grid;grid-template-columns:minmax(260px,360px) 1fr;gap:.75rem;
       align-items:start}
 @media(max-width:900px){.cols{grid-template-columns:1fr}}
@@ -426,6 +462,31 @@ details.card > summary{cursor:pointer;list-style:none}
 details.card > summary::-webkit-details-marker{display:none}
 details.card > summary::before{content:"▸ ";color:var(--gold)}
 details.card[open] > summary::before{content:"▾ "}
+
+/* the run ledger's fold (Runs page): the full table collapses behind a
+   one-line summary (row count + newest entry) so the storage panel below
+   leads; the open state persists per localStorage. Same disclosure
+   language as details.card / details.preview. */
+details.ledgerfold > summary{cursor:pointer;list-style:none;
+  user-select:none;font-weight:600}
+details.ledgerfold > summary::-webkit-details-marker{display:none}
+details.ledgerfold > summary::before{content:"▸ ";color:var(--gold)}
+details.ledgerfold[open] > summary::before{content:"▾ "}
+details.ledgerfold > summary .hint{font-weight:400}
+
+/* run-settings block: a tight two-column label/value grid (the valpanel's
+   definition-grid language) at the standard body size, natural width --
+   the old one-line prose rendering read as small print and the page-wide
+   dead band is gone. The wrapper keeps the legacy hint/runsettings class
+   pair; the grid states its own size, so the hint class no longer
+   shrinks the values. */
+.runsettings{margin:.45rem 0}
+.runsettings .kv{display:grid;grid-template-columns:max-content max-content;
+  gap:.14rem 1.1rem;align-items:baseline;width:max-content;max-width:100%;
+  margin:.25rem 0 0;font-size:var(--fs-body)}
+.runsettings .kv dt{color:var(--mut)}
+.runsettings .kv dd{margin:0;font-weight:650;
+  font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 
 .runlabel{font-size:1.05rem;font-weight:750;margin:.2rem 0}
 

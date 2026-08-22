@@ -45,3 +45,57 @@ def test_quantile_native_writer_same_join():
     by_h = {r["horizon"]: (r["target_end_date"], r["value"]) for r in rows}
     assert by_h[0] == ("2025-12-20", 10.0)
     assert by_h[3] == ("2026-01-10", 40.0)
+
+
+# ---------------------------------------------------- hub value precision
+
+def test_values_are_whole_admissions_like_the_official_files():
+    """Measured in the hub clone (2026-08-21): every official
+    FluSight-baseline and FluSight-ensemble 'wk inc flu hosp' quantile
+    value from 2025 on is an integer count -- the long float tails in
+    recent official files belong to the 'wk inc flu prop ed visits'
+    proportion target. Our writers match that precision; the raw numpy
+    quantiles were leaking 17-digit tails into the CSVs."""
+    tailed = {str(h): [10.1234567890123 * h + i * 0.337 for i in range(40)]
+              for h in (1, 2, 3, 4)}
+    rows = quantile_rows(tailed, "06", ASOF)
+    assert rows
+    for r in rows:
+        assert isinstance(r["value"], int), r
+    qd = {str(h): {0.25: 9.700000000000001 * h, 0.5: 10.1 * h,
+                   0.75: 11.499999999999998 * h} for h in (1, 2, 3, 4)}
+    for r in rows_from_quantiles(qd, "06", ASOF):
+        assert isinstance(r["value"], int), r
+
+
+def test_rounding_preserves_quantile_monotonicity():
+    """The guard: round, then enforce non-decreasing. A vector whose raw
+    values are monotone but sit within one count of each other must come
+    out monotone (never decreasing) after rounding."""
+    import numpy as np
+    from app.core.submit import QUANTILES, _hub_values
+    raw = [10.0 + 0.04 * i for i in range(len(QUANTILES))]   # 10.0 .. 10.88
+    v = _hub_values(raw)
+    assert all(b >= a for a, b in zip(v, v[1:]))
+    # a deliberately jittered near-tie stays monotone too
+    raw2 = [5.49, 5.51, 5.49999, 5.5001, 6.49, 6.51]
+    v2 = _hub_values(raw2)
+    assert all(b >= a for a, b in zip(v2, v2[1:]))
+    assert all(float(x).is_integer() for x in v2)
+
+
+def test_csv_writes_integers_not_float_tails(tmp_path):
+    """End to end through write_submission: the file on disk carries '12',
+    never '12.0' and never a 17-digit tail."""
+    from app.core.submit import write_submission
+    samples = {str(h): [3.3 * h + i * 1.7 for i in range(50)]
+               for h in (1, 2, 3, 4)}
+    rows = quantile_rows(samples, "06", ASOF)
+    p = write_submission(rows, "SIHRS", "NAU", "2025-12-20", tmp_path)
+    text = p.read_text()
+    lines = text.strip().splitlines()
+    vals = [ln.rsplit(",", 1)[1] for ln in lines[1:]]
+    assert vals
+    for v in vals:
+        assert "." not in v, v                       # whole counts only
+        int(v)                                       # and parseable as such
