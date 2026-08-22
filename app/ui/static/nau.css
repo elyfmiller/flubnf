@@ -298,53 +298,29 @@ header.nav .spacer{flex:1}
 .fontsize button:hover{background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
 .fontsize button[aria-pressed="true"]{
   background:color-mix(in srgb,var(--accent) 25%,transparent)}
-/* ---- layout: fluid to a wide cap; padding grows with the window ---- */
+/* ---- layout: fluid to a wide cap; padding grows with the window ----
+   ONE SHELL FOR EVERY PAGE (rebuild, 2026-08-22, fifth report on the
+   reading surfaces). The previous reading-page system -- a 92%-wide
+   override on the reading pages' main, a three-column grid inside every
+   reading card, prose pinned to a fluid measure in its middle column, and
+   measure/centering exceptions -- is DELETED, not patched. The grid was
+   the squeeze bug: Chrome renders a <details> body inside an internal
+   ::details-content box, so a details card's paragraphs were never the
+   grid items the h2/p placement rules addressed; the anonymous body box
+   auto-placed into a gutter column and the description rendered as a
+   ~200px strip. The replacement is the shell every operational page
+   already uses, with nothing layered on top:
+     - cards span the full width of the main column, symmetric padding;
+     - text inside a card is normal block flow at the card's content
+       width -- no measure cap, no grid columns for prose, so a
+       details/summary body inherits exactly the same width as every
+       other line in the card;
+     - figures and equation panels center (the diagram macros' inline
+       margin:auto, and the centered text in .eqpanel below);
+     - tables and wide blocks scroll inside the card (overflow-x:auto),
+       never the page. */
 main{max-width:1500px;margin:0 auto;
      padding:1.1rem clamp(1rem,2.5vw,2.5rem) 3rem}
-/* the centered reading column (Methods and the Models views opt in via
-   the shell's main_class block): the content column narrows to a reading
-   width and centers on the page, per user preference 2026-08-21.
-   Operational pages (Forecast, Runs, Data, Retrospective) keep the
-   full-width shell.
-   FLUID WITH NO PRACTICAL CAP (third report on this surface, 2026-08-22:
-   the 68rem cap, and behind it the base main's 1500px cap, stopped the
-   cells growing at 1800px and read as non-adaptive): the column is 92%
-   of the viewport at EVERY size, max-width lifted, so the cards keep
-   growing with the window monotonically -- centered at every size by the
-   base main's margin:0 auto. The 72ch prose measure still governs the
-   text inside, centered within the wider cards, and the diagrams keep
-   their margin:auto centering and scale up to their own natural
-   max-widths.
-   EVERYTHING INSIDE THE CARDS CENTERS TOO (user request 2026-08-21,
-   second report -- the left-hugging figures left a dead band on the
-   right): the diagrams, harmonic figures, equation panels, and value
-   panels keep their own margin:auto centering, so figures, equations,
-   and text share one center axis with the card and the page.
-   ONE SHARED CONTENT EDGE (fourth report on this surface, 2026-08-22:
-   the kicker sat at the card's left edge while the centered prose
-   floated with a large asymmetric left gap -- two unrelated edges read
-   as broken). Every reading card is a three-column grid: a fluid
-   centered prose column and two equal gutters. The kicker (h2) and
-   every paragraph -- hints and subs included -- share the prose column,
-   so they share one left edge with symmetric padding both sides BY
-   CONSTRUCTION; figures, equation panels, and tables span all three
-   columns and keep their own margin:auto centering. The prose measure
-   is fluid: 72ch up to 1400px-wide windows, growing linearly to 95ch
-   by about 2200px, so wide windows spend their width on a longer line
-   instead of a wider gutter. The measure resolves in the CARD's ch
-   (the body size every paragraph inherits), never the kicker's own
-   font, so the h2 and the prose compute the same column. Text inside
-   the prose column stays left-set; only the column centers. */
-main.reading{width:92%;max-width:none}
-main.reading .card{display:grid;
-  grid-template-columns:1fr minmax(0,clamp(72ch,calc(72ch + 35vw - 490px),95ch)) 1fr}
-main.reading .card > *{grid-column:1 / -1}
-main.reading .card > h2,main.reading .card > p{grid-column:2}
-/* the grid column is the measure now: the base 72ch p cap would fight the
-   fluid column at wide windows, and grid margins do not collapse, so the
-   halved vertical margin keeps the rendered paragraph gap of block flow */
-main.reading .card p{max-width:none;margin:.225rem 0}
-main.reading .card p.hint,main.reading .card p.sub{max-width:none}
 .cols{display:grid;grid-template-columns:minmax(260px,360px) 1fr;gap:.75rem;
       align-items:start}
 @media(max-width:900px){.cols{grid-template-columns:1fr}}
@@ -357,14 +333,11 @@ main.reading .card p.hint,main.reading .card p.sub{max-width:none}
          letter-spacing:.05em;color:var(--mut)}
 /* card body text: no explicit size, so it inherits the fluid body step and
    never overrides the smaller .hint / .sub steps nested inside a card.
-   Running prose holds a readable measure (72ch); hints, captions, and the
-   sub intro lines keep the full card width (heading-width uniformity, per
-   user 2026-08-21: the kick/heading/hint text that introduces a card's
-   content spans the card, never a narrower measure -- the same rule the
-   hero lead and top-level page intros already follow), and tables are
-   untouched (they are not paragraphs). */
-.card p{margin:.45rem 0;max-width:72ch}
-.card p.hint,.card p.sub{max-width:none}
+   NO MEASURE CAP (rebuild 2026-08-22): every paragraph -- prose, hints,
+   subs, details bodies -- runs the card's full content width, exactly like
+   the hero lead, the headings, and the tables. One width for all text in a
+   card, by construction. */
+.card p{margin:.45rem 0}
 h1{font-size:var(--fs-h1);font-weight:700;margin:.1rem 0 .6rem;
    text-wrap:balance}
 h1 .accent{color:var(--gold)}
@@ -466,11 +439,9 @@ progress::-moz-progress-bar{background:var(--accent-ink);border-radius:99px}
   padding:clamp(1.1rem,1.9vw,2.1rem) clamp(1.2rem,2.4vw,2.6rem);
   margin-bottom:.75rem}
 .hero h1{color:#fff;font-size:var(--fs-hero-h1);margin:0 0 .4rem}
-/* the lead carries NO measure cap: it reflows to the full inner width of the
-   tile at every window size, so a wide monitor leaves no dead column on the
-   right. The text still wraps rather than overflowing, because the paragraph
-   is a plain block in the tile's content box. */
-.hero p{color:#C6CFEE;max-width:none;margin:0;font-size:var(--fs-lead)}
+/* the lead reflows to the full inner width of the tile at every window
+   size, like every other text block since the 2026-08-22 rebuild */
+.hero p{color:#C6CFEE;margin:0;font-size:var(--fs-lead)}
 .hero .gold{color:var(--gold-bright)}
 .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:.75rem}
 /* grid2 cards keep their content height: the default stretch left the short
@@ -600,12 +571,14 @@ svg.cumchart .svgt-sm{font-size:9px}
 svg.cumchart .svgt-md{font-size:11px}
 /* defining equations under a mechanism diagram: one or two lines of styled
    text (no math library; italic variables, Unicode operators) plus a muted
-   tie-in note. The math never wraps mid-formula; a narrow window scrolls the
-   panel instead, like every other wide block */
-.eqpanel{max-width:800px;margin:.45rem auto .25rem;padding:.5rem .85rem;
+   tie-in note. The panel spans the card like the BNGL source well; the
+   equation lines and their note center inside it (figures and equations
+   center; text blocks span). The math never wraps mid-formula; a narrow
+   window scrolls the panel instead, like every other wide block */
+.eqpanel{margin:.45rem 0 .25rem;padding:.5rem .85rem;
   background:var(--bg);border:1px solid var(--line);border-radius:9px;
-  overflow-x:auto}
-.eqpanel p{margin:.24rem 0;max-width:none}
+  overflow-x:auto;text-align:center}
+.eqpanel p{margin:.24rem 0}
 .eqpanel .math{font-size:.98rem;font-weight:600;white-space:nowrap}
 .eqpanel .math sub{font-size:.68em}
 .eqpanel .eqnote{color:var(--mut);font-size:var(--fs-hint);font-weight:400}
@@ -618,12 +591,13 @@ details.bngl[open] > summary::before{content:"▾ "}
 details.bngl pre{background:var(--bg);border:1px solid var(--line);
   border-radius:8px;padding:.6rem .8rem;margin:.4rem 0 .1rem;
   overflow:auto;max-height:28rem;font-size:.78rem;line-height:1.45}
-/* fitted/observed values panel beneath the mechanism diagram: a compact
-   two-column definition list in the sunken well tone, so numbers of any
-   length flow in the page instead of floating over the SVG */
+/* fitted/observed values panel beneath the mechanism diagram: a two-column
+   definition list in the sunken well tone, spanning the card like a table
+   (label column sizes to its labels, values take the rest), so numbers of
+   any length flow in the page instead of floating over the SVG */
 .valpanel{display:grid;grid-template-columns:max-content 1fr;
-  gap:.18rem 1.1rem;align-items:baseline;max-width:800px;
-  margin:.35rem auto .2rem;padding:.55rem .85rem;
+  gap:.18rem 1.1rem;align-items:baseline;
+  margin:.35rem 0 .2rem;padding:.55rem .85rem;
   background:var(--bg);border:1px solid var(--line);border-radius:9px;
   font-size:.85rem}
 .valpanel:empty{display:none}

@@ -1,11 +1,9 @@
 {% extends "base.html" %}{% import "diagrams.html" as dg %}
 {% block title %}FluBNF · Methods{% endblock %}
-{# the reading column centers on the page (main.reading) and everything
-   inside the cards centers with it (user request 2026-08-21, second
-   report): figures and equation panels keep their margin:auto centering,
-   and the prose block centers at its 72ch measure (main.reading .card p
-   in nau.css), so the whole composition shares one center. #}
-{% block main_class %}reading{% endblock %}
+{# rebuild 2026-08-22: this page uses the same shell as every other page.
+   Cards span the main column, text runs at the card's content width in
+   normal block flow, figures and equation panels center. No main_class
+   override, no reading-column special case. #}
 {% block content %}
 <h1>Methods</h1>
 

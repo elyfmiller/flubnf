@@ -1,10 +1,22 @@
-"""Methods and Models center their composition (user request 2026-08-21,
-second report): the reading column is fluid and centered on the page, and
-INSIDE the cards the figures, equation panels, and prose share the same
-center axis -- the diagrams and eqpanels keep their margin:auto centering
-(the old left-hugging overrides are gone), and the prose block centers at
-its 72ch measure while its text stays left-set. Operational pages keep the
-full-width shell and are untouched by the reading-column rules."""
+"""The reading pages (Methods, the Models views) use the ONE shell every
+page uses (rebuild, 2026-08-22, fifth report on these surfaces).
+
+The retired system -- main.reading at 92% viewport width, a three-column
+grid inside every reading card with prose pinned to a fluid ch measure,
+and the layered measure/centering exceptions -- is gone, not patched
+over. The grid was the squeeze bug the user kept reporting: Chrome
+renders a <details> body inside an internal ::details-content box, so a
+details card's paragraphs were never the grid items the placement rules
+addressed, and the collapsible description auto-placed into a gutter
+column as a ~200px strip of text.
+
+The replacement, asserted here: cards span the main column with
+symmetric padding; ALL text in a card is normal block flow at the card's
+content width (no measure cap, no grid columns for prose, so a
+details/summary body inherits exactly the width of every other line);
+figures and equation panels center; wide blocks scroll inside the card.
+"""
+import re
 import sys
 from pathlib import Path
 
@@ -20,91 +32,103 @@ UI = Path(__file__).resolve().parents[1] / "ui"
 METHODS_T = (UI / "templates" / "methods.html").read_text()
 BASE_T = (UI / "templates" / "base.html").read_text()
 NAU = (UI / "static" / "nau.css").read_text()
+JOINED = " ".join(NAU.split())
 
-# the retired left-hugging overrides: these must never come back
+READING_PAGES = ("/methods", "/models", "/model/pf", "/model/analogue",
+                 "/model/ensemble", "/model/pf2s")
+
+# retired override blocks: none of these may ever come back
 FIG_RULE = 'svg[role="img"]{margin-left:0 !important'
 EQ_RULE = '.eqpanel{margin-left:0'
 
 
+def test_the_reading_column_special_case_is_gone():
+    """No main.reading rules survive: the reading pages ride the base
+    main shell (1500px cap, fluid padding, centered), the same shell as
+    every operational page."""
+    assert "main.reading" not in NAU
+    assert "main{max-width:1500px;margin:0 auto;" in JOINED
+    for page in READING_PAGES:
+        html = client.get(page).text
+        assert '<main id="main" class="">' in html, page
+        assert 'class="reading"' not in html, page
+
+
+def test_no_grid_for_prose_anywhere():
+    """Prose is never laid out with grid columns. Every display:grid in
+    the stylesheet belongs to a named panel layout (.cols, .grid2,
+    .grid3, .vintagecols, .playgrid, and the two definition lists), never
+    to .card itself -- so a details body, a paragraph, and a kicker all
+    take the card's own content width by plain block flow."""
+    for m in re.finditer(r"([^{}]+)\{[^}]*display\s*:\s*grid", NAU):
+        selector = " ".join(m.group(1).split())
+        assert ".card" not in selector.replace("details.card", ""), selector
+        assert not selector.endswith(".card"), selector
+        assert "summary" not in selector and "details" not in selector, \
+            selector
+    # no per-child placement rules outside the valpanel definition list
+    # (its all-missing note legitimately spans both list columns)
+    for m in re.finditer(r"([^{}]+)\{[^}]*grid-column", NAU):
+        selector = " ".join(m.group(1).split())
+        assert selector.startswith(".valpanel"), selector
+
+
+def test_card_text_has_no_measure_cap():
+    """One width for all text in a card: the .card p rule states margins
+    only, and no rule reintroduces a ch measure on card prose."""
+    assert ".card p{margin:.45rem 0}" in JOINED
+    assert "72ch" not in NAU
+    assert "95ch" not in NAU
+    # the one deliberate ch cap left in the file is the Data page's
+    # vintage-table caption, a documented instrument-width choice
+    caps = re.findall(r"max-width\s*:\s*\d+ch", NAU)
+    assert caps == ["max-width:24ch"], caps
+
+
+def test_details_bodies_flow_at_card_width():
+    """The collapsible blocks that carried the squeeze: their bodies are
+    plain block flow. Nothing styles a details child into a column, and
+    the intro/bngl/ledgerfold summaries keep their disclosure language."""
+    for sel in ("details.card", "details.intro", "details.bngl",
+                "details.preview", "details.ledgerfold"):
+        for m in re.finditer(re.escape(sel) + r"[^{]*\{([^}]*)\}", NAU):
+            body = m.group(1)
+            for banned in ("grid", "max-width", "float", "column-count"):
+                assert banned not in body, (sel, body)
+    for page in ("/models", "/model/pf2s"):
+        html = client.get(page).text
+        assert '<details class="card intro">' in html, page
+
+
+def test_figures_and_equations_center():
+    """Figures center at their natural widths (the diagram macros' inline
+    margin auto); equation panels span the card as sunken wells with the
+    equation lines centered inside."""
+    html = client.get("/methods").text
+    assert html.count('role="img"') >= 2             # SIHRS + two-strain
+    assert "display:block;margin:.6rem auto" in html  # the diagram macros
+    assert 'class="eqpanel"' in html
+    assert ".eqpanel{margin:.45rem 0 .25rem;" in JOINED
+    assert "text-align:center" in JOINED.split(".eqpanel{", 1)[1] \
+        .split("}", 1)[0]
+    # the panels carry no width cap of their own any more
+    assert "max-width:800px" not in NAU
+
+
 def test_the_left_hugging_overrides_are_gone():
-    """The figures and equation panels center inside their cards again:
-    neither the shell nor the Methods page ships the old left-alignment
-    override block, so the diagram macros' inline margin:auto centering
-    and the stylesheet's centered .eqpanel/.valpanel margins govern."""
+    """The pre-rebuild left-alignment override blocks must never come
+    back, in the shell, the page, or any rendered reading page."""
     assert FIG_RULE not in BASE_T
     assert FIG_RULE not in METHODS_T
     assert EQ_RULE not in BASE_T
     assert EQ_RULE not in METHODS_T
-    for page in ("/methods", "/models", "/model/analogue",
-                 "/model/ensemble", "/model/pf2s"):
+    for page in READING_PAGES:
         html = client.get(page).text
         assert FIG_RULE not in html, page
         assert EQ_RULE not in html, page
 
 
-def test_figures_and_eqpanels_carry_their_centering_margins():
-    """The centering itself: every mechanism diagram states margin auto
-    inline, and the eqpanel/valpanel stylesheet rules keep their auto
-    margins, so each centers within its card."""
-    html = client.get("/methods").text
-    assert html.count('role="img"') >= 2             # SIHRS + two-strain
-    assert "display:block;margin:.6rem auto" in html # the diagram macros
-    assert 'class="eqpanel"' in html
-    joined = " ".join(NAU.split())
-    assert ".eqpanel{max-width:800px;margin:.45rem auto .25rem;" in joined
-    assert "margin:.35rem auto .2rem;" in joined     # .valpanel
-
-
-def test_prose_and_kicker_share_one_edge_inside_reading_cards():
-    """One shared content edge (fourth report on this surface, 2026-08-22:
-    the kicker sat at the card's left edge while the centered prose floated
-    with a large asymmetric left gap). Every reading card is a three-column
-    grid whose centered middle column is the FLUID prose measure (72ch,
-    growing to 95ch at wide windows); the kicker (h2) and every paragraph
-    share that column, so kicker left equals prose left with symmetric
-    gutters by construction, and figures, equation panels, and tables span
-    all three columns with their own margin:auto centering. Geometry
-    verified in-browser 2026-08-22 at 1280/1800/2200: kicker left == prose
-    left exactly, left and right gaps equal within 0.1 px, measure 71.9,
-    84.7, and 94.9 ch."""
-    joined = " ".join(NAU.split())
-    assert ("main.reading .card{display:grid; grid-template-columns:"
-            "1fr minmax(0,clamp(72ch,calc(72ch + 35vw - 490px),95ch)) 1fr}"
-            in joined)
-    # every child spans the card; ONLY the kicker and the prose take the
-    # measure column, so figures and tables keep their full-width centering
-    assert "main.reading .card > *{grid-column:1 / -1}" in joined
-    assert ("main.reading .card > h2,main.reading .card > p{grid-column:2}"
-            in joined)
-    # the grid column IS the measure inside reading cards (the base 72ch
-    # cap would fight the fluid column), and the halved vertical margin
-    # compensates for grid margins never collapsing
-    assert "main.reading .card p{max-width:none;margin:.225rem 0}" in joined
-    # the base prose measure outside reading pages is untouched
-    assert ".card p{margin:.45rem 0;max-width:72ch}" in joined
-
-
-# --------------------------------- the reading column centers on the page
-
-def test_reference_pages_center_the_fluid_reading_column():
-    """The column stays FLUID with NO practical cap (third report on this
-    surface, 2026-08-22: the 68rem cap stopped the cells growing at wide
-    windows and read as non-adaptive): 92% of the viewport at every size,
-    the base main's 1500px cap lifted for reading pages, centered at every
-    size by the base main's margin:0 auto."""
-    joined = " ".join(NAU.split())
-    assert "main.reading{width:92%;max-width:none}" in joined
-    assert "min(92%,68rem)" not in joined            # the rem cap is gone
-    assert "max-width:880px" not in joined           # the fixed cap is gone
-    # operational pages keep the base shell and its wide cap
-    assert "main{max-width:1500px;margin:0 auto;" in joined
-    for page in ("/methods", "/models", "/model/pf", "/model/analogue",
-                 "/model/ensemble", "/model/pf2s"):
-        html = client.get(page).text
-        assert '<main id="main" class="reading">' in html, page
-
-
-def test_operational_pages_keep_the_full_width_shell():
+def test_operational_pages_keep_the_same_shell():
     for page in ("/", "/data", "/forecast", "/runs", "/retro", "/output"):
         html = client.get(page).text
         assert '<main id="main" class="">' in html, page
