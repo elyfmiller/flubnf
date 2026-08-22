@@ -46,7 +46,7 @@
      gate and does not ship. See Methods. #}
   {% set tabs = [("/","Home"),("/data","Data"),("/forecast","Forecast"),
                  ("/output","Output"),("/retro","Retrospective"),
-                 ("/runs","Runs"),("/models","Models"),
+                 ("/storage","Storage"),("/models","Models"),
                  ("/methods","Methods")] %}
   {% for href, name in tabs %}
     <a class="tab {% if active == name %}active{% endif %}" href="{{ href }}">{{ name }}</a>

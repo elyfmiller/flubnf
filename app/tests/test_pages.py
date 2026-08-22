@@ -78,14 +78,27 @@ def _pressed_model(html):
 
 def test_nav_is_the_operational_loop():
     """The tab set walks the workflow the home page teaches, and the three
-    model reference pages collapse behind the one Models tab."""
+    model reference pages collapse behind the one Models tab. The storage
+    tab (nee Runs) keeps its position in the loop."""
     tabs = _nav_tabs(client.get("/").text)
     assert [h for h, _ in tabs] == ["/", "/data", "/forecast", "/output",
-                                    "/retro", "/runs", "/models",
+                                    "/retro", "/storage", "/models",
                                     "/methods"]
     assert [n for _, n in tabs] == ["Home", "Data", "Forecast", "Output",
-                                    "Retrospective", "Runs", "Models",
+                                    "Retrospective", "Storage", "Models",
                                     "Methods"]
+
+
+def test_storage_page_serves_on_both_routes_with_the_ledger_inside():
+    """/storage is the tab's route; /runs stays a live alias for bookmarks
+    and old links, and both keep the run ledger under its own heading."""
+    for path in ("/storage", "/runs"):
+        r = client.get(path)
+        assert r.status_code == 200, path
+        assert "<h1>Storage</h1>" in r.text, path
+        assert "Run ledger" in r.text, path
+        assert re.search(r'<a class="tab active" href="/storage">Storage</a>',
+                         r.text), path
 
 
 def test_models_route_defaults_to_pf_and_owns_the_active_tab():

@@ -202,14 +202,19 @@ def test_stop_while_paused_mid_week_exits_without_samples(tmp_path,
 
 def test_resume_with_all_cells_done_just_assembles(tmp_path, monkeypatch):
     """A stop that lands after the last fit drains leaves every marker and
-    no samples.json; the resumed week dispatches nothing and assembles."""
+    no samples.json; the resumed week dispatches nothing and assembles.
+    The state is built with completion hygiene disabled (a completed week
+    prunes its markers), because the real scenario -- every fit drained,
+    assembly never reached -- is exactly a week that never completed."""
+    from app.core import reclaim
     root = tmp_path / SEASON
     wd = root / "weeks" / W1
     log = []
     _stub_engines(monkeypatch, log)
     monkeypatch.setattr(retro, "_sleep", lambda _s: None)
+    monkeypatch.setattr(reclaim, "prune_week", lambda _wd: 0)
     _run(root, width=2)                                # complete the week
-    (wd / "samples.json").unlink()                     # ...but lose assembly
+    retro.samples_file(wd).unlink()                    # ...but lose assembly
     log2 = []
     _stub_engines(monkeypatch, log2)
     monkeypatch.setattr(
