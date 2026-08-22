@@ -74,6 +74,17 @@ def _model_names() -> dict:
 templates.env.globals["model_name"] = lambda m: _model_names().get(m, m)
 
 
+def _member_colors() -> dict:
+    """The one member-color map: the marked JSON literal in the shared
+    player core, parsed by app/core/report_v2.py (the model-name pattern
+    applied to colors). Every surface that draws a member series reads it,
+    so a member wears one color on every chart. Ensemble is the exception
+    the consumers make themselves: on light grounds it rides the --gold
+    token (the readable accent-ink variant of the same cyan identity)."""
+    from app.core.report_v2 import model_colors
+    return model_colors()
+
+
 # ---- season month axis: the one source of month-boundary week offsets ----
 #: Month lengths of the season in order from August, on a non-leap reference
 #: year: at week resolution the leap-day drift is invisible. Every surface
@@ -311,19 +322,51 @@ def favicon():
     return FileResponse(ico, media_type="image/x-icon")
 
 
-def _outlook_cards(res: dict | None) -> dict:
-    """fips -> hover card for svg_map, colored by the latest run's categorical
-    outlook (ensemble if present, else pf). States without results -- and the
-    no-results-at-all case -- get empty cards, so the caller always renders the
-    full silhouette."""
+def _outlook_cards(res: dict | None, rid: str | None = None) -> tuple:
+    """(fips -> hover card for svg_map, source meta) for the home outlook.
+
+    ONE computation, one source (the two-maps bug, resolved 2026-08-21):
+    when the latest run persisted its report inputs bundle
+    (report_inputs.json, every run since the bundle feature), home READS
+    the bundle's cards, so the home map renders exactly the categories the
+    weekly report rendered -- same samples, same computation, same model,
+    which the meta names ("ensemble" or "pf"). Only a pre-bundle run falls
+    back to recomputing categorical probabilities from the roughly five
+    stored quantile levels in results.json (a crude sample-stand-in that
+    can flip borderline states); the meta then carries approx=True and the
+    caption labels the approximation. States without results -- and the
+    no-results-at-all case -- get empty cards, so the caller always
+    renders the full silhouette."""
+    import json as _json
+
     import pandas as pd
+    from app.core import report_v2
     from app.core.report import categorical_probs
     from app.core.report_v2 import CATS
+    from app.core.runs import APP_STATE
+    if rid:
+        try:
+            b = APP_STATE / "workroots" / rid / report_v2.BUNDLE_NAME
+            if b.is_file():
+                bundle = _json.loads(b.read_text())
+                if (bundle.get("version")
+                        in report_v2.SUPPORTED_BUNDLE_VERSIONS):
+                    cards = {c["fips"]: c
+                             for c in (bundle.get("cards") or {}).values()
+                             if isinstance(c, dict) and c.get("fips")}
+                    if any(c.get("probs") for c in cards.values()):
+                        model = bundle.get("cards_model") or "pf"
+                        return cards, {"model": model, "approx": False,
+                                       "label": report_v2.MODEL_LABEL.get(
+                                           model, report_v2.MODEL_LABEL["pf"])}
+        except Exception:
+            pass          # a broken bundle degrades to the approximation
     _l = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
     n2f = dict(zip(_l.location_name, _l.location.str.zfill(2)))
     n2a = dict(zip(_l.location_name, _l.abbreviation))
     n2p = dict(zip(_l.location_name, _l.population.astype(float)))
     models = (res or {}).get("models", {})
+    model = "ensemble" if models.get("ensemble") else "pf"
     picked = models.get("ensemble") or models.get("pf") or {}
     observed = (res or {}).get("observed", {})
     cards = {}
@@ -348,7 +391,9 @@ def _outlook_cards(res: dict | None) -> dict:
         if len(fips) == 2:
             cards.setdefault(fips, {"name": name, "abbr": n2a.get(name, ""),
                                     "fips": fips})
-    return cards
+    from app.core.report_v2 import MODEL_LABEL
+    return cards, {"model": model, "approx": True,
+                   "label": MODEL_LABEL.get(model, MODEL_LABEL["pf"])}
 
 
 def _diagram_data(res: dict | None) -> dict:
@@ -394,19 +439,22 @@ def _diagram_data(res: dict | None) -> dict:
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     try:
-        _, res = _latest_results()
+        rid, res = _latest_results()
     except Exception:
-        res = None
+        rid, res = None, None
     # a real map as the hero graphic: latest run's outlook if one exists,
     # otherwise the empty-country silhouette
     map_svg, outlook_date, outlook_n = "", "", 0
+    outlook_src: dict = {}
     try:
         from app.core.usmap import map_legend, svg_map
         cards = {}
         try:
-            cards = _outlook_cards(res)
+            cards, outlook_src = _outlook_cards(res, rid)
             if any(c.get("probs") for c in cards.values()):
                 outlook_date = (res or {}).get("forecast_date", "")
+            else:
+                outlook_src = {}      # an empty map needs no model label
         except Exception:
             pass                      # no LOCATIONS/hub -> bare silhouette
         with_data = {c["abbr"] for c in cards.values() if c.get("probs")}
@@ -424,6 +472,10 @@ def home(request: Request):
     return templates.TemplateResponse(request, "home.html", {
         "active": "Home", "map_svg": map_svg, "outlook_date": outlook_date,
         "outlook_n": outlook_n,
+        # which model computed the map, and whether the categories are the
+        # report's exact ones (bundle) or the stored-quantile approximation
+        "outlook_model_label": outlook_src.get("label", ""),
+        "outlook_approx": bool(outlook_src.get("approx")),
         "versions": VERSIONS, "diagram": _diagram_data(res),
         "missing": __import__("flubnf.settings", fromlist=["check"]).check(verbose=False)})
 
@@ -508,6 +560,7 @@ def forecast_page(request: Request):
         "elapsed0": _console_elapsed(),
         "series_json": _json.dumps(series), "fanq_json": _json.dumps(fanq),
         "model_names_json": _json.dumps(_model_names()),
+        "member_colors_json": _json.dumps(_member_colors()),
         "run_obs_json": _json.dumps((res or {}).get("observed", {})),
         "fc_date": (res or {}).get("forecast_date", "")})
 
@@ -737,7 +790,7 @@ def _sleep_guard():
 
 def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
                          df, locs, n2f: dict, elapsed_s: float,
-                         outcome: dict) -> None:
+                         outcome: dict, ens_q: dict | None = None) -> None:
     """Step 5b of _run_all: the weekly report, via its inputs bundle.
 
     Builds the pure-data bundle (map cards, per-state fan quantiles and
@@ -746,6 +799,14 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
     report FROM the bundle. One render path, run time and serve time: after
     a later design change, _report_for_serving rebuilds the stored report
     from this bundle instead of leaving the old face on screen.
+
+    `ens_q` is the run's vincentized ensemble (loc -> horizon ->
+    {level: value}). When it exists, the MAP's cards are computed from it
+    -- the ensemble is the submitted forecast, so the map convention on
+    every surface is ensemble-first, PF otherwise -- and the bundle
+    records which in its additive cards_model field, which home reads so
+    both maps show the same categories from the same model. The per-state
+    drill-down fans stay the PF member's, as labeled.
 
     Factored out of _run_all so the build path is testable with synthetic
     samples. Mutates `outcome` like the other run steps; the caller's
@@ -758,7 +819,8 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
     import pandas as pd
 
     from app.core import report_v2
-    from app.core.report import categorical_probs
+    from app.core.report import (categorical_probs,
+                                 categorical_probs_from_quantiles)
     from app.core.report_v2 import CATS
     from app.core.scoring import summary_table_html
     n2a = dict(zip(locs.location_name, locs.abbreviation))
@@ -767,18 +829,47 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
     # there are fitted samples to describe, as before)
     cells = (_json.loads((workroot / "cells.json").read_text())
              if pf_samples else [])
+    ens_q = ens_q or {}
     cards = {}
-    for loc, s in pf_samples.items():
-        med1 = float(_np.median(_np.asarray(s["1"], float)))
-        lo = next(c["last_observed"] for c in cells if c["location"] == loc)
-        probs = categorical_probs(s["1"], lo, int(n2p[loc]), 1)
-        hover = (f"<b>{loc}</b><br>current: {lo:.0f}"
-                 f"<br>1-wk median: {med1:.0f}<br>" +
-                 "<br>".join(f"{c.replace('_',' ')}: "
-                             f"{probs.get(c,0):.0%}" for c in CATS))
-        cards[n2a[loc]] = {"probs": probs, "name": loc,
-                           "abbr": n2a[loc], "fips": n2f[loc],
-                           "hover_html": hover}
+    cards_model = "pf"
+    if any("1" in (q or {}) for q in ens_q.values()):
+        # ensemble-first: the submitted forecast colors the map. Its
+        # categorical probabilities come from the full 23-level quantile
+        # grid read as a CDF, the exact quantile-space computation, never
+        # the few-values-as-samples stand-in.
+        cards_model = "ensemble"
+        for loc, qd in ens_q.items():
+            q1 = (qd or {}).get("1")
+            o = obs.get(loc) or []
+            if not isinstance(q1, dict) or not q1 or not o or loc not in n2a:
+                continue
+            lo = float(o[-1][1])
+            probs = categorical_probs_from_quantiles(
+                q1, lo, int(n2p.get(loc, 0)), 1)
+            if not probs:
+                continue
+            med1 = float(min(q1.items(),
+                             key=lambda kv: abs(float(kv[0]) - 0.5))[1])
+            hover = (f"<b>{loc}</b><br>current: {lo:.0f}"
+                     f"<br>1-wk median: {med1:.0f}<br>" +
+                     "<br>".join(f"{c.replace('_',' ')}: "
+                                 f"{probs.get(c,0):.0%}" for c in CATS))
+            cards[n2a[loc]] = {"probs": probs, "name": loc,
+                               "abbr": n2a[loc], "fips": n2f.get(loc, ""),
+                               "hover_html": hover}
+    else:
+        for loc, s in pf_samples.items():
+            med1 = float(_np.median(_np.asarray(s["1"], float)))
+            lo = next(c["last_observed"] for c in cells
+                      if c["location"] == loc)
+            probs = categorical_probs(s["1"], lo, int(n2p[loc]), 1)
+            hover = (f"<b>{loc}</b><br>current: {lo:.0f}"
+                     f"<br>1-wk median: {med1:.0f}<br>" +
+                     "<br>".join(f"{c.replace('_',' ')}: "
+                                 f"{probs.get(c,0):.0%}" for c in CATS))
+            cards[n2a[loc]] = {"probs": probs, "name": loc,
+                               "abbr": n2a[loc], "fips": n2f[loc],
+                               "hover_html": hover}
     for name, abbr in n2a.items():
         cards.setdefault(abbr, {"name": name, "abbr": abbr,
                                 "fips": n2f.get(name, "")})
@@ -846,25 +937,52 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
             continue
     nat_card = None
     try:
-        us_names = [n for n in pf_samples if n2f.get(n) == "US"] or \
-                   [n for n in pf_samples
-                    if "US" in n or "national" in n.lower()]
-        if us_names:
-            un = us_names[0]
-            arr = _np.asarray(pf_samples[un]["1"], float)
-            lo_us = next((c["last_observed"] for c in cells
-                          if c["location"] == un), 0.0)
-            probs_us = categorical_probs(arr, lo_us, 340_000_000, 1)
-            hover_us = ("<b>United States</b><br>current: "
-                        f"{lo_us:.0f}<br>1-wk median: "
-                        f"{float(_np.median(arr)):.0f}")
-            nat_card = {"probs": probs_us, "name": "United States",
-                        "abbr": "US", "fips": "US",
-                        "hover_html": hover_us}
+        # the national view is the same map surface, and it wears the same
+        # model label as the state view: it is computed from the SAME model
+        # the cards were, never cross-filled from the other member (a
+        # mislabeled map would be the two-truths bug reborn inside one page)
+        if cards_model == "ensemble":
+            us_names = [n for n in ens_q if n2f.get(n) == "US"] or \
+                       [n for n in ens_q
+                        if "US" in n or "national" in n.lower()]
+            un = us_names[0] if us_names else None
+            q1 = (ens_q.get(un) or {}).get("1") if un else None
+            if isinstance(q1, dict) and q1 and (obs.get(un) or []):
+                lo_us = float(obs[un][-1][1])
+                probs_us = categorical_probs_from_quantiles(
+                    q1, lo_us, 340_000_000, 1)
+                med_us = float(min(q1.items(),
+                               key=lambda kv: abs(float(kv[0]) - 0.5))[1])
+                hover_us = ("<b>United States</b><br>current: "
+                            f"{lo_us:.0f}<br>1-wk median: {med_us:.0f}")
+                if probs_us:
+                    nat_card = {"probs": probs_us, "name": "United States",
+                                "abbr": "US", "fips": "US",
+                                "hover_html": hover_us}
+        else:
+            us_names = [n for n in pf_samples if n2f.get(n) == "US"] or \
+                       [n for n in pf_samples
+                        if "US" in n or "national" in n.lower()]
+            if us_names:
+                un = us_names[0]
+                arr = _np.asarray(pf_samples[un]["1"], float)
+                lo_us = next((c["last_observed"] for c in cells
+                              if c["location"] == un), 0.0)
+                probs_us = categorical_probs(arr, lo_us, 340_000_000, 1)
+                hover_us = ("<b>United States</b><br>current: "
+                            f"{lo_us:.0f}<br>1-wk median: "
+                            f"{float(_np.median(arr)):.0f}")
+                nat_card = {"probs": probs_us, "name": "United States",
+                            "abbr": "US", "fips": "US",
+                            "hover_html": hover_us}
     except Exception:
         nat_card = None
     bundle = {"version": report_v2.BUNDLE_VERSION,
               "reference_date": spec.forecast_date,
+              # additive since v2: which model computed the map cards, so
+              # every surface that renders them can say so (and home can
+              # render the report's exact categories)
+              "cards_model": cards_model,
               "cards": cards, "details": details,
               "national": {"summary_html": wis_html},
               "national_map_card": nat_card,
@@ -1067,7 +1185,8 @@ def _run_all(spec: RunSpec) -> None:
         # the forecast itself.
         try:
             _write_weekly_report(spec, workroot, pf_samples, obs, df, locs,
-                                 n2f, _time.time() - t_start, outcome)
+                                 n2f, _time.time() - t_start, outcome,
+                                 ens_q=members_by_loc)
         except Exception as e:
             outcome["report_error"] = str(e)[:200]
         # 6. results index for the run page
@@ -1574,7 +1693,8 @@ def _report_for_serving(dirpath: Path) -> str:
         try:
             import json as _json
             bundle = _json.loads(b.read_text())
-            if bundle.get("version") != report_v2.BUNDLE_VERSION:
+            if bundle.get("version") not in \
+                    report_v2.SUPPORTED_BUNDLE_VERSIONS:
                 raise ValueError("unknown report bundle version "
                                  f"{bundle.get('version')!r}")
             report_v2.render_bundle(bundle, f)
@@ -1741,6 +1861,7 @@ def model_page(request: Request, name: str):
         "title": _model_names().get(name, blurbs[name][0]),
         "blurb": blurbs[name][1],
         "model_names_json": __import__("json").dumps(_model_names()),
+        "member_colors_json": __import__("json").dumps(_member_colors()),
         "oneline": onelines[name], "manchor": manchor[name],
         "rid": rid, "label": _run_label(rid) if rid else "",
         "date": (res or {}).get("forecast_date", ""),

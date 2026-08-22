@@ -251,15 +251,15 @@
  // offset list, so the season-over-season axis reads as calendar months
  const SEASON_MONTHS = {{ season_months | tojson }};
  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
- // the member color language the season player teaches: ensemble rides the
- // accent token, pf the slate token; analogue and the research member keep
- // their fixed member colors on both themes. Re-read per draw so a theme
- // change repaints correctly.
+ // the one member-color map (the shared player's marked JSON, via the
+ // server), dichromat-spaced 2026-08-21. Ensemble alone stays
+ // theme-resolved through the accent token: on light grounds --gold is
+ // the readable accent-ink variant of the same cyan identity. Re-read
+ // per draw so a theme change repaints correctly.
+ const MCOLORS = {{ member_colors_json | safe }};
  function memberColor(m){
-   return m==='ensemble'?css('--gold')
-        : m==='pf'?(css('--slate')||'#6E8FD0')
-        : m==='analogue'?'#FFC72C'
-        : m==='pf2s'?'#2BB5A0':css('--mut');
+   return m==='ensemble'?(css('--gold')||MCOLORS.ensemble)
+        : MCOLORS[m]||css('--mut');
  }
  function rgba(c,a){
    if(c&&c[0]==='#'&&c.length===7){const n=parseInt(c.slice(1),16);

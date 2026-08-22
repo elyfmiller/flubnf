@@ -11,6 +11,13 @@
  {# the h2 names the payload and dates it, like every other card; the run
     date is a heading fact, not a footnote afterthought #}
  <h2>US outlook{% if outlook_date %} · {{ outlook_date }}{% endif %}</h2>
+ {# the model that computed the map, so home and the weekly report -- which
+    share one computation through the report inputs bundle -- are labeled
+    surfaces of the same forecast; the approximate note appears only for
+    pre-bundle runs, where the exact cards no longer exist #}
+ {% if outlook_model_label %}<p class="sub mapmodel">{{ outlook_model_label
+  }}{% if outlook_approx %} · approximate, from stored quantiles{% endif %}</p>
+ {% endif %}
  {{ map_svg | safe }}
  <p class="hint">Most likely direction of admissions.
  {% if outlook_date %}Fitted results cover {{ outlook_n }} of 52

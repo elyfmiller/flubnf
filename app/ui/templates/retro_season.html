@@ -324,8 +324,12 @@
    // explicit chart background so the save-PNG export stays readable
    palette: () => ({ink: css('--ink'), mut: css('--mut'),
      line: css('--line'), card: css('--card'),
-     models: {ensemble: css('--gold'), pf: css('--slate') || '#6E8FD0',
-              analogue: '#FFC72C', pf2s: '#2BB5A0'},
+     // the one member-color map the player itself carries; ensemble alone
+     // stays theme-resolved through --gold (the readable accent-ink
+     // variant of the same cyan identity on light grounds)
+     models: Object.assign({}, FluBNFPlayer.MODEL_COLORS,
+                           {ensemble: css('--gold')
+                                      || FluBNFPlayer.MODEL_COLORS.ensemble}),
      flusightEnsemble: '#AAB1C9'})
  });
  function setView(v){

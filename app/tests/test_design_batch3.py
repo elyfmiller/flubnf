@@ -178,12 +178,41 @@ def test_fan_bands_derive_from_the_displayed_member():
 
 
 def test_member_colors_match_the_player_palette():
-    # the same member color language the season player teaches
+    # ONE member-color source: the marked JSON in player.js. The console
+    # templates consume the server-injected copy of it (never their own
+    # literals), the season page reads it off FluBNFPlayer directly, and
+    # ensemble alone stays theme-resolved through the accent token.
     for src in (FORECAST_T, MODEL_T):
-        assert "css('--gold')" in src               # ensemble
-        assert "css('--slate')||'#6E8FD0'" in src   # pf
-        assert "'#FFC72C'" in src                   # analogue
-        assert "'#2BB5A0'" in src                   # pf2s
+        assert "css('--gold')||MCOLORS.ensemble" in src
+        assert "const MCOLORS = {{ member_colors_json | safe }}" in src
+        assert "MCOLORS[m]||css('--mut')" in src
+        assert "#6E8FD0" not in src and "#2BB5A0" not in src
+        assert "#FFC72C" not in src                 # no private literals
+    assert "FluBNFPlayer.MODEL_COLORS" in SEASON_T
+    assert "#6E8FD0" not in SEASON_T and "#2BB5A0" not in SEASON_T
+    # the injected copy IS the player's map
+    from app.core.report_v2 import model_colors
+    assert srv._member_colors() == model_colors()
+    r = client.get("/forecast")
+    assert json.dumps(model_colors()["pf"])[1:-1] in r.text
+
+
+def test_player_carries_the_color_map_and_python_reads_the_same_one():
+    m = re.search(r"/\*MODEL_COLORS_JSON\*/\s*(\{.*?\})"
+                  r"\s*/\*END_MODEL_COLORS_JSON\*/", PLAYER, re.S)
+    assert m, "player.js must carry the marked JSON member-color map"
+    colors = json.loads(m.group(1))
+    from app.core import report_season
+    from app.core.report_v2 import MEMBER_COLORS, model_colors
+    assert model_colors() == colors                 # one source, no drift
+    assert MEMBER_COLORS == colors
+    assert report_season.MODEL_COLORS == colors
+    # the player's default palette rides the same object
+    assert "models: MODEL_COLORS" in PLAYER
+    # and the weekly report's fan bands derive from the pf member's color
+    from app.core.report_v2 import QBANDS
+    r, g, b = (int(colors["pf"].lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
+    assert all(f"rgba({r},{g},{b}," in band[2] for band in QBANDS)
 
 
 # --------------------------------- finding 24: one shared model-name map

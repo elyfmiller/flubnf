@@ -62,6 +62,25 @@ var MODEL_NAMES = /*MODEL_NAMES_JSON*/{
   "FluSight-baseline": "FluSight baseline (official)"
 }/*END_MODEL_NAMES_JSON*/;
 
+// THE one member-color map, same contract as MODEL_NAMES above: every
+// surface that draws a member series reads this literal (the player
+// directly, the console templates and both report builders through
+// Python's model_colors parse), so a member wears one color everywhere.
+// Spacing re-measured 2026-08-21 for dichromat separability (Vienot
+// deuteranopia and protanopia): every pair that can share a chart now
+// sits at 60+ simulated-distance under both matrices (the old slate/teal
+// pair measured 27), and pf/pf2s hold 3:1 or better against all eight
+// theme grounds. The gold and cyan identities are the anchors; on light
+// grounds the console draws the ensemble through --gold (the readable
+// accent-ink variant), which the audit also covers. Keep it a pure JSON
+// object between the markers.
+var MODEL_COLORS = /*MODEL_COLORS_JSON*/{
+  "ensemble": "#34C0F0",
+  "pf": "#1979FF",
+  "analogue": "#FFC72C",
+  "pf2s": "#A66395"
+}/*END_MODEL_COLORS_JSON*/;
+
 // an official model absent for the WHOLE season gets a disabled toggle
 // carrying this note instead of silently drawing nothing
 var UNAVAIL_NOTE = ' (fetch via Update data on the Data tab)';
@@ -84,8 +103,7 @@ var DEFAULT_IDS = {prev: 'pb-prev', play: 'pb-play', next: 'pb-next',
 // ground inside the file and stays readable on its own.
 var DEFAULT_PALETTE = {ink: '#E9EAF4', mut: '#9AA1C4', line: '#262A45',
   card: '#151729',
-  models: {ensemble: '#34C0F0', pf: '#6E8FD0', analogue: '#FFC72C',
-           pf2s: '#2BB5A0'},
+  models: MODEL_COLORS,
   flusightEnsemble: '#C7CCDD'};
 
 var PCONF = {responsive: true, displaylogo: false, scrollZoom: true,
@@ -620,6 +638,7 @@ var FluBNFPlayer = {
   MARKER: MARKER,
   init: createPlayer,
   MODEL_NAMES: MODEL_NAMES,
+  MODEL_COLORS: MODEL_COLORS,
   _internals: {
     OFFICIALS: OFFICIALS,
     MODEL_NAMES: MODEL_NAMES,

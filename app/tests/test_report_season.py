@@ -257,18 +257,50 @@ def test_report_wears_the_console_identity(tmp_path, monkeypatch):
     # the brand face with a system fallback, and no webfont fetch (the
     # self-containment test already forbids any network reference)
     assert '"DM Sans",system-ui' in html
-    # ok/bad are the console's own dark-theme values, so a number wears one
-    # alert color in the app and in the emailed report
-    assert ".ok{color:#4CC38A}" in html
-    assert ".bad{color:#FB4653}" in html
+    # ok/bad ride the console's tokens, so a number wears the same alert
+    # color as the app in every theme the reader resolves
+    assert ".ok{color:var(--ok)}.bad{color:var(--bad)}" in html
     assert "#7FC97F" not in html and "#E8A33D" not in html
-    # the nau.css dark tokens, verbatim, and the wordmark exactly as the
-    # console's navbar writes it
+    # the nau.css dark tokens, verbatim inside the embedded theme blocks,
+    # and the wordmark exactly as the console's navbar writes it
     for token in ("--bg:#0C0D17", "--card:#151729", "--ink:#E9EAF4",
                   "--mut:#9AA1C4", "--line:#262A45", "--accent:#34C0F0"):
         assert token in html, token
     assert "<em>Flu</em>BNF" in html
     assert "font-variant-numeric:tabular-nums" in html
+
+
+def test_report_is_theme_aware(tmp_path, monkeypatch):
+    """The export embeds the console's full theme system and resolves it
+    at open: all four theme token blocks plus both accessibility modifier
+    blocks, verbatim from nau.css; the boot script reads the console's
+    localStorage keys same-origin and falls back to the OS preferences
+    standalone; the player's palette hook re-reads the resolved tokens per
+    redraw; and the print block sits after every theme block so print
+    stays light in all of them."""
+    from app.core import report_v2
+    root = _mk_root(tmp_path, monkeypatch)
+    html = report_season.build_season_report(root, SEASON).read_text()
+    for sel in ('[data-theme="dark"]{', '[data-theme="paper"]{',
+                '[data-theme="dim"]{', '[data-contrast="high"]{',
+                '[data-vision="cvd"]{'):
+        assert sel in html, sel
+    # the light palette (nau.css's first :root block) is embedded too
+    assert "--bg:#F1EFF7" in html
+    # the boot script: same keys as the console, OS fallbacks, guarded
+    for probe in ("localStorage.getItem('theme')",
+                  "localStorage.getItem('contrast')",
+                  "localStorage.getItem('vision')",
+                  "prefers-color-scheme", "prefers-contrast"):
+        assert probe in html, probe
+    # the charts follow: a palette hook reading the tokens per redraw
+    assert "palette: function()" in html
+    assert "css('--card', '#151729')" in html
+    assert "FluBNFPlayer.MODEL_COLORS" in html
+    # print wins the cascade: last token statement in the stylesheet
+    assert html.rindex("@media print") > html.rindex('[data-vision="cvd"]{')
+    # the token blocks are nau.css's own, not a drifted copy
+    assert report_v2.theme_token_css() in html
 
 
 def test_report_carries_a_print_stylesheet(tmp_path, monkeypatch):

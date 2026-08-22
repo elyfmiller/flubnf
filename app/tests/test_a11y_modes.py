@@ -245,35 +245,48 @@ def test_swapped_pair_stays_separable_under_deutan_and_protan():
 
 
 def test_member_palette_audit_and_its_non_color_redundancy():
-    """The member palette audit, with its honest negative result.
+    """The member palette holds the dichromat separability bar.
 
-    The color-vision mode swaps ok/bad ENCODINGS; member colors identify
-    series, which is a different job, and the measured audit says the
-    blue/orange swap would not help them anyway. Two pairs ARE weakly
-    separated under dichromacy, and both are blue-family neighbours that
-    were already the weakest pairs in normal vision:
-
-        pair                simulated   normal
-        pf / pf2s              27          91
-        ensemble / pf          36          82
-
-    pf2s is the research member and does not ship. The ensemble/pf pair
-    ships, so the floors below pin it against further regression, and the
-    real mitigation is that member identity never rests on color: every
-    trace carries its display name in the legend and the stats table
-    repeats it beside the swatch.
+    Re-spaced 2026-08-21 (the audit had found pf/pf2s at 27 and
+    ensemble/pf at 36 under the Vienot deuteranopia matrix): every member
+    pair that can co-occur on one chart now sits at 60 or better under
+    BOTH dichromacy matrices and in normal vision, in both theme
+    polarities (on light grounds the consoles draw the ensemble through
+    --gold, the readable accent-ink variant of the same cyan identity, so
+    that variant is audited too). The map is read from the ONE shared
+    source, the marked JSON in player.js, so this pins what actually
+    ships. Color still never carries member identity alone: every trace
+    keeps its display name in the legend and the stats table repeats it
+    beside the swatch.
     """
-    mem = {"ensemble": "#34C0F0", "pf": "#6E8FD0", "analogue": "#FFC72C",
-           "pf2s": "#2BB5A0", "official": "#AAB1C9"}
-    for M in (_DEUTAN, _PROTAN):
-        # the gold member stays far from both blues, so the shipped trio
-        # never collapses into one indistinct family
-        for other in ("ensemble", "pf"):
-            assert _simdist(mem["analogue"], mem[other], M) >= 150, other
-        # the known-weak shipped pair, pinned at its measured value so a
-        # future palette change cannot quietly make it worse
-        assert _simdist(mem["ensemble"], mem["pf"], M) >= 35
-    # redundancy is what actually carries member identity
+    import itertools
+
+    from app.core.report_v2 import model_colors
+    mem = model_colors()
+    assert set(mem) == {"ensemble", "pf", "analogue", "pf2s"}
+    # the anchors: the gold and cyan identities stay themselves
+    assert mem["analogue"] == "#FFC72C" and mem["ensemble"] == "#34C0F0"
+    for ens in (mem["ensemble"], "#0173A9"):        # dark and light variant
+        pol = dict(mem, ensemble=ens)
+        for a, b in itertools.combinations(sorted(pol), 2):
+            for M in (_DEUTAN, _PROTAN):
+                assert _simdist(pol[a], pol[b], M) >= 60, (a, b, ens)
+            # normal vision must not have paid for the dichromat gain
+            d = sum((x - y) ** 2 for x, y in
+                    zip(*(tuple(int(pol[m].lstrip("#")[i:i + 2], 16)
+                                for i in (0, 2, 4)) for m in (a, b)))) ** 0.5
+            assert d >= 60, (a, b, ens)
+    # the movable members hold the graphical-object bar (3:1) against all
+    # eight theme grounds, which the colors they replaced never did
+    grounds = {"light": ("#F1EFF7", "#FFFFFF"),
+               "paper": ("#F7F2E5", "#FDFAF1"),
+               "dim": ("#212536", "#2A2F45"),
+               "dark": ("#0C0D17", "#151729")}
+    for m in ("pf", "pf2s"):
+        for th, (bg, card) in grounds.items():
+            assert _cr(mem[m], bg) >= 3.0, (m, th, "bg")
+            assert _cr(mem[m], card) >= 3.0, (m, th, "card")
+    # redundancy still backs up the color channel
     assert "name: nameOf(m)" in PLAYER
     assert "+ '\"></span>' + nameOf(m)" in PLAYER
 

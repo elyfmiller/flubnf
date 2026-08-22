@@ -14,10 +14,16 @@ relWIS table. The categorical weekly maps are omitted, since 30-plus inline
 SVG maps would multiply the file size for a view the console already serves
 live; the header note says so.
 
-Fixed dark on screen, like report_v2: the console's identity (nau.css dark
-tokens, DM Sans with a system fallback and no webfont fetch), every color
-painted explicitly. A print stylesheet flips the page to the console's
-light theme so the report prints as dark ink on a light surface.
+Theme-aware on screen, like report_v2 (both follow the app theme since
+2026-08-21, superseding the fixed-dark spec): the stylesheet embeds the
+console's four theme token blocks and both accessibility modifier blocks
+verbatim from nau.css, and the shared boot script resolves the theme at
+open -- the console's own localStorage keys when served same-origin, the
+OS preferences when opened as a standalone file. The player reads the
+resolved tokens per redraw through its palette hook, so the charts follow
+too. A print stylesheet flips the page to the console's light theme so the
+report always prints as dark ink on a light surface. The identity stays
+the console's own: DM Sans with a system fallback and no webfont fetch.
 
 Caching: the report lands at <season_root>/<season>-FluBNF-season-report.html
 and is reused while fresh (mtime vs every samples.json and scores.json),
@@ -29,24 +35,23 @@ import json
 import os
 from pathlib import Path
 
-from app.core import playback, retro
+from app.core import playback, report_v2, retro
 from app.core.runs import fmt_hms, settings_html, version_pairs
 
 # console identity (nau.css dark theme), shared with report_v2
 INK = "#E9EAF4"; MUT = "#9AA1C4"; PAPER = "#0C0D17"; CARD = "#151729"
 LINE = "#262A45"; ACCENT = "#34C0F0"
 
-# model colors, matching the console's season player: ensemble cyan,
-# pf periwinkle, analogue true gold, pf2s teal; officials muted grey
-MODEL_COLORS = {"ensemble": ACCENT, "pf": "#6E8FD0",
-                "analogue": "#FFC72C", "pf2s": "#2BB5A0"}
+# the one member-color map: the shared player's marked JSON literal,
+# parsed by report_v2.model_colors (officials stay the muted greys the
+# player states for itself)
+MODEL_COLORS = report_v2.model_colors()
 
 SIZE_WARN_BYTES = 25 * 1024 * 1024
 
 # the shared player: the very file the console's season page loads. It is
 # inlined verbatim at build time so both hosts run identical player code.
-PLAYER_SRC = Path(__file__).resolve().parents[1] / "ui" / "static" \
-    / "player.js"
+PLAYER_SRC = report_v2.PLAYER_SRC
 
 
 def model_names() -> dict:
@@ -116,6 +121,10 @@ def _newest_input(root: Path) -> float:
     mp = root / retro.META_NAME
     if mp.is_file():
         times.append(mp.stat().st_mtime)
+    # the console stylesheet is embedded as the report's theme tokens: a
+    # token change is a design change and must refresh cached exports
+    if report_v2.NAU_CSS.is_file():
+        times.append(report_v2.NAU_CSS.stat().st_mtime)
     return max(times)
 
 
@@ -302,6 +311,8 @@ def _compose(season: str, weeks: list, data_json: str, plotly_js: str,
              player_js: str, size_note: str, timing_note: str = "",
              summary: str = "") -> str:
     return (_PAGE
+            .replace("@@BOOT@@", report_v2.theme_boot_script())
+            .replace("@@THEMETOKENS@@", report_v2.theme_token_css())
             .replace("@@SEASON@@", season)
             .replace("@@NWEEKS@@", str(len(weeks)))
             .replace("@@FIRST@@", weeks[0])
@@ -320,17 +331,18 @@ def _compose(season: str, weeks: list, data_json: str, plotly_js: str,
 _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FluBNF season report @@SEASON@@</title>
+@@BOOT@@
 <script>@@PLOTLY@@</script>
 <style>
- /* console identity, fixed dark on screen: the tokens mirror nau.css
-    [data-theme="dark"], and the print block at the end flips them to the
-    console's light theme so the report prints as dark ink on a light
-    surface. The face is the console's own with a system fallback: the
-    report stays fully offline (no webfont fetch), so the stack simply
-    upgrades to DM Sans wherever the font is installed */
- :root{--bg:#0C0D17;--card:#151729;--ink:#E9EAF4;--mut:#9AA1C4;
-  --line:#262A45;--accent:#34C0F0;--gold:#34C0F0;--field-line:#5B639E;
-  --shadow:0 1px 3px rgba(0,0,0,.5),0 4px 14px rgba(0,0,0,.35)}
+ /* console identity, theme-aware: the token blocks below are the console's
+    own (nau.css, verbatim -- four themes plus the high-contrast and
+    color-vision modifiers), selected at open by the boot script above;
+    the print block at the end flips to the console's light theme so the
+    report always prints as dark ink on a light surface. The face is the
+    console's own with a system fallback: the report stays fully offline
+    (no webfont fetch), so the stack simply upgrades to DM Sans wherever
+    the font is installed */
+@@THEMETOKENS@@
  *{box-sizing:border-box}
  body{margin:0;background:var(--bg);color:var(--ink);
       font:400 15px/1.55 "DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -346,7 +358,8 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
     letter-spacing:.05em;color:var(--mut);font-weight:600}
  .accent{color:var(--accent)}
  .sub{color:var(--mut);margin:.2rem 0 1rem;font-size:.92rem}
- .warn{background:#2A2313;border:1px solid #8A6D3B;color:#F0C36D;
+ .warn{background:transparent;border:1px solid var(--warn);
+       color:var(--warn);
        border-radius:10px;padding:.6rem .8rem;font-size:.9rem}
  .card{background:var(--card);border:1px solid var(--line);
        border-radius:10px;padding:.85rem 1rem;margin:.8rem 0;
@@ -372,10 +385,10 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
  th{color:var(--mut);font-weight:600;font-size:.72rem;
     text-transform:uppercase;letter-spacing:.04em}
  td.num,th.num{text-align:right}
- /* the console's own dark-theme ok/bad values, so a number wears the same
-    alert color in the application and in this export; the print block
-    restates the light-theme pair */
- .ok{color:#4CC38A}.bad{color:#FB4653}
+ /* the console's ok/bad tokens, resolved per theme by the blocks above,
+    so a number wears the same alert color in the application and in this
+    export; the print block restates the light-theme pair literally */
+ .ok{color:var(--ok)}.bad{color:var(--bad)}
  .num.hint{color:var(--mut)}
  .tiles{display:flex;gap:.9rem;flex-wrap:wrap;margin:.2rem 0 .5rem}
  .tile{background:var(--bg);border:1px solid var(--line);
@@ -479,6 +492,16 @@ WEEKS.forEach(function(w){
   Object.keys(pl.official || {}).forEach(function(k){ UNION.offs[k] = 1; });
   (pl.locations || []).forEach(function(l){ UNION.locs[l] = 1; });
 });
+// charts follow the resolved theme: the palette hook re-reads the token
+// values per redraw (the same tokens the page chrome wears), with the
+// player's own dark kit as the fallback for any token that fails to
+// resolve. Ensemble alone stays theme-resolved through --gold, the
+// readable accent-ink variant of the same cyan identity on light grounds.
+function css(n, fb){
+  var v = getComputedStyle(document.documentElement)
+    .getPropertyValue(n).trim();
+  return v || fb;
+}
 var player = FluBNFPlayer.init({
   weeks: WEEKS,
   mode: 'static',
@@ -486,6 +509,14 @@ var player = FluBNFPlayer.init({
   catalog: {models: Object.keys(UNION.models),
             officials: Object.keys(UNION.offs),
             locations: Object.keys(UNION.locs).sort()},
+  palette: function(){
+    return {ink: css('--ink', '#E9EAF4'), mut: css('--mut', '#9AA1C4'),
+            line: css('--line', '#262A45'), card: css('--card', '#151729'),
+            models: Object.assign({}, FluBNFPlayer.MODEL_COLORS,
+                                  {ensemble: css('--gold',
+                                     FluBNFPlayer.MODEL_COLORS.ensemble)}),
+            flusightEnsemble: '#AAB1C9'};
+  },
   plotHeight: 420
 });
 // the report opens on the season's LAST week: a skimmer reads the final

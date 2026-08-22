@@ -63,6 +63,60 @@ def categorical_probs(samples, last_observed: float, population: int,
     return p
 
 
+def categorical_probs_from_quantiles(qmap: dict, last_observed: float,
+                                     population: int,
+                                     horizon: int = 1) -> dict:
+    """P(category) from a stored quantile grid {level: value}.
+
+    The quantile-only twin of categorical_probs, for members that carry no
+    sample array (the vincentized ensemble): the grid is read as the
+    forecast CDF, with level a piecewise-linear function of value between
+    the stored quantiles and clamped at the outermost levels, and each
+    category's probability is a CDF difference at the same rate-change
+    cutpoints categorical_probs uses. Exact within the resolution of the
+    grid; with the 23-level FluSight grid the unmodeled tails clamp at the
+    1 percent levels. Level keys may be float or str (results.json
+    round-trips them as str). Ties in value (a partially degenerate grid)
+    collapse to the highest level, the right-continuous CDF reading.
+    Returns {} rather than inventing numbers when the grid is unusable."""
+    if not qmap or population <= 0:
+        return {}
+    try:
+        pairs = sorted((float(v), float(l)) for l, v in qmap.items())
+    except (TypeError, ValueError):
+        return {}
+    xs: list = []
+    ls: list = []
+    for v, l in pairs:
+        if not np.isfinite(v):
+            continue
+        if xs and v <= xs[-1]:
+            ls[-1] = max(ls[-1], l)
+        else:
+            xs.append(v)
+            ls.append(l)
+    if not xs:
+        return {}
+
+    def cdf(c: float) -> float:
+        if len(xs) == 1:
+            return 1.0 if c >= xs[0] else 0.0
+        return float(np.interp(c, xs, ls))
+
+    k = {1: 1.0, 2: 1.0, 3: 2.0, 4: 2.5}.get(horizon, 1.0)
+    lo, hi = 0.3 * k, 1.7 * k
+    scale = population / 1e5          # rate cutpoint -> admissions cutpoint
+    F = {t: cdf(last_observed + t * scale) for t in (-hi, -lo, lo, hi)}
+    p = {
+        "large_increase": 1.0 - F[hi],
+        "increase": F[hi] - F[lo],
+        "stable": F[lo] - F[-lo],
+        "decrease": F[-lo] - F[-hi],
+        "large_decrease": F[-hi],
+    }
+    return {c: min(1.0, max(0.0, v)) for c, v in p.items()}
+
+
 def _tile(abbr: str, probs: dict, x: int, y: int, size: int = 56) -> str:
     if not probs:
         return (f'<g><rect x="{x}" y="{y}" width="{size-4}" height="{size-4}" '

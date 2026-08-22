@@ -1,4 +1,4 @@
-"""Weekly HTML report v2 — real US map, drill-down, forced dark.
+"""Weekly HTML report v2: real US map, drill-down, theme-aware.
 
 One self-contained file per week (plotly.js embedded once, no network):
   * geographic US choropleth, states shaded by modal rate-change category,
@@ -9,30 +9,37 @@ One self-contained file per week (plotly.js embedded once, no network):
     accuracy over time (relWIS vs baseline), recent-data table; every section
     has a '<- back to map' button (window.backToMap)
   * a National section with the same drill-down
-  * reporting gaps render as explicit near-black states and annotated
+  * reporting gaps render as explicit no-data states and annotated
     gaps in fans (constitutional rule 10), never smoothed over
   * fluid layout: no fixed max-width, the map scales with the window
-  * forced dark: single-theme by design; every color painted explicitly
+  * theme-aware, self-contained: the stylesheet embeds the console's four
+    theme token blocks and both accessibility modifier blocks verbatim
+    from nau.css, and a tiny inline script resolves the theme at open:
+    served same-origin it reads the console's own localStorage keys, so
+    the report opens in the reader's console preferences; opened as a
+    standalone file it follows the OS (prefers-color-scheme,
+    prefers-contrast). Print keeps the light stylesheet regardless.
 
-Deliberately dark-only on screen per Ely's spec (2026-08-17). The colors
-and type are the console's own identity (nau.css dark tokens, DM Sans with
-a system fallback and no webfont fetch), and a print stylesheet flips the
-page to the console's light theme so the report prints as dark ink on a
-light surface.
+The reports followed the app theme starting 2026-08-21 (user request),
+superseding the fixed-dark spec of 2026-08-17. The colors and type stay
+the console's own identity (nau.css tokens, DM Sans with a system fallback
+and no webfont fetch).
 """
 from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 
 import numpy as np
 
-# Console identity (nau.css dark theme, LANL Mesa-aligned): Near-Black
-# ground, stepped indigo card, Cyan #34C0F0 as THE accent. The values below
-# mirror the [data-theme="dark"] tokens in app/ui/static/nau.css so a color
-# means the same thing in the console and in this export; the print
-# stylesheet flips to the console's light-theme values.
+# Build-time chart palette (nau.css dark theme, LANL Mesa-aligned):
+# Near-Black ground, stepped indigo card, Cyan #34C0F0 as THE accent. The
+# figures are BUILT with these literals and re-resolved at open against the
+# embedded theme tokens (see _retint_js), so the charts wear the reader's
+# resolved theme; a no-script render keeps the light chrome with the
+# dark-kit charts, legible even if mismatched.
 INK = "#E9EAF4"; MUT = "#9AA1C4"; PAPER = "#0C0D17"; CARD = "#151729"
 LINE = "#262A45"; ACCENT = "#34C0F0"
 OK = "#4CC38A"; BAD = "#FB4653"
@@ -44,12 +51,59 @@ CATS = ("large_decrease", "decrease", "stable", "increase", "large_increase")
 CAT_COLOR = {"large_decrease": "#2e7d4f", "decrease": "#7fc97f",
              "stable": "#b9b09b", "increase": "#e8a33d",
              "large_increase": "#c0392b"}
-NO_DATA = "var(--map-nodata, #0a0a0a)"   # falls back to black in the fixed-dark report
+NO_DATA = "var(--map-nodata, #0a0a0a)"   # falls back to black without tokens
 CAT_LABEL = {c: c.replace("_", " ") for c in CATS}
-# fan bands in Blue Slate #6E8FD0, the kit's data accent
-QBANDS = ((0.025, 0.975, "rgba(110,143,208,0.13)", "95% interval"),
-          (0.10, 0.90, "rgba(110,143,208,0.20)", "80% interval"),
-          (0.25, 0.75, "rgba(110,143,208,0.30)", "50% interval"))
+
+#: the console stylesheet: the ONE source of the theme token values every
+#: report embeds, and therefore a builder input (builder_sources_mtime)
+NAU_CSS = Path(__file__).resolve().parents[1] / "ui" / "static" / "nau.css"
+#: the shared player core carries the one member-color map (marked JSON)
+PLAYER_SRC = Path(__file__).resolve().parents[1] / "ui" / "static" \
+    / "player.js"
+
+#: fallback member colors, equal to the player's map: used only if the
+#: marked JSON cannot be read (a broken checkout must not sink the report)
+_MEMBER_COLOR_FALLBACK = {"ensemble": "#34C0F0", "pf": "#1979FF",
+                          "analogue": "#FFC72C", "pf2s": "#A66395"}
+
+
+def model_colors() -> dict:
+    """The one member-color map, read from the shared player core.
+
+    player.js carries the map as a marked JSON literal (the MODEL_NAMES
+    pattern); the player and the console templates read it directly, and
+    this parse hands the SAME values to every Python surface (both report
+    builders, the server's template contexts), so a member can never wear
+    different colors on different surfaces. Degrades to the equal
+    fallback literals rather than raising."""
+    try:
+        src = PLAYER_SRC.read_text(encoding="utf-8")
+        m = re.search(r"/\*MODEL_COLORS_JSON\*/\s*(\{.*?\})"
+                      r"\s*/\*END_MODEL_COLORS_JSON\*/", src, re.S)
+        return json.loads(m.group(1)) if m else dict(_MEMBER_COLOR_FALLBACK)
+    except Exception:
+        return dict(_MEMBER_COLOR_FALLBACK)
+
+
+MEMBER_COLORS = model_colors()
+
+
+def _rgba(hexs: str, alpha: float) -> str:
+    r, g, b = (int(hexs.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
+    return f"rgba({r},{g},{b},{alpha})"
+
+
+# fan bands derive from the PF member's shared color (the weekly fan IS the
+# PF forecast): same alpha ramp as before, rgb from the one member map
+_PF_COLOR = MEMBER_COLORS.get("pf", _MEMBER_COLOR_FALLBACK["pf"])
+QBANDS = ((0.025, 0.975, _rgba(_PF_COLOR, 0.13), "95% interval"),
+          (0.10, 0.90, _rgba(_PF_COLOR, 0.20), "80% interval"),
+          (0.25, 0.75, _rgba(_PF_COLOR, 0.30), "50% interval"))
+
+#: what each map-producing model is called ON the map surfaces (home and
+#: the weekly report label their maps with the model that computed them)
+MODEL_LABEL = {"ensemble": "NAU ensemble outlook",
+               "pf": "PF-SIHRS outlook"}
 
 # Shared embed config: wheel zooms both ways, double-click resets, hover
 # modebar offers zoom-out/reset (lasso/box-select/autoscale pruned);
@@ -68,7 +122,12 @@ PLOTLY_CONFIG = {"scrollZoom": True, "doubleClick": "reset+autosize",
 # still covering every band the fan draws plus room for future band
 # choices (the FluSight 23-level grid).
 BUNDLE_NAME = "report_inputs.json"
-BUNDLE_VERSION = 1
+BUNDLE_VERSION = 2
+#: every bundle format this builder can render. v2 added one ADDITIVE
+#: field, cards_model (which model computed the map cards); a v1 bundle
+#: simply lacks it and renders as PF, which is what every v1 run's cards
+#: were computed from. Serving code accepts any version listed here.
+SUPPORTED_BUNDLE_VERSIONS = (1, 2)
 FAN_LEVELS = (0.01, 0.025, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35,
               0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80,
               0.85, 0.90, 0.95, 0.975, 0.99)
@@ -211,6 +270,111 @@ def _html(fig, include_js=False, div_id=None):
                        div_id=div_id, config=config)
 
 
+#: the token blocks every report embeds, in cascade order: the light
+#: palette (nau.css's first :root block), the three named themes, then the
+#: two accessibility modifier blocks (which only remap onto per-theme
+#: literals, so they compose exactly as they do in the console)
+_THEME_SELECTORS = (":root", '[data-theme="dark"]', '[data-theme="paper"]',
+                    '[data-theme="dim"]', '[data-contrast="high"]',
+                    '[data-vision="cvd"]')
+
+
+def theme_token_css() -> str:
+    """The console's color tokens, verbatim from nau.css: the four theme
+    blocks plus the high-contrast and color-vision modifier blocks.
+
+    One source: page_style embeds this, so a token changed in nau.css
+    lands in every rebuilt report (builder_sources_mtime counts nau.css,
+    and the season builder counts it as an input too). Only the FIRST
+    :root block is taken -- the second is the console's fluid type scale,
+    and the reports keep their own fixed type. The print block in
+    page_style sits after all of these, so at equal specificity it wins
+    the cascade and print stays light in every theme."""
+    css = NAU_CSS.read_text()
+    out = []
+    for sel in _THEME_SELECTORS:
+        m = re.search(re.escape(sel) + r"\{[^{}]*\}", css)
+        if not m:
+            raise ValueError(f"nau.css: token block {sel} not found")
+        out.append(m.group(0))
+    return "\n".join(out)
+
+
+def theme_boot_script() -> str:
+    """First-paint theme resolution, mirroring the console's base.html.
+
+    Served same-origin (http/https), the report reads the SAME
+    localStorage keys the console writes (theme, contrast, vision), so it
+    opens in the reader's current console preferences. Opened as a
+    standalone file (file://, where that storage is absent or belongs to
+    no app), it falls back to the OS preferences: prefers-color-scheme
+    for the theme and prefers-contrast for the contrast modifier. Print
+    is unaffected: the print block outranks every theme block."""
+    return """<script>
+(function(){var de=document.documentElement,t=null,c=null,v=null;
+ try{if(location.protocol==='http:'||location.protocol==='https:'){
+  t=localStorage.getItem('theme');c=localStorage.getItem('contrast');
+  v=localStorage.getItem('vision');}}catch(e){}
+ if(['light','paper','dim','dark'].indexOf(t)<0)
+  t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
+ if(c!=='high'&&c!=='normal')
+  c=matchMedia('(prefers-contrast: more)').matches?'high':'normal';
+ de.setAttribute('data-theme',t);
+ if(c==='high')de.setAttribute('data-contrast','high');
+ if(v==='cvd')de.setAttribute('data-vision','cvd');})();
+</script>"""
+
+
+def _retint_js() -> str:
+    """Serve-time chart theming: re-resolve the baked figure palette.
+
+    The figures are built with the dark-kit literals (module constants
+    above); this script, run after the boot script resolved the theme and
+    every figure initialized, reads the SAME tokens the page chrome wears
+    (getComputedStyle at draw time, never a baked guess) and rewrites each
+    plot's matching colors in place, Plotly.react-ing the graph. The
+    category bar colors re-resolve through the --cat-* tokens, so the
+    color-vision modifier reaches the bars exactly as it reaches the map.
+    On the dark theme every replacement is identity and the pass exits
+    without touching a plot."""
+    pairs = [(CARD, "--card"), (INK, "--ink"), (MUT, "--mut"),
+             (LINE, "--line")]
+    pairs += [(CAT_COLOR[c], "--cat-" + c.replace("_", "-")) for c in CATS]
+    lines = "".join(
+        f"MAP[{json.dumps(col)}]=css({json.dumps(var)},{json.dumps(col)});"
+        for col, var in pairs)
+    return """<script>
+(function(){
+  if(!window.Plotly) return;
+  function css(n,fb){
+    var v=getComputedStyle(document.documentElement)
+      .getPropertyValue(n).trim();
+    return v||fb;
+  }
+  var MAP={};""" + lines + """
+  var dirty=Object.keys(MAP).some(function(k){
+    return MAP[k].toLowerCase()!==k.toLowerCase();});
+  if(!dirty) return;
+  function walk(o){
+    if(!o||typeof o!=='object') return;
+    for(var k in o){
+      var v=o[k];
+      if(typeof v==='string'&&Object.prototype.hasOwnProperty.call(MAP,v))
+        o[k]=MAP[v];
+      else walk(v);
+    }
+  }
+  var plots=document.querySelectorAll('.js-plotly-plot');
+  for(var i=0;i<plots.length;i++){
+    var g=plots[i];
+    if(!g.data||!g.layout) continue;
+    walk(g.data);walk(g.layout);
+    Plotly.react(g,g.data,g.layout);
+  }
+})();
+</script>"""
+
+
 def page_header() -> str:
     """The report's header lockup, one source: build_report embeds it, and
     legacy_theme_carry inserts it into stored reports that predate it."""
@@ -227,16 +391,15 @@ def page_style() -> str:
     legacy_theme_carry swaps it into stored reports whose markup still
     matches (see the class-coverage check there)."""
     return f"""<style>
- /* console identity, fixed dark on screen: the tokens mirror nau.css
-    [data-theme="dark"]; the print block below flips them to the console's
-    light theme so the page prints as dark ink on a light surface. The
-    inline usmap SVG reads --card, --accent, and --map-nodata: state
-    borders match the card surface, and no-data reads as an explicit
-    near-black gap against it (pale neutral on paper). */
- :root{{--bg:{PAPER};--card:{CARD};--ink:{INK};--mut:{MUT};--line:{LINE};
-  --accent:{ACCENT};--gold:{ACCENT};--ok:{OK};--bad:{BAD};
-  --map-nodata:#05060A;
-  --shadow:0 1px 3px rgba(0,0,0,.5),0 4px 14px rgba(0,0,0,.35)}}
+ /* console identity, theme-aware: the token blocks below are the console's
+    own (nau.css, verbatim -- four themes plus the high-contrast and
+    color-vision modifiers), selected at open by the boot script; the
+    print block at the end flips to the console's light theme so the page
+    always prints as dark ink on a light surface. The inline usmap SVG
+    reads --card, --accent, --map-nodata, and the --cat-* scale: state
+    borders match the card surface, no-data reads as an explicit gap on
+    every ground, and the category fills follow the color-vision mode. */
+{theme_token_css()}
  *{{box-sizing:border-box}}
  body{{margin:0;background:var(--bg);color:var(--ink);
       font:400 15px/1.55 {FONT_STACK}}}
@@ -291,8 +454,10 @@ def page_style() -> str:
  button:hover{{background:rgba(52,192,240,.14)}}
  button:focus-visible{{outline:2px solid var(--gold);outline-offset:2px}}
  .viewtoggle{{display:flex;gap:.5rem;margin:1rem 0 0}}
- .viewtoggle .on{{background:var(--gold);border-color:var(--gold);
-                  color:{PAPER}}}
+ /* selected toggle: the console's button.gold treatment (gold-bright is
+    the pure cyan in every theme, and near-black ink passes on it) */
+ .viewtoggle .on{{background:var(--gold-bright);
+                  border-color:var(--gold-bright);color:{PAPER}}}
  .backbtn{{margin:.2rem 0 .6rem}}
  .hint{{color:var(--mut);font-size:.85rem}}
  @media print{{
@@ -309,7 +474,7 @@ def page_style() -> str:
 def build_report(reference_date: str, state_cards: dict, state_details: dict,
                  national: dict, out_path: Path,
                  national_map_html: str = "", elapsed_s=None,
-                 settings_html: str = "") -> Path:
+                 settings_html: str = "", model_label: str = "") -> Path:
     """state_cards: abbr -> hover-card data (choropleth).
     state_details: abbr -> dict(name, fan=…, cat=…, acc=…, table_rows=[…]).
     national: dict(fan=…, acc=…, summary_html=str).
@@ -319,13 +484,17 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
     it. Omitted rather than guessed when the caller does not know.
     settings_html: the run-settings block (app.core.runs.settings_html),
     rendered beside the wall-time line so the report states exactly what
-    produced it. Omitted when the caller does not supply it."""
+    produced it. Omitted when the caller does not supply it.
+    model_label: which model computed the MAP's cards, as shown to the
+    reader (see MODEL_LABEL); defaults to the PF label, which is what
+    every card set predating the label was computed from."""
     # Build-time SVG map (see usmap.py) -- the plotly geo choropleth fetched
     # its geometry from cdn.plot.ly at runtime and rendered empty offline/CSP.
-    from app.core.usmap import svg_map
+    from app.core.usmap import cat_fill, svg_map
     cards_by_fips = {c["fips"]: c for c in state_cards.values() if "fips" in c}
     # only states that actually have a detail section invite a click
     map_html = svg_map(cards_by_fips, clickable=set(state_details))
+    model_label = model_label or MODEL_LABEL["pf"]
 
     sections = []
     back_btn = ('<button class="backbtn" onclick="backToMap()">'
@@ -401,25 +570,27 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
     html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FluBNF weekly report · {reference_date}</title>
+{theme_boot_script()}
 {plotly_js}
 {page_style()}</head><body><main>
 {page_header()}
 <h1>US influenza forecast</h1>
-<p class="sub">week of {reference_date} · PF-SIHRS · click a state for detail
- · Ctrl+scroll to zoom (⌘ on Mac), drag to pan, double-click to reset
+<p class="sub">week of {reference_date} · {model_label} · click a state for
+ detail · Ctrl+scroll to zoom (⌘ on Mac), drag to pan, double-click to reset
  · <button id="natbtn">national detail</button></p>
 {view_toggle}
 <div class="card" id="map-anchor">
+<p class="hint mapmodel">{model_label}</p>
 <div id="map-state" class="mapcap">{map_html}</div>
  {nat_map_div}
  <div class="legend">
-  {"".join(f'<span><i class="sw" style="background:{CAT_COLOR[c]}"></i>{CAT_LABEL[c]}</span>' for c in CATS)}
+  {"".join(f'<span><i class="sw" style="background:{cat_fill(c)}"></i>{CAT_LABEL[c]}</span>' for c in CATS)}
   <span><i class="sw" style="background:{NO_DATA}"></i>no data (reporting gap)</span>
  </div>
  <div class="legend">
-  <span><i class="sw" style="background:{CAT_COLOR['increase']};opacity:.64"></i>leaning</span>
-  <span><i class="sw" style="background:{CAT_COLOR['increase']};opacity:.82"></i>likely</span>
-  <span><i class="sw" style="background:{CAT_COLOR['increase']};opacity:1"></i>confident</span>
+  <span><i class="sw" style="background:{cat_fill('increase')};opacity:.64"></i>leaning</span>
+  <span><i class="sw" style="background:{cat_fill('increase')};opacity:.82"></i>likely</span>
+  <span><i class="sw" style="background:{cat_fill('increase')};opacity:1"></i>confident</span>
   <span>deeper shade = more confident</span>
  </div>
 </div>
@@ -466,6 +637,7 @@ document.getElementById('natbtn').addEventListener('click', () => show('st-US'))
   bN.addEventListener('click', () => setView('national'));
 }})();
 </script>
+{_retint_js() if plotly_js else ""}
 {footer}
 </main></body></html>"""
     out_path = Path(out_path)
@@ -524,6 +696,9 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
             nat_map_html = ""
     us_d = details.get("US", {})
     national = bundle.get("national") or {}
+    # the additive v2 field: which model computed the map cards. A v1
+    # bundle lacks it and renders as PF, which its cards were computed from.
+    cards_model = bundle.get("cards_model") or "pf"
     return build_report(
         bundle["reference_date"], bundle.get("cards") or {}, details,
         {"fan": us_d.get("fan"), "acc": None,
@@ -531,20 +706,24 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
          "summary_html": national.get("summary_html", "")},
         Path(out_path), national_map_html=nat_map_html,
         elapsed_s=bundle.get("elapsed_s"),
-        settings_html=bundle.get("settings_html", ""))
+        settings_html=bundle.get("settings_html", ""),
+        model_label=MODEL_LABEL.get(cards_model, MODEL_LABEL["pf"]))
 
 
 def builder_sources_mtime() -> float:
     """Newest mtime of the weekly report's builder sources: this module,
-    the scoring module (the embedded WIS summary card), and the map
-    renderer. The report_season freshness pattern applied to the weekly
-    report: a stored report.html older than this was built by an earlier
-    design and is stale."""
+    the scoring module (the embedded WIS summary card), the map renderer,
+    and the console stylesheet (the report embeds its token blocks, so a
+    theme change is a design change). The report_season freshness pattern
+    applied to the weekly report: a stored report.html older than this was
+    built by an earlier design and is stale."""
     times = [0.0]
     for mod in ("report_v2", "scoring", "usmap"):
         p = Path(__file__).with_name(mod + ".py")
         if p.is_file():
             times.append(p.stat().st_mtime)
+    if NAU_CSS.is_file():
+        times.append(NAU_CSS.stat().st_mtime)
     return max(times)
 
 
@@ -589,7 +768,10 @@ def legacy_theme_carry(html: str) -> str:
                 used = {c for m in re.findall(r'class="([^"]+)"', body)
                         for c in m.split()}
                 if (used & old_styled) <= _css_class_names(new_css):
-                    out = html[:s0] + new_css + html[s1 + len("</style>"):]
+                    # the boot script rides with the stylesheet it selects
+                    # for, so the carried page follows the theme too
+                    out = (html[:s0] + theme_boot_script() + new_css
+                           + html[s1 + len("</style>"):])
                     # the current lockup carries its own back link; the old
                     # floating one would duplicate its id
                     out = re.sub(r'<a id="appback".*?</a>', "", out,
