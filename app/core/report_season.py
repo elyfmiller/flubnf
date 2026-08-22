@@ -411,19 +411,20 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 @@THEMETOKENS@@
  *{box-sizing:border-box}
  body{margin:0;background:var(--bg);color:var(--ink);
-      font:400 15px/1.55 "DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif}
+      font:400 var(--fs-body)/1.5 "DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif}
  main{max-width:1180px;margin:0 auto;padding:1.4rem 1.2rem 3rem}
  .brandrow{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap;
   margin:0 0 .8rem}
  .brand{font-size:1.45rem;font-weight:700;letter-spacing:.01em}
  .brand em{color:var(--accent);font-style:normal}
  .brandsub{color:var(--mut);font-size:.9rem}
- h1{font-size:1.45rem;font-weight:700;margin:.1rem 0 .3rem;
+ h1{font-size:var(--fs-h1);font-weight:700;margin:.1rem 0 .3rem;
     text-wrap:balance}
- h2{font-size:.8rem;margin:.2rem 0 .55rem;text-transform:uppercase;
+ h2{font-size:var(--fs-h2);margin:.2rem 0 .55rem;
+    text-transform:uppercase;
     letter-spacing:.05em;color:var(--mut);font-weight:600}
  .accent{color:var(--accent)}
- .sub{color:var(--mut);margin:.2rem 0 1rem;font-size:.92rem}
+ .sub{color:var(--mut);margin:.2rem 0 1rem;font-size:var(--fs-sub)}
  /* run-settings block: the console's compact two-column grid (see
     nau.css .runsettings), restated here because the export is
     self-contained */
@@ -438,7 +439,7 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
        color:var(--warn);
        border-radius:10px;padding:.6rem .8rem;font-size:.9rem}
  .card{background:var(--card);border:1px solid var(--line);
-       border-radius:10px;padding:.85rem 1rem;margin:.8rem 0;
+       border-radius:10px;padding:.85rem 1rem;margin:.75rem 0;
        box-shadow:var(--shadow)}
  .row{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}
  button{background:transparent;color:var(--gold);
@@ -451,10 +452,10 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
  button:focus-visible,select:focus-visible,input:focus-visible{
    outline:2px solid var(--gold);outline-offset:2px}
  input[type=range]{flex:1;min-width:160px;accent-color:var(--gold)}
- .hint{color:var(--mut);font-size:.82rem}
+ .hint{color:var(--mut);font-size:var(--fs-hint)}
  .playgrid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:1rem}
  @media(max-width:1000px){.playgrid{grid-template-columns:1fr}}
- table{border-collapse:collapse;font-size:.85rem;width:100%;
+ table{border-collapse:collapse;font-size:var(--fs-table);width:100%;
        font-variant-numeric:tabular-nums}
  td,th{padding:.38rem .6rem;border-bottom:1px solid var(--line);
        text-align:left}
@@ -471,7 +472,7 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
        border-radius:10px;padding:.55rem .95rem;min-width:130px}
  .tilename{color:var(--mut);font-size:.74rem;text-transform:uppercase;
            letter-spacing:.05em}
- .tileval{font-size:1.65rem;font-weight:750;
+ .tileval{font-size:var(--fs-big);font-weight:750;
           font-variant-numeric:tabular-nums}
  .sw{width:11px;height:11px;border-radius:3px;display:inline-block;
      margin-right:.3rem;vertical-align:-1px;

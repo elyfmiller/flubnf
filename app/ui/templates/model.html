@@ -1,9 +1,8 @@
 {% extends "base.html" %}{% import "diagrams.html" as dg %}
 {% block title %}FluBNF · {{ title }}{% endblock %}
-{# every Models view centers its reading column like Methods (main.reading);
-   inside the cards the figures, equation panels, and prose all center on
-   the same axis (user request 2026-08-21, second report) #}
-{% block main_class %}reading{% endblock %}
+{# rebuild 2026-08-22: the Models views use the same shell as every other
+   page -- cards span the main column, text at the card's content width in
+   normal block flow, figures and equation panels center. #}
 {% block head %}<script src="/static/plotly.min.js"></script>{% endblock %}
 {% block content %}
 <h1>{{ title }}</h1>

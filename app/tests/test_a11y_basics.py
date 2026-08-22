@@ -146,10 +146,12 @@ def test_destructive_confirms_wear_the_danger_tier():
     assert "background:var(--bad);border-color:var(--bad)" in NAU
 
 
-# ------------------------------------------------------- prose measure cap
+# ------------------------------------------------- one width for card text
 
-def test_prose_measure_cap_spares_hints_and_tables():
-    assert "max-width:72ch" in NAU
-    # hints and the sub intro lines both escape the measure (heading-width
-    # uniformity, user 2026-08-21: intro text spans the card width)
-    assert ".card p.hint,.card p.sub{max-width:none}" in NAU
+def test_card_text_carries_no_measure_cap():
+    """Rebuild 2026-08-22: all text in a card -- prose, hints, subs,
+    details bodies -- runs at the card's content width. No ch measure on
+    card paragraphs, and no per-class escape rules left to fight it."""
+    assert "max-width:72ch" not in NAU
+    assert ".card p{margin:.45rem 0}" in " ".join(NAU.split())
+    assert ".card p.hint,.card p.sub{max-width:none}" not in NAU

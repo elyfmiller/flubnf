@@ -320,33 +320,40 @@ def _html(fig, include_js=False, div_id=None):
 
 
 #: the token blocks every report embeds, in cascade order: the light
-#: palette (nau.css's first :root block), the three named themes, then the
-#: two accessibility modifier blocks (which only remap onto per-theme
-#: literals, so they compose exactly as they do in the console)
+#: palette (nau.css's first :root block), the fluid type scale (its second
+#: :root block), the three named themes, then the two accessibility
+#: modifier blocks (which only remap onto per-theme literals, so they
+#: compose exactly as they do in the console)
 _THEME_SELECTORS = (":root", '[data-theme="dark"]', '[data-theme="paper"]',
                     '[data-theme="dim"]', '[data-contrast="high"]',
                     '[data-vision="cvd"]')
 
 
 def theme_token_css() -> str:
-    """The console's color tokens, verbatim from nau.css: the four theme
-    blocks plus the high-contrast and color-vision modifier blocks.
+    """The console's tokens, verbatim from nau.css: the four theme blocks,
+    the fluid type scale, and the high-contrast and color-vision modifier
+    blocks.
 
     One source: page_style embeds this, so a token changed in nau.css
     lands in every rebuilt report (builder_sources_mtime counts nau.css,
-    and the season builder counts it as an input too). Only the FIRST
-    :root block is taken -- the second is the console's fluid type scale,
-    and the reports keep their own fixed type. The print block in
-    page_style sits after all of these, so at equal specificity it wins
-    the cascade and print stays light in every theme."""
+    and the season builder counts it as an input too). BOTH :root blocks
+    are taken since the 2026-08-22 consistency pass -- the color palette
+    and the --fs-* type scale -- and every block is emitted in nau.css
+    document order, so the cascade (the type block before the modifier
+    blocks, which retarget --focus-w) behaves exactly as it does in the
+    console. The print block in page_style sits after all of these, so at
+    equal specificity it wins the cascade and print stays light in every
+    theme."""
     css = NAU_CSS.read_text()
-    out = []
+    blocks = []
     for sel in _THEME_SELECTORS:
-        m = re.search(re.escape(sel) + r"\{[^{}]*\}", css)
-        if not m:
+        found = [m for m in re.finditer(re.escape(sel) + r"\{[^{}]*\}", css)
+                 if sel != ":root" or css[max(0, m.start() - 1)] not in "\"']"]
+        if not found:
             raise ValueError(f"nau.css: token block {sel} not found")
-        out.append(m.group(0))
-    return "\n".join(out)
+        blocks += [(m.start(), m.group(0)) for m in found]
+    blocks.sort()
+    return "\n".join(b for _, b in blocks)
 
 
 def theme_boot_script() -> str:
@@ -471,7 +478,7 @@ def page_style() -> str:
 {theme_token_css()}
  *{{box-sizing:border-box}}
  body{{margin:0;background:var(--bg);color:var(--ink);
-      font:400 15px/1.55 {FONT_STACK}}}
+      font:400 var(--fs-body)/1.5 {FONT_STACK}}}
  main{{width:100%;margin:0 auto;padding:1.4rem 1.4rem 4rem}}
  .brandrow{{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap;
   margin:0 0 .8rem}}
@@ -479,12 +486,13 @@ def page_style() -> str:
  .brand em{{color:var(--accent);font-style:normal}}
  .brandsub{{color:var(--mut);font-size:.9rem}}
  .brandrow .spacer{{flex:1}}
- h1{{font-size:1.45rem;font-weight:700;margin:.1rem 0 .3rem;
+ h1{{font-size:var(--fs-h1);font-weight:700;margin:.1rem 0 .3rem;
      text-wrap:balance}}
  h2{{font-size:1.15rem;font-weight:700;margin:.2rem 0 .6rem}}
- .card h2{{font-size:.8rem;margin:0 0 .55rem;text-transform:uppercase;
+ .card h2{{font-size:var(--fs-h2);margin:0 0 .55rem;
+    text-transform:uppercase;
     letter-spacing:.05em;color:var(--mut);font-weight:600}}
- .sub{{color:var(--mut);margin:.2rem 0 1rem}}
+ .sub{{color:var(--mut);margin:.2rem 0 1rem;font-size:var(--fs-sub)}}
  /* run-settings block: the console's compact two-column grid (see
     nau.css .runsettings), restated here because the report is
     self-contained */
@@ -497,11 +505,11 @@ def page_style() -> str:
  .runsettings .kv dd{{margin:0;font-weight:650;
     font-variant-numeric:tabular-nums;overflow-wrap:anywhere}}
  .card{{background:var(--card);border:1px solid var(--line);
-        border-radius:10px;padding:.85rem 1rem;margin:.8rem 0;
+        border-radius:10px;padding:.85rem 1rem;margin:.75rem 0;
         box-shadow:var(--shadow);overflow-x:auto}}
  .grid2{{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}}
  @media(max-width:820px){{.grid2{{grid-template-columns:1fr}}}}
- .offseason{{color:var(--mut);font-size:.85rem;font-style:italic;
+ .offseason{{color:var(--mut);font-size:var(--fs-hint);font-style:italic;
              margin:.2rem 0 .8rem}}
  /* in the header flow (not fixed) so it can never cover the title */
  #appback{{display:inline-block;background:var(--card);
@@ -511,12 +519,12 @@ def page_style() -> str:
  .mapcap{{max-width:min(880px,72vw);margin:0 auto}}
  .mapcap svg{{max-height:58vh}}
  .legend{{display:flex;gap:1.1rem;flex-wrap:wrap;color:var(--mut);
-          font-size:.82rem;margin:.4rem 0 0 .2rem}}
+          font-size:var(--fs-hint);margin:.4rem 0 0 .2rem}}
  .legend span{{display:inline-flex;align-items:center;gap:.35rem}}
  .sw{{width:13px;height:13px;border-radius:3px;display:inline-block;
      -webkit-print-color-adjust:exact;print-color-adjust:exact}}
- table{{border-collapse:collapse;font-size:.85rem;margin:.6rem .4rem;
-        font-variant-numeric:tabular-nums}}
+ table{{border-collapse:collapse;font-size:var(--fs-table);
+        margin:.6rem .4rem;font-variant-numeric:tabular-nums}}
  td,th{{padding:.38rem .6rem;border-bottom:1px solid var(--line);
         text-align:left}}
  th{{color:var(--mut);font-weight:600;font-size:.72rem;
@@ -539,7 +547,7 @@ def page_style() -> str:
  .viewtoggle .on{{background:var(--gold-bright);
                   border-color:var(--gold-bright);color:{PAPER}}}
  .backbtn{{margin:.2rem 0 .6rem}}
- .hint{{color:var(--mut);font-size:.85rem}}
+ .hint{{color:var(--mut);font-size:var(--fs-hint)}}
  @media print{{
   :root{{--bg:#FFFFFF;--card:#FFFFFF;--ink:#000F7E;--mut:#565E96;
    --line:#DCD8E9;--accent:#0173A9;--gold:#0173A9;

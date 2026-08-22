@@ -85,12 +85,23 @@ def _repo_sha(short: bool = True) -> str:
 RUNNING_SHA = _repo_sha()   # the code THIS process actually executes
 
 
+@ttlcache.ttl_cache(ttl_s=10.0)
+def _repo_sha_on_disk() -> str:
+    """The repo HEAD as a cached probe. The restart banner reads this on
+    EVERY page render, and the uncached version paid a git subprocess
+    (~20 ms) per page -- measured as the single largest fixed cost of a
+    warm render. Ten seconds of staleness on a banner that exists to
+    catch a manual git pull is invisible; the subprocess per click was
+    not."""
+    return _repo_sha()
+
+
 def _restart_needed() -> bool:
     """True when the repo on disk is ahead of the running process: a pull
     landed but Python in memory is still the old build. The page reload
     shows fresh templates and static files while server logic stays stale,
     which cost days of confused field debugging; the banner ends that."""
-    sha = _repo_sha()
+    sha = _repo_sha_on_disk()
     return bool(sha and RUNNING_SHA and sha != RUNNING_SHA)
 
 
@@ -396,6 +407,23 @@ def _start_background_warm() -> None:
         finally:
             _WARM_DONE.set()
         _trace(f"warm: outlook done at +{time.perf_counter() - t0:.2f}s")
+        # the Forecast tab's first click previously paid the latest
+        # vintage's CSV parse (plus, on a truly cold process, the pandas
+        # import the outlook warm above already covers): pre-fill the
+        # vintage-frame cache so clicking between tabs never waits on it
+        try:
+            vs = data_mod.vintages()
+            if vs:
+                _vintage_frame(str(data_mod.vintage_path(vs[-1])))
+            templates.env.get_template("forecast.html")
+            # the shared model-name/color maps ride the report modules,
+            # whose import chain (report_season -> playback -> ensemble)
+            # measured ~0.6 s -- the whole remaining first-click wait on
+            # the Forecast tab. Pay it here, off the request path.
+            from app.core import report_season, report_v2   # noqa: F401
+        except Exception:
+            pass
+        _trace(f"warm: forecast done at +{time.perf_counter() - t0:.2f}s")
 
     threading.Thread(target=_warm, daemon=True,
                      name="flubnf-startup-warm").start()
@@ -861,8 +889,7 @@ def forecast_page(request: Request):
     series = {}
     try:
         vs = data_mod.vintages()
-        tdf = pd.read_csv(data_mod.vintage_path(vs[-1]), dtype={"location": str})
-        tdf["location"] = tdf["location"].str.zfill(2)
+        tdf = _vintage_frame(str(data_mod.vintage_path(vs[-1])))
         n2f_ = dict(zip(_l.location_name, _l.location.str.zfill(2)))
         n2f_["US (national)"] = "US"
         for loc in sel[:8]:
@@ -923,6 +950,19 @@ def forecast_page(request: Request):
 # --------------------------------------------------------------------------
 
 VINTAGE_TTL_S = 300.0
+
+
+@ttlcache.ttl_cache(ttl_s=VINTAGE_TTL_S)
+def _vintage_frame(path: str):
+    """The latest vintage CSV parsed once and shared (Forecast's data
+    panel re-read the ~600 KB file on every view). Keyed by path -- the
+    archive is append-only, so a given vintage file never changes; the
+    TTL and the pull's _invalidate_scans() bound any exception to that.
+    Callers only read the frame."""
+    import pandas as pd
+    tdf = pd.read_csv(path, dtype={"location": str})
+    tdf["location"] = tdf["location"].str.zfill(2)
+    return tdf
 
 
 @ttlcache.ttl_cache(ttl_s=VINTAGE_TTL_S)
@@ -3301,14 +3341,74 @@ def _job_covered(root: Path) -> dict | None:
     return None
 
 
+#: parsed scores.json frames, keyed by (path, mtime_ns, size): a sealed
+#: season's scores file runs to ~2.5 MB and the results page previously
+#: parsed it THREE times per view (currency check, scoreability check, the
+#: page tables) at ~25 ms a parse. Content-keyed, so a rescore invalidates
+#: by construction; capped small because only a handful of season roots
+#: exist at once.
+_SCORES_FRAMES: dict = {}
+
+
+def _scores_df(root: Path):
+    """The parsed scores.json for this root, or None when the file is
+    missing or unparseable -- one pandas parse per file content, shared by
+    every check and render that needs the frame. Callers only read the
+    returned frame (the ttlcache contract applied here too)."""
+    import pandas as pd
+    sf = Path(root) / "scores.json"
+    try:
+        st = sf.stat()
+    except OSError:
+        return None
+    key = (str(sf), st.st_mtime_ns, st.st_size)
+    hit = _SCORES_FRAMES.get(key)
+    if hit is not None:
+        return hit
+    try:
+        df = pd.read_json(sf)
+    except Exception:
+        return None
+    if len(_SCORES_FRAMES) > 8:
+        _SCORES_FRAMES.clear()
+    _SCORES_FRAMES[key] = df
+    return df
+
+
+def _scores_current_fast(root: Path) -> bool:
+    """retro.scores_current's exact rule (exists, parses, newer than every
+    stored week) answered from stats plus the shared cached parse instead
+    of a fresh 2.5 MB pandas read per page view."""
+    root = Path(root)
+    weeks = sorted((root / "weeks").glob("*/samples.json"))
+    if not weeks:
+        return True
+    sf = root / "scores.json"
+    if not sf.is_file():
+        return False
+    try:
+        if sf.stat().st_mtime < max(p.stat().st_mtime for p in weeks):
+            return False
+    except OSError:
+        return False
+    return _scores_df(root) is not None
+
+
+def _scores_scoreable_fast(root: Path) -> bool:
+    """retro.scores_scoreable's exact rule (a model column and at least one
+    cell), from the shared cached parse."""
+    df = _scores_df(root)
+    return df is not None and (not df.empty) and ("model" in df.columns)
+
+
 def _results_pending(root: Path) -> str:
     """'' when the results page can render from caches alone; otherwise the
     reason it cannot. Every check is a stat or a small cached read -- asking
     by computing would BE the freeze this replaces."""
     from app.core import retro
-    if not retro.scores_current(root):
+    if not _scores_current_fast(root):
         return "scores stale"
-    if not retro.scores_scoreable(root):
+    if not _scores_scoreable_fast(root):
         return "" if _job_covered(root) else "scores empty"
     if not retro.national_aggregate_fresh(root, RETRO_WEIGHTS):
         return "national aggregate stale"
@@ -3662,28 +3762,40 @@ def retro_results(request: Request, season: str, week: str = "",
             score_error = job["error"]
     else:
         covered = _job_covered(root)
-        if covered and covered.get("error") and not retro.scores_scoreable(root):
+        if covered and covered.get("error") and not _scores_scoreable_fast(root):
             score_error = covered["error"]
-    try:
-        df = pd.read_json(sf) if sf.exists() else pd.DataFrame()
-    except Exception:
+    df = _scores_df(root)
+    if df is None:
         df = pd.DataFrame()
     heads, curve, states = {}, [], []
     scoreable = (not df.empty) and ("model" in df.columns)
     if scoreable:
+        # one grouped pass instead of a boolean filter per model, per asof,
+        # and per state-model pair: the old loops re-scanned the full frame
+        # 500+ times per view (~180 ms on a sealed 52-state season). Same
+        # arithmetic: summed wis over summed base_wis per group, cumulative
+        # by asof for the curve.
+        msums = df.groupby("model")[["wis", "base_wis"]].sum()
         for m in ("pf", "analogue", "ensemble"):
-            g = df[df.model == m]
-            if len(g):
-                heads[m] = g.wis.sum() / g.base_wis.sum()
-        for a in sorted(df["asof"].unique()):
-            g = df[(df.model == "ensemble") & (df["asof"] <= a)]
-            if len(g):
-                curve.append((str(a)[:10], g.wis.sum() / g.base_wis.sum()))
+            if m in msums.index:
+                heads[m] = msums.at[m, "wis"] / msums.at[m, "base_wis"]
+        asofs = sorted(df["asof"].unique())
+        ens = df[df.model == "ensemble"]
+        if len(ens):
+            cum = ens.groupby("asof")[["wis", "base_wis"]].sum() \
+                     .sort_index().cumsum()
+            cum = cum.reindex(asofs).ffill().dropna()
+            curve = [(str(a)[:10], r.wis / r.base_wis)
+                     for a, r in cum.iterrows()]
+        psums = df.groupby(["location", "model"])[["wis", "base_wis"]].sum()
         for loc in sorted(df.location.unique()):
             row = {"name": loc}
             for m in ("pf", "analogue", "ensemble"):
-                g = df[(df.model == m) & (df.location == loc)]
-                row[m] = g.wis.sum() / g.base_wis.sum() if len(g) else None
+                if (loc, m) in psums.index:
+                    row[m] = (psums.at[(loc, m), "wis"]
+                              / psums.at[(loc, m), "base_wis"])
+                else:
+                    row[m] = None
             states.append(row)
     # the honest national aggregate: the grid fits states only, so the US
     # figure is CONSTRUCTED from the state forecasts (members aggregated
