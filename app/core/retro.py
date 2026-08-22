@@ -22,6 +22,7 @@ Engineering rules (each one paid for):
 """
 from __future__ import annotations
 
+import gzip
 import json
 import os
 import re
@@ -93,8 +94,109 @@ def _week_dir(root: Path, asof: str) -> Path:
     return root / "weeks" / asof
 
 
+# --------------------------------------------------------------------------
+# the samples store: every reader and writer of a stored week goes through
+# these helpers, so a week stored as samples.json and one stored as
+# samples.json.gz are indistinguishable everywhere downstream (scoring,
+# playback, the national aggregate, the reports, the exports). New weeks are
+# written gzipped -- the numeric JSON compresses ~3.7x (measured on a 144 MB
+# full-grid week; the decompress adds ~0.2 s to a 1.6 s parse) -- and
+# existing files migrate through compress_samples_file, which preserves the
+# file's mtime so every cache keyed on it stays valid.
+# --------------------------------------------------------------------------
+
+SAMPLES_JSON = "samples.json"
+SAMPLES_GZ = "samples.json.gz"
+
+
+def samples_file(wd: Path) -> Path | None:
+    """The week's stored samples file -- samples.json or its gzip form --
+    or None when the week is incomplete. Plain JSON wins when both exist:
+    a migration interrupted between writing the gzip and retiring the
+    original leaves both behind, and the original remains the record until
+    it is actually retired."""
+    p = Path(wd) / SAMPLES_JSON
+    if p.is_file():
+        return p
+    g = Path(wd) / SAMPLES_GZ
+    return g if g.is_file() else None
+
+
+def week_samples_path(root: Path, asof: str) -> Path | None:
+    return samples_file(_week_dir(root, asof))
+
+
+def season_sample_files(root: Path) -> list:
+    """One stored samples file per completed week, ascending by week name --
+    the successor of every `weeks/*/samples.json` glob, form-blind."""
+    weeks = Path(root) / "weeks"
+    if not weeks.is_dir():
+        return []
+    out = []
+    try:
+        for wd in sorted(weeks.iterdir()):
+            p = samples_file(wd)
+            if p is not None:
+                out.append(p)
+    except OSError:
+        return []
+    return out
+
+
+def read_samples(fp: Path) -> dict:
+    """Parse one stored samples file, transparently across both forms."""
+    fp = Path(fp)
+    if fp.name.endswith(".gz"):
+        with gzip.open(fp, "rt", encoding="utf-8") as f:
+            return json.load(f)
+    return json.loads(fp.read_text())
+
+
+def read_week_samples(root: Path, asof: str) -> dict:
+    fp = week_samples_path(root, asof)
+    if fp is None:
+        raise FileNotFoundError(
+            f"no stored samples for week {asof} under {root}")
+    return read_samples(fp)
+
+
+def write_week_samples(wd: Path, obj: dict) -> Path:
+    """Store a completed week's samples, gzipped. Atomic (write beside,
+    then replace), and any plain-JSON file a previous run of this week
+    left behind is retired so samples_file never faces two records."""
+    wd = Path(wd)
+    fp = wd / SAMPLES_GZ
+    tmp = wd / (SAMPLES_GZ + ".tmp")
+    with gzip.open(tmp, "wt", encoding="utf-8", compresslevel=6) as f:
+        json.dump(obj, f)
+    os.replace(tmp, fp)
+    (wd / SAMPLES_JSON).unlink(missing_ok=True)
+    return fp
+
+
+def compress_samples_file(fp: Path) -> Path:
+    """Migrate one stored week to the gzip form, preserving the file's
+    mtime so every cache keyed on it (playback payloads, stats cells, the
+    national aggregate, scores currency, report freshness) stays valid
+    without a rebuild. Atomic: a crash before the final replace leaves the
+    plain file as the record; one after it leaves both, and samples_file
+    keeps reading the original until the retry retires it."""
+    fp = Path(fp)
+    if fp.name.endswith(".gz"):
+        return fp
+    st = fp.stat()
+    gz = fp.with_name(SAMPLES_GZ)
+    tmp = fp.with_name(SAMPLES_GZ + ".tmp")
+    with open(fp, "rb") as fin, gzip.open(tmp, "wb", compresslevel=6) as fo:
+        shutil.copyfileobj(fin, fo, 1 << 20)
+    os.utime(tmp, ns=(st.st_atime_ns, st.st_mtime_ns))
+    os.replace(tmp, gz)
+    fp.unlink()
+    return gz
+
+
 def week_done(root: Path, asof: str) -> bool:
-    return (_week_dir(root, asof) / "samples.json").is_file()
+    return week_samples_path(root, asof) is not None
 
 
 # --------------------------------------------------------------------------
@@ -255,7 +357,7 @@ def timing(meta: dict, now: float | None = None) -> dict:
 
 
 def _weeks_on_disk(root: Path) -> int:
-    return len(list((Path(root) / "weeks").glob("*/samples.json")))
+    return len(season_sample_files(root))
 
 
 def _fold(meta: dict, now: float) -> dict:
@@ -702,7 +804,7 @@ def run_week(root: Path, season: str, asof: str, locations: list,
     root = Path(root)
     wd = _week_dir(root, asof)
     if week_done(root, asof):
-        return json.loads((wd / "samples.json").read_text())
+        return read_week_samples(root, asof)
     spec = RunSpec(engine="retro", forecast_date=asof, locations=locations,
                    season_start=season_bounds(season)[0],
                    replicates=replicates, particles=particles)
@@ -727,7 +829,17 @@ def run_week(root: Path, season: str, asof: str, locations: list,
            "analogue": {loc: {h: {str(k): v for k, v in q.items()}
                               for h, q in qs.items()}
                         for loc, qs in an_q.items()}}
-    (wd / "samples.json").write_text(json.dumps(out))
+    write_week_samples(wd, out)
+    # storage hygiene the moment the week is assembled: the per-cell fit
+    # trees, runner scripts, shard lists, and done-markers this samples file
+    # already folded in are intermediates now, and keeping them is what let
+    # a season tree grow to gigabytes. Never fatal: a week that cannot be
+    # pruned is still a fitted week.
+    try:
+        from app.core import reclaim
+        reclaim.prune_week(wd)
+    except Exception:
+        pass
     return out
 
 
@@ -821,8 +933,8 @@ def score_season(root: Path, season: str, ensemble_weights: dict | None = None) 
     from datetime import timedelta
     truth, n2f = load_truth()
     rows = []
-    for wk in sorted((root / "weeks").glob("*/samples.json")):
-        d = json.loads(wk.read_text())
+    for wk in season_sample_files(root):
+        d = read_samples(wk)
         asof = d["asof"]; T = pd.Timestamp(asof)
         for loc in set(d["pf"]) | set(d["analogue"]):
             fips = n2f.get(loc)
@@ -919,7 +1031,7 @@ def national_aggregate(root: Path,
     from flubnf.quantiles import FLUSIGHT_QUANTILES as QL
     from flubnf.wis import wis as wis_fn
     root = Path(root)
-    wks = sorted((root / "weeks").glob("*/samples.json"))
+    wks = season_sample_files(root)
     if not wks:
         return None
     sf = root / "scores.json"
@@ -939,7 +1051,7 @@ def national_aggregate(root: Path,
     levels = [float(L) for L in QL]
     rows = []                       # (model, asof, horizon 0-based, wis)
     for wp in wks:
-        d = json.loads(wp.read_text())
+        d = read_samples(wp)
         asof = d["asof"]
         T = pd.Timestamp(asof)
         pf_nat, an_nat = {}, {}
@@ -1027,7 +1139,7 @@ def _national_cache_key(root: Path, ensemble_weights: dict | None) -> dict:
     """The national aggregate's validity key, exactly as national_aggregate
     builds it: version, weights, per-week samples mtimes, scores mtime."""
     root = Path(root)
-    wks = sorted((root / "weeks").glob("*/samples.json"))
+    wks = season_sample_files(root)
     sf = root / "scores.json"
     return {"v": NATIONAL_CACHE_V,
             "weights": ensemble_weights or {},
@@ -1043,7 +1155,7 @@ def national_aggregate_fresh(root: Path,
     page directly and showing the preparing state while a background job
     rebuilds the caches; asking by computing would BE the freeze."""
     root = Path(root)
-    if not sorted((root / "weeks").glob("*/samples.json")):
+    if not season_sample_files(root):
         return True                     # nothing to aggregate: nothing stale
     cf = root / "playback_cache" / "us_aggregate.json"
     try:
@@ -1061,7 +1173,7 @@ def scores_current(root: Path) -> bool:
     scores_scoreable for that half."""
     root = Path(root)
     sf = root / "scores.json"
-    weeks = sorted((root / "weeks").glob("*/samples.json"))
+    weeks = season_sample_files(root)
     if not weeks:
         return True
     if not sf.is_file():
@@ -1094,8 +1206,7 @@ def newest_samples_mtime(root: Path) -> int:
     answerable without recomputing anything."""
     try:
         return max((int(p.stat().st_mtime)
-                    for p in (Path(root) / "weeks").glob("*/samples.json")),
-                   default=0)
+                    for p in season_sample_files(root)), default=0)
     except OSError:
         return 0
 
@@ -1103,7 +1214,7 @@ def newest_samples_mtime(root: Path) -> int:
 #: the finalize phases, in order, worded exactly as the preparing state
 #: shows them
 FINALIZE_PHASES = ("scoring cells", "building national aggregate",
-                   "warming playback")
+                   "warming playback", "pruning intermediates")
 
 
 def finalize_season(root: Path, season: str,
@@ -1154,13 +1265,26 @@ def finalize_season(root: Path, season: str,
     seconds["national"] = round(time.monotonic() - t, 1)
 
     t = _phase("warming playback")
-    for w in sorted(p.parent.name
-                    for p in (root / "weeks").glob("*/samples.json")):
+    for w in sorted(p.parent.name for p in season_sample_files(root)):
         try:
             playback.build_week(root, season, w)
         except Exception:
             continue  # that week builds on first view, exactly as before
     seconds["playback"] = round(time.monotonic() - t, 1)
+
+    # storage hygiene at run completion: sweep the whole tree for completed
+    # weeks still carrying their fit intermediates (weeks fitted before the
+    # per-week prune existed, or whose prune failed). The reclaim module
+    # refuses protected trees on its own, so finalizing a sealed or archived
+    # view can never touch what it must not. Never fatal: a tree that cannot
+    # be pruned is still a finished season.
+    t = _phase("pruning intermediates")
+    try:
+        from app.core import reclaim
+        reclaim.prune_season(root)
+    except Exception:
+        pass
+    seconds["prune"] = round(time.monotonic() - t, 1)
     seconds["total"] = round(sum(seconds.values()), 1)
     return seconds
 

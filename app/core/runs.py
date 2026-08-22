@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 import subprocess
 import time
@@ -186,6 +187,64 @@ def settings_html(pairs, title: str = "Run settings",
     return (f'<div class="{wrap}"{ident}>'
             f'<strong>{_html.escape(title)}</strong>'
             f'<dl class="kv">{body}</dl></div>')
+
+
+def run_id_time(run_id: str) -> str:
+    """The wall-clock moment a workroot id carries: '20260821T163029-5dbec2'
+    reads as '2026-08-21 16:30'. The id is minted with time.strftime (local
+    time) in open_run, so this is the run's own clock, not a guess. '' when
+    the name carries no timestamp (hand-made workroots)."""
+    m = re.match(r"(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})\d{2}", run_id or "")
+    if not m:
+        return ""
+    y, mo, d, h, mi = m.groups()
+    return f"{y}-{mo}-{d} {h}:{mi}"
+
+
+def run_display(run_id: str, spec=None, created_utc=None) -> dict:
+    """How one run reads to a person, built from its ledger row (the record
+    of record) and the run's own id:
+
+      what      'Forecast for 2026-01-24' / 'Retrospective fit 2026-01-24',
+                or 'Unrecorded run' when no ledger row describes it;
+      when      the run's wall-clock start -- the ledger's created_utc when
+                recorded, else the timestamp the workroot id itself carries;
+      scope     the location scope phrase ('all 52 jurisdictions',
+                '6 states: ...'), '' when unrecorded;
+      recorded  whether a ledger row stood behind the label.
+
+    Accepts the same three spec shapes as spec_settings. Every field
+    degrades to the honest minimum rather than raising: an orphaned
+    workroot is a real thing on disk and must still render."""
+    if isinstance(spec, RunSpec):
+        d = asdict(spec)
+    elif isinstance(spec, str):
+        try:
+            d = json.loads(spec or "")
+        except (ValueError, TypeError):
+            d = None
+    elif isinstance(spec, dict):
+        d = spec
+    else:
+        d = None
+    when = ""
+    if created_utc:
+        try:
+            when = time.strftime("%Y-%m-%d %H:%M",
+                                 time.localtime(float(created_utc)))
+        except (TypeError, ValueError, OSError):
+            when = ""
+    when = when or run_id_time(run_id)
+    if not isinstance(d, dict) or not d:
+        return {"what": "Unrecorded run", "when": when, "scope": "",
+                "recorded": False}
+    kind = ("Retrospective fit" if str(d.get("engine")) == "retro"
+            else "Forecast for")
+    date = str(d.get("forecast_date") or "").strip()
+    return {"what": f"{kind} {date}" if date else kind.split()[0],
+            "when": when,
+            "scope": locations_phrase(d.get("locations")),
+            "recorded": True}
 
 
 def derive_seed(location: str, forecast_date: str, replicate: int) -> int:

@@ -151,6 +151,26 @@ def test_storage_panel_lists_everything_with_sizes(state):
     assert html.count(" B<") or " KB" in html or " B\n" in html  # sizes shown
 
 
+def test_workroot_rows_read_as_human_labels_with_the_id_secondary(state):
+    """Task: humans read what ran and when, not hashes. A recorded run's
+    row leads with its ledger-derived label (kind, forecast date, wall
+    clock, scope); the raw id stays visible but secondary."""
+    html = client.get("/storage").text
+    rid = state["rids"]["ok"]
+    row = html.split(f'data-wid="{rid}"', 1)[1].split("</div>", 1)[0]
+    assert "<strong>Forecast for 2098-01-03</strong>" in row
+    assert "· run 2" in row                       # the wall-clock moment
+    assert f"<code" in row and rid in row         # the id, small and mono
+    # an unrecorded workroot (no ledger row) says so instead of guessing
+    orphan = "20980118T093000-0aacd0"
+    (state["root"] / "workroots" / orphan).mkdir()
+    srv._invalidate_scans()
+    html = client.get("/storage").text
+    row = html.split(f'data-wid="{orphan}"', 1)[1].split("</div>", 1)[0]
+    assert "Unrecorded run" in row
+    assert "run 2098-01-18 09:30" in row          # parsed from the id
+
+
 def test_protected_trees_render_no_delete_controls(state):
     html = client.get("/runs").text
     protected = html.split("Protected</h3>", 1)[1].split("</div>\n<script>", 1)[0]
@@ -163,9 +183,12 @@ def test_busy_rows_render_no_delete_controls(state):
     srv._retro_status[SEASON] = "running"
     html = client.get("/runs").text
     live = state["rids"]["running"]
-    row = html.split(f"<strong>{live}</strong>", 1)[1].split("</div>", 1)[0]
+    # workroot rows lead with the human label; the id rides the row's
+    # data-wid attribute (and the secondary code element)
+    row = html.split(f'data-wid="{live}"', 1)[1].split("</div>", 1)[0]
     assert "data-del-storage" not in row             # the live workroot
-    srow = html.split(f"<strong>{SEASON}</strong>", 1)[1].split("</div>", 1)[0]
+    srow = html.split(f"<strong>{SEASON} retrospective</strong>",
+                      1)[1].split("</div>", 1)[0]
     assert "data-del-storage" not in srow            # the replaying season
 
 
@@ -413,17 +436,17 @@ def test_ledger_collapses_behind_a_summary_by_default(state):
     # closed by default: the fold never ships an open attribute
     assert "<details class=\"ledgerfold\" id=\"ledgerfold\" open" not in html
     assert "4 runs recorded" in joined
+    # the ledger keeps its own clear heading on the Storage page
+    assert "<h2>Run ledger</h2>" in html
     # the newest entry (the live run) is named in the summary line
-    summary = html.split("<summary>", 1)[1].split("</summary>", 1)[0]
-    assert state["rids"]["running"][:8] in " ".join(summary.split()) \
-        or "newest" in summary
+    summary = html.split('id="ledgerfold">', 1)[1].split("</summary>", 1)[0]
+    assert "newest" in summary
     # the table and the clear control live INSIDE the fold
-    fold = html.split('<details class="ledgerfold"', 1)[1] \
+    fold = html.split('<details class="ledgerfold" id="ledgerfold">', 1)[1] \
                .split("</details>", 1)[0]
     assert "<table>" in fold and "clear-ledger-btn" in fold
-    # the storage panel sits outside it, in its own fold below
-    after = html.split("</details>", 1)[1]
-    assert "Storage</h2>" in after and 'id="storagefold"' in after
+    # the storage panel leads the page, in its own fold above the ledger
+    assert html.index('id="storagefold"') < html.index('id="ledgerfold"')
 
 
 def test_ledger_fold_state_persists_per_local_storage(state):
@@ -444,7 +467,7 @@ def test_storage_panel_folds_but_defaults_open(state):
     # the summary carries the heading and the total disk figure
     summary = html.split('id="storagefold" open>', 1)[1] \
                   .split("</summary>", 1)[0]
-    assert "Storage</h2>" in summary
+    assert "On disk</h2>" in summary
     assert 'class="big"' in summary
     inv = srv._storage_inventory()
     assert inv["total_h"] in summary

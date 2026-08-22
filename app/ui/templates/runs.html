@@ -1,8 +1,251 @@
-{% extends "base.html" %}{% block title %}FluBNF · Runs{% endblock %}{% block content %}
-<h1>Run ledger</h1>
+{% extends "base.html" %}{% block title %}FluBNF · Storage{% endblock %}{% block content %}
+<h1>Storage</h1>
+
+{% if storage %}
 <div class="card">
+{# the storage panel folds like the ledger below, but defaults OPEN: the
+   summary keeps the headline disk figure readable even when a reader
+   folds the panel away, and the open state persists per localStorage
+   exactly as the ledger fold's does. #}
+<details class="ledgerfold" id="storagefold" open>
+ <summary><h2 style="display:inline">On disk</h2>
+  <span class="stotal" style="display:inline;margin-left:.45rem"><span class="big">{{ storage.total_h }}</span></span>
+  <span class="hint"> total</span></summary>
+ {# the total spans everything the panel manages (run workroots,
+    retrospective seasons, archived retro runs, report archives); the
+    protected trees are listed below with their own sizes but stay
+    outside the total, and the copy says so. #}
+ <p class="hint">Across run workroots, retrospective seasons, archived
+ runs, and report archives; the protected trees below are listed but not
+ counted here. Deleting is permanent, behind the shared name-and-size
+ confirmation; nothing running or paused can be deleted, and the sealed
+ validation record and hub clone carry no delete control.</p>
+
+ {# reclaim: a dry-run report first (categories and totals, no side
+    effects), then the shared confirmation naming the total. Only fit
+    intermediates of COMPLETED weeks and runs are deleted, and stored
+    samples are compressed losslessly; the seal and hub are never touched. #}
+ <form method="post" action="/storage/reclaim" id="reclaim-form">
+  <input type="hidden" name="confirm" value="">
+  <button type="button" class="quiet" id="reclaim-btn">Reclaim space…</button>
+  <span class="hint" id="reclaim-note"></span>
+ </form>
+ <script>
+  (function(){
+   var b=document.getElementById('reclaim-btn'),
+       note=document.getElementById('reclaim-note');
+   if(!b)return;
+   b.addEventListener('click',function(){
+    note.textContent='measuring…';
+    fetch('/api/storage/reclaim').then(function(r){return r.json();})
+     .then(function(d){
+      note.textContent='';
+      if(!d||!d.categories||!d.categories.length){
+       note.textContent='Nothing to reclaim: no completed week or run '
+         +'carries intermediates and every stored week is already compressed.';
+       return;
+      }
+      var lines=d.categories.map(function(c){
+       return c.label+': '+c.bytes_h+' ('+c.detail+')';}).join(' · ');
+      if(!window.FluBNFConfirm)return;
+      window.FluBNFConfirm({
+       title:'Reclaim an estimated '+d.total_h+'?',
+       msg:'This frees '+lines+'.',
+       hint:'Only fit intermediates of completed weeks and runs are '
+         +'deleted, and stored samples are compressed losslessly in place. '
+         +'Every stored week, score, report, and submission file is kept '
+         +'and everything still scores, plays back, and exports exactly as '
+         +'before. The sealed validation record and the hub clone are '
+         +'never touched.',
+       okLabel:'Reclaim '+d.total_h,
+       onOk:function(){
+        var f=document.getElementById('reclaim-form');
+        f.confirm.value=d.confirm;f.submit();}
+      });
+     })
+     .catch(function(){note.textContent='The reclaim report failed; '
+       +'nothing was changed. Try again.';});
+   });
+  })();
+ </script>
+
+ <h3 class="hint" style="margin:.8rem 0 .2rem">Run workroots</h3>
+ {% for w in storage.workroots %}
+ {# humans read what ran and when, not hashes: the label comes from the
+    run's own ledger row; the id stays visible but secondary, because it
+    is the directory's on-disk name. A workroot with no ledger row reads
+    honestly as an unrecorded run, its time parsed from the id itself. #}
+ <div class="archrow" data-wid="{{ w.id }}">
+  <span class="grow"><strong>{{ w.label }}</strong>
+   {% if w.research %} <span class="pill">research</span>{% endif %}
+   <span class="hint">{% if w.when %}· run {{ w.when }} {% endif %}{% if w.scope %}· {{ w.scope }} {% endif %}· {{ w.size_h }}{% if w.busy %} · <span class="warn">running now</span>{% endif %}
+   · <code style="font-size:.78em">{{ w.id }}</code></span></span>
+  {% if not w.busy %}
+  <form method="post" action="/storage/delete">
+   <input type="hidden" name="kind" value="workroot">
+   <input type="hidden" name="ident" value="{{ w.id }}">
+   <input type="hidden" name="confirm" value="">
+   <button type="button" class="quiet" data-del-storage
+     data-what="workroot {{ w.id }} ({{ w.label }})" data-size="{{ w.size_h }}"
+     data-hint="The run's ledger row is kept and will show a dash for disk use.">Delete</button>
+  </form>
+  {% endif %}
+ </div>
+ {% else %}<p class="hint">No workroots on disk.</p>{% endfor %}
+ {% if clear_workroots.count %}
+ {# the clear-all sweep beside the per-item deletes: the confirmation names
+    the count AND the total size it removes; the active run is excluded
+    server-side (and re-checked at delete time), ledger rows are kept with
+    their dash, and the seal and hub are refused by the protection barrier
+    as ever. The stale-count contract matches the ledger clear below. #}
+ <form method="post" action="/storage/clear-workroots" id="clear-workroots">
+  <input type="hidden" name="confirm" value="">
+  <button type="button" class="quiet" id="clear-workroots-btn"
+    data-count="{{ clear_workroots.count }}"
+    data-size="{{ clear_workroots.size_h }}">Delete all
+    {{ clear_workroots.count }} completed
+    workroot{{ "" if clear_workroots.count == 1 else "s" }}
+    ({{ clear_workroots.size_h }})</button>
+ </form>
+ <script>
+  (function(){
+   var b=document.getElementById('clear-workroots-btn');
+   if(!b)return;
+   b.addEventListener('click',function(){
+    var f=b.form,n=b.dataset.count,s=b.dataset.size;
+    if(!f||!window.FluBNFConfirm)return;
+    window.FluBNFConfirm({
+     title:'Delete all completed run workroots?',
+     msg:'This permanently deletes '+n+' workroot'+(n==='1'?'':'s')
+       +' totaling '+s+' on disk. A run that is active right now is '
+       +'excluded, and it cannot be undone.',
+     hint:'Every ledger row is kept and will show a dash for disk use, '
+       +'exactly as a single workroot delete leaves it. The sealed '
+       +'validation record and the hub clone are separate protected '
+       +'trees and are never touched.',
+     okLabel:'Delete '+n+' workroot'+(n==='1'?'':'s'),
+     onOk:function(){f.confirm.value=n;f.submit();}
+    });
+   });
+  })();
+ </script>
+ {% endif %}
+
+ <h3 class="hint" style="margin:.8rem 0 .2rem">Retrospective seasons</h3>
+ {% for s in storage.retro %}
+ <div class="archrow">
+  <span class="grow"><strong>{{ s.id }} retrospective</strong>
+   <span class="hint">· {{ s.size_h }}{% if s.busy %} · <span class="warn">{{ s.status }}</span>{% endif %}</span></span>
+  {% if not s.busy %}
+  <form method="post" action="/storage/delete">
+   <input type="hidden" name="kind" value="retro-season">
+   <input type="hidden" name="ident" value="{{ s.id }}">
+   <input type="hidden" name="confirm" value="">
+   <button type="button" class="quiet" data-del-storage
+     data-what="{{ s.id }} season results" data-size="{{ s.size_h }}"
+     data-hint="Archived runs of this season and the sealed record are separate trees and are not touched.">Delete</button>
+  </form>
+  {% endif %}
+ </div>
+ {% else %}<p class="hint">No live season trees on disk.</p>{% endfor %}
+
+ {% if storage.retro_archives %}
+ <h3 class="hint" style="margin:.8rem 0 .2rem">Archived retrospective runs</h3>
+ {% for a in storage.retro_archives %}
+ <div class="archrow">
+  <span class="grow"><strong>{{ a.season }} retrospective · archived {{ a.when }}</strong>
+   <span class="hint">· {{ a.size_h }}{% if a.busy %} · <span class="warn">season replaying</span>{% endif %}
+   · <code style="font-size:.78em">{{ a.id }}</code></span></span>
+  {% if not a.busy %}
+  <form method="post" action="/storage/delete">
+   <input type="hidden" name="kind" value="retro-archive">
+   <input type="hidden" name="ident" value="{{ a.id }}">
+   <input type="hidden" name="confirm" value="">
+   <button type="button" class="quiet" data-del-storage
+     data-what="archived {{ a.season }} run from {{ a.when }}"
+     data-size="{{ a.size_h }}"
+     data-hint="The live {{ a.season }} season is not touched.">Delete</button>
+  </form>
+  {% endif %}
+ </div>
+ {% endfor %}
+ {% endif %}
+
+ {% if storage.report_archives %}
+ <h3 class="hint" style="margin:.8rem 0 .2rem">Report archives</h3>
+ {% for f in storage.report_archives %}
+ <div class="archrow">
+  <span class="grow"><strong>Weekly report and submissions · {{ f.id }}</strong>
+   <span class="hint">· {{ f.size_h }}{% if f.busy %} · <span class="warn">a console run is in progress</span>{% endif %}</span></span>
+  {% if not f.busy %}
+  <form method="post" action="/storage/delete">
+   <input type="hidden" name="kind" value="report-archive">
+   <input type="hidden" name="ident" value="{{ f.id }}">
+   <input type="hidden" name="confirm" value="">
+   <button type="button" class="quiet" data-del-storage
+     data-what="archived {{ f.id }} report and submissions"
+     data-size="{{ f.size_h }}"
+     data-hint="The workroot that produced it is a separate entry above.">Delete</button>
+  </form>
+  {% endif %}
+ </div>
+ {% endfor %}
+ {% endif %}
+
+ {% if storage.protected %}
+ <h3 class="hint" style="margin:.8rem 0 .2rem">Protected</h3>
+ {% for p in storage.protected %}
+ {# no form, no button, by design: these trees are never deletable from the
+    interface, and the server refuses them again on any crafted request #}
+ <div class="archrow">
+  <span class="grow"><strong>{{ p.label }}</strong>
+   <span class="hint">· {{ p.size_h }} · <span class="pill">protected</span></span></span>
+ </div>
+ {% endfor %}
+ <p class="hint">The sealed validation record is the three-season evidence
+  the shipped configuration rests on; the hub clone is shared source data.
+  Neither can be deleted from here.</p>
+ {% endif %}
+</details>
+</div>
+<script>
+ // the storage fold remembers its state like the ledger fold below, with
+ // the opposite default: OPEN unless the reader closed it last time
+ (function(){
+  var d=document.getElementById('storagefold');
+  if(!d)return;
+  if(localStorage.getItem('storagefold-open')==='0')d.open=false;
+  d.addEventListener('toggle',function(){
+   localStorage.setItem('storagefold-open',d.open?'1':'0');});
+ })();
+</script>
+<script>
+ // every storage delete borrows the shared confirmation shell: the name and
+ // size of exactly what goes, and the confirm field filled in only on the
+ // second confirmation (the server refuses the POST without it)
+ (function(){
+  document.querySelectorAll('[data-del-storage]').forEach(function(b){
+   b.addEventListener('click',function(){
+    var f=b.form,d=b.dataset;
+    if(!f||!window.FluBNFConfirm)return;
+    window.FluBNFConfirm({
+     title:'Delete '+d.what+'?',
+     msg:'This permanently deletes '+d.what+' ('+d.size+' on disk). '
+       +'It cannot be undone.',
+     hint:d.hint||'',
+     okLabel:'Delete permanently',
+     onOk:function(){f.confirm.value=f.ident.value;f.submit();}
+    });
+   });
+  });
+ })();
+</script>
+{% endif %}
+
+<div class="card">
+<h2>Run ledger</h2>
 {# the full ledger collapses behind a one-line summary (row count and the
-   newest entry) so the storage panel below leads the page; the open state
+   newest entry) so the storage panel above leads the page; the open state
    persists per localStorage. An empty ledger keeps the plain hint line
    with nothing to fold. #}
 {% if ledger %}
@@ -23,7 +266,7 @@
  <td><span class="pill {% if r.status == 'ok' %}ok{% elif r.status == 'running' %}warn{% else %}bad{% endif %}">{{ r.status }}</span></td>
  <td class="elapsed">{{ r.elapsed_s | hms }}</td>
  {# a dash here is a DANGLING ROW read honestly: the ledger record stands
-    while its workroot was deleted in the storage panel below #}
+    while its workroot was deleted in the storage panel above #}
  <td class="num">{{ r.disk_h or "--" }}</td>
  {# chips are markup built by the server from fixed phrases and numbers
     only; the raw error text never travels through them #}
@@ -37,7 +280,7 @@
 {% if clear_count %}
 {# clearing goes through the shared confirmation shell, naming the count it
    removes; the server refuses a stale count, never touches the active
-   run's row, and never deletes workroot data (the storage panel below is
+   run's row, and never deletes workroot data (the storage panel above is
    where disk space is reclaimed) #}
 <form method="post" action="/runs/clear" id="clear-ledger">
  <input type="hidden" name="confirm" value="">
@@ -83,190 +326,4 @@
 </script>
 {% endif %}
 </div>
-
-{% if storage %}
-<div class="card">
-{# the storage panel folds like the ledger above, but defaults OPEN: the
-   summary keeps the headline disk figure readable even when a reader
-   folds the panel away, and the open state persists per localStorage
-   exactly as the ledger fold's does. #}
-<details class="ledgerfold" id="storagefold" open>
- <summary><h2 style="display:inline">Storage</h2>
-  <span class="stotal" style="display:inline;margin-left:.45rem"><span class="big">{{ storage.total_h }}</span></span>
-  <span class="hint"> total on disk</span></summary>
- {# the total spans everything the panel manages (run workroots,
-    retrospective seasons, archived retro runs, report archives); the
-    protected trees are listed below with their own sizes but stay
-    outside the total, and the copy says so. #}
- <p class="hint">Across run workroots, retrospective seasons, archived
- runs, and report archives; the protected trees below are listed but not
- counted here. Deleting is permanent, behind the shared name-and-size
- confirmation; nothing running or paused can be deleted, and the sealed
- validation record and hub clone carry no delete control.</p>
-
- <h3 class="hint" style="margin:.8rem 0 .2rem">Run workroots</h3>
- {% for w in storage.workroots %}
- <div class="archrow">
-  <span class="grow"><strong>{{ w.id }}</strong>
-   <span class="hint">· {{ w.size_h }}{% if w.busy %} · <span class="warn">running now</span>{% endif %}</span></span>
-  {% if not w.busy %}
-  <form method="post" action="/storage/delete">
-   <input type="hidden" name="kind" value="workroot">
-   <input type="hidden" name="ident" value="{{ w.id }}">
-   <input type="hidden" name="confirm" value="">
-   <button type="button" class="quiet" data-del-storage
-     data-what="workroot {{ w.id }}" data-size="{{ w.size_h }}"
-     data-hint="The run's ledger row is kept and will show a dash for disk use.">Delete</button>
-  </form>
-  {% endif %}
- </div>
- {% else %}<p class="hint">No workroots on disk.</p>{% endfor %}
- {% if clear_workroots.count %}
- {# the clear-all sweep beside the per-item deletes: the confirmation names
-    the count AND the total size it removes; the active run is excluded
-    server-side (and re-checked at delete time), ledger rows are kept with
-    their dash, and the seal and hub are refused by the protection barrier
-    as ever. The stale-count contract matches the ledger clear above. #}
- <form method="post" action="/storage/clear-workroots" id="clear-workroots">
-  <input type="hidden" name="confirm" value="">
-  <button type="button" class="quiet" id="clear-workroots-btn"
-    data-count="{{ clear_workroots.count }}"
-    data-size="{{ clear_workroots.size_h }}">Delete all
-    {{ clear_workroots.count }} completed
-    workroot{{ "" if clear_workroots.count == 1 else "s" }}
-    ({{ clear_workroots.size_h }})</button>
- </form>
- <script>
-  (function(){
-   var b=document.getElementById('clear-workroots-btn');
-   if(!b)return;
-   b.addEventListener('click',function(){
-    var f=b.form,n=b.dataset.count,s=b.dataset.size;
-    if(!f||!window.FluBNFConfirm)return;
-    window.FluBNFConfirm({
-     title:'Delete all completed run workroots?',
-     msg:'This permanently deletes '+n+' workroot'+(n==='1'?'':'s')
-       +' totaling '+s+' on disk. A run that is active right now is '
-       +'excluded, and it cannot be undone.',
-     hint:'Every ledger row is kept and will show a dash for disk use, '
-       +'exactly as a single workroot delete leaves it. The sealed '
-       +'validation record and the hub clone are separate protected '
-       +'trees and are never touched.',
-     okLabel:'Delete '+n+' workroot'+(n==='1'?'':'s'),
-     onOk:function(){f.confirm.value=n;f.submit();}
-    });
-   });
-  })();
- </script>
- {% endif %}
-
- <h3 class="hint" style="margin:.8rem 0 .2rem">Retrospective seasons</h3>
- {% for s in storage.retro %}
- <div class="archrow">
-  <span class="grow"><strong>{{ s.id }}</strong>
-   <span class="hint">· {{ s.size_h }}{% if s.busy %} · <span class="warn">{{ s.status }}</span>{% endif %}</span></span>
-  {% if not s.busy %}
-  <form method="post" action="/storage/delete">
-   <input type="hidden" name="kind" value="retro-season">
-   <input type="hidden" name="ident" value="{{ s.id }}">
-   <input type="hidden" name="confirm" value="">
-   <button type="button" class="quiet" data-del-storage
-     data-what="{{ s.id }} season results" data-size="{{ s.size_h }}"
-     data-hint="Archived runs of this season and the sealed record are separate trees and are not touched.">Delete</button>
-  </form>
-  {% endif %}
- </div>
- {% else %}<p class="hint">No live season trees on disk.</p>{% endfor %}
-
- {% if storage.retro_archives %}
- <h3 class="hint" style="margin:.8rem 0 .2rem">Archived retrospective runs</h3>
- {% for a in storage.retro_archives %}
- <div class="archrow">
-  <span class="grow"><strong>{{ a.season }} · {{ a.when }}</strong>
-   <span class="hint">· {{ a.size_h }}{% if a.busy %} · <span class="warn">season replaying</span>{% endif %}</span></span>
-  {% if not a.busy %}
-  <form method="post" action="/storage/delete">
-   <input type="hidden" name="kind" value="retro-archive">
-   <input type="hidden" name="ident" value="{{ a.id }}">
-   <input type="hidden" name="confirm" value="">
-   <button type="button" class="quiet" data-del-storage
-     data-what="archived {{ a.season }} run from {{ a.when }}"
-     data-size="{{ a.size_h }}"
-     data-hint="The live {{ a.season }} season is not touched.">Delete</button>
-  </form>
-  {% endif %}
- </div>
- {% endfor %}
- {% endif %}
-
- {% if storage.report_archives %}
- <h3 class="hint" style="margin:.8rem 0 .2rem">Report archives</h3>
- {% for f in storage.report_archives %}
- <div class="archrow">
-  <span class="grow"><strong>{{ f.id }}</strong>
-   <span class="hint">· {{ f.size_h }}{% if f.busy %} · <span class="warn">a console run is in progress</span>{% endif %}</span></span>
-  {% if not f.busy %}
-  <form method="post" action="/storage/delete">
-   <input type="hidden" name="kind" value="report-archive">
-   <input type="hidden" name="ident" value="{{ f.id }}">
-   <input type="hidden" name="confirm" value="">
-   <button type="button" class="quiet" data-del-storage
-     data-what="archived {{ f.id }} report and submissions"
-     data-size="{{ f.size_h }}"
-     data-hint="The workroot that produced it is a separate entry above.">Delete</button>
-  </form>
-  {% endif %}
- </div>
- {% endfor %}
- {% endif %}
-
- {% if storage.protected %}
- <h3 class="hint" style="margin:.8rem 0 .2rem">Protected</h3>
- {% for p in storage.protected %}
- {# no form, no button, by design: these trees are never deletable from the
-    interface, and the server refuses them again on any crafted request #}
- <div class="archrow">
-  <span class="grow"><strong>{{ p.label }}</strong>
-   <span class="hint">· {{ p.size_h }} · <span class="pill">protected</span></span></span>
- </div>
- {% endfor %}
- <p class="hint">The sealed validation record is the three-season evidence
-  the shipped configuration rests on; the hub clone is shared source data.
-  Neither can be deleted from here.</p>
- {% endif %}
-</details>
-</div>
-<script>
- // the storage fold remembers its state like the ledger fold above, with
- // the opposite default: OPEN unless the reader closed it last time
- (function(){
-  var d=document.getElementById('storagefold');
-  if(!d)return;
-  if(localStorage.getItem('storagefold-open')==='0')d.open=false;
-  d.addEventListener('toggle',function(){
-   localStorage.setItem('storagefold-open',d.open?'1':'0');});
- })();
-</script>
-<script>
- // every storage delete borrows the shared confirmation shell: the name and
- // size of exactly what goes, and the confirm field filled in only on the
- // second confirmation (the server refuses the POST without it)
- (function(){
-  document.querySelectorAll('[data-del-storage]').forEach(function(b){
-   b.addEventListener('click',function(){
-    var f=b.form,d=b.dataset;
-    if(!f||!window.FluBNFConfirm)return;
-    window.FluBNFConfirm({
-     title:'Delete '+d.what+'?',
-     msg:'This permanently deletes '+d.what+' ('+d.size+' on disk). '
-       +'It cannot be undone.',
-     hint:d.hint||'',
-     okLabel:'Delete permanently',
-     onOk:function(){f.confirm.value=f.ident.value;f.submit();}
-    });
-   });
-  });
- })();
-</script>
-{% endif %}
 {% endblock %}

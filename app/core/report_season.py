@@ -94,8 +94,7 @@ def _newest_input(root: Path) -> float:
     """mtime of the newest report input: any samples.json, scores.json, or
     the shared player source itself (a player fix must refresh the export).
     """
-    times = [(root / "weeks" / w / "samples.json").stat().st_mtime
-             for w in playback.season_weeks(root)]
+    times = [p.stat().st_mtime for p in retro.season_sample_files(root)]
     sf = root / "scores.json"
     if sf.is_file():
         times.append(sf.stat().st_mtime)

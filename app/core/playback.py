@@ -35,6 +35,7 @@ import numpy as np
 import pandas as pd
 
 from app.core import ensemble as ens
+from app.core import retro as retro_store
 from app.core.scoring import _baseline_cells, load_truth
 from flubnf.settings import HUB
 from flubnf.wis import wis as wis_fn
@@ -52,13 +53,14 @@ class UnknownWeek(FileNotFoundError):
 # ---------------------------------------------------------------- season root
 
 def season_weeks(root: Path) -> list:
-    """Completed weeks in a season root, ascending."""
-    return sorted(p.parent.name
-                  for p in (root / "weeks").glob("*/samples.json"))
+    """Completed weeks in a season root, ascending. Form-blind: a week
+    stored as samples.json and one stored as samples.json.gz both count."""
+    return [p.parent.name for p in retro_store.season_sample_files(root)]
 
 
-def _samples_path(root: Path, asof: str) -> Path:
-    return root / "weeks" / asof / "samples.json"
+def _samples_path(root: Path, asof: str) -> Path | None:
+    """The week's stored samples file, either form, or None."""
+    return retro_store.week_samples_path(root, asof)
 
 
 def _cache_dir(root: Path) -> Path:
@@ -86,7 +88,7 @@ def _week_model_quantiles(root: Path, asof: str) -> dict:
     week: sample-shaped members (pf, pf2s) through the member-quantile
     formula, the analogue's stored quantiles as-is, and an equal-weight
     vincentized ensemble of whichever members cover each location."""
-    d = json.loads(_samples_path(root, asof).read_text())
+    d = retro_store.read_week_samples(root, asof)
     out = {}
     for m in ("pf", "pf2s"):
         if m in d:
@@ -273,7 +275,8 @@ def _stats(root: Path, season: str, asof: str, truth: dict, n2f: dict,
     dirty = False
     aggs = {}
     for w in upto:
-        m = _samples_path(root, w).stat().st_mtime
+        sp = _samples_path(root, w)
+        m = sp.stat().st_mtime if sp else 0
         offs = _official_files_present(w)
         e = cache["weeks"].get(w)
         if (e and e.get("v") == CACHE_V and e.get("mtime") == m
@@ -374,15 +377,16 @@ def _truth_series(truth: dict, fips: str, lo: str, hi: str) -> list:
 def build_week(root: Path, season: str, asof: str) -> dict:
     """Assemble (or serve from cache) the playback payload for one week."""
     sp = _samples_path(root, asof)
-    if not sp.is_file():
+    if sp is None:
         known = season_weeks(root)
         raise UnknownWeek(
             f"{season}: no completed week {asof}."
             + (f" Known weeks: {known[0]}..{known[-1]}" if known
                else " No weeks completed yet."))
     cf = _cache_dir(root) / f"{asof}.json"
-    newest = max([_samples_path(root, w).stat().st_mtime
-                  for w in season_weeks(root) if w <= asof]
+    newest = max([p.stat().st_mtime
+                  for p in retro_store.season_sample_files(root)
+                  if p.parent.name <= asof]
                  + ([(root / "scores.json").stat().st_mtime]
                     if (root / "scores.json").is_file() else []))
     if cf.is_file() and cf.stat().st_mtime >= newest:

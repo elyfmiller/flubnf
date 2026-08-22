@@ -468,9 +468,10 @@ def _weeks_done(root: Path) -> int:
 
     THE hot scan of the retrospective pages. Every caller goes through here
     so one page render pays for it once."""
+    from app.core import retro
     root = Path(root)
     try:
-        return len(list((root / "weeks").glob("*/samples.json")))
+        return len(retro.season_sample_files(root))
     except OSError:
         return 0
 
@@ -1113,21 +1114,34 @@ def _storage_inventory() -> dict:
     the total, and the panel says so."""
     import re as _re
     from app.core import retro
-    from app.core.runs import APP_STATE
+    from app.core.runs import APP_STATE, is_research, run_display
     from flubnf.settings import HUB
     inv = {"workroots": [], "retro": [], "retro_archives": [],
            "report_archives": [], "protected": [],
            "total_bytes": 0, "total_h": ""}
     live_ids = _live_workroot_ids()
     console_busy = bool(_status.get("running"))
+    # the ledger rows keyed by run id: each workroot row renders a human
+    # label built from its own record (what ran, when, over which scope);
+    # a workroot with no row reads honestly as an unrecorded run
+    try:
+        led_rows = {r["run_id"]: r for r in Ledger().rows(100_000)}
+    except Exception:
+        led_rows = {}
     wr = APP_STATE / "workroots"
     if wr.is_dir():
         for p in sorted((d for d in wr.iterdir() if d.is_dir()),
                         key=lambda d: d.name, reverse=True):
             size = _tree_size(str(p))
             inv["total_bytes"] += size
+            row = led_rows.get(p.name) or {}
+            disp = run_display(p.name, row.get("spec"),
+                               row.get("created_utc"))
             inv["workroots"].append({
                 "id": p.name, "size_h": retro.human_bytes(size),
+                "label": disp["what"], "when": disp["when"],
+                "scope": disp["scope"], "recorded": disp["recorded"],
+                "research": is_research(row.get("spec", "")),
                 "busy": p.name in live_ids})
     if RETRO_ROOT.is_dir():
         for p in sorted(RETRO_ROOT.iterdir()):
@@ -1201,8 +1215,13 @@ def _clearable_run_ids(ledger) -> list:
     return out
 
 
+@app.get("/storage", response_class=HTMLResponse)
 @app.get("/runs", response_class=HTMLResponse)
 def runs_page(request: Request):
+    """The Storage page (nav tab 'Storage'): the storage panel leads, with
+    the run ledger folded beneath it. /runs stays a live alias -- exported
+    reports, bookmarks, and the /runs/<id> sub-routes all predate the
+    rename and must keep working."""
     from app.core.runs import APP_STATE, is_research
     from app.core import retro
     ledger = Ledger()
@@ -1223,7 +1242,7 @@ def runs_page(request: Request):
                        if w.is_dir() else None)
     cw = _clearable_workroots()
     return templates.TemplateResponse(request, "runs.html", {
-        "active": "Runs", "ledger": rows,
+        "active": "Storage", "ledger": rows,
         "clear_count": len(_clearable_run_ids(ledger)),
         "storage": _storage_inventory(),
         # the storage panel's clear-all control: how many completed runs'
@@ -1250,18 +1269,18 @@ def runs_clear(request: Request, confirm: str = Form("")):
     ids = _clearable_run_ids(ledger)
     if not ids:
         _flash("The run ledger has no completed rows to clear.")
-        return _back(request, "/runs")
+        return _back(request, "/storage")
     if confirm != str(len(ids)):
         _flash("The ledger changed since this page was rendered "
                f"({len(ids)} clearable row{'' if len(ids) == 1 else 's'} "
                "now). Nothing was cleared; review and confirm again.")
-        return _back(request, "/runs")
+        return _back(request, "/storage")
     n = ledger.delete_runs(ids)
     _invalidate_scans()
     _flash(f"Cleared {n} completed row{'' if n == 1 else 's'} from the run "
            "ledger. No data on disk was deleted: the runs' workroots stay "
            "in the storage panel until deleted there.")
-    return _back(request, "/runs")
+    return _back(request, "/storage")
 
 
 #: storage kinds -> identifier validator; the identifier is always the
@@ -1344,17 +1363,17 @@ def storage_delete(request: Request, kind: str = Form(""),
     p, why = _storage_target(kind, ident)
     if p is None:
         _flash(f"{why} Nothing was deleted.")
-        return _back(request, "/runs")
+        return _back(request, "/storage")
     if confirm != ident:
         _flash("The deletion was not confirmed, so nothing was deleted.")
-        return _back(request, "/runs")
+        return _back(request, "/storage")
     size_h = retro.human_bytes(retro.dir_size(p))
     try:
         retro.delete_tree(p)
     except Exception as e:
         _flash(f"Could not delete {ident}: {type(e).__name__}: "
                f"{str(e)[:160]}. Nothing else changed.")
-        return _back(request, "/runs")
+        return _back(request, "/storage")
     _invalidate_scans()
     noun = {"workroot": "workroot", "retro-season": "retrospective season",
             "retro-archive": "archived retrospective run",
@@ -1362,7 +1381,7 @@ def storage_delete(request: Request, kind: str = Form(""),
     tail = (" Its ledger row remains as the run's record."
             if kind == "workroot" else "")
     _flash(f"Deleted the {noun} {ident}: {size_h} freed.{tail}")
-    return _back(request, "/runs")
+    return _back(request, "/storage")
 
 
 @app.post("/storage/clear-workroots")
@@ -1384,13 +1403,13 @@ def storage_clear_workroots(request: Request, confirm: str = Form("")):
     items = _clearable_workroots()
     if not items:
         _flash("No completed run workroots are on disk to delete.")
-        return _back(request, "/runs")
+        return _back(request, "/storage")
     if confirm != str(len(items)):
         _flash("The storage panel changed since this page was rendered "
                f"({len(items)} deletable workroot"
                f"{'' if len(items) == 1 else 's'} now). Nothing was "
                "deleted; review and confirm again.")
-        return _back(request, "/runs")
+        return _back(request, "/storage")
     live = _live_workroot_ids()
     freed, n = 0, 0
     for it in items:
@@ -1411,7 +1430,126 @@ def storage_clear_workroots(request: Request, confirm: str = Form("")):
     _flash(f"Deleted {n} completed run workroot{'' if n == 1 else 's'}: "
            f"{retro.human_bytes(freed)} freed. Every ledger row is kept "
            "and shows a dash for disk use.")
-    return _back(request, "/runs")
+    return _back(request, "/storage")
+
+
+# --------------------------------------------------------------------------
+# reclaim: prune completed-run intermediates and compress stored samples
+#
+# Two-step by design, like every destructive control: the API reports what a
+# reclaim would free BY CATEGORY (a dry run, no side effects), the POST
+# performs it behind the shared confirmation naming the total. Only
+# intermediates of COMPLETE weeks and runs are deleted (the classification
+# lives in app/core/reclaim.py, with the seal and hub refused per entry);
+# stored samples are compressed losslessly with their mtimes preserved, so
+# every score, playback frame, and export is byte-for-byte reproducible
+# afterwards.
+# --------------------------------------------------------------------------
+
+def _reclaim_skips() -> tuple:
+    """(season entry names, workroot names) the reclaim must not touch right
+    now: seasons replaying or mid-finalize, and the active run's workroot."""
+    skip_seasons = {s for s in _known_seasons()
+                    if _season_status(s) in _RETRO_ACTIVE}
+    for key, job in list(_results_jobs.items()):
+        if job and not job["done"].is_set():
+            skip_seasons.add(Path(key).name)
+    return skip_seasons, set(_live_workroot_ids())
+
+
+def _reclaim_survey() -> dict:
+    from app.core import reclaim
+    from app.core.runs import APP_STATE
+    skip_seasons, skip_workroots = _reclaim_skips()
+    return reclaim.survey(RETRO_ROOT, APP_STATE / "workroots",
+                          skip_seasons=skip_seasons,
+                          skip_workroots=skip_workroots)
+
+
+@app.get("/api/storage/reclaim")
+def api_storage_reclaim():
+    """The dry run: what a reclaim would free, by category. No side
+    effects; the confirmation dialog renders exactly this."""
+    from app.core import retro
+    plan = _reclaim_survey()
+    hb = retro.human_bytes
+    cats = []
+    if plan["week_bytes"]:
+        cats.append({
+            "label": "Completed-week fit intermediates",
+            "bytes": plan["week_bytes"], "bytes_h": hb(plan["week_bytes"]),
+            "detail": (f"{plan['weeks']} completed weeks across "
+                       f"{len(plan['season_ids'])} season "
+                       f"tree{'' if len(plan['season_ids']) == 1 else 's'}")})
+    if plan["workroot_bytes"]:
+        cats.append({
+            "label": "Completed-run workroot intermediates",
+            "bytes": plan["workroot_bytes"],
+            "bytes_h": hb(plan["workroot_bytes"]),
+            "detail": (f"{plan['workroots']} completed "
+                       f"run{'' if plan['workroots'] == 1 else 's'}; "
+                       "results, reports, and submissions are kept")})
+    if plan["compress_files"]:
+        cats.append({
+            "label": "Stored-sample compression (lossless gzip)",
+            "bytes": plan["est_compress_saved"],
+            "bytes_h": hb(plan["est_compress_saved"]),
+            "detail": (f"{plan['compress_files']} stored weeks, "
+                       f"{hb(plan['compress_bytes'])} now; estimated "
+                       f"{hb(plan['est_compress_saved'])} freed, every week "
+                       "stays scoreable and playable")})
+    counts = f"{plan['weeks']}/{plan['workroots']}/{plan['compress_files']}"
+    return {"categories": cats, "total": plan["total_est"],
+            "total_h": hb(plan["total_est"]), "confirm": counts}
+
+
+@app.post("/storage/reclaim")
+def storage_reclaim(request: Request, confirm: str = Form("")):
+    """Perform the reclaim the dry run described.
+
+    The confirmation carries the dry run's item counts (pruned weeks /
+    pruned workroots / files to compress); if the state moved between the
+    report and the click, the counts disagree and nothing happens -- the
+    stale-confirmation contract every storage control keeps. Every busy and
+    protection rule is re-applied per entry at delete time regardless."""
+    from app.core import reclaim, retro
+    from app.core.runs import APP_STATE
+    _invalidate_scans()
+    plan = _reclaim_survey()
+    counts = f"{plan['weeks']}/{plan['workroots']}/{plan['compress_files']}"
+    if plan["total_est"] <= 0 and plan["compress_files"] == 0:
+        _flash("There is nothing to reclaim: no completed week or run "
+               "carries intermediates and every stored week is already "
+               "compressed.")
+        return _back(request, "/storage")
+    if confirm != counts:
+        _flash("The storage panel changed since this report was made "
+               "(a run finished or files moved). Nothing was deleted; "
+               "review the reclaim report and confirm again.")
+        return _back(request, "/storage")
+    skip_seasons, skip_workroots = _reclaim_skips()
+    out = reclaim.execute(RETRO_ROOT, APP_STATE / "workroots",
+                          skip_seasons=skip_seasons,
+                          skip_workroots=skip_workroots)
+    _invalidate_scans()
+    hb = retro.human_bytes
+    bits = []
+    if out["week_bytes"]:
+        bits.append(f"{hb(out['week_bytes'])} of fit intermediates from "
+                    f"{out['weeks']} completed week"
+                    f"{'' if out['weeks'] == 1 else 's'}")
+    if out["workroot_bytes"]:
+        bits.append(f"{hb(out['workroot_bytes'])} from "
+                    f"{out['workroots']} completed run workroot"
+                    f"{'' if out['workroots'] == 1 else 's'}")
+    if out["compress_files"]:
+        bits.append(f"{hb(out['compress_saved'])} by compressing "
+                    f"{out['compress_files']} stored week"
+                    f"{'' if out['compress_files'] == 1 else 's'} in place")
+    _flash(f"Reclaimed {hb(out['total'])}: " + "; ".join(bits) + ". Every "
+           "stored week, score, report, and submission file is kept; the "
+           "sealed validation record and the hub clone were not touched.")
+    return _back(request, "/storage")
 
 
 @app.post("/run/stop")
@@ -2070,6 +2208,17 @@ def _run_all(spec: RunSpec) -> None:
         # tab renders the latest STORED results unconditionally, like the
         # model pages always did
         ledger.close_run(run_id, "failed" if fails else "ok", outcome)
+        # storage hygiene at run completion: with the assembled record on
+        # disk (results, report, submissions, archive), the per-cell fit
+        # trees are intermediates and are pruned so workroots stop
+        # accumulating gigabytes. A run with failures keeps everything --
+        # the failed cells' trees are its evidence. Never fatal.
+        if not fails:
+            try:
+                from app.core import reclaim
+                reclaim.prune_workroot(workroot)
+            except Exception:
+                pass
         _status["log"].append(
             f"{run_id}: pf {len(pf_samples)} loc, analogue {len(an_q)}, "
             + (f"pf2s {len(pf2s_samples)}, " if pf2s_samples else "")
@@ -2179,7 +2328,7 @@ def run_page(request: Request, run_id: str):
     # produced the run rather than implying it.
     from app.core.runs import is_research
     return templates.TemplateResponse(request, "run.html", {
-        "active": "Runs", "run_id": run_id, "status": status, "error": err,
+        "active": "Storage", "run_id": run_id, "status": status, "error": err,
         # the page renders a styled research badge, so the label itself
         # stays untagged here
         "label": _run_label(run_id, spec_json, tag=False),
@@ -3237,10 +3386,13 @@ def _week_map_cards(root: Path, wk: str) -> dict:
     25 MB export."""
     import json as _json
     import numpy as np
+    from app.core import retro
     from app.core.report import categorical_probs
     from app.core.report_v2 import CATS
     root = Path(root)
-    sp = root / "weeks" / wk / "samples.json"
+    sp = retro.week_samples_path(root, wk)
+    if sp is None:
+        return {}
     try:
         mtime = int(sp.stat().st_mtime)
     except OSError:
@@ -3257,7 +3409,7 @@ def _week_map_cards(root: Path, wk: str) -> dict:
     n2a = dict(zip(locs.location_name, locs.abbreviation))
     n2p = dict(zip(locs.location_name, locs.population.astype(float)))
     n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
-    d = _json.loads(sp.read_text())
+    d = retro.read_samples(sp)
     cards = {}
     for loc, s in d.get("pf", {}).items():
         arr = np.asarray(s["1"], float)
@@ -3312,8 +3464,7 @@ def _ensure_results_job(root: Path, season: str,
             # the page's default view is the LAST week's map: warm its
             # cards too, so the reload after this job renders instantly
             # (other weeks cache on their first view)
-            wks = sorted(p.parent.name
-                         for p in (root / "weeks").glob("*/samples.json"))
+            wks = [p.parent.name for p in retro.season_sample_files(root)]
             if wks:
                 _week_map_cards(root, wks[-1])
         except Exception as e:
@@ -3379,8 +3530,9 @@ def _scores_current_fast(root: Path) -> bool:
     """retro.scores_current's exact rule (exists, parses, newer than every
     stored week) answered from stats plus the shared cached parse instead
     of a fresh 2.5 MB pandas read per page view."""
+    from app.core import retro
     root = Path(root)
-    weeks = sorted((root / "weeks").glob("*/samples.json"))
+    weeks = retro.season_sample_files(root)
     if not weeks:
         return True
     sf = root / "scores.json"
@@ -3719,7 +3871,7 @@ def retro_results(request: Request, season: str, week: str = "",
         _flash("Unrecognized archived run identifier.")
         return RedirectResponse("/retro", status_code=303)
     root, _is_seal = _season_root(season, archive)
-    weeks = sorted(p.parent.name for p in (root / "weeks").glob("*/samples.json"))
+    weeks = [p.parent.name for p in retro.season_sample_files(root)]
     if not weeks:
         # a raw unthemed dead-end helps nobody: back to the season list,
         # which already knows how to show a 0-weeks season
@@ -3830,7 +3982,7 @@ def retro_results(request: Request, season: str, week: str = "",
             season_dates = {w for w in weeks}
             t_rows = sum(1 for (f, d) in truth_d
                          if any(str(d.date()) > w for w in list(season_dates)[:1]))
-            d0 = _dj.loads((root / "weeks" / weeks[len(weeks)//2] / "samples.json").read_text())
+            d0 = retro.read_week_samples(root, weeks[len(weeks)//2])
             import numpy as _dn
             pos_med = sum(1 for loc, sm in d0.get("pf", {}).items()
                           for h in ("1",)
@@ -3935,7 +4087,8 @@ def api_retro_mapswap(season: str, asof: str, archive: str = ""):
     if not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", asof):
         return PlainTextResponse(f"no stored week {asof}", status_code=404)
     root, _is_seal = _season_root(season, archive)
-    if not (root / "weeks" / asof / "samples.json").is_file():
+    from app.core import retro as _retro
+    if _retro.week_samples_path(root, asof) is None:
         return PlainTextResponse(f"no stored week {asof}", status_code=404)
     return {"states": state_swap_payload(_week_map_cards(root, asof))}
 
