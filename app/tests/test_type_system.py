@@ -54,6 +54,39 @@ def test_plotly_layouts_carry_the_brand_face_and_root_proportional_size():
         assert "rootPx" in src or "rootFont" in src, name
 
 
+def test_chart_text_sits_on_the_type_scale_with_tight_margins():
+    # ticks and legends at .85rem (above the .82rem hint floor) and the
+    # title one step up, all root-proportional so the A-/A/A+ control
+    # multiplies them; the now marker holds the hint floor itself. The
+    # tightened base margins pair with automargin, which lets tick labels
+    # and the below-plot legend size their own bands, so nothing clips at
+    # A+ and no dead band pads the card.
+    assert "Math.round(fs * .85)" in PLAYER
+    assert "Math.round(fs * .95)" in PLAYER
+    assert "Math.round(fs * .82)" in PLAYER          # the now marker
+    for src, name in ((FORECAST_T, "forecast"), (MODEL_T, "model")):
+        assert "Math.round(fs*.85)" in src, name
+        assert "Math.round(fs*.95)" in src, name
+        assert "automargin:true" in src, name
+    assert "automargin: true" in PLAYER
+    # legends hang under the plot, never beside it (the right-hand legend
+    # was a dead band up to a third of the card width)
+    assert "orientation: 'h'" in PLAYER
+    assert PLAYER.count("orientation") >= 1
+    for src, name in ((FORECAST_T, "forecast"), (MODEL_T, "model")):
+        assert "orientation:'h'" in src, name
+    # the weekly report's figures (fixed 16px root, no font control) hold
+    # the same floor: base and legend at 14px, above the 13.1px hint floor
+    import plotly.graph_objects as go
+
+    from app.core import report_v2
+    fig = report_v2._fig_layout(go.Figure(), title="t", legend=True)
+    assert fig.layout.font.size >= 14
+    assert fig.layout.legend.font.size >= 14
+    assert fig.layout.title.font.size > fig.layout.font.size
+    assert fig.layout.xaxis.automargin and fig.layout.yaxis.automargin
+
+
 def test_charts_redraw_on_fontsizechange_and_still_on_themechange():
     for src, name in ((FORECAST_T, "forecast"), (MODEL_T, "model"),
                       (PLAYER, "player")):

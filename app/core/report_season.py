@@ -497,6 +497,11 @@ WEEKS.forEach(function(w){
 // player's own dark kit as the fallback for any token that fails to
 // resolve. Ensemble alone stays theme-resolved through --gold, the
 // readable accent-ink variant of the same cyan identity on light grounds.
+// The member line colors themselves stay STATIC on purpose, in every
+// theme and under the CV-safe mode: the shared palette
+// (FluBNFPlayer.MODEL_COLORS) is dichromat-spaced by construction, so
+// only the semantic ok/bad pair and the category scale change under
+// data-vision="cvd", never a member's identity.
 function css(n, fb){
   var v = getComputedStyle(document.documentElement)
     .getPropertyValue(n).trim();

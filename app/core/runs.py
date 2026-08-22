@@ -114,6 +114,34 @@ def spec_settings(spec) -> list:
     return [(k, v) for k, v in pairs if v not in ("", None)]
 
 
+def is_research(spec) -> bool:
+    """True when a run's spec asked for the two-strain research member
+    (a three-member ensemble, or an explicit variant marker in extra).
+
+    The two-strain engine failed its full-grid ensemble gate and is kept
+    for research only, so every surface that shows such a run tags it
+    'research'. The tag is derived here, from the spec the ledger row
+    stores (the record of record), so it follows the run everywhere the
+    run appears and can never disagree between surfaces. Accepts the same
+    three spec shapes as spec_settings; anything unreadable is simply not
+    research."""
+    if isinstance(spec, RunSpec):
+        d = asdict(spec)
+    elif isinstance(spec, str):
+        try:
+            d = json.loads(spec or "{}")
+        except (ValueError, TypeError):
+            return False
+    elif isinstance(spec, dict):
+        d = spec
+    else:
+        return False
+    extra = d.get("extra") if isinstance(d, dict) else None
+    if not isinstance(extra, dict):
+        return False
+    return extra.get("members") == 3 or extra.get("variant") == "2strain"
+
+
 def version_pairs(build: str = "", versions: dict | None = None) -> list:
     """What produced an artifact, beyond its settings: the application build
     and the engine versions. Recorded in the artifacts so a report states
@@ -263,6 +291,26 @@ class Ledger:
         return [dict(zip(("run_id", "created_utc", "spec", "status", "outcome",
                           "finished_utc", "elapsed_s"), r))
                 for r in cur.fetchall()]
+
+    def delete_runs(self, run_ids) -> int:
+        """Remove the named rows from the ledger, permanently. Returns the
+        number of rows removed.
+
+        The ledger is append-only in OPERATION -- no code path edits a row's
+        record -- but the operator may clear completed rows to keep the
+        ledger readable. Two boundaries are the caller's contract: never
+        pass the row of a run that is still active, and be explicit with the
+        user that clearing a row deletes only the LEDGER ENTRY -- the run's
+        workroot on disk is not touched from here, and stays until deleted
+        through the storage panel's own confirmed control."""
+        ids = [str(r) for r in (run_ids or []) if r]
+        if not ids:
+            return 0
+        marks = ",".join("?" for _ in ids)
+        cur = self._db.execute(
+            f"DELETE FROM runs WHERE run_id IN ({marks})", ids)
+        self._db.commit()
+        return cur.rowcount
 
 
 def lease_workroot(run_id: str, base: Optional[Path] = None) -> Path:

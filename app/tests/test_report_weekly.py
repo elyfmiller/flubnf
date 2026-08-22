@@ -88,11 +88,30 @@ def test_weekly_report_is_theme_aware(tmp_path):
         {}, tmp_path / "c.html").read_text()
     assert "Plotly.react(g,g.data,g.layout)" in charted
     # the retint map covers the figures' baked literals, resolved from the
-    # SAME tokens the chrome wears, category bars included (cvd reach)
+    # SAME tokens the chrome wears: category bars, the semantic ok/bad
+    # pair, and the accent through --gold (its readable variant on light
+    # grounds), so the color-vision modifier reaches every chart-internal
+    # category and ok/bad encoding exactly as it reaches the map
     for pair in ('MAP["#151729"]=css("--card"', 'MAP["#E9EAF4"]=css("--ink"',
                  'MAP["#9AA1C4"]=css("--mut"', 'MAP["#262A45"]=css("--line"',
-                 'MAP["#b9b09b"]=css("--cat-stable"'):
+                 'MAP["#b9b09b"]=css("--cat-stable"',
+                 'MAP["#2e7d4f"]=css("--cat-large-decrease"',
+                 'MAP["#c0392b"]=css("--cat-large-increase"',
+                 'MAP["#4CC38A"]=css("--ok"', 'MAP["#FB4653"]=css("--bad"',
+                 'MAP["#34C0F0"]=css("--gold"'):
         assert pair in charted, pair
+    # the pass re-runs from a per-plot snapshot on themechange, so a host
+    # that flips tokens live (the console toggle, or a headless audit
+    # dispatching the event) retints in BOTH directions; member colors are
+    # deliberately not in the map (the palette is dichromat-spaced)
+    assert "addEventListener('themechange',pass)" in charted
+    assert "_flubnfBaked" in charted
+    from app.core.report_v2 import MEMBER_COLORS
+    retint = charted.split("function pass()", 1)[1].split("</script>", 1)[0]
+    for m, col in MEMBER_COLORS.items():
+        if m == "ensemble":        # the ensemble literal IS the accent cyan
+            continue
+        assert f'MAP["{col}"]' not in retint, m
 
 
 def test_weekly_report_map_swatches_ride_the_category_tokens(tmp_path):

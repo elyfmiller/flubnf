@@ -2,6 +2,9 @@
 {% block content %}
 
 <h1>Run: {{ label or "details" }}
+ {# the research badge follows the run everywhere it appears; here it is
+    read from the ledger row's spec, the record of record #}
+ {% if research %}<span class="pill">research</span>{% endif %}
  {% if status and status not in ("ok", "done") %}
   <span class="pill {{ 'warn' if status in ('stopped','interrupted') else 'bad' }}">{{ status }}</span>
  {% elif status %}<span class="pill ok">{{ status }}</span>{% endif %}

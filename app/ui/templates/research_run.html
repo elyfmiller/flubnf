@@ -1,0 +1,40 @@
+{# The research run control, mounted by base.html only on the two-strain
+   model view (research_panel, set by the /model/pf2s route). This is the
+   ONE place the three-member request has a form: the two-strain engine
+   failed its full-grid ensemble gate, so the flagship Forecast page never
+   grows a third-member option, and everything this form starts is tagged
+   research in the ledger and on every surface the run appears on.
+   It posts through the same /run path as the flagship forms (same vintage
+   check, same server-side busy cross-checks) with the members=3 selection
+   the server already accepts, and the button carries the same console-run
+   guard as every other control that books the engine. #}
+<div class="card" id="research-run">
+ <h2>Research run <span class="pill">research · not the shipped forecast</span></h2>
+ <p class="hint">Runs the full weekly pipeline with the two-strain member
+  fitted alongside the shipped members, and blends all three at equal
+  thirds. The result appears on its run page and in the ledger tagged
+  research; the shipped two-member ensemble and the Forecast page are
+  unchanged by anything started here.</p>
+ <form method="post" action="/run">
+  <label for="rr-date">Forecast date</label>
+  <input id="rr-date" name="forecast_date" value="{{ form.forecast_date }}">
+  <label for="rr-locs">Locations</label>
+  <input id="rr-locs" name="locations"
+    value="{{ form.locations | join(', ') if form.locations != ['all'] else 'all' }}"
+    title='state names, comma-separated, or "all"'>
+  <label for="rr-particles">Particles</label>
+  <input id="rr-particles" name="particles" type="number" value="10000"
+    min="1000" max="100000" step="1000">
+  <label for="rr-reps">Replicates</label>
+  <input id="rr-reps" name="replicates" type="number"
+    value="{{ form.replicates }}" min="1" max="9">
+  <input type="hidden" name="engine" value="all">
+  <input type="hidden" name="members" value="3">
+  <input type="hidden" name="weeks_to_drop" value="0">
+  <input type="hidden" name="weeks_to_nowcast" value="0">
+  {# the same interference guard as every control that posts /run: starting
+     this over a fitting retrospective would double-book the engine, and the
+     server applies the same busy cross-checks if the guard is bypassed #}
+  <button class="gold" data-guard="console-run">Start research run</button>
+ </form>
+</div>

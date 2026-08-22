@@ -134,17 +134,30 @@ FAN_LEVELS = (0.01, 0.025, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35,
 
 
 def _fig_layout(fig, height=340, title="", legend=False):
+    # Chart text on the report's type scale (the report root is a fixed
+    # 16px; it has no A-/A/A+ control): ticks and the interval legend at
+    # 14px, above the 13.1px hint floor and no longer dwarfed by their
+    # plots; the title one step up. automargin lets the tick labels and
+    # the below-plot legend size their own margins, so the tight base
+    # margins leave no dead band and long labels never clip.
+    # a legended figure carries extra height: the horizontal legend band
+    # under the axis is paid for by the figure, not taken out of the plot
     fig.update_layout(
         template=None, paper_bgcolor=CARD, plot_bgcolor=CARD,
-        font=dict(color=INK, family=FONT_STACK, size=13),
-        margin=dict(l=44, r=16, t=40 if title else 16, b=64 if legend else 36),
-        height=height, title=dict(text=title, font=dict(size=15)),
-        xaxis=dict(gridcolor=LINE, zerolinecolor=LINE),
-        yaxis=dict(gridcolor=LINE, zerolinecolor=LINE),
+        font=dict(color=INK, family=FONT_STACK, size=14),
+        margin=dict(l=8, r=8, t=42 if title else 12, b=8),
+        height=height + (36 if legend else 0),
+        title=dict(text=title, font=dict(size=16)),
+        # single-line date ticks (no stacked year line): the legend hangs
+        # a fraction of the plot area below the axis, and the two-line
+        # date band was tall enough to reach it at half-card widths
+        xaxis=dict(gridcolor=LINE, zerolinecolor=LINE, automargin=True,
+                   tickformat="%b %-d"),
+        yaxis=dict(gridcolor=LINE, zerolinecolor=LINE, automargin=True),
         showlegend=legend,
         legend=dict(orientation="h", x=0, xanchor="left",
-                    y=-0.18, yanchor="top",
-                    font=dict(size=11, color=INK),
+                    y=-0.16, yanchor="top",
+                    font=dict(size=14, color=INK),
                     bgcolor="rgba(0,0,0,0)"))
     return fig
 
@@ -229,7 +242,7 @@ def fan_figure_from_quantiles(observed_times, observed, forecast_times,
         fig.add_vrect(x0=g0, x1=g1, fillcolor=LINE,
                       opacity=0.5, line_width=0,
                       annotation_text="no data", annotation_font_color=MUT,
-                      annotation_font_size=10)
+                      annotation_font_size=13)
     return _fig_layout(fig, title=title, legend=True)
 
 
@@ -332,13 +345,25 @@ def _retint_js() -> str:
     above); this script, run after the boot script resolved the theme and
     every figure initialized, reads the SAME tokens the page chrome wears
     (getComputedStyle at draw time, never a baked guess) and rewrites each
-    plot's matching colors in place, Plotly.react-ing the graph. The
-    category bar colors re-resolve through the --cat-* tokens, so the
-    color-vision modifier reaches the bars exactly as it reaches the map.
-    On the dark theme every replacement is identity and the pass exits
-    without touching a plot."""
+    plot's matching colors, Plotly.react-ing the graph. The category bar
+    colors re-resolve through the --cat-* tokens and the semantic pair
+    through --ok/--bad, so the color-vision modifier reaches every
+    chart-internal category and ok/bad encoding exactly as it reaches the
+    map; the accent line resolves through --gold, which is the readable
+    accent-ink variant of the same cyan on light grounds. Member line
+    colors are DELIBERATELY absent from this map: the shared member
+    palette is dichromat-spaced by construction (player.js MODEL_COLORS),
+    so the CV-safe mode must not move them.
+
+    Each plot's baked figure is snapshotted once before the first tint,
+    and the pass re-runs from that snapshot on any later themechange
+    event, so a host that flips tokens live retints correctly in both
+    directions (a standalone open never fires the event and simply keeps
+    the boot-resolved tint). On the dark theme, with no prior tint, every
+    replacement is identity and the plots are left untouched."""
     pairs = [(CARD, "--card"), (INK, "--ink"), (MUT, "--mut"),
-             (LINE, "--line")]
+             (LINE, "--line"), (OK, "--ok"), (BAD, "--bad"),
+             (ACCENT, "--gold")]
     pairs += [(CAT_COLOR[c], "--cat-" + c.replace("_", "-")) for c in CATS]
     lines = "".join(
         f"MAP[{json.dumps(col)}]=css({json.dumps(var)},{json.dumps(col)});"
@@ -351,26 +376,34 @@ def _retint_js() -> str:
       .getPropertyValue(n).trim();
     return v||fb;
   }
-  var MAP={};""" + lines + """
-  var dirty=Object.keys(MAP).some(function(k){
-    return MAP[k].toLowerCase()!==k.toLowerCase();});
-  if(!dirty) return;
-  function walk(o){
+  function walk(o,MAP){
     if(!o||typeof o!=='object') return;
     for(var k in o){
       var v=o[k];
       if(typeof v==='string'&&Object.prototype.hasOwnProperty.call(MAP,v))
         o[k]=MAP[v];
-      else walk(v);
+      else walk(v,MAP);
     }
   }
-  var plots=document.querySelectorAll('.js-plotly-plot');
-  for(var i=0;i<plots.length;i++){
-    var g=plots[i];
-    if(!g.data||!g.layout) continue;
-    walk(g.data);walk(g.layout);
-    Plotly.react(g,g.data,g.layout);
+  function pass(){
+    var MAP={};""" + lines + """
+    var dirty=Object.keys(MAP).some(function(k){
+      return MAP[k].toLowerCase()!==k.toLowerCase();});
+    var plots=document.querySelectorAll('.js-plotly-plot');
+    for(var i=0;i<plots.length;i++){
+      var g=plots[i];
+      if(!g.data||!g.layout) continue;
+      if(!dirty&&!g._flubnfBaked) continue;
+      if(!g._flubnfBaked)
+        g._flubnfBaked=JSON.stringify({d:g.data,l:g.layout});
+      var baked=JSON.parse(g._flubnfBaked);
+      walk(baked.d,MAP);walk(baked.l,MAP);
+      g.data=baked.d;g.layout=baked.l;
+      Plotly.react(g,g.data,g.layout);
+    }
   }
+  pass();
+  addEventListener('themechange',pass);
 })();
 </script>"""
 
@@ -747,11 +780,16 @@ def legacy_theme_carry(html: str) -> str:
     would have to be invented. Instead this swaps in the current stylesheet
     and header lockup, but only when every class the old stylesheet styled
     and the body still uses is also styled by the current stylesheet (the
-    compatibility check the swap rests on). The embedded charts keep the
-    palette they were built with, and one quiet line says so. When the swap
-    cannot be proven safe, only the quiet line is added. The transform is
-    applied to the served page only; the stored file is never modified.
-    Returns the input unchanged on any surprise."""
+    compatibility check the swap rests on). A carried page with embedded
+    charts also gains the retint pass, so its chart colors re-resolve
+    against the carried tokens at open: the rate-change bars follow the
+    color-vision mode through --cat-* exactly as a current report's do,
+    since the old builds baked the same category literals. Colors the map
+    does not recognize keep the palette they were built with, and one
+    quiet line says so. When the swap cannot be proven safe, only the
+    quiet line is added. The transform is applied to the served page only;
+    the stored file is never modified. Returns the input unchanged on any
+    surprise."""
     import re
     try:
         if 'class="brandrow"' in html or STALE_NOTE_ID in html:
@@ -776,6 +814,15 @@ def legacy_theme_carry(html: str) -> str:
                     # floating one would duplicate its id
                     out = re.sub(r'<a id="appback".*?</a>', "", out,
                                  count=1, flags=re.S)
+                    # a carried page with embedded charts gains the retint
+                    # pass: the tokens it resolves arrived with the swapped
+                    # stylesheet, so the category bars follow the reader's
+                    # theme and color-vision mode (unmatched legacy colors
+                    # resolve to themselves and stay untouched)
+                    if "Plotly.newPlot" in out or "js-plotly-plot" in out:
+                        j = out.rfind("</body>")
+                        if j >= 0:
+                            out = out[:j] + _retint_js() + out[j:]
                     carried = out
         out = html if carried is None else carried
         i = out.find("<main>")
@@ -783,8 +830,10 @@ def legacy_theme_carry(html: str) -> str:
             return html
         note = ('<p class="hint" id="' + STALE_NOTE_ID + '">'
                 + ("This report was restyled to the current design when "
-                   "served; its charts keep the design of the run that "
-                   "produced them. A new run will refresh them."
+                   "served; its chart colors follow your theme where they "
+                   "match the current palette, and the chart layouts keep "
+                   "the design of the run that produced them. "
+                   "A new run will refresh them."
                    if carried is not None else
                    "This report was generated with an earlier design. "
                    "A new run will refresh it.")
