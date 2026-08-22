@@ -22,9 +22,11 @@
   >{% if outlook_approx %} · approximate, from stored quantiles{% endif %}</p>
  {% endif %}
  {# the outlook model toggle (aria-pressed buttons + client-side fill
-    swap): rendered by the server ONLY when the latest run's bundle
-    carries per-model cards for two or more models, so a stored run from
-    before per-model cards shows its one model with no toggle #}
+    swap): rendered by the server when two or more per-model card sets
+    exist -- exact ones from a v3 bundle, or, for a stored run from
+    before per-model cards, the approximate sets computed from
+    results.json's stored quantiles (the caption above then carries the
+    approximation marker). Fewer than two renders label only. #}
  {{ outlook_toggle | safe }}
  {{ map_svg | safe }}
  <p class="hint">Most likely direction of admissions.

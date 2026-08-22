@@ -85,20 +85,24 @@
 </div>
 
 {% if storage %}
-<div class="card"><h2>Storage</h2>
- {# the headline figure first: one number for everything the panel manages
-    (run workroots, retrospective seasons, archived retro runs, report
-    archives). The protected trees are listed below with their own sizes
-    but stay outside the total, and the copy says so. #}
- <p class="stotal"><span class="big">{{ storage.total_h }}</span>
-  <span class="hint">total on disk across run workroots, retrospective
-  seasons, archived runs, and report archives. The protected trees below
-  are listed with their sizes but not counted here.</span></p>
- <p class="hint">What this application holds on disk. Deleting an entry is
- permanent and goes through the same name-and-size confirmation as every
- other destructive control; nothing running or paused can be deleted. The
- sealed validation record and the FluSight hub clone are protected and
- carry no delete control.</p>
+<div class="card">
+{# the storage panel folds like the ledger above, but defaults OPEN: the
+   summary keeps the headline disk figure readable even when a reader
+   folds the panel away, and the open state persists per localStorage
+   exactly as the ledger fold's does. #}
+<details class="ledgerfold" id="storagefold" open>
+ <summary><h2 style="display:inline">Storage</h2>
+  <span class="stotal" style="display:inline;margin-left:.45rem"><span class="big">{{ storage.total_h }}</span></span>
+  <span class="hint"> total on disk</span></summary>
+ {# the total spans everything the panel manages (run workroots,
+    retrospective seasons, archived retro runs, report archives); the
+    protected trees are listed below with their own sizes but stay
+    outside the total, and the copy says so. #}
+ <p class="hint">Across run workroots, retrospective seasons, archived
+ runs, and report archives; the protected trees below are listed but not
+ counted here. Deleting is permanent, behind the shared name-and-size
+ confirmation; nothing running or paused can be deleted, and the sealed
+ validation record and hub clone carry no delete control.</p>
 
  <h3 class="hint" style="margin:.8rem 0 .2rem">Run workroots</h3>
  {% for w in storage.workroots %}
@@ -230,7 +234,19 @@
   the shipped configuration rests on; the hub clone is shared source data.
   Neither can be deleted from here.</p>
  {% endif %}
+</details>
 </div>
+<script>
+ // the storage fold remembers its state like the ledger fold above, with
+ // the opposite default: OPEN unless the reader closed it last time
+ (function(){
+  var d=document.getElementById('storagefold');
+  if(!d)return;
+  if(localStorage.getItem('storagefold-open')==='0')d.open=false;
+  d.addEventListener('toggle',function(){
+   localStorage.setItem('storagefold-open',d.open?'1':'0');});
+ })();
+</script>
 <script>
  // every storage delete borrows the shared confirmation shell: the name and
  // size of exactly what goes, and the confirm field filled in only on the

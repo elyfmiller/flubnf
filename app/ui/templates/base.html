@@ -29,18 +29,6 @@
   var m={s:'87.5%',m:'100%',l:'115%'},f=localStorage.getItem('fontsize');
   document.documentElement.style.fontSize=m[f]||'100%';})();
 </script>
-<style>
- /* The Models reference view reads as ONE column: the mech card's figures,
-    equation panels, and captions share the prose's left content edge
-    instead of centering against left-aligned text (the measure caps still
-    govern the widths). Scoped to .card.mech, which only the Models page
-    renders; Methods carries its own scoped block, and the centered layouts
-    elsewhere (home, the reports) are untouched. The !important overrides
-    the diagram macros' inline centering margins. */
- .card.mech svg[role="img"]{margin-left:0 !important;margin-right:auto !important}
- .card.mech .eqpanel{margin-left:0;margin-right:auto}
- .card.mech .eqpanel p.eqnote{text-align:left !important;margin-left:0 !important;margin-right:auto !important}
-</style>
 {% block head %}{% endblock %}
 </head><body>
 <a class="skip" href="#main">Skip to content</a>

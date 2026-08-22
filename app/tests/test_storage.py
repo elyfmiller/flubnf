@@ -421,9 +421,9 @@ def test_ledger_collapses_behind_a_summary_by_default(state):
     fold = html.split('<details class="ledgerfold"', 1)[1] \
                .split("</details>", 1)[0]
     assert "<table>" in fold and "clear-ledger-btn" in fold
-    # the storage panel stays outside it, uncollapsed
+    # the storage panel sits outside it, in its own fold below
     after = html.split("</details>", 1)[1]
-    assert "Storage</h2>" in after and 'class="stotal"' in after
+    assert "Storage</h2>" in after and 'id="storagefold"' in after
 
 
 def test_ledger_fold_state_persists_per_local_storage(state):
@@ -433,8 +433,40 @@ def test_ledger_fold_state_persists_per_local_storage(state):
     assert "addEventListener('toggle'" in html
 
 
+def test_storage_panel_folds_but_defaults_open(state):
+    """The storage panel gets the ledger's details/summary fold with the
+    opposite default: OPEN server-side, the summary carrying the headline
+    total-disk figure so the number stays readable when the panel is
+    folded away, and the open state persisted like the ledger fold's."""
+    html = client.get("/runs").text
+    # the fold ships open by default
+    assert '<details class="ledgerfold" id="storagefold" open>' in html
+    # the summary carries the heading and the total disk figure
+    summary = html.split('id="storagefold" open>', 1)[1] \
+                  .split("</summary>", 1)[0]
+    assert "Storage</h2>" in summary
+    assert 'class="big"' in summary
+    inv = srv._storage_inventory()
+    assert inv["total_h"] in summary
+    # the panel body (workroots, deletes) lives INSIDE the fold
+    fold = html.split('id="storagefold" open>', 1)[1] \
+               .split("</details>", 1)[0]
+    assert "Run workroots" in fold
+    assert "data-del-storage" in fold
+
+
+def test_storage_fold_state_persists_per_local_storage(state):
+    html = client.get("/runs").text
+    assert "localStorage.getItem('storagefold-open')" in html
+    assert "localStorage.setItem('storagefold-open'" in html
+    # a stored close wins over the server's open default
+    assert "==='0')d.open=false" in html.replace(" ", "")
+
+
 def test_empty_ledger_keeps_the_plain_hint_no_fold(state, monkeypatch):
     monkeypatch.setattr(srv.Ledger, "rows", lambda self, n=50: [])
     html = client.get("/runs").text
-    assert "ledgerfold" not in html
+    # no ledger fold with nothing to fold (the storage panel below keeps
+    # its own fold, which shares the ledgerfold disclosure styling)
+    assert 'id="ledgerfold"' not in html
     assert "No runs yet." in html

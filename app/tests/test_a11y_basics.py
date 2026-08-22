@@ -150,4 +150,6 @@ def test_destructive_confirms_wear_the_danger_tier():
 
 def test_prose_measure_cap_spares_hints_and_tables():
     assert "max-width:72ch" in NAU
-    assert ".card p.hint{max-width:none}" in NAU
+    # hints and the sub intro lines both escape the measure (heading-width
+    # uniformity, user 2026-08-21: intro text spans the card width)
+    assert ".card p.hint,.card p.sub{max-width:none}" in NAU

@@ -6,10 +6,18 @@ The v3 inputs bundle carries hover cards for EACH available model
 are reduced to that grid first). Home and the weekly report render the map
 for the default model (ensemble when present) and, when the bundle carries
 two or more models, add a compact aria-pressed toggle that swaps the fills,
-hover cards, and the surface's model label client-side. Versioning stays
-additive: a v1/v2 bundle renders its one model with no toggle and an
-honest label, so the user's stored run from before per-model cards keeps
-working exactly as it did.
+hover cards, and the surface's model label client-side.
+
+THE LEGACY PATH (user request 2026-08-21): a stored run from before
+per-model cards -- no bundle, or a pre-v3 bundle -- gets the SAME toggle
+approximately, whenever its results.json stores quantile grids for two or
+more models: _outlook_cards computes every model's card set from those
+grids through the one quantile-CDF path (categorical_probs_from_quantiles,
+the exact CDF reading of the coarse stored grid), the map and the swap
+payload come from that one computation, and the caption carries the
+"approximate, from stored quantiles" honesty marker. A pre-v3 bundle whose
+results.json cannot fund a toggle (one usable model) keeps its exact
+single-model bundle cards, label honest, no dead control.
 """
 import json
 import os
@@ -216,7 +224,12 @@ def test_home_outlook_gets_the_same_toggle(tmp_path, monkeypatch):
     assert "Calendar analogue outlook" in home
 
 
-def test_home_shows_no_toggle_for_a_pre_v3_bundle(tmp_path, monkeypatch):
+def test_home_shows_no_toggle_for_a_single_model_pre_v3_bundle(
+        tmp_path, monkeypatch):
+    """A pre-v3 bundle whose results.json stores only ONE model (the synth
+    run's results carry the ensemble alone) cannot fund the approximate
+    toggle: the exact single-model bundle cards render exactly as before,
+    label honest, no dead control, no approximation marker."""
     w, _ = _latest(tmp_path, monkeypatch)
     b = w / report_v2.BUNDLE_NAME
     bundle = json.loads(b.read_text())
@@ -232,6 +245,103 @@ def test_home_shows_no_toggle_for_a_pre_v3_bundle(tmp_path, monkeypatch):
     # the map and its honest one-model label render exactly as before
     assert 'id="usmap"' in home
     assert "NAU ensemble outlook" in home
+    assert "approximate, from stored quantiles" not in home
+
+
+# ------------------------- the approximate toggle for stored legacy runs
+
+LV = ("0.1", "0.25", "0.5", "0.75", "0.9")
+
+
+def _results_with_all_models(workroot: Path, parts: dict) -> None:
+    """Rewrite the synth workroot's results.json the way a real legacy run
+    stored it: pf, analogue, AND ensemble quantiles at the five coarse
+    levels (the schema of the user's stored pre-bundle runs)."""
+    def cut(qd):
+        return {loc: {h: {str(l): v for l, v in q.items() if str(l) in LV}
+                      for h, q in qs.items()} for loc, qs in qd.items()}
+    (workroot / "results.json").write_text(json.dumps({
+        "forecast_date": "2098-01-03", "observed": parts["obs"],
+        "models": {"pf": cut(parts["pf_q"]),
+                   "analogue": cut(parts["an_q"]),
+                   "ensemble": cut(parts["ens_q"])}}))
+
+
+def test_stored_pre_bundle_run_gets_the_approximate_toggle(
+        tmp_path, monkeypatch):
+    """The user's stored legacy run (results.json only, no bundle): home
+    computes all three models' card sets from the stored quantile grids
+    via the one quantile-CDF path, renders the working toggle, and the
+    caption carries the approximation marker. The rendered map and the
+    swap payload come from the one computation, so swapping models and
+    swapping back restores exactly the server-rendered fills."""
+    import re
+
+    from app.core import usmap
+    from app.core.report import categorical_probs_from_quantiles
+    from flubnf.settings import load_locations
+    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
+    w = tmp_path / "workroots" / "20980103T000000-abcdef"
+    parts = _synth_run_all_models(w)
+    (w / report_v2.BUNDLE_NAME).unlink()            # a pre-bundle run
+    _results_with_all_models(w, parts)
+    srv._invalidate_scans()
+    rid, res = srv._latest_results()
+    cards, meta = srv._outlook_cards(res, rid)
+    assert meta["approx"] is True and meta["model"] == "ensemble"
+    bm = meta["by_model"]
+    assert set(bm) == {"pf", "analogue", "ensemble"}
+    # every model's Ohio card equals the exact CDF reading of ITS OWN
+    # stored five-level grid -- never the few-values-as-samples stand-in
+    locs = load_locations()
+    pop = int(dict(zip(locs.location_name,
+                       locs.population.astype(float)))["Ohio"])
+    lo = parts["obs"]["Ohio"][-1][1]
+    for model, q in (("ensemble", parts["ens_q"]), ("pf", parts["pf_q"]),
+                     ("analogue", parts["an_q"])):
+        grid = {str(l): v for l, v in q["Ohio"]["1"].items()
+                if str(l) in LV}
+        expect = categorical_probs_from_quantiles(grid, lo, pop, 1)
+        got = bm[model]["39"]["probs"]
+        for c in expect:
+            assert abs(got[c] - expect[c]) < 1e-9, (model, c)
+    home = client.get("/").text
+    # the working toggle, default ensemble, all three models
+    assert 'id="outlook-model"' in home
+    assert 'data-mmodel="ensemble" aria-pressed="true"' in home
+    assert 'data-mmodel="pf" aria-pressed="false"' in home
+    assert 'data-mmodel="analogue" aria-pressed="false"' in home
+    # the honesty marker rides the caption, and the label span is the
+    # relabel target
+    assert "approximate, from stored quantiles" in home
+    assert 'data-mapmodel-label>NAU ensemble outlook' in home
+    # the payload for the default model equals the rendered map exactly
+    pay = usmap.state_swap_payload(bm["ensemble"])
+    m = re.search(r'<path d="[^"]*" fill="([^"]+)" fill-opacity="([^"]+)"'
+                  r'[^>]*data-fips="39"', home)
+    assert m, "Ohio path missing from the home map"
+    assert m.group(1) == pay["39"]["f"]
+    assert float(m.group(2)) == pay["39"]["o"]
+
+
+def test_pre_v3_bundle_with_multi_model_results_gets_the_toggle(
+        tmp_path, monkeypatch):
+    """A v2 bundle 'predates per-model cards' just like no bundle: with
+    results.json storing all three models, home renders the approximate
+    toggle and marks the approximation."""
+    w, parts = _latest(tmp_path, monkeypatch)
+    b = w / report_v2.BUNDLE_NAME
+    bundle = json.loads(b.read_text())
+    bundle["version"] = 2
+    bundle.pop("cards_by_model", None)
+    bundle.pop("national_map_cards", None)
+    b.write_text(json.dumps(bundle))
+    _results_with_all_models(w, parts)
+    srv._invalidate_scans()
+    home = client.get("/").text
+    assert 'id="outlook-model"' in home
+    assert 'data-mmodel="analogue"' in home
+    assert "approximate, from stored quantiles" in home
 
 
 def test_swap_payload_matches_the_server_render(tmp_path, monkeypatch):
