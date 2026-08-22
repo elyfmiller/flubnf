@@ -85,6 +85,27 @@ var MODEL_COLORS = /*MODEL_COLORS_JSON*/{
   "pf2s": "#A66395"
 }/*END_MODEL_COLORS_JSON*/;
 
+// THE one season-line palette (the season-over-season data charts), same
+// marked-JSON contract as MODEL_COLORS above: the console reads it through
+// Python (report_v2.season_colors), so multi-season line charts wear one
+// palette everywhere. STATIC-SAFE BY CONSTRUCTION, like the member map:
+// the six colors were spaced 2026-08-21 so every cyclically adjacent pair,
+// and the FIRST color against both --gold variants (#34C0F0 on dark
+// grounds, #0173A9 on light) that the newest season's line wears, measures
+// 60+ apart under the Vienot deuteranopia and protanopia matrices AND in
+// normal vision, and each color holds 3:1+ against all eight theme
+// grounds. Seasons are colored newest-first from this list (the newest
+// non-gold season takes index 0, cycling when seasons outnumber colors),
+// so the pair drawn beside the gold line is always the audited one.
+// Because the palette is dichromat-safe by construction, the CV-safe mode
+// deliberately does NOT remap it -- do not expect the toggle to move
+// these -- and any value change must re-clear the palette audit
+// (app/tests/test_season_palette.py). Keep it a pure JSON array between
+// the markers.
+var SEASON_COLORS = /*SEASON_COLORS_JSON*/[
+  "#A87300", "#3375FB", "#C9568C", "#0087AF", "#B96D36", "#8568E3"
+]/*END_SEASON_COLORS_JSON*/;
+
 // an official model absent for the WHOLE season gets a disabled toggle
 // carrying this note instead of silently drawing nothing
 var UNAVAIL_NOTE = ' (fetch via Update data on the Data tab)';
@@ -658,6 +679,7 @@ var FluBNFPlayer = {
   init: createPlayer,
   MODEL_NAMES: MODEL_NAMES,
   MODEL_COLORS: MODEL_COLORS,
+  SEASON_COLORS: SEASON_COLORS,
   _internals: {
     OFFICIALS: OFFICIALS,
     MODEL_NAMES: MODEL_NAMES,

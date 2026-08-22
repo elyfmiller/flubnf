@@ -50,6 +50,20 @@ def cat_fill(cat: str) -> str:
     tokens (the fixed-dark weekly report) falls back to CAT_COLOR."""
     return f"var(--cat-{cat.replace('_', '-')}, {CAT_COLOR[cat]})"
 
+
+def _card_fill(card: dict) -> tuple:
+    """(fill, opacity) for one hover card, the ONE fill computation every
+    map surface uses: modal category color, opacity by its probability;
+    no data takes the explicit no-data tone at full opacity. Shared by the
+    server-side renders (svg_map, national_svg) and the client-side model
+    toggle's swap payloads, so switching models recolors with exactly the
+    computation the server rendered."""
+    probs = (card or {}).get("probs") or {}
+    if probs:
+        modal = max(probs, key=probs.get)
+        return cat_fill(modal), 0.55 + 0.45 * probs[modal]
+    return NO_DATA, 1.0
+
 VIEWBOX = "0 0 975 610"
 
 
@@ -236,13 +250,7 @@ def svg_map(cards_by_fips: dict, ink="#e9ecf2",
     paths = []
     for fips, (topo_name, d) in state_paths().items():
         card = cards_by_fips.get(fips, {})
-        probs = card.get("probs") or {}
-        if probs:
-            modal = max(probs, key=probs.get)
-            fill = cat_fill(modal)
-            op = 0.55 + 0.45 * probs[modal]
-        else:
-            fill, op = NO_DATA, 1.0
+        fill, op = _card_fill(card)
         hover = card.get("hover_html") or (
             f"<b>{card.get('name', topo_name)}</b><br>no reported data "
             f"(reporting gap)")
@@ -252,9 +260,12 @@ def svg_map(cards_by_fips: dict, ink="#e9ecf2",
             hover += "<br>click for details"
         cls = "st" if can_click else "st noclick"
         click_attr = f'data-abbr="{abbr}" ' if can_click else ""
+        # data-fips is the model toggle's hook: the swap script recolors
+        # each state by fips without re-rendering the geometry
         paths.append(
             f'<path d="{d}" fill="{fill}" fill-opacity="{op:.2f}" '
             f'stroke="{paper}" stroke-width="1" class="{cls}" '
+            f'data-fips="{fips}" '
             f'{click_attr}data-hover="{_esc(hover)}"/>')
     return _shell(dom_id, "".join(paths), ink, paper, interactive)
 
@@ -271,13 +282,7 @@ def national_svg(us_card: dict, ink="#e9ecf2",
     with a single shared fill, one tooltip; pan/zoom identical to svg_map.
     """
     card = us_card or {}
-    probs = card.get("probs") or {}
-    if probs:
-        modal = max(probs, key=probs.get)
-        fill = cat_fill(modal)
-        op = 0.55 + 0.45 * probs[modal]
-    else:
-        fill, op = NO_DATA, 1.0
+    fill, op = _card_fill(card)
     hover = card.get("hover_html") or (
         f"<b>{card.get('name', 'United States')}</b>")
     abbr = card.get("abbr") or "US"
@@ -286,6 +291,122 @@ def national_svg(us_card: dict, ink="#e9ecf2",
     inner = (f'<g class="nat" fill="{fill}" fill-opacity="{op:.2f}" '
              f'data-abbr="{abbr}" data-hover="{_esc(hover)}">{body}</g>')
     return _shell(dom_id, inner, ink, paper)
+
+
+# ---------------------------------------------------------------------------
+# The outlook model toggle: one map, N models, client-side fill swap.
+#
+# The bundle (report_v2, v3) carries hover cards for EVERY available model,
+# all computed by the same quantile-CDF path. The map is rendered once for
+# the default model; the toggle below recolors it in place -- fill, opacity,
+# hover card, and the surface's model label -- from a payload built by the
+# SAME _card_fill computation the server render used, so switching models
+# can never disagree with a server-rendered map of that model. Shared by the
+# home outlook and the weekly report (both embed the same emitted script).
+# ---------------------------------------------------------------------------
+
+def state_swap_payload(cards_by_fips: dict) -> dict:
+    """fips -> {f: fill, o: opacity, h: hover_html} for every state on the
+    map, from one model's hover cards (the svg_map computation as data)."""
+    out = {}
+    for fips, (topo_name, _d) in state_paths().items():
+        card = cards_by_fips.get(fips, {})
+        fill, op = _card_fill(card)
+        hover = card.get("hover_html") or (
+            f"<b>{card.get('name', topo_name)}</b><br>no reported data "
+            f"(reporting gap)")
+        out[fips] = {"f": fill, "o": round(op, 2), "h": hover}
+    return out
+
+
+def nat_swap_payload(us_card: dict) -> dict:
+    """{f, o, h} for the national view's shared fill, or {} without a card
+    (the swap script then leaves the national group as rendered)."""
+    if not us_card:
+        return {}
+    fill, op = _card_fill(us_card)
+    hover = us_card.get("hover_html") or (
+        f"<b>{us_card.get('name', 'United States')}</b>")
+    return {"f": fill, "o": round(op, 2), "h": hover}
+
+
+def model_toggle(models: list, labels: dict, default: str, payload: dict,
+                 group_id: str = "outlook-model", dom_id: str = "usmap",
+                 nat_dom_id: str = "usmap-nat", btn_class: str = "",
+                 active_class: str = "on",
+                 wrap_class: str = "viewtoggle") -> str:
+    """The compact model switch above an outlook map: aria-pressed buttons
+    plus the swap script.
+
+    models: the models the payload actually carries, in display order.
+    labels: model -> surface label (report_v2.MODEL_LABEL).
+    payload: model -> {"states": state_swap_payload(...),
+                       "us": nat_swap_payload(...)}.
+    The buttons state aria-pressed and swap `active_class` (the host's own
+    selected-button treatment: 'gold' in the console, 'on' in the report);
+    every element carrying data-mapmodel-label follows the selected model's
+    label, so the surface never shows one model's map under another's name.
+    Callers emit the toggle only when two or more models exist -- a
+    one-model surface needs no switch, and an older bundle without
+    per-model cards renders exactly as before."""
+    btns = []
+    for m in models:
+        on = m == default
+        cls = f"{btn_class} {active_class}".strip() if on else btn_class
+        cls_attr = f' class="{cls}"' if cls else ""
+        btns.append(
+            f'<button type="button"{cls_attr} '
+            f'data-mmodel="{m}" aria-pressed="{str(on).lower()}">'
+            f'{_esc(labels.get(m, m))}</button>')
+    pj = json.dumps(payload).replace("</", "<\\/")
+    lj = json.dumps({m: labels.get(m, m) for m in models}).replace("</",
+                                                                   "<\\/")
+    return f"""
+<div class="{wrap_class}" id="{group_id}" role="group"
+     aria-label="Outlook model">{''.join(btns)}</div>
+<script>
+(function() {{
+  var P = {pj}, LB = {lj};
+  var group = document.getElementById('{group_id}');
+  if (!group) return;
+  var ACT = '{active_class}';
+  function setModel(m) {{
+    var d = P[m];
+    if (!d) return;
+    group.querySelectorAll('button[data-mmodel]').forEach(function(b) {{
+      var on = b.dataset.mmodel === m;
+      b.setAttribute('aria-pressed', String(on));
+      b.classList.toggle(ACT, on);
+    }});
+    document.querySelectorAll('[data-mapmodel-label]').forEach(function(e) {{
+      e.textContent = LB[m] || m;
+    }});
+    var svg = document.getElementById('{dom_id}');
+    if (svg && d.states)
+      svg.querySelectorAll('path[data-fips]').forEach(function(p) {{
+        var s = d.states[p.dataset.fips];
+        if (!s) return;
+        p.setAttribute('fill', s.f);
+        p.setAttribute('fill-opacity', s.o);
+        // the click affordance rides the path, not the model: a state
+        // with a drill-down keeps its hint whichever model colors it
+        p.dataset.hover = s.h + (p.dataset.abbr
+                                 ? '<br>click for details' : '');
+      }});
+    var nat = document.querySelector('#{nat_dom_id} g.nat');
+    if (nat && d.us) {{
+      nat.setAttribute('fill', d.us.f);
+      nat.setAttribute('fill-opacity', d.us.o);
+      nat.dataset.hover = d.us.h;
+    }}
+  }}
+  group.addEventListener('click', function(e) {{
+    var b = e.target.closest ? e.target.closest('button[data-mmodel]')
+                             : null;
+    if (b) setModel(b.dataset.mmodel);
+  }});
+}})();
+</script>"""
 
 
 def map_legend() -> str:

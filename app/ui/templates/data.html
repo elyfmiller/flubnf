@@ -52,23 +52,34 @@
   {{ sel_summary.oldest_week }} to {{ sel_summary.newest_week }}</p>
  {% endif %}
  {% if spark_svg %}
- {{ spark_svg | safe }}
- <p class="hint">{{ sel_loc }}: {{ series_n }} reported weeks in this
-  vintage{% if peak %} · peak {{ "{:,.0f}".format(peak[1]) }} admissions in
-  the week of {{ peak[0] }}{% endif %} · the marked point is the newest
-  week this vintage held.</p>
+ {# sparkline and recent-weeks table share the card as two columns at
+    desktop widths (.vintagecols); the table keeps a compact natural width
+    (table.compact) with the numbers right-set in tabular figures directly
+    beside their weeks, instead of a card-wide ledger with an empty band
+    between the columns #}
+ <div class="vintagecols">
+  <div>
+   {{ spark_svg | safe }}
+   <p class="hint">{{ sel_loc }}: {{ series_n }} reported weeks in this
+    vintage{% if peak %} · peak {{ "{:,.0f}".format(peak[1]) }} admissions in
+    the week of {{ peak[0] }}{% endif %} · the marked point is the newest
+    week this vintage held.</p>
+  </div>
+  {% if series_table %}
+  <div class="vintagetable">
+   <table class="compact">
+    <tr><th>week</th><th class="num">admissions</th></tr>
+    {% for d, v in series_table %}
+    <tr><td>{{ d }}</td><td class="num">{{ "{:,.0f}".format(v) }}</td></tr>
+    {% endfor %}
+   </table>
+   <p class="hint">Newest {{ series_table | length }} reported weeks, as
+    this vintage archived them; later revisions never appear here.</p>
+  </div>
+  {% endif %}
+ </div>
  {% elif sel_loc %}
  <p class="hint">This vintage holds no reported weeks for {{ sel_loc }}.</p>
- {% endif %}
- {% if series_table %}
- <div style="overflow-x:auto"><table>
-  <tr><th>week</th><th>admissions</th></tr>
-  {% for d, v in series_table %}
-  <tr><td>{{ d }}</td><td class="num">{{ "{:,.0f}".format(v) }}</td></tr>
-  {% endfor %}
- </table></div>
- <p class="hint">Newest {{ series_table | length }} reported weeks, as this
-  vintage archived them; later revisions never appear here.</p>
  {% endif %}
 </div>
 {% endblock %}

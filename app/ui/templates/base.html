@@ -87,7 +87,13 @@
       title="Color-vision mode: blue and orange replace green and red">CV safe</button>
   </div>
 </header>
-<main id="main">{% if restart_needed() %}
+{# reference pages (Methods, the Models views) opt into the centered
+   reading column via this block: main.reading narrows and centers the
+   content column while prose keeps its 72ch measure and left-set text
+   inside it, and the figures and equation panels ride along at the same
+   left content edge. Operational pages leave the block empty and keep the
+   full-width shell. #}
+<main id="main" class="{% block main_class %}{% endblock %}">{% if restart_needed() %}
  <div class="banner" role="alert"><strong>Update pulled.</strong> This window
  still runs build {{ running_sha() }}. Quit the app fully and reopen; a page
  reload refreshes the look, not the server logic.</div>

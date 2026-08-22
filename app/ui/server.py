@@ -85,6 +85,14 @@ def _member_colors() -> dict:
     return model_colors()
 
 
+def _season_colors() -> list:
+    """The one season-line palette (player.js SEASON_COLORS, parsed by
+    report_v2.season_colors): dichromat-spaced and ground-audited by
+    construction, so the CV-safe toggle never needs to remap it."""
+    from app.core.report_v2 import season_colors
+    return season_colors()
+
+
 # ---- season month axis: the one source of month-boundary week offsets ----
 #: Month lengths of the season in order from August, on a non-leap reference
 #: year: at week resolution the leap-day drift is invisible. Every surface
@@ -396,6 +404,38 @@ def _outlook_cards(res: dict | None, rid: str | None = None) -> tuple:
                    "label": MODEL_LABEL.get(model, MODEL_LABEL["pf"])}
 
 
+def _outlook_models(rid: str | None) -> dict:
+    """Per-model outlook cards from the latest run's bundle (v3 field
+    cards_by_model), rekeyed by fips: {model: {fips: card}}, models with
+    data only. The home outlook's model toggle renders when two or more
+    exist; a run whose bundle predates per-model cards returns {} and the
+    home map renders exactly as before, one model, no toggle, its label
+    honest."""
+    import json as _json
+
+    from app.core import report_v2
+    from app.core.runs import APP_STATE
+    if not rid:
+        return {}
+    try:
+        b = APP_STATE / "workroots" / rid / report_v2.BUNDLE_NAME
+        if not b.is_file():
+            return {}
+        bundle = _json.loads(b.read_text())
+        if bundle.get("version") not in report_v2.SUPPORTED_BUNDLE_VERSIONS:
+            return {}
+        out = {}
+        for m, cards in (bundle.get("cards_by_model") or {}).items():
+            byf = {c["fips"]: c for c in (cards or {}).values()
+                   if isinstance(c, dict) and c.get("fips")
+                   and c.get("probs")}
+            if byf:
+                out[m] = byf
+        return out
+    except Exception:
+        return {}          # a broken bundle degrades to the plain map
+
+
 def _diagram_data(res: dict | None) -> dict:
     """Annotation feed for the home page's interactive SIHRS diagram: per
     location, the latest run's fitted-parameter posterior medians (harvested
@@ -446,7 +486,9 @@ def home(request: Request):
     # otherwise the empty-country silhouette
     map_svg, outlook_date, outlook_n = "", "", 0
     outlook_src: dict = {}
+    outlook_toggle = ""
     try:
+        from app.core import report_v2, usmap
         from app.core.usmap import map_legend, svg_map
         cards = {}
         try:
@@ -467,6 +509,26 @@ def home(request: Request):
                    "<script>window.MAP_LINK='/output/report';</script>"
                    + svg_map(cards, clickable=with_data)
                    + map_legend() + "</div>")
+        # the outlook model toggle: only when the latest run's bundle (v3)
+        # carries cards for two or more models -- the stored run of an
+        # older build simply renders its one model, label as honest as ever
+        try:
+            by_model = _outlook_models(rid) if outlook_src else {}
+            if len(by_model) >= 2:
+                order = [m for m in report_v2.MODEL_ORDER if m in by_model]
+                order += [m for m in by_model if m not in order]
+                default = (outlook_src.get("model")
+                           if outlook_src.get("model") in by_model
+                           else order[0])
+                payload = {m: {"states": usmap.state_swap_payload(byf),
+                               "us": {}}
+                           for m, byf in by_model.items()}
+                outlook_toggle = usmap.model_toggle(
+                    order, report_v2.MODEL_LABEL, default, payload,
+                    group_id="outlook-model", btn_class="quiet",
+                    active_class="gold", wrap_class="row viewtabs")
+        except Exception:
+            outlook_toggle = ""
     except Exception:
         pass
     return templates.TemplateResponse(request, "home.html", {
@@ -476,6 +538,7 @@ def home(request: Request):
         # report's exact ones (bundle) or the stored-quantile approximation
         "outlook_model_label": outlook_src.get("label", ""),
         "outlook_approx": bool(outlook_src.get("approx")),
+        "outlook_toggle": outlook_toggle,
         "versions": VERSIONS, "diagram": _diagram_data(res),
         "missing": __import__("flubnf.settings", fromlist=["check"]).check(verbose=False)})
 
@@ -561,6 +624,7 @@ def forecast_page(request: Request):
         "series_json": _json.dumps(series), "fanq_json": _json.dumps(fanq),
         "model_names_json": _json.dumps(_model_names()),
         "member_colors_json": _json.dumps(_member_colors()),
+        "season_colors_json": _json.dumps(_season_colors()),
         "run_obs_json": _json.dumps((res or {}).get("observed", {})),
         "fc_date": (res or {}).get("forecast_date", "")})
 
@@ -741,13 +805,16 @@ def _storage_inventory() -> dict:
     live retro season trees, archived retro runs, and the forecast report
     archive -- each row saying whether it is deletable right now and why
     not when it is not. The two protected trees are listed with sizes and
-    no controls."""
+    no controls. total_bytes/total_h sum the four managed categories (the
+    panel's headline figure); the protected trees are deliberately outside
+    the total, and the panel says so."""
     import re as _re
     from app.core import retro
     from app.core.runs import APP_STATE
     from flubnf.settings import HUB
     inv = {"workroots": [], "retro": [], "retro_archives": [],
-           "report_archives": [], "protected": []}
+           "report_archives": [], "protected": [],
+           "total_bytes": 0, "total_h": ""}
     live_ids = _live_workroot_ids()
     console_busy = bool(_status.get("running"))
     wr = APP_STATE / "workroots"
@@ -755,6 +822,7 @@ def _storage_inventory() -> dict:
         for p in sorted((d for d in wr.iterdir() if d.is_dir()),
                         key=lambda d: d.name, reverse=True):
             size = _tree_size(str(p))
+            inv["total_bytes"] += size
             inv["workroots"].append({
                 "id": p.name, "size_h": retro.human_bytes(size),
                 "busy": p.name in live_ids})
@@ -764,23 +832,29 @@ def _storage_inventory() -> dict:
                 continue
             if _valid_season(p.name):
                 st = _season_status(p.name)
+                size = _tree_size(str(p))
+                inv["total_bytes"] += size
                 inv["retro"].append({
-                    "id": p.name, "size_h": retro.human_bytes(_tree_size(str(p))),
+                    "id": p.name, "size_h": retro.human_bytes(size),
                     "status": st, "busy": st in _RETRO_ACTIVE})
                 continue
             m = _re.match(r"(\d{4}-\d{2})", p.name)
             if m and retro.archive_stamp_of(p.name, m.group(1)):
                 season = m.group(1)
                 stamp = retro.archive_stamp_of(p.name, season)
+                size = _tree_size(str(p))
+                inv["total_bytes"] += size
                 inv["retro_archives"].append({
                     "id": p.name, "season": season,
                     "when": retro.stamp_human(stamp),
-                    "size_h": retro.human_bytes(_tree_size(str(p))),
+                    "size_h": retro.human_bytes(size),
                     "busy": _season_status(season) in _RETRO_ACTIVE})
     arch = APP_STATE / "archive"
     for d in reversed(_scan_archive_dates(arch)):
+        size = _tree_size(str(arch / d))
+        inv["total_bytes"] += size
         inv["report_archives"].append({
-            "id": d, "size_h": retro.human_bytes(_tree_size(str(arch / d))),
+            "id": d, "size_h": retro.human_bytes(size),
             "busy": console_busy})
     for label, p in (("Sealed validation record", RETRO_SEAL),
                      ("FluSight hub clone", HUB)):
@@ -788,7 +862,26 @@ def _storage_inventory() -> dict:
             inv["protected"].append({
                 "label": label, "path": str(p),
                 "size_h": retro.human_bytes(_tree_size(str(p)))})
+    inv["total_h"] = retro.human_bytes(inv["total_bytes"])
     return inv
+
+
+def _clearable_workroots() -> list:
+    """Workroot directories the clear-all control may delete: every
+    completed run's workroot on disk -- everything under workroots except
+    the active run's and anything resolving into a protected tree.
+    Returns [{"id", "bytes"}], newest first."""
+    from app.core.runs import APP_STATE
+    live = _live_workroot_ids()
+    out = []
+    wr = APP_STATE / "workroots"
+    if wr.is_dir():
+        for p in sorted((d for d in wr.iterdir() if d.is_dir()),
+                        key=lambda d: d.name, reverse=True):
+            if p.name in live or _storage_protected(p):
+                continue
+            out.append({"id": p.name, "bytes": _tree_size(str(p))})
+    return out
 
 
 def _clearable_run_ids(ledger) -> list:
@@ -825,10 +918,17 @@ def runs_page(request: Request):
         w = APP_STATE / "workroots" / r["run_id"]
         r["disk_h"] = (retro.human_bytes(_tree_size(str(w)))
                        if w.is_dir() else None)
+    cw = _clearable_workroots()
     return templates.TemplateResponse(request, "runs.html", {
         "active": "Runs", "ledger": rows,
         "clear_count": len(_clearable_run_ids(ledger)),
-        "storage": _storage_inventory()})
+        "storage": _storage_inventory(),
+        # the storage panel's clear-all control: how many completed runs'
+        # workroots it would delete and what they weigh, so the second
+        # confirmation can name both
+        "clear_workroots": {"count": len(cw),
+                            "size_h": retro.human_bytes(
+                                sum(w["bytes"] for w in cw))}})
 
 
 @app.post("/runs/clear")
@@ -959,6 +1059,55 @@ def storage_delete(request: Request, kind: str = Form(""),
     tail = (" Its ledger row remains as the run's record."
             if kind == "workroot" else "")
     _flash(f"Deleted the {noun} {ident}: {size_h} freed.{tail}")
+    return _back(request, "/runs")
+
+
+@app.post("/storage/clear-workroots")
+def storage_clear_workroots(request: Request, confirm: str = Form("")):
+    """Delete every completed run's workroot in one confirmed action.
+
+    The /runs/clear contract applied to disk: the confirmation names the
+    COUNT the user saw on the page, and a stale count (a run finished, a
+    workroot was deleted elsewhere) refuses the whole request -- the user
+    must see the current state before confirming it away. The active run's
+    workroot is excluded up front and re-checked per directory at delete
+    time; the sealed validation record and the hub clone are not workroots
+    and the protection check refuses them besides. Ledger rows are never
+    touched: each keeps its record and shows a dash for disk use, exactly
+    as a single workroot delete leaves it."""
+    from app.core import retro
+    from app.core.runs import APP_STATE
+    _invalidate_scans()          # sizes and listings are about to change
+    items = _clearable_workroots()
+    if not items:
+        _flash("No completed run workroots are on disk to delete.")
+        return _back(request, "/runs")
+    if confirm != str(len(items)):
+        _flash("The storage panel changed since this page was rendered "
+               f"({len(items)} deletable workroot"
+               f"{'' if len(items) == 1 else 's'} now). Nothing was "
+               "deleted; review and confirm again.")
+        return _back(request, "/runs")
+    live = _live_workroot_ids()
+    freed, n = 0, 0
+    for it in items:
+        p = APP_STATE / "workroots" / it["id"]
+        # re-checked at delete time: a run claimed between render and click
+        # keeps its workroot, and the protection barrier holds regardless
+        if it["id"] in live or _storage_protected(p) \
+                or not (p.is_dir() or p.is_symlink()):
+            continue
+        try:
+            size = retro.dir_size(p)
+            retro.delete_tree(p)
+            freed += size
+            n += 1
+        except Exception:
+            continue          # one stuck tree must not sink the sweep
+    _invalidate_scans()
+    _flash(f"Deleted {n} completed run workroot{'' if n == 1 else 's'}: "
+           f"{retro.human_bytes(freed)} freed. Every ledger row is kept "
+           "and shows a dash for disk use.")
     return _back(request, "/runs")
 
 
@@ -1165,7 +1314,8 @@ def _sleep_guard():
 
 def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
                          df, locs, n2f: dict, elapsed_s: float,
-                         outcome: dict, ens_q: dict | None = None) -> None:
+                         outcome: dict, ens_q: dict | None = None,
+                         an_q: dict | None = None) -> None:
     """Step 5b of _run_all: the weekly report, via its inputs bundle.
 
     Builds the pure-data bundle (map cards, per-state fan quantiles and
@@ -1175,13 +1325,18 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
     a later design change, _report_for_serving rebuilds the stored report
     from this bundle instead of leaving the old face on screen.
 
-    `ens_q` is the run's vincentized ensemble (loc -> horizon ->
-    {level: value}). When it exists, the MAP's cards are computed from it
-    -- the ensemble is the submitted forecast, so the map convention on
-    every surface is ensemble-first, PF otherwise -- and the bundle
-    records which in its additive cards_model field, which home reads so
-    both maps show the same categories from the same model. The per-state
-    drill-down fans stay the PF member's, as labeled.
+    `ens_q` is the run's vincentized ensemble and `an_q` the analogue
+    member's quantiles (each loc -> horizon -> {level: value}). The bundle
+    (v3) carries map cards for EVERY available model -- ensemble, pf (its
+    samples reduced to the same 23-level grid), analogue -- all computed
+    by the ONE quantile-CDF path (categorical_probs_from_quantiles), so
+    the outlook model toggle on home and on the report switches between
+    computations that agree with what a run of that model alone would
+    show. The map still RENDERS ensemble-first (the submitted forecast),
+    PF otherwise; the additive cards_model field records which, and home
+    reads the same bundle so both maps show the same categories from the
+    same model. The per-state drill-down fans stay the PF member's, as
+    labeled.
 
     Factored out of _run_all so the build path is testable with synthetic
     samples. Mutates `outcome` like the other run steps; the caller's
@@ -1193,6 +1348,7 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
     import numpy as _np
     import pandas as pd
 
+    from app.core import ensemble as _ens
     from app.core import report_v2
     from app.core.report import (categorical_probs,
                                  categorical_probs_from_quantiles)
@@ -1205,20 +1361,34 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
     cells = (_json.loads((workroot / "cells.json").read_text())
              if pf_samples else [])
     ens_q = ens_q or {}
-    cards = {}
-    cards_model = "pf"
-    if any("1" in (q or {}) for q in ens_q.values()):
-        # ensemble-first: the submitted forecast colors the map. Its
-        # categorical probabilities come from the full 23-level quantile
-        # grid read as a CDF, the exact quantile-space computation, never
-        # the few-values-as-samples stand-in.
-        cards_model = "ensemble"
-        for loc, qd in ens_q.items():
-            q1 = (qd or {}).get("1")
-            o = obs.get(loc) or []
-            if not isinstance(q1, dict) or not q1 or not o or loc not in n2a:
+    an_q = an_q or {}
+    # the PF member on the same 23-level grid the other members carry, so
+    # its cards ride the same quantile-CDF computation as theirs
+    pf_q = {loc: _ens.member_quantiles_from_samples(s)
+            for loc, s in pf_samples.items()}
+
+    def _last_obs(loc):
+        o = obs.get(loc) or []
+        if o:
+            return float(o[-1][1])
+        for c in cells:               # degraded runs: cells.json still
+            if c.get("location") == loc:  # knows the anchor value
+                return float(c.get("last_observed", 0.0))
+        return None
+
+    def _q1_of(qd):
+        q1 = (qd or {}).get("1", (qd or {}).get(1))
+        return q1 if isinstance(q1, dict) and q1 else None
+
+    def _q_cards(q_by_loc):
+        """abbr -> hover card from ONE model's quantiles, via the one
+        quantile-CDF computation. The shape every map surface consumes."""
+        out = {}
+        for loc, qd in (q_by_loc or {}).items():
+            q1 = _q1_of(qd)
+            lo = _last_obs(loc)
+            if q1 is None or lo is None or loc not in n2a:
                 continue
-            lo = float(o[-1][1])
             probs = categorical_probs_from_quantiles(
                 q1, lo, int(n2p.get(loc, 0)), 1)
             if not probs:
@@ -1229,22 +1399,49 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
                      f"<br>1-wk median: {med1:.0f}<br>" +
                      "<br>".join(f"{c.replace('_',' ')}: "
                                  f"{probs.get(c,0):.0%}" for c in CATS))
-            cards[n2a[loc]] = {"probs": probs, "name": loc,
-                               "abbr": n2a[loc], "fips": n2f.get(loc, ""),
-                               "hover_html": hover}
-    else:
-        for loc, s in pf_samples.items():
-            med1 = float(_np.median(_np.asarray(s["1"], float)))
-            lo = next(c["last_observed"] for c in cells
-                      if c["location"] == loc)
-            probs = categorical_probs(s["1"], lo, int(n2p[loc]), 1)
-            hover = (f"<b>{loc}</b><br>current: {lo:.0f}"
-                     f"<br>1-wk median: {med1:.0f}<br>" +
-                     "<br>".join(f"{c.replace('_',' ')}: "
-                                 f"{probs.get(c,0):.0%}" for c in CATS))
-            cards[n2a[loc]] = {"probs": probs, "name": loc,
-                               "abbr": n2a[loc], "fips": n2f[loc],
-                               "hover_html": hover}
+            out[n2a[loc]] = {"probs": probs, "name": loc,
+                             "abbr": n2a[loc], "fips": n2f.get(loc, ""),
+                             "hover_html": hover}
+        return out
+
+    def _q_nat_card(q_by_loc):
+        """The national card from the same model's quantiles: the same
+        surface must never be cross-filled from another member (the
+        two-truths bug reborn inside one page)."""
+        us_names = [n for n in (q_by_loc or {}) if n2f.get(n) == "US"] or \
+                   [n for n in (q_by_loc or {})
+                    if "US" in n or "national" in n.lower()]
+        un = us_names[0] if us_names else None
+        q1 = _q1_of((q_by_loc or {}).get(un)) if un else None
+        lo_us = _last_obs(un) if un else None
+        if q1 is None or lo_us is None:
+            return None
+        probs_us = categorical_probs_from_quantiles(
+            q1, lo_us, 340_000_000, 1)
+        if not probs_us:
+            return None
+        med_us = float(min(q1.items(),
+                           key=lambda kv: abs(float(kv[0]) - 0.5))[1])
+        hover_us = ("<b>United States</b><br>current: "
+                    f"{lo_us:.0f}<br>1-wk median: {med_us:.0f}")
+        return {"probs": probs_us, "name": "United States",
+                "abbr": "US", "fips": "US", "hover_html": hover_us}
+
+    cards_by_model = {}
+    nat_cards = {}
+    for model, q_by_loc in (("ensemble", ens_q), ("pf", pf_q),
+                            ("analogue", an_q)):
+        c = _q_cards(q_by_loc)
+        if c:
+            cards_by_model[model] = c
+            nc = _q_nat_card(q_by_loc)
+            if nc:
+                nat_cards[model] = nc
+    # ensemble-first: the submitted forecast colors the rendered map; the
+    # toggle offers the rest
+    cards_model = next((m for m in ("ensemble", "pf", "analogue")
+                        if m in cards_by_model), "pf")
+    cards = dict(cards_by_model.get(cards_model, {}))
     for name, abbr in n2a.items():
         cards.setdefault(abbr, {"name": name, "abbr": abbr,
                                 "fips": n2f.get(name, "")})
@@ -1310,48 +1507,10 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
                 "table_rows": [(d, v) for d, v in obs_pairs[-6:]]}
         except Exception:
             continue
-    nat_card = None
-    try:
-        # the national view is the same map surface, and it wears the same
-        # model label as the state view: it is computed from the SAME model
-        # the cards were, never cross-filled from the other member (a
-        # mislabeled map would be the two-truths bug reborn inside one page)
-        if cards_model == "ensemble":
-            us_names = [n for n in ens_q if n2f.get(n) == "US"] or \
-                       [n for n in ens_q
-                        if "US" in n or "national" in n.lower()]
-            un = us_names[0] if us_names else None
-            q1 = (ens_q.get(un) or {}).get("1") if un else None
-            if isinstance(q1, dict) and q1 and (obs.get(un) or []):
-                lo_us = float(obs[un][-1][1])
-                probs_us = categorical_probs_from_quantiles(
-                    q1, lo_us, 340_000_000, 1)
-                med_us = float(min(q1.items(),
-                               key=lambda kv: abs(float(kv[0]) - 0.5))[1])
-                hover_us = ("<b>United States</b><br>current: "
-                            f"{lo_us:.0f}<br>1-wk median: {med_us:.0f}")
-                if probs_us:
-                    nat_card = {"probs": probs_us, "name": "United States",
-                                "abbr": "US", "fips": "US",
-                                "hover_html": hover_us}
-        else:
-            us_names = [n for n in pf_samples if n2f.get(n) == "US"] or \
-                       [n for n in pf_samples
-                        if "US" in n or "national" in n.lower()]
-            if us_names:
-                un = us_names[0]
-                arr = _np.asarray(pf_samples[un]["1"], float)
-                lo_us = next((c["last_observed"] for c in cells
-                              if c["location"] == un), 0.0)
-                probs_us = categorical_probs(arr, lo_us, 340_000_000, 1)
-                hover_us = ("<b>United States</b><br>current: "
-                            f"{lo_us:.0f}<br>1-wk median: "
-                            f"{float(_np.median(arr)):.0f}")
-                nat_card = {"probs": probs_us, "name": "United States",
-                            "abbr": "US", "fips": "US",
-                            "hover_html": hover_us}
-    except Exception:
-        nat_card = None
+    # the national view is the same map surface, and it wears the same
+    # model label as the state view: computed from the SAME model the
+    # rendered cards were (see _q_nat_card; the toggle swaps it per model)
+    nat_card = nat_cards.get(cards_model)
     bundle = {"version": report_v2.BUNDLE_VERSION,
               "reference_date": spec.forecast_date,
               # additive since v2: which model computed the map cards, so
@@ -1359,6 +1518,11 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
               # render the report's exact categories)
               "cards_model": cards_model,
               "cards": cards, "details": details,
+              # additive since v3: every available model's cards, all from
+              # the same quantile-CDF path -- the outlook model toggle's
+              # data on home and on the report
+              "cards_by_model": cards_by_model,
+              "national_map_cards": nat_cards,
               "national": {"summary_html": wis_html},
               "national_map_card": nat_card,
               "elapsed_s": elapsed_s,
@@ -1561,7 +1725,7 @@ def _run_all(spec: RunSpec) -> None:
         try:
             _write_weekly_report(spec, workroot, pf_samples, obs, df, locs,
                                  n2f, _time.time() - t_start, outcome,
-                                 ens_q=members_by_loc)
+                                 ens_q=members_by_loc, an_q=an_q)
         except Exception as e:
             outcome["report_error"] = str(e)[:200]
         # 6. results index for the run page

@@ -319,8 +319,10 @@ def test_pre_bundle_run_falls_back_and_labels_the_approximation(
     assert meta["approx"] is True and meta["model"] == "ensemble"
     assert any(c.get("probs") for c in cards.values())
     home = client.get("/")
-    assert "NAU ensemble outlook · approximate, from stored quantiles" \
-        in home.text
+    # the label span is the model toggle's relabel target, so the phrase
+    # spans a data-mapmodel-label element
+    assert "NAU ensemble outlook" in home.text
+    assert "approximate, from stored quantiles" in home.text
 
 
 def test_v1_bundle_still_loads_and_renders_as_pf(tmp_path, monkeypatch):

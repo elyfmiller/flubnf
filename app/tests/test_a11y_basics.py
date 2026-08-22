@@ -33,7 +33,9 @@ def test_document_language_and_skip_link():
     html = client.get("/data").text
     assert '<html lang="en">' in html
     assert 'class="skip" href="#main"' in html
-    assert '<main id="main">' in html
+    # the shell's main_class block (the centered reading column opt-in)
+    # renders an empty class attribute on operational pages
+    assert '<main id="main" class="' in html
     # the skip link precedes the header, so it is the first tab stop
     assert html.index('class="skip"') < html.index('<header class="nav">')
     assert "a.skip:focus{left:0}" in NAU

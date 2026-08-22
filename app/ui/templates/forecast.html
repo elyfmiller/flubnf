@@ -257,6 +257,13 @@
  // the readable accent-ink variant of the same cyan identity. Re-read
  // per draw so a theme change repaints correctly.
  const MCOLORS = {{ member_colors_json | safe }};
+ // the one season-line palette (the shared player's marked JSON, via the
+ // server): colorblind-safe BY CONSTRUCTION -- cyclically adjacent colors,
+ // and the first color against the gold the newest season wears, sit 60+
+ // apart under both Vienot dichromacy matrices and in normal vision, and
+ // every color holds 3:1+ on all eight theme grounds -- so the CV-safe
+ // toggle deliberately does not remap it (see SEASON_COLORS in player.js)
+ const SCOLORS = {{ season_colors_json | safe }};
  function memberColor(m){
    return m==='ensemble'?(css('--gold')||MCOLORS.ensemble)
         : MCOLORS[m]||css('--mut');
@@ -353,12 +360,19 @@
        by[k].d.push(fmtDate(d));});
      const seasons=Object.keys(by).sort();
      // seasons share the week alignment but not the calendar, so each
-     // trace's hover carries its own season's actual Saturday date
+     // trace's hover carries its own season's actual Saturday date.
+     // Colors: the newest season wears the gold accent (thicker line);
+     // earlier seasons take SCOLORS newest-first (the season just before
+     // the gold one is always SCOLORS[0], cycling when seasons outnumber
+     // colors), so every drawn-adjacent pair is one the palette audit
+     // measured -- never the plotly default colorway, whose green/red
+     // pair the CV-safe mode does not reach
      const traces=seasons.map((k,i)=>({x:by[k].x,y:by[k].y,mode:lm,marker:{size:4},name:k,
        customdata:by[k].d,
        hovertemplate:k+' · %{customdata} · %{y:,.0f}<extra></extra>',
        line:{width:i===seasons.length-1?3:1.5,
-             color:i===seasons.length-1?css('--gold'):undefined}}));
+             color:i===seasons.length-1?(css('--gold')||MCOLORS.analogue)
+                  :SCOLORS[(seasons.length-2-i)%SCOLORS.length]}}));
      const L=lay(loc+': season over season',380);
      // month names at the month-boundary week offsets; the exact date per
      // point lives in the hover, so nobody does calendar arithmetic
