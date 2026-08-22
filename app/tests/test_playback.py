@@ -244,6 +244,17 @@ def test_route_unknown_week_is_plain_404():
     assert "1900-01-01" in r.text
 
 
+def test_mapswap_route_refuses_unknown_and_unsafe_weeks():
+    """The map swap payload endpoint (the per-frame map path since
+    2026-08-22): an unknown week is a plain 404, and a week that is not
+    date-shaped never reaches the filesystem as a path segment."""
+    from fastapi.testclient import TestClient
+    from app.ui.server import app as srv
+    c = TestClient(srv)
+    assert c.get("/api/retro/2024-25/mapswap/1900-01-01").status_code == 404
+    assert c.get("/api/retro/2024-25/mapswap/..%2F..%2Fpasswd").status_code == 404
+
+
 from flubnf.settings import HUB as _HUB                  # noqa: E402
 
 _SEAL = Path(__file__).resolve().parents[1] / "state" / "retro_seal" / "2024-25"
@@ -265,3 +276,21 @@ def test_real_first_seal_week_spot():
     assert p["stats"]["ensemble"]["cum_rel"] is not None
     # second call comes from the cache and agrees
     assert playback.build_week(_SEAL, "2024-25", asof)["asof"] == asof
+
+
+@pytest.mark.skipif(not _real_ok, reason="seal root or hub files absent")
+def test_real_mapswap_covers_every_state_shape():
+    """The swap payload the player mutates fills from must state an entry
+    for EVERY state path on the map (states without samples wear the
+    no-data tone), each with fill, opacity, and hover, so a frame can
+    never leave a stale fill from the previous week behind."""
+    from fastapi.testclient import TestClient
+    from app.core.usmap import state_paths
+    from app.ui.server import app as srv
+    asof = playback.season_weeks(_SEAL)[0]
+    r = TestClient(srv).get(f"/api/retro/2024-25/mapswap/{asof}")
+    assert r.status_code == 200
+    states = r.json()["states"]
+    assert set(states) == set(state_paths())
+    for s in states.values():
+        assert set(s) == {"f", "o", "h"}

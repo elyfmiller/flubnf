@@ -236,7 +236,8 @@
  </div>
  <div class="playgrid">
   <div>
-   <div id="view-map" class="playmap">{{ map_html | safe }}</div>
+   <div id="view-map" class="playmap"><p class="hint" id="map-note" hidden
+     aria-live="polite"></p>{{ map_html | safe }}</div>
    <div id="view-fc" hidden>
     <div class="row" style="margin:.2rem 0 .4rem">
      <select id="fd-loc" aria-label="Forecast location"
@@ -420,48 +421,68 @@
    return PPROM[w];
  }
 
- // ---- categorical map per week: reuse the server-rendered map by fetching
- // this page for the target week and lifting out the map block ----
- const MAPC = {}, MPROM = {};
+ // ---- categorical map per week: ONE SVG, mutated per frame ----
+ // The old path refetched this ENTIRE page per week and rebuilt the
+ // 52-path SVG with innerHTML (plus re-running its interaction script) on
+ // every scrub event, which made map scrubbing visibly slower than the
+ // line plots (profiled 2026-08-22). Now the server-rendered map of the
+ // initial week is the only SVG this view ever builds; each week fetches
+ // a few-kilobyte swap payload (/api/retro/{season}/mapswap/{asof}: fips
+ // to fill, opacity, hover -- the model-toggle swap mechanism) and a
+ // frame only mutates path fills. Tooltips, zoom, and pan live on the one
+ // surviving SVG, so hand zoom even survives scrubbing now.
+ const SWAP = {}, SPROM = {};
  function fetchMap(w){
-   if(w in MAPC) return Promise.resolve(MAPC[w]);
-   if(MPROM[w]) return MPROM[w];
-   MPROM[w] = fetch('/retro/' + encodeURIComponent(SEASON)
-                    + '?week=' + encodeURIComponent(w)
-                    + (AQ ? '&' + AQ : ''))
-     .then(r => {if(!r.ok) throw new Error(String(r.status)); return r.text();})
-     .then(t => {
-       const doc = new DOMParser().parseFromString(t, 'text/html');
-       const wr = doc.getElementById('usmap-wrap');
-       let js = '';
-       if(wr && wr.nextElementSibling && wr.nextElementSibling.tagName === 'SCRIPT')
-         js = wr.nextElementSibling.textContent;
-       MAPC[w] = wr ? {h: wr.outerHTML, js: js} : null;
-       return MAPC[w];
-     })
-     .catch(() => {MAPC[w] = null; return null;})
-     .finally(() => {delete MPROM[w];});
-   return MPROM[w];
+   if(w in SWAP) return Promise.resolve(SWAP[w]);
+   if(SPROM[w]) return SPROM[w];
+   SPROM[w] = fetch('/api/retro/' + encodeURIComponent(SEASON)
+                    + '/mapswap/' + encodeURIComponent(w)
+                    + (AQ ? '?' + AQ : ''))
+     .then(r => {if(!r.ok) throw new Error(String(r.status)); return r.json();})
+     .then(d => {SWAP[w] = (d && d.states) || null; return SWAP[w];})
+     .catch(() => {SWAP[w] = null; return null;})
+     .finally(() => {delete SPROM[w];});
+   return SPROM[w];
  }
- let mapSeq = 0;
- function showMap(w){
+ // Scrub coalescing: events only record the wanted week; at most one
+ // mutation pass runs per animation frame, always for the LATEST wanted
+ // week, so fast scrubbing renders the frames a human can see instead of
+ // every intermediate one.
+ let wantWeek = null, rafPending = false;
+ function renderMap(){
+   rafPending = false;
+   const w = wantWeek;
    const host = document.getElementById('view-map');
-   if(host.dataset.week === w) return;
-   const tok = ++mapSeq;
-   fetchMap(w).then(mc => {
-     if(tok !== mapSeq || player.week() !== w) return;
-     host.dataset.week = w;
-     if(!mc){
-       host.innerHTML = '<p class="hint">map unavailable for ' + w + '</p>';
-       return;
-     }
-     host.innerHTML = mc.h;
-     // innerHTML never executes scripts; re-create the interaction script so
-     // the fresh map keeps its tooltips, zoom, and pan
-     if(mc.js){const s = document.createElement('script');
-       s.textContent = mc.js; host.appendChild(s);}
+   const note = document.getElementById('map-note');
+   const svg = host.querySelector('svg#usmap');
+   if(w == null || !svg || host.dataset.week === w) return;
+   const st = SWAP[w];
+   if(st === undefined){          // not fetched yet: render when it lands
+     fetchMap(w).then(scheduleMap);
+     return;
+   }
+   host.dataset.week = w;
+   if(st === null){
+     if(note){note.textContent = 'map unavailable for ' + w; note.hidden = false;}
+     return;
+   }
+   if(note) note.hidden = true;
+   svg.querySelectorAll('path[data-fips]').forEach(function(p){
+     const s = st[p.dataset.fips];
+     if(!s) return;
+     p.setAttribute('fill', s.f);
+     p.setAttribute('fill-opacity', s.o);
+     // the click affordance rides the path, not the week (the model
+     // toggle's own rule)
+     p.dataset.hover = s.h + (p.dataset.abbr ? '<br>click for details' : '');
    });
  }
+ function scheduleMap(){
+   if(rafPending) return;
+   rafPending = true;
+   requestAnimationFrame(renderMap);
+ }
+ function showMap(w){ wantWeek = w; scheduleMap(); }
 
  // ---- the two page views (outlook map, forecast detail) stay host-side;
  // the shared player drives everything inside the forecast detail view ----
@@ -506,15 +527,12 @@
  }
  document.getElementById('tab-map').onclick = () => setView('map');
  document.getElementById('tab-fc').onclick = () => setView('fc');
- // seed the map cache with the server-rendered map for the initial week so
- // returning to it never refetches, then start on the map view
+ // the initial week is already painted server-side: mark it rendered and
+ // warm its swap payload so returning to it after a scrub is instant
  (function(){
-   const host = document.getElementById('view-map');
-   const wr = host.querySelector('#usmap-wrap');
-   const sc = host.querySelector('script');
-   if(wr) MAPC[WEEKS[player.idx()]] = {h: wr.outerHTML,
-                                       js: sc ? sc.textContent : ''};
-   host.dataset.week = WEEKS[player.idx()];
+   const w0 = WEEKS[player.idx()];
+   document.getElementById('view-map').dataset.week = w0;
+   fetchMap(w0);
  })();
  setView('map');
 </script>

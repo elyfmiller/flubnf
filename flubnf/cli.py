@@ -86,6 +86,30 @@ app = typer.Typer(
 console = Console()
 
 
+def _trace(msg: str) -> None:
+    """Startup-sequence trace: a timestamped line to stderr and, when
+    FLUBNF_STARTUP_TRACE names a file, appended there. Free when the
+    variable is unset. The windowed launch involves four actors (this
+    process, the uvicorn thread, the warm thread, WKWebView) whose
+    ORDERING is the whole diagnosis, so the trace is permanent and
+    env-gated rather than something re-invented at each regression."""
+    import os
+    import sys as _sys
+    import time as _time
+    path = os.environ.get("FLUBNF_STARTUP_TRACE")
+    if not path:
+        return
+    t = _time.time()
+    line = (f"{t:.3f} {_time.strftime('%H:%M:%S', _time.localtime(t))}"
+            f".{int(t * 1000) % 1000:03d} [pid {os.getpid()} cli] {msg}")
+    try:
+        with open(path, "a") as fh:
+            fh.write(line + "\n")
+    except Exception:
+        pass
+    print(line, file=_sys.stderr, flush=True)
+
+
 # ---------------------------------------------------------------------------
 # Globals (resolved once per invocation)
 # ---------------------------------------------------------------------------
@@ -1691,13 +1715,73 @@ def _pick_port(preferred: int = 8710, tries: int = 10) -> int:
     return preferred
 
 
+def _bind_app_socket(preferred: int = 8710, tries: int = 10):
+    """(listening socket, port) for the window path: the first bindable
+    port in preferred..preferred+tries-1, bound and LISTENING before the
+    window ever opens, then handed to uvicorn (Server.run(sockets=...)).
+
+    Holding the socket -- instead of probing, closing, and letting uvicorn
+    rebind -- closes both launch races at the root: the port cannot be
+    lost between probe and bind (the zombie-of-the-first-attempt case),
+    and WKWebView's first connection can never be REFUSED, because the OS
+    queues it in this socket's backlog until the server thread finishes
+    importing and starts accepting. The connection-refused cache was the
+    original dead-first-window failure; with the backlog it is structurally
+    impossible while this process lives.
+
+    (None, preferred) when every port is busy, so uvicorn binds for itself
+    and reports the real conflict loudly."""
+    import socket
+    for port in range(preferred, preferred + max(1, tries)):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(("127.0.0.1", port))
+            s.listen(128)
+            # the KERNEL's port, so a preferred of 0 (tests) reports the
+            # ephemeral port actually bound rather than the request
+            return s, s.getsockname()[1]
+        except OSError:
+            s.close()
+            continue
+    return None, preferred
+
+
+def _server_answering(url: str, timeout: float = 1.0) -> bool:
+    """True when the console server behind `url` answers HTTP at all (any
+    status: an error page is still an answering server). The watchdog's
+    reload decision hangs on this: reloading helps only when the server is
+    up but the window shows a dead page."""
+    import urllib.error
+    import urllib.request
+    try:
+        with urllib.request.urlopen(url.rstrip("/") + "/api/versions",
+                                    timeout=timeout):
+            return True
+    except urllib.error.HTTPError:
+        return True
+    except Exception:
+        return False
+
+
 def _window_watchdog(window, url: str, wait: float = 4.0, retries: int = 3,
-                     fail_page: str = _SERVER_FAIL_PAGE) -> str:
+                     fail_page: str = _SERVER_FAIL_PAGE,
+                     probe=None) -> str:
     """Run on a small thread after webview.start's callback fires: wait for
-    the window's loaded event; when the page never arrived (WKWebView cached
-    a connection-refused page from a dying predecessor), call load_url again,
-    up to `retries` times `wait` seconds apart. Only when every retry fails
-    is the inline failure page shown; nothing is surfaced before that.
+    the window's loaded event; when the page never arrived, decide WHY
+    before touching anything. A reload helps in exactly one case: the
+    server answers HTTP but the window shows a dead page (WKWebView cached
+    a refused connection from a dying predecessor). When the server is not
+    answering at all, load_url would only cache ANOTHER refused page and
+    cancel whatever navigation is in flight -- the reload storm that turned
+    a slow cold start into a dead first window (diagnosed 2026-08-22) --
+    so the watchdog then just keeps waiting out its budget. Only when every
+    window of the budget passes without a load is the inline failure page
+    shown; nothing is surfaced before that.
+
+    `probe` answers "is the server answering HTTP?" and defaults to a real
+    1-second request against the light /api/versions endpoint (injectable
+    for tests).
 
     Verified against the installed pywebview 6.2.1 source: events.loaded is
     a webview.event.Event whose += appends a handler invoked from set(), and
@@ -1709,9 +1793,12 @@ def _window_watchdog(window, url: str, wait: float = 4.0, retries: int = 3,
 
     Returns 'loaded', 'recovered', or 'failed' (for tests)."""
     import threading
+    if probe is None:
+        probe = lambda: _server_answering(url)   # noqa: E731
     loaded = threading.Event()
 
     def _mark():
+        _trace("watchdog: loaded event fired")
         loaded.set()
 
     try:
@@ -1720,16 +1807,27 @@ def _window_watchdog(window, url: str, wait: float = 4.0, retries: int = 3,
             loaded.set()
     except Exception:
         return "failed"
+    _trace(f"watchdog: attached, waiting {wait}s for loaded")
     if loaded.wait(wait):
+        _trace("watchdog: loaded within first wait")
         return "loaded"
-    for _ in range(max(1, retries)):
-        loaded.clear()
-        try:
-            window.load_url(url)
-        except Exception:
-            pass
+    for attempt in range(max(1, retries)):
+        if probe():
+            # server up, page dead: the one case a reload fixes
+            loaded.clear()
+            _trace(f"watchdog: server answers but page dead, "
+                   f"reload attempt {attempt + 1}")
+            try:
+                window.load_url(url)
+            except Exception:
+                pass
+        else:
+            _trace(f"watchdog: server not answering, waiting on "
+                   f"(attempt {attempt + 1})")
         if loaded.wait(wait):
+            _trace("watchdog: recovered within budget")
             return "recovered"
+    _trace("watchdog: FAILED, showing failure page")
     try:
         window.load_html(fail_page)
     except Exception:
@@ -1741,6 +1839,7 @@ def _window_watchdog(window, url: str, wait: float = 4.0, retries: int = 3,
 def app_serve(port: int = 8710):
     """Launch the operations console. Prefers a native desktop window
     (pywebview) and falls back to the browser without it."""
+    _trace("app: command entered")
     try:
         import webview  # noqa: F401
         return app_window(port=port)
@@ -1790,8 +1889,6 @@ def app_window(port: int = 8710):
     except ImportError:
         print("pywebview not installed: .venv/bin/pip install pywebview")
         raise SystemExit(1)
-    import socket
-    import time
     # pywebview refuses downloads unless this is set (verified against the
     # installed pywebview 6.2.1: webview.settings['ALLOW_DOWNLOADS'] defaults
     # to False in webview/__init__.py; platforms/cocoa.py honors it both for
@@ -1800,27 +1897,32 @@ def app_window(port: int = 8710):
     # Without it the "Download season report" link is a dead end in the
     # native window.
     webview.settings['ALLOW_DOWNLOADS'] = True
-    # single instance: a dying predecessor can pass the port probe below and
-    # then exit, leaving this window bound to nothing (the random dead
-    # window on reopen). Take its place explicitly, then bind a port that
+    _trace("window: webview imported, settings applied")
+    # single instance: a dying predecessor could otherwise keep the port,
+    # leaving this window bound to nothing (the random dead window on
+    # reopen). Take its place explicitly, then BIND AND HOLD a port that
     # is really free.
-    _terminate_predecessor()
+    signalled = _terminate_predecessor()
+    _trace(f"window: predecessor takeover done (signalled={signalled})")
     _write_pidfile()
-    port = _pick_port(port)
+    sock, port = _bind_app_socket(port)
     url = f"http://localhost:{port}"
-    threading.Thread(target=lambda: uvicorn.run("app.ui.server:app",
-                     port=port, host="127.0.0.1", log_level="warning"),
-                     daemon=True).start()
-    # The window must not open before uvicorn listens: WKWebView caches the
-    # connection-refused page and the first window comes up dead (nothing to
-    # click, tabs inert) until the app is closed and reopened.
-    t0 = time.time()
-    while time.time() - t0 < 30:
-        try:
-            with socket.create_connection(("127.0.0.1", port), 0.5):
-                break
-        except OSError:
-            time.sleep(0.2)
+    _trace(f"window: port {port} bound and listening "
+           f"(held={sock is not None}), starting server thread")
+
+    def _serve():
+        config = uvicorn.Config("app.ui.server:app", port=port,
+                                host="127.0.0.1", log_level="warning")
+        uvicorn.Server(config).run(sockets=[sock] if sock else None)
+
+    threading.Thread(target=_serve, daemon=True).start()
+    # The window opens IMMEDIATELY: the socket above is already listening,
+    # so WKWebView's first request queues in its backlog until the server
+    # thread finishes importing and starts accepting -- it can never be
+    # refused (the refused-page cache was the original dead-first-window
+    # bug), and the old wait-for-the-server loop that held the window
+    # closed for the whole server import is gone.
+    _trace("window: creating window (server import in flight)")
     window = webview.create_window("FluBNF", url,
                                    width=1120, height=800,
                                    min_size=(760, 520))
@@ -1830,9 +1932,10 @@ def app_window(port: int = 8710):
         # the user switches away and back). The start callback runs on a
         # SECONDARY thread; Cocoa activation must happen on the main run
         # loop or it works only intermittently -- hence callAfter.
-        # Load watchdog: if the page never arrives (a predecessor died
-        # between the port probe and this load, or activation raced the
-        # first navigation), reload it rather than sit dead.
+        # Load watchdog: if the page never arrives (server import crashed,
+        # or activation raced the first navigation), recover it rather
+        # than sit dead -- see _window_watchdog for the reload rule.
+        _trace("window: start callback fired (window shown)")
         threading.Thread(target=_window_watchdog, args=(window, url),
                          daemon=True).start()
         try:
@@ -1865,6 +1968,7 @@ def app_window(port: int = 8710):
             AppHelper.callAfter(_front)
         except Exception:
             pass
+    _trace("window: entering webview.start (main loop)")
     webview.start(_activate)
 
 

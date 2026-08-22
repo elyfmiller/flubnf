@@ -318,12 +318,33 @@ main{max-width:1500px;margin:0 auto;
    EVERYTHING INSIDE THE CARDS CENTERS TOO (user request 2026-08-21,
    second report -- the left-hugging figures left a dead band on the
    right): the diagrams, harmonic figures, equation panels, and value
-   panels keep their own margin:auto centering, and the prose block
-   centers at its 72ch measure below, so figures, equations, and text
-   share one center axis with the card and the page. Text inside the
-   centered prose block stays left-set; only the block centers. */
+   panels keep their own margin:auto centering, so figures, equations,
+   and text share one center axis with the card and the page.
+   ONE SHARED CONTENT EDGE (fourth report on this surface, 2026-08-22:
+   the kicker sat at the card's left edge while the centered prose
+   floated with a large asymmetric left gap -- two unrelated edges read
+   as broken). Every reading card is a three-column grid: a fluid
+   centered prose column and two equal gutters. The kicker (h2) and
+   every paragraph -- hints and subs included -- share the prose column,
+   so they share one left edge with symmetric padding both sides BY
+   CONSTRUCTION; figures, equation panels, and tables span all three
+   columns and keep their own margin:auto centering. The prose measure
+   is fluid: 72ch up to 1400px-wide windows, growing linearly to 95ch
+   by about 2200px, so wide windows spend their width on a longer line
+   instead of a wider gutter. The measure resolves in the CARD's ch
+   (the body size every paragraph inherits), never the kicker's own
+   font, so the h2 and the prose compute the same column. Text inside
+   the prose column stays left-set; only the column centers. */
 main.reading{width:92%;max-width:none}
-main.reading .card p{margin-left:auto;margin-right:auto}
+main.reading .card{display:grid;
+  grid-template-columns:1fr minmax(0,clamp(72ch,calc(72ch + 35vw - 490px),95ch)) 1fr}
+main.reading .card > *{grid-column:1 / -1}
+main.reading .card > h2,main.reading .card > p{grid-column:2}
+/* the grid column is the measure now: the base 72ch p cap would fight the
+   fluid column at wide windows, and grid margins do not collapse, so the
+   halved vertical margin keeps the rendered paragraph gap of block flow */
+main.reading .card p{max-width:none;margin:.225rem 0}
+main.reading .card p.hint,main.reading .card p.sub{max-width:none}
 .cols{display:grid;grid-template-columns:minmax(260px,360px) 1fr;gap:.75rem;
       align-items:start}
 @media(max-width:900px){.cols{grid-template-columns:1fr}}

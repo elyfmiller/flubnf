@@ -190,21 +190,48 @@ class _FakeWindow:
 
 def test_watchdog_quiet_when_page_already_loaded():
     w = _FakeWindow(initially_set=True)
-    assert cli._window_watchdog(w, "http://x", wait=0.05) == "loaded"
+    assert cli._window_watchdog(w, "http://x", wait=0.05,
+                                probe=lambda: True) == "loaded"
     assert w.load_url_calls == []
     assert w.load_html_calls == []
 
 
 def test_watchdog_reloads_a_dead_window_once():
+    # server answering, page dead: the one case a reload fixes
     w = _FakeWindow(loads_on_call=1)
-    assert cli._window_watchdog(w, "http://x", wait=0.05) == "recovered"
+    assert cli._window_watchdog(w, "http://x", wait=0.05,
+                                probe=lambda: True) == "recovered"
     assert w.load_url_calls == ["http://x"]
+    assert w.load_html_calls == []
+
+
+def test_watchdog_never_reloads_while_server_is_down():
+    # server NOT answering: a reload could only cache another refused page
+    # and cancel a navigation in flight (the cold-start reload storm), so
+    # the watchdog waits out its budget without touching the window
+    w = _FakeWindow(loads_on_call=None)
+    assert cli._window_watchdog(w, "http://x", wait=0.05,
+                                probe=lambda: False) == "failed"
+    assert w.load_url_calls == []
+    assert len(w.load_html_calls) == 1
+
+
+def test_watchdog_recovers_without_reload_when_page_lands_late():
+    # server down, no reloads allowed, but the pending navigation completes
+    # during the budget: recovered, window untouched
+    import threading
+    w = _FakeWindow(loads_on_call=None)
+    threading.Timer(0.08, w.events.loaded.fire).start()
+    assert cli._window_watchdog(w, "http://x", wait=0.06, retries=5,
+                                probe=lambda: False) == "recovered"
+    assert w.load_url_calls == []
     assert w.load_html_calls == []
 
 
 def test_watchdog_shows_failure_page_after_all_retries():
     w = _FakeWindow(loads_on_call=None)
-    assert cli._window_watchdog(w, "http://x", wait=0.05) == "failed"
+    assert cli._window_watchdog(w, "http://x", wait=0.05,
+                                probe=lambda: True) == "failed"
     assert len(w.load_url_calls) == 3              # 3 retries, then give up
     assert len(w.load_html_calls) == 1
     assert "did not start" in w.load_html_calls[0]
@@ -215,8 +242,47 @@ def test_watchdog_catches_load_event_fired_between_attach_and_wait():
     # loaded fired before the handler attached: is_set covers the race
     w = _FakeWindow()
     w.events.loaded._set = True
-    assert cli._window_watchdog(w, "http://x", wait=0.05) == "loaded"
+    assert cli._window_watchdog(w, "http://x", wait=0.05,
+                                probe=lambda: True) == "loaded"
     assert w.load_url_calls == []
+
+
+def test_default_probe_is_false_for_a_dead_server():
+    # nothing listens on this closed port: the real probe must say "down"
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    assert cli._server_answering(f"http://127.0.0.1:{port}",
+                                 timeout=0.3) is False
+
+
+# ------------------------------------------------- held app socket
+
+def test_bind_app_socket_holds_the_preferred_port():
+    sock, port = cli._bind_app_socket(0)     # 0 = any free port
+    try:
+        assert sock is not None
+        # the socket is LISTENING: a client connect succeeds even though
+        # nothing has called accept yet (the backlog holds it, which is
+        # what lets the window open before the server finishes importing)
+        with socket.create_connection(("127.0.0.1", port), 1.0):
+            pass
+    finally:
+        if sock is not None:
+            sock.close()
+
+
+def test_bind_app_socket_falls_back_past_a_live_listener():
+    with socket.socket() as busy:
+        busy.bind(("127.0.0.1", 0))
+        busy.listen(1)
+        base = busy.getsockname()[1]
+        sock, port = cli._bind_app_socket(base, tries=10)
+        try:
+            assert port != base
+        finally:
+            if sock is not None:
+                sock.close()
 
 
 # ------------------------------------- Windows liveness + cmdline shims

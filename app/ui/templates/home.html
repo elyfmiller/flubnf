@@ -30,10 +30,30 @@
  {{ outlook_toggle | safe }}
  {{ map_svg | safe }}
  <p class="hint">Most likely direction of admissions.
- {% if outlook_date %}Fitted results cover {{ outlook_n }} of 52
+ {% if outlook_pending %}Preparing the outlook &mdash; a few seconds on
+ first launch; this page updates by itself.
+ {% elif outlook_date %}Fitted results cover {{ outlook_n }} of 52
  jurisdictions in the latest run; the rest show as no data. Hover a state
  for its category probabilities.
  {% else %}Fills in when you run a forecast.{% endif %}</p>
+ {% if outlook_pending %}
+ {# cold first paint: the warm pass is still importing the science stack.
+    Poll the light readiness endpoint and reload ONCE when inline render
+    is guaranteed cheap; the reload lands on the ready branch, so this
+    script can never render twice. #}
+ <script>
+ (function () {
+   var t = setInterval(function () {
+     fetch('/api/outlook-ready')
+       .then(function (r) { return r.json(); })
+       .then(function (d) {
+         if (d.ready) { clearInterval(t); location.reload(); }
+       })
+       .catch(function () {});
+   }, 600);
+ })();
+ </script>
+ {% endif %}
 </div>
 
 <div class="card"><h2>How it works</h2>

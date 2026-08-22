@@ -55,15 +55,32 @@ def test_figures_and_eqpanels_carry_their_centering_margins():
     assert "margin:.35rem auto .2rem;" in joined     # .valpanel
 
 
-def test_prose_centers_at_its_measure_inside_reading_cards():
-    """The whole composition shares one center: within main.reading the
-    card prose block centers at its 72ch measure (text stays left-set),
-    so paragraphs, figures, and equation panels line up on the card's
-    center axis instead of the prose hugging left below centered art."""
+def test_prose_and_kicker_share_one_edge_inside_reading_cards():
+    """One shared content edge (fourth report on this surface, 2026-08-22:
+    the kicker sat at the card's left edge while the centered prose floated
+    with a large asymmetric left gap). Every reading card is a three-column
+    grid whose centered middle column is the FLUID prose measure (72ch,
+    growing to 95ch at wide windows); the kicker (h2) and every paragraph
+    share that column, so kicker left equals prose left with symmetric
+    gutters by construction, and figures, equation panels, and tables span
+    all three columns with their own margin:auto centering. Geometry
+    verified in-browser 2026-08-22 at 1280/1800/2200: kicker left == prose
+    left exactly, left and right gaps equal within 0.1 px, measure 71.9,
+    84.7, and 94.9 ch."""
     joined = " ".join(NAU.split())
-    assert ("main.reading .card p{margin-left:auto;margin-right:auto}"
+    assert ("main.reading .card{display:grid; grid-template-columns:"
+            "1fr minmax(0,clamp(72ch,calc(72ch + 35vw - 490px),95ch)) 1fr}"
             in joined)
-    # the base prose measure is untouched
+    # every child spans the card; ONLY the kicker and the prose take the
+    # measure column, so figures and tables keep their full-width centering
+    assert "main.reading .card > *{grid-column:1 / -1}" in joined
+    assert ("main.reading .card > h2,main.reading .card > p{grid-column:2}"
+            in joined)
+    # the grid column IS the measure inside reading cards (the base 72ch
+    # cap would fight the fluid column), and the halved vertical margin
+    # compensates for grid margins never collapsing
+    assert "main.reading .card p{max-width:none;margin:.225rem 0}" in joined
+    # the base prose measure outside reading pages is untouched
     assert ".card p{margin:.45rem 0;max-width:72ch}" in joined
 
 
