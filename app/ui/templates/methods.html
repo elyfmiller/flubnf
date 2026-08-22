@@ -1,5 +1,8 @@
 {% extends "base.html" %}{% import "diagrams.html" as dg %}
 {% block title %}FluBNF · Methods{% endblock %}
+{# the reading column centers on the page (main.reading); the prose keeps
+   its 72ch measure and left-set text within the centered column #}
+{% block main_class %}reading{% endblock %}
 {% block content %}
 <style>
  /* One reading column on this page: prose already left-aligns under its

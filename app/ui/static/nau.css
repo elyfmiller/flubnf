@@ -177,7 +177,19 @@
    both blocks sit after the theme blocks so they win the cascade at equal
    specificity, and the vision block sits after the contrast block so that
    with both modifiers on, --ok/--bad follow the cvd pair while the
-   contrast block retargets that pair's own -hc variants. */
+   contrast block retargets that pair's own -hc variants.
+
+   WHAT THE CV-SAFE TOGGLE DOES AND DOES NOT MOVE: it remaps exactly the
+   semantic ok/bad pair and the outlook map's --cat-* scale, because those
+   palettes carry a red/green language. Two chart palettes are STATIC-SAFE
+   BY CONSTRUCTION and are deliberately NOT remapped here -- do not expect
+   the toggle to move them: the member-line map (player.js MODEL_COLORS,
+   dichromat-spaced 2026-08-21, audited in test_a11y_modes.py) and the
+   season-line palette (player.js SEASON_COLORS, spaced 2026-08-21,
+   audited in test_season_palette.py). Both hold 60+ simulated distance
+   under the Vienot deuteranopia and protanopia matrices for every pair
+   that can share a chart, in every vision mode, so a line keeps its one
+   identity whether or not the toggle is on. */
 [data-contrast="high"]{
   --ink:var(--ink-hc); --mut:var(--mut-hc); --nav-ink:var(--nav-ink-hc);
   --line:var(--line-hc); --field-line:var(--field-line-hc);
@@ -255,6 +267,15 @@ header.nav .spacer{flex:1}
 /* ---- layout: fluid to a wide cap; padding grows with the window ---- */
 main{max-width:1500px;margin:0 auto;
      padding:1.1rem clamp(1rem,2.5vw,2.5rem) 3rem}
+/* the centered reading column (Methods and the Models views opt in via
+   the shell's main_class block): the content column narrows to a reading
+   width and centers on the page, per user preference 2026-08-21. Prose
+   keeps its 72ch measure and left-set text WITHIN the centered column,
+   and the figures, equation panels, and captions ride along at the same
+   left content edge (their scoped alignment rules are unchanged).
+   Operational pages (Forecast, Runs, Data, Retrospective) keep the
+   full-width shell. */
+main.reading{max-width:880px}
 .cols{display:grid;grid-template-columns:minmax(260px,360px) 1fr;gap:.75rem;
       align-items:start}
 @media(max-width:900px){.cols{grid-template-columns:1fr}}
@@ -333,6 +354,19 @@ td,th{padding:.38rem .6rem;border-bottom:1px solid var(--line);text-align:left}
 /* numeric columns right-align wherever they appear (.perf and .playstats
    restate this for their own scopes; this is the general rule) */
 td.num,th.num{text-align:right}
+/* a compact table: natural width instead of the page-wide default, so a
+   two-column week/value listing reads as a tight instrument (its numbers
+   sit right beside their weeks) rather than a card-wide ledger with a
+   dead band between the columns */
+table.compact{width:auto}
+/* the Data page's vintage browser: sparkline and recent-weeks table share
+   the card side by side at desktop widths, stacking on narrow screens */
+.vintagecols{display:grid;grid-template-columns:minmax(0,1fr) auto;
+  gap:.4rem 2.2rem;align-items:start}
+@media(max-width:900px){.vintagecols{grid-template-columns:1fr}}
+/* the table column sizes to its table, not to an unwrapped caption: the
+   caption wraps at the instrument's own width */
+.vintagetable p.hint{max-width:24ch}
 th{color:var(--mut);font-weight:600;font-size:.72rem;text-transform:uppercase;
    letter-spacing:.04em}
 code{background:var(--bg);padding:.12rem .35rem;border-radius:5px;font-size:.85em;
@@ -567,6 +601,10 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
 .archrow .grow{flex:1;min-width:12rem}
 .archrow form{display:inline;margin:0}
 .archrow button{margin-top:0;padding:.22rem .6rem;font-size:.78rem}
+/* the storage panel's headline: total disk use in the .big figure with its
+   scope note beside it */
+.stotal{display:flex;gap:.6rem;align-items:baseline;flex-wrap:wrap;
+  margin:.1rem 0 .5rem;max-width:none}
 
 /* skip link: first tab stop on every page, visually hidden until focused */
 a.skip{position:absolute;left:-9999px;top:0;z-index:100;

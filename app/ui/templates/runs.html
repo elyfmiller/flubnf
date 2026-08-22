@@ -61,6 +61,14 @@
 
 {% if storage %}
 <div class="card"><h2>Storage</h2>
+ {# the headline figure first: one number for everything the panel manages
+    (run workroots, retrospective seasons, archived retro runs, report
+    archives). The protected trees are listed below with their own sizes
+    but stay outside the total, and the copy says so. #}
+ <p class="stotal"><span class="big">{{ storage.total_h }}</span>
+  <span class="hint">total on disk across run workroots, retrospective
+  seasons, archived runs, and report archives. The protected trees below
+  are listed with their sizes but not counted here.</span></p>
  <p class="hint">What this application holds on disk. Deleting an entry is
  permanent and goes through the same name-and-size confirmation as every
  other destructive control; nothing running or paused can be deleted. The
@@ -84,6 +92,44 @@
   {% endif %}
  </div>
  {% else %}<p class="hint">No workroots on disk.</p>{% endfor %}
+ {% if clear_workroots.count %}
+ {# the clear-all sweep beside the per-item deletes: the confirmation names
+    the count AND the total size it removes; the active run is excluded
+    server-side (and re-checked at delete time), ledger rows are kept with
+    their dash, and the seal and hub are refused by the protection barrier
+    as ever. The stale-count contract matches the ledger clear above. #}
+ <form method="post" action="/storage/clear-workroots" id="clear-workroots">
+  <input type="hidden" name="confirm" value="">
+  <button type="button" class="quiet" id="clear-workroots-btn"
+    data-count="{{ clear_workroots.count }}"
+    data-size="{{ clear_workroots.size_h }}">Delete all
+    {{ clear_workroots.count }} completed
+    workroot{{ "" if clear_workroots.count == 1 else "s" }}
+    ({{ clear_workroots.size_h }})</button>
+ </form>
+ <script>
+  (function(){
+   var b=document.getElementById('clear-workroots-btn');
+   if(!b)return;
+   b.addEventListener('click',function(){
+    var f=b.form,n=b.dataset.count,s=b.dataset.size;
+    if(!f||!window.FluBNFConfirm)return;
+    window.FluBNFConfirm({
+     title:'Delete all completed run workroots?',
+     msg:'This permanently deletes '+n+' workroot'+(n==='1'?'':'s')
+       +' totaling '+s+' on disk. A run that is active right now is '
+       +'excluded, and it cannot be undone.',
+     hint:'Every ledger row is kept and will show a dash for disk use, '
+       +'exactly as a single workroot delete leaves it. The sealed '
+       +'validation record and the hub clone are separate protected '
+       +'trees and are never touched.',
+     okLabel:'Delete '+n+' workroot'+(n==='1'?'':'s'),
+     onOk:function(){f.confirm.value=n;f.submit();}
+    });
+   });
+  })();
+ </script>
+ {% endif %}
 
  <h3 class="hint" style="margin:.8rem 0 .2rem">Retrospective seasons</h3>
  {% for s in storage.retro %}

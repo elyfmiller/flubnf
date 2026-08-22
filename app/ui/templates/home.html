@@ -14,10 +14,18 @@
  {# the model that computed the map, so home and the weekly report -- which
     share one computation through the report inputs bundle -- are labeled
     surfaces of the same forecast; the approximate note appears only for
-    pre-bundle runs, where the exact cards no longer exist #}
- {% if outlook_model_label %}<p class="sub mapmodel">{{ outlook_model_label
-  }}{% if outlook_approx %} · approximate, from stored quantiles{% endif %}</p>
+    pre-bundle runs, where the exact cards no longer exist. The label span
+    is the model toggle's target (data-mapmodel-label), so switching
+    models relabels the surface it recolors. #}
+ {% if outlook_model_label %}<p class="sub mapmodel"><span
+   data-mapmodel-label>{{ outlook_model_label }}</span
+  >{% if outlook_approx %} · approximate, from stored quantiles{% endif %}</p>
  {% endif %}
+ {# the outlook model toggle (aria-pressed buttons + client-side fill
+    swap): rendered by the server ONLY when the latest run's bundle
+    carries per-model cards for two or more models, so a stored run from
+    before per-model cards shows its one model with no toggle #}
+ {{ outlook_toggle | safe }}
  {{ map_svg | safe }}
  <p class="hint">Most likely direction of admissions.
  {% if outlook_date %}Fitted results cover {{ outlook_n }} of 52

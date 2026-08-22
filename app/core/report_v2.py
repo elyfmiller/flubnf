@@ -87,6 +87,32 @@ def model_colors() -> dict:
 
 MEMBER_COLORS = model_colors()
 
+#: fallback season-line palette, equal to the player's marked list: used
+#: only if the marked JSON cannot be read (a broken checkout must not sink
+#: the forecast data panel)
+_SEASON_COLOR_FALLBACK = ["#A87300", "#3375FB", "#C9568C",
+                          "#0087AF", "#B96D36", "#8568E3"]
+
+
+def season_colors() -> list:
+    """The one season-line palette, read from the shared player core.
+
+    The model_colors contract applied to the season-over-season charts:
+    player.js carries the palette as a marked JSON literal (SEASON_COLORS),
+    and this parse hands the SAME values to every Python surface, so a
+    season wears one color everywhere one is drawn. The palette is
+    STATIC-SAFE BY CONSTRUCTION (dichromat-spaced and ground-audited; see
+    the SEASON_COLORS comment in player.js), which is why the CV-safe mode
+    deliberately does not remap it. Degrades to the equal fallback literals
+    rather than raising."""
+    try:
+        src = PLAYER_SRC.read_text(encoding="utf-8")
+        m = re.search(r"/\*SEASON_COLORS_JSON\*/\s*(\[.*?\])"
+                      r"\s*/\*END_SEASON_COLORS_JSON\*/", src, re.S)
+        return json.loads(m.group(1)) if m else list(_SEASON_COLOR_FALLBACK)
+    except Exception:
+        return list(_SEASON_COLOR_FALLBACK)
+
 
 def _rgba(hexs: str, alpha: float) -> str:
     r, g, b = (int(hexs.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
@@ -103,7 +129,11 @@ QBANDS = ((0.025, 0.975, _rgba(_PF_COLOR, 0.13), "95% interval"),
 #: what each map-producing model is called ON the map surfaces (home and
 #: the weekly report label their maps with the model that computed them)
 MODEL_LABEL = {"ensemble": "NAU ensemble outlook",
-               "pf": "PF-SIHRS outlook"}
+               "pf": "PF-SIHRS outlook",
+               "analogue": "Calendar analogue outlook"}
+#: display order for the outlook model toggle: the submitted forecast
+#: first, then the members
+MODEL_ORDER = ("ensemble", "pf", "analogue")
 
 # Shared embed config: wheel zooms both ways, double-click resets, hover
 # modebar offers zoom-out/reset (lasso/box-select/autoscale pruned);
@@ -122,12 +152,16 @@ PLOTLY_CONFIG = {"scrollZoom": True, "doubleClick": "reset+autosize",
 # still covering every band the fan draws plus room for future band
 # choices (the FluSight 23-level grid).
 BUNDLE_NAME = "report_inputs.json"
-BUNDLE_VERSION = 2
+BUNDLE_VERSION = 3
 #: every bundle format this builder can render. v2 added one ADDITIVE
 #: field, cards_model (which model computed the map cards); a v1 bundle
 #: simply lacks it and renders as PF, which is what every v1 run's cards
-#: were computed from. Serving code accepts any version listed here.
-SUPPORTED_BUNDLE_VERSIONS = (1, 2)
+#: were computed from. v3 added the ADDITIVE cards_by_model and
+#: national_map_cards fields (per-model hover cards, all computed by the
+#: same quantile-CDF path), which power the outlook model toggle; a v1/v2
+#: bundle simply lacks them and renders its one model with no toggle, its
+#: label as honest as ever. Serving code accepts any version listed here.
+SUPPORTED_BUNDLE_VERSIONS = (1, 2, 3)
 FAN_LEVELS = (0.01, 0.025, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35,
               0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80,
               0.85, 0.90, 0.95, 0.975, 0.99)
@@ -507,7 +541,10 @@ def page_style() -> str:
 def build_report(reference_date: str, state_cards: dict, state_details: dict,
                  national: dict, out_path: Path,
                  national_map_html: str = "", elapsed_s=None,
-                 settings_html: str = "", model_label: str = "") -> Path:
+                 settings_html: str = "", model_label: str = "",
+                 cards_by_model: dict | None = None,
+                 national_map_cards: dict | None = None,
+                 cards_model: str = "") -> Path:
     """state_cards: abbr -> hover-card data (choropleth).
     state_details: abbr -> dict(name, fan=…, cat=…, acc=…, table_rows=[…]).
     national: dict(fan=…, acc=…, summary_html=str).
@@ -520,14 +557,43 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
     produced it. Omitted when the caller does not supply it.
     model_label: which model computed the MAP's cards, as shown to the
     reader (see MODEL_LABEL); defaults to the PF label, which is what
-    every card set predating the label was computed from."""
+    every card set predating the label was computed from.
+    cards_by_model: OPTIONAL per-model hover cards (model -> abbr -> card,
+    the v3 bundle's cards_by_model), all computed by the same quantile-CDF
+    path; with two or more models an aria-pressed model toggle appears
+    above the map and swaps the fills, hovers, and label client-side.
+    national_map_cards: the per-model national cards riding with it.
+    cards_model: which model the map was RENDERED with (the toggle's
+    default); label and toggle stay honest for bundles that lack the
+    per-model cards, which simply render their one model, no toggle."""
     # Build-time SVG map (see usmap.py) -- the plotly geo choropleth fetched
     # its geometry from cdn.plot.ly at runtime and rendered empty offline/CSP.
+    from app.core import usmap
     from app.core.usmap import cat_fill, svg_map
     cards_by_fips = {c["fips"]: c for c in state_cards.values() if "fips" in c}
     # only states that actually have a detail section invite a click
     map_html = svg_map(cards_by_fips, clickable=set(state_details))
     model_label = model_label or MODEL_LABEL["pf"]
+    # the outlook model toggle (v3 bundles): rendered only when the bundle
+    # actually carries cards for two or more models
+    model_toggle_html = ""
+    cbm = {m: c for m, c in (cards_by_model or {}).items() if c}
+    if len(cbm) >= 2:
+        order = [m for m in MODEL_ORDER if m in cbm] \
+            + [m for m in cbm if m not in MODEL_ORDER]
+        default = cards_model if cards_model in cbm else order[0]
+        payload = {}
+        for m in order:
+            byf = {c["fips"]: c for c in cbm[m].values()
+                   if isinstance(c, dict) and c.get("fips")}
+            payload[m] = {
+                "states": usmap.state_swap_payload(byf),
+                "us": usmap.nat_swap_payload(
+                    (national_map_cards or {}).get(m) or {})}
+        model_toggle_html = usmap.model_toggle(
+            order, MODEL_LABEL, default, payload,
+            group_id="outlook-model", btn_class="", active_class="on",
+            wrap_class="viewtoggle")
 
     sections = []
     back_btn = ('<button class="backbtn" onclick="backToMap()">'
@@ -608,12 +674,14 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
 {page_style()}</head><body><main>
 {page_header()}
 <h1>US influenza forecast</h1>
-<p class="sub">week of {reference_date} · {model_label} · click a state for
+<p class="sub">week of {reference_date} ·
+ <span data-mapmodel-label>{model_label}</span> · click a state for
  detail · Ctrl+scroll to zoom (⌘ on Mac), drag to pan, double-click to reset
  · <button id="natbtn">national detail</button></p>
+{model_toggle_html}
 {view_toggle}
 <div class="card" id="map-anchor">
-<p class="hint mapmodel">{model_label}</p>
+<p class="hint mapmodel" data-mapmodel-label>{model_label}</p>
 <div id="map-state" class="mapcap">{map_html}</div>
  {nat_map_div}
  <div class="legend">
@@ -740,7 +808,13 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
         Path(out_path), national_map_html=nat_map_html,
         elapsed_s=bundle.get("elapsed_s"),
         settings_html=bundle.get("settings_html", ""),
-        model_label=MODEL_LABEL.get(cards_model, MODEL_LABEL["pf"]))
+        model_label=MODEL_LABEL.get(cards_model, MODEL_LABEL["pf"]),
+        # the additive v3 fields: per-model cards for the outlook model
+        # toggle. A v1/v2 bundle lacks them and renders its one model with
+        # no toggle, exactly as before.
+        cards_by_model=bundle.get("cards_by_model") or {},
+        national_map_cards=bundle.get("national_map_cards") or {},
+        cards_model=cards_model)
 
 
 def builder_sources_mtime() -> float:

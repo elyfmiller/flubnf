@@ -16,6 +16,9 @@ from app.ui import server as srv                     # noqa: E402
 
 client = TestClient(srv.app)
 
+NAU = (Path(__file__).resolve().parents[1]
+       / "ui" / "static" / "nau.css").read_text()
+
 V1, V2 = "2098-01-03", "2098-01-10"
 
 
@@ -94,6 +97,40 @@ def test_vintage_browser_shows_what_that_week_knew(archive):
     assert ">155<" not in html and ">190<" not in html   # V2's revisions
     # Wyoming's unreported row was dropped, so V1 covers 3 jurisdictions
     assert "3 jurisdictions" in joined
+
+
+def test_recent_weeks_reads_as_a_compact_instrument(archive):
+    """The vintage browser's density fix: the recent-weeks table keeps a
+    compact natural width with its numbers right-set directly beside their
+    weeks, and it sits beside the sparkline at desktop widths instead of
+    spanning the card as a page-wide ledger."""
+    html = client.get("/data?loc=Ohio").text
+    # sparkline and table share the two-column layout
+    assert 'class="vintagecols"' in html
+    assert html.index('class="vintagecols"') < html.index("<polyline")
+    # the table is compact (width:auto), header and values right-aligned
+    assert '<table class="compact">' in html
+    assert '<th class="num">admissions</th>' in html
+    assert '<td class="num">' in html
+    # the page-wide table wrapper is gone from the vintage browser
+    assert '<div style="overflow-x:auto"><table>' not in html
+    # the stylesheet carries the rules the classes rely on
+    assert "table.compact{width:auto}" in " ".join(NAU.split())
+    assert ".vintagecols{display:grid" in " ".join(NAU.split())
+    assert "@media(max-width:900px){.vintagecols{grid-template-columns:1fr}}" \
+        in " ".join(NAU.split())
+    # the caption wraps at the instrument's width, not the card's
+    assert ".vintagetable p.hint{max-width:24ch}" in " ".join(NAU.split())
+
+
+def test_no_series_still_says_so_in_words(archive):
+    # Wyoming's one row was unreported, so V1 dropped the location: the
+    # fallback note appears and the layout renders the fallback location's
+    # real series rather than an empty two-column shell
+    html = client.get(f"/data?vintage={V1}&loc=Wyoming").text
+    joined = " ".join(html.split())
+    assert "not in the" in joined and "showing US" in joined
+    assert 'class="vintagecols"' in html          # the fallback's series
 
 
 def test_bad_selections_fall_back_with_a_note_never_an_error(archive):

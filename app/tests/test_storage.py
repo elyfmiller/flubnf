@@ -251,6 +251,112 @@ def test_delete_retro_archive_and_report_archive(state):
     assert not (state["root"] / "archive" / "2098-01-03").exists()
 
 
+# ------------------------------------------------- total and clear-all sweep
+
+def test_total_disk_metric_sums_the_managed_categories_only(state):
+    """The panel's headline figure: workroots + retro seasons + archived
+    retro runs + report archives, with the protected trees (seal, hub)
+    deliberately outside the total."""
+    from app.core import retro
+    inv = srv._storage_inventory()
+    expect = 0
+    for rid in state["rids"].values():
+        expect += retro.dir_size(state["root"] / "workroots" / rid)
+    expect += retro.dir_size(state["retro_root"] / SEASON)
+    expect += retro.dir_size(
+        state["retro_root"] / f"{SEASON}__archived_{ARCH_STAMP}")
+    expect += retro.dir_size(state["root"] / "archive" / "2098-01-03")
+    assert inv["total_bytes"] == expect
+    assert inv["total_h"] == retro.human_bytes(expect)
+    # protected trees are excluded from the figure but still listed
+    assert any(p["label"] == "Sealed validation record"
+               for p in inv["protected"])
+    html = client.get("/runs").text
+    joined = " ".join(html.split())
+    assert f'<span class="big">{inv["total_h"]}</span>' in html
+    assert "not counted here" in joined                # the copy says so
+
+
+def test_clear_all_control_names_count_and_total_size(state):
+    from app.core import retro
+    cw = srv._clearable_workroots()
+    assert len(cw) == 3                    # the live run's is excluded
+    assert state["rids"]["running"] not in [w["id"] for w in cw]
+    html = client.get("/runs").text
+    joined = " ".join(html.split())
+    assert "Delete all 3 completed workroots" in joined
+    size_h = retro.human_bytes(sum(w["bytes"] for w in cw))
+    assert f'data-size="{size_h}"' in html
+    assert 'data-count="3"' in html
+    # the confirmation goes through the shared shell and names both
+    assert "totaling '+s+' on disk" in html
+    assert "window.FluBNFConfirm" in html
+
+
+def test_clear_all_refuses_a_stale_count(state):
+    r = client.post("/storage/clear-workroots", data={"confirm": "9"},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    for rid in state["rids"].values():
+        assert (state["root"] / "workroots" / rid).is_dir()
+    assert "Nothing was deleted" in _flash() \
+        or "Nothing was\ndeleted" in _flash()
+
+
+def test_clear_all_deletes_completed_keeps_active_and_ledger_rows(state):
+    r = client.post("/storage/clear-workroots", data={"confirm": "3"},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    # the three completed runs' workroots are gone; the active one stays
+    for status in ("ok", "stopped", "error"):
+        assert not (state["root"] / "workroots"
+                    / state["rids"][status]).exists()
+    assert (state["root"] / "workroots"
+            / state["rids"]["running"]).is_dir()
+    assert "Deleted 3 completed run workroots" in _flash()
+    assert "ledger row" in _flash()
+    # every ledger row remains, the cleared ones honestly dangling
+    html = client.get("/runs").text
+    for rid in state["rids"].values():
+        assert rid in html
+    row = html.split(f'href="/runs/{state["rids"]["ok"]}"', 1)[1] \
+              .split("</tr>", 1)[0]
+    assert ">--</td>" in row
+    # the other storage categories were not touched
+    assert (state["retro_root"] / SEASON).is_dir()
+    assert (state["root"] / "archive" / "2098-01-03").is_dir()
+
+
+def test_clear_all_never_reaches_protected_trees(state):
+    """A workroot-shaped symlink into the seal is excluded from the sweep
+    (and from its count), and the seal survives a confirmed clear-all."""
+    link = state["root"] / "workroots" / "sneaky"
+    link.symlink_to(state["seal"] / SEASON)
+    srv._invalidate_scans()
+    cw = srv._clearable_workroots()
+    assert "sneaky" not in [w["id"] for w in cw]
+    assert len(cw) == 3
+    r = client.post("/storage/clear-workroots", data={"confirm": "3"},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    assert (state["seal"] / SEASON / "weeks" / "sealed.json").is_file()
+    assert link.is_symlink()               # not even the link went
+
+
+def test_clear_all_with_nothing_to_do_says_so(state):
+    for status in ("ok", "stopped", "error"):
+        import shutil
+        shutil.rmtree(state["root"] / "workroots" / state["rids"][status])
+    srv._invalidate_scans()
+    r = client.post("/storage/clear-workroots", data={"confirm": "0"},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    assert "No completed run workroots" in _flash()
+    # and the control disappears from the page
+    html = client.get("/runs").text
+    assert "Delete all" not in html
+
+
 # ------------------------------------------------------------ hard barriers
 
 def test_seal_and_hub_are_refused_on_any_crafted_request(state):
