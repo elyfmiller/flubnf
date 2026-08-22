@@ -50,13 +50,17 @@ TWO TRAPS, BOTH PAID FOR
 """
 from __future__ import annotations
 
+import math
 from datetime import date, timedelta
+from statistics import NormalDist
 from typing import Iterable, Mapping, Optional
 
 import numpy as np
 
 DEFAULT_BANDWIDTH = 2
 MIN_DONORS = 30
+
+_STD_NORMAL = NormalDist()
 
 
 def epiweek(d: date) -> int:
@@ -110,23 +114,51 @@ def donor_ratios(bank: Mapping[tuple, float], target_epiweek: int,
 
 
 def analogue_quantiles(anchor: float, ratios: np.ndarray,
-                       levels: Iterable[float]) -> Optional[dict]:
+                       levels: Iterable[float], *,
+                       completeness: Optional[float] = None,
+                       widen_log_sd: Optional[float] = None) -> Optional[dict]:
     """Scale the anchor by the empirical ratio distribution.
 
     Returns None rather than a degenerate dict when the inputs cannot support a
     forecast -- callers must treat None as "no forecast", not as zero.
+
+    `completeness` (Build 2, 2026-08-21 handoff section 4): the state's frozen
+    first-issue/final ratio at lag 0. The anchor is divided by it, so a state
+    whose newest point typically arrives at 93% of its settled value forecasts
+    from anchor/0.93. None (the default) is byte-identical to the historical
+    behavior. A non-finite or non-positive value raises: a broken correction
+    table must fail loudly, not pass as a silent un-correction.
+
+    `widen_log_sd`: residual uncertainty of the completeness correction, as a
+    log-scale sd. Applied as q'(L) = q(L) * exp(z_L * widen_log_sd) with z_L
+    the standard normal quantile of L -- the median is unchanged (z = 0),
+    tails widen multiplicatively, monotonicity is preserved. None or 0.0 is
+    byte-identical to the historical behavior.
     """
     if anchor is None or not np.isfinite(anchor) or anchor <= 0:
         return None
+    if completeness is not None:
+        c = float(completeness)
+        if not math.isfinite(c) or c <= 0:
+            raise ValueError(f"completeness must be finite and > 0, got {c!r}")
+        anchor = anchor / c
     r = np.asarray(ratios, dtype=float)
     r = r[np.isfinite(r)]
     if r.size < MIN_DONORS:
         return None
     q = {float(L): float(anchor * np.quantile(r, L)) for L in levels}
+    if widen_log_sd is not None:
+        s = float(widen_log_sd)
+        if not math.isfinite(s) or s < 0:
+            raise ValueError(f"widen_log_sd must be finite and >= 0, got {s!r}")
+        if s > 0:
+            q = {L: v * math.exp(_STD_NORMAL.inv_cdf(L) * s)
+                 for L, v in q.items()}
     if not np.isfinite(q.get(0.5, np.nan)) or q[0.5] <= 0:
         return None
     # np.quantile is monotone in L, and anchor > 0, so the result is already
-    # sorted; assert rather than sort, because a violation means a real bug.
+    # sorted (the widening factor is itself increasing in L); assert rather
+    # than sort, because a violation means a real bug.
     vals = [q[float(L)] for L in sorted(q)]
     if any(b < a - 1e-9 for a, b in zip(vals, vals[1:])):
         return None
@@ -135,11 +167,18 @@ def analogue_quantiles(anchor: float, ratios: np.ndarray,
 
 def forecast(anchor: float, as_of: date, horizon: int,
              bank: Mapping[tuple, float], levels: Iterable[float],
-             bandwidth: int = DEFAULT_BANDWIDTH) -> Optional[dict]:
-    """One analogue predictive distribution. `bank` maps (location, date)->value."""
+             bandwidth: int = DEFAULT_BANDWIDTH, *,
+             completeness: Optional[float] = None,
+             widen_log_sd: Optional[float] = None) -> Optional[dict]:
+    """One analogue predictive distribution. `bank` maps (location, date)->value.
+
+    `completeness` / `widen_log_sd` pass through to `analogue_quantiles`;
+    their None defaults keep this byte-identical to the historical path.
+    """
     r = donor_ratios(bank, epiweek(as_of), season_of(as_of), horizon,
                      bandwidth=bandwidth)
-    return analogue_quantiles(anchor, r, levels)
+    return analogue_quantiles(anchor, r, levels, completeness=completeness,
+                              widen_log_sd=widen_log_sd)
 
 
 def build_bank(truth_rows: Iterable) -> dict:

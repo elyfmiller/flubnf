@@ -269,10 +269,14 @@
  // chart text rides the type system: the brand face with a system fallback,
  // sized from the root font size so the A-/A/A+ control reaches it
  const rootPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
- function lay(title, h){ const fs=rootPx();
+ // the chart background is the card surface it sits on, stated EXPLICITLY
+ // (not transparent): on screen it composites identically, and the
+ // modebar's save-PNG export then carries an opaque theme ground inside
+ // the file, so the exported image stays readable on its own
+ function lay(title, h){ const fs=rootPx(), surf=css('--card');
    return {title:{text:title,font:{size:Math.round(fs*.875)}},
    height:h||340, margin:{l:50,r:20,t:34,b:40},
-   paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)',
+   paper_bgcolor:surf, plot_bgcolor:surf,
    font:{color:css('--ink'),family:'"DM Sans",system-ui,sans-serif',
          size:Math.round(fs*.8)},
    xaxis:{gridcolor:css('--line')},
@@ -288,6 +292,11 @@
    return MONNAMES[+p[1]-1]+' '+(+p[2])+', '+p[0];}
  let SHOWPTS=false, CURMODE='season', DIDX=0;
  const PCONF={responsive:true, displaylogo:false};
+ // per-chart embed config: the save-PNG button exports at 2x for crisp
+ // figures under a meaningful filename instead of "newplot"
+ function pconf(name){return Object.assign({},PCONF,
+   {toImageButtonOptions:{format:'png',scale:2,
+     filename:('flubnf_'+name).replace(/[^\w-]+/g,'_')}});}
  const DATA_SEL=document.getElementById('data-loc');
  const LOCS=[DATA_SEL.value];   // data panel follows its own dropdown only
  function drawData(mode){
@@ -328,7 +337,8 @@
      el.innerHTML=''; div=document.createElement('div'); el.appendChild(div);}
    if(mode==='raw'){
      Plotly.react(div,[{x:s.dates,y:s.values,mode:lm,
-       line:{color:css('--gold'),width:2},marker:{size:5},name:loc}],lay(loc,380),PCONF);
+       line:{color:css('--gold'),width:2},marker:{size:5},name:loc}],lay(loc,380),
+       pconf('data_'+loc));
    }else{
      const by={};
      s.dates.forEach((d,i)=>{const k=seasonOf(d);(by[k]=by[k]||{x:[],y:[],d:[]});
@@ -347,7 +357,7 @@
      // point lives in the hover, so nobody does calendar arithmetic
      L.xaxis.tickvals=SEASON_MONTHS.map(m=>m[1]);
      L.xaxis.ticktext=SEASON_MONTHS.map(m=>m[0]);
-     Plotly.react(div,traces,L,PCONF);
+     Plotly.react(div,traces,L,pconf('data_seasons_'+loc));
    }
  }
  function setDataLoc(i){
@@ -440,7 +450,8 @@
    // react repaints the persistent fanplot div in place: the old chart
    // stands until the new one is ready, so a page flip never collapses
    // the card's height and never moves the page scroll
-   Plotly.react(document.getElementById('fanplot'),traces,lay(loc,400),PCONF);
+   Plotly.react(document.getElementById('fanplot'),traces,lay(loc,400),
+     pconf('forecast_'+FMODEL+'_'+loc+'_'+FCDATE));
    // the expanded view mirrors the card: same traces (copied, so the two
    // plots never share mutable state), viewport-sized height, its own
    // pager row kept in step with the card's
@@ -450,7 +461,8 @@
      syncLocSel(document.getElementById('fanx-loc'));
      Plotly.react(document.getElementById('fanxplot'),
        JSON.parse(JSON.stringify(traces)),
-       lay(loc,Math.max(420,Math.round(innerHeight*.68))),PCONF);
+       lay(loc,Math.max(420,Math.round(innerHeight*.68))),
+       pconf('forecast_'+FMODEL+'_'+loc+'_'+FCDATE));
    }
  }
  // both location selects (the card's and the expanded view's) list the

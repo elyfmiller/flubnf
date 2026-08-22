@@ -199,9 +199,16 @@ def cat_bar(probs):
 
 
 def _html(fig, include_js=False, div_id=None):
+    # figures already carry the opaque CARD ground (_fig_layout), so the
+    # modebar's save-PNG is readable on its own; the per-figure config adds
+    # a 2x export scale and a meaningful filename instead of "newplot"
+    config = dict(PLOTLY_CONFIG)
+    config["toImageButtonOptions"] = {
+        "format": "png", "scale": 2,
+        "filename": f"flubnf_{div_id or 'report_figure'}"}
     return fig.to_html(full_html=False,
                        include_plotlyjs=True if include_js else False,
-                       div_id=div_id, config=dict(PLOTLY_CONFIG))
+                       div_id=div_id, config=config)
 
 
 def page_header() -> str:

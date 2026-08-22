@@ -320,8 +320,10 @@
    preload: w => {if(V.view === 'map') fetchMap(w);},
    // ours: cyan family plus gold, solid; officials: greys, dashed or
    // dotted. Re-read per redraw so a theme change repaints correctly.
+   // card is the surface the plot sits on: the layout states it as the
+   // explicit chart background so the save-PNG export stays readable
    palette: () => ({ink: css('--ink'), mut: css('--mut'),
-     line: css('--line'),
+     line: css('--line'), card: css('--card'),
      models: {ensemble: css('--gold'), pf: css('--slate') || '#6E8FD0',
               analogue: '#FFC72C', pf2s: '#2BB5A0'},
      flusightEnsemble: '#AAB1C9'})

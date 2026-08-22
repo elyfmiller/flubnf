@@ -77,14 +77,29 @@ var DEFAULT_IDS = {prev: 'pb-prev', play: 'pb-play', next: 'pb-next',
   lock: 'fd-lock', models: 'fd-models', plot: 'fd-plot', msg: 'fd-msg',
   stats: 'pb-stats', status: 'pb-status', offhint: 'pb-offhint'};
 
-// the report's fixed dark kit; the console overrides with its CSS variables
+// the report's fixed dark kit; the console overrides with its CSS
+// variables. `card` is the surface the plot sits on: it is stated
+// explicitly as the chart background (identical on screen to the old
+// transparency) so the modebar's save-PNG export carries an opaque
+// ground inside the file and stays readable on its own.
 var DEFAULT_PALETTE = {ink: '#E9EAF4', mut: '#9AA1C4', line: '#262A45',
+  card: '#151729',
   models: {ensemble: '#34C0F0', pf: '#6E8FD0', analogue: '#FFC72C',
            pf2s: '#2BB5A0'},
   flusightEnsemble: '#C7CCDD'};
 
 var PCONF = {responsive: true, displaylogo: false, scrollZoom: true,
              doubleClick: 'reset'};
+
+// per-frame embed config: PCONF plus the save-PNG options (2x scale for a
+// crisp figure, a meaningful filename naming the location and week)
+function frameConf(loc, week){
+  var c = {}, k;
+  for(k in PCONF) c[k] = PCONF[k];
+  c.toImageButtonOptions = {format: 'png', scale: 2,
+    filename: ('flubnf_' + loc + '_' + week).replace(/[^\w-]+/g, '_')};
+  return c;
+}
 
 // ---------------------------------------------------------- pure helpers
 
@@ -477,11 +492,12 @@ function createPlayer(cfg){
       if(P.user.x){ xa.range = P.user.x.slice(); xa.autorange = false; }
       if(P.user.y){ ya.range = P.user.y.slice(); ya.autorange = false; }
       var fs = rootFont();
+      var surf = p.card || '#151729';
       var L = {title: {text: loc + ' · forecasts as of ' + w,
                        font: {size: Math.round(fs * .875)}},
         height: cfg.plotHeight || 400,
         margin: {l: 50, r: 20, t: 34, b: 40},
-        paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+        paper_bgcolor: surf, plot_bgcolor: surf,
         font: {color: p.ink, family: '"DM Sans",system-ui,sans-serif',
                size: Math.round(fs * .8)},
         xaxis: xa,
@@ -493,7 +509,7 @@ function createPlayer(cfg){
                   font: {size: Math.round(fs * .69), color: p.mut}}]};
       P.applying = true;
       var done = function(){ P.applying = false; bindPlot(); };
-      var pr = Plotly.react(el.plot, traces, L, PCONF);
+      var pr = Plotly.react(el.plot, traces, L, frameConf(loc, w));
       if(pr && pr.then) pr.then(done, done); else done();
     });
   }

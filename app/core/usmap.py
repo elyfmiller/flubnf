@@ -40,6 +40,16 @@ CAT_COLOR = {"large_decrease": "#2e7d4f", "decrease": "#7fc97f",
 # light theme uses a pale neutral; the fixed-dark report falls back to black).
 NO_DATA = "var(--map-nodata, #0a0a0a)"
 
+
+def cat_fill(cat: str) -> str:
+    """One category's fill, as a CSS variable with the classic literal as
+    its fallback. The console defines --cat-* in every theme block of
+    nau.css and remaps them under data-vision="cvd" (the red-green-safe
+    blue/orange scale), so the map and its legend follow the color-vision
+    mode with no server round trip; a standalone export without those
+    tokens (the fixed-dark weekly report) falls back to CAT_COLOR."""
+    return f"var(--cat-{cat.replace('_', '-')}, {CAT_COLOR[cat]})"
+
 VIEWBOX = "0 0 975 610"
 
 
@@ -229,7 +239,7 @@ def svg_map(cards_by_fips: dict, ink="#e9ecf2",
         probs = card.get("probs") or {}
         if probs:
             modal = max(probs, key=probs.get)
-            fill = CAT_COLOR[modal]
+            fill = cat_fill(modal)
             op = 0.55 + 0.45 * probs[modal]
         else:
             fill, op = NO_DATA, 1.0
@@ -264,7 +274,7 @@ def national_svg(us_card: dict, ink="#e9ecf2",
     probs = card.get("probs") or {}
     if probs:
         modal = max(probs, key=probs.get)
-        fill = CAT_COLOR[modal]
+        fill = cat_fill(modal)
         op = 0.55 + 0.45 * probs[modal]
     else:
         fill, op = NO_DATA, 1.0
@@ -283,9 +293,10 @@ def map_legend() -> str:
     categories in their fixed colors plus the no-data tone, each as a swatch
     (the .sw class the season player's toggles already use) with its label.
     Emitted beside every map that colors by category, so the encoding never
-    has to be learned by hovering."""
+    has to be learned by hovering. Swatches ride the same --cat-* tokens as
+    the map fills, so the legend follows the color-vision mode with them."""
     items = [
-        (CAT_COLOR[c], c.replace("_", " ")) for c in CATS
+        (cat_fill(c), c.replace("_", " ")) for c in CATS
     ] + [(NO_DATA, "no data")]
     spans = "".join(
         f'<span><span class="sw" style="background:{color}"></span>'
