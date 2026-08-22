@@ -211,3 +211,132 @@ def test_archive_carries_the_bundle(tmp_path, monkeypatch):
     srv._archive_run(w, "2098-01-03")
     assert (tmp_path / "archive" / "2098-01-03"
             / report_v2.BUNDLE_NAME).is_file()
+
+
+# ------------------- one computation, one source: home = the report's map
+
+
+def _synth_run_with_ensemble(workroot: Path):
+    """The bundle-test synthetic run, plus a vincentized ensemble and the
+    results.json the home page reads, laid out as a real latest workroot."""
+    import numpy as np
+    from app.core import ensemble as ens
+    from flubnf.settings import load_locations
+    locs = load_locations()
+    n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
+    spec = runs_mod.RunSpec(engine="pf", forecast_date="2098-01-03",
+                            locations=["Ohio", "US"])
+    rng = np.random.default_rng(7)
+    pf_samples = {loc: {str(h): (rng.gamma(5.0, 20.0, 400) + 10 * h).tolist()
+                        for h in (1, 2, 3, 4)}
+                  for loc in ("Ohio", "US")}
+    obs = {loc: [[f"2097-12-{d:02d}", 100.0 + d] for d in (6, 13, 20, 27)]
+           for loc in ("Ohio", "US")}
+    ens_q = {loc: ens.member_quantiles_from_samples(s)
+             for loc, s in pf_samples.items()}
+    workroot.mkdir(parents=True, exist_ok=True)
+    (workroot / "cells.json").write_text(json.dumps(
+        [{"location": "Ohio", "last_observed": 127.0},
+         {"location": "US", "last_observed": 127.0}]))
+    outcome = {}
+    srv._write_weekly_report(spec, workroot, pf_samples, obs,
+                             pd.DataFrame(), locs, n2f, 42.0, outcome,
+                             ens_q=ens_q)
+    (workroot / "results.json").write_text(json.dumps({
+        "forecast_date": "2098-01-03", "observed": obs,
+        "models": {"ensemble": {loc: {h: {str(l): v for l, v in q.items()
+                                          if str(l) in ("0.1", "0.25", "0.5",
+                                                        "0.75", "0.9")}
+                                      for h, q in qd.items()}
+                   for loc, qd in ens_q.items()}}}))
+    return outcome
+
+
+def test_home_map_renders_the_reports_exact_cards(tmp_path, monkeypatch):
+    """The two-maps bug, resolved: home reads the bundle's cards, so the
+    home map and the weekly report's map show the SAME categories from the
+    SAME model, and both surfaces are labeled with that model."""
+    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
+    w = tmp_path / "workroots" / "20980103T000000-abcdef"
+    _synth_run_with_ensemble(w)
+    srv._invalidate_scans()
+    rid, res = srv._latest_results()
+    assert rid == w.name
+    cards, meta = srv._outlook_cards(res, rid)
+    bundle = json.loads((w / report_v2.BUNDLE_NAME).read_text())
+    assert bundle["cards_model"] == "ensemble"      # the submitted forecast
+    expect = {c["fips"]: c for c in bundle["cards"].values() if c.get("fips")}
+    assert cards == expect                          # exact, not recomputed
+    assert meta == {"model": "ensemble", "approx": False,
+                    "label": "NAU ensemble outlook"}
+    # the model label lands on BOTH surfaces
+    assert "NAU ensemble outlook" in (w / "report.html").read_text()
+    home = client.get("/")
+    assert home.status_code == 200
+    assert "NAU ensemble outlook" in home.text
+    assert "approximate, from stored quantiles" not in home.text
+
+
+def test_pf_only_run_records_and_labels_pf(tmp_path):
+    _synth_run(tmp_path)
+    bundle = json.loads((tmp_path / report_v2.BUNDLE_NAME).read_text())
+    assert bundle["cards_model"] == "pf"
+    assert "PF-SIHRS outlook" in (tmp_path / "report.html").read_text()
+
+
+def test_pre_bundle_run_falls_back_and_labels_the_approximation(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
+    w = tmp_path / "workroots" / "20980103T000000-abcdef"
+    _synth_run_with_ensemble(w)
+    (w / report_v2.BUNDLE_NAME).unlink()            # a pre-bundle run
+    srv._invalidate_scans()
+    rid, res = srv._latest_results()
+    cards, meta = srv._outlook_cards(res, rid)
+    assert meta["approx"] is True and meta["model"] == "ensemble"
+    assert any(c.get("probs") for c in cards.values())
+    home = client.get("/")
+    assert "NAU ensemble outlook · approximate, from stored quantiles" \
+        in home.text
+
+
+def test_v1_bundle_still_loads_and_renders_as_pf(tmp_path, monkeypatch):
+    """Additive versioning: a v1 bundle (no cards_model) rebuilds fine and
+    wears the PF label its cards were computed with."""
+    d = _archived(tmp_path, monkeypatch)
+    b = d / report_v2.BUNDLE_NAME
+    bundle = json.loads(b.read_text())
+    bundle["version"] = 1
+    bundle.pop("cards_model", None)
+    b.write_text(json.dumps(bundle))
+    (d / "report.html").write_text("<html><body>OLD FACE</body></html>")
+    os.utime(d / "report.html", OLD_MTIME)
+    r = client.get("/output/report?date=2098-01-03")
+    assert r.status_code == 200 and "OLD FACE" not in r.text
+    assert "PF-SIHRS outlook" in r.text
+
+
+def test_categorical_probs_from_quantiles_matches_the_sample_computation():
+    """The ensemble's quantile-space categorical computation agrees with
+    the sample computation on the same distribution, within the grid's
+    resolution -- the exactness the old few-values-as-samples stand-in
+    lacked (it flipped borderline states)."""
+    import numpy as np
+    from app.core.report import (categorical_probs,
+                                 categorical_probs_from_quantiles)
+    from flubnf.quantiles import FLUSIGHT_QUANTILES
+    rng = np.random.default_rng(11)
+    s = rng.gamma(5.0, 20.0, 200_000)
+    pop, lo = 5_000_000, 100.0
+    grid = {float(l): float(np.quantile(s, l)) for l in FLUSIGHT_QUANTILES}
+    exact = categorical_probs(s, lo, pop, 1)
+    approx = categorical_probs_from_quantiles(grid, lo, pop, 1)
+    assert set(approx) == set(exact)
+    for c in exact:
+        assert abs(approx[c] - exact[c]) < 0.02, (c, approx[c], exact[c])
+    assert abs(sum(approx.values()) - 1.0) < 1e-9
+    # degenerate and hostile grids answer honestly, never raise
+    assert categorical_probs_from_quantiles({}, lo, pop, 1) == {}
+    assert categorical_probs_from_quantiles(grid, lo, 0, 1) == {}
+    point = categorical_probs_from_quantiles({"0.5": 100.0}, lo, pop, 1)
+    assert point["stable"] == 1.0

@@ -49,6 +49,60 @@ def test_weekly_report_fetches_nothing(tmp_path):
         assert m.group(0).startswith("http://www.w3.org/"), m.group(0)
 
 
+def test_weekly_report_is_theme_aware(tmp_path):
+    """The report embeds the console's full theme system and resolves it
+    at open: all four theme token blocks plus both accessibility modifier
+    blocks, verbatim from nau.css; a boot script that reads the console's
+    localStorage keys same-origin and falls back to the OS preferences
+    standalone; and, when charts are embedded, a retint pass that re-reads
+    the resolved tokens and re-resolves the figures' baked palette."""
+    import numpy as np
+
+    from app.core import report_v2
+    html = _build(tmp_path)
+    for sel in ('[data-theme="dark"]{', '[data-theme="paper"]{',
+                '[data-theme="dim"]{', '[data-contrast="high"]{',
+                '[data-vision="cvd"]{'):
+        assert sel in html, sel
+    assert "--bg:#F1EFF7" in html                   # the light palette too
+    assert report_v2.theme_token_css() in html      # nau.css verbatim
+    for probe in ("localStorage.getItem('theme')",
+                  "localStorage.getItem('contrast')",
+                  "localStorage.getItem('vision')",
+                  "prefers-color-scheme", "prefers-contrast"):
+        assert probe in html, probe
+    # print wins the cascade: it is the last token statement in the sheet
+    assert html.rindex("@media print") > html.rindex('[data-vision="cvd"]{')
+    # a chartless report ships no retint pass; a charted one must
+    assert "Plotly.react(g,g.data,g.layout)" not in html
+    rng = np.random.default_rng(5)
+    f_t = ["2098-01-10", "2098-01-17", "2098-01-24", "2098-01-31"]
+    q = report_v2.fan_quantiles(
+        f_t, {t: rng.gamma(4.0, 30.0, 300).tolist() for t in f_t})
+    fan = report_v2.fan_figure_from_quantiles(
+        ["2098-01-03"], [110.0], f_t, q, title="t")
+    charted = report_v2.build_report(
+        "2098-01-03", {}, {"OH": {"name": "Ohio", "fan": fan,
+                                  "cat": report_v2.cat_bar({"stable": 1.0}),
+                                  "table_rows": []}},
+        {}, tmp_path / "c.html").read_text()
+    assert "Plotly.react(g,g.data,g.layout)" in charted
+    # the retint map covers the figures' baked literals, resolved from the
+    # SAME tokens the chrome wears, category bars included (cvd reach)
+    for pair in ('MAP["#151729"]=css("--card"', 'MAP["#E9EAF4"]=css("--ink"',
+                 'MAP["#9AA1C4"]=css("--mut"', 'MAP["#262A45"]=css("--line"',
+                 'MAP["#b9b09b"]=css("--cat-stable"'):
+        assert pair in charted, pair
+
+
+def test_weekly_report_map_swatches_ride_the_category_tokens(tmp_path):
+    # the legend and confidence swatches resolve through --cat-*, so the
+    # color-vision modifier reaches them exactly as it reaches the map
+    html = _build(tmp_path)
+    assert 'style="background:var(--cat-increase, #e8a33d)' in html
+    assert "background:var(--cat-large-decrease, #2e7d4f)" in html
+
+
 def test_weekly_report_carries_a_print_stylesheet(tmp_path):
     html = _build(tmp_path)
     assert "@media print" in html
