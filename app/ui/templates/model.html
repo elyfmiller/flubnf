@@ -119,10 +119,13 @@
  // chart text rides the type system: the brand face with a system fallback,
  // sized from the root font size so the A-/A/A+ control reaches it
  const rootPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
- function lay(t,h){const fs=rootPx();
+ // explicit card-surface background (identical on screen to the old
+ // transparency): the save-PNG export then carries an opaque theme ground
+ // inside the file, so the image stays readable on its own
+ function lay(t,h){const fs=rootPx(),surf=css('--card');
   return {title:{text:t,font:{size:Math.round(fs*.875)}},height:h||400,
-  margin:{l:50,r:20,t:34,b:40},paper_bgcolor:'rgba(0,0,0,0)',
-  plot_bgcolor:'rgba(0,0,0,0)',
+  margin:{l:50,r:20,t:34,b:40},paper_bgcolor:surf,
+  plot_bgcolor:surf,
   font:{color:css('--ink'),family:'"DM Sans",system-ui,sans-serif',
         size:Math.round(fs*.8)},
   xaxis:{gridcolor:css('--line')},
@@ -193,7 +196,11 @@
       name:(MNAMES[m]||m)+' median',visible:'legendonly',
       line:{color:memberColor(m),width:1.4,dash:MDASH[m]||'dot'}});
    }
-   Plotly.react(document.getElementById('plot'),traces,lay(loc,420),{responsive:true,displaylogo:false});
+   Plotly.react(document.getElementById('plot'),traces,lay(loc,420),
+    {responsive:true,displaylogo:false,
+     // save-PNG: 2x for crisp figures, a meaningful filename
+     toImageButtonOptions:{format:'png',scale:2,
+       filename:('flubnf_'+MNAME+'_'+loc+'_'+FD).replace(/[^\w-]+/g,'_')}});
  }
  draw();
  addEventListener('themechange',()=>draw());

@@ -17,7 +17,24 @@
    plot code resolves raw values, so no var() aliases and no token may fall
    through to another theme's value (a parity test compares the four
    blocks). Map data colors stay categorical; only --map-nodata follows the
-   ground so a data gap reads as explicit on every surface. */
+   ground so a data gap reads as explicit on every surface.
+
+   Two accessibility MODIFIERS compose with every theme (see the mode
+   blocks after the type scale):
+     data-contrast="high"  -- high contrast: ink to the theme's polarity
+       extreme, muted text at 7:1 or better, boundaries at 3:1 or better,
+       the progress fill pushed further from its track, semantic colors
+       lifted to 7:1, focus rings thickened.
+     data-vision="cvd"     -- red-green safe: the ok/bad green/red pair and
+       the outlook map's category scale swap to a blue/orange language.
+   The theme blocks carry the LITERAL per-theme values for both modifiers
+   (-hc and -cvd variants, still one literal per theme, so the parity test
+   extends to them); the modifier blocks only remap consumer tokens onto
+   those literals through var(). The two modifiers therefore multiply with
+   the themes without any per-combination block: high contrast retargets
+   the -cvd tokens too, so contrast x vision x theme resolves through the
+   cascade. getComputedStyle still returns the substituted literal, so
+   plot code keeps resolving raw values. */
 :root{
   --bg:#F1EFF7; --card:#FFFFFF; --ink:#000F7E; --mut:#565E96;
   --line:#DCD8E9; --track:#DBD7E8; --field-line:#DCD8E9;
@@ -28,6 +45,21 @@
   --ok:#177245; --warn:#8A5A14; --bad:#C42840;
   --map-nodata:#C9C5D8;
   --shadow:0 1px 2px rgba(12,13,23,.06),0 2px 8px rgba(12,13,23,.05);
+  /* high-contrast variants (data-contrast="high" remaps onto these) */
+  --ink-hc:#000000; --mut-hc:#363C6B; --nav-ink-hc:#000000;
+  --line-hc:#7F7A9E; --field-line-hc:#43486F; --accent-ink-hc:#014B70;
+  --ok-hc:#0A4A2B; --warn-hc:#5C3B05; --bad-hc:#8C1127;
+  /* red-green-safe variants (data-vision="cvd" remaps onto these) */
+  --ok-cvd:#1256C0; --bad-cvd:#A34A00;
+  --ok-cvd-hc:#0A3E8F; --bad-cvd-hc:#7A3600;
+  /* outlook-map category scale (categorical, deliberately identical in
+     every theme) and its red-green-safe counterpart */
+  --cat-large-decrease:#2e7d4f; --cat-decrease:#7fc97f;
+  --cat-stable:#b9b09b; --cat-increase:#e8a33d;
+  --cat-large-increase:#c0392b;
+  --cat-cvd-large-decrease:#2C7BB6; --cat-cvd-decrease:#ABD9E9;
+  --cat-cvd-stable:#B9B09B; --cat-cvd-increase:#FDAE61;
+  --cat-cvd-large-increase:#D7191C;
 }
 [data-theme="dark"]{
   --bg:#0C0D17; --card:#151729; --ink:#E9EAF4; --mut:#9AA1C4;
@@ -39,6 +71,17 @@
   --ok:#4CC38A; --warn:#E5A55D; --bad:#FB4653;
   --map-nodata:#232741;
   --shadow:0 1px 3px rgba(0,0,0,.5),0 4px 14px rgba(0,0,0,.35);
+  --ink-hc:#FFFFFF; --mut-hc:#C8CEE9; --nav-ink-hc:#FFFFFF;
+  --line-hc:#6E76A4; --field-line-hc:#8C96D2; --accent-ink-hc:#7FDBFF;
+  --ok-hc:#96E6BC; --warn-hc:#F2C689; --bad-hc:#FFA0AB;
+  --ok-cvd:#6FB8FF; --bad-cvd:#FF9E45;
+  --ok-cvd-hc:#A9D2FF; --bad-cvd-hc:#FFBE85;
+  --cat-large-decrease:#2e7d4f; --cat-decrease:#7fc97f;
+  --cat-stable:#b9b09b; --cat-increase:#e8a33d;
+  --cat-large-increase:#c0392b;
+  --cat-cvd-large-decrease:#2C7BB6; --cat-cvd-decrease:#ABD9E9;
+  --cat-cvd-stable:#B9B09B; --cat-cvd-increase:#FDAE61;
+  --cat-cvd-large-increase:#D7191C;
 }
 /* paper: warm off-white ground with a brighter warm card, LANL Blue ink,
    links and structural cyan through the same readable accent-ink the light
@@ -55,6 +98,17 @@
   --ok:#177245; --warn:#8A5A14; --bad:#C42840;
   --map-nodata:#DCD3BD;
   --shadow:0 1px 2px rgba(63,54,28,.08),0 2px 8px rgba(63,54,28,.06);
+  --ink-hc:#000000; --mut-hc:#343963; --nav-ink-hc:#000000;
+  --line-hc:#837C62; --field-line-hc:#43486F; --accent-ink-hc:#014B70;
+  --ok-hc:#0A4A2B; --warn-hc:#5C3B05; --bad-hc:#8C1127;
+  --ok-cvd:#1256C0; --bad-cvd:#A34A00;
+  --ok-cvd-hc:#0A3E8F; --bad-cvd-hc:#7A3600;
+  --cat-large-decrease:#2e7d4f; --cat-decrease:#7fc97f;
+  --cat-stable:#b9b09b; --cat-increase:#e8a33d;
+  --cat-large-increase:#c0392b;
+  --cat-cvd-large-decrease:#2C7BB6; --cat-cvd-decrease:#ABD9E9;
+  --cat-cvd-stable:#B9B09B; --cat-cvd-increase:#FDAE61;
+  --cat-cvd-large-increase:#D7191C;
 }
 /* dim: the softened dark. Slate-gray grounds lifted well off the near-black,
    ink pulled down from #E9EAF4 so the page glows less, every measured pair
@@ -71,6 +125,17 @@
   --ok:#57C893; --warn:#E2A968; --bad:#FF6B76;
   --map-nodata:#333952;
   --shadow:0 1px 3px rgba(0,0,0,.35),0 4px 12px rgba(0,0,0,.25);
+  --ink-hc:#FFFFFF; --mut-hc:#CDD4EF; --nav-ink-hc:#FFFFFF;
+  --line-hc:#838BB1; --field-line-hc:#9AA4DE; --accent-ink-hc:#7FDBFF;
+  --ok-hc:#9FEAC4; --warn-hc:#F4CD96; --bad-hc:#FFAAB3;
+  --ok-cvd:#7FBFFF; --bad-cvd:#FFA45C;
+  --ok-cvd-hc:#B5D8FF; --bad-cvd-hc:#FFC38F;
+  --cat-large-decrease:#2e7d4f; --cat-decrease:#7fc97f;
+  --cat-stable:#b9b09b; --cat-increase:#e8a33d;
+  --cat-large-increase:#c0392b;
+  --cat-cvd-large-decrease:#2C7BB6; --cat-cvd-decrease:#ABD9E9;
+  --cat-cvd-stable:#B9B09B; --cat-cvd-increase:#FDAE61;
+  --cat-cvd-large-increase:#D7191C;
 }
 /* ---- fluid type scale ----------------------------------------------------
    Every step is clamp(floor, rem-anchor + vw, ceiling). The rem terms are
@@ -99,6 +164,35 @@
   --fs-hint:clamp(.82rem,.785rem + .12vw,.92rem);     /* 13.1 -> 14.7px */
   --fs-table:clamp(.84rem,.805rem + .12vw,.94rem);    /* 13.4 -> 15px   */
   --fs-big:clamp(1.7rem,1.475rem + .6vw,2.15rem);     /* 27.2 -> 34.4px */
+  /* focus-ring thickness: a size, so it lives with the size tokens; the
+     high-contrast modifier thickens it below */
+  --focus-w:2px;
+}
+/* ---- accessibility modifiers ---------------------------------------------
+   Two independent modifiers on the root element, composing with any theme.
+   These blocks never state a color of their own: they remap the consumer
+   tokens onto the per-theme -hc / -cvd literals defined in the theme
+   blocks above, so 4 themes x 2 contrast x 2 vision resolves through the
+   cascade instead of sixteen hand-written blocks. Order matters twice:
+   both blocks sit after the theme blocks so they win the cascade at equal
+   specificity, and the vision block sits after the contrast block so that
+   with both modifiers on, --ok/--bad follow the cvd pair while the
+   contrast block retargets that pair's own -hc variants. */
+[data-contrast="high"]{
+  --ink:var(--ink-hc); --mut:var(--mut-hc); --nav-ink:var(--nav-ink-hc);
+  --line:var(--line-hc); --field-line:var(--field-line-hc);
+  --accent-ink:var(--accent-ink-hc);
+  --ok:var(--ok-hc); --warn:var(--warn-hc); --bad:var(--bad-hc);
+  --ok-cvd:var(--ok-cvd-hc); --bad-cvd:var(--bad-cvd-hc);
+  --focus-w:3px;
+}
+[data-vision="cvd"]{
+  --ok:var(--ok-cvd); --bad:var(--bad-cvd);
+  --cat-large-decrease:var(--cat-cvd-large-decrease);
+  --cat-decrease:var(--cat-cvd-decrease);
+  --cat-stable:var(--cat-cvd-stable);
+  --cat-increase:var(--cat-cvd-increase);
+  --cat-large-increase:var(--cat-cvd-large-increase);
 }
 *{box-sizing:border-box}
 /* body text on the fluid scale; every card, table cell, and paragraph that
@@ -129,19 +223,25 @@ header.nav a.tab.active{border-bottom-color:var(--accent-ink);font-weight:700}
   header.nav a.tab{font-size:.95rem;padding:.8rem .4rem}
 }
 header.nav .spacer{flex:1}
-/* theme picker (Light / Paper / Dim / Dark): the same compact segmented
-   group as the text-size control beside it, honest aria-pressed states,
-   persistent via localStorage like the text size */
-.themepick{display:inline-flex;
+/* theme picker (Light / Paper / Dim / Dark) and the accessibility-mode
+   pair (Contrast / CV safe) beside it: the same compact segmented group
+   as the text-size control, honest aria-pressed states, persistent via
+   localStorage like the text size. The a11ypick buttons are independent
+   toggles (either, both, or neither pressed), not a radio row. */
+.themepick,.a11ypick{display:inline-flex;
   border:1px solid color-mix(in srgb,var(--nav-ink) 35%,transparent);
   border-radius:7px;overflow:hidden}
-.themepick button{margin:0;padding:.3rem .5rem;border:0;border-radius:0;
+.themepick button,.a11ypick button{margin:0;padding:.3rem .5rem;border:0;
+  border-radius:0;
   background:transparent;color:var(--nav-ink);font-size:.8rem;font-weight:600;
   cursor:pointer}
-.themepick button+button{border-left:1px solid color-mix(in srgb,var(--nav-ink) 25%,transparent)}
-.themepick button:hover{background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
-.themepick button[aria-pressed="true"]{
+.themepick button+button,.a11ypick button+button{
+  border-left:1px solid color-mix(in srgb,var(--nav-ink) 25%,transparent)}
+.themepick button:hover,.a11ypick button:hover{
+  background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
+.themepick button[aria-pressed="true"],.a11ypick button[aria-pressed="true"]{
   background:color-mix(in srgb,var(--accent) 25%,transparent)}
+.a11ypick{margin-left:.5rem}
 /* text-size control (A- / A / A+), persistent via localStorage */
 .fontsize{display:inline-flex;border:1px solid color-mix(in srgb,var(--nav-ink) 35%,transparent);
   border-radius:7px;overflow:hidden;margin-left:auto;margin-right:.5rem}
@@ -184,7 +284,7 @@ label{display:block;font-size:.78rem;color:var(--mut);margin:.5rem 0 .2rem}
 input,select{width:100%;padding:.42rem .6rem;border:1px solid var(--field-line);
   border-radius:8px;font:inherit;background:var(--bg);color:var(--ink)}
 input:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible{
-  outline:2px solid var(--gold);outline-offset:2px}
+  outline:var(--focus-w,2px) solid var(--gold);outline-offset:2px}
 /* button system: default = secondary outline, .gold = primary (legacy class
    name; now the cyan accent), .quiet = quiet */
 button{padding:.45rem .95rem;border:1px solid var(--navy);border-radius:8px;
