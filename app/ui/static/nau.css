@@ -302,12 +302,15 @@ main{max-width:1500px;margin:0 auto;
    width and centers on the page, per user preference 2026-08-21.
    Operational pages (Forecast, Runs, Data, Retrospective) keep the
    full-width shell.
-   FLUID, not fixed (user report 2026-08-21: a fixed 880px stopped
-   breathing with the window): the column tracks 92% of the viewport up
-   to a 68rem cap, so it narrows at 900px, widens through 1280, and
-   settles at the cap on wide monitors -- centered at every size by the
+   FLUID WITH NO PRACTICAL CAP (third report on this surface, 2026-08-22:
+   the 68rem cap, and behind it the base main's 1500px cap, stopped the
+   cells growing at 1800px and read as non-adaptive): the column is 92%
+   of the viewport at EVERY size, max-width lifted, so the cards keep
+   growing with the window monotonically -- centered at every size by the
    base main's margin:0 auto. The 72ch prose measure still governs the
-   text inside.
+   text inside, centered within the wider cards, and the diagrams keep
+   their margin:auto centering and scale up to their own natural
+   max-widths.
    EVERYTHING INSIDE THE CARDS CENTERS TOO (user request 2026-08-21,
    second report -- the left-hugging figures left a dead band on the
    right): the diagrams, harmonic figures, equation panels, and value
@@ -315,7 +318,7 @@ main{max-width:1500px;margin:0 auto;
    centers at its 72ch measure below, so figures, equations, and text
    share one center axis with the card and the page. Text inside the
    centered prose block stays left-set; only the block centers. */
-main.reading{width:min(92%,68rem)}
+main.reading{width:92%;max-width:none}
 main.reading .card p{margin-left:auto;margin-right:auto}
 .cols{display:grid;grid-template-columns:minmax(260px,360px) 1fr;gap:.75rem;
       align-items:start}
@@ -483,6 +486,21 @@ details.ledgerfold > summary::before{content:"▸ ";color:var(--gold)}
 details.ledgerfold[open] > summary::before{content:"▾ "}
 details.ledgerfold > summary .hint{font-weight:400}
 
+/* per-state score table (retro season page): sortable column headers as
+   plain buttons in the th's own type, honest aria-pressed on the active
+   sort (the app's pressed-state idiom), the direction arrow riding inside
+   the button. The US aggregate leads the table as a distinct row: a
+   heavier rule beneath it and emphasis on its cells, because it is a
+   constructed aggregate, not a fitted state. */
+th button.thsort,[data-theme="dark"] th button.thsort,
+[data-theme="dim"] th button.thsort{margin:0;padding:0;border:0;
+  background:none;color:var(--mut);font:inherit;font-weight:600;
+  text-transform:inherit;letter-spacing:inherit;cursor:pointer}
+th button.thsort:hover,[data-theme="dark"] th button.thsort:hover,
+[data-theme="dim"] th button.thsort:hover{background:none;color:var(--ink)}
+th button.thsort[aria-pressed="true"]{color:var(--gold)}
+tr.usagg td{font-weight:650;border-bottom:2px solid var(--line)}
+
 /* run-settings block: a tight two-column label/value grid (the valpanel's
    definition-grid language) at the standard body size, natural width --
    the old one-line prose rendering read as small print and the page-wide
@@ -543,6 +561,18 @@ svg .svgt-lg{font-size:1rem}
 svg .svgt-md{font-size:.92rem}
 svg .svgt-sm{font-size:.875rem}
 svg .svgt-sub{font-size:.68em}
+/* EXCEPTION, scoped: the cumulative relWIS chart (retro season page,
+   svg.cumchart) states its label sizes in viewBox units, not rem. The rem
+   classes above are tuned for the diagrams (840-unit viewBox drawn at up
+   to 800px, near 1:1); this chart's 720-unit viewBox renders card-wide
+   (roughly 1.2x at a 900px window to 1.9x at 1800px), so rem labels
+   ballooned relative to the plot. In SVG a CSS px is one user unit, so
+   these sizes scale WITH the chart: label height stays a constant
+   fraction of chart height at every window width (the hint scale at the
+   1280px reference, 9/180 = 5% for the small step), and nothing can clip
+   under A+ because the whole drawing scales as one. */
+svg.cumchart .svgt-sm{font-size:9px}
+svg.cumchart .svgt-md{font-size:11px}
 /* defining equations under a mechanism diagram: one or two lines of styled
    text (no math library; italic variables, Unicode operators) plus a muted
    tie-in note. The math never wraps mid-formula; a narrow window scrolls the

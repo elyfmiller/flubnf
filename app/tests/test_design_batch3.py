@@ -157,8 +157,13 @@ def test_per_state_table_colors_only_scores_at_or_above_one():
     assert re.search(r'<td class="num">\s*0\.900</td>', body)   # quiet win
     assert 'class="num ok"' not in body
     assert re.search(r'<td class="num">\s*n/a</td>', body)
-    for th in ("PF", "Analogue", "Ensemble"):
-        assert f'<th class="num">{th}</th>' in body, th
+    # the headers are the sort controls now: aria-pressed buttons in the
+    # th's own type, still under the shared .num right alignment
+    for key, label in (("pf", "PF"), ("analogue", "Analogue"),
+                       ("ensemble", "Ensemble")):
+        assert re.search(r'<th class="num"><button type="button" '
+                         r'class="thsort" data-key="' + key + r'"\s+'
+                         r'aria-pressed="false">' + label, body), key
 
 
 def test_num_class_right_aligns_everywhere():

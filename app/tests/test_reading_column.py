@@ -70,12 +70,16 @@ def test_prose_centers_at_its_measure_inside_reading_cards():
 # --------------------------------- the reading column centers on the page
 
 def test_reference_pages_center_the_fluid_reading_column():
-    """The column stays FLUID (user report 2026-08-21: a fixed 880px
-    stopped breathing with the window): 92% of the viewport up to a 68rem
-    cap, centered at every size by the base main's margin:0 auto."""
+    """The column stays FLUID with NO practical cap (third report on this
+    surface, 2026-08-22: the 68rem cap stopped the cells growing at wide
+    windows and read as non-adaptive): 92% of the viewport at every size,
+    the base main's 1500px cap lifted for reading pages, centered at every
+    size by the base main's margin:0 auto."""
     joined = " ".join(NAU.split())
-    assert "main.reading{width:min(92%,68rem)}" in joined
+    assert "main.reading{width:92%;max-width:none}" in joined
+    assert "min(92%,68rem)" not in joined            # the rem cap is gone
     assert "max-width:880px" not in joined           # the fixed cap is gone
+    # operational pages keep the base shell and its wide cap
     assert "main{max-width:1500px;margin:0 auto;" in joined
     for page in ("/methods", "/models", "/model/pf", "/model/analogue",
                  "/model/ensemble", "/model/pf2s"):

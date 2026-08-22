@@ -3271,6 +3271,19 @@ def retro_results(request: Request, season: str, week: str = "",
                 g = df[(df.model == m) & (df.location == loc)]
                 row[m] = g.wis.sum() / g.base_wis.sum() if len(g) else None
             states.append(row)
+    # the honest national aggregate: the grid fits states only, so the US
+    # figure is CONSTRUCTED from the state forecasts (members aggregated
+    # separately, national quantile sets vincentized 50/50; the page states
+    # the construction). Cached under the season's stats validity key, so
+    # after the first build this is one small file read; a failure here
+    # never costs the page (the row and tile simply do not render).
+    us_row = None
+    if scoreable:
+        try:
+            us_row = retro.national_aggregate(
+                root, ensemble_weights={"pf": 0.5, "analogue": 0.5})
+        except Exception:
+            us_row = None
     wk = week if week in weeks else weeks[-1]
     d = _json.loads((root / "weeks" / wk / "samples.json").read_text())
     from app.core.report import categorical_probs
@@ -3360,6 +3373,7 @@ def retro_results(request: Request, season: str, week: str = "",
         official_catalog = []
     return templates.TemplateResponse(request, "retro_season.html", {
         "active": "Retrospective", "season": season, "heads": heads, "curve": curve, "states": states,
+        "us_row": us_row,
         "weeks": weeks, "week": wk, "map_html": map_html,
         "official_catalog": official_catalog,
         "prog": (_archive_progress(root, season) if archive
