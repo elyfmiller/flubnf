@@ -209,11 +209,18 @@ RERUN_STATUSES = ("stopped", "error", "failed", "interrupted")
 
 
 def _component_versions() -> dict:
-    """Installed versions of the components named in user-facing copy,
-    resolved once per process at import. Console packages come from this
-    interpreter (importlib.metadata); pybnf and bngsim from the engine venv's
-    interpreter; BioNetGen from the VERSION file beside BNG2.pl. Anything
-    unresolvable reports 'not installed' instead of raising."""
+    """Installed versions of the components named in user-facing copy.
+    Console packages come from this interpreter (importlib.metadata); pybnf
+    and bngsim from the engine venv's interpreter; BioNetGen from the
+    VERSION file beside BNG2.pl. Anything unresolvable reports 'not
+    installed' instead of raising.
+
+    NOT called at import (startup-freeze fix, measured 2026-08-22): the
+    engine-venv subprocess plus the cold metadata scan cost 1.1 s of the
+    launch before the window could open. The probe runs on a background
+    thread after import (see _warm_versions below); until it lands, VERSIONS
+    serves the previous launch's persisted snapshot, or 'resolving' markers
+    on a first-ever launch, and the pages fill in via /api/versions."""
     from importlib.metadata import PackageNotFoundError, version
     out = {}
     for pkg in ("fastapi", "jinja2", "plotly", "pandas", "numpy"):
@@ -252,7 +259,90 @@ def _component_versions() -> dict:
     return out
 
 
-VERSIONS = _component_versions()
+#: the marker every unresolved version wears until the background probe
+#: lands; the pages' fill-in script polls /api/versions while any remains
+VERSION_PENDING = "resolving…"
+
+#: last launch's resolved probe, persisted so a restart never shows the
+#: pending marker for components that were already resolved once
+_VERSIONS_SNAPSHOT = (Path(__file__).resolve().parents[1]
+                      / "state" / "component_versions.json")
+
+_VERSION_KEYS = ("fastapi", "jinja2", "plotly", "pandas", "numpy",
+                 "bionetgen", "pybnf", "bngsim")
+
+
+def _versions_initial() -> dict:
+    """The VERSIONS dict at import: the persisted snapshot when one exists,
+    pending markers otherwise. Instant either way; the real probe runs on a
+    background thread and updates this dict IN PLACE, so every template that
+    holds the reference sees resolved values on its next render."""
+    import json as _json
+    out = {k: VERSION_PENDING for k in _VERSION_KEYS}
+    try:
+        snap = _json.loads(_VERSIONS_SNAPSHOT.read_text())
+        if isinstance(snap, dict):
+            out.update({k: str(v) for k, v in snap.items()
+                        if k in _VERSION_KEYS})
+    except Exception:
+        pass
+    return out
+
+
+VERSIONS = _versions_initial()
+
+
+def versions_resolved() -> bool:
+    return VERSION_PENDING not in VERSIONS.values()
+
+
+def _warm_versions() -> None:
+    """The real probe, off the first-paint path: resolve, update VERSIONS in
+    place, persist the snapshot for the next launch. Never raises."""
+    import json as _json
+    try:
+        VERSIONS.update(_component_versions())
+        _VERSIONS_SNAPSHOT.parent.mkdir(parents=True, exist_ok=True)
+        tmp = _VERSIONS_SNAPSHOT.with_suffix(".json.tmp")
+        tmp.write_text(_json.dumps(VERSIONS))
+        import os as _os
+        _os.replace(tmp, _VERSIONS_SNAPSHOT)
+    except Exception:
+        pass
+
+
+def _start_background_warm() -> None:
+    """Everything the first paint would otherwise pay, warmed on a daemon
+    thread started at import: the component-version probe (subprocess into
+    the engine venv), template compilation for the landing page, and the
+    landing page's outlook block. The thread must never delay binding the
+    port or answering the first request, and any failure inside it is
+    invisible by design: warming is an optimization, never a dependency."""
+    import threading
+
+    def _warm():
+        _warm_versions()
+        try:
+            templates.env.get_template("home.html")     # compile once, here
+        except Exception:
+            pass
+        try:
+            rid, res = _latest_results()
+            if rid or res:
+                _outlook_block(rid)
+        except Exception:
+            pass
+
+    threading.Thread(target=_warm, daemon=True,
+                     name="flubnf-startup-warm").start()
+
+
+@app.get("/api/versions")
+def api_versions():
+    """The component versions as currently known, plus whether the probe has
+    landed. The home and Methods pages poll this while any value still wears
+    the pending marker, filling in without a reload."""
+    return {"versions": dict(VERSIONS), "resolved": versions_resolved()}
 
 
 def _default_forecast_date() -> str:
@@ -514,12 +604,37 @@ def _diagram_data(res: dict | None) -> dict:
     return out
 
 
-@app.get("/", response_class=HTMLResponse)
-def home(request: Request):
+def _outlook_results_mtime(rid: str | None) -> float:
+    """The cache key term for the outlook block: the named run's results.json
+    mtime, 0.0 when there is none. A rewritten results file changes the key,
+    so the block can be cached without ever serving a stale forecast."""
+    if not rid:
+        return 0.0
+    from app.core.runs import APP_STATE
     try:
-        rid, res = _latest_results()
-    except Exception:
-        rid, res = None, None
+        return (APP_STATE / "workroots" / rid / "results.json").stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+@ttlcache.ttl_cache(ttl_s=300.0)
+def _outlook_block_cached(rid: str | None, mtime: float) -> dict:
+    """The landing page's outlook: map, caption facts, and model toggle,
+    computed ONCE per (run, results mtime) and cached. The computation is
+    the same one home() always made inline; caching it keeps repeated
+    renders (and the pre-warm at startup) off the first-paint path. The
+    mtime rides in the key, so the long TTL can never serve a re-blended
+    run's old map, and every state-changing action still clears the cache
+    through _invalidate_scans."""
+    import json as _json
+    res = None
+    if rid:
+        from app.core.runs import APP_STATE
+        try:
+            res = _json.loads((APP_STATE / "workroots" / rid
+                               / "results.json").read_text())
+        except Exception:
+            res = None
     # a real map as the hero graphic: latest run's outlook if one exists,
     # otherwise the empty-country silhouette
     map_svg, outlook_date, outlook_n = "", "", 0
@@ -576,14 +691,33 @@ def home(request: Request):
             outlook_toggle = ""
     except Exception:
         pass
+    return {"map_svg": map_svg, "outlook_date": outlook_date,
+            "outlook_n": outlook_n,
+            "label": outlook_src.get("label", ""),
+            "approx": bool(outlook_src.get("approx")),
+            "toggle": outlook_toggle}
+
+
+def _outlook_block(rid: str | None) -> dict:
+    return _outlook_block_cached(rid, _outlook_results_mtime(rid))
+
+
+@app.get("/", response_class=HTMLResponse)
+def home(request: Request):
+    try:
+        rid, res = _latest_results()
+    except Exception:
+        rid, res = None, None
+    ob = _outlook_block(rid)
     return templates.TemplateResponse(request, "home.html", {
-        "active": "Home", "map_svg": map_svg, "outlook_date": outlook_date,
-        "outlook_n": outlook_n,
+        "active": "Home", "map_svg": ob["map_svg"],
+        "outlook_date": ob["outlook_date"],
+        "outlook_n": ob["outlook_n"],
         # which model computed the map, and whether the categories are the
         # report's exact ones (bundle) or the stored-quantile approximation
-        "outlook_model_label": outlook_src.get("label", ""),
-        "outlook_approx": bool(outlook_src.get("approx")),
-        "outlook_toggle": outlook_toggle,
+        "outlook_model_label": ob["label"],
+        "outlook_approx": ob["approx"],
+        "outlook_toggle": ob["toggle"],
         "versions": VERSIONS, "diagram": _diagram_data(res),
         "missing": __import__("flubnf.settings", fromlist=["check"]).check(verbose=False)})
 
@@ -2923,6 +3057,180 @@ def retro_archive_delete(request: Request, season: str, stamp: str,
     return _back(request, "/retro")
 
 
+# --------------------------------------------------------------------------
+# results preparation: the season finalize work, off every request path
+#
+# Scoring a full season takes minutes (measured on the full-grid 2023-24
+# tree: 85 s scoring, 58 s national aggregate) and used to run INSIDE the
+# results-page request, freezing the page with no feedback. It now runs as
+# one background job per season root, shared by the two callers: the season
+# worker finalizes before marking done (so the page after a finished replay
+# is a cache read), and a visit that still finds stale caches (first visit
+# to an unscored tree, an explicit rescore) starts the same job and shows a
+# progress state polled from /api/retro/{season}/results_status.
+# --------------------------------------------------------------------------
+
+#: the shipped, never-self-fitted member weights every scoring surface uses
+RETRO_WEIGHTS = {"pf": 0.5, "analogue": 0.5}
+
+#: how long the results route waits for a just-started job before rendering
+#: the preparing state instead: small seasons (and every test tree) finish
+#: inside it, so the page renders complete exactly as it always did
+_RESULTS_GRACE_S = 1.5
+
+_results_jobs: dict = {}          # str(root) -> job record
+_results_lock = __import__("threading").Lock()
+
+
+def _week_map_cards(root: Path, wk: str) -> dict:
+    """The categorical outlook-map cards for one stored retrospective week,
+    cached on disk under playback_cache/map_cards/<wk>.json keyed by the
+    week's samples mtime. A full-grid week's raw samples.json runs to
+    ~140 MB, and parsing it inside every page view held the season page
+    (and, through the GIL, the whole window) for about two seconds; the
+    cards it reduces to are a few kilobytes. Computed from the raw sample
+    draws exactly as before -- the exact path, never the quantile
+    approximation. A SUBDIRECTORY on purpose: report_season._newest_input
+    globs playback_cache/*.json as report inputs, and a map cache warming
+    on first view must not read as a data change that rebuilds the
+    25 MB export."""
+    import json as _json
+    import numpy as np
+    from app.core.report import categorical_probs
+    from app.core.report_v2 import CATS
+    root = Path(root)
+    sp = root / "weeks" / wk / "samples.json"
+    try:
+        mtime = int(sp.stat().st_mtime)
+    except OSError:
+        return {}
+    cf = root / "playback_cache" / "map_cards" / f"{wk}.json"
+    try:
+        cached = _json.loads(cf.read_text())
+        if cached.get("mtime") == mtime and cached.get("v") == 1:
+            return cached["cards"]
+    except Exception:
+        pass
+    locs = __import__("flubnf.settings",
+                      fromlist=["load_locations"]).load_locations()
+    n2a = dict(zip(locs.location_name, locs.abbreviation))
+    n2p = dict(zip(locs.location_name, locs.population.astype(float)))
+    n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
+    d = _json.loads(sp.read_text())
+    cards = {}
+    for loc, s in d.get("pf", {}).items():
+        arr = np.asarray(s["1"], float)
+        origin = np.asarray(s["0"], float)
+        lo = float(np.median(origin[np.isfinite(origin)]))
+        probs = categorical_probs(arr, lo, int(n2p[loc]), 1)
+        hover = (f"<b>{loc}</b><br>1-wk median: "
+                 f"{float(np.median(arr[np.isfinite(arr)])):.0f}<br>" +
+                 "<br>".join(f"{c.replace('_',' ')}: {probs.get(c,0):.0%}"
+                             for c in CATS))
+        cards[n2f[loc]] = {"probs": probs, "name": loc, "abbr": n2a[loc],
+                           "fips": n2f[loc], "hover_html": hover}
+    try:
+        # write beside, then replace, the cache-file rule everywhere else
+        import os as _os
+        cf.parent.mkdir(parents=True, exist_ok=True)
+        tmp = cf.with_name(cf.name + ".tmp")
+        tmp.write_text(_json.dumps({"mtime": mtime, "v": 1, "cards": cards}))
+        _os.replace(tmp, cf)
+    except Exception:
+        pass                      # an unwritable cache costs speed, not truth
+    return cards
+
+
+def _ensure_results_job(root: Path, season: str,
+                        force: bool = False) -> dict:
+    """Start -- or join -- THE finalize job for this root. One job per root
+    ever runs: a page visit racing the season worker (or a second tab) gets
+    the same record, whose 'done' event fires when the caches are ready.
+    `force` rescoring even over current scores is the explicit-rescore
+    path; joining an already-running job ignores it (that job is already
+    doing the work)."""
+    import threading
+    from app.core import retro
+    key = str(root)
+    with _results_lock:
+        job = _results_jobs.get(key)
+        if job and not job["done"].is_set():
+            return job
+        job = {"phase": "preparing", "t0": time.time(),
+               "done": threading.Event(), "error": "", "seconds": None,
+               "season": season,
+               "inputs": retro.newest_samples_mtime(root)}
+        _results_jobs[key] = job
+
+    def _run():
+        try:
+            job["seconds"] = retro.finalize_season(
+                root, season, ensemble_weights=RETRO_WEIGHTS,
+                phase_cb=lambda p: job.__setitem__("phase", p),
+                force=force)
+            # the page's default view is the LAST week's map: warm its
+            # cards too, so the reload after this job renders instantly
+            # (other weeks cache on their first view)
+            wks = sorted(p.parent.name
+                         for p in (root / "weeks").glob("*/samples.json"))
+            if wks:
+                _week_map_cards(root, wks[-1])
+        except Exception as e:
+            job["error"] = f"{type(e).__name__}: {str(e)[:220]}"
+        finally:
+            job["done"].set()
+            _invalidate_scans()     # scores and caches just changed on disk
+
+    threading.Thread(target=_run, daemon=True,
+                     name=f"flubnf-results-{season}").start()
+    return job
+
+
+def _job_covered(root: Path) -> dict | None:
+    """The completed job that already ran on this root's CURRENT inputs, or
+    None. An empty-but-current scores.json plus a covering job means truth
+    has not settled (or scoring genuinely failed, carried in job['error']):
+    the page then renders that state honestly instead of recomputing the
+    same nothing on every visit."""
+    from app.core import retro
+    job = _results_jobs.get(str(root))
+    if (job and job["done"].is_set()
+            and job["inputs"] >= retro.newest_samples_mtime(root)):
+        return job
+    return None
+
+
+def _results_pending(root: Path) -> str:
+    """'' when the results page can render from caches alone; otherwise the
+    reason it cannot. Every check is a stat or a small cached read -- asking
+    by computing would BE the freeze this replaces."""
+    from app.core import retro
+    if not retro.scores_current(root):
+        return "scores stale"
+    if not retro.scores_scoreable(root):
+        return "" if _job_covered(root) else "scores empty"
+    if not retro.national_aggregate_fresh(root, RETRO_WEIGHTS):
+        return "national aggregate stale"
+    return ""
+
+
+@app.get("/api/retro/{season}/results_status")
+def api_retro_results_status(season: str, archive: str = ""):
+    """The preparing state's poll: whether the finalize job for this season
+    root is still working, and which phase it is in. Never starts work
+    itself; the results page owns that."""
+    if archive and not (_valid_season(season) and _valid_archive(archive)):
+        return {"pending": False, "error": "unrecognized archive"}
+    if not _valid_season(season):
+        return {"pending": False, "error": "unrecognized season"}
+    root, _is_seal = _season_root(season, archive)
+    job = _results_jobs.get(str(root))
+    if job and not job["done"].is_set():
+        return {"pending": True, "phase": job["phase"],
+                "elapsed_s": round(time.time() - job["t0"], 1)}
+    return {"pending": False, "error": (job or {}).get("error", "")}
+
+
 def _retro_bg(season: str, locations: list, width: int,
               replicates: int = 3, particles: int = 10_000,
               settings: dict | None = None):
@@ -2946,17 +3254,21 @@ def _retro_bg(season: str, locations: list, width: int,
         retro.run_season(root, season, locations, replicates=replicates,
                          particles=particles, width=width, progress=_tick,
                          settings=settings)
-        # equal, never-fitted member weights (the sealed recipe)
-        df = retro.score_season(root, season,
-                                ensemble_weights={"pf": 0.5, "analogue": 0.5})
-        # write beside, then replace: the results page can rescore the same
-        # file on a stale view, and the player stats read it; neither may
-        # ever see (or race) a half-written scores.json
-        import os as _os
-        _tmp = root / "scores.json.tmp"
-        df.to_json(_tmp)
-        _os.replace(_tmp, root / "scores.json")
-        _retro_status[season] = "done"
+        # Completion work BEFORE the season reads done: score with the
+        # equal, never-fitted member weights (the sealed recipe), build the
+        # US national aggregate, and warm every week's playback caches, so
+        # the results page afterwards is a cache read instead of minutes of
+        # compute inside a frozen request. The shared job registry keeps a
+        # concurrent page visit from computing the same thing twice, and
+        # the measured seconds land in run_meta like the week timings.
+        job = _ensure_results_job(root, season)
+        job["done"].wait()
+        if job.get("seconds"):
+            retro.record_finalize(root, job["seconds"])
+        if job["error"]:
+            _retro_status[season] = f"error: {job['error'][:150]}"
+        else:
+            _retro_status[season] = "done"
     except (_RetroStopRequested, retro.SeasonStopped):
         # completed weeks stay; the results page scores whatever exists
         _retro_status[season] = "stopped"
@@ -3200,8 +3512,6 @@ def retro_results(request: Request, season: str, week: str = "",
     """The season results page. `archive` selects an archived run instead of
     the live season; everything below (scores, player, per-state table, the
     report link) then reads that run's own tree."""
-    import json as _json
-    import numpy as np
     import pandas as pd
     from app.core import retro
     if archive and not (_valid_season(season) and _valid_archive(archive)):
@@ -3219,37 +3529,40 @@ def retro_results(request: Request, season: str, week: str = "",
         return RedirectResponse("/retro", status_code=303)
     sf = root / "scores.json"
     score_error = ""
-    def _stored_empty():
-        try:
-            import pandas as _p
-            d = _p.read_json(sf)
-            return d.empty or "model" not in d.columns
-        except Exception:
-            return True
-    try:
-        # Rescore when stale, when asked (?rescore=1), or when the stored file
-        # is EMPTY: an early failed run writes an empty scores.json whose
-        # fresh mtime would otherwise block rescoring forever (seen in the
-        # field on the first laptop retrospective).
-        if (not sf.exists() or request.query_params.get("rescore")
-                or _stored_empty()
-                or sf.stat().st_mtime < max(
-                (root / "weeks" / w / "samples.json").stat().st_mtime for w in weeks)):
-            # write beside, then replace: this rescore can run while the
-            # season worker is finishing (it writes the same file once the
-            # replay completes), and a concurrent viewer reads it; nobody
-            # may ever see a half-written scores.json
-            import os as _os
-            _df = retro.score_season(
-                root, season,
-                ensemble_weights={"pf": 0.5, "analogue": 0.5})
-            _tmp = sf.with_name(sf.name + ".tmp")
-            _df.to_json(_tmp)
-            _os.replace(_tmp, sf)
-    except Exception as e:
-        # A hidden failure here once masqueraded as "truth not settled" on a
-        # fresh laptop. Show the truth: what broke, so it can be fixed.
-        score_error = f"{type(e).__name__}: {str(e)[:220]}"
+    # Heavy compute never runs inside this request (the frozen-page fix,
+    # 2026-08-22): stale or missing caches -- scores.json out of date or
+    # empty, the national aggregate cache invalid, or an explicit
+    # ?rescore=1 -- start THE background finalize job for this root
+    # (scoring, national aggregate, playback warm) and the page shows a
+    # live preparing state polled from the results_status endpoint. A short
+    # grace wait keeps small seasons rendering complete in one round trip,
+    # exactly as before; the empty-scores retry rule survives through
+    # _results_pending (an early failed run rescored on every visit, but a
+    # job that already covered these exact inputs is believed, so an
+    # unsettled-truth season never loops).
+    if request.query_params.get("rescore") or _results_pending(root):
+        job = _ensure_results_job(
+            root, season, force=bool(request.query_params.get("rescore")))
+        job["done"].wait(_RESULTS_GRACE_S)
+        if not job["done"].is_set():
+            return templates.TemplateResponse(request, "retro_season.html", {
+                "active": "Retrospective", "season": season,
+                "preparing": {"phase": job["phase"],
+                              "elapsed_s": round(time.time() - job["t0"], 1)},
+                "archive": archive,
+                "archive_when": retro.stamp_human(archive) if archive else "",
+                "heads": {}, "curve": [], "states": [], "us_row": None,
+                "weeks": weeks, "week": weeks[-1], "map_html": "",
+                "official_catalog": [], "prog": None, "n_weeks": 0,
+                "score_error": ""})
+        if job["error"]:
+            # A hidden failure here once masqueraded as "truth not settled"
+            # on a fresh laptop. Show the truth: what broke, to be fixed.
+            score_error = job["error"]
+    else:
+        covered = _job_covered(root)
+        if covered and covered.get("error") and not retro.scores_scoreable(root):
+            score_error = covered["error"]
     try:
         df = pd.read_json(sf) if sf.exists() else pd.DataFrame()
     except Exception:
@@ -3285,26 +3598,11 @@ def retro_results(request: Request, season: str, week: str = "",
         except Exception:
             us_row = None
     wk = week if week in weeks else weeks[-1]
-    d = _json.loads((root / "weeks" / wk / "samples.json").read_text())
-    from app.core.report import categorical_probs
-    from app.core.report_v2 import CATS
     from app.core.usmap import svg_map
     locs = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
     n2a = dict(zip(locs.location_name, locs.abbreviation))
-    n2p = dict(zip(locs.location_name, locs.population.astype(float)))
     n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
-    cards = {}
-    for loc, s in d["pf"].items():
-        arr = np.asarray(s["1"], float)
-        origin = np.asarray(s["0"], float)
-        lo = float(np.median(origin[np.isfinite(origin)]))
-        probs = categorical_probs(arr, lo, int(n2p[loc]), 1)
-        hover = (f"<b>{loc}</b><br>1-wk median: "
-                 f"{float(np.median(arr[np.isfinite(arr)])):.0f}<br>" +
-                 "<br>".join(f"{c.replace('_',' ')}: {probs.get(c,0):.0%}"
-                             for c in CATS))
-        cards[n2f[loc]] = {"probs": probs, "name": loc, "abbr": n2a[loc],
-                           "fips": n2f[loc], "hover_html": hover}
+    cards = dict(_week_map_cards(root, wk))
     for name, abbr in n2a.items():
         cards.setdefault(n2f.get(name, name), {"name": name, "abbr": abbr,
                                                "fips": n2f.get(name, "")})
@@ -3593,3 +3891,10 @@ def run_models(request: Request,
         _flash(f"'{engine}' is not one of the available engines. "
                "Nothing was run.")
     return RedirectResponse("/forecast#results", status_code=303)
+
+
+# Startup warm-up, LAST so every function it reaches is defined: the version
+# probe, template compilation, and the landing outlook run on a daemon
+# thread the moment the module is imported, so the first painted page finds
+# them done (or harmlessly in flight) instead of paying for them inline.
+_start_background_warm()

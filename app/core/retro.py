@@ -1023,6 +1023,159 @@ def national_aggregate(root: Path,
     return result
 
 
+def _national_cache_key(root: Path, ensemble_weights: dict | None) -> dict:
+    """The national aggregate's validity key, exactly as national_aggregate
+    builds it: version, weights, per-week samples mtimes, scores mtime."""
+    root = Path(root)
+    wks = sorted((root / "weeks").glob("*/samples.json"))
+    sf = root / "scores.json"
+    return {"v": NATIONAL_CACHE_V,
+            "weights": ensemble_weights or {},
+            "weeks": {p.parent.name: int(p.stat().st_mtime) for p in wks},
+            "scores_mtime": int(sf.stat().st_mtime) if sf.is_file() else 0}
+
+
+def national_aggregate_fresh(root: Path,
+                             ensemble_weights: dict | None = None) -> bool:
+    """Whether the cached national aggregate is valid for the tree as it
+    stands -- the cheap read national_aggregate itself makes before deciding
+    to recompute. The results page asks this to decide between serving the
+    page directly and showing the preparing state while a background job
+    rebuilds the caches; asking by computing would BE the freeze."""
+    root = Path(root)
+    if not sorted((root / "weeks").glob("*/samples.json")):
+        return True                     # nothing to aggregate: nothing stale
+    cf = root / "playback_cache" / "us_aggregate.json"
+    try:
+        cached = json.loads(cf.read_text())
+        return cached.get("key") == _national_cache_key(root,
+                                                        ensemble_weights)
+    except Exception:
+        return False
+
+
+def scores_current(root: Path) -> bool:
+    """Whether scores.json exists, parses, and is newer than every stored
+    week -- the mtime half of the staleness rule the results page has always
+    applied. Says nothing about whether it scored any cells; see
+    scores_scoreable for that half."""
+    root = Path(root)
+    sf = root / "scores.json"
+    weeks = sorted((root / "weeks").glob("*/samples.json"))
+    if not weeks:
+        return True
+    if not sf.is_file():
+        return False
+    try:
+        if sf.stat().st_mtime < max(p.stat().st_mtime for p in weeks):
+            return False
+        pd.read_json(sf)
+        return True
+    except Exception:
+        return False
+
+
+def scores_scoreable(root: Path) -> bool:
+    """Whether scores.json carries scored rows (a model column and at least
+    one cell). An empty-but-current file means truth has not settled, or an
+    early run failed to score -- the results page distinguishes the two by
+    whether a completion job already covered these exact inputs."""
+    sf = Path(root) / "scores.json"
+    try:
+        d = pd.read_json(sf)
+        return (not d.empty) and ("model" in d.columns)
+    except Exception:
+        return False
+
+
+def newest_samples_mtime(root: Path) -> int:
+    """The newest stored week's mtime, 0 with none: the input stamp a
+    finalize job records so 'already tried on exactly these inputs' is
+    answerable without recomputing anything."""
+    try:
+        return max((int(p.stat().st_mtime)
+                    for p in (Path(root) / "weeks").glob("*/samples.json")),
+                   default=0)
+    except OSError:
+        return 0
+
+
+#: the finalize phases, in order, worded exactly as the preparing state
+#: shows them
+FINALIZE_PHASES = ("scoring cells", "building national aggregate",
+                   "warming playback")
+
+
+def finalize_season(root: Path, season: str,
+                    ensemble_weights: dict | None = None,
+                    phase_cb=None, force: bool = False) -> dict:
+    """Everything the results page needs, computed once so the page never
+    has to: score the season (atomic scores.json), build the national
+    aggregate cache, and warm every week's playback payload and stats.
+    Returns the measured seconds per phase; `phase_cb(phase)` is called at
+    each transition (the preparing state's status line).
+
+    Scoring is skipped when scores.json is already current and scoreable
+    (an aggregate-only staleness must not pay the full rescore) unless
+    `force` asks for it -- the explicit-rescore path.
+
+    Order matters: the aggregate's and the payloads' cache keys both cover
+    scores.json's mtime, so scoring must land first or the warm work would
+    invalidate itself. Playback warming failures are recorded but never
+    fatal: a week that cannot warm simply builds on first view, exactly as
+    before."""
+    from app.core import playback
+    root = Path(root)
+    seconds: dict = {}
+
+    def _phase(name):
+        if phase_cb:
+            try:
+                phase_cb(name)
+            except Exception:
+                pass
+        return time.monotonic()
+
+    if force or not (scores_current(root) and scores_scoreable(root)):
+        t = _phase("scoring cells")
+        df = score_season(root, season, ensemble_weights=ensemble_weights)
+        # write beside, then replace: a concurrent viewer may never see (or
+        # race) a half-written scores.json -- the completion path's own rule
+        tmp = root / "scores.json.tmp"
+        df.to_json(tmp)
+        os.replace(tmp, root / "scores.json")
+        seconds["scoring"] = round(time.monotonic() - t, 1)
+
+    t = _phase("building national aggregate")
+    try:
+        national_aggregate(root, ensemble_weights=ensemble_weights)
+    except Exception:
+        pass          # the page omits the row rather than failing the job
+    seconds["national"] = round(time.monotonic() - t, 1)
+
+    t = _phase("warming playback")
+    for w in sorted(p.parent.name
+                    for p in (root / "weeks").glob("*/samples.json")):
+        try:
+            playback.build_week(root, season, w)
+        except Exception:
+            continue  # that week builds on first view, exactly as before
+    seconds["playback"] = round(time.monotonic() - t, 1)
+    seconds["total"] = round(sum(seconds.values()), 1)
+    return seconds
+
+
+def record_finalize(root: Path, seconds: dict) -> None:
+    """Fold the finalize timing into run_meta.json, like the week timings:
+    the record then states what the completion work cost, and the report
+    surfaces can print it without re-deriving anything."""
+    with _META_LOCK:
+        m = read_meta(root)
+        m["finalize_seconds"] = {k: float(v) for k, v in (seconds or {}).items()
+                                 if isinstance(v, (int, float))}
+        write_meta(root, m)
+
+
 # --------------------------------------------------------------------------
 # archived runs
 #

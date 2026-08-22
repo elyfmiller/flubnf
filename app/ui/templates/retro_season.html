@@ -8,6 +8,50 @@
    is in play, so the page, the playback API, and the report all read the
    same frozen tree #}
 {% set aq = ('?archive=' ~ archive) if archive else '' %}
+{% if preparing %}
+{# the preparing state (frozen-page fix): scoring, the national aggregate,
+   and playback warming run as one background job; this page polls the
+   status endpoint and reloads into the full results the moment the job
+   lands. The runstat line and the rotating quip are the console's
+   established progress idiom. No bar: the job has no honest denominator,
+   and a fabricated percentage is worse than a live phase line. #}
+<h1><span class="accent">{{ season }}</span>: preparing results</h1>
+<div class="card" data-season="{{ season }}">
+ <h2>Preparing the season results</h2>
+ <p class="runstat" id="prep-stat" aria-live="polite">{{ preparing.phase }}&hellip;</p>
+ <p class="hint">Scoring every stored week against settled truth, building
+  the US national aggregate, and warming the playback caches. This runs
+  once and is kept; the page then loads instantly.</p>
+ <p class="quip rquip" id="prep-quip"></p>
+</div>
+<script>
+ (function(){
+  var stat=document.getElementById('prep-stat');
+  var t0=Date.now()-({{ preparing.elapsed_s | round(1) }}*1000);
+  if(window.flubnfQuips)window.flubnfQuips(document.getElementById('prep-quip'));
+  var phase={{ preparing.phase | tojson }};
+  function paint(){
+    var s=Math.round((Date.now()-t0)/1000);
+    stat.textContent=phase+'… '+(s>=60?Math.floor(s/60)+' min '+(s%60)+' s':s+' s');
+  }
+  setInterval(paint,1000);paint();
+  var inflight=false;
+  function poll(){
+    if(inflight)return;
+    inflight=true;
+    fetch('/api/retro/{{ season }}/results_status{{ ('?archive=' ~ archive) if archive else '' }}')
+     .then(function(r){return r.json();})
+     .then(function(d){
+       if(!d.pending){location.reload();return;}
+       if(d.phase)phase=d.phase;
+     })
+     .catch(function(){})
+     .then(function(){inflight=false;});
+  }
+  setInterval(poll,2000);
+ })();
+</script>
+{% else %}
 <h1><span class="accent">{{ season }}</span>: {{ n_weeks }} weeks scored</h1>
 {% if archive %}
 <p class="banner" role="status"><strong>Archived run{% if archive_when %} from
@@ -474,4 +518,5 @@
  })();
  setView('map');
 </script>
+{% endif %}
 {% endblock %}

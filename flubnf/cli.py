@@ -16,13 +16,67 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from . import (auto, backtest as bt, bngl_files, compare as cmp_mod,
-               conf_files, exp_files, fetch, flusight, runs,
-               weekly_job as wjmod)
-from .config import FluBNFConfig
-from .constants import JURISDICTIONS, STATE_TO_ABBREV
-from .paths import WorkspacePaths
-from .state import WorkspaceState
+# ---------------------------------------------------------------------------
+# Deferred imports (startup-freeze fix, measured 2026-08-22)
+#
+# The science modules below pull pandas and scipy, and importing them here
+# cost the console launch 10.5 s cold (1.0 s warm) BEFORE `flubnf app`
+# could even begin opening its window -- the single largest stage of the
+# measured startup profile. None of them is needed by the app/window
+# commands, so each resolves on first real use instead. A module-level
+# __getattr__ (PEP 562) cannot serve name lookups inside function bodies,
+# so the deferral is a small proxy that resolves once and then replaces
+# its own global binding, making every later reference direct.
+# ---------------------------------------------------------------------------
+class _Lazy:
+    __slots__ = ("_mod", "_attr", "_name")
+
+    def __init__(self, mod: str, attr: str = "", name: str = ""):
+        self._mod, self._attr = mod, attr
+        self._name = name or attr or mod.rsplit(".", 1)[-1]
+
+    def _resolve(self):
+        import importlib
+        obj = importlib.import_module(self._mod)
+        if self._attr:
+            obj = getattr(obj, self._attr)
+        globals()[self._name] = obj      # later lookups skip the proxy
+        return obj
+
+    def __getattr__(self, item):
+        return getattr(self._resolve(), item)
+
+    def __call__(self, *a, **k):
+        return self._resolve()(*a, **k)
+
+    def __iter__(self):
+        return iter(self._resolve())
+
+    def __len__(self):
+        return len(self._resolve())
+
+    def __getitem__(self, key):
+        return self._resolve()[key]
+
+    def __contains__(self, key):
+        return key in self._resolve()
+
+
+auto = _Lazy("flubnf.auto", name="auto")
+bt = _Lazy("flubnf.backtest", name="bt")
+bngl_files = _Lazy("flubnf.bngl_files")
+cmp_mod = _Lazy("flubnf.compare", name="cmp_mod")
+conf_files = _Lazy("flubnf.conf_files")
+exp_files = _Lazy("flubnf.exp_files")
+fetch = _Lazy("flubnf.fetch")
+flusight = _Lazy("flubnf.flusight")
+runs = _Lazy("flubnf.runs")
+wjmod = _Lazy("flubnf.weekly_job", name="wjmod")
+FluBNFConfig = _Lazy("flubnf.config", "FluBNFConfig")
+JURISDICTIONS = _Lazy("flubnf.constants", "JURISDICTIONS")
+STATE_TO_ABBREV = _Lazy("flubnf.constants", "STATE_TO_ABBREV")
+WorkspacePaths = _Lazy("flubnf.paths", "WorkspacePaths")
+WorkspaceState = _Lazy("flubnf.state", "WorkspaceState")
 
 app = typer.Typer(
     add_completion=False,
