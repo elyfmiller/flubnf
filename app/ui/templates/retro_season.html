@@ -101,6 +101,15 @@
    {% if v < 1 %}ok{% else %}bad{% endif %}">{{ "%.3f"|format(v) }}</div>
    <p class="hint">relWIS vs the FluSight baseline</p></div>
  {% endfor %}
+ {# the national aggregate rides as a fourth tile: NOT a fitted national
+    forecast, and the hint says so; the construction is stated in full
+    under the per-state table below #}
+ {% if us_row and us_row.ensemble %}
+ <div class="card"><h2>US (aggregated)</h2><div class="big
+   {% if us_row.ensemble < 1 %}ok{% else %}bad{% endif %}">{{ "%.3f"|format(us_row.ensemble) }}</div>
+   <p class="hint">ensemble relWIS vs the FluSight baseline; aggregated
+   from state forecasts, states treated as independent</p></div>
+ {% endif %}
 </div>
 <div class="card"><h2>Cumulative ensemble relWIS through the season</h2>
 {% if curve %}
@@ -116,7 +125,11 @@
 {% set xs = 635 / (n - 1 if n > 1 else 1) %}
 {% set lx = 20 + (n - 1) * xs %}
 {% set ly = 12 + (hi - vals[-1]) * 124 / yspan %}
-<svg viewBox="0 0 720 180" style="width:100%">
+{# class cumchart: this chart's labels are sized in viewBox units (see the
+   scoped rules in nau.css), so the label height stays a constant fraction
+   of the rendered chart at every window width instead of ballooning with
+   the rem classes at wide renders #}
+<svg class="cumchart" viewBox="0 0 720 180" style="width:100%">
  {% for gv, gl in [(1.0, "1.0"), (0.5, "0.5")] %}
  {% set gy = (12 + (hi - gv) * 124 / yspan) | round(1) %}
  <line x1="20" y1="{{ gy }}" x2="655" y2="{{ gy }}" stroke="var(--mut)" stroke-dasharray="3"/>
@@ -206,17 +219,120 @@
  </div>
 </div>
 
-<div class="card"><h2>Per-state scores</h2>
-{# color marks exceptions in a dense table: only scores at or above 1
-   (lost to the baseline) are colored; beating it is the norm and stays
-   quiet. Numeric columns carry the .num right alignment every other
-   numeric table uses. #}
-<table><tr><th>State</th><th class="num">PF</th><th class="num">Analogue</th><th class="num">Ensemble</th></tr>
-{% for r in states %}<tr><td>{{ r.name }}</td>
+<div class="card">
+{# the per-state table folds like the Runs page's storage panel: OPEN by
+   default, the open state persisted per localStorage exactly as the other
+   folds. Inside, client-side controls for a 52-row table: sort by state
+   name or any member's score (aria-pressed header buttons, the app's
+   pressed-state idiom; a second press flips the direction) and a text
+   filter that narrows rows by state name as you type. Plain JS on data
+   attributes; rows only reorder and hide, the markup is the single source.
+   Color still marks exceptions only: scores at or above 1 (lost to the
+   baseline) are colored, beating it is the norm and stays quiet; numeric
+   columns carry the shared .num right alignment. #}
+<details class="ledgerfold" id="statefold" open>
+ <summary><h2 style="display:inline">Per-state scores</h2>
+  <span class="hint"> {{ states|length }} state{{ '' if states|length == 1 else 's' }} scored</span></summary>
+ <div class="row" style="margin:.5rem 0 .3rem">
+  <input type="search" id="sf-filter" placeholder="Filter by state name"
+         aria-label="Filter rows by state name"
+         style="width:auto;min-width:230px;max-width:100%">
+  <span class="hint" id="sf-count" aria-live="polite"></span>
+ </div>
+ <table id="sf-table">
+ <thead><tr>
+  <th><button type="button" class="thsort" data-key="name"
+    aria-pressed="false">State<span class="dir" aria-hidden="true"></span></button></th>
+  {% for mk, ml in [("pf", "PF"), ("analogue", "Analogue"), ("ensemble", "Ensemble")] %}
+  <th class="num"><button type="button" class="thsort" data-key="{{ mk }}"
+    aria-pressed="false">{{ ml }}<span class="dir" aria-hidden="true"></span></button></th>
+  {% endfor %}
+ </tr></thead>
+ <tbody>
+ {# the national aggregate leads the table as a DISTINCT row: constructed,
+    not fitted, per the note under the table. It sorts and filters with the
+    state rows so a score ranking places it honestly among them. #}
+ {% if us_row and (us_row.pf or us_row.analogue or us_row.ensemble) %}
+ <tr class="usagg" data-name="US (aggregated)"
+  {%- for m in ["pf","analogue","ensemble"] %} data-{{ m }}="{{ "%.6f"|format(us_row[m]) if us_row[m] else '' }}"{% endfor %}>
+  <td>US (aggregated)</td>
+  {% for m in ["pf","analogue","ensemble"] %}
+  <td class="num{% if us_row[m] and us_row[m] >= 1 %} bad{% endif %}">
+   {{ "%.3f"|format(us_row[m]) if us_row[m] else "n/a" }}</td>{% endfor %}</tr>
+ {% endif %}
+ {% for r in states %}<tr data-name="{{ r.name }}"
+  {%- for m in ["pf","analogue","ensemble"] %} data-{{ m }}="{{ "%.6f"|format(r[m]) if r[m] else '' }}"{% endfor %}>
+  <td>{{ r.name }}</td>
  {% for m in ["pf","analogue","ensemble"] %}
  <td class="num{% if r[m] and r[m] >= 1 %} bad{% endif %}">
   {{ "%.3f"|format(r[m]) if r[m] else "n/a" }}</td>{% endfor %}</tr>
-{% endfor %}</table></div>
+{% endfor %}</tbody></table>
+{% if us_row and (us_row.pf or us_row.analogue or us_row.ensemble) %}
+<p class="hint">US (aggregated) is not a fitted national forecast: the
+ retrospective grid fits states only, so each member is aggregated from its
+ state forecasts with states treated as independent (PF by summing its
+ per-state sample draws, aligned by draw index; the analogue by drawing
+ from each state's quantile curve independently and summing), and the two
+ national member quantile sets are then vincentized 50/50, the shipped
+ ensemble recipe. Scored against the US truth row with the same relWIS
+ machinery as every state.</p>
+{% endif %}
+</details>
+<script>
+ // the fold persists like the storage panel's (open by default); the sort
+ // and filter state is per-visit only, so the page always loads in the
+ // server's alphabetical order
+ (function(){
+  var d=document.getElementById('statefold');
+  if(d){
+   if(localStorage.getItem('statefold-open')==='0')d.open=false;
+   d.addEventListener('toggle',function(){
+    localStorage.setItem('statefold-open',d.open?'1':'0');});
+  }
+  var tab=document.getElementById('sf-table');
+  if(!tab)return;
+  var tb=tab.tBodies[0],
+      rows=Array.prototype.slice.call(tb.rows),
+      btns=Array.prototype.slice.call(tab.tHead.querySelectorAll('button.thsort')),
+      key=null,dir=1;
+  function val(r,k){
+   if(k==='name')return (r.dataset.name||'').toLowerCase();
+   var v=parseFloat(r.dataset[k]);
+   return isNaN(v)?null:v;             // n/a cells sort to the bottom
+  }
+  function resort(){
+   var out=rows.slice();
+   if(key)out.sort(function(a,b){
+    var va=val(a,key),vb=val(b,key);
+    if(va===null&&vb===null)return 0;
+    if(va===null)return 1;
+    if(vb===null)return -1;
+    return va<vb?-dir:(va>vb?dir:0);
+   });
+   out.forEach(function(r){tb.appendChild(r);});
+   btns.forEach(function(b){
+    var on=b.dataset.key===key;
+    b.setAttribute('aria-pressed',String(on));
+    b.querySelector('.dir').textContent=on?(dir>0?' ▲':' ▼'):'';
+   });
+  }
+  btns.forEach(function(b){b.addEventListener('click',function(){
+   if(key===b.dataset.key)dir=-dir;
+   else{key=b.dataset.key;dir=1;}
+   resort();
+  });});
+  var f=document.getElementById('sf-filter'),
+      c=document.getElementById('sf-count');
+  f.addEventListener('input',function(){
+   var q=(f.value||'').trim().toLowerCase(),n=0;
+   rows.forEach(function(r){
+    var hit=!q||(r.dataset.name||'').toLowerCase().indexOf(q)>=0;
+    r.hidden=!hit;if(hit)n++;
+   });
+   c.textContent=q?(n+' of '+rows.length+' rows'):'';
+  });
+ })();
+</script></div>
 
 <script>
  // live host for the shared season player (loaded above from player.js in

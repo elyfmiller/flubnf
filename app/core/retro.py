@@ -869,6 +869,160 @@ def score_season(root: Path, season: str, ensemble_weights: dict | None = None) 
     return df
 
 
+#: bump when the national-aggregate construction or cached shape changes
+NATIONAL_CACHE_V = 1
+
+#: draws for the analogue member's national Monte Carlo sum, matching the
+#: PF grid's 3 x 10k draw count so both members aggregate at the same depth
+_NATIONAL_DRAWS = 30_000
+
+
+def national_aggregate(root: Path,
+                       ensemble_weights: dict | None = None) -> dict | None:
+    """US-national relWIS aggregated from the stored STATE forecasts. The
+    retro grid fits states only, so a national score must be constructed;
+    this is that construction, stated honestly wherever it is shown.
+
+    Construction (the members are aggregated separately, then blended,
+    because the state ensemble exists only at quantile level, so there are
+    no ensemble sample draws to sum):
+
+      * PF: the stored per-state sample arrays are summed draw by draw,
+        aligned by draw index within the member; states are treated as
+        independent. Quantiles of the summed draws.
+      * Analogue: stored as quantile sets, not draws, so a draw-index sum
+        is impossible; instead each state's quantile curve is inverted
+        (linear interpolation across the 23 FluSight levels) and sampled
+        with its own independent, deterministically seeded uniforms, the
+        draws are summed across states, and the sums are re-quantiled.
+        The same independence treatment as the PF sum.
+      * Ensemble: the two NATIONAL member quantile sets vincentized with
+        the same weights the season's state scoring uses (50/50 on the
+        season page), the shipped recipe.
+
+    Each national quantile set is scored per (week, horizon) against the
+    hub's US truth row with the same WIS and validated-baseline machinery
+    as score_season, under the same degenerate-cell guards; relWIS is
+    sum(wis) / sum(base_wis).
+
+    The computation is not free (52 states x 30k draws x 4 horizons per
+    week, behind a full parse of every samples.json), so the result is
+    cached in playback_cache/us_aggregate.json under the season's stats
+    validity key: the per-week samples.json mtimes plus scores.json's
+    mtime, with a version stamp and the weights. The measured wall cost of
+    the last real computation rides along in the result as `seconds`.
+    """
+    import time
+    import zlib
+    from datetime import timedelta
+    from app.core.scoring import _baseline_cells, load_truth
+    from flubnf.quantiles import FLUSIGHT_QUANTILES as QL
+    from flubnf.wis import wis as wis_fn
+    root = Path(root)
+    wks = sorted((root / "weeks").glob("*/samples.json"))
+    if not wks:
+        return None
+    sf = root / "scores.json"
+    key = {"v": NATIONAL_CACHE_V,
+           "weights": ensemble_weights or {},
+           "weeks": {p.parent.name: int(p.stat().st_mtime) for p in wks},
+           "scores_mtime": int(sf.stat().st_mtime) if sf.is_file() else 0}
+    cf = root / "playback_cache" / "us_aggregate.json"
+    try:
+        cached = json.loads(cf.read_text())
+        if cached.get("key") == key:
+            return cached["result"]
+    except Exception:
+        pass
+    t0 = time.monotonic()
+    truth, _n2f = load_truth()
+    levels = [float(L) for L in QL]
+    rows = []                       # (model, asof, horizon 0-based, wis)
+    for wp in wks:
+        d = json.loads(wp.read_text())
+        asof = d["asof"]
+        T = pd.Timestamp(asof)
+        pf_nat, an_nat = {}, {}
+        for h in ("1", "2", "3", "4"):
+            arrs = []
+            for loc in d.get("pf", {}):
+                a = np.asarray(d["pf"][loc].get(h, []), float)
+                if a.size:
+                    arrs.append(a)
+            if arrs:
+                n = min(a.size for a in arrs)
+                tot = np.zeros(n)
+                for a in arrs:      # a non-finite draw in ANY state poisons
+                    tot += a[:n]    # that index; the finite filter drops it
+                tot = tot[np.isfinite(tot)]
+                if tot.size:
+                    pf_nat[h] = {L: float(np.quantile(tot, L))
+                                 for L in levels}
+            draws = None
+            for loc in d.get("analogue", {}):
+                q = d["analogue"][loc].get(h)
+                if not q:
+                    continue
+                ks = sorted(q, key=float)
+                lv = np.asarray([float(k) for k in ks])
+                # monotone repair guards interpolation against any tiny
+                # quantile inversion in the stored set
+                vv = np.maximum.accumulate(
+                    np.asarray([float(q[k]) for k in ks]))
+                rng = np.random.default_rng(
+                    zlib.crc32(f"{asof}|{loc}|{h}".encode()))
+                v = np.interp(rng.random(_NATIONAL_DRAWS), lv, vv)
+                draws = v if draws is None else draws + v
+            if draws is not None:
+                draws = draws[np.isfinite(draws)]
+                if draws.size:
+                    an_nat[h] = {L: float(np.quantile(draws, L))
+                                 for L in levels}
+        members = {}
+        if pf_nat:
+            members["pf"] = pf_nat
+        if an_nat:
+            members["analogue"] = an_nat
+        blend = (ens.vincentize(members, weights=ensemble_weights,
+                                location_fips="US") if members else {})
+        for model, qs in (("pf", pf_nat), ("analogue", an_nat),
+                          ("ensemble", blend)):
+            for h in ("1", "2", "3", "4"):
+                q = qs.get(h)
+                if not q:
+                    continue
+                actual = truth.get(("US", T + timedelta(days=7 * int(h))))
+                # the same degenerate-cell guards as score_season
+                if actual is None or actual <= 0 or q[0.5] <= 0:
+                    continue
+                try:
+                    w = float(wis_fn(q, actual).wis)
+                except Exception:
+                    continue
+                rows.append((model, asof, int(h) - 1, w))
+    bases = {}
+    for asof in {r[1] for r in rows}:
+        for k, v in _baseline_cells(asof, {"US"}, truth).items():
+            bases[k] = v
+    result = {"cells": {}, "weeks": len(wks)}
+    for model in ("pf", "analogue", "ensemble"):
+        cells = [(w, bases.get(("US", asof, h)))
+                 for m, asof, h, w in rows if m == model]
+        cells = [(w, b) for w, b in cells if b]
+        if cells:
+            result[model] = (sum(w for w, _ in cells)
+                             / sum(b for _, b in cells))
+            result["cells"][model] = len(cells)
+    result["seconds"] = round(time.monotonic() - t0, 1)
+    # write beside, then replace, like scores.json: a concurrent viewer may
+    # never see a half-written cache file
+    cf.parent.mkdir(parents=True, exist_ok=True)
+    tmp = cf.with_name(cf.name + ".tmp")
+    tmp.write_text(json.dumps({"key": key, "result": result}))
+    os.replace(tmp, cf)
+    return result
+
+
 # --------------------------------------------------------------------------
 # archived runs
 #
