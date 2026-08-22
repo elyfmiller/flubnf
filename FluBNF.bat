@@ -27,11 +27,25 @@ if not exist ".venv\Scripts\python.exe" goto :fail
 ".venv\Scripts\python" -m pip install -q --upgrade pip
 ".venv\Scripts\pip" install -q -e ".[app,dev]" bionetgen
 if errorlevel 1 goto :fail
+copy /y pyproject.toml ".venv\pyproject.stamp" >nul 2>&1
 goto :launch
 
 :sync
-rem keep deps in sync with the pulled code (fast when nothing changed)
-".venv\Scripts\pip" install -q -e ".[app,dev]" >nul 2>&1
+rem Refresh dependencies only when the project metadata changed (the
+rem package is editable, so pulled code changes are live without pip).
+rem The old always-reinstall briefly uninstalled the launcher on every
+rem open and hid its errors: an interrupted open left the app broken
+rem until the next open re-ran full setup.
+fc /b pyproject.toml ".venv\pyproject.stamp" >nul 2>&1
+if not errorlevel 1 goto :launch
+echo   project dependencies changed, refreshing (about a minute)
+".venv\Scripts\pip" install -q -e ".[app,dev]"
+if errorlevel 1 (
+  echo   dependency refresh failed - running with what is installed
+) else (
+  copy /y pyproject.toml ".venv\pyproject.stamp" >nul 2>&1
+)
+if not exist ".venv\Scripts\flubnf.exe" goto :fail
 
 :launch
 echo FluBNF console starting - a window (or browser tab) will open. Ctrl-C here to stop.

@@ -8,12 +8,38 @@ if [ -d .git ]; then
     || echo "· offline or local changes — running as-is"
 fi
 
+# Dependency refresh policy (regression fix, 2026-08-22): the package is
+# installed EDITABLE, so pulled code changes are live without any reinstall;
+# pip is needed only when the project metadata (pyproject.toml) changes.
+# The old unconditional quiet reinstall here (a) uninstalled and reinstalled
+# the package on EVERY open, adding half a minute to each launch, and
+# (b) had a window between uninstall and reinstall in which .venv/bin/flubnf
+# did not exist, with all errors hidden: an interrupted or failed open left
+# the app unlaunchable until the NEXT open fell into full setup. That is the
+# "open, close, open again" failure. Now: install only when pyproject.toml
+# differs from the stamp of the last successful install, say so out loud,
+# never hide the errors, and verify the launcher exists before using it.
+STAMP=".venv/.pyproject.stamp"
 if [ ! -x .venv/bin/flubnf ]; then
   echo "First run — setting up (a few minutes)…"
   ./setup.sh || { echo; echo "Setup hit a problem (see above). Press enter to close."; read -r; exit 1; }
-else
-  # keep deps in sync with the pulled code (fast when nothing changed)
-  .venv/bin/pip install -q -e ".[app,dev]" 2>/dev/null
+  cp pyproject.toml "$STAMP" 2>/dev/null
+elif ! cmp -s pyproject.toml "$STAMP" 2>/dev/null; then
+  echo "· project dependencies changed, refreshing (about a minute)"
+  if .venv/bin/pip install -q -e ".[app,dev]"; then
+    cp pyproject.toml "$STAMP" 2>/dev/null
+  else
+    echo "· dependency refresh failed (offline?), running with what is installed"
+  fi
+fi
+
+if [ ! -x .venv/bin/flubnf ]; then
+  echo
+  echo "The FluBNF launcher is missing from .venv: setup did not finish."
+  echo "Double-click me again with the network up, or run ./setup.sh in"
+  echo "Terminal to see the full output. Press enter to close."
+  read -r
+  exit 1
 fi
 
 [ -f .flubnf.env ] && . ./.flubnf.env

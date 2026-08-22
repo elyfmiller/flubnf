@@ -12,12 +12,52 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
+
+def _trace(msg: str) -> None:
+    """Startup-sequence trace, the server-side half of the one in
+    flubnf/cli.py (same format, same FLUBNF_STARTUP_TRACE file, epoch
+    stamps so the two interleave): free when the variable is unset."""
+    import os as _os
+    path = _os.environ.get("FLUBNF_STARTUP_TRACE")
+    if not path:
+        return
+    t = time.time()
+    line = (f"{t:.3f} {time.strftime('%H:%M:%S', time.localtime(t))}"
+            f".{int(t * 1000) % 1000:03d} [pid {_os.getpid()} srv] {msg}")
+    try:
+        with open(path, "a") as fh:
+            fh.write(line + "\n")
+    except Exception:
+        pass
+    print(line, file=sys.stderr, flush=True)
+
+
+_trace("import begin (fastapi + app.core next)")
+
 from fastapi import BackgroundTasks, FastAPI, Form, Request     # noqa: E402
 from fastapi.responses import HTMLResponse, RedirectResponse    # noqa: E402
 from fastapi.templating import Jinja2Templates                  # noqa: E402
 
-from app.core import data as data_mod                           # noqa: E402
 from app.core import ttlcache                                   # noqa: E402
+
+
+class _LazyDataMod:
+    """app.core.data, resolved on first attribute use (the flubnf/cli.py
+    _Lazy pattern). data.py imports pandas at module top, and importing it
+    HERE put the whole science stack on the server-import path -- the
+    single largest stage of the measured window-open freeze (2026-08-22):
+    the window cannot open until this module imports. Every data_mod use
+    is inside a route body, so the resolve happens on first request (or on
+    the warm thread) instead, and the proxy then replaces its own global
+    binding so later references are direct."""
+
+    def __getattr__(self, name):
+        from app.core import data as real
+        globals()["data_mod"] = real
+        return getattr(real, name)
+
+
+data_mod = _LazyDataMod()
 from app.core.runs import (Ledger, RunSpec, fmt_hms,            # noqa: E402
                            lease_workroot, settings_html,
                            spec_settings, version_pairs)
@@ -311,27 +351,51 @@ def _warm_versions() -> None:
         pass
 
 
+#: set once the startup warm pass has finished its outlook computation
+#: (success or not): from then on the science imports are paid for and
+#: home can always render its outlook inline. See _outlook_ready.
+_WARM_DONE = __import__("threading").Event()
+
+
+def _outlook_ready() -> bool:
+    """Whether home can compute its outlook block inline without paying a
+    first-ever science import on the first painted page. True once the warm
+    pass has landed, or once pandas is in this process anyway (any later
+    request, every warm relaunch, the whole test suite). False exactly on
+    the cold first paint, where home serves the silhouette-and-preparing
+    state instead and the page fills itself in when the warm pass lands."""
+    return _WARM_DONE.is_set() or "pandas" in sys.modules
+
+
 def _start_background_warm() -> None:
     """Everything the first paint would otherwise pay, warmed on a daemon
     thread started at import: the component-version probe (subprocess into
     the engine venv), template compilation for the landing page, and the
-    landing page's outlook block. The thread must never delay binding the
+    landing page's outlook block -- ALWAYS computed, even with no run on
+    disk, because the empty silhouette pays the same science imports that
+    every later render reuses. The thread must never delay binding the
     port or answering the first request, and any failure inside it is
     invisible by design: warming is an optimization, never a dependency."""
     import threading
 
     def _warm():
+        t0 = time.perf_counter()
+        _trace("warm: thread begin (versions probe)")
         _warm_versions()
+        _trace(f"warm: versions done at +{time.perf_counter() - t0:.2f}s")
         try:
             templates.env.get_template("home.html")     # compile once, here
         except Exception:
             pass
+        _trace(f"warm: template done at +{time.perf_counter() - t0:.2f}s")
         try:
-            rid, res = _latest_results()
-            if rid or res:
-                _outlook_block(rid)
+            rid, _res = _latest_results()
+            _outlook_block(rid)
         except Exception:
             pass
+        finally:
+            _WARM_DONE.set()
+        _trace(f"warm: outlook done at +{time.perf_counter() - t0:.2f}s")
 
     threading.Thread(target=_warm, daemon=True,
                      name="flubnf-startup-warm").start()
@@ -704,11 +768,39 @@ def _outlook_block(rid: str | None) -> dict:
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
+    _t0 = time.perf_counter()
+    _trace("home: request begin")
     try:
         rid, res = _latest_results()
     except Exception:
         rid, res = None, None
-    ob = _outlook_block(rid)
+    pending = not _outlook_ready()
+    if pending:
+        # Give the warm pass a short head start before falling back: on a
+        # warm machine it lands within half a second of the first request,
+        # so the first paint renders COMPLETE with no preparing flash and
+        # no self-reload. Only a genuinely cold start (first-ever science
+        # import, several seconds) falls through to the preparing state.
+        _WARM_DONE.wait(1.5)
+        pending = not _outlook_ready()
+    if pending:
+        # Cold first paint (first-ever request, warm pass still importing
+        # the science stack): the full page with the REAL silhouette map
+        # and a preparing note, served in milliseconds instead of holding
+        # the first window hostage to the pandas import. The page polls
+        # /api/outlook-ready and reloads itself once, when inline render
+        # is guaranteed cheap. Every other request takes the inline path
+        # below, exactly as before.
+        from app.core.usmap import map_legend, svg_map
+        ob = {"map_svg": ("<div style='max-width:880px;margin:0 auto'>"
+                          + svg_map({}, clickable=set()) + map_legend()
+                          + "</div>"),
+              "outlook_date": "", "outlook_n": 0,
+              "label": "", "approx": False, "toggle": ""}
+    else:
+        ob = _outlook_block(rid)
+    _trace(f"home: outlook ready at +{time.perf_counter() - _t0:.2f}s "
+           f"(pending={pending}), rendering")
     return templates.TemplateResponse(request, "home.html", {
         "active": "Home", "map_svg": ob["map_svg"],
         "outlook_date": ob["outlook_date"],
@@ -718,8 +810,17 @@ def home(request: Request):
         "outlook_model_label": ob["label"],
         "outlook_approx": ob["approx"],
         "outlook_toggle": ob["toggle"],
+        "outlook_pending": pending,
         "versions": VERSIONS, "diagram": _diagram_data(res),
         "missing": __import__("flubnf.settings", fromlist=["check"]).check(verbose=False)})
+
+
+@app.get("/api/outlook-ready")
+def api_outlook_ready():
+    """Whether home's outlook block now renders inline (the warm pass has
+    landed, or the science imports are paid for anyway). The cold first
+    paint's preparing state polls this and reloads the page once."""
+    return {"ready": _outlook_ready()}
 
 
 @app.get("/methods", response_class=HTMLResponse)
@@ -3702,6 +3803,31 @@ def api_retro_playback(season: str, asof: str, archive: str = ""):
         return PlainTextResponse(str(e), status_code=404)
 
 
+@app.get("/api/retro/{season}/mapswap/{asof}")
+def api_retro_mapswap(season: str, asof: str, archive: str = ""):
+    """One stored week's categorical map as a swap payload: fips to
+    {fill, opacity, hover}, a few kilobytes, from the same disk-cached
+    cards the page render uses. The season player's map view renders its
+    SVG ONCE (the server-rendered initial week) and mutates fills per
+    frame from this payload -- the model-toggle swap mechanism -- instead
+    of refetching this whole page and rebuilding the 52-path SVG per
+    scrub event, which is what made map scrubbing visibly slower than
+    the line plots (profiled 2026-08-22)."""
+    from fastapi.responses import PlainTextResponse
+    from app.core.usmap import state_swap_payload
+    if archive and not (_valid_season(season) and _valid_archive(archive)):
+        return PlainTextResponse("unrecognized archived run identifier",
+                                 status_code=404)
+    # the week is a path segment on disk: only a date-shaped one may pass
+    import re as _re
+    if not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", asof):
+        return PlainTextResponse(f"no stored week {asof}", status_code=404)
+    root, _is_seal = _season_root(season, archive)
+    if not (root / "weeks" / asof / "samples.json").is_file():
+        return PlainTextResponse(f"no stored week {asof}", status_code=404)
+    return {"states": state_swap_payload(_week_map_cards(root, asof))}
+
+
 @app.get("/retro/{season}/report")
 def retro_season_report(season: str, archive: str = ""):
     """Generate (cached by mtime) and download the self-contained season
@@ -3897,4 +4023,5 @@ def run_models(request: Request,
 # probe, template compilation, and the landing outlook run on a daemon
 # thread the moment the module is imported, so the first painted page finds
 # them done (or harmlessly in flight) instead of paying for them inline.
+_trace("import complete, starting background warm")
 _start_background_warm()

@@ -596,10 +596,13 @@ def test_archived_season_page_carries_the_identifier_through_every_url(
     assert f'href="/retro/{SEASON}/report?archive={STAMP}" download' in html
     assert f'data-archive="{STAMP}"' in html
     assert f'const ARCHIVE = "{STAMP}";' in html
-    # the player's two fetches both append it, and neither is left bare
+    # the player's two fetches both append it, and neither is left bare:
+    # the playback payload and the per-week map swap payload (which
+    # replaced the old whole-page ?week= refetch, 2026-08-22) are both
+    # plain paths, so each appends the archive query with '?'
     assert "'/playback/' + encodeURIComponent(w)\n" in html
-    assert "(AQ ? '?' + AQ : '')" in html
-    assert "(AQ ? '&' + AQ : '')" in html
+    assert "'/mapswap/' + encodeURIComponent(w)\n" in html
+    assert html.count("(AQ ? '?' + AQ : '')") >= 2
     # per-state table and the season report link are present as on a live page
     assert "Per-state scores" in html
     assert "Season player" in html
@@ -611,6 +614,8 @@ def test_playback_and_report_refuse_an_unverifiable_archive_identifier(
     _synthetic_data(monkeypatch, tmp_path)
     _season_tree(rr, SEASON, truth=_truth_map()[0])
     for url in (f"/api/retro/{SEASON}/playback/{W1}?archive=../../etc",
+                f"/api/retro/{SEASON}/mapswap/{W1}?archive=../../etc",
+                f"/api/retro/{SEASON}/mapswap/..%2F..%2Fetc",
                 f"/retro/{SEASON}/report?archive=nope",
                 f"/api/retro/{SEASON}/report_path?archive=nope"):
         assert client.get(url).status_code == 404, url
