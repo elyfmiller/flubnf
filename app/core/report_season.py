@@ -168,6 +168,43 @@ def _settings_note(root: Path, build: str = "",
                          title=SETTINGS_MARK, cls="sub")
 
 
+#: the shipped, never-self-fitted member weights, the same pair the season
+#: page scores with -- the export's aggregate must be THE aggregate, not a
+#: reweighted cousin
+_US_AGG_WEIGHTS = {"pf": 0.5, "analogue": 0.5}
+
+
+def _us_aggregate_row(root: Path, df) -> dict | None:
+    """The honest US national aggregate for the export, from the same cached
+    construction the season page shows (retro.national_aggregate, cached in
+    playback_cache/us_aggregate.json, which _newest_input already covers, so
+    a rebuilt aggregate refreshes an already-exported report). Only computed
+    for a SCORED season -- the verdict table it joins requires scores too --
+    and omitted, never invented, when the construction cannot deliver."""
+    if df is None:
+        return None
+    from app.core import retro as _retro
+    try:
+        row = _retro.national_aggregate(root, ensemble_weights=_US_AGG_WEIGHTS)
+    except Exception:
+        return None
+    if not row or not any(row.get(m) for m in ("pf", "analogue", "ensemble")):
+        return None
+    return row
+
+
+#: the label every surface gives the constructed national figure
+US_AGG_NOTE = ("US (aggregated) is not a fitted national forecast: the "
+               "retrospective grid fits states only, so each member is "
+               "aggregated from its state forecasts with states treated as "
+               "independent (PF by summing its per-state sample draws, "
+               "aligned by draw index; the analogue by drawing from each "
+               "state's quantile curve independently and summing), and the "
+               "two national member quantile sets are then vincentized "
+               "50/50, the shipped ensemble recipe. Scored against the US "
+               "truth row with the same relWIS machinery as every state.")
+
+
 def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
     """The static season verdict, printed ahead of the player.
 
@@ -178,7 +215,11 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
     season's run record carries one, the total wall time. The per-state
     final table reads the season's scores.json, the same file the console's
     season page renders; when the season has not been scored yet the table
-    is omitted with a plain statement rather than invented."""
+    is omitted with a plain statement rather than invented. The US national
+    aggregate joins both surfaces exactly as it does in the console -- a
+    verdict tile and a leading table row, each wearing the honest
+    independence label -- and is omitted whenever its cached construction
+    is unavailable."""
     final = payloads.get(weeks[-1]) or {}
     stats = final.get("stats") or {}
     tiles = []
@@ -200,6 +241,17 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
     rows = []
     cover = "every scored cell of the season"
     df = playback._season_scores(root)
+    us_row = _us_aggregate_row(root, df)
+    if us_row and us_row.get("ensemble"):
+        # the national aggregate as a verdict tile, labeled for what it is:
+        # constructed from the state forecasts, never a fitted national run
+        v = us_row["ensemble"]
+        cls = "ok" if v < 1 else "bad"
+        tiles.append('<div class="tile"><div class="tilename">'
+                     'US (aggregated)</div>'
+                     + f'<div class="tileval {cls}">{v:.3f}</div>'
+                     '<div class="hint">aggregated from state forecasts, '
+                     'states treated as independent</div></div>')
     if df is not None and "model" in getattr(df, "columns", ()):
         # cell coverage, stated when the scores file can supply it and
         # omitted (the generic phrase stands) rather than invented
@@ -207,6 +259,19 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
         if n:
             cover = f"the season's {n} scored ensemble cells"
     if df is not None and "location" in df.columns:
+        if us_row:
+            # the aggregate leads the table as a DISTINCT row, the console's
+            # own placement; a member it could not construct prints n/a
+            cells = ["<td>US (aggregated)</td>"]
+            for m in ("pf", "analogue", "ensemble"):
+                v = us_row.get(m)
+                if v:
+                    cells.append('<td class="num '
+                                 + ("ok" if v < 1 else "bad")
+                                 + f'">{v:.3f}</td>')
+                else:
+                    cells.append('<td class="num hint">n/a</td>')
+            rows.append('<tr class="usagg">' + "".join(cells) + "</tr>")
         for loc in sorted(df.location.unique()):
             cells = [f"<td>{loc}</td>"]
             for m in ("pf", "analogue", "ensemble"):
@@ -225,7 +290,8 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
                   '<table><thead><tr><th>State</th><th class="num">PF</th>'
                   '<th class="num">Analogue</th>'
                   '<th class="num">Ensemble</th></tr></thead><tbody>'
-                  + "".join(rows) + "</tbody></table>")
+                  + "".join(rows) + "</tbody></table>"
+                  + (f'<p class="hint">{US_AGG_NOTE}</p>' if us_row else ""))
     else:
         states = ('<p class="hint">Per-state scores appear here once the '
                   "season has been scored in the console.</p>")

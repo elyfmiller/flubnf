@@ -451,5 +451,30 @@
   },true);
  })();
 </script>
+<script>
+ // Component versions fill in after first paint: the server resolves them on
+ // a background thread (startup-freeze fix), so any span still wearing the
+ // pending marker polls /api/versions until the probe lands, then updates
+ // in place. Pages without version spans skip all of this.
+ (function(){
+  var spans=document.querySelectorAll('[data-vkey]');
+  if(!spans.length)return;
+  var pending=false;
+  spans.forEach(function(s){if(s.textContent.indexOf('resolving')>=0)pending=true;});
+  if(!pending)return;
+  var tries=0;
+  (function poll(){
+    if(++tries>40)return;                    // ~1 minute, then leave as-is
+    fetch('/api/versions').then(function(r){return r.json();})
+     .then(function(d){
+       spans.forEach(function(s){
+         var v=(d.versions||{})[s.dataset.vkey];
+         if(v&&v.indexOf('resolving')<0)s.textContent=v;
+       });
+       if(!d.resolved)setTimeout(poll,1500);
+     }).catch(function(){setTimeout(poll,3000);});
+  })();
+ })();
+</script>
 <footer class="hint" style="text-align:center;padding:.6rem 0 1rem">FluBNF build {{ running_sha() }}</footer>
 </body></html>

@@ -174,20 +174,24 @@
    the accessibility control moving the text by a percent or two, which is
    the same as breaking it.
    The floors match the previous fixed sizes, so a narrow window never
-   renders smaller than it did before; the ceilings are reached around
-   1700-1800px.
+   renders smaller than it did before; at 900px every step still resolves
+   to exactly what it did under the old ceilings. The ceilings themselves
+   were raised 2026-08-22 (field finding: at wide windows the cards grew
+   but the type froze at the old ~1700-1800px caps, so big windows read as
+   small text in big boxes); the same vw slopes now run on until roughly
+   2100-2600px, where the new caps land.
    These are size tokens only. The color tokens above stay literal in both
    theme blocks because plot code resolves them through getComputedStyle. */
 :root{
-  --fs-body:clamp(.875rem,.83rem + .15vw,1rem);       /* 14   -> 16px   */
-  --fs-h1:clamp(1.25rem,1.1rem + .6vw,1.7rem);        /* 20   -> 27.2px */
-  --fs-h2:clamp(.8rem,.765rem + .12vw,.9rem);         /* 12.8 -> 14.4px */
-  --fs-hero-h1:clamp(1.45rem,1.2rem + .75vw,2rem);    /* 23.2 -> 32px   */
-  --fs-lead:clamp(.95rem,.88rem + .24vw,1.15rem);     /* 15.2 -> 18.4px */
-  --fs-sub:clamp(.92rem,.875rem + .2vw,1.1rem);       /* 14.7 -> 17.6px */
-  --fs-hint:clamp(.82rem,.785rem + .12vw,.92rem);     /* 13.1 -> 14.7px */
-  --fs-table:clamp(.84rem,.805rem + .12vw,.94rem);    /* 13.4 -> 15px   */
-  --fs-big:clamp(1.7rem,1.475rem + .6vw,2.15rem);     /* 27.2 -> 34.4px */
+  --fs-body:clamp(.875rem,.83rem + .15vw,1.05rem);    /* 14   -> 16.8px */
+  --fs-h1:clamp(1.25rem,1.1rem + .6vw,1.9rem);        /* 20   -> 30.4px */
+  --fs-h2:clamp(.8rem,.765rem + .12vw,.96rem);        /* 12.8 -> 15.4px */
+  --fs-hero-h1:clamp(1.45rem,1.2rem + .75vw,2.25rem); /* 23.2 -> 36px   */
+  --fs-lead:clamp(.95rem,.88rem + .24vw,1.25rem);     /* 15.2 -> 20px   */
+  --fs-sub:clamp(.92rem,.875rem + .2vw,1.2rem);       /* 14.7 -> 19.2px */
+  --fs-hint:clamp(.82rem,.785rem + .12vw,.98rem);     /* 13.1 -> 15.7px */
+  --fs-table:clamp(.84rem,.805rem + .12vw,1rem);      /* 13.4 -> 16px   */
+  --fs-big:clamp(1.7rem,1.475rem + .6vw,2.35rem);     /* 27.2 -> 37.6px */
   /* focus-ring thickness: a size, so it lives with the size tokens; the
      high-contrast modifier thickens it below */
   --focus-w:2px;
