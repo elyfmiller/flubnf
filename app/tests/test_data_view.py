@@ -57,7 +57,7 @@ def test_freshness_panel_states_the_latest_vintages_own_numbers(archive):
     html = client.get("/data").text
     assert f"<code>{V2}</code>" in html
     assert "9 reported rows" in html                 # V2's reported rows
-    assert "3 jurisdictions covered" in html
+    assert "3 jurisdictions" in html
     assert "newest week\n   2098-01-03" in " ".join(html.split()) \
         or "newest week 2098-01-03" in " ".join(html.split())
     assert "2 archived truth vintages" in html
@@ -83,10 +83,41 @@ def test_default_preview_is_the_latest_vintage(archive):
     assert '"dates":' in html and '"values":' in html
     assert "Plotly.react(el,traces," in html
     assert "css('--gold')" in html and "css('--card')" in html
-    assert "addEventListener('themechange',drawVintage)" in html
-    assert "addEventListener('fontsizechange',drawVintage)" in html
+    assert "addEventListener('themechange',()=>drawVintage())" in html
+    assert "addEventListener('fontsizechange',()=>drawVintage())" in html
     # the old sparkline is gone
     assert "polyline" not in html
+
+
+def test_vintage_chart_carries_the_season_mode_pair(archive):
+    """The vintage browser gets the forecast data panel's view pair: a
+    full-series / season-over-season toggle in its conventions -- quiet
+    buttons stating aria-pressed (gold when active), the shared season
+    palette tokens resolved per draw, month ticks from the one server-side
+    offset list, and per-season hover carrying each season's real dates.
+    Full series stays the default (the newest-week marker lives there)."""
+    html = client.get("/data?loc=Ohio").text
+    # the mode pair, above the chart, full series pressed by default
+    assert 'id="vb-mode-raw" aria-pressed="false"' in html
+    assert 'id="vb-mode-season" aria-pressed="false"' in html
+    assert "drawVintage('raw');" in html              # the default draw
+    assert html.index('id="vb-mode-raw"') < html.index('id="vintageplot"')
+    # the switcher states its state exactly as the forecast panel's does
+    assert "b.classList.toggle('gold', VMODE===m)" in html
+    assert "b.setAttribute('aria-pressed', String(VMODE===m))" in html
+    # season conventions: the shared palette tokens with the audited
+    # fallback literals, newest season on the gold accent
+    assert "const SCOLORS = [" in html
+    assert "css('--season-' + ((i % SCOLORS.length) + 1))" in html
+    assert "css('--gold')||SCOLORS[0]" in html
+    # month ticks from the one server-side offset list
+    assert "const SEASON_MONTHS = [" in html
+    assert "L.xaxis.tickvals=SEASON_MONTHS.map(m=>m[1])" in html
+    assert "L.xaxis.ticktext=SEASON_MONTHS.map(m=>m[0])" in html
+    # per-season hover with real dates, never UTC-shifted Date parses
+    assert "customdata:by[k].d" in html
+    assert "%{customdata}" in html
+    assert "ds.slice(0,10).split('-')" in html
 
 
 def test_location_preview_shows_series_table_newest_first(archive):

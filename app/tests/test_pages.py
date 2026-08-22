@@ -170,6 +170,30 @@ def test_map_legend_carries_all_categories_and_the_no_data_swatch():
     assert 'class="hint maplegend"' in lg
 
 
+def test_intro_text_spans_the_card_width_app_wide():
+    """Heading-width uniformity (user 2026-08-21): the intro text that
+    introduces a card's content -- the kick (.card h2), sub lines, and
+    hints -- spans the full card width, never a narrower measure. Only
+    running prose keeps the 72ch measure. Top-level page intros (h1, the
+    page .sub) carry no cap either, so they span exactly the card width
+    below them."""
+    nau = (Path(__file__).resolve().parents[1]
+           / "ui" / "static" / "nau.css").read_text()
+    joined = " ".join(nau.split())
+    # in-card intro text: hints AND subs are exempt from the prose measure
+    assert ".card p.hint,.card p.sub{max-width:none}" in joined
+    # running prose alone keeps the measure
+    assert ".card p{margin:.45rem 0;max-width:72ch}" in joined
+    # the top-level intro blocks state no measure of their own: no
+    # max-width inside the page h1 or .sub rules
+    for start in ("h1{font-size:var(--fs-h1)", ".sub{color:var(--mut)"):
+        i = joined.index(start)
+        block = joined[i:joined.index("}", i) + 1]
+        assert "max-width" not in block, block
+    # the hero lead keeps its explicit no-cap statement
+    assert ".hero p{color:#C6CFEE;max-width:none;" in joined
+
+
 def test_home_outlook_card_has_heading_and_legend():
     r = client.get("/")
     assert r.status_code == 200

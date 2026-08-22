@@ -1,21 +1,12 @@
 {% extends "base.html" %}{% import "diagrams.html" as dg %}
 {% block title %}FluBNF · Methods{% endblock %}
-{# the reading column centers on the page (main.reading); the prose keeps
-   its 72ch measure and left-set text within the centered column #}
+{# the reading column centers on the page (main.reading) and everything
+   inside the cards centers with it (user request 2026-08-21, second
+   report): figures and equation panels keep their margin:auto centering,
+   and the prose block centers at its 72ch measure (main.reading .card p
+   in nau.css), so the whole composition shares one center. #}
 {% block main_class %}reading{% endblock %}
 {% block content %}
-<style>
- /* One reading column on this page: prose already left-aligns under its
-    72ch measure cap, so the figures, equation panels, and their captions
-    join it at the same left content edge instead of centering (their own
-    measure caps still govern their widths). The block ships only with this
-    page; the !important overrides the diagram macros' inline centering
-    margins. The Models page gets the same treatment through the .card.mech
-    rules in the shell. */
- .card svg[role="img"]{margin-left:0 !important;margin-right:auto !important}
- .card .eqpanel{margin-left:0;margin-right:auto}
- .card .eqpanel p.eqnote{text-align:left !important;margin-left:0 !important;margin-right:auto !important}
-</style>
 <h1>Methods</h1>
 
 <div class="card" id="purpose"><h2>Purpose</h2>

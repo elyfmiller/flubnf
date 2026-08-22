@@ -338,20 +338,33 @@ def _outlook_cards(res: dict | None, rid: str | None = None) -> tuple:
     (report_inputs.json, every run since the bundle feature), home READS
     the bundle's cards, so the home map renders exactly the categories the
     weekly report rendered -- same samples, same computation, same model,
-    which the meta names ("ensemble" or "pf"). Only a pre-bundle run falls
-    back to recomputing categorical probabilities from the roughly five
-    stored quantile levels in results.json (a crude sample-stand-in that
-    can flip borderline states); the meta then carries approx=True and the
-    caption labels the approximation. States without results -- and the
+    which the meta names ("ensemble" or "pf").
+
+    THE APPROXIMATE PER-MODEL PATH (user request 2026-08-21, the model
+    toggle on stored legacy runs): a run whose bundle predates per-model
+    cards -- or has no bundle at all -- falls back to computing a card
+    set for EVERY stored model (ensemble, pf, analogue) from the stored
+    quantile grids in results.json, through the one quantile-CDF path
+    (categorical_probs_from_quantiles: the exact CDF reading of the
+    coarse grid, never the old few-values-as-samples stand-in). With two
+    or more such models the meta carries approx=True (the caption labels
+    the approximation), the primary model's cards as the return value,
+    and every model's card set under meta["by_model"], so home can render
+    the same working toggle a fresh v3 bundle funds -- map and payload
+    from the ONE computation, so swapping can never disagree with the
+    render. A pre-v3 bundle whose results.json cannot fund a toggle
+    (fewer than two usable models) keeps its exact single-model bundle
+    cards exactly as before. States without results -- and the
     no-results-at-all case -- get empty cards, so the caller always
     renders the full silhouette."""
     import json as _json
 
     import pandas as pd
     from app.core import report_v2
-    from app.core.report import categorical_probs
+    from app.core.report import categorical_probs_from_quantiles
     from app.core.report_v2 import CATS
     from app.core.runs import APP_STATE
+    bundle_cards = bundle_meta = None
     if rid:
         try:
             b = APP_STATE / "workroots" / rid / report_v2.BUNDLE_NAME
@@ -364,53 +377,78 @@ def _outlook_cards(res: dict | None, rid: str | None = None) -> tuple:
                              if isinstance(c, dict) and c.get("fips")}
                     if any(c.get("probs") for c in cards.values()):
                         model = bundle.get("cards_model") or "pf"
-                        return cards, {"model": model, "approx": False,
+                        bundle_cards = cards
+                        bundle_meta = {"model": model, "approx": False,
                                        "label": report_v2.MODEL_LABEL.get(
                                            model, report_v2.MODEL_LABEL["pf"])}
+                        # a bundle with two or more per-model card sets is
+                        # the full-fidelity path: exact cards, exact toggle
+                        # (via _outlook_models); anything older falls
+                        # through to the approximation, which may fund the
+                        # toggle from results.json instead
+                        cbm = bundle.get("cards_by_model") or {}
+                        if sum(1 for cs in cbm.values()
+                               if any(isinstance(c, dict) and c.get("probs")
+                                      for c in (cs or {}).values())) >= 2:
+                            return bundle_cards, bundle_meta
         except Exception:
-            pass          # a broken bundle degrades to the approximation
+            bundle_cards = bundle_meta = None   # broken bundle: approximate
     _l = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
     n2f = dict(zip(_l.location_name, _l.location.str.zfill(2)))
     n2a = dict(zip(_l.location_name, _l.abbreviation))
     n2p = dict(zip(_l.location_name, _l.population.astype(float)))
     models = (res or {}).get("models", {})
     model = "ensemble" if models.get("ensemble") else "pf"
-    picked = models.get("ensemble") or models.get("pf") or {}
     observed = (res or {}).get("observed", {})
-    cards = {}
-    for loc, qd in picked.items():
-        fips = n2f.get(loc, "")
-        q1 = (qd or {}).get("1")
-        obs = observed.get(loc) or []
-        # tolerate the pre-quantile results schema (medians-only floats)
-        if len(fips) != 2 or not isinstance(q1, dict) or not obs:
-            continue
-        lo = float(obs[-1][1])
-        vals = [float(v) for v in q1.values()]
-        probs = categorical_probs(vals, lo, int(n2p[loc]), 1)
-        med1 = float(q1.get("0.5", vals[len(vals) // 2]))
-        hover = (f"<b>{loc}</b><br>current: {lo:.0f}"
-                 f"<br>1-wk median: {med1:.0f}<br>" +
-                 "<br>".join(f"{c.replace('_',' ')}: {probs.get(c,0):.0%}"
-                             for c in CATS))
-        cards[fips] = {"probs": probs, "name": loc, "abbr": n2a.get(loc, ""),
-                       "fips": fips, "hover_html": hover}
+    by_model: dict = {}
+    for mname, md in models.items():
+        cards = {}
+        for loc, qd in (md or {}).items():
+            fips = n2f.get(loc, "")
+            q1 = (qd or {}).get("1")
+            obs = observed.get(loc) or []
+            # tolerate the pre-quantile results schema (medians-only floats)
+            if len(fips) != 2 or not isinstance(q1, dict) or not obs:
+                continue
+            lo = float(obs[-1][1])
+            probs = categorical_probs_from_quantiles(q1, lo, int(n2p[loc]), 1)
+            if not probs:
+                continue
+            vals = [float(v) for v in q1.values()]
+            med1 = float(q1.get("0.5", vals[len(vals) // 2]))
+            hover = (f"<b>{loc}</b><br>current: {lo:.0f}"
+                     f"<br>1-wk median: {med1:.0f}<br>" +
+                     "<br>".join(f"{c.replace('_',' ')}: {probs.get(c,0):.0%}"
+                                 for c in CATS))
+            cards[fips] = {"probs": probs, "name": loc,
+                           "abbr": n2a.get(loc, ""),
+                           "fips": fips, "hover_html": hover}
+        if cards:
+            by_model[mname] = cards
+    # a pre-v3 bundle whose results.json cannot fund the toggle keeps its
+    # exact single-model cards: an exact map beats a toggle-less
+    # approximation of the same one model
+    if bundle_cards is not None and len(by_model) < 2:
+        return bundle_cards, bundle_meta
+    cards = dict(by_model.get(model) or {})
     for name, fips in n2f.items():
         if len(fips) == 2:
             cards.setdefault(fips, {"name": name, "abbr": n2a.get(name, ""),
                                     "fips": fips})
     from app.core.report_v2 import MODEL_LABEL
     return cards, {"model": model, "approx": True,
-                   "label": MODEL_LABEL.get(model, MODEL_LABEL["pf"])}
+                   "label": MODEL_LABEL.get(model, MODEL_LABEL["pf"]),
+                   "by_model": by_model}
 
 
 def _outlook_models(rid: str | None) -> dict:
     """Per-model outlook cards from the latest run's bundle (v3 field
     cards_by_model), rekeyed by fips: {model: {fips: card}}, models with
     data only. The home outlook's model toggle renders when two or more
-    exist; a run whose bundle predates per-model cards returns {} and the
-    home map renders exactly as before, one model, no toggle, its label
-    honest."""
+    exist; a run whose bundle predates per-model cards returns {} here,
+    and home then falls back to the approximate per-model card sets
+    _outlook_cards computes from results.json's stored quantiles (the
+    labeled approximation), so a stored legacy run keeps the toggle."""
     import json as _json
 
     from app.core import report_v2
@@ -509,11 +547,18 @@ def home(request: Request):
                    "<script>window.MAP_LINK='/output/report';</script>"
                    + svg_map(cards, clickable=with_data)
                    + map_legend() + "</div>")
-        # the outlook model toggle: only when the latest run's bundle (v3)
-        # carries cards for two or more models -- the stored run of an
-        # older build simply renders its one model, label as honest as ever
+        # the outlook model toggle: from the latest run's bundle (v3,
+        # per-model cards) when it has one, else -- for a stored run from
+        # before per-model cards -- from the approximate per-model card
+        # sets _outlook_cards computed off results.json's stored quantile
+        # grids (the caption already carries the approximation marker on
+        # that path). Either way the map only ever swaps between card sets
+        # computed by the one quantile-CDF path, and fewer than two
+        # swappable models renders label only, never a dead control.
         try:
             by_model = _outlook_models(rid) if outlook_src else {}
+            if not by_model and outlook_src.get("approx"):
+                by_model = outlook_src.get("by_model") or {}
             if len(by_model) >= 2:
                 order = [m for m in report_v2.MODEL_ORDER if m in by_model]
                 order += [m for m in by_model if m not in order]
@@ -666,6 +711,7 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
     archived vintage, any location it covers). Read-only by construction:
     nothing here writes. Bad selections fall back to the defaults with a
     note, never an error page."""
+    import json as _json
     import re as _re
     vs = data_mod.vintages()
     ctx = {"active": "Data", "latest_vintage": vs[-1] if vs else "none",
@@ -673,7 +719,11 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
            "latest": None, "vintages": list(reversed(vs)),
            "sel_vintage": "", "sel_loc": "", "loc_names": [],
            "sel_summary": None, "series_table": [], "series_n": 0,
-           "series_json": "null", "peak": None, "view_note": ""}
+           "series_json": "null", "peak": None, "view_note": "",
+           # the vintage chart's season-over-season mode rides the shared
+           # season palette (the --season-N tokens per draw, these literals
+           # as the fallback), exactly as the forecast data panel does
+           "season_colors_json": _json.dumps(_season_colors())}
     if not vs:
         return ctx
     latest = vs[-1]

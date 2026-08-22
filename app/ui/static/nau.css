@@ -299,10 +299,7 @@ main{max-width:1500px;margin:0 auto;
      padding:1.1rem clamp(1rem,2.5vw,2.5rem) 3rem}
 /* the centered reading column (Methods and the Models views opt in via
    the shell's main_class block): the content column narrows to a reading
-   width and centers on the page, per user preference 2026-08-21. Prose
-   keeps its 72ch measure and left-set text WITHIN the centered column,
-   and the figures, equation panels, and captions ride along at the same
-   left content edge (their scoped alignment rules are unchanged).
+   width and centers on the page, per user preference 2026-08-21.
    Operational pages (Forecast, Runs, Data, Retrospective) keep the
    full-width shell.
    FLUID, not fixed (user report 2026-08-21: a fixed 880px stopped
@@ -310,8 +307,16 @@ main{max-width:1500px;margin:0 auto;
    to a 68rem cap, so it narrows at 900px, widens through 1280, and
    settles at the cap on wide monitors -- centered at every size by the
    base main's margin:0 auto. The 72ch prose measure still governs the
-   text inside. */
+   text inside.
+   EVERYTHING INSIDE THE CARDS CENTERS TOO (user request 2026-08-21,
+   second report -- the left-hugging figures left a dead band on the
+   right): the diagrams, harmonic figures, equation panels, and value
+   panels keep their own margin:auto centering, and the prose block
+   centers at its 72ch measure below, so figures, equations, and text
+   share one center axis with the card and the page. Text inside the
+   centered prose block stays left-set; only the block centers. */
 main.reading{width:min(92%,68rem)}
+main.reading .card p{margin-left:auto;margin-right:auto}
 .cols{display:grid;grid-template-columns:minmax(260px,360px) 1fr;gap:.75rem;
       align-items:start}
 @media(max-width:900px){.cols{grid-template-columns:1fr}}
@@ -324,10 +329,14 @@ main.reading{width:min(92%,68rem)}
          letter-spacing:.05em;color:var(--mut)}
 /* card body text: no explicit size, so it inherits the fluid body step and
    never overrides the smaller .hint / .sub steps nested inside a card.
-   Running prose holds a readable measure (72ch); hints and captions keep
-   the full card width, and tables are untouched (they are not paragraphs). */
+   Running prose holds a readable measure (72ch); hints, captions, and the
+   sub intro lines keep the full card width (heading-width uniformity, per
+   user 2026-08-21: the kick/heading/hint text that introduces a card's
+   content spans the card, never a narrower measure -- the same rule the
+   hero lead and top-level page intros already follow), and tables are
+   untouched (they are not paragraphs). */
 .card p{margin:.45rem 0;max-width:72ch}
-.card p.hint{max-width:none}
+.card p.hint,.card p.sub{max-width:none}
 h1{font-size:var(--fs-h1);font-weight:700;margin:.1rem 0 .6rem;
    text-wrap:balance}
 h1 .accent{color:var(--gold)}

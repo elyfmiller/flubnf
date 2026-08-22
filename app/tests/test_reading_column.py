@@ -1,9 +1,10 @@
-"""Methods and Models read as one column: the prose left-aligns under its
-measure cap, and the figures, equation panels, and their captions join it
-at the same left content edge instead of centering. The overrides are
-scoped -- Methods carries its own block, the Models mech card is covered
-from the shell -- so the deliberately centered layouts elsewhere (home,
-the exported reports) keep their centering."""
+"""Methods and Models center their composition (user request 2026-08-21,
+second report): the reading column is fluid and centered on the page, and
+INSIDE the cards the figures, equation panels, and prose share the same
+center axis -- the diagrams and eqpanels keep their margin:auto centering
+(the old left-hugging overrides are gone), and the prose block centers at
+its 72ch measure while its text stays left-set. Operational pages keep the
+full-width shell and are untouched by the reading-column rules."""
 import sys
 from pathlib import Path
 
@@ -18,64 +19,60 @@ client = TestClient(srv)
 UI = Path(__file__).resolve().parents[1] / "ui"
 METHODS_T = (UI / "templates" / "methods.html").read_text()
 BASE_T = (UI / "templates" / "base.html").read_text()
+NAU = (UI / "static" / "nau.css").read_text()
 
-FIG_RULE = 'svg[role="img"]{margin-left:0 !important;margin-right:auto !important}'
-EQ_RULE = '.eqpanel{margin-left:0;margin-right:auto}'
-NOTE_RULE = ('p.eqnote{text-align:left !important;'
-             'margin-left:0 !important;margin-right:auto !important}')
-
-
-def test_methods_left_aligns_every_figure_to_the_reading_column():
-    html = client.get("/methods").text
-    # the page ships its scoped block, covering diagrams (inline-centered),
-    # equation panels (stylesheet-centered), and figure captions
-    assert ".card " + FIG_RULE in html
-    assert ".card " + EQ_RULE in html
-    assert ".card .eqpanel " + NOTE_RULE in html
-    # and it has figures for the rules to govern
-    assert html.count('role="img"') >= 2             # SIHRS + two-strain
-    assert 'class="eqpanel"' in html
+# the retired left-hugging overrides: these must never come back
+FIG_RULE = 'svg[role="img"]{margin-left:0 !important'
+EQ_RULE = '.eqpanel{margin-left:0'
 
 
-def test_models_mech_card_gets_the_same_treatment_on_every_view():
-    # the shell's scoped rules target the mech card the model views render
-    assert ".card.mech " + FIG_RULE in BASE_T
-    assert ".card.mech " + EQ_RULE in BASE_T
-    assert ".card.mech .eqpanel " + NOTE_RULE in BASE_T
-    for page in ("/models", "/model/analogue", "/model/ensemble",
-                 "/model/pf2s"):
+def test_the_left_hugging_overrides_are_gone():
+    """The figures and equation panels center inside their cards again:
+    neither the shell nor the Methods page ships the old left-alignment
+    override block, so the diagram macros' inline margin:auto centering
+    and the stylesheet's centered .eqpanel/.valpanel margins govern."""
+    assert FIG_RULE not in BASE_T
+    assert FIG_RULE not in METHODS_T
+    assert EQ_RULE not in BASE_T
+    assert EQ_RULE not in METHODS_T
+    for page in ("/methods", "/models", "/model/analogue",
+                 "/model/ensemble", "/model/pf2s"):
         html = client.get(page).text
-        assert ".card.mech " + FIG_RULE in html, page
-        assert 'class="card mech"' in html, page     # the card it governs
+        assert FIG_RULE not in html, page
+        assert EQ_RULE not in html, page
 
 
-def test_the_override_stays_scoped():
-    # Methods' broad .card selectors ship ONLY with the Methods page
-    assert ".card " + FIG_RULE in METHODS_T
-    home = client.get("/").text
-    assert ".card " + FIG_RULE not in home
-    # the shell rule everywhere is mech-scoped, so home's centered figures
-    # (no mech card there) are untouched
-    assert 'class="card mech"' not in home
+def test_figures_and_eqpanels_carry_their_centering_margins():
+    """The centering itself: every mechanism diagram states margin auto
+    inline, and the eqpanel/valpanel stylesheet rules keep their auto
+    margins, so each centers within its card."""
+    html = client.get("/methods").text
+    assert html.count('role="img"') >= 2             # SIHRS + two-strain
+    assert "display:block;margin:.6rem auto" in html # the diagram macros
+    assert 'class="eqpanel"' in html
+    joined = " ".join(NAU.split())
+    assert ".eqpanel{max-width:800px;margin:.45rem auto .25rem;" in joined
+    assert "margin:.35rem auto .2rem;" in joined     # .valpanel
+
+
+def test_prose_centers_at_its_measure_inside_reading_cards():
+    """The whole composition shares one center: within main.reading the
+    card prose block centers at its 72ch measure (text stays left-set),
+    so paragraphs, figures, and equation panels line up on the card's
+    center axis instead of the prose hugging left below centered art."""
+    joined = " ".join(NAU.split())
+    assert ("main.reading .card p{margin-left:auto;margin-right:auto}"
+            in joined)
+    # the base prose measure is untouched
+    assert ".card p{margin:.45rem 0;max-width:72ch}" in joined
 
 
 # --------------------------------- the reading column centers on the page
 
-NAU = (UI / "static" / "nau.css").read_text()
-
-
-def test_reference_pages_center_the_reading_column():
-    """User preference 2026-08-21: Methods and every Models view center
-    their content column on the page (main.reading) instead of leaving it
-    left-aligned in the wide shell. Prose keeps its 72ch measure and
-    left-set text WITHIN the centered column; figures, equations, and
-    captions ride along at the same left content edge (the scoped rules
-    above are unchanged)."""
-    # the stylesheet narrows and centers the opt-in column; the base main
-    # keeps its margin:0 auto, so the narrower width IS the centering.
-    # FLUID, not fixed (user report 2026-08-21: a fixed 880px stopped
-    # breathing with the window): the column tracks 92% of the viewport
-    # up to a 68rem cap, so it adapts at 900, 1280, and 1800 wide alike.
+def test_reference_pages_center_the_fluid_reading_column():
+    """The column stays FLUID (user report 2026-08-21: a fixed 880px
+    stopped breathing with the window): 92% of the viewport up to a 68rem
+    cap, centered at every size by the base main's margin:0 auto."""
     joined = " ".join(NAU.split())
     assert "main.reading{width:min(92%,68rem)}" in joined
     assert "max-width:880px" not in joined           # the fixed cap is gone
@@ -84,8 +81,6 @@ def test_reference_pages_center_the_reading_column():
                  "/model/ensemble", "/model/pf2s"):
         html = client.get(page).text
         assert '<main id="main" class="reading">' in html, page
-    # the prose measure inside the column is untouched
-    assert ".card p{margin:.45rem 0;max-width:72ch}" in joined
 
 
 def test_operational_pages_keep_the_full_width_shell():

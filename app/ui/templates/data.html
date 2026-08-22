@@ -9,7 +9,7 @@
   <p>Latest vintage: <code>{{ latest_vintage }}</code></p>
   {% if latest %}
   <p class="hint">{{ "{:,}".format(latest.rows) }} reported rows ·
-   {{ latest.locations }} jurisdictions covered · newest week
+   {{ latest.locations }} jurisdictions · newest week
    {{ latest.newest_week }}</p>
   {% endif %}
   <p class="hint">{{ n_vintages }} archived truth vintages</p>
@@ -24,16 +24,14 @@
    {{ freshness.detail }}</p>{% endif %}
  </div></div>
  <div><div class="card"><h2>Policies</h2>
-  <p class="hint">Vintage data only: each forecast sees the data exactly as
-  archived on its forecast date. Missing weeks are dropped with
-  calendar-true offsets, never imputed. A missing vintage fails loudly with
-  the nearest alternatives.</p></div></div>
+  <p class="hint">Vintage data only: every forecast sees the data exactly
+  as archived on its date. Missing weeks are dropped, never imputed; a
+  missing vintage fails loudly.</p></div></div>
 </div>
 
 <div class="card"><h2>Vintage browser</h2>
- <p class="hint">A read-only view of the archived truth vintages, the exact
- files every run fits. Pick a vintage to see what that week knew; pick a
- location to see its series as archived then. Nothing here writes.</p>
+ <p class="hint">The archived truth vintages, exactly as runs fit them:
+ pick a vintage and location to see what that week knew. Read-only.</p>
  {# plain GET form: each control re-renders the page server-side, the URL
     stays shareable, and the view needs no scripting to work #}
  <form method="get" action="/data" class="row" style="align-items:flex-end">
@@ -54,6 +52,16 @@
   {{ sel_summary.oldest_week }} to {{ sel_summary.newest_week }}</p>
  {% endif %}
  {% if series_json and series_json != 'null' %}
+ {# the same full-series / season-over-season mode pair the forecast data
+    panel carries, in its conventions: quiet buttons wearing gold when
+    active, honest aria-pressed, the shared season palette tokens, month
+    ticks, per-season hover with each season's real dates #}
+ <div class="row" style="margin:.4rem 0">
+  <button type="button" class="quiet" id="vb-mode-raw" aria-pressed="false">full series</button>
+  <button type="button" class="quiet" id="vb-mode-season" aria-pressed="false">season over season</button>
+ </div>
+ {% endif %}
+ {% if series_json and series_json != 'null' %}
  {# the vintage chart and recent-weeks table share the card as two columns
     at desktop widths (.vintagecols); the table keeps a compact natural
     width (table.compact) with the numbers right-set in tabular figures
@@ -65,10 +73,9 @@
  <div class="vintagecols">
   <div>
    <div id="vintageplot" style="min-height:380px"></div>
-   <p class="hint">{{ sel_loc }}: {{ series_n }} reported weeks in this
-    vintage{% if peak %} · peak {{ "{:,.0f}".format(peak[1]) }} admissions in
-    the week of {{ peak[0] }}{% endif %} · the marked point is the newest
-    week this vintage held.</p>
+   <p class="hint">{{ sel_loc }}: {{ series_n }} reported weeks{% if peak %}
+    · peak {{ "{:,.0f}".format(peak[1]) }} admissions, week of
+    {{ peak[0] }}{% endif %} · the marker is this vintage's newest week.</p>
   </div>
   {% if series_table %}
   <div class="vintagetable">
@@ -78,8 +85,8 @@
     <tr><td>{{ d }}</td><td class="num">{{ "{:,.0f}".format(v) }}</td></tr>
     {% endfor %}
    </table>
-   <p class="hint">Newest {{ series_table | length }} reported weeks, as
-    this vintage archived them; later revisions never appear here.</p>
+   <p class="hint">Newest {{ series_table | length }} weeks as archived;
+    later revisions never appear.</p>
   </div>
   {% endif %}
  </div>
@@ -92,11 +99,21 @@
  // the vintage chart rides the forecast tab's charting conventions: theme
  // tokens resolved per draw, the type scale via the root font size, the
  // card surface as an explicit background so the save-PNG export stays
- // readable, and a redraw on themechange/fontsizechange
+ // readable, and a redraw on themechange/fontsizechange. The mode pair
+ // (full series / season over season) is the forecast data panel's,
+ // sharing its season palette tokens, month ticks, and per-season hover.
  const VSERIES = {{ series_json | safe }};
  const VLOC = {{ sel_loc | tojson }};
  const VVINTAGE = {{ sel_vintage | tojson }};
+ // [month label, week offset from August 1] from the one server-side
+ // offset list, so the season axis reads as calendar months
+ const SEASON_MONTHS = {{ season_months | tojson }};
+ // the season palette's cvd-safe literals as the fallback; the drawn
+ // colors resolve from the --season-N tokens per draw (see forecast.html)
+ const SCOLORS = {{ season_colors_json | safe }};
  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+ const seasonColor = i => css('--season-' + ((i % SCOLORS.length) + 1))
+                          || SCOLORS[i % SCOLORS.length];
  const rootPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
  function vlay(title, h){ const fs=rootPx(), surf=css('--card');
    return {title:{text:title,font:{size:Math.round(fs*.95)}},
@@ -107,27 +124,71 @@
    legend:{orientation:'h',x:0,xanchor:'left',y:-0.22,yanchor:'top'},
    xaxis:{gridcolor:css('--line'), automargin:true},
    yaxis:{gridcolor:css('--line'), rangemode:'tozero', automargin:true}};}
- function drawVintage(){
+ // season helpers, the forecast panel's own: seasons run August to August,
+ // and hover dates format from the ISO string, never through Date (a UTC
+ // parse shifts Saturdays a day back in western timezones)
+ function seasonOf(ds){const d=new Date(ds); const y=d.getMonth()>=7?d.getFullYear():d.getFullYear()-1;
+   return y+'-'+String((y+1)%100).padStart(2,'0');}
+ function weekOfSeason(ds){const d=new Date(ds); const y=d.getMonth()>=7?d.getFullYear():d.getFullYear()-1;
+   return Math.round((d-new Date(y,7,1))/(7*864e5));}
+ const MONNAMES=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+ function fmtDate(ds){const p=ds.slice(0,10).split('-');
+   return MONNAMES[+p[1]-1]+' '+(+p[2])+', '+p[0];}
+ let VMODE='raw';
+ const vconf=name=>({responsive:true,displaylogo:false,
+   toImageButtonOptions:{format:'png',scale:2,
+     filename:name.replace(/[^\w-]+/g,'_')}});
+ function drawVintage(mode){
+   VMODE=mode||VMODE;
+   ['raw','season'].forEach(m=>{
+     const b=document.getElementById('vb-mode-'+m);
+     if(!b) return;
+     b.classList.toggle('gold', VMODE===m);
+     b.setAttribute('aria-pressed', String(VMODE===m));
+   });
    const el=document.getElementById('vintageplot');
    if(!el||!VSERIES||!VSERIES.dates.length) return;
    const n=VSERIES.dates.length;
-   const traces=[
-     {x:VSERIES.dates,y:VSERIES.values,mode:'lines',name:VLOC,
-      line:{color:css('--gold'),width:2},
-      hovertemplate:'%{x} · %{y:,.0f} admissions<extra></extra>'},
-     // the newest week this vintage held, marked as the sparkline marked it
-     {x:[VSERIES.dates[n-1]],y:[VSERIES.values[n-1]],mode:'markers',
-      name:'newest week',marker:{size:9,color:css('--gold-bright')||css('--gold')},
-      hovertemplate:'newest: %{x} · %{y:,.0f}<extra></extra>'}];
-   Plotly.react(el,traces,
-     vlay(VLOC+': admissions as archived '+VVINTAGE,380),
-     {responsive:true,displaylogo:false,
-      toImageButtonOptions:{format:'png',scale:2,
-        filename:('flubnf_vintage_'+VVINTAGE+'_'+VLOC).replace(/[^\w-]+/g,'_')}});
+   if(VMODE==='raw'){
+     const traces=[
+       {x:VSERIES.dates,y:VSERIES.values,mode:'lines',name:VLOC,
+        line:{color:css('--gold'),width:2},
+        hovertemplate:'%{x} · %{y:,.0f} admissions<extra></extra>'},
+       // the newest week this vintage held, marked as the sparkline marked it
+       {x:[VSERIES.dates[n-1]],y:[VSERIES.values[n-1]],mode:'markers',
+        name:'newest week',marker:{size:9,color:css('--gold-bright')||css('--gold')},
+        hovertemplate:'newest: %{x} · %{y:,.0f}<extra></extra>'}];
+     Plotly.react(el,traces,
+       vlay(VLOC+': admissions as archived '+VVINTAGE,380),
+       vconf('flubnf_vintage_'+VVINTAGE+'_'+VLOC));
+     return;
+   }
+   // season over season: the forecast data panel's rendering on this
+   // vintage's series -- newest season gold and thicker, earlier seasons
+   // on the --season-N tokens newest-first (every drawn-adjacent pair is
+   // one the palette audit measured), each season's hover carrying its
+   // own real Saturday dates
+   const by={};
+   VSERIES.dates.forEach((d,i)=>{const k=seasonOf(d);(by[k]=by[k]||{x:[],y:[],d:[]});
+     by[k].x.push(weekOfSeason(d)); by[k].y.push(VSERIES.values[i]);
+     by[k].d.push(fmtDate(d));});
+   const seasons=Object.keys(by).sort();
+   const traces=seasons.map((k,i)=>({x:by[k].x,y:by[k].y,mode:'lines',name:k,
+     customdata:by[k].d,
+     hovertemplate:k+' · %{customdata} · %{y:,.0f}<extra></extra>',
+     line:{width:i===seasons.length-1?3:1.5,
+           color:i===seasons.length-1?(css('--gold')||SCOLORS[0])
+                :seasonColor(seasons.length-2-i)}}));
+   const L=vlay(VLOC+': season over season, as archived '+VVINTAGE,380);
+   L.xaxis.tickvals=SEASON_MONTHS.map(m=>m[1]);
+   L.xaxis.ticktext=SEASON_MONTHS.map(m=>m[0]);
+   Plotly.react(el,traces,L,vconf('flubnf_vintage_seasons_'+VVINTAGE+'_'+VLOC));
  }
- drawVintage();
- addEventListener('themechange',drawVintage);
- addEventListener('fontsizechange',drawVintage);
+ document.getElementById('vb-mode-raw').onclick=()=>drawVintage('raw');
+ document.getElementById('vb-mode-season').onclick=()=>drawVintage('season');
+ drawVintage('raw');
+ addEventListener('themechange',()=>drawVintage());
+ addEventListener('fontsizechange',()=>drawVintage());
 </script>
 {% endif %}
 {% endblock %}

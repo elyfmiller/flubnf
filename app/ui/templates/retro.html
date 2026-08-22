@@ -4,12 +4,12 @@
 {% block content %}
 <h1>Retrospective</h1>
 <p class="sub">Each week the models see only that Saturday's data, submit,
-and move on; scores come later, against settled truth.</p>
+and move on; scoring waits for settled truth.</p>
 <div class="cols">
  <div><div class="card"><h2>Settings</h2>
-  {% if not engine_ok %}<p class="warn">Requires the particle-filter engine.
-  Run <code>SetupEngine.command</code> first; everything else in the
-  application works without it.</p>{% endif %}
+  {% if not engine_ok %}<p class="warn">Requires the particle-filter engine:
+  run <code>SetupEngine.command</code> first. Everything else works without
+  it.</p>{% endif %}
   <form method="post" action="/retro/run">
    <label>Season</label>
    <select name="season">{% for s in seasons %}<option>{{ s.name }}</option>{% endfor %}</select>
@@ -32,9 +32,8 @@ and move on; scores come later, against settled truth.</p>
    <input type="number" name="width" value="4" min="1" max="16">
    <label>Engine preset</label>
    <select name="engine"><option value="pf">PF (particle filter)</option></select>
-   <p class="hint">The two-strain member is not part of the ensemble: it was
-   tested on the full grid and made the blend worse. See
-   <a href="/methods#two-strain">Methods</a>.</p>
+   <p class="hint">The two-strain member made the full-grid blend worse and
+   is not in the ensemble. See <a href="/methods#two-strain">Methods</a>.</p>
    {# what the start-over prompt resolves to. 'resume' is the historical
       behaviour and the value a keyboard submit carries, so the form is
       always safe even if the prompt never runs. #}
@@ -57,12 +56,9 @@ and move on; scores come later, against settled truth.</p>
        c.style.display=(s.value==='custom')?'':'none';});
    })();
   </script>
-  <p class="hint">Runs are resumable; a completed week is never redone, and
-   an interrupted week keeps its finished fits. Stopping and pausing wait
-   only for the fits in flight, so both land in well under a minute. A season
-   that already has results asks first whether to resume, archive, or discard
-   them, so a clean rerun is always available and nothing is lost by
-   accident.</p>
+  <p class="hint">Runs resume: completed weeks are never redone, and stops
+   and pauses wait only for the fits in flight, well under a minute. A
+   season with results asks first: resume, archive, or discard.</p>
  </div></div>
  <div>
   {% for s in seasons %}
