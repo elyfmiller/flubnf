@@ -1,4 +1,6 @@
-{% extends "base.html" %}{% block title %}FluBNF · Data{% endblock %}{% block content %}
+{% extends "base.html" %}{% block title %}FluBNF · Data{% endblock %}
+{% block head %}<script src="/static/plotly.min.js"></script>{% endblock %}
+{% block content %}
 <h1>Data</h1>
 <div class="cols">
  <div><div class="card"><h2>FluSight hub</h2>
@@ -51,15 +53,18 @@
   reported rows · {{ sel_summary.locations }} jurisdictions · weeks
   {{ sel_summary.oldest_week }} to {{ sel_summary.newest_week }}</p>
  {% endif %}
- {% if spark_svg %}
- {# sparkline and recent-weeks table share the card as two columns at
-    desktop widths (.vintagecols); the table keeps a compact natural width
-    (table.compact) with the numbers right-set in tabular figures directly
-    beside their weeks, instead of a card-wide ledger with an empty band
-    between the columns #}
+ {% if series_json and series_json != 'null' %}
+ {# the vintage chart and recent-weeks table share the card as two columns
+    at desktop widths (.vintagecols); the table keeps a compact natural
+    width (table.compact) with the numbers right-set in tabular figures
+    directly beside their weeks, instead of a card-wide ledger with an
+    empty band between the columns. The chart is the forecast tab's
+    charting framework (Plotly, theme tokens re-read per draw, month/date
+    axis), replacing the old too-small sparkline per user report
+    2026-08-21, and sized like the forecast data panel. #}
  <div class="vintagecols">
   <div>
-   {{ spark_svg | safe }}
+   <div id="vintageplot" style="min-height:380px"></div>
    <p class="hint">{{ sel_loc }}: {{ series_n }} reported weeks in this
     vintage{% if peak %} · peak {{ "{:,.0f}".format(peak[1]) }} admissions in
     the week of {{ peak[0] }}{% endif %} · the marked point is the newest
@@ -82,4 +87,47 @@
  <p class="hint">This vintage holds no reported weeks for {{ sel_loc }}.</p>
  {% endif %}
 </div>
+{% if series_json and series_json != 'null' %}
+<script>
+ // the vintage chart rides the forecast tab's charting conventions: theme
+ // tokens resolved per draw, the type scale via the root font size, the
+ // card surface as an explicit background so the save-PNG export stays
+ // readable, and a redraw on themechange/fontsizechange
+ const VSERIES = {{ series_json | safe }};
+ const VLOC = {{ sel_loc | tojson }};
+ const VVINTAGE = {{ sel_vintage | tojson }};
+ const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+ const rootPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+ function vlay(title, h){ const fs=rootPx(), surf=css('--card');
+   return {title:{text:title,font:{size:Math.round(fs*.95)}},
+   height:h||380, margin:{l:8,r:8,t:Math.round(fs*2.2),b:8},
+   paper_bgcolor:surf, plot_bgcolor:surf,
+   font:{color:css('--ink'),family:'"DM Sans",system-ui,sans-serif',
+         size:Math.round(fs*.85)},
+   legend:{orientation:'h',x:0,xanchor:'left',y:-0.22,yanchor:'top'},
+   xaxis:{gridcolor:css('--line'), automargin:true},
+   yaxis:{gridcolor:css('--line'), rangemode:'tozero', automargin:true}};}
+ function drawVintage(){
+   const el=document.getElementById('vintageplot');
+   if(!el||!VSERIES||!VSERIES.dates.length) return;
+   const n=VSERIES.dates.length;
+   const traces=[
+     {x:VSERIES.dates,y:VSERIES.values,mode:'lines',name:VLOC,
+      line:{color:css('--gold'),width:2},
+      hovertemplate:'%{x} · %{y:,.0f} admissions<extra></extra>'},
+     // the newest week this vintage held, marked as the sparkline marked it
+     {x:[VSERIES.dates[n-1]],y:[VSERIES.values[n-1]],mode:'markers',
+      name:'newest week',marker:{size:9,color:css('--gold-bright')||css('--gold')},
+      hovertemplate:'newest: %{x} · %{y:,.0f}<extra></extra>'}];
+   Plotly.react(el,traces,
+     vlay(VLOC+': admissions as archived '+VVINTAGE,380),
+     {responsive:true,displaylogo:false,
+      toImageButtonOptions:{format:'png',scale:2,
+        filename:('flubnf_vintage_'+VVINTAGE+'_'+VLOC).replace(/[^\w-]+/g,'_')}});
+ }
+ drawVintage();
+ addEventListener('themechange',drawVintage);
+ addEventListener('fontsizechange',drawVintage);
+</script>
+{% endif %}
 {% endblock %}

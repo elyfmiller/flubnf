@@ -398,3 +398,43 @@ def test_unknown_kind_is_refused(state):
                     follow_redirects=False)
     assert r.status_code == 303
     assert "Nothing was deleted" in _flash()
+
+
+# ------------------------------------------------------------- ledger fold
+
+def test_ledger_collapses_behind_a_summary_by_default(state):
+    """User report 2026-08-21: the full ledger table dominates the page.
+    It now folds behind a details/summary stating the row count and the
+    newest entry -- closed by default (no `open` attribute server-side) --
+    while the storage panel and its totals stay visible uncollapsed."""
+    html = client.get("/runs").text
+    joined = " ".join(html.split())
+    assert '<details class="ledgerfold" id="ledgerfold">' in html
+    # closed by default: the fold never ships an open attribute
+    assert "<details class=\"ledgerfold\" id=\"ledgerfold\" open" not in html
+    assert "4 runs recorded" in joined
+    # the newest entry (the live run) is named in the summary line
+    summary = html.split("<summary>", 1)[1].split("</summary>", 1)[0]
+    assert state["rids"]["running"][:8] in " ".join(summary.split()) \
+        or "newest" in summary
+    # the table and the clear control live INSIDE the fold
+    fold = html.split('<details class="ledgerfold"', 1)[1] \
+               .split("</details>", 1)[0]
+    assert "<table>" in fold and "clear-ledger-btn" in fold
+    # the storage panel stays outside it, uncollapsed
+    after = html.split("</details>", 1)[1]
+    assert "Storage</h2>" in after and 'class="stotal"' in after
+
+
+def test_ledger_fold_state_persists_per_local_storage(state):
+    html = client.get("/runs").text
+    assert "localStorage.getItem('ledgerfold-open')" in html
+    assert "localStorage.setItem('ledgerfold-open'" in html
+    assert "addEventListener('toggle'" in html
+
+
+def test_empty_ledger_keeps_the_plain_hint_no_fold(state, monkeypatch):
+    monkeypatch.setattr(srv.Ledger, "rows", lambda self, n=50: [])
+    html = client.get("/runs").text
+    assert "ledgerfold" not in html
+    assert "No runs yet." in html

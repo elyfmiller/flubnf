@@ -348,7 +348,20 @@ def model_toggle(models: list, labels: dict, default: str, payload: dict,
     label, so the surface never shows one model's map under another's name.
     Callers emit the toggle only when two or more models exist -- a
     one-model surface needs no switch, and an older bundle without
-    per-model cards renders exactly as before."""
+    per-model cards renders exactly as before.
+
+    THE EMITTER ENFORCES THAT CONTRACT ITSELF: models whose payload
+    carries no per-state fills are dropped (their button could only sit
+    inert -- the swap script finds nothing to recolor), and with fewer
+    than two swappable models nothing is emitted at all. A pre-v3 or
+    partial bundle therefore renders label only, never a toggle-like
+    control that does nothing (user report 2026-08-21)."""
+    models = [m for m in models if (payload.get(m) or {}).get("states")]
+    if len(models) < 2:
+        return ""
+    if default not in models:
+        default = models[0]
+    payload = {m: payload[m] for m in models}
     btns = []
     for m in models:
         on = m == default

@@ -1,6 +1,6 @@
 """The Data page's read-only views: the freshness panel (latest vintage
 stats), the interactive latest-vintage preview (location selector, recent
-weeks table, server-rendered sparkline), and the vintage browser (pick an
+weeks table, a full Plotly series chart), and the vintage browser (pick an
 archived vintage, see exactly what that week knew). All read-only, all
 served from cached scans of the immutable vintage files."""
 import sys
@@ -72,9 +72,21 @@ def test_default_preview_is_the_latest_vintage(archive):
     # US leads the location order
     joined = " ".join(html.split())
     assert joined.index(">US</option>") < joined.index(">Ohio</option>")
-    # the sparkline is server-rendered SVG on theme tokens
-    assert 'role="img"' in html and "polyline" in html
-    assert 'stroke="var(--ink)"' in html and 'fill="var(--gold)"' in html
+    # the vintage chart is the forecast tab's charting framework (user
+    # report 2026-08-21 replaced the too-small sparkline): plotly loads,
+    # the plot div is sized like the forecast data panel, the series
+    # arrives as data, and the layout resolves theme tokens per draw and
+    # redraws on themechange
+    assert '<script src="/static/plotly.min.js"></script>' in html
+    assert '<div id="vintageplot" style="min-height:380px"></div>' in html
+    assert "const VSERIES = {" in html
+    assert '"dates":' in html and '"values":' in html
+    assert "Plotly.react(el,traces," in html
+    assert "css('--gold')" in html and "css('--card')" in html
+    assert "addEventListener('themechange',drawVintage)" in html
+    assert "addEventListener('fontsizechange',drawVintage)" in html
+    # the old sparkline is gone
+    assert "polyline" not in html
 
 
 def test_location_preview_shows_series_table_newest_first(archive):
@@ -102,12 +114,12 @@ def test_vintage_browser_shows_what_that_week_knew(archive):
 def test_recent_weeks_reads_as_a_compact_instrument(archive):
     """The vintage browser's density fix: the recent-weeks table keeps a
     compact natural width with its numbers right-set directly beside their
-    weeks, and it sits beside the sparkline at desktop widths instead of
-    spanning the card as a page-wide ledger."""
+    weeks, and it sits beside the vintage chart at desktop widths instead
+    of spanning the card as a page-wide ledger."""
     html = client.get("/data?loc=Ohio").text
-    # sparkline and table share the two-column layout
+    # chart and table share the two-column layout
     assert 'class="vintagecols"' in html
-    assert html.index('class="vintagecols"') < html.index("<polyline")
+    assert html.index('class="vintagecols"') < html.index('id="vintageplot"')
     # the table is compact (width:auto), header and values right-aligned
     assert '<table class="compact">' in html
     assert '<th class="num">admissions</th>' in html

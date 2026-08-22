@@ -72,9 +72,13 @@ def test_reference_pages_center_the_reading_column():
     captions ride along at the same left content edge (the scoped rules
     above are unchanged)."""
     # the stylesheet narrows and centers the opt-in column; the base main
-    # keeps its margin:0 auto, so a smaller max-width IS the centering
+    # keeps its margin:0 auto, so the narrower width IS the centering.
+    # FLUID, not fixed (user report 2026-08-21: a fixed 880px stopped
+    # breathing with the window): the column tracks 92% of the viewport
+    # up to a 68rem cap, so it adapts at 900, 1280, and 1800 wide alike.
     joined = " ".join(NAU.split())
-    assert "main.reading{max-width:880px}" in joined
+    assert "main.reading{width:min(92%,68rem)}" in joined
+    assert "max-width:880px" not in joined           # the fixed cap is gone
     assert "main{max-width:1500px;margin:0 auto;" in joined
     for page in ("/methods", "/models", "/model/pf", "/model/analogue",
                  "/model/ensemble", "/model/pf2s"):

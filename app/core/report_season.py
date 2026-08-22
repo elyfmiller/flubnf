@@ -358,6 +358,16 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
     letter-spacing:.05em;color:var(--mut);font-weight:600}
  .accent{color:var(--accent)}
  .sub{color:var(--mut);margin:.2rem 0 1rem;font-size:.92rem}
+ /* run-settings block: the console's compact two-column grid (see
+    nau.css .runsettings), restated here because the export is
+    self-contained */
+ .runsettings{margin:.45rem 0}
+ .runsettings .kv{display:grid;grid-template-columns:max-content max-content;
+    gap:.14rem 1.1rem;align-items:baseline;width:max-content;
+    max-width:100%;margin:.25rem 0 0}
+ .runsettings .kv dt{color:var(--mut)}
+ .runsettings .kv dd{margin:0;font-weight:650;
+    font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
  .warn{background:transparent;border:1px solid var(--warn);
        color:var(--warn);
        border-radius:10px;padding:.6rem .8rem;font-size:.9rem}

@@ -5,7 +5,10 @@ Hub facts (verified against model-metadata/README.md, 2026-08-17):
     a CSV column -- one file per model_id per reference date;
   * a team may designate up to two models for the ensemble (more via email
     with out-of-sample evidence);
-  * quantile targets: 'wk inc flu hosp' at 23 quantiles, horizons -1..3.
+  * quantile targets: 'wk inc flu hosp' at 23 quantiles, horizons -1..3;
+  * value precision: whole admissions (integers), matching every official
+    FluSight-baseline / FluSight-ensemble 'wk inc flu hosp' value from
+    2025 on (see _hub_values; measured in the hub clone 2026-08-21).
 """
 from __future__ import annotations
 
@@ -17,6 +20,28 @@ import pandas as pd
 
 QUANTILES = (0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45,
              0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.975, 0.99)
+
+
+def _hub_values(vals) -> list:
+    """Quantile values in the hub's precision: whole admissions.
+
+    Measured against the official FluSight-baseline and FluSight-ensemble
+    submissions in the hub clone (2026-08-21): every 'wk inc flu hosp'
+    quantile value from 2025 on is an integer count (the long float tails
+    in recent official files belong to the 'wk inc flu prop ed visits'
+    proportion target; the officials' own 2023-24 era count files carried
+    tails and were since cleaned up). Our ensemble path was emitting raw
+    numpy quantiles with 17-digit tails; this rounds to the officials'
+    precision.
+
+    The guard: rounding is monotone, but the non-decreasing order of the
+    quantile vector is a hub validation rule, so it is re-enforced after
+    rounding rather than assumed (float ties and any future rounding
+    change stay safe). Returns Python ints so the CSV writes '14', never
+    '14.0'."""
+    v = np.rint(np.asarray(vals, float))
+    v = np.maximum.accumulate(v)
+    return [int(x) for x in v]
 
 
 def quantile_rows(samples: dict, location_fips: str, asof: str) -> list:
@@ -38,7 +63,8 @@ def quantile_rows(samples: dict, location_fips: str, asof: str) -> list:
         if not s.size:
             continue
         target_end = ref + pd.Timedelta(weeks=h)
-        for q in QUANTILES:
+        values = _hub_values(np.quantile(s, QUANTILES))
+        for q, v in zip(QUANTILES, values):
             rows.append({
                 "reference_date": reference_date,
                 "target": "wk inc flu hosp",
@@ -47,7 +73,7 @@ def quantile_rows(samples: dict, location_fips: str, asof: str) -> list:
                 "location": location_fips,
                 "output_type": "quantile",
                 "output_type_id": q,
-                "value": float(np.quantile(s, q)),
+                "value": v,
             })
     return rows
 
@@ -100,9 +126,9 @@ def rows_from_quantiles(qs: dict, location_fips: str, asof: str) -> list:
         if not q:
             continue
         target_end = ref + pd.Timedelta(weeks=h)
-        for level in QUANTILES:
-            if float(level) not in q:
-                continue
+        levels = [l for l in QUANTILES if float(l) in q]
+        values = _hub_values([q[float(l)] for l in levels])
+        for level, v in zip(levels, values):
             rows.append({
                 "reference_date": reference_date,
                 "target": "wk inc flu hosp",
@@ -111,6 +137,6 @@ def rows_from_quantiles(qs: dict, location_fips: str, asof: str) -> list:
                 "location": location_fips,
                 "output_type": "quantile",
                 "output_type_id": level,
-                "value": float(q[float(level)]),
+                "value": v,
             })
     return rows
