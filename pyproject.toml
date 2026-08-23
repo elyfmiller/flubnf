@@ -1,6 +1,6 @@
 [project]
 name = "flubnf"
-version = "0.1.0"
+version = "1.0.0"
 description = "Mechanistic influenza forecasting for CDC FluSight: SIHRS in BNGL, fitted with PyBNF (particle filter + adaptive MCMC) on the bngsim engine"
 readme = "README.md"
 license = { file = "LICENSE" }
