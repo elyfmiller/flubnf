@@ -1,201 +1,61 @@
 begin model
 # =====================================================================
-# FluBNF SIHRS-NATG: production `min` PLUS one exogenous term, zero new
-# fitted parameters. This file is a copy of templates/SIHRS_pop_min.bngl
-# with the national-growth factor added to beta(t) and NOTHING else
-# changed. SIHRS_pop_min.bngl stays the untouched production control.
-#
-# ---------------------------------------------------------------------
-# BUILD 1: EXOGENOUS NATIONAL GROWTH  (handoff 2026-08-21, section 3)
-# ---------------------------------------------------------------------
+# FluBNF SIHRS-NATG: the production template SIHRS_pop_min.bngl PLUS one
+# exogenous national-growth factor on beta(t), zero new fitted parameters:
 #
 #   beta_s(t)  *=  exp( iota * ( g_nat^{-s}(t) - g_s^obs(t) ) )
 #
-# g_nat^{-s} is the population-weighted LEAVE-ONE-OUT log-growth of
-# vintage-true weekly admissions across all OTHER FluSight jurisdictions,
-# as of the same as-of date. g_s^obs is this state's own most recent
-# vintage-true log-growth. Both are built OUTSIDE the BNGL, at
-# materialize time, by flubnf/natgrowth.py, from
-# app.core.data.vintage_path(asof) -- never from the latest file.
+# g_nat^{-s} is the leave-one-out population-weighted log-growth of
+# vintage-true weekly admissions across all OTHER jurisdictions as of the
+# same date; g_s^obs is this state's own. Both are built at materialize
+# time by flubnf/natgrowth.py from the as-of vintage, never the latest
+# file. The term acts on GROWTH, never on level: a state growing at the
+# national rate gets a multiplier of exactly 1.
 #
-# WHY, MEASURED. Leave-one-out national growth at week t predicts a
-# state's own growth at t+1 AFTER the state's AR(1) and a Fourier
-# seasonal -- i.e. after exactly the information eps1/phi1 already give
-# this model. Partial correlation +0.469. LOSO delta-R^2 +0.081 /
-# +0.032 / +0.118 and turn-week RMSE reductions +8.9% / +2.4% / +14.7%
-# over 2023-24 / 2024-25 / 2025-26. This is THIS year's realised wave,
-# not the calendar: nothing in the production system currently sees
-# "the Midwest peaked last week". Detail:
-# research/spatial-nowcast-probe/FINDINGS.md section 1.
+# PRE-REGISTERED AND FROZEN A PRIORI:
+#   * iota = 0.3020, the constant in flubnf/natgrowth.py::IOTA_FROZEN. It
+#     must never become a *__FREE var line and must never be retuned
+#     after seeing scores (handoff Law 1).
+#   * Forecast rule: the last observed gap is
+#     HELD CONSTANT ACROSS THE 1 TO 4 WEEK HORIZON.
+#     No extrapolation, no decay toward zero, no forecast of the national
+#     series; g_nat is not predicted. The rule is structural:
+#     the final branch of natgap() carries no upper guard.
+#   * The gap is clipped to +-1.0 (flubnf/natgrowth.py::GAP_CLIP), so the
+#     beta multiplier stays inside [0.74, 1.35]; clipped weeks are
+#     counted and reported per cell, never silently absorbed.
 #
-# ON GROWTH, NEVER ON LEVEL. A level-form importation term
-# sum_s' w_ss' * A_s'/N_s' restates prevalence, which the filter already
-# has (the occupancy-ratio trap). The DIFFERENCE form is neutral by
-# construction: a state growing at the national rate gets a multiplier
-# of exactly 1, so the term can only speak when the state and the
-# country disagree.
-#
-# NOT A METAPOPULATION. The ODEs are not coupled, no species are added,
-# no movement rates exist. Per-state filters, 10k particles, 5 fitted
-# parameters and per-state parallelism are all unchanged. A coupled
-# 52-region model was measured and rejected (FINDINGS.md section 1).
-#
-# IOTA IS FROZEN A PRIORI. IT IS NOT A FITTED PARAMETER.
-#   OLS of next-week own log-growth on leave-one-out national growth,
-#   given own lag-1 growth and a first Fourier harmonic on week-of-
-#   season (probe.py::spatial()'s design matrix), fitted separately on
-#   the two seasons the handoff names:
-#       2023-24  n=1393  b[g_nat] = 0.7574
-#       2024-25  n=1418  b[g_nat] = 0.4504
-#       mean                        0.6039
-#       x0.5 shrink toward zero  -> 0.3020   <- iota
-#   Cross-check: pooling those two seasons gives b = 0.5528 -> 0.276,
-#   the same number within the season-to-season spread. 2025-26 is NOT
-#   in the average (its own coefficient is 0.8040, so the exclusion made
-#   iota smaller, not larger). Reproduce:
-#     ./.venv/bin/python research/spatial-nowcast-probe/iota_freeze.py
-#   The constant lives in flubnf/natgrowth.py::IOTA_FROZEN. It must
-#   NEVER appear as a *__FREE var line, and it must never be retuned
-#   after seeing scores (handoff Law 1).
-#
-#   HONEST NOTE ON EFFECTIVE STRENGTH. iota multiplies beta, not the
-#   growth rate. exp(iota*gap) shifts weekly log-growth by roughly
-#   gamma*Reff*iota*gap, and gamma is 2.19/week, so the implemented
-#   response is ~0.66 per unit gap: the x0.5 shrink is approximately
-#   cancelled by that amplification and the term lands near 1.0x the
-#   regression coefficient rather than 0.5x. Recorded here so nobody
-#   reads 0.302 as "half strength" when reporting the arm.
-#
-# FORECAST WEEKS, THE PRE-REGISTERED RULE. g_nat is unknown at h=1..4.
-# THE LAST OBSERVED (g_nat - g_s) GAP IS HELD CONSTANT ACROSS THE 1 TO 4
-# WEEK HORIZON. No extrapolation, no decay toward zero, no forecast of
-# the national series. The rule is structural, not a code path: the
-# final branch of the piecewise expression below carries no upper guard,
-# so every t at or beyond the last observed week takes that value.
-#
-# ALIGNMENT AND CAUSALITY. The filter integrates one segment per
-# observation, [w-1, w]. The piecewise value on [w-1, w) is the gap
-# realised up to and including week w-1, i.e. information that existed
-# before that week began. No look-ahead.
-#
-# NUMERICAL GUARD. The gap is clipped to +-1.0 log-growth units before
-# iota is applied (flubnf/natgrowth.py::GAP_CLIP), so the beta
-# multiplier stays inside [0.74, 1.35]. beta enters as beta0*exp(...)
-# and the eps1 bounds are already documented below as stiffness-
-# critical; one state reporting 2 admissions after 40 must not hand
-# exp() an argument no solver should see. Clipped weeks are counted and
-# reported per cell, never silently absorbed.
-#
-# Tokens this variant adds, on top of the ones `min` already needs:
-# IOTA, GAPEXPR, GAPNOTE -- written without their braces here so this
-# comment survives materialization instead of being substituted into an
-# unreadable line. flubnf/natgrowth.py::natg_tokens supplies all three.
-# =====================================================================
-#
-# =====================================================================
-# FluBNF SIHRS — PARSIMONIOUS (5 fitted parameters, not 8)
-#
-# WHY FEWER PARAMETERS, MEASURED
-# ------------------------------
-# The entire gap between SIHRS and a well-calibrated reference is SPREAD, not
-# the central estimate. Swapping SIHRS's median for the analogue's gains 0.003
-# relWIS; swapping the SPREAD gains 0.070. So the median is fine and the
-# predictive distribution is too wide.
-#
-# That width comes from fitting 8 parameters to ~26 weekly points. Each removed
-# dimension removes a source of posterior spread, which is the actual defect.
-# Removed here, each for a measured reason:
-#
-#   eps2, phi2  semi-annual harmonic. An earlier ablation found it makes beta(t)
-#               two-humped but does NOT produce two epidemic peaks -- susceptible
-#               depletion suppresses the second hump. R-hat 2.38 / 26.8.
-#   impr        external reseeding, PINNED IN 75% OF FITS, i.e. not identified by
-#               the data. It exists to keep I off the numerical floor across
-#               MULTI-season runs (230 weeks); over a single 48-week season it is
-#               inert -- verified: peak 142.6 with impr=1e-7 and with impr=0,
-#               and I never approaches the denormal range.
-#
-# KEEP `impr` FOR MULTI-SEASON WORK. Dropping it there reintroduces the CVODE
-# stiffness failure that once broke 100% of 230-week fits. This template is for
-# single-season production fits only; use SIHRS_pop.bngl for multi-season.
-#
-# ---------------------------------------------------------------------
-# POPULATION-PARAMETERIZED (no magnitude anchor)
-# ---------------------------------------------------------------------
-# Same science as models/SIHRS.bngl (real H compartment fed by the I->H
-# flux, waning R->S, continuous 2-harmonic Fourier beta(t)), but the
-# compartments are ABSOLUTE PEOPLE and the state population N enters as
-# known data instead of via a fitted/derived `scaled` anchor.
-#
-# Why: with S(0)=1 normalization, matching an observed peak P required
-#   mult * scaled_factor = 1/(5.5*f) ~= 30  (f = max_t[rho*gamma*I]) --
-# INDEPENDENT of P, so it carried no per-state information and sat ~6x
-# above the mult prior ceiling. `mult` therefore pinned in 43/52 states
-# and forecasts came out ~30x low. With N in the model the observation
-# scale is a dimensionless fraction and no anchor is needed.
-#
-# Infection is FREQUENCY-DEPENDENT (rate constant beta()/N, flux
-# beta*S*I/N). That keeps beta on exactly the same scale as the
-# normalized model -- substituting s=S/N, i=I/N recovers
-# di/dt = beta*s*i - gamma*i identically -- so R0/gamma/eps/phi priors
-# transfer unchanged and no re-derivation is needed.
-#
-# Tokens substituted per state at materialization:
-#   {{POP}} {{S0FRAC}} {{I0FRAC}} {{GAMMA}} {{RHO}} {{GAMMAH}} {{OMEGA}}
-# Fitted (5): Reff, eps1, phi1, mult, r.  Everything else is sourced --
-# see flubnf/sihrs_priors.py for the DOI/derivation of each.
-#
-# Fit the REPORTED admission flux (rhomult*gamma*I), never the census H(t).
+# Extra tokens beyond the ones `min` needs: IOTA, GAPEXPR, GAPNOTE
+# (braces omitted here so this comment survives materialization), all
+# supplied by flubnf/natgrowth.py::natg_tokens. The measured
+# justification, the iota derivation, and the causality argument:
+# docs/MODEL-PROVENANCE.md section 4 and
+# research/spatial-nowcast-probe/FINDINGS.md.
 # =====================================================================
 begin parameters
 
 ### -- transmission: scale-free reproduction number + seasonal forcing -- ###
-Reff    Reff__FREE     # EFFECTIVE reproduction number at season start.
-                       # Fit this, NOT R0: admissions identify Reff (via the growth
-                       # rate), and with S(0)=N*s0 the classic R0 = Reff/s0 is only
-                       # recoverable post hoc. Fitting R0 with s0<1 silently
-                       # requires R0>1/s0 just to sustain an epidemic.
+Reff    Reff__FREE     # EFFECTIVE reproduction number at season start; fit
+                       # Reff, never R0 (R0 = Reff/s0 only post hoc)
 eps1    eps1__FREE     # annual-harmonic amplitude
 phi1    phi1__FREE     # annual-harmonic phase (week of peak transmissibility)
 
 ### -- progression / removal -- ###
 gamma   {{GAMMA}}      # FIXED: 7/3.2 d generation time, Chan 2024 doi:10.1101/2024.08.17.24312064
-rho     {{RHO}}        # FIXED: true IHR = biological branching fraction I->H.
-                       # Used ONLY in the reaction rules (people's flow), never in
-                       # the observable.
-mult    mult__FREE     # ASCERTAINMENT: reported / modelled admissions. Fitted, with a
-                       # narrow prior [0.002,0.10] measured across all 52 states, so it
-                       # is still universal. Only rho*mult is identified, but the
-                       # product CANNOT be pinned a priori: it depends on the attack
-                       # rate, which is itself a consequence of the fitted Reff.
-                       # Pinning it froze the magnitude 2.45x wrong and drove r to its
-                       # floor. So fix rho (biology) and fit mult (observation).
-gammaH  {{GAMMAH}}     # FIXED: discharge rate. Does NOT enter the admissions fit
-                       # target at all (H census only), so it is unidentifiable here.
-omega   {{OMEGA}}      # FIXED: waning R->S. Weakly identified from <3 seasons.
+rho     {{RHO}}        # FIXED: true IHR branching fraction I->H; rules only,
+                       # never the observable
+mult    mult__FREE     # ascertainment; only rho*mult is identified -- never
+                       # pin the product (docs/MODEL-PROVENANCE.md)
+gammaH  {{GAMMAH}}     # FIXED: discharge; moves the census only, unidentifiable here
+omega   {{OMEGA}}      # FIXED: waning R->S, weakly identified from <3 seasons
 
-### -- external force of infection (reseeding) -- ###
-# Per-susceptible weekly hazard of infection from OUTSIDE this population.
-# Required, not cosmetic: waning refills the FUEL (S) but supplies no SPARK (I),
-# and infection is S+I->I+I i.e. proportional to I. Between seasons I decays for
-# ~30 weeks and, in absolute counts, reaches ~1e-150 people -- biologically
-# meaningless and numerically denormal, which made CVODE fail on 100% of
-# 230-week multi-season fits. Real flu is REIMPORTED each autumn from other
-# populations; a closed single-population ODE cannot represent that.
-# Written as S()->I() (not 0->I()) so total population is conserved.
-# FITTED: no clean literature value exists for a per-state weekly reseeding rate.
-# It also separates from i0 multi-season, because i0 affects only the FIRST
-# season while importation drives EVERY season's onset.
-
-### -- observation noise (the only reporting parameter still fitted) -- ###
+### -- observation noise -- ###
 r       r__FREE        # negative-binomial dispersion (AMCMC)
 
 ### -- exogenous national growth: FIXED A PRIORI, never fitted -- ###
-iota    {{IOTA}}       # FROZEN. Derivation in this file's header and in
-                       # flubnf/natgrowth.py::IOTA_FROZEN. Deliberately a plain
-                       # parameter, NOT a *__FREE var: fitting it would be a
-                       # coupling strength fitted on past-season data, which
-                       # Law 1 forbids.
+iota    {{IOTA}}       # FROZEN at 0.3020; derivation in this file's header
+                       # and flubnf/natgrowth.py::IOTA_FROZEN. Deliberately
+                       # a plain parameter, never a *__FREE var (Law 1).
 
 ### -- derived -- ###
 beta0   Reff*gamma/s0
@@ -242,25 +102,19 @@ begin functions
 
 ### -- exogenous national-growth gap, piecewise-constant in t -- ###
 # {{GAPNOTE}}
-# Generated at materialize time by flubnf/natgrowth.py::bngl_gap_expression.
-# Value on [w, w+1) is g_nat^{-s}(w) - g_s^obs(w), clipped to +-1.0; runs of
-# equal values are merged. The final branch has NO upper guard, which IS the
-# pre-registered forecast rule: t at or beyond the last observed week holds the
-# last observed gap. A week with no defined growth (missing data, or either
-# endpoint under the 5-admission floor) contributes exactly 0.0, i.e. the
-# production model.
+# Generated at materialize time by flubnf/natgrowth.py::bngl_gap_expression;
+# a week with no defined growth contributes exactly 0.0. The final branch
+# has no upper guard: t at or beyond the last observed week holds the last
+# observed gap (the pre-registered forecast rule).
 natgap() = {{GAPEXPR}}
 
-### -- continuous seasonal transmission rate; exp() keeps beta > 0 -- ###
+### -- seasonal transmission rate (exp() keeps beta > 0) -- ###
 # The ONLY change from SIHRS_pop_min.bngl: the exp(iota*natgap()) factor.
 # iota = 0 reduces this file to the production template exactly.
 beta() = beta0*exp( eps1*cos(2*pi*(t-phi1)/52) )*exp( iota*natgap() )
 
 ### -- weekly REPORTED admissions = ascertained flux into H -- ###
-# rho*mult carries biological IHR x reporting ascertainment. `rho` also
-# appears in the reaction rules (it is a real branching fraction); `mult`
-# does NOT -- ascertainment must never alter how people move between
-# compartments, only what we observe of them.
+# mult is observation-only: ascertainment must never enter the reaction rules.
 H_weekly() = rho*mult*gamma*I
 
 end functions
