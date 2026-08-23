@@ -354,14 +354,21 @@ def test_season_report_carries_the_us_aggregate_with_the_honest_label(
     assert "<script src" not in html and "fetch(" not in html
 
 
-def test_unscored_report_omits_the_aggregate_rather_than_inventing_it(
+def test_unscored_report_states_the_aggregate_absence_never_invents_it(
         tmp_path, _stubbed, monkeypatch):
+    """No figure is invented for an unscored season, and since 2026-08-23
+    the absence is STATED in the artifact rather than left as a silent
+    hole (the recurring exported-artifact failure class): no tile, no
+    table row, no construction note, one plain sentence saying why."""
     from app.core import report_season
     monkeypatch.setattr(report_season, "_plotlyjs", lambda: "/* stub */")
     root = _mk_tree(tmp_path)                # weeks, never scored
     html = report_season.build_season_report(root, SEASON).read_text()
-    assert "US (aggregated)" not in html
+    assert 'class="tilename">US (aggregated)' not in html
+    assert '<tr class="usagg">' not in html
     assert "not a fitted national forecast" not in html
+    assert "is not in this export" in html
+    assert "has not been scored" in html
 
 
 def test_export_freshness_covers_the_aggregate_cache(tmp_path, _stubbed,

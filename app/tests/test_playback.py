@@ -104,7 +104,8 @@ def test_payload_structure_members_official_truth_stats(tmp_path, monkeypatch):
     # ensemble = equal-weight blend: medians 101 (pf), 103 (pf2s), 105 (an)
     assert p["models"]["ensemble"]["Ohio"]["1"]["0.5"] == pytest.approx(103.0)
 
-    # truth: full-season settled series, US included because officials exist
+    # truth: full-season settled series, US always included (the player
+    # offers a US view in every week)
     assert set(p["truth"]) == {"Ohio", "Utah", "US"}
     dates = [d for d, _ in p["truth"]["Ohio"]]
     assert dates == sorted(dates) and len(dates) == 14
@@ -153,9 +154,10 @@ def test_cache_written_served_and_invalidated(tmp_path, monkeypatch):
     playback.build_week(root, SEASON, ASOF)
     cf = root / "playback_cache" / f"{ASOF}.json"
     assert cf.is_file()
-    # fresh cache is served verbatim
+    # fresh cache is served verbatim (the sentinel carries the full validity
+    # shape: both officials present and the always-present US truth key)
     cf.write_text(json.dumps({"_v": playback.CACHE_V, "asof": "sentinel",
-                              "models": {},
+                              "models": {}, "truth": {"US": []},
                               "official": {"FluSight-baseline": {},
                                            "FluSight-ensemble": {}}}))
     future = cf.stat().st_mtime + 60
@@ -222,6 +224,35 @@ def test_stats_cache_gains_late_official_files(tmp_path, monkeypatch):
     assert "FluSight-baseline" in p2["official"]
     st = p2["stats"]["FluSight-baseline"]
     assert st["week_rel"] is not None and st["cum_rel"] is not None
+
+
+def test_us_truth_present_without_officials(tmp_path, monkeypatch):
+    """A week with no official submission still carries the US truth
+    series: the player's location list offers US in every week, and gating
+    the national truth on official presence made those frames render as
+    bare empty axes (field-found on the 2025-26 season player, weeks
+    outside the officials' competition window)."""
+    root = _mk_root(tmp_path, monkeypatch, official_models=())
+    p = playback.build_week(root, SEASON, ASOF)
+    assert p["official"] == {}
+    assert "US" in p["truth"]
+    assert p["truth"]["US"], "the settled national series must be served"
+    assert p["truth"]["US"][-1][1] == pytest.approx(1005.0)
+
+
+def test_cached_payload_without_us_truth_upgrades(tmp_path, monkeypatch):
+    """A payload cached before US truth rode along unconditionally rebuilds
+    on first serve, the same lazy-heal rule as late official files."""
+    root = _mk_root(tmp_path, monkeypatch, official_models=())
+    playback.build_week(root, SEASON, ASOF)
+    cf = root / "playback_cache" / f"{ASOF}.json"
+    stale = json.loads(cf.read_text())
+    del stale["truth"]["US"]                      # the pre-fix cache shape
+    cf.write_text(json.dumps(stale))
+    future = cf.stat().st_mtime + 60
+    os.utime(cf, (future, future))                # fresh by mtime alone
+    p = playback.build_week(root, SEASON, ASOF)
+    assert "US" in p["truth"]
 
 
 def test_season_official_catalog(tmp_path, monkeypatch):
