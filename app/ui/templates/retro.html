@@ -83,7 +83,11 @@ and move on; scoring waits for settled truth.</p>
    <progress value="{{ s.done }}" max="{{ s.total }}"></progress>
    {% endif %}
    <div class="row" style="justify-content:space-between">
-    <span class="hint">{{ s.done }}/{{ s.total }} weeks{% if s.seal %} · full-grid validation run{% endif %}
+    {# .rcount: the live ticker updates every element that states progress,
+       so this line can never disagree with the .rstat headline above it
+       (field-found: a card that read "10/32" up top and a stale "1/32"
+       here, because only the headline was ever repainted) #}
+    <span class="hint"><span class="rcount">{{ s.done }}/{{ s.total }} weeks</span>{% if s.seal %} · full-grid validation run{% endif %}
      {% if s_complete %} · relWIS <span class="{{ 'ok' if s.rel < 1 else 'bad' }}">{{ "%.3f"|format(s.rel) }}</span>{% endif %}
      {% if s.status == 'running' %}<span class="warn">· running</span>
      {% elif s.status == 'stopping' %}<span class="warn">· stopping after the fits in flight</span>

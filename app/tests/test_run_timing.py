@@ -320,7 +320,18 @@ def test_api_retro_progress_shape_and_eta(tmp_path, monkeypatch):
     assert p["elapsed_s"] == pytest.approx(240.0)
     assert p["mean_s"] == pytest.approx(120.0)
     assert p["weeks_measured"] == 2
-    assert p["eta_s"] == pytest.approx(120.0 * 8)      # mean x weeks remaining
+    # the estimate is recency-weighted (half-life three weeks), never the
+    # global mean: the recent 140 s week outvotes the older 100 s one, so
+    # the estimate sits above mean x remaining
+    w = 0.5 ** (1 / 3)
+    level = (100.0 * w + 140.0) / (w + 1.0)
+    assert p["eta_s"] == pytest.approx(level * 8)
+    assert p["eta_s"] > 120.0 * 8
+    # and it is a RANGE: two measured weeks cannot claim precision, so the
+    # band is at its widest floor (half to one-and-a-half times the middle)
+    assert p["eta_lo_s"] == pytest.approx(0.5 * p["eta_s"])
+    assert p["eta_hi_s"] == pytest.approx(1.5 * p["eta_s"])
+    assert p["eta_basis"] == "estimate from 2 completed weeks"
     assert p["slowest_week"] == W2 and p["slowest_s"] == pytest.approx(140.0)
     # an unrecognized season name never reaches the filesystem
     assert client.get("/api/retro/progress?season=../etc").json() == {}
@@ -337,7 +348,11 @@ def test_api_retro_progress_withholds_eta_when_paused(tmp_path, monkeypatch):
                             "heartbeat_utc": time.time()})
     p = client.get(f"/api/retro/progress?season={SEASON}").json()[SEASON]
     assert p["status"] == "paused"
-    assert p["eta_s"] is None            # nothing is being worked through
+    # nothing is being worked through: the whole estimate is withdrawn, so
+    # the page can say "paused" instead of decaying a stale range
+    assert p["eta_s"] is None
+    assert p["eta_lo_s"] is None and p["eta_hi_s"] is None
+    assert p["eta_basis"] is None
 
 
 # -------------------------------------------------------- control endpoints

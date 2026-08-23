@@ -3075,6 +3075,7 @@ def _archive_progress(root: Path, season: str) -> dict:
             "elapsed_s": t.get("elapsed_s"),
             "weeks_measured": t.get("weeks_measured") or 0,
             "mean_s": t.get("mean_s"), "eta_s": None,
+            "eta_lo_s": None, "eta_hi_s": None, "eta_basis": None,
             "slowest_week": t.get("slowest_week"),
             "slowest_s": t.get("slowest_s"),
             "started_utc": t.get("started_utc"),
@@ -3140,11 +3141,230 @@ def _season_status(season: str) -> str:
     return mem or disk
 
 
+# --------------------------------------------------------------------------
+# the remaining-time estimate for a live replay
+#
+# The old estimate (global mean seconds per week times weeks remaining) was
+# frozen in the field: week cost climbs roughly threefold through a season
+# (measured on the sealed full-grid runs), so as slower weeks raised the
+# mean, the falling remaining count cancelled it and the product barely
+# moved for hours. The estimate below fixes all three defects at once:
+#   * the LEVEL comes from recency-weighted measured weeks (half-life three
+#     weeks), so the estimate tracks what the machine is doing now;
+#   * the SHAPE of the remaining weeks comes from a completed same-scope
+#     run's per-week relative cost profile, so the estimate prices the
+#     season's slow late weeks instead of assuming every week costs the
+#     current average;
+#   * the time already spent inside the week in flight (read from the week
+#     directory's own files) is credited, so the number moves on every poll
+#     instead of holding a plateau between week completions.
+# The answer is a RANGE, not a point: the spread of the measured weeks sets
+# honest bounds, and the basis line says how many weeks it rests on.
+# --------------------------------------------------------------------------
+
+def _scope_key(meta: dict):
+    """The hashable location-scope identity of a run record, or None when
+    the record holds no settings. panel6 and all match on the scope name; a
+    custom selection matches on its exact location list."""
+    s = (meta or {}).get("settings")
+    if not isinstance(s, dict) or not s:
+        return None
+    scope = str(s.get("scope") or "")
+    if scope in ("panel6", "all"):
+        return scope
+    locs = tuple(sorted(str(l) for l in (s.get("locations") or [])))
+    return locs or None
+
+
+#: fewest measured weeks a completed run needs before its per-week seconds
+#: can serve as a season shape for another run's estimate
+_PROFILE_MIN_WEEKS = 8
+
+
+@ttlcache.ttl_cache()
+def _profile_scan(retro_root: Path, seal_root: Path, season: str,
+                  scope_key) -> tuple | None:
+    """The completed run whose per-week seconds shape the remaining-weeks
+    estimate: same location scope, most measured weeks wins. Candidates are
+    other seasons' live trees and every archived run (an archived replay of
+    the SAME season is the best profile there is). Cached by both roots, as
+    every scan cache here is: an answer computed against one tree must never
+    be served for another.
+
+    Returns (season_label, ((position, relative_cost), ...)) with positions
+    on 0..1 through that run's own measured weeks, or None when no
+    same-scope completed run exists, which honestly degrades the estimate
+    to a flat profile rather than inventing a shape."""
+    if not scope_key:
+        return None
+    from app.core import retro
+    best = None
+    for s in retro.available_seasons():
+        roots = []
+        if s != season:
+            roots.append(Path(retro_root) / s)
+            roots.append(Path(seal_root) / s)
+        roots.extend(retro.list_archive_dirs(retro_root, s))
+        for r in roots:
+            m = retro.read_meta(r)
+            if not m or _scope_key(m) != scope_key:
+                continue
+            ws = {k: float(v)
+                  for k, v in (m.get("week_seconds") or {}).items()
+                  if isinstance(v, (int, float)) and float(v) > 0}
+            if len(ws) < _PROFILE_MIN_WEEKS:
+                continue          # too few weeks to carry a season's shape
+            if best is None or len(ws) > best[2]:
+                vals = [ws[k] for k in sorted(ws)]
+                mean = sum(vals) / len(vals)
+                n = len(vals)
+                pts = tuple((i / (n - 1) if n > 1 else 0.0, v / mean)
+                            for i, v in enumerate(vals))
+                best = (s, pts, n)
+    return (best[0], best[1]) if best else None
+
+
+def _eta_estimate(measured, remaining, profile=None, spent_s=0.0,
+                  overhead_s=0.0):
+    """The remaining-time estimate itself. Pure, so the tests and the replay
+    harness can drive it week by week against recorded seasons.
+
+    measured    [(position, seconds)] for this run's completed weeks,
+                ascending by week; position is the week's fractional place
+                in its season, 0..1.
+    remaining   [position] for the weeks still to run, the week in flight
+                first.
+    profile     ((position, relative_cost), ...) from a completed
+                same-scope run, or None for a flat profile.
+    spent_s     seconds already inside the week in flight.
+    overhead_s  per-week seconds this run spends between weeks, measured
+                from its own record.
+
+    Returns (lo_s, mid_s, hi_s), lo <= mid <= hi, or None when nothing is
+    measured yet. The band is set by whichever is larger: the
+    recency-weighted spread of the measured weeks around the profile, or a
+    schedule calibrated by replaying the three recorded full-grid seasons
+    against each other (app/tests/test_retro_eta.py holds the replay): a
+    base plus a term for the fraction of the season still unmeasured,
+    widened further when no profile shapes the remaining weeks and when
+    only a week or two has been measured. The dominant error is systematic
+    (one season's shape transferred to another), so the band is treated as
+    correlated across the remaining weeks, never shrunk by their count."""
+    if not measured or not remaining:
+        return None
+
+    def cost(p):
+        if not profile:
+            return 1.0
+        if p <= profile[0][0]:
+            return profile[0][1]
+        for (p0, c0), (p1, c1) in zip(profile, profile[1:]):
+            if p <= p1:
+                return c0 + ((c1 - c0) * (p - p0) / (p1 - p0)
+                             if p1 > p0 else 0.0)
+        return profile[-1][1]
+
+    n = len(measured)
+    half_life = 3.0               # weeks: the recent past predicts the next
+    wts = [0.5 ** ((n - 1 - j) / half_life) for j in range(n)]
+    ratios = [s / max(cost(p), 1e-9) for p, s in measured]
+    wsum = sum(wts)
+    level = sum(w * r for w, r in zip(wts, ratios)) / wsum
+    if level <= 0:
+        return None
+    var = sum(w * (r - level) ** 2 for w, r in zip(wts, ratios)) / wsum
+    rel = (var ** 0.5) / level
+    preds = [level * cost(q) + max(0.0, float(overhead_s))
+             for q in remaining]
+    left = max(0.0, sum(preds) - min(max(0.0, float(spent_s)), preds[0]))
+    frac_rem = len(remaining) / (n + len(remaining))
+    u = max(rel, 0.10 + 0.20 * frac_rem + (0.15 if not profile else 0.0))
+    if n < 3:
+        u = max(u, 0.50)          # one or two weeks cannot claim precision
+    elif n < 6:
+        u = max(u, 0.25)
+    return (left * (1.0 - u), left, left * (1.0 + u))
+
+
+def _inflight_spent(root: Path, remaining: list, now: float) -> float:
+    """Seconds already inside the week being fitted, read from the week
+    directory's own files: the most recently STARTED remaining week is the
+    one in flight (an earlier failed week's directory lingers but is old).
+    Zero between weeks, which is the honest floor."""
+    weeks = Path(root) / "weeks"
+    best = None
+    for asof in remaining:
+        wd = weeks / asof
+        if not wd.is_dir():
+            continue
+        try:
+            t0 = min((f.stat().st_mtime for f in wd.iterdir()), default=None)
+        except OSError:
+            continue
+        if t0 is not None and (best is None or t0 > best):
+            best = t0
+    return max(0.0, now - best) if best is not None else 0.0
+
+
+def _season_eta(meta: dict, season: str, root: Path, t: dict) -> tuple | None:
+    """Plumbing for _eta_estimate against a live season: week positions from
+    the season's vintage calendar (an index fallback when the calendar is
+    unavailable), the same-scope profile, the in-flight week's spent
+    seconds, and the run's own measured between-week overhead.
+
+    Returns (lo_s, mid_s, hi_s, basis) or None while nothing is measured."""
+    from app.core import retro
+    ws = {k: float(v) for k, v in ((meta or {}).get("week_seconds") or {}).items()
+          if isinstance(v, (int, float)) and float(v) > 0}
+    if not ws:
+        return None
+    completed = {p.parent.name for p in retro.season_sample_files(root)}
+    done = len(completed)
+    vintages = list(retro.season_vintages(season))
+    if vintages and completed <= set(vintages) and len(vintages) > done:
+        posmap = {v: (i / (len(vintages) - 1) if len(vintages) > 1 else 0.0)
+                  for i, v in enumerate(vintages)}
+        measured = [(posmap.get(k, 1.0), ws[k]) for k in sorted(ws)]
+        remaining_names = [v for v in vintages if v not in completed]
+        remaining = [posmap[v] for v in remaining_names]
+    else:
+        # no calendar to name the weeks: place them by index over the
+        # recorded total, and read no week directory for spent seconds
+        total = max(int(t.get("total_weeks") or 0), done + 1)
+        denom = max(total - 1, 1)
+        keys = sorted(ws)
+        measured = [(j / denom, ws[k]) for j, k in enumerate(keys)]
+        remaining_names = []
+        remaining = [(done + i) / denom for i in range(total - done)]
+    if not remaining:
+        return None
+    now = time.time()
+    spent = (_inflight_spent(root, remaining_names, now)
+             if remaining_names else 0.0)
+    elapsed = float(t.get("elapsed_s") or 0.0)
+    overhead = min(120.0, max(0.0, elapsed - sum(ws.values()) - spent)
+                   / max(1, len(ws)))
+    prof = _profile_scan(RETRO_ROOT, RETRO_SEAL, season, _scope_key(meta))
+    est = _eta_estimate(measured, remaining,
+                        profile=(prof[1] if prof else None),
+                        spent_s=spent, overhead_s=overhead)
+    if est is None:
+        return None
+    basis = "estimate from %d completed week%s" % (
+        len(ws), "" if len(ws) == 1 else "s")
+    if prof:
+        basis += ", weighted by the %s week profile" % prof[0]
+    return est[0], est[1], est[2], basis
+
+
 def _retro_progress(season: str) -> dict:
     """Live progress and timing for one season, in the shape the retro pages
-    poll. ETA comes from the MEASURED mean seconds per week times the weeks
-    still to run -- far steadier than a fit-level estimate, and honest about
-    how many weeks it rests on."""
+    poll. The remaining-time estimate is a RANGE from measured per-week
+    seconds: recency-weighted, shaped by a completed same-scope season's
+    week profile when one exists, credited with the seconds already inside
+    the week in flight so it moves on every poll, and withheld entirely
+    (all three fields null) when it cannot be computed yet or the season is
+    paused: a stale number is worse than none."""
     from app.core import retro
     status = _season_status(season)
     meta = _season_meta(season)
@@ -3153,9 +3373,11 @@ def _retro_progress(season: str) -> dict:
     done = _weeks_done(root)
     total = t.get("total_weeks") or len(retro.season_vintages(season))
     mean_s = t.get("mean_s")
-    eta_s = None
-    if status == "running" and mean_s and total and done < total:
-        eta_s = mean_s * (total - done)
+    eta_lo = eta_s = eta_hi = eta_basis = None
+    if status == "running" and total and done < total:
+        est = _season_eta(meta, season, root, t)
+        if est:
+            eta_lo, eta_s, eta_hi, eta_basis = est
     return {"season": season, "status": status, "done": done,
             "total": int(total or 0),
             # what this replay was started with, from its run record
@@ -3163,6 +3385,7 @@ def _retro_progress(season: str) -> dict:
             "elapsed_s": t.get("elapsed_s"),
             "weeks_measured": t.get("weeks_measured") or 0,
             "mean_s": mean_s, "eta_s": eta_s,
+            "eta_lo_s": eta_lo, "eta_hi_s": eta_hi, "eta_basis": eta_basis,
             "slowest_week": t.get("slowest_week"),
             "slowest_s": t.get("slowest_s"),
             "started_utc": t.get("started_utc"),
