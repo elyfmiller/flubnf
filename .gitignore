@@ -13,3 +13,8 @@ data/covgates/
 .pytest_cache/
 data/covidhub/
 research/covid-phase0/out/
+
+# The generated public site and its deploy workflow stay local until the lab
+# decides to publish: the generator (app/core/site_build.py) is tracked, its
+# output is not. A local copy lives in ~/Documents/FluBNF-local.
+site/
