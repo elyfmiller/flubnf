@@ -1,0 +1,157 @@
+begin model
+# =====================================================================
+# FluBNF SIHRS - COVID-19 SECOND-HARMONIC VARIANT (8 fitted parameters)
+#
+# GATE A ROUND TWO, ARM A2. The round-one template SIHRS_pop_covid.bngl is
+# unchanged and remains the control arm; THIS file adds exactly one thing to
+# it: the semi-annual harmonic (eps2, phi2) restored to beta(t) as fitted
+# parameters. Diff the two files: the differences are the eps2/phi2 parameter
+# lines, the beta() line, and this header block.
+#
+# WHY THE SECOND HARMONIC IS RESTORED NOW, HAVING BEEN REFUSED IN ROUND ONE
+# -------------------------------------------------------------------------
+# Round one (pre-registration 5ad51005a827740c) freed omega and nothing else,
+# on the sweep argument that the one-harmonic form reaches COVID's two-wave
+# year in 20.4% of the realistic-amplitude region. The fits then landed
+# OUTSIDE that region: eps1 collapsed to about 0.03 in all nine fits, omega
+# concentrated at 2.66 to 5.11 months, and the posterior-median models produced
+# 1.00 peaks per year, zero of nine bimodal, against 2 to 3 observed waves in
+# the same windows. Reachable was not reached. The sweep also measured that the
+# second harmonic roughly triples the bimodal region (6.7% -> 18.4% at COVID
+# waning), and the round-one width result (particle filter 1.105 against a 4.06
+# bar) leaves room to pay for two dimensions. Whether the data spend that room
+# on an identified eps2, and whether the fitted model then produces two
+# epidemics a year, is exactly what round two's gates ask.
+#
+# The influenza ablation that killed eps2 ("makes beta(t) two-humped but does
+# NOT produce two epidemic peaks -- susceptible depletion suppresses the second
+# hump") was measured under influenza waning and does not transfer; see the
+# round-one template's header for the sweep rows. Verified numerically with the
+# production simulator before round two was frozen: with COVID waning, eps2 in
+# 0.20 to 0.35 produces 2.00 peaks per year even at eps1 = 0.03 (the collapsed
+# round-one value) and omega inside the round-one posterior range, e.g.
+# R0 1.2 / eps1 0.03 / eps2 0.20 / omega 17 wk -> 2.00 peaks/yr. The regime
+# this arm needs is therefore reachable at the amplitudes the priors allow.
+#
+# PRIORS FOR THE TWO ADDED DIMENSIONS (see gate_a2.py for the frozen record)
+# --------------------------------------------------------------------------
+#   eps2  uniform(0.0, 0.4). The bound is STIFFNESS-CRITICAL, carried from the
+#         measured flu 8-parameter box (sihrs_fit.FITTED_PRIORS): beta_max =
+#         Reff*gamma*exp(eps1+eps2), and at this arm's prior corner
+#         (2.5 * 1.0234 * exp(1.4)) that is 10.4/wk, an order of magnitude
+#         below the ~77/wk corner that once made CVODE fail. Uniform because
+#         the lower bound is exactly 0, where log is undefined.
+#   phi2  uniform(0.0, 26.0). The semi-annual harmonic has period 26 weeks, so
+#         the phase is identified only mod 26; the box spans one full period.
+#         No peak-week prior, for the same reason phi1 carries none.
+#
+# INHERITED FROM SIHRS_pop_covid.bngl (unchanged)
+# -----------------------------------------------
+# omega fitted (loguniform 1.8 to 18 months, Bobrovitz 2023 / Lancet 2023),
+# gamma fixed at 7/6.84 per week (Manica 2022 intrinsic generation time),
+# rho 0.005 branching-only, mult fitted ascertainment, phi1 with no peak-week
+# prior, population parameterization, frequency-dependent infection, and the
+# admissions-flux observable. See that file and flubnf/profiles.py for every
+# source.
+#
+# Fit the REPORTED admission flux (rhomult*gamma*I), never the census H(t).
+# =====================================================================
+begin parameters
+
+### -- transmission: scale-free reproduction number + seasonal forcing -- ###
+Reff    Reff__FREE     # EFFECTIVE reproduction number at season start.
+eps1    eps1__FREE     # annual-harmonic amplitude
+phi1    phi1__FREE     # annual-harmonic phase (week of peak transmissibility)
+eps2    eps2__FREE     # semi-annual amplitude; stiffness-bounded, see header
+phi2    phi2__FREE     # semi-annual phase, identified mod 26
+
+### -- progression / removal -- ###
+gamma   {{GAMMA}}      # FIXED: 7 / 6.84 d mean INTRINSIC generation time for
+                       # Omicron, Manica 2022 doi:10.1016/j.lanepe.2022.100446.
+                       # Arm A3 substitutes the realized-household value here;
+                       # the token makes that a materialization choice, not an
+                       # edit.
+rho     {{RHO}}        # FIXED: true IHR branching fraction I->H; see profiles.py
+mult    mult__FREE     # ASCERTAINMENT: reported / modelled admissions
+gammaH  {{GAMMAH}}     # FIXED: discharge rate; never enters the fit target
+omega   omega__FREE    # FITTED: waning R->S per week, loguniform
+                       # [0.01278, 0.12780] = 1.8 to 18 months protection.
+                       # Sources and the gate-window argument are in
+                       # SIHRS_pop_covid.bngl and flubnf/profiles.py.
+
+### -- observation noise (the only reporting parameter still fitted) -- ###
+r       r__FREE        # negative-binomial dispersion (AMCMC)
+
+### -- derived -- ###
+beta0   Reff*gamma/s0
+pi      3.141592653589793  # avoid BNGL _pi(): bngsim codegen emits M_PI(), which will not compile
+
+### -- FIXED per-state structural constants (known data, never fitted) -- ###
+N       {{POP}}        # state population (absolute people)
+s0      {{S0FRAC}}     # initial susceptible fraction; FIXED -- R0*s0 is product-identified
+i0      {{I0FRAC}}     # initial infected fraction
+
+end parameters
+
+begin molecule types
+S()         # susceptible people
+I()         # infectious people
+H()         # hospitalized census / occupancy
+R()         # recovered / immune people
+Hadm()      # cumulative admissions accumulator (never decays)
+counter()   # clock: observable t = weeks
+end molecule types
+
+begin seed species
+# Absolute counts. R(0) carries the non-susceptible, non-infected remainder,
+# so S+I+H+R = N exactly and pre-existing immunity is representable (s0 < 1).
+S() N*s0
+I() N*i0
+H() 0
+R() N*(1-s0-i0)
+Hadm() 0
+counter() 0
+end seed species
+
+begin observables
+Molecules S     S()
+Molecules I     I()
+Molecules H     H()        # census -- do NOT fit to an admissions target
+Molecules R     R()
+Molecules H_Cum Hadm()     # cumulative admissions; neg_bin_dynamic differences '_Cum' -> weekly
+Molecules t     counter()
+end observables
+
+begin functions
+
+### -- continuous seasonal transmission rate, TWO harmonics (exp keeps beta > 0) -- ###
+beta() = beta0*exp( eps1*cos(2*pi*(t-phi1)/52) + eps2*cos(4*pi*(t-phi2)/52) )
+
+### -- weekly REPORTED admissions = ascertained flux into H -- ###
+H_weekly() = rho*mult*gamma*I
+
+end functions
+
+begin reaction rules
+# clock
+0 -> counter() 1
+# infection, FREQUENCY-DEPENDENT: rate constant beta()/N -> flux beta*S*I/N
+S() + I() -> I() + I()   beta()/N
+# hospitalization branch: fraction rho of the gamma removal
+I() -> H()   rho*gamma
+# direct-recovery branch
+I() -> R()   (1-rho)*gamma
+# discharge
+H() -> R()   gammaH
+# waning immunity (the second S in SIHRS)
+R() -> S()   omega
+# cumulative-admissions accumulator (counts I->H without consuming I)
+I() -> I() + Hadm()   rho*gamma
+end reaction rules
+
+end model
+
+begin actions
+generate_network({overwrite=>1})
+simulate({suffix=>"SIHRS_covid",method=>"ode",t_start=>0,t_end=>48,n_steps=>48,print_functions=>1})
+end actions
