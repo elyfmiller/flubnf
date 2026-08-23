@@ -18,3 +18,9 @@ research/covid-phase0/out/
 # decides to publish: the generator (app/core/site_build.py) is tracked, its
 # output is not. A local copy lives in ~/Documents/FluBNF-local.
 site/
+
+# Manuscripts and internal analysis stay off the public repo until the lab
+# decides to publish. Local copies live in ~/Documents/FluBNF-local/manuscripts.
+docs/PERFORMANCE.md
+docs/PARTICLE-FILTER.md
+docs/figs/
