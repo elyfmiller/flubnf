@@ -1,14 +1,38 @@
 cff-version: 1.2.0
-title: flubnf
+title: FluBNF
 message: If you use this software, please cite it as below.
 type: software
+version: 1.0.0
+date-released: '2026-08-23'
 authors:
   - family-names: Miller
     given-names: Ely F.
+    orcid: https://orcid.org/0000-0003-3480-8377
+    affiliation: Posner Lab, Northern Arizona University
 repository-code: https://github.com/elyfmiller/flubnf
 license: MIT
+keywords:
+  - influenza
+  - forecasting
+  - FluSight
+  - particle filter
+  - compartmental model
+  - rule-based modeling
+  - BNGL
+  - PyBNF
 abstract: >-
-  Mechanistic influenza forecasting for CDC FluSight: an SIHRS model in BNGL
-  fitted with PyBNF (sequential particle filter and adaptive MCMC) on the
-  bngsim engine, with an operations console, reproducible run ledger, and
-  hubverse-format submissions.
+  FluBNF forecasts weekly influenza hospital admissions for the 52 US
+  jurisdictions of the CDC FluSight challenge. Its shipped forecast is an
+  unfitted, equal-weight, quantile-averaged ensemble of two members: a
+  sequential particle filter over an SIHRS compartmental model written in
+  BNGL, fitted with a fork of PyBNF on the bngsim engine, and a calendar
+  analogue. In a vintage-true retrospective of the 2023-24, 2024-25, and
+  2025-26 seasons at full grid (15,460 scored cells), the ensemble scored a
+  pooled weighted interval score of 0.704 relative to the CDC
+  FluSight-baseline (0.848, 0.651, and 0.691 by season), beating the baseline
+  in every season, and the record was replicated on independent hardware.
+  Placed among the archived submissions of real FluSight teams, the same
+  forecasts rank 14th of 34 (2023-24), 4th of 40 (2024-25, ahead of the
+  official FluSight-ensemble), and 19th of 47 (2025-26). All scores are
+  self-computed from the hub's archived vintage data and baseline files; the
+  placements are retrospective replays, not real-time submissions.
