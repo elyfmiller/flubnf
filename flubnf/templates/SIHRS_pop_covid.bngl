@@ -1,0 +1,271 @@
+begin model
+# =====================================================================
+# FluBNF SIHRS - COVID-19 VARIANT (6 fitted parameters)
+#
+# THE ONLY STRUCTURAL DIFFERENCE FROM SIHRS_pop_min.bngl IS THAT `omega` IS
+# FITTED INSTEAD OF FIXED. Everything else -- compartments, reaction rules,
+# the single annual harmonic, the observable, the frequency-dependent
+# infection term, the population parameterization -- is byte-identical. Diff
+# the two files: the difference should be the omega line, the priors comment
+# block, and this header.
+#
+# WHY omega, AND WHY ONLY omega
+# -----------------------------
+# A 60,000-draw forward sweep of the plausible parameter region asked how often
+# this exact one-harmonic structure produces COVID's observed year: two distinct
+# waves, one in winter and one in summer, each at least half the annual maximum,
+# in three consecutive years.
+#
+#     k=1 beta, COVID waning 3-12 mo      6.7% of sets   (20.4% at eps1 <= 0.5)
+#     k=2 beta, COVID waning 3-12 mo     18.4% of sets   (39.3% at eps1 <= 0.5)
+#     k=1 beta, influenza waning 1-5 yr   1.2% of sets   ( 4.0% at eps1 <= 0.5)
+#
+# Read the first and third rows together. The SAME structure is essentially
+# incapable of a two-wave year under influenza waning and reaches it in a fifth
+# of the realistic-amplitude region under COVID waning. The parameter that
+# unlocks bimodality is `omega`, NOT `eps2`: with waning on a ~6-month timescale
+# the susceptible pool refills between forcing peaks and a second epidemic
+# fires. That is a relaxation oscillation, not a second hump in beta(t).
+#
+# This retires, for COVID only, the ablation recorded in SIHRS_pop_min.bngl
+# ("eps2 makes beta(t) two-humped but does NOT produce two epidemic peaks --
+# susceptible depletion suppresses the second hump"). That result is correct and
+# it is a result about INFLUENZA WANING. It does not transfer, and it must not
+# be cited as if it did.
+#
+# WHY eps2/phi2 ARE STILL ABSENT
+# ------------------------------
+# The second harmonic roughly triples the bimodal region (6.7% -> 18.4%). It is
+# still not added, because 20.4% reachability at realistic amplitude is already
+# enough for the fit to find the regime if the data want it, and the measured
+# defect of this model is WIDTH: swapping SIHRS's median for a calibrated one
+# gains 0.003 relWIS, swapping its SPREAD gains 0.070. Two extra dimensions
+# fitted to ~40 weekly points buy reachability that is already present and pay
+# for it in exactly the currency this port is most likely to fail in. If Gate A
+# clears the width bar with room to spare, eps2/phi2 become the next candidate;
+# they are not a Phase-0 change.
+#
+# WHAT MUST NOT BE DONE TO phi1
+# -----------------------------
+# `phi1` is the week of peak TRANSMISSIBILITY and carries no peak-week prior
+# here or anywhere. Under COVID waning the epidemic peak LEADS phi1 by a median
+# 11.0 weeks (IQR -14.4 to -7.8) in the same sweep; under influenza waning the
+# lead is 4.7 weeks. A prior placing phi1 near the observed peak week would be
+# wrong by roughly a season quarter. The box stays uniform(0, 52).
+#
+# INHERITED FROM SIHRS_pop_min.bngl (unchanged, kept for the record)
+# ------------------------------------------------------------------
+# WHY FEWER PARAMETERS, MEASURED
+# ------------------------------
+# The entire gap between SIHRS and a well-calibrated reference is SPREAD, not
+# the central estimate. Swapping SIHRS's median for the analogue's gains 0.003
+# relWIS; swapping the SPREAD gains 0.070. So the median is fine and the
+# predictive distribution is too wide.
+#
+# That width comes from fitting 8 parameters to ~26 weekly points. Each removed
+# dimension removes a source of posterior spread, which is the actual defect.
+# Removed here, each for a measured reason:
+#
+#   eps2, phi2  semi-annual harmonic. An earlier ablation found it makes beta(t)
+#               two-humped but does NOT produce two epidemic peaks -- susceptible
+#               depletion suppresses the second hump. R-hat 2.38 / 26.8.
+#   impr        external reseeding, PINNED IN 75% OF FITS, i.e. not identified by
+#               the data. It exists to keep I off the numerical floor across
+#               MULTI-season runs (230 weeks); over a single 48-week season it is
+#               inert -- verified: peak 142.6 with impr=1e-7 and with impr=0,
+#               and I never approaches the denormal range.
+#
+# KEEP `impr` FOR MULTI-SEASON WORK. Dropping it there reintroduces the CVODE
+# stiffness failure that once broke 100% of 230-week fits. This template is for
+# single-season production fits only; use SIHRS_pop.bngl for multi-season.
+#
+# ---------------------------------------------------------------------
+# POPULATION-PARAMETERIZED (no magnitude anchor)
+# ---------------------------------------------------------------------
+# Same science as models/SIHRS.bngl (real H compartment fed by the I->H
+# flux, waning R->S, continuous 2-harmonic Fourier beta(t)), but the
+# compartments are ABSOLUTE PEOPLE and the state population N enters as
+# known data instead of via a fitted/derived `scaled` anchor.
+#
+# Why: with S(0)=1 normalization, matching an observed peak P required
+#   mult * scaled_factor = 1/(5.5*f) ~= 30  (f = max_t[rho*gamma*I]) --
+# INDEPENDENT of P, so it carried no per-state information and sat ~6x
+# above the mult prior ceiling. `mult` therefore pinned in 43/52 states
+# and forecasts came out ~30x low. With N in the model the observation
+# scale is a dimensionless fraction and no anchor is needed.
+#
+# Infection is FREQUENCY-DEPENDENT (rate constant beta()/N, flux
+# beta*S*I/N). That keeps beta on exactly the same scale as the
+# normalized model -- substituting s=S/N, i=I/N recovers
+# di/dt = beta*s*i - gamma*i identically -- so R0/gamma/eps/phi priors
+# transfer unchanged and no re-derivation is needed.
+#
+# Tokens substituted per state at materialization:
+#   {{POP}} {{S0FRAC}} {{I0FRAC}} {{GAMMA}} {{RHO}} {{GAMMAH}}
+# NOTE: the OMEGA token is deliberately ABSENT -- omega is fitted here,
+#       so this template must never contain that placeholder.
+# Fitted (6): Reff, eps1, phi1, omega, mult, r.  Everything else is sourced --
+# see flubnf/profiles.py COVID for the DOI/derivation of each.
+#
+# Fit the REPORTED admission flux (rhomult*gamma*I), never the census H(t).
+# =====================================================================
+begin parameters
+
+### -- transmission: scale-free reproduction number + seasonal forcing -- ###
+Reff    Reff__FREE     # EFFECTIVE reproduction number at season start.
+                       # Fit this, NOT R0: admissions identify Reff (via the growth
+                       # rate), and with S(0)=N*s0 the classic R0 = Reff/s0 is only
+                       # recoverable post hoc. Fitting R0 with s0<1 silently
+                       # requires R0>1/s0 just to sustain an epidemic.
+eps1    eps1__FREE     # annual-harmonic amplitude
+phi1    phi1__FREE     # annual-harmonic phase (week of peak transmissibility)
+
+### -- progression / removal -- ###
+gamma   {{GAMMA}}      # FIXED: 7 / 6.84 d mean INTRINSIC generation time for
+                       # Omicron, Manica 2022 doi:10.1016/j.lanepe.2022.100446
+                       # (8,903 households, 95% CrI 5.72-8.60 d). The 2.4-3.6 d
+                       # figures in circulation are the REALIZED household
+                       # generation time and the serial interval, both depressed
+                       # by within-household susceptible depletion and, in
+                       # contact-tracing cohorts, by isolation. This model is a
+                       # large-population frequency-dependent SIR, so the
+                       # intrinsic quantity is the matching one -- and the
+                       # influenza value it mirrors (Chan 2024) is explicitly
+                       # intrinsic too, so this is like for like. Corroborated on
+                       # the same scale by Hart 2022 doi:10.1016/S1473-3099(22)00001-9
+                       # (Alpha 5.5 d, Delta 4.7 d).
+rho     {{RHO}}        # FIXED: true IHR = biological branching fraction I->H.
+                       # Used ONLY in the reaction rules (people's flow), never in
+                       # the observable. First-pass COVID value is an order of
+                       # magnitude below influenza's 2% for the high-immunity
+                       # Omicron era; only rho*mult is identified and mult is
+                       # fitted, so this moves the S/I dynamics negligibly.
+mult    mult__FREE     # ASCERTAINMENT: reported / modelled admissions. Fitted, with a
+                       # narrow prior [0.002,0.10] measured across all 52 states, so it
+                       # is still universal. Only rho*mult is identified, but the
+                       # product CANNOT be pinned a priori: it depends on the attack
+                       # rate, which is itself a consequence of the fitted Reff.
+                       # Pinning it froze the magnitude 2.45x wrong and drove r to its
+                       # floor. So fix rho (biology) and fit mult (observation).
+gammaH  {{GAMMAH}}     # FIXED: discharge rate. Does NOT enter the admissions fit
+                       # target at all (H census only), so it is unidentifiable here.
+omega   omega__FREE    # FITTED: waning R->S, per week. THE change this template
+                       # exists for. Prior loguniform over [0.01278, 0.12780]
+                       # per week, i.e. a mean protected duration of 1.8 to 18
+                       # months. Sourced: in SIHRS an individual in R is fully
+                       # protected and leaves at hazard omega, so the fraction
+                       # still protected t weeks after infection is exp(-omega*t)
+                       # and two systematic reviews give that curve directly.
+                       #   Bobrovitz 2023, Lancet Infect Dis
+                       #   doi:10.1016/S1473-3099(22)00801-5 -- protection
+                       #   against reinfection 24.7% (16.4-35.5) at 12 months
+                       #   => omega = -ln(0.247)/52.18 = 0.0268/wk (8.6 months)
+                       #   Lancet 2023 meta-analysis
+                       #   doi:10.1016/S0140-6736(22)02465-5 -- protection
+                       #   against omicron BA.1 reinfection 36.1% (24.4-51.3)
+                       #   at 40 weeks
+                       #   => omega = -ln(0.361)/40  = 0.0255/wk (9.0 months)
+                       # Two independent meta-analyses agree within 5%, and the
+                       # 26-week median of the sweep sets that reproduced COVID's
+                       # two-wave year sits between them.
+                       # THE PRIOR IS WIDER THAN THE GATE WINDOW ON PURPOSE. The
+                       # gate asks whether the posterior concentrates inside 3-12
+                       # months (omega 0.01916-0.07665) AND off its bounds; if
+                       # the box were the window, "inside" would be a tautology.
+                       # loguniform because omega is a strictly positive scale
+                       # parameter spanning an order of magnitude.
+
+### -- external force of infection (reseeding) -- ###
+# Per-susceptible weekly hazard of infection from OUTSIDE this population.
+# Required, not cosmetic: waning refills the FUEL (S) but supplies no SPARK (I),
+# and infection is S+I->I+I i.e. proportional to I. Between seasons I decays for
+# ~30 weeks and, in absolute counts, reaches ~1e-150 people -- biologically
+# meaningless and numerically denormal, which made CVODE fail on 100% of
+# 230-week multi-season fits. Real flu is REIMPORTED each autumn from other
+# populations; a closed single-population ODE cannot represent that.
+# Written as S()->I() (not 0->I()) so total population is conserved.
+# FITTED: no clean literature value exists for a per-state weekly reseeding rate.
+# It also separates from i0 multi-season, because i0 affects only the FIRST
+# season while importation drives EVERY season's onset.
+
+### -- observation noise (the only reporting parameter still fitted) -- ###
+r       r__FREE        # negative-binomial dispersion (AMCMC)
+
+### -- derived -- ###
+beta0   Reff*gamma/s0
+pi      3.141592653589793  # avoid BNGL _pi(): bngsim codegen emits M_PI(), which will not compile
+
+### -- FIXED per-state structural constants (known data, never fitted) -- ###
+N       {{POP}}        # state population (absolute people)
+s0      {{S0FRAC}}     # initial susceptible fraction; FIXED -- R0*s0 is product-identified
+i0      {{I0FRAC}}     # initial infected fraction
+
+end parameters
+
+begin molecule types
+S()         # susceptible people
+I()         # infectious people
+H()         # hospitalized census / occupancy
+R()         # recovered / immune people
+Hadm()      # cumulative admissions accumulator (never decays)
+counter()   # clock: observable t = weeks
+end molecule types
+
+begin seed species
+# Absolute counts. R(0) carries the non-susceptible, non-infected remainder,
+# so S+I+H+R = N exactly and pre-existing immunity is representable (s0 < 1),
+# which the S(0)=1 normalization structurally cannot express.
+S() N*s0
+I() N*i0
+H() 0
+R() N*(1-s0-i0)
+Hadm() 0
+counter() 0
+end seed species
+
+begin observables
+Molecules S     S()
+Molecules I     I()
+Molecules H     H()        # census -- do NOT fit to an admissions target
+Molecules R     R()
+Molecules H_Cum Hadm()     # cumulative admissions; neg_bin_dynamic differences '_Cum' -> weekly
+Molecules t     counter()
+end observables
+
+begin functions
+
+### -- continuous seasonal transmission rate (unchanged; exp() keeps beta > 0) -- ###
+beta() = beta0*exp( eps1*cos(2*pi*(t-phi1)/52) )
+
+### -- weekly REPORTED admissions = ascertained flux into H -- ###
+# rho*mult carries biological IHR x reporting ascertainment. `rho` also
+# appears in the reaction rules (it is a real branching fraction); `mult`
+# does NOT -- ascertainment must never alter how people move between
+# compartments, only what we observe of them.
+H_weekly() = rho*mult*gamma*I
+
+end functions
+
+begin reaction rules
+# clock
+0 -> counter() 1
+# infection, FREQUENCY-DEPENDENT: rate constant beta()/N -> flux beta*S*I/N
+S() + I() -> I() + I()   beta()/N
+# hospitalization branch: fraction rho of the gamma removal
+I() -> H()   rho*gamma
+# direct-recovery branch
+I() -> R()   (1-rho)*gamma
+# discharge
+H() -> R()   gammaH
+# waning immunity (the second S in SIHRS)
+R() -> S()   omega
+# cumulative-admissions accumulator (counts I->H without consuming I)
+I() -> I() + Hadm()   rho*gamma
+end reaction rules
+
+end model
+
+begin actions
+generate_network({overwrite=>1})
+simulate({suffix=>"SIHRS_covid",method=>"ode",t_start=>0,t_end=>48,n_steps=>48,print_functions=>1})
+end actions

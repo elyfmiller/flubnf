@@ -11,3 +11,5 @@ data/covgates/
 .flubnf.env
 *.egg-info/
 .pytest_cache/
+data/covidhub/
+research/covid-phase0/out/

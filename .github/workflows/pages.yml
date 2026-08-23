@@ -1,0 +1,77 @@
+name: pages
+
+# Publish the built public site.
+#
+# The site is BUILT ON THE LAB'S MACHINE, not here. Everything it shows --
+# the retrospectives, the FluSight hub clone, the fitted samples -- lives
+# under app/state and the hub checkout, both of which are gitignored and
+# hundreds of megabytes; CI has none of it and never will. So `flubnf site
+# build` runs on the laptop, a human reviews the diff of site/site.json,
+# commits, and pushes. This workflow's only job is to take what was reviewed
+# and put it online, byte for byte.
+#
+# Consequence worth stating: a push that changes only source code does NOT
+# change the site. Rebuild and commit site/ to move the published page.
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", ".github/workflows/pages.yml"]
+  workflow_dispatch: {}
+
+# Read the repo, mint the Pages token. Nothing else.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; a queued run supersedes an older one but never
+# cancels a deploy already in flight, which would leave Pages half-updated.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fail loudly rather than publishing an empty or half-built site.
+      # These are the three files the generator always writes; the absence
+      # of any one of them means site/ was committed mid-build or by hand.
+      - name: the committed site is complete
+        run: |
+          set -euo pipefail
+          for f in site/index.html site/site.json site/plotly.min.js; do
+            test -s "$f" || { echo "::error::missing or empty $f — run 'flubnf site build' and commit site/"; exit 1; }
+          done
+          python - <<'PY'
+          import json, pathlib, re, sys
+          page = pathlib.Path("site/index.html").read_text(encoding="utf-8")
+          data = pathlib.Path("site/site.json").read_text(encoding="utf-8")
+          # the payload beside the page must be the payload inside it, or
+          # the diff that was reviewed is not the page being published
+          m = re.search(r'<script type="application/json" id="flubnf-payload">(.*?)</script>', page, re.S)
+          if not m or m.group(1) != data.rstrip("\n"):
+              print("::error::site/site.json does not match the payload embedded in site/index.html; rebuild with 'flubnf site build'")
+              sys.exit(1)
+          p = json.loads(data)
+          bad = [c for c in p.get("consistency", []) if not c["ok"]]
+          for c in bad:
+              print(f"::error::{c['what']}: site says {c['computed']}, the console says {c['app']}")
+          if bad:
+              sys.exit(1)
+          print(f"site built {p['generated_utc']} from commit {p['build']['sha']}: "
+                f"{len(p['seasons'])} seasons, {len(p['fans'])} locations")
+          PY
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
