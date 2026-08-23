@@ -1,23 +1,23 @@
 begin model
 # =====================================================================
-# FluBNF SIHRS — TWO-STRAIN (A/B) MIN — the PF production variant
-# ---------------------------------------------------------------------
-# The two-strain candidate in the same trim as SIHRS_pop_min.bngl (the
-# single-strain model the PF actually runs): no impr (single-season fits;
-# the filter re-conditions weekly), no semi-annual harmonic (the B
-# circuit carries two-wave structure mechanistically — the hypothesis
-# under test). See SIHRS_pop_2strain.bngl for the fully-annotated draft
-# and design rationale (Feb-2024 plateau, NREVSS crossover).
+# FluBNF SIHRS -- TWO-STRAIN (A/B) MIN, the PF production variant.
+# Two independent SIHRS circuits over the same population N, in the same
+# trim as SIHRS_pop_min.bngl: no reseeding term (single-season fits; the
+# filter re-conditions weekly), no semi-annual harmonic (the B circuit
+# carries two-wave structure mechanistically -- the hypothesis under
+# test). Motivation (the Feb-2024 plateau, the NREVSS crossover) and the
+# design rationale: docs/MODEL-PROVENANCE.md section 6; annotated draft:
+# SIHRS_pop_2strain.bngl.
 #
 # Fitted (7): ReffA, ReffB, eps1, phi1A, phi1B, mult, r
 # Tokens:     {{POP}} {{S0FRAC}} {{I0FRAC}} {{A0SHARE}} {{GAMMA}} {{RHO}}
 #             {{GAMMAH}} {{OMEGA}}
 # {{A0SHARE}} = strain-A share of initial infections, KNOWN DATA from the
-# season's first as-of NREVSS reading — never fitted.
+# season's first as-of NREVSS reading -- never fitted.
 #
 # Channels: H_weekly (NHSN admissions, NB) + A_share (NREVSS typed
 # positives ratio, binomial via the engine's `_bin`/`_n` exp columns).
-# mult cancels in A_share — the channels identify different things.
+# mult cancels in A_share -- the channels identify different things.
 # =====================================================================
 begin parameters
 
