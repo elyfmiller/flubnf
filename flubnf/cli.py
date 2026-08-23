@@ -1990,3 +1990,74 @@ def retro_cmd(season: str, locations: str = "all", width: int = 4,
                             width=width,
                             progress=lambda a: print(f"  {a} done", flush=True))
     print(f"{season}: {len(done)} weeks complete -> {r}")
+
+
+# ---------------------------------------------------------------------------
+# site — build the public static site from the lab's own state
+#
+# A sub-app rather than a flat command, because the site has a lifecycle
+# (build now; check, and later publish/preview) and "flubnf site build"
+# keeps that room without crowding the top-level command list.
+# ---------------------------------------------------------------------------
+site_app = typer.Typer(
+    add_completion=False, no_args_is_help=True,
+    help="Build the public static site from the lab's retrospectives.")
+app.add_typer(site_app, name="site")
+
+
+@site_app.command("build")
+def site_build_cmd(
+    out: Optional[Path] = typer.Option(
+        None, "--out", help="Output directory (default: the repo's site/)."),
+    season: str = typer.Option(
+        "", "--season",
+        help="Pin the home outlook to this season instead of the newest "
+             "forecast. Deliberate override; recorded in the payload."),
+    asof: str = typer.Option(
+        "", "--asof",
+        help="Pin the home outlook to this forecast week (YYYY-MM-DD). "
+             "Requires the week to exist in the chosen season."),
+    check: bool = typer.Option(
+        False, "--check",
+        help="Exit non-zero if any computed score disagrees with the "
+             "figure the console publishes for the same season."),
+):
+    """Read the app's state and write the static site.
+
+    Everything on the page is computed here from the stored forecasts: the
+    outlook map from the newest full-country forecast, the season table from
+    whichever retrospective seasons exist on disk, and Methods from the
+    console's own templates. Nothing is copied from a note.
+    """
+    from app.core import site_build as sb
+    pin = (season, asof) if (season or asof) else None
+    try:
+        res = sb.build(out_dir=out, pin=pin)
+    except sb.BuildError as e:
+        console.print(f"[red]site build: {e}[/red]")
+        raise typer.Exit(2)
+
+    src = res["outlook"]
+    console.print(f"[bold]site[/bold] -> {res['out']}")
+    console.print(f"  page      {res['page_bytes']:>9,} bytes")
+    console.print(f"  payload   {res['payload_bytes']:>9,} bytes"
+                  "   (site.json, review this diff)")
+    console.print(f"  plotly    {res['plotly_bytes']:>9,} bytes"
+                  "   (cached sibling, not inlined)")
+    console.print(f"  outlook   {src['label']}")
+    console.print(f"  locations {res['locations']}")
+    console.print(f"  seasons   {', '.join(res['seasons']) or 'none'}")
+    if res["pooled"] is not None:
+        console.print(f"  pooled    ensemble relWIS {res['pooled']:.4f}")
+    console.print(f"  built in  {res['elapsed_s']:.1f}s")
+
+    if res["mismatches"]:
+        console.print("[red]scores disagree with the console:[/red]")
+        for m in res["mismatches"]:
+            console.print(f"  {m['what']}: computed {m['computed']:.4f}, "
+                          f"console states {m['app']:.4f}")
+        if check:
+            raise typer.Exit(1)
+    else:
+        console.print("[green]  scores match the console's published "
+                      "figures[/green]")

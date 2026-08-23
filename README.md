@@ -28,6 +28,8 @@ app/           operations console: FastAPI UI, run ledger, engines, ensemble,
                submission formatting, weekly HTML report (US map + drill-down)
 scripts/       operational runners (pre-season seeding, weekly loop, backtests,
                data audit)
+site/          the public static site, generated from the lab's own
+               retrospectives by `flubnf site build` (see docs/SITE.md)
 tests/         test suites for both layers
 ```
 
@@ -94,6 +96,9 @@ python scripts/preseason_seed.py --min-model --states Ohio --through 2025-09-20 
     --root /tmp/warm --out preseason.json
 python scripts/weekly_loop_run.py --min-model --states Ohio \
     --asofs 2025-11-15 2025-11-22 --root /tmp/warm --out weekly.json
+
+# rebuild the public site from whatever retrospectives are on this machine
+flubnf site build --check
 ```
 
 Reproducibility is structural: every run derives its RNG seeds from
