@@ -404,7 +404,12 @@ def build_week(root: Path, season: str, asof: str) -> dict:
                 name not in payload.get("official", {})
                 and (HUB / "model-output" / name / f"{ref}-{name}.csv").is_file()
                 for name in ("FluSight-baseline", "FluSight-ensemble"))
-            if not missing_now_present:
+            # A payload cached before US truth rode along unconditionally
+            # (weeks with no official submission) upgrades on first serve,
+            # the same lazy-heal pattern as the officials check above; the
+            # key is always written now, so this fires once per stale week.
+            us_truth_missing = "US" not in payload.get("truth", {})
+            if not missing_now_present and not us_truth_missing:
                 # Stats are recomputed EVERY serve: they depend on scores,
                 # officials, and scoring code, and caching them once froze a
                 # broken "pending" into the payload files for days in the
@@ -427,9 +432,14 @@ def build_week(root: Path, season: str, asof: str) -> dict:
     from app.core.retro import season_bounds
     lo, hi = season_bounds(season)
     hi_ext = (pd.Timestamp(hi) + timedelta(days=28)).date().isoformat()
-    truth_locs = list(locs)
-    if any(oq for oq in official_q.values()):
-        truth_locs.append("US")
+    # US truth ALWAYS rides along, never only when an official submitted:
+    # the player's location list carries a US entry in every week (served by
+    # the official comparators), so a week the officials skipped -- the
+    # season-boundary weeks sit outside the competition window -- must still
+    # show the settled national truth. Gating US truth on official presence
+    # made those frames render as bare empty axes (field-found on the
+    # 2025-26 season player, weeks 2026-05-30 and 2026-06-13).
+    truth_locs = list(locs) + ["US"]
     truth_out = {}
     for name in truth_locs:
         fips = "US" if name == "US" else n2f.get(name)

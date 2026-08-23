@@ -162,6 +162,39 @@ def test_add_days_utc(tmp_path):
     assert _js(tmp_path, "I.addDays('2098-12-02', 28)") == "2098-12-30"
 
 
+# --------------------------------------------- no-forecast frames (class fix)
+
+@needs_jsc
+def test_no_forecast_note_states_the_empty_us_frame(tmp_path):
+    # a US frame outside the officials' competition window has nothing to
+    # draw; the caption states the structural reason instead of standing
+    # as bare axes (field-found on the 2025-26 season player)
+    got = _js(tmp_path, "I.noForecastNote('US', 0, 0)")
+    assert "no official US submission" in got
+    assert "per state" in got
+
+
+@needs_jsc
+def test_no_forecast_note_states_a_bare_state_frame(tmp_path):
+    got = _js(tmp_path, "I.noForecastNote('Ohio', 0, 0)")
+    assert got == "no forecast for Ohio this week"
+
+
+@needs_jsc
+def test_no_forecast_note_distinguishes_toggled_off_from_absent(tmp_path):
+    # data present with every model toggled off is the viewer's own state
+    got = _js(tmp_path, "[I.noForecastNote('Ohio', 2, 0),"
+                        " I.noForecastNote('US', 1, 0)]")
+    assert got == ["no models enabled", "no models enabled"]
+
+
+@needs_jsc
+def test_no_forecast_note_silent_when_fans_draw(tmp_path):
+    got = _js(tmp_path, "[I.noForecastNote('Ohio', 2, 2),"
+                        " I.noForecastNote('US', 1, 1)]")
+    assert got == ["", ""]
+
+
 # ------------------------------------------------------- source guarantees
 
 def test_safari_safe_and_host_agnostic():
@@ -217,6 +250,14 @@ def test_stats_table_distinguishes_no_submission_from_pending():
     assert "officialAvailability(pl, OFFS)" in SRC
     assert "weekCellState(v, OFFS.indexOf(m) >= 0" in SRC
     assert "!!seasonOffs[m]" in SRC
+
+
+def test_no_forecast_note_is_wired_into_the_frame_draw():
+    # drawFC computes availability across ALL models (toggled or not) and
+    # sets the caption from the shared helper on every frame, so an empty
+    # frame can never again render as silent bare axes
+    assert "el.msg.textContent = noForecastNote(loc, avail, drawn)" in SRC
+    assert "noForecastNote: noForecastNote" in SRC
 
 
 def test_view_state_clear_sites():

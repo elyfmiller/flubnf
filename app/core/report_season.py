@@ -9,10 +9,16 @@ future player feature lands in the console and in this export
 automatically. No server and no network are needed; the file works from a
 desktop or an email attachment.
 
-Scope, by design: the export carries the forecast detail view and the live
-relWIS table. The categorical weekly maps are omitted, since 30-plus inline
-SVG maps would multiply the file size for a view the console already serves
-live; the header note says so.
+Scope, by design: the export carries the season verdict (tiles, the US
+national aggregate, the cumulative relWIS chart, the per-state table), the
+forecast detail view, and the live relWIS table -- the same substantive
+content as the console's season page, held together by the parity test
+(app/tests/test_report_parity.py). The categorical weekly maps alone are
+omitted, since 30-plus inline SVG maps would multiply the file size for a
+view the console already serves live; the header note says so. Anything
+else the page shows that the export cannot deliver must be STATED in the
+artifact, never silently absent: the report builder computes what it needs
+when a cache is cold, and prints the reason when it truly cannot.
 
 Theme-aware on screen, like report_v2 (both follow the app theme since
 2026-08-21, superseding the fixed-dark spec): the stylesheet embeds the
@@ -173,23 +179,32 @@ def _settings_note(root: Path, build: str = "",
 _US_AGG_WEIGHTS = {"pf": 0.5, "analogue": 0.5}
 
 
-def _us_aggregate_row(root: Path, df) -> dict | None:
-    """The honest US national aggregate for the export, from the same cached
-    construction the season page shows (retro.national_aggregate, cached in
-    playback_cache/us_aggregate.json, which _newest_input already covers, so
-    a rebuilt aggregate refreshes an already-exported report). Only computed
-    for a SCORED season -- the verdict table it joins requires scores too --
-    and omitted, never invented, when the construction cannot deliver."""
+def _us_aggregate_row(root: Path, df) -> tuple:
+    """(row, reason): the honest US national aggregate for the export, from
+    the same construction the season page shows (retro.national_aggregate).
+    The construction COMPUTES when its cache is cold, exactly as the season
+    page does, so an export downloaded before the page was ever visited
+    still carries the aggregate; the result is cached in
+    playback_cache/us_aggregate.json, which _newest_input already covers,
+    so a rebuilt aggregate refreshes an already-exported report.
+
+    When the aggregate genuinely cannot be delivered, row is None and
+    reason states why, in words the artifact prints. Silent omission is
+    the recurring failure class this replaced: the export must never lack
+    a section the application shows without saying so."""
     if df is None:
-        return None
+        return None, ("the season has not been scored yet, and the "
+                      "aggregate joins the scored verdict table only")
     from app.core import retro as _retro
     try:
         row = _retro.national_aggregate(root, ensemble_weights=_US_AGG_WEIGHTS)
-    except Exception:
-        return None
+    except Exception as e:
+        return None, ("its construction failed while this export was "
+                      f"built ({type(e).__name__}: {str(e)[:120]})")
     if not row or not any(row.get(m) for m in ("pf", "analogue", "ensemble")):
-        return None
-    return row
+        return None, ("its construction returned no scoreable national "
+                      "cells for this season")
+    return row, ""
 
 
 #: the label every surface gives the constructed national figure
@@ -204,6 +219,103 @@ US_AGG_NOTE = ("US (aggregated) is not a fitted national forecast: the "
                "truth row with the same relWIS machinery as every state.")
 
 
+#: calendar month number -> label, the season order the console's month
+#: helper uses (app/ui/server.py _MON_NAME); restated because the report
+#: builder is a core module and must not import the UI layer
+_MON_NAME = {8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec", 1: "Jan",
+             2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun", 7: "Jul"}
+
+#: the cumulative chart's heading, EXACTLY the season page's own, so the
+#: report-vs-app parity test can match the sections by name
+CURVE_HEADING = "Cumulative ensemble relWIS through the season"
+
+
+def _cumulative_curve(df) -> list:
+    """[(iso week, cumulative ensemble relWIS)], the same series the
+    console's season page charts: ensemble rows grouped by asof, summed,
+    and accumulated (the arithmetic mirrors app/ui/server.py's
+    retro_results; the parity test holds the two together)."""
+    if df is None or "model" not in getattr(df, "columns", ()):
+        return []
+    ens_rows = df[df.model == "ensemble"]
+    if not len(ens_rows):
+        return []
+    asofs = sorted(df["asof"].unique())
+    cum = (ens_rows.groupby("asof")[["wis", "base_wis"]].sum()
+           .sort_index().cumsum())
+    cum = cum.reindex(asofs).ffill().dropna()
+    return [(str(a)[:10], r.wis / r.base_wis) for a, r in cum.iterrows()]
+
+
+def _curve_svg(curve: list) -> str:
+    """The cumulative chart as one inline SVG, the season page's own
+    geometry (viewBox 720x180, gridlines at 1.0 and 0.5, gold line, the
+    final value printed at the endpoint, month ticks at each month change,
+    corner dates). Token colors, so it follows the resolved theme."""
+    vals = [v for _, v in curve]
+    n = len(curve)
+    hi = max(max(vals), 1.05)
+    lo = min(min(vals), 0.45)
+    yspan = hi - lo
+
+    def x_at(i):
+        return round(20 + i * (635 / (n - 1 if n > 1 else 1)), 1)
+
+    def y_at(v):
+        return round(12 + (hi - v) * 124 / yspan, 1)
+
+    parts = ['<svg viewBox="0 0 720 180" style="width:100%" role="img" '
+             f'aria-label="{CURVE_HEADING}">']
+    for gv, gl in ((1.0, "1.0"), (0.5, "0.5")):
+        gy = y_at(gv)
+        parts.append(f'<line x1="20" y1="{gy}" x2="655" y2="{gy}" '
+                     'stroke="var(--mut)" stroke-dasharray="3"/>'
+                     f'<text x="660" y="{gy + 4}" fill="var(--mut)" '
+                     f'font-size="13">{gl}</text>')
+    pts = " ".join(f"{x_at(i)},{y_at(v)}" for i, (_, v) in enumerate(curve))
+    parts.append('<polyline fill="none" stroke="var(--gold)" '
+                 f'stroke-width="2.5" points="{pts}"/>')
+    for i, (d, v) in enumerate(curve):
+        parts.append(f'<circle cx="{x_at(i)}" cy="{y_at(v)}" r="3" '
+                     f'fill="var(--gold)"><title>{d}: {v:.3f}</title>'
+                     '</circle>')
+    lx, ly = x_at(n - 1), y_at(vals[-1])
+    parts.append(f'<text x="{round(lx - 8, 1)}" '
+                 f'y="{round(ly - 8 if ly - 8 >= 20 else ly + 18, 1)}" '
+                 'text-anchor="end" font-weight="700" font-size="17" '
+                 f'fill="var(--gold)">{vals[-1]:.3f}</text>')
+    prev = None
+    for i, (d, _v) in enumerate(curve):
+        mm = str(d)[5:7]
+        if prev is not None and mm != prev and mm.isdigit():
+            lab = _MON_NAME.get(int(mm), "")
+            parts.append(f'<line x1="{x_at(i)}" y1="136" x2="{x_at(i)}" '
+                         'y2="142" stroke="var(--mut)"/>'
+                         f'<text x="{x_at(i)}" y="154" text-anchor="middle" '
+                         f'fill="var(--mut)" font-size="13">{lab}</text>')
+        prev = mm
+    parts.append(f'<text x="20" y="168" fill="var(--mut)" font-size="13">'
+                 f'{curve[0][0]}</text>')
+    if n > 1:
+        parts.append('<text x="655" y="168" text-anchor="end" '
+                     f'fill="var(--mut)" font-size="13">{curve[-1][0]}</text>')
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def _curve_block(df) -> str:
+    """The cumulative chart as its own section, present in scored and
+    unscored seasons alike: the season page always shows this card, and an
+    unscored season states the same arrival note the console does rather
+    than leaving a hole."""
+    curve = _cumulative_curve(df)
+    head = f'<h2 style="margin-top:.9rem">{CURVE_HEADING}</h2>'
+    if not curve:
+        return head + ('<p class="hint">Arrives with the first scored '
+                       "week.</p>")
+    return head + _curve_svg(curve)
+
+
 def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
     """The static season verdict, printed ahead of the player.
 
@@ -214,11 +326,13 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
     season's run record carries one, the total wall time. The per-state
     final table reads the season's scores.json, the same file the console's
     season page renders; when the season has not been scored yet the table
-    is omitted with a plain statement rather than invented. The US national
-    aggregate joins both surfaces exactly as it does in the console -- a
-    verdict tile and a leading table row, each wearing the honest
-    independence label -- and is omitted whenever its cached construction
-    is unavailable."""
+    is omitted with a plain statement rather than invented. The cumulative
+    ensemble chart sits between them, the same series the season page
+    draws. The US national aggregate joins both surfaces exactly as it
+    does in the console -- a verdict tile and a leading table row, each
+    wearing the honest independence label -- computed when its cache is
+    cold; when it cannot be delivered at all, the artifact SAYS so instead
+    of leaving a hole."""
     final = payloads.get(weeks[-1]) or {}
     stats = final.get("stats") or {}
     tiles = []
@@ -240,7 +354,7 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
     rows = []
     cover = "every scored cell of the season"
     df = playback._season_scores(root)
-    us_row = _us_aggregate_row(root, df)
+    us_row, us_reason = _us_aggregate_row(root, df)
     if us_row and us_row.get("ensemble"):
         # the national aggregate as a verdict tile, labeled for what it is:
         # constructed from the state forecasts, never a fitted national run
@@ -294,14 +408,24 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
     else:
         states = ('<p class="hint">Per-state scores appear here once the '
                   "season has been scored in the console.</p>")
+    # a missing aggregate is STATED, never a silent hole: the console shows
+    # this figure, so an export without it must say why it is absent
+    us_absent = ""
+    if not us_row:
+        reason = (us_reason.replace("&", "&amp;").replace("<", "&lt;")
+                  or "its construction was unavailable")
+        us_absent = ('<p class="hint">The US (aggregated) figure the '
+                     "console's season page shows is not in this export: "
+                     f"{reason}.</p>")
     return ('<div class="card" id="season-summary">'
             '<h2>Season verdict</h2>'
             '<div class="tiles">' + "".join(tiles) + "</div>"
+            + us_absent
             + f'<p class="sub">{line}.</p>'
             f'<p class="hint">Final relWIS pooled over {cover}; '
             "below 1 beats the CDC FluSight baseline. The tiles "
             "match the cumulative column of the player's table at the final "
-            "week.</p>" + states + "</div>")
+            "week.</p>" + _curve_block(df) + states + "</div>")
 
 
 ARCHIVE_MARK = "Archived run"
@@ -498,7 +622,8 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <h1>Season report <span class="accent">@@SEASON@@</span></h1>
 <p class="sub">@@NWEEKS@@ stored weeks, @@FIRST@@ to @@LAST@@. This file is
  self-contained: all forecast data is embedded and no server or network is
- needed. The export carries the forecast detail view and the live relWIS
+ needed. The export carries the season verdict, the cumulative relWIS
+ chart, the per-state table, the forecast detail view, and the live relWIS
  table; interactive maps live in the console.</p>
 @@TIMING@@
 @@SIZENOTE@@

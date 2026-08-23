@@ -257,6 +257,24 @@ function weekCellState(v, isOfficial, weekKnown, weekHas, seasonHas){
   return 'pending';
 }
 
+// what the forecast-detail caption states when a frame draws no forecast
+// fan for the selected location. `available` counts the models whose
+// payload covers this location this week; `enabled` counts those of them
+// the viewer has toggled on. Data present with everything toggled off is
+// the viewer's own state and says so. A location no model covers this
+// week is stated plainly instead of leaving a bare empty chart -- and for
+// US the reason is structural: the fitted members are per-state, so the
+// officials are the US view's only source, and a week they did not submit
+// (outside the competition window) has nothing to draw.
+function noForecastNote(loc, available, enabled){
+  if(available > 0 && enabled > 0) return '';
+  if(available > 0) return 'no models enabled';
+  if(loc === 'US')
+    return 'no official US submission for this week; the fitted forecasts '
+      + 'are per state (choose a state above)';
+  return 'no forecast for ' + loc + ' this week';
+}
+
 // ---------------------------------------------------------------- player
 
 function createPlayer(cfg){
@@ -515,7 +533,6 @@ function createPlayer(cfg){
           failMsg(w, 'forecast data unavailable for ' + w);
         return;
       }
-      el.msg.textContent = '';
       var loc = P.loc || 'US';
       var truth = (pl.truth || {})[loc] || [];
       var pastX = [], pastY = [], futX = [], futY = [];
@@ -525,19 +542,25 @@ function createPlayer(cfg){
       });
       var ax = pastX.length ? pastX[pastX.length - 1] : null;
       var ay = pastY.length ? pastY[pastY.length - 1] : null;
-      var traces = [];
+      var traces = [], avail = 0, drawn = 0;
       ALLM.forEach(function(m){
-        if(!P.on[m]) return;
         var src = OFFS.indexOf(m) >= 0 ? (pl.official || {})[m]
                                        : (pl.models || {})[m];
         var byH = src ? src[loc] : null;
         if(!byH) return;
+        avail++;
+        if(!P.on[m]) return;
+        drawn++;
         fan(m, byH, w, ax, ay).forEach(function(t){ traces.push(t); });
       });
+      // a frame with nothing to draw for this location says WHY instead
+      // of standing as bare axes (the US view outside the officials'
+      // competition window, or every model toggled off)
+      el.msg.textContent = noForecastNote(loc, avail, drawn);
       // truth drawn last so it sits on top; the tail beyond the now
       // marker stays visible so forecast accuracy is legible at a glance
       var p = pal();
-      traces.push({x: pastX, y: pastY, mode: 'lines',
+      if(pastX.length) traces.push({x: pastX, y: pastY, mode: 'lines',
         name: 'truth (settled)', line: {color: p.ink, width: 2}});
       if(futX.length) traces.push({x: futX, y: futY, mode: 'lines',
         name: 'truth beyond now', opacity: .65,
@@ -706,6 +729,7 @@ var FluBNFPlayer = {
     WEEK_NOTE: WEEK_NOTE,
     availabilityTier: availabilityTier,
     weekCellState: weekCellState,
+    noForecastNote: noForecastNote,
     rgba: rgba,
     addDays: addDays,
     dashOf: dashOf,
