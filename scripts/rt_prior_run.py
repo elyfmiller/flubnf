@@ -88,8 +88,15 @@ def rt_prior(asof: str):
     same 2.3x information gain, with no tail for the sampler to run off into.
     """
     T = pd.Timestamp(asof)
+    # exclude_seasons=() on purpose: the 2021-22 donor exclusion adopted
+    # 2026-08-24 was pre-registered and measured on the analogue's FORECAST,
+    # not on this prior, and the sealed particle filter was fitted against the
+    # unrestricted pool. Inheriting the exclusion here would silently change
+    # the prior every future fit sees and make the seal's fitting path
+    # unreproducible, for an effect nobody has measured. Revisit only with its
+    # own pre-registration.
     g = donor_ratios(bank(), epiweek(T.date()), season_of(T.date()), 1,
-                     bandwidth=2)
+                     bandwidth=2, exclude_seasons=())
     if g.size < 30:
         return None
     rt = 1.0 + np.log(g) / GAMMA
@@ -134,7 +141,11 @@ def seasonal_prior(season_start: str):
     b = bank()
     ews, rts = [], []
     for ew in range(1, 53):
-        g = donor_ratios(b, ew, 9999, 1, bandwidth=1)   # 9999 => all seasons usable
+        # 9999 => all seasons usable. exclude_seasons=() for the same reason
+        # as rt_prior above, and one more: the eps1/phi1 figures recorded in
+        # this docstring were measured on the unrestricted pool, so applying
+        # the 2021-22 exclusion here would make them unreproducible.
+        g = donor_ratios(b, ew, 9999, 1, bandwidth=1, exclude_seasons=())
         if g.size < 40:
             continue
         rt = 1.0 + np.log(g) / GAMMA

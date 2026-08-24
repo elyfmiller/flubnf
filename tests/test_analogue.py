@@ -11,9 +11,12 @@ from datetime import date, timedelta
 import numpy as np
 import pytest
 
-from flubnf.analogue import (MIN_DONORS, analogue_quantiles, build_bank,
-                             calendar_distance, donor_ratios, epiweek,
-                             forecast, season_of)
+from flubnf.analogue import (DONOR_SEASON_EXCLUSIONS, EXCLUDED_DONOR_SEASONS,
+                             MIN_DONORS, SEASON_2021_22_CALENDAR_INVERSION,
+                             SEASON_BOUNDARY_MONTH, analogue_quantiles,
+                             build_bank, calendar_distance, donor_ratios,
+                             epiweek, forecast, resolve_donor_exclusions,
+                             season_of)
 
 LEVELS = [0.025, 0.25, 0.5, 0.75, 0.975]
 
@@ -78,6 +81,144 @@ class TestDonorSelection:
         b = _bank()
         r = donor_ratios(b, epiweek(date(2025, 1, 10)), 2025, 2, bandwidth=6)
         assert r.size and np.all(np.isfinite(r)) and np.all(r > 0)
+
+
+def _marked_bank(ratio_by_season, states=("01", "02", "03", "04", "05")):
+    """A bank whose every donor ratio at horizon 1 IDENTIFIES its season.
+
+    Season s grows by exactly `ratio_by_season[s]` per week, so a ratio in the
+    returned array is a fingerprint: seeing 7.0 means a 2021-22 donor survived,
+    and not seeing it means none did. That is stronger than a size comparison,
+    which cannot tell which donors were dropped.
+    """
+    b = {}
+    for s, r in ratio_by_season.items():
+        for st in states:
+            for wk in range(20):
+                d = date(s, 11, 1) + timedelta(days=7 * wk)
+                b[(st, d)] = 100.0 * (r ** wk)
+    return b
+
+
+#: 2021-22 is marked 7.0 and is the only season that may ever be dropped.
+_MARKS = {2021: 7.0, 2022: 2.0, 2023: 3.0}
+_TARGET = date(2024, 11, 15)          # season 2024; 2021/2022/2023 are prior
+
+
+def _donor_used(d: date, **kw) -> bool:
+    """Would a donor dated `d` contribute at all? One location, one pair, an
+    exact epiweek match, and every season strictly prior."""
+    bank = {("01", d): 100.0, ("01", d + timedelta(days=7)): 150.0}
+    return donor_ratios(bank, epiweek(d), 9999, 1, bandwidth=0, **kw).size == 1
+
+
+class TestDonorSeasonExclusion:
+    """The 2021-22 exclusion adopted 2026-08-24 (pre-registration
+    8f3c7a45a989e905). Two directions must both be shut: 2021-22 must not come
+    back by accident, and no other season may go out by accident."""
+
+    def test_2021_22_donors_are_absent_by_default(self):
+        """Fails if 2021-22 donors reappear in the shipped pool."""
+        r = donor_ratios(_marked_bank(_MARKS), epiweek(_TARGET),
+                         season_of(_TARGET), 1, bandwidth=3)
+        assert r.size > 0
+        assert not np.any(np.isclose(r, _MARKS[2021])), (
+            "a 2021-22 donor is in the shipped pool")
+        # the other prior seasons are untouched, so this is an exclusion and
+        # not an empty pool
+        for s in (2022, 2023):
+            assert np.any(np.isclose(r, _MARKS[s])), s
+
+    def test_reintroducing_2021_22_has_to_be_written_down(self):
+        r = donor_ratios(_marked_bank(_MARKS), epiweek(_TARGET),
+                         season_of(_TARGET), 1, bandwidth=3,
+                         exclude_seasons=())
+        assert np.any(np.isclose(r, _MARKS[2021]))
+
+    def test_forecast_applies_the_exclusion_by_default(self):
+        """The engine calls `forecast`, not `donor_ratios`, so the default has
+        to survive that hop."""
+        b = _marked_bank(_MARKS)
+        shipped = forecast(100.0, _TARGET, 1, b, LEVELS, bandwidth=3)
+        historical = forecast(100.0, _TARGET, 1, b, LEVELS, bandwidth=3,
+                              exclude_seasons=())
+        assert shipped is not None and historical is not None
+        assert shipped != historical
+        assert historical[0.975] > shipped[0.975]      # 7.0 lived in the tail
+
+    def test_the_excluded_set_is_exactly_2021_22(self):
+        """Fails if the exclusion widens to another season."""
+        assert EXCLUDED_DONOR_SEASONS == frozenset({2021})
+        assert set(DONOR_SEASON_EXCLUSIONS) == {2021}
+
+    def test_excluding_an_unregistered_season_raises(self):
+        """Fails if some other season can be dropped silently. 2022-23 is the
+        realistic mistake: it was the OTHER COVID-disrupted candidate and was
+        deliberately not excluded."""
+        b = _marked_bank(_MARKS)
+        for bad in ({2022}, {2021, 2022}, {2020}, [2025]):
+            with pytest.raises(ValueError, match="not registered"):
+                donor_ratios(b, epiweek(_TARGET), season_of(_TARGET), 1,
+                             bandwidth=3, exclude_seasons=bad)
+
+    def test_a_foreign_calendar_exclusion_is_refused(self):
+        """A season label means a stretch of calendar only relative to a
+        boundary. A record minted under another disease's boundary must not be
+        applied by this module, which owns influenza's."""
+        from dataclasses import replace
+        import flubnf.analogue as AN
+        foreign = replace(SEASON_2021_22_CALENDAR_INVERSION,
+                          profile_key="covid", season_boundary_month=6)
+        original = dict(AN.DONOR_SEASON_EXCLUSIONS)
+        AN.DONOR_SEASON_EXCLUSIONS[2021] = foreign
+        try:
+            with pytest.raises(ValueError, match="boundary"):
+                resolve_donor_exclusions({2021})
+        finally:
+            AN.DONOR_SEASON_EXCLUSIONS.clear()
+            AN.DONOR_SEASON_EXCLUSIONS.update(original)
+
+    def test_the_exclusion_is_a_label_under_the_august_boundary(self):
+        """Not a date range. July 2022 belongs to 2021-22 and goes; July 2021
+        belongs to 2020-21 and stays; August 2022 opens 2022-23 and stays. Off
+        by one month at either end and the wrong weeks leave the pool."""
+        assert SEASON_BOUNDARY_MONTH == 8
+        assert season_of(date(2022, 7, 30)) == 2021
+        assert not _donor_used(date(2022, 7, 30))
+        assert season_of(date(2021, 7, 31)) == 2020
+        assert _donor_used(date(2021, 7, 31))
+        assert season_of(date(2022, 8, 6)) == 2022
+        assert _donor_used(date(2022, 8, 6))
+        # and the whole excluded season really is gone, both ends
+        assert not _donor_used(date(2021, 8, 7))
+        assert not _donor_used(date(2022, 2, 5))    # first archived week
+
+    def test_the_record_carries_its_provenance(self):
+        """A donor exclusion with no evidence is indistinguishable from a bug,
+        so the registry may not hold a bare season number."""
+        e = SEASON_2021_22_CALENDAR_INVERSION
+        assert e.season == 2021 and e.label == "2021-22"
+        assert e.profile_key == "influenza"
+        assert e.season_boundary_month == SEASON_BOUNDARY_MONTH
+        assert e.prereg_hash == "8f3c7a45a989e905"
+        assert e.adopted_on == "2026-08-24"
+        assert e.covers == (date(2021, 8, 1), date(2022, 7, 31))
+        assert all(season_of(d) == e.season for d in e.covers)
+        for field_ in ("mechanism", "effect", "depth_control", "evidence"):
+            assert len(getattr(e, field_)) > 80, field_
+        # the two claims the change actually rests on
+        assert "epiweek 16" in e.mechanism
+        assert "3.66" in e.effect
+        assert "+0.199" in e.depth_control and "+17.64" in e.depth_control
+
+    def test_every_registered_season_matches_its_record(self):
+        for season, rec in DONOR_SEASON_EXCLUSIONS.items():
+            assert rec.season == season
+            assert resolve_donor_exclusions({season}) == frozenset({season})
+
+    def test_resolve_accepts_the_shipped_default(self):
+        assert resolve_donor_exclusions(EXCLUDED_DONOR_SEASONS) == frozenset({2021})
+        assert resolve_donor_exclusions(()) == frozenset()
 
 
 class TestNaNSafety:

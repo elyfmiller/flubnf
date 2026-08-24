@@ -155,12 +155,23 @@ and `s0` adds a ridge, not information.
 
 ## 3. Decisions and negative results (influenza)
 
+**Every influenza measurement in this section that involves the calendar
+analogue was made against the PRE-EXCLUSION donor pool, the one that still
+included 2021-22.** On 2026-08-24 that season was excluded from the shipped
+pool, which narrowed the analogue materially: its pooled member relWIS moved
+from 0.8290 to 0.7723, and the pooled ensemble's central 50, 80 and 95
+percent widths fell to 0.93, 0.92 and 0.90 of their previous totals. The
+figures below have not been re-derived on the shipped pool. See
+`docs/RELEASE-1.0.md` for the change and its evidence.
+
 ### 3.1 Why 5 parameters, not 8 (measured)
 
 The entire gap between SIHRS and a well-calibrated reference is SPREAD, not
 the central estimate. Swapping SIHRS's median for the analogue's gains 0.003
 relWIS; swapping the SPREAD gains 0.070. So the median is fine and the
-predictive distribution is too wide.
+predictive distribution is too wide. Both figures are pre-exclusion, per the
+notice above, and neither has been re-measured against the shipped analogue.
+The decision they support was taken on them as they stand.
 
 That width comes from fitting 8 parameters to about 26 weekly points. Each
 removed dimension removes a source of posterior spread, which is the actual

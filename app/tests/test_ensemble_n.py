@@ -134,6 +134,9 @@ def test_methods_page_carries_two_strain_research_section():
     # the honest verdict, with the numbers on both sides of it
     for n in ("0.953", "0.993", "0.968", "1.023", "0.719", "0.704"):
         assert n in r.text, n
+    # and the note that both sides of that comparison predate the donor
+    # exclusion, so a reader does not weigh 0.719 against today's 0.678
+    assert "0.678" in r.text
     assert "not in the shipped ensemble" in r.text
     assert "validation is in progress" not in r.text
     assert "validation now in progress" not in r.text

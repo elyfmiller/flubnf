@@ -68,6 +68,8 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
+from flubnf.analogue import SEASON_2021_22_CALENDAR_INVERSION
+
 TEMPLATES = Path(__file__).resolve().parent / "templates"
 
 
@@ -188,6 +190,13 @@ class DiseaseProfile:
     #: archive". Nothing before this can be made vintage-true.
     vintage_earliest: Optional[str] = None
     excluded_windows: tuple = field(default_factory=tuple)
+    #: `flubnf.analogue.DonorSeasonExclusion` records: seasons this disease
+    #: keeps OUT of the calendar analogue's donor pool. Distinct from
+    #: `excluded_windows`, which removes cells from SCORING; these remove
+    #: donors from the FORECAST. Empty for every disease that has not measured
+    #: one, which is the honest default: a donor exclusion is a claim about a
+    #: specific season's calendar, not a policy that generalizes.
+    donor_season_exclusions: tuple = field(default_factory=tuple)
 
     # -- calendar ---------------------------------------------------------
     def season_of(self, d: date) -> int:
@@ -213,6 +222,26 @@ class DiseaseProfile:
             if w.crosses(anchor_week, target_end_date):
                 return w
         return None
+
+    @property
+    def excluded_donor_seasons(self) -> frozenset:
+        """Season labels to keep out of the analogue's donor pool.
+
+        Pass this, not a literal, to `flubnf.analogue.donor_ratios`. Every
+        record asserts the boundary month it was minted under, and that
+        function refuses a record minted under another, so a profile cannot
+        inherit a season label that means a different stretch of calendar
+        for it than it did for the disease that measured it.
+        """
+        for e in self.donor_season_exclusions:
+            if e.season_boundary_month != self.season_boundary_month:
+                raise ValueError(
+                    f"profile {self.key!r} carries donor exclusion "
+                    f"{e.label!r}, which was minted under season boundary "
+                    f"month {e.season_boundary_month} against this profile's "
+                    f"{self.season_boundary_month}. A season label is not "
+                    f"portable across calendars.")
+        return frozenset(e.season for e in self.donor_season_exclusions)
 
     # -- fitting ----------------------------------------------------------
     @property
@@ -301,6 +330,11 @@ INFLUENZA = DiseaseProfile(
     bimodal_capable=False,
     vintage_earliest=None,
     excluded_windows=(),
+    # Adopted 2026-08-24 after passing its pre-registered gates (hash
+    # 8f3c7a45a989e905). The record itself lives in flubnf/analogue.py, which
+    # owns the donor rule, so this profile references it rather than copying
+    # it and cannot drift from what production applies.
+    donor_season_exclusions=(SEASON_2021_22_CALENDAR_INVERSION,),
 )
 
 
@@ -485,6 +519,18 @@ COVID = DiseaseProfile(
     bimodal_capable=True,
     vintage_earliest="2024-11-20",
     excluded_windows=(COVID_MARCH_2026_BREAK,),
+    # EXPLICITLY EMPTY, and it must stay empty until a COVID retrospective
+    # measures one. Influenza excludes 2021-22 because that season's epidemic
+    # was calendar-INVERTED against the others (peak epiweek 16 against 48-6),
+    # which is a claim about influenza's calendar and carries nothing about
+    # COVID's. It is also not even expressible here: the label 2021 under
+    # influenza's 1 August boundary is 2021-08-01 to 2022-07-31, and under
+    # COVID's 1 June boundary the same label is 2021-06-01 to 2022-05-31.
+    # Inheriting it would silence the wrong ten weeks and keep the wrong ten.
+    # DiseaseProfile.excluded_donor_seasons and
+    # flubnf.analogue.resolve_donor_exclusions both refuse that mistake, but
+    # the empty tuple is written out so the decision is visible here too.
+    donor_season_exclusions=(),
 )
 
 

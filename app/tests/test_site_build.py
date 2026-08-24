@@ -9,15 +9,16 @@ other hub-dependent test in this repo behaves.
 
 What is pinned here, and why each one is worth a test:
 
-  * THE NUMBERS REACH THE PAGE. 2024-25 ensemble 0.651 and pooled 0.704 are
+  * THE NUMBERS REACH THE PAGE. 2024-25 ensemble 0.618 and pooled 0.678 are
     the lab's published record. They must be computed from the forecasts on
     disk and appear in the HTML -- not merely in the payload, because a
     payload nobody renders is not a published figure.
-  * THE ENSEMBLE IS THE SHIPPED ONE. A season's scores.json blends with the
-    frozen LOSO weights, which the lab evaluated and REJECTED. Scoring from
-    it would put 0.635 on the page under the name of the 0.651 forecast, and
-    nothing about the page would look wrong. The test asserts the computed
-    figure differs from scores.json and matches the equal-weight blend.
+  * THE ENSEMBLE IS THE SHIPPED ONE. A season's scores.json can be written
+    with the frozen LOSO weights, which the lab evaluated and REJECTED.
+    Scoring from such a file would put the fitted figure on the page under
+    the name of the shipped forecast, and nothing about the page would look
+    wrong. The test asserts the computed figure matches the equal-weight
+    blend.
   * NOTHING LEAVES THE MACHINE. The page must reference no remote script,
     stylesheet, image or fetch beyond the Google Fonts stylesheet, or it is
     not the offline artifact a reviewer opens before committing.
@@ -169,21 +170,21 @@ def test_known_scores_reach_the_html(built):
 
     if "2024-25" in by_season:
         rel = by_season["2024-25"]["models"]["ensemble"]["rel"]
-        assert round(rel, 3) == 0.651, rel
-        assert '<td class="n okc">0.651</td>' in html
+        assert round(rel, 3) == 0.618, rel
+        assert '<td class="n okc">0.618</td>' in html
         # the members that make that blend
         assert round(by_season["2024-25"]["models"]["pf"]["rel"], 3) == 0.636
         assert round(by_season["2024-25"]["models"]["analogue"]["rel"],
-                     3) == 0.835
+                     3) == 0.756
 
     if {"2023-24", "2024-25", "2025-26"} <= set(by_season):
         assert round(by_season["2023-24"]["models"]["ensemble"]["rel"],
-                     3) == 0.848
+                     3) == 0.813
         assert round(by_season["2025-26"]["models"]["ensemble"]["rel"],
-                     3) == 0.691
+                     3) == 0.683
         pooled = payload["pooled"]["ensemble"]["rel"]
-        assert round(pooled, 3) == 0.704, pooled
-        assert "0.704" in html
+        assert round(pooled, 3) == 0.678, pooled
+        assert "0.678" in html
         # a member that LOST to the baseline must not read as neutral
         assert '<td class="n badc">1.023</td>' in html
 
@@ -225,10 +226,10 @@ def test_the_scored_ensemble_is_the_shipped_fifty_fifty_blend():
     truth, n2f = load_truth()
     computed = sb.score_season("2024-25", seasons["2024-25"], truth,
                                n2f)["models"]["ensemble"]["rel"]
-    assert round(computed, 3) == 0.651
+    assert round(computed, 3) == 0.618
     # The stored file's vintage decides whether the two agree, and both
     # vintages are legitimate: a pre-v1.0 store holds the rejected LOSO
-    # ensemble (0.635 here), a rescored one holds the shipped blend. So this
+    # ensemble, a rescored one holds the shipped blend. So this
     # can only be asserted when the store is the old vintage -- the code-path
     # invariant is pinned by test_site_build_never_reads_a_stored_scores_file
     # instead, which does not depend on what is on disk.
@@ -271,13 +272,21 @@ def test_official_comparators_are_scored_on_our_cells(built):
 
 def test_placements_are_harvested_not_invented(built):
     """The FluSight standings come from the console's own table. A season
-    it does not cover gets no placement rather than a made-up one."""
+    it does not cover gets no placement rather than a made-up one.
+
+    Since 2026-08-24 the console's table carries no standings at all: they
+    were withdrawn because the scorer that produced them does not survive
+    and this project's own entries in the archived field were not computed
+    on one convention (docs/RELEASE-1.0.md). This test therefore normally
+    exercises the empty branch, which is the point of it."""
     res, out, html, payload = built
     harvested = sb.harvest_placement()
     for s in payload["seasons"]:
         pl = s.get("placement")
-        if s["season"] in harvested:
-            assert pl and pl["text"] == harvested[s["season"]]["text"]
+        stand = {k: v for k, v in harvested.get(s["season"], {}).items()
+                 if k != "app_rel"}
+        if stand:
+            assert pl and pl["text"] == stand["text"]
             assert pl["text"] in html
         else:
             assert pl is None

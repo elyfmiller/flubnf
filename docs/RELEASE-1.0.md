@@ -1,6 +1,11 @@
 # FluBNF 1.0.0
 
-Released 2026-08-23. First stable release.
+Released 2026-08-23. First stable release. Amended 2026-08-24, before the tag
+was published, to ship the analogue donor-pool exclusion described under
+[The donor-pool change](#the-donor-pool-change) and to re-baseline every
+figure in this document against it. The version number is unchanged because
+no v1.0.0 was ever published carrying the earlier figures; where a number
+moved, both values are given.
 
 FluBNF 1.0 ships a single product: an influenza hospital-admissions
 forecasting system for the CDC FluSight challenge, whose default forecast is
@@ -22,110 +27,270 @@ involves no fitting at all.
 
 | season | particle filter | analogue | ensemble 50/50 | cells |
 |---|---|---|---|---|
-| 2023-24 | 1.023 | 1.105 | **0.848** | 6,063 |
-| 2024-25 | 0.636 | 0.835 | **0.651** | 4,922 |
-| 2025-26 | 0.825 | 0.641 | **0.691** | 4,475 |
-| pooled | | | **0.704** | 15,460 |
+| 2023-24 | 1.023 | 1.045 | **0.813** | 6,063 |
+| 2024-25 | 0.636 | 0.756 | **0.618** | 4,922 |
+| 2025-26 | 0.825 | 0.621 | **0.683** | 4,475 |
+| pooled | 0.775 | 0.772 | **0.678** | 15,460 |
 
 Values are weighted interval score relative to the CDC FluSight-baseline;
-below 1.000 beats the baseline. The unfitted 50/50 ensemble beats the
-baseline in every season while the members alternate: in the 2023-24 plateau
-season both members lose and the blend wins; in the clean 2024-25 A-wave the
-filter carries; in 2025-26 the analogue carries. In-season optimal shares are
-0.45 / 0.80 / 0.00, so any fitted constant share anti-predicts the next
-season, and fitted weights score worse than the fixed 0.5. Applying the
-frozen per-horizon table to the seal gives 0.7107 pooled against the unfitted
-0.7039, and that 0.7107 is the flattering measurement, since the table was
-fitted using the very seasons it is scored on; the leave-one-season-out fit
-recorded at the freeze was 0.717. Per the project record, the shipped ensemble also
-beat its per-cell oracle. That is why v1.0 ships equal weights.
+below 1.000 beats the baseline. They are read from the seal's rebuilt
+`scores.json` after the donor-pool exclusion was applied. For reference, the
+same table before that exclusion read 1.023 / 1.105 / 0.847 / 6,063,
+0.636 / 0.835 / 0.651 / 4,922, 0.825 / 0.641 / 0.691 / 4,475 and a pooled
+0.704; the particle-filter column and every cell count are identical in the
+two, because the change touches only the analogue. The cells column is the
+ensemble's and the analogue's; the filter is scored on 95 fewer cells pooled,
+15,365, being the cells where it produced a forecast at all.
 
-## Placement against real submitted forecasts
+The unfitted 50/50 ensemble beats the baseline in every season while the
+members alternate: in the 2023-24 plateau season both members lose and the
+blend wins; in the clean 2024-25 A-wave the filter carries; in 2025-26 the
+analogue carries. That pattern survives the donor change, though the filter's
+2024-25 lead over the analogue narrows from 0.199 to 0.120 and the analogue's
+2025-26 lead widens.
 
-The same forecasts placed among the archived FluSight submissions (final
-truth, coverage-gated, with both sanity checks of the join):
+In-season optimal PF shares, swept on the rebuilt seal in steps of 0.05, are
+0.40 / 0.65 / 0.00 (they were 0.45 / 0.80 / 0.00 before the donor change), so
+a fitted constant share still anti-predicts the next season. The unfitted 0.5
+costs 0.005, 0.007 and 0.062 relWIS against those per-season optima, none of
+which is knowable in advance.
 
-| season | placement | percentile |
-|---|---|---|
-| 2023-24 | 14 of 34 teams | 61st |
-| 2024-25 | 4 of 40 teams, ahead of the official FluSight-ensemble (0.635 vs 0.674) | 92nd |
-| 2025-26 | 19 of 47 teams | 61st |
-| mean | | 71st |
+Fitted weights still score worse than the fixed 0.5. Applying the frozen
+per-horizon table to the rebuilt seal gives 0.6958 pooled against the
+unfitted 0.6781; before the donor change the same comparison was 0.7107
+against 0.7039. The fitted figure is the flattering one in both cases, since
+the table was fitted using the very seasons it is scored on. The
+leave-one-season-out fit recorded at the 2026-08-17 freeze was 0.717; that
+number was measured on the pre-exclusion donor pool and has not been
+re-derived, because no code for the leave-one-season-out weight fit survives
+in this repository or in the lab archive. Fitted weights are reported here
+only as the rejected alternative; no shipped forecast and no headline figure
+uses them. That is why v1.0 ships equal weights.
 
-Percentile is the share of the field beaten. The 2025-26 field of 47 is the
-largest and strongest of the three. Honest reading: consistently
-mid-to-upper field, with one standout season, against a field that grows and
-improves each year. These placements are retrospective replays scored by this
-repository's own code, not rankings earned by real-time participation.
+One claim carried in earlier drafts of this section, that the shipped
+ensemble also beat its per-cell oracle, is withdrawn. No artifact in the
+repository or the lab archive derives it, so it cannot be checked, and it
+should not be restated about the new configuration on the strength of the
+old record.
 
-## Independent replication
+## Placement against real submitted forecasts: withdrawn
+
+Earlier drafts of this document carried a table placing the same forecasts
+among the archived FluSight submissions: 14 of 34 in 2023-24, 4 of 40 in
+2024-25 (with 0.635 against the official FluSight-ensemble's 0.674), 19 of 47
+in 2025-26, mean 71st percentile. That table is withdrawn. It is not merely
+stale, and re-labelling it as a pre-exclusion measurement would not be
+enough.
+
+Three findings, from an attempt on 2026-08-24 to re-measure it against the
+shipped configuration:
+
+* **The scorer does not survive.** No script that produces the placement
+  table exists in this repository or in the lab archive. The retained
+  artifacts are the ranked field files themselves.
+* **The field could not be reproduced.** A reconstruction from this
+  repository's own scoring code (the validated FluSight-baseline denominator,
+  settled truth, the frozen cell rule) reproduced no archived row of the
+  2023-24 field exactly. The reconstruction's cell universe differs from the
+  archived one by a single cell once Puerto Rico is removed, so the gate is
+  close, but every team's score differs by between 1 and 6 percent, and the
+  differences are not a common factor. The archived field was therefore
+  scored on a convention this repository cannot restate.
+* **This project's own three rows were not computed on one convention.** The
+  2025-26 row, 0.691107728891329 on 4,475 cells, is exactly the seal's own
+  vintage relWIS for the unfitted 50/50 blend. The 2024-25 row,
+  0.6346812543520274 on 4,922 cells, is exactly the seal's relWIS for the
+  leave-one-season-out **fitted** ensemble, which this project rejected and
+  never ships. The 2023-24 row, 0.8929930728709135 on 5,868 cells, matches
+  neither, on neither cell count.
+
+A published number produced with fitted ensemble weights is exactly the
+failure this project's own rule against fitted weights exists to prevent, so
+the figure is retracted rather than corrected in place. The placement claim
+returns only when the field and this project's entry are scored again,
+end to end, on one stated convention and on the shipped configuration. Until
+then this document claims no placement, and the reader should treat the
+withdrawn numbers as unverified.
+
+## Independent replication, of the pre-exclusion configuration
 
 On 2026-08-23 a lab laptop (Apple M4) replayed all three seasons at full
 grid, 52 jurisdictions, 3 replicates, using only the shipped console:
 
-| season | laptop | sealed | wall time |
+| season | laptop | sealed at the time | wall time |
 |---|---|---|---|
-| 2023-24 | 0.847 | 0.848 | 6 h 51 m |
+| 2023-24 | 0.847 | 0.847 | 6 h 51 m |
 | 2024-25 | 0.651 | 0.651 | 5 h 57 m |
 | 2025-26 | 0.691 | 0.691 | 4 h 54 m |
 
-About 18 machine-hours for the whole record. Two seasons reproduce exactly
-and one differs by 0.001. The seal is not a property of the machine that
-produced it.
+About 18 machine-hours for the whole record, and all three seasons reproduce.
+Two corrections to how this was reported before.
+
+First, the 0.001 gap once shown in the 2023-24 row was not a machine
+difference. The sealed value was 0.84746, so 0.847 was always its correct
+rounding; the 0.848 printed in the sealed column of earlier drafts was an
+error in the document. The donor-floor harness re-derived the same 0.847 on
+the machine that produced the seal. The laptop and the seal agreed exactly in
+all three seasons.
+
+Second, and more important, this replay predates the donor-pool change, so it
+replicates the pre-exclusion configuration and not the table at the top of
+this document. That table has not been reproduced on second hardware, and
+this document does not claim it has. What the replication establishes still
+holds, because the stage it exercised is the stage the donor change does not
+touch: the particle filter is the entire compute cost and the only stochastic
+stage of the pipeline, its stored samples are byte-identical before and after
+the change (12.34 GB across all 85 sealed weeks, verified by sha256 per week),
+and its per-cell scores move by 0.000e+00 over all 15,365 filter cells. The
+analogue is a deterministic empirical calculation over the same archive, and
+regenerating it requires no fitting. A second machine reproducing the shipped
+figures is a smaller job than the original replication for exactly that
+reason, but it has not been run.
+
+## The donor-pool change
+
+This is the one change made to the shipped model after the release was first
+sealed on 2026-08-19, and the reason every figure above carries two values.
+
+**What changed.** The calendar analogue draws its growth ratios from every
+strictly prior season in the archive. It now excludes one of them, 2021-22.
+Nothing else changed: the particle filter, the 50/50 blend, the scoring
+formula, the cell rule and the baseline construction are all untouched, and
+the seal's stored filter samples are byte-identical before and after. In the
+code the exclusion is a single guard in `flubnf/analogue.py`.
+
+**Why.** 2021-22 peaked at epiweek 16, on 2022-04-23, while the other four
+donor seasons peaked between epiweek 48 and epiweek 6. The surveillance
+series carried in the archived vintages begins 2022-02-05, so 2021-22 exists
+in the archive only as a February-to-July tail, which is to say only as its
+growth phase. A calendar-matched donor pool asks what happened in March, and
+2021-22 answers that the epidemic was still growing. Its March donor ratios
+have a median of 1.36 to 1.50 against 0.50 to 0.83 for every other season,
+and a 97.5th percentile of 6.94 to 9.00 against 2.00 to 2.68. The exclusion
+removes a phase-inverted donor, not an inconvenient one.
+
+**Pre-registration.** The question, the arms, the depth control, the metrics,
+the gates and the kill rule were frozen before any score was computed, under
+hash `8f3c7a45a989e905`. The frozen text and the harness are in the lab
+archive. Two arms were registered: A1, flooring donors at 2023-24 on the
+grounds that post-COVID dynamics differ, and A2, dropping 2021-22 alone.
+
+**The measured effect,** at full grid, 15,460 cells, with a clustered
+bootstrap over the 76 replayed weeks:
+
+| quantity | pre-exclusion | shipped | change | bootstrap 95% |
+|---|---|---|---|---|
+| ensemble, pooled | 0.7039 | 0.6781 | +3.66% | 1.83 to 6.07% |
+| ensemble, 2023-24 | 0.8475 | 0.8131 | +4.05% | 1.43 to 7.01% |
+| ensemble, 2024-25 | 0.6513 | 0.6179 | +5.13% | 1.42 to 10.32% |
+| ensemble, 2025-26 | 0.6911 | 0.6827 | +1.22% | 0.10 to 3.17% |
+| analogue member, pooled | 0.8290 | 0.7723 | +6.83% | 3.10 to 11.32% |
+| analogue, cells actually affected | 0.8142 | 0.6706 | +17.64% | 8.51 to 25.67% |
+
+The improvement is positive in all three seasons independently and in 50 of
+52 jurisdictions.
+
+**The depth control,** which is what makes the result a mechanism claim
+rather than a correlation. A restricted pool is also a smaller pool, so the
+harness scored a third arm: the full pool subsampled at random, without
+replacement, to exactly the restricted pool's size, averaged over ten
+deterministic seeds. That control moves the score by 0.20 percent
+(bootstrap 0.0006 to 0.389 percent) while removing 2021-22 in particular
+moves it by 17.64 percent on the same cells. The gain is which season is in
+the pool, not how many donors it holds.
+
+**The arm that failed.** A1, the hypothesis as originally posed, was
+**killed** by its own pre-registered rule. Because the archive begins in
+February 2022, flooring donors at 2023-24 empties the pool for the whole of
+2023-24, the analogue falls silent there, and the pooled ensemble degrades to
+0.7113 against the 0.7039 it was measured beside. The useful exclusion is one
+season, not a cutoff.
+
+**Honest caveats,** all four of which belong with the result:
+
+* It was pre-registered from a structural argument about the calendar, not
+  found by searching donor subsets for a better score. That is why it is
+  reported as one arm with a frozen kill rule rather than as the best of
+  many.
+* It is validated on these three seasons and nowhere else. There is no
+  fourth vintage-true season to hold out, so the change carries the same
+  small-sample limit as every other figure in this document.
+* The gain necessarily concentrates late in each season. 2021-22 contributes
+  no donors at all before February, so nothing in October, November or
+  December changes: of the 15,460 scored cells, 9,363 differ at all, and they
+  are every February, March, April and May cell plus 624 of the 2,080 January
+  cells. A reader comparing early-season weeks will see no effect, correctly.
+* The effect shrinks on its own as history accumulates. 2021-22 contributes
+  a fixed set of donor weeks that cannot grow, while the pool gains a season
+  every year, so its share of the donors falls monotonically: in the fullest
+  donor pool of each season, at horizon one on 2024-03-16, 2025-03-15 and
+  2026-03-21, it supplies 253 of 501 donors in 2023-24, 253 of 766 in
+  2024-25 and 253 of 1,031 in 2025-26, which is 50.5, 33.0 and 24.5 percent.
+  The three counts are equal because 2021-22's donor weeks are a fixed set,
+  and the share must be read within a single pool: the largest pool and the
+  largest 2021-22 contribution do not fall in the same week, so differencing
+  the two maxima across rows counts nothing real. The measured per-season
+  gain is 4.05, 5.13 and 1.22 percent, which is not a clean trend on three
+  points but is smallest in the most recent season. This is a correction with
+  a finite life, and it should be re-measured, not assumed, in each new
+  season.
+
+**What it costs.** The analogue's intervals narrow, and so do the ensemble's:
+pooled, the central 50, 80 and 95 percent intervals are 0.93, 0.92 and 0.90 of
+their previous total width. Coverage remains above nominal at all three levels
+pooled, 0.541 / 0.837 / 0.961 against 0.50 / 0.80 / 0.95. The January 2025
+turn defect is untouched at central-50 coverage 0.271 either way, the same 13
+of 48 cells, and that is the level the ledger's kill clauses were written
+against; the other two levels on that window did move, 80 percent coverage
+from 0.667 to 0.604 and 95 percent from 0.938 to 0.917, with the mean
+central-50 width narrowing from 847.0 to 817.3. So "untouched" is a statement
+about the central-50 clause, not about the window. It is not free everywhere:
+on the six-state February 2024 plateau window used throughout the ledger
+below, central-50 coverage falls from 0.698 to 0.646. The harness reported unchanged
+coverage for the analogue member; that is a member result and does not
+license a calibration claim about the ensemble, which is why the ensemble
+figures are measured and stated here separately.
 
 ## The evidence ledger: what was tested and rejected
 
-The rejections are part of the claim. Eight pre-registered challengers to the
-two-member ensemble were built, tested, and rejected by this group, each by
-its own rule set, frozen before execution: random-walk transmission, the
+The rejections are part of the claim. The standing count is eight
+pre-registered challengers built, tested and rejected by this group, each by
+its own rule set frozen before execution: random-walk transmission, the
 two-strain SIHRS, national-growth coupling at two doses, a
 reporting-completeness correction in two forms (cross-season and
 within-season rolling), a regime-switching filter, adaptive transmission, and
-slope-anchored transmission. A ninth candidate, a post-hoc global width
+slope-anchored transmission. One further candidate, a post-hoc global width
 scalar, was tested and found null in an independent review of this work
-rather than by us, and is reported below as such. No challenger was rejected
-by judgment after seeing its results.
+rather than by us, and is reported below as such. One further proposal,
+phase-conditional width scalars, was declined without being run. And one
+challenger passed: donor-season composition in the analogue, which cleared
+its pre-registered gates on 2026-08-24 and **is shipped**, documented in the
+section immediately above rather than here. No challenger was rejected by
+judgment after seeing its results.
 
-A ninth challenger tested by us, donor-season composition in the analogue,
-**passed** its pre-registered gates on 2026-08-24, after this release was
-sealed. It is documented at the end of this section and is deliberately not
-in v1.0. The eight killed challengers appear as seven bullets below:
-the reporting-completeness correction was two separately pre-registered
+The eight killed challengers appear as seven bullets below: the
+reporting-completeness correction was two separately pre-registered
 challengers and is kept in one bullet. The externally tested width scalar is
 the eighth bullet.
 
-One further proposal, phase-conditional width scalars, was declined WITHOUT
-being run: the diagnostic that motivated it showed the coverage error is
-indexed by forecast week rather than by epidemic phase, and changes sign
-between the two turns, so a static per-phase table could not represent it.
-That decision is recorded here because declining to run an experiment on
-diagnostic evidence is a different act from testing one, and the two should
-not be counted together.
+The phase-conditional width scalars were declined on diagnostic evidence: the
+diagnostic that motivated them showed the coverage error is indexed by
+forecast week rather than by epidemic phase, and changes sign between the two
+turns, so a static per-phase table could not represent it. That decision is
+recorded here because declining to run an experiment on diagnostic evidence
+is a different act from testing one, and the two should not be counted
+together.
 
-**The one that passed, and why it is not here.** Excluding the 2021-22
-season from the analogue's donor pool improves the shipped ensemble by 3.66
-percent pooled, bootstrap interval 1.78 to 6.01 percent, positive in all
-three sealed seasons independently and in 50 of 52 jurisdictions, with
-narrower intervals at unchanged coverage. A depth control settles the
-mechanism: randomly shrinking the donor pool to the same size changes the
-score by 0.20 percent, so the gain is which seasons are in the pool, not how
-many donors it holds. 2021-22 peaked in April 2022 and survives in the
-archive only as a February-to-July tail, so a calendar-matched pool asks
-March what March 2022 did and is told the epidemic was still growing.
-
-It is not in v1.0 because adopting it re-baselines every number this project
-has published, including the three-season seal, this document, the README,
-the site and the manuscript in preparation. Re-baselining a validated release
-is a decision for the authors, not a change to fold into a tag. v1.0 ships
-the donor pool that every published figure was measured on. The full record,
-including the pre-registration hash and the arm that failed, is in the lab
-research record.
-
-Note also that the hypothesis as originally posed, flooring donors at 2023-24
-because post-COVID dynamics differ, was tested and **killed**: the vintage
-archive begins in February 2022, so that floor empties the pool for all of
-2023-24 and the ensemble degrades to 0.7113 pooled. The useful exclusion is
-one season, not a cutoff.
+**Read every number in this ledger as measured against the pre-exclusion
+donor pool.** Each entry compares a challenger to the incumbent ensemble of
+its day, whose reference figures were 0.7039 pooled and 0.8475 / 0.6513 /
+0.6911 by season. Those comparisons have not been re-run against the shipped
+pool, and for several challengers they cannot be: the harnesses and per-cell
+results for random-walk transmission, national-growth coupling and the
+regime-switching filter did not survive, as the archive manifest records.
+Where a re-measurement was cheap and decisive it was made, and is noted in
+the entry. Nothing below should be read as a comparison against the shipped
+configuration.
 
 **Where the evidence lives.** The harnesses, the frozen pre-registrations and
 the per-cell results are retained in the lab's private archive, not in this
@@ -150,7 +315,11 @@ than leaving the claim to look checkable when it is not.
   filter's 0.993 on 1,248 turn cells) and beat the single-strain filter
   outright in the plateau season (0.968 against 1.023). But the full-grid
   ensemble gate failed: equal thirds scored 0.7189 against the two-member
-  0.7039, because 46 of 52 jurisdictions carry thin or withheld typed
+  0.7039 (both on the pre-exclusion donor pool, whose two-member reference is
+  now 0.6781; the three-member blend carries the analogue at one third, so it
+  gains less from the donor change than the reference does and the kill is
+  reinforced, but it has not been re-scored), because 46 of 52 jurisdictions
+  carry thin or withheld typed
   surveillance, diluting the second channel exactly where the member pays its
   identifiability cost. The engine remains available in the app, labeled
   turn-validated but not ensemble-validated.
@@ -167,7 +336,10 @@ than leaving the claim to look checkable when it is not.
   the severe year over-corrects the mild one. Within-season rolling form:
   killed on three of four pre-registered clauses; any widening keyed to
   revision magnitude pushes 2025-26 coverage past nominal, because that
-  season's intervals were already near-nominal.
+  season's intervals were already near-nominal. That premise was re-checked
+  on the shipped pool: 2025-26 ensemble central-50 coverage is 0.477, having
+  been 0.496, so the season's intervals remain the tightest of the three and
+  the argument stands.
 * **Global width scalar**, a post-hoc rescaling of predictive width. Tested
   and found null, a movement of about 0.3 percent against this project's
   measured noise floor of roughly 5 percent, consistent with the
@@ -175,8 +347,9 @@ than leaving the claim to look checkable when it is not.
   failed. **Provenance, stated plainly:** this test was performed during an
   independent review of the project rather than by this group, and no
   per-cell result or harness for it survives in our archive. It is reported
-  as recorded and cannot be re-checked from our artifacts, unlike the eight
-  challengers above and below.
+  as recorded and cannot be re-checked from our artifacts. Three of the eight
+  challengers above and below are in the same position, for the same honest
+  reason, and each says so in its own entry.
 * **Regime-switching filter.** A calm/shifting switch on the filter's jitter
   intended to widen intervals at epidemic turns. Failed all three skill
   gates: 1.154 against production's 1.122 on the turn cells it was built for,
@@ -187,6 +360,8 @@ than leaving the claim to look checkable when it is not.
   prior all season, peaking at 0.28 well after the January 2026 turn, because
   one week of negative-binomial noise cannot separate calm from shifting.
   Coverage at the January 2025 defect was identical to production, 0.271.
+  That 0.271 is one of the few ledger figures that survives the donor change
+  unchanged: the shipped ensemble covers the same 13 of those 48 cells.
   3,060 fits, no harness retained.
 * **Adaptive transmission (AR(1) increments with a fitted innovation
   scale).** The field's standard answer to non-seasonal waves: an AR(1) on
@@ -198,7 +373,11 @@ than leaving the claim to look checkable when it is not.
   cleared the member floor, and it lifted February coverage from 0.698 to
   0.729. It was killed by one clause: **January central-50 coverage 0.312
   against a bar of 0.35**, 0.038 short, having moved the incumbent's 0.271
-  most of the way there. The mechanism control is the finding: an arm with
+  most of the way there. Of those two incumbent figures the January 0.271 is
+  unchanged under the shipped donor pool, but the February 0.698 is not: the
+  shipped ensemble covers 0.646 on that window, so a re-run of this challenger
+  would be measured against a narrower incumbent than the one it beat. The
+  kill clause is untouched either way. The mechanism control is the finding: an arm with
   momentum removed and the scale still fitted scored 0.6215 / 0.5818 / 0.6083
   against the full arm's 0.6230 / 0.5831 / 0.6097, about 0.2 percent apart
   inside a 5 percent noise floor. The increment structure contributes nothing
@@ -211,7 +390,7 @@ than leaving the claim to look checkable when it is not.
   run's own production forward reproduces the seal's stored particle filter
   to 1.2e-07. Killed on **two** clauses: **1b, per-cell WIS correlation with
   the incumbent filter, 0.978 against a bar of 0.85**, and **2b, January
-  coverage 0.312 against a bar of 0.35** — the same number and the same bar
+  coverage 0.312 against a bar of 0.35**, the same number and the same bar
   that killed adaptive transmission. It passed the growth-correlation clause
   (0.892), turned on time, and was narrower than production everywhere. Two
   caveats are recorded against the kill rather than hidden: the incumbents
@@ -221,7 +400,10 @@ than leaving the claim to look checkable when it is not.
   redesigned before reuse; and the skill clause it passed on the selection
   seasons inverted on the held-out season (1.018), so the skill was not
   durable. On COVID the same member passed every clause that applied. That is
-  a first pass on 27 cells, not a validation.
+  a first pass on 27 cells, not a validation. The 0.949 in the first caveat
+  involves the analogue and therefore moves with the donor pool; it was
+  measured on that harness's own panel, which the seal does not reproduce, so
+  it has not been re-derived here and no substitute is offered for it.
 
 One entry is not a clean kill, and calling it one would overstate the
 ledger. The **two-strain SIHRS passed** its pre-registered panel test on
@@ -232,14 +414,37 @@ labeled turn-validated but not ensemble-validated.
 Three patterns from the ledger are worth stating as findings. First,
 six-state panel results did not transfer to the 52-jurisdiction grid on two
 separate occasions (RW-beta, two-strain gate 2); the full grid is the only
-binding validation surface. Second, fitted ensemble weights anti-predicted
-the held-out season every time they were tried; the unfitted 50/50 blend
-survived every challenge mounted against it. Third, the January turn has a
-floor that ten attempts did not break: the two best challengers, arrived at
-from opposite directions (one adding a fitted stochastic process, one adding
-no parameters at all), both landed on a January coverage of exactly 0.312
-against a bar of 0.35. Two independent mechanisms reaching the same number is
-evidence about the defect, not about either mechanism.
+binding validation surface.
+
+Second, fitted ensemble weights anti-predicted the held-out season every time
+they were tried, and the unfitted 50/50 blend survived every challenge
+mounted against it. Both halves of that hold on the shipped configuration,
+with one qualification worth stating plainly: the challenge that finally
+succeeded did not touch the blend at all, it replaced a member's donor pool.
+The rule that survived is "do not fit the weights", not "do not change the
+members". The re-measured comparison is 0.6958 for the frozen fitted table
+against 0.6781 for the unfitted blend; the leave-one-season-out figure of
+0.717 was recorded at the 2026-08-17 freeze and could not be re-derived,
+because the fitting code does not survive.
+
+Third, the January turn has a floor that nothing has broken. Three of the
+nine candidates were aimed squarely at this defect, and none moved it past
+0.312: the regime-switching filter left it at the incumbent's 0.271, while
+adaptive transmission and slope-anchored transmission, arrived at from
+opposite directions (one adding a fitted stochastic process, one adding no
+parameters at all), both landed on exactly 0.312 against a bar of 0.35. Two
+independent mechanisms reaching the same number is evidence about the defect,
+not about either mechanism.
+
+Those three are the whole of the evidence on this window, and the claim
+should be read as covering them and no more. The remaining six challengers
+carry no recorded January coverage figure at all, and for three of them
+(random-walk transmission, national-growth coupling and the global width
+scalar) none can now be produced, because the per-cell results did not
+survive; their entries below say so. The tenth candidate,
+the donor-pool exclusion, is the one that shipped, and it left the same
+defect exactly where it found it: 13 of 48 cells covered before, 13 after.
+The floor is a property of the defect and not of any one member.
 
 ## What v1.0 contains
 
@@ -269,12 +474,17 @@ evidence about the defect, not about either mechanism.
 
 Stated in full in the README. In brief: interval narrowness at the January
 epidemic turn (central 50 percent coverage of 27 percent at the January 2025
-turn, unfixed by every challenger, the best two of which reached 0.312
-against a pre-registered bar of 0.35); the adaptive MCMC engine does not
-pass convergence diagnostics on this posterior and is not part of the shipped
-ensemble; all scores are self-computed from the hub's archives rather than
-earned in real-time participation; three seasons is the entire possible
-vintage record; Windows is experimental.
+turn, re-measured on the shipped configuration and unmoved, unfixed by every
+challenger, the best two of which reached 0.312 against a pre-registered bar
+of 0.35); the shipped intervals are narrower than the pre-exclusion ones,
+still above nominal pooled but 0.646 rather than 0.698 on the February 2024
+plateau window; the adaptive MCMC engine does not pass convergence
+diagnostics on this posterior and is not part of the shipped ensemble; all
+scores are self-computed from the hub's archives rather than earned in
+real-time participation; the placement of these forecasts among real FluSight
+submissions is withdrawn and unmeasured; three seasons is the entire possible
+vintage record, and the donor-pool exclusion is validated on those three
+seasons and nowhere else; Windows is experimental.
 
 ## Naming
 

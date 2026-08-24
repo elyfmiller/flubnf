@@ -38,18 +38,18 @@ the published page.
 
    Useful flags:
 
-   - `--check` — exit non-zero if any computed score disagrees with the
+   - `--check`, exit non-zero if any computed score disagrees with the
      console. Worth using before you commit.
-   - `--season` / `--asof` — pin the home outlook to a specific stored week
+   - `--season` / `--asof`, pin the home outlook to a specific stored week
      instead of the newest forecast. The default is deliberately *not*
      photogenic: in July the newest week is a quiet summer map, and picking
      a January peak because it looks better is cherry-picking. The override
      exists so that choice, when you make it, is recorded in the payload as
      `outlook.source.pinned`.
-   - `--out` — write somewhere other than `site/`.
+   - `--out`, write somewhere other than `site/`.
 
-3. **Review.** Open `site/index.html` — it works from disk, no server
-   needed — and read the diff of `site/site.json`. The payload is
+3. **Review.** Open `site/index.html`, which works from disk with no server
+   needed, and read the diff of `site/site.json`. The payload is
    pretty-printed with sorted keys precisely so this diff is readable: it
    shows which numbers moved. `site/index.html` changes with it; the large
    diff there is the same payload embedded so the page works offline.
@@ -69,30 +69,40 @@ Lab members do not push; the site changes when you push.
 | Outlook map, per-model cards | the newest run bundle covering ≥40 jurisdictions, else the newest stored retrospective week |
 | Forecast fans, settled overlays | the same week's playback payload (or the run's `results.json`), with truth after the forecast date |
 | Season table, per-member scores | every stored week of every discovered season, rescored here |
-| FluSight placements | the `<table class="perf">` in `app/ui/templates/home.html` |
+| Published relWIS, for the drift alarm; FluSight placements when the table carries them (it does not, as of 2026-08-24) | the `<table class="perf">` in `app/ui/templates/home.html` |
 | Methods prose and diagrams | `app/ui/templates/methods.html`, rendered through the console's own Jinja environment |
 | Model source | `flubnf/templates/SIHRS_pop_min.bngl` |
 | Bibliography | the DOIs in `flubnf/sihrs_priors.py` |
 
 Three of those deserve a note.
 
-**The ensemble score is the shipped one.** A season's `scores.json` is
-written by `retro.score_season`, whose `ensemble` column blends with the
-frozen LOSO weights — a configuration the lab evaluated and rejected, and
-which scores worse (pooled 0.710 against 0.704). Reading it here would put
-the rejected ensemble on the page under the shipped ensemble's name, and
-nothing would look wrong. The build instead rescores every season from each
-week's playback payload, whose `ensemble` block is the equal-weight 50/50
-blend. That path reproduces the published record exactly (0.848 / 0.651 /
-0.691, pooled 0.704) and `app/tests/test_site_build.py` pins it.
+**The ensemble score is the shipped one.** `retro.score_season` defaults to
+the unfitted equal-weight blend, and the three-season seal was rescored under
+that default on 2026-08-24, so its `scores.json` files do carry the shipped
+50/50 ensemble: re-blending the stored members by hand reproduces them
+exactly, 0.813136 / 0.617881 / 0.682662 and pooled 0.678119, against the
+0.695771 the frozen LOSO table gives on the same seal.
 
-**Placements are harvested, not recomputed.** Ranking against the whole
-FluSight field means scoring every submitting team on identical cells —
-around 1.6 GB of hub CSVs across three seasons, and a field definition
-(which hub-run models count as competitors) that is a lab decision, not a
-formula. Those standings live in `home.html` and the build reads them from
-there, so you edit one place. A season the table does not cover renders as
-"not yet scored against the field" rather than with an invented rank.
+The build still does not read them, for a reason that outlives that fix. A
+`scores.json` records no weights of its own, and `discover_seasons` accepts
+any season root under `app/state`, including a lab run scored before v1.0
+under the old frozen default or scored deliberately with `ensemble.FROZEN`.
+Trusting the file would publish a blend whose configuration cannot be checked
+from the file. Every season is instead rescored from each week's playback
+payload, whose `ensemble` block is built by `ens.equal_weights` in code. That
+path reproduces the published record exactly (0.813 / 0.618 / 0.683, pooled
+0.678) and `app/tests/test_site_build.py` pins it.
+
+**Placements are not published.** Ranking against the whole FluSight field
+means scoring every submitting team on identical cells, around 1.6 GB of hub
+CSVs across three seasons, and a field definition (which hub-run models count
+as competitors) that is a lab decision, not a formula. The standings the site
+used to carry were withdrawn on 2026-08-24 because the scorer that produced
+them does not survive and the entries for this project were not computed on
+one convention; see `docs/RELEASE-1.0.md`. Until they are measured again the
+performance card carries no field column, and a season with no standing
+renders as "not yet scored against the field" rather than with an invented
+rank.
 
 **Observations are vintage-true; only the overlay is hindsight.** A
 replayed week's playback payload carries settled truth, because the
@@ -120,7 +130,7 @@ text or the retrospective on disk has moved, and a human decides which.
 decides how it looks and holds all the markup, CSS and behaviour. Numbers
 that change every rebuild belong in the payload; static content belongs in
 the page. Anything the state cannot fund must be omitted with a stated
-reason — never an empty cell, a dash, or a number the build invented.
+reason, never an empty cell, a dash, or a number the build invented.
 
 ## Enabling Pages the first time
 

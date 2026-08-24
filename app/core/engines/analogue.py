@@ -72,6 +72,11 @@ def run(spec) -> dict:
         c, sig = completeness_args(spec, fips, anchor_date, newest)
         qs = {}
         for h in (1, 2, 3, 4):
+            # Donor pool: AN.forecast's default, which is every strictly prior
+            # season EXCEPT 2021-22 (flubnf.analogue.EXCLUDED_DONOR_SEASONS,
+            # adopted 2026-08-24). Deliberately not restated as a literal here
+            # -- the engine must not be able to disagree with the library about
+            # which pool production uses.
             q = AN.forecast(anchor, T.date(), h, bank, QL,
                             completeness=c, widen_log_sd=sig)
             if q:

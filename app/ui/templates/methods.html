@@ -107,7 +107,11 @@
  that decides membership: on identical full-grid cells the equal-weight
  three-member ensemble scored 0.719 against 0.704 for the two-member blend.
  Adding it therefore makes the submitted forecast worse, so it is not part
- of the shipped ensemble and the blend stays at two members.</p>
+ of the shipped ensemble and the blend stays at two members. Both of those
+ numbers were measured before the 2021-22 donor exclusion, which moved the
+ two-member reference to 0.678; the three-member blend carries the analogue
+ at one third and so gains less from the change, but it has not been
+ re-scored.</p>
 
  <p>The engine remains available for research runs. The
  <a href="/model/pf2s">two-strain model page</a> stays reachable by direct
@@ -130,6 +134,26 @@
  archive of weekly NHSN admissions and nothing else, is difficult to beat at
  one week ahead, and anchors the ensemble when a season behaves
  unusually.</p>
+ <p>One prior season is excluded from the donor pool: 2021-22. It peaked at
+ epiweek 16, in April 2022, while every other donor season peaked between
+ epiweek 48 and epiweek 6, and the archived surveillance series begins
+ 2022-02-05, so that season survives only as its growth phase. A
+ calendar-matched pool asks what happened in March and 2021-22 answers that
+ the epidemic was still growing, with March donor ratios of median 1.36 to
+ 1.50 against 0.50 to 0.83 for every other season. Excluding it was
+ pre-registered under hash <code>8f3c7a45a989e905</code> and improves the
+ shipped ensemble by 3.66 percent pooled, bootstrap interval 1.83 to 6.07
+ percent, positive in all three sealed seasons and in 50 of 52
+ jurisdictions. A depth control settles the mechanism: subsampling the full
+ pool at random to the same size moves the score by 0.20 percent, so the
+ gain is which season is in the pool and not how many donors it holds. The
+ effect concentrates late in the season without being confined to February:
+ of the 15,460 sealed cells, 9,363 change, being every February, March,
+ April and May cell together with 624 of the 2,080 January cells, which are
+ the final January week of each season. Nothing in October, November or
+ December changes, because that season's archived series does not begin
+ until February 2022 and the calendar match reaches only two weeks either
+ side of the forecast week.</p>
  <p class="hint">Model tab: <a href="/model/analogue">Calendar analogue</a>.</p>
 </div>
 
@@ -141,10 +165,12 @@
  short horizons. The members carry equal, unfitted weights: 50/50 across the
  two shipped members, and equal thirds if a research run adds the
  <a href="#two-strain">two-strain variant</a>, which the submitted ensemble
- does not. Fitting the weights was evaluated and rejected: a
- leave-one-season-out weight fit scored worse than the equal blend in the
- three-season replay (pooled relWIS 0.717 against 0.704), so no weight is
- tuned on any season.</p>
+ does not. Fitting the weights was evaluated and rejected: applying the
+ frozen per-horizon table to the three-season replay scores worse than the
+ equal blend (pooled relWIS 0.696 against 0.678), and the
+ leave-one-season-out fit recorded at the 2026-08-17 freeze was 0.717
+ against the 0.704 the equal blend scored at the time. No weight is tuned on
+ any season.</p>
  <p class="hint">Model tab: <a href="/model/ensemble">Ensemble</a>.</p>
 </div>
 
@@ -159,12 +185,15 @@
  <div style="overflow-x:auto"><table>
   <tr><th>Model</th><th>2023-24</th><th>2024-25</th><th>2025-26</th></tr>
   <tr><td>PF-SIHRS</td><td class="bad">1.023</td><td class="ok">0.636</td><td class="ok">0.825</td></tr>
-  <tr><td>Calendar analogue</td><td class="bad">1.105</td><td class="ok">0.835</td><td class="ok">0.641</td></tr>
-  <tr><td>Ensemble</td><td class="ok">0.848</td><td class="ok">0.651</td><td class="ok">0.691</td></tr>
+  <tr><td>Calendar analogue</td><td class="bad">1.045</td><td class="ok">0.756</td><td class="ok">0.621</td></tr>
+  <tr><td>Ensemble</td><td class="ok">0.813</td><td class="ok">0.618</td><td class="ok">0.683</td></tr>
  </table></div>
- <p class="hint">Pooled ensemble relWIS: 0.704. Against the real FluSight
- fields it would have placed 14th of 34 teams in 2023-24 and 4th of 40 in
- 2024-25.</p>
+ <p class="hint">Pooled ensemble relWIS: 0.678, over 15,460 scored cells.
+ Measured on the shipped donor pool; before the 2021-22 exclusion the
+ analogue read 1.105 / 0.835 / 0.641 and the ensemble 0.847 / 0.651 / 0.691,
+ pooled 0.704. The particle filter is unchanged by that exclusion. Placement
+ against the real FluSight fields was withdrawn on 2026-08-24 and is not
+ stated here.</p>
 </div>
 
 <div class="card"><h2>Under the hood</h2>
