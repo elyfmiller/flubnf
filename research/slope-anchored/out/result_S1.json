@@ -1,0 +1,486 @@
+{
+ "preregistration_sha256_16": "5a895f3c02e06af1",
+ "scorer_sha256_16": "3618c56b87c6c792",
+ "variant": "S1",
+ "variant_spec": [
+  2,
+  true,
+  0.075
+ ],
+ "panel": [
+  "Alaska",
+  "California",
+  "New York",
+  "Pennsylvania",
+  "Vermont",
+  "Wyoming"
+ ],
+ "seasons": [
+  "2023-24",
+  "2024-25",
+  "2025-26"
+ ],
+ "v_sig_primary": 0.075,
+ "completeness": {
+  "cells_expected": 1530,
+  "cells_done": 1530,
+  "status_ok": 1530,
+  "status_fail": 0,
+  "failures": {}
+ },
+ "anchor_scale_guard": {
+  "flagged": 12,
+  "dropped": 60
+ },
+ "wis_agreement": {
+  "max_rel_diff": 4.767654137843889e-16,
+  "n": 11301
+ },
+ "seal_reproduction": {
+  "pf": {
+   "max_rel_diff": 1.3076511663819957e-10,
+   "n": 1725
+  },
+  "analogue": {
+   "max_rel_diff": 3.053952234794013e-10,
+   "n": 1747
+  },
+  "b_prime_our_production_forward": {
+   "max_rel_diff": 1.1731314962371203e-07,
+   "n": 1725
+  }
+ },
+ "paired_cells": 1725,
+ "gate_1_redundancy": {
+  "note": "correlations are on log(q50/anchor), never on levels: every member shares the same anchor",
+  "1a_growth": {
+   "analogue": 0.3864868651948092,
+   "pf": 0.8921936664524467,
+   "reference_pf_vs_analogue": 0.4056286608806015,
+   "max_vs_incumbent": 0.8921936664524467,
+   "bar": 0.9,
+   "pass": true,
+   "by_horizon": {
+    "0": {
+     "analogue": 0.3597429019279048,
+     "pf": 0.9397692253052257
+    },
+    "1": {
+     "analogue": 0.3693215604071371,
+     "pf": 0.9094603617413103
+    },
+    "2": {
+     "analogue": 0.364611091256812,
+     "pf": 0.8821526983429562
+    },
+    "3": {
+     "analogue": 0.3911012154615702,
+     "pf": 0.8856756071568704
+    }
+   }
+  },
+  "1b_error": {
+   "analogue": 0.9521658242480555,
+   "pf": 0.9778302402042408,
+   "reference_pf_vs_analogue": 0.9493634805393706,
+   "max_vs_incumbent": 0.9778302402042408,
+   "bar": 0.85,
+   "pass": false
+  },
+  "pass": false
+ },
+ "gate_3a_width_prescreen": {
+  "all_cells": {
+   "member": {
+    "0.98": {
+     "coverage": 0.9536231884057971,
+     "width": 1003.9498297708984
+    },
+    "0.95": {
+     "coverage": 0.9078260869565218,
+     "width": 786.1274671126729
+    },
+    "0.9": {
+     "coverage": 0.8486956521739131,
+     "width": 624.792161853907
+    },
+    "0.8": {
+     "coverage": 0.7466666666666667,
+     "width": 461.7985138112859
+    },
+    "0.7": {
+     "coverage": 0.6492753623188405,
+     "width": 362.88832903834754
+    },
+    "0.6": {
+     "coverage": 0.5710144927536231,
+     "width": 289.10586937571077
+    },
+    "0.5": {
+     "coverage": 0.46956521739130436,
+     "width": 228.62226466765105
+    },
+    "0.4": {
+     "coverage": 0.36985507246376814,
+     "width": 176.023447975152
+    },
+    "0.3": {
+     "coverage": 0.2753623188405797,
+     "width": 128.46448771885105
+    },
+    "0.2": {
+     "coverage": 0.1826086956521739,
+     "width": 84.08331237252337
+    },
+    "0.1": {
+     "coverage": 0.0927536231884058,
+     "width": 41.58523824730403
+    }
+   },
+   "production_pf": {
+    "0.98": {
+     "coverage": 0.991304347826087,
+     "width": 1955.0711746345814
+    },
+    "0.95": {
+     "coverage": 0.9756521739130435,
+     "width": 1422.2619540128749
+    },
+    "0.9": {
+     "coverage": 0.9379710144927537,
+     "width": 1072.1596016822134
+    },
+    "0.8": {
+     "coverage": 0.8695652173913043,
+     "width": 755.6360934255677
+    },
+    "0.7": {
+     "coverage": 0.7913043478260869,
+     "width": 579.6507596321366
+    },
+    "0.6": {
+     "coverage": 0.7043478260869566,
+     "width": 454.8067079709883
+    },
+    "0.5": {
+     "coverage": 0.5982608695652174,
+     "width": 356.12047357415327
+    },
+    "0.4": {
+     "coverage": 0.48869565217391303,
+     "width": 272.4006834738837
+    },
+    "0.3": {
+     "coverage": 0.3820289855072464,
+     "width": 197.85732927440876
+    },
+    "0.2": {
+     "coverage": 0.25217391304347825,
+     "width": 129.16838515779335
+    },
+    "0.1": {
+     "coverage": 0.12811594202898552,
+     "width": 63.78364769142698
+    }
+   },
+   "n_cells": 1725,
+   "matched_0.5": {
+    "nominal": 0.5,
+    "ref_coverage": 0.5982608695652174,
+    "ref_width": 356.12047357415327,
+    "cand_width_at_ref_coverage": 314.79309607307323,
+    "ratio": 0.8839511329233515,
+    "ref_coverage_inside_candidate_range": true
+   },
+   "matched_0.8": {
+    "nominal": 0.8,
+    "ref_coverage": 0.8695652173913043,
+    "ref_width": 755.6360934255677,
+    "cand_width_at_ref_coverage": 681.7340342981772,
+    "ratio": 0.9021988761913607,
+    "ref_coverage_inside_candidate_range": true
+   },
+   "matched_0.95": {
+    "nominal": 0.95,
+    "ref_coverage": 0.9756521739130435,
+    "ref_width": 1422.2619540128749,
+    "cand_width_at_ref_coverage": 1003.9498297708984,
+    "ratio": 0.7058825042308698,
+    "ref_coverage_inside_candidate_range": false
+   }
+  },
+  "turn_cells": {
+   "member": {
+    "0.98": {
+     "coverage": 0.9583333333333334,
+     "width": 1448.4847580278292
+    },
+    "0.95": {
+     "coverage": 0.9027777777777778,
+     "width": 1130.972417908802
+    },
+    "0.9": {
+     "coverage": 0.8472222222222222,
+     "width": 897.0893854928977
+    },
+    "0.8": {
+     "coverage": 0.7430555555555556,
+     "width": 662.4065137576205
+    },
+    "0.7": {
+     "coverage": 0.6805555555555556,
+     "width": 520.1885159652816
+    },
+    "0.6": {
+     "coverage": 0.6180555555555556,
+     "width": 414.00202660405785
+    },
+    "0.5": {
+     "coverage": 0.5,
+     "width": 327.24380617503243
+    },
+    "0.4": {
+     "coverage": 0.3958333333333333,
+     "width": 252.03678640398059
+    },
+    "0.3": {
+     "coverage": 0.2916666666666667,
+     "width": 183.9099227604348
+    },
+    "0.2": {
+     "coverage": 0.20833333333333334,
+     "width": 120.36665221642478
+    },
+    "0.1": {
+     "coverage": 0.10416666666666667,
+     "width": 59.41535347904133
+    }
+   },
+   "production_pf": {
+    "0.98": {
+     "coverage": 0.9861111111111112,
+     "width": 2768.2587910085244
+    },
+    "0.95": {
+     "coverage": 0.9652777777777778,
+     "width": 1977.5546116806706
+    },
+    "0.9": {
+     "coverage": 0.9444444444444444,
+     "width": 1471.1312771300165
+    },
+    "0.8": {
+     "coverage": 0.9027777777777778,
+     "width": 1023.208763795666
+    },
+    "0.7": {
+     "coverage": 0.8125,
+     "width": 778.8371609033527
+    },
+    "0.6": {
+     "coverage": 0.7361111111111112,
+     "width": 607.3667966269174
+    },
+    "0.5": {
+     "coverage": 0.6388888888888888,
+     "width": 473.7951245835336
+    },
+    "0.4": {
+     "coverage": 0.5,
+     "width": 361.19670498119257
+    },
+    "0.3": {
+     "coverage": 0.3333333333333333,
+     "width": 261.84199007870706
+    },
+    "0.2": {
+     "coverage": 0.2013888888888889,
+     "width": 170.7315819876164
+    },
+    "0.1": {
+     "coverage": 0.10416666666666667,
+     "width": 84.50536642992866
+    }
+   },
+   "n_cells": 144,
+   "matched_0.5": {
+    "nominal": 0.5,
+    "ref_coverage": 0.6388888888888888,
+    "ref_width": 473.7951245835336,
+    "cand_width_at_ref_coverage": 449.39752305779894,
+    "ratio": 0.9485060097501421,
+    "ref_coverage_inside_candidate_range": true
+   },
+   "matched_0.8": {
+    "nominal": 0.8,
+    "ref_coverage": 0.9027777777777778,
+    "ref_width": 1023.208763795666,
+    "cand_width_at_ref_coverage": 1130.972417908802,
+    "ratio": 1.1053193228265357,
+    "ref_coverage_inside_candidate_range": true
+   },
+   "matched_0.95": {
+    "nominal": 0.95,
+    "ref_coverage": 0.9652777777777778,
+    "ref_width": 1977.5546116806706,
+    "cand_width_at_ref_coverage": 1448.4847580278292,
+    "ratio": 0.7324625825613993,
+    "ref_coverage_inside_candidate_range": false
+   }
+  }
+ },
+ "gate_2_turn": {
+  "2a_implied_turn": {
+   "n_pre_peak_cells": 181,
+   "member_median_err": -2.0,
+   "production_median_err": -2.0,
+   "audit_production_median_err": -1.0,
+   "paired_median_delta": 1.0,
+   "bar_late_turn": 1.0,
+   "member_abs2": 0.4585635359116022,
+   "production_abs2": 0.47513812154696133,
+   "audit_production_abs2": 0.584,
+   "acc_ratio": 0.9651162790697674,
+   "bar_acc_ratio": 0.9,
+   "pass_late": true,
+   "pass_acc": true
+  },
+  "2b_coverage": {
+   "jan2025_peak": {
+    "ensemble3_cov50": 0.3125,
+    "incumbent_cov50_recomputed": 0.2708333333333333,
+    "incumbent_cov50_reported": 0.236,
+    "bar": 0.35,
+    "direction": "above",
+    "n_cells": 48,
+    "member_cov50": 0.3541666666666667,
+    "member_cov95": 0.7916666666666666,
+    "member_over_frac": 0.20833333333333334,
+    "member_under_frac": 0.0,
+    "ensemble3_relwis": 1.095440496957568,
+    "incumbent_relwis": 1.1126418937755238,
+    "pass": false
+   },
+   "feb2024_plateau": {
+    "ensemble3_cov50": 0.65625,
+    "incumbent_cov50_recomputed": 0.6979166666666666,
+    "incumbent_cov50_reported": 0.743,
+    "bar": 0.78,
+    "direction": "below",
+    "n_cells": 96,
+    "member_cov50": 0.5729166666666666,
+    "member_cov95": 0.9583333333333334,
+    "member_over_frac": 0.03125,
+    "member_under_frac": 0.010416666666666666,
+    "ensemble3_relwis": 1.2616126767531572,
+    "incumbent_relwis": 1.3583855219016823,
+    "pass": true
+   }
+  },
+  "pass": false
+ },
+ "gate_3b_skill": {
+  "selection_pooled": {
+   "ens3": 0.6193866386551056,
+   "ens2": 0.6426523205564416,
+   "ratio": 0.9637974046663499,
+   "n_cells": 1235,
+   "pass": true
+  },
+  "confirm_2025-26": {
+   "ens3": 0.5855611545743438,
+   "ens2": 0.5751839232578732,
+   "ratio": 1.0180415879110345,
+   "n_cells": 490,
+   "pass": false
+  },
+  "all_seasons": {
+   "ens3": 0.6081020856058649,
+   "ens2": 0.6201441221033125,
+   "ratio": 0.9805818743284944,
+   "n_cells": 1725,
+   "pass": true
+  },
+  "pass": true
+ },
+ "gate_3c_member_floor": {
+  "per_season": {
+   "2023-24": {
+    "relwis": 0.7496508930432905,
+    "n_cells": 682,
+    "ok": true,
+    "empty": false
+   },
+   "2024-25": {
+    "relwis": 0.569151724203893,
+    "n_cells": 553,
+    "ok": true,
+    "empty": false
+   },
+   "2025-26": {
+    "relwis": 0.6792887380715577,
+    "n_cells": 490,
+    "ok": true,
+    "empty": false
+   }
+  },
+  "bar": 1.1,
+  "pass": true
+ },
+ "by_horizon": {
+  "0": {
+   "member": 0.6809516176046567,
+   "pf": 0.7325953569586195,
+   "analogue": 0.85641746508513,
+   "ens2": 0.7287684865314509,
+   "ens3": 0.7054885791083695
+  },
+  "1": {
+   "member": 0.6625129356885748,
+   "pf": 0.6968910072618923,
+   "analogue": 0.788682437254334,
+   "ens2": 0.6561009644655162,
+   "ens3": 0.6406771337046725
+  },
+  "2": {
+   "member": 0.6432860613745087,
+   "pf": 0.6415115783943117,
+   "analogue": 0.7439159276422825,
+   "ens2": 0.6024523126578862,
+   "ens3": 0.5939576154685272
+  },
+  "3": {
+   "member": 0.6049867306419521,
+   "pf": 0.5919426331842323,
+   "analogue": 0.7395172355041184,
+   "ens2": 0.5757637689330156,
+   "ens3": 0.5666787670262182
+  }
+ },
+ "persistence_clause": {
+  "clip_frac": 0.0,
+  "median_w": 0.3469826047486524,
+  "median_r_star": 0.9910374764114018,
+  "sd_r_star": 0.05633163278229743,
+  "sd_reff_production": 0.1305105992644611,
+  "spread_ratio": 0.4316249645605367,
+  "bar_clip": 0.4,
+  "label_threshold": 0.25,
+  "shrunken_persistence": false,
+  "reason_counts": {
+   "ok": 476,
+   "nonpositive_or_missing": 34
+  }
+ },
+ "verdict": {
+  "decision": "KILL",
+  "kill_rules_fired": [
+   "gate 1b redundancy: per-cell WIS correlation 0.978 >= 0.85",
+   "gate 2b jan2025_peak (above 0.35)"
+  ],
+  "gate_1": false,
+  "gate_2": false,
+  "gate_3b": true,
+  "gate_3c": true
+ }
+}

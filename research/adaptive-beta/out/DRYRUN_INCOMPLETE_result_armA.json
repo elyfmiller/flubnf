@@ -1,0 +1,427 @@
+{
+ "preregistration_sha256_16": "5fadd6ab8c0d46dc",
+ "scorer_sha256_16": "349e9c3c8e6b5dab",
+ "arm": "A",
+ "arphi": 0.5,
+ "panel": [
+  "Alaska",
+  "California",
+  "New York",
+  "Pennsylvania",
+  "Vermont",
+  "Wyoming"
+ ],
+ "seasons": [
+  "2023-24",
+  "2024-25",
+  "2025-26"
+ ],
+ "completeness": {
+  "cells_expected": 1530,
+  "cells_done": 384,
+  "status_ok": 375,
+  "status_fail": 0,
+  "failures": {}
+ },
+ "wis_agreement": {
+  "max_rel_diff": 4.767654137843889e-16,
+  "n": 6666
+ },
+ "seal_reproduction": {
+  "pf": {
+   "max_rel_diff": 1.3076511663819957e-10,
+   "n": 1725
+  },
+  "analogue": {
+   "max_rel_diff": 3.053952234794013e-10,
+   "n": 1747
+  },
+  "ensemble": {
+   "max_rel_diff": 1.0891680443473286,
+   "n": 1747
+  }
+ },
+ "paired_cells": 465,
+ "paired_cells_by_season": {
+  "2023-24": 465,
+  "2024-25": 0,
+  "2025-26": 0
+ },
+ "gate_C_width_prescreen": {
+  "member_vs_production_pf": {
+   "all_cells": {
+    "adaptive": {
+     "0.98": {
+      "coverage": 1.0,
+      "width": 1722.2244725013393
+     },
+     "0.95": {
+      "coverage": 0.9935483870967742,
+      "width": 1241.3883557156366
+     },
+     "0.9": {
+      "coverage": 0.9720430107526882,
+      "width": 925.1308686486358
+     },
+     "0.8": {
+      "coverage": 0.9419354838709677,
+      "width": 643.2934718741029
+     },
+     "0.7": {
+      "coverage": 0.8838709677419355,
+      "width": 489.0104769846836
+     },
+     "0.6": {
+      "coverage": 0.7849462365591398,
+      "width": 381.5780177172055
+     },
+     "0.5": {
+      "coverage": 0.6473118279569893,
+      "width": 297.2727920110053
+     },
+     "0.4": {
+      "coverage": 0.5075268817204301,
+      "width": 226.4916449373048
+     },
+     "0.3": {
+      "coverage": 0.37849462365591396,
+      "width": 164.0855044834573
+     },
+     "0.2": {
+      "coverage": 0.24086021505376345,
+      "width": 106.9722316088869
+     },
+     "0.1": {
+      "coverage": 0.12473118279569892,
+      "width": 52.70885344581045
+     }
+    },
+    "production_pf": {
+     "0.98": {
+      "coverage": 0.9978494623655914,
+      "width": 1768.6963145730872
+     },
+     "0.95": {
+      "coverage": 0.9827956989247312,
+      "width": 1290.8903022193829
+     },
+     "0.9": {
+      "coverage": 0.9655913978494624,
+      "width": 971.4257809081038
+     },
+     "0.8": {
+      "coverage": 0.9333333333333333,
+      "width": 681.342378272402
+     },
+     "0.7": {
+      "coverage": 0.8709677419354839,
+      "width": 521.0365578025055
+     },
+     "0.6": {
+      "coverage": 0.7849462365591398,
+      "width": 407.6271917414335
+     },
+     "0.5": {
+      "coverage": 0.6559139784946236,
+      "width": 318.61567506754136
+     },
+     "0.4": {
+      "coverage": 0.5333333333333333,
+      "width": 243.3616286826081
+     },
+     "0.3": {
+      "coverage": 0.4150537634408602,
+      "width": 176.61177281980179
+     },
+     "0.2": {
+      "coverage": 0.2860215053763441,
+      "width": 115.12010797824122
+     },
+     "0.1": {
+      "coverage": 0.13333333333333333,
+      "width": 56.85656695622282
+     }
+    },
+    "n_cells": 465,
+    "matched_0.5": {
+     "nominal": 0.5,
+     "ref_coverage": 0.6559139784946236,
+     "ref_width": 318.61567506754136,
+     "cand_width_at_ref_coverage": 302.5418686176428,
+     "ratio": 0.9495511121777321,
+     "ref_coverage_inside_candidate_range": true
+    },
+    "matched_0.8": {
+     "nominal": 0.8,
+     "ref_coverage": 0.9333333333333333,
+     "ref_width": 681.342378272402,
+     "cand_width_at_ref_coverage": 620.4367318904854,
+     "ratio": 0.9106093377952685,
+     "ref_coverage_inside_candidate_range": true
+    },
+    "matched_0.95": {
+     "nominal": 0.95,
+     "ref_coverage": 0.9827956989247312,
+     "ref_width": 1290.8903022193829,
+     "cand_width_at_ref_coverage": 1083.2596121821362,
+     "ratio": 0.8391569836102459,
+     "ref_coverage_inside_candidate_range": true
+    }
+   },
+   "turn_cells": {
+    "adaptive": {
+     "0.98": {
+      "coverage": 1.0,
+      "width": 1272.5960382779742
+     },
+     "0.95": {
+      "coverage": 0.9772727272727273,
+      "width": 876.5709320840277
+     },
+     "0.9": {
+      "coverage": 0.9659090909090909,
+      "width": 634.4709063832506
+     },
+     "0.8": {
+      "coverage": 0.9318181818181818,
+      "width": 431.9405126548279
+     },
+     "0.7": {
+      "coverage": 0.9090909090909091,
+      "width": 324.93167086377156
+     },
+     "0.6": {
+      "coverage": 0.8068181818181818,
+      "width": 252.40037407051565
+     },
+     "0.5": {
+      "coverage": 0.625,
+      "width": 196.33853402176348
+     },
+     "0.4": {
+      "coverage": 0.4431818181818182,
+      "width": 149.23854333499432
+     },
+     "0.3": {
+      "coverage": 0.3181818181818182,
+      "width": 108.02232817301113
+     },
+     "0.2": {
+      "coverage": 0.20454545454545456,
+      "width": 70.31513909401725
+     },
+     "0.1": {
+      "coverage": 0.10227272727272728,
+      "width": 34.74049317612076
+     }
+    },
+    "production_pf": {
+     "0.98": {
+      "coverage": 0.9886363636363636,
+      "width": 1652.7053670605128
+     },
+     "0.95": {
+      "coverage": 0.9772727272727273,
+      "width": 1120.915356698644
+     },
+     "0.9": {
+      "coverage": 0.9772727272727273,
+      "width": 796.9665044306533
+     },
+     "0.8": {
+      "coverage": 0.9545454545454546,
+      "width": 530.2734836192467
+     },
+     "0.7": {
+      "coverage": 0.8863636363636364,
+      "width": 395.42999963305596
+     },
+     "0.6": {
+      "coverage": 0.8181818181818182,
+      "width": 304.4564703693722
+     },
+     "0.5": {
+      "coverage": 0.7159090909090909,
+      "width": 235.64588508101562
+     },
+     "0.4": {
+      "coverage": 0.5681818181818182,
+      "width": 178.76642399834734
+     },
+     "0.3": {
+      "coverage": 0.3977272727272727,
+      "width": 129.06833581511322
+     },
+     "0.2": {
+      "coverage": 0.25,
+      "width": 83.9445269168551
+     },
+     "0.1": {
+      "coverage": 0.125,
+      "width": 41.42117849362101
+     }
+    },
+    "n_cells": 88,
+    "matched_0.5": {
+     "nominal": 0.5,
+     "ref_coverage": 0.7159090909090909,
+     "ref_width": 235.64588508101562,
+     "cand_width_at_ref_coverage": 224.3694540461396,
+     "ratio": 0.9521467093261605,
+     "ref_coverage_inside_candidate_range": true
+    },
+    "matched_0.8": {
+     "nominal": 0.8,
+     "ref_coverage": 0.9545454545454546,
+     "ref_width": 530.2734836192467,
+     "cand_width_at_ref_coverage": 566.9607751404433,
+     "ratio": 1.0691856045125938,
+     "ref_coverage_inside_candidate_range": true
+    },
+    "matched_0.95": {
+     "nominal": 0.95,
+     "ref_coverage": 0.9772727272727273,
+     "ref_width": 1120.915356698644,
+     "cand_width_at_ref_coverage": 876.5709320840277,
+     "ratio": 0.7820134917820492,
+     "ref_coverage_inside_candidate_range": true
+    }
+   }
+  }
+ },
+ "gate_A_coverage": {
+  "jan2025_peak": {
+   "ensemble3_cov50": NaN,
+   "incumbent_cov50_recomputed": NaN,
+   "incumbent_cov50_reported": 0.236,
+   "bar": 0.35,
+   "direction": "above",
+   "n_cells": 0,
+   "ensemble3_relwis": NaN,
+   "incumbent_relwis": NaN,
+   "pass": false
+  },
+  "feb2024_plateau": {
+   "ensemble3_cov50": 0.7272727272727273,
+   "incumbent_cov50_recomputed": 0.6931818181818182,
+   "incumbent_cov50_reported": 0.743,
+   "bar": 0.78,
+   "direction": "below",
+   "n_cells": 88,
+   "ensemble3_relwis": 1.288579680697042,
+   "incumbent_relwis": 1.3618590672893638,
+   "pass": true
+  },
+  "pass": false
+ },
+ "gate_B_skill": {
+  "selection_pooled": {
+   "ens3": 0.7213391497275783,
+   "ens2": 0.6940085393353308,
+   "ratio": 1.0393807984242134,
+   "n_cells": 465,
+   "pass": false
+  },
+  "confirm_2025-26": {
+   "ens3": NaN,
+   "ens2": NaN,
+   "ratio": NaN,
+   "n_cells": 0,
+   "pass": false
+  },
+  "all_seasons": {
+   "ens3": 0.7213391497275783,
+   "ens2": 0.6940085393353308,
+   "ratio": 1.0393807984242134,
+   "n_cells": 465,
+   "pass": false
+  },
+  "per_season": {
+   "2023-24": {
+    "ens3": 0.7213391497275783,
+    "ens2": 0.6940085393353308
+   },
+   "2024-25": {
+    "ens3": NaN,
+    "ens2": NaN
+   },
+   "2025-26": {
+    "ens3": NaN,
+    "ens2": NaN
+   }
+  },
+  "pass": false
+ },
+ "member_floor": {
+  "per_season": {
+   "2023-24": {
+    "relwis": 0.8342764050851695,
+    "ok": true
+   },
+   "2024-25": {
+    "relwis": NaN,
+    "ok": false
+   },
+   "2025-26": {
+    "relwis": NaN,
+    "ok": false
+   }
+  },
+  "bar": 1.1,
+  "pass": false
+ },
+ "by_horizon": {
+  "0": {
+   "adaptive": 0.8629100914834646,
+   "pf": 0.8620202383012044,
+   "analogue": 0.9455631682430369,
+   "ens2": 0.7676656552557591,
+   "ens3": 0.7838587888552171
+  },
+  "1": {
+   "adaptive": 0.8576077894125941,
+   "pf": 0.886828455646909,
+   "analogue": 0.9149093109515676,
+   "ens2": 0.7077758252920683,
+   "ens3": 0.7383417680117963
+  },
+  "2": {
+   "adaptive": 0.836469368761268,
+   "pf": 0.9018402401519524,
+   "analogue": 0.9037211273996973,
+   "ens2": 0.6786025587318799,
+   "ens3": 0.7119120607998971
+  },
+  "3": {
+   "adaptive": 0.808020952344842,
+   "pf": 0.8961746616582339,
+   "analogue": 0.932858583771516,
+   "ens2": 0.6720129093589431,
+   "ens3": 0.6964146634049609
+  }
+ },
+ "innovation_scale": {
+  "median_all": 0.06434276327490807,
+  "median_stable_months": 0.08464371785521507,
+  "median_turn_months": 0.04589939769357443,
+  "prior_geometric_centre": 0.05000000000000001,
+  "frac_cells_pinned_low": 0.0,
+  "frac_cells_pinned_high": 0.0,
+  "sigma_first_median": 0.11157864,
+  "sigma_last_median": 0.07830464000000001,
+  "n_cells": 444
+ },
+ "verdict": {
+  "decision": "KILL",
+  "kill_rules_fired": [
+   "gate A, January direction (cov50 <= 0.35)",
+   "gate B (3-member does not beat 2-member on the selection seasons)",
+   "member floor in 2024-25 (relWIS nan > 1.1)",
+   "member floor in 2025-26 (relWIS nan > 1.1)"
+  ],
+  "gate_A": false,
+  "gate_B": false,
+  "member_floor": false
+ },
+ "_WARNING": "DRY RUN ON INCOMPLETE DATA (384 of 1530 arm-A cells, all from early 2023-24). Its KILL verdict and its nan relWIS values are artifacts of missing cells, NOT a result. It exists only to show the scorer executes end to end. The real verdict lands in result_armA.json when the fits finish."
+}

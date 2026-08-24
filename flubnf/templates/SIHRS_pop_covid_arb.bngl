@@ -1,0 +1,144 @@
+begin model
+# =====================================================================
+# FluBNF SIHRS -- COVID-19 ADAPTIVE-TRANSMISSION variant (7 fitted params).
+#
+# SIHRS_pop_covid.bngl (fitted omega) plus the adaptive-transmission
+# innovation scale. The mechanism block below is byte-for-byte the COVID
+# template's: the candidate lives in how Reff moves BETWEEN weeks inside the
+# sequential filter, so no reaction, species or function is added.
+#
+#   log Reff_t = log Reff_{t-1} + v_t ;  v_t = arphi*v_{t-1} + sbeta*eta_t
+#
+# and Reff is FROZEN at its last filtered value across the forecast horizon.
+# See flubnf/templates/SIHRS_pop_arb.bngl for the full design record and the
+# four differences from the killed RW-beta member.
+#
+# ORIGINAL COVID HEADER FOLLOWS.
+#
+# FluBNF SIHRS -- COVID-19 variant (6 fitted parameters).
+# THE ONLY STRUCTURAL DIFFERENCE FROM SIHRS_pop_min.bngl IS THAT omega IS
+# FITTED INSTEAD OF FIXED: with waning on a ~6-month timescale the
+# susceptible pool refills between forcing peaks and a second epidemic
+# can fire (a relaxation oscillation, not a second hump in beta(t)). The
+# influenza eps2 ablation was measured under influenza waning and does
+# not transfer; it must not be cited here.
+#
+# Tokens filled per state at materialization:
+#   {{POP}} {{S0FRAC}} {{I0FRAC}} {{GAMMA}} {{RHO}} {{GAMMAH}}
+# The OMEGA token is deliberately ABSENT: omega is fitted, so this
+# template must never contain that placeholder.
+# Fitted (6): Reff, eps1, phi1, omega, mult, r. Fixed values are sourced
+# in flubnf/profiles.py (COVID). The repertoire sweep, the omega prior
+# derivation, and every warning: docs/MODEL-PROVENANCE.md section 5.
+#
+# Fit the REPORTED admission flux (rho*mult*gamma*I), never the census H(t).
+# phi1 is the week of peak TRANSMISSIBILITY, which the epidemic peak can
+# LEAD by ~11 weeks under COVID waning: no peak-week prior, ever.
+# =====================================================================
+begin parameters
+
+### -- transmission: scale-free reproduction number + seasonal forcing -- ###
+Reff    Reff__FREE     # EFFECTIVE reproduction number at season start; fit
+                       # Reff, never R0 (R0 = Reff/s0 only post hoc)
+eps1    eps1__FREE     # annual-harmonic amplitude
+phi1    phi1__FREE     # annual-harmonic phase (week of peak transmissibility)
+
+### -- progression / removal -- ###
+gamma   {{GAMMA}}      # FIXED: 7/6.84 d INTRINSIC generation time, Omicron,
+                       # Manica 2022 doi:10.1016/j.lanepe.2022.100446; the
+                       # 2.4-3.6 d realized/serial figures are the wrong quantity
+rho     {{RHO}}        # FIXED: true IHR branching fraction I->H; rules only,
+                       # never the observable (value: flubnf/profiles.py)
+mult    mult__FREE     # ascertainment; only rho*mult is identified -- never
+                       # pin the product (docs/MODEL-PROVENANCE.md)
+gammaH  {{GAMMAH}}     # FIXED: discharge; moves the census only, unidentifiable here
+omega   omega__FREE    # FITTED: waning R->S per week -- THE change this
+                       # template exists for. Prior loguniform
+                       # [0.01278, 0.12780]/wk = 1.8-18 months protection;
+                       # doi:10.1016/S1473-3099(22)00801-5 and
+                       # doi:10.1016/S0140-6736(22)02465-5 agree within 5%
+
+### -- adaptive-transmission innovation scale -- ###
+sbeta   sbeta__FREE    # weekly sd of the log-transmission innovation. Read by
+                       # the filter (pf_ar1_sigma_param), never by a rule: it
+                       # governs the between-week parameter process, not the
+                       # within-week ODE.
+
+### -- observation noise -- ###
+r       r__FREE        # negative-binomial dispersion (AMCMC)
+
+### -- derived -- ###
+beta0   Reff*gamma/s0
+pi      3.141592653589793  # avoid BNGL _pi(): bngsim codegen emits M_PI(), which will not compile
+
+### -- FIXED per-state structural constants (known data, never fitted) -- ###
+N       {{POP}}        # state population (absolute people)
+s0      {{S0FRAC}}     # initial susceptible fraction; FIXED -- R0*s0 is product-identified
+i0      {{I0FRAC}}     # initial infected fraction
+
+end parameters
+
+begin molecule types
+S()         # susceptible people
+I()         # infectious people
+H()         # hospitalized census / occupancy
+R()         # recovered / immune people
+Hadm()      # cumulative admissions accumulator (never decays)
+counter()   # clock: observable t = weeks
+end molecule types
+
+begin seed species
+# Absolute counts. R(0) carries the non-susceptible, non-infected remainder,
+# so S+I+H+R = N exactly and pre-existing immunity is representable (s0 < 1),
+# which the S(0)=1 normalization structurally cannot express.
+S() N*s0
+I() N*i0
+H() 0
+R() N*(1-s0-i0)
+Hadm() 0
+counter() 0
+end seed species
+
+begin observables
+Molecules S     S()
+Molecules I     I()
+Molecules H     H()        # census -- do NOT fit to an admissions target
+Molecules R     R()
+Molecules H_Cum Hadm()     # cumulative admissions; neg_bin_dynamic differences '_Cum' -> weekly
+Molecules t     counter()
+end observables
+
+begin functions
+
+### -- seasonal transmission rate (exp() keeps beta > 0) -- ###
+beta() = beta0*exp( eps1*cos(2*pi*(t-phi1)/52) )
+
+### -- weekly REPORTED admissions = ascertained flux into H -- ###
+# mult is observation-only: ascertainment must never enter the reaction rules.
+H_weekly() = rho*mult*gamma*I
+
+end functions
+
+begin reaction rules
+# clock
+0 -> counter() 1
+# infection, FREQUENCY-DEPENDENT: rate constant beta()/N -> flux beta*S*I/N
+S() + I() -> I() + I()   beta()/N
+# hospitalization branch: fraction rho of the gamma removal
+I() -> H()   rho*gamma
+# direct-recovery branch
+I() -> R()   (1-rho)*gamma
+# discharge
+H() -> R()   gammaH
+# waning immunity (the second S in SIHRS)
+R() -> S()   omega
+# cumulative-admissions accumulator (counts I->H without consuming I)
+I() -> I() + Hadm()   rho*gamma
+end reaction rules
+
+end model
+
+begin actions
+generate_network({overwrite=>1})
+simulate({suffix=>"SIHRS_covid",method=>"ode",t_start=>0,t_end=>48,n_steps=>48,print_functions=>1})
+end actions

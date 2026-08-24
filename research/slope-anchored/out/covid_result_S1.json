@@ -1,0 +1,60 @@
+{
+ "preregistration_sha256_16": "5a895f3c02e06af1",
+ "variant": "S1",
+ "n_scored_rows": 198,
+ "row_ledger": {
+  "cells": 27,
+  "kept": 198,
+  "missing_output": 0,
+  "missing_traj_key": 0,
+  "anchor_scale_guard": 0,
+  "excluded_window": 18,
+  "truth_absent": 0,
+  "truth_nonpositive": 0
+ },
+ "wis_agreement": {
+  "max_rel_diff": 4.1551661956892806e-16,
+  "n": 198
+ },
+ "seal_reproduction": {
+  "status": "NOT APPLICABLE",
+  "reason": "the retrospective seal is influenza-only (app/state/retro_seal holds 2023-24, 2024-25 and 2025-26 flu scores_members.json and no COVID equivalent). No sealed COVID comparator exists to reproduce, so checks (b) and (b') cannot be run on this arm. The paired control is the production forward this same run writes (traj_prod), as the pre-registration specifies."
+ },
+ "bimodality": {
+  "verdict": "VOID",
+  "reason": "the member's forward transmission is a deterministic function of the last two data points; the skeleton estimator returns 1.00 by construction and there is no stochastic process for the generative estimator to run on"
+ },
+ "C2_width": {
+  "member": {
+   "width95_rel_actual": 1.3041344709763574,
+   "coverage95": 0.98989898989899,
+   "n": 99
+  },
+  "control": {
+   "width95_rel_actual": 2.2667761376722133,
+   "coverage95": 1.0,
+   "n": 99
+  },
+  "ratio_to_control": 0.5753256571315387,
+  "bar": 4.06,
+  "pass": true
+ },
+ "C1_turn_responsiveness": {
+  "member_accuracy": 0.16666666666666666,
+  "control_accuracy": 0.16666666666666666,
+  "n": 18,
+  "pass": true
+ },
+ "C3_anchor_validity": {
+  "clip_frac": 0.0,
+  "median_w": 0.4160017953460297,
+  "median_r_star": 0.982379629495897,
+  "bar_clip": 0.4,
+  "bar_w": 0.2,
+  "pass": true
+ },
+ "verdict": {
+  "decision": "PASS",
+  "clauses_failed": []
+ }
+}
