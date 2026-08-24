@@ -33,8 +33,11 @@ baseline in every season while the members alternate: in the 2023-24 plateau
 season both members lose and the blend wins; in the clean 2024-25 A-wave the
 filter carries; in 2025-26 the analogue carries. In-season optimal shares are
 0.45 / 0.80 / 0.00, so any fitted constant share anti-predicts the next
-season, and leave-one-season-out fitted weights score worse than the fixed
-0.5 (0.732 against 0.704). Per the project record, the shipped ensemble also
+season, and fitted weights score worse than the fixed 0.5. Applying the
+frozen per-horizon table to the seal gives 0.7107 pooled against the unfitted
+0.7039, and that 0.7107 is the flattering measurement, since the table was
+fitted using the very seasons it is scored on; the leave-one-season-out fit
+recorded at the freeze was 0.717. Per the project record, the shipped ensemble also
 beat its per-cell oracle. That is why v1.0 ships equal weights.
 
 ## Placement against real submitted forecasts
