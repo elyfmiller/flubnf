@@ -46,22 +46,21 @@ def load_truth() -> tuple:
 
 
 def _baseline_cells(forecast_date: str, fips_set, truth):
-    """The VALIDATED baseline construction (scripts/anchor_analysis.py) --
-    the hand-rolled version scored ~40% easier and was retired the day it
-    was calibrated (2026-08-17)."""
-    import importlib.util
-    from pathlib import Path
-    sp = importlib.util.spec_from_file_location(
-        "aa", Path(__file__).resolve().parents[2] / "scripts/anchor_analysis.py")
-    AA = importlib.util.module_from_spec(sp)
-    sp.loader.exec_module(AA)
+    """The VALIDATED baseline construction -- the hand-rolled version scored
+    ~40% easier and was retired the day it was calibrated (2026-08-17).
+
+    It lives in flubnf.baseline. It used to be loaded out of
+    scripts/anchor_analysis.py by path, which raised FileNotFoundError on
+    every pip-installed copy (no wheel carries scripts/) and re-executed a
+    217-line analysis module on every call."""
+    from flubnf.baseline import baseline_cells
     from flubnf.settings import HUB as _HUB
     if not (_HUB / "model-output" / "FluSight-baseline").is_dir():
         raise FileNotFoundError(
             "the hub clone has no model-output/FluSight-baseline (sparse "
             "checkout predates the baseline requirement). Press Update data "
             "on the Data tab to fetch it, then rescore.")
-    b = AA.baseline_cells([forecast_date], set(fips_set), truth)
+    b = baseline_cells([forecast_date], set(fips_set), truth, hub=_HUB)
     if b.empty:
         # early-season weeks: <5 history points -> no baseline, no cells.
         # An empty frame has no columns; guard or every caller crashes.

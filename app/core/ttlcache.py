@@ -59,7 +59,13 @@ def ttl_cache(ttl_s: float = DEFAULT_TTL_S, clock=time.monotonic):
             # other cached read in the process
             value = fn(*args)
             with _LOCK:
-                store[args] = (now, value)
+                # stamped on COMPLETION, not on entry. Stamping with the
+                # pre-call `now` made any scan slower than its own TTL be
+                # born already expired, so it re-ran on every request --
+                # the cache switching itself off under exactly the load it
+                # exists to absorb (a busy machine, where the scans are
+                # slow because the fitting processes have the CPU).
+                store[args] = (clock(), value)
             return value
 
         def cache_clear() -> None:

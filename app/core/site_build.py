@@ -24,12 +24,16 @@ THE ONE SCORE
 -------------
 relWIS here is the SHIPPED ensemble: the equal-weight 50/50 quantile blend
 of the particle filter and the calendar analogue. That distinction is not
-cosmetic. A season's stored scores.json is written by retro.score_season,
-whose ensemble column blends with the FROZEN LOSO weights (the per-horizon
-0.4-0.8 PF share) -- a configuration the lab evaluated and rejected, and
-which scores measurably worse (pooled 0.710 against 0.704 for the equal
-blend). Reading scores.json here would publish the rejected ensemble under
-the shipped ensemble's name. Instead every season is rescored from each
+cosmetic, and it has a history. Until v1.0, retro.score_season defaulted to
+the FROZEN LOSO weights (the per-horizon 0.4-0.8 PF share) -- a
+configuration the lab evaluated and rejected, and which scores measurably
+worse (pooled 0.710 against 0.704 for the equal blend) -- so any scores.json
+written before v1.0, INCLUDING the ones stored under the three-season seal,
+carries the rejected ensemble in a column labeled "ensemble". The default is
+now the equal-weight blend, so a rescore writes the shipped number; the
+stored files are not retroactively rewritten, because the seal is a record.
+Reading scores.json here would therefore still risk publishing the rejected
+ensemble under the shipped ensemble's name. Instead every season is rescored from each
 week's playback payload, whose `ensemble` block IS the equal-weight blend
 (playback._week_model_quantiles builds it with ens.equal_weights), through
 the validated baseline construction and the frozen cell rule: settled truth

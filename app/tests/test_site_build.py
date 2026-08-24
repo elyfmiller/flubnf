@@ -188,15 +188,28 @@ def test_known_scores_reach_the_html(built):
         assert '<td class="n badc">1.023</td>' in html
 
 
-def test_the_scored_ensemble_is_the_shipped_fifty_fifty_blend():
-    """The trap this generator exists to avoid.
+def test_site_build_never_reads_a_stored_scores_file():
+    """The invariant, stated so it holds whatever is on disk.
 
-    retro.score_season writes scores.json with the FROZEN LOSO weights. The
-    lab rejected those weights; the shipped forecast is the equal-weight
-    blend. Both are called "ensemble". If the generator ever starts reading
-    scores.json, this test fails -- because the two disagree, and the
-    published number is the equal-weight one.
+    Any scores.json written before v1.0 carries the FROZEN LOSO ensemble,
+    which the lab rejected; one written since carries the shipped
+    equal-weight blend, because the default was corrected. Both columns are
+    called "ensemble". The generator must not read either -- it recomputes
+    from the stored per-week payloads -- so the invariant is about the code
+    path, not about which vintage happens to be on this machine.
     """
+    import inspect
+    src = inspect.getsource(sb)
+    body = "".join(line for line in src.splitlines(keepends=True)
+                   if not line.lstrip().startswith("#"))
+    body = body.split('"""', 2)[-1]        # drop the module docstring
+    assert "scores.json" not in body, (
+        "site_build's code now mentions scores.json; the generator must "
+        "recompute from playback payloads, never read a stored score file")
+
+
+def test_the_scored_ensemble_is_the_shipped_fifty_fifty_blend():
+    """And the number it computes is the published, unfitted one."""
     pd = pytest.importorskip("pandas")
     seasons = sb.discover_seasons()
     if "2024-25" not in seasons:
@@ -213,9 +226,16 @@ def test_the_scored_ensemble_is_the_shipped_fifty_fifty_blend():
     computed = sb.score_season("2024-25", seasons["2024-25"], truth,
                                n2f)["models"]["ensemble"]["rel"]
     assert round(computed, 3) == 0.651
-    assert abs(computed - loso) > 0.01, (
-        "the computed ensemble now equals the stored LOSO ensemble; the "
-        "generator may have started reading scores.json")
+    # The stored file's vintage decides whether the two agree, and both
+    # vintages are legitimate: a pre-v1.0 store holds the rejected LOSO
+    # ensemble (0.635 here), a rescored one holds the shipped blend. So this
+    # can only be asserted when the store is the old vintage -- the code-path
+    # invariant is pinned by test_site_build_never_reads_a_stored_scores_file
+    # instead, which does not depend on what is on disk.
+    if abs(computed - loso) > 1e-3:
+        assert abs(computed - loso) > 0.01, (
+            "the stored LOSO ensemble sits suspiciously close to the shipped "
+            "blend without matching it")
 
 
 def test_the_baseline_scores_exactly_one_against_itself(built):

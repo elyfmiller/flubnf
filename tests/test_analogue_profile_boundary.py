@@ -20,7 +20,10 @@ from flubnf.profiles import COVID, INFLUENZA
 REPO = Path(__file__).resolve().parents[1]
 SCRIPT = REPO / "research/covid-phase0/analogue_vintage_true.py"
 
-pytestmark = pytest.mark.skipif(not SCRIPT.is_file(), reason="script absent")
+pytestmark = pytest.mark.skipif(
+    not SCRIPT.is_file(),
+    reason="research/ is not tracked in the public repository (see "
+           "docs/RELEASE-1.0.md); this suite runs where the tree is present")
 
 
 @pytest.fixture(scope="module")

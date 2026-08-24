@@ -5,6 +5,21 @@ description = "Mechanistic influenza forecasting for CDC FluSight: SIHRS in BNGL
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.11"
+# Kept identical to CITATION.cff, which is the citable record of the same
+# release: one author, one repository, one version.
+authors = [
+    { name = "Ely F. Miller", email = "efinn2019@gmail.com" },
+]
+keywords = ["influenza", "forecasting", "FluSight", "particle filter",
+            "compartmental model", "rule-based modeling", "BNGL", "PyBNF"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+
 dependencies = [
     "numpy",
     "pandas",
@@ -16,6 +31,16 @@ dependencies = [
     "pymmwr",
     "requests",
 ]
+
+# Every sub-table of [project] must follow the last plain key above, or TOML
+# reads that key as part of the sub-table: [project.urls] placed before
+# `dependencies` silently made the dependency list a URL entry, and the wheel
+# would have declared no dependencies at all.
+[project.urls]
+Homepage = "https://github.com/elyfmiller/flubnf"
+Repository = "https://github.com/elyfmiller/flubnf"
+Issues = "https://github.com/elyfmiller/flubnf/issues"
+Release-notes = "https://github.com/elyfmiller/flubnf/blob/main/docs/RELEASE-1.0.md"
 
 [project.optional-dependencies]
 app = ["fastapi", "uvicorn", "jinja2", "python-multipart", "plotly", "pywebview"]
@@ -30,6 +55,15 @@ covid = ["pyarrow"]
 flubnf = "flubnf.cli:app"
 
 [tool.setuptools.packages.find]
+# `scripts/` is deliberately absent. It holds long-running operational entry
+# points (pre-season seeding, the weekly loop, vintage replays) that need the
+# whole clone -- the hub, an engine venv, BNG2.pl -- and `scripts` is far too
+# generic a top-level name to put in site-packages. Nothing INSIDE the wheel
+# may depend on it: the validated baseline construction used to be loaded out
+# of scripts/anchor_analysis.py by path and so raised FileNotFoundError on
+# every installed copy; it now lives in flubnf/baseline.py. The one remaining
+# consumer, the adaptive-MCMC engine, checks for its runner and says plainly
+# that it needs a clone. README's Install section states what is supported.
 include = ["flubnf*", "app*"]
 
 [tool.pytest.ini_options]

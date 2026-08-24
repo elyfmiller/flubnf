@@ -17,7 +17,10 @@ import pytest
 REPO = Path(__file__).resolve().parents[1]
 GATE = REPO / "research/covid-phase0/gate_a.py"
 
-pytestmark = pytest.mark.skipif(not GATE.is_file(), reason="harness absent")
+pytestmark = pytest.mark.skipif(
+    not GATE.is_file(),
+    reason="research/ is not tracked in the public repository (see "
+           "docs/RELEASE-1.0.md); this suite runs where the tree is present")
 
 
 @pytest.fixture(scope="module")

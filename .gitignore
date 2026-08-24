@@ -12,12 +12,30 @@ data/covgates/
 *.egg-info/
 .pytest_cache/
 data/covidhub/
-research/covid-phase0/out/
 
 # The generated public site and its deploy workflow stay local until the lab
 # decides to publish: the generator (app/core/site_build.py) is tracked, its
 # output is not. A local copy lives in ~/Documents/FluBNF-local.
 site/
+# The site's deploy workflow is the other half of that decision, so it is
+# ignored by name rather than left merely untracked, where `git add -A` would
+# publish the lab's Pages deployment as a side effect of an unrelated commit.
+.github/workflows/pages.yml
+
+# Editor and agent configuration: machine-specific, never part of the product.
+.claude/
+
+# The research tree stays off the public repository for now (decision of
+# 2026-08-24, taken at the v1.0.0 tag). It holds the challenger harnesses,
+# their pre-registrations and their per-cell results: real evidence, but not
+# a published product, and several harnesses import paths and machine
+# specifics that only exist on the lab's machines. A complete copy lives in
+# ~/Documents/FluBNF-local/research/, its pruned intermediates in
+# ~/Documents/FluBNF-local/pruned/research/, and the evidence that never
+# lived in the tree at all in ~/Documents/FluBNF-local/archive-evidence/.
+# docs/RELEASE-1.0.md states this, so no ledger claim implies that the
+# supporting files sit in this repository.
+research/
 
 # Manuscripts and internal analysis stay off the public repo until the lab
 # decides to publish. Local copies live in ~/Documents/FluBNF-local/manuscripts.

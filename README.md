@@ -51,6 +51,11 @@ Notes on reading the table:
 The full validation record, including the eight candidate ensemble members
 that were tested and rejected under pre-registered rules, is in
 [docs/RELEASE-1.0.md](docs/RELEASE-1.0.md) and on the console's Methods page.
+A ninth candidate, excluding the calendar-inverted 2021-22 season from the
+analogue's donor pool, passed its pre-registered gates after this release was
+sealed and is deliberately not in v1.0: adopting it would re-baseline every
+number above. It is the leading candidate for the next release and is
+documented in the same record.
 
 ## Limitations
 
@@ -65,8 +70,14 @@ Read these before relying on the numbers above.
 * **The January turn is the known weak phase.** At the epidemic's peak and
   turn the ensemble's intervals are too narrow: at the January 2025 turn the
   central 50 percent interval covered 27 percent of outcomes against a nominal
-  50. Eight pre-registered candidate fixes were tested against this defect and
-  none passed its gates. It is documented, not solved.
+  50. Three pre-registered candidate fixes were aimed squarely at this defect,
+  a regime-switching filter, adaptive transmission and slope-anchored
+  transmission, and none passed its gates; five further challengers aimed
+  elsewhere left it untouched. The two that came closest, adaptive
+  transmission and slope-anchored transmission, each lifted that coverage from
+  27 percent to 31.2 percent and were killed by the same pre-registered bar of
+  35 percent.
+  It is documented, not solved.
 * **The batch MCMC engine does not converge.** The SIHRS posterior is a long
   correlated ridge, and the adaptive MCMC engine (`fit_type = am`) fails
   standard convergence diagnostics on it even with the improved shipped
@@ -83,6 +94,20 @@ Read these before relying on the numbers above.
   expected to work; the particle-filter engine has additional requirements.
 
 ## Install
+
+**A source clone is the supported installation.** The console needs more than
+a Python package: a clone of the FluSight hub, BioNetGen, a second virtual
+environment for the fitting engine, and the operational runners under
+`scripts/`. Every route below starts from a clone for that reason.
+
+`pip install .` works and is useful for importing `flubnf` as a library (the
+model, quantiles, WIS, the validated baseline construction) or for running the
+console against an existing hub clone. The wheel packages `flubnf` and `app`
+and deliberately does not package `scripts/`, whose runners need the whole
+clone and whose top-level name is far too generic for `site-packages`. The one
+feature that needs them, the adaptive-MCMC engine (`fit_type = am`), checks for
+its runner and says so plainly; the shipped particle-filter engine, the
+analogue engine, scoring, the reports and the submission format do not.
 
 ### macOS
 
@@ -196,17 +221,30 @@ flubnf site build --check
 
 ## Layout
 
+What a clone actually contains:
+
 ```
 flubnf/        the science package: model templates, data resolution, fitting,
-               quantiles, scoring, particle filter, seasonal priors
+               quantiles, scoring, the validated baseline construction,
+               particle filter, seasonal priors
 app/           operations console: FastAPI UI, run ledger, engines, ensemble,
-               submission formatting, weekly HTML report (US map + drill-down)
-scripts/       operational runners (pre-season seeding, weekly loop, backtests,
-               data audit)
-site/          the public static site, generated from the lab's own
-               retrospectives by `flubnf site build` (see docs/SITE.md)
-tests/         test suites for both layers
+               submission formatting, weekly HTML report (US map + drill-down);
+               app/tests/ holds the console suite
+scripts/       operational runners (pre-season seeding, weekly loop, vintage
+               replays, data audit). Not packaged into a wheel; see Install
+docs/          the release record (RELEASE-1.0.md), model provenance, the site
+               and Windows notes
+tests/         the science-package suite
+data/          small tracked inputs the package reads
+model-metadata/  the hubverse model card
 ```
+
+Generated and local-only, so present after a run but never in the repository:
+`app/state/` (run ledger, retrospectives, per-cell scores, the sealed
+three-season record), `site/` (built by `flubnf site build`, see
+[docs/SITE.md](docs/SITE.md)), `workspaces/`, and `research/` (the challenger
+harnesses; see the note in
+[docs/RELEASE-1.0.md](docs/RELEASE-1.0.md#the-evidence-ledger-what-was-tested-and-rejected)).
 
 Two inference engines share the same model, likelihood, and priors:
 
