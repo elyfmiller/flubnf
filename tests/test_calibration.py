@@ -122,8 +122,9 @@ class TestRescaleFactor:
         for w in range(15):
             t.record(CoverageRecord(
                 state="Z", horizon=1, reference_date=f"w{w}",
-                q025=90, q05=92, q25=95, q50=100, q75=105, q95=108, q975=110,
-                actual=120.0,   # outside the 80% PI (90..108)
+                q025=90, q05=92, q10=93, q25=95, q50=100, q75=105,
+                q90=107, q95=108, q975=110,
+                actual=120.0,   # outside the 80% PI (93..107)
             ))
         factor = t.rescale_factor("Z", 1)
         assert factor > 1.0   # widen intervals
@@ -134,7 +135,8 @@ class TestRescaleFactor:
         for w in range(15):
             t.record(CoverageRecord(
                 state="Q", horizon=1, reference_date=f"w{w}",
-                q025=0, q05=10, q25=50, q50=100, q75=150, q95=190, q975=200,
+                q025=0, q05=10, q10=20, q25=50, q50=100, q75=150,
+                q90=180, q95=190, q975=200,
                 actual=100.0,
             ))
         factor = t.rescale_factor("Q", 1)
@@ -155,7 +157,8 @@ class TestApplyCalibration:
         for w in range(15):
             t.record(CoverageRecord(
                 state="A", horizon=1, reference_date=f"w{w}",
-                q025=85, q05=88, q25=95, q50=100, q75=105, q95=112, q975=115,
+                q025=85, q05=88, q10=90, q25=95, q50=100, q75=105,
+                q90=110, q95=112, q975=115,
                 actual=150,
             ))
         out = apply_calibration(qf, t, state="A")
@@ -175,9 +178,89 @@ class TestApplyCalibration:
         for w in range(15):
             t.record(CoverageRecord(
                 state="C", horizon=1, reference_date=f"w{w}",
-                q025=28, q05=28.5, q25=29, q50=30, q75=31, q95=31.5, q975=32,
+                q025=28, q05=28.5, q10=28.8, q25=29, q50=30, q75=31,
+                q90=31.2, q95=31.5, q975=32,
                 actual=120,
             ))
         out = apply_calibration(qf, t, state="C")
         # h=1 (rescaled column) must not produce negative values.
         assert (out.quantiles[:, 0] >= 0).all()
+
+
+class TestDeclaredIntervalIsTheMeasuredInterval:
+    """PI_LEVELS declares the 80% interval as (0.10, 0.90). Before v1.0 the
+    record carried no q10/q90 and empirical_coverage measured q05..q95 --
+    the 90% band -- then filed the answer under nominal 0.80. rescale_factor
+    differenced a 90% measurement against a 0.80 target, so a PERFECTLY
+    calibrated forecaster was told it over-covered and had its intervals
+    narrowed by 20% for no reason.
+
+    These pin the repair: the band that is declared is the band that is
+    measured, a calibrated forecaster is left alone, and mis-scaled ones
+    move in the right direction.
+    """
+
+    @staticmethod
+    def _tracker(width_mult: float, n: int = 400, seed: int = 0):
+        """A forecaster whose stated quantiles are the true predictive law
+        with its half-widths multiplied by `width_mult`. 1.0 is perfect."""
+        from scipy.stats import norm
+        rng = np.random.default_rng(seed)
+        t = CalibrationTracker(rolling_window=n)
+        mu, sd = 100.0, 20.0
+
+        def q(p):
+            return mu + width_mult * sd * float(norm.ppf(p))
+
+        for i in range(n):
+            t.record(CoverageRecord(
+                state="S", horizon=1, reference_date=f"d{i}",
+                q025=q(0.025), q05=q(0.05), q10=q(0.10), q25=q(0.25),
+                q50=q(0.5), q75=q(0.75), q90=q(0.90), q95=q(0.95),
+                q975=q(0.975), actual=float(rng.normal(mu, sd))))
+        return t
+
+    def test_perfectly_calibrated_is_left_alone(self):
+        t = self._tracker(1.0)
+        cov = t.empirical_coverage("S", 1)
+        # each level measures its OWN nominal, not a neighbour's
+        assert cov[0.50] == pytest.approx(0.50, abs=0.05)
+        assert cov[0.80] == pytest.approx(0.80, abs=0.05)
+        assert cov[0.95] == pytest.approx(0.95, abs=0.05)
+        # the regression: this was 0.755 when the 90% band was measured
+        # against the 0.80 target
+        assert t.rescale_factor("S", 1) == pytest.approx(1.0, abs=1e-9)
+
+    def test_over_wide_forecaster_is_narrowed(self):
+        t = self._tracker(1.6)
+        assert t.empirical_coverage("S", 1)[0.80] > 0.85
+        assert t.rescale_factor("S", 1) < 1.0
+
+    def test_too_narrow_forecaster_is_widened(self):
+        t = self._tracker(0.6)
+        assert t.empirical_coverage("S", 1)[0.80] < 0.75
+        assert t.rescale_factor("S", 1) > 1.0
+
+    def test_record_from_forecast_stores_the_declared_bounds(self):
+        """The 80% bounds must reach the record, or the fix is cosmetic."""
+        qf = _make_qf(med=100.0, half_width=50.0)
+        t = CalibrationTracker()
+        t.record_from_quantile_forecast(
+            "S", qf, {1: 100.0, 2: 100.0, 3: 100.0, 4: 100.0}, "2026-01-03")
+        rec = t.history[("S", 1)][0]
+        assert np.isfinite(rec.q10) and np.isfinite(rec.q90)
+        assert rec.q05 < rec.q10 < rec.q25 < rec.q75 < rec.q90 < rec.q95
+
+    def test_pre_v1_tracker_without_q10_q90_is_a_no_op_not_a_misread(self):
+        """A calibration.json written before the fix has no 80% bounds. That
+        level must report NaN and leave the forecast alone, never fall back
+        to the 90% band that caused the defect."""
+        t = CalibrationTracker(rolling_window=50)
+        for i in range(20):
+            t.record(CoverageRecord(
+                state="S", horizon=1, reference_date=f"d{i}",
+                q025=1, q05=2, q25=3, q50=4, q75=5, q95=6, q975=7, actual=4))
+        cov = t.empirical_coverage("S", 1)
+        assert np.isnan(cov[0.80])
+        assert cov[0.50] == 1.0          # levels with their bounds still work
+        assert t.rescale_factor("S", 1) == 1.0

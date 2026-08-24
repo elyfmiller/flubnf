@@ -73,12 +73,67 @@ produced it.
 ## The evidence ledger: what was tested and rejected
 
 The rejections are part of the claim. Eight pre-registered challengers to the
-two-member ensemble were built, tested, and killed, each by its own
-pre-registered rule set before execution: random-walk transmission, the
+two-member ensemble were built, tested, and rejected by this group, each by
+its own rule set, frozen before execution: random-walk transmission, the
 two-strain SIHRS, national-growth coupling at two doses, a
-reporting-completeness correction in two forms, global and conditional width
-scalars, and a regime-switching filter. No challenger was rejected by
-judgment after seeing its results.
+reporting-completeness correction in two forms (cross-season and
+within-season rolling), a regime-switching filter, adaptive transmission, and
+slope-anchored transmission. A ninth candidate, a post-hoc global width
+scalar, was tested and found null in an independent review of this work
+rather than by us, and is reported below as such. No challenger was rejected
+by judgment after seeing its results.
+
+A ninth challenger tested by us, donor-season composition in the analogue,
+**passed** its pre-registered gates on 2026-08-24, after this release was
+sealed. It is documented at the end of this section and is deliberately not
+in v1.0. The eight killed challengers appear as seven bullets below:
+the reporting-completeness correction was two separately pre-registered
+challengers and is kept in one bullet. The externally tested width scalar is
+the eighth bullet.
+
+One further proposal, phase-conditional width scalars, was declined WITHOUT
+being run: the diagnostic that motivated it showed the coverage error is
+indexed by forecast week rather than by epidemic phase, and changes sign
+between the two turns, so a static per-phase table could not represent it.
+That decision is recorded here because declining to run an experiment on
+diagnostic evidence is a different act from testing one, and the two should
+not be counted together.
+
+**The one that passed, and why it is not here.** Excluding the 2021-22
+season from the analogue's donor pool improves the shipped ensemble by 3.66
+percent pooled, bootstrap interval 1.78 to 6.01 percent, positive in all
+three sealed seasons independently and in 50 of 52 jurisdictions, with
+narrower intervals at unchanged coverage. A depth control settles the
+mechanism: randomly shrinking the donor pool to the same size changes the
+score by 0.20 percent, so the gain is which seasons are in the pool, not how
+many donors it holds. 2021-22 peaked in April 2022 and survives in the
+archive only as a February-to-July tail, so a calendar-matched pool asks
+March what March 2022 did and is told the epidemic was still growing.
+
+It is not in v1.0 because adopting it re-baselines every number this project
+has published, including the three-season seal, this document, the README,
+the site and the manuscript in preparation. Re-baselining a validated release
+is a decision for the authors, not a change to fold into a tag. v1.0 ships
+the donor pool that every published figure was measured on. The full record,
+including the pre-registration hash and the arm that failed, is in the lab
+research record.
+
+Note also that the hypothesis as originally posed, flooring donors at 2023-24
+because post-COVID dynamics differ, was tested and **killed**: the vintage
+archive begins in February 2022, so that floor empties the pool for all of
+2023-24 and the ensemble degrades to 0.7113 pooled. The useful exclusion is
+one season, not a cutoff.
+
+**Where the evidence lives.** The harnesses, the frozen pre-registrations and
+the per-cell results are retained in the lab's private archive, not in this
+repository: the `research/` tree was removed from public tracking at this tag,
+and some challengers' results never lived in a tracked file at all. They are
+available on request. The narrative record of every experiment, with its
+numbers, its verdict and the corrections and retractions along the way, is the
+Posner Lab archive at
+`NAU-Projects/NAU_Influenza_M_Model/FluBNF/docs/RESULTS.md`. Where a
+challenger's evidence did not survive at all, the entry below says so rather
+than leaving the claim to look checkable when it is not.
 
 * **Random-walk transmission (RW-beta).** SIHRS with a random-walk beta
   (three fitted parameters). Passed its membership gate (positive
@@ -101,28 +156,87 @@ judgment after seeing its results.
   growth-consistent dose (0.138). Killed at panel triage by its own rule:
   worse at the very turns the mechanism was designed for, and the strong dose
   was 1.22x wider at matched coverage with 2.4x the integrator failures.
-* **Reporting-completeness correction, two forms.** Cross-season fitted form:
+* **Reporting-completeness correction, two forms**, counted separately
+  because each was separately pre-registered, run and decided (2026-08-21 and
+  2026-08-22). Cross-season fitted form:
   killed by the width screen; completeness is year-specific (national medians
   0.966 vs 0.982 in the two post-break seasons), so a correction fitted on
   the severe year over-corrects the mild one. Within-season rolling form:
   killed on three of four pre-registered clauses; any widening keyed to
   revision magnitude pushes 2025-26 coverage past nominal, because that
   season's intervals were already near-nominal.
-* **Global and conditional width scalars.** Post-hoc rescaling of the
-  predictive width, unconditional and phase-conditional. Both killed by their
-  pre-registered rules, consistent with the project-wide pattern that every
-  post-hoc correction of the output has failed.
+* **Global width scalar**, a post-hoc rescaling of predictive width. Tested
+  and found null, a movement of about 0.3 percent against this project's
+  measured noise floor of roughly 5 percent, consistent with the
+  project-wide pattern that every post-hoc correction of the output has
+  failed. **Provenance, stated plainly:** this test was performed during an
+  independent review of the project rather than by this group, and no
+  per-cell result or harness for it survives in our archive. It is reported
+  as recorded and cannot be re-checked from our artifacts, unlike the eight
+  challengers above and below.
 * **Regime-switching filter.** A calm/shifting switch on the filter's jitter
   intended to widen intervals at epidemic turns. Failed all three skill
-  gates, and the mechanism finding explains why: the turn detector never
-  fired; one week of negative-binomial noise cannot separate the regimes.
+  gates: 1.154 against production's 1.122 on the turn cells it was built for,
+  and 0.646 against 0.643 and 0.580 against 0.575 on the replacement
+  ensemble's selection and confirmation seasons. It cleared the do-no-harm
+  floor only by being inert. The mechanism finding explains why: the turn
+  detector never fired. Pooled P(shifting) sat at or below its stationary
+  prior all season, peaking at 0.28 well after the January 2026 turn, because
+  one week of negative-binomial noise cannot separate calm from shifting.
+  Coverage at the January 2025 defect was identical to production, 0.271.
+  3,060 fits, no harness retained.
+* **Adaptive transmission (AR(1) increments with a fitted innovation
+  scale).** The field's standard answer to non-seasonal waves: an AR(1) on
+  the increments of log transmission, innovation scale fitted rather than
+  hand-set, seasonal harmonic retained. Pre-registration `5fadd6ab8c0d46dc`;
+  3,060 fits, no failures, 1,711 paired panel cells. **The closest any
+  challenger came.** It is the first to clear the skill gate that RW-beta
+  failed (0.6230 against the two-member 0.6426 on the selection seasons), it
+  cleared the member floor, and it lifted February coverage from 0.698 to
+  0.729. It was killed by one clause: **January central-50 coverage 0.312
+  against a bar of 0.35**, 0.038 short, having moved the incumbent's 0.271
+  most of the way there. The mechanism control is the finding: an arm with
+  momentum removed and the scale still fitted scored 0.6215 / 0.5818 / 0.6083
+  against the full arm's 0.6230 / 0.5831 / 0.6097, about 0.2 percent apart
+  inside a 5 percent noise floor. The increment structure contributes nothing
+  measurable; the entire gain over RW-beta comes from fitting the innovation
+  scale (0.055) instead of setting it by hand (RW-beta's 0.5).
+* **Slope-anchored transmission.** Transmission derived from the last two
+  vintage-true observations rather than inferred, with **zero added fitted
+  parameters**. Pre-registration `5a895f3c02e06af1`; 1,530 influenza cells,
+  no failures. The zero-dimension claim is proved rather than asserted: the
+  run's own production forward reproduces the seal's stored particle filter
+  to 1.2e-07. Killed on **two** clauses: **1b, per-cell WIS correlation with
+  the incumbent filter, 0.978 against a bar of 0.85**, and **2b, January
+  coverage 0.312 against a bar of 0.35** — the same number and the same bar
+  that killed adaptive transmission. It passed the growth-correlation clause
+  (0.892), turned on time, and was narrower than production everywhere. Two
+  caveats are recorded against the kill rather than hidden: the incumbents
+  would fail clause 1b too (the production filter against the analogue
+  correlates 0.949, already above the bar), so that clause is probably
+  measuring cell difficulty rather than member redundancy and should be
+  redesigned before reuse; and the skill clause it passed on the selection
+  seasons inverted on the held-out season (1.018), so the skill was not
+  durable. On COVID the same member passed every clause that applied. That is
+  a first pass on 27 cells, not a validation.
 
-Two patterns from the ledger are worth stating as findings. First,
+One entry is not a clean kill, and calling it one would overstate the
+ledger. The **two-strain SIHRS passed** its pre-registered panel test on
+2026-08-20, on both gates, and passed the epidemic-turn gate again at full
+grid. It failed only the full-grid ensemble gate. It ships in the app,
+labeled turn-validated but not ensemble-validated.
+
+Three patterns from the ledger are worth stating as findings. First,
 six-state panel results did not transfer to the 52-jurisdiction grid on two
 separate occasions (RW-beta, two-strain gate 2); the full grid is the only
 binding validation surface. Second, fitted ensemble weights anti-predicted
 the held-out season every time they were tried; the unfitted 50/50 blend
-survived every challenge mounted against it.
+survived every challenge mounted against it. Third, the January turn has a
+floor that ten attempts did not break: the two best challengers, arrived at
+from opposite directions (one adding a fitted stochastic process, one adding
+no parameters at all), both landed on a January coverage of exactly 0.312
+against a bar of 0.35. Two independent mechanisms reaching the same number is
+evidence about the defect, not about either mechanism.
 
 ## What v1.0 contains
 
@@ -152,7 +266,8 @@ survived every challenge mounted against it.
 
 Stated in full in the README. In brief: interval narrowness at the January
 epidemic turn (central 50 percent coverage of 27 percent at the January 2025
-turn, unfixed by all eight challengers); the adaptive MCMC engine does not
+turn, unfixed by every challenger, the best two of which reached 0.312
+against a pre-registered bar of 0.35); the adaptive MCMC engine does not
 pass convergence diagnostics on this posterior and is not part of the shipped
 ensemble; all scores are self-computed from the hub's archives rather than
 earned in real-time participation; three seasons is the entire possible
@@ -162,5 +277,7 @@ vintage record; Windows is experimental.
 
 FluBNF 1.0 is a single-disease system. A COVID-19 feasibility study was
 conducted and is recorded in the research archive; its mechanistic gates did
-not pass, and any umbrella renaming is deferred until a second disease clears
-its own validation gates.
+not pass. One later member, slope-anchored transmission, did pass every
+COVID clause that applied to it, but on 27 cells: a first pass, not a
+validation, and not a second disease. Any umbrella renaming is deferred
+until a second disease clears its own validation gates.

@@ -31,6 +31,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections import OrderedDict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -924,9 +925,15 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
     return done
 
 
-def score_season(root: Path, season: str, ensemble_weights: dict | None = None) -> pd.DataFrame:
-    """Score every stored week vs settled truth. `ensemble_weights` must be
-    LOSO for this season (never fitted on it)."""
+def score_season(root: Path, season: str,
+                 ensemble_weights: dict | str | None = None) -> pd.DataFrame:
+    """Score every stored week vs settled truth.
+
+    `ensemble_weights` is passed straight to ens.vincentize, so the default
+    (None) is the shipped, unfitted equal-weight blend -- the one every
+    published score in this repository was computed with. Anything fitted
+    must be named (ens.FROZEN or an explicit table) AND must be LOSO for this
+    season: fitting weights on the season being scored is leakage."""
     from app.core.scoring import _baseline_cells, load_truth
     from flubnf.quantiles import FLUSIGHT_QUANTILES as QL
     from flubnf.wis import wis as wis_fn
@@ -990,7 +997,8 @@ _NATIONAL_DRAWS = 30_000
 
 
 def national_aggregate(root: Path,
-                       ensemble_weights: dict | None = None) -> dict | None:
+                       ensemble_weights: dict | str | None = None
+                       ) -> dict | None:
     """US-national relWIS aggregated from the stored STATE forecasts. The
     retro grid fits states only, so a national score must be constructed;
     this is that construction, stated honestly wherever it is shown.
@@ -1010,7 +1018,8 @@ def national_aggregate(root: Path,
         The same independence treatment as the PF sum.
       * Ensemble: the two NATIONAL member quantile sets vincentized with
         the same weights the season's state scoring uses (50/50 on the
-        season page), the shipped recipe.
+        season page), the shipped recipe. `ensemble_weights` follows
+        ens.vincentize: None is the unfitted equal-weight blend.
 
     Each national quantile set is scored per (week, horizon) against the
     hub's US truth row with the same WIS and validated-baseline machinery
@@ -1135,7 +1144,8 @@ def national_aggregate(root: Path,
     return result
 
 
-def _national_cache_key(root: Path, ensemble_weights: dict | None) -> dict:
+def _national_cache_key(root: Path,
+                        ensemble_weights: dict | str | None) -> dict:
     """The national aggregate's validity key, exactly as national_aggregate
     builds it: version, weights, per-week samples mtimes, scores mtime."""
     root = Path(root)
@@ -1148,7 +1158,8 @@ def _national_cache_key(root: Path, ensemble_weights: dict | None) -> dict:
 
 
 def national_aggregate_fresh(root: Path,
-                             ensemble_weights: dict | None = None) -> bool:
+                             ensemble_weights: dict | str | None = None
+                             ) -> bool:
     """Whether the cached national aggregate is valid for the tree as it
     stands -- the cheap read national_aggregate itself makes before deciding
     to recompute. The results page asks this to decide between serving the
@@ -1218,7 +1229,7 @@ FINALIZE_PHASES = ("scoring cells", "building national aggregate",
 
 
 def finalize_season(root: Path, season: str,
-                    ensemble_weights: dict | None = None,
+                    ensemble_weights: dict | str | None = None,
                     phase_cb=None, force: bool = False) -> dict:
     """Everything the results page needs, computed once so the page never
     has to: score the season (atomic scores.json), build the national
@@ -1324,8 +1335,16 @@ ARCHIVE_SEP = "__archived_"
 _STAMP_RE = re.compile(r"\d{8}T\d{6}Z(-\d+)?")
 
 #: headline relWIS is read from scores.json, which is large; keep the last
-#: value per root, invalidated by the file's mtime and the week count
-_SUMMARY_CACHE: dict = {}
+#: value per root, invalidated by the file's mtime and the week count.
+#:
+#: BOUNDED. Each entry is two floats and an int, so this cache is not the
+#: memory story its neighbour _SCORES_FRAMES is; what it did do was grow one
+#: entry per season root forever, and roots accumulate (every archived replay
+#: adds one, and /runs asks for a summary of each). Least-recently-used, with
+#: a cap generous enough that no realistic archive listing evicts a row it is
+#: about to re-read: a run page shows tens of runs, not hundreds.
+_SUMMARY_CACHE_MAX = 128
+_SUMMARY_CACHE: "OrderedDict" = OrderedDict()
 
 
 def utc_stamp(now: float | None = None) -> str:
@@ -1419,9 +1438,13 @@ def run_summary(root: Path) -> dict:
     hit = _SUMMARY_CACHE.get(str(root))
     if hit is not None and hit[0] == key:
         rel = hit[1]
+        _SUMMARY_CACHE.move_to_end(str(root))     # least-recently-used
     else:
         rel = _headline_rel(sf) if scored else None
         _SUMMARY_CACHE[str(root)] = (key, rel)
+        _SUMMARY_CACHE.move_to_end(str(root))
+        while len(_SUMMARY_CACHE) > _SUMMARY_CACHE_MAX:
+            _SUMMARY_CACHE.popitem(last=False)
     return {"weeks": weeks,
             "elapsed_s": t.get("elapsed_s"),
             "started_utc": t.get("started_utc"),

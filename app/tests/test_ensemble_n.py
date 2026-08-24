@@ -48,22 +48,51 @@ def test_vincentize_unequal_member_weights():
     assert abs(out["1"][0.5] - 125.0) < 1e-9         # normalized 0.75/0.25
 
 
-def test_vincentize_two_member_regression():
-    """weights=None with {pf, analogue} must reproduce the frozen pf_share
-    path exactly, per-horizon and with the per-state override."""
-    from app.core.ensemble import frozen_weights, pf_share, vincentize
+def test_vincentize_default_is_the_unfitted_blend():
+    """weights=None with {pf, analogue} is the shipped 50/50, identical at
+    every horizon and unmoved by a per-state override -- the contract every
+    production call site relies on."""
+    from app.core.ensemble import vincentize
     qa, qb = _flat(100.0), _flat(200.0)
-    w = frozen_weights()
     out = vincentize({"pf": qa, "analogue": qb})
     for h in ("1", "2", "3", "4"):
-        s = pf_share(w, int(h) - 1)
-        assert abs(out[h][0.5] - (s * 100 + (1 - s) * 200)) < 1e-9
-    vt = vincentize({"pf": qa, "analogue": qb}, location_fips="50")
-    s_vt = pf_share(w, 0, "50")
-    assert abs(vt["1"][0.5] - (s_vt * 100 + (1 - s_vt) * 200)) < 1e-9
+        assert abs(out[h][0.5] - 150.0) < 1e-9
+    assert vincentize({"pf": qa, "analogue": qb}, location_fips="50") == out
+    # the default is exactly what an explicit 50/50 request produces, which
+    # is what every production call site passes today
+    assert vincentize({"pf": qa, "analogue": qb},
+                      weights={"pf": 0.5, "analogue": 0.5}) == out
     # lone member keeps weight 1
     lone = vincentize({"pf": _flat(100.0, hs=("1",))})
     assert abs(lone["1"][0.5] - 100.0) < 1e-9
+
+
+def test_vincentize_frozen_path_requires_being_named():
+    """The fitted table is still reachable, but only by name, and an
+    unrecognized name is an error rather than a silent fallback."""
+    import pytest
+
+    from app.core.ensemble import FROZEN, frozen_weights, pf_share, vincentize
+    qa, qb = _flat(100.0), _flat(200.0)
+    w = frozen_weights()
+    out = vincentize({"pf": qa, "analogue": qb}, weights=FROZEN)
+    for h in ("1", "2", "3", "4"):
+        s = pf_share(w, int(h) - 1)
+        assert abs(out[h][0.5] - (s * 100 + (1 - s) * 200)) < 1e-9
+    vt = vincentize({"pf": qa, "analogue": qb}, weights=FROZEN,
+                    location_fips="50")
+    s_vt = pf_share(w, 0, "50")
+    assert abs(vt["1"][0.5] - (s_vt * 100 + (1 - s_vt) * 200)) < 1e-9
+    # a member set the frozen table knows nothing about falls back to equal
+    # weights rather than to an arbitrary member
+    three = vincentize({"pf": _flat(100.0), "analogue": _flat(200.0),
+                        "pf2s": _flat(600.0)}, weights=FROZEN)
+    assert abs(three["1"][0.5] - 300.0) < 1e-9
+    # lone member keeps weight 1 on the frozen path too
+    assert abs(vincentize({"pf": _flat(100.0, hs=("1",))},
+                          weights=FROZEN)["1"][0.5] - 100.0) < 1e-9
+    with pytest.raises(ValueError):
+        vincentize({"pf": qa, "analogue": qb}, weights="loso")
 
 
 def test_pf2s_model_page_renders():

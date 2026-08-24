@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import time
 import sys
+from collections import OrderedDict
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -2657,7 +2658,11 @@ def output_reveal(path: str = Form(...)):
     import subprocess
     from app.core.runs import APP_STATE
     p = Path(path).resolve()
-    if str(APP_STATE.resolve()) in str(p) and p.exists():   # stay inside our state
+    # Same containment test as /output/download. A substring match on the
+    # resolved path is not containment: `app/state_defaults_ensemble_weights
+    # .json` sits beside the state directory and contains its path as a
+    # prefix, so the old check let a file OUTSIDE app/state through.
+    if p.is_relative_to(APP_STATE.resolve()) and p.exists():   # stay inside our state
         if sys.platform == "darwin":
             subprocess.Popen(["open", "-R", str(p)])
         elif sys.platform == "win32":
@@ -3719,9 +3724,22 @@ def _job_covered(root: Path) -> dict | None:
 #: season's scores file runs to ~2.5 MB and the results page previously
 #: parsed it THREE times per view (currency check, scoreability check, the
 #: page tables) at ~25 ms a parse. Content-keyed, so a rescore invalidates
-#: by construction; capped small because only a handful of season roots
-#: exist at once.
-_SCORES_FRAMES: dict = {}
+#: by construction.
+#:
+#: BOUNDED, and the bound is the point. A parsed frame costs ~50 MB of
+#: resident memory, and season roots are not a fixed set: every archived
+#: replay is another root with its own scores.json, and every rescore mints
+#: a new content key for a root already cached. The old policy (clear the
+#: whole dict once it passed eight) let the process hold nine frames, about
+#: 450 MB, and threw away every warm frame at once when it tripped.
+#:
+#: Three is chosen, not two: the product's flagship surface is the sealed
+#: three-season record, so a cap of three holds every season a user rotates
+#: between with no eviction at all, while an archive sweep can no longer
+#: grow the process without limit. Measured on the three sealed seasons, the
+#: rotation is eviction-free and page latency is unchanged.
+_SCORES_FRAMES_MAX = 3
+_SCORES_FRAMES: "OrderedDict" = OrderedDict()
 
 
 def _scores_df(root: Path):
@@ -3738,14 +3756,15 @@ def _scores_df(root: Path):
     key = (str(sf), st.st_mtime_ns, st.st_size)
     hit = _SCORES_FRAMES.get(key)
     if hit is not None:
+        _SCORES_FRAMES.move_to_end(key)      # least-recently-used ordering
         return hit
     try:
         df = pd.read_json(sf)
     except Exception:
         return None
-    if len(_SCORES_FRAMES) > 8:
-        _SCORES_FRAMES.clear()
     _SCORES_FRAMES[key] = df
+    while len(_SCORES_FRAMES) > _SCORES_FRAMES_MAX:
+        _SCORES_FRAMES.popitem(last=False)   # evict one, never flush the lot
     return df
 
 

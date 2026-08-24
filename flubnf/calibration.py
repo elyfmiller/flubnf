@@ -45,10 +45,30 @@ PI_LEVELS: list[tuple[float, float, float]] = [
     (0.025, 0.975, 0.95),    # 95% PI
 ]
 
+#: Which stored quantile answers for each level in PI_LEVELS. The table is
+#: the point: the declared interval and the measured interval come from the
+#: same two numbers, so they cannot drift apart. They previously did — the
+#: 80% row declared (0.10, 0.90) but was measured from q05/q95, the 90%
+#: band, and filed under nominal 0.80. A perfectly calibrated forecaster
+#: therefore measured ~0.90 against a 0.80 target and rescale_factor
+#: narrowed its intervals by 20% for no reason. Adding a PI level now means
+#: adding a row here, and a missing row is an immediate KeyError rather than
+#: a silent substitution.
+_Q_ATTR: dict[float, str] = {
+    0.025: "q025", 0.05: "q05", 0.10: "q10", 0.25: "q25", 0.50: "q50",
+    0.75: "q75", 0.90: "q90", 0.95: "q95", 0.975: "q975",
+}
+
 
 @dataclass
 class CoverageRecord:
-    """One forecast-vs-actual observation used to update calibration."""
+    """One forecast-vs-actual observation used to update calibration.
+
+    q10 and q90 carry the 80% interval that PI_LEVELS declares. They trail
+    the required fields with a NaN default so a calibration.json written
+    before v1.0 still loads; a record without them is simply excluded from
+    the 80% coverage estimate rather than measured against the wrong band.
+    """
     state: str
     horizon: int
     reference_date: str       # ISO Saturday
@@ -60,6 +80,8 @@ class CoverageRecord:
     q025: float
     q975: float
     actual: float
+    q10: float = float("nan")
+    q90: float = float("nan")
 
 
 @dataclass
@@ -140,8 +162,8 @@ class CalibrationTracker:
                 state=state, horizon=int(h),
                 reference_date=reference_date,
                 q025=get_q(0.025), q05=get_q(0.05),
-                q25=get_q(0.25), q50=get_q(0.5),
-                q75=get_q(0.75), q95=get_q(0.95),
+                q10=get_q(0.10), q25=get_q(0.25), q50=get_q(0.5),
+                q75=get_q(0.75), q90=get_q(0.90), q95=get_q(0.95),
                 q975=get_q(0.975),
                 actual=float(actual),
             ))
@@ -152,24 +174,31 @@ class CalibrationTracker:
     # Diagnostics
     # ------------------------------------------------------------------
     def empirical_coverage(self, state: str, horizon: int) -> dict[float, float]:
-        """Return {nominal_coverage: empirical_coverage} per PI level."""
+        """Return {nominal_coverage: empirical_coverage} per PI level.
+
+        Each level is measured from the two quantiles PI_LEVELS declares for
+        it, resolved through _Q_ATTR. Records missing a bound (a pre-v1.0
+        tracker has no q10/q90) are dropped from that level only; a level
+        with no usable record returns NaN, which rescale_factor reads as
+        "no evidence" and answers with a factor of 1.0.
+        """
         recs = self.history.get((state, horizon), [])
         if not recs:
             return {nom: float("nan") for _, _, nom in PI_LEVELS}
+        actuals = np.array([r.actual for r in recs], dtype=float)
         out = {}
         for lo, hi, nominal in PI_LEVELS:
-            if lo == 0.25:
-                lo_vals = np.array([r.q25 for r in recs])
-                hi_vals = np.array([r.q75 for r in recs])
-            elif lo == 0.10:
-                lo_vals = np.array([r.q05 for r in recs])  # 80% = 10..90, but we stored q05/q95
-                hi_vals = np.array([r.q95 for r in recs])
-                lo, hi = 0.10, 0.90
-            else:  # 95% PI
-                lo_vals = np.array([r.q025 for r in recs])
-                hi_vals = np.array([r.q975 for r in recs])
-            actuals = np.array([r.actual for r in recs])
-            inside = (actuals >= lo_vals) & (actuals <= hi_vals)
+            lo_vals = np.array([getattr(r, _Q_ATTR[lo]) for r in recs],
+                               dtype=float)
+            hi_vals = np.array([getattr(r, _Q_ATTR[hi]) for r in recs],
+                               dtype=float)
+            usable = (np.isfinite(lo_vals) & np.isfinite(hi_vals)
+                      & np.isfinite(actuals))
+            if not usable.any():
+                out[nominal] = float("nan")
+                continue
+            inside = ((actuals[usable] >= lo_vals[usable])
+                      & (actuals[usable] <= hi_vals[usable]))
             out[nominal] = float(np.mean(inside))
         return out
 
@@ -183,11 +212,13 @@ class CalibrationTracker:
         """Compute a multiplicative scale to apply to the half-width
         (quantile - median) so the realized coverage approaches nominal.
 
-        Specifically targets the 80% PI: if empirical 80%-coverage is 60%
-        (under-cover), we need wider intervals → factor > 1. If 95%
-        (over-cover), factor < 1.
+        Specifically targets the 80% PI, the q10..q90 band: if empirical
+        coverage of that band is 60% (under-cover), we need wider intervals
+        → factor > 1. If 95% (over-cover), factor < 1. A perfectly
+        calibrated forecaster measures 0.80 and gets exactly 1.0.
 
-        Returns 1.0 (no change) when not enough data or when coverage is
+        Returns 1.0 (no change) when not enough data, when the 80% band
+        cannot be measured (no record carries q10/q90), or when coverage is
         within ±5% of nominal.
         """
         recs = self.history.get((state, horizon), [])

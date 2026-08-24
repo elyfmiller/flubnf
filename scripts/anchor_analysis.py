@@ -34,6 +34,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from flubnf.baseline import baseline_cells as _lib_baseline_cells  # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES  # noqa: E402
 from flubnf.wis import wis                       # noqa: E402
 
@@ -105,35 +106,12 @@ def build(records: list[dict], truth: dict, n2f: dict, tdf: pd.DataFrame,
 
 
 def baseline_cells(dates, locs_needed, truth) -> pd.DataFrame:
-    rows = []
-    for asof in dates:
-        ref = (pd.Timestamp(asof) + timedelta(days=7)).date().isoformat()
-        fp = HUB / "model-output" / "FluSight-baseline" / f"{ref}-FluSight-baseline.csv"
-        if not fp.is_file():
-            continue
-        d = pd.read_csv(fp, dtype={"location": str})
-        if "target" not in d.columns:
-            continue
-        d = d[(d.output_type == "quantile") & (d.target == TARGET)]
-        d["location"] = d["location"].str.zfill(2)
-        d["output_type_id"] = pd.to_numeric(d.output_type_id, errors="coerce")
-        d["target_end_date"] = pd.to_datetime(d.target_end_date)
-        for (loc, hz, ted), g in d.groupby(["location", "horizon", "target_end_date"]):
-            if hz < 0 or loc not in locs_needed:
-                continue
-            a = truth.get((loc, ted))
-            if a is None:
-                continue
-            q = {float(x.output_type_id): float(x.value) for x in g.itertuples()
-                 if np.isfinite(x.output_type_id)}
-            if 0.5 not in q:
-                continue
-            try:
-                rows.append({"variant": "FluSight-baseline", "location": loc,
-                             "asof": asof, "horizon": int(hz), "wis": wis(q, a).wis})
-            except (KeyError, ValueError):
-                pass
-    return pd.DataFrame(rows)
+    """The validated baseline construction, now defined in flubnf.baseline so
+    an installed copy of the package can reach it (this script is not part of
+    a wheel). THIS script keeps its own HUB resolution -- the FLUSIGHT_HUB
+    environment variable read at the top of the file -- and passes it in, so
+    the move changed nothing about how the analysis reads the hub."""
+    return _lib_baseline_cells(dates, locs_needed, truth, hub=HUB)
 
 
 def rel(df: pd.DataFrame, base: pd.Series, variant: str) -> tuple:
