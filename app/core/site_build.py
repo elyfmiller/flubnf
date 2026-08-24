@@ -27,19 +27,25 @@ of the particle filter and the calendar analogue. That distinction is not
 cosmetic, and it has a history. Until v1.0, retro.score_season defaulted to
 the FROZEN LOSO weights (the per-horizon 0.4-0.8 PF share) -- a
 configuration the lab evaluated and rejected, and which scores measurably
-worse (pooled 0.710 against 0.704 for the equal blend) -- so any scores.json
-written before v1.0, INCLUDING the ones stored under the three-season seal,
-carries the rejected ensemble in a column labeled "ensemble". The default is
-now the equal-weight blend, so a rescore writes the shipped number; the
-stored files are not retroactively rewritten, because the seal is a record.
-Reading scores.json here would therefore still risk publishing the rejected
-ensemble under the shipped ensemble's name. Instead every season is rescored from each
+worse (pooled 0.696 against 0.678 for the equal blend) -- so any scores.json
+written before v1.0 carries the rejected ensemble in a column labeled
+"ensemble". The default is now the equal-weight blend, and the three-season
+seal was rescored under it on 2026-08-24, so the seal's scores.json files do
+carry the shipped number (0.813 / 0.618 / 0.683, pooled 0.678, reproduced by
+an independent re-blend of the stored members).
+
+The build still does not read them, for a reason that outlives that fix: a
+scores.json records no weights of its own, and discover_seasons accepts ANY
+season root under app/state, including a lab run scored before v1.0 under
+the old default or scored deliberately with ens.FROZEN. Reading the file
+would publish a blend whose configuration cannot be checked from the file.
+Instead every season is rescored from each
 week's playback payload, whose `ensemble` block IS the equal-weight blend
 (playback._week_model_quantiles builds it with ens.equal_weights), through
 the validated baseline construction and the frozen cell rule: settled truth
 above zero, a positive median, and a cell the FluSight baseline also
 covers. That path reproduces the lab's published record exactly --
-0.848 / 0.651 / 0.691 -- and test_site_build pins those values.
+0.813 / 0.618 / 0.683 -- and test_site_build pins those values.
 
 The members (pf, analogue) are weight-free and therefore agree with
 scores.json to the third decimal either way; they are recomputed here anyway
@@ -50,10 +56,13 @@ WHAT IS HARVESTED RATHER THAN RESTATED
   * Methods prose and diagrams: app/ui/templates/methods.html rendered
     through app.ui.server.templates.env, so the site shows the console's
     text and the console's SVGs, versions included.
-  * The FluSight field placements: the perf table in home.html is the lab's
-    published standing (rank, field size, percentile). It is read as data,
-    not retyped. A season the table does not cover renders without a
-    placement rather than with an invented one.
+  * The FluSight field placements, when the perf table in home.html carries
+    them: rank, field size and percentile are read as data, not retyped. As
+    of 2026-08-24 that table carries none, because the standings were
+    withdrawn (docs/RELEASE-1.0.md), so every season renders without a
+    placement rather than with an invented one. The same table's relWIS
+    column is still read, because it is what the drift alarm below compares
+    against.
   * The model source: flubnf/templates/SIHRS_pop_min.bngl, verbatim.
   * The parameter bibliography: the DOIs recorded in flubnf/sihrs_priors.py
     beside the derivations that use them.
@@ -674,8 +683,11 @@ def _fans_from_results(results: dict, bundle: dict) -> dict:
 
 _PERF_ROW = re.compile(
     r"<tr[^>]*>\s*<td>(?P<season>\d{4}-\d{2})</td>.*?"
-    r'<td class="num rel">(?P<rel>[\d.]+)</td>.*?'
-    r"<td>(?P<field>[^<]*)</td>.*?"
+    r'<td class="num rel">(?P<rel>[\d.]+)</td>', re.S)
+
+#: the optional standings columns, matched INSIDE one row only
+_PERF_FIELD = re.compile(
+    r'<td>(?P<field>[^<]*\bof\b[^<]*)</td>\s*'
     r'<td class="num">(?P<pct>[^<]*)</td>', re.S)
 
 _FIELD = re.compile(r"(?P<rank>\d+)\s+of\s+(?P<size>\d+)")
@@ -685,12 +697,18 @@ def harvest_placement() -> dict:
     """{season: {rank, field, text, percentile, app_rel}} from the console's
     own performance table.
 
-    The FluSight standings are a measured lab result -- they take the whole
-    hub field scored on identical cells -- and they are published in
-    home.html. Reading them here rather than restating them means the lab
-    edits one place; a season the table does not cover simply has no
-    placement on the site, which is the honest rendering of "not scored
-    against the field yet".
+    Two things are read from one place. `app_rel` is the relWIS the console
+    publishes for the season, and it is what cross_check() compares the
+    computed score against; it is always present.
+
+    The FluSight standings are optional, and are absent as of 2026-08-24.
+    They were withdrawn because the scorer that produced them does not
+    survive and this project's own entries in the archived field were not
+    computed on one convention (see docs/RELEASE-1.0.md). A season with no
+    standing simply has no placement on the site, which is the honest
+    rendering of "not scored against the field yet"; if the perf table ever
+    carries the field and percentile columns again, they are picked up here
+    without further change.
     """
     src = (TEMPLATES / "home.html").read_text(encoding="utf-8")
     block = src.split('<table class="perf">', 1)
@@ -698,20 +716,28 @@ def harvest_placement() -> dict:
         return {}
     body = block[1].split("</table>", 1)[0]
     out = {}
-    for m in _PERF_ROW.finditer(body):
-        season = m.group("season")
-        text = " ".join(m.group("field").split())
-        pct = " ".join(m.group("pct").split())
-        entry = {"text": text, "percentile_text": pct,
-                 "app_rel": float(m.group("rel"))}
-        f = _FIELD.search(text)
-        if f:
-            entry["rank"] = int(f.group("rank"))
-            entry["field"] = int(f.group("size"))
-        p = re.match(r"(\d+)", pct)
-        if p:
-            entry["percentile"] = int(p.group(1))
-        out[season] = entry
+    # one row at a time, so an optional column can never be read out of the
+    # NEXT row's cells
+    for row in re.split(r"(?=<tr\b)", body):
+        m = _PERF_ROW.match(row.strip())
+        if not m:
+            continue
+        entry = {"app_rel": float(m.group("rel"))}
+        g = _PERF_FIELD.search(row)
+        if g:
+            text = " ".join(g.group("field").split())
+            pct = " ".join(g.group("pct").split())
+            entry["text"] = text
+            f = _FIELD.search(text)
+            if f:
+                entry["rank"] = int(f.group("rank"))
+                entry["field"] = int(f.group("size"))
+            if pct:
+                entry["percentile_text"] = pct
+                p = re.match(r"(\d+)", pct)
+                if p:
+                    entry["percentile"] = int(p.group(1))
+        out[m.group("season")] = entry
     return out
 
 
@@ -879,9 +905,13 @@ def build_payload(seasons: dict | None = None,
 
     placement = harvest_placement()
     for s in scored:
-        if s["season"] in placement:
-            s["placement"] = {k: v for k, v in placement[s["season"]].items()
-                              if k != "app_rel"}
+        stand = {k: v for k, v in placement.get(s["season"], {}).items()
+                 if k != "app_rel"}
+        # app_rel alone is the drift-alarm figure, not a standing; a season
+        # with no standing carries no `placement` key at all, so the page
+        # renders "not yet scored against the field" rather than an empty one
+        if stand:
+            s["placement"] = stand
 
     # ONE outlook computation. The map SVG the page renders and the fills
     # the toggle swaps in must come from the same cards, or clicking a model

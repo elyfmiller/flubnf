@@ -1,11 +1,11 @@
 """Vincentization: quantile-average the members with EQUAL, unfitted weights.
 
 The validated recipe (docs/RESULTS.md): average QUANTILES, not densities,
-and do not fit the blend. Across the three sealed seasons, leave-one-season-
-out fitted weights scored 0.732 pooled against the fixed 0.5's 0.704; fitted
-weights anti-predicted the held-out season every time they were tried. The
-unfitted 50/50 blend is what v1.0 ships and what every published number in
-this repository was computed with.
+and do not fit the blend. Across the three sealed seasons, applying the
+frozen fitted table scores 0.6958 pooled against the fixed 0.5's 0.6781, and
+fitted weights anti-predicted the held-out season every time they were
+tried. The unfitted 50/50 blend is what v1.0 ships and what every published
+number in this repository was computed with.
 
 So vincentize() DEFAULTS to equal weights. The LOSO-frozen table still
 exists and can still be scored against, but only for a caller that asks for
@@ -44,11 +44,14 @@ def frozen_weights() -> dict:
 
     NOT the shipped blend: this table is retained so the fitted alternative
     can be scored against, and it lost. Measured on the three-season seal,
-    52 jurisdictions, 15460 cells: applying this table scores 0.7107 pooled
-    against the unfitted 50/50's 0.7039. That 0.7107 is the flattering
-    number, since the table was fitted using the seasons it is scored on;
-    the leave-one-season-out fit recorded at the freeze was 0.717. Fitted
-    loses either way. vincentize() uses this table only when asked by name."""
+    52 jurisdictions, 15460 cells: applying this table scores 0.6958 pooled
+    against the unfitted 50/50's 0.6781 (before the 2021-22 donor exclusion
+    the same comparison was 0.7107 against 0.7039). The fitted figure is the
+    flattering one, since the table was fitted using the seasons it is
+    scored on; the leave-one-season-out fit recorded at the freeze was
+    0.717, measured on the pre-exclusion donor pool and not re-derivable,
+    because no code for that fit survives. Fitted loses either way.
+    vincentize() uses this table only when asked by name."""
     f = WEIGHTS_FILE if WEIGHTS_FILE.is_file() else SHIPPED_WEIGHTS
     return json.loads(f.read_text())
 

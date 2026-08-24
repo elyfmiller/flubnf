@@ -2126,7 +2126,7 @@ def _run_all(spec: RunSpec) -> None:
                 # equal, never-fitted weights at every member count: 50/50
                 # for the two-member blend, equal thirds with the two-strain
                 # member (the sealed recipe; fitting the weights scored
-                # worse, pooled relWIS 0.717 against 0.704)
+                # worse, pooled relWIS 0.696 against 0.678)
                 members_by_loc[loc] = ens.vincentize(
                     m, weights=ens.equal_weights(m),
                     location_fips=n2f_pre.get(loc, ''))
@@ -2781,9 +2781,14 @@ def model_page(request: Request, name: str):
                      "epidemiological mechanism is involved. It uses the "
                      "archive of weekly NHSN admissions and nothing else. "
                      "It is difficult to beat at one week ahead and anchors "
-                     "the ensemble when a season behaves unusually. "
-                     "Measured three-season retrospective relWIS: 1.105 in "
-                     "2023-24, 0.835 in 2024-25, 0.641 in 2025-26."),
+                     "the ensemble when a season behaves unusually. One "
+                     "prior season, 2021-22, is excluded from the donor "
+                     "pool: it peaked in April 2022 and survives in the "
+                     "archive only as its growth phase, so a "
+                     "calendar-matched pool reads it with the wrong sign. "
+                     "Measured three-season retrospective relWIS: 1.045 in "
+                     "2023-24, 0.756 in 2024-25, 0.621 in 2025-26 (before "
+                     "that exclusion, 1.105, 0.835 and 0.641)."),
         "pf2s": ("Two-strain SIHRS",
                  "A research variant, not a shipped ensemble member. It "
                  "models influenza A and influenza B as independent SIHRS "
@@ -2802,20 +2807,27 @@ def model_page(request: Request, name: str):
                  "full-grid cells the equal-weight three-member ensemble "
                  "scored 0.719 against 0.704 for the two-member blend, so "
                  "the submitted ensemble stays at two members and this "
-                 "engine is kept for research runs only."),
+                 "engine is kept for research runs only. Both figures "
+                 "predate the 2021-22 donor exclusion, which moved the "
+                 "two-member reference to 0.678; the three-member blend "
+                 "has not been re-scored."),
         "ensemble": ("Ensemble",
                      "The submitted forecast. It averages the members' "
                      "forecast quantiles with equal, unfitted weights: "
                      "50/50 across the particle filter and the analogue, "
                      "equal thirds when the two-strain member joins. "
-                     "Fitting the weights on held-out seasons was evaluated "
-                     "and scored worse than the equal blend (pooled relWIS "
-                     "0.717 against 0.704), so no weight is tuned. The "
-                     "members' errors disagree in useful ways: the blend "
-                     "beats the baseline in all three replayed seasons, "
-                     "which neither member does alone. Measured "
-                     "three-season retrospective relWIS: 0.848 in 2023-24, "
-                     "0.651 in 2024-25, 0.691 in 2025-26; pooled 0.704."),
+                     "Fitting the weights was evaluated and scored worse "
+                     "than the equal blend: applying the frozen per-horizon "
+                     "table to the three-season replay gives pooled relWIS "
+                     "0.696 against the unfitted 0.678, and the "
+                     "leave-one-season-out fit recorded at the freeze was "
+                     "0.717 against the 0.704 the equal blend scored at the "
+                     "time. No weight is tuned. The members' errors "
+                     "disagree in useful ways: the blend beats the baseline "
+                     "in all three replayed seasons, which neither member "
+                     "does alone. Measured three-season retrospective "
+                     "relWIS: 0.813 in 2023-24, 0.618 in 2024-25, 0.683 in "
+                     "2025-26; pooled 0.678 over 15,460 cells."),
     }
     # one-line summaries: the collapsed <details> summary on each model tab
     onelines = {

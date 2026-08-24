@@ -687,9 +687,10 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
 
     standing = (
         '<div class="banner standing"><span class="k">Live standing</span>'
-        "&nbsp; " + headline + " During the FluSight season this line "
-        "carries our placement among all submitting teams, updated with each "
-        "week's scores.</div>")
+        "&nbsp; " + headline + " Placement among all submitting teams is "
+        "not currently published: the earlier standings were withdrawn "
+        "because the scorer that produced them does not survive. See the "
+        "release record.</div>")
 
     replay_note = (
         '<div class="placecard">Each settled season is replayable in the '

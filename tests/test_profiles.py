@@ -200,6 +200,75 @@ class TestExclusionWindow:
         assert INFLUENZA.excluded_for("2026-02-28", "2026-03-28") is None
 
 
+class TestDonorPoolExclusionsBelongToTheProfile:
+    """The analogue's donor pool is per-disease. The 2021-22 exclusion is a
+    claim about influenza's calendar; nothing here may let another disease
+    inherit it, and nothing here may let influenza lose it."""
+
+    def test_influenza_ships_the_2021_22_exclusion(self):
+        assert INFLUENZA.excluded_donor_seasons == frozenset({2021})
+        assert (INFLUENZA.excluded_donor_seasons
+                == analogue.EXCLUDED_DONOR_SEASONS)
+        assert (INFLUENZA.donor_season_exclusions
+                == (analogue.SEASON_2021_22_CALENDAR_INVERSION,))
+
+    def test_covid_inherits_nothing(self):
+        """The corruption this guard exists to prevent."""
+        assert COVID.donor_season_exclusions == ()
+        assert COVID.excluded_donor_seasons == frozenset()
+
+    def test_a_covid_donor_pool_keeps_every_prior_season(self):
+        """Routing COVID's set through the shipped donor function must leave
+        the pool unrestricted, including 2021-22."""
+        bank = {("01", date(2021, 11, 6)): 100.0,
+                ("01", date(2021, 11, 13)): 700.0}
+        ew = analogue.epiweek(date(2021, 11, 6))
+        kept = analogue.donor_ratios(
+            bank, ew, 9999, 1, bandwidth=0,
+            exclude_seasons=COVID.excluded_donor_seasons)
+        assert kept.size == 1 and kept[0] == pytest.approx(7.0)
+        dropped = analogue.donor_ratios(
+            bank, ew, 9999, 1, bandwidth=0,
+            exclude_seasons=INFLUENZA.excluded_donor_seasons)
+        assert dropped.size == 0
+
+    def test_the_label_would_name_a_different_calendar_under_covid(self):
+        """Why inheritance would be silent corruption rather than a no-op: the
+        same label 2021 spans different weeks under the two boundaries, so an
+        inherited exclusion drops the wrong ten weeks and keeps the wrong ten."""
+        assert INFLUENZA.season_of(date(2021, 7, 15)) == 2020
+        assert COVID.season_of(date(2021, 7, 15)) == 2021
+        assert INFLUENZA.season_of(date(2022, 7, 15)) == 2021
+        assert COVID.season_of(date(2022, 7, 15)) == 2022
+
+    def test_a_mismatched_boundary_raises_rather_than_silently_applying(self):
+        from dataclasses import replace
+        bad = replace(INFLUENZA, donor_season_exclusions=(
+            analogue.SEASON_2021_22_CALENDAR_INVERSION,),
+            key="covid-ish", season_boundary_month=6)
+        with pytest.raises(ValueError, match="not portable"):
+            _ = bad.excluded_donor_seasons
+
+    def test_every_profile_declares_its_donor_exclusions_explicitly(self):
+        """Fails if a new profile is added without deciding. The default is
+        empty, which is right, but the decision must be visible per profile."""
+        for p in PROFILES.values():
+            assert isinstance(p.donor_season_exclusions, tuple), p.key
+            for e in p.donor_season_exclusions:
+                assert e.profile_key == p.key, (p.key, e.label)
+                assert e.season_boundary_month == p.season_boundary_month
+                assert e.season in analogue.DONOR_SEASON_EXCLUSIONS
+
+    def test_donor_exclusions_are_not_scoring_exclusions(self):
+        """Two different mechanisms that both say 'excluded'. Donor exclusions
+        remove donors from the FORECAST; excluded_windows remove cells from
+        SCORING. Influenza has one of the first and none of the second."""
+        assert INFLUENZA.excluded_windows == ()
+        assert INFLUENZA.donor_season_exclusions != ()
+        assert COVID.excluded_windows != ()
+        assert COVID.donor_season_exclusions == ()
+
+
 class TestRegistry:
     def test_lookup(self):
         assert get_profile("influenza") is INFLUENZA

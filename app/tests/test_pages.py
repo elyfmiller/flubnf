@@ -27,13 +27,18 @@ def test_home_renders_workflow_performance_and_component_cards():
     assert "Weekly forecasting workflow" in r.text
     assert "10,000 candidate epidemics" in r.text
     assert "Equal-weight blend" in r.text
-    # measured performance: the three-season seal table, now carrying the
-    # field percentile per season and a mean on the pooled row
+    # measured performance: the three-season seal table, carrying the scored
+    # cell count per season. The FluSight field placements were withdrawn on
+    # 2026-08-24 (docs/RELEASE-1.0.md), so the table must NOT carry them and
+    # must say so rather than leaving a reader to assume they still hold.
     assert 'class="perf"' in r.text
-    for cell in ("0.848", "0.651", "0.691", "0.704",
-                 "14 of 34 teams", "4 of 40 teams", "19 of 47 teams",
-                 "Percentile", "61st", "92nd", "mean 71st"):
+    for cell in ("0.813", "0.618", "0.683", "0.678",
+                 "6,063", "4,922", "4,475", "15,460", "Scored cells"):
         assert cell in r.text, cell
+    for gone in ("14 of 34 teams", "4 of 40 teams", "19 of 47 teams",
+                 "mean 71st"):
+        assert gone not in r.text, gone
+    assert "withdrawn" in r.text
     # the two-strain member is settled, not pending
     assert "full-grid validation is in progress" not in r.text
     # component cards lead with a visual and keep links and versions
