@@ -142,29 +142,40 @@
  <div class="card"><h2>Measured performance</h2>
   <table class="perf">
    <thead><tr><th>Season</th><th class="num">Ensemble relWIS</th>
-    <th class="num">CDC baseline</th><th class="num">Scored cells</th>
+    <th class="num">FluSight ensemble</th><th class="num">Scored cells</th>
     </tr></thead>
    <tbody>
     <tr><td>2023-24</td><td class="num rel">0.813</td>
-     <td class="num">1.000</td><td class="num">6,063</td></tr>
+     <td class="num">0.741</td><td class="num">6,063</td></tr>
     <tr><td>2024-25</td><td class="num rel">0.618</td>
-     <td class="num">1.000</td><td class="num">4,922</td></tr>
+     <td class="num">0.663</td><td class="num">4,922</td></tr>
     <tr><td>2025-26</td><td class="num rel">0.683</td>
-     <td class="num">1.000</td><td class="num">4,475</td></tr>
+     <td class="num">0.684</td><td class="num">4,475</td></tr>
     <tr class="total"><td>Pooled</td><td class="num rel">0.678</td>
-     <td class="num">1.000</td><td class="num">15,460</td></tr>
+     <td class="num">0.685</td><td class="num">15,460</td></tr>
    </tbody>
   </table>
   <p class="hint">Two-member ensemble, three seasons replayed on vintage
-  data only; relWIS below 1 beats the CDC FluSight baseline. These figures
-  are measured on the shipped analogue donor pool, which excludes the
+  data only. Both columns are relWIS against the same CDC FluSight baseline,
+  so below 1.000 still means beating that baseline in either column. The
+  comparator is the official FluSight ensemble: the hub's own combination of
+  the forecasts every team submitted that week, which makes it a strong
+  reference rather than a naive one. It is scored here on exactly the cells
+  in the Scored cells column and no others, on the same target (weekly
+  incident influenza hospital admissions) through the same scorer, so the
+  two score columns describe one universe of 15,460 cells. Read the result
+  as level overall: ahead by 0.045 in 2024-25, level in 2025-26, behind by
+  0.073 in 2023-24, and a pooled gap of 0.007 that a paired bootstrap over
+  the 76 forecast weeks does not separate from zero. These figures are
+  measured on the shipped analogue donor pool, which excludes the
   calendar-inverted 2021-22 season; before that exclusion the same seasons
-  scored 0.847, 0.651 and 0.691, pooled 0.704. Placement against the real
-  FluSight fields was withdrawn on 2026-08-24 and is not restated here: the
-  scorer that produced it does not survive and its entries for this project
-  were not computed on one convention. The two-strain member has been tested
-  on the full grid and did not qualify for the ensemble; both are documented
-  under <a href="/methods#two-strain">Methods</a>.</p></div>
+  scored 0.847, 0.651 and 0.691, pooled 0.704. Placement against the full
+  FluSight field, meaning a rank among all submitting teams, was withdrawn
+  on 2026-08-24 and is not restated here: the scorer that produced it does
+  not survive and its entries for this project were not computed on one
+  convention. The two-strain member has been tested on the full grid and did
+  not qualify for the ensemble; both are documented under
+  <a href="/methods#two-strain">Methods</a>.</p></div>
  <div class="card"><h2>Start here</h2>
   <ol class="steps">
    <li class="step"><span class="stepnum">1</span>

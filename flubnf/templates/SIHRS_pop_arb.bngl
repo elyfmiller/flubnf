@@ -41,16 +41,24 @@ begin model
 #
 # Tokens filled per state at materialization:
 #   {{POP}} {{S0FRAC}} {{I0FRAC}} {{GAMMA}} {{RHO}} {{GAMMAH}} {{OMEGA}}
-# Fitted (6): Reff, eps1, phi1, mult, r, sbeta. Every fixed value is
-# sourced in flubnf/sihrs_priors.py. Single-season fits only.
+# Fitted (6): Reff, eps1, phi1, mult, r, sbeta. Of the fixed values, N,
+# gamma, s0 and i0 carry a source in flubnf/sihrs_priors.py (DOI or data
+# derivation). rho, gammaH and omega do NOT: they are working assumptions
+# set in flubnf/sihrs_fit.py with no citation, and provenance_table()
+# records them as such. Single-season fits only.
 # =====================================================================
 begin parameters
 
 ### -- transmission: scale-free reproduction number + seasonal forcing -- ###
-Reff    Reff__FREE     # EFFECTIVE reproduction number. Under this member it is
-                       # a STATE, not a constant: the filter advances it by the
-                       # AR(1)-on-increments process above, and its fitted value
-                       # here is the season-start level.
+Reff    Reff__FREE     # BASE reproduction number: the harmonic-neutral value at
+                       # the initial susceptible fraction s0, NOT the season-start
+                       # effective one. The EFFECTIVE reproduction number in week t
+                       # is Reff_t*exp(eps1*cos(2*pi*(t-phi1)/52)), which equals
+                       # Reff_t only where the cosine vanishes (phi1 = 13 or 39).
+                       # Under this member Reff is also a STATE, not a constant:
+                       # the filter advances it by the AR(1)-on-increments process
+                       # above, and its fitted value here is the season-start
+                       # level of that base quantity.
 eps1    eps1__FREE     # annual-harmonic amplitude (kept, unlike RW-beta)
 phi1    phi1__FREE     # annual-harmonic phase (week of peak transmissibility)
 
@@ -107,7 +115,7 @@ Molecules S     S()
 Molecules I     I()
 Molecules H     H()        # census -- do NOT fit to an admissions target
 Molecules R     R()
-Molecules H_Cum Hadm()     # cumulative admissions; neg_bin_dynamic differences '_Cum' -> weekly
+Molecules H_Cum Hadm()     # cumulative admissions; the weekly count is this observable's change across the reporting week
 Molecules t     counter()
 end observables
 
@@ -116,7 +124,10 @@ begin functions
 ### -- seasonal transmission rate (exp() keeps beta > 0) -- ###
 beta() = beta0*exp( eps1*cos(2*pi*(t-phi1)/52) )
 
-### -- weekly REPORTED admissions = ascertained flux into H -- ###
+### -- ascertained admission flux into H, an INSTANTANEOUS rate -- ###
+# Despite the name this is people PER WEEK at an instant, not a weekly
+# total; the weekly count is the change in H_Cum across the reporting
+# week, which is this flux integrated over that week.
 H_weekly() = rho*mult*gamma*I
 
 end functions

@@ -27,16 +27,24 @@ begin model
 #
 # Extra tokens beyond the ones `min` needs: IOTA, GAPEXPR, GAPNOTE
 # (braces omitted here so this comment survives materialization), all
-# supplied by flubnf/natgrowth.py::natg_tokens. The measured
-# justification, the iota derivation, and the causality argument:
-# docs/MODEL-PROVENANCE.md section 4 and
-# research/spatial-nowcast-probe/FINDINGS.md.
+# supplied by flubnf/natgrowth.py::natg_tokens. The regression that
+# produced iota, the shrink applied to it, and the honest note on its
+# effective strength (the multiplier acts on beta, so the response at the
+# operating point is near 1.0x the regression coefficient rather than the
+# 0.5x the shrink suggests) are recorded in full at
+# flubnf/natgrowth.py::IOTA_FROZEN, beside the constant itself.
 # =====================================================================
 begin parameters
 
 ### -- transmission: scale-free reproduction number + seasonal forcing -- ###
-Reff    Reff__FREE     # EFFECTIVE reproduction number at season start; fit
-                       # Reff, never R0 (R0 = Reff/s0 only post hoc)
+Reff    Reff__FREE     # BASE reproduction number, harmonic-neutral, at the
+                       # initial susceptible fraction s0. NOT the season-start
+                       # value: the EFFECTIVE reproduction number in week t is
+                       # Reff*exp(eps1*cos(2*pi*(t-phi1)/52))*exp(iota*natgap(t)),
+                       # which equals Reff only where both exponents vanish. Season
+                       # start is that expression at t = 0; the forcing peak of the
+                       # harmonic alone is t = phi1, giving Reff*exp(eps1). Fit
+                       # Reff, never R0 (R0 = Reff/s0 post hoc, likewise BASE)
 eps1    eps1__FREE     # annual-harmonic amplitude
 phi1    phi1__FREE     # annual-harmonic phase (week of peak transmissibility)
 
@@ -44,8 +52,11 @@ phi1    phi1__FREE     # annual-harmonic phase (week of peak transmissibility)
 gamma   {{GAMMA}}      # FIXED: 7/3.2 d generation time, Chan 2024 doi:10.1101/2024.08.17.24312064
 rho     {{RHO}}        # FIXED: true IHR branching fraction I->H; rules only,
                        # never the observable
-mult    mult__FREE     # ascertainment; only rho*mult is identified -- never
-                       # pin the product (docs/MODEL-PROVENANCE.md)
+mult    mult__FREE     # ascertainment; admissions identify only the PRODUCT
+                       # rho*mult, since the observation depends on the two
+                       # only through it. rho is held at its sourced value
+                       # and mult is fitted, so the FIT determines the
+                       # product; it is never pinned in this file
 gammaH  {{GAMMAH}}     # FIXED: discharge; moves the census only, unidentifiable here
 omega   {{OMEGA}}      # FIXED: waning R->S, weakly identified from <3 seasons
 
@@ -94,7 +105,7 @@ Molecules S     S()
 Molecules I     I()
 Molecules H     H()        # census -- do NOT fit to an admissions target
 Molecules R     R()
-Molecules H_Cum Hadm()     # cumulative admissions; neg_bin_dynamic differences '_Cum' -> weekly
+Molecules H_Cum Hadm()     # cumulative admissions; the weekly count is this observable's change across the reporting week
 Molecules t     counter()
 end observables
 
@@ -113,7 +124,10 @@ natgap() = {{GAPEXPR}}
 # iota = 0 reduces this file to the production template exactly.
 beta() = beta0*exp( eps1*cos(2*pi*(t-phi1)/52) )*exp( iota*natgap() )
 
-### -- weekly REPORTED admissions = ascertained flux into H -- ###
+### -- ascertained admission flux into H, an INSTANTANEOUS rate -- ###
+# Despite the name this is people PER WEEK at an instant, not a weekly
+# total; the weekly count is the change in H_Cum across the reporting
+# week, which is this flux integrated over that week.
 # mult is observation-only: ascertainment must never enter the reaction rules.
 H_weekly() = rho*mult*gamma*I
 

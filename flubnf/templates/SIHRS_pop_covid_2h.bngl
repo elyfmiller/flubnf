@@ -7,21 +7,38 @@ begin model
 # parameters. Diff the two files: the differences are the eps2/phi2
 # parameter lines, the beta() line, and this header.
 #
-# Why round two restores what round one refused, the verification that
-# the two-peak regime is reachable at these priors, and the frozen
-# pre-registration: docs/MODEL-PROVENANCE.md section 5.4 and
-# research/covid-phase0/gate_a2.py.
+# The arm definition, the check that a two-peak regime is reachable at
+# these priors, and the frozen pre-registration live in
+# research/covid-phase0/gate_a2.py, beside the code that runs the arm.
 #
-# Fit the REPORTED admission flux (rho*mult*gamma*I), never the census H(t).
+# Fit the REPORTED WEEKLY ADMISSIONS, never the census H(t). The weekly
+# count is the change in H_Cum across the reporting week, which is the
+# integral of the ascertained flux (rho*mult*gamma*I) over that week and
+# not that flux sampled at one instant.
 # =====================================================================
 begin parameters
 
 ### -- transmission: scale-free reproduction number + seasonal forcing -- ###
-Reff    Reff__FREE     # EFFECTIVE reproduction number at season start
+Reff    Reff__FREE     # BASE reproduction number, harmonic-neutral, at the
+                       # initial susceptible fraction s0. NOT the season-start
+                       # value: the EFFECTIVE reproduction number in week t is
+                       # Reff*exp(eps1*cos(2*pi*(t-phi1)/52)
+                       #          + eps2*cos(4*pi*(t-phi2)/52)),
+                       # which equals Reff only where that exponent vanishes, and
+                       # its ceiling over the year is Reff*exp(eps1+eps2)
 eps1    eps1__FREE     # annual-harmonic amplitude
 phi1    phi1__FREE     # annual-harmonic phase (week of peak transmissibility)
 eps2    eps2__FREE     # semi-annual amplitude; the uniform(0, 0.4) bound is
-                       # STIFFNESS-CRITICAL (docs/MODEL-PROVENANCE.md 5.4)
+                       # STIFFNESS-CRITICAL. beta0 = Reff*gamma/s0, so
+                       # beta_max = Reff*gamma/s0*exp(eps1+eps2) and the 1/s0
+                       # must be carried: at this arm's corner with s0 = 0.85
+                       # that is 2.5 * 1.0234 / 0.85 * exp(1.4) = 12.2/wk, and
+                       # at the COVID profile's lowest s0 of 0.50 it is 20.8/wk.
+                       # Both stay well under the ~77/wk corner that once broke
+                       # CVODE, which is itself the same formula evaluated at
+                       # flu's (Reff 3.0, gamma 2.1875, s0 0.85, eps1+eps2 2.3).
+                       # Uniform rather than loguniform because the lower bound
+                       # is exactly 0
 phi2    phi2__FREE     # semi-annual phase, identified only mod 26
 
 ### -- progression / removal -- ###
@@ -31,8 +48,11 @@ gamma   {{GAMMA}}      # FIXED: 7/6.84 d INTRINSIC generation time, Omicron,
                        # token makes that a materialization choice, not an edit
 rho     {{RHO}}        # FIXED: true IHR branching fraction I->H; rules only,
                        # never the observable (value: flubnf/profiles.py)
-mult    mult__FREE     # ascertainment; only rho*mult is identified -- never
-                       # pin the product (docs/MODEL-PROVENANCE.md)
+mult    mult__FREE     # ascertainment; admissions identify only the PRODUCT
+                       # rho*mult, since the observation depends on the two
+                       # only through it. rho is held at its sourced value
+                       # and mult is fitted, so the FIT determines the
+                       # product; it is never pinned in this file
 gammaH  {{GAMMAH}}     # FIXED: discharge; moves the census only, unidentifiable here
 omega   omega__FREE    # FITTED: waning R->S per week, loguniform
                        # [0.01278, 0.12780]/wk = 1.8-18 months protection;
@@ -78,7 +98,7 @@ Molecules S     S()
 Molecules I     I()
 Molecules H     H()        # census -- do NOT fit to an admissions target
 Molecules R     R()
-Molecules H_Cum Hadm()     # cumulative admissions; neg_bin_dynamic differences '_Cum' -> weekly
+Molecules H_Cum Hadm()     # cumulative admissions; the weekly count is this observable's change across the reporting week
 Molecules t     counter()
 end observables
 
@@ -87,7 +107,10 @@ begin functions
 ### -- seasonal transmission rate, TWO harmonics (exp() keeps beta > 0) -- ###
 beta() = beta0*exp( eps1*cos(2*pi*(t-phi1)/52) + eps2*cos(4*pi*(t-phi2)/52) )
 
-### -- weekly REPORTED admissions = ascertained flux into H -- ###
+### -- ascertained admission flux into H, an INSTANTANEOUS rate -- ###
+# Despite the name this is people PER WEEK at an instant, not a weekly
+# total; the weekly count is the change in H_Cum across the reporting
+# week, which is this flux integrated over that week.
 # mult is observation-only: ascertainment must never enter the reaction rules.
 H_weekly() = rho*mult*gamma*I
 

@@ -5,9 +5,10 @@ begin model
 # trim as SIHRS_pop_min.bngl: no reseeding term (single-season fits; the
 # filter re-conditions weekly), no semi-annual harmonic (the B circuit
 # carries two-wave structure mechanistically -- the hypothesis under
-# test). Motivation (the Feb-2024 plateau, the NREVSS crossover) and the
-# design rationale: docs/MODEL-PROVENANCE.md section 6; annotated draft:
-# SIHRS_pop_2strain.bngl.
+# test). Motivation: the February 2024 plateau, the phase the single-strain
+# member fits worst, and the NREVSS A/B crossover that coincides with it.
+# The annotated draft of the same circuit, with the design written out at
+# length, is SIHRS_pop_2strain.bngl.
 #
 # Fitted (7): ReffA, ReffB, eps1, phi1A, phi1B, mult, r
 # Tokens:     {{POP}} {{S0FRAC}} {{I0FRAC}} {{A0SHARE}} {{GAMMA}} {{RHO}}
@@ -21,8 +22,13 @@ begin model
 # =====================================================================
 begin parameters
 
-ReffA   ReffA__FREE    # strain-A effective reproduction number at season start
-ReffB   ReffB__FREE    # strain-B — typically smaller, LATER phase
+ReffA   ReffA__FREE    # strain-A BASE reproduction number, harmonic-neutral, at
+                       # the initial susceptible fraction s0. NOT the season-start
+                       # value: strain A's effective number in week t is
+                       # ReffA*exp(eps1*cos(2*pi*(t-phi1A)/52)), equal to ReffA
+                       # only where the cosine vanishes (phi1A = 13 or 39)
+ReffB   ReffB__FREE    # strain-B, same convention with phi1B; typically smaller,
+                       # LATER phase
 eps1    eps1__FREE     # seasonal amplitude, SHARED across strains
 phi1A   phi1A__FREE    # strain-A week of peak transmissibility (circular)
 phi1B   phi1B__FREE    # strain-B phase — the spring-wave mechanism

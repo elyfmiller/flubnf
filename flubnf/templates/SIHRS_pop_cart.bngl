@@ -66,15 +66,24 @@ begin model
 #   {{POP}} {{S0FRAC}} {{I0FRAC}} {{GAMMA}} {{RHO}} {{GAMMAH}} {{OMEGA}}
 # Fitted (8): Reff, a1, b1, a2, b2, mult, impr, r.
 #
-# Fit the REPORTED admission flux (rho*mult*gamma*I), never the census H(t).
+# Fit the REPORTED WEEKLY ADMISSIONS, never the census H(t). The weekly
+# count is the change in H_Cum across the reporting week, which is the
+# integral of the ascertained flux (rho*mult*gamma*I) over that week and
+# not that flux sampled at one instant.
 # =====================================================================
 begin parameters
 
 ### -- transmission: scale-free reproduction number + seasonal forcing -- ###
-Reff    Reff__FREE     # EFFECTIVE reproduction number at season start. Fit this,
-                       # NOT R0: admissions identify Reff via the growth rate, and
-                       # with S(0)=N*s0 the classic R0 = Reff/s0 is only recoverable
-                       # post hoc.
+Reff    Reff__FREE     # BASE reproduction number: the harmonic-neutral value at
+                       # the initial susceptible fraction s0. NOT the season-start
+                       # value. The EFFECTIVE reproduction number in week t is
+                       # Reff*exp(a1*cos(2*pi*t/52) + b1*sin(2*pi*t/52)
+                       #          + a2*cos(4*pi*t/52) + b2*sin(4*pi*t/52)),
+                       # so at season start (t = 0, where both sines vanish) it is
+                       # Reff*exp(a1+a2), which equals Reff only when a1+a2 = 0.
+                       # Fit this, NOT R0: admissions identify Reff via the growth
+                       # rate, and with S(0)=N*s0 the classic R0 = Reff/s0 is only
+                       # recoverable post hoc, itself as a BASE value.
 
 # Annual harmonic in Cartesian form. Prior box [-1,1] on each matches the old
 # eps1 ceiling of 1.0: the reachable amplitude is hypot(a1,b1), so the corners
@@ -136,7 +145,7 @@ Molecules S     S()
 Molecules I     I()
 Molecules H     H()        # census -- do NOT fit to an admissions target
 Molecules R     R()
-Molecules H_Cum Hadm()     # cumulative admissions; neg_bin_dynamic differences '_Cum' -> weekly
+Molecules H_Cum Hadm()     # cumulative admissions; the weekly count is this observable's change across the reporting week
 Molecules t     counter()
 end observables
 
@@ -146,7 +155,10 @@ begin functions
 beta() = beta0*exp( a1*cos(2*pi*t/52) + b1*sin(2*pi*t/52) \
                   + a2*cos(4*pi*t/52) + b2*sin(4*pi*t/52) )
 
-### -- weekly REPORTED admissions = ascertained flux into H -- ###
+### -- ascertained admission flux into H, an INSTANTANEOUS rate -- ###
+# Despite the name this is people PER WEEK at an instant, not a weekly
+# total; the weekly count is the change in H_Cum across the reporting
+# week, which is this flux integrated over that week.
 H_weekly() = rho*mult*gamma*I
 
 end functions

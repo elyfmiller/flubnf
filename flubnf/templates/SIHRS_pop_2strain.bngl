@@ -40,8 +40,13 @@ begin model
 begin parameters
 
 ### -- transmission: per-strain Reff + shared-amplitude seasonal forcing -- ###
-ReffA   ReffA__FREE    # strain-A effective reproduction number at season start
-ReffB   ReffB__FREE    # strain-B; usually < ReffA but with a LATER phase
+ReffA   ReffA__FREE    # strain-A BASE reproduction number, harmonic-neutral, at
+                       # the initial susceptible fraction s0. NOT the season-start
+                       # value: strain A's effective number in week t is
+                       # ReffA*exp(eps1*cos(2*pi*(t-phi1A)/52)), equal to ReffA
+                       # only where the cosine vanishes (phi1A = 13 or 39)
+ReffB   ReffB__FREE    # strain-B, same convention with phi1B; usually < ReffA
+                       # but with a LATER phase
 eps1    eps1__FREE     # seasonal amplitude, SHARED (both types ride the same
                        # winter environment; splitting it is unidentified from
                        # one season of split data)

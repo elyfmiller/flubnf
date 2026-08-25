@@ -13,7 +13,9 @@ begin model
 # See flubnf/templates/SIHRS_pop_arb.bngl for the full design record and the
 # four differences from the killed RW-beta member.
 #
-# ORIGINAL COVID HEADER FOLLOWS.
+# ORIGINAL COVID HEADER FOLLOWS. It describes SIHRS_pop_covid.bngl, so
+# its "Fitted (6)" line is SUPERSEDED: this file declares 7 fitted
+# parameters, the six listed there plus sbeta, exactly as the title says.
 #
 # FluBNF SIHRS -- COVID-19 variant (6 fitted parameters).
 # THE ONLY STRUCTURAL DIFFERENCE FROM SIHRS_pop_min.bngl IS THAT omega IS
@@ -28,18 +30,29 @@ begin model
 # The OMEGA token is deliberately ABSENT: omega is fitted, so this
 # template must never contain that placeholder.
 # Fitted (6): Reff, eps1, phi1, omega, mult, r. Fixed values are sourced
-# in flubnf/profiles.py (COVID). The repertoire sweep, the omega prior
-# derivation, and every warning: docs/MODEL-PROVENANCE.md section 5.
+# in flubnf/profiles.py (COVID); the omega prior, its bounds and its two
+# sources are stated on the omega line below, and the influenza priors
+# that do NOT transfer are named above.
 #
-# Fit the REPORTED admission flux (rho*mult*gamma*I), never the census H(t).
+# Fit the REPORTED WEEKLY ADMISSIONS, never the census H(t). The weekly
+# count is the change in H_Cum across the reporting week, which is the
+# integral of the ascertained flux (rho*mult*gamma*I) over that week and
+# not that flux sampled at one instant.
 # phi1 is the week of peak TRANSMISSIBILITY, which the epidemic peak can
 # LEAD by ~11 weeks under COVID waning: no peak-week prior, ever.
 # =====================================================================
 begin parameters
 
 ### -- transmission: scale-free reproduction number + seasonal forcing -- ###
-Reff    Reff__FREE     # EFFECTIVE reproduction number at season start; fit
-                       # Reff, never R0 (R0 = Reff/s0 only post hoc)
+Reff    Reff__FREE     # BASE reproduction number, harmonic-neutral, at the
+                       # initial susceptible fraction s0. NOT the season-start
+                       # value: the EFFECTIVE reproduction number in week t is
+                       # Reff_t*exp(eps1*cos(2*pi*(t-phi1)/52)), which equals
+                       # Reff_t only where the cosine vanishes (phi1 = 13 or 39).
+                       # Reff is also a STATE here, advanced week to week by the
+                       # AR(1)-on-increments process above; the fitted value is its
+                       # season-start level. Fit Reff, never R0 (R0 = Reff/s0 post
+                       # hoc, and likewise a BASE value)
 eps1    eps1__FREE     # annual-harmonic amplitude
 phi1    phi1__FREE     # annual-harmonic phase (week of peak transmissibility)
 
@@ -49,8 +62,11 @@ gamma   {{GAMMA}}      # FIXED: 7/6.84 d INTRINSIC generation time, Omicron,
                        # 2.4-3.6 d realized/serial figures are the wrong quantity
 rho     {{RHO}}        # FIXED: true IHR branching fraction I->H; rules only,
                        # never the observable (value: flubnf/profiles.py)
-mult    mult__FREE     # ascertainment; only rho*mult is identified -- never
-                       # pin the product (docs/MODEL-PROVENANCE.md)
+mult    mult__FREE     # ascertainment; admissions identify only the PRODUCT
+                       # rho*mult, since the observation depends on the two
+                       # only through it. rho is held at its sourced value
+                       # and mult is fitted, so the FIT determines the
+                       # product; it is never pinned in this file
 gammaH  {{GAMMAH}}     # FIXED: discharge; moves the census only, unidentifiable here
 omega   omega__FREE    # FITTED: waning R->S per week -- THE change this
                        # template exists for. Prior loguniform
@@ -104,7 +120,7 @@ Molecules S     S()
 Molecules I     I()
 Molecules H     H()        # census -- do NOT fit to an admissions target
 Molecules R     R()
-Molecules H_Cum Hadm()     # cumulative admissions; neg_bin_dynamic differences '_Cum' -> weekly
+Molecules H_Cum Hadm()     # cumulative admissions; the weekly count is this observable's change across the reporting week
 Molecules t     counter()
 end observables
 
@@ -113,7 +129,10 @@ begin functions
 ### -- seasonal transmission rate (exp() keeps beta > 0) -- ###
 beta() = beta0*exp( eps1*cos(2*pi*(t-phi1)/52) )
 
-### -- weekly REPORTED admissions = ascertained flux into H -- ###
+### -- ascertained admission flux into H, an INSTANTANEOUS rate -- ###
+# Despite the name this is people PER WEEK at an instant, not a weekly
+# total; the weekly count is the change in H_Cum across the reporting
+# week, which is this flux integrated over that week.
 # mult is observation-only: ascertainment must never enter the reaction rules.
 H_weekly() = rho*mult*gamma*I
 
