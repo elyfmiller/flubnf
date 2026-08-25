@@ -29,18 +29,30 @@ Three seasons replayed at full grid (52 jurisdictions, 3 replicates, vintage
 data only), scored as weighted interval score relative to the CDC
 FluSight-baseline (relWIS below 1.000 beats the baseline):
 
-| season | ensemble relWIS | CDC baseline | scored cells |
+| season | ensemble relWIS | FluSight ensemble | scored cells |
 |---|---|---|---|
-| 2023-24 | 0.813 | 1.000 | 6,063 |
-| 2024-25 | 0.618 | 1.000 | 4,922 |
-| 2025-26 | 0.683 | 1.000 | 4,475 |
-| pooled | **0.678** | 1.000 | 15,460 |
+| 2023-24 | 0.813 | 0.741 | 6,063 |
+| 2024-25 | 0.618 | 0.663 | 4,922 |
+| 2025-26 | 0.683 | 0.684 | 4,475 |
+| pooled | **0.678** | 0.685 | 15,460 |
 
 Notes on reading the table:
 
 * The ensemble beat the baseline in every season (15,460 scored cells pooled).
   Each member alone did not: the filter lost 2023-24 (1.023) and the analogue
   lost it worse (1.045); the blend won all three.
+* The comparator column is the official FluSight ensemble, the hub's own
+  combination of the forecasts every team submitted that week, so it is a
+  strong reference rather than a naive one. Both columns are relWIS against
+  the same CDC FluSight-baseline denominator, so below 1.000 still means
+  beating that baseline in either column. The FluSight ensemble is scored on
+  exactly the cells in the `scored cells` column and no others, on the same
+  target (weekly incident influenza hospital admissions) through the same
+  scorer; on those cells it covers everything this ensemble covers, so the
+  restriction costs it under 1e-4 of relWIS. The honest reading is level
+  overall: ahead by 0.045 in 2024-25, level in 2025-26 (0.002), behind by
+  0.073 in 2023-24, and a pooled gap of 0.007 that a paired bootstrap over
+  the 76 forecast weeks does not separate from zero.
 * These are the figures of the shipped donor pool, which excludes 2021-22
   from the calendar analogue. Before that exclusion the same three seasons
   scored 0.847, 0.651, 0.691, pooled 0.704. Documents published before

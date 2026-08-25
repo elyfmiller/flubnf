@@ -37,10 +37,20 @@ from .sihrs_priors import (S0_DEFAULT, ATTACK_RATE_RANGE, gamma_per_week,
 
 _TOKEN_RE = re.compile(r"\{\{[A-Z0-9_]+\}\}")
 
-# Fixed values that are not per-state. Sourced in sihrs_priors.py.
-RHO_IHR = 0.02              # biological IHR, branching only
+# Fixed values that are not per-state. UNSOURCED WORKING ASSUMPTIONS: unlike
+# gamma, N, s0 and i0, none of the three below carries a DOI or a data
+# derivation. sihrs_priors.py mentions rho only inside the product rho*mult and
+# does not define gammaH or omega at all; its provenance_table() carries a row
+# for each of these three recording exactly that gap, so a methods reviewer
+# following the pointer finds a stated assumption rather than nothing.
+# What limits the damage in each case is stated beside the value.
+RHO_IHR = 0.02              # biological IHR, branching only. Admissions identify
+                            # only rho*mult and mult is fitted, so this value
+                            # moves the fitted mult, not the fit.
 GAMMAH_PER_WEEK = 1.17      # ~6 d length of stay; does not enter the fit target
+                            # at all (H census only), so it cannot bias it.
 OMEGA_PER_WEEK = 0.019      # ~1 y immune duration; weakly identified in-season
+                            # from under three seasons either way.
 
 # Priors for the 6 fitted parameters. Universal across states by construction --
 # every scale-carrying quantity is fixed per state instead.
@@ -177,7 +187,14 @@ def materialize_model(setup: StateSetup, template: str | Path, out_path: str | P
                       extra_tokens: dict | None = None) -> Path:
     """Write the per-state .bngl with every token resolved. Unresolved => error.
     `extra_tokens` lets variant templates carry tokens StateSetup doesn't know
-    (e.g. the two-strain {{A0SHARE}})."""
+    (e.g. the two-strain {{A0SHARE}}).
+
+    `t_end` rewrites the simulate action's window and step count. NO FLU CALL
+    SITE PASSES IT, so flu models are materialized with the template's own 48
+    weeks. That is inert for the particle filter, which never reads the
+    actions block and drives its own one-week windows, and it is a ceiling on
+    the adaptive-MCMC path, where a full season's last as-of sits at week
+    offset 45 and four forecast horizons past it reach week 49."""
     txt = Path(template).read_text()
     for tok, val in {**(extra_tokens or {}),
         "{{POP}}": str(int(setup.population)),
@@ -314,6 +331,29 @@ def write_conf(setup: StateSetup, *, model: Path, exp: Path, out_dir: Path,
         f"model = {model} : {exp}",
         f"output_dir = {out_dir}",
         "fit_type = am",
+        # KNOWN OBSERVATION-MODEL MISMATCH ON THIS PATH, DELIBERATELY NOT
+        # FIXED HERE. PyBNF's neg_bin_dynamic differences a simulated column
+        # only when the EXPERIMENTAL column's name contains '_Cum'. The .exp
+        # written by write_exp() names its one count column H_weekly, so the
+        # objective takes the other branch and compares the model's
+        # H_weekly(t_k), an INSTANTANEOUS ascertained rate in people per
+        # week, against a weekly TOTAL. The size of that bias is exact: at
+        # local weekly log-growth lam the ratio of the instant to the
+        # integral is lam/(1 - exp(-lam)), so +10 percent at lam = 0.2,
+        # +21 at 0.4, +45 at 0.8. On the 2024-25 state admissions (53
+        # jurisdictions, consecutive weeks with both endpoints at or above
+        # 20) the median jurisdiction's fastest week is lam = 0.81, a gap
+        # of +46 percent, and the fastest week anywhere is lam = 1.27, a
+        # gap of +77 percent; the median jurisdiction's steepest decline is
+        # lam = -0.62, a gap of -28 percent. One season-constant
+        # `mult` cannot absorb a factor that moves with phase. The shipped
+        # particle filter does NOT have this problem: it integrates the
+        # cumulative observable across each reporting week instead. The fix
+        # is to rename the .exp count column to H_Cum so the differencing
+        # fires, or to give this path an explicit integrated observation
+        # model; the first also changes the column the particle filter reads,
+        # and either moves numbers, so neither is applied. Until one is,
+        # adaptive-MCMC fits carry this bias and must not be published.
         "objfunc = neg_bin_dynamic",
         "",
     ]

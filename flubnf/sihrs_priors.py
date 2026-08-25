@@ -1,9 +1,16 @@
 """Sourced, citable parameter provenance for the population-parameterized SIHRS.
 
 Every fixed/pinned value carries (a) its numeric value, (b) whether it came from
-DATA on disk or from the LITERATURE, and (c) an auditable source — a DOI for
-literature, a file path plus derivation for data. `provenance_table()` renders the
-whole set for a methods section.
+DATA on disk, from the LITERATURE, or from neither, and (c) an auditable source:
+a DOI for literature, a file path plus derivation for data.
+`provenance_table()` renders the whole set for a methods section.
+
+NOT EVERYTHING IS SOURCED, and the table says so rather than implying otherwise.
+`rho`, `gammaH` and `omega` are working ASSUMPTIONS set as plain constants in
+`sihrs_fit.py` (RHO_IHR, GAMMAH_PER_WEEK, OMEGA_PER_WEEK). No DOI and no data
+derivation stands behind those three numbers. They appear in the table with
+kind="assumption" and an empty source so that a reviewer following a pointer
+here finds a stated gap instead of a missing row.
 
 Design rule: population and any parameter that is only product-identified are
 FIXED, never fitted. Fitting a product-identified pair yields a ridge-shaped
@@ -43,8 +50,10 @@ class Param:
     name: str
     value: float
     unit: str
-    kind: Literal["data", "literature", "derived"]
-    source: str                 # DOI / file path
+    #: "assumption" means exactly what it says: a value chosen without a
+    #: citation or a derivation. Such rows carry an empty `source`.
+    kind: Literal["data", "literature", "derived", "assumption"]
+    source: str                 # DOI / file path, or "" for an assumption
     note: str
     low: Optional[float] = None
     high: Optional[float] = None
@@ -218,10 +227,20 @@ def initial_infected_fraction(first_week_reported: float, population: int,
                               gamma: float = gamma_per_week()) -> float:
     """Per-state `i0` from that state's own first observed week.
 
-    From H_weekly = rho*mult*gamma*I with I in absolute people:
+    From the INSTANTANEOUS relation H_weekly = rho*mult*gamma*I, with I in
+    absolute people:
         i0 = I(0)/N = first_week_reported / (rho*mult * gamma * N)
     Per-state by construction, which is what forecasting 52 differently-sized
     jurisdictions requires.
+
+    CONVENTION NOTE. The shipped particle filter's observation is the weekly
+    INTEGRAL of that flux rather than the flux at an instant, so the exact
+    inversion would carry a further factor lam/(1 - exp(-lam)) at the first
+    week's local growth lam. This value is a SEED only: the filter corrects
+    the state at every weekly update, `mult` is fitted afterwards under its
+    own prior, and at the start of a season local growth is near zero, where
+    the factor tends to 1. Changing the inversion would move every fit, so
+    the seed is left on the instantaneous relation deliberately.
     """
     denom = float(rho_mult) * float(gamma) * float(population)
     if denom <= 0:
@@ -247,6 +266,25 @@ def provenance_table() -> pd.DataFrame:
               "Fitted, with prior from Boelle et al. 2011 community estimates "
               "(1.2-2.3, median 1.5); widened downward for seasonal epidemics.",
               R0_RANGE[0], R0_RANGE[1]),
+        Param("rho", 0.02, "dimensionless", "assumption", "",
+              "UNSOURCED WORKING ASSUMPTION. Set as RHO_IHR in "
+              "flubnf/sihrs_fit.py; no DOI and no data derivation stands "
+              "behind the 0.02. Reed et al. 2015 under-detection is NOT a "
+              "source for it (see the definition-mismatch note in this "
+              "module's docstring). Its practical effect is bounded: "
+              "admissions identify only the product rho*mult and mult is "
+              "fitted, so this value sets what the fitted mult means rather "
+              "than what the fit predicts."),
+        Param("gammaH", 1.17, "1/week", "assumption", "",
+              "UNSOURCED WORKING ASSUMPTION. Set as GAMMAH_PER_WEEK in "
+              "flubnf/sihrs_fit.py, from a ~6 d length of stay taken as "
+              "given. It governs the H census only and enters no term of "
+              "the admissions fit target, so it cannot bias the fit."),
+        Param("omega", 0.019, "1/week", "assumption", "",
+              "UNSOURCED WORKING ASSUMPTION. Set as OMEGA_PER_WEEK in "
+              "flubnf/sihrs_fit.py, from a ~1 y immune duration taken as "
+              "given. Weakly identified from under three seasons, so a fit "
+              "cannot correct it either."),
         Param("rho*mult", np.nan, "dimensionless", "derived",
               "data (cumulative reported admissions/capita) / literature (attack rate)",
               "PINNED AS A PRODUCT -- only the product is identified. See "

@@ -463,11 +463,15 @@ def _season_table(payload: dict) -> str:
     seasons = payload["seasons"]
     pooled = payload["pooled"]
     has_official = any("FluSight-ensemble" in s["models"] for s in seasons)
+    # The comparator column carries the official FluSight ensemble rather
+    # than a constant 1.000 for the baseline: the baseline is already the
+    # denominator of every score in the table, so a column of ones restated
+    # it, while the hub's own ensemble is a comparator a reader learns from.
+    # A season with no official score prints "not scored" rather than a
+    # blank that would read as a zero.
     head = ('<tr><th>Season</th><th class="n">Ensemble relWIS</th>'
-            '<th class="n">CDC baseline</th>')
-    if has_official:
-        head += '<th class="n">FluSight ensemble</th>'
-    head += '<th class="n">Cells</th><th>FluSight field</th></tr>'
+            '<th class="n">FluSight ensemble</th>'
+            '<th class="n">Cells</th><th>FluSight field</th></tr>')
 
     rows = []
     for s in seasons:
@@ -476,10 +480,8 @@ def _season_table(payload: dict) -> str:
         cells = ens.get("cells")
         r = (f'<tr><td>{_e(s["season"])}</td>'
              + _score_td(ens.get("rel"))
-             + '<td class="n">1.000</td>')
-        if has_official:
-            r += _score_td((s["models"].get("FluSight-ensemble")
-                            or {}).get("rel"))
+             + _score_td((s["models"].get("FluSight-ensemble")
+                          or {}).get("rel")))
         r += f'<td class="n">{cells:,}</td>' if cells else \
              '<td class="n na">--</td>'
         r += (f'<td>{_e(pl["text"])}</td>' if pl.get("text")
@@ -488,18 +490,21 @@ def _season_table(payload: dict) -> str:
 
     p = pooled.get("ensemble") or {}
     prow = ('<tr class="total"><td>Pooled</td>' + _score_td(p.get("rel"))
-            + '<td class="n">1.000</td>')
-    if has_official:
-        prow += _score_td((pooled.get("FluSight-ensemble") or {}).get("rel"))
+            + _score_td((pooled.get("FluSight-ensemble") or {}).get("rel")))
     prow += (f'<td class="n">{p.get("cells", 0):,}</td>'
              '<td></td></tr>')
     table = "<table>" + head + "".join(rows) + prow + "</table>"
 
-    note = ("A cell is one location, one forecast week, one horizon, kept "
+    note = ("Both score columns are relWIS against the same CDC FluSight "
+            "baseline, so below 1.000 beats that baseline in either column. "
+            "A cell is one location, one forecast week, one horizon, kept "
             "only where settled truth was above zero and the FluSight "
             "baseline also had a forecast.")
     if has_official:
-        note += (" The official FluSight ensemble is scored on exactly the "
+        note += (" The comparator is the official FluSight ensemble, the "
+                 "hub's own combination of the forecasts every team "
+                 "submitted that week, which makes it a strong reference "
+                 "rather than a naive one. It is scored on exactly the "
                  "cells in the ensemble column beside it, so the two "
                  "numbers in a row can be read against each other.")
     return table + ('<p class="sub" style="margin:.9rem 0 0;font-size:.85rem">'
