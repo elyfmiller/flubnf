@@ -5,46 +5,31 @@ begin model
 #
 #   beta_s(t)  *=  exp( iota * ( g_nat^{-s}(t) - g_s^obs(t) ) )
 #
-# g_nat^{-s} is the leave-one-out population-weighted log-growth of
-# vintage-true weekly admissions across all OTHER jurisdictions as of the
-# same date; g_s^obs is this state's own. Both are built at materialize
-# time by flubnf/natgrowth.py from the as-of vintage, never the latest
-# file. The term acts on GROWTH, never on level: a state growing at the
-# national rate gets a multiplier of exactly 1.
+# g_nat^{-s} is leave-one-out national log-growth of vintage-true weekly
+# admissions and g_s^obs the state's own, both built at materialize time by
+# flubnf/natgrowth.py from the as-of vintage, never the latest file. The
+# term acts on GROWTH, never on level.
 #
-# PRE-REGISTERED AND FROZEN A PRIORI:
-#   * iota = 0.3020, the constant in flubnf/natgrowth.py::IOTA_FROZEN. It
-#     must never become a *__FREE var line and must never be retuned
-#     after seeing scores (handoff Law 1).
+# PRE-REGISTERED AND FROZEN A PRIORI (measurements: MODEL-PROVENANCE 4):
+#   * iota = 0.3020 (flubnf/natgrowth.py::IOTA_FROZEN). Never a *__FREE
+#     var line, never retuned after seeing scores (handoff Law 1).
 #   * Forecast rule: the last observed gap is
 #     HELD CONSTANT ACROSS THE 1 TO 4 WEEK HORIZON.
-#     No extrapolation, no decay toward zero, no forecast of the national
-#     series; g_nat is not predicted. The rule is structural:
-#     the final branch of natgap() carries no upper guard.
-#   * The gap is clipped to +-1.0 (flubnf/natgrowth.py::GAP_CLIP), so the
-#     beta multiplier stays inside [0.74, 1.35]; clipped weeks are
-#     counted and reported per cell, never silently absorbed.
+#     Structural, not a code path: natgap()'s final branch has no upper
+#     guard. No extrapolation, no decay, no forecast of g_nat.
+#   * The gap is clipped to +-1.0 (natgrowth.py::GAP_CLIP), holding the
+#     beta multiplier inside [0.74, 1.35]; clipped weeks are reported.
 #
-# Extra tokens beyond the ones `min` needs: IOTA, GAPEXPR, GAPNOTE
-# (braces omitted here so this comment survives materialization), all
-# supplied by flubnf/natgrowth.py::natg_tokens. The regression that
-# produced iota, the shrink applied to it, and the honest note on its
-# effective strength (the multiplier acts on beta, so the response at the
-# operating point is near 1.0x the regression coefficient rather than the
-# 0.5x the shrink suggests) are recorded in full at
-# flubnf/natgrowth.py::IOTA_FROZEN, beside the constant itself.
+# Extra tokens beyond `min`: IOTA, GAPEXPR, GAPNOTE (braces omitted here
+# so this comment survives materialization), from natg_tokens().
 # =====================================================================
 begin parameters
 
 ### -- transmission: scale-free reproduction number + seasonal forcing -- ###
-Reff    Reff__FREE     # BASE reproduction number, harmonic-neutral, at the
-                       # initial susceptible fraction s0. NOT the season-start
-                       # value: the EFFECTIVE reproduction number in week t is
-                       # Reff*exp(eps1*cos(2*pi*(t-phi1)/52))*exp(iota*natgap(t)),
-                       # which equals Reff only where both exponents vanish. Season
-                       # start is that expression at t = 0; the forcing peak of the
-                       # harmonic alone is t = phi1, giving Reff*exp(eps1). Fit
-                       # Reff, never R0 (R0 = Reff/s0 post hoc, likewise BASE)
+Reff    Reff__FREE     # BASE reproduction number: harmonic-neutral, at the
+                       # initial susceptible fraction s0. NOT the season-start,
+                       # forced or realised value; here the forced value also
+                       # carries exp(iota*natgap(t)). Fit Reff, never R0
 eps1    eps1__FREE     # annual-harmonic amplitude
 phi1    phi1__FREE     # annual-harmonic phase (week of peak transmissibility)
 
@@ -52,11 +37,10 @@ phi1    phi1__FREE     # annual-harmonic phase (week of peak transmissibility)
 gamma   {{GAMMA}}      # FIXED: 7/3.2 d generation time, Chan 2024 doi:10.1101/2024.08.17.24312064
 rho     {{RHO}}        # FIXED: true IHR branching fraction I->H; rules only,
                        # never the observable
-mult    mult__FREE     # ascertainment; admissions identify only the PRODUCT
-                       # rho*mult, since the observation depends on the two
-                       # only through it. rho is held at its sourced value
-                       # and mult is fitted, so the FIT determines the
-                       # product; it is never pinned in this file
+mult    mult__FREE     # ascertainment, OBSERVATION-ONLY: it must never appear
+                       # in a reaction rule. Admissions identify only the
+                       # product rho*mult; rho is held fixed, so the FIT
+                       # determines the product. Never pinned in this file
 gammaH  {{GAMMAH}}     # FIXED: discharge; moves the census only, unidentifiable here
 omega   {{OMEGA}}      # FIXED: waning R->S, weakly identified from <3 seasons
 
@@ -64,9 +48,8 @@ omega   {{OMEGA}}      # FIXED: waning R->S, weakly identified from <3 seasons
 r       r__FREE        # negative-binomial dispersion (AMCMC)
 
 ### -- exogenous national growth: FIXED A PRIORI, never fitted -- ###
-iota    {{IOTA}}       # FROZEN at 0.3020; derivation in this file's header
-                       # and flubnf/natgrowth.py::IOTA_FROZEN. Deliberately
-                       # a plain parameter, never a *__FREE var (Law 1).
+iota    {{IOTA}}       # FROZEN at 0.3020 (see header). Deliberately a plain
+                       # parameter, never a *__FREE var (Law 1).
 
 ### -- derived -- ###
 beta0   Reff*gamma/s0
@@ -89,9 +72,8 @@ counter()   # clock: observable t = weeks
 end molecule types
 
 begin seed species
-# Absolute counts. R(0) carries the non-susceptible, non-infected remainder,
-# so S+I+H+R = N exactly and pre-existing immunity is representable (s0 < 1),
-# which the S(0)=1 normalization structurally cannot express.
+# Absolute counts. R(0) takes the remainder, so S+I+H+R = N exactly and
+# pre-existing immunity (s0 < 1) is representable.
 S() N*s0
 I() N*i0
 H() 0
@@ -113,10 +95,9 @@ begin functions
 
 ### -- exogenous national-growth gap, piecewise-constant in t -- ###
 # {{GAPNOTE}}
-# Generated at materialize time by flubnf/natgrowth.py::bngl_gap_expression;
-# a week with no defined growth contributes exactly 0.0. The final branch
-# has no upper guard: t at or beyond the last observed week holds the last
-# observed gap (the pre-registered forecast rule).
+# Written at materialize time by natgrowth.py::bngl_gap_expression. A week
+# with no defined growth contributes exactly 0.0; the unguarded final
+# branch IS the pre-registered forecast rule above.
 natgap() = {{GAPEXPR}}
 
 ### -- seasonal transmission rate (exp() keeps beta > 0) -- ###
@@ -125,28 +106,22 @@ natgap() = {{GAPEXPR}}
 beta() = beta0*exp( eps1*cos(2*pi*(t-phi1)/52) )*exp( iota*natgap() )
 
 ### -- ascertained admission flux into H, an INSTANTANEOUS rate -- ###
-# Despite the name this is people PER WEEK at an instant, not a weekly
-# total; the weekly count is the change in H_Cum across the reporting
-# week, which is this flux integrated over that week.
-# mult is observation-only: ascertainment must never enter the reaction rules.
+# People per week at an instant, NOT a weekly total: the shipped particle
+# filter uses the weekly increment of H_Cum instead. This function survives
+# as the name binding the .exp count column to a model output.
 H_weekly() = rho*mult*gamma*I
 
 end functions
 
 begin reaction rules
-# clock
 0 -> counter() 1
 # infection, FREQUENCY-DEPENDENT: rate constant beta()/N -> flux beta*S*I/N
 S() + I() -> I() + I()   beta()/N
-# hospitalization branch: fraction rho of the gamma removal
 I() -> H()   rho*gamma
-# direct-recovery branch
 I() -> R()   (1-rho)*gamma
-# discharge
 H() -> R()   gammaH
-# waning immunity (the second S in SIHRS)
 R() -> S()   omega
-# cumulative-admissions accumulator (counts I->H without consuming I)
+# accumulator: tallies the I->H flux without consuming I, so S+I+H+R = N
 I() -> I() + Hadm()   rho*gamma
 end reaction rules
 

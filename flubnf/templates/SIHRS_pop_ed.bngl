@@ -1,119 +1,53 @@
 begin model
 # =====================================================================
-# FluBNF SIHRS+ED — the min model plus a SECOND OBSERVABLE (7 params)
-#
-# WHY FEWER PARAMETERS, MEASURED
-# ------------------------------
-# The entire gap between SIHRS and a well-calibrated reference is SPREAD, not
-# the central estimate. Swapping SIHRS's median for the analogue's gains 0.003
-# relWIS; swapping the SPREAD gains 0.070. So the median is fine and the
-# predictive distribution is too wide.
-#
-# That width comes from fitting 8 parameters to ~26 weekly points. Each removed
-# dimension removes a source of posterior spread, which is the actual defect.
-# Removed here, each for a measured reason:
-#
-#   eps2, phi2  semi-annual harmonic. An earlier ablation found it makes beta(t)
-#               two-humped but does NOT produce two epidemic peaks -- susceptible
-#               depletion suppresses the second hump. R-hat 2.38 / 26.8.
-#   impr        external reseeding, PINNED IN 75% OF FITS, i.e. not identified by
-#               the data. It exists to keep I off the numerical floor across
-#               MULTI-season runs (230 weeks); over a single 48-week season it is
-#               inert -- verified: peak 142.6 with impr=1e-7 and with impr=0,
-#               and I never approaches the denormal range.
-#
-# KEEP `impr` FOR MULTI-SEASON WORK. Dropping it there reintroduces the CVODE
-# stiffness failure that once broke 100% of 230-week fits. This template is for
-# single-season production fits only; use SIHRS_pop.bngl for multi-season.
-#
-# ---------------------------------------------------------------------
-# POPULATION-PARAMETERIZED (no magnitude anchor)
-# ---------------------------------------------------------------------
-# A real H compartment fed by the I->H flux, waning R->S, and a SINGLE
-# annual harmonic in beta(t), all stated directly by the reaction rules
-# and beta() below. The compartments are ABSOLUTE PEOPLE and the state
-# population N enters as known data instead of via a fitted/derived
-# `scaled` anchor.
-#
-# Why: with S(0)=1 normalization, matching an observed peak P required
-#   mult * scaled_factor = 1/(5.5*f) ~= 30  (f = max_t[rho*gamma*I]) --
-# INDEPENDENT of P, so it carried no per-state information and sat ~6x
-# above the mult prior ceiling. `mult` therefore pinned in 43/52 states
-# and forecasts came out ~30x low. With N in the model the observation
-# scale is a dimensionless fraction and no anchor is needed.
-#
-# Infection is FREQUENCY-DEPENDENT (rate constant beta()/N, flux
-# beta*S*I/N). That keeps beta on exactly the same scale as the
-# normalized model -- substituting s=S/N, i=I/N recovers
-# di/dt = beta*s*i - gamma*i identically -- so R0/gamma/eps/phi priors
-# transfer unchanged and no re-derivation is needed.
-#
-# Tokens substituted per state at materialization:
-#   {{POP}} {{S0FRAC}} {{I0FRAC}} {{GAMMA}} {{RHO}} {{GAMMAH}} {{OMEGA}}
-# Fitted (7): Reff, eps1, phi1, mult, r, multED, sigmaED. The last two
-# belong to the ED channel this template exists for; the title states the
-# same 7. Of the fixed values, N, gamma, s0 and i0 carry a source in
-# flubnf/sihrs_priors.py (DOI or data derivation). rho, gammaH and omega
-# do NOT: they are working assumptions set in flubnf/sihrs_fit.py with no
-# citation, and provenance_table() records them as such.
+# FluBNF SIHRS+ED -- the min model plus a SECOND OBSERVABLE (7 params).
+# Research variant. Everything except the ED channel is the production
+# single-strain model, and SIHRS_pop_min.bngl documents the shared
+# invariants; docs/MODEL-PROVENANCE.md carries the design record.
 #
 # NOT WIRED. multED, sigmaED and ED_prop() appear in no conf writer, no
 # prior dict and no .exp writer anywhere in app/, flubnf/ or scripts/.
 # This file is a design record; nothing here has ever been fitted.
 #
-# Fit the REPORTED WEEKLY ADMISSIONS, never the census H(t). The weekly
-# count is the change in H_Cum across the reporting week, which is the
-# integral of the ascertained flux (rhomult*gamma*I) over that week and
-# not that flux sampled at one instant.
+# DISTINGUISHING FEATURE: a second observation channel, the NSSP
+# influenza share of emergency-department visits. It is an OBSERVATION
+# LAYER ONLY, reading I and never altering a flow, and it proxies
+# PREVALENCE, hence I/N rather than a flux.
+#
+# Tokens substituted per state at materialization (strict: an unresolved
+# token raises rather than reaching the engine):
+#   {{POP}} {{S0FRAC}} {{I0FRAC}} {{GAMMA}} {{RHO}} {{GAMMAH}} {{OMEGA}}
+# Fitted (7): Reff, eps1, phi1, mult, r, multED, sigmaED.
+# Single-season fits only; multi-season runs need SIHRS_pop.bngl.
+#
+# Fit the REPORTED WEEKLY ADMISSIONS, never the census H(t): the weekly
+# count is the change in H_Cum across the reporting week, not H_weekly()
+# sampled at an instant.
 # =====================================================================
 begin parameters
 
 ### -- transmission: scale-free reproduction number + seasonal forcing -- ###
-Reff    Reff__FREE     # BASE reproduction number: the harmonic-neutral value at
-                       # the initial susceptible fraction s0. NOT the season-start
-                       # value. The EFFECTIVE reproduction number in week t is
-                       # Reff*exp(eps1*cos(2*pi*(t-phi1)/52)), which equals Reff
-                       # only where the cosine vanishes (phi1 = 13 or 39); season
-                       # start is that expression at t = 0 and the forcing peak is
-                       # t = phi1, where it is Reff*exp(eps1).
-                       # Fit this, NOT R0: admissions identify Reff (via the growth
-                       # rate), and with S(0)=N*s0 the classic R0 = Reff/s0 is only
-                       # recoverable post hoc, itself as a BASE value. Fitting R0
-                       # with s0<1 silently requires R0>1/s0 just to sustain an
-                       # epidemic.
+Reff    Reff__FREE     # BASE reproduction number: harmonic-neutral, at the
+                       # initial susceptible fraction s0. NOT the season-start
+                       # value and NOT the realised one. Fit Reff, never R0.
 eps1    eps1__FREE     # annual-harmonic amplitude
 phi1    phi1__FREE     # annual-harmonic phase (week of peak transmissibility)
 
 ### -- progression / removal -- ###
 gamma   {{GAMMA}}      # FIXED: 7/3.2 d generation time, Chan 2024 doi:10.1101/2024.08.17.24312064
-rho     {{RHO}}        # FIXED: true IHR = biological branching fraction I->H.
-                       # Used ONLY in the reaction rules (people's flow), never in
-                       # the observable.
-mult    mult__FREE     # ASCERTAINMENT: reported / modelled admissions. Fitted, prior
-                       # [0.002, 1.0]. The ceiling is the PHYSICAL bound, since
-                       # ascertainment cannot exceed 100 percent, and it is
-                       # universal for that reason rather than by measurement. An
-                       # earlier 0.10 ceiling was retired: it pinned in 80/250 fits
-                       # and, because mult and Reff are inversely coupled, dragged
-                       # Reff into its own ceiling with it. A pin at 1.0 now means
-                       # the FIXED rho is too small, not that the prior is wrong.
-                       # Only rho*mult is identified, but the product CANNOT be
-                       # pinned a priori: it depends on the attack rate, which is
-                       # itself a consequence of the fitted Reff. Pinning it froze
-                       # the magnitude 2.45x wrong and drove r to its floor. So fix
-                       # rho (biology) and fit mult (observation).
-gammaH  {{GAMMAH}}     # FIXED: discharge rate. Does NOT enter the admissions fit
-                       # target at all (H census only), so it is unidentifiable here.
-omega   {{OMEGA}}      # FIXED: waning R->S. Weakly identified from <3 seasons.
+rho     {{RHO}}        # FIXED: true IHR branching fraction I->H; rules only,
+                       # never the observable
+mult    mult__FREE     # ascertainment; admissions identify only the PRODUCT
+                       # rho*mult, and it is never pinned in this file
+gammaH  {{GAMMAH}}     # FIXED: discharge; moves the census only, unidentifiable here
+omega   {{OMEGA}}      # FIXED: waning R->S, weakly identified from <3 seasons
 
-### -- observation noise (the only reporting parameter still fitted) -- ###
+### -- observation noise -- ###
 r       r__FREE        # negative-binomial dispersion (admissions column)
 
-### -- second observable: NSSP ED-visit share (gate: partial r +0.467, -- ###
-### -- 100% vintage retention). Observation layer ONLY: reads I, never  -- ###
-### -- alters flows. ED share proxies PREVALENCE, hence I/N not flux.   -- ###
+### -- second observable: NSSP ED-visit share -- ###
 multED  multED__FREE   # ED ascertainment: reported ED share per unit prevalence
-sigmaED sigmaED__FREE  # Gaussian obs noise for the ED column (share is a small
+sigmaED sigmaED__FREE  # Gaussian obs noise for the ED column (the share is a
                        # continuous fraction; NB is for counts, not proportions)
 
 ### -- derived -- ###
@@ -128,18 +62,15 @@ i0      {{I0FRAC}}     # initial infected fraction
 end parameters
 
 begin molecule types
-S()         # susceptible people
-I()         # infectious people
-H()         # hospitalized census / occupancy
-R()         # recovered / immune people
+S()
+I()
+H()
+R()
 Hadm()      # cumulative admissions accumulator (never decays)
 counter()   # clock: observable t = weeks
 end molecule types
 
 begin seed species
-# Absolute counts. R(0) carries the non-susceptible, non-infected remainder,
-# so S+I+H+R = N exactly and pre-existing immunity is representable (s0 < 1),
-# which the S(0)=1 normalization structurally cannot express.
 S() N*s0
 I() N*i0
 H() 0
@@ -159,42 +90,30 @@ end observables
 
 begin functions
 
-### -- continuous seasonal transmission rate (unchanged; exp() keeps beta > 0) -- ###
+### -- continuous seasonal transmission rate (exp() keeps beta > 0) -- ###
 beta() = beta0*exp( eps1*cos(2*pi*(t-phi1)/52) )
 
 ### -- ascertained admission flux into H, an INSTANTANEOUS rate -- ###
-# Despite the name this is people PER WEEK at an instant, not a weekly
-# total; the weekly count is the change in H_Cum across the reporting
-# week, which is this flux integrated over that week.
-# rho*mult carries biological IHR x reporting ascertainment. `rho` also
-# appears in the reaction rules (it is a real branching fraction); `mult`
-# does NOT -- ascertainment must never alter how people move between
-# compartments, only what we observe of them.
+# mult is observation-only: ascertainment must never enter the reaction rules.
+# Despite the name this is people PER WEEK at an instant, not a weekly total.
+# The name binds this output to the .exp column of the same name.
 H_weekly() = rho*mult*gamma*I
 
-### -- ED-visit share of all ED visits, as a DECIMAL PROPORTION.        -- ###
-### -- The hub's target-ed-visits-prop.csv is a proportion, not a       -- ###
-### -- percent: its own README states the source percent_visits_        -- ###
-### -- influenza is divided by 100 before publication, and the file     -- ###
-### -- spans 0 to 0.175 over 10,244 rows. An earlier revision of this   -- ###
-### -- line carried a factor of 100 and described itself as matching    -- ###
-### -- the hub, which would have made the model column 100x the target. -- ###
+### -- ED-visit share, a DECIMAL PROPORTION, not a percent. The hub's -- ###
+### -- target-ed-visits-prop.csv is already divided by 100, so do NOT -- ###
+### -- add a factor of 100 here: it would make the model column 100x  -- ###
+### -- the target.                                                    -- ###
 ED_prop() = multED*I/N
 
 end functions
 
 begin reaction rules
-# clock
 0 -> counter() 1
 # infection, FREQUENCY-DEPENDENT: rate constant beta()/N -> flux beta*S*I/N
 S() + I() -> I() + I()   beta()/N
-# hospitalization branch: fraction rho of the gamma removal
 I() -> H()   rho*gamma
-# direct-recovery branch
 I() -> R()   (1-rho)*gamma
-# discharge
 H() -> R()   gammaH
-# waning immunity (the second S in SIHRS)
 R() -> S()   omega
 # cumulative-admissions accumulator (counts I->H without consuming I)
 I() -> I() + Hadm()   rho*gamma

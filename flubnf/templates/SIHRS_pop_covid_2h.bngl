@@ -1,62 +1,37 @@
 begin model
 # =====================================================================
-# FluBNF SIHRS -- COVID-19 second-harmonic variant (8 fitted parameters).
-# GATE A ROUND TWO, ARM A2. SIHRS_pop_covid.bngl is unchanged and remains
-# the control arm; THIS file adds exactly one thing to it: the
-# semi-annual harmonic (eps2, phi2) restored to beta(t) as fitted
-# parameters. Diff the two files: the differences are the eps2/phi2
-# parameter lines, the beta() line, and this header.
-#
-# The arm definition, the check that a two-peak regime is reachable at
-# these priors, and the frozen pre-registration live in
-# research/covid-phase0/gate_a2.py, beside the code that runs the arm.
-#
-# Fit the REPORTED WEEKLY ADMISSIONS, never the census H(t). The weekly
-# count is the change in H_Cum across the reporting week, which is the
-# integral of the ascertained flux (rho*mult*gamma*I) over that week and
-# not that flux sampled at one instant.
+# FluBNF SIHRS -- COVID-19 second-harmonic variant, gate A round two arm A2.
+# Fitted (8): the six of SIHRS_pop_covid.bngl plus eps2 and phi2, the
+# semi-annual harmonic restored to beta(t). That file is the unchanged control
+# arm; the only differences here are the eps2/phi2 lines, the beta() line and
+# this header. Definition and pre-registration: research/covid-phase0/gate_a2.py.
 # =====================================================================
 begin parameters
 
 ### -- transmission: scale-free reproduction number + seasonal forcing -- ###
 Reff    Reff__FREE     # BASE reproduction number, harmonic-neutral, at the
-                       # initial susceptible fraction s0. NOT the season-start
-                       # value: the EFFECTIVE reproduction number in week t is
-                       # Reff*exp(eps1*cos(2*pi*(t-phi1)/52)
-                       #          + eps2*cos(4*pi*(t-phi2)/52)),
-                       # which equals Reff only where that exponent vanishes, and
-                       # its ceiling over the year is Reff*exp(eps1+eps2)
+                       # initial susceptible fraction s0; NOT the season-start
+                       # value and NOT the realised one. With both harmonics the
+                       # forced ceiling is Reff*exp(eps1+eps2). Never fit R0
 eps1    eps1__FREE     # annual-harmonic amplitude
-phi1    phi1__FREE     # annual-harmonic phase (week of peak transmissibility)
+phi1    phi1__FREE     # annual-harmonic phase, the week of peak TRANSMISSIBILITY
+                       # and not of the observed peak: carry no peak-week prior
 eps2    eps2__FREE     # semi-annual amplitude; the uniform(0, 0.4) bound is
-                       # STIFFNESS-CRITICAL. beta0 = Reff*gamma/s0, so
-                       # beta_max = Reff*gamma/s0*exp(eps1+eps2) and the 1/s0
-                       # must be carried: at this arm's corner with s0 = 0.85
-                       # that is 2.5 * 1.0234 / 0.85 * exp(1.4) = 12.2/wk, and
-                       # at the COVID profile's lowest s0 of 0.50 it is 20.8/wk.
-                       # Both stay well under the ~77/wk corner that once broke
-                       # CVODE, which is itself the same formula evaluated at
-                       # flu's (Reff 3.0, gamma 2.1875, s0 0.85, eps1+eps2 2.3).
-                       # Uniform rather than loguniform because the lower bound
-                       # is exactly 0
+                       # STIFFNESS-CRITICAL. beta_max = beta0*exp(eps1+eps2)
+                       # reaches 20.8/wk at the COVID profile's lowest s0 of 0.50,
+                       # well under the ~77/wk that once broke CVODE. Uniform,
+                       # not loguniform, because the floor is exactly 0
 phi2    phi2__FREE     # semi-annual phase, identified only mod 26
 
 ### -- progression / removal -- ###
-gamma   {{GAMMA}}      # FIXED: 7/6.84 d INTRINSIC generation time, Omicron,
-                       # Manica 2022 doi:10.1016/j.lanepe.2022.100446. Arm A3
-                       # substitutes the realized-household value here; the
-                       # token makes that a materialization choice, not an edit
+gamma   {{GAMMA}}      # FIXED: 7/6.84 d INTRINSIC generation time, never the
+                       # 2.4-3.6 d realized or serial one (flubnf/profiles.py)
 rho     {{RHO}}        # FIXED: true IHR branching fraction I->H; rules only,
                        # never the observable (value: flubnf/profiles.py)
-mult    mult__FREE     # ascertainment; admissions identify only the PRODUCT
-                       # rho*mult, since the observation depends on the two
-                       # only through it. rho is held at its sourced value
-                       # and mult is fitted, so the FIT determines the
-                       # product; it is never pinned in this file
+mult    mult__FREE     # ascertainment; only the PRODUCT rho*mult is identified,
+                       # and rho is fixed, so the FIT sets it. Never pinned here
 gammaH  {{GAMMAH}}     # FIXED: discharge; moves the census only, unidentifiable here
-omega   omega__FREE    # FITTED: waning R->S per week, loguniform
-                       # [0.01278, 0.12780]/wk = 1.8-18 months protection;
-                       # sources in SIHRS_pop_covid.bngl and flubnf/profiles.py
+omega   omega__FREE    # FITTED, not fixed; loguniform prior, flubnf/profiles.py
 
 ### -- observation noise -- ###
 r       r__FREE        # negative-binomial dispersion (AMCMC)
@@ -82,9 +57,8 @@ counter()   # clock: observable t = weeks
 end molecule types
 
 begin seed species
-# Absolute counts. R(0) carries the non-susceptible, non-infected remainder,
-# so S+I+H+R = N exactly and pre-existing immunity is representable (s0 < 1),
-# which the S(0)=1 normalization structurally cannot express.
+# Absolute counts. R(0) takes the remainder, so S+I+H+R = N exactly and
+# pre-existing immunity (s0 < 1) is representable.
 S() N*s0
 I() N*i0
 H() 0
@@ -107,29 +81,23 @@ begin functions
 ### -- seasonal transmission rate, TWO harmonics (exp() keeps beta > 0) -- ###
 beta() = beta0*exp( eps1*cos(2*pi*(t-phi1)/52) + eps2*cos(4*pi*(t-phi2)/52) )
 
-### -- ascertained admission flux into H, an INSTANTANEOUS rate -- ###
-# Despite the name this is people PER WEEK at an instant, not a weekly
-# total; the weekly count is the change in H_Cum across the reporting
-# week, which is this flux integrated over that week.
-# mult is observation-only: ascertainment must never enter the reaction rules.
+### -- ascertained admission flux into H -- ###
+# An INSTANTANEOUS rate, not a weekly count: the shipped filter uses the weekly
+# increment of H_Cum instead, and this survives as the name binding the .exp
+# column to a model output. mult is observation-only: never put it in a rule.
 H_weekly() = rho*mult*gamma*I
 
 end functions
 
 begin reaction rules
-# clock
 0 -> counter() 1
-# infection, FREQUENCY-DEPENDENT: rate constant beta()/N -> flux beta*S*I/N
+# FREQUENCY-DEPENDENT infection: rate constant beta()/N -> flux beta*S*I/N
 S() + I() -> I() + I()   beta()/N
-# hospitalization branch: fraction rho of the gamma removal
 I() -> H()   rho*gamma
-# direct-recovery branch
 I() -> R()   (1-rho)*gamma
-# discharge
 H() -> R()   gammaH
-# waning immunity (the second S in SIHRS)
 R() -> S()   omega
-# cumulative-admissions accumulator (counts I->H without consuming I)
+# accumulator: mints a tally without consuming I, so S+I+H+R = N still holds
 I() -> I() + Hadm()   rho*gamma
 end reaction rules
 

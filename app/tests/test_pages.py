@@ -242,9 +242,10 @@ def test_home_outlook_caption_states_coverage_when_a_run_exists():
 
 def test_model_pages_carry_their_defining_equations():
     wanted = {
-        "pf": ("NegBin(", "filter bends each week", "Fitted per state"),
+        "pf": ("NegBin(", "filter bends each week", "Fitted per state",
+               "weekly increment of"),
         "pf2s": ("Binomial(", "one harmonic form shared by both circuits",
-                 "second likelihood channel"),
+                 "second likelihood channel", "first likelihood channel"),
         "analogue": ("calendar-matched historical growth",),
         "ensemble": ("equal-weight mean of the",),
     }
@@ -253,6 +254,21 @@ def test_model_pages_carry_their_defining_equations():
         assert 'class="eqpanel"' in t, name
         for needle in needles:
             assert needle in t, (name, needle)
+
+
+def test_published_likelihood_is_the_integrated_form_not_the_instant_flux():
+    """The shipped filter runs pf_observable_mode = integrated and forms
+    mu = mult * (H_Cum[end] - H_Cum[start]).  Publishing the instantaneous
+    rho*mult*gamma*I(t) instead states a rate in people per week as the mean
+    of a negative binomial over counts, and is not what the code does."""
+    src = (Path(__file__).resolve().parents[1] / "ui" / "templates"
+           / "diagrams.html").read_text(encoding="utf-8")
+    # the instantaneous product must not sit inside a NegBin anywhere
+    assert "&#961;</i>&#183;<i>mult</i>" not in src
+    for page in ("/model/pf", "/model/pf2s", "/methods"):
+        t = client.get(page).text
+        assert "&#916;<i>H</i><sub>Cum</sub>" in t, page   # the weekly increment
+        assert "<i>mult</i>&#8202;&#183;&#8202;&#916;" in t, page
 
 
 def test_methods_carries_the_pf_and_two_strain_equations():
@@ -321,7 +337,10 @@ def test_analogue_legend_wraps_inside_the_viewbox():
 
 def test_two_strain_caption_is_two_drawn_lines():
     t = client.get("/model/pf2s").text
-    assert "Observed admissions sum the A and B fluxes;</text>" in t
+    # "ascertained": the observed total is not the raw sum of the two fluxes
+    assert ("Observed admissions are the ascertained sum of the A and B "
+            "fluxes;</text>") in t
+    assert "NREVSS typed positives set the initial mix" in t
 
 
 def test_diagram_data_shapes():

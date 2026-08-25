@@ -1,95 +1,43 @@
 begin model
 # =====================================================================
-# FluBNF SIHRS -- single-strain production template (5 fitted parameters).
-# Compartments are absolute people; the state population N enters as
-# known data; infection is frequency-dependent (flux beta*S*I/N), so beta
-# is on the same scale as the normalized model and priors transfer
-# unchanged.
+# FluBNF SIHRS -- single-strain production template. Fitted (5): Reff,
+# eps1, phi1, mult, r. Compartments are absolute people, N is known data,
+# and TIME IS IN WEEKS: every rate below is per week. Design history,
+# sources and the measurements behind each choice: docs/MODEL-PROVENANCE.md.
 #
-# A TEMPLATE, NOT A RUNNABLE MODEL. Two kinds of placeholder are left open
-# here, and different programs fill them at different times.
+# A TEMPLATE, NOT A RUNNABLE MODEL. Two kinds of placeholder (the first
+# is written here without its braces so this comment survives):
+#   TOKEN    per-state known DATA in double braces, substituted before the
+#            fit by flubnf/sihrs_fit.py::materialize_model. Substitution
+#            is STRICT: an unresolved token raises instead of reaching the
+#            engine. A token carries data and must never be fitted.
+#   *__FREE  a FITTED parameter, proposed by PyBNF against a prior in
+#            flubnf/sihrs_fit.py. Never pin one to a number here.
 #
-# 1. Names in double braces are TOKENS: per-state known data, substituted
-#    once before the fit by flubnf/sihrs_fit.py::materialize_model, which
-#    reads this file, replaces every token with a literal number for one
-#    state and one as-of date, and writes the m.bngl the engine actually
-#    consumes. Tokens filled per state at materialization:
-#      {{POP}} {{S0FRAC}} {{I0FRAC}} {{GAMMA}} {{RHO}} {{GAMMAH}} {{OMEGA}}
-#    They exist because those values are DATA, not parameters: population
-#    and the fixed rates differ by jurisdiction and by season, must never
-#    be fitted, and one template has to serve 52 jurisdictions and every
-#    as-of week of the season. Substitution is strict, so a token left
-#    unresolved raises instead of reaching the engine and a misspelled
-#    name cannot become a silently wrong model. The list above is written
-#    with its braces, so in a materialized copy it shows the numbers that
-#    were substituted for this run.
+# rho, gammaH and omega are UNSOURCED working assumptions set in
+# flubnf/sihrs_fit.py; every fixed value, sourced or not, is recorded in
+# flubnf/sihrs_priors.py::provenance_table.
 #
-# 2. The __FREE suffix marks the FITTED parameters, left open for the
-#    sampler rather than for materialization. PyBNF owns that suffix:
-#    every parameter line whose value carries it pairs with a prior in
-#    flubnf/sihrs_fit.py and is proposed afresh at each iteration of the
-#    fit. Nothing in this file may pin one to a number.
+# FIT REPORTED WEEKLY ADMISSIONS, NEVER THE CENSUS H(t). The predicted
+# weekly count is the increment of H_Cum across the reporting week; see
+# H_weekly() below for the trap in the alternative.
 #
-# Fitted (5): Reff, eps1, phi1, mult, r. Of the fixed values, N, gamma, s0
-# and i0 carry a source in flubnf/sihrs_priors.py (a DOI for literature, a
-# file path plus derivation for data). rho, gammaH and omega do NOT. They
-# are working assumptions set in flubnf/sihrs_fit.py (RHO_IHR,
-# GAMMAH_PER_WEEK, OMEGA_PER_WEEK) with no citation behind the number, and
-# flubnf/sihrs_priors.py::provenance_table records them as such. What
-# limits the damage is that admissions identify only the product rho*mult
-# and mult is fitted, so rho's value moves the fitted mult rather than the
-# fit; gammaH moves the census only; omega is weakly identified from under
-# three seasons either way.
-#
-# WHAT IS FITTED TO WHAT. The target is REPORTED WEEKLY ADMISSIONS, never
-# the census H(t). Under the shipped particle filter the predicted weekly
-# count is the change in the H_Cum accumulator across the reporting week,
-# mult*(H_Cum(t_k) - H_Cum(t_k-1)), which is the exact integral of the
-# ascertained admission flux rho*mult*gamma*I over that week. H_weekly()
-# below is that same flux at an INSTANT, in people per week, and the two
-# are not interchangeable. At local weekly log-growth lam the ratio of the
-# instant to the integral is exactly lam/(1 - exp(-lam)): +10 percent at
-# lam = 0.2, +21 percent at 0.4, +45 percent at 0.8. On the 2024-25 state
-# admissions this model is fitted to (53 jurisdictions, consecutive weeks
-# with both endpoints at or above 20 admissions) the median jurisdiction's
-# fastest week is lam = 0.81, a gap of +46 percent, and the fastest week
-# anywhere is lam = 1.27, a gap of +77 percent. It runs the other way on a
-# decline, -28 percent at the median jurisdiction's steepest week.
-#
-# THE SIMULATION WINDOW AT THE FOOT OF THIS FILE. The actions block asks
-# for 48 weeks at 48 reporting points, and no flu fitting path overrides
-# it. The shipped particle filter never reads that block at all: it
-# integrates one reporting week at a time and sets its own window, so the
-# 48 is inert there and imposes no season-length ceiling. The
-# adaptive-MCMC path does use it as its simulation window, where 48 IS a
-# ceiling: on the sealed full seasons the last as-of sits at week offset
-# 45, and four forecast weeks past it reach week 49. The step count sets
-# only the reporting grid, not the solver step; CVODE is adaptive, so 48
-# points do not coarsen the integration.
+# The 48-week actions block at the foot is inert for the particle filter,
+# which sets its own one-week windows, and is a ceiling for adaptive MCMC,
+# whose last as-of plus four horizons reaches week 49. n_steps sets the
+# reporting grid only, not the solver step; CVODE is adaptive.
 #
 # SINGLE-SEASON FITS ONLY: multi-season runs need the reseeding term and
-# must use SIHRS_pop.bngl. This file drops three parameters that template
-# carries, each for a measured reason: the semi-annual harmonic does not
-# produce a second epidemic peak, and the importation term pins at a bound
-# in about three quarters of fits. Fewer fitted dimensions means less
-# posterior spread, which is where the measured defect lies: replacing
-# this model's predictive spread with a calibrated one gains 0.070 relWIS,
-# replacing its median gains 0.003.
+# must use SIHRS_pop.bngl.
 # =====================================================================
 begin parameters
 
 ### -- transmission: scale-free reproduction number + seasonal forcing -- ###
-Reff    Reff__FREE     # BASE reproduction number: the harmonic-neutral value at
-                       # the initial susceptible fraction s0. NOT the
-                       # season-start value. The EFFECTIVE reproduction number
-                       # in week t is Reff*exp(eps1*cos(2*pi*(t-phi1)/52)),
-                       # which equals Reff only where the cosine vanishes
-                       # (phi1 = 13 or 39). Season start is that expression at
-                       # t = 0, i.e. Reff*exp(eps1*cos(2*pi*phi1/52)); the
-                       # forcing peak is t = phi1, where it is Reff*exp(eps1).
-                       # Fit Reff, never R0: R0 = Reff/s0 is recovered post hoc
-                       # and is likewise a BASE value, not a season-start or
-                       # peak one
+Reff    Reff__FREE     # BASE reproduction number: harmonic-neutral, at the
+                       # initial susceptible fraction s0. NOT the season-start,
+                       # forced or realised value, which all differ from it and
+                       # from each other. Fit Reff, never R0 (= Reff/s0, itself
+                       # a BASE value, recovered post hoc)
 eps1    eps1__FREE     # annual-harmonic amplitude
 phi1    phi1__FREE     # annual-harmonic phase (week of peak transmissibility)
 
@@ -97,14 +45,10 @@ phi1    phi1__FREE     # annual-harmonic phase (week of peak transmissibility)
 gamma   {{GAMMA}}      # FIXED: 7/3.2 d generation time, Chan 2024 doi:10.1101/2024.08.17.24312064
 rho     {{RHO}}        # FIXED: true IHR branching fraction I->H; rules only,
                        # never the observable
-mult    mult__FREE     # ascertainment; admissions identify only the PRODUCT
-                       # rho*mult, since the observation depends on the two
-                       # only through it. Here rho is held at its sourced
-                       # value and mult is fitted, so the FIT determines the
-                       # product; it is never pinned in this file. The
-                       # separate closed-form product in
-                       # flubnf/sihrs_priors.py::pin_rho_mult seeds i0 only
-                       # and is not imposed on the fit
+mult    mult__FREE     # ascertainment, OBSERVATION-ONLY: it must never appear
+                       # in a reaction rule. Admissions identify only the
+                       # product rho*mult; rho is held fixed, so the FIT
+                       # determines the product. Never pinned in this file
 gammaH  {{GAMMAH}}     # FIXED: discharge; moves the census only, unidentifiable here
 omega   {{OMEGA}}      # FIXED: waning R->S, weakly identified from <3 seasons
 
@@ -132,9 +76,8 @@ counter()   # clock: observable t = weeks
 end molecule types
 
 begin seed species
-# Absolute counts. R(0) carries the non-susceptible, non-infected remainder,
-# so S+I+H+R = N exactly and pre-existing immunity is representable (s0 < 1),
-# which the S(0)=1 normalization structurally cannot express.
+# Absolute counts. R(0) takes the remainder, so S+I+H+R = N exactly and
+# pre-existing immunity (s0 < 1) is representable.
 S() N*s0
 I() N*i0
 H() 0
@@ -158,30 +101,22 @@ begin functions
 beta() = beta0*exp( eps1*cos(2*pi*(t-phi1)/52) )
 
 ### -- ascertained admission flux into H, an INSTANTANEOUS rate -- ###
-# mult is observation-only: ascertainment must never enter the reaction rules.
-# Despite the name this is people PER WEEK at an instant, not a weekly total.
-# The shipped particle filter does not use it as a predicted mean; it takes
-# the change in H_Cum across the reporting week, which is this flux integrated
-# over that week. The adaptive-MCMC path does compare this instantaneous value
-# against a weekly total, which is a known mismatch of that path.
+# People per week at an instant, NOT a weekly total: the shipped particle
+# filter uses the weekly increment of H_Cum instead. This function survives
+# as the name binding the .exp count column to a model output.
 H_weekly() = rho*mult*gamma*I
 
 end functions
 
 begin reaction rules
-# clock
 0 -> counter() 1
 # infection, FREQUENCY-DEPENDENT: rate constant beta()/N -> flux beta*S*I/N
 S() + I() -> I() + I()   beta()/N
-# hospitalization branch: fraction rho of the gamma removal
 I() -> H()   rho*gamma
-# direct-recovery branch
 I() -> R()   (1-rho)*gamma
-# discharge
 H() -> R()   gammaH
-# waning immunity (the second S in SIHRS)
 R() -> S()   omega
-# cumulative-admissions accumulator (counts I->H without consuming I)
+# accumulator: tallies the I->H flux without consuming I, so S+I+H+R = N
 I() -> I() + Hadm()   rho*gamma
 end reaction rules
 
