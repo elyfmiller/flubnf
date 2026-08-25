@@ -77,8 +77,13 @@ class TestModelUnchangedOtherwise:
         assert "beta0*exp(" in MIN
 
     def test_same_species_and_seed_values(self):
+        """Code lines only. Comment wording is documentation, not dynamics:
+        the two templates are annotated for different readers and `min` was
+        trimmed in 2026-08 without touching a single model line."""
         def block(txt, name):
-            return txt.split(f"begin {name}", 1)[1].split(f"end {name}")[0].strip()
+            body = txt.split(f"begin {name}", 1)[1].split(f"end {name}")[0]
+            return [l.strip() for l in body.splitlines()
+                    if l.strip() and not l.strip().startswith("#")]
         assert block(FULL, "molecule types") == block(MIN, "molecule types")
         assert block(FULL, "seed species") == block(MIN, "seed species")
 

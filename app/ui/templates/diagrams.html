@@ -19,10 +19,13 @@
 {% macro sihrs(uid='s') -%}
 <svg viewBox="0 0 840 348" role="img" aria-label="SIHRS compartment diagram"
      style="width:100%;max-width:800px;display:block;margin:.6rem auto;color:inherit">
- <desc>Susceptible to Infected via seasonal transmission; Infected splits to
- Hospitalized (the fitted admissions stream) and directly to Recovered;
+ <desc>Susceptible to Infected via seasonal transmission; Infected splits
+ along an admission arrow to Hospitalized and directly to Recovered;
  Hospitalized discharges to Recovered; waning immunity returns Recovered to
- Susceptible.</desc>
+ Susceptible. The quantity fitted to reported data is the flow along the
+ admission arrow, summed across the reporting week and scaled by the fitted
+ ascertainment. The Hospitalized box is a census of people currently in
+ hospital and is never fitted.</desc>
  <defs>
   <marker id="arr-{{ uid }}" viewBox="0 0 10 10" refX="9" refY="5"
           markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -71,7 +74,8 @@
   <text x="537" y="100" class="svgt-sm">recovery without admission (most infections)</text>
   <text x="199" y="204" class="svgt-sm">seasonal transmission</text>
   <text x="424" y="204" class="svgt-sm">hospital admission</text>
-  <text x="424" y="220" class="svgt-sm">(the fitted data stream)</text>
+  <text x="424" y="220" class="svgt-sm">the week's total of this flow is fitted</text>
+  <text x="424" y="236" class="svgt-sm">H is a census, never fitted</text>
   <text x="649" y="204" class="svgt-sm">discharge</text>
   <text x="424" y="318" class="svgt-md">&#969;</text>
   <text x="424" y="336" class="svgt-sm">waning immunity: recovered individuals become susceptible again</text>
@@ -137,7 +141,8 @@
  B, each with its own seasonal transmission and peak timing. Each circuit has
  its own susceptible, hospitalized, and recovered pools spanning the whole
  population: infection with one strain confers no protection against the
- other. Observed admissions are the sum of the two admission fluxes.</desc>
+ other. Observed admissions are the ascertained sum of the two admission
+ fluxes, accumulated across the reporting week.</desc>
  <defs>
   <marker id="arr-{{ uid }}" viewBox="0 0 10 10" refX="9" refY="5"
           markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -149,7 +154,7 @@
  {# the closing caption holds two drawn lines: one long line overran the
     viewBox once the A+ text step multiplied the rem classes #}
  <g text-anchor="middle" class="svgt-sm" fill="currentColor">
-  <text x="420" y="412">Observed admissions sum the A and B fluxes;</text>
+  <text x="420" y="412">Observed admissions are the ascertained sum of the A and B fluxes;</text>
   <text x="420" y="430">NREVSS typed positives set the initial mix and fit the A/B share.</text>
  </g>
 </svg>
@@ -435,15 +440,19 @@
   <span class="eqnote">the fitted seasonal forcing: this is the curve the
   filter bends each week</span></p>
  {{ harmonic() }}
- <p><span class="math">admissions &#8764;
-  NegBin(&#8239;<i>&#961;</i>&#183;<i>mult</i>&#183;<i>&#947;</i>&#183;<i>I</i>(<i>t</i>),
+ <p><span class="math">admissions<sub>w</sub> &#8764;
+  NegBin(&#8239;<i>mult</i>&#8202;&#183;&#8202;&#916;<i>H</i><sub>Cum</sub>(<i>w</i>),
   <i>r</i>&#8239;)</span>
-  <span class="eqnote">the observation mean: the ascertained admission
-  flux</span></p>
+  <span class="eqnote">the observation mean: ascertained admissions
+  accumulated across the reporting week, the weekly increment of
+  <i>H</i><sub>Cum</sub></span></p>
  <p class="eqnote">Fitted per state: <i>R</i><sub>eff</sub>,
  <i>&#949;</i><sub>1</sub>, <i>&#966;</i><sub>1</sub>, <i>mult</i>, <i>r</i>.
  Fixed from sourced values: <i>&#947;</i>, <i>&#961;</i>,
- <i>&#947;</i><sub>H</sub>, <i>&#969;</i>.</p>
+ <i>&#947;</i><sub>H</sub>, <i>&#969;</i>. <i>&#961;</i> does not disappear
+ from the observation: it enters through the accumulator rule that fills
+ <i>H</i><sub>Cum</sub>, so it sits inside the weekly increment rather than
+ beside it.</p>
 </div>
 {%- endmacro %}
 
@@ -457,10 +466,18 @@
   <span class="eqnote">one harmonic form shared by both circuits; each strain
   fits its own <i>R</i><sub>eff</sub> and phase</span></p>
  {{ harmonic(two=true) }}
+ <p><span class="math">admissions<sub>w</sub> &#8764;
+  NegBin(&#8239;<i>mult</i>&#8202;&#183;&#8202;&#916;<i>H</i><sub>Cum</sub>(<i>w</i>),
+  <i>r</i>&#8239;), <i>H</i><sub>Cum</sub> = <i>Hadm</i><sub>A</sub> +
+  <i>Hadm</i><sub>B</sub></span>
+  <span class="eqnote">the first likelihood channel: ascertained admissions
+  accumulated across the reporting week, from the one accumulator that sums
+  both circuits</span></p>
  <p><span class="math">typed positives: <i>k</i><sub>A</sub> &#8764;
   Binomial(&#8239;<i>n</i>, share&#8202;A&#8202;/&#8202;(A&#8202;+&#8202;B)&#8239;)</span>
-  <span class="eqnote">the second likelihood channel; observed admissions sum
-  the two circuits</span></p>
+  <span class="eqnote">the second likelihood channel: the admissions channel
+  sees only the ascertained total, so typed specimens fit the A/B
+  share</span></p>
 </div>
 {%- endmacro %}
 

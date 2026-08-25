@@ -1,41 +1,36 @@
 begin model
 # =====================================================================
-# FluBNF SIHRS -- TWO-STRAIN (A/B) MIN, the PF production variant.
-# Two independent SIHRS circuits over the same population N, in the same
-# trim as SIHRS_pop_min.bngl: no reseeding term (single-season fits; the
-# filter re-conditions weekly), no semi-annual harmonic (the B circuit
-# carries two-wave structure mechanistically -- the hypothesis under
-# test). Motivation: the February 2024 plateau, the phase the single-strain
-# member fits worst, and the NREVSS A/B crossover that coincides with it.
-# The annotated draft of the same circuit, with the design written out at
-# length, is SIHRS_pop_2strain.bngl.
+# FluBNF SIHRS -- TWO-STRAIN (A/B) MIN, the PF production variant. Two
+# independent SIHRS circuits over the same population N, in the same trim
+# as SIHRS_pop_min.bngl: no reseeding term, no semi-annual harmonic (the
+# B circuit carries two-wave structure mechanistically). Motivation,
+# structure and channel design: docs/MODEL-PROVENANCE.md section 6; the
+# annotated draft of the same circuit is SIHRS_pop_2strain.bngl.
 #
 # Fitted (7): ReffA, ReffB, eps1, phi1A, phi1B, mult, r
 # Tokens:     {{POP}} {{S0FRAC}} {{I0FRAC}} {{A0SHARE}} {{GAMMA}} {{RHO}}
-#             {{GAMMAH}} {{OMEGA}}
-# {{A0SHARE}} = strain-A share of initial infections, KNOWN DATA from the
-# season's first as-of NREVSS reading -- never fitted.
+#             {{GAMMAH}} {{OMEGA}} -- per-state DATA, substituted before
+#             the fit and never fitted. {{A0SHARE}} is the strain-A share
+#             of initial infections, read from the season's first NREVSS.
 #
-# Channels: H_weekly (NHSN admissions, NB) + A_share (NREVSS typed
-# positives ratio, binomial via the engine's `_bin`/`_n` exp columns).
-# mult cancels in A_share -- the channels identify different things.
+# Channels: NHSN admissions (NB) on the WEEKLY INCREMENT of the combined
+# H_Cum accumulator, and A_share (NREVSS typed positives, binomial). mult
+# cancels in A_share, so the two channels identify different things.
 # =====================================================================
 begin parameters
 
-ReffA   ReffA__FREE    # strain-A BASE reproduction number, harmonic-neutral, at
-                       # the initial susceptible fraction s0. NOT the season-start
-                       # value: strain A's effective number in week t is
-                       # ReffA*exp(eps1*cos(2*pi*(t-phi1A)/52)), equal to ReffA
-                       # only where the cosine vanishes (phi1A = 13 or 39)
-ReffB   ReffB__FREE    # strain-B, same convention with phi1B; typically smaller,
-                       # LATER phase
+ReffA   ReffA__FREE    # strain-A BASE reproduction number: harmonic-neutral,
+                       # at the initial susceptible fraction s0. NOT the
+                       # season-start, forced or realised value
+ReffB   ReffB__FREE    # strain-B, same convention; typically smaller, LATER phase
 eps1    eps1__FREE     # seasonal amplitude, SHARED across strains
 phi1A   phi1A__FREE    # strain-A week of peak transmissibility (circular)
-phi1B   phi1B__FREE    # strain-B phase — the spring-wave mechanism
+phi1B   phi1B__FREE    # strain-B phase: the spring-wave mechanism
 
 gamma   {{GAMMA}}      # FIXED (Chan 2024), shared A/B
 rho     {{RHO}}        # FIXED IHR, shared for the draft (refinement: rhoB=c*rho)
-mult    mult__FREE     # ascertainment, shared: one reporting system
+mult    mult__FREE     # ascertainment, shared: one reporting system.
+                       # OBSERVATION-ONLY, never in a reaction rule
 gammaH  {{GAMMAH}}     # FIXED discharge (census only)
 omega   {{OMEGA}}      # FIXED waning, per circuit
 
@@ -67,8 +62,8 @@ counter()
 end molecule types
 
 begin seed species
-# Each circuit spans the whole population N (independent co-circulation:
-# infection with one type confers no protection against the other).
+# Each circuit spans the whole population N: infection with one type
+# confers no protection against the other.
 Sa() N*s0
 Ia() N*i0*a0
 Ha() 0
@@ -98,7 +93,10 @@ begin functions
 betaA() = beta0A*exp( eps1*cos(2*pi*(t-phi1A)/52) )
 betaB() = beta0B*exp( eps1*cos(2*pi*(t-phi1B)/52) )
 
-### channel 1: combined reported weekly admissions (NHSN, NB) ###
+### channel 1: combined ascertained admission flux, an INSTANTANEOUS rate ###
+# People per week at an instant, NOT a weekly total: the NHSN channel's mean
+# is the weekly increment of H_Cum. This function survives as the name
+# binding the .exp count column to a model output.
 H_weekly() = rho*mult*gamma*(Ia+Ib)
 
 ### channel 2: strain-A share of typed positives (NREVSS, binomial) ###

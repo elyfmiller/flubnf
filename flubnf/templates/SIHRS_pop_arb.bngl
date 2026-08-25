@@ -1,64 +1,35 @@
 begin model
 # =====================================================================
-# FluBNF SIHRS-ARB -- ADAPTIVE TRANSMISSION (6 fitted parameters).
+# FluBNF SIHRS-ARB -- ADAPTIVE TRANSMISSION (6 fitted parameters). Research
+# variant, killed at its decision gate; see docs/RELEASE-1.0.md. The mechanism
+# here is the production single-strain mechanism (SIHRS_pop_min.bngl)
+# unchanged, and that template documents the shared invariants.
 #
-# The mechanism below is BYTE-FOR-BYTE the production single-strain
-# mechanism (SIHRS_pop_min.bngl): same compartments, same rules, same
-# frequency-dependent infection, same observable, same fixed values. The
-# candidate lives entirely in HOW Reff MOVES BETWEEN WEEKS inside the
-# sequential filter, so this template deliberately adds no reaction, no
-# species and no function. It exists to declare the one new fitted
-# quantity and to carry the design record.
+# DISTINGUISHING FEATURE: how Reff MOVES BETWEEN WEEKS inside the sequential
+# filter. This file therefore adds no reaction, no species and no function; it
+# exists to declare the one new fitted quantity.
 #
 #   log Reff_t  =  log Reff_{t-1} + v_t
 #   v_t         =  arphi * v_{t-1} + sbeta * eta_t ,  eta_t ~ N(0, 1)
 #   beta(t)     =  Reff_t * gamma / s0 * exp( eps1*cos(2*pi*(t-phi1)/52) )
 #
-# and across the forecast horizon Reff is FROZEN at its last filtered
-# value: no further innovations, no jitter (pybnf/pf.py::_write_outputs).
+# Across the forecast horizon Reff is FROZEN at its last filtered value: no
+# further innovations, no jitter (pybnf/pf.py::_write_outputs). Unlike the
+# RW-beta variant (SIHRS_pop_rwb.bngl) the seasonal harmonic is kept.
 #
-# HOW THIS DIFFERS FROM THE KILLED RW-BETA MEMBER (SIHRS_pop_rwb.bngl,
-# pre-registered FAIL 2026-08-19, 3-member 0.664 against 2-member 0.620).
-# RW-beta moved Reff by the filter's Liu-West jitter with the knob hand-set
-# at 0.5 and no seasonal term at all. Four differences, each measurable:
-#   1. INCREMENTS, not levels. RW-beta's Liu-West step is a mean-reverting
-#      AR(1) on the LEVEL of Reff; this is an AR(1) on the DIFFERENCES, so
-#      a sustained change in transmission is cheap and an isolated blip is
-#      not. arphi = 0 recovers the level walk and is the control arm.
-#   2. THE INNOVATION SCALE IS FITTED. `sbeta` below is a per-particle
-#      parameter the filter weights like any other, so the process can go
-#      quiet in stable weeks. RW-beta paid 0.5 * ensemble-sd every week
-#      whatever the data looked like, which is exactly the interval-width
-#      cost that killed it.
-#   3. FROZEN FORWARD. Transmission stops moving at the forecast origin,
-#      which is what the field's flexible-beta COVID models do (MechBayes
-#      freezes log-beta at its last ten days; Pyrenew-HE freezes its
-#      DifferencedAR1 forward).
-#   4. THE SEASONAL HARMONIC IS KEPT. RW-beta set eps1 = 0 and was
-#      deliberately calendar-free. Here eps1/phi1 remain fitted and ride on
-#      top of the adaptive level, so the calendar and the adaptive process
-#      can coexist or the likelihood can decline one of them.
-#
-# Tokens filled per state at materialization:
+# Tokens filled per state at materialization (strict: an unresolved token
+# raises rather than reaching the engine):
 #   {{POP}} {{S0FRAC}} {{I0FRAC}} {{GAMMA}} {{RHO}} {{GAMMAH}} {{OMEGA}}
-# Fitted (6): Reff, eps1, phi1, mult, r, sbeta. Of the fixed values, N,
-# gamma, s0 and i0 carry a source in flubnf/sihrs_priors.py (DOI or data
-# derivation). rho, gammaH and omega do NOT: they are working assumptions
-# set in flubnf/sihrs_fit.py with no citation, and provenance_table()
-# records them as such. Single-season fits only.
+# Fitted (6): Reff, eps1, phi1, mult, r, sbeta. Single-season fits only.
 # =====================================================================
 begin parameters
 
 ### -- transmission: scale-free reproduction number + seasonal forcing -- ###
-Reff    Reff__FREE     # BASE reproduction number: the harmonic-neutral value at
-                       # the initial susceptible fraction s0, NOT the season-start
-                       # effective one. The EFFECTIVE reproduction number in week t
-                       # is Reff_t*exp(eps1*cos(2*pi*(t-phi1)/52)), which equals
-                       # Reff_t only where the cosine vanishes (phi1 = 13 or 39).
-                       # Under this member Reff is also a STATE, not a constant:
-                       # the filter advances it by the AR(1)-on-increments process
-                       # above, and its fitted value here is the season-start
-                       # level of that base quantity.
+Reff    Reff__FREE     # BASE reproduction number: harmonic-neutral, at the
+                       # initial susceptible fraction s0, NOT the season-start
+                       # or realised one. Here it is also a STATE, not a
+                       # constant: the filter advances it by the process above,
+                       # and the fitted value is that state's starting level.
 eps1    eps1__FREE     # annual-harmonic amplitude (kept, unlike RW-beta)
 phi1    phi1__FREE     # annual-harmonic phase (week of peak transmissibility)
 
@@ -68,7 +39,7 @@ sbeta   sbeta__FREE    # weekly sd of the log-transmission innovation. Read by
                        # governs the between-week parameter process, not the
                        # within-week ODE, so it correctly appears in no rate
                        # law. Declared here so the fitted dimension is visible
-                       # in the model record rather than only in the conf.
+                       # in the model, not only in the conf.
 
 ### -- progression / removal -- ###
 gamma   {{GAMMA}}      # FIXED: 7/3.2 d generation time, Chan 2024 doi:10.1101/2024.08.17.24312064
@@ -93,10 +64,10 @@ i0      {{I0FRAC}}     # initial infected fraction
 end parameters
 
 begin molecule types
-S()         # susceptible people
-I()         # infectious people
-H()         # hospitalized census / occupancy
-R()         # recovered / immune people
+S()
+I()
+H()
+R()
 Hadm()      # cumulative admissions accumulator (never decays)
 counter()   # clock: observable t = weeks
 end molecule types
@@ -125,25 +96,20 @@ begin functions
 beta() = beta0*exp( eps1*cos(2*pi*(t-phi1)/52) )
 
 ### -- ascertained admission flux into H, an INSTANTANEOUS rate -- ###
-# Despite the name this is people PER WEEK at an instant, not a weekly
-# total; the weekly count is the change in H_Cum across the reporting
-# week, which is this flux integrated over that week.
+# mult is observation-only: ascertainment must never enter the reaction rules.
+# Despite the name this is people PER WEEK at an instant, not a weekly total.
+# The name binds this output to the .exp column of the same name.
 H_weekly() = rho*mult*gamma*I
 
 end functions
 
 begin reaction rules
-# clock
 0 -> counter() 1
 # infection, FREQUENCY-DEPENDENT: rate constant beta()/N -> flux beta*S*I/N
 S() + I() -> I() + I()   beta()/N
-# hospitalization branch: fraction rho of the gamma removal
 I() -> H()   rho*gamma
-# direct-recovery branch
 I() -> R()   (1-rho)*gamma
-# discharge
 H() -> R()   gammaH
-# waning immunity (the second S in SIHRS)
 R() -> S()   omega
 # cumulative-admissions accumulator (counts I->H without consuming I)
 I() -> I() + Hadm()   rho*gamma

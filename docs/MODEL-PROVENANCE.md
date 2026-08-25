@@ -64,9 +64,20 @@ which the `S(0)=1` normalization structurally cannot express.
 
 ### 1.4 Fit the flux, never the census
 
-The fit target is the REPORTED admission flux, `rho*mult*gamma*I`, never the
-census `H(t)`. `H` is hospital occupancy; NHSN reports weekly admissions.
-Fitting the census to an admissions target conflates a stock with a flow.
+The fit target is REPORTED ADMISSIONS, never the census `H(t)`. `H` is
+hospital occupancy; NHSN reports weekly admissions. Fitting the census to an
+admissions target conflates a stock with a flow.
+
+What is reported is a weekly COUNT, so the fit target is the INTEGRAL of the
+ascertained admission flux `rho*mult*gamma*I` across the reporting week, never
+a point sample of that flux. The shipped particle filter runs
+`pf_observable_mode = integrated` (the default in `app/core/runs.py`) and
+forms `mu = mult * (H_Cum[week end] - H_Cum[week start])`. The two are not
+interchangeable: at local weekly log-growth `lam` the ratio of the instant to
+the integral is `lam/(1 - exp(-lam))`, which on 2024-25 state admissions is
++46 percent at the median jurisdiction's fastest week and reverses sign in
+decline. That derivation, and the batch-AMCMC path which still carries the
+bias and must not be published, are recorded in `flubnf/sihrs_fit.py`.
 
 `rho*mult` carries biological IHR times reporting ascertainment. `rho` also
 appears in the reaction rules because it is a real branching fraction; `mult`
@@ -94,10 +105,31 @@ value's DOI or derivation next to the code that computes it.
 
 ### Reff (fitted)
 
-EFFECTIVE reproduction number at season start. Fit this, NOT R0: admissions
-identify `Reff` (via the growth rate), and with `S(0) = N*s0` the classic
-`R0 = Reff/s0` is only recoverable post hoc. Fitting R0 with `s0 < 1`
-silently requires `R0 > 1/s0` just to sustain an epidemic.
+BASE reproduction number: the harmonic-neutral value at the initial
+susceptible fraction `s0`. It is NOT the season-start value and NOT the
+realised one, and the name invites both mistakes. Three distinct quantities:
+
+* `Reff` itself, harmonic-neutral, at `S = N*s0`.
+* the SEASONALLY FORCED value at that same initial susceptible fraction,
+  `Reff*exp(eps1*cos(2*pi*(t-phi1)/52))`, which equals `Reff` only where the
+  cosine vanishes (`phi1 = 13` or `39`);
+* the REALISED effective reproduction number in week `t`, which carries
+  susceptible depletion as well,
+  `Reff*exp(eps1*cos(2*pi*(t-phi1)/52)) * S(t)/(N*s0)`.
+
+The last two agree only at `t = 0`, where `S = N*s0`. Recomputed from the
+shipped teaching run `app/state/workroots/smoke1s/Pennsylvania_r0/`
+(`Reff = 1.20`, `eps1 = 0.15`, `phi1 = 22`), the forced expression reads
+1.0507 / 1.2219 / 1.3942 at weeks 0 / 10 / 22 while the realised value from
+the `.gdat` is 1.0507 / 1.1731 / 0.8447. At week 22 the forced form is 65
+percent high. Quote the realised form whenever the quantity is described as
+the reproduction number "at" some week.
+
+Fit `Reff`, NOT R0: admissions identify `Reff` (via the growth rate), and
+with `S(0) = N*s0` the classic `R0 = Reff/s0` is only recoverable post hoc.
+Fitting R0 with `s0 < 1` silently requires `R0 > 1/s0` just to sustain an
+epidemic. `R0` is likewise a BASE value, not a season-start, realised or
+peak one.
 
 ### eps1, phi1 (fitted)
 
@@ -123,9 +155,16 @@ observable. Sources and the NHSN-versus-FluSurv-NET ascertainment trap:
 
 ### mult (fitted)
 
-Ascertainment: reported / modelled admissions. Fitted with a narrow prior
-`[0.002, 0.10]` measured across all 52 jurisdictions, so it is still
-universal. Only the product `rho*mult` is identified, but the product CANNOT
+Ascertainment: reported / modelled admissions. Fitted log-uniform on
+`[0.002, 1.0]`, the shipped prior: `app/core/engines/pf.py` emits
+`loguniform_var = mult__FREE 0.002 1.0`, and `flubnf/sihrs_fit.py` and
+`flubnf/profiles.py` carry the same bounds. The ceiling is 1.0 because
+ascertainment is a reporting fraction: reported admissions cannot exceed 100
+percent of the modelled ones. A narrower `0.10` ceiling was tried earlier and
+abandoned as defective, because an active upper bound pins `mult` and then
+couples it inversely to `Reff`, letting the bound rather than the data set the
+observation scale; section 1.1 records that failure mode under the scaled
+anchor. Only the product `rho*mult` is identified, but the product CANNOT
 be pinned a priori: it depends on the attack rate, which is itself a
 consequence of the fitted `Reff`. Pinning it was tried and froze the
 magnitude 2.45x wrong while driving `r` to its floor. The resolution: fix
@@ -469,7 +508,13 @@ annotated draft with `impr` retained is `SIHRS_pop_2strain.bngl`.
 
 ### 6.3 Observation channels
 
-* `H_weekly = rho*mult*gamma*(Ia+Ib)` -> NHSN admissions, negative binomial.
+* NHSN admissions, negative binomial on the WEEKLY INCREMENT of the combined
+  accumulator: `mu = mult * (H_Cum[week end] - H_Cum[week start])`, `H_Cum`
+  summing `HadmA()` and `HadmB()` (see 6.4). The template's
+  `H_weekly() = rho*mult*gamma*(Ia+Ib)` is the INSTANTANEOUS flux and is not
+  that mean; it exists so a name-matched output column reaches the `.exp`
+  file under `print_functions=>1`. See 1.4 for the size of the gap between
+  the two and for which fitting path evaluates which.
 * `A_share = Ia/(Ia+Ib)` -> NREVSS typed positives ratio,
   binomial via the engine's `_bin`/`_n` exp columns.
 
