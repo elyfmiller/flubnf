@@ -70,7 +70,12 @@ $EngineVenv = if ($env:FLUBNF_ENGINE_VENV) { $env:FLUBNF_ENGINE_VENV }
 $PyBnf = if ($env:FLUBNF_PYBNF) { $env:FLUBNF_PYBNF }
          else { Join-Path $HOME "Documents\GitHub\PyBNF-pf" }
 $PyBnfRemote = if ($env:FLUBNF_PYBNF_REMOTE) { $env:FLUBNF_PYBNF_REMOTE }
-               else { "git@github.com:elyfmiller/PyBNF-Private.git" }
+               # HTTPS by default, not SSH. Students are onboarded through
+               # GitHub Desktop, which installs Git Credential Manager and
+               # caches an HTTPS credential, so a private clone just works
+               # with no key to generate. Override with FLUBNF_PYBNF_REMOTE
+               # if you prefer SSH.
+               else { "https://github.com/elyfmiller/PyBNF-Private.git" }
 $EnginePy = Join-Path $EngineVenv "Scripts\python.exe"
 $VenvDir = Join-Path $Here ".venv"
 
@@ -502,10 +507,12 @@ if ($EngineReady) {
         Info "  git clone -b feature/particle-filter $PyBnfRemote $PyBnf"
     } elseif ($access -eq "no") {
         Warn "this machine cannot read $PyBnfRemote."
-        Warn "  1) ask Ely for a collaborator invitation to PyBNF-Private"
-        Warn "  2) add an SSH key: ssh-keygen -t ed25519, then paste"
-        Warn "     %USERPROFILE%\.ssh\id_ed25519.pub at github.com ->"
-        Warn "     Settings -> SSH and GPG keys -> New SSH key"
+        Warn "  1) ask Ely for a collaborator invitation to PyBNF-Private,"
+        Warn "     and accept it at github.com/notifications"
+        Warn "  2) sign in to GitHub Desktop (desktop.github.com). It installs"
+        Warn "     Git Credential Manager, which caches the credential this"
+        Warn "     HTTPS clone needs. No SSH key to generate."
+        Warn "     Prefer SSH? setx FLUBNF_PYBNF_REMOTE git@github.com:elyfmiller/PyBNF-Private.git"
         Warn "  3) re-run this script"
         Info "With access, the remaining steps are:"
         Info "  git clone -b feature/particle-filter $PyBnfRemote $PyBnf"

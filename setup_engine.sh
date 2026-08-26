@@ -5,7 +5,9 @@ say()  { printf "\n\033[1m== %s ==\033[0m\n" "$*"; }
 ok()   { printf "  \033[32m+\033[0m %s\n" "$*"; }
 warn() { printf "  \033[33m!\033[0m %s\n" "$*"; }
 
-PYBNF_REMOTE="${FLUBNF_PYBNF_REMOTE:-git@github.com:elyfmiller/PyBNF-Private.git}"
+# HTTPS by default so a credential helper can answer; set FLUBNF_PYBNF_REMOTE
+# to the git@ form if you have an SSH key and prefer it.
+PYBNF_REMOTE="${FLUBNF_PYBNF_REMOTE:-https://github.com/elyfmiller/PyBNF-Private.git}"
 PYBNF="${FLUBNF_PYBNF:-$HOME/Documents/GitHub/PyBNF-pf}"
 BNGSIM_REMOTE="${FLUBNF_BNGSIM_REMOTE:-https://github.com/elyfmiller/bngsim}"
 ENGINE_VENV="${FLUBNF_ENGINE_VENV:-$HOME/.venvs/flubnf-engine}"
@@ -34,8 +36,9 @@ else
   else
     warn "cannot authenticate to $PYBNF_REMOTE and no local checkout exists"
     warn "1) ask Ely for a collaborator invite to PyBNF-Private"
-    warn "2) add an SSH key: ssh-keygen -t ed25519; then paste ~/.ssh/id_ed25519.pub"
-    warn "   at github.com -> Settings -> SSH and GPG keys -> New SSH key"
+    warn "2) authenticate: GitHub Desktop or `gh auth login` installs a"
+    warn "   credential helper that answers this HTTPS clone. For SSH instead,"
+    warn "   set FLUBNF_PYBNF_REMOTE=git@github.com:elyfmiller/PyBNF-Private.git"
     warn "3) re-run this script  (or clone by any means and re-run)"
     exit 1
   fi
