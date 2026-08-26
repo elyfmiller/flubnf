@@ -48,7 +48,14 @@ say "engine venv"
 [ -d "$ENGINE_VENV" ] || $PY -m venv "$ENGINE_VENV"
 # numpy<2: the fork predates NumPy 2 and the historical fixes were venv-local
 # patches, not commits. Pinning is the reproducible answer.
-"$ENGINE_VENV/bin/pip" install -q "numpy<2" scipy pandas && ok "numpy<2 + scipy + pandas"
+# The runtime set, installed explicitly so the fork can go in with
+# --no-deps below. PyBNF pins msgpack==0.6.2 (2019), which has no wheel
+# for a modern Python on any platform and must otherwise be compiled.
+# This list is what the PF path actually imports, traced 2026-08-25;
+# PyBNF also declares nose and paramiko, which it never imports.
+"$ENGINE_VENV/bin/pip" install -q "numpy<2" scipy pandas "dask==2022.12.1" \
+  "distributed==2022.12.1" msgpack pyparsing tornado libroadrunner \
+  python-libsbml && ok "runtime dependencies installed"
 
 say "bngsim"
 if "$ENGINE_VENV/bin/python" -c "import bngsim" 2>/dev/null; then
@@ -71,7 +78,10 @@ else
 fi
 
 say "PyBNF install"
-"$ENGINE_VENV/bin/pip" install -q -e "$PYBNF" && ok "pybnf (fork) installed editable"
+# --no-deps: the runtime set is installed above, and resolving the fork's
+# own install_requires would drag in the unbuildable msgpack pin.
+"$ENGINE_VENV/bin/pip" install -q -e "$PYBNF" --no-deps \
+  && ok "pybnf (fork) installed editable"
 
 say "verify"
 "$ENGINE_VENV/bin/python" - <<'PYEOF'
