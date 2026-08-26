@@ -652,10 +652,38 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
     nat_body = "\n  ".join(nat_cards) or (
         '<p class="hint">National fan and accuracy charts appear once the '
         'national model run lands.</p>')
+    # the console run fits the national series directly (it appends the US
+    # location to every run), so WHEN THIS SECTION CARRIES A FORECAST it is
+    # a FITTED national one, never the retrospective's constructed
+    # sum-of-states fallback. It says so, in the shared wording, so a reader
+    # holding this artifact beside a season report cannot mistake one for
+    # the other.
+    #
+    # The claim is DERIVED from the run, never hardcoded. A report built
+    # before the national run lands carries no national output at all, and
+    # an unconditional provenance line printed "fitted" directly above
+    # nat_body's placeholder saying the national run had not landed: two
+    # contradictory sentences in one section, with the absent half reading
+    # as a fit. That is exactly the fallback-as-fit failure this module's
+    # wording exists to prevent, so the line is gated.
+    #
+    # The signal is nat_cards, and ONLY nat_cards -- the national fan IS the
+    # national model output. summary_html is not evidence: the run bundle
+    # fills it unconditionally with the accuracy card (app/ui/server.py
+    # builds it from summary_table_html, which returns its own placeholder
+    # for an unscored run), so gating on it would assert a fitted national
+    # forecast on every report ever built. A national figure reached through
+    # that table carries its own provenance label from scoring.py in any
+    # case, so the worst this gate can do is stay silent.
+    from app.core import us_national as _usn
+    has_national = bool(nat_cards)
+    nat_prov = (f'<p class="hint">{_usn.LABELS[_usn.FITTED]}. '
+                f'{_usn.NOTES[_usn.FITTED]}</p>') if has_national else ""
     nat = f"""
 <section class="state" id="st-US" hidden>
   {back_btn}
   <h2>United States</h2>
+  {nat_prov}
   {('<p class="offseason">' + national['note'] + '</p>') if national.get('note') else ''}
   {national.get('summary_html', '')}
   {nat_body}

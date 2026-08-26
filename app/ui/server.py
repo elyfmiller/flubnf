@@ -3375,14 +3375,21 @@ def _season_status(season: str) -> str:
 
 def _scope_key(meta: dict):
     """The hashable location-scope identity of a run record, or None when
-    the record holds no settings. panel6 and all match on the scope name; a
-    custom selection matches on its exact location list."""
+    the record holds no settings. panel6 and all match on the scope name
+    PLUS whether the national row was fitted (a 53-location replay is one
+    fit per week heavier than a 52-location one, so the two must not share
+    a timing profile); a custom selection matches on its exact location
+    list, which already carries the answer."""
     s = (meta or {}).get("settings")
     if not isinstance(s, dict) or not s:
         return None
     scope = str(s.get("scope") or "")
     if scope in ("panel6", "all"):
-        return scope
+        from app.core import us_national as usn
+        locs = [str(l) for l in (s.get("locations") or [])]
+        nat = (any(usn.is_us(l) for l in locs) if locs
+               else bool(s.get("national")))
+        return scope + ("+us" if nat else "")
     locs = tuple(sorted(str(l) for l in (s.get("locations") or [])))
     return locs or None
 
@@ -3620,6 +3627,26 @@ def _retro_state_names() -> list:
         except Exception:
             continue
     return []
+
+
+def _retro_national_name() -> str:
+    """The hub's own location_name for the national row, so a retrospective
+    names US exactly as the truth table and the forecast path do. Falls back
+    to the FIPS code, which is what that column holds anyway."""
+    import pandas as pd
+    from flubnf.settings import LOCATIONS
+    from pathlib import Path as _P
+    from app.core import us_national as usn
+    packaged = _P(__file__).resolve().parents[2] / "flubnf/data/locations.csv"
+    for src in (LOCATIONS, packaged):
+        try:
+            locs = pd.read_csv(src, dtype=str)
+            hit = locs.location_name[locs.abbreviation == "US"]
+            if len(hit):
+                return str(hit.iloc[0])
+        except Exception:
+            continue
+    return usn.US_FIPS
 
 
 @app.get("/retro", response_class=HTMLResponse)
@@ -4184,6 +4211,7 @@ def retro_season_resume(request: Request, season: str):
 def retro_run(background: BackgroundTasks, season: str = Form(...),
               locations: str = Form("panel6"),
               custom_locations: list = Form([]),
+              national: str = Form("1"),
               particles: int = Form(10_000),
               replicates: int = Form(3),
               width: int = Form(4),
@@ -4191,6 +4219,12 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
               mode: str = Form("resume"),
               confirm: str = Form("")):
     """Start (or resume) a season replay.
+
+    `national` is the US-national switch, ON by default so a retrospective
+    fits the national series exactly as the Forecast tab already does (see
+    app/core/us_national). "0" runs states only, which is how a resumed
+    52-jurisdiction run reproduces its own scope; the resume form posts the
+    recorded answer, so an existing run is never widened underneath itself.
 
     `mode` is what the start-over prompt resolved to, and it is the only way
     an existing season tree is ever moved or removed:
@@ -4245,11 +4279,15 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
         _flash("Only the PF engine preset is available for retrospectives "
                "at present.")
         return RedirectResponse("/retro", status_code=303)
+    from app.core import us_national as usn
     all_states = _retro_state_names()
     if locations == "all":
-        names = all_states
+        names = list(all_states)
     elif locations == "custom":
-        names = [n for n in custom_locations if n in set(all_states)]
+        # a resumed run resubmits its own list verbatim, so the national
+        # row is accepted here as well as the states
+        names = [n for n in custom_locations
+                 if n in set(all_states) or usn.is_us(n)]
         if not names:
             _flash("Custom scope selected but no locations were checked. "
                    "Check at least one state and try again.")
@@ -4257,6 +4295,14 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
     else:
         names = ["Alaska", "New York", "Wyoming", "Pennsylvania",
                  "Vermont", "California"]
+    # US national rides on every scope unless the run says states only:
+    # the Forecast tab has always appended the national location, and the
+    # two paths now agree. with_us is idempotent, so a list that already
+    # names US (a resumed run's verbatim list) is returned untouched.
+    fit_national = str(national).strip().lower() not in ("0", "false", "no",
+                                                         "off", "")
+    if fit_national:
+        names = usn.with_us(names, _retro_national_name())
     # keep the knobs inside what the machine survives (budget: 0.45 fits/min)
     particles = max(1_000, min(int(particles), 100_000))
     replicates = max(1, min(int(replicates), 10))
@@ -4300,10 +4346,13 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
     _invalidate_scans()       # an archive or discard just moved the tree
     _retro_status[season] = "running"
     _retro_claim_at[season] = time.time()
-    # the settings recorded with the run: the scope the user picked and the
-    # engine preset, which the location list alone cannot say
+    # the settings recorded with the run: the scope the user picked, whether
+    # the national row was fitted, and the engine preset -- none of which
+    # the location list alone can say. run_season folds the list itself in,
+    # so an existing 52-jurisdiction record keeps describing 52.
     background.add_task(_retro_bg, season, names, width, replicates, particles,
-                        {"scope": locations, "engine": engine})
+                        {"scope": locations, "engine": engine,
+                         "national": bool(fit_national)})
     return RedirectResponse("/retro", status_code=303)
 
 
@@ -4353,6 +4402,7 @@ def retro_results(request: Request, season: str, week: str = "",
                 "archive": archive,
                 "archive_when": retro.stamp_human(archive) if archive else "",
                 "heads": {}, "curve": [], "states": [], "us_row": None,
+                "us": None, "pooled_note": "",
                 "weeks": weeks, "week": weeks[-1], "map_html": "",
                 "official_catalog": [], "prog": None, "n_weeks": 0,
                 "score_error": ""})
@@ -4364,9 +4414,17 @@ def retro_results(request: Request, season: str, week: str = "",
         covered = _job_covered(root)
         if covered and covered.get("error") and not _scores_scoreable_fast(root):
             score_error = covered["error"]
-    df = _scores_df(root)
-    if df is None:
-        df = pd.DataFrame()
+    from app.core import us_national as usn
+    df_all = _scores_df(root)
+    if df_all is None:
+        df_all = pd.DataFrame()
+    # THE pooled gate. Every figure below (the verdict tiles, the cumulative
+    # curve, the per-state table) is computed from the pooled frame, which
+    # is the 52-jurisdiction scope by named policy; the national row, fitted
+    # or constructed, is resolved separately a few lines down and printed
+    # with the label that says which it is. Fitting US therefore cannot move
+    # the published headline.
+    df = usn.pooled_frame(df_all)
     heads, curve, states = {}, [], []
     scoreable = (not df.empty) and ("model" in df.columns)
     if scoreable:
@@ -4397,19 +4455,26 @@ def retro_results(request: Request, season: str, week: str = "",
                 else:
                     row[m] = None
             states.append(row)
-    # the honest national aggregate: the grid fits states only, so the US
-    # figure is CONSTRUCTED from the state forecasts (members aggregated
-    # separately, national quantile sets vincentized 50/50; the page states
-    # the construction). Cached under the season's stats validity key, so
-    # after the first build this is one small file read; a failure here
-    # never costs the page (the row and tile simply do not render).
-    us_row = None
+    # the national series, through THE resolution order (app/core/
+    # us_national.resolve): a fitted US cell when the replay ran one, else
+    # the constructed sum-of-states aggregate, else the officials alone.
+    # The result carries its own provenance label and note, and the page
+    # prints them: a fitted figure and a constructed one are different
+    # model outputs and must never be interchangeable without the reader
+    # noticing. The aggregate is cached under the season's stats validity
+    # key, so after the first build this is one small file read; a failure
+    # here never costs the page.
+    us = None
     if scoreable:
         try:
-            us_row = retro.national_aggregate(
-                root, ensemble_weights={"pf": 0.5, "analogue": 0.5})
+            us = usn.resolve(root, df_all,
+                             ensemble_weights={"pf": 0.5, "analogue": 0.5})
         except Exception:
-            us_row = None
+            us = None
+    # us_row keeps the template's existing shape (a mapping carrying
+    # member -> relWIS) and gains the provenance fields beside them, so a
+    # surface cannot reach the numbers without the label
+    us_row = (us.as_dict() if (us is not None and us.has_scores) else None)
     wk = week if week in weeks else weeks[-1]
     from app.core.usmap import svg_map
     locs = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
@@ -4485,6 +4550,12 @@ def retro_results(request: Request, season: str, week: str = "",
     return templates.TemplateResponse(request, "retro_season.html", {
         "active": "Retrospective", "season": season, "heads": heads, "curve": curve, "states": states,
         "us_row": us_row,
+        # the provenance travels WITH the numbers: nothing on the page may
+        # print a US score without also printing the label that says
+        # whether it was fitted or constructed
+        "us": (us.as_dict() if us is not None
+               else usn.UsNational(usn.OFFICIALS_ONLY).as_dict()),
+        "pooled_note": usn.POOLED_SCOPE_NOTE,
         "weeks": weeks, "week": wk, "map_html": map_html,
         "official_catalog": official_catalog,
         "prog": (_archive_progress(root, season) if archive
@@ -4650,6 +4721,7 @@ def run_models(request: Request,
     _invalidate_scans()         # a run is starting: nothing cached survives it
     _status["started_utc"] = __import__("time").time()   # the wall clock starts here
     _status["run_label"] = f"{forecast_date} · queued"
+    from app.core import us_national as _usn
     if "all" in [l.lower() for l in locations]:
         import pandas as _pd
         _l = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
@@ -4660,12 +4732,12 @@ def run_models(request: Request,
             locs_list.append(str(us.iloc[0]))   # national, fitted directly
     else:
         locs_list = list(locations)
-    if not any(str(l).upper() in ("US", "US (NATIONAL)") for l in locs_list):
-        locs_list.append("US")   # national fitted directly, always
+    # national fitted directly, always -- the same default the Retrospective
+    # tab now applies, through the same helper (app/core/us_national)
+    locs_list = _usn.with_us(locs_list)
     # the label owns the arithmetic: N states the user picked, plus the
     # national fit we always add -- no phantom extra location in the count
-    n_states = sum(1 for l in locs_list
-                   if str(l).upper() not in ("US", "US (NATIONAL)"))
+    n_states = len(_usn.state_names(locs_list))
     _status["run_label"] = f"{forecast_date} · {n_states} state(s) + US · queued"
     # honest progress: the denominator (locations x replicates) is known NOW,
     # from the spec -- shard .prog files only ever grow toward it, so pct can

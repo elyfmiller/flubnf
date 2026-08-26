@@ -57,7 +57,11 @@ ENGINE_LABELS = {"all": "all models (PF, analogue, ensemble)",
 
 
 def _is_national(loc) -> bool:
-    return str(loc).upper() in ("US", "US (NATIONAL)")
+    """One spelling test for the whole application: app.core.us_national.
+    This module keeps the private alias so its own call sites read locally,
+    but the rule itself is defined exactly once."""
+    from app.core.us_national import is_us
+    return is_us(loc)
 
 
 def locations_phrase(locations) -> str:

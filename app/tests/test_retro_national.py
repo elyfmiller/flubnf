@@ -21,7 +21,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from app.core import retro, scoring                        # noqa: E402
+from app.core import retro, scoring, us_national           # noqa: E402
 from app.ui import server as srv                           # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL      # noqa: E402
 
@@ -107,6 +107,37 @@ def test_all_three_national_scores_arrive_scored_like_states(
     assert r["seconds"] >= 0.0
 
 
+def test_a_fitted_national_block_is_never_summed_into_the_aggregate(
+        tmp_path, _stub_scoring):
+    """The aggregate is the sum of the JURISDICTIONS. Since the 2026-08-26
+    backfill the sealed weeks also carry a fitted `US` block, and summing
+    that on top of the states it is already the total of would report the
+    nation at ~2x scale, silently and with no error.
+
+    Both member loops must skip it, so a week with a fitted national block
+    scores exactly as the same week without one."""
+    w = {"pf": .5, "analogue": .5}
+    plain = retro.national_aggregate(_tree(tmp_path / "a"),
+                                     ensemble_weights=w)
+    root = _tree(tmp_path / "b")
+    sp = root / "weeks" / W1 / "samples.json"
+    d = json.loads(sp.read_text())
+    # a fitted national block, on the same scale as the state sum (100)
+    d["pf"]["US"] = {str(h): [100.0, 100.0] for h in range(5)}
+    d["analogue"]["US"] = {str(h): {str(L): 100.0 for L in QL}
+                           for h in range(1, 5)}
+    sp.write_text(json.dumps(d))
+    with_us = retro.national_aggregate(root, ensemble_weights=w)
+
+    for r in (plain, with_us):
+        r.pop("seconds", None)          # wall clock, not a result
+    assert with_us == plain
+    # the sharp edge: the index-aligned state sum is degenerate at 100 on a
+    # US truth of 100, so PF relWIS is 0. Summing the national block in too
+    # would forecast 200 against 100 and drive this far from zero.
+    assert with_us["pf"] == 0.0
+
+
 def test_empty_season_returns_none(tmp_path, _stub_scoring):
     (tmp_path / SEASON / "weeks").mkdir(parents=True)
     assert retro.national_aggregate(tmp_path / SEASON) is None
@@ -159,9 +190,15 @@ def _season_html(**kw):
     return srv.templates.env.get_template("retro_season.html").render(**ctx)
 
 
-US_ROW = {"pf": 0.71, "analogue": 1.02, "ensemble": 0.66,
-          "cells": {"pf": 4, "analogue": 4, "ensemble": 4},
-          "weeks": 2, "seconds": 61.0}
+#: The page no longer accepts a bare mapping of numbers: since 2026-08-26
+#: a US figure travels with the provenance that says whether it was fitted
+#: or constructed (app/core/us_national), so the constructed aggregate
+#: reaches the template through the same serialisation the resolver emits.
+US_ROW = us_national.UsNational(
+    us_national.AGGREGATED,
+    scores={"pf": 0.71, "analogue": 1.02, "ensemble": 0.66},
+    cells={"pf": 4, "analogue": 4, "ensemble": 4},
+    n_states=2).as_dict()
 
 
 def test_us_row_and_tile_carry_the_honest_label():

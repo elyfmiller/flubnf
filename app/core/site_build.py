@@ -173,8 +173,12 @@ def _score_payload(payload: dict, truth, n2f, bases_cache: dict) -> dict:
 
     THE frozen cell rule for every model: settled truth above zero, a
     positive forecast median, and a cell the validated baseline covers. The
-    US national row is excluded -- it is the sum of the states and would
-    swamp any sum-based aggregate.
+    US national row is excluded from OURS AND THEIRS ALIKE, under the named
+    policy in app/core/us_national (POOLED_INCLUDES_US): it is the sum of
+    the 52 jurisdictions, so it would count them twice and swamp any
+    sum-based aggregate. The published pooled figure this builder prints is
+    a 52-jurisdiction number, and fitting the national series must not
+    change it.
 
     ONE ASYMMETRY, ON PURPOSE. Our own members are scored on their own
     cells, which is how the lab's published record was computed and what
@@ -191,10 +195,15 @@ def _score_payload(payload: dict, truth, n2f, bases_cache: dict) -> dict:
     from app.core.scoring import _baseline_cells
     from flubnf.wis import wis as wis_fn
 
+    from app.core import us_national as usn
+
+    def _pooled(block):
+        return {k: v for k, v in (block or {}).items() if not usn.is_us(k)}
+
     asof = payload["asof"]
     T = pd.Timestamp(asof)
-    ours = dict(payload.get("models") or {})
-    officials = {om: {k: v for k, v in q.items() if k != "US"}
+    ours = {m: _pooled(q) for m, q in (payload.get("models") or {}).items()}
+    officials = {om: _pooled(q)
                  for om, q in (payload.get("official") or {}).items() if q}
     if not ours and not officials:
         return {}

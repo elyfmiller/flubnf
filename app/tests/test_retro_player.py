@@ -9,10 +9,20 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from app.core import us_national                    # noqa: E402
 from app.ui.server import templates                 # noqa: E402
 
 PLAYER_JS = (Path(__file__).resolve().parents[1] / "ui" / "static"
              / "player.js").read_text(encoding="utf-8")
+
+#: the resolved US national answer the server hands the page: this one is
+#: the sum-of-states FALLBACK, which the page and the player must label as
+#: a fallback rather than as a national forecast
+US_AGG = us_national.UsNational(
+    us_national.AGGREGATED,
+    scores={"pf": 0.9, "analogue": 1.05, "ensemble": 0.92},
+    cells={"pf": 96, "analogue": 96, "ensemble": 96},
+    n_states=52).as_dict()
 
 CONTEXT = dict(
     active="Retrospective", season="2098-99",
@@ -22,6 +32,8 @@ CONTEXT = dict(
     weeks=["2098-11-07", "2098-11-14"], week="2098-11-14",
     map_html="<div id='usmap-wrap'></div>",
     official_catalog=["FluSight-baseline"],
+    us=US_AGG, us_row=US_AGG,
+    pooled_note=us_national.POOLED_SCOPE_NOTE,
     n_weeks=2, score_error="")
 
 
@@ -51,7 +63,19 @@ def test_player_controls_present():
     # forecast detail: location select, model toggles, plot, US labeling
     for marker in ('id="fd-loc"', 'id="fd-models"', 'id="fd-plot"'):
         assert marker in html, marker
-    assert "US (official models only)" in PLAYER_JS
+    # US labelling: the entry text is no longer a hardcoded string but is
+    # driven by the resolved provenance, and all three states are spelled
+    # out in the player so no host can invent a fourth. The fallbacks are
+    # visibly fallbacks: neither reads as a plain fitted national forecast.
+    assert """'<option value="US">' + usLabel(cfg.us) + '</option>'""" \
+        in PLAYER_JS
+    assert "US (official models only)" in PLAYER_JS       # officials only
+    assert "US national (fitted)" in PLAYER_JS            # a real US fit
+    assert "US national (sum of states)" in PLAYER_JS     # the aggregate
+    # the host resolves the provenance and hands it to the player, which
+    # is how the page can label a fitted US differently from a fallback
+    assert "us: {" in html
+    assert "US national (sum of 52 states)" in html
     # official models are toggleable alongside ours
     assert "FluSight-baseline" in PLAYER_JS
     assert "FluSight-ensemble" in PLAYER_JS
@@ -101,6 +125,48 @@ def test_template_renders_shared_playback_state():
     for marker in ("getPayload: ensurePayload", "payloadError:",
                    "isCached:", "detailVisible:", "onSeek:", "preload:"):
         assert marker in html, marker
+
+
+def test_us_entry_names_its_provenance_and_flags_the_fallback():
+    """A fitted US national forecast and the sum-of-states aggregate are
+    different model outputs. Every US surface on this page says which one
+    it holds, and a fallback is visibly a fallback."""
+    # the aggregated case (CONTEXT): the tile, the table row, and the
+    # player entry all carry the fallback wording, and the pooled scope is
+    # stated so nobody reads the US figure as part of the headline
+    fallback_claim = "no US fit exists for this season"
+    html = _render()
+    assert "US (aggregated)" in html                 # tile and table row
+    assert "US national (sum of 52 states)" in html  # the player entry
+    assert fallback_claim in html
+    assert "not a fitted national forecast" in html
+    assert "never joins the pooled average" in html
+    assert "US (fitted)" not in html
+
+    # the fitted case: the same surfaces, no fallback claim anywhere
+    fit = us_national.UsNational(
+        us_national.FITTED,
+        scores={"pf": 0.8, "analogue": 1.0, "ensemble": 0.85},
+        cells={"pf": 96, "analogue": 96, "ensemble": 96},
+        n_states=52).as_dict()
+    ctx = dict(CONTEXT, us=fit, us_row=fit)
+    html2 = templates.env.get_template("retro_season.html").render(**ctx)
+    assert "US (fitted)" in html2
+    assert "US national (fitted)" in html2           # the player entry
+    assert fallback_claim not in html2
+    assert "not a fitted national forecast" not in html2
+    assert "US (aggregated)" not in html2
+    # even fitted, US stays out of the pooled headline, and says so
+    assert "never joins the pooled average" in html2
+
+    # the officials-only case: no scores, so no tile and no row, and the
+    # player entry says the officials are all there is
+    off = us_national.UsNational(us_national.OFFICIALS_ONLY).as_dict()
+    ctx = dict(CONTEXT, us=off, us_row=None)
+    html3 = templates.env.get_template("retro_season.html").render(**ctx)
+    assert "US (official models only)" in html3
+    assert "US (aggregated)" not in html3
+    assert "US (fitted)" not in html3
 
 
 def test_template_passes_season_official_catalog():

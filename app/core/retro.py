@@ -463,6 +463,14 @@ def resume_form_fields(meta: dict) -> dict | None:
     locs = [str(l) for l in (s.get("locations") or [])]
     scope = str(s.get("scope") or "")
     out = {"season": season, "mode": "resume"}
+    # The national switch is posted EXPLICITLY, read from the run's own
+    # location list rather than from today's default: US national became a
+    # default-on scope on 2026-08-26, and a stopped 52-jurisdiction replay
+    # must resume as 52, never silently widen to 53 halfway through a
+    # season. A record with no list at all falls back to what it recorded.
+    from app.core.us_national import is_us as _is_us
+    out["national"] = "1" if (any(_is_us(l) for l in locs) if locs
+                              else bool(s.get("national"))) else "0"
     if scope in ("panel6", "all"):
         out["locations"] = scope
         out["custom_locations"] = []
@@ -990,8 +998,14 @@ def score_season(root: Path, season: str,
     return df
 
 
-#: bump when the national-aggregate construction or cached shape changes
-NATIONAL_CACHE_V = 1
+#: bump when the national-aggregate construction or cached shape changes.
+#: v2 (2026-08-26): the sum is restricted to the jurisdictions, so a week
+#: carrying a fitted US block is no longer added on top of the 52 it is the
+#: total of. Every v1 cache was written before the backfill and is correct
+#: for its own inputs, but it was keyed on samples.json mtimes that the
+#: backfill deliberately preserved, so nothing else would have invalidated
+#: it; the bump forces every season to recompute under this construction.
+NATIONAL_CACHE_V = 2
 
 #: draws for the analogue member's national Monte Carlo sum, matching the
 #: PF grid's 3 x 10k draw count so both members aggregate at the same depth
@@ -1039,6 +1053,7 @@ def national_aggregate(root: Path,
     import zlib
     from datetime import timedelta
     from app.core.scoring import _baseline_cells, load_truth
+    from app.core import us_national as usn
     from flubnf.quantiles import FLUSIGHT_QUANTILES as QL
     from flubnf.wis import wis as wis_fn
     root = Path(root)
@@ -1065,10 +1080,18 @@ def national_aggregate(root: Path,
         d = read_samples(wp)
         asof = d["asof"]
         T = pd.Timestamp(asof)
+        # THE constituents of the sum: the jurisdictions ONLY. A week whose
+        # samples carry a fitted national block (the seal has carried one
+        # since the 2026-08-26 backfill) must not sum that block on top of
+        # the 52 jurisdictions it is already the total of -- that reports
+        # the nation at ~1.96x scale, silently and with no error. Both
+        # member loops read this one list so they cannot drift apart.
+        pf_locs = [l for l in d.get("pf", {}) if not usn.is_us(l)]
+        an_locs = [l for l in d.get("analogue", {}) if not usn.is_us(l)]
         pf_nat, an_nat = {}, {}
         for h in ("1", "2", "3", "4"):
             arrs = []
-            for loc in d.get("pf", {}):
+            for loc in pf_locs:
                 a = np.asarray(d["pf"][loc].get(h, []), float)
                 if a.size:
                     arrs.append(a)
@@ -1082,7 +1105,7 @@ def national_aggregate(root: Path,
                     pf_nat[h] = {L: float(np.quantile(tot, L))
                                  for L in levels}
             draws = None
-            for loc in d.get("analogue", {}):
+            for loc in an_locs:
                 q = d["analogue"][loc].get(h)
                 if not q:
                     continue
@@ -1411,11 +1434,19 @@ def list_archive_dirs(retro_root: Path, season: str) -> list:
 
 def _headline_rel(scores_path: Path, model: str = "ensemble"):
     """Pooled relWIS for one model from a stored scores.json, or None when
-    the file is absent, empty, or does not cover the model."""
+    the file is absent, empty, or does not cover the model.
+
+    POOLED, so it goes through the one gate (us_national.pooled_frame): a
+    run that fitted the national series carries US rows in its scores.json,
+    and the pooled headline covers the jurisdictions only. Without the gate
+    this figure would silently change meaning the first time a run scored
+    US, which is the whole reason the policy is named in one place."""
+    from app.core import us_national as usn
     try:
         df = pd.read_json(scores_path)
         if df.empty or "model" not in df.columns:
             return None
+        df = usn.pooled_frame(df)
         g = df[df.model == model]
         base = float(g.base_wis.sum()) if len(g) else 0.0
         return float(g.wis.sum() / base) if base else None

@@ -110,7 +110,15 @@ def summary_table_html(df: pd.DataFrame) -> str:
     member is named in the header, every score wears the ok/bad
     below-1-beats-baseline classes, the table style supplies tabular
     numerals, and each score states the cell count it rests on. Empty
-    df -> honest placeholder."""
+    df -> honest placeholder.
+
+    The US national row keeps its own line, labelled as fitted, but stays
+    OUT of the pooled total under the named policy in app/core/us_national
+    (POOLED_INCLUDES_US). The console run fits the national series on every
+    run, so without that gate the pooled figure would silently become a
+    53-location number dominated by a cell that is the sum of the other
+    52."""
+    from app.core import us_national as usn
     if df.empty:
         return ("<p class='hint'>No scored weeks yet. relWIS appears once "
                 "truth for forecast weeks is published.</p>")
@@ -124,18 +132,31 @@ def summary_table_html(df: pd.DataFrame) -> str:
                         include_groups=False)
                  .sort_values())
     cells = df.groupby("location").size()
-    total = df.wis.sum() / df.base_wis.sum()
+    pooled = usn.pooled_frame(df)
+    has_us = len(pooled) != len(df)
+    total = (pooled.wis.sum() / pooled.base_wis.sum()) if len(pooled) else None
 
     def score_td(v):
         return f'<td class="num {"ok" if v < 1 else "bad"}">{v:.3f}</td>'
 
+    def label_of(l):
+        return (usn.SHORT_LABELS[usn.FITTED] if usn.is_us(l) else str(l))
+
     rows = "".join(
-        f"<tr><td>{l}</td>{score_td(v)}"
+        f"<tr><td>{label_of(l)}</td>{score_td(v)}"
         f'<td class="num hint">{int(cells.get(l, 0))}</td></tr>'
         for l, v in per_loc.items())
+    # the total row NAMES its scope: "All locations" is literally true when
+    # no national row is present, and would be a lie the moment one is, so
+    # a frame carrying US says outright that the row excludes it
+    total_label = ("All jurisdictions (US excluded)" if has_us
+                   else "All locations")
+    total_row = (
+        f'<tr class="total"><td>{total_label}</td>{score_td(total)}'
+        f'<td class="num hint">{len(pooled)}</td></tr>'
+        if total is not None else "")
+    note = (f'<p class="hint">{usn.POOLED_SCOPE_NOTE}</p>' if has_us else "")
     return ('<table><thead><tr><th>Location</th>'
             f'<th class="num">{member} relWIS</th>'
             '<th class="num">Cells</th></tr></thead><tbody>'
-            + rows
-            + f'<tr class="total"><td>All locations</td>{score_td(total)}'
-            f'<td class="num hint">{len(df)}</td></tr></tbody></table>')
+            + rows + total_row + "</tbody></table>" + note)
