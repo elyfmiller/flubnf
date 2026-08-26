@@ -63,12 +63,284 @@ $Interactive = ((-not $NoPrompt) -and (-not $env:CI) -and
                 [Environment]::UserInteractive)
 
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
-$Hub = if ($env:FLUBNF_HUB) { $env:FLUBNF_HUB }
-       else { Join-Path $HOME "Documents\GitHub\FluSight-forecast-hub" }
+
+# WHERE THE CHECKOUTS GO, AND WHY IT IS NO LONGER Documents.
+#
+# Controlled Folder Access, the ransomware protection built into Microsoft
+# Defender, protects Documents, Pictures, Videos, Music and Favorites (and
+# their C:\Users\Public counterparts) whenever it is switched on. A
+# protected folder can be read by anything and written only by programs
+# Defender trusts, and neither git.exe nor python.exe is trusted out of the
+# box. Recorded on the corresponding author's Windows 11 machine on
+# 2026-08-25, in the Defender operational log, verbatim:
+#
+#   Id 1123  git.exe has been blocked from modifying
+#            %userprofile%\Documents\GitHub\FluSight-forecast-hub
+#   Id 1123  python.exe has been blocked from modifying
+#            %userprofile%\Documents\GitHub\PyBNF-pf\pybnf\__pycache__
+#
+# The message the USER sees in each case is an ordinary permission error
+# that never mentions Defender, so the old defaults produced two failures
+# that cannot be diagnosed from the failure.
+#
+# IT IS NOT ON BY DEFAULT, and an earlier draft of this file said it was.
+# Microsoft documents the shipped state as Disabled: "CFA is turned off by
+# default", with mode 0 marked "(default)". Get-MpPreference on the author's
+# machine nonetheless reports EnableControlledFolderAccess = 1, so something
+# turned it on there -- the author, the manufacturer's image, or IT policy
+# on a managed machine. That is the point: it is ON for at least one real
+# user of this project and may be ON for any student, so the defaults must
+# not depend on it being off. Nothing in this script assumes either way; it
+# asks the machine and reports what it is told.
+#
+# %LOCALAPPDATA% is the documented per-user location for application data
+# (FOLDERID_LocalAppData). It is not in the protected set; it is per-user,
+# so nothing here needs an administrator; and unlike %APPDATA% it does not
+# roam and is not swept into OneDrive by Known Folder Move, which matters
+# for a 150 MB clone made of tens of thousands of small files. C:\FluBNF was
+# considered and rejected: creating a directory at the root of the system
+# drive needs elevation on a default install.
+#
+# The engine venv default (~\.venvs) is deliberately unchanged. Controlled
+# Folder Access protects named folders inside the profile, not the profile
+# root, so ~\.venvs was never at risk.
+#
+# macOS and Linux are untouched by all of this; setup.sh keeps its
+# ~/Documents/GitHub defaults, because those systems have no equivalent.
+#
+# ONE PROFILE ROOT, RESOLVED ONCE. FluBNF.bat reads %USERPROFILE% and
+# flubnf/settings.py calls Path("~").expanduser(), which prefers
+# %USERPROFILE% too. $HOME is a THIRD answer: the PowerShell 7 documentation
+# says it takes %USERPROFILE% and warns that it "may not have the same value
+# as $Env:HOMEDRIVE$Env:HOMEPATH", while the 5.1 documentation described it
+# as the equivalent of %homedrive%%homepath%. We cannot run either from
+# macOS to settle it, and on a university-managed machine with an Active
+# Directory home directory the two are genuinely different (H:\, or a UNC
+# path). So this script stops depending on the answer: it prefers
+# %USERPROFILE%, exactly as the launcher and the Python side do, and where a
+# LOOKUP rather than a default is at stake it probes $HOME as well, so a
+# checkout made by an earlier release under either root is still found.
+$ProfileRoot = if ($env:USERPROFILE) { $env:USERPROFILE } else { $HOME }
+$LocalAppData = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA }
+                else { Join-Path $ProfileRoot "AppData\Local" }
+$FluBnfRoot = Join-Path $LocalAppData "FluBNF"
+
+function Get-ProfileRoots {
+    <#
+      Every plausible spelling of the user profile, most authoritative
+      first, de-duplicated. One entry on an ordinary machine; two where
+      $HOME and %USERPROFILE% disagree.
+    #>
+    $out = @()
+    foreach ($r in @($ProfileRoot, $HOME, $env:USERPROFILE)) {
+        if ($r -and ($out -notcontains $r)) { $out += $r }
+    }
+    return @($out)
+}
+$LegacyRoots = @(Get-ProfileRoots | ForEach-Object {
+    Join-Path $_ "Documents\GitHub" })
+
+$script:ReusedLegacy = @()
+function Resolve-Checkout {
+    <#
+      FLUBNF_* wins; then an EXISTING checkout at the old Documents default,
+      used exactly where it stands; then the new default under %LOCALAPPDATA%.
+
+      NOTHING IS EVER MOVED OR COPIED. The author has 143 MB of PyBNF
+      checkout and 150 MB of hub under Documents, and relocating a working
+      tree is not a decision a setup script may take on a user's behalf. A
+      machine that already works keeps working with no action at all; the
+      reuse is announced in the plan block, and named again in the
+      Controlled Folder Access warning below when that protection is on.
+    #>
+    param([string]$FromEnv, [string]$Name)
+    if ($FromEnv) { return $FromEnv }
+    foreach ($root in $LegacyRoots) {
+        $legacy = Join-Path $root $Name
+        if (Test-Path -LiteralPath $legacy) {
+            $script:ReusedLegacy += $legacy
+            return $legacy
+        }
+    }
+    return (Join-Path $FluBnfRoot $Name)
+}
+
+function Resolve-ProfilePath {
+    <#
+      A path under the user profile, for something this script did not
+      necessarily create. Prefers %USERPROFILE%, but if an earlier release
+      built it under a DIFFERENT profile root ($HOME on a machine where the
+      two disagree) and that one exists while the preferred one does not,
+      the existing one wins. Stranding a working install is the one outcome
+      this whole file is written to avoid.
+    #>
+    param([string]$Relative)
+    $preferred = Join-Path $ProfileRoot $Relative
+    if (Test-Path -LiteralPath $preferred) { return $preferred }
+    foreach ($root in (Get-ProfileRoots)) {
+        $cand = Join-Path $root $Relative
+        if (Test-Path -LiteralPath $cand) { return $cand }
+    }
+    return $preferred
+}
+
+function Test-PathInside {
+    <#
+      Is $Child the same directory as $Parent, or somewhere beneath it?
+      Purely lexical (GetFullPath does not touch the disk), which is what is
+      wanted: the paths being tested may not exist yet.
+    #>
+    param([string]$Child, [string]$Parent)
+    if (-not $Child -or -not $Parent) { return $false }
+    try {
+        $c = [IO.Path]::GetFullPath($Child).TrimEnd('\')
+        $p = [IO.Path]::GetFullPath($Parent).TrimEnd('\')
+    } catch { return $false }
+    if (-not $p) { return $false }
+    if ($c -eq $p) { return $true }
+    return $c.StartsWith(($p + '\'), [StringComparison]::OrdinalIgnoreCase)
+}
+
+function Get-ProtectedFolders {
+    <#
+      The folders Controlled Folder Access protects by default.
+
+      Microsoft's documented default set is Documents, Favorites, Music,
+      Pictures and Videos under each user profile, plus the C:\Users\Public
+      counterparts of Documents, Music, Pictures and Videos, "for user
+      accounts and system accounts". Desktop is NOT in that list, but the
+      same page names Desktop when it describes OneDrive Known Folder Move
+      redirection, other Microsoft pages have listed it, and the Windows
+      Security app shows the live list. Desktop stays in here deliberately:
+      this list only decides whether a WARNING is printed, so an entry too
+      many costs a sentence and an entry too few costs the whole point.
+
+      Read through GetFolderPath rather than assembled from a profile root,
+      so that a Documents folder redirected into OneDrive by Known Folder
+      Move is the one tested. The literal profile paths are added as well,
+      because a redirected known folder leaves the plain one in place on
+      some machines and both can hold a checkout, and every spelling of the
+      profile root is used because $HOME and %USERPROFILE% can differ.
+
+      The machine's OWN list, when Defender will tell us, is unioned in by
+      the caller; see Get-CfaState. This function is the fallback for when
+      it will not, which includes the documented case of CFA being off and
+      the likely case of not running elevated.
+    #>
+    $out = @()
+    foreach ($n in @("MyDocuments", "Desktop", "DesktopDirectory",
+                     "MyPictures", "MyVideos", "MyMusic", "Favorites",
+                     "CommonDocuments", "CommonDesktopDirectory",
+                     "CommonPictures", "CommonVideos", "CommonMusic")) {
+        try { $p = [Environment]::GetFolderPath($n) } catch { $p = $null }
+        if ($p) { $out += $p }
+    }
+    foreach ($root in (Get-ProfileRoots)) {
+        foreach ($n in @("Documents", "Desktop", "Pictures", "Videos",
+                         "Music", "Favorites")) {
+            $out += (Join-Path $root $n)
+        }
+    }
+    return @($out | Where-Object { $_ } | Select-Object -Unique)
+}
+
+function Get-CfaState {
+    <#
+      Controlled Folder Access state as @{ State; Why; Folders }, where
+      State is "on", "audit", "off" or "unknown" and Folders is whatever
+      list of protected folders the machine was willing to hand over.
+
+      Get-MpPreference is the documented way to read it. It is NOT assumed to
+      work: the Defender PowerShell module is absent on some images, a
+      third-party antivirus can leave it present but non-functional, and an
+      older build may not carry the property at all. Every one of those is
+      "unknown" plus the reason, never a crash and never a guess.
+
+      Documented mode values, all five of them:
+        0 Disabled (the shipped default)
+        1 Enabled -- untrusted apps blocked from protected folders
+        2 AuditMode -- the same, logged instead of blocked
+        3 BlockDiskModificationOnly
+        4 AuditDiskModificationOnly
+      3 and 4 act ONLY on writes to the disk sectors holding the boot
+      record; Microsoft is explicit that they "don't affect files in
+      protected folders". For this script's one question -- can git and
+      python write into a checkout -- they are indistinguishable from off,
+      and reporting them as "unknown" would have printed a page of alarming
+      and irrelevant advice on a machine that was never going to block us.
+
+      Both the number and the enumeration NAME are accepted, because
+      Get-MpPreference returns a typed value whose rendering we cannot check
+      from macOS, and a cast that guessed wrong would report "unknown" on a
+      machine that answered perfectly well. Anything else is reported as the
+      literal text it was, not folded into a verdict this cannot justify.
+    #>
+    if (-not (Get-Command Get-MpPreference -ErrorAction SilentlyContinue)) {
+        return @{ State = "unknown"; Folders = @()
+                  Why = "Get-MpPreference is not available on this machine" }
+    }
+    try { $pref = Get-MpPreference -ErrorAction Stop }
+    catch {
+        return @{ State = "unknown"; Folders = @()
+                  Why = "Get-MpPreference failed: $($_.Exception.Message)" }
+    }
+    if ($null -eq $pref) {
+        return @{ State = "unknown"; Folders = @()
+                  Why = "Get-MpPreference returned nothing" }
+    }
+    # THE MACHINE'S OWN ANSWER, PREFERRED OVER OUR LIST OF DEFAULTS.
+    # ControlledFolderAccessProtectedFolders holds folders an administrator
+    # or the user ADDED; ...DefaultProtectedFolders holds the built-in set,
+    # and Microsoft documents it as populated only when CFA is turned on and
+    # read from an elevated session. Either may therefore be empty, which is
+    # why Get-ProtectedFolders stays as the fallback rather than being
+    # replaced. Anything we do get is strictly better than a guess: on a
+    # managed image where IT protected an extra folder, this is the only way
+    # to know.
+    $folders = @()
+    foreach ($p in @("ControlledFolderAccessProtectedFolders",
+                     "ControlledFolderAccessDefaultProtectedFolders")) {
+        try { $v = $pref.$p } catch { $v = $null }
+        if ($v) { $folders += @($v | ForEach-Object { "$_" }) }
+    }
+    $folders = @($folders | Where-Object { $_ } | Select-Object -Unique)
+    $val = $null
+    try { $val = $pref.EnableControlledFolderAccess } catch { }
+    if ($null -eq $val) {
+        return @{ State = "unknown"; Folders = $folders
+                  Why = "this Defender build reports no EnableControlledFolderAccess setting" }
+    }
+    $s = ("$val").Trim()
+    if ($s -eq "0" -or $s -eq "Disabled") {
+        return @{ State = "off"; Folders = $folders
+                  Why = "EnableControlledFolderAccess = $s" }
+    }
+    if ($s -eq "1" -or $s -eq "Enabled") {
+        return @{ State = "on"; Folders = $folders
+                  Why = "EnableControlledFolderAccess = $s" }
+    }
+    if ($s -eq "2" -or $s -eq "AuditMode") {
+        return @{ State = "audit"; Folders = $folders
+                  Why = "EnableControlledFolderAccess = $s" }
+    }
+    if ($s -eq "3" -or $s -eq "BlockDiskModificationOnly" -or
+        $s -eq "4" -or $s -eq "AuditDiskModificationOnly") {
+        return @{ State = "off"; Folders = $folders
+                  Why = "EnableControlledFolderAccess = $s, which guards the boot sectors only and leaves protected folders alone" }
+    }
+    return @{ State = "unknown"; Folders = $folders
+              Why = "EnableControlledFolderAccess = $s, which this script does not recognise" }
+}
+
+$Hub = Resolve-Checkout $env:FLUBNF_HUB "FluSight-forecast-hub"
+$PyBnf = Resolve-Checkout $env:FLUBNF_PYBNF "PyBNF-pf"
 $EngineVenv = if ($env:FLUBNF_ENGINE_VENV) { $env:FLUBNF_ENGINE_VENV }
-              else { Join-Path $HOME ".venvs\flubnf-engine" }
-$PyBnf = if ($env:FLUBNF_PYBNF) { $env:FLUBNF_PYBNF }
-         else { Join-Path $HOME "Documents\GitHub\PyBNF-pf" }
+              # Resolve-ProfilePath, not a bare join: flubnf/settings.py
+              # expands ~/.venvs/flubnf-engine through %USERPROFILE%, so
+              # that is the spelling to prefer, and an engine venv an
+              # earlier release built under the other profile root is still
+              # found rather than silently rebuilt beside it.
+              else { Resolve-ProfilePath ".venvs\flubnf-engine" }
 $PyBnfRemote = if ($env:FLUBNF_PYBNF_REMOTE) { $env:FLUBNF_PYBNF_REMOTE }
                # HTTPS by default, not SSH. Students are onboarded through
                # GitHub Desktop, which installs Git Credential Manager and
@@ -78,6 +350,7 @@ $PyBnfRemote = if ($env:FLUBNF_PYBNF_REMOTE) { $env:FLUBNF_PYBNF_REMOTE }
                else { "https://github.com/elyfmiller/PyBNF-Private.git" }
 $EnginePy = Join-Path $EngineVenv "Scripts\python.exe"
 $VenvDir = Join-Path $Here ".venv"
+$VenvPy = Join-Path $VenvDir "Scripts\python.exe"
 
 Say "plan (nothing has been installed yet)"
 function Plan($label, $path) {
@@ -90,6 +363,16 @@ Plan "console venv"    $VenvDir
 Plan "FluSight data"   $Hub
 Plan "engine venv"     $EngineVenv
 Plan "PyBNF checkout"  $PyBnf
+if ($script:ReusedLegacy.Count -gt 0) {
+    Info ""
+    Info "Reusing folders that are already on this machine, rather than the"
+    Info "current default under $FluBnfRoot"
+    foreach ($p in $script:ReusedLegacy) { Info "  $p" }
+    Info "Nothing has been moved or copied, and nothing needs to be: a machine"
+    Info "set up before the default changed keeps working exactly as it is."
+    Info "Do note that these sit under Documents, which Controlled Folder"
+    Info "Access protects by default; the next section says what that means."
+}
 Info ""
 Info "To put any of these somewhere else, set the variable first, open a NEW"
 Info "window so the setting is visible, then re-run this script:"
@@ -100,6 +383,241 @@ if ($Hub -like "*OneDrive*") {
     Warn "the data path is inside OneDrive. A git clone of this size in a"
     Warn "synced folder syncs tens of thousands of small files; putting it"
     Warn "outside OneDrive with setx FLUBNF_HUB is strongly preferable."
+}
+
+Say "controlled folder access (Defender ransomware protection)"
+# READ-ONLY, ALWAYS. This section asks Defender one question and prints
+# advice. It never changes a Defender setting, never elevates, and never
+# suggests switching Controlled Folder Access off: the protection is worth
+# having, and a setup script is not the thing that gets to weaken it.
+#
+# It runs BEFORE anything is installed, because the failures it predicts are
+# the ones that cannot be read off their own error messages, and a user who
+# has been told what is coming can stop and fix it first.
+$Cfa = Get-CfaState
+$GitCmd = Get-Command git -ErrorAction SilentlyContinue
+$GitExe = if ($GitCmd) { $GitCmd.Source }
+          else { "C:\Program Files\Git\cmd\git.exe   (usual location; git is not on PATH here)" }
+# Perl and run_network.exe are resolved HERE, before the perl section far
+# below, because remedy 2 has to be able to name them. They are the writers
+# behind the failure mode the other two miss: a fit materialises its BNGL
+# model into app\state\workroots\<tag> INSIDE this repository and runs
+# BNG2.pl there under perl, which writes m.net next to the model, and BNG's
+# run_network.exe writes beside it. So a repository that sits in Documents
+# breaks mid-fit even when the hub and the checkout are somewhere safe.
+$PerlCmd = Get-Command perl -ErrorAction SilentlyContinue
+$PerlExe = if ($PerlCmd) { $PerlCmd.Source }
+           else { "C:\Strawberry\perl\bin\perl.exe   (usual location; perl is not on PATH here)" }
+# bionetgen is a dependency of the CONSOLE venv, not the engine venv: see
+# flubnf/settings.py::_bng_candidates, which looks under <repo>\.venv only.
+$RunNetExe = Join-Path $VenvDir "Lib\site-packages\bionetgen\bng-win\run_network.exe"
+# FromEnv records where the path CAME FROM, not just what it is. A recorded
+# variable that names a protected folder which does not exist is a different
+# problem from a default that happens to land in one, and it gets its own
+# remedy below: it is a leftover from an earlier release rather than a choice.
+$Resolved = @(
+    @{ Label = "repository";     Path = $Here;       Var = $null; FromEnv = $false },
+    @{ Label = "console venv";   Path = $VenvDir;    Var = $null; FromEnv = $false },
+    @{ Label = "FluSight data";  Path = $Hub;        Var = "FLUBNF_HUB"
+       FromEnv = [bool]$env:FLUBNF_HUB },
+    @{ Label = "engine venv";    Path = $EngineVenv; Var = "FLUBNF_ENGINE_VENV"
+       FromEnv = [bool]$env:FLUBNF_ENGINE_VENV },
+    @{ Label = "PyBNF checkout"; Path = $PyBnf;      Var = "FLUBNF_PYBNF"
+       FromEnv = [bool]$env:FLUBNF_PYBNF }
+)
+# The documented defaults, plus whatever list this particular machine was
+# willing to report. The union can only make the warning fire more often,
+# never less, which is the right direction for a check whose false negative
+# costs a day of misdiagnosis and whose false positive costs a paragraph.
+# The inner parentheses are not decoration: they put the concatenation
+# beyond any question about how much of the expression the pipeline claims.
+$Protected = @((@(Get-ProtectedFolders) + @($Cfa.Folders)) |
+               Where-Object { $_ } | Select-Object -Unique)
+$AtRisk = @()
+foreach ($e in $Resolved) {
+    $hit = $null
+    foreach ($pf in $Protected) {
+        if (Test-PathInside $e.Path $pf) { $hit = $pf; break }
+    }
+    if ($hit) {
+        $AtRisk += @{ Label = $e.Label; Path = $e.Path; Var = $e.Var
+                      FromEnv = $e.FromEnv; Folder = $hit }
+    }
+}
+# The console venv lives inside the repository, so listing both says the same
+# thing twice; keep the repository line, which is the one a user can act on.
+# @() around the pipeline: PowerShell unrolls a one-element result to a bare
+# object, and .Count on that would be 1 for a string as readily as for a list.
+if ((@($AtRisk | Where-Object { $_.Label -eq "repository" })).Count -gt 0) {
+    $AtRisk = @($AtRisk | Where-Object { $_.Label -ne "console venv" })
+}
+
+if ($Cfa.State -eq "off") {
+    # "will not block", not "is off": modes 3 and 4 also land here, and they
+    # are switched ON -- they simply guard the boot sectors rather than any
+    # folder, so for everything below they are indistinguishable from off.
+    Ok "Controlled Folder Access will not block anything here"
+    Ok "  ($($Cfa.Why))"
+} elseif ($AtRisk.Count -eq 0) {
+    if ($Cfa.State -eq "unknown") {
+        Info "the Controlled Folder Access setting could not be read:"
+        Info "  $($Cfa.Why)"
+        Ok "It does not matter here: none of the paths above is inside a folder"
+        Ok "it protects, whatever it is set to."
+    } else {
+        Ok "Controlled Folder Access is on ($($Cfa.Why)), and none of the paths"
+        Ok "above is inside a folder it protects"
+    }
+} else {
+    if ($Cfa.State -eq "on") {
+        Warn "Controlled Folder Access is ON ($($Cfa.Why)) and these paths are"
+        Warn "inside folders it protects:"
+    } elseif ($Cfa.State -eq "audit") {
+        Warn "Controlled Folder Access is in AUDIT mode ($($Cfa.Why)): it logs"
+        Warn "what it would block instead of blocking it. Nothing below is"
+        Warn "failing yet, and all of it starts failing the day it is enabled."
+        Warn "These paths are inside folders it protects:"
+    } else {
+        Warn "the Controlled Folder Access setting could not be read:"
+        Warn "  $($Cfa.Why)"
+        Warn "Microsoft ships it OFF, so it is probably off here. It is on for"
+        Warn "at least one machine this project runs on, though, and if it is on"
+        Warn "here then these paths are inside folders it protects:"
+    }
+    foreach ($e in $AtRisk) {
+        Warn ("  {0,-16} {1}" -f ($e.Label + ":"), $e.Path)
+    }
+    Warn ""
+    Warn "WHAT THAT DOES. A protected folder can be read by anything and"
+    Warn "written only by programs Defender trusts. git.exe and python.exe are"
+    Warn "not trusted by default, and neither is perl.exe, so:"
+    Warn "  * git may fail to clone or to pull the FluSight hub,"
+    Warn "  * python may fail to write __pycache__ inside a checkout, and"
+    Warn "  * a fit may fail partway through, because it writes its model and"
+    Warn "    the generated network into app\state\workroots INSIDE this"
+    Warn "    repository, through perl.exe and BioNetGen's run_network.exe."
+    Warn "ALL of those arrive as ordinary permission errors that never mention"
+    Warn "Defender. That is what makes this worth a warning: the failure"
+    Warn "cannot be diagnosed from the failure. The block is recorded only in"
+    Warn "the Defender log, as event 1123."
+    Info ""
+    Info "Remedies, best first."
+    Info ""
+    Info "  1. PREFERRED: put the folder where Controlled Folder Access does"
+    Info "     not reach. No administrator, and Defender is not touched."
+    $hasVar = $false
+    foreach ($e in $AtRisk) {
+        if ($e.Var) {
+            $hasVar = $true
+            $leaf = Split-Path -Leaf $e.Path
+            # quoted: setx takes the value as one argument, and a profile
+            # directory with a space in it is common enough to plan for
+            Info "       setx $($e.Var) `"$(Join-Path $FluBnfRoot $leaf)`""
+        }
+    }
+    if ($hasVar) {
+        Info "     Then close this window, open a NEW one, and re-run this"
+        Info "     script. Nothing is moved for you: the old folder is left"
+        Info "     exactly where it is and the new location is fetched from"
+        Info "     scratch, so if you would rather not download it again, move"
+        Info "     the folder there yourself first and then run the setx line."
+    }
+    foreach ($e in $AtRisk) {
+        if (-not $e.Var) {
+            Info "     The repository itself has no variable: move this whole"
+            Info "     folder to $FluBnfRoot\flubnf (or anywhere outside the"
+            Info "     folders listed above) and run FluBNF.bat from its new"
+            Info "     home. This one matters even if setup succeeds, because"
+            Info "     a fit writes into app\state\workroots inside it."
+        }
+    }
+    Info ""
+    Info "  2. Allow the specific programs through Controlled Folder Access."
+    Info "     This needs an ADMINISTRATOR. This script will not do it: it"
+    Info "     never elevates and never changes a Defender setting. Windows"
+    Info "     Security > Virus & threat protection > Ransomware protection >"
+    Info "     Manage ransomware protection > Allow an app through Controlled"
+    Info "     folder access > Add an allowed app, and add:"
+    Info "       $GitExe"
+    Info "       $EnginePy"
+    Info "       $VenvPy"
+    Info "       $PerlExe"
+    Info "       $RunNetExe"
+    Info "     git.exe and python.exe are the two Defender actually logged as"
+    Info "     blocked on the machine this was diagnosed on. perl.exe and"
+    Info "     run_network.exe are on the list because they write inside this"
+    Info "     repository during a fit; leave them out and setup will look"
+    Info "     fine and the first fit will not."
+    Info "     If those Windows Security controls are greyed out, or the page"
+    Info "     says the setting is managed by your organisation, then IT set"
+    Info "     it by policy and remedy 2 is not available to you even as an"
+    Info "     administrator. Use remedy 1."
+    Info ""
+    Info "  3. LAST RESORT, and it REDUCES PROTECTION: a folder exclusion."
+    Info "     Microsoft documents the default protected folders as ones you"
+    Info "     cannot modify or remove -- 'You can't modify the list of"
+    Info "     default protected folders' -- so the only folder-level lever is"
+    Info "     a Defender exclusion path, which weakens antivirus coverage of"
+    Info "     that folder for everything, not just for FluBNF -- and we have"
+    Info "     not been able to confirm that it exempts Controlled Folder"
+    Info "     Access at all."
+    Info "     Prefer 1 or 2. Do not switch Controlled Folder Access off."
+    # THE STRANDED MACHINE. An earlier release of this script recorded the
+    # Documents location in the User environment on every run, including
+    # runs whose clone had just been blocked. That recorded value wins over
+    # everything below it in Resolve-Checkout, so such a machine keeps
+    # aiming at the folder it cannot write to and never reaches the new
+    # default. It is not a user's choice and it should not be treated as
+    # one, but it is also not this script's to silently overrule: naming it
+    # and handing over the one-line fix is where the line is.
+    $Stale = @($AtRisk | Where-Object {
+        $_.FromEnv -and $_.Var -and -not (Test-Path -LiteralPath $_.Path) })
+    if ($Stale.Count -gt 0) {
+        Info ""
+        Info "  A NOTE ON WHAT IS ALREADY RECORDED ON THIS MACHINE."
+        foreach ($e in $Stale) {
+            Info "     $($e.Var) is recorded in your environment as"
+            Info "       $($e.Path)"
+            Info "     which is inside a protected folder AND is not there at"
+            Info "     all. An earlier version of this setup recorded that"
+            Info "     location by default, even on a run whose clone had just"
+            Info "     been blocked, so a blocked machine keeps aiming at the"
+            Info "     folder it cannot write to. Nothing is lost by moving it:"
+            $leaf = Split-Path -Leaf $e.Path
+            Info "       setx $($e.Var) `"$(Join-Path $FluBnfRoot $leaf)`""
+            Info "     then close this window, open a NEW one, and re-run this"
+            Info "     script."
+        }
+    }
+    Info ""
+    Info "To read the evidence yourself, in an ordinary PowerShell window:"
+    Info "  Get-MpPreference | Select-Object EnableControlledFolderAccess"
+    Info '  Get-WinEvent -LogName "Microsoft-Windows-Windows Defender/Operational" |'
+    Info '    Where-Object { $_.Id -eq 1123 } | Select-Object -First 20 TimeCreated, Message'
+    Info ""
+    Info "docs\WINDOWS.md has the whole story, with the log lines this came"
+    Info "from. Setup continues; nothing above has been changed."
+}
+
+function Show-CfaHint {
+    <#
+      One line, at the moment a write actually fails, naming the protection
+      that is the likely cause. The warning above is printed before the work
+      and is therefore easy to scroll past; this fires next to the error the
+      user is looking at, which is where it does the most good. Silent when
+      the protection is off or the path is not protected.
+    #>
+    param([string]$Path)
+    if ($Cfa.State -eq "off") { return }
+    foreach ($pf in $Protected) {
+        if (Test-PathInside $Path $pf) {
+            Warn "  Note: $Path is inside"
+            Warn "  $pf, which Controlled Folder Access protects. If the words"
+            Warn "  above read as a permission problem, that is the first thing"
+            Warn "  to rule out; see the section near the top of this run."
+            return
+        }
+    }
 }
 
 Say "python"
@@ -138,7 +656,8 @@ if (-not $PyExe) {
 Ok "Python $v via $(@($PyExe) + $PyArgs -join ' ')"
 
 Say "analysis venv (.venv) + package"
-$VenvPy = Join-Path $VenvDir "Scripts\python.exe"
+# $VenvPy was resolved with the other paths at the top, so the Controlled
+# Folder Access section could name it among the executables to allow.
 if (-not (Test-Path $VenvPy)) {
     Info "creating $VenvDir"
     $mk = Invoke-Captured $PyExe (@($PyArgs) + @("-m", "venv", $VenvDir))
@@ -147,6 +666,7 @@ if (-not (Test-Path $VenvPy)) {
         Show-Output $mk
         Warn "Usual causes: a policy on this machine blocks writing here, or the"
         Warn "Python install is missing 'ensurepip'."
+        Show-CfaHint $VenvDir
         exit 1
     }
 }
@@ -244,6 +764,14 @@ function Repair-HubCone {
 
 Say "FluSight hub data"
 Info "target: $Hub"
+# Set only where a clone was ATTEMPTED and did not produce a checkout. It
+# gates the PERSISTENT record of FLUBNF_HUB at the end of this script: a
+# location setup could not create is not a location to pin into the User
+# environment for every future run, and pinning it is what stranded the
+# machines this release exists to unstrand. Deliberately NOT set when the
+# data fetch was merely skipped (FLUBNF_NO_DATA=1), where $Hub is still the
+# right answer and simply has not been filled in yet.
+$HubCloneFailed = $false
 $HubGit = Join-Path $Hub ".git"
 $GitPresent = [bool](Get-Command git -ErrorAction SilentlyContinue)
 if ($env:FLUBNF_NO_DATA -eq "1") {
@@ -274,6 +802,7 @@ if ($env:FLUBNF_NO_DATA -eq "1") {
             Warn "hub update skipped ($(CodeStr $pull)); the data already on disk is"
             Warn "still used. git said:"
             Show-Output $pull 10
+            Show-CfaHint $Hub
         }
         # The cone repair runs whether or not the pull worked, and BEFORE
         # reapply, because reapply cannot add what the cone never held. The
@@ -326,8 +855,10 @@ if ($env:FLUBNF_NO_DATA -eq "1") {
             Ok "created $HubParent"
         } catch {
             $ParentOk = $false
+            $HubCloneFailed = $true
             Warn "cannot create $HubParent"
             Warn "  $($_.Exception.Message)"
+            Show-CfaHint $HubParent
         }
     }
     if ($ParentOk) {
@@ -351,8 +882,10 @@ if ($env:FLUBNF_NO_DATA -eq "1") {
                 Show-Output $sp 10
             }
         } else {
+            $HubCloneFailed = $true
             Warn "git clone failed ($(CodeStr $clone)). git said:"
             Show-Output $clone 20
+            Show-CfaHint $Hub
             Warn "Nothing else was changed; re-run this script once that is fixed."
         }
     }
@@ -520,7 +1053,19 @@ function Test-RemoteAccess {
 Say "engine venv (pybnf + bngsim)"
 $EngineReady = $false
 if (Test-Path $EnginePy) {
-    $imp = Invoke-Captured $EnginePy @("-c", "import pybnf, bngsim")
+    # Test the engine the way the ENGINE actually loads, not the way pip
+    # would. app/core/engines/pf.py writes sys.path.insert(0, <checkout>) into
+    # every generated runner, so the fork is imported from the checkout and a
+    # pip install of it is not required to run a fit. Measured on Windows,
+    # 2026-08-25: the editable install failed, this check reported "imports
+    # fail", and fits ran perfectly anyway. A readiness check that disagrees
+    # with the thing it is checking is worse than no check. Import
+    # pybnf.pf.ParticleFilter specifically, since that class is the whole
+    # reason the fork exists and a stock PyPI pybnf does not have it.
+    $probe = "import sys; sys.path.insert(0, r'$PyBnf'); import bngsim; " +
+             "from pybnf.pf import ParticleFilter; " +
+             "print('pf ok, bngsim ' + bngsim.__version__)"
+    $imp = Invoke-Captured $EnginePy @("-c", $probe)
     if ($imp.Code -eq 0) {
         $EngineReady = $true
     } else {
@@ -625,10 +1170,35 @@ Say "environment"
 # UTF-8 mode: Windows defaults text I/O to cp1252, which breaks reads of the
 # app's UTF-8 assets. This makes every Python launch behave like macOS/Linux.
 [Environment]::SetEnvironmentVariable("PYTHONUTF8", "1", "User")
-[Environment]::SetEnvironmentVariable("FLUBNF_HUB", $Hub, "User")
 [Environment]::SetEnvironmentVariable("FLUBNF_PY_ENGINE", $EnginePy, "User")
 [Environment]::SetEnvironmentVariable("FLUBNF_PYBNF", $PyBnf, "User")
-Ok "user environment recorded (FLUBNF_HUB, FLUBNF_PY_ENGINE, FLUBNF_PYBNF)"
+# FLUBNF_HUB is the one that gets withheld after a failed clone. Writing it
+# to the User environment PINS it: Resolve-Checkout returns an environment
+# value ahead of everything else, so a run that recorded a location it could
+# not create would send every later run back to the same place, past the
+# legacy probe and past the current default. Leaving it unwritten costs
+# nothing, because .flubnf.env.cmd below is rewritten on every run and
+# FluBNF.bat and flubnf/settings.py resolve the identical default on their
+# own; it simply lets the next run reconsider.
+#
+# It is SKIPPED, never cleared. Deleting the variable would also delete a
+# value the user set deliberately -- FLUBNF_HUB=D:\... on a machine whose D:
+# drive happened to be unplugged today -- and destroying a working
+# configuration to fix a broken one is not a trade this script gets to make.
+# A stale pin recorded by an earlier release is reported instead, by name
+# and with its one-line fix, in the Controlled Folder Access section above.
+if ($HubCloneFailed) {
+    Warn "FLUBNF_HUB was left alone rather than set to"
+    Warn "  $Hub"
+    Warn "The clone into it did not produce a checkout, and recording a location"
+    Warn "setup could not create would send every future run straight back to"
+    Warn "it. Whatever FLUBNF_HUB was before this run, it still is. Fix the"
+    Warn "cause above and re-run; nothing else was left half-done."
+    Ok "user environment recorded (FLUBNF_PY_ENGINE, FLUBNF_PYBNF)"
+} else {
+    [Environment]::SetEnvironmentVariable("FLUBNF_HUB", $Hub, "User")
+    Ok "user environment recorded (FLUBNF_HUB, FLUBNF_PY_ENGINE, FLUBNF_PYBNF)"
+}
 
 $EnvCmd = Join-Path $Here ".flubnf.env.cmd"
 $EnvLines = @(

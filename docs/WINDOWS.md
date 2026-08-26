@@ -15,8 +15,19 @@ Install once:
 Then get the code and launch:
 
 ```
-git clone https://github.com/elyfmiller/flubnf %USERPROFILE%\Documents\GitHub\flubnf
+git clone https://github.com/elyfmiller/flubnf "%LOCALAPPDATA%\FluBNF\flubnf"
 ```
+
+The quotation marks matter. `%LOCALAPPDATA%` expands to
+`C:\Users\<you>\AppData\Local`, and if your account name contains a space
+then an unquoted destination reaches `git` as two arguments and the clone
+stops with `fatal: Too many arguments.` -- which says nothing about spaces.
+
+Not `Documents`. Whenever Controlled Folder Access is switched on it
+protects `Documents`, `Pictures`, `Music`, `Videos` and `Favorites`, and a
+protected folder is one `git.exe` is not allowed to write into. The next
+section is the whole story; if you already have a clone under `Documents`
+it keeps working and nothing needs moving.
 
 Double-click `FluBNF.bat` in that folder. The first run creates the
 virtual environment and installs dependencies (a few minutes); every later
@@ -33,13 +44,224 @@ That offer is judged on the data, not on the folder: the launcher looks for
 `-NoPrompt`, so a double-click can never end at a question with no timeout.
 Nothing on the double-click path waits on input without a deadline.
 
+## Controlled Folder Access
+
+**Read this section first if any of these happened: a `git clone` or a
+`git pull` failed with a permission error that makes no sense; a Python
+import failed to write its cache; a fit stopped partway through; or Windows
+showed you a Defender pop-up naming this project.**
+
+**Nothing is wrong with your computer and nothing is infected.** A Defender
+pop-up about FluBNF is not a virus alert and not damage. Controlled Folder
+Access stopped one program from writing to one folder because it did not
+recognise the program. Nothing was deleted, encrypted or changed, no data
+was lost, and every one of these situations is fixed by the remedies below.
+If a fit stopped, it stopped because of the block; re-run it once the block
+is dealt with.
+
+Controlled Folder Access is the ransomware protection built into Microsoft
+Defender. **Microsoft ships it turned off** -- "CFA is turned off by
+default", with mode `0`, Disabled, marked as the default. It was
+nevertheless **on** on the corresponding author's Windows 11 machine, and
+something had to turn it on: the user, the manufacturer's image, or IT
+policy on a managed machine. University-managed machines are exactly where
+that last one is likely, which is to say exactly the machines the
+undergraduates use. So this is neither universal nor rare, and the project's
+defaults are chosen so that it does not matter which you have.
+
+When it is on, it protects these folders for every user account and system
+account on the machine:
+
+`Documents`, `Favorites`, `Music`, `Pictures` and `Videos` under each user
+profile, plus `C:\Users\Public\Documents`, `\Music`, `\Pictures` and
+`\Videos`. Microsoft's page describes `Desktop` as protected when it is
+redirected by OneDrive Known Folder Move but does not list it among the
+defaults; this project treats it as protected anyway, because a warning too
+many costs a paragraph and a warning too few costs a day. An administrator
+can add further folders, and `setup.ps1` asks the machine for its own list
+rather than relying on any of the above.
+
+A protected folder can be read by anything and written only by programs
+Defender trusts. `git.exe`, `python.exe` and `perl.exe` are not trusted out
+of the box.
+
+FluBNF is unusually good at tripping it. The project writes into checkouts
+constantly rather than only reading from them:
+
+- the FluSight hub is a git clone that is pulled on every setup run, so
+  `git.exe` writes into it every time;
+- the PyBNF engine is imported straight from its checkout (the generated
+  runners do `sys.path.insert(0, <checkout>)`), so `python.exe` writes
+  `__pycache__` directories inside it on first import;
+- fits materialize BNGL models at runtime and hand them to BioNetGen, which
+  runs `BNG2.pl` under a Perl interpreter that writes generated network
+  files next to the model. Those live in `app\state\workroots\<tag>`
+  **inside the repository**, so a repository cloned into `Documents` -- the
+  GitHub Desktop default -- breaks partway through a fit even when the hub
+  and the PyBNF checkout are somewhere safe. For that one, remedy 1 means
+  moving the whole repository.
+
+Every one of those is a write, by an untrusted executable, into a folder the
+old defaults put inside `Documents`.
+
+### What it looks like when it happens
+
+The failure text never mentions Defender. `git` reports an ordinary
+permission or "unable to create file" error; Python reports an import or
+cache-write failure. The block is recorded only in Defender's own log.
+
+This is the field case, from the corresponding author's Windows 11 machine
+on 2026-08-25, verbatim from **Applications and Services Logs > Microsoft >
+Windows > Windows Defender > Operational**:
+
+```
+5:49:52 PM  Id 1123: git.exe has been blocked from modifying
+            %userprofile%\Documents\GitHub\FluSight-forecast-hub
+5:50:12 PM  Id 5007: ...AllowedApplications\git.exe = 0x0
+8:46:37 PM  Id 1123: python.exe has been blocked from modifying
+            %userprofile%\Documents\GitHub\PyBNF-pf\pybnf\__pycache__
+8:46:57 PM  Id 5007: ...AllowedApplications\python.exe = 0x0
+```
+
+Event **1123** is the block itself. Event **1124** is the same thing in
+audit mode, where Defender logs what it would have blocked and blocks
+nothing. Event **5007** is a settings change: the two above are the moment
+each executable was added to the allow-list, which is what the Windows
+pop-up does when a user clicks through it. That pairing is why the problem
+was so hard to see the first time: the initial attempt failed invisibly, the
+user clicked "Allow" on a prompt, and the retry then worked, so the failure
+looked intermittent rather than caused.
+
+### The two commands that reveal it
+
+```powershell
+Get-MpPreference | Select-Object EnableControlledFolderAccess
+Get-WinEvent -LogName "Microsoft-Windows-Windows Defender/Operational" |
+  Where-Object { $_.Id -eq 1123 } |
+  Select-Object -First 20 TimeCreated, Message
+```
+
+`EnableControlledFolderAccess` has five documented values: `0` disabled (the
+shipped default), `1` enabled, `2` audit mode, `3` block disk modification
+only and `4` audit disk modification only. Modes `3` and `4` act only on the
+disk sectors holding the boot record and, in Microsoft's words, "don't
+affect files in protected folders", so for this project they are equivalent
+to off and `setup.ps1` reports them that way.
+
+On the machine above it reads `1`. Since Microsoft ships `0`, that reading
+means the setting was turned on there -- by the author, by the machine's
+image, or by policy. Which of those it was, we cannot tell from the value.
+
+### What setup.ps1 does about it
+
+`setup.ps1` runs both queries for you, before it installs anything, and
+handles the cases where the Defender module is absent or the cmdlet errors
+by saying so rather than by assuming an answer. It also asks Defender for
+the machine's own protected-folder list, so a folder your IT department
+added is covered too, and falls back to the documented defaults when the
+machine will not answer. If Controlled Folder Access is on (or in audit
+mode, or unreadable) **and** one of the paths it is about to use lies inside
+a protected folder, it prints the risk and the remedies and then carries on.
+It never changes a Defender setting, never elevates, and never suggests
+switching the protection off.
+
+It also declines to record `FLUBNF_HUB` after a clone that failed. An
+earlier release recorded it unconditionally, which pinned the failing
+location into the user environment and sent every later run straight back to
+it; if your machine is in that state, `setup.ps1` now names the stale
+variable and prints the one `setx` line that clears it.
+
+### Remedies, best first
+
+1. **Put the folder where Controlled Folder Access does not reach.** No
+   administrator, and Defender is not touched at all. Move the folder
+   yourself first if you would rather not download 150 MB again, then:
+
+   ```
+   setx FLUBNF_HUB "%LOCALAPPDATA%\FluBNF\FluSight-forecast-hub"
+   setx FLUBNF_PYBNF "%LOCALAPPDATA%\FluBNF\PyBNF-pf"
+   ```
+
+   Open a **new** window afterwards, so the setting is visible, and re-run
+   `setup.ps1`. For the repository itself there is no variable: move the
+   whole folder out of `Documents` and run `FluBNF.bat` from its new home.
+
+2. **Allow the specific executables through.** This needs an administrator.
+   Windows Security > Virus & threat protection > Ransomware protection >
+   Manage ransomware protection > Allow an app through Controlled folder
+   access > Add an allowed app. Five are worth adding, and `setup.ps1`
+   prints the full path of each:
+
+   | executable | usual location | what it writes |
+   |---|---|---|
+   | `git.exe` | `C:\Program Files\Git\cmd\git.exe` | the FluSight hub clone and every later pull |
+   | `python.exe` (console venv) | `<repo>\.venv\Scripts\python.exe` | the app itself, and `__pycache__` |
+   | `python.exe` (engine venv) | `%USERPROFILE%\.venvs\flubnf-engine\Scripts\python.exe` | `__pycache__` inside the PyBNF checkout |
+   | `perl.exe` | `C:\Strawberry\perl\bin\perl.exe` | `m.net`, from `BNG2.pl`, during a fit |
+   | `run_network.exe` | `<repo>\.venv\Lib\site-packages\bionetgen\bng-win\run_network.exe` | simulation output, during a fit |
+
+   `git.exe` and `python.exe` are the two Defender actually logged as
+   blocked above. `perl.exe` and `run_network.exe` are on the list because
+   they write during a fit rather than during setup: leave them out and
+   setup will look perfect and the first fit will not.
+
+   **If those controls are greyed out**, or Windows Security says the
+   setting is managed by your organisation, then Controlled Folder Access
+   was set by Group Policy or Intune. Remedy 2 is then unavailable to you
+   even as a local administrator, and remedy 1 is the route that works.
+
+3. **Last resort, and it reduces protection: a folder exclusion.** Microsoft
+   is explicit that "You can't modify the list of default protected
+   folders", so the only folder-level lever is a Microsoft Defender
+   exclusion path, which weakens antivirus coverage of that folder for
+   everything on the machine rather than for FluBNF alone -- and we have not
+   been able to confirm that it exempts Controlled Folder Access at all.
+   Prefer 1 or 2, and do not switch Controlled Folder Access off.
+
+### Where things go by default now
+
+| what | default | protected? |
+|---|---|---|
+| FluSight hub (`FLUBNF_HUB`) | `%LOCALAPPDATA%\FluBNF\FluSight-forecast-hub` | no |
+| PyBNF checkout (`FLUBNF_PYBNF`) | `%LOCALAPPDATA%\FluBNF\PyBNF-pf` | no |
+| engine venv (`FLUBNF_ENGINE_VENV`) | `%USERPROFILE%\.venvs\flubnf-engine` | no; the profile **root** is not protected, only the named folders inside it |
+| the repository itself | wherever you cloned it | `Documents` is, `%LOCALAPPDATA%` is not |
+
+`%LOCALAPPDATA%` was chosen over the alternatives because it is the
+documented per-user application data location (`FOLDERID_LocalAppData`), it
+is not in the protected set, it needs no administrator, and -- unlike
+`%APPDATA%` -- it neither roams nor gets swept into OneDrive by Known Folder
+Move, which matters for a 150 MB clone made of tens of thousands of small
+files. `C:\FluBNF` was rejected: creating a directory at the root of the
+system drive requires elevation on a default install.
+
+**An existing checkout under `Documents` is reused exactly where it is.**
+`setup.ps1`, `FluBNF.bat` and `flubnf/settings.py` all resolve in the same
+order -- the `FLUBNF_*` variable, then an existing directory at the old
+`Documents\GitHub` path, then the new default -- so a machine set up before
+this change keeps working with no action. Nothing is ever moved or copied
+for you: the author's own machine has 143 MB of PyBNF checkout and 150 MB of
+hub under `Documents`, and relocating a working tree is not a decision a
+setup script gets to take. The reuse is announced in the plan block, and
+named again in the warning when the protection is on.
+
+All three resolvers anchor on `%USERPROFILE%`. That is what `FluBNF.bat`
+reads and what Python's `expanduser` prefers, and `setup.ps1` prefers it
+too rather than using PowerShell's `$HOME`, which the PowerShell 5.1
+documentation described as `%HOMEDRIVE%%HOMEPATH%` and which can therefore
+be a mapped `H:\` or a UNC path on a domain-managed machine with an Active
+Directory home directory. When the two disagree, `setup.ps1` looks under
+both before falling back to the new default, so a checkout an earlier
+release made under either one is still found rather than silently
+re-cloned.
+
 ## A hub cloned by hand
 
 `git clone --sparse` is documented to check out **only the files in the
 repository root**. A hub cloned by hand with
 
 ```
-git clone --filter=blob:none --sparse --depth 1 https://github.com/cdcepi/FluSight-forecast-hub %USERPROFILE%\Documents\GitHub\FluSight-forecast-hub
+git clone --filter=blob:none --sparse --depth 1 https://github.com/cdcepi/FluSight-forecast-hub "%LOCALAPPDATA%\FluBNF\FluSight-forecast-hub"
 ```
 
 therefore succeeds, prints no error, and contains no `auxiliary-data`, no
@@ -81,7 +303,9 @@ Useful switches and variables:
 | what | effect |
 |---|---|
 | `-NoPrompt` | ask nothing at all. `FluBNF.bat` always passes it; the one question it suppresses is the offer to let winget install Strawberry Perl, which `setup.ps1` then prints as a command to run later. Run `setup.ps1` by hand to be asked. |
-| `FLUBNF_HUB` | put the FluSight data somewhere else, e.g. `setx FLUBNF_HUB D:\FluSight-forecast-hub`, then open a new window |
+| `FLUBNF_HUB` | put the FluSight data somewhere else, e.g. `setx FLUBNF_HUB D:\FluSight-forecast-hub`, then open a new window. Default: `%LOCALAPPDATA%\FluBNF\FluSight-forecast-hub`, or an existing clone at the old `%USERPROFILE%\Documents\GitHub\FluSight-forecast-hub` if one is there |
+| `FLUBNF_PYBNF` | the PyBNF fork checkout. Same resolution order; default `%LOCALAPPDATA%\FluBNF\PyBNF-pf` |
+| `FLUBNF_ENGINE_VENV` | the engine virtual environment. Default `%USERPROFILE%\.venvs\flubnf-engine` |
 | `FLUBNF_NO_DATA=1` | skip the data clone entirely |
 | `FLUBNF_NO_PROBE=1` | skip the read-only check for access to the private PyBNF fork |
 
@@ -132,12 +356,14 @@ standard `setup.sh` instructions inside the Linux environment.
   the port stabilizes. `test-windows (experimental)` runs the test suite.
   `windows-setup-script (experimental)` is the only automated exercise of
   the first-run path: it parses `setup.ps1` under Windows PowerShell 5.1,
-  then runs it four times through the command line `FluBNF.bat` uses --
+  then runs it five times through the command line `FluBNF.bat` uses --
   once with the data fetch skipped, once performing the real sparse
-  FluSight clone, once more over the machine the second run configured, and
+  FluSight clone, once more over the machine the second run configured,
   once against a hub cloned **by hand** with `--sparse`, which is the state
   the field report came from and the only one that can show whether the
-  repair above works -- checking each transcript against what the script
+  repair above works, and once against a machine that already holds a
+  checkout at the old `Documents` location, which must be reused where it
+  stands -- checking each transcript against what the script
   promised to say. It holds no credentials, so the engine is always missing
   there and the degraded path is what gets tested. It does not cover
   `FluBNF.bat` itself, the Perl/winget branch, or any non-ASCII profile
@@ -153,3 +379,45 @@ standard `setup.sh` instructions inside the Linux environment.
   the equivalent bash in `setup.sh` was executed against five clone states.
   What remains unverified is the transliteration into PowerShell 5.1
   syntax, which is what the CI job exists to check.
+- **The Controlled Folder Access detection is unverified against a machine
+  that has it on.** The GitHub runner is not such a machine, and this lab
+  has no Windows box at all, so what CI can show is that `Get-MpPreference`
+  is queried without crashing and that the section prints. These things
+  behind it are read from Microsoft's documentation rather than measured
+  here:
+  - that Controlled Folder Access is **off** in the shipped state, so a
+    machine that has it on was configured that way by its user, its image,
+    or policy. An earlier draft of this document asserted the opposite --
+    that Windows 11 shipped with it already switched on -- in five places,
+    on the strength of one machine reading `1`. Microsoft's own page says
+    "CFA is turned off by default". Nothing in the code depended on the
+    claim, but it was wrong and it is corrected;
+  - that `EnableControlledFolderAccess` reports `0` through `4` in the form
+    this script matches (both the number and the enumeration name are
+    accepted, so either rendering is handled), and that modes `3` and `4`
+    leave protected folders alone;
+  - that the default protected set is `Documents`, `Favorites`, `Music`,
+    `Pictures` and `Videos` under each profile plus the `C:\Users\Public`
+    counterparts, and cannot have its defaults removed. `Desktop` is
+    treated as protected here even though the current page omits it from
+    that list;
+  - that a policy-managed machine greys out the Windows Security ransomware
+    controls, which is why remedy 2 carries a caveat. Microsoft documents
+    Group Policy and Intune as configuration methods; that the local UI is
+    then unavailable is the standard Windows behaviour for a managed
+    setting, and is not something this lab can demonstrate;
+  - and that a Microsoft Defender exclusion path does **not** reliably
+    exempt Controlled Folder Access, which is why remedy 3 is marked as
+    unconfirmed as well as last.
+
+  The event IDs, the block text and the `EnableControlledFolderAccess = 1`
+  reading are not from documentation: they were taken off the corresponding
+  author's own machine.
+- **`$HOME` versus `%USERPROFILE%` in PowerShell is unsettled here.** The
+  PowerShell 7 documentation says `$HOME` takes `%USERPROFILE%` and warns it
+  "may not have the same value as `$Env:HOMEDRIVE$Env:HOMEPATH`"; the 5.1
+  documentation described it as the equivalent of `%homedrive%%homepath%`.
+  We cannot run 5.1 here to settle which applies, so `setup.ps1` no longer
+  depends on the answer: it anchors on `%USERPROFILE%`, matching
+  `FluBNF.bat` and `flubnf/settings.py`, and probes both spellings when
+  looking for something that already exists.

@@ -199,7 +199,8 @@ missing.
 
 ### Windows (experimental)
 
-Install Python 3.11+ and Git, clone the repository, and double-click
+Install Python 3.11+ and Git, clone the repository **outside `Documents`**
+(`%LOCALAPPDATA%\FluBNF\flubnf` is the suggested spot), and double-click
 `FluBNF.bat`. When the FluSight data is not yet on the machine it offers to
 run the full first-time setup for you; to run that yourself:
 
@@ -207,12 +208,22 @@ run the full first-time setup for you; to run that yourself:
 powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1
 ```
 
-Details and current limitations: [docs/WINDOWS.md](docs/WINDOWS.md).
+`Documents` matters: Controlled Folder Access, Microsoft Defender's
+ransomware protection, blocks `git.exe`, `python.exe` and `perl.exe` from
+writing into `Documents` and the other folders it protects, with no mention
+of Defender in the error any of them reports. Microsoft ships it off, but it
+was on for this project's corresponding author and is a plausible default on
+a university-managed machine, so the Windows defaults sit under
+`%LOCALAPPDATA%\FluBNF`, an existing checkout under `Documents` is reused
+where it stands, and `setup.ps1` asks the machine and explains what it
+finds. Details and current limitations: [docs/WINDOWS.md](docs/WINDOWS.md).
 
 ### External components
 
 Resolved via `flubnf/settings.py`, each overridable by environment variable
-(defaults assume checkouts under `~/Documents/GitHub`):
+(defaults assume checkouts under `~/Documents/GitHub`; on Windows, under
+`%LOCALAPPDATA%\FluBNF`, with an existing `Documents\GitHub` checkout still
+preferred when one is there -- see [docs/WINDOWS.md](docs/WINDOWS.md)):
 
 | variable | points at |
 |---|---|
