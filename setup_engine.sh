@@ -35,11 +35,20 @@ else
     git clone -b feature/particle-filter "$PYBNF_REMOTE" "$PYBNF" && ok "cloned"
   else
     warn "cannot authenticate to $PYBNF_REMOTE and no local checkout exists"
-    warn "1) ask Ely for a collaborator invite to PyBNF-Private"
-    warn "2) authenticate: GitHub Desktop or `gh auth login` installs a"
-    warn "   credential helper that answers this HTTPS clone. For SSH instead,"
-    warn "   set FLUBNF_PYBNF_REMOTE=git@github.com:elyfmiller/PyBNF-Private.git"
-    warn "3) re-run this script  (or clone by any means and re-run)"
+    warn "NOTE: git's password prompt does NOT accept your GitHub account"
+    warn "password (GitHub retired password auth in 2021), so being a"
+    warn "collaborator is not enough by itself. Pick one:"
+    warn "a) EASIEST: open GitHub Desktop, sign in, and clone"
+    warn "   elyfmiller/PyBNF-Private from inside Desktop. Its default clone"
+    warn "   location (~/Documents/GitHub/PyBNF-Private) is exactly where this"
+    warn "   setup looks, and an on-disk checkout needs no terminal login at"
+    warn "   all. Then reopen FluBNF.command. (Signing in to Desktop WITHOUT"
+    warn "   cloning does not help: Desktop does not share its login with"
+    warn "   terminal git.)"
+    warn "b) run 'gh auth login' (GitHub CLI) once, then re-run this script."
+    warn "c) paste a Personal Access Token at the password prompt in place of"
+    warn "   your password (github.com > Settings > Developer settings)."
+    warn "For SSH keys: set FLUBNF_PYBNF_REMOTE=git@github.com:elyfmiller/PyBNF-Private.git"
     exit 1
   fi
 fi
