@@ -599,8 +599,17 @@ if ($EngineReady) {
     # venv-local patches rather than commits, so the pin is the reproducible
     # answer. Same pin as setup_engine.sh on macOS and Linux.
     Info "  $PyExe $($PyArgs -join ' ') -m venv $EngineVenv"
-    Info "  $EngineVenv\Scripts\pip install `"numpy<2`" scipy pandas `"bngsim==0.15.1`""
-    Info "  $EngineVenv\Scripts\pip install -e $PyBnf"
+    # Install the runtime set EXPLICITLY, then the fork with --no-deps.
+    # PyBNF's setup.py pins msgpack==0.6.2, a 2019 release with no Windows
+    # wheel for any modern Python, so letting pip resolve the fork's declared
+    # dependencies makes it try to compile msgpack from source and fail on any
+    # machine without MSVC build tools. Measured 2026-08-25: every package
+    # below has a prebuilt win_amd64 wheel for Python 3.11, so no compiler is
+    # needed. The list is what the PF path actually imports, traced rather
+    # than guessed; PyBNF also declares nose and paramiko, which it never
+    # imports.
+    Info "  $EngineVenv\Scripts\pip install `"numpy<2`" scipy pandas `"bngsim==0.15.1`" `"dask==2022.12.1`" `"distributed==2022.12.1`" msgpack pyparsing tornado libroadrunner python-libsbml"
+    Info "  $EngineVenv\Scripts\pip install -e $PyBnf --no-deps"
     Info "  then re-run this script"
     Warn "Without the engine: the console, analogue engine, and reports all work."
 }
