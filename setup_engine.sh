@@ -52,7 +52,14 @@ if "$ENGINE_VENV/bin/python" -c "import bngsim" 2>/dev/null; then
   ok "bngsim already importable"
 else
   # wheels from the lab fork's releases first; source build as fallback
-  if ! "$ENGINE_VENV/bin/pip" install -q bngsim 2>/dev/null; then
+  # PINNED. Every published FluBNF number was produced by a bngsim built
+  # from a local checkout whose pyproject reported "0.13.0" while sitting 50
+  # commits past that tag, on a branch present in no upstream. So
+  # `bngsim==0.13.0` would NOT reproduce the seal. 0.15.1 was measured on
+  # 2026-08-25 to be BIT-IDENTICAL to that build across three cells, at the
+  # ODE, the filter and the WIS: max abs and max rel difference exactly 0.
+  # It is a real published version anyone can install, so it is the pin.
+  if ! "$ENGINE_VENV/bin/pip" install -q "bngsim==0.15.1" 2>/dev/null; then
     warn "no PyPI/wheel match -- building from source (needs a C++ toolchain;"
     warn "on macOS: xcode-select --install). This takes ~10 minutes."
     "$ENGINE_VENV/bin/pip" install "git+$BNGSIM_REMOTE" || { warn "bngsim build failed"; exit 1; }
