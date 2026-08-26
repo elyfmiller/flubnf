@@ -105,11 +105,35 @@ BNG = _path(
 )
 
 # The Scripts variants are the same venvs as Windows lays them out; on
-# POSIX they never exist, so the first fallback keeps winning there.
+# POSIX they never exist, so the earlier fallbacks keep winning there.
+# ~/.venvs/flubnf is the development host's venv and stays first so the
+# sealed results keep reproducing against the exact interpreter that made
+# them; ~/.venvs/flubnf-engine is what setup_engine.sh creates on every
+# other machine (field report 2026-08-26: a laptop with a verified engine
+# reported "not installed" because this list knew only the dev host's
+# layout and left .flubnf.env as the single point of failure).
 PY_ENGINE = _path("FLUBNF_PY_ENGINE", "~/.venvs/flubnf/bin/python",
+                  "~/.venvs/flubnf-engine/bin/python",
                   "~/.venvs/flubnf/Scripts/python.exe",
                   "~/.venvs/flubnf-engine/Scripts/python.exe")
-PYBNF = _checkout("FLUBNF_PYBNF", "PyBNF-pf")
+
+
+def _first_checkout(env: str, *names: str) -> Path:
+    """The first of several checkout names that exists on disk, under the
+    same per-platform roots as _checkout; the first name's default when
+    none exists yet. PyBNF needs this because the fork lives as PyBNF-pf
+    on the development host but clones as PyBNF-Private (the repository's
+    actual name, and what GitHub Desktop names it) everywhere else."""
+    if os.environ.get(env):
+        return _checkout(env, names[0])
+    cands = [_checkout(env, n) for n in names]
+    for c in cands:
+        if c.exists():
+            return c
+    return cands[0]
+
+
+PYBNF = _first_checkout("FLUBNF_PYBNF", "PyBNF-pf", "PyBNF-Private")
 
 
 def check(verbose: bool = True) -> list:
