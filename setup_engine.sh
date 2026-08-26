@@ -64,7 +64,8 @@ say "engine venv"
 # PyBNF also declares nose and paramiko, which it never imports.
 "$ENGINE_VENV/bin/pip" install -q "numpy<2" scipy pandas "dask==2022.12.1" \
   "distributed==2022.12.1" msgpack pyparsing tornado libroadrunner \
-  python-libsbml && ok "runtime dependencies installed"
+  python-libsbml && ok "runtime dependencies installed" \
+  || { warn "dependency install failed (see pip's output above)"; exit 1; }
 
 say "bngsim"
 if "$ENGINE_VENV/bin/python" -c "import bngsim" 2>/dev/null; then
@@ -88,18 +89,38 @@ fi
 
 say "PyBNF install"
 # --no-deps: the runtime set is installed above, and resolving the fork's
-# own install_requires would drag in the unbuildable msgpack pin.
+# own install_requires would drag in the unbuildable msgpack pin. A failed
+# editable install is a warning, not an error: every generated runner (and
+# the app's version probe) loads pybnf from the checkout via sys.path, so
+# the verify below is the real gate. (The editable install is known to
+# fail on Windows and to work on macOS.)
 "$ENGINE_VENV/bin/pip" install -q -e "$PYBNF" --no-deps \
-  && ok "pybnf (fork) installed editable"
+  && ok "pybnf (fork) installed editable" \
+  || warn "editable install failed -- harmless if the verify below passes"
 
 say "verify"
-"$ENGINE_VENV/bin/python" - <<'PYEOF'
+# Mirrors exactly what every generated runner does: the checkout first on
+# sys.path, then import. A verify failure aborts BEFORE the environment is
+# recorded, so a broken setup can never present itself as a finished one.
+if ! "$ENGINE_VENV/bin/python" - "$PYBNF" <<'PYEOF'
+import sys
+sys.path.insert(0, sys.argv[1])
 import bngsim, pybnf
 from pybnf.pf import ParticleFilter  # the point of the whole exercise
 print(f"  + pybnf with fit_type=pf, bngsim {bngsim.__version__} -- engine ready")
 PYEOF
+then
+  warn "verification failed -- the engine is NOT ready (see the error above)"
+  exit 1
+fi
 ENVF="$(cd "$(dirname "$0")" && pwd)/.flubnf.env"
-grep -q FLUBNF_PY_ENGINE "$ENVF" 2>/dev/null || {
-  echo "export FLUBNF_PY_ENGINE=\"$ENGINE_VENV/bin/python\"" >> "$ENVF"
-  echo "export FLUBNF_PYBNF=\"$PYBNF\"" >> "$ENVF"; }
+# rewrite, don't skip: a stale entry from an earlier layout must not
+# outlive the setup that just verified the real one
+TMPF="$ENVF.tmp.$$"
+grep -v -e FLUBNF_PY_ENGINE -e FLUBNF_PYBNF "$ENVF" 2>/dev/null > "$TMPF" || true
+{
+  echo "export FLUBNF_PY_ENGINE=\"$ENGINE_VENV/bin/python\""
+  echo "export FLUBNF_PYBNF=\"$PYBNF\""
+} >> "$TMPF"
+mv "$TMPF" "$ENVF"
 ok "environment recorded in $ENVF"
