@@ -2,15 +2,20 @@
 
 Two-venv dispatch (constitutional rule 8): materialization and scoring run in
 the analysis venv (py3.12, this process); the filter itself runs in the
-pybnf/bngsim venv (py3.10) via a runner script written to the workroot --
-a FILE, never stdin, because macOS spawn kills stdin-launched pools
-(rule 4, measured 2026-08-17).
+pybnf/bngsim venv (py3.10) via runner scripts written to the workroot --
+FILES, never stdin, because macOS spawn kills stdin-launched pools
+(rule 4, measured 2026-08-17). The prepared cells are dealt across several
+such runners, the way the retrospective path has always done it; see the
+sharding block above execute().
 """
 from __future__ import annotations
 
 import json
+import os
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
@@ -46,15 +51,40 @@ loguniform_var = mult__FREE 0.002 1.0
 loguniform_var = r__FREE 0.1 40.0
 """
 
-_RUNNER = '''"""Auto-generated PF runner. Executes every prepared cell sequentially."""
+#: One shard's runner: the same idea as the retrospective path's
+#: (app/core/retro.py::_RETRO_RUNNER), and for the same reason an entry-point
+#: FILE rather than stdin (rule 4). Two properties the plural case needs:
+#: it checks the halt flag BETWEEN cells, so a stop dispatches nothing more,
+#: and it rewrites its status after EVERY cell, so a shard that dies still
+#: reports what it finished instead of losing the whole shard.
+_RUNNER = '''"""Auto-generated PF runner. Executes one shard's cells sequentially."""
 import json, os, shutil, sys
+import time as _t
 sys.path.insert(0, {pybnf_path!r})
 from pathlib import Path
 cells = json.load(open({cells_json!r}))
+out = {out_json!r}
+halt = Path({halt_path!r})
 results = {{}}
-import time as _t
 _t0 = _t.time()
+
+
+def _publish(done):
+    """Status and progress, written beside-then-replaced so a reader never
+    sees half a file."""
+    for path, payload in ((out, results),
+                          (out + ".prog", {{"done": done, "total": len(cells),
+                                            "t0": _t0, "now": _t.time()}})):
+        tmp = path + ".tmp"
+        with open(tmp, "w") as fh:
+            json.dump(payload, fh)
+        os.replace(tmp, path)
+
+
+_publish(0)
 for _i, c in enumerate(cells, 1):
+    if halt.exists():
+        break                     # stopped: this shard dispatches nothing more
     d = Path(c["dir"])
     shutil.rmtree(d / "out", ignore_errors=True)
     (d / "out" / "Results").mkdir(parents=True)
@@ -68,9 +98,7 @@ for _i, c in enumerate(cells, 1):
         results[c["key"]] = f"FAIL: {{e}}"[:200]
     finally:
         os.chdir(cwd)
-    json.dump({{"done": _i, "total": len(cells), "t0": _t0,
-               "now": _t.time()}}, open({out_json!r} + ".prog", "w"))
-json.dump(results, open({out_json!r}, "w"))
+    _publish(_i)
 '''
 
 
@@ -190,6 +218,9 @@ seed = {seed}
                           "natg_clipped_weeks": gg.n_clipped if natg else None,
                           "n_obs": int(s.n_obs),
                           "last_week_offset": int(s.last_week_offset),
+                          # the two quantities the cost model reads back at
+                          # execution time to size the run's time budget
+                          "particles": int(spec.particles),
                           "last_observed": float(s.observed[-1])})
     (workroot / "cells.json").write_text(json.dumps(cells))
     return cells
@@ -199,41 +230,389 @@ class RunStopped(Exception):
     pass
 
 
-def execute(workroot: Path, timeout: float = 3600.0) -> dict:
-    """Run every prepared cell in the engine venv. Cancelable: touching
-    <workroot>/STOP terminates the runner between cells."""
-    import time
-    runner = workroot / "pf_runner.py"
-    out_json = workroot / "pf_status.json"
-    runner.write_text(_RUNNER.format(pybnf_path=str(PYBNF_PF),
-                                     cells_json=str(workroot / "cells.json"),
-                                     out_json=str(out_json)))
-    # reduced scheduling priority: the fit yields to the interactive server
-    # so the application stays usable during a multi-hour run. `nice` execs
-    # the interpreter, so this Popen still refers to the real runner process
-    # and the STOP handling below is unchanged. See app/core/proc.py.
-    from app.core.proc import low_priority_cmd, low_priority_popen_kwargs
-    proc = subprocess.Popen(low_priority_cmd([str(PY310), str(runner)]),
-                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                            text=True, **low_priority_popen_kwargs())
-    t0 = time.time()
-    stop = workroot / "STOP"
-    while proc.poll() is None:
-        if stop.exists():
-            proc.terminate()
+# --------------------------------------------------------------------------
+# parallel execution of a prepared grid
+#
+# The retrospective path has sharded since it was written (retro.py's
+# _run_round: a stride partition of the week's cells, one runner subprocess
+# per shard, all polled together). The forecast path did not, and because the
+# entire sealed record was produced through the retrospective path, the
+# sequential forecast path was never exercised at full grid. It cannot
+# finish one: 53 jurisdictions x 3 replicates is 159 cells, and at the
+# season's most expensive as-of (48 observed weeks) the measured cost of a
+# cell is 34.3 s, so one process needs 91 minutes against a fixed 60-minute
+# timeout. This is the same sharding, so that the two paths are one idea:
+# cells are independent (one location by one replicate, its own model, conf
+# and seed), so partitioning them changes no number, only the wall clock.
+# --------------------------------------------------------------------------
+
+#: Runner subprocesses to deal the prepared cells across. retro.py takes its
+#: own default from this constant, so a forecast and a replay of the same
+#: grid cannot drift apart in cost.
+DEFAULT_SHARD_WIDTH = 4
+
+#: Per-machine override, never a scientific one: FLUBNF_PF_WIDTH=8 on a
+#: wider box, =1 to reproduce the old single-process behaviour.
+WIDTH_ENV = "FLUBNF_PF_WIDTH"
+
+#: Measured seconds for one cell, fitted on 680 shard-weeks of the sealed
+#: record (R^2 = 0.988):
+#:
+#:     seconds = 1.194 + 0.6365 * (n_obs + 4)
+#:
+#: The (n_obs + 4) is the filter's real length: the observed weeks plus the
+#: four forecast weeks every pf.conf asks for. Cost is linear in the particle
+#: count and the record was measured at 10,000, so a heavier run scales in
+#: proportion. Prediction only: nothing here reaches a published number.
+COST_INTERCEPT_S = 1.194
+COST_PER_WEEK_S = 0.6365
+COST_FORECAST_WEEKS = 4
+COST_REFERENCE_PARTICLES = 10_000
+
+#: The budget is this multiple of the predicted duration of the SLOWEST
+#: shard. Three, and the reason is what the cost model cannot see: it
+#: describes the throughput of one machine, and the machine running now may
+#: be slower, or sharing its cores with the browser, the server, and a
+#: retrospective replay. 3x covers a box three times slower than the one that
+#: produced the sealed record while still failing a genuinely hung run in a
+#: small multiple of its own estimate. The fixed 3600 s was too SHORT: it
+#: killed the legitimate 91-minute full grid. It was never too long, because
+#: a run whose runners have died does not wait out its budget -- they exit,
+#: the poll loop below ends on the same tick, and the "produced no status"
+#: error is raised at once. The budget only ever governs a run still alive.
+TIMEOUT_SAFETY = 3.0
+
+#: Floor under the budget, and the guarantee that this change only ever
+#: EXTENDS the old behaviour.
+#:
+#: The multiple alone is not that guarantee. It is taken over the slowest
+#: SHARD, so it silently assumes the machine really delivers the concurrency
+#: the width asks for. Where it does not -- few free cores, thermal
+#: throttling, a retrospective replay at width 4 on the same box (/api/busy
+#: warns but permits) -- each runner's per-cell time inflates by the
+#: oversubscription factor, and at width 4 a fully serialised machine needs
+#: 4x the slowest shard against a 3x budget. Sizing on the shard would then
+#: KILL runs the old fixed hour completed: the mid-January full grid this
+#: change exists to protect is 159 cells at n_obs 23, 2922 s of honest
+#: sequential work, and 3 x the slowest shard is only 2206 s.
+#:
+#: So the floor is the hour itself. The budget is by construction never
+#: shorter than the constant it replaces and only ever longer, which is the
+#: single property that makes this change safe to ship into a live season;
+#: the multiple takes over above the crossover, where it is the old constant
+#: that was too short. It also covers the small-grid case it was first
+#: written for: three replicates at one location predict under two minutes,
+#: which a cold interpreter, a cold network file and a busy disk can eat on
+#: their own, and the multiple has nothing to work with at that size.
+#:
+#: The cost of a floor this high is bounded and small: a genuinely HUNG run
+#: is declared dead after an hour rather than fifteen minutes, and the user
+#: can press STOP at any point. Killing a legitimate weekly submission is
+#: not comparably cheap.
+TIMEOUT_FLOOR_S = 3600.0
+
+#: How often the supervisor looks at its runners and at the STOP flag.
+POLL_S = 1.0
+
+#: The two signals a cancel uses. SIGKILL is POSIX-only; on Windows both
+#: names resolve to the terminate path in _signal_tree, which is what that
+#: platform did before.
+_SIGTERM = signal.SIGTERM
+_SIGKILL = getattr(signal, "SIGKILL", signal.SIGTERM)
+
+_sleep = time.sleep          # indirection so tests can drive the poll loop
+
+
+def shard_width(width: int | None = None) -> int:
+    """The parallel width to use: the caller's, else the environment's, else
+    the default. Never below 1."""
+    if width is None:
+        raw = (os.environ.get(WIDTH_ENV) or "").strip()
+        try:
+            width = int(raw) if raw else DEFAULT_SHARD_WIDTH
+        except ValueError:
+            width = DEFAULT_SHARD_WIDTH
+    return max(1, int(width))
+
+
+def shard_cells(cells: list, width: int | None = None) -> list:
+    """Deal the cells across runners exactly as retro.py does: a stride
+    partition, empty shards dropped."""
+    w = shard_width(width)
+    return [cells[i::w] for i in range(w) if cells[i::w]]
+
+
+def cell_seconds(cell: dict) -> float:
+    """Predicted seconds for one prepared cell. Cells written before the
+    cost model existed carry no particle count and are read at the
+    reference 10,000."""
+    n_obs = int(cell.get("n_obs") or 0)
+    particles = float(cell.get("particles") or COST_REFERENCE_PARTICLES)
+    return ((COST_INTERCEPT_S + COST_PER_WEEK_S * (n_obs + COST_FORECAST_WEEKS))
+            * max(particles, 1.0) / COST_REFERENCE_PARTICLES)
+
+
+def expected_seconds(shards: list) -> float:
+    """Predicted wall clock for the whole run: the slowest shard, since the
+    shards run concurrently and the run ends with the last of them."""
+    return max((sum(cell_seconds(c) for c in s) for s in shards), default=0.0)
+
+
+def budget_seconds(shards: list) -> float:
+    """The time budget for a sharded run: TIMEOUT_SAFETY times the
+    prediction, never below the floor."""
+    return max(TIMEOUT_FLOOR_S, TIMEOUT_SAFETY * expected_seconds(shards))
+
+
+def _stderr_tail(err_files: list, n: int = 400) -> str:
+    """The tail of the first runner stderr that has anything to say."""
+    for p in err_files:
+        try:
+            txt = Path(p).read_text(errors="replace").strip()
+        except Exception:
+            continue
+        if txt:
+            return txt[-n:]
+    return ""
+
+
+def _finished(status_files: list) -> int:
+    """Cells reported finished so far, across every shard."""
+    n = 0
+    for p in status_files:
+        try:
+            d = json.loads(Path(p).read_text())
+        except Exception:
+            continue
+        if isinstance(d, dict):
+            n += len(d)
+    return n
+
+
+def _descendants(pid: int) -> list:
+    """Every process below `pid`, deepest last. [] on any platform or
+    failure where the tree cannot be read, which leaves the caller doing
+    exactly what it did before."""
+    if os.name != "posix":
+        return []
+    try:
+        r = subprocess.run(["ps", "-Ao", "pid=,ppid="], capture_output=True,
+                           text=True, timeout=10)
+    except Exception:
+        return []
+    kids: dict = {}
+    for line in r.stdout.splitlines():
+        try:
+            child, parent = (int(x) for x in line.split())
+        except ValueError:
+            continue                      # a header or a torn line: skip it
+        kids.setdefault(parent, []).append(child)
+    out, frontier = [], [pid]
+    while frontier:                       # breadth-first, parents before kids
+        nxt = []
+        for q in frontier:
+            for child in kids.get(q, ()):
+                if child not in out and child != pid:
+                    out.append(child)
+                    nxt.append(child)
+        frontier = nxt
+    return out
+
+
+def _signal_tree(p, sig) -> None:
+    """Signal a runner AND the engine processes it spawned.
+
+    Signalling the runner alone is not enough: PyBNF's filter runs a pool, so
+    the runner is a parent, and terminating it leaves its workers alive and
+    holding cores. Measured 2026-08-26 against the pre-sharding code as well,
+    so this is an old defect -- but one the sharding multiplies by the width,
+    because a cancel now abandons the pool of every shard rather than of one
+    process. A cancel that leaves engine processes chewing CPU is worse than
+    no cancel.
+
+    Order matters twice. The tree is READ before anything is signalled,
+    because once the runner dies its children are reparented to init and the
+    link that identifies them as ours is gone. The runner is then signalled
+    before its descendants, so a pool it was about to grow cannot outlive the
+    sweep.
+
+    The tree is read from `ps` rather than by putting each runner in its own
+    session, deliberately: a new session would detach the runners from the
+    console's process group, and an operator's Ctrl-C on the server -- which
+    reaches the group -- would then stop reaping them. This keeps that
+    property and adds the sweep.
+    """
+    kids = _descendants(p.pid)
+    try:
+        p.kill() if sig == _SIGKILL else p.terminate()
+    except Exception:
+        pass
+    for child in kids:
+        try:
+            os.kill(child, sig)
+        except Exception:
+            pass                          # already gone, or not ours to signal
+
+
+def _stop_all(procs: list) -> None:
+    """Stop every runner still alive, with its engine processes, and WAIT
+    for each one. This is the one step no exception may skip."""
+    for p in procs:
+        try:
+            if p.poll() is None:
+                _signal_tree(p, _SIGTERM)
+        except Exception:
+            pass
+    for p in procs:
+        try:
+            p.wait(10)
+        except subprocess.TimeoutExpired:
             try:
-                proc.wait(10)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-            raise RunStopped("stopped by user")
-        if time.time() - t0 > timeout:
-            proc.kill()
-            raise RuntimeError("PF runner timed out")
-        time.sleep(1)
-    if not out_json.is_file():
+                _signal_tree(p, _SIGKILL)
+                p.wait(5)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+
+def _over_budget(status_files: list, n_cells: int, shards: list,
+                 budget: float, sized: bool) -> str:
+    """What a run that ran out of time should say: how far it got, out of
+    how many, and where its budget came from.
+
+    Which of the two terms in budget_seconds actually bound is named, not
+    assumed. Since the floor is the old fixed hour it binds for most grids,
+    and a message reading "60 min = 3 x the 12 min predicted" would be
+    arithmetic the reader can see is false."""
+    done = _finished(status_files)
+    predicted = expected_seconds(shards)
+    model = (f"the {predicted / 60:.0f} min the cost model "
+             f"({COST_INTERCEPT_S} + {COST_PER_WEEK_S} * (n_obs + "
+             f"{COST_FORECAST_WEEKS}) s per cell) predicts for the slowest "
+             f"of {len(shards)} shard(s)")
+    if not sized:
+        how = f"{budget / 60:.0f} min, set by the caller"
+    elif TIMEOUT_SAFETY * predicted < TIMEOUT_FLOOR_S:   # the floor bound
+        how = (f"{budget / 60:.0f} min, the floor, which already exceeds "
+               f"{TIMEOUT_SAFETY:g} x {model}")
+    else:
+        how = f"{budget / 60:.0f} min = {TIMEOUT_SAFETY:g} x {model}"
+    # the counts and the budget lead, because a ledger row keeps only the
+    # first 300 characters of an error
+    return (f"PF fitting exceeded its time budget: {done} of {n_cells} cells "
+            f"finished. Budget was {how}. On a slower machine widen the "
+            f"sharding ({WIDTH_ENV}); otherwise suspect the engine venv.")
+
+
+def execute(workroot: Path, timeout: float | None = None,
+            width: int | None = None) -> dict:
+    """Run every prepared cell in the engine venv, sharded across parallel
+    runners, and return the merged {cell key: "ok" | "FAIL: ..."} status.
+
+    Three properties of the single-runner version are kept, each of which
+    needed something once the runners became plural:
+
+      * Cancellation. <workroot>/STOP is both the supervisor's flag and the
+        runners' own: every runner checks it between cells and dispatches
+        nothing more, and the supervisor terminates all of them and waits
+        for each before raising RunStopped, so none is left behind.
+      * The status file. Each shard rewrites its own after every cell. This
+        merges them into pf_status.json, and records any cell no shard ever
+        reported as a failure naming that shard and its stderr, so a shard
+        that died is visible in the result rather than averaged away. When
+        no shard produced a status at all, the specific error is raised as
+        before, quoting the runner stderr.
+      * Reduced priority. Every runner is wrapped in low_priority_cmd and
+        low_priority_popen_kwargs, on every platform.
+
+    `timeout` defaults to a budget sized to the work (budget_seconds); an
+    explicit value overrides it. `width` defaults to DEFAULT_SHARD_WIDTH,
+    which is also the retrospective path's default.
+    """
+    workroot = Path(workroot)
+    out_json = workroot / "pf_status.json"
+    cells = json.loads((workroot / "cells.json").read_text())
+    if not cells:
+        out_json.write_text("{}")       # nothing to fit is not a failure
+        return {}
+    shards = shard_cells(cells, width)
+    sized = not timeout
+    budget = budget_seconds(shards) if sized else float(timeout)
+    stop = workroot / "STOP"            # the user's flag AND the runners' halt
+
+    # reduced scheduling priority: the fits yield to the interactive server
+    # so the application stays usable during a multi-hour run. `nice` execs
+    # the interpreter, so each Popen still refers to the real runner process
+    # and the stop handling below is unchanged. See app/core/proc.py.
+    from app.core.proc import low_priority_cmd, low_priority_popen_kwargs
+    procs, status_files, err_files, handles = [], [], [], []
+    try:
+        for i, shard in enumerate(shards):
+            sj = workroot / f"pf_cells_{i}.json"
+            sj.write_text(json.dumps(shard))
+            sf = workroot / f"pf_status_{i}.json"
+            ef = workroot / f"pf_runner_{i}.err"
+            runner = workroot / f"pf_runner_{i}.py"
+            runner.write_text(_RUNNER.format(pybnf_path=str(PYBNF_PF),
+                                             cells_json=str(sj),
+                                             out_json=str(sf),
+                                             halt_path=str(stop)))
+            # stderr to a FILE, not a pipe: with several runners and nobody
+            # draining them, a chatty one would fill its pipe buffer and
+            # block forever, which is the very hang the budget exists for.
+            fh = open(ef, "w")
+            handles.append(fh)
+            # Deliberately NOT start_new_session: the runner stays in the
+            # console's process group, so an operator's Ctrl-C still reaches
+            # it. A cancel reaches the engine pool it spawns by sweeping the
+            # process tree instead (see _signal_tree).
+            procs.append(subprocess.Popen(
+                low_priority_cmd([str(PY310), str(runner)]),
+                stdout=subprocess.DEVNULL, stderr=fh,
+                **low_priority_popen_kwargs()))
+            status_files.append(sf)
+            err_files.append(ef)
+        t0 = time.time()
+        while any(p.poll() is None for p in procs):
+            if stop.exists():
+                raise RunStopped("stopped by user")
+            if time.time() - t0 > budget:
+                raise RuntimeError(_over_budget(status_files, len(cells),
+                                                shards, budget, sized))
+            _sleep(POLL_S)
+    finally:
+        _stop_all(procs)                # no orphans, on any exit path
+        for fh in handles:
+            try:
+                fh.close()
+            except Exception:
+                pass
+    if stop.exists():
+        # the flag can also land before the first poll, or between the last
+        # runner exiting and this line. Either way the run was stopped, and
+        # it must not return a status that reads like a finished grid.
+        raise RunStopped("stopped by user")
+    if not any(sf.is_file() for sf in status_files):
         raise RuntimeError(f"PF runner produced no status: "
-                           f"{(proc.stderr.read() if proc.stderr else '')[-400:]}")
-    return json.loads(out_json.read_text())
+                           f"{_stderr_tail(err_files)}")
+    merged = {}
+    for i, shard in enumerate(shards):
+        try:
+            part = json.loads(status_files[i].read_text())
+        except Exception:
+            part = {}
+        if not isinstance(part, dict):
+            part = {}
+        merged.update(part)
+        for c in shard:
+            if c["key"] not in part:
+                merged[c["key"]] = (
+                    f"FAIL: shard {i} reported no result for this cell "
+                    f"({_stderr_tail([err_files[i]], 120) or 'no stderr'})"
+                )[:200]
+    out_json.write_text(json.dumps(merged))
+    return merged
 
 
 def collect(workroot: Path) -> dict:

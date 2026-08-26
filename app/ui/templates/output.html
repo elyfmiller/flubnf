@@ -12,8 +12,8 @@ outputs collect here.</p></div>
      <button class="gold" style="margin-top:0">Generate ensemble</button></form>{% endif %}</p>
   <p>3. Collect files →</p>
   <p class="hint">One CSV per model_id, 23 quantiles × 4 horizons per
-  location, validated on write: monotone, non-negative, no degenerate
-  cells.</p>
+  location, validated on write: all 23 hub levels present, monotone,
+  non-negative, no degenerate cells.</p>
  </div></div>
  <div>
   <div class="card"><h2>Submission files: {{ date }}</h2>
@@ -22,13 +22,22 @@ outputs collect here.</p></div>
      <div class="row" style="justify-content:space-between;margin:.45rem 0">
       <span><b>{{ f.model }}</b><br><code>{{ f.name }}</code></span>
       <span style="display:flex;align-items:center;gap:.9rem;white-space:nowrap">
+       {% if f.submittable %}
        <a href="/output/download?path={{ f.path | urlencode }}" download><button
         type="button" style="margin-top:0">Download</button></a>
+       {% else %}<span class="hint">Not submittable</span>{% endif %}
        <form method="post" action="/output/reveal" style="display:inline">
         <input type="hidden" name="path" value="{{ f.path }}">
         <button class="linkish" type="submit">Show in Finder</button></form>
       </span>
      </div>
+     {% if not f.submittable %}
+     <p class="hint">Written under a retired model name. The hub takes
+     <code>model-output/&lt;team&gt;-&lt;model&gt;/</code> with the identity
+     registered in <code>model-metadata/</code>, so this file would be
+     rejected and no download is offered. Run the models again to write the
+     registered identity.</p>
+     {% endif %}
      {% if f.cols %}
      <details class="preview">
       <summary class="hint">Preview: first {{ f.rows | length }} rows</summary>
@@ -47,16 +56,24 @@ outputs collect here.</p></div>
    {% else %}<p class="hint">No submission files in the latest run.</p>{% endfor %}
   </div>
   <div class="card"><h2>Weekly report</h2>
-   <p class="hint">US categorical outlook map with per-state detail.</p>
+   <p class="hint">US categorical outlook map with per-state detail.
+   Download saves one self-contained HTML file, named for its forecast
+   date, that opens without the app.</p>
    <div style="display:flex;align-items:center;gap:.9rem;flex-wrap:wrap;margin-top:.4rem">
    {% if has_report %}<a href="/output/report" target="_blank"><button class="quiet" type="button" style="margin-top:0">Open report</button></a>
+    <a href="/output/report/download" download><button class="quiet" type="button" style="margin-top:0">Download report</button></a>
    {% else %}<p class="hint" style="margin:0">Generated automatically with each full run.</p>{% endif %}
    {% if archive_dates %}
-    <select style="width:auto" aria-label="archived reports"
-     onchange="if(this.value){window.open('/output/report?date='+this.value,'_blank');this.selectedIndex=0}">
-     <option value="">archived reports…</option>
-     {% for d in archive_dates %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
-    </select>
+    <span style="display:flex;align-items:center;gap:.45rem">
+     <select id="archreport" style="width:auto" aria-label="archived reports">
+      <option value="">archived reports…</option>
+      {% for d in archive_dates %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+     </select>
+     <button class="linkish" type="button"
+      onclick="var d=document.getElementById('archreport').value;if(d)window.open('/output/report?date='+d,'_blank')">Open</button>
+     <button class="linkish" type="button"
+      onclick="var d=document.getElementById('archreport').value;if(d)window.location='/output/report/download?date='+d">Download</button>
+    </span>
    {% endif %}
    </div>
   </div>

@@ -365,3 +365,98 @@ def test_categorical_probs_from_quantiles_matches_the_sample_computation():
     assert categorical_probs_from_quantiles(grid, lo, 0, 1) == {}
     point = categorical_probs_from_quantiles({"0.5": 100.0}, lo, pop, 1)
     assert point["stable"] == 1.0
+
+
+# ------------------------------------------------- saving the weekly report
+
+def test_weekly_report_downloads_with_a_dated_name(tmp_path, monkeypatch):
+    """The season report has been downloadable all along; the weekly one
+    was inline-only, so a reader could not keep or send one. Same treatment
+    now: an attachment, named for its forecast date rather than the
+    report.html every run writes, so several saved weeks do not collide."""
+    d = _archived(tmp_path, monkeypatch)
+    r = client.get("/output/report/download?date=2098-01-03")
+    assert r.status_code == 200
+    assert r.headers["content-disposition"] == (
+        'attachment; filename="FluBNF-weekly-report-2098-01-03.html"')
+    assert r.headers["content-type"].startswith("text/html")
+    # the same bytes the inline view serves: one file, two deliveries
+    assert r.content == (d / "report.html").read_bytes()
+    assert client.get("/output/report?date=2098-01-03").text == r.text
+
+
+def test_download_refreshes_a_stale_report_first(tmp_path, monkeypatch):
+    """A saved report must never be the stale one while the browser shows
+    the fresh one: the download runs the same freshness pass."""
+    d = _archived(tmp_path, monkeypatch)
+    (d / "report.html").write_text("<html><body>OLD FACE</body></html>")
+    os.utime(d / "report.html", OLD_MTIME)
+    r = client.get("/output/report/download?date=2098-01-03")
+    assert r.status_code == 200
+    assert b"OLD FACE" not in r.content
+    assert "<em>Flu</em>BNF" in r.text
+
+
+def test_download_of_a_missing_report_is_a_404_not_a_500(tmp_path,
+                                                         monkeypatch):
+    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
+    srv._invalidate_scans()
+    assert client.get("/output/report/download").status_code == 404
+    assert client.get(
+        "/output/report/download?date=2098-01-03").status_code == 404
+    # and a date-shaped check, same as the inline route's
+    assert client.get(
+        "/output/report/download?date=not-a-date").status_code == 400
+
+
+def test_run_report_download_names_the_file_for_the_forecast_date(
+        tmp_path, monkeypatch):
+    """The run page's link, from the run's own workroot."""
+    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
+    rid = "20980101T000000-aaaaaa"
+    w = tmp_path / "workroots" / rid
+    _synth_run(w)
+    (w / "results.json").write_text(json.dumps(
+        {"forecast_date": "2098-01-03", "models": {}, "observed": {}}))
+    srv._invalidate_scans()
+    r = client.get(f"/runs/{rid}/report/download")
+    assert r.status_code == 200
+    assert r.headers["content-disposition"] == (
+        'attachment; filename="FluBNF-weekly-report-2098-01-03.html"')
+    # a run with no results.json yet falls back to the run id, never to a
+    # bare report.html
+    bare = "20980108T000000-bbbbbb"
+    b = tmp_path / "workroots" / bare
+    b.mkdir(parents=True)
+    (b / "report.html").write_text("<html><body>NO RESULTS</body></html>")
+    r2 = client.get(f"/runs/{bare}/report/download")
+    assert r2.status_code == 200
+    assert f"FluBNF-weekly-report-{bare}.html" in \
+        r2.headers["content-disposition"]
+
+
+def test_both_report_surfaces_offer_the_download(tmp_path, monkeypatch):
+    """A download nobody can find is the bug being fixed, so the link is
+    pinned where the weekly report is already linked: the Output page (for
+    the latest run and for each archived one) and the run page."""
+    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
+    rid = "20980101T000000-aaaaaa"
+    w = tmp_path / "workroots" / rid
+    w.mkdir(parents=True)
+    (w / "report.html").write_text("<html><body>R</body></html>")
+    (w / "results.json").write_text(json.dumps(
+        {"forecast_date": "2098-01-03", "models": {"ensemble": {}},
+         "observed": {}}))
+    a = tmp_path / "archive" / "2098-01-03"
+    a.mkdir(parents=True)
+    (a / "report.html").write_text("<html>A</html>")
+    srv._invalidate_scans()
+    out = client.get("/output")
+    assert out.status_code == 200
+    assert 'href="/output/report"' in out.text          # inline view kept
+    assert 'href="/output/report/download"' in out.text
+    assert "/output/report/download?date=" in out.text  # archived ones too
+    run = client.get(f"/runs/{rid}")
+    assert run.status_code == 200
+    assert f'href="/runs/{rid}/report"' in run.text     # inline view kept
+    assert f'href="/runs/{rid}/report/download"' in run.text

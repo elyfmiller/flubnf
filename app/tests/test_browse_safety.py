@@ -13,6 +13,8 @@ The audit (2026-08-21), for the record:
   * Four GET paths write, and each write is confined to a derived artifact
     a running worker never reads:
       - /output/report and /runs/{id}/report may rebuild a STALE report.html
+        -- as may their /download twins, added 2026-08-26, which run the
+        same refresh so the file saved and the page read are one file --
         in place from its inputs bundle, via write-beside-then-os.replace
         (report_v2.build_report), touching nothing else. It cannot contend
         with a run's own report write: a running run's workroot is invisible

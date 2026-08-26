@@ -763,8 +763,10 @@ def _run_round(root: Path, wd: Path, pending: list, width: int) -> None:
     halt = wd / HALT_NAME
     halt.unlink(missing_ok=True)          # stale from an earlier segment
     before = len(cells_done(wd))
-    width = max(1, int(width))
-    shards = [pending[i::width] for i in range(width) if pending[i::width]]
+    # one partition function for both paths: the console forecast shards the
+    # same way (app/core/engines/pf.py::shard_cells), so a replay and a
+    # forecast of the same grid divide the work identically
+    shards = pf_engine.shard_cells(pending, width)
     procs = _launch_runners(wd, shards, halt)
     flagged = False
     deadline = time.time() + WEEK_TIMEOUT_S
@@ -793,7 +795,7 @@ def _run_round(root: Path, wd: Path, pending: list, width: int) -> None:
 
 def run_week(root: Path, season: str, asof: str, locations: list,
              replicates: int = 3, particles: int = 10_000,
-             width: int = 4) -> dict:
+             width: int = pf_engine.DEFAULT_SHARD_WIDTH) -> dict:
     """One submission day: PF (sharded) + analogue; store samples+quantiles.
 
     Fit-level control and resume: the STOP and PAUSE flags are honoured
@@ -845,8 +847,8 @@ def run_week(root: Path, season: str, asof: str, locations: list,
 
 
 def run_season(root: Path, season: str, locations: list, replicates=3,
-               particles=10_000, width=4, progress=None,
-               settings: dict | None = None) -> list:
+               particles=10_000, width=pf_engine.DEFAULT_SHARD_WIDTH,
+               progress=None, settings: dict | None = None) -> list:
     """Replay a season week by week, recording timing and honouring the STOP
     and PAUSE flags at fit resolution.
 
