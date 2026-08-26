@@ -379,8 +379,12 @@ def write_conf(setup: StateSetup, *, model: Path, exp: Path, out_dir: Path,
         "continue_run = 0",
         "verbosity = 0",
     ]
-    # Exponential recency weighting. Requires patches/pybnf_recency_weights.py;
-    # 0.0 means the key is not emitted at all, so stock PyBNF still runs. Aimed
+    # Exponential recency weighting. NOT SHIPPED and not used: it needs a
+    # 144-line patch to PyBNF that lives in the lab archive rather than in this
+    # repository, no shipped config sets it, and the default of 0.0 means the
+    # key is never emitted, so stock PyBNF runs unaffected. Kept because the
+    # research it came from is real, but do not read the line below as a
+    # dependency this repository satisfies. Aimed
     # at the post-peak shoulder, the only phase where SIHRS loses to baseline
     # (relWIS 1.205, forecasts 1.5-3.3x low) because a single-wave fit anchored
     # by months of pre-peak data extrapolates continued decline.

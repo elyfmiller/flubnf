@@ -519,7 +519,7 @@ if ($EngineReady) {
     # venv-local patches rather than commits, so the pin is the reproducible
     # answer. Same pin as setup_engine.sh on macOS and Linux.
     Info "  $PyExe $($PyArgs -join ' ') -m venv $EngineVenv"
-    Info "  $EngineVenv\Scripts\pip install `"numpy<2`" scipy pandas bngsim"
+    Info "  $EngineVenv\Scripts\pip install `"numpy<2`" scipy pandas `"bngsim==0.15.1`""
     Info "  $EngineVenv\Scripts\pip install -e $PyBnf"
     Info "  then re-run this script"
     Warn "Without the engine: the console, analogue engine, and reports all work."
