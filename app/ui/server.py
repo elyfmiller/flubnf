@@ -72,6 +72,46 @@ templates.env.globals["pop_flash"] = lambda: _status.pop("flash", None)
 # one wall-time format everywhere the console shows a duration
 templates.env.filters["hms"] = fmt_hms
 
+
+def _platform() -> str:
+    """sys.platform behind one seam, so a test can say "pretend this is
+    Windows" without patching sys.platform for the whole process (which
+    breaks shutil.which, among other things)."""
+    return sys.platform
+
+
+def _engine_setup_hint():
+    """The clause telling this reader how to enable the PF engine, correct
+    for the machine the console is running ON.
+
+    home.html and retro.html used to hardcode `SetupEngine.command`, so a
+    Windows user was told to double-click a macOS script that Windows cannot
+    open (field report, 2026-08-25). There is deliberately no Windows twin of
+    setup_engine.sh to name in its place: the engine needs the PyBNF fork,
+    which is a private repository, so the Windows text points at setup.ps1,
+    which reports exactly what is missing, and at docs/WINDOWS.md, which is
+    honest about the part no script can fix.
+
+    Resolved per render, not at import, so a test can vary sys.platform.
+    Deliberately NOT used by methods.html: that page is harvested into the
+    public site by app/core/site_build.py, where a platform-conditional
+    string would bake the builder's platform into a page everyone reads.
+    """
+    from markupsafe import Markup
+    if _platform() == "win32":
+        return Markup(
+            "run <code>powershell -NoProfile -ExecutionPolicy Bypass -File "
+            "setup.ps1</code>, which reports what is still missing; the "
+            "engine also needs the private PyBNF fork, so read "
+            "<code>docs\\WINDOWS.md</code> first")
+    if _platform() == "darwin":
+        return Markup("double-click <code>SetupEngine.command</code> and "
+                      "relaunch the console")
+    return Markup("run <code>./setup_engine.sh</code> and relaunch the console")
+
+
+templates.env.globals["engine_setup_hint"] = _engine_setup_hint
+
 def _repo_sha(short: bool = True) -> str:
     import subprocess
     try:

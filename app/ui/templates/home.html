@@ -260,8 +260,10 @@
  {% if missing %}
   <p class="hint">Not installed on this machine:</p>
   {% for m in missing %}<p class="warn">• {{ m[2] }}</p>{% endfor %}
-  <p class="hint">To add the particle-filter engine, run
-  <code>SetupEngine.command</code> and relaunch the console.</p>
+  {# platform-aware: app/ui/server.py:_engine_setup_hint. Never hardcode a
+     macOS-only filename here; a Windows reader cannot open one. #}
+  <p class="hint">To add the particle-filter engine,
+  {{ engine_setup_hint() }}.</p>
  {% else %}<p class="ok">All components installed.</p>{% endif %}
  <p class="hint">PyBNF <span data-vkey="pybnf">{{ versions.pybnf }}</span> ·
  bngsim <span data-vkey="bngsim">{{ versions.bngsim }}</span> ·

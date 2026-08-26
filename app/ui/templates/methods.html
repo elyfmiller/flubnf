@@ -226,9 +226,14 @@
       <td><span data-vkey="pandas">{{ versions.pandas }}</span> / <span data-vkey="numpy">{{ versions.numpy }}</span></td>
       <td>Data handling and scoring.</td></tr>
  </table></div>
+ {# Platform-NEUTRAL on purpose: app/core/site_build.py harvests this page
+    into the public site, so a conditional here would bake the builder's
+    platform into a page every reader sees. Name all three instead. #}
  <p class="hint">Two venvs: the console venv runs everything except the
  particle filter, which needs the engine venv (PyBNF and bngsim, installed
- by <code>SetupEngine.command</code>). A component reported as
+ by the engine setup step for the platform in use:
+ <code>SetupEngine.command</code> on macOS, <code>setup_engine.sh</code> on
+ Linux, and <code>setup.ps1</code> on Windows). A component reported as
  "not installed" above means that engine venv is absent.</p>
 </div>
 

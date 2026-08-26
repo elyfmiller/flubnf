@@ -9,6 +9,9 @@ model-output/
 data/humidity/
 data/covgates/
 .flubnf.env
+# the Windows twin of .flubnf.env, written by setup.ps1 and called by
+# FluBNF.bat: machine-specific paths, never part of the product
+.flubnf.env.cmd
 *.egg-info/
 .pytest_cache/
 data/covidhub/
