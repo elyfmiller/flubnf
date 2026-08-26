@@ -9,6 +9,23 @@
    <label>Forecast date</label>
    <input type="date" name="forecast_date" value="{{ form.forecast_date }}">
    <span class="hint">A Saturday; the forecast uses that week's archived data.</span>
+   {% if vintage_dates %}
+   <select id="vintage-pick">
+    <option value="">pick an archived Saturday ({{ vintage_dates|length }} available)</option>
+    {% for v in vintage_dates %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
+   </select>
+   <span class="hint">Only these weeks have an archived data snapshot; the hub
+    skips occasional weeks (usually holidays), and a typed date between
+    snapshots gets the nearest earlier one suggested instead.</span>
+   <script>
+    (function () {
+      var p = document.getElementById('vintage-pick');
+      if (p) p.addEventListener('change', function () {
+        if (this.value) document.querySelector('input[name=forecast_date]').value = this.value;
+      });
+    })();
+   </script>
+   {% endif %}
    <label>Locations <span id="lcount" class="hint"></span></label>
    <div class="checklist">
      <label class="ck"><input type="checkbox" id="ck-all" value="all" name="locations"
