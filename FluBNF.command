@@ -44,13 +44,38 @@ fi
 
 [ -f .flubnf.env ] && . ./.flubnf.env
 if [ ! -x "${FLUBNF_PY_ENGINE:-/nonexistent}" ]; then
-  for c in "$HOME/Documents/GitHub/PyBNF-Private" "$HOME/Documents/GitHub/PyBNF-pf" \
-           "$HOME/Documents/PyBNF-Private" "$HOME/PyBNF-Private"; do
-    if [ -d "$c/.git" ]; then
-      echo "· PyBNF checkout found at $c — double-click SetupEngine.command to enable the PF engine"
-      break
-    fi
+  # PF engine missing: install it automatically, right here (one time).
+  # The app runs without it (analogue only), so a setup failure never
+  # blocks the launch. A failed attempt is stamped so a broken setup does
+  # not re-run on every open; the stamp keys on the script and the checkout
+  # path, so cloning the fork (or a setup_engine.sh update) retries.
+  CHECKOUT=""
+  for c in "${FLUBNF_PYBNF:-}" "$HOME/Documents/GitHub/PyBNF-Private" \
+           "$HOME/Documents/GitHub/PyBNF-pf" "$HOME/Documents/PyBNF-Private" \
+           "$HOME/PyBNF-Private"; do
+    [ -n "$c" ] && [ -d "$c/.git" ] && { CHECKOUT="$c"; break; }
   done
+  ATTEMPT=".venv/.engine-attempt"
+  FP="$(shasum setup_engine.sh 2>/dev/null | cut -c1-16):${CHECKOUT:-none}"
+  if [ "$(cat "$ATTEMPT" 2>/dev/null)" = "$FP" ]; then
+    echo "· PF engine still not installed (the last attempt failed; not retrying"
+    echo "  on every open). Fix the cause it printed, then run ./setup_engine.sh"
+    echo "  in Terminal, or delete $ATTEMPT to retry here."
+    echo "  Analogue forecasts work in the meantime."
+  else
+    echo "· PF engine not installed yet, setting it up now (one time, a few minutes)"
+    if FLUBNF_PYBNF="$CHECKOUT" ./setup_engine.sh; then
+      rm -f "$ATTEMPT"
+      [ -f .flubnf.env ] && . ./.flubnf.env
+      echo "· PF engine ready"
+    else
+      echo "$FP" > "$ATTEMPT"
+      echo "· engine setup did not finish (see messages above). The console still"
+      echo "  runs, analogue forecasts only. After you fix the cause (usually the"
+      echo "  PyBNF fork clone or GitHub access), the next open retries; or run"
+      echo "  ./setup_engine.sh in Terminal yourself."
+    fi
+  fi
 fi
 
 echo "FluBNF console starting — a window (or browser tab) will open. Ctrl-C here to stop."
