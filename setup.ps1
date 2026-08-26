@@ -334,6 +334,14 @@ function Get-CfaState {
 
 $Hub = Resolve-Checkout $env:FLUBNF_HUB "FluSight-forecast-hub"
 $PyBnf = Resolve-Checkout $env:FLUBNF_PYBNF "PyBNF-pf"
+# The fork clones as PyBNF-Private (the repository's real name, and what
+# GitHub Desktop or an unzipped lab bundle names it) on every machine but
+# the development host, so when no PyBNF-pf exists, an existing
+# PyBNF-Private wins over cloning fresh. Mirrors flubnf/settings.py.
+if (-not $env:FLUBNF_PYBNF -and -not (Test-Path -LiteralPath $PyBnf)) {
+    $alt = Resolve-Checkout $null "PyBNF-Private"
+    if (Test-Path -LiteralPath $alt) { $PyBnf = $alt }
+}
 $EngineVenv = if ($env:FLUBNF_ENGINE_VENV) { $env:FLUBNF_ENGINE_VENV }
               # Resolve-ProfilePath, not a bare join: flubnf/settings.py
               # expands ~/.venvs/flubnf-engine through %USERPROFILE%, so
