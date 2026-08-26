@@ -42,6 +42,7 @@ import os
 from pathlib import Path
 
 from app.core import playback, report_v2, retro
+from app.core import us_national as usn
 from app.core.runs import fmt_hms, settings_html, version_pairs
 
 # console identity (nau.css dark theme), shared with report_v2
@@ -176,47 +177,51 @@ def _settings_note(root: Path, build: str = "",
 #: the shipped, never-self-fitted member weights, the same pair the season
 #: page scores with -- the export's aggregate must be THE aggregate, not a
 #: reweighted cousin
-_US_AGG_WEIGHTS = {"pf": 0.5, "analogue": 0.5}
+_US_AGG_WEIGHTS = dict(usn.DEFAULT_WEIGHTS)
 
 
-def _us_aggregate_row(root: Path, df) -> tuple:
-    """(row, reason): the honest US national aggregate for the export, from
-    the same construction the season page shows (retro.national_aggregate).
-    The construction COMPUTES when its cache is cold, exactly as the season
-    page does, so an export downloaded before the page was ever visited
-    still carries the aggregate; the result is cached in
+def player_us_labels() -> dict:
+    """The player's own US provenance labels, read from its marked JSON
+    literal, the MODEL_NAMES pattern applied to the national row. Parsed so
+    a test can hold the JS literal and us_national.LABELS together: the
+    wording of the three provenance states is defined once, and neither
+    host may drift from the other. Degrades to an empty map."""
+    import re
+    try:
+        src = PLAYER_SRC.read_text(encoding="utf-8")
+        m = re.search(r"/\*US_LABELS_JSON\*/\s*(\{.*?\})"
+                      r"\s*/\*END_US_LABELS_JSON\*/", src, re.S)
+        return json.loads(m.group(1)) if m else {}
+    except Exception:
+        return {}
+
+
+def _us_national(root: Path, df) -> tuple:
+    """(us, reason): the US national series for the export, through THE
+    resolution order (app/core/us_national.resolve) -- a fitted US cell
+    when the replay ran one, else the constructed sum-of-states aggregate,
+    else neither. The aggregate COMPUTES when its cache is cold, exactly as
+    the season page does, so an export downloaded before the page was ever
+    visited still carries it; the result is cached in
     playback_cache/us_aggregate.json, which _newest_input already covers,
     so a rebuilt aggregate refreshes an already-exported report.
 
-    When the aggregate genuinely cannot be delivered, row is None and
-    reason states why, in words the artifact prints. Silent omission is
-    the recurring failure class this replaced: the export must never lack
-    a section the application shows without saying so."""
+    When nothing can be delivered, us is None and reason states why, in
+    words the artifact prints. Silent omission is the recurring failure
+    class this replaced: the export must never lack a section the
+    application shows without saying so."""
     if df is None:
-        return None, ("the season has not been scored yet, and the "
-                      "aggregate joins the scored verdict table only")
-    from app.core import retro as _retro
+        return None, ("the season has not been scored yet, and the national "
+                      "figure joins the scored verdict table only")
     try:
-        row = _retro.national_aggregate(root, ensemble_weights=_US_AGG_WEIGHTS)
+        us = usn.resolve(root, df, ensemble_weights=_US_AGG_WEIGHTS)
     except Exception as e:
         return None, ("its construction failed while this export was "
                       f"built ({type(e).__name__}: {str(e)[:120]})")
-    if not row or not any(row.get(m) for m in ("pf", "analogue", "ensemble")):
-        return None, ("its construction returned no scoreable national "
-                      "cells for this season")
-    return row, ""
-
-
-#: the label every surface gives the constructed national figure
-US_AGG_NOTE = ("US (aggregated) is not a fitted national forecast: the "
-               "retrospective grid fits states only, so each member is "
-               "aggregated from its state forecasts with states treated as "
-               "independent (PF by summing its per-state sample draws, "
-               "aligned by draw index; the analogue by drawing from each "
-               "state's quantile curve independently and summing), and the "
-               "two national member quantile sets are then vincentized "
-               "50/50, the shipped ensemble recipe. Scored against the US "
-               "truth row with the same relWIS machinery as every state.")
+    if not us.has_scores:
+        return None, (us.reason or "no scoreable national cells exist for "
+                                   "this season")
+    return us, ""
 
 
 #: calendar month number -> label, the season order the console's month
@@ -237,6 +242,10 @@ def _cumulative_curve(df) -> list:
     retro_results; the parity test holds the two together)."""
     if df is None or "model" not in getattr(df, "columns", ()):
         return []
+    # the pooled gate: the curve is the 52-jurisdiction cumulative figure,
+    # by named policy (us_national.POOLED_INCLUDES_US), so a fitted
+    # national row can never bend the season's published line
+    df = usn.pooled_frame(df)
     ens_rows = df[df.model == "ensemble"]
     if not len(ens_rows):
         return []
@@ -353,18 +362,24 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
                      + fmt_hms(t["elapsed_s"]) + " (h:mm:ss)")
     rows = []
     cover = "every scored cell of the season"
-    df = playback._season_scores(root)
-    us_row, us_reason = _us_aggregate_row(root, df)
-    if us_row and us_row.get("ensemble"):
-        # the national aggregate as a verdict tile, labeled for what it is:
-        # constructed from the state forecasts, never a fitted national run
-        v = us_row["ensemble"]
+    df_all = playback._season_scores(root)
+    # the pooled gate, applied once: every per-state figure below is the
+    # 52-jurisdiction scope, and the national row is resolved separately
+    df = usn.pooled_frame(df_all)
+    us, us_reason = _us_national(root, df_all)
+    if us and us.get("ensemble"):
+        # the national figure as a verdict tile, ALWAYS labelled for what
+        # it is: fitted at the national level, or constructed from the
+        # state forecasts. The two are different model outputs.
+        v = us["ensemble"]
         cls = "ok" if v < 1 else "bad"
+        sub = ("fitted at the national level, outside the pooled figures"
+               if us.is_fitted else us.fallback_note
+               + ", states treated as independent")
         tiles.append('<div class="tile"><div class="tilename">'
-                     'US (aggregated)</div>'
+                     + us.short_label + '</div>'
                      + f'<div class="tileval {cls}">{v:.3f}</div>'
-                     '<div class="hint">aggregated from state forecasts, '
-                     'states treated as independent</div></div>')
+                     + f'<div class="hint">{sub}</div></div>')
     if df is not None and "model" in getattr(df, "columns", ()):
         # cell coverage, stated when the scores file can supply it and
         # omitted (the generic phrase stands) rather than invented
@@ -372,12 +387,13 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
         if n:
             cover = f"the season's {n} scored ensemble cells"
     if df is not None and "location" in df.columns:
-        if us_row:
-            # the aggregate leads the table as a DISTINCT row, the console's
-            # own placement; a member it could not construct prints n/a
-            cells = ["<td>US (aggregated)</td>"]
+        if us:
+            # the national row leads the table as a DISTINCT row, the
+            # console's own placement, wearing the label that says where it
+            # came from; a member with no score prints n/a
+            cells = [f"<td>{us.short_label}</td>"]
             for m in ("pf", "analogue", "ensemble"):
-                v = us_row.get(m)
+                v = us.get(m)
                 if v:
                     cells.append('<td class="num '
                                  + ("ok" if v < 1 else "bad")
@@ -404,17 +420,19 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
                   '<th class="num">Analogue</th>'
                   '<th class="num">Ensemble</th></tr></thead><tbody>'
                   + "".join(rows) + "</tbody></table>"
-                  + (f'<p class="hint">{US_AGG_NOTE}</p>' if us_row else ""))
+                  + (f'<p class="hint">{us.note}</p>'
+                     f'<p class="hint">{usn.POOLED_SCOPE_NOTE}</p>'
+                     if us else ""))
     else:
         states = ('<p class="hint">Per-state scores appear here once the '
                   "season has been scored in the console.</p>")
-    # a missing aggregate is STATED, never a silent hole: the console shows
-    # this figure, so an export without it must say why it is absent
+    # a missing national figure is STATED, never a silent hole: the console
+    # shows this figure, so an export without it must say why it is absent
     us_absent = ""
-    if not us_row:
+    if not us:
         reason = (us_reason.replace("&", "&amp;").replace("<", "&lt;")
                   or "its construction was unavailable")
-        us_absent = ('<p class="hint">The US (aggregated) figure the '
+        us_absent = ('<p class="hint">The US national figure the '
                      "console's season page shows is not in this export: "
                      f"{reason}.</p>")
     return ('<div class="card" id="season-summary">'
@@ -425,7 +443,8 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
             f'<p class="hint">Final relWIS pooled over {cover}; '
             "below 1 beats the CDC FluSight baseline. The tiles "
             "match the cumulative column of the player's table at the final "
-            "week.</p>" + _curve_block(df) + states + "</div>")
+            f"week. {usn.POOLED_SCOPE_NOTE}</p>"
+            + _curve_block(df) + states + "</div>")
 
 
 ARCHIVE_MARK = "Archived run"
@@ -478,8 +497,15 @@ def build_season_report(root: Path, season: str, archive: str = "",
     timing_note = (_archive_note(archive) + _timing_note(root)
                    + settings_note)
     summary = _summary_block(root, weeks, payloads)
+    # the SAME resolution the summary block printed, frozen into the
+    # exported player's config: one answer per file, never two
+    us_obj, _ = _us_national(root, playback._season_scores(root))
+    us_json = json.dumps((us_obj.as_dict() if us_obj
+                          else usn.UsNational(usn.OFFICIALS_ONLY).as_dict()),
+                         separators=(",", ":")).replace("</", "<\\/")
     html = _compose(season, weeks, data_json, plotly_js, player_js,
-                    size_note="", timing_note=timing_note, summary=summary)
+                    size_note="", timing_note=timing_note, summary=summary,
+                    us_json=us_json)
     size = len(html.encode("utf-8"))
     if size > SIZE_WARN_BYTES:
         note = ('<p class="warn">Size notice: this file is %.0f MB, above '
@@ -488,7 +514,7 @@ def build_season_report(root: Path, season: str, archive: str = "",
                 'attach it.</p>' % (size / (1024 * 1024)))
         html = _compose(season, weeks, data_json, plotly_js, player_js,
                         size_note=note, timing_note=timing_note,
-                        summary=summary)
+                        summary=summary, us_json=us_json)
     # atomic: two concurrent downloads must never interleave a garbled file
     tmp = out.with_suffix(".html.tmp")
     tmp.write_text(html, encoding="utf-8")
@@ -498,8 +524,9 @@ def build_season_report(root: Path, season: str, archive: str = "",
 
 def _compose(season: str, weeks: list, data_json: str, plotly_js: str,
              player_js: str, size_note: str, timing_note: str = "",
-             summary: str = "") -> str:
+             summary: str = "", us_json: str = "{}") -> str:
     return (_PAGE
+            .replace("@@USNAT@@", us_json)
             .replace("@@BOOT@@", report_v2.theme_boot_script())
             .replace("@@THEMETOKENS@@", report_v2.theme_token_css())
             .replace("@@SEASON@@", season)
@@ -715,6 +742,12 @@ var player = FluBNFPlayer.init({
   catalog: {models: Object.keys(UNION.models),
             officials: Object.keys(UNION.offs),
             locations: Object.keys(UNION.locs).sort()},
+  // the US national series and where it came from, resolved at BUILD time
+  // by app/core/us_national and frozen into this file, so the exported
+  // player labels its location entry, chart title, and saved-image
+  // filename exactly as the console does. An export can travel far from
+  // the machine that made it; it must carry the provenance with it.
+  us: @@USNAT@@,
   palette: function(){
     return {ink: css('--ink', '#E9EAF4'), mut: css('--mut', '#9AA1C4'),
             line: css('--line', '#262A45'), card: css('--card', '#151729'),

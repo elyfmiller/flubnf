@@ -68,13 +68,20 @@ def test_resume_form_fields_reproduces_a_scoped_record():
                          "locations": ["Alaska", "New York"],
                          "particles": 10_000, "replicates": 3,
                          "width": 6, "engine": "pf"}}
+    # national="0": this record's locations are states only, and a resume
+    # must reproduce THAT scope. US national became a default-on scope on
+    # 2026-08-26, so without the explicit answer a stopped 52-jurisdiction
+    # replay would silently widen to 53 halfway through its season.
     assert retro.resume_form_fields(meta) == {
         "season": "2024-25", "mode": "resume", "locations": "panel6",
         "custom_locations": [], "particles": 10_000, "replicates": 3,
-        "width": 6, "engine": "pf"}
+        "width": 6, "engine": "pf", "national": "0"}
     # the all scope passes through the same way
     meta["settings"]["scope"] = "all"
     assert retro.resume_form_fields(meta)["locations"] == "all"
+    # a record whose own list names the national row resumes WITH it
+    meta["settings"]["locations"] = ["Alaska", "New York", "US"]
+    assert retro.resume_form_fields(meta)["national"] == "1"
 
 
 def test_resume_form_fields_custom_and_unscoped_records_name_locations():
@@ -207,8 +214,11 @@ def test_retro_resume_post_launches_with_the_recorded_settings(tmp_path,
     assert r.status_code == 303
     # the worker receives exactly the recorded settings, and the record's
     # scope and engine ride along for the resumed run's own record
+    # the recorded list was states only, so the resume runs states only:
+    # national="0" rides in the resume fields for exactly this reason
     assert launched == [(SEASON, ["Ohio", "Utah"], 3, 2, 4000,
-                         {"scope": "custom", "engine": "pf"})]
+                         {"scope": "custom", "engine": "pf",
+                          "national": False})]
     # mode=resume: the completed week was neither archived nor discarded
     assert (wk / "samples.json").is_file()
     assert srv._retro_status[SEASON] == "running"

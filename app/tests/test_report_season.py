@@ -101,9 +101,30 @@ def test_report_self_contained_with_player_and_data(tmp_path, monkeypatch):
                    'id="pb-speed"', 'id="pb-scrub"', 'id="pb-week"',
                    'id="fd-loc"', 'id="fd-models"', 'id="fd-plot"',
                    'id="pb-stats"', 'id="pb-status"',
-                   "US (official models only)", "ArrowLeft", "ArrowRight",
+                   "ArrowLeft", "ArrowRight",
                    "Plotly.react", "beats the CDC FluSight baseline"):
         assert marker in html, marker
+
+    # The US location entry is no longer a hardcoded "official models
+    # only": the export carries the RESOLVED provenance, frozen in at
+    # build time, and the player labels the entry from it. All three
+    # states are spelled out in the inlined player so the exported file
+    # can label whichever one it holds.
+    for marker in ("US national (fitted)", "US national (sum of states)",
+                   "US (official models only)", "usLabel(cfg.us)"):
+        assert marker in html, marker
+    m = re.search(r"\n  us: (\{.*?\}),\n", html, re.S)
+    assert m, "the exported player config must carry the resolved us block"
+    us = json.loads(m.group(1))
+    assert us["provenance"] in ("fitted", "aggregated", "officials_only")
+    # this synthetic season fits states only and has no aggregate, so the
+    # export must land on the officials-only end of the resolution order
+    # and say so rather than implying a national forecast exists
+    assert us["provenance"] == "officials_only"
+    assert us["fallback"] is True and us["fitted"] is False
+    assert us["label"] == "US (official models only)"
+    # the pooled scope is stated in the artifact itself
+    assert "never joins the pooled average" in html
 
     # the header says the maps stayed behind, and no size warning fired
     assert "interactive maps live in the console" in html

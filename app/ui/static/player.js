@@ -14,6 +14,16 @@
      catalog       optional {models, officials, locations}: build the
                    controls immediately from this union; omitted, they
                    build lazily from the first payload that arrives
+     us            optional {provenance, label, short_label, note,
+                   fitted, fallback, fallback_note}: what the US national
+                   series IS for this season, resolved host-side by
+                   app/core/us_national. Its three provenance states are
+                   "fitted" (the run fitted the national series as its own
+                   location), "aggregated" (no fit; the figure is summed
+                   from the state forecasts) and "officials_only" (neither;
+                   the CDC comparators alone). The player never guesses
+                   between them: omitted, it says officials only, which is
+                   what a host that cannot answer actually knows
      seasonOfficials optional list of official models that submitted in at
                    least one week of the season; drives the two-tier
                    availability of the official toggles, and with the
@@ -45,6 +55,70 @@ var MARKER = 'FluBNF shared season player core (flubnf-player-v1)';
 // the two CDC comparators are a fixed part of the UI: their toggles exist
 // even when a week's payload carries no official submissions yet
 var OFFICIALS = ['FluSight-baseline', 'FluSight-ensemble'];
+
+// ------------------------------------------------------ US national
+
+// THE three provenance states of the US national series, and the fallback
+// labels for each. The host resolves which one applies (app/core/
+// us_national, the single resolution order) and passes cfg.us; these
+// literals are the last resort for a host that passes nothing, and they
+// deliberately claim the LEAST: officials only is what a player that was
+// told nothing actually knows. A fitted national forecast and a
+// sum-of-states aggregate are different model outputs, so the location
+// entry, the chart title, and the empty-frame caption all name which.
+var US_PROVENANCE = {FITTED: 'fitted', AGGREGATED: 'aggregated',
+                     OFFICIALS: 'officials_only'};
+var US_LABELS = /*US_LABELS_JSON*/{
+  "fitted": "US national (fitted)",
+  "aggregated": "US national (sum of states)",
+  "officials_only": "US (official models only)"
+}/*END_US_LABELS_JSON*/;
+
+// which provenance a host config asserts; anything unrecognised, absent,
+// or malformed reads as officials only
+function usProvenance(us){
+  var p = us && us.provenance;
+  return (p === US_PROVENANCE.FITTED || p === US_PROVENANCE.AGGREGATED)
+    ? p : US_PROVENANCE.OFFICIALS;
+}
+
+// the location entry's text: the host's own resolved label when it sent
+// one (it can name the state count, "sum of 52 states"), else the literal
+// for the provenance it asserted
+function usLabel(us){
+  if(us && us.label) return String(us.label);
+  return US_LABELS[usProvenance(us)];
+}
+
+// whether a location string names the national row. One spelling test,
+// mirroring app/core/us_national.is_us
+function isUS(loc){
+  var s = String(loc == null ? '' : loc).replace(/^\s+|\s+$/g, '')
+            .toUpperCase();
+  return s === 'US' || s === 'US (NATIONAL)' || s === 'UNITED STATES'
+      || s === 'USA';
+}
+
+// how a location reads in a chart title, a legend, and a saved image's
+// filename: a state by its own name, the national row by its provenance
+// label, so a downloaded figure states which US series it holds
+function locLabel(loc, us){
+  return isUS(loc) ? usLabel(us) : String(loc);
+}
+
+// one location's entry in a payload map (truth, a model's fans). The
+// selected US value is the plain code 'US'; a payload may key the same
+// series under any national spelling, so the national row is matched by
+// the spelling test rather than by string equality
+function pickLoc(map, loc){
+  if(!map) return null;
+  if(map[loc] !== undefined) return map[loc];
+  if(!isUS(loc)) return null;
+  var ks = Object.keys(map);
+  for(var i = 0; i < ks.length; i++)
+    if(isUS(ks[i])) return map[ks[i]];
+  return null;
+}
 
 // THE one model-name map: every surface that prints a model name reads
 // this, so pf/analogue/ensemble never appear under different names on
@@ -266,12 +340,21 @@ function weekCellState(v, isOfficial, weekKnown, weekHas, seasonHas){
 // US the reason is structural: the fitted members are per-state, so the
 // officials are the US view's only source, and a week they did not submit
 // (outside the competition window) has nothing to draw.
-function noForecastNote(loc, available, enabled){
+function noForecastNote(loc, available, enabled, us){
   if(available > 0 && enabled > 0) return '';
   if(available > 0) return 'no models enabled';
-  if(loc === 'US')
+  if(isUS(loc)){
+    var p = usProvenance(us);
+    if(p === US_PROVENANCE.FITTED)
+      return 'no US national forecast stored for this week; the fitted '
+        + 'national series covers the weeks the replay reached';
+    if(p === US_PROVENANCE.AGGREGATED)
+      return 'no US fan is drawn for this week: no US fit exists for this '
+        + 'season, and the fallback sum-of-states aggregate is a season '
+        + 'score rather than a weekly forecast (choose a state above)';
     return 'no official US submission for this week; the fitted forecasts '
       + 'are per state (choose a state above)';
+  }
   return 'no forecast for ' + loc + ' this week';
 }
 
@@ -350,11 +433,15 @@ function createPlayer(cfg){
         if(detailVisible()) drawFC(); else renderStats(P.pl);
       });
     });
-    // our retrospective members are per-state; the US entry is served by
-    // the official models only, and says so
-    var locs = (cat && cat.locations) || (pl ? (pl.locations || []) : []);
+    // the US entry leads the list and SAYS WHAT IT IS: fitted at the
+    // national level, the sum-of-states fallback, or the official models
+    // alone. Any US spelling in the payload's own location list is folded
+    // into that single entry so a fitted season cannot offer two US rows
+    // whose difference is invisible.
+    var locs = ((cat && cat.locations) || (pl ? (pl.locations || []) : []))
+      .filter(function(l){ return !isUS(l); });
     el.loc.innerHTML =
-      '<option value="US">US (official models only)</option>'
+      '<option value="US">' + usLabel(cfg.us) + '</option>'
       + locs.map(function(l){ return '<option>' + l + '</option>'; })
         .join('');
     P.loc = P.loc || locs[0] || 'US';
@@ -534,7 +621,7 @@ function createPlayer(cfg){
         return;
       }
       var loc = P.loc || 'US';
-      var truth = (pl.truth || {})[loc] || [];
+      var truth = pickLoc(pl.truth || {}, loc) || [];
       var pastX = [], pastY = [], futX = [], futY = [];
       truth.forEach(function(r){
         if(r[0] <= w){ pastX.push(r[0]); pastY.push(r[1]); }
@@ -546,7 +633,7 @@ function createPlayer(cfg){
       ALLM.forEach(function(m){
         var src = OFFS.indexOf(m) >= 0 ? (pl.official || {})[m]
                                        : (pl.models || {})[m];
-        var byH = src ? src[loc] : null;
+        var byH = src ? pickLoc(src, loc) : null;
         if(!byH) return;
         avail++;
         if(!P.on[m]) return;
@@ -556,7 +643,7 @@ function createPlayer(cfg){
       // a frame with nothing to draw for this location says WHY instead
       // of standing as bare axes (the US view outside the officials'
       // competition window, or every model toggled off)
-      el.msg.textContent = noForecastNote(loc, avail, drawn);
+      el.msg.textContent = noForecastNote(loc, avail, drawn, cfg.us);
       // truth drawn last so it sits on top; the tail beyond the now
       // marker stays visible so forecast accuracy is legible at a glance
       var p = pal();
@@ -568,6 +655,10 @@ function createPlayer(cfg){
       // locked: explicit ranges on every redraw, so nothing jumps between
       // weeks. Unlocked: autoscale per frame. A stored user view beats
       // both until it is cleared
+      // the chart title names the location the way the picker does, so a
+      // US frame states its provenance on the figure itself and not only
+      // in the dropdown the reader has already left behind
+      var title = locLabel(loc, cfg.us);
       var lock = (el.lock && el.lock.checked) ? lockRanges(pl, loc) : null;
       // automargin: tick labels size the margins, so the tightened base
       // margins below leave no dead band and nothing clips at the A+
@@ -587,7 +678,7 @@ function createPlayer(cfg){
       // the hint floor itself. Base margins are tight (automargin above
       // owns the tick sides); the top band is proportional so the title
       // and the now label never collide or clip at A+.
-      var L = {title: {text: loc + ' · forecasts as of ' + w,
+      var L = {title: {text: title + ' · forecasts as of ' + w,
                        font: {size: Math.round(fs * .95)}},
         height: cfg.plotHeight || 400,
         margin: {l: 8, r: 8, t: Math.round(fs * 2.4), b: 8},
@@ -608,7 +699,10 @@ function createPlayer(cfg){
                   font: {size: Math.round(fs * .82), color: p.mut}}]};
       P.applying = true;
       var done = function(){ P.applying = false; bindPlot(); };
-      var pr = Plotly.react(el.plot, traces, L, frameConf(loc, w));
+      // the saved PNG is named from the SAME label, so a downloaded US
+      // figure carries its provenance in the filename rather than being
+      // an anonymous "flubnf_US_2098-12-05" that could be either kind
+      var pr = Plotly.react(el.plot, traces, L, frameConf(title, w));
       if(pr && pr.then) pr.then(done, done); else done();
     });
   }
@@ -730,6 +824,13 @@ var FluBNFPlayer = {
     availabilityTier: availabilityTier,
     weekCellState: weekCellState,
     noForecastNote: noForecastNote,
+    US_LABELS: US_LABELS,
+    US_PROVENANCE: US_PROVENANCE,
+    usProvenance: usProvenance,
+    usLabel: usLabel,
+    isUS: isUS,
+    locLabel: locLabel,
+    pickLoc: pickLoc,
     rgba: rgba,
     addDays: addDays,
     dashOf: dashOf,

@@ -19,6 +19,14 @@
        {% if l in form.locations %}checked{% endif %}> {{ l }}</label>
      {% endfor %}
    </div>
+   {# US national is fitted on every console run, whatever is checked here,
+      and the Retrospective tab now defaults to the same rule. It is a
+      fitted national forecast, never the retrospective's constructed
+      sum-of-states fallback, and the accuracy table reports it apart from
+      the pooled figure. #}
+   <p class="hint">US national is always fitted as its own location, in
+    addition to whatever is checked above. It is reported separately from
+    the pooled score, which covers the fitted jurisdictions only.</p>
    <label>Engine</label>
    {% set engine_names = {"all": "All models: PF, analogue, and ensemble (recommended)",
                           "pf": "Particle filter only",

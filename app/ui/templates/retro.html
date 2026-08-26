@@ -26,6 +26,21 @@ and move on; scoring waits for settled truth.</p>
        value="{{ l }}"> {{ l }}</label>
      {% endfor %}
    </div>
+   {# US national is fitted BY DEFAULT, the same rule the Forecast tab
+      applies (it appends the national location to every run). A select,
+      never a checkbox: a checkbox posts nothing when cleared, so the
+      server could not tell "states only" from an old client that never
+      sent the field, and the default has to be on. The all scope with
+      this on is 53 locations: the 52 jurisdictions plus US national. #}
+   <label>US national</label>
+   <select name="national">
+     <option value="1">fit US national too (default)</option>
+     <option value="0">states only</option></select>
+   <p class="hint">A fitted US national forecast is a model output at the
+    national level. Without it the season page falls back to the
+    sum-of-states aggregate, which is a constructed figure and is labelled
+    as one. Either way US is reported apart from the pooled season score,
+    which covers the fitted jurisdictions only.</p>
    <label>Particles</label>
    <input type="number" name="particles" value="10000" min="1000" max="100000" step="1000">
    <label>Replicates</label>

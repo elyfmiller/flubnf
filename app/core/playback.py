@@ -12,8 +12,15 @@ Conventions inherited from the rest of the app (do not re-derive):
   * relWIS uses THE frozen formula: cells need settled truth > 0 and a
     positive median, and the denominator is scoring._baseline_cells -- the
     validated baseline construction, never a hand-rolled one.
-  * stats exclude the US national cell: it is the sum of all states and
-    dominates any sum-based aggregate (~50x a state's WIS).
+  * stats exclude the US national cell, fitted or not. The policy is named
+    in app/core/us_national (POOLED_INCLUDES_US) and applied here through
+    us_national.pooled_frame / pooled_locations, so fitting the national
+    series changes no pooled number. Two reasons stand behind it: US is the
+    sum of all 52 jurisdictions, so it would count them twice and dominate
+    any sum-based aggregate (~50x a state's WIS), and the published pooled
+    headline is a 52-jurisdiction figure. The national score is reported
+    SEPARATELY, with the provenance that says whether it was fitted or
+    constructed.
 
 Caching: each built payload lands in <season_root>/playback_cache/<asof>.json
 and is served from there while fresh (mtime vs every samples.json at or
@@ -36,6 +43,7 @@ import pandas as pd
 
 from app.core import ensemble as ens
 from app.core import retro as retro_store
+from app.core import us_national as usn
 from app.core.scoring import _baseline_cells, load_truth
 from flubnf.settings import HUB
 from flubnf.wis import wis as wis_fn
@@ -199,8 +207,13 @@ def _score_block(qbl: dict, asof: str, truth: dict, n2f: dict,
 def _week_aggregates(asof: str, truth: dict, n2f: dict, model_q: dict,
                      official_q: dict) -> dict:
     """{model: {"wis", "base", "n"}} for one week, members and officials
-    alike, US excluded (it swamps sums)."""
-    locs = set().union(*(set(q) for q in model_q.values())) if model_q else set()
+    alike, US excluded under the named policy (us_national.POOLED_INCLUDES_
+    US). The exclusion is applied to OUR members too, not only to the
+    officials: once the national series is fitted its cell would otherwise
+    walk straight into the pooled week and cumulative figures."""
+    locs = usn.pooled_locations(
+        set().union(*(set(q) for q in model_q.values())) if model_q else [])
+    locs = set(locs)
     fips_set = {n2f[l] for l in locs if l in n2f}
     try:
         bases = _baseline_cells(asof, fips_set, truth) if fips_set else {}
@@ -208,19 +221,25 @@ def _week_aggregates(asof: str, truth: dict, n2f: dict, model_q: dict,
         bases = {}
     agg = {}
     for m, qbl in model_q.items():
-        ws, bs, n = _score_block(qbl, asof, truth, n2f, bases)
+        pooled = {k: v for k, v in qbl.items() if k in locs}
+        ws, bs, n = _score_block(pooled, asof, truth, n2f, bases)
         agg[m] = {"wis": ws, "base": bs, "n": n}
     for om, oq in official_q.items():
         if oq is None:
             continue
-        states = {k: v for k, v in oq.items() if k != "US" and k in locs}
+        states = {k: v for k, v in oq.items() if k in locs}
         ws, bs, n = _score_block(states, asof, truth, n2f, bases)
         agg[om] = {"wis": ws, "base": bs, "n": n}
     return agg
 
 
 def _season_scores(root: Path):
-    """scores.json as a DataFrame, or None when absent/empty/invalid."""
+    """scores.json as a DataFrame, or None when absent/empty/invalid.
+
+    The FULL frame, national rows included. Callers that compute a POOLED
+    figure must pass it through us_national.pooled_frame first; callers
+    that want the national figure use us_national.resolve. Nothing here
+    silently drops rows, because the same file feeds both answers."""
     sf = root / "scores.json"
     if not sf.is_file():
         return None
@@ -255,7 +274,9 @@ def _stats(root: Path, season: str, asof: str, truth: dict, n2f: dict,
     season's scores.json are read from it (one formula, computed once);
     everything else (pf2s, officials, unscored roots) is scored on the fly
     with per-week aggregates cached in playback_cache/stats_cells.json."""
-    scores = _season_scores(root)
+    # the pooled gate, applied at the ONE place the stats table reads
+    # scores.json: a fitted US row must never move a pooled figure
+    scores = usn.pooled_frame(_season_scores(root))
     scored_models = set(scores.model.unique()) if scores is not None else set()
     upto = [w for w in season_weeks(root) if w <= asof]
     cf = _cache_dir(root) / "stats_cells.json"

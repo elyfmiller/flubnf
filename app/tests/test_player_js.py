@@ -256,7 +256,8 @@ def test_no_forecast_note_is_wired_into_the_frame_draw():
     # drawFC computes availability across ALL models (toggled or not) and
     # sets the caption from the shared helper on every frame, so an empty
     # frame can never again render as silent bare axes
-    assert "el.msg.textContent = noForecastNote(loc, avail, drawn)" in SRC
+    assert ("el.msg.textContent = noForecastNote(loc, avail, drawn, cfg.us)"
+            in SRC)
     assert "noForecastNote: noForecastNote" in SRC
 
 

@@ -145,16 +145,20 @@
    {% if v < 1 %}ok{% else %}bad{% endif %}">{{ "%.3f"|format(v) }}</div>
    <p class="hint">relWIS vs the FluSight baseline</p></div>
  {% endfor %}
- {# the national aggregate rides as a fourth tile: NOT a fitted national
-    forecast, and the hint says so; the construction is stated in full
-    under the per-state table below #}
+ {# the national series rides as a fourth tile, ALWAYS naming its
+    provenance: a fitted US run and a constructed sum-of-states aggregate
+    are different model outputs, and the tile title is what tells them
+    apart. The full statement sits under the per-state table below. This
+    tile is outside the pooled headline by policy; the note under the
+    tiles says so. #}
  {% if us_row and us_row.ensemble %}
- <div class="card"><h2>US (aggregated)</h2><div class="big
+ <div class="card"><h2>{{ us_row.short_label }}</h2><div class="big
    {% if us_row.ensemble < 1 %}ok{% else %}bad{% endif %}">{{ "%.3f"|format(us_row.ensemble) }}</div>
-   <p class="hint">ensemble relWIS vs the FluSight baseline; aggregated
-   from state forecasts, states treated as independent</p></div>
+   <p class="hint">ensemble relWIS vs the FluSight baseline;
+   {% if us_row.fitted %}fitted at the national level, and reported apart from the season figures beside it{% else %}{{ us_row.fallback_note }}, states treated as independent{% endif %}</p></div>
  {% endif %}
 </div>
+{% if pooled_note %}<p class="hint">{{ pooled_note }}</p>{% endif %}
 <div class="card"><h2>Cumulative ensemble relWIS through the season</h2>
 {% if curve %}
 {# the chart states its own scale: the y range hugs the data (always
@@ -294,13 +298,15 @@
   {% endfor %}
  </tr></thead>
  <tbody>
- {# the national aggregate leads the table as a DISTINCT row: constructed,
-    not fitted, per the note under the table. It sorts and filters with the
-    state rows so a score ranking places it honestly among them. #}
+ {# the national series leads the table as a DISTINCT row, wearing the
+    label that says where it came from (fitted, or the sum-of-states
+    fallback), per the note under the table. It sorts and filters with the
+    state rows so a score ranking places it honestly among them, and it is
+    NOT part of the pooled figures above. #}
  {% if us_row and (us_row.pf or us_row.analogue or us_row.ensemble) %}
- <tr class="usagg" data-name="US (aggregated)"
+ <tr class="usagg" data-name="{{ us_row.short_label }}"
   {%- for m in ["pf","analogue","ensemble"] %} data-{{ m }}="{{ "%.6f"|format(us_row[m]) if us_row[m] else '' }}"{% endfor %}>
-  <td>US (aggregated)</td>
+  <td>{{ us_row.short_label }}</td>
   {% for m in ["pf","analogue","ensemble"] %}
   <td class="num{% if us_row[m] and us_row[m] >= 1 %} bad{% endif %}">
    {{ "%.3f"|format(us_row[m]) if us_row[m] else "n/a" }}</td>{% endfor %}</tr>
@@ -313,14 +319,8 @@
   {{ "%.3f"|format(r[m]) if r[m] else "n/a" }}</td>{% endfor %}</tr>
 {% endfor %}</tbody></table>
 {% if us_row and (us_row.pf or us_row.analogue or us_row.ensemble) %}
-<p class="hint">US (aggregated) is not a fitted national forecast: the
- retrospective grid fits states only, so each member is aggregated from its
- state forecasts with states treated as independent (PF by summing its
- per-state sample draws, aligned by draw index; the analogue by drawing
- from each state's quantile curve independently and summing), and the two
- national member quantile sets are then vincentized 50/50, the shipped
- ensemble recipe. Scored against the US truth row with the same relWIS
- machinery as every state.</p>
+<p class="hint">{{ us_row.note }}</p>
+{% if pooled_note %}<p class="hint">{{ pooled_note }}</p>{% endif %}
 {% endif %}
 </details>
 <script>
@@ -493,6 +493,12 @@
    // season-level official availability, computed server-side so the
    // two-tier toggles are correct before the first payload arrives
    seasonOfficials: {{ (official_catalog or []) | tojson }},
+   // the US national series and WHERE IT CAME FROM, resolved server-side
+   // through the one resolution order (app/core/us_national). The player
+   // labels its location entry, its chart title, and its empty-frame
+   // caption from this, so a fitted national forecast can never be read
+   // as the sum-of-states fallback or the other way round.
+   us: {{ (us or {}) | tojson }},
    getPayload: ensurePayload,
    payloadError: w => PERR[w],
    isCached: w => (w in PAY),
