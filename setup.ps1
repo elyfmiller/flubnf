@@ -466,7 +466,13 @@ function Test-RemoteAccess {
         $env:GIT_TERMINAL_PROMPT = "0"
         $env:GIT_ASKPASS = "echo"
         $env:GIT_SSH_COMMAND = "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10"
-        $env:GIT_CONFIG_NOSYSTEM = "1"
+        # GIT_CONFIG_NOSYSTEM is deliberately NOT set. Git for Windows
+        # configures Git Credential Manager in the SYSTEM gitconfig, so
+        # hiding that file hides the helper, and the probe then reports "no
+        # access" on every machine regardless of whether it has access. That
+        # is what it did on 2026-08-25 to a machine signed in to GitHub
+        # Desktop. credential.interactive=false plus the wall-clock timeout
+        # below are what keep this from hanging, not the absence of a helper.
         # The helper list is deliberately NOT cleared. Clearing it stopped GCM
         # opening a GUI, but it also stopped GCM answering from its CACHE, so a
         # machine signed in to GitHub Desktop -- which is how this lab onboards
@@ -493,6 +499,13 @@ function Test-RemoteAccess {
             return "unknown"
         }
         if ($p.ExitCode -eq 0) { return "yes" }
+        # Keep git's own words. Deleting this unread was the same mistake this
+        # script was rewritten to stop making everywhere else: "cannot read"
+        # with no reason sends the reader guessing at credentials when the
+        # answer may be a plain 404, a proxy, or a declined invitation.
+        try {
+            $script:LastRemoteError = (Get-Content $e -Raw -ErrorAction SilentlyContinue)
+        } catch { $script:LastRemoteError = $null }
         return "no"
     } catch {
         return "unknown"
@@ -541,7 +554,14 @@ if ($EngineReady) {
         Info "Run these four commands:"
         Info "  git clone -b feature/particle-filter $PyBnfRemote $PyBnf"
     } elseif ($access -eq "no") {
-        Warn "this machine cannot read $PyBnfRemote."
+        Warn "this machine cannot read $PyBnfRemote. git said:"
+        if ($script:LastRemoteError) {
+            foreach ($ln in ($script:LastRemoteError -split "`r?`n")) {
+                if ($ln.Trim()) { Info "    $($ln.Trim())" }
+            }
+        } else {
+            Info "    (git produced no error text)"
+        }
         Warn "  1) ask Ely for a collaborator invitation to PyBNF-Private,"
         Warn "     and accept it at github.com/notifications"
         Warn "  2) sign in to GitHub Desktop (desktop.github.com). It installs"
