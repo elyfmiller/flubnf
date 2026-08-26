@@ -81,7 +81,7 @@ jobs:
   # verification story for setup.ps1: everything it runs was written from
   # language rules and is being executed here for the first time.
   #
-  # It walks the four states a real machine walks, in order:
+  # It walks the five states a real machine walks, in order:
   #   1. a run with the data fetch and the private-fork probe switched off.
   #      Fast, and it proves the script parses, installs, and writes the
   #      launcher configuration.
@@ -99,6 +99,14 @@ jobs:
   #      default, so every later run took the "hub present" branch and
   #      re-applied an empty cone forever. Run 4 makes that state and
   #      requires setup.ps1 to repair it.
+  #   5. a machine that was set up BEFORE the default moved out of
+  #      Documents. The default is now under %LOCALAPPDATA%, because
+  #      Controlled Folder Access protects Documents and blocks git.exe from
+  #      writing there, but an existing checkout at the old location must
+  #      keep being used exactly where it stands: the author has 143 MB of
+  #      PyBNF checkout and 150 MB of hub under Documents and neither may be
+  #      silently relocated. Run 5 creates the old directory and requires
+  #      setup.ps1 to find it, say so, and record it.
   #
   # The engine can never be installed here: it needs the PyBNF fork, which is
   # private, and this job deliberately holds NO credentials and reads no
@@ -109,7 +117,7 @@ jobs:
   #
   # Every "shell: powershell" step here is Windows PowerShell 5.1 and
   # deliberately not pwsh: 5.1 is what a stock Windows 11 box runs, so its
-  # parser and its host are the ones that matter. Each of the four runs is
+  # parser and its host are the ones that matter. Each of the five runs is
   # launched from a cmd step through a command line FluBNF.bat uses, so the
   # exit code asserted here is the one FluBNF.bat reads.
   #
@@ -152,7 +160,7 @@ jobs:
           Write-Host "setup.ps1 parsed clean"
           exit 0
 
-      - name: "run 1 of 4: no data fetch, no fork probe"
+      - name: "run 1 of 5: no data fetch, no fork probe"
         shell: cmd
         timeout-minutes: 10
         env:
@@ -160,8 +168,12 @@ jobs:
           FLUBNF_NO_PROBE: "1"
         run: |
           rem FLUBNF_HUB is deliberately NOT set: this run exercises the
-          rem default location under the user profile, which is what every
-          rem undergraduate gets and what the plan block has to print.
+          rem default location under %LOCALAPPDATA%, which is what every
+          rem undergraduate gets and what the plan block has to print. The
+          rem default moved out of Documents because Controlled Folder Access
+          rem protects Documents and blocks git.exe from writing there; see
+          rem docs\WINDOWS.md. The runner has no Documents\GitHub checkout, so
+          rem this run also covers the branch where no legacy folder is found.
           rem -NoPrompt is passed here and deliberately omitted in run 2, so
           rem both the explicit switch and the script's own non-interactive
           rem detection get exercised.
@@ -195,8 +207,13 @@ jobs:
             # the two switches have to be reported, never silently obeyed
             "data skipped (FLUBNF_NO_DATA=1)",
             "access probe skipped (FLUBNF_NO_PROBE=1)",
-            # the plan block must name the default data location
-            "Documents\GitHub\FluSight-forecast-hub",
+            # the plan block must name the default data location, which is
+            # under %LOCALAPPDATA% and NOT under Documents: Controlled Folder
+            # Access protects Documents and blocks git.exe from writing there
+            "AppData\Local\FluBNF\FluSight-forecast-hub",
+            # and the Controlled Folder Access section must run on every
+            # machine, including one where the setting cannot be read
+            "controlled folder access",
             # the one thing setup must always achieve
             "flubnf installed editable",
             # .flubnf.env.cmd is what makes the settings visible to the very
@@ -215,7 +232,15 @@ jobs:
             "all externals present",
             # no clone was attempted, so no clone may be reported either way
             "git clone failed",
-            "hub data ready"
+            "hub data ready",
+            # THE CFA DEFAULT, AS AN ASSERTION. The runner has no checkout at
+            # the old location, so nothing may resolve to one: a Documents
+            # path here means the default regressed into the folder
+            # Controlled Folder Access blocks git.exe from writing.
+            "Documents\GitHub\FluSight-forecast-hub",
+            # and the legacy-reuse branch must not fire when there is nothing
+            # to reuse
+            "Reusing folders that are already on this machine"
           )
           $bad = @()
           foreach ($n in $must)    { if (-not (Has $n)) { $bad += "MISSING from the transcript: $n" } }
@@ -241,13 +266,13 @@ jobs:
           rem end-of-line anchor. This checks the tail of the path only, so a
           rem runner whose profile directory is not literally %USERPROFILE%
           rem does not produce a false alarm.
-          echo %FLUBNF_HUB%|findstr /e /i /c:"\Documents\GitHub\FluSight-forecast-hub" >nul
+          echo %FLUBNF_HUB%|findstr /e /i /c:"\AppData\Local\FluBNF\FluSight-forecast-hub" >nul
           set FOUND=%ERRORLEVEL%
-          if not "%FOUND%"=="0" echo ::error::.flubnf.env.cmd points somewhere unexpected. With no FLUBNF_HUB set it must record the default profile location.
+          if not "%FOUND%"=="0" echo ::error::.flubnf.env.cmd points somewhere unexpected. With no FLUBNF_HUB set and no checkout at the old Documents location it must record the default under %%LOCALAPPDATA%%, which Controlled Folder Access does not protect.
           if not "%FOUND%"=="0" exit /b 1
           exit /b 0
 
-      - name: "run 2 of 4: the REAL FluSight sparse clone"
+      - name: "run 2 of 5: the REAL FluSight sparse clone"
         shell: cmd
         timeout-minutes: 20
         env:
@@ -366,7 +391,7 @@ jobs:
           if not "%CODE%"=="0" exit /b 1
           exit /b 0
 
-      - name: "run 3 of 4: re-run against the hub that now exists"
+      - name: "run 3 of 5: re-run against the hub that now exists"
         shell: cmd
         timeout-minutes: 10
         env:
@@ -455,7 +480,7 @@ jobs:
       # THE FIELD MACHINE, REPRODUCED. This is the only step that starts from
       # the state the bug report describes, so it is the only one that can
       # tell whether the fix fixes anything for the person who reported it.
-      - name: "run 4 of 4: a hub cloned BY HAND with --sparse"
+      - name: "run 4 of 5: a hub cloned BY HAND with --sparse"
         shell: cmd
         timeout-minutes: 15
         env:
@@ -543,3 +568,61 @@ jobs:
           if errorlevel 1 echo ::error::run 4: the doctor still reports FLUBNF_HUB missing after the repair
           if errorlevel 1 exit /b 1
           exit /b 0
+
+      # THE MACHINE THAT WAS SET UP BEFORE THE DEFAULT MOVED. Every run above
+      # either sets FLUBNF_HUB or has nothing at the old location, so none of
+      # them can show what happens to somebody who already has a checkout
+      # under Documents. That person must be left completely alone, and this
+      # is the only automated check of it. FLUBNF_HUB is deliberately NOT set
+      # and the data fetch is off, so the directory below is never written
+      # to: what is under test is the resolution, not the clone.
+      - name: "run 5 of 5: an existing checkout at the old Documents path"
+        shell: cmd
+        timeout-minutes: 10
+        env:
+          FLUBNF_NO_DATA: "1"
+          FLUBNF_NO_PROBE: "1"
+        run: |
+          mkdir "%USERPROFILE%\Documents\GitHub\FluSight-forecast-hub" 2>nul
+          if not exist "%USERPROFILE%\Documents\GitHub\FluSight-forecast-hub\." echo ::error::run 5: could not create the old-location directory, so nothing below was tested
+          if not exist "%USERPROFILE%\Documents\GitHub\FluSight-forecast-hub\." exit /b 1
+          set "LOG=%RUNNER_TEMP%\setup-run5.log"
+          powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -NoPrompt > "%LOG%" 2>&1
+          set CODE=%ERRORLEVEL%
+          type "%LOG%"
+          echo ---- setup.ps1 exit code: %CODE% ----
+          if not "%CODE%"=="0" echo ::error::run 5: setup.ps1 exited %CODE% on a machine holding a checkout at the old location
+          if not "%CODE%"=="0" exit /b 1
+          exit /b 0
+
+      - name: "run 5: the old checkout is reused, said out loud, and recorded"
+        shell: powershell
+        run: |
+          $path = Join-Path $env:RUNNER_TEMP "setup-run5.log"
+          $raw = Get-Content $path -Raw
+          if (-not $raw) { Write-Host "::error::run 5: the transcript at $path is empty"; exit 1 }
+          # whitespace is stripped from both sides before matching; see the
+          # comment on the same line in the run 1 assertions for why
+          $flat = $raw -replace '\s', ''
+          function Has($needle) { $flat.Contains(($needle -replace '\s', '')) }
+          $bad = @()
+          $must = @(
+            # the reuse itself, and the plan block naming the old path
+            "Reusing folders that are already on this machine",
+            "Documents\GitHub\FluSight-forecast-hub",
+            # never silently: a folder inside a protected location is
+            # something the reader has to be told about
+            "Controlled Folder"
+          )
+          foreach ($n in $must) { if (-not (Has $n)) { $bad += "MISSING from the transcript: $n" } }
+          # and the decisive one: what the next launch will actually read
+          $envCmd = Get-Content ".flubnf.env.cmd" -Raw
+          if ($envCmd -notmatch [regex]::Escape("Documents\GitHub\FluSight-forecast-hub")) {
+            $bad += ".flubnf.env.cmd does not point at the existing checkout, so a machine that worked before this change would stop finding its data"
+          }
+          if ($bad.Count -gt 0) {
+            foreach ($b in $bad) { Write-Host "::error::run 5: $b" }
+            exit 1
+          }
+          Write-Host "run 5: an existing checkout under Documents is reused where it stands"
+          exit 0

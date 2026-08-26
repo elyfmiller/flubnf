@@ -11,12 +11,25 @@ configures the system by exporting a handful of variables (or editing a
 
 Defaults fall back to conventional locations under ~/Documents/GitHub so a
 machine laid out like the development host needs no configuration at all.
+On Windows the checkout defaults move out of Documents; see _checkout below.
 """
 from __future__ import annotations
 
 import os
 import shutil
+import sys
 from pathlib import Path
+
+
+def _windows() -> bool:
+    """Is this a Windows machine?
+
+    A named function so a test can exercise the Windows branch of _checkout
+    from a Mac. Faking `os.name` instead would work and would also turn
+    every pathlib.Path created afterwards into a WindowsPath, which is not
+    something a test may do to the rest of the process.
+    """
+    return sys.platform.startswith("win")
 
 
 def _path(env: str, *fallbacks: str) -> Path:
@@ -30,7 +43,41 @@ def _path(env: str, *fallbacks: str) -> Path:
     return Path(fallbacks[0]).expanduser()
 
 
-HUB = _path("FLUBNF_HUB", "~/Documents/GitHub/FluSight-forecast-hub")
+def _checkout(env: str, name: str) -> Path:
+    """Where a git checkout lives when the environment says nothing.
+
+    POSIX is unchanged: ~/Documents/GitHub/<name>, the layout of the
+    development host and of every macOS and Linux setup script.
+
+    Windows moves the default to %LOCALAPPDATA%\\FluBNF\\<name>, because
+    Controlled Folder Access -- Microsoft Defender's ransomware protection
+    -- protects Documents and lets only trusted programs write there.
+    git.exe and python.exe are not trusted out of the box, so a checkout
+    under Documents is one git.exe cannot clone or pull into and one
+    python.exe cannot write __pycache__ inside. Both were recorded on the
+    corresponding author's machine on 2026-08-25, Defender event 1123.
+
+    Microsoft ships the protection OFF; that machine had it on, whether by
+    the user, the image, or IT policy. The default is chosen so the answer
+    does not matter: %LOCALAPPDATA% is the documented per-user application
+    data location, is never in the protected set, and does not roam.
+
+    An existing checkout at the old Documents path still wins, so a machine
+    configured before this change keeps working untouched. Nothing here ever
+    moves a directory; see docs/WINDOWS.md.
+    """
+    v = os.environ.get(env)
+    if v:
+        return Path(v).expanduser()
+    legacy = Path("~/Documents/GitHub").expanduser() / name
+    if not _windows() or legacy.exists():
+        return legacy
+    local = os.environ.get("LOCALAPPDATA")
+    base = Path(local) if local else Path("~/AppData/Local").expanduser()
+    return base / "FluBNF" / name
+
+
+HUB = _checkout("FLUBNF_HUB", "FluSight-forecast-hub")
 ARCHIVE = HUB / "auxiliary-data/target-data-archive"
 LOCATIONS = HUB / "auxiliary-data/locations.csv"
 
@@ -62,7 +109,7 @@ BNG = _path(
 PY_ENGINE = _path("FLUBNF_PY_ENGINE", "~/.venvs/flubnf/bin/python",
                   "~/.venvs/flubnf/Scripts/python.exe",
                   "~/.venvs/flubnf-engine/Scripts/python.exe")
-PYBNF = _path("FLUBNF_PYBNF", "~/Documents/GitHub/PyBNF-pf")
+PYBNF = _checkout("FLUBNF_PYBNF", "PyBNF-pf")
 
 
 def check(verbose: bool = True) -> list:

@@ -68,8 +68,25 @@ rem started after it ran, so without this file a console opened from a window
 rem that was already open would still see nothing.
 if exist ".flubnf.env.cmd" call ".flubnf.env.cmd"
 
+rem Resolved in the same order setup.ps1 uses, so the launcher and the setup
+rem script can never disagree about where the data is: FLUBNF_HUB wins; then
+rem an existing clone at the old %USERPROFILE%\Documents default, which is
+rem reused where it stands and never moved; then the current default under
+rem %LOCALAPPDATA%. Documents is one of the folders Controlled Folder Access
+rem protects whenever it is switched on, which blocks git.exe from writing
+rem there; %LOCALAPPDATA% is never in that set. Microsoft ships the
+rem protection off, but it was on for this project's corresponding author,
+rem so the default must not rely on it. See docs\WINDOWS.md.
+rem
+rem %USERPROFILE% is the anchor here, in setup.ps1 and in flubnf\settings.py
+rem alike, so the three can never disagree about where the old default was.
+if not defined LOCALAPPDATA set "LOCALAPPDATA=%USERPROFILE%\AppData\Local"
 set "HUBDIR=%FLUBNF_HUB%"
-if not defined HUBDIR set "HUBDIR=%USERPROFILE%\Documents\GitHub\FluSight-forecast-hub"
+if defined HUBDIR goto :hubresolved
+set "HUBDIR=%USERPROFILE%\Documents\GitHub\FluSight-forecast-hub"
+if exist "%HUBDIR%\." goto :hubresolved
+set "HUBDIR=%LOCALAPPDATA%\FluBNF\FluSight-forecast-hub"
+:hubresolved
 rem Test for DATA, not for ".git". A clone made by hand with --sparse is a
 rem healthy git checkout that contains only the repository root, so the old
 rem ".git exists" gate declared such a machine finished and never offered
