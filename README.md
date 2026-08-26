@@ -200,8 +200,14 @@ missing.
 ### Windows (experimental)
 
 Install Python 3.11+ and Git, clone the repository, and double-click
-`FluBNF.bat`; for full first-time setup run `setup.ps1`. Details and current
-limitations: [docs/WINDOWS.md](docs/WINDOWS.md).
+`FluBNF.bat`. When the FluSight data is not yet on the machine it offers to
+run the full first-time setup for you; to run that yourself:
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1
+```
+
+Details and current limitations: [docs/WINDOWS.md](docs/WINDOWS.md).
 
 ### External components
 

@@ -22,8 +22,38 @@ say "analysis venv (.venv) + package"
 "$HERE/.venv/bin/pip" install -q bionetgen && ok "bionetgen (BNG2.pl) installed"
 
 say "FluSight hub data"
+# The directories the app reads. Named once: the repair of an existing clone
+# and the fresh clone after it both work from this list.
+HUB_DIRS="auxiliary-data target-data model-output/FluSight-baseline model-output/FluSight-ensemble"
+missing_hub_dirs() {
+  _m=""
+  for _d in $HUB_DIRS; do [ -d "$HUB/$_d" ] || _m="$_m $_d"; done
+  printf '%s' "$_m"
+}
 if [ -d "$HUB/.git" ]; then
   ok "hub present: $HUB"
+  # `git clone --sparse` checks out the repository ROOT and nothing else, so
+  # a hub cloned by hand is a valid checkout holding no data at all, and
+  # "hub present" was the last word this script said about it. Widen the
+  # cone with `add`: it is idempotent, and on a full non-sparse clone it
+  # fails harmlessly ("no sparse-checkout to add to") instead of pruning
+  # every directory not named, which `set` does. Both measured on git 2.39.5.
+  need="$(missing_hub_dirs)"
+  if [ -n "$need" ]; then
+    warn "this clone does not contain:$need"
+    # shellcheck disable=SC2086
+    if (cd "$HUB" && git sparse-checkout add $HUB_DIRS); then
+      still="$(missing_hub_dirs)"
+      if [ -n "$still" ]; then
+        warn "still absent:$still -- the console will open with no vintages"
+      else
+        ok "sparse checkout widened to the directories the app reads"
+      fi
+    else
+      warn "could not widen the sparse checkout (offline, or a full clone"
+      warn "whose upstream no longer has one of those directories)"
+    fi
+  fi
 elif [ "${FLUBNF_NO_DATA:-0}" = "1" ]; then
   warn "data skipped (FLUBNF_NO_DATA=1) -- set FLUBNF_HUB later"
 else
@@ -33,7 +63,7 @@ else
   echo "  fetching FluSight data (sparse, ~150 MB)…"
   git clone --filter=blob:none --sparse --depth 1 \
       https://github.com/cdcepi/FluSight-forecast-hub "$HUB" 2>/dev/null \
-    && (cd "$HUB" && git sparse-checkout set auxiliary-data target-data model-output/FluSight-baseline model-output/FluSight-ensemble) \
+    && (cd "$HUB" && git sparse-checkout set $HUB_DIRS) \
     && ok "hub data ready (sparse): $HUB" \
     || warn "data fetch failed (offline?) -- rerun setup.sh when connected"
 fi

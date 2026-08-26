@@ -74,3 +74,472 @@ jobs:
               echo '```'; tail -n 60 pytest.out; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           }
+
+  # EXPERIMENTAL: the only automated exercise of the Windows FIRST-RUN path,
+  # which is the path that reached a user broken. The lab develops on macOS
+  # and has no PowerShell interpreter at all, so this job is the entire
+  # verification story for setup.ps1: everything it runs was written from
+  # language rules and is being executed here for the first time.
+  #
+  # It walks the four states a real machine walks, in order:
+  #   1. a run with the data fetch and the private-fork probe switched off.
+  #      Fast, and it proves the script parses, installs, and writes the
+  #      launcher configuration.
+  #   2. a run that performs the REAL sparse clone of the public FluSight
+  #      hub. The clone is the thing that broke in the field, so no amount of
+  #      FLUBNF_NO_DATA=1 covers it -- one run has to actually fetch.
+  #   3. a re-run against the hub step 2 created. This is the only exercise
+  #      of the "already cloned, update it" branch and of the script's own
+  #      claim, in its first line, to be idempotent.
+  #   4. a run against a hub cloned BY HAND with --sparse. Runs 2 and 3 both
+  #      reach the hub through setup.ps1's own clone, which sets a cone
+  #      holding the four data directories, so neither can see the state the
+  #      corresponding author was actually in: --sparse checks out the
+  #      repository ROOT and nothing else, and his path was setup.ps1's own
+  #      default, so every later run took the "hub present" branch and
+  #      re-applied an empty cone forever. Run 4 makes that state and
+  #      requires setup.ps1 to repair it.
+  #
+  # The engine can never be installed here: it needs the PyBNF fork, which is
+  # private, and this job deliberately holds NO credentials and reads no
+  # secrets. That is not a gap in the coverage, it IS the coverage -- an
+  # undergraduate with no repository access gets exactly this state, and the
+  # assertions below require setup to finish it cleanly, say in plain words
+  # that the engine is missing, and exit 0.
+  #
+  # Every "shell: powershell" step here is Windows PowerShell 5.1 and
+  # deliberately not pwsh: 5.1 is what a stock Windows 11 box runs, so its
+  # parser and its host are the ones that matter. Each of the four runs is
+  # launched from a cmd step through a command line FluBNF.bat uses, so the
+  # exit code asserted here is the one FluBNF.bat reads.
+  #
+  # STILL NOT COVERED, and not pretended otherwise: FluBNF.bat itself (cmd
+  # has no parse-only mode, and its first-run offer needs an interactive
+  # console), the winget/Perl branch, the probe's 15 s timeout path (the
+  # probe is expected to answer, not to hang), and any non-ASCII profile
+  # path. The runner is also an English-locale image with git already on
+  # PATH, so the "git is not installed" branch never runs.
+  windows-setup-script:
+    name: "windows-setup-script (experimental)"
+    runs-on: windows-latest
+    continue-on-error: true
+    # The per-step budgets below sum to less than this, so a hang is always
+    # reported against the step that hung rather than as an opaque job kill.
+    timeout-minutes: 60
+    steps:
+      # .gitattributes marks *.ps1 and *.bat eol=crlf, so the runner checks
+      # out the same bytes the corresponding author's machine does. That is
+      # what makes the parse check below meaningful rather than a check of a
+      # macOS-normalised file that no Windows user ever receives.
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+
+      - name: setup.ps1 parses under Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          Write-Host "host: $($PSVersionTable.PSVersion) ($($PSVersionTable.PSEdition))"
+          $tokens = $null
+          $errs = $null
+          $null = [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path .\setup.ps1).Path, [ref]$tokens, [ref]$errs)
+          if ($errs -and $errs.Count -gt 0) {
+            foreach ($e in $errs) {
+              Write-Host "::error::setup.ps1 line $($e.Extent.StartLineNumber): $($e.Message)"
+            }
+            exit 1
+          }
+          Write-Host "setup.ps1 parsed clean"
+          exit 0
+
+      - name: "run 1 of 4: no data fetch, no fork probe"
+        shell: cmd
+        timeout-minutes: 10
+        env:
+          FLUBNF_NO_DATA: "1"
+          FLUBNF_NO_PROBE: "1"
+        run: |
+          rem FLUBNF_HUB is deliberately NOT set: this run exercises the
+          rem default location under the user profile, which is what every
+          rem undergraduate gets and what the plan block has to print.
+          rem -NoPrompt is passed here and deliberately omitted in run 2, so
+          rem both the explicit switch and the script's own non-interactive
+          rem detection get exercised.
+          set "LOG=%RUNNER_TEMP%\setup-run1.log"
+          powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -NoPrompt > "%LOG%" 2>&1
+          set CODE=%ERRORLEVEL%
+          type "%LOG%"
+          echo ---- setup.ps1 exit code: %CODE% ----
+          if not "%CODE%"=="0" echo ::error::setup.ps1 exited %CODE%. A setup that COMPLETED with externals missing must exit 0; only a setup that broke may exit non-zero, or FluBNF.bat reports a problem on every healthy first run.
+          if not "%CODE%"=="0" exit /b 1
+          if not exist ".venv\Scripts\flubnf.exe" echo ::error::setup.ps1 exited 0 but left no .venv\Scripts\flubnf.exe, so the console cannot start
+          if not exist ".venv\Scripts\flubnf.exe" exit /b 1
+          exit /b 0
+
+      - name: "run 1: the transcript is honest about what it skipped"
+        shell: powershell
+        run: |
+          $path = Join-Path $env:RUNNER_TEMP "setup-run1.log"
+          # Windows PowerShell wraps host output at the console width, and
+          # when stdout is a pipe that width is a default we cannot observe
+          # from macOS. A wrap breaks mid-WORD, so matching the raw text
+          # would make every assertion below depend on a number nobody here
+          # can verify. Both sides therefore have all whitespace removed
+          # before comparison, which no wrap can survive. The unmodified
+          # transcript was printed by the previous step for a human to read.
+          $raw = Get-Content $path -Raw
+          if (-not $raw) { Write-Host "::error::run 1: the transcript at $path is empty, so setup.ps1 printed nothing at all"; exit 1 }
+          $flat = $raw -replace '\s', ''
+          function Has($needle) { $flat.Contains(($needle -replace '\s', '')) }
+          $must = @(
+            # the two switches have to be reported, never silently obeyed
+            "data skipped (FLUBNF_NO_DATA=1)",
+            "access probe skipped (FLUBNF_NO_PROBE=1)",
+            # the plan block must name the default data location
+            "Documents\GitHub\FluSight-forecast-hub",
+            # the one thing setup must always achieve
+            "flubnf installed editable",
+            # .flubnf.env.cmd is what makes the settings visible to the very
+            # next double-click; FluBNF.bat calls it on every launch
+            "(read by FluBNF.bat on every launch)",
+            # the degraded engine path, in plain words, staying honest that
+            # the fork is private rather than implying it can be installed
+            "engine venv not ready",
+            "PRIVATE repository",
+            "Without the engine: the console, analogue engine, and reports all work.",
+            # and the doctor's verdict for a machine with no hub, no engine
+            "some externals missing"
+          )
+          $mustNot = @(
+            # nothing here can be complete: no hub clone, no engine
+            "all externals present",
+            # no clone was attempted, so no clone may be reported either way
+            "git clone failed",
+            "hub data ready"
+          )
+          $bad = @()
+          foreach ($n in $must)    { if (-not (Has $n)) { $bad += "MISSING from the transcript: $n" } }
+          foreach ($n in $mustNot) { if (Has $n)        { $bad += "PRESENT but must not be: $n" } }
+          if ($bad.Count -gt 0) {
+            foreach ($b in $bad) { Write-Host "::error::run 1: $b" }
+            exit 1
+          }
+          Write-Host "run 1 transcript: all $($must.Count + $mustNot.Count) checks passed"
+          exit 0
+
+      - name: "run 1: the launcher configuration is written and callable from cmd"
+        shell: cmd
+        run: |
+          if not exist ".flubnf.env.cmd" echo ::error::setup.ps1 did not write .flubnf.env.cmd, so FluBNF.bat would launch with no settings at all
+          if not exist ".flubnf.env.cmd" exit /b 1
+          type ".flubnf.env.cmd"
+          call ".flubnf.env.cmd"
+          if not defined FLUBNF_HUB echo ::error::.flubnf.env.cmd did not set FLUBNF_HUB
+          if not defined FLUBNF_HUB exit /b 1
+          echo FLUBNF_HUB=%FLUBNF_HUB%
+          rem no space before the pipe: a trailing space would defeat /e, the
+          rem end-of-line anchor. This checks the tail of the path only, so a
+          rem runner whose profile directory is not literally %USERPROFILE%
+          rem does not produce a false alarm.
+          echo %FLUBNF_HUB%|findstr /e /i /c:"\Documents\GitHub\FluSight-forecast-hub" >nul
+          set FOUND=%ERRORLEVEL%
+          if not "%FOUND%"=="0" echo ::error::.flubnf.env.cmd points somewhere unexpected. With no FLUBNF_HUB set it must record the default profile location.
+          if not "%FOUND%"=="0" exit /b 1
+          exit /b 0
+
+      - name: "run 2 of 4: the REAL FluSight sparse clone"
+        shell: cmd
+        timeout-minutes: 20
+        env:
+          # A path this job owns, so the assertions can name it. The default
+          # profile location is covered by run 1's plan block instead.
+          FLUBNF_HUB: ${{ runner.temp }}\flusight-hub
+          # FLUBNF_NO_DATA is NOT set. This is the run that actually fetches,
+          # about 150 MB sparse, and it is the whole reason this job exists:
+          # the field failure was a clone that SUCCEEDED being reported as a
+          # failure, which no skipped-fetch run can ever detect.
+          #
+          # FLUBNF_NO_PROBE is NOT set either, so the private-fork probe runs
+          # for real. It must answer "no" -- this job holds no credentials --
+          # and it must answer inside its own 15 s budget. This is the only
+          # automated exercise the probe's anti-hang guards will ever get.
+        run: |
+          rem -NoPrompt is deliberately omitted: this is the command line
+          rem FluBNF.bat runs verbatim, so the run also proves the script
+          rem asks nothing when it detects a non-interactive session itself.
+          set "LOG=%RUNNER_TEMP%\setup-run2.log"
+          powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 > "%LOG%" 2>&1
+          set CODE=%ERRORLEVEL%
+          type "%LOG%"
+          echo ---- setup.ps1 exit code: %CODE% ----
+          if not "%CODE%"=="0" echo ::error::setup.ps1 exited %CODE% after the data fetch. A completed setup with only the engine missing must exit 0.
+          if not "%CODE%"=="0" exit /b 1
+          exit /b 0
+
+      - name: "run 2: what git did on disk and what setup.ps1 said must agree"
+        shell: powershell
+        env:
+          FLUBNF_HUB: ${{ runner.temp }}\flusight-hub
+        run: |
+          $path = Join-Path $env:RUNNER_TEMP "setup-run2.log"
+          $raw = Get-Content $path -Raw
+          if (-not $raw) { Write-Host "::error::run 2: the transcript at $path is empty, so setup.ps1 printed nothing at all"; exit 1 }
+          # whitespace is stripped from both sides before matching; see the
+          # comment on the same line in the run 1 assertions for why
+          $flat = $raw -replace '\s', ''
+          function Has($needle) { $flat.Contains(($needle -replace '\s', '')) }
+          $hub = $env:FLUBNF_HUB
+          $onDisk = Test-Path (Join-Path $hub ".git")
+          $claimed = Has "hub data ready (sparse)"
+          # THE REPORTED BUG, AS AN ASSERTION. On the author's machine the
+          # clone succeeded and setup.ps1 announced a failure anyway, because
+          # the redirect threw git's output away and the exit code it tested
+          # was stale. Either half disagreeing with the other is the defect,
+          # so both directions are checked.
+          if ($onDisk -and -not $claimed) {
+            Write-Host "::error::run 2: the clone SUCCEEDED on disk but setup.ps1 did not report success. This is the field bug reproduced: a fetch that worked, reported as a failure."
+            exit 1
+          }
+          if ($claimed -and -not $onDisk) {
+            Write-Host "::error::run 2: setup.ps1 reported the hub as ready but there is no $hub\.git. A failure reported as success is worse than the bug this replaced."
+            exit 1
+          }
+          if (-not $onDisk) {
+            Write-Host "::error::run 2: no clone. setup.ps1 produced no $hub\.git. The words git actually printed are in the transcript above, which is the point of no longer discarding them."
+            exit 1
+          }
+          $bad = @()
+          # the sparse cone: exactly the four directories the app reads. A
+          # clone that lands without these is a clone the console cannot use.
+          foreach ($d in @("auxiliary-data", "target-data",
+                           "model-output\FluSight-baseline",
+                           "model-output\FluSight-ensemble")) {
+            if (-not (Test-Path (Join-Path $hub $d))) {
+              $bad += "the sparse checkout is missing $d, which the app reads"
+            }
+          }
+          $must = @(
+            "hub data ready (sparse)",
+            # the engine is still missing and must still say so
+            "engine venv not ready",
+            "PRIVATE repository",
+            "some externals missing"
+          )
+          $mustNot = @(
+            "git clone failed",
+            "all externals present",
+            # the probe was NOT skipped this time
+            "access probe skipped",
+            # the "yes" branch. This job holds no credentials, so reaching a
+            # private repository would mean it had acquired some.
+            "no invitation needed"
+          )
+          foreach ($n in $must)    { if (-not (Has $n)) { $bad += "MISSING from the transcript: $n" } }
+          foreach ($n in $mustNot) { if (Has $n)        { $bad += "PRESENT but must not be: $n" } }
+          # The probe has two honest answers here and no third: it reached
+          # GitHub and was refused, or it could not tell. Either is fine and
+          # both are reported to the user in words; silence is not.
+          if (-not ((Has "this machine cannot read") -or
+                    (Has "access to the fork was not checked"))) {
+            $bad += "the fork probe reported neither a refusal nor an undetermined result"
+          }
+          if ($bad.Count -gt 0) {
+            foreach ($b in $bad) { Write-Host "::error::run 2: $b" }
+            exit 1
+          }
+          Write-Host "run 2: clone on disk and transcript agree; engine correctly reported missing"
+          exit 0
+
+      - name: "run 2: the fetched data cures the symptom that was reported"
+        shell: cmd
+        env:
+          FLUBNF_HUB: ${{ runner.temp }}\flusight-hub
+        run: |
+          rem The field report opened with "Latest vintage: none" and "0
+          rem archived truth vintages". Both numbers come from
+          rem app.core.data.vintages, so read them the same way the Data page
+          rem does, out of the venv setup.ps1 just built. This is the step
+          rem that ties "the clone worked" to "the console is no longer empty".
+          ".venv\Scripts\python" -c "from app.core.data import vintages; v = vintages(); print('archived truth vintages:', len(v)); print('latest vintage:', v[-1] if v else 'none'); raise SystemExit(0 if v else 1)"
+          set CODE=%ERRORLEVEL%
+          if not "%CODE%"=="0" echo ::error::the fetched hub yields no archived truth vintages, so the console would still open on "Latest vintage: none" - the exact symptom that was reported
+          if not "%CODE%"=="0" exit /b 1
+          exit /b 0
+
+      - name: "run 3 of 4: re-run against the hub that now exists"
+        shell: cmd
+        timeout-minutes: 10
+        env:
+          FLUBNF_HUB: ${{ runner.temp }}\flusight-hub
+          # the probe already answered in run 2; no need to pay for it twice
+          FLUBNF_NO_PROBE: "1"
+        run: |
+          set "LOG=%RUNNER_TEMP%\setup-run3.log"
+          powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -NoPrompt > "%LOG%" 2>&1
+          set CODE=%ERRORLEVEL%
+          type "%LOG%"
+          echo ---- setup.ps1 exit code: %CODE% ----
+          if not "%CODE%"=="0" echo ::error::re-running setup.ps1 over an already-configured machine exited %CODE%. The script's first line claims it is idempotent, so a re-run has to be safe.
+          if not "%CODE%"=="0" exit /b 1
+          exit /b 0
+
+      - name: "run 3: the existing clone is updated, not re-cloned or broken"
+        shell: powershell
+        run: |
+          $path = Join-Path $env:RUNNER_TEMP "setup-run3.log"
+          $raw = Get-Content $path -Raw
+          if (-not $raw) { Write-Host "::error::run 3: the transcript at $path is empty, so setup.ps1 printed nothing at all"; exit 1 }
+          # whitespace is stripped from both sides before matching; see the
+          # comment on the same line in the run 1 assertions for why
+          $flat = $raw -replace '\s', ''
+          function Has($needle) { $flat.Contains(($needle -replace '\s', '')) }
+          $bad = @()
+          $must = @(
+            "hub present:",
+            # still degraded, still saying so
+            "engine venv not ready",
+            "some externals missing"
+          )
+          $mustNot = @(
+            "git clone failed",
+            # the "path exists but is not a git clone" branch would mean the
+            # previous run left something the script can no longer recognise
+            "exists but is not a git clone",
+            "all externals present"
+          )
+          foreach ($n in $must)    { if (-not (Has $n)) { $bad += "MISSING from the transcript: $n" } }
+          foreach ($n in $mustNot) { if (Has $n)        { $bad += "PRESENT but must not be: $n" } }
+          # FIRST TEST OF AN UNVERIFIED CLAIM: that a fast-forward-only git
+          # pull works against a clone made with --depth 1, blobless and
+          # sparse. That was reasoned from git's documentation on a Mac and
+          # has never been executed. If it fails, setup.ps1 says so and keeps
+          # the data it already has, which is the correct degraded
+          # behaviour, so it is reported as a warning here and the job is not
+          # failed on it. What is required is that one of the two messages
+          # appears at all.
+          # (No backticks in these comments on purpose: a comment ending in
+          # one sits exactly where a line-continuation would, and we cannot
+          # test the tokenizer's treatment of that from macOS.)
+          if (Has "hub updated (git pull --ff-only)") {
+            Write-Host "run 3: the shallow blobless sparse clone updates cleanly"
+          } elseif (Has "hub update skipped") {
+            Write-Host "::warning::run 3: git pull --ff-only did not succeed against the shallow blobless sparse clone. The data on disk is still used, so this is not fatal, but the transcript above is the first real evidence about that command and should be read."
+          } else {
+            $bad += "neither an update nor a skipped update was reported for an existing hub"
+          }
+          if ($bad.Count -gt 0) {
+            foreach ($b in $bad) { Write-Host "::error::run 3: $b" }
+            exit 1
+          }
+          Write-Host "run 3: re-run over a configured machine is clean"
+          exit 0
+
+      - name: "run 3: the launcher configuration now points at the fetched data"
+        shell: cmd
+        run: |
+          rem This is the mechanism by which the next double-click stops
+          rem saying "Latest vintage: none": setup.ps1 rewrites the file, and
+          rem FluBNF.bat calls it on every launch.
+          if not exist ".flubnf.env.cmd" echo ::error::.flubnf.env.cmd is gone after the later runs; FluBNF.bat would launch with no settings
+          if not exist ".flubnf.env.cmd" exit /b 1
+          call ".flubnf.env.cmd"
+          if not defined FLUBNF_HUB echo ::error::.flubnf.env.cmd no longer sets FLUBNF_HUB
+          if not defined FLUBNF_HUB exit /b 1
+          echo FLUBNF_HUB=%FLUBNF_HUB%
+          echo %FLUBNF_HUB%|findstr /e /i /c:"\flusight-hub" >nul
+          set FOUND=%ERRORLEVEL%
+          if not "%FOUND%"=="0" echo ::error::setup.ps1 fetched the data but .flubnf.env.cmd still names the old location, so the next launch would look in the wrong place
+          if not "%FOUND%"=="0" exit /b 1
+          exit /b 0
+
+      # THE FIELD MACHINE, REPRODUCED. This is the only step that starts from
+      # the state the bug report describes, so it is the only one that can
+      # tell whether the fix fixes anything for the person who reported it.
+      - name: "run 4 of 4: a hub cloned BY HAND with --sparse"
+        shell: cmd
+        timeout-minutes: 15
+        env:
+          FLUBNF_HUB: ${{ runner.temp }}\byhand-hub
+          # the probe answered for real in run 2; this run is about the cone
+          FLUBNF_NO_PROBE: "1"
+        run: |
+          rem The command from the bug report, verbatim except for the path.
+          git clone --filter=blob:none --sparse --depth 1 https://github.com/cdcepi/FluSight-forecast-hub "%RUNNER_TEMP%\byhand-hub"
+          if errorlevel 1 echo ::error::run 4: the by-hand clone itself failed, so nothing below was actually tested
+          if errorlevel 1 exit /b 1
+          rem The premise, asserted rather than assumed: --sparse is
+          rem documented to check out the repository root only, so this clone
+          rem must hold no auxiliary-data. If it does, the reasoning behind
+          rem Repair-HubCone is wrong on this git build and should be reread
+          rem before anything else in this job is believed.
+          if exist "%RUNNER_TEMP%\byhand-hub\auxiliary-data" echo ::error::run 4: git clone --sparse produced auxiliary-data on this git version, so the premise of the whole repair is wrong. See the Repair-HubCone comment in setup.ps1.
+          if exist "%RUNNER_TEMP%\byhand-hub\auxiliary-data" exit /b 1
+          echo the by-hand clone holds only:
+          dir /b "%RUNNER_TEMP%\byhand-hub"
+          set "LOG=%RUNNER_TEMP%\setup-run4.log"
+          powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -NoPrompt > "%LOG%" 2>&1
+          set CODE=%ERRORLEVEL%
+          type "%LOG%"
+          echo ---- setup.ps1 exit code: %CODE% ----
+          if not "%CODE%"=="0" echo ::error::run 4: setup.ps1 exited %CODE% over a by-hand sparse clone
+          if not "%CODE%"=="0" exit /b 1
+          exit /b 0
+
+      - name: "run 4: the empty clone became one the console can read"
+        shell: powershell
+        env:
+          FLUBNF_HUB: ${{ runner.temp }}\byhand-hub
+        run: |
+          $hub = $env:FLUBNF_HUB
+          $bad = @()
+          foreach ($d in @("auxiliary-data", "target-data",
+                           "model-output\FluSight-baseline",
+                           "model-output\FluSight-ensemble")) {
+            if (-not (Test-Path (Join-Path $hub $d))) {
+              $bad += "$d is still absent, so setup.ps1 did not widen the sparse cone and this machine is still the one in the field report"
+            }
+          }
+          $raw = Get-Content (Join-Path $env:RUNNER_TEMP "setup-run4.log") -Raw
+          if (-not $raw) { Write-Host "::error::run 4: the transcript is empty"; exit 1 }
+          # whitespace is stripped from both sides before matching; see the
+          # comment on the same line in the run 1 assertions for why
+          $flat = $raw -replace '\s', ''
+          function Has($needle) { $flat.Contains(($needle -replace '\s', '')) }
+          $must = @(
+            "hub present:",
+            # the repair has to be reported, not done silently: a user who
+            # waits through a 150 MB download deserves to know what for
+            "this clone does not contain",
+            "sparse checkout widened"
+          )
+          $mustNot = @(
+            # the engine is still unreachable here and must still say so
+            "all externals present",
+            # nothing may re-clone over a hub the user already made
+            "git clone failed",
+            "hub data ready (sparse)"
+          )
+          foreach ($n in $must)    { if (-not (Has $n)) { $bad += "MISSING from the transcript: $n" } }
+          foreach ($n in $mustNot) { if (Has $n)        { $bad += "PRESENT but must not be: $n" } }
+          if ($bad.Count -gt 0) {
+            foreach ($b in $bad) { Write-Host "::error::run 4: $b" }
+            exit 1
+          }
+          Write-Host "run 4: a root-only sparse clone was repaired into a usable hub"
+          exit 0
+
+      - name: "run 4: and the console would no longer say 'Latest vintage: none'"
+        shell: cmd
+        env:
+          FLUBNF_HUB: ${{ runner.temp }}\byhand-hub
+        run: |
+          rem The end of the chain: the state the author reported, through
+          rem setup.ps1, to the numbers the Data page prints.
+          ".venv\Scripts\python" -c "from app.core.data import vintages; v = vintages(); print('archived truth vintages:', len(v)); print('latest vintage:', v[-1] if v else 'none'); raise SystemExit(0 if v else 1)"
+          if errorlevel 1 echo ::error::run 4: the repaired hub still yields no archived truth vintages, so the reported symptom survives the fix
+          if errorlevel 1 exit /b 1
+          rem and the doctor must agree, since it is what prints the verdict
+          ".venv\Scripts\python" -c "from flubnf.settings import check; m=[x[0] for x in check(verbose=True)]; print('missing:', m); raise SystemExit(1 if 'FLUBNF_HUB' in m else 0)"
+          if errorlevel 1 echo ::error::run 4: the doctor still reports FLUBNF_HUB missing after the repair
+          if errorlevel 1 exit /b 1
+          exit /b 0

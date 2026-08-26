@@ -7,8 +7,10 @@
 and move on; scoring waits for settled truth.</p>
 <div class="cols">
  <div><div class="card"><h2>Settings</h2>
+  {# platform-aware: app/ui/server.py:_engine_setup_hint. Never hardcode a
+     macOS-only filename here; a Windows reader cannot open one. #}
   {% if not engine_ok %}<p class="warn">Requires the particle-filter engine:
-  run <code>SetupEngine.command</code> first. Everything else works without
+  {{ engine_setup_hint() }}. Everything else works without
   it.</p>{% endif %}
   <form method="post" action="/retro/run">
    <label>Season</label>

@@ -67,10 +67,25 @@ PYBNF = _path("FLUBNF_PYBNF", "~/Documents/GitHub/PyBNF-pf")
 
 def check(verbose: bool = True) -> list:
     """Return missing externals; the app's doctor command and README both
-    point here. An empty list means this machine can run everything."""
+    point here. An empty list means this machine can run everything.
+
+    The hub is tested by its DATA, not by the directory. `git clone --sparse`
+    checks out the repository root and nothing else, so a hub cloned by hand
+    is a directory that exists, is a valid git checkout, and contains no
+    truth vintages whatsoever. Testing `HUB.exists()` printed "all externals
+    present -- you are ready" over exactly that state (field report,
+    2026-08-25), which is worse than saying nothing. `auxiliary-data` is the
+    first sparse directory the app reads and holds both the vintage archive
+    and locations.csv, so its absence is the honest signal.
+    """
+    hub_why = "FluSight hub clone (truth vintages, locations)"
+    if HUB.exists():
+        hub_why = ("FluSight hub data (truth vintages, locations): the clone "
+                   "is present but its sparse checkout does not include the "
+                   "data directories")
     missing = []
     for name, p, why in (
-        ("FLUBNF_HUB", HUB, "FluSight hub clone (truth vintages, locations)"),
+        ("FLUBNF_HUB", HUB / "auxiliary-data", hub_why),
         ("FLUBNF_BNG", Path(BNG), "BioNetGen BNG2.pl (network generation)"),
         ("FLUBNF_PY_ENGINE", PY_ENGINE, "engine venv python (pybnf + bngsim)"),
         ("FLUBNF_PYBNF", PYBNF, "PyBNF fork with fit_type=pf"),
