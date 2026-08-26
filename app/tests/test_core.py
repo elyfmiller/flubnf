@@ -50,15 +50,19 @@ def test_submission_validation_catches_defects():
 
 
 def test_submission_writes_hub_layout(tmp_path):
+    """The directory and the file wear the identity registered in
+    model-metadata/, and both are dated by the hub reference date (as-of +
+    7), so the tree copies straight into a hub fork."""
     from app.core.submit import quantile_rows, write_submission
     rng = np.random.default_rng(0)
     samples = {str(h): rng.gamma(5, 20, 4000).tolist() for h in (1, 2, 3, 4)}
     rows = quantile_rows(samples, "39", "2026-01-24")
-    p = write_submission(rows, "PF-SIHRS", "NAU", "2026-01-24", tmp_path)
-    assert p.name == "2026-01-24-NAU-PF-SIHRS.csv"
-    assert p.parent.name == "NAU-PF-SIHRS"                    # identity in the PATH
+    p = write_submission(rows, "pf", "2026-01-24", tmp_path)
+    assert p.name == "2026-01-31-NAU_FluBNF-SIHRS.csv"
+    assert p.parent.name == "NAU_FluBNF-SIHRS"                # identity in the PATH
     df = pd.read_csv(p)
     assert len(df) == 4 * 23 and (df.value >= 0).all()
+    assert set(df.reference_date) == {"2026-01-31"}           # name == column
 
 
 def test_choropleth_renders_gaps_explicitly():

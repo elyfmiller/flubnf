@@ -45,7 +45,13 @@
 </div>
 {% endif %}
 
-{% if report %}<div class="card"><a href="/runs/{{ run_id }}/report">Open the weekly report</a></div>{% endif %}
+{% if report %}<div class="card">
+ <a href="/runs/{{ run_id }}/report">Open the weekly report</a>
+ <span class="hint"> · </span>
+ <a href="/runs/{{ run_id }}/report/download" download>Download it</a>
+ <p class="hint">One self-contained HTML file, named for this run's
+  forecast date; it opens without the app.</p>
+</div>{% endif %}
 
 {% for model, locs in models.items() %}
 <div class="card"><h2>{{ model }}: median admissions, 1-4 weeks ahead</h2>
@@ -65,7 +71,20 @@
 
 <div class="card"><h2>Submission files</h2>
 {% for s in subs %}
- <p>{{ s.model }}: <a href="/output/download?path={{ s.abs | urlencode }}">{{ s.file }}</a></p>
+ {% if s.submittable %}
+ <p>{{ s.model }}: <a href="/output/download?path={{ s.path | urlencode }}">{{ s.name }}</a></p>
+ {% else %}
+ <p>{{ s.model }}: <code>{{ s.name }}</code><br>
+  <span class="hint">Not submittable. This run wrote it under a retired
+  model name that the hub does not recognise, so no download is offered.
+  A current run writes the registered identity.</span></p>
+ {% endif %}
 {% else %}<p class="hint">None yet. Submissions appear when a full run
- (models and ensemble) completes.</p>{% endfor %}</div>
+ (models and ensemble) completes.</p>{% endfor %}
+{% for model, why in (sub_errors or {}).items() %}
+ <p><b>{{ model }}</b>: <span class="bad">no file written</span><br>
+  <span class="hint">The rows were refused before anything reached disk,
+  so the hub was never offered a file it would reject. Reason:
+  {{ why }}</span></p>
+{% endfor %}</div>
 {% endblock %}

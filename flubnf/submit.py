@@ -26,11 +26,26 @@ from typing import Iterable, Mapping, Optional
 import numpy as np
 import pandas as pd
 
+from app.core.submit import hub_model_id
 from .constants import STATE_TO_ABBREV, load_locations
 from .config import FluBNFConfig
 from .quantiles import FLUSIGHT_QUANTILES, QuantileForecast
 
 log = logging.getLogger(__name__)
+
+#: The name the CLI weekly loop writes its submission under. It comes from
+#: app/core/submit's registered abbreviations, the same single definition
+#: the console uses, so the two producers in this repository cannot drift
+#: apart and neither can invent a name the hub has never seen.
+#:
+#: It used to be the free-text default "LosAlamos_NAU-CModel_Flu". That is
+#: not an unregistered placeholder: it is a DIFFERENT team, separately
+#: registered on this hub (model-metadata/LosAlamos_NAU-CModel_Flu.yml in
+#: the hub clone), so every file this loop wrote was named for somebody
+#: else's model. flubnf/compare.py still refers to that team by name, and
+#: correctly: it SCORES that team's published submissions. Writing under
+#: the name is a different act from reading it.
+DEFAULT_TEAM_MODEL = hub_model_id("pf")
 
 
 # Mapping our 1-indexed backtest horizons to FluSight 0-indexed horizons.
@@ -125,17 +140,29 @@ def write_submission(
     reference_date: date,
     out_dir: Path,
     *,
-    team_model: str = "LosAlamos_NAU-CModel_Flu",
+    team_model: str = DEFAULT_TEAM_MODEL,
     validate: bool = True,
-    strict: bool = False,
+    strict: bool = True,
 ) -> Path:
     """Write the submission CSV to out_dir using FluSight's filename convention.
 
+    This is the CLI weekly loop's workspace artifact, not a hub tree. It
+    lands FLAT in `<workspace>/submissions/`, where five readers pick it up
+    with a non-recursive `glob("*.csv")` (weekly_job._ingest_realized_actuals,
+    baseline_forecast, error_decomp, cli's workspace scan, doctor). The
+    hub's `model-output/<team>-<model>/` layout is written by
+    app/core/submit.write_submission, which the console uses; moving this
+    one into a subdirectory would hide it from its own readers and buy
+    nothing, since nobody copies this directory into a hub fork.
+
     Args:
         validate: if True, run schema validation. Warnings always logged.
-        strict:   if True, raise ValueError on any validation error.
-                  if False (default), log errors but write anyway —
-                  surfacing the issue without blocking emergency runs.
+        strict:   if True (default), raise ValueError on any validation
+                  error rather than write the file. The file is named like
+                  a submission and is read back as truth by the calibration
+                  ingest, so writing one that fails the hub's own schema
+                  rules is worse than failing loudly. Pass strict=False
+                  deliberately to keep the old log-and-write behaviour.
     """
     if validate:
         from .validate import validate_submission_df

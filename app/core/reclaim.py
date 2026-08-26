@@ -41,6 +41,14 @@ WEEK_KEEP = (retro.SAMPLES_JSON, retro.SAMPLES_GZ)
 #: a per-cell fit tree inside a workroot or week: <location>_r<replicate>
 CELL_DIR_RE = re.compile(r".+_r\d+$")
 
+#: the console run's per-shard fit scaffolding: the generated runner scripts
+#: and their stderr, each shard's cell list, and each shard's own status
+#: file. The MERGED pf_status.json and cells.json are the run's record and
+#: are deliberately not in this pattern. The unnumbered pf_runner.py is the
+#: shape a run wrote before the forecast path was sharded.
+WORKROOT_SCAFFOLD_RE = re.compile(
+    r"^(pf_runner(_\d+)?\.(py|err)|pf_cells_\d+\.json|pf_status_\d+\.json)$")
+
 #: measured on a 144 MB full-grid week: gzip -6 gives 3.67x; the dry-run
 #: estimate uses a slightly conservative figure and the perform step
 #: reports the real bytes.
@@ -140,9 +148,10 @@ def workroot_complete(w: Path) -> bool:
 
 def workroot_intermediates(w: Path) -> list:
     """Intermediates inside a COMPLETED workroot: the per-cell fit trees,
-    the runner script, and .prog progress files. The assembled record
-    (results, scores, status, cells.json, report, bundle, submissions)
-    stays untouched."""
+    the per-shard runner scripts and their stderr, the per-shard cell lists
+    and status files, and .prog progress files. The assembled record
+    (results, scores, the MERGED status, cells.json, report, bundle,
+    submissions) stays untouched."""
     w = Path(w)
     if not workroot_complete(w) or is_protected(w):
         return []
@@ -151,7 +160,8 @@ def workroot_intermediates(w: Path) -> list:
         for p in sorted(w.iterdir()):
             if p.is_dir() and not p.is_symlink() and CELL_DIR_RE.match(p.name):
                 out.append(p)
-            elif p.name == "pf_runner.py" or p.name.endswith(".prog"):
+            elif (WORKROOT_SCAFFOLD_RE.match(p.name)
+                  or p.name.endswith((".prog", ".tmp"))):
                 out.append(p)
     except OSError:
         return []

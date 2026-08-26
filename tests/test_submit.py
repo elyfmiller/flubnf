@@ -103,3 +103,51 @@ class TestSubmissionDataframe:
         # h=1 -> +7 days.
         h1 = df[df["horizon"] == 1]
         assert h1["target_end_date"].iloc[0] == "2026-01-10"
+
+
+class TestSubmissionIdentity:
+    """The CLI weekly loop writes under THIS project's registered hub
+    identity, and refuses to write a file that fails the hub's schema."""
+
+    def test_default_name_is_the_registered_identity(self):
+        """It used to default to "LosAlamos_NAU-CModel_Flu", which is not a
+        placeholder but a different team, separately registered on the same
+        hub. Every file the loop wrote was therefore named for somebody
+        else's model. One definition now, shared with the console writer."""
+        from app.core.submit import hub_model_id
+        from flubnf.submit import DEFAULT_TEAM_MODEL
+        assert DEFAULT_TEAM_MODEL == hub_model_id("pf") == "NAU_FluBNF-SIHRS"
+        assert "LosAlamos" not in DEFAULT_TEAM_MODEL
+
+    def test_file_is_named_for_the_registered_identity(self, tmp_path):
+        from flubnf.submit import DEFAULT_TEAM_MODEL, write_submission
+        cfg = FluBNFConfig.load()
+        sf = [StateForecast(state="Alabama",
+                            forecast=_make_qforecast([100, 110, 120, 130]))]
+        df = build_submission_dataframe(
+            sf, reference_date=date(2026, 1, 3), config=cfg,
+            include_us_aggregate=False)
+        out = write_submission(df, date(2026, 1, 3), tmp_path)
+        assert out.name == f"2026-01-03-{DEFAULT_TEAM_MODEL}.csv"
+        # flat in the workspace, where its five readers glob("*.csv")
+        assert out.parent == tmp_path
+
+    def test_a_file_that_fails_the_hub_schema_is_not_written(self, tmp_path):
+        """strict defaults to True. This file is read back as truth by the
+        calibration ingest and is named like a submission, so logging the
+        errors and writing anyway is worse than failing loudly."""
+        import pytest
+        from flubnf.submit import write_submission
+        cfg = FluBNFConfig.load()
+        sf = [StateForecast(state="Alabama",
+                            forecast=_make_qforecast([100, 110, 120, 130]))]
+        df = build_submission_dataframe(
+            sf, reference_date=date(2026, 1, 3), config=cfg,
+            include_us_aggregate=False)
+        partial = df[df["output_type_id"].isin([0.1, 0.5, 0.9])]
+        with pytest.raises(ValueError, match="failed validation"):
+            write_submission(partial, date(2026, 1, 3), tmp_path)
+        assert not list(tmp_path.glob("*.csv"))
+        # the escape hatch is still there, but has to be asked for
+        p = write_submission(partial, date(2026, 1, 3), tmp_path, strict=False)
+        assert p.is_file()

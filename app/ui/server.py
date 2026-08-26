@@ -299,13 +299,48 @@ _last_form: dict = {}
 #: every surface that shows it is worded that way (never "resume").
 RERUN_STATUSES = ("stopped", "error", "failed", "interrupted")
 
+#: The pybnf/bngsim probe, run by the engine venv's own interpreter.
+#:
+#: It puts the PyBNF checkout on sys.path FIRST, which is exactly what every
+#: generated runner does (app/core/engines/pf.py::_RUNNER and
+#: app/core/retro.py::_RETRO_RUNNER), so what it reports is the pybnf the
+#: fits actually load. Asking importlib.metadata alone was the bug: the fork
+#: is used from a checkout and need not be pip-installed into that venv, so
+#: a machine whose fits run perfectly well reported "pybnf: not installed".
+#: The version is then read from __version__ in the module file beside the
+#: package that was actually imported, which is where PyBNF's own setup.py
+#: reads it and the only source that is right for a checkout. The metadata
+#: answer stays as the fallback, and bngsim (a normal installed
+#: distribution) is unaffected.
+_VERSION_PROBE = '''
+import json, os, re, sys
+sys.path.insert(0, %r)
+from importlib.metadata import version
+d = {}
+for p in ("pybnf", "bngsim"):
+    try:
+        d[p] = version(p)
+    except Exception:
+        d[p] = "not installed"
+try:
+    import pybnf
+    src = open(os.path.join(os.path.dirname(pybnf.__file__), "pybnf.py")).read()
+    m = re.search(r'^__version__\\s*=\\s*"(.*)"', src, re.M)
+    if m:
+        d["pybnf"] = m.group(1)
+except Exception:
+    pass
+print(json.dumps(d))
+'''
+
 
 def _component_versions() -> dict:
     """Installed versions of the components named in user-facing copy.
     Console packages come from this interpreter (importlib.metadata); pybnf
-    and bngsim from the engine venv's interpreter; BioNetGen from the
-    VERSION file beside BNG2.pl. Anything unresolvable reports 'not
-    installed' instead of raising.
+    and bngsim from the engine venv's interpreter, loading pybnf the way the
+    runners do (see _VERSION_PROBE); BioNetGen from the VERSION file beside
+    BNG2.pl. Anything unresolvable reports 'not installed' instead of
+    raising.
 
     NOT called at import (startup-freeze fix, measured 2026-08-22): the
     engine-venv subprocess plus the cold metadata scan cost 1.1 s of the
@@ -334,17 +369,11 @@ def _component_versions() -> dict:
     try:
         import json
         import subprocess
-        from flubnf.settings import PY_ENGINE
+        from flubnf.settings import PY_ENGINE, PYBNF
         if Path(PY_ENGINE).exists():
-            code = ("import json\n"
-                    "from importlib.metadata import version\n"
-                    "d = {}\n"
-                    "for p in ('pybnf', 'bngsim'):\n"
-                    "    try: d[p] = version(p)\n"
-                    "    except Exception: d[p] = 'not installed'\n"
-                    "print(json.dumps(d))")
-            r = subprocess.run([str(PY_ENGINE), "-c", code],
-                               capture_output=True, text=True, timeout=15)
+            r = subprocess.run(
+                [str(PY_ENGINE), "-c", _VERSION_PROBE % (str(PYBNF),)],
+                capture_output=True, text=True, timeout=15)
             out.update(json.loads(r.stdout.strip() or "{}"))
     except Exception:
         pass
@@ -2031,8 +2060,8 @@ def _run_all(spec: RunSpec) -> None:
     from app.core import scoring
     from app.core.engines import analogue as an_engine
     from app.core.engines import pf as pf_engine
-    from app.core.submit import (quantile_rows, rows_from_quantiles,
-                                 write_submission)
+    from app.core.submit import (hub_model_id, quantile_rows,
+                                 rows_from_quantiles, write_submission)
 
     import time as _time
     ledger = Ledger()
@@ -2175,17 +2204,34 @@ def _run_all(spec: RunSpec) -> None:
         locs = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
         n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
         subs = {}
-        for model_id, rows in (
-            ("PF-SIHRS", [r for loc, s in pf_samples.items()
-                          for r in quantile_rows(s, n2f[loc], spec.forecast_date)]),
-            ("Ensemble", [r for loc, q in members_by_loc.items()
+        # the model keys are app/core/submit.MODEL_ABBR's, so the tree lands
+        # as model-output/<team>-<model>/ with the names registered in
+        # model-metadata/; the as-of goes to the row builders and to the
+        # writer alike, and the writer refuses to name a file for a date its
+        # rows do not carry
+        for model, rows in (
+            ("pf", [r for loc, s in pf_samples.items()
+                    for r in quantile_rows(s, n2f[loc], spec.forecast_date)]),
+            ("ensemble", [r for loc, q in members_by_loc.items()
                           for r in rows_from_quantiles(q, n2f[loc],
                                                        spec.forecast_date)]),
         ):
-            if rows:
-                subs[model_id] = str(write_submission(
-                    rows, model_id, "NAU", spec.forecast_date,
+            if not rows:
+                continue
+            # Contained per model, the same rule steps 5 and 5b follow: the
+            # writer REFUSES rows the hub would bounce (an incomplete
+            # quantile set, a date the file name cannot carry), and that
+            # refusal must cost the offending file, never the run. Results,
+            # report and archive all land after this point, and a run costs
+            # hours. The refusal is recorded so the run page says which
+            # model has no file and why.
+            try:
+                subs[hub_model_id(model)] = str(write_submission(
+                    rows, model, spec.forecast_date,
                     workroot / "submission"))
+            except Exception as e:
+                outcome.setdefault("submission_errors", {})[
+                    hub_model_id(model)] = str(e)[:400]
         outcome["submissions"] = subs
         # 5. retrospective scoring (populates once truth exists). Contained:
         # a scoring hiccup must never erase the forecast itself -- results.json
@@ -2336,6 +2382,34 @@ def api_archive_dates():
     return _archive_dates()
 
 
+def _registered_model_ids() -> set:
+    """The hub model identities this project may write, as directory names.
+    One source: app/core/submit's registered abbreviations, which the suite
+    checks against model-metadata/."""
+    from app.core.submit import MODEL_ABBR, hub_model_id
+    return {hub_model_id(k) for k in MODEL_ABBR}
+
+
+def _submission_files(d: Path) -> list:
+    """Submission CSVs under a workroot or archive directory, each marked
+    with whether it may be submitted.
+
+    The model identity is the DIRECTORY name (app/core/submit), so the
+    directory says whether a file was written under a registered name.
+    Runs made before that identity was corrected left trees called
+    NAU-Ensemble and NAU-PF-SIHRS. Neither is registered in
+    model-metadata/; their rows are also dated a week early and carry
+    float values, so the hub would reject them on all three counts. The
+    files stay on disk and stay VISIBLE, because a run page is a record of
+    what a run did. They are not offered for download: a rejected file
+    whose name is indistinguishable from a genuine one is the trap this
+    listing exists to avoid."""
+    ok = _registered_model_ids()
+    return [{"model": p.parent.name, "name": p.name, "path": str(p),
+             "submittable": p.parent.name in ok}
+            for p in sorted(Path(d).glob("submission/*/*.csv"))]
+
+
 @app.get("/runs/{run_id}", response_class=HTMLResponse)
 def run_page(request: Request, run_id: str):
     import json as _json
@@ -2344,16 +2418,20 @@ def run_page(request: Request, run_id: str):
     res = {}
     if (w / "results.json").is_file():
         res = _json.loads((w / "results.json").read_text())
-    subs = [{"model": p.parent.name, "file": p.name, "abs": str(p)}
-            for p in sorted(w.glob("submission/*/*.csv"))]
+    subs = _submission_files(w)
     report = (w / "report.html").name if (w / "report.html").is_file() else None
     status, err, spec_json = "", "", ""
+    sub_errors: dict = {}
     for r in Ledger().rows(200):
         if r.get("run_id") == run_id:
             status = r.get("status", "")
             spec_json = r.get("spec", "") or ""
             try:
-                err = _json.loads(r.get("outcome") or "{}").get("error", "")
+                o = _json.loads(r.get("outcome") or "{}")
+                err = o.get("error", "")
+                # a model whose rows the writer refused: the run finished,
+                # that one file did not, and the page says which and why
+                sub_errors = o.get("submission_errors", {}) or {}
             except Exception:
                 err = ""
             break
@@ -2378,7 +2456,7 @@ def run_page(request: Request, run_id: str):
         "settings": spec_settings(spec_json),
         "versions": version_pairs(RUNNING_SHA, VERSIONS),
         "can_rerun": bool(spec_json) and status in RERUN_STATUSES,
-        "subs": subs, "report": report})
+        "subs": subs, "sub_errors": sub_errors, "report": report})
 
 
 @app.get("/runs/{run_id}/report", response_class=HTMLResponse)
@@ -2390,6 +2468,21 @@ def run_report(run_id: str):
     # same freshness treatment as /output/report: the run page's open link
     # is the file the user saves
     return HTMLResponse(_report_for_serving(d))
+
+
+@app.get("/runs/{run_id}/report/download")
+def run_report_download(run_id: str):
+    """Save this run's weekly report, named for the run's forecast date."""
+    from app.core.runs import APP_STATE
+    d = APP_STATE / "workroots" / run_id
+    date = ""
+    try:
+        import json as _json
+        date = _json.loads((d / "results.json").read_text()).get(
+            "forecast_date", "")
+    except Exception:
+        pass                 # no results.json yet: fall back to the run id
+    return _weekly_report_file(d, date or run_id)
 
 
 @app.post("/runs/{run_id}/rerun")
@@ -2513,9 +2606,12 @@ def api_progress():
     if w:
         done = total = 0
         t0 = None
+        # pf_status*.json.prog covers both shapes: the merged name a run
+        # before the forecast path was sharded wrote, and the per-shard
+        # pf_status_<i>.json.prog every runner writes now
         for f in (glob.glob(w + "/status_*.json.prog")
-                  + glob.glob(w + "/pf_status.json.prog")
-                  + glob.glob(w + "/pf2s/pf_status.json.prog")):
+                  + glob.glob(w + "/pf_status*.json.prog")
+                  + glob.glob(w + "/pf2s/pf_status*.json.prog")):
             try:
                 d = _json.loads(open(f).read())
                 done += d["done"]; total += d["total"]
@@ -2593,6 +2689,10 @@ def _outcome_chips(outcome_json: str) -> str:
                     f'{"s" if nf != 1 else ""}</span>')
     if o.get("pf_skipped"): bits.append("PF skipped (no engine)")
     if o.get("submissions"): bits.append(f"{len(o['submissions'])} submissions")
+    if o.get("submission_errors"):
+        ns = len(o["submission_errors"])
+        bits.append(f'<span class="bad">{ns} submission'
+                    f'{"s" if ns != 1 else ""} refused</span>')
     if o.get("report"): bits.append("report ✓")
     if o.get("pf_relwis"):
         bits.append(relwis_chip(o["pf_relwis"], cells=o.get("pf_cells")))
@@ -2655,12 +2755,10 @@ def output_page(request: Request):
     rid, res = _latest_results()
     files = []
     if rid:
-        w = APP_STATE / "workroots" / rid
-        for f in sorted(w.glob("submission/*/*.csv")):
-            entry = {"model": f.parent.name, "name": f.name, "path": str(f),
-                     "cols": [], "rows": [], "more": 0}
+        for entry in _submission_files(APP_STATE / "workroots" / rid):
+            entry.update({"cols": [], "rows": [], "more": 0})
             try:
-                df = pd.read_csv(f, dtype=str)
+                df = pd.read_csv(entry["path"], dtype=str)
                 entry["cols"] = list(df.columns)
                 entry["rows"] = df.head(PREVIEW_ROWS).fillna("").values.tolist()
                 entry["more"] = max(len(df) - PREVIEW_ROWS, 0)
@@ -2681,14 +2779,28 @@ def output_page(request: Request):
 
 @app.get("/output/download")
 def output_download(path: str):
-    """Hand the submission CSV to the browser as a real download."""
+    """Hand the submission CSV to the browser as a real download.
+
+    Two gates. The file must sit inside app state, and a file inside a
+    `submission/` tree must sit in a directory named for a registered hub
+    model. The listings already withhold the button for anything else; this
+    is the same rule at the route, so a bookmarked or hand-edited URL
+    cannot deliver a file the hub would reject under a name that looks
+    exactly like a genuine submission."""
     from fastapi.responses import FileResponse
     from app.core.runs import APP_STATE
     p = Path(path).resolve()
-    if p.is_relative_to(APP_STATE.resolve()) and p.is_file():   # stay inside our state
-        return FileResponse(p, filename=p.name, media_type="text/csv",
-                            content_disposition_type="attachment")
-    return HTMLResponse("<p>file not found in app state</p>", status_code=404)
+    if not (p.is_relative_to(APP_STATE.resolve()) and p.is_file()):
+        return HTMLResponse("<p>file not found in app state</p>", status_code=404)
+    if p.parent.parent.name == "submission" \
+            and p.parent.name not in _registered_model_ids():
+        return HTMLResponse(
+            f"<p>{p.parent.name} is not a registered hub model. This file "
+            "was written under a retired identity and the hub would reject "
+            "it, so it is not offered as a submission. Use Show in Finder "
+            "to open it for reference.</p>", status_code=409)
+    return FileResponse(p, filename=p.name, media_type="text/csv",
+                        content_disposition_type="attachment")
 
 
 @app.post("/output/reveal")
@@ -2781,6 +2893,49 @@ def output_report(date: str = ""):
     if not (d / "report.html").is_file():
         return HTMLResponse("<p>No report yet. Run the models first.</p>")
     return HTMLResponse(_report_for_serving(d))
+
+
+def _weekly_report_name(date: str) -> str:
+    """What a saved weekly report is called. Dated, because `report.html`
+    is what every run writes: three saved weeks in one downloads folder
+    would otherwise be report.html, report(1).html, report(2).html, and
+    nobody could tell which week is which."""
+    return f"FluBNF-weekly-report-{date}.html" if date \
+        else "FluBNF-weekly-report.html"
+
+
+def _weekly_report_file(dirpath: Path, date: str):
+    """The weekly report handed over as a file, the way the season report
+    already is (see retro_season_report).
+
+    The same freshness pass the inline view runs, first: _report_for_serving
+    rebuilds a stale report.html in place, so the file saved and the page
+    read are the same bytes. A missing report is a 404, never a 500."""
+    from fastapi.responses import FileResponse
+    f = Path(dirpath) / "report.html"
+    if not f.is_file():
+        return HTMLResponse("<p>No report to download.</p>", status_code=404)
+    _report_for_serving(dirpath)      # refresh in place before handing it over
+    return FileResponse(f, filename=_weekly_report_name(date),
+                        media_type="text/html",
+                        content_disposition_type="attachment")
+
+
+@app.get("/output/report/download")
+def output_report_download(date: str = ""):
+    """Save the weekly report. Same resolution as /output/report -- latest
+    run by default, ?date=YYYY-MM-DD for the archive -- and the same file;
+    this route only changes how it is delivered."""
+    import re
+    from app.core.runs import APP_STATE
+    if date:
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+            return HTMLResponse("<p>Invalid date. Expected YYYY-MM-DD.</p>",
+                                status_code=400)
+        return _weekly_report_file(APP_STATE / "archive" / date, date)
+    rid, res = _latest_results()
+    return _weekly_report_file(APP_STATE / "workroots" / (rid or ""),
+                               (res or {}).get("forecast_date", ""))
 
 
 @app.get("/models", response_class=HTMLResponse)
@@ -2953,7 +3108,6 @@ def generate_ensemble(request: Request):
     import os as _os
     from app.core import ensemble as ens
     from app.core.runs import APP_STATE
-    from app.core.submit import rows_from_quantiles, write_submission
     rid, res = _latest_results()
     if not res:
         _flash("Nothing to blend yet. Run the models first.")
@@ -2961,7 +3115,7 @@ def generate_ensemble(request: Request):
     import pandas as pd
     locs = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
     n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
-    blended, sub_rows = {}, []
+    blended = {}
     for loc in (set(res["models"].get("pf", {}))
                 | set(res["models"].get("analogue", {}))
                 | set(res["models"].get("pf2s", {}))):
@@ -2979,8 +3133,6 @@ def generate_ensemble(request: Request):
             blended[loc] = {h: {q: b[h][float(q)]
                                 for q in ("0.1", "0.25", "0.5", "0.75", "0.9")}
                             for h in b}
-            if n2f.get(loc):
-                sub_rows += rows_from_quantiles(b, n2f[loc], res["forecast_date"])
     res["models"]["ensemble"] = blended
     _invalidate_scans()               # results.json is about to change
     rp = APP_STATE / "workroots" / rid / "results.json"
@@ -2988,17 +3140,19 @@ def generate_ensemble(request: Request):
     _tmp.write_text(_json.dumps(res))
     _os.replace(_tmp, rp)             # readers never see a half-write
     note = f"Ensemble re-blended for {len(blended)} location(s)"
-    # the Output checklist points at this CSV -- write it, and be honest that
-    # a re-blend from stored results carries the 5 display quantiles, not the
-    # hub's full 23 (only a full run has the member samples for all 23)
-    if sub_rows:
-        try:
-            write_submission(sub_rows, "Ensemble", "NAU", res["forecast_date"],
-                             APP_STATE / "workroots" / rid / "submission")
-            note += (" · submission CSV written from the 5 stored "
-                     "quantiles; a full run writes all 23 hub quantiles")
-        except Exception as e:
-            note += f" · submission CSV skipped: {str(e)[:120]}"
+    # This path deliberately writes NO submission CSV. A re-blend works from
+    # results.json, which stores 5 display quantiles per horizon, not the
+    # member samples; the hub requires all 23 levels, so the file this used
+    # to write could never be submitted. Worse, it landed in the workroot's
+    # submission tree under a hub name, where the Output page lists it beside
+    # the real thing with a Download button -- a 5-quantile file dressed as a
+    # submission is a trap, not a convenience. The blend itself still lands
+    # in results.json and drives every view; a submittable ensemble CSV comes
+    # from a full run, which has the samples.
+    if blended:
+        note += (" · no submission CSV from a re-blend: stored results carry "
+                 "5 quantiles, the hub requires 23. Run the models to write "
+                 "a submittable ensemble file.")
     _flash(note)
     return _back(request, "/model/ensemble")
 
