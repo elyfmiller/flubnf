@@ -360,8 +360,29 @@ if ($env:FLUBNF_NO_DATA -eq "1") {
 
 Say "perl (engine network generation)"
 $Perl = Get-Command perl -ErrorAction SilentlyContinue
+$PerlOffPath = $false
+if (-not $Perl) {
+    # A winget install in THIS window updates the machine PATH but not the
+    # PATH of an already-running process, so a perl installed a minute ago is
+    # invisible to Get-Command until a new window opens. Look where Strawberry
+    # actually puts it before declaring it missing, otherwise the script offers
+    # to install something that is already there.
+    foreach ($cand in @("$env:SystemDrive\Strawberry\perl\bin\perl.exe",
+                        "$env:ProgramFiles\Strawberry\perl\bin\perl.exe",
+                        "C:\Strawberry\perl\bin\perl.exe")) {
+        if (Test-Path $cand) {
+            $Perl = [pscustomobject]@{ Source = $cand }
+            $PerlOffPath = $true
+            break
+        }
+    }
+}
 if ($Perl) {
     Ok "perl found: $($Perl.Source)"
+    if ($PerlOffPath) {
+        Warn "It is installed but not on THIS window's PATH. Open a new window"
+        Warn "before running the engine, or BNG2.pl will not find it."
+    }
 } else {
     Warn "perl not found. BioNetGen's BNG2.pl needs Perl for the one-time"
     Warn "network-generation step of the PF engine; Strawberry Perl"
@@ -389,8 +410,14 @@ if ($Perl) {
         if ($ans -match '^\s*(y|yes)\s*$') {
             & winget install --id StrawberryPerl.StrawberryPerl -e --source winget --accept-source-agreements --accept-package-agreements
             $wcode = $LASTEXITCODE
-            if ($wcode -eq 0) {
-                Ok "Strawberry Perl installed."
+            # -1978335189 is APPINSTALLER_CLI_ERROR_UPDATE_NOT_APPLICABLE:
+            # the package is already installed and no newer version exists.
+            # winget reports that as a non-zero exit, but for our purposes it
+            # is success, and reporting it as "declined UAC, no network" was
+            # actively misleading on a machine where Perl was already present.
+            if ($wcode -eq 0 -or $wcode -eq -1978335189) {
+                if ($wcode -eq 0) { Ok "Strawberry Perl installed." }
+                else { Ok "Strawberry Perl was already installed." }
                 Warn "Its PATH entry reaches only NEW processes: close this window,"
                 Warn "open a new one, and re-run this script to confirm."
             } else {
@@ -440,7 +467,15 @@ function Test-RemoteAccess {
         $env:GIT_ASKPASS = "echo"
         $env:GIT_SSH_COMMAND = "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10"
         $env:GIT_CONFIG_NOSYSTEM = "1"
-        $gitArgs = @("-c", "credential.helper=", "-c", "credential.interactive=false",
+        # The helper list is deliberately NOT cleared. Clearing it stopped GCM
+        # opening a GUI, but it also stopped GCM answering from its CACHE, so a
+        # machine signed in to GitHub Desktop -- which is how this lab onboards
+        # people -- was reported as having no access when it had access.
+        # `credential.interactive=false` is the setting that forbids the
+        # prompt while still allowing a stored credential to be returned, and
+        # the hard wall-clock timeout below remains the backstop if some older
+        # helper ignores it.
+        $gitArgs = @("-c", "credential.interactive=false",
                      "ls-remote", "--heads", $Remote, "feature/particle-filter")
         # splatted rather than continued with backticks: one less thing that a
         # CRLF checkout or a stray trailing space could break
