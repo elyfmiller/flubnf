@@ -562,13 +562,31 @@ if ($EngineReady) {
         } else {
             Info "    (git produced no error text)"
         }
-        Warn "  1) ask Ely for a collaborator invitation to PyBNF-Private,"
-        Warn "     and accept it at github.com/notifications"
-        Warn "  2) sign in to GitHub Desktop (desktop.github.com). It installs"
-        Warn "     Git Credential Manager, which caches the credential this"
-        Warn "     HTTPS clone needs. No SSH key to generate."
-        Warn "     Prefer SSH? setx FLUBNF_PYBNF_REMOTE git@github.com:elyfmiller/PyBNF-Private.git"
-        Warn "  3) re-run this script"
+        # Two very different problems produce "cannot read", and the advice
+        # for each is the opposite of the other, so read git's own words
+        # rather than guessing. Measured on Windows 11, 2026-08-25: being
+        # signed in to GitHub Desktop does NOT populate the Windows Credential
+        # Manager store that command-line git reads, so "just use GitHub
+        # Desktop" was wrong advice and is not given any more.
+        $errText = [string]$script:LastRemoteError
+        if ($errText -match "Authentication failed|Invalid username or token|could not read Username|Cannot prompt") {
+            Warn "  DIAGNOSIS: no credential for github.com is cached on this"
+            Warn "  machine. This is not a permissions problem, and nothing"
+            Warn "  above needs changing. Run the clone below ONCE by hand:"
+            Warn "  Git Credential Manager will open a browser window, you"
+            Warn "  authenticate once, and every later run is silent."
+        } elseif ($errText -match "not found|does not exist|403|Forbidden") {
+            Warn "  DIAGNOSIS: the credential worked but the account it belongs"
+            Warn "  to cannot see this repository. Either the invitation was"
+            Warn "  never accepted (check github.com/notifications) or the"
+            Warn "  signed-in account is not the one that was invited."
+        } else {
+            Warn "  1) ask Ely for a collaborator invitation to PyBNF-Private,"
+            Warn "     and accept it at github.com/notifications"
+            Warn "  2) run the clone below once by hand so the credential"
+            Warn "     manager can authenticate you interactively"
+        }
+        Warn "  Prefer SSH? setx FLUBNF_PYBNF_REMOTE git@github.com:elyfmiller/PyBNF-Private.git"
         Info "With access, the remaining steps are:"
         Info "  git clone -b feature/particle-filter $PyBnfRemote $PyBnf"
     } else {
