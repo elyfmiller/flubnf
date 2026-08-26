@@ -997,9 +997,17 @@ def forecast_page(request: Request):
             r["has_report"] = False
         if r["status"] == "running" and not (_status.get("running") or "").endswith(r["run_id"]):
             r["status"] = "interrupted"
+    # every archived Saturday, newest first, for the form's picker; the
+    # native date input's calendar popout does not open in some embedded
+    # webviews (observed on Windows), and only these dates are runnable
+    try:
+        vintage_dates = list(reversed(data_mod.vintages()))
+    except Exception:
+        vintage_dates = []
     return templates.TemplateResponse(request, "forecast.html", {
         "active": "Forecast", "engines": ENGINES, "status": _status,
         "ledger": ledger_rows, "all_locs": all_locs,
+        "vintage_dates": vintage_dates,
         "locations_error": locations_error, "form": form,
         "elapsed0": _console_elapsed(),
         "series_json": _json.dumps(series), "fanq_json": _json.dumps(fanq),
@@ -4681,11 +4689,30 @@ def run_models(request: Request,
     try:
         data_mod.vintage_path(forecast_date)
     except Exception:
+        # The archive has real gaps (holiday weeks: no 2025-12-20 snapshot
+        # exists, for example). Suggest the nearest EARLIER vintage, never a
+        # later one: a later snapshot contains data the requested date could
+        # not have known, and quietly using it would leak a week of
+        # hindsight into a forecast presented as real-time.
         vs = data_mod.vintages()
-        near = min(vs, key=lambda v: abs(_date.fromisoformat(v) - _date.fromisoformat(forecast_date))) if vs else None
-        _flash(f"No archived data for {forecast_date}."
-               + (f" Nearest available: {near}." if near else
-                  " Pull the FluSight hub on the Data tab first."))
+        earlier = [v for v in vs if v <= forecast_date]
+        near = max(earlier) if earlier else (min(vs) if vs else None)
+        if near and _last_form:
+            _last_form["forecast_date"] = near
+        if not vs:
+            _flash(f"No archived data for {forecast_date}. Pull the "
+                   "FluSight hub on the Data tab first.")
+        elif earlier:
+            _flash(f"The FluSight hub archived no data snapshot dated "
+                   f"{forecast_date}; such gaps are real, usually holiday "
+                   "weeks. The graphs still show a point at that date "
+                   "because they draw today's settled data, which was not "
+                   "yet reported on the day itself. Nearest earlier "
+                   f"archived Saturday: {near}. A later one would leak a "
+                   "week of hindsight, so it is not offered.")
+        else:
+            _flash(f"No archived data for {forecast_date}; the archive "
+                   f"starts at {near}.")
         return _back(request, "/forecast")
     _last_form.update({"forecast_date": forecast_date, "locations": locations,
                        "engine": engine, "weeks_to_drop": weeks_to_drop,
