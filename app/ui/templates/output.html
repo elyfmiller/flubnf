@@ -32,11 +32,8 @@ outputs collect here.</p></div>
       </span>
      </div>
      {% if not f.submittable %}
-     <p class="hint">Written under a retired model name. The hub takes
-     <code>model-output/&lt;team&gt;-&lt;model&gt;/</code> with the identity
-     registered in <code>model-metadata/</code>, so this file would be
-     rejected and no download is offered. Run the models again to write the
-     registered identity.</p>
+     <p class="hint">Written under a retired model name, so the hub would
+     reject it. Run the models again to write the registered identity.</p>
      {% endif %}
      {% if f.cols %}
      <details class="preview">

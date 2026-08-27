@@ -8,26 +8,47 @@
   <form method="post" action="/run">
    <label>Forecast date</label>
    <input type="date" name="forecast_date" value="{{ form.forecast_date }}">
-   <span class="hint">Pick any day. Surveillance weeks end on Saturday but
-    are published the following Wednesday, so picking the day you are
-    actually working uses the most recent week that has reported data.</span>
+   {# The anchor line replaces a paragraph of explanation: any day is
+      accepted, and this says which archived week it actually resolves to.
+      Rendered server-side from resolve_anchor (the same function the run
+      uses, so they cannot disagree) and updated live below. #}
+   <p class="hint" id="anchor-line">{{ anchor_note }}</p>
    {% if vintage_dates %}
    <select id="vintage-pick">
-    <option value="">pick an archived Saturday ({{ vintage_dates|length }} available)</option>
+    <option value="">or pick an archived week ({{ vintage_dates|length }})</option>
     {% for v in vintage_dates %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
    </select>
-   <span class="hint">Only these weeks have an archived data snapshot; the hub
-    skips occasional weeks (usually holidays), and a typed date between
-    snapshots gets the nearest earlier one suggested instead.</span>
+   {% endif %}
    <script>
     (function () {
-      var p = document.getElementById('vintage-pick');
-      if (p) p.addEventListener('change', function () {
-        if (this.value) document.querySelector('input[name=forecast_date]').value = this.value;
+      var VS = {{ vintage_dates | default([], true) | tojson }};
+      var box = document.querySelector('input[name=forecast_date]');
+      var line = document.getElementById('anchor-line');
+      var pick = document.getElementById('vintage-pick');
+      function anchorFor(day) {
+        var d = new Date(day + 'T00:00:00');
+        if (isNaN(d)) return null;
+        if (d.getDay() === 6) return VS.indexOf(day) >= 0 ? day : null;
+        var back = (d.getDay() + 1) % 7;          // Sunday=0 -> 1 back
+        d.setDate(d.getDate() - back);
+        var sat = d.toISOString().slice(0, 10);
+        var earlier = VS.filter(function (v) { return v <= sat; });
+        return earlier.length ? earlier[earlier.length - 1] : null;
+      }
+      function paint() {
+        if (!line || !box) return;
+        var a = anchorFor(box.value);
+        line.textContent = a
+          ? 'Anchored on the archived week ending ' + a + '.'
+          : 'No archived week on or before ' + box.value + '.';
+      }
+      if (box) box.addEventListener('change', paint);
+      if (pick) pick.addEventListener('change', function () {
+        if (this.value) { box.value = this.value; paint(); }
       });
+      paint();
     })();
    </script>
-   {% endif %}
    <label>Locations <span id="lcount" class="hint"></span></label>
    <div class="checklist">
      <label class="ck"><input type="checkbox" id="ck-all" value="all" name="locations"
@@ -38,14 +59,10 @@
        {% if l in form.locations %}checked{% endif %}> {{ l }}</label>
      {% endfor %}
    </div>
-   {# US national is fitted on every console run, whatever is checked here,
-      and the Retrospective tab now defaults to the same rule. It is a
-      fitted national forecast, never the retrospective's constructed
-      sum-of-states fallback, and the accuracy table reports it apart from
-      the pooled figure. #}
-   <p class="hint">US national is always fitted as its own location, in
-    addition to whatever is checked above. It is reported separately from
-    the pooled score, which covers the fitted jurisdictions only.</p>
+   {# US is fitted on every run whatever is checked, and reported apart
+      from the pooled score. The long form lives on the Methods page. #}
+   <p class="hint">US national is always fitted too, and scored
+    separately.</p>
    <label>Engine</label>
    {% set engine_names = {"all": "All models: PF, analogue, and ensemble (recommended)",
                           "pf": "Particle filter only",
@@ -58,12 +75,9 @@
    <label title="trim the newest N weeks before fitting (vintage-edge guard)">Weeks to drop</label>
    <input name="weeks_to_drop" type="number" value="{{ form.weeks_to_drop }}" min="0" max="4">
    <input type="hidden" name="weeks_to_nowcast" value="0">
-   <p class="hint" style="margin:.6rem 0 0">The archive's same-day week
-    (the week ending on the forecast date) is kept in the fit: it is
-    usually ~92% reported and carries the turn signal, and a measured
-    full-season test of dropping it cost 0.24 relWIS. When a state's
-    same-day count looks implausibly incomplete the run warns and this
-    control is the remedy. A model-based nowcast: planned.</p>
+   <p class="hint" style="margin:.6rem 0 0">The anchor week is kept by
+    default; a run warns when it looks badly under-reported, and this is
+    the remedy.</p>
    <label>Replicates</label>
    <input name="replicates" type="number" value="{{ form.replicates }}" min="1" max="9">
    <button class="gold" data-guard="console-run">Run models</button>
