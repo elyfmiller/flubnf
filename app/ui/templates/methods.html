@@ -125,6 +125,7 @@
 </div>
 
 <div class="card" id="analogue"><h2>The calendar analogue</h2>
+ {{ dg.analogue_ratios(uid='ma') }}
  <p>The analogue is a purely empirical member with no epidemiological
  mechanism. For a forecast at horizon h it collects donor weeks: every week
  from strictly earlier seasons, in any state, whose calendar week falls
@@ -165,6 +166,7 @@
 </div>
 
 <div class="card" id="ensemble"><h2>The ensemble</h2>
+ {{ dg.ensemble_mech(uid='me') }}
  <p>The submitted forecast blends the particle filter with the calendar
  analogue described above by averaging their forecast quantiles. The two
  members fail differently; the mechanistic model can track turning points

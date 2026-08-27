@@ -238,6 +238,116 @@
 </svg>
 {%- endmacro %}
 
+{# ---- what the analogue actually MEASURES ---------------------------------
+   analogue_mech shows the shape of the method; this shows the arithmetic.
+   Each donor season contributes one number per horizon: the ratio of its
+   admissions h weeks after the matched calendar week to its admissions in
+   that week. Those ratios are the model. Drawing them as slopes on the
+   donor curves, then as ticks on a ratio axis whose quantiles become the
+   fan, is the whole mechanism in one picture -- and it is the picture that
+   answers "why is a purely empirical member worth having". Illustrative
+   values, chosen to span the range real donors show; no marker defs, so
+   the macro needs no uid, but one is accepted for consistency. #}
+
+{% macro analogue_ratios(uid='r') -%}
+<svg viewBox="0 0 560 268" role="img"
+     aria-label="Each donor season contributes one growth ratio per horizon; the pooled ratios become the forecast fan"
+     style="width:100%;max-width:560px;display:block;margin:.6rem auto;color:inherit">
+ <desc>Three prior-season curves crossing the matched calendar week. On each,
+ a marked segment runs from that week to h weeks later, and the ratio of the
+ two values is written beside it: 1.6, 1.0 and 0.7. Those ratios, with every
+ other donor's, appear as ticks on a ratio axis at right, where the shaded
+ span between the 10th and 90th percentiles is what scales the last observed
+ value into the forecast fan.</desc>
+
+ <!-- ---------- left: the measurement ---------- -->
+ <g stroke="currentColor" stroke-width="1.3" fill="none">
+  <path d="M46,224 H322"/>
+ </g>
+ <!-- the two calendar weeks the ratio is taken between -->
+ <g stroke="var(--mut)" stroke-width="1.1" stroke-dasharray="4 4" fill="none">
+  <path d="M140,52 V224"/><path d="M250,52 V224"/>
+ </g>
+ <g text-anchor="middle" class="svgt-sm" fill="var(--mut)">
+  <text x="140" y="243">week W</text>
+  <text x="250" y="243">W + h</text>
+ </g>
+ <text x="22" y="140" text-anchor="middle" class="svgt-sm" fill="currentColor"
+       transform="rotate(-90 22 140)">admissions</text>
+
+ {# Three donor seasons at genuinely DIFFERENT magnitudes, which is the
+    honest picture and also the point: a ratio is scale-free, so the small
+    season that grew contributes 1.6 and the big season that turned
+    contributes 0.7. Values map linearly as y = 224 - v/2, so the drawn
+    slopes and the printed ratios agree. The vertical separation is what
+    keeps the three labels from colliding at the A+ text step. #}
+ <g fill="none" stroke="var(--mut)" stroke-opacity=".45" stroke-width="1.6">
+  <path d="M46,214 C90,210 116,207 140,204 C186,199 220,194 250,192 C280,190 302,192 322,196"/>
+  <path d="M46,196 C92,184 118,174 140,169 C186,161 220,166 250,169 C282,173 302,182 322,190"/>
+  <path d="M46,206 C92,170 120,134 140,124 C188,104 222,136 250,154 C280,172 302,190 322,202"/>
+ </g>
+
+ <!-- the measured segments: donor value at W, and h weeks later -->
+ <g stroke="var(--gold)" stroke-width="2.2" fill="none">
+  <path d="M140,204 L250,192"/>
+  <path d="M140,169 L250,169"/>
+  <path d="M140,124 L250,154"/>
+ </g>
+ <g fill="var(--gold)">
+  <circle cx="140" cy="204" r="4"/><circle cx="250" cy="192" r="4"/>
+  <circle cx="140" cy="169" r="4"/><circle cx="250" cy="169" r="4"/>
+  <circle cx="140" cy="124" r="4"/><circle cx="250" cy="154" r="4"/>
+ </g>
+ <g class="svgt-sm" fill="var(--gold)" text-anchor="start">
+  <text x="258" y="196">&#215;1.6</text>
+  <text x="258" y="173">&#215;1.0</text>
+  <text x="258" y="150">&#215;0.7</text>
+ </g>
+ <text x="184" y="70" text-anchor="middle" class="svgt-sm" fill="currentColor">
+   one ratio per donor season</text>
+ <text x="184" y="86" text-anchor="middle" class="svgt-sm" fill="var(--mut)">
+   size cancels; only the change is kept</text>
+
+ <!-- ---------- right: the pooled ratios ---------- -->
+ <path d="M352,140 H372" stroke="currentColor" stroke-width="1.4" fill="none"
+       marker-end="url(#arr-{{ uid }})"/>
+ <defs>
+  <marker id="arr-{{ uid }}" viewBox="0 0 10 10" refX="9" refY="5"
+          markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+   <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+  </marker>
+ </defs>
+ <!-- the interval the quantiles span, drawn behind the ticks -->
+ <rect x="416" y="96" width="86" height="88" fill="var(--gold-bright)"
+       fill-opacity=".20"/>
+ <g stroke="currentColor" stroke-width="1.3" fill="none">
+  <path d="M392,190 V96"/>
+ </g>
+ <!-- every donor's ratio as a tick; the three measured above are solid -->
+ <g stroke="var(--mut)" stroke-opacity=".55" stroke-width="1.4" fill="none">
+  <path d="M392,178 H420"/><path d="M392,170 H434"/><path d="M392,162 H448"/>
+  <path d="M392,154 H470"/><path d="M392,146 H462"/><path d="M392,138 H486"/>
+  <path d="M392,130 H452"/><path d="M392,122 H438"/><path d="M392,114 H424"/>
+  <path d="M392,106 H410"/>
+ </g>
+ <g stroke="var(--gold)" stroke-width="2.4" fill="none">
+  <path d="M392,166 H444"/>
+  <path d="M392,142 H468"/>
+  <path d="M392,118 H430"/>
+ </g>
+ <g class="svgt-sm" fill="var(--mut)" text-anchor="middle">
+  <text x="392" y="204">0.5</text><text x="459" y="204">ratio</text>
+  <text x="516" y="204">2.0</text>
+ </g>
+ <text x="459" y="86" text-anchor="middle" class="svgt-sm" fill="var(--gold)">
+   10th to 90th percentile</text>
+ <text x="459" y="228" text-anchor="middle" class="svgt-sm" fill="currentColor">
+   these quantiles scale</text>
+ <text x="459" y="244" text-anchor="middle" class="svgt-sm" fill="currentColor">
+   the last observed value</text>
+</svg>
+{%- endmacro %}
+
 {% macro ensemble_mech(uid='e') -%}
 {# members sit side by side and their quantiles flow DOWN into the blend:
    the row layout fills the drawing's width (the old left-hand stack left

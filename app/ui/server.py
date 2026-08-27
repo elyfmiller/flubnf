@@ -507,6 +507,37 @@ def api_versions():
     return {"versions": dict(VERSIONS), "resolved": versions_resolved()}
 
 
+def resolve_anchor(day: str, vintages=None):
+    """(anchor_vintage, why) for any date a person might type.
+
+    ONE definition, used by the form's anchor line and by the run itself,
+    so the console can never promise one week and fit another. A
+    surveillance week ends Saturday but publishes the following Wednesday,
+    so a non-Saturday means "the most recent week I could have data for":
+    snap back to Saturday, then back again to the newest week the archive
+    actually holds. A typed Saturday is precise and is returned as-is even
+    when its vintage is missing -- the caller refuses that case rather
+    than silently re-aiming it.
+    """
+    from datetime import date as _d, timedelta as _td
+    try:
+        d = _d.fromisoformat(day)
+    except (ValueError, TypeError):
+        return None, ""
+    if vintages is None:
+        try:
+            vintages = data_mod.vintages()
+        except Exception:
+            vintages = []
+    if d.weekday() == 5:
+        return day, "typed"
+    sat = (d - _td(days=(d.weekday() - 5) % 7)).isoformat()
+    earlier = [v for v in vintages if v <= sat]
+    if earlier and earlier[-1] != sat:
+        return earlier[-1], "not-published-yet"
+    return (earlier[-1] if earlier else sat), "snapped"
+
+
 def _default_forecast_date() -> str:
     """Latest Saturday, clamped to the latest ARCHIVED vintage -- during the
     off-season the hub stops publishing, and a default that points at a
@@ -1000,14 +1031,20 @@ def forecast_page(request: Request):
     # every archived Saturday, newest first, for the form's picker; the
     # native date input's calendar popout does not open in some embedded
     # webviews (observed on Windows), and only these dates are runnable
+    # str(), because the list is serialised into the page for the anchor
+    # line's client side: a stub or a future loader returning date objects
+    # must not take the page down at render time.
     try:
-        vintage_dates = list(reversed(data_mod.vintages()))
+        vintage_dates = [str(v) for v in reversed(data_mod.vintages())]
     except Exception:
         vintage_dates = []
+    _anchor, _ = resolve_anchor(form.get("forecast_date", ""), vintage_dates)
+    anchor_note = (f"Anchored on the archived week ending {_anchor}."
+                   if _anchor else "No archived week on or before that date.")
     return templates.TemplateResponse(request, "forecast.html", {
         "active": "Forecast", "engines": ENGINES, "status": _status,
         "ledger": ledger_rows, "all_locs": all_locs,
-        "vintage_dates": vintage_dates,
+        "vintage_dates": vintage_dates, "anchor_note": anchor_note,
         "locations_error": locations_error, "form": form,
         "elapsed0": _console_elapsed(),
         "series_json": _json.dumps(series), "fanq_json": _json.dumps(fanq),
@@ -4790,21 +4827,11 @@ def run_models(request: Request,
     try:
         _d = _date.fromisoformat(forecast_date)
         if _d.weekday() != 5:
-            _sat = _d - _td(days=(_d.weekday() - 5) % 7)
-            _vs = [v for v in data_mod.vintages() if v <= _sat.isoformat()]
-            _pick = _vs[-1] if _vs else _sat.isoformat()
-            if _pick == _sat.isoformat():
-                _flash(f"{forecast_date} is a "
-                       f"{_d.strftime('%A')}, so the forecast uses the week "
-                       f"ending Saturday {_pick} -- the most recent week with "
-                       "reported data.")
-            else:
-                _flash(f"{forecast_date} is a {_d.strftime('%A')}. The week "
-                       f"ending {_sat} has no published data yet (NHSN "
-                       "reports a finished week the following Wednesday), so "
-                       f"the forecast uses the newest week the archive holds, "
-                       f"ending Saturday {_pick}.")
-            forecast_date = _pick
+            # The form already SHOWS which vintage a date anchors to, live
+            # under the field, so the run does not repeat it in a banner --
+            # it just uses it. resolve_anchor is that same one definition.
+            _pick, _ = resolve_anchor(forecast_date)
+            forecast_date = _pick or forecast_date
     except ValueError:
         pass
     try:
