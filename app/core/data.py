@@ -101,20 +101,29 @@ def check_freshness(fetch: bool = True) -> Freshness:
     behind, remote_latest, detail = None, None, ""
     if fetch:
         try:
-            subprocess.run(["git", "fetch", "origin"], cwd=HUB,
-                           capture_output=True, timeout=60)
-            r = subprocess.run(
-                ["git", "rev-list", "--count", "HEAD..origin/main"],
-                cwd=HUB, capture_output=True, text=True, timeout=15)
-            behind = int(r.stdout.strip()) if r.returncode == 0 else None
-            ls = subprocess.run(
-                ["git", "ls-tree", "-r", "--name-only", "origin/main",
-                 "auxiliary-data/target-data-archive/"],
-                cwd=HUB, capture_output=True, text=True, timeout=15)
-            remote = sorted(l.split("_")[-1].removesuffix(".csv")
-                            for l in ls.stdout.splitlines()
-                            if "target-hospital-admissions_" in l)
-            remote_latest = remote[-1] if remote else None
+            f = subprocess.run(["git", "fetch", "origin"], cwd=HUB,
+                               capture_output=True, text=True, timeout=60)
+            if f.returncode != 0:
+                # A plain network failure exits nonzero WITHOUT raising.
+                # Reading origin/main after a failed fetch compares against
+                # the STALE local ref and reports "up to date" while a new
+                # vintage sits upstream -- offline must never read as fresh.
+                err = (f.stderr or "").strip().splitlines()
+                detail = ("fetch failed: "
+                          + (err[-1] if err else f"git exited {f.returncode}"))
+            else:
+                r = subprocess.run(
+                    ["git", "rev-list", "--count", "HEAD..origin/main"],
+                    cwd=HUB, capture_output=True, text=True, timeout=15)
+                behind = int(r.stdout.strip()) if r.returncode == 0 else None
+                ls = subprocess.run(
+                    ["git", "ls-tree", "-r", "--name-only", "origin/main",
+                     "auxiliary-data/target-data-archive/"],
+                    cwd=HUB, capture_output=True, text=True, timeout=15)
+                remote = sorted(l.split("_")[-1].removesuffix(".csv")
+                                for l in ls.stdout.splitlines()
+                                if "target-hospital-admissions_" in l)
+                remote_latest = remote[-1] if remote else None
         except Exception as e:                      # offline is a state, not a crash
             detail = f"fetch failed: {e}"
     is_fresh = (behind == 0) if behind is not None else False
