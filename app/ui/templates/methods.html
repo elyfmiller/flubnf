@@ -43,8 +43,12 @@
  infections. Second, waning immunity (R back to S) permits repeat seasonal
  waves, which single-pass SIR-type structures cannot produce. Third,
  seasonal transmission lets the data determine when transmissibility peaks
- in each state. Five parameters are fitted per state; every fixed parameter
- carries a citation or a recorded data derivation.</p>
+ in each state. Five parameters are fitted per state. Of the fixed values,
+ the recovery rate traces to a cited generation-time study, while
+ &#961;, &#947;<sub>H</sub> and &#969; are working assumptions with no source
+ behind them; the provenance module
+ (<code>flubnf/sihrs_priors.py</code>) records each value's status,
+ including which ones are assumptions.</p>
  <p class="hint">Model tab: <a href="/model/pf">PF-SIHRS</a>.</p>
 </div>
 
@@ -129,18 +133,21 @@
  donor week itself. The forecast distribution is the last observed value
  scaled by the empirical quantiles of those growth ratios; a cell with fewer
  than 30 usable donors produces no forecast. Donors are pooled across states
- because a single state supplies only about one donor per prior season, and
- they never come from the season being forecast. The analogue uses the
- archive of weekly NHSN admissions and nothing else, is difficult to beat at
- one week ahead, and anchors the ensemble when a season behaves
- unusually.</p>
+ because a single state supplies only about five donors per prior season
+ inside the calendar window, far short of the 30-donor minimum, and they
+ never come from the season being forecast. The analogue uses the archive of
+ weekly NHSN admissions and nothing else. In the sealed record its strength
+ lies at the middle horizons and in seasons that behave unusually, where it
+ anchors the ensemble; the particle filter is the stronger member at the
+ shortest horizon.</p>
  <p>One prior season is excluded from the donor pool: 2021-22. It peaked at
  epiweek 16, in April 2022, while every other donor season peaked between
  epiweek 48 and epiweek 6, and the archived surveillance series begins
  2022-02-05, so that season survives only as its growth phase. A
  calendar-matched pool asks what happened in March and 2021-22 answers that
- the epidemic was still growing, with March donor ratios of median 1.36 to
- 1.50 against 0.50 to 0.83 for every other season. Excluding it was
+ the epidemic was still growing: it is the only donor season whose March
+ ratios have a median above one, with a far heavier upper tail than any
+ other season's. Excluding it was
  pre-registered under hash <code>8f3c7a45a989e905</code> and improves the
  shipped ensemble by 3.66 percent pooled, bootstrap interval 1.83 to 6.07
  percent, positive in all three sealed seasons and in 50 of 52
@@ -161,8 +168,9 @@
  <p>The submitted forecast blends the particle filter with the calendar
  analogue described above by averaging their forecast quantiles. The two
  members fail differently; the mechanistic model can track turning points
- the analogue cannot anticipate, while the analogue is difficult to beat at
- short horizons. The members carry equal, unfitted weights: 50/50 across the
+ the analogue cannot anticipate, while the analogue holds the middle
+ horizons and stays anchored when a season behaves unusually. The members
+ carry equal, unfitted weights: 50/50 across the
  two shipped members, and equal thirds if a research run adds the
  <a href="#two-strain">two-strain variant</a>, which the submitted ensemble
  does not. Fitting the weights was evaluated and rejected: applying the

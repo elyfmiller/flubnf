@@ -99,9 +99,13 @@ call -- which does not compile. Do not "clean this up" back to `_pi()`.
 
 ## 2. Parameter provenance (single-strain influenza)
 
-Fitted (5): `Reff`, `eps1`, `phi1`, `mult`, `r`. Everything else is fixed
-from data or the literature; `flubnf/sihrs_priors.py` records each fixed
-value's DOI or derivation next to the code that computes it.
+Fitted (5): `Reff`, `eps1`, `phi1`, `mult`, `r`. Everything else is fixed.
+The recovery rate `gamma` derives from a cited generation-time study and
+the attack-rate range from a cited seroprevalence decomposition; `rho`,
+`gammaH` and `omega` are working assumptions with no DOI and no data
+derivation behind them. `flubnf/sihrs_priors.py` records the provenance of
+every fixed value, including which ones are assumptions, next to the code
+that computes it.
 
 ### Reff (fitted)
 
