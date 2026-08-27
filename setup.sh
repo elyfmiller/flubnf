@@ -82,6 +82,16 @@ else
   warn "Without it: the console, analogue engine, and reports still work."
 fi
 
+say "git hooks"
+# Point git at the tracked hooks directory so a contributor's push runs the
+# suite the way CI runs it (no hub clone, no engine venv) before it can turn
+# main red. Idempotent, and only inside a real checkout.
+if [ -d "$HERE/.git" ] && [ -d "$HERE/.githooks" ]; then
+  git -C "$HERE" config core.hooksPath .githooks \
+    && ok "pre-push runs the suite under CI conditions (bypass: --no-verify)" \
+    || warn "could not set core.hooksPath; pushes will not be pre-checked"
+fi
+
 say "environment"
 ENVF="$HERE/.flubnf.env"
 { echo "export FLUBNF_HUB=\"$HUB\""
