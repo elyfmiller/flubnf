@@ -122,6 +122,20 @@ def _newest_input(root: Path) -> float:
     pc = root / "playback_cache"
     if pc.is_dir():
         times.extend(f.stat().st_mtime for f in pc.glob("*.json"))
+    # The hub tree itself is an input, directly: Update data drops new
+    # official comparator files without touching playback_cache until
+    # someone opens the console season player (the lazy heal), so a report
+    # exported before that visit kept serving "pending" official stats
+    # forever (audit finding). A directory's mtime moves when files land in
+    # it, which is exactly the arrival this gate must see.
+    try:
+        from flubnf.settings import HUB
+        for name in ("FluSight-ensemble", "FluSight-baseline"):
+            d = HUB / "model-output" / name
+            if d.is_dir():
+                times.append(d.stat().st_mtime)
+    except Exception:
+        pass
     # the run record carries the header's wall-time line: a replay that
     # resumed and finished must refresh the export, not serve the old total
     mp = root / retro.META_NAME
@@ -484,9 +498,14 @@ def build_season_report(root: Path, season: str, archive: str = "",
         # the label part of the freshness test. The settings block joins it,
         # so a report built before the settings were recorded is rebuilt
         # rather than served without them.
-        head = out.read_text(encoding="utf-8")[:8192]
-        if ((not archive or ARCHIVE_MARK in head)
-                and (not settings_note or SETTINGS_MARK in head)):
+        # Search the WHOLE file: the markers sit in the body, megabytes past
+        # the embedded plotly bundle in <head>, so an 8 KB head slice could
+        # never contain them and every download rebuilt the full report
+        # while believing it had checked the cache (audit finding). The
+        # full read was already being paid; only the slice was wrong.
+        text = out.read_text(encoding="utf-8")
+        if ((not archive or ARCHIVE_MARK in text)
+                and (not settings_note or SETTINGS_MARK in text)):
             return out
     payloads = {w: playback.build_week(root, season, w) for w in weeks}
     data = {"season": season, "weeks": weeks, "payloads": payloads}

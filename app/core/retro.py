@@ -694,9 +694,32 @@ def _cell_done_dir(wd: Path) -> Path:
 def cells_done(wd: Path) -> set:
     """Keys of the week's finished fits. Each marker is written atomically
     (beside-then-replace) by the runner the moment its fit ends, so this is
-    exactly the set a resumed week may skip."""
+    exactly the set a resumed week may skip. ATTEMPTED is the honest word:
+    the set includes fits whose marker carries a FAIL status, so the fit
+    loop terminates; cells_failed() reads the statuses so run_week can
+    surface them instead of storing a silently thinner week."""
     d = _cell_done_dir(wd)
     return {p.stem for p in d.glob("*.json")} if d.is_dir() else set()
+
+
+def cells_failed(wd: Path) -> dict:
+    """Marker keys whose recorded status is a failure, mapped to the status
+    text. Before this existed nothing read the status field at all: a week
+    whose every fit failed assembled an empty samples file and the season
+    marched on 'done' (audit finding)."""
+    d = _cell_done_dir(wd)
+    out = {}
+    if d.is_dir():
+        for p in d.glob("*.json"):
+            try:
+                m = json.loads(p.read_text())
+            except (json.JSONDecodeError, OSError):
+                out[p.stem] = "unreadable marker"
+                continue
+            s = str(m.get("status", ""))
+            if s != "ok":
+                out[p.stem] = s[:200]
+    return out
 
 
 def mark_cell_done(wd: Path, key: str, status: str = "ok") -> None:
@@ -777,7 +800,14 @@ def _run_round(root: Path, wd: Path, pending: list, width: int) -> None:
     shards = pf_engine.shard_cells(pending, width)
     procs = _launch_runners(wd, shards, halt)
     flagged = False
-    deadline = time.time() + WEEK_TIMEOUT_S
+    # sized to the work, exactly like the forecast path it mirrors
+    # (pf_engine.budget_seconds: cost model x safety factor). The old fixed
+    # 2 h stays as a FLOOR, never a ceiling: a heavy legitimate replay
+    # (particles above ~20k, width 1, late-season n_obs) needs more than
+    # 2 h of honest work and was killed mid-fit; nothing that passed
+    # before can time out now.
+    deadline = time.time() + max(WEEK_TIMEOUT_S,
+                                 pf_engine.budget_seconds(shards))
     try:
         while any(p.poll() is None for p in procs):
             if not flagged and (stop_path(root).exists()
@@ -833,13 +863,27 @@ def run_week(root: Path, season: str, asof: str, locations: list,
         _check_stop(root)     # the flag a drained round saw lands HERE, at
         hold_while_paused(root)   # fit resolution, not at the week boundary
         _run_round(root, wd, pending, width)
+    failed = cells_failed(wd)
     pf_samples = pf_engine.collect(wd)
+    if failed and not pf_samples:
+        # every fit failed: a broken engine, not a thin week. Storing an
+        # empty pf and marching on is how a whole season once completed
+        # 'done' while scoring analogue-alone cells as the ensemble.
+        first = next(iter(failed.values()))
+        raise RuntimeError(f"all {len(failed)} PF fits failed "
+                           f"(first: {first}); the week is not stored")
+    if failed:
+        (Path(root) / "failures.log").open("a").write(
+            f"{asof}: {len(failed)} PF cell(s) failed and are absent from "
+            f"the stored week: {sorted(failed)[:6]}\n")
     an_q = an_engine.run(spec)
     out = {"asof": asof,
            "pf": pf_samples,
            "analogue": {loc: {h: {str(k): v for k, v in q.items()}
                               for h, q in qs.items()}
                         for loc, qs in an_q.items()}}
+    if failed:
+        out["pf_failures"] = failed
     write_week_samples(wd, out)
     # storage hygiene the moment the week is assembled: the per-cell fit
     # trees, runner scripts, shard lists, and done-markers this samples file
@@ -908,6 +952,11 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
                 run_week(root, season, asof, locations, replicates, particles,
                          width)
                 done.append(asof)
+                # timing is recorded HERE, for completed weeks only: the
+                # failure branch below used to fall through to this call,
+                # so aborted weeks polluted mean_s / weeks_measured /
+                # slowest_week with partial segments (audit finding)
+                _record_week(root, asof, elapsed_now(read_meta(root)) - e0)
             except SeasonStopped:
                 # a fit-level stop: bank the segment's seconds so the week's
                 # eventual week_seconds entry covers BOTH segments, but write
@@ -917,7 +966,6 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
                 raise
             except Exception as e:              # a bad week never kills the season
                 (root / "failures.log").open("a").write(f"{asof}: {e}\n")
-            _record_week(root, asof, elapsed_now(read_meta(root)) - e0)
             if progress:
                 progress(asof)
     except SeasonStopped:

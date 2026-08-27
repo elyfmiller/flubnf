@@ -3,8 +3,18 @@ accuracy figures and the per-run WIS breakdown.
 
 One formula, one vintage: every score uses the settled truth available NOW for
 actuals, and the FluSight baseline built from the same series. relWIS < 1
-beats the baseline. Cells are (location, forecast_date, horizon); a run is
-scored only for weeks whose truth exists.
+beats the baseline. Cells are (location, forecast_date, horizon).
+
+THE CELL RULE, in full (the frozen formula playback.py restates): a cell is
+scored only when settled truth exists AND is positive, the model's own
+forecast median is positive, and a baseline cell exists for the same key.
+The middle condition means a fully collapsed forecast removes its own cells
+from numerator and denominator rather than taking the penalty an official
+FluSight evaluation would assign, so console relWIS and an official score
+of the same submission can legitimately differ in both value and cell
+count. Stated here because the docstrings used to mention only truth
+availability, sending anyone reconciling the counts to debug the wrong
+join (audit finding).
 """
 from __future__ import annotations
 
@@ -19,14 +29,26 @@ from flubnf.wis import wis
 from flubnf.settings import HUB
 
 
+#: what the last load_truth() call actually served: "settled", or
+#: "vintage <date>" when the current target file was missing and the newest
+#: archived vintage stood in. Surfaces read this so a fallback is never
+#: silent (audit finding: the substitution had no warning, log entry, or
+#: marker, and a vintage's last weeks carry provisional values).
+TRUTH_SOURCE = "settled"
+
+
 def load_truth() -> tuple:
     """(location_fips, week_ending Timestamp) -> value, from the hub's
-    current target file; plus name->fips."""
+    current target file; plus name->fips. Sets TRUTH_SOURCE."""
+    global TRUTH_SOURCE
     target = HUB / "target-data/target-hospital-admissions.csv"
+    TRUTH_SOURCE = "settled"
     if not target.is_file():
         # Sparse or stale hub clones sometimes lack the current target file.
         # The NEWEST dated vintage is settled truth for anything older than a
         # few months, which is exactly what retrospectives score against.
+        # For LIVE scoring the newest 1-2 weeks of that vintage are
+        # provisional, so the substitution is recorded and said out loud.
         from app.core.data import vintage_path, vintages
         vs = vintages()
         if not vs:
@@ -35,6 +57,12 @@ def load_truth() -> tuple:
                 f"{HUB}/auxiliary-data/target-data-archive. Update the hub "
                 "clone from the Data tab.")
         target = vintage_path(vs[-1])
+        TRUTH_SOURCE = f"vintage {vs[-1]}"
+        import sys
+        print(f"scoring: current target file missing; scoring against the "
+              f"newest archived vintage ({vs[-1]}). Its final weeks may be "
+              "provisional. Update the hub clone from the Data tab.",
+              file=sys.stderr)
     t = pd.read_csv(target, dtype={"location": str})
     t["location"] = t["location"].str.zfill(2)
     t["date"] = pd.to_datetime(t["date"])
@@ -156,7 +184,16 @@ def summary_table_html(df: pd.DataFrame) -> str:
         f'<td class="num hint">{len(pooled)}</td></tr>'
         if total is not None else "")
     note = (f'<p class="hint">{usn.POOLED_SCOPE_NOTE}</p>' if has_us else "")
+    # the cell rule, disclosed where the counts render: it used to live
+    # only in code comments, and a reader reconciling these counts against
+    # an official FluSight score had no way to see why they differ
+    rule = ('<p class="hint">A cell is scored when settled truth exists and '
+            'is positive, the forecast median is positive, and the baseline '
+            'covers the same cell; official FluSight scoring keeps cells '
+            'this rule drops, so counts can differ.'
+            + (f" Truth source: {TRUTH_SOURCE}."
+               if TRUTH_SOURCE != "settled" else "") + '</p>')
     return ('<table><thead><tr><th>Location</th>'
             f'<th class="num">{member} relWIS</th>'
             '<th class="num">Cells</th></tr></thead><tbody>'
-            + rows + total_row + "</tbody></table>" + note)
+            + rows + total_row + "</tbody></table>" + note + rule)

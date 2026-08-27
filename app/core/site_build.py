@@ -213,10 +213,20 @@ def _score_payload(payload: dict, truth, n2f, bases_cache: dict) -> dict:
     fips_set = {n2f[l] for l in locs if l in n2f}
     key = (asof, frozenset(fips_set))
     if key not in bases_cache:
+        # A baseline that cannot be built must FAIL the build, never quietly
+        # zero a week: with an empty dict every cell of the week skips, the
+        # week still counts as scored, the published relWIS silently pools
+        # fewer weeks under the same label, and cross_check compares nothing
+        # (audit finding). _baseline_cells raises a deliberately loud
+        # FileNotFoundError for a sparse clone; keep it loud here, with the
+        # week named so the operator knows which file to fix.
         try:
             bases_cache[key] = _baseline_cells(asof, fips_set, truth)
-        except Exception:
-            bases_cache[key] = {}
+        except Exception as e:
+            raise RuntimeError(
+                f"baseline for week {asof} could not be built: {e}. "
+                "The site build stops rather than publish a season that "
+                "silently omits this week from its scores.") from e
     bases = bases_cache[key]
 
     def _score(qbl: dict, only: set | None):
