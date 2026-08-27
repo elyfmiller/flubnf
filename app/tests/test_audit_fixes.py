@@ -101,3 +101,101 @@ def test_retro_week_budget_never_below_fixed_floor():
     assert max(retro.WEEK_TIMEOUT_S,
                pf_engine.budget_seconds(pf_engine.shard_cells(tiny, 4))) \
         >= retro.WEEK_TIMEOUT_S
+
+
+def _fake_cell(tmp_path, n_obs, n_cols, k, last_observed=10.0):
+    import numpy as np
+    d = tmp_path / "cell"
+    runs = d / "out" / "Results" / "A_MCMC" / "Runs"
+    runs.mkdir(parents=True, exist_ok=True)
+    # two particles; column j holds the value j, so labels are decodable
+    tr = np.tile(np.arange(n_cols, dtype=float), (2, 1))
+    np.savetxt(runs / "x_traj_noise.txt", tr)
+    cell = {"key": "Ohio_r0", "dir": str(d), "location": "Ohio",
+            "n_obs": n_obs, "last_observed": last_observed,
+            "weeks_dropped": k}
+    (tmp_path / "cells.json").write_text(json.dumps([cell]))
+    return tmp_path
+
+
+def test_collect_zero_drop_unchanged(tmp_path):
+    # n_obs=3, forecast 4: columns 0..6; origin col 2 -> scale 10/2 = 5
+    from app.core.engines import pf as pf_engine
+    wr = _fake_cell(tmp_path, n_obs=3, n_cols=7, k=0)
+    d = pf_engine.collect(wr)["Ohio"]
+    assert d["0"] == [10.0, 10.0]           # anchored origin, col 2 * 5
+    assert d["1"] == [15.0, 15.0]           # col 3 * 5
+    assert d["4"] == [30.0, 30.0]           # col 6 * 5
+
+
+def test_collect_shifts_horizons_by_weeks_dropped(tmp_path):
+    # k=1: conf extended the forecast to 5 steps -> 8 columns. The as-of
+    # week is col 3 (the model's nowcast of the dropped week); horizon 1
+    # is col 4. Before the fix, h=1 read col 3 and every label rode one
+    # week early relative to the calendar it claimed.
+    from app.core.engines import pf as pf_engine
+    wr = _fake_cell(tmp_path, n_obs=3, n_cols=8, k=1)
+    d = pf_engine.collect(wr)["Ohio"]
+    assert d["0"] == [15.0, 15.0]           # col 3 * 5: nowcast of asof week
+    assert d["1"] == [20.0, 20.0]           # col 4 * 5
+    assert d["4"] == [35.0, 35.0]           # col 7 * 5
+
+
+def test_collect_refuses_pre_fix_workroot_with_drop(tmp_path):
+    # a trimmed run whose traj was NOT extended must fail loudly, never
+    # silently relabel the wrong columns
+    import pytest
+    from app.core.engines import pf as pf_engine
+    wr = _fake_cell(tmp_path, n_obs=3, n_cols=7, k=1)
+    with pytest.raises(RuntimeError, match="horizon-alignment"):
+        pf_engine.collect(wr)
+
+
+def test_analogue_drop_moves_anchor_and_extends_span(tmp_path, monkeypatch):
+    from app.core.engines import analogue as eng
+    vintage = tmp_path / "v.csv"
+    rows = ["date,location,location_name,value"]
+    dates = pd.date_range("2025-12-06", periods=5, freq="7D")
+    for d, val in zip(dates, [5, 6, 7, 8, 9]):
+        rows.append(f"{d.date()},39,Ohio,{val}")
+    vintage.write_text("\n".join(rows) + "\n")
+    locs = tmp_path / "locations.csv"
+    locs.write_text("location,location_name,abbreviation\n39,Ohio,OH\n")
+    monkeypatch.setattr(eng, "vintage_path", lambda d: str(vintage))
+    monkeypatch.setattr(eng, "LOCATIONS", str(locs))
+    calls = []
+
+    def fake_forecast(anchor, as_of, horizon, bank, levels, **kw):
+        calls.append((anchor, str(as_of), horizon))
+        return {0.5: anchor}
+
+    monkeypatch.setattr(eng.AN, "forecast", fake_forecast)
+
+    def spec(drop, same_day):
+        return type("S", (), {"forecast_date": "2026-01-03",
+                              "locations": ["Ohio"],
+                              "weeks_to_drop": drop,
+                              "drop_same_day": same_day})()
+
+    eng.run(spec(0, False))
+    assert calls[0] == (9.0, "2026-01-03", 1)      # historical path exact
+    calls.clear()
+    eng.run(spec(1, False))
+    # anchor steps back one observed week; window follows it; spans extend
+    assert calls[0] == (8.0, "2025-12-27", 2)
+    assert [c[2] for c in calls] == [2, 3, 4, 5]
+    calls.clear()
+    # the nowcast rule: the vintage's last row is dated the forecast date
+    # itself, so drop_same_day trims it automatically -- same arithmetic
+    # as an explicit one-week drop
+    eng.run(spec(0, True))
+    assert calls[0] == (8.0, "2025-12-27", 2)
+    calls.clear()
+    # and when the vintage has NO same-day row, the rule trims nothing:
+    # forecast a week later than the data ends
+    spec_late = type("S", (), {"forecast_date": "2026-01-10",
+                               "locations": ["Ohio"],
+                               "weeks_to_drop": 0,
+                               "drop_same_day": True})()
+    eng.run(spec_late)
+    assert calls[0] == (9.0, "2026-01-10", 1)

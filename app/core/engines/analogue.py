@@ -59,16 +59,32 @@ def run(spec) -> dict:
 
     out = {}
     T = pd.Timestamp(spec.forecast_date)
+    # Trims move the ANCHOR back, exactly as they move the PF's fit origin:
+    # the ratios then span h + k weeks so every labelled horizon still
+    # lands on as-of + 7h. Two trims combine per state: the operator's
+    # weeks_to_drop, and the nowcast rule (drop_same_day, default on) that
+    # treats the vintage's structurally incomplete same-day row as
+    # unreported. Before this the analogue ignored both, anchoring on the
+    # very week the fit dropped and desyncing the members (audit finding).
+    # With both off the arithmetic is byte-identical to the historical path.
+    k_user = int(getattr(spec, "weeks_to_drop", 0) or 0)
+    drop_same = bool(getattr(spec, "drop_same_day", True))
     for loc in spec.locations:
         fips = name2fips.get(loc)
         if fips is None:
             continue
         g = t[t.location == fips].sort_values("date")
         vals = pd.to_numeric(g.value, errors="coerce").dropna()
+        auto = 1 if (drop_same and len(vals)
+                     and g.date.loc[vals.index[-1]] == T) else 0
+        k = k_user + auto
+        if k:
+            vals = vals.iloc[:-k] if len(vals) > k else vals.iloc[0:0]
         if not len(vals):
             continue                                       # gap: engine skips, report shows it
         anchor = float(vals.iloc[-1])
         anchor_date = g.date.loc[vals.index[-1]]
+        window_ref = (T - pd.Timedelta(days=7 * k)).date()
         c, sig = completeness_args(spec, fips, anchor_date, newest)
         qs = {}
         for h in (1, 2, 3, 4):
@@ -77,7 +93,7 @@ def run(spec) -> dict:
             # adopted 2026-08-24). Deliberately not restated as a literal here
             # -- the engine must not be able to disagree with the library about
             # which pool production uses.
-            q = AN.forecast(anchor, T.date(), h, bank, QL,
+            q = AN.forecast(anchor, window_ref, h + k, bank, QL,
                             completeness=c, widen_log_sd=sig)
             if q:
                 qs[str(h)] = {float(L): float(x) for L, x in q.items()}

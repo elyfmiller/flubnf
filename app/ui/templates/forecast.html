@@ -56,7 +56,10 @@
    <label title="trim the newest N weeks before fitting (vintage-edge guard)">Weeks to drop</label>
    <input name="weeks_to_drop" type="number" value="{{ form.weeks_to_drop }}" min="0" max="4">
    <input type="hidden" name="weeks_to_nowcast" value="0">
-   <p class="hint" style="margin:.6rem 0 0">Nowcasting: planned; not yet in use.</p>
+   <p class="hint" style="margin:.6rem 0 0">The archive's same-day week (the
+    week ending on the forecast date, archived hours into its reporting
+    window) is treated as unreported automatically; drops here stack on top
+    of that. A model-based nowcast of the dropped weeks: planned.</p>
    <label>Replicates</label>
    <input name="replicates" type="number" value="{{ form.replicates }}" min="1" max="9">
    <button class="gold" data-guard="console-run">Run models</button>

@@ -846,9 +846,14 @@ def run_week(root: Path, season: str, asof: str, locations: list,
     wd = _week_dir(root, asof)
     if week_done(root, asof):
         return read_week_samples(root, asof)
+    # drop_same_day stays OFF here: the sealed record was produced with the
+    # same-day week in the fit, and a replay must reproduce the sealed
+    # methodology bit for bit. The re-baselined run that adopts the nowcast
+    # rule end to end flips this deliberately, with its own record.
     spec = RunSpec(engine="retro", forecast_date=asof, locations=locations,
                    season_start=season_bounds(season)[0],
-                   replicates=replicates, particles=particles)
+                   replicates=replicates, particles=particles,
+                   drop_same_day=False)
     manifest = {"locations": [str(l) for l in locations],
                 "replicates": int(replicates), "particles": int(particles),
                 "season_start": spec.season_start}

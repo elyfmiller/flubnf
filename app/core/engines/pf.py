@@ -135,10 +135,25 @@ def prepare(spec, workroot: Path) -> list:
         s = resolve_state(loc, truth_csv=vintage, locations_csv=LOCATIONS,
                           season_start=spec.season_start,
                           as_of=spec.forecast_date)
-        if spec.weeks_to_drop:
-            # drop the newest N rows -- nowcaster reinstates them later
-            s.observed = s.observed[:-spec.weeks_to_drop]
-            s.times = s.times[:-spec.weeks_to_drop]
+        # The nowcast rule (drop_same_day, default on): the vintage's row
+        # for the week ending on the forecast date itself is structurally
+        # incomplete (archived hours into its reporting window; ~1%
+        # reported in the worst measured state-weeks) and the hub's own
+        # horizon convention calls that week unobserved. When present it is
+        # trimmed per state, on top of any user-requested weeks_to_drop;
+        # the weeks_dropped/pf_forecast_weeks machinery keeps every horizon
+        # label as-of-relative either way.
+        auto_drop = 0
+        if getattr(spec, "drop_same_day", True) and len(s.times):
+            from datetime import date as _date
+            asof_off = (_date.fromisoformat(spec.forecast_date)
+                        - _date.fromisoformat(spec.season_start)).days // 7
+            if int(s.times[-1]) == int(asof_off):
+                auto_drop = 1
+        k_total = int(spec.weeks_to_drop or 0) + auto_drop
+        if k_total:
+            s.observed = s.observed[:-k_total]
+            s.times = s.times[:-k_total]
             s.n_obs = len(s.observed)
         gg = None
         if natg:
@@ -199,7 +214,7 @@ objfunc = neg_bin_dynamic
 num_particles = {spec.particles}
 pf_jitter = {spec.jitter}
 pf_observable_mode = {spec.observable_mode}
-pf_forecast_weeks = 4
+pf_forecast_weeks = {4 + k_total}
 population_size = 1
 max_iterations = 1
 seed = {seed}
@@ -208,6 +223,12 @@ seed = {seed}
    if two_strain else ""))
             cells.append({"key": tag, "dir": str(d), "location": loc,
                           "replicate": rep, "seed": seed,
+                          # collect() shifts its forecast columns by this,
+                          # so horizon labels stay AS-OF-relative when the
+                          # newest weeks were trimmed (audit: with drop > 0
+                          # every horizon rode one week off its label).
+                          # Includes the nowcast rule's same-day trim.
+                          "weeks_dropped": k_total,
                           "variant": ("2strain" if two_strain
                                       else "natg" if natg else "1strain"),
                           "a0": a0 if two_strain else None,
@@ -630,8 +651,27 @@ def collect(workroot: Path) -> dict:
         origin = tr[:, n - 1]
         med = float(np.median(origin[np.isfinite(origin)]))
         scale = c["last_observed"] / med if med > 0 else 1.0
+        # Horizons are AS-OF-relative, always. When weeks_to_drop trimmed
+        # k rows, the fit origin sits k weeks before the as-of date and the
+        # conf extended pf_forecast_weeks by k, so the as-of-relative
+        # horizon h lives at column (n-1) + k + h. Before this shift every
+        # consumer (quantile_rows, retro scoring, the fan) read the
+        # origin-relative columns and labelled them one week late per
+        # dropped week (audit finding). "0" is the as-of week itself: the
+        # model's nowcast of the trimmed weeks when k > 0, the anchored
+        # origin when k = 0, so the fan connects to the same calendar spot
+        # either way. The anchor pair is unchanged: last_observed is the
+        # trimmed series' final value, med the fit origin's median.
+        k = int(c.get("weeks_dropped", 0) or 0)
+        need = n + k + 4
+        if tr.ndim < 2 or tr.shape[1] < need:
+            raise RuntimeError(
+                f"{c['key']}: trajectory has "
+                f"{tr.shape[1] if tr.ndim == 2 else tr.size} columns, "
+                f"{need} needed for weeks_dropped={k}; the workroot "
+                "predates the horizon-alignment fix -- rerun the forecast")
         d = by_loc.setdefault(c["location"], {str(h): [] for h in range(5)})
-        d["0"].extend((origin * scale).tolist())
+        d["0"].extend((tr[:, n - 1 + k] * scale).tolist())
         for h in (1, 2, 3, 4):
-            d[str(h)].extend((tr[:, n - 1 + h] * scale).tolist())
+            d[str(h)].extend((tr[:, n - 1 + k + h] * scale).tolist())
     return by_loc
