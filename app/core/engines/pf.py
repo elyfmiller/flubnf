@@ -135,16 +135,15 @@ def prepare(spec, workroot: Path) -> list:
         s = resolve_state(loc, truth_csv=vintage, locations_csv=LOCATIONS,
                           season_start=spec.season_start,
                           as_of=spec.forecast_date)
-        # The nowcast rule (drop_same_day, default on): the vintage's row
-        # for the week ending on the forecast date itself is structurally
-        # incomplete (archived hours into its reporting window; ~1%
-        # reported in the worst measured state-weeks) and the hub's own
-        # horizon convention calls that week unobserved. When present it is
-        # trimmed per state, on top of any user-requested weeks_to_drop;
-        # the weeks_dropped/pf_forecast_weeks machinery keeps every horizon
-        # label as-of-relative either way.
+        # The nowcast rule (drop_same_day, OFF by default since the
+        # 2026-08-27 v1.1 measurement: dropping the same-day row cost
+        # 2023-24 +0.24 pooled relWIS because that row carries the turn
+        # signal; see RunSpec.drop_same_day). When enabled it trims the
+        # vintage's same-day row per state, on top of any user-requested
+        # weeks_to_drop; the weeks_dropped/pf_forecast_weeks machinery
+        # keeps every horizon label as-of-relative either way.
         auto_drop = 0
-        if getattr(spec, "drop_same_day", True) and len(s.times):
+        if getattr(spec, "drop_same_day", False) and len(s.times):
             from datetime import date as _date
             asof_off = (_date.fromisoformat(spec.forecast_date)
                         - _date.fromisoformat(spec.season_start)).days // 7

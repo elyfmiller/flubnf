@@ -2121,7 +2121,7 @@ def _run_all(spec: RunSpec) -> None:
             # recent background) must not see it either: a card comparing
             # the re-anchored forecast against the 1%-complete row it
             # excluded would announce a spurious surge (review finding)
-            if getattr(spec, "drop_same_day", True):
+            if getattr(spec, "drop_same_day", False):
                 tdf = tdf[tdf["date"].astype(str).str[:10]
                           != str(spec.forecast_date)]
             import numpy as _npo
@@ -4766,7 +4766,7 @@ def run_models(request: Request,
                # not on the form (the nowcast rule is the default); the
                # re-run path passes it so a recorded pre-rule methodology
                # reproduces instead of silently adopting today's default
-               drop_same_day: int = Form(1)):
+               drop_same_day: int = Form(0)):
     # the pipeline's contract is Saturdays with an archived vintage; hold
     # the user to it kindly instead of failing three phases into the run
     from datetime import date as _date, timedelta as _td
@@ -4881,6 +4881,38 @@ def run_models(request: Request,
                    replicates=replicates,
                    particles=particles,
                    extra={"members": 3} if members == 3 else {})
+    # Same-day anchor sanity. The fit KEEPS the same-day week - the v1.1
+    # measurement showed dropping it costs a season +0.24 pooled relWIS,
+    # because that row carries the turn signal - but the ~1%-reported
+    # archive snapshots that once flatlined a live run are real too. The
+    # compromise is a loud, named warning with the remedy, not a silent
+    # anchor at 6 admissions and not a blanket drop.
+    try:
+        import pandas as _pdw
+        _tv = _pdw.read_csv(data_mod.vintage_path(forecast_date),
+                            dtype={"location": str})
+        _same = _tv[_tv["date"].astype(str).str[:10] == forecast_date]
+        _prior_d = (_date.fromisoformat(forecast_date)
+                    - _td(days=7)).isoformat()
+        _prior = _tv[_tv["date"].astype(str).str[:10] == _prior_d]
+        _p = dict(zip(_prior["location"], _prior["value"]))
+        _low = sorted(
+            (float(r.value) / float(_p[r.location]), str(r.location_name))
+            for r in _same.itertuples()
+            if _p.get(r.location) and float(_p[r.location]) >= 20
+            and float(r.value) / float(_p[r.location]) < 0.5)
+        if _low:
+            names = ", ".join(n for _, n in _low[:4])
+            _flash("Heads up: the same-day week looks badly under-reported "
+                   f"in {len(_low)} state(s) ({names}"
+                   f"{', …' if len(_low) > 4 else ''}): under half the "
+                   "prior week's count. The fit keeps that week by default "
+                   "(a measured full-season test of dropping it cost 0.24 "
+                   "relWIS overall); if these anchors matter for this run, "
+                   "set weeks to drop = 1.")
+    except Exception:
+        pass
+
     if engine in ("all", "pf", "analogue"):
         # 'analogue' rides the same pipeline with the PF block skipped --
         # the model page's "Run Calendar analogue only" button posts it

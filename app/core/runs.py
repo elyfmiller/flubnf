@@ -293,10 +293,21 @@ class RunSpec:
     #: week a nowcast target, i.e. unobserved. Fitting and anchoring to it
     #: collapsed live forecasts to zero (field report + audit, 2026-08-26).
     #: The engines drop that row per state when present; horizon labels
-    #: stay as-of-relative via the weeks_dropped machinery. Retrospectives
-    #: construct their specs with this OFF so the sealed methodology
-    #: reproduces until a re-baselined run adopts the rule end to end.
-    drop_same_day: bool = True
+    #: stay as-of-relative via the weeks_dropped machinery.
+    #:
+    #: DEFAULT OFF, by measurement (2026-08-27): the pre-registered v1.1
+    #: re-baseline (prereg ddf3357a442946e3) ran 2023-24 under the rule
+    #: and the season degraded from 0.813 to 1.055 pooled relWIS - the
+    #: same-day row, ~92% complete on average, carries the turn signal
+    #: (whether growth broke this week), and dropping it made the filter
+    #: extrapolate pre-peak growth through every turning point (Ohio
+    #: 2024-01-06: forecast 1290 vs truth 542 at h1). Gate G3 (any season
+    #: worse by >0.02) was exceeded twelvefold, so the rule was reverted
+    #: everywhere. The machinery stays: the setting is recorded per run,
+    #: an operator can enable it deliberately, and the catastrophic-anchor
+    #: case (a ~1%-reported same-day row) is met with a loud warning
+    #: instead of a blanket drop.
+    drop_same_day: bool = False
     replicates: int = 3
     particles: int = 10_000          # sit-down verdict 2026-08-17
     jitter: float = 0.30
