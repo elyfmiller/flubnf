@@ -804,9 +804,12 @@ def harvest_bibliography() -> list:
                   f"{P.GENERATION_TIME_CRI[0]}-{P.GENERATION_TIME_CRI[1]}), "
                   "US household transmission study. Sets the recovery rate."),
          "href": doi(P.GT_SOURCE), "label": f"doi:{P.GT_SOURCE}"},
-        {"what": "Reproduction number prior",
-         "text": (f"Boelle et al. 2011, community reproduction numbers "
-                  f"{P.R0_RANGE[0]} to {P.R0_RANGE[1]}. Bounds the R prior."),
+        {"what": "Reproduction number context",
+         "text": ("Boelle et al. 2011 reports community reproduction "
+                  "numbers 1.2 to 2.3, median 1.5. Context, not a bound: "
+                  "the fitted R_eff prior is uniform 0.6 to 2.5, and the "
+                  f"recorded working range {P.R0_RANGE[0]} to "
+                  f"{P.R0_RANGE[1]} widens Boelle's low end deliberately."),
          "href": doi(P.R0_SOURCE), "label": f"doi:{P.R0_SOURCE}"},
         {"what": "Attack rate",
          "text": (f"Vinh et al. 2021, age-seroprevalence decomposition; the "

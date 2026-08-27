@@ -858,10 +858,12 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
     <div class="about">
       <div class="card"><span class="k">Data</span>
         <h3>Vintage-true, downloadable</h3>
-        <p>Every retrospective number on this page was computed from the
-        target file as it existed on that forecast date; revisions arriving
-        later never flatter a score. The console's vintage browser shows
-        exactly what any past week knew.</p>
+        <p>Every forecast on this page was produced from the target file as
+        it existed on that forecast date; no model input includes a later
+        revision. Scores then use today's settled truth for actuals,
+        identically for these models and for the baseline, so revisions
+        enter both sides of every ratio the same way. The console's vintage
+        browser shows exactly what any past week knew.</p>
         <div class="linkrow">
           <a href="https://github.com/cdcepi/FluSight-forecast-hub/tree/main/target-data">NHSN target data</a>
           <a href="https://github.com/cdcepi/FluSight-forecast-hub">FluSight hub</a>
@@ -906,11 +908,13 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
     <div class="card" style="margin-top:1rem">
       <span class="k" style="color:var(--accent);font-size:.74rem;
        letter-spacing:.1em;text-transform:uppercase;font-weight:700">Sources</span>
-      <h3>Fixed parameters are cited, not chosen</h3>
-      <p class="sub" style="margin:0">Every non-fitted value traces to
-      literature or to the FluSight hub's own data. These citations are read
-      from the module that defines the priors, so a re-sourced parameter
-      updates here at the next build.</p>
+      <h3>Sourced where sourced, and said plainly where not</h3>
+      <p class="sub" style="margin:0">The recovery rate and the data-derived
+      values below carry citations; three fixed values (the admission
+      fraction, the discharge rate, and immune waning) are working
+      assumptions, and the provenance module records them as exactly that.
+      These entries are read from the module that defines the priors, so a
+      re-sourced parameter updates here at the next build.</p>
       {_bibliography(bibliography)}
     </div>
   </section>

@@ -93,9 +93,11 @@ shipped configuration:
   settled truth, the frozen cell rule) reproduced no archived row of the
   2023-24 field exactly. The reconstruction's cell universe differs from the
   archived one by a single cell once Puerto Rico is removed, so the gate is
-  close, but every team's score differs by between 1 and 6 percent, and the
-  differences are not a common factor. The archived field was therefore
-  scored on a convention this repository cannot restate.
+  close, but the per-team differences are broad and not a common factor: of
+  38 teams, 9 reproduce within 1 percent, 18 differ by 1 to 6 percent, and
+  11 differ by more than 6 percent, up to about 21 percent either way
+  (retained artifact: placement_reconstruction_2023-24.txt). The archived
+  field was therefore scored on a convention this repository cannot restate.
 * **This project's own three rows were not computed on one convention.** The
   2025-26 row, 0.691107728891329 on 4,475 cells, is exactly the seal's own
   vintage relWIS for the unfitted 50/50 blend. The 2024-25 row,
@@ -164,10 +166,12 @@ donor seasons peaked between epiweek 48 and epiweek 6. The surveillance
 series carried in the archived vintages begins 2022-02-05, so 2021-22 exists
 in the archive only as a February-to-July tail, which is to say only as its
 growth phase. A calendar-matched donor pool asks what happened in March, and
-2021-22 answers that the epidemic was still growing. Its March donor ratios
-have a median of 1.36 to 1.50 against 0.50 to 0.83 for every other season,
-and a 97.5th percentile of 6.94 to 9.00 against 2.00 to 2.68. The exclusion
-removes a phase-inverted donor, not an inconvenient one.
+2021-22 answers that the epidemic was still growing. It is the only donor
+season whose March ratios have a median above one, and their upper tail is
+several times heavier than any other season's; the exact ranges depend on
+how the March pool is defined, so the claim is stated at the strength at
+which it reproduces. The exclusion removes a phase-inverted donor, not an
+inconvenient one.
 
 **Pre-registration.** The question, the arms, the depth control, the metrics,
 the gates and the kill rule were frozen before any score was computed, under
