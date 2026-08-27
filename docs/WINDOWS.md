@@ -198,7 +198,7 @@ variable and prints the one `setx` line that clears it.
    | `python.exe` (console venv) | `<repo>\.venv\Scripts\python.exe` | the app itself, and `__pycache__` |
    | `python.exe` (engine venv) | `%USERPROFILE%\.venvs\flubnf-engine\Scripts\python.exe` | `__pycache__` inside the PyBNF checkout |
    | `perl.exe` | `C:\Strawberry\perl\bin\perl.exe` | `m.net`, from `BNG2.pl`, during a fit |
-   | `run_network.exe` | `<repo>\.venv\Lib\site-packages\bionetgen\bng-win\run_network.exe` | simulation output, during a fit |
+   | `run_network.exe` | `<repo>\.venv\Lib\site-packages\bionetgen\bng-win\bin\run_network.exe` (older wheels omit the `bin\`; setup.ps1 prints the path that actually exists on your machine) | simulation output, during a fit |
 
    `git.exe` and `python.exe` are the two Defender actually logged as
    blocked above. `perl.exe` and `run_network.exe` are on the list because

@@ -418,7 +418,18 @@ $PerlExe = if ($PerlCmd) { $PerlCmd.Source }
            else { "C:\Strawberry\perl\bin\perl.exe   (usual location; perl is not on PATH here)" }
 # bionetgen is a dependency of the CONSOLE venv, not the engine venv: see
 # flubnf/settings.py::_bng_candidates, which looks under <repo>\.venv only.
-$RunNetExe = Join-Path $VenvDir "Lib\site-packages\bionetgen\bng-win\run_network.exe"
+# The wheel's layout moved: current bionetgen wheels put run_network.exe
+# under bng-win\bin\, older ones directly under bng-win\. Probe both and
+# prefer whichever exists, so the printed Controlled Folder Access
+# allow-list names the real binary; a hard-coded wrong path had users
+# allow a nonexistent file while Defender kept blocking the real one
+# (audit W-10, observed as 'setup looks perfect and the first fit fails').
+$RunNetCandidates = @(
+    (Join-Path $VenvDir "Lib\site-packages\bionetgen\bng-win\bin\run_network.exe"),
+    (Join-Path $VenvDir "Lib\site-packages\bionetgen\bng-win\run_network.exe"))
+$RunNetExe = $RunNetCandidates | Where-Object { Test-Path -LiteralPath $_ } |
+             Select-Object -First 1
+if (-not $RunNetExe) { $RunNetExe = $RunNetCandidates[0] }
 # FromEnv records where the path CAME FROM, not just what it is. A recorded
 # variable that names a protected folder which does not exist is a different
 # problem from a default that happens to land in one, and it gets its own

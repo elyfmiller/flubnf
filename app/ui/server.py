@@ -2217,6 +2217,8 @@ def _run_all(spec: RunSpec) -> None:
         # model-metadata/; the as-of goes to the row builders and to the
         # writer alike, and the writer refuses to name a file for a date its
         # rows do not carry
+        from app.core.runs import is_research as _is_research
+        _research = _is_research(spec)
         for model, rows in (
             ("pf", [r for loc, s in pf_samples.items()
                     for r in quantile_rows(s, n2f[loc], spec.forecast_date)]),
@@ -2225,6 +2227,16 @@ def _run_all(spec: RunSpec) -> None:
                                                        spec.forecast_date)]),
         ):
             if not rows:
+                continue
+            if _research and model == "ensemble":
+                # A research run's "ensemble" is the three-member blend,
+                # which is not the shipped product; a hub-named CSV of it
+                # would be indistinguishable from the real submission
+                # (audit rr-1). The PF member file is unchanged by the
+                # research variant and still writes.
+                outcome["submission_withheld"] = (
+                    "ensemble: research run; the three-member blend does "
+                    "not ship under the hub model name")
                 continue
             # Contained per model, the same rule steps 5 and 5b follow: the
             # writer REFUSES rows the hub would bounce (an incomplete
@@ -2293,6 +2305,7 @@ def _run_all(spec: RunSpec) -> None:
         _tmp = workroot / "results.json.tmp"
         _tmp.write_text(_json.dumps({
             "spec": spec.to_json(), "forecast_date": spec.forecast_date,
+            "research": _research,
             "observed": obs,
             "params": params,
             "models": {
@@ -2304,11 +2317,17 @@ def _run_all(spec: RunSpec) -> None:
                 "ensemble": {loc: _qs_from_q(q) for loc, q in members_by_loc.items()},
             }}))
         _os.replace(_tmp, workroot / "results.json")   # readers never see a half-write
-        # 7. forecast archive: one folder per forecast_date, latest run wins
-        try:
-            outcome["archived"] = _archive_run(workroot, spec.forecast_date)
-        except Exception as e:
-            outcome["archive_error"] = str(e)[:200]
+        # 7. forecast archive: one folder per forecast_date, latest run wins.
+        # Research runs never archive: the archive is the record of what
+        # the shipped product forecast for a date, and a three-member
+        # research blend replacing it would rewrite that record (audit rr-1).
+        if _research:
+            outcome["archived"] = "skipped: research run"
+        else:
+            try:
+                outcome["archived"] = _archive_run(workroot, spec.forecast_date)
+            except Exception as e:
+                outcome["archive_error"] = str(e)[:200]
         # note: nothing gates on "this session ran" anymore -- the Forecast
         # tab renders the latest STORED results unconditionally, like the
         # model pages always did
@@ -2730,11 +2749,22 @@ def _latest_results():
     # next run instead of turning five routes into a 500. The workroot SCAN
     # is cached (five routes ask for it); the file is read fresh every time,
     # so a re-blended ensemble is never served from a stale parse.
+    #
+    # Research runs are SKIPPED: every caller of this function is a
+    # shipped-product surface (home outlook, Forecast page, model pages),
+    # and a three-member research blend rendering there unlabelled is
+    # exactly the containment failure the research tag exists to prevent
+    # (audit rr-1). A research run's own page reads its workroot directly.
+    # Results written before the flag existed are recognised by their spec.
+    from app.core.runs import is_research
     for f in _workroot_results():
         try:
-            return f.parent.name, _json.loads(f.read_text())
+            res = _json.loads(f.read_text())
         except (_json.JSONDecodeError, OSError):
             continue
+        if res.get("research") or is_research(res.get("spec", "")):
+            continue
+        return f.parent.name, res
     return None, None
 
 
@@ -4550,9 +4580,20 @@ def retro_results(request: Request, season: str, week: str = "",
                      f"median={med}, wis={wv}, baseline={bv}; truth rows "
                      f"{len(truth_d)}, positive-median locs {pos_med}, "
                      f"weeks {len(weeks)}")
+            # zero cells is BENIGN when the truth simply has not settled
+            # for these dates (a current season). Only then may the calm
+            # "No scoreable weeks yet" branch below render; before this
+            # check existed, the probe overwrote score_error
+            # unconditionally and that branch was dead code (audit srv-13).
+            have_truth = sum(
+                1 for loc in d0.get("pf", {})
+                if truth_d.get((n2f_d.get(loc),
+                                T0 + _dp.Timedelta(days=7))) is not None)
         except Exception as pe:
             probe = f"diagnostic probe failed: {type(pe).__name__}: {str(pe)[:120]}"
-        score_error = "scored zero cells with no exception. " + probe
+            have_truth = -1      # unknown: surface the probe, never the calm text
+        if have_truth != 0:
+            score_error = "scored zero cells with no exception. " + probe
     if not scoreable and score_error:
         map_html = ("<p class='hint'>Scoring failed: <code>"
                     + score_error + "</code>. The fitted forecasts below are "
