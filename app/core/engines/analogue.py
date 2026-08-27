@@ -62,13 +62,13 @@ def run(spec) -> dict:
     # Trims move the ANCHOR back, exactly as they move the PF's fit origin:
     # the ratios then span h + k weeks so every labelled horizon still
     # lands on as-of + 7h. Two trims combine per state: the operator's
-    # weeks_to_drop, and the nowcast rule (drop_same_day, default on) that
-    # treats the vintage's structurally incomplete same-day row as
-    # unreported. Before this the analogue ignored both, anchoring on the
-    # very week the fit dropped and desyncing the members (audit finding).
+    # weeks_to_drop, and the nowcast rule (drop_same_day, OFF by default
+    # since the 2026-08-27 v1.1 measurement; see RunSpec.drop_same_day).
+    # Before this the analogue ignored both trims, anchoring on the very
+    # week the fit dropped and desyncing the members (audit finding).
     # With both off the arithmetic is byte-identical to the historical path.
     k_user = int(getattr(spec, "weeks_to_drop", 0) or 0)
-    drop_same = bool(getattr(spec, "drop_same_day", True))
+    drop_same = bool(getattr(spec, "drop_same_day", False))
     for loc in spec.locations:
         fips = name2fips.get(loc)
         if fips is None:
