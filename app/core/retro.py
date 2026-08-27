@@ -833,7 +833,8 @@ def _run_round(root: Path, wd: Path, pending: list, width: int) -> None:
 
 def run_week(root: Path, season: str, asof: str, locations: list,
              replicates: int = 3, particles: int = 10_000,
-             width: int = pf_engine.DEFAULT_SHARD_WIDTH) -> dict:
+             width: int = pf_engine.DEFAULT_SHARD_WIDTH,
+             drop_same_day: bool = False) -> dict:
     """One submission day: PF (sharded) + analogue; store samples+quantiles.
 
     Fit-level control and resume: the STOP and PAUSE flags are honoured
@@ -846,17 +847,18 @@ def run_week(root: Path, season: str, asof: str, locations: list,
     wd = _week_dir(root, asof)
     if week_done(root, asof):
         return read_week_samples(root, asof)
-    # drop_same_day stays OFF here: the sealed record was produced with the
-    # same-day week in the fit, and a replay must reproduce the sealed
-    # methodology bit for bit. The re-baselined run that adopts the nowcast
-    # rule end to end flips this deliberately, with its own record.
+    # drop_same_day defaults OFF here: the sealed record was produced with
+    # the same-day week in the fit, and a replay must reproduce the sealed
+    # methodology bit for bit. A re-baselining run that adopts the nowcast
+    # rule end to end passes True deliberately, and its manifest records it.
     spec = RunSpec(engine="retro", forecast_date=asof, locations=locations,
                    season_start=season_bounds(season)[0],
                    replicates=replicates, particles=particles,
-                   drop_same_day=False)
+                   drop_same_day=drop_same_day)
     manifest = {"locations": [str(l) for l in locations],
                 "replicates": int(replicates), "particles": int(particles),
-                "season_start": spec.season_start}
+                "season_start": spec.season_start,
+                "drop_same_day": bool(drop_same_day)}
     _check_stop(root)         # a standing flag must not even prepare a week
     hold_while_paused(root)
     cells = _prepare_week(root, asof, spec, manifest)
@@ -905,7 +907,8 @@ def run_week(root: Path, season: str, asof: str, locations: list,
 
 def run_season(root: Path, season: str, locations: list, replicates=3,
                particles=10_000, width=pf_engine.DEFAULT_SHARD_WIDTH,
-               progress=None, settings: dict | None = None) -> list:
+               progress=None, settings: dict | None = None,
+               drop_same_day: bool = False) -> list:
     """Replay a season week by week, recording timing and honouring the STOP
     and PAUSE flags at fit resolution.
 
@@ -934,6 +937,7 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
     rec.setdefault("locations", [str(l) for l in locations])
     rec.setdefault("replicates", int(replicates))
     rec.setdefault("particles", int(particles))
+    rec.setdefault("drop_same_day", bool(drop_same_day))
     rec.setdefault("width", int(width))
     rec.setdefault("engine", "pf")
     _start_record(root, season, len(vintages), rec)
@@ -955,7 +959,7 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
             e0 = elapsed_now(read_meta(root))
             try:
                 run_week(root, season, asof, locations, replicates, particles,
-                         width)
+                         width, drop_same_day=drop_same_day)
                 done.append(asof)
                 # timing is recorded HERE, for completed weeks only: the
                 # failure branch below used to fall through to this call,

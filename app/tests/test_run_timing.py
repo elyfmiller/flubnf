@@ -49,7 +49,8 @@ def _fake_season(monkeypatch, root, weeks, seconds_per_week=60.0):
     monkeypatch.setattr(retro, "_now", lambda: clock["t"])
     monkeypatch.setattr(retro, "season_vintages", lambda s: list(weeks))
 
-    def fake_week(r, season, asof, locations, replicates, particles, width):
+    def fake_week(r, season, asof, locations, replicates, particles, width,
+                  **kw):
         clock["t"] += seconds_per_week
         wd = Path(r) / "weeks" / asof
         wd.mkdir(parents=True, exist_ok=True)
