@@ -110,14 +110,16 @@ class TestSubmissionIdentity:
     identity, and refuses to write a file that fails the hub's schema."""
 
     def test_default_name_is_the_registered_identity(self):
-        """It used to default to "LosAlamos_NAU-CModel_Flu", which is not a
-        placeholder but a different team, separately registered on the same
-        hub. Every file the loop wrote was therefore named for somebody
-        else's model. One definition now, shared with the console writer."""
-        from app.core.submit import hub_model_id
+        """The CLI must never invent its own identity: it writes under the
+        one the console writes under, which is the team registered on the
+        hub. (The original failure was a hardcoded free-text default that
+        drifted from the registration; since 2026-08-27 the registration
+        this group holds IS LosAlamos_NAU, by the PIs' decision, so the
+        invariant is the SHARED definition rather than any literal.)"""
+        from app.core.submit import MODEL_ABBR, TEAM_ABBR, hub_model_id
         from flubnf.submit import DEFAULT_TEAM_MODEL
-        assert DEFAULT_TEAM_MODEL == hub_model_id("pf") == "NAU_FluBNF-SIHRS"
-        assert "LosAlamos" not in DEFAULT_TEAM_MODEL
+        assert DEFAULT_TEAM_MODEL == hub_model_id("pf")
+        assert DEFAULT_TEAM_MODEL == f"{TEAM_ABBR}-{MODEL_ABBR['pf']}"
 
     def test_file_is_named_for_the_registered_identity(self, tmp_path):
         from flubnf.submit import DEFAULT_TEAM_MODEL, write_submission

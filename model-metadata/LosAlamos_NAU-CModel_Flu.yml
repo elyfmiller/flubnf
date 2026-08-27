@@ -1,0 +1,101 @@
+team_name: "Los Alamos National Lab and Northern Arizona University"
+team_abbr: "LosAlamos_NAU"
+model_name: "FluBNF: compartmental model with Bayesian inference, blended with a calendar analogue"
+model_abbr: "CModel_Flu"
+model_version: "3.0"
+model_contributors: [
+        {
+            "name": "Ely Finn Miller",
+            "affiliation": "Northern Arizona University",
+            "email": "efm46@nau.edu",
+        },
+        {
+            "name": "Richard Posner",
+            "affiliation": "Northern Arizona University",
+            "email": "Richard.Posner@nau.edu",
+        },
+        {
+            "name": "William Scott Hlavacek",
+            "affiliation": "Los Alamos National Lab",
+            "email": "hlavacek@lanl.gov",
+        },
+        {
+            "name": "Ye Chen",
+            "affiliation": "Northern Arizona University",
+            "email": "Ye.Chen@nau.edu",
+        },
+        {
+            "name": "Jaechoul Lee",
+            "affiliation": "Northern Arizona University",
+            "email": "Jaechoul.Lee@nau.edu",
+        },
+        {
+            "name": "Joseph R Mihaljevic",
+            "affiliation": "Northern Arizona University",
+            "email": "Joseph.Mihaljevic@nau.edu",
+        },
+        {
+            "name": "Yen Ting Lin",
+            "affiliation": "Los Alamos National Lab",
+            "email": "yentingl@lanl.gov",
+        },
+        {
+            "name": "Abhishek Mallela",
+            "affiliation": "Los Alamos National Lab",
+            "email": "abhishek.mallela@gmail.com",
+        },
+        {
+            "name": "Avery Drennan",
+            "affiliation": "Northern Arizona University",
+            "email": "aad473@nau.edu",
+        },
+        {
+            "name": "Colin James Grosvenor",
+            "affiliation": "Northern Arizona University",
+            "email": "cjg489@nau.edu",
+        },
+        {
+            "name": "Bria Jayde Fiebiger",
+            "affiliation": "Northern Arizona University",
+            "email": "bjf235@nau.edu",
+        },
+        {
+            "name": "Kylie Ann Geist",
+            "affiliation": "Northern Arizona University",
+            "email": "kag592@nau.edu",
+        },
+        {
+            "name": "Amir Aman Gill",
+            "affiliation": "Northern Arizona University",
+            "email": "aag674@nau.edu",
+        },
+        {
+            "name": "Y-Minh B Truong",
+            "affiliation": "Northern Arizona University",
+            "email": "ybt4@nau.edu",
+        },
+        {
+            "name": "Ozbej Bernik",
+            "affiliation": "Northern Arizona University",
+            "email": "ob244@nau.edu",
+        },
+        {
+            "name": "Maya Baltz",
+            "affiliation": "Northern Arizona University",
+            "email": "msb438@nau.edu",
+        },
+        {
+            "name": "Adam Smart",
+            "affiliation": "Northern Arizona University",
+            "email": "acs849@nau.edu",
+        },
+    ]
+website_url: "https://github.com/elyfmiller/flubnf"
+repo_url: "https://github.com/elyfmiller/flubnf"
+license: "CC-BY-4.0"
+designated_model: true
+methods: "Equal-weight quantile average of a sequential particle filter over an SIHRS compartmental model and a calendar-matched analogue of growth ratios from prior seasons."
+data_inputs: "Weekly state-level laboratory-confirmed influenza hospital admissions from NHSN, read from the hub's dated vintage archive."
+methods_long: "Version 3.0 replaces the model this team submitted through version 2.0. That model was an SIR with a piecewise-constant transmission rate fitted by batch adaptive MCMC; it is retired and is no longer submitted. Version 3.0 keeps the compartmental line and changes two things: transmission is now estimated by a sequential particle filter rather than by batch adaptive MCMC, and the submitted forecast is a blend of that mechanistic model with an empirical companion. The mechanistic member is an SIHRS model (susceptible, infected, hospitalized, recovered, with waning immunity) whose transmission rate carries an annual harmonic; it is written in BNGL and fitted with a fork of PyBNF that adds the filter, advanced one week at a time so each week's posterior conditions on every hospitalization report to that point. The empirical member is a calendar analogue: it scales a state's most recent observation by the distribution of growth ratios observed at the same point in the calendar in strictly earlier seasons, pooled across jurisdictions and computed independently at each horizon. The 2021-22 season is excluded from its donor pool because it peaked in April 2022 and survives in the vintage archive only as a partial tail, making it calendar-inverted relative to every other season; the exclusion was pre-registered before it was scored. The members are combined by quantile averaging at fixed equal weights, which are not fitted: a leave-one-season-out fitted weighting was measured and scored worse than the equal blend. Retrospective replays on vintage data across the 2023-24, 2024-25 and 2025-26 seasons give a pooled relative WIS of 0.678 against the FluSight baseline over 15,460 scored cells, beating the baseline in each season."
+ensemble_of_models: true
+ensemble_of_hub_models: false

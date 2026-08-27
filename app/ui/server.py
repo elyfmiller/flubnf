@@ -1717,7 +1717,12 @@ def _phase(msg):
 def _flash(msg: str) -> None:
     """Human-voiced notice for the next page the user sees; the log keeps
     the permanent record."""
-    _status["flash"] = msg
+    # One slot, but a request can legitimately have two things to say (a
+    # date was interpreted AND an anchor looks suspect); the later message
+    # used to silently delete the earlier one. Unconsumed messages join
+    # instead, and pop_flash still clears them all at the next render.
+    prev = _status.get("flash")
+    _status["flash"] = f"{prev}  {msg}" if prev and msg not in prev else msg
     _status["log"].append(msg)
 
 
@@ -4767,16 +4772,39 @@ def run_models(request: Request,
                # re-run path passes it so a recorded pre-rule methodology
                # reproduces instead of silently adopting today's default
                drop_same_day: int = Form(0)):
-    # the pipeline's contract is Saturdays with an archived vintage; hold
-    # the user to it kindly instead of failing three phases into the run
+    # Any day of the week is a legitimate thing to type. Surveillance weeks
+    # END on Saturday, but NHSN publishes the finished week the following
+    # WEDNESDAY, so the natural human action -- open the console on the day
+    # the data lands and pick today -- names a Wednesday. Rather than making
+    # people do that arithmetic, a non-Saturday is read as "the most recent
+    # week I could actually have data for": snap back to Saturday, then back
+    # again to the newest week the archive really holds. That second step is
+    # what makes a Monday or Tuesday work, since the Saturday just gone is
+    # not published until Wednesday.
+    #
+    # A typed SATURDAY is treated as precise and is never re-aimed: if its
+    # vintage is missing the run is refused below with the nearest earlier
+    # week named. An imprecise input gets interpreted; a precise one gets
+    # honoured or refused.
     from datetime import date as _date, timedelta as _td
     try:
         _d = _date.fromisoformat(forecast_date)
         if _d.weekday() != 5:
-            _d -= _td(days=(_d.weekday() - 5) % 7)
-            _flash(f"Snapped {forecast_date} to Saturday {_d}. Forecasts "
-                   "align to FluSight's weekly cadence.")
-            forecast_date = _d.isoformat()
+            _sat = _d - _td(days=(_d.weekday() - 5) % 7)
+            _vs = [v for v in data_mod.vintages() if v <= _sat.isoformat()]
+            _pick = _vs[-1] if _vs else _sat.isoformat()
+            if _pick == _sat.isoformat():
+                _flash(f"{forecast_date} is a "
+                       f"{_d.strftime('%A')}, so the forecast uses the week "
+                       f"ending Saturday {_pick} -- the most recent week with "
+                       "reported data.")
+            else:
+                _flash(f"{forecast_date} is a {_d.strftime('%A')}. The week "
+                       f"ending {_sat} has no published data yet (NHSN "
+                       "reports a finished week the following Wednesday), so "
+                       f"the forecast uses the newest week the archive holds, "
+                       f"ending Saturday {_pick}.")
+            forecast_date = _pick
     except ValueError:
         pass
     try:

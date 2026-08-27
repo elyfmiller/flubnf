@@ -1,0 +1,36 @@
+team_name: "Los Alamos National Lab and Northern Arizona University"
+team_abbr: "LosAlamos_NAU"
+model_name: "SIHRS particle filter"
+model_abbr: "SIHRS"
+model_version: "1.0"
+model_contributors: [
+        {
+            "name": "Ely Finn Miller",
+            "affiliation": "Northern Arizona University",
+            "email": "efm46@nau.edu",
+        },
+        {
+            "name": "Richard Posner",
+            "affiliation": "Northern Arizona University",
+            "email": "Richard.Posner@nau.edu",
+        },
+        {
+            "name": "William Scott Hlavacek",
+            "affiliation": "Los Alamos National Lab",
+            "email": "hlavacek@lanl.gov",
+        },
+        {
+            "name": "Yen Ting Lin",
+            "affiliation": "Los Alamos National Lab",
+            "email": "yentingl@lanl.gov",
+        },
+    ]
+website_url: "https://github.com/elyfmiller/flubnf"
+repo_url: "https://github.com/elyfmiller/flubnf"
+license: "CC-BY-4.0"
+designated_model: false
+methods: "Sequential particle filter over an SIHRS compartmental model with seasonal transmission, submitted as a single member without the ensemble's empirical companion."
+data_inputs: "Weekly state-level laboratory-confirmed influenza hospital admissions from NHSN, read from the hub's dated vintage archive."
+methods_long: "The mechanistic member of LosAlamos_NAU-CModel_Flu, submitted on its own so that the contribution of the blend is visible in the hub's own scoring rather than only in this team's. It is a new model for this team, not a continuation of the piecewise-transmission SIR retired at CModel_Flu version 3.0. The model is SIHRS (susceptible, infected, hospitalized, recovered, with waning immunity) written in BNGL, with an annual harmonic on the transmission rate. A sequential particle filter carries 10,000 candidate epidemics per jurisdiction and reweights them against each week's reported admissions under a negative-binomial observation model whose dispersion is itself fitted; five parameters are estimated per jurisdiction and per week. Forecasts freeze transmission forward from the fit origin and propagate the particle cloud, so the predictive distribution reflects both parameter and observation uncertainty. This model is undesignated: it correlates closely with the designated ensemble, and contributing two near-duplicate forecasts to the hub ensemble would misrepresent them as independent."
+ensemble_of_models: false
+ensemble_of_hub_models: false

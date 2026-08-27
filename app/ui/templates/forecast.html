@@ -8,7 +8,9 @@
   <form method="post" action="/run">
    <label>Forecast date</label>
    <input type="date" name="forecast_date" value="{{ form.forecast_date }}">
-   <span class="hint">A Saturday; the forecast uses that week's archived data.</span>
+   <span class="hint">Pick any day. Surveillance weeks end on Saturday but
+    are published the following Wednesday, so picking the day you are
+    actually working uses the most recent week that has reported data.</span>
    {% if vintage_dates %}
    <select id="vintage-pick">
     <option value="">pick an archived Saturday ({{ vintage_dates|length }} available)</option>
