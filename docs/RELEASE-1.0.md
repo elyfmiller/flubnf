@@ -94,10 +94,12 @@ shipped configuration:
   2023-24 field exactly. The reconstruction's cell universe differs from the
   archived one by a single cell once Puerto Rico is removed, so the gate is
   close, but the per-team differences are broad and not a common factor: of
-  38 teams, 9 reproduce within 1 percent, 18 differ by 1 to 6 percent, and
-  11 differ by more than 6 percent, up to about 21 percent either way
-  (retained artifact: placement_reconstruction_2023-24.txt). The archived
-  field was therefore scored on a convention this repository cannot restate.
+  37 scoreable teams (the baseline's trivial self-agreement and one team
+  with no reconstructable score excluded), 8 reproduce within 1 percent,
+  18 differ by 1 to 6 percent, and 11 by more than 6 percent, the extremes
+  -20.9 and +14.2 percent (retained artifact:
+  placement_reconstruction_2023-24.txt). The archived field was therefore
+  scored on a convention this repository cannot restate.
 * **This project's own three rows were not computed on one convention.** The
   2025-26 row, 0.691107728891329 on 4,475 cells, is exactly the seal's own
   vintage relWIS for the unfitted 50/50 blend. The 2024-25 row,
@@ -115,6 +117,14 @@ then this document claims no placement, and the reader should treat the
 withdrawn numbers as unverified.
 
 ## Independent replication, of the pre-exclusion configuration
+
+Replication note (2026-08-26): the epiweek-53 donor-window fix means a
+from-scratch replay on current code diverges from the sealed analogue
+member at exactly one as-of week, 2026-01-03 (188 cells; member relWIS
+0.770852 sealed arithmetic vs 0.769917 fixed, measured on the full grid
+with the old arithmetic reproducing all 15,712 sealed cells first). A
+bit-exact reproduction of the sealed record uses the sealed code state;
+everything else is unchanged.
 
 On 2026-08-23 a lab laptop (Apple M4) replayed all three seasons at full
 grid, 52 jurisdictions, 3 replicates, using only the shipped console:

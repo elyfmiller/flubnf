@@ -115,9 +115,14 @@ def spec_settings(spec) -> list:
              ("replicates", str(d.get("replicates", "") or "")),
              ("particles", f"{int(d.get('particles') or 0):,}")]
     pairs.append(("weeks dropped", str(int(d.get("weeks_to_drop") or 0))))
-    pairs.append(("same-day week",
-                  "treated as unreported"
-                  if d.get("drop_same_day", True) else "kept"))
+    # only when the spec RECORDS the choice: a ledger row from before the
+    # field existed ran with the same-day week in the fit, and displaying
+    # the new default for it would misdescribe the recorded run (review
+    # finding). Absent key -> no line, which is the honest statement.
+    if "drop_same_day" in d:
+        pairs.append(("same-day week",
+                      "treated as unreported"
+                      if d.get("drop_same_day") else "kept"))
     pairs.append(("ensemble members", str(int(extra.get("members") or 2))))
     return [(k, v) for k, v in pairs if v not in ("", None)]
 

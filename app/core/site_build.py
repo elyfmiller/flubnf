@@ -223,7 +223,10 @@ def _score_payload(payload: dict, truth, n2f, bases_cache: dict) -> dict:
         try:
             bases_cache[key] = _baseline_cells(asof, fips_set, truth)
         except Exception as e:
-            raise RuntimeError(
+            # BuildError, not bare RuntimeError: the CLI's curated error
+            # path catches BuildError and prints the one-line message
+            # instead of a traceback (review finding)
+            raise BuildError(
                 f"baseline for week {asof} could not be built: {e}. "
                 "The site build stops rather than publish a season that "
                 "silently omits this week from its scores.") from e
@@ -452,6 +455,13 @@ def _newest_run_source() -> tuple:
             bundle = json.loads(b.read_text())
             results = json.loads(r.read_text())
         except Exception:
+            continue
+        # research runs never reach the PUBLIC site: their 'ensemble' is
+        # the three-member research blend, and this scan was the one
+        # shipped-product surface without the filter (review finding).
+        # Pre-flag results are recognised by their stored spec.
+        from app.core.runs import is_research
+        if results.get("research") or is_research(results.get("spec", "")):
             continue
         if bundle.get("version") not in report_v2.SUPPORTED_BUNDLE_VERSIONS:
             continue

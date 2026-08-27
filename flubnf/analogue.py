@@ -14,8 +14,9 @@ For a target (state, as-of week T, horizon h):
     ratios   = truth[state', W + 7h] / truth[state', W]
     forecast = anchor * quantiles(ratios)
 
-Donors are pooled ACROSS states on purpose: per-state donors number about one
-per prior season, which cannot support a 23-quantile predictive distribution.
+Donors are pooled ACROSS states on purpose: per-state donors number about
+five per prior season under the two-week calendar window, which cannot
+support a 23-quantile predictive distribution.
 
 HOW IT COMPARES TO THE COMPARTMENTAL MODEL (measured, WIS decomposition)
 ------------------------------------------------------------------------
@@ -84,9 +85,13 @@ the worst failure available here:
   seasons peaked between epiweek 48 and epiweek 6. The archived NHSN series
   begins 2022-02-05, so the archive holds only that season's Feb-Jul tail. A
   calendar-matched pool asks "what happened in March" and 2021-22 answers
-  "the epidemic was still growing": its March donor ratios have median
-  1.36-1.50 against 0.50-0.83 for every other season, q97.5 6.94-9.00
-  against 2.00-2.68. The season is calendar-INVERTED, not merely unusual.
+  "the epidemic was still growing": it is the only donor season whose March
+  ratios have a median above one (1.27 in the 2026-08-26 settled-truth
+  recomputation, every other season at or below 1.00), with an upper tail
+  more than twice as heavy as any other season's (q97.5 7.0 vs 3.0
+  next-highest). Exact ranges depend on how the March pool is defined, so
+  the claim is stated at the strength at which it reproduces. The season is
+  calendar-INVERTED, not merely unusual.
 
   EFFECT. Pre-registered, hash 8f3c7a45a989e905, full grid, 15,460 cells.
   Shipped 50/50 ensemble 0.7039 -> 0.6781 pooled, +3.66 percent, positive in
@@ -158,9 +163,22 @@ def season_of(d: date) -> int:
 
 
 def calendar_distance(a: int, b: int, period: int = 52) -> int:
-    """Circular distance between epiweeks -- weeks 52 and 1 are adjacent."""
-    d = abs(a - b)
-    return min(d, period - d)
+    """Circular distance between epiweeks -- weeks 52 and 1 are adjacent.
+
+    Week 53, the extra MMWR week some years carry, sits BETWEEN weeks 52
+    and 1 on the ring: it maps to position 52.5, so distance(53, 1) == 1,
+    distance(53, 52) == 1, and distance(53, 3) == 3. The plain period-52
+    arithmetic mapped week 53 ONTO week 1 (distance 0), which admitted
+    donors one week beyond the stated bandwidth on one side of an
+    epiweek-53 target and starved the other side (audit finding; the
+    2025-26 season peaked on an epiweek-53 Saturday, so the case is not
+    hypothetical). All pairs within 1..52 are untouched: their arithmetic
+    stays integer and identical to the historical path.
+    """
+    aa = 52.5 if a == 53 else float(a)
+    bb = 52.5 if b == 53 else float(b)
+    d = abs(aa - bb)
+    return int(math.ceil(min(d, period - d)))
 
 
 # ---------------------------------------------------------------------------
@@ -212,9 +230,11 @@ SEASON_2021_22_CALENDAR_INVERSION = DonorSeasonExclusion(
         "6, and the archived NHSN series begins 2022-02-05, so the archive "
         "holds only that season's Feb-Jul tail. A calendar-matched donor pool "
         "asks what happened in March; 2021-22 answers that the epidemic was "
-        "still growing. Its March donor ratios have median 1.36-1.50 against "
-        "0.50-0.83 for every other season, and q97.5 6.94-9.00 against "
-        "2.00-2.68."),
+        "still growing: it is the only donor season whose March ratios have "
+        "a median above one, with an upper tail more than twice as heavy as "
+        "any other season's. Exact ranges depend on the pool definition and "
+        "are stated at the strength at which they reproduce (audit "
+        "2026-08-26)."),
     effect=(
         "Full grid, 15,460 cells, three sealed seasons. Shipped 50/50 "
         "ensemble pooled relWIS 0.7039 -> 0.6781, +3.66 percent; paired "
