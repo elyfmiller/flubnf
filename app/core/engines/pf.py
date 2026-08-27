@@ -152,9 +152,33 @@ def prepare(spec, workroot: Path) -> list:
                 auto_drop = 1
         k_total = int(spec.weeks_to_drop or 0) + auto_drop
         if k_total:
+            from datetime import date as _date2
+            _off = (_date2.fromisoformat(spec.forecast_date)
+                    - _date2.fromisoformat(spec.season_start)).days // 7
+            if len(s.observed) <= k_total:
+                raise ValueError(
+                    f"{loc}: trimming {k_total} week(s) "
+                    f"(weeks_to_drop={int(spec.weeks_to_drop or 0)}, "
+                    f"same-day {auto_drop}) leaves no observations at "
+                    f"{spec.forecast_date}; lower weeks_to_drop or pick a "
+                    "later forecast date")
             s.observed = s.observed[:-k_total]
             s.times = s.times[:-k_total]
             s.n_obs = len(s.observed)
+            # the horizon-label arithmetic (as-of-relative shift by
+            # k_total) is only valid when the fit origin lands exactly
+            # k_total calendar weeks before the as-of date. A NaN gap at
+            # the series tail (the documented NHSN-pause pattern) breaks
+            # that; refuse loudly rather than mislabel every horizon
+            # (review finding).
+            if _off - int(s.times[-1]) != k_total:
+                raise ValueError(
+                    f"{loc}: after trimming {k_total} week(s) the fit "
+                    f"origin sits {_off - int(s.times[-1])} weeks before "
+                    f"{spec.forecast_date}, not {k_total}: the series tail "
+                    "is not calendar-consecutive (a reporting gap), so "
+                    "horizon labels cannot be kept as-of-relative. "
+                    "Refusing rather than mislabelling.")
         gg = None
         if natg:
             # Vintage-true on BOTH sides: the same file the state's own
@@ -665,11 +689,17 @@ def collect(workroot: Path) -> dict:
         k = int(c.get("weeks_dropped", 0) or 0)
         need = n + k + 4
         if tr.ndim < 2 or tr.shape[1] < need:
+            # reachable only when a cell RECORDS a trim but its trajectory
+            # was not extended -- an engine build that ignored
+            # pf_forecast_weeks, or a workroot mixing fix generations. (A
+            # genuinely pre-fix workroot has no weeks_dropped key at all
+            # and reads k=0 here, exactly as it always did.)
             raise RuntimeError(
                 f"{c['key']}: trajectory has "
                 f"{tr.shape[1] if tr.ndim == 2 else tr.size} columns, "
-                f"{need} needed for weeks_dropped={k}; the workroot "
-                "predates the horizon-alignment fix -- rerun the forecast")
+                f"{need} needed for weeks_dropped={k}; the engine did not "
+                "extend the forecast for the recorded trim -- rerun the "
+                "forecast on a current engine")
         d = by_loc.setdefault(c["location"], {str(h): [] for h in range(5)})
         d["0"].extend((tr[:, n - 1 + k] * scale).tolist())
         for h in (1, 2, 3, 4):

@@ -862,6 +862,14 @@ def run_week(root: Path, season: str, asof: str, locations: list,
     _check_stop(root)         # a standing flag must not even prepare a week
     hold_while_paused(root)
     cells = _prepare_week(root, asof, spec, manifest)
+    # Failed fits RETRY on a fresh replay: their markers exist so the run
+    # that produced them could drain its loop, but a NEW run_week call
+    # clears them, refits, and either succeeds or raises with this
+    # attempt's own errors. Without this an all-failed week was
+    # permanently wedged -- every resume re-raised the stale first
+    # failure without dispatching a single fit (review finding).
+    for key in cells_failed(wd):
+        (_cell_done_dir(wd) / f"{key}.json").unlink(missing_ok=True)
     while True:
         done_keys = cells_done(wd)
         pending = [c for c in cells if c["key"] not in done_keys]

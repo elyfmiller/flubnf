@@ -2115,6 +2115,15 @@ def _run_all(spec: RunSpec) -> None:
             tdf = pd.read_csv(_vpo(spec.forecast_date),
                               dtype={"location": str})
             tdf["location"] = tdf["location"].str.zfill(2)
+            # under the nowcast rule the engines treat the same-day row as
+            # unreported, so every consumer of obs (the fan's observed
+            # line, the rate-change cards' current value, the floor's
+            # recent background) must not see it either: a card comparing
+            # the re-anchored forecast against the 1%-complete row it
+            # excluded would announce a spurious surge (review finding)
+            if getattr(spec, "drop_same_day", True):
+                tdf = tdf[tdf["date"].astype(str).str[:10]
+                          != str(spec.forecast_date)]
             import numpy as _npo
             for loc in spec.locations:
                 g = tdf[tdf.location == _n2fo.get(loc, "")].sort_values("date").tail(15)
@@ -2261,6 +2270,10 @@ def _run_all(spec: RunSpec) -> None:
             truth, name2fips = scoring.load_truth()
             df = scoring.score_samples(pf_samples, spec.forecast_date,
                                        name2fips, truth)
+            # stamp the truth source ON the frame at scoring time: the WIS
+            # card renders later, and another request calling load_truth in
+            # between would silently swap the module global (review finding)
+            df.attrs["truth_source"] = scoring.TRUTH_SOURCE
             if not df.empty:
                 # POOLED_INCLUDES_US gate (app/core/us_national.py): the
                 # fitted US cell is the sum of the other 52 and would
@@ -2558,6 +2571,11 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
                                for l in locs) else locs + ["US"]),
         weeks_to_drop=int(d.get("weeks_to_drop") or 0),
         weeks_to_nowcast=int(d.get("weeks_to_nowcast") or 0),
+        # a row recorded before the nowcast rule existed ran with the
+        # same-day week IN the fit; re-running it must reproduce that
+        # methodology, not silently adopt today's default (review finding).
+        # A stored value, either way, is reproduced verbatim.
+        drop_same_day=bool(d.get("drop_same_day", False)),
         replicates=int(d.get("replicates") or 3),
         particles=int(d.get("particles") or 10_000),
         extra={"members": 3} if members == 3 else {})
@@ -2584,7 +2602,8 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
                       replicates=candidate.replicates,
                       engine=candidate.engine,
                       members=members,
-                      particles=candidate.particles)
+                      particles=candidate.particles,
+                      drop_same_day=1 if candidate.drop_same_day else 0)
 
 
 @app.get("/api/series")
@@ -2730,6 +2749,12 @@ def _outcome_chips(outcome_json: str) -> str:
         ns = len(o["submission_errors"])
         bits.append(f'<span class="bad">{ns} submission'
                     f'{"s" if ns != 1 else ""} refused</span>')
+    if o.get("submission_withheld"):
+        # the deliberate research-run withholding, rendered where the
+        # refusals render: the reason existed only in raw ledger JSON
+        # before (review finding)
+        bits.append('<span class="hint">ensemble submission withheld '
+                    '(research run)</span>')
     if o.get("report"): bits.append("report ✓")
     if o.get("pf_relwis"):
         # scored 52-jurisdiction cells when recorded; older ledger rows
@@ -4585,10 +4610,17 @@ def retro_results(request: Request, season: str, week: str = "",
             # "No scoreable weeks yet" branch below render; before this
             # check existed, the probe overwrote score_error
             # unconditionally and that branch was dead code (audit srv-13).
+            # probe the EARLIEST week too: a part-run current season can
+            # have settled truth for its first weeks while the mid week is
+            # still unsettled, and a real scoring failure there must not
+            # render the calm branch (review finding)
+            d_first = retro.read_week_samples(root, weeks[0])
+            Tf = _dp.Timestamp(d_first["asof"])
             have_truth = sum(
-                1 for loc in d0.get("pf", {})
+                1 for dd, TT in ((d0, T0), (d_first, Tf))
+                for loc in dd.get("pf", {})
                 if truth_d.get((n2f_d.get(loc),
-                                T0 + _dp.Timedelta(days=7))) is not None)
+                                TT + _dp.Timedelta(days=7))) is not None)
         except Exception as pe:
             probe = f"diagnostic probe failed: {type(pe).__name__}: {str(pe)[:120]}"
             have_truth = -1      # unknown: surface the probe, never the calm text
@@ -4730,7 +4762,11 @@ def run_models(request: Request,
                replicates: int = Form(3),
                engine: str = Form("all"),
                members: int = Form(2),
-               particles: int = Form(10_000)):
+               particles: int = Form(10_000),
+               # not on the form (the nowcast rule is the default); the
+               # re-run path passes it so a recorded pre-rule methodology
+               # reproduces instead of silently adopting today's default
+               drop_same_day: int = Form(1)):
     # the pipeline's contract is Saturdays with an archived vintage; hold
     # the user to it kindly instead of failing three phases into the run
     from datetime import date as _date, timedelta as _td
@@ -4841,6 +4877,7 @@ def run_models(request: Request,
                    locations=locs_list,
                    weeks_to_drop=weeks_to_drop,
                    weeks_to_nowcast=weeks_to_nowcast,
+                   drop_same_day=bool(int(drop_same_day)),
                    replicates=replicates,
                    particles=particles,
                    extra={"members": 3} if members == 3 else {})

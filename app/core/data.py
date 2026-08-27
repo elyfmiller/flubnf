@@ -109,8 +109,12 @@ def check_freshness(fetch: bool = True) -> Freshness:
                 # the STALE local ref and reports "up to date" while a new
                 # vintage sits upstream -- offline must never read as fresh.
                 err = (f.stderr or "").strip().splitlines()
-                detail = ("fetch failed: "
-                          + (err[-1] if err else f"git exited {f.returncode}"))
+                # prefer git's own fatal line: the LAST line of a
+                # multi-line message can be a meaningless fragment
+                # ("and the repository exists.")
+                fatal = next((l for l in err if l.startswith("fatal:")),
+                             err[-1] if err else f"git exited {f.returncode}")
+                detail = f"fetch failed: {fatal}"
             else:
                 r = subprocess.run(
                     ["git", "rev-list", "--count", "HEAD..origin/main"],

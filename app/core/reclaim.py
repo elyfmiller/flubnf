@@ -157,12 +157,20 @@ def workroot_intermediates(w: Path) -> list:
         return []
     out = []
     try:
-        for p in sorted(w.iterdir()):
-            if p.is_dir() and not p.is_symlink() and CELL_DIR_RE.match(p.name):
-                out.append(p)
-            elif (WORKROOT_SCAFFOLD_RE.match(p.name)
-                  or p.name.endswith((".prog", ".tmp"))):
-                out.append(p)
+        scopes = [w]
+        # a research run's two-strain member fits in a pf2s/ subdirectory
+        # laid out exactly like the workroot top level; without this its
+        # heaviest trees survived every prune (review finding)
+        if (w / "pf2s").is_dir() and not (w / "pf2s").is_symlink():
+            scopes.append(w / "pf2s")
+        for scope in scopes:
+            for p in sorted(scope.iterdir()):
+                if (p.is_dir() and not p.is_symlink()
+                        and CELL_DIR_RE.match(p.name)):
+                    out.append(p)
+                elif (WORKROOT_SCAFFOLD_RE.match(p.name)
+                      or p.name.endswith((".prog", ".tmp"))):
+                    out.append(p)
     except OSError:
         return []
     return out

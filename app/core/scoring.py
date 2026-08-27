@@ -187,12 +187,15 @@ def summary_table_html(df: pd.DataFrame) -> str:
     # the cell rule, disclosed where the counts render: it used to live
     # only in code comments, and a reader reconciling these counts against
     # an official FluSight score had no way to see why they differ
+    # the frame's own stamp wins: the module global can be rewritten by any
+    # concurrent load_truth() between scoring and rendering
+    src = getattr(df, "attrs", {}).get("truth_source", TRUTH_SOURCE)
     rule = ('<p class="hint">A cell is scored when settled truth exists and '
             'is positive, the forecast median is positive, and the baseline '
             'covers the same cell; official FluSight scoring keeps cells '
             'this rule drops, so counts can differ.'
-            + (f" Truth source: {TRUTH_SOURCE}."
-               if TRUTH_SOURCE != "settled" else "") + '</p>')
+            + (f" Truth source: {src}."
+               if src != "settled" else "") + '</p>')
     return ('<table><thead><tr><th>Location</th>'
             f'<th class="num">{member} relWIS</th>'
             '<th class="num">Cells</th></tr></thead><tbody>'

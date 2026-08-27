@@ -147,7 +147,7 @@ def test_collect_refuses_pre_fix_workroot_with_drop(tmp_path):
     import pytest
     from app.core.engines import pf as pf_engine
     wr = _fake_cell(tmp_path, n_obs=3, n_cols=7, k=1)
-    with pytest.raises(RuntimeError, match="horizon-alignment"):
+    with pytest.raises(RuntimeError, match="did not extend the forecast"):
         pf_engine.collect(wr)
 
 
@@ -199,3 +199,58 @@ def test_analogue_drop_moves_anchor_and_extends_span(tmp_path, monkeypatch):
                                "drop_same_day": True})()
     eng.run(spec_late)
     assert calls[0] == (9.0, "2026-01-10", 1)
+
+
+def test_calendar_distance_week53_sits_between_52_and_1():
+    # week 53 maps to ring position 52.5: adjacent to both neighbours,
+    # never conflated with week 1 (the old arithmetic gave distance 0)
+    from flubnf.analogue import calendar_distance as cd
+    assert cd(53, 1) == 1
+    assert cd(53, 52) == 1
+    assert cd(53, 3) == 3
+    assert cd(53, 53) == 0
+    # every pair within 1..52 is untouched by the fix
+    for a, b, want in ((52, 1, 1), (1, 3, 2), (50, 2, 4), (10, 10, 0)):
+        assert cd(a, b) == want
+
+
+def test_spec_settings_omits_same_day_line_for_pre_rule_specs():
+    from app.core.runs import spec_settings
+    pre = {"engine": "all", "forecast_date": "2026-01-03",
+           "locations": ["Ohio"], "replicates": 3, "particles": 10_000}
+    labels = [k for k, _ in spec_settings(pre)]
+    assert "same-day week" not in labels, (
+        "a run recorded before the nowcast rule existed must not be "
+        "described as having applied it")
+    post = dict(pre, drop_same_day=True)
+    assert ("same-day week", "treated as unreported") in spec_settings(post)
+    kept = dict(pre, drop_same_day=False)
+    assert ("same-day week", "kept") in spec_settings(kept)
+
+
+def test_prepare_trim_refuses_a_gapped_tail(monkeypatch, tmp_path):
+    # the horizon-label arithmetic requires the trimmed rows to be
+    # calendar-consecutive with the as-of week; a NaN gap must refuse
+    # loudly, never mislabel (review finding)
+    import pytest
+    from app.core.engines import pf as pf_engine
+
+    class FakeState:
+        observed = [10.0, 12.0, 14.0]
+        times = [18, 19, 23]          # gap: weeks 20-22 missing, 23 same-day
+        n_obs = 3
+        last_week_offset = 23
+
+    spec = type("S", (), {
+        "forecast_date": "2025-12-27", "season_start": "2025-08-02",
+        "weeks_to_drop": 0, "drop_same_day": True, "locations": ["Ohio"],
+        "replicates": 1, "particles": 100, "jitter": 0.3,
+        "observable_mode": "integrated", "extra": {}})()
+    # (2025-12-27 - 2025-08-02) = 21 weeks exactly? Use the real offset:
+    from datetime import date
+    off = (date(2025, 12, 27) - date(2025, 8, 2)).days // 7
+    FakeState.times = [off - 5, off - 4, off]   # tail gap of 4 weeks
+    import flubnf.sihrs_fit as sf
+    monkeypatch.setattr(sf, "resolve_state", lambda *a, **k: FakeState())
+    with pytest.raises(ValueError, match="not calendar-consecutive"):
+        pf_engine.prepare(spec, tmp_path)
