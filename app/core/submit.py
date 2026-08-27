@@ -32,10 +32,18 @@ QUANTILES = (0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45,
 #: depend on a file the wheel does not ship. The drift guard is a test:
 #: app/tests/test_submit_join.py parses both YAML files and asserts these
 #: values verbatim, so changing one without the other fails the suite.
-TEAM_ABBR = "NAU_FluBNF"
+#: The team registered on the hub since 2023. Submitting under the
+#: EXISTING registration (rather than a new NAU_FluBNF team) was the
+#: PIs' decision, 2026-08-27: the slot, its history and its
+#: contributors carry forward, and the revised metadata cards describe
+#: what the models now are.
+TEAM_ABBR = "LosAlamos_NAU"
 
-#: internal model key -> hub model_abbr (model-metadata/<team>-<abbr>.yml)
-MODEL_ABBR = {"pf": "SIHRS", "ensemble": "ensemble"}
+#: internal model key -> hub model_abbr (model-metadata/<team>-<abbr>.yml).
+#: The ensemble keeps the registered CModel_Flu identity, so its scoring
+#: history stays attached to one model_id; the mechanistic member is a
+#: second, undesignated model under the same team.
+MODEL_ABBR = {"pf": "SIHRS", "ensemble": "CModel_Flu"}
 
 
 def hub_model_id(model: str) -> str:

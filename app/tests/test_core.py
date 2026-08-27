@@ -58,8 +58,10 @@ def test_submission_writes_hub_layout(tmp_path):
     samples = {str(h): rng.gamma(5, 20, 4000).tolist() for h in (1, 2, 3, 4)}
     rows = quantile_rows(samples, "39", "2026-01-24")
     p = write_submission(rows, "pf", "2026-01-24", tmp_path)
-    assert p.name == "2026-01-31-NAU_FluBNF-SIHRS.csv"
-    assert p.parent.name == "NAU_FluBNF-SIHRS"                # identity in the PATH
+    from app.core.submit import hub_model_id
+    mid = hub_model_id("pf")                     # from the registered team
+    assert p.name == f"2026-01-31-{mid}.csv"
+    assert p.parent.name == mid                  # identity in the PATH
     df = pd.read_csv(p)
     assert len(df) == 4 * 23 and (df.value >= 0).all()
     assert set(df.reference_date) == {"2026-01-31"}           # name == column

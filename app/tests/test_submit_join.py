@@ -110,12 +110,13 @@ def test_filename_carries_the_reference_date_not_the_asof(tmp_path):
     came from the bare as-of. hub-config/validations.yml sets t0_colname:
     "reference_date", so the hub's round-id check compares the name against
     that column and would have rejected the file."""
+    from app.core import submit
     from app.core.submit import write_submission
     rows = quantile_rows(SAMPLES, "06", ASOF)
     p = write_submission(rows, "pf", ASOF, tmp_path)
     assert p.name.startswith("2025-12-20-")          # not 2025-12-13
     stamped = {r["reference_date"] for r in rows}
-    assert stamped == {p.name.split("-NAU_FluBNF-")[0]}
+    assert stamped == {p.name.split(f"-{submit.TEAM_ABBR}-")[0]}
 
 
 def test_a_name_that_disagrees_with_the_rows_is_refused(tmp_path):

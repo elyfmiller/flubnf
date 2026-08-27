@@ -277,3 +277,43 @@ def test_prepare_trim_refuses_a_gapped_tail(monkeypatch, tmp_path):
     monkeypatch.setattr(data, "vintage_path", lambda d: str(vfile))
     with pytest.raises(ValueError, match="not calendar-consecutive"):
         pf_engine.prepare(spec, tmp_path)
+
+
+def test_any_weekday_resolves_to_a_published_saturday(monkeypatch):
+    """A surveillance week ends Saturday but publishes the following
+    Wednesday, so the day a person actually works is not the week they can
+    forecast. Any non-Saturday resolves to the newest week the archive
+    really holds; a typed Saturday stays precise."""
+    from app.ui import server
+    from app.core import data as dm
+    from fastapi.testclient import TestClient
+
+    # archive holds up to 2026-02-14; the week ending 02-21 is not out yet
+    monkeypatch.setattr(dm, "vintages",
+                        lambda: ["2026-02-07", "2026-02-14"])
+    monkeypatch.setattr(server.data_mod, "vintages",
+                        lambda: ["2026-02-07", "2026-02-14"])
+    c = TestClient(server.app)
+    for day, why in (("2026-02-18", "Wednesday, data just landed"),
+                     ("2026-02-16", "Monday, week not published yet"),
+                     ("2026-02-20", "Friday")):
+        server._status["flash"] = None
+        server._status["running"] = None
+        c.post("/run", data={"forecast_date": day, "locations": []},
+               follow_redirects=False)
+        flash = server._status.get("flash") or ""
+        assert "2026-02-14" in flash, (
+            f"{why}: expected the newest published week, got {flash[:120]}")
+
+
+def test_flash_messages_do_not_delete_each_other():
+    """A request can have two things to say; the second used to silently
+    overwrite the first."""
+    from app.ui import server
+    server._status["flash"] = None
+    server._flash("first thing")
+    server._flash("second thing")
+    both = server._status["flash"]
+    assert "first thing" in both and "second thing" in both
+    server._flash("second thing")          # idempotent, no duplication
+    assert server._status["flash"].count("second thing") == 1
