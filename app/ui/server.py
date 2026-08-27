@@ -2250,7 +2250,17 @@ def _run_all(spec: RunSpec) -> None:
             df = scoring.score_samples(pf_samples, spec.forecast_date,
                                        name2fips, truth)
             if not df.empty:
-                outcome["pf_relwis"] = round(float(df.wis.sum() / df.base_wis.sum()), 3)
+                # POOLED_INCLUDES_US gate (app/core/us_national.py): the
+                # fitted US cell is the sum of the other 52 and would
+                # dominate this ratio. Every other pooled sum was gated on
+                # 2026-08-26; this chip was missed and published a
+                # 53-location number on the run ledger and log line.
+                from app.core.us_national import pooled_frame
+                pdf = pooled_frame(df)
+                if not pdf.empty:
+                    outcome["pf_relwis"] = round(
+                        float(pdf["wis"].sum() / pdf["base_wis"].sum()), 3)
+                    outcome["pf_relwis_cells"] = int(len(pdf))
             df.to_json(workroot / "scores_pf.json")
         except Exception as e:
             outcome["score_error"] = str(e)[:200]
@@ -2703,7 +2713,11 @@ def _outcome_chips(outcome_json: str) -> str:
                     f'{"s" if ns != 1 else ""} refused</span>')
     if o.get("report"): bits.append("report ✓")
     if o.get("pf_relwis"):
-        bits.append(relwis_chip(o["pf_relwis"], cells=o.get("pf_cells")))
+        # scored 52-jurisdiction cells when recorded; older ledger rows
+        # only carried the fit-cell count (locations x replicates)
+        bits.append(relwis_chip(o["pf_relwis"],
+                                cells=o.get("pf_relwis_cells",
+                                            o.get("pf_cells"))))
     if o.get("error"):
         bits.append('<span class="bad">failed</span>; the full error is on '
                     'the run page')
