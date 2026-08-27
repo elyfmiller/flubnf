@@ -86,12 +86,29 @@ def test_wis_card_discloses_the_cell_rule():
     assert "counts can differ" in html
 
 
-def test_load_truth_records_its_source():
-    from app.core import scoring
+def test_load_truth_records_its_source(tmp_path, monkeypatch):
+    # hub-free (CI has FLUBNF_HUB=/nonexistent): a fixture hub exercises
+    # BOTH branches of the marker the fallback used to lack entirely
+    from app.core import data, scoring
+    hub = tmp_path / "hub"
+    (hub / "target-data").mkdir(parents=True)
+    csv = ("date,location,location_name,value\n"
+           "2026-01-03,39,Ohio,100\n")
+    (hub / "target-data" / "target-hospital-admissions.csv").write_text(csv)
+    (hub / "auxiliary-data").mkdir()
+    (hub / "auxiliary-data" / "locations.csv").write_text(
+        "location,location_name,abbreviation\n39,Ohio,OH\n")
+    monkeypatch.setattr(scoring, "HUB", hub)
     scoring.load_truth()
-    # on this machine the settled file exists; the marker must say so, and
-    # exist at all (the fallback used to be recorded nowhere)
     assert scoring.TRUTH_SOURCE == "settled"
+    # settled file gone, archive present: the fallback must say so
+    (hub / "target-data" / "target-hospital-admissions.csv").unlink()
+    vfile = tmp_path / "target-hospital-admissions_2026-01-03.csv"
+    vfile.write_text(csv)
+    monkeypatch.setattr(data, "vintages", lambda: ["2026-01-03"])
+    monkeypatch.setattr(data, "vintage_path", lambda d: str(vfile))
+    scoring.load_truth()
+    assert scoring.TRUTH_SOURCE == "vintage 2026-01-03"
 
 
 def test_retro_week_budget_never_below_fixed_floor():
@@ -252,5 +269,11 @@ def test_prepare_trim_refuses_a_gapped_tail(monkeypatch, tmp_path):
     FakeState.times = [off - 5, off - 4, off]   # tail gap of 4 weeks
     import flubnf.sihrs_fit as sf
     monkeypatch.setattr(sf, "resolve_state", lambda *a, **k: FakeState())
+    # hub-free: prepare() resolves the vintage path before the trim; a
+    # fixture file stands in so this runs in CI (FLUBNF_HUB=/nonexistent)
+    import app.core.data as data
+    vfile = tmp_path / "vintage.csv"
+    vfile.write_text("date,location,location_name,value\n")
+    monkeypatch.setattr(data, "vintage_path", lambda d: str(vfile))
     with pytest.raises(ValueError, match="not calendar-consecutive"):
         pf_engine.prepare(spec, tmp_path)
