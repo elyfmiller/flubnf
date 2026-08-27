@@ -115,6 +115,9 @@ def spec_settings(spec) -> list:
              ("replicates", str(d.get("replicates", "") or "")),
              ("particles", f"{int(d.get('particles') or 0):,}")]
     pairs.append(("weeks dropped", str(int(d.get("weeks_to_drop") or 0))))
+    pairs.append(("same-day week",
+                  "treated as unreported"
+                  if d.get("drop_same_day", True) else "kept"))
     pairs.append(("ensemble members", str(int(extra.get("members") or 2))))
     return [(k, v) for k, v in pairs if v not in ("", None)]
 
@@ -276,6 +279,19 @@ class RunSpec:
     season_start: str = ""
     weeks_to_drop: int = 0           # trim newest N weeks before fitting
     weeks_to_nowcast: int = 0        # framework now, method later (no-op nowcaster)
+    #: Treat the archive's SAME-DAY week as unreported (default on). The
+    #: hub's vintage archived on Saturday D carries a row for the week
+    #: ending D itself, archived hours into its reporting window: measured
+    #: across all 90 vintages it averages 92% complete nationally but
+    #: swings to ~1% for individual states (Alabama 2026-02-14: 6 reported
+    #: of a settled 437), and the hub's own horizon convention calls that
+    #: week a nowcast target, i.e. unobserved. Fitting and anchoring to it
+    #: collapsed live forecasts to zero (field report + audit, 2026-08-26).
+    #: The engines drop that row per state when present; horizon labels
+    #: stay as-of-relative via the weeks_dropped machinery. Retrospectives
+    #: construct their specs with this OFF so the sealed methodology
+    #: reproduces until a re-baselined run adopts the rule end to end.
+    drop_same_day: bool = True
     replicates: int = 3
     particles: int = 10_000          # sit-down verdict 2026-08-17
     jitter: float = 0.30
