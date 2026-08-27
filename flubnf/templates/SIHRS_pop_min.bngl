@@ -39,7 +39,14 @@ Reff    Reff__FREE     # BASE reproduction number: harmonic-neutral, at the
                        # from each other. Fit Reff, never R0 (= Reff/s0, itself
                        # a BASE value, recovered post hoc)
 eps1    eps1__FREE     # annual-harmonic amplitude
-phi1    phi1__FREE     # annual-harmonic phase (week of peak transmissibility)
+# Annual-harmonic phase. Read it as a peak week ONLY with the offset
+# below: the model's clock is the counter species t, which the particle
+# filter seeds at 0 for the first FITTED week, so t leads the season-start
+# week index by one. A fitted phi1 therefore names the peak one week LATER
+# than the calendar week it appears to. Forecasts and scores are unaffected
+# (the offset is uniform and phi1 absorbs it); only this reading is.
+# Measured 2026-08-27, PyBNF-pf audit.
+phi1    phi1__FREE     # annual-harmonic phase (see the offset note above)
 
 ### -- progression / removal -- ###
 gamma   {{GAMMA}}      # FIXED: 7/3.2 d generation time, Chan 2024 doi:10.1101/2024.08.17.24312064
