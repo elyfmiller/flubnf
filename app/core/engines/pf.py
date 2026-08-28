@@ -290,10 +290,38 @@ class RunStopped(Exception):
 # and seed), so partitioning them changes no number, only the wall clock.
 # --------------------------------------------------------------------------
 
-#: Runner subprocesses to deal the prepared cells across. retro.py takes its
-#: own default from this constant, so a forecast and a replay of the same
-#: grid cannot drift apart in cost.
-DEFAULT_SHARD_WIDTH = 4
+#: Cores to leave for the console and the operating system. The fits are
+#: also nice-d (app/core/proc.py), but a reserve keeps the machine usable
+#: even when the scheduler is generous to the runners.
+SHARD_CORES_RESERVED = 2
+
+#: Upper bound. Past roughly this many runners the measured curve is flat,
+#: and every extra process still costs memory and a startup.
+SHARD_WIDTH_CAP = 16
+
+
+def default_shard_width(cpus: int | None = None) -> int:
+    """Runner subprocesses to deal the prepared cells across.
+
+    Sized to the MACHINE rather than fixed, measured 2026-08-28 on a
+    12-core M2 Max over a 24-cell grid: 1 runner 384s, 2 runners 200s,
+    4 runners 103s, 8 runners 56s, 16 runners 53s. The old fixed default
+    of 4 therefore left most of a workstation idle -- about 2x on this
+    box, confirmed on a 48-cell grid (4 runners 206s, 16 runners 100s) --
+    while the same fixed 4 would oversubscribe a 2-core laptop. Scaling
+    with the core count is right on both, which is why this is a function
+    of the machine and not a different constant.
+
+    Sharding partitions independent cells (each carries its own model,
+    config and seed), so this changes wall clock and no number.
+    """
+    n = cpus if cpus is not None else (os.cpu_count() or 4)
+    return max(2, min(SHARD_WIDTH_CAP, n - SHARD_CORES_RESERVED))
+
+
+#: Resolved once at import. retro.py takes its own default from this, so a
+#: forecast and a replay of the same grid cannot drift apart in cost.
+DEFAULT_SHARD_WIDTH = default_shard_width()
 
 #: Per-machine override, never a scientific one: FLUBNF_PF_WIDTH=8 on a
 #: wider box, =1 to reproduce the old single-process behaviour.

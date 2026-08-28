@@ -69,7 +69,6 @@ def test_the_two_paths_share_one_default_width():
     """A forecast and a replay of the same grid must cost the same wall
     clock, so neither may carry its own default."""
     import inspect
-    assert pf.DEFAULT_SHARD_WIDTH == 4
     for fn in (retro.run_week, retro.run_season):
         assert (inspect.signature(fn).parameters["width"].default
                 == pf.DEFAULT_SHARD_WIDTH)
@@ -119,9 +118,14 @@ def test_the_grid_that_failed_would_now_fit_its_budget():
     shards = pf.shard_cells(cells, pf.DEFAULT_SHARD_WIDTH)
     predicted = pf.expected_seconds(shards)
     budget = pf.budget_seconds(shards)
-    assert predicted == pytest.approx(sequential / 4, rel=0.05)
+    assert predicted == pytest.approx(
+        sequential / pf.DEFAULT_SHARD_WIDTH, rel=0.05)
     assert budget > predicted                    # the honest run has room
-    assert budget == pytest.approx(pf.TIMEOUT_SAFETY * predicted)
+    # floor or multiple, whichever is larger: once the default width
+    # scales with the cores, a full grid's predicted wall can fall
+    # under the floor, and the floor is then the honest answer
+    assert budget == pytest.approx(
+        max(pf.TIMEOUT_FLOOR_S, pf.TIMEOUT_SAFETY * predicted))
 
 
 def test_even_unsharded_the_budget_follows_the_work_not_a_constant():
@@ -193,10 +197,20 @@ def test_the_peak_grid_still_gets_the_enlargement_it_needed():
     cells = _cells(FULL_GRID_CELLS, n_obs=FULL_GRID_N_OBS)
     shards = pf.shard_cells(cells, pf.DEFAULT_SHARD_WIDTH)
     budget = pf.budget_seconds(shards)
-    assert budget > OLD_FIXED_TIMEOUT_S                    # genuinely enlarged
-    assert budget == pytest.approx(pf.TIMEOUT_SAFETY
-                                   * pf.expected_seconds(shards))
-    assert budget > sum(pf.cell_seconds(c) for c in cells) * 0.7
+    sequential = sum(pf.cell_seconds(c) for c in cells)
+    # The invariant is about the WORK, not a fixed number of seconds. The
+    # 91-minute full grid died against a fixed one-hour timeout; the budget
+    # must now exceed that grid's predicted wall time with the safety
+    # factor's margin, at whatever width this machine resolves to. (The
+    # budget legitimately fell below the old 3600 s once the default width
+    # scaled with the cores -- because the work fell with it.)
+    assert budget == pytest.approx(max(
+        pf.TIMEOUT_FLOOR_S,
+        pf.TIMEOUT_SAFETY * pf.expected_seconds(shards)))
+    assert budget > sequential / pf.DEFAULT_SHARD_WIDTH
+    # and at the old fixed width it still clears the hour it once failed
+    old = pf.shard_cells(cells, 4)
+    assert pf.budget_seconds(old) > OLD_FIXED_TIMEOUT_S
 
 
 # --------------------------------------------------- the real runner scripts
@@ -628,3 +642,26 @@ def test_reclaim_prunes_shard_scaffolding_and_keeps_the_merged_record(tmp_path):
     assert "pf_status_0.json.prog" in gone
     assert "pf_status.json" not in gone and "cells.json" not in gone
     assert "results.json" not in gone
+
+
+def test_default_width_is_sized_to_the_machine():
+    """A fixed width is wrong on every machine but the one it was picked
+    on: it left a 12-core workstation ~2x idle and would oversubscribe a
+    2-core laptop. It scales with the cores, reserving a couple for the
+    console, and is capped where the measured curve goes flat."""
+    assert pf.default_shard_width(12) == 10
+    assert pf.default_shard_width(8) == 6
+    assert pf.default_shard_width(4) == 2
+    assert pf.default_shard_width(2) == 2       # never below two
+    assert pf.default_shard_width(1) == 2
+    assert pf.default_shard_width(64) == pf.SHARD_WIDTH_CAP
+    assert pf.DEFAULT_SHARD_WIDTH == pf.default_shard_width()
+
+
+def test_more_runners_than_cells_is_harmless():
+    """shard_cells drops the empty shards, so a wide default on a tiny
+    grid simply runs one cell per runner."""
+    cells = [{"key": f"c{i}"} for i in range(3)]
+    shards = pf.shard_cells(cells, 10)
+    assert len(shards) == 3
+    assert sorted(c["key"] for sh in shards for c in sh) == ["c0", "c1", "c2"]
