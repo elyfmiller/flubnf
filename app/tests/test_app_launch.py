@@ -11,11 +11,40 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from flubnf import cli                                    # noqa: E402
 
 MARK = "flubnf-test-entry"
+MAX_PORT = 65535
+
+
+def _free_port_with_headroom(headroom, listen=False):
+    """A free (or, with listen=True, a held-and-listening) port that has
+    at least `headroom` ports above it before the 65535 ceiling.
+
+    The fallback tests seed themselves from an OS-assigned ephemeral port
+    and then assert the search walks UPWARD from it. macOS hands out
+    ephemeral ports in 49152-65535, so an unfiltered seed occasionally
+    lands close enough to the top that the walk has nowhere legal to go
+    and the assertion fails for a reason that has nothing to do with the
+    behaviour under test. Re-rolling until the seed has room keeps those
+    tests about fallback instead of about luck. The ceiling itself is
+    covered deliberately by the tests further down."""
+    for _ in range(200):
+        s = socket.socket()
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+        if port + headroom <= MAX_PORT:
+            if listen:
+                s.listen(1)
+                return s, port
+            s.close()
+            return None, port
+        s.close()
+    pytest.skip("no ephemeral port with headroom below the 65535 ceiling")
 
 
 def _spawn_sleeper(*extra):
@@ -107,10 +136,8 @@ def test_pick_port_prefers_the_preferred_port_when_free():
 
 
 def test_pick_port_falls_back_past_a_live_listener():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        s.listen(1)
-        busy = s.getsockname()[1]
+    holder, busy = _free_port_with_headroom(10, listen=True)
+    with holder:
         got = cli._pick_port(busy, tries=10)
         assert got != busy
         assert busy < got < busy + 10
@@ -273,16 +300,72 @@ def test_bind_app_socket_holds_the_preferred_port():
 
 
 def test_bind_app_socket_falls_back_past_a_live_listener():
-    with socket.socket() as busy:
-        busy.bind(("127.0.0.1", 0))
-        busy.listen(1)
-        base = busy.getsockname()[1]
+    holder, base = _free_port_with_headroom(10, listen=True)
+    with holder:
         sock, port = cli._bind_app_socket(base, tries=10)
         try:
             assert port != base
         finally:
             if sock is not None:
                 sock.close()
+
+
+# ------------------------------------------- the 65535 ceiling
+# Both searches walk upward from `preferred`, and bind() rejects a port
+# above 65535 with OverflowError, which is a ValueError and so escapes the
+# `except OSError` that means "try the next port". These pin the walk to
+# ports that can actually exist. Before the fix each one raised
+# OverflowError out of the call instead of returning.
+
+def _hold_the_top_port():
+    """A live listener on 65535, so the search cannot take that port and
+    must decide what to do at the ceiling. Skips rather than guesses when
+    the machine already has 65535 spoken for: without a listener of our
+    own we cannot tell a genuinely busy top port from a free one, and a
+    free one would let the search succeed on its first probe and never
+    reach the boundary this test exists to exercise."""
+    s = socket.socket()
+    try:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(("127.0.0.1", MAX_PORT))
+        s.listen(1)
+    except OSError:
+        s.close()
+        pytest.skip("port 65535 is not ours to hold on this machine")
+    return s
+
+
+def test_pick_port_stops_at_the_top_of_the_port_range():
+    with _hold_the_top_port():
+        # every legal candidate (there is exactly one, 65535) is busy, so
+        # the all-busy contract applies: hand the preferred port back and
+        # let uvicorn report the conflict
+        assert cli._pick_port(MAX_PORT, tries=10) == MAX_PORT
+
+
+def test_bind_app_socket_stops_at_the_top_of_the_port_range():
+    with _hold_the_top_port():
+        sock, port = cli._bind_app_socket(MAX_PORT, tries=10)
+        try:
+            assert sock is None
+            assert port == MAX_PORT
+        finally:
+            if sock is not None:
+                sock.close()
+
+
+def test_port_search_declines_an_out_of_range_preferred_port():
+    # no socket needed: 70000 is not a port, so there is nothing legal to
+    # probe and both searches must fall through to their all-busy branch
+    # rather than asking the kernel to bind a number it will reject
+    assert cli._pick_port(70000, tries=3) == 70000
+    sock, port = cli._bind_app_socket(70000, tries=3)
+    try:
+        assert sock is None
+        assert port == 70000
+    finally:
+        if sock is not None:
+            sock.close()
 
 
 # ------------------------------------- Windows liveness + cmdline shims

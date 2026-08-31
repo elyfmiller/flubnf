@@ -11,6 +11,18 @@
 *.bat text eol=crlf
 *.ps1 text eol=crlf
 
+# The engine's input formats, pinned by name rather than left to the
+# `text=auto` heuristic above. `auto` asks git to GUESS whether a blob is
+# text; a template that ever picked up a byte git read as binary would drop
+# out of the policy silently, and the way you would find that out is a fit
+# behaving differently on one platform. These are the formats BNG2.pl and
+# PyBNF parse, so they say so rather than inferring it. Only .bngl and
+# .conf are tracked today (flubnf/templates); .exp is written at run time
+# and is listed so a committed fixture would land under the same rule.
+*.bngl text eol=lf
+*.exp  text eol=lf
+*.conf text eol=lf
+
 # The generated site. site.json IS the review, so it stays a normal diffable
 # text file; the vendored Plotly bundle beside it is 4.9 MB of upstream
 # minified JS that would bury every one of those reviews, so it is excluded

@@ -4,6 +4,7 @@ sources moved on rebuilds it from that bundle, once; a fresh report is
 served verbatim; a broken bundle degrades to the stored file; reports that
 predate the bundle get a conservative serve-time theme carry or a quiet
 line, with the stored file never modified."""
+import hashlib
 import json
 import os
 import sys
@@ -291,12 +292,12 @@ def test_home_map_renders_the_reports_exact_cards(tmp_path, monkeypatch):
     expect = {c["fips"]: c for c in bundle["cards"].values() if c.get("fips")}
     assert cards == expect                          # exact, not recomputed
     assert meta == {"model": "ensemble", "approx": False,
-                    "label": "NAU ensemble outlook"}
+                    "label": "FluBNF Ensemble outlook"}
     # the model label lands on BOTH surfaces
-    assert "NAU ensemble outlook" in (w / "report.html").read_text()
+    assert "FluBNF Ensemble outlook" in (w / "report.html").read_text()
     home = client.get("/")
     assert home.status_code == 200
-    assert "NAU ensemble outlook" in home.text
+    assert "FluBNF Ensemble outlook" in home.text
     assert "approximate, from stored quantiles" not in home.text
 
 
@@ -321,7 +322,7 @@ def test_pre_bundle_run_falls_back_and_labels_the_approximation(
     home = client.get("/")
     # the label span is the model toggle's relabel target, so the phrase
     # spans a data-mapmodel-label element
-    assert "NAU ensemble outlook" in home.text
+    assert "FluBNF Ensemble outlook" in home.text
     assert "approximate, from stored quantiles" in home.text
 
 
@@ -369,6 +370,29 @@ def test_categorical_probs_from_quantiles_matches_the_sample_computation():
 
 # ------------------------------------------------- saving the weekly report
 
+def _delivery_mismatch(a: str, b: str) -> str:
+    """Empty when the two deliveries are identical, else a SHORT locator.
+
+    Compared by digest on purpose, not with a bare ==. report.html is about
+    5 MB over 4500 lines because the Plotly bundle is inlined, and the one
+    regression this assertion exists to catch -- a line ending creeping into
+    one delivery and not the other -- makes EVERY line differ. Handed that,
+    pytest's difflib explanation goes quadratic over the whole page: on
+    Windows CI run 33200477476 it sat in difflib.find_longest_match long
+    enough to be a large share of a 62 minute job, and then printed a
+    truncated diff that read as two identical strings. A digest plus the
+    first differing offset fails in microseconds and names the cause.
+    """
+    if hashlib.sha256(a.encode("utf-8")).digest() \
+            == hashlib.sha256(b.encode("utf-8")).digest():
+        return ""
+    i = next((k for k, (x, y) in enumerate(zip(a, b)) if x != y),
+             min(len(a), len(b)))
+    return ("inline and download deliver different text: lengths "
+            f"{len(a)} and {len(b)}, first difference at offset {i}, "
+            f"{a[i:i + 12]!r} against {b[i:i + 12]!r}")
+
+
 def test_weekly_report_downloads_with_a_dated_name(tmp_path, monkeypatch):
     """The season report has been downloadable all along; the weekly one
     was inline-only, so a reader could not keep or send one. Same treatment
@@ -382,7 +406,9 @@ def test_weekly_report_downloads_with_a_dated_name(tmp_path, monkeypatch):
     assert r.headers["content-type"].startswith("text/html")
     # the same bytes the inline view serves: one file, two deliveries
     assert r.content == (d / "report.html").read_bytes()
-    assert client.get("/output/report?date=2098-01-03").text == r.text
+    inline = client.get("/output/report?date=2098-01-03").text
+    mismatch = _delivery_mismatch(inline, r.text)
+    assert not mismatch, mismatch
 
 
 def test_download_refreshes_a_stale_report_first(tmp_path, monkeypatch):

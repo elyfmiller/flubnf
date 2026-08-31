@@ -230,7 +230,10 @@ def write_exp(setup: StateSetup, out_path: str | Path) -> Path:
     lines = ["# time H_weekly"]
     tt = setup.times if setup.times.size else np.arange(setup.n_obs)
     lines += [f"{int(i)} {v:.6f}" for i, v in zip(tt, setup.observed)]
-    out.write_text("\n".join(lines) + "\n")
+    # newline pinned, like materialize_model above: PyBNF reads the .exp
+    # line-wise and a Windows text-mode write would put \r on the end of
+    # every row's last column.
+    out.write_text("\n".join(lines) + "\n", newline="\n")
     return out
 
 
@@ -392,7 +395,8 @@ def write_conf(setup: StateSetup, *, model: Path, exp: Path, out_dir: Path,
         lines.append(f"recency_tau = {float(recency_tau)}")
     p = Path(conf_path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text("\n".join(lines) + "\n")
+    # newline pinned: same line-based PyBNF reader as the .exp above.
+    p.write_text("\n".join(lines) + "\n", newline="\n")
     return p
 
 

@@ -9,7 +9,15 @@
 # -NoPrompt makes this script ask nothing at all, for unattended runs and CI.
 # Without it the only question ever asked is whether to let winget install
 # Strawberry Perl, and even that is skipped in a non-interactive session.
-param([switch]$NoPrompt)
+#
+# -ShowDefenderExclusion prints the antivirus-exclusion instructions in full,
+# including the exact command, and changes nothing. It is a SWITCH rather
+# than a question on purpose: FluBNF.bat runs this script with -NoPrompt on
+# the double-click path, so anything driven by a prompt would be invisible
+# there, and anything driven by a default would be an antivirus change nobody
+# asked for. Somebody has to type this for the subject to come up at all.
+# See the "defender real-time scanning" section below.
+param([switch]$NoPrompt, [switch]$ShowDefenderExclusion)
 
 # "Continue" is deliberate. In Windows PowerShell every line a native command
 # writes to stderr comes back as an ErrorRecord, so under "Stop" an entirely
@@ -332,6 +340,77 @@ function Get-CfaState {
               Why = "EnableControlledFolderAccess = $s, which this script does not recognise" }
 }
 
+function Get-RealtimeState {
+    <#
+      Defender REAL-TIME PROTECTION, which is a different setting from
+      Controlled Folder Access and has a different consequence. Controlled
+      Folder Access BLOCKS a write and the run stops. Real-time protection
+      allows every write and inspects it, and the run merely takes longer --
+      which is why it is diagnosed late, if at all: nothing fails, so nothing
+      points at it.
+
+      Returned as @{ State; Why; Paths; Processes }, State being "on", "off"
+      or "unknown", and the two lists being whatever exclusions the machine
+      already has. Read-only, like Get-CfaState, and guarded the same way:
+      the Defender module is missing on some images, a third-party antivirus
+      can leave the cmdlets present but useless, and an unprivileged session
+      can be refused. Every one of those is "unknown" plus the reason.
+
+      Two cmdlets, because they answer different questions and either can be
+      unavailable on its own. Get-MpComputerStatus reports what protection is
+      RUNNING (RealTimeProtectionEnabled), which is the authoritative answer
+      and is also the one that goes false when a third-party antivirus takes
+      over. Get-MpPreference reports what is CONFIGURED
+      (DisableRealtimeMonitoring, inverted) and carries the exclusion lists.
+      Status wins when both answer; preference is the fallback.
+    #>
+    $paths = @()
+    $procs = @()
+    $pref = $null
+    if (Get-Command Get-MpPreference -ErrorAction SilentlyContinue) {
+        try { $pref = Get-MpPreference -ErrorAction Stop } catch { $pref = $null }
+    }
+    if ($pref) {
+        try { $paths = @($pref.ExclusionPath | ForEach-Object { "$_" }) } catch { $paths = @() }
+        try { $procs = @($pref.ExclusionProcess | ForEach-Object { "$_" }) } catch { $procs = @() }
+    }
+    $paths = @($paths | Where-Object { $_ })
+    $procs = @($procs | Where-Object { $_ })
+    if (Get-Command Get-MpComputerStatus -ErrorAction SilentlyContinue) {
+        $st = $null
+        try { $st = Get-MpComputerStatus -ErrorAction Stop } catch { $st = $null }
+        if ($st) {
+            $rt = $null
+            try { $rt = $st.RealTimeProtectionEnabled } catch { }
+            if ($null -ne $rt) {
+                if ($rt) {
+                    return @{ State = "on"; Paths = $paths; Processes = $procs
+                              Why = "RealTimeProtectionEnabled = True" }
+                }
+                return @{ State = "off"; Paths = $paths; Processes = $procs
+                          Why = "RealTimeProtectionEnabled = False" }
+            }
+        }
+    }
+    if ($pref) {
+        $dis = $null
+        try { $dis = $pref.DisableRealtimeMonitoring } catch { }
+        if ($null -ne $dis) {
+            $d = ("$dis").Trim()
+            if ($d -eq "True") {
+                return @{ State = "off"; Paths = $paths; Processes = $procs
+                          Why = "DisableRealtimeMonitoring = True" }
+            }
+            if ($d -eq "False") {
+                return @{ State = "on"; Paths = $paths; Processes = $procs
+                          Why = "DisableRealtimeMonitoring = False" }
+            }
+        }
+    }
+    return @{ State = "unknown"; Paths = $paths; Processes = $procs
+              Why = "neither Get-MpComputerStatus nor Get-MpPreference would say" }
+}
+
 $Hub = Resolve-Checkout $env:FLUBNF_HUB "FluSight-forecast-hub"
 $PyBnf = Resolve-Checkout $env:FLUBNF_PYBNF "PyBNF-pf"
 # The fork clones as PyBNF-Private (the repository's real name, and what
@@ -616,6 +695,162 @@ if ($Cfa.State -eq "off") {
     Info ""
     Info "docs\WINDOWS.md has the whole story, with the log lines this came"
     Info "from. Setup continues; nothing above has been changed."
+}
+
+Say "defender real-time scanning (speed, not failure)"
+# READ-ONLY, LIKE THE SECTION ABOVE, AND FOR THE SAME REASON. This section
+# asks Defender two questions and prints what it was told. It never adds an
+# exclusion, never changes a Defender setting, and never elevates. An
+# exclusion is a real reduction in protection for a real folder on a real
+# machine, it needs an administrator, and on a university-managed laptop it
+# is often forbidden outright. None of that is a setup script's call to make,
+# so the most this file ever does is explain the trade and print the details
+# WHEN ASKED, with -ShowDefenderExclusion.
+#
+# WHY THE SUBJECT COMES UP AT ALL. This is a different setting from
+# Controlled Folder Access and it has a different symptom. Controlled Folder
+# Access blocks a write and the run stops with a permission error. Real-time
+# protection allows every write and inspects it, and the run just takes
+# longer, so there is no error to search for and nothing to diagnose from.
+#
+# THE EVIDENCE, such as it is, and it is not conclusive. The lab's CI runs
+# the identical test suite on ubuntu and on windows. Ubuntu finishes in about
+# 5 minutes. Windows took 62 minutes on python 3.11 and 71 on 3.12 in run
+# 33200477476. Only 6 tests failed there, so the failures are not the hour.
+# A third job on the SAME windows runner image finishes in about 3 minutes,
+# so the hardware is not the hour either. The suite creates many temporary
+# directories and spawns many subprocesses, which is the workload real-time
+# scanning is worst at, and the corresponding author sees live Defender
+# notifications while running this project on his own Windows machine. That
+# is a strong hypothesis and it is written down as a hypothesis: the CI job
+# now excludes its own throwaway workspace on one leg of the matrix and
+# prints a per-test duration table, which is what will actually settle it.
+$Rt = Get-RealtimeState
+# The paths whose contents this project reads and writes constantly. The
+# repository is first because it holds the console venv, every __pycache__,
+# and app\state\workroots, where a fit materialises its model and BioNetGen
+# writes the generated network.
+$ScanPaths = @($Here, $Hub, $PyBnf, $EngineVenv) |
+             Where-Object { $_ } | Select-Object -Unique
+$AlreadyExcluded = @()
+$NotExcluded = @()
+foreach ($p in $ScanPaths) {
+    $covered = $false
+    foreach ($x in $Rt.Paths) {
+        if (Test-PathInside $p $x) { $covered = $true; break }
+    }
+    if ($covered) { $AlreadyExcluded += $p } else { $NotExcluded += $p }
+}
+
+if ($Rt.State -eq "off") {
+    Ok "Defender real-time scanning is off here ($($Rt.Why)), so it is not"
+    Ok "  what is slowing anything down. Nothing to consider."
+    # -ShowDefenderExclusion has to answer even when the answer is "there is
+    # nothing to exclude". A switch that prints nothing reads as a switch
+    # that did not work.
+    if ($ShowDefenderExclusion) {
+        Info "  You asked for the exclusion detail: there is nothing to"
+        Info "  exclude from, so an exclusion would buy you nothing here."
+    }
+# $Rt.State -eq "on" and not merely "not off": with State "unknown" this
+# branch printed "Defender real-time scanning is on (neither
+# Get-MpComputerStatus nor Get-MpPreference would say)", which contradicts
+# itself in one line. Get-MpPreference can answer with exclusion lists while
+# neither property that reports the running state is readable, so the two
+# facts really are independent. Unknown now falls through to the branch
+# below, which already has wording for it.
+} elseif ($Rt.State -eq "on" -and $AlreadyExcluded.Count -gt 0 -and $NotExcluded.Count -eq 0) {
+    Ok "Defender real-time scanning is on ($($Rt.Why)), and every path this"
+    Ok "  project works in is already covered by an exclusion on this machine."
+    foreach ($p in $AlreadyExcluded) { Info "    $p" }
+    if ($ShowDefenderExclusion) {
+        Info "  You asked for the exclusion detail: it is already in place."
+        Info "  docs\WINDOWS.md, section 'Defender real-time scanning', has"
+        Info "  the line that lists these and the line that removes one."
+    }
+} else {
+    if ($Rt.State -eq "on") {
+        Info "Defender real-time scanning is on ($($Rt.Why))."
+    } else {
+        Info "Defender real-time scanning could not be read: $($Rt.Why)"
+        Info "Microsoft ships it switched on, so assume it is on here."
+    }
+    # THE DEFAULT IS FOUR LINES. A note that a fit may run slower does not
+    # deserve a page on every setup run, and a wall of antivirus text in the
+    # middle of an install reads as an instruction whether or not it says it
+    # is one. The detail is one switch away and nothing needs it.
+    Info "Nothing is wrong and nothing needs doing: every part of FluBNF works"
+    Info "with scanning on. It can just be slower, and a long fit is where you"
+    Info "would notice, because this project writes constantly into folders"
+    Info "Defender is inspecting."
+    if (-not $ShowDefenderExclusion) {
+        Info ""
+        Info "Excluding those folders from scanning is the ordinary developer"
+        Info "remedy. It needs an administrator, it reduces protection for"
+        Info "those folders, and it is often blocked on a managed laptop. This"
+        Info "script will not do it. To see what it would involve, with the"
+        Info "folders that resolved on THIS machine, and change nothing:"
+        Info "  powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -ShowDefenderExclusion"
+    } else {
+        # THE OPT-IN BRANCH. Reached only because somebody typed the switch.
+        # It still changes nothing: it prints the trade and the route, and a
+        # human decides. Nothing else in this file reaches it, and no default,
+        # environment variable or prompt turns it on.
+        Info ""
+        Info "You asked for the detail. This script is still not going to do"
+        Info "any of it; what follows is for you or your IT department."
+        Info ""
+        if ($AlreadyExcluded.Count -gt 0) {
+            Info "  Already excluded on this machine:"
+            foreach ($p in $AlreadyExcluded) { Info "      $p" }
+            Info ""
+        }
+        Info "  Scanned, and written into constantly by this project:"
+        foreach ($p in $NotExcluded) { Info "      $p" }
+        Info ""
+        # Get-RealtimeState fetches ExclusionProcess and, before this, nothing
+        # read it. That is the same fetched-and-discarded shape a review
+        # already caught once in the Controlled Folder Access section, and it
+        # misleads here in a specific way: docs\WINDOWS.md offers
+        # -ExclusionProcess "python.exe" as the narrower alternative to a
+        # folder exclusion, so a reader who took that advice would be shown
+        # the list above with no hint that anything already covers part of it.
+        if (@($Rt.Processes).Count -gt 0) {
+            Info "  Process exclusions this machine already has. These cover"
+            Info "  what the named program reads and writes ANYWHERE, so one"
+            Info "  of them may already cover the folders listed above:"
+            foreach ($x in $Rt.Processes) { Info "      $x" }
+            Info ""
+        }
+        Info "  THE TRADE, both halves."
+        Info "  It WOULD stop Defender inspecting every file this project"
+        Info "  writes, which is the thing that would make runs faster."
+        Info "  It WOULD NOT make FluBNF safer, easier to install, or better"
+        Info "  in any other way, and it does NOT reliably affect Controlled"
+        Info "  Folder Access, the separate setting reported above. If your"
+        Info "  problem is a write that FAILS, this is the wrong remedy."
+        Info "  It WOULD leave those folders unscanned for EVERYTHING on this"
+        Info "  machine, not just for FluBNF, until it is removed."
+        Info "  It NEEDS AN ADMINISTRATOR, and on a university-managed laptop"
+        Info "  it is often blocked by policy. That answer is fine. Nothing"
+        Info "  here depends on it and the only difference is speed."
+        Info ""
+        Info "  THE ROUTE THAT NEEDS NO COMMAND LINE. Windows Security >"
+        Info "  Virus & threat protection > Virus & threat protection"
+        Info "  settings > Manage settings > Exclusions > Add or remove"
+        Info "  exclusions > Add an exclusion > Folder, and add each of the"
+        Info "  folders listed above. The same page removes one again."
+        Info ""
+        Info "  THE COMMAND FORM, for an administrator window or for IT, is"
+        Info "  in docs\WINDOWS.md under 'Defender real-time scanning',"
+        Info "  together with the line that undoes it. It is quoted there"
+        Info "  rather than printed here so that the command a person runs"
+        Info "  arrives with the paragraph about what it costs attached to"
+        Info "  it, instead of on its own in a setup transcript."
+    }
+    Info ""
+    Info "docs\WINDOWS.md, section 'Defender real-time scanning', has the"
+    Info "measurements this note rests on and what is still unmeasured."
 }
 
 function Show-CfaHint {

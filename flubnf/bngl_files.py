@@ -17,6 +17,13 @@ expression for a K-step piecewise-constant beta:
             = 0     otherwise
 """
 
+# Every write in this module is a PyBNF or BNG2.pl input, parsed line-wise.
+# newline="\n" is pinned on each: a bare write_text takes newline=None, which
+# on Windows turns every \n into \r\n on the way to disk and hands the engine
+# CRLF input. The same defect was measured doing exactly that in
+# app/core/engines/pf.py (Windows CI, test_natgrowth byte-identity failure).
+
+
 from __future__ import annotations
 
 import logging
@@ -69,7 +76,7 @@ def materialize_bngl_from_template(
             f"in {config.model.model_type} template"
         )
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(substituted)
+    out.write_text(substituted, newline="\n")
     log.info("Wrote %s", out)
     return out
 
@@ -171,7 +178,7 @@ def add_parameters(bngl_path: Path, params: Iterable[str]) -> list[str]:
             for p in to_add:
                 out.append(f"{p} {p}__FREE\n")
         out.append(line)
-    bngl_path.write_text("".join(out))
+    bngl_path.write_text("".join(out), newline="\n")
     return to_add
 
 
@@ -281,7 +288,7 @@ def set_beta_function(bngl_path: Path, beta_expr: str) -> None:
         i += 1
     if not replaced:
         raise ValueError(f"No beta() function found in {bngl_path}")
-    bngl_path.write_text("".join(out))
+    bngl_path.write_text("".join(out), newline="\n")
 
 
 # ---------------------------------------------------------------------------
@@ -306,4 +313,4 @@ def set_simulation_window(
             line = re.sub(r"t_end=>[^,}\s]+", f"t_end=>{t_end}", line)
             line = re.sub(r"n_steps=>[^,}\s]+", f"n_steps=>{n_steps}", line)
         out.append(line)
-    bngl_path.write_text("".join(out))
+    bngl_path.write_text("".join(out), newline="\n")

@@ -32,6 +32,33 @@ def _windows() -> bool:
     return sys.platform.startswith("win")
 
 
+def _home() -> Path:
+    """The profile directory the checkout defaults hang off.
+
+    `Path("~").expanduser()` is %USERPROFILE% on Windows (then
+    %HOMEDRIVE%%HOMEPATH%) and $HOME on POSIX. That is the root FluBNF.bat
+    reads and the one setup.ps1 calls $ProfileRoot, so the three DEFAULT to
+    the same place. They do not agree on everything: setup.ps1 also LOOKS
+    under $HOME and %USERPROFILE% both (Get-ProfileRoots), because a
+    managed machine can have an AD home directory on a mapped drive and an
+    earlier release could have built a checkout there. This function is one
+    root, not that set, so a checkout under the other spelling is found by
+    setup.ps1 and reached here only through the variable setup.ps1 records.
+    That predates the seam and is unchanged by it.
+
+    It is a named function for the same reason as _windows(): it is the
+    seam a test points at a scratch profile. Setting $HOME cannot do that
+    job on Windows, because ntpath.expanduser -- which is what
+    pathlib.Path.expanduser calls there -- reads %USERPROFILE% and never
+    looks at $HOME. tests/test_windows_controlled_folder_access.py faked
+    $HOME and so, on the Windows runner only, tested the resolution against
+    the runner's REAL profile: run 33200477476 failed with
+    WindowsPath('C:/Users/runneradmin/Documents/GitHub/FluSight-...') where
+    a tmp_path was expected. Nothing about the resolution itself changed.
+    """
+    return Path("~").expanduser()
+
+
 def _path(env: str, *fallbacks: str) -> Path:
     v = os.environ.get(env)
     if v:
@@ -69,11 +96,11 @@ def _checkout(env: str, name: str) -> Path:
     v = os.environ.get(env)
     if v:
         return Path(v).expanduser()
-    legacy = Path("~/Documents/GitHub").expanduser() / name
+    legacy = _home() / "Documents" / "GitHub" / name
     if not _windows() or legacy.exists():
         return legacy
     local = os.environ.get("LOCALAPPDATA")
-    base = Path(local) if local else Path("~/AppData/Local").expanduser()
+    base = Path(local) if local else _home() / "AppData" / "Local"
     return base / "FluBNF" / name
 
 

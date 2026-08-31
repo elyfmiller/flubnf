@@ -213,15 +213,31 @@ def prepare(spec, workroot: Path) -> list:
             else:
                 tmpl, tok = TEMPLATE, None
             m = materialize_model(s, tmpl, d / "m.bngl", sfx, extra_tokens=tok)
+            # newline pinned, for the same reason materialize_model pins it:
+            # this rewrite is the LAST hand on the model file, and a plain
+            # write_text takes newline=None, which on Windows translates
+            # every \n to \r\n on the way to disk. That silently undid the
+            # pinning one line above and handed BNG2.pl and bngsim a CRLF
+            # model. The Windows CI job caught it as a byte-identity
+            # failure (test_natgrowth: b'...end actions\r\n' against
+            # b'...end actions\n'); the engine bytes were the real casualty.
+            # read_text needs no such care: universal-newline READ is
+            # platform independent, so the \n in "begin parameters\n" below
+            # matches whatever is on disk.
             m.write_text(m.read_text().replace("begin parameters\n",
                                                DEFAULTS_2S if two_strain
-                                               else DEFAULTS_BLOCK, 1))
+                                               else DEFAULTS_BLOCK, 1),
+                         newline="\n")
             if two_strain:
                 lines = ["# time H_weekly A_share_bin A_share_n"]
                 for t_off, v in zip(s.times, s.observed):
                     a_k, n_k = typed_by_t.get(int(t_off), (-1, -1))
                     lines.append(f"{int(t_off)} {v:.6f} {a_k} {n_k}")
-                (d / f"{sfx}.exp").write_text("\n".join(lines) + "\n")
+                # newline pinned: PyBNF splits the .exp line-wise, so a
+                # trailing \r would ride along on the last column of every
+                # row. Same treatment as the model file above.
+                (d / f"{sfx}.exp").write_text("\n".join(lines) + "\n",
+                                              newline="\n")
             else:
                 write_exp(s, d / f"{sfx}.exp")
             r = subprocess.run(["perl", BNG, "m.bngl"], capture_output=True,
@@ -229,6 +245,8 @@ def prepare(spec, workroot: Path) -> list:
             if not (d / "m.net").is_file():
                 raise RuntimeError(f"netgen failed for {loc}: {r.stdout[-300:]}")
             seed = derive_seed(loc, spec.forecast_date, rep)
+            # newline pinned: PyBNF's conf reader is line-based, so on
+            # Windows every value would arrive with a trailing \r attached.
             (d / "pf.conf").write_text(f"""bng_command = {BNG}
 model = {d}/m.bngl : {d}/{sfx}.exp
 output_dir = {d}/out
@@ -243,7 +261,7 @@ max_iterations = 1
 seed = {seed}
 {VARS_2S if two_strain else VARS_1S}"""
 + (f"pf_binom_neff_cap = {(spec.extra or {}).get('neff_cap', 300)}\n"
-   if two_strain else ""))
+   if two_strain else ""), newline="\n")
             cells.append({"key": tag, "dir": str(d), "location": loc,
                           "replicate": rep, "seed": seed,
                           # collect() shifts its forecast columns by this,

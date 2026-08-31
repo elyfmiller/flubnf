@@ -122,12 +122,21 @@ def _mk_workroot(base: Path, name: str, complete=True) -> Path:
 
 
 def _snapshot(root: Path) -> dict:
-    """{relative path: (sha256, mtime_ns)} for every file under root."""
+    """{relative path: (sha256, mtime_ns)} for every file under root.
+
+    The key is as_posix(), not str(): every expectation below is written
+    with forward slashes ("retro/2098-99/scores.json"), and str() of a
+    relative WindowsPath is "retro\\2098-99\\scores.json", so on Windows
+    every lookup missed and the test died on
+    `KeyError: 'retro/2098-99/scores.json'` (run 33200477476). Nothing in
+    app/core/reclaim.py builds a key like this -- it compares Path objects
+    throughout -- so the separator only ever existed in this helper.
+    """
     out = {}
     for p in sorted(Path(root).rglob("*")):
         if p.is_file():
             st = p.stat()
-            out[str(p.relative_to(root))] = (
+            out[p.relative_to(root).as_posix()] = (
                 hashlib.sha256(p.read_bytes()).hexdigest(), st.st_mtime_ns)
     return out
 
