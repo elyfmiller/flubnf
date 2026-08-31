@@ -57,15 +57,25 @@ LEGACY = "Documents/GitHub"
 def _checkout(monkeypatch, *, windows: bool, home: Path, localappdata: Path):
     """Call the real resolver with the platform and the profile faked.
 
-    settings._windows() is the seam. Faking os.name would also work and
-    would turn every pathlib.Path made afterwards into a WindowsPath, which
-    breaks expanduser on this machine and would leak into the rest of the
-    suite.
+    settings._windows() and settings._home() are the two seams. Faking
+    os.name instead of the first would also work and would turn every
+    pathlib.Path made afterwards into a WindowsPath, which breaks
+    expanduser on this machine and would leak into the rest of the suite.
+
+    The profile goes through settings._home() and NOT through
+    monkeypatch.setenv("HOME"), which is what this helper did until run
+    33200477476. $HOME steers expanduser on POSIX and nothing at all on
+    Windows: pathlib.Path.expanduser calls ntpath.expanduser there, which
+    reads %USERPROFILE% (then %HOMEDRIVE%%HOMEPATH%) and never consults
+    $HOME. So on the Windows runner these tests resolved against the
+    runner's real profile while asserting against a tmp_path, and failed
+    with WindowsPath('C:/Users/runneradmin/Documents/GitHub/FluSight-...').
+    The resolution under test was correct; the fake was inert.
     """
     from flubnf import settings
 
     monkeypatch.setattr(settings, "_windows", lambda: windows)
-    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr(settings, "_home", lambda: home)
     monkeypatch.setenv("LOCALAPPDATA", str(localappdata))
     monkeypatch.delenv("FLUBNF_HUB", raising=False)
     return settings._checkout("FLUBNF_HUB", "FluSight-forecast-hub")
@@ -111,6 +121,76 @@ def test_posix_defaults_are_untouched(monkeypatch, tmp_path):
     got = _checkout(monkeypatch, windows=False, home=home,
                     localappdata=tmp_path / "unused")
     assert got == home / "Documents" / "GitHub" / "FluSight-forecast-hub", got
+
+
+def test_ntpath_ignores_dollar_home_which_is_why_the_seam_exists(monkeypatch,
+                                                                 tmp_path):
+    """Why _checkout above patches settings._home() and not $HOME.
+
+    ntpath is the module pathlib.Path.expanduser goes through on Windows,
+    and it is importable here, so its rule can be shown on this machine:
+    with %USERPROFILE%, %HOMEDRIVE% and %HOMEPATH% all absent it leaves the
+    tilde alone no matter what $HOME says, and %USERPROFILE% is what it
+    answers with. A test that fakes $HOME therefore fakes nothing on
+    Windows, which is what made these tests resolve against the CI runner's
+    real profile (run 33200477476) while asserting against a tmp_path.
+
+    If a future CPython starts honouring $HOME on Windows this fails, and
+    the right response is to update the note rather than the seam: routing
+    the profile through settings._home() is correct either way.
+
+    This is a NOTE, not a fence. It asserts a property of ntpath and would
+    go on passing if _checkout above went back to the inert $HOME fake; the
+    test below is the one that catches that.
+    """
+    import ntpath
+
+    for var in ("USERPROFILE", "HOMEDRIVE", "HOMEPATH"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path / "profile"))
+    assert ntpath.expanduser("~") == "~", (
+        "Windows path semantics now expand ~ from $HOME; the note on "
+        "settings._home() says they do not")
+    monkeypatch.setenv("USERPROFILE", r"C:\Users\someone")
+    assert ntpath.expanduser(r"~\Documents") == r"C:\Users\someone\Documents"
+
+
+def test_the_profile_fake_still_works_under_the_windows_tilde_rule(monkeypatch,
+                                                                   tmp_path):
+    """The fence the note above only describes.
+
+    Putting the inert `monkeypatch.setenv("HOME", ...)` back into _checkout
+    is INVISIBLE on this machine: $HOME really is the home here, so the
+    whole suite stays green while the Windows job quietly goes back to
+    resolving against the runner's own profile. Reviewed on 2026-08-31 by
+    making exactly that edit; 32 of 32 passed. So this test installs the
+    Windows tilde rule for the length of one call and asserts the fake
+    still wins.
+
+    The decoy profile below stands in for C:\\Users\\runneradmin. It holds
+    a legacy checkout so that a resolver reading it lands on a path a
+    reader recognises from run 33200477476, rather than on the AppData
+    default, which the helper's LOCALAPPDATA fake would make look right.
+    """
+    import ntpath
+
+    decoy = tmp_path / "runneradmin"
+    (decoy / "Documents" / "GitHub" / "FluSight-forecast-hub").mkdir(
+        parents=True)
+    monkeypatch.setenv("USERPROFILE", str(decoy))
+    for var in ("HOMEDRIVE", "HOMEPATH"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(os.path, "expanduser", ntpath.expanduser)
+
+    home = tmp_path / "profile"
+    legacy = home / "Documents" / "GitHub" / "FluSight-forecast-hub"
+    legacy.mkdir(parents=True)
+    got = _checkout(monkeypatch, windows=True, home=home,
+                    localappdata=home / "AppData" / "Local")
+    assert got == legacy, (
+        f"the profile fake is inert under the Windows tilde rule: {got}. "
+        f"_checkout must fake the profile through settings._home(), not "
+        f"through $HOME")
 
 
 def test_the_environment_variable_still_wins_everywhere(monkeypatch, tmp_path):

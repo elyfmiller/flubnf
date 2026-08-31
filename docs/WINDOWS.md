@@ -255,6 +255,177 @@ both before falling back to the new default, so a checkout an earlier
 release made under either one is still found rather than silently
 re-cloned.
 
+## Defender real-time scanning
+
+This is a **different setting from Controlled Folder Access**, with a
+different symptom, and the two are easy to confuse because both are
+Microsoft Defender and both can put a notification on your screen.
+
+| | Controlled Folder Access | real-time scanning |
+|---|---|---|
+| what it does | refuses a write | allows the write and inspects it |
+| what you see | a permission error, and the run stops | nothing, and the run takes longer |
+| shipped state | off (mode `0`) | on |
+| section | the one above | this one |
+
+Because nothing fails, there is no error message to search for and nothing
+to diagnose from. The only symptom is that a thing that should take a minute
+takes ten.
+
+### The evidence, and what is still a guess
+
+`.github/workflows/tests.yml` runs one test suite on `ubuntu-latest` and the
+same suite on `windows-latest`. In run 33200477476:
+
+| job | time |
+|---|---|
+| ubuntu, python 3.11 and 3.12 | about 5 minutes |
+| windows, python 3.11 | 62 minutes |
+| windows, python 3.12 | 71 minutes |
+| `windows-setup-script`, same runner image | about 3 minutes |
+
+Six tests failed on Windows, which is nowhere near an hour of work, so the
+failures are not where the time goes. The setup-script job runs on the same
+image and finishes in three minutes, so the runner hardware is not where it
+goes either. What is left is the shape of the workload: this suite creates
+many temporary directories and spawns many subprocesses, which is exactly
+what real-time scanning is most expensive against. The corresponding author
+also sees live Defender notifications while running this project on his own
+Windows machine.
+
+That is a strong hypothesis and it is deliberately still labelled one. Two
+things were added so the next CI run answers it with numbers instead:
+
+- both the ubuntu and the windows jobs now run pytest with
+  `--durations=25 --durations-min=1.0`, and each writes its table into the
+  job summary. Read side by side, a flat ratio across every test reads as an
+  environment cost, and a handful of tests carrying the whole hour reads as
+  a specific defect;
+- the windows job excludes its own workspace from Defender on the **3.12 leg
+  only**, so one run carries its own control. The legs differ in Python
+  version as well, which is a confound, but it runs against the hypothesis:
+  3.12 is currently the slower leg, so a 3.12 run that lands below 3.11
+  cannot be explained by the version.
+
+Doing that to a GitHub-hosted runner is a much smaller thing than doing it
+to a laptop. The runner is an ephemeral virtual machine that exists for the
+length of the job, holds no credentials, and is destroyed afterwards, so
+nothing is left less protected than it was. That is why the CI job may do it
+and `setup.ps1` may not.
+
+### What setup.ps1 does about it
+
+It reads two Defender properties and prints what it was told, before it
+installs anything:
+
+```powershell
+Get-MpComputerStatus | Select-Object RealTimeProtectionEnabled, AntivirusEnabled
+Get-MpPreference | Select-Object ExclusionPath, ExclusionProcess
+```
+
+and reports whether real-time protection is on, and whether the folders this
+project works in are already covered by an exclusion somebody added
+earlier. If scanning is off, or everything is already excluded, it says so
+in one line and moves on.
+
+It **never adds an exclusion, never changes a Defender setting, and never
+elevates.** The reason is not caution for its own sake. An exclusion is a
+genuine reduction in protection for a real folder on a machine somebody else
+owns, it needs an administrator, and on a managed university laptop it is
+frequently forbidden by policy. A setup script that quietly weakened
+antivirus coverage as part of "installing FluBNF" would be doing something
+nobody agreed to.
+
+To see the full instructions, run it once with the switch:
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -ShowDefenderExclusion
+```
+
+That switch prints and changes nothing. It exists as a switch rather than a
+question because `FluBNF.bat` runs `setup.ps1` with `-NoPrompt` on the
+double-click path, so a prompt would be invisible exactly where it matters,
+and a default would be a change nobody asked for.
+
+### The exclusion, if you decide you want it
+
+Read this whole subsection before running anything in it.
+
+**What it would do.** Stop Defender inspecting every file this project
+writes, which is the thing that would make runs faster.
+
+**What it would not do.** It would not make FluBNF safer, easier to install,
+or better in any other way, and it does not reliably exempt Controlled
+Folder Access, which is the separate setting in the section above. If your
+problem is a `git` or `python` write that FAILS, this is not the remedy;
+go back to that section.
+
+**What it costs.** Those folders stop being scanned for **everything** on
+the machine, not just for FluBNF, until the exclusion is removed. It needs
+an administrator. On a managed laptop the option is often greyed out or
+blocked by policy, and **that answer is fine**: nothing in this project
+depends on it, and the only difference is speed.
+
+The route that needs no command line is Windows Security > Virus & threat
+protection > Virus & threat protection settings > Manage settings >
+Exclusions > Add or remove exclusions > Add an exclusion > Folder.
+
+The equivalent commands, in a PowerShell window opened with **Run as
+administrator**. Run `setup.ps1 -ShowDefenderExclusion` first: it prints the
+folders that actually resolved on your machine, which is what belongs in
+these lines.
+
+```powershell
+Add-MpPreference -ExclusionPath "$env:LOCALAPPDATA\FluBNF"
+Add-MpPreference -ExclusionPath "<the folder holding FluBNF.bat>"
+```
+
+To see what is excluded now, and to undo it:
+
+```powershell
+Get-MpPreference | Select-Object -ExpandProperty ExclusionPath
+Remove-MpPreference -ExclusionPath "$env:LOCALAPPDATA\FluBNF"
+```
+
+Removing it is exactly as easy as adding it, which is most of why this is
+worth offering at all rather than hiding.
+
+Two paths are enough for the common install: `%LOCALAPPDATA%\FluBNF` covers
+the hub clone and the PyBNF checkout, and the repository folder covers the
+console virtual environment, every `__pycache__`, and `app\state\workroots`,
+where a fit writes its model and its generated network. If you moved
+anything with `FLUBNF_HUB`, `FLUBNF_PYBNF` or `FLUBNF_ENGINE_VENV`, the
+switch above prints where they went.
+
+A narrower alternative, if excluding a folder is more than you want: exclude
+the process instead of the path, with `-ExclusionProcess "python.exe"`. It
+is narrower in one sense and broader in another, since it stops scanning
+that executable's file activity everywhere rather than in one folder, so it
+is offered as a choice and not as a recommendation.
+
+### What is unverified here
+
+Everything in this section about the Defender cmdlets was written on macOS
+from Microsoft's documentation and has not been run on a Windows machine by
+this lab. Specifically: that `Get-MpComputerStatus` exposes
+`RealTimeProtectionEnabled` in the form `setup.ps1` matches, that
+`Get-MpPreference` carries `ExclusionPath` and `ExclusionProcess` as lists,
+and that the `Add-MpPreference` and `Remove-MpPreference` lines above run as
+written in an elevated Windows PowerShell 5.1 window.
+
+`setup.ps1` takes the read path only, and the `windows-setup-script` job is
+therefore the only CI exercise of it. The test job is the exception and is
+worth being plain about: its `MEASUREMENT` step really does call
+`Add-MpPreference -ExclusionPath` and `-ExclusionProcess`, so a CI run does
+exercise the write path, on a throwaway runner and nowhere else. If those
+lines turn out to be wrong they will be wrong there first, which is the
+point of putting them there and not on a laptop. `Remove-MpPreference` is
+run nowhere: the runner is discarded instead.
+
+And the causal claim itself is unmeasured until a CI run comes back with the
+duration tables. Until then this section says that Defender real-time
+scanning is the leading explanation for a 12x gap, not that it is the cause.
+
 ## A hub cloned by hand
 
 `git clone --sparse` is documented to check out **only the files in the
@@ -303,6 +474,7 @@ Useful switches and variables:
 | what | effect |
 |---|---|
 | `-NoPrompt` | ask nothing at all. `FluBNF.bat` always passes it; the one question it suppresses is the offer to let winget install Strawberry Perl, which `setup.ps1` then prints as a command to run later. Run `setup.ps1` by hand to be asked. |
+| `-ShowDefenderExclusion` | print the antivirus-exclusion instructions in full, with the folders that resolved on this machine. Changes nothing, needs no administrator, and is never implied by any other run. See "Defender real-time scanning" above. |
 | `FLUBNF_HUB` | put the FluSight data somewhere else, e.g. `setx FLUBNF_HUB D:\FluSight-forecast-hub`, then open a new window. Default: `%LOCALAPPDATA%\FluBNF\FluSight-forecast-hub`, or an existing clone at the old `%USERPROFILE%\Documents\GitHub\FluSight-forecast-hub` if one is there |
 | `FLUBNF_PYBNF` | the PyBNF fork checkout. Same resolution order; default `%LOCALAPPDATA%\FluBNF\PyBNF-pf` |
 | `FLUBNF_ENGINE_VENV` | the engine virtual environment. Default `%USERPROFILE%\.venvs\flubnf-engine` |
@@ -369,6 +541,21 @@ standard `setup.sh` instructions inside the Linux environment.
   `FluBNF.bat` itself, the Perl/winget branch, or any non-ASCII profile
   path. Both jobs will be promoted to required checks once they have been
   green for a few consecutive weeks.
+
+  Every job in that workflow now carries a `timeout-minutes`, because none
+  of the test jobs did and a hang would therefore have run to GitHub's
+  6 hour default while `continue-on-error` kept anyone from being told. The
+  budgets are fuses, not targets: 20 minutes on ubuntu, which finishes in
+  about 5, and 90 on windows, which took 71 at its worst. The windows number
+  should come down a long way once the hour is accounted for, because a fuse
+  sized far above the load never blows. `windows-setup-script` already had
+  its own 60.
+- **The windows suite takes an hour and nobody yet knows on what.** 62 and
+  71 minutes against ubuntu's 5, with only 6 failures, so the failures are
+  not the hour. Defender real-time scanning is the leading explanation and
+  the section above says why, what was added to measure it, and what a
+  student can do about it on their own machine if they want to. Nothing in
+  the project depends on their doing anything.
 - **The PowerShell has never been executed here.** The lab develops on
   macOS and has no PowerShell interpreter, so `setup.ps1` is written from
   the language rules and first runs in CI. The git behaviour it depends on

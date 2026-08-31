@@ -10,6 +10,13 @@ Replaces the relevant pieces of `NAU_Influenza/scripts/110624_everything.py`:
 These operate on a single conf path at a time. The CLI iterates over states.
 """
 
+# Every write in this module is a PyBNF or BNG2.pl input, parsed line-wise.
+# newline="\n" is pinned on each: a bare write_text takes newline=None, which
+# on Windows turns every \n into \r\n on the way to disk and hands the engine
+# CRLF input. The same defect was measured doing exactly that in
+# app/core/engines/pf.py (Windows CI, test_natgrowth byte-identity failure).
+
+
 from __future__ import annotations
 
 import logging
@@ -71,7 +78,7 @@ def materialize_conf_from_template(
             f"Unresolved template tokens in conf for {state}: {leftover}"
         )
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(substituted)
+    out.write_text(substituted, newline="\n")
     log.info("Wrote %s", out)
     return out
 
@@ -122,7 +129,7 @@ def replace_uniform_vars(
         out = lines + new_lines
     else:
         out = lines[:first_uniform] + new_lines + lines[last_uniform + 1:]
-    conf_path.write_text("".join(out))
+    conf_path.write_text("".join(out), newline="\n")
 
 
 def update_uniform_vars(
@@ -154,7 +161,7 @@ def update_uniform_vars(
     if new_lines:
         insert_at = last_uniform_idx + 1 if last_uniform_idx >= 0 else len(lines)
         lines = lines[:insert_at] + new_lines + lines[insert_at:]
-    conf_path.write_text("".join(lines))
+    conf_path.write_text("".join(lines), newline="\n")
 
 
 def update_keys(conf_path: Path, updates: Mapping[str, object]) -> None:
@@ -173,7 +180,7 @@ def update_keys(conf_path: Path, updates: Mapping[str, object]) -> None:
             lines.append("\n")
         for k, v in remaining.items():
             lines.append(f"{k} = {v}\n")
-    conf_path.write_text("".join(lines))
+    conf_path.write_text("".join(lines), newline="\n")
 
 
 def set_starting_params(conf_path: Path, params: Sequence[float] | str) -> None:
@@ -196,7 +203,7 @@ def set_starting_params(conf_path: Path, params: Sequence[float] | str) -> None:
         if lines and not lines[-1].endswith("\n"):
             lines.append("\n")
         lines.append(f"starting_params = {value}\n")
-    conf_path.write_text("".join(lines))
+    conf_path.write_text("".join(lines), newline="\n")
 
 
 # ---------------------------------------------------------------------------

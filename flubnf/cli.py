@@ -1698,13 +1698,45 @@ def _write_pidfile(pidfile: Optional[Path] = None):
     return _cleanup
 
 
+_MAX_PORT = 65535
+
+
+def _port_candidates(preferred: int, tries: int) -> range:
+    """The ports a fallback search may probe, CLAMPED at 65535.
+
+    Clamping rather than catching: a TCP port above 65535 does not exist,
+    so a probe up there is not a busy port to skip past, it is a nonsense
+    request. socket.bind refuses it with OverflowError ("port must be
+    0-65535"), which is a ValueError and NOT an OSError, so it sails
+    straight through the `except OSError` that both searches use to mean
+    "try the next port". A caller who seeds `preferred` from an OS
+    ephemeral port (macOS hands those out in 49152-65535, and the launch
+    tests do exactly that) then gets a crash instead of a fallback
+    whenever the kernel picks something above 65525. Ending the walk at
+    the real ceiling keeps the search honest: it probes every port that
+    can exist, and if they are all busy the caller's all-busy branch runs
+    and uvicorn reports the conflict loudly, which is the documented
+    behaviour for that case anyway.
+
+    An out-of-range `preferred` yields an EMPTY range for the same reason:
+    there is nothing legal to probe, so the search declines rather than
+    inventing a port, and the all-busy branch hands the bad value to
+    uvicorn to complain about. Note that a negative `preferred` is not
+    slid up to 0, because 0 means "any ephemeral port" to the kernel and
+    silently serving on a random port would hide the caller's mistake."""
+    if not 0 <= preferred <= _MAX_PORT:
+        return range(0)
+    return range(preferred, min(preferred + max(1, tries), _MAX_PORT + 1))
+
+
 def _pick_port(preferred: int = 8710, tries: int = 10) -> int:
     """The first bindable port in preferred..preferred+tries-1. Probing
     binds with SO_REUSEADDR, exactly as uvicorn will: a TIME_WAIT ghost
     passes, a live listener fails. When every probe fails the preferred
-    port is returned so uvicorn reports the real conflict loudly."""
+    port is returned so uvicorn reports the real conflict loudly. The
+    search is clamped at 65535, see _port_candidates for why."""
     import socket
-    for port in range(preferred, preferred + max(1, tries)):
+    for port in _port_candidates(preferred, tries):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -1730,9 +1762,10 @@ def _bind_app_socket(preferred: int = 8710, tries: int = 10):
     impossible while this process lives.
 
     (None, preferred) when every port is busy, so uvicorn binds for itself
-    and reports the real conflict loudly."""
+    and reports the real conflict loudly. The search is clamped at 65535,
+    see _port_candidates for why that matters here."""
     import socket
-    for port in range(preferred, preferred + max(1, tries)):
+    for port in _port_candidates(preferred, tries):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

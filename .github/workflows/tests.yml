@@ -5,6 +5,12 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # This job has taken about 5 minutes for as long as it has existed, so 20
+    # is roughly 4x headroom: generous enough that a slow runner or a cold pip
+    # cache never trips it, tight enough that a hang is reported in a quarter
+    # of an hour rather than burning the 6 hour GitHub default. No job in this
+    # workflow is allowed to have no budget at all.
+    timeout-minutes: 20
     strategy:
       matrix: {python-version: ["3.11", "3.12"]}
     steps:
@@ -14,10 +20,20 @@ jobs:
       - run: pip install -e ".[app,dev]" bionetgen
       # No FluSight hub clone and no BNG in CI: hub-dependent and
       # engine-dependent tests skip themselves via flubnf.settings checks.
+      #
+      # --durations is here for the same reason it is on the windows job: it
+      # is the BASELINE half of that measurement. "windows is slow" is not a
+      # finding until we can say slow COMPARED TO WHAT, per test. Without this
+      # table the windows one only tells us which tests are slowest on
+      # windows, which is very nearly the same list as "which tests do the
+      # most work" and says nothing about the platform.
+      # --durations-min=1.0 keeps the table to tests worth looking at; the
+      # pytest default of 0.005s would print 25 rows of noise.
       - name: tests (failures become annotations)
         run: |
           set -o pipefail
-          FLUBNF_HUB=/nonexistent pytest tests/ app/tests/ -ra -o addopts="" | tee pytest.out || {
+          FLUBNF_HUB=/nonexistent pytest tests/ app/tests/ -ra -o addopts="" \
+            --durations=25 --durations-min=1.0 | tee pytest.out || {
             grep -E "^(FAILED|ERROR)" pytest.out | head -20 | while read -r line; do
               echo "::error::${line}"
             done
@@ -33,6 +49,25 @@ jobs:
             exit 1
           }
 
+      # if: always(), because the durations table is most wanted on exactly
+      # the runs that failed, and the step above exits 1 on those.
+      - name: where the time went
+        if: always()
+        run: |
+          if [ ! -f pytest.out ]; then
+            echo "no pytest.out: the suite produced no transcript to read"
+            exit 0
+          fi
+          { echo "## slowest tests (${{ runner.os }}, py${{ matrix.python-version }})";
+            echo '```';
+            awk '/slowest .* durations/{f=1} /short test summary/{f=0} f' pytest.out |
+              head -n 40;
+            # The suite total. Printed on both jobs and for the same reason:
+            # the windows-to-linux comparison is per-test AND whole-suite, and
+            # the awk range above drops the total line on any run that failed.
+            tail -n 1 pytest.out;
+            echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
   # EXPERIMENTAL Windows CI: this is the lab's stand-in for a Windows box
   # while the native Windows port is brought up. continue-on-error keeps a
   # red run from failing the check suite; the ::error:: annotations still
@@ -44,22 +79,201 @@ jobs:
     runs-on: windows-latest
     continue-on-error: true
     env: {PYTHONUTF8: "1"}
+    # WHY 90 AND NOT 6 HOURS. Run 33200477476 took 62 minutes on 3.11 and 71
+    # on 3.12 for a suite ubuntu finishes in 5, and then failed 6 tests. With
+    # no timeout-minutes at all, a job that HANGS rather than merely crawls
+    # sits on a runner for the GitHub default of 6 hours, and because both
+    # windows jobs carry continue-on-error nobody is even paged about it.
+    # 90 is the smallest round number safely above the worst run we have
+    # measured (71) with room for runner variance, and it is the reason a
+    # future hang costs 90 minutes instead of a working day of runner time.
+    #
+    # IT IS NOT A TARGET AND IT IS NOT A FIX. It is a fuse. Once the
+    # --durations tables below say where the 60-odd minutes actually go and
+    # that is dealt with, this number should come down to something near the
+    # real runtime, because a fuse sized far above the load never blows.
+    timeout-minutes: 90
     strategy:
+      # Both legs must run to completion, because the Defender measurement
+      # below is a COMPARISON between them and fail-fast cancelling the
+      # survivor when the first leg goes red would throw the control away.
+      fail-fast: false
       matrix: {python-version: ["3.11", "3.12"]}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: "${{ matrix.python-version }}"}
+
+      # ------------------------------------------------------------------
+      # A MEASUREMENT OF THE DEFENDER HYPOTHESIS. NOT A FIX, AND SAFE TO
+      # DELETE -- this whole step and nothing else.
+      #
+      # The hypothesis: this job is 12x slower than the identical ubuntu job
+      # because Microsoft Defender real-time protection scans every one of
+      # the many temporary directories the suite creates and inspects every
+      # one of the many subprocesses it spawns. The evidence for it so far is
+      # circumstantial: the windows-setup-script job on the SAME runner image
+      # finishes in about 3 minutes, so the runner hardware is not the
+      # problem, and the corresponding author reports live Defender
+      # notifications while running this project on his own Windows machine.
+      # Circumstantial is not measured, which is what this step is for.
+      #
+      # THE DESIGN. The exclusion is applied on the 3.12 leg ONLY, so a
+      # single run carries its own control: 3.11 scanned, 3.12 not. The two
+      # legs differ in python version as well as in treatment, which is a
+      # confound and is named rather than hidden -- but it is a confound
+      # that works AGAINST the hypothesis, because 3.12 is the slower of the
+      # two legs today (71 min vs 62). So a 3.12 leg that comes in under the
+      # 3.11 leg cannot be explained by the version, and a 3.12 leg that does
+      # not move is evidence against Defender being the cause.
+      #
+      # WHY THIS IS AN EASY CALL HERE AND NOT ON A STUDENT'S LAPTOP. A
+      # GitHub-hosted windows runner is an ephemeral VM that exists for the
+      # length of this job, holds no credentials (see the setup-script job
+      # below), and is destroyed afterwards. Nothing persists, so nothing is
+      # left less protected than it was. setup.ps1 deliberately does NOT do
+      # this to a real machine: it detects, explains, and waits to be asked.
+      #
+      # It never fails the job. If Defender is absent, unmanageable, or the
+      # runner user cannot change it, the step says so and the leg becomes an
+      # ordinary unexcluded run -- which is a null result, not a broken job.
+      - name: "MEASUREMENT: exclude the workspace from Defender scanning (3.12 leg only)"
+        if: matrix.python-version == '3.12'
+        shell: powershell
+        run: |
+          function Report($m) { Write-Host "  $m" }
+          # THE VERDICT FILE. The durations step below has to say which
+          # treatment its table was measured under, and the matrix value
+          # cannot tell it: every branch of this step that returns early
+          # leaves the leg UNEXCLUDED while the matrix still says 3.12. A
+          # summary line derived from the matrix would therefore label an
+          # ordinary run as an excluded one, which is the same mistake this
+          # step refuses to make about Add-MpPreference not throwing. So the
+          # verdict is written down here, by the code that knows it, and read
+          # back there. -Encoding ascii on purpose: Windows PowerShell 5.1
+          # writes a BOM for -Encoding utf8, and the reader is Git Bash.
+          # Same guard as below, same reason: never let this step be the
+          # thing that fails the job. The bash step reads the file from the
+          # workspace, which is where both steps start.
+          $VerdictRoot = if ($env:GITHUB_WORKSPACE) { $env:GITHUB_WORKSPACE } else { $PWD.Path }
+          $VerdictFile = Join-Path $VerdictRoot "defender-verdict.txt"
+          function Verdict($v) {
+            Set-Content -LiteralPath $VerdictFile -Value $v -Encoding ascii
+            Report "verdict: $v"
+          }
+          Verdict "no: the step did not reach a decision"
+          if (-not (Get-Command Get-MpComputerStatus -ErrorAction SilentlyContinue)) {
+            Report "the Defender module is not on this runner; nothing excluded, this leg is an ordinary run"
+            Verdict "no: the Defender module is not on this runner"
+            exit 0
+          }
+          try { $st = Get-MpComputerStatus -ErrorAction Stop } catch { $st = $null }
+          if ($null -eq $st) {
+            Report "Get-MpComputerStatus answered nothing; nothing excluded"
+            Verdict "no: Get-MpComputerStatus answered nothing"
+            exit 0
+          }
+          Report "before: RealTimeProtectionEnabled = $($st.RealTimeProtectionEnabled)"
+          Report "before: AntivirusEnabled          = $($st.AntivirusEnabled)"
+          if (-not $st.RealTimeProtectionEnabled) {
+            Report "real-time protection is already off on this image, so this leg CANNOT test the hypothesis"
+            Report "and the comparison against the 3.11 leg means nothing this run. Read the durations instead."
+            Verdict "no: real-time protection was already off, so both legs are unscanned"
+            exit 0
+          }
+          # Paths: the checkout, the runner scratch area, and %TEMP%. All
+          # three, because pytest's tmp_path fixtures land under %TEMP% and
+          # not under RUNNER_TEMP, and the throwaway directories are the
+          # half of the workload the hypothesis is actually about.
+          # Processes: python.exe is the one that matters. A path exclusion
+          # covers files; a process exclusion covers what that process reads
+          # and writes anywhere, which is what a suite spawning subprocesses
+          # in throwaway directories needs.
+          # %LOCALAPPDATA%\Temp is here as well as %TEMP%, and it is not a
+          # duplicate. On a GitHub windows runner %TEMP% is handed out in the
+          # 8.3 short form (C:\Users\RUNNER~1\AppData\Local\Temp) while the
+          # files pytest creates under it have the long path, and Microsoft
+          # does not document that an exclusion written with a short name
+          # matches the long one. If it does, this line is a harmless
+          # duplicate that Select-Object drops or Defender ignores. If it
+          # does not, this line is the difference between excluding the
+          # throwaway directories -- the half of the workload the hypothesis
+          # is actually about -- and silently excluding nothing there and
+          # reading the resulting null as evidence. UNVERIFIED either way:
+          # the step reports every path it excluded, so the log settles it.
+          # The if-guard is not decoration: GitHub prepends
+          # $ErrorActionPreference = 'stop' to every powershell step, and
+          # Join-Path with a null -Path is a terminating error there. This
+          # step promises never to fail the job, and an unset variable is
+          # exactly the "unmanageable" case that promise is about.
+          $localTemp = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "Temp" } else { $null }
+          $paths = @($env:GITHUB_WORKSPACE, $env:RUNNER_TEMP, $env:TEMP, $localTemp) |
+                   Where-Object { $_ } | Select-Object -Unique
+          foreach ($p in $paths) {
+            try {
+              Add-MpPreference -ExclusionPath $p -ErrorAction Stop
+              Report "excluded path: $p"
+            } catch {
+              Report "could not exclude ${p}: $($_.Exception.Message)"
+            }
+          }
+          foreach ($proc in @("python.exe", "pytest.exe", "git.exe")) {
+            try {
+              Add-MpPreference -ExclusionProcess $proc -ErrorAction Stop
+              Report "excluded process: $proc"
+            } catch {
+              Report "could not exclude ${proc}: $($_.Exception.Message)"
+            }
+          }
+          # Read the settings back. "the command did not throw" is not the
+          # same claim as "the exclusion is in effect", and only the second
+          # one licenses reading the timing below as a Defender result.
+          try {
+            $pref = Get-MpPreference -ErrorAction Stop
+            Report "after: ExclusionPath    = $(@($pref.ExclusionPath) -join '; ')"
+            Report "after: ExclusionProcess = $(@($pref.ExclusionProcess) -join '; ')"
+            # The read-back decides the verdict, not the fact that the calls
+            # above returned. The workspace is the path the hypothesis is
+            # about, so it is the one that has to be there.
+            # Trailing backslashes are trimmed on both sides before the
+            # comparison: it is not documented whether Defender stores the
+            # path exactly as handed to it, and a false "not excluded" here
+            # would throw away a measurement that actually worked. -contains
+            # is already case-insensitive for strings, which is what a
+            # Windows path comparison wants.
+            $ws = "$env:GITHUB_WORKSPACE".TrimEnd('\')
+            $have = @(@($pref.ExclusionPath) | ForEach-Object { "$_".TrimEnd('\') })
+            if ($have -contains $ws) {
+              Verdict "yes: the workspace is in ExclusionPath after the change"
+            } else {
+              Verdict "no: the calls ran but the workspace is not in ExclusionPath"
+            }
+          } catch {
+            Report "could not read the exclusions back: $($_.Exception.Message)"
+            Verdict "unknown: the exclusions could not be read back to confirm"
+          }
+          exit 0
+      # ------------------------------------------------------------------
+
       - run: pip install -e ".[app,dev]" bionetgen
       # Same skip story as the ubuntu job: no FluSight hub clone and no BNG
       # engine venv, so hub- and engine-dependent tests skip themselves via
       # flubnf.settings checks. shell: bash (Git Bash ships on the runner)
       # keeps the annotation pipeline identical to the ubuntu job.
+      #
+      # --durations IS THE POINT OF THIS PASS. Six tests fail here and the
+      # job takes an hour, so the failures are not where the time goes and
+      # nobody knows where it does go. The table this prints, read against
+      # the identical table from the ubuntu job, turns that from a guess into
+      # a per-test ratio: a flat 12x across everything reads as an
+      # environment cost (scanning, process creation), while a handful of
+      # tests carrying the whole hour reads as a specific defect to fix.
       - name: tests (failures become annotations)
         shell: bash
         run: |
           set -o pipefail
-          FLUBNF_HUB=/nonexistent pytest tests/ app/tests/ -ra -o addopts="" | tee pytest.out || {
+          FLUBNF_HUB=/nonexistent pytest tests/ app/tests/ -ra -o addopts="" \
+            --durations=25 --durations-min=1.0 | tee pytest.out || {
             grep -E "^(FAILED|ERROR)" pytest.out | head -20 | while read -r line; do
               echo "::error::${line}"
             done
@@ -74,6 +288,46 @@ jobs:
               echo '```'; tail -n 60 pytest.out; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           }
+
+      # if: always(), because this job currently fails, and a durations table
+      # that only appears on green runs would never have appeared at all.
+      # The Defender state is reprinted here so the table and the treatment
+      # it was measured under are read off one screen and cannot be paired up
+      # wrongly weeks later.
+      - name: where the time went
+        if: always()
+        shell: bash
+        run: |
+          if [ ! -f pytest.out ]; then
+            echo "no pytest.out: the suite produced no transcript to read"
+            exit 0
+          fi
+          # The treatment comes from the file the MEASUREMENT step wrote, not
+          # from the matrix. Every early return in that step leaves the leg
+          # unexcluded, and a label taken from the matrix would call those
+          # runs excluded ones.
+          # tr -d '\r' because Set-Content wrote that file on Windows and
+          # this step reads it in Git Bash. $() strips the trailing newline
+          # and leaves the carriage return, which would land in the summary.
+          if [ -f defender-verdict.txt ]; then
+            treatment="$(head -n 1 defender-verdict.txt | tr -d '\r')"
+          else
+            treatment="none attempted: no exclusion step ran on this leg (control)"
+          fi
+          { echo "## slowest tests (${{ runner.os }}, py${{ matrix.python-version }})";
+            echo "Defender workspace exclusion on this leg: ${treatment}";
+            echo '```';
+            awk '/slowest .* durations/{f=1} /short test summary/{f=0} f' pytest.out |
+              head -n 40;
+            # The suite total, which the awk range above stops short of on
+            # exactly the runs that matter: the range ends at "short test
+            # summary info", and pytest prints the total AFTER that block on
+            # any run with a failure -- which is every windows run today. The
+            # 25 rows mean nothing without a wall clock to check them
+            # against, since a table summing to four minutes inside a
+            # sixty-minute job says the time is not in the tests at all.
+            tail -n 1 pytest.out;
+            echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
   # EXPERIMENTAL: the only automated exercise of the Windows FIRST-RUN path,
   # which is the path that reached a user broken. The lab develops on macOS
