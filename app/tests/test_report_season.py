@@ -231,7 +231,7 @@ def test_report_carries_the_season_verdict_before_the_player(tmp_path,
     assert "Season verdict" in html
     # final relWIS tiles for each member and the ensemble, colored by the
     # below-1 rule; the values are the final week's cumulative stats
-    for name, val, cls in (("NAU ensemble", "0.900", "ok"),
+    for name, val, cls in (("FluBNF Ensemble", "0.900", "ok"),
                            ("PF-SIHRS", "0.500", "ok"),
                            ("Calendar analogue", "1.500", "bad")):
         assert name in html, name
@@ -246,6 +246,28 @@ def test_report_carries_the_season_verdict_before_the_player(tmp_path,
     assert '<td class="num ok">0.500</td>' in html
     assert '<td class="num bad">1.500</td>' in html
     assert '<td class="num ok">0.900</td>' in html
+
+
+def test_the_export_names_the_scoring_convention_on_its_own(tmp_path,
+                                                            monkeypatch):
+    """THIS FILE LEAVES THE MACHINE.
+
+    It is read months later with no console around it, and the neighbour it
+    is likeliest to be read beside is the CDC FluSight dashboard, which
+    publishes a different quantity under the same name. Both conventions
+    are ratios scaled to put the baseline at 1.0, so "against the CDC
+    FluSight baseline" does not distinguish them: the export has to say
+    which ratio, in the same words the console and the public site use.
+    """
+    from app.core import relwis
+    root = _mk_root(tmp_path, monkeypatch)
+    _write_scores(root)
+    html = report_season.build_season_report(root, SEASON).read_text()
+    assert relwis.PUBLISHED_CONVENTION_NOTE in html
+    # every relWIS heading in the file carries the short label as well
+    assert "Final relWIS pooled over" in html and "ratio of sums" in html
+    assert ("relWIS below 1 beats the CDC FluSight baseline, ratio of"
+            in " ".join(html.split()))
 
 
 def test_report_verdict_degrades_without_scores_or_meta(tmp_path,

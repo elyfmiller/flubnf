@@ -29,6 +29,8 @@ from __future__ import annotations
 import html as _html
 import json
 
+from app.core import relwis
+
 CSS = """
 :root{
   --bg:#F4F2FA; --card:#FFFFFF; --ink:#10122E; --mut:#5A5E7A;
@@ -459,6 +461,13 @@ def _score_td(v) -> str:
     return f'<td class="n {cls}">{float(v):.3f}</td>'
 
 
+#: how close the two pooled scores must sit before the panel is allowed to
+#: call them level. 0.02 is well inside the paired-bootstrap interval the
+#: sealed three seasons produce; anything wider is a real difference and the
+#: sentence stays off rather than talking past the table.
+LEVEL_GAP = 0.02
+
+
 def _season_table(payload: dict) -> str:
     seasons = payload["seasons"]
     pooled = payload["pooled"]
@@ -469,8 +478,11 @@ def _season_table(payload: dict) -> str:
     # it, while the hub's own ensemble is a comparator a reader learns from.
     # A season with no official score prints "not scored" rather than a
     # blank that would read as a zero.
-    head = ('<tr><th>Season</th><th class="n">Ensemble relWIS</th>'
-            '<th class="n">FluSight ensemble</th>'
+    # Both score columns are named for whose forecast they score. "Ensemble"
+    # alone sat next to "FluSight ensemble" and read as the same thing; the
+    # note below carries the relWIS unit for both columns at once.
+    head = ('<tr><th>Season</th><th class="n">FluBNF Ensemble</th>'
+            '<th class="n">FluSight Ensemble</th>'
             '<th class="n">Cells</th><th>FluSight field</th></tr>')
 
     rows = []
@@ -484,8 +496,14 @@ def _season_table(payload: dict) -> str:
                           or {}).get("rel")))
         r += f'<td class="n">{cells:,}</td>' if cells else \
              '<td class="n na">--</td>'
+        # WITHDRAWN, not pending. The empty cell used to read "not yet
+        # scored against the field", which says the work has not happened;
+        # it has, and the result was retracted (Methods, and the release
+        # record). The note directly under this table calls it "the
+        # withdrawn field placement", so the two were describing the same
+        # fact two different ways one line apart.
         r += (f'<td>{_e(pl["text"])}</td>' if pl.get("text")
-              else '<td class="na">not yet scored against the field</td>')
+              else '<td class="na">placement withdrawn, see Methods</td>')
         rows.append(r + "</tr>")
 
     p = pooled.get("ensemble") or {}
@@ -495,18 +513,40 @@ def _season_table(payload: dict) -> str:
              '<td></td></tr>')
     table = "<table>" + head + "".join(rows) + prow + "</table>"
 
-    note = ("Both score columns are relWIS against the same CDC FluSight "
-            "baseline, so below 1.000 beats that baseline in either column. "
-            "A cell is one location, one forecast week, one horizon, kept "
-            "only where settled truth was above zero and the FluSight "
-            "baseline also had a forecast.")
+    # The convention, named on the published panel too. This page is the
+    # one a reader is likeliest to open beside the CDC dashboard, and
+    # "against the CDC FluSight baseline" describes both conventions
+    # equally, so on its own it labels nothing. The sentence is imported
+    # rather than typed: the console, this site and the exported report
+    # carry the identical wording (app/core/relwis).
+    note = ("Both columns are relWIS against the same CDC FluSight baseline "
+            "on the same cells, so lower is better and below 1.000 beats "
+            "that baseline. " + relwis.PUBLISHED_CONVENTION_NOTE)
     if has_official:
-        note += (" The comparator is the official FluSight ensemble, the "
-                 "hub's own combination of the forecasts every team "
-                 "submitted that week, which makes it a strong reference "
-                 "rather than a naive one. It is scored on exactly the "
-                 "cells in the ensemble column beside it, so the two "
-                 "numbers in a row can be read against each other.")
+        note += (" The comparator is the hub's own combination of every "
+                 "team's forecasts, a strong reference rather than a naive "
+                 "one.")
+        # The gap and the week count are computed here rather than typed.
+        # The finding they carry (the pooled difference is inside sampling
+        # noise) belongs to the sealed seasons, so if a future build ever
+        # produces a gap that is not small the sentence is withheld instead
+        # of asserting "level" against its own table.
+        off = (pooled.get("FluSight-ensemble") or {}).get("rel")
+        # the weeks a paired test actually has: both models scored in the
+        # same week. Not season["scored_weeks"], which counts every stored
+        # week including the pre-season ones that scored nothing at all, and
+        # would overstate the sample the bootstrap ran on.
+        weeks = sum(1 for s in seasons for w in s.get("weekly") or []
+                    if "ensemble" in w.get("week", {})
+                    and "FluSight-ensemble" in w.get("week", {}))
+        if p.get("rel") is not None and off is not None and weeks:
+            gap = abs(p["rel"] - off)
+            if gap <= LEVEL_GAP:
+                note += (f" Pooled the two are level: a gap of {gap:.3f} "
+                         f"over {weeks} forecast weeks that a paired "
+                         "bootstrap does not separate from zero.")
+    note += (" Methods carries the donor pool, the withdrawn field "
+             "placement, and the two-strain result.")
     return table + ('<p class="sub" style="margin:.9rem 0 0;font-size:.85rem">'
                     + note + "</p>")
 
@@ -554,8 +594,12 @@ def _member_table(payload: dict) -> str:
         members.append("ensemble")
     if not members:
         return ""
+    # the same names the console prints (the shared map in player.js). This
+    # table sat on the same published page as the season table's "FluBNF
+    # Ensemble" header while calling that same model by the older
+    # team-prefixed name, so one page named one model twice.
     labels = {"pf": "PF-SIHRS", "analogue": "Calendar analogue",
-              "ensemble": "NAU ensemble", "pf2s": "Two-strain SIHRS"}
+              "ensemble": "FluBNF Ensemble", "pf2s": "Two-strain SIHRS"}
     head = ('<tr><th>relWIS by member</th>'
             + "".join(f'<th class="n">{_e(s["season"])}</th>'
                       for s in seasons) + "</tr>")
@@ -680,12 +724,18 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
                 else _e(seasons[0]["season"]))
 
     if pooled_ens is not None and seasons:
+        # THE convention, on the landing tab. This banner is the site's
+        # first and most-read figure, it sits on the home tab, and the
+        # season table that carries the same sentence is on a DIFFERENT tab
+        # a reader may never open, so "against the CDC FluSight baseline"
+        # was standing here alone. That phrase is true of both conventions,
+        # which is exactly why it labels neither; the note names which one.
         headline = (
             f"Across {len(seasons)} replayed season"
             f"{'s' if len(seasons) != 1 else ''} ({span}) the submitted "
             f"ensemble scores a pooled relWIS of "
             f'<b>{pooled_ens:.3f}</b> against the CDC FluSight baseline. '
-            "Below 1 beats it.")
+            "Below 1 beats it. " + relwis.PUBLISHED_CONVENTION_NOTE)
     else:
         headline = ("No season has been scored yet. The table fills in as "
                     "retrospectives complete.")
@@ -831,10 +881,8 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
 <div class="page" id="p-retro">
   <section style="margin-top:1rem">
     <div class="kick">Measured performance</div>
-    <p class="sub">Every season re-run week by week on the data archived at
-    each forecast date. relWIS below 1 beats the CDC FluSight baseline's own
-    submitted forecasts. Each score is recomputed for this build from the
-    stored forecasts, never copied from a note.</p>
+    <p class="sub">Both members, every season, re-run week by week on the
+    data archived at each forecast date.</p>
     <div class="card scroll">
       {_season_table(payload)}
       {_percentile_bars(payload)}

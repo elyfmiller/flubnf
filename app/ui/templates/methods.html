@@ -181,14 +181,15 @@
  leave-one-season-out fit recorded at the 2026-08-17 freeze was 0.717
  against the 0.704 the equal blend scored at the time. No weight is tuned on
  any season.</p>
- <p class="hint">Model tab: <a href="/model/ensemble">Ensemble</a>.</p>
+ <p class="hint">Model tab: <a href="/model/ensemble">FluBNF Ensemble</a>.</p>
 </div>
 
 <div class="card"><h2>Measured performance</h2>
  <p>Three seasons replayed in real-time conditions: each week the models saw
  only that week's archived data vintage, submitted, and moved on. Scores are
  relative weighted interval scores (relWIS) against the official FluSight
- baseline; values below 1 beat the baseline.</p>
+ baseline, ratio of sums; values below 1 beat the baseline. The convention
+ is stated in full under Data and verification policies below.</p>
  {# the one relWIS rule: every printed score wears the ok/bad classes by the
     below-1-beats-baseline test, members included; a member season that lost
     to the baseline must not read as neutral #}
@@ -196,14 +197,19 @@
   <tr><th>Model</th><th>2023-24</th><th>2024-25</th><th>2025-26</th></tr>
   <tr><td>PF-SIHRS</td><td class="bad">1.023</td><td class="ok">0.636</td><td class="ok">0.825</td></tr>
   <tr><td>Calendar analogue</td><td class="bad">1.045</td><td class="ok">0.756</td><td class="ok">0.621</td></tr>
-  <tr><td>Ensemble</td><td class="ok">0.813</td><td class="ok">0.618</td><td class="ok">0.683</td></tr>
+  {# the shared display name, not the bare word. Its two neighbours in this
+     column are branded ("PF-SIHRS", "Calendar analogue") and the same three
+     models are listed as "FluBNF Ensemble" on the home card, on the public
+     site's member table and on every season page, so "Ensemble" alone was
+     this page's own second name for one model. #}
+  <tr><td>FluBNF Ensemble</td><td class="ok">0.813</td><td class="ok">0.618</td><td class="ok">0.683</td></tr>
  </table></div>
  <p class="hint">Pooled ensemble relWIS: 0.678, over 15,460 scored cells.
  Measured on the shipped donor pool; before the 2021-22 exclusion the
  analogue read 1.105 / 0.835 / 0.641 and the ensemble 0.847 / 0.651 / 0.691,
- pooled 0.704. The particle filter is unchanged by that exclusion. Placement
- against the real FluSight fields was withdrawn on 2026-08-24 and is not
- stated here.</p>
+ pooled 0.704. The particle filter is unchanged by that exclusion. On
+ placement against the real FluSight fields, see the verification policies
+ below.</p>
 </div>
 
 <div class="card"><h2>Under the hood</h2>
@@ -256,5 +262,55 @@
  score against the official FluSight baseline, the competition's own
  yardstick, and evaluation touches only data that was available at forecast
  time.</p>
+ {# the cell rule used to be spelled out in the Measured-performance panel's
+    own copy, on the home card and on the public site. That copy was cut, so
+    the definition lands here instead: every "scored cells" count on this
+    project, 15,460 among them, is meaningless without it, and this card is
+    one of the ones that survives the site harvest. #}
+ <p>A scored cell is one location, one forecast week, one horizon. A cell
+ counts only where settled truth exists and is positive, the forecast median
+ is positive, and the FluSight baseline also covers that cell. Official
+ FluSight scoring keeps cells this rule drops, so a count here can differ
+ from a count published there.</p>
+ {# this lives here and not in the Measured-performance card above because
+    that card is dropped when app/core/site_build.py harvests this page onto
+    the public site, and a withdrawn claim has to stay withdrawn in both
+    places. #}
+ <p>Placement against the full FluSight field, meaning a rank among all
+ submitting teams, was withdrawn on 2026-08-24 and is not restated. The
+ reason is a difference between the two halves of that claim. A relWIS
+ figure here is this project's own score under one stated convention,
+ computed end to end from forecasts and scores this repository holds. A
+ rank asserts something further, that every other team was scored on that
+ same convention, and the field's scores come from a builder that lives
+ outside this repository and cannot be rerun from it. The console computes
+ the dashboard's pairwise figure for this project's own forecasts where the
+ field's cached scores happen to be present, and it still prints no rank.</p>
+ {# the CONDITION for lifting the withdrawal, stated as the release record
+    states it. An earlier draft of this paragraph made it a tooling problem
+    and said the withdrawal lifts "when the field builder is in this tree",
+    which is the smaller half and reads as a promise the record does not
+    make: the archived standings failed on three counts, and the third one
+    (a published row carrying rejected fitted weights) is a scoring fault
+    that porting a script does not answer. Keep this in step with
+    docs/RELEASE-1.0.md, which is the version of record. #}
+ <p>Three things went wrong when the withdrawn table was re-measured, and
+ the field builder is only the first. The scorer that produced the archived
+ standings does not survive. A reconstruction of the 2023-24 field from
+ this repository's own scoring code reproduced no archived row exactly. And
+ this project's own three rows in that field were not computed on one
+ convention: the 2024-25 row carried the leave-one-season-out fitted
+ ensemble weights that this project evaluated, rejected, and does not ship.
+ The claim returns when the field and this project's entry have been scored
+ again, end to end, on one stated convention and on the shipped
+ configuration; until then no placement is claimed anywhere in this
+ application. The full account is in the release record.</p>
+ {# THE labelling defect this paragraph used to carry: it closed by calling
+    the page's figures "a ratio against the FluSight baseline", which is
+    true of BOTH conventions, since both are scaled to put the baseline at
+    1.0. It read as a label and identified nothing. The shared note names
+    which ratio, and warns the reader it is aimed at: the one comparing
+    these figures with the CDC dashboard. #}
+ <p>{{ relwis_convention_note }}</p>
 </div>
 {% endblock %}

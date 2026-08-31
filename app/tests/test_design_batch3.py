@@ -241,17 +241,46 @@ def test_player_carries_the_map_and_python_reads_the_same_one():
     assert "return MODEL_NAMES[m] || m" in PLAYER
 
 
+def test_one_name_for_the_ensemble_on_every_human_facing_surface():
+    """The blend is "FluBNF Ensemble" wherever a person reads it.
+
+    It used to be "NAU ensemble" in the shared map and on the outlook
+    labels while the season tables were headed "FluBNF Ensemble", so one
+    published page printed two names for one model. The hub identity is a
+    different thing and is checked NOT to move: submissions still go out as
+    the registered LosAlamos_NAU-CModel_Flu.
+    """
+    from app.core import report_v2, site_page
+    assert _player_map()["ensemble"] == "FluBNF Ensemble"
+    # the outlook maps append "outlook" to the same names; the map is typed
+    # in report_v2 (report_season holds the parse and imports it), so this
+    # is where the drift would happen
+    names = _player_map()
+    assert report_v2.MODEL_LABEL == {m: names[m] + " outlook"
+                                     for m in report_v2.MODEL_LABEL}
+    # no surface still carries the old name: the shared map, the published
+    # site's member table, and the console templates
+    site_src = Path(site_page.__file__).read_text()
+    assert '"ensemble": "FluBNF Ensemble"' in site_src
+    for src in (PLAYER, site_src, SEASON_T, RETRO_T, MODEL_T, FORECAST_T):
+        assert "NAU ensemble" not in src
+    # the submission identity is untouched: a display rename must never
+    # rename the model the hub knows us by
+    from app.core import submit
+    assert submit.hub_model_id("ensemble") == "LosAlamos_NAU-CModel_Flu"
+
+
 def test_template_global_resolves_names_and_passes_unknowns_through():
     name = srv.templates.env.globals["model_name"]
     assert name("pf") == "PF-SIHRS"
-    assert name("ensemble") == "NAU ensemble"
+    assert name("ensemble") == "FluBNF Ensemble"
     assert name("analogue") == "Calendar analogue"
     assert name("mystery") == "mystery"
 
 
 def test_season_head_cards_wear_the_shared_names():
     html = _season(heads={"ensemble": 0.9, "pf": 1.02})
-    assert "<h2>NAU ensemble</h2>" in html
+    assert "<h2>FluBNF Ensemble</h2>" in html
     assert "<h2>PF-SIHRS</h2>" in html
     assert "<h2>pf</h2>" not in html and "<h2>ensemble</h2>" not in html
 
@@ -266,7 +295,7 @@ def test_fan_selector_buttons_use_the_shared_names():
 
 def test_model_switcher_reads_the_shared_map():
     t = client.get("/models").text
-    for label in ("PF-SIHRS", "Calendar analogue", "NAU ensemble",
+    for label in ("PF-SIHRS", "Calendar analogue", "FluBNF Ensemble",
                   "Two-strain SIHRS"):
         assert label in t, label
     assert "model_name(mn)" in MODEL_T              # not a fourth hardcoding

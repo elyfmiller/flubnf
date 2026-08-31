@@ -127,8 +127,15 @@ function pickLoc(map, loc){
 // SAME literal through Python (app/core/report_season.py, model_names),
 // which parses the marked JSON below. Keep it a pure JSON object between
 // the markers for that reason.
+//
+// The blend is "FluBNF Ensemble" on every human-facing surface. This entry
+// used to carry the older team-prefixed name while the season tables were
+// already headed "FluBNF Ensemble", so one published page printed two
+// names for one model. The hub submission identity is a SEPARATE thing and
+// does not change with this: forecasts still go out under the registered
+// model_id built in app/core/submit.py, which is not a display name.
 var MODEL_NAMES = /*MODEL_NAMES_JSON*/{
-  "ensemble": "NAU ensemble",
+  "ensemble": "FluBNF Ensemble",
   "pf": "PF-SIHRS",
   "analogue": "Calendar analogue",
   "pf2s": "Two-strain SIHRS",

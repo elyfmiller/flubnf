@@ -59,6 +59,78 @@
  fresh replay could start; nothing here changes when the live season runs.
  <a href="/retro/{{ season }}">Open the live {{ season }} season</a>.</p>
 {% endif %}
+{# ONE availability flag for the whole results block. When the chosen
+   convention has no numbers, several panels below must fall silent
+   together: the banner says so once, and the per-state table, its caption
+   and the player's cross-convention warning must not go on describing
+   scores that are not on the page. Undefined `figs` (the preparing view
+   and the older template contexts) is falsy, so those callers render
+   exactly as before. #}
+{% set unavailable = figs and not figs.available %}
+{# THE scoring convention, chosen once for the whole page.
+
+   Two different quantities are called relative WIS and this project has
+   already been burned by reading one next to the other. The switch below
+   governs the head tiles and the per-state table together, so the page
+   never prints two definitions side by side, and every figure it produces
+   carries the label naming the one that produced it. Panels that exist
+   only under one convention (the cumulative curve, the US national row)
+   say so in the other view rather than reverting. See app/core/relwis. #}
+<div class="card">
+ <h2>Scoring convention</h2>
+ <div class="row" role="group" aria-label="Scoring convention">
+  {% for c in conventions %}
+  <a href="/retro/{{ season }}?conv={{ c.key }}{% if archive %}&amp;archive={{ archive }}{% endif %}{% if week %}&amp;week={{ week }}{% endif %}"
+   ><button type="button" class="{{ 'gold' if c.key == conv else 'quiet' }}"
+     aria-pressed="{{ 'true' if c.key == conv else 'false' }}"
+     style="margin-top:0">{{ c.name }}</button></a>
+  {% endfor %}
+ </div>
+ {% if figs %}<p class="hint">{{ figs.blurb }}</p>{% endif %}
+ <p class="hint">The two conventions give different numbers for the same
+  forecasts and answer different questions, so a figure from one must never
+  be compared with a figure from the other. Every score below states which
+  one produced it.</p>
+ {% if figs and figs.convention == 'pairwise' and figs.available %}
+ {# THE VALUE, NOT THE PLACEMENT. This figure is scored against the teams
+    that submitted this season, in these jurisdictions, and it moves when
+    that field changes, so the field is genuinely part of the number. What
+    the page does NOT print is the rank or the field's size. The value is
+    this project's own score under one stated convention and is
+    reproducible end to end from the sealed per-cell scores; a rank would
+    additionally assert that the whole FluSight field was scored on that
+    convention, and the builder that scores the field lives outside this
+    repository, so that half cannot be rebuilt from this checkout.
+    Placement was withdrawn on 2026-08-24 and Methods says so; printing a
+    rank here would contradict that page in the same application. The rank
+    is still computed (app/core/relwis.insert_model) so that lifting the
+    withdrawal is a display decision. #}
+ <p class="hint">Scored against the teams that submitted this season,
+  jurisdictions only. The figure moves when the field changes, so the field
+  is part of the number. Placement within that field, meaning a rank among
+  the submitting teams, is not restated here: see
+  <a href="/methods">Methods</a>.</p>
+ {% endif %}
+</div>
+{% if unavailable and figs.reason %}
+{# the unavailable path, stated plainly. There is deliberately no fallback:
+   silently showing the other convention's numbers under this heading is
+   the exact failure the switch exists to prevent. #}
+<p class="banner" role="status"><strong>No scores under this
+ convention.</strong> {{ figs.reason }}.
+ {%- if conv != 'ratio_of_sums' %} The
+ {# the same query the convention switch itself carries: dropping the week
+    sent a reader who had scrubbed to a particular week back to the last
+    one, which reads as the page losing their place #}
+ <a href="/retro/{{ season }}?conv=ratio_of_sums{% if archive %}&amp;archive={{ archive }}{% endif %}{% if week %}&amp;week={{ week }}{% endif %}">ratio
+ of sums view</a> is computed from this project's own sealed scores and is
+ always available, but it is a different quantity: it is not a substitute
+ for the figure missing here.
+ {%- else %} This is the ratio of sums view, the one computed from this
+ project's own sealed scores, so there is no other convention to send you
+ to: the scores themselves are missing rather than the comparison.
+ {%- endif %}</p>
+{% endif %}
 {% if prog and prog.active %}
 {# a live replay, driven by the shared ticker in /static/retro_progress.js:
    the same bar, readouts, and quips the console's run card uses #}
@@ -143,7 +215,19 @@
  {% for m, v in heads.items() %}
  <div class="card"><h2>{{ model_name(m) }}</h2><div class="big
    {% if v < 1 %}ok{% else %}bad{% endif %}">{{ "%.3f"|format(v) }}</div>
-   <p class="hint">relWIS vs the FluSight baseline</p></div>
+   {# the convention rides with the number, every time: an unlabelled
+      relWIS is the failure this page is built to prevent. Both conventions
+      put FluSight-baseline at 1, which is why both can be stated against
+      it; what differs is how the cells are pooled to get there.
+
+      Coverage is printed, placement is not. `d` also carries a rank and a
+      field size under the pairwise convention (app/core/relwis); they are
+      deliberately not rendered while placement against the FluSight field
+      stays withdrawn, because this page cannot rebuild the field's scores
+      and Methods says the placement is not restated. #}
+   <p class="hint">relWIS vs the FluSight baseline, {{ figs.label if figs else 'ratio of sums' }}
+   {%- set d = (figs.detail.get(m) if figs and figs.detail else None) %}
+   {%- if d and d.n_cells %} ({{ "{:,}".format(d.n_cells) }} cells){% endif %}</p></div>
  {% endfor %}
  {# the national series rides as a fourth tile, ALWAYS naming its
     provenance: a fitted US run and a constructed sum-of-states aggregate
@@ -154,13 +238,37 @@
  {% if us_row and us_row.ensemble %}
  <div class="card"><h2>{{ us_row.short_label }}</h2><div class="big
    {% if us_row.ensemble < 1 %}ok{% else %}bad{% endif %}">{{ "%.3f"|format(us_row.ensemble) }}</div>
-   <p class="hint">ensemble relWIS vs the FluSight baseline;
+   <p class="hint">ensemble relWIS, ratio of sums vs FluSight-baseline;
    {% if us_row.fitted %}fitted at the national level, and reported apart from the season figures beside it{% else %}{{ us_row.fallback_note }}, states treated as independent{% endif %}</p></div>
  {% endif %}
 </div>
-{% if pooled_note %}<p class="hint">{{ pooled_note }}</p>{% endif %}
+{# THE SAME AVAILABILITY GUARD AGAIN. Both notes below describe the tiles
+   above them, and with no scores under the chosen convention there are no
+   tiles: the scope note went on defining a pooled relWIS the page was not
+   printing, and the US line blamed the convention's shape for an absence
+   the banner had just blamed on missing field data. Two reasons for one
+   absence, a paragraph apart, is the failure this guard exists to stop. #}
+{% if pooled_note and not unavailable %}<p class="hint">{{ pooled_note }}</p>{% endif %}
+{% if conv == 'pairwise' and not unavailable %}
+{# the national series is scored as a ratio of sums, and the pairwise
+   convention here is jurisdictions only (the dashboard's rule and this
+   project's pooled scope agree on that). So it is absent from this view
+   rather than printed in a definition the tiles beside it do not share. #}
+<p class="hint">The US national row is not shown under this convention: it
+ is scored as a ratio of sums, and the pairwise field here is jurisdictions
+ only. It is on the ratio of sums view.</p>
+{% endif %}
 <div class="card"><h2>Cumulative ensemble relWIS through the season</h2>
-{% if curve %}
+{% if conv == 'pairwise' %}
+{# a running cumulative figure is a ratio of sums by construction: each
+   point pools every cell scored to that week. There is no cumulative
+   pairwise analogue, and drawing the ratio curve under a pairwise heading
+   would be exactly the mixing this page refuses. #}
+<p class="hint">Not available under this convention. A cumulative line is a
+ running ratio of sums by construction, each point pooling every cell
+ scored so far; the pairwise figure is a geometric mean over a field and
+ has no cumulative form. The curve is on the ratio of sums view.</p>
+{% elif curve %}
 {# the chart states its own scale: the y range hugs the data (always
    including the 1.0 and 0.5 gridlines), the first and last week dates sit
    under the corners, and the final cumulative value is printed at the
@@ -261,13 +369,32 @@
    <p class="hint" id="pb-status" aria-live="polite"></p>
    <p class="hint" id="pb-offhint" hidden>official comparators appear after
     Update data fetches their submissions</p>
-   <p class="hint">relWIS below 1 beats the CDC FluSight baseline. Week
-    scores this forecast; cumulative pools every week to the playback
-    position.</p>
+   {# the player's running figures are a ratio of sums and always have
+      been; saying so here is what keeps them from being read against a
+      pairwise headline above #}
+   <p class="hint">relWIS below 1 beats the CDC FluSight baseline, ratio of
+    sums. Week scores this forecast; cumulative pools every week to the
+    playback position.</p>
+   {# only when there ARE pairwise scores to be confused with. The banner
+      above has just said the page has none under this convention, and
+      warning against comparing with scores that are not there reads as a
+      contradiction of it. #}
+   {% if conv == 'pairwise' and not unavailable %}
+   <p class="hint">The player stays on the ratio of sums whichever
+    convention the switch above selects, so these running figures are not
+    comparable with the pairwise scores at the top of the page.</p>
+   {% endif %}
   </div>
  </div>
 </div>
 
+{# THE SAME AVAILABILITY GUARD THE BANNER USES. With no scores under the
+   chosen convention this card rendered "Per-state scores / 0 states
+   scored" over an empty table, under a caption describing a per-state
+   tournament that had not been run: a full description of a table that is
+   not there. The banner above is the page's one statement of that state,
+   so the card stands down entirely rather than restating it emptily. #}
+{% if not unavailable %}
 <div class="card">
 {# the per-state table folds like the Runs page's storage panel: OPEN by
    default, the open state persisted per localStorage exactly as the other
@@ -282,6 +409,12 @@
 <details class="ledgerfold" id="statefold" open>
  <summary><h2 style="display:inline">Per-state scores</h2>
   <span class="hint"> {{ states|length }} state{{ '' if states|length == 1 else 's' }} scored</span></summary>
+ {# the table names its convention once, at the top, because every cell in
+    it came from that one definition; the switch above is what changes it #}
+ <p class="hint">relWIS vs the FluSight baseline, {{ figs.label if figs else 'ratio of sums' }}.
+ {% if conv == 'pairwise' %}Each jurisdiction is its own tournament: the
+  field is restricted to that jurisdiction's cells, which is a restriction
+  of the dashboard convention, not a figure CDC publishes.{% endif %}</p>
  <div class="row" style="margin:.5rem 0 .3rem">
   <input type="search" id="sf-filter" placeholder="Filter by state name"
          aria-label="Filter rows by state name"
@@ -378,6 +511,7 @@
   });
  })();
 </script></div>
+{% endif %}
 
 <script>
  // live host for the shared season player (loaded above from player.js in

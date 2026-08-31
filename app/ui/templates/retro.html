@@ -103,7 +103,14 @@ and move on; scoring waits for settled truth.</p>
        (field-found: a card that read "10/32" up top and a stale "1/32"
        here, because only the headline was ever repainted) #}
     <span class="hint"><span class="rcount">{{ s.done }}/{{ s.total }} weeks</span>{% if s.seal %} · full-grid validation run{% endif %}
-     {% if s_complete %} · relWIS <span class="{{ 'ok' if s.rel < 1 else 'bad' }}">{{ "%.3f"|format(s.rel) }}</span>{% endif %}
+     {# the convention travels with the score. Two quantities are called
+        relWIS and they are not comparable, so an unlabelled one on an
+        index card is how the wrong comparison gets made. Every figure on
+        this page is the ratio of sums, the convention every sealed number
+        was computed under; a season's results page carries the switch to
+        the CDC dashboard's pairwise convention, which needs field data
+        this page would have to load once per card. #}
+     {% if s_complete %} · relWIS <span class="{{ 'ok' if s.rel < 1 else 'bad' }}">{{ "%.3f"|format(s.rel) }}</span>, ratio of sums{% endif %}
      {% if s.status == 'running' %}<span class="warn">· running</span>
      {% elif s.status == 'stopping' %}<span class="warn">· stopping after the fits in flight</span>
      {% elif s.status == 'paused' %}<span class="warn">· paused</span>
@@ -173,7 +180,7 @@ and move on; scoring waits for settled truth.</p>
      <span class="hint">· {{ a.weeks }} week{{ "" if a.weeks == 1 else "s" }}{%
       if a.elapsed_s and a.elapsed_s >= 1 %} · {{ a.elapsed_s | hms }}{% endif %}{%
       if a.rel is not none %} · relWIS <span class="{{ 'ok' if a.rel < 1 else 'bad' }}">{{
-      "%.3f"|format(a.rel) }}</span>{% endif %} · {{ a.size_h }}</span></span>
+      "%.3f"|format(a.rel) }}</span>, ratio of sums{% endif %} · {{ a.size_h }}</span></span>
     <a href="/retro/{{ s.name }}?archive={{ a.id }}"><button class="quiet"
       type="button">Results →</button></a>
     <form method="post"

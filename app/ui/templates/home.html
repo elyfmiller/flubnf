@@ -141,8 +141,11 @@
 <div class="grid2">
  <div class="card"><h2>Measured performance</h2>
   <table class="perf">
-   <thead><tr><th>Season</th><th class="num">Ensemble relWIS</th>
-    <th class="num">FluSight ensemble</th><th class="num">Scored cells</th>
+   {# both score columns are named for whose forecast they score: "Ensemble"
+      alone sat beside "FluSight ensemble" and read as the same thing. The
+      relWIS unit for both is stated once in the hint below. #}
+   <thead><tr><th>Season</th><th class="num">FluBNF Ensemble</th>
+    <th class="num">FluSight Ensemble</th><th class="num">Scored cells</th>
     </tr></thead>
    <tbody>
     <tr><td>2023-24</td><td class="num rel">0.813</td>
@@ -155,27 +158,20 @@
      <td class="num">0.685</td><td class="num">15,460</td></tr>
    </tbody>
   </table>
-  <p class="hint">Two-member ensemble, three seasons replayed on vintage
-  data only. Both columns are relWIS against the same CDC FluSight baseline,
-  so below 1.000 still means beating that baseline in either column. The
-  comparator is the official FluSight ensemble: the hub's own combination of
-  the forecasts every team submitted that week, which makes it a strong
-  reference rather than a naive one. It is scored here on exactly the cells
-  in the Scored cells column and no others, on the same target (weekly
-  incident influenza hospital admissions) through the same scorer, so the
-  two score columns describe one universe of 15,460 cells. Read the result
-  as level overall: ahead by 0.045 in 2024-25, level in 2025-26, behind by
-  0.073 in 2023-24, and a pooled gap of 0.007 that a paired bootstrap over
-  the 76 forecast weeks does not separate from zero. These figures are
-  measured on the shipped analogue donor pool, which excludes the
-  calendar-inverted 2021-22 season; before that exclusion the same seasons
-  scored 0.847, 0.651 and 0.691, pooled 0.704. Placement against the full
-  FluSight field, meaning a rank among all submitting teams, was withdrawn
-  on 2026-08-24 and is not restated here: the scorer that produced it does
-  not survive and its entries for this project were not computed on one
-  convention. The two-strain member has been tested on the full grid and did
-  not qualify for the ensemble; both are documented under
-  <a href="/methods#two-strain">Methods</a>.</p></div>
+  {# the convention, named on the panel a reader is likeliest to hold up
+     against the CDC dashboard. "A ratio against the FluSight baseline"
+     used to stand alone here, and it describes BOTH conventions equally,
+     so it labelled nothing; relwis_convention_note is the one wording,
+     shared with Methods, the public site and the exported report. #}
+  <p class="hint">Two members, three seasons, replayed on vintage data only.
+  Both columns are relWIS against the same CDC FluSight baseline on the same
+  15,460 cells, so lower is better and below 1.000 beats that baseline.
+  {{ relwis_convention_note }} The
+  comparator is the hub's own combination of every team's forecasts, a
+  strong reference rather than a naive one. Pooled they are level: 0.007
+  apart over 76 forecast weeks, a gap a paired bootstrap does not separate
+  from zero. <a href="/methods">Methods</a> carries the rest: the donor
+  pool, the withdrawn field placement, and the two-strain result.</p></div>
  <div class="card"><h2>Start here</h2>
   <ol class="steps">
    <li class="step"><span class="stepnum">1</span>
