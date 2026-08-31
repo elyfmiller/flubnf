@@ -123,6 +123,102 @@ environment variable; check any machine with
 | `FLUBNF_PY_ENGINE` | python of the engine venv (`pybnf` + `bngsim`) |
 | `FLUBNF_PYBNF` | a PyBNF checkout providing `fit_type = pf` |
 
+### Getting the particle filter engine
+
+Everything above needs no GitHub login: this repository and the FluSight hub
+are both public. The particle filter engine is the one exception, because it
+needs a PyBNF fork that is private. **The console runs without it**, analogue
+forecasts only, so this never blocks an install; `SetupEngine.command` (macOS)
+or `./setup_engine.sh` adds the engine once you have access.
+
+**The shortest route needs no GitHub account at all: one file.** Anyone who
+already has the fork runs, once:
+
+```bash
+git bundle create pybnf.bundle feature/particle-filter
+```
+
+That single file (about 140 MB) clones like a repository, with no network and
+no credentials. Put it in any of these places and the setup scripts find it by
+themselves, on both platforms:
+
+* the FluBNF folder itself, or the folder beside it,
+* `~/Downloads`, `~/Desktop` or `~/Documents` (on Windows, the same three
+  folders under your user profile).
+
+Then double-click `FluBNF.command` (macOS) or `FluBNF.bat` (Windows), or run
+`./setup_engine.sh`. The console says which file it used and, when it finds
+none, exactly which folders it looked in. `FLUBNF_PYBNF_BUNDLE` points at one
+kept somewhere else. Because it is one file on a shared drive or a USB stick,
+this is also the only route that works on a laptop with no GitHub account, no
+administrator rights, or no network at all.
+
+**A GitHub account password will not work at a git prompt.** If you would
+rather go through GitHub than use a bundle: GitHub retired password
+authentication in 2021, so being a collaborator on the fork is not by itself
+enough to clone it in a terminal. Pick one of these instead, in increasing
+order of effort:
+
+**Before any of them, check the invitation was accepted.** A collaborator
+invitation has to be accepted before the repository exists for you at all.
+Until then it is invisible everywhere, in Desktop's repository list, in search,
+and to git, which is indistinguishable from having no access. Signing in with
+the right account is not the same as having accepted. The owner sees pending
+invites at `.../PyBNF-Private/settings/access` with an **Invited** badge; the
+invitee accepts from their email or from <https://github.com/notifications>.
+
+1. **GitHub Desktop. No terminal, no Homebrew, nothing to install beyond
+   Desktop itself.** File > Clone repository, then **the URL tab**, and paste
+   `elyfmiller/PyBNF-Private`. Use the URL tab even though the GitHub.com tab
+   looks like the right one: that list shows repositories you *own* plus your
+   organisations', so a private repo you are only a **collaborator** on is
+   usually missing from it. Not finding it in the list does not mean you lack
+   access. Set the local path to `~/Documents/GitHub/PyBNF-Private`, which is
+   where setup looks, then reopen `FluBNF.command`. Signing in to Desktop
+   *without* cloning does not help, because Desktop does not share its login
+   with terminal git.
+2. **GitHub CLI.** Two steps, not one: `gh` is not installed by default, so
+   `gh auth login` on a fresh machine returns `command not found`.
+   ```bash
+   brew install gh && gh auth login
+   ```
+   **No Homebrew?** You do not need it, and you do not need to install it.
+   Download the macOS `.pkg` from <https://github.com/cli/cli/releases> (under
+   Assets, the file ending `_macOS_universal.pkg`) and double-click it; it is a
+   normal installer. Then run `gh auth login`. On Windows,
+   `winget install --id GitHub.cli`. Then re-run `./setup_engine.sh`.
+   If installing anything at all is a problem on a managed laptop, use option 1
+   or the offline bundle below, neither of which needs admin rights.
+3. **SSH key**, if you already have one registered with GitHub:
+   ```bash
+   FLUBNF_PYBNF_REMOTE=git@github.com:elyfmiller/PyBNF-Private.git ./setup_engine.sh
+   ```
+
+Already tried and still stuck? macOS caches the first answer it gets, so one
+wrong entry keeps failing silently. Clear it, then use option 1 or 2:
+
+```bash
+printf 'protocol=https\nhost=github.com\n\n' | git credential-osxkeychain erase
+```
+
+**Making and handing over the bundle.** The bundle is around 140 MB, too large
+to email, so use a shared drive, a USB stick, or a release asset on the fork.
+Nothing about it expires and nothing in it is secret to the lab, but it is the
+private fork's whole history, so treat it the way you treat the fork.
+
+Setup clones from it for you. To do it by hand instead:
+
+```bash
+git clone -b feature/particle-filter pybnf.bundle ~/Documents/GitHub/PyBNF-Private
+```
+
+Two failures are worth knowing apart. A file that is not a bundle at all (a
+browser that saved an error page under the name) is caught by
+`git bundle verify`. A bundle whose copy did not finish is **not**: verify
+accepts it and the clone then dies with `early EOF` or `index-pack died`.
+Setup names both cases; the first needs a different file, the second needs the
+same file copied again.
+
 ## Layout
 
 ```
