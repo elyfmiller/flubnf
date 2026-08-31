@@ -118,11 +118,12 @@ find_engine_bundle() {
 install_engine_archive() {
   # Unpack a pybnf-pf tarball into $PYBNF, from wherever the student saved
   # it. THE STUDENT NEVER PLACES THIS BY HAND: the earlier design had the
-  # install doc walking students to ~/Documents/GitHub (macOS) or
-  # %LOCALAPPDATA%\FluBNF (Windows), folders they had no reason to know,
-  # to do a move this function does in three lines. The internal location
-  # still matters (on Windows, Documents is Defender-protected), but that
-  # is this installer's concern, not the reader's.
+  # install doc walking students to ~/Documents/GitHub (macOS) or the
+  # Windows launcher's app-data folder, locations they had no reason to
+  # know, to do a move this function does in three lines. The internal
+  # location still matters (on Windows, Documents is Defender-protected,
+  # which is why FluBNF.bat extracts under app data), but that is the
+  # installer's concern, not the reader's.
   _arc="$1"
   _tmp="$(mktemp -d)" || return 1
   if ! tar -xzf "$_arc" -C "$_tmp" 2>/dev/null; then

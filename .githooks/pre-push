@@ -4,6 +4,13 @@
 # suite that passes with the lab's hub present is NOT the CI contract.
 # Bypass deliberately with --no-verify when you mean to.
 set -u
+# pipefail is THE load-bearing line. Without it `if ! pytest | tail` tests
+# tail's exit status, which is always 0, so the hook ran the whole suite and
+# then approved the push REGARDLESS of the result. Found 2026-08-31 when a
+# red suite sailed through: the hook had never refused anything since the
+# day it was added. The em-dash in the refusal message below was also ours,
+# swapped for a colon under the no-dashes rule.
+set -o pipefail
 repo="$(git rev-parse --show-toplevel)"
 py="$repo/.venv/bin/python"
 [ -x "$py" ] || { echo "pre-push: no .venv python; skipping"; exit 0; }
@@ -12,7 +19,7 @@ while read -r _local _lsha remote_ref _rsha; do
   echo "pre-push: running the suite under CI conditions (FLUBNF_HUB=/nonexistent)…"
   if ! FLUBNF_HUB=/nonexistent "$py" -m pytest "$repo/tests" "$repo/app/tests" \
        -q -o addopts="" 2>&1 | tail -20; then
-    echo "pre-push: SUITE FAILED under CI conditions — push refused."
+    echo "pre-push: SUITE FAILED under CI conditions: push refused."
     echo "          fix, or push with --no-verify if you know why."
     exit 1
   fi
