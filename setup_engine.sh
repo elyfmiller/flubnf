@@ -99,7 +99,13 @@ find_engine_bundle() {
   IFS=$_oifs
   for d in "$@"; do
     [ -d "$d" ] || continue
-    for f in "$d"/pybnf*.bundle "$d"/PyBNF*.bundle; do
+    # Both artifact shapes, one search. The lab hands out either a git bundle
+    # or the small pybnf-pf-<sha>.tar.gz that scripts/cut_engine_archive.sh
+    # cuts, and a student should not have to know which one they were given,
+    # or where it belongs: whatever landed in Downloads is the engine. The
+    # extract branch below tells them apart by suffix.
+    for f in "$d"/pybnf*.bundle "$d"/PyBNF*.bundle \
+             "$d"/pybnf*.tar.gz "$d"/PyBNF*.tar.gz; do
       # -f, not -e. On macOS ".bundle" is also a DIRECTORY type (plug-ins and
       # frameworks are shipped that way) and ~/Downloads is exactly where one
       # turns up. A directory named *.bundle is not a git bundle.
@@ -107,6 +113,41 @@ find_engine_bundle() {
     done
   done
   return 0
+}
+
+install_engine_archive() {
+  # Unpack a pybnf-pf tarball into $PYBNF, from wherever the student saved
+  # it. THE STUDENT NEVER PLACES THIS BY HAND: the earlier design had the
+  # install doc walking students to ~/Documents/GitHub (macOS) or
+  # %LOCALAPPDATA%\FluBNF (Windows), folders they had no reason to know,
+  # to do a move this function does in three lines. The internal location
+  # still matters (on Windows, Documents is Defender-protected), but that
+  # is this installer's concern, not the reader's.
+  _arc="$1"
+  _tmp="$(mktemp -d)" || return 1
+  if ! tar -xzf "$_arc" -C "$_tmp" 2>/dev/null; then
+    warn "could not unpack $_arc (a copy that did not finish?)"
+    rm -rf "$_tmp"; return 1
+  fi
+  # The archive unpacks under one top-level folder (PyBNF-Private/). Find it
+  # by content, not by name, so a re-rolled archive with a different prefix
+  # still installs.
+  _src=""
+  for c in "$_tmp"/*/; do
+    [ -f "${c}pybnf/pf.py" ] && [ -f "${c}setup.py" ] && { _src="${c%/}"; break; }
+  done
+  if [ -z "$_src" ]; then
+    warn "$_arc unpacked, but no pybnf/pf.py inside: not the engine archive"
+    rm -rf "$_tmp"; return 1
+  fi
+  mkdir -p "$(dirname "$PYBNF")"
+  if mv "$_src" "$PYBNF" 2>/dev/null; then
+    ok "engine unpacked from $(basename "$_arc") into $PYBNF"
+    [ -f "$PYBNF/VERSION" ] && ok "version stamp: $(head -1 "$PYBNF/VERSION")"
+    rm -rf "$_tmp"; return 0
+  fi
+  warn "could not move the unpacked engine into $PYBNF"
+  rm -rf "$_tmp"; return 1
 }
 
 case "${1:-}" in
@@ -174,7 +215,19 @@ else
   # --- the offline bundle, tried before anything that needs an account -----
   say "offline engine bundle"
   BUNDLE="$(find_engine_bundle)"
-  if [ -n "$BUNDLE" ]; then
+  ARCHIVE_DONE=""
+  case "$BUNDLE" in
+    *.tar.gz)
+      # The archive shape: unpack it ourselves, wherever the student saved
+      # it. If the unpack fails the file stays where it is and the GitHub
+      # route below still runs, so a bad download never strands anyone.
+      ok "found: $BUNDLE"
+      install_engine_archive "$BUNDLE" && ARCHIVE_DONE=1
+      BUNDLE="" ;;
+  esac
+  if [ -n "$ARCHIVE_DONE" ]; then
+    : # engine is on disk now; the have_pybnf gate below sees it and skips auth
+  elif [ -n "$BUNDLE" ]; then
     ok "found: $BUNDLE"
     # Verify first, but do not expect much of it. MEASURED on git 2.39.5:
     # `git bundle verify` accepts a bundle truncated to HALF its bytes -- it

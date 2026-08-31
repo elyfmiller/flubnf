@@ -42,22 +42,16 @@ just fail for reasons that look unrelated.
 
 ---
 
-## Step 2: put the engine file where FluBNF looks
+## Step 2: save the engine file to Downloads
 
-Unpack the `.tar.gz` you were sent. macOS unpacks it by double clicking.
-On Windows use 7-Zip or WinRAR, or right-click and Extract All if Windows
-offers it (you may need to extract twice, once for `.gz` and once for `.tar`).
+Save the `pybnf-pf-...tar.gz` you were sent into your **Downloads** folder.
 
-You will get a folder called **`PyBNF-Private`**. Move it so it ends up here:
+That is the whole step. Do not unzip it, do not move it, do not rename it.
+The setup finds it there on both platforms, unpacks it to the right place
+itself, and tells you which file it used.
 
-| system | put the folder here | final path |
-|---|---|---|
-| macOS | `~/Documents/GitHub/` | `~/Documents/GitHub/PyBNF-Private` |
-| Windows | `%LOCALAPPDATA%\FluBNF\` | `%LOCALAPPDATA%\FluBNF\PyBNF-Private` |
-
-Paste `%LOCALAPPDATA%\FluBNF\` into the Explorer address bar to get there.
-
-**Do not rename the folder.** The setup looks for that exact name.
+(It is also found on your Desktop, in Documents, or next to the FluBNF
+folder, if that is where it ended up.)
 
 ---
 
@@ -94,8 +88,8 @@ done.
 
 **"It opened but says the engine is not installed."**
 FluBNF still works, it just runs one of its two models instead of both, so you
-are not stuck. To fix it, check that the folder is in exactly the place in the
-table above and is named `PyBNF-Private`, then open FluBNF again.
+are not stuck. Check the engine file is in your Downloads folder with its
+original name, then open FluBNF again.
 
 If it still says that, open a terminal in the FluBNF folder and run
 `./setup_engine.sh` (macOS) or `setup_engine.sh` from Git Bash (Windows). It
@@ -103,15 +97,15 @@ prints a section called **"what this machine can see"** that names the actual
 cause instead of guessing. Send that block to Ely.
 
 **It tried to log in to GitHub and asked for a password.**
-That means it did not find your engine folder, so it fell back to downloading
-the engine, which does need an account. Go back to step 2. Nothing you type at
-that prompt will work: GitHub stopped accepting account passwords in 2021.
+That means it did not find the engine file, so it fell back to downloading
+the engine, which does need an account. Check the file is in Downloads with
+its original name. Nothing you type at that prompt will work: GitHub stopped
+accepting account passwords in 2021.
 
 **Windows: a Defender pop-up mentioning FluBNF.**
 Nothing is wrong and nothing is infected. That is Controlled Folder Access
-noticing that Python wants to write inside a protected folder. It means
-something ended up under `Documents`. See
-[docs/WINDOWS.md](WINDOWS.md) for the full explanation.
+noticing a program writing inside a protected folder. Send Ely a note; the
+full explanation is in [docs/WINDOWS.md](WINDOWS.md).
 
 **Windows: `python` or `git` is not recognised.**
 Python was installed without "Add python.exe to PATH", or Git is not installed.
@@ -122,9 +116,9 @@ Command Prompt so it picks up the change.
 
 ## Notes
 
-The engine folder you were sent is a **snapshot**, not a live checkout, so it
-cannot update itself with `git pull`. When the engine changes you will be sent
-a newer file; unpack it over the same folder, replacing what is there.
+The engine you were sent is a **snapshot**, so it does not update itself.
+When the engine changes you will be sent a newer file, with the one extra
+instruction that goes with it.
 
 Each snapshot carries a `VERSION` file naming the exact commit it came from,
 and FluBNF prints that on every setup. If two people's forecasts ever disagree,
