@@ -734,10 +734,12 @@ def harvest_placement() -> dict:
     They were withdrawn because the scorer that produced them does not
     survive and this project's own entries in the archived field were not
     computed on one convention (see docs/RELEASE-1.0.md). A season with no
-    standing simply has no placement on the site, which is the honest
-    rendering of "not scored against the field yet"; if the perf table ever
-    carries the field and percentile columns again, they are picked up here
-    without further change.
+    standing simply has no placement on the site, and site_page renders that
+    cell as "placement withdrawn" rather than as work still to do: the
+    measurement happened and its result was retracted, so "not yet scored"
+    would be the wrong half of the story and would contradict Methods on the
+    same page. If the perf table ever carries the field and percentile
+    columns again, they are picked up here without further change.
     """
     src = (TEMPLATES / "home.html").read_text(encoding="utf-8")
     block = src.split('<table class="perf">', 1)
@@ -941,7 +943,11 @@ def build_payload(seasons: dict | None = None,
                  if k != "app_rel"}
         # app_rel alone is the drift-alarm figure, not a standing; a season
         # with no standing carries no `placement` key at all, so the page
-        # renders "not yet scored against the field" rather than an empty one
+        # renders "placement withdrawn, see Methods" rather than an empty
+        # cell (site_page._season_table). Dropping the key is also what
+        # keeps the percentile bars off the page: _percentile_bars draws
+        # only from `placement`, and a percentile IS a placement, so it has
+        # to go silent for the same reason the rank does.
         if stand:
             s["placement"] = stand
 
@@ -999,12 +1005,12 @@ def build(out_dir: Path | None = None, seasons: dict | None = None,
 
     out.mkdir(parents=True, exist_ok=True)
     text = json.dumps(payload, indent=1, sort_keys=True, ensure_ascii=False)
-    (out / PAYLOAD_NAME).write_text(text + "\n", encoding="utf-8")
-    (out / PAGE_NAME).write_text(page, encoding="utf-8")
+    (out / PAYLOAD_NAME).write_text(text + "\n", encoding="utf-8", newline="\n")
+    (out / PAGE_NAME).write_text(page, encoding="utf-8", newline="\n")
     # Pages must not run Jekyll over generated output (it would eat the
     # underscore-prefixed nothing here today, but it also adds a build step
     # that can fail on markup it dislikes)
-    (out / ".nojekyll").write_text("", encoding="utf-8")
+    (out / ".nojekyll").write_text("", encoding="utf-8", newline="\n")
 
     plotly_src = STATIC / PLOTLY_NAME
     dst = out / PLOTLY_NAME
@@ -1013,7 +1019,7 @@ def build(out_dir: Path | None = None, seasons: dict | None = None,
             shutil.copyfile(plotly_src, dst)
     else:                                  # fall back to the installed wheel
         from plotly.offline import get_plotlyjs
-        dst.write_text(get_plotlyjs(), encoding="utf-8")
+        dst.write_text(get_plotlyjs(), encoding="utf-8", newline="\n")
 
     bad = [c for c in payload["consistency"] if not c["ok"]]
     return {

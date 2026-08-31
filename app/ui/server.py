@@ -165,6 +165,17 @@ def _model_names() -> dict:
 
 templates.env.globals["model_name"] = lambda m: _model_names().get(m, m)
 
+# THE one sentence naming the convention behind every published relWIS
+# (app/core/relwis.PUBLISHED_CONVENTION_NOTE). A template global rather
+# than four typed copies: the home page, Methods, the harvested public site
+# and the exported season report all print this warning, and four wordings
+# of it would be four chances to describe the wrong quantity. The site
+# builder renders Methods through this same environment, so the published
+# page carries the identical sentence.
+from app.core.relwis import PUBLISHED_CONVENTION_NOTE     # noqa: E402
+
+templates.env.globals["relwis_convention_note"] = PUBLISHED_CONVENTION_NOTE
+
 
 def _member_colors() -> dict:
     """The one member-color map: the marked JSON literal in the shared
@@ -4122,6 +4133,60 @@ def _scores_df(root: Path):
     return df
 
 
+#: Season relWIS figures, keyed by the exact inputs that produced them: the
+#: scores file's identity, the convention, and (for the pairwise convention)
+#: the identity of the cached field data. A pairwise season costs about
+#: three seconds of tournaments, which is fine once and unacceptable on
+#: every scrub, reload, or archive visit; the ratio-of-sums pass is cheap
+#: and rides the same cache for symmetry. Small cap: each entry holds only
+#: numbers, not frames.
+_RELWIS_FIGS_MAX = 12
+_RELWIS_FIGS: "OrderedDict" = OrderedDict()
+
+
+def _relwis_conventions() -> list:
+    """The convention switch's options, in the order it prints them: the
+    project's own first, because it is the default and the one every sealed
+    number was computed under."""
+    from app.core import relwis
+    return [relwis.CONVENTION_INFO[k] for k in relwis.CONVENTIONS]
+
+
+def _relwis_figures(root: Path, convention: str):
+    """This root's relWIS figures under ONE convention, cached on identity.
+
+    The pairwise convention needs the rest of the FluSight field, which is
+    a cached artifact this machine may simply not have. That is a normal
+    state: the returned figures then carry the reason and NO numbers, and
+    no caller may answer it by computing the other convention instead. See
+    app/core/relwis for why the two must never be mixed.
+    """
+    from app.core import relwis
+    from app.core import us_national as usn
+    conv = relwis.convention_of(convention)
+    # the field is loaded only when the chosen convention needs it: reading
+    # 600k+ scored cells to render a ratio-of-sums page would be pure cost
+    field = relwis.load_field_cells() if conv == relwis.PAIRWISE else None
+    sf = Path(root) / "scores.json"
+    try:
+        st = sf.stat()
+        ident = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        ident = (0, 0)
+    key = (str(sf), ident, conv,
+           (field.stamp, field.reason) if field is not None else ())
+    hit = _RELWIS_FIGS.get(key)
+    if hit is not None:
+        _RELWIS_FIGS.move_to_end(key)
+        return hit
+    figs = relwis.season_figures(usn.pooled_frame(_scores_df(root)), conv,
+                                 field=field)
+    _RELWIS_FIGS[key] = figs
+    while len(_RELWIS_FIGS) > _RELWIS_FIGS_MAX:
+        _RELWIS_FIGS.popitem(last=False)
+    return figs
+
+
 def _scores_current_fast(root: Path) -> bool:
     """retro.scores_current's exact rule (exists, parses, newer than every
     stored week) answered from stats plus the shared cached parse instead
@@ -4479,11 +4544,19 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
 
 @app.get("/retro/{season}", response_class=HTMLResponse)
 def retro_results(request: Request, season: str, week: str = "",
-                  archive: str = ""):
+                  archive: str = "", conv: str = ""):
     """The season results page. `archive` selects an archived run instead of
     the live season; everything below (scores, player, per-state table, the
-    report link) then reads that run's own tree."""
+    report link) then reads that run's own tree.
+
+    `conv` selects the SCORING CONVENTION every relWIS on the page is
+    computed under (app/core/relwis): the project's ratio of sums by
+    default, or the CDC dashboard's pairwise scaled figure. The two produce
+    different numbers for the same forecasts and are never mixed here: one
+    convention governs the head tiles and the per-state table together, and
+    the panels it cannot express say so rather than reverting."""
     import pandas as pd
+    from app.core import relwis
     from app.core import retro
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         _flash("Unrecognized archived run identifier.")
@@ -4524,6 +4597,8 @@ def retro_results(request: Request, season: str, week: str = "",
                 "archive_when": retro.stamp_human(archive) if archive else "",
                 "heads": {}, "curve": [], "states": [], "us_row": None,
                 "us": None, "pooled_note": "",
+                "conv": relwis.DEFAULT_CONVENTION, "figs": None,
+                "conventions": _relwis_conventions(),
                 "weeks": weeks, "week": weeks[-1], "map_html": "",
                 "official_catalog": [], "prog": None, "n_weeks": 0,
                 "score_error": ""})
@@ -4548,16 +4623,26 @@ def retro_results(request: Request, season: str, week: str = "",
     df = usn.pooled_frame(df_all)
     heads, curve, states = {}, [], []
     scoreable = (not df.empty) and ("model" in df.columns)
-    if scoreable:
-        # one grouped pass instead of a boolean filter per model, per asof,
-        # and per state-model pair: the old loops re-scanned the full frame
-        # 500+ times per view (~180 ms on a sealed 52-state season). Same
-        # arithmetic: summed wis over summed base_wis per group, cumulative
-        # by asof for the curve.
-        msums = df.groupby("model")[["wis", "base_wis"]].sum()
-        for m in ("pf", "analogue", "ensemble"):
-            if m in msums.index:
-                heads[m] = msums.at[m, "wis"] / msums.at[m, "base_wis"]
+    # THE convention gate. One convention governs the head tiles and the
+    # per-state table together (app/core/relwis computes both from the same
+    # figures object), so the page cannot print two definitions of relWIS
+    # side by side. When the chosen convention has no numbers -- the
+    # pairwise one needs the rest of the FluSight field, which this machine
+    # may not have cached -- the tables stay empty and the page says why;
+    # falling back to the other convention would be the worst outcome
+    # available, because the reader would never know the figure changed
+    # meaning.
+    convention = relwis.convention_of(conv)
+    figs = _relwis_figures(root, convention) if scoreable else None
+    if figs is not None and figs.available:
+        heads = figs.values
+        states = list(figs.states)
+    if scoreable and convention == relwis.RATIO_OF_SUMS:
+        # the cumulative curve is a running ratio of sums by construction
+        # (each point pools every cell to that week), so it exists under
+        # this convention only; the pairwise view says so rather than
+        # printing this line under a heading it does not belong to. One
+        # grouped pass: the old loop re-scanned the frame per asof.
         asofs = sorted(df["asof"].unique())
         ens = df[df.model == "ensemble"]
         if len(ens):
@@ -4566,16 +4651,6 @@ def retro_results(request: Request, season: str, week: str = "",
             cum = cum.reindex(asofs).ffill().dropna()
             curve = [(str(a)[:10], r.wis / r.base_wis)
                      for a, r in cum.iterrows()]
-        psums = df.groupby(["location", "model"])[["wis", "base_wis"]].sum()
-        for loc in sorted(df.location.unique()):
-            row = {"name": loc}
-            for m in ("pf", "analogue", "ensemble"):
-                if (loc, m) in psums.index:
-                    row[m] = (psums.at[(loc, m), "wis"]
-                              / psums.at[(loc, m), "base_wis"])
-                else:
-                    row[m] = None
-            states.append(row)
     # the national series, through THE resolution order (app/core/
     # us_national.resolve): a fitted US cell when the replay ran one, else
     # the constructed sum-of-states aggregate, else the officials alone.
@@ -4585,6 +4660,7 @@ def retro_results(request: Request, season: str, week: str = "",
     # noticing. The aggregate is cached under the season's stats validity
     # key, so after the first build this is one small file read; a failure
     # here never costs the page.
+    #
     us = None
     if scoreable:
         try:
@@ -4594,8 +4670,19 @@ def retro_results(request: Request, season: str, week: str = "",
             us = None
     # us_row keeps the template's existing shape (a mapping carrying
     # member -> relWIS) and gains the provenance fields beside them, so a
-    # surface cannot reach the numbers without the label
-    us_row = (us.as_dict() if (us is not None and us.has_scores) else None)
+    # surface cannot reach the numbers without the label.
+    #
+    # The national SCORE is a ratio of sums: us_national computes it that
+    # way, and the pairwise convention here is jurisdictions only by both
+    # the CDC dashboard's rule and this project's pooled scope. So the row
+    # is offered to the ratio-of-sums view alone and the pairwise view says
+    # it is absent, rather than printing a figure of one definition beside
+    # tiles of another. `us` itself still resolves either way: the player
+    # needs the national series and its provenance whatever the scoring
+    # convention above it, and that label is not a relWIS.
+    us_row = (us.as_dict() if (us is not None and us.has_scores
+                               and convention == relwis.RATIO_OF_SUMS)
+              else None)
     wk = week if week in weeks else weeks[-1]
     from app.core.usmap import svg_map
     locs = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
@@ -4695,6 +4782,11 @@ def retro_results(request: Request, season: str, week: str = "",
         "us": (us.as_dict() if us is not None
                else usn.UsNational(usn.OFFICIALS_ONLY).as_dict()),
         "pooled_note": usn.POOLED_SCOPE_NOTE,
+        # the convention and the figures it produced travel together, and
+        # the switch's options travel with them, so every number the page
+        # prints can name its own definition
+        "conv": convention, "figs": figs,
+        "conventions": _relwis_conventions(),
         "weeks": weeks, "week": wk, "map_html": map_html,
         "official_catalog": official_catalog,
         "prog": (_archive_progress(root, season) if archive

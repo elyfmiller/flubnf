@@ -267,7 +267,18 @@ def test_official_comparators_are_scored_on_our_cells(built):
         if ens and off:
             assert off["cells"] == ens["cells"], (s["season"], ens, off)
     if any("FluSight-ensemble" in s["models"] for s in payload["seasons"]):
-        assert "scored on exactly the cells" in html
+        # the panel has to say out loud that one cell set carries both
+        # columns; the wording moved when the copy was cut, the claim did not
+        assert "on the same cells" in html
+        # ...and it has to name the comparator, which is the half of the
+        # copy that only exists when there IS an official column. The
+        # same-cells claim above now sits in the note's UNCONDITIONAL
+        # opening sentence (site_page._season_table), so on its own it is
+        # true of every build and would pass with the has_official branch
+        # deleted outright: this second assertion is the one that proves
+        # the branch ran. Pinning only the first is the same weakening this
+        # file already took once.
+        assert "the hub's own combination of every team's forecasts" in html
 
 
 def test_placements_are_harvested_not_invented(built):
@@ -290,7 +301,11 @@ def test_placements_are_harvested_not_invented(built):
             assert pl["text"] in html
         else:
             assert pl is None
-            assert "not yet scored against the field" in html
+            # the empty cell says WITHDRAWN, matching Methods and the note
+            # under the same table; "not yet scored" said the opposite of
+            # both, one line apart from one of them
+            assert "placement withdrawn, see Methods" in html
+            assert "not yet scored against the field" not in html
 
 
 def test_every_computed_score_matches_what_the_console_publishes(built):

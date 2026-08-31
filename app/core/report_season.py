@@ -41,7 +41,7 @@ import json
 import os
 from pathlib import Path
 
-from app.core import playback, report_v2, retro
+from app.core import playback, relwis, report_v2, retro
 from app.core import us_national as usn
 from app.core.runs import fmt_hms, settings_html, version_pairs
 
@@ -454,10 +454,18 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
             '<div class="tiles">' + "".join(tiles) + "</div>"
             + us_absent
             + f'<p class="sub">{line}.</p>'
-            f'<p class="hint">Final relWIS pooled over {cover}; '
-            "below 1 beats the CDC FluSight baseline. The tiles "
+            f'<p class="hint">Final relWIS pooled over {cover}, ratio of '
+            "sums; below 1 beats the CDC FluSight baseline. The tiles "
             "match the cumulative column of the player's table at the final "
             f"week. {usn.POOLED_SCOPE_NOTE}</p>"
+            # THIS FILE LEAVES THE MACHINE. It is opened without the console
+            # around it, months later, beside whatever else the reader has
+            # open, and the likeliest neighbour is the CDC FluSight
+            # dashboard, which publishes a DIFFERENT quantity under the same
+            # name. Every other surface can lean on the pages around it;
+            # this one has to carry the convention itself, in the wording
+            # the console and the public site use.
+            f'<p class="hint">{relwis.PUBLISHED_CONVENTION_NOTE}</p>'
             + _curve_block(df) + states + "</div>")
 
 
@@ -536,7 +544,10 @@ def build_season_report(root: Path, season: str, archive: str = "",
                         summary=summary, us_json=us_json)
     # atomic: two concurrent downloads must never interleave a garbled file
     tmp = out.with_suffix(".html.tmp")
-    tmp.write_text(html, encoding="utf-8")
+    # newline pinned: the report is served as text (universal-newline read)
+    # and downloaded raw; on Windows an unpinned write makes those two
+    # deliveries different text, the exact report_v2 defect from Windows CI.
+    tmp.write_text(html, encoding="utf-8", newline="\n")
     os.replace(tmp, out)
     return out
 
@@ -710,9 +721,9 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
    <p class="hint" id="pb-status" aria-live="polite"></p>
    <p class="hint" id="pb-offhint" hidden>official comparators appear after
     Update data fetches their submissions</p>
-   <p class="hint">relWIS below 1 beats the CDC FluSight baseline. Week
-    scores the current forecast's cells; cumulative pools every week through
-    the playback position.</p>
+   <p class="hint">relWIS below 1 beats the CDC FluSight baseline, ratio of
+    sums. Week scores the current forecast's cells; cumulative pools every
+    week through the playback position.</p>
   </div>
  </div>
 </div>

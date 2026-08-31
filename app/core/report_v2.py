@@ -129,8 +129,13 @@ QBANDS = ((0.025, 0.975, _rgba(_PF_COLOR, 0.13), "95% interval"),
           (0.25, 0.75, _rgba(_PF_COLOR, 0.30), "50% interval"))
 
 #: what each map-producing model is called ON the map surfaces (home and
-#: the weekly report label their maps with the model that computed them)
-MODEL_LABEL = {"ensemble": "NAU ensemble outlook",
+#: the weekly report label their maps with the model that computed them).
+#: These are the shared display names (the marked map in player.js) with
+#: "outlook" appended; they are typed here rather than derived because the
+#: parse lives in report_season, which imports this module. Keep them in
+#: step with that map: the blend is "FluBNF Ensemble" everywhere a human
+#: reads it, and only the hub submission identity stays NAU-flavoured.
+MODEL_LABEL = {"ensemble": "FluBNF Ensemble outlook",
                "pf": "PF-SIHRS outlook",
                "analogue": "Calendar analogue outlook"}
 #: display order for the outlook model toggle: the submitted forecast
@@ -800,7 +805,16 @@ document.getElementById('natbtn').addEventListener('click', () => show('st-US'))
     # atomic: a reader mid-refresh (the stale-report rebuild on serve)
     # never sees a half-write, and a failed build leaves the stored file
     tmp = out_path.with_name(out_path.name + ".tmp")
-    tmp.write_text(html)
+    # newline pinned. report.html is delivered two ways -- /output/report
+    # reads it as text (universal newlines, so \r\n collapses to \n) and
+    # /output/report/download hands the raw file over untouched -- and the
+    # contract those two routes share is that they are the same bytes. A
+    # plain write_text takes newline=None, which on Windows writes \r\n, so
+    # the page and the saved file stopped agreeing there and nowhere else.
+    # The Windows CI job caught it in test_report_bundle, as the download
+    # and the inline view returning different text for the same report. LF
+    # here keeps one report, two deliveries, on every platform.
+    tmp.write_text(html, newline="\n")
     os.replace(tmp, out_path)
     return out_path
 

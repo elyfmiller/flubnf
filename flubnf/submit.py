@@ -11,7 +11,7 @@ A complete weekly submission has, for each (state, horizon ∈ {0..3}):
 
 We additionally aggregate per-state quantiles into a US total by summing
 the same quantile level across all states. This is what the legacy
-PyBNF_to_CDC_121524.py script does — not statistically pure, but it matches
+PyBNF_to_CDC_121524.py script does: not statistically pure, but it matches
 the team's current production behavior.
 """
 
@@ -38,13 +38,18 @@ log = logging.getLogger(__name__)
 #: the console uses, so the two producers in this repository cannot drift
 #: apart and neither can invent a name the hub has never seen.
 #:
-#: It used to be the free-text default "LosAlamos_NAU-CModel_Flu". That is
-#: not an unregistered placeholder: it is a DIFFERENT team, separately
-#: registered on this hub (model-metadata/LosAlamos_NAU-CModel_Flu.yml in
-#: the hub clone), so every file this loop wrote was named for somebody
-#: else's model. flubnf/compare.py still refers to that team by name, and
-#: correctly: it SCORES that team's published submissions. Writing under
-#: the name is a different act from reading it.
+#: It used to be a hardcoded literal, "LosAlamos_NAU-CModel_Flu". A comment
+#: here once read that string as belonging to a different team, so that this
+#: loop was writing files under somebody else's model. That reading was
+#: wrong: LosAlamos_NAU is this group's own registration, held on the hub
+#: since 2023, and the PIs confirmed on 2026-08-27 that the project keeps
+#: submitting under it (model-metadata/README.md).
+#:
+#: The literal was still the wrong string here, for a reason that outlives
+#: that history. This loop forecasts the mechanistic member on its own, with
+#: no empirical companion blended in, so its file belongs under SIHRS and
+#: not under the designated ensemble. Deriving the name means neither
+#: producer can drift from the registration or from the other.
 DEFAULT_TEAM_MODEL = hub_model_id("pf")
 
 

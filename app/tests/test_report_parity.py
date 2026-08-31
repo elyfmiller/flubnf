@@ -44,6 +44,13 @@ APP_ONLY_HEADINGS = {
     # base-template dialogs, baked into every console page's chrome
     "A run is in progress",
     "This season already has results",
+    # the scoring-convention switch (app/core/relwis). It is a CONTROL, and
+    # the thing it controls cannot exist in the export: the pairwise
+    # convention is computed against every other FluSight team's per-cell
+    # scores, hundreds of thousands of rows that a self-contained offline
+    # report cannot carry. The report is therefore a ratio-of-sums artifact
+    # by construction, and a switch there would have one position.
+    "Scoring convention",
 }
 
 #: app section heading -> a marker that must appear in the export. The

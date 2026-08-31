@@ -29,7 +29,7 @@ from app.ui import server as srv                     # noqa: E402
 client = TestClient(srv.app)
 
 RID = "20980103T101500-abcdef"
-GOOD = hub_model_id("ensemble")                      # NAU_FluBNF-ensemble
+GOOD = hub_model_id("ensemble")                      # LosAlamos_NAU-CModel_Flu
 RETIRED = "NAU-Ensemble"                             # what the old runs wrote
 HEADER = ("reference_date,target,horizon,target_end_date,location,"
           "output_type,output_type_id,value\n")

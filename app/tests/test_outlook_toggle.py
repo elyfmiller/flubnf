@@ -133,7 +133,7 @@ def test_report_renders_the_toggle_with_every_bundled_model(tmp_path):
     assert ('data-mmodel="ensemble" aria-pressed="true"') in html
     assert ('data-mmodel="pf" aria-pressed="false"') in html
     assert ('data-mmodel="analogue" aria-pressed="false"') in html
-    for label in ("NAU ensemble outlook", "PF-SIHRS outlook",
+    for label in ("FluBNF Ensemble outlook", "PF-SIHRS outlook",
                   "Calendar analogue outlook"):
         assert label in html, label
     # the label elements the swap script retargets
@@ -195,7 +195,7 @@ def test_v2_bundle_rebuilds_with_no_toggle_and_the_stored_label(
     assert r.status_code == 200 and "OLD FACE" not in r.text
     assert 'id="outlook-model"' not in r.text
     assert "data-mmodel=" not in r.text
-    assert "NAU ensemble outlook" in r.text          # the label stays honest
+    assert "FluBNF Ensemble outlook" in r.text          # the label stays honest
 
 
 # ------------------------------------------------------------- the home map
@@ -220,7 +220,7 @@ def test_home_outlook_gets_the_same_toggle(tmp_path, monkeypatch):
     # the toggle sits above the rendered map
     assert home.index('id="outlook-model"') < home.index('id="usmap"')
     # the label span is the relabel target and defaults to the ensemble
-    assert 'data-mapmodel-label>NAU ensemble outlook' in home
+    assert 'data-mapmodel-label>FluBNF Ensemble outlook' in home
     assert "Calendar analogue outlook" in home
 
 
@@ -244,7 +244,7 @@ def test_home_shows_no_toggle_for_a_single_model_pre_v3_bundle(
     assert "data-mmodel=" not in home
     # the map and its honest one-model label render exactly as before
     assert 'id="usmap"' in home
-    assert "NAU ensemble outlook" in home
+    assert "FluBNF Ensemble outlook" in home
     assert "approximate, from stored quantiles" not in home
 
 
@@ -314,7 +314,7 @@ def test_stored_pre_bundle_run_gets_the_approximate_toggle(
     # the honesty marker rides the caption, and the label span is the
     # relabel target
     assert "approximate, from stored quantiles" in home
-    assert 'data-mapmodel-label>NAU ensemble outlook' in home
+    assert 'data-mapmodel-label>FluBNF Ensemble outlook' in home
     # the payload for the default model equals the rendered map exactly
     pay = usmap.state_swap_payload(bm["ensemble"])
     m = re.search(r'<path d="[^"]*" fill="([^"]+)" fill-opacity="([^"]+)"'
@@ -374,7 +374,7 @@ def test_model_toggle_emitter_refuses_fewer_than_two_swappable_models():
     left, nothing is emitted at all: a pre-v3 or partial bundle renders
     label only, never a dead control."""
     from app.core import usmap
-    labels = {"ensemble": "NAU ensemble outlook", "pf": "PF-SIHRS outlook"}
+    labels = {"ensemble": "FluBNF Ensemble outlook", "pf": "PF-SIHRS outlook"}
     states = {"39": {"f": "#111111", "o": 0.8, "h": "x"}}
     # both models swappable: the toggle renders
     ok = usmap.model_toggle(
@@ -411,4 +411,4 @@ def test_report_drops_models_whose_cards_carry_no_data(tmp_path):
     html = (tmp_path / "report2.html").read_text()
     assert 'id="outlook-model"' not in html
     assert "data-mmodel=" not in html
-    assert "NAU ensemble outlook" in html            # label stays honest
+    assert "FluBNF Ensemble outlook" in html            # label stays honest
