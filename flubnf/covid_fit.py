@@ -145,5 +145,12 @@ def write_profile_conf(profile: DiseaseProfile, setup: StateSetup, *,
                 f"profile {profile.key} and write_conf disagree about the "
                 "fitted set")
         txt = new
-    p.write_text(txt)
+    # newline pinned, for the reason app/core/engines/pf.py pins its model
+    # rewrite: this is the LAST hand on the conf, so a bare write_text here
+    # takes newline=None and quietly undoes the newline="\n" that write_conf
+    # applied one call above. On Windows that puts \r on the end of every
+    # line of a file PyBNF parses line-wise. Same defect as the one the
+    # Windows CI job (run 33200477476) caught in the model file; this copy
+    # of it sits on the COVID profile path, which no byte-level test covers.
+    p.write_text(txt, newline="\n")
     return p
