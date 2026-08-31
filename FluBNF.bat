@@ -242,7 +242,35 @@ for %%F in ("%~dp0..\pybnf*.bundle") do if not defined BUNDLE set "BUNDLE=%%~fF"
 for %%F in ("%USERPROFILE%\Downloads\pybnf*.bundle") do if not defined BUNDLE set "BUNDLE=%%~fF"
 for %%F in ("%USERPROFILE%\Desktop\pybnf*.bundle") do if not defined BUNDLE set "BUNDLE=%%~fF"
 for %%F in ("%USERPROFILE%\Documents\pybnf*.bundle") do if not defined BUNDLE set "BUNDLE=%%~fF"
+rem The other artifact shape: the ~130 KB pybnf-pf-<sha>.tar.gz that
+rem scripts/cut_engine_archive.sh cuts. Same folders, same rule: whatever
+rem the student saved is the engine, and they should never have to know
+rem which shape they were given or where it belongs.
+set "ARCHIVE="
+for %%F in ("%~dp0pybnf*.tar.gz") do if not defined ARCHIVE set "ARCHIVE=%%~fF"
+for %%F in ("%~dp0..\pybnf*.tar.gz") do if not defined ARCHIVE set "ARCHIVE=%%~fF"
+for %%F in ("%USERPROFILE%\Downloads\pybnf*.tar.gz") do if not defined ARCHIVE set "ARCHIVE=%%~fF"
+for %%F in ("%USERPROFILE%\Desktop\pybnf*.tar.gz") do if not defined ARCHIVE set "ARCHIVE=%%~fF"
+for %%F in ("%USERPROFILE%\Documents\pybnf*.tar.gz") do if not defined ARCHIVE set "ARCHIVE=%%~fF"
 :bundleresolved
+
+rem Extract an archive HERE, not somewhere in the install flow: tar.exe has
+rem shipped with Windows since 10 1803, the extraction is about a second,
+rem and once it lands the ordinary pf.py gates below see a normal unpacked
+rem copy. The destination is chosen by this launcher (LOCALAPPDATA, because
+rem Controlled Folder Access protects Documents), which is exactly the
+rem detail a student should never be asked to know.
+if not defined ARCHIVE goto :archivedone
+if exist "%PYBNFDIR%\.git" goto :archivedone
+if exist "%PYBNFDIR%\pybnf\pf.py" goto :archivedone
+where tar >nul 2>&1
+if errorlevel 1 goto :archivedone
+if not exist "%LOCALAPPDATA%\FluBNF" mkdir "%LOCALAPPDATA%\FluBNF"
+echo   unpacking the engine from "%ARCHIVE%" - no GitHub account needed
+tar -xzf "%ARCHIVE%" -C "%LOCALAPPDATA%\FluBNF"
+if exist "%LOCALAPPDATA%\FluBNF\PyBNF-Private\pybnf\pf.py" set "PYBNFDIR=%LOCALAPPDATA%\FluBNF\PyBNF-Private"
+if not exist "%PYBNFDIR%\pybnf\pf.py" echo   unpack failed or wrong file; continuing without it
+:archivedone
 
 rem Neither a checkout nor a bundle: say so in two lines and open the console.
 rem This is a normal state, not a failure - the analogue member is a whole
@@ -251,9 +279,9 @@ if exist "%PYBNFDIR%\.git" goto :enginestamp
 if exist "%PYBNFDIR%\pybnf\pf.py" goto :enginestamp
 if defined BUNDLE goto :enginestamp
 echo   PF engine not installed (the console runs analogue forecasts only).
-echo   The shortcut needs no GitHub account: ask the lab for the engine file,
-echo   pybnf-pf-XXXX.tar.gz (unzip it to %LOCALAPPDATA%\FluBNF\PyBNF-Private)
-echo   or pybnf.bundle (just put it in Downloads), then open this again.
+echo   The shortcut needs no GitHub account: ask the lab for the engine file
+echo   (pybnf-pf-XXXX.tar.gz or pybnf.bundle), save it in your Downloads
+echo   folder, and open this again. That is the whole step.
 echo   Otherwise run setup.ps1, which explains how to reach the private fork.
 goto :startconsole
 

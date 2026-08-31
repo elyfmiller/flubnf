@@ -64,17 +64,12 @@ tar tzf "$STAMP" | grep -q 'PyBNF-Private/pybnf/pf.py' \
 echo "wrote $STAMP  ($(du -h "$STAMP" | cut -f1), $(tar tzf "$STAMP" | wc -l | tr -d ' ') files)"
 echo "stamp: $(git -C "$FORK" log -1 --format='%h %s' "$REF")"
 echo
-# The destination DIFFERS BY PLATFORM and getting it wrong is not cosmetic.
-# flubnf/settings.py moves the Windows default out of Documents on purpose:
-# Defender's Controlled Folder Access protects Documents and blocks untrusted
-# programs from writing there, and python.exe is untrusted out of the box, so
-# a checkout under Documents is one Python cannot even write __pycache__ into.
-# The recorded Defender log line from a real machine is in setup.ps1 line 88.
-echo "Send it with these two lines (the folder is NOT the same on both):"
-echo "  macOS   1. unzip into  ~/Documents/GitHub/"
-echo "             so you get  ~/Documents/GitHub/PyBNF-Private"
-echo "          2. open FluBNF.command"
-echo "  Windows 1. unzip into  %LOCALAPPDATA%\\FluBNF\\"
-echo "             so you get  %LOCALAPPDATA%\\FluBNF\\PyBNF-Private"
-echo "             (NOT Documents: Defender blocks Python from writing there)"
-echo "          2. open FluBNF.bat"
+# No placement instructions: since 2026-08-31 both platforms' setup finds
+# the archive in Downloads (also Desktop, Documents, beside the app) and
+# unpacks it to the right internal location itself. The student never sees
+# a path. The internal destination still differs by platform for the
+# Defender reason recorded in docs/WINDOWS.md, but that is the installer's
+# business now, not the reader's.
+echo "Send it with one instruction:"
+echo "  save this file in your Downloads folder, then open FluBNF"
+echo "  (FluBNF.command on macOS, FluBNF.bat on Windows)"
