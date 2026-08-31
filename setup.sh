@@ -74,12 +74,21 @@ if [ -x "$ENGINE_VENV/bin/python" ] \
   ok "engine venv ready: $ENGINE_VENV"
 else
   warn "engine venv not ready. The PF engine (fit_type=pf) needs a PyBNF fork"
-  warn "that is not yet public. If you have access:"
-  warn "  git clone -b feature/particle-filter <your PyBNF fork> $PYBNF"
-  warn "  $PY -m venv $ENGINE_VENV"
-  warn "  $ENGINE_VENV/bin/pip install numpy scipy pandas bngsim"
-  warn "  export FLUBNF_PY_ENGINE=$ENGINE_VENV/bin/python FLUBNF_PYBNF=$PYBNF"
-  warn "Without it: the console, analogue engine, and reports still work."
+  warn "that is not yet public, so it is the one part of this install that can"
+  warn "ask who you are. ./setup_engine.sh does the whole thing -- the clone,"
+  warn "the venv, the pinned dependencies -- and it tries an offline bundle"
+  warn "BEFORE it tries GitHub. So the shortest route needs no account:"
+  warn "  someone who has the fork runs, once:"
+  warn "    git bundle create pybnf.bundle feature/particle-filter"
+  warn "  you put that one file in ~/Downloads (or beside this folder), then:"
+  warn "    ./setup_engine.sh"
+  # Deliberately NOT run from here. This script is the console's first-run
+  # setup and finishes in a couple of minutes; the engine adds several more
+  # and a large download, and FluBNF.command runs setup_engine.sh straight
+  # after this anyway. Printing the route beats a surprise.
+  warn "With GitHub access instead, ./setup_engine.sh clones it for you and"
+  warn "explains, in detail, whatever stops it."
+  warn "Without the engine: the console, analogue engine, and reports still work."
 fi
 
 say "git hooks"

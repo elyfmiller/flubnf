@@ -10,3 +10,10 @@ fi
 cd "$DEST" && ./setup.sh
 echo
 echo "Done. Launch with:  open \"$DEST/FluBNF.app\"   (or double-click FluBNF.command)"
+echo
+echo "That console runs the analogue member. The particle filter member needs"
+echo "a private PyBNF fork, which is the one step that can ask for a GitHub"
+echo "account. If the lab gave you an engine file (pybnf-pf-XXXX.tar.gz: unzip"
+echo "it to ~/Documents/GitHub/PyBNF-Private; or pybnf.bundle: leave it in"
+echo "~/Downloads as it is), the"
+echo "next launch installs the engine from it, with no account and no network."
