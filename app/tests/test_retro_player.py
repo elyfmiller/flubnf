@@ -134,7 +134,7 @@ def test_us_entry_names_its_provenance_and_flags_the_fallback():
     # the aggregated case (CONTEXT): the tile, the table row, and the
     # player entry all carry the fallback wording, and the pooled scope is
     # stated so nobody reads the US figure as part of the headline
-    fallback_claim = "no US fit exists for this season"
+    fallback_claim = "the scores for this season hold no scored US fit"
     html = _render()
     assert "US (aggregated)" in html                 # tile and table row
     assert "US national (sum of 52 states)" in html  # the player entry

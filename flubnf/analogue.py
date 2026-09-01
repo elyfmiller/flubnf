@@ -1,9 +1,11 @@
 """Calendar-conditioned empirical analogue forecaster.
 
-Verified 2026-08-09 at real-time relWIS 0.665 on the 2025-26 season (2179 cells,
-26 states, vintage anchors, scored against settled truth and the official
-FluSight-baseline). SIHRS on the identical cells scores 0.918; the hub's
-multi-team ensemble scores ~0.682.
+Pilot verification 2026-08-09, real-time relWIS 0.665 on the 2025-26 season
+(2,179 cells, 26 states, vintage anchors, scored against settled truth and the
+official FluSight-baseline; SIHRS on the identical cells scored 0.918, the
+hub's multi-team ensemble ~0.682). That pilot figure was later understood to
+be flattered by the bandwidth choice; the validation of record is the sealed
+full-grid figure below (0.7723 pooled on the shipped donor pool).
 
 THE METHOD
 ----------
@@ -131,6 +133,21 @@ from typing import Iterable, Mapping, Optional
 
 import numpy as np
 
+# PROVENANCE OF THE BANDWIDTH, stated because every sealed analogue and
+# ensemble number was computed at this value and the record on it is mixed.
+#   (a) 2 is the value the seal ran at. On the sealed shipped-pool record
+#       (ratio of sums vs FluSight-baseline, US excluded) the analogue member
+#       scores 1.045 / 0.756 / 0.621 by season at this bandwidth.
+#   (b) The pre-seal sweep on the superseded pipeline (NAU-Projects
+#       .../FluBNF/docs/RESULTS.md, "Corrections worth remembering" item 1)
+#       found the per-season optimum reverses season to season; the honest
+#       out-of-season selection there picked +/-8, which scored 0.806 held
+#       out on 2025-26, versus 0.665 at +/-2 and 0.547 at the in-season
+#       oracle +/-1. The +0.259 gap recorded there is honest-vs-oracle, not
+#       the cost of choosing 2.
+#   (c) The bandwidth has NOT been re-selected on the current pipeline and
+#       shipped donor pool. Changing it invalidates the sealed record, so the
+#       re-selection decision belongs to the lead, not to a quiet edit here.
 DEFAULT_BANDWIDTH = 2
 MIN_DONORS = 30
 

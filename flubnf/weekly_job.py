@@ -1,4 +1,9 @@
-"""One-shot weekly competition workflow.
+"""One-shot weekly competition workflow (LEGACY, DE era).
+
+SCOPE: this is the legacy one-shot built on PyBNF differential evolution,
+kept for the CLI loop. It is superseded for the live season: the shipped
+competition engine is the sequential particle filter, driven from the
+console (app/core/runs.py). Do not prepare a submission week from here.
 
 Threads together everything needed for a single FluSight submission day:
 

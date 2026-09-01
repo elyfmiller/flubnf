@@ -18,7 +18,10 @@ Covered templates:
 | `SIHRS_pop_covid_2h.bngl` | COVID Gate A round two, arm A2: `covid` plus the semi-annual harmonic (8 parameters) |
 | `SIHRS_pop.bngl` | Multi-season 8-parameter model (keeps `impr`, `eps2`, `phi2`); not trimmed, see section 3 |
 
-Companion sources of record:
+Companion sources of record. The `research/` tree is retained in the lab's
+private archive, not in this repository; the pointers below are for lab
+machines and the files are available on request (docs/RELEASE-1.0.md, "Where
+the evidence lives", states the same policy).
 
 * `flubnf/sihrs_priors.py` -- the DOI or data derivation behind every fixed
   influenza value (`gamma`, `rho`, `gammaH`, `omega`, `s0`, `i0`).
@@ -186,7 +189,8 @@ is fixed for influenza. The COVID port frees it; see section 5.
 
 ### r (fitted)
 
-Negative-binomial dispersion of the observation model (AMCMC).
+Negative-binomial dispersion of the observation model, fitted by both
+engines; in the PF it is carried per particle.
 
 ### N, s0, i0 (known data, never fitted)
 

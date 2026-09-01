@@ -1,7 +1,7 @@
 """FluBNF command-line interface.
 
 Each subcommand is a thin wrapper around a module function so that:
-  - the Streamlit UI calls the same module functions directly
+  - the console (app/, FastAPI) calls the same module functions directly
   - everything is scriptable / testable
   - no business logic lives in this file
 """

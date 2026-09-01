@@ -1,6 +1,6 @@
 """Vincentization: quantile-average the members with EQUAL, unfitted weights.
 
-The validated recipe (docs/RESULTS.md): average QUANTILES, not densities,
+The validated recipe (the lab archive NAU-Projects/NAU_Influenza_M_Model/FluBNF/docs/RESULTS.md (restated in docs/RELEASE-1.0.md)): average QUANTILES, not densities,
 and do not fit the blend. Across the three sealed seasons, applying the
 frozen fitted table scores 0.6958 pooled against the fixed 0.5's 0.6781, and
 fitted weights anti-predicted the held-out season every time they were

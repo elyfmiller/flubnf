@@ -27,8 +27,10 @@ members that fail in different regimes:
   point in the calendar, pooled across states. No epidemiology, no fitted
   parameters, and hard to beat when a season behaves like past seasons.
 
-The mechanistic member tracks turning points the analogue cannot
-anticipate; the analogue holds the middle horizons and stays anchored when
+The mechanistic member can respond to turning points the analogue
+structurally cannot anticipate (it carried the clean 2024-25 A-wave),
+though turn-week interval coverage remains the system's stated weakness;
+the analogue holds the middle horizons and stays anchored when
 a season behaves unusually. Forecasts are full predictive distributions at
 the 23 FluSight quantile levels, horizons 0-3 weeks.
 
@@ -37,7 +39,11 @@ the 23 FluSight quantile levels, horizons 0-3 weeks.
 Three seasons replayed at full grid (52 jurisdictions, 3 replicates),
 strictly on vintage data: the models see only what was known on each
 forecast date. Scores are weighted interval score relative to the CDC
-FluSight-baseline (below 1.000 beats the baseline); the comparator column
+FluSight-baseline (below 1.000 beats the baseline), computed as a ratio of
+WIS sums over the cells the model and the baseline share; the CDC dashboard
+reports a different, pairwise scaled relative WIS, so figures here are not
+comparable with figures there. The analogue member's donor pool excludes
+season 2021-22 (the shipped configuration). The comparator column
 is the official FluSight multi-team ensemble, scored on exactly the same
 cells through the same scorer.
 

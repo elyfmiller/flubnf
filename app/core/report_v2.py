@@ -6,11 +6,14 @@ One self-contained file per week (plotly.js embedded once, no network):
   * optional national map view (one shared fill = national modal category),
     toggled with 'state view' / 'national view' buttons above the map
   * CLICK a state -> its section: forecast fan vs observed, categorical bar,
-    accuracy over time (relWIS vs baseline), recent-data table; every section
+     recent-data table; every section
     has a '<- back to map' button (window.backToMap)
   * a National section with the same drill-down
-  * reporting gaps render as explicit no-data states and annotated
-    gaps in fans (constitutional rule 10), never smoothed over
+  * no-data states render explicitly, never smoothed over, and say only
+    what was checked: a card-less state inside the run's recorded scope is
+    a verified reporting gap, one outside it is 'not fitted in this run',
+    and a bundle with no scope record claims just 'no data'; annotated
+    gaps in fans likewise (constitutional rule 10)
   * fluid layout: no fixed max-width, the map scales with the window
   * theme-aware, self-contained: the stylesheet embeds the console's four
     theme token blocks and both accessibility modifier blocks verbatim
@@ -159,7 +162,7 @@ PLOTLY_CONFIG = {"scrollZoom": True, "doubleClick": "reset+autosize",
 # still covering every band the fan draws plus room for future band
 # choices (the FluSight 23-level grid).
 BUNDLE_NAME = "report_inputs.json"
-BUNDLE_VERSION = 3
+BUNDLE_VERSION = 4
 #: every bundle format this builder can render. v2 added one ADDITIVE
 #: field, cards_model (which model computed the map cards); a v1 bundle
 #: simply lacks it and renders as PF, which is what every v1 run's cards
@@ -167,8 +170,13 @@ BUNDLE_VERSION = 3
 #: national_map_cards fields (per-model hover cards, all computed by the
 #: same quantile-CDF path), which power the outlook model toggle; a v1/v2
 #: bundle simply lacks them and renders its one model with no toggle, its
-#: label as honest as ever. Serving code accepts any version listed here.
-SUPPORTED_BUNDLE_VERSIONS = (1, 2, 3)
+#: label as honest as ever. v4 added the ADDITIVE fitted_fips field (which
+#: states the run covered), so the map can tell a verified reporting gap
+#: from a state the run never fitted; a v1-v3 bundle lacks it and its
+#: card-less states render the neutral 'no data in this view' wording,
+#: because the gap claim was never checked for them. Serving code accepts
+#: any version listed here.
+SUPPORTED_BUNDLE_VERSIONS = (1, 2, 3, 4)
 FAN_LEVELS = (0.01, 0.025, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35,
               0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80,
               0.85, 0.90, 0.95, 0.975, 0.99)
@@ -286,18 +294,6 @@ def fan_figure_from_quantiles(observed_times, observed, forecast_times,
                       annotation_font_size=13)
     return _fig_layout(fig, title=title, legend=True)
 
-
-def accuracy_figure(dates, relwis, title="forecast accuracy (relWIS vs baseline)"):
-    import plotly.graph_objects as go
-    fig = go.Figure()
-    fig.add_hline(y=1.0, line=dict(color=MUT, dash="dot", width=1),
-                  annotation_text="baseline", annotation_font_color=MUT)
-    fig.add_scatter(x=list(dates), y=list(relwis), mode="lines+markers",
-                    line=dict(color=ACCENT, width=2), name="relWIS",
-                    hovertemplate="%{x}: %{y:.2f}<extra></extra>")
-    f = _fig_layout(fig, height=260, title=title)
-    f.update_yaxes(rangemode="tozero")
-    return f
 
 
 def cat_bar(probs):
@@ -570,7 +566,8 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
                  settings_html: str = "", model_label: str = "",
                  cards_by_model: dict | None = None,
                  national_map_cards: dict | None = None,
-                 cards_model: str = "") -> Path:
+                 cards_model: str = "",
+                 fitted_fips=None) -> Path:
     """state_cards: abbr -> hover-card data (choropleth).
     state_details: abbr -> dict(name, fan=…, cat=…, acc=…, table_rows=[…]).
     national: dict(fan=…, acc=…, summary_html=str).
@@ -591,14 +588,56 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
     national_map_cards: the per-model national cards riding with it.
     cards_model: which model the map was RENDERED with (the toggle's
     default); label and toggle stay honest for bundles that lack the
-    per-model cards, which simply render their one model, no toggle."""
+    per-model cards, which simply render their one model, no toggle.
+    fitted_fips: the fips the producing RUN actually fitted (iterable), or
+    None when the bundle never recorded it. This gates every no-data claim
+    on the map: a card-less state inside the scope is a verified reporting
+    gap, one outside it is 'not fitted in this run', and with no recorded
+    scope the map and caption claim only 'no data', because the old
+    unconditional 'reporting gap' wording labeled 51 unfitted states as
+    reporting gaps on a one-state run (review finding 2026-08)."""
     # Build-time SVG map (see usmap.py) -- the plotly geo choropleth fetched
     # its geometry from cdn.plot.ly at runtime and rendered empty offline/CSP.
     from app.core import usmap
     from app.core.usmap import cat_fill, svg_map
     cards_by_fips = {c["fips"]: c for c in state_cards.values() if "fips" in c}
+    # the run's coverage, when the bundle recorded it: card-less states are
+    # split into verified reporting gaps (in scope) and 'not fitted in this
+    # run' (out of scope); with no record the map claims only 'no data'
+    scope = set(fitted_fips) if fitted_fips is not None else None
+    no_card = set(usmap.state_paths()) - set(cards_by_fips)
+    gap_states = (no_card & scope) if scope is not None else set()
+    unfitted_states = (no_card - scope) if scope is not None else set()
     # only states that actually have a detail section invite a click
-    map_html = svg_map(cards_by_fips, clickable=set(state_details))
+    map_html = svg_map(cards_by_fips, clickable=set(state_details),
+                       scope_fips=scope)
+    # legend and caption say only what the scope record supports; each
+    # no-data flavor appears exactly when a state on the map wears it, and
+    # the old unconditional 'reporting gap' sentence is never asserted for
+    # states nobody checked
+    _sw = f'<i class="sw" style="background:{NO_DATA}"></i>'
+    legend_bits, caption_bits = [], []
+    if scope is None:
+        if no_card:
+            legend_bits.append(f"<span>{_sw}no data in this view</span>")
+            caption_bits.append(
+                " States in the no-data shade have no data in this "
+                "report's stored inputs; whether they were fitted was not "
+                "recorded, so nothing more is claimed.")
+    else:
+        if gap_states:
+            legend_bits.append(f"<span>{_sw}no data (reporting gap)</span>")
+            caption_bits.append(
+                " States in the no-data shade were fitted in this run but "
+                "reported nothing this week: shown as gaps, never "
+                "interpolated.")
+        if unfitted_states:
+            legend_bits.append(f"<span>{_sw}not fitted in this run</span>")
+            caption_bits.append(
+                " States marked not fitted were outside this run's "
+                "scope; nothing is claimed about their reporting.")
+    no_data_legend = "".join(legend_bits)
+    no_data_caption = "".join(caption_bits)
     model_label = model_label or MODEL_LABEL["pf"]
     # the outlook model toggle (v3 bundles): rendered only when the bundle
     # actually carries SWAPPABLE cards (probs-bearing, fips-keyed -- the
@@ -618,7 +657,9 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
             byf = {c["fips"]: c for c in cbm[m].values()
                    if isinstance(c, dict) and c.get("fips")}
             payload[m] = {
-                "states": usmap.state_swap_payload(byf),
+                # scope rides along so the toggle's rewritten hovers tell
+                # the same story as the server-rendered map (usmap contract)
+                "states": usmap.state_swap_payload(byf, scope_fips=scope),
                 "us": usmap.nat_swap_payload(
                     (national_map_cards or {}).get(m) or {})}
         model_toggle_html = usmap.model_toggle(
@@ -644,7 +685,6 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
     <div class="card">{_html(d['cat'])}
       <table><tr><th>week</th><th class="num">admissions</th></tr>{rows}</table></div>
   </div>
-  {('<div class="card">' + _html(d['acc']) + '</div>') if d.get('acc') else ''}
 </section>""")
 
     # emit each national chart card only when its figure exists -- two empty
@@ -652,8 +692,6 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
     nat_cards = []
     if national.get("fan"):
         nat_cards.append(f'<div class="card">{_html(national["fan"])}</div>')
-    if national.get("acc"):
-        nat_cards.append(f'<div class="card">{_html(national["acc"])}</div>')
     nat_body = "\n  ".join(nat_cards) or (
         '<p class="hint">National fan and accuracy charts appear once the '
         'national model run lands.</p>')
@@ -708,7 +746,7 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
     # plotly.js goes in the head, once, iff any figure is embedded: a chart
     # must never render without its library, and a chartless report should
     # not carry the payload.
-    if state_details or national.get("fan") or national.get("acc"):
+    if state_details or national.get("fan"):
         from plotly.offline import get_plotlyjs
         plotly_js = "<script>" + get_plotlyjs() + "</script>"
     else:
@@ -745,7 +783,7 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
  {nat_map_div}
  <div class="legend">
   {"".join(f'<span><i class="sw" style="background:{cat_fill(c)}"></i>{CAT_LABEL[c]}</span>' for c in CATS)}
-  <span><i class="sw" style="background:{NO_DATA}"></i>no data (reporting gap)</span>
+  {no_data_legend}
  </div>
  <div class="legend">
   <span><i class="sw" style="background:{cat_fill('increase')};opacity:.64"></i>leaning</span>
@@ -754,8 +792,7 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
   <span>deeper shade = more confident</span>
  </div>
 </div>
-<p class="hint">Hover a state for its full outlook. States in the no-data
-shade reported nothing this week: shown as gaps, never interpolated.</p>
+<p class="hint">Hover a state for its full outlook.{no_data_caption}</p>
 {"".join(sections)}
 {nat}
 <script>
@@ -870,7 +907,7 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
     cards_model = bundle.get("cards_model") or "pf"
     return build_report(
         bundle["reference_date"], bundle.get("cards") or {}, details,
-        {"fan": us_d.get("fan"), "acc": None,
+        {"fan": us_d.get("fan"),
          "note": us_d.get("note", ""),
          "summary_html": national.get("summary_html", "")},
         Path(out_path), national_map_html=nat_map_html,
@@ -882,7 +919,11 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
         # no toggle, exactly as before.
         cards_by_model=bundle.get("cards_by_model") or {},
         national_map_cards=bundle.get("national_map_cards") or {},
-        cards_model=cards_model)
+        cards_model=cards_model,
+        # the additive v4 field: which fips the run fitted. Bundles from
+        # before it exist pass None, and the map then claims only 'no
+        # data' for card-less states, never a reporting gap nobody checked.
+        fitted_fips=bundle.get("fitted_fips"))
 
 
 def builder_sources_mtime() -> float:

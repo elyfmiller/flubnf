@@ -640,5 +640,7 @@ def test_the_index_labels_the_convention_beside_every_score():
                   "archives": [{"id": "a", "when": "yesterday", "weeks": 3,
                                 "elapsed_s": None, "rel": 0.9,
                                 "size_h": "1 MB"}]}])
-    assert 'relWIS <span class="ok">0.877</span>, ratio of sums' in html
-    assert 'relWIS <span class="ok">0.900</span>, ratio of sums' in html
+    assert ('ensemble relWIS <span class="ok">0.877</span> '
+            'vs FluSight baseline, ratio of sums') in html
+    assert ('ensemble relWIS <span class="ok">0.900</span> '
+            'vs FluSight baseline, ratio of sums') in html

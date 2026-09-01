@@ -234,9 +234,29 @@ def _shell(dom_id: str, inner: str, ink: str, paper: str, interactive=True) -> s
 </div>""" + (_JS.replace("__ID__", dom_id) if interactive else "")
 
 
+def _no_card_hover(name: str, fips: str, scope_fips) -> str:
+    """The hover for a state with no card, saying only what the caller
+    actually knows (review finding 2026-08: partial-scope runs used to label
+    every unfitted state 'reporting gap', a claim nobody had checked).
+
+      * scope known, state in scope: the run fitted it and its vintage held
+        no row, so 'reporting gap' is a verified claim.
+      * scope known, state outside it: 'not fitted in this run'.
+      * scope unknown (older bundles, callers that never learned it): the
+        neutral 'no data in this view', which claims neither a gap nor an
+        unfitted state, because neither was verified.
+    """
+    if scope_fips is not None:
+        if fips in scope_fips:
+            return f"<b>{name}</b><br>no reported data (reporting gap)"
+        return f"<b>{name}</b><br>not fitted in this run"
+    return f"<b>{name}</b><br>no data in this view"
+
+
 def svg_map(cards_by_fips: dict, ink="#e9ecf2",
             paper="var(--card, #0C0D17)",
-            dom_id: str = "usmap", interactive=True, clickable=None) -> str:
+            dom_id: str = "usmap", interactive=True, clickable=None,
+            scope_fips=None) -> str:
     """cards_by_fips: fips -> {probs, name, abbr, hover_html} ({} = no data).
 
     Emits the full SVG + tooltip div + interaction script (hover card, click
@@ -246,14 +266,17 @@ def svg_map(cards_by_fips: dict, ink="#e9ecf2",
     abbrs) limits drill-down to states that have somewhere to go: the rest
     keep their hover card but lose the pointer cursor, the data-abbr hook,
     and the 'click for details' hint. None = every state is clickable.
+    `scope_fips` (a set of fips, or None = unknown) names the states the
+    producing run actually covered, so a card-less state's hover can tell a
+    verified reporting gap from a state the run never fitted; see
+    _no_card_hover.
     """
     paths = []
     for fips, (topo_name, d) in state_paths().items():
         card = cards_by_fips.get(fips, {})
         fill, op = _card_fill(card)
-        hover = card.get("hover_html") or (
-            f"<b>{card.get('name', topo_name)}</b><br>no reported data "
-            f"(reporting gap)")
+        hover = card.get("hover_html") or _no_card_hover(
+            card.get("name", topo_name), fips, scope_fips)
         abbr = card.get("abbr", "")
         can_click = bool(abbr) and (clickable is None or abbr in clickable)
         if can_click:
@@ -305,16 +328,19 @@ def national_svg(us_card: dict, ink="#e9ecf2",
 # home outlook and the weekly report (both embed the same emitted script).
 # ---------------------------------------------------------------------------
 
-def state_swap_payload(cards_by_fips: dict) -> dict:
+def state_swap_payload(cards_by_fips: dict, scope_fips=None) -> dict:
     """fips -> {f: fill, o: opacity, h: hover_html} for every state on the
-    map, from one model's hover cards (the svg_map computation as data)."""
+    map, from one model's hover cards (the svg_map computation as data).
+    `scope_fips` carries the producing run's coverage exactly as in svg_map,
+    and MUST be passed wherever svg_map got it: this payload rewrites the
+    hovers on the model toggle, so the two paths must tell the same story
+    about a card-less state (see _no_card_hover)."""
     out = {}
     for fips, (topo_name, _d) in state_paths().items():
         card = cards_by_fips.get(fips, {})
         fill, op = _card_fill(card)
-        hover = card.get("hover_html") or (
-            f"<b>{card.get('name', topo_name)}</b><br>no reported data "
-            f"(reporting gap)")
+        hover = card.get("hover_html") or _no_card_hover(
+            card.get("name", topo_name), fips, scope_fips)
         out[fips] = {"f": fill, "o": round(op, 2), "h": hover}
     return out
 

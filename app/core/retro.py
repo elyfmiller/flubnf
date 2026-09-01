@@ -5,9 +5,15 @@ Engineering rules (each one paid for):
   * RESUMABLE: each week is a checkpoint; completed weeks are detected and
     never redone (a crash costs one week, not a season).
   * one ledger run per season; per-week artifacts under weeks/<date>/.
-  * members: pf (seeded, replicated) + analogue + LOSO-honest ensemble --
-    for retrospectives the blend weight NEVER comes from the season being
-    scored (self-grading); callers pass weights fitted elsewhere.
+  * members: pf (seeded, replicated) + analogue + the shipped ensemble, an
+    UNFITTED equal-weight (50/50) quantile average of the members present
+    (ens.vincentize's default, the recipe every published score used).
+    Fitting never happens by default: a fitted table must be named
+    (ens.FROZEN or an explicit dict) and, for a retrospective, must be
+    leave-one-season-out for the season being scored -- fitting on the
+    scored season is leakage. Rescoring the seal from its stored samples
+    (ratio of sums vs FluSight-baseline, US excluded), the frozen fitted
+    table pools 0.6958 against the unfitted blend's 0.6781.
   * parallel width: PF cells sharded across N runner subprocesses (entry-point
     files, never stdin -- macOS spawn rule).
   * CONTROLLABLE: STOP and PAUSE are files in the season root, polled at FIT

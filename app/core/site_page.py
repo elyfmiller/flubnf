@@ -929,8 +929,12 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
         <h3>What produced this page</h3>
         <p>Built from commit <span class="mono">{_e(build["sha"])}</span> on
         {_e(payload["generated_utc"])}, from
-        {" and ".join(_e(s["origin"]) for s in seasons) or "no season"}
-        data under the console's own state. Engines: {_e(versions)}.</p>
+        {" and ".join(dict.fromkeys(_e(s["origin"]) for s in seasons)) or "no season"}
+        data under the console's own state. Engines: {_e(versions)}.
+        Engine versions are self-reported by the builder's install; the
+        sealed record's pin is bngsim 0.15.1 per setup_engine.sh, and a
+        self-reported 0.13.0 is the seal-era local build rather than the
+        PyPI 0.13.0 release.</p>
         </div>
     </div>
   </section>

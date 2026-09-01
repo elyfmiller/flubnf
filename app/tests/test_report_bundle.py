@@ -292,7 +292,10 @@ def test_home_map_renders_the_reports_exact_cards(tmp_path, monkeypatch):
     expect = {c["fips"]: c for c in bundle["cards"].values() if c.get("fips")}
     assert cards == expect                          # exact, not recomputed
     assert meta == {"model": "ensemble", "approx": False,
-                    "label": "FluBNF Ensemble outlook"}
+                    "label": "FluBNF Ensemble outlook",
+                    # the v4 scope record rides with the cards so the home
+                    # map can say which card-less states were unfitted
+                    "fitted_fips": ["39"]}
     # the model label lands on BOTH surfaces
     assert "FluBNF Ensemble outlook" in (w / "report.html").read_text()
     home = client.get("/")

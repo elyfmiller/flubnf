@@ -30,7 +30,8 @@ abstract: >-
   In a vintage-true retrospective of the 2023-24, 2024-25, and 2025-26
   seasons at full grid (15,460 scored cells), the ensemble scored a pooled
   weighted interval score of 0.678 relative to the CDC FluSight-baseline
-  (0.813, 0.618, and 0.683 by season), beating the baseline in every season.
+  (ratio of WIS sums on shared cells; 0.813, 0.618, and 0.683 by season),
+  beating the baseline in every season.
   All scores are self-computed from the hub's archived vintage data and
   baseline files, and are retrospective replays rather than real-time
   submissions.

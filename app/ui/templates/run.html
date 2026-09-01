@@ -21,10 +21,12 @@
 {% endif %}
 
 {% if settings %}
-{# What produced this run, read from the ledger row's stored spec (the
-   record of record) plus the running build and engine versions. Nothing is
-   duplicated to show it here, so the page can never disagree with the
-   ledger. #}
+{# What produced this run, read entirely from the ledger row: the stored
+   spec (the record of record) plus the row's recorded app build and any
+   engine version numbers it carries. The viewing process's own versions
+   are never printed here: they did not produce the run. settings_html
+   renders nothing for an empty list, so a row with no recorded versions
+   simply omits the block rather than guessing. #}
 <div class="card"><h2>Run settings</h2>
  {{ settings_html(settings, title="Settings") | safe }}
  {{ settings_html(versions, title="Produced by") | safe }}

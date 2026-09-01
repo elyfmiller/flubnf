@@ -232,6 +232,11 @@ def convention_of(value) -> str:
     down, and the page names the convention it actually used anyway.
     """
     v = str(value or "").strip().lower()
+    # the docs and docstrings call convention B "pairwise scaled", so those
+    # spellings are accepted as aliases: a hand-typed or shared URL using the
+    # documented name must land on the convention it names
+    if v in ("pairwise_scaled", "pairwise-scaled", "pairwise scaled"):
+        return PAIRWISE
     return v if v in CONVENTIONS else DEFAULT_CONVENTION
 
 

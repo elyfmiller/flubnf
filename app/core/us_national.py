@@ -82,8 +82,9 @@ NOTES = {
         "particles, and the same replicates as every state, and scored it "
         "against the US truth row."),
     AGGREGATED: (
-        "US (aggregated) is not a fitted national forecast: the run fitted "
-        "states only, so each member is aggregated from its state forecasts "
+        "US (aggregated) is not a fitted national forecast: the scores for "
+        "this season carry no fitted national cell, so each member is "
+        "aggregated from its state forecasts "
         "with states treated as independent (PF by summing its per-state "
         "sample draws, aligned by draw index; the analogue by drawing from "
         "each state's quantile curve independently and summing), and the two "
@@ -103,11 +104,12 @@ FALLBACK_WORD = "fallback"
 #: How the aggregated and officials-only states read when a surface has to
 #: name them as fallbacks in one clause.
 FALLBACK_NOTES = {
-    AGGREGATED: ("fallback: no US fit exists for this season, so the figure "
-                 "shown is aggregated from state forecasts"),
-    OFFICIALS_ONLY: ("fallback: no US fit and no sum-of-states aggregate "
-                     "exist for this season, so only the CDC comparators "
-                     "are shown"),
+    AGGREGATED: ("fallback: the scores for this season hold no scored US "
+                 "fit, so the figure shown is aggregated from state "
+                 "forecasts"),
+    OFFICIALS_ONLY: ("fallback: no scored US fit and no sum-of-states "
+                     "aggregate exist for this season, so only the CDC "
+                     "comparators are shown"),
 }
 
 

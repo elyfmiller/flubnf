@@ -1,6 +1,6 @@
 """Vintage registry and data-freshness checks.
 
-Constitutional rules enforced here (docs/APP_DESIGN.md):
+Constitutional rules enforced here (the lab archive's docs/APP_DESIGN.md):
   rule 5   a nonexistent vintage fails LOUDLY with nearby alternatives
   rule 9   real-time runs use vintage data only
   rule 10  missing weeks are MISSING (dropped as rows, calendar offsets kept)

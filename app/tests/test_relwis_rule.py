@@ -24,12 +24,15 @@ NAU = Path(__file__).resolve().parents[1] / "ui" / "static" / "nau.css"
 
 def test_relwis_chip_formats_member_coverage_and_classes():
     assert srv.relwis_chip(4.067, cells=2) == \
-        'PF relWIS <span class="relwis bad">4.067</span> (2 cells)'
+        ('PF relWIS <span class="relwis bad">4.067</span>'
+         ' vs FluSight baseline, ratio of sums (2 cells)')
     assert srv.relwis_chip(0.987, cells=1) == \
-        'PF relWIS <span class="relwis ok">0.987</span> (1 cell)'
+        ('PF relWIS <span class="relwis ok">0.987</span>'
+         ' vs FluSight baseline, ratio of sums (1 cell)')
     # coverage unknown: the parenthetical is omitted, never invented
     assert srv.relwis_chip(0.5) == \
-        'PF relWIS <span class="relwis ok">0.500</span>'
+        ('PF relWIS <span class="relwis ok">0.500</span>'
+         ' vs FluSight baseline, ratio of sums')
     # an unreadable value yields nothing rather than a broken chip
     assert srv.relwis_chip("nonsense") == ""
     assert srv.relwis_chip(None) == ""
@@ -43,11 +46,12 @@ def test_outcome_chips_apply_the_rule():
     assert "PF 2 fits" in chips
     assert '<span class="bad">1 failure</span>' in chips
     assert "2 submissions" in chips
-    assert 'PF relWIS <span class="relwis bad">4.067</span> (2 cells)' \
-        in chips
+    assert ('PF relWIS <span class="relwis bad">4.067</span>'
+            ' vs FluSight baseline, ratio of sums (2 cells)') in chips
     good = srv._outcome_chips(json.dumps({"pf_cells": 1,
                                           "pf_relwis": 0.702}))
-    assert 'PF relWIS <span class="relwis ok">0.702</span> (1 cell)' in good
+    assert ('PF relWIS <span class="relwis ok">0.702</span>'
+            ' vs FluSight baseline, ratio of sums (1 cell)') in good
 
 
 def test_error_chips_speak_plain_language_never_tracebacks():
