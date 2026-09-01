@@ -142,6 +142,19 @@ install_engine_archive() {
     rm -rf "$_tmp"; return 1
   fi
   mkdir -p "$(dirname "$PYBNF")"
+  # mv into an EXISTING directory does not replace it, it NESTS the source
+  # inside it, so a leftover folder at $PYBNF (a half-finished unpack, or an
+  # empty folder someone made by hand; anything with pf.py was caught by the
+  # gates above) would swallow the engine one level too deep while this
+  # function reported success. Measured, not assumed. An empty leftover is
+  # removed (rmdir refuses anything non-empty, so this cannot destroy data);
+  # a non-empty one is refused out loud, because a folder this script did
+  # not create is not this script's to delete.
+  if [ -e "$PYBNF" ] && ! rmdir "$PYBNF" 2>/dev/null; then
+    warn "$PYBNF already exists and is not an engine (no pybnf/pf.py),"
+    warn "so nothing was touched. Move that folder aside and run this again."
+    rm -rf "$_tmp"; return 1
+  fi
   if mv "$_src" "$PYBNF" 2>/dev/null; then
     ok "engine unpacked from $(basename "$_arc") into $PYBNF"
     [ -f "$PYBNF/VERSION" ] && ok "version stamp: $(head -1 "$PYBNF/VERSION")"
