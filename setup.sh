@@ -11,9 +11,35 @@ ENGINE_VENV="${FLUBNF_ENGINE_VENV:-$HOME/.venvs/flubnf-engine}"
 PYBNF="${FLUBNF_PYBNF:-$HOME/Documents/GitHub/PyBNF-pf}"
 
 say "python"
-PY=$(command -v python3.12 || command -v python3.11 || command -v python3)
-$PY -c 'import sys; assert sys.version_info >= (3,11)' 2>/dev/null \
-  || { warn "python >= 3.11 required (found $($PY -V 2>&1))"; exit 1; }
+# PATH first, then the folders macOS Pythons actually live in when nothing
+# put them on PATH: Apple's Command Line Tools python3 is 3.9 and can never
+# satisfy the gate, and a double-clicked .command may not have the user's
+# conda PATH edits, so "found 3.9.6, exit 1" on a machine with a perfectly
+# good Anaconda was a real failure mode (measured with a stripped PATH on
+# the dev host). Same idea as the CONDAPY probe on Windows.
+PY=""
+for c in python3.12 python3.11 python3; do
+  cand=$(command -v "$c" 2>/dev/null) || continue
+  "$cand" -c 'import sys; assert sys.version_info >= (3,11)' 2>/dev/null \
+    && { PY="$cand"; break; }
+done
+if [ -z "$PY" ]; then
+  for cand in /opt/anaconda3/bin/python3 "$HOME/anaconda3/bin/python3" \
+              "$HOME/miniconda3/bin/python3" /opt/homebrew/bin/python3 \
+              /usr/local/bin/python3 \
+              /Library/Frameworks/Python.framework/Versions/3.12/bin/python3 \
+              /Library/Frameworks/Python.framework/Versions/3.11/bin/python3; do
+    [ -x "$cand" ] || continue
+    "$cand" -c 'import sys; assert sys.version_info >= (3,11)' 2>/dev/null \
+      && { PY="$cand"; break; }
+  done
+fi
+if [ -z "$PY" ]; then
+  warn "python >= 3.11 required and none was found on PATH or in the usual"
+  warn "install locations. The easy route is Anaconda (anaconda.com/download,"
+  warn "defaults are fine: this setup finds it with nothing added to PATH)."
+  exit 1
+fi
 ok "$($PY -V) at $PY"
 
 say "analysis venv (.venv) + package"

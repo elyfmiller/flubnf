@@ -13,6 +13,21 @@ rem and only while the data is actually missing.
 setlocal
 cd /d "%~dp0"
 
+rem The lab's Windows machines run the ANACONDA distribution, whose installer
+rem has no "add to PATH" checkbox and deliberately leaves PATH alone, so on a
+rem defaults-accepted Anaconda machine a plain Command Prompt has no `py` and
+rem no `python` even though Python is right there. Probe the folders Anaconda
+rem and Miniconda actually install into, ABOVE every gate: the first-run venv
+rem needs this, and so does the engine-venv fallback on a LATER launch (save
+rem the engine file, "open FluBNF again"), which skips the first-run block
+rem entirely. PATH launchers are still tried first wherever this is used, so
+rem a python.org install keeps working exactly as before.
+set "CONDAPY="
+if exist "%USERPROFILE%\anaconda3\python.exe"    set "CONDAPY=%USERPROFILE%\anaconda3\python.exe"
+if not defined CONDAPY if exist "%USERPROFILE%\miniconda3\python.exe" set "CONDAPY=%USERPROFILE%\miniconda3\python.exe"
+if not defined CONDAPY if exist "%LOCALAPPDATA%\anaconda3\python.exe" set "CONDAPY=%LOCALAPPDATA%\anaconda3\python.exe"
+if not defined CONDAPY if exist "C:\ProgramData\anaconda3\python.exe" set "CONDAPY=C:\ProgramData\anaconda3\python.exe"
+
 rem stay current (lab-share mode): fast-forward only, never clobbers local edits
 if not exist ".git" goto :deps
 where git >nul 2>&1
@@ -32,19 +47,10 @@ rem hid access-denied and broken-ensurepip failures, and the failure text
 rem below then blamed a missing Python, which sent people the wrong way.
 set "SETUPLOG=%TEMP%\flubnf-firstrun.log"
 if exist "%SETUPLOG%" del "%SETUPLOG%" >nul 2>&1
-rem The lab's Windows machines run the ANACONDA distribution, whose installer
-rem has no "add to PATH" checkbox and deliberately leaves PATH alone, so on a
-rem defaults-accepted Anaconda machine a plain Command Prompt has no `py` and
-rem no `python` even though Python is right there. The lead followed the old
-rem install doc and hit exactly this. So: try the PATH launchers first (a
-rem python.org install keeps working exactly as before), then probe the
-rem folders Anaconda and Miniconda actually install into. venv-from-conda
-rem python produces an ordinary venv; pip inside it behaves normally.
-set "CONDAPY="
-if exist "%USERPROFILE%\anaconda3\python.exe"    set "CONDAPY=%USERPROFILE%\anaconda3\python.exe"
-if not defined CONDAPY if exist "%USERPROFILE%\miniconda3\python.exe" set "CONDAPY=%USERPROFILE%\miniconda3\python.exe"
-if not defined CONDAPY if exist "%LOCALAPPDATA%\anaconda3\python.exe" set "CONDAPY=%LOCALAPPDATA%\anaconda3\python.exe"
-if not defined CONDAPY if exist "C:\ProgramData\anaconda3\python.exe" set "CONDAPY=C:\ProgramData\anaconda3\python.exe"
+rem (the Anaconda python probe used to live here; it now runs at the very
+rem top, before the first-run gate, so that EVERY launch has it: the engine
+rem venv fallback needs it on the reopen-after-saving-the-file path, which
+rem is exactly the staged flow the install doc prescribes)
 where py >nul 2>&1 && py -3 -m venv .venv >>"%SETUPLOG%" 2>&1
 if not exist ".venv\Scripts\python.exe" (
   where python >nul 2>&1 && python -m venv .venv >>"%SETUPLOG%" 2>&1
@@ -203,7 +209,16 @@ rem the property the old "\.git" test was defending: an empty folder is not
 rem an engine source, and the bundle clone below still needs an empty
 rem destination.
 set "PYBNFDIR=%FLUBNF_PYBNF%"
-if defined PYBNFDIR goto :pybnfresolved
+if not defined PYBNFDIR goto :pybnfprobe
+rem Honour the pin only if an engine is actually there. setup.ps1 records
+rem FLUBNF_PYBNF at its DEFAULT before anything exists at that path (first
+rem run answers the data question before the archive is unpacked), so a
+rem dangling pin is the NORMAL first-run state, not an error, and treating
+rem it as authoritative would send every later launch to a folder that will
+rem never contain an engine.
+if exist "%PYBNFDIR%\.git" goto :pybnfresolved
+if exist "%PYBNFDIR%\pybnf\pf.py" goto :pybnfresolved
+:pybnfprobe
 set "PYBNFDIR=%USERPROFILE%\Documents\GitHub\PyBNF-pf"
 if exist "%PYBNFDIR%\.git" goto :pybnfresolved
 if exist "%PYBNFDIR%\pybnf\pf.py" goto :pybnfresolved
@@ -287,6 +302,10 @@ echo   unpacking the engine from "%ARCHIVE%" - no GitHub account needed
 tar -xzf "%ARCHIVE%" -C "%LOCALAPPDATA%\FluBNF"
 if exist "%LOCALAPPDATA%\FluBNF\PyBNF-Private\pybnf\pf.py" set "PYBNFDIR=%LOCALAPPDATA%\FluBNF\PyBNF-Private"
 if not exist "%PYBNFDIR%\pybnf\pf.py" echo   unpack failed or wrong file; continuing without it
+rem the stamp is the answer to "which build am I running" when two people's
+rem forecasts disagree; macOS prints it on every setup, so Windows does too
+if exist "%PYBNFDIR%\VERSION" set /p FLUVER=<"%PYBNFDIR%\VERSION"
+if defined FLUVER echo   version stamp: %FLUVER%
 :archivedone
 
 rem Neither a checkout nor a bundle: say so in two lines and open the console.
@@ -385,7 +404,7 @@ rem A failed editable install is a warning, not an error: every generated
 rem runner puts the checkout on sys.path and imports from there, so the
 rem probe below is the real gate. This install is known to fail on Windows.
 "%ENGINEVENV%\Scripts\pip" install -q -e "%PYBNFDIR%" --no-deps
-"%ENGINEPY%" -c "import sys; sys.path.insert(0, r'%PYBNFDIR%'); import bngsim; from pybnf.pf import ParticleFilter; print('  PF engine ready, bngsim ' + bngsim.__version__)"
+"%ENGINEPY%" -c "import sys; sys.path.insert(0, r'%PYBNFDIR%'); import bngsim; from pybnf.pf import ParticleFilter; print('  PF engine ready, bngsim ' + bngsim.__version__ + ' -- engine ready')"
 if errorlevel 1 goto :enginefailed
 del "%ATTEMPT%" >nul 2>&1
 set "FLUBNF_PY_ENGINE=%ENGINEPY%"

@@ -877,12 +877,23 @@ function Show-CfaHint {
 Say "python"
 $PyExe = $null
 $PyArgs = @()
+# PATH launchers first (python.org installs keep working unchanged), then
+# the folders Anaconda and Miniconda install into with untouched defaults:
+# the Anaconda installer has no add-to-PATH checkbox and leaves PATH alone,
+# so on the lab's standard machines py and python both miss while Python
+# sits in one of these four places. Mirrors FluBNF.bat's CONDAPY probe.
 $Cands = @(
     @{ exe = "py"; args = @("-3.12") },
     @{ exe = "py"; args = @("-3.11") },
     @{ exe = "py"; args = @("-3") },
     @{ exe = "python"; args = @() }
 )
+foreach ($condaPy in @("$env:USERPROFILE\anaconda3\python.exe",
+                       "$env:USERPROFILE\miniconda3\python.exe",
+                       "$env:LOCALAPPDATA\anaconda3\python.exe",
+                       "C:\ProgramData\anaconda3\python.exe")) {
+    if (Test-Path $condaPy) { $Cands += @{ exe = $condaPy; args = @() } }
+}
 foreach ($c in $Cands) {
     # 2>$null here is the acceptable case: absence IS the thing being tested,
     # and each candidate is expected to fail until one does not.
@@ -901,8 +912,9 @@ foreach ($c in $Cands) {
     }
 }
 if (-not $PyExe) {
-    Warn "python >= 3.11 required. Install it from https://www.python.org/downloads/"
-    Warn "and tick 'Add python.exe to PATH', then re-run this script."
+    Warn "python >= 3.11 required. The easy route is Anaconda"
+    Warn "(anaconda.com/download, defaults are fine: this script finds it with"
+    Warn "nothing added to PATH). Or python.org, then re-run this script."
     Warn "If 'python' opens the Microsoft Store instead of running, that is the"
     Warn "App Installer stub: install real Python from the link above."
     exit 1

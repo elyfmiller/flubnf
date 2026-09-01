@@ -128,19 +128,17 @@ environment variable; check any machine with
 Everything above needs no GitHub login: this repository and the FluSight hub
 are both public. The particle filter engine is the one exception, because it
 needs a PyBNF fork that is private. **The console runs without it**, analogue
-forecasts only, so this never blocks an install; `SetupEngine.command` (macOS)
-or `./setup_engine.sh` adds the engine once you have access.
+forecasts only, so this never blocks an install.
 
-**The shortest route needs no GitHub account at all: one file.** Anyone who
-already has the fork runs, once:
-
-```bash
-git bundle create pybnf.bundle feature/particle-filter
-```
-
-That single file (about 140 MB) clones like a repository, with no network and
-no credentials. Put it in any of these places and the setup scripts find it by
-themselves, on both platforms:
+**The shortest route needs no GitHub account at all: one small file.** The
+lab hands out `pybnf-pf-<sha>.tar.gz`, about 130 KB, cut with
+`scripts/cut_engine_archive.sh`. Save it in your Downloads folder exactly as
+it is and open the app; setup finds it, unpacks it where it belongs, and
+installs the engine, printing the version stamp it carries. A `git bundle`
+of the fork (about 140 MB, made with
+`git bundle create pybnf.bundle feature/particle-filter`) works the same way
+for anyone who prefers a real clone. Both are found in any of these places,
+on both platforms:
 
 * the FluBNF folder itself, or the folder beside it,
 * `~/Downloads`, `~/Desktop` or `~/Documents` (on Windows, the same three
