@@ -33,7 +33,10 @@ elif [ -d "$HOME/Documents/GitHub/PyBNF-pf" ]; then
 elif [ -d "$HOME/Documents/GitHub/PyBNF-Private" ]; then
   PYBNF="$HOME/Documents/GitHub/PyBNF-Private"
 else
-  PYBNF="$HOME/Documents/GitHub/PyBNF-pf"
+  # nothing exists yet: create under the repository's REAL name, which is
+  # also the archive's prefix and what every doc shows. PyBNF-pf remains the
+  # dev host's name only (the elif above keeps that machine untouched).
+  PYBNF="$HOME/Documents/GitHub/PyBNF-Private"
 fi
 BNGSIM_REMOTE="${FLUBNF_BNGSIM_REMOTE:-https://github.com/elyfmiller/bngsim}"
 ENGINE_VENV="${FLUBNF_ENGINE_VENV:-$HOME/.venvs/flubnf-engine}"
@@ -289,7 +292,7 @@ else
       warn "setup falls back to the GitHub route below."
     fi
   else
-    warn "no engine bundle found. Looked for pybnf*.bundle in:"
+    warn "no engine file found. Looked for pybnf*.tar.gz and pybnf*.bundle in:"
     engine_bundle_dirs | sed 's/^/      /'
     warn "A bundle is ONE file that installs the engine with no GitHub"
     warn "account at all. Anyone who already has the fork creates one with:"

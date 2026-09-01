@@ -291,7 +291,11 @@ def test_the_bundle_is_tried_before_anything_that_needs_an_account():
 def test_the_no_bundle_path_says_where_it_looked():
     """A search that finds nothing and does not say where it searched is
     indistinguishable from a search that never ran."""
-    assert "no engine bundle found. Looked for pybnf*.bundle in:" in SRC
+    # the message must name BOTH artifact shapes, because the tar.gz is the
+    # one students are actually sent and an earlier wording named only the
+    # bundle, telling a student with a slightly misnamed archive that only
+    # bundles count
+    assert "no engine file found. Looked for pybnf*.tar.gz and pybnf*.bundle in:" in SRC
     assert "engine_bundle_dirs | sed" in SRC, (
         "the folders searched are no longer printed, so a student cannot "
         "tell where to put the file")

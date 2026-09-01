@@ -9,8 +9,10 @@ That is the forecasting engine. Everything else downloads itself.
 
 ## Before you start
 
-**macOS**: nothing. Git and Perl already ship with the system, and the setup
-installs the rest.
+**macOS**: install Anaconda from <https://www.anaconda.com/download>,
+defaults are fine; setup finds it with nothing added to PATH. If macOS offers
+to install "command line developer tools" along the way, click Install. Git
+and Perl already ship with the system.
 
 **Windows**: install these two first, both are normal installers with
 defaults that are fine as they are.
@@ -69,18 +71,29 @@ few minutes, then the console opens in your browser. **You do not need to run
 
 ## How to tell it worked
 
-While it sets up you should see lines like these:
+The lines differ a little by platform; the one that matters ends the same
+way on both.
+
+macOS:
 
 ```
-+ unpacked copy present (no git): .../PyBNF-Private
-+ version stamp: feature/particle-filter 3320d1f0
++ engine unpacked from pybnf-pf-XXXX.tar.gz into .../PyBNF-Private
++ version stamp: feature/particle-filter XXXX
 + bngsim installed: 0.15.1
 + pybnf (fork) installed editable
 + pybnf with fit_type=pf, bngsim 0.15.1 -- engine ready
 ```
 
-The line that matters is the last one. If you see **`engine ready`**, you are
-done.
+Windows:
+
+```
+unpacking the engine from "...\Downloads\pybnf-pf-XXXX.tar.gz" - no GitHub account needed
+version stamp: feature/particle-filter XXXX
+Installing the particle filter engine. One time, a few minutes.
+PF engine ready, bngsim 0.15.1 -- engine ready
+```
+
+If you see **`engine ready`**, you are done.
 
 ---
 
@@ -91,10 +104,16 @@ FluBNF still works, it just runs one of its two models instead of both, so you
 are not stuck. Check the engine file is in your Downloads folder with its
 original name, then open FluBNF again.
 
-If it still says that, open a terminal in the FluBNF folder and run
-`./setup_engine.sh` (macOS) or `setup_engine.sh` from Git Bash (Windows). It
-prints a section called **"what this machine can see"** that names the actual
-cause instead of guessing. Send that block to Ely.
+If it still says that: on macOS, open Terminal in the FluBNF folder and run
+`./setup_engine.sh`, which prints a section called **"what this machine can
+see"** naming the actual cause. On Windows, run this in Command Prompt from
+the FluBNF folder:
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1
+```
+
+Either way, send Ely what it prints.
 
 **It tried to log in to GitHub and asked for a password.**
 That means it did not find the engine file, so it fell back to downloading
