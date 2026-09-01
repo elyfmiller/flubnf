@@ -32,9 +32,26 @@ rem hid access-denied and broken-ensurepip failures, and the failure text
 rem below then blamed a missing Python, which sent people the wrong way.
 set "SETUPLOG=%TEMP%\flubnf-firstrun.log"
 if exist "%SETUPLOG%" del "%SETUPLOG%" >nul 2>&1
+rem The lab's Windows machines run the ANACONDA distribution, whose installer
+rem has no "add to PATH" checkbox and deliberately leaves PATH alone, so on a
+rem defaults-accepted Anaconda machine a plain Command Prompt has no `py` and
+rem no `python` even though Python is right there. The lead followed the old
+rem install doc and hit exactly this. So: try the PATH launchers first (a
+rem python.org install keeps working exactly as before), then probe the
+rem folders Anaconda and Miniconda actually install into. venv-from-conda
+rem python produces an ordinary venv; pip inside it behaves normally.
+set "CONDAPY="
+if exist "%USERPROFILE%\anaconda3\python.exe"    set "CONDAPY=%USERPROFILE%\anaconda3\python.exe"
+if not defined CONDAPY if exist "%USERPROFILE%\miniconda3\python.exe" set "CONDAPY=%USERPROFILE%\miniconda3\python.exe"
+if not defined CONDAPY if exist "%LOCALAPPDATA%\anaconda3\python.exe" set "CONDAPY=%LOCALAPPDATA%\anaconda3\python.exe"
+if not defined CONDAPY if exist "C:\ProgramData\anaconda3\python.exe" set "CONDAPY=C:\ProgramData\anaconda3\python.exe"
 where py >nul 2>&1 && py -3 -m venv .venv >>"%SETUPLOG%" 2>&1
 if not exist ".venv\Scripts\python.exe" (
   where python >nul 2>&1 && python -m venv .venv >>"%SETUPLOG%" 2>&1
+)
+if not exist ".venv\Scripts\python.exe" if defined CONDAPY (
+  echo   using Anaconda's Python: "%CONDAPY%"
+  "%CONDAPY%" -m venv .venv >>"%SETUPLOG%" 2>&1
 )
 if not exist ".venv\Scripts\python.exe" goto :failvenv
 ".venv\Scripts\python" -m pip install -q --upgrade pip
@@ -343,8 +360,13 @@ py -3 -m venv "%ENGINEVENV%"
 goto :enginevenvcheck
 :enginevenvpython
 where python >nul 2>&1
-if errorlevel 1 goto :enginefailed
+if errorlevel 1 goto :enginevenvconda
 python -m venv "%ENGINEVENV%"
+goto :enginevenvcheck
+:enginevenvconda
+rem same Anaconda fallback as the app venv above, same reason
+if not defined CONDAPY goto :enginefailed
+"%CONDAPY%" -m venv "%ENGINEVENV%"
 :enginevenvcheck
 if not exist "%ENGINEPY%" goto :enginefailed
 
@@ -425,7 +447,9 @@ if exist "%SETUPLOG%" (
   type "%SETUPLOG%"
 )
 echo.
-echo Usual causes: Python 3.11 or newer is not installed - get it from
+echo Usual causes: no Python found. Install Anaconda (anaconda.com/download,
+echo defaults are fine - this launcher finds it with nothing added to PATH),
+echo or Python 3.11 or newer - get it from
 echo https://www.python.org/downloads/ and tick "Add python.exe to PATH" -
 echo or a policy on this machine blocks writing into this folder.
 echo Press any key to close.

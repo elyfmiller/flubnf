@@ -12,12 +12,12 @@ That is the forecasting engine. Everything else downloads itself.
 **macOS**: nothing. Git and Perl already ship with the system, and the setup
 installs the rest.
 
-**Windows**: install these two first, both are normal installers.
+**Windows**: install these two first, both are normal installers with
+defaults that are fine as they are.
 
-* Python 3.11 or newer, from <https://www.python.org/downloads/>. **Tick "Add
-  python.exe to PATH"** on the first screen of the installer. It is easy to
-  miss and everything afterwards depends on it.
-* Git, from <https://git-scm.com/download/win>. The default options are fine.
+* Anaconda, from <https://www.anaconda.com/download> (the lab's standard
+  Python). No settings to change: FluBNF finds it where it installs.
+* Git, from <https://git-scm.com/download/win>.
 
 ---
 
@@ -107,10 +107,9 @@ Nothing is wrong and nothing is infected. That is Controlled Folder Access
 noticing a program writing inside a protected folder. Send Ely a note; the
 full explanation is in [docs/WINDOWS.md](WINDOWS.md).
 
-**Windows: `python` or `git` is not recognised.**
-Python was installed without "Add python.exe to PATH", or Git is not installed.
-Re-run the installer from the top of this page, then close and reopen the
-Command Prompt so it picks up the change.
+**Windows: `git` is not recognised.**
+Git is not installed yet, or the Command Prompt was open before you installed
+it. Install it from the link at the top, then close and reopen the window.
 
 ---
 
