@@ -76,6 +76,133 @@ repository or the lab archive derives it, so it cannot be checked, and it
 should not be restated about the new configuration on the strength of the
 old record.
 
+### Seal caveats, recorded 2026-09-01
+
+A parity and leakage audit after release found two measured gaps between
+the sealed numbers and the standard they are meant to embody, the app in
+real time, replayed. Both are recorded here so a reader reproducing the
+seal knows exactly what the numbers score. Neither moves the headline
+conclusion: the ensemble beats the baseline in every season by margins far
+larger than either effect.
+
+**The sealed scores are computed on pre-floor internal forecasts, at float
+precision.** The live console applies a seeded output floor to every
+member before ensembling and submission (`app/core/floor.py`, wired into
+the weekly path in `app/ui/server.py` on 2026-08-18, commits `3582f84` and
+`191771c`), and the submission writer rounds quantiles to whole admissions
+and re-monotonizes them (`app/core/submit.py`). The retrospective path
+does neither: it stores and scores the raw member samples. The sealed
+record, rebuilt 2026-08-24, therefore scores forecasts the live app would
+have floored and rounded before submitting them. Measured on four sealed
+2023-24 weeks (settled truth, ratio of sums, US excluded): raw 0.760151 on
+797 cells, against live-path floored 0.761418 on 811 cells, and 0.761283
+on those same 811 cells with hub rounding applied as well. The floor
+effect is order 1e-3 on the score and also changes the cell set, since 14
+cells enter scoring only because the floor lifts a collapsed median above
+zero; the sealed 15,460 cells is therefore not exactly the live path's
+cell universe. The rounding effect is order 1e-4. The alternative
+resolution, applying the identical seeded floor inside the retrospective
+and re-baselining every figure in this document, remains open; if taken,
+it supersedes this caveat.
+
+**Seven of the 76 sealed as-of weeks consumed a vintage snapshot that
+differs from submission-deadline knowledge.** The hub's vintage archive
+(`auxiliary-data/target-data-archive/`) names each file by the newest data
+week it contains, not by the day it was captured; measured capture lag
+across the archive runs 4 to 37 days, and four archive files were amended
+in place after their first commit. Diffing every consumed vintage against
+the hub's `target-data/target-hospital-admissions.csv` as of the last
+commit at most four days after each as-of date: 69 of the 76 consumed
+vintages are identical to deadline knowledge (26 of 30 in 2023-24, 21 of
+24 in 2024-25, and 22 of 22 in 2025-26, which is entirely clean). Six
+consumed weeks carry data no real-time participant could have had:
+2023-10-07; 2024-03-30 (amended upstream after the deadline, for example
+California 185 to 179, and the replay reads the amended file); 2024-04-06,
+2024-12-21 and 2024-12-28, each carrying its entire same-day data week, 53
+rows absent from the deadline feed, with 2024-12-28 additionally carrying
+72 revised cells, including US 2024-12-21 at 14,667 against the 12,497
+known at the deadline and Arizona at 1,507 against 438; and 2024-04-27.
+One consumed week, 2024-11-16, is the reverse case, stale relative to the
+deadline (US 2,886 against the 3,997 already public). The divergent weeks
+concentrate on the 2024-25 holiday turn, the particle filter's
+best-scored stretch. Two further divergent archive files, 2023-09-30 and
+2025-08-30, are not sealed as-of weeks and feed no sealed forecast. A
+sensitivity refit of the affected weeks from deadline-day data,
+materialized out of the hub clone's git history, is an open item and has
+not been run.
+
+### Provenance of the sealed record, recorded 2026-09-01
+
+The sealed runs predate the app's run-provenance record (no `run_meta.json`
+exists in any sealed season), and the machine-local
+`component_versions.json` is misleading about what actually executed: it
+records the site-packages `pybnf 1.3.0`, which every sealed runner shadows
+with the editable fork checkout (`sys.path.insert(0, .../PyBNF-pf)`), and a
+`bngsim` whose version string is a known-lying local build. The facts
+below were recovered and measured after the fact so a reproducer does not
+have to; each was verified directly this session.
+
+* **PyBNF fork commit.** The sealed fits ran the private fork at
+  `b5ffd664` (recovered from the fork worktree's reflog, which brackets
+  the sealed runner mtimes of 2026-08-18). That commit is an ancestor of
+  the pushed tip `3320d1f0`; the four commits between them (all later
+  than the sealed fits, the last two later than the sealed record
+  itself) were measured to net to no change: the full 10,000-particle
+  filter state
+  (`pf_state.npz`: theta, species, weights) is bit-identical between
+  `b5ffd664`, the tip, and a tip rerun. A stranger cloning the fork today
+  reproduces the sealed filter output.
+* **bngsim.** The dev host's engine venv carries a local build whose
+  version string reads 0.13.0; `setup_engine.sh` installs `bngsim==0.15.1`
+  on new machines. The two were measured bit-identical at the full filter
+  state, so the released pin reproduces the seal.
+* **Truth data.** The seal was scored against the hub clone's
+  `target-data/target-hospital-admissions.csv` at hub commit `18f68c23`
+  (the 2026-07-15 upstream state, pulled locally 2026-08-18; the file is
+  md5-identical to upstream cdcepi commit `e311e577`). NHSN continues to revise past-season admissions upstream,
+  so the truth file a reproducer clones is date-dependent: rescoring all
+  three seasons under the 2026-06-17 vintage moves the pooled ensemble by
+  3.1e-5 (0.812967 / 0.617964 / 0.682491, pooled 0.678088) and churns the
+  cell universe by a few cells (2025-26 drops 3 of 4,475 under the
+  actual-above-zero rule). "Same values" therefore means agreement to
+  order 1e-4 in any relWIS unless the named truth commit is materialized
+  from the hub's git history first.
+* **Locations table.** Replayed fits read state populations from the hub
+  checkout's current `auxiliary-data/locations.csv`, not a vintage table;
+  the sealed record was produced against the table carried in the same
+  hub commit `18f68c23`, whose populations were published upstream on
+  2025-09-09 (hub commit `8327d8bf`), years after the replayed seasons'
+  own tables (the hub pins those as `locations_202324.csv` and
+  `locations_202425.csv`). The
+  deterministic observable is population-invariant, and the measured
+  effect of the table's revisions on any single cell sits inside the
+  single-replicate noise floor, but bit-level replay depends on the
+  table's revision state (see also the `resolve_state` docstring).
+* **Run settings.** 52 jurisdictions, 3 replicates, 10,000 particles,
+  jitter 0.30, integrated observable mode, `drop_same_day` False. The
+  seed chain is end-to-end deterministic into the engine: the wrapper's
+  `derive_seed(location, date, replicate)` value is written into each
+  cell's `pf.conf` and consumed by the fork (verified: Alabama /
+  2023-09-23 / replicate 0 derives 646483348, the same value recorded in
+  the sealed `cells_0.json` and in the prepared `pf.conf`).
+* **The stored week trees were amended once after sealing.** On
+  2026-08-26 a US-national backfill rewrote every sealed `samples.json`
+  to add a fitted US block, deliberately preserving file mtimes, so the
+  sealed trees are no longer byte-identical to the input that produced
+  the sealed `scores.json` (which contains 0 US rows). Rescoring the
+  amended trees reproduces all 46,285 sealed non-US rows to JSON
+  round-trip precision (5e-11, 0 unmatched keys) while emitting 360 /
+  288 / 264 additional US rows per season that the published aggregation
+  excludes; no published number is affected.
+* **The sealed US figure is a construction, not a model output.** The US
+  number shown for the sealed seasons is the sum-of-states aggregate,
+  while the shipping app fits the US series directly as a 53rd location,
+  so a fresh replay with the national default on produces a fitted US
+  forecast that is a different model output from the sealed aggregate.
+  Both are excluded from every pooled headline by the named policy
+  (`us_national.POOLED_INCLUDES_US = False`; the sealed `scores.json`
+  files contain no US rows).
+
 ## Placement against real submitted forecasts: withdrawn
 
 Earlier drafts of this document carried a table placing the same forecasts
@@ -121,13 +248,26 @@ withdrawn numbers as unverified.
 
 ## Independent replication, of the pre-exclusion configuration
 
-Replication note (2026-08-26): the epiweek-53 donor-window fix means a
-from-scratch replay on current code diverges from the sealed analogue
-member at exactly one as-of week, 2026-01-03 (188 cells; member relWIS
-0.770852 sealed arithmetic vs 0.769917 fixed, measured on the full grid
-with the old arithmetic reproducing all 15,712 sealed cells first). A
-bit-exact reproduction of the sealed record uses the sealed code state;
-everything else is unchanged.
+Replication note (2026-08-26, extended 2026-09-01): the epiweek-53
+donor-window fix (commit `52cc22f`, committed 2026-08-26, two days after
+the sealed record was rebuilt) means a from-scratch replay on current code
+diverges from the sealed analogue member at exactly one as-of week,
+2026-01-03 (188 cells; member relWIS 0.770852 sealed arithmetic vs
+0.769917 fixed, measured on the full grid with the old arithmetic
+reproducing all 15,712 sealed cells first). The season-level and pooled
+consequence, measured 2026-09-01: a fresh replay on shipped code yields
+2025-26 analogue 0.618025 against the sealed 0.621006 and 2025-26
+ensemble 0.680500 against the sealed 0.682662, moving the pooled ensemble
+from 0.678119 to 0.677437, so the printed 0.683 and 0.678 are not
+reproduced at printed precision by current code (they round from the
+sealed values; the replayed values round to 0.681 and 0.677). Every other
+sealed week regenerates at max quantile diff 0.0. A bit-exact
+reproduction of the sealed record uses the sealed code state, which is
+commit `9b0ef26` in this repository's history: the pre-fix arithmetic at
+that revision reproduces the sealed 2026-01-03 analogue quantiles on all
+53 locations to max abs diff 0.0. Whether to re-baseline the seal table
+to the shipped-code values instead of carrying this caveat is an open
+decision.
 
 On 2026-08-23 a lab laptop (Apple M4) replayed all three seasons at full
 grid, 52 jurisdictions, 3 replicates, using only the shipped console:
@@ -365,8 +505,18 @@ than leaving the claim to look checkable when it is not.
   been 0.496, so the season's intervals remain the tightest of the three and
   the argument stands.
 * **Global width scalar**, a post-hoc rescaling of predictive width. Tested
-  and found null, a movement of about 0.3 percent against this project's
-  measured noise floor of roughly 5 percent, consistent with the
+  and found null, a movement of about 0.3 percent, judged at the time
+  against a quoted noise floor of roughly 5 percent. A caveat on that
+  floor, added 2026-09-01: no measurement producing the 5 percent figure
+  survives in this repository or the lab archive, so it should not be
+  called measured, and the pre-registered kill gates that cite it inherit
+  a constant of undocumented provenance. The run-to-run spread that is
+  measured (lab archive, `replicate-count/out/spread.json`) is far
+  tighter at the pooled full-grid scale: per-replicate sd 0.001 to 0.002
+  relWIS. Against that measured floor a 0.3 percent pooled movement would
+  not be null; whether the original test's movement was pooled-scale or
+  small-panel-scale cannot be re-checked, for the provenance reason given
+  below. The direction of the result remains consistent with the
   project-wide pattern that every post-hoc correction of the output has
   failed. **Provenance, stated plainly:** this test was performed during an
   independent review of the project rather than by this group, and no
@@ -403,8 +553,12 @@ than leaving the claim to look checkable when it is not.
   would be measured against a narrower incumbent than the one it beat. The
   kill clause is untouched either way. The mechanism control is the finding: an arm with
   momentum removed and the scale still fitted scored 0.6215 / 0.5818 / 0.6083
-  against the full arm's 0.6230 / 0.5831 / 0.6097, about 0.2 percent apart
-  inside a 5 percent noise floor. The increment structure contributes nothing
+  against the full arm's 0.6230 / 0.5831 / 0.6097, about 0.2 percent apart,
+  a gap read as null at the time against the same quoted 5 percent noise
+  floor whose provenance the global-width-scalar entry above records as
+  undocumented; the panel here is 1,711 cells, and the surviving measured
+  spread (per-replicate sd 0.001 to 0.002 relWIS, pooled full grid) is the
+  closest scoped figure on record. The increment structure contributes nothing
   measurable; the entire gain over RW-beta comes from fitting the innovation
   scale (0.055) instead of setting it by hand (RW-beta's 0.5).
 * **Slope-anchored transmission.** Transmission derived from the last two
@@ -508,7 +662,12 @@ scores are self-computed from the hub's archives rather than earned in
 real-time participation; the placement of these forecasts among real FluSight
 submissions is withdrawn and unmeasured; three seasons is the entire possible
 vintage record, and the donor-pool exclusion is validated on those three
-seasons and nowhere else; Windows is experimental.
+seasons and nowhere else; the sealed scores are computed on pre-floor
+internal member forecasts at float precision rather than on the floored,
+hub-rounded submissions the live console writes (measured at the third
+decimal, see the seal caveats above); seven of the 76 sealed as-of weeks
+consumed archive snapshots that diverge from submission-deadline knowledge
+(see the seal caveats above); Windows is experimental.
 
 ## Naming
 

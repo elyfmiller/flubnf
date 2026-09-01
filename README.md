@@ -37,8 +37,13 @@ the 23 FluSight quantile levels, horizons 0-3 weeks.
 ## Performance
 
 Three seasons replayed at full grid (52 jurisdictions, 3 replicates),
-strictly on vintage data: the models see only what was known on each
-forecast date. Scores are weighted interval score relative to the CDC
+strictly on vintage data: the models see only the hub's archived data
+snapshot for each forecast date. (For seven of the 76 replayed weeks that
+snapshot diverges from what was public by the submission deadline, and the
+replay scores the members' internal forecasts rather than the floored,
+rounded submission files the live console writes; both effects are
+measured and recorded in the seal caveats of
+[docs/RELEASE-1.0.md](docs/RELEASE-1.0.md).) Scores are weighted interval score relative to the CDC
 FluSight-baseline (below 1.000 beats the baseline), computed as a ratio of
 WIS sums over the cells the model and the baseline share; the CDC dashboard
 reports a different, pairwise scaled relative WIS, so figures here are not
@@ -58,7 +63,16 @@ The ensemble beat the baseline in every season, and is level with the
 official FluSight ensemble overall (ahead one season, level one, behind
 one; the pooled gap is not statistically separable from zero). These are
 self-computed retrospective replays, not real-time submissions, and three
-seasons is every vintage-true season the hub's archive can support. The
+seasons is every vintage-true season the hub's archive can support.
+
+One reproduction caveat: an analogue calendar fix committed after the
+seal (commit `52cc22f`, 2026-08-26) changes exactly one replayed week, so
+a replay on current code reproduces the 2023-24 and 2024-25 rows exactly
+but yields 0.681 / 0.677 for the 2025-26 and pooled figures rather than
+the sealed 0.683 / 0.678; reproducing the printed values bit-exactly
+requires the pre-fix code state (commit `9b0ef26`). The measured deltas
+are in the replication note of
+[docs/RELEASE-1.0.md](docs/RELEASE-1.0.md). The
 full validation record - methodology, pre-registered gates, the
 independent replication, and everything that was tested and did not ship -
 is in [docs/RELEASE-1.0.md](docs/RELEASE-1.0.md) and on the console's

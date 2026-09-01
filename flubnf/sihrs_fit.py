@@ -134,7 +134,17 @@ def resolve_state(state: str, *, truth_csv: str | Path, locations_csv: str | Pat
                   attack_rate: Optional[float] = None) -> StateSetup:
     """Resolve every fixed SIHRS input for one state from data + sourced priors.
 
-    Uses only weeks at or before `as_of`, so there is no leakage.
+    Observation rows are as-of filtered: only weeks at or before `as_of` are
+    read from `truth_csv`. The POPULATION is not vintage-filtered: it comes
+    from whatever `locations_csv` the caller passes, and every replay caller
+    passes the hub checkout's CURRENT table (settings.LOCATIONS), so a replay
+    of season 2023-24 reads a population published years later, and an
+    upstream revision of locations.csv changes bit-level replay output. The
+    deterministic observable is N-invariant (i0 and rhomult scalings cancel),
+    so N enters only through the demographic-stochasticity scale; the
+    measured effect on any single cell sits inside the single-replicate
+    noise floor. Formal leakage and a reproducibility hazard, not a measured
+    score distortion.
     """
     ar = float(attack_rate if attack_rate is not None
                else np.mean(ATTACK_RATE_RANGE))

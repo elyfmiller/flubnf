@@ -462,9 +462,13 @@ def _score_td(v) -> str:
 
 
 #: how close the two pooled scores must sit before the panel is allowed to
-#: call them level. 0.02 is well inside the paired-bootstrap interval the
-#: sealed three seasons produce; anything wider is a real difference and the
-#: sentence stays off rather than talking past the table.
+#: call them level. No statistical test runs at build time: this is a fixed
+#: threshold, so the sentence below must claim no more than the threshold
+#: verifies. 0.02 sits inside the week-clustered bootstrap interval measured
+#: once on the sealed three seasons (offline; half-width about 0.05, CI
+#: spanning zero, recorded in the lab archive's 2026-08 audit record), but
+#: that measurement is not recomputed for future payloads; anything wider
+#: than 0.02 keeps the sentence off rather than talking past the table.
 LEVEL_GAP = 0.02
 
 
@@ -530,12 +534,15 @@ def _season_table(payload: dict) -> str:
         # The finding they carry (the pooled difference is inside sampling
         # noise) belongs to the sealed seasons, so if a future build ever
         # produces a gap that is not small the sentence is withheld instead
-        # of asserting "level" against its own table.
+        # of asserting "level" against its own table. The sentence used to
+        # attribute the verdict to "a paired bootstrap", but no bootstrap
+        # runs here (see LEVEL_GAP above), so it now claims only what the
+        # threshold check verifies.
         off = (pooled.get("FluSight-ensemble") or {}).get("rel")
         # the weeks a paired test actually has: both models scored in the
         # same week. Not season["scored_weeks"], which counts every stored
         # week including the pre-season ones that scored nothing at all, and
-        # would overstate the sample the bootstrap ran on.
+        # would overstate the sample any paired test has to work with.
         weeks = sum(1 for s in seasons for w in s.get("weekly") or []
                     if "ensemble" in w.get("week", {})
                     and "FluSight-ensemble" in w.get("week", {}))
@@ -543,8 +550,8 @@ def _season_table(payload: dict) -> str:
             gap = abs(p["rel"] - off)
             if gap <= LEVEL_GAP:
                 note += (f" Pooled the two are level: a gap of {gap:.3f} "
-                         f"over {weeks} forecast weeks that a paired "
-                         "bootstrap does not separate from zero.")
+                         f"over {weeks} forecast weeks, inside the sealed "
+                         "record's measured week-to-week variation.")
     note += (" Methods carries the donor pool, the withdrawn field "
              "placement, and the two-strain result.")
     return table + ('<p class="sub" style="margin:.9rem 0 0;font-size:.85rem">'

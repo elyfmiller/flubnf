@@ -273,6 +273,16 @@
  score against the official FluSight baseline, the competition's own
  yardstick, and evaluation touches only data that was available at forecast
  time.</p>
+ <p class="hint">One measured qualification: the hub names each archived
+ vintage file by the newest data week it contains, not by the day it was
+ captured, and for seven of the 76 sealed as-of weeks the archived snapshot
+ differs from what was public by that week's submission deadline (six carry
+ later revisions or a data week the deadline feed lacked; one is stale).
+ Season 2025-26 is clean on all 22 of its weeks. The sealed scores are also
+ computed on the members' internal forecasts at float precision, not on the
+ floored, rounded submission files the live console writes, a measured
+ difference at the third decimal. Both effects are itemized in the release
+ record's seal caveats (docs/RELEASE-1.0.md).</p>
  {# the cell rule used to be spelled out in the Measured-performance panel's
     own copy, on the home card and on the public site. That copy was cut, so
     the definition lands here instead: every "scored cells" count on this
