@@ -34,4 +34,8 @@ abstract: >-
   beating the baseline in every season.
   All scores are self-computed from the hub's archived vintage data and
   baseline files, and are retrospective replays rather than real-time
-  submissions.
+  submissions. Reproducing the 2025-26 and pooled figures at printed
+  precision requires the pre-fix analogue code state (repository commit
+  9b0ef26; a calendar fix in commit 52cc22f, made after the record was
+  sealed, moves them to 0.681 and 0.677 on current code), as recorded in
+  docs/RELEASE-1.0.md.
