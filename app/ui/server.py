@@ -428,6 +428,22 @@ def versions_resolved() -> bool:
     return VERSION_PENDING not in VERSIONS.values()
 
 
+def _engine_versions_for_ledger(engines: str) -> dict:
+    """The engine_versions dict a new ledger row records: which engines ran,
+    plus the real version number of each engine component the probe has
+    resolved. Only actual versions are recorded -- the pending marker and
+    "not installed" are states of the probe, not versions, and writing one
+    into a run's permanent record would let the run page print it later as
+    the producer. Historical rows hold names only ({"engines": ...}); this
+    keeps that key so nothing keyed on it changes."""
+    out = {"engines": engines}
+    for key in ("pybnf", "bngsim", "bionetgen"):
+        v = VERSIONS.get(key)
+        if v and v not in (VERSION_PENDING, "not installed", "installed"):
+            out[key] = str(v)
+    return out
+
+
 def _warm_versions() -> None:
     """The real probe, off the first-paint path: resolve, update VERSIONS in
     place, persist the snapshot for the next launch. Never raises."""
@@ -675,7 +691,13 @@ def _outlook_cards(res: dict | None, rid: str | None = None) -> tuple:
                         bundle_cards = cards
                         bundle_meta = {"model": model, "approx": False,
                                        "label": report_v2.MODEL_LABEL.get(
-                                           model, report_v2.MODEL_LABEL["pf"])}
+                                           model, report_v2.MODEL_LABEL["pf"]),
+                                       # the run's coverage (bundle v4);
+                                       # None on older bundles, and the map
+                                       # then claims only 'no data' for
+                                       # card-less states (usmap contract)
+                                       "fitted_fips": bundle.get(
+                                           "fitted_fips")}
                         # a bundle with two or more per-model card sets is
                         # the full-fidelity path: exact cards, exact toggle
                         # (via _outlook_models); anything older falls
@@ -861,11 +883,17 @@ def _outlook_block_cached(rid: str | None, mtime: float) -> dict:
         # the national fit has no state shape on the map: the caption counts
         # only jurisdictions a reader can actually see colored
         outlook_n = len(with_data - {"US"})
+        # the run's recorded coverage (bundle v4): with it, a card-less
+        # state's hover distinguishes a verified reporting gap from 'not
+        # fitted in this run'; without it the hover claims only 'no data',
+        # matching the caption's honest count instead of contradicting it
+        scope = outlook_src.get("fitted_fips") if outlook_src else None
+        scope = set(scope) if scope is not None else None
         # legend under the map, from the same module that colors it: the
         # five categories plus the no-data tone are readable without hovering
         map_svg = ("<div style='max-width:880px;margin:0 auto'>"
                    "<script>window.MAP_LINK='/output/report';</script>"
-                   + svg_map(cards, clickable=with_data)
+                   + svg_map(cards, clickable=with_data, scope_fips=scope)
                    + map_legend() + "</div>")
         # the outlook model toggle: from the latest run's bundle (v3,
         # per-model cards) when it has one, else -- for a stored run from
@@ -885,7 +913,8 @@ def _outlook_block_cached(rid: str | None, mtime: float) -> dict:
                 default = (outlook_src.get("model")
                            if outlook_src.get("model") in by_model
                            else order[0])
-                payload = {m: {"states": usmap.state_swap_payload(byf),
+                payload = {m: {"states": usmap.state_swap_payload(
+                                   byf, scope_fips=scope),
                                "us": {}}
                            for m, byf in by_model.items()}
                 outlook_toggle = usmap.model_toggle(
@@ -2090,6 +2119,12 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
               # render the report's exact categories)
               "cards_model": cards_model,
               "cards": cards, "details": details,
+              # additive since v4: which states this run covered, so the
+              # report map can tell a verified reporting gap from a state
+              # the run never fitted (a one-state run used to label the
+              # other 51 as reporting gaps; review finding 2026-08)
+              "fitted_fips": sorted({n2f.get(l) for l in spec.locations
+                                     if n2f.get(l) and n2f.get(l) != "US"}),
               # additive since v3: every available model's cards, all from
               # the same quantile-CDF path -- the outlook model toggle's
               # data on home and on the report
@@ -2147,7 +2182,13 @@ def _run_all(spec: RunSpec) -> None:
     try:
         # setup INSIDE the try: a failed ledger insert or workroot lease must
         # release the running claim in the finally, not wedge it until restart
-        run_id = ledger.open_run(spec, Path("pending"), {"engines": "pf,analogue"})
+        # engine_versions records what PRODUCED the run: the engine names,
+        # plus each engine component's real version number when the probe
+        # has resolved it by now (pending markers and "not installed" are
+        # not versions and are never recorded as one). The run page renders
+        # this row, not the viewing process's versions, under Produced by.
+        run_id = ledger.open_run(spec, Path("pending"),
+                                 _engine_versions_for_ledger("pf,analogue"))
         workroot = lease_workroot(run_id)
         ledger.set_workroot(run_id, workroot)   # the row must name the real one
         _status["running"] = f"all:{run_id}"
@@ -2525,10 +2566,17 @@ def run_page(request: Request, run_id: str):
     report = (w / "report.html").name if (w / "report.html").is_file() else None
     status, err, spec_json = "", "", ""
     sub_errors: dict = {}
+    row_sha, row_engine_versions = "", {}
     for r in Ledger().rows(200):
         if r.get("run_id") == run_id:
             status = r.get("status", "")
             spec_json = r.get("spec", "") or ""
+            row_sha = r.get("flubnf_sha", "") or ""
+            try:
+                ev = _json.loads(r.get("engine_versions") or "{}")
+                row_engine_versions = ev if isinstance(ev, dict) else {}
+            except Exception:
+                row_engine_versions = {}
             try:
                 o = _json.loads(r.get("outcome") or "{}")
                 err = o.get("error", "")
@@ -2545,9 +2593,14 @@ def run_page(request: Request, run_id: str):
     if status == "running" and not (_status.get("running") or "").endswith(run_id):
         status = "interrupted"
     # The settings come from the LEDGER ROW's spec, which is the record of
-    # record for a run; nothing is duplicated to show them here. The build
-    # and engine versions are this process's, stated so the page says what
-    # produced the run rather than implying it.
+    # record for a run. The build and engine versions ALSO come from the
+    # row (flubnf_sha, engine_versions recorded at run creation), because
+    # the page's block is titled "Produced by": this process's own build
+    # may be days newer than the run and must never be printed as its
+    # producer. Rows whose engine_versions column holds engine NAMES only
+    # (the historical {"engines": "pf,analogue"} shape) yield an
+    # app-build-only block via version_pairs, which emits pairs only for
+    # pybnf/bngsim/bionetgen keys: omitted, never guessed, when unknown.
     from app.core.runs import is_research
     return templates.TemplateResponse(request, "run.html", {
         "active": "Storage", "run_id": run_id, "status": status, "error": err,
@@ -2557,7 +2610,7 @@ def run_page(request: Request, run_id: str):
         "research": is_research(spec_json),
         "models": res.get("models", {}),
         "settings": spec_settings(spec_json),
-        "versions": version_pairs(RUNNING_SHA, VERSIONS),
+        "versions": version_pairs(row_sha, row_engine_versions),
         "can_rerun": bool(spec_json) and status in RERUN_STATUSES,
         "subs": subs, "sub_errors": sub_errors, "report": report})
 
@@ -2762,9 +2815,13 @@ def _run_label(run_id: str, spec_json: str = "", tag: bool = True) -> str:
 def relwis_chip(value, cells=None, member: str = "PF") -> str:
     """The one relWIS rendering outside a scores table: the member it
     describes, tabular numerals, the ok/bad below-1-beats-baseline classes
-    every other surface teaches, and the cell coverage the score rests on,
-    e.g. 'PF relWIS <span class="relwis bad">4.067</span> (2 cells)'.
-    Returns markup built from fixed phrases and numbers only."""
+    every other surface teaches, the convention and baseline (the project
+    rule: no relWIS prints without naming both, because the CDC dashboard's
+    pairwise scaled quantity is a different, non-comparable number), and
+    the cell coverage the score rests on, e.g. 'PF relWIS
+    <span class="relwis bad">4.067</span> vs FluSight baseline, ratio of
+    sums (2 cells)'. Returns markup built from fixed phrases and numbers
+    only."""
     try:
         v = float(value)
     except (TypeError, ValueError):
@@ -2774,7 +2831,8 @@ def relwis_chip(value, cells=None, member: str = "PF") -> str:
         n = int(cells)
         cov = f" ({n} cell{'s' if n != 1 else ''})"
     return (f'{member} relWIS <span class="relwis '
-            f'{"ok" if v < 1 else "bad"}">{v:.3f}</span>{cov}')
+            f'{"ok" if v < 1 else "bad"}">{v:.3f}</span>'
+            f' vs FluSight baseline, ratio of sums{cov}')
 
 
 def _outcome_chips(outcome_json: str) -> str:
@@ -3091,7 +3149,8 @@ def model_page(request: Request, name: str):
                "the newest hospital admissions, and their spread is the "
                "forecast uncertainty. It fits weekly NHSN admissions exactly "
                "as archived on each forecast date. Measured three-season "
-               "retrospective relWIS against the FluSight baseline "
+               "retrospective relWIS against the FluSight baseline, "
+               "ratio of sums "
                "(values below 1 beat it): 1.023 in 2023-24, 0.636 in "
                "2024-25, 0.825 in 2025-26."),
         "analogue": ("Calendar analogue",
@@ -3113,7 +3172,8 @@ def model_page(request: Request, name: str):
                      "pool: it peaked in April 2022 and survives in the "
                      "archive only as its growth phase, so a "
                      "calendar-matched pool reads it with the wrong sign. "
-                     "Measured three-season retrospective relWIS: 1.045 in "
+                     "Measured three-season retrospective relWIS vs the "
+                     "FluSight baseline, ratio of sums: 1.045 in "
                      "2023-24, 0.756 in 2024-25, 0.621 in 2025-26 (before "
                      "that exclusion, 1.105, 0.835 and 0.641)."),
         "pf2s": ("Two-strain SIHRS",
@@ -3128,6 +3188,7 @@ def model_page(request: Request, name: str):
                  "the season start comes from the same typed surveillance "
                  "series. It cleared the turning-point gate twice, on the "
                  "state panel and again on the full grid, scoring relWIS "
+                 "(vs the FluSight baseline, ratio of sums) "
                  "0.953 on turn cells against 0.993 for the single-strain "
                  "filter, and 0.968 against 1.023 on the plateau season. It "
                  "failed the gate that decides membership: on identical "
@@ -3153,7 +3214,8 @@ def model_page(request: Request, name: str):
                      "disagree in useful ways: the blend beats the baseline "
                      "in all three replayed seasons, which neither member "
                      "does alone. Measured three-season retrospective "
-                     "relWIS: 0.813 in 2023-24, 0.618 in 2024-25, 0.683 in "
+                     "relWIS vs the FluSight baseline, ratio of sums: "
+                     "0.813 in 2023-24, 0.618 in 2024-25, 0.683 in "
                      "2025-26; pooled 0.678 over 15,460 cells."),
     }
     # one-line summaries: the collapsed <details> summary on each model tab
@@ -5070,7 +5132,8 @@ def run_models(request: Request,
             ledger = Ledger()
             rid = None
             try:
-                rid = ledger.open_run(spec, Path("pending"), {"engine": "amcmc"})
+                rid = ledger.open_run(spec, Path("pending"),
+                                      _engine_versions_for_ledger("amcmc"))
                 _status["running"] = f"amcmc:{rid}"
                 w = lease_workroot(rid)
                 ledger.set_workroot(rid, w)   # the row must name the real one

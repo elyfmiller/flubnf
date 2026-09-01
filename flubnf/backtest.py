@@ -14,8 +14,9 @@ quantify whether the automation improves forecast skill.
 
 This is a *shadow* of the real PyBNF pipeline: same analyze/apply code path,
 but the fit is in-Python (much faster than out-of-process PyBNF DE) so the
-backtest can run on a laptop. When the new BNGsim in-process engine ships,
-swap `fitting.fit` for the real PyBNF runner in the harness.
+backtest can run on a laptop. The production path uses the in-process bngsim
+engine (pinned 0.15.1); this shadow harness deliberately keeps the fast
+in-Python fit and has not been migrated.
 """
 
 from __future__ import annotations

@@ -69,6 +69,14 @@
                           "amcmc": "Adaptive MCMC (experimental)"} %}
    <select name="engine">{% for e in engines %}
      <option value="{{ e }}" {% if e == form.engine %}selected{% endif %}>{{ engine_names.get(e, e) }}</option>{% endfor %}</select>
+   {# The RELEASE-1.0 Known limitations wording, verbatim in substance:
+      the word "experimental" alone under-discloses what the sampler audit
+      measured, so the caveat rides right under the picker whenever the
+      option is offered. #}
+   {% if "amcmc" in engines %}
+   <p class="hint">Adaptive MCMC does not pass convergence diagnostics on
+    this posterior and is not part of the shipped ensemble.</p>
+   {% endif %}
    {# The two-strain third member has no control here: it failed its
       full-grid ensemble gate and does not ship. The /run endpoint still
       accepts members=3 for research use. #}

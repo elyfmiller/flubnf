@@ -110,7 +110,7 @@ and move on; scoring waits for settled truth.</p>
         was computed under; a season's results page carries the switch to
         the CDC dashboard's pairwise convention, which needs field data
         this page would have to load once per card. #}
-     {% if s_complete %} · relWIS <span class="{{ 'ok' if s.rel < 1 else 'bad' }}">{{ "%.3f"|format(s.rel) }}</span>, ratio of sums{% endif %}
+     {% if s_complete %} · ensemble relWIS <span class="{{ 'ok' if s.rel < 1 else 'bad' }}">{{ "%.3f"|format(s.rel) }}</span> vs FluSight baseline, ratio of sums{% endif %}
      {% if s.status == 'running' %}<span class="warn">· running</span>
      {% elif s.status == 'stopping' %}<span class="warn">· stopping after the fits in flight</span>
      {% elif s.status == 'paused' %}<span class="warn">· paused</span>
@@ -179,8 +179,8 @@ and move on; scoring waits for settled truth.</p>
     <span class="grow"><strong>{{ a.when }}</strong>
      <span class="hint">· {{ a.weeks }} week{{ "" if a.weeks == 1 else "s" }}{%
       if a.elapsed_s and a.elapsed_s >= 1 %} · {{ a.elapsed_s | hms }}{% endif %}{%
-      if a.rel is not none %} · relWIS <span class="{{ 'ok' if a.rel < 1 else 'bad' }}">{{
-      "%.3f"|format(a.rel) }}</span>, ratio of sums{% endif %} · {{ a.size_h }}</span></span>
+      if a.rel is not none %} · ensemble relWIS <span class="{{ 'ok' if a.rel < 1 else 'bad' }}">{{
+      "%.3f"|format(a.rel) }}</span> vs FluSight baseline, ratio of sums{% endif %} · {{ a.size_h }}</span></span>
     <a href="/retro/{{ s.name }}?archive={{ a.id }}"><button class="quiet"
       type="button">Results →</button></a>
     <form method="post"

@@ -3,13 +3,16 @@
 Everything a SIHRS fit needs, per state:
   * the per-state model copy (all {{TOKENS}} resolved from data + sourced priors),
   * the .exp fitting target,
-  * a PyBNF .conf with exactly the 6 fitted parameters,
+  * a PyBNF .conf with exactly the fitted parameters of the chosen prior box,
   * the pybnf invocation, pointed at the FORK so BNGsim's compiled path is used.
 
-Only 7 parameters are fitted (Reff, eps1, phi1, eps2, phi2, mult, r). Everything else is
+Two prior boxes live here. FITTED_PRIORS is the 8-parameter multi-season box
+(Reff, eps1, phi1, eps2, phi2, mult, impr, r); the shipped single-strain PF
+template fits the 5 of MIN_PRIORS (Reff, eps1, phi1, mult, r), which is what
+docs/MODEL-PROVENANCE.md and the CDC metadata describe. Everything else is
 fixed from data or literature -- see `flubnf/sihrs_priors.py` for each value's DOI
-or derivation. That is down from 11 in the normalized model, and it removes both
-the rho-vs-mult ridge and the R0-vs-s0 ridge.
+or derivation. The 8-parameter box is down from 11 in the normalized model, and
+the reduction removed both the rho-vs-mult ridge and the R0-vs-s0 ridge.
 
 BNGsim note: the working fast path is the fork's `BngsimModel`, used automatically
 for ordinary .bngl -> .net fits when the fork is the installed pybnf. Do NOT set
@@ -52,7 +55,8 @@ GAMMAH_PER_WEEK = 1.17      # ~6 d length of stay; does not enter the fit target
 OMEGA_PER_WEEK = 0.019      # ~1 y immune duration; weakly identified in-season
                             # from under three seasons either way.
 
-# Priors for the 6 fitted parameters. Universal across states by construction --
+# Priors for the 8 fitted parameters of the multi-season box (the shipped PF
+# template fits the 5-parameter subset MIN_PRIORS below). Universal across states by construction --
 # every scale-carrying quantity is fixed per state instead.
 FITTED_PRIORS: dict = {
     # Reff is the BASE reproduction number: beta(t)=beta0*exp(eps1*cos+eps2*cos)
@@ -324,7 +328,7 @@ def write_conf(setup: StateSetup, *, model: Path, exp: Path, out_dir: Path,
     chains from different starts never meet. The posterior has a condition number
     of ~1678 (a long thin ridge; worst pair eps1<->eps2 at corr +0.785), which no
     isotropic-proposal sampler traverses. The real fix is reparameterisation --
-    see docs/RETROSPECTIVE_2026-07.md. Treat interval/coverage quantities derived
+    see the lab archive's docs/RETROSPECTIVE_2026-07.md (NAU-Projects repo, not this one). Treat interval/coverage quantities derived
     from these posteriors as provisional; medians are far more robust.
     """
     if parallel_count is None:

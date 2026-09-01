@@ -136,15 +136,26 @@ def test_weekly_report_carries_a_print_stylesheet(tmp_path):
 
 def test_weekly_report_keeps_its_build_contract(tmp_path):
     # restyle, not regress: the wall-time footer and settings block still
-    # land, and the map/legend/gap language survives
+    # land, and the map/legend/gap language survives WHERE IT WAS CHECKED:
+    # the gap claim renders only for card-less states inside the run's
+    # recorded scope; the rest are stated as not fitted, and a report with
+    # no recorded scope claims only 'no data' (review finding 2026-08)
     html = build_report(
         "2098-01-03", {}, {}, {}, tmp_path / "r.html", elapsed_s=3725.0,
         settings_html='<p class="hint runsettings"><strong>Run settings:'
-                      "</strong> engine pf</p>").read_text()
+                      "</strong> engine pf</p>",
+        fitted_fips=["39"]).read_text()
     assert "Run wall time: 1:02:05" in html
     assert "Run settings" in html
     assert "no data (reporting gap)" in html
     assert "shown as gaps, never interpolated" in html
+    assert "not fitted in this run" in html
+    # no recorded scope: the gap is not asserted for states nobody checked
+    html2 = build_report(
+        "2098-01-03", {}, {}, {}, tmp_path / "r2.html").read_text()
+    assert "no data (reporting gap)" not in html2
+    assert "no data in this view" in html2
+    assert "not fitted in this run" not in html2
 
 
 def test_summary_table_applies_the_relwis_rule():

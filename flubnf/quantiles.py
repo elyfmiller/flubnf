@@ -1,7 +1,8 @@
 """Generate FluSight-style quantile forecasts from a DE fit.
 
-Each FluSight submission supplies 23 quantiles at horizons 0..3 (or 1..4
-depending on the season). The quantiles are computed from samples of the
+Each FluSight submission supplies 23 quantiles; the hub's horizons for this target are -1..3 and this
+project submits 0..3 (sample dicts here are keyed 1..4 and mapped to hub
+horizons by app/core/submit.py). The quantiles are computed from samples of the
 predictive distribution.
 
 Our predictive distribution is the marginal of the joint over:
@@ -136,7 +137,7 @@ def clip_forecast(qf: "QuantileForecast", cap: float) -> "QuantileForecast":
     meant to tame. Measured on the 2025-26 SIR backtest: 11 of 4784 cells
     saturated this way (New York 20x3870 = 77400, Louisiana 20x433 = 8660) and
     carried 49.4% of ALL WIS — mean 51,474 vs 133 for a normal cell. Guarding
-    them moved relWIS 2.291 -> 1.166. See docs/RETROSPECTIVE_2026-07.md.
+    them moved relWIS 2.291 -> 1.166. See the lab archive's docs/RETROSPECTIVE_2026-07.md (NAU-Projects repo, not this one).
     """
     return QuantileForecast(
         horizons=qf.horizons,

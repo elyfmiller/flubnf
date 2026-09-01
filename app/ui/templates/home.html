@@ -266,5 +266,11 @@
  BioNetGen <span data-vkey="bionetgen">{{ versions.bionetgen }}</span> ·
  FastAPI <span data-vkey="fastapi">{{ versions.fastapi }}</span> ·
  Plotly <span data-vkey="plotly">{{ versions.plotly }}</span></p>
+ {# self-reported bngsim strings can lie about reproducibility; the pin of
+    record is stated beside the number (see setup_engine.sh and the same
+    note on Methods) #}
+ <p class="hint">The sealed record's engine pin is bngsim 0.15.1 (see
+ setup_engine.sh); a self-reported 0.13.0 here is the seal-era local
+ build, not the PyPI 0.13.0 release.</p>
 </div>
 {% endblock %}

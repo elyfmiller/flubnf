@@ -1,7 +1,10 @@
 """The calendar-analogue engine: instant, pure-python, no workroot needed
 beyond a place to write its quantiles.
 
-Wraps flubnf.analogue with the LOSO-frozen bandwidth. Returns QUANTILES per
+Wraps flubnf.analogue at its DEFAULT_BANDWIDTH and its shipped donor pool;
+neither is overridden or restated here, so the engine cannot disagree with
+the library about what production runs. The bandwidth's value and provenance
+live beside flubnf.analogue.DEFAULT_BANDWIDTH. Returns QUANTILES per
 horizon (the analogue is quantile-native); the ensemble vincentizes them with
 the PF's sample-derived quantiles directly.
 """
@@ -23,6 +26,9 @@ from app.core.data import LOCATIONS, vintage_path     # noqa: E402
 
 def completeness_args(spec, fips: str, anchor_date, newest_date) -> tuple:
     """(completeness, widen_log_sd) for one state, or (None, None).
+    This path is DORMANT: no shipped configuration sets these keys, and
+    both pre-registered completeness corrections were tested and killed
+    (docs/RELEASE-1.0.md, the two reporting-completeness entries).
 
     Build 2 (2026-08-21 handoff section 4): a frozen per-state first-issue
     completeness table may ride in `spec.extra["analogue_completeness"]`

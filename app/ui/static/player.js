@@ -356,9 +356,10 @@ function noForecastNote(loc, available, enabled, us){
       return 'no US national forecast stored for this week; the fitted '
         + 'national series covers the weeks the replay reached';
     if(p === US_PROVENANCE.AGGREGATED)
-      return 'no US fan is drawn for this week: no US fit exists for this '
-        + 'season, and the fallback sum-of-states aggregate is a season '
-        + 'score rather than a weekly forecast (choose a state above)';
+      return 'no US fan is drawn for this week: the scores for this season '
+        + 'hold no scored US fit, and the fallback sum-of-states aggregate '
+        + 'is a season score rather than a weekly forecast (choose a state '
+        + 'above)';
     return 'no official US submission for this week; the fitted forecasts '
       + 'are per state (choose a state above)';
   }

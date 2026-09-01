@@ -1,4 +1,9 @@
-"""Sequential particle filter for the SIHRS mechanism.
+"""REFERENCE IMPLEMENTATION, not the shipped engine. The shipped filter is
+fit_type=pf in the private PyBNF fork (app/core/engines/pf.py imports
+pybnf.pf.ParticleFilter); this module exists to develop and test the
+mechanism and to benchmark it.
+
+Sequential particle filter for the SIHRS mechanism.
 
 WHY THIS RATHER THAN WEEKLY BATCH REFITS
 ----------------------------------------
@@ -25,10 +30,14 @@ sets how fast the mechanism is allowed to change its mind.
 
 FIDELITY
 --------
-Propagation uses the same ODE system as templates/SIHRS_pop.bngl, integrated
+Propagation uses the same ODE system as templates/SIHRS_pop.bngl UNDER THE PINS eps2 = 0 and impr = 0 (equivalently,
+    templates/SIHRS_pop_min.bngl: this module has only the annual harmonic
+    and no external-import term), integrated
 with fixed-step RK4 (daily steps) vectorised across particles. The BNGL model
 remains the definition of the mechanism; this integrates it. Forward simulation
-was separately verified to match the BNGL/BNG path to 1.5e-9 relative.
+    verification the repo can show: tests/test_particle_filter.py pins the
+    RK4 propagation against scipy solve_ivp at 2e-3 relative. (An earlier
+    1.5e-9 claim had no surviving artifact and is withdrawn.)
 
 WHAT WOULD MAKE THIS FAIL
 -------------------------
@@ -72,7 +81,7 @@ def _beta(t, Reff, eps1, phi1, s0):
     return (Reff * GAMMA_W / s0) * np.exp(eps1 * np.cos(2 * np.pi * (t - phi1) / 52))
 
 
-GAMMA_W = 2.188
+GAMMA_W = 7.0 / 3.2  # == sihrs_priors.gamma_per_week(); was 2.188, a 2.3e-4 mismatch vs the materialized model
 
 
 def propagate(p: Particles, t0: float, weeks: float, N: float, s0: float,

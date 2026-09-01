@@ -1,6 +1,6 @@
 """Run ledger, workroot leasing, and seed derivation.
 
-This module IS the constitutional rules as code (docs/APP_DESIGN.md):
+This module IS the constitutional rules as code (the lab archive's docs/APP_DESIGN.md):
 
   rule 1  every run gets a fresh, exclusive workroot        -> lease_workroot()
   rule 2  every conf carries an explicit derived seed        -> derive_seed()
@@ -391,12 +391,16 @@ class Ledger:
         self._db.commit()
 
     def rows(self, limit: int = 50) -> list:
+        # flubnf_sha and engine_versions ride along so the run page can say
+        # what PRODUCED a run (the row's record) rather than printing the
+        # viewing process's own build, which may be days newer than the run.
         cur = self._db.execute(
             "SELECT run_id, created_utc, spec_json, status, outcome_json, "
-            "finished_utc, elapsed_s "
+            "finished_utc, elapsed_s, flubnf_sha, engine_versions "
             "FROM runs ORDER BY created_utc DESC LIMIT ?", (limit,))
         return [dict(zip(("run_id", "created_utc", "spec", "status", "outcome",
-                          "finished_utc", "elapsed_s"), r))
+                          "finished_utc", "elapsed_s", "flubnf_sha",
+                          "engine_versions"), r))
                 for r in cur.fetchall()]
 
     def delete_runs(self, run_ids) -> int:
@@ -432,16 +436,3 @@ def lease_workroot(run_id: str, base: Optional[Path] = None) -> Path:
     return root
 
 
-def gc_workroots(keep_last: int = 10, base: Optional[Path] = None) -> int:
-    """Reclaim dead workroots, newest `keep_last` kept. Returns count removed."""
-    import shutil
-    root = base or APP_STATE / "workroots"
-    if not root.is_dir():
-        return 0
-    dirs = sorted((d for d in root.iterdir() if d.is_dir()),
-                  key=lambda d: d.name, reverse=True)
-    n = 0
-    for d in dirs[keep_last:]:
-        shutil.rmtree(d, ignore_errors=True)
-        n += 1
-    return n

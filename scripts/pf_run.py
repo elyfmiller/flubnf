@@ -9,8 +9,10 @@ optimum at 0.30 with relWIS 0.901 -- better than the 0.918 batch fit.
 
 That number is NOT trustworthy on its own. It was selected on the same season it
 was scored on, which is the precise error that turned the calendar analogue's
-0.665 into an honest 0.806 (+0.259, the largest selection penalty measured in
-this project). So this script does both:
+in-season 0.665 into an honest 0.806: +0.141 against that lucky in-season pick,
+and +0.259 against the in-season oracle (0.547), the largest selection penalty
+measured in this project (see the bandwidth provenance note in
+flubnf/analogue.py). So this script does both:
 
   --mode sweep    score a jitter grid per season  (diagnostic)
   --mode frozen   pick jitter on the two PRIOR seasons, apply it to the held-out

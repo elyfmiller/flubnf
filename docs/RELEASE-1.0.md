@@ -33,7 +33,10 @@ involves no fitting at all.
 | pooled | 0.775 | 0.772 | **0.678** | 15,460 |
 
 Values are weighted interval score relative to the CDC FluSight-baseline;
-below 1.000 beats the baseline. They are read from the seal's rebuilt
+below 1.000 beats the baseline. Every relWIS in this document is a ratio of
+WIS sums over shared cells (the project's home convention); it is not the
+pairwise scaled relative WIS the CDC dashboard reports, and the two are not
+comparable. They are read from the seal's rebuilt
 `scores.json` after the donor-pool exclusion was applied. For reference, the
 same table before that exclusion read 1.023 / 1.105 / 0.847 / 6,063,
 0.636 / 0.835 / 0.651 / 4,922, 0.825 / 0.641 / 0.691 / 4,475 and a pooled
@@ -267,7 +270,8 @@ figures are measured and stated here separately.
 
 ## The evidence ledger: what was tested and rejected
 
-The rejections are part of the claim. The standing count is eight
+The rejections are part of the claim. The standing count at this tag,
+2026-08-24, is eight
 pre-registered challengers built, tested and rejected by this group, each by
 its own rule set frozen before execution: random-walk transmission, the
 two-strain SIHRS, national-growth coupling at two doses, a
@@ -294,6 +298,12 @@ turns, so a static per-phase table could not represent it. That decision is
 recorded here because declining to run an experiment on diagnostic evidence
 is a different act from testing one, and the two should not be counted
 together.
+
+Addendum, 2026-08-29: a second proposal was declined without being run after
+this document's 2026-08-24 amendment, a completeness-conditional same-day
+drop (pre-registration edd6b0dddb8eb843, verdict in the lab archive). The
+ledger therefore now records TWO proposals declined without running, keeping
+the killed-vs-declined distinction drawn above.
 
 **Read every number in this ledger as measured against the pre-exclusion
 donor pool.** Each entry compares a challenger to the incumbent ensemble of
@@ -486,7 +496,7 @@ The floor is a property of the defect and not of any one member.
 
 ## Known limitations
 
-Stated in full in the README. In brief: interval narrowness at the January
+This is the canonical list: interval narrowness at the January
 epidemic turn (central 50 percent coverage of 27 percent at the January 2025
 turn, re-measured on the shipped configuration and unmoved, unfixed by every
 challenger, the best two of which reached 0.312 against a pre-registered bar

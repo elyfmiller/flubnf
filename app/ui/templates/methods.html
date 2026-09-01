@@ -243,6 +243,17 @@
       <td><span data-vkey="pandas">{{ versions.pandas }}</span> / <span data-vkey="numpy">{{ versions.numpy }}</span></td>
       <td>Data handling and scoring.</td></tr>
  </table></div>
+ {# The bngsim version string above is self-reported by the install and can
+    mislead: setup_engine.sh records that the seal-era lab build reported
+    0.13.0 while sitting 50 commits past that tag, and that a genuine PyPI
+    0.13.0 would NOT reproduce the seal. The footnote states the pin so a
+    reader never trusts the bare string. #}
+ <p class="hint">Version note: the sealed three-season record's engine pin
+ is bngsim 0.15.1, per <code>setup_engine.sh</code> (measured bit-identical
+ to the seal's engine on 2026-08-25). A bngsim self-reporting 0.13.0 on
+ this machine is the seal-era local build, whose metadata string predates
+ the pin; installing bngsim 0.13.0 from PyPI would not reproduce the
+ sealed record.</p>
  {# Platform-NEUTRAL on purpose: app/core/site_build.py harvests this page
     into the public site, so a conditional here would bake the builder's
     platform into a page every reader sees. Name all three instead. #}

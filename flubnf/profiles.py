@@ -282,7 +282,7 @@ _FLU_FIXED = FixedParams(
     gt_note=("Chan et al. 2024, US 7-site household study. Mean INTRINSIC "
              "generation time 3.2 d (95% CrI 2.9-3.6)."),
     rho=0.02,
-    rho_source="biological IHR branching fraction; see sihrs_priors.py",
+    rho_source="UNSOURCED WORKING ASSUMPTION: biological IHR branching fraction; see sihrs_priors.py",
     gammaH_per_week=1.17,
     gammaH_note="~6 d length of stay; does NOT enter the admissions fit target",
     omega_per_week=0.019,
@@ -444,7 +444,7 @@ _COVID_FIXED = FixedParams(
                  "Does NOT enter the admissions fit target at all, so it is "
                  "unidentifiable here and its value cannot bias the fit."),
     omega_per_week=None,                 # FITTED. See COVID_OMEGA_* above.
-    omega_source=" / ".join(COVID_OMEGA_SOURCES),
+    omega_source="UNSOURCED WORKING ASSUMPTION:  / ".join(COVID_OMEGA_SOURCES),
     s0_default=0.85,
     s0_range=(0.50, 0.95),
     attack_rate_range=COVID_ATTACK_RATE_RANGE,

@@ -10,9 +10,11 @@ A complete weekly submission has, for each (state, horizon ∈ {0..3}):
   - Plus a 'point' (median) row is sometimes included as a convenience.
 
 We additionally aggregate per-state quantiles into a US total by summing
-the same quantile level across all states. This is what the legacy
-PyBNF_to_CDC_121524.py script does: not statistically pure, but it matches
-the team's current production behavior.
+the same quantile level across all states. This matches the legacy
+PyBNF_to_CDC_121524.py script's behavior. The console's production US
+aggregate is built differently (draw-level summation in
+app/core/retro.national_aggregate, via app/core/us_national.py); this
+quantile-sum path survives for the CLI loop only.
 """
 
 from __future__ import annotations

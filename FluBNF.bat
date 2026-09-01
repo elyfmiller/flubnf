@@ -156,7 +156,7 @@ rem execution policy overrides -ExecutionPolicy Bypass and PowerShell will
 rem refuse to run; that is reported and the console still starts.
 rem
 rem -NoPrompt is not optional on THIS path. The question above is bounded
-rem (20 s, defaults to N), and a double-click must never end at a prompt
+rem (20 s, defaults to Y), and a double-click must never end at a prompt
 rem nobody is watching. Without the switch setup.ps1 detects an interactive
 rem session and asks, with no timeout and no default, whether to let winget
 rem install Strawberry Perl - so a user who answered Y and walked away would

@@ -22,7 +22,7 @@ For FluSight's 23 quantiles centered on the median, K=11 prediction
 intervals are formed by pairing (q, 1-q) for q in {0.01, 0.025, 0.05, ...,
 0.45}; alpha_k = 2 * q_k.
 
-Returns positive values; lower is better. WIS == |y - point| when there is
+Returns non-negative values (0.0 exactly when every quantile equals the observation); lower is better. WIS == |y - point| when there is
 no interval uncertainty.
 """
 

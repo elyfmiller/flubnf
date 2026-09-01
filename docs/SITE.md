@@ -1,20 +1,29 @@
 # The public site
 
+STATUS, read this first: the site generator ships and the loop below is the
+designed publishing path, but nothing in this document is live yet. `site/`
+and `.github/workflows/pages.yml` are deliberately gitignored until the lab
+decides to publish (see `.gitignore` lines 19-26, "stay local until the lab
+decides to publish"); git tracks zero files under `site/`, the only tracked
+workflow is `tests.yml`, and `git add site/` is silently ignored. Everything
+below that speaks of committing, pushing, or deploying describes what the
+path WOULD do once those ignore rules are lifted.
+
 The site at `site/` is generated from the lab's own state by
 `flubnf site build`. It is not written by hand and it is not built in CI.
 
-## Why it is committed
+## Why it would be committed
 
 Everything the page shows comes from `app/state/` and the FluSight hub
 clone, both of which are gitignored and far too large to track. CI has none
-of that data and never will. So the generated page **is** the published
-evidence: it is built on the machine that holds the retrospectives,
-reviewed as a diff, committed, and pushed. GitHub Actions only takes what
-was reviewed and puts it online.
+of that data and never will. So the generated page, once publishing is
+enabled, would BE the published evidence: built on the machine that holds
+the retrospectives, reviewed as a diff, committed, and pushed. GitHub
+Actions would only take what was reviewed and put it online.
 
 That has one consequence worth remembering: **a push that changes only
-source code does not change the site.** Rebuild and commit `site/` to move
-the published page.
+source code would not change the site.** Rebuilding and committing `site/`
+is what would move the published page.
 
 ## The loop
 
@@ -54,13 +63,15 @@ the published page.
    shows which numbers moved. `site/index.html` changes with it; the large
    diff there is the same payload embedded so the page works offline.
 
-4. **Commit and push.** `site/plotly.min.js` only changes when the library
-   is upgraded. Pushing `main` with anything under `site/` changed triggers
-   the `pages` workflow, which re-checks that the payload beside the page
-   matches the payload inside it, refuses to publish if any consistency
-   check failed, and deploys.
+4. **Commit and push (not yet possible; see STATUS above).** Once the
+   ignore rules are lifted: `site/plotly.min.js` would only change when the
+   library is upgraded, and pushing `main` with anything under `site/`
+   changed would trigger the `pages` workflow, which re-checks that the
+   payload beside the page matches the payload inside it, refuses to
+   publish if any consistency check failed, and deploys. Today, `site/` is
+   gitignored, so this step ends at the review: the built page stays local.
 
-Lab members do not push; the site changes when you push.
+Lab members do not push; the site would change only when you push.
 
 ## What the build reads
 
@@ -81,7 +92,8 @@ the unfitted equal-weight blend, and the three-season seal was rescored under
 that default on 2026-08-24, so its `scores.json` files do carry the shipped
 50/50 ensemble: re-blending the stored members by hand reproduces them
 exactly, 0.813136 / 0.617881 / 0.682662 and pooled 0.678119, against the
-0.695771 the frozen LOSO table gives on the same seal.
+0.695771 the frozen per-horizon fitted-weight table (the rejected
+alternative documented in `docs/RELEASE-1.0.md`) gives on the same seal.
 
 The build still does not read them, for a reason that outlives that fix. A
 `scores.json` records no weights of its own, and `discover_seasons` accepts
@@ -134,5 +146,8 @@ reason, never an empty cell, a dash, or a number the build invented.
 
 ## Enabling Pages the first time
 
-In the repository settings, under Pages, set the source to **GitHub
-Actions**. The `pages` workflow does the rest.
+This is part of the publishing decision described in STATUS above, not a
+step anyone should take casually: it requires first un-ignoring `site/` and
+`.github/workflows/pages.yml` in `.gitignore` and committing both. Then, in
+the repository settings, under Pages, set the source to **GitHub Actions**,
+and the `pages` workflow would do the rest.

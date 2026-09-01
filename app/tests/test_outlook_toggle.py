@@ -92,7 +92,9 @@ def test_bundle_v3_carries_every_model_via_the_one_quantile_cdf_path(
     from app.core.report import categorical_probs_from_quantiles
     parts = _synth_run_all_models(tmp_path)
     bundle = json.loads((tmp_path / report_v2.BUNDLE_NAME).read_text())
-    assert bundle["version"] == 3
+    assert bundle["version"] == report_v2.BUNDLE_VERSION
+    # the v4 additive scope record: which states this run covered
+    assert bundle["fitted_fips"] == ["39"]
     assert bundle["cards_model"] == "ensemble"      # the submitted forecast
     cbm = bundle["cards_by_model"]
     assert set(cbm) == {"ensemble", "pf", "analogue"}
@@ -352,16 +354,20 @@ def test_swap_payload_matches_the_server_render(tmp_path, monkeypatch):
     from app.core import usmap
     w, _ = _latest(tmp_path, monkeypatch)
     by_model = srv._outlook_models(w.name)
-    pay = usmap.state_swap_payload(by_model["ensemble"])
+    # the run fitted Ohio (39) only; the payload must carry the same scope
+    # the server render used, or the toggle would rewrite the hovers with
+    # a different story about card-less states
+    pay = usmap.state_swap_payload(by_model["ensemble"], scope_fips={"39"})
     home = client.get("/").text
     m = re.search(r'<path d="[^"]*" fill="([^"]+)" fill-opacity="([^"]+)"'
                   r'[^>]*data-fips="39"', home)
     assert m, "Ohio path missing from the home map"
     assert m.group(1) == pay["39"]["f"]
     assert float(m.group(2)) == pay["39"]["o"]
-    # a no-data state carries the explicit no-data tone in the payload too
+    # a no-data state carries the explicit no-data tone in the payload too,
+    # and one outside the run's scope says so instead of claiming a gap
     assert pay["04"]["f"].startswith("var(--map-nodata")
-    assert "no reported data" in pay["04"]["h"]
+    assert "not fitted in this run" in pay["04"]["h"]
 
 
 # ---------------------------------------- the emitter's own inert guard
