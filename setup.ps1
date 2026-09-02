@@ -1409,7 +1409,28 @@ if ($EngineReady) {
     # numpy<2: the fork predates NumPy 2 and its historical fixes were
     # venv-local patches rather than commits, so the pin is the reproducible
     # answer. Same pin as setup_engine.sh on macOS and Linux.
-    Info "  $PyExe $($PyArgs -join ' ') -m venv $EngineVenv"
+    # THE ENGINE VENV must be Python 3.11 or 3.12: the fork pins numpy<2,
+    # whose wheels stop at cp312, so a newer interpreter (Anaconda's base is
+    # 3.14 now) sends pip into a source build that dies on Windows MAX_PATH.
+    # Measured on the first real Windows run, Sandbox 2026-09-01. Name an
+    # engine-suitable interpreter in the printed command, never the console
+    # one, and fall back to conda manufacturing a 3.12.
+    $EngineBootCmd = $null
+    foreach ($c in @(@{exe="py"; args=@("-3.12")}, @{exe="py"; args=@("-3.11")})) {
+        try { $vv = & $c.exe @($c.args + @("-c", "import sys; print(sys.version_info[1])")) 2>$null }
+        catch { $vv = $null }
+        if ($vv) { $EngineBootCmd = "$($c.exe) $($c.args -join ' ')"; break }
+    }
+    if (-not $EngineBootCmd -and $v) {
+        try { if ([version]"$v" -lt [version]"3.13") { $EngineBootCmd = "$PyExe $($PyArgs -join ' ')".Trim() } } catch { }
+    }
+    if ($EngineBootCmd) {
+        Info "  $EngineBootCmd -m venv $EngineVenv"
+    } else {
+        Info "  (your Python is newer than the engine's numpy pin supports; make a 3.12 first)"
+        Info "  conda create -y -p $env:USERPROFILE\.venvs\flubnf-engine-py312 python=3.12"
+        Info "  $env:USERPROFILE\.venvs\flubnf-engine-py312\python.exe -m venv $EngineVenv"
+    }
     # Install the runtime set EXPLICITLY, then the fork with --no-deps.
     # PyBNF's setup.py pins msgpack==0.6.2, a 2019 release with no Windows
     # wheel for any modern Python, so letting pip resolve the fork's declared

@@ -372,20 +372,60 @@ rem something a person can act on. Nothing in FluBNF pulls this checkout.
 git -C "%PYBNFDIR%" remote set-url origin https://github.com/elyfmiller/PyBNF-Private.git >nul 2>&1
 
 :enginevenv
-if exist "%ENGINEPY%" goto :enginedeps
+rem THE ENGINE VENV NEEDS PYTHON 3.11 OR 3.12, and nothing newer, even
+rem though the console runs happily on the latest. The engine pins numpy<2
+rem (the PyBNF fork predates NumPy 2), and numpy 1.26 ships wheels only up
+rem to cp312; on anything newer pip falls back to building numpy from
+rem source and dies unpacking a vendored-meson test path that blows past
+rem Windows' 260-character MAX_PATH. MEASURED on the first real Windows
+rem run (Sandbox, 2026-09-01): Anaconda's base is Python 3.14 and the
+rem engine install failed exactly that way. So: check an existing venv's
+rem version and rebuild a too-new one (first-attempt debris), prefer the
+rem py launcher's 3.12/3.11, accept plain python only if it IS 3.11/3.12,
+rem and otherwise have conda MAKE a 3.12 interpreter, which any Anaconda
+rem can do regardless of its base version.
+if not exist "%ENGINEPY%" goto :enginevenvmake
+"%ENGINEPY%" -c "import sys; raise SystemExit(0 if sys.version_info[:2] in ((3,11),(3,12)) else 1)" >nul 2>&1
+if not errorlevel 1 goto :enginedeps
+echo   engine venv exists but its Python is too new for the engine's numpy
+echo   pin; rebuilding it with Python 3.12
+rd /s /q "%ENGINEVENV%" >nul 2>&1
+:enginevenvmake
 where py >nul 2>&1
 if errorlevel 1 goto :enginevenvpython
-py -3 -m venv "%ENGINEVENV%"
-goto :enginevenvcheck
+py -3.12 -m venv "%ENGINEVENV%" >nul 2>&1
+if exist "%ENGINEPY%" goto :enginevenvcheck
+py -3.11 -m venv "%ENGINEVENV%" >nul 2>&1
+if exist "%ENGINEPY%" goto :enginevenvcheck
 :enginevenvpython
 where python >nul 2>&1
+if errorlevel 1 goto :enginevenvconda
+python -c "import sys; raise SystemExit(0 if sys.version_info[:2] in ((3,11),(3,12)) else 1)" >nul 2>&1
 if errorlevel 1 goto :enginevenvconda
 python -m venv "%ENGINEVENV%"
 goto :enginevenvcheck
 :enginevenvconda
-rem same Anaconda fallback as the app venv above, same reason
+rem CONDAPY is the base interpreter, which may be 3.14; do not venv from it
+rem blindly. If it happens to be 3.11/3.12 use it; otherwise ask conda to
+rem create a real 3.12 interpreter next to the engine venv and venv from
+rem that, so everything downstream (Scripts\python.exe, pip) is unchanged.
 if not defined CONDAPY goto :enginefailed
+"%CONDAPY%" -c "import sys; raise SystemExit(0 if sys.version_info[:2] in ((3,11),(3,12)) else 1)" >nul 2>&1
+if errorlevel 1 goto :enginevenvcondamake
 "%CONDAPY%" -m venv "%ENGINEVENV%"
+goto :enginevenvcheck
+:enginevenvcondamake
+set "CONDABAT="
+if exist "%USERPROFILE%\anaconda3\condabin\conda.bat"    set "CONDABAT=%USERPROFILE%\anaconda3\condabin\conda.bat"
+if not defined CONDABAT if exist "%USERPROFILE%\miniconda3\condabin\conda.bat" set "CONDABAT=%USERPROFILE%\miniconda3\condabin\conda.bat"
+if not defined CONDABAT if exist "%LOCALAPPDATA%\anaconda3\condabin\conda.bat" set "CONDABAT=%LOCALAPPDATA%\anaconda3\condabin\conda.bat"
+if not defined CONDABAT if exist "C:\ProgramData\anaconda3\condabin\conda.bat" set "CONDABAT=C:\ProgramData\anaconda3\condabin\conda.bat"
+if not defined CONDABAT goto :enginefailed
+echo   Anaconda's Python is newer than the engine supports; asking conda for
+echo   a Python 3.12 (one time, a few minutes)
+call "%CONDABAT%" create -y -p "%USERPROFILE%\.venvs\flubnf-engine-py312" python=3.12 >nul
+if not exist "%USERPROFILE%\.venvs\flubnf-engine-py312\python.exe" goto :enginefailed
+"%USERPROFILE%\.venvs\flubnf-engine-py312\python.exe" -m venv "%ENGINEVENV%"
 :enginevenvcheck
 if not exist "%ENGINEPY%" goto :enginefailed
 
