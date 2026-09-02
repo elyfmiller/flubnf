@@ -60,8 +60,8 @@ cells through the same scorer.
 | pooled | **0.678** | 0.685 | 15,460 |
 
 The ensemble beat the baseline in every season, and is level with the
-official FluSight ensemble overall (ahead one season, level one, behind
-one; the pooled gap is not statistically separable from zero). These are
+official FluSight ensemble overall; the pooled gap is not statistically
+separable from zero. These are
 self-computed retrospective replays, not real-time submissions, and three
 seasons is every vintage-true season the hub's archive can support.
 
@@ -71,8 +71,7 @@ a replay on current code reproduces the 2023-24 and 2024-25 rows exactly
 but yields 0.681 / 0.677 for the 2025-26 and pooled figures rather than
 the sealed 0.683 / 0.678; reproducing the printed values bit-exactly
 requires the pre-fix code state (commit `9b0ef26`). The measured deltas
-are in the replication note of
-[docs/RELEASE-1.0.md](docs/RELEASE-1.0.md). The
+are in the replication note of the same record. The
 full validation record - methodology, pre-registered gates, the
 independent replication, and everything that was tested and did not ship -
 is in [docs/RELEASE-1.0.md](docs/RELEASE-1.0.md) and on the console's
@@ -171,8 +170,8 @@ Then double-click `FluBNF.command` (macOS) or `FluBNF.bat` (Windows), or run
 `./setup_engine.sh`. The console says which file it used and, when it finds
 none, exactly which folders it looked in. `FLUBNF_PYBNF_BUNDLE` points at one
 kept somewhere else. Because it is one file on a shared drive or a USB stick,
-this is also the only route that works on a laptop with no GitHub account, no
-administrator rights, or no network at all.
+this is also the only route that works with no administrator rights or no
+network at all.
 
 **A GitHub account password will not work at a git prompt.** If you would
 rather go through GitHub than use a bundle: GitHub retired password

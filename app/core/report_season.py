@@ -455,9 +455,8 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
             + us_absent
             + f'<p class="sub">{line}.</p>'
             f'<p class="hint">Final relWIS pooled over {cover}, ratio of '
-            "sums; below 1 beats the CDC FluSight baseline. The tiles "
-            "match the cumulative column of the player's table at the final "
-            f"week. {usn.POOLED_SCOPE_NOTE}</p>"
+            "sums; below 1 beats the CDC FluSight baseline. "
+            f"{usn.POOLED_SCOPE_NOTE}</p>"
             # THIS FILE LEAVES THE MACHINE. It is opened without the console
             # around it, months later, beside whatever else the reader has
             # open, and the likeliest neighbour is the CDC FluSight
@@ -536,9 +535,9 @@ def build_season_report(root: Path, season: str, archive: str = "",
     size = len(html.encode("utf-8"))
     if size > SIZE_WARN_BYTES:
         note = ('<p class="warn">Size notice: this file is %.0f MB, above '
-                'the 25 MB guideline. It remains fully functional, but it '
-                'may open slowly and some mail systems will refuse to '
-                'attach it.</p>' % (size / (1024 * 1024)))
+                'the 25 MB guideline; it may open slowly and some mail '
+                'systems will refuse to attach it.</p>'
+                % (size / (1024 * 1024)))
         html = _compose(season, weeks, data_json, plotly_js, player_js,
                         size_note=note, timing_note=timing_note,
                         summary=summary, us_json=us_json)
@@ -677,11 +676,9 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <header class="brandrow"><span class="brand"><em>Flu</em>BNF</span>
  <span class="brandsub">season report export</span></header>
 <h1>Season report <span class="accent">@@SEASON@@</span></h1>
-<p class="sub">@@NWEEKS@@ stored weeks, @@FIRST@@ to @@LAST@@. This file is
- self-contained: all forecast data is embedded and no server or network is
- needed. The export carries the season verdict, the cumulative relWIS
- chart, the per-state table, the forecast detail view, and the live relWIS
- table; interactive maps live in the console.</p>
+<p class="sub">@@NWEEKS@@ stored weeks, @@FIRST@@ to @@LAST@@.
+ Self-contained: no server or network is needed. The weekly categorical
+ maps are omitted; interactive maps live in the console.</p>
 @@TIMING@@
 @@SIZENOTE@@
 @@SUMMARY@@

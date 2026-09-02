@@ -17,9 +17,7 @@
     outside the total, and the copy says so. #}
  <p class="hint">Across run workroots, retrospective seasons, archived
  runs, and report archives; the protected trees below are listed but not
- counted here. Deleting is permanent, behind the shared name-and-size
- confirmation; nothing running or paused can be deleted, and the sealed
- validation record and hub clone carry no delete control.</p>
+ counted here.</p>
 
  {# reclaim: a dry-run report first (categories and totals, no side
     effects), then the shared confirmation naming the total. Only fit
@@ -203,8 +201,8 @@
  </div>
  {% endfor %}
  <p class="hint">The sealed validation record is the three-season evidence
-  the shipped configuration rests on; the hub clone is shared source data.
-  Neither can be deleted from here.</p>
+  the shipped configuration rests on; the hub clone is shared source
+  data.</p>
  {% endif %}
 </details>
 </div>
@@ -274,7 +272,7 @@
 {% else %}<tr><td colspan="5" class="hint">No runs yet.</td></tr>{% endfor %}
 </table>
 <p class="hint">Elapsed is wall time from the run claiming its slot to the
- ledger closing its row, as h:mm:ss. Runs recorded before this measurement
+ ledger closing its row. Runs recorded before this measurement
  existed show a dash. A dash under "on disk" means the run's workroot was
  deleted; the ledger row remains as the run's record.</p>
 {% if clear_count %}

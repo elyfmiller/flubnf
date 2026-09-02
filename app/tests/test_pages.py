@@ -335,12 +335,13 @@ def test_analogue_legend_wraps_inside_the_viewbox():
     assert "same calendar weeks, prior seasons" not in t
 
 
-def test_two_strain_caption_is_two_drawn_lines():
+def test_two_strain_ascertainment_qualifier_stands_on_pf2s():
     t = client.get("/model/pf2s").text
-    # "ascertained": the observed total is not the raw sum of the two fluxes
-    assert ("Observed admissions are the ascertained sum of the A and B "
-            "fluxes;</text>") in t
-    assert "NREVSS typed positives set the initial mix" in t
+    # "ascertained": the observed total is not the raw sum of the two fluxes.
+    # The figure's caption is gone; the qualifier lives in the equation panel
+    # rendered directly under the diagram.
+    assert "ascertained total" in t
+    assert "typed specimens fit the A/B" in t
 
 
 def test_diagram_data_shapes():

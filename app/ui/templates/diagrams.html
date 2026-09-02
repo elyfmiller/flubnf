@@ -78,7 +78,7 @@
   <text x="424" y="236" class="svgt-sm">H is a census, never fitted</text>
   <text x="649" y="204" class="svgt-sm">discharge</text>
   <text x="424" y="318" class="svgt-md">&#969;</text>
-  <text x="424" y="336" class="svgt-sm">waning immunity: recovered individuals become susceptible again</text>
+  <text x="424" y="336" class="svgt-sm">waning immunity</text>
  </g>
 </svg>
 {%- endmacro %}
@@ -134,7 +134,7 @@
 {%- endmacro %}
 
 {% macro sihrs2(uid='t') -%}
-<svg viewBox="0 0 840 440" role="img"
+<svg viewBox="0 0 840 400" role="img"
      aria-label="Two-strain SIHRS compartment diagram"
      style="width:100%;max-width:800px;display:block;margin:.6rem auto;color:inherit">
  <desc>Two parallel SIHRS circuits, one for influenza A and one for influenza
@@ -151,12 +151,6 @@
  </defs>
  {{ _sihrs_row(8, 'A', uid) }}
  {{ _sihrs_row(206, 'B', uid) }}
- {# the closing caption holds two drawn lines: one long line overran the
-    viewBox once the A+ text step multiplied the rem classes #}
- <g text-anchor="middle" class="svgt-sm" fill="currentColor">
-  <text x="420" y="412">Observed admissions are the ascertained sum of the A and B fluxes;</text>
-  <text x="420" y="430">NREVSS typed positives set the initial mix and fit the A/B share.</text>
- </g>
 </svg>
 {%- endmacro %}
 
@@ -231,9 +225,7 @@
   <rect x="560" y="122" width="32" height="9" fill="var(--gold-bright)"
         fill-opacity=".3"/>
   <path d="M560,126 H592" stroke="var(--gold)" stroke-width="2.2" fill="none"/>
-  <text x="600" y="130" fill="var(--gold)">growth-ratio quantiles</text>
-  <text x="600" y="147" fill="var(--gold)">scale the last value:</text>
-  <text x="600" y="164" fill="var(--gold)">the forecast fan</text>
+  <text x="600" y="130" fill="var(--gold)">forecast fan</text>
  </g>
 </svg>
 {%- endmacro %}
@@ -250,9 +242,9 @@
    the macro needs no uid, but one is accepted for consistency. #}
 
 {% macro analogue_ratios(uid='r') -%}
-<svg viewBox="0 0 560 268" role="img"
+<svg viewBox="0 0 560 252" role="img"
      aria-label="Each donor season contributes one growth ratio per horizon; the pooled ratios become the forecast fan"
-     style="width:100%;max-width:560px;display:block;margin:.6rem auto;color:inherit">
+     style="width:100%;max-width:800px;display:block;margin:.6rem auto;color:inherit">
  <desc>Three prior-season curves crossing the matched calendar week. On each,
  a marked segment runs from that week to h weeks later, and the ratio of the
  two values is written beside it: 1.6, 1.0 and 0.7. Those ratios, with every
@@ -305,8 +297,6 @@
  </g>
  <text x="184" y="70" text-anchor="middle" class="svgt-sm" fill="currentColor">
    one ratio per donor season</text>
- <text x="184" y="86" text-anchor="middle" class="svgt-sm" fill="var(--mut)">
-   size cancels; only the change is kept</text>
 
  <!-- ---------- right: the pooled ratios ---------- -->
  <path d="M352,140 H372" stroke="currentColor" stroke-width="1.4" fill="none"
@@ -341,10 +331,6 @@
  </g>
  <text x="459" y="86" text-anchor="middle" class="svgt-sm" fill="var(--gold)">
    10th to 90th percentile</text>
- <text x="459" y="228" text-anchor="middle" class="svgt-sm" fill="currentColor">
-   these quantiles scale</text>
- <text x="459" y="244" text-anchor="middle" class="svgt-sm" fill="currentColor">
-   the last observed value</text>
 </svg>
 {%- endmacro %}
 
@@ -519,20 +505,16 @@
  {% endif %}
 </svg>
 {% if two %}
-<p class="eqnote" style="text-align:center;margin:.1rem 0 .35rem">One
- harmonic form, phase-shifted per strain: A and B share the amplitude
- <i>&#949;</i><sub>1</sub>, and each fits its own peak week
- <i>&#966;</i><sub>A</sub>, <i>&#966;</i><sub>B</sub>. Values shown are
- illustrative (<i>&#949;</i><sub>1</sub> = 0.35, <i>&#966;</i><sub>A</sub> =
- week {{ phi_a }}, {{ season_week_name(phi_a) }}; <i>&#966;</i><sub>B</sub> =
- week {{ phi_b }}, {{ season_week_name(phi_b) }}); all are fitted per state
- and week.</p>
+<p class="eqnote" style="text-align:center;margin:.1rem 0 .35rem">
+ Values shown are illustrative (<i>&#949;</i><sub>1</sub> = 0.35,
+ <i>&#966;</i><sub>A</sub> = week {{ phi_a }}, {{ season_week_name(phi_a) }};
+ <i>&#966;</i><sub>B</sub> = week {{ phi_b }}, {{ season_week_name(phi_b) }});
+ all are fitted per state and week.</p>
 {% else %}
-<p class="eqnote" style="text-align:center;margin:.1rem 0 .35rem">The
- curve the filter bends each week: <i>&#949;</i><sub>1</sub> sets its depth,
- <i>&#966;</i><sub>1</sub> its peak week. Values shown are illustrative
- (<i>&#949;</i><sub>1</sub> = 0.35, <i>&#966;</i><sub>1</sub> = week {{ phi }},
- {{ season_week_name(phi) }}); both are fitted per state and week.</p>
+<p class="eqnote" style="text-align:center;margin:.1rem 0 .35rem">
+ Values shown are illustrative (<i>&#949;</i><sub>1</sub> = 0.35,
+ <i>&#966;</i><sub>1</sub> = week {{ phi }}, {{ season_week_name(phi) }});
+ both are fitted per state and week.</p>
 {% endif %}
 {%- endmacro %}
 

@@ -374,7 +374,7 @@
       so.msg.textContent=info.season+' has '+info.weeks+' completed week'
         +(info.weeks===1?'':'s')+' of '+info.total
         +(info.finished?' from a run on '+info.finished:'')
-        +(info.elapsed_hms?', total wall time '+info.elapsed_hms+' (h:mm:ss)':'')
+        +(info.elapsed_hms?', total wall time '+info.elapsed_hms:'')
         +'.';
       so.hint.textContent=(info.complete
         ? 'This season is complete, so there is nothing left to resume. '

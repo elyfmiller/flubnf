@@ -138,8 +138,8 @@ def test_report_renders_the_toggle_with_every_bundled_model(tmp_path):
     for label in ("FluBNF Ensemble outlook", "PF-SIHRS outlook",
                   "Calendar analogue outlook"):
         assert label in html, label
-    # the label elements the swap script retargets
-    assert html.count("data-mapmodel-label") >= 2
+    # the label element the swap script retargets (one remains, above the map)
+    assert html.count("data-mapmodel-label") >= 1
     # the swap payload and mechanics: per-state fills by fips, the
     # national group, and the honest click affordance
     assert "path[data-fips]" in html and 'data-fips="39"' in html
