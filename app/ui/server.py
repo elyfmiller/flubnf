@@ -4066,9 +4066,12 @@ def retro_index(request: Request):
                         "finished_utc": prog["finished_utc"],
                         "scored": (root / "scores.json").exists()})
     from flubnf.settings import PY_ENGINE, PYBNF
+    from app.core.engines.pf import DEFAULT_SHARD_WIDTH, SHARD_WIDTH_CAP
     return templates.TemplateResponse(request, "retro.html",
                                       {"active": "Retrospective", "seasons": seasons,
                                        "state_names": _retro_state_names(),
+                                       "default_width": DEFAULT_SHARD_WIDTH,
+                                       "width_cap": SHARD_WIDTH_CAP,
                                        "engine_ok": PY_ENGINE.exists()
                                        and PYBNF.exists()})
 

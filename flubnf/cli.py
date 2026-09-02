@@ -2168,12 +2168,17 @@ def app_window(port: int = 8710):
 
 
 @app.command("retro")
-def retro_cmd(season: str, locations: str = "all", width: int = 4,
+def retro_cmd(season: str, locations: str = "all", width: int = 0,
               replicates: int = 3, root: str = ""):
-    """Run a season-as-competition retrospective (resumable)."""
+    """Run a season-as-competition retrospective (resumable).
+
+    width 0 means auto: sized to this machine's cores by the engine's
+    default_shard_width(), the same default the console form offers."""
     import pandas as pd
     from pathlib import Path as _P
     from app.core import retro
+    from app.core.engines import pf as _pf
+    width = _pf.resolve_width(width)
     from flubnf.settings import LOCATIONS
     locs = pd.read_csv(LOCATIONS, dtype=str)
     names = (list(locs.location_name[locs.location.str.len() == 2]
