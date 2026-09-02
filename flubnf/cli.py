@@ -1868,6 +1868,49 @@ def _window_watchdog(window, url: str, wait: float = 4.0, retries: int = 3,
     return "failed"
 
 
+def _windows_mshtml_only() -> bool:
+    """True when this is Windows and pywebview's only rendering engine
+    would be MSHTML (Internet Explorer 11), because the WebView2 runtime
+    is not installed.
+
+    MEASURED 2026-09-01, Windows Sandbox: the MSHTML window rendered the
+    home page but not the console's JavaScript, so the forecast form's
+    location picker was silently dead: a click on one state did not
+    untick "all 52 jurisdictions" and the submit launched a full-grid,
+    3-replicate run the user never asked for. A window that half-renders
+    is worse than no window. The probe is Microsoft's documented WebView2
+    runtime detection: the EdgeUpdate client key's pv value, checked
+    per-machine (both hives) and per-user. Anything unreadable counts as
+    missing; on that path the console opens in the default browser, which
+    is fully capable, instead.
+    """
+    import sys
+    if sys.platform != "win32":
+        return False
+    try:
+        import winreg
+    except ImportError:
+        return True
+    key_id = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+    probes = (
+        (winreg.HKEY_LOCAL_MACHINE,
+         "SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\Clients\\" + key_id),
+        (winreg.HKEY_LOCAL_MACHINE,
+         "SOFTWARE\\Microsoft\\EdgeUpdate\\Clients\\" + key_id),
+        (winreg.HKEY_CURRENT_USER,
+         "Software\\Microsoft\\EdgeUpdate\\Clients\\" + key_id),
+    )
+    for hive, path in probes:
+        try:
+            with winreg.OpenKey(hive, path) as k:
+                pv = winreg.QueryValueEx(k, "pv")[0]
+            if pv and pv != "0.0.0.0":
+                return False
+        except OSError:
+            continue
+    return True
+
+
 @app.command("app")
 def app_serve(port: int = 8710):
     """Launch the operations console. Prefers a native desktop window
@@ -1875,7 +1918,12 @@ def app_serve(port: int = 8710):
     _trace("app: command entered")
     try:
         import webview  # noqa: F401
-        return app_window(port=port)
+        if _windows_mshtml_only():
+            print("WebView2 runtime not found: the native window would "
+                  "render on MSHTML (IE11), which cannot run the console's "
+                  "pages. Opening your default browser instead.")
+        else:
+            return app_window(port=port)
     except ImportError:
         pass
     import socket
@@ -1929,6 +1977,13 @@ def app_window(port: int = 8710):
     # a save panel, and for attachment responses WKWebView cannot display).
     # Without it the "Download season report" link is a dead end in the
     # native window.
+    if _windows_mshtml_only():
+        print("WebView2 runtime not found: this window would render on "
+              "MSHTML (IE11), which cannot run the console's pages. "
+              "Serving to your default browser instead; install the "
+              "Evergreen WebView2 Runtime from Microsoft to get the "
+              "native window back.")
+        return app_serve(port=port)
     webview.settings['ALLOW_DOWNLOADS'] = True
     _trace("window: webview imported, settings applied")
     # single instance: a dying predecessor could otherwise keep the port,
