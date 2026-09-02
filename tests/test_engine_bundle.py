@@ -611,3 +611,23 @@ def test_the_launchers_accept_an_unpacked_copy_too(tmp_path):
         assert '[ -f "$c/pybnf/pf.py" ]' in src, (
             f"{launcher} still requires a .git directory, so the unpacked "
             f"engine archive students are sent is treated as no engine")
+
+
+def test_a_present_engine_file_always_earns_a_retry_despite_the_stamp():
+    """MEASURED 2026-09-02 on a lab Mac: the engine file sat in Downloads the
+    whole time, a single transient first failure stamped the machine, and
+    because the stamp's fingerprint includes the unchanged bundle it never
+    moved, so FluBNF.command stayed analogue-only until SetupEngine.command
+    was double-clicked. The stamp must suppress only the genuinely doomed
+    attempt (no bundle AND no checkout, the GitHub-wall case); when either is
+    present the launcher must retry regardless of the stamp."""
+    src = (REPO / "FluBNF.command").read_text(encoding="utf-8")
+    assert '[ -z "$BUNDLE$CHECKOUT" ] &&' in src, (
+        "the stamp guard no longer requires an empty bundle-and-checkout, so "
+        "a transient failure with the engine file present again suppresses "
+        "the retry that would succeed")
+    # and the recovery it points at is a double-click, not a Terminal command
+    assert "double-click SetupEngine.command" in src
+    assert "./setup_engine.sh\n" not in src.replace(
+        "in Terminal", "")  # no lingering "run ./setup_engine.sh in Terminal"
+    assert "setup_engine.sh in Terminal" not in src

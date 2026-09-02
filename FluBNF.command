@@ -91,13 +91,23 @@ if [ ! -x "${FLUBNF_PY_ENGINE:-/nonexistent}" ]; then
   [ -n "$BUNDLE" ] && BUNDLESZ="$(wc -c < "$BUNDLE" 2>/dev/null | tr -d ' ')"
   ATTEMPT=".venv/.engine-attempt"
   FP="$(shasum setup_engine.sh 2>/dev/null | cut -c1-16):${CHECKOUT:-none}:${BUNDLE:-none}:${BUNDLESZ:-0}"
-  if [ "$(cat "$ATTEMPT" 2>/dev/null)" = "$FP" ]; then
-    echo "· PF engine still not installed (the last attempt failed; not retrying"
-    echo "  on every open). Fix the cause it printed, then run ./setup_engine.sh"
-    echo "  in Terminal, or delete $ATTEMPT to retry here."
-    echo "  Nothing to fix and no GitHub access? Ask the lab for pybnf.bundle,"
-    echo "  put it in your Downloads folder, and open this again: that alone"
-    echo "  installs the engine, and it retries by itself once the file is there."
+  # The stamp exists only to stop re-running a DOOMED attempt on every open,
+  # and the only doomed attempt is the one with nothing local to install from:
+  # no bundle, no checkout, so it walks into the GitHub credentials wall every
+  # time. When a bundle or a checkout IS present the attempt is not doomed, it
+  # is a local install that a transient first failure (a network blip, a conda
+  # hiccup during the heavier first run) should not suppress. MEASURED
+  # 2026-09-02 on a lab machine: the engine file sat in Downloads the whole
+  # time, so its fingerprint never changed, and a single transient failure
+  # stamped the machine into analogue-only until SetupEngine.command was
+  # double-clicked. So: honor the stamp ONLY when there is nothing local to
+  # try; otherwise always retry.
+  if [ -z "$BUNDLE$CHECKOUT" ] && [ "$(cat "$ATTEMPT" 2>/dev/null)" = "$FP" ]; then
+    echo "· PF engine still not installed: the last attempt found no engine to"
+    echo "  install from, so it is not retried on every open. The one-file fix,"
+    echo "  no GitHub account needed: ask the lab for pybnf-pf-<sha>.tar.gz, put"
+    echo "  it in your Downloads folder, and open this again; it installs itself."
+    echo "  Or double-click SetupEngine.command to try now and see what it finds."
     echo "  Analogue forecasts work in the meantime."
   else
     echo "· PF engine not installed yet, setting it up now (one time, a few minutes)"
@@ -109,10 +119,10 @@ if [ ! -x "${FLUBNF_PY_ENGINE:-/nonexistent}" ]; then
     else
       echo "$FP" > "$ATTEMPT"
       echo "· engine setup did not finish (see messages above). The console still"
-      echo "  runs, analogue forecasts only. After you fix the cause (usually the"
-      echo "  PyBNF fork clone or GitHub access), the next open retries; or run"
-      echo "  ./setup_engine.sh in Terminal yourself. The shortcut past the whole"
-      echo "  GitHub question is pybnf.bundle in your Downloads folder."
+      echo "  runs, analogue forecasts only. With the engine file in your Downloads"
+      echo "  folder the next open tries again by itself; to try right now without"
+      echo "  waiting, double-click SetupEngine.command. The shortcut past the"
+      echo "  whole GitHub question is pybnf-pf-<sha>.tar.gz in Downloads."
     fi
   fi
 fi
