@@ -471,6 +471,18 @@ DEFAULT_SHARD_WIDTH = default_shard_width()
 #: wider box, =1 to reproduce the old single-process behaviour.
 WIDTH_ENV = "FLUBNF_PF_WIDTH"
 
+
+def resolve_width(width) -> int:
+    """A requested shard width, where 0, None, or garbage means auto: this
+    machine's default_shard_width(). The one resolution rule for every
+    entry point (UI form, CLI, run_season), so none of them can pin the
+    old fixed 4 again and quietly idle most of a workstation."""
+    try:
+        w = int(width)
+    except (TypeError, ValueError):
+        w = 0
+    return w if w > 0 else DEFAULT_SHARD_WIDTH
+
 #: Measured seconds for one cell, fitted on 680 shard-weeks of the sealed
 #: record (R^2 = 0.988):
 #:
