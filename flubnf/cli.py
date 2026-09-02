@@ -1955,7 +1955,13 @@ def app_serve(port: int = 8710):
             webbrowser.open(url)
 
     threading.Thread(target=_open, daemon=True).start()
-    uvicorn.run("app.ui.server:app", port=port, host="127.0.0.1")
+    # No ANSI colors and no per-request access log: the browser path is
+    # what a student watches (MEASURED 2026-09-01, Windows Sandbox: cmd
+    # rendered uvicorn's color escapes as a wall of <-[32m garbage, and the
+    # progress poll printed a line per second). The native-window path has
+    # run at warning level all along; the two paths now match.
+    uvicorn.run("app.ui.server:app", port=port, host="127.0.0.1",
+                log_level="warning", use_colors=False)
 
 
 @app.command("window")
