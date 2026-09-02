@@ -34,7 +34,7 @@ curl -sL https://raw.githubusercontent.com/elyfmiller/flubnf/main/install.sh | b
 **Windows**, open Command Prompt and run:
 
 ```
-git clone https://github.com/elyfmiller/flubnf %LOCALAPPDATA%\FluBNF\flubnf
+git clone https://github.com/elyfmiller/flubnf "%LOCALAPPDATA%\FluBNF\flubnf"
 ```
 
 Put it there and not in `Documents`. Windows Defender has a feature called
@@ -64,7 +64,10 @@ folder, if that is where it ended up.)
 * **Windows**: double-click `FluBNF.bat`.
 
 That is the whole install. The first launch sets everything up, which takes a
-few minutes, then the console opens in your browser. **You do not need to run
+few minutes, then the console opens in your browser. On Windows it may ask a
+question or two along the way (fetching the FluSight data, installing
+Strawberry Perl); left alone, each answers itself with yes after twenty
+seconds. **You do not need to run
 `SetupEngine` separately**; opening the app does it.
 
 ---

@@ -95,14 +95,15 @@
      so it labelled nothing; relwis_convention_note is the one wording,
      shared with Methods, the public site and the exported report. #}
   <p class="hint">Two members, three seasons, replayed on vintage data only.
-  Both columns are relWIS against the same CDC FluSight baseline on the same
-  15,460 cells, so lower is better and below 1.000 beats that baseline.
-  {{ relwis_convention_note }} The
-  comparator is the hub's own combination of every team's forecasts, a
-  strong reference rather than a naive one. Pooled they are level: 0.007
+  The two columns share one convention and one cell set: both are relWIS
+  against the CDC FluSight baseline on the same 15,460 cells, so they
+  compare directly, lower is better, and below 1.000 beats that baseline.
+  The comparator is the hub's own combination of every team's forecasts, a
+  strong reference rather than a naive one; pooled they are level, 0.007
   apart over 76 forecast weeks, inside the sealed record's measured
-  week-to-week variation. <a href="/methods">Methods</a> carries the rest: the donor
-  pool, the withdrawn field placement, and the two-strain result.</p></div>
+  week-to-week variation. One caution, for comparisons outside this table:
+  {{ relwis_convention_note }} Placement among all submitting teams is
+  withdrawn and not reported; see <a href="/methods">Methods</a>.</p></div>
  <div class="card"><h2>Start here</h2>
   <ol class="steps">
    <li class="step"><span class="stepnum">1</span>
@@ -225,8 +226,7 @@
   <p>An embeddable, in-process simulation engine for BioNetGen reaction
   networks, and the engine the particle filter runs on. It integrates the
   model's ODEs inside the fitting process, with no per-simulation BNG2.pl
-  subprocess, so each candidate epidemic simulates in seconds rather than
-  minutes.</p>
+  subprocess, so a full state-season fit completes in seconds.</p>
   <p class="hint"><a href="https://github.com/lanl/bngsim" target="_blank" rel="noopener">github.com/lanl/bngsim</a></p></div>
  <div class="card"><h2>BNGL and BioNetGen</h2>
   <div class="cardviz">
@@ -283,7 +283,7 @@
     record is stated beside the number (see setup_engine.sh and the same
     note on Methods) #}
  <p class="hint">The sealed record's engine pin is bngsim 0.15.1 (see
- setup_engine.sh); a self-reported 0.13.0 here is the seal-era local
- build, not the PyPI 0.13.0 release.</p>
+ setup_engine.sh); reproducing sealed numbers requires that pin, whatever
+ version an installed build reports.</p>
 </div>
 {% endblock %}

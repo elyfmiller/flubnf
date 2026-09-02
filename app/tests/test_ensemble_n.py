@@ -131,8 +131,9 @@ def test_methods_page_carries_two_strain_research_section():
     assert "the two-strain variant" in r.text and "NREVSS" in r.text
     # the A/B parallel-circuit diagram moved here with the section
     assert "Two-strain SIHRS compartment diagram" in r.text
-    # the honest verdict, with the numbers on both sides of it
-    for n in ("0.953", "0.993", "0.968", "1.023", "0.719", "0.704"):
+    # the decisive full-grid comparison survives the condensed copy
+    # (1.023 stays as the PF-SIHRS 2023-24 cell of the performance table)
+    for n in ("1.023", "0.719", "0.704"):
         assert n in r.text, n
     # and the note that both sides of that comparison predate the donor
     # exclusion, so a reader does not weigh 0.719 against today's 0.678

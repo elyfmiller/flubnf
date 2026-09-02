@@ -125,9 +125,12 @@ git clone https://github.com/elyfmiller/flubnf && cd flubnf
 .venv/bin/flubnf app
 ```
 
-**Windows (experimental)** - install Python 3.11+ and Git, clone outside
-`Documents` (`%LOCALAPPDATA%\FluBNF\flubnf` is the suggested spot), and
-double-click `FluBNF.bat`, which offers the full first-time setup. Cloning
+**Windows (experimental)** - install Git and a Python (Anaconda with
+untouched defaults is found automatically, nothing added to PATH;
+python.org 3.11+ with "Add python.exe to PATH" ticked also works), clone
+outside `Documents` (`%LOCALAPPDATA%\FluBNF\flubnf` is the suggested
+spot), and double-click `FluBNF.bat`, which offers the full first-time
+setup. Cloning
 outside `Documents` avoids Microsoft Defender's Controlled Folder Access
 (shipped off, but common on managed machines), which silently blocks git,
 python, and perl there. Details: [docs/WINDOWS.md](docs/WINDOWS.md).
@@ -245,7 +248,8 @@ flubnf/          the science package: model templates, data resolution,
 app/             the console: FastAPI UI, run ledger, engines, ensemble,
                  submissions, reports; app/tests/ is its suite
 scripts/         operational runners (not packaged into the wheel)
-docs/            release record, model provenance, site and Windows notes
+docs/            release record, model provenance, the student install
+                 guide, site and Windows notes
 tests/           the science-package suite
 data/            small tracked inputs
 model-metadata/  the hubverse model card

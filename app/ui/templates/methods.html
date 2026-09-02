@@ -77,9 +77,7 @@
  <h2>Research: the two-strain variant
   <span class="pill">not in the shipped ensemble</span></h2>
  <p>This section documents a research variant. It is <b>not</b> part of the
- submitted forecast, and it has no tab in the primary navigation. It is
- recorded here because it passed the turning-point gate twice while failing
- the ensemble gate, which is a result worth keeping.</p>
+ submitted forecast, and it has no tab in the primary navigation.</p>
 
  <p><b>What it does.</b> The two-strain SIHRS variant models influenza A and
  influenza B as independent transmission circuits, each with its own
@@ -103,19 +101,13 @@
  matching the NREVSS release cadence.</p>
  {{ dg.eq_pf2s() }}
 
- <p><b>The verdict.</b> On turning-point cells the two-strain member scored
- relWIS 0.953 against 0.993 for the single-strain particle filter, and it
- cleared that turn-phase gate twice, first on the state panel and then on
- the full grid. On the plateau season, the season the single-strain filter
- handles worst, it scored 0.968 against 1.023. The gate it failed is the one
- that decides membership: on identical full-grid cells the equal-weight
- three-member ensemble scored 0.719 against 0.704 for the two-member blend.
- Adding it therefore makes the submitted forecast worse, so it is not part
- of the shipped ensemble and the blend stays at two members. Both of those
- numbers were measured before the 2021-22 donor exclusion, which moved the
- two-member reference to 0.678; the three-member blend carries the analogue
- at one third and so gains less from the change, but it has not been
- re-scored.</p>
+ <p><b>Why it does not ship.</b> The two-strain member is stronger than the
+ single-strain filter at turning points, but membership is decided on the
+ full grid: there the equal-weight three-member ensemble scored relWIS
+ 0.719 against 0.704 for the two-member blend, so adding it makes the
+ submitted forecast worse and the blend stays at two members. Those figures
+ predate the 2021-22 donor exclusion, which moved the two-member reference
+ to 0.678.</p>
 
  <p>The engine remains available for research runs. The
  <a href="/model/pf2s">two-strain model page</a> stays reachable by direct
@@ -148,20 +140,10 @@
  calendar-matched pool asks what happened in March and 2021-22 answers that
  the epidemic was still growing: it is the only donor season whose March
  ratios have a median above one, with a far heavier upper tail than any
- other season's. Excluding it was
- pre-registered under hash <code>8f3c7a45a989e905</code> and improves the
- shipped ensemble by 3.66 percent pooled, bootstrap interval 1.83 to 6.07
- percent, positive in all three sealed seasons and in 50 of 52
- jurisdictions. A depth control settles the mechanism: subsampling the full
- pool at random to the same size moves the score by 0.20 percent, so the
- gain is which season is in the pool and not how many donors it holds. The
- effect concentrates late in the season without being confined to February:
- of the 15,460 sealed cells, 9,363 change, being every February, March,
- April and May cell together with 624 of the 2,080 January cells, which are
- the final January week of each season. Nothing in October, November or
- December changes, because that season's archived series does not begin
- until February 2022 and the calendar match reaches only two weeks either
- side of the forecast week.</p>
+ other season's. Excluding it improves the shipped ensemble by 3.66
+ percent pooled, positive in all three sealed seasons and in 50 of 52
+ jurisdictions; the full measurement and its controls are in the release
+ record (docs/RELEASE-1.0.md).</p>
  <p class="hint">Model tab: <a href="/model/analogue">Calendar analogue</a>.</p>
 </div>
 
@@ -175,12 +157,8 @@
  carry equal, unfitted weights: 50/50 across the
  two shipped members, and equal thirds if a research run adds the
  <a href="#two-strain">two-strain variant</a>, which the submitted ensemble
- does not. Fitting the weights was evaluated and rejected: applying the
- frozen per-horizon table to the three-season replay scores worse than the
- equal blend (pooled relWIS 0.696 against 0.678), and the
- leave-one-season-out fit recorded at the 2026-08-17 freeze was 0.717
- against the 0.704 the equal blend scored at the time. No weight is tuned on
- any season.</p>
+ does not. Fitted weights were evaluated and scored worse than the equal
+ blend, so no weight is tuned on any season.</p>
  <p class="hint">Model tab: <a href="/model/ensemble">FluBNF Ensemble</a>.</p>
 </div>
 
@@ -204,12 +182,9 @@
      this page's own second name for one model. #}
   <tr><td>FluBNF Ensemble</td><td class="ok">0.813</td><td class="ok">0.618</td><td class="ok">0.683</td></tr>
  </table></div>
- <p class="hint">Pooled ensemble relWIS: 0.678, over 15,460 scored cells.
- Measured on the shipped donor pool; before the 2021-22 exclusion the
- analogue read 1.105 / 0.835 / 0.641 and the ensemble 0.847 / 0.651 / 0.691,
- pooled 0.704. The particle filter is unchanged by that exclusion. On
- placement against the real FluSight fields, see the verification policies
- below.</p>
+ <p class="hint">Pooled ensemble relWIS: 0.678, over 15,460 scored cells,
+ measured on the shipped donor pool. On placement against the real
+ FluSight fields, see the verification policies below.</p>
 </div>
 
 <div class="card"><h2>Under the hood</h2>
@@ -249,11 +224,9 @@
     0.13.0 would NOT reproduce the seal. The footnote states the pin so a
     reader never trusts the bare string. #}
  <p class="hint">Version note: the sealed three-season record's engine pin
- is bngsim 0.15.1, per <code>setup_engine.sh</code> (measured bit-identical
- to the seal's engine on 2026-08-25). A bngsim self-reporting 0.13.0 on
- this machine is the seal-era local build, whose metadata string predates
- the pin; installing bngsim 0.13.0 from PyPI would not reproduce the
- sealed record.</p>
+ is bngsim 0.15.1, per <code>setup_engine.sh</code>. A locally built engine
+ can self-report an older version string, so reproducing the sealed record
+ requires the pinned install, not whatever version a build reports.</p>
  {# Platform-NEUTRAL on purpose: app/core/site_build.py harvests this page
     into the public site, so a conditional here would bake the builder's
     platform into a page every reader sees. Name all three instead. #}
@@ -273,16 +246,12 @@
  score against the official FluSight baseline, the competition's own
  yardstick, and evaluation touches only data that was available at forecast
  time.</p>
- <p class="hint">One measured qualification: the hub names each archived
- vintage file by the newest data week it contains, not by the day it was
- captured, and for seven of the 76 sealed as-of weeks the archived snapshot
- differs from what was public by that week's submission deadline (six carry
- later revisions or a data week the deadline feed lacked; one is stale).
- Season 2025-26 is clean on all 22 of its weeks. The sealed scores are also
- computed on the members' internal forecasts at float precision, not on the
- floored, rounded submission files the live console writes, a measured
- difference at the third decimal. Both effects are itemized in the release
- record's seal caveats (docs/RELEASE-1.0.md).</p>
+ <p class="hint">Two measured qualifications, itemized in the release
+ record's seal caveats (docs/RELEASE-1.0.md): for seven of the 76 sealed
+ as-of weeks the archived vintage differs from what was public by that
+ week's submission deadline, and the sealed scores are computed on the
+ members' internal forecasts at float precision rather than on the rounded
+ submission files, a measured difference at the third decimal.</p>
  {# the cell rule used to be spelled out in the Measured-performance panel's
     own copy, on the home card and on the public site. That copy was cut, so
     the definition lands here instead: every "scored cells" count on this
@@ -298,34 +267,13 @@
     the public site, and a withdrawn claim has to stay withdrawn in both
     places. #}
  <p>Placement against the full FluSight field, meaning a rank among all
- submitting teams, was withdrawn on 2026-08-24 and is not restated. The
- reason is a difference between the two halves of that claim. A relWIS
- figure here is this project's own score under one stated convention,
- computed end to end from forecasts and scores this repository holds. A
- rank asserts something further, that every other team was scored on that
- same convention, and the field's scores come from a builder that lives
- outside this repository and cannot be rerun from it. The console computes
- the dashboard's pairwise figure for this project's own forecasts where the
- field's cached scores happen to be present, and it still prints no rank.</p>
- {# the CONDITION for lifting the withdrawal, stated as the release record
-    states it. An earlier draft of this paragraph made it a tooling problem
-    and said the withdrawal lifts "when the field builder is in this tree",
-    which is the smaller half and reads as a promise the record does not
-    make: the archived standings failed on three counts, and the third one
-    (a published row carrying rejected fitted weights) is a scoring fault
-    that porting a script does not answer. Keep this in step with
-    docs/RELEASE-1.0.md, which is the version of record. #}
- <p>Three things went wrong when the withdrawn table was re-measured, and
- the field builder is only the first. The scorer that produced the archived
- standings does not survive. A reconstruction of the 2023-24 field from
- this repository's own scoring code reproduced no archived row exactly. And
- this project's own three rows in that field were not computed on one
- convention: the 2024-25 row carried the leave-one-season-out fitted
- ensemble weights that this project evaluated, rejected, and does not ship.
- The claim returns when the field and this project's entry have been scored
- again, end to end, on one stated convention and on the shipped
- configuration; until then no placement is claimed anywhere in this
- application. The full account is in the release record.</p>
+ submitting teams, was withdrawn on 2026-08-24 and is not restated: a rank
+ would assert that every submitting team was scored end to end on one
+ stated convention, and the field's scores come from a builder that lives
+ outside this repository and cannot be rerun from it. Until the field and
+ this project's entry are scored that way, no placement is claimed
+ anywhere in this application; the full account is in the release record
+ (docs/RELEASE-1.0.md).</p>
  {# THE labelling defect this paragraph used to carry: it closed by calling
     the page's figures "a ratio against the FluSight baseline", which is
     true of BOTH conventions, since both are scaled to put the baseline at
