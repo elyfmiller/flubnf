@@ -224,9 +224,16 @@ and move on; scoring waits for settled truth.</p>
 <script>
  // Live replay tickers, from the shared implementation in
  // /static/retro_progress.js (the season page runs the very same code).
- // It yields to an open run-interference guard modal: while GUARD_BUSY is
- // set nothing reloads, so a pending stop-and-proceed survives the wait.
- FluBNFRetroTicker.init({busy: function(){return !!window.GUARD_BUSY;}});
+ // It yields to an open run-interference guard modal and to a form that
+ // holds focus: while GUARD_BUSY is set, or the user is inside a form (a
+ // half-marked custom-locations checklist), nothing reloads, so neither a
+ // pending stop-and-proceed nor form state is wiped. The ticker keeps
+ // polling and painting, so no readout stalls; the reload lands on the
+ // first poll after the modal closes or focus leaves the form.
+ FluBNFRetroTicker.init({busy: function(){
+   return !!window.GUARD_BUSY
+     || (document.activeElement && document.activeElement.form);
+ }});
 </script>
 {% endif %}
 {% endblock %}

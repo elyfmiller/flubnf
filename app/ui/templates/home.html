@@ -40,20 +40,83 @@
  {# cold first paint: the warm pass is still importing the science stack.
     Poll the light readiness endpoint and reload ONCE when inline render
     is guaranteed cheap; the reload lands on the ready branch, so this
-    script can never render twice. #}
+    script can never render twice. Cadence: 600ms while the warm pass is
+    plausibly seconds away, then 2.5s forever; the poll never stops,
+    because the endpoint answering again is the recovery signal after a
+    server restart, and a dead server must not be hammered at 600ms all
+    night with the catch swallowing every failure. #}
  <script>
  (function () {
-   var t = setInterval(function () {
+   var tries = 0;
+   function sched() { setTimeout(tick, tries < 50 ? 600 : 2500); }
+   function tick() {
+     tries++;
      fetch('/api/outlook-ready')
        .then(function (r) { return r.json(); })
        .then(function (d) {
-         if (d.ready) { clearInterval(t); location.reload(); }
+         if (d.ready) { location.reload(); return; }
+         sched();
        })
-       .catch(function () {});
-   }, 600);
+       .catch(sched);
+   }
+   sched();
  })();
  </script>
  {% endif %}
+</div>
+
+{# reading order after the status hero and map: the actionable weekly loop
+   and the number the lab compares land in the first viewport; the pipeline
+   diagram and equations, read-once reference material, sit one scroll
+   below. #}
+<div class="grid2">
+ <div class="card"><h2>Measured performance</h2>
+  <table class="perf">
+   {# both score columns are named for whose forecast they score: "Ensemble"
+      alone sat beside "FluSight ensemble" and read as the same thing. The
+      relWIS unit for both is stated once in the hint below. #}
+   <thead><tr><th>Season</th><th class="num">FluBNF Ensemble</th>
+    <th class="num">FluSight Ensemble</th><th class="num">Scored cells</th>
+    </tr></thead>
+   <tbody>
+    <tr><td>2023-24</td><td class="num rel">0.813</td>
+     <td class="num">0.741</td><td class="num">6,063</td></tr>
+    <tr><td>2024-25</td><td class="num rel">0.618</td>
+     <td class="num">0.663</td><td class="num">4,922</td></tr>
+    <tr><td>2025-26</td><td class="num rel">0.683</td>
+     <td class="num">0.684</td><td class="num">4,475</td></tr>
+    <tr class="total"><td>Pooled</td><td class="num rel">0.678</td>
+     <td class="num">0.685</td><td class="num">15,460</td></tr>
+   </tbody>
+  </table>
+  {# the convention, named on the panel a reader is likeliest to hold up
+     against the CDC dashboard. "A ratio against the FluSight baseline"
+     used to stand alone here, and it describes BOTH conventions equally,
+     so it labelled nothing; relwis_convention_note is the one wording,
+     shared with Methods, the public site and the exported report. #}
+  <p class="hint">Two members, three seasons, replayed on vintage data only.
+  Both columns are relWIS against the same CDC FluSight baseline on the same
+  15,460 cells, so lower is better and below 1.000 beats that baseline.
+  {{ relwis_convention_note }} The
+  comparator is the hub's own combination of every team's forecasts, a
+  strong reference rather than a naive one. Pooled they are level: 0.007
+  apart over 76 forecast weeks, inside the sealed record's measured
+  week-to-week variation. <a href="/methods">Methods</a> carries the rest: the donor
+  pool, the withdrawn field placement, and the two-strain result.</p></div>
+ <div class="card"><h2>Start here</h2>
+  <ol class="steps">
+   <li class="step"><span class="stepnum">1</span>
+    <span class="steptext"><a href="/data">Data</a>
+     <span class="hint">confirm the feed is current</span></span></li>
+   <li class="step"><span class="stepnum">2</span>
+    <span class="steptext"><a href="/forecast">Forecast</a>
+     <span class="hint">pick a date, run the models</span></span></li>
+   <li class="step"><span class="stepnum">3</span>
+    <span class="steptext"><a href="/output">Output</a>
+     <span class="hint">submission files and the report</span></span></li>
+  </ol>
+  <p class="hint">Replay a past season on the
+  <a href="/retro">Retrospective</a> tab.</p></div>
 </div>
 
 <div class="card"><h2>How it works</h2>
@@ -136,56 +199,6 @@
    member quantiles at the same level, never fitted</span></p>
  </div>
  <p class="hint">Full method: <a href="/methods">Methods</a>.</p>
-</div>
-
-<div class="grid2">
- <div class="card"><h2>Measured performance</h2>
-  <table class="perf">
-   {# both score columns are named for whose forecast they score: "Ensemble"
-      alone sat beside "FluSight ensemble" and read as the same thing. The
-      relWIS unit for both is stated once in the hint below. #}
-   <thead><tr><th>Season</th><th class="num">FluBNF Ensemble</th>
-    <th class="num">FluSight Ensemble</th><th class="num">Scored cells</th>
-    </tr></thead>
-   <tbody>
-    <tr><td>2023-24</td><td class="num rel">0.813</td>
-     <td class="num">0.741</td><td class="num">6,063</td></tr>
-    <tr><td>2024-25</td><td class="num rel">0.618</td>
-     <td class="num">0.663</td><td class="num">4,922</td></tr>
-    <tr><td>2025-26</td><td class="num rel">0.683</td>
-     <td class="num">0.684</td><td class="num">4,475</td></tr>
-    <tr class="total"><td>Pooled</td><td class="num rel">0.678</td>
-     <td class="num">0.685</td><td class="num">15,460</td></tr>
-   </tbody>
-  </table>
-  {# the convention, named on the panel a reader is likeliest to hold up
-     against the CDC dashboard. "A ratio against the FluSight baseline"
-     used to stand alone here, and it describes BOTH conventions equally,
-     so it labelled nothing; relwis_convention_note is the one wording,
-     shared with Methods, the public site and the exported report. #}
-  <p class="hint">Two members, three seasons, replayed on vintage data only.
-  Both columns are relWIS against the same CDC FluSight baseline on the same
-  15,460 cells, so lower is better and below 1.000 beats that baseline.
-  {{ relwis_convention_note }} The
-  comparator is the hub's own combination of every team's forecasts, a
-  strong reference rather than a naive one. Pooled they are level: 0.007
-  apart over 76 forecast weeks, inside the sealed record's measured
-  week-to-week variation. <a href="/methods">Methods</a> carries the rest: the donor
-  pool, the withdrawn field placement, and the two-strain result.</p></div>
- <div class="card"><h2>Start here</h2>
-  <ol class="steps">
-   <li class="step"><span class="stepnum">1</span>
-    <span class="steptext"><a href="/data">Data</a>
-     <span class="hint">confirm the feed is current</span></span></li>
-   <li class="step"><span class="stepnum">2</span>
-    <span class="steptext"><a href="/forecast">Forecast</a>
-     <span class="hint">pick a date, run the models</span></span></li>
-   <li class="step"><span class="stepnum">3</span>
-    <span class="steptext"><a href="/output">Output</a>
-     <span class="hint">submission files and the report</span></span></li>
-  </ol>
-  <p class="hint">Replay a past season on the
-  <a href="/retro">Retrospective</a> tab.</p></div>
 </div>
 
 <div class="grid3">

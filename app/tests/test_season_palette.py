@@ -282,9 +282,12 @@ def test_no_other_multi_series_chart_relies_on_a_red_green_pair():
         assert "css('--ink')" in seg and "dash:'dot'" in seg, settled
     assert "name: 'truth (settled)', line: {color: p.ink" in PLAYER
     assert "line: {color: p.ink, width: 1.3, dash: 'dot'}" in PLAYER
-    # officials: neutral grey literals or the muted token, never red/green
+    # officials: neutral greys, never red/green. The report host keeps its
+    # fixed-dark literal; the console season page resolves the per-theme
+    # neutral through the token system (the Contrast modifier reaches it),
+    # with the dark-ground literal as the token-less fallback.
     assert "flusightEnsemble: '#C7CCDD'" in PLAYER
-    assert "flusightEnsemble: '#AAB1C9'" in \
+    assert "flusightEnsemble: css('--official') || '#AAB1C9'" in \
         (UI / "templates" / "retro_season.html").read_text()
     assert "return (p.models || {})[m] || p.mut;" in PLAYER
     # no default-colorway reliance anywhere a series gets its color

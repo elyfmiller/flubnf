@@ -142,6 +142,7 @@
    let D={done:0,total:0,eta_s:null,t:Date.now()};
    let STOPPING=false;
    let PS;
+   let FAILS=0;   // consecutive failed polls; 3 freeze the elapsed clock
    // wall clock: the server owns the truth (elapsed_s), the browser only
    // interpolates between polls, so the reading can never drift and a reload
    // mid-run picks up the real total instead of restarting at zero
@@ -153,7 +154,9 @@
      if(document.hidden) return;          // nothing to see: do no work
      const el=document.getElementById('elapsed');
      if(!el||EL.s==null) return;
-     el.textContent='elapsed '+hms(EL.s+(Date.now()-EL.at)/1000);
+     // EL.at of null means the poll went quiet (see the catch below): the
+     // clock holds its last-good reading instead of ticking on a dead run
+     el.textContent='elapsed '+hms(EL.s+(EL.at!=null?(Date.now()-EL.at)/1000:0));
    },500);
    function resetProg(){PS={label:null,disp:0,ema:null,shown:null,shownT:0,up:0};}
    resetProg();
@@ -171,7 +174,20 @@
      if(document.hidden){schedule(POLL_HIDDEN_MS); return;}
      INFLIGHT=true;
      try{const r=await fetch('/api/progress'); const d=await r.json();
-       if(!d.running){location.reload(); return;}
+       FAILS=0;   // a live server: the elapsed clock re-anchors below
+       // reload discipline (the retro ticker's yield): a run completing in
+       // the background must never wipe an open guard modal or a form the
+       // user is filling (a changed forecast date, a half-marked location
+       // checklist), so while GUARD_BUSY is set or focus sits inside a form
+       // the reload waits for the first poll after the modal closes or
+       // focus leaves; the readouts keep polling meanwhile
+       if(!d.running){
+         if(window.GUARD_BUSY
+            || (document.activeElement && document.activeElement.form)){
+           schedule(POLL_MS); return;
+         }
+         location.reload(); return;
+       }
        if(PS.label!==null && d.label!==PS.label) resetProg();  // a new run started
        PS.label=d.label;
        if(d.label) document.getElementById('runlabel').textContent=d.label;
@@ -200,7 +216,13 @@
        }
        if(STOPPING) document.getElementById('prog').textContent='Stopping; finishing the current fit…';
        else if(!d.total) document.getElementById('prog').textContent=d.phase||'starting';
-     }catch(e){}
+     }catch(e){
+       // failure-aware clock (the retro ticker's rule): after 3 consecutive
+       // failed polls the elapsed readout freezes at its last-good value
+       // instead of ticking up on a dead server; the next successful poll
+       // re-anchors it through d.elapsed_s
+       if(++FAILS===3 && EL.at!=null) EL={s:EL.s+(Date.now()-EL.at)/1000,at:null};
+     }
      finally{INFLIGHT=false;}
      schedule(document.hidden?POLL_HIDDEN_MS:POLL_MS);
    }
@@ -253,6 +275,13 @@
   </div>
   {% endif %}
 
+  {# the deliverable leads the column: run status, forecast, raw data. The
+     fan build path overwrites this wrapper's innerHTML wholesale whenever
+     stored forecasts exist (MODELS.length below), so the first-launch hint
+     can never coexist with a real fan card; it renders only when the
+     server had no stored run to serialize into FANQ. #}
+  <div id="fanwrap">{% if fanq_json == '{}' %}<p class="hint">Forecasts appear here: run the models and the latest stored run renders automatically.</p>{% endif %}</div>
+
   <details class="card" open><summary><h2 style="display:inline">Data</h2>
    <span class="hint">: raw admissions, any location (latest vintage)</span></summary>
    <div style="margin:.6rem 0 .2rem">
@@ -274,10 +303,10 @@
     <span class="hint" id="data-pos"></span>
     <button type="button" class="quiet cnav" id="data-next">▶</button>
    </div>
-   <div id="dataplots"></div>
+   {# reserved height (the fan card's rule): the chart draws at 380, so an
+      in-flight fetch can never collapse the page under the reader #}
+   <div id="dataplots" style="min-height:380px"></div>
   </details>
-
-  <div id="fanwrap"></div>
  </div>
 </div>
 {# The expanded forecast view: the same modal shell as the run-interference

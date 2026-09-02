@@ -307,6 +307,33 @@ def test_ticker_updates_every_element_that_states_progress():
     assert '<span class="rcount">10/32 weeks</span>' in html
 
 
+def test_ticker_freezes_honestly_when_polls_stop_arriving():
+    """A quit or crashed app must not leave the open tab counting a dead
+    replay down to '~1 min left' overnight: after 3 consecutive failed
+    polls the elapsed clock and the ETA decay freeze at their last-good
+    values and the basis line says the connection is lost; any successful
+    poll clears the freeze and the note."""
+    assert "Connection lost. Numbers paused." in TICKER_SRC
+    assert "fails = 0; stalled = false" in TICKER_SRC
+    assert "stalled = true; stallAt = Date.now()" in TICKER_SRC
+    assert "var now = stalled ? stallAt : Date.now()" in TICKER_SRC
+    # the forecast run card follows the same rule for its elapsed clock
+    fc_html = (Path(__file__).resolve().parents[1] / "ui" / "templates"
+               / "forecast.html").read_text(encoding="utf-8")
+    assert "++FAILS===3" in fc_html
+
+
+def test_reload_yields_to_the_guard_modal_and_a_focused_form():
+    """The busy predicate the retro index hands the ticker defers reloads
+    while the guard modal is open AND while focus sits inside a form (a
+    half-marked custom-locations checklist must not be wiped by a replay
+    finishing); the ticker keeps polling and painting either way."""
+    retro_html = (Path(__file__).resolve().parents[1] / "ui" / "templates"
+                  / "retro.html").read_text(encoding="utf-8")
+    assert "GUARD_BUSY" in retro_html
+    assert "document.activeElement.form" in retro_html
+
+
 def _jsc(tmp_path, expr):
     drv = tmp_path / "driver.js"
     drv.write_text("var I = FluBNFRetroTicker._internals;\n"

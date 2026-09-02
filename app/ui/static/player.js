@@ -762,8 +762,22 @@ function createPlayer(cfg){
     setPlay(!P.playing);
   };
   el.speed.onchange = function(){ if(P.playing) setPlay(true); };
+  // Scrub draws coalesce to one per animation frame (the map view's proven
+  // rAF pattern): every input event otherwise runs a full Plotly.react as
+  // an immediate microtask, so a fast drag across a cached season queues
+  // seconds of main-thread jank. Only the latest wanted index is drawn;
+  // prev/next/play/keyboard seeks stay immediate, and fcSeq remains the
+  // guard against late-arriving payloads. No visible change under reduced
+  // motion: this only drops frames a human could not see.
+  var wantIdx = null, rafP = false;
   el.scrub.addEventListener('input', function(){
-    seek(+el.scrub.value, true);
+    wantIdx = +el.scrub.value;
+    if(rafP) return;
+    rafP = true;
+    requestAnimationFrame(function(){
+      rafP = false;
+      seek(wantIdx, true);
+    });
   });
   // axis lock defaults ON and persists across visits; localStorage can be
   // unavailable (file: contexts, private windows), so every touch is
