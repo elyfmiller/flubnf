@@ -271,9 +271,19 @@ echo   looking in the usual places instead
 :bundlesearch
 for %%F in ("%~dp0pybnf*.bundle") do if not defined BUNDLE set "BUNDLE=%%~fF"
 for %%F in ("%~dp0..\pybnf*.bundle") do if not defined BUNDLE set "BUNDLE=%%~fF"
+rem OneDrive Known Folder Move points Desktop, Documents and, on tenants
+rem that opt it in, Downloads at %OneDrive%\...; on such a machine the
+rem literal %USERPROFILE% spellings name folders Explorer no longer shows,
+rem so the file the student saved "in Downloads" was never found. Probe
+rem both spellings, profile first. Each OneDrive probe is guarded: an
+rem undefined %OneDrive% expands to nothing, and the unguarded pattern
+rem would then match a bare "\Downloads" at the drive root.
 for %%F in ("%USERPROFILE%\Downloads\pybnf*.bundle") do if not defined BUNDLE set "BUNDLE=%%~fF"
+if defined OneDrive for %%F in ("%OneDrive%\Downloads\pybnf*.bundle") do if not defined BUNDLE set "BUNDLE=%%~fF"
 for %%F in ("%USERPROFILE%\Desktop\pybnf*.bundle") do if not defined BUNDLE set "BUNDLE=%%~fF"
+if defined OneDrive for %%F in ("%OneDrive%\Desktop\pybnf*.bundle") do if not defined BUNDLE set "BUNDLE=%%~fF"
 for %%F in ("%USERPROFILE%\Documents\pybnf*.bundle") do if not defined BUNDLE set "BUNDLE=%%~fF"
+if defined OneDrive for %%F in ("%OneDrive%\Documents\pybnf*.bundle") do if not defined BUNDLE set "BUNDLE=%%~fF"
 rem The other artifact shape: the ~130 KB pybnf-pf-<sha>.tar.gz that
 rem scripts/cut_engine_archive.sh cuts. Same folders, same rule: whatever
 rem the student saved is the engine, and they should never have to know
@@ -282,8 +292,11 @@ set "ARCHIVE="
 for %%F in ("%~dp0pybnf*.tar.gz") do if not defined ARCHIVE set "ARCHIVE=%%~fF"
 for %%F in ("%~dp0..\pybnf*.tar.gz") do if not defined ARCHIVE set "ARCHIVE=%%~fF"
 for %%F in ("%USERPROFILE%\Downloads\pybnf*.tar.gz") do if not defined ARCHIVE set "ARCHIVE=%%~fF"
+if defined OneDrive for %%F in ("%OneDrive%\Downloads\pybnf*.tar.gz") do if not defined ARCHIVE set "ARCHIVE=%%~fF"
 for %%F in ("%USERPROFILE%\Desktop\pybnf*.tar.gz") do if not defined ARCHIVE set "ARCHIVE=%%~fF"
+if defined OneDrive for %%F in ("%OneDrive%\Desktop\pybnf*.tar.gz") do if not defined ARCHIVE set "ARCHIVE=%%~fF"
 for %%F in ("%USERPROFILE%\Documents\pybnf*.tar.gz") do if not defined ARCHIVE set "ARCHIVE=%%~fF"
+if defined OneDrive for %%F in ("%OneDrive%\Documents\pybnf*.tar.gz") do if not defined ARCHIVE set "ARCHIVE=%%~fF"
 :bundleresolved
 
 rem Extract an archive HERE, not somewhere in the install flow: tar.exe has

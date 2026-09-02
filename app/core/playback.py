@@ -35,6 +35,7 @@ propagate rather than leave relWIS pending forever).
 from __future__ import annotations
 
 import json
+import os
 from datetime import timedelta
 from pathlib import Path
 
@@ -73,6 +74,20 @@ def _samples_path(root: Path, asof: str) -> Path | None:
 
 def _cache_dir(root: Path) -> Path:
     return root / "playback_cache"
+
+
+def _write_cache(cf: Path, obj) -> None:
+    """Every cache write in this file goes through here: write beside, then
+    os.replace, the rule the cards cache in server.py states. The readers
+    above treat presence as validity, and these payloads run to megabytes,
+    so a bare write_text torn by a concurrent writer or a kill mid-write
+    would be served as a complete payload on the next request. os.replace
+    is atomic within one filesystem, and the .tmp sits beside its target
+    precisely to stay on that filesystem."""
+    cf.parent.mkdir(parents=True, exist_ok=True)
+    tmp = cf.with_name(cf.name + ".tmp")
+    tmp.write_text(json.dumps(obj))
+    os.replace(tmp, cf)
 
 
 # ------------------------------------------------------------- member models
@@ -319,8 +334,7 @@ def _stats(root: Path, season: str, asof: str, truth: dict, n2f: dict,
                                  "officials": offs, "agg": aggs[w], "v": CACHE_V}
             dirty = True
     if dirty:
-        cf.parent.mkdir(parents=True, exist_ok=True)
-        cf.write_text(json.dumps(cache))
+        _write_cache(cf, cache)
 
     def _rel(ws, bs):
         return (ws / bs) if bs else None
@@ -478,6 +492,5 @@ def build_week(root: Path, season: str, asof: str) -> dict:
                      for om, oq in official_q.items() if oq},
         "stats": _stats(root, season, asof, truth, n2f, model_q, official_q),
     }
-    cf.parent.mkdir(parents=True, exist_ok=True)
-    cf.write_text(json.dumps(payload))
+    _write_cache(cf, payload)
     return payload

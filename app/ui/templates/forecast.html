@@ -361,9 +361,14 @@
    legend:{orientation:'h',x:0,xanchor:'left',y:-0.22,yanchor:'top'},
    xaxis:{gridcolor:css('--line'), automargin:true},
    yaxis:{gridcolor:css('--line'), rangemode:'tozero', automargin:true}};}
- function seasonOf(ds){const d=new Date(ds); const y=d.getMonth()>=7?d.getFullYear():d.getFullYear()-1;
+ // season grouping parses the Y-M-D components itself: a bare new Date(ds)
+ // on a date-only string is a UTC parse, one day back in every zone west
+ // of Greenwich, which walks Saturdays across month and season lines
+ function localDate(ds){const p=ds.slice(0,10).split('-');
+   return new Date(+p[0],+p[1]-1,+p[2]);}
+ function seasonOf(ds){const d=localDate(ds); const y=d.getMonth()>=7?d.getFullYear():d.getFullYear()-1;
    return y+'-'+String((y+1)%100).padStart(2,'0');}
- function weekOfSeason(ds){const d=new Date(ds); const y=d.getMonth()>=7?d.getFullYear():d.getFullYear()-1;
+ function weekOfSeason(ds){const d=localDate(ds); const y=d.getMonth()>=7?d.getFullYear():d.getFullYear()-1;
    return Math.round((d-new Date(y,7,1))/(7*864e5));}
  // hover dates format from the ISO string, never through Date: a UTC parse
  // shifted one day behind in western timezones would misdate every Saturday

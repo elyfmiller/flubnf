@@ -402,6 +402,28 @@ def test_the_windows_launcher_searches_the_same_five_places(tmp_path):
     assert 'git bundle verify "%BUNDLE%"' in BAT
 
 
+def test_the_windows_launcher_probes_onedrive_known_folder_move():
+    """OneDrive Known Folder Move points Desktop, Documents and, on tenants
+    that opt it in, Downloads at %OneDrive%\\...; on such a machine the
+    literal %USERPROFILE% spellings name folders Explorer no longer shows,
+    so "save it in your Downloads folder" was advice the search could not
+    honor (2026-09-01 final pass). Both engine-file shapes get the OneDrive
+    probes, and every probe is guarded: an undefined %OneDrive% expands to
+    nothing, and an unguarded pattern would then match a bare "\\Downloads"
+    at the drive root. setup_engine.sh stays as it is on purpose: it runs
+    on macOS and Linux only, where Known Folder Move does not exist."""
+    for folder in ("Downloads", "Desktop", "Documents"):
+        for shape in ("bundle", "tar.gz"):
+            needle = ('if defined OneDrive for %%F in '
+                      f'("%OneDrive%\\{folder}\\pybnf*.{shape}")')
+            assert needle in BAT, (
+                f"FluBNF.bat does not probe OneDrive {folder} for *.{shape}")
+    assert 'for %%F in ("%OneDrive%' not in BAT.replace(
+        'if defined OneDrive for %%F in ("%OneDrive%', ""), (
+        "an %OneDrive% probe in FluBNF.bat is missing its `if defined` "
+        "guard, so an undefined variable becomes a drive-root wildcard")
+
+
 def test_the_windows_launcher_never_calls_the_network_on_the_engine_path():
     """A probe of github.com here would cost a round trip on every launch of
     every machine that never gets the engine. setup.ps1 does that once, with
