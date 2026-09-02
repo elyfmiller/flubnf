@@ -339,7 +339,19 @@ rem the file is known to exist by now, so it is never empty here. Measured on
 rem the POSIX twin in FluBNF.command, where the same defect was reproduced.
 set "BUNDLESZ="
 if defined BUNDLE for %%F in ("%BUNDLE%") do set "BUNDLESZ=%%~zF"
-set "ENGINEFP=%PYBNFDIR%?%BUNDLE%?%BUNDLESZ%"
+rem The fingerprint must also cover the INSTALLER CODE, not just the inputs.
+rem MEASURED 2026-09-01, Windows Sandbox: the first engine attempt failed on
+rem a real defect, the fix was pulled, and the stamp then suppressed the
+rem retry the fix existed for; the student-shaped path was pull-and-reopen,
+rem and it dead-ended at "run setup.ps1 to see why". Size plus mtime of this
+rem launcher and setup.ps1 stand in for a hash (no dependency, and any pull
+rem or hand edit that changes either moves both), matching the POSIX twin,
+rem whose fingerprint hashes setup_engine.sh for the same reason.
+set "BATFP="
+for %%F in ("%~f0") do set "BATFP=%%~zF-%%~tF"
+set "PS1FP="
+if exist setup.ps1 for %%F in (setup.ps1) do set "PS1FP=%%~zF-%%~tF"
+set "ENGINEFP=%PYBNFDIR%?%BUNDLE%?%BUNDLESZ%?%BATFP%?%PS1FP%"
 set "ATTEMPT=.venv\engine-attempt.txt"
 set "LAST="
 if not exist "%ATTEMPT%" goto :engineinstall

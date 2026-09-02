@@ -471,6 +471,27 @@ def test_the_retry_stamp_moves_when_a_bundle_appears():
         "Downloads does not earn a retry")
 
 
+def test_the_windows_retry_stamp_moves_when_the_launcher_is_updated():
+    """MEASURED 2026-09-01, Windows Sandbox: the first engine attempt failed
+    on a real defect, the fix was pulled -- and the stamp suppressed the
+    retry the fix existed for, because the Windows fingerprint covered only
+    the inputs (engine dir, bundle, bundle size) and not the installer code.
+    The POSIX twin already hashes setup_engine.sh into its fingerprint. The
+    Windows fingerprint must carry a component for the launcher itself and
+    for setup.ps1, so that pull-and-reopen retries exactly once."""
+    src = (REPO / "FluBNF.bat").read_text(encoding="utf-8")
+    fp = [l for l in src.splitlines()
+          if l.strip().startswith('set "ENGINEFP=')]
+    assert len(fp) == 1, fp
+    for component in ("%BUNDLE%", "%BATFP%", "%PS1FP%"):
+        assert component in fp[0], (
+            f"the Windows attempt fingerprint lost {component}: a pulled "
+            "launcher fix would no longer earn a retry")
+    # and the components must actually be derived from the two files
+    assert 'for %%F in ("%~f0") do set "BATFP=' in src
+    assert 'if exist setup.ps1 for %%F in (setup.ps1) do set "PS1FP=' in src
+
+
 def test_the_retry_stamp_moves_when_a_BROKEN_bundle_is_replaced():
     """The stamp has to key on the bundle's CONTENT, not only its path.
 
