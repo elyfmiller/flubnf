@@ -20,6 +20,37 @@
 </div>
 {% endif %}
 
+{% if pf_failures or step_errors or ensemble_analogue_only or ensemble_withheld %}
+{# The partial-run record, read from the ledger row's outcome. The chips
+   on the run ledger only COUNT failures; this block names the cells and
+   reasons, in plain escaped text, so a partial run can be reported by
+   copying it (first Windows full grid, 2026-09-01: 4 failures and no
+   page said which cells or why). #}
+<div class="card"><h2>Partial-run detail</h2>
+ <p class="hint">Recorded on this run's ledger row. Copy this block when
+  reporting a partial run.</p>
+ {% if ensemble_withheld %}
+ <p><b>ensemble</b>: <span class="bad">no file written</span><br>
+  <span class="hint">{{ ensemble_withheld }}</span></p>
+ {% endif %}
+ {% if ensemble_analogue_only %}
+ <p><span class="warn">Analogue-only in the ensemble</span>: every PF
+  replicate failed for {{ ensemble_analogue_only | join(", ") }}, so the
+  ensemble file carries the analogue member alone there.</p>
+ {% endif %}
+ {% if pf_failures %}
+ <p>PF fit{{ 's' if pf_failures | length != 1 }} that failed
+  ({{ pf_failures | length }}):</p>
+ {% for cell, why in pf_failures.items() | sort %}
+ <p><code>{{ cell }}</code> <span class="bad">{{ why }}</span></p>
+ {% endfor %}
+ {% endif %}
+ {% for step, why in step_errors.items() %}
+ <p><code>{{ step }}</code> <span class="bad">{{ why }}</span></p>
+ {% endfor %}
+</div>
+{% endif %}
+
 {% if settings %}
 {# What produced this run, read entirely from the ledger row: the stored
    spec (the record of record) plus the row's recorded app build and any

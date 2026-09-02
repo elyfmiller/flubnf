@@ -141,8 +141,13 @@ def check_freshness(fetch: bool = True) -> Freshness:
     return Freshness(local_latest, remote_latest, behind, is_fresh, detail)
 
 
-def pull_hub() -> str:
-    """Explicit update of the hub checkout (the button's second step)."""
+def pull_hub() -> tuple:
+    """Explicit update of the hub checkout (the button's second step).
+
+    Returns (ok, message): ok is git's own verdict, the exit code. The
+    text alone cannot carry it, because a fatal error and a fast-forward
+    summary are both one line of output, and a failed pull once read as a
+    status line on the Data page (2026-09-01 final pass)."""
     # Self-heal sparse clones that predate the baseline requirement: the
     # validated relWIS baseline scores the CDC's own submitted files, so a
     # clone without model-output/FluSight-baseline cannot score anything.
@@ -157,6 +162,11 @@ def pull_hub() -> str:
                                capture_output=True, text=True, timeout=600)
         except Exception:
             pass
-    r = subprocess.run(["git", "pull", "--ff-only", "origin", "main"],
-                       cwd=HUB, capture_output=True, text=True, timeout=300)
-    return r.stdout.strip() or r.stderr.strip()
+    try:
+        r = subprocess.run(["git", "pull", "--ff-only", "origin", "main"],
+                           cwd=HUB, capture_output=True, text=True,
+                           timeout=300)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        # no clone, no git, or a hung network: a failure, said as one
+        return False, f"{type(e).__name__}: {e}"
+    return r.returncode == 0, (r.stdout.strip() or r.stderr.strip())
