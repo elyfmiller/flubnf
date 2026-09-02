@@ -8,7 +8,10 @@ fitting engine has additional requirements listed under Limitations.
 
 Install once:
 
-1. Python 3.11 or newer from https://www.python.org/downloads/
+1. A Python. Anaconda from https://www.anaconda.com/download is the lab's
+   standard and needs no settings changed: `FluBNF.bat` and `setup.ps1`
+   probe the folders it installs into, so nothing is added to PATH.
+   Python 3.11 or newer from https://www.python.org/downloads/ works too
    (tick "Add python.exe to PATH" in the installer).
 2. Git from https://git-scm.com/download/win (defaults are fine).
 
@@ -34,10 +37,11 @@ virtual environment and installs dependencies (a few minutes); every later
 run self-updates with a fast-forward `git pull` and starts the console.
 
 If the FluSight data is not on the machine yet, `FluBNF.bat` says so and
-offers to run `setup.ps1` for you. Answering N, or walking away for twenty
-seconds, starts the console anyway with data browsing empty; the offer
-comes back on the next launch and disappears for good once the data is
-there.
+offers to run `setup.ps1` for you. Answering N starts the console anyway
+with data browsing empty, and the offer comes back on the next launch;
+walking away lets the offer answer itself with Y after twenty seconds, so
+an unattended first double-click still ends at a console with data. The
+offer disappears for good once the data is there.
 
 That offer is judged on the data, not on the folder: the launcher looks for
 `auxiliary-data\locations.csv` inside the hub, and setup runs with
@@ -406,8 +410,10 @@ is offered as a choice and not as a recommendation.
 ### What is unverified here
 
 Everything in this section about the Defender cmdlets was written on macOS
-from Microsoft's documentation and has not been run on a Windows machine by
-this lab. Specifically: that `Get-MpComputerStatus` exposes
+from Microsoft's documentation; since then `setup.ps1`'s read path has run
+on real Windows (the 2026-08-25 field tests) as well as in CI. Still taken
+from documentation rather than measured here: that `Get-MpComputerStatus`
+exposes
 `RealTimeProtectionEnabled` in the form `setup.ps1` matches, that
 `Get-MpPreference` carries `ExclusionPath` and `ExclusionProcess` as lists,
 and that the `Add-MpPreference` and `Remove-MpPreference` lines above run as
@@ -473,7 +479,7 @@ Useful switches and variables:
 
 | what | effect |
 |---|---|
-| `-NoPrompt` | ask nothing at all. `FluBNF.bat` always passes it; the one question it suppresses is the offer to let winget install Strawberry Perl, which `setup.ps1` then prints as a command to run later. Run `setup.ps1` by hand to be asked. |
+| `-NoPrompt` | ask nothing at all. `FluBNF.bat` always passes it; the one question it suppresses is `setup.ps1`'s own offer to let winget install Strawberry Perl, which is then printed as a command to run later. The double-click path is not left without the offer: `FluBNF.bat` asks its own time-bounded Perl question during engine install. Run `setup.ps1` by hand to be asked here too. |
 | `-ShowDefenderExclusion` | print the antivirus-exclusion instructions in full, with the folders that resolved on this machine. Changes nothing, needs no administrator, and is never implied by any other run. See "Defender real-time scanning" above. |
 | `FLUBNF_HUB` | put the FluSight data somewhere else, e.g. `setx FLUBNF_HUB D:\FluSight-forecast-hub`, then open a new window. Default: `%LOCALAPPDATA%\FluBNF\FluSight-forecast-hub`, or an existing clone at the old `%USERPROFILE%\Documents\GitHub\FluSight-forecast-hub` if one is there |
 | `FLUBNF_PYBNF` | the PyBNF fork checkout. Same resolution order; default `%LOCALAPPDATA%\FluBNF\PyBNF-pf` |
@@ -518,7 +524,9 @@ standard `setup.sh` instructions inside the Linux environment.
   - Perl, for the one-time BNG2.pl network-generation step at fit prep.
     The `bionetgen` pip package ships the Windows BNG binaries
     (`bng-win`, including `run_network.exe`), but not a Perl interpreter;
-    install Strawberry Perl from https://strawberryperl.com.
+    `FluBNF.bat` offers to install Strawberry Perl via winget when it
+    installs the engine (time-bounded like the data offer, default yes),
+    or install it yourself from https://strawberryperl.com.
   The PF engine has not yet been validated end to end on native Windows;
   until it is, machines without the engine automatically run the analogue
   engine only, exactly as on a Tier-A Mac.
@@ -556,29 +564,26 @@ standard `setup.sh` instructions inside the Linux environment.
   the section above says why, what was added to measure it, and what a
   student can do about it on their own machine if they want to. Nothing in
   the project depends on their doing anything.
-- **The PowerShell has never been executed here.** The lab develops on
-  macOS and has no PowerShell interpreter, so `setup.ps1` is written from
-  the language rules and first runs in CI. The git behaviour it depends on
-  (`--sparse` checking out the root only, `reapply` adding nothing, `add`
-  being idempotent, `set` pruning a full clone, `pull --ff-only` succeeding
-  against a shallow blobless sparse clone) was measured locally on git
-  2.39.5, because that is git behaviour rather than platform behaviour, and
-  the equivalent bash in `setup.sh` was executed against five clone states.
-  What remains unverified is the transliteration into PowerShell 5.1
-  syntax, which is what the CI job exists to check.
+- **The PowerShell is not run on the development host.** The lab develops
+  on macOS, so `setup.ps1` was written from the language rules. The git
+  behaviour it depends on (`--sparse` checking out the root only, `reapply`
+  adding nothing, `add` being idempotent, `set` pruning a full clone,
+  `pull --ff-only` succeeding against a shallow blobless sparse clone) was
+  measured locally on git 2.39.5, because that is git behaviour rather than
+  platform behaviour, and the equivalent bash in `setup.sh` was executed
+  against five clone states. The script itself has since run on real
+  Windows (field tests, 2026-08-25; a Windows Sandbox first run,
+  2026-09-01) as well as in CI, which remains the routine check of every
+  change.
 - **The Controlled Folder Access detection is unverified against a machine
-  that has it on.** The GitHub runner is not such a machine, and this lab
-  has no Windows box at all, so what CI can show is that `Get-MpPreference`
-  is queried without crashing and that the section prints. These things
-  behind it are read from Microsoft's documentation rather than measured
-  here:
-  - that Controlled Folder Access is **off** in the shipped state, so a
+  that has it on.** The GitHub runner is not such a machine, so what CI
+  can show is that `Get-MpPreference` is queried without crashing and that
+  the section prints. These things behind it are read from Microsoft's
+  documentation rather than measured here:
+  - that Controlled Folder Access is **off** in the shipped state
+    (Microsoft's own page says "CFA is turned off by default"), so a
     machine that has it on was configured that way by its user, its image,
-    or policy. An earlier draft of this document asserted the opposite --
-    that Windows 11 shipped with it already switched on -- in five places,
-    on the strength of one machine reading `1`. Microsoft's own page says
-    "CFA is turned off by default". Nothing in the code depended on the
-    claim, but it was wrong and it is corrected;
+    or policy;
   - that `EnableControlledFolderAccess` reports `0` through `4` in the form
     this script matches (both the number and the enumeration name are
     accepted, so either rendering is handled), and that modes `3` and `4`
