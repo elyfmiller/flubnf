@@ -107,16 +107,17 @@ FluBNF still works, it just runs one of its two models instead of both, so you
 are not stuck. Check the engine file is in your Downloads folder with its
 original name, then open FluBNF again.
 
-If it still says that: on macOS, open Terminal in the FluBNF folder and run
-`./setup_engine.sh`, which prints a section called **"what this machine can
-see"** naming the actual cause. On Windows, run this in Command Prompt from
-the FluBNF folder:
+If it still says that: on macOS, double-click **`SetupEngine.command`** in the
+FluBNF folder. It does only the engine step, prints a section called **"what
+this machine can see"** naming the actual cause, and installs the engine when
+it can find the file. On Windows, run this in Command Prompt from the FluBNF
+folder:
 
 ```
 powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1
 ```
 
-Either way, send Ely what it prints.
+Either way, if it does not finish, send Ely what it prints.
 
 **It tried to log in to GitHub and asked for a password.**
 That means it did not find the engine file, so it fell back to downloading
