@@ -229,7 +229,7 @@
   <div class="card"><h2>Latest run</h2>
    {% set r = ledger[0] %}
    <p><a href="/runs/{{ r.run_id }}">{{ r.label }}</a>
-   <span class="pill {% if r.status == 'ok' %}ok{% elif r.status == 'interrupted' %}warn{% else %}bad{% endif %}">{{ r.status }}</span></p>
+   <span class="pill {% if r.status == 'ok' %}ok{% elif r.status in ('interrupted', 'partial') %}warn{% else %}bad{% endif %}">{{ r.status }}</span></p>
    {# chips are markup built by the server from fixed phrases and numbers
       only; the raw error text never travels through them #}
    <p class="hint">{{ r.chips | safe }}</p>
@@ -238,7 +238,7 @@
    {{ settings_html(r.settings) | safe }}
    {# straight to the run's outputs, so the tab never dead-ends here #}
    <p class="hint">{% if r.has_report %}<a href="/runs/{{ r.run_id }}/report" target="_blank">Weekly report</a> · {% endif %}<a href="/output">Submission files</a></p>
-   {% if r.spec and r.status in ("stopped", "error", "failed", "interrupted") %}
+   {% if r.spec and r.status in ("stopped", "error", "failed", "interrupted", "partial") %}
    {# one-click re-run from the ledger row's recorded spec: no re-filling
       the form. Worded honestly: console fits hold no checkpoint, so this
       is a fresh run, never a resume. Same guard as the Run models button;

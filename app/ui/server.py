@@ -308,7 +308,7 @@ _last_form: dict = {}
 #: re-run: the run ended without completing. Console fits hold no
 #: checkpoint, so the offer is a FRESH run with the recorded settings, and
 #: every surface that shows it is worded that way (never "resume").
-RERUN_STATUSES = ("stopped", "error", "failed", "interrupted")
+RERUN_STATUSES = ("stopped", "error", "failed", "interrupted", "partial")
 
 #: The pybnf/bngsim probe, run by the engine venv's own interpreter.
 #:
@@ -2438,7 +2438,14 @@ def _run_all(spec: RunSpec) -> None:
         # note: nothing gates on "this session ran" anymore -- the Forecast
         # tab renders the latest STORED results unconditionally, like the
         # model pages always did
-        ledger.close_run(run_id, "failed" if fails else "ok", outcome)
+        # "partial", not "failed": reaching this line means the pipeline
+        # completed and the assembled record (results, submissions, report)
+        # exists; fit failures are per-cell facts the chips already count.
+        # MEASURED 2026-09-01, first real Windows full grid: 159 fits, 4
+        # failures, 2 submissions, report built -- and the badge called the
+        # whole run failed. "failed"/"error" stay reserved for runs that
+        # died; old ledger rows keep whatever status they closed with.
+        ledger.close_run(run_id, "partial" if fails else "ok", outcome)
         # storage hygiene at run completion: with the assembled record on
         # disk (results, report, submissions, archive), the per-cell fit
         # trees are intermediates and are pruned so workroots stop
