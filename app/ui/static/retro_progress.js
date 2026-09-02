@@ -20,7 +20,13 @@
 //     between polls the shown range ticks down with the wall clock, so the
 //     number always moves while work is happening;
 //   * when the estimate cannot be computed yet the basis line says so
-//     plainly; a stale number is never left standing in its place.
+//     plainly; a stale number is never left standing in its place;
+//   * when polls stop arriving (a quit or crashed app, a sleeping server)
+//     the ticker stops extrapolating: after 3 consecutive failed polls the
+//     elapsed clock and the ETA decay freeze at their last-good values and
+//     the basis line says the connection is lost, instead of counting a
+//     dead run down to "~1 min left" overnight. The next successful poll
+//     clears the freeze and the note.
 // The previous ticker smoothed the server's point estimate with an EMA and
 // resisted upward corrections; against a server value that barely moved
 // (the global-mean estimate cancelled its own inputs), that pinned the
@@ -83,6 +89,10 @@
     // the tab polls at once, so the bar is current when it is looked at.
     var hiddenMs = opts.pollHiddenMs || 20000;
     var inflight = false, timer = null;
+    // failure awareness: consecutive failed polls, and the wall-clock
+    // moment the freeze began (paint() reads time through it, so every
+    // extrapolation stops at the same instant)
+    var fails = 0, stalled = false, stallAt = 0;
     function schedule(ms) {
       clearTimeout(timer);
       timer = setTimeout(poll, ms);
@@ -98,6 +108,7 @@
       fetch("/api/retro/progress")
         .then(function (r) { return r.json(); })
         .then(function (all) {
+          fails = 0; stalled = false;    // any success clears the freeze
           var names = Object.keys(S);
           for (var i = 0; i < names.length; i++) {
             var n = names[i], st = S[n], p = all[n];
@@ -123,7 +134,11 @@
             st.d = p;
           }
         })
-        .catch(function () {})
+        .catch(function () {
+          // ~9 s of silence at the 3 s cadence: freeze rather than keep
+          // extrapolating numbers no server is standing behind
+          if (++fails >= 3 && !stalled) { stalled = true; stallAt = Date.now(); }
+        })
         .then(function () {
           inflight = false;
           schedule(document.hidden ? hiddenMs : pollMs);
@@ -132,10 +147,15 @@
 
     function paint() {
       if (document.hidden) return;          // nothing to see: do no work
+      // while stalled, time stands at the moment the freeze began: the
+      // elapsed clock and the ETA decay hold their last-good values
+      var now = stalled ? stallAt : Date.now();
       Object.keys(S).forEach(function (n) {
         var st = S[n], d = st.d, c = st.card;
         var paused = (d.status === "paused");
-        if (paused) st.quips.pause(); else st.quips.resume();
+        // quips hold while stalled too: a rotating line beside frozen
+        // readouts would read as live work
+        if (paused || stalled) st.quips.pause(); else st.quips.resume();
         var pct = d.total ? 100 * d.done / d.total : 0;
         pct = Math.max(st.disp, Math.min(100, pct));
         st.disp = pct;                                    // never regress
@@ -143,12 +163,12 @@
         if (fill) fill.style.width = Math.max(pct, 2) + "%";
         var elapsed = d.elapsed_s;
         if (elapsed != null && (d.status === "running" || d.status === "stopping"))
-          elapsed += (Date.now() - d.at) / 1000;          // held while paused
+          elapsed += (now - d.at) / 1000;    // held while paused or stalled
         var count = d.done + "/" + d.total + " weeks";
         var line = Math.round(pct) + "% · " + count;
         if (elapsed != null) line += " · " + hms(elapsed) + " elapsed";
         if (!paused && st.lo != null && st.hi != null) {
-          var dt = (Date.now() - st.etaAt) / 1000;
+          var dt = (now - st.etaAt) / 1000;
           line += " · " + etaText(st.lo - dt, st.hi - dt) + " left";
         }
         if (paused) line += " · paused";
@@ -159,7 +179,9 @@
         Array.prototype.forEach.call(c.querySelectorAll(".rcount"),
           function (el) { el.textContent = count; });
         var basis = c.querySelector(".rbasis");
-        if (basis) basis.textContent = paused
+        if (basis) basis.textContent = stalled
+          ? "Connection lost. Numbers paused."
+          : paused
           ? "Paused; the fits in flight finished first. The clock is held and resumes with the replay."
           : (d.eta_basis
              || (d.weeks_measured

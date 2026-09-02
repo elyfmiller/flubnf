@@ -31,13 +31,22 @@
   if(window.flubnfQuips)window.flubnfQuips(document.getElementById('prep-quip'));
   var phase={{ preparing.phase | tojson }};
   function paint(){
+    if(document.hidden)return;          // nothing to see: do no work
     var s=Math.round((Date.now()-t0)/1000);
     stat.textContent=phase+'… '+(s>=60?Math.floor(s/60)+' min '+(s%60)+' s':s+' s');
   }
   setInterval(paint,1000);paint();
-  var inflight=false;
+  // Polling discipline (the forecast page's idiom): a HIDDEN tab skips the
+  // fetch and drops to a slow heartbeat instead of asking every two seconds
+  // for readouts nobody can see, an in-flight request suppresses the next
+  // tick rather than stacking behind a slow reply, and returning to the tab
+  // polls at once, so the phase line is current the moment it matters.
+  var POLL_MS=2000, POLL_HIDDEN_MS=20000;
+  var inflight=false, timer=null;
+  function schedule(ms){clearTimeout(timer); timer=setTimeout(poll,ms);}
   function poll(){
-    if(inflight)return;
+    if(inflight){schedule(POLL_MS); return;}
+    if(document.hidden){schedule(POLL_HIDDEN_MS); return;}
     inflight=true;
     fetch('/api/retro/{{ season }}/results_status{{ ('?archive=' ~ archive) if archive else '' }}')
      .then(function(r){return r.json();})
@@ -46,9 +55,12 @@
        if(d.phase)phase=d.phase;
      })
      .catch(function(){})
-     .then(function(){inflight=false;});
+     .then(function(){inflight=false;
+       schedule(document.hidden?POLL_HIDDEN_MS:POLL_MS);});
   }
-  setInterval(poll,2000);
+  document.addEventListener('visibilitychange',function(){
+    if(!document.hidden) schedule(0);});
+  schedule(POLL_MS);
  })();
 </script>
 {% else %}
@@ -358,7 +370,9 @@
        checked> Lock axes</label>
     </div>
     <div class="fdmodels" id="fd-models"></div>
-    <div id="fd-plot"></div>
+    {# reserved height (the fan card's rule): the player draws at its
+       default plotHeight 400, so the first chart landing shifts nothing #}
+    <div id="fd-plot" style="min-height:400px"></div>
     <p class="hint" id="fd-msg">loading&hellip;</p>
    </div>
   </div>
@@ -492,6 +506,16 @@
     var on=b.dataset.key===key;
     b.setAttribute('aria-pressed',String(on));
     b.querySelector('.dir').textContent=on?(dir>0?' ▲':' ▼'):'';
+    // assistive tech hears what the aria-hidden triangle shows: the
+    // sorted column's th states the direction, every other th drops the
+    // attribute (the unsorted initial render legitimately carries none).
+    // Runtime only: a th attribute in the server markup would change the
+    // markup contract this table is pinned to.
+    var th=b.closest('th');
+    if(th){
+     if(on)th.setAttribute('aria-sort',dir>0?'ascending':'descending');
+     else th.removeAttribute('aria-sort');
+    }
    });
   }
   btns.forEach(function(b){b.addEventListener('click',function(){
@@ -651,7 +675,7 @@
      models: Object.assign({}, FluBNFPlayer.MODEL_COLORS,
                            {ensemble: css('--gold')
                                       || FluBNFPlayer.MODEL_COLORS.ensemble}),
-     flusightEnsemble: '#AAB1C9'})
+     flusightEnsemble: css('--official') || '#AAB1C9'})
  });
  function setView(v){
    V.view = v;

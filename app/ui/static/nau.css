@@ -43,12 +43,17 @@
   --gold:#0173A9; --gold-bright:#34C0F0;
   --nav-bg:#FFFFFF; --nav-ink:#000F7E;
   --ok:#177245; --warn:#8A5A14; --bad:#C42840;
+  /* official comparator lines (the FluSight ensemble): a neutral grey,
+     clearly not a member color, 3:1 or better on the card (measured
+     4.6:1 here); charts resolve it per draw like every chart token */
+  --official:#6E7590;
   --map-nodata:#C9C5D8;
   --shadow:0 1px 2px rgba(12,13,23,.06),0 2px 8px rgba(12,13,23,.05);
   /* high-contrast variants (data-contrast="high" remaps onto these) */
   --ink-hc:#000000; --mut-hc:#363C6B; --nav-ink-hc:#000000;
   --line-hc:#7F7A9E; --field-line-hc:#43486F; --accent-ink-hc:#014B70;
   --ok-hc:#0A4A2B; --warn-hc:#5C3B05; --bad-hc:#8C1127;
+  --official-hc:#3A3F5C;
   /* red-green-safe variants (data-vision="cvd" remaps onto these) */
   --ok-cvd:#1256C0; --bad-cvd:#A34A00;
   --ok-cvd-hc:#0A3E8F; --bad-cvd-hc:#7A3600;
@@ -81,11 +86,13 @@
   --gold:#34C0F0; --gold-bright:#34C0F0;
   --nav-bg:#151729; --nav-ink:#E9EAF4;
   --ok:#4CC38A; --warn:#E5A55D; --bad:#FB4653;
+  --official:#AAB1C9;
   --map-nodata:#232741;
   --shadow:0 1px 3px rgba(0,0,0,.5),0 4px 14px rgba(0,0,0,.35);
   --ink-hc:#FFFFFF; --mut-hc:#C8CEE9; --nav-ink-hc:#FFFFFF;
   --line-hc:#6E76A4; --field-line-hc:#8C96D2; --accent-ink-hc:#7FDBFF;
   --ok-hc:#96E6BC; --warn-hc:#F2C689; --bad-hc:#FFA0AB;
+  --official-hc:#D6DBEC;
   --ok-cvd:#6FB8FF; --bad-cvd:#FF9E45;
   --ok-cvd-hc:#A9D2FF; --bad-cvd-hc:#FFBE85;
   --cat-large-decrease:#2e7d4f; --cat-decrease:#7fc97f;
@@ -112,11 +119,13 @@
   --gold:#0173A9; --gold-bright:#34C0F0;
   --nav-bg:#FDFAF1; --nav-ink:#000F7E;
   --ok:#177245; --warn:#8A5A14; --bad:#C42840;
+  --official:#6E7590;
   --map-nodata:#DCD3BD;
   --shadow:0 1px 2px rgba(63,54,28,.08),0 2px 8px rgba(63,54,28,.06);
   --ink-hc:#000000; --mut-hc:#343963; --nav-ink-hc:#000000;
   --line-hc:#837C62; --field-line-hc:#43486F; --accent-ink-hc:#014B70;
   --ok-hc:#0A4A2B; --warn-hc:#5C3B05; --bad-hc:#8C1127;
+  --official-hc:#3A3F5C;
   --ok-cvd:#1256C0; --bad-cvd:#A34A00;
   --ok-cvd-hc:#0A3E8F; --bad-cvd-hc:#7A3600;
   --cat-large-decrease:#2e7d4f; --cat-decrease:#7fc97f;
@@ -143,11 +152,13 @@
   --gold:#34C0F0; --gold-bright:#34C0F0;
   --nav-bg:#2A2F45; --nav-ink:#CDD3E6;
   --ok:#57C893; --warn:#E2A968; --bad:#FF6B76;
+  --official:#AAB1C9;
   --map-nodata:#333952;
   --shadow:0 1px 3px rgba(0,0,0,.35),0 4px 12px rgba(0,0,0,.25);
   --ink-hc:#FFFFFF; --mut-hc:#CDD4EF; --nav-ink-hc:#FFFFFF;
   --line-hc:#838BB1; --field-line-hc:#9AA4DE; --accent-ink-hc:#7FDBFF;
   --ok-hc:#9FEAC4; --warn-hc:#F4CD96; --bad-hc:#FFAAB3;
+  --official-hc:#D6DBEC;
   --ok-cvd:#7FBFFF; --bad-cvd:#FFA45C;
   --ok-cvd-hc:#B5D8FF; --bad-cvd-hc:#FFC38F;
   --cat-large-decrease:#2e7d4f; --cat-decrease:#7fc97f;
@@ -192,9 +203,30 @@
   --fs-hint:clamp(.82rem,.785rem + .12vw,.98rem);     /* 13.1 -> 15.7px */
   --fs-table:clamp(.84rem,.805rem + .12vw,1rem);      /* 13.4 -> 16px   */
   --fs-big:clamp(1.7rem,1.475rem + .6vw,2.35rem);     /* 27.2 -> 37.6px */
+  /* sub-floor tail, joined to the fluid scale 2026-09-01: table headers,
+     pills and dense previews (--fs-micro), form labels and link-styled
+     buttons (--fs-label). Floors sit at or a hair above the old fixed
+     sizes so nothing shrinks; the vw term gives the tier the same
+     wide-window growth as everything else; the rem anchor keeps the
+     A-/A/A+ root-size control authoritative. */
+  --fs-micro:clamp(.75rem,.72rem + .1vw,.85rem);      /* 12   -> 13.6px */
+  --fs-label:clamp(.78rem,.75rem + .1vw,.9rem);       /* 12.5 -> 14.4px */
   /* focus-ring thickness: a size, so it lives with the size tokens; the
      high-contrast modifier thickens it below */
   --focus-w:2px;
+  /* spacing and radius scale, declared 2026-09-01: the named contract for
+     NEW rules. These freeze the de facto ~.75rem rhythm and the 8/10/99
+     radius family already in use; existing declarations stay literal
+     (several are string-pinned by tests) and migrate opportunistically
+     as rules are touched. New code consumes these instead of sampling
+     the continuum (.6/.65/.7/.9rem drift, one-pixel radius siblings). */
+  --sp-1:.35rem;
+  --sp-2:.6rem;
+  --sp-3:.75rem;
+  --sp-4:1.1rem;
+  --r-sm:8px;
+  --r-md:10px;
+  --r-pill:99px;
 }
 /* ---- accessibility modifiers ---------------------------------------------
    Two independent modifiers on the root element, composing with any theme.
@@ -227,6 +259,7 @@
   --accent-ink:var(--accent-ink-hc);
   --ok:var(--ok-hc); --warn:var(--warn-hc); --bad:var(--bad-hc);
   --ok-cvd:var(--ok-cvd-hc); --bad-cvd:var(--bad-cvd-hc);
+  --official:var(--official-hc);
   --focus-w:3px;
 }
 [data-vision="cvd"]{
@@ -343,14 +376,15 @@ h1{font-size:var(--fs-h1);font-weight:700;margin:.1rem 0 .6rem;
 h1 .accent{color:var(--gold)}
 .sub{color:var(--mut);margin:.1rem 0 .8rem;font-size:var(--fs-sub)}
 /* ---- controls ---- */
-label{display:block;font-size:.78rem;color:var(--mut);margin:.5rem 0 .2rem}
+label{display:block;font-size:var(--fs-label);color:var(--mut);margin:.5rem 0 .2rem}
 /* form fields keep the sunken-well fill but carry their own boundary token:
    in dark mode --line vanishes against the well (measured 1.38:1), so
    --field-line holds #5B639E there (3.43:1, passing the 3:1 control
    boundary); the light theme keeps its measured-adequate --line value */
 input,select{width:100%;padding:.42rem .6rem;border:1px solid var(--field-line);
   border-radius:8px;font:inherit;background:var(--bg);color:var(--ink)}
-input:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible{
+input:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible,
+summary:focus-visible{
   outline:var(--focus-w,2px) solid var(--gold);outline-offset:2px}
 /* button system: default = secondary outline, .gold = primary (legacy class
    name; now the cyan accent), .quiet = quiet */
@@ -413,8 +447,8 @@ table.compact{width:auto}
 /* the table column sizes to its table, not to an unwrapped caption: the
    caption wraps at the instrument's own width */
 .vintagetable p.hint{max-width:24ch}
-th{color:var(--mut);font-weight:600;font-size:.72rem;text-transform:uppercase;
-   letter-spacing:.04em}
+th{color:var(--mut);font-weight:600;font-size:var(--fs-micro);
+   text-transform:uppercase;letter-spacing:.04em}
 code{background:var(--bg);padding:.12rem .35rem;border-radius:5px;font-size:.85em;
      overflow-wrap:anywhere}
 .ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
@@ -424,7 +458,7 @@ code{background:var(--bg);padding:.12rem .35rem;border-radius:5px;font-size:.85e
 .hint{color:var(--mut);font-size:var(--fs-hint)}
 .big{font-size:var(--fs-big);font-weight:750;font-variant-numeric:tabular-nums}
 .pill{display:inline-block;padding:.1rem .55rem;border-radius:99px;
-  border:1px solid var(--line);font-size:.76rem}
+  border:1px solid var(--line);font-size:var(--fs-micro)}
 progress{width:100%;height:12px;appearance:none;-webkit-appearance:none;
   border:1px solid var(--line);border-radius:99px;background:var(--track);
   overflow:hidden}
@@ -461,7 +495,14 @@ progress::-moz-progress-bar{background:var(--accent-ink);border-radius:99px}
    follows --accent-ink so it passes 3:1 against the track in light mode) */
 .runbar{height:14px;border-radius:99px;background:var(--track);
   border:1px solid var(--line);overflow:hidden;margin:.45rem 0}
-.runbar div{height:100%;width:0;border-radius:99px;background:var(--accent-ink)}
+/* the fill glides between poll landings: the 400ms scripted steps become
+   continuous motion carrying real information (work advancing) at zero JS
+   cost. Width, not transform, keeps the pill's rounded end true; the bar
+   is 14px inside overflow:hidden, so layout cost is negligible. The
+   reduced-motion block below collapses transition-duration, so this
+   degrades to exactly the stepped behavior. */
+.runbar div{height:100%;width:0;border-radius:99px;
+  transition:width .45s linear;background:var(--accent-ink)}
 /* percent + ETA readout: prominent, tabular */
 .runstat{font-size:1.3rem;font-weight:700;font-variant-numeric:tabular-nums;
   margin:.35rem 0}
@@ -521,8 +562,8 @@ tr.usagg td{font-weight:650;border-bottom:2px solid var(--line)}
 /* ---- output tab: downloads + csv previews ---- */
 button.linkish,[data-theme="dark"] button.linkish,
 [data-theme="dim"] button.linkish{background:none;border:0;
-  padding:0;margin:0;color:var(--mut);font-size:.78rem;font-weight:600;
-  text-decoration:underline;cursor:pointer}
+  padding:0;margin:0;color:var(--mut);font-size:var(--fs-label);
+  font-weight:600;text-decoration:underline;cursor:pointer}
 button.linkish:hover,[data-theme="dark"] button.linkish:hover,
 [data-theme="dim"] button.linkish:hover{
   background:none;color:var(--ink)}
@@ -532,7 +573,7 @@ details.preview > summary{cursor:pointer;list-style:none;user-select:none}
 details.preview > summary::-webkit-details-marker{display:none}
 details.preview > summary::before{content:"▸ ";color:var(--gold)}
 details.preview[open] > summary::before{content:"▾ "}
-details.preview table{font-size:.76rem;margin-top:.35rem}
+details.preview table{font-size:var(--fs-micro);margin-top:.35rem}
 details.preview td,details.preview th{padding:.22rem .45rem;white-space:nowrap}
 
 .banner{background:color-mix(in srgb, var(--accent) 14%, var(--card));
@@ -694,12 +735,19 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
 /* .row sets display:flex, which outranks the user agent's [hidden] rule:
    without this the hidden second row would show alongside the first */
 .row[hidden]{display:none}
+/* dialog titles: the modal shells are .modal.card, so their h2 would
+   otherwise inherit the .card h2 section-kicker style (uppercase,
+   letter-spaced, muted) and render the app's highest-stakes question
+   quieter than its body line. Equal specificity to .card h2 but later
+   in the file, so it wins on the modal shells only. */
+.modal h2{font-size:var(--fs-lead);font-weight:700;text-transform:none;
+  letter-spacing:0;color:var(--ink);margin:0 0 .35rem}
 /* archived runs on the retro index: secondary entries under their season */
 .archrow{display:flex;gap:.6rem;align-items:baseline;flex-wrap:wrap;
   padding:.35rem 0;border-top:1px solid var(--line)}
 .archrow .grow{flex:1;min-width:12rem}
 .archrow form{display:inline;margin:0}
-.archrow button{margin-top:0;padding:.22rem .6rem;font-size:.78rem}
+.archrow button{margin-top:0;padding:.22rem .6rem;font-size:var(--fs-label)}
 /* the storage panel's headline: total disk use in the .big figure with its
    scope note beside it */
 .stotal{display:flex;gap:.6rem;align-items:baseline;flex-wrap:wrap;
