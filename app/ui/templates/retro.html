@@ -70,8 +70,7 @@ and move on; scoring waits for settled truth.</p>
    })();
   </script>
   <p class="hint">Runs resume: completed weeks are never redone, and stops
-   and pauses wait only for the fits in flight, well under a minute. A
-   season with results asks first: resume, archive, or discard.</p>
+   and pauses wait only for the fits in flight, well under a minute.</p>
  </div></div>
  <div>
   {% for s in seasons %}
@@ -150,9 +149,8 @@ and move on; scoring waits for settled truth.</p>
      <button class="gold" data-guard="retro-run">Resume</button>
     </form>
    </div>
-   <p class="hint">Resumes with the recorded settings shown above. Completed
-    weeks are kept and skipped; an interrupted week refits only the cells
-    that never ran.</p>
+   <p class="hint">Resumes with the recorded settings shown above; an
+    interrupted week refits only the cells that never ran.</p>
    {% endif %}
    {% if s.active %}
    {# stopping and pausing are safe: only the fits in flight finish, each

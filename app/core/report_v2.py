@@ -772,9 +772,7 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
 {page_header()}
 <h1>US influenza forecast</h1>
 <p class="sub">week of {reference_date} ·
- <span data-mapmodel-label>{model_label}</span> · click a state for
- detail · Ctrl+scroll to zoom (⌘ on Mac), drag to pan, double-click to reset
- · <button id="natbtn">national detail</button></p>
+ <button id="natbtn">national detail</button></p>
 {model_toggle_html}
 {view_toggle}
 <div class="card" id="map-anchor">
@@ -789,10 +787,10 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
   <span><i class="sw" style="background:{cat_fill('increase')};opacity:.64"></i>leaning</span>
   <span><i class="sw" style="background:{cat_fill('increase')};opacity:.82"></i>likely</span>
   <span><i class="sw" style="background:{cat_fill('increase')};opacity:1"></i>confident</span>
-  <span>deeper shade = more confident</span>
  </div>
 </div>
-<p class="hint">Hover a state for its full outlook.{no_data_caption}</p>
+<p class="hint">Hover a state for its outlook, click it for detail;
+ Ctrl+scroll zooms the map (⌘ on Mac).{no_data_caption}</p>
 {"".join(sections)}
 {nat}
 <script>

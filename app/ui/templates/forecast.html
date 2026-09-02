@@ -269,8 +269,7 @@
     <button class="gold" data-guard="console-run">Run again with these settings</button>
    </form>
    <p class="hint">Console runs hold no checkpoint: this starts a fresh run
-    with the settings recorded for this run. It does not resume the earlier
-    one.</p>
+    with the recorded settings and does not resume the earlier one.</p>
    {% endif %}
   </div>
   {% endif %}
@@ -280,7 +279,7 @@
      stored forecasts exist (MODELS.length below), so the first-launch hint
      can never coexist with a real fan card; it renders only when the
      server had no stored run to serialize into FANQ. #}
-  <div id="fanwrap">{% if fanq_json == '{}' %}<p class="hint">Forecasts appear here: run the models and the latest stored run renders automatically.</p>{% endif %}</div>
+  <div id="fanwrap">{% if fanq_json == '{}' %}<p class="hint">Forecasts appear here once the models run.</p>{% endif %}</div>
 
   <details class="card" open><summary><h2 style="display:inline">Data</h2>
    <span class="hint">: raw admissions, any location (latest vintage)</span></summary>

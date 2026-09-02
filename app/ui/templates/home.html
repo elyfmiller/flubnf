@@ -30,8 +30,8 @@
  {{ outlook_toggle | safe }}
  {{ map_svg | safe }}
  <p class="hint">Most likely direction of admissions.
- {% if outlook_pending %}Preparing the outlook &mdash; a few seconds on
- first launch; this page updates by itself.
+ {% if outlook_pending %}Preparing the outlook; this page updates by
+ itself in a few seconds.
  {% elif outlook_date %}Fitted results cover {{ outlook_n }} of 52
  jurisdictions in the latest run; the rest show as no data. Hover a state
  for its category probabilities.
@@ -95,13 +95,12 @@
      so it labelled nothing; relwis_convention_note is the one wording,
      shared with Methods, the public site and the exported report. #}
   <p class="hint">Two members, three seasons, replayed on vintage data only.
-  The two columns share one convention and one cell set: both are relWIS
-  against the CDC FluSight baseline on the same 15,460 cells, so they
-  compare directly, lower is better, and below 1.000 beats that baseline.
-  The comparator is the hub's own combination of every team's forecasts, a
-  strong reference rather than a naive one; pooled they are level, 0.007
-  apart over 76 forecast weeks, inside the sealed record's measured
-  week-to-week variation. One caution, for comparisons outside this table:
+  Both columns are relWIS against the CDC FluSight baseline on the same
+  15,460 cells, so they compare directly; below 1.000 beats that baseline.
+  The comparator is the hub's own combination of every team's forecasts,
+  not a naive reference; pooled they sit 0.007 apart over 76 forecast
+  weeks, inside the sealed record's measured week-to-week variation. For
+  comparisons outside this table:
   {{ relwis_convention_note }} Placement among all submitting teams is
   withdrawn and not reported; see <a href="/methods">Methods</a>.</p></div>
  <div class="card"><h2>Start here</h2>
@@ -179,9 +178,8 @@
    <text x="703" y="117" class="svgt-md" font-weight="700">Equal-weight blend</text>
    <text x="703" y="138" class="svgt-sm">quantile average,</text>
    <text x="703" y="156" class="svgt-sm">50/50, never fitted</text>
-   <text x="908" y="115" class="svgt-md" font-weight="700">FluSight CSV</text>
-   <text x="908" y="133" class="svgt-sm" font-weight="600">+ weekly report</text>
-   <text x="908" y="153" class="svgt-sm">ready to submit</text>
+   <text x="908" y="122" class="svgt-md" font-weight="700">FluSight CSV</text>
+   <text x="908" y="140" class="svgt-sm" font-weight="600">+ weekly report</text>
   </g>
  </svg>
  </div>
@@ -197,9 +195,8 @@
   <p><span class="math"><i>q</i><sub>ens</sub>(<i>&#964;</i>) =
    mean<sub>m</sub>&#8239;<i>q</i><sub>m</sub>(<i>&#964;</i>)</span>
    <span class="eqnote">the submitted quantile: an equal-weight mean of the
-   member quantiles at the same level, never fitted</span></p>
+   member quantiles</span></p>
  </div>
- <p class="hint">Full method: <a href="/methods">Methods</a>.</p>
 </div>
 
 <div class="grid3">

@@ -14,8 +14,7 @@
 <div class="card">
  <h2>What happened</h2>
  <p>{{ error }}</p>
- <p class="hint">Nothing from this run was submitted. Adjust the settings on
- the <a href="/forecast">Forecast</a> tab and run again; every run receives a
+ <p class="hint">Nothing from this run was submitted; every run receives a
  fresh workspace.</p>
 </div>
 {% endif %}
@@ -27,7 +26,7 @@
    copying it (first Windows full grid, 2026-09-01: 4 failures and no
    page said which cells or why). #}
 <div class="card"><h2>Partial-run detail</h2>
- <p class="hint">Recorded on this run's ledger row. Copy this block when
+ <p class="hint">Recorded on this run's ledger row; copy this block when
   reporting a partial run.</p>
  {% if ensemble_withheld %}
  <p><b>ensemble</b>: <span class="bad">no file written</span><br>
@@ -74,7 +73,7 @@
   <button class="gold" data-guard="console-run">Run again with these settings</button>
  </form>
  <p class="hint">Console runs hold no checkpoint: this starts a fresh run
-  with the settings recorded above. It does not resume the earlier one.</p>
+  with the recorded settings and does not resume the earlier one.</p>
 </div>
 {% endif %}
 
@@ -82,8 +81,8 @@
  <a href="/runs/{{ run_id }}/report">Open the weekly report</a>
  <span class="hint"> · </span>
  <a href="/runs/{{ run_id }}/report/download" download>Download it</a>
- <p class="hint">One self-contained HTML file, named for this run's
-  forecast date; it opens without the app.</p>
+ <p class="hint">One self-contained HTML file; it opens without the
+  app.</p>
 </div>{% endif %}
 
 {% for model, locs in models.items() %}

@@ -21,7 +21,7 @@
  <p class="runstat" id="prep-stat" aria-live="polite">{{ preparing.phase }}&hellip;</p>
  <p class="hint">Scoring every stored week against settled truth, building
   the US national aggregate, and warming the playback caches. This runs
-  once and is kept; the page then loads instantly.</p>
+  once and is kept.</p>
  <p class="quip rquip" id="prep-quip"></p>
 </div>
 <script>
@@ -101,8 +101,7 @@
  {% if figs %}<p class="hint">{{ figs.blurb }}</p>{% endif %}
  <p class="hint">The two conventions give different numbers for the same
   forecasts and answer different questions, so a figure from one must never
-  be compared with a figure from the other. Every score below states which
-  one produced it.</p>
+  be compared with a figure from the other.</p>
  {% if figs and figs.convention == 'pairwise' and figs.available %}
  {# THE VALUE, NOT THE PLACEMENT. This figure is scored against the teams
     that submitted this season, in these jurisdictions, and it moves when
@@ -175,7 +174,7 @@
 </script>
 {% elif prog and prog.elapsed_s and prog.elapsed_s >= 1 %}
 {# a sub-second record would render a fabricated 0:00:00: say nothing #}
-<p class="hint">Replay wall time {{ prog.elapsed_s | hms }} (h:mm:ss) over
+<p class="hint">Replay wall time {{ prog.elapsed_s | hms }} over
  {{ prog.done }} weeks{% if prog.mean_s %}, mean {{ "%.0f"|format(prog.mean_s) }} s
  per week over {{ prog.weeks_measured }} timed{% endif %}{% if prog.slowest_week %};
  slowest week {{ prog.slowest_week }} at {{ "%.0f"|format(prog.slowest_s) }} s{% endif %}.
@@ -276,10 +275,9 @@
    point pools every cell scored to that week. There is no cumulative
    pairwise analogue, and drawing the ratio curve under a pairwise heading
    would be exactly the mixing this page refuses. #}
-<p class="hint">Not available under this convention. A cumulative line is a
- running ratio of sums by construction, each point pooling every cell
- scored so far; the pairwise figure is a geometric mean over a field and
- has no cumulative form. The curve is on the ratio of sums view.</p>
+<p class="hint">Not available under this convention: a cumulative line is a
+ running ratio of sums by construction, and the pairwise figure has no
+ cumulative form. The curve is on the ratio of sums view.</p>
 {% elif curve %}
 {# the chart states its own scale: the y range hugs the data (always
    including the 1.0 and 0.5 gridlines), the first and last week dates sit

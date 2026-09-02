@@ -46,10 +46,9 @@
    analogue has no BNGL and renders no such block. #}
 <details class="card bngl">
  <summary>View model source (BNGL)</summary>
- <p class="hint">flubnf/templates/{{ bngl_file }}, shown exactly as stored.
- Tokens in double braces, such as <code>{{ '{{POP}}' }}</code> and
- <code>{{ '{{GAMMA}}' }}</code>, are filled in per state and week at run
- time.</p>
+ <p class="hint">flubnf/templates/{{ bngl_file }}, shown exactly as stored;
+ double-brace tokens such as <code>{{ '{{POP}}' }}</code> are
+ filled in per state and week at run time.</p>
  <pre>{{ bngl_src }}</pre>
 </details>
 {% endif %}
@@ -60,9 +59,8 @@
    <form method="post" action="/model/ensemble/generate">
     <button class="gold">Generate ensemble from latest run</button></form>
   {% elif name == "pf2s" %}
-   <p class="hint">A research engine, not a shipped ensemble member: it has
-   no navigation tab and no control on the Forecast form. The run endpoint
-   still accepts a three-member request for research use. Background:
+   <p class="hint">A research engine, not a shipped ensemble member; the
+   run endpoint still accepts a three-member request. Background:
    <a href="/methods#two-strain">Methods</a>.</p>
   {% else %}
    <form method="post" action="/run">

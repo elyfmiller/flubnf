@@ -87,8 +87,8 @@ def test_harmonic_figure_carries_the_design_conventions():
     assert "(early Jan)" in html                    # and placed on the calendar
     assert html.count("&#949;&#8321;") == 2         # both amplitude extremes
     assert "1.0 (&#946;" in html                    # the beta0 reference
-    # the caption ties the curve to the model and owns its honesty note
-    assert "curve the filter bends each week" in html
+    # the caption owns the figure's honesty note
+    assert "Values shown are illustrative" in html
     assert "illustrative" in html
     assert "fitted per state and week" in html
 
@@ -106,7 +106,7 @@ def test_two_strain_variant_shares_amplitude_with_per_strain_peaks():
     # per-strain peak labels and the legend naming the strains
     assert ">A</tspan>" in html and ">B</tspan>" in html
     assert "influenza A" in html and "influenza B" in html
-    assert "phase-shifted per strain" in html
+    assert "all are fitted per state and week" in html
 
 
 def test_harmonic_curve_is_computed_from_the_stated_equation():
