@@ -779,12 +779,19 @@ def _launch_runners(wd: Path, shards: list, halt: Path) -> list:
         runner.write_text(_RETRO_RUNNER.format(
             pybnf_path=str(pf_engine.PYBNF_PF), cells_json=str(sj),
             halt_path=str(halt), done_dir=str(done)))
+        # own session (own process group on Windows), exactly as the
+        # forecast path starts its runners: this supervisor runs in a
+        # daemon thread, so a console takeover or window close kills it
+        # without any finally, and the recorded group is then the one
+        # address the relaunch can still sweep (flubnf/cli.py).
         procs.append(subprocess.Popen(proc_mod.low_priority_cmd(
                      [str(pf_engine.PY_ENGINE
                       if hasattr(pf_engine, 'PY_ENGINE') else pf_engine.PY310),
                       str(runner)]), stdout=subprocess.DEVNULL,
                      stderr=subprocess.DEVNULL,
-                     **proc_mod.low_priority_popen_kwargs()))
+                     **pf_engine.runner_popen_kwargs(
+                         proc_mod.low_priority_popen_kwargs())))
+    pf_engine.record_runner_pids(procs)
     return procs
 
 
@@ -831,6 +838,10 @@ def _run_round(root: Path, wd: Path, pending: list, width: int) -> None:
             except Exception:
                 pass
         raise
+    finally:
+        # drained or killed either way: the takeover registry must not
+        # keep chasing pids this round has already resolved
+        pf_engine.unrecord_runner_pids(procs)
     if not flagged and len(cells_done(wd)) <= before:
         # the runners exited unflagged without finishing a single fit:
         # dispatching again would spin forever on the same broken engine
@@ -884,15 +895,26 @@ def run_week(root: Path, season: str, asof: str, locations: list,
         _check_stop(root)     # the flag a drained round saw lands HERE, at
         hold_while_paused(root)   # fit resolution, not at the week boundary
         _run_round(root, wd, pending, width)
-    failed = cells_failed(wd)
+    # prepare-stage failures (a state the vintage could not resolve) left
+    # no cell and so no marker, but they are failures of the week all the
+    # same: they must reach pf_failures and the keep-evidence rule below
+    # exactly like a failed fit. Marker statuses win on a (impossible by
+    # key shape) collision.
+    failed = {**pf_engine.read_prepare_failures(wd), **cells_failed(wd)}
     pf_samples = pf_engine.collect(wd)
-    if failed and not pf_samples:
-        # every fit failed: a broken engine, not a thin week. Storing an
-        # empty pf and marching on is how a whole season once completed
-        # 'done' while scoring analogue-alone cells as the ensemble.
-        first = next(iter(failed.values()))
-        raise RuntimeError(f"all {len(failed)} PF fits failed "
-                           f"(first: {first}); the week is not stored")
+    if not pf_samples:
+        # a week with nothing to store is a broken engine, not a thin
+        # week, whichever way it got here: every fit failed outright, or
+        # the markers say ok but every trajectory was unreadable and
+        # collect() downgraded them all. Storing an empty pf and marching
+        # on is how a whole season once completed 'done' while scoring
+        # analogue-alone cells as the ensemble.
+        if failed:
+            first = next(iter(failed.values()))
+            raise RuntimeError(f"all {len(failed)} PF fits failed "
+                               f"(first: {first}); the week is not stored")
+        raise RuntimeError("every fitted cell's trajectory was unreadable "
+                           "at collect; the week is not stored")
     if failed:
         (Path(root) / "failures.log").open("a").write(
             f"{asof}: {len(failed)} PF cell(s) failed and are absent from "
@@ -910,12 +932,16 @@ def run_week(root: Path, season: str, asof: str, locations: list,
     # trees, runner scripts, shard lists, and done-markers this samples file
     # already folded in are intermediates now, and keeping them is what let
     # a season tree grow to gigabytes. Never fatal: a week that cannot be
-    # pruned is still a fitted week.
-    try:
-        from app.core import reclaim
-        reclaim.prune_week(wd)
-    except Exception:
-        pass
+    # pruned is still a fitted week. A week that recorded ANY failure keeps
+    # everything instead: the failed cells' pf.conf, model, and exp inputs
+    # are the evidence a rerun or an autopsy needs, and the console rule is
+    # that a run with failures keeps its workroot.
+    if not failed:
+        try:
+            from app.core import reclaim
+            reclaim.prune_week(wd)
+        except Exception:
+            pass
     return out
 
 

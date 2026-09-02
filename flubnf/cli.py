@@ -1506,6 +1506,16 @@ APP_PID_FILE = (Path(__file__).resolve().parents[1]
 APP_ENTRY_MARKERS = ("flubnf app", "flubnf window",
                      "flubnf.exe app", "flubnf.exe window")
 
+# The PF runners a server launches are plain Popen children supervised
+# from daemon threads, each in its own process group: a takeover or a
+# closed window kills the server without running any supervisor's finally
+# block, the runners keep fitting, and a heartbeat-stale resume would then
+# fit the same cells concurrently. The engine records every launched
+# runner here (app/core/engines/pf.py::record_runner_pids names the same
+# file; the two paths must agree), and the takeover sweeps the recorded
+# groups after signalling the server.
+PF_RUNNER_PIDS_FILE = APP_PID_FILE.parent / "pf_runners.json"
+
 # shown by the load watchdog when every reload attempt fails; loaded with
 # window.load_html because pywebview 6.2.1 misroutes data: URLs (its
 # is_local_url treats them as file paths and spins up an internal server)
@@ -1628,47 +1638,138 @@ def _pid_alive(pid: int) -> bool:
         return False
 
 
+def _sweep_runner_groups(registry: Optional[Path] = None,
+                         wait: float = 5.0) -> int:
+    """Terminate every PF runner process GROUP the registry records, then
+    clear the registry. The predecessor's runners are its orphans: their
+    supervising threads died with the server, so nothing else will ever
+    stop them, and a resumed run would fit the same cells concurrently.
+
+    Same safety rule as the pidfile takeover above: a pid whose live
+    command line no longer names its recorded runner script is left alone,
+    because a recycled pid must never get the treatment. POSIX signals the
+    group (SIGTERM; a survivor gets SIGKILL after `wait` seconds), which
+    reaches the engine pool each runner spawned; Windows uses
+    taskkill /T /F, which walks the tree, and degrades to nothing where
+    taskkill is unavailable. Never raises; returns how many groups were
+    signalled."""
+    import json
+    import os
+    import signal
+    import subprocess
+    import time
+    registry = registry if registry is not None else PF_RUNNER_PIDS_FILE
+    swept = 0
+    try:
+        entries = json.loads(Path(registry).read_text())
+        if not isinstance(entries, dict):
+            entries = {}
+    except Exception:
+        entries = {}
+    targets = []
+    for pid_s, meta in entries.items():
+        try:
+            pid = int(pid_s)
+        except (TypeError, ValueError):
+            continue
+        runner = str((meta or {}).get("runner") or "")
+        marker = os.path.basename(runner) if runner else ""
+        cmd = _pid_cmdline(pid)
+        if not cmd or not marker or marker not in cmd:
+            continue          # dead, or not the process that was recorded
+        try:
+            pgid = int((meta or {}).get("pgid") or pid)
+        except (TypeError, ValueError):
+            pgid = pid
+        targets.append((pid, pgid))
+    for pid, pgid in targets:
+        try:
+            if os.name == "posix":
+                os.killpg(pgid, signal.SIGTERM)
+            else:
+                subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
+                               capture_output=True, timeout=15)
+            swept += 1
+        except Exception:
+            continue
+    if targets and os.name == "posix":
+        # the cmdline pairing skips unreaped zombies, same as the takeover
+        t0 = time.time()
+        while (time.time() - t0 < wait
+               and any(_pid_alive(p) and _pid_cmdline(p)
+                       for p, _ in targets)):
+            time.sleep(0.1)
+        for pid, pgid in targets:
+            if _pid_alive(pid) and _pid_cmdline(pid):
+                try:
+                    os.killpg(pgid, getattr(signal, "SIGKILL",
+                                            signal.SIGTERM))
+                except Exception:
+                    pass
+    try:
+        Path(registry).unlink(missing_ok=True)
+    except Exception:
+        pass
+    return swept
+
+
 def _terminate_predecessor(pidfile: Optional[Path] = None,
                            markers: tuple = APP_ENTRY_MARKERS,
-                           wait: float = 5.0) -> bool:
+                           wait: float = 5.0,
+                           runner_pids: Optional[Path] = None) -> bool:
     """Single-instance takeover: if the pidfile names a live process whose
     command line contains our entry point, terminate it (SIGTERM, up to
     `wait` seconds, then SIGKILL) so the relaunch owns the port outright.
-    The stale pidfile is removed either way. Never raises; returns True
-    when a predecessor was actually signalled."""
+    The stale pidfile is removed either way, and the recorded PF runner
+    groups are swept AFTER the server is signalled -- the server dies
+    first so it cannot dispatch replacements for the fits being reclaimed.
+    The sweep runs even when no pidfile exists: a clean server exit
+    removes app.pid, but a window close kills the supervising daemon
+    threads without their finally blocks, so orphaned runners outlive the
+    pidfile. Never raises; returns True when a predecessor was actually
+    signalled.
+
+    An explicit `pidfile` with no `runner_pids` sweeps nothing: the
+    default registry names live processes, and a caller (or test) probing
+    a private pidfile must not reclaim the real console's fits."""
     import os
     import signal
     import time
-    pidfile = pidfile if pidfile is not None else APP_PID_FILE
+    if pidfile is None:
+        pidfile = APP_PID_FILE
+        if runner_pids is None:
+            runner_pids = PF_RUNNER_PIDS_FILE
     signalled = False
     try:
-        if not pidfile.is_file():
-            return False
-        pid = int(pidfile.read_text().strip())
-        if pid != os.getpid():
-            cmd = _pid_cmdline(pid)
-            if cmd and any(mk in cmd for mk in markers):
-                try:
-                    os.kill(pid, signal.SIGTERM)
-                    signalled = True
-                    t0 = time.time()
-                    while (time.time() - t0 < wait and _pid_alive(pid)
-                           and _pid_cmdline(pid)):
-                        time.sleep(0.1)
-                    if _pid_alive(pid) and _pid_cmdline(pid):
-                        # SIGKILL does not exist on Windows; there the
-                        # SIGTERM above was already TerminateProcess (hard),
-                        # so re-sending it is the same escalation
-                        os.kill(pid, getattr(signal, "SIGKILL",
-                                             signal.SIGTERM))
-                except (ProcessLookupError, PermissionError):
-                    pass
+        if pidfile.is_file():
+            pid = int(pidfile.read_text().strip())
+            if pid != os.getpid():
+                cmd = _pid_cmdline(pid)
+                if cmd and any(mk in cmd for mk in markers):
+                    try:
+                        os.kill(pid, signal.SIGTERM)
+                        signalled = True
+                        t0 = time.time()
+                        while (time.time() - t0 < wait and _pid_alive(pid)
+                               and _pid_cmdline(pid)):
+                            time.sleep(0.1)
+                        if _pid_alive(pid) and _pid_cmdline(pid):
+                            # SIGKILL does not exist on Windows; there the
+                            # SIGTERM above was already TerminateProcess
+                            # (hard), so re-sending it is the same
+                            # escalation
+                            os.kill(pid, getattr(signal, "SIGKILL",
+                                                 signal.SIGTERM))
+                    except (ProcessLookupError, PermissionError):
+                        pass
     except Exception:
         pass
     try:
         pidfile.unlink(missing_ok=True)
     except Exception:
         pass
+    if runner_pids is not None:
+        _sweep_runner_groups(runner_pids, wait=wait)
     return signalled
 
 

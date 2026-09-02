@@ -102,12 +102,111 @@ for _i, c in enumerate(cells, 1):
 '''
 
 
+# --------------------------------------------------------------------------
+# conf-safe paths
+#
+# PyBNF reads pf.conf with a pyparsing grammar whose bng_command and
+# output_dir rules stop at whitespace (only the model line rides on
+# pp.Regex), so a path containing a space cannot be expressed in the file
+# at all: "C:\\Users\\John Smith\\..." raises ParseException "Expected end
+# of text, found Smith" from deep inside the engine venv. On Windows the
+# default workroot lives under C:\\Users\\<name>\\AppData\\..., so any
+# student with a space in the username would fail every fit. The 8.3 short
+# form of the same path is space-free wherever the volume keeps short
+# names; where it does not (8.3 creation disabled), and on POSIX always,
+# the only honest move is a legible refusal at prepare() time naming the
+# path and the remedy.
+# --------------------------------------------------------------------------
+
+def _short_path_win(path: str, _api=None):
+    """The 8.3 short form of an EXISTING path via kernel32
+    GetShortPathNameW (the wide API; a first call with no buffer reports
+    the size the second call needs), or None when the API is unavailable
+    or either call fails. `_api` is injectable so the sizing dance is
+    testable off Windows."""
+    try:
+        import ctypes
+        if _api is None:
+            _api = ctypes.windll.kernel32.GetShortPathNameW   # type: ignore[attr-defined]
+        n = _api(path, None, 0)
+        if not n:
+            return None
+        buf = ctypes.create_unicode_buffer(int(n))
+        # per the API contract a return >= the buffer size means the path
+        # changed between the two calls and the buffer contents are
+        # undefined, so only 0 < ret < n is a completed copy
+        ret = _api(path, buf, int(n))
+        if not (0 < ret < int(n)):
+            return None
+        return buf.value or None
+    except Exception:
+        return None
+
+
+def conf_safe_path(p, _platform: str | None = None) -> str:
+    """`p` as pf.conf may carry it: unchanged when space-free, the 8.3
+    short form on Windows when the path contains a space, and otherwise a
+    legible refusal, because the grammar limit is platform-independent and
+    the alternative is a ParseException from inside the engine venv
+    mid-run. `_platform` is injectable for tests."""
+    s = str(p)
+    if " " not in s:
+        return s
+    if (_platform or sys.platform) == "win32":
+        short = _short_path_win(s)
+        if short and " " not in short:
+            return short
+    raise RuntimeError(
+        f"PF configuration cannot express a path containing a space: {s!r}. "
+        "PyBNF's conf grammar splits on whitespace, and no space-free (8.3) "
+        "short form of this path is available. Move the FluBNF folder (and "
+        "its workroot) to a path without spaces and rerun.")
+
+
+#: Prepare-stage failures, keyed by location tag (no _r suffix, so a key
+#: can never collide with a cell's). execute() folds the file into the
+#: merged pf_status.json and the retrospective run_week folds it into the
+#: week's failure record, so a state the vintage cannot resolve costs
+#: that state, not the run.
+PREPARE_FAILURES_NAME = "pf_prepare_failures.json"
+
+
+def read_prepare_failures(workroot: Path) -> dict:
+    """The prepare-stage failures recorded for a workroot; {} when the
+    file is absent (an older workroot, or a stubbed prepare) or
+    unreadable."""
+    try:
+        d = json.loads((Path(workroot) / PREPARE_FAILURES_NAME).read_text())
+    except Exception:
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
 def prepare(spec, workroot: Path) -> list:
-    """Materialize model+net+exp+conf for every (location, replicate) cell."""
+    """Materialize model+net+exp+conf for every (location, replicate) cell.
+
+    Failures are contained PER LOCATION: resolve_state refuses an empty
+    window or an all-NaN tail (the documented MA/MN/WV reporting-pause
+    pattern, present in 55 of 87 vintages), and one such state must cost
+    itself, not the other 52 jurisdictions. Each contained failure is
+    recorded in pf_prepare_failures.json under the location's tag, in the
+    same FAIL-string shape execute() records fit failures, so it reaches
+    pf_failures downstream. A run where every location fails still raises;
+    a single-location run re-raises its one error verbatim."""
     from flubnf.sihrs_fit import materialize_model, resolve_state, write_exp
     from flubnf.settings import BNG
     from app.core.data import LOCATIONS, vintage_path
     from app.core.runs import derive_seed
+
+    # The space guard runs first, before any location is touched: the
+    # grammar limit is the same for every cell, and failing here names the
+    # offending path instead of raising a ParseException from the engine
+    # venv mid-run. The workroot is created up front so the Windows 8.3
+    # lookup, which needs an existing path, can resolve it.
+    workroot = Path(workroot)
+    workroot.mkdir(parents=True, exist_ok=True)
+    conf_safe_path(workroot)
+    bng_conf = conf_safe_path(BNG)
 
     vintage = vintage_path(spec.forecast_date)
     variant = (spec.extra or {}).get("variant")
@@ -130,8 +229,11 @@ def prepare(spec, workroot: Path) -> list:
         # date D. Honest as-of uses typed data through D-7.
         nrevss_asof = (_d.fromisoformat(spec.forecast_date)
                        - _td(days=7)).isoformat()
-    cells = []
-    for loc in spec.locations:
+
+    def _one_location(loc: str) -> list:
+        """Every prepared cell for one location; raises are the caller's
+        to contain. A closure so the season context above (vintage,
+        variant switches, the frozen iota) needs no plumbing."""
         s = resolve_state(loc, truth_csv=vintage, locations_csv=LOCATIONS,
                           season_start=spec.season_start,
                           as_of=spec.forecast_date)
@@ -201,6 +303,7 @@ def prepare(spec, workroot: Path) -> list:
             except Exception:
                 typed_by_t, a0 = {}, 0.85   # typed feed down: channel 2 just
                                             # has no rows; the fit still runs
+        loc_cells = []
         for rep in range(spec.replicates):
             tag = f"{loc.replace(' ', '_')}_r{rep}"
             d = workroot / tag
@@ -247,9 +350,13 @@ def prepare(spec, workroot: Path) -> list:
             seed = derive_seed(loc, spec.forecast_date, rep)
             # newline pinned: PyBNF's conf reader is line-based, so on
             # Windows every value would arrive with a trailing \r attached.
-            (d / "pf.conf").write_text(f"""bng_command = {BNG}
-model = {d}/m.bngl : {d}/{sfx}.exp
-output_dir = {d}/out
+            # Every path goes through conf_safe_path: the bng_command and
+            # output_dir grammar rules stop at whitespace, so a spaced
+            # path here is a ParseException inside the engine venv.
+            d_conf = conf_safe_path(d)
+            (d / "pf.conf").write_text(f"""bng_command = {bng_conf}
+model = {d_conf}/m.bngl : {d_conf}/{sfx}.exp
+output_dir = {d_conf}/out
 fit_type = pf
 objfunc = neg_bin_dynamic
 num_particles = {spec.particles}
@@ -262,29 +369,48 @@ seed = {seed}
 {VARS_2S if two_strain else VARS_1S}"""
 + (f"pf_binom_neff_cap = {(spec.extra or {}).get('neff_cap', 300)}\n"
    if two_strain else ""), newline="\n")
-            cells.append({"key": tag, "dir": str(d), "location": loc,
-                          "replicate": rep, "seed": seed,
-                          # collect() shifts its forecast columns by this,
-                          # so horizon labels stay AS-OF-relative when the
-                          # newest weeks were trimmed (audit: with drop > 0
-                          # every horizon rode one week off its label).
-                          # Includes the nowcast rule's same-day trim.
-                          "weeks_dropped": k_total,
-                          "variant": ("2strain" if two_strain
-                                      else "natg" if natg else "1strain"),
-                          "a0": a0 if two_strain else None,
-                          "typed_weeks": len(typed_by_t) if two_strain else None,
-                          "iota": iota if natg else None,
-                          "natg_last_gap": gg.last_gap if natg else None,
-                          "natg_active_weeks": gg.n_active if natg else None,
-                          "natg_clipped_weeks": gg.n_clipped if natg else None,
-                          "n_obs": int(s.n_obs),
-                          "last_week_offset": int(s.last_week_offset),
-                          # the two quantities the cost model reads back at
-                          # execution time to size the run's time budget
-                          "particles": int(spec.particles),
-                          "last_observed": float(s.observed[-1])})
+            loc_cells.append({
+                "key": tag, "dir": str(d), "location": loc,
+                "replicate": rep, "seed": seed,
+                # collect() shifts its forecast columns by this,
+                # so horizon labels stay AS-OF-relative when the
+                # newest weeks were trimmed (audit: with drop > 0
+                # every horizon rode one week off its label).
+                # Includes the nowcast rule's same-day trim.
+                "weeks_dropped": k_total,
+                "variant": ("2strain" if two_strain
+                            else "natg" if natg else "1strain"),
+                "a0": a0 if two_strain else None,
+                "typed_weeks": len(typed_by_t) if two_strain else None,
+                "iota": iota if natg else None,
+                "natg_last_gap": gg.last_gap if natg else None,
+                "natg_active_weeks": gg.n_active if natg else None,
+                "natg_clipped_weeks": gg.n_clipped if natg else None,
+                "n_obs": int(s.n_obs),
+                "last_week_offset": int(s.last_week_offset),
+                # the two quantities the cost model reads back at
+                # execution time to size the run's time budget
+                "particles": int(spec.particles),
+                "last_observed": float(s.observed[-1])})
+        return loc_cells
+
+    cells, failures, errors = [], {}, []
+    for loc in spec.locations:
+        try:
+            cells.extend(_one_location(loc))
+        except Exception as e:
+            failures[loc.replace(" ", "_")] = f"FAIL: prepare: {e}"[:200]
+            errors.append(e)
+    (workroot / PREPARE_FAILURES_NAME).write_text(json.dumps(failures))
     (workroot / "cells.json").write_text(json.dumps(cells))
+    if failures and not cells:
+        if len(errors) == 1:
+            # a single-location run has nothing to continue with, and its
+            # one error is more legible verbatim than wrapped
+            raise errors[0]
+        raise RuntimeError(
+            f"prepare failed for all {len(failures)} location(s) "
+            f"(first: {next(iter(failures.values()))})")
     return cells
 
 
@@ -412,6 +538,99 @@ _SIGKILL = getattr(signal, "SIGKILL", signal.SIGTERM)
 
 _sleep = time.sleep          # indirection so tests can drive the poll loop
 
+#: subprocess.CREATE_NEW_PROCESS_GROUP, spelled as its value because the
+#: constant exists only in Windows builds of Python and this module must
+#: import everywhere.
+_CREATE_NEW_PROCESS_GROUP = 0x00000200
+
+#: Where launched runners are recorded so a console takeover can sweep the
+#: fits a dead predecessor left behind. The runners are plain Popen
+#: children supervised from daemon threads: a takeover or window close
+#: kills the server without running any supervisor's finally block, the
+#: runners keep fitting, and a heartbeat-stale resume would then fit the
+#: same cells concurrently. The relaunch path (flubnf/cli.py::
+#: _sweep_runner_groups, which mirrors this path and must agree with it)
+#: reads and clears the file. It lives beside app.pid: same lifecycle,
+#: same owner.
+RUNNER_PIDS_FILE = REPO / "app" / "state" / "pf_runners.json"
+
+
+def runner_popen_kwargs(base: dict | None = None,
+                        _os_name: str | None = None) -> dict:
+    """`base` plus the keywords that put a runner in its own process group
+    (its own session on POSIX). The group is the one address a console
+    takeover can still signal after the supervising thread died with the
+    server, and on POSIX killpg reaches the engine pool the runner spawned
+    even though the parent link is gone. The supervisor's own cancel path
+    does not lean on the group (_signal_tree sweeps the tree read from
+    `ps`); the group exists for the runner that has no supervisor left.
+    `_os_name` is injectable so both branches are testable anywhere."""
+    kw = dict(base or {})
+    if (_os_name or os.name) == "posix":
+        kw["start_new_session"] = True
+    else:
+        kw["creationflags"] = (int(kw.get("creationflags", 0))
+                               | _CREATE_NEW_PROCESS_GROUP)
+    return kw
+
+
+def record_runner_pids(procs, path: Path | None = None) -> None:
+    """Add the launched runners to the takeover registry: pid, group id
+    (POSIX sessions make pgid == pid; Windows taskkill /T needs only the
+    pid), and the runner script, which the sweep checks against the live
+    command line so a recycled pid is never signalled. Merged into any
+    entries already present, because concurrent runs (a forecast beside a
+    replay) each record their own runners. Never fatal: the registry is a
+    courtesy to the NEXT launch, and no fit may die because it could not
+    be written."""
+    try:
+        path = Path(path) if path else RUNNER_PIDS_FILE
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            reg = json.loads(path.read_text())
+        except Exception:
+            reg = {}
+        if not isinstance(reg, dict):
+            reg = {}
+        for p in procs:
+            pid = getattr(p, "pid", None)
+            if not pid:
+                continue
+            runner = ""
+            try:
+                args = (p.args if isinstance(p.args, (list, tuple))
+                        else [p.args])
+                runner = next((str(a) for a in args
+                               if str(a).endswith(".py")), "")
+            except Exception:
+                pass
+            reg[str(pid)] = {"pgid": pid if os.name == "posix" else None,
+                             "runner": runner}
+        tmp = path.parent / (path.name + ".tmp")
+        tmp.write_text(json.dumps(reg))
+        os.replace(tmp, path)
+    except Exception:
+        pass
+
+
+def unrecord_runner_pids(procs, path: Path | None = None) -> None:
+    """Drop finished runners from the takeover registry: the supervisor's
+    own finally already stopped them, and a later sweep must not chase
+    their recycled pids. Entries recorded by other live runs are left in
+    place. Never fatal."""
+    try:
+        path = Path(path) if path else RUNNER_PIDS_FILE
+        reg = json.loads(path.read_text())
+        if not isinstance(reg, dict):
+            return
+        for p in procs:
+            reg.pop(str(getattr(p, "pid", "")), None)
+        tmp = path.parent / (path.name + ".tmp")
+        tmp.write_text(json.dumps(reg))
+        os.replace(tmp, path)
+    except Exception:
+        pass
+
 
 def shard_width(width: int | None = None) -> int:
     """The parallel width to use: the caller's, else the environment's, else
@@ -526,11 +745,14 @@ def _signal_tree(p, sig) -> None:
     before its descendants, so a pool it was about to grow cannot outlive the
     sweep.
 
-    The tree is read from `ps` rather than by putting each runner in its own
-    session, deliberately: a new session would detach the runners from the
-    console's process group, and an operator's Ctrl-C on the server -- which
-    reaches the group -- would then stop reaping them. This keeps that
-    property and adds the sweep.
+    The tree is still read from `ps` even though each runner now leads its
+    own session (the console takeover sweep in flubnf/cli.py is what the
+    session exists for): Windows has no killpg, and a pool member that
+    moved itself to a new group would escape a group signal, so the cancel
+    path keeps the explicit sweep. The session does mean the terminal's
+    Ctrl-C no longer reaches the runners through the console's process
+    group; what reaps them is this supervisor's finally block (_stop_all)
+    while it lives, and the next launch's takeover sweep when it does not.
     """
     kids = _descendants(p.pid)
     try:
@@ -623,9 +845,15 @@ def execute(workroot: Path, timeout: float | None = None,
     workroot = Path(workroot)
     out_json = workroot / "pf_status.json"
     cells = json.loads((workroot / "cells.json").read_text())
+    # prepare-stage failures (a state the vintage could not resolve) are
+    # part of this run's status: folding them here is what carries them
+    # into pf_failures downstream
+    prep_failures = read_prepare_failures(workroot)
     if not cells:
-        out_json.write_text("{}")       # nothing to fit is not a failure
-        return {}
+        # nothing to fit is not a failure; prepare's own refusals, if any,
+        # still surface in the record
+        out_json.write_text(json.dumps(prep_failures))
+        return dict(prep_failures)
     shards = shard_cells(cells, width)
     sized = not timeout
     budget = budget_seconds(shards) if sized else float(timeout)
@@ -653,16 +881,20 @@ def execute(workroot: Path, timeout: float | None = None,
             # block forever, which is the very hang the budget exists for.
             fh = open(ef, "w")
             handles.append(fh)
-            # Deliberately NOT start_new_session: the runner stays in the
-            # console's process group, so an operator's Ctrl-C still reaches
-            # it. A cancel reaches the engine pool it spawns by sweeping the
-            # process tree instead (see _signal_tree).
+            # Each runner leads its own session (its own process group on
+            # Windows): the supervisor is a daemon thread of the server, so
+            # a takeover or window close kills it without running this
+            # function's finally, and the group id is then the only address
+            # the relaunch can still signal (the takeover sweep in
+            # flubnf/cli.py). This supervisor's own cancel path does not
+            # depend on the group: _signal_tree sweeps the tree from `ps`.
             procs.append(subprocess.Popen(
                 low_priority_cmd([str(PY310), str(runner)]),
                 stdout=subprocess.DEVNULL, stderr=fh,
-                **low_priority_popen_kwargs()))
+                **runner_popen_kwargs(low_priority_popen_kwargs())))
             status_files.append(sf)
             err_files.append(ef)
+        record_runner_pids(procs)
         t0 = time.time()
         while any(p.poll() is None for p in procs):
             if stop.exists():
@@ -673,6 +905,7 @@ def execute(workroot: Path, timeout: float | None = None,
             _sleep(POLL_S)
     finally:
         _stop_all(procs)                # no orphans, on any exit path
+        unrecord_runner_pids(procs)     # stopped: nothing left to sweep
         for fh in handles:
             try:
                 fh.close()
@@ -686,7 +919,7 @@ def execute(workroot: Path, timeout: float | None = None,
     if not any(sf.is_file() for sf in status_files):
         raise RuntimeError(f"PF runner produced no status: "
                            f"{_stderr_tail(err_files)}")
-    merged = {}
+    merged = dict(prep_failures)
     for i, shard in enumerate(shards):
         try:
             part = json.loads(status_files[i].read_text())
@@ -705,17 +938,93 @@ def execute(workroot: Path, timeout: float | None = None,
     return merged
 
 
+def _cell_statuses(workroot: Path) -> dict:
+    """Per-cell fit statuses, whichever path recorded them: the forecast
+    supervisor's merged pf_status.json, overlaid on the retrospective
+    runner's per-cell markers in cells_done/ (retro.py's CELL_DONE_DIRNAME,
+    mirrored here because retro imports this module, never the reverse).
+    {} for an older workroot with neither, which leaves collect() reading
+    every cell exactly as it always did."""
+    workroot = Path(workroot)
+    out: dict = {}
+    done = workroot / "cells_done"
+    if done.is_dir():
+        for p in done.glob("*.json"):
+            try:
+                out[p.stem] = str(json.loads(p.read_text()).get("status", ""))
+            except Exception:
+                out[p.stem] = "unreadable marker"
+    try:
+        merged = json.loads((workroot / "pf_status.json").read_text())
+        if isinstance(merged, dict):
+            out.update({k: str(v) for k, v in merged.items()})
+    except Exception:
+        pass
+    return out
+
+
+def _record_collect_failure(workroot: Path, key: str, msg: str) -> None:
+    """Fold one assembly-time failure into the merged status file, so a
+    torn cell is a recorded failure with a reason rather than a silent
+    absence. Never fatal: the healthy cells' samples matter more than the
+    record of the torn one."""
+    try:
+        out = Path(workroot) / "pf_status.json"
+        try:
+            merged = json.loads(out.read_text())
+        except Exception:
+            merged = {}
+        if not isinstance(merged, dict):
+            merged = {}
+        merged[key] = msg[:200]
+        tmp = out.parent / (out.name + ".tmp")
+        tmp.write_text(json.dumps(merged))
+        os.replace(tmp, out)
+    except Exception:
+        pass
+
+
 def collect(workroot: Path) -> dict:
-    """Forecast samples per location: replicate-pooled, anchored at origin."""
+    """Forecast samples per location: replicate-pooled, anchored at origin.
+
+    Only cells whose recorded status is ok (or unrecorded, for an older
+    workroot) are read. A failed fit can leave a torn trajectory behind --
+    an empty file, or a single flushed row -- and parsing it used to kill
+    the WHOLE assembly with an IndexError, so one dead cell cost the other
+    158 their samples. A torn file under an ok status is downgraded to a
+    recorded failure and skipped for the same reason."""
     import numpy as np
     cells = json.loads((workroot / "cells.json").read_text())
+    status = _cell_statuses(workroot)
     by_loc: dict = {}
     for c in cells:
+        st = status.get(c["key"])
+        if st is not None and st != "ok":
+            continue              # a recorded failure has nothing to pool
         runs = Path(c["dir"]) / "out" / "Results" / "A_MCMC" / "Runs"
         tr_files = sorted(runs.glob("*traj_noise*"))
         if not tr_files:
             continue
-        tr = np.genfromtxt(tr_files[0])
+        try:
+            tr = np.genfromtxt(tr_files[0])
+        except Exception as e:
+            # a row torn mid-write leaves a ragged file genfromtxt refuses
+            _record_collect_failure(
+                workroot, c["key"],
+                f"FAIL: trajectory {tr_files[0].name} unreadable ({e}); "
+                "the cell is excluded from assembly")
+            continue
+        if tr.ndim < 2:
+            # an empty or single-row file: a fit torn mid-write. The real
+            # trajectory is a matrix (particles by weeks), so anything
+            # 1-D is unreadable, and np.genfromtxt gives shape (0,) for
+            # an empty file and a 1-D vector for one row.
+            _record_collect_failure(
+                workroot, c["key"],
+                f"FAIL: trajectory {tr_files[0].name} is torn "
+                f"({'empty' if tr.size == 0 else 'a single row'}); "
+                "the cell is excluded from assembly")
+            continue
         n = c["n_obs"]
         origin = tr[:, n - 1]
         med = float(np.median(origin[np.isfinite(origin)]))
@@ -733,15 +1042,14 @@ def collect(workroot: Path) -> dict:
         # trimmed series' final value, med the fit origin's median.
         k = int(c.get("weeks_dropped", 0) or 0)
         need = n + k + 4
-        if tr.ndim < 2 or tr.shape[1] < need:
+        if tr.shape[1] < need:
             # reachable only when a cell RECORDS a trim but its trajectory
             # was not extended -- an engine build that ignored
             # pf_forecast_weeks, or a workroot mixing fix generations. (A
             # genuinely pre-fix workroot has no weeks_dropped key at all
             # and reads k=0 here, exactly as it always did.)
             raise RuntimeError(
-                f"{c['key']}: trajectory has "
-                f"{tr.shape[1] if tr.ndim == 2 else tr.size} columns, "
+                f"{c['key']}: trajectory has {tr.shape[1]} columns, "
                 f"{need} needed for weeks_dropped={k}; the engine did not "
                 "extend the forecast for the recorded trim -- rerun the "
                 "forecast on a current engine")
