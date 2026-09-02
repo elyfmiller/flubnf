@@ -80,3 +80,45 @@ def test_retro_form_offers_full_config():
     assert 'value="10000"' in r.text            # particles default
     assert "Wyoming" in r.text                  # custom checklist populated
     assert 'value="custom"' in r.text           # custom scope offered
+
+
+def test_retro_width_default_is_this_machines_auto_value():
+    """The forecast path has sized shard width to the machine since
+    2026-08-28, but the retro form still hardcoded value 4, overriding
+    run_season's own auto default and idling most of a workstation
+    (about 2x on the measured 12-core box). The form now offers the same
+    auto value the engine resolves, capped at the engine's cap."""
+    from fastapi.testclient import TestClient
+    from app.core.engines.pf import DEFAULT_SHARD_WIDTH, SHARD_WIDTH_CAP
+    from app.ui.server import app as srv
+    r = TestClient(srv).get("/retro")
+    assert r.status_code == 200
+    assert f'name="width" value="{DEFAULT_SHARD_WIDTH}"' in r.text, (
+        "the retro form no longer offers the machine-sized default")
+    assert f'max="{SHARD_WIDTH_CAP}"' in r.text
+    assert 'name="width" value="4"' not in r.text or DEFAULT_SHARD_WIDTH == 4
+
+
+def test_resolve_width_zero_and_garbage_mean_auto():
+    """One resolution rule for every entry point: 0, None, and garbage
+    resolve to this machine's default; a positive request is honored."""
+    from app.core.engines import pf
+    assert pf.resolve_width(0) == pf.DEFAULT_SHARD_WIDTH
+    assert pf.resolve_width(None) == pf.DEFAULT_SHARD_WIDTH
+    assert pf.resolve_width("nonsense") == pf.DEFAULT_SHARD_WIDTH
+    assert pf.resolve_width(-3) == pf.DEFAULT_SHARD_WIDTH
+    assert pf.resolve_width(7) == 7
+    assert pf.resolve_width("12") == 12
+
+
+def test_cli_retro_defaults_to_auto_width():
+    """The CLI's old width=4 was the last fixed-width entry point; its
+    default is now 0 (auto) and it resolves through the one shared rule.
+    Source pin: the command body must call resolve_width before running."""
+    from pathlib import Path as _P
+    src = (_P(__file__).resolve().parents[2] / "flubnf" / "cli.py").read_text(
+        encoding="utf-8")
+    seg = src.split("def retro_cmd(")[1].split("\ndef ")[0]
+    assert "width: int = 0" in "def retro_cmd(" + seg
+    assert "resolve_width(width)" in seg, (
+        "retro_cmd no longer resolves width through the shared rule")
