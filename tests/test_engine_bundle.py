@@ -364,11 +364,24 @@ def _engine_section() -> str:
 
 def test_every_windows_engine_path_ends_at_the_console():
     """The engine is optional by design: no branch of it may leave the user
-    without a console, and none may stop at a question. A double-clicked
-    launcher has nobody watching it."""
+    without a console, and none may stop UNATTENDED at a question. A
+    double-clicked launcher has nobody watching it.
+
+    The property is "cannot park", not "cannot ask": the data section's
+    bounded question (20 s, a default, N one keystroke away) set the
+    precedent, and the Perl offer (2026-09-01) extends it into the engine
+    section. So a `choice` here is legal ONLY in the bounded form, carrying
+    both a timeout (/t) and a default (/d); a bare `choice`, a `pause`, or
+    an exit that skips the console remain forbidden."""
     engine = _engine_section()
     assert "pause" not in engine, "the engine section can stop at a prompt"
-    assert "choice" not in engine, "the engine section can stop at a question"
+    for ln in engine.splitlines():
+        # an INVOCATION starts the line with `choice`; `where choice` (the
+        # availability probe) and comments mentioning it are not questions
+        if ln.lstrip().lower().startswith("choice"):
+            assert "/t " in ln and "/d " in ln, (
+                "an engine-section choice must be bounded (needs /t and /d): "
+                + ln.strip())
     assert "exit /b" not in engine, (
         "the engine section can exit without opening the console")
     for label in ("enginefailed", "engineskipped", "enginebadbundle",

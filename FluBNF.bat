@@ -348,6 +348,43 @@ if "%LAST%"=="%ENGINEFP%" goto :engineskipped
 :engineinstall
 echo.
 echo Installing the particle filter engine. One time, a few minutes.
+rem PERL, offered with the same bounded-consent shape as the data fetch.
+rem BioNetGen's BNG2.pl needs Perl for the engine's one-time network
+rem generation; the console and analogue never do. setup.ps1's interactive
+rem offer never fires on the double-click path (-NoPrompt, deliberately:
+rem its question has no timeout), so before this change Perl was automated
+rem only for someone running setup.ps1 by hand, a gap the lead hit on the
+rem first real Windows run. Same rules as the data question: 20 seconds,
+rem default Y, N one keystroke away, and on a machine without winget
+rem (Windows Sandbox, some managed laptops) fall back to naming the link
+rem rather than parking or failing.
+where perl >nul 2>&1
+if not errorlevel 1 goto :perldone
+where winget >nul 2>&1
+if errorlevel 1 (
+  echo   perl not found and winget unavailable: the engine installs fine but
+  echo   cannot FIT until Perl exists. Install Strawberry Perl by hand from
+  echo   https://strawberryperl.com and reopen; nothing else waits on it.
+  goto :perldone
+)
+where choice >nul 2>&1
+if errorlevel 1 goto :perlwinget
+choice /c YN /n /t 20 /d Y /m "Install Strawberry Perl via winget (engine fits need it)? [Y/N, Y in 20s] "
+if errorlevel 2 (
+  echo   skipped. Install later from https://strawberryperl.com or rerun setup.ps1.
+  goto :perldone
+)
+:perlwinget
+echo   installing Strawberry Perl via winget (one time, a few minutes)...
+winget install -e --id StrawberryPerl.StrawberryPerl --accept-source-agreements --accept-package-agreements
+if errorlevel 1 (
+  echo   winget could not install it; get it from https://strawberryperl.com.
+) else (
+  echo   Perl installed. NOTE: already-open windows cannot see the new PATH;
+  echo   this launcher keeps going, and the first fit picks it up on the next
+  echo   open if this one cannot find it.
+)
+:perldone
 where git >nul 2>&1
 if errorlevel 1 goto :enginenogit
 if exist "%PYBNFDIR%\.git" goto :enginevenv
