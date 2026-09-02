@@ -6,7 +6,7 @@
     read from the ledger row's spec, the record of record #}
  {% if research %}<span class="pill">research</span>{% endif %}
  {% if status and status not in ("ok", "done") %}
-  <span class="pill {{ 'warn' if status in ('stopped','interrupted') else 'bad' }}">{{ status }}</span>
+  <span class="pill {{ 'warn' if status in ('stopped','interrupted','partial') else 'bad' }}">{{ status }}</span>
  {% elif status %}<span class="pill ok">{{ status }}</span>{% endif %}
 </h1>
 

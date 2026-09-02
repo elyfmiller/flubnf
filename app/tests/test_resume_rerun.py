@@ -352,6 +352,28 @@ def _render_forecast(row):
         model_names_json="{}", run_obs_json="{}", fc_date="")
 
 
+def test_a_completed_run_with_fit_failures_is_partial_not_failed():
+    """MEASURED 2026-09-01, the first real Windows full grid: 159 fits, 4
+    failures, 2 submissions, report built -- and the run badge said
+    "failed". A run whose pipeline completed and whose record exists is
+    "partial" when some fits failed; the chips carry the count. The pill
+    warns rather than condemns, and the rerun offer stays. "failed" and
+    "error" remain reserved for runs that died."""
+    server = (Path(__file__).resolve().parents[2]
+              / "app" / "ui" / "server.py").read_text(encoding="utf-8")
+    assert '"partial" if fails else "ok"' in server, (
+        "close_run went back to branding a completed run failed for "
+        "per-cell fit failures")
+    assert '"failed" if fails' not in server
+    row = {"run_id": "20980101T000000-abcdef", "label": "L",
+           "status": "partial", "chips": "PF 159 fits", "has_report": True,
+           "spec": "{}", "elapsed_s": None}
+    html = _render_forecast(row)
+    assert "pill warn" in html, "the partial pill should warn, not condemn"
+    assert f'action="/runs/{row["run_id"]}/rerun"' in html, (
+        "a partial run must still offer the rerun")
+
+
 def test_latest_run_card_offers_rerun_for_stopped_and_failed_only():
     row = {"run_id": "20980101T000000-abcdef", "label": "L",
            "status": "stopped", "chips": "", "has_report": False,
