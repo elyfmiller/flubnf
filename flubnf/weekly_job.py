@@ -26,8 +26,9 @@ from __future__ import annotations
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 from typing import Callable, Iterable, Optional
 
 import numpy as np
@@ -344,7 +345,7 @@ def run_weekly_job(
         )
 
     if reference_date is None:
-        reference_date = _next_saturday(date.today())
+        reference_date = _default_reference_date()
 
     def _post_fit(s, fit, sess, rec):
         if fit is not None:
@@ -666,6 +667,24 @@ def _analyze_and_adapt(
             log.warning("step removal check failed for %s: %s", state, e)
 
     return bounds_changed, bounds_added
+
+
+def _today_eastern() -> date:
+    """The submission calendar's "today", never the machine's.
+
+    FluSight deadlines are stated on the hub's own clock, America/New_York.
+    A machine east of that zone crosses into Saturday hours before the
+    deadline zone does, so near the Friday/Saturday midnight boundary
+    date.today() there is already Saturday while the FluSight week is still
+    Friday's, and the defaulted reference_date lands one week late
+    (2026-09-01 final pass). The wall clock enters the job only here, so
+    the deadline-zone constraint has one home.
+    """
+    return datetime.now(ZoneInfo("America/New_York")).date()
+
+
+def _default_reference_date() -> date:
+    return _next_saturday(_today_eastern())
 
 
 def _next_saturday(d: date) -> date:

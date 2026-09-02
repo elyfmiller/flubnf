@@ -353,7 +353,16 @@ class Ledger:
         have = {r[1] for r in self._db.execute("PRAGMA table_info(runs)")}
         for col in ("finished_utc", "elapsed_s"):
             if col not in have:
-                self._db.execute(f"ALTER TABLE runs ADD COLUMN {col} REAL")
+                # Two Ledgers constructed at once (a route and the season
+                # worker share the default path) both pass the PRAGMA check;
+                # the loser's ALTER then reports the column the winner just
+                # added. That is the migration already applied, not a
+                # failure, so it is the one OperationalError swallowed here.
+                try:
+                    self._db.execute(f"ALTER TABLE runs ADD COLUMN {col} REAL")
+                except sqlite3.OperationalError as e:
+                    if "duplicate column" not in str(e).lower():
+                        raise
         self._db.commit()
 
     def open_run(self, spec: RunSpec, workroot: Path,
