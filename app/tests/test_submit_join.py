@@ -225,3 +225,34 @@ def test_a_full_set_from_samples_passes_completeness(tmp_path):
     rows = quantile_rows(three, "06", ASOF)
     assert {r["horizon"] for r in rows} == {0, 1, 2}
     assert write_submission(rows, "pf", ASOF, tmp_path).is_file()
+
+
+# --------------------------------------- the CSV lands whole, or not at all
+
+def test_the_csv_lands_atomically_with_no_temp_residue(tmp_path,
+                                                       monkeypatch):
+    """write_submission was the one writer among its neighbors that
+    streamed df.to_csv straight onto the hub-named path, so a full disk
+    left a truncated CSV that the output page listed as submittable
+    (2026-09-01 final pass). It now writes beside and replaces: a write
+    that dies at any stage leaves NOTHING under the hub name and no .tmp
+    residue, and a successful one is byte-complete."""
+    import pytest
+    from app.core.submit import write_submission
+    rows = quantile_rows(SAMPLES, "06", ASOF)
+    p = write_submission(rows, "pf", ASOF, tmp_path / "ok")
+    assert p.is_file()
+    assert not list((tmp_path / "ok").rglob("*.tmp"))
+    assert len(pd.read_csv(p)) == len(rows)          # every row arrived
+
+    # to_csv itself dies mid-write (the ENOSPC shape): a truncated temp
+    # file exists at that moment, and neither it nor a hub-named file may
+    # survive the failure
+    def _truncating(self, path, *a, **k):
+        Path(path).write_text("reference_date,target\n2025-12-20")
+        raise OSError(28, "No space left on device")
+    monkeypatch.setattr(pd.DataFrame, "to_csv", _truncating)
+    with pytest.raises(OSError):
+        write_submission(rows, "pf", ASOF, tmp_path / "died")
+    left = [q for q in (tmp_path / "died").rglob("*") if q.is_file()]
+    assert left == []

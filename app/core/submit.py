@@ -12,6 +12,7 @@ Hub facts (verified against model-metadata/README.md, 2026-08-17):
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Iterable
 
@@ -234,7 +235,17 @@ def write_submission(all_rows: Iterable[dict], model: str, asof: str,
     d = Path(out_dir) / model_id
     d.mkdir(parents=True, exist_ok=True)
     p = d / f"{ref}-{model_id}.csv"
-    df.to_csv(p, index=False)
+    # Write beside, then replace (the scores.json rule the app's other
+    # writers follow): every CSV in this tree is listed as submittable by
+    # the output page, so a full disk mid-write must never leave a
+    # truncated file under the hub-named path. The temp file is removed
+    # on any failure; after a successful replace it no longer exists.
+    tmp = p.with_name(p.name + ".tmp")
+    try:
+        df.to_csv(tmp, index=False)
+        os.replace(tmp, p)
+    finally:
+        tmp.unlink(missing_ok=True)
     return p
 
 
