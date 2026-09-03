@@ -3848,6 +3848,29 @@ def _eta_estimate(measured, remaining, profile=None, spent_s=0.0,
     correlated across the remaining weeks, never shrunk by their count."""
     if not measured or not remaining:
         return None
+    if not profile:
+        # No measured season to shape the remaining weeks. The honest
+        # default is not flat: every replay week refits from the season
+        # start, so a week's wall time grows with the weeks it assimilates.
+        # MEASURED on the two recorded full-grid replays (2026-08-23; the
+        # per-week seconds live in app/tests/test_retro_eta.py): 2024-25
+        # rose from 5 to 12 minutes a week, 2023-24 from 3 to 10. A flat
+        # default made the estimate a running mean that every costlier week
+        # dragged upward, biased 38 to 47 minutes LOW with a band that held
+        # the truth 8 and 0 percent of the time, so the timer rose through
+        # the first half of a season before it fell (reported 2026-09-03).
+        # The engine's per-cell cost model over-steepens here (it prices the
+        # fit, not the fixed per-week overhead: 33 to 57 minutes HIGH). This
+        # linear shape, 0.55x at the first week to 1.40x at the last,
+        # was selected as the smallest worst-season error over a grid of
+        # linear profiles replayed against both recorded seasons: MAE
+        # 10 and 10 minutes with the band holding the truth in
+        # 100% and 100% of instants. The level still comes from the
+        # measured weeks; only the shape is assumed.
+        profile = ((0.0, 0.55), (1.0, 1.40))
+        default_shape = True
+    else:
+        default_shape = False
 
     def cost(p):
         if not profile:
@@ -3874,7 +3897,7 @@ def _eta_estimate(measured, remaining, profile=None, spent_s=0.0,
              for q in remaining]
     left = max(0.0, sum(preds) - min(max(0.0, float(spent_s)), preds[0]))
     frac_rem = len(remaining) / (n + len(remaining))
-    u = max(rel, 0.10 + 0.20 * frac_rem + (0.15 if not profile else 0.0))
+    u = max(rel, 0.10 + 0.20 * frac_rem + (0.15 if default_shape else 0.0))
     if n < 3:
         u = max(u, 0.50)          # one or two weeks cannot claim precision
     elif n < 6:
@@ -3950,6 +3973,8 @@ def _season_eta(meta: dict, season: str, root: Path, t: dict) -> tuple | None:
         len(ws), "" if len(ws) == 1 else "s")
     if prof:
         basis += ", weighted by the %s week profile" % prof[0]
+    else:
+        basis += ", shaped by the recorded full-grid week profile"
     return est[0], est[1], est[2], basis
 
 

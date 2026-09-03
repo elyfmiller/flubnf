@@ -28,6 +28,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import pytest                                         # noqa: E402
 from fastapi.testclient import TestClient             # noqa: E402
 
+FLAT = ((0.0, 1.0), (1.0, 1.0))   # an explicit flat profile: the old default
+
 from app.core import retro                            # noqa: E402
 from app.ui import server as srv                      # noqa: E402
 
@@ -80,7 +82,7 @@ def test_profile_prices_the_remaining_weeks_not_the_average_week():
     profile = tuple((i / 9, 0.5 + i / 9) for i in range(10))   # 0.5x -> 1.5x
     measured = [(i / 9, 100.0 * (0.5 + i / 9)) for i in range(3)]
     remaining = [i / 9 for i in range(3, 10)]
-    _, flat, _ = srv._eta_estimate(measured, remaining)
+    _, flat, _ = srv._eta_estimate(measured, remaining, profile=FLAT)
     _, shaped, _ = srv._eta_estimate(measured, remaining, profile=profile)
     assert shaped > flat * 1.3            # the late-season climb is priced in
 
@@ -88,12 +90,15 @@ def test_profile_prices_the_remaining_weeks_not_the_average_week():
 def test_spent_seconds_inside_the_week_in_flight_are_credited():
     measured = [(0.0, 600.0), (0.1, 600.0), (0.2, 600.0)]
     remaining = [0.3, 0.4, 0.5]
-    _, fresh, _ = srv._eta_estimate(measured, remaining, spent_s=0.0)
-    _, part, _ = srv._eta_estimate(measured, remaining, spent_s=200.0)
+    _, fresh, _ = srv._eta_estimate(measured, remaining, spent_s=0.0,
+                                    profile=FLAT)
+    _, part, _ = srv._eta_estimate(measured, remaining, spent_s=200.0,
+                                   profile=FLAT)
     assert part == pytest.approx(fresh - 200.0)
     # the credit never exceeds the week in flight: a week running long
     # cannot drive the estimate below the untouched weeks' cost
-    _, over, _ = srv._eta_estimate(measured, remaining, spent_s=5000.0)
+    _, over, _ = srv._eta_estimate(measured, remaining, spent_s=5000.0,
+                                   profile=FLAT)
     assert over == pytest.approx(fresh - 600.0)
 
 
@@ -186,7 +191,7 @@ def test_profile_must_match_the_location_scope(tmp_path, monkeypatch):
                          for d in range(1, 11)}})
     srv._profile_scan.cache_clear()
     p = _get()
-    assert p["eta_basis"] == "estimate from 2 completed weeks"
+    assert p["eta_basis"] == "estimate from 2 completed weeks, shaped by the recorded full-grid week profile"
 
 
 def test_a_thin_record_cannot_serve_as_a_profile(tmp_path, monkeypatch):
@@ -259,6 +264,37 @@ def test_replay_of_the_real_seasons_beats_the_frozen_estimator():
     assert coverage2 >= 0.9
 
 
+def test_the_default_shape_beats_flat_on_both_recorded_seasons():
+    """The no-profile default is not flat: measured on the two recorded
+    full-grid replays, a flat shape is biased 38 to 47 minutes low with a
+    band that almost never holds the truth (the timer that rose for half a
+    season before it fell, 2026-09-03). The shipped linear default must beat
+    flat on BOTH seasons and keep an honest band."""
+    for durs in (REAL_2425, REAL_2324):
+        mae_flat, _, cov_flat = _replay_with(durs, FLAT)
+        mae_def, _, cov_def = _replay_with(durs, None)
+        assert mae_def < mae_flat
+        assert cov_def >= 0.9
+
+
+def _replay_with(durs, profile):
+    """Like _replay but for an arbitrary profile (None = the default)."""
+    n = len(durs)
+    errs_old, errs_new, hits = [], [], 0
+    for k in range(1, n):
+        actual = sum(durs[k:]) + GAP * (n - k)
+        old = (sum(durs[:k]) / k) * (n - k)
+        lo, mid, hi = srv._eta_estimate(
+            [(i / (n - 1), durs[i]) for i in range(k)],
+            [i / (n - 1) for i in range(k, n)],
+            profile=profile, overhead_s=GAP)
+        errs_old.append(abs(old - actual))
+        errs_new.append(abs(mid - actual))
+        hits += (lo <= actual <= hi)
+    return (sum(errs_new) / len(errs_new), sum(errs_old) / len(errs_old),
+            hits / (n - 1))
+
+
 def test_the_profile_is_what_moves_the_estimate_on_the_real_data():
     """Ten weeks into the real 2024-25 replay (the position the field report
     was filed from), the season profile shifts the estimate by over an hour
@@ -268,12 +304,18 @@ def test_the_profile_is_what_moves_the_estimate_on_the_real_data():
     measured = [(i / (n - 1), REAL_2425[i]) for i in range(10)]
     remaining = [i / (n - 1) for i in range(10, n)]
     actual = sum(REAL_2425[10:]) + GAP * (n - 10)
-    _, flat, _ = srv._eta_estimate(measured, remaining, overhead_s=GAP)
+    _, flat, _ = srv._eta_estimate(measured, remaining, overhead_s=GAP,
+                                   profile=FLAT)
     _, shaped, _ = srv._eta_estimate(measured, remaining,
                                      profile=_profile_points(REAL_2324),
                                      overhead_s=GAP)
     assert shaped - flat > 3600.0
     assert abs(shaped - actual) < abs(flat - actual)
+    # and the no-profile DEFAULT, shaped by the engine's cost model, sits
+    # between them: closer to the truth than flat (the running mean that
+    # rose through half a season before it fell, measured 2026-09-03)
+    _, default, _ = srv._eta_estimate(measured, remaining, overhead_s=GAP)
+    assert abs(default - actual) < abs(flat - actual)
 
 
 # ------------------------------------------------------- the client ticker

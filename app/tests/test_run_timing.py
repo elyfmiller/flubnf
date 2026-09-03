@@ -323,16 +323,24 @@ def test_api_retro_progress_shape_and_eta(tmp_path, monkeypatch):
     assert p["weeks_measured"] == 2
     # the estimate is recency-weighted (half-life three weeks), never the
     # global mean: the recent 140 s week outvotes the older 100 s one, so
-    # the estimate sits above mean x remaining
+    # the level sits above the mean; and with no season profile the
+    # remaining weeks are priced by the recorded full-grid shape (later
+    # weeks cost more), so the estimate sits above level x remaining. The
+    # API must agree with the pure estimator on this fixture's positions
+    # (no vintage calendar for a fake season: index over total_weeks).
     w = 0.5 ** (1 / 3)
     level = (100.0 * w + 140.0) / (w + 1.0)
-    assert p["eta_s"] == pytest.approx(level * 8)
-    assert p["eta_s"] > 120.0 * 8
+    measured = [(0 / 9, 100.0), (1 / 9, 140.0)]
+    remaining = [j / 9 for j in range(2, 10)]
+    _, mid, _ = srv._eta_estimate(measured, remaining)
+    assert p["eta_s"] == pytest.approx(mid)
+    assert p["eta_s"] > level * 8 > 120.0 * 8
     # and it is a RANGE: two measured weeks cannot claim precision, so the
     # band is at its widest floor (half to one-and-a-half times the middle)
     assert p["eta_lo_s"] == pytest.approx(0.5 * p["eta_s"])
     assert p["eta_hi_s"] == pytest.approx(1.5 * p["eta_s"])
-    assert p["eta_basis"] == "estimate from 2 completed weeks"
+    assert p["eta_basis"] == ("estimate from 2 completed weeks, shaped by "
+                              "the recorded full-grid week profile")
     assert p["slowest_week"] == W2 and p["slowest_s"] == pytest.approx(140.0)
     # an unrecognized season name never reaches the filesystem
     assert client.get("/api/retro/progress?season=../etc").json() == {}
