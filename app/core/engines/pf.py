@@ -1,8 +1,9 @@
 """The PF-SIHRS engine: conf generation + execution of PyBNF `fit_type=pf`.
 
 Two-venv dispatch (constitutional rule 8): materialization and scoring run in
-the analysis venv (py3.12, this process); the filter itself runs in the
-pybnf/bngsim venv (py3.10) via runner scripts written to the workroot --
+the analysis venv (this process); the filter itself runs in the
+pybnf/bngsim venv (Python 3.11 or 3.12, the engine's numpy ceiling) via
+runner scripts written to the workroot --
 FILES, never stdin, because macOS spawn kills stdin-launched pools
 (rule 4, measured 2026-08-17). The prepared cells are dealt across several
 such runners, the way the retrospective path has always done it; see the
