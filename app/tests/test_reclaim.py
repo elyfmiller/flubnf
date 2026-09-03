@@ -592,3 +592,27 @@ def test_run_display_orphan_reads_as_unrecorded(routed):
     assert "Unrecorded run" in row
     assert "run 2098-01-18 10:00" in row
     assert "<code" in row and "20980118T100000-bbbbbb" in row
+
+
+def test_protect_roots_env_keeps_a_research_arms_evidence(tmp_path, monkeypatch):
+    """A pre-registered arm run OUTSIDE app/state (the kernel A/B of
+    2026-09-03 lives in the lab archive) needs its per-cell evidence, the
+    ESS files, parameter samples and cells.json, for the diagnostics it
+    committed to; reclaim protects by path only, so without a way to name
+    the arm every completed week was pruned to its samples file before the
+    measurement could be made. FLUBNF_PROTECT_ROOTS names such roots, read
+    at call time; the two built-in roots are unchanged."""
+    from app.core import reclaim, retro
+    arm = tmp_path / "arms" / "B" / "2023-24"
+    wd = arm / "weeks" / "2023-09-23"
+    wd.mkdir(parents=True)
+    (wd / retro.SAMPLES_JSON).write_text("{}")
+    (wd / "ess_0.txt").write_text("1000\n")
+    monkeypatch.delenv("FLUBNF_PROTECT_ROOTS", raising=False)
+    assert not reclaim.is_protected(wd)
+    assert [p.name for p in reclaim.week_intermediates(wd)] == ["ess_0.txt"]
+    monkeypatch.setenv("FLUBNF_PROTECT_ROOTS", f"/nonexistent/other:{arm}")
+    assert reclaim.is_protected(wd)
+    assert reclaim.week_intermediates(wd) == []
+    assert reclaim.prune_week(wd) == 0
+    assert (wd / "ess_0.txt").exists()
