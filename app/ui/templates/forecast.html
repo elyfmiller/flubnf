@@ -5,9 +5,17 @@
 <h1>Forecast</h1>
 <div class="cols">
  <div><div class="card"><h2>Settings</h2>
-  <form method="post" action="/run">
+  <form method="post" action="/run" id="fcform">
+   {# Two ways in, one form. Real-time takes the latest archived week the
+      calendar allows; Vintage names an archived week. Same controls, same
+      run record, so the two can never disagree about what runs. #}
+   <div class="modes" role="tablist" aria-label="forecast mode">
+    <button type="button" class="pill mode" data-mode="realtime" role="tab">Real-time</button>
+    <button type="button" class="pill mode" data-mode="vintage" role="tab">Vintage</button>
+   </div>
+   <p class="hint" id="mode-line"></p>
    <label>Forecast date</label>
-   <input type="date" name="forecast_date" value="{{ form.forecast_date }}">
+   <input type="date" name="forecast_date" value="{{ form.forecast_date }}" data-default="{{ default_date }}">
    {# The anchor line replaces a paragraph of explanation: any day is
       accepted, and this says which archived week it actually resolves to.
       Rendered server-side from resolve_anchor (the same function the run
@@ -42,11 +50,51 @@
           ? 'Anchored on the archived week ending ' + a + '.'
           : 'No archived week on or before ' + box.value + '.';
       }
-      if (box) box.addEventListener('change', paint);
-      if (pick) pick.addEventListener('change', function () {
-        if (this.value) { box.value = this.value; paint(); }
+      // the advanced Season start: a blank field derives August 1 of the
+      // forecast's season, and the hint says which date that is
+      var sline = document.getElementById('season-line');
+      function seasonDefault(day) {
+        var m = day.match(/^(\d{4})-(\d{2})/);
+        if (!m) return '';
+        var y = +m[1], mo = +m[2];
+        return (mo >= 8 ? y : y - 1) + '-08-01';
+      }
+      function paintSeason() {
+        if (!sline || !box) return;
+        var d = seasonDefault(box.value);
+        sline.textContent = d ? 'Blank: ' + d + ', August 1 of the season.' : '';
+      }
+      // the two modes share every control; Real-time also resets the date
+      // to the latest week the calendar allows and hides the picker
+      var form = document.getElementById('fcform');
+      var mline = document.getElementById('mode-line');
+      var TEXT = {realtime: 'The latest archived week the calendar allows; the run records the week it anchored on.',
+                  vintage: 'Any archived week, as the season looked then.'};
+      function setMode(mode, resetDate) {
+        if (!form) return;
+        form.classList.toggle('mode-realtime', mode === 'realtime');
+        form.classList.toggle('mode-vintage', mode === 'vintage');
+        document.querySelectorAll('.pill.mode').forEach(function (b) {
+          b.setAttribute('aria-selected', b.dataset.mode === mode ? 'true' : 'false');
+        });
+        if (mline) mline.textContent = TEXT[mode] || '';
+        if (mode === 'realtime' && resetDate && box && box.dataset.default) {
+          box.value = box.dataset.default; paint(); paintSeason();
+        }
+        try { localStorage.setItem('fcmode', mode); } catch (e) {}
+      }
+      document.querySelectorAll('.pill.mode').forEach(function (b) {
+        b.addEventListener('click', function () { setMode(b.dataset.mode, true); });
       });
-      paint();
+      if (box) box.addEventListener('change', function () { paint(); paintSeason(); });
+      if (pick) pick.addEventListener('change', function () {
+        if (this.value) { box.value = this.value; paint(); paintSeason(); }
+      });
+      paint(); paintSeason();
+      var initial = 'realtime';
+      try { initial = localStorage.getItem('fcmode') || initial; } catch (e) {}
+      if (box && box.dataset.default && box.value && box.value < box.dataset.default) initial = 'vintage';
+      setMode(initial, false);
     })();
    </script>
    <label>Locations <span id="lcount" class="hint"></span></label>
@@ -80,14 +128,17 @@
    {# The two-strain third member has no control here: it failed its
       full-grid ensemble gate and does not ship. The /run endpoint still
       accepts members=3 for research use. #}
-   <label title="trim the newest N weeks before fitting (vintage-edge guard)">Weeks to drop</label>
-   <input name="weeks_to_drop" type="number" value="{{ form.weeks_to_drop }}" min="0" max="4">
-   <input type="hidden" name="weeks_to_nowcast" value="0">
-   <p class="hint" style="margin:.6rem 0 0">The anchor week is kept by
-    default; a run warns when it looks badly under-reported, and this is
-    the remedy.</p>
-   <label>Replicates</label>
-   <input name="replicates" type="number" value="{{ form.replicates }}" min="1" max="9">
+   <details class="adv"><summary>Advanced</summary>
+    <label>Season start</label>
+    <input type="date" name="season_start" value="{{ form.season_start }}">
+    <p class="hint" id="season-line"></p>
+    <label title="trim the newest N weeks before fitting (vintage-edge guard)">Weeks to drop</label>
+    <input name="weeks_to_drop" type="number" value="{{ form.weeks_to_drop }}" min="0" max="4">
+    <input type="hidden" name="weeks_to_nowcast" value="0">
+    <p class="hint">The remedy when a run warns that its anchor week is badly under-reported.</p>
+    <label>Replicates</label>
+    <input name="replicates" type="number" value="{{ form.replicates }}" min="1" max="9">
+   </details>
    <button class="gold" data-guard="console-run">Run models</button>
   </form>
   <script>

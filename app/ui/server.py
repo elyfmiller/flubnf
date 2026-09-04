@@ -62,6 +62,7 @@ class _LazyDataMod:
 
 
 data_mod = _LazyDataMod()
+from app.core import runs as _runs
 from app.core.runs import (Ledger, RunSpec, fmt_hms,            # noqa: E402
                            lease_workroot, settings_html,
                            spec_settings, version_pairs)
@@ -1094,7 +1095,7 @@ def forecast_page(request: Request):
     form = dict(_last_form) or {"forecast_date": _default_forecast_date(),
                                 "locations": ["all"], "engine": "all",
                                 "weeks_to_drop": 0, "weeks_to_nowcast": 0,
-                                "replicates": 3, "members": 2}
+                                "replicates": 3, "members": 2, "season_start": ""}
     rid, res = _latest_results()
     # data panel: full series for the CURRENTLY SELECTED locations, straight
     # from the latest vintage -- visible before any run (deciding what to
@@ -1160,6 +1161,12 @@ def forecast_page(request: Request):
         "active": "Forecast", "engines": ENGINES, "status": _status,
         "ledger": ledger_rows, "all_locs": all_locs,
         "vintage_dates": vintage_dates, "anchor_note": anchor_note,
+        # the advanced Season start field shows what a blank derives to,
+        # and the Real-time mode's date is the latest week the calendar
+        # allows (clamped to the archive, as _default_forecast_date says)
+        "season_default": _runs.default_season_start(
+            _anchor or str(form.get("forecast_date", ""))),
+        "default_date": _default_forecast_date(),
         "locations_error": locations_error, "form": form,
         "elapsed0": _console_elapsed(),
         "series_json": _script_json(series), "fanq_json": _script_json(fanq),
@@ -2854,6 +2861,7 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
     candidate = RunSpec(
         engine=str(d.get("engine") or ""),
         forecast_date=str(d.get("forecast_date") or ""),
+        season_start=str(d.get("season_start") or ""),
         locations=(locs if any(l.upper() in ("US", "US (NATIONAL)")
                                for l in locs) else locs + ["US"]),
         weeks_to_drop=int(d.get("weeks_to_drop") or 0),
@@ -2887,6 +2895,7 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
                       weeks_to_drop=candidate.weeks_to_drop,
                       weeks_to_nowcast=candidate.weeks_to_nowcast,
                       replicates=candidate.replicates,
+                      season_start=candidate.season_start,
                       engine=candidate.engine,
                       members=members,
                       particles=candidate.particles,
@@ -5189,6 +5198,8 @@ def run_models(request: Request,
                engine: str = Form("all"),
                members: int = Form(2),
                particles: int = Form(10_000),
+               # advanced: blank derives August 1 of the forecast's season
+               season_start: str = Form(""),
                # not on the form (the nowcast rule is the default); the
                # re-run path passes it so a recorded pre-rule methodology
                # reproduces instead of silently adopting today's default
@@ -5246,10 +5257,31 @@ def run_models(request: Request,
             _flash(f"No archived data for {forecast_date}; the archive "
                    f"starts at {near}.")
         return _back(request, "/forecast")
+    # Season start (advanced). Blank derives August 1 of the forecast's
+    # season, RunSpec's rule. A typed value must be a date before the
+    # anchored forecast week and within 400 days of it: anything else is
+    # refused out loud and the default used, never silently re-aimed. It
+    # changes the model's first observed week, its initial-state anchor and
+    # its random draws, so the ledger records whatever ran.
+    # a direct call (the rerun path) may hand the Form default object
+    # rather than a string; anything that is not text is blank
+    season_start = (season_start if isinstance(season_start, str) else "").strip()
+    if season_start:
+        from datetime import date as _sd, timedelta as _std
+        try:
+            _ss, _fd = _sd.fromisoformat(season_start), _sd.fromisoformat(forecast_date)
+            if not (_fd - _std(days=400) <= _ss < _fd):
+                raise ValueError("outside the allowed window")
+        except (ValueError, TypeError):
+            _flash(f"Season start {season_start} is not a date before the "
+                   f"forecast week and within 400 days of it; using "
+                   f"{_runs.default_season_start(forecast_date)}.")
+            season_start = ""
     _last_form.update({"forecast_date": forecast_date, "locations": locations,
                        "engine": engine, "weeks_to_drop": weeks_to_drop,
                        "weeks_to_nowcast": weeks_to_nowcast,
-                       "replicates": replicates, "members": members})
+                       "replicates": replicates, "members": members,
+                       "season_start": season_start})
     # checkboxes arrive as a list, the model pages' text input as one
     # comma-separated string inside it -- flatten both to clean names
     locations = [x.strip() for l in locations
@@ -5319,6 +5351,7 @@ def run_models(request: Request,
     particles = max(1_000, min(int(particles), 100_000))
     spec = RunSpec(engine=engine, forecast_date=forecast_date,
                    locations=locs_list,
+                   season_start=season_start,
                    weeks_to_drop=weeks_to_drop,
                    weeks_to_nowcast=weeks_to_nowcast,
                    drop_same_day=bool(int(drop_same_day)),

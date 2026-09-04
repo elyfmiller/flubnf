@@ -766,3 +766,15 @@ a.skip:focus{left:0}
     animation-duration:.01ms!important;animation-iteration-count:1!important;
     scroll-behavior:auto!important}
 }
+
+/* Forecast form modes (Real-time / Vintage) and the advanced group */
+.modes{display:flex;gap:.4rem;margin:.1rem 0 .5rem}
+.pill.mode{cursor:pointer;background:transparent;color:var(--ink);border:1px solid var(--gold);font:inherit;font-size:.85rem}
+.pill.mode[aria-selected="true"]{background:var(--gold-bright);color:#111;border-color:var(--gold-bright)}
+.pill.mode:focus-visible{outline:2px solid var(--gold-bright);outline-offset:2px}
+#fcform.mode-realtime #vintage-pick{display:none}
+details.adv{margin:.7rem 0 .4rem}
+details.adv>summary{cursor:pointer;color:var(--gold);font-size:.9rem;list-style:none}
+details.adv>summary::-webkit-details-marker{display:none}
+details.adv>summary::before{content:"\25B8 ";}
+details.adv[open]>summary::before{content:"\25BE ";}
