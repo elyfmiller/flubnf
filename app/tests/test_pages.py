@@ -88,10 +88,10 @@ def test_nav_is_the_operational_loop():
     tabs = _nav_tabs(client.get("/").text)
     assert [h for h, _ in tabs] == ["/", "/data", "/forecast", "/output",
                                     "/retro", "/storage", "/models",
-                                    "/methods"]
+                                    "/methods", "/sandbox"]
     assert [n for _, n in tabs] == ["Home", "Data", "Forecast", "Output",
                                     "Retrospective", "Storage", "Models",
-                                    "Methods"]
+                                    "Methods", "Sandbox"]
 
 
 def test_storage_page_serves_on_both_routes_with_the_ledger_inside():

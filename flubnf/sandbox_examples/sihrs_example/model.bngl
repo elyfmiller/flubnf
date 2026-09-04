@@ -1,0 +1,95 @@
+# SIHRS influenza model for the particle-filter tests (fit_type = pf).
+#
+# The single-strain seasonal model the filter was built against, with its
+# per-state data filled in for a synthetic state of five million people.
+# Five fitted parameters (Reff, eps1, phi1, mult, r); everything else is
+# fixed. Time is in weeks and every rate is per week. The clock species
+# counter() is the model's own time, which the filter carries as state.
+#
+# The weekly hospital admissions the tests observe are the increment of
+# Hobs = mult*H_Cum across a week: the model owns the ascertainment scale,
+# and mult never enters a reaction rule. i0 is overwritten per truth by tests/pf_cells.py
+# so that the first week's expected count is the same for every truth.
+begin model
+begin parameters
+Reff__FREE 1.20
+eps1__FREE 0.15
+phi1__FREE 22.0
+mult__FREE 0.05
+r__FREE 8.0
+
+# transmission: base reproduction number at s0, plus annual forcing
+Reff    Reff__FREE
+eps1    eps1__FREE
+phi1    phi1__FREE
+
+# progression and removal, per week
+gamma   2.187500
+rho     0.02
+mult    mult__FREE
+gammaH  1.17
+omega   0.019
+
+# negative-binomial dispersion of the observed counts
+r       r__FREE
+
+# derived
+beta0   Reff*gamma/s0
+pi      3.141592653589793
+
+# known per-state data
+N       5000000
+s0      0.85
+i0      2.70386837e-04
+end parameters
+
+begin molecule types
+S()
+I()
+H()
+R()
+Hadm()
+counter()
+end molecule types
+
+begin seed species
+S() N*s0
+I() N*i0
+H() 0
+R() N*(1-s0-i0)
+Hadm() 0
+counter() 0
+end seed species
+
+begin observables
+Molecules S     S()
+Molecules I     I()
+Molecules H     H()
+Molecules R     R()
+Molecules H_Cum Hadm()
+Molecules t     counter()
+end observables
+
+begin functions
+beta() = beta0*exp( eps1*cos(2*pi*(t-phi1)/52) )
+H_weekly() = rho*mult*gamma*I
+# the fit target of integrated mode: ascertained cumulative admissions,
+# whose increment over a week is the expected reported count
+Hobs() = mult*H_Cum
+end functions
+
+begin reaction rules
+0 -> counter() 1
+S() + I() -> I() + I()   beta()/N
+I() -> H()   rho*gamma
+I() -> R()   (1-rho)*gamma
+H() -> R()   gammaH
+R() -> S()   omega
+I() -> I() + Hadm()   rho*gamma
+end reaction rules
+end model
+
+begin actions
+generate_network({overwrite=>1})
+simulate({suffix=>"flu",method=>"ode",t_start=>0,t_end=>48,n_steps=>48,print_functions=>1})
+end actions

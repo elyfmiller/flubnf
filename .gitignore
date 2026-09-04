@@ -45,3 +45,6 @@ research/
 docs/PERFORMANCE.md
 docs/PARTICLE-FILTER.md
 docs/figs/
+
+# The sandbox: a user's own models and their runs, never the production path
+sandbox/

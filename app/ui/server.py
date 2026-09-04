@@ -38,7 +38,7 @@ def _trace(msg: str) -> None:
 _trace("import begin (fastapi + app.core next)")
 
 from fastapi import BackgroundTasks, FastAPI, Form, Request     # noqa: E402
-from fastapi.responses import (HTMLResponse, PlainTextResponse,  # noqa: E402
+from fastapi.responses import (HTMLResponse, JSONResponse, PlainTextResponse,  # noqa: E402
                                RedirectResponse)
 from fastapi.templating import Jinja2Templates                  # noqa: E402
 
@@ -3328,6 +3328,130 @@ def output_report_download(date: str = ""):
     rid, res = _latest_results()
     return _weekly_report_file(APP_STATE / "workroots" / (rid or ""),
                                (res or {}).get("forecast_date", ""))
+
+
+# ------------------------------------------------------------------ sandbox
+# A model of your own through the same engine, in its own folder: see
+# app/core/sandbox.py. Nothing here reaches the runs ledger, Output, the
+# retrospectives or the seal.
+from app.core import sandbox as sandbox_mod                      # noqa: E402
+
+_sandbox_status: dict = {"running": None}
+
+
+def _sandbox_busy_reason() -> str:
+    """Why a sandbox fit may not start now: the engine is one machine's
+    worth of cores, and a console run, a replay or another sandbox fit
+    already has it."""
+    if _status.get("running"):
+        return "a console run is fitting"
+    live = [x for x in _known_seasons() if _season_status(x) in _RETRO_ACTIVE]
+    if live:
+        return "a retrospective replay is running (" + ", ".join(live) + ")"
+    if _sandbox_status.get("running"):
+        return f"sandbox run {_sandbox_status['running']} is still fitting"
+    return ""
+
+
+def _sandbox_run_id(run_id: str) -> str:
+    if not run_id or "/" in run_id or "\\" in run_id or run_id.startswith("."):
+        raise sandbox_mod.SandboxError(f"{run_id!r} is not a sandbox run")
+    return run_id
+
+
+@app.get("/sandbox", response_class=HTMLResponse)
+def sandbox_page(request: Request, run: str = "", model: str = ""):
+    models = sandbox_mod.list_models()
+    have = {m["name"] for m in models}
+    examples = [e for e in sandbox_mod.list_examples() if e not in have]
+    runs = sandbox_mod.list_runs()[:25]
+    res = None
+    try:
+        if run:
+            res = sandbox_mod.results(sandbox_mod.RUNS / _sandbox_run_id(run))
+        elif runs:
+            res = sandbox_mod.results(sandbox_mod.RUNS / runs[0]["run_id"])
+    except Exception as e:
+        _flash(f"That sandbox run could not be read: {e}")
+        res = None
+    editing = None
+    if model:
+        try:
+            editing = {"name": sandbox_mod.check_name(model),
+                       **sandbox_mod.read_model(model)}
+        except Exception as e:
+            _flash(str(e))
+    return templates.TemplateResponse(request, "sandbox.html", {
+        "active": "Sandbox", "models": models, "examples": examples,
+        "runs": runs, "res": res, "res_json": _script_json(res or {}),
+        "editing": editing, "busy": _sandbox_busy_reason(),
+        "running_id": _sandbox_status.get("running"),
+        "dry_particles": sandbox_mod.DRY_RUN_PARTICLES})
+
+
+@app.post("/sandbox/add-example")
+def sandbox_add_example(request: Request, name: str = Form(...)):
+    try:
+        sandbox_mod.add_example(name)
+        _flash(f"Example {name} copied into the sandbox.")
+        return _back(request, f"/sandbox?model={name}")
+    except Exception as e:
+        _flash(str(e))
+        return _back(request, "/sandbox")
+
+
+@app.post("/sandbox/models/{name}/save")
+def sandbox_save(request: Request, name: str,
+                 model_bngl: str = Form(""), data_exp: str = Form(""),
+                 priors_conf: str = Form("")):
+    try:
+        sandbox_mod.save_model(name, {"model.bngl": model_bngl,
+                                      "data.exp": data_exp,
+                                      "priors.conf": priors_conf})
+        _flash(f"Saved {name}. Run it to check that the network generates.")
+    except Exception as e:
+        _flash(str(e))
+    return _back(request, f"/sandbox?model={name}")
+
+
+@app.post("/sandbox/run")
+def sandbox_run(request: Request, model: str = Form(...),
+                particles: int = Form(sandbox_mod.DRY_RUN_PARTICLES),
+                jitter: float = Form(0.30), forecast_weeks: int = Form(4),
+                seed: int = Form(0)):
+    why = _sandbox_busy_reason()
+    if why:
+        _flash(f"Not started: {why}. The sandbox waits for the engine.")
+        return _back(request, "/sandbox")
+    try:
+        workroot = sandbox_mod.prepare(model, particles=particles,
+                                       jitter=jitter,
+                                       forecast_weeks=forecast_weeks,
+                                       seed=seed)
+    except Exception as e:
+        _flash(f"Not started: {e}")
+        return _back(request, f"/sandbox?model={model}")
+    run_id = workroot.name
+    _sandbox_status["running"] = run_id
+
+    def _go():
+        try:
+            sandbox_mod.run(workroot)
+        finally:
+            if _sandbox_status.get("running") == run_id:
+                _sandbox_status["running"] = None
+
+    threading.Thread(target=_go, daemon=True, name=f"sandbox-{run_id}").start()
+    _flash(f"Sandbox run {run_id} started with {particles} particles.")
+    return _back(request, f"/sandbox?run={run_id}")
+
+
+@app.get("/api/sandbox/runs/{run_id}")
+def api_sandbox_run(run_id: str):
+    try:
+        return sandbox_mod.results(sandbox_mod.RUNS / _sandbox_run_id(run_id))
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=404)
 
 
 @app.get("/models", response_class=HTMLResponse)
