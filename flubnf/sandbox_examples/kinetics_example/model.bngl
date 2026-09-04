@@ -1,0 +1,47 @@
+# A model that is not an epidemic, for the particle-filter generality
+# tests: first-order conversion A -> B with an accumulator of B made, and
+# an observation scale that the MODEL applies through a function. Nothing
+# in it is called mult, rho, H or I. Time is in weeks.
+begin model
+begin parameters
+k__FREE 0.30
+scale__FREE 0.50
+r__FREE 8.0
+
+k       k__FREE        # conversion rate per week
+scale   scale__FREE    # fraction of conversions that are observed
+r       r__FREE        # negative-binomial dispersion of the observed counts
+A0      100000
+end parameters
+
+begin molecule types
+A()
+B()
+Bmade()
+end molecule types
+
+begin seed species
+A() A0
+B() 0
+Bmade() 0
+end seed species
+
+begin observables
+Molecules A     A()
+Molecules B     B()
+Molecules B_Cum Bmade()
+end observables
+
+begin functions
+Bobs() = scale*B_Cum
+end functions
+
+begin reaction rules
+A() -> B() + Bmade()   k
+end reaction rules
+end model
+
+begin actions
+generate_network({overwrite=>1})
+simulate({suffix=>"kin",method=>"ode",t_start=>0,t_end=>20,n_steps=>20,print_functions=>1})
+end actions

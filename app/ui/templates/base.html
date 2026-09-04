@@ -48,7 +48,7 @@
   {% set tabs = [("/","Home"),("/data","Data"),("/forecast","Forecast"),
                  ("/output","Output"),("/retro","Retrospective"),
                  ("/storage","Storage"),("/models","Models"),
-                 ("/methods","Methods")] %}
+                 ("/methods","Methods"),("/sandbox","Sandbox")] %}
   {% for href, name in tabs %}
     <a class="tab {% if active == name %}active{% endif %}" href="{{ href }}">{{ name }}</a>
   {% endfor %}

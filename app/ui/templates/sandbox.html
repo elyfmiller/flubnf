@@ -1,0 +1,125 @@
+{% extends "base.html" %}{% block title %}FluBNF · Sandbox{% endblock %}
+{% block head %}<script src="/static/plotly.min.js"></script>{% endblock %}
+{% block content %}
+<h1>Sandbox</h1>
+<div class="cols">
+ <div>
+  <div class="card"><h2>Models</h2>
+   <p class="hint">A model is three files in <code>sandbox/models/&lt;name&gt;/</code>:
+    <code>model.bngl</code> (its simulate action must name a suffix),
+    <code>data.exp</code> (a time column and one count column), and
+    <code>priors.conf</code> (one <code>*_var</code> line per free parameter, plus
+    <code>pf_cumulative_observable</code> naming the model output whose weekly
+    increment is the expected count, scale included). Runs here reach nothing else in the console.</p>
+   {% if models %}
+   <table class="kv"><thead><tr><th>model</th><th>files</th><th></th></tr></thead><tbody>
+   {% for m in models %}<tr>
+    <td><a href="/sandbox?model={{ m.name }}">{{ m.name }}</a>{% if m.note %}<br><span class="hint">{{ m.note }}</span>{% endif %}</td>
+    <td>{% if m.complete %}complete{% else %}missing {{ m.missing | join(", ") }}{% endif %}</td>
+    <td>{% if m.complete %}<form method="post" action="/sandbox/run" style="display:inline">
+      <input type="hidden" name="model" value="{{ m.name }}">
+      <input type="hidden" name="particles" value="{{ dry_particles }}">
+      <button class="pill" data-guard="console-run" {% if busy %}disabled title="{{ busy }}"{% endif %}>Dry run</button></form>{% endif %}</td>
+   </tr>{% endfor %}</tbody></table>
+   {% else %}<p class="hint">No models yet. Add an example below, or create <code>sandbox/models/&lt;name&gt;/</code> by hand.</p>{% endif %}
+   {% if examples %}
+   <p class="hint">Examples: {% for e in examples %}<form method="post" action="/sandbox/add-example" style="display:inline"><input type="hidden" name="name" value="{{ e }}"><button class="pill">add {{ e }}</button></form> {% endfor %}</p>
+   {% endif %}
+  </div>
+
+  <div class="card"><h2>Run</h2>
+   {% if busy %}<p class="hint">Waiting: {{ busy }}.</p>{% endif %}
+   <form method="post" action="/sandbox/run">
+    <label>Model</label>
+    <select name="model">{% for m in models if m.complete %}<option value="{{ m.name }}" {% if editing and editing.name == m.name %}selected{% endif %}>{{ m.name }}</option>{% endfor %}</select>
+    <label>Particles</label>
+    <input name="particles" type="number" value="{{ dry_particles }}" min="50" max="100000">
+    <p class="hint">{{ dry_particles }} checks that the model generates and fits; 10,000 is a real fit.</p>
+    <label>Jitter</label>
+    <input name="jitter" type="number" step="0.01" value="0.30" min="0.01" max="0.99">
+    <label>Forecast weeks</label>
+    <input name="forecast_weeks" type="number" value="4" min="0" max="12">
+    <label>Seed</label>
+    <input name="seed" type="number" value="0" min="0">
+    <button class="gold" data-guard="console-run" {% if busy or not models %}disabled{% endif %}>Run in the sandbox</button>
+   </form>
+  </div>
+
+  {% if runs %}
+  <div class="card"><h2>Runs</h2>
+   <table class="kv"><thead><tr><th>run</th><th>model</th><th>status</th><th>time</th></tr></thead><tbody>
+   {% for r in runs %}<tr>
+    <td><a href="/sandbox?run={{ r.run_id }}">{{ r.run_id }}</a></td><td>{{ r.model }}</td>
+    <td>{{ r.status }}{% if r.run_id == running_id %} (fitting){% endif %}</td>
+    <td>{% if r.seconds is defined %}{{ r.seconds }} s{% endif %}</td>
+   </tr>{% endfor %}</tbody></table>
+  </div>
+  {% endif %}
+ </div>
+
+ <div>
+  {% if res %}
+  <div class="card" id="results" data-run="{{ res.run_id }}" data-status="{{ res.meta.status }}">
+   <h2>{{ res.run_id }}</h2>
+   <p class="hint">{{ res.meta.model }} · {{ res.meta.particles | int }} particles · jitter {{ res.meta.jitter }} · {{ res.meta.mode }}{% if res.meta.cumulative %} on {{ res.meta.cumulative }}{% endif %} · seed {{ res.meta.seed }}
+    · <strong>{{ res.meta.status }}</strong>{% if res.meta.seconds is defined %} in {{ res.meta.seconds }} s{% endif %}</p>
+   {% if res.meta.error %}<pre class="hint">{{ res.meta.error }}</pre>{% endif %}
+   {% if res.stderr %}<pre class="hint">{{ res.stderr }}</pre>{% endif %}
+   {% if res.params %}
+   <table class="kv"><thead><tr><th>parameter</th><th>5%</th><th>median</th><th>95%</th></tr></thead><tbody>
+   {% for p in res.params %}<tr><td>{{ p.name }}</td><td>{{ "%.4g" | format(p.p5) }}</td><td>{{ "%.4g" | format(p.p50) }}</td><td>{{ "%.4g" | format(p.p95) }}</td></tr>{% endfor %}
+   </tbody></table>
+   <p class="hint">{{ res.distinct }} distinct parameter vectors of {{ res.sample }} in the posterior sample{% if res.ess %}; ESS at the last week {{ "%.0f" | format(res.ess[-1].ess) }}, minimum {{ "%.0f" | format(res.ess | map(attribute="ess") | min) }}{% endif %}.</p>
+   {% endif %}
+   <div id="sbplot" style="min-height:320px"></div>
+  </div>
+  {% elif runs %}<div class="card"><p class="hint">Pick a run on the left to see its outputs.</p></div>{% endif %}
+
+  {% if editing %}
+  <div class="card"><h2>Edit {{ editing.name }}</h2>
+   <form method="post" action="/sandbox/models/{{ editing.name }}/save">
+    <label>model.bngl</label>
+    <textarea name="model_bngl" rows="18" spellcheck="false" style="width:100%;font-family:monospace">{{ editing["model.bngl"] }}</textarea>
+    <label>data.exp</label>
+    <textarea name="data_exp" rows="8" spellcheck="false" style="width:100%;font-family:monospace">{{ editing["data.exp"] }}</textarea>
+    <label>priors.conf</label>
+    <textarea name="priors_conf" rows="8" spellcheck="false" style="width:100%;font-family:monospace">{{ editing["priors.conf"] }}</textarea>
+    <button class="gold">Save</button>
+   </form>
+   <p class="hint">A saved model is checked when it runs: BNG2.pl must generate its network, every free parameter must be a parameter of the network, and the named cumulative output must be one of its observables or functions. Sandbox outputs are fits, not forecasts for submission.</p>
+  </div>
+  {% endif %}
+ </div>
+</div>
+<script>
+(function () {
+  var RES = {{ res_json | safe }};
+  var box = document.getElementById('results');
+  if (box && box.dataset.status === 'running') {
+    // poll until the fit ends, then reload to show it
+    var id = box.dataset.run;
+    var timer = setInterval(function () {
+      fetch('/api/sandbox/runs/' + encodeURIComponent(id)).then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d && d.meta && d.meta.status !== 'running' && d.meta.status !== 'prepared') {
+            clearInterval(timer); location.reload();
+          }
+        }).catch(function () {});
+    }, 5000);
+  }
+  if (!RES || !RES.traj || !window.Plotly) return;
+  var t = RES.traj, obs = RES.meta.observed || [], times = RES.meta.time || [];
+  var n = t.n_obs, xs = [];
+  var dt = times.length > 1 ? (times[times.length - 1] - times[0]) / (times.length - 1) : 1;
+  for (var i = 0; i < t.columns; i++) xs.push(i < times.length ? times[i] : times[times.length - 1] + dt * (i - times.length + 1));
+  var band = {x: xs.concat(xs.slice().reverse()), y: t.q90.concat(t.q10.slice().reverse()),
+              fill: 'toself', fillcolor: 'rgba(31,119,180,0.18)', line: {width: 0}, name: '10-90%', hoverinfo: 'skip'};
+  var med = {x: xs, y: t.q50, mode: 'lines', name: 'median', line: {color: '#1f77b4'}};
+  var pts = {x: times, y: obs, mode: 'markers', name: RES.meta.obs_col || 'observed', marker: {color: '#111', size: 6}};
+  var shapes = n < t.columns ? [{type: 'line', x0: xs[n - 1], x1: xs[n - 1], y0: 0, y1: 1, yref: 'paper', line: {dash: 'dot', color: '#888'}}] : [];
+  Plotly.newPlot('sbplot', [band, med, pts], {margin: {t: 20, r: 10, l: 50, b: 40}, shapes: shapes,
+    xaxis: {title: 'time'}, yaxis: {title: RES.meta.obs_col || 'count', rangemode: 'tozero'},
+    legend: {orientation: 'h'}, paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)'}, {displayModeBar: false, responsive: true});
+})();
+</script>
+{% endblock %}
