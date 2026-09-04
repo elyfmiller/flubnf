@@ -468,6 +468,7 @@ objfunc = neg_bin_dynamic
 num_particles = {spec.particles}
 pf_jitter = {spec.jitter}
 pf_observable_mode = {spec.observable_mode}
+pf_cumulative_observable = Hobs
 pf_forecast_weeks = {4 + k_total}
 population_size = 1
 max_iterations = 1
