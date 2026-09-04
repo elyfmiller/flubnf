@@ -114,6 +114,11 @@ def spec_settings(spec) -> list:
              ("engine", ENGINE_LABELS.get(engine, engine or "unknown")),
              ("replicates", str(d.get("replicates", "") or "")),
              ("particles", f"{int(d.get('particles') or 0):,}")]
+    # the season start sits beside the date it belongs to: it fixes the
+    # model's first observed week and its initial-state anchor, which the
+    # swarm-carry study measured as the largest single lever in the engine
+    if d.get("season_start"):
+        pairs.insert(1, ("season start", str(d["season_start"])))
     pairs.append(("weeks dropped", str(int(d.get("weeks_to_drop") or 0))))
     # only when the spec RECORDS the choice: a ledger row from before the
     # field existed ran with the same-day week in the fit, and displaying
@@ -271,6 +276,16 @@ def derive_seed(location: str, forecast_date: str, replicate: int) -> int:
     return int.from_bytes(h[:4], "little") % (2**31 - 1)
 
 
+def default_season_start(forecast_date: str) -> str:
+    """August 1 of the season a forecast date belongs to: the archive's
+    season boundary and the basis of every sealed number. Empty in,
+    empty out."""
+    if not forecast_date:
+        return ""
+    y, m = int(forecast_date[:4]), int(forecast_date[5:7])
+    return f"{y if m >= 8 else y - 1}-08-01"
+
+
 @dataclass
 class RunSpec:
     """Everything that defines one model run. The ledger stores this verbatim."""
@@ -317,10 +332,13 @@ class RunSpec:
     def __post_init__(self):
         # Aug-Jul season: a blank season_start derives from the forecast
         # date so specs built anywhere (routes, scripts, tests) agree and
-        # nothing hardcodes a season year.
+        # nothing hardcodes a season year. A typed one (the Forecast form's
+        # advanced setting since 2026-09-04) is kept verbatim: the model's
+        # first observed week, its initial-state anchor and, under
+        # season-start seeding, its random draws all follow it, so the
+        # ledger must carry the value that actually ran.
         if not self.season_start and self.forecast_date:
-            y, m = int(self.forecast_date[:4]), int(self.forecast_date[5:7])
-            self.season_start = f"{y if m >= 8 else y - 1}-08-01"
+            self.season_start = default_season_start(self.forecast_date)
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), sort_keys=True)
