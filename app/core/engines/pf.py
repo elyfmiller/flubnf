@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -183,6 +184,65 @@ def read_prepare_failures(workroot: Path) -> dict:
     return d if isinstance(d, dict) else {}
 
 
+#: The cloud file of a cell that saves or continues its particle cloud.
+#: Outside out/, which the runners clear before every fit.
+CLOUD_NAME = "cloud.npz"
+#: Where collect() records a cell that was asked to save its cloud and
+#: had none to save (an engine that wrote no state file).
+STATE_MISSING_NAME = "pf_state_missing.json"
+
+
+def continuation_for(spec, cell_dir: Path, key: str) -> dict | None:
+    """The cell's cloud file, and where it comes from and goes to, under
+    the two spec.extra keys of the swarm-carry design; None when neither
+    is set, so an ordinary forecast's pf.conf is unchanged.
+
+      continue_states  directory of <key>.npz clouds to continue from. A
+                       cell whose file is there continues (pf_continue =
+                       1); one whose file is absent starts fresh from the
+                       prior and RECORDS continued_from None. Never a
+                       silent fallback: the record is in cells.json.
+      save_states      directory collect() copies the ending cloud into
+                       as <key>.npz, before the week's tree is pruned.
+
+    The engine reads and writes ONE path, pf_state_file, and overwrites it
+    with the cloud it ends on, so a cloud to continue from is copied into
+    the cell first and the source in the ledger is never touched.
+    """
+    ex = spec.extra or {}
+    if not ex.get("continue_states") and not ex.get("save_states"):
+        return None
+    state = Path(cell_dir) / CLOUD_NAME
+    src = None
+    if ex.get("continue_states"):
+        cand = Path(ex["continue_states"]) / f"{key}.npz"
+        if cand.is_file():
+            shutil.copy2(cand, state)
+            src = str(cand)
+    dest = (str(Path(ex["save_states"]) / f"{key}.npz")
+            if ex.get("save_states") else None)
+    return {"state_file": str(state), "continued_from": src,
+            "save_state_to": dest}
+
+
+def seed_date_for(spec) -> str:
+    """The date the cell seed is keyed on. forecast_date is the sealed
+    convention: every as-of week is its own draw. season_start keys every
+    week of a season on the same date, and under the engine's per-week
+    streams (PyBNF-pf f09eeb9b) two as-of weeks then share the draws of
+    the weeks they have in common: they differ by their data alone, and a
+    run continued from a saved cloud is bit-identical to the refit. The
+    swarm-carry pre-registration is what the option exists for; the
+    console keeps the default."""
+    anchor = str((spec.extra or {}).get("seed_anchor", "forecast_date"))
+    if anchor == "forecast_date":
+        return spec.forecast_date
+    if anchor == "season_start":
+        return spec.season_start
+    raise ValueError("seed_anchor must be forecast_date or season_start, "
+                     f"not {anchor!r}")
+
+
 def prepare(spec, workroot: Path) -> list:
     """Materialize model+net+exp+conf for every (location, replicate) cell.
 
@@ -348,7 +408,8 @@ def prepare(spec, workroot: Path) -> list:
                                text=True, cwd=str(d), timeout=300)
             if not (d / "m.net").is_file():
                 raise RuntimeError(f"netgen failed for {loc}: {r.stdout[-300:]}")
-            seed = derive_seed(loc, spec.forecast_date, rep)
+            seed = derive_seed(loc, seed_date_for(spec), rep)
+            cont = continuation_for(spec, d, tag)
             # newline pinned: PyBNF's conf reader is line-based, so on
             # Windows every value would arrive with a trailing \r attached.
             # Every path goes through conf_safe_path: the bng_command and
@@ -367,9 +428,18 @@ pf_forecast_weeks = {4 + k_total}
 population_size = 1
 max_iterations = 1
 seed = {seed}
+initialization = rand
 {VARS_2S if two_strain else VARS_1S}"""
 + (f"pf_binom_neff_cap = {(spec.extra or {}).get('neff_cap', 300)}\n"
-   if two_strain else ""), newline="\n")
+   if two_strain else "")
+# initialization = rand, always: PyBNF's default for the key is lh, and
+# the engine honours it since PyBNF-pf f09eeb9b, so without this line the
+# initial cloud would silently become a Latin hypercube. Every recorded
+# number was produced under independent draws; a change of draw is a
+# pre-registered experiment, not a side effect of an engine update.
++ (f"pf_state_file = {conf_safe_path(cont['state_file'])}\n"
+   f"pf_continue = {1 if cont['continued_from'] else 0}\n"
+   if cont else ""), newline="\n")
             loc_cells.append({
                 "key": tag, "dir": str(d), "location": loc,
                 "replicate": rep, "seed": seed,
@@ -389,6 +459,9 @@ seed = {seed}
                 "natg_clipped_weeks": gg.n_clipped if natg else None,
                 "n_obs": int(s.n_obs),
                 "last_week_offset": int(s.last_week_offset),
+                "seed_date": seed_date_for(spec),
+                **(cont or {"state_file": None, "continued_from": None,
+                            "save_state_to": None}),
                 # the two quantities the cost model reads back at
                 # execution time to size the run's time budget
                 "particles": int(spec.particles),
@@ -997,6 +1070,27 @@ def _record_collect_failure(workroot: Path, key: str, msg: str) -> None:
         pass
 
 
+def _save_cloud(workroot: Path, c: dict) -> None:
+    """Copy the cell's ending cloud to where the spec asked, so it outlives
+    the week's prune. A fitted cell with no cloud file is recorded in
+    STATE_MISSING_NAME and still pooled: its forecast is good, only the
+    carry into the next week is lost, and the next week's cells.json says
+    so through continued_from."""
+    src = Path(c.get("state_file") or "")
+    dest = Path(c["save_state_to"])
+    if src.is_file():
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dest)
+        return
+    rec = Path(workroot) / STATE_MISSING_NAME
+    try:
+        cur = json.loads(rec.read_text()) if rec.is_file() else {}
+    except Exception:
+        cur = {}
+    cur[c["key"]] = f"no cloud file at {src}"
+    rec.write_text(json.dumps(cur, sort_keys=True))
+
+
 def collect(workroot: Path) -> dict:
     """Forecast samples per location: replicate-pooled, anchored at origin.
 
@@ -1038,6 +1132,8 @@ def collect(workroot: Path) -> dict:
                 f"({'empty' if tr.size == 0 else 'a single row'}); "
                 "the cell is excluded from assembly")
             continue
+        if c.get("save_state_to"):
+            _save_cloud(workroot, c)
         n = c["n_obs"]
         origin = tr[:, n - 1]
         med = float(np.median(origin[np.isfinite(origin)]))
