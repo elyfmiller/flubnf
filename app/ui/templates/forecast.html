@@ -52,7 +52,8 @@
       }
       // the advanced Season start: a blank field derives August 1 of the
       // forecast's season, and the hint says which date that is
-      var sline = document.getElementById('season-line');
+      // looked up when painted, not when this script runs: the Advanced
+      // group, and the line inside it, sit further down the form
       function seasonDefault(day) {
         var m = day.match(/^(\d{4})-(\d{2})/);
         if (!m) return '';
@@ -60,6 +61,7 @@
         return (mo >= 8 ? y : y - 1) + '-08-01';
       }
       function paintSeason() {
+        var sline = document.getElementById('season-line');
         if (!sline || !box) return;
         var d = seasonDefault(box.value);
         sline.textContent = d ? 'Blank: ' + d + ', August 1 of the season.' : '';
@@ -91,6 +93,7 @@
         if (this.value) { box.value = this.value; paint(); paintSeason(); }
       });
       paint(); paintSeason();
+      document.addEventListener('DOMContentLoaded', paintSeason);
       var initial = 'realtime';
       try { initial = localStorage.getItem('fcmode') || initial; } catch (e) {}
       if (box && box.dataset.default && box.value && box.value < box.dataset.default) initial = 'vintage';
