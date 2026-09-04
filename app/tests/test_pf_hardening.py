@@ -119,6 +119,8 @@ class _State:
         self.observed = [4.0, 5.0, 6.0]
         self.n_obs = 3
         self.last_week_offset = 2
+        self.i0 = 5e-3          # prepare() records the anchor it used
+        self.rhomult = 0.05
 
 
 def _spec(locations, replicates=2):

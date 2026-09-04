@@ -298,6 +298,23 @@ def prepare(spec, workroot: Path) -> list:
         s = resolve_state(loc, truth_csv=vintage, locations_csv=LOCATIONS,
                           season_start=spec.season_start,
                           as_of=spec.forecast_date)
+        # The model's initial infected fraction i0 is derived from the
+        # season-to-date cumulative count (resolve_state: rhomult from
+        # obs.sum(), i0 from obs[0] and rhomult), so every as-of week
+        # refits a slightly different model even when no past row was
+        # revised. MEASURED 2026-09-04 (swarm-carry control): Alaska i0
+        # 9.14e-3 at 2023-09-23 and 6.86e-3 one week later, same rows.
+        # A cloud carried across weeks keeps the anchor it started from,
+        # so a fair comparison, and a console that carries, pins the
+        # anchor to one as-of week: spec.extra["anchor_asof"] takes i0
+        # (and the rhomult it came from) from that week's vintage and
+        # leaves everything else as this week's vintage says.
+        anchor = (spec.extra or {}).get("anchor_asof")
+        if anchor:
+            sa = resolve_state(loc, truth_csv=vintage_path(anchor),
+                               locations_csv=LOCATIONS,
+                               season_start=spec.season_start, as_of=anchor)
+            s.i0, s.rhomult = sa.i0, sa.rhomult   # a fresh object per call
         # The nowcast rule (drop_same_day, OFF by default since the
         # 2026-08-27 v1.1 measurement: dropping the same-day row cost
         # 2023-24 +0.24 pooled relWIS because that row carries the turn
@@ -460,6 +477,8 @@ initialization = rand
                 "n_obs": int(s.n_obs),
                 "last_week_offset": int(s.last_week_offset),
                 "seed_date": seed_date_for(spec),
+                "anchor_asof": anchor or spec.forecast_date,
+                "i0": float(s.i0),
                 **(cont or {"state_file": None, "continued_from": None,
                             "save_state_to": None}),
                 # the two quantities the cost model reads back at
