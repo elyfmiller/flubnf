@@ -85,6 +85,13 @@ beta() = beta0*exp( eps1*cos(2*pi*(t-phi1)/52) )
 # column to a model output. mult is observation-only: never put it in a rule.
 H_weekly() = rho*mult*gamma*I
 
+### -- the particle filter's fit target: ASCERTAINED cumulative admissions -- ###
+# The engine differences this over each reporting week and multiplies by
+# nothing (PyBNF-pf, 2026-09-04): the model owns its observation scale,
+# so a filter that knows no parameter names can run any model. Named by
+# pf_cumulative_observable in the conf FluBNF writes.
+Hobs() = mult*H_Cum
+
 end functions
 
 begin reaction rules

@@ -82,6 +82,9 @@ def test_prepare_pins_independent_draws_and_keys_the_seed_on_the_as_of_date(
     for c in cells:
         conf = _conf(c)
         assert "initialization = rand\n" in conf
+        # the engine differences the model's own scaled accumulator and
+        # multiplies by nothing; the template declares Hobs = mult*H_Cum
+        assert "pf_cumulative_observable = Hobs\n" in conf
         assert "pf_state_file" not in conf and "pf_continue" not in conf
         want = derive_seed("Ohio", "2098-11-07", c["replicate"])
         assert f"seed = {want}\n" in conf and c["seed"] == want
