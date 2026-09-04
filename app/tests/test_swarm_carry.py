@@ -310,6 +310,47 @@ def test_run_week_hands_extra_to_prepare_and_records_it_in_the_manifest(
         (root / "weeks" / W2 / retro.PREP_NAME).read_text())
 
 
+def test_run_week_takes_the_season_start_from_extra(tmp_path, monkeypatch):
+    """The solstice arm: extra["season_start"] moves the model's first
+    observed week; without it the archive's August 1 boundary stands."""
+    seen = []
+
+    def fake_prepare(spec, wd):
+        seen.append(spec.season_start)
+        wd = Path(wd)
+        cells = [{"key": "c0", "dir": str(wd / "c0")}]
+        (wd / "cells.json").write_text(json.dumps(cells))
+        return cells
+
+    class Runner:
+        def __init__(self, wd, shard):
+            self.wd, self.shard = Path(wd), list(shard)
+
+        def poll(self):
+            for c in self.shard:
+                retro.mark_cell_done(self.wd, c["key"], "ok")
+            return 0
+
+        def kill(self):
+            pass
+
+    monkeypatch.setattr(retro.pf_engine, "prepare", fake_prepare)
+    monkeypatch.setattr(retro.pf_engine, "collect",
+                        lambda wd: {"Ohio": {"0": [1.0]}})
+    monkeypatch.setattr(retro.an_engine, "run",
+                        lambda spec: {"Ohio": {"1": {0.5: 2.0}}})
+    monkeypatch.setattr(retro, "_launch_runners",
+                        lambda wd, shards, halt: [Runner(wd, s)
+                                                  for s in shards])
+    monkeypatch.setattr(retro, "_sleep", lambda s: None)
+    monkeypatch.setattr(reclaim, "prune_week", lambda wd: 0)
+    root = tmp_path / SEASON
+    retro.run_week(root, SEASON, W1, ["Ohio"], width=1,
+                   extra={"season_start": "2098-06-21"})
+    retro.run_week(root, SEASON, W2, ["Ohio"], width=1)
+    assert seen == ["2098-06-21", retro.season_bounds(SEASON)[0]]
+
+
 def test_run_season_asks_week_extra_for_every_week_in_order(tmp_path,
                                                             monkeypatch):
     clock = {"t": 1_000_000.0}
