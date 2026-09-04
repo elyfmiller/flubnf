@@ -851,8 +851,13 @@ def _run_round(root: Path, wd: Path, pending: list, width: int) -> None:
 def run_week(root: Path, season: str, asof: str, locations: list,
              replicates: int = 3, particles: int = 10_000,
              width: int = pf_engine.DEFAULT_SHARD_WIDTH,
-             drop_same_day: bool = False) -> dict:
+             drop_same_day: bool = False,
+             extra: dict | None = None) -> dict:
     """One submission day: PF (sharded) + analogue; store samples+quantiles.
+
+    `extra` is the spec's research dictionary (seed_anchor,
+    continue_states, save_states; see pf_engine.continuation_for), recorded
+    in the week's manifest so a resumed week is rebuilt if it changes.
 
     Fit-level control and resume: the STOP and PAUSE flags are honoured
     BETWEEN individual fits (the fits in flight drain first -- a stop raises
@@ -871,11 +876,14 @@ def run_week(root: Path, season: str, asof: str, locations: list,
     spec = RunSpec(engine="retro", forecast_date=asof, locations=locations,
                    season_start=season_bounds(season)[0],
                    replicates=replicates, particles=particles,
-                   drop_same_day=drop_same_day)
+                   drop_same_day=drop_same_day, extra=dict(extra or {}))
     manifest = {"locations": [str(l) for l in locations],
                 "replicates": int(replicates), "particles": int(particles),
                 "season_start": spec.season_start,
                 "drop_same_day": bool(drop_same_day)}
+    if extra:
+        manifest["extra"] = dict(extra)   # absent when empty: an older
+                                          # prepared week still matches
     _check_stop(root)         # a standing flag must not even prepare a week
     hold_while_paused(root)
     cells = _prepare_week(root, asof, spec, manifest)
@@ -948,9 +956,13 @@ def run_week(root: Path, season: str, asof: str, locations: list,
 def run_season(root: Path, season: str, locations: list, replicates=3,
                particles=10_000, width=pf_engine.DEFAULT_SHARD_WIDTH,
                progress=None, settings: dict | None = None,
-               drop_same_day: bool = False) -> list:
+               drop_same_day: bool = False, week_extra=None) -> list:
     """Replay a season week by week, recording timing and honouring the STOP
     and PAUSE flags at fit resolution.
+
+    `week_extra(asof, i, vintages)`, when given, returns the spec's research
+    dictionary for week i of the season's vintages (run_week's `extra`);
+    it is how a carried cloud names the week it continues from.
 
     Control points sit BETWEEN FITS: run_week polls the same flags while its
     runners work, so a press waits only for the fits in flight (well under a
@@ -980,12 +992,14 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
     rec.setdefault("drop_same_day", bool(drop_same_day))
     rec.setdefault("width", int(width))
     rec.setdefault("engine", "pf")
+    if week_extra is not None:
+        rec.setdefault("week_extra", getattr(week_extra, "__name__", "custom"))
     _start_record(root, season, len(vintages), rec)
     beat = _Heartbeat(root)
     beat.start()
     done = []
     try:
-        for asof in vintages:
+        for i, asof in enumerate(vintages):
             _check_stop(root)                 # stop before dispatching a NEW week
             hold_while_paused(root)
             if week_done(root, asof):
@@ -999,7 +1013,9 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
             e0 = elapsed_now(read_meta(root))
             try:
                 run_week(root, season, asof, locations, replicates, particles,
-                         width, drop_same_day=drop_same_day)
+                         width, drop_same_day=drop_same_day,
+                         extra=(week_extra(asof, i, vintages)
+                                if week_extra else None))
                 done.append(asof)
                 # timing is recorded HERE, for completed weeks only: the
                 # failure branch below used to fall through to this call,
