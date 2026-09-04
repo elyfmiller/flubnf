@@ -26,6 +26,8 @@ class _State:
         self.observed = [4.0, 5.0, 6.0]
         self.n_obs = 3
         self.last_week_offset = 2
+        self.i0 = 5e-3          # prepare() records the anchor it used
+        self.rhomult = 0.05
 
 
 def _spec(locations, replicates=2, extra=None):
@@ -138,6 +140,51 @@ def test_prepare_continues_from_a_saved_cloud_and_records_a_missing_one(
     assert f"pf_state_file = {r1['state_file']}\n" in _conf(r1)
     assert r1["save_state_to"] == str(save_dir / "Ohio_r1.npz")
     assert (src_dir / "Ohio_r0.npz").read_bytes() == b"cloud-bytes-r0"
+
+
+def test_prepare_pins_the_initial_state_to_the_anchor_week(monkeypatch,
+                                                           tmp_path):
+    """resolve_state derives i0 from the season-to-date count, so the
+    model changes every week with no revision at all (measured: Alaska i0
+    9.14e-3 then 6.86e-3 on identical rows). anchor_asof takes i0 from one
+    week's vintage; the observations stay this week's."""
+    import flubnf.sihrs_fit as sf
+    import app.core.data as data
+    _prep_env(monkeypatch, tmp_path)
+    seen = {}
+
+    class S(_State):
+        def __init__(self, as_of):
+            super().__init__()
+            self.i0 = {"2098-09-05": 9e-3, "2098-11-07": 6e-3}[as_of]
+            self.rhomult = self.i0 * 10
+            if as_of == "2098-11-07":
+                self.observed = [4.0, 5.0, 6.0, 7.0]
+                self.times, self.n_obs, self.last_week_offset = [0, 1, 2, 3], 4, 3
+
+    monkeypatch.setattr(sf, "resolve_state",
+                        lambda loc, **kw: S(kw["as_of"]))
+    monkeypatch.setattr(data, "vintage_path",
+                        lambda d: seen.setdefault("vintages", []).append(d)
+                        or str(tmp_path / f"v{d}.csv"))
+    def fake_materialize(s, template, out, suffix, **kw):
+        seen.setdefault("i0", []).append(s.i0)
+        Path(out).write_text("begin parameters\nend parameters\n")
+        return Path(out)
+
+    monkeypatch.setattr(sf, "materialize_model", fake_materialize)
+    cells = pf.prepare(_spec(["Ohio"], replicates=1,
+                             extra={"anchor_asof": "2098-09-05"}),
+                       tmp_path / "wr")
+    assert seen["i0"] == [9e-3]                    # the anchor week's i0
+    assert cells[0]["i0"] == 9e-3
+    assert cells[0]["anchor_asof"] == "2098-09-05"
+    assert "2098-09-05" in seen["vintages"]        # the anchor's vintage read
+    assert cells[0]["n_obs"] == 4                  # this week's observations
+    # and without the key the week anchors itself, as it always did
+    seen.clear()
+    cells = pf.prepare(_spec(["Ohio"], replicates=1), tmp_path / "wr2")
+    assert seen["i0"] == [6e-3] and cells[0]["anchor_asof"] == "2098-11-07"
 
 
 def _traj_cell(w, key, loc, content, **more):
