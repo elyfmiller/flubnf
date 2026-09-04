@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -271,6 +272,14 @@ def prepare(spec, workroot: Path) -> list:
 
     vintage = vintage_path(spec.forecast_date)
     variant = (spec.extra or {}).get("variant")
+    # spec.extra["fit_i0"] = [lo, hi]: fit the initial infected fraction
+    # under a loguniform prior instead of deriving it from the data.
+    fit_i0 = (spec.extra or {}).get("fit_i0")
+    if fit_i0 is not None:
+        fit_i0 = (float(fit_i0[0]), float(fit_i0[1]))
+        if not (0 < fit_i0[0] < fit_i0[1] < 1):
+            raise ValueError(f"fit_i0 must be [lo, hi] with 0 < lo < hi < 1, "
+                             f"not {fit_i0}")
     two_strain = variant == "2strain"
     natg = variant == "natg"
     if natg:
@@ -405,10 +414,28 @@ def prepare(spec, workroot: Path) -> list:
             # read_text needs no such care: universal-newline READ is
             # platform independent, so the \n in "begin parameters\n" below
             # matches whatever is on disk.
-            m.write_text(m.read_text().replace("begin parameters\n",
-                                               DEFAULTS_2S if two_strain
-                                               else DEFAULTS_BLOCK, 1),
-                         newline="\n")
+            txt = m.read_text().replace("begin parameters\n",
+                                        DEFAULTS_2S if two_strain
+                                        else DEFAULTS_BLOCK, 1)
+            if fit_i0:
+                # The initial infected fraction becomes the sixth fitted
+                # parameter: the template's fixed i0 line now names
+                # i0__FREE, whose default is this week's data-derived
+                # anchor so the model reads the same with the prior
+                # absent. The engine (PyBNF-pf, per-particle initial
+                # state since 2026-09-04) starts every particle from its
+                # own draw. Measured reason: the data-derived anchor is
+                # 20x to 700x too large at the first as-of week of a
+                # season and shrinks every week, which is most of what
+                # the weekly refilter's skill rests on and what no
+                # carried cloud can follow (swarm-carry, FIXED arm).
+                txt = txt.replace("begin parameters\n",
+                                  f"begin parameters\ni0__FREE {s.i0:.8e}\n", 1)
+                txt, n_sub = re.subn(r"(?m)^i0\s+\S+", "i0      i0__FREE", txt)
+                if n_sub != 1:
+                    raise RuntimeError(f"{loc}: expected one i0 line in the "
+                                       f"model, found {n_sub}")
+            m.write_text(txt, newline="\n")
             if two_strain:
                 lines = ["# time H_weekly A_share_bin A_share_n"]
                 for t_off, v in zip(s.times, s.observed):
@@ -447,6 +474,7 @@ max_iterations = 1
 seed = {seed}
 initialization = rand
 {VARS_2S if two_strain else VARS_1S}"""
++ (f"loguniform_var = i0__FREE {fit_i0[0]:g} {fit_i0[1]:g}\n" if fit_i0 else "")
 + (f"pf_binom_neff_cap = {(spec.extra or {}).get('neff_cap', 300)}\n"
    if two_strain else "")
 # initialization = rand, always: PyBNF's default for the key is lh, and
@@ -479,6 +507,7 @@ initialization = rand
                 "seed_date": seed_date_for(spec),
                 "anchor_asof": anchor or spec.forecast_date,
                 "i0": float(s.i0),
+                "fit_i0": list(fit_i0) if fit_i0 else None,
                 **(cont or {"state_file": None, "continued_from": None,
                             "save_state_to": None}),
                 # the two quantities the cost model reads back at

@@ -187,6 +187,38 @@ def test_prepare_pins_the_initial_state_to_the_anchor_week(monkeypatch,
     assert seen["i0"] == [6e-3] and cells[0]["anchor_asof"] == "2098-11-07"
 
 
+def test_prepare_can_fit_the_initial_infected_fraction(monkeypatch, tmp_path):
+    """fit_i0 = [lo, hi] makes i0 the sixth fitted parameter: the model's
+    i0 line names i0__FREE, whose default is this week's data-derived
+    anchor, and the conf carries a loguniform prior for it."""
+    import flubnf.sihrs_fit as sf
+    _prep_env(monkeypatch, tmp_path)
+
+    def fake_materialize(s, template, out, suffix, **kw):
+        Path(out).write_text("begin parameters\nmult    mult__FREE\n"
+                             "i0      %.8e     # initial infected fraction\n"
+                             "end parameters\n" % s.i0)
+        return Path(out)
+
+    monkeypatch.setattr(sf, "materialize_model", fake_materialize)
+    cells = pf.prepare(_spec(["Ohio"], replicates=1,
+                             extra={"fit_i0": [1e-6, 1e-3]}), tmp_path / "wr")
+    c = cells[0]
+    model = (Path(c["dir"]) / "m.bngl").read_text()
+    assert "i0      i0__FREE" in model
+    assert "i0__FREE 5.00000000e-03" in model           # the anchor as default
+    assert model.count("i0__FREE") == 2
+    assert "loguniform_var = i0__FREE 1e-06 0.001\n" in _conf(c)
+    assert c["fit_i0"] == [1e-6, 1e-3] and c["i0"] == 5e-3
+    # without the key nothing changes
+    cells = pf.prepare(_spec(["Ohio"], replicates=1), tmp_path / "wr2")
+    assert "i0__FREE" not in (Path(cells[0]["dir"]) / "m.bngl").read_text()
+    assert "i0__FREE" not in _conf(cells[0]) and cells[0]["fit_i0"] is None
+    with pytest.raises(ValueError, match="fit_i0"):
+        pf.prepare(_spec(["Ohio"], replicates=1, extra={"fit_i0": [0.5, 0.1]}),
+                   tmp_path / "wr3")
+
+
 def _traj_cell(w, key, loc, content, **more):
     d = w / key
     runs = d / "out" / "Results" / "A_MCMC" / "Runs"
