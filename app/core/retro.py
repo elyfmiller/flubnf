@@ -873,8 +873,13 @@ def run_week(root: Path, season: str, asof: str, locations: list,
     # the same-day week in the fit, and a replay must reproduce the sealed
     # methodology bit for bit. A re-baselining run that adopts the nowcast
     # rule end to end passes True deliberately, and its manifest records it.
+    # the model's season start is the archive's boundary (August 1) unless
+    # the research dictionary names another: the vintages replayed are
+    # still the season's, only the model's first observed week and its
+    # clock move (the solstice arm of swarm-carry Stage 1B)
+    season_start = str((extra or {}).get("season_start") or season_bounds(season)[0])
     spec = RunSpec(engine="retro", forecast_date=asof, locations=locations,
-                   season_start=season_bounds(season)[0],
+                   season_start=season_start,
                    replicates=replicates, particles=particles,
                    drop_same_day=drop_same_day, extra=dict(extra or {}))
     manifest = {"locations": [str(l) for l in locations],
