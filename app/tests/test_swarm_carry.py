@@ -371,7 +371,7 @@ def test_run_week_takes_the_season_start_from_extra(tmp_path, monkeypatch):
     seen = []
 
     def fake_prepare(spec, wd):
-        seen.append(spec.season_start)
+        seen.append((spec.season_start, spec.jitter))
         wd = Path(wd)
         cells = [{"key": "c0", "dir": str(wd / "c0")}]
         (wd / "cells.json").write_text(json.dumps(cells))
@@ -401,9 +401,9 @@ def test_run_week_takes_the_season_start_from_extra(tmp_path, monkeypatch):
     monkeypatch.setattr(reclaim, "prune_week", lambda wd: 0)
     root = tmp_path / SEASON
     retro.run_week(root, SEASON, W1, ["Ohio"], width=1,
-                   extra={"season_start": "2098-06-21"})
+                   extra={"season_start": "2098-06-21", "jitter": 0.15})
     retro.run_week(root, SEASON, W2, ["Ohio"], width=1)
-    assert seen == ["2098-06-21", retro.season_bounds(SEASON)[0]]
+    assert seen == [("2098-06-21", 0.15), (retro.season_bounds(SEASON)[0], 0.30)]
 
 
 def test_run_season_asks_week_extra_for_every_week_in_order(tmp_path,
