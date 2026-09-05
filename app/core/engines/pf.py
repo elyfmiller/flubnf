@@ -236,12 +236,27 @@ def seed_date_for(spec) -> str:
     swarm-carry pre-registration is what the option exists for; the
     console keeps the default."""
     anchor = str((spec.extra or {}).get("seed_anchor", "forecast_date"))
+    # seed_salt: a second, third... draw of the same cells for a seed-spread
+    # measurement. Folded into the seed's date key so nothing else changes;
+    # recorded in cells.json through seed_date.
+    salt = str((spec.extra or {}).get("seed_salt", "") or "")
     if anchor == "forecast_date":
-        return spec.forecast_date
+        return spec.forecast_date + (f"#{salt}" if salt else "")
     if anchor == "season_start":
-        return spec.season_start
+        return spec.season_start + (f"#{salt}" if salt else "")
     raise ValueError("seed_anchor must be forecast_date or season_start, "
                      f"not {anchor!r}")
+
+
+def initialization_for(spec) -> str:
+    """The engine's initialization key: rand, the independent draw every
+    recorded number was produced under, unless spec.extra names lh (PyBNF's
+    Latin hypercube, the key's own default). The initial-draw
+    pre-registration is what the option exists for."""
+    init = str((spec.extra or {}).get("initialization", "rand") or "rand")
+    if init not in ("rand", "lh"):
+        raise ValueError(f"initialization must be rand or lh, not {init!r}")
+    return init
 
 
 def prepare(spec, workroot: Path) -> list:
@@ -473,16 +488,16 @@ pf_forecast_weeks = {4 + k_total}
 population_size = 1
 max_iterations = 1
 seed = {seed}
-initialization = rand
+initialization = {initialization_for(spec)}
 {VARS_2S if two_strain else VARS_1S}"""
 + (f"loguniform_var = i0__FREE {fit_i0[0]:g} {fit_i0[1]:g}\n" if fit_i0 else "")
 + (f"pf_binom_neff_cap = {(spec.extra or {}).get('neff_cap', 300)}\n"
    if two_strain else "")
-# initialization = rand, always: PyBNF's default for the key is lh, and
-# the engine honours it since PyBNF-pf f09eeb9b, so without this line the
-# initial cloud would silently become a Latin hypercube. Every recorded
-# number was produced under independent draws; a change of draw is a
-# pre-registered experiment, not a side effect of an engine update.
+# initialization is written explicitly, rand unless the spec asks for lh:
+# PyBNF's default for the key is lh, and the engine honours it since
+# PyBNF-pf f09eeb9b, so without the line the initial cloud would silently
+# become a Latin hypercube. Every recorded number was produced under
+# independent draws; a change of draw is a pre-registered experiment.
 + (f"pf_state_file = {conf_safe_path(cont['state_file'])}\n"
    f"pf_continue = {1 if cont['continued_from'] else 0}\n"
    if cont else ""), newline="\n")
@@ -506,6 +521,7 @@ initialization = rand
                 "n_obs": int(s.n_obs),
                 "last_week_offset": int(s.last_week_offset),
                 "seed_date": seed_date_for(spec),
+                "initialization": initialization_for(spec),
                 "anchor_asof": anchor or spec.forecast_date,
                 "i0": float(s.i0),
                 "fit_i0": list(fit_i0) if fit_i0 else None,

@@ -106,6 +106,29 @@ def test_prepare_keys_the_seed_on_the_season_start_when_asked(monkeypatch,
     assert cells[0]["seed"] != derive_seed("Ohio", "2098-11-07", 0)
 
 
+def test_prepare_salts_the_seed_and_names_the_initial_draw(monkeypatch,
+                                                            tmp_path):
+    """A seed salt gives the same cells a second independent draw for a
+    spread measurement, recorded through seed_date; initialization = lh
+    asks the engine for PyBNF's Latin hypercube and is recorded too."""
+    _prep_env(monkeypatch, tmp_path)
+    cells = pf.prepare(_spec(["Ohio"], replicates=1,
+                             extra={"seed_anchor": "season_start",
+                                    "seed_salt": "2", "initialization": "lh"}),
+                       tmp_path / "wr")
+    c = cells[0]
+    assert c["seed_date"] == "2098-08-01#2"
+    assert c["seed"] == derive_seed("Ohio", "2098-08-01#2", 0)
+    assert c["seed"] != derive_seed("Ohio", "2098-08-01", 0)
+    assert "initialization = lh\n" in _conf(c) and c["initialization"] == "lh"
+    plain = pf.prepare(_spec(["Ohio"], replicates=1), tmp_path / "wr2")[0]
+    assert "initialization = rand\n" in _conf(plain)
+    assert plain["initialization"] == "rand" and "#" not in plain["seed_date"]
+    with pytest.raises(ValueError, match="initialization"):
+        pf.prepare(_spec(["Ohio"], replicates=1, extra={"initialization": "sobol"}),
+                   tmp_path / "wr3")
+
+
 def test_prepare_refuses_an_unknown_seed_anchor(monkeypatch, tmp_path):
     _prep_env(monkeypatch, tmp_path)
     with pytest.raises(ValueError, match="seed_anchor"):
