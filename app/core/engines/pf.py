@@ -248,6 +248,52 @@ def seed_date_for(spec) -> str:
                      f"not {anchor!r}")
 
 
+#: Engine keys a research dictionary may set verbatim (spec.extra["pf_keys"]),
+#: each with the range the engine itself enforces; anything else is refused
+#: here so a typo cannot reach the conf as a silently ignored line.
+PF_KEYS_ALLOWED = {"pf_shrink": lambda v: float(v) in (0.0, 1.0),
+                   "pf_forecast_jitter": lambda v: 0.0 <= float(v) < 1.0,
+                   "pf_resample_threshold": lambda v: 0.0 < float(v) <= 1.0}
+
+
+def pf_key_lines(spec) -> str:
+    """Extra engine keys from spec.extra["pf_keys"], validated, one conf
+    line each; empty for an ordinary run. The regularizer pre-registration
+    is what this exists for (pf_shrink = 0, pf_forecast_jitter)."""
+    keys = (spec.extra or {}).get("pf_keys") or {}
+    out = []
+    for k, v in keys.items():
+        if k not in PF_KEYS_ALLOWED:
+            raise ValueError(f"pf_keys: {k!r} is not a key the console may set "
+                             f"(allowed: {', '.join(sorted(PF_KEYS_ALLOWED))})")
+        if not PF_KEYS_ALLOWED[k](v):
+            raise ValueError(f"pf_keys: {k} = {v!r} is out of the engine's range")
+        out.append(f"{k} = {float(v):g}")
+    return ("\n".join(out) + "\n") if out else ""
+
+
+def priors_for(spec, two_strain: bool = False) -> str:
+    """The prior block, with any ranges spec.extra["prior_ranges"] widens or
+    narrows: {"r__FREE": [0.1, 200]} rewrites that parameter's line and
+    keeps its distribution type. A name not in the block is refused."""
+    block = VARS_2S if two_strain else VARS_1S
+    ranges = (spec.extra or {}).get("prior_ranges") or {}
+    if not ranges:
+        return block
+    lines = block.splitlines()
+    for name, (lo, hi) in ranges.items():
+        hit = [i for i, l in enumerate(lines) if l.split("=")[-1].split()[0] == name]
+        if len(hit) != 1:
+            raise ValueError(f"prior_ranges: {name!r} is not a fitted parameter "
+                             "of this template")
+        kind = lines[hit[0]].split("=")[0].strip()
+        if not (0 <= float(lo) < float(hi)) or (kind == "loguniform_var" and float(lo) <= 0):
+            raise ValueError(f"prior_ranges: {name} [{lo}, {hi}] is not a valid "
+                             f"{kind} range")
+        lines[hit[0]] = f"{kind} = {name} {float(lo):g} {float(hi):g}"
+    return "\n".join(lines) + "\n"
+
+
 def initialization_for(spec) -> str:
     """The engine's initialization key: rand, the independent draw every
     recorded number was produced under, unless spec.extra names lh (PyBNF's
@@ -489,7 +535,7 @@ population_size = 1
 max_iterations = 1
 seed = {seed}
 initialization = {initialization_for(spec)}
-{VARS_2S if two_strain else VARS_1S}"""
+{pf_key_lines(spec)}{priors_for(spec, two_strain)}"""
 + (f"loguniform_var = i0__FREE {fit_i0[0]:g} {fit_i0[1]:g}\n" if fit_i0 else "")
 + (f"pf_binom_neff_cap = {(spec.extra or {}).get('neff_cap', 300)}\n"
    if two_strain else "")
@@ -522,6 +568,9 @@ initialization = {initialization_for(spec)}
                 "last_week_offset": int(s.last_week_offset),
                 "seed_date": seed_date_for(spec),
                 "initialization": initialization_for(spec),
+                "pf_keys": dict((spec.extra or {}).get("pf_keys") or {}),
+                "prior_ranges": {k: list(v) for k, v in
+                                 ((spec.extra or {}).get("prior_ranges") or {}).items()},
                 "anchor_asof": anchor or spec.forecast_date,
                 "i0": float(s.i0),
                 "fit_i0": list(fit_i0) if fit_i0 else None,

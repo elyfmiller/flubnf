@@ -129,6 +129,35 @@ def test_prepare_salts_the_seed_and_names_the_initial_draw(monkeypatch,
                    tmp_path / "wr3")
 
 
+def test_prepare_writes_allowed_engine_keys_and_widened_priors(monkeypatch,
+                                                                tmp_path):
+    """The regularizer sweep's knobs: pf_keys go into the conf verbatim
+    (allowed names, engine ranges), prior_ranges rewrite a parameter's
+    prior line keeping its type. Both are recorded; anything else is
+    refused before a conf is written."""
+    _prep_env(monkeypatch, tmp_path)
+    ex = {"pf_keys": {"pf_shrink": 0, "pf_forecast_jitter": 0.05},
+          "prior_ranges": {"r__FREE": [0.1, 200], "mult__FREE": [0.0005, 1.0]}}
+    c = pf.prepare(_spec(["Ohio"], replicates=1, extra=ex), tmp_path / "wr")[0]
+    conf = _conf(c)
+    assert "pf_shrink = 0\n" in conf and "pf_forecast_jitter = 0.05\n" in conf
+    assert "loguniform_var = r__FREE 0.1 200\n" in conf
+    assert "loguniform_var = mult__FREE 0.0005 1\n" in conf
+    assert "uniform_var = Reff__FREE 0.6 2.5\n" in conf          # untouched
+    assert conf.count("r__FREE") == 1 and conf.count("mult__FREE") == 1
+    assert c["pf_keys"] == {"pf_shrink": 0, "pf_forecast_jitter": 0.05}
+    assert c["prior_ranges"] == {"r__FREE": [0.1, 200], "mult__FREE": [0.0005, 1.0]}
+    plain = pf.prepare(_spec(["Ohio"], replicates=1), tmp_path / "wr2")[0]
+    assert "pf_shrink" not in _conf(plain) and "loguniform_var = r__FREE 0.1 40.0" in _conf(plain)
+    for i, bad in enumerate(({"pf_keys": {"pf_jitter": 0.2}},
+                             {"pf_keys": {"pf_shrink": 2}},
+                             {"prior_ranges": {"nope__FREE": [0, 1]}},
+                             {"prior_ranges": {"mult__FREE": [0, 1]}})):
+        with pytest.raises(ValueError):
+            pf.prepare(_spec(["Ohio"], replicates=1, extra=bad),
+                       tmp_path / f"bad{i}")
+
+
 def test_prepare_refuses_an_unknown_seed_anchor(monkeypatch, tmp_path):
     _prep_env(monkeypatch, tmp_path)
     with pytest.raises(ValueError, match="seed_anchor"):
