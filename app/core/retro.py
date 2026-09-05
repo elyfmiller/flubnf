@@ -878,8 +878,11 @@ def run_week(root: Path, season: str, asof: str, locations: list,
     # still the season's, only the model's first observed week and its
     # clock move (the solstice arm of swarm-carry Stage 1B)
     season_start = str((extra or {}).get("season_start") or season_bounds(season)[0])
+    # likewise the kernel scale: the sealed 0.30 unless the research
+    # dictionary names another (the regularizer sweep's jitter arms)
+    jitter = float((extra or {}).get("jitter") or RunSpec.jitter)
     spec = RunSpec(engine="retro", forecast_date=asof, locations=locations,
-                   season_start=season_start,
+                   season_start=season_start, jitter=jitter,
                    replicates=replicates, particles=particles,
                    drop_same_day=drop_same_day, extra=dict(extra or {}))
     manifest = {"locations": [str(l) for l in locations],
