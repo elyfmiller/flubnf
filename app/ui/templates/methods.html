@@ -181,7 +181,15 @@
  </table></div>
  <p class="hint">Pooled ensemble relWIS: 0.678, over 15,460 scored cells,
  measured on the shipped donor pool. On placement against the real
- FluSight fields, see the verification policies below.</p>
+ FluSight fields, see the verification policies below. Disclosure,
+ 2026-09-06: the sealed fits ran a kernel that jittered parameters in raw
+ space on log-uniform priors, an undeclared behaviour that widened the
+ bands and scored. The production engine runs the contract-correct kernel
+ at the scale a pre-registered sweep selected (jitter 0.15) and scores
+ 0.723 pooled on the identical cells (0.835 / 0.716 / 0.661); the
+ corrected kernel at the sealed scale scored 0.735. The sealed table
+ stands as the record of the sealed engine until the reseal; the full
+ table is in docs/RELEASE-1.0.md.</p>
 </div>
 
 <div class="card"><h2>Under the hood</h2>

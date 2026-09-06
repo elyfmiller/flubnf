@@ -131,6 +131,36 @@ sensitivity refit of the affected weeks from deadline-day data,
 materialized out of the hub clone's git history, is an open item and has
 not been run.
 
+### The production engine against the seal, recorded 2026-09-06
+
+The sealed fits ran a particle-filter kernel whose Liu-West jitter acted
+in raw parameter space on log-uniform priors, an undeclared behaviour that
+pushed the ascertainment and overdispersion parameters upward, decorrelated
+the cloud, widened the forecast bands, and scored (the kernel A/B of
+2026-09-04: the contract-correct kernel at the sealed scale of 0.30 scored
+0.735 pooled on the identical cells). A pre-registered eight-arm sweep of
+declared regularizers followed (2026-09-05 to 06: four jitter scales, two
+prior widths, artificial evolution, forecast-time growth; six-state panel,
+then the full grid for the one arm its rule selected). It selected jitter
+0.15, which is now the production default.
+
+| full grid, identical cells | 2023-24 | 2024-25 | 2025-26 | pooled | central-50 coverage | 95% coverage |
+|---|---|---|---|---|---|---|
+| sealed engine (raw-space kernel, 0.30) | 0.813 | 0.618 | 0.683 | **0.678** | 0.540 | 0.960 |
+| corrected kernel, 0.30 | 0.858 | 0.729 | 0.665 | 0.735 | 0.503 | 0.938 |
+| corrected kernel, 0.15 (production) | 0.835 | 0.716 | 0.661 | 0.723 | 0.469 | 0.920 |
+
+The production engine is worse than the seal by 0.045 pooled and better
+than the corrected kernel at the sealed scale by 0.013. The remaining gap
+is not explained by the kernel scale: less jitter narrows the bands and
+scores better, the opposite of what the sealed kernel's accidental
+widening suggested, and the production setting under-covers at every
+level. The sealed table above stands as the record of the sealed engine,
+which the private fork at the commit below reproduces and the production
+engine does not. A reseal of the three seasons on the production engine
+replaces it. The pre-registrations, records and verdicts are in the lab
+archive (research/kernel-ab, research/kernel-regularizer).
+
 ### Provenance of the sealed record, recorded 2026-09-01
 
 The sealed runs predate the app's run-provenance record (no `run_meta.json`

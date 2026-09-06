@@ -3417,7 +3417,7 @@ def sandbox_save(request: Request, name: str,
 @app.post("/sandbox/run")
 def sandbox_run(request: Request, model: str = Form(...),
                 particles: int = Form(sandbox_mod.DRY_RUN_PARTICLES),
-                jitter: float = Form(0.30), forecast_weeks: int = Form(4),
+                jitter: float = Form(0.15), forecast_weeks: int = Form(4),
                 seed: int = Form(0)):
     why = _sandbox_busy_reason()
     if why:

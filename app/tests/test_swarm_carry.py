@@ -401,9 +401,10 @@ def test_run_week_takes_the_season_start_from_extra(tmp_path, monkeypatch):
     monkeypatch.setattr(reclaim, "prune_week", lambda wd: 0)
     root = tmp_path / SEASON
     retro.run_week(root, SEASON, W1, ["Ohio"], width=1,
-                   extra={"season_start": "2098-06-21", "jitter": 0.15})
+                   extra={"season_start": "2098-06-21", "jitter": 0.20})
     retro.run_week(root, SEASON, W2, ["Ohio"], width=1)
-    assert seen == [("2098-06-21", 0.15), (retro.season_bounds(SEASON)[0], 0.30)]
+    # the production scale is 0.15 since the regularizer sweep (2026-09-06)
+    assert seen == [("2098-06-21", 0.20), (retro.season_bounds(SEASON)[0], 0.15)]
 
 
 def test_run_season_asks_week_extra_for_every_week_in_order(tmp_path,
