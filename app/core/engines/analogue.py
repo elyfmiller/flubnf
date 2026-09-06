@@ -42,6 +42,16 @@ def completeness_args(spec, fips: str, anchor_date, newest_date) -> tuple:
     leaves flubnf.analogue byte-identical to the pre-Build-2 path.
     """
     extra = getattr(spec, "extra", None) or {}
+    # The declared reporting model's both-members arm (research/
+    # reporting-model): the real-time pooled lag-0 factor divides the
+    # anchor when the anchor is the vintage's newest week; no widening.
+    rep = extra.get("reporting") or {}
+    if str(rep.get("mode") or "") == "both":
+        if anchor_date != newest_date:
+            return None, None
+        from app.core import completeness as _comp
+        fac = _comp.factors_cached(spec.forecast_date, spec.season_start)
+        return float(fac["factors"][0]), None
     cmap = extra.get("analogue_completeness") or {}
     c = cmap.get(fips)
     if c is None or anchor_date != newest_date:
