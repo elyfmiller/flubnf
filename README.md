@@ -71,7 +71,19 @@ a replay on current code reproduces the 2023-24 and 2024-25 rows exactly
 but yields 0.681 / 0.677 for the 2025-26 and pooled figures rather than
 the sealed 0.683 / 0.678; reproducing the printed values bit-exactly
 requires the pre-fix code state (commit `9b0ef26`). The measured deltas
-are in the replication note of the same record. The
+are in the replication note of the same record.
+
+A second, larger caveat, recorded 2026-09-06: the sealed fits ran a
+particle-filter kernel whose parameter jitter acted in raw parameter space
+on log-uniform priors, an undeclared behaviour that widened the forecast
+bands and happened to score. The production engine now runs the
+contract-correct kernel, with its scale chosen by a pre-registered sweep
+(jitter 0.15). Replayed on the identical 15,460 cells it scores 0.723
+pooled (0.835 / 0.716 / 0.661 by season) against the sealed 0.678; the
+corrected kernel at the sealed scale scored 0.735. The gap is disclosed
+here rather than hidden by keeping the accidental behaviour, and the
+sealed table stands as the record of the sealed engine until the three
+seasons are resealed on the production engine. The
 full validation record - methodology, pre-registered gates, the
 independent replication, and everything that was tested and did not ship -
 is in [docs/RELEASE-1.0.md](docs/RELEASE-1.0.md) and on the console's
