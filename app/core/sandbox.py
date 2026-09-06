@@ -188,7 +188,7 @@ def split_priors(priors_text: str) -> tuple:
 
 
 def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
-            jitter: float = 0.30, mode: str = "integrated",
+            jitter: float = 0.15, mode: str = "integrated",
             cumulative: str = "", forecast_weeks: int = 4, seed: int = 0,
             runs_root: Path | None = None) -> Path:
     """A workroot with one prepared cell, ready for pf_engine.execute.
