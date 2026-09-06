@@ -428,6 +428,48 @@ def prepare(spec, workroot: Path) -> list:
                     "is not calendar-consecutive (a reporting gap), so "
                     "horizon labels cannot be kept as-of-relative. "
                     "Refusing rather than mislabelling.")
+        # The declared reporting model (research/reporting-model):
+        # spec.extra["reporting"] = {"mode": anchor | lik | both}. The rows at
+        # the vintage's edge are read as incomplete by the real-time pooled
+        # per-lag factor (app.core.completeness). anchor: only the
+        # season-to-date count that derives rhomult and i0 sees the
+        # corrected rows. lik: the likelihood also weighs each row against
+        # the model's count times that row's factor (the engine key
+        # pf_mean_scale_column, PyBNF-pf dbb33f6b). both: the analogue's
+        # anchor is divided by the lag-0 factor as well (its engine). The
+        # forecast is never scaled. Single-strain route only.
+        rep = (spec.extra or {}).get("reporting")
+        rep_rec = None
+        if rep:
+            import numpy as _np
+            from app.core import completeness as _comp
+            from flubnf.sihrs_priors import (initial_infected_fraction,
+                                             pin_rho_mult)
+            mode = str(rep.get("mode") or "")
+            if mode not in ("anchor", "lik", "both"):
+                raise ValueError("reporting mode must be anchor, lik or both, "
+                                 f"not {mode!r}")
+            if two_strain or natg:
+                raise ValueError("the reporting model is defined for the "
+                                 "single-strain route only")
+            if anchor:
+                raise ValueError("reporting and anchor_asof cannot be "
+                                 "combined: both set the anchor")
+            fac = _comp.factors_cached(spec.forecast_date, spec.season_start)
+            from datetime import date as _date3
+            _asof_off = (_date3.fromisoformat(spec.forecast_date)
+                         - _date3.fromisoformat(spec.season_start)).days // 7
+            scales = _comp.row_scales(s.times, _asof_off, fac)
+            corrected = (_np.asarray(s.observed, dtype=float)
+                         / _np.asarray(scales, dtype=float))
+            s.rhomult = pin_rho_mult(float(corrected.sum()) / s.population,
+                                     s.attack_rate)
+            s.i0 = initial_infected_fraction(max(float(corrected[0]), 1.0),
+                                             s.population, s.rhomult, s.gamma)
+            rep_rec = {"mode": mode,
+                       "factors": {str(k): float(v) for k, v in fac["factors"].items()},
+                       "pairs": {str(k): int(v) for k, v in fac["pairs"].items()},
+                       "row_scales": [float(x) for x in scales]}
         gg = None
         if natg:
             # Vintage-true on BOTH sides: the same file the state's own
@@ -507,6 +549,12 @@ def prepare(spec, workroot: Path) -> list:
                 # row. Same treatment as the model file above.
                 (d / f"{sfx}.exp").write_text("\n".join(lines) + "\n",
                                               newline="\n")
+            elif rep_rec and rep_rec["mode"] in ("lik", "both"):
+                lines = [f"# time H_weekly {_comp.COLUMN}"]
+                for t_off, v, c in zip(s.times, s.observed, rep_rec["row_scales"]):
+                    lines.append(f"{int(t_off)} {v:.6f} {c:.6f}")
+                (d / f"{sfx}.exp").write_text("\n".join(lines) + "\n",
+                                              newline="\n")
             else:
                 write_exp(s, d / f"{sfx}.exp")
             r = subprocess.run(["perl", BNG, "m.bngl"], capture_output=True,
@@ -539,6 +587,8 @@ initialization = {initialization_for(spec)}
 + (f"loguniform_var = i0__FREE {fit_i0[0]:g} {fit_i0[1]:g}\n" if fit_i0 else "")
 + (f"pf_binom_neff_cap = {(spec.extra or {}).get('neff_cap', 300)}\n"
    if two_strain else "")
++ (f"pf_mean_scale_column = {_comp.COLUMN}\n"
+   if rep_rec and rep_rec["mode"] in ("lik", "both") else "")
 # initialization is written explicitly, rand unless the spec asks for lh:
 # PyBNF's default for the key is lh, and the engine honours it since
 # PyBNF-pf f09eeb9b, so without the line the initial cloud would silently
@@ -574,6 +624,7 @@ initialization = {initialization_for(spec)}
                 "anchor_asof": anchor or spec.forecast_date,
                 "i0": float(s.i0),
                 "fit_i0": list(fit_i0) if fit_i0 else None,
+                "reporting": rep_rec,
                 **(cont or {"state_file": None, "continued_from": None,
                             "save_state_to": None}),
                 # the two quantities the cost model reads back at
