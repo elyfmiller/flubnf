@@ -166,6 +166,29 @@ def conf_safe_path(p, _platform: str | None = None) -> str:
         "its workroot) to a path without spaces and rerun.")
 
 
+def perl_missing_message() -> str:
+    """What to tell an operator whose machine has no Perl on PATH. BNG2.pl
+    is a Perl program and runs once per cell at run preparation; without
+    an interpreter every location fails before a single fit starts. On a
+    lab member's Windows desktop (2026-09-02) that surfaced as
+    '[WinError 2] The system cannot find the file specified' for all
+    locations, which names neither the program nor the fix."""
+    if sys.platform == 'win32':
+        how = ("install Strawberry Perl (https://strawberryperl.com, or let "
+               "FluBNF.bat offer it during engine install) and start the "
+               "console again so the new PATH is seen")
+    else:
+        how = ("perl ships with macOS and every Linux distribution; add its "
+               "directory to PATH or reinstall it")
+    return ("Perl was not found on PATH. BioNetGen's BNG2.pl is a Perl "
+            "program that generates each cell's reaction network at run "
+            f"preparation, so no fit can start without it: {how}.")
+
+
+def perl_available() -> bool:
+    return shutil.which("perl") is not None
+
+
 #: Prepare-stage failures, keyed by location tag (no _r suffix, so a key
 #: can never collide with a cell's). execute() folds the file into the
 #: merged pf_status.json and the retrospective run_week folds it into the
@@ -332,6 +355,10 @@ def prepare(spec, workroot: Path) -> list:
     workroot.mkdir(parents=True, exist_ok=True)
     conf_safe_path(workroot)
     bng_conf = conf_safe_path(BNG)
+    # Perl, once, before any location: its absence is a run-level fact and
+    # must be named as one, not 52 times as a per-location subprocess error
+    if not perl_available():
+        raise RuntimeError(perl_missing_message())
 
     vintage = vintage_path(spec.forecast_date)
     variant = (spec.extra or {}).get("variant")
@@ -559,8 +586,13 @@ def prepare(spec, workroot: Path) -> list:
                                               newline="\n")
             else:
                 write_exp(s, d / f"{sfx}.exp")
-            r = subprocess.run(["perl", BNG, "m.bngl"], capture_output=True,
-                               text=True, cwd=str(d), timeout=300)
+            try:
+                r = subprocess.run(["perl", BNG, "m.bngl"], capture_output=True,
+                                   text=True, cwd=str(d), timeout=300)
+            except FileNotFoundError:
+                # the preflight passed and the interpreter vanished since,
+                # or which() and the process loader disagree: same remedy
+                raise RuntimeError(perl_missing_message())
             if not (d / "m.net").is_file():
                 raise RuntimeError(f"netgen failed for {loc}: {r.stdout[-300:]}")
             seed = derive_seed(loc, seed_date_for(spec), rep)

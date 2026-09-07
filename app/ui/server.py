@@ -449,6 +449,10 @@ def _component_versions() -> dict:
             out["bionetgen"] = "installed"
     except Exception:
         pass
+    # Perl: the interpreter BNG2.pl needs; a Windows desktop without it
+    # failed every location at run preparation (lab report, 2026-09-02)
+    import shutil as _shutil
+    out["perl"] = _shutil.which("perl") or "not installed"
     out["pybnf"] = out["bngsim"] = "not installed"
     try:
         import json
@@ -474,7 +478,7 @@ _VERSIONS_SNAPSHOT = (Path(__file__).resolve().parents[1]
                       / "state" / "component_versions.json")
 
 _VERSION_KEYS = ("fastapi", "jinja2", "plotly", "pandas", "numpy",
-                 "bionetgen", "pybnf", "bngsim")
+                 "bionetgen", "perl", "pybnf", "bngsim")
 
 
 def _versions_initial() -> dict:

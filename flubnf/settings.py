@@ -185,6 +185,10 @@ def check(verbose: bool = True) -> list:
     for name, p, why in (
         ("FLUBNF_HUB", HUB / "auxiliary-data", hub_why),
         ("FLUBNF_BNG", Path(BNG), "BioNetGen BNG2.pl (network generation)"),
+        # not an environment variable: Perl is found on PATH, and BNG2.pl
+        # cannot run without it (a Windows install needs Strawberry Perl)
+        ("perl", Path(shutil.which("perl") or "perl"),
+         "Perl interpreter on PATH (runs BNG2.pl at run preparation)"),
         ("FLUBNF_PY_ENGINE", PY_ENGINE, "engine venv python (pybnf + bngsim)"),
         ("FLUBNF_PYBNF", PYBNF, "PyBNF fork with fit_type=pf"),
     ):
