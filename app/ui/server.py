@@ -3534,6 +3534,21 @@ def sandbox_run(request: Request, model: str = Form(...),
     return _back(request, f"/sandbox?run={run_id}")
 
 
+@app.get("/api/sandbox/models/{name}/contactmap")
+def api_sandbox_contactmap(name: str):
+    """The model's contact map as an inline SVG, drawn by BNG2.pl's
+    visualize action on a copy of the model (no engine, no run)."""
+    from app.core import contactmap
+    try:
+        files = sandbox_mod.read_model(name)
+        work = sandbox_mod.SANDBOX / "contactmap" / sandbox_mod.check_name(name)
+        cm = contactmap.parse(contactmap.graphml_from_bngl(files["model.bngl"], work))
+        return {"svg": contactmap.svg(cm), "molecules": len(cm["molecules"]),
+                "bonds": len(cm["bonds"])}
+    except Exception as e:
+        return JSONResponse({"error": str(e)[:1500]}, status_code=200)
+
+
 @app.get("/api/sandbox/runs/{run_id}")
 def api_sandbox_run(run_id: str):
     try:

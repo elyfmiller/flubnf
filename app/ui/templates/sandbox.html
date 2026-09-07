@@ -77,6 +77,10 @@
   {% elif runs %}<div class="card"><p class="hint">Pick a run on the left to see its outputs.</p></div>{% endif %}
 
   {% if editing %}
+  <div class="card" id="cmap" data-model="{{ editing.name }}"><h2>Contact map</h2>
+   <div id="cmap-svg" style="overflow-x:auto"><p class="hint">Drawing with BNG2.pl.</p></div>
+   <p class="hint">Molecule types, their components and states, and the bonds the rules can form, as BNG2.pl reads the saved model.</p>
+  </div>
   <div class="card"><h2>Edit {{ editing.name }}</h2>
    <form method="post" action="/sandbox/models/{{ editing.name }}/save">
     <label>model.bngl</label>
@@ -107,6 +111,16 @@
           }
         }).catch(function () {});
     }, 5000);
+  }
+  var cm = document.getElementById('cmap');
+  if (cm) {
+    fetch('/api/sandbox/models/' + encodeURIComponent(cm.dataset.model) + '/contactmap')
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var box = document.getElementById('cmap-svg');
+        if (d && d.svg) box.innerHTML = d.svg;
+        else box.innerHTML = '<pre class="hint">' + String((d && d.error) || 'no contact map').replace(/</g, '&lt;') + '</pre>';
+      }).catch(function () {});
   }
   if (!RES || !RES.traj || !window.Plotly) return;
   // colours resolve from the page's tokens per draw, and the plot redraws
