@@ -786,3 +786,11 @@ details.adv[open]>summary::before{content:"\25BE ";}
 .adv[open] > summary.advbtn{background:var(--accent);color:#fff}
 /* the scoring-convention tip on the home table: the shared wording on hover and focus */
 .convtip{cursor:help;color:var(--accent-ink);font-weight:700;margin-left:.2rem}
+
+/* the latest-run card: settings left, results right */
+.runsplit{display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:start}
+@media (max-width:760px){.runsplit{grid-template-columns:1fr}}
+table.results{border-collapse:collapse;margin:.3rem 0;font-size:.92em}
+table.results caption{caption-side:bottom;text-align:left;padding-top:.3rem}
+table.results th{text-align:left;font-weight:600;padding:.18rem .6rem .18rem 0;color:var(--mut);white-space:nowrap}
+table.results td{padding:.18rem 0}

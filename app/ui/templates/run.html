@@ -58,6 +58,7 @@
    renders nothing for an empty list, so a row with no recorded versions
    simply omits the block rather than guessing. #}
 <div class="card"><h2>Run settings</h2>
+ {% if results %}<h2>Results</h2>{{ results | safe }}{% endif %}
  {{ settings_html(settings, title="Settings") | safe }}
  {{ settings_html(versions, title="Produced by") | safe }}
 </div>

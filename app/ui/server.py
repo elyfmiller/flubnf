@@ -64,7 +64,7 @@ class _LazyDataMod:
 data_mod = _LazyDataMod()
 from app.core import runs as _runs
 from app.core.runs import (Ledger, RunSpec, fmt_hms,            # noqa: E402
-                           lease_workroot, settings_html,
+                           lease_workroot, results_html, settings_html,
                            spec_settings, version_pairs)
 
 app = FastAPI(title="FluBNF")
@@ -217,6 +217,7 @@ templates.env.globals["restart_needed"] = _restart_needed
 # page, and both report exports: a reader comparing an artifact against the
 # console never has to reconcile two wordings (see app/core/runs.py)
 templates.env.globals["settings_html"] = settings_html
+templates.env.globals["results_html"] = results_html
 
 
 def _model_names() -> dict:
@@ -2549,6 +2550,22 @@ def _run_all(spec: RunSpec) -> None:
                         float(pdf["wis"].sum() / pdf["base_wis"].sum()), 3)
                     outcome["pf_relwis_cells"] = int(len(pdf))
             df.to_json(workroot / "scores_pf.json")
+            # the other two members, the same formula and gate, so the
+            # ledger row and the latest-run table can state all three
+            from app.core.us_national import pooled_frame as _pooled
+            for mname, qs in (("analogue", an_q), ("ensemble", members_by_loc)):
+                try:
+                    mdf = scoring.score_quantiles(qs or {}, spec.forecast_date,
+                                                  name2fips, truth)
+                    if not mdf.empty:
+                        mp = _pooled(mdf)
+                        if not mp.empty:
+                            outcome[f"{mname}_relwis"] = round(
+                                float(mp["wis"].sum() / mp["base_wis"].sum()), 3)
+                            outcome[f"{mname}_relwis_cells"] = int(len(mp))
+                        mdf.to_json(workroot / f"scores_{mname}.json")
+                except Exception as e:
+                    outcome[f"{mname}_score_error"] = str(e)[:200]
         except Exception as e:
             outcome["score_error"] = str(e)[:200]
         # 5b. weekly report, rendered from its persisted inputs bundle
@@ -2765,6 +2782,7 @@ def run_page(request: Request, run_id: str):
     subs = _submission_files(w)
     report = (w / "report.html").name if (w / "report.html").is_file() else None
     status, err, spec_json = "", "", ""
+    o = {}
     sub_errors: dict = {}
     pf_failures: dict = {}
     step_errors: dict = {}
@@ -2821,6 +2839,7 @@ def run_page(request: Request, run_id: str):
     from app.core.runs import is_research
     return templates.TemplateResponse(request, "run.html", {
         "active": "Storage", "run_id": run_id, "status": status, "error": err,
+        "results": results_html(o, spec_json),
         # the page renders a styled research badge, so the label itself
         # stays untagged here
         "label": _run_label(run_id, spec_json, tag=False),
@@ -2905,7 +2924,12 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
         drop_same_day=bool(d.get("drop_same_day", False)),
         replicates=int(d.get("replicates") or 3),
         particles=int(d.get("particles") or 10_000),
-        extra={"members": 3} if members == 3 else {})
+        extra=_run_extra(members, _spec_mode(d)))
+    # a row recorded before the mode existed reads as a real-time run
+    if isinstance(d.get("extra"), dict):
+        d["extra"].setdefault("mode", "realtime")
+    else:
+        d["extra"] = {"mode": "realtime"}
     recon = _asdict(candidate)
     off = [k for k in sorted(d) if recon.get(k) != d[k]]
     try:
@@ -2931,6 +2955,7 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
                       engine=candidate.engine,
                       members=members,
                       particles=candidate.particles,
+                      mode=_spec_mode(d),
                       drop_same_day=1 if candidate.drop_same_day else 0)
 
 
@@ -3032,6 +3057,22 @@ def _run_label(run_id: str, spec_json: str = "", tag: bool = True) -> str:
         return f"{s.get('forecast_date','run')} · {when}{suffix}"
     except Exception:
         return when + suffix
+
+
+def _run_extra(members: int, mode: str) -> dict:
+    """The research dictionary a console run carries: the mode the form was
+    in (vintage or real-time), and the three-member flag when asked."""
+    mode = mode if mode in ("realtime", "vintage") else "realtime"
+    extra = {"mode": mode}
+    if members == 3:
+        extra["members"] = 3
+    return extra
+
+
+def _spec_mode(d: dict) -> str:
+    extra = d.get("extra") if isinstance(d.get("extra"), dict) else {}
+    m = str(extra.get("mode") or "realtime")
+    return m if m in ("realtime", "vintage") else "realtime"
 
 
 def relwis_chip(value, cells=None, member: str = "PF") -> str:
@@ -5356,6 +5397,9 @@ def run_models(request: Request,
                particles: int = Form(10_000),
                # advanced: blank derives August 1 of the forecast's season
                season_start: str = Form(""),
+               # which of the form's two modes produced the run, recorded on
+               # the spec so the ledger can say vintage or real-time
+               mode: str = Form("realtime"),
                # not on the form (the nowcast rule is the default); the
                # re-run path passes it so a recorded pre-rule methodology
                # reproduces instead of silently adopting today's default
@@ -5513,7 +5557,7 @@ def run_models(request: Request,
                    drop_same_day=bool(int(drop_same_day)),
                    replicates=replicates,
                    particles=particles,
-                   extra={"members": 3} if members == 3 else {})
+                   extra=_run_extra(members, mode))
     # Same-day anchor sanity. The fit KEEPS the same-day week - the v1.1
     # measurement showed dropping it costs a season +0.24 pooled relWIS,
     # because that row carries the turn signal - but the ~1%-reported

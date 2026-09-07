@@ -175,6 +175,76 @@ def version_pairs(build: str = "", versions: dict | None = None) -> list:
     return pairs
 
 
+#: what the form's two modes are called on a ledger row
+MODE_LABELS = {"realtime": "real-time run (the newest vintage)",
+               "vintage": "vintage run (an archived week, not real-time)"}
+
+#: the three members a console run can score, in table order, with the
+#: outcome keys each writes at run end
+_RESULT_ROWS = (("PF-SIHRS", "pf_relwis", "pf_relwis_cells"),
+                ("Calendar analogue", "analogue_relwis", "analogue_relwis_cells"),
+                ("FluBNF ensemble", "ensemble_relwis", "ensemble_relwis_cells"))
+
+
+def results_html(outcome, spec) -> str:
+    """One run's results as a small table: the run type (real-time or
+    vintage), each member's relWIS against the FluSight baseline with the
+    cells it rests on, the PF fits and failures, the submission files, the
+    report. Replaces the one-line chip summary on the latest-run card
+    (lead, 2026-09-07). Markup from fixed phrases and numbers only; an
+    unreadable outcome yields an empty string, never an exception."""
+    if isinstance(outcome, str):
+        try:
+            o = json.loads(outcome or "{}")
+        except (ValueError, TypeError):
+            o = {}
+    else:
+        o = outcome if isinstance(outcome, dict) else {}
+    if isinstance(spec, RunSpec):
+        d = asdict(spec)
+    elif isinstance(spec, str):
+        try:
+            d = json.loads(spec or "{}")
+        except (ValueError, TypeError):
+            d = {}
+    else:
+        d = spec if isinstance(spec, dict) else {}
+    if not o and not d:
+        return ""
+    extra = d.get("extra") if isinstance(d.get("extra"), dict) else {}
+    mode = str(extra.get("mode") or "realtime")
+    rows = [("Run type", MODE_LABELS.get(mode, mode))]
+    for name, key, cells_key in _RESULT_ROWS:
+        v = o.get(key)
+        if v is None:
+            continue
+        try:
+            fv = float(v)
+        except (TypeError, ValueError):
+            continue
+        n = o.get(cells_key)
+        cov = (f' <span class="hint">({int(n)} cell{"s" if int(n) != 1 else ""})</span>'
+               if n else "")
+        rows.append((name, f'<span class="relwis {"ok" if fv < 1 else "bad"}">'
+                           f"{fv:.3f}</span>{cov}"))
+    if "pf_cells" in o:
+        nf = len(o.get("pf_failures") or {})
+        fits = f"{int(o['pf_cells'])} fit{'s' if int(o['pf_cells']) != 1 else ''}"
+        if nf:
+            fits += f', <span class="bad">{nf} failure{"s" if nf != 1 else ""}</span>'
+        rows.append(("PF fits", fits))
+    elif o.get("pf_skipped"):
+        rows.append(("PF fits", "none (analogue-only run)" if "analogue" in str(o["pf_skipped"]) else "none (no engine)"))
+    if o.get("submissions"):
+        n = len(o["submissions"])
+        rows.append(("Submission files", f"{n} file{'s' if n != 1 else ''}"))
+    rows.append(("Weekly report", "written" if o.get("report") else "none"))
+    body = "".join(f"<tr><th scope=\"row\">{k}</th><td>{v}</td></tr>" for k, v in rows)
+    return (f'<table class="results"><caption class="hint">relWIS is against the '
+            f'FluSight baseline, ratio of sums; below 1.000 beats it</caption>'
+            f"{body}</table>")
+
+
 def settings_html(pairs, title: str = "Run settings",
                   cls: str = "hint runsettings", el_id: str = "") -> str:
     """The one rendering of a settings block, used by the console cards, the
