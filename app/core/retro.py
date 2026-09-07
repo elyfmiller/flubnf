@@ -865,7 +865,10 @@ def run_week(root: Path, season: str, asof: str, locations: list,
     with the processes alive), and a later run of an interrupted week refits
     only the cells with no marker in cells_done/. samples.json still appears
     only when every cell is done, so week atomicity is unchanged."""
-    root = Path(root)
+    # resolved: the paths written into pf.conf, the shard files and the
+    # runner scripts are read by subprocesses with their own working
+    # directory, so a relative root is a season of fits that never start
+    root = Path(root).resolve()
     wd = _week_dir(root, asof)
     if week_done(root, asof):
         return read_week_samples(root, asof)
@@ -986,7 +989,7 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
     folded in, so the record describes the run even when the caller passes
     nothing.
     """
-    root = Path(root)
+    root = Path(root).resolve()    # see run_week: subprocesses read these paths
     root.mkdir(parents=True, exist_ok=True)
     clear_flags(root)              # no stale STOP/PAUSE from an earlier replay
     vintages = season_vintages(season)
