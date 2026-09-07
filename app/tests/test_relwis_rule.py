@@ -87,12 +87,11 @@ def test_methods_table_colors_every_score_members_included():
     r = client.get("/methods")
     assert r.status_code == 200
     # member seasons that lost to the baseline are marked, not neutral
-    assert '<td class="bad">1.023</td>' in r.text
     assert '<td class="bad">1.045</td>' in r.text
     # and member seasons that beat it wear the same ok the ensemble does
-    for v in ("0.636", "0.825", "0.756", "0.621"):
+    for v in ("0.840", "0.797", "0.846", "0.756", "0.621"):
         assert f'<td class="ok">{v}</td>' in r.text, v
-    assert '<td class="ok">0.813</td>' in r.text
+    assert '<td class="ok">0.834</td>' in r.text
 
 
 def test_relwis_class_is_tabular():

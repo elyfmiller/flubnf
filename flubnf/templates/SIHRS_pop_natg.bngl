@@ -87,7 +87,7 @@ Molecules S     S()
 Molecules I     I()
 Molecules H     H()        # census -- do NOT fit to an admissions target
 Molecules R     R()
-Molecules H_Cum Hadm()     # cumulative admissions; the weekly count is this observable's change across the reporting week
+Molecules H_Cum Hadm()     # cumulative admissions; the weekly count is its change over the week
 Molecules t     counter()
 end observables
 
@@ -135,6 +135,7 @@ end reaction rules
 end model
 
 begin actions
+# inert for the particle filter (one-week windows); a ceiling for adaptive MCMC
 generate_network({overwrite=>1})
 simulate({suffix=>"SIHRS_flu",method=>"ode",t_start=>0,t_end=>48,n_steps=>48,print_functions=>1})
 end actions

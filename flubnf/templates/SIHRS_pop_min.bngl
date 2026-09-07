@@ -1,61 +1,29 @@
 begin model
-# =====================================================================
-# FluBNF SIHRS -- single-strain production template. Fitted (5): Reff,
-# eps1, phi1, mult, r. Compartments are absolute people, N is known data,
-# and TIME IS IN WEEKS: every rate below is per week. Design history,
-# sources and the measurements behind each choice: docs/MODEL-PROVENANCE.md.
-#
-# A TEMPLATE, NOT A RUNNABLE MODEL. Two kinds of placeholder (the first
-# is written here without its braces so this comment survives):
-#   TOKEN    per-state known DATA in double braces, substituted before the
-#            fit by flubnf/sihrs_fit.py::materialize_model. Substitution
-#            is STRICT: an unresolved token raises instead of reaching the
-#            engine. A token carries data and must never be fitted.
-#   *__FREE  a FITTED parameter, proposed by PyBNF against a prior in
-#            flubnf/sihrs_fit.py. Never pin one to a number here.
-#
-# rho, gammaH and omega are UNSOURCED working assumptions set in
-# flubnf/sihrs_fit.py; every fixed value, sourced or not, is recorded in
-# flubnf/sihrs_priors.py::provenance_table.
-#
-# FIT REPORTED WEEKLY ADMISSIONS, NEVER THE CENSUS H(t). The predicted
-# weekly count is the increment of H_Cum across the reporting week; see
-# H_weekly() below for the trap in the alternative.
-#
-# The 48-week actions block at the foot is inert for the particle filter,
-# which sets its own one-week windows, and is a ceiling for adaptive MCMC,
-# whose last as-of plus four horizons reaches week 49. n_steps sets the
-# reporting grid only, not the solver step; CVODE is adaptive.
-#
-# SINGLE-SEASON FITS ONLY: multi-season runs need the reseeding term and
-# must use SIHRS_pop.bngl.
-# =====================================================================
+# FluBNF SIHRS, the single-strain production template. Five fitted
+# parameters (Reff, eps1, phi1, mult, r); everything else is fixed or is
+# per-state data. Compartments are people; time is in WEEKS and every
+# rate is per week. A TOKEN in double braces is per-state data substituted
+# before the fit (strictly: an unresolved token raises); a *__FREE name is
+# a fitted parameter, proposed by the engine against its prior in
+# flubnf/sihrs_fit.py. Single season only; multi-season runs use
+# SIHRS_pop.bngl. Sources and design history: docs/MODEL-PROVENANCE.md.
 begin parameters
 
 ### -- transmission: scale-free reproduction number + seasonal forcing -- ###
-Reff    Reff__FREE     # BASE reproduction number: harmonic-neutral, at the
-                       # initial susceptible fraction s0. NOT the season-start,
-                       # forced or realised value, which all differ from it and
-                       # from each other. Fit Reff, never R0 (= Reff/s0, itself
-                       # a BASE value, recovered post hoc)
+Reff    Reff__FREE     # BASE reproduction number at the initial susceptible
+                       # fraction s0, harmonic-neutral; R0 = Reff/s0 post hoc
 eps1    eps1__FREE     # annual-harmonic amplitude
-# Annual-harmonic phase. Read it as a peak week ONLY with the offset
-# below: the model's clock is the counter species t, which the particle
-# filter seeds at 0 for the first FITTED week, so t leads the season-start
-# week index by one. A fitted phi1 therefore names the peak one week LATER
-# than the calendar week it appears to. Forecasts and scores are unaffected
-# (the offset is uniform and phi1 absorbs it); only this reading is.
-# Measured 2026-08-27, PyBNF-pf audit.
-phi1    phi1__FREE     # annual-harmonic phase (see the offset note above)
+# The clock t starts at 0 in the first FITTED week, one week after the
+# season start, so a fitted phi1 names the peak one week later than its
+# calendar reading; forecasts are unaffected (measured 2026-08-27).
+phi1    phi1__FREE     # annual-harmonic phase
 
 ### -- progression / removal -- ###
 gamma   {{GAMMA}}      # FIXED: 7/3.2 d generation time, Chan 2024 doi:10.1101/2024.08.17.24312064
 rho     {{RHO}}        # FIXED: true IHR branching fraction I->H; rules only,
                        # never the observable
-mult    mult__FREE     # ascertainment, OBSERVATION-ONLY: it must never appear
-                       # in a reaction rule. Admissions identify only the
-                       # product rho*mult; rho is held fixed, so the FIT
-                       # determines the product. Never pinned in this file
+mult    mult__FREE     # ascertainment, OBSERVATION-ONLY: never in a rule;
+                       # admissions identify only rho*mult, rho held fixed
 gammaH  {{GAMMAH}}     # FIXED: discharge; moves the census only, unidentifiable here
 omega   {{OMEGA}}      # FIXED: waning R->S, weakly identified from <3 seasons
 
@@ -98,7 +66,7 @@ Molecules S     S()
 Molecules I     I()
 Molecules H     H()        # census -- do NOT fit to an admissions target
 Molecules R     R()
-Molecules H_Cum Hadm()     # cumulative admissions; the weekly count is this observable's change across the reporting week
+Molecules H_Cum Hadm()     # cumulative admissions; the weekly count is its change over the week
 Molecules t     counter()
 end observables
 
@@ -107,17 +75,13 @@ begin functions
 ### -- seasonal transmission rate (exp() keeps beta > 0) -- ###
 beta() = beta0*exp( eps1*cos(2*pi*(t-phi1)/52) )
 
-### -- ascertained admission flux into H, an INSTANTANEOUS rate -- ###
-# People per week at an instant, NOT a weekly total: the shipped particle
-# filter uses the weekly increment of H_Cum instead. This function survives
-# as the name binding the .exp count column to a model output.
+### -- ascertained admission flux, an INSTANTANEOUS rate, not a weekly total -- ###
+# kept as the name binding the .exp count column to a model output
 H_weekly() = rho*mult*gamma*I
 
-### -- the particle filter's fit target: ASCERTAINED cumulative admissions -- ###
-# The engine differences this over each reporting week and multiplies by
-# nothing (PyBNF-pf, 2026-09-04): the model owns its observation scale,
-# so a filter that knows no parameter names can run any model. Named by
-# pf_cumulative_observable in the conf FluBNF writes.
+### -- the particle filter's fit target -- ###
+# the engine differences this over each reporting week; the model owns
+# its observation scale (pf_cumulative_observable in the conf)
 Hobs() = mult*H_Cum
 
 end functions
@@ -137,6 +101,7 @@ end reaction rules
 end model
 
 begin actions
+# inert for the particle filter (one-week windows); a ceiling for adaptive MCMC
 generate_network({overwrite=>1})
 simulate({suffix=>"SIHRS_flu",method=>"ode",t_start=>0,t_end=>48,n_steps=>48,print_functions=>1})
 end actions
