@@ -794,3 +794,8 @@ table.results{border-collapse:collapse;margin:.3rem 0;font-size:.92em}
 table.results caption{caption-side:bottom;text-align:left;padding-top:.3rem}
 table.results th{text-align:left;font-weight:600;padding:.18rem .6rem .18rem 0;color:var(--mut);white-space:nowrap}
 table.results td{padding:.18rem 0}
+/* the sandbox's from-scratch form: one name field beside its button */
+form.sbnew{margin-top:.6rem}
+form.sbnew label{display:block;margin-bottom:.25rem}
+form.sbnew input{width:14rem;max-width:100%;margin-right:.4rem}
+form.sbnew .hint{margin-top:.3rem}

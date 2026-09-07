@@ -13,8 +13,9 @@ the engine configuration, runs the engine exactly as a console run does
 
 The sandbox never touches the runs ledger, the retrospectives or the
 seal: its workroots are its own, the folder is not under version control,
-and the production templates are never read from here. Two examples ship
-with FluBNF (flubnf/sandbox_examples) and can be copied in to start from.
+and the production templates are never read from here. Four examples ship
+with FluBNF (flubnf/sandbox_examples) and can be copied in to start from,
+and new_model writes a runnable skeleton of the three files to edit.
 """
 from __future__ import annotations
 
@@ -107,6 +108,99 @@ def add_example(name: str) -> Path:
     for f in REQUIRED:
         shutil.copy2(src / f, dst / f)
     return dst
+
+
+#: The skeleton new_model writes: a one-step conversion with a tally,
+#: every BNGL block the engine needs, the simulate action with its suffix,
+#: and one fitted rate, one reporting scale and one dispersion, so the
+#: skeleton itself generates and fits before a line of it is changed.
+SKELETON_BNGL = """\
+# {name}: one line describing the model (it is shown in the model list).
+# Every block below is one the engine reads; keep the block names and the
+# simulate action, change the rest. Time is in weeks. The observed count
+# is the weekly increment of the function priors.conf names as
+# pf_cumulative_observable.
+begin model
+begin parameters
+# a fitted parameter ends in __FREE and has a *_var line in priors.conf
+k__FREE      0.5        # the rate of the one event; fitted
+scale__FREE  0.5        # fraction of events that are counted; fitted
+r__FREE      10.0       # negative-binomial dispersion of the counts; fitted
+N            100000     # how many can undergo the event; fixed
+end parameters
+
+begin molecule types
+A()
+B()
+Tally()
+end molecule types
+
+begin seed species
+A()     N
+B()     0
+Tally() 0
+end seed species
+
+begin observables
+Molecules A      A()
+Molecules B      B()
+Molecules T_Cum  Tally()     # events to date: the tally the data are read from
+end observables
+
+begin functions
+Tobs() = scale__FREE*T_Cum   # the tally at the reporting scale
+end functions
+
+begin reaction rules
+# one event per conversion; Tally() counts it without consuming anyone
+A() -> B() + Tally()   k__FREE
+end reaction rules
+end model
+
+begin actions
+generate_network({{overwrite=>1}})
+simulate({{suffix=>"sim",method=>"ode",t_start=>0,t_end=>{t_end},n_steps=>{t_end},print_functions=>1}})
+end actions
+"""
+
+SKELETON_PRIORS = """\
+# One *_var line per fitted parameter, named as in model.bngl. The pf_
+# lines tell the filter which model output the counts are read from.
+uniform_var = k__FREE 0.05 2.0
+loguniform_var = scale__FREE 0.05 1.0
+loguniform_var = r__FREE 0.1 40.0
+pf_observable_mode = integrated
+pf_cumulative_observable = Tobs
+"""
+
+SKELETON_WEEKS = 12
+
+
+def skeleton(name: str) -> dict:
+    """The three files of a new model: the skeleton BNGL, placeholder
+    counts simulated from it at its starting values (weekly increments of
+    Tobs, the first row the first week's; the engine's data reader takes
+    one header line and no other comment), and the priors that name its
+    free parameters."""
+    import math
+    k, scale, n = 0.5, 0.5, 100000
+    rows = []
+    for t in range(SKELETON_WEEKS):
+        a, b = max(t - 1, 0), max(t, 1)
+        rows.append(f"{t} {scale * n * (math.exp(-k * a) - math.exp(-k * b)):.0f}")
+    data = "# time T_weekly\n" + "\n".join(rows) + "\n"
+    return {"model.bngl": SKELETON_BNGL.format(name=name, t_end=SKELETON_WEEKS),
+            "data.exp": data, "priors.conf": SKELETON_PRIORS}
+
+
+def new_model(name: str) -> Path:
+    """Write the skeleton as a new sandbox model. An existing model of
+    that name is left alone."""
+    check_name(name)
+    dst = MODELS / name
+    if dst.exists():
+        raise SandboxError(f"a sandbox model named {name!r} already exists")
+    return save_model(name, skeleton(name))
 
 
 def model_dir(name: str) -> Path:
@@ -232,7 +326,7 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
             f"output_dir = {c}/out",
             "fit_type = pf",
             f"objfunc = {objfunc}",
-            f"num_particles = {particles}",
+            f"pf_particles = {particles}",
             f"pf_jitter = {jitter:g}",
             f"pf_observable_mode = {mode}",
             f"pf_forecast_weeks = {forecast_weeks}",

@@ -5,12 +5,7 @@
 <div class="cols">
  <div>
   <div class="card"><h2>Models</h2>
-   <p class="hint">A model is three files in <code>sandbox/models/&lt;name&gt;/</code>:
-    <code>model.bngl</code> (its simulate action must name a suffix),
-    <code>data.exp</code> (a time column and one count column), and
-    <code>priors.conf</code> (one <code>*_var</code> line per free parameter, plus
-    <code>pf_cumulative_observable</code> naming the model output whose weekly
-    increment is the expected count, scale included). Runs here reach nothing else in the console.</p>
+   <p class="hint">Three files per model in <code>sandbox/models/&lt;name&gt;/</code>: the BNGL model, the counts, the priors. Runs here reach nothing else in the console.</p>
    {% if models %}
    <table class="kv"><thead><tr><th>model</th><th>files</th><th></th></tr></thead><tbody>
    {% for m in models %}<tr>
@@ -21,10 +16,16 @@
       <input type="hidden" name="particles" value="{{ dry_particles }}">
       <button class="pill" data-guard="console-run" {% if busy %}disabled title="{{ busy }}"{% endif %}>Dry run</button></form>{% endif %}</td>
    </tr>{% endfor %}</tbody></table>
-   {% else %}<p class="hint">No models yet. Add an example below, or create <code>sandbox/models/&lt;name&gt;/</code> by hand.</p>{% endif %}
+   {% else %}<p class="hint">No models yet. Start from an example or from scratch.</p>{% endif %}
    {% if examples %}
    <p class="hint">Examples: {% for e in examples %}<form method="post" action="/sandbox/add-example" style="display:inline"><input type="hidden" name="name" value="{{ e }}"><button class="pill">add {{ e }}</button></form> {% endfor %}</p>
    {% endif %}
+   <form method="post" action="/sandbox/new" class="sbnew">
+    <label for="sbnew-name">New model from scratch</label>
+    <input id="sbnew-name" name="name" placeholder="model name" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,63}" required>
+    <button class="pill">Create</button>
+    <p class="hint">A runnable skeleton: every BNGL block, the simulate action, placeholder counts and priors, opened in the editor.</p>
+   </form>
   </div>
 
   <div class="card"><h2>Run</h2>
@@ -86,7 +87,7 @@
     <textarea name="priors_conf" rows="8" spellcheck="false" style="width:100%;font-family:monospace">{{ editing["priors.conf"] }}</textarea>
     <button class="gold">Save</button>
    </form>
-   <p class="hint">A saved model is checked when it runs: BNG2.pl must generate its network, every free parameter must be a parameter of the network, and the named cumulative output must be one of its observables or functions. Sandbox outputs are fits, not forecasts for submission.</p>
+   <p class="hint">Checked when it runs: the network must generate and every free parameter must be in it. Sandbox outputs are fits, not submissions.</p>
   </div>
   {% endif %}
  </div>
@@ -108,18 +109,33 @@
     }, 5000);
   }
   if (!RES || !RES.traj || !window.Plotly) return;
-  var t = RES.traj, obs = RES.meta.observed || [], times = RES.meta.time || [];
-  var n = t.n_obs, xs = [];
-  var dt = times.length > 1 ? (times[times.length - 1] - times[0]) / (times.length - 1) : 1;
-  for (var i = 0; i < t.columns; i++) xs.push(i < times.length ? times[i] : times[times.length - 1] + dt * (i - times.length + 1));
-  var band = {x: xs.concat(xs.slice().reverse()), y: t.q90.concat(t.q10.slice().reverse()),
-              fill: 'toself', fillcolor: 'rgba(31,119,180,0.18)', line: {width: 0}, name: '10-90%', hoverinfo: 'skip'};
-  var med = {x: xs, y: t.q50, mode: 'lines', name: 'median', line: {color: '#1f77b4'}};
-  var pts = {x: times, y: obs, mode: 'markers', name: RES.meta.obs_col || 'observed', marker: {color: '#111', size: 6}};
-  var shapes = n < t.columns ? [{type: 'line', x0: xs[n - 1], x1: xs[n - 1], y0: 0, y1: 1, yref: 'paper', line: {dash: 'dot', color: '#888'}}] : [];
-  Plotly.newPlot('sbplot', [band, med, pts], {margin: {t: 20, r: 10, l: 50, b: 40}, shapes: shapes,
-    xaxis: {title: 'time'}, yaxis: {title: RES.meta.obs_col || 'count', rangemode: 'tozero'},
-    legend: {orientation: 'h'}, paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)'}, {displayModeBar: false, responsive: true});
+  // colours resolve from the page's tokens per draw, and the plot redraws
+  // on themechange, so the axes, labels and legend read in every theme
+  var css = function (v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); };
+  var rootPx = function () { return parseFloat(getComputedStyle(document.documentElement).fontSize) || 16; };
+  function hexa(h, a) { h = (h || '#34C0F0').replace('#', ''); if (h.length === 3) h = h.replace(/(.)/g, '$1$1');
+    return 'rgba(' + parseInt(h.slice(0, 2), 16) + ',' + parseInt(h.slice(2, 4), 16) + ',' + parseInt(h.slice(4, 6), 16) + ',' + a + ')'; }
+  function draw() {
+    var t = RES.traj, obs = RES.meta.observed || [], times = RES.meta.time || [];
+    var n = t.n_obs, xs = [], fs = rootPx();
+    var dt = times.length > 1 ? (times[times.length - 1] - times[0]) / (times.length - 1) : 1;
+    for (var i = 0; i < t.columns; i++) xs.push(i < times.length ? times[i] : times[times.length - 1] + dt * (i - times.length + 1));
+    var ink = css('--ink'), mut = css('--mut'), line = css('--line'), acc = css('--accent'), accInk = css('--accent-ink'), surf = css('--card');
+    var band = {x: xs.concat(xs.slice().reverse()), y: t.q90.concat(t.q10.slice().reverse()),
+                fill: 'toself', fillcolor: hexa(acc, 0.22), line: {width: 0}, name: '10 to 90%', hoverinfo: 'skip'};
+    var med = {x: xs, y: t.q50, mode: 'lines', name: 'median', line: {color: accInk, width: 2}};
+    var pts = {x: times, y: obs, mode: 'markers', name: RES.meta.obs_col || 'observed', marker: {color: ink, size: 6}};
+    var shapes = n < t.columns ? [{type: 'line', x0: xs[n - 1], x1: xs[n - 1], y0: 0, y1: 1, yref: 'paper', line: {dash: 'dot', color: mut}}] : [];
+    Plotly.newPlot('sbplot', [band, med, pts], {margin: {t: 20, r: 10, l: 50, b: 40}, shapes: shapes,
+      paper_bgcolor: surf, plot_bgcolor: surf,
+      font: {color: ink, family: '"DM Sans",system-ui,sans-serif', size: Math.round(fs * .85)},
+      xaxis: {title: {text: 'time'}, gridcolor: line, zerolinecolor: line, linecolor: line, tickfont: {color: ink}},
+      yaxis: {title: {text: RES.meta.obs_col || 'count'}, rangemode: 'tozero', gridcolor: line, zerolinecolor: line, linecolor: line, tickfont: {color: ink}},
+      legend: {orientation: 'h', font: {color: ink}}}, {displayModeBar: false, responsive: true});
+  }
+  draw();
+  addEventListener('themechange', draw);
+  addEventListener('fontsizechange', draw);
 })();
 </script>
 {% endblock %}
