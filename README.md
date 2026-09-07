@@ -78,8 +78,9 @@ particle-filter kernel whose parameter jitter acted in raw parameter space
 on log-uniform priors, an undeclared behaviour that widened the forecast
 bands and happened to score. The production engine now runs the
 contract-correct kernel, with its scale chosen by a pre-registered sweep
-(jitter 0.15). Replayed on the identical 15,460 cells it scores 0.723
-pooled (0.835 / 0.716 / 0.661 by season) against the sealed 0.678; the
+(jitter 0.15). Replayed on the identical 15,460 cells through the console's
+own replay command (the reseal of 2026-09-07) it scores 0.723 pooled
+(0.834 / 0.716 / 0.663 by season) against the sealed 0.678; the
 corrected kernel at the sealed scale scored 0.735. The gap is disclosed
 here rather than hidden by keeping the accidental behaviour, and the
 sealed table stands as the record of the sealed engine until the three
