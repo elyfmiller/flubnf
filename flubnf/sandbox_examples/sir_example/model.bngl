@@ -1,0 +1,53 @@
+# An SIR outbreak in one closed population, the smallest epidemic the
+# filter can fit: infection, recovery, and a tally of infections whose
+# weekly increment, scaled by the ascertainment, is the observed count.
+# Time is in weeks.
+begin model
+begin parameters
+Reff__FREE  1.6      # reproduction number; fitted
+scale__FREE 0.30     # fraction of infections that are reported; fitted
+r__FREE     10.0     # negative-binomial dispersion of the counts; fitted
+
+N      200000        # population, known
+gamma  1.0           # recovery per week (one-week infectious period), fixed
+beta   Reff__FREE*gamma
+I0     50
+end parameters
+
+begin molecule types
+S()
+I()
+R()
+Cinf()
+end molecule types
+
+begin seed species
+S() N-I0
+I() I0
+R() 0
+Cinf() 0
+end seed species
+
+begin observables
+Molecules S     S()
+Molecules I     I()
+Molecules R     R()
+Molecules C_Cum Cinf()      # infections to date: the tally the data are read from
+end observables
+
+begin functions
+Cobs() = scale__FREE*C_Cum   # the tally at the reporting scale: what the data count
+end functions
+
+begin reaction rules
+# infection, frequency dependent; Cinf tallies every infection without
+# consuming anyone, so S + I + R = N holds
+S() + I() -> I() + I() + Cinf()   beta/N
+I() -> R()                         gamma
+end reaction rules
+end model
+
+begin actions
+generate_network({overwrite=>1})
+simulate({suffix=>"sir",method=>"ode",t_start=>0,t_end=>16,n_steps=>16,print_functions=>1})
+end actions

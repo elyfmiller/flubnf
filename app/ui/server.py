@@ -3467,7 +3467,22 @@ def sandbox_add_example(request: Request, name: str = Form(...)):
     try:
         sandbox_mod.add_example(name)
         _flash(f"Example {name} copied into the sandbox.")
-        return _back(request, f"/sandbox?model={name}")
+        return RedirectResponse(f"/sandbox?model={name}", status_code=303)
+    except Exception as e:
+        _flash(str(e))
+        return _back(request, "/sandbox")
+
+
+@app.post("/sandbox/new")
+def sandbox_new(request: Request, name: str = Form(...)):
+    """A model from scratch: the skeleton's three files, opened in the
+    editor. It generates and fits as written, so a dry run checks the
+    folder before a line of it is changed."""
+    name = (name or "").strip()
+    try:
+        sandbox_mod.new_model(name)
+        _flash(f"New model {name} written from the skeleton; edit it below.")
+        return RedirectResponse(f"/sandbox?model={name}", status_code=303)
     except Exception as e:
         _flash(str(e))
         return _back(request, "/sandbox")

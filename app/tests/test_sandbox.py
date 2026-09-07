@@ -47,9 +47,47 @@ def test_names_are_checked_and_examples_ship_complete():
         with pytest.raises(sb.SandboxError):
             sb.check_name(bad)
     assert sb.check_name("sihrs_example") == "sihrs_example"
-    assert set(sb.list_examples()) >= {"sihrs_example", "kinetics_example"}
+    assert set(sb.list_examples()) >= {"sihrs_example", "kinetics_example",
+                                       "sir_example", "seir_example"}
     for e in sb.list_examples():
         assert all((sb.EXAMPLES / e / f).is_file() for f in sb.REQUIRED)
+        files = {f: (sb.EXAMPLES / e / f).read_text() for f in sb.REQUIRED}
+        assert sb.simulate_suffix(files["model.bngl"])      # the engine's match key
+        assert len(sb.read_exp(files["data.exp"])["rows"]) >= 10
+        priors, keys = sb.split_priors(files["priors.conf"])
+        assert priors and keys.get("pf_cumulative_observable")
+
+
+def test_a_model_from_scratch_is_a_runnable_skeleton(box):
+    d = sb.new_model("mine")
+    assert sorted(p.name for p in d.iterdir()) == sorted(sb.REQUIRED)
+    files = sb.read_model("mine")
+    bngl = files["model.bngl"]
+    for block in ("begin model", "begin parameters", "begin molecule types",
+                  "begin seed species", "begin observables", "begin functions",
+                  "begin reaction rules", "end model", "begin actions",
+                  "generate_network(", "simulate("):
+        assert block in bngl, block
+    assert bngl.startswith("# mine:")                     # the list's note
+    assert sb.simulate_suffix(bngl) == "sim"
+    exp = sb.read_exp(files["data.exp"])
+    assert exp["columns"] == ["time", "T_weekly"] and len(exp["rows"]) == sb.SKELETON_WEEKS
+    assert all(r[1] > 0 for r in exp["rows"])
+    assert "\n#" not in files["data.exp"].strip("#")     # one header, no body comment
+    priors, keys = sb.split_priors(files["priors.conf"])
+    assert [p.split()[2] for p in priors] == ["k__FREE", "scale__FREE", "r__FREE"]
+    assert keys["pf_cumulative_observable"] == "Tobs"
+    assert "Tobs() = scale__FREE*T_Cum" in bngl
+    with pytest.raises(sb.SandboxError, match="already exists"):
+        sb.new_model("mine")
+    with pytest.raises(sb.SandboxError):
+        sb.new_model("../x")
+    # the skeleton prepares as written: the suffix, the data, the priors
+    w = sb.prepare("mine", particles=60)
+    conf = (w / "mine_r0" / "pf.conf").read_text()
+    assert "pf_cumulative_observable = Tobs" in conf
+    assert "uniform_var = k__FREE 0.05 2.0" in conf
+    assert (w / "mine_r0" / "sim.exp").is_file()
 
 
 def test_an_example_copies_in_once_and_lists_complete(box):
@@ -96,7 +134,7 @@ def test_prepare_writes_the_engine_configuration_from_the_three_files(box):
     assert (cell / "m.bngl").is_file() and (cell / "kin.exp").is_file()
     assert (cell / "m.net").is_file()                    # the netgen check
     conf = (cell / "pf.conf").read_text()
-    for line in ("fit_type = pf", "num_particles = 300", "pf_jitter = 0.2",
+    for line in ("fit_type = pf", "pf_particles = 300", "pf_jitter = 0.2",
                  "pf_observable_mode = integrated",
                  "pf_cumulative_observable = Bobs", "pf_forecast_weeks = 3",
                  "seed = 11", "initialization = rand", "objfunc = neg_bin_dynamic",
@@ -172,6 +210,14 @@ def test_sandbox_page_lists_examples_models_and_runs(box):
     assert "sihrs_example" in html and "complete" in html
     assert 'name="model_bngl"' in html                       # the editor
     assert "Hobs() = mult*H_Cum" in html
+    assert 'action="/sandbox/new"' in html                   # from scratch
+    r = client.post("/sandbox/new", data={"name": "scratch"}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"].endswith("/sandbox?model=scratch")
+    import html as H
+    page = H.unescape(client.get("/sandbox?model=scratch").text)
+    assert "# scratch:" in page and 'suffix=>"sim"' in page   # the editor holds it
+    r = client.post("/sandbox/new", data={"name": "bad name"}, follow_redirects=False)
+    assert r.status_code == 303 and not (sb.MODELS / "bad name").exists()
 
 
 def test_sandbox_run_is_refused_while_the_engine_is_busy(box, monkeypatch):
@@ -205,7 +251,7 @@ def test_sandbox_run_prepares_and_starts_in_the_background(box, monkeypatch):
         time.sleep(0.05)
     assert len(ran) == 1 and ran[0].parent == sb.RUNS
     conf = (ran[0] / "kinetics_example_r0" / "pf.conf").read_text()
-    assert "num_particles = 120" in conf and "seed = 3" in conf
+    assert "pf_particles = 120" in conf and "seed = 3" in conf
     assert srv._sandbox_status["running"] is None            # released
     r = client.post("/sandbox/run", data={"model": "nope"}, follow_redirects=False)
     assert r.status_code == 303 and len(ran) == 1            # refused, not started

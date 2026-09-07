@@ -1,0 +1,57 @@
+# An SEIR outbreak: infection, a latent stage before infectiousness,
+# recovery, and a tally of the E to I transitions (symptom onsets) whose
+# weekly increment, scaled by the ascertainment, is the observed count.
+# Time is in weeks.
+begin model
+begin parameters
+Reff__FREE  2.0      # reproduction number; fitted
+scale__FREE 0.25     # fraction of onsets that are reported; fitted
+r__FREE     10.0     # negative-binomial dispersion of the counts; fitted
+
+N      200000        # population, known
+sigma  1.4           # E to I per week (five-day latent period), fixed
+gamma  1.0           # recovery per week, fixed
+beta   Reff__FREE*gamma
+E0     40
+I0     20
+end parameters
+
+begin molecule types
+S()
+E()
+I()
+R()
+Conset()
+end molecule types
+
+begin seed species
+S() N-E0-I0
+E() E0
+I() I0
+R() 0
+Conset() 0
+end seed species
+
+begin observables
+Molecules S     S()
+Molecules E     E()
+Molecules I     I()
+Molecules R     R()
+Molecules C_Cum Conset()    # onsets to date: the tally the data are read from
+end observables
+
+begin functions
+Cobs() = scale__FREE*C_Cum   # the tally at the reporting scale
+end functions
+
+begin reaction rules
+S() + I() -> E() + I()          beta/N     # infection, frequency dependent
+E() -> I() + Conset()           sigma      # onset; Conset tallies it without consuming anyone
+I() -> R()                      gamma      # recovery
+end reaction rules
+end model
+
+begin actions
+generate_network({overwrite=>1})
+simulate({suffix=>"seir",method=>"ode",t_start=>0,t_end=>20,n_steps=>20,print_functions=>1})
+end actions
