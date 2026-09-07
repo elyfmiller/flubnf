@@ -475,6 +475,24 @@ drop (pre-registration edd6b0dddb8eb843, verdict in the lab archive). The
 ledger therefore now records TWO proposals declined without running, keeping
 the killed-vs-declined distinction drawn above.
 
+Addendum, 2026-09-07: a ninth pre-registered challenger was built, tested and
+found null by its own rule: the declared reporting model, a real-time pooled
+per-lag completeness factor (lags 0 to 2, from each vintage's own archive,
+never from settled truth, never per state, widening nothing) applied to the
+particle filter's weekly anchor, to its likelihood through a generic engine
+key, and in a third arm to the analogue's newest anchor. On the six-state
+panel against the production route (jitter 0.15) the three arms scored
+-0.0004, -0.0007 and -0.0020 pooled ensemble relWIS, inside the noise floor
+and short of the 0.005 margin, while the filter member alone gained 0.009
+and the January 2025 turn window gained 0.044; the analogue's own forecast
+got worse under the anchor correction even as the blend improved. The
+complete season, 2023-24, was bit-identical to the reference in every arm,
+the factor being 1.00 there all season. Not adopted; the engine key and the
+wiring remain as documented research paths, off by default. Pre-registration
+e39973e1 and the verdict are in the lab archive (research/reporting-model).
+This is distinct from the two killed completeness corrections above, which
+acted on the analogue alone, per state, and widened.
+
 **Read every number in this ledger as measured against the pre-exclusion
 donor pool.** Each entry compares a challenger to the incumbent ensemble of
 its day, whose reference figures were 0.7039 pooled and 0.8475 / 0.6513 /
