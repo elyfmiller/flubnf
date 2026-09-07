@@ -3,11 +3,11 @@
 
 {% if storage %}
 <div class="card">
-{# the storage panel folds like the ledger below, but defaults OPEN: the
-   summary keeps the headline disk figure readable even when a reader
-   folds the panel away, and the open state persists per localStorage
+{# the storage panel folds like the ledger below and ships FOLDED: the
+   summary carries the headline disk figure, so the page opens on the
+   number and nothing else; the open state persists per localStorage
    exactly as the ledger fold's does. #}
-<details class="ledgerfold" id="storagefold" open>
+<details class="ledgerfold" id="storagefold">
  <summary><h2 style="display:inline">On disk</h2>
   <span class="stotal" style="display:inline;margin-left:.45rem"><span class="big">{{ storage.total_h }}</span></span>
   <span class="hint"> total</span></summary>
@@ -212,9 +212,9 @@
  (function(){
   var d=document.getElementById('storagefold');
   if(!d)return;
-  if(localStorage.getItem('storagefold-open')==='0')d.open=false;
+  if(localStorage.getItem('storagefold-v2')==='1')d.open=true;
   d.addEventListener('toggle',function(){
-   localStorage.setItem('storagefold-open',d.open?'1':'0');});
+   localStorage.setItem('storagefold-v2',d.open?'1':'0');});
  })();
 </script>
 <script>

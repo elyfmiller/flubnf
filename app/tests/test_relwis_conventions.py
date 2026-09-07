@@ -428,22 +428,25 @@ def _season_page(**kw):
     return srv.templates.env.get_template("retro_season.html").render(**ctx)
 
 
-def test_the_page_offers_both_conventions_and_marks_the_live_one():
+def test_the_page_carries_no_convention_switch():
+    """The switch left the season page (lead, 2026-09-07): the pairwise
+    convention could not be scored from this checkout, so the button only
+    ever produced 'No scores under this convention'. The page renders the
+    ratio of sums, labelled as such; the pairwise view stays reachable by
+    URL for the one figure it can state."""
     html = _season_page(figs=relwis.season_figures(_seal_frame(),
                                                    relwis.RATIO_OF_SUMS))
-    for c in srv._relwis_conventions():
-        assert f"conv={c['key']}" in html
-        assert c["name"] in html
-    assert 'aria-pressed="true"' in html
-    # the warning is on the page, not only in the code
-    assert "must never be compared with a figure from the other" in _flat(html)
+    assert "Scoring convention" not in html
+    assert 'aria-label="Scoring convention"' not in html
+    assert "conv=pairwise" not in html
+    assert "ratio of sums" in _flat(html)
 
 
 def test_every_head_tile_names_the_convention_that_produced_it():
     ratio = _season_page(figs=relwis.season_figures(_seal_frame(),
                                                     relwis.RATIO_OF_SUMS))
     assert "relWIS vs the FluSight baseline, ratio of sums" in _flat(ratio)
-    tiles = _flat(ratio).split("Scoring convention")[1].split("Cumulative")[0]
+    tiles = _flat(ratio).split("Cumulative")[0]
     assert "pairwise scaled" not in tiles
 
     figs = relwis.season_figures(_seal_frame(), relwis.RATIO_OF_SUMS)

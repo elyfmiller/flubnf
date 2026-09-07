@@ -114,24 +114,30 @@
       from the pooled score. The long form lives on the Methods page. #}
    <p class="hint">US national is always fitted too, and scored
     separately.</p>
-   <label>Engine</label>
-   {% set engine_names = {"all": "All models: PF, analogue, and ensemble (recommended)",
-                          "pf": "Particle filter only",
-                          "amcmc": "Adaptive MCMC (experimental)"} %}
-   <select name="engine">{% for e in engines %}
+   <label>Model</label>
+   {# the form still posts `engine`: the run path's names for the three
+      shipped configurations. The reader picks a MODEL; the engine row
+      below appears only when the SIHRS member is part of the run. #}
+   {% set engine_names = {"all": "FluBNF ensemble: SIHRS + calendar analogue",
+                          "pf": "SIHRS only",
+                          "analogue": "Calendar analogue only"} %}
+   <select name="engine" id="model-pick">{% for e in engines %}
      <option value="{{ e }}" {% if e == form.engine %}selected{% endif %}>{{ engine_names.get(e, e) }}</option>{% endfor %}</select>
-   {# The RELEASE-1.0 Known limitations wording, verbatim in substance:
-      the word "experimental" alone under-discloses what the sampler audit
-      measured, so the caveat rides right under the picker whenever the
-      option is offered. #}
-   {% if "amcmc" in engines %}
-   <p class="hint">Adaptive MCMC does not pass convergence diagnostics on
-    this posterior and is not part of the shipped ensemble.</p>
-   {% endif %}
+   <div id="engine-row">
+    <label>Engine</label>
+    <select aria-label="SIHRS engine"><option>Particle filter</option></select>
+   </div>
+   <script>
+    (function(){
+      var m=document.getElementById('model-pick'), r=document.getElementById('engine-row');
+      function sync(){ r.hidden = (m.value === 'analogue'); }
+      m.addEventListener('change', sync); sync();
+    })();
+   </script>
    {# The two-strain third member has no control here: it failed its
       full-grid ensemble gate and does not ship. The /run endpoint still
       accepts members=3 for research use. #}
-   <details class="adv"><summary>Advanced</summary>
+   <details class="adv"><summary class="advbtn">Advanced settings</summary>
     <label>Season start</label>
     <input type="date" name="season_start" value="{{ form.season_start }}">
     <p class="hint" id="season-line"></p>

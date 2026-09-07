@@ -465,7 +465,7 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
             # this one has to carry the convention itself, in the wording
             # the console and the public site use.
             f'<p class="hint">{relwis.PUBLISHED_CONVENTION_NOTE}</p>'
-            + _curve_block(df) + states + "</div>")
+            + states + "</div>")     # the cumulative chart stays on the season page only (lead, 2026-09-07)
 
 
 ARCHIVE_MARK = "Archived run"

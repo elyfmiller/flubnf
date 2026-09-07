@@ -4,19 +4,11 @@
 {% if not rid %}<div class="card"><p class="hint">Run a forecast first;
 outputs collect here.</p></div>
 {% else %}
-<div class="cols">
- <div><div class="card"><h2>Checklist</h2>
-  <p>1. <span class="ok">models run ✓</span> <span class="hint">({{ label }})</span></p>
-  <p>2. {% if has_ensemble %}<span class="ok">ensemble generated ✓</span>
-     {% else %}<form method="post" action="/model/ensemble/generate" style="display:inline">
-     <button class="gold" style="margin-top:0">Generate ensemble</button></form>{% endif %}</p>
-  <p>3. Collect files →</p>
-  <p class="hint">One CSV per model_id, 23 quantiles × 4 horizons per
-  location, validated on write: all 23 hub levels present, monotone,
-  non-negative, no degenerate cells.</p>
- </div></div>
- <div>
+<div>
   <div class="card"><h2>Submission files: {{ date }}</h2>
+   <p class="hint">{{ label }}{% if not has_ensemble %} ·
+    <form method="post" action="/model/ensemble/generate" style="display:inline">
+     <button class="gold" style="margin-top:0">Generate ensemble</button></form>{% endif %}</p>
    {% for f in files %}
     <div class="subfile">
      <div class="row" style="justify-content:space-between;margin:.45rem 0">
@@ -53,12 +45,9 @@ outputs collect here.</p></div>
    {% else %}<p class="hint">No submission files in the latest run.</p>{% endfor %}
   </div>
   <div class="card"><h2>Weekly report</h2>
-   <p class="hint">US categorical outlook map with per-state detail.
-   Download saves one self-contained HTML file that opens without the
-   app.</p>
    <div style="display:flex;align-items:center;gap:.9rem;flex-wrap:wrap;margin-top:.4rem">
-   {% if has_report %}<a href="/output/report" target="_blank"><button class="quiet" type="button" style="margin-top:0">Open report</button></a>
-    <a href="/output/report/download" download><button class="quiet" type="button" style="margin-top:0">Download report</button></a>
+   {% if has_report %}<a href="/output/report/download" download><button class="gold" type="button" style="margin-top:0">Download report</button></a>
+    <a href="/output/report" target="_blank"><button class="quiet" type="button" style="margin-top:0">Open report</button></a>
    {% else %}<p class="hint" style="margin:0">Generated automatically with each full run.</p>{% endif %}
    {% if archive_dates %}
     <span style="display:flex;align-items:center;gap:.45rem">
@@ -74,7 +63,6 @@ outputs collect here.</p></div>
    {% endif %}
    </div>
   </div>
- </div>
 </div>
 {% endif %}
 {% endblock %}

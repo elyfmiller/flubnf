@@ -365,7 +365,7 @@ def _harmonic_fig(eps: float = 0.35, phis=(22.0,), x0: float = 62.0,
 
 templates.env.globals["harmonic_fig"] = _harmonic_fig
 
-ENGINES = ("all", "pf", "amcmc")     # "all" = pf + analogue + ensemble
+ENGINES = ("all", "pf", "analogue")  # "all" = pf + analogue + ensemble; the aMCMC sampler left the console 2026-09-07 (research use stays on the CLI)
 _status: dict = {"running": None, "log": []}
 _last_form: dict = {}
 
@@ -1240,6 +1240,7 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
            # season palette (the --season-N tokens per draw, these literals
            # as the fallback), exactly as the forecast data panel does
            "season_colors_json": _script_json(_season_colors())}
+    ctx["vintage_rows"] = _vintage_rows(vs)
     if not vs:
         return ctx
     latest = vs[-1]
@@ -1287,6 +1288,33 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
         ctx["view_note"] = (f"Could not read the {sel_v} vintage "
                             f"({type(e).__name__}).")
     return ctx
+
+
+def _vintage_rows(vs) -> list:
+    """The archive as rows: one per season (August to July), each vintage
+    a (week offset from August 1, date) point, newest season first."""
+    from datetime import date as _d
+    rows = {}
+    for v in vs:
+        try:
+            d = _d.fromisoformat(str(v)[:10])
+        except ValueError:
+            continue
+        y = d.year if d.month >= 8 else d.year - 1
+        off = (d - _d(y, 8, 1)).days // 7
+        rows.setdefault(y, []).append((off, str(v)[:10]))
+    pal = _season_colors() or []          # the player's palette: a list
+    out = []
+    for i, y in enumerate(sorted(rows, reverse=True)):
+        label = f"{y}-{str(y + 1)[2:]}"
+        if isinstance(pal, dict):
+            color = pal.get(label, "currentColor")
+        elif pal and isinstance(pal[0], (list, tuple)):
+            color = dict(pal).get(label, "currentColor")
+        else:
+            color = pal[i % len(pal)] if pal else "currentColor"
+        out.append({"season": label, "points": sorted(rows[y]), "color": color})
+    return out
 
 
 @app.get("/data", response_class=HTMLResponse)

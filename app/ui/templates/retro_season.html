@@ -88,41 +88,15 @@
    carries the label naming the one that produced it. Panels that exist
    only under one convention (the cumulative curve, the US national row)
    say so in the other view rather than reverting. See app/core/relwis. #}
-<div class="card">
- <h2>Scoring convention</h2>
- <div class="row" role="group" aria-label="Scoring convention">
-  {% for c in conventions %}
-  <a href="/retro/{{ season }}?conv={{ c.key }}{% if archive %}&amp;archive={{ archive }}{% endif %}{% if week %}&amp;week={{ week }}{% endif %}"
-   ><button type="button" class="{{ 'gold' if c.key == conv else 'quiet' }}"
-     aria-pressed="{{ 'true' if c.key == conv else 'false' }}"
-     style="margin-top:0">{{ c.name }}</button></a>
-  {% endfor %}
- </div>
- {% if figs %}<p class="hint">{{ figs.blurb }}</p>{% endif %}
- <p class="hint">The two conventions give different numbers for the same
-  forecasts and answer different questions, so a figure from one must never
-  be compared with a figure from the other.</p>
- {% if figs and figs.convention == 'pairwise' and figs.available %}
- {# THE VALUE, NOT THE PLACEMENT. This figure is scored against the teams
-    that submitted this season, in these jurisdictions, and it moves when
-    that field changes, so the field is genuinely part of the number. What
-    the page does NOT print is the rank or the field's size. The value is
-    this project's own score under one stated convention and is
-    reproducible end to end from the sealed per-cell scores; a rank would
-    additionally assert that the whole FluSight field was scored on that
-    convention, and the builder that scores the field lives outside this
-    repository, so that half cannot be rebuilt from this checkout.
-    Placement was withdrawn on 2026-08-24 and Methods says so; printing a
-    rank here would contradict that page in the same application. The rank
-    is still computed (app/core/relwis.insert_model) so that lifting the
-    withdrawal is a display decision. #}
- <p class="hint">Scored against the teams that submitted this season,
-  jurisdictions only. The figure moves when the field changes, so the field
-  is part of the number. Placement within that field, meaning a rank among
-  the submitting teams, is not restated here: see
-  <a href="/methods">Methods</a>.</p>
- {% endif %}
-</div>
+{% if figs and figs.convention == 'pairwise' and figs.available %}
+{# the pairwise view is reachable by URL only (the switch left the page,
+   lead 2026-09-07): the value stays, the placement stays withdrawn #}
+<p class="hint">Scored against the teams that submitted this season,
+ jurisdictions only. The figure moves when the field changes, so the field
+ is part of the number. Placement within that field, meaning a rank among
+ the submitting teams, is not restated here: see
+ <a href="/methods">Methods</a>.</p>
+{% endif %}
 {% if unavailable and figs.reason %}
 {# the unavailable path, stated plainly. There is deliberately no fallback:
    silently showing the other convention's numbers under this heading is
@@ -196,9 +170,7 @@
    type="button" style="margin-top:0">Download season report</button></a>
  <button type="button" class="quiet" id="rev-report" style="margin-top:0"
    data-season="{{ season }}" data-archive="{{ archive }}">Reveal in Finder</button>
- <span class="hint">One self-contained HTML file, usable offline: the season
- player with every forecast embedded. Forecast detail and stats only, no
- outlook maps.</span></p>
+</p>
 <script>
  // belt and braces for the native window: generate the report if absent
  // (same builder as the download route), then reveal the file in Finder
