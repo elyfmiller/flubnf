@@ -148,10 +148,22 @@ then the full grid for the one arm its rule selected). It selected jitter
 |---|---|---|---|---|---|---|
 | sealed engine (raw-space kernel, 0.30) | 0.813 | 0.618 | 0.683 | **0.678** | 0.540 | 0.960 |
 | corrected kernel, 0.30 | 0.858 | 0.729 | 0.665 | 0.735 | 0.503 | 0.938 |
-| corrected kernel, 0.15 (production) | 0.835 | 0.716 | 0.661 | 0.723 | 0.469 | 0.920 |
+| corrected kernel, 0.15, research grid | 0.835 | 0.716 | 0.661 | 0.723 | 0.469 | 0.920 |
+| corrected kernel, 0.15, the reseal (2026-09-07) | 0.834 | 0.716 | 0.663 | **0.723** | 0.470 | 0.921 |
 
-The production engine is worse than the seal by 0.045 pooled and better
-than the corrected kernel at the sealed scale by 0.013. The remaining gap
+The reseal is the production engine's record of its own: three seasons
+replayed through the console's replay command (`flubnf retro`), one seed
+per as-of week as the seal was made, 13,260 fits, zero failures, 10 h 43
+min, stored at `app/state/retro_reseal` beside the read-only seal. Its
+members: particle filter 0.840 / 0.797 / 0.846, pooled 0.821; analogue
+1.045 / 0.756 / 0.621, pooled 0.771 (identical to the seal's analogue up
+to the donor exclusion). It agrees with the research grid, which shares
+its engine and settings and differs only in seed convention and runner
+count, to 0.0007 pooled and within 0.002 in every season, inside the
+measured seed spread: the record does not depend on the path that
+produced it. The production engine is worse than the seal by 0.045
+pooled and better than the corrected kernel at the sealed scale by
+0.013. The remaining gap
 is not explained by the kernel scale: less jitter narrows the bands and
 scores better, the opposite of what the sealed kernel's accidental
 widening suggested, and the production setting under-covers at every
