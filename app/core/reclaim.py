@@ -36,7 +36,7 @@ from app.core import retro
 from app.core.runs import APP_STATE
 
 #: what survives a completed week's prune: the samples record, both forms
-WEEK_KEEP = (retro.SAMPLES_JSON, retro.SAMPLES_GZ)
+WEEK_KEEP = (retro.SAMPLES_JSON, retro.SAMPLES_GZ, retro.QUANTILES_NAME)
 
 #: a per-cell fit tree inside a workroot or week: <location>_r<replicate>
 CELL_DIR_RE = re.compile(r".+_r\d+$")

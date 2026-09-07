@@ -111,16 +111,10 @@ def _week_model_quantiles(root: Path, asof: str) -> dict:
     week: sample-shaped members (pf, pf2s) through the member-quantile
     formula, the analogue's stored quantiles as-is, and an equal-weight
     vincentized ensemble of whichever members cover each location."""
-    d = retro_store.read_week_samples(root, asof)
-    out = {}
-    for m in ("pf", "pf2s"):
-        if m in d:
-            out[m] = {loc: _member_q(s) for loc, s in d[m].items()}
-    if "analogue" in d:
-        out["analogue"] = {loc: {h: {float(k): float(v)
-                                     for k, v in q.items()}
-                                 for h, q in qs.items()}
-                           for loc, qs in d["analogue"].items()}
+    # the members come from the week's quantile sidecar (retro_store
+    # .week_member_quantiles): the same formula _member_q applies, without
+    # parsing the draws on every cold cache
+    out = dict(retro_store.week_member_quantiles(root, asof))
     members = {m: q for m, q in out.items()}
     if members:
         blend = {}

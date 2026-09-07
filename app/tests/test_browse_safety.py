@@ -329,7 +329,11 @@ def test_playback_endpoint_writes_only_its_cache(tmp_path, monkeypatch):
     new = {p for p in root.rglob("*") if p.is_file()} - files_before
     assert new, "the payload cache should have been written"
     cache_dir = root / "playback_cache"
-    assert all(cache_dir in p.parents for p in new), sorted(map(str, new))
+    # the payload cache, and the week's quantile sidecar when the week was
+    # stored before sidecars existed: both are caches, recomputable from
+    # the samples, and nothing else may be written by a browse
+    assert all(cache_dir in p.parents or p.name == retro.QUANTILES_NAME
+               for p in new), sorted(map(str, new))
     assert retro.meta_path(root).read_bytes() == meta_before
     assert not retro.stop_path(root).exists()
     assert not retro.pause_path(root).exists()
