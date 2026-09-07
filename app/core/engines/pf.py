@@ -326,7 +326,9 @@ def prepare(spec, workroot: Path) -> list:
     # offending path instead of raising a ParseException from the engine
     # venv mid-run. The workroot is created up front so the Windows 8.3
     # lookup, which needs an existing path, can resolve it.
-    workroot = Path(workroot)
+    # resolved: pf.conf carries this path for the engine subprocess, whose
+    # working directory is not the caller's
+    workroot = Path(workroot).resolve()
     workroot.mkdir(parents=True, exist_ok=True)
     conf_safe_path(workroot)
     bng_conf = conf_safe_path(BNG)

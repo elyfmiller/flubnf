@@ -2185,7 +2185,12 @@ def retro_cmd(season: str, locations: str = "all", width: int = 0,
                   [locs.abbreviation != "US"])
              if locations == "all" else
              [x.strip() for x in locations.split(",")])
-    r = _P(root) if root else _P("app/state/retro") / season
+    # ABSOLUTE, always: the runner subprocesses resolve the paths the conf
+    # and the shard files carry against their own working directory, so a
+    # relative --root made every fit fail before it started (the reseal of
+    # 2026-09-07: 'Configuration file app/state/.../pf.conf not found' for
+    # all 156 cells of every week, and the season 'completed' empty).
+    r = (_P(root) if root else _P("app/state/retro") / season).resolve()
     done = retro.run_season(r, season, names, replicates=replicates,
                             width=width,
                             progress=lambda a: print(f"  {a} done", flush=True))

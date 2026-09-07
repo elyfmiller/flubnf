@@ -213,3 +213,20 @@ def test_analogue_divides_the_newest_anchor_by_the_lag0_factor_in_both_mode(monk
     lik = _spec({"reporting": {"mode": "lik"}})
     assert an_engine.completeness_args(lik, "39", newest, newest) == (None, None)
     assert an_engine.completeness_args(_spec(None), "39", newest, newest) == (None, None)
+
+
+# ------------------------------------------------------------ absolute roots
+
+def test_prepare_writes_absolute_paths_for_a_relative_workroot(monkeypatch, tmp_path):
+    """The reseal of 2026-09-07: a relative --root produced pf.conf files
+    whose paths the runner subprocesses could not find, and every fit of
+    every week failed before starting. prepare() resolves the workroot."""
+    _env(monkeypatch, tmp_path)
+    monkeypatch.chdir(tmp_path)
+    c = pf.prepare(_spec(None), Path("relative") / "wr")[0]
+    assert Path(c["dir"]).is_absolute()
+    conf = (Path(c["dir"]) / "pf.conf").read_text()
+    for line in conf.splitlines():
+        if line.startswith(("model = ", "output_dir = ")):
+            for token in line.split(" = ", 1)[1].split(" : "):
+                assert Path(token.strip()).is_absolute(), line
