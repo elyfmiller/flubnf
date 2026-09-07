@@ -85,7 +85,7 @@ def test_run_accepts_the_research_selection(tmp_path, monkeypatch):
     assert r.status_code == 303
     assert len(started) == 1
     spec = started[0]
-    assert spec.extra == {"members": 3}
+    assert spec.extra == {"mode": "realtime", "members": 3}   # the run type rides on every console spec (2026-09-07)
     assert spec.particles == 20_000
     assert is_research(spec)
 
@@ -165,4 +165,4 @@ def test_rerun_reproduces_a_research_runs_particles(tmp_path, monkeypatch):
     assert r.status_code == 303
     assert len(started) == 1
     assert started[0].particles == 20_000
-    assert started[0].extra == {"members": 3}
+    assert started[0].extra == {"mode": "realtime", "members": 3}   # the run type rides on every console spec (2026-09-07)

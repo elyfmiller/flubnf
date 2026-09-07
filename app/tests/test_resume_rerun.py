@@ -268,8 +268,12 @@ def test_rerun_reposts_the_stored_spec_verbatim(tmp_path, monkeypatch):
     r = client.post(f"/runs/{rid}/rerun", follow_redirects=False)
     assert r.status_code == 303
     assert len(started) == 1
-    # verbatim: the run that starts carries exactly the recorded spec
-    assert started[0].to_json() == spec.to_json()
+    # verbatim: the run that starts carries exactly the recorded spec. The
+    # one addition is the run type the ledger states since 2026-09-07: a
+    # row recorded before the mode existed reruns as a real-time run.
+    import dataclasses
+    assert started[0].to_json() == dataclasses.replace(
+        spec, extra={"mode": "realtime"}).to_json()
 
 
 def test_rerun_refused_when_settings_were_not_recorded(tmp_path, monkeypatch):

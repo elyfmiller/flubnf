@@ -133,6 +133,46 @@ def score_samples(samples_by_loc: Mapping, forecast_date: str,
     return df
 
 
+def score_quantiles(q_by_loc: Mapping, forecast_date: str,
+                    name2fips: Mapping, truth: Mapping) -> pd.DataFrame:
+    """score_samples for members stored as quantile sets, {location:
+    {"1".."4": {level: value}}} (the analogue, the ensemble): the same cell
+    rule, the same baseline, the same columns, so the three members' relWIS
+    on a run's ledger row are one formula."""
+    rows = []
+    T = pd.Timestamp(forecast_date)
+    for loc, qs in q_by_loc.items():
+        fips = name2fips.get(loc)
+        if not fips or not isinstance(qs, Mapping):
+            continue
+        for h in (1, 2, 3, 4):
+            q = qs.get(str(h)) or qs.get(h)
+            if not q:
+                continue
+            try:
+                q = {float(L): float(v) for L, v in q.items()}
+            except (TypeError, ValueError):
+                continue
+            actual = truth.get((fips, T + timedelta(days=7 * h)))
+            if actual is None or actual <= 0 or q.get(0.5, 0) <= 0:
+                continue
+            try:
+                w = float(wis(q, actual).wis)
+            except Exception:
+                continue
+            rows.append({"location": loc, "fips": fips, "horizon": h,
+                         "wis": w})
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    bs = _baseline_cells(forecast_date, set(df.fips), truth)
+    df["base_wis"] = [bs.get((r.fips, forecast_date, r.horizon - 1), np.nan)
+                      for r in df.itertuples()]
+    df = df.dropna(subset=["base_wis"])
+    df["rel"] = df.wis / df.base_wis
+    return df
+
+
 def summary_table_html(df: pd.DataFrame) -> str:
     """The report's WIS-breakdown card, under the one-relWIS rule: the
     member is named in the header, every score wears the ok/bad
