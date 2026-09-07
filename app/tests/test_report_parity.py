@@ -51,14 +51,19 @@ APP_ONLY_HEADINGS = {
     # report cannot carry. The report is therefore a ratio-of-sums artifact
     # by construction, and a switch there would have one position.
     "Scoring convention",
+    # the cumulative chart stays on the season page and left the export
+    # (lead, 2026-09-07); test_cumulative_curve_stays_on_the_page checks
+    # both halves of that
+    "Cumulative ensemble relWIS through the season",
 }
 
 #: app section heading -> a marker that must appear in the export. The
 #: verdict tiles are handled dynamically (any heading that is a model
 #: display name, or the US aggregate, must appear as a report tile).
 APP_TO_REPORT = {
-    "Cumulative ensemble relWIS through the season":
-        report_season.CURVE_HEADING,
+    # the cumulative chart is the season page's own; the export dropped
+    # it (lead, 2026-09-07), so it has no counterpart and is checked
+    # for absence in test_cumulative_curve_stays_on_the_page
     "Season player": 'id="pb-scrub"',
     "Live relWIS": "Live relWIS",
     "Per-state scores": "Per-state final scores",
@@ -237,20 +242,16 @@ def test_player_week_lists_match(built):
         assert "US" in pl.get("truth", {}), f"week {w} lacks the US truth"
 
 
-def test_cumulative_curves_match(built):
+def test_cumulative_curve_stays_on_the_page(built):
+    """The season page draws the cumulative chart; the export does not
+    carry it (lead, 2026-09-07: the numbers speak for themselves and the
+    player shows the scores week by week)."""
     app_html, report_html = built
     app_svg = re.search(r'<svg class="cumchart".*?</svg>', app_html, re.S)
     assert app_svg, "season page must draw the cumulative chart"
-    rep_at = report_html.index(report_season.CURVE_HEADING)
-    rep_svg = re.search(r"<svg .*?</svg>", report_html[rep_at:], re.S)
-    assert rep_svg, "report must draw the cumulative chart"
-    assert app_svg.group(0).count("<circle") \
-        == rep_svg.group(0).count("<circle") == 2
-    final = re.compile(r'fill="var\(--gold\)">([\d.]+)</text>')
-    app_final = final.search(app_svg.group(0))
-    rep_final = final.search(rep_svg.group(0))
-    assert app_final and rep_final
-    assert app_final.group(1) == rep_final.group(1) == "0.900"
+    assert app_svg.group(0).count("<circle") == 2
+    assert report_season.CURVE_HEADING not in report_html
+    assert 'class="cumchart"' not in report_html
 
 
 def test_timing_and_settings_match(built):
@@ -286,9 +287,8 @@ def test_unscored_season_states_the_us_absence(tmp_path, monkeypatch):
     assert 'class="tilename">US (aggregated)' not in html
     assert "is not in this export" in html
     assert "has not been scored" in html
-    # the curve card states its arrival too, the season page's own words
-    assert report_season.CURVE_HEADING in html
-    assert "Arrives with the first scored week" in html
+    # the curve card is not in the export at all
+    assert report_season.CURVE_HEADING not in html
 
 
 def test_failed_aggregate_states_the_reason(tmp_path, monkeypatch):

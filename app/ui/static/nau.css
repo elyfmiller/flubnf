@@ -778,3 +778,11 @@ details.adv>summary{cursor:pointer;color:var(--gold);font-size:.9rem;list-style:
 details.adv>summary::-webkit-details-marker{display:none}
 details.adv>summary::before{content:"\25B8 ";}
 details.adv[open]>summary::before{content:"\25BE ";}
+
+/* the Advanced settings fold reads as a control, not a footnote */
+.adv > summary.advbtn{display:inline-block;padding:.38rem .9rem;border:1.5px solid var(--accent);
+ border-radius:999px;color:var(--accent-ink);font-weight:600;cursor:pointer;list-style:none;margin-top:.6rem}
+.adv > summary.advbtn::-webkit-details-marker{display:none}
+.adv[open] > summary.advbtn{background:var(--accent);color:#fff}
+/* the scoring-convention tip on the home table: the shared wording on hover and focus */
+.convtip{cursor:help;color:var(--accent-ink);font-weight:700;margin-left:.2rem}

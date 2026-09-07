@@ -456,23 +456,24 @@ def test_ledger_fold_state_persists_per_local_storage(state):
     assert "addEventListener('toggle'" in html
 
 
-def test_storage_panel_folds_but_defaults_open(state):
-    """The storage panel gets the ledger's details/summary fold with the
-    opposite default: OPEN server-side, the summary carrying the headline
-    total-disk figure so the number stays readable when the panel is
-    folded away, and the open state persisted like the ledger fold's."""
+def test_storage_panel_folds_and_defaults_folded(state):
+    """The storage panel gets the ledger's details/summary fold and ships
+    FOLDED (lead, 2026-09-07): the summary carries the headline total-disk
+    figure, so the page opens on the number, and a reader's open state
+    persists like the ledger fold's."""
     html = client.get("/runs").text
-    # the fold ships open by default
-    assert '<details class="ledgerfold" id="storagefold" open>' in html
+    # the fold ships folded by default
+    assert '<details class="ledgerfold" id="storagefold">' in html
+    assert 'id="storagefold" open>' not in html
     # the summary carries the heading and the total disk figure
-    summary = html.split('id="storagefold" open>', 1)[1] \
+    summary = html.split('id="storagefold">', 1)[1] \
                   .split("</summary>", 1)[0]
     assert "On disk</h2>" in summary
     assert 'class="big"' in summary
     inv = srv._storage_inventory()
     assert inv["total_h"] in summary
     # the panel body (workroots, deletes) lives INSIDE the fold
-    fold = html.split('id="storagefold" open>', 1)[1] \
+    fold = html.split('id="storagefold">', 1)[1] \
                .split("</details>", 1)[0]
     assert "Run workroots" in fold
     assert "data-del-storage" in fold
@@ -480,10 +481,13 @@ def test_storage_panel_folds_but_defaults_open(state):
 
 def test_storage_fold_state_persists_per_local_storage(state):
     html = client.get("/runs").text
-    assert "localStorage.getItem('storagefold-open')" in html
-    assert "localStorage.setItem('storagefold-open'" in html
-    # a stored close wins over the server's open default
-    assert "==='0')d.open=false" in html.replace(" ", "")
+    # a fresh key: the old one held '1' in every browser that met the
+    # open default, which would have kept the panel open forever
+    assert "localStorage.getItem('storagefold-v2')" in html
+    assert "localStorage.setItem('storagefold-v2'" in html
+    assert "storagefold-open" not in html
+    # a stored open wins over the server's folded default
+    assert "==='1')d.open=true" in html.replace(" ", "")
 
 
 def test_empty_ledger_keeps_the_plain_hint_no_fold(state, monkeypatch):

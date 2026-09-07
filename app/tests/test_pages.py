@@ -362,3 +362,21 @@ def test_diagram_data_shapes():
     assert d["locations"]["Ohio"]["med1"] == 14.0
     assert d["locations"]["Ohio"]["obs"] == [["2026-08-08", 12.0]][-1]
     assert "pf" not in d["locations"]["US"]         # graceful omission
+
+
+def test_data_page_draws_the_archive_timeline():
+    """The policies paragraph left the Data page (lead, 2026-09-07); in its
+    place the archive itself: one row per season, one dot per vintage at
+    its week of the season, so what the replay can see is visible."""
+    from app.ui import server as srv
+    rows = srv._vintage_rows(["2023-09-23", "2024-01-06", "2024-11-16", "2025-08-30"])
+    assert [r["season"] for r in rows] == ["2025-26", "2024-25", "2023-24"]
+    assert rows[-1]["points"] == [(7, "2023-09-23"), (22, "2024-01-06")]
+    assert all(r["color"] for r in rows)
+    assert srv._vintage_rows([]) == []
+    r = client.get("/data")
+    assert r.status_code == 200
+    assert "Policies" not in r.text and ">Archive<" in r.text
+    # the strip draws when the archive has vintages; the hub-free test
+    # environment has none and states that instead of drawing an empty axis
+    assert ('class="archive-strip"' in r.text) == bool(srv.data_mod.vintages())
