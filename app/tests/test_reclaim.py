@@ -456,7 +456,9 @@ def test_run_week_prunes_the_week_it_just_assembled(tmp_path, monkeypatch):
     out = retro.run_week(root, SEASON, W1, ["Ohio"], width=1)
     assert out["pf"] == {"Ohio": {"0": [1.0]}}
     assert retro.week_done(root, W1)
-    assert [p.name for p in wd.iterdir()] == ["samples.json.gz"]
+    # the samples record and its quantile sidecar are the week's record;
+    # everything else was an intermediate
+    assert sorted(p.name for p in wd.iterdir()) == ["quantiles.json", "samples.json.gz"]
     # and the stored record round-trips
     assert retro.read_week_samples(root, W1) == out
 

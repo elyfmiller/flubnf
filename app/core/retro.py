@@ -114,6 +114,15 @@ def _week_dir(root: Path, asof: str) -> Path:
 
 SAMPLES_JSON = "samples.json"
 SAMPLES_GZ = "samples.json.gz"
+#: the per-week quantile sidecar: every member's 23 FluSight quantiles per
+#: location and horizon, a few hundred kilobytes beside a samples record
+#: that runs to 140 MB. The playback, the season report and the season
+#: scorer read this instead of parsing the draws (measured 2026-09-07: a
+#: cold season report spent 39 of 55 seconds in json.loads on samples files
+#: only to reduce them to these quantiles). Written when a week is stored;
+#: a week stored before the sidecar existed gets one the first time it is
+#: read. The national aggregate still needs the draws and reads the samples.
+QUANTILES_NAME = "quantiles.json"
 
 
 def samples_file(wd: Path) -> Path | None:
@@ -170,7 +179,9 @@ def read_week_samples(root: Path, asof: str) -> dict:
 def write_week_samples(wd: Path, obj: dict) -> Path:
     """Store a completed week's samples, gzipped. Atomic (write beside,
     then replace), and any plain-JSON file a previous run of this week
-    left behind is retired so samples_file never faces two records."""
+    left behind is retired so samples_file never faces two records. The
+    quantile sidecar is written beside it, best effort: a week whose
+    sidecar could not be written is still a stored week."""
     wd = Path(wd)
     fp = wd / SAMPLES_GZ
     tmp = wd / (SAMPLES_GZ + ".tmp")
@@ -178,7 +189,78 @@ def write_week_samples(wd: Path, obj: dict) -> Path:
         json.dump(obj, f)
     os.replace(tmp, fp)
     (wd / SAMPLES_JSON).unlink(missing_ok=True)
+    try:
+        write_week_quantiles(wd, member_quantiles(obj))
+    except Exception:
+        pass
     return fp
+
+
+def member_quantiles(d: dict) -> dict:
+    """{member: {location: {"1".."4": {level: value}}}} from one week's
+    stored record: the sample-shaped members (pf, pf2s) through the member
+    quantile formula, the analogue's stored quantiles with float levels.
+    The ensemble is NOT here: each reader blends the members with its own
+    weights, so a fitted-weight scoring and the equal-weight console never
+    disagree about what the members were."""
+    out = {}
+    for m in ("pf", "pf2s"):
+        if m in d:
+            out[m] = {loc: ens.member_quantiles_from_samples(s)
+                      for loc, s in d[m].items()}
+    if "analogue" in d:
+        out["analogue"] = {loc: {h: {float(k): float(v) for k, v in q.items()}
+                                 for h, q in qs.items()}
+                           for loc, qs in d["analogue"].items()}
+    return out
+
+
+def write_week_quantiles(wd: Path, mq: dict) -> Path:
+    """The sidecar, atomically. Levels become strings on disk (JSON keys)
+    and read back as the same floats: repr round-trips."""
+    wd = Path(wd)
+    fp = wd / QUANTILES_NAME
+    tmp = wd / (QUANTILES_NAME + ".tmp")
+    tmp.write_text(json.dumps(
+        {m: {loc: {h: {repr(float(L)): v for L, v in q.items()}
+                   for h, q in qs.items()}
+             for loc, qs in locs.items()}
+         for m, locs in mq.items()}))
+    os.replace(tmp, fp)
+    return fp
+
+
+def read_week_quantiles(wd: Path) -> dict | None:
+    """The sidecar as member_quantiles would have returned it, or None when
+    it is absent, unreadable, or older than the samples it describes."""
+    wd = Path(wd)
+    fp = wd / QUANTILES_NAME
+    sp = samples_file(wd)
+    if not fp.is_file() or sp is None or fp.stat().st_mtime < sp.stat().st_mtime:
+        return None
+    try:
+        raw = json.loads(fp.read_text())
+        return {m: {loc: {h: {float(L): float(v) for L, v in q.items()}
+                          for h, q in qs.items()}
+                    for loc, qs in locs.items()}
+                for m, locs in raw.items()}
+    except Exception:
+        return None
+
+
+def week_member_quantiles(root: Path, asof: str) -> dict:
+    """The members' quantiles for one stored week: the sidecar when it is
+    current, else computed from the samples and written for next time."""
+    wd = _week_dir(root, asof)
+    mq = read_week_quantiles(wd)
+    if mq is not None:
+        return mq
+    mq = member_quantiles(read_week_samples(root, asof))
+    try:
+        write_week_quantiles(wd, mq)
+    except Exception:
+        pass
+    return mq
 
 
 def compress_samples_file(fp: Path) -> Path:
@@ -1075,17 +1157,15 @@ def score_season(root: Path, season: str,
     truth, n2f = load_truth()
     rows = []
     for wk in season_sample_files(root):
-        d = read_samples(wk)
-        asof = d["asof"]; T = pd.Timestamp(asof)
-        for loc in set(d["pf"]) | set(d["analogue"]):
+        asof = wk.parent.name; T = pd.Timestamp(asof)
+        mq = week_member_quantiles(root, asof)
+        pf_all, an_all = mq.get("pf", {}), mq.get("analogue", {})
+        for loc in set(pf_all) | set(an_all):
             fips = n2f.get(loc)
             if not fips:
                 continue
-            pf_q = (ens.member_quantiles_from_samples(d["pf"][loc])
-                    if loc in d["pf"] else {})
-            an_q = ({h: {float(k): v for k, v in q.items()}
-                     for h, q in d["analogue"][loc].items()}
-                    if loc in d["analogue"] else {})
+            pf_q = pf_all.get(loc, {})
+            an_q = an_all.get(loc, {})
             members = {}
             if pf_q: members["pf"] = pf_q
             if an_q: members["analogue"] = an_q
