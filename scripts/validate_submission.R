@@ -22,8 +22,8 @@
 # hubValidations::validate_submission, prints one unambiguous GREEN or RED
 # line plus every failing check, and exits nonzero on RED.
 
-lib_extra <- path.expand("~/Documents/FluBNF-local/rlib")
-if (dir.exists(lib_extra)) .libPaths(c(lib_extra, .libPaths()))
+lib_extra <- Sys.getenv("FLUBNF_RLIB", unset = "")
+if (nzchar(lib_extra) && dir.exists(lib_extra)) .libPaths(c(lib_extra, .libPaths()))
 ok <- suppressWarnings(suppressMessages(require(hubValidations, quietly = TRUE)))
 if (!ok) {
   cat("RED: the hubValidations R package is not installed.\n")

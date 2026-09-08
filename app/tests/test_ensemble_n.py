@@ -67,12 +67,20 @@ def test_vincentize_default_is_the_unfitted_blend():
     assert abs(lone["1"][0.5] - 100.0) < 1e-9
 
 
-def test_vincentize_frozen_path_requires_being_named():
-    """The fitted table is still reachable, but only by name, and an
-    unrecognized name is an error rather than a silent fallback."""
+def test_vincentize_frozen_path_requires_being_named(tmp_path, monkeypatch):
+    """A fitted table is reachable only by name and only from a local
+    table (none ships), and an unrecognized name is an error rather than a
+    silent fallback."""
     import pytest
 
+    from app.core import ensemble as ens
     from app.core.ensemble import FROZEN, frozen_weights, pf_share, vincentize
+    import json as _json
+    table = {"frozen": "test", "member_convention": "w = PF share, 1-w = analogue",
+             "global": {"0": 0.4, "1": 0.6, "2": 0.7, "3": 0.8},
+             "per_state": {"50": {"0": 0.2, "1": 0.3, "2": 0.5, "3": 0.6}}}
+    wf = tmp_path / "ensemble_weights.json"; wf.write_text(_json.dumps(table))
+    monkeypatch.setattr(ens, "WEIGHTS_FILE", wf)
     qa, qb = _flat(100.0), _flat(200.0)
     w = frozen_weights()
     out = vincentize({"pf": qa, "analogue": qb}, weights=FROZEN)

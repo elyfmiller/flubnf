@@ -29,3 +29,4 @@
 # from diffs and from language statistics without being excluded from the
 # repository -- the page needs it to work offline.
 site/plotly.min.js -diff linguist-vendored
+app/ui/static/plotly.min.js -diff linguist-vendored

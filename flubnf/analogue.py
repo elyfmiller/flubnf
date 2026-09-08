@@ -138,8 +138,8 @@ import numpy as np
 #   (a) 2 is the value the seal ran at. On the sealed shipped-pool record
 #       (ratio of sums vs FluSight-baseline, US excluded) the analogue member
 #       scores 1.045 / 0.756 / 0.621 by season at this bandwidth.
-#   (b) The pre-seal sweep on the superseded pipeline (NAU-Projects
-#       .../FluBNF/docs/RESULTS.md, "Corrections worth remembering" item 1)
+#   (b) The pre-seal sweep on the superseded pipeline (lab archive, not
+#       in this repository; "Corrections worth remembering" item 1)
 #       found the per-season optimum reverses season to season; the honest
 #       out-of-season selection there picked +/-8, which scored 0.806 held
 #       out on 2025-26, versus 0.665 at +/-2 and 0.547 at the in-season
@@ -268,9 +268,9 @@ SEASON_2021_22_CALENDAR_INVERSION = DonorSeasonExclusion(
         "pool to the restricted pool's size (10 seeds) moves the score "
         "+0.199 percent, while removing 2021-22 moves it +17.64 percent."),
     evidence=(
-        "Pre-registered harness, arm A2, at "
-        "~/Documents/FluBNF-local/donor-floor/harness.py with results in "
-        "out/results.json and out/bootstrap.json. Its control arm A0 "
+        "Pre-registered harness, arm A2 (donor-floor harness, lab archive, "
+        "not in this repository; docs/RELEASE-1.0.md restates the result). "
+        "Its control arm A0 "
         "reproduces the sealed analogue quantiles to 0.0 and the sealed "
         "member WIS to 3.05e-10. The bootstrap endpoints are Monte Carlo and "
         "wander by about 0.1 percentage points across seeds; the point "
