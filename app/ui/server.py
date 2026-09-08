@@ -2646,7 +2646,9 @@ def _run_all(spec: RunSpec) -> None:
             f"{run_id}: pf {len(pf_samples)} loc, analogue {len(an_q)}, "
             + (f"pf2s {len(pf2s_samples)}, " if pf2s_samples else "")
             + f"ensemble {len(members_by_loc)}"
-            + (f", relWIS {outcome['pf_relwis']}" if "pf_relwis" in outcome else ""))
+            + "".join(f", {m} relWIS {outcome[k]}" for m, k in
+                      (("pf", "pf_relwis"), ("analogue", "analogue_relwis"),
+                       ("ensemble", "ensemble_relwis")) if k in outcome))
     except Exception as e:
         from app.core.engines.pf import RunStopped
         if run_id is None:
@@ -3150,6 +3152,13 @@ def _outcome_chips(outcome_json: str) -> str:
         bits.append(relwis_chip(o["pf_relwis"],
                                 cells=o.get("pf_relwis_cells",
                                             o.get("pf_cells"))))
+    # every member the run scored, not the PF alone (lead, 2026-09-07):
+    # the analogue and the ensemble carry the same ratio and gate
+    for key, member in (("analogue_relwis", "analogue"),
+                        ("ensemble_relwis", "ensemble")):
+        if o.get(key):
+            bits.append(relwis_chip(o[key], cells=o.get(f"{key}_cells"),
+                                    member=member))
     if o.get("error"):
         bits.append('<span class="bad">failed</span>; the full error is on '
                     'the run page')
@@ -3459,7 +3468,13 @@ def sandbox_page(request: Request, run: str = "", model: str = ""):
         "runs": runs, "res": res, "res_json": _script_json(res or {}),
         "editing": editing, "busy": _sandbox_busy_reason(),
         "running_id": _sandbox_status.get("running"),
-        "dry_particles": sandbox_mod.DRY_RUN_PARTICLES})
+        "dry_particles": sandbox_mod.DRY_RUN_PARTICLES,
+        # the archive as a data source (empty lists with no hub)
+        "locations": sandbox_mod.locations(),
+        "vintages": sandbox_mod.vintages(),
+        "data_range": sandbox_mod.default_range(sandbox_mod.vintages()),
+        "data_source": (sandbox_mod.read_data_source(editing["name"])
+                        if editing else None)})
 
 
 @app.post("/sandbox/add-example")
@@ -3500,6 +3515,33 @@ def sandbox_save(request: Request, name: str,
     except Exception as e:
         _flash(str(e))
     return _back(request, f"/sandbox?model={name}")
+
+
+@app.post("/sandbox/models/{name}/fill-data")
+def sandbox_fill_data(request: Request, name: str, location: str = Form(""),
+                      start: str = Form(""), end: str = Form(""),
+                      source: str = Form("settled")):
+    """data.exp from the hub archive: one location's weekly admissions
+    over a date range, the settled truth or what one vintage held. A week
+    with no reported value is dropped and counted, never imputed."""
+    from urllib.parse import quote
+    src = (source or "settled").strip()
+    asof = None if src == "settled" else src
+    try:
+        info = sandbox_mod.fill_data(name, (location or "").strip(),
+                                     (start or "").strip(),
+                                     (end or "").strip(), asof=asof)
+        what = ("settled truth" if info["asof"] == "settled"
+                else f"vintage of {info['asof']}")
+        msg = (f"data.exp filled: {info['location']}, {info['start']} to "
+               f"{info['end']}, {what}, {info['rows']} weeks")
+        if info["dropped"]:
+            msg += f", {info['dropped']} missing weeks dropped"
+        _flash(msg)
+    except Exception as e:
+        _flash(str(e))
+    return RedirectResponse(f"/sandbox?model={quote(str(name))}",
+                            status_code=303)
 
 
 @app.post("/sandbox/run")
@@ -3545,6 +3587,27 @@ def api_sandbox_contactmap(name: str):
         cm = contactmap.parse(contactmap.graphml_from_bngl(files["model.bngl"], work))
         return {"svg": contactmap.svg(cm), "molecules": len(cm["molecules"]),
                 "bonds": len(cm["bonds"])}
+    except Exception as e:
+        return JSONResponse({"error": str(e)[:1500]}, status_code=200)
+
+
+@app.get("/api/sandbox/models/{name}/network")
+def api_sandbox_network(name: str):
+    """The reaction network BNG2.pl generates from the model, as an inline
+    SVG of its species, reactions and rate laws, from a generate-only copy
+    in the contact map's own work folder (no engine, no run). Too large a
+    network comes back as the counts and a note instead of a drawing."""
+    from app.core import contactmap
+    try:
+        files = sandbox_mod.read_model(name)
+        work = sandbox_mod.SANDBOX / "contactmap" / sandbox_mod.check_name(name)
+        net = contactmap.parse_net(contactmap.network_from_bngl(files["model.bngl"], work))
+        drawing = contactmap.svg_network(net)
+        out = {"svg": drawing if drawing.startswith("<svg") else "",
+               "species": len(net["species"]), "reactions": len(net["reactions"])}
+        if not out["svg"]:
+            out["note"] = drawing
+        return out
     except Exception as e:
         return JSONResponse({"error": str(e)[:1500]}, status_code=200)
 
