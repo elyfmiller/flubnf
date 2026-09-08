@@ -1,0 +1,59 @@
+/* FluBNF sandbox code editor (bngl-editor.css): the layout and the token
+   colours for bngl-editor.js. Every colour is a page token, so the editor
+   follows the four themes and the two accessibility modifiers. The
+   highlight layer and the textarea share one font, size, line height,
+   padding and tab size: the coloured copy sits exactly under the
+   transparent text, and the caret and the selection stay the browser's.
+   The token weights stay at or below 600 and comments are upright:
+   monospace faces keep one advance width across weights, so the copy
+   never drifts from the caret. */
+.ce{--ce-font:ui-monospace,"SF Mono",Menlo,Consolas,"DejaVu Sans Mono","Liberation Mono",monospace;
+  --ce-size:.84rem;--ce-lh:1.5;--ce-py:.5rem;--ce-px:.7rem;
+  margin:.15rem 0 .45rem;border:1px solid var(--field-line,var(--line));
+  border-radius:8px;background:var(--bg);color:var(--ink);overflow:hidden}
+.ce:focus-within{outline:var(--focus-w,2px) solid var(--accent-ink);outline-offset:2px}
+.ce-main{display:flex;align-items:stretch}
+/* one metric set for the gutter, the coloured copy and the textarea */
+.ce-gutter,.ce-hl,.ce textarea.code-editor{
+  font-family:var(--ce-font);font-size:var(--ce-size);line-height:var(--ce-lh);
+  font-weight:400;font-style:normal;letter-spacing:normal;word-spacing:normal;
+  font-variant-ligatures:none;font-kerning:none;-moz-tab-size:2;tab-size:2}
+.ce-gutter{flex:none;overflow:hidden;text-align:right;color:var(--mut);
+  background:color-mix(in srgb,var(--ink) 5%,var(--bg));
+  border-right:1px solid var(--line);-webkit-user-select:none;user-select:none}
+.ce-lines{padding:var(--ce-py) 1ch var(--ce-py) 0;white-space:pre;will-change:transform}
+.ce-lines .cur{color:var(--ink);font-weight:600}
+.ce-body{position:relative;flex:1 1 auto;min-width:0}
+.ce-hl{position:absolute;left:0;top:0;width:100%;height:100%;margin:0;padding:0;
+  overflow:hidden;pointer-events:none;color:var(--ink)}
+.ce-scroll{position:relative;display:block;width:max-content;min-width:100%;
+  box-sizing:border-box;padding:var(--ce-py) var(--ce-px);will-change:transform}
+.ce-code{position:relative;white-space:pre}
+.ce-cur{position:absolute;left:0;right:0;top:0;height:calc(var(--ce-size) * var(--ce-lh));
+  background:color-mix(in srgb,var(--accent-ink) 9%,transparent);pointer-events:none}
+.ce textarea.code-editor{display:block;position:relative;z-index:1;width:100%;margin:0;
+  border:0;border-radius:0;box-sizing:border-box;padding:var(--ce-py) var(--ce-px);
+  background:transparent;color:transparent;-webkit-text-fill-color:transparent;
+  caret-color:var(--ink);white-space:pre;overflow-wrap:normal;overflow:auto;
+  resize:vertical;outline:none}
+.ce textarea.code-editor::selection{
+  background:color-mix(in srgb,var(--accent-ink) 30%,transparent);
+  color:transparent;-webkit-text-fill-color:transparent}
+.ce-status{padding:.18rem var(--ce-px);border-top:1px solid var(--line);color:var(--mut);
+  font-size:var(--fs-micro,.78rem);white-space:pre;font-variant-numeric:tabular-nums;
+  background:color-mix(in srgb,var(--ink) 5%,var(--bg))}
+/* tokens: c comment, k block keyword, a action, r arrow, f free parameter,
+   fn call, n number, key conf key, v prior kind, brk matched bracket */
+.ce-c{color:var(--mut)}
+.ce-k{color:var(--accent-ink);font-weight:600}
+.ce-a{color:var(--accent-ink)}
+.ce-r{color:var(--accent-ink);font-weight:600}
+.ce-f{color:var(--ok);font-weight:600}
+.ce-fn{color:var(--ink);font-weight:600}
+.ce-n{color:var(--slate)}
+.ce-key{color:var(--accent-ink)}
+.ce-v{color:var(--accent-ink);font-weight:600}
+.ce-brk{background:color-mix(in srgb,var(--accent-ink) 25%,transparent);
+  box-shadow:0 0 0 1px var(--accent-ink);border-radius:2px}
+.ce-brk-bad{background:color-mix(in srgb,var(--bad) 25%,transparent);
+  box-shadow:0 0 0 1px var(--bad);border-radius:2px}

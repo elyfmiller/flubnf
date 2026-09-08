@@ -446,3 +446,175 @@ def results(workroot: Path) -> dict:
         if txt:
             out["stderr"] += txt[-1500:]
     return out
+
+
+# ------------------------------------------------------------- the archive
+# A model's data.exp filled from the hub archive: one location's weekly
+# admissions over a date range, settled or as one vintage knew it. The
+# hub modules are imported inside the functions so this module imports
+# on a machine without a hub. The sidecar data.source.json records where
+# the rows came from; the engine never reads it.
+
+SOURCE_FILE = "data.source.json"
+DEFAULT_HEADER = "# time H_weekly"
+DEFAULT_WEEKS = 20
+
+
+def locations() -> list:
+    """Every location the hub's locations table names, US first then
+    alphabetical, as [{"name", "fips"}]. Empty when there is no hub."""
+    try:
+        import pandas as pd
+        from app.core import data as data_mod
+        locs = pd.read_csv(data_mod.LOCATIONS, dtype=str)
+        rows = [{"name": str(n), "fips": str(f).zfill(2)}
+                for n, f in zip(locs.location_name, locs.location)
+                if isinstance(n, str) and n.strip()]
+    except Exception:
+        return []
+    rows.sort(key=lambda r: r["name"])
+    return ([r for r in rows if r["name"].upper() == "US"]
+            + [r for r in rows if r["name"].upper() != "US"])
+
+
+def vintages() -> list:
+    """The archive's vintage dates, newest first; empty when there is no
+    hub. Never raises: the page renders either way."""
+    try:
+        from app.core import data as data_mod
+        return list(reversed(data_mod.vintages()))
+    except Exception:
+        return []
+
+
+def default_range(vintage_dates: list, weeks: int = DEFAULT_WEEKS) -> dict:
+    """The date inputs' starting values: the last `weeks` weeks ending on
+    the newest vintage's date (a vintage archived on Saturday D carries
+    the week ending D). Empty strings when no vintage is known."""
+    import datetime as dt
+    newest = vintage_dates[0] if vintage_dates else ""
+    try:
+        end = dt.date.fromisoformat(str(newest))
+    except (TypeError, ValueError):
+        return {"start": "", "end": ""}
+    start = end - dt.timedelta(days=7 * (max(int(weeks), 1) - 1))
+    return {"start": start.isoformat(), "end": end.isoformat()}
+
+
+def _iso_date(s: str, what: str):
+    import datetime as dt
+    try:
+        return dt.date.fromisoformat(str(s).strip())
+    except (TypeError, ValueError):
+        raise SandboxError(f"{what} must be a date written YYYY-MM-DD, "
+                           f"not {s!r}") from None
+
+
+def _check_range(start: str, end: str) -> tuple:
+    a, b = _iso_date(start, "start"), _iso_date(end, "end")
+    if a > b:
+        raise SandboxError(f"start {a.isoformat()} is after end {b.isoformat()}")
+    return a.isoformat(), b.isoformat()
+
+
+def series_for(location_name: str, start: str, end: str,
+               asof: str | None = None) -> dict:
+    """The weekly admissions of one location between two dates: the
+    settled truth when asof is None, else what the vintage archived on
+    asof held. {"dates": [...], "values": [...], "dropped": n}, where
+    dropped counts the Saturdays in the range with no reported value.
+    Missing weeks are dropped, never imputed."""
+    import datetime as dt
+    start, end = _check_range(start, end)
+    if asof is None:
+        from app.core import scoring
+        truth, n2f = scoring.load_truth()
+        fips = n2f.get(str(location_name))
+        if not fips:
+            raise SandboxError(f"unknown location {location_name!r}")
+        got = {d.strftime("%Y-%m-%d"): v for (f, d), v in truth.items()
+               if f == fips}
+    else:
+        from app.core import data as data_mod
+        s = data_mod.vintage_series(str(asof), str(location_name))
+        got = dict(zip(s["dates"], s["values"]))
+    dates = sorted(d for d in got if start <= d <= end)
+    d = dt.date.fromisoformat(start)
+    while d.weekday() != 5:                      # forward to a Saturday
+        d += dt.timedelta(days=1)
+    dropped = 0
+    last = dt.date.fromisoformat(end)
+    while d <= last:
+        if d.isoformat() not in got:
+            dropped += 1
+        d += dt.timedelta(days=7)
+    return {"dates": dates, "values": [float(got[d]) for d in dates],
+            "dropped": dropped}
+
+
+def _fmt(v: float) -> str:
+    v = float(v)
+    return str(int(v)) if v.is_integer() else repr(v)
+
+
+def _digest(text: str) -> str:
+    import hashlib
+    return hashlib.sha1(text.replace("\r\n", "\n").strip()
+                        .encode("utf-8")).hexdigest()
+
+
+def fill_data(name: str, location_name: str, start: str, end: str,
+              asof: str | None = None) -> dict:
+    """Rewrite a model's data.exp from the archive: the file's own header
+    line if it has one (else '# time H_weekly'), then one 't value' row
+    per reported week, t counting 0, 1, 2 ... in date order. Writes the
+    sidecar data.source.json beside it and returns its contents. Refuses
+    an unknown location, a range with no reported week, and start after
+    end."""
+    d = model_dir(name)
+    start, end = _check_range(start, end)
+    known = {l["name"] for l in locations()}
+    if str(location_name) not in known:
+        raise SandboxError(f"unknown location {location_name!r}: the hub's "
+                           "locations table does not name it")
+    s = series_for(location_name, start, end, asof)
+    if not s["values"]:
+        raise SandboxError(f"no reported week for {location_name} between "
+                           f"{start} and {end}"
+                           + (f" in the vintage of {asof}" if asof else ""))
+    header = DEFAULT_HEADER
+    exp = d / "data.exp"
+    if exp.is_file():
+        for line in exp.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.strip():
+                if line.lstrip().startswith("#"):
+                    header = line.rstrip()
+                break
+    text = header + "\n" + "\n".join(
+        f"{t} {_fmt(v)}" for t, v in enumerate(s["values"])) + "\n"
+    exp.write_text(text, encoding="utf-8", newline="\n")
+    info = {"location": str(location_name), "start": start, "end": end,
+            "asof": str(asof) if asof else "settled",
+            "rows": len(s["values"]), "dropped": int(s["dropped"]),
+            "written_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "digest": _digest(text)}
+    (d / SOURCE_FILE).write_text(json.dumps(info, indent=1) + "\n",
+                                 encoding="utf-8", newline="\n")
+    return info
+
+
+def read_data_source(name: str) -> dict | None:
+    """The sidecar of a model, or None: none written, unreadable, or
+    data.exp edited since (its digest no longer matches), so the page
+    never says the file holds archive rows it no longer holds."""
+    try:
+        d = MODELS / check_name(name)
+        info = json.loads((d / SOURCE_FILE).read_text(encoding="utf-8"))
+        if not isinstance(info, dict):
+            return None
+        cur = (d / "data.exp").read_text(encoding="utf-8", errors="replace")
+        if info.get("digest") and info["digest"] != _digest(cur):
+            return None
+        return info
+    except Exception:
+        return None

@@ -1,0 +1,65 @@
+{# the model views card: the contact map and the reaction network, both
+   drawn by BNG2.pl from the saved model. The page's own script
+   (sandbox.html) fetches the contact map into #cmap-svg on load; the
+   script here owns the view switch and the network, and keeps whatever
+   the page script wrote as the contact map view's cache. #}
+<div class="card" id="cmap" data-model="{{ editing.name }}"><h2>Model views</h2>
+ <div class="mviews" role="tablist" aria-label="model view">
+  <button type="button" class="pill mode" data-view="contactmap" role="tab" aria-selected="true">Contact map</button>
+  <button type="button" class="pill mode" data-view="network" role="tab" aria-selected="false">Reaction network</button>
+ </div>
+ <div id="cmap-svg" class="mview-draw" style="overflow-x:auto"><p class="hint">Drawing with BNG2.pl.</p></div>
+ <p class="hint mview-hint" data-view="contactmap">Molecule types, components, states and the bonds the rules can form, as BNG2.pl reads the saved model.</p>
+ <p class="hint mview-hint" data-view="network" hidden>Every species and reaction BNG2.pl generates from the rules, with its rate law.</p>
+</div>
+<script>
+(function () {
+  var card = document.getElementById('cmap'), box = document.getElementById('cmap-svg');
+  if (!card || !box) return;
+  var model = card.dataset.model, view = 'contactmap';
+  var cache = {contactmap: null, network: null};   // each view's markup once it has loaded
+  var asked = false;                                // the network is fetched once, on the first click
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+  function paint(html) { box.innerHTML = '<div data-view="' + view + '">' + html + '</div>'; }
+  function render() {
+    if (cache[view] !== null) { paint(cache[view]); return; }
+    if (view === 'contactmap') { paint('<p class="hint">Drawing with BNG2.pl.</p>'); return; }
+    paint('<p class="hint">Generating the network with BNG2.pl.</p>');
+    if (asked) return;
+    asked = true;
+    fetch('/api/sandbox/models/' + encodeURIComponent(model) + '/network')
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var html;
+        if (d && d.svg) html = d.svg;
+        else if (d && d.error) html = '<pre class="hint">' + esc(d.error) + '</pre>';
+        else html = '<p class="hint">' + esc((d && d.note) || 'no reaction network') + '</p>';
+        cache.network = html;
+        if (view === 'network') paint(html);
+      })
+      .catch(function () {
+        asked = false;
+        if (view === 'network') paint('<p class="hint">The network could not be fetched.</p>');
+      });
+  }
+  // the page script writes the contact map straight into #cmap-svg (an
+  // svg or a pre): keep that as the contact map view's cache, and put the
+  // network back if it landed while the network view was showing
+  new MutationObserver(function () {
+    var first = box.firstElementChild;
+    if (first && first.dataset && first.dataset.view) return;   // our own write
+    cache.contactmap = box.innerHTML;
+    if (view !== 'contactmap') render();
+  }).observe(box, {childList: true});
+  card.querySelectorAll('.pill.mode').forEach(function (b) {
+    b.addEventListener('click', function () {
+      view = b.dataset.view;
+      card.querySelectorAll('.pill.mode').forEach(function (o) {
+        o.setAttribute('aria-selected', o.dataset.view === view ? 'true' : 'false');
+      });
+      card.querySelectorAll('.mview-hint').forEach(function (h) { h.hidden = h.dataset.view !== view; });
+      render();
+    });
+  });
+})();
+</script>

@@ -1,15 +1,14 @@
 {% extends "base.html" %}{% block title %}FluBNF · Sandbox{% endblock %}
-{% block head %}<script src="/static/plotly.min.js"></script>{% endblock %}
+{% block head %}<script src="/static/plotly.min.js"></script><link rel="stylesheet" href="/static/bngl-editor.css"><script defer src="/static/bngl-editor.js"></script>{% endblock %}
 {% block content %}
 <h1>Sandbox</h1>
 <div class="cols">
  <div>
   <div class="card"><h2>Models</h2>
-   <p class="hint">Three files per model in <code>sandbox/models/&lt;name&gt;/</code>: the BNGL model, the counts, the priors. Runs here reach nothing else in the console.</p>
    {% if models %}
    <table class="kv"><thead><tr><th>model</th><th>files</th><th></th></tr></thead><tbody>
    {% for m in models %}<tr>
-    <td><a href="/sandbox?model={{ m.name }}">{{ m.name }}</a>{% if m.note %}<br><span class="hint">{{ m.note }}</span>{% endif %}</td>
+    <td><a href="/sandbox?model={{ m.name }}">{{ m.name }}</a></td>
     <td>{% if m.complete %}complete{% else %}missing {{ m.missing | join(", ") }}{% endif %}</td>
     <td>{% if m.complete %}<form method="post" action="/sandbox/run" style="display:inline">
       <input type="hidden" name="model" value="{{ m.name }}">
@@ -77,18 +76,28 @@
   {% elif runs %}<div class="card"><p class="hint">Pick a run on the left to see its outputs.</p></div>{% endif %}
 
   {% if editing %}
-  <div class="card" id="cmap" data-model="{{ editing.name }}"><h2>Contact map</h2>
-   <div id="cmap-svg" style="overflow-x:auto"><p class="hint">Drawing with BNG2.pl.</p></div>
-   <p class="hint">Molecule types, their components and states, and the bonds the rules can form, as BNG2.pl reads the saved model.</p>
-  </div>
+  {% include "sandbox_views.html" %}
   <div class="card"><h2>Edit {{ editing.name }}</h2>
    <form method="post" action="/sandbox/models/{{ editing.name }}/save">
     <label>model.bngl</label>
-    <textarea name="model_bngl" rows="18" spellcheck="false" style="width:100%;font-family:monospace">{{ editing["model.bngl"] }}</textarea>
+    <textarea name="model_bngl" rows="18" spellcheck="false" style="width:100%;font-family:monospace" class="code-editor" data-lang="bngl">{{ editing["model.bngl"] }}</textarea>
+    {% include "sandbox_data.html" %}
     <label>data.exp</label>
-    <textarea name="data_exp" rows="8" spellcheck="false" style="width:100%;font-family:monospace">{{ editing["data.exp"] }}</textarea>
+    <textarea name="data_exp" rows="8" spellcheck="false" style="width:100%;font-family:monospace" class="code-editor" data-lang="exp">{{ editing["data.exp"] }}</textarea>
     <label>priors.conf</label>
-    <textarea name="priors_conf" rows="8" spellcheck="false" style="width:100%;font-family:monospace">{{ editing["priors.conf"] }}</textarea>
+    <textarea name="priors_conf" rows="8" spellcheck="false" style="width:100%;font-family:monospace" class="code-editor" data-lang="conf">{{ editing["priors.conf"] }}</textarea>
+    <details class="storagefold"><summary class="hint">Engine keys the sandbox writes for you</summary>
+     <table class="kv"><thead><tr><th>key</th><th>value</th><th>from</th></tr></thead><tbody>
+      <tr><td><code>fit_type</code></td><td>pf</td><td>fixed</td></tr>
+      <tr><td><code>objfunc</code></td><td>neg_bin_dynamic</td><td>default</td></tr>
+      <tr><td><code>pf_observable_mode</code></td><td>integrated</td><td>default</td></tr>
+      <tr><td><code>pf_cumulative_observable</code></td><td>the model output named in priors.conf</td><td>required</td></tr>
+      <tr><td><code>pf_particles</code>, <code>pf_jitter</code>, <code>pf_forecast_weeks</code>, <code>seed</code></td><td>the run form</td><td>form</td></tr>
+      <tr><td><code>initialization</code></td><td>rand</td><td>default</td></tr>
+      <tr><td><code>pf_resample_threshold</code>, <code>pf_binom_neff_cap</code>, other <code>pf_*</code></td><td>the engine's own defaults</td><td>engine</td></tr>
+     </tbody></table>
+     <p class="hint">A priors.conf line naming one of these overrides it. These defaults are the production configuration; changing one changes how the filter behaves, not just what it fits.</p>
+    </details>
     <button class="gold">Save</button>
    </form>
    <p class="hint">Checked when it runs: the network must generate and every free parameter must be in it. Sandbox outputs are fits, not submissions.</p>
