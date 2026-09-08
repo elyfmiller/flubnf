@@ -12,7 +12,7 @@ Four field facts drive these tests:
     not report the partial run usefully;
   * the forecast archive was replaced by rmtree-then-copy, so a crash or
     full disk mid-copy destroyed the previous archive for the date;
-  * one unparseable value string in one state silenced the same-day
+  * (retired 2026-09-07) one unparseable value string in one state silenced the same-day
     under-reporting warning for every other state.
 """
 import json
@@ -244,34 +244,26 @@ def test_a_crash_between_the_two_renames_is_recovered(tmp_path,
     assert sorted(p.name for p in arch.parent.iterdir()) == ["2098-01-04"]
 
 
-# ------------------- one poisoned row never silences the same-day warning
+# ------------------- the same-day under-reporting heads-up is gone
 
-def test_one_poisoned_row_does_not_kill_the_underreporting_warning(
-        tmp_path, monkeypatch):
-    """Ohio's same-day count is under half its prior week (warn), Texas's
-    value is an unparseable string (skip THAT ROW), California is fine.
-    The warning must still fire for Ohio, and the log must record the
-    skipped row; one odd value string used to silence the warning for
-    every state (2026-09-01 final pass)."""
+def test_no_underreporting_headsup_on_run(tmp_path, monkeypatch):
+    """The lead retired the same-day heads-up (2026-09-07): the measured
+    remedy (dropping the week) cost 0.24 relWIS and was never used, so a
+    run with a badly under-reported newest week starts with no warning and
+    the vintage is never read for that check."""
     monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path / "retro")
     monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
     vint = tmp_path / "v.csv"
-    lines = ["date,location,location_name,value"]
-    for fips, name, prior, same in (("39", "Ohio", "100", "30"),
-                                    ("48", "Texas", "100", "oops"),
-                                    ("06", "California", "100", "90")):
-        lines.append(f"2097-12-28,{fips},{name},{prior}")
-        lines.append(f"2098-01-04,{fips},{name},{same}")
-    vint.write_text("\n".join(lines) + "\n")
-    monkeypatch.setattr(srv.data_mod, "vintage_path", lambda d: vint)
+    vint.write_text("date,location,location_name,value\n"
+                    "2097-12-28,39,Ohio,100\n2098-01-04,39,Ohio,30\n")
+    reads = []
+    monkeypatch.setattr(srv.data_mod, "vintage_path",
+                        lambda d: reads.append(d) or vint)
     monkeypatch.setattr(srv, "_run_all", lambda spec: None)
     r = client.post("/run", data={"forecast_date": "2098-01-04",
                                   "locations": ["Ohio"]},
                     follow_redirects=False)
     assert r.status_code == 303
     flash = srv._status.get("flash") or ""
-    assert "under-reported" in flash
-    assert "Ohio" in flash and "1 state(s)" in flash
-    assert "California" not in flash
-    assert any("same-day" in m and "skipped" in m
-               for m in srv._status["log"])
+    assert "under-reported" not in flash and "Heads up" not in flash
+    assert not any("same-day" in m for m in srv._status["log"])
