@@ -20,6 +20,17 @@ Donors are pooled ACROSS states on purpose: per-state donors number about
 five per prior season under the two-week calendar window, which cannot
 support a 23-quantile predictive distribution.
 
+That pool also carries the US national row, which the vintage files hold as
+one more location. The US national row is the sum of the 52 jurisdictions, so
+it is not independent of them; on a representative date it supplied 15 of 793
+donors. Keeping it was measured against removing it over all 85 archived
+as-of weeks of the three resealed seasons, on identical cells: pooled
+analogue relWIS 0.7714 with the row against 0.7717 without it, and 0.7233
+against 0.7234 for the shipped ensemble. That is a tie inside the
+pre-registered 0.001 band, so the shipped pool keeps the row and this
+paragraph is where it says so. The pre-registration and the results are in
+the lab archive (research/us-donor, 2026-09-08), not in this repository.
+
 HOW IT COMPARES TO THE COMPARTMENTAL MODEL (measured, WIS decomposition)
 ------------------------------------------------------------------------
 Alpha-weighted additive components, summed over the sealed archive: three

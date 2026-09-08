@@ -13,8 +13,22 @@ an unfitted, equal-weight, quantile-averaged (vincentized) ensemble of two
 members, a sequential particle filter over an SIHRS model written in BNGL and
 a calendar analogue. This document records what that claim rests on. Every
 number below is measured; the authoritative research record, including the
-full history of corrections and retractions, is the Posner Lab archive
-(`NAU-Projects/NAU_Influenza_M_Model/FluBNF/docs/RESULTS.md`).
+full history of corrections and retractions, is the Posner Lab archive,
+not in this repository.
+
+## Version 1.1.0, released 2026-09-08
+
+This document keeps its name and remains the record of the 1.0.0 seal below,
+which stands as history. What 1.1.0 changes, each recorded in its own section
+here: the particle filter's Liu-West kernel was corrected to move log-space
+parameters on the log scale and to reflect at the bounds, and its scale was
+re-selected by a pre-registered sweep (`pf_jitter` 0.15), so the production
+engine's own three-season record is 0.723 pooled rather than the sealed
+0.678; the three seasons were replayed on that engine (the reseal of
+2026-09-07); the US national row in the analogue's donor pool was measured
+and kept; and a review of the whole system before the upstream pull request
+fixed the run-path and cache defects listed in the ledger. The engine's
+observation model is now the integrated one alone.
 
 ## The three-season seal
 
@@ -156,8 +170,13 @@ replayed through the console's replay command (`flubnf retro`), one seed
 per as-of week as the seal was made, 13,260 fits, zero failures, 10 h 43
 min, stored at `app/state/retro_reseal` beside the read-only seal. Its
 members: particle filter 0.840 / 0.797 / 0.846, pooled 0.821; analogue
-1.045 / 0.756 / 0.621, pooled 0.771 (identical to the seal's analogue up
-to the donor exclusion). It agrees with the research grid, which shares
+1.045 / 0.756 / 0.618, pooled 0.771. The analogue is the seal's member up
+to the donor exclusion and one later code fix: the sealed analogue scored
+0.621 in 2025-26 and 0.772 pooled, and the difference is the epiweek-53
+donor-window fix of commit `52cc22f`, made after the seal and described
+under [Independent replication](#independent-replication-of-the-pre-exclusion-configuration),
+not the engine. Corrected 2026-09-08: this sentence carried the sealed
+0.621 in the reseal's row. It agrees with the research grid, which shares
 its engine and settings and differs only in seed convention and runner
 count, to 0.0007 pooled and within 0.002 in every season, inside the
 measured seed spread: the record does not depend on the path that
@@ -375,7 +394,7 @@ archive. Two arms were registered: A1, flooring donors at 2023-24 on the
 grounds that post-COVID dynamics differ, and A2, dropping 2021-22 alone.
 
 **The measured effect,** at full grid, 15,460 cells, with a clustered
-bootstrap over the 76 replayed weeks:
+bootstrap over the 76 scored weeks:
 
 | quantity | pre-exclusion | shipped | change | bootstrap 95% |
 |---|---|---|---|---|
@@ -450,6 +469,36 @@ coverage for the analogue member; that is a member result and does not
 license a calibration claim about the ensemble, which is why the ensemble
 figures are measured and stated here separately.
 
+### The US national row in the donor pool, measured 2026-09-08
+
+The analogue pools donors across states, and that pool also contains the US
+national row, which is the sum of the 52 jurisdictions and therefore not
+independent of them. On a representative date it supplied 15 of 793 donors.
+The question was whether it should be a donor at all. The rule was frozen
+first: the row stays and is disclosed if keeping it scores better or ties
+within 0.001 pooled, and is removed if removing it scores better. Both arms
+were replayed over all 85 archived as-of weeks of the three resealed seasons
+(76 of them carry a FluSight baseline and so contribute scored cells),
+recomputing the analogue from each week's archived vintage, scored against
+settled truth and the FluSight baseline on identical cells, 15,460, under the
+same `POOLED_INCLUDES_US = False` gate as every other figure here.
+
+| arm | 2023-24 | 2024-25 | 2025-26 | pooled |
+|---|---|---|---|---|
+| analogue, US row in (shipped) | 1.0449 | 0.756 | 0.618 | 0.7714 |
+| analogue, US row out | 1.0465 | 0.7558 | 0.6182 | 0.7717 |
+| ensemble, US row in (shipped) | 0.8342 | 0.716 | 0.6626 | 0.7233 |
+| ensemble, US row out | 0.8352 | 0.7161 | 0.6622 | 0.7234 |
+
+Keeping the row is better by 0.0003 pooled for the analogue and 0.0001 for
+the ensemble. Both are inside the 0.001 band, and the seasons split: 2023-24
+favours keeping the row, the two later seasons very slightly favour removing
+it, and every difference sits in the fourth decimal. Verdict under the frozen
+rule: the row stays, and this subsection and the `flubnf/analogue.py`
+docstring are the disclosure. The pre-registration (`PREREG.md`, sha256
+`6894f31cbdb2c770bdfdff1167610cda3e60727a26b552d3a9588cc80c5f30c4`) and the
+harness are in the lab archive, research/us-donor, not in this repository.
+
 ## The evidence ledger: what was tested and rejected
 
 The rejections are part of the claim. The standing count at this tag,
@@ -523,7 +572,7 @@ and some challengers' results never lived in a tracked file at all. They are
 available on request. The narrative record of every experiment, with its
 numbers, its verdict and the corrections and retractions along the way, is the
 Posner Lab archive at
-`NAU-Projects/NAU_Influenza_M_Model/FluBNF/docs/RESULTS.md`. Where a
+the Posner Lab archive, not in this repository. Where a
 challenger's evidence did not survive at all, the entry below says so rather
 than leaving the claim to look checkable when it is not.
 
