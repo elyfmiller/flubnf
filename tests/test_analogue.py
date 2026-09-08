@@ -291,3 +291,34 @@ class TestAnchorAlignment:
         early = forecast(100.0, date(2023, 11, 15), 1, b, LEVELS, bandwidth=3)
         late = forecast(100.0, date(2024, 11, 15), 1, b, LEVELS, bandwidth=3)
         assert early is not None and late is not None
+
+
+class TestUSDonorDisclosure:
+    """The donor pool holds the US national row, which is the sum of the
+    jurisdictions it is pooled with. Keeping it was measured against removing
+    it and the two tie, so the shipped pool keeps it. A tie is only defensible
+    while it is written down, and a docstring is easy to tidy away, so the
+    sentences that write it down are pinned here."""
+
+    def _doc(self) -> str:
+        from flubnf import analogue
+        assert analogue.__doc__, "the module docstring carries the disclosure"
+        return analogue.__doc__
+
+    def test_the_docstring_says_the_us_row_is_in_the_pool(self):
+        d = self._doc()
+        assert "US national row" in d
+        assert "sum of the 52 jurisdictions" in d
+        assert "15 of 793" in d
+
+    def test_the_docstring_carries_the_measured_tie(self):
+        """Both arms and both members. A reader who sees only the winning
+        number cannot tell a tie from an untested choice."""
+        d = self._doc()
+        for figure in ("0.7714", "0.7717", "0.7233", "0.7234"):
+            assert figure in d, figure
+
+    def test_the_docstring_names_the_rule_and_where_it_lives(self):
+        d = self._doc()
+        assert "0.001" in d
+        assert "lab archive" in d

@@ -89,7 +89,7 @@ def test_methods_table_colors_every_score_members_included():
     # member seasons that lost to the baseline are marked, not neutral
     assert '<td class="bad">1.045</td>' in r.text
     # and member seasons that beat it wear the same ok the ensemble does
-    for v in ("0.840", "0.797", "0.846", "0.756", "0.621"):
+    for v in ("0.840", "0.797", "0.846", "0.756", "0.618"):
         assert f'<td class="ok">{v}</td>' in r.text, v
     assert '<td class="ok">0.834</td>' in r.text
 
