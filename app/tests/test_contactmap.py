@@ -278,3 +278,129 @@ def test_editor_page_carries_the_two_view_pills(box):
     assert 'class="pill mode" data-view="network" role="tab" aria-selected="false">Reaction network<' in html
     assert "/network'" in html                                  # the card's own script fetches it
     assert "as BNG2.pl reads the saved model." in html and "with its rate law." in html
+
+
+# ------------------------------------------- the graphs the page draws
+
+STATIC = HERE.parent / "ui" / "static"
+
+
+def test_network_graph_is_a_species_graph_with_the_rate_on_the_arrow():
+    g = cm.network_graph(cm.parse_net(NET))
+    kinds = {n["kind"] for n in g["nodes"]}
+    assert kinds <= {"species", "source", "sink"}           # no parameter circles
+    by_label = {n["label"]: n["id"] for n in g["nodes"] if n["kind"] == "species"}
+    assert sorted(by_label) == ["H", "Hadm", "I", "R", "S", "counter"]
+    assert by_label["S"] == "s1" and by_label["counter"] == "s6"
+
+    def edge(frm, to):
+        found = [e for e in g["edges"] if e["from"] == by_label[frm] and e["to"] == by_label[to]]
+        assert len(found) == 1, (frm, to, found)
+        return found[0]
+    s_i, i_h, h_r = edge("S", "I"), edge("I", "H"), edge("H", "R")
+    assert (s_i["label"], s_i["kind"], s_i["rule"]) == ("beta()/N", "transfer", "_R2")
+    assert s_i["text"] == "S + I -> I + I, rate beta()/N, rule _R2"
+    assert (i_h["label"], i_h["kind"]) == ("rho*gamma", "transfer")
+    assert (h_r["label"], h_r["kind"], h_r["text"]) == ("gammaH", "transfer", "H -> R, rate gammaH, rule _R5")
+    # I drives S -> I: an influence on that arrow, not an arrow of its own
+    assert g["influences"] == [{"from": by_label["I"], "edge": s_i["id"]}]
+    # I -> I + Hadm: a dashed arrow from the unchanged species to the product
+    i_hadm = edge("I", "Hadm")
+    assert (i_hadm["kind"], i_hadm["label"], i_hadm["text"]) == \
+        ("catalytic", "rho*gamma", "I -> I + Hadm, rate rho*gamma, rule _R7")
+    # 0 -> counter: a source dot with an arrow to the product
+    src = [n for n in g["nodes"] if n["kind"] == "source"]
+    assert len(src) == 1 and src[0]["id"] == "src1"
+    into = [e for e in g["edges"] if e["to"] == by_label["counter"]]
+    assert len(into) == 1 and into[0]["from"] == "src1" and into[0]["kind"] == "source"
+    assert into[0]["label"] == "1" and into[0]["text"] == "0 -> counter, rate 1, rule _R1"
+    # every edge joins two nodes of the graph; ids are unique
+    ids = {n["id"] for n in g["nodes"]}
+    assert all(e["from"] in ids and e["to"] in ids for e in g["edges"])
+    assert len({e["id"] for e in g["edges"]}) == len(g["edges"]) == 5
+    assert all(e["from"].startswith(("s", "src")) for e in g["edges"])
+
+
+def test_network_graph_sinks_stoichiometry_and_null_reactions():
+    sp = [{"index": 1, "pattern": "A()"}, {"index": 2, "pattern": "B()"}, {"index": 3, "pattern": "E()"}]
+    net = {"species": sp, "reactions": [
+        {"index": 1, "reactants": [1], "products": [], "rate": "kd", "rule": "_R1"},      # A -> 0
+        {"index": 2, "reactants": [1, 3], "products": [3], "rate": "kc", "rule": "_R2"},  # A + E -> E
+        {"index": 3, "reactants": [1, 1], "products": [2], "rate": "k2", "rule": ""},     # 2 A -> B
+        {"index": 4, "reactants": [2], "products": [2], "rate": "k0", "rule": "_R4"},     # B -> B
+        {"index": 5, "reactants": [1], "products": [1, 1], "rate": "ka", "rule": "_R5"}]} # A -> 2 A
+    g = cm.network_graph(net)
+    sinks = [n["id"] for n in g["nodes"] if n["kind"] == "sink"]
+    assert sinks == ["snk1", "snk2"]
+    by_rule = {}
+    for e in g["edges"]:
+        by_rule.setdefault(e["rule"], []).append(e)
+    assert [(e["from"], e["to"], e["kind"]) for e in by_rule["_R1"]] == [("s1", "snk1", "sink")]
+    assert [(e["from"], e["to"], e["kind"]) for e in by_rule["_R2"]] == [("s1", "snk2", "sink")]
+    assert g["influences"] == [{"from": "s3", "edge": by_rule["_R2"][0]["id"]}]   # E, the catalyst
+    two = [e for e in g["edges"] if e["text"].startswith("A + A -> B")]
+    assert len(two) == 1 and two[0]["kind"] == "transfer" and two[0]["text"] == "A + A -> B, rate k2"
+    assert "_R4" not in by_rule                                                    # nothing changes
+    assert [(e["from"], e["to"], e["kind"]) for e in by_rule["_R5"]] == [("s1", "s1", "catalytic")]
+    assert cm.network_graph({"species": [], "reactions": []}) == {"nodes": [], "edges": [], "influences": []}
+
+
+def test_contact_graph_carries_ids_for_the_page():
+    g = cm.contact_graph(cm.parse(BIND))
+    assert [m["name"] for m in g["molecules"]] == ["A", "B"]
+    assert [m["id"] for m in g["molecules"]] == ["m0", "m1"]
+    comps = [c for m in g["molecules"] for c in m["components"]]
+    assert [(c["id"], c["name"]) for c in comps] == [("m0c0", "b"), ("m0c1", "p"), ("m1c0", "a")]
+    assert comps[1]["states"] == ["0", "1"] and comps[0]["states"] == [] and comps[2]["states"] == []
+    assert g["bonds"] == [{"from": "m0c0", "to": "m1c0"}]              # A.b bound to B.a
+    assert cm.contact_graph({"molecules": [], "bonds": []}) == {"molecules": [], "bonds": []}
+
+
+def test_routes_return_the_graphs_beside_the_svg(box):
+    sb.new_model("mine")
+    d = client.get("/api/sandbox/models/mine/contactmap").json()
+    assert d["svg"].startswith("<svg") and d["molecules"] == 2
+    assert [m["name"] for m in d["graph"]["molecules"]] == ["A", "B"]
+    assert d["graph"]["bonds"] == [{"from": "m0c0", "to": "m1c0"}]
+    d = client.get("/api/sandbox/models/mine/network").json()
+    assert d["svg"].startswith("<svg") and d["species"] == 6
+    assert len(d["graph"]["nodes"]) == 7 and len(d["graph"]["edges"]) == 5
+    assert d["graph"]["influences"] == [{"from": "s2", "edge": "e2"}]
+    # too large for the server's drawing: the graph still comes, beside the note
+    sb.save_model("mine", {"model.bngl": "# big\n" + sb.read_model("mine")["model.bngl"]})
+    d = client.get("/api/sandbox/models/mine/network").json()
+    assert d["svg"] == "" and "13 species" in d["note"] and len(d["graph"]["nodes"]) == 13
+
+
+def test_editor_page_loads_the_renderer_and_the_page_script_no_longer_writes_the_map(box):
+    sb.new_model("mine")
+    html = client.get("/sandbox?model=mine").text
+    assert '<link rel="stylesheet" href="/static/model-views.css">' in html
+    assert '<script defer src="/static/model-views.js"></script>' in html
+    assert 'id="cmap-svg"' in html and "ModelViews" in html
+    # the old fetch in the page's own script, which wrote the server SVG into #cmap-svg
+    assert "var cm = document.getElementById('cmap');" not in html
+    assert "box.innerHTML = d.svg" not in html
+    assert html.count("/contactmap'") == 1                       # the views card alone fetches it
+    for name in ("model-views.js", "model-views.css"):
+        assert (STATIC / name).is_file(), name
+    for name in ("model-views.js", "model-views.css"):
+        text = (STATIC / name).read_text()
+        assert "\u2014" not in text and "\u2013" not in text, name   # no long dashes anywhere
+    js = (STATIC / "model-views.js").read_text()
+    assert "root.ModelViews = {network: network, contactmap: contactmap" in js
+    css = (STATIC / "model-views.css").read_text()
+    assert "#" not in "".join(l.split("/*")[0] for l in css.splitlines())   # colours are tokens
+    for token in ("--card", "--bg", "--ink", "--mut", "--line", "--accent", "--accent-ink", "--slate"):
+        assert "var(%s)" % token in css, token
+
+
+@pytest.mark.skipif(not __import__("shutil").which("osascript"), reason="JavaScriptCore via osascript only")
+def test_model_views_js_parses_under_javascriptcore():
+    import subprocess
+    path = str(STATIC / "model-views.js")
+    script = ('var s = $.NSString.stringWithContentsOfFileEncodingError("%s", 4, null).js; '
+              'try { new Function(s); "syntax ok" } catch (e) { "SYNTAX ERROR: " + e }' % path)
+    r = subprocess.run(["osascript", "-l", "JavaScript", "-e", script], capture_output=True, text=True,
+                       timeout=60)
+    assert r.returncode == 0 and "syntax ok" in r.stdout, r.stdout + r.stderr

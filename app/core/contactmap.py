@@ -17,9 +17,11 @@ expressions; svg_network() draws the species on one line with the
 reaction circles on rows above and below it.
 
 Both drawings are inline SVG whose colours are the page's own tokens, so
-they read in every theme. Nothing here runs the engine: BNG2.pl is asked
-for the one file alone, on a copy of the model whose actions block is
-replaced by the one call.
+they read in every theme. Beside each, contact_graph() and network_graph()
+reduce the same parse to the graph JSON model-views.js draws in the
+browser, where the drawing pans, zooms, drags and highlights. Nothing here
+runs the engine: BNG2.pl is asked for the one file alone, on a copy of the
+model whose actions block is replaced by the one call.
 """
 from __future__ import annotations
 
@@ -446,3 +448,113 @@ def svg_network(net: dict) -> str:
                              f'fill="var(--mut)" font-size="10"{HALO}>{n}</text>')
     parts += edges + nodes + ["</g></svg>"]
     return "".join(parts)
+
+
+# ------------------------------------------------- the graphs the page draws
+#
+# The routes hand the page these graphs beside the server SVG, and
+# model-views.js draws them in the browser, where the drawing can pan,
+# zoom, drag and highlight. Nothing here is a picture: ids and labels.
+
+def _species_label(pattern: str) -> str:
+    """A species for a label: "S()" reads S; "A(b!1).B(a!1)" stays."""
+    return re.sub(r"\(\)", "", pattern) or pattern
+
+
+def _unique(indices: list) -> list:
+    out = []
+    for i in indices:
+        if i not in out:
+            out.append(i)
+    return out
+
+
+def network_graph(net: dict) -> dict:
+    """The reaction network as a species graph for the page to draw.
+
+    Nodes are the species (kind "species", id "s<index>", the label its
+    pattern without empty parentheses) and, where a reaction needs one,
+    a source or sink dot (kind "source" or "sink"). For each reaction the
+    net change per species is its count among the products minus its
+    count among the reactants: every species consumed on net gets a
+    "transfer" edge to every species produced on net, labelled with the
+    rate (S -> I, beta()/N). A reactant that is not consumed on net (a
+    catalyst, or one the reaction also makes: I in S + I -> I + I) is an
+    influence on those edges, drawn as a dashed line to the arrow's
+    middle. A reaction that produces without consuming draws a dashed
+    "catalytic" edge from each such reactant to each product (I -> Hadm
+    for I -> I + Hadm) or, with no reactant at all, a "source" edge from
+    a source dot (0 -> counter). One that consumes without producing
+    draws a "sink" edge to a sink dot. One that changes nothing draws
+    nothing. Every edge carries its reaction's rule name and a one-line
+    text for the status line: "S + I -> I + I, rate beta()/N, rule _R2".
+
+    Returns {"nodes": [{"id", "label", "kind", "text"}], "edges": [{"id",
+    "from", "to", "label", "kind", "rule", "text"}], "influences":
+    [{"from": node id, "edge": edge id}]}.
+    """
+    species = net.get("species") or []
+    label = {s["index"]: _species_label(s["pattern"]) for s in species}
+    nodes = [{"id": f"s{s['index']}", "label": label[s["index"]], "kind": "species",
+              "text": f"species {s['index']}: {s['pattern']}"} for s in species]
+    edges, influences = [], []
+    for r in net.get("reactions") or []:
+        reactants = [i for i in r["reactants"] if i in label]
+        products = [i for i in r["products"] if i in label]
+        change = Counter(products)
+        change.subtract(Counter(reactants))
+        consumed = [i for i in _unique(reactants) if change[i] < 0]
+        produced = [i for i in _unique(products) if change[i] > 0]
+        drivers = [i for i in _unique(reactants) if change[i] >= 0]
+        lhs = " + ".join(label[i] for i in reactants) or "0"
+        rhs = " + ".join(label[i] for i in products) or "0"
+        text = f"{lhs} -> {rhs}, rate {r['rate']}"
+        if r.get("rule"):
+            text += f", rule {r['rule']}"
+        made = []
+
+        def edge(frm: str, to: str, kind: str) -> None:
+            eid = f"e{len(edges) + 1}"
+            edges.append({"id": eid, "from": frm, "to": to, "label": r["rate"],
+                          "kind": kind, "rule": r.get("rule", ""), "text": text})
+            made.append(eid)
+
+        if consumed and produced:
+            for a in consumed:
+                for b in produced:
+                    edge(f"s{a}", f"s{b}", "transfer")
+        elif produced:
+            if drivers:
+                for d in drivers:
+                    for b in produced:
+                        edge(f"s{d}", f"s{b}", "catalytic")
+            else:
+                src = f"src{r['index']}"
+                nodes.append({"id": src, "label": "", "kind": "source", "text": text})
+                for b in produced:
+                    edge(src, f"s{b}", "source")
+            continue                        # the drivers drew their own edges
+        elif consumed:
+            snk = f"snk{r['index']}"
+            nodes.append({"id": snk, "label": "", "kind": "sink", "text": text})
+            for a in consumed:
+                edge(f"s{a}", snk, "sink")
+        for d in drivers:
+            for eid in made:
+                influences.append({"from": f"s{d}", "edge": eid})
+    return {"nodes": nodes, "edges": edges, "influences": influences}
+
+
+def contact_graph(cm: dict) -> dict:
+    """The contact map with ids for the page to draw: {"molecules":
+    [{"id": "m<i>", "name", "components": [{"id": "m<i>c<j>", "name",
+    "states": [...]}]}], "bonds": [{"from": component id, "to": component
+    id}]}, in the order parse() read them."""
+    molecules = []
+    for mi, mol in enumerate(cm.get("molecules") or []):
+        molecules.append({"id": f"m{mi}", "name": mol["name"], "components": [
+            {"id": f"m{mi}c{ci}", "name": c["name"], "states": list(c.get("states") or [])}
+            for ci, c in enumerate(mol.get("components") or [])]})
+    bonds = [{"from": f"m{a[0]}c{a[1]}", "to": f"m{b[0]}c{b[1]}"}
+             for a, b in cm.get("bonds") or []]
+    return {"molecules": molecules, "bonds": bonds}

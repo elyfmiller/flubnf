@@ -457,6 +457,20 @@ def prepare(spec, workroot: Path) -> list:
                     "is not calendar-consecutive (a reporting gap), so "
                     "horizon labels cannot be kept as-of-relative. "
                     "Refusing rather than mislabelling.")
+            # The model's anchor sees the trimmed series too: rhomult comes
+            # from the season-to-date count and i0 from the first week, and
+            # resolve_state derived both from the untrimmed series, so the
+            # materialised model was byte-identical with and without the
+            # drop (review APP1-1, 2026-09-07; Arizona's i0 off by 18
+            # percent). A pinned anchor (anchor_asof) is left as pinned.
+            if not (spec.extra or {}).get("anchor_asof"):
+                from flubnf.sihrs_priors import (initial_infected_fraction
+                                                 as _iif, pin_rho_mult as _prm)
+                import numpy as _np0
+                _obs = _np0.asarray(s.observed, dtype=float)
+                s.rhomult = _prm(float(_obs.sum()) / s.population, s.attack_rate)
+                s.i0 = _iif(max(float(_obs[0]), 1.0), s.population,
+                            s.rhomult, s.gamma)
         # The declared reporting model (research/reporting-model):
         # spec.extra["reporting"] = {"mode": anchor | lik | both}. The rows at
         # the vintage's edge are read as incomplete by the real-time pooled

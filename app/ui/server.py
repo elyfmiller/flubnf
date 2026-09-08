@@ -2462,8 +2462,10 @@ def _run_all(spec: RunSpec) -> None:
         # below, and a partial gap ships with the affected locations on
         # the ledger row, where the run chips and the run page name them.
         pf_attempted = "pf_skipped" not in outcome
-        ensemble_no_pf = (pf_attempted and bool(fails)
-                          and not pf_samples and not pf2s_samples)
+        # no PF member anywhere, whether every fit failed or none was
+        # asked for: the blend would be the analogue verbatim
+        ensemble_no_pf = (pf_attempted and not pf_samples
+                          and not pf2s_samples)
         if pf_attempted and not ensemble_no_pf:
             analogue_only = sorted(
                 loc for loc in members_by_loc
@@ -2500,6 +2502,15 @@ def _run_all(spec: RunSpec) -> None:
                 outcome["submission_withheld"] = (
                     "ensemble: research run; the three-member blend does "
                     "not ship under the hub model name")
+                continue
+            if model == "ensemble" and spec.engine in ("analogue", "pf"):
+                # a one-member run is not the product: the analogue alone
+                # or the PF alone never ships under the ensemble's hub
+                # identity (review APP3-1, APP3-5)
+                outcome["ensemble_withheld"] = (
+                    f"{'analogue' if spec.engine == 'analogue' else 'SIHRS'}"
+                    "-only run: the ensemble file is written only when "
+                    "both members ran")
                 continue
             if model == "ensemble" and ensemble_no_pf:
                 # the retro store refuses a week like this outright; the
@@ -2615,6 +2626,9 @@ def _run_all(spec: RunSpec) -> None:
         # research blend replacing it would rewrite that record (audit rr-1).
         if _research:
             outcome["archived"] = "skipped: research run"
+        elif spec.engine in ("analogue", "pf"):
+            outcome["archived"] = (f"skipped: {'analogue' if spec.engine == 'analogue' else 'SIHRS'}"
+                                   "-only run is not the date's forecast")
         else:
             try:
                 outcome["archived"] = _archive_run(workroot, spec.forecast_date)
@@ -3285,7 +3299,7 @@ def output_reveal(path: str = Form(...)):
     from app.core.runs import APP_STATE
     p = Path(path).resolve()
     # Same containment test as /output/download. A substring match on the
-    # resolved path is not containment: `app/state_defaults_ensemble_weights
+    # resolved path is not containment: `app/state_defaults` (a sibling of
     # .json` sits beside the state directory and contains its path as a
     # prefix, so the old check let a file OUTSIDE app/state through.
     if p.is_relative_to(APP_STATE.resolve()) and p.exists():   # stay inside our state
@@ -3586,7 +3600,7 @@ def api_sandbox_contactmap(name: str):
         work = sandbox_mod.SANDBOX / "contactmap" / sandbox_mod.check_name(name)
         cm = contactmap.parse(contactmap.graphml_from_bngl(files["model.bngl"], work))
         return {"svg": contactmap.svg(cm), "molecules": len(cm["molecules"]),
-                "bonds": len(cm["bonds"])}
+                "bonds": len(cm["bonds"]), "graph": contactmap.contact_graph(cm)}
     except Exception as e:
         return JSONResponse({"error": str(e)[:1500]}, status_code=200)
 
@@ -3596,7 +3610,8 @@ def api_sandbox_network(name: str):
     """The reaction network BNG2.pl generates from the model, as an inline
     SVG of its species, reactions and rate laws, from a generate-only copy
     in the contact map's own work folder (no engine, no run). Too large a
-    network comes back as the counts and a note instead of a drawing."""
+    network comes back as the counts and a note instead of a drawing. The
+    species graph the page draws itself ("graph") comes back either way."""
     from app.core import contactmap
     try:
         files = sandbox_mod.read_model(name)
@@ -3604,7 +3619,8 @@ def api_sandbox_network(name: str):
         net = contactmap.parse_net(contactmap.network_from_bngl(files["model.bngl"], work))
         drawing = contactmap.svg_network(net)
         out = {"svg": drawing if drawing.startswith("<svg") else "",
-               "species": len(net["species"]), "reactions": len(net["reactions"])}
+               "species": len(net["species"]), "reactions": len(net["reactions"]),
+               "graph": contactmap.network_graph(net)}
         if not out["svg"]:
             out["note"] = drawing
         return out
@@ -4627,6 +4643,16 @@ def _ensure_results_job(root: Path, season: str,
         job = _results_jobs.get(key)
         if job and not job["done"].is_set():
             return job
+        if _is_sealed_root(root):
+            # the sealed record is read only: nothing is scored into it
+            job = {"phase": "sealed", "t0": time.time(),
+                   "done": threading.Event(), "seconds": 0.0,
+                   "season": season, "inputs": None,
+                   "error": "the sealed validation record is read only; "
+                            "its scores stand and are never recomputed"}
+            job["done"].set()
+            _results_jobs[key] = job
+            return job
         job = {"phase": "preparing", "t0": time.time(),
                "done": threading.Event(), "error": "", "seconds": None,
                "season": season,
@@ -4772,10 +4798,22 @@ def _relwis_figures(root: Path, convention: str):
     return figs
 
 
+def _is_sealed_root(root: Path) -> bool:
+    """Whether root lies under the sealed validation record, which is read
+    only: its scores are the record, never stale and never rescored, even
+    after the hub's truth moves on (the truth stamp that invalidates every
+    other root's caches does not apply to it)."""
+    try:
+        return RETRO_SEAL.resolve() in Path(root).resolve().parents
+    except OSError:
+        return False
+
+
 def _scores_current_fast(root: Path) -> bool:
     """retro.scores_current's exact rule (exists, parses, newer than every
-    stored week) answered from stats plus the shared cached parse instead
-    of a fresh 2.5 MB pandas read per page view."""
+    stored week and than the hub's truth) answered from stats plus the
+    shared cached parse instead of a fresh 2.5 MB pandas read per page
+    view. A sealed root is current whenever its scores parse."""
     from app.core import retro
     root = Path(root)
     weeks = retro.season_sample_files(root)
@@ -4784,9 +4822,13 @@ def _scores_current_fast(root: Path) -> bool:
     sf = root / "scores.json"
     if not sf.is_file():
         return False
+    if _is_sealed_root(root):
+        return _scores_df(root) is not None
     try:
-        if sf.stat().st_mtime < max(p.stat().st_mtime for p in weeks):
-            return False
+        from app.core.data import truth_mtime
+        if sf.stat().st_mtime < max([p.stat().st_mtime for p in weeks]
+                                    + [truth_mtime()]):
+            return False           # older than a sample, or than the truth
     except OSError:
         return False
     return _scores_df(root) is not None
@@ -5178,7 +5220,8 @@ def retro_results(request: Request, season: str, week: str = "",
     # _results_pending (an early failed run rescored on every visit, but a
     # job that already covered these exact inputs is believed, so an
     # unsettled-truth season never loops).
-    if request.query_params.get("rescore") or _results_pending(root):
+    if ((request.query_params.get("rescore") and not _is_sealed_root(root))
+            or _results_pending(root)):
         job = _ensure_results_job(
             root, season, force=bool(request.query_params.get("rescore")))
         job["done"].wait(_RESULTS_GRACE_S)
@@ -5641,7 +5684,26 @@ def run_models(request: Request,
     # particles is posted only by the research run form (the flagship forms
     # never send it and default to the sit-down verdict's 10,000); clamped
     # to what the machine survives, exactly like the retrospective form
-    particles = max(1_000, min(int(particles), 100_000))
+    asked = int(particles)
+    particles = max(1_000, min(asked, 100_000))
+    if particles != asked:
+        _flash(f"Particles clamped from {asked:,} to {particles:,}, the range "
+               "this machine survives.")
+    # every form number is clamped server-side, not only particles: a
+    # posted replicates = 0 once produced a status-ok run with zero fits
+    # whose ensemble file was the analogue verbatim (review APP3-2)
+    replicates = max(1, min(int(replicates), 9))
+    weeks_to_drop = max(0, min(int(weeks_to_drop), 4))
+    # the run's mode is a fact of its anchor, not the button the form was
+    # on: real-time means the newest archived vintage (review APP1-2)
+    try:
+        newest = data_mod.vintages()[-1]
+    except Exception:
+        newest = None
+    if newest and mode == "realtime" and forecast_date != newest:
+        mode = "vintage"
+        _flash(f"Anchored on the archived week {forecast_date}, not the "
+               f"newest vintage ({newest}): recorded as a vintage run.")
     spec = RunSpec(engine=engine, forecast_date=forecast_date,
                    locations=locs_list,
                    season_start=season_start,
@@ -5656,35 +5718,6 @@ def run_models(request: Request,
         # 'analogue' rides the same pipeline with the PF block skipped --
         # the model page's "Run Calendar analogue only" button posts it
         background.add_task(_run_all, spec)
-    elif engine == "amcmc":
-        from app.core.engines import amcmc as am_engine
-        def _bg():
-            ledger = Ledger()
-            rid = None
-            try:
-                rid = ledger.open_run(spec, Path("pending"),
-                                      _engine_versions_for_ledger("amcmc"))
-                _status["running"] = f"amcmc:{rid}"
-                w = lease_workroot(rid)
-                ledger.set_workroot(rid, w)   # the row must name the real one
-                _status["workroot"] = str(w)
-                _status["phase"] = ("Adaptive MCMC: this engine does not "
-                                    "report per-fit progress.")
-                out = am_engine.execute(spec, w)
-                n_ok = sum(1 for r in out["records"] if r.get("ok"))
-                ledger.close_run(rid, "ok", {"ok_states": n_ok})
-            except Exception as e:
-                if rid is not None:
-                    ledger.close_run(rid, "error", {"error": str(e)[:300]})
-                _status["log"].append(f"adaptive MCMC run failed: {str(e)[:200]}")
-            finally:
-                _status["running"] = None
-                _status["workroot"] = None
-                _status["phase"] = ""
-                _status["run_label"] = ""
-                _status["expected_total"] = None
-                _status["started_utc"] = None
-        background.add_task(_bg)
     else:
         # an engine we don't know: release the claim instead of wedging the
         # console until restart, and say so

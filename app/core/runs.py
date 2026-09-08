@@ -235,6 +235,22 @@ def results_html(outcome, spec) -> str:
         rows.append(("PF fits", fits))
     elif o.get("pf_skipped"):
         rows.append(("PF fits", "none (analogue-only run)" if "analogue" in str(o["pf_skipped"]) else "none (no engine)"))
+    if o.get("ensemble_analogue_only"):
+        names = list(o["ensemble_analogue_only"])
+        rows.append(("Analogue only", f'<span class="bad">{len(names)} location'
+                     f'{"s" if len(names) != 1 else ""}</span> '
+                     f'<span class="hint">({", ".join(map(str, names[:6]))}'
+                     f'{", ..." if len(names) > 6 else ""})</span>'))
+    if o.get("ensemble_withheld"):
+        rows.append(("Ensemble file", f'<span class="bad">withheld</span> '
+                     f'<span class="hint">{o["ensemble_withheld"]}</span>'))
+    if o.get("submission_withheld"):
+        rows.append(("Submission", f'<span class="bad">withheld</span> '
+                     f'<span class="hint">{o["submission_withheld"]}</span>'))
+    if o.get("submission_errors"):
+        n = len(o["submission_errors"])
+        rows.append(("Submission errors", f'<span class="bad">{n}</span> '
+                     '<span class="hint">on the run page</span>'))
     if o.get("submissions"):
         n = len(o["submissions"])
         rows.append(("Submission files", f"{n} file{'s' if n != 1 else ''}"))

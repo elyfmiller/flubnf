@@ -19,6 +19,19 @@ import pandas as pd
 from flubnf.settings import ARCHIVE, HUB, LOCATIONS  # noqa: F401
 
 
+def truth_mtime() -> float:
+    """mtime of the hub's current target file, the settled truth every
+    retrospective score, playback payload and season report is computed
+    against; 0 when the file is absent. Folded into those caches' keys so
+    an Update data that pulls newer truth invalidates them (review APP3-4,
+    2026-09-07: nothing did, and no rescore control existed)."""
+    p = HUB / "target-data" / "target-hospital-admissions.csv"
+    try:
+        return p.stat().st_mtime if p.is_file() else 0.0
+    except OSError:
+        return 0.0
+
+
 def vintages() -> list:
     """Every archived truth vintage, sorted ascending."""
     return sorted(p.name.split("_")[-1].removesuffix(".csv")

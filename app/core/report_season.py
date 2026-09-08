@@ -105,6 +105,8 @@ def _newest_input(root: Path) -> float:
     sf = root / "scores.json"
     if sf.is_file():
         times.append(sf.stat().st_mtime)
+    from app.core.data import truth_mtime
+    times.append(truth_mtime())          # the report scores against it
     if PLAYER_SRC.is_file():
         times.append(PLAYER_SRC.stat().st_mtime)
     # this builder is an input to its own output: a restyle or template fix
