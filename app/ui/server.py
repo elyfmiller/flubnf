@@ -5651,54 +5651,6 @@ def run_models(request: Request,
                    replicates=replicates,
                    particles=particles,
                    extra=_run_extra(members, mode))
-    # Same-day anchor sanity. The fit KEEPS the same-day week - the v1.1
-    # measurement showed dropping it costs a season +0.24 pooled relWIS,
-    # because that row carries the turn signal - but the ~1%-reported
-    # archive snapshots that once flatlined a live run are real too. The
-    # compromise is a loud, named warning with the remedy, not a silent
-    # anchor at 6 admissions and not a blanket drop.
-    try:
-        import pandas as _pdw
-        _tv = _pdw.read_csv(data_mod.vintage_path(forecast_date),
-                            dtype={"location": str})
-        _same = _tv[_tv["date"].astype(str).str[:10] == forecast_date]
-        _prior_d = (_date.fromisoformat(forecast_date)
-                    - _td(days=7)).isoformat()
-        _prior = _tv[_tv["date"].astype(str).str[:10] == _prior_d]
-        _p = dict(zip(_prior["location"], _prior["value"]))
-    except Exception:
-        # a vintage the block cannot read at all: no rows to check, and
-        # the run proceeds exactly as before the warning existed
-        _same, _p = None, {}
-    _low, _bad_rows = [], 0
-    for r in (_same.itertuples() if _same is not None else ()):
-        # per ROW: one odd value string in one state must cost that row
-        # alone, never the warning for the other 52 (a single unparseable
-        # value silenced the whole check; 2026-09-01 final pass)
-        try:
-            _pv = _p.get(r.location)
-            if not _pv:
-                continue        # no prior-week count to compare against
-            _pv = float(_pv)
-            _ratio = float(r.value) / _pv
-            if _pv >= 20 and _ratio < 0.5:
-                _low.append((_ratio, str(r.location_name)))
-        except Exception:
-            _bad_rows += 1
-    if _bad_rows:
-        _status["log"].append(
-            f"same-day under-reporting check: {_bad_rows} row(s) skipped "
-            "as unreadable; the warning covers the rest")
-    if _low:
-        _low.sort()
-        names = ", ".join(n for _, n in _low[:4])
-        _flash("Heads up: the same-day week looks badly under-reported "
-               f"in {len(_low)} state(s) ({names}"
-               f"{', …' if len(_low) > 4 else ''}): under half the "
-               "prior week's count. The fit keeps that week by default "
-               "(a measured full-season test of dropping it cost 0.24 "
-               "relWIS overall); if these anchors matter for this run, "
-               "set weeks to drop = 1.")
 
     if engine in ("all", "pf", "analogue"):
         # 'analogue' rides the same pipeline with the PF block skipped --

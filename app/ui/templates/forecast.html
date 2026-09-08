@@ -146,7 +146,7 @@
     <label title="trim the newest N weeks before fitting (vintage-edge guard)">Weeks to drop</label>
     <input name="weeks_to_drop" type="number" value="{{ form.weeks_to_drop }}" min="0" max="4">
     <input type="hidden" name="weeks_to_nowcast" value="0">
-    <p class="hint">The remedy when a run warns that its anchor week is badly under-reported.</p>
+    <p class="hint">Trims the newest N reported weeks before the fit; 0 keeps every week.</p>
     <label>Replicates</label>
     <input name="replicates" type="number" value="{{ form.replicates }}" min="1" max="9">
    </details>
