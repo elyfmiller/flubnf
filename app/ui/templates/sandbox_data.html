@@ -1,0 +1,33 @@
+{# Fill data.exp from the hub archive. This partial sits INSIDE the editor's
+   save form, and a form inside a form is dropped by the HTML parser, so the
+   button names its own action with formaction instead of a nested form.
+   Extra fields of the outer form ride along; the fill route ignores them.
+   The date inputs step 7 days from 2020-01-04, a Saturday, so they land
+   on the hub's week-ending days. #}
+<fieldset class="sbfill">
+ <legend>Fill from the archive</legend>
+ {% if locations %}
+ {% set _src = data_source or {} %}
+ <div class="row">
+  <span><label for="sbfill-loc">Location</label>
+   <select id="sbfill-loc" name="location">
+    {% for l in locations %}<option value="{{ l.name }}" {% if _src.location == l.name %}selected{% endif %}>{{ l.name }}</option>{% endfor %}
+   </select></span>
+  <span><label for="sbfill-start">Start</label>
+   <input id="sbfill-start" name="start" type="date" step="7" min="2020-01-04" value="{{ _src.start or data_range.start }}"></span>
+  <span><label for="sbfill-end">End</label>
+   <input id="sbfill-end" name="end" type="date" step="7" min="2020-01-04" value="{{ _src.end or data_range.end }}"></span>
+  <span><label for="sbfill-source">Source</label>
+   <select id="sbfill-source" name="source">
+    <option value="settled" {% if _src.asof == "settled" %}selected{% endif %}>settled truth</option>
+    {% for v in vintages %}<option value="{{ v }}" {% if _src.asof == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+   </select></span>
+  <button class="pill" formaction="/sandbox/models/{{ editing.name }}/fill-data" formmethod="post">Fill data.exp</button>
+ </div>
+ {% if data_source %}
+ <p class="hint">data.exp holds {{ data_source.location }}, {{ data_source.start }} to {{ data_source.end }}, {% if data_source.asof == "settled" %}settled truth{% else %}vintage of {{ data_source.asof }}{% endif %} ({{ data_source.rows }} weeks{% if data_source.dropped %}, {{ data_source.dropped }} dropped missing{% endif %})</p>
+ {% endif %}
+ {% else %}
+ <p class="hint">No hub archive here: type the rows or copy an example.</p>
+ {% endif %}
+</fieldset>

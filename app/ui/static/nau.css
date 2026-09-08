@@ -799,3 +799,12 @@ form.sbnew{margin-top:.6rem}
 form.sbnew label{display:block;margin-bottom:.25rem}
 form.sbnew input{width:14rem;max-width:100%;margin-right:.4rem}
 form.sbnew .hint{margin-top:.3rem}
+
+/* sandbox model views */
+/* the model views card: the pills pick a view; the drawing scrolls sideways
+   when a network is wider than the card, and BNG's words wrap in place */
+.mviews{display:flex;flex-wrap:wrap;gap:.4rem;margin:.2rem 0 .6rem}
+.mview-draw{overflow-x:auto;min-height:2.5rem;padding:.2rem 0}
+.mview-draw svg{display:block;max-width:none}
+.mview-draw pre.hint{white-space:pre-wrap;margin:.3rem 0}
+.mview-hint{margin:.4rem 0 0}
