@@ -93,14 +93,26 @@ def test_analogue_engine_runs_real_vintage():
     assert all(b >= a for a, b in zip(vals, vals[1:]))       # monotone
 
 
-def test_vincentize_defaults_to_equal_weights_never_the_fitted_table():
+def test_vincentize_defaults_to_equal_weights_never_the_fitted_table(tmp_path, monkeypatch):
     """The anti-fitting law at the API boundary: omitting `weights` gives the
-    unfitted equal-weight blend the project ships and publishes. The
-    LOSO-fitted table exists but can only be reached by naming it."""
+    unfitted equal-weight blend the project ships and publishes. A fitted
+    table can only be reached by naming it, and none ships: without a local
+    table the frozen path is an error, never a silent fallback."""
+    from app.core import ensemble as ens
     from app.core.ensemble import FROZEN, frozen_weights, pf_share, vincentize
+    import pytest
+    monkeypatch.setattr(ens, "WEIGHTS_FILE", tmp_path / "absent.json")
+    with pytest.raises(ValueError, match="do not ship"):
+        frozen_weights()
+    import json as _json
+    table = {"frozen": "test", "member_convention": "w = PF share, 1-w = analogue",
+             "global": {"0": 0.4, "1": 0.6, "2": 0.7, "3": 0.8},
+             "per_state": {"50": {"0": 0.2, "1": 0.3, "2": 0.5, "3": 0.6}}}
+    wf = tmp_path / "ensemble_weights.json"; wf.write_text(_json.dumps(table))
+    monkeypatch.setattr(ens, "WEIGHTS_FILE", wf)
     w = frozen_weights()
-    assert w["global"]["0"] == 0.4 and w["global"]["3"] == 0.8   # the freeze
-    assert "50" in w["per_state"]                                # Vermont earned one
+    assert w["global"]["0"] == 0.4 and w["global"]["3"] == 0.8
+    assert "50" in w["per_state"]
     qa = {"1": {L: 100.0 for L in _levels()}, "2": {L: 100.0 for L in _levels()}}
     qb = {"1": {L: 200.0 for L in _levels()}}
 

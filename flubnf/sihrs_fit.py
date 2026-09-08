@@ -338,7 +338,7 @@ def write_conf(setup: StateSetup, *, model: Path, exp: Path, out_dir: Path,
     chains from different starts never meet. The posterior has a condition number
     of ~1678 (a long thin ridge; worst pair eps1<->eps2 at corr +0.785), which no
     isotropic-proposal sampler traverses. The real fix is reparameterisation --
-    see the lab archive's docs/RETROSPECTIVE_2026-07.md (NAU-Projects repo, not this one). Treat interval/coverage quantities derived
+    recorded in the lab archive's July 2026 retrospective, not in this repository. Treat interval/coverage quantities derived
     from these posteriors as provisional; medians are far more robust.
     """
     if parallel_count is None:

@@ -1,6 +1,6 @@
 """Vincentization: quantile-average the members with EQUAL, unfitted weights.
 
-The validated recipe (the lab archive NAU-Projects/NAU_Influenza_M_Model/FluBNF/docs/RESULTS.md (restated in docs/RELEASE-1.0.md)): average QUANTILES, not densities,
+The validated recipe (docs/RELEASE-1.0.md): average QUANTILES, not densities,
 and do not fit the blend. Across the three sealed seasons, applying the
 frozen fitted table scores 0.6958 pooled against the fixed 0.5's 0.6781, and
 fitted weights anti-predicted the held-out season every time they were
@@ -28,7 +28,6 @@ import numpy as np
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL
 
 WEIGHTS_FILE = Path(__file__).resolve().parents[1] / "state" / "ensemble_weights.json"
-SHIPPED_WEIGHTS = Path(__file__).resolve().parents[1] / "state_defaults_ensemble_weights.json"
 
 #: The one value that requests the LOSO-fitted table. Spelled out at the call
 #: site so `grep -rn '"frozen"'` finds every place fitted weights are used.
@@ -51,9 +50,16 @@ def frozen_weights() -> dict:
     scored on; the leave-one-season-out fit recorded at the freeze was
     0.717, measured on the pre-exclusion donor pool and not re-derivable,
     because no code for that fit survives. Fitted loses either way.
-    vincentize() uses this table only when asked by name."""
-    f = WEIGHTS_FILE if WEIGHTS_FILE.is_file() else SHIPPED_WEIGHTS
-    return json.loads(f.read_text())
+    vincentize() uses this table only when asked by name. No table ships
+    with FluBNF (fitted weights never ship, 2026-09-07): the freeze lives
+    in the lab archive, and a copy placed at app/state/ensemble_weights.json
+    makes the fitted comparison scoreable on a machine that wants it."""
+    if not WEIGHTS_FILE.is_file():
+        raise ValueError(
+            "no frozen weight table: fitted ensemble weights do not ship with "
+            f"FluBNF. To score the fitted alternative, place a table at "
+            f"{WEIGHTS_FILE} (keys global and per_state, PF share by horizon).")
+    return json.loads(WEIGHTS_FILE.read_text())
 
 
 def pf_share(weights: dict, horizon: int, location_fips: str = "") -> float:

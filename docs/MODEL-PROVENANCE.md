@@ -18,18 +18,18 @@ Covered templates:
 | `SIHRS_pop_covid_2h.bngl` | COVID Gate A round two, arm A2: `covid` plus the semi-annual harmonic (8 parameters) |
 | `SIHRS_pop.bngl` | Multi-season 8-parameter model (keeps `impr`, `eps2`, `phi2`); not trimmed, see section 3 |
 
-Companion sources of record. The `research/` tree is retained in the lab's
-private archive, not in this repository; the pointers below are for lab
-machines and the files are available on request (docs/RELEASE-1.0.md, "Where
-the evidence lives", states the same policy).
+Companion sources of record. The research tree behind the measurements
+below is kept in the lab's archive, not in this repository, and is available
+on request (docs/RELEASE-1.0.md, "Where the evidence lives", states the same
+policy). Two of the pointers below name files in that archive.
 
 * `flubnf/sihrs_priors.py` -- the DOI or data derivation behind every fixed
   influenza value (`gamma`, `rho`, `gammaH`, `omega`, `s0`, `i0`).
 * `flubnf/profiles.py` -- the COVID `DiseaseProfile`, its priors, and the
   COVID-specific sources.
-* `research/spatial-nowcast-probe/FINDINGS.md` -- the measurements behind the
-  national-growth variant.
-* `research/covid-phase0/gate_a.py` and `gate_a2.py` -- the frozen COVID gate
+* the spatial nowcast probe's findings (lab archive) -- the measurements behind
+  the national-growth variant.
+* the COVID phase 0 gate scripts (lab archive) -- the frozen COVID gate
   pre-registrations.
 
 ---
@@ -281,8 +281,7 @@ the information `eps1`/`phi1` already give the model. Partial correlation
 +0.469. LOSO delta-R^2 +0.081 / +0.032 / +0.118 and turn-week RMSE
 reductions +8.9% / +2.4% / +14.7% over 2023-24 / 2024-25 / 2025-26. This is
 THIS year's realised wave, not the calendar: nothing else in the production
-system sees "the Midwest peaked last week". Detail:
-`research/spatial-nowcast-probe/FINDINGS.md` section 1.
+system sees "the Midwest peaked last week". Detail: the spatial nowcast probe's findings, section 1 (lab archive).
 
 ### 4.2 On growth, never on level
 
@@ -314,7 +313,7 @@ the handoff names:
 Cross-check: pooling those two seasons gives b = 0.5528 -> 0.276, the same
 number within the season-to-season spread. 2025-26 is NOT in the average (its
 own coefficient is 0.8040, so the exclusion made iota smaller, not larger).
-Reproduce: `./.venv/bin/python research/spatial-nowcast-probe/iota_freeze.py`.
+The freezing script is in the lab archive, not in this repository.
 The constant lives in `flubnf/natgrowth.py::IOTA_FROZEN`. It must NEVER
 appear as a `*__FREE` var line, and it must never be retuned after seeing
 scores (handoff Law 1). `app/tests/test_natgrowth.py` enforces this.
