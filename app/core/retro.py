@@ -1419,8 +1419,10 @@ def scores_current(root: Path) -> bool:
     if not sf.is_file():
         return False
     try:
-        if sf.stat().st_mtime < max(p.stat().st_mtime for p in weeks):
-            return False
+        from app.core.data import truth_mtime
+        if sf.stat().st_mtime < max([p.stat().st_mtime for p in weeks]
+                                    + [truth_mtime()]):
+            return False           # older than a sample, or than the truth
         pd.read_json(sf)
         return True
     except Exception:

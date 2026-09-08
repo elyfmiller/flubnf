@@ -1,0 +1,70 @@
+/* FluBNF sandbox model views (model-views.css)
+
+   The drawing model-views.js builds in the model views card: the contact
+   map and the reaction network, both an SVG that fills the card and pans
+   and zooms through its viewBox. Every colour is one of the page's tokens
+   (--card --bg --ink --mut --line --accent --accent-ink --slate), so the
+   drawing follows the theme with no redraw. The classes are the drawing's
+   vocabulary: mv-node, mv-edge, mv-label, mv-inf for the network; mv-mol,
+   mv-comp, mv-state, mv-bond for the contact map; mv-hi and mv-dim for
+   what the pointer picks out. */
+
+.mv{position:relative}
+.mv svg.mv-svg{display:block;width:100%;max-width:100%;height:420px;
+  font-family:"DM Sans",system-ui,sans-serif;font-size:12px;
+  cursor:grab;user-select:none;-webkit-user-select:none;touch-action:none;
+  background:var(--card);border:1px solid var(--line);border-radius:8px}
+.mv svg.mv-svg.mv-panning{cursor:grabbing}
+
+/* the zoom buttons sit in the drawing's top right corner */
+.mv-tools{position:absolute;top:.35rem;right:.35rem;display:flex;gap:.2rem}
+.mv-btn{font:inherit;font-size:.8rem;line-height:1;padding:.22rem .5rem;
+  border:1px solid var(--line);border-radius:6px;background:var(--card);
+  color:var(--ink);cursor:pointer}
+.mv-btn:hover{border-color:var(--accent-ink)}
+.mv-btn:focus-visible{outline:2px solid var(--accent-ink);outline-offset:2px}
+
+/* the status line: one line, never wraps, names what the pointer is on */
+.mv-status{margin:.35rem 0 0;min-height:1.25em;color:var(--mut);font-size:.85rem;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* the reaction network: species boxes, arrows between them with the
+   rate written on the arrow, dashed influence lines to an arrow's middle,
+   source and sink dots */
+.mv-node{cursor:pointer}
+.mv-node rect{fill:var(--card);stroke:var(--ink);stroke-width:1.2}
+.mv-node text{fill:var(--ink)}
+.mv-node circle{fill:var(--mut);stroke:none}
+.mv-edge{fill:none;stroke:var(--accent-ink);stroke-width:1.6}
+.mv-edge.mv-catalytic{stroke-dasharray:5 4}
+.mv-edge.mv-source,.mv-edge.mv-sink{stroke:var(--mut)}
+.mv-arrow{fill:var(--accent-ink)}
+.mv-arrow-mut{fill:var(--mut)}
+.mv-hit{fill:none;stroke:transparent;stroke-width:12;pointer-events:stroke;cursor:pointer}
+.mv-label{fill:var(--ink);font-size:11px;cursor:pointer;
+  stroke:var(--card);stroke-width:3px;stroke-linejoin:round;paint-order:stroke}
+.mv-inf{fill:none;stroke:var(--slate);stroke-width:1.1;stroke-dasharray:3 3}
+.mv-inf-dot{fill:var(--slate)}
+
+/* the contact map: a panel per molecule type with a header strip,
+   component boxes inside, state ellipses under their component, bonds as
+   arcs between component boxes */
+.mv-mol{cursor:grab}
+.mv-ground{fill:var(--bg);stroke:none}
+.mv-head{fill:var(--accent);fill-opacity:.25;stroke:none}
+.mv-panel{fill:none;stroke:var(--ink);stroke-width:1.2}
+.mv-mol-name{fill:var(--ink);font-weight:600}
+.mv-comp{cursor:pointer}
+.mv-comp rect{fill:var(--card);stroke:var(--ink)}
+.mv-comp text{fill:var(--ink)}
+.mv-state ellipse{fill:var(--accent);fill-opacity:.35;stroke:var(--accent-ink)}
+.mv-state text{fill:var(--ink);font-size:11px}
+.mv-bond{fill:none;stroke:var(--accent-ink);stroke-width:2;cursor:pointer}
+
+/* what the pointer picks out: the rest fades, the picked parts thicken */
+.mv-dim{opacity:.18}
+.mv-edge.mv-hi{stroke-width:2.6}
+.mv-inf.mv-hi{stroke-width:1.8}
+.mv-node.mv-hi rect{stroke:var(--accent-ink);stroke-width:2.2}
+.mv-comp.mv-hi rect{stroke:var(--accent-ink);stroke-width:2}
+.mv-bond.mv-hi{stroke-width:3.2}

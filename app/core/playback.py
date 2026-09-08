@@ -309,8 +309,10 @@ def _stats(root: Path, season: str, asof: str, truth: dict, n2f: dict,
         m = sp.stat().st_mtime if sp else 0
         offs = _official_files_present(w)
         e = cache["weeks"].get(w)
+        from app.core.data import truth_mtime as _tm
         if (e and e.get("v") == CACHE_V and e.get("mtime") == m
                 and e.get("scores_mtime") == scores_mtime
+                and e.get("truth_mtime") == _tm()
                 and e.get("officials") == offs):
             aggs[w] = e["agg"]
             continue
@@ -325,6 +327,7 @@ def _stats(root: Path, season: str, asof: str, truth: dict, n2f: dict,
             # transient scoring failure; recompute next request instead of
             # freezing "pending" into the cache (the field bug, act three)
             cache["weeks"][w] = {"mtime": m, "scores_mtime": scores_mtime,
+                                 "truth_mtime": _tm(),
                                  "officials": offs, "agg": aggs[w], "v": CACHE_V}
             dirty = True
     if dirty:
@@ -413,11 +416,13 @@ def build_week(root: Path, season: str, asof: str) -> dict:
             + (f" Known weeks: {known[0]}..{known[-1]}" if known
                else " No weeks completed yet."))
     cf = _cache_dir(root) / f"{asof}.json"
+    from app.core.data import truth_mtime
     newest = max([p.stat().st_mtime
                   for p in retro_store.season_sample_files(root)
                   if p.parent.name <= asof]
                  + ([(root / "scores.json").stat().st_mtime]
-                    if (root / "scores.json").is_file() else []))
+                    if (root / "scores.json").is_file() else [])
+                 + [truth_mtime()])       # the payload embeds the truth
     if cf.is_file() and cf.stat().st_mtime >= newest:
         try:
             payload = json.loads(cf.read_text())
