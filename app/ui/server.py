@@ -2288,6 +2288,30 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
     outcome["report"] = str(workroot / "report.html")
 
 
+def _pf_engine_state() -> str:
+    """What this machine's PF engine is, in one word:
+
+      absent   nothing installed. The supported analogue-only
+               configuration (Tier A), and the run proceeds without the
+               filter.
+      broken   the engine venv and the fork path are both there, but the
+               fork provides no pybnf/pf.py, so the runner would import the
+               stock PyBNF beside it and every fit would fail.
+      ready    the fork provides fit_type = pf.
+
+    The absent test is the old gate verbatim, so a machine with no engine
+    behaves exactly as it did. `PYBNF` and the engine module's `PYBNF_PF`
+    are one path in production (pf.py imports the one as the other); the
+    fork's CONTENT is tested through the engine module so every caller --
+    this gate, prepare(), the doctor -- shares one definition of installed.
+    """
+    from flubnf.settings import PY_ENGINE, PYBNF
+    from app.core.engines import pf as pf_engine
+    if not (PY_ENGINE.exists() and PYBNF.exists()):
+        return "absent"
+    return "ready" if pf_engine.engine_available() else "broken"
+
+
 def _run_all(spec: RunSpec) -> None:
     """The competition path: engines in ascending cost, then ensemble,
     submissions, and the weekly report. Every step lands in ONE workroot and
@@ -2336,8 +2360,8 @@ def _run_all(spec: RunSpec) -> None:
         _status["workroot"] = str(workroot)
         # 1. PF (primary) -- gracefully absent on Tier-A machines (no engine
         # venv): the run proceeds with the analogue and says so, rather than
-        # erroring on the first click of a fresh install.
-        from flubnf.settings import PY_ENGINE, PYBNF
+        # erroring on the first click of a fresh install. What "installed"
+        # means is _pf_engine_state().
         fails = {}
         # observed admissions per location (vintage-true) -- used by the
         # output floor, the report's state pages, and the run page
@@ -2369,7 +2393,23 @@ def _run_all(spec: RunSpec) -> None:
             pass
         pf_samples = {}
         params: dict = {}     # fitted-parameter medians per member/location
-        if spec.engine in ("all", "pf") and PY_ENGINE.exists() and PYBNF.exists():
+        pf_wanted = spec.engine in ("all", "pf")
+        pf_state = _pf_engine_state()
+        # A broken install is REFUSED here, before any fitting, and not
+        # skipped: that is the Perl precedent, and it is the least
+        # surprising of the two. An absent engine is a configuration the
+        # user chose and the analogue is the whole product on it; an engine
+        # that is present and cannot filter is a fault, and a run that
+        # quietly shipped the analogue under it would hide the fault behind
+        # a forecast that looks finished. The reason is recorded in the
+        # outcome as well as raised, so the run page and the latest-run
+        # table name the path and the fix instead of the generic
+        # "engine venv not installed".
+        if pf_wanted and pf_state == "broken":
+            msg = pf_engine.engine_missing_message()
+            outcome["pf_engine_broken"] = msg
+            raise RuntimeError(msg)
+        if pf_wanted and pf_state == "ready":
             _phase("materializing models (BNG network generation)")
             pf_engine.prepare(spec, workroot)
             _phase(f"filtering {len(spec.locations)} location(s) × "
@@ -2401,8 +2441,7 @@ def _run_all(spec: RunSpec) -> None:
         # workroot so the run stays one ledger row and one archive entry.
         pf2s_samples = {}
         if ((spec.extra or {}).get("members") == 3
-                and spec.engine in ("all", "pf")
-                and PY_ENGINE.exists() and PYBNF.exists()):
+                and pf_wanted and pf_state == "ready"):
             from dataclasses import replace as _dc_replace
             spec2s = _dc_replace(spec, extra={**(spec.extra or {}),
                                               "variant": "2strain"})
@@ -3134,6 +3173,11 @@ def _outcome_chips(outcome_json: str) -> str:
         bits.append(f'<span class="bad">{nf} failure'
                     f'{"s" if nf != 1 else ""}</span>')
     if o.get("pf_skipped"): bits.append("PF skipped (no engine)")
+    # distinct from the line above on purpose: no engine is a configuration,
+    # an engine without pybnf/pf.py is a broken install. The path and the
+    # fix are on the run page, where the full error is.
+    if o.get("pf_engine_broken"):
+        bits.append('<span class="bad">PF engine install incomplete</span>')
     if o.get("submissions"): bits.append(f"{len(o['submissions'])} submissions")
     if o.get("submission_errors"):
         ns = len(o["submission_errors"])

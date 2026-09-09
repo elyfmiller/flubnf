@@ -235,6 +235,16 @@ def results_html(outcome, spec) -> str:
         rows.append(("PF fits", fits))
     elif o.get("pf_skipped"):
         rows.append(("PF fits", "none (analogue-only run)" if "analogue" in str(o["pf_skipped"]) else "none (no engine)"))
+    elif o.get("pf_engine_broken"):
+        # never "none (no engine)": the engine IS installed, it just cannot
+        # filter, and the two need different remedies. The recorded message
+        # names the fork path and the fix; it is escaped because it carries
+        # a filesystem path and everything else here is a fixed phrase.
+        import html as _html
+        rows.append(("PF fits", '<span class="bad">none (engine install '
+                                'incomplete)</span> <span class="hint">'
+                                f'{_html.escape(str(o["pf_engine_broken"]))}'
+                                '</span>'))
     if o.get("ensemble_analogue_only"):
         names = list(o["ensemble_analogue_only"])
         rows.append(("Analogue only", f'<span class="bad">{len(names)} location'

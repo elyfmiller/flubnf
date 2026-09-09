@@ -189,6 +189,57 @@ def perl_available() -> bool:
     return shutil.which("perl") is not None
 
 
+#: The one file that makes a checkout an engine. Stock PyBNF from PyPI has
+#: no pf.py, so this file is what provides fit_type = pf.
+PF_MODULE = "pybnf/pf.py"
+
+#: The remedy, written once so the console's message and the doctor's hint
+#: cannot drift apart.
+ENGINE_FIX = ("Put the engine archive in Downloads and run "
+              "./setup_engine.sh, or point FLUBNF_PYBNF at the unpacked "
+              "engine.")
+
+
+def engine_missing_message() -> str:
+    """What to tell an operator whose fork path is not an engine.
+
+    The runner inserts this path at the FRONT of sys.path and the engine
+    venv also holds a stock PyBNF from PyPI, so a path without pybnf/pf.py
+    does not fail an import: the runner picks up the stock package, which
+    has no particle filter, and every cell dies with an opaque
+    configuration error while everything before the fit -- Perl, BNG2.pl,
+    network generation, the .exp -- works perfectly. On a PI's laptop
+    installed from the small archive (lab report, 2026-09-08) that was six
+    failed cells and nothing on the page saying why.
+
+    The fix comes before the reason because the remedy is what the reader
+    needs first; the reason is there for whoever asks why. The whole
+    message reaches the run page and the outcome's pf_engine_broken field,
+    while the ledger's error field keeps a prefix, so a very long fork path
+    can truncate the tail of the reason there but not the remedy.
+    """
+    p = Path(PYBNF_PF)
+    if not p.is_dir():
+        found = ("there is no such directory" if not p.exists()
+                 else "that path is a file, not a directory")
+    elif not os.access(p, os.R_OK | os.X_OK):
+        found = "the directory cannot be read"
+    else:
+        found = f"the directory is there but holds no {PF_MODULE}"
+    return (f"The PyBNF fork at {p} does not provide fit_type = pf: "
+            f"{found}. {ENGINE_FIX} Without {PF_MODULE} the fit runner "
+            "imports the stock PyBNF in the engine venv instead, which has "
+            "no particle filter, so every fit fails.")
+
+
+def engine_available() -> bool:
+    """Whether the fork path really provides the particle filter. The
+    DIRECTORY existing is not the question (a half-unpacked archive, a
+    wrong FLUBNF_PYBNF, and a folder of the right name holding something
+    else all pass that test); the file that carries fit_type = pf is."""
+    return (Path(PYBNF_PF) / PF_MODULE).is_file()
+
+
 #: Prepare-stage failures, keyed by location tag (no _r suffix, so a key
 #: can never collide with a cell's). execute() folds the file into the
 #: merged pf_status.json and the retrospective run_week folds it into the
@@ -359,6 +410,14 @@ def prepare(spec, workroot: Path) -> list:
     # must be named as one, not 52 times as a per-location subprocess error
     if not perl_available():
         raise RuntimeError(perl_missing_message())
+    # The fork, on the same terms and for the same reason: every conf
+    # written below says fit_type = pf, which only the fork understands, so
+    # a path without pybnf/pf.py is a run-level fact and must be named once
+    # here rather than 159 times as an opaque configuration error at the
+    # end of the run. Here, not only in the console, so the retrospective
+    # replay, the CLI and a research run are covered too.
+    if not engine_available():
+        raise RuntimeError(engine_missing_message())
 
     vintage = vintage_path(spec.forecast_date)
     variant = (spec.extra or {}).get("variant")

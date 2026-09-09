@@ -181,6 +181,17 @@ def check(verbose: bool = True) -> list:
         hub_why = ("FluSight hub data (truth vintages, locations): the clone "
                    "is present but its sparse checkout does not include the "
                    "data directories")
+    # The fork is tested by its pf.py for the same reason the hub is tested
+    # by its data. Stock PyBNF from PyPI is installed in the engine venv and
+    # has no pf.py, so a fork DIRECTORY that does not provide one still
+    # passes an exists() test while the fit runner silently imports the
+    # stock package and every fit fails (lab report, 2026-09-08).
+    pybnf_why = "PyBNF fork with fit_type=pf"
+    if PYBNF.exists():
+        pybnf_why = ("PyBNF fork with fit_type=pf: the checkout is present "
+                     "but holds no pybnf/pf.py, so the fit runner would "
+                     "import the stock PyBNF from the engine venv, which "
+                     "has no particle filter, and every fit would fail")
     missing = []
     for name, p, why in (
         ("FLUBNF_HUB", HUB / "auxiliary-data", hub_why),
@@ -190,7 +201,7 @@ def check(verbose: bool = True) -> list:
         ("perl", Path(shutil.which("perl") or "perl"),
          "Perl interpreter on PATH (runs BNG2.pl at run preparation)"),
         ("FLUBNF_PY_ENGINE", PY_ENGINE, "engine venv python (pybnf + bngsim)"),
-        ("FLUBNF_PYBNF", PYBNF, "PyBNF fork with fit_type=pf"),
+        ("FLUBNF_PYBNF", PYBNF / "pybnf" / "pf.py", pybnf_why),
     ):
         if not p.exists():
             missing.append((name, str(p), why))
