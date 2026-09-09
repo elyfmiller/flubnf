@@ -266,8 +266,10 @@ def results_html(outcome, spec) -> str:
         rows.append(("Submission files", f"{n} file{'s' if n != 1 else ''}"))
     rows.append(("Weekly report", "written" if o.get("report") else "none"))
     body = "".join(f"<tr><th scope=\"row\">{k}</th><td>{v}</td></tr>" for k, v in rows)
-    return (f'<table class="results"><caption class="hint">relWIS is against the '
-            f'FluSight baseline, ratio of sums; below 1.000 beats it</caption>'
+    return (f'<table class="results"><caption class="hint">Pooled over every '
+            f'fitted jurisdiction in this run, US national excluded; not the '
+            f'location shown below. relWIS is against the FluSight baseline, '
+            f'ratio of sums; below 1.000 beats it</caption>'
             f"{body}</table>")
 
 

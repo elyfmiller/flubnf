@@ -17,8 +17,10 @@ admissions with influenza, forecast as full predictive distributions at the
 from a clone of the public FluSight hub (cdcepi/FluSight-forecast-hub):
 `target-data/` for the current series, `auxiliary-data/target-data-archive/`
 for the dated snapshots that retrospectives replay, and
-`model-output/FluSight-baseline/` for scoring. Nothing is fetched from
-anywhere else.
+`model-output/FluSight-baseline/` for scoring. The shipped forecast reads
+nothing else; the research two-strain member and the legacy command-line
+layer, both off the default path, can fetch NREVSS and NHSN series from the
+Delphi Epidata API and data.cdc.gov, cached under `app/state`.
 
 ## The models
 

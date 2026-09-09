@@ -165,6 +165,13 @@ then the full grid for the one arm its rule selected). It selected jitter
 | corrected kernel, 0.15, research grid | 0.835 | 0.716 | 0.661 | 0.723 | 0.469 | 0.920 |
 | corrected kernel, 0.15, the reseal (2026-09-07) | 0.834 | 0.716 | 0.663 | **0.723** | 0.470 | 0.921 |
 
+The relWIS columns are ratios of sums over the 15,460 cells that carry a
+FluSight baseline, the identical cells of the header. The two coverage
+columns count every cell with truth in the 85 replayed weeks, 16,978 for
+the ensemble rows, with no baseline filter. On the 15,460 scored cells the
+reseal ensemble's coverage is 0.466 central-50 and 0.918 at 95 percent
+(0.488 / 0.938, 0.462 / 0.902 and 0.439 / 0.908 by season).
+
 The reseal is the production engine's record of its own: three seasons
 replayed through the console's replay command (`flubnf retro`), one seed
 per as-of week as the seal was made, 13,260 fits, zero failures, 10 h 43
@@ -468,6 +475,27 @@ below, central-50 coverage falls from 0.698 to 0.646. The harness reported uncha
 coverage for the analogue member; that is a member result and does not
 license a calibration claim about the ensemble, which is why the ensemble
 figures are measured and stated here separately.
+
+### The FluSight-ensemble comparator on the home page, measured 2026-09-09
+
+The home page prints a FluSight Ensemble column beside the production row.
+It is this project's own scoring of the hub's `model-output/FluSight-ensemble`
+submission files on the identical 15,460 cells the FluBNF ensemble is scored
+on, under the same convention as every other figure here: ratio of WIS sums
+against the FluSight-baseline, settled truth, `POOLED_INCLUDES_US = False`,
+hub clone at 18f68c23. The figures are 0.741 / 0.663 / 0.684, pooled 0.685
+(0.7406 / 0.6629 / 0.6842 / 0.6855 on 6,063 / 4,922 / 4,475 / 15,460 cells),
+against FluBNF's 0.834 / 0.716 / 0.663, pooled 0.723 on the same cells.
+Re-derived independently during the 2026-09-09 review from the hub files and
+the reseal quantiles; the column reproduces to the third decimal.
+
+Two things keep this a comparator and not a placement. It is not the CDC
+dashboard's pairwise scaled relative WIS, which is field dependent and
+mean based, so the two figures are not directly comparable even though they
+are likely close. And the two columns are not scored on identical inputs:
+FluBNF is scored on its internal unrounded quantiles, the official ensemble
+on the rounded quantiles it submitted. The withdrawn placement figures are
+in the verification section above and are not restored by this table.
 
 ### The US national row in the donor pool, measured 2026-09-08
 
