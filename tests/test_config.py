@@ -36,3 +36,23 @@ class TestModelConfigDefaults:
     def test_unknown_model_type_rejected(self):
         with pytest.raises(ValueError):
             ModelConfig(model_type="seir_magic")
+
+
+def test_exporting_a_section_named_env_var_does_not_break_the_loader(monkeypatch):
+    """FLUBNF_PYBNF is one of the four paths flubnf/settings.py documents,
+    and .flubnf.env and setup_engine.sh both export it. It shares a name
+    with the `pybnf` SECTION of this config, and the loader used to assign
+    the raw string to it, so every command that loads config died with a
+    pydantic ValidationError: `flubnf doctor` among them, which is the
+    command the engine's own error message tells the operator to run
+    (lab machine, 2026-09-08). Sections are skipped; flat keys still work.
+    """
+    from flubnf.config import FluBNFConfig, PyBNFConfig
+
+    for var in ("FLUBNF_PYBNF", "FLUBNF_SEASON", "FLUBNF_CDC", "FLUBNF_MODEL"):
+        monkeypatch.setenv(var, "/some/path/that/is/not/a/section")
+    cfg = FluBNFConfig.load()
+    assert isinstance(cfg.pybnf, PyBNFConfig)
+
+    monkeypatch.setenv("FLUBNF_LOCATIONS_CSV", "/tmp/locations.csv")
+    assert str(FluBNFConfig.load().locations_csv).endswith("locations.csv")

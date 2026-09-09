@@ -176,8 +176,20 @@ class FluBNFConfig(BaseModel):
                     loaded = yaml.safe_load(f) or {}
                 _deep_update(data, loaded)
 
-        # FLUBNF_* environment variables: only flat top-level keys for now.
-        for key in cls.model_fields:
+        # FLUBNF_* environment variables: only flat top-level keys, which
+        # is what this loop has always claimed. A SECTION field is skipped
+        # rather than handed a raw string. FLUBNF_PYBNF, FLUBNF_SEASON,
+        # FLUBNF_CDC and FLUBNF_MODEL each collide with a section of the
+        # same name, and the first of those is one of the four paths
+        # flubnf/settings.py documents and that .flubnf.env and
+        # setup_engine.sh both export, so exporting it made every command
+        # that loads this config die with a pydantic ValidationError:
+        # doctor, compare, score-team and clean-cache. Found on a lab
+        # machine 2026-09-08, by following our own instructions.
+        for key, field in cls.model_fields.items():
+            annotation = field.annotation
+            if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+                continue                      # a section, not a flat key
             env_key = f"FLUBNF_{key.upper()}"
             if env_key in os.environ:
                 data[key] = os.environ[env_key]

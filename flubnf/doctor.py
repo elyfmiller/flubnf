@@ -107,6 +107,11 @@ _REQUIRED_PACKAGES: tuple[tuple[str, str], ...] = (
 
 
 def _check_engine_venv() -> "CheckResult":
+    """Whether the engine venv can import the packages a fit needs. It runs
+    the engine's own Python WITHOUT the fork on sys.path, so it answers
+    "is this venv usable", not "does it have the particle filter": a venv
+    holding only the stock PyBNF from PyPI passes here and cannot filter.
+    _check_pf_engine below is the other half."""
     import subprocess
     from flubnf.settings import PY_ENGINE
     if not PY_ENGINE.exists():
@@ -120,6 +125,25 @@ def _check_engine_venv() -> "CheckResult":
                            f"pybnf/bngsim not importable: {r.stderr[-120:]}")
     return CheckResult("engine venv", Status.OK,
                        f"bngsim {r.stdout.strip()}")
+
+
+def _check_pf_engine() -> "CheckResult":
+    """The PyBNF fork, tested by the file that carries fit_type = pf.
+
+    Importing pybnf is not the question: the stock PyBNF from PyPI imports
+    fine and has no particle filter, which is how the install on a PI's
+    laptop looked healthy on 2026-09-08 and then failed every cell of a
+    forecast. The file that carries fit_type = pf is the question, so the
+    fork gets its own row beside the venv's.
+    """
+    from app.core.engines import pf as _pf
+    from flubnf.settings import PYBNF
+    if _pf.engine_available():
+        return CheckResult("PyBNF fork (fit_type=pf)", Status.OK, str(PYBNF))
+    return CheckResult("PyBNF fork (fit_type=pf)", Status.FAIL,
+                       _pf.engine_missing_message(),
+                       "Run ./setup_engine.sh (or set FLUBNF_PYBNF), then "
+                       "re-run doctor.")
 
 
 def _check_imports() -> list[CheckResult]:
@@ -642,6 +666,8 @@ def run_doctor(
     for c in _check_imports():
         rep.add(c)
     rep.add(_check_numpy2_pybnf())
+    rep.add(_check_engine_venv())        # can the engine venv import at all
+    rep.add(_check_pf_engine())          # and does the fork carry pf.py
     rep.add(_check_bng(config))
     for c in _check_templates(config):
         rep.add(c)
