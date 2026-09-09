@@ -60,8 +60,10 @@
  maintains 10,000 candidate epidemics per state, each a complete
  SIHRS trajectory with its own parameters. Every week the newest admissions
  reweight the candidates by how well they explain the data; a Liu-West
- kernel then jitters the surviving parameters in log space at scale 0.15
- (chosen by a pre-registered sweep) and systematic resampling keeps the
+ kernel then jitters the surviving parameters at scale 0.15 (chosen by a
+ pre-registered sweep), the log-uniform ascertainment and dispersion on the
+ log scale and the transmission parameters on their own scale, and
+ systematic resampling keeps the
  population diverse. The spread of surviving trajectories is the forecast
  uncertainty. Each week's forecast is a fresh filter run from the season's
  August 1 anchor through that week's data vintage, never a cloud carried
@@ -128,7 +130,9 @@
  than 30 usable donors produces no forecast. Donors are pooled across states
  because a single state supplies only about five donors per prior season
  inside the calendar window, far short of the 30-donor minimum, and they
- never come from the season being forecast. The analogue uses the archive of
+ never come from the season being forecast. The pool also holds the US
+ national row, about 2 percent of donors, measured 2026-09-08 and kept; the
+ release record has the numbers. The analogue uses the archive of
  weekly NHSN admissions and nothing else. In the sealed record its strength
  lies at the middle horizons and in seasons that behave unusually, where it
  anchors the ensemble; the particle filter is the stronger member at the
@@ -184,8 +188,9 @@
  </table></div>
  <p class="hint">Pooled ensemble relWIS 0.723 over 15,460 scored cells,
  measured 2026-09-07 with the production engine through the console's own
- replay command. The sealed record of 2026-09-05 (0.678 pooled, from an
- engine whose kernel jittered in raw space) is kept in docs/RELEASE-1.0.md.
+ replay command. The sealed record (sealed 2026-08-19, rebuilt 2026-08-24;
+ 0.678 pooled, from an engine whose kernel jittered in raw space) is kept in
+ docs/RELEASE-1.0.md.
  On placement against the real FluSight fields, see the verification
  policies below.</p>
 </div>
