@@ -661,3 +661,77 @@ def test_the_newest_archive_wins_when_an_old_one_is_still_in_downloads(tmp_path)
         "the stale one and shipped a three week old engine")
     assert "using the newest" in out.stderr
     assert "3320d1f0" not in out.stdout
+
+
+def _fake_archive(tmp_path: Path, stamp: str, name: str) -> Path:
+    """An engine archive of the shape cut_engine_archive.sh produces: one top
+    level folder holding pybnf/pf.py, setup.py and a VERSION stamp."""
+    import tarfile
+    root = tmp_path / f"src-{stamp.split()[-1]}" / "PyBNF-Private"
+    (root / "pybnf").mkdir(parents=True)
+    (root / "pybnf" / "pf.py").write_text("class ParticleFilter: pass\n")
+    (root / "pybnf" / "__init__.py").write_text("")
+    (root / "setup.py").write_text("from setuptools import setup; setup()\n")
+    (root / "VERSION").write_text(stamp + "\n")
+    arc = tmp_path / name
+    with tarfile.open(arc, "w:gz") as t:
+        t.add(root, arcname="PyBNF-Private")
+    return arc
+
+
+@posix_only
+def test_a_newer_archive_replaces_a_stale_unpacked_engine(tmp_path):
+    """An unpacked copy used to end the search, so a re-run with the current
+    archive in Downloads changed nothing. A PI's laptop kept an engine cut
+    2026-08-31 that way and every fit failed against a current console
+    (2026-09-09). The stale copy is moved aside, not deleted."""
+    home = _home(tmp_path)
+    dest = tmp_path / "PyBNF-pf"
+    old = _fake_archive(tmp_path, "feature/particle-filter 3320d1f0",
+                        "pybnf-pf-3320d1f0.tar.gz")
+    import tarfile
+    with tarfile.open(old) as t:                    # the stale copy, on disk
+        t.extractall(tmp_path / "unpacked")
+    (tmp_path / "unpacked" / "PyBNF-Private").rename(dest)
+    # as on the real machine: the engine was installed weeks before the new
+    # archive was downloaded, which is what the mtime guard reads
+    import os
+    import time
+    was = time.time() - 9 * 24 * 3600
+    for f in (dest / "VERSION", dest):
+        os.utime(f, (was, was))
+    new = _fake_archive(tmp_path, "pf/pre-pr 8b28edf4", "pybnf-pf-8b28edf4.tar.gz")
+    (home / "Downloads" / new.name).write_bytes(new.read_bytes())
+
+    out = _run(SCRIPT, home, dest=dest)
+
+    assert (dest / "VERSION").read_text().strip() == "pf/pre-pr 8b28edf4", (
+        out.stdout + out.stderr)
+    assert list(dest.parent.glob("PyBNF-pf.replaced-*")), "the old copy was destroyed"
+
+
+@posix_only
+def test_an_old_archive_left_in_downloads_cannot_downgrade_the_engine(tmp_path):
+    """The other direction, which matters more: a stale archive nobody
+    cleared out must never replace a current engine."""
+    import os
+    import time
+
+    home = _home(tmp_path)
+    dest = tmp_path / "PyBNF-pf"
+    current = _fake_archive(tmp_path, "pf/pre-pr 8b28edf4", "cur.tar.gz")
+    import tarfile
+    with tarfile.open(current) as t:
+        t.extractall(tmp_path / "unpacked")
+    (tmp_path / "unpacked" / "PyBNF-Private").rename(dest)
+    stale = _fake_archive(tmp_path, "feature/particle-filter 3320d1f0",
+                          "pybnf-pf-3320d1f0.tar.gz")
+    landed = home / "Downloads" / stale.name
+    landed.write_bytes(stale.read_bytes())
+    was = time.time() - 9 * 24 * 3600            # downloaded before the install
+    os.utime(landed, (was, was))
+
+    out = _run(SCRIPT, home, dest=dest)
+
+    assert (dest / "VERSION").read_text().strip() == "pf/pre-pr 8b28edf4", (
+        "an older archive downgraded the engine\n" + out.stdout + out.stderr)

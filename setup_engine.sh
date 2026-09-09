@@ -286,8 +286,43 @@ elif [ -f "$PYBNF/pybnf/pf.py" ] && [ -f "$PYBNF/setup.py" ]; then
     warn "answer. Whoever cut the archive should include one. Harmless for a"
     warn "single machine, awkward the moment two people compare forecasts."
   fi
-  warn "this copy cannot be updated with git pull. A newer engine means a"
-  warn "newer archive, unzipped over the same folder."
+  # An unpacked copy is NOT the end of the search. A newer archive saved
+  # since this copy was installed should win, because the whole handout
+  # route is "save the file, open the app". A PI's laptop kept an engine cut
+  # 2026-08-31 through a clean re-run of this script with the current
+  # archive sitting in Downloads, because this branch accepted what was
+  # already on disk and never looked (lab report, 2026-09-09); every fit
+  # then failed against a current console. The advice below used to be the
+  # whole remedy, and it asked the reader to do by hand what this can do.
+  #
+  # Two guards. The stamps must DIFFER, and the archive file must be NEWER
+  # than the installed copy, so an old archive left in Downloads can never
+  # downgrade a current engine. The previous copy is moved aside, never
+  # deleted: it is not this script's to destroy, and if the install fails
+  # it goes straight back.
+  _arc="$(find_engine_bundle 2>/dev/null)"
+  _newver=""
+  case "$_arc" in
+    *.tar.gz) _newver="$(tar -xzOf "$_arc" '*/VERSION' 2>/dev/null | head -1)" ;;
+  esac
+  if [ -n "$_newver" ] && [ "$_newver" != "$PFVER" ] \
+     && { [ ! -f "$PYBNF/VERSION" ] || [ "$_arc" -nt "$PYBNF/VERSION" ]; }; then
+    say "a different engine archive has arrived since this copy was installed"
+    ok "on disk:  ${PFVER:-(no stamp)}"
+    ok "archive:  $_newver"
+    _kept="$PYBNF.replaced-$(date +%Y%m%d%H%M%S)"
+    if mv "$PYBNF" "$_kept" 2>/dev/null && install_engine_archive "$_arc"; then
+      PFVER="$_newver"
+      ok "the previous copy is at $_kept; delete it once you are happy"
+    else
+      [ -d "$_kept" ] && [ ! -d "$PYBNF" ] && mv "$_kept" "$PYBNF" 2>/dev/null
+      warn "could not install $_arc; the copy already on disk is unchanged"
+    fi
+  else
+    warn "this copy cannot be updated with git pull. A newer engine means a"
+    warn "newer archive saved where setup looks (Downloads is fine); it is"
+    warn "installed over this copy the next time this script runs."
+  fi
 else
   # --- the offline bundle, tried before anything that needs an account -----
   say "offline engine bundle"
