@@ -138,9 +138,29 @@ it. Install it from the link at the top, then close and reopen the window.
 
 ## Notes
 
-The engine you were sent is a **snapshot**, so it does not update itself.
-When the engine changes you will be sent a newer file, with the one extra
-instruction that goes with it.
+The engine you were sent is a **snapshot**, so it does not update itself
+from GitHub. When the engine changes you are sent a newer file: save it in
+Downloads and open FluBNF again. Setup takes the newest archive it can find,
+and since 2026-09-09 a newer one also replaces an engine that is already
+unpacked (the old copy is moved aside, never deleted). Before that it did
+not, and a laptop kept a three week old engine through a clean reinstall
+with the current file sitting in Downloads.
+
+The console itself does update, every time you open it, as long as the
+update can fast-forward. When it cannot, the launcher now says which of the
+two reasons it is instead of naming both. Offline means it will catch up on
+its own next time. Local edits to tracked files are set aside into
+`git stash` and the update goes through; `git stash list` in the FluBNF
+folder shows them and `git stash pop` puts them back. Local commits are left
+alone, and the launcher prints the command that would discard them rather
+than running it. To make a machine match the lab whatever is on it, from
+Terminal in the FluBNF folder:
+
+    git fetch origin && git reset --hard origin/main
+
+That throws away local edits and local commits in the clone. It touches
+nothing outside it: the virtual environment, the engine, `app/state` and the
+data clone are all untracked and stay exactly as they are.
 
 Each snapshot carries a `VERSION` file naming the exact commit it came from,
 and FluBNF prints that on every setup. If two people's forecasts ever disagree,

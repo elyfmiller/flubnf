@@ -2,10 +2,71 @@
 # Double-click me. Self-updates, sets up on first run, launches the console.
 cd "$(dirname "$0")"
 
-# stay current (lab-share mode): fast-forward only, never clobbers local edits
-if [ -d .git ]; then
-  git pull --ff-only -q 2>/dev/null && echo "· up to date with origin" \
-    || echo "· offline or local changes, running as-is"
+# Stay current (lab-share mode). Fast-forward only, so a real edit is never
+# silently overwritten.
+#
+# What this used to say was "offline or local changes, running as-is", which
+# names two causes with opposite remedies and tells the reader which of them
+# it is not. On a lab machine one of the two is almost always an accident: a
+# stray save, a line ending, a file left open in an editor. That machine then
+# runs a month old console against a current engine and nobody knows why. So:
+# say which cause it is, name the files, and repair the accidental one by
+# STASHING those edits (git stash list has them afterwards, nothing is
+# destroyed) and fast-forwarding over them.
+#
+# Local COMMITS are a different matter and are never touched here: a clone
+# with real work on it is not this script to reset. It prints the command
+# instead and runs what is on disk.
+#
+# FLUBNF_UPDATE=off skips the whole block. FLUBNF_UPDATE=force resets to
+# origin, discarding local edits AND local commits, for the case where the
+# only thing that matters is that this machine matches the lab.
+if [ -d .git ] && [ "${FLUBNF_UPDATE:-}" != "off" ]; then
+  BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+  UP="$(git rev-parse --abbrev-ref '@{u}' 2>/dev/null)"
+  [ -n "$UP" ] || UP="origin/${BRANCH:-main}"
+  RESET="git -C \"$PWD\" fetch origin && git -C \"$PWD\" reset --hard $UP"
+  if [ -z "$BRANCH" ] || [ "$BRANCH" = "HEAD" ]; then
+    echo "· not on a branch, running the copy on disk"
+  elif ! git fetch -q origin 2>/dev/null; then
+    echo "· offline (origin unreachable), running the copy on disk"
+  elif [ "${FLUBNF_UPDATE:-}" = "force" ]; then
+    if git reset --hard -q "$UP" 2>/dev/null; then
+      echo "· forced to $UP: local edits and commits discarded"
+    else
+      echo "· could not reset to $UP, running the copy on disk"
+    fi
+  elif FF="$(git merge --ff-only "$UP" 2>&1)"; then
+    echo "· up to date with origin"
+  else
+    AHEAD="$(git rev-list --count "$UP..HEAD" 2>/dev/null || echo 0)"
+    DIRTY="$(git status --porcelain --untracked-files=no 2>/dev/null)"
+    if [ "${AHEAD:-0}" != "0" ]; then
+      echo "· this clone has $AHEAD commit(s) origin does not, so it cannot"
+      echo "  fast-forward. Nothing here will discard them. Running as-is. To"
+      echo "  take origin's copy and throw this clone's work away:"
+      echo "      $RESET"
+    elif [ -n "$DIRTY" ]; then
+      echo "· local edits are blocking the update:"
+      printf '%s\n' "$DIRTY" | sed 's/^/    /'
+      if git stash push -q -m "FluBNF update $(date '+%Y-%m-%d %H:%M')" 2>/dev/null \
+         && git merge --ff-only -q "$UP" 2>/dev/null; then
+        echo "· updated anyway; those edits were set aside, not lost. In this"
+        echo "  folder, git stash list shows them and git stash pop puts them"
+        echo "  back."
+      else
+        git stash pop -q 2>/dev/null
+        echo "· could not update around them, running the copy on disk. To"
+        echo "  take origin's copy and discard the edits above:"
+        echo "      $RESET"
+      fi
+    else
+      echo "· could not update, running the copy on disk:"
+      printf '%s\n' "$FF" | sed 's/^/    /' | head -6
+      echo "  To take origin's copy whatever is in the way:"
+      echo "      $RESET"
+    fi
+  fi
 fi
 
 # Dependency refresh policy (regression fix, 2026-08-22): the package is

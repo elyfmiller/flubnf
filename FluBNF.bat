@@ -28,16 +28,70 @@ if not defined CONDAPY if exist "%USERPROFILE%\miniconda3\python.exe" set "CONDA
 if not defined CONDAPY if exist "%LOCALAPPDATA%\anaconda3\python.exe" set "CONDAPY=%LOCALAPPDATA%\anaconda3\python.exe"
 if not defined CONDAPY if exist "C:\ProgramData\anaconda3\python.exe" set "CONDAPY=C:\ProgramData\anaconda3\python.exe"
 
-rem stay current (lab-share mode): fast-forward only, never clobbers local edits
+rem Stay current (lab-share mode). Fast-forward only, so a real edit is never
+rem silently overwritten. This is the Windows twin of the block in
+rem FluBNF.command, and the reasoning is written out there: "offline or local
+rem changes" named two causes with opposite remedies and said which one it was
+rem not, so a machine could sit on a month old console with nothing on screen
+rem to say so. A stray edit is stashed, never destroyed; a local commit is
+rem left alone and the recovery command is printed.
+rem   set FLUBNF_UPDATE=off     skip this entirely
+rem   set FLUBNF_UPDATE=force   take origin's copy whatever is here
 if not exist ".git" goto :deps
 where git >nul 2>&1
 if errorlevel 1 goto :deps
-git pull --ff-only -q >nul 2>&1
-if errorlevel 1 (
-  echo   offline or local changes - running as-is
-) else (
-  echo   up to date with origin
+if /I "%FLUBNF_UPDATE%"=="off" goto :deps
+set "BRANCH="
+for /f "delims=" %%b in ('git rev-parse --abbrev-ref HEAD 2^>nul') do set "BRANCH=%%b"
+if not defined BRANCH goto :deps
+if "%BRANCH%"=="HEAD" (
+  echo   not on a branch - running the copy on disk
+  goto :deps
 )
+git fetch -q origin >nul 2>&1
+if errorlevel 1 (
+  echo   offline ^(origin unreachable^) - running the copy on disk
+  goto :deps
+)
+if /I "%FLUBNF_UPDATE%"=="force" (
+  git reset --hard -q origin/%BRANCH% >nul 2>&1
+  if errorlevel 1 (
+    echo   could not reset to origin/%BRANCH% - running the copy on disk
+  ) else (
+    echo   forced to origin/%BRANCH% - local edits and commits discarded
+  )
+  goto :deps
+)
+git merge --ff-only -q origin/%BRANCH% >nul 2>&1
+if not errorlevel 1 (
+  echo   up to date with origin
+  goto :deps
+)
+set "AHEAD=0"
+for /f "delims=" %%n in ('git rev-list --count origin/%BRANCH%..HEAD 2^>nul') do set "AHEAD=%%n"
+if not "%AHEAD%"=="0" (
+  echo   this clone has %AHEAD% commit^(s^) origin does not, so it cannot
+  echo   fast-forward. Nothing here will discard them. Running as-is. To take
+  echo   origin's copy and throw this clone's work away:
+  echo       git fetch origin ^&^& git reset --hard origin/%BRANCH%
+  goto :deps
+)
+echo   local edits are blocking the update:
+git status --porcelain --untracked-files=no
+git stash push -q -m "FluBNF update" >nul 2>&1
+if errorlevel 1 goto :updatestuck
+git merge --ff-only -q origin/%BRANCH% >nul 2>&1
+if errorlevel 1 (
+  git stash pop -q >nul 2>&1
+  goto :updatestuck
+)
+echo   updated anyway - those edits were set aside, not lost. In this folder,
+echo   git stash list shows them and git stash pop puts them back.
+goto :deps
+:updatestuck
+echo   could not update around them - running the copy on disk. To take
+echo   origin's copy and discard the edits above:
+echo       git fetch origin ^&^& git reset --hard origin/%BRANCH%
 
 :deps
 if exist ".venv\Scripts\flubnf.exe" goto :sync
