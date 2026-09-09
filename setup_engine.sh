@@ -178,6 +178,23 @@ find_engine_bundle() {
   return 0
 }
 
+archive_version_stamp() {
+  # The VERSION line inside an engine archive, without unpacking it.
+  #
+  # The member is LOOKED UP and then named literally, because
+  # `tar -xzOf a.tar.gz '*/VERSION'` is a bsdtar habit that does not travel.
+  # GNU tar, which is every Linux box and this project's CI, does not glob
+  # member names on extraction unless it is handed --wildcards, and bsdtar
+  # does not accept that flag, so there is no one spelling of the glob form
+  # that works on both. It matched on macOS and found nothing on Linux, so
+  # the stale-copy replacement below simply never fired there and CI failed
+  # on the test written for it (2026-09-09). A literal member name is read
+  # the same way by both.
+  _av_member="$(tar -tzf "$1" 2>/dev/null | grep -m1 -E '(^|/)VERSION$')" || return 0
+  [ -n "$_av_member" ] || return 0
+  tar -xzOf "$1" "$_av_member" 2>/dev/null | head -1
+}
+
 install_engine_archive() {
   # Unpack a pybnf-pf tarball into $PYBNF, from wherever the student saved
   # it. THE STUDENT NEVER PLACES THIS BY HAND: the earlier design had the
@@ -303,7 +320,7 @@ elif [ -f "$PYBNF/pybnf/pf.py" ] && [ -f "$PYBNF/setup.py" ]; then
   _arc="$(find_engine_bundle 2>/dev/null)"
   _newver=""
   case "$_arc" in
-    *.tar.gz) _newver="$(tar -xzOf "$_arc" '*/VERSION' 2>/dev/null | head -1)" ;;
+    *.tar.gz) _newver="$(archive_version_stamp "$_arc")" ;;
   esac
   if [ -n "$_newver" ] && [ "$_newver" != "$PFVER" ] \
      && { [ ! -f "$PYBNF/VERSION" ] || [ "$_arc" -nt "$PYBNF/VERSION" ]; }; then

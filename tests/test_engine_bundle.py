@@ -735,3 +735,62 @@ def test_an_old_archive_left_in_downloads_cannot_downgrade_the_engine(tmp_path):
 
     assert (dest / "VERSION").read_text().strip() == "pf/pre-pr 8b28edf4", (
         "an older archive downgraded the engine\n" + out.stdout + out.stderr)
+
+
+# GNU tar's one behavioural difference from the bsdtar every Mac ships is the
+# whole reason this shim exists: it does not glob member names on extraction
+# unless it is handed --wildcards, which bsdtar in turn rejects. So the stamp
+# read that decides whether a stale copy is replaced cannot be written as a
+# glob at all, and a suite that only ever runs bsdtar cannot see the
+# difference. CI could, and did (2026-09-09): the replacement fired on macOS
+# and silently never fired on Linux.
+_GNU_TAR = """#!/bin/sh
+for a in "$@"; do
+  case "$a" in
+    -*) ;;
+    *[*?]*)
+      echo "tar: $a: Not found in archive" >&2
+      echo "tar: Exiting with failure status due to previous errors" >&2
+      exit 2 ;;
+  esac
+done
+exec {real} "$@"
+"""
+
+
+@posix_only
+def test_a_stale_copy_is_replaced_under_gnu_tar_too(tmp_path):
+    """The same replacement as above, run against a tar that refuses globbed
+    member names. Reading the archive's stamp is the only step that touches a
+    member by name, so this is where the two tars part company."""
+    import os
+    import shutil
+    import tarfile
+    import time
+
+    real = shutil.which("tar")
+    assert real, "no tar on PATH"
+    shim = tmp_path / "gnu-tar-bin"
+    shim.mkdir()
+    (shim / "tar").write_text(_GNU_TAR.format(real=real))
+    (shim / "tar").chmod(0o755)
+
+    home = _home(tmp_path)
+    dest = tmp_path / "PyBNF-pf"
+    old = _fake_archive(tmp_path, "feature/particle-filter 3320d1f0",
+                        "pybnf-pf-3320d1f0.tar.gz")
+    with tarfile.open(old) as t:
+        t.extractall(tmp_path / "unpacked")
+    (tmp_path / "unpacked" / "PyBNF-Private").rename(dest)
+    was = time.time() - 9 * 24 * 3600
+    for f in (dest / "VERSION", dest):
+        os.utime(f, (was, was))
+    new = _fake_archive(tmp_path, "pf/pre-pr 8b28edf4", "pybnf-pf-8b28edf4.tar.gz")
+    (home / "Downloads" / new.name).write_bytes(new.read_bytes())
+
+    out = _run(SCRIPT, home, dest=dest,
+               PATH=f"{shim}:{os.environ.get('PATH', '')}")
+
+    assert (dest / "VERSION").read_text().strip() == "pf/pre-pr 8b28edf4", (
+        "the stale engine survived a tar that does not glob member names\n"
+        + out.stdout + out.stderr)
