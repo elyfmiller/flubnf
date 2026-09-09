@@ -136,21 +136,45 @@ find_engine_bundle() {
   # shellcheck disable=SC2046
   set -- $(engine_bundle_dirs)
   IFS=$_oifs
+  # Both artifact shapes, one search. The lab hands out either a git bundle
+  # or the small pybnf-pf-<sha>.tar.gz that scripts/cut_engine_archive.sh
+  # cuts, and a student should not have to know which one they were given,
+  # or where it belongs: whatever landed in Downloads is the engine. The
+  # extract branch below tells them apart by suffix.
+  #
+  # THE NEWEST WINS, not whatever the glob happens to sort first. The sha in
+  # the name is hex, so alphabetical order chooses between two archives at
+  # random, and a student handed a new one usually still has the old one in
+  # Downloads. Measured on a PI's laptop (lab report, 2026-09-09): with
+  # pybnf-pf-3320d1f0.tar.gz from 2026-08-31 beside pybnf-pf-8b28edf4.tar.gz
+  # from 2026-09-09, "3" sorts before "8", the three week old engine was
+  # installed under a current console, and every fit failed because the
+  # console names a model FUNCTION as the fit target while that engine knew
+  # only observables. Nothing said the engine was stale; it was a real
+  # engine, just the wrong one.
+  _best=""
+  _seen=0
   for d in "$@"; do
     [ -d "$d" ] || continue
-    # Both artifact shapes, one search. The lab hands out either a git bundle
-    # or the small pybnf-pf-<sha>.tar.gz that scripts/cut_engine_archive.sh
-    # cuts, and a student should not have to know which one they were given,
-    # or where it belongs: whatever landed in Downloads is the engine. The
-    # extract branch below tells them apart by suffix.
     for f in "$d"/pybnf*.bundle "$d"/PyBNF*.bundle \
              "$d"/pybnf*.tar.gz "$d"/PyBNF*.tar.gz; do
       # -f, not -e. On macOS ".bundle" is also a DIRECTORY type (plug-ins and
       # frameworks are shipped that way) and ~/Downloads is exactly where one
       # turns up. A directory named *.bundle is not a git bundle.
-      [ -f "$f" ] && { printf '%s\n' "$f"; return 0; }
+      [ -f "$f" ] || continue
+      _seen=$((_seen + 1))
+      if [ -z "$_best" ] || [ "$f" -nt "$_best" ]; then
+        _best="$f"
+      fi
     done
   done
+  [ -n "$_best" ] || return 0
+  if [ "$_seen" -gt 1 ]; then
+    warn "$_seen engine archives found in the usual places; using the newest:" >&2
+    warn "  $_best" >&2
+    warn "Delete the older ones so there is no doubt what you installed." >&2
+  fi
+  printf '%s\n' "$_best"
   return 0
 }
 

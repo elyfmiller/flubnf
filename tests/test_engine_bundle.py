@@ -631,3 +631,33 @@ def test_a_present_engine_file_always_earns_a_retry_despite_the_stamp():
     assert "./setup_engine.sh\n" not in src.replace(
         "in Terminal", "")  # no lingering "run ./setup_engine.sh in Terminal"
     assert "setup_engine.sh in Terminal" not in src
+
+
+@posix_only
+def test_the_newest_archive_wins_when_an_old_one_is_still_in_downloads(tmp_path):
+    """A student handed a new engine usually still has the old one sitting in
+    Downloads, and the sha in the name is hex, so the glob's alphabetical
+    order chose between them at random. On a PI's laptop (2026-09-09) that
+    installed pybnf-pf-3320d1f0.tar.gz from 2026-08-31 over a current
+    console, because "3" sorts before "8", and every fit failed against an
+    engine three weeks stale. Newest by modification time wins, and a
+    machine holding more than one says so on stderr, never on stdout, which
+    the launchers read as a filename."""
+    import os
+    import time
+
+    home = _home(tmp_path)
+    old = home / "Downloads" / "pybnf-pf-3320d1f0.tar.gz"
+    new = home / "Downloads" / "pybnf-pf-8b28edf4.tar.gz"
+    for f in (old, new):
+        f.write_bytes(b"not a real archive, the search never opens it")
+    stale = time.time() - 9 * 24 * 3600
+    os.utime(old, (stale, stale))          # the alphabetically first is older
+
+    out = _run(SCRIPT, home, args=("--print-bundle",))
+
+    assert out.stdout.splitlines() == [str(new)], (
+        "the newest archive must win; the glob's alphabetical order picked "
+        "the stale one and shipped a three week old engine")
+    assert "using the newest" in out.stderr
+    assert "3320d1f0" not in out.stdout
