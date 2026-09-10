@@ -45,3 +45,13 @@ def _engine_root(tmp_path_factory):
 @pytest.fixture(autouse=True)
 def _engine_in_tmp(_engine_root, monkeypatch):
     monkeypatch.setattr(pf, "PYBNF_PF", _engine_root)
+
+
+@pytest.fixture(autouse=True)
+def _sealed_records_in_tmp(tmp_path, monkeypatch):
+    """The production record (app/state/retro_reseal) is a real tree on the
+    lab machine, preferred by _season_root whenever it has the most weeks;
+    no test may serve it by accident. RETRO_SEAL is left as it is because
+    every test that needs a seal already points it at its own tree."""
+    from app.ui import server as srv
+    monkeypatch.setattr(srv, "RETRO_RESEAL", tmp_path / "retro_reseal")

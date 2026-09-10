@@ -94,7 +94,7 @@ and move on; scoring waits for settled truth.</p>
        so this line can never disagree with the .rstat headline above it
        (field-found: a card that read "10/32" up top and a stale "1/32"
        here, because only the headline was ever repainted) #}
-    <span class="hint"><span class="rcount">{{ s.done }}/{{ s.total }} weeks</span>{% if s.seal %} · sealed v1.0.0 engine record (retired raw-space kernel); the production engine scores 0.723 pooled, see Methods{% endif %}
+    <span class="hint"><span class="rcount">{{ s.done }}/{{ s.total }} weeks</span>{% if s.seal %} · {{ s.seal_label }}{% endif %}
      {# the convention travels with the score. Two quantities are called
         relWIS and they are not comparable, so an unlabelled one on an
         index card is how the wrong comparison gets made. Every figure on

@@ -1350,7 +1350,7 @@ def _storage_protected(p: Path) -> bool:
         rp = Path(p).resolve()
     except OSError:
         return True                      # unresolvable: refuse, never guess
-    for root in (RETRO_SEAL, HUB):
+    for root in [base for base, _ in _sealed_roots()] + [HUB]:
         try:
             r = Path(root).resolve()
             if rp == r or rp.is_relative_to(r):
@@ -1441,7 +1441,8 @@ def _storage_inventory() -> dict:
         inv["report_archives"].append({
             "id": d, "size_h": retro.human_bytes(size),
             "busy": console_busy})
-    for label, p in (("Sealed validation record", RETRO_SEAL),
+    for label, p in (("Production engine record", RETRO_RESEAL),
+                     ("Sealed validation record", RETRO_SEAL),
                      ("FluSight hub clone", HUB)):
         if Path(p).exists():
             inv["protected"].append({
@@ -3895,13 +3896,39 @@ def generate_ensemble(request: Request):
 
 
 RETRO_ROOT = Path(__file__).resolve().parents[1] / "state" / "retro"
+# The two sealed full-grid records, read only. The reseal is the production
+# engine's record (the figures on Home and Methods); the seal is v1.0.0's,
+# kept as history. Both are served when present, the reseal first.
+RETRO_RESEAL = Path(__file__).resolve().parents[1] / "state" / "retro_reseal"
 RETRO_SEAL = Path(__file__).resolve().parents[1] / "state" / "retro_seal"
 
 
+def _sealed_roots() -> tuple:
+    """((root, label), ...) in order of preference. Read at call time so a
+    test can point either root elsewhere."""
+    return ((RETRO_RESEAL, "the production engine's record (reseal of "
+                           "2026-09-07), the figures on Home and Methods"),
+            (RETRO_SEAL, "sealed v1.0.0 engine record (retired raw-space "
+                         "kernel); the production engine scores 0.723 "
+                         "pooled, see Methods"))
+
+
+def _sealed_label(root: Path) -> str:
+    """The label of the sealed record `root` lies in, or an empty string."""
+    for base, label in _sealed_roots():
+        try:
+            if Path(root).resolve().is_relative_to(Path(base).resolve()):
+                return label
+        except OSError:
+            continue
+    return ""
+
+
 def _season_root(season: str, archive: str = "") -> tuple:
-    """(root, is_seal): a season may live under the app's retro root or the
-    full-grid seal root; show whichever has more completed weeks so flagship
-    validation runs are never invisible in the app.
+    """(root, is_seal): a season may live under the app's retro root or one
+    of the sealed full-grid records; show whichever has the most completed
+    weeks so a flagship validation run is never invisible in the app. On a
+    tie the app's own tree wins, then the production record, then the seal.
 
     With an archive identifier the answer is exactly one directory -- the
     archived run's own tree -- so every page, the playback API, and the
@@ -3909,10 +3936,13 @@ def _season_root(season: str, archive: str = "") -> tuple:
     if archive:
         from app.core import retro
         return retro.archive_dir(RETRO_ROOT, season, archive), False
-    app_root, seal_root = RETRO_ROOT / season, RETRO_SEAL / season
-    if _weeks_done(seal_root) > _weeks_done(app_root):
-        return seal_root, True
-    return app_root, False
+    best, is_seal = RETRO_ROOT / season, False
+    n = _weeks_done(best)
+    for base, _label in _sealed_roots():
+        m = _weeks_done(base / season)
+        if m > n:
+            best, is_seal, n = base / season, True, m
+    return best, is_seal
 _retro_status: dict = {}
 _retro_stop: set = set()
 _retro_claim_at: dict = {}   # season -> when its in-memory claim was made
@@ -4435,7 +4465,9 @@ def retro_index(request: Request):
             resume_fields = _retro.resume_form_fields(
                 _retro.read_meta(_live_root(s)))
         seasons.append({"name": s, "total": total, "done": done,
-                        "seal": is_seal, "rel": rel,
+                        "seal": is_seal,
+                        "seal_label": _sealed_label(root) if is_seal else "",
+                        "rel": rel,
                         "resume_fields": resume_fields,
                         "settings": prog["settings"],
                         "archives": _archive_entries(s),
@@ -4843,12 +4875,14 @@ def _relwis_figures(root: Path, convention: str):
 
 
 def _is_sealed_root(root: Path) -> bool:
-    """Whether root lies under the sealed validation record, which is read
-    only: its scores are the record, never stale and never rescored, even
+    """Whether root lies under one of the sealed records, which are read
+    only: their scores are the record, never stale and never rescored, even
     after the hub's truth moves on (the truth stamp that invalidates every
-    other root's caches does not apply to it)."""
+    other root's caches does not apply to them)."""
     try:
-        return RETRO_SEAL.resolve() in Path(root).resolve().parents
+        parents = Path(root).resolve().parents
+        return any(Path(base).resolve() in parents
+                   for base, _ in _sealed_roots())
     except OSError:
         return False
 
