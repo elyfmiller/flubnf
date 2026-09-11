@@ -29,6 +29,10 @@ def _fork(root: Path, with_pf: bool = True) -> Path:
     (root / "pybnf" / "__init__.py").write_text("")
     if with_pf:
         (root / "pybnf" / "pf.py").write_text("# stub\n")
+        # the key lists the contract check reads
+        (root / "pybnf" / "parse.py").write_text(
+            "numkeys_int = [%s]\n" % ", ".join(
+                "'%s'" % k for k in pf.CONF_KEYS_REQUIRED))
     return root
 
 

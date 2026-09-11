@@ -138,12 +138,17 @@ def _check_pf_engine() -> "CheckResult":
     """
     from app.core.engines import pf as _pf
     from flubnf.settings import PYBNF
-    if _pf.engine_available():
-        return CheckResult("PyBNF fork (fit_type=pf)", Status.OK, str(PYBNF))
-    return CheckResult("PyBNF fork (fit_type=pf)", Status.FAIL,
-                       _pf.engine_missing_message(),
-                       "Run ./setup_engine.sh (or set FLUBNF_PYBNF), then "
-                       "re-run doctor.")
+    if not _pf.engine_available():
+        return CheckResult("PyBNF fork (fit_type=pf)", Status.FAIL,
+                           _pf.engine_missing_message(),
+                           "Run ./setup_engine.sh (or set FLUBNF_PYBNF), then "
+                           "re-run doctor.")
+    if not _pf.engine_current():
+        return CheckResult("PyBNF fork (fit_type=pf)", Status.FAIL,
+                           _pf.engine_stale_message(),
+                           "Save the current engine archive in Downloads and "
+                           "run ./setup_engine.sh, then re-run doctor.")
+    return CheckResult("PyBNF fork (fit_type=pf)", Status.OK, str(PYBNF))
 
 
 def _check_imports() -> list[CheckResult]:

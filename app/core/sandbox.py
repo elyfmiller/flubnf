@@ -40,8 +40,8 @@ REQUIRED = ("model.bngl", "data.exp", "priors.conf")
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 #: The conf keys the sandbox itself writes; a priors.conf line naming one
 #: of them overrides the form's value instead of duplicating the key.
-ENGINE_KEYS = ("objfunc", "pf_observable_mode", "pf_cumulative_observable",
-               "pf_forecast_weeks", "pf_jitter", "pf_resample_threshold",
+ENGINE_KEYS = ("objfunc", "pf_cumulative_observable",
+               "pf_forecast_intervals", "pf_jitter", "pf_resample_threshold",
                "pf_binom_neff_cap", "initialization")
 DRY_RUN_PARTICLES = 200
 
@@ -169,7 +169,6 @@ SKELETON_PRIORS = """\
 uniform_var = k__FREE 0.05 2.0
 loguniform_var = scale__FREE 0.05 1.0
 loguniform_var = r__FREE 0.1 40.0
-pf_observable_mode = integrated
 pf_cumulative_observable = Tobs
 """
 
@@ -282,7 +281,7 @@ def split_priors(priors_text: str) -> tuple:
 
 
 def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
-            jitter: float = 0.15, mode: str = "integrated",
+            jitter: float = 0.15,
             cumulative: str = "", forecast_weeks: int = 4, seed: int = 0,
             runs_root: Path | None = None) -> Path:
     """A workroot with one prepared cell, ready for pf_engine.execute.
@@ -298,7 +297,7 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
     priors, keys = split_priors(files["priors.conf"])
     particles = max(50, min(int(particles), 100_000))
     forecast_weeks = max(0, min(int(forecast_weeks), 12))
-    mode = keys.pop("pf_observable_mode", mode) or "integrated"
+    keys.pop("pf_observable_mode", None)      # a retired key: ignored
     cumulative = keys.pop("pf_cumulative_observable", cumulative) or ""
     objfunc = keys.pop("objfunc", "neg_bin_dynamic")
     jitter = float(keys.pop("pf_jitter", jitter))
@@ -328,8 +327,7 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
             f"objfunc = {objfunc}",
             f"pf_particles = {particles}",
             f"pf_jitter = {jitter:g}",
-            f"pf_observable_mode = {mode}",
-            f"pf_forecast_weeks = {forecast_weeks}",
+            f"pf_forecast_intervals = {forecast_weeks}",
             "population_size = 1",
             "max_iterations = 1",
             f"initialization = {keys.pop('initialization', 'rand')}",
@@ -348,7 +346,7 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
               "sandbox": True}]
     (workroot / "cells.json").write_text(json.dumps(cells))
     meta = {"model": name, "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "particles": particles, "jitter": jitter, "mode": mode,
+            "particles": particles, "jitter": jitter,
             "cumulative": cumulative, "forecast_weeks": forecast_weeks,
             "seed": int(seed), "suffix": sfx, "obs_col": obs_col,
             "time": [row[0] for row in exp["rows"]], "observed": observed,

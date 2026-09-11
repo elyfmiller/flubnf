@@ -430,7 +430,6 @@ class RunSpec:
     #: the gap is disclosed in docs/RELEASE-1.0.md). Reproducing the seal
     #: needs 0.30 stated explicitly, with the sealed fork.
     jitter: float = 0.15
-    observable_mode: str = "integrated"
     extra: dict = field(default_factory=dict)
 
     def __post_init__(self):

@@ -73,9 +73,8 @@ admissions target conflates a stock with a flow.
 
 What is reported is a weekly COUNT, so the fit target is the INTEGRAL of the
 ascertained admission flux `rho*mult*gamma*I` across the reporting week, never
-a point sample of that flux. The shipped particle filter runs
-`pf_observable_mode = integrated` (the default in `app/core/runs.py`) and
-forms `mu = mult * (H_Cum[week end] - H_Cum[week start])`. The two are not
+a point sample of that flux. The shipped particle filter's one observation
+model forms `mu = mult * (H_Cum[week end] - H_Cum[week start])`. The two are not
 interchangeable: at local weekly log-growth `lam` the ratio of the instant to
 the integral is `lam/(1 - exp(-lam))`, which on 2024-25 state admissions is
 +46 percent at the median jurisdiction's fastest week and reverses sign in
