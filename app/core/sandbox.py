@@ -42,7 +42,8 @@ NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 #: of them overrides the form's value instead of duplicating the key.
 ENGINE_KEYS = ("objfunc", "pf_cumulative_observable",
                "pf_forecast_intervals", "pf_jitter", "pf_resample_threshold",
-               "pf_binom_neff_cap", "initialization")
+               "pf_binom_neff_cap", "initialization", "pf_bounds",
+               "pf_start_time")
 DRY_RUN_PARTICLES = 200
 
 
@@ -327,11 +328,15 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
             f"objfunc = {objfunc}",
             f"pf_particles = {particles}",
             f"pf_jitter = {jitter:g}",
+            # the production conventions, see app/core/engines/pf.py; a
+            # priors.conf line naming either key overrides it
+            f"pf_bounds = {keys.pop('pf_bounds', 'reflect')}",
+            f"pf_start_time = {keys.pop('pf_start_time', -1)}",
             f"pf_forecast_intervals = {forecast_weeks}",
             "population_size = 1",
             "max_iterations = 1",
             f"initialization = {keys.pop('initialization', 'rand')}",
-            f"seed = {int(seed)}"]
+            f"pf_seed = {int(seed)}"]
     if cumulative:
         conf.append(f"pf_cumulative_observable = {cumulative}")
     conf += [f"{k} = {v}" for k, v in keys.items()]
@@ -402,7 +407,7 @@ def results(workroot: Path) -> dict:
     out = {"meta": meta, "run_id": workroot.name, "params": [], "ess": [],
            "traj": None, "stderr": ""}
     cell = workroot / f"{meta['model']}_r0"
-    runs = cell / "out" / "Results" / "A_MCMC" / "Runs"
+    runs = cell / "out" / "Results" / "PF" / "Runs"
     pf = next(runs.glob("params_*.txt"), None) if runs.is_dir() else None
     if pf is not None:
         try:
@@ -416,7 +421,7 @@ def results(workroot: Path) -> dict:
             out["sample"] = int(arr.shape[0])
         except Exception as e:
             out["stderr"] += f"params unreadable: {e}\n"
-    ef = cell / "out" / "ess_0.txt"
+    ef = cell / "out" / "Results" / "PF" / "ess_0.txt"
     if ef.is_file():
         try:
             e = np.loadtxt(ef, ndmin=2, comments="#")

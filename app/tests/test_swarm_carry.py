@@ -87,7 +87,7 @@ def test_prepare_pins_independent_draws_and_keys_the_seed_on_the_as_of_date(
         assert "pf_cumulative_observable = Hobs\n" in conf
         assert "pf_state_file" not in conf and "pf_continue" not in conf
         want = derive_seed("Ohio", "2098-11-07", c["replicate"])
-        assert f"seed = {want}\n" in conf and c["seed"] == want
+        assert f"pf_seed = {want}\n" in conf and c["seed"] == want
         assert c["seed_date"] == "2098-11-07"
         assert c["state_file"] is None and c["continued_from"] is None
         assert c["save_state_to"] is None
@@ -100,7 +100,7 @@ def test_prepare_keys_the_seed_on_the_season_start_when_asked(monkeypatch,
                        tmp_path / "wr")
     for c in cells:
         want = derive_seed("Ohio", "2098-08-01", c["replicate"])
-        assert f"seed = {want}\n" in _conf(c) and c["seed"] == want
+        assert f"pf_seed = {want}\n" in _conf(c) and c["seed"] == want
         assert c["seed_date"] == "2098-08-01"
     # the same location seeds differently under the two anchors
     assert cells[0]["seed"] != derive_seed("Ohio", "2098-11-07", 0)
@@ -276,7 +276,7 @@ def test_prepare_can_fit_the_initial_infected_fraction(monkeypatch, tmp_path):
 
 def _traj_cell(w, key, loc, content, **more):
     d = w / key
-    runs = d / "out" / "Results" / "A_MCMC" / "Runs"
+    runs = d / "out" / "Results" / "PF" / "Runs"
     runs.mkdir(parents=True)
     (runs / "sim_traj_noise.txt").write_text(content)
     return {"key": key, "dir": str(d), "location": loc, "n_obs": 3,

@@ -123,7 +123,7 @@ def test_retro_week_budget_never_below_fixed_floor():
 def _fake_cell(tmp_path, n_obs, n_cols, k, last_observed=10.0):
     import numpy as np
     d = tmp_path / "cell"
-    runs = d / "out" / "Results" / "A_MCMC" / "Runs"
+    runs = d / "out" / "Results" / "PF" / "Runs"
     runs.mkdir(parents=True, exist_ok=True)
     # two particles; column j holds the value j, so labels are decodable
     tr = np.tile(np.arange(n_cols, dtype=float), (2, 1))

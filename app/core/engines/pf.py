@@ -246,7 +246,8 @@ def engine_available() -> bool:
 #: the network generation have all succeeded (a PI's laptop, 2026-09-09:
 #: a three week old engine under a current console). The engine's own
 #: key lists are the contract, read from its parser module.
-CONF_KEYS_REQUIRED = ("pf_particles", "pf_forecast_intervals", "pf_start_time")
+CONF_KEYS_REQUIRED = ("pf_particles", "pf_forecast_intervals", "pf_start_time",
+                      "pf_bounds", "pf_seed")
 PARSE_MODULE = "pybnf/parse.py"
 
 
@@ -726,6 +727,16 @@ def prepare(spec, workroot: Path) -> list:
             # output_dir grammar rules stop at whitespace, so a spaced
             # path here is a ParseException inside the engine venv.
             d_conf = conf_safe_path(d)
+            # Two engine conventions are pinned by name rather than left to
+            # the engine's defaults, because the sealed and production
+            # records were made under them: the kernel reflects a bounded
+            # parameter at its box (pf_bounds = reflect; the engine's
+            # default moves it on the logit scale, which keeps a flat prior
+            # flat and is the pre-registered comparison to run before it is
+            # adopted here), and the model's initial state sits one week
+            # before the first row, which this .exp writes at t = 0
+            # (pf_start_time = -1; the engine's default is the model's own
+            # t = 0 with a row at 0 taken as the starting value).
             (d / "pf.conf").write_text(f"""bng_command = {bng_conf}
 model = {d_conf}/m.bngl : {d_conf}/{sfx}.exp
 output_dir = {d_conf}/out
@@ -733,11 +744,13 @@ fit_type = pf
 objfunc = neg_bin_dynamic
 pf_particles = {spec.particles}
 pf_jitter = {spec.jitter}
+pf_bounds = reflect
+pf_start_time = -1
 pf_cumulative_observable = Hobs
 pf_forecast_intervals = {4 + k_total}
 population_size = 1
 max_iterations = 1
-seed = {seed}
+pf_seed = {seed}
 initialization = {initialization_for(spec)}
 {pf_key_lines(spec)}{priors_for(spec, two_strain)}"""
 + (f"loguniform_var = i0__FREE {fit_i0[0]:g} {fit_i0[1]:g}\n" if fit_i0 else "")
@@ -1429,7 +1442,7 @@ def collect(workroot: Path) -> dict:
         st = status.get(c["key"])
         if st is not None and st != "ok":
             continue              # a recorded failure has nothing to pool
-        runs = Path(c["dir"]) / "out" / "Results" / "A_MCMC" / "Runs"
+        runs = Path(c["dir"]) / "out" / "Results" / "PF" / "Runs"
         tr_files = sorted(runs.glob("*traj_noise*"))
         if not tr_files:
             continue

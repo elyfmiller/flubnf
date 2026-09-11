@@ -300,7 +300,7 @@ def _traj_cell(w: Path, key: str, loc: str, content) -> dict:
     """One cell directory shaped the way collect() reads it. `content` is
     the trajectory file's text, or None for no file at all."""
     d = w / key
-    runs = d / "out" / "Results" / "A_MCMC" / "Runs"
+    runs = d / "out" / "Results" / "PF" / "Runs"
     runs.mkdir(parents=True)
     if content is not None:
         (runs / "sim_traj_noise.txt").write_text(content)
