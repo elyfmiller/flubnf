@@ -135,8 +135,7 @@ def test_prepare_writes_the_engine_configuration_from_the_three_files(box):
     assert (cell / "m.net").is_file()                    # the netgen check
     conf = (cell / "pf.conf").read_text()
     for line in ("fit_type = pf", "pf_particles = 300", "pf_jitter = 0.2",
-                 "pf_observable_mode = integrated",
-                 "pf_cumulative_observable = Bobs", "pf_forecast_weeks = 3",
+                 "pf_cumulative_observable = Bobs", "pf_forecast_intervals = 3",
                  "seed = 11", "initialization = rand", "objfunc = neg_bin_dynamic",
                  "uniform_var = k__FREE 0.05 1.0"):
         assert line in conf, line

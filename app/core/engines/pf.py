@@ -240,6 +240,54 @@ def engine_available() -> bool:
     return (Path(PYBNF_PF) / PF_MODULE).is_file()
 
 
+#: The configuration keys this console writes that older engines do not
+#: know. The engine's parser refuses an unknown key, so an engine that
+#: lacks one of these fails every cell of a run, after Perl, BNG2.pl and
+#: the network generation have all succeeded (a PI's laptop, 2026-09-09:
+#: a three week old engine under a current console). The engine's own
+#: key lists are the contract, read from its parser module.
+CONF_KEYS_REQUIRED = ("pf_particles", "pf_forecast_intervals", "pf_start_time")
+PARSE_MODULE = "pybnf/parse.py"
+
+
+def engine_accepts(key: str) -> bool:
+    """Whether the fork's parser lists a configuration key."""
+    try:
+        text = (Path(PYBNF_PF) / PARSE_MODULE).read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return ("'%s'" % key) in text
+
+
+def engine_missing_keys() -> tuple:
+    """The keys this console writes that the fork does not accept."""
+    return tuple(k for k in CONF_KEYS_REQUIRED if not engine_accepts(k))
+
+
+def engine_current() -> bool:
+    """Whether the fork accepts every key this console writes."""
+    return not engine_missing_keys()
+
+
+def engine_stale_message() -> str:
+    """What to tell an operator whose engine predates the console: named
+    once at prepare, not 159 times at the end of the run."""
+    p = Path(PYBNF_PF)
+    missing = ", ".join(engine_missing_keys())
+    stamp = ""
+    try:
+        v = (p / "VERSION").read_text().strip().splitlines()[0]
+        stamp = f" Its version stamp is '{v}'."
+    except (OSError, IndexError):
+        pass
+    return (f"The PyBNF fork at {p} is older than this console: its parser "
+            f"does not accept {missing}, which every fit configuration the "
+            f"console writes carries, so every fit would fail.{stamp} Save "
+            "the current engine archive (pybnf-pf-<sha>.tar.gz) in "
+            "Downloads and open the app again, or run ./setup_engine.sh: "
+            "a newer archive replaces the older copy.")
+
+
 #: Prepare-stage failures, keyed by location tag (no _r suffix, so a key
 #: can never collide with a cell's). execute() folds the file into the
 #: merged pf_status.json and the retrospective run_week folds it into the
@@ -418,6 +466,8 @@ def prepare(spec, workroot: Path) -> list:
     # replay, the CLI and a research run are covered too.
     if not engine_available():
         raise RuntimeError(engine_missing_message())
+    if not engine_current():
+        raise RuntimeError(engine_stale_message())
 
     vintage = vintage_path(spec.forecast_date)
     variant = (spec.extra or {}).get("variant")
@@ -681,11 +731,10 @@ model = {d_conf}/m.bngl : {d_conf}/{sfx}.exp
 output_dir = {d_conf}/out
 fit_type = pf
 objfunc = neg_bin_dynamic
-num_particles = {spec.particles}
+pf_particles = {spec.particles}
 pf_jitter = {spec.jitter}
-pf_observable_mode = {spec.observable_mode}
 pf_cumulative_observable = Hobs
-pf_forecast_weeks = {4 + k_total}
+pf_forecast_intervals = {4 + k_total}
 population_size = 1
 max_iterations = 1
 seed = {seed}
