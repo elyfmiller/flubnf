@@ -41,8 +41,7 @@ def _engine_root(tmp_path_factory):
     (root / "pybnf" / "pf.py").write_text("# stub: presence is the test\n")
     # the key lists the contract check reads: every key the console writes
     (root / "pybnf" / "parse.py").write_text(
-        "numkeys_int = ['pf_particles', 'pf_forecast_intervals']\n"
-        "numkeys_float = ['pf_start_time']\n")
+        "numkeys_int = [%s]\n" % ", ".join("'%s'" % k for k in pf.CONF_KEYS_REQUIRED))
     return root
 
 

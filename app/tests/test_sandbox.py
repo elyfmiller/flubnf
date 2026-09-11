@@ -136,7 +136,8 @@ def test_prepare_writes_the_engine_configuration_from_the_three_files(box):
     conf = (cell / "pf.conf").read_text()
     for line in ("fit_type = pf", "pf_particles = 300", "pf_jitter = 0.2",
                  "pf_cumulative_observable = Bobs", "pf_forecast_intervals = 3",
-                 "seed = 11", "initialization = rand", "objfunc = neg_bin_dynamic",
+                 "pf_bounds = reflect", "pf_start_time = -1",
+                 "pf_seed = 11", "initialization = rand", "objfunc = neg_bin_dynamic",
                  "uniform_var = k__FREE 0.05 1.0"):
         assert line in conf, line
     assert conf.count("pf_cumulative_observable") == 1   # no duplicate key
@@ -165,14 +166,14 @@ def test_run_records_the_outcome_and_results_read_the_outputs(box, monkeypatch):
     cell = w / "kinetics_example_r0"
 
     def fake_execute(workroot, width=None, timeout=None):
-        runs = cell / "out" / "Results" / "A_MCMC" / "Runs"
+        runs = cell / "out" / "Results" / "PF" / "Runs"
         runs.mkdir(parents=True)
         (runs / "params_0.txt").write_text(
             "k__FREE\tscale__FREE\tr__FREE\n" + "\n".join(
                 f"{0.2 + 0.001 * i} 0.4 8.0" for i in range(100)) + "\n")
         tr = np.tile(np.arange(1.0, 17.0), (100, 1))       # 12 weeks + 4
         np.savetxt(runs / "traj_noise_kinB_weekly_chain_0.txt", tr)
-        (cell / "out" / "ess_0.txt").write_text(
+        (cell / "out" / "Results" / "PF" / "ess_0.txt").write_text(
             "# t\tess\tparticles\tdistinct\tdegenerate\n"
             "0\t80.0\t100\t100\t0\n1\t60.5\t100\t70\t0\n")
         return {"kinetics_example_r0": "ok"}
@@ -250,7 +251,7 @@ def test_sandbox_run_prepares_and_starts_in_the_background(box, monkeypatch):
         time.sleep(0.05)
     assert len(ran) == 1 and ran[0].parent == sb.RUNS
     conf = (ran[0] / "kinetics_example_r0" / "pf.conf").read_text()
-    assert "pf_particles = 120" in conf and "seed = 3" in conf
+    assert "pf_particles = 120" in conf and "pf_seed = 3" in conf
     assert srv._sandbox_status["running"] is None            # released
     r = client.post("/sandbox/run", data={"model": "nope"}, follow_redirects=False)
     assert r.status_code == 303 and len(ran) == 1            # refused, not started

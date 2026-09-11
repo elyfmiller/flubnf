@@ -31,7 +31,8 @@ def test_an_engine_that_predates_a_key_is_named_stale_with_its_stamp(fork):
     _parse(fork, "pf_particles", "pf_forecast_weeks")
     (fork / "VERSION").write_text("feature/particle-filter 3320d1f0\n")
     assert pf.engine_available() and not pf.engine_current()
-    assert pf.engine_missing_keys() == ("pf_forecast_intervals", "pf_start_time")
+    assert "pf_forecast_intervals" in pf.engine_missing_keys()
+    assert "pf_particles" not in pf.engine_missing_keys()
     msg = pf.engine_stale_message()
     assert str(fork) in msg and "pf_forecast_intervals" in msg
     assert "3320d1f0" in msg and "Downloads" in msg

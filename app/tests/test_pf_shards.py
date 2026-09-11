@@ -538,7 +538,7 @@ def test_the_message_names_which_term_actually_set_the_budget(engine, tmp_path,
 _DETERMINISTIC_FIT = (
     "        import os, pathlib\n"
     "        d = pathlib.Path(os.getcwd())\n"
-    "        runs = d / 'out' / 'Results' / 'A_MCMC' / 'Runs'\n"
+    "        runs = d / 'out' / 'Results' / 'PF' / 'Runs'\n"
     "        runs.mkdir(parents=True, exist_ok=True)\n"
     "        base = sum(ord(ch) for ch in d.name)\n"
     "        rows = [' '.join('%.6f' % (base + 10 * i + j) for j in range(8))\n"

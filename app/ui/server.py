@@ -1955,7 +1955,7 @@ def _back(request: Request, fallback: str) -> RedirectResponse:
 def _harvest_params(workroot: Path) -> dict:
     """Per-location posterior medians of the fitted PF parameters, pooled
     across replicates (every params_<rep>.txt under each cell's
-    out/Results/A_MCMC/Runs). Feeds the interactive model diagram.
+    out/Results/PF/Runs). Feeds the interactive model diagram.
     Non-fatal by design: an unreadable cell is skipped, and a location with
     no readable params files is simply absent from the result."""
     import json as _json
@@ -1968,7 +1968,7 @@ def _harvest_params(workroot: Path) -> dict:
     for c in cells:
         try:
             loc = c["location"]
-            runs = Path(c["dir"]) / "out" / "Results" / "A_MCMC" / "Runs"
+            runs = Path(c["dir"]) / "out" / "Results" / "PF" / "Runs"
             for pfile in sorted(runs.glob("params_*.txt")):
                 with open(pfile) as fh:
                     names = fh.readline().replace("#", " ").split()

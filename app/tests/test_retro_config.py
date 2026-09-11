@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 def _write_params_cell(root, loc, rep, names, rows):
     d = root / f"{loc}_r{rep}"
-    runs = d / "out" / "Results" / "A_MCMC" / "Runs"
+    runs = d / "out" / "Results" / "PF" / "Runs"
     runs.mkdir(parents=True)
     body = "\n".join(" ".join(f"{v:.6e}" for v in r) for r in rows)
     (runs / f"params_{rep}.txt").write_text("\t".join(names) + "\n" + body + "\n")
