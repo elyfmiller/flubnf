@@ -137,7 +137,7 @@ TWO TRAPS, BOTH PAID FOR
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from statistics import NormalDist
 from typing import Iterable, Mapping, Optional
@@ -414,7 +414,21 @@ def analogue_quantiles(anchor: float, ratios: np.ndarray,
     r = r[np.isfinite(r)]
     if r.size < MIN_DONORS:
         return None
-    q = {float(L): float(anchor * np.quantile(r, L)) for L in levels}
+    return _scale_ratio_quantiles(
+        anchor, {float(L): float(np.quantile(r, L)) for L in levels},
+        widen_log_sd)
+
+
+def _scale_ratio_quantiles(anchor: float, ratio_q: dict,
+                           widen_log_sd: Optional[float]) -> Optional[dict]:
+    """Shared tail: scale a ratio quantile function by the anchor, widen it,
+    and validate. `ratio_q` maps level -> the RATIO distribution's quantile.
+
+    Both the single-pool path (`analogue_quantiles`) and the spliced path
+    (`spliced_quantiles`) end here on purpose, so the two cannot disagree
+    about widening, the median check or monotonicity.
+    """
+    q = {float(L): float(anchor * v) for L, v in ratio_q.items()}
     if widen_log_sd is not None:
         s = float(widen_log_sd)
         if not math.isfinite(s) or s < 0:
@@ -425,12 +439,179 @@ def analogue_quantiles(anchor: float, ratios: np.ndarray,
     if not np.isfinite(q.get(0.5, np.nan)) or q[0.5] <= 0:
         return None
     # np.quantile is monotone in L, and anchor > 0, so the result is already
-    # sorted (the widening factor is itself increasing in L); assert rather
-    # than sort, because a violation means a real bug.
+    # sorted (the widening factor is itself increasing in L, and a convex
+    # combination of two monotone quantile functions is monotone); assert
+    # rather than sort, because a violation means a real bug.
     vals = [q[float(L)] for L in sorted(q)]
     if any(b < a - 1e-9 for a, b in zip(vals, vals[1:])):
         return None
     return q
+
+
+# ---------------------------------------------------------------------------
+# Auxiliary donor pools (the ILI+ splice)
+# ---------------------------------------------------------------------------
+# A second donor pool drawn from a DIFFERENT surveillance stream, combined with
+# the admissions pool by averaging the two RATIO quantile functions level by
+# level (vincentization). Averaging quantile functions rather than pooling the
+# donors is deliberate: concatenating two pools is a linear pool weighted by
+# donor COUNT, which hands the larger stream most of the say for a reason that
+# has nothing to do with how informative it is.
+#
+# DORMANT BY DEFAULT. `forecast(..., splice=None)` is byte-identical to the
+# historical single-pool path; nothing below runs unless a caller passes a
+# DonorSplice.
+
+
+@dataclass(frozen=True, eq=False)
+class DonorSplice:
+    """A second donor pool to vincentize into the admissions pool.
+
+    `bank` has the same (location, date) -> value shape as the admissions
+    bank and is read only by `donor_ratios`, which pools across locations,
+    so the auxiliary stream's location keys need not match the admissions
+    bank's. They only need to be self-consistent, because a location key is
+    used solely to find a week's own future value.
+
+    `weight` is the weight on the AUXILIARY pool, so 0.0 reproduces the
+    single-pool forecast and 0.5 is the equal-weight blend.
+
+    `shrink` rescales the auxiliary log-ratios by `r -> exp(shrink * log r)`
+    before the quantiles are taken, which puts a stream of different
+    volatility on the admissions pool's scale. Fit it with
+    `fit_log_ratio_shrink` on strictly prior seasons, never on the target.
+
+    `exclude_seasons` goes through `resolve_donor_exclusions` exactly as the
+    admissions pool's does, so an auxiliary pool cannot drop a season that
+    the registry has not accepted.
+    """
+    bank: Mapping[tuple, float]
+    weight: float = 0.5
+    shrink: Optional[float] = None
+    exclude_seasons: tuple = tuple(sorted(EXCLUDED_DONOR_SEASONS))
+    bandwidth: Optional[int] = None
+    #: Per-instance memo of auxiliary donor ratios, keyed by the arguments
+    #: that determine them. `donor_ratios` does not depend on the location
+    #: being forecast -- the pool is cross-location -- so without this the
+    #: auxiliary bank is rescanned once per location per horizon, which on a
+    #: 52-jurisdiction run is 208 identical scans of the whole bank. The
+    #: memo is scoped to one DonorSplice, so it is built and dropped with
+    #: the run and cannot leak between forecast dates.
+    _ratio_memo: dict = field(default_factory=dict, repr=False, compare=False)
+
+
+def in_season_log_ratios(bank: Mapping[tuple, float], horizon: int,
+                         seasons: Iterable[int], *,
+                         first_epiweek: int = 47,
+                         last_epiweek: int = 20) -> np.ndarray:
+    """Log growth ratios at `horizon`, restricted to the named seasons and to
+    the in-season window that wraps the new year (epiweek >= 47 or <= 20).
+
+    Used to compare two surveillance streams' volatility on the stretch of
+    calendar where both actually carry epidemic signal; the off-season weeks
+    are dominated by near-zero denominators in both streams.
+    """
+    seas = frozenset(int(x) for x in seasons)
+    out = []
+    for (loc, d), v0 in bank.items():
+        if season_of(d) not in seas:
+            continue
+        w = epiweek(d)
+        if not (w >= first_epiweek or w <= last_epiweek):
+            continue
+        v1 = bank.get((loc, d + timedelta(days=7 * horizon)))
+        if v1 is None or not (v1 > 0) or not (v0 > 0):
+            continue
+        out.append(math.log(v1 / v0))
+    return np.asarray(out, dtype=float)
+
+
+def fit_log_ratio_shrink(bank: Mapping[tuple, float],
+                         aux_bank: Mapping[tuple, float],
+                         target_season: int, *,
+                         horizons: Iterable[int] = (1, 2, 3, 4),
+                         exclude_seasons: Iterable[int] = EXCLUDED_DONOR_SEASONS
+                         ) -> Optional[float]:
+    """sd(admissions log-ratio) / sd(auxiliary log-ratio), on seasons STRICTLY
+    PRIOR to `target_season` that both banks carry.
+
+    This is a distribution-matching factor, not a regression slope. The
+    regression slope of one stream on the other is the right coefficient for
+    PREDICTING admissions from ILI+, but it is attenuated by the correlation
+    between them and would under-disperse a pool that is being used as a
+    donor distribution rather than as a predictor.
+
+    Returns None when no prior season is shared, or when either side has
+    fewer than MIN_DONORS ratios, or the auxiliary spread is not positive.
+    A None shrink means "do not rescale", which is the caller's decision to
+    make loudly rather than a silent 1.0.
+    """
+    drop = resolve_donor_exclusions(exclude_seasons)
+    shared = ({season_of(d) for _, d in bank}
+              & {season_of(d) for _, d in aux_bank})
+    prior = {s for s in shared if s < target_season and s not in drop}
+    if not prior:
+        return None
+    a = np.concatenate([in_season_log_ratios(bank, h, prior) for h in horizons])
+    b = np.concatenate([in_season_log_ratios(aux_bank, h, prior)
+                        for h in horizons])
+    if a.size < MIN_DONORS or b.size < MIN_DONORS:
+        return None
+    sb = float(np.std(b))
+    if not (math.isfinite(sb) and sb > 0):
+        return None
+    sa = float(np.std(a))
+    if not math.isfinite(sa):
+        return None
+    return sa / sb
+
+
+def spliced_quantiles(anchor: float, ratios: np.ndarray,
+                      aux_ratios: np.ndarray, levels: Iterable[float], *,
+                      weight: float = 0.5, shrink: Optional[float] = None,
+                      completeness: Optional[float] = None,
+                      widen_log_sd: Optional[float] = None) -> Optional[dict]:
+    """Vincentize two donor ratio pools, then scale the anchor by the result.
+
+    q_ratio(L) = (1 - weight) * Q_primary(L) + weight * Q_aux(L)
+
+    Both pools must independently clear MIN_DONORS. That is stricter than
+    requiring it of the blend, and deliberately so: a blend whose auxiliary
+    half rests on a handful of donors is not a blend, it is the primary pool
+    with noise added at a fixed weight.
+
+    Returns None on the same terms as `analogue_quantiles`, which callers
+    must read as "no forecast" rather than as zero.
+    """
+    if anchor is None or not np.isfinite(anchor) or anchor <= 0:
+        return None
+    w = float(weight)
+    if not math.isfinite(w) or not (0.0 <= w <= 1.0):
+        raise ValueError(f"splice weight must be in [0, 1], got {weight!r}")
+    if completeness is not None:
+        c = float(completeness)
+        if not math.isfinite(c) or c <= 0:
+            raise ValueError(f"completeness must be finite and > 0, got {c!r}")
+        anchor = anchor / c
+    r = np.asarray(ratios, dtype=float)
+    r = r[np.isfinite(r)]
+    a = np.asarray(aux_ratios, dtype=float)
+    a = a[np.isfinite(a)]
+    if r.size < MIN_DONORS or a.size < MIN_DONORS:
+        return None
+    if shrink is not None:
+        sh = float(shrink)
+        if not math.isfinite(sh) or sh <= 0:
+            raise ValueError(f"shrink must be finite and > 0, got {shrink!r}")
+        a = a[a > 0]
+        if a.size < MIN_DONORS:
+            return None
+        # exp(s * log r) rather than r ** s: the two agree to within an ulp,
+        # and this is the form the pre-registered harness measured.
+        a = np.exp(sh * np.log(a))
+    rq = {float(L): float((1.0 - w) * np.quantile(r, L)
+                          + w * np.quantile(a, L)) for L in levels}
+    return _scale_ratio_quantiles(anchor, rq, widen_log_sd)
 
 
 def forecast(anchor: float, as_of: date, horizon: int,
@@ -438,8 +619,8 @@ def forecast(anchor: float, as_of: date, horizon: int,
              bandwidth: int = DEFAULT_BANDWIDTH, *,
              completeness: Optional[float] = None,
              widen_log_sd: Optional[float] = None,
-             exclude_seasons: Iterable[int] = EXCLUDED_DONOR_SEASONS
-             ) -> Optional[dict]:
+             exclude_seasons: Iterable[int] = EXCLUDED_DONOR_SEASONS,
+             splice: Optional["DonorSplice"] = None) -> Optional[dict]:
     """One analogue predictive distribution. `bank` maps (location, date)->value.
 
     `completeness` / `widen_log_sd` pass through to `analogue_quantiles`;
@@ -447,11 +628,28 @@ def forecast(anchor: float, as_of: date, horizon: int,
 
     `exclude_seasons` passes through to `donor_ratios` and defaults to the
     shipped pool, which excludes 2021-22.
+
+    `splice`, when given, adds a second donor pool from another surveillance
+    stream and vincentizes the two ratio quantile functions (see
+    `DonorSplice`). None, the default, does not touch the single-pool
+    arithmetic above and is byte-identical to the historical path.
     """
     r = donor_ratios(bank, epiweek(as_of), season_of(as_of), horizon,
                      bandwidth=bandwidth, exclude_seasons=exclude_seasons)
-    return analogue_quantiles(anchor, r, levels, completeness=completeness,
-                              widen_log_sd=widen_log_sd)
+    if splice is None:
+        return analogue_quantiles(anchor, r, levels, completeness=completeness,
+                                  widen_log_sd=widen_log_sd)
+    aux_bw = bandwidth if splice.bandwidth is None else splice.bandwidth
+    memo_key = (epiweek(as_of), season_of(as_of), horizon, aux_bw)
+    aux = splice._ratio_memo.get(memo_key)
+    if aux is None:
+        aux = donor_ratios(splice.bank, memo_key[0], memo_key[1], horizon,
+                           bandwidth=aux_bw,
+                           exclude_seasons=splice.exclude_seasons)
+        splice._ratio_memo[memo_key] = aux
+    return spliced_quantiles(anchor, r, aux, levels, weight=splice.weight,
+                             shrink=splice.shrink, completeness=completeness,
+                             widen_log_sd=widen_log_sd)
 
 
 def build_bank(truth_rows: Iterable) -> dict:

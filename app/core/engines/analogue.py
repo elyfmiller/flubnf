@@ -60,6 +60,123 @@ def completeness_args(spec, fips: str, anchor_date, newest_date) -> tuple:
     return float(c), (float(sig) if sig else None)
 
 
+_AUX_BANK_CACHE: dict = {}
+
+
+def load_aux_bank(path: str) -> dict:
+    """Read an auxiliary donor bank: JSON of "location|YYYY-MM-DD" -> value.
+
+    Keys are (location, datetime.date), the shape `flubnf.analogue.donor_ratios`
+    reads. The location keys need not match the admissions bank's, because the
+    pool is cross-location by construction and a location key is used only to
+    find a week's own future value.
+
+    The file is a local data artefact, not repository content (`app/state/`
+    and `data/` are gitignored), so a relative path resolves against the repo
+    root and a missing file raises rather than yielding an empty pool: an
+    empty auxiliary bank would silently halve the splice into the single-pool
+    forecast while still being labelled spliced.
+    """
+    import json
+    from datetime import date as _date
+
+    fp = Path(path)
+    if not fp.is_absolute():
+        fp = REPO / fp
+    key = (str(fp), fp.stat().st_mtime_ns if fp.exists() else None)
+    hit = _AUX_BANK_CACHE.get(key)
+    if hit is not None:
+        return hit
+    if not fp.exists():
+        raise FileNotFoundError(
+            f"auxiliary donor bank not found: {fp}. spec.extra['iliplus']"
+            f"['bank'] must name a readable JSON file; it is a local data "
+            f"artefact and is not carried in this repository.")
+    raw = json.load(open(fp))
+    bank = {}
+    for k, v in raw.items():
+        loc, _, ds = k.partition("|")
+        if not ds:
+            raise ValueError(
+                f"auxiliary bank key {k!r} is not 'location|YYYY-MM-DD'")
+        y, m, d = (int(x) for x in ds.split("-"))
+        val = float(v)
+        if val > 0:
+            bank[(loc, _date(y, m, d))] = val
+    if not bank:
+        raise ValueError(f"auxiliary donor bank {fp} holds no positive values")
+    _AUX_BANK_CACHE[key] = bank
+    return bank
+
+
+def splice_args(spec, bank):
+    """`flubnf.analogue.DonorSplice` from `spec.extra['iliplus']`, or None.
+
+    This path is DORMANT: no shipped configuration sets the key, and a spec
+    without it leaves the analogue byte-identical to the single-pool path
+    (verified over all 85 archived as-of weeks, 405,904 quantile values, zero
+    differences).
+
+    Config keys, all optional but `bank`:
+      bank            path to the auxiliary bank JSON (required)
+      weight          weight on the AUXILIARY pool, default 0.5
+      shrink          "auto" (default) fits sd(admissions)/sd(aux) on strictly
+                      prior shared seasons; a number uses that value; None
+                      applies no rescale
+      exclude_seasons seasons dropped from the AUXILIARY pool, default the
+                      registry's shipped set; validated by
+                      `resolve_donor_exclusions` exactly as the admissions
+                      pool's is, so an auxiliary pool cannot quietly drop a
+                      season the registry has not accepted
+      bandwidth       auxiliary calendar bandwidth, default the admissions one
+
+    An unfittable "auto" shrink RAISES rather than falling back to the
+    single-pool path. A replay labelled spliced that was silently unspliced
+    for some weeks is the failure mode this is guarding against.
+    """
+    extra = getattr(spec, "extra", None) or {}
+    cfg = extra.get("iliplus")
+    if not cfg:
+        return None
+    if not isinstance(cfg, dict):
+        raise ValueError(
+            f"spec.extra['iliplus'] must be a dict, got {type(cfg).__name__}")
+    path = cfg.get("bank")
+    if not path:
+        raise ValueError("spec.extra['iliplus'] requires a 'bank' path")
+    aux = load_aux_bank(str(path))
+    excl = cfg.get("exclude_seasons")
+    excl = (tuple(sorted(AN.EXCLUDED_DONOR_SEASONS)) if excl is None
+            else tuple(sorted(int(x) for x in excl)))
+    AN.resolve_donor_exclusions(excl)          # loud, before anything is fit
+    shrink = cfg.get("shrink", "auto")
+    if isinstance(shrink, str):
+        if shrink != "auto":
+            raise ValueError(
+                f"spec.extra['iliplus']['shrink'] must be 'auto', a number or "
+                f"None, got {shrink!r}")
+        # spec.forecast_date is a date STRING on the retro path; season_of
+        # needs a date. The shrink is a property of the run's target season,
+        # not of any one location, so it uses the untrimmed forecast date:
+        # the per-location anchor trims move the window by a week or two and
+        # only ever cross the 1 August boundary in the off-season.
+        ts = AN.season_of(pd.Timestamp(spec.forecast_date).date())
+        shrink = AN.fit_log_ratio_shrink(bank, aux, ts, exclude_seasons=excl)
+        if shrink is None:
+            raise ValueError(
+                f"auxiliary shrink could not be fitted for target season "
+                f"{ts}: no shared prior season with enough ratios. Set an "
+                f"explicit 'shrink', or do not splice this season.")
+    return AN.DonorSplice(
+        bank=aux,
+        weight=float(cfg.get("weight", 0.5)),
+        shrink=(None if shrink is None else float(shrink)),
+        exclude_seasons=excl,
+        bandwidth=(None if cfg.get("bandwidth") is None
+                   else int(cfg["bandwidth"])),
+    )
+
+
 def run(spec) -> dict:
     """location -> {horizon(str): {level(float): value}} quantiles."""
     v = vintage_path(spec.forecast_date)
@@ -85,6 +202,10 @@ def run(spec) -> dict:
     # With both off the arithmetic is byte-identical to the historical path.
     k_user = int(getattr(spec, "weeks_to_drop", 0) or 0)
     drop_same = bool(getattr(spec, "drop_same_day", False))
+    # Dormant unless spec.extra["iliplus"] is set; None keeps AN.forecast on
+    # its historical single-pool arithmetic. Built once per run: it depends
+    # only on the spec and the vintage bank, not on the location.
+    splice = splice_args(spec, bank)
     for loc in spec.locations:
         fips = name2fips.get(loc)
         if fips is None:
@@ -110,7 +231,7 @@ def run(spec) -> dict:
             # -- the engine must not be able to disagree with the library about
             # which pool production uses.
             q = AN.forecast(anchor, window_ref, h + k, bank, QL,
-                            completeness=c, widen_log_sd=sig)
+                            completeness=c, widen_log_sd=sig, splice=splice)
             if q:
                 qs[str(h)] = {float(L): float(x) for L, x in q.items()}
         if qs:
