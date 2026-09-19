@@ -1,0 +1,435 @@
+"""The ILI+ splice: an optional second donor pool, vincentized in.
+
+The default path must remain byte-identical to the single-pool analogue,
+because that is what every published figure was measured on. These tests
+pin that identity, the algebra of the blend, the loud failures, and the
+gating of the engine helper. No vintage files and no hub are needed: the
+library tests run on synthetic banks, the helper tests on dummy specs and
+a bank written to tmp_path.
+"""
+import json
+import math
+import sys
+from datetime import date, timedelta
+from pathlib import Path
+from types import SimpleNamespace
+
+import numpy as np
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from flubnf import analogue as AN                      # noqa: E402
+from flubnf.quantiles import FLUSIGHT_QUANTILES as QL  # noqa: E402
+
+ASOF = date(2025, 12, 20)     # season 2025; every bank season below is prior
+ANCHOR = 123.0
+
+
+def _bank(phase: float = 0.0, amp: float = 30.0, base: float = 80.0) -> dict:
+    """Two full prior seasons, eight locations, smooth positive values, so
+    every epiweek clears MIN_DONORS on both sides of the blend."""
+    bank = {}
+    d0 = date(2023, 8, 5)
+    for li in range(8):
+        loc = f"L{li}"
+        for w in range(104):
+            d = d0 + timedelta(days=7 * w)
+            bank[(loc, d)] = base + amp * math.sin(w / 6.0 + li + phase) + 2.0 * li
+    return bank
+
+
+def _aux_bank() -> dict:
+    """A second stream on a different scale and phase, so a blend that
+    silently used the primary pool twice would be visible."""
+    return _bank(phase=1.3, amp=12.0, base=40.0)
+
+
+def _splice(**kw):
+    kw.setdefault("bank", _aux_bank())
+    return AN.DonorSplice(**kw)
+
+
+# ---------------------------------------------------------------------------
+# The guarantee: the default path does not move
+# ---------------------------------------------------------------------------
+
+def test_default_identity():
+    """An explicit splice=None is byte-identical to omitting it."""
+    bank = _bank()
+    for h in (1, 2, 3, 4):
+        base = AN.forecast(ANCHOR, ASOF, h, bank, QL)
+        same = AN.forecast(ANCHOR, ASOF, h, bank, QL, splice=None)
+        assert base is not None
+        assert same == base
+
+
+def test_weight_zero_is_the_single_pool():
+    """weight=0.0 puts no mass on the auxiliary pool, so the result must be
+    the single-pool forecast exactly, not merely close to it."""
+    bank = _bank()
+    for h in (1, 4):
+        base = AN.forecast(ANCHOR, ASOF, h, bank, QL)
+        spliced = AN.forecast(ANCHOR, ASOF, h, bank, QL,
+                              splice=_splice(weight=0.0))
+        assert base is not None and spliced is not None
+        assert spliced == base
+
+
+def test_weight_one_is_the_auxiliary_pool_alone():
+    aux = _aux_bank()
+    bank = _bank()
+    spliced = AN.forecast(ANCHOR, ASOF, 2, bank, QL,
+                          splice=AN.DonorSplice(bank=aux, weight=1.0))
+    only_aux = AN.forecast(ANCHOR, ASOF, 2, aux, QL)
+    assert spliced is not None and only_aux is not None
+    assert spliced == only_aux
+
+
+# ---------------------------------------------------------------------------
+# The algebra of the blend
+# ---------------------------------------------------------------------------
+
+def test_vincentization_is_a_quantile_average():
+    """The blend averages the two RATIO quantile functions level by level.
+    Averaging the pooled donors instead would weight by donor count."""
+    bank, aux = _bank(), _aux_bank()
+    h = 3
+    r = AN.donor_ratios(bank, AN.epiweek(ASOF), AN.season_of(ASOF), h)
+    a = AN.donor_ratios(aux, AN.epiweek(ASOF), AN.season_of(ASOF), h)
+    got = AN.forecast(ANCHOR, ASOF, h, bank, QL,
+                      splice=AN.DonorSplice(bank=aux, weight=0.5))
+    assert got is not None
+    for L in QL:
+        want = float(ANCHOR * (0.5 * np.quantile(r, L) + 0.5 * np.quantile(a, L)))
+        assert got[float(L)] == want
+
+
+def test_blend_is_not_the_pooled_donors():
+    """A guard against the failure this design exists to avoid: concatenating
+    the two pools is a linear pool weighted by donor COUNT, and gives a
+    different answer from averaging the quantile functions."""
+    bank, aux = _bank(), _aux_bank()
+    h = 2
+    r = AN.donor_ratios(bank, AN.epiweek(ASOF), AN.season_of(ASOF), h)
+    a = AN.donor_ratios(aux, AN.epiweek(ASOF), AN.season_of(ASOF), h)
+    blended = AN.forecast(ANCHOR, ASOF, h, bank, QL,
+                          splice=AN.DonorSplice(bank=aux, weight=0.5))
+    concat = AN.analogue_quantiles(ANCHOR, np.concatenate([r, a]), QL)
+    assert blended is not None and concat is not None
+    assert blended != concat
+
+
+def test_quantiles_stay_monotone():
+    bank = _bank()
+    for w in (0.0, 0.25, 0.5, 0.75, 1.0):
+        q = AN.forecast(ANCHOR, ASOF, 2, bank, QL, splice=_splice(weight=w))
+        assert q is not None
+        vals = [q[float(L)] for L in sorted(q)]
+        assert vals == sorted(vals)
+
+
+def test_completeness_still_applies_on_the_spliced_path():
+    bank = _bank()
+    base = AN.forecast(ANCHOR, ASOF, 1, bank, QL, splice=_splice())
+    corr = AN.forecast(ANCHOR, ASOF, 1, bank, QL, splice=_splice(),
+                       completeness=0.8)
+    assert base is not None and corr is not None
+    for L in base:
+        assert corr[L] == pytest.approx(base[L] / 0.8, rel=1e-12)
+
+
+def test_widening_still_applies_on_the_spliced_path():
+    bank = _bank()
+    base = AN.forecast(ANCHOR, ASOF, 1, bank, QL, splice=_splice())
+    wide = AN.forecast(ANCHOR, ASOF, 1, bank, QL, splice=_splice(),
+                       widen_log_sd=0.2)
+    assert base is not None and wide is not None
+    assert wide[0.5] == pytest.approx(base[0.5], rel=1e-12)   # median fixed
+    assert wide[0.975] > base[0.975]
+    assert wide[0.025] < base[0.025]
+
+
+# ---------------------------------------------------------------------------
+# The shrink
+# ---------------------------------------------------------------------------
+
+def test_shrink_compresses_the_auxiliary_spread():
+    """A shrink below 1 pulls the auxiliary ratios toward 1, so the blended
+    distribution is narrower than the unshrunk blend."""
+    bank = _bank()
+    plain = AN.forecast(ANCHOR, ASOF, 2, bank, QL, splice=_splice())
+    shrunk = AN.forecast(ANCHOR, ASOF, 2, bank, QL,
+                         splice=_splice(shrink=0.5))
+    assert plain is not None and shrunk is not None
+    assert (shrunk[0.975] - shrunk[0.025]) < (plain[0.975] - plain[0.025])
+
+
+def test_shrink_of_one_is_a_no_op():
+    """exp(1 * log r) is r up to floating point, so shrink=1.0 must not
+    move the answer materially."""
+    bank = _bank()
+    plain = AN.forecast(ANCHOR, ASOF, 3, bank, QL, splice=_splice())
+    unit = AN.forecast(ANCHOR, ASOF, 3, bank, QL, splice=_splice(shrink=1.0))
+    assert plain is not None and unit is not None
+    for L in plain:
+        assert unit[L] == pytest.approx(plain[L], rel=1e-12)
+
+
+def test_shrink_fit_recovers_a_known_ratio():
+    """If the auxiliary stream's log-ratios are exactly c times the primary's,
+    the fitted shrink is 1/c. Built by raising the primary to the power c,
+    which multiplies every log-ratio by c."""
+    prim = _bank()
+    c = 2.0
+    aux = {k: v ** c for k, v in prim.items()}
+    s = AN.fit_log_ratio_shrink(prim, aux, 2025)
+    assert s == pytest.approx(1.0 / c, rel=1e-12)
+
+
+def test_shrink_fit_uses_only_strictly_prior_seasons():
+    """Target-season data must not reach the fit. Adding a wildly volatile
+    target season to both banks must leave the fitted value unchanged."""
+    prim, aux = _bank(), _aux_bank()
+    before = AN.fit_log_ratio_shrink(prim, aux, 2025)
+    d = date(2025, 12, 6)                      # season 2025, the target
+    for i in range(20):
+        prim[("X", d + timedelta(days=7 * i))] = 1.0 + 900.0 * (i % 2)
+        aux[("X", d + timedelta(days=7 * i))] = 1.0 + 3.0 * (i % 2)
+    after = AN.fit_log_ratio_shrink(prim, aux, 2025)
+    assert after == before
+
+
+def test_shrink_fit_skips_registry_excluded_seasons():
+    """A season the registry excludes is out of the fit as well as out of the
+    pool, so injecting noise into it must not move the fitted value."""
+    prim, aux = _bank(), _aux_bank()
+    before = AN.fit_log_ratio_shrink(prim, aux, 2025)
+    d = date(2021, 12, 4)                      # season 2021, registry-excluded
+    for i in range(20):
+        prim[("Y", d + timedelta(days=7 * i))] = 1.0 + 900.0 * (i % 2)
+        aux[("Y", d + timedelta(days=7 * i))] = 1.0 + 3.0 * (i % 2)
+    assert AN.fit_log_ratio_shrink(prim, aux, 2025) == before
+
+
+def test_shrink_fit_returns_none_without_a_shared_prior_season():
+    prim, aux = _bank(), _aux_bank()
+    # Target season 2023 leaves nothing strictly prior in either bank.
+    assert AN.fit_log_ratio_shrink(prim, aux, 2023) is None
+
+
+def test_in_season_window_excludes_the_summer():
+    """The comparison runs on the stretch of calendar that carries signal;
+    off-season weeks are near-zero denominators in both streams. Checked by
+    counting: the sample must hold exactly the in-window pairs, no more."""
+    bank = _bank()
+    seasons = {2023, 2024}
+    h = 1
+    want = sum(1 for (loc, d) in bank
+               if AN.season_of(d) in seasons
+               and (AN.epiweek(d) >= 47 or AN.epiweek(d) <= 20)
+               and bank.get((loc, d + timedelta(days=7 * h))))
+    got = AN.in_season_log_ratios(bank, h, seasons)
+    assert want > 0
+    assert got.size == want
+    # widening the window to the whole year must admit strictly more
+    whole = AN.in_season_log_ratios(bank, h, seasons,
+                                    first_epiweek=1, last_epiweek=53)
+    assert whole.size > got.size
+
+
+def test_in_season_log_ratios_are_the_right_numbers():
+    """Not just the right count: the values themselves."""
+    bank = {("A", date(2024, 12, 7)): 10.0,      # epiweek 49, in window
+            ("A", date(2024, 12, 14)): 20.0,
+            ("B", date(2024, 7, 6)): 10.0,       # epiweek 27, summer
+            ("B", date(2024, 7, 13)): 40.0}
+    got = AN.in_season_log_ratios(bank, 1, {2024, 2023})
+    assert got.size == 1
+    assert got[0] == pytest.approx(math.log(2.0), rel=1e-15)
+
+
+# ---------------------------------------------------------------------------
+# Loud failures
+# ---------------------------------------------------------------------------
+
+def test_both_pools_must_clear_min_donors():
+    """A blend whose auxiliary half rests on a handful of donors is the
+    primary pool with noise added at a fixed weight, so it is refused."""
+    bank = _bank()
+    thin = {("T", date(2024, 12, 7) + timedelta(days=7 * i)): 10.0 + i
+            for i in range(3)}
+    assert AN.forecast(ANCHOR, ASOF, 1, bank, QL,
+                       splice=AN.DonorSplice(bank=thin)) is None
+    # and the primary side is still enforced
+    assert AN.forecast(ANCHOR, ASOF, 1, thin, QL,
+                       splice=_splice()) is None
+
+
+def test_bad_weight_fails_loudly():
+    bank = _bank()
+    for bad in (-0.1, 1.1, float("nan")):
+        with pytest.raises(ValueError):
+            AN.forecast(ANCHOR, ASOF, 1, bank, QL, splice=_splice(weight=bad))
+
+
+def test_bad_shrink_fails_loudly():
+    bank = _bank()
+    for bad in (0.0, -1.0, float("nan")):
+        with pytest.raises(ValueError):
+            AN.forecast(ANCHOR, ASOF, 1, bank, QL, splice=_splice(shrink=bad))
+
+
+def test_auxiliary_pool_cannot_drop_an_unregistered_season():
+    """The auxiliary pool goes through the same registry as the admissions
+    pool: a season may leave only through a DonorSeasonExclusion record."""
+    bank = _bank()
+    with pytest.raises(ValueError, match="not registered"):
+        AN.forecast(ANCHOR, ASOF, 1, bank, QL,
+                    splice=_splice(exclude_seasons=(2020,)))
+
+
+def test_non_positive_anchor_gives_no_forecast():
+    bank = _bank()
+    for bad in (0.0, -5.0):
+        assert AN.forecast(bad, ASOF, 1, bank, QL, splice=_splice()) is None
+
+
+# ---------------------------------------------------------------------------
+# The auxiliary ratio memo
+# ---------------------------------------------------------------------------
+
+def test_memo_matches_an_unmemoized_recompute():
+    """The memo exists because donor_ratios does not depend on the location
+    being forecast. It must not change the answer."""
+    bank = _bank()
+    sp = _splice()
+    first = AN.forecast(ANCHOR, ASOF, 2, bank, QL, splice=sp)
+    assert sp._ratio_memo                      # populated
+    again = AN.forecast(ANCHOR, ASOF, 2, bank, QL, splice=sp)   # memo hit
+    fresh = AN.forecast(ANCHOR, ASOF, 2, bank, QL, splice=_splice())
+    assert first == again == fresh
+
+
+def test_memo_is_keyed_on_horizon_and_calendar():
+    bank = _bank()
+    sp = _splice()
+    for h in (1, 2, 3, 4):
+        AN.forecast(ANCHOR, ASOF, h, bank, QL, splice=sp)
+    assert len(sp._ratio_memo) == 4
+    other = date(2025, 11, 15)
+    AN.forecast(ANCHOR, other, 1, bank, QL, splice=sp)
+    assert len(sp._ratio_memo) == 5
+
+
+def test_memo_does_not_leak_between_splices():
+    bank = _bank()
+    a, b = _splice(), _splice()
+    AN.forecast(ANCHOR, ASOF, 1, bank, QL, splice=a)
+    assert a._ratio_memo and not b._ratio_memo
+
+
+# ---------------------------------------------------------------------------
+# The engine helper
+# ---------------------------------------------------------------------------
+
+def _write_bank(tmp_path, bank=None, name="aux.json"):
+    bank = _aux_bank() if bank is None else bank
+    fp = tmp_path / name
+    fp.write_text(json.dumps({f"{loc}|{d.isoformat()}": v
+                              for (loc, d), v in bank.items()}))
+    return fp
+
+
+def _spec(extra, asof="2025-12-20"):
+    return SimpleNamespace(forecast_date=asof, extra=extra)
+
+
+def test_splice_args_is_dormant_by_default():
+    from app.core.engines.analogue import splice_args
+    bank = _bank()
+    assert splice_args(object(), bank) is None
+    assert splice_args(_spec(None), bank) is None
+    assert splice_args(_spec({}), bank) is None
+    assert splice_args(_spec({"analogue_completeness": {"06": 0.9}}),
+                       bank) is None
+
+
+def test_splice_args_builds_a_splice(tmp_path):
+    from app.core.engines.analogue import splice_args
+    fp = _write_bank(tmp_path)
+    sp = splice_args(_spec({"iliplus": {"bank": str(fp)}}), _bank())
+    assert isinstance(sp, AN.DonorSplice)
+    assert sp.weight == 0.5
+    assert sp.shrink is not None and sp.shrink > 0
+    assert sp.exclude_seasons == tuple(sorted(AN.EXCLUDED_DONOR_SEASONS))
+
+
+def test_splice_args_honours_explicit_settings(tmp_path):
+    from app.core.engines.analogue import splice_args
+    fp = _write_bank(tmp_path)
+    sp = splice_args(_spec({"iliplus": {"bank": str(fp), "weight": 0.25,
+                                        "shrink": 0.8, "bandwidth": 3}}),
+                     _bank())
+    assert (sp.weight, sp.shrink, sp.bandwidth) == (0.25, 0.8, 3)
+    none_shrink = splice_args(
+        _spec({"iliplus": {"bank": str(fp), "shrink": None}}), _bank())
+    assert none_shrink.shrink is None
+
+
+def test_splice_args_fails_loudly(tmp_path):
+    from app.core.engines.analogue import splice_args
+    fp = _write_bank(tmp_path)
+    bank = _bank()
+    with pytest.raises(ValueError, match="must be a dict"):
+        splice_args(_spec({"iliplus": ["not", "a", "dict"]}), bank)
+    with pytest.raises(ValueError, match="requires a 'bank' path"):
+        splice_args(_spec({"iliplus": {"weight": 0.5}}), bank)
+    with pytest.raises(ValueError, match="must be 'auto'"):
+        splice_args(_spec({"iliplus": {"bank": str(fp), "shrink": "fitted"}}),
+                    bank)
+    with pytest.raises(ValueError, match="not registered"):
+        splice_args(_spec({"iliplus": {"bank": str(fp),
+                                       "exclude_seasons": [2020]}}), bank)
+
+
+def test_splice_args_raises_when_auto_shrink_cannot_be_fitted(tmp_path):
+    """Falling back to the single-pool path would make a replay labelled
+    spliced silently unspliced for some weeks."""
+    from app.core.engines.analogue import splice_args
+    fp = _write_bank(tmp_path)
+    with pytest.raises(ValueError, match="could not be fitted"):
+        splice_args(_spec({"iliplus": {"bank": str(fp)}},
+                          asof="2023-12-20"), _bank())
+
+
+def test_load_aux_bank_reads_and_caches(tmp_path):
+    from app.core.engines.analogue import load_aux_bank
+    fp = _write_bank(tmp_path)
+    first = load_aux_bank(str(fp))
+    assert first and all(isinstance(k[1], date) for k in first)
+    assert load_aux_bank(str(fp)) is first          # cache hit, same object
+
+
+def test_load_aux_bank_drops_non_positive(tmp_path):
+    from app.core.engines.analogue import load_aux_bank
+    bank = {("A", date(2024, 1, 6)): 5.0, ("A", date(2024, 1, 13)): 0.0,
+            ("A", date(2024, 1, 20)): -2.0}
+    fp = _write_bank(tmp_path, bank, name="mixed.json")
+    assert load_aux_bank(str(fp)) == {("A", date(2024, 1, 6)): 5.0}
+
+
+def test_load_aux_bank_fails_loudly(tmp_path):
+    from app.core.engines.analogue import load_aux_bank
+    # The bare open() would raise FileNotFoundError on its own, so assert on
+    # the guard's MESSAGE: that is the part carrying the diagnosis.
+    with pytest.raises(FileNotFoundError, match="not carried in this repository"):
+        load_aux_bank(str(tmp_path / "absent.json"))
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps({"no-pipe-separator": 1.0}))
+    with pytest.raises(ValueError, match="location|YYYY-MM-DD"):
+        load_aux_bank(str(bad))
+    empty = tmp_path / "empty.json"
+    empty.write_text(json.dumps({"A|2024-01-06": 0.0}))
+    with pytest.raises(ValueError, match="no positive values"):
+        load_aux_bank(str(empty))
