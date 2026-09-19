@@ -146,17 +146,19 @@ class TestDonorSeasonExclusion:
         assert shipped != historical
         assert historical[0.975] > shipped[0.975]      # 7.0 lived in the tail
 
-    def test_the_excluded_set_is_exactly_2021_22(self):
-        """Fails if the exclusion widens to another season."""
-        assert EXCLUDED_DONOR_SEASONS == frozenset({2021})
-        assert set(DONOR_SEASON_EXCLUSIONS) == {2021}
+    def test_the_excluded_set_is_exactly_the_two_registered_seasons(self):
+        """Fails if the exclusion widens to another season. 2020-21 joined
+        2021-22 on 2026-09-19; it is inert for the admissions pool, whose
+        archive begins 2022-02-05, and bites only the auxiliary ILI+ pool."""
+        assert EXCLUDED_DONOR_SEASONS == frozenset({2020, 2021})
+        assert set(DONOR_SEASON_EXCLUSIONS) == {2020, 2021}
 
     def test_excluding_an_unregistered_season_raises(self):
         """Fails if some other season can be dropped silently. 2022-23 is the
         realistic mistake: it was the OTHER COVID-disrupted candidate and was
         deliberately not excluded."""
         b = _marked_bank(_MARKS)
-        for bad in ({2022}, {2021, 2022}, {2020}, [2025]):
+        for bad in ({2022}, {2021, 2022}, {2019}, [2025]):
             with pytest.raises(ValueError, match="not registered"):
                 donor_ratios(b, epiweek(_TARGET), season_of(_TARGET), 1,
                              bandwidth=3, exclude_seasons=bad)
@@ -182,16 +184,32 @@ class TestDonorSeasonExclusion:
         """Not a date range. July 2022 belongs to 2021-22 and goes; July 2021
         belongs to 2020-21 and stays; August 2022 opens 2022-23 and stays. Off
         by one month at either end and the wrong weeks leave the pool."""
+        # Pinned to the 2021-22 record alone. The shipped set later gained
+        # 2020-21, which would otherwise make the "stays" side of this
+        # boundary test about a season that is also excluded.
+        only = {"exclude_seasons": (2021,)}
         assert SEASON_BOUNDARY_MONTH == 8
         assert season_of(date(2022, 7, 30)) == 2021
-        assert not _donor_used(date(2022, 7, 30))
+        assert not _donor_used(date(2022, 7, 30), **only)
         assert season_of(date(2021, 7, 31)) == 2020
-        assert _donor_used(date(2021, 7, 31))
+        assert _donor_used(date(2021, 7, 31), **only)
         assert season_of(date(2022, 8, 6)) == 2022
-        assert _donor_used(date(2022, 8, 6))
+        assert _donor_used(date(2022, 8, 6), **only)
         # and the whole excluded season really is gone, both ends
-        assert not _donor_used(date(2021, 8, 7))
-        assert not _donor_used(date(2022, 2, 5))    # first archived week
+        assert not _donor_used(date(2021, 8, 7), **only)
+        assert not _donor_used(date(2022, 2, 5), **only)   # first archived week
+
+    def test_the_2020_21_exclusion_is_also_a_label_under_that_boundary(self):
+        """The same boundary check for the second registered record."""
+        only = {"exclude_seasons": (2020,)}
+        assert season_of(date(2021, 7, 31)) == 2020
+        assert not _donor_used(date(2021, 7, 31), **only)
+        assert season_of(date(2020, 8, 1)) == 2020
+        assert not _donor_used(date(2020, 8, 1), **only)
+        assert season_of(date(2020, 7, 25)) == 2019
+        assert _donor_used(date(2020, 7, 25), **only)      # the season before
+        assert season_of(date(2021, 8, 7)) == 2021
+        assert _donor_used(date(2021, 8, 7), **only)       # the season after
 
     def test_the_record_carries_its_provenance(self):
         """A donor exclusion with no evidence is indistinguishable from a bug,
@@ -217,7 +235,8 @@ class TestDonorSeasonExclusion:
             assert resolve_donor_exclusions({season}) == frozenset({season})
 
     def test_resolve_accepts_the_shipped_default(self):
-        assert resolve_donor_exclusions(EXCLUDED_DONOR_SEASONS) == frozenset({2021})
+        assert (resolve_donor_exclusions(EXCLUDED_DONOR_SEASONS)
+                == frozenset({2020, 2021}))
         assert resolve_donor_exclusions(()) == frozenset()
 
 

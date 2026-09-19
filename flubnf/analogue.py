@@ -289,12 +289,76 @@ SEASON_2021_22_CALENDAR_INVERSION = DonorSeasonExclusion(
 )
 
 
+SEASON_2020_21_SUPPRESSED = DonorSeasonExclusion(
+    season=2020,
+    label="2020-21",
+    profile_key="influenza",
+    season_boundary_month=SEASON_BOUNDARY_MONTH,
+    covers=(date(2020, 8, 1), date(2021, 7, 31)),
+    prereg_hash="086bda9a0736e983",
+    tested_on="2026-09-18",
+    adopted_on="2026-09-19",
+    mechanism=(
+        "A suppressed season. Non-pharmaceutical intervention during the "
+        "COVID-19 response all but removed influenza from circulation: in the "
+        "ILI+ donor bank the 2020-21 in-season median (epiweek >= 47 or <= 20) "
+        "is 0.2855 against 3.78 to 67.07 in every other season, a factor of 13 "
+        "below the nearest and about 100 below a typical one. The failure this "
+        "causes is NOT extra noise, and an earlier draft of this record said it "
+        "was. Measured, the season's pooled log-ratio spread is 0.8775 against "
+        "1.1053 for the rest of the pool, so it is the LEAST volatile "
+        "contributor, which is exactly the fingerprint of an epidemic that "
+        "never happened. Its ratios sit near one. A calendar-matched pool asks "
+        "what happens over the next four weeks, and 2020-21 answers 'nothing "
+        "much', damping the pool toward no growth in precisely the weeks when "
+        "an ordinary season is climbing."),
+    effect=(
+        "Auxiliary ILI+ pool only, vincentized at weight 0.5 with the shrink "
+        "applied, scored against the production particle filter on 15,460 "
+        "ensemble and 15,764 member cells over 76 as-of weeks. Ensemble pooled "
+        "relWIS 0.6707 -> 0.6688, +0.293 percent; member 0.6315 -> 0.6284, "
+        "+0.495 percent. Clustered bootstrap on as-of dates, 4000 replicates: "
+        "ensemble delta median -0.00198, 95 percent CI -0.00309 to -0.00064, "
+        "better in 3993 of 4000; member median -0.00316, CI -0.00521 to "
+        "-0.00053, better in 3956 of 4000. Ensemble coverage is unchanged to "
+        "within a thousandth (worst deviation 0.015 -> 0.014). This is a SMALL "
+        "effect and the record says so: the case for the exclusion is the "
+        "mechanism above, and the measurement is here to show the direction is "
+        "right and the cost is nil, not to claim a material gain."),
+    depth_control=(
+        "The effect is COMPOSITION, not count, by the same test the 2021-22 "
+        "record uses. Randomly cutting the 2020-21-inclusive pool to the size "
+        "the exclusion leaves, 5 seeds, moves the ensemble -0.004 percent "
+        "(seed spread -0.015 to +0.018 percent) and the member -0.007 percent, "
+        "against +0.293 and +0.495 percent for removing the season itself. "
+        "Unlike the 2021-22 exclusion, which bites only where that season "
+        "supplies in-window donors, this one changes every scored cell, "
+        "because the auxiliary pool is pooled across all locations and so "
+        "every quantile moves."),
+    evidence=(
+        "Pre-registered factorial, prereg 086bda9a0736e983 amendment 2, arms "
+        "B1 against B2 and B3 against B4, which froze the 2020-21 in/out "
+        "contrast before any score was read. The figures quoted above are the "
+        "vincentize-plus-shrink pair (B6 against B5) re-scored against the "
+        "production filter under prereg 90c935a5e2ed62f7, with the depth "
+        "control run afterwards to this record's requirement. Harness, "
+        "pre-registrations and results are in the lab archive "
+        "(research/iliplus-splice), not in this repository. NOTE ON SCOPE: the "
+        "admissions bank carries no 2020-21 data at all, since the archived "
+        "NHSN series begins 2022-02-05 (season 2021-22). This record is "
+        "therefore INERT for the admissions donor pool and changes only the "
+        "auxiliary pool, which is verified by a byte-identity check over all "
+        "85 archived as-of weeks."),
+)
+
+
 #: The ONLY seasons that may be dropped, keyed by season label. Adding a key
 #: here is the whole cost of excluding another season, and it is meant to be
 #: expensive: the record must carry a pre-registration hash, a mechanism, a
 #: measured effect and a depth control before anything can use it.
 DONOR_SEASON_EXCLUSIONS: dict = {
     SEASON_2021_22_CALENDAR_INVERSION.season: SEASON_2021_22_CALENDAR_INVERSION,
+    SEASON_2020_21_SUPPRESSED.season: SEASON_2020_21_SUPPRESSED,
 }
 
 #: What `donor_ratios` applies when the caller says nothing. The default is the

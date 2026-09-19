@@ -226,8 +226,9 @@ def run(spec) -> dict:
         qs = {}
         for h in (1, 2, 3, 4):
             # Donor pool: AN.forecast's default, which is every strictly prior
-            # season EXCEPT 2021-22 (flubnf.analogue.EXCLUDED_DONOR_SEASONS,
-            # adopted 2026-08-24). Deliberately not restated as a literal here
+            # season EXCEPT the registered exclusions, 2021-22 and 2020-21
+            # (flubnf.analogue.EXCLUDED_DONOR_SEASONS, adopted 2026-08-24 and
+            # 2026-09-19). Deliberately not restated as a literal here
             # -- the engine must not be able to disagree with the library about
             # which pool production uses.
             q = AN.forecast(anchor, window_ref, h + k, bank, QL,

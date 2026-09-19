@@ -286,7 +286,7 @@ def test_auxiliary_pool_cannot_drop_an_unregistered_season():
     bank = _bank()
     with pytest.raises(ValueError, match="not registered"):
         AN.forecast(ANCHOR, ASOF, 1, bank, QL,
-                    splice=_splice(exclude_seasons=(2020,)))
+                    splice=_splice(exclude_seasons=(2019,)))
 
 
 def test_non_positive_anchor_gives_no_forecast():
@@ -390,7 +390,7 @@ def test_splice_args_fails_loudly(tmp_path):
                     bank)
     with pytest.raises(ValueError, match="not registered"):
         splice_args(_spec({"iliplus": {"bank": str(fp),
-                                       "exclude_seasons": [2020]}}), bank)
+                                       "exclude_seasons": [2019]}}), bank)
 
 
 def test_splice_args_raises_when_auto_shrink_cannot_be_fitted(tmp_path):
