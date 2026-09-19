@@ -353,6 +353,23 @@ def test_splice_args_is_dormant_by_default():
     assert splice_args(_spec({}), bank) is None
     assert splice_args(_spec({"analogue_completeness": {"06": 0.9}}),
                        bank) is None
+    assert splice_args(_spec({"iliplus": False}), bank) is None
+
+
+def test_splice_args_refuses_an_empty_config(tmp_path):
+    """An empty dict means the caller asked to splice and said nothing about
+    how. Returning None there would label a run spliced that was not."""
+    from app.core.engines.analogue import splice_args
+    with pytest.raises(ValueError, match="neither"):
+        splice_args(_spec({"iliplus": {}}), _bank())
+
+
+def test_splice_args_refuses_both_sources(tmp_path):
+    from app.core.engines.analogue import splice_args
+    fp = _write_bank(tmp_path)
+    with pytest.raises(ValueError, match="both"):
+        splice_args(_spec({"iliplus": {"bank": str(fp), "build": {}}}),
+                    _bank())
 
 
 def test_splice_args_builds_a_splice(tmp_path):
@@ -383,7 +400,7 @@ def test_splice_args_fails_loudly(tmp_path):
     bank = _bank()
     with pytest.raises(ValueError, match="must be a dict"):
         splice_args(_spec({"iliplus": ["not", "a", "dict"]}), bank)
-    with pytest.raises(ValueError, match="requires a 'bank' path"):
+    with pytest.raises(ValueError, match="neither"):
         splice_args(_spec({"iliplus": {"weight": 0.5}}), bank)
     with pytest.raises(ValueError, match="must be 'auto'"):
         splice_args(_spec({"iliplus": {"bank": str(fp), "shrink": "fitted"}}),

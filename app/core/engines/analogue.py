@@ -109,6 +109,46 @@ def load_aux_bank(path: str) -> dict:
     return bank
 
 
+def _built_aux_bank(spec, build) -> dict:
+    """Build the auxiliary bank from Delphi rather than read it off disk.
+
+    `build` is `spec.extra["iliplus"]["build"]`, a dict:
+      first_season  ISO date opening the earliest donor season to pull
+                    (default "2016-08-01", where fluview_clinical begins)
+      vintage       True (the default) pulls each stream AS PUBLISHED at the
+                    forecast date; False pulls the latest issue, which is
+                    measured-equivalent for this donor construction and much
+                    cheaper to cache, but is not vintage-true and stops being
+                    equivalent if the calendar bandwidth ever widens (see
+                    flubnf.iliplus)
+      regions       explicit region list, default every state in locations.csv
+      cache_dir / nrevss_cache_dir   override the on-disk response caches
+
+    Raw responses are cached per (region, issue) under app/state, so a replay
+    of the same weeks never re-hits the network.
+    """
+    if not isinstance(build, dict):
+        raise ValueError(
+            f"spec.extra['iliplus']['build'] must be a dict, got "
+            f"{type(build).__name__}")
+    from flubnf import iliplus
+    vintage = bool(build.get("vintage", True))
+    aux = iliplus.build_bank(
+        build.get("first_season", "2016-08-01"),
+        str(spec.forecast_date) if vintage else None,
+        regions=build.get("regions"),
+        locations_csv=build.get("locations_csv"),
+        cache_dir=build.get("cache_dir"),
+        nrevss_cache_dir=build.get("nrevss_cache_dir"),
+    )
+    if not aux:
+        raise ValueError(
+            f"the ILI+ bank built for {spec.forecast_date} is empty. A "
+            f"spliced run with an empty auxiliary pool would silently be the "
+            f"single-pool forecast while still being labelled spliced.")
+    return aux
+
+
 def splice_args(spec, bank):
     """`flubnf.analogue.DonorSplice` from `spec.extra['iliplus']`, or None.
 
@@ -117,8 +157,11 @@ def splice_args(spec, bank):
     (verified over all 85 archived as-of weeks, 405,904 quantile values, zero
     differences).
 
-    Config keys, all optional but `bank`:
-      bank            path to the auxiliary bank JSON (required)
+    Config keys, exactly one of `bank` or `build` required:
+      bank            path to a prebuilt auxiliary bank JSON
+      build           arguments for flubnf.iliplus.build_bank, which pulls
+                      ILINet and the clinical stream from Delphi and caches
+                      the raw responses; see _built_aux_bank
       weight          weight on the AUXILIARY pool, default 0.5
       shrink          "auto" (default) fits sd(admissions)/sd(aux) on strictly
                       prior shared seasons; a number uses that value; None
@@ -136,15 +179,29 @@ def splice_args(spec, bank):
     """
     extra = getattr(spec, "extra", None) or {}
     cfg = extra.get("iliplus")
-    if not cfg:
+    # Absent, or explicitly False, means dormant. An empty dict does NOT:
+    # the key is there, so the caller meant to splice, and returning None
+    # would produce a run labelled spliced that quietly was not.
+    if cfg is None or cfg is False:
         return None
     if not isinstance(cfg, dict):
         raise ValueError(
             f"spec.extra['iliplus'] must be a dict, got {type(cfg).__name__}")
-    path = cfg.get("bank")
-    if not path:
-        raise ValueError("spec.extra['iliplus'] requires a 'bank' path")
-    aux = load_aux_bank(str(path))
+    # Presence, not truthiness: build={} is a legitimate "use every default"
+    # and an empty dict is falsy, so a truthiness test would read it as absent
+    # and then complain that neither key was given.
+    has_path, has_build = "bank" in cfg, "build" in cfg
+    if has_path == has_build:
+        raise ValueError(
+            "spec.extra['iliplus'] needs exactly one of 'bank' (a path to a "
+            "prebuilt donor bank) or 'build' (arguments for "
+            "flubnf.iliplus.build_bank); got "
+            + ("both" if has_path else "neither"))
+    path, build = cfg.get("bank"), cfg.get("build")
+    if has_path:
+        aux = load_aux_bank(str(path))
+    else:
+        aux = _built_aux_bank(spec, build)
     excl = cfg.get("exclude_seasons")
     excl = (tuple(sorted(AN.EXCLUDED_DONOR_SEASONS)) if excl is None
             else tuple(sorted(int(x) for x in excl)))
