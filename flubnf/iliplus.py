@@ -222,11 +222,19 @@ def fetch_ili(region: str, season_start_iso, asof_iso=None,
     best: dict = {}
     for r in rows:
         k = r["epiweek"]
-        if r.get("ili") is None:
+        if r.get("wili") is None and r.get("ili") is None:
             continue
         if k not in best or (r.get("issue") or 0) > (best[k].get("issue") or 0):
             best[k] = r
-    recs = [{"date": week_ending(*divmod(k, 100)), "ili": float(r["ili"])}
+    # PREFER wili. For a STATE the two are the same number (checked over
+    # 26,776 rows across 52 regions: identical, to the bit), so this changes
+    # nothing for the shipped bank. They differ on every HHS, census-division
+    # and national row, because that is where ILINet's population weighting
+    # is applied, and `regions=` will accept those. Taking ili there would
+    # silently use the unweighted quantity where the weighted one is the
+    # standard, which is what a collaborator's long-standing pipeline uses.
+    recs = [{"date": week_ending(*divmod(k, 100)),
+             "ili": float(r["wili"] if r.get("wili") is not None else r["ili"])}
             for k, r in sorted(best.items())]
     return pd.DataFrame(recs, columns=_COLUMNS)
 
