@@ -25,8 +25,16 @@ decimal places, and the derived value agrees with it to within 0.005
 (measured live 2026-09-19 over the rows of a ten-week window), which is
 exactly that rounding. The bank the pre-registered measurements were made on
 used the rounded field, so a bank built here differs from it by at most that
-rounding. Whether that matters is measured, not assumed: see
-``research/iliplus-splice`` for the comparison against the validated bank.
+rounding. Whether that matters was measured rather than assumed, and it does
+not. Full 48-region banks built both ways, scored against the production
+filter on 15,460 ensemble cells: pooled B5 relWIS 0.668774 with the rounded
+field against 0.668775 derived, with coverage identical to three decimals.
+Every scored cell moves, but by a median of 0.014 percent and at most 0.23
+percent, because a donor pool holds hundreds of ratios and perturbing a
+minority of them barely moves an empirical quantile. The bank's own cells
+differ by up to 43 percent, so the dilution is the whole explanation.
+``percent_positive="reported"`` therefore exists for reproducing the frozen
+numbers, not because the choice changes an answer.
 
 The ILINet half (``fluview``) is added here in the same shape, because no
 module owned it. Its MMWR helpers are imported from ``nrevss`` rather than
