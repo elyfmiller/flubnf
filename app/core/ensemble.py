@@ -25,6 +25,7 @@ from pathlib import Path
 
 import numpy as np
 
+from app.core import horizons as HZ
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL
 
 WEIGHTS_FILE = Path(__file__).resolve().parents[1] / "state" / "ensemble_weights.json"
@@ -69,9 +70,13 @@ def pf_share(weights: dict, horizon: int, location_fips: str = "") -> float:
 
 
 def member_quantiles_from_samples(samples_by_h: dict) -> dict:
-    """horizon -> {level: value} from raw sample arrays (the PF's shape)."""
+    """horizon -> {level: value} from raw sample arrays (the PF's shape).
+
+    Canonical horizons only (app.core.horizons). The anchor week rides
+    along in the samples under ORIGIN and is deliberately not summarised
+    here: it is not a forecast, is never submitted, and is never scored."""
     out = {}
-    for h in ("1", "2", "3", "4"):
+    for h in HZ.HORIZONS:
         s = np.asarray(samples_by_h.get(h, []), float)
         s = s[np.isfinite(s)]
         if s.size:
@@ -110,12 +115,15 @@ def vincentize(members: dict, weights: dict | str | None = None,
     frozen_table = weights is not None and (
         "global" in weights or "per_state" in weights)
     out = {}
-    for h in ("1", "2", "3", "4"):
+    for h in HZ.HORIZONS:
         have = {m: q[h] for m, q in members.items() if h in q}
         if not have:
             continue
         if frozen_table and set(have) == {"pf", "analogue"}:
-            share = pf_share(weights, int(h) - 1, location_fips)  # keys 0..3
+            # the frozen table is keyed on the hub's horizons, which is
+            # what h now is; the -1 this line used to carry was the old
+            # internal 1..4 convention and is gone with it
+            share = pf_share(weights, int(h), location_fips)
             levels = sorted(set(have["pf"]) & set(have["analogue"]))
             out[h] = {float(L): float(share * have["pf"][L]
                                       + (1 - share) * have["analogue"][L])

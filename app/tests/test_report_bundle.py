@@ -19,12 +19,43 @@ from fastapi.testclient import TestClient           # noqa: E402
 
 import app.core.runs as runs_mod                    # noqa: E402
 import app.ui.server as srv                         # noqa: E402
+from app.core import horizons as hz                 # noqa: E402
 from app.core import report_v2                      # noqa: E402
 
 client = TestClient(srv.app)
 
 OLD_MTIME = (1_000_000_000, 1_000_000_000)          # 2001: always stale
 FUTURE_MTIME = (4_000_000_000, 4_000_000_000)       # 2096: always fresh
+
+
+def _canonical_samples(rng):
+    """One location's samples in the shape pf.collect() now hands the
+    report: the anchor week under hz.ORIGIN, then the four forecasts under
+    the hub's own labels "0".."3". The anchor is carried, never plotted
+    and never scored, so a report that mistook it for a forecast week
+    would be drawing a week that has already happened.
+
+    Each forecast week is shifted 10 admissions further out than the one
+    before it, so the four weeks stay distinguishable: a fan built from
+    the wrong key comes out as a visibly wrong curve rather than as the
+    same numbers in a different order.
+
+    TWO THINGS ARE DELIBERATE ABOUT THE ORDER AND THE OFFSETS.
+
+    The forecasts are drawn FIRST and the anchor LAST. Drawing the anchor
+    first would consume the leading 400 values of the seeded stream and
+    move every forecast week's numbers, which would make this fixture's
+    output incomparable with the one it replaced. The reindex changed
+    labels; it must not change a single value.
+
+    The anchor sits near `last_observed` (127.0 in the callers below)
+    rather than below the forecasts. A real pf.collect() anchor IS the
+    filtered estimate of the last observed week, so an anchor that came
+    out 35 admissions under the observed tail would teach the wrong shape
+    to whoever copies this next."""
+    fc = {h: (rng.gamma(5.0, 20.0, 400) + 10 * (i + 1)).tolist()
+          for i, h in enumerate(hz.HORIZONS)}
+    return {**fc, hz.ORIGIN: (rng.gamma(5.0, 20.0, 400) * 0.1 + 117.0).tolist()}
 
 
 def _synth_run(workroot: Path):
@@ -36,9 +67,7 @@ def _synth_run(workroot: Path):
     spec = runs_mod.RunSpec(engine="pf", forecast_date="2098-01-03",
                             locations=["Ohio", "US"])
     rng = np.random.default_rng(7)
-    pf_samples = {loc: {str(h): (rng.gamma(5.0, 20.0, 400) + 10 * h).tolist()
-                        for h in (1, 2, 3, 4)}
-                  for loc in ("Ohio", "US")}
+    pf_samples = {loc: _canonical_samples(rng) for loc in ("Ohio", "US")}
     obs = {loc: [[f"2097-12-{d:02d}", 100.0 + d] for d in (6, 13, 20, 27)]
            for loc in ("Ohio", "US")}
     workroot.mkdir(parents=True, exist_ok=True)
@@ -251,9 +280,7 @@ def _synth_run_with_ensemble(workroot: Path):
     spec = runs_mod.RunSpec(engine="pf", forecast_date="2098-01-03",
                             locations=["Ohio", "US"])
     rng = np.random.default_rng(7)
-    pf_samples = {loc: {str(h): (rng.gamma(5.0, 20.0, 400) + 10 * h).tolist()
-                        for h in (1, 2, 3, 4)}
-                  for loc in ("Ohio", "US")}
+    pf_samples = {loc: _canonical_samples(rng) for loc in ("Ohio", "US")}
     obs = {loc: [[f"2097-12-{d:02d}", 100.0 + d] for d in (6, 13, 20, 27)]
            for loc in ("Ohio", "US")}
     ens_q = {loc: ens.member_quantiles_from_samples(s)

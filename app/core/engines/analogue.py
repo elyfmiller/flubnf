@@ -366,7 +366,7 @@ def run(spec) -> dict:
         window_ref = (T - pd.Timedelta(days=7 * k)).date()
         c, sig = completeness_args(spec, fips, anchor_date, newest)
         qs = {}
-        for h in (1, 2, 3, 4):
+        for h in (1, 2, 3, 4):     # PHYSICAL weeks ahead, the library's unit
             # Donor pool: AN.forecast's default, which is every strictly prior
             # season EXCEPT the registered exclusions, 2021-22 and 2020-21
             # (flubnf.analogue.EXCLUDED_DONOR_SEASONS, adopted 2026-08-24 and
@@ -376,7 +376,8 @@ def run(spec) -> dict:
             q = AN.forecast(anchor, window_ref, h + k, bank, QL,
                             completeness=c, widen_log_sd=sig, splice=splice)
             if q:
-                qs[str(h)] = {float(L): float(x) for L, x in q.items()}
+                # canonical (hub) key: h weeks ahead is hub horizon h-1
+                qs[str(h - 1)] = {float(L): float(x) for L, x in q.items()}
         if qs:
             out[loc] = qs
     return out

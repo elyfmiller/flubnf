@@ -50,6 +50,7 @@ sys.path.insert(0, str(REPO))
 from app.core.data import ARCHIVE, LOCATIONS          # noqa: E402
 from app.core.engines import analogue as an_engine    # noqa: E402
 from app.core.engines import pf as pf_engine          # noqa: E402
+from app.core import horizons as hz
 from app.core import ensemble as ens                  # noqa: E402
 from app.core import proc as proc_mod                 # noqa: E402
 from app.core.runs import (LOCATION_LIST_LIMIT,       # noqa: E402
@@ -160,20 +161,38 @@ def season_sample_files(root: Path) -> list:
 
 
 def read_samples(fp: Path) -> dict:
-    """Parse one stored samples file, transparently across both forms."""
+    """Parse one stored samples file, transparently across both forms, and
+    hand it back in CANONICAL horizons (app.core.horizons).
+
+    The conversion lives HERE, at the file parser, and not one level up in
+    read_week_samples, because this function is public and had other
+    callers: the national aggregate below and two pages in the console.
+    Leaving it raw meant a stored record (anchor at "0", forecasts at
+    "1".."4") could reach code that had been reindexed to expect canonical
+    keys, which reads the anchor as the first forecast and drops the
+    four-week horizon entirely. That is not hypothetical: it is exactly
+    what test_retro_national caught (3 horizons scored where 4 were
+    expected) during this change."""
     fp = Path(fp)
     if fp.name.endswith(".gz"):
         with gzip.open(fp, "rt", encoding="utf-8") as f:
-            return json.load(f)
-    return json.loads(fp.read_text())
+            return hz.record_to_canonical(json.load(f))
+    return hz.record_to_canonical(json.loads(fp.read_text()))
 
 
 def read_week_samples(root: Path, asof: str) -> dict:
+    """One stored week, in CANONICAL horizons (app.core.horizons).
+
+    The file on disk keys the anchor as "0" and the forecasts as "1".."4",
+    which is what the seal carries and can never be migrated. Everything
+    above this line sees the hub's own labels instead, with the anchor
+    under ORIGIN. This function and write_week_samples are the only two
+    places that know both."""
     fp = week_samples_path(root, asof)
     if fp is None:
         raise FileNotFoundError(
             f"no stored samples for week {asof} under {root}")
-    return read_samples(fp)
+    return read_samples(fp)          # already canonical
 
 
 def write_week_samples(wd: Path, obj: dict) -> Path:
@@ -185,8 +204,10 @@ def write_week_samples(wd: Path, obj: dict) -> Path:
     wd = Path(wd)
     fp = wd / SAMPLES_GZ
     tmp = wd / (SAMPLES_GZ + ".tmp")
+    # `obj` is canonical; the file stays in the stored convention so that
+    # every week ever written, sealed ones included, reads back the same way
     with gzip.open(tmp, "wt", encoding="utf-8", compresslevel=6) as f:
-        json.dump(obj, f)
+        json.dump(hz.record_to_stored(obj), f)
     os.replace(tmp, fp)
     (wd / SAMPLES_JSON).unlink(missing_ok=True)
     try:
@@ -197,7 +218,7 @@ def write_week_samples(wd: Path, obj: dict) -> Path:
 
 
 def member_quantiles(d: dict) -> dict:
-    """{member: {location: {"1".."4": {level: value}}}} from one week's
+    """{member: {location: {"0".."3": {level: value}}}} from one week's
     stored record: the sample-shaped members (pf, pf2s) through the member
     quantile formula, the analogue's stored quantiles with float levels.
     The ensemble is NOT here: each reader blends the members with its own
@@ -225,7 +246,7 @@ def write_week_quantiles(wd: Path, mq: dict) -> Path:
         {m: {loc: {h: {repr(float(L)): v for L, v in q.items()}
                    for h, q in qs.items()}
              for loc, qs in locs.items()}
-         for m, locs in mq.items()}))
+         for m, locs in hz.quantiles_to_stored(mq).items()}))
     os.replace(tmp, fp)
     return fp
 
@@ -240,10 +261,11 @@ def read_week_quantiles(wd: Path) -> dict | None:
         return None
     try:
         raw = json.loads(fp.read_text())
-        return {m: {loc: {h: {float(L): float(v) for L, v in q.items()}
-                          for h, q in qs.items()}
-                    for loc, qs in locs.items()}
-                for m, locs in raw.items()}
+        return hz.quantiles_to_canonical(
+            {m: {loc: {h: {float(L): float(v) for L, v in q.items()}
+                       for h, q in qs.items()}
+                 for loc, qs in locs.items()}
+             for m, locs in raw.items()})
     except Exception:
         return None
 
@@ -1173,11 +1195,13 @@ def score_season(root: Path, season: str,
                                    location_fips=fips) if members else {}
             for model, qs in (("pf", pf_q), ("analogue", an_q),
                               ("ensemble", blend)):
-                for h in ("1", "2", "3", "4"):
+                for h in hz.HORIZONS:
                     q = qs.get(h)
                     if not q:
                         continue
-                    actual = truth.get((fips, T + timedelta(days=7 * int(h))))
+                    # canonical horizon h is h+1 weeks past the as-of
+                    actual = truth.get(
+                        (fips, T + timedelta(days=7 * (int(h) + 1))))
                     if actual is None or actual <= 0 or q[0.5] <= 0:
                         continue
                     try:
@@ -1185,7 +1209,7 @@ def score_season(root: Path, season: str,
                     except Exception:
                         continue
                     rows.append({"model": model, "location": loc, "fips": fips,
-                                 "asof": asof, "horizon": int(h) - 1, "wis": w})
+                                 "asof": asof, "horizon": int(h), "wis": w})
     df = pd.DataFrame(rows)
     if df.empty:
         return df
@@ -1293,7 +1317,7 @@ def national_aggregate(root: Path,
         pf_locs = [l for l in d.get("pf", {}) if not usn.is_us(l)]
         an_locs = [l for l in d.get("analogue", {}) if not usn.is_us(l)]
         pf_nat, an_nat = {}, {}
-        for h in ("1", "2", "3", "4"):
+        for h in hz.HORIZONS:
             arrs = []
             for loc in pf_locs:
                 a = np.asarray(d["pf"][loc].get(h, []), float)
@@ -1337,11 +1361,12 @@ def national_aggregate(root: Path,
                                 location_fips="US") if members else {})
         for model, qs in (("pf", pf_nat), ("analogue", an_nat),
                           ("ensemble", blend)):
-            for h in ("1", "2", "3", "4"):
+            for h in hz.HORIZONS:
                 q = qs.get(h)
                 if not q:
                     continue
-                actual = truth.get(("US", T + timedelta(days=7 * int(h))))
+                actual = truth.get(
+                    ("US", T + timedelta(days=7 * (int(h) + 1))))
                 # the same degenerate-cell guards as score_season
                 if actual is None or actual <= 0 or q[0.5] <= 0:
                     continue
@@ -1349,7 +1374,7 @@ def national_aggregate(root: Path,
                     w = float(wis_fn(q, actual).wis)
                 except Exception:
                     continue
-                rows.append((model, asof, int(h) - 1, w))
+                rows.append((model, asof, int(h), w))
     bases = {}
     for asof in {r[1] for r in rows}:
         for k, v in _baseline_cells(asof, {"US"}, truth).items():

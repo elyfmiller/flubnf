@@ -3,13 +3,19 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from app.core import horizons as hz                            # noqa: E402
+
 
 def _levels():
     from flubnf.quantiles import FLUSIGHT_QUANTILES as QL
     return [float(q) for q in QL]
 
 
-def _flat(v, hs=("1", "2", "3", "4")):
+def _flat(v, hs=hz.HORIZONS):
+    """A member's quantile table, flat at `v`, over the CANONICAL forecast
+    horizons. "0" here is the FIRST FORECAST week, not the anchor: the
+    anchor is hz.ORIGIN and never belongs in a member's quantiles, because
+    it is not a forecast and is never submitted or scored."""
     return {h: {L: v for L in _levels()} for h in hs}
 
 
@@ -26,7 +32,7 @@ def test_vincentize_equal_thirds():
     members = {"pf": _flat(100.0), "analogue": _flat(200.0),
                "pf2s": _flat(600.0)}
     out = vincentize(members, weights=equal_weights(members))
-    for h in ("1", "2", "3", "4"):
+    for h in hz.HORIZONS:
         assert abs(out[h][0.5] - 300.0) < 1e-9
         assert len(out[h]) == len(_levels())
 
@@ -34,11 +40,11 @@ def test_vincentize_equal_thirds():
 def test_vincentize_missing_member_renormalizes():
     from app.core.ensemble import equal_weights, vincentize
     members = {"pf": _flat(100.0), "analogue": _flat(200.0),
-               "pf2s": _flat(600.0, hs=("1",))}      # pf2s absent at h 2-4
+               "pf2s": _flat(600.0, hs=("0",))}      # pf2s absent at h 1-3
     out = vincentize(members, weights=equal_weights(members))
-    assert abs(out["1"][0.5] - 300.0) < 1e-9         # thirds where all present
-    assert abs(out["2"][0.5] - 150.0) < 1e-9         # halves after renormalizing
-    assert abs(out["4"][0.5] - 150.0) < 1e-9
+    assert abs(out["0"][0.5] - 300.0) < 1e-9         # thirds where all present
+    assert abs(out["1"][0.5] - 150.0) < 1e-9         # halves after renormalizing
+    assert abs(out["3"][0.5] - 150.0) < 1e-9
 
 
 def test_vincentize_unequal_member_weights():
@@ -55,7 +61,7 @@ def test_vincentize_default_is_the_unfitted_blend():
     from app.core.ensemble import vincentize
     qa, qb = _flat(100.0), _flat(200.0)
     out = vincentize({"pf": qa, "analogue": qb})
-    for h in ("1", "2", "3", "4"):
+    for h in hz.HORIZONS:
         assert abs(out[h][0.5] - 150.0) < 1e-9
     assert vincentize({"pf": qa, "analogue": qb}, location_fips="50") == out
     # the default is exactly what an explicit 50/50 request produces, which
@@ -84,13 +90,17 @@ def test_vincentize_frozen_path_requires_being_named(tmp_path, monkeypatch):
     qa, qb = _flat(100.0), _flat(200.0)
     w = frozen_weights()
     out = vincentize({"pf": qa, "analogue": qb}, weights=FROZEN)
-    for h in ("1", "2", "3", "4"):
-        s = pf_share(w, int(h) - 1)
+    for h in hz.HORIZONS:
+        # the frozen table is keyed on the hub's own horizon labels, and a
+        # canonical horizon already IS that label, so nothing is shifted on
+        # the way in. The -1 this line used to carry belonged to the old
+        # internal 1..4 convention and went with it.
+        s = pf_share(w, int(h))
         assert abs(out[h][0.5] - (s * 100 + (1 - s) * 200)) < 1e-9
     vt = vincentize({"pf": qa, "analogue": qb}, weights=FROZEN,
                     location_fips="50")
     s_vt = pf_share(w, 0, "50")
-    assert abs(vt["1"][0.5] - (s_vt * 100 + (1 - s_vt) * 200)) < 1e-9
+    assert abs(vt["0"][0.5] - (s_vt * 100 + (1 - s_vt) * 200)) < 1e-9
     # a member set the frozen table knows nothing about falls back to equal
     # weights rather than to an arbitrary member
     three = vincentize({"pf": _flat(100.0), "analogue": _flat(200.0),

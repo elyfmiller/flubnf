@@ -354,7 +354,12 @@ def test_diagram_data_shapes():
                       "pf2s": {"Ohio": {"ReffA": 1.0, "ReffB": 1.04}}},
            "observed": {"Ohio": [["2026-08-08", 12.0]],
                         "US": [["2026-08-08", 300.0]]},
-           "models": {"ensemble": {"Ohio": {"1": {"0.5": 14.0}}}}}
+           # a LEGACY results.json (stored horizons "1".."4"): the console
+           # must still render workroots written before the reindex
+           "models": {"ensemble": {"Ohio": {"1": {"0.5": 14.0},
+                                            "2": {"0.5": 15.0},
+                                            "3": {"0.5": 16.0},
+                                            "4": {"0.5": 17.0}}}}}
     d = _diagram_data(res)
     assert d["has_pf2s"] is True
     assert d["order"][0] == "US"                    # national listed first

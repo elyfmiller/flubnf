@@ -42,6 +42,7 @@ from fastapi.responses import (HTMLResponse, JSONResponse, PlainTextResponse,  #
                                RedirectResponse)
 from fastapi.templating import Jinja2Templates                  # noqa: E402
 
+from app.core import horizons as _hzmod                         # noqa: E402
 from app.core import ttlcache                                   # noqa: E402
 
 
@@ -796,11 +797,12 @@ def _outlook_cards(res: dict | None, rid: str | None = None) -> tuple:
     model = "ensemble" if models.get("ensemble") else "pf"
     observed = (res or {}).get("observed", {})
     by_model: dict = {}
+    models = _hzmod.models_to_canonical(models)
     for mname, md in models.items():
         cards = {}
         for loc, qd in (md or {}).items():
             fips = n2f.get(loc, "")
-            q1 = (qd or {}).get("1")
+            q1 = (qd or {}).get("0")      # one week ahead, canonical
             obs = observed.get(loc) or []
             # tolerate the pre-quantile results schema (medians-only floats)
             if len(fips) != 2 or not isinstance(q1, dict) or not obs:
@@ -886,7 +888,7 @@ def _diagram_data(res: dict | None) -> dict:
         params = res.get("params") or {}
         pf_p = params.get("pf") or {}
         p2_p = params.get("pf2s") or {}
-        models = res.get("models") or {}
+        models = _hzmod.models_to_canonical(res.get("models") or {})
         out["has_pf2s"] = bool(p2_p) or bool(models.get("pf2s"))
         observed = res.get("observed") or {}
         picked = models.get("ensemble") or models.get("pf") or {}
@@ -899,7 +901,7 @@ def _diagram_data(res: dict | None) -> dict:
             obs = observed.get(loc) or []
             if obs:
                 e["obs"] = obs[-1]
-            q1 = (picked.get(loc) or {}).get("1")
+            q1 = (picked.get(loc) or {}).get("0")   # one week ahead
             if isinstance(q1, dict) and q1.get("0.5") is not None:
                 e["med1"] = float(q1["0.5"])
             if e:
@@ -2118,7 +2120,7 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
         return None
 
     def _q1_of(qd):
-        q1 = (qd or {}).get("1", (qd or {}).get(1))
+        q1 = (qd or {}).get("0", (qd or {}).get(0))   # one week ahead
         return q1 if isinstance(q1, dict) and q1 else None
 
     def _q_cards(q_by_loc):
@@ -2224,14 +2226,19 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
         o_v = [v for _, v in obs_pairs]
         _base = (_dd.fromisoformat(o_t[-1]) if o_t
                  else _dd.fromisoformat(spec.forecast_date))
-        f_t = [(_base + _tdd(days=7 * h)).isoformat()
-               for h in (1, 2, 3, 4)]
-        samples_h = {f_t[h - 1]: s[str(h)] for h in (1, 2, 3, 4)}
+        # canonical horizons: hub label h is h+1 weeks past the anchor
+        f_t = [(_base + _tdd(days=7 * (h + 1))).isoformat()
+               for h in (0, 1, 2, 3)]
+        samples_h = {f_t[h]: s[str(h)] for h in (0, 1, 2, 3)}
         try:
             q_by_t = report_v2.fan_quantiles(f_t, samples_h)
             lo_l = o_v[-1] if o_v else 0.0
+            # ONE week ahead, which is canonical "0". This read and the
+            # samples_h fan four lines up are the same page: leaving it on
+            # "1" made the rate-change pill describe the two-week-ahead
+            # week while the fan beside it described the one-week.
             probs_l = categorical_probs(
-                _np.asarray(s["1"], float), lo_l,
+                _np.asarray(s["0"], float), lo_l,
                 int(n2p.get(loc, 1e6)), 1)
             key = "US" if fips_l == "US" else n2a.get(loc, loc)
             meds = [q_by_t[t]["0.5"] for t in f_t]
@@ -2632,9 +2639,10 @@ def _run_all(spec: RunSpec) -> None:
         # 6. results index for the run page
         import json as _json
         import numpy as _np
+        from app.core import horizons as _hz
         def _qs_from_samples(s):
             out = {}
-            for h in ("1", "2", "3", "4"):
+            for h in _hz.HORIZONS:
                 a = _np.asarray(s.get(h, []), float); a = a[_np.isfinite(a)]
                 if a.size:
                     out[h] = {q: float(_np.quantile(a, float(q)))
@@ -2644,6 +2652,7 @@ def _run_all(spec: RunSpec) -> None:
             return {h: {q: qd[h][float(q)]
                         for q in ("0.1", "0.25", "0.5", "0.75", "0.9")}
                     for h in qd}
+        from app.core.horizons import models_to_stored as _hz_stored
         import os as _os
         _tmp = workroot / "results.json.tmp"
         _tmp.write_text(_json.dumps({
@@ -2651,14 +2660,19 @@ def _run_all(spec: RunSpec) -> None:
             "research": _research,
             "observed": obs,
             "params": params,
-            "models": {
+            # results.json stays in the STORED convention: the console
+            # reads workroots written long before the reindex and those
+            # runs are the user's record of what was forecast. Readers go
+            # through horizons.models_to_canonical, which tells the two
+            # apart by the presence of "4" and so never has to guess.
+            "models": _hz_stored({
                 "pf": {loc: _qs_from_samples(s) for loc, s in pf_samples.items()},
                 "analogue": {loc: _qs_from_q(q) for loc, q in an_q.items()},
                 **({"pf2s": {loc: _qs_from_samples(s)
                              for loc, s in pf2s_samples.items()}}
                    if pf2s_samples else {}),
                 "ensemble": {loc: _qs_from_q(q) for loc, q in members_by_loc.items()},
-            }}))
+            })}))
         _os.replace(_tmp, workroot / "results.json")   # readers never see a half-write
         # 7. forecast archive: one folder per forecast_date, latest run wins.
         # Research runs never archive: the archive is the record of what
@@ -4680,8 +4694,8 @@ def _week_map_cards(root: Path, wk: str) -> dict:
     d = retro.read_samples(sp)
     cards = {}
     for loc, s in d.get("pf", {}).items():
-        arr = np.asarray(s["1"], float)
-        origin = np.asarray(s["0"], float)
+        arr = np.asarray(s["0"], float)            # one week ahead
+        origin = np.asarray(s[_hzmod.ORIGIN], float)   # the anchor week
         lo = float(np.median(origin[np.isfinite(origin)]))
         probs = categorical_probs(arr, lo, int(n2p[loc]), 1)
         # escaped like every hover_html producer: the name reaches the
@@ -5433,7 +5447,7 @@ def retro_results(request: Request, season: str, week: str = "",
             loc0 = sorted(d0.get("pf", {}))[0]
             fips0 = n2f_d.get(loc0)
             T0 = _dp.Timestamp(d0["asof"])
-            q0 = _de.member_quantiles_from_samples(d0["pf"][loc0]).get("1", {})
+            q0 = _de.member_quantiles_from_samples(d0["pf"][loc0]).get("0", {})
             act = truth_d.get((fips0, T0 + _dp.Timedelta(days=7)))
             med = q0.get(0.5, "KEY-MISSING")
             try:

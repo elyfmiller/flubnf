@@ -13,6 +13,7 @@ import pandas as pd                                      # noqa: E402
 from fastapi.testclient import TestClient                # noqa: E402
 
 import app.core.scoring as scoring                       # noqa: E402
+from app.core import horizons as hz                      # noqa: E402
 from app.core.runs import RunSpec, results_html          # noqa: E402
 from app.ui import server as srv                         # noqa: E402
 
@@ -20,22 +21,32 @@ client = TestClient(srv.app)
 
 
 def _q(med):
-    """A full 23-level quantile set around `med`, monotone, as the members
-    store them (the WIS needs every hub level)."""
+    """A full 23-level quantile set around `med`, monotone, in the canonical
+    horizons the members carry in memory (the WIS needs every hub level).
+    No anchor key: hz.ORIGIN is not a forecast and score_quantiles must
+    never find one to score."""
     from flubnf.quantiles import FLUSIGHT_QUANTILES as QL
-    return {str(h): {float(L): med * (0.5 + float(L)) for L in QL} for h in (1, 2, 3, 4)}
+    return {h: {float(L): med * (0.5 + float(L)) for L in QL}
+            for h in hz.HORIZONS}
 
 
 def test_score_quantiles_applies_the_sample_scorers_cell_rule(monkeypatch):
     T = pd.Timestamp("2098-01-03")
+    # truth is keyed by week-ending date, which is PHYSICAL weeks past the
+    # as-of and knows nothing of horizon labels: canonical horizon h lands
+    # on T + 7*(h+1), so these four weeks cover horizons "0".."3"
     truth = {("39", T + pd.Timedelta(days=7 * h)): 100.0 for h in (1, 2, 3, 4)}
     truth[("49", T + pd.Timedelta(days=7))] = 50.0          # Utah: one week only
     truth[("49", T + pd.Timedelta(days=14))] = 0.0          # zero truth: no cell
     n2f = {"Ohio": "39", "Utah": "49", "Nowhere": None}
+    # the baseline is keyed on the hub's horizons, the same labels the rows
+    # now carry, so the join is straight through
     monkeypatch.setattr(scoring, "_baseline_cells",
-                        lambda fd, fips, tr: {(f, fd, h): 10.0 for f in fips for h in range(4)})
+                        lambda fd, fips, tr: {(f, fd, int(h)): 10.0
+                                              for f in fips
+                                              for h in hz.HORIZONS})
     df = scoring.score_quantiles({"Ohio": _q(100.0), "Utah": _q(100.0), "Nowhere": _q(5.0),
-                                  "Zero": {"1": {0.5: 0.0}}}, "2098-01-03", n2f, truth)
+                                  "Zero": {"0": {0.5: 0.0}}}, "2098-01-03", n2f, truth)
     assert sorted(df.location.unique()) == ["Ohio", "Utah"]
     assert len(df[df.location == "Ohio"]) == 4 and len(df[df.location == "Utah"]) == 1
     assert (df.base_wis == 10.0).all() and (df.rel == df.wis / 10.0).all()

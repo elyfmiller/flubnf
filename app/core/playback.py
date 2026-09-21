@@ -42,6 +42,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from app.core import horizons as hz
 from app.core import ensemble as ens
 from app.core import retro as retro_store
 from app.core import us_national as usn
@@ -52,7 +53,8 @@ from flubnf.wis import wis as wis_fn
 OFFICIAL = ("FluSight-baseline", "FluSight-ensemble")
 CACHE_V = 2   # bump when cached shapes or scoring logic change
 TARGET = "wk inc flu hosp"
-HORIZONS = ("1", "2", "3", "4")
+#: canonical hub horizons; app.core.horizons owns the convention
+HORIZONS = hz.HORIZONS
 
 
 class UnknownWeek(FileNotFoundError):
@@ -176,7 +178,7 @@ def _official_quantiles(model: str, asof: str, f2n: dict) -> dict | None:
             continue
         if not 0 <= h <= 3:
             continue
-        out.setdefault(name, {}).setdefault(str(h + 1), {})[L] = v
+        out.setdefault(name, {}).setdefault(str(h), {})[L] = v
     return out
 
 
@@ -197,10 +199,11 @@ def _score_block(qbl: dict, asof: str, truth: dict, n2f: dict,
             q = hq.get(h)
             if not q:
                 continue
-            actual = truth.get((fips, T + timedelta(days=7 * int(h))))
+            actual = truth.get(
+                (fips, T + timedelta(days=7 * (int(h) + 1))))
             if actual is None or actual <= 0 or q.get(0.5, 0) <= 0:
                 continue
-            base = bases.get((fips, asof, int(h) - 1))
+            base = bases.get((fips, asof, int(h)))
             if base is None:
                 continue
             try:

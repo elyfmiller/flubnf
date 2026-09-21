@@ -102,7 +102,9 @@ def quantile_rows(samples: dict, location_fips: str, asof: str) -> list:
 
     THE FROZEN JOIN (must match scripts/anchor_analysis.py, the formula the
     seal's scoring validated): hub reference_date = our as-of Saturday + 7
-    days, and hub horizon 0..3 carries our samples "1".."4". Callers pass
+    days, and hub horizon 0..3 carries our canonical samples "0".."3" (see
+    app.core.horizons; the anchor week rides under ORIGIN, where no
+    submitted row can reach it). Callers pass
     the AS-OF date (spec.forecast_date); the reference comes from
     hub_reference_date, the one place that formula lives. Passing the as-of
     straight through as the reference mislabeled every exported CSV by one
@@ -111,7 +113,7 @@ def quantile_rows(samples: dict, location_fips: str, asof: str) -> list:
     reference_date = str(ref.date())
     rows = []
     for h in (0, 1, 2, 3):
-        s = np.asarray(samples.get(str(h + 1), []), float)
+        s = np.asarray(samples.get(str(h), []), float)
         s = s[np.isfinite(s)]
         if not s.size:
             continue
@@ -261,7 +263,7 @@ def rows_from_quantiles(qs: dict, location_fips: str, asof: str) -> list:
     reference_date = str(ref.date())
     rows = []
     for h in (0, 1, 2, 3):
-        q = qs.get(str(h + 1))
+        q = qs.get(str(h))
         if not q:
             continue
         target_end = ref + pd.Timedelta(weeks=h)

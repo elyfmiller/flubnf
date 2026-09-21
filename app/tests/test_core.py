@@ -7,6 +7,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from app.core import horizons as hz                            # noqa: E402
+
 
 def test_seed_is_deterministic_and_distinct():
     from app.core.runs import derive_seed
@@ -55,7 +57,7 @@ def test_submission_writes_hub_layout(tmp_path):
     7), so the tree copies straight into a hub fork."""
     from app.core.submit import quantile_rows, write_submission
     rng = np.random.default_rng(0)
-    samples = {str(h): rng.gamma(5, 20, 4000).tolist() for h in (1, 2, 3, 4)}
+    samples = {h: rng.gamma(5, 20, 4000).tolist() for h in hz.HORIZONS}
     rows = quantile_rows(samples, "39", "2026-01-24")
     p = write_submission(rows, "pf", "2026-01-24", tmp_path)
     from app.core.submit import hub_model_id
@@ -113,28 +115,32 @@ def test_vincentize_defaults_to_equal_weights_never_the_fitted_table(tmp_path, m
     w = frozen_weights()
     assert w["global"]["0"] == 0.4 and w["global"]["3"] == 0.8
     assert "50" in w["per_state"]
-    qa = {"1": {L: 100.0 for L in _levels()}, "2": {L: 100.0 for L in _levels()}}
-    qb = {"1": {L: 200.0 for L in _levels()}}
+    # canonical horizons: "0" is the FIRST FORECAST week, and the frozen
+    # table is keyed on those same hub labels, so pf_share(w, 0) below is
+    # the share that applies at horizon "0" with no shift in between.
+    h0, h1 = hz.HORIZONS[0], hz.HORIZONS[1]
+    qa = {h0: {L: 100.0 for L in _levels()}, h1: {L: 100.0 for L in _levels()}}
+    qb = {h0: {L: 200.0 for L in _levels()}}
 
     # the default: a plain average, and demonstrably NOT the frozen share
     out = vincentize({"pf": qa, "analogue": qb})
-    assert abs(out["1"][0.5] - 150.0) < 1e-9
-    assert abs(out["2"][0.5] - 100.0) < 1e-9                     # lone member = weight 1
+    assert abs(out[h0][0.5] - 150.0) < 1e-9
+    assert abs(out[h1][0.5] - 100.0) < 1e-9                      # lone member = weight 1
     s0 = pf_share(w, 0)
     assert abs(s0 - 0.5) > 1e-9                                  # the two differ
-    assert abs(out["1"][0.5] - (s0 * 100 + (1 - s0) * 200)) > 1.0
+    assert abs(out[h0][0.5] - (s0 * 100 + (1 - s0) * 200)) > 1.0
     # the per-state override cannot leak in through the default either
     assert abs(vincentize({"pf": qa, "analogue": qb},
-                          location_fips="50")["1"][0.5] - 150.0) < 1e-9
+                          location_fips="50")[h0][0.5] - 150.0) < 1e-9
 
     # ...and the frozen path still works, when asked for by name
     fz = vincentize({"pf": qa, "analogue": qb}, weights=FROZEN)
-    assert abs(fz["1"][0.5] - (s0 * 100 + (1 - s0) * 200)) < 1e-9
-    assert abs(fz["2"][0.5] - 100.0) < 1e-9                      # lone member = weight 1
+    assert abs(fz[h0][0.5] - (s0 * 100 + (1 - s0) * 200)) < 1e-9
+    assert abs(fz[h1][0.5] - 100.0) < 1e-9                       # lone member = weight 1
     vt = vincentize({"pf": qa, "analogue": qb}, weights=FROZEN,
                     location_fips="50")
     s_vt = pf_share(w, 0, "50")
-    assert abs(vt["1"][0.5] - (s_vt * 100 + (1 - s_vt) * 200)) < 1e-9  # override applied
+    assert abs(vt[h0][0.5] - (s_vt * 100 + (1 - s_vt) * 200)) < 1e-9  # override applied
     # passing the table itself is the same request
     assert vincentize({"pf": qa, "analogue": qb}, weights=w) == fz
 

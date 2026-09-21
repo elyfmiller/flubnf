@@ -33,6 +33,7 @@ from fastapi.testclient import TestClient           # noqa: E402
 
 import app.core.runs as runs_mod                    # noqa: E402
 import app.ui.server as srv                         # noqa: E402
+from app.core import horizons as hz                 # noqa: E402
 from app.core import report_v2                      # noqa: E402
 
 client = TestClient(srv.app)
@@ -50,8 +51,13 @@ def _synth_run_all_models(workroot: Path):
     spec = runs_mod.RunSpec(engine="all", forecast_date="2098-01-03",
                             locations=["Ohio", "US"])
     rng = np.random.default_rng(7)
-    pf_samples = {loc: {str(h): (rng.gamma(5.0, 20.0, 400) + 10 * h).tolist()
-                        for h in (1, 2, 3, 4)}
+    # canonical horizons (app.core.horizons): "0" is the FIRST forecast
+    # week, not the anchor. The shift still grows with weeks ahead, and
+    # h+1 weeks past the anchor keeps the four distributions exactly the
+    # ones this fixture always fed the build path.
+    pf_samples = {loc: {h: (rng.gamma(5.0, 20.0, 400)
+                            + 10 * (int(h) + 1)).tolist()
+                        for h in hz.HORIZONS}
                   for loc in ("Ohio", "US")}
     obs = {loc: [[f"2097-12-{d:02d}", 100.0 + d] for d in (6, 13, 20, 27)]
            for loc in ("Ohio", "US")}
@@ -108,7 +114,10 @@ def test_bundle_v3_carries_every_model_via_the_one_quantile_cdf_path(
                        locs.population.astype(float)))["Ohio"])
     for model, q in (("ensemble", parts["ens_q"]), ("pf", parts["pf_q"]),
                      ("analogue", parts["an_q"])):
-        expect = categorical_probs_from_quantiles(q["Ohio"]["1"], lo, pop, 1)
+        # the card is the 1-week-ahead outlook, so the grid it reads is
+        # the FIRST canonical forecast horizon
+        expect = categorical_probs_from_quantiles(
+            q["Ohio"][hz.HORIZONS[0]], lo, pop, 1)
         got = cbm[model]["OH"]["probs"]
         for c in expect:
             assert abs(got[c] - expect[c]) < 1e-9, (model, c)
@@ -156,8 +165,9 @@ def test_pf_only_run_gets_no_toggle_and_an_honest_label(tmp_path):
     spec = runs_mod.RunSpec(engine="pf", forecast_date="2098-01-03",
                             locations=["Ohio", "US"])
     rng = np.random.default_rng(3)
-    pf_samples = {loc: {str(h): (rng.gamma(5.0, 20.0, 300) + 8 * h).tolist()
-                        for h in (1, 2, 3, 4)}
+    pf_samples = {loc: {h: (rng.gamma(5.0, 20.0, 300)
+                            + 8 * (int(h) + 1)).tolist()
+                        for h in hz.HORIZONS}
                   for loc in ("Ohio", "US")}
     obs = {loc: [[f"2097-12-{d:02d}", 100.0 + d] for d in (6, 13, 20, 27)]
            for loc in ("Ohio", "US")}
@@ -301,7 +311,7 @@ def test_stored_pre_bundle_run_gets_the_approximate_toggle(
     lo = parts["obs"]["Ohio"][-1][1]
     for model, q in (("ensemble", parts["ens_q"]), ("pf", parts["pf_q"]),
                      ("analogue", parts["an_q"])):
-        grid = {str(l): v for l, v in q["Ohio"]["1"].items()
+        grid = {str(l): v for l, v in q["Ohio"][hz.HORIZONS[0]].items()
                 if str(l) in LV}
         expect = categorical_probs_from_quantiles(grid, lo, pop, 1)
         got = bm[model]["39"]["probs"]

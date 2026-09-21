@@ -84,6 +84,8 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from app.core import horizons as hz
+
 APP = Path(__file__).resolve().parents[1]
 REPO = APP.parent
 APP_STATE = APP / "state"
@@ -105,7 +107,8 @@ PLOTLY_NAME = "plotly.min.js"
 #: payload schema version; bump when a consumer-visible shape changes
 PAYLOAD_VERSION = 1
 
-HORIZONS = ("1", "2", "3", "4")
+#: canonical hub horizons; app.core.horizons owns the convention
+HORIZONS = hz.HORIZONS
 #: the levels the fan draws: median, 50% interval, 80% interval. Chosen as
 #: the intersection of what both forecast sources store -- a retrospective
 #: week carries all 23 FluSight levels, a live run's results.json carries
@@ -251,10 +254,11 @@ def _score_payload(payload: dict, truth, n2f, bases_cache: dict) -> dict:
                     q = {float(k): float(v) for k, v in raw.items()}
                 except (TypeError, ValueError):
                     continue
-                actual = truth.get((fips, T + timedelta(days=7 * int(h))))
+                actual = truth.get(
+                    (fips, T + timedelta(days=7 * (int(h) + 1))))
                 if actual is None or actual <= 0 or q.get(0.5, 0.0) <= 0:
                     continue
-                base = bases.get((fips, asof, int(h) - 1))
+                base = bases.get((fips, asof, int(h)))
                 if base is None:
                     continue
                 try:
@@ -392,11 +396,11 @@ def _cards_from_quantiles(models: dict, truth_by_loc: dict, asof: str) -> dict:
     n2p = dict(zip(loc.location_name, loc.population.astype(float)))
 
     out: dict = {}
-    for model, qbl in (models or {}).items():
+    for model, qbl in hz.models_to_canonical(models or {}).items():
         cards = {}
         for name, hq in (qbl or {}).items():
             fips = n2f.get(name, "")
-            raw = (hq or {}).get("1")
+            raw = (hq or {}).get("0")     # one week ahead, canonical
             series = [p for p in (truth_by_loc.get(name) or [])
                       if p[0] <= asof and p[1] is not None]
             if len(fips) != 2 or not raw or not series:
@@ -659,8 +663,8 @@ def _fans_from_payload(payload: dict, observed: dict | None = None) -> dict:
     ens, pf, an = (models.get("ensemble") or {}, models.get("pf") or {},
                    models.get("analogue") or {})
     targets = [(datetime.fromisoformat(asof)
-                + timedelta(days=7 * h)).date().isoformat()
-               for h in (1, 2, 3, 4)]
+                + timedelta(days=7 * (h + 1))).date().isoformat()
+               for h in (0, 1, 2, 3)]
     out = {}
     for name in sorted(ens):
         obs = [[d, v] for d, v in (observed.get(name) or [])

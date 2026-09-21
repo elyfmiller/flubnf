@@ -107,10 +107,13 @@ def score_samples(samples_by_loc: Mapping, forecast_date: str,
         fips = name2fips.get(loc)
         if not fips:
             continue
-        for h in (1, 2, 3, 4):
+        for h in (0, 1, 2, 3):
+            # canonical horizons: h is the hub's label, h+1 weeks past the
+            # as-of. The samples carry the anchor under horizons.ORIGIN,
+            # which is not a forecast and is not scored.
             arr = np.asarray(s.get(str(h), []), float)
             arr = arr[np.isfinite(arr)]
-            actual = truth.get((fips, T + timedelta(days=7 * h)))
+            actual = truth.get((fips, T + timedelta(days=7 * (h + 1))))
             if actual is None or actual <= 0 or not arr.size:
                 continue
             q = {float(L): float(np.quantile(arr, L)) for L in QL}
@@ -126,7 +129,9 @@ def score_samples(samples_by_loc: Mapping, forecast_date: str,
     if df.empty:
         return df
     bs = _baseline_cells(forecast_date, set(df.fips), truth)
-    df["base_wis"] = [bs.get((r.fips, forecast_date, r.horizon - 1), np.nan)
+    # the baseline is keyed on the hub's horizons, which is what
+    # r.horizon now is; the -1 here was the old internal 1..4 convention
+    df["base_wis"] = [bs.get((r.fips, forecast_date, r.horizon), np.nan)
                       for r in df.itertuples()]
     df = df.dropna(subset=["base_wis"])
     df["rel"] = df.wis / df.base_wis
@@ -145,7 +150,7 @@ def score_quantiles(q_by_loc: Mapping, forecast_date: str,
         fips = name2fips.get(loc)
         if not fips or not isinstance(qs, Mapping):
             continue
-        for h in (1, 2, 3, 4):
+        for h in (0, 1, 2, 3):
             q = qs.get(str(h)) or qs.get(h)
             if not q:
                 continue
@@ -153,7 +158,7 @@ def score_quantiles(q_by_loc: Mapping, forecast_date: str,
                 q = {float(L): float(v) for L, v in q.items()}
             except (TypeError, ValueError):
                 continue
-            actual = truth.get((fips, T + timedelta(days=7 * h)))
+            actual = truth.get((fips, T + timedelta(days=7 * (h + 1))))
             if actual is None or actual <= 0 or q.get(0.5, 0) <= 0:
                 continue
             try:
@@ -166,7 +171,9 @@ def score_quantiles(q_by_loc: Mapping, forecast_date: str,
     if df.empty:
         return df
     bs = _baseline_cells(forecast_date, set(df.fips), truth)
-    df["base_wis"] = [bs.get((r.fips, forecast_date, r.horizon - 1), np.nan)
+    # the baseline is keyed on the hub's horizons, which is what
+    # r.horizon now is; the -1 here was the old internal 1..4 convention
+    df["base_wis"] = [bs.get((r.fips, forecast_date, r.horizon), np.nan)
                       for r in df.itertuples()]
     df = df.dropna(subset=["base_wis"])
     df["rel"] = df.wis / df.base_wis

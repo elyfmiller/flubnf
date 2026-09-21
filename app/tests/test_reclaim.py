@@ -38,6 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from fastapi.testclient import TestClient                    # noqa: E402
 
 import app.core.runs as runs_mod                             # noqa: E402
+from app.core import horizons as hz                          # noqa: E402
 from app.core import playback, reclaim, retro, scoring       # noqa: E402
 from app.core.runs import run_display, run_id_time           # noqa: E402
 from app.ui import server as srv                             # noqa: E402
@@ -72,10 +73,18 @@ def _intermediates(wd: Path) -> None:
 
 
 def _payload(asof: str) -> dict:
-    pf = {loc: {str(h): [10.0 + h, 11.0 + h, 12.0 + h] for h in range(5)}
+    """One week's record in CANONICAL horizons (app.core.horizons): the PF
+    carries the anchor under ORIGIN alongside its four forecasts "0".."3",
+    the analogue only the forecasts. The values stay keyed on the PHYSICAL
+    week each horizon stands for -- 0 for the anchor, 1..4 for the
+    forecasts -- so a record that came back one week out would be visible
+    in the numbers and not only in the key names. _mk_week is what puts it
+    on disk, and that is where the stored "0".."4" appear."""
+    week = {hz.ORIGIN: 0, **{h: int(h) + 1 for h in hz.HORIZONS}}
+    pf = {loc: {h: [10.0 + w, 11.0 + w, 12.0 + w] for h, w in week.items()}
           for loc in N2F}
-    an = {loc: {str(h): {str(L): 10.0 + h + L for L in QL}
-                for h in range(1, 5)} for loc in N2F}
+    an = {loc: {h: {str(L): 10.0 + week[h] + L for L in QL}
+                for h in hz.HORIZONS} for loc in N2F}
     return {"asof": asof, "pf": pf, "analogue": an}
 
 
@@ -89,7 +98,10 @@ def _mk_week(root: Path, asof: str, complete=True, gz=False,
         if gz:
             retro.write_week_samples(wd, _payload(asof))
         else:
-            (wd / "samples.json").write_text(json.dumps(_payload(asof)))
+            # the plain form predates write_week_samples, so the stored
+            # convention is applied here instead of by the storage boundary
+            (wd / "samples.json").write_text(
+                json.dumps(hz.record_to_stored(_payload(asof))))
     return wd
 
 
@@ -301,7 +313,11 @@ def _truth():
 
 def _mk_scoreable_tree(tmp_path) -> Path:
     """A season whose synthetic samples actually score (the results-prep
-    fixture pattern): truth-anchored draws for two locations, two weeks."""
+    fixture pattern): truth-anchored draws for two locations, two weeks.
+
+    These weeks are written as bytes, so they are keyed in the STORED
+    convention: the PF's "0" is the anchor at `asof` and "1".."4" are the
+    forecasts at asof+7h, which read back as ORIGIN and "0".."3"."""
     root = tmp_path / SEASON
     truth = _truth()
     for asof in (W1, W2):

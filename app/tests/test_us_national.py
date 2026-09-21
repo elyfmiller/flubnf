@@ -204,6 +204,7 @@ def test_site_builder_excludes_the_national_row_from_ours_and_theirs(
     is the code path that produces the published 0.678. Drive it with a
     payload carrying two states and a national row, and hold both the cell
     count and the value."""
+    from app.core import horizons as hz
     from app.core import scoring as _scoring
     from app.core import site_build
     from flubnf.quantiles import FLUSIGHT_QUANTILES as QL
@@ -219,8 +220,12 @@ def test_site_builder_excludes_the_national_row_from_ours_and_theirs(
     def _degenerate(v):
         return {str(L): v for L in QL}           # a point mass: WIS = |v - y|
 
+    # a playback payload lives in memory, so its horizons are canonical:
+    # hz.HORIZONS[0] is the FIRST forecast week, the one whose target lands
+    # on T, which is the only week the truth and baseline stubs cover
+    h0 = hz.HORIZONS[0]
     payload = {"asof": asof, "official": {},
-               "models": {"ensemble": {loc: {"1": _degenerate(med[loc])}
+               "models": {"ensemble": {loc: {h0: _degenerate(med[loc])}
                                        for loc in n2f}}}
     handed = []
     monkeypatch.setattr(_scoring, "_baseline_cells",

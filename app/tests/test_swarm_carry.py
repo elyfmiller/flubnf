@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import pytest                                            # noqa: E402
 
+from app.core import horizons as hz                      # noqa: E402
 from app.core import reclaim, retro                      # noqa: E402
 from app.core.engines import pf                          # noqa: E402
 from app.core.runs import derive_seed                    # noqa: E402
@@ -306,7 +307,10 @@ def test_collect_copies_the_ending_cloud_and_records_a_missing_one(tmp_path):
 
     out = pf.collect(w)
     assert sorted(out) == ["Ohio", "Utah"]
-    assert out["Ohio"]["0"] == [10.0, 10.0, 10.0, 10.0]   # both replicates
+    # canonical keys: the anchor week is hz.ORIGIN, never "0", which is
+    # now the first forecast. n_obs=3 so the anchor is col 2, scaled by
+    # last_observed/median = 10/2, and both replicates pool into it.
+    assert out["Ohio"][hz.ORIGIN] == [10.0, 10.0, 10.0, 10.0]
     assert (dest / "Ohio_r0.npz").read_bytes() == b"ending-cloud"
     assert not (dest / "Ohio_r1.npz").exists()
     missing = json.loads((w / pf.STATE_MISSING_NAME).read_text())
