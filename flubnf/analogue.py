@@ -528,40 +528,67 @@ def _scale_ratio_quantiles(anchor: float, ratio_q: dict,
 
 
 @dataclass(frozen=True, eq=False)
-class DonorSplice:
-    """A second donor pool to vincentize into the admissions pool.
+class AuxPool:
+    """One auxiliary donor pool and the weight it carries in the blend.
 
     `bank` has the same (location, date) -> value shape as the admissions
     bank and is read only by `donor_ratios`, which pools across locations,
-    so the auxiliary stream's location keys need not match the admissions
+    so an auxiliary stream's location keys need not match the admissions
     bank's. They only need to be self-consistent, because a location key is
-    used solely to find a week's own future value.
+    used solely to find a week's own future value. That is why a 20-site
+    FluSurv-NET catchment and a 48-state ILI+ bank can sit in the same blend
+    without either being a coverage map.
 
-    `weight` is the weight on the AUXILIARY pool, so 0.0 reproduces the
-    single-pool forecast and 0.5 is the equal-weight blend.
+    `weight` is this pool's share of the blended quantile function. The
+    admissions pool takes whatever is left, so a single pool at 0.5 is the
+    equal-weight case and two pools at 0.25 split the auxiliary half.
 
-    `shrink` rescales the auxiliary log-ratios by `r -> exp(shrink * log r)`
-    before the quantiles are taken, which puts a stream of different
-    volatility on the admissions pool's scale. Fit it with
-    `fit_log_ratio_shrink` on strictly prior seasons, never on the target.
+    `shrink` rescales this pool's log-ratios by `r -> exp(shrink * log r)`
+    before its quantiles are taken, putting a stream of different volatility
+    on the admissions pool's scale. Fit it with `fit_log_ratio_shrink` on
+    strictly prior seasons, never on the target.
 
     `exclude_seasons` goes through `resolve_donor_exclusions` exactly as the
-    admissions pool's does, so an auxiliary pool cannot drop a season that
-    the registry has not accepted.
+    admissions pool's does, so an auxiliary pool cannot drop a season the
+    registry has not accepted.
+
+    `label` names the stream in errors and in run records; no behaviour.
     """
     bank: Mapping[tuple, float]
-    weight: float = 0.5
+    weight: float
     shrink: Optional[float] = None
     exclude_seasons: tuple = tuple(sorted(EXCLUDED_DONOR_SEASONS))
     bandwidth: Optional[int] = None
+    label: str = "aux"
+
+
+@dataclass(frozen=True, eq=False)
+class DonorSplice:
+    """One or more auxiliary pools to vincentize into the admissions pool.
+
+    The blend is a weighted average of RATIO quantile functions, level by
+    level. Averaging quantile functions rather than pooling the donors is
+    deliberate: concatenating pools is a linear pool weighted by donor
+    COUNT, which hands the largest stream most of the say for a reason that
+    has nothing to do with how informative it is.
+
+    The admissions pool's weight is 1 minus the auxiliary weights, so those
+    must sum to at most 1.
+    """
+    pools: tuple
     #: Per-instance memo of auxiliary donor ratios, keyed by the arguments
     #: that determine them. `donor_ratios` does not depend on the location
-    #: being forecast -- the pool is cross-location -- so without this the
+    #: being forecast -- the pool is cross-location -- so without this each
     #: auxiliary bank is rescanned once per location per horizon, which on a
-    #: 52-jurisdiction run is 208 identical scans of the whole bank. The
-    #: memo is scoped to one DonorSplice, so it is built and dropped with
-    #: the run and cannot leak between forecast dates.
+    #: 52-jurisdiction run is 208 identical scans per pool. The memo is
+    #: scoped to one DonorSplice, so it is built and dropped with the run
+    #: and cannot leak between forecast dates.
     _ratio_memo: dict = field(default_factory=dict, repr=False, compare=False)
+
+    @property
+    def primary_weight(self) -> float:
+        """What the admissions pool keeps."""
+        return 1.0 - sum(float(p.weight) for p in self.pools)
 
 
 def in_season_log_ratios(bank: Mapping[tuple, float], horizon: int,
@@ -631,15 +658,17 @@ def fit_log_ratio_shrink(bank: Mapping[tuple, float],
 
 
 def spliced_quantiles(anchor: float, ratios: np.ndarray,
-                      aux_ratios: np.ndarray, levels: Iterable[float], *,
-                      weight: float = 0.5, shrink: Optional[float] = None,
+                      aux: Iterable, levels: Iterable[float], *,
                       completeness: Optional[float] = None,
                       widen_log_sd: Optional[float] = None) -> Optional[dict]:
-    """Vincentize two donor ratio pools, then scale the anchor by the result.
+    """Vincentize a primary ratio pool with one or more auxiliary pools.
 
-    q_ratio(L) = (1 - weight) * Q_primary(L) + weight * Q_aux(L)
+    `aux` is a sequence of (ratios, weight, shrink, label). The blended
+    ratio quantile function is
 
-    Both pools must independently clear MIN_DONORS. That is stricter than
+        q(L) = w0 * Q_primary(L) + sum_i w_i * Q_i(L),   w0 = 1 - sum w_i
+
+    EVERY pool must independently clear MIN_DONORS. That is stricter than
     requiring it of the blend, and deliberately so: a blend whose auxiliary
     half rests on a handful of donors is not a blend, it is the primary pool
     with noise added at a fixed weight.
@@ -649,9 +678,16 @@ def spliced_quantiles(anchor: float, ratios: np.ndarray,
     """
     if anchor is None or not np.isfinite(anchor) or anchor <= 0:
         return None
-    w = float(weight)
-    if not math.isfinite(w) or not (0.0 <= w <= 1.0):
-        raise ValueError(f"splice weight must be in [0, 1], got {weight!r}")
+    aux = list(aux)
+    ws = [float(w) for _, w, _, _ in aux]
+    if any(not math.isfinite(w) or w < 0 for w in ws):
+        raise ValueError(f"splice weights must be finite and >= 0, got {ws!r}")
+    w0 = 1.0 - sum(ws)
+    if w0 < -1e-12:
+        raise ValueError(
+            f"auxiliary splice weights sum to {sum(ws)!r}, leaving the "
+            f"admissions pool a negative weight; they must sum to at most 1")
+    w0 = max(w0, 0.0)
     if completeness is not None:
         c = float(completeness)
         if not math.isfinite(c) or c <= 0:
@@ -659,22 +695,33 @@ def spliced_quantiles(anchor: float, ratios: np.ndarray,
         anchor = anchor / c
     r = np.asarray(ratios, dtype=float)
     r = r[np.isfinite(r)]
-    a = np.asarray(aux_ratios, dtype=float)
-    a = a[np.isfinite(a)]
-    if r.size < MIN_DONORS or a.size < MIN_DONORS:
+    if r.size < MIN_DONORS:
         return None
-    if shrink is not None:
-        sh = float(shrink)
-        if not math.isfinite(sh) or sh <= 0:
-            raise ValueError(f"shrink must be finite and > 0, got {shrink!r}")
-        a = a[a > 0]
+    prepared = []
+    for a_raw, w, shrink, label in aux:
+        a = np.asarray(a_raw, dtype=float)
+        a = a[np.isfinite(a)]
         if a.size < MIN_DONORS:
             return None
-        # exp(s * log r) rather than r ** s: the two agree to within an ulp,
-        # and this is the form the pre-registered harness measured.
-        a = np.exp(sh * np.log(a))
-    rq = {float(L): float((1.0 - w) * np.quantile(r, L)
-                          + w * np.quantile(a, L)) for L in levels}
+        if shrink is not None:
+            sh = float(shrink)
+            if not math.isfinite(sh) or sh <= 0:
+                raise ValueError(
+                    f"shrink for pool {label!r} must be finite and > 0, got "
+                    f"{shrink!r}")
+            a = a[a > 0]
+            if a.size < MIN_DONORS:
+                return None
+            # exp(s * log r) rather than r ** s: the two agree to within an
+            # ulp, and this is the form the pre-registered harness measured.
+            a = np.exp(sh * np.log(a))
+        prepared.append((a, float(w)))
+    rq = {}
+    for L in levels:
+        v = w0 * np.quantile(r, L)
+        for a, w in prepared:
+            v += w * np.quantile(a, L)
+        rq[float(L)] = float(v)
     return _scale_ratio_quantiles(anchor, rq, widen_log_sd)
 
 
@@ -703,16 +750,19 @@ def forecast(anchor: float, as_of: date, horizon: int,
     if splice is None:
         return analogue_quantiles(anchor, r, levels, completeness=completeness,
                                   widen_log_sd=widen_log_sd)
-    aux_bw = bandwidth if splice.bandwidth is None else splice.bandwidth
-    memo_key = (epiweek(as_of), season_of(as_of), horizon, aux_bw)
-    aux = splice._ratio_memo.get(memo_key)
-    if aux is None:
-        aux = donor_ratios(splice.bank, memo_key[0], memo_key[1], horizon,
-                           bandwidth=aux_bw,
-                           exclude_seasons=splice.exclude_seasons)
-        splice._ratio_memo[memo_key] = aux
-    return spliced_quantiles(anchor, r, aux, levels, weight=splice.weight,
-                             shrink=splice.shrink, completeness=completeness,
+    ew, se = epiweek(as_of), season_of(as_of)
+    aux = []
+    for i, pool in enumerate(splice.pools):
+        bw = bandwidth if pool.bandwidth is None else pool.bandwidth
+        memo_key = (i, ew, se, horizon, bw)
+        got = splice._ratio_memo.get(memo_key)
+        if got is None:
+            got = donor_ratios(pool.bank, ew, se, horizon, bandwidth=bw,
+                               exclude_seasons=pool.exclude_seasons)
+            splice._ratio_memo[memo_key] = got
+        aux.append((got, pool.weight, pool.shrink, pool.label))
+    return spliced_quantiles(anchor, r, aux, levels,
+                             completeness=completeness,
                              widen_log_sd=widen_log_sd)
 
 

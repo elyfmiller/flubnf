@@ -109,99 +109,103 @@ def load_aux_bank(path: str) -> dict:
     return bank
 
 
-def _built_aux_bank(spec, build) -> dict:
-    """Build the auxiliary bank from Delphi rather than read it off disk.
+#: Auxiliary donor streams the engine can build. Each entry maps a stream
+#: name to the module that owns it; a stream this dict does not name cannot
+#: be spliced in, which is the point.
+AUX_STREAMS = ("iliplus", "flusurv")
 
-    `build` is `spec.extra["iliplus"]["build"]`, a dict:
-      first_season  ISO date opening the earliest donor season to pull
-                    (default "2016-08-01", where fluview_clinical begins)
-      vintage       True (the default) pulls each stream AS PUBLISHED at the
-                    forecast date; False pulls the latest issue, which is
-                    measured-equivalent for this donor construction and much
-                    cheaper to cache, but is not vintage-true and stops being
-                    equivalent if the calendar bandwidth ever widens (see
-                    flubnf.iliplus)
-      regions       explicit region list, default every state in locations.csv
-      cache_dir / nrevss_cache_dir   override the on-disk response caches
 
-    Raw responses are cached per (region, issue) under app/state, so a replay
-    of the same weeks never re-hits the network.
+def _built_aux_bank(spec, stream: str, build) -> dict:
+    """Build an auxiliary bank from its source rather than read it off disk.
+
+    `build` is that pool's `build` dict. Common keys are the stream module's
+    own; the two streams differ because their sources do:
+
+      iliplus   first_season (ISO date, default "2016-08-01"), vintage
+                (default True: pull each stream AS PUBLISHED at the forecast
+                date; False pulls the latest issue, which is
+                measured-equivalent for this donor construction and cheaper
+                to cache), regions, cache_dir, nrevss_cache_dir
+      flusurv   first_epiweek (default 200335), locations, cache_dir.
+                There is NO vintage option: Delphi serves this endpoint with
+                no revision history, so one would be a lie in the signature.
+
+    Raw responses are cached under app/state, so a replay of the same weeks
+    never re-hits the network.
     """
     if not isinstance(build, dict):
         raise ValueError(
-            f"spec.extra['iliplus']['build'] must be a dict, got "
+            f"aux pool {stream!r}: 'build' must be a dict, got "
             f"{type(build).__name__}")
-    from flubnf import iliplus
-    vintage = bool(build.get("vintage", True))
-    aux = iliplus.build_bank(
-        build.get("first_season", "2016-08-01"),
-        str(spec.forecast_date) if vintage else None,
-        regions=build.get("regions"),
-        locations_csv=build.get("locations_csv"),
-        cache_dir=build.get("cache_dir"),
-        nrevss_cache_dir=build.get("nrevss_cache_dir"),
-    )
+    if stream == "iliplus":
+        from flubnf import iliplus
+        vintage = bool(build.get("vintage", True))
+        aux = iliplus.build_bank(
+            build.get("first_season", "2016-08-01"),
+            str(spec.forecast_date) if vintage else None,
+            regions=build.get("regions"),
+            locations_csv=build.get("locations_csv"),
+            cache_dir=build.get("cache_dir"),
+            nrevss_cache_dir=build.get("nrevss_cache_dir"),
+        )
+    elif stream == "flusurv":
+        from flubnf import flusurv
+        if "vintage" in build:
+            raise ValueError(
+                "aux pool 'flusurv': there is no vintage option. Delphi "
+                "serves this endpoint with no revision history, so a "
+                "vintage-true fetch is not available and asking for one "
+                "would be silently ignored.")
+        aux = flusurv.build_bank(
+            int(build.get("first_epiweek", flusurv.FIRST_EPIWEEK)),
+            locations=build.get("locations"),
+            cache_dir=build.get("cache_dir"),
+        )
+    else:                                                # pragma: no cover
+        raise ValueError(f"unknown aux stream {stream!r}")
     if not aux:
         raise ValueError(
-            f"the ILI+ bank built for {spec.forecast_date} is empty. A "
+            f"the {stream!r} bank built for {spec.forecast_date} is empty. A "
             f"spliced run with an empty auxiliary pool would silently be the "
             f"single-pool forecast while still being labelled spliced.")
     return aux
 
 
-def splice_args(spec, bank):
-    """`flubnf.analogue.DonorSplice` from `spec.extra['iliplus']`, or None.
+def _one_pool(spec, bank, cfg):
+    """One `flubnf.analogue.AuxPool` from one entry of spec.extra['aux_pools'].
 
-    This path is DORMANT: no shipped configuration sets the key, and a spec
-    without it leaves the analogue byte-identical to the single-pool path
-    (verified over all 85 archived as-of weeks, 405,904 quantile values, zero
-    differences).
+    Keys: stream (required, from AUX_STREAMS), weight (required), and exactly
+    one of bank (a prebuilt path) or build (source arguments). Optional:
+    shrink ("auto" by default, fitting sd(admissions)/sd(stream) on strictly
+    prior shared seasons; a number uses that value; None applies no rescale),
+    exclude_seasons (default the registry's shipped set), bandwidth.
 
-    Config keys, exactly one of `bank` or `build` required:
-      bank            path to a prebuilt auxiliary bank JSON
-      build           arguments for flubnf.iliplus.build_bank, which pulls
-                      ILINet and the clinical stream from Delphi and caches
-                      the raw responses; see _built_aux_bank
-      weight          weight on the AUXILIARY pool, default 0.5
-      shrink          "auto" (default) fits sd(admissions)/sd(aux) on strictly
-                      prior shared seasons; a number uses that value; None
-                      applies no rescale
-      exclude_seasons seasons dropped from the AUXILIARY pool, default the
-                      registry's shipped set; validated by
-                      `resolve_donor_exclusions` exactly as the admissions
-                      pool's is, so an auxiliary pool cannot quietly drop a
-                      season the registry has not accepted
-      bandwidth       auxiliary calendar bandwidth, default the admissions one
-
-    An unfittable "auto" shrink RAISES rather than falling back to the
-    single-pool path. A replay labelled spliced that was silently unspliced
-    for some weeks is the failure mode this is guarding against.
+    An unfittable "auto" shrink RAISES rather than falling back to no
+    rescale. A replay labelled spliced that was silently unscaled for some
+    weeks is the failure mode this is guarding against.
     """
-    extra = getattr(spec, "extra", None) or {}
-    cfg = extra.get("iliplus")
-    # Absent, or explicitly False, means dormant. An empty dict does NOT:
-    # the key is there, so the caller meant to splice, and returning None
-    # would produce a run labelled spliced that quietly was not.
-    if cfg is None or cfg is False:
-        return None
     if not isinstance(cfg, dict):
         raise ValueError(
-            f"spec.extra['iliplus'] must be a dict, got {type(cfg).__name__}")
-    # Presence, not truthiness: build={} is a legitimate "use every default"
-    # and an empty dict is falsy, so a truthiness test would read it as absent
-    # and then complain that neither key was given.
+            f"each entry of spec.extra['aux_pools'] must be a dict, got "
+            f"{type(cfg).__name__}")
+    stream = cfg.get("stream")
+    if stream not in AUX_STREAMS:
+        raise ValueError(
+            f"aux pool 'stream' must be one of {AUX_STREAMS}, got "
+            f"{stream!r}")
+    if "weight" not in cfg:
+        raise ValueError(f"aux pool {stream!r} requires a 'weight'")
+    # Presence, not truthiness: build={} is a legitimate use-every-default
+    # and an empty dict is falsy, so a truthiness test would read it as
+    # absent and then complain that neither key was given.
     has_path, has_build = "bank" in cfg, "build" in cfg
     if has_path == has_build:
         raise ValueError(
-            "spec.extra['iliplus'] needs exactly one of 'bank' (a path to a "
-            "prebuilt donor bank) or 'build' (arguments for "
-            "flubnf.iliplus.build_bank); got "
+            f"aux pool {stream!r} needs exactly one of 'bank' (a path to a "
+            f"prebuilt donor bank) or 'build' (source arguments); got "
             + ("both" if has_path else "neither"))
-    path, build = cfg.get("bank"), cfg.get("build")
-    if has_path:
-        aux = load_aux_bank(str(path))
-    else:
-        aux = _built_aux_bank(spec, build)
+    aux = (load_aux_bank(str(cfg["bank"])) if has_path
+           else _built_aux_bank(spec, stream, cfg["build"]))
     excl = cfg.get("exclude_seasons")
     excl = (tuple(sorted(AN.EXCLUDED_DONOR_SEASONS)) if excl is None
             else tuple(sorted(int(x) for x in excl)))
@@ -210,7 +214,7 @@ def splice_args(spec, bank):
     if isinstance(shrink, str):
         if shrink != "auto":
             raise ValueError(
-                f"spec.extra['iliplus']['shrink'] must be 'auto', a number or "
+                f"aux pool {stream!r}: 'shrink' must be 'auto', a number or "
                 f"None, got {shrink!r}")
         # spec.forecast_date is a date STRING on the retro path; season_of
         # needs a date. The shrink is a property of the run's target season,
@@ -221,17 +225,53 @@ def splice_args(spec, bank):
         shrink = AN.fit_log_ratio_shrink(bank, aux, ts, exclude_seasons=excl)
         if shrink is None:
             raise ValueError(
-                f"auxiliary shrink could not be fitted for target season "
-                f"{ts}: no shared prior season with enough ratios. Set an "
-                f"explicit 'shrink', or do not splice this season.")
-    return AN.DonorSplice(
+                f"aux pool {stream!r}: shrink could not be fitted for target "
+                f"season {ts}: no shared prior season with enough ratios. "
+                f"Set an explicit 'shrink', or do not splice this season.")
+    return AN.AuxPool(
         bank=aux,
-        weight=float(cfg.get("weight", 0.5)),
+        weight=float(cfg["weight"]),
         shrink=(None if shrink is None else float(shrink)),
         exclude_seasons=excl,
         bandwidth=(None if cfg.get("bandwidth") is None
                    else int(cfg["bandwidth"])),
+        label=stream,
     )
+
+
+def splice_args(spec, bank):
+    """`flubnf.analogue.DonorSplice` from `spec.extra['aux_pools']`, or None.
+
+    This path is DORMANT: no shipped configuration sets the key, and a spec
+    without it leaves the analogue byte-identical to the single-pool path
+    (verified over all 85 archived as-of weeks, 405,904 quantile values,
+    zero differences).
+
+    `aux_pools` is a list of pool configs; see `_one_pool`. Absent, or
+    explicitly False, means dormant. An empty list does NOT: the key is
+    there, so the caller meant to splice, and returning None would produce a
+    run labelled spliced that quietly was not.
+    """
+    extra = getattr(spec, "extra", None) or {}
+    cfg = extra.get("aux_pools")
+    if cfg is None or cfg is False:
+        return None
+    if not isinstance(cfg, (list, tuple)):
+        raise ValueError(
+            f"spec.extra['aux_pools'] must be a list of pool configs, got "
+            f"{type(cfg).__name__}")
+    if not cfg:
+        raise ValueError(
+            "spec.extra['aux_pools'] is empty. Remove the key to run the "
+            "single-pool analogue; an empty list would label a run spliced "
+            "that was not.")
+    pools = tuple(_one_pool(spec, bank, c) for c in cfg)
+    total = sum(p.weight for p in pools)
+    if total > 1.0 + 1e-12:
+        raise ValueError(
+            f"aux pool weights sum to {total}, leaving the admissions pool a "
+            f"negative weight; they must sum to at most 1")
+    return AN.DonorSplice(pools=pools)
 
 
 def run(spec) -> dict:

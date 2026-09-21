@@ -45,9 +45,15 @@ def _aux_bank() -> dict:
     return _bank(phase=1.3, amp=12.0, base=40.0)
 
 
-def _splice(**kw):
+def _pool(**kw):
     kw.setdefault("bank", _aux_bank())
-    return AN.DonorSplice(**kw)
+    kw.setdefault("weight", 0.5)
+    return AN.AuxPool(**kw)
+
+
+def _splice(**kw):
+    """One auxiliary pool, the shape every single-stream test wants."""
+    return AN.DonorSplice(pools=(_pool(**kw),))
 
 
 # ---------------------------------------------------------------------------
@@ -80,7 +86,7 @@ def test_weight_one_is_the_auxiliary_pool_alone():
     aux = _aux_bank()
     bank = _bank()
     spliced = AN.forecast(ANCHOR, ASOF, 2, bank, QL,
-                          splice=AN.DonorSplice(bank=aux, weight=1.0))
+                          splice=AN.DonorSplice(pools=(AN.AuxPool(bank=aux, weight=1.0),)))
     only_aux = AN.forecast(ANCHOR, ASOF, 2, aux, QL)
     assert spliced is not None and only_aux is not None
     assert spliced == only_aux
@@ -98,7 +104,7 @@ def test_vincentization_is_a_quantile_average():
     r = AN.donor_ratios(bank, AN.epiweek(ASOF), AN.season_of(ASOF), h)
     a = AN.donor_ratios(aux, AN.epiweek(ASOF), AN.season_of(ASOF), h)
     got = AN.forecast(ANCHOR, ASOF, h, bank, QL,
-                      splice=AN.DonorSplice(bank=aux, weight=0.5))
+                      splice=AN.DonorSplice(pools=(AN.AuxPool(bank=aux, weight=0.5),)))
     assert got is not None
     for L in QL:
         want = float(ANCHOR * (0.5 * np.quantile(r, L) + 0.5 * np.quantile(a, L)))
@@ -114,7 +120,7 @@ def test_blend_is_not_the_pooled_donors():
     r = AN.donor_ratios(bank, AN.epiweek(ASOF), AN.season_of(ASOF), h)
     a = AN.donor_ratios(aux, AN.epiweek(ASOF), AN.season_of(ASOF), h)
     blended = AN.forecast(ANCHOR, ASOF, h, bank, QL,
-                          splice=AN.DonorSplice(bank=aux, weight=0.5))
+                          splice=AN.DonorSplice(pools=(AN.AuxPool(bank=aux, weight=0.5),)))
     concat = AN.analogue_quantiles(ANCHOR, np.concatenate([r, a]), QL)
     assert blended is not None and concat is not None
     assert blended != concat
@@ -260,7 +266,7 @@ def test_both_pools_must_clear_min_donors():
     thin = {("T", date(2024, 12, 7) + timedelta(days=7 * i)): 10.0 + i
             for i in range(3)}
     assert AN.forecast(ANCHOR, ASOF, 1, bank, QL,
-                       splice=AN.DonorSplice(bank=thin)) is None
+                       splice=AN.DonorSplice(pools=(AN.AuxPool(bank=thin, weight=0.5),))) is None
     # and the primary side is still enforced
     assert AN.forecast(ANCHOR, ASOF, 1, thin, QL,
                        splice=_splice()) is None
@@ -296,6 +302,86 @@ def test_non_positive_anchor_gives_no_forecast():
 
 
 # ---------------------------------------------------------------------------
+# More than one auxiliary pool
+# ---------------------------------------------------------------------------
+
+def test_two_pools_are_a_weighted_quantile_average():
+    """Two pools at 0.25 leave the admissions pool 0.5, and the blend is the
+    weighted average of the three ratio quantile functions."""
+    bank = _bank()
+    a1, a2 = _aux_bank(), _bank(phase=2.2, amp=50.0, base=200.0)
+    h = 2
+    r = AN.donor_ratios(bank, AN.epiweek(ASOF), AN.season_of(ASOF), h)
+    q1 = AN.donor_ratios(a1, AN.epiweek(ASOF), AN.season_of(ASOF), h)
+    q2 = AN.donor_ratios(a2, AN.epiweek(ASOF), AN.season_of(ASOF), h)
+    sp = AN.DonorSplice(pools=(AN.AuxPool(bank=a1, weight=0.25, label="one"),
+                               AN.AuxPool(bank=a2, weight=0.25, label="two")))
+    assert sp.primary_weight == 0.5
+    got = AN.forecast(ANCHOR, ASOF, h, bank, QL, splice=sp)
+    assert got is not None
+    for L in QL:
+        want = float(ANCHOR * (0.5 * np.quantile(r, L)
+                               + 0.25 * np.quantile(q1, L)
+                               + 0.25 * np.quantile(q2, L)))
+        assert got[float(L)] == want
+
+
+def test_one_pool_at_half_equals_two_at_a_quarter_of_the_same_bank():
+    """A pool listed twice at half its weight is the same blend. Cheap, and
+    it catches a memo keyed on the bank rather than on the pool index."""
+    bank, aux = _bank(), _aux_bank()
+    one = AN.DonorSplice(pools=(AN.AuxPool(bank=aux, weight=0.5),))
+    two = AN.DonorSplice(pools=(AN.AuxPool(bank=aux, weight=0.25, label="a"),
+                                AN.AuxPool(bank=aux, weight=0.25, label="b")))
+    a = AN.forecast(ANCHOR, ASOF, 3, bank, QL, splice=one)
+    b = AN.forecast(ANCHOR, ASOF, 3, bank, QL, splice=two)
+    assert a is not None
+    for L in a:
+        assert b[L] == pytest.approx(a[L], rel=1e-12)
+
+
+def test_weights_over_one_fail_loudly():
+    bank = _bank()
+    sp = AN.DonorSplice(pools=(AN.AuxPool(bank=_aux_bank(), weight=0.7),
+                               AN.AuxPool(bank=_aux_bank(), weight=0.7)))
+    with pytest.raises(ValueError, match="negative weight"):
+        AN.forecast(ANCHOR, ASOF, 1, bank, QL, splice=sp)
+
+
+def test_every_pool_must_clear_min_donors():
+    """Not just the blend: one thin pool sinks the forecast rather than
+    riding along at a fixed weight."""
+    bank = _bank()
+    thin = {("T", date(2024, 12, 7) + timedelta(days=7 * i)): 10.0 + i
+            for i in range(3)}
+    sp = AN.DonorSplice(pools=(AN.AuxPool(bank=_aux_bank(), weight=0.25),
+                               AN.AuxPool(bank=thin, weight=0.25)))
+    assert AN.forecast(ANCHOR, ASOF, 1, bank, QL, splice=sp) is None
+
+
+def test_engine_builds_two_pools_of_different_streams(tmp_path):
+    from app.core.engines.analogue import splice_args
+    fp = _write_bank(tmp_path)
+    fs = _write_bank(tmp_path, _bank(phase=1.0, amp=9.0, base=20.0), "fs.json")
+    sp = splice_args(_spec({"aux_pools": [
+        {"stream": "iliplus", "weight": 0.25, "bank": str(fp), "shrink": None},
+        {"stream": "flusurv", "weight": 0.25, "bank": str(fs), "shrink": None},
+    ]}), _bank())
+    assert [p.label for p in sp.pools] == ["iliplus", "flusurv"]
+    assert sp.primary_weight == 0.5
+
+
+def test_engine_refuses_weights_that_sum_over_one(tmp_path):
+    from app.core.engines.analogue import splice_args
+    fp = _write_bank(tmp_path)
+    with pytest.raises(ValueError, match="negative weight"):
+        splice_args(_spec({"aux_pools": [
+            {"stream": "iliplus", "weight": 0.8, "bank": str(fp), "shrink": None},
+            {"stream": "flusurv", "weight": 0.8, "bank": str(fp), "shrink": None},
+        ]}), _bank())
+
+
+# ---------------------------------------------------------------------------
 # The auxiliary ratio memo
 # ---------------------------------------------------------------------------
 
@@ -311,7 +397,7 @@ def test_memo_matches_an_unmemoized_recompute():
     assert first == again == fresh
 
 
-def test_memo_is_keyed_on_horizon_and_calendar():
+def test_memo_is_keyed_on_pool_horizon_and_calendar():
     bank = _bank()
     sp = _splice()
     for h in (1, 2, 3, 4):
@@ -345,6 +431,13 @@ def _spec(extra, asof="2025-12-20"):
     return SimpleNamespace(forecast_date=asof, extra=extra)
 
 
+def _cfg(**kw):
+    """One iliplus pool config for spec.extra['aux_pools']."""
+    kw.setdefault("stream", "iliplus")
+    kw.setdefault("weight", 0.5)
+    return {"aux_pools": [kw]}
+
+
 def test_splice_args_is_dormant_by_default():
     from app.core.engines.analogue import splice_args
     bank = _bank()
@@ -353,45 +446,49 @@ def test_splice_args_is_dormant_by_default():
     assert splice_args(_spec({}), bank) is None
     assert splice_args(_spec({"analogue_completeness": {"06": 0.9}}),
                        bank) is None
-    assert splice_args(_spec({"iliplus": False}), bank) is None
+    assert splice_args(_spec({"aux_pools": False}), bank) is None
 
 
 def test_splice_args_refuses_an_empty_config(tmp_path):
-    """An empty dict means the caller asked to splice and said nothing about
-    how. Returning None there would label a run spliced that was not."""
+    """An empty list means the caller asked to splice and named no pools.
+    Returning None there would label a run spliced that was not."""
     from app.core.engines.analogue import splice_args
-    with pytest.raises(ValueError, match="neither"):
-        splice_args(_spec({"iliplus": {}}), _bank())
+    with pytest.raises(ValueError, match="is empty"):
+        splice_args(_spec({"aux_pools": []}), _bank())
+    with pytest.raises(ValueError, match="must be a list"):
+        splice_args(_spec({"aux_pools": {"stream": "iliplus"}}), _bank())
 
 
 def test_splice_args_refuses_both_sources(tmp_path):
     from app.core.engines.analogue import splice_args
     fp = _write_bank(tmp_path)
     with pytest.raises(ValueError, match="both"):
-        splice_args(_spec({"iliplus": {"bank": str(fp), "build": {}}}),
+        splice_args(_spec(_cfg(bank=str(fp), build={})),
                     _bank())
 
 
 def test_splice_args_builds_a_splice(tmp_path):
     from app.core.engines.analogue import splice_args
     fp = _write_bank(tmp_path)
-    sp = splice_args(_spec({"iliplus": {"bank": str(fp)}}), _bank())
-    assert isinstance(sp, AN.DonorSplice)
-    assert sp.weight == 0.5
-    assert sp.shrink is not None and sp.shrink > 0
-    assert sp.exclude_seasons == tuple(sorted(AN.EXCLUDED_DONOR_SEASONS))
+    sp = splice_args(_spec(_cfg(bank=str(fp))), _bank())
+    assert isinstance(sp, AN.DonorSplice) and len(sp.pools) == 1
+    pool = sp.pools[0]
+    assert pool.weight == 0.5 and pool.label == "iliplus"
+    assert pool.shrink is not None and pool.shrink > 0
+    assert pool.exclude_seasons == tuple(sorted(AN.EXCLUDED_DONOR_SEASONS))
+    assert sp.primary_weight == 0.5
 
 
 def test_splice_args_honours_explicit_settings(tmp_path):
     from app.core.engines.analogue import splice_args
     fp = _write_bank(tmp_path)
-    sp = splice_args(_spec({"iliplus": {"bank": str(fp), "weight": 0.25,
-                                        "shrink": 0.8, "bandwidth": 3}}),
+    sp = splice_args(_spec(_cfg(bank=str(fp), weight=0.25, shrink=0.8, bandwidth=3)),
                      _bank())
-    assert (sp.weight, sp.shrink, sp.bandwidth) == (0.25, 0.8, 3)
+    p = sp.pools[0]
+    assert (p.weight, p.shrink, p.bandwidth) == (0.25, 0.8, 3)
     none_shrink = splice_args(
-        _spec({"iliplus": {"bank": str(fp), "shrink": None}}), _bank())
-    assert none_shrink.shrink is None
+        _spec(_cfg(bank=str(fp), shrink=None)), _bank())
+    assert none_shrink.pools[0].shrink is None
 
 
 def test_splice_args_fails_loudly(tmp_path):
@@ -399,15 +496,16 @@ def test_splice_args_fails_loudly(tmp_path):
     fp = _write_bank(tmp_path)
     bank = _bank()
     with pytest.raises(ValueError, match="must be a dict"):
-        splice_args(_spec({"iliplus": ["not", "a", "dict"]}), bank)
+        splice_args(_spec({"aux_pools": ["not a dict"]}), bank)
     with pytest.raises(ValueError, match="neither"):
-        splice_args(_spec({"iliplus": {"weight": 0.5}}), bank)
+        splice_args(_spec({"aux_pools": [{"stream": "iliplus", "weight": 0.5}]}), bank)
+    with pytest.raises(ValueError, match="must be one of"):
+        splice_args(_spec({"aux_pools": [{"stream": "nope", "weight": 0.5}]}), bank)
     with pytest.raises(ValueError, match="must be 'auto'"):
-        splice_args(_spec({"iliplus": {"bank": str(fp), "shrink": "fitted"}}),
+        splice_args(_spec(_cfg(bank=str(fp), shrink="fitted")),
                     bank)
     with pytest.raises(ValueError, match="not registered"):
-        splice_args(_spec({"iliplus": {"bank": str(fp),
-                                       "exclude_seasons": [2019]}}), bank)
+        splice_args(_spec(_cfg(bank=str(fp), exclude_seasons=[2019])), bank)
 
 
 def test_splice_args_raises_when_auto_shrink_cannot_be_fitted(tmp_path):
@@ -416,7 +514,7 @@ def test_splice_args_raises_when_auto_shrink_cannot_be_fitted(tmp_path):
     from app.core.engines.analogue import splice_args
     fp = _write_bank(tmp_path)
     with pytest.raises(ValueError, match="could not be fitted"):
-        splice_args(_spec({"iliplus": {"bank": str(fp)}},
+        splice_args(_spec(_cfg(bank=str(fp)),
                           asof="2023-12-20"), _bank())
 
 

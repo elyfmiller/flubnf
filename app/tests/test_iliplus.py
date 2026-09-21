@@ -182,14 +182,16 @@ def test_engine_builds_the_bank_from_spec_extra(caches, tmp_path):
     ic, nc = caches
     adm = {("01", date(2023, 11, 4) + timedelta(days=7 * i)):
            100.0 + i for i in range(60)}
-    spec = SimpleNamespace(forecast_date="2024-12-14", extra={"iliplus": {
+    spec = SimpleNamespace(forecast_date="2024-12-14", extra={"aux_pools": [{
+        "stream": "iliplus", "weight": 0.5, "shrink": None,
         "build": {"first_season": SEASON_START, "vintage": False,
                   "regions": REGIONS, "cache_dir": str(ic),
-                  "nrevss_cache_dir": str(nc)},
-        "shrink": None}})
+                  "nrevss_cache_dir": str(nc)}}]})
     sp = splice_args(spec, adm)
-    assert isinstance(sp, AN.DonorSplice)
-    assert sp.bank and all(isinstance(k[1], date) for k in sp.bank)
+    assert isinstance(sp, AN.DonorSplice) and len(sp.pools) == 1
+    pool = sp.pools[0]
+    assert pool.label == "iliplus"
+    assert pool.bank and all(isinstance(k[1], date) for k in pool.bank)
 
 
 def test_engine_refuses_an_empty_built_bank(caches, tmp_path):
@@ -197,21 +199,18 @@ def test_engine_refuses_an_empty_built_bank(caches, tmp_path):
     wearing a label that says otherwise."""
     from app.core.engines.analogue import splice_args
     ic, nc = caches
-    spec = SimpleNamespace(forecast_date="2024-12-14", extra={"iliplus": {
+    spec = SimpleNamespace(forecast_date="2024-12-14", extra={"aux_pools": [{
+        "stream": "iliplus", "weight": 0.5, "shrink": None,
         "build": {"first_season": SEASON_START, "vintage": False,
-                  "regions": REGIONS, "cache_dir": str(ic),
-                  "nrevss_cache_dir": str(nc), "min_specimens": 10_000_000},
-        "shrink": None}})
-    # min_specimens is not forwarded by the engine, so force emptiness the
-    # way a caller actually could: a region list with nothing cached for it.
-    spec.extra["iliplus"]["build"]["regions"] = []
+                  "regions": [], "cache_dir": str(ic),
+                  "nrevss_cache_dir": str(nc)}}]})
     with pytest.raises(ValueError, match="empty"):
         splice_args(spec, {})
 
 
 def test_engine_rejects_a_non_dict_build(caches):
     from app.core.engines.analogue import splice_args
-    spec = SimpleNamespace(forecast_date="2024-12-14",
-                           extra={"iliplus": {"build": ["nope"]}})
+    spec = SimpleNamespace(forecast_date="2024-12-14", extra={"aux_pools": [
+        {"stream": "iliplus", "weight": 0.5, "build": ["nope"]}]})
     with pytest.raises(ValueError, match="must be a dict"):
         splice_args(spec, {})
