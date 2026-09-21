@@ -1,0 +1,38 @@
+{
+ "builder": "flubnf bank build",
+ "built_utc": "2026-09-21T22:04:57+00:00",
+ "cells": 8020,
+ "digest": "06eff6a7f2d4ef977fde9cb774284bf6ba6f5b9543349986551d26a53a51534a",
+ "layout_version": 1,
+ "location_count": 22,
+ "locations": [
+  "ca",
+  "co",
+  "ct",
+  "ga",
+  "ia",
+  "id",
+  "md",
+  "mi",
+  "mn",
+  "network_all",
+  "network_eip",
+  "network_ihsp",
+  "nm",
+  "ny_albany",
+  "ny_rochester",
+  "oh",
+  "ok",
+  "or",
+  "ri",
+  "sd",
+  "tn",
+  "ut"
+ ],
+ "source_url": "https://api.delphi.cmu.edu/epidata/flusurv/",
+ "span": [
+  "2009-09-05",
+  "2026-08-08"
+ ],
+ "stream": "flusurv"
+}

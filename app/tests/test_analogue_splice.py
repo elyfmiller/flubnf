@@ -462,7 +462,7 @@ def test_splice_args_refuses_an_empty_config(tmp_path):
 def test_splice_args_refuses_both_sources(tmp_path):
     from app.core.engines.analogue import splice_args
     fp = _write_bank(tmp_path)
-    with pytest.raises(ValueError, match="both"):
+    with pytest.raises(ValueError, match="exactly one of.*got 2 of them"):
         splice_args(_spec(_cfg(bank=str(fp), build={})),
                     _bank())
 
@@ -497,7 +497,7 @@ def test_splice_args_fails_loudly(tmp_path):
     bank = _bank()
     with pytest.raises(ValueError, match="must be a dict"):
         splice_args(_spec({"aux_pools": ["not a dict"]}), bank)
-    with pytest.raises(ValueError, match="neither"):
+    with pytest.raises(ValueError, match="exactly one of.*got none"):
         splice_args(_spec({"aux_pools": [{"stream": "iliplus", "weight": 0.5}]}), bank)
     with pytest.raises(ValueError, match="must be one of"):
         splice_args(_spec({"aux_pools": [{"stream": "nope", "weight": 0.5}]}), bank)
@@ -562,8 +562,11 @@ def test_presets_are_valid_pool_configs():
         for pcfg in pools:
             assert pcfg["stream"] in AUX_STREAMS, name
             assert "weight" in pcfg and 0 < pcfg["weight"] <= 1, name
-            # exactly one source, the same rule _one_pool enforces
-            assert ("bank" in pcfg) != ("build" in pcfg), name
+            # exactly one source, the same rule _one_pool enforces, and
+            # for a PRESET that source is the committed bank: a preset is
+            # the shipped path and must not fetch at forecast time
+            assert sum(k in pcfg for k in ("committed", "bank", "build")) == 1, name
+            assert pcfg.get("committed") is True, name
         assert sum(p["weight"] for p in pools) <= 1.0 + 1e-12, name
 
 
@@ -572,7 +575,7 @@ def test_the_selected_preset_is_flusurv_at_half():
     choice cannot drift without a test saying so."""
     from app.core.engines.analogue import AUX_PRESETS
     assert AUX_PRESETS["flusurv"] == (
-        {"stream": "flusurv", "weight": 0.5, "build": {}},)
+        {"stream": "flusurv", "weight": 0.5, "committed": True},)
 
 
 def test_aux_preset_carries_its_name_for_the_run_record():
@@ -580,10 +583,14 @@ def test_aux_preset_carries_its_name_for_the_run_record():
     replay built from a preset says which one without anyone remembering."""
     from app.core.engines.analogue import aux_preset
     f = aux_preset("flusurv")
-    assert f.__name__ == "aux_preset:flusurv"
+    # the configuration, then WHICH DONORS: the committed bank's digest.
+    # run_meta.json outlives the week manifests, so this string is the
+    # only durable record of what a replay actually spliced.
+    import re
+    assert re.fullmatch(r"aux_preset:flusurv\+flusurv@[0-9a-f]{8}", f.__name__)
     got = f("2025-12-20", 0, None)
     assert got == {"aux_pools": [
-        {"stream": "flusurv", "weight": 0.5, "build": {}}]}
+        {"stream": "flusurv", "weight": 0.5, "committed": True}]}
 
 
 def test_aux_preset_hands_out_copies():
@@ -605,13 +612,16 @@ def test_an_unknown_preset_raises():
 
 
 def test_every_preset_builds_a_splice_from_prebuilt_banks(tmp_path):
-    """The presets say build, so swap in bank paths to keep this offline."""
+    """The presets say committed, so swap in a tiny bank path: this test
+    is about the pool arithmetic, not about the shipped artefact (which
+    app/tests/test_bank.py covers)."""
     from app.core.engines.analogue import AUX_PRESETS, splice_args
     fp = _write_bank(tmp_path)
     for name, pools in AUX_PRESETS.items():
         cfg = [{**dict(p), "bank": str(fp), "shrink": None} for p in pools]
         for c in cfg:
             c.pop("build", None)
+            c.pop("committed", None)
         sp = splice_args(_spec({"aux_pools": cfg}), _bank())
         assert len(sp.pools) == len(pools), name
         assert sp.primary_weight == pytest.approx(

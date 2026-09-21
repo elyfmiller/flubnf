@@ -129,11 +129,23 @@ AUX_STREAMS = ("iliplus", "flusurv")
 #:
 #: These are CONFIGURATIONS, not a default. Nothing runs a preset unless a
 #: caller names one.
+#: Every preset reads the COMMITTED bank (data/banks/, built by
+#: `flubnf bank build`). Not a live fetch: a preset is the shipped path,
+#: and the shipped path must not depend on an upstream API being reachable
+#: at the moment someone runs a forecast. `build` remains available for an
+#: experiment that deliberately wants a fresh or a vintage-dated pull.
+#:
+#: The committed ILI+ bank is a LATEST-ISSUE snapshot, where `build`
+#: defaults to a vintage-true pull. That substitution was measured, not
+#: assumed: rebuilding at the worst-case lag any donor experiences leaves
+#: 98.0 percent of cells bit-identical and moves relWIS by +0.0000 (prereg
+#: 08e03ca7e8ffcfce). FluSurv-NET has no revision history to measure, so
+#: for that stream a snapshot is the only thing there is.
 AUX_PRESETS: dict = {
-    "flusurv": ({"stream": "flusurv", "weight": 0.5, "build": {}},),
-    "iliplus": ({"stream": "iliplus", "weight": 0.5, "build": {}},),
-    "both": ({"stream": "iliplus", "weight": 0.25, "build": {}},
-             {"stream": "flusurv", "weight": 0.25, "build": {}}),
+    "flusurv": ({"stream": "flusurv", "weight": 0.5, "committed": True},),
+    "iliplus": ({"stream": "iliplus", "weight": 0.5, "committed": True},),
+    "both": ({"stream": "iliplus", "weight": 0.25, "committed": True},
+             {"stream": "flusurv", "weight": 0.25, "committed": True}),
 }
 
 
@@ -151,10 +163,26 @@ def aux_preset(name: str):
             f"{sorted(AUX_PRESETS)}")
     pools = [dict(p) for p in AUX_PRESETS[name]]
 
+    # The bank digests go into the callable's NAME, because that is what
+    # app.core.retro writes into run_meta.json, and run_meta.json outlives
+    # the week manifests (reclaim.prune_week deletes those the moment a
+    # week is assembled). Without this a spliced replay could say WHICH
+    # configuration it ran but not WHICH DONORS, and two runs a month
+    # apart could differ because the upstream data moved with nothing on
+    # either run saying so. Resolved once, here, so a missing or corrupt
+    # bank fails before the first fit rather than in week 40.
+    from flubnf import bank as _bankmod
+    stamp = []
+    for pool in pools:
+        if pool.get("committed"):
+            _b, _m = _bankmod.read(pool["stream"])
+            stamp.append(f"{pool['stream']}@{_m['digest'][:8]}")
+    tag = ("+" + ",".join(stamp)) if stamp else ""
+
     def _extra(asof, i, vintages):
         return {"aux_pools": [dict(p) for p in pools]}
 
-    _extra.__name__ = f"aux_preset:{name}"
+    _extra.__name__ = f"aux_preset:{name}{tag}"
     _extra.__doc__ = f"spec.extra for the {name!r} auxiliary configuration."
     return _extra
 
@@ -244,13 +272,25 @@ def _one_pool(spec, bank, cfg):
     # and an empty dict is falsy, so a truthiness test would read it as
     # absent and then complain that neither key was given.
     has_path, has_build = "bank" in cfg, "build" in cfg
-    if has_path == has_build:
+    has_committed = "committed" in cfg
+    if sum((has_path, has_build, has_committed)) != 1:
         raise ValueError(
-            f"aux pool {stream!r} needs exactly one of 'bank' (a path to a "
-            f"prebuilt donor bank) or 'build' (source arguments); got "
-            + ("both" if has_path else "neither"))
-    aux = (load_aux_bank(str(cfg["bank"])) if has_path
-           else _built_aux_bank(spec, stream, cfg["build"]))
+            f"aux pool {stream!r} needs exactly one of 'committed' (the "
+            f"donor bank carried in this repository), 'bank' (a path to a "
+            f"prebuilt one) or 'build' (source arguments); got "
+            + (f"{sum((has_path, has_build, has_committed))} of them"
+               if (has_path or has_build or has_committed) else "none"))
+    if has_committed:
+        # The shipped path. The bank is versioned with the code that reads
+        # it, so a clone with no network still forecasts and a Delphi
+        # outage on submission day is not a failure. flubnf.bank.read
+        # verifies the manifest digest and RAISES on a mismatch rather
+        # than handing back a pool that cannot say what it is.
+        from flubnf import bank as _bankmod
+        aux, _man = _bankmod.read(stream)
+    else:
+        aux = (load_aux_bank(str(cfg["bank"])) if has_path
+               else _built_aux_bank(spec, stream, cfg["build"]))
     excl = cfg.get("exclude_seasons")
     excl = (tuple(sorted(AN.EXCLUDED_DONOR_SEASONS)) if excl is None
             else tuple(sorted(int(x) for x in excl)))
