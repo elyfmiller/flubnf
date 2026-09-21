@@ -2169,11 +2169,16 @@ def app_window(port: int = 8710):
 
 @app.command("retro")
 def retro_cmd(season: str, locations: str = "all", width: int = 0,
-              replicates: int = 3, root: str = ""):
+              replicates: int = 3, root: str = "", aux: str = ""):
     """Run a season-as-competition retrospective (resumable).
 
     width 0 means auto: sized to this machine's cores by the engine's
-    default_shard_width(), the same default the console form offers."""
+    default_shard_width(), the same default the console form offers.
+
+    aux names an auxiliary donor configuration for the analogue member
+    (app.core.engines.analogue.AUX_PRESETS, e.g. 'flusurv'). Empty, the
+    default, runs the shipped single-pool analogue. The preset's name is
+    written into run_meta.json, so a spliced replay says so on its face."""
     import pandas as pd
     from pathlib import Path as _P
     from app.core import retro
@@ -2191,8 +2196,13 @@ def retro_cmd(season: str, locations: str = "all", width: int = 0,
     # 2026-09-07: 'Configuration file app/state/.../pf.conf not found' for
     # all 156 cells of every week, and the season 'completed' empty).
     r = (_P(root) if root else _P("app/state/retro") / season).resolve()
+    week_extra = None
+    if aux:
+        from app.core.engines.analogue import aux_preset
+        week_extra = aux_preset(aux)          # unknown name raises here
+        print(f"  auxiliary donor configuration: {aux}")
     done = retro.run_season(r, season, names, replicates=replicates,
-                            width=width,
+                            width=width, week_extra=week_extra,
                             progress=lambda a: print(f"  {a} done", flush=True))
     print(f"{season}: {len(done)} weeks complete -> {r}")
 

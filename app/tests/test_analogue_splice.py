@@ -548,3 +548,84 @@ def test_load_aux_bank_fails_loudly(tmp_path):
     empty.write_text(json.dumps({"A|2024-01-06": 0.0}))
     with pytest.raises(ValueError, match="no positive values"):
         load_aux_bank(str(empty))
+
+
+# ---------------------------------------------------------------------------
+# Named presets and the console path
+# ---------------------------------------------------------------------------
+
+def test_presets_are_valid_pool_configs():
+    from app.core.engines.analogue import AUX_PRESETS, AUX_STREAMS
+    assert set(AUX_PRESETS) == {"flusurv", "iliplus", "both"}
+    for name, pools in AUX_PRESETS.items():
+        assert pools, name
+        for pcfg in pools:
+            assert pcfg["stream"] in AUX_STREAMS, name
+            assert "weight" in pcfg and 0 < pcfg["weight"] <= 1, name
+            # exactly one source, the same rule _one_pool enforces
+            assert ("bank" in pcfg) != ("build" in pcfg), name
+        assert sum(p["weight"] for p in pools) <= 1.0 + 1e-12, name
+
+
+def test_the_selected_preset_is_flusurv_at_half():
+    """C1 of prereg ea72d194af8318a5, selected 2026-09-20. Pinned so the
+    choice cannot drift without a test saying so."""
+    from app.core.engines.analogue import AUX_PRESETS
+    assert AUX_PRESETS["flusurv"] == (
+        {"stream": "flusurv", "weight": 0.5, "build": {}},)
+
+
+def test_aux_preset_carries_its_name_for_the_run_record():
+    """app.core.retro writes week_extra.__name__ into run_meta.json, so a
+    replay built from a preset says which one without anyone remembering."""
+    from app.core.engines.analogue import aux_preset
+    f = aux_preset("flusurv")
+    assert f.__name__ == "aux_preset:flusurv"
+    got = f("2025-12-20", 0, None)
+    assert got == {"aux_pools": [
+        {"stream": "flusurv", "weight": 0.5, "build": {}}]}
+
+
+def test_aux_preset_hands_out_copies():
+    """A caller mutating what it gets back must not edit the registry."""
+    from app.core.engines.analogue import aux_preset, AUX_PRESETS
+    f = aux_preset("both")
+    a = f("2025-12-20", 0, None)
+    a["aux_pools"][0]["weight"] = 0.99
+    b = f("2025-12-20", 1, None)
+    assert b["aux_pools"][0]["weight"] == 0.25
+    assert AUX_PRESETS["both"][0]["weight"] == 0.25
+
+
+def test_an_unknown_preset_raises():
+    """Rather than running an unspliced season under a spliced label."""
+    from app.core.engines.analogue import aux_preset
+    with pytest.raises(ValueError, match="unknown auxiliary preset"):
+        aux_preset("flusrv")
+
+
+def test_every_preset_builds_a_splice_from_prebuilt_banks(tmp_path):
+    """The presets say build, so swap in bank paths to keep this offline."""
+    from app.core.engines.analogue import AUX_PRESETS, splice_args
+    fp = _write_bank(tmp_path)
+    for name, pools in AUX_PRESETS.items():
+        cfg = [{**dict(p), "bank": str(fp), "shrink": None} for p in pools]
+        for c in cfg:
+            c.pop("build", None)
+        sp = splice_args(_spec({"aux_pools": cfg}), _bank())
+        assert len(sp.pools) == len(pools), name
+        assert sp.primary_weight == pytest.approx(
+            1 - sum(p["weight"] for p in pools)), name
+
+
+def test_the_retro_command_accepts_an_aux_preset():
+    """Without this the console cannot run a spliced replay at all:
+    retro.run_season takes week_extra, and the CLI has to pass one."""
+    import inspect
+    from flubnf import cli
+    sig = inspect.signature(cli.retro_cmd)
+    assert "aux" in sig.parameters
+    assert sig.parameters["aux"].default == ""
+    src = inspect.getsource(cli.retro_cmd)
+    assert "week_extra=week_extra" in src
+    assert "aux_preset(aux)" in src

@@ -114,6 +114,51 @@ def load_aux_bank(path: str) -> dict:
 #: be spliced in, which is the point.
 AUX_STREAMS = ("iliplus", "flusurv")
 
+#: Named auxiliary-pool configurations, so a replay can be asked for by name
+#: rather than by hand-written JSON. The name is what `app.core.retro` writes
+#: into run_meta.json as `week_extra`, so a run built from a preset says which
+#: one it was without anyone having to remember.
+#:
+#: "flusurv" is the arm selected on 2026-09-20 (C1 of prereg
+#: ea72d194af8318a5): equal skill with the ILI+ arm inside the bootstrap,
+#: better calibration (worst coverage deviation 0.008 against 0.012) and 2.2
+#: times lower sensitivity to which donor seasons are present. "iliplus" is
+#: the arm it replaced. "both" is the hedge, between the two on every measure
+#: and dominating neither, for when one stream degrading matters more than
+#: the numbers.
+#:
+#: These are CONFIGURATIONS, not a default. Nothing runs a preset unless a
+#: caller names one.
+AUX_PRESETS: dict = {
+    "flusurv": ({"stream": "flusurv", "weight": 0.5, "build": {}},),
+    "iliplus": ({"stream": "iliplus", "weight": 0.5, "build": {}},),
+    "both": ({"stream": "iliplus", "weight": 0.25, "build": {}},
+             {"stream": "flusurv", "weight": 0.25, "build": {}}),
+}
+
+
+def aux_preset(name: str):
+    """A `week_extra` callable for `app.core.retro.run_season`, by preset name.
+
+    The returned function carries the preset's name, which retro records in
+    run_meta.json, so a replay built this way is self-documenting. An unknown
+    name raises rather than running an unspliced season under a spliced
+    label.
+    """
+    if name not in AUX_PRESETS:
+        raise ValueError(
+            f"unknown auxiliary preset {name!r}; known: "
+            f"{sorted(AUX_PRESETS)}")
+    pools = [dict(p) for p in AUX_PRESETS[name]]
+
+    def _extra(asof, i, vintages):
+        return {"aux_pools": [dict(p) for p in pools]}
+
+    _extra.__name__ = f"aux_preset:{name}"
+    _extra.__doc__ = f"spec.extra for the {name!r} auxiliary configuration."
+    return _extra
+
+
 
 def _built_aux_bank(spec, stream: str, build) -> dict:
     """Build an auxiliary bank from its source rather than read it off disk.
