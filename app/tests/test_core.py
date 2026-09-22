@@ -95,61 +95,6 @@ def test_analogue_engine_runs_real_vintage():
     assert all(b >= a for a, b in zip(vals, vals[1:]))       # monotone
 
 
-def test_vincentize_defaults_to_equal_weights_never_the_fitted_table(tmp_path, monkeypatch):
-    """The anti-fitting law at the API boundary: omitting `weights` gives the
-    unfitted equal-weight blend the project ships and publishes. A fitted
-    table can only be reached by naming it, and none ships: without a local
-    table the frozen path is an error, never a silent fallback."""
-    from app.core import ensemble as ens
-    from app.core.ensemble import FROZEN, frozen_weights, pf_share, vincentize
-    import pytest
-    monkeypatch.setattr(ens, "WEIGHTS_FILE", tmp_path / "absent.json")
-    with pytest.raises(ValueError, match="do not ship"):
-        frozen_weights()
-    import json as _json
-    table = {"frozen": "test", "member_convention": "w = PF share, 1-w = analogue",
-             "global": {"0": 0.4, "1": 0.6, "2": 0.7, "3": 0.8},
-             "per_state": {"50": {"0": 0.2, "1": 0.3, "2": 0.5, "3": 0.6}}}
-    wf = tmp_path / "ensemble_weights.json"; wf.write_text(_json.dumps(table))
-    monkeypatch.setattr(ens, "WEIGHTS_FILE", wf)
-    w = frozen_weights()
-    assert w["global"]["0"] == 0.4 and w["global"]["3"] == 0.8
-    assert "50" in w["per_state"]
-    # canonical horizons: "0" is the FIRST FORECAST week, and the frozen
-    # table is keyed on those same hub labels, so pf_share(w, 0) below is
-    # the share that applies at horizon "0" with no shift in between.
-    h0, h1 = hz.HORIZONS[0], hz.HORIZONS[1]
-    qa = {h0: {L: 100.0 for L in _levels()}, h1: {L: 100.0 for L in _levels()}}
-    qb = {h0: {L: 200.0 for L in _levels()}}
-
-    # the default: a plain average, and demonstrably NOT the frozen share
-    out = vincentize({"pf": qa, "analogue": qb})
-    assert abs(out[h0][0.5] - 150.0) < 1e-9
-    assert abs(out[h1][0.5] - 100.0) < 1e-9                      # lone member = weight 1
-    s0 = pf_share(w, 0)
-    assert abs(s0 - 0.5) > 1e-9                                  # the two differ
-    assert abs(out[h0][0.5] - (s0 * 100 + (1 - s0) * 200)) > 1.0
-    # the per-state override cannot leak in through the default either
-    assert abs(vincentize({"pf": qa, "analogue": qb},
-                          location_fips="50")[h0][0.5] - 150.0) < 1e-9
-
-    # ...and the frozen path still works, when asked for by name
-    fz = vincentize({"pf": qa, "analogue": qb}, weights=FROZEN)
-    assert abs(fz[h0][0.5] - (s0 * 100 + (1 - s0) * 200)) < 1e-9
-    assert abs(fz[h1][0.5] - 100.0) < 1e-9                       # lone member = weight 1
-    vt = vincentize({"pf": qa, "analogue": qb}, weights=FROZEN,
-                    location_fips="50")
-    s_vt = pf_share(w, 0, "50")
-    assert abs(vt[h0][0.5] - (s_vt * 100 + (1 - s_vt) * 200)) < 1e-9  # override applied
-    # passing the table itself is the same request
-    assert vincentize({"pf": qa, "analogue": qb}, weights=w) == fz
-
-
-def _levels():
-    from flubnf.quantiles import FLUSIGHT_QUANTILES as QL
-    return [float(q) for q in QL]
-
-
 def test_run_page_renders_sealed_run():
     """The /runs/{id} page renders any ledger run with a results.json."""
     from fastapi.testclient import TestClient

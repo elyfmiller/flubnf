@@ -119,12 +119,12 @@ def test_a_stored_shaped_member_does_not_sneak_the_anchor_in():
         "storage boundary is what guarantees that")
 
 
-def test_the_ensemble_never_consumes_the_origin():
-    """vincentize blends forecast horizons only. Feeding it an origin key
-    must not produce a fifth blended horizon."""
-    q = {h: {0.025: 1.0, 0.5: 10.0, 0.975: 99.0} for h in HZ.HORIZONS}
-    q[HZ.ORIGIN] = {0.025: 1.0, 0.5: 10.0, 0.975: 99.0}
-    out = ENS.vincentize({"pf": q, "analogue": q})
+def test_member_quantiles_never_consume_the_origin():
+    """member_quantiles_from_samples summarises forecast horizons only.
+    Feeding it an origin key must not produce a fifth horizon."""
+    s = {h: [1.0, 10.0, 99.0] for h in HZ.HORIZONS}
+    s[HZ.ORIGIN] = [1.0, 10.0, 99.0]
+    out = ENS.member_quantiles_from_samples(s)
     assert sorted(out) == ["0", "1", "2", "3"]
 
 
