@@ -29,7 +29,7 @@ from app.ui import server as srv                     # noqa: E402
 client = TestClient(srv.app)
 
 RID = "20980103T101500-abcdef"
-GOOD = hub_model_id("ensemble")                      # LosAlamos_NAU-CModel_Flu
+GOOD = hub_model_id("pf")                            # NAU_PyBNF-OracleSIHRS
 RETIRED = "NAU-Ensemble"                             # what the old runs wrote
 HEADER = ("reference_date,target,horizon,target_end_date,location,"
           "output_type,output_type_id,value\n")
@@ -105,9 +105,13 @@ def test_every_registered_id_is_a_metadata_file_name():
     """The set the listings trust is the set the hub knows. Both halves are
     checked against model-metadata/ in test_submit_join; this asserts the
     server asks that question and not a hand-written list."""
+    from app.core.submit import RETIRED_ABBR, TEAM_ABBR
     root = Path(__file__).resolve().parents[2] / "model-metadata"
     registered = {f.stem for f in root.glob("*.yml")}
-    assert srv._registered_model_ids() == registered
+    retired = {f"{TEAM_ABBR}-{a}" for a in RETIRED_ABBR}
+    # a retired card stays registered on the hub but is not an identity
+    # this project may write, so the listings do not offer its files
+    assert srv._registered_model_ids() == registered - retired
     assert RETIRED not in registered
 
 
@@ -131,14 +135,14 @@ def test_a_refused_submission_is_named_on_the_run_page(tmp_path, monkeypatch):
     led.close_run(rid, "ok", {
         "submissions": {hub_model_id("pf"): "…"},
         "submission_errors": {
-            hub_model_id("ensemble"):
+            hub_model_id("analogue"):
                 "submission failed validation:\n  06 h=0: incomplete "
                 "quantile set, 5 of 23 levels"}})
     srv._invalidate_scans()
     html = client.get(f"/runs/{rid}").text
     assert "no file written" in html
     assert "incomplete quantile set, 5 of 23 levels" in html
-    assert hub_model_id("ensemble") in html
+    assert hub_model_id("analogue") in html
     # and the run itself still reads as a completed run with its PF file
     assert hub_model_id("pf") in html
     chips = srv._outcome_chips(json.dumps({

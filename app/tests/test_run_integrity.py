@@ -52,11 +52,12 @@ def _isolated_status():
     srv._invalidate_scans()
 
 
-def _fake_run(monkeypatch, tmp_path, status_by_cell, collected):
+def _fake_run(monkeypatch, tmp_path, status_by_cell, collected, aux=None):
     """Drive srv._run_all end to end with fake engines: PF cell statuses
     and collected samples are injected, the analogue answers for every
-    location, scoring has no truth. Returns (ledger row, outcome dict,
-    workroot path)."""
+    location, scoring has no truth. `aux` is the Groundhog donor choice
+    (None: the shipped bank, "": the bare analogue). Returns (ledger row,
+    outcome dict, workroot path)."""
     import app.core.engines.analogue as an_engine
     import app.core.engines.pf as pf_engine
     import app.core.floor as floor_mod
@@ -90,54 +91,73 @@ def _fake_run(monkeypatch, tmp_path, status_by_cell, collected):
     monkeypatch.setattr(srv, "_write_weekly_report",
                         lambda *a, **k: None)
     spec = RunSpec(engine="all", forecast_date="2098-01-04",
-                   locations=["Ohio", "Texas"], replicates=1)
+                   locations=["Ohio", "Texas"], replicates=1,
+                   extra=srv._run_extra(2, "realtime", aux))
     srv._run_all(spec)
     row = next(iter(Ledger().rows(5)))
     outcome = json.loads(row.get("outcome") or "{}")
     return row, outcome, tmp_path / "workroots" / row["run_id"]
 
 
-# ------------------------ a one-member blend never ships as the ensemble
+# ------------------------ two standalone files, each honest on its own
 
-def test_a_location_with_no_pf_member_is_recorded_not_silently_blended(
+def test_a_location_with_no_pf_member_is_absent_from_the_sihrs_file_only(
         tmp_path, monkeypatch):
-    """Every Texas replicate fails, Ohio's succeeds. The retro precedent
-    for a partial week is keep-and-record, so Texas stays in the ensemble
-    file, and the outcome names it so the chips and the run page can say
-    its cell is the analogue member alone."""
+    """Every Texas replicate fails, Ohio's succeeds. Since the blend was
+    retired (2026-09-22) nothing carries Texas under the SIHRS name: the
+    SIHRS file holds Ohio alone, the Groundhog file holds both, the row is
+    partial and its failure count names the cell. No blend bookkeeping
+    keys are written."""
     row, outcome, w = _fake_run(
         monkeypatch, tmp_path,
         {"Ohio_r0": "ok", "Texas_r0": "error: fit failed"},
         {"Ohio": SAMPLES})
     assert row["status"] == "partial"
-    assert outcome["ensemble_analogue_only"] == ["Texas"]
+    assert "ensemble_analogue_only" not in outcome
     assert "ensemble_withheld" not in outcome
-    ens_id = hub_model_id("ensemble")
-    assert ens_id in outcome["submissions"]
-    csv = Path(outcome["submissions"][ens_id]).read_text()
-    assert ",48," in csv                    # Texas (fips 48) still ships
-    assert ",39," in csv                    # Ohio too
+    pf_id, gh_id = hub_model_id("pf"), hub_model_id("analogue")
+    assert set(outcome["submissions"]) == {pf_id, gh_id}
+    pf_csv = Path(outcome["submissions"][pf_id]).read_text()
+    assert ",39," in pf_csv and ",48," not in pf_csv
+    gh_csv = Path(outcome["submissions"][gh_id]).read_text()
+    assert ",39," in gh_csv and ",48," in gh_csv
+    assert outcome["analogue_aux"].startswith("flusurv+flusurv@")
     chips = srv._outcome_chips(json.dumps(outcome))
-    assert "1 location analogue-only in the ensemble" in chips
+    assert "analogue-only" not in chips and "withheld" not in chips
 
 
-def test_all_pf_fits_failed_withholds_the_ensemble_file(
+def test_all_pf_fits_failed_still_ships_the_groundhog(
         tmp_path, monkeypatch):
-    """Both locations fail, nothing is collected: the retro store refuses
-    such a week outright (run_week raises rather than scoring
-    analogue-alone cells as the ensemble), and the console mirrors that
-    by withholding the ensemble CSV; an all-analogue file under the hub
-    ensemble name is indistinguishable from the real blend."""
+    """Both locations fail, nothing is collected: there is no SIHRS file,
+    and that costs the SIHRS file only. The Groundhog is a standalone
+    submission and writes under its own name."""
     row, outcome, w = _fake_run(
         monkeypatch, tmp_path,
         {"Ohio_r0": "error: fit failed", "Texas_r0": "error: fit failed"},
         {})
-    assert "ensemble_withheld" in outcome
-    assert hub_model_id("ensemble") not in outcome.get("submissions", {})
-    assert not list(w.rglob("*.csv"))       # no PF file either: no samples
-    assert "ensemble_analogue_only" not in outcome
+    assert "ensemble_withheld" not in outcome
+    assert hub_model_id("pf") not in outcome.get("submissions", {})
+    assert set(outcome["submissions"]) == {hub_model_id("analogue")}
+    csvs = list(w.rglob("*.csv"))
+    assert len(csvs) == 1 and csvs[0].parent.name == hub_model_id("analogue")
+
+
+def test_the_bare_analogue_never_ships_under_the_groundhogs_name(
+        tmp_path, monkeypatch):
+    """A run whose spec carries no auxiliary pools ran the calendar
+    analogue that shipped inside the blend, not the Groundhog. Its
+    quantiles are kept for the pages, and its file is withheld with the
+    reason on the row, the way a research run's always was."""
+    row, outcome, w = _fake_run(
+        monkeypatch, tmp_path, {"Ohio_r0": "ok", "Texas_r0": "ok"},
+        {"Ohio": SAMPLES, "Texas": SAMPLES}, aux="")
+    assert set(outcome["submissions"]) == {hub_model_id("pf")}
+    assert "bare calendar analogue" in outcome["submission_withheld"]
+    assert outcome["analogue_aux"] == ""
+    res = json.loads((w / "results.json").read_text())
+    assert set(res["models"]) == {"pf", "analogue"}
     chips = srv._outcome_chips(json.dumps(outcome))
-    assert "ensemble withheld: no PF member" in chips
+    assert "submission withheld" in chips
 
 
 # ----------------------------- the run page names cells and step errors

@@ -13,6 +13,7 @@ import pandas as pd                                      # noqa: E402
 from fastapi.testclient import TestClient                # noqa: E402
 
 import app.core.scoring as scoring                       # noqa: E402
+from app.core import horizons as hz                      # noqa: E402
 from app.core.runs import RunSpec, results_html          # noqa: E402
 from app.ui import server as srv                         # noqa: E402
 
@@ -20,22 +21,32 @@ client = TestClient(srv.app)
 
 
 def _q(med):
-    """A full 23-level quantile set around `med`, monotone, as the members
-    store them (the WIS needs every hub level)."""
+    """A full 23-level quantile set around `med`, monotone, in the canonical
+    horizons the members carry in memory (the WIS needs every hub level).
+    No anchor key: hz.ORIGIN is not a forecast and score_quantiles must
+    never find one to score."""
     from flubnf.quantiles import FLUSIGHT_QUANTILES as QL
-    return {str(h): {float(L): med * (0.5 + float(L)) for L in QL} for h in (1, 2, 3, 4)}
+    return {h: {float(L): med * (0.5 + float(L)) for L in QL}
+            for h in hz.HORIZONS}
 
 
 def test_score_quantiles_applies_the_sample_scorers_cell_rule(monkeypatch):
     T = pd.Timestamp("2098-01-03")
+    # truth is keyed by week-ending date, which is PHYSICAL weeks past the
+    # as-of and knows nothing of horizon labels: canonical horizon h lands
+    # on T + 7*(h+1), so these four weeks cover horizons "0".."3"
     truth = {("39", T + pd.Timedelta(days=7 * h)): 100.0 for h in (1, 2, 3, 4)}
     truth[("49", T + pd.Timedelta(days=7))] = 50.0          # Utah: one week only
     truth[("49", T + pd.Timedelta(days=14))] = 0.0          # zero truth: no cell
     n2f = {"Ohio": "39", "Utah": "49", "Nowhere": None}
+    # the baseline is keyed on the hub's horizons, the same labels the rows
+    # now carry, so the join is straight through
     monkeypatch.setattr(scoring, "_baseline_cells",
-                        lambda fd, fips, tr: {(f, fd, h): 10.0 for f in fips for h in range(4)})
+                        lambda fd, fips, tr: {(f, fd, int(h)): 10.0
+                                              for f in fips
+                                              for h in hz.HORIZONS})
     df = scoring.score_quantiles({"Ohio": _q(100.0), "Utah": _q(100.0), "Nowhere": _q(5.0),
-                                  "Zero": {"1": {0.5: 0.0}}}, "2098-01-03", n2f, truth)
+                                  "Zero": {"0": {0.5: 0.0}}}, "2098-01-03", n2f, truth)
     assert sorted(df.location.unique()) == ["Ohio", "Utah"]
     assert len(df[df.location == "Ohio"]) == 4 and len(df[df.location == "Utah"]) == 1
     assert (df.base_wis == 10.0).all() and (df.rel == df.wis / 10.0).all()
@@ -61,7 +72,9 @@ def test_results_table_states_type_members_fits_files_and_report():
     assert '<span class="relwis ok">0.842</span>' in html and "(4 cells)" in html
     assert "3 fits" in html and '<span class="bad">1 failure</span>' in html
     assert "2 files" in html and "written" in html
-    assert html.index("PF-SIHRS") < html.index("Calendar analogue") < html.index("FluBNF ensemble")
+    # the blend's row still renders for a ledger row that carries its
+    # score (a run from before 2026-09-22), after the two models that ship
+    assert html.index("PF-SIHRS") < html.index("Groundhog") < html.index("FluBNF ensemble (retired)")
     # a JSON spec and outcome, as the ledger row carries them
     again = results_html(json.dumps(outcome), json.dumps({"extra": {"mode": "realtime"}}))
     assert "real-time run" in again
@@ -75,8 +88,22 @@ def test_the_form_records_the_mode_and_reruns_carry_it():
     html = client.get("/forecast").text
     assert 'name="mode" id="mode-field" value="realtime"' in html
     assert "mf.value = mode" in html
-    assert srv._run_extra(2, "vintage") == {"mode": "vintage"}
-    assert srv._run_extra(3, "nonsense") == {"mode": "realtime", "members": 3}
+    # the shipped donors ride on every console spec; "" asks for the bare
+    # analogue (a research configuration, no Groundhog file), and a named
+    # preset resolves like the shipped one
+    x = srv._run_extra(2, "vintage")
+    assert x["mode"] == "vintage" and "members" not in x
+    assert x["aux_pools"] == [{"stream": "flusurv", "weight": 0.5,
+                               "committed": True}]
+    assert x["analogue_aux"].startswith("flusurv+flusurv@")
+    assert srv._run_extra(2, "vintage", "") == {"mode": "vintage"}
+    y = srv._run_extra(3, "nonsense")
+    assert y["mode"] == "realtime" and y["members"] == 3
+    assert srv._run_extra(2, "realtime", "iliplus")["aux_pools"] == [
+        {"stream": "iliplus", "weight": 0.5, "committed": True}]
+    import pytest
+    with pytest.raises(ValueError, match="unknown auxiliary preset"):
+        srv._run_extra(2, "realtime", "nope")
     assert srv._spec_mode({"extra": {"mode": "vintage"}}) == "vintage"
     assert srv._spec_mode({}) == "realtime" and srv._spec_mode({"extra": "x"}) == "realtime"
 

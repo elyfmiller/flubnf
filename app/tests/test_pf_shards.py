@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import pytest                                            # noqa: E402
 
+from app.core import horizons as hz                      # noqa: E402
 from app.core import proc as proc_mod                    # noqa: E402
 from app.core import reclaim, retro                      # noqa: E402
 from app.core.engines import pf                          # noqa: E402
@@ -594,9 +595,9 @@ def test_sharding_changes_no_number(engine, tmp_path):
     # and the comparison is not vacuous: real numbers, pooled in order
     assert sorted(out[1][1]) == ["Location 0", "Location 1", "Location 2"]
     for pooled in out[1][1].values():
-        assert sorted(pooled) == ["0", "1", "2", "3", "4"]
+        assert sorted(pooled) == sorted((hz.ORIGIN, *hz.HORIZONS))
         assert all(len(v) == 3 * 4 for v in pooled.values())
-        assert len(set(pooled["0"])) > 1
+        assert len(set(pooled[hz.ORIGIN])) > 1
 
 
 def test_collect_reads_the_unpartitioned_cells_json(engine, tmp_path):

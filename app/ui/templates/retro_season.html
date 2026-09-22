@@ -4,6 +4,12 @@
 <script src="/static/quips.js"></script>
 <script src="/static/retro_progress.js"></script>{% endblock %}
 {% block content %}
+{# the route passes one curve per model, the member colours and the models
+   this season scored; a render without them (a bare `curve`, the shape
+   before 2026-09-22) still draws, unlabelled and in the accent colour #}
+{% if curves is not defined %}{% set curves = ({'': curve} if curve else {}) %}{% endif %}
+{% if member_colors is not defined %}{% set member_colors = {} %}{% endif %}
+{% if season_models is not defined %}{% set season_models = ['pf', 'analogue', 'ensemble'] %}{% endif %}
 {# every link and fetch on this page carries the archive identifier when one
    is in play, so the page, the playback API, and the report all read the
    same frozen tree #}
@@ -218,12 +224,12 @@
     apart. The full statement sits under the per-state table below. This
     tile is outside the pooled headline by policy; the note under the
     tiles says so. #}
- {% if us_row and us_row.ensemble %}
- <div class="card"><h2>{{ us_row.short_label }}</h2><div class="big
-   {% if us_row.ensemble < 1 %}ok{% else %}bad{% endif %}">{{ "%.3f"|format(us_row.ensemble) }}</div>
-   <p class="hint">ensemble relWIS, ratio of sums vs FluSight-baseline;
+ {% for m in season_models %}{% if us_row and us_row[m] %}
+ <div class="card"><h2>{{ us_row.short_label }}: {{ model_name(m) }}</h2><div class="big
+   {% if us_row[m] < 1 %}ok{% else %}bad{% endif %}">{{ "%.3f"|format(us_row[m]) }}</div>
+   <p class="hint">{{ model_name(m) }} relWIS, ratio of sums vs FluSight-baseline;
    {% if us_row.fitted %}fitted at the national level, and reported apart from the season figures beside it{% else %}{{ us_row.fallback_note }}, states treated as independent{% endif %}</p></div>
- {% endif %}
+ {% endif %}{% endfor %}
 </div>
 {# THE SAME AVAILABILITY GUARD AGAIN. Both notes below describe the tiles
    above them, and with no scores under the chosen convention there are no
@@ -241,7 +247,7 @@
  is scored as a ratio of sums, and the pairwise field here is jurisdictions
  only. It is on the ratio of sums view.</p>
 {% endif %}
-<div class="card"><h2>Cumulative ensemble relWIS through the season</h2>
+<div class="card"><h2>Cumulative relWIS through the season</h2>
 {% if conv == 'pairwise' %}
 {# a running cumulative figure is a ratio of sums by construction: each
    point pools every cell scored to that week. There is no cumulative
@@ -250,19 +256,22 @@
 <p class="hint">Not available under this convention: a cumulative line is a
  running ratio of sums by construction, and the pairwise figure has no
  cumulative form. The curve is on the ratio of sums view.</p>
-{% elif curve %}
-{# the chart states its own scale: the y range hugs the data (always
-   including the 1.0 and 0.5 gridlines), the first and last week dates sit
-   under the corners, and the final cumulative value is printed at the
-   line's endpoint, so the season verdict reads without hovering a dot #}
-{% set vals = curve | map('last') | list %}
+{% elif curves %}
+{# one line per model the season scored (the two that ship; the retired
+   blend where a season scored before 2026-09-22 stored its rows), each in
+   its member colour. The chart states its own scale: the y range hugs the
+   data (always including the 1.0 and 0.5 gridlines), the first and last
+   week dates sit under the corners, and each line's final cumulative
+   value is printed at its endpoint, so the season verdict reads without
+   hovering a dot #}
+{% set ns = namespace(vals=[]) %}
+{% for m, c in curves.items() %}{% set ns.vals = ns.vals + (c | map('last') | list) %}{% endfor %}
+{% set vals = ns.vals %}
 {% set n = curve | length %}
 {% set hi = [vals | max, 1.05] | max %}
 {% set lo = [vals | min, 0.45] | min %}
 {% set yspan = hi - lo %}
 {% set xs = 635 / (n - 1 if n > 1 else 1) %}
-{% set lx = 20 + (n - 1) * xs %}
-{% set ly = 12 + (hi - vals[-1]) * 124 / yspan %}
 {# class cumchart: this chart's labels are sized in viewBox units (see the
    scoped rules in nau.css), so the label height stays a constant fraction
    of the rendered chart at every window width instead of ballooning with
@@ -273,15 +282,23 @@
  <line x1="20" y1="{{ gy }}" x2="655" y2="{{ gy }}" stroke="var(--mut)" stroke-dasharray="3"/>
  <text x="660" y="{{ gy + 4 }}" fill="var(--mut)" class="svgt-sm">{{ gl }}</text>
  {% endfor %}
- <polyline fill="none" stroke="var(--gold)" stroke-width="2.5" points="
-  {% for d, v in curve %}{{ (20 + loop.index0 * xs) | round(1) }},{{ (12 + (hi - v) * 124 / yspan) | round(1) }} {% endfor %}"/>
- {% for d, v in curve %}
-  <circle cx="{{ (20 + loop.index0 * xs) | round(1) }}" cy="{{ (12 + (hi - v) * 124 / yspan) | round(1) }}" r="3"
-          fill="var(--gold)"><title>{{ d }}: {{ "%.3f"|format(v) }}</title></circle>
+ {% for m, c in curves.items() %}
+ {% set col = 'var(--gold)' if m in ('ensemble', '') else (member_colors.get(m) or 'var(--mut)') %}
+ {% set cn = c | length %}
+ {% set cxs = 635 / (cn - 1 if cn > 1 else 1) %}
+ {% set cvals = c | map('last') | list %}
+ {% set lx = 20 + (cn - 1) * cxs %}
+ {% set ly = 12 + (hi - cvals[-1]) * 124 / yspan %}
+ <polyline fill="none" stroke="{{ col }}" stroke-width="2.5" data-model="{{ m }}" points="
+  {% for d, v in c %}{{ (20 + loop.index0 * cxs) | round(1) }},{{ (12 + (hi - v) * 124 / yspan) | round(1) }} {% endfor %}"/>
+ {% for d, v in c %}
+  <circle cx="{{ (20 + loop.index0 * cxs) | round(1) }}" cy="{{ (12 + (hi - v) * 124 / yspan) | round(1) }}" r="3"
+          fill="{{ col }}"><title>{{ model_name(m) ~ ' ' if m }}{{ d }}: {{ "%.3f"|format(v) }}</title></circle>
  {% endfor %}
  <text x="{{ (lx - 8) | round(1) }}" y="{{ ((ly - 8) if ly - 8 >= 20 else (ly + 18)) | round(1) }}"
        text-anchor="end" font-weight="700" class="svgt-md"
-       fill="var(--gold)">{{ "%.3f"|format(vals[-1]) }}</text>
+       fill="{{ col }}">{{ "%.3f"|format(cvals[-1]) }}</text>
+ {% endfor %}
  {# month ticks between the corner dates, in their style: each tick sits on
     the first scored week of a new month (month_ticks_for_dates, the shared
     month helper's date-indexed form), so mid-season reading needs no
@@ -295,6 +312,7 @@
  <text x="655" y="168" text-anchor="end" fill="var(--mut)" class="svgt-sm">{{ (curve|last)[0] }}</text>
  {% endif %}
 </svg>
+{% if curves | length > 1 or '' not in curves %}<p class="hint">{% for m in curves %}<span style="color:{{ 'var(--gold)' if m in ('ensemble', '') else (member_colors.get(m) or 'var(--mut)') }}">&#9632;</span> {{ model_name(m) }}{{ " · " if not loop.last }}{% endfor %}</p>{% endif %}
 {% else %}
 <p class="hint">Arrives with the first scored week.</p>
 {% endif %}</div>
@@ -409,9 +427,9 @@
  <thead><tr>
   <th><button type="button" class="thsort" data-key="name"
     aria-pressed="false">State<span class="dir" aria-hidden="true"></span></button></th>
-  {% for mk, ml in [("pf", "PF"), ("analogue", "Analogue"), ("ensemble", "Ensemble")] %}
+  {% for mk in season_models %}
   <th class="num"><button type="button" class="thsort" data-key="{{ mk }}"
-    aria-pressed="false">{{ ml }}<span class="dir" aria-hidden="true"></span></button></th>
+    aria-pressed="false">{{ model_name(mk) }}<span class="dir" aria-hidden="true"></span></button></th>
   {% endfor %}
  </tr></thead>
  <tbody>
@@ -422,16 +440,16 @@
     NOT part of the pooled figures above. #}
  {% if us_row and (us_row.pf or us_row.analogue or us_row.ensemble) %}
  <tr class="usagg" data-name="{{ us_row.short_label }}"
-  {%- for m in ["pf","analogue","ensemble"] %} data-{{ m }}="{{ "%.6f"|format(us_row[m]) if us_row[m] else '' }}"{% endfor %}>
+  {%- for m in season_models %} data-{{ m }}="{{ "%.6f"|format(us_row[m]) if us_row[m] else '' }}"{% endfor %}>
   <td>{{ us_row.short_label }}</td>
-  {% for m in ["pf","analogue","ensemble"] %}
+  {% for m in season_models %}
   <td class="num{% if us_row[m] and us_row[m] >= 1 %} bad{% endif %}">
    {{ "%.3f"|format(us_row[m]) if us_row[m] else "n/a" }}</td>{% endfor %}</tr>
  {% endif %}
  {% for r in states %}<tr data-name="{{ r.name }}"
-  {%- for m in ["pf","analogue","ensemble"] %} data-{{ m }}="{{ "%.6f"|format(r[m]) if r[m] else '' }}"{% endfor %}>
+  {%- for m in season_models %} data-{{ m }}="{{ "%.6f"|format(r[m]) if r[m] else '' }}"{% endfor %}>
   <td>{{ r.name }}</td>
- {% for m in ["pf","analogue","ensemble"] %}
+ {% for m in season_models %}
  <td class="num{% if r[m] and r[m] >= 1 %} bad{% endif %}">
   {{ "%.3f"|format(r[m]) if r[m] else "n/a" }}</td>{% endfor %}</tr>
 {% endfor %}</tbody></table>

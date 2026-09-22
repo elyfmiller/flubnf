@@ -12,6 +12,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from app.core import horizons as hz                      # noqa: E402
 from app.core import playback                            # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL    # noqa: E402
 
@@ -54,13 +55,20 @@ def _write_official(hub, om, asof=ASOF):
 
 def _mk_root(tmp_path, monkeypatch, with_pf2s=True, official_models=("FluSight-baseline",)):
     """A one-week synthetic season root plus a synthetic hub; truth and the
-    baseline denominator are monkeypatched so no real data is touched."""
+    baseline denominator are monkeypatched so no real data is touched.
+
+    The samples.json written here is a FILE, so it is written in the STORED
+    convention: "0" is the anchor week (the as-of itself) and "1".."4" are
+    the four forecasts. retro.read_week_samples translates it on the way
+    up, which is exactly the boundary these assertions exercise."""
     truth, n2f = _truth()
     monkeypatch.setattr(playback, "load_truth", lambda: (truth, n2f))
+    # the baseline is keyed on the hub's horizons, which is what the
+    # scored rows now carry, so the join is straight through
     monkeypatch.setattr(playback, "_baseline_cells",
-                        lambda asof, fips_set, tr: {(f, asof, h): 2.0
+                        lambda asof, fips_set, tr: {(f, asof, int(h)): 2.0
                                                     for f in fips_set
-                                                    for h in range(4)})
+                                                    for h in hz.HORIZONS})
     hub = tmp_path / "hub"
     monkeypatch.setattr(playback, "HUB", hub)
     for om in official_models:
@@ -96,13 +104,18 @@ def test_payload_structure_members_official_truth_stats(tmp_path, monkeypatch):
     assert p["locations"] == ["Ohio", "Utah"]
 
     # members: sample-shaped converted, analogue as-is, pf2s included
-    assert set(p["models"]) == {"pf", "pf2s", "analogue", "ensemble"}
+    # no blend since 2026-09-22: the stored members and nothing computed
+    assert set(p["models"]) == {"pf", "pf2s", "analogue"}
     oh = p["models"]["pf"]["Ohio"]
-    assert set(oh) == {"1", "2", "3", "4"}          # horizon 0 not served
-    assert set(oh["1"]) == {str(float(L)) for L in QL}
-    assert oh["1"]["0.5"] == pytest.approx(101.0)   # truth base 100, k=1
-    # ensemble = equal-weight blend: medians 101 (pf), 103 (pf2s), 105 (an)
-    assert p["models"]["ensemble"]["Ohio"]["1"]["0.5"] == pytest.approx(103.0)
+    # the four canonical forecast horizons and nothing else: the anchor
+    # week sits in the stored file under "0", becomes hz.ORIGIN at the
+    # boundary, and is never served as a fan
+    assert set(oh) == set(hz.HORIZONS)
+    assert set(oh["0"]) == {str(float(L)) for L in QL}
+    assert oh["0"]["0.5"] == pytest.approx(101.0)   # truth base 100, k=1
+    # the members are served as stored: pf2s 103, the analogue 105
+    assert p["models"]["pf2s"]["Ohio"]["0"]["0.5"] == pytest.approx(103.0)
+    assert p["models"]["analogue"]["Ohio"]["0"]["0.5"] == pytest.approx(105.0)
 
     # truth: full-season settled series, US always included (the player
     # offers a US view in every week)
@@ -111,18 +124,18 @@ def test_payload_structure_members_official_truth_stats(tmp_path, monkeypatch):
     assert dates == sorted(dates) and len(dates) == 14
     assert p["truth"]["Ohio"][-1][1] == pytest.approx(105.0)
 
-    # official: the join (hub horizon 0 -> our "1"), US labeled, missing
-    # FluSight-ensemble file omitted entirely
+    # official: our horizons ARE the hub's now, so the join is the
+    # identity and hub 0 stays "0"; US labeled, missing FluSight-ensemble
+    # file omitted entirely
     assert set(p["official"]) == {"FluSight-baseline"}
     ob = p["official"]["FluSight-baseline"]
     assert set(ob) == {"Ohio", "US"}
-    assert set(ob["Ohio"]) == {"1", "2"}            # h -1 dropped, 0/1 kept
-    assert ob["Ohio"]["1"]["0.5"] == pytest.approx(101.0)
-    assert ob["US"]["1"]["0.5"] == pytest.approx(1001.0)
+    assert set(ob["Ohio"]) == {"0", "1"}            # h -1 dropped, 0/1 kept
+    assert ob["Ohio"]["0"]["0.5"] == pytest.approx(101.0)
+    assert ob["US"]["0"]["0.5"] == pytest.approx(1001.0)
 
     # stats: every member plus covered officials; single week => cum == week
-    assert set(p["stats"]) == {"pf", "pf2s", "analogue", "ensemble",
-                               "FluSight-baseline"}
+    assert set(p["stats"]) == {"pf", "pf2s", "analogue", "FluSight-baseline"}
     for m, s in p["stats"].items():
         assert s["week_rel"] is not None and s["week_rel"] > 0
         assert s["cum_rel"] == pytest.approx(s["week_rel"])
@@ -135,9 +148,10 @@ def test_vectorized_member_quantiles_match_reference():
     import numpy as np
     from app.core import ensemble as ens
     rng = np.random.default_rng(7)
-    s = {h: rng.gamma(2.0, 40.0, 999).tolist() for h in ("1", "2", "3", "4")}
-    s["2"][0] = float("nan")                     # finite-filter path too
-    s["4"] = []                                  # empty horizon dropped
+    s = {h: rng.gamma(2.0, 40.0, 999).tolist() for h in hz.HORIZONS}
+    s["1"][0] = float("nan")                     # finite-filter path too
+    s["3"] = []                                  # empty horizon dropped
+    s[hz.ORIGIN] = rng.gamma(2.0, 40.0, 9).tolist()   # anchor: not a cell
     assert playback._member_q(s) == ens.member_quantiles_from_samples(s)
 
 

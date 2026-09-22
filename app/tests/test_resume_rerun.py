@@ -218,7 +218,7 @@ def test_retro_resume_post_launches_with_the_recorded_settings(tmp_path,
     # national="0" rides in the resume fields for exactly this reason
     assert launched == [(SEASON, ["Ohio", "Utah"], 3, 2, 4000,
                          {"scope": "custom", "engine": "pf",
-                          "national": False})]
+                          "national": False}, "pf")]
     # mode=resume: the completed week was neither archived nor discarded
     assert (wk / "samples.json").is_file()
     assert srv._retro_status[SEASON] == "running"

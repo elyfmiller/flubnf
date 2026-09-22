@@ -14,15 +14,20 @@ def test_floor_adaptive_branch_ignores_anchored_origin():
     # value (nonzero), every FORECAST horizon flat zero, sporadic recent
     # background. The adaptive branch must fire; before the fix the origin's
     # anchored mass vetoed it and the submitted medians stayed 0.
+    # In canonical keys the anchor rides under hz.ORIGIN and is not a number
+    # at all, which is exactly what lets the collapse test tell it apart from
+    # the first forecast week; the four flat-zero forecasts are hz.HORIZONS.
+    from app.core import horizons as hz
     from app.core.floor import floor_samples
-    samples = {"0": [2.0] * 200, "1": [0.0] * 200, "2": [0.0] * 200,
-               "3": [0.0] * 200, "4": [0.0] * 200}
+    samples = {hz.ORIGIN: [2.0] * 200,
+               **{h: [0.0] * 200 for h in hz.HORIZONS}}
     out = floor_samples(samples, "Arkansas", "2026-07-04",
                         recent=[1.0, 1.0, 4.0, 0.0])
-    med1 = float(np.median(np.asarray(out["1"], float)))
+    first = hz.HORIZONS[0]
+    med1 = float(np.median(np.asarray(out[first], float)))
     assert med1 >= 1.0, (
-        f"adaptive floor did not fire: h1 median {med1}; the origin's "
-        "anchored mass is vetoing the collapse test again")
+        f"adaptive floor did not fire: first-forecast median {med1}; the "
+        "origin's anchored mass is vetoing the collapse test again")
 
 
 def test_floor_healthy_fit_untouched_by_adaptive_branch():
@@ -136,26 +141,31 @@ def _fake_cell(tmp_path, n_obs, n_cols, k, last_observed=10.0):
 
 
 def test_collect_zero_drop_unchanged(tmp_path):
-    # n_obs=3, forecast 4: columns 0..6; origin col 2 -> scale 10/2 = 5
+    # n_obs=3, forecast 4: columns 0..6; origin col 2 -> scale 10/2 = 5.
+    # Canonical keys: the anchor under hz.ORIGIN, the four forecasts under
+    # the hub's own labels "0".."3". The columns read are unchanged.
+    from app.core import horizons as hz
     from app.core.engines import pf as pf_engine
     wr = _fake_cell(tmp_path, n_obs=3, n_cols=7, k=0)
     d = pf_engine.collect(wr)["Ohio"]
-    assert d["0"] == [10.0, 10.0]           # anchored origin, col 2 * 5
-    assert d["1"] == [15.0, 15.0]           # col 3 * 5
-    assert d["4"] == [30.0, 30.0]           # col 6 * 5
+    assert d[hz.ORIGIN] == [10.0, 10.0]     # anchored origin, col 2 * 5
+    assert d["0"] == [15.0, 15.0]           # first forecast, col 3 * 5
+    assert d["3"] == [30.0, 30.0]           # last forecast, col 6 * 5
 
 
 def test_collect_shifts_horizons_by_weeks_dropped(tmp_path):
     # k=1: conf extended the forecast to 5 steps -> 8 columns. The as-of
-    # week is col 3 (the model's nowcast of the dropped week); horizon 1
-    # is col 4. Before the fix, h=1 read col 3 and every label rode one
-    # week early relative to the calendar it claimed.
+    # week is col 3 (the model's nowcast of the dropped week) and it is the
+    # anchor, so it rides under hz.ORIGIN; the first forecast is col 4.
+    # Before the fix, that first forecast read col 3 and every label rode
+    # one week early relative to the calendar it claimed.
+    from app.core import horizons as hz
     from app.core.engines import pf as pf_engine
     wr = _fake_cell(tmp_path, n_obs=3, n_cols=8, k=1)
     d = pf_engine.collect(wr)["Ohio"]
-    assert d["0"] == [15.0, 15.0]           # col 3 * 5: nowcast of asof week
-    assert d["1"] == [20.0, 20.0]           # col 4 * 5
-    assert d["4"] == [35.0, 35.0]           # col 7 * 5
+    assert d[hz.ORIGIN] == [15.0, 15.0]     # col 3 * 5: nowcast of asof week
+    assert d["0"] == [20.0, 20.0]           # first forecast, col 4 * 5
+    assert d["3"] == [35.0, 35.0]           # last forecast, col 7 * 5
 
 
 def test_collect_refuses_pre_fix_workroot_with_drop(tmp_path):

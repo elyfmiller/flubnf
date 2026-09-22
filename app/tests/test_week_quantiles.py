@@ -12,23 +12,32 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import numpy as np                                       # noqa: E402
 
+from app.core import horizons as hz                      # noqa: E402
 from app.core import reclaim, retro, playback            # noqa: E402
 
 W = "2098-01-03"
 
 
 def _payload(asof=W, seed=0):
+    """One week's record in CANONICAL horizons (app.core.horizons): the four
+    forecasts under "0".."3" and no anchor, which is what every reader above
+    the storage boundary sees. The median stays keyed on the physical week
+    the horizon stands for (51..54), so the horizons remain distinguishable
+    whichever way the record is written."""
     rng = np.random.default_rng(seed)
     return {"asof": asof,
-            "pf": {"Ohio": {str(h): rng.gamma(4.0, 25.0, 300).tolist() for h in (1, 2, 3, 4)}},
-            "analogue": {"Ohio": {str(h): {"0.025": 10.0, "0.5": 50.0 + h, "0.975": 120.0} for h in (1, 2, 3, 4)},
-                         "Utah": {str(h): {"0.025": 1.0, "0.5": 5.0, "0.975": 12.0} for h in (1, 2, 3, 4)}}}
+            "pf": {"Ohio": {h: rng.gamma(4.0, 25.0, 300).tolist() for h in hz.HORIZONS}},
+            "analogue": {"Ohio": {h: {"0.025": 10.0, "0.5": 51.0 + int(h), "0.975": 120.0} for h in hz.HORIZONS},
+                         "Utah": {h: {"0.025": 1.0, "0.5": 5.0, "0.975": 12.0} for h in hz.HORIZONS}}}
 
 
 def _root(tmp_path, payload, plain=False):
     root = tmp_path / "2098-99"; wd = root / "weeks" / payload["asof"]; wd.mkdir(parents=True)
     if plain:
-        (wd / retro.SAMPLES_JSON).write_text(json.dumps(payload))
+        # a week that predates write_week_samples: the bytes on disk are in
+        # the STORED convention, so the canonical payload is translated here
+        # exactly as the storage boundary would have translated it
+        (wd / retro.SAMPLES_JSON).write_text(json.dumps(hz.record_to_stored(payload)))
     else:
         retro.write_week_samples(wd, payload)
     return root, wd
@@ -63,7 +72,7 @@ def test_a_stale_sidecar_is_recomputed_from_newer_samples(tmp_path):
     time.sleep(0.02)
     p2 = _payload(seed=2)
     (wd / retro.SAMPLES_GZ).unlink()
-    (wd / retro.SAMPLES_JSON).write_text(json.dumps(p2))
+    (wd / retro.SAMPLES_JSON).write_text(json.dumps(hz.record_to_stored(p2)))
     future = time.time() + 5
     os.utime(wd / retro.SAMPLES_JSON, (future, future))
     assert retro.read_week_quantiles(wd) is None
@@ -85,7 +94,7 @@ def test_playback_members_come_from_the_sidecar_and_match_the_formula(tmp_path):
     q = playback._week_model_quantiles(root, W)
     assert q["pf"]["Ohio"] == playback._member_q(p["pf"]["Ohio"])
     assert q["analogue"]["Utah"]["1"][0.5] == 5.0
-    assert "ensemble" in q and "Ohio" in q["ensemble"] and "Utah" in q["ensemble"]
+    assert "ensemble" not in q                  # nothing blended (2026-09-22)
     # the samples are not needed once the sidecar exists
     (wd / retro.SAMPLES_GZ).rename(wd / "samples.json.gz.away")
     (wd / retro.SAMPLES_GZ).write_text("")          # present for samples_file, unreadable

@@ -1,8 +1,9 @@
 """Season playback: one JSON payload per stored retrospective week.
 
 GET /api/retro/{season}/playback/{asof} serves what a viewer needs to replay
-a submission day: every member's quantile fan, the equal-weight ensemble,
-the settled full-season truth, the CDC's own submitted comparators
+a submission day: every member's quantile fan (pf and analogue; nothing is
+blended since 2026-09-22), the settled full-season truth, the CDC's own
+submitted comparators
 (FluSight-baseline and FluSight-ensemble, including their US national cell),
 and running relWIS stats.
 
@@ -42,6 +43,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from app.core import horizons as hz
 from app.core import ensemble as ens
 from app.core import retro as retro_store
 from app.core import us_national as usn
@@ -50,9 +52,13 @@ from flubnf.settings import HUB
 from flubnf.wis import wis as wis_fn
 
 OFFICIAL = ("FluSight-baseline", "FluSight-ensemble")
-CACHE_V = 2   # bump when cached shapes or scoring logic change
+#: bump when cached shapes or scoring logic change. v3 (2026-09-22): the
+#: payload carries the stored members only; a v2 payload holds a blend
+#: computed on the fly that nothing computes any more, and is rebuilt
+CACHE_V = 3
 TARGET = "wk inc flu hosp"
-HORIZONS = ("1", "2", "3", "4")
+#: canonical hub horizons; app.core.horizons owns the convention
+HORIZONS = hz.HORIZONS
 
 
 class UnknownWeek(FileNotFoundError):
@@ -107,25 +113,16 @@ def _member_q(samples_by_h: dict) -> dict:
 
 
 def _week_model_quantiles(root: Path, asof: str) -> dict:
-    """{model: {location: {"1".."4": {float level: value}}}} for one stored
+    """{model: {location: {"0".."3": {float level: value}}}} for one stored
     week: sample-shaped members (pf, pf2s) through the member-quantile
-    formula, the analogue's stored quantiles as-is, and an equal-weight
-    vincentized ensemble of whichever members cover each location."""
+    formula and the analogue's stored quantiles as-is. No blend: the
+    equal-weight ensemble the player used to draw on the fly is retired
+    (2026-09-22), and a sealed season's stored score rows are the only
+    place it survives."""
     # the members come from the week's quantile sidecar (retro_store
     # .week_member_quantiles): the same formula _member_q applies, without
     # parsing the draws on every cold cache
-    out = dict(retro_store.week_member_quantiles(root, asof))
-    members = {m: q for m, q in out.items()}
-    if members:
-        blend = {}
-        all_locs = set().union(*(set(q) for q in members.values()))
-        for loc in all_locs:
-            have = {m: q[loc] for m, q in members.items() if loc in q}
-            b = ens.vincentize(have, weights=ens.equal_weights(have))
-            if b:
-                blend[loc] = b
-        out["ensemble"] = blend
-    return out
+    return dict(retro_store.week_member_quantiles(root, asof))
 
 
 # ----------------------------------------------------------- official models
@@ -176,7 +173,7 @@ def _official_quantiles(model: str, asof: str, f2n: dict) -> dict | None:
             continue
         if not 0 <= h <= 3:
             continue
-        out.setdefault(name, {}).setdefault(str(h + 1), {})[L] = v
+        out.setdefault(name, {}).setdefault(str(h), {})[L] = v
     return out
 
 
@@ -197,10 +194,11 @@ def _score_block(qbl: dict, asof: str, truth: dict, n2f: dict,
             q = hq.get(h)
             if not q:
                 continue
-            actual = truth.get((fips, T + timedelta(days=7 * int(h))))
+            actual = truth.get(
+                (fips, T + timedelta(days=7 * (int(h) + 1))))
             if actual is None or actual <= 0 or q.get(0.5, 0) <= 0:
                 continue
-            base = bases.get((fips, asof, int(h) - 1))
+            base = bases.get((fips, asof, int(h)))
             if base is None:
                 continue
             try:
@@ -339,6 +337,11 @@ def _stats(root: Path, season: str, asof: str, truth: dict, n2f: dict,
     stats = {}
     wanted = list(model_q) + [om for om in OFFICIAL
                               if any(om in aggs[w] for w in upto)]
+    # a season scored before 2026-09-22 carries the retired blend's rows in
+    # scores.json and nowhere else: its stats read from there as that
+    # season's record, though no payload draws it any more
+    if "ensemble" in scored_models and "ensemble" not in wanted:
+        wanted.append("ensemble")
     for m in wanted:
         if m in scored_models:
             g = scores[scores.model == m]

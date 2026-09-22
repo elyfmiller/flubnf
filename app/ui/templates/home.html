@@ -3,8 +3,9 @@
  <h1>Forecast the flu season, <span class="gold">mechanistically</span>.</h1>
  <p>FluBNF produces weekly probabilistic forecasts of influenza hospital
  admissions for all 52 US jurisdictions, in the CDC FluSight submission
- format and with a shareable weekly report. A mechanistic transmission model
- is fitted to each week's data and blended with an empirical companion.</p>
+ format and with a shareable weekly report. Two models are submitted each
+ week: a mechanistic transmission model fitted to each week's data, and the
+ Groundhog, an empirical calendar model with banked donors.</p>
 </div>
 
 <div class="card">
@@ -72,34 +73,37 @@
 <div class="grid2">
  <div class="card"><h2>Measured performance</h2>
   <table class="perf">
-   {# both score columns are named for whose forecast they score: "Ensemble"
-      alone sat beside "FluSight ensemble" and read as the same thing. The
-      relWIS unit for both is stated once in the hint below. #}
-   <thead><tr><th>Season</th><th class="num">FluBNF Ensemble</th>
-    <th class="num">FluSight Ensemble</th><th class="num">Scored cells</th>
+   {# every score column is named for whose forecast it scores, so no
+      column reads as the FluSight ensemble's. The relWIS unit for all of
+      them is stated once in the hint below. #}
+   <thead><tr><th>Season</th><th class="num">PF-SIHRS</th>
+    <th class="num">Groundhog</th><th class="num">FluSight Ensemble</th>
     </tr></thead>
    <tbody>
-    <tr><td>2023-24</td><td class="num rel">0.834</td>
-     <td class="num">0.741</td><td class="num">6,063</td></tr>
-    <tr><td>2024-25</td><td class="num rel">0.716</td>
-     <td class="num">0.663</td><td class="num">4,922</td></tr>
-    <tr><td>2025-26</td><td class="num rel">0.663</td>
-     <td class="num">0.684</td><td class="num">4,475</td></tr>
-    <tr class="total"><td>Pooled</td><td class="num rel">0.723</td>
-     <td class="num">0.685</td><td class="num">15,460</td></tr>
+    <tr><td>2023-24</td><td class="num rel">0.840</td>
+     <td class="num rel">0.722</td><td class="num">0.741</td></tr>
+    <tr><td>2024-25</td><td class="num rel">0.797</td>
+     <td class="num rel">0.653</td><td class="num">0.663</td></tr>
+    <tr><td>2025-26</td><td class="num rel">0.846</td>
+     <td class="num rel">0.651</td><td class="num">0.684</td></tr>
+    <tr class="total"><td>Pooled</td><td class="num rel">0.821</td>
+     <td class="num rel">0.666</td><td class="num">0.685</td></tr>
    </tbody>
   </table>
-  {# the values are the production engine's record (the reseal of
-     2026-09-07, app/state/retro_reseal); the sealed engine's table and the
-     disclosure between the two stay on Methods and in docs/RELEASE-1.0.md.
-     One sentence under the table, by the lead's word: the conventions and
-     the withdrawn placements are on Methods. #}
-  <p class="hint">Two members, three seasons, replayed on vintage data only;
-  both columns score the same 15,460 cells against the CDC FluSight
-  baseline. The FluSight Ensemble column is this app's own scoring of the
-  official ensemble on the same cells, not FluSight's pairwise relative WIS,
-  so it is not directly comparable with the dashboard: likely close, not the
-  same method. Placement among teams is withdrawn, see
+  {# PF-SIHRS and FluSight Ensemble are the production engine's record
+     (the reseal of 2026-09-07, app/state/retro_reseal, 15,460 cells); the
+     Groundhog column is its own replay (flubnf groundhog retro, 15,340
+     cells over the 52 jurisdictions, 2026-09-21). The two universes are
+     named in the hint. The sealed engine's table and the disclosure
+     between the two stay on Methods and in docs/RELEASE-1.0.md. #}
+  <p class="hint">Two models, submitted separately, three seasons replayed
+  on vintage data only, each scored against the CDC FluSight baseline.
+  PF-SIHRS and the FluSight Ensemble columns score the same 15,460 cells;
+  the Groundhog column is its own replay over 15,340 cells of the 52
+  jurisdictions. The FluSight Ensemble column is this app's own scoring of
+  the official ensemble, not FluSight's pairwise relative WIS, so it is not
+  directly comparable with the dashboard: likely close, not the same
+  method. Placement among teams is withdrawn, see
   <a href="/methods">Methods</a>.
   <span class="convtip" tabindex="0" title="{{ relwis_convention_note }}"
    aria-label="scoring convention: {{ relwis_convention_note }}">ⓘ</span></p></div>
@@ -128,8 +132,8 @@
  <div class="pipe">
  <svg viewBox="0 0 990 264" role="img" aria-label="Weekly forecasting workflow">
   <desc>One weekly data pull feeds the particle-filter fits and the
-  calendar analogue; their quantiles combine in an equal-weight blend, never
-  fitted, which is packaged as the FluSight CSV and the weekly report.</desc>
+  Groundhog; each model's quantiles are written as its own FluSight CSV,
+  nothing is blended, and the weekly report shows both.</desc>
   <defs>
    <marker id="wf-arr" viewBox="0 0 10 10" refX="9" refY="5"
            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -147,8 +151,8 @@
   <!-- arrow labels, centered in their gaps -->
   <g text-anchor="middle" class="svgt-sm" fill="var(--mut)">
    <text x="202" y="125">same data,</text>
-   <text x="202" y="143">both members</text>
-   <text x="555" y="125">member</text>
+   <text x="202" y="143">both models</text>
+   <text x="555" y="125">each model's</text>
    <text x="555" y="143">quantiles</text>
   </g>
   <!-- stages -->
@@ -172,19 +176,19 @@
    <text x="382" y="45"  class="svgt-md" font-weight="700">Particle-filter fits</text>
    <text x="382" y="64"  class="svgt-sm">10,000 candidate epidemics</text>
    <text x="382" y="81"  class="svgt-sm">per state, reweighted weekly</text>
-   <text x="382" y="193" class="svgt-md" font-weight="700">Calendar analogue</text>
+   <text x="382" y="193" class="svgt-md" font-weight="700">Groundhog</text>
    <text x="382" y="212" class="svgt-sm">growth ratios from matched</text>
-   <text x="382" y="229" class="svgt-sm">weeks of past seasons</text>
-   <text x="703" y="117" class="svgt-md" font-weight="700">Equal-weight blend</text>
-   <text x="703" y="138" class="svgt-sm">quantile average,</text>
-   <text x="703" y="156" class="svgt-sm">50/50, never fitted</text>
-   <text x="908" y="122" class="svgt-md" font-weight="700">FluSight CSV</text>
+   <text x="382" y="229" class="svgt-sm">weeks, NHSN and FluSurv-NET</text>
+   <text x="703" y="117" class="svgt-md" font-weight="700">Two submissions</text>
+   <text x="703" y="138" class="svgt-sm">one file per model,</text>
+   <text x="703" y="156" class="svgt-sm">nothing blended</text>
+   <text x="908" y="122" class="svgt-md" font-weight="700">FluSight CSVs</text>
    <text x="908" y="140" class="svgt-sm" font-weight="600">+ weekly report</text>
   </g>
  </svg>
  </div>
  {# the two defining equations behind the pipeline: the seasonal forcing
-    the SIHRS fits bend, and the ensemble's equal-weight quantile mean #}
+    the SIHRS fits bend, and the Groundhog's scaled growth-ratio quantile #}
  <div class="eqpanel">
   <p><span class="math"><i>&#946;</i>(<i>t</i>) = <i>&#946;</i><sub>0</sub>
    exp(&#8239;<i>&#949;</i><sub>1</sub> cos(&#8239;2&#960;(<i>t</i> &#8722;
@@ -192,10 +196,11 @@
    <span class="eqnote">the seasonal forcing inside the particle-filter fits:
    the curve the filter bends each week</span></p>
   {{ dg.harmonic() }}
-  <p><span class="math"><i>q</i><sub>ens</sub>(<i>&#964;</i>) =
-   mean<sub>m</sub>&#8239;<i>q</i><sub>m</sub>(<i>&#964;</i>)</span>
-   <span class="eqnote">the submitted quantile: an equal-weight mean of the
-   member quantiles</span></p>
+  <p><span class="math"><i>q</i><sub>h</sub>(<i>&#964;</i>) =
+   <i>y</i><sub>last</sub> &#183; <i>Q</i><sub><i>&#964;</i></sub>(&#8239;growth
+   ratios at matched calendar weeks&#8239;)</span>
+   <span class="eqnote">the Groundhog's quantile: the last observed value
+   scaled by calendar-matched historical growth ratios</span></p>
  </div>
 </div>
 

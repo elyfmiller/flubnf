@@ -5,15 +5,14 @@ Engineering rules (each one paid for):
   * RESUMABLE: each week is a checkpoint; completed weeks are detected and
     never redone (a crash costs one week, not a season).
   * one ledger run per season; per-week artifacts under weeks/<date>/.
-  * members: pf (seeded, replicated) + analogue + the shipped ensemble, an
-    UNFITTED equal-weight (50/50) quantile average of the members present
-    (ens.vincentize's default, the recipe every published score used).
-    Fitting never happens by default: a fitted table must be named
-    (ens.FROZEN or an explicit dict) and, for a retrospective, must be
-    leave-one-season-out for the season being scored -- fitting on the
-    scored season is leakage. Rescoring the seal from its stored samples
-    (ratio of sums vs FluSight-baseline, US excluded), the frozen fitted
-    table pools 0.6958 against the unfitted blend's 0.6781.
+  * members: pf (seeded, replicated) + analogue, each scored on its own.
+    The analogue runs as the Groundhog by default (the shipped auxiliary
+    donors, app/core/engines/analogue.SHIPPED_AUX, put into every week's
+    spec unless `week_extra` says otherwise, and named in run_meta.json).
+    No blend: the equal-weight ensemble that every published score before
+    2026-09-22 was computed with is retired, and nothing here computes
+    it. Sealed seasons keep their stored "ensemble" score rows as the
+    record; a new scoring pass writes rows for the stored members only.
   * parallel width: PF cells sharded across N runner subprocesses (entry-point
     files, never stdin -- macOS spawn rule).
   * CONTROLLABLE: STOP and PAUSE are files in the season root, polled at FIT
@@ -50,6 +49,7 @@ sys.path.insert(0, str(REPO))
 from app.core.data import ARCHIVE, LOCATIONS          # noqa: E402
 from app.core.engines import analogue as an_engine    # noqa: E402
 from app.core.engines import pf as pf_engine          # noqa: E402
+from app.core import horizons as hz
 from app.core import ensemble as ens                  # noqa: E402
 from app.core import proc as proc_mod                 # noqa: E402
 from app.core.runs import (LOCATION_LIST_LIMIT,       # noqa: E402
@@ -160,20 +160,38 @@ def season_sample_files(root: Path) -> list:
 
 
 def read_samples(fp: Path) -> dict:
-    """Parse one stored samples file, transparently across both forms."""
+    """Parse one stored samples file, transparently across both forms, and
+    hand it back in CANONICAL horizons (app.core.horizons).
+
+    The conversion lives HERE, at the file parser, and not one level up in
+    read_week_samples, because this function is public and had other
+    callers: the national aggregate below and two pages in the console.
+    Leaving it raw meant a stored record (anchor at "0", forecasts at
+    "1".."4") could reach code that had been reindexed to expect canonical
+    keys, which reads the anchor as the first forecast and drops the
+    four-week horizon entirely. That is not hypothetical: it is exactly
+    what test_retro_national caught (3 horizons scored where 4 were
+    expected) during this change."""
     fp = Path(fp)
     if fp.name.endswith(".gz"):
         with gzip.open(fp, "rt", encoding="utf-8") as f:
-            return json.load(f)
-    return json.loads(fp.read_text())
+            return hz.record_to_canonical(json.load(f))
+    return hz.record_to_canonical(json.loads(fp.read_text()))
 
 
 def read_week_samples(root: Path, asof: str) -> dict:
+    """One stored week, in CANONICAL horizons (app.core.horizons).
+
+    The file on disk keys the anchor as "0" and the forecasts as "1".."4",
+    which is what the seal carries and can never be migrated. Everything
+    above this line sees the hub's own labels instead, with the anchor
+    under ORIGIN. This function and write_week_samples are the only two
+    places that know both."""
     fp = week_samples_path(root, asof)
     if fp is None:
         raise FileNotFoundError(
             f"no stored samples for week {asof} under {root}")
-    return read_samples(fp)
+    return read_samples(fp)          # already canonical
 
 
 def write_week_samples(wd: Path, obj: dict) -> Path:
@@ -185,8 +203,10 @@ def write_week_samples(wd: Path, obj: dict) -> Path:
     wd = Path(wd)
     fp = wd / SAMPLES_GZ
     tmp = wd / (SAMPLES_GZ + ".tmp")
+    # `obj` is canonical; the file stays in the stored convention so that
+    # every week ever written, sealed ones included, reads back the same way
     with gzip.open(tmp, "wt", encoding="utf-8", compresslevel=6) as f:
-        json.dump(obj, f)
+        json.dump(hz.record_to_stored(obj), f)
     os.replace(tmp, fp)
     (wd / SAMPLES_JSON).unlink(missing_ok=True)
     try:
@@ -197,12 +217,11 @@ def write_week_samples(wd: Path, obj: dict) -> Path:
 
 
 def member_quantiles(d: dict) -> dict:
-    """{member: {location: {"1".."4": {level: value}}}} from one week's
+    """{member: {location: {"0".."3": {level: value}}}} from one week's
     stored record: the sample-shaped members (pf, pf2s) through the member
     quantile formula, the analogue's stored quantiles with float levels.
-    The ensemble is NOT here: each reader blends the members with its own
-    weights, so a fitted-weight scoring and the equal-weight console never
-    disagree about what the members were."""
+    A week replayed by the Groundhog alone (engine "analogue") stores no
+    pf block and yields no pf member."""
     out = {}
     for m in ("pf", "pf2s"):
         if m in d:
@@ -225,7 +244,7 @@ def write_week_quantiles(wd: Path, mq: dict) -> Path:
         {m: {loc: {h: {repr(float(L)): v for L, v in q.items()}
                    for h, q in qs.items()}
              for loc, qs in locs.items()}
-         for m, locs in mq.items()}))
+         for m, locs in hz.quantiles_to_stored(mq).items()}))
     os.replace(tmp, fp)
     return fp
 
@@ -240,10 +259,11 @@ def read_week_quantiles(wd: Path) -> dict | None:
         return None
     try:
         raw = json.loads(fp.read_text())
-        return {m: {loc: {h: {float(L): float(v) for L, v in q.items()}
-                          for h, q in qs.items()}
-                    for loc, qs in locs.items()}
-                for m, locs in raw.items()}
+        return hz.quantiles_to_canonical(
+            {m: {loc: {h: {float(L): float(v) for L, v in q.items()}
+                       for h, q in qs.items()}
+                 for loc, qs in locs.items()}
+             for m, locs in raw.items()})
     except Exception:
         return None
 
@@ -930,16 +950,28 @@ def _run_round(root: Path, wd: Path, pending: list, width: int) -> None:
         raise RuntimeError("PF runners exited without completing any fit")
 
 
+#: what a replay fits: the particle filter beside the analogue (the full
+#: competition path, hours per season), or the analogue alone (the
+#: Groundhog by default; minutes per season, no engine install needed)
+ENGINES = ("pf", "analogue")
+
+
 def run_week(root: Path, season: str, asof: str, locations: list,
              replicates: int = 3, particles: int = 10_000,
              width: int = pf_engine.DEFAULT_SHARD_WIDTH,
              drop_same_day: bool = False,
-             extra: dict | None = None) -> dict:
+             extra: dict | None = None, engine: str = "pf") -> dict:
     """One submission day: PF (sharded) + analogue; store samples+quantiles.
 
     `extra` is the spec's research dictionary (seed_anchor,
     continue_states, save_states; see pf_engine.continuation_for), recorded
     in the week's manifest so a resumed week is rebuilt if it changes.
+
+    `engine` "analogue" skips the particle filter entirely: the week stores
+    the analogue member alone (the Groundhog, when `extra` carries the
+    shipped donors), no cell is prepared or fitted, and nothing here needs
+    the engine venv. The stored week carries no pf block, so every reader
+    sees exactly one member.
 
     Fit-level control and resume: the STOP and PAUSE flags are honoured
     BETWEEN individual fits (the fits in flight drain first -- a stop raises
@@ -947,6 +979,8 @@ def run_week(root: Path, season: str, asof: str, locations: list,
     with the processes alive), and a later run of an interrupted week refits
     only the cells with no marker in cells_done/. samples.json still appears
     only when every cell is done, so week atomicity is unchanged."""
+    if engine not in ENGINES:
+        raise ValueError(f"engine must be one of {ENGINES}, got {engine!r}")
     # resolved: the paths written into pf.conf, the shard files and the
     # runner scripts are read by subprocesses with their own working
     # directory, so a relative root is a season of fits that never start
@@ -979,6 +1013,19 @@ def run_week(root: Path, season: str, asof: str, locations: list,
                                           # prepared week still matches
     _check_stop(root)         # a standing flag must not even prepare a week
     hold_while_paused(root)
+    if engine == "analogue":
+        # the Groundhog alone: instant, no cells, no engine venv. The
+        # manifest still lands so the week says what produced it.
+        manifest["engine"] = "analogue"
+        wd.mkdir(parents=True, exist_ok=True)
+        (wd / "manifest.json").write_text(json.dumps(manifest, indent=1))
+        an_q = an_engine.run(spec)
+        out = {"asof": asof,
+               "analogue": {loc: {h: {str(k): v for k, v in q.items()}
+                                  for h, q in qs.items()}
+                            for loc, qs in an_q.items()}}
+        write_week_samples(wd, out)
+        return out
     cells = _prepare_week(root, asof, spec, manifest)
     # Failed fits RETRY on a fresh replay: their markers exist so the run
     # that produced them could drain its loop, but a NEW run_week call
@@ -1049,13 +1096,24 @@ def run_week(root: Path, season: str, asof: str, locations: list,
 def run_season(root: Path, season: str, locations: list, replicates=3,
                particles=10_000, width=pf_engine.DEFAULT_SHARD_WIDTH,
                progress=None, settings: dict | None = None,
-               drop_same_day: bool = False, week_extra=None) -> list:
+               drop_same_day: bool = False, week_extra=None,
+               engine: str = "pf") -> list:
     """Replay a season week by week, recording timing and honouring the STOP
     and PAUSE flags at fit resolution.
 
     `week_extra(asof, i, vintages)`, when given, returns the spec's research
     dictionary for week i of the season's vintages (run_week's `extra`);
-    it is how a carried cloud names the week it continues from.
+    it is how a carried cloud names the week it continues from, and how
+    `flubnf retro --aux` names another donor configuration. When it is
+    None the analogue runs as the shipped Groundhog: every week's spec
+    carries `an_engine.shipped_aux_pools()`, and run_meta.json records the
+    preset with its bank digests under `week_extra`. A replay of the bare
+    analogue must ask for it (`an_engine.bare_analogue`).
+
+    `engine` "analogue" replays the Groundhog alone (run_week's switch):
+    minutes per season, no particle filter, no engine venv. The record
+    says so under `engine`, and a tree replayed one way is not resumed
+    the other (the console refuses; a script should archive first).
 
     Control points sit BETWEEN FITS: run_week polls the same flags while its
     runners work, so a press waits only for the fits in flight (well under a
@@ -1084,9 +1142,12 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
     rec.setdefault("particles", int(particles))
     rec.setdefault("drop_same_day", bool(drop_same_day))
     rec.setdefault("width", int(width))
-    rec.setdefault("engine", "pf")
-    if week_extra is not None:
-        rec.setdefault("week_extra", getattr(week_extra, "__name__", "custom"))
+    if engine not in ENGINES:
+        raise ValueError(f"engine must be one of {ENGINES}, got {engine!r}")
+    rec["engine"] = engine
+    if week_extra is None:
+        week_extra = an_engine.aux_preset(an_engine.SHIPPED_AUX)
+    rec.setdefault("week_extra", getattr(week_extra, "__name__", "custom"))
     _start_record(root, season, len(vintages), rec)
     beat = _Heartbeat(root)
     beat.start()
@@ -1108,7 +1169,8 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
                 run_week(root, season, asof, locations, replicates, particles,
                          width, drop_same_day=drop_same_day,
                          extra=(week_extra(asof, i, vintages)
-                                if week_extra else None))
+                                if week_extra else None),
+                         engine=engine)
                 done.append(asof)
                 # timing is recorded HERE, for completed weeks only: the
                 # failure branch below used to fall through to this call,
@@ -1141,15 +1203,12 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
     return done
 
 
-def score_season(root: Path, season: str,
-                 ensemble_weights: dict | str | None = None) -> pd.DataFrame:
-    """Score every stored week vs settled truth.
-
-    `ensemble_weights` is passed straight to ens.vincentize, so the default
-    (None) is the shipped, unfitted equal-weight blend -- the one every
-    published score in this repository was computed with. Anything fitted
-    must be named (ens.FROZEN or an explicit table) AND must be LOSO for this
-    season: fitting weights on the season being scored is leakage."""
+def score_season(root: Path, season: str) -> pd.DataFrame:
+    """Score every stored week vs settled truth: one row per (member,
+    location, as-of, horizon) for each member the week stored, pf and
+    analogue. Nothing is blended; the equal-weight ensemble's rows in a
+    scores.json written before 2026-09-22 are that season's record and are
+    not reproduced by a rescore."""
     from app.core.scoring import _baseline_cells, load_truth
     from flubnf.quantiles import FLUSIGHT_QUANTILES as QL
     from flubnf.wis import wis as wis_fn
@@ -1164,20 +1223,15 @@ def score_season(root: Path, season: str,
             fips = n2f.get(loc)
             if not fips:
                 continue
-            pf_q = pf_all.get(loc, {})
-            an_q = an_all.get(loc, {})
-            members = {}
-            if pf_q: members["pf"] = pf_q
-            if an_q: members["analogue"] = an_q
-            blend = ens.vincentize(members, weights=ensemble_weights,
-                                   location_fips=fips) if members else {}
-            for model, qs in (("pf", pf_q), ("analogue", an_q),
-                              ("ensemble", blend)):
-                for h in ("1", "2", "3", "4"):
+            for model, qs in (("pf", pf_all.get(loc, {})),
+                              ("analogue", an_all.get(loc, {}))):
+                for h in hz.HORIZONS:
                     q = qs.get(h)
                     if not q:
                         continue
-                    actual = truth.get((fips, T + timedelta(days=7 * int(h))))
+                    # canonical horizon h is h+1 weeks past the as-of
+                    actual = truth.get(
+                        (fips, T + timedelta(days=7 * (int(h) + 1))))
                     if actual is None or actual <= 0 or q[0.5] <= 0:
                         continue
                     try:
@@ -1185,7 +1239,7 @@ def score_season(root: Path, season: str,
                     except Exception:
                         continue
                     rows.append({"model": model, "location": loc, "fips": fips,
-                                 "asof": asof, "horizon": int(h) - 1, "wis": w})
+                                 "asof": asof, "horizon": int(h), "wis": w})
     df = pd.DataFrame(rows)
     if df.empty:
         return df
@@ -1209,23 +1263,21 @@ def score_season(root: Path, season: str,
 #: for its own inputs, but it was keyed on samples.json mtimes that the
 #: backfill deliberately preserved, so nothing else would have invalidated
 #: it; the bump forces every season to recompute under this construction.
-NATIONAL_CACHE_V = 2
+#: v3 (2026-09-22): no blend row; the aggregate carries the two members.
+NATIONAL_CACHE_V = 3
 
 #: draws for the analogue member's national Monte Carlo sum, matching the
 #: PF grid's 3 x 10k draw count so both members aggregate at the same depth
 _NATIONAL_DRAWS = 30_000
 
 
-def national_aggregate(root: Path,
-                       ensemble_weights: dict | str | None = None
-                       ) -> dict | None:
+def national_aggregate(root: Path) -> dict | None:
     """US-national relWIS aggregated from the stored STATE forecasts. The
     retro grid fits states only, so a national score must be constructed;
     this is that construction, stated honestly wherever it is shown.
 
-    Construction (the members are aggregated separately, then blended,
-    because the state ensemble exists only at quantile level, so there are
-    no ensemble sample draws to sum):
+    Construction (each member is aggregated on its own; nothing is
+    blended):
 
       * PF: the stored per-state sample arrays are summed draw by draw,
         aligned by draw index within the member; states are treated as
@@ -1236,10 +1288,6 @@ def national_aggregate(root: Path,
         with its own independent, deterministically seeded uniforms, the
         draws are summed across states, and the sums are re-quantiled.
         The same independence treatment as the PF sum.
-      * Ensemble: the two NATIONAL member quantile sets vincentized with
-        the same weights the season's state scoring uses (50/50 on the
-        season page), the shipped recipe. `ensemble_weights` follows
-        ens.vincentize: None is the unfitted equal-weight blend.
 
     Each national quantile set is scored per (week, horizon) against the
     hub's US truth row with the same WIS and validated-baseline machinery
@@ -1250,8 +1298,8 @@ def national_aggregate(root: Path,
     week, behind a full parse of every samples.json), so the result is
     cached in playback_cache/us_aggregate.json under the season's stats
     validity key: the per-week samples.json mtimes plus scores.json's
-    mtime, with a version stamp and the weights. The measured wall cost of
-    the last real computation rides along in the result as `seconds`.
+    mtime, with a version stamp. The measured wall cost of the last real
+    computation rides along in the result as `seconds`.
     """
     import time
     import zlib
@@ -1265,10 +1313,7 @@ def national_aggregate(root: Path,
     if not wks:
         return None
     sf = root / "scores.json"
-    key = {"v": NATIONAL_CACHE_V,
-           "weights": ensemble_weights or {},
-           "weeks": {p.parent.name: int(p.stat().st_mtime) for p in wks},
-           "scores_mtime": int(sf.stat().st_mtime) if sf.is_file() else 0}
+    key = _national_cache_key(root)
     cf = root / "playback_cache" / "us_aggregate.json"
     try:
         cached = json.loads(cf.read_text())
@@ -1293,7 +1338,7 @@ def national_aggregate(root: Path,
         pf_locs = [l for l in d.get("pf", {}) if not usn.is_us(l)]
         an_locs = [l for l in d.get("analogue", {}) if not usn.is_us(l)]
         pf_nat, an_nat = {}, {}
-        for h in ("1", "2", "3", "4"):
+        for h in hz.HORIZONS:
             arrs = []
             for loc in pf_locs:
                 a = np.asarray(d["pf"][loc].get(h, []), float)
@@ -1328,20 +1373,13 @@ def national_aggregate(root: Path,
                 if draws.size:
                     an_nat[h] = {L: float(np.quantile(draws, L))
                                  for L in levels}
-        members = {}
-        if pf_nat:
-            members["pf"] = pf_nat
-        if an_nat:
-            members["analogue"] = an_nat
-        blend = (ens.vincentize(members, weights=ensemble_weights,
-                                location_fips="US") if members else {})
-        for model, qs in (("pf", pf_nat), ("analogue", an_nat),
-                          ("ensemble", blend)):
-            for h in ("1", "2", "3", "4"):
+        for model, qs in (("pf", pf_nat), ("analogue", an_nat)):
+            for h in hz.HORIZONS:
                 q = qs.get(h)
                 if not q:
                     continue
-                actual = truth.get(("US", T + timedelta(days=7 * int(h))))
+                actual = truth.get(
+                    ("US", T + timedelta(days=7 * (int(h) + 1))))
                 # the same degenerate-cell guards as score_season
                 if actual is None or actual <= 0 or q[0.5] <= 0:
                     continue
@@ -1349,13 +1387,13 @@ def national_aggregate(root: Path,
                     w = float(wis_fn(q, actual).wis)
                 except Exception:
                     continue
-                rows.append((model, asof, int(h) - 1, w))
+                rows.append((model, asof, int(h), w))
     bases = {}
     for asof in {r[1] for r in rows}:
         for k, v in _baseline_cells(asof, {"US"}, truth).items():
             bases[k] = v
     result = {"cells": {}, "weeks": len(wks)}
-    for model in ("pf", "analogue", "ensemble"):
+    for model in ("pf", "analogue"):
         cells = [(w, bases.get(("US", asof, h)))
                  for m, asof, h, w in rows if m == model]
         cells = [(w, b) for w, b in cells if b]
@@ -1365,30 +1403,31 @@ def national_aggregate(root: Path,
             result["cells"][model] = len(cells)
     result["seconds"] = round(time.monotonic() - t0, 1)
     # write beside, then replace, like scores.json: a concurrent viewer may
-    # never see a half-written cache file
-    cf.parent.mkdir(parents=True, exist_ok=True)
-    tmp = cf.with_name(cf.name + ".tmp")
-    tmp.write_text(json.dumps({"key": key, "result": result}))
-    os.replace(tmp, cf)
+    # never see a half-written cache file. A tree that cannot be written
+    # (a sealed record, a read-only volume) still gets its result; it is
+    # simply computed again next time.
+    try:
+        cf.parent.mkdir(parents=True, exist_ok=True)
+        tmp = cf.with_name(cf.name + ".tmp")
+        tmp.write_text(json.dumps({"key": key, "result": result}))
+        os.replace(tmp, cf)
+    except OSError:
+        pass
     return result
 
 
-def _national_cache_key(root: Path,
-                        ensemble_weights: dict | str | None) -> dict:
+def _national_cache_key(root: Path) -> dict:
     """The national aggregate's validity key, exactly as national_aggregate
-    builds it: version, weights, per-week samples mtimes, scores mtime."""
+    builds it: version, per-week samples mtimes, scores mtime."""
     root = Path(root)
     wks = season_sample_files(root)
     sf = root / "scores.json"
     return {"v": NATIONAL_CACHE_V,
-            "weights": ensemble_weights or {},
             "weeks": {p.parent.name: int(p.stat().st_mtime) for p in wks},
             "scores_mtime": int(sf.stat().st_mtime) if sf.is_file() else 0}
 
 
-def national_aggregate_fresh(root: Path,
-                             ensemble_weights: dict | str | None = None
-                             ) -> bool:
+def national_aggregate_fresh(root: Path) -> bool:
     """Whether the cached national aggregate is valid for the tree as it
     stands -- the cheap read national_aggregate itself makes before deciding
     to recompute. The results page asks this to decide between serving the
@@ -1400,8 +1439,7 @@ def national_aggregate_fresh(root: Path,
     cf = root / "playback_cache" / "us_aggregate.json"
     try:
         cached = json.loads(cf.read_text())
-        return cached.get("key") == _national_cache_key(root,
-                                                        ensemble_weights)
+        return cached.get("key") == _national_cache_key(root)
     except Exception:
         return False
 
@@ -1460,7 +1498,6 @@ FINALIZE_PHASES = ("scoring cells", "building national aggregate",
 
 
 def finalize_season(root: Path, season: str,
-                    ensemble_weights: dict | str | None = None,
                     phase_cb=None, force: bool = False) -> dict:
     """Everything the results page needs, computed once so the page never
     has to: score the season (atomic scores.json), build the national
@@ -1491,7 +1528,7 @@ def finalize_season(root: Path, season: str,
 
     if force or not (scores_current(root) and scores_scoreable(root)):
         t = _phase("scoring cells")
-        df = score_season(root, season, ensemble_weights=ensemble_weights)
+        df = score_season(root, season)
         # write beside, then replace: a concurrent viewer may never see (or
         # race) a half-written scores.json -- the completion path's own rule
         tmp = root / "scores.json.tmp"
@@ -1501,7 +1538,7 @@ def finalize_season(root: Path, season: str,
 
     t = _phase("building national aggregate")
     try:
-        national_aggregate(root, ensemble_weights=ensemble_weights)
+        national_aggregate(root)
     except Exception:
         pass          # the page omits the row rather than failing the job
     seconds["national"] = round(time.monotonic() - t, 1)
@@ -1638,7 +1675,20 @@ def list_archive_dirs(retro_root: Path, season: str) -> list:
     return sorted(out, key=lambda p: p.name, reverse=True)
 
 
-def _headline_rel(scores_path: Path, model: str = "ensemble"):
+#: the models a season page heads with, in order: the two that ship, then
+#: the retired blend where a scores.json written before 2026-09-22 carries
+#: its rows (that season's record; a rescore does not reproduce them)
+HEADLINE_MODELS = ("pf", "analogue", "ensemble")
+
+
+def _headline_rels(scores_path: Path) -> dict:
+    """{model: pooled relWIS} for every HEADLINE_MODELS entry a stored
+    scores.json covers; {} when the file is absent or empty."""
+    return {m: r for m in HEADLINE_MODELS
+            if (r := _headline_rel(scores_path, m)) is not None}
+
+
+def _headline_rel(scores_path: Path, model: str = "pf"):
     """Pooled relWIS for one model from a stored scores.json, or None when
     the file is absent, empty, or does not cover the model.
 
@@ -1662,7 +1712,8 @@ def _headline_rel(scores_path: Path, model: str = "ensemble"):
 
 def run_summary(root: Path) -> dict:
     """What one run -- live or archived -- amounts to: completed weeks, wall
-    time, when it ran, whether it was scored, and its headline relWIS.
+    time, when it ran, whether it was scored, and its headline relWIS per
+    model (`headline_rels`, PF first; `headline_rel` is the first of them).
 
     Every field degrades to None or 0 rather than raising: a season tree may
     be missing, half-written, or predate the run record entirely, and none of
@@ -1676,11 +1727,11 @@ def run_summary(root: Path) -> dict:
     key = ((sf.stat().st_mtime if scored else None), weeks)
     hit = _SUMMARY_CACHE.get(str(root))
     if hit is not None and hit[0] == key:
-        rel = hit[1]
+        rels = hit[1]
         _SUMMARY_CACHE.move_to_end(str(root))     # least-recently-used
     else:
-        rel = _headline_rel(sf) if scored else None
-        _SUMMARY_CACHE[str(root)] = (key, rel)
+        rels = _headline_rels(sf) if scored else {}
+        _SUMMARY_CACHE[str(root)] = (key, rels)
         _SUMMARY_CACHE.move_to_end(str(root))
         while len(_SUMMARY_CACHE) > _SUMMARY_CACHE_MAX:
             _SUMMARY_CACHE.popitem(last=False)
@@ -1690,7 +1741,10 @@ def run_summary(root: Path) -> dict:
             "finished_utc": t.get("finished_utc"),
             "status": effective_status(meta) if meta else "",
             "scored": scored,
-            "headline_rel": rel}
+            # the first model in HEADLINE_MODELS order the file covers:
+            # the PF, or the retired blend on a scores.json from before
+            "headline_rel": next(iter(rels.values()), None),
+            "headline_rels": dict(rels)}
 
 
 def dir_size(path: Path) -> int:

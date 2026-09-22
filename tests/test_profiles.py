@@ -205,12 +205,16 @@ class TestDonorPoolExclusionsBelongToTheProfile:
     claim about influenza's calendar; nothing here may let another disease
     inherit it, and nothing here may let influenza lose it."""
 
-    def test_influenza_ships_the_2021_22_exclusion(self):
-        assert INFLUENZA.excluded_donor_seasons == frozenset({2021})
+    def test_influenza_ships_both_registered_exclusions(self):
+        """The profile must not drift from the registry in either direction:
+        influenza may not lose an exclusion, and may not gain one the
+        registry has not accepted."""
+        assert INFLUENZA.excluded_donor_seasons == frozenset({2020, 2021})
         assert (INFLUENZA.excluded_donor_seasons
                 == analogue.EXCLUDED_DONOR_SEASONS)
         assert (INFLUENZA.donor_season_exclusions
-                == (analogue.SEASON_2021_22_CALENDAR_INVERSION,))
+                == (analogue.SEASON_2021_22_CALENDAR_INVERSION,
+                    analogue.SEASON_2020_21_SUPPRESSED))
 
     def test_covid_inherits_nothing(self):
         """The corruption this guard exists to prevent."""

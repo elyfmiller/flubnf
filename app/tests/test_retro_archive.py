@@ -25,6 +25,7 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from app.core import horizons as hz                        # noqa: E402
 from app.core import playback, report_season, retro        # noqa: E402
 from app.ui import server as srv                           # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL      # noqa: E402
@@ -555,8 +556,14 @@ def test_archived_run_loads_through_the_playback_api(tmp_path, monkeypatch):
     pl = r.json()
     assert pl["asof"] == W1
     assert pl["locations"] == ["Ohio", "Utah"]
-    assert set(pl["models"]) == {"pf", "analogue", "ensemble"}
-    assert pl["models"]["pf"]["Ohio"]["1"]["0.5"] == pytest.approx(101.0)
+    assert set(pl["models"]) == {"pf", "analogue"}
+    # the playback payload is canonical, so the first FORECAST week is
+    # hz.HORIZONS[0] and the anchor is not a numbered horizon here at all.
+    # _write_week centres that week's draws on truth at W1 + 7d = 101.0 (it
+    # sits on disk as "1"); the anchor, stored as "0", is 100.0, so this
+    # value is what separates a correct replay from a week-early one.
+    assert pl["models"]["pf"]["Ohio"][hz.HORIZONS[0]]["0.5"] == \
+        pytest.approx(101.0)
     # and the cache lands inside the ARCHIVE, never back in the live root
     assert (rr / f"{SEASON}__archived_{STAMP}" / "playback_cache"
             / f"{W1}.json").is_file()

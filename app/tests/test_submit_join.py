@@ -1,7 +1,9 @@
 """The FluSight CSV writers carry the frozen join: reference = as-of + 7,
-hub horizon 0..3 = internal samples "1".."4". This is the same formula
-scripts/anchor_analysis.py validated against three seasons of scoring; the
-writers computing anything else mislabels a real submission by a week."""
+hub horizon 0..3 = canonical samples "0".."3", and the anchor week rides
+under hz.ORIGIN where no submitted row can reach it. This is the same
+formula scripts/anchor_analysis.py validated against three seasons of
+scoring; the writers computing anything else mislabels a real submission
+by a week."""
 import sys
 from datetime import timedelta
 from pathlib import Path
@@ -10,12 +12,23 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from app.core import horizons as hz  # noqa: E402
 from app.core.submit import quantile_rows, rows_from_quantiles  # noqa: E402
 
 
 ASOF = "2025-12-13"          # a Saturday as-of; submission is due Wed 12-17
-SAMPLES = {str(h): [10.0 * h, 12.0 * h, 14.0 * h] for h in (1, 2, 3, 4)}
-QDICTS = {str(h): {0.5: 10.0 * h} for h in (1, 2, 3, 4)}
+
+#: A member shaped the way everything above the storage boundary now
+#: shapes one: the four forecasts under the hub's own labels "0".."3",
+#: and the anchor week alongside them under hz.ORIGIN. The numbers are
+#: still scaled by PHYSICAL weeks ahead, so canonical "0" is one week on
+#: and carries the same values this file has always pinned.
+SAMPLES = {h: [10.0 * (int(h) + 1), 12.0 * (int(h) + 1), 14.0 * (int(h) + 1)]
+           for h in hz.HORIZONS}
+#: the last observed week, carried but never submitted; deliberately far
+#: from every forecast value so a row built from it would be obvious
+SAMPLES[hz.ORIGIN] = [98.0, 99.0, 100.0]
+QDICTS = {h: {0.5: 10.0 * (int(h) + 1)} for h in hz.HORIZONS}
 
 
 def test_reference_is_asof_plus_seven_matching_anchor_analysis():
@@ -33,10 +46,17 @@ def test_target_end_dates_walk_the_four_target_weeks():
                     2: "2026-01-03", 3: "2026-01-10"}
 
 
-def test_horizon_zero_carries_internal_sample_one():
+def test_horizon_zero_carries_the_first_forecast_not_the_anchor():
+    """Hub horizon 0 is the FIRST FORECAST week, so it is fed by canonical
+    "0" and never by the anchor riding under hz.ORIGIN. Reading the anchor
+    here would move every submitted row one week early with the right row
+    count and the wrong dates."""
     rows = [r for r in quantile_rows(SAMPLES, "06", ASOF)
             if r["horizon"] == 0 and r["output_type_id"] == 0.5]
-    assert rows[0]["value"] == 12.0          # median of samples "1"
+    assert rows[0]["value"] == 12.0          # median of canonical "0"
+    # and the anchor's own values reached no row at all
+    assert not [r for r in quantile_rows(SAMPLES, "06", ASOF)
+                if r["value"] in (98, 99, 100)]
 
 
 def test_quantile_native_writer_same_join():
@@ -56,14 +76,15 @@ def test_values_are_whole_admissions_like_the_official_files():
     recent official files belong to the 'wk inc flu prop ed visits'
     proportion target. Our writers match that precision; the raw numpy
     quantiles were leaking 17-digit tails into the CSVs."""
-    tailed = {str(h): [10.1234567890123 * h + i * 0.337 for i in range(40)]
-              for h in (1, 2, 3, 4)}
+    tailed = {h: [10.1234567890123 * (int(h) + 1) + i * 0.337
+                  for i in range(40)] for h in hz.HORIZONS}
     rows = quantile_rows(tailed, "06", ASOF)
     assert rows
     for r in rows:
         assert isinstance(r["value"], int), r
-    qd = {str(h): {0.25: 9.700000000000001 * h, 0.5: 10.1 * h,
-                   0.75: 11.499999999999998 * h} for h in (1, 2, 3, 4)}
+    qd = {h: {0.25: 9.700000000000001 * (int(h) + 1),
+              0.5: 10.1 * (int(h) + 1),
+              0.75: 11.499999999999998 * (int(h) + 1)} for h in hz.HORIZONS}
     for r in rows_from_quantiles(qd, "06", ASOF):
         assert isinstance(r["value"], int), r
 
@@ -88,8 +109,8 @@ def test_csv_writes_integers_not_float_tails(tmp_path):
     """End to end through write_submission: the file on disk carries '12',
     never '12.0' and never a 17-digit tail."""
     from app.core.submit import write_submission
-    samples = {str(h): [3.3 * h + i * 1.7 for i in range(50)]
-               for h in (1, 2, 3, 4)}
+    samples = {h: [3.3 * (int(h) + 1) + i * 1.7 for i in range(50)]
+               for h in hz.HORIZONS}
     rows = quantile_rows(samples, "06", ASOF)
     p = write_submission(rows, "pf", ASOF, tmp_path)
     text = p.read_text()
@@ -163,10 +184,20 @@ def test_identifiers_match_the_registered_model_metadata():
         registered[meta["model_abbr"]] = f
         # <team_abbr>-<model_abbr>.yml, the name the hub requires
         assert f.stem == f'{meta["team_abbr"]}-{meta["model_abbr"]}', f.name
-    assert set(MODEL_ABBR.values()) == set(registered), (
-        "app/core/submit.MODEL_ABBR and model-metadata/ disagree")
+    from app.core.submit import RETIRED_ABBR
+    # every key the writer produces is a registered card, every card is
+    # either produced or explicitly retired, and nothing is both
+    assert set(MODEL_ABBR.values()) | set(RETIRED_ABBR) == set(registered), (
+        "app/core/submit.MODEL_ABBR + RETIRED_ABBR and model-metadata/ "
+        "disagree")
+    assert not set(MODEL_ABBR.values()) & set(RETIRED_ABBR)
     for key, abbr in MODEL_ABBR.items():
         assert hub_model_id(key) == registered[abbr].stem
+    # the blend's key is gone from the writer: no call site can produce a
+    # CModel_Flu file by accident
+    import pytest
+    with pytest.raises(ValueError, match="unregistered model"):
+        hub_model_id("ensemble")
 
 
 def test_an_unregistered_model_key_is_refused(tmp_path):
@@ -194,9 +225,10 @@ def test_a_partial_quantile_set_is_refused(tmp_path):
     structural, so the next caller cannot reopen it."""
     import pytest
     from app.core.submit import write_submission
-    qs = {str(h): {q: 10.0 * h + 100.0 * q for q in FIVE} for h in (1, 2, 3, 4)}
+    qs = {h: {q: 10.0 * (int(h) + 1) + 100.0 * q for q in FIVE}
+          for h in hz.HORIZONS}
     rows = rows_from_quantiles(qs, "06", ASOF)
-    assert len(rows) == 5 * 4                        # the shape that got through
+    assert len(rows) == 5 * len(hz.HORIZONS)         # the shape that got through
     with pytest.raises(ValueError, match="incomplete quantile set"):
         write_submission(rows, "ensemble", ASOF, tmp_path)
     assert not list(tmp_path.rglob("*.csv"))         # and nothing was written
@@ -221,7 +253,7 @@ def test_a_full_set_from_samples_passes_completeness(tmp_path):
     that dropped one horizon still writes a valid file."""
     from app.core.submit import validate, write_submission
     assert not validate(pd.DataFrame(quantile_rows(SAMPLES, "06", ASOF)))
-    three = {h: v for h, v in SAMPLES.items() if h != "4"}
+    three = {h: v for h, v in SAMPLES.items() if h != hz.HORIZONS[-1]}
     rows = quantile_rows(three, "06", ASOF)
     assert {r["horizon"] for r in rows} == {0, 1, 2}
     assert write_submission(rows, "pf", ASOF, tmp_path).is_file()

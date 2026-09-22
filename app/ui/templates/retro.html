@@ -9,9 +9,9 @@ and move on; scoring waits for settled truth.</p>
  <div><div class="card"><h2>Settings</h2>
   {# platform-aware: app/ui/server.py:_engine_setup_hint. Never hardcode a
      macOS-only filename here; a Windows reader cannot open one. #}
-  {% if not engine_ok %}<p class="warn">Requires the particle-filter engine:
-  {{ engine_setup_hint() }}. Everything else works without
-  it.</p>{% endif %}
+  {% if not engine_ok %}<p class="warn">The full replay requires the
+  particle-filter engine: {{ engine_setup_hint() }}. The Groundhog-only
+  preset and everything else work without it.</p>{% endif %}
   <form method="post" action="/retro/run">
    <label>Season</label>
    <select name="season">{% for s in seasons %}<option>{{ s.name }}</option>{% endfor %}</select>
@@ -43,7 +43,13 @@ and move on; scoring waits for settled truth.</p>
    <label>Shard width (parallel runners; auto for this machine)</label>
    <input type="number" name="width" value="{{ default_width }}" min="1" max="{{ width_cap }}">
    <label>Engine preset</label>
-   <select name="engine"><option value="pf">PF (particle filter)</option></select>
+   {# the full competition path fits the particle filter beside the
+      Groundhog (hours per season, needs the engine venv); the Groundhog
+      alone replays in minutes with no engine at all, and is the way to
+      reproduce its published numbers on any machine #}
+   <select name="engine" id="retro-engine">
+     <option value="pf">Particle filter with the Groundhog (hours)</option>
+     <option value="analogue">Groundhog only (minutes, no engine needed)</option></select>
    {# what the start-over prompt resolves to. 'resume' is the historical
       behaviour and the value a keyboard submit carries, so the form is
       always safe even if the prompt never runs. #}
@@ -55,8 +61,20 @@ and move on; scoring waits for settled truth.</p>
       data-startover adds the second question: a season that already has
       completed weeks asks whether to resume, archive, or discard them. #}
    <button class="gold" data-guard="retro-run" data-startover="1"
-     {% if not engine_ok %}disabled{% endif %}>
+     id="retro-run-btn" {% if not engine_ok %}disabled{% endif %}>
      Run retrospective</button>
+   {% if not engine_ok %}
+   <script>
+    (function(){
+      // no engine venv: the button follows the preset, since the
+      // Groundhog-only replay needs none
+      var e=document.getElementById('retro-engine'),
+          b=document.getElementById('retro-run-btn');
+      function sync(){ b.disabled = (e.value === 'pf'); }
+      e.addEventListener('change', sync); sync();
+    })();
+   </script>
+   {% endif %}
   </form>
   <script>
    (function(){
@@ -102,7 +120,11 @@ and move on; scoring waits for settled truth.</p>
         was computed under; a season's results page carries the switch to
         the CDC dashboard's pairwise convention, which needs field data
         this page would have to load once per card. #}
-     {% if s_complete %} · ensemble relWIS <span class="{{ 'ok' if s.rel < 1 else 'bad' }}">{{ "%.3f"|format(s.rel) }}</span> vs FluSight baseline, ratio of sums{% endif %}
+     {# one headline per model the season scored (PF first; the retired
+        blend where a season scored before 2026-09-22 stored its rows); a
+        card carrying only `rel` prints it unnamed #}
+     {% set s_rels = s.rels if (s.rels is defined and s.rels) else ({'': s.rel} if s_complete else {}) %}
+     {% if s_complete %}{% for m, v in s_rels.items() %} · {{ model_name(m) ~ ' ' if m }}relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{% endfor %} vs FluSight baseline, ratio of sums{% endif %}
      {% if s.status == 'running' %}<span class="warn">· running</span>
      {% elif s.status == 'stopping' %}<span class="warn">· stopping after the fits in flight</span>
      {% elif s.status == 'paused' %}<span class="warn">· paused</span>
@@ -170,8 +192,8 @@ and move on; scoring waits for settled truth.</p>
     <span class="grow"><strong>{{ a.when }}</strong>
      <span class="hint">· {{ a.weeks }} week{{ "" if a.weeks == 1 else "s" }}{%
       if a.elapsed_s and a.elapsed_s >= 1 %} · {{ a.elapsed_s | hms }}{% endif %}{%
-      if a.rel is not none %} · ensemble relWIS <span class="{{ 'ok' if a.rel < 1 else 'bad' }}">{{
-      "%.3f"|format(a.rel) }}</span> vs FluSight baseline, ratio of sums{% endif %} · {{ a.size_h }}</span></span>
+      if a.rel is not none %}{% set a_rels = a.rels if (a.rels is defined and a.rels) else {'': a.rel} %}{% for m, v in a_rels.items() %} · {{ model_name(m) ~ ' ' if m }}relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{
+      "%.3f"|format(v) }}</span>{% endfor %} vs FluSight baseline, ratio of sums{% endif %} · {{ a.size_h }}</span></span>
     <a href="/retro/{{ s.name }}?archive={{ a.id }}"><button class="quiet"
       type="button">Results →</button></a>
     <form method="post"

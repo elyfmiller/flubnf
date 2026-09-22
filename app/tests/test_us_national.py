@@ -184,8 +184,10 @@ def test_the_season_report_table_reports_us_apart_from_its_pooled_figures(
     (root / "scores.json").write_text(_frame().to_json(orient="records"))
     html = report_season._summary_block(root, ["2098-01-03"], {})
     # the pooled scope: eight state cells, never the twelve a leak gives
-    assert "the season's 8 scored ensemble cells" in html
-    assert "the season's 12 scored ensemble cells" not in html
+    # (this frame carries the retired blend's rows alone, a season scored
+    # before 2026-09-22, and the count names that model)
+    assert "the season's 8 scored FluBNF Ensemble (retired) cells" in html
+    assert "12 scored" not in html
     # the cumulative curve endpoint is the state-only value
     assert ">0.500<" in html
     # the national figure IS reported, on its own labelled row and tile
@@ -204,6 +206,7 @@ def test_site_builder_excludes_the_national_row_from_ours_and_theirs(
     is the code path that produces the published 0.678. Drive it with a
     payload carrying two states and a national row, and hold both the cell
     count and the value."""
+    from app.core import horizons as hz
     from app.core import scoring as _scoring
     from app.core import site_build
     from flubnf.quantiles import FLUSIGHT_QUANTILES as QL
@@ -219,8 +222,12 @@ def test_site_builder_excludes_the_national_row_from_ours_and_theirs(
     def _degenerate(v):
         return {str(L): v for L in QL}           # a point mass: WIS = |v - y|
 
+    # a playback payload lives in memory, so its horizons are canonical:
+    # hz.HORIZONS[0] is the FIRST forecast week, the one whose target lands
+    # on T, which is the only week the truth and baseline stubs cover
+    h0 = hz.HORIZONS[0]
     payload = {"asof": asof, "official": {},
-               "models": {"ensemble": {loc: {"1": _degenerate(med[loc])}
+               "models": {"ensemble": {loc: {h0: _degenerate(med[loc])}
                                        for loc in n2f}}}
     handed = []
     monkeypatch.setattr(_scoring, "_baseline_cells",

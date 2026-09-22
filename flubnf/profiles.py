@@ -68,7 +68,8 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
-from flubnf.analogue import SEASON_2021_22_CALENDAR_INVERSION
+from flubnf.analogue import (SEASON_2020_21_SUPPRESSED,
+                             SEASON_2021_22_CALENDAR_INVERSION)
 
 TEMPLATES = Path(__file__).resolve().parent / "templates"
 
@@ -330,11 +331,14 @@ INFLUENZA = DiseaseProfile(
     bimodal_capable=False,
     vintage_earliest=None,
     excluded_windows=(),
-    # Adopted 2026-08-24 after passing its pre-registered gates (hash
-    # 8f3c7a45a989e905). The record itself lives in flubnf/analogue.py, which
-    # owns the donor rule, so this profile references it rather than copying
-    # it and cannot drift from what production applies.
-    donor_season_exclusions=(SEASON_2021_22_CALENDAR_INVERSION,),
+    # Adopted 2026-08-24 (hash 8f3c7a45a989e905) and 2026-09-19 (hash
+    # 086bda9a0736e983). The records themselves live in flubnf/analogue.py,
+    # which owns the donor rule, so this profile references them rather than
+    # copying them and cannot drift from what production applies. The order
+    # is the registry's. 2020-21 is inert for the admissions pool, whose
+    # archive opens 2022-02-05, and bites only an auxiliary donor pool.
+    donor_season_exclusions=(SEASON_2021_22_CALENDAR_INVERSION,
+                             SEASON_2020_21_SUPPRESSED),
 )
 
 

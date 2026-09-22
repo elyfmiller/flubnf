@@ -2169,11 +2169,19 @@ def app_window(port: int = 8710):
 
 @app.command("retro")
 def retro_cmd(season: str, locations: str = "all", width: int = 0,
-              replicates: int = 3, root: str = ""):
+              replicates: int = 3, root: str = "", aux: str = ""):
     """Run a season-as-competition retrospective (resumable).
 
     width 0 means auto: sized to this machine's cores by the engine's
-    default_shard_width(), the same default the console form offers."""
+    default_shard_width(), the same default the console form offers.
+
+    aux names the analogue member's donor configuration
+    (app.core.engines.analogue.AUX_PRESETS, e.g. 'flusurv'). Empty, the
+    default, runs the shipped Groundhog (analogue.SHIPPED_AUX); 'none'
+    runs the bare calendar analogue that shipped inside the blend until
+    2026-09-22, a research configuration now. The configuration's name is
+    written into run_meta.json with its bank digests, so a replay says on
+    its face which donors it ran."""
     import pandas as pd
     from pathlib import Path as _P
     from app.core import retro
@@ -2191,8 +2199,16 @@ def retro_cmd(season: str, locations: str = "all", width: int = 0,
     # 2026-09-07: 'Configuration file app/state/.../pf.conf not found' for
     # all 156 cells of every week, and the season 'completed' empty).
     r = (_P(root) if root else _P("app/state/retro") / season).resolve()
+    from app.core.engines import analogue as _an
+    if aux == "none":
+        week_extra = _an.bare_analogue
+    elif aux:
+        week_extra = _an.aux_preset(aux)      # unknown name raises here
+    else:
+        week_extra = _an.aux_preset(_an.SHIPPED_AUX)
+    print(f"  analogue donor configuration: {week_extra.__name__}")
     done = retro.run_season(r, season, names, replicates=replicates,
-                            width=width,
+                            width=width, week_extra=week_extra,
                             progress=lambda a: print(f"  {a} done", flush=True))
     print(f"{season}: {len(done)} weeks complete -> {r}")
 
@@ -2204,6 +2220,250 @@ def retro_cmd(season: str, locations: str = "all", width: int = 0,
 # (build now; check, and later publish/preview) and "flubnf site build"
 # keeps that room without crowding the top-level command list.
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# groundhog -- the calendar member on its own
+#
+# A sub-app because the member has its own lifecycle apart from the product:
+# replay it, compare it, and in time file it. `flubnf retro` replays the
+# whole product and needs the particle filter and its toolchain; this needs
+# neither, and a season takes about two minutes.
+# ---------------------------------------------------------------------------
+groundhog_app = typer.Typer(
+    add_completion=False, no_args_is_help=True,
+    help="GroundhogCGR, the calendar member, replayed and scored on its own.")
+app.add_typer(groundhog_app, name="groundhog")
+
+GROUNDHOG_SEASONS = ("2023-24", "2024-25", "2025-26")
+
+
+def _gh_row(label: str, b: dict) -> str:
+    if not b.get("cells"):
+        return f"  {label:<26} no scorable cells"
+    return (f"  {label:<26}{b['relwis']:>8.4f}"
+            f"{b.get('cov50', float('nan')):>8.3f}"
+            f"{b.get('cov80', float('nan')):>8.3f}"
+            f"{b.get('cov95', float('nan')):>8.3f}"
+            f"{b['worst_dev']:>8.3f}{b['cells']:>9,}{b['weeks']:>7}")
+
+
+@groundhog_app.command("retro")
+def groundhog_retro_cmd(
+    season: str = typer.Argument(
+        ..., help="A season such as 2024-25, or 'all' for the three on record."),
+    aux: str = typer.Option(
+        "", "--aux",
+        help="Auxiliary donor preset (flusurv, iliplus, both). Empty runs "
+             "the shipped single-pool member."),
+    compare: bool = typer.Option(
+        True, "--compare/--no-compare",
+        help="With --aux: also run the shipped member and report both on "
+             "identical cells, with a clustered bootstrap on the difference."),
+    with_us: bool = typer.Option(
+        False, "--with-us",
+        help="Also forecast the national row. Reported separately, never "
+             "pooled into the state figures."),
+):
+    """Replay the calendar member alone over a season and score it.
+
+    No particle filter, no PyBNF: only this repository, the committed donor
+    bank, and a hub clone for the vintages, the truth and the FluSight
+    baseline. About two minutes a season.
+    """
+    import pandas as pd
+    from app.core import groundhog as gh
+    seasons = list(GROUNDHOG_SEASONS) if season == "all" else [season]
+    arms = ([gh.SHIPPED, aux] if (aux and compare) else [aux or gh.SHIPPED])
+    runs = {a: [] for a in arms}
+    for a in arms:
+        for s in seasons:
+            console.print(f"[bold]{a}[/bold]  {s}")
+            try:
+                r = gh.run_season(
+                    s, "" if a == gh.SHIPPED else a, with_us=with_us,
+                    progress=lambda asof, i, n: (
+                        console.print(f"    {i:>3}/{n}  {asof}")
+                        if (i % 8 == 0 or i == n) else None))
+            except Exception as e:
+                console.print(f"[red]{s}: {e}[/red]")
+                raise typer.Exit(1)
+            runs[a].append(r)
+            if r["meta"]["aux"]:
+                console.print(f"    donors: {r['meta']['aux']}")
+            console.print(f"    -> {r['dir']}")
+
+    head = (f"  {'':<26}{'relWIS':>8}{'cov50':>8}{'cov80':>8}{'cov95':>8}"
+            f"{'worst':>8}{'cells':>9}{'weeks':>7}")
+    pooled = {a: (pd.concat([r["cells"] for r in rs], ignore_index=True),
+                  pd.concat([r["coverage"] for r in rs], ignore_index=True))
+              for a, rs in runs.items()}
+
+    console.print("\n[bold]Each arm on its own cells[/bold]  (52 states, US "
+                  "national excluded)")
+    console.print(head)
+    for a, (c, v) in pooled.items():
+        sm = gh.summarise(c, v)
+        console.print(_gh_row(a, sm["states"]))
+        if "us" in sm:
+            console.print(_gh_row(f"{a}, US national", sm["us"]))
+
+    if len(arms) == 2:
+        (ac, av), (bc, bv) = pooled[arms[0]], pooled[arms[1]]
+        cmp_ = gh.compare(ac, av, bc, bv)
+        console.print(f"\n[bold]On identical cells[/bold]  "
+                      f"({cmp_['common_cells']:,} common)")
+        console.print(head)
+        console.print(_gh_row(arms[0], cmp_["a"]))
+        console.print(_gh_row(arms[1], cmp_["b"]))
+        if len(seasons) > 1:
+            console.print("\n[bold]By season[/bold]")
+            console.print(f"  {'season':<10}{arms[0]:>10}{arms[1]:>10}"
+                          f"{'change':>9}{'worst a':>9}{'worst b':>9}")
+            for s, d in cmp_["by_season"].items():
+                ra, rb = d["a"]["relwis"], d["b"]["relwis"]
+                console.print(f"  {s:<10}{ra:>10.4f}{rb:>10.4f}"
+                              f"{(1 - rb / ra) * 100:>+8.1f}%"
+                              f"{d['a']['worst_dev']:>9.3f}"
+                              f"{d['b']['worst_dev']:>9.3f}")
+        bs = cmp_.get("bootstrap")
+        if bs:
+            console.print(
+                f"\n  clustered bootstrap over {bs['clusters']} as-of dates, "
+                f"{bs['reps']} replicates\n"
+                f"  {arms[1]} minus {arms[0]}: median {bs['median']:+.4f}, "
+                f"95 percent interval [{bs['lo']:+.4f}, {bs['hi']:+.4f}], "
+                f"better in {bs['b_better']} of {bs['reps']}")
+    console.print("\nSelf scored, ratio of WIS sums against the FluSight "
+                  "baseline of the same\nreference date, on the project's "
+                  "frozen cell rule. Not the FluSight dashboard\nconvention, "
+                  "and no finite-sample coverage guarantee is claimed.")
+
+
+# ---------------------------------------------------------------------------
+# bank -- the committed auxiliary donor banks
+#
+# A sub-app because a bank has a lifecycle: build it once with network
+# access, commit it, and from then on every run reads it from the
+# repository. `verify` is what keeps that honest, by rebuilding from source
+# and saying what moved.
+# ---------------------------------------------------------------------------
+bank_app = typer.Typer(
+    add_completion=False, no_args_is_help=True,
+    help="Build, inspect and verify the committed auxiliary donor banks.")
+app.add_typer(bank_app, name="bank")
+
+
+@bank_app.command("build")
+def bank_build_cmd(
+    stream: str = typer.Argument(..., help="flusurv or iliplus"),
+    out: Optional[Path] = typer.Option(
+        None, "--out", help="Write here instead of data/banks/."),
+):
+    """Build a donor bank from its upstream source and commit it.
+
+    Needs network access once. Everything afterwards reads the committed
+    file, so a clone with no network still produces a spliced forecast and
+    a Delphi outage on submission day is not a failure.
+    """
+    from datetime import datetime, timezone
+    from flubnf import bank as bankmod
+    if stream not in bankmod.STREAMS:
+        console.print(f"[red]unknown stream {stream!r}; "
+                      f"known: {', '.join(bankmod.STREAMS)}[/red]")
+        raise typer.Exit(2)
+    console.print(f"[bold]building[/bold] the {stream} donor bank")
+    try:
+        b, url = bankmod.build_from_source(stream)
+    except Exception as e:
+        console.print(f"[red]build failed: {e}[/red]")
+        raise typer.Exit(1)
+    prev = None
+    try:
+        prev, _ = bankmod.read(stream, out)
+    except Exception:
+        pass                       # no committed bank yet, or an unusable one
+    man = bankmod.write(stream, b, source_url=url,
+                        built_utc=datetime.now(timezone.utc).isoformat(
+                            timespec="seconds"),
+                        builder="flubnf bank build", banks_dir=out)
+    console.print(f"  cells     {man['cells']:>9,}")
+    console.print(f"  locations {man['location_count']:>9}")
+    console.print(f"  span      {man['span'][0]} to {man['span'][1]}")
+    console.print(f"  digest    {man['digest'][:32]}")
+    console.print(f"  -> {bankmod.bank_path(stream, out)}")
+    console.print(f"  -> {bankmod.manifest_path(stream, out)}")
+    if prev is not None:
+        d = bankmod.compare(prev, b)
+        if d["identical"]:
+            console.print("  [green]unchanged from the committed bank[/green]")
+        else:
+            console.print(f"  [yellow]changed: +{d['added']} cells, "
+                          f"-{d['removed']}, {d['changed']} revised[/yellow]")
+    console.print("\n[bold]commit both files.[/bold] The bank is only "
+                  "reproducible if the manifest travels with it.")
+
+
+@bank_app.command("verify")
+def bank_verify_cmd(
+    stream: str = typer.Argument(..., help="flusurv or iliplus"),
+    banks: Optional[Path] = typer.Option(
+        None, "--banks", help="Read from here instead of data/banks/."),
+):
+    """Rebuild from source and say what moved against the committed bank.
+
+    Exits non-zero when they differ, so a scheduled job can notice drift
+    instead of a person having to remember to look.
+    """
+    from flubnf import bank as bankmod
+    try:
+        committed, man = bankmod.read(stream, banks)
+    except Exception as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(2)
+    console.print(f"[bold]committed[/bold] {man['cells']:,} cells, built "
+                  f"{man['built_utc']}, digest {man['digest'][:16]}")
+    try:
+        fresh, _ = bankmod.build_from_source(stream)
+    except Exception as e:
+        console.print(f"[red]could not rebuild from source: {e}[/red]")
+        raise typer.Exit(1)
+    d = bankmod.compare(committed, fresh)
+    if d["identical"]:
+        console.print("[green]identical: the committed bank is current[/green]")
+        return
+    console.print(f"[yellow]DRIFT[/yellow]  fresh {d['fresh_cells']:,} cells "
+                  f"against committed {d['committed_cells']:,}")
+    console.print(f"  added   {d['added']:>6}  {d['added_sample']}")
+    console.print(f"  removed {d['removed']:>6}  {d['removed_sample']}")
+    console.print(f"  revised {d['changed']:>6}")
+    for c in d["changed_sample"]:
+        console.print(f"    {c['cell']}: {c['committed']} -> {c['fresh']}")
+    console.print("\nRebuild with `flubnf bank build "
+                  f"{stream}` and commit both files, or leave it: a "
+                  "committed bank is a frozen donor pool and staying on it "
+                  "is a legitimate choice, so long as it is a choice.")
+    raise typer.Exit(1)
+
+
+@bank_app.command("show")
+def bank_show_cmd(
+    stream: str = typer.Argument(..., help="flusurv or iliplus"),
+    banks: Optional[Path] = typer.Option(
+        None, "--banks", help="Read from here instead of data/banks/."),
+):
+    """Print a committed bank's manifest, digest verified."""
+    from flubnf import bank as bankmod
+    try:
+        _, man = bankmod.read(stream, banks)
+    except Exception as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(2)
+    for k in ("stream", "built_utc", "source_url", "cells", "location_count",
+              "span", "digest", "layout_version", "builder"):
+        if k in man:
+            console.print(f"  {k:<15} {man[k]}")
+    console.print(f"  {'locations':<15} {', '.join(man['locations'])}")
+
+
 site_app = typer.Typer(
     add_completion=False, no_args_is_help=True,
     help="Build the public static site from the lab's retrospectives.")
@@ -2253,7 +2513,7 @@ def site_build_cmd(
     console.print(f"  locations {res['locations']}")
     console.print(f"  seasons   {', '.join(res['seasons']) or 'none'}")
     if res["pooled"] is not None:
-        console.print(f"  pooled    ensemble relWIS {res['pooled']:.4f}")
+        console.print(f"  pooled    PF-SIHRS relWIS {res['pooled']:.4f}")
     console.print(f"  built in  {res['elapsed_s']:.1f}s")
 
     if res["mismatches"]:

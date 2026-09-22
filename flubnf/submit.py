@@ -43,15 +43,14 @@ log = logging.getLogger(__name__)
 #: It used to be a hardcoded literal, "LosAlamos_NAU-CModel_Flu". A comment
 #: here once read that string as belonging to a different team, so that this
 #: loop was writing files under somebody else's model. That reading was
-#: wrong: LosAlamos_NAU is this group's own registration, held on the hub
-#: since 2023, and the PIs confirmed on 2026-08-27 that the project keeps
-#: submitting under it (model-metadata/README.md).
+#: wrong: LosAlamos_NAU was this group's own registration, held on the hub
+#: since 2023; since 2026-09-22 the group submits as NAU_PyBNF
+#: (model-metadata/README.md).
 #:
 #: The literal was still the wrong string here, for a reason that outlives
-#: that history. This loop forecasts the mechanistic member on its own, with
-#: no empirical companion blended in, so its file belongs under SIHRS and
-#: not under the designated ensemble. Deriving the name means neither
-#: producer can drift from the registration or from the other.
+#: that history. This loop forecasts the mechanistic model on its own, so
+#: its file belongs under SIHRS. Deriving the name means neither producer
+#: can drift from the registration or from the other.
 DEFAULT_TEAM_MODEL = hub_model_id("pf")
 
 

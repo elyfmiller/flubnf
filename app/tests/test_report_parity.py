@@ -54,7 +54,7 @@ APP_ONLY_HEADINGS = {
     # the cumulative chart stays on the season page and left the export
     # (lead, 2026-09-07); test_cumulative_curve_stays_on_the_page checks
     # both halves of that
-    "Cumulative ensemble relWIS through the season",
+    "Cumulative relWIS through the season",
 }
 
 #: app section heading -> a marker that must appear in the export. The
@@ -134,8 +134,8 @@ def _warm(root):
     for w in (W1, W2):
         playback.build_week(root, SEASON, w)
     row = retro.national_aggregate(
-        root, ensemble_weights={"pf": 0.5, "analogue": 0.5})
-    assert row and row.get("ensemble"), "fixture must aggregate US"
+        root)
+    assert row and row.get("pf"), "fixture must aggregate US"
     return row
 
 
@@ -184,7 +184,8 @@ def test_every_app_section_has_a_report_counterpart(built):
     """The data-driven guard: a NEW season-page section must be mapped to a
     report counterpart or declared app-only, or this fails."""
     app_html, report_html = built
-    tile_names = set(report_season.MODEL_NAMES.values()) | {"US (aggregated)"}
+    names = set(report_season.MODEL_NAMES.values())
+    tile_names = names | {f"US (aggregated): {n}" for n in names}
     for h in _headings(app_html):
         if h in APP_ONLY_HEADINGS:
             continue
@@ -209,7 +210,9 @@ def test_verdict_tiles_match_including_us_aggregate(built):
     app_tiles = set(re.findall(
         r'<div class="card"><h2>([^<]+)</h2><div class="big', app_html))
     rep_tiles = set(re.findall(r'class="tilename">([^<]+)<', report_html))
-    assert "US (aggregated)" in app_tiles
+    # one national tile per model, named for both (2026-09-22)
+    assert "US (aggregated): PF-SIHRS" in app_tiles
+    assert "US (aggregated): Groundhog" in app_tiles
     assert app_tiles == rep_tiles
 
 
@@ -249,7 +252,11 @@ def test_cumulative_curve_stays_on_the_page(built):
     app_html, report_html = built
     app_svg = re.search(r'<svg class="cumchart".*?</svg>', app_html, re.S)
     assert app_svg, "season page must draw the cumulative chart"
-    assert app_svg.group(0).count("<circle") == 2
+    # one line per model the season scored (two weeks each): the two that
+    # ship and, in this fixture, the retired blend's stored rows
+    n_models = app_svg.group(0).count("<polyline")
+    assert n_models >= 2
+    assert app_svg.group(0).count("<circle") == 2 * n_models
     assert report_season.CURVE_HEADING not in report_html
     assert 'class="cumchart"' not in report_html
 

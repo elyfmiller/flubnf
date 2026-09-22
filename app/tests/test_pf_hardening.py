@@ -38,6 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import pytest                                            # noqa: E402
 
+from app.core import horizons as hz                      # noqa: E402
 from app.core import reclaim, retro                      # noqa: E402
 from app.core.engines import pf                          # noqa: E402
 
@@ -308,8 +309,11 @@ def _traj_cell(w: Path, key: str, loc: str, content) -> dict:
             "particles": 100, "last_observed": 10.0}
 
 
-#: two particles over 7 columns; origin is column 2 (value 2), so the
-#: anchor scale is 10/2 = 5 and horizon h pools to (2+h)*5
+#: two particles over 7 columns; the fit origin is column 2 (value 2), so
+#: the anchor scale is 10/2 = 5 and the week h PHYSICAL weeks ahead pools
+#: to (2+h)*5. In canonical keys (app.core.horizons) the anchor is
+#: hz.ORIGIN and that week is str(h-1), so "0" here is the FIRST forecast
+#: (15.0) and the anchor is not a number at all.
 _GOOD_TRAJ = "0 1 2 3 4 5 6\n0 1 2 3 4 5 6\n"
 
 
@@ -328,8 +332,8 @@ def test_collect_skips_cells_whose_recorded_status_is_a_failure(tmp_path):
 
     out = pf.collect(w)
     assert sorted(out) == ["Ohio"]
-    assert out["Ohio"]["0"] == [10.0, 10.0]      # only the ok replicate
-    assert out["Ohio"]["4"] == [30.0, 30.0]
+    assert out["Ohio"][hz.ORIGIN] == [10.0, 10.0]   # only the ok replicate
+    assert out["Ohio"]["3"] == [30.0, 30.0]         # and its last horizon
     # the failed cell keeps its own FAIL reason: skipped, never re-recorded
     assert json.loads((w / "pf_status.json").read_text()) == status
 
@@ -349,7 +353,7 @@ def test_a_torn_trajectory_downgrades_to_a_recorded_failure(tmp_path):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")      # genfromtxt's empty-file warning
         out = pf.collect(w)
-    assert out["Ohio"]["0"] == [10.0, 10.0]      # the healthy cell survives
+    assert out["Ohio"][hz.ORIGIN] == [10.0, 10.0]   # the healthy cell survives
     recorded = json.loads((w / "pf_status.json").read_text())
     assert set(recorded) == {"Ohio_r1", "Ohio_r2", "Ohio_r3"}
     for v in recorded.values():
@@ -370,7 +374,7 @@ def test_collect_reads_the_retrospective_markers_too(tmp_path):
     retro.mark_cell_done(w, "Ohio_r1", "FAIL: synthetic engine crash")
 
     out = pf.collect(w)
-    assert out["Ohio"]["0"] == [10.0, 10.0]
+    assert out["Ohio"][hz.ORIGIN] == [10.0, 10.0]
     assert not (w / "pf_status.json").exists()
 
 
@@ -383,7 +387,7 @@ def test_a_statusless_workroot_reads_every_cell_as_before(tmp_path):
              _traj_cell(w, "Ohio_r1", "Ohio", _GOOD_TRAJ)]
     (w / "cells.json").write_text(json.dumps(cells))
     out = pf.collect(w)
-    assert out["Ohio"]["0"] == [10.0] * 4        # both replicates pooled
+    assert out["Ohio"][hz.ORIGIN] == [10.0] * 4     # both replicates pooled
 
 
 # --------------------------------------------- runner process-group plumbing

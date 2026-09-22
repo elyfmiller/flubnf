@@ -38,6 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from fastapi.testclient import TestClient                    # noqa: E402
 
 import app.core.runs as runs_mod                             # noqa: E402
+from app.core import horizons as hz                          # noqa: E402
 from app.core import playback, reclaim, retro, scoring       # noqa: E402
 from app.core.runs import run_display, run_id_time           # noqa: E402
 from app.ui import server as srv                             # noqa: E402
@@ -72,10 +73,18 @@ def _intermediates(wd: Path) -> None:
 
 
 def _payload(asof: str) -> dict:
-    pf = {loc: {str(h): [10.0 + h, 11.0 + h, 12.0 + h] for h in range(5)}
+    """One week's record in CANONICAL horizons (app.core.horizons): the PF
+    carries the anchor under ORIGIN alongside its four forecasts "0".."3",
+    the analogue only the forecasts. The values stay keyed on the PHYSICAL
+    week each horizon stands for -- 0 for the anchor, 1..4 for the
+    forecasts -- so a record that came back one week out would be visible
+    in the numbers and not only in the key names. _mk_week is what puts it
+    on disk, and that is where the stored "0".."4" appear."""
+    week = {hz.ORIGIN: 0, **{h: int(h) + 1 for h in hz.HORIZONS}}
+    pf = {loc: {h: [10.0 + w, 11.0 + w, 12.0 + w] for h, w in week.items()}
           for loc in N2F}
-    an = {loc: {str(h): {str(L): 10.0 + h + L for L in QL}
-                for h in range(1, 5)} for loc in N2F}
+    an = {loc: {h: {str(L): 10.0 + week[h] + L for L in QL}
+                for h in hz.HORIZONS} for loc in N2F}
     return {"asof": asof, "pf": pf, "analogue": an}
 
 
@@ -89,7 +98,10 @@ def _mk_week(root: Path, asof: str, complete=True, gz=False,
         if gz:
             retro.write_week_samples(wd, _payload(asof))
         else:
-            (wd / "samples.json").write_text(json.dumps(_payload(asof)))
+            # the plain form predates write_week_samples, so the stored
+            # convention is applied here instead of by the storage boundary
+            (wd / "samples.json").write_text(
+                json.dumps(hz.record_to_stored(_payload(asof))))
     return wd
 
 
@@ -301,7 +313,11 @@ def _truth():
 
 def _mk_scoreable_tree(tmp_path) -> Path:
     """A season whose synthetic samples actually score (the results-prep
-    fixture pattern): truth-anchored draws for two locations, two weeks."""
+    fixture pattern): truth-anchored draws for two locations, two weeks.
+
+    These weeks are written as bytes, so they are keyed in the STORED
+    convention: the PF's "0" is the anchor at `asof` and "1".."4" are the
+    forecasts at asof+7h, which read back as ORIGIN and "0".."3"."""
     root = tmp_path / SEASON
     truth = _truth()
     for asof in (W1, W2):
@@ -347,14 +363,14 @@ def test_compressed_season_scores_plays_back_and_exports_identically(
     monkeypatch.setattr(settings_mod, "HUB", tmp_path / "hub")
     root = _mk_scoreable_tree(tmp_path)
 
-    df1 = retro.score_season(root, SEASON, ensemble_weights=WEIGHTS)
+    df1 = retro.score_season(root, SEASON)
     tmpj = root / "scores.json.tmp"
     df1.to_json(tmpj)
     import os as _os
     _os.replace(tmpj, root / "scores.json")
     assert retro.scores_current(root)
     p1 = playback.build_week(root, SEASON, W2)
-    n1 = retro.national_aggregate(root, ensemble_weights=WEIGHTS)
+    n1 = retro.national_aggregate(root)
     export_key1 = report_season._newest_input(root)
 
     # migrate: prune the intermediates AND compress every stored week
@@ -372,7 +388,7 @@ def test_compressed_season_scores_plays_back_and_exports_identically(
     assert retro.scores_current(root)
 
     # scores: recomputed FRESH from the compressed store, cell-identical
-    df2 = retro.score_season(root, SEASON, ensemble_weights=WEIGHTS)
+    df2 = retro.score_season(root, SEASON)
     pd.testing.assert_frame_equal(
         df1.reset_index(drop=True), df2.reset_index(drop=True))
 
@@ -385,8 +401,8 @@ def test_compressed_season_scores_plays_back_and_exports_identically(
     assert p1["stats"] == p2["stats"]
 
     # the national aggregate: recomputed fresh, same numbers
-    n2 = retro.national_aggregate(root, ensemble_weights=WEIGHTS)
-    for k in ("pf", "analogue", "ensemble"):
+    n2 = retro.national_aggregate(root)
+    for k in ("pf", "analogue"):
         assert n1[k] == pytest.approx(n2[k])
 
 
@@ -470,7 +486,7 @@ def test_finalize_season_sweeps_leftover_intermediates(tmp_path, _stubbed,
     monkeypatch.setattr(settings_mod, "HUB", tmp_path / "hub")
     root = _mk_scoreable_tree(tmp_path)          # weeks carry intermediates
     phases = []
-    sec = retro.finalize_season(root, SEASON, ensemble_weights=WEIGHTS,
+    sec = retro.finalize_season(root, SEASON,
                                 phase_cb=phases.append)
     assert "pruning intermediates" in phases
     assert "prune" in sec

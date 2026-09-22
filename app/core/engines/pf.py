@@ -24,6 +24,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
 
+from app.core import horizons as hz
 from flubnf.settings import PY_ENGINE as PY310, PYBNF as PYBNF_PF
 TEMPLATE = REPO / "flubnf/templates/SIHRS_pop_min.bngl"   # H stays: verdict 2026-08-17
 DEFAULTS_BLOCK = ("begin parameters\nReff__FREE 1.20\neps1__FREE 0.15\n"
@@ -1496,8 +1497,16 @@ def collect(workroot: Path) -> dict:
                 f"{need} needed for weeks_dropped={k}; the engine did not "
                 "extend the forecast for the recorded trim -- rerun the "
                 "forecast on a current engine")
-        d = by_loc.setdefault(c["location"], {str(h): [] for h in range(5)})
-        d["0"].extend((tr[:, n - 1 + k] * scale).tolist())
+        # Canonical horizons (app.core.horizons): the anchor week under
+        # ORIGIN, the four forecasts under the hub's own labels 0..3. The
+        # trajectory index still counts PHYSICAL weeks ahead, which is why
+        # the loop runs 1..4 and the key is h-1. Writing the anchor as "0"
+        # here, as this did before, is the collision the convention exists
+        # to prevent: it would make the last observed week look like the
+        # first forecast and move every submitted row a week early.
+        d = by_loc.setdefault(c["location"],
+                              {hz.ORIGIN: [], **{h: [] for h in hz.HORIZONS}})
+        d[hz.ORIGIN].extend((tr[:, n - 1 + k] * scale).tolist())
         for h in (1, 2, 3, 4):
-            d[str(h)].extend((tr[:, n - 1 + k + h] * scale).tolist())
+            d[str(h - 1)].extend((tr[:, n - 1 + k + h] * scale).tolist())
     return by_loc

@@ -3,7 +3,7 @@
 SCOPE: this loop is built on Adaptive_MCMC warm starts and is NOT the
 shipped PF competition path (that is the sequential particle filter, driven
 from the console via app/core/runs.py). AMCMC does not pass convergence
-diagnostics on this posterior and is not part of the shipped ensemble
+diagnostics on this posterior and is not part of a shipped model
 (docs/RELEASE-1.0.md, Known limitations). Kept for its measured operational
 findings and for the CLI loop.
 

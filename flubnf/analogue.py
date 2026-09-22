@@ -137,7 +137,7 @@ TWO TRAPS, BOTH PAID FOR
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from statistics import NormalDist
 from typing import Iterable, Mapping, Optional
@@ -289,12 +289,76 @@ SEASON_2021_22_CALENDAR_INVERSION = DonorSeasonExclusion(
 )
 
 
+SEASON_2020_21_SUPPRESSED = DonorSeasonExclusion(
+    season=2020,
+    label="2020-21",
+    profile_key="influenza",
+    season_boundary_month=SEASON_BOUNDARY_MONTH,
+    covers=(date(2020, 8, 1), date(2021, 7, 31)),
+    prereg_hash="086bda9a0736e983",
+    tested_on="2026-09-18",
+    adopted_on="2026-09-19",
+    mechanism=(
+        "A suppressed season. Non-pharmaceutical intervention during the "
+        "COVID-19 response all but removed influenza from circulation: in the "
+        "ILI+ donor bank the 2020-21 in-season median (epiweek >= 47 or <= 20) "
+        "is 0.2855 against 3.78 to 67.07 in every other season, a factor of 13 "
+        "below the nearest and about 100 below a typical one. The failure this "
+        "causes is NOT extra noise, and an earlier draft of this record said it "
+        "was. Measured, the season's pooled log-ratio spread is 0.8775 against "
+        "1.1053 for the rest of the pool, so it is the LEAST volatile "
+        "contributor, which is exactly the fingerprint of an epidemic that "
+        "never happened. Its ratios sit near one. A calendar-matched pool asks "
+        "what happens over the next four weeks, and 2020-21 answers 'nothing "
+        "much', damping the pool toward no growth in precisely the weeks when "
+        "an ordinary season is climbing."),
+    effect=(
+        "Auxiliary ILI+ pool only, vincentized at weight 0.5 with the shrink "
+        "applied, scored against the production particle filter on 15,460 "
+        "ensemble and 15,764 member cells over 76 as-of weeks. Ensemble pooled "
+        "relWIS 0.6707 -> 0.6688, +0.293 percent; member 0.6315 -> 0.6284, "
+        "+0.495 percent. Clustered bootstrap on as-of dates, 4000 replicates: "
+        "ensemble delta median -0.00198, 95 percent CI -0.00309 to -0.00064, "
+        "better in 3993 of 4000; member median -0.00316, CI -0.00521 to "
+        "-0.00053, better in 3956 of 4000. Ensemble coverage is unchanged to "
+        "within a thousandth (worst deviation 0.015 -> 0.014). This is a SMALL "
+        "effect and the record says so: the case for the exclusion is the "
+        "mechanism above, and the measurement is here to show the direction is "
+        "right and the cost is nil, not to claim a material gain."),
+    depth_control=(
+        "The effect is COMPOSITION, not count, by the same test the 2021-22 "
+        "record uses. Randomly cutting the 2020-21-inclusive pool to the size "
+        "the exclusion leaves, 5 seeds, moves the ensemble -0.004 percent "
+        "(seed spread -0.015 to +0.018 percent) and the member -0.007 percent, "
+        "against +0.293 and +0.495 percent for removing the season itself. "
+        "Unlike the 2021-22 exclusion, which bites only where that season "
+        "supplies in-window donors, this one changes every scored cell, "
+        "because the auxiliary pool is pooled across all locations and so "
+        "every quantile moves."),
+    evidence=(
+        "Pre-registered factorial, prereg 086bda9a0736e983 amendment 2, arms "
+        "B1 against B2 and B3 against B4, which froze the 2020-21 in/out "
+        "contrast before any score was read. The figures quoted above are the "
+        "vincentize-plus-shrink pair (B6 against B5) re-scored against the "
+        "production filter under prereg 90c935a5e2ed62f7, with the depth "
+        "control run afterwards to this record's requirement. Harness, "
+        "pre-registrations and results are in the lab archive "
+        "(research/iliplus-splice), not in this repository. NOTE ON SCOPE: the "
+        "admissions bank carries no 2020-21 data at all, since the archived "
+        "NHSN series begins 2022-02-05 (season 2021-22). This record is "
+        "therefore INERT for the admissions donor pool and changes only the "
+        "auxiliary pool, which is verified by a byte-identity check over all "
+        "85 archived as-of weeks."),
+)
+
+
 #: The ONLY seasons that may be dropped, keyed by season label. Adding a key
 #: here is the whole cost of excluding another season, and it is meant to be
 #: expensive: the record must carry a pre-registration hash, a mechanism, a
 #: measured effect and a depth control before anything can use it.
 DONOR_SEASON_EXCLUSIONS: dict = {
     SEASON_2021_22_CALENDAR_INVERSION.season: SEASON_2021_22_CALENDAR_INVERSION,
+    SEASON_2020_21_SUPPRESSED.season: SEASON_2020_21_SUPPRESSED,
 }
 
 #: What `donor_ratios` applies when the caller says nothing. The default is the
@@ -414,7 +478,21 @@ def analogue_quantiles(anchor: float, ratios: np.ndarray,
     r = r[np.isfinite(r)]
     if r.size < MIN_DONORS:
         return None
-    q = {float(L): float(anchor * np.quantile(r, L)) for L in levels}
+    return _scale_ratio_quantiles(
+        anchor, {float(L): float(np.quantile(r, L)) for L in levels},
+        widen_log_sd)
+
+
+def _scale_ratio_quantiles(anchor: float, ratio_q: dict,
+                           widen_log_sd: Optional[float]) -> Optional[dict]:
+    """Shared tail: scale a ratio quantile function by the anchor, widen it,
+    and validate. `ratio_q` maps level -> the RATIO distribution's quantile.
+
+    Both the single-pool path (`analogue_quantiles`) and the spliced path
+    (`spliced_quantiles`) end here on purpose, so the two cannot disagree
+    about widening, the median check or monotonicity.
+    """
+    q = {float(L): float(anchor * v) for L, v in ratio_q.items()}
     if widen_log_sd is not None:
         s = float(widen_log_sd)
         if not math.isfinite(s) or s < 0:
@@ -425,12 +503,226 @@ def analogue_quantiles(anchor: float, ratios: np.ndarray,
     if not np.isfinite(q.get(0.5, np.nan)) or q[0.5] <= 0:
         return None
     # np.quantile is monotone in L, and anchor > 0, so the result is already
-    # sorted (the widening factor is itself increasing in L); assert rather
-    # than sort, because a violation means a real bug.
+    # sorted (the widening factor is itself increasing in L, and a convex
+    # combination of two monotone quantile functions is monotone); assert
+    # rather than sort, because a violation means a real bug.
     vals = [q[float(L)] for L in sorted(q)]
     if any(b < a - 1e-9 for a, b in zip(vals, vals[1:])):
         return None
     return q
+
+
+# ---------------------------------------------------------------------------
+# Auxiliary donor pools (the ILI+ splice)
+# ---------------------------------------------------------------------------
+# A second donor pool drawn from a DIFFERENT surveillance stream, combined with
+# the admissions pool by averaging the two RATIO quantile functions level by
+# level (vincentization). Averaging quantile functions rather than pooling the
+# donors is deliberate: concatenating two pools is a linear pool weighted by
+# donor COUNT, which hands the larger stream most of the say for a reason that
+# has nothing to do with how informative it is.
+#
+# DORMANT BY DEFAULT. `forecast(..., splice=None)` is byte-identical to the
+# historical single-pool path; nothing below runs unless a caller passes a
+# DonorSplice.
+
+
+@dataclass(frozen=True, eq=False)
+class AuxPool:
+    """One auxiliary donor pool and the weight it carries in the blend.
+
+    `bank` has the same (location, date) -> value shape as the admissions
+    bank and is read only by `donor_ratios`, which pools across locations,
+    so an auxiliary stream's location keys need not match the admissions
+    bank's. They only need to be self-consistent, because a location key is
+    used solely to find a week's own future value. That is why a 20-site
+    FluSurv-NET catchment and a 48-state ILI+ bank can sit in the same blend
+    without either being a coverage map.
+
+    `weight` is this pool's share of the blended quantile function. The
+    admissions pool takes whatever is left, so a single pool at 0.5 is the
+    equal-weight case and two pools at 0.25 split the auxiliary half.
+
+    `shrink` rescales this pool's log-ratios by `r -> exp(shrink * log r)`
+    before its quantiles are taken, putting a stream of different volatility
+    on the admissions pool's scale. Fit it with `fit_log_ratio_shrink` on
+    strictly prior seasons, never on the target.
+
+    `exclude_seasons` goes through `resolve_donor_exclusions` exactly as the
+    admissions pool's does, so an auxiliary pool cannot drop a season the
+    registry has not accepted.
+
+    `label` names the stream in errors and in run records; no behaviour.
+    """
+    bank: Mapping[tuple, float]
+    weight: float
+    shrink: Optional[float] = None
+    exclude_seasons: tuple = tuple(sorted(EXCLUDED_DONOR_SEASONS))
+    bandwidth: Optional[int] = None
+    label: str = "aux"
+
+
+@dataclass(frozen=True, eq=False)
+class DonorSplice:
+    """One or more auxiliary pools to vincentize into the admissions pool.
+
+    The blend is a weighted average of RATIO quantile functions, level by
+    level. Averaging quantile functions rather than pooling the donors is
+    deliberate: concatenating pools is a linear pool weighted by donor
+    COUNT, which hands the largest stream most of the say for a reason that
+    has nothing to do with how informative it is.
+
+    The admissions pool's weight is 1 minus the auxiliary weights, so those
+    must sum to at most 1.
+    """
+    pools: tuple
+    #: Per-instance memo of auxiliary donor ratios, keyed by the arguments
+    #: that determine them. `donor_ratios` does not depend on the location
+    #: being forecast -- the pool is cross-location -- so without this each
+    #: auxiliary bank is rescanned once per location per horizon, which on a
+    #: 52-jurisdiction run is 208 identical scans per pool. The memo is
+    #: scoped to one DonorSplice, so it is built and dropped with the run
+    #: and cannot leak between forecast dates.
+    _ratio_memo: dict = field(default_factory=dict, repr=False, compare=False)
+
+    @property
+    def primary_weight(self) -> float:
+        """What the admissions pool keeps."""
+        return 1.0 - sum(float(p.weight) for p in self.pools)
+
+
+def in_season_log_ratios(bank: Mapping[tuple, float], horizon: int,
+                         seasons: Iterable[int], *,
+                         first_epiweek: int = 47,
+                         last_epiweek: int = 20) -> np.ndarray:
+    """Log growth ratios at `horizon`, restricted to the named seasons and to
+    the in-season window that wraps the new year (epiweek >= 47 or <= 20).
+
+    Used to compare two surveillance streams' volatility on the stretch of
+    calendar where both actually carry epidemic signal; the off-season weeks
+    are dominated by near-zero denominators in both streams.
+    """
+    seas = frozenset(int(x) for x in seasons)
+    out = []
+    for (loc, d), v0 in bank.items():
+        if season_of(d) not in seas:
+            continue
+        w = epiweek(d)
+        if not (w >= first_epiweek or w <= last_epiweek):
+            continue
+        v1 = bank.get((loc, d + timedelta(days=7 * horizon)))
+        if v1 is None or not (v1 > 0) or not (v0 > 0):
+            continue
+        out.append(math.log(v1 / v0))
+    return np.asarray(out, dtype=float)
+
+
+def fit_log_ratio_shrink(bank: Mapping[tuple, float],
+                         aux_bank: Mapping[tuple, float],
+                         target_season: int, *,
+                         horizons: Iterable[int] = (1, 2, 3, 4),
+                         exclude_seasons: Iterable[int] = EXCLUDED_DONOR_SEASONS
+                         ) -> Optional[float]:
+    """sd(admissions log-ratio) / sd(auxiliary log-ratio), on seasons STRICTLY
+    PRIOR to `target_season` that both banks carry.
+
+    This is a distribution-matching factor, not a regression slope. The
+    regression slope of one stream on the other is the right coefficient for
+    PREDICTING admissions from ILI+, but it is attenuated by the correlation
+    between them and would under-disperse a pool that is being used as a
+    donor distribution rather than as a predictor.
+
+    Returns None when no prior season is shared, or when either side has
+    fewer than MIN_DONORS ratios, or the auxiliary spread is not positive.
+    A None shrink means "do not rescale", which is the caller's decision to
+    make loudly rather than a silent 1.0.
+    """
+    drop = resolve_donor_exclusions(exclude_seasons)
+    shared = ({season_of(d) for _, d in bank}
+              & {season_of(d) for _, d in aux_bank})
+    prior = {s for s in shared if s < target_season and s not in drop}
+    if not prior:
+        return None
+    a = np.concatenate([in_season_log_ratios(bank, h, prior) for h in horizons])
+    b = np.concatenate([in_season_log_ratios(aux_bank, h, prior)
+                        for h in horizons])
+    if a.size < MIN_DONORS or b.size < MIN_DONORS:
+        return None
+    sb = float(np.std(b))
+    if not (math.isfinite(sb) and sb > 0):
+        return None
+    sa = float(np.std(a))
+    if not math.isfinite(sa):
+        return None
+    return sa / sb
+
+
+def spliced_quantiles(anchor: float, ratios: np.ndarray,
+                      aux: Iterable, levels: Iterable[float], *,
+                      completeness: Optional[float] = None,
+                      widen_log_sd: Optional[float] = None) -> Optional[dict]:
+    """Vincentize a primary ratio pool with one or more auxiliary pools.
+
+    `aux` is a sequence of (ratios, weight, shrink, label). The blended
+    ratio quantile function is
+
+        q(L) = w0 * Q_primary(L) + sum_i w_i * Q_i(L),   w0 = 1 - sum w_i
+
+    EVERY pool must independently clear MIN_DONORS. That is stricter than
+    requiring it of the blend, and deliberately so: a blend whose auxiliary
+    half rests on a handful of donors is not a blend, it is the primary pool
+    with noise added at a fixed weight.
+
+    Returns None on the same terms as `analogue_quantiles`, which callers
+    must read as "no forecast" rather than as zero.
+    """
+    if anchor is None or not np.isfinite(anchor) or anchor <= 0:
+        return None
+    aux = list(aux)
+    ws = [float(w) for _, w, _, _ in aux]
+    if any(not math.isfinite(w) or w < 0 for w in ws):
+        raise ValueError(f"splice weights must be finite and >= 0, got {ws!r}")
+    w0 = 1.0 - sum(ws)
+    if w0 < -1e-12:
+        raise ValueError(
+            f"auxiliary splice weights sum to {sum(ws)!r}, leaving the "
+            f"admissions pool a negative weight; they must sum to at most 1")
+    w0 = max(w0, 0.0)
+    if completeness is not None:
+        c = float(completeness)
+        if not math.isfinite(c) or c <= 0:
+            raise ValueError(f"completeness must be finite and > 0, got {c!r}")
+        anchor = anchor / c
+    r = np.asarray(ratios, dtype=float)
+    r = r[np.isfinite(r)]
+    if r.size < MIN_DONORS:
+        return None
+    prepared = []
+    for a_raw, w, shrink, label in aux:
+        a = np.asarray(a_raw, dtype=float)
+        a = a[np.isfinite(a)]
+        if a.size < MIN_DONORS:
+            return None
+        if shrink is not None:
+            sh = float(shrink)
+            if not math.isfinite(sh) or sh <= 0:
+                raise ValueError(
+                    f"shrink for pool {label!r} must be finite and > 0, got "
+                    f"{shrink!r}")
+            a = a[a > 0]
+            if a.size < MIN_DONORS:
+                return None
+            # exp(s * log r) rather than r ** s: the two agree to within an
+            # ulp, and this is the form the pre-registered harness measured.
+            a = np.exp(sh * np.log(a))
+        prepared.append((a, float(w)))
+    rq = {}
+    for L in levels:
+        v = w0 * np.quantile(r, L)
+        for a, w in prepared:
+            v += w * np.quantile(a, L)
+        rq[float(L)] = float(v)
+    return _scale_ratio_quantiles(anchor, rq, widen_log_sd)
 
 
 def forecast(anchor: float, as_of: date, horizon: int,
@@ -438,8 +730,8 @@ def forecast(anchor: float, as_of: date, horizon: int,
              bandwidth: int = DEFAULT_BANDWIDTH, *,
              completeness: Optional[float] = None,
              widen_log_sd: Optional[float] = None,
-             exclude_seasons: Iterable[int] = EXCLUDED_DONOR_SEASONS
-             ) -> Optional[dict]:
+             exclude_seasons: Iterable[int] = EXCLUDED_DONOR_SEASONS,
+             splice: Optional["DonorSplice"] = None) -> Optional[dict]:
     """One analogue predictive distribution. `bank` maps (location, date)->value.
 
     `completeness` / `widen_log_sd` pass through to `analogue_quantiles`;
@@ -447,11 +739,31 @@ def forecast(anchor: float, as_of: date, horizon: int,
 
     `exclude_seasons` passes through to `donor_ratios` and defaults to the
     shipped pool, which excludes 2021-22.
+
+    `splice`, when given, adds a second donor pool from another surveillance
+    stream and vincentizes the two ratio quantile functions (see
+    `DonorSplice`). None, the default, does not touch the single-pool
+    arithmetic above and is byte-identical to the historical path.
     """
     r = donor_ratios(bank, epiweek(as_of), season_of(as_of), horizon,
                      bandwidth=bandwidth, exclude_seasons=exclude_seasons)
-    return analogue_quantiles(anchor, r, levels, completeness=completeness,
-                              widen_log_sd=widen_log_sd)
+    if splice is None:
+        return analogue_quantiles(anchor, r, levels, completeness=completeness,
+                                  widen_log_sd=widen_log_sd)
+    ew, se = epiweek(as_of), season_of(as_of)
+    aux = []
+    for i, pool in enumerate(splice.pools):
+        bw = bandwidth if pool.bandwidth is None else pool.bandwidth
+        memo_key = (i, ew, se, horizon, bw)
+        got = splice._ratio_memo.get(memo_key)
+        if got is None:
+            got = donor_ratios(pool.bank, ew, se, horizon, bandwidth=bw,
+                               exclude_seasons=pool.exclude_seasons)
+            splice._ratio_memo[memo_key] = got
+        aux.append((got, pool.weight, pool.shrink, pool.label))
+    return spliced_quantiles(anchor, r, aux, levels,
+                             completeness=completeness,
+                             widen_log_sd=widen_log_sd)
 
 
 def build_bank(truth_rows: Iterable) -> dict:

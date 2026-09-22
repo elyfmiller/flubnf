@@ -6,9 +6,7 @@ outputs collect here.</p></div>
 {% else %}
 <div>
   <div class="card"><h2>Submission files: {{ date }}</h2>
-   <p class="hint">{{ label }}{% if not has_ensemble %} ·
-    <form method="post" action="/model/ensemble/generate" style="display:inline">
-     <button class="gold" style="margin-top:0">Generate ensemble</button></form>{% endif %}</p>
+   <p class="hint">{{ label }}</p>
    {% for f in files %}
     <div class="subfile">
      <div class="row" style="justify-content:space-between;margin:.45rem 0">

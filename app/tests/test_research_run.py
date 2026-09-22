@@ -85,7 +85,14 @@ def test_run_accepts_the_research_selection(tmp_path, monkeypatch):
     assert r.status_code == 303
     assert len(started) == 1
     spec = started[0]
-    assert spec.extra == {"mode": "realtime", "members": 3}   # the run type rides on every console spec (2026-09-07)
+    # the run type rides on every console spec (2026-09-07), and so do
+    # the Groundhog's donors (2026-09-22): the shipped preset resolved to
+    # its committed bank, recorded with the bank digest
+    assert spec.extra["mode"] == "realtime" and spec.extra["members"] == 3
+    assert spec.extra["aux_pools"] == [
+        {"stream": "flusurv", "weight": 0.5, "committed": True}]
+    assert spec.extra["analogue_aux"].startswith("flusurv+flusurv@")
+    assert set(spec.extra) == {"mode", "members", "aux_pools", "analogue_aux"}
     assert spec.particles == 20_000
     assert is_research(spec)
 

@@ -42,6 +42,7 @@ from fastapi.responses import (HTMLResponse, JSONResponse, PlainTextResponse,  #
                                RedirectResponse)
 from fastapi.templating import Jinja2Templates                  # noqa: E402
 
+from app.core import horizons as _hzmod                         # noqa: E402
 from app.core import ttlcache                                   # noqa: E402
 
 
@@ -727,12 +728,14 @@ def _outlook_cards(res: dict | None, rid: str | None = None) -> tuple:
     (report_inputs.json, every run since the bundle feature), home READS
     the bundle's cards, so the home map renders exactly the categories the
     weekly report rendered -- same samples, same computation, same model,
-    which the meta names ("ensemble" or "pf").
+    which the meta names ("pf" or "analogue"; "ensemble" on a bundle from
+    before the blend was retired).
 
     THE APPROXIMATE PER-MODEL PATH (user request 2026-08-21, the model
     toggle on stored legacy runs): a run whose bundle predates per-model
     cards -- or has no bundle at all -- falls back to computing a card
-    set for EVERY stored model (ensemble, pf, analogue) from the stored
+    set for EVERY stored model (pf, analogue, and the ensemble of a run
+    from before the blend was retired) from the stored
     quantile grids in results.json, through the one quantile-CDF path
     (categorical_probs_from_quantiles: the exact CDF reading of the
     coarse grid, never the old few-values-as-samples stand-in). With two
@@ -793,14 +796,18 @@ def _outlook_cards(res: dict | None, rid: str | None = None) -> tuple:
     n2a = dict(zip(_l.location_name, _l.abbreviation))
     n2p = dict(zip(_l.location_name, _l.population.astype(float)))
     models = (res or {}).get("models", {})
-    model = "ensemble" if models.get("ensemble") else "pf"
+    # PF first, the Groundhog for an analogue-only run; "ensemble" only as
+    # the stored set of a run from before the blend was retired
+    model = next((m for m in ("pf", "analogue", "ensemble")
+                  if models.get(m)), "pf")
     observed = (res or {}).get("observed", {})
     by_model: dict = {}
+    models = _hzmod.models_to_canonical(models)
     for mname, md in models.items():
         cards = {}
         for loc, qd in (md or {}).items():
             fips = n2f.get(loc, "")
-            q1 = (qd or {}).get("1")
+            q1 = (qd or {}).get("0")      # one week ahead, canonical
             obs = observed.get(loc) or []
             # tolerate the pre-quantile results schema (medians-only floats)
             if len(fips) != 2 or not isinstance(q1, dict) or not obs:
@@ -886,10 +893,11 @@ def _diagram_data(res: dict | None) -> dict:
         params = res.get("params") or {}
         pf_p = params.get("pf") or {}
         p2_p = params.get("pf2s") or {}
-        models = res.get("models") or {}
+        models = _hzmod.models_to_canonical(res.get("models") or {})
         out["has_pf2s"] = bool(p2_p) or bool(models.get("pf2s"))
         observed = res.get("observed") or {}
-        picked = models.get("ensemble") or models.get("pf") or {}
+        picked = (models.get("pf") or models.get("analogue")
+                  or models.get("ensemble") or {})
         for loc in set(pf_p) | set(p2_p) | set(observed) | set(picked):
             e = {}
             if isinstance(pf_p.get(loc), dict) and pf_p[loc]:
@@ -899,7 +907,7 @@ def _diagram_data(res: dict | None) -> dict:
             obs = observed.get(loc) or []
             if obs:
                 e["obs"] = obs[-1]
-            q1 = (picked.get(loc) or {}).get("1")
+            q1 = (picked.get(loc) or {}).get("0")   # one week ahead
             if isinstance(q1, dict) and q1.get("0.5") is not None:
                 e["med1"] = float(q1["0.5"])
             if e:
@@ -2055,8 +2063,8 @@ def _sleep_guard():
 
 def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
                          df, locs, n2f: dict, elapsed_s: float,
-                         outcome: dict, ens_q: dict | None = None,
-                         an_q: dict | None = None) -> None:
+                         outcome: dict, an_q: dict | None = None,
+                         ens_q: dict | None = None) -> None:
     """Step 5b of _run_all: the weekly report, via its inputs bundle.
 
     Builds the pure-data bundle (map cards, per-state fan quantiles and
@@ -2066,18 +2074,20 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
     a later design change, _report_for_serving rebuilds the stored report
     from this bundle instead of leaving the old face on screen.
 
-    `ens_q` is the run's vincentized ensemble and `an_q` the analogue
-    member's quantiles (each loc -> horizon -> {level: value}). The bundle
-    (v3) carries map cards for EVERY available model -- ensemble, pf (its
-    samples reduced to the same 23-level grid), analogue -- all computed
-    by the ONE quantile-CDF path (categorical_probs_from_quantiles), so
-    the outlook model toggle on home and on the report switches between
+    `an_q` is the Groundhog's quantiles (loc -> horizon -> {level:
+    value}). The bundle (v3) carries map cards for EVERY available model,
+    pf (its samples reduced to the same 23-level grid) and analogue, all
+    computed by the ONE quantile-CDF path (categorical_probs_from_quantiles),
+    so the outlook model toggle on home and on the report switches between
     computations that agree with what a run of that model alone would
-    show. The map still RENDERS ensemble-first (the submitted forecast),
-    PF otherwise; the additive cards_model field records which, and home
-    reads the same bundle so both maps show the same categories from the
-    same model. The per-state drill-down fans stay the PF member's, as
-    labeled.
+    show. The map RENDERS PF-first, the Groundhog otherwise; the additive
+    cards_model field records which, and home reads the same bundle so
+    both maps show the same categories from the same model. The per-state
+    drill-down fans stay the PF member's, as labeled.
+
+    `ens_q` is accepted for the blend that shipped until 2026-09-22 and is
+    ignored: nothing computes it any more. Bundles written before then
+    still carry an "ensemble" card set, and the readers keep it.
 
     Factored out of _run_all so the build path is testable with synthetic
     samples. Mutates `outcome` like the other run steps; the caller's
@@ -2118,7 +2128,7 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
         return None
 
     def _q1_of(qd):
-        q1 = (qd or {}).get("1", (qd or {}).get(1))
+        q1 = (qd or {}).get("0", (qd or {}).get(0))   # one week ahead
         return q1 if isinstance(q1, dict) and q1 else None
 
     def _q_cards(q_by_loc):
@@ -2172,17 +2182,16 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
 
     cards_by_model = {}
     nat_cards = {}
-    for model, q_by_loc in (("ensemble", ens_q), ("pf", pf_q),
-                            ("analogue", an_q)):
+    for model, q_by_loc in (("pf", pf_q), ("analogue", an_q)):
         c = _q_cards(q_by_loc)
         if c:
             cards_by_model[model] = c
             nc = _q_nat_card(q_by_loc)
             if nc:
                 nat_cards[model] = nc
-    # ensemble-first: the submitted forecast colors the rendered map; the
-    # toggle offers the rest
-    cards_model = next((m for m in ("ensemble", "pf", "analogue")
+    # PF-first: the mechanistic model colors the rendered map; the toggle
+    # offers the Groundhog
+    cards_model = next((m for m in ("pf", "analogue")
                         if m in cards_by_model), "pf")
     cards = dict(cards_by_model.get(cards_model, {}))
     for name, abbr in n2a.items():
@@ -2198,7 +2207,7 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
         _vs_all = data_mod.vintages()
         if _vs_all and _vs_all[-1] > spec.forecast_date:
             _lim = (_dd.fromisoformat(spec.forecast_date)
-                    + _tdd(days=35)).isoformat()
+                    + _tdd(days=28)).isoformat()
             ldf = pd.read_csv(data_mod.vintage_path(_vs_all[-1]),
                               dtype={"location": str})
             ldf["location"] = ldf["location"].str.zfill(2)
@@ -2224,14 +2233,19 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
         o_v = [v for _, v in obs_pairs]
         _base = (_dd.fromisoformat(o_t[-1]) if o_t
                  else _dd.fromisoformat(spec.forecast_date))
-        f_t = [(_base + _tdd(days=7 * h)).isoformat()
-               for h in (1, 2, 3, 4)]
-        samples_h = {f_t[h - 1]: s[str(h)] for h in (1, 2, 3, 4)}
+        # canonical horizons: hub label h is h+1 weeks past the anchor
+        f_t = [(_base + _tdd(days=7 * (h + 1))).isoformat()
+               for h in (0, 1, 2, 3)]
+        samples_h = {f_t[h]: s[str(h)] for h in (0, 1, 2, 3)}
         try:
             q_by_t = report_v2.fan_quantiles(f_t, samples_h)
             lo_l = o_v[-1] if o_v else 0.0
+            # ONE week ahead, which is canonical "0". This read and the
+            # samples_h fan four lines up are the same page: leaving it on
+            # "1" made the rate-change pill describe the two-week-ahead
+            # week while the fan beside it described the one-week.
             probs_l = categorical_probs(
-                _np.asarray(s["1"], float), lo_l,
+                _np.asarray(s["0"], float), lo_l,
                 int(n2p.get(loc, 1e6)), 1)
             key = "US" if fips_l == "US" else n2a.get(loc, loc)
             meds = [q_by_t[t]["0.5"] for t in f_t]
@@ -2314,11 +2328,12 @@ def _pf_engine_state() -> str:
 
 
 def _run_all(spec: RunSpec) -> None:
-    """The competition path: engines in ascending cost, then ensemble,
-    submissions, and the weekly report. Every step lands in ONE workroot and
-    ONE ledger row."""
+    """The competition path: engines in ascending cost, then the two
+    standalone submissions, scoring and the weekly report. Every step lands
+    in ONE workroot and ONE ledger row. Nothing is blended: since
+    2026-09-22 the SIHRS and the Groundhog each ship under their own hub
+    identity (app/core/submit.MODEL_ABBR)."""
     import pandas as pd
-    from app.core import ensemble as ens
     from app.core import scoring
     from app.core.engines import analogue as an_engine
     from app.core.engines import pf as pf_engine
@@ -2467,52 +2482,23 @@ def _run_all(spec: RunSpec) -> None:
                                 s, loc, spec.forecast_date,
                                 recent=[v for _, v in obs.get(loc, [])])
                             for loc, s in pf2s_samples.items()}
-        _phase("consulting the calendar analogue")
+        # 2. the Groundhog: the calendar analogue with the shipped
+        # auxiliary donors. The pools ride in spec.extra (put there by
+        # _run_extra, so the ledger row records which donors ran); a spec
+        # without them is a research run of the bare analogue and the
+        # engine says so in the outcome rather than guessing.
+        # It runs on every path (instant, and every page shows it beside
+        # the PF); its FILE is written only when the run asked for it.
+        _phase("consulting the Groundhog")
         from app.core.floor import floor_quantiles
-        an_q = {loc: floor_quantiles(q) for loc, q in an_engine.run(spec).items()}
-        # 3. ensemble (vincentize: equal weights, never fitted)
-        import pandas as _pd
-        _l = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
-        n2f_pre = dict(zip(_l.location_name, _l.location.str.zfill(2)))
-        members_by_loc = {}
-        for loc in spec.locations:
-            m = {}
-            if loc in pf_samples:
-                m["pf"] = ens.member_quantiles_from_samples(pf_samples[loc])
-            if loc in an_q:
-                m["analogue"] = an_q[loc]
-            if loc in pf2s_samples:
-                m["pf2s"] = ens.member_quantiles_from_samples(pf2s_samples[loc])
-            if m:
-                # equal, never-fitted weights at every member count: 50/50
-                # for the two-member blend, equal thirds with the two-strain
-                # member (the sealed recipe; fitting the weights scored
-                # worse, pooled relWIS 0.696 against 0.678)
-                members_by_loc[loc] = ens.vincentize(
-                    m, weights=ens.equal_weights(m),
-                    location_fips=n2f_pre.get(loc, ''))
-        # Ensemble honesty, the app/core/retro.run_week precedent: a
-        # location whose PF replicates ALL failed carries only the
-        # analogue member, and vincentize hands one member back verbatim,
-        # so its "ensemble" IS the analogue under the ensemble model
-        # name. Retro refuses to store a week whose failures left no PF
-        # at all, and stores a partial week only with the failures
-        # recorded beside the samples. Mirrored here: with no PF member
-        # anywhere the ensemble file is withheld in the writer loop
-        # below, and a partial gap ships with the affected locations on
-        # the ledger row, where the run chips and the run page name them.
-        pf_attempted = "pf_skipped" not in outcome
-        # no PF member anywhere, whether every fit failed or none was
-        # asked for: the blend would be the analogue verbatim
-        ensemble_no_pf = (pf_attempted and not pf_samples
-                          and not pf2s_samples)
-        if pf_attempted and not ensemble_no_pf:
-            analogue_only = sorted(
-                loc for loc in members_by_loc
-                if loc not in pf_samples and loc not in pf2s_samples)
-            if analogue_only:
-                outcome["ensemble_analogue_only"] = analogue_only
-        _phase("vincentizing the ensemble and writing submissions")
+        an_q = {loc: floor_quantiles(q)
+                for loc, q in an_engine.run(spec).items()}
+        outcome["analogue_aux"] = str(
+            (spec.extra or {}).get("analogue_aux") or "")
+        # 3. no blend. Each member is its own submission; a location the
+        # PF failed on is simply absent from the SIHRS file and present in
+        # the Groundhog's, and the ledger row's failure count names it.
+        _phase("writing submissions")
         # 4. submissions (identity in the path)
         locs = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
         n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
@@ -2527,39 +2513,25 @@ def _run_all(spec: RunSpec) -> None:
         for model, rows in (
             ("pf", [r for loc, s in pf_samples.items()
                     for r in quantile_rows(s, n2f[loc], spec.forecast_date)]),
-            ("ensemble", [r for loc, q in members_by_loc.items()
+            ("analogue", [r for loc, q in an_q.items()
                           for r in rows_from_quantiles(q, n2f[loc],
                                                        spec.forecast_date)]),
         ):
             if not rows:
                 continue
-            if _research and model == "ensemble":
-                # A research run's "ensemble" is the three-member blend,
-                # which is not the shipped product; a hub-named CSV of it
-                # would be indistinguishable from the real submission
-                # (audit rr-1). The PF member file is unchanged by the
-                # research variant and still writes.
+            if model == "analogue" and spec.engine == "pf":
+                # a SIHRS-only run: the Groundhog was consulted for the
+                # pages, not asked for as a submission
+                continue
+            if model == "analogue" and not (spec.extra or {}).get("aux_pools"):
+                # the bare calendar analogue is a research configuration
+                # now, not the Groundhog; a hub-named CSV of it would be
+                # indistinguishable from the real submission (the rr-1
+                # rule, applied to this member)
                 outcome["submission_withheld"] = (
-                    "ensemble: research run; the three-member blend does "
-                    "not ship under the hub model name")
-                continue
-            if model == "ensemble" and spec.engine in ("analogue", "pf"):
-                # a one-member run is not the product: the analogue alone
-                # or the PF alone never ships under the ensemble's hub
-                # identity (review APP3-1, APP3-5)
-                outcome["ensemble_withheld"] = (
-                    f"{'analogue' if spec.engine == 'analogue' else 'SIHRS'}"
-                    "-only run: the ensemble file is written only when "
-                    "both members ran")
-                continue
-            if model == "ensemble" and ensemble_no_pf:
-                # the retro store refuses a week like this outright; the
-                # console contains the refusal to the one file, like every
-                # other per-model refusal in this loop
-                outcome["ensemble_withheld"] = (
-                    "every PF fit failed, so the blend would be the "
-                    "analogue verbatim under the ensemble model name; "
-                    "no file was written")
+                    "Groundhog: the run carried no auxiliary donors, so "
+                    "this is the bare calendar analogue and does not ship "
+                    "under the Groundhog's hub name")
                 continue
             # Contained per model, the same rule steps 5 and 5b follow: the
             # writer REFUSES rows the hub would bounce (an incomplete
@@ -2601,10 +2573,10 @@ def _run_all(spec: RunSpec) -> None:
                         float(pdf["wis"].sum() / pdf["base_wis"].sum()), 3)
                     outcome["pf_relwis_cells"] = int(len(pdf))
             df.to_json(workroot / "scores_pf.json")
-            # the other two members, the same formula and gate, so the
-            # ledger row and the latest-run table can state all three
+            # the Groundhog, the same formula and gate, so the ledger row
+            # and the latest-run table can state both members
             from app.core.us_national import pooled_frame as _pooled
-            for mname, qs in (("analogue", an_q), ("ensemble", members_by_loc)):
+            for mname, qs in (("analogue", an_q),):
                 try:
                     mdf = scoring.score_quantiles(qs or {}, spec.forecast_date,
                                                   name2fips, truth)
@@ -2626,15 +2598,16 @@ def _run_all(spec: RunSpec) -> None:
         try:
             _write_weekly_report(spec, workroot, pf_samples, obs, df, locs,
                                  n2f, _time.time() - t_start, outcome,
-                                 ens_q=members_by_loc, an_q=an_q)
+                                 an_q=an_q)
         except Exception as e:
             outcome["report_error"] = str(e)[:200]
         # 6. results index for the run page
         import json as _json
         import numpy as _np
+        from app.core import horizons as _hz
         def _qs_from_samples(s):
             out = {}
-            for h in ("1", "2", "3", "4"):
+            for h in _hz.HORIZONS:
                 a = _np.asarray(s.get(h, []), float); a = a[_np.isfinite(a)]
                 if a.size:
                     out[h] = {q: float(_np.quantile(a, float(q)))
@@ -2644,6 +2617,7 @@ def _run_all(spec: RunSpec) -> None:
             return {h: {q: qd[h][float(q)]
                         for q in ("0.1", "0.25", "0.5", "0.75", "0.9")}
                     for h in qd}
+        from app.core.horizons import models_to_stored as _hz_stored
         import os as _os
         _tmp = workroot / "results.json.tmp"
         _tmp.write_text(_json.dumps({
@@ -2651,14 +2625,18 @@ def _run_all(spec: RunSpec) -> None:
             "research": _research,
             "observed": obs,
             "params": params,
-            "models": {
+            # results.json stays in the STORED convention: the console
+            # reads workroots written long before the reindex and those
+            # runs are the user's record of what was forecast. Readers go
+            # through horizons.models_to_canonical, which tells the two
+            # apart by the presence of "4" and so never has to guess.
+            "models": _hz_stored({
                 "pf": {loc: _qs_from_samples(s) for loc, s in pf_samples.items()},
                 "analogue": {loc: _qs_from_q(q) for loc, q in an_q.items()},
                 **({"pf2s": {loc: _qs_from_samples(s)
                              for loc, s in pf2s_samples.items()}}
                    if pf2s_samples else {}),
-                "ensemble": {loc: _qs_from_q(q) for loc, q in members_by_loc.items()},
-            }}))
+            })}))
         _os.replace(_tmp, workroot / "results.json")   # readers never see a half-write
         # 7. forecast archive: one folder per forecast_date, latest run wins.
         # Research runs never archive: the archive is the record of what
@@ -2697,12 +2675,11 @@ def _run_all(spec: RunSpec) -> None:
             except Exception:
                 pass
         _status["log"].append(
-            f"{run_id}: pf {len(pf_samples)} loc, analogue {len(an_q)}, "
-            + (f"pf2s {len(pf2s_samples)}, " if pf2s_samples else "")
-            + f"ensemble {len(members_by_loc)}"
+            f"{run_id}: pf {len(pf_samples)} loc, groundhog {len(an_q)}"
+            + (f", pf2s {len(pf2s_samples)}" if pf2s_samples else "")
             + "".join(f", {m} relWIS {outcome[k]}" for m, k in
-                      (("pf", "pf_relwis"), ("analogue", "analogue_relwis"),
-                       ("ensemble", "ensemble_relwis")) if k in outcome))
+                      (("pf", "pf_relwis"), ("groundhog", "analogue_relwis"))
+                      if k in outcome))
     except Exception as e:
         from app.core.engines.pf import RunStopped
         if run_id is None:
@@ -2963,6 +2940,12 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
         return _back(request, "/forecast")
     members = 3 if (d.get("extra") or {}).get("members") == 3 else 2
     locs = [str(l) for l in (d.get("locations") or [])]
+    # the Groundhog's donors are part of the record: a row that carries
+    # auxiliary pools re-runs its preset (the name before the digest tag),
+    # and a row from before the bank shipped re-runs the bare analogue
+    _x = d.get("extra") if isinstance(d.get("extra"), dict) else {}
+    aux = (str(_x.get("analogue_aux") or "").split("+", 1)[0]
+           if _x.get("aux_pools") else "")
     # the spec the /run path will actually build from these fields, compared
     # against the stored one field by field before anything starts
     candidate = RunSpec(
@@ -2980,7 +2963,7 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
         drop_same_day=bool(d.get("drop_same_day", False)),
         replicates=int(d.get("replicates") or 3),
         particles=int(d.get("particles") or 10_000),
-        extra=_run_extra(members, _spec_mode(d)))
+        extra=_run_extra(members, _spec_mode(d), aux))
     # a row recorded before the mode existed reads as a real-time run
     if isinstance(d.get("extra"), dict):
         d["extra"].setdefault("mode", "realtime")
@@ -3012,7 +2995,8 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
                       members=members,
                       particles=candidate.particles,
                       mode=_spec_mode(d),
-                      drop_same_day=1 if candidate.drop_same_day else 0)
+                      drop_same_day=1 if candidate.drop_same_day else 0,
+                      aux=aux)
 
 
 @app.get("/api/series")
@@ -3115,13 +3099,27 @@ def _run_label(run_id: str, spec_json: str = "", tag: bool = True) -> str:
         return when + suffix
 
 
-def _run_extra(members: int, mode: str) -> dict:
+def _run_extra(members: int, mode: str, aux: str | None = None) -> dict:
     """The research dictionary a console run carries: the mode the form was
-    in (vintage or real-time), and the three-member flag when asked."""
+    in (vintage or real-time), the two-strain research flag when asked,
+    and the Groundhog's auxiliary donor pools.
+
+    `aux` is None for the shipped configuration (analogue.SHIPPED_AUX,
+    resolved against the committed banks so the row records the digests),
+    a preset name for another registered configuration, or "" for the bare
+    calendar analogue, a research run whose file is withheld. The pools
+    go INTO the spec, so the ledger row of record says which donors ran
+    and a stored spec replays the same way."""
+    from app.core.engines import analogue as _an
     mode = mode if mode in ("realtime", "vintage") else "realtime"
     extra = {"mode": mode}
     if members == 3:
         extra["members"] = 3
+    name = _an.SHIPPED_AUX if aux is None else str(aux)
+    if name:
+        fn = _an.aux_preset(name)                # unknown name raises here
+        extra["aux_pools"] = fn(None, 0, None)["aux_pools"]
+        extra["analogue_aux"] = fn.__name__.split(":", 1)[1]
     return extra
 
 
@@ -3185,21 +3183,17 @@ def _outcome_chips(outcome_json: str) -> str:
         bits.append(f'<span class="bad">{ns} submission'
                     f'{"s" if ns != 1 else ""} refused</span>')
     if o.get("submission_withheld"):
-        # the deliberate research-run withholding, rendered where the
+        # the deliberate withholding (a research run), rendered where the
         # refusals render: the reason existed only in raw ledger JSON
-        # before (review finding)
-        bits.append('<span class="hint">ensemble submission withheld '
+        # before (review finding); the model is named on the run page
+        bits.append('<span class="hint">submission withheld '
                     '(research run)</span>')
+    # the next two keys are written by no run since the blend was retired
+    # (2026-09-22); ledger rows from before carry them and are the record
     if o.get("ensemble_withheld"):
-        # every PF fit failed, so the blend would have been the analogue
-        # verbatim under the ensemble model name (the retro store refuses
-        # such a week the same way); the reason string stays on the run page
         bits.append('<span class="bad">ensemble withheld: '
                     'no PF member</span>')
     if o.get("ensemble_analogue_only"):
-        # these locations shipped in the ensemble file with only the
-        # analogue member (their PF replicates all failed); the names are
-        # on the run page, the chip carries the count only
         n = len(o["ensemble_analogue_only"])
         bits.append(f'<span class="bad">{n} location'
                     f'{"s" if n != 1 else ""} analogue-only in the '
@@ -3212,8 +3206,9 @@ def _outcome_chips(outcome_json: str) -> str:
                                 cells=o.get("pf_relwis_cells",
                                             o.get("pf_cells"))))
     # every member the run scored, not the PF alone (lead, 2026-09-07):
-    # the analogue and the ensemble carry the same ratio and gate
-    for key, member in (("analogue_relwis", "analogue"),
+    # the Groundhog carries the same ratio and gate; "ensemble" only on a
+    # row from before the blend was retired
+    for key, member in (("analogue_relwis", "Groundhog"),
                         ("ensemble_relwis", "ensemble")):
         if o.get(key):
             bits.append(relwis_chip(o[key], cells=o.get(f"{key}_cells"),
@@ -3304,7 +3299,6 @@ def output_page(request: Request):
         # label carry the research tag on this surface too
         "label": _run_label(rid, (res or {}).get("spec", "")) if rid else "",
         "date": (res or {}).get("forecast_date", ""),
-        "has_ensemble": bool((res or {}).get("models", {}).get("ensemble")),
         "files": files,
         "archive_dates": list(reversed(_archive_dates())),
         "has_report": bool(rid and (APP_STATE / "workroots" / rid / "report.html").is_file())})
@@ -3694,7 +3688,8 @@ def models_page(request: Request):
 def model_page(request: Request, name: str):
     blurbs = {
         "pf": ("PF-SIHRS",
-               "The mechanistic member. It assumes influenza moves people "
+               "The mechanistic model, submitted on its own. It assumes "
+               "influenza moves people "
                "through Susceptible, Infected, Hospitalized, and Recovered "
                "compartments, with seasonally varying transmission and "
                "immunity that wanes back to susceptibility. The model is "
@@ -3708,30 +3703,35 @@ def model_page(request: Request, name: str):
                "ratio of sums "
                "(values below 1 beat it): 1.023 in 2023-24, 0.636 in "
                "2024-25, 0.825 in 2025-26."),
-        "analogue": ("Calendar analogue",
-                     "The empirical member. It assumes the current season "
-                     "will resemble past seasons at the same point in the "
-                     "calendar: for each forecast it pools, across all "
-                     "states, the weeks from strictly earlier seasons that "
-                     "fall within two calendar weeks of the forecast date, "
-                     "measures the growth from each of those weeks to the "
-                     "target horizon, and scales the latest observed value "
-                     "by the quantiles of those growth ratios. No "
-                     "epidemiological mechanism is involved. It uses the "
-                     "archive of weekly NHSN admissions and nothing else. "
-                     "In the sealed record its strength lies at the middle "
-                     "horizons and in unusual seasons, where it anchors the "
-                     "ensemble; the particle filter is the stronger member "
-                     "at the shortest horizon. One "
-                     "prior season, 2021-22, is excluded from the donor "
+        "analogue": ("Groundhog",
+                     "The empirical model, submitted on its own. It assumes "
+                     "the current season will resemble past seasons at the "
+                     "same point in the calendar: for each forecast it "
+                     "pools, across all states, the weeks from strictly "
+                     "earlier seasons that fall within two MMWR epiweeks "
+                     "of the forecast date, measures the growth from each "
+                     "of those weeks to the target horizon, and scales the "
+                     "latest observed value by the quantiles of those "
+                     "growth ratios. No epidemiological mechanism is "
+                     "involved. Two donor histories feed it: the archive of "
+                     "weekly NHSN admissions, and a committed bank of "
+                     "FluSurv-NET hospitalization rates read the same way, "
+                     "its growth ratios shrunk toward the admissions scale "
+                     "by a factor fitted on strictly earlier seasons and "
+                     "averaged in at a fixed equal weight. One prior "
+                     "season, 2021-22, is excluded from the admissions "
                      "pool: it peaked in April 2022 and survives in the "
                      "archive only as its growth phase, so a "
                      "calendar-matched pool reads it with the wrong sign. "
                      "Measured three-season retrospective relWIS vs the "
-                     "FluSight baseline, ratio of sums: 1.045 in "
-                     "2023-24, 0.756 in 2024-25, 0.621 in 2025-26."),
+                     "FluSight baseline, ratio of sums, on 15,340 cells: "
+                     "0.722 in 2023-24, 0.653 in 2024-25, 0.651 in "
+                     "2025-26, pooled 0.666; the same engine without the "
+                     "FluSurv-NET donors, the calendar analogue that "
+                     "shipped inside the blend until 2026-09-22, scores "
+                     "0.771 on the same cells."),
         "pf2s": ("Two-strain SIHRS",
-                 "A research variant, not a shipped ensemble member. It "
+                 "A research variant, not a shipped model. It "
                  "models influenza A and influenza B as independent SIHRS "
                  "circuits, each with its own seasonally varying "
                  "transmission, and reports admissions as the sum of the "
@@ -3741,42 +3741,31 @@ def model_page(request: Request, name: str):
                  "influenza A among typed specimens. The initial A/B mix at "
                  "the season start comes from the same typed surveillance "
                  "series. It is stronger than the single-strain filter at "
-                 "turning points, but adding it to the ensemble scored "
-                 "worse on the full grid: relWIS 0.719 against 0.704 for "
-                 "the two-member blend (vs the FluSight baseline, ratio of "
-                 "sums, measured before the 2021-22 donor exclusion). The "
-                 "submitted ensemble stays at two members and this engine "
-                 "is kept for research runs only."),
-        "ensemble": ("Ensemble",
-                     "The submitted forecast. It averages the members' "
-                     "forecast quantiles with equal, unfitted weights: "
-                     "50/50 across the particle filter and the analogue, "
-                     "equal thirds when the two-strain member joins. "
-                     "Fitted weights were evaluated and scored worse than "
-                     "the equal blend, so no weight is tuned. The members' "
-                     "errors "
-                     "disagree in useful ways: the blend beats the baseline "
-                     "in all three replayed seasons, which neither member "
-                     "does alone. Measured three-season retrospective "
-                     "relWIS vs the FluSight baseline, ratio of sums: "
-                     "0.813 in 2023-24, 0.618 in 2024-25, 0.683 in "
-                     "2025-26; pooled 0.678 over 15,460 cells."),
+                 "turning points, but when the blend still shipped, adding "
+                 "it scored worse on the full grid: relWIS 0.719 against "
+                 "0.704 for the two-member blend (vs the FluSight "
+                 "baseline, ratio of sums, measured before the 2021-22 "
+                 "donor exclusion). This engine is kept for research runs "
+                 "only."),
     }
+    # The blend that shipped as LosAlamos_NAU-CModel_Flu until 2026-09-22
+    # has no page: nothing computes it. Runs from before still carry its
+    # stored quantiles under "ensemble" in results.json, and the run and
+    # forecast pages read them; this reference view is for the models that
+    # ship.
     # one-line summaries: the collapsed <details> summary on each model tab
     onelines = {
-        "pf": ("The mechanistic member: an SIHRS compartmental model fitted "
+        "pf": ("The mechanistic model: an SIHRS compartmental model fitted "
                "weekly by a sequential particle filter."),
-        "analogue": ("The empirical member: it scales the latest observation "
+        "analogue": ("The empirical model: it scales the latest observation "
                      "by historical growth ratios from matching calendar "
-                     "weeks."),
+                     "weeks, with banked FluSurv-NET donors."),
         "pf2s": ("A research variant, not shipped: influenza A and B as "
                  "parallel SIHRS circuits fitted to two data channels."),
-        "ensemble": ("The submitted forecast: an equal-weight quantile "
-                     "average of the member forecasts."),
     }
     # where each model tab points into the Methods page
     manchor = {"pf": "fitting", "analogue": "analogue",
-               "pf2s": "two-strain", "ensemble": "ensemble"}
+               "pf2s": "two-strain"}
     if name not in blurbs:
         return HTMLResponse("unknown model", status_code=404)
     rid, res = _latest_results()
@@ -3788,18 +3777,9 @@ def model_page(request: Request, name: str):
     if res and name in res.get("models", {}):
         fanq = {loc: qs for loc, qs in res["models"][name].items()
                 if all(isinstance(v, dict) for v in qs.values())}
-    # ensemble page: member medians for the raw-member overlay on the fan
+    # the raw-member overlay on the fan belonged to the retired blend's
+    # page; the reference views of the models that ship carry none
     overlay = {}
-    if name == "ensemble" and res:
-        for m, md in (res.get("models") or {}).items():
-            if m == "ensemble":
-                continue
-            for loc, qs in md.items():
-                if all(isinstance(v, dict) for v in qs.values()):
-                    meds = {h: v.get("0.5") for h, v in qs.items()
-                            if isinstance(v, dict) and v.get("0.5") is not None}
-                    if meds:
-                        overlay.setdefault(m, {})[loc] = meds
     form = dict(_last_form) or {"forecast_date": _default_forecast_date(),
                                 "locations": ["all"], "replicates": 3}
     # BNGL-backed models show their template source, read-only, read at
@@ -3839,60 +3819,6 @@ def model_page(request: Request, name: str):
         "form": form, "status": _status})
 
 
-@app.post("/model/ensemble/generate")
-def generate_ensemble(request: Request):
-    """(Re)blend from the latest run's stored member outputs -- no engine rerun."""
-    import json as _json
-    import os as _os
-    from app.core import ensemble as ens
-    from app.core.runs import APP_STATE
-    rid, res = _latest_results()
-    if not res:
-        _flash("Nothing to blend yet. Run the models first.")
-        return _back(request, "/model/ensemble")
-    import pandas as pd
-    locs = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
-    n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
-    blended = {}
-    for loc in (set(res["models"].get("pf", {}))
-                | set(res["models"].get("analogue", {}))
-                | set(res["models"].get("pf2s", {}))):
-        members = {}
-        for m in ("pf", "analogue", "pf2s"):
-            qd = res["models"].get(m, {}).get(loc)
-            if qd:
-                members[m] = {h: {float(q): v for q, v in qs.items()}
-                              for h, qs in qd.items()}
-        if members:
-            # equal, never-fitted weights, matching the live run's blend
-            b = ens.vincentize(members,
-                               weights=ens.equal_weights(members),
-                               location_fips=n2f.get(loc, ""))
-            blended[loc] = {h: {q: b[h][float(q)]
-                                for q in ("0.1", "0.25", "0.5", "0.75", "0.9")}
-                            for h in b}
-    res["models"]["ensemble"] = blended
-    _invalidate_scans()               # results.json is about to change
-    rp = APP_STATE / "workroots" / rid / "results.json"
-    _tmp = rp.parent / "results.json.tmp"
-    _tmp.write_text(_json.dumps(res))
-    _os.replace(_tmp, rp)             # readers never see a half-write
-    note = f"Ensemble re-blended for {len(blended)} location(s)"
-    # This path deliberately writes NO submission CSV. A re-blend works from
-    # results.json, which stores 5 display quantiles per horizon, not the
-    # member samples; the hub requires all 23 levels, so the file this used
-    # to write could never be submitted. Worse, it landed in the workroot's
-    # submission tree under a hub name, where the Output page lists it beside
-    # the real thing with a Download button -- a 5-quantile file dressed as a
-    # submission is a trap, not a convenience. The blend itself still lands
-    # in results.json and drives every view; a submittable ensemble CSV comes
-    # from a full run, which has the samples.
-    if blended:
-        note += (" · no submission CSV from a re-blend: stored results carry "
-                 "5 quantiles, the hub requires 23. Run the models to write "
-                 "a submittable ensemble file.")
-    _flash(note)
-    return _back(request, "/model/ensemble")
 
 
 RETRO_ROOT = Path(__file__).resolve().parents[1] / "state" / "retro"
@@ -4019,7 +3945,8 @@ def _scan_archive_entries(retro_root: Path, season: str) -> list:
         size = retro.dir_size(p)
         out.append({"id": stamp, "when": retro.stamp_human(stamp),
                     "weeks": s["weeks"], "elapsed_s": s["elapsed_s"],
-                    "rel": s["headline_rel"], "scored": s["scored"],
+                    "rel": s["headline_rel"], "rels": s.get("headline_rels"),
+                    "scored": s["scored"],
                     "size": size, "size_h": retro.human_bytes(size)})
     return out
 
@@ -4452,9 +4379,13 @@ def retro_index(request: Request):
         done = _weeks_done(root)
         prog = _retro_progress(s)
         status = prog["status"]
-        # the head score (season ensemble relWIS), so a completed season
-        # shows its verdict on the index instead of a ceremonial 100% bar
-        rel = _retro.run_summary(root)["headline_rel"]
+        # the head scores (one relWIS per model the season scored), so a
+        # completed season shows its verdict on the index instead of a
+        # ceremonial 100% bar
+        _summ = _retro.run_summary(root)
+        rel = _summ.get("headline_rel")
+        rels = _summ.get("headline_rels") or ({"": rel} if rel is not None
+                                              else {})
         # a stopped or interrupted replay offers one-click resumption with
         # the settings its own run record holds. The fields come from the
         # LIVE root's record, never the seal's: the live tree is the only
@@ -4467,7 +4398,7 @@ def retro_index(request: Request):
         seasons.append({"name": s, "total": total, "done": done,
                         "seal": is_seal,
                         "seal_label": _sealed_label(root) if is_seal else "",
-                        "rel": rel,
+                        "rel": rel, "rels": rels,
                         "resume_fields": resume_fields,
                         "settings": prog["settings"],
                         "archives": _archive_entries(s),
@@ -4618,9 +4549,6 @@ def retro_archive_delete(request: Request, season: str, stamp: str,
 # progress state polled from /api/retro/{season}/results_status.
 # --------------------------------------------------------------------------
 
-#: the shipped, never-self-fitted member weights every scoring surface uses
-RETRO_WEIGHTS = {"pf": 0.5, "analogue": 0.5}
-
 #: how long the results route waits for a just-started job before rendering
 #: the preparing state instead: small seasons (and every test tree) finish
 #: inside it, so the page renders complete exactly as it always did
@@ -4680,8 +4608,8 @@ def _week_map_cards(root: Path, wk: str) -> dict:
     d = retro.read_samples(sp)
     cards = {}
     for loc, s in d.get("pf", {}).items():
-        arr = np.asarray(s["1"], float)
-        origin = np.asarray(s["0"], float)
+        arr = np.asarray(s["0"], float)            # one week ahead
+        origin = np.asarray(s[_hzmod.ORIGIN], float)   # the anchor week
         lo = float(np.median(origin[np.isfinite(origin)]))
         probs = categorical_probs(arr, lo, int(n2p[loc]), 1)
         # escaped like every hover_html producer: the name reaches the
@@ -4738,7 +4666,7 @@ def _ensure_results_job(root: Path, season: str,
     def _run():
         try:
             job["seconds"] = retro.finalize_season(
-                root, season, ensemble_weights=RETRO_WEIGHTS,
+                root, season,
                 phase_cb=lambda p: job.__setitem__("phase", p),
                 force=force)
             # the page's default view is the LAST week's map: warm its
@@ -4928,7 +4856,7 @@ def _results_pending(root: Path) -> str:
         return "scores stale"
     if not _scores_scoreable_fast(root):
         return "" if _job_covered(root) else "scores empty"
-    if not retro.national_aggregate_fresh(root, RETRO_WEIGHTS):
+    if not retro.national_aggregate_fresh(root):
         return "national aggregate stale"
     return ""
 
@@ -4952,7 +4880,7 @@ def api_retro_results_status(season: str, archive: str = ""):
 
 def _retro_bg(season: str, locations: list, width: int,
               replicates: int = 3, particles: int = 10_000,
-              settings: dict | None = None):
+              settings: dict | None = None, engine: str = "pf"):
     """The season worker. `settings` is what the user actually chose on the
     form (the scope label and the engine preset); run_season folds in
     everything else and records the lot in run_meta.json before the first
@@ -4972,7 +4900,7 @@ def _retro_bg(season: str, locations: list, width: int,
                 raise _RetroStopRequested()
         retro.run_season(root, season, locations, replicates=replicates,
                          particles=particles, width=width, progress=_tick,
-                         settings=settings)
+                         settings=settings, engine=engine)
         # Completion work BEFORE the season reads done: score with the
         # equal, never-fitted member weights (the sealed recipe), build the
         # US national aggregate, and warm every week's playback caches, so
@@ -5172,12 +5100,12 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
             _flash(f"Season {season} is not available. A season appears once "
                    "its vintage archive exists.")
             return RedirectResponse("/retro", status_code=303)
-        if engine != "pf":
+        if engine not in retro.ENGINES:
             # pf2s slots in HERE later: accept engine == "pf2s", thread a
             # {"variant": "2strain"} extra through retro.run_week's RunSpec,
             # and collect the member alongside pf in samples.json.
-            _flash("Only the PF engine preset is available for retrospectives "
-                   "at present.")
+            _flash("The engine presets for a retrospective are the particle "
+                   "filter with the Groundhog, or the Groundhog alone.")
             return RedirectResponse("/retro", status_code=303)
         from app.core import us_national as usn
         all_states = _retro_state_names()
@@ -5211,6 +5139,21 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
         # form must never have moved or removed anything first.
         live = _live_root(season)
         existing = _weeks_done(live)
+        if mode == "resume" and existing:
+            # a tree replayed by one engine is not resumed by the other: the
+            # Groundhog-only weeks carry no PF and would be skipped as done
+            # by a full replay, and a full tree's weeks would keep their PF
+            # under a Groundhog-only label. The record says what ran.
+            was = str((retro.read_meta(live) or {}).get("settings", {})
+                      .get("engine") or "pf")
+            if was != engine:
+                _flash(f"{season} has {existing} completed week"
+                       f"{'' if existing == 1 else 's'} replayed with the "
+                       f"{retro_engine_label(was)} preset; the "
+                       f"{retro_engine_label(engine)} preset cannot resume "
+                       "them. Archive or discard the existing results to "
+                       "run it. Nothing was started.")
+                return RedirectResponse("/retro", status_code=303)
         if mode == "discard":
             if confirm != season:
                 _flash(f"Discarding {season} was not confirmed, so nothing "
@@ -5252,8 +5195,17 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
     # so an existing 52-jurisdiction record keeps describing 52.
     background.add_task(_retro_bg, season, names, width, replicates, particles,
                         {"scope": locations, "engine": engine,
-                         "national": bool(fit_national)})
+                         "national": bool(fit_national)}, engine)
     return RedirectResponse("/retro", status_code=303)
+
+
+#: the retrospective engine presets as the form and the record name them
+RETRO_ENGINE_LABELS = {"pf": "particle filter with the Groundhog",
+                       "analogue": "Groundhog only"}
+
+
+def retro_engine_label(engine: str) -> str:
+    return RETRO_ENGINE_LABELS.get(str(engine), str(engine))
 
 
 @app.get("/retro/{season}", response_class=HTMLResponse)
@@ -5310,7 +5262,9 @@ def retro_results(request: Request, season: str, week: str = "",
                               "elapsed_s": round(time.time() - job["t0"], 1)},
                 "archive": archive,
                 "archive_when": retro.stamp_human(archive) if archive else "",
-                "heads": {}, "curve": [], "states": [], "us_row": None,
+                "heads": {}, "curve": [], "curves": {}, "states": [],
+                "season_models": [], "member_colors": _member_colors(),
+                "us_row": None,
                 "us": None, "pooled_note": "",
                 "conv": relwis.DEFAULT_CONVENTION, "figs": None,
                 "conventions": _relwis_conventions(),
@@ -5337,6 +5291,7 @@ def retro_results(request: Request, season: str, week: str = "",
     # the published headline.
     df = usn.pooled_frame(df_all)
     heads, curve, states = {}, [], []
+    curves: dict = {}
     scoreable = (not df.empty) and ("model" in df.columns)
     # THE convention gate. One convention governs the head tiles and the
     # per-state table together (app/core/relwis computes both from the same
@@ -5359,13 +5314,19 @@ def retro_results(request: Request, season: str, week: str = "",
         # printing this line under a heading it does not belong to. One
         # grouped pass: the old loop re-scanned the frame per asof.
         asofs = sorted(df["asof"].unique())
-        ens = df[df.model == "ensemble"]
-        if len(ens):
-            cum = ens.groupby("asof")[["wis", "base_wis"]].sum() \
-                     .sort_index().cumsum()
+        # one line per model the frame carries, in relwis.MODELS order:
+        # the two that ship, and the retired blend's rows where a season
+        # scored before 2026-09-22 stored them
+        for m in relwis.MODELS:
+            g = df[df.model == m]
+            if not len(g):
+                continue
+            cum = g.groupby("asof")[["wis", "base_wis"]].sum() \
+                   .sort_index().cumsum()
             cum = cum.reindex(asofs).ffill().dropna()
-            curve = [(str(a)[:10], r.wis / r.base_wis)
-                     for a, r in cum.iterrows()]
+            curves[m] = [(str(a)[:10], r.wis / r.base_wis)
+                         for a, r in cum.iterrows()]
+        curve = curves.get("pf") or next(iter(curves.values()), [])
     # the national series, through THE resolution order (app/core/
     # us_national.resolve): a fitted US cell when the replay ran one, else
     # the constructed sum-of-states aggregate, else the officials alone.
@@ -5379,8 +5340,7 @@ def retro_results(request: Request, season: str, week: str = "",
     us = None
     if scoreable:
         try:
-            us = usn.resolve(root, df_all,
-                             ensemble_weights={"pf": 0.5, "analogue": 0.5})
+            us = usn.resolve(root, df_all)
         except Exception:
             us = None
     # us_row keeps the template's existing shape (a mapping carrying
@@ -5433,7 +5393,7 @@ def retro_results(request: Request, season: str, week: str = "",
             loc0 = sorted(d0.get("pf", {}))[0]
             fips0 = n2f_d.get(loc0)
             T0 = _dp.Timestamp(d0["asof"])
-            q0 = _de.member_quantiles_from_samples(d0["pf"][loc0]).get("1", {})
+            q0 = _de.member_quantiles_from_samples(d0["pf"][loc0]).get("0", {})
             act = truth_d.get((fips0, T0 + _dp.Timedelta(days=7)))
             med = q0.get(0.5, "KEY-MISSING")
             try:
@@ -5486,7 +5446,16 @@ def retro_results(request: Request, season: str, week: str = "",
     except Exception:
         official_catalog = []
     return templates.TemplateResponse(request, "retro_season.html", {
-        "active": "Retrospective", "season": season, "heads": heads, "curve": curve, "states": states,
+        "active": "Retrospective", "season": season, "heads": heads,
+        "curve": curve, "curves": curves, "states": states,
+        "member_colors": _member_colors(),
+        # the models this season scored, in table order: the two that ship
+        # and, for a season scored before 2026-09-22, the retired blend
+        "season_models": [m for m in relwis.MODELS
+                          if m in heads or m in curves
+                          or any((r.get(m) if isinstance(r, dict)
+                                  else getattr(r, m, None))
+                                 for r in states)],
         "us_row": us_row,
         # the provenance travels WITH the numbers: nothing on the page may
         # print a US score without also printing the label that says
@@ -5617,7 +5586,13 @@ def run_models(request: Request,
                # not on the form (the nowcast rule is the default); the
                # re-run path passes it so a recorded pre-rule methodology
                # reproduces instead of silently adopting today's default
-               drop_same_day: int = Form(0)):
+               drop_same_day: int = Form(0),
+               # not on the form either: the Groundhog's donors. Absent
+               # (None) is the shipped configuration; the re-run path
+               # passes what its row recorded, "" for a row that ran the
+               # bare analogue before the bank shipped, so a recorded run
+               # reproduces instead of silently adopting today's donors
+               aux: str | None = Form(None)):
     # Any day of the week is a legitimate thing to type. Surveillance weeks
     # END on Saturday, but NHSN publishes the finished week the following
     # WEDNESDAY, so the natural human action -- open the console on the day
@@ -5790,7 +5765,7 @@ def run_models(request: Request,
                    drop_same_day=bool(int(drop_same_day)),
                    replicates=replicates,
                    particles=particles,
-                   extra=_run_extra(members, mode))
+                   extra=_run_extra(members, mode, aux))
 
     if engine in ("all", "pf", "analogue"):
         # 'analogue' rides the same pipeline with the PF block skipped --

@@ -9,15 +9,17 @@ other hub-dependent test in this repo behaves.
 
 What is pinned here, and why each one is worth a test:
 
-  * THE NUMBERS REACH THE PAGE. 2024-25 ensemble 0.618 and pooled 0.678 are
-    the lab's published record. They must be computed from the forecasts on
-    disk and appear in the HTML -- not merely in the payload, because a
-    payload nobody renders is not a published figure.
-  * THE ENSEMBLE IS THE SHIPPED ONE. A season's scores.json can be written
-    with the frozen LOSO weights, which the lab evaluated and REJECTED.
-    Scoring from such a file would put the fitted figure on the page under
-    the name of the shipped forecast, and nothing about the page would look
-    wrong. The test asserts the computed figure matches the equal-weight
+  * THE NUMBERS REACH THE PAGE. On the sealed three-season record the
+    members' figures (PF 1.023 / 0.636 / 0.825, analogue 1.045 / 0.756 /
+    0.621) must be computed from the forecasts on disk and appear in the
+    HTML -- not merely in the payload, because a payload nobody renders is
+    not a published figure. Another tree on the machine is checked for
+    shape, not for those numbers.
+  * NO BLEND IS PRINTED. The equal-weight ensemble was retired on
+    2026-09-22 and no payload carries one; a page that printed a blend
+    would be printing something nothing computes. (Until then the pin
+    here was that the blend was the shipped equal-weight one and never
+    the frozen LOSO table the lab evaluated and REJECTED; the reasoning
     blend.
   * NOTHING LEAVES THE MACHINE. The page must reference no remote script,
     stylesheet, image or fetch beyond the Google Fonts stylesheet, or it is
@@ -163,29 +165,42 @@ def test_every_local_reference_resolves_on_disk(built):
 
 # ------------------------------------------------------------- the real data
 
+def _is_seal(root) -> bool:
+    return "retro_seal" in str(root)
+
+
 def test_known_scores_reach_the_html(built):
-    """The lab's published record, computed here and printed there."""
+    """The lab's published record, computed here and printed there. The
+    numeric pins are the SEAL's; another tree on the machine (a lab run,
+    a partial replay) is checked for shape and for the absence of any
+    blend."""
     res, out, html, payload = built
     by_season = {s["season"]: s for s in payload["seasons"]}
+    seasons = sb.discover_seasons()
+    for s in payload["seasons"]:
+        models = s["models"]
+        assert "ensemble" not in models, s["season"]       # nothing blended
+        assert ("pf" in models) or ("analogue" in models), s["season"]
+        for m in ("pf", "analogue"):
+            if m in models:
+                assert models[m]["cells"] > 0 and models[m]["rel"] > 0
+    assert "ensemble" not in payload["pooled"]
 
-    if "2024-25" in by_season:
-        rel = by_season["2024-25"]["models"]["ensemble"]["rel"]
-        assert round(rel, 3) == 0.618, rel
-        assert '<td class="n okc">0.618</td>' in html
-        # the members that make that blend
+    if "2024-25" in by_season and _is_seal(seasons["2024-25"]["root"]):
         assert round(by_season["2024-25"]["models"]["pf"]["rel"], 3) == 0.636
         assert round(by_season["2024-25"]["models"]["analogue"]["rel"],
                      3) == 0.756
+        assert '<td class="n okc">0.636</td>' in html
 
-    if {"2023-24", "2024-25", "2025-26"} <= set(by_season):
-        assert round(by_season["2023-24"]["models"]["ensemble"]["rel"],
-                     3) == 0.813
-        assert round(by_season["2025-26"]["models"]["ensemble"]["rel"],
-                     3) == 0.683
-        pooled = payload["pooled"]["ensemble"]["rel"]
-        assert round(pooled, 3) == 0.678, pooled
-        assert "0.678" in html
-        # a member that LOST to the baseline must not read as neutral
+    if ({"2023-24", "2024-25", "2025-26"} <= set(by_season)
+            and all(_is_seal(seasons[s]["root"]) for s in by_season)):
+        assert round(by_season["2023-24"]["models"]["pf"]["rel"],
+                     3) == 1.023
+        assert round(by_season["2025-26"]["models"]["pf"]["rel"],
+                     3) == 0.825
+        assert round(by_season["2025-26"]["models"]["analogue"]["rel"],
+                     3) == 0.621
+        # a model that LOST to the baseline must not read as neutral
         assert '<td class="n badc">1.023</td>' in html
 
 
@@ -209,34 +224,33 @@ def test_site_build_never_reads_a_stored_scores_file():
         "recompute from playback payloads, never read a stored score file")
 
 
-def test_the_scored_ensemble_is_the_shipped_fifty_fifty_blend():
-    """And the number it computes is the published, unfitted one."""
+def test_the_site_never_scores_a_blend_even_where_a_stored_one_exists():
+    """A tree scored before 2026-09-22 keeps the blend's rows in its own
+    scores.json; the site, which recomputes from the payloads, must still
+    print none, and its member figures must be the stored members' own."""
     pd = pytest.importorskip("pandas")
     seasons = sb.discover_seasons()
     if "2024-25" not in seasons:
         pytest.skip("2024-25 not on this machine")
-    sf = Path(seasons["2024-25"]["root"]) / "scores.json"
-    if not sf.is_file():
-        pytest.skip("this 2024-25 root has no stored scores.json")
-    df = pd.read_json(sf)
-    g = df[df.model == "ensemble"]
-    loso = float(g.wis.sum() / g.base_wis.sum())
-
     from app.core.scoring import load_truth
     truth, n2f = load_truth()
     computed = sb.score_season("2024-25", seasons["2024-25"], truth,
-                               n2f)["models"]["ensemble"]["rel"]
-    assert round(computed, 3) == 0.618
-    # The stored file's vintage decides whether the two agree, and both
-    # vintages are legitimate: a pre-v1.0 store holds the rejected LOSO
-    # ensemble, a rescored one holds the shipped blend. So this
-    # can only be asserted when the store is the old vintage -- the code-path
-    # invariant is pinned by test_site_build_never_reads_a_stored_scores_file
-    # instead, which does not depend on what is on disk.
-    if abs(computed - loso) > 1e-3:
-        assert abs(computed - loso) > 0.01, (
-            "the stored LOSO ensemble sits suspiciously close to the shipped "
-            "blend without matching it")
+                               n2f)["models"]
+    assert "ensemble" not in computed
+    assert "pf" in computed or "analogue" in computed
+    sf = Path(seasons["2024-25"]["root"]) / "scores.json"
+    if not sf.is_file():
+        return
+    df = pd.read_json(sf)
+    for m in ("pf", "analogue"):
+        g = df[df.model == m] if "model" in df.columns else df[:0]
+        if len(g) and m in computed:
+            stored = float(g.wis.sum() / g.base_wis.sum())
+            # the same members, the same cells, the same formula; a stored
+            # file scored under an older cell rule may differ, but never
+            # by more than the rule's own margin
+            assert abs(stored - computed[m]["rel"]) < 0.05, (m, stored,
+                                                             computed[m])
 
 
 def test_the_baseline_scores_exactly_one_against_itself(built):
@@ -309,11 +323,19 @@ def test_placements_are_harvested_not_invented(built):
 
 
 def test_every_computed_score_matches_what_the_console_publishes(built):
-    """The drift alarm. The console states its performance in prose; this
-    build recomputes it. They must agree, or one of them has moved."""
+    """The drift alarm. The console states its performance in prose (the
+    reseal's PF figures, home.html); this build recomputes it from the
+    tree on disk. They must agree, or one of them has moved. Only the
+    reseal can agree with the reseal, so another tree skips the numeric
+    half and keeps the structural one."""
     res, out, html, payload = built
     checks = payload["consistency"]
     assert checks, "nothing was cross-checked"
+    assert all("PF-SIHRS" in c["what"] for c in checks)
+    seasons = sb.discover_seasons()
+    if not all("retro_reseal" in str(v["root"]) for v in seasons.values()):
+        pytest.skip("the console publishes the reseal; this machine's "
+                    "trees are another record")
     bad = [c for c in checks if not c["ok"]]
     assert not bad, bad
     assert "matches the figure the console publishes" in html

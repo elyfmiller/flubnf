@@ -19,12 +19,43 @@ from fastapi.testclient import TestClient           # noqa: E402
 
 import app.core.runs as runs_mod                    # noqa: E402
 import app.ui.server as srv                         # noqa: E402
+from app.core import horizons as hz                 # noqa: E402
 from app.core import report_v2                      # noqa: E402
 
 client = TestClient(srv.app)
 
 OLD_MTIME = (1_000_000_000, 1_000_000_000)          # 2001: always stale
 FUTURE_MTIME = (4_000_000_000, 4_000_000_000)       # 2096: always fresh
+
+
+def _canonical_samples(rng):
+    """One location's samples in the shape pf.collect() now hands the
+    report: the anchor week under hz.ORIGIN, then the four forecasts under
+    the hub's own labels "0".."3". The anchor is carried, never plotted
+    and never scored, so a report that mistook it for a forecast week
+    would be drawing a week that has already happened.
+
+    Each forecast week is shifted 10 admissions further out than the one
+    before it, so the four weeks stay distinguishable: a fan built from
+    the wrong key comes out as a visibly wrong curve rather than as the
+    same numbers in a different order.
+
+    TWO THINGS ARE DELIBERATE ABOUT THE ORDER AND THE OFFSETS.
+
+    The forecasts are drawn FIRST and the anchor LAST. Drawing the anchor
+    first would consume the leading 400 values of the seeded stream and
+    move every forecast week's numbers, which would make this fixture's
+    output incomparable with the one it replaced. The reindex changed
+    labels; it must not change a single value.
+
+    The anchor sits near `last_observed` (127.0 in the callers below)
+    rather than below the forecasts. A real pf.collect() anchor IS the
+    filtered estimate of the last observed week, so an anchor that came
+    out 35 admissions under the observed tail would teach the wrong shape
+    to whoever copies this next."""
+    fc = {h: (rng.gamma(5.0, 20.0, 400) + 10 * (i + 1)).tolist()
+          for i, h in enumerate(hz.HORIZONS)}
+    return {**fc, hz.ORIGIN: (rng.gamma(5.0, 20.0, 400) * 0.1 + 117.0).tolist()}
 
 
 def _synth_run(workroot: Path):
@@ -36,9 +67,7 @@ def _synth_run(workroot: Path):
     spec = runs_mod.RunSpec(engine="pf", forecast_date="2098-01-03",
                             locations=["Ohio", "US"])
     rng = np.random.default_rng(7)
-    pf_samples = {loc: {str(h): (rng.gamma(5.0, 20.0, 400) + 10 * h).tolist()
-                        for h in (1, 2, 3, 4)}
-                  for loc in ("Ohio", "US")}
+    pf_samples = {loc: _canonical_samples(rng) for loc in ("Ohio", "US")}
     obs = {loc: [[f"2097-12-{d:02d}", 100.0 + d] for d in (6, 13, 20, 27)]
            for loc in ("Ohio", "US")}
     workroot.mkdir(parents=True, exist_ok=True)
@@ -241,8 +270,9 @@ def test_archive_carries_the_bundle(tmp_path, monkeypatch):
 
 
 def _synth_run_with_ensemble(workroot: Path):
-    """The bundle-test synthetic run, plus a vincentized ensemble and the
-    results.json the home page reads, laid out as a real latest workroot."""
+    """The bundle-test synthetic run (PF samples only) plus a results.json
+    in the shape a run from before 2026-09-22 stored, the blend alone, laid
+    out as a real latest workroot. The build path ignores `ens_q` now."""
     import numpy as np
     from app.core import ensemble as ens
     from flubnf.settings import load_locations
@@ -251,9 +281,7 @@ def _synth_run_with_ensemble(workroot: Path):
     spec = runs_mod.RunSpec(engine="pf", forecast_date="2098-01-03",
                             locations=["Ohio", "US"])
     rng = np.random.default_rng(7)
-    pf_samples = {loc: {str(h): (rng.gamma(5.0, 20.0, 400) + 10 * h).tolist()
-                        for h in (1, 2, 3, 4)}
-                  for loc in ("Ohio", "US")}
+    pf_samples = {loc: _canonical_samples(rng) for loc in ("Ohio", "US")}
     obs = {loc: [[f"2097-12-{d:02d}", 100.0 + d] for d in (6, 13, 20, 27)]
            for loc in ("Ohio", "US")}
     ens_q = {loc: ens.member_quantiles_from_samples(s)
@@ -288,19 +316,19 @@ def test_home_map_renders_the_reports_exact_cards(tmp_path, monkeypatch):
     assert rid == w.name
     cards, meta = srv._outlook_cards(res, rid)
     bundle = json.loads((w / report_v2.BUNDLE_NAME).read_text())
-    assert bundle["cards_model"] == "ensemble"      # the submitted forecast
+    assert bundle["cards_model"] == "pf"            # the PF colours the map
     expect = {c["fips"]: c for c in bundle["cards"].values() if c.get("fips")}
     assert cards == expect                          # exact, not recomputed
-    assert meta == {"model": "ensemble", "approx": False,
-                    "label": "FluBNF Ensemble outlook",
+    assert meta == {"model": "pf", "approx": False,
+                    "label": "PF-SIHRS outlook",
                     # the v4 scope record rides with the cards so the home
                     # map can say which card-less states were unfitted
                     "fitted_fips": ["39"]}
     # the model label lands on BOTH surfaces
-    assert "FluBNF Ensemble outlook" in (w / "report.html").read_text()
+    assert "PF-SIHRS outlook" in (w / "report.html").read_text()
     home = client.get("/")
     assert home.status_code == 200
-    assert "FluBNF Ensemble outlook" in home.text
+    assert "PF-SIHRS outlook" in home.text
     assert "approximate, from stored quantiles" not in home.text
 
 
@@ -320,12 +348,14 @@ def test_pre_bundle_run_falls_back_and_labels_the_approximation(
     srv._invalidate_scans()
     rid, res = srv._latest_results()
     cards, meta = srv._outlook_cards(res, rid)
+    # the stored results carry the blend alone (a run from before it was
+    # retired), so that is the one model the fallback can offer
     assert meta["approx"] is True and meta["model"] == "ensemble"
     assert any(c.get("probs") for c in cards.values())
     home = client.get("/")
     # the label span is the model toggle's relabel target, so the phrase
     # spans a data-mapmodel-label element
-    assert "FluBNF Ensemble outlook" in home.text
+    assert "FluBNF Ensemble (retired) outlook" in home.text
     assert "approximate, from stored quantiles" in home.text
 
 

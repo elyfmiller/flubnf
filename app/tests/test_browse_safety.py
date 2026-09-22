@@ -54,6 +54,7 @@ from fastapi.testclient import TestClient           # noqa: E402
 from fastapi.routing import APIRoute                # noqa: E402
 
 import app.core.runs as runs_mod                    # noqa: E402
+from app.core import horizons as hz                 # noqa: E402
 from app.core import playback                       # noqa: E402
 from app.core import report_v2                      # noqa: E402
 from app.core import retro                          # noqa: E402
@@ -213,8 +214,14 @@ def _synth_run(workroot: Path):
     spec = runs_mod.RunSpec(engine="pf", forecast_date="2098-01-03",
                             locations=["Ohio", "US"])
     rng = np.random.default_rng(7)
-    pf_samples = {loc: {str(h): (rng.gamma(5.0, 20.0, 400) + 10 * h).tolist()
-                        for h in (1, 2, 3, 4)}
+    # _write_weekly_report sits above the storage boundary, so the member
+    # arrives in canonical horizons: the hub's own labels "0".."3", and no
+    # anchor key (the report's fans are forecasts only). The offsets keep
+    # the physical weeks these draws stood for, so the bundle is the same
+    # shape it was before the labels moved.
+    pf_samples = {loc: {h: (rng.gamma(5.0, 20.0, 400)
+                            + 10 * (int(h) + 1)).tolist()
+                        for h in hz.HORIZONS}
                   for loc in ("Ohio", "US")}
     obs = {loc: [[f"2097-12-{d:02d}", 100.0 + d] for d in (6, 13, 20, 27)]
            for loc in ("Ohio", "US")}

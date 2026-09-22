@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import math
 
+from app.core import horizons as hz
 import numpy as np
 
 from app.core.runs import derive_seed
@@ -43,7 +44,7 @@ def floor_samples(samples_by_h: dict, location: str, date: str,
     fit never triggers the adaptive branch.
     """
     arrs = {h: np.asarray(v, dtype=float) for h, v in samples_by_h.items()}
-    # The collapse test looks at FORECAST horizons only. The origin ("0")
+    # The collapse test looks at FORECAST horizons only. The origin
     # is multiplicatively anchored to the last observed value, so any
     # nonzero final week kept `collapsed` False even when every forecast
     # horizon was flat zero -- suppressing the adaptive branch in exactly
@@ -51,7 +52,7 @@ def floor_samples(samples_by_h: dict, location: str, date: str,
     # finding). The origin still receives the floor's noise below; it just
     # no longer vetoes the rate decision.
     fins = [a[np.isfinite(a)]
-            for h, a in arrs.items() if str(h) != "0"]
+            for h, a in arrs.items() if str(h) != hz.ORIGIN]
     collapsed = all(a.size and np.quantile(a, 0.9) <= 0 for a in fins) \
         and any(a.size for a in fins)
     if collapsed and recent is not None:
