@@ -11,9 +11,11 @@
  <p>FluBNF generates real-time probabilistic forecasts of weekly influenza
  hospital admissions for all 52 US jurisdictions, in the quantile format
  required by the CDC <a href="https://github.com/cdcepi/FluSight-forecast-hub" target="_blank" rel="noopener">FluSight
- forecast hub</a>. Two models run each week: a mechanistic SIHRS model fitted
- by a sequential particle filter, and a calendar analogue built from
- historical seasons. Their blend, the ensemble, is the submitted forecast.</p>
+ forecast hub</a>. Two models run each week and each is submitted on its
+ own: a mechanistic SIHRS model fitted by a sequential particle filter, and
+ the Groundhog, a calendar analogue built from historical seasons with an
+ auxiliary donor bank. Nothing is blended; the equal-weight ensemble that
+ was submitted until 2026-09-22 is retired.</p>
 </div>
 
 <div class="card" id="sihrs"><h2>The SIHRS model</h2>
@@ -80,7 +82,7 @@
 
 <div class="card" id="two-strain">
  <h2>Research: the two-strain variant
-  <span class="pill">not in the shipped ensemble</span></h2>
+  <span class="pill">not a shipped model</span></h2>
  <p><b>What it does.</b> The two-strain SIHRS variant models influenza A and
  influenza B as independent transmission circuits, each with its own
  seasonally varying transmission rate and its own peak timing. Each circuit
@@ -104,12 +106,12 @@
  {{ dg.eq_pf2s() }}
 
  <p><b>Why it does not ship.</b> The two-strain member is stronger than the
- single-strain filter at turning points, but membership is decided on the
- full grid: there the equal-weight three-member ensemble scored relWIS
- 0.719 against 0.704 for the two-member blend, so adding it makes the
- submitted forecast worse and the blend stays at two members. Those figures
+ single-strain filter at turning points, but membership was decided on the
+ full grid while the blend still shipped: there the equal-weight
+ three-member ensemble scored relWIS 0.719 against 0.704 for the two-member
+ blend, so adding it made the submitted forecast worse. Those figures
  predate the 2021-22 donor exclusion, which moved the two-member reference
- to 0.678.</p>
+ to 0.678. The blend is retired; this engine remains a research run.</p>
 
  <p>The engine remains available for research runs. The
  <a href="/model/pf2s">two-strain model page</a> stays reachable by direct
@@ -118,25 +120,43 @@
  operational path.</p>
 </div>
 
-<div class="card" id="analogue"><h2>The calendar analogue</h2>
+<div class="card" id="analogue"><h2>The Groundhog</h2>
  {{ dg.analogue_ratios(uid='ma') }}
- <p>The analogue is a purely empirical member with no epidemiological
- mechanism. For a forecast at horizon h it collects donor weeks: every week
- from strictly earlier seasons, in any state, whose calendar week falls
- within two weeks of the forecast date. For each donor it records the growth
- ratio between admissions h weeks after the donor week and admissions in the
- donor week itself. The forecast distribution is the last observed value
- scaled by the empirical quantiles of those growth ratios; a cell with fewer
- than 30 usable donors produces no forecast. Donors are pooled across states
- because a single state supplies only about five donors per prior season
- inside the calendar window, far short of the 30-donor minimum, and they
- never come from the season being forecast. The pool also holds the US
- national row, about 2 percent of donors, measured 2026-09-08 and kept; the
- release record has the numbers. The analogue uses the archive of
- weekly NHSN admissions and nothing else. In the sealed record its strength
- lies at the middle horizons and in seasons that behave unusually, where it
- anchors the ensemble; the particle filter is the stronger member at the
- shortest horizon.</p>
+ <p>The Groundhog is a purely empirical model with no epidemiological
+ mechanism, submitted on its own. For a forecast at horizon h it collects
+ donor weeks: every week from strictly earlier seasons, in any state, whose
+ MMWR epiweek falls within two weeks of the forecast date's. For each donor
+ it records the growth ratio between admissions h weeks after the donor
+ week and admissions in the donor week itself. The forecast distribution is
+ the last observed value scaled by the empirical quantiles of those growth
+ ratios; a cell with fewer than 30 usable donors produces no forecast.
+ Donors are pooled across states because a single state supplies only about
+ five donors per prior season inside the calendar window, far short of the
+ 30-donor minimum, and they never come from the season being forecast. The
+ pool also holds the US national row, about 2 percent of donors, measured
+ 2026-09-08 and kept; the release record has the numbers. Epiweek 53, which
+ MMWR years such as 2014, 2020 and 2025 carry, is seated between weeks 52
+ and 1 for the calendar match, and a donor's future value is always read by
+ date arithmetic, never by week label.</p>
+ <p><b>The auxiliary donor bank.</b> A second pool is built by the same
+ construction on FluSurv-NET weekly hospitalization rates, banked in the
+ repository as a content-addressed file whose digest every run records (the
+ stream has no revision history, so a snapshot is the only thing there is).
+ Its growth ratios are shrunk toward the admissions scale by a factor fitted
+ only on strictly earlier overlap seasons, and the two ratio quantile
+ functions are averaged at a fixed equal weight that is not fitted. This is
+ what separates the Groundhog from the calendar analogue that shipped inside
+ the blend: the same engine, the same admissions pool, plus these donors.
+ The arm was pre-registered and selected against an ILI+ bank on the same
+ cells; both banks are committed and either can be run.</p>
+ <p><b>Coverage.</b> The construction is split-conformal in form only. The
+ calendar windows overlap and the donors are neither exchangeable with the
+ target nor independent of one another (weekly values are serially
+ dependent, one donor week serves five windows, jurisdictions move
+ together within a season), so no finite-sample coverage guarantee is
+ claimed. Band-conditional empirical coverage is measured from the replays
+ instead: over three seasons the central 50, 80 and 90 percent bands
+ covered 0.51, 0.80 and 0.95, with the worst band deviation 0.012.</p>
  <p>One prior season is excluded from the donor pool: 2021-22. It peaked at
  epiweek 16, in April 2022, while every other donor season peaked between
  epiweek 48 and epiweek 6, and the archived surveillance series begins
@@ -144,26 +164,20 @@
  calendar-matched pool asks what happened in March and 2021-22 answers that
  the epidemic was still growing: it is the only donor season whose March
  ratios have a median above one, with a far heavier upper tail than any
- other season's. Excluding it improves the shipped ensemble by 3.66
+ other season's. Excluding it improved the blend that then shipped by 3.66
  percent pooled, positive in all three sealed seasons and in 50 of 52
  jurisdictions; the full measurement and its controls are in the release
  record (docs/RELEASE-1.0.md).</p>
- <p class="hint">Model tab: <a href="/model/analogue">Calendar analogue</a>.</p>
+ <p class="hint">Model tab: <a href="/model/analogue">Groundhog</a>.</p>
 </div>
 
-<div class="card" id="ensemble"><h2>The ensemble</h2>
- {{ dg.ensemble_mech(uid='me') }}
- <p>The submitted forecast blends the particle filter with the calendar
- analogue described above by averaging their forecast quantiles. The two
- members fail differently; the mechanistic model can track turning points
- the analogue cannot anticipate, while the analogue holds the middle
- horizons and stays anchored when a season behaves unusually. The members
- carry equal, unfitted weights: 50/50 across the
- two shipped members, and equal thirds if a research run adds the
- <a href="#two-strain">two-strain variant</a>, which the submitted ensemble
- does not. Fitted weights were evaluated and scored worse than the equal
- blend, so no weight is tuned on any season.</p>
- <p class="hint">Model tab: <a href="/model/ensemble">FluBNF Ensemble</a>.</p>
+<div class="card" id="ensemble"><h2>Retired: the blend</h2>
+ <p>Until 2026-09-22 the submitted forecast was an equal-weight quantile
+ average of the particle filter and the calendar analogue, under the
+ registered identity LosAlamos_NAU-CModel_Flu. It is retired: the two
+ models are now submitted separately and nothing computes the blend. Runs
+ and sealed seasons from before that date keep their blend rows and read
+ as they did; the sealed record is docs/RELEASE-1.0.md.</p>
 </div>
 
 <div class="card"><h2>Measured performance</h2>
@@ -178,21 +192,20 @@
  <div style="overflow-x:auto"><table>
   <tr><th>Model</th><th>2023-24</th><th>2024-25</th><th>2025-26</th></tr>
   <tr><td>PF-SIHRS</td><td class="ok">0.840</td><td class="ok">0.797</td><td class="ok">0.846</td></tr>
-  <tr><td>Calendar analogue</td><td class="bad">1.045</td><td class="ok">0.756</td><td class="ok">0.618</td></tr>
-  {# the shared display name, not the bare word. Its two neighbours in this
-     column are branded ("PF-SIHRS", "Calendar analogue") and the same three
-     models are listed as "FluBNF Ensemble" on the home card, on the public
-     site's member table and on every season page, so "Ensemble" alone was
-     this page's own second name for one model. #}
-  <tr><td>FluBNF Ensemble</td><td class="ok">0.834</td><td class="ok">0.716</td><td class="ok">0.663</td></tr>
+  <tr><td>Groundhog</td><td class="ok">0.722</td><td class="ok">0.653</td><td class="ok">0.651</td></tr>
+  <tr><td>Calendar analogue without auxiliary donors (retired)</td><td class="bad">1.045</td><td class="ok">0.756</td><td class="ok">0.618</td></tr>
  </table></div>
- <p class="hint">Pooled ensemble relWIS 0.723 over 15,460 scored cells,
- measured 2026-09-07 with the production engine through the console's own
- replay command. The sealed record (sealed 2026-08-19, rebuilt 2026-08-24;
- 0.678 pooled, from an engine whose kernel jittered in raw space) is kept in
- docs/RELEASE-1.0.md.
- On placement against the real FluSight fields, see the verification
- policies below.</p>
+ <p class="hint">PF-SIHRS: measured 2026-09-07 with the production engine
+ through the console's own replay command. Groundhog and the bare analogue:
+ measured 2026-09-21 on the same 15,340 cells over the 52 jurisdictions
+ (<code>flubnf groundhog retro all --aux flusurv</code>), pooled 0.666
+ against 0.771; the paired difference over the 76 forecast dates is below
+ zero in every one of 4,000 bootstrap replicates. The blend of the PF and
+ the bare analogue that shipped until 2026-09-22 pooled 0.723 over 15,460
+ cells; its sealed record (sealed 2026-08-19, rebuilt 2026-08-24; 0.678
+ pooled, from an engine whose kernel jittered in raw space) is kept in
+ docs/RELEASE-1.0.md. On placement against the real FluSight fields, see
+ the verification policies below.</p>
 </div>
 
 <div class="card"><h2>Under the hood</h2>

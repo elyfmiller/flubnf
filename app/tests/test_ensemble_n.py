@@ -155,6 +155,6 @@ def test_methods_page_carries_two_strain_research_section():
     # and the note that both sides of that comparison predate the donor
     # exclusion, so a reader does not weigh 0.719 against today's 0.678
     assert "0.678" in r.text
-    assert "not in the shipped ensemble" in r.text
+    assert "not a shipped model" in r.text
     assert "validation is in progress" not in r.text
     assert "validation now in progress" not in r.text

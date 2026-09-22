@@ -128,16 +128,19 @@ function pickLoc(map, loc){
 // which parses the marked JSON below. Keep it a pure JSON object between
 // the markers for that reason.
 //
-// The blend is "FluBNF Ensemble" on every human-facing surface. This entry
-// used to carry the older team-prefixed name while the season tables were
-// already headed "FluBNF Ensemble", so one published page printed two
-// names for one model. The hub submission identity is a SEPARATE thing and
-// does not change with this: forecasts still go out under the registered
-// model_id built in app/core/submit.py, which is not a display name.
+// "analogue" is the Groundhog: the calendar analogue engine with its
+// shipped auxiliary donor bank, a standalone submission since 2026-09-22.
+// A stored run or season from before that date ran the same engine
+// without the donors; the surfaces that know (the run page, the season
+// page) say so beside the name. The blend was retired the same day; its
+// entry stays so the record of the runs that shipped it still reads.
+// The hub submission identity is a SEPARATE thing and does not change
+// with this: forecasts go out under the registered model_id built in
+// app/core/submit.py, which is not a display name.
 var MODEL_NAMES = /*MODEL_NAMES_JSON*/{
-  "ensemble": "FluBNF Ensemble",
+  "ensemble": "FluBNF Ensemble (retired)",
   "pf": "PF-SIHRS",
-  "analogue": "Calendar analogue",
+  "analogue": "Groundhog",
   "pf2s": "Two-strain SIHRS",
   "FluSight-ensemble": "FluSight ensemble (official)",
   "FluSight-baseline": "FluSight baseline (official)"

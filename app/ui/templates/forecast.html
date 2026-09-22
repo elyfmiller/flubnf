@@ -118,11 +118,12 @@
     separately.</p>
    <label>Model</label>
    {# the form still posts `engine`: the run path's names for the three
-      shipped configurations. The reader picks a MODEL; the engine row
-      below appears only when the SIHRS member is part of the run. #}
-   {% set engine_names = {"all": "FluBNF ensemble: SIHRS + calendar analogue",
+      configurations. The reader picks what to run; the engine row below
+      appears only when the SIHRS is part of the run. Both models are
+      submitted on their own; "all" writes both files. #}
+   {% set engine_names = {"all": "Both models: SIHRS and Groundhog",
                           "pf": "SIHRS only",
-                          "analogue": "Calendar analogue only"} %}
+                          "analogue": "Groundhog only"} %}
    <select name="engine" id="model-pick">{% for e in engines %}
      <option value="{{ e }}" {% if e == form.engine %}selected{% endif %}>{{ engine_names.get(e, e) }}</option>{% endfor %}</select>
    <div id="engine-row">
@@ -136,9 +137,9 @@
       m.addEventListener('change', sync); sync();
     })();
    </script>
-   {# The two-strain third member has no control here: it failed its
-      full-grid ensemble gate and does not ship. The /run endpoint still
-      accepts members=3 for research use. #}
+   {# The two-strain member has no control here: it failed its full-grid
+      gate while the blend shipped and does not ship. The /run endpoint
+      still accepts members=3 for research use. #}
    <details class="adv"><summary class="advbtn">Advanced settings</summary>
     <label>Season start</label>
     <input type="date" name="season_start" value="{{ form.season_start }}">
@@ -563,7 +564,9 @@
  drawData('season');
  // forecast fans (interactive, full width)
  const MODELS=Object.keys(FANQ);
- let FMODEL=MODELS.includes('ensemble')?'ensemble':MODELS[0];
+ // PF first, then the Groundhog; "ensemble" only on a run stored before
+ // the blend was retired (2026-09-22), where it is still the record
+ let FMODEL=['pf','analogue','ensemble'].find(m=>MODELS.includes(m))||MODELS[0];
  let FLOCS=FMODEL?Object.keys(FANQ[FMODEL]):[];
  let FIDX=0;
  async function ensureSeries(loc){
@@ -619,9 +622,9 @@
    if(aftX.length) traces.push({x:aftX,y:aftY,mode:'lines+markers',
      name:'settled outcome',line:{color:css('--ink'),dash:'dot',width:1.4},
      marker:{size:4}});
-   // ensemble selected: raw member medians as thin distinct lines, hidden
-   // until toggled on via their legend items (band + median stay primary),
-   // each in its member's own color and shared display name
+   // a stored blend selected (a run from before it was retired): raw
+   // member medians as thin distinct lines, hidden until toggled on via
+   // their legend items, each in its member's own color and display name
    if(FMODEL==='ensemble'){
      const MDASH={pf:'solid',analogue:'dash',pf2s:'dot'};
      for(const m of MODELS){

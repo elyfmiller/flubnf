@@ -35,7 +35,7 @@ NAU = (UI / "static" / "nau.css").read_text()
 JOINED = " ".join(NAU.split())
 
 READING_PAGES = ("/methods", "/models", "/model/pf", "/model/analogue",
-                 "/model/ensemble", "/model/pf2s")
+                 "/model/pf2s")
 
 # retired override blocks: none of these may ever come back
 FIG_RULE = 'svg[role="img"]{margin-left:0 !important'

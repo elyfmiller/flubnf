@@ -231,9 +231,9 @@ def test_report_carries_the_season_verdict_before_the_player(tmp_path,
     assert "Season verdict" in html
     # final relWIS tiles for each member and the ensemble, colored by the
     # below-1 rule; the values are the final week's cumulative stats
-    for name, val, cls in (("FluBNF Ensemble", "0.900", "ok"),
+    for name, val, cls in (("FluBNF Ensemble (retired)", "0.900", "ok"),
                            ("PF-SIHRS", "0.500", "ok"),
-                           ("Calendar analogue", "1.500", "bad")):
+                           ("Groundhog", "1.500", "bad")):
         assert name in html, name
         assert f'class="tileval {cls}">{val}' in html, (name, val)
     # weeks covered and the recorded wall time

@@ -49,9 +49,9 @@ LOCATION_LIST_LIMIT = 8
 #: covering all of them says so instead of reporting a bare number.
 ALL_JURISDICTIONS = 52
 
-ENGINE_LABELS = {"all": "all models (PF, analogue, ensemble)",
+ENGINE_LABELS = {"all": "both models (PF-SIHRS and Groundhog)",
                  "pf": "particle filter only",
-                 "analogue": "calendar analogue only",
+                 "analogue": "Groundhog only",
                  "amcmc": "adaptive MCMC",
                  "retro": "particle filter (retrospective)"}
 
@@ -128,8 +128,24 @@ def spec_settings(spec) -> list:
         pairs.append(("same-day week",
                       "treated as unreported"
                       if d.get("drop_same_day") else "kept"))
-    pairs.append(("ensemble members", str(int(extra.get("members") or 2))))
+    if int(extra.get("members") or 2) == 3:
+        pairs.append(("research member", "two-strain SIHRS"))
+    # the Groundhog's donors, from the spec of record: a row from before
+    # the auxiliary bank shipped (2026-09-22) carries no key and ran the
+    # bare calendar analogue, which is what this line then says
+    pairs.append(("Groundhog donors", analogue_donors_label(extra)))
     return [(k, v) for k, v in pairs if v not in ("", None)]
+
+
+def analogue_donors_label(extra: dict | None) -> str:
+    """One phrase for which donors the analogue engine ran with, from a
+    spec's research dictionary: the preset and bank digests that
+    _run_extra recorded ('flusurv+flusurv@06eff6a7'), or the bare
+    analogue when the spec carries no auxiliary pools."""
+    extra = extra if isinstance(extra, dict) else {}
+    if extra.get("aux_pools"):
+        return str(extra.get("analogue_aux") or "auxiliary bank (unnamed)")
+    return "none (bare calendar analogue)"
 
 
 def is_research(spec) -> bool:
@@ -179,11 +195,13 @@ def version_pairs(build: str = "", versions: dict | None = None) -> list:
 MODE_LABELS = {"realtime": "real-time run (the newest vintage)",
                "vintage": "vintage run (an archived week, not real-time)"}
 
-#: the three members a console run can score, in table order, with the
-#: outcome keys each writes at run end
+#: the models a console run can score, in table order, with the outcome
+#: keys each writes at run end. The blend's row renders only for a ledger
+#: row from before it was retired (2026-09-22), which still carries it.
 _RESULT_ROWS = (("PF-SIHRS", "pf_relwis", "pf_relwis_cells"),
-                ("Calendar analogue", "analogue_relwis", "analogue_relwis_cells"),
-                ("FluBNF ensemble", "ensemble_relwis", "ensemble_relwis_cells"))
+                ("Groundhog", "analogue_relwis", "analogue_relwis_cells"),
+                ("FluBNF ensemble (retired)", "ensemble_relwis",
+                 "ensemble_relwis_cells"))
 
 
 def results_html(outcome, spec) -> str:
@@ -245,6 +263,8 @@ def results_html(outcome, spec) -> str:
                                 'incomplete)</span> <span class="hint">'
                                 f'{_html.escape(str(o["pf_engine_broken"]))}'
                                 '</span>'))
+    # the next two keys are written by no run since the blend was retired;
+    # rows from before carry them and are the record
     if o.get("ensemble_analogue_only"):
         names = list(o["ensemble_analogue_only"])
         rows.append(("Analogue only", f'<span class="bad">{len(names)} location'

@@ -18,7 +18,6 @@
     switcher, the fan toggles, and the season head cards agree #}
  {% for mn, mhref in [("pf", "/models"),
                       ("analogue", "/model/analogue"),
-                      ("ensemble", "/model/ensemble"),
                       ("pf2s", "/model/pf2s")] %}
  <button type="button" class="quiet{% if name == mn %} gold{% endif %}"
    aria-pressed="{{ 'true' if name == mn else 'false' }}"
@@ -35,8 +34,7 @@
     it: the compact line that states what the picture computes #}
  {% if name == "pf" %}{{ dg.sihrs(uid='m') }}{{ dg.eq_pf() }}
  {% elif name == "pf2s" %}{{ dg.sihrs2(uid='m') }}{{ dg.eq_pf2s() }}
- {% elif name == "analogue" %}{{ dg.analogue_mech(uid='m') }}{{ dg.eq_analogue() }}
- {% else %}{{ dg.ensemble_mech(uid='m') }}{{ dg.eq_ensemble() }}{% endif %}
+ {% else %}{{ dg.analogue_mech(uid='m') }}{{ dg.eq_analogue() }}{% endif %}
  <p class="hint">Full methodology:
  <a href="/methods#{{ manchor }}">Methods</a>.</p>
 </div>
@@ -54,12 +52,8 @@
 {% endif %}
 <div class="cols">
  <div><div class="card"><h2>Settings</h2>
-  {% if name == "ensemble" %}
-   <p class="hint">A quantile average of the latest run's members.</p>
-   <form method="post" action="/model/ensemble/generate">
-    <button class="gold">Generate ensemble from latest run</button></form>
-  {% elif name == "pf2s" %}
-   <p class="hint">A research engine, not a shipped ensemble member; the
+  {% if name == "pf2s" %}
+   <p class="hint">A research engine, not a shipped model; the
    run endpoint still accepts a three-member request. Background:
    <a href="/methods#two-strain">Methods</a>.</p>
   {% else %}
@@ -92,7 +86,7 @@
 <script>
  const FANQ = {{ fanq_json | safe }};
  const ROBS = {{ run_obs_json | safe }};
- // ensemble page only: raw member medians, toggled via the plotly legend
+ // raw member medians over the fan (empty since the blend's page went)
  const OVERLAY = {{ overlay_json | safe }};
  const MDASH = {pf:'solid', analogue:'dash', pf2s:'dot'};
  // this page's model, and the one model-name map (the shared player's,
@@ -102,10 +96,9 @@
  const SERIES = {};
  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
  // the one member-color map (the shared player's marked JSON, via the
- // server), dichromat-spaced 2026-08-21. Ensemble alone stays
- // theme-resolved through the accent token: on light grounds --gold is
- // the readable accent-ink variant of the same cyan identity. Re-read
- // per draw so a theme change repaints correctly.
+ // server), dichromat-spaced 2026-08-21. The retired blend's entry
+ // stays theme-resolved through the accent token. Re-read per draw so a
+ // theme change repaints correctly.
  const MCOLORS = {{ member_colors_json | safe }};
  function memberColor(m){
    return m==='ensemble'?(css('--gold')||MCOLORS.ensemble)
@@ -193,9 +186,9 @@
    ];
    if(aftX.length) traces.push({x:aftX,y:aftY,mode:'lines+markers',
     name:'settled outcome',line:{color:css('--ink'),dash:'dot',width:1.4},marker:{size:4}});
-   // raw member medians over the ensemble: thin distinct lines, hidden until
-   // toggled on via their legend items (ensemble band + median stay
-   // primary), each in its member's own color and shared display name
+   // raw member medians over the fan: thin distinct lines, hidden until
+   // toggled on via their legend items, each in its member's own color
+   // and shared display name
    for(const m of Object.keys(OVERLAY)){
      const md=(OVERLAY[m]||{})[loc]; if(!md) continue;
      traces.push({x:xs,y:hs.map(h=>md[h]!=null?md[h]:null),mode:'lines',

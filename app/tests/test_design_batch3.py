@@ -242,16 +242,18 @@ def test_player_carries_the_map_and_python_reads_the_same_one():
 
 
 def test_one_name_for_the_ensemble_on_every_human_facing_surface():
-    """The blend is "FluBNF Ensemble" wherever a person reads it.
+    """The blend is "FluBNF Ensemble (retired)" wherever a person reads it:
+    it shipped until 2026-09-22 and stored runs and seasons still carry
+    its rows under that one name.
 
     It used to be "NAU ensemble" in the shared map and on the outlook
     labels while the season tables were headed "FluBNF Ensemble", so one
     published page printed two names for one model. The hub identity is a
-    different thing and is checked NOT to move: submissions still go out as
-    the registered LosAlamos_NAU-CModel_Flu.
+    different thing: the blend's identity is retired from the writer, and
+    the two models that ship go out under their own registered ids.
     """
     from app.core import report_v2, site_page
-    assert _player_map()["ensemble"] == "FluBNF Ensemble"
+    assert _player_map()["ensemble"] == "FluBNF Ensemble (retired)"
     # the outlook maps append "outlook" to the same names; the map is typed
     # in report_v2 (report_season holds the parse and imports it), so this
     # is where the drift would happen
@@ -261,26 +263,28 @@ def test_one_name_for_the_ensemble_on_every_human_facing_surface():
     # no surface still carries the old name: the shared map, the published
     # site's member table, and the console templates
     site_src = Path(site_page.__file__).read_text()
-    assert '"ensemble": "FluBNF Ensemble"' in site_src
+    assert '"ensemble": "FluBNF Ensemble (retired)"' in site_src
     for src in (PLAYER, site_src, SEASON_T, RETRO_T, MODEL_T, FORECAST_T):
         assert "NAU ensemble" not in src
-    # the submission identity is untouched: a display rename must never
-    # rename the model the hub knows us by
+    # the submission identities are display-independent: a display rename
+    # must never rename the models the hub knows us by
     from app.core import submit
-    assert submit.hub_model_id("ensemble") == "LosAlamos_NAU-CModel_Flu"
+    assert submit.hub_model_id("pf") == "LosAlamos_NAU-SIHRS"
+    assert submit.hub_model_id("analogue") == "LosAlamos_NAU-GroundhogCGR"
+    assert "CModel_Flu" in submit.RETIRED_ABBR
 
 
 def test_template_global_resolves_names_and_passes_unknowns_through():
     name = srv.templates.env.globals["model_name"]
     assert name("pf") == "PF-SIHRS"
-    assert name("ensemble") == "FluBNF Ensemble"
-    assert name("analogue") == "Calendar analogue"
+    assert name("ensemble") == "FluBNF Ensemble (retired)"
+    assert name("analogue") == "Groundhog"
     assert name("mystery") == "mystery"
 
 
 def test_season_head_cards_wear_the_shared_names():
     html = _season(heads={"ensemble": 0.9, "pf": 1.02})
-    assert "<h2>FluBNF Ensemble</h2>" in html
+    assert "<h2>FluBNF Ensemble (retired)</h2>" in html
     assert "<h2>PF-SIHRS</h2>" in html
     assert "<h2>pf</h2>" not in html and "<h2>ensemble</h2>" not in html
 
@@ -295,9 +299,11 @@ def test_fan_selector_buttons_use_the_shared_names():
 
 def test_model_switcher_reads_the_shared_map():
     t = client.get("/models").text
-    for label in ("PF-SIHRS", "Calendar analogue", "FluBNF Ensemble",
-                  "Two-strain SIHRS"):
+    for label in ("PF-SIHRS", "Groundhog", "Two-strain SIHRS"):
         assert label in t, label
+    # no tab for the retired blend (the shared map still ships to the
+    # page's script, entry and all, so look at the switcher itself)
+    assert 'data-model="ensemble"' not in t
     assert "model_name(mn)" in MODEL_T              # not a fourth hardcoding
 
 

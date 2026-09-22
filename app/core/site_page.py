@@ -605,8 +605,9 @@ def _member_table(payload: dict) -> str:
     # table sat on the same published page as the season table's "FluBNF
     # Ensemble" header while calling that same model by the older
     # team-prefixed name, so one page named one model twice.
-    labels = {"pf": "PF-SIHRS", "analogue": "Calendar analogue",
-              "ensemble": "FluBNF Ensemble", "pf2s": "Two-strain SIHRS"}
+    labels = {"pf": "PF-SIHRS", "analogue": "Groundhog",
+              "ensemble": "FluBNF Ensemble (retired)",
+              "pf2s": "Two-strain SIHRS"}
     head = ('<tr><th>relWIS by member</th>'
             + "".join(f'<th class="n">{_e(s["season"])}</th>'
                       for s in seasons) + "</tr>")

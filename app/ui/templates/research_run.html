@@ -1,8 +1,8 @@
 {# The research run control, mounted by base.html only on the two-strain
    model view (research_panel, set by the /model/pf2s route). This is the
    ONE place the three-member request has a form: the two-strain engine
-   failed its full-grid ensemble gate, so the flagship Forecast page never
-   grows a third-member option, and everything this form starts is tagged
+   failed its full-grid gate, so the flagship Forecast page never grows a
+   third-member option, and everything this form starts is tagged
    research in the ledger and on every surface the run appears on.
    It posts through the same /run path as the flagship forms (same vintage
    check, same server-side busy cross-checks) with the members=3 selection
@@ -11,9 +11,9 @@
 <div class="card" id="research-run">
  <h2>Research run <span class="pill">research · not the shipped forecast</span></h2>
  <p class="hint">Runs the full weekly pipeline with the two-strain member
-  fitted alongside the shipped members, and blends all three at equal
-  thirds; nothing started here changes the shipped ensemble or the
-  Forecast page.</p>
+  fitted alongside the shipped models; it is scored beside them and never
+  written as a submission. Nothing started here changes the Forecast
+  page.</p>
  <form method="post" action="/run">
   <label for="rr-date">Forecast date</label>
   <input id="rr-date" name="forecast_date" value="{{ form.forecast_date }}">

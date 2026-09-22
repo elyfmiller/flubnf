@@ -1,10 +1,11 @@
 """The outlook model toggle: one map, every available model.
 
-The v3 inputs bundle carries hover cards for EACH available model
-(ensemble, pf, analogue), all computed by the same quantile-CDF path
+The v3 inputs bundle carries hover cards for EACH available model (pf and
+analogue since the blend was retired on 2026-09-22; a bundle from before
+also carries "ensemble"), all computed by the same quantile-CDF path
 (categorical_probs_from_quantiles over the 23-level grid; the PF's samples
 are reduced to that grid first). Home and the weekly report render the map
-for the default model (ensemble when present) and, when the bundle carries
+for the default model (the PF when present) and, when the bundle carries
 two or more models, add a compact aria-pressed toggle that swaps the fills,
 hover cards, and the surface's model label client-side.
 
@@ -42,8 +43,11 @@ OLD_MTIME = (1_000_000_000, 1_000_000_000)          # 2001: always stale
 
 
 def _synth_run_all_models(workroot: Path):
-    """Drive the real build path with synthetic PF samples, a vincentized
-    ensemble, AND analogue quantiles for Ohio and the national row."""
+    """Drive the real build path with synthetic PF samples and analogue
+    quantiles for Ohio and the national row, the two models a run writes.
+    `ens_q`, a plain quantile mean of the two, is returned for the legacy
+    cases below (a stored run from before the blend was retired) and is
+    never handed to the build path."""
     from app.core import ensemble as ens
     from flubnf.settings import load_locations
     locs = load_locations()
@@ -67,9 +71,9 @@ def _synth_run_all_models(workroot: Path):
     an_q = {loc: ens.member_quantiles_from_samples(
                 {h: (np.asarray(s[h]) * 0.7 + 25).tolist() for h in s})
             for loc, s in pf_samples.items()}
-    ens_q = {loc: ens.vincentize({"pf": pf_q[loc], "analogue": an_q[loc]},
-                                 weights=ens.equal_weights({"pf": 1,
-                                                            "analogue": 1}))
+    ens_q = {loc: {h: {l: 0.5 * (pf_q[loc][h][l] + an_q[loc][h][l])
+                       for l in pf_q[loc][h]}
+                   for h in pf_q[loc]}
              for loc in pf_samples}
     workroot.mkdir(parents=True, exist_ok=True)
     (workroot / "cells.json").write_text(json.dumps(
@@ -78,15 +82,14 @@ def _synth_run_all_models(workroot: Path):
     outcome = {}
     srv._write_weekly_report(spec, workroot, pf_samples, obs,
                              pd.DataFrame(), locs, n2f, 42.0, outcome,
-                             ens_q=ens_q, an_q=an_q)
+                             an_q=an_q)
+    def cut(qd):
+        return {loc: {h: {str(l): v for l, v in q.items()
+                          if str(l) in ("0.1", "0.25", "0.5", "0.75", "0.9")}
+                      for h, q in qs.items()} for loc, qs in qd.items()}
     (workroot / "results.json").write_text(json.dumps({
         "forecast_date": "2098-01-03", "observed": obs,
-        "models": {"ensemble": {loc: {h: {str(l): v for l, v in q.items()
-                                          if str(l) in ("0.1", "0.25",
-                                                        "0.5", "0.75",
-                                                        "0.9")}
-                                      for h, q in qd.items()}
-                                for loc, qd in ens_q.items()}}}))
+        "models": {"pf": cut(pf_q), "analogue": cut(an_q)}}))
     return {"pf_samples": pf_samples, "an_q": an_q, "ens_q": ens_q,
             "pf_q": pf_q, "obs": obs, "outcome": outcome}
 
@@ -101,9 +104,9 @@ def test_bundle_v3_carries_every_model_via_the_one_quantile_cdf_path(
     assert bundle["version"] == report_v2.BUNDLE_VERSION
     # the v4 additive scope record: which states this run covered
     assert bundle["fitted_fips"] == ["39"]
-    assert bundle["cards_model"] == "ensemble"      # the submitted forecast
+    assert bundle["cards_model"] == "pf"            # the PF colours the map
     cbm = bundle["cards_by_model"]
-    assert set(cbm) == {"ensemble", "pf", "analogue"}
+    assert set(cbm) == {"pf", "analogue"}
     # every model's Ohio card equals the SAME quantile-CDF computation on
     # that model's own grid -- the pf card included (samples reduced to
     # the grid first, never the few-values-as-samples stand-in)
@@ -112,8 +115,7 @@ def test_bundle_v3_carries_every_model_via_the_one_quantile_cdf_path(
     locs = load_locations()
     pop = int(dict(zip(locs.location_name,
                        locs.population.astype(float)))["Ohio"])
-    for model, q in (("ensemble", parts["ens_q"]), ("pf", parts["pf_q"]),
-                     ("analogue", parts["an_q"])):
+    for model, q in (("pf", parts["pf_q"]), ("analogue", parts["an_q"])):
         # the card is the 1-week-ahead outlook, so the grid it reads is
         # the FIRST canonical forecast horizon
         expect = categorical_probs_from_quantiles(
@@ -123,12 +125,11 @@ def test_bundle_v3_carries_every_model_via_the_one_quantile_cdf_path(
             assert abs(got[c] - expect[c]) < 1e-9, (model, c)
         assert cbm[model]["OH"]["fips"] == "39"
     # the models disagree (the toggle switches real computations)
-    assert cbm["analogue"]["OH"]["probs"] != cbm["ensemble"]["OH"]["probs"]
+    assert cbm["analogue"]["OH"]["probs"] != cbm["pf"]["OH"]["probs"]
     # per-model national cards ride along; the primary stays back-compat
-    assert set(bundle["national_map_cards"]) == {"ensemble", "pf",
-                                                 "analogue"}
+    assert set(bundle["national_map_cards"]) == {"pf", "analogue"}
     assert bundle["national_map_card"] == \
-        bundle["national_map_cards"]["ensemble"]
+        bundle["national_map_cards"]["pf"]
     # legacy fields unchanged for older readers
     assert "OH" in bundle["cards"] and bundle["details"]
 
@@ -138,14 +139,13 @@ def test_bundle_v3_carries_every_model_via_the_one_quantile_cdf_path(
 def test_report_renders_the_toggle_with_every_bundled_model(tmp_path):
     _synth_run_all_models(tmp_path)
     html = (tmp_path / "report.html").read_text()
-    # the compact aria-pressed toggle, above the map, default ensemble
+    # the compact aria-pressed toggle, above the map, default PF
     assert 'id="outlook-model"' in html
     assert html.index('id="outlook-model"') < html.index('id="map-anchor"')
-    assert ('data-mmodel="ensemble" aria-pressed="true"') in html
-    assert ('data-mmodel="pf" aria-pressed="false"') in html
+    assert ('data-mmodel="pf" aria-pressed="true"') in html
     assert ('data-mmodel="analogue" aria-pressed="false"') in html
-    for label in ("FluBNF Ensemble outlook", "PF-SIHRS outlook",
-                  "Calendar analogue outlook"):
+    assert 'data-mmodel="ensemble"' not in html
+    for label in ("PF-SIHRS outlook", "Groundhog outlook"):
         assert label in html, label
     # the label element the swap script retargets (one remains, above the map)
     assert html.count("data-mapmodel-label") >= 1
@@ -207,7 +207,7 @@ def test_v2_bundle_rebuilds_with_no_toggle_and_the_stored_label(
     assert r.status_code == 200 and "OLD FACE" not in r.text
     assert 'id="outlook-model"' not in r.text
     assert "data-mmodel=" not in r.text
-    assert "FluBNF Ensemble outlook" in r.text          # the label stays honest
+    assert "PF-SIHRS outlook" in r.text                 # the label stays honest
 
 
 # ------------------------------------------------------------- the home map
@@ -223,26 +223,33 @@ def _latest(tmp_path, monkeypatch):
 def test_home_outlook_gets_the_same_toggle(tmp_path, monkeypatch):
     w, _ = _latest(tmp_path, monkeypatch)
     by_model = srv._outlook_models(w.name)
-    assert set(by_model) == {"ensemble", "pf", "analogue"}
+    assert set(by_model) == {"pf", "analogue"}
     assert "39" in by_model["analogue"]              # fips-keyed, with data
     home = client.get("/").text
     assert 'id="outlook-model"' in home
-    assert 'data-mmodel="ensemble" aria-pressed="true"' in home
+    assert 'data-mmodel="pf" aria-pressed="true"' in home
     assert 'data-mmodel="analogue" aria-pressed="false"' in home
     # the toggle sits above the rendered map
     assert home.index('id="outlook-model"') < home.index('id="usmap"')
-    # the label span is the relabel target and defaults to the ensemble
-    assert 'data-mapmodel-label>FluBNF Ensemble outlook' in home
-    assert "Calendar analogue outlook" in home
+    # the label span is the relabel target and defaults to the PF
+    assert 'data-mapmodel-label>PF-SIHRS outlook' in home
+    assert "Groundhog outlook" in home
 
 
 def test_home_shows_no_toggle_for_a_single_model_pre_v3_bundle(
         tmp_path, monkeypatch):
-    """A pre-v3 bundle whose results.json stores only ONE model (the synth
-    run's results carry the ensemble alone) cannot fund the approximate
-    toggle: the exact single-model bundle cards render exactly as before,
-    label honest, no dead control, no approximation marker."""
-    w, _ = _latest(tmp_path, monkeypatch)
+    """A pre-v3 bundle whose results.json stores only ONE model (here the
+    blend alone, the shape of a run from before per-model results) cannot
+    fund the approximate toggle: the exact single-model bundle cards render
+    exactly as before, label honest, no dead control, no approximation
+    marker."""
+    w, parts = _latest(tmp_path, monkeypatch)
+    (w / "results.json").write_text(json.dumps({
+        "forecast_date": "2098-01-03", "observed": parts["obs"],
+        "models": {"ensemble": {loc: {h: {str(l): v for l, v in q.items()
+                                          if str(l) in LV}
+                                      for h, q in qd.items()}
+                                for loc, qd in parts["ens_q"].items()}}}))
     b = w / report_v2.BUNDLE_NAME
     bundle = json.loads(b.read_text())
     bundle["version"] = 2
@@ -256,7 +263,7 @@ def test_home_shows_no_toggle_for_a_single_model_pre_v3_bundle(
     assert "data-mmodel=" not in home
     # the map and its honest one-model label render exactly as before
     assert 'id="usmap"' in home
-    assert "FluBNF Ensemble outlook" in home
+    assert "PF-SIHRS outlook" in home
     assert "approximate, from stored quantiles" not in home
 
 
@@ -300,7 +307,9 @@ def test_stored_pre_bundle_run_gets_the_approximate_toggle(
     srv._invalidate_scans()
     rid, res = srv._latest_results()
     cards, meta = srv._outlook_cards(res, rid)
-    assert meta["approx"] is True and meta["model"] == "ensemble"
+    # a legacy run stores all three; the PF is the default now and the
+    # stored blend is still offered, since it is that run's record
+    assert meta["approx"] is True and meta["model"] == "pf"
     bm = meta["by_model"]
     assert set(bm) == {"pf", "analogue", "ensemble"}
     # every model's Ohio card equals the exact CDF reading of ITS OWN
@@ -318,17 +327,17 @@ def test_stored_pre_bundle_run_gets_the_approximate_toggle(
         for c in expect:
             assert abs(got[c] - expect[c]) < 1e-9, (model, c)
     home = client.get("/").text
-    # the working toggle, default ensemble, all three models
+    # the working toggle, default PF, all three stored models
     assert 'id="outlook-model"' in home
-    assert 'data-mmodel="ensemble" aria-pressed="true"' in home
-    assert 'data-mmodel="pf" aria-pressed="false"' in home
+    assert 'data-mmodel="pf" aria-pressed="true"' in home
     assert 'data-mmodel="analogue" aria-pressed="false"' in home
+    assert 'data-mmodel="ensemble" aria-pressed="false"' in home
     # the honesty marker rides the caption, and the label span is the
     # relabel target
     assert "approximate, from stored quantiles" in home
-    assert 'data-mapmodel-label>FluBNF Ensemble outlook' in home
+    assert 'data-mapmodel-label>PF-SIHRS outlook' in home
     # the payload for the default model equals the rendered map exactly
-    pay = usmap.state_swap_payload(bm["ensemble"])
+    pay = usmap.state_swap_payload(bm["pf"])
     m = re.search(r'<path d="[^"]*" fill="([^"]+)" fill-opacity="([^"]+)"'
                   r'[^>]*data-fips="39"', home)
     assert m, "Ohio path missing from the home map"
@@ -367,7 +376,7 @@ def test_swap_payload_matches_the_server_render(tmp_path, monkeypatch):
     # the run fitted Ohio (39) only; the payload must carry the same scope
     # the server render used, or the toggle would rewrite the hovers with
     # a different story about card-less states
-    pay = usmap.state_swap_payload(by_model["ensemble"], scope_fips={"39"})
+    pay = usmap.state_swap_payload(by_model["pf"], scope_fips={"39"})
     home = client.get("/").text
     m = re.search(r'<path d="[^"]*" fill="([^"]+)" fill-opacity="([^"]+)"'
                   r'[^>]*data-fips="39"', home)
@@ -419,12 +428,11 @@ def test_report_drops_models_whose_cards_carry_no_data(tmp_path):
     toggle (the one real model, label only), never an inert button."""
     _synth_run_all_models(tmp_path)
     bundle = json.loads((tmp_path / report_v2.BUNDLE_NAME).read_text())
-    # strip every prob from two of the three models' cards
-    for m in ("pf", "analogue"):
-        for card in bundle["cards_by_model"][m].values():
-            card.pop("probs", None)
+    # strip every prob from the second model's cards
+    for card in bundle["cards_by_model"]["analogue"].values():
+        card.pop("probs", None)
     report_v2.render_bundle(bundle, tmp_path / "report2.html")
     html = (tmp_path / "report2.html").read_text()
     assert 'id="outlook-model"' not in html
     assert "data-mmodel=" not in html
-    assert "FluBNF Ensemble outlook" in html            # label stays honest
+    assert "PF-SIHRS outlook" in html                   # label stays honest

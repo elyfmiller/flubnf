@@ -270,8 +270,9 @@ def test_archive_carries_the_bundle(tmp_path, monkeypatch):
 
 
 def _synth_run_with_ensemble(workroot: Path):
-    """The bundle-test synthetic run, plus a vincentized ensemble and the
-    results.json the home page reads, laid out as a real latest workroot."""
+    """The bundle-test synthetic run (PF samples only) plus a results.json
+    in the shape a run from before 2026-09-22 stored, the blend alone, laid
+    out as a real latest workroot. The build path ignores `ens_q` now."""
     import numpy as np
     from app.core import ensemble as ens
     from flubnf.settings import load_locations
@@ -315,19 +316,19 @@ def test_home_map_renders_the_reports_exact_cards(tmp_path, monkeypatch):
     assert rid == w.name
     cards, meta = srv._outlook_cards(res, rid)
     bundle = json.loads((w / report_v2.BUNDLE_NAME).read_text())
-    assert bundle["cards_model"] == "ensemble"      # the submitted forecast
+    assert bundle["cards_model"] == "pf"            # the PF colours the map
     expect = {c["fips"]: c for c in bundle["cards"].values() if c.get("fips")}
     assert cards == expect                          # exact, not recomputed
-    assert meta == {"model": "ensemble", "approx": False,
-                    "label": "FluBNF Ensemble outlook",
+    assert meta == {"model": "pf", "approx": False,
+                    "label": "PF-SIHRS outlook",
                     # the v4 scope record rides with the cards so the home
                     # map can say which card-less states were unfitted
                     "fitted_fips": ["39"]}
     # the model label lands on BOTH surfaces
-    assert "FluBNF Ensemble outlook" in (w / "report.html").read_text()
+    assert "PF-SIHRS outlook" in (w / "report.html").read_text()
     home = client.get("/")
     assert home.status_code == 200
-    assert "FluBNF Ensemble outlook" in home.text
+    assert "PF-SIHRS outlook" in home.text
     assert "approximate, from stored quantiles" not in home.text
 
 
@@ -347,12 +348,14 @@ def test_pre_bundle_run_falls_back_and_labels_the_approximation(
     srv._invalidate_scans()
     rid, res = srv._latest_results()
     cards, meta = srv._outlook_cards(res, rid)
+    # the stored results carry the blend alone (a run from before it was
+    # retired), so that is the one model the fallback can offer
     assert meta["approx"] is True and meta["model"] == "ensemble"
     assert any(c.get("probs") for c in cards.values())
     home = client.get("/")
     # the label span is the model toggle's relabel target, so the phrase
     # spans a data-mapmodel-label element
-    assert "FluBNF Ensemble outlook" in home.text
+    assert "FluBNF Ensemble (retired) outlook" in home.text
     assert "approximate, from stored quantiles" in home.text
 
 

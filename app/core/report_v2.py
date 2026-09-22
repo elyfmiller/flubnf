@@ -136,14 +136,14 @@ QBANDS = ((0.025, 0.975, _rgba(_PF_COLOR, 0.13), "95% interval"),
 #: These are the shared display names (the marked map in player.js) with
 #: "outlook" appended; they are typed here rather than derived because the
 #: parse lives in report_season, which imports this module. Keep them in
-#: step with that map: the blend is "FluBNF Ensemble" everywhere a human
-#: reads it, and only the hub submission identity stays NAU-flavoured.
-MODEL_LABEL = {"ensemble": "FluBNF Ensemble outlook",
+#: step with that map. The blend's entry renders only a bundle written
+#: before it was retired (2026-09-22).
+MODEL_LABEL = {"ensemble": "FluBNF Ensemble (retired) outlook",
                "pf": "PF-SIHRS outlook",
-               "analogue": "Calendar analogue outlook"}
-#: display order for the outlook model toggle: the submitted forecast
-#: first, then the members
-MODEL_ORDER = ("ensemble", "pf", "analogue")
+               "analogue": "Groundhog outlook"}
+#: display order for the outlook model toggle: the two models that ship,
+#: the PF first; a stored blend last
+MODEL_ORDER = ("pf", "analogue", "ensemble")
 
 # Shared embed config: wheel zooms both ways, double-click resets, hover
 # modebar offers zoom-out/reset (lasso/box-select/autoscale pruned);

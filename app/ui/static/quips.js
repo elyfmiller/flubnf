@@ -34,7 +34,7 @@ window.FLUBNF_QUIPS = [
   "consulting the negative binomial about its variance",
   "asking the particles to form an orderly quantile",
   "estimating how much winter is left",
-  "keeping the ensemble members from agreeing too much",
+  "asking the Groundhog what it saw last year",
   "resampling with all due ceremony",
   "checking the waning-immunity clock",
   "letting ten thousand epidemics bloom, then pruning",

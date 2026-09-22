@@ -26,16 +26,27 @@ def test_home_renders_workflow_performance_and_component_cards():
     # weekly workflow pipeline diagram
     assert "Weekly forecasting workflow" in r.text
     assert "10,000 candidate epidemics" in r.text
-    assert "Equal-weight blend" in r.text
+    # two submissions, nothing blended (2026-09-22)
+    assert "Two submissions" in r.text and "Equal-weight blend" not in r.text
+    assert "Groundhog" in r.text
     # measured performance: the production engine's three-season record
-    # (the reseal of 2026-09-07), carrying the scored cell count per season.
+    # for the PF (the reseal of 2026-09-07) and the Groundhog's own replay,
+    # each column named for whose forecast it scores, both universes named.
     # The FluSight field placements were withdrawn on 2026-08-24
     # (docs/RELEASE-1.0.md), so the table must NOT carry them and must say
     # so rather than leaving a reader to assume they still hold.
     assert 'class="perf"' in r.text
-    for cell in ("0.834", "0.716", "0.663", "0.723",
-                 "6,063", "4,922", "4,475", "15,460", "Scored cells"):
+    for cell in ("0.840", "0.797", "0.846", "0.821",
+                 "0.722", "0.653", "0.651", "0.666",
+                 "0.741", "0.663", "0.684", "0.685",
+                 "15,460", "15,340", "PF-SIHRS", "Groundhog"):
         assert cell in r.text, cell
+    # the performance card names no blend; the outlook label above it is
+    # whatever the latest STORED run on this machine was and may still
+    # say so, since a run from before 2026-09-22 is its own record
+    perf = r.text[r.text.index('class="perf"'):]
+    perf = perf[:perf.index("</table>")]
+    assert "Ensemble" not in perf.replace("FluSight Ensemble", "")
     for gone in ("14 of 34 teams", "4 of 40 teams", "19 of 47 teams",
                  "mean 71st"):
         assert gone not in r.text, gone
@@ -51,10 +62,11 @@ def test_home_renders_workflow_performance_and_component_cards():
     assert "bionetgen.org" in r.text
     assert 'target="_blank"' in r.text
     assert "/methods#sihrs" in r.text               # anchor into methods
-    # start-here numbered flow: vertical stepper, equal-weight copy honest
+    # start-here numbered flow: vertical stepper; the workflow copy is
+    # honest about what is combined (nothing, since 2026-09-22)
     assert 'class="steps"' in r.text
     assert 'class="stepnum"' in r.text
-    assert "never fitted" in r.text
+    assert "nothing blended" in r.text
     assert "frozen" not in r.text
 
 
@@ -119,17 +131,20 @@ def test_models_route_defaults_to_pf_and_owns_the_active_tab():
 def test_old_model_routes_stay_live_with_the_right_switcher_state():
     """Exported reports and bookmarks link /model/<name>; each still serves
     the page, presses its own switcher button, and lights the Models tab."""
-    for name in ("pf", "analogue", "ensemble", "pf2s"):
+    for name in ("pf", "analogue", "pf2s"):
         t = client.get(f"/model/{name}").text
         assert _pressed_model(t) == name, name
         assert t.count('aria-pressed="true"') == 1, name
         assert re.search(r'<a class="tab active" href="/models">Models</a>',
                          t), name
+    # the blend's page went with the blend (2026-09-22): nothing computes
+    # it, so there is no reference view to serve
+    assert client.get("/model/ensemble").status_code == 404
 
 
 def test_switcher_lists_two_strain_as_the_research_option():
     t = client.get("/models").text
-    assert t.count("data-model=") == 4
+    assert t.count("data-model=") == 3
     assert "Two-strain SIHRS" in t
     assert "(research)" in t
 
@@ -139,7 +154,6 @@ def test_model_pages_render_mechanism_and_collapsed_intro():
         "pf": "SIHRS compartment diagram",
         "pf2s": "Influenza A circuit",
         "analogue": "forecast date",                # analogue mechanism svg
-        "ensemble": "quantile average",             # blend node
     }
     for name, marker in markers.items():
         r = client.get(f"/model/{name}")
@@ -148,13 +162,6 @@ def test_model_pages_render_mechanism_and_collapsed_intro():
         # intro collapsed by default: a details block without `open`
         assert '<details class="card intro">' in r.text, name
         assert 'href="/methods#' in r.text, name
-
-
-def test_ensemble_page_carries_member_overlay():
-    r = client.get("/model/ensemble")
-    assert r.status_code == 200
-    assert "const OVERLAY" in r.text
-    assert "legendonly" in r.text
 
 
 def test_forecast_page_renders_with_ensemble_overlay_js():
@@ -170,8 +177,11 @@ def test_methods_anchors_and_backlinks():
                    'id="analogue"', 'id="ensemble"'):
         assert anchor in r.text, anchor
     for back in ('href="/model/pf"', 'href="/model/pf2s"',
-                 'href="/model/analogue"', 'href="/model/ensemble"'):
+                 'href="/model/analogue"'):
         assert back in r.text, back
+    # the retired blend keeps its anchor (bookmarks) and links no model tab
+    assert 'href="/model/ensemble"' not in r.text
+    assert "Retired: the blend" in r.text
     # the respread diagram: no label sits on the return arc anymore
     assert "M762,182 C762,330 87,330 87,182" in r.text
 
@@ -248,7 +258,6 @@ def test_model_pages_carry_their_defining_equations():
         "pf2s": ("Binomial(", "one harmonic form shared by both circuits",
                  "second likelihood channel", "first likelihood channel"),
         "analogue": ("calendar-matched historical growth",),
-        "ensemble": ("equal-weight mean of the",),
     }
     for name, needles in wanted.items():
         t = client.get(f"/model/{name}").text
@@ -279,11 +288,14 @@ def test_methods_carries_the_pf_and_two_strain_equations():
     assert "Binomial(" in t
 
 
-def test_home_workflow_carries_the_forcing_and_blend_equations():
+def test_home_workflow_carries_the_forcing_and_groundhog_equations():
     t = client.get("/").text
     assert 'class="eqpanel"' in t
     assert "the curve the filter bends each week" in t
-    assert "mean<sub>m</sub>" in t               # the ensemble quantile mean
+    # the Groundhog's scaled growth-ratio quantile replaced the blend's
+    # quantile mean when the blend was retired (2026-09-22)
+    assert "growth\n   ratios at matched calendar weeks" in t
+    assert "mean<sub>m</sub>" not in t
 
 
 # --------------------------- read-only BNGL source on BNGL-backed pages

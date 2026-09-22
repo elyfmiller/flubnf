@@ -72,7 +72,9 @@ def test_results_table_states_type_members_fits_files_and_report():
     assert '<span class="relwis ok">0.842</span>' in html and "(4 cells)" in html
     assert "3 fits" in html and '<span class="bad">1 failure</span>' in html
     assert "2 files" in html and "written" in html
-    assert html.index("PF-SIHRS") < html.index("Calendar analogue") < html.index("FluBNF ensemble")
+    # the blend's row still renders for a ledger row that carries its
+    # score (a run from before 2026-09-22), after the two models that ship
+    assert html.index("PF-SIHRS") < html.index("Groundhog") < html.index("FluBNF ensemble (retired)")
     # a JSON spec and outcome, as the ledger row carries them
     again = results_html(json.dumps(outcome), json.dumps({"extra": {"mode": "realtime"}}))
     assert "real-time run" in again
@@ -86,8 +88,22 @@ def test_the_form_records_the_mode_and_reruns_carry_it():
     html = client.get("/forecast").text
     assert 'name="mode" id="mode-field" value="realtime"' in html
     assert "mf.value = mode" in html
-    assert srv._run_extra(2, "vintage") == {"mode": "vintage"}
-    assert srv._run_extra(3, "nonsense") == {"mode": "realtime", "members": 3}
+    # the shipped donors ride on every console spec; "" asks for the bare
+    # analogue (a research configuration, no Groundhog file), and a named
+    # preset resolves like the shipped one
+    x = srv._run_extra(2, "vintage")
+    assert x["mode"] == "vintage" and "members" not in x
+    assert x["aux_pools"] == [{"stream": "flusurv", "weight": 0.5,
+                               "committed": True}]
+    assert x["analogue_aux"].startswith("flusurv+flusurv@")
+    assert srv._run_extra(2, "vintage", "") == {"mode": "vintage"}
+    y = srv._run_extra(3, "nonsense")
+    assert y["mode"] == "realtime" and y["members"] == 3
+    assert srv._run_extra(2, "realtime", "iliplus")["aux_pools"] == [
+        {"stream": "iliplus", "weight": 0.5, "committed": True}]
+    import pytest
+    with pytest.raises(ValueError, match="unknown auxiliary preset"):
+        srv._run_extra(2, "realtime", "nope")
     assert srv._spec_mode({"extra": {"mode": "vintage"}}) == "vintage"
     assert srv._spec_mode({}) == "realtime" and srv._spec_mode({"extra": "x"}) == "realtime"
 
