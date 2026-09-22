@@ -184,10 +184,20 @@ def test_identifiers_match_the_registered_model_metadata():
         registered[meta["model_abbr"]] = f
         # <team_abbr>-<model_abbr>.yml, the name the hub requires
         assert f.stem == f'{meta["team_abbr"]}-{meta["model_abbr"]}', f.name
-    assert set(MODEL_ABBR.values()) == set(registered), (
-        "app/core/submit.MODEL_ABBR and model-metadata/ disagree")
+    from app.core.submit import RETIRED_ABBR
+    # every key the writer produces is a registered card, every card is
+    # either produced or explicitly retired, and nothing is both
+    assert set(MODEL_ABBR.values()) | set(RETIRED_ABBR) == set(registered), (
+        "app/core/submit.MODEL_ABBR + RETIRED_ABBR and model-metadata/ "
+        "disagree")
+    assert not set(MODEL_ABBR.values()) & set(RETIRED_ABBR)
     for key, abbr in MODEL_ABBR.items():
         assert hub_model_id(key) == registered[abbr].stem
+    # the blend's key is gone from the writer: no call site can produce a
+    # CModel_Flu file by accident
+    import pytest
+    with pytest.raises(ValueError, match="unregistered model"):
+        hub_model_id("ensemble")
 
 
 def test_an_unregistered_model_key_is_refused(tmp_path):

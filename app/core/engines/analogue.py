@@ -5,8 +5,21 @@ Wraps flubnf.analogue at its DEFAULT_BANDWIDTH and its shipped donor pool;
 neither is overridden or restated here, so the engine cannot disagree with
 the library about what production runs. The bandwidth's value and provenance
 live beside flubnf.analogue.DEFAULT_BANDWIDTH. Returns QUANTILES per
-horizon (the analogue is quantile-native); the ensemble vincentizes them with
-the PF's sample-derived quantiles directly.
+horizon (the analogue is quantile-native).
+
+Two configurations of the one engine matter:
+
+  * the bare calendar analogue, `spec.extra` without `aux_pools`. This is
+    the historical member, the one every sealed number was scored with,
+    and its output is byte-identical to what it always was.
+  * the GROUNDHOG, the same engine with the shipped auxiliary donor bank
+    spliced in (`SHIPPED_AUX`, `shipped_aux_pools()`). Since 2026-09-22
+    this is what the console ships in the calendar's slot, as a standalone
+    submission beside the SIHRS; there is no blend.
+
+The engine itself never reads `SHIPPED_AUX`: `run(spec)` does exactly what
+`spec.extra` says. The console and the retrospective put the shipped pools
+into the spec, so a spec that omits them still runs the bare analogue.
 """
 from __future__ import annotations
 
@@ -147,6 +160,30 @@ AUX_PRESETS: dict = {
     "both": ({"stream": "iliplus", "weight": 0.25, "committed": True},
              {"stream": "flusurv", "weight": 0.25, "committed": True}),
 }
+
+
+#: The auxiliary configuration the console ships: FluSurv-NET donors at
+#: weight 0.5 (pre-registration fd4a6f0e9893df22 and its amendments; the
+#: selected arm, member-alone relWIS 0.6664 against the bare analogue's
+#: 0.7711 on 15,340 identical cells over three seasons). Changing it is the
+#: lead's decision, like DEFAULT_BANDWIDTH: every published Groundhog number
+#: names this preset and the bank digests it resolves to.
+SHIPPED_AUX = "flusurv"
+
+
+def shipped_aux_pools() -> list:
+    """`spec.extra["aux_pools"]` for the shipped Groundhog: the SHIPPED_AUX
+    preset resolved against the committed banks. Raises if a bank is
+    missing or its digest does not match its manifest, so a console run
+    fails before the first fit rather than shipping the bare analogue
+    under the Groundhog's name."""
+    return aux_preset(SHIPPED_AUX)(None, 0, None)["aux_pools"]
+
+
+def shipped_aux_label() -> str:
+    """The self-documenting name of the shipped configuration, with the
+    bank digests: e.g. 'flusurv+flusurv@06eff6a7'. What a run records."""
+    return aux_preset(SHIPPED_AUX).__name__.split(":", 1)[1]
 
 
 def aux_preset(name: str):

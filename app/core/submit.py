@@ -41,10 +41,19 @@ QUANTILES = (0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45,
 TEAM_ABBR = "LosAlamos_NAU"
 
 #: internal model key -> hub model_abbr (model-metadata/<team>-<abbr>.yml).
-#: The ensemble keeps the registered CModel_Flu identity, so its scoring
-#: history stays attached to one model_id; the mechanistic member is a
-#: second, undesignated model under the same team.
-MODEL_ABBR = {"pf": "SIHRS", "ensemble": "CModel_Flu"}
+#: Two standalone submissions since 2026-09-22: the SIHRS particle filter
+#: and the Groundhog (the calendar analogue with its banked auxiliary
+#: donors, app/core/engines/analogue.SHIPPED_AUX), each under its own
+#: identity. Nothing is blended and no file is written for the blend.
+MODEL_ABBR = {"pf": "SIHRS", "analogue": "GroundhogCGR"}
+
+#: Registered identities this writer no longer produces. CModel_Flu was
+#: the equal-weight blend of the two members (version 3.0, submitted
+#: through 2026-09); its card stays in model-metadata/ because the hub
+#: keeps that model's history and the designated-model slot it holds is
+#: the PIs' to reassign, not this module's. hub_model_id refuses these
+#: like any unregistered key.
+RETIRED_ABBR = ("CModel_Flu",)
 
 
 def hub_model_id(model: str) -> str:
