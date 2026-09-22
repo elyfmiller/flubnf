@@ -271,9 +271,9 @@ def test_one_name_for_the_ensemble_on_every_human_facing_surface():
     # the submission identities are display-independent: a display rename
     # must never rename the models the hub knows us by
     from app.core import submit
-    assert submit.hub_model_id("pf") == "LosAlamos_NAU-SIHRS"
-    assert submit.hub_model_id("analogue") == "LosAlamos_NAU-GroundhogCGR"
-    assert "CModel_Flu" in submit.RETIRED_ABBR
+    assert submit.hub_model_id("pf") == "NAU_PyBNF-OracleSIHRS"
+    assert submit.hub_model_id("analogue") == "NAU_PyBNF-GroundHogCGR"
+    assert submit.RETIRED_ABBR == ()
 
 
 def test_template_global_resolves_names_and_passes_unknowns_through():

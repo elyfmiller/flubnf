@@ -113,9 +113,9 @@ class TestSubmissionIdentity:
         """The CLI must never invent its own identity: it writes under the
         one the console writes under, which is the team registered on the
         hub. (The original failure was a hardcoded free-text default that
-        drifted from the registration; since 2026-08-27 the registration
-        this group holds IS LosAlamos_NAU, by the PIs' decision, so the
-        invariant is the SHARED definition rather than any literal.)"""
+        drifted from the registration; the registration has since moved
+        from LosAlamos_NAU to NAU_PyBNF, and the invariant is the SHARED
+        definition rather than any literal.)"""
         from app.core.submit import MODEL_ABBR, TEAM_ABBR, hub_model_id
         from flubnf.submit import DEFAULT_TEAM_MODEL
         assert DEFAULT_TEAM_MODEL == hub_model_id("pf")

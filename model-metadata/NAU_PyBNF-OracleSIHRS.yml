@@ -1,8 +1,8 @@
-team_name: "Los Alamos National Lab and Northern Arizona University"
-team_abbr: "LosAlamos_NAU"
-model_name: "FluBNF: compartmental model with Bayesian inference, blended with a calendar analogue"
-model_abbr: "CModel_Flu"
-model_version: "3.0"
+team_name: "Northern Arizona University and Los Alamos National Lab"
+team_abbr: "NAU_PyBNF"
+model_name: "Oracle SIHRS particle filter"
+model_abbr: "OracleSIHRS"
+model_version: "1.0"
 model_contributors: [
         {
             "name": "Ely Finn Miller",
@@ -94,8 +94,8 @@ website_url: "https://github.com/elyfmiller/flubnf"
 repo_url: "https://github.com/elyfmiller/flubnf"
 license: "CC-BY-4.0"
 designated_model: true
-methods: "Equal-weight quantile average of a sequential particle filter over an SIHRS compartmental model and a calendar-matched analogue of growth ratios from prior seasons."
+methods: "Sequential particle filter over an SIHRS compartmental model with seasonal transmission, parameterised from past seasons, submitted as a standalone model."
 data_inputs: "Weekly state-level laboratory-confirmed influenza hospital admissions from NHSN, read from the hub's dated vintage archive."
-methods_long: "Version 3.0 replaces the model this team submitted through version 2.0. That model was an SIR with a piecewise-constant transmission rate fitted by batch adaptive MCMC; it is retired and is no longer submitted. Version 3.0 keeps the compartmental line and changes two things: transmission is now estimated by a sequential particle filter rather than by batch adaptive MCMC, and the submitted forecast is a blend of that mechanistic model with an empirical companion. The mechanistic member is an SIHRS model (susceptible, infected, hospitalized, recovered, with waning immunity) whose transmission rate carries an annual harmonic; it is written in BNGL and fitted with a fork of PyBNF that adds the filter, advanced one week at a time so each week's posterior conditions on every hospitalization report to that point. The empirical member is a calendar analogue: it scales a state's most recent observation by the distribution of growth ratios observed at the same point in the calendar in strictly earlier seasons, pooled across jurisdictions and computed independently at each horizon. The 2021-22 season is excluded from its donor pool because it peaked in April 2022 and survives in the vintage archive only as a partial tail, making it calendar-inverted relative to every other season; the exclusion was pre-registered before it was scored. The members are combined by quantile averaging at fixed equal weights, which are not fitted: a leave-one-season-out fitted weighting was measured and scored worse than the equal blend. Retrospective replays on vintage data across the 2023-24, 2024-25 and 2025-26 seasons give a pooled relative WIS of 0.723 with the production engine and 0.678 with the sealed v1.0.0 engine, whose kernel defect has since been corrected and is disclosed in the release record (a ratio of WIS sums on shared cells, self-scored with this project's frozen cell rule, not the dashboard's pairwise scaled relative WIS) against the CDC FluSight-baseline over 15,460 scored cells, beating the baseline in each season."
-ensemble_of_models: true
+methods_long: "PENDING: the description of the Oracle parameterisation, which carries information from past seasons into the real-time mechanistic fit, is being written by the team building it and must replace this paragraph before the card is submitted to the hub. What follows describes the particle filter as it runs today. This team submitted through 2026-09 as LosAlamos_NAU-CModel_Flu, an equal-weight blend of this model with a calendar analogue; from the 2026-27 season the two are submitted separately under NAU_PyBNF, this model and NAU_PyBNF-GroundHogCGR, and nothing is blended. The model is SIHRS (susceptible, infected, hospitalized, recovered, with waning immunity) written in BNGL, with an annual harmonic on the transmission rate. A sequential particle filter carries 10,000 candidate epidemics per jurisdiction and reweights them against each week's reported admissions under a negative-binomial observation model whose dispersion is itself fitted; five parameters are estimated per jurisdiction and per week. Forecasts freeze transmission forward from the fit origin and propagate the particle cloud, so the predictive distribution reflects both parameter and observation uncertainty. Retrospective replays on vintage data across the 2023-24, 2024-25 and 2025-26 seasons give the filter alone a pooled relative WIS of 0.821 (a ratio of WIS sums on 15,460 shared cells, self-scored with this project's frozen cell rule, not the dashboard's pairwise scaled relative WIS) against the CDC FluSight-baseline, beating the baseline in each season."
+ensemble_of_models: false
 ensemble_of_hub_models: false

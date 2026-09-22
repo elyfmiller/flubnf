@@ -88,17 +88,18 @@ checkout).
 FluBNF submits two models to FluSight, each under its own hub identity
 (`model-metadata/`), and blends nothing:
 
-* **PF-SIHRS** (`LosAlamos_NAU-SIHRS`): an SIHRS compartmental model
+* **PF-SIHRS** (`NAU_PyBNF-OracleSIHRS`): an SIHRS compartmental model
   fitted each week by a sequential particle filter.
-* **Groundhog** (`LosAlamos_NAU-GroundhogCGR`): the calendar analogue.
+* **Groundhog** (`NAU_PyBNF-GroundHogCGR`): the calendar analogue.
   The last observed count scaled by the empirical quantiles of growth
   ratios seen at the same MMWR epiweek in strictly earlier seasons, pooled
   across jurisdictions, with a committed FluSurv-NET donor bank spliced in
   (`data/banks/`). Epiweek 53 is seated between weeks 52 and 1.
 
 The equal-weight blend of the two (`LosAlamos_NAU-CModel_Flu`, version
-3.0) was the submitted forecast until 2026-09-22 and is retired; its
-record is docs/RELEASE-1.0.md.
+3.0, under the group's previous team registration) was the submitted
+forecast until 2026-09-22 and is retired; its record is
+docs/RELEASE-1.0.md.
 
 ## Measured record
 

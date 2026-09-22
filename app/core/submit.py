@@ -33,27 +33,27 @@ QUANTILES = (0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45,
 #: depend on a file the wheel does not ship. The drift guard is a test:
 #: app/tests/test_submit_join.py parses both YAML files and asserts these
 #: values verbatim, so changing one without the other fails the suite.
-#: The team registered on the hub since 2023. Submitting under the
-#: EXISTING registration (rather than a new NAU_FluBNF team) was the
-#: PIs' decision, 2026-08-27: the slot, its history and its
-#: contributors carry forward, and the revised metadata cards describe
-#: what the models now are.
-TEAM_ABBR = "LosAlamos_NAU"
+#: NAU_PyBNF, a new team registration decided by the lead on 2026-09-22
+#: for the two standalone models. The group submitted since 2023 as
+#: LosAlamos_NAU, and its 2026-08-27 decision to keep that registration
+#: was reversed with the blend it carried: the hub keeps the LosAlamos_NAU
+#: cards and their history where they are, and nothing carries over to
+#: the new identities.
+TEAM_ABBR = "NAU_PyBNF"
 
-#: internal model key -> hub model_abbr (model-metadata/<team>-<abbr>.yml).
-#: Two standalone submissions since 2026-09-22: the SIHRS particle filter
-#: and the Groundhog (the calendar analogue with its banked auxiliary
-#: donors, app/core/engines/analogue.SHIPPED_AUX), each under its own
-#: identity. Nothing is blended and no file is written for the blend.
-MODEL_ABBR = {"pf": "SIHRS", "analogue": "GroundhogCGR"}
+#: internal member key -> hub model_abbr (model-metadata/<team>-<abbr>.yml).
+#: The keys are the console's own names for its engines (pf is the
+#: particle filter, analogue the calendar engine that runs as the
+#: Groundhog); the values are what the hub knows. Two standalone
+#: submissions since 2026-09-22, both designated, nothing blended.
+MODEL_ABBR = {"pf": "OracleSIHRS", "analogue": "GroundHogCGR"}
 
-#: Registered identities this writer no longer produces. CModel_Flu was
-#: the equal-weight blend of the two members (version 3.0, submitted
-#: through 2026-09); its card stays in model-metadata/ because the hub
-#: keeps that model's history and the designated-model slot it holds is
-#: the PIs' to reassign, not this module's. hub_model_id refuses these
-#: like any unregistered key.
-RETIRED_ABBR = ("CModel_Flu",)
+#: Registered identities this writer no longer produces. Empty: the
+#: retired blend (LosAlamos_NAU-CModel_Flu) and the old member card
+#: (LosAlamos_NAU-SIHRS) belong to the previous team registration, whose
+#: cards live on the hub and not in this directory. hub_model_id refuses
+#: anything here like any unregistered key.
+RETIRED_ABBR = ()
 
 
 def hub_model_id(model: str) -> str:
