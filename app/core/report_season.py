@@ -543,6 +543,7 @@ def build_season_report(root: Path, season: str, archive: str = "",
     out = report_path(root, season)
     newest = _newest_input(root)
     settings_note = _settings_note(root, build, versions)
+    timing_line = _timing_note(root)
     if out.is_file() and out.stat().st_mtime >= newest:
         # a report that travelled INTO an archive with the season tree keeps
         # its old mtime, so freshness alone would serve it unlabelled: make
@@ -554,9 +555,15 @@ def build_season_report(root: Path, season: str, archive: str = "",
         # never contain them and every download rebuilt the full report
         # while believing it had checked the cache (audit finding). The
         # full read was already being paid; only the slice was wrong.
+        # The timing line joins the same test by CONTENT, not by mtime: the
+        # run record is an input above, but a record written in the same
+        # clock tick as the report reads no newer on a filesystem with a
+        # coarse timestamp (Windows), and the cached export would keep
+        # serving a header without the total the record now carries.
         text = out.read_text(encoding="utf-8")
         if ((not archive or ARCHIVE_MARK in text)
-                and (not settings_note or SETTINGS_MARK in text)):
+                and (not settings_note or SETTINGS_MARK in text)
+                and (not timing_line or timing_line in text)):
             return out
     payloads = {w: playback.build_week(root, season, w) for w in weeks}
     data = {"season": season, "weeks": weeks, "payloads": payloads}
