@@ -72,7 +72,7 @@ run setup included. Windows is experimental: clone outside `Documents` and
 double click `FluBNF.bat`; see docs/WINDOWS.md.
 
 The particle filter engine lives in a PyBNF fork that is not yet public.
-The console runs without it, with analog forecasts only. Lab members
+The console runs without it, with the Groundhog's forecasts only. Lab members
 receive a small engine archive; saved in Downloads, it is installed the
 next time the app opens. The full procedure, including the GitHub routes,
 is docs/ENGINE.md; the student walkthrough is docs/INSTALL-STUDENTS.md.
@@ -83,33 +83,57 @@ variable: `FLUBNF_HUB` (the hub clone), `FLUBNF_BNG` (BNG2.pl),
 `FLUBNF_PY_ENGINE` (python of the engine venv), `FLUBNF_PYBNF` (the PyBNF
 checkout).
 
+## The two models
+
+FluBNF submits two models to FluSight, each under its own hub identity
+(`model-metadata/`), and blends nothing:
+
+* **PF-SIHRS** (`LosAlamos_NAU-SIHRS`): an SIHRS compartmental model
+  fitted each week by a sequential particle filter.
+* **Groundhog** (`LosAlamos_NAU-GroundhogCGR`): the calendar analogue.
+  The last observed count scaled by the empirical quantiles of growth
+  ratios seen at the same MMWR epiweek in strictly earlier seasons, pooled
+  across jurisdictions, with a committed FluSurv-NET donor bank spliced in
+  (`data/banks/`). Epiweek 53 is seated between weeks 52 and 1.
+
+The equal-weight blend of the two (`LosAlamos_NAU-CModel_Flu`, version
+3.0) was the submitted forecast until 2026-09-22 and is retired; its
+record is docs/RELEASE-1.0.md.
+
 ## Measured record
 
-Three seasons replayed at full grid, 52 jurisdictions, three replicates,
-strictly on the hub's dated snapshots, scored as weighted interval score
-relative to the CDC FluSight-baseline. Below 1.000 beats the baseline. The
-score is a ratio of WIS sums on shared cells, not the pairwise relative WIS
-of the CDC dashboard, so the two are not comparable.
+Three seasons replayed at full grid, 52 jurisdictions, strictly on the
+hub's dated snapshots, scored as weighted interval score relative to the
+CDC FluSight-baseline. Below 1.000 beats the baseline. The score is a
+ratio of WIS sums on shared cells, not the pairwise relative WIS of the
+CDC dashboard, so the two are not comparable.
 
-| engine | 2023-24 | 2024-25 | 2025-26 | pooled | cells |
+| model | 2023-24 | 2024-25 | 2025-26 | pooled | cells |
 |---|---|---|---|---|---|
-| production, the code in this repository | 0.834 | 0.716 | 0.663 | 0.723 | 15,460 |
-| sealed v1.0.0 record | 0.813 | 0.618 | 0.683 | 0.678 | 15,460 |
+| PF-SIHRS, production engine (reseal of 2026-09-07) | 0.840 | 0.797 | 0.846 | 0.821 | 15,460 |
+| Groundhog (replay of 2026-09-21) | 0.722 | 0.653 | 0.651 | 0.666 | 15,340 |
+| calendar analogue without the donor bank, on the Groundhog's cells | 1.045 | 0.756 | 0.618 | 0.771 | 15,340 |
 
-The ensemble beats the baseline in every season on both engines. The rows
-differ because the sealed fits ran a particle filter kernel with an
-undeclared behaviour that has since been corrected; the production row is
-what this code reproduces. These are self computed retrospective replays,
-not real time submissions. Methodology, caveats, the independent
-replication, and everything that was tested and did not ship are in
-docs/RELEASE-1.0.md and on the console's Methods page. The research
-outputs behind those records live in the lab's archive, not in this
-repository's tip; some earlier commits retain copies.
+The Groundhog's row reproduces on any machine with a hub clone and no
+engine:
+
+    flubnf groundhog retro all --aux flusurv
+
+or from the console, Retrospective tab, engine preset "Groundhog only"
+(minutes per season; the two paths agree cell for cell). These are self
+computed retrospective replays, not real time submissions. The retired
+blend scored 0.723 pooled on the production engine and 0.678 on the
+sealed v1.0.0 engine. Methodology, caveats, the independent replication,
+and everything that was tested and did not ship are in docs/RELEASE-1.0.md
+and on the console's Methods page. The research outputs behind those
+records live in the lab's archive, not in this repository's tip; some
+earlier commits retain copies.
 
 ## Layout
 
     flubnf/            the science package: templates, data, fitting, quantiles, WIS
-    app/               the console: FastAPI UI, run ledger, engines, ensemble, reports, sandbox
+    app/               the console: FastAPI UI, run ledger, engines, scoring, reports, sandbox
+    data/banks/        the Groundhog's committed donor banks and their manifests
     scripts/           operational runners, not packaged
     docs/              release record, model provenance, engine, install and platform notes
     tests/ app/tests/  the two test suites (run with pytest)

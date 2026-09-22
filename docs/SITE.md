@@ -87,23 +87,24 @@ Lab members do not push; the site would change only when you push.
 
 Three of those deserve a note.
 
-**The ensemble score is the shipped one.** `retro.score_season` defaults to
-the unfitted equal-weight blend, and the three-season seal was rescored under
-that default on 2026-08-24, so its `scores.json` files do carry the shipped
-50/50 ensemble: re-blending the stored members by hand reproduces them
-exactly, 0.813136 / 0.617881 / 0.682662 and pooled 0.678119, against the
-0.695771 the frozen per-horizon fitted-weight table (the rejected
-alternative documented in `docs/RELEASE-1.0.md`) gives on the same seal.
+**The scores are each model's own, and no blend is printed.** Since
+2026-09-22 the two models are submitted separately and nothing computes
+the equal-weight ensemble; the seal's blend figures (0.813 / 0.618 / 0.683,
+pooled 0.678, rescored under the equal blend on 2026-08-24) stay in
+`docs/RELEASE-1.0.md` as the record of what shipped until then.
 
-The build still does not read them, for a reason that outlives that fix. A
-`scores.json` records no weights of its own, and `discover_seasons` accepts
-any season root under `app/state`, including a lab run scored before v1.0
-under the old frozen default or scored deliberately with `ensemble.FROZEN`.
-Trusting the file would publish a blend whose configuration cannot be checked
-from the file. Every season is instead rescored from each week's playback
-payload, whose `ensemble` block is built by `ens.equal_weights` in code. That
-path reproduces the published record exactly (0.813 / 0.618 / 0.683, pooled
-0.678) and `app/tests/test_site_build.py` pins it.
+The build does not read a stored `scores.json` at all. A `scores.json`
+records nothing about how it was scored, and `discover_seasons` accepts any
+season root under `app/state`, including a lab run scored before v1.0 under
+a frozen fitted table the lab rejected. Every season is instead rescored
+from each week's playback payload, the stored members as stored, through
+the validated baseline construction and the frozen cell rule.
+`app/tests/test_site_build.py` pins the seal's member figures (PF 1.023 /
+0.636 / 0.825, analogue 1.045 / 0.756 / 0.621) when the seal is the tree on
+the machine. A tree replayed by the bare analogue prints that member's
+figure under the Groundhog's name; publish from a Groundhog replay
+(Retrospective tab, "Groundhog only", or `flubnf retro`), whose record
+names the donor bank.
 
 **Placements are not published.** Ranking against the whole FluSight field
 means scoring every submitting team on identical cells, around 1.6 GB of hub

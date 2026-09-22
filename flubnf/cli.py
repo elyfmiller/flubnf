@@ -2513,7 +2513,7 @@ def site_build_cmd(
     console.print(f"  locations {res['locations']}")
     console.print(f"  seasons   {', '.join(res['seasons']) or 'none'}")
     if res["pooled"] is not None:
-        console.print(f"  pooled    ensemble relWIS {res['pooled']:.4f}")
+        console.print(f"  pooled    PF-SIHRS relWIS {res['pooled']:.4f}")
     console.print(f"  built in  {res['elapsed_s']:.1f}s")
 
     if res["mismatches"]:

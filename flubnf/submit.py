@@ -48,10 +48,9 @@ log = logging.getLogger(__name__)
 #: submitting under it (model-metadata/README.md).
 #:
 #: The literal was still the wrong string here, for a reason that outlives
-#: that history. This loop forecasts the mechanistic member on its own, with
-#: no empirical companion blended in, so its file belongs under SIHRS and
-#: not under the designated ensemble. Deriving the name means neither
-#: producer can drift from the registration or from the other.
+#: that history. This loop forecasts the mechanistic model on its own, so
+#: its file belongs under SIHRS. Deriving the name means neither producer
+#: can drift from the registration or from the other.
 DEFAULT_TEAM_MODEL = hub_model_id("pf")
 
 
