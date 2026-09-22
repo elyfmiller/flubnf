@@ -2215,6 +2215,124 @@ def retro_cmd(season: str, locations: str = "all", width: int = 0,
 # keeps that room without crowding the top-level command list.
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
+# groundhog -- the calendar member on its own
+#
+# A sub-app because the member has its own lifecycle apart from the product:
+# replay it, compare it, and in time file it. `flubnf retro` replays the
+# whole product and needs the particle filter and its toolchain; this needs
+# neither, and a season takes about two minutes.
+# ---------------------------------------------------------------------------
+groundhog_app = typer.Typer(
+    add_completion=False, no_args_is_help=True,
+    help="GroundhogCGR, the calendar member, replayed and scored on its own.")
+app.add_typer(groundhog_app, name="groundhog")
+
+GROUNDHOG_SEASONS = ("2023-24", "2024-25", "2025-26")
+
+
+def _gh_row(label: str, b: dict) -> str:
+    if not b.get("cells"):
+        return f"  {label:<26} no scorable cells"
+    return (f"  {label:<26}{b['relwis']:>8.4f}"
+            f"{b.get('cov50', float('nan')):>8.3f}"
+            f"{b.get('cov80', float('nan')):>8.3f}"
+            f"{b.get('cov95', float('nan')):>8.3f}"
+            f"{b['worst_dev']:>8.3f}{b['cells']:>9,}{b['weeks']:>7}")
+
+
+@groundhog_app.command("retro")
+def groundhog_retro_cmd(
+    season: str = typer.Argument(
+        ..., help="A season such as 2024-25, or 'all' for the three on record."),
+    aux: str = typer.Option(
+        "", "--aux",
+        help="Auxiliary donor preset (flusurv, iliplus, both). Empty runs "
+             "the shipped single-pool member."),
+    compare: bool = typer.Option(
+        True, "--compare/--no-compare",
+        help="With --aux: also run the shipped member and report both on "
+             "identical cells, with a clustered bootstrap on the difference."),
+    with_us: bool = typer.Option(
+        False, "--with-us",
+        help="Also forecast the national row. Reported separately, never "
+             "pooled into the state figures."),
+):
+    """Replay the calendar member alone over a season and score it.
+
+    No particle filter, no PyBNF: only this repository, the committed donor
+    bank, and a hub clone for the vintages, the truth and the FluSight
+    baseline. About two minutes a season.
+    """
+    import pandas as pd
+    from app.core import groundhog as gh
+    seasons = list(GROUNDHOG_SEASONS) if season == "all" else [season]
+    arms = ([gh.SHIPPED, aux] if (aux and compare) else [aux or gh.SHIPPED])
+    runs = {a: [] for a in arms}
+    for a in arms:
+        for s in seasons:
+            console.print(f"[bold]{a}[/bold]  {s}")
+            try:
+                r = gh.run_season(
+                    s, "" if a == gh.SHIPPED else a, with_us=with_us,
+                    progress=lambda asof, i, n: (
+                        console.print(f"    {i:>3}/{n}  {asof}")
+                        if (i % 8 == 0 or i == n) else None))
+            except Exception as e:
+                console.print(f"[red]{s}: {e}[/red]")
+                raise typer.Exit(1)
+            runs[a].append(r)
+            if r["meta"]["aux"]:
+                console.print(f"    donors: {r['meta']['aux']}")
+            console.print(f"    -> {r['dir']}")
+
+    head = (f"  {'':<26}{'relWIS':>8}{'cov50':>8}{'cov80':>8}{'cov95':>8}"
+            f"{'worst':>8}{'cells':>9}{'weeks':>7}")
+    pooled = {a: (pd.concat([r["cells"] for r in rs], ignore_index=True),
+                  pd.concat([r["coverage"] for r in rs], ignore_index=True))
+              for a, rs in runs.items()}
+
+    console.print("\n[bold]Each arm on its own cells[/bold]  (52 states, US "
+                  "national excluded)")
+    console.print(head)
+    for a, (c, v) in pooled.items():
+        sm = gh.summarise(c, v)
+        console.print(_gh_row(a, sm["states"]))
+        if "us" in sm:
+            console.print(_gh_row(f"{a}, US national", sm["us"]))
+
+    if len(arms) == 2:
+        (ac, av), (bc, bv) = pooled[arms[0]], pooled[arms[1]]
+        cmp_ = gh.compare(ac, av, bc, bv)
+        console.print(f"\n[bold]On identical cells[/bold]  "
+                      f"({cmp_['common_cells']:,} common)")
+        console.print(head)
+        console.print(_gh_row(arms[0], cmp_["a"]))
+        console.print(_gh_row(arms[1], cmp_["b"]))
+        if len(seasons) > 1:
+            console.print("\n[bold]By season[/bold]")
+            console.print(f"  {'season':<10}{arms[0]:>10}{arms[1]:>10}"
+                          f"{'change':>9}{'worst a':>9}{'worst b':>9}")
+            for s, d in cmp_["by_season"].items():
+                ra, rb = d["a"]["relwis"], d["b"]["relwis"]
+                console.print(f"  {s:<10}{ra:>10.4f}{rb:>10.4f}"
+                              f"{(1 - rb / ra) * 100:>+8.1f}%"
+                              f"{d['a']['worst_dev']:>9.3f}"
+                              f"{d['b']['worst_dev']:>9.3f}")
+        bs = cmp_.get("bootstrap")
+        if bs:
+            console.print(
+                f"\n  clustered bootstrap over {bs['clusters']} as-of dates, "
+                f"{bs['reps']} replicates\n"
+                f"  {arms[1]} minus {arms[0]}: median {bs['median']:+.4f}, "
+                f"95 percent interval [{bs['lo']:+.4f}, {bs['hi']:+.4f}], "
+                f"better in {bs['b_better']} of {bs['reps']}")
+    console.print("\nSelf scored, ratio of WIS sums against the FluSight "
+                  "baseline of the same\nreference date, on the project's "
+                  "frozen cell rule. Not the FluSight dashboard\nconvention, "
+                  "and no finite-sample coverage guarantee is claimed.")
+
+
+# ---------------------------------------------------------------------------
 # bank -- the committed auxiliary donor banks
 #
 # A sub-app because a bank has a lifecycle: build it once with network
