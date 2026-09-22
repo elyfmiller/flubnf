@@ -9,9 +9,9 @@ and move on; scoring waits for settled truth.</p>
  <div><div class="card"><h2>Settings</h2>
   {# platform-aware: app/ui/server.py:_engine_setup_hint. Never hardcode a
      macOS-only filename here; a Windows reader cannot open one. #}
-  {% if not engine_ok %}<p class="warn">Requires the particle-filter engine:
-  {{ engine_setup_hint() }}. Everything else works without
-  it.</p>{% endif %}
+  {% if not engine_ok %}<p class="warn">The full replay requires the
+  particle-filter engine: {{ engine_setup_hint() }}. The Groundhog-only
+  preset and everything else work without it.</p>{% endif %}
   <form method="post" action="/retro/run">
    <label>Season</label>
    <select name="season">{% for s in seasons %}<option>{{ s.name }}</option>{% endfor %}</select>
@@ -43,7 +43,13 @@ and move on; scoring waits for settled truth.</p>
    <label>Shard width (parallel runners; auto for this machine)</label>
    <input type="number" name="width" value="{{ default_width }}" min="1" max="{{ width_cap }}">
    <label>Engine preset</label>
-   <select name="engine"><option value="pf">PF (particle filter)</option></select>
+   {# the full competition path fits the particle filter beside the
+      Groundhog (hours per season, needs the engine venv); the Groundhog
+      alone replays in minutes with no engine at all, and is the way to
+      reproduce its published numbers on any machine #}
+   <select name="engine" id="retro-engine">
+     <option value="pf">Particle filter with the Groundhog (hours)</option>
+     <option value="analogue">Groundhog only (minutes, no engine needed)</option></select>
    {# what the start-over prompt resolves to. 'resume' is the historical
       behaviour and the value a keyboard submit carries, so the form is
       always safe even if the prompt never runs. #}
@@ -55,8 +61,20 @@ and move on; scoring waits for settled truth.</p>
       data-startover adds the second question: a season that already has
       completed weeks asks whether to resume, archive, or discard them. #}
    <button class="gold" data-guard="retro-run" data-startover="1"
-     {% if not engine_ok %}disabled{% endif %}>
+     id="retro-run-btn" {% if not engine_ok %}disabled{% endif %}>
      Run retrospective</button>
+   {% if not engine_ok %}
+   <script>
+    (function(){
+      // no engine venv: the button follows the preset, since the
+      // Groundhog-only replay needs none
+      var e=document.getElementById('retro-engine'),
+          b=document.getElementById('retro-run-btn');
+      function sync(){ b.disabled = (e.value === 'pf'); }
+      e.addEventListener('change', sync); sync();
+    })();
+   </script>
+   {% endif %}
   </form>
   <script>
    (function(){

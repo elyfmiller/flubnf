@@ -105,7 +105,7 @@ def test_retro_bg_stops_between_weeks_and_keeps_weeks(monkeypatch, tmp_path):
 
     def fake_run_season(root, season, locations, replicates=3,
                         particles=10_000, width=4, progress=None,
-                        settings=None):
+                        settings=None, engine="pf"):
         seen.append("week1")                 # first week lands on disk
         srv._retro_stop.add(season)          # then a stop request arrives
         progress("2098-11-07")               # the between-weeks stop point

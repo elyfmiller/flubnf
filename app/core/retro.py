@@ -220,9 +220,8 @@ def member_quantiles(d: dict) -> dict:
     """{member: {location: {"0".."3": {level: value}}}} from one week's
     stored record: the sample-shaped members (pf, pf2s) through the member
     quantile formula, the analogue's stored quantiles with float levels.
-    The ensemble is NOT here: each reader blends the members with its own
-    weights, so a fitted-weight scoring and the equal-weight console never
-    disagree about what the members were."""
+    A week replayed by the Groundhog alone (engine "analogue") stores no
+    pf block and yields no pf member."""
     out = {}
     for m in ("pf", "pf2s"):
         if m in d:
@@ -951,16 +950,28 @@ def _run_round(root: Path, wd: Path, pending: list, width: int) -> None:
         raise RuntimeError("PF runners exited without completing any fit")
 
 
+#: what a replay fits: the particle filter beside the analogue (the full
+#: competition path, hours per season), or the analogue alone (the
+#: Groundhog by default; minutes per season, no engine install needed)
+ENGINES = ("pf", "analogue")
+
+
 def run_week(root: Path, season: str, asof: str, locations: list,
              replicates: int = 3, particles: int = 10_000,
              width: int = pf_engine.DEFAULT_SHARD_WIDTH,
              drop_same_day: bool = False,
-             extra: dict | None = None) -> dict:
+             extra: dict | None = None, engine: str = "pf") -> dict:
     """One submission day: PF (sharded) + analogue; store samples+quantiles.
 
     `extra` is the spec's research dictionary (seed_anchor,
     continue_states, save_states; see pf_engine.continuation_for), recorded
     in the week's manifest so a resumed week is rebuilt if it changes.
+
+    `engine` "analogue" skips the particle filter entirely: the week stores
+    the analogue member alone (the Groundhog, when `extra` carries the
+    shipped donors), no cell is prepared or fitted, and nothing here needs
+    the engine venv. The stored week carries no pf block, so every reader
+    sees exactly one member.
 
     Fit-level control and resume: the STOP and PAUSE flags are honoured
     BETWEEN individual fits (the fits in flight drain first -- a stop raises
@@ -968,6 +979,8 @@ def run_week(root: Path, season: str, asof: str, locations: list,
     with the processes alive), and a later run of an interrupted week refits
     only the cells with no marker in cells_done/. samples.json still appears
     only when every cell is done, so week atomicity is unchanged."""
+    if engine not in ENGINES:
+        raise ValueError(f"engine must be one of {ENGINES}, got {engine!r}")
     # resolved: the paths written into pf.conf, the shard files and the
     # runner scripts are read by subprocesses with their own working
     # directory, so a relative root is a season of fits that never start
@@ -1000,6 +1013,19 @@ def run_week(root: Path, season: str, asof: str, locations: list,
                                           # prepared week still matches
     _check_stop(root)         # a standing flag must not even prepare a week
     hold_while_paused(root)
+    if engine == "analogue":
+        # the Groundhog alone: instant, no cells, no engine venv. The
+        # manifest still lands so the week says what produced it.
+        manifest["engine"] = "analogue"
+        wd.mkdir(parents=True, exist_ok=True)
+        (wd / "manifest.json").write_text(json.dumps(manifest, indent=1))
+        an_q = an_engine.run(spec)
+        out = {"asof": asof,
+               "analogue": {loc: {h: {str(k): v for k, v in q.items()}
+                                  for h, q in qs.items()}
+                            for loc, qs in an_q.items()}}
+        write_week_samples(wd, out)
+        return out
     cells = _prepare_week(root, asof, spec, manifest)
     # Failed fits RETRY on a fresh replay: their markers exist so the run
     # that produced them could drain its loop, but a NEW run_week call
@@ -1070,7 +1096,8 @@ def run_week(root: Path, season: str, asof: str, locations: list,
 def run_season(root: Path, season: str, locations: list, replicates=3,
                particles=10_000, width=pf_engine.DEFAULT_SHARD_WIDTH,
                progress=None, settings: dict | None = None,
-               drop_same_day: bool = False, week_extra=None) -> list:
+               drop_same_day: bool = False, week_extra=None,
+               engine: str = "pf") -> list:
     """Replay a season week by week, recording timing and honouring the STOP
     and PAUSE flags at fit resolution.
 
@@ -1082,6 +1109,11 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
     carries `an_engine.shipped_aux_pools()`, and run_meta.json records the
     preset with its bank digests under `week_extra`. A replay of the bare
     analogue must ask for it (`an_engine.bare_analogue`).
+
+    `engine` "analogue" replays the Groundhog alone (run_week's switch):
+    minutes per season, no particle filter, no engine venv. The record
+    says so under `engine`, and a tree replayed one way is not resumed
+    the other (the console refuses; a script should archive first).
 
     Control points sit BETWEEN FITS: run_week polls the same flags while its
     runners work, so a press waits only for the fits in flight (well under a
@@ -1110,7 +1142,9 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
     rec.setdefault("particles", int(particles))
     rec.setdefault("drop_same_day", bool(drop_same_day))
     rec.setdefault("width", int(width))
-    rec.setdefault("engine", "pf")
+    if engine not in ENGINES:
+        raise ValueError(f"engine must be one of {ENGINES}, got {engine!r}")
+    rec["engine"] = engine
     if week_extra is None:
         week_extra = an_engine.aux_preset(an_engine.SHIPPED_AUX)
     rec.setdefault("week_extra", getattr(week_extra, "__name__", "custom"))
@@ -1135,7 +1169,8 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
                 run_week(root, season, asof, locations, replicates, particles,
                          width, drop_same_day=drop_same_day,
                          extra=(week_extra(asof, i, vintages)
-                                if week_extra else None))
+                                if week_extra else None),
+                         engine=engine)
                 done.append(asof)
                 # timing is recorded HERE, for completed weeks only: the
                 # failure branch below used to fall through to this call,

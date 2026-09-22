@@ -4880,7 +4880,7 @@ def api_retro_results_status(season: str, archive: str = ""):
 
 def _retro_bg(season: str, locations: list, width: int,
               replicates: int = 3, particles: int = 10_000,
-              settings: dict | None = None):
+              settings: dict | None = None, engine: str = "pf"):
     """The season worker. `settings` is what the user actually chose on the
     form (the scope label and the engine preset); run_season folds in
     everything else and records the lot in run_meta.json before the first
@@ -4900,7 +4900,7 @@ def _retro_bg(season: str, locations: list, width: int,
                 raise _RetroStopRequested()
         retro.run_season(root, season, locations, replicates=replicates,
                          particles=particles, width=width, progress=_tick,
-                         settings=settings)
+                         settings=settings, engine=engine)
         # Completion work BEFORE the season reads done: score with the
         # equal, never-fitted member weights (the sealed recipe), build the
         # US national aggregate, and warm every week's playback caches, so
@@ -5100,12 +5100,12 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
             _flash(f"Season {season} is not available. A season appears once "
                    "its vintage archive exists.")
             return RedirectResponse("/retro", status_code=303)
-        if engine != "pf":
+        if engine not in retro.ENGINES:
             # pf2s slots in HERE later: accept engine == "pf2s", thread a
             # {"variant": "2strain"} extra through retro.run_week's RunSpec,
             # and collect the member alongside pf in samples.json.
-            _flash("Only the PF engine preset is available for retrospectives "
-                   "at present.")
+            _flash("The engine presets for a retrospective are the particle "
+                   "filter with the Groundhog, or the Groundhog alone.")
             return RedirectResponse("/retro", status_code=303)
         from app.core import us_national as usn
         all_states = _retro_state_names()
@@ -5139,6 +5139,21 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
         # form must never have moved or removed anything first.
         live = _live_root(season)
         existing = _weeks_done(live)
+        if mode == "resume" and existing:
+            # a tree replayed by one engine is not resumed by the other: the
+            # Groundhog-only weeks carry no PF and would be skipped as done
+            # by a full replay, and a full tree's weeks would keep their PF
+            # under a Groundhog-only label. The record says what ran.
+            was = str((retro.read_meta(live) or {}).get("settings", {})
+                      .get("engine") or "pf")
+            if was != engine:
+                _flash(f"{season} has {existing} completed week"
+                       f"{'' if existing == 1 else 's'} replayed with the "
+                       f"{retro_engine_label(was)} preset; the "
+                       f"{retro_engine_label(engine)} preset cannot resume "
+                       "them. Archive or discard the existing results to "
+                       "run it. Nothing was started.")
+                return RedirectResponse("/retro", status_code=303)
         if mode == "discard":
             if confirm != season:
                 _flash(f"Discarding {season} was not confirmed, so nothing "
@@ -5180,8 +5195,17 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
     # so an existing 52-jurisdiction record keeps describing 52.
     background.add_task(_retro_bg, season, names, width, replicates, particles,
                         {"scope": locations, "engine": engine,
-                         "national": bool(fit_national)})
+                         "national": bool(fit_national)}, engine)
     return RedirectResponse("/retro", status_code=303)
+
+
+#: the retrospective engine presets as the form and the record name them
+RETRO_ENGINE_LABELS = {"pf": "particle filter with the Groundhog",
+                       "analogue": "Groundhog only"}
+
+
+def retro_engine_label(engine: str) -> str:
+    return RETRO_ENGINE_LABELS.get(str(engine), str(engine))
 
 
 @app.get("/retro/{season}", response_class=HTMLResponse)
