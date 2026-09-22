@@ -20,36 +20,30 @@ committed. That makes two properties load-bearing, and both are tested:
   * the page works offline from disk, because a reviewer opens the built
     file before deciding to commit it.
 
-THE ONE SCORE
--------------
-relWIS here is the SHIPPED ensemble: the equal-weight 50/50 quantile blend
-of the particle filter and the calendar analogue. That distinction is not
-cosmetic, and it has a history. Until v1.0, retro.score_season defaulted to
-the FROZEN LOSO weights (the per-horizon 0.4-0.8 PF share) -- a
-configuration the lab evaluated and rejected, and which scores measurably
-worse (pooled 0.696 against 0.678 for the equal blend) -- so any scores.json
-written before v1.0 carries the rejected ensemble in a column labeled
-"ensemble". The default is now the equal-weight blend, and the three-season
-seal was rescored under it on 2026-08-24, so the seal's scores.json files do
-carry the shipped number (0.813 / 0.618 / 0.683, pooled 0.678, reproduced by
-an independent re-blend of the stored members).
+THE SCORES
+----------
+relWIS here is each shipped model's own: the particle filter and the
+Groundhog (the calendar analogue with its banked auxiliary donors), each
+a standalone submission since 2026-09-22. Nothing is blended. The
+equal-weight ensemble that was the submitted forecast until then has a
+history worth keeping straight: until v1.0, retro.score_season defaulted
+to a FROZEN fitted table the lab evaluated and rejected, so a scores.json
+written before v1.0 carries that rejected blend under "ensemble"; the
+seal was rescored under the equal blend on 2026-08-24 (0.813 / 0.618 /
+0.683, pooled 0.678). Those numbers are the release record's
+(docs/RELEASE-1.0.md), not this page's: no payload carries a blend any
+more, so the site never recomputes one and never prints one.
 
-The build still does not read them, for a reason that outlives that fix: a
-scores.json records no weights of its own, and discover_seasons accepts ANY
-season root under app/state, including a lab run scored before v1.0 under
-the old default or scored deliberately with ens.FROZEN. Reading the file
-would publish a blend whose configuration cannot be checked from the file.
-Instead every season is rescored from each
-week's playback payload, whose `ensemble` block IS the equal-weight blend
-(playback._week_model_quantiles builds it with ens.equal_weights), through
-the validated baseline construction and the frozen cell rule: settled truth
-above zero, a positive median, and a cell the FluSight baseline also
-covers. That path reproduces the lab's published record exactly --
-0.813 / 0.618 / 0.683 -- and test_site_build pins those values.
-
-The members (pf, analogue) are weight-free and therefore agree with
-scores.json to the third decimal either way; they are recomputed here anyway
-so one pass produces every number on the page.
+The build does not read a stored scores.json at all, for a reason that
+outlives the blend: discover_seasons accepts ANY season root under
+app/state, and a file records nothing about how it was scored. Instead
+every season is rescored from each week's playback payload, the stored
+members as stored, through the validated baseline construction and the
+frozen cell rule: settled truth above zero, a positive median, and a cell
+the FluSight baseline also covers. A tree replayed by the bare analogue
+(the seal) prints the bare analogue's figure under the Groundhog's name
+with nothing on this page to say so; the console's season page reads the
+tree's own record and does. Publish from a Groundhog replay.
 
 WHAT IS HARVESTED RATHER THAN RESTATED
 --------------------------------------
@@ -122,7 +116,9 @@ OBS_WEEKS = 14
 #: run must never become the national map
 MIN_OUTLOOK_LOCATIONS = 40
 
-MODEL_ORDER = ("ensemble", "pf", "analogue")
+#: the two shipped models first; "ensemble" stays for a payload that still
+#: carries a stored blend (none does since 2026-09-22)
+MODEL_ORDER = ("pf", "analogue", "ensemble")
 OFFICIAL_ORDER = ("FluSight-baseline", "FluSight-ensemble")
 
 #: season-root search order. The lab's own laptop runs land in retro/ and
@@ -183,16 +179,17 @@ def _score_payload(payload: dict, truth, n2f, bases_cache: dict) -> dict:
     a 52-jurisdiction number, and fitting the national series must not
     change it.
 
-    ONE ASYMMETRY, ON PURPOSE. Our own members are scored on their own
+    ONE ASYMMETRY, ON PURPOSE. Our own models are scored on their own
     cells, which is how the lab's published record was computed and what
     the cross-check pins. The OFFICIAL comparators are then scored on the
-    cells our ensemble scored, and only those. Without that restriction the
-    site would print our relWIS beside FluSight-ensemble's in the same row
-    while the two rested on different cell sets -- the official covers
-    weeks and locations where our median was zero, and is missing from
-    weeks it did not submit -- and a reader would compare them anyway. The
-    restricted column answers the question the row actually poses: on the
-    cells we scored, what did the official model get?
+    cells our first model scored (the PF, MODEL_ORDER's head; the next
+    model present when a tree carries no PF), and only those. Without that
+    restriction the site would print our relWIS beside FluSight-ensemble's
+    in the same row while the two rested on different cell sets -- the
+    official covers weeks and locations where our median was zero, and is
+    missing from weeks it did not submit -- and a reader would compare them
+    anyway. The restricted column answers the question the row actually
+    poses: on the cells we scored, what did the official model get?
     """
     import pandas as pd
     from app.core.scoring import _baseline_cells
@@ -272,15 +269,17 @@ def _score_payload(payload: dict, truth, n2f, bases_cache: dict) -> dict:
         return ([ws, bs, n] if n else None), seen
 
     out: dict = {}
-    ens_cells: set | None = None
-    for model, qbl in ours.items():
-        acc, seen = _score(qbl, None)
+    ref_cells: set | None = None
+    for model in MODEL_ORDER:
+        if model not in ours:
+            continue
+        acc, seen = _score(ours[model], None)
         if acc:
             out[model] = acc
-        if model == "ensemble":
-            ens_cells = seen
+            if ref_cells is None:
+                ref_cells = seen
     for om, qbl in officials.items():
-        acc, _seen = _score(qbl, ens_cells)
+        acc, _seen = _score(qbl, ref_cells)
         if acc:
             out[om] = acc
     return out
@@ -438,9 +437,9 @@ def _newest_run_source() -> tuple:
     cards for enough jurisdictions AND its results.json carries the matching
     quantile grids: the bundle's own per-location fans are the particle
     filter's alone (server.py builds `details` from pf_samples), so the
-    ensemble fan this site publishes must come from results.json, where all
-    three models are stored. A run missing either half is skipped rather
-    than half-published.
+    fans this site publishes come from results.json, where both models
+    are stored. A run missing either half is skipped rather than
+    half-published.
 
     The coverage floor matters: a one-state smoke run is not a national map,
     and publishing it as one would be a lie of framing.
@@ -478,7 +477,7 @@ def _newest_run_source() -> tuple:
             continue
         if max(len(c) for c in by_model.values()) < MIN_OUTLOOK_LOCATIONS:
             continue
-        if not (results.get("models") or {}).get("ensemble"):
+        if not (results.get("models") or {}).get("pf"):
             continue
         return d.name, bundle, results
     return None, None, None
@@ -620,23 +619,25 @@ def _q_at(raw: dict, level: float):
     return float(raw[best]) if abs(float(best) - level) < 1e-9 else None
 
 
-def _fan_entry(obs, settled, hq_ens, hq_pf, hq_an) -> dict | None:
-    if not obs or not hq_ens:
+def _fan_entry(obs, settled, hq_pf, hq_an) -> dict | None:
+    """One location's fan: the PF's intervals and median, the Groundhog's
+    median as the overlay (`an`). Until 2026-09-22 the fan was the
+    blend's, with both members as overlays."""
+    if not obs or not hq_pf:
         return None
     q = {}
     for h in HORIZONS:
-        raw = hq_ens.get(h)
+        raw = hq_pf.get(h)
         vals = {str(L): _q_at(raw, L) for L in FAN_LEVELS} if raw else {}
         if all(v is not None for v in vals.values()) and vals:
             q[h] = {k: round(v, 2) for k, v in vals.items()}
     if not q:
         return None
     entry = {"obs": obs[-OBS_WEEKS:], "settled": settled, "q": q}
-    for name, hq in (("pf", hq_pf), ("an", hq_an)):
-        med = {h: _q_at((hq or {}).get(h), 0.5) for h in HORIZONS}
-        med = {h: round(v, 2) for h, v in med.items() if v is not None}
-        if med:
-            entry[name] = med
+    med = {h: _q_at((hq_an or {}).get(h), 0.5) for h in HORIZONS}
+    med = {h: round(v, 2) for h, v in med.items() if v is not None}
+    if med:
+        entry["an"] = med
     return entry
 
 
@@ -660,19 +661,17 @@ def _fans_from_payload(payload: dict, observed: dict | None = None) -> dict:
     truth = payload.get("truth") or {}
     observed = truth if observed is None else observed
     models = payload.get("models") or {}
-    ens, pf, an = (models.get("ensemble") or {}, models.get("pf") or {},
-                   models.get("analogue") or {})
+    pf, an = models.get("pf") or {}, models.get("analogue") or {}
     targets = [(datetime.fromisoformat(asof)
                 + timedelta(days=7 * (h + 1))).date().isoformat()
                for h in (0, 1, 2, 3)]
     out = {}
-    for name in sorted(ens):
+    for name in sorted(pf):
         obs = [[d, v] for d, v in (observed.get(name) or [])
                if d <= asof and v is not None]
         by_date = {d: v for d, v in (truth.get(name) or []) if v is not None}
         settled = [[d, by_date[d]] for d in targets if d in by_date]
-        e = _fan_entry(obs, settled, ens.get(name), pf.get(name),
-                       an.get(name))
+        e = _fan_entry(obs, settled, pf.get(name), an.get(name))
         if e:
             out[name] = e
     return out
@@ -681,16 +680,15 @@ def _fans_from_payload(payload: dict, observed: dict | None = None) -> dict:
 def _fans_from_results(results: dict, bundle: dict) -> dict:
     """All-location fans from a live run.
 
-    Quantiles and observations come from results.json, which stores all
-    three models per location on the display level grid. The settled
+    Quantiles and observations come from results.json, which stores both
+    models per location on the display level grid. The settled
     overlay, when there is one, comes from the bundle's per-location fan --
     server.py fills it from the newest vintage only for a BACKDATED run, so
     a genuine current-week forecast produces no overlay at all, which is
     exactly right: nothing has settled yet.
     """
     models = results.get("models") or {}
-    ens, pf, an = (models.get("ensemble") or {}, models.get("pf") or {},
-                   models.get("analogue") or {})
+    pf, an = models.get("pf") or {}, models.get("analogue") or {}
     observed = results.get("observed") or {}
     settled = {}
     for det in (bundle.get("details") or {}).values():
@@ -701,12 +699,20 @@ def _fans_from_results(results: dict, bundle: dict) -> dict:
         if det.get("name") and pts:
             settled[det["name"]] = [[str(d), float(v)] for d, v in pts
                                     if v is not None]
+    # framed to the four target weeks: a bundle written before 2026-09-22
+    # carried a fifth settled week past the last horizon
+    asof = str(results.get("forecast_date") or "")
+    if asof:
+        last = (datetime.fromisoformat(asof)
+                + timedelta(days=28)).date().isoformat()
+        settled = {n: [pt for pt in pts if asof < pt[0] <= last]
+                   for n, pts in settled.items()}
     out = {}
-    for name in sorted(ens):
+    for name in sorted(pf):
         obs = [[str(d), float(v)] for d, v in (observed.get(name) or [])
                if v is not None]
-        e = _fan_entry(obs, settled.get(name) or [], ens.get(name),
-                       pf.get(name), an.get(name))
+        e = _fan_entry(obs, settled.get(name) or [], pf.get(name),
+                       an.get(name))
         if e:
             out[name] = e
     return out
@@ -908,11 +914,13 @@ def cross_check(scored: list, placement: dict) -> list:
     """
     out = []
     for s in scored:
-        rel = (s["models"].get("ensemble") or {}).get("rel")
+        # the console's table leads with the PF (home.html's first score
+        # column), which is what harvest_placement reads as app_rel
+        rel = (s["models"].get("pf") or {}).get("rel")
         app = (placement.get(s["season"]) or {}).get("app_rel")
         if rel is None or app is None:
             continue
-        out.append({"what": f"{s['season']} ensemble relWIS",
+        out.append({"what": f"{s['season']} PF-SIHRS relWIS",
                     "computed": rel, "app": app,
                     "ok": abs(rel - app) <= 0.0006})
     return out
@@ -1034,7 +1042,7 @@ def build(out_dir: Path | None = None, seasons: dict | None = None,
         "seasons": [s["season"] for s in payload["seasons"]],
         "locations": len(payload["fans"]),
         "outlook": payload["outlook"]["source"],
-        "pooled": payload["pooled"].get("ensemble", {}).get("rel"),
+        "pooled": payload["pooled"].get("pf", {}).get("rel"),
         "mismatches": bad,
         "elapsed_s": round(time.time() - t0, 2),
     }

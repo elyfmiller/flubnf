@@ -299,16 +299,14 @@ JS = r"""
        hoverinfo:'skip'},
       {x:fx, y:lo5, mode:'lines', fill:'tonexty', fillcolor:rgba(acc,.28),
        line:{width:0}, name:'50% interval', hoverinfo:'skip'},
-      {x:fx, y:med, mode:'lines+markers', name:'ensemble median',
+      {x:fx, y:med, mode:'lines+markers', name:'PF-SIHRS median',
        line:{color:acc,width:2.5}, marker:{size:6},
-       hovertemplate:'%{x|%b %e, %Y}<br>%{y:,.0f}<extra>ensemble median</extra>'}
+       hovertemplate:'%{x|%b %e, %Y}<br>%{y:,.0f}<extra>PF-SIHRS median</extra>'}
     ];
-    // Member medians are drawn only when the source stored that member,
-    // and start hidden: they explain the blend, they are not the forecast.
-    if (d.pf) T.push({x:fx, y:pf, mode:'lines', name:'PF-SIHRS median',
-      visible:'legendonly', line:{color:'#1979FF',width:1.4}});
+    // The Groundhog's median is drawn when the source stored it, and
+    // starts hidden: it is the other submission, on the same axes.
     if (d.an) T.push({x:fx, y:an, mode:'lines',
-      name:'Calendar analogue median', visible:'legendonly',
+      name:'Groundhog median', visible:'legendonly',
       line:{color:gold||'#FFC72C',width:1.4,dash:'dash'}});
     // The settled overlay exists only where truth has arrived. A live
     // forecast has none, so the trace and its legend entry are ABSENT
@@ -482,20 +480,23 @@ def _season_table(payload: dict) -> str:
     # it, while the hub's own ensemble is a comparator a reader learns from.
     # A season with no official score prints "not scored" rather than a
     # blank that would read as a zero.
-    # Both score columns are named for whose forecast they score. "Ensemble"
-    # alone sat next to "FluSight ensemble" and read as the same thing; the
-    # note below carries the relWIS unit for both columns at once.
-    head = ('<tr><th>Season</th><th class="n">FluBNF Ensemble</th>'
+    # Every score column is named for whose forecast it scores, so none
+    # reads as the FluSight ensemble's; the note below carries the relWIS
+    # unit for all of them at once. Two models, submitted separately.
+    head = ('<tr><th>Season</th><th class="n">PF-SIHRS</th>'
+            '<th class="n">Groundhog</th>'
             '<th class="n">FluSight Ensemble</th>'
             '<th class="n">Cells</th><th>FluSight field</th></tr>')
 
     rows = []
     for s in seasons:
         pl = s.get("placement") or {}
-        ens = (s["models"].get("ensemble") or {})
-        cells = ens.get("cells")
+        pf = (s["models"].get("pf") or {})
+        gh = (s["models"].get("analogue") or {})
+        cells = pf.get("cells") or gh.get("cells")
         r = (f'<tr><td>{_e(s["season"])}</td>'
-             + _score_td(ens.get("rel"))
+             + _score_td(pf.get("rel"))
+             + _score_td(gh.get("rel"))
              + _score_td((s["models"].get("FluSight-ensemble")
                           or {}).get("rel")))
         r += f'<td class="n">{cells:,}</td>' if cells else \
@@ -510,10 +511,12 @@ def _season_table(payload: dict) -> str:
               else '<td class="na">placement withdrawn, see Methods</td>')
         rows.append(r + "</tr>")
 
-    p = pooled.get("ensemble") or {}
+    p = pooled.get("pf") or {}
+    pg = pooled.get("analogue") or {}
     prow = ('<tr class="total"><td>Pooled</td>' + _score_td(p.get("rel"))
+            + _score_td(pg.get("rel"))
             + _score_td((pooled.get("FluSight-ensemble") or {}).get("rel")))
-    prow += (f'<td class="n">{p.get("cells", 0):,}</td>'
+    prow += (f'<td class="n">{(p.get("cells") or pg.get("cells") or 0):,}</td>'
              '<td></td></tr>')
     table = "<table>" + head + "".join(rows) + prow + "</table>"
 
@@ -523,7 +526,7 @@ def _season_table(payload: dict) -> str:
     # equally, so on its own it labels nothing. The sentence is imported
     # rather than typed: the console, this site and the exported report
     # carry the identical wording (app/core/relwis).
-    note = ("Both columns are relWIS against the same CDC FluSight baseline "
+    note = ("Every column is relWIS against the same CDC FluSight baseline "
             "on the same cells, so lower is better and below 1.000 beats "
             "that baseline. " + relwis.PUBLISHED_CONVENTION_NOTE)
     if has_official:
@@ -544,14 +547,15 @@ def _season_table(payload: dict) -> str:
         # week including the pre-season ones that scored nothing at all, and
         # would overstate the sample any paired test has to work with.
         weeks = sum(1 for s in seasons for w in s.get("weekly") or []
-                    if "ensemble" in w.get("week", {})
+                    if "pf" in w.get("week", {})
                     and "FluSight-ensemble" in w.get("week", {}))
         if p.get("rel") is not None and off is not None and weeks:
             gap = abs(p["rel"] - off)
             if gap <= LEVEL_GAP:
-                note += (f" Pooled the two are level: a gap of {gap:.3f} "
-                         f"over {weeks} forecast weeks, inside the sealed "
-                         "record's measured week-to-week variation.")
+                note += (f" Pooled, the PF and the comparator are level: a "
+                         f"gap of {gap:.3f} over {weeks} forecast weeks, "
+                         "inside the sealed record's measured week-to-week "
+                         "variation.")
     note += (" Methods carries the donor pool, the withdrawn field "
              "placement, and the two-strain result.")
     return table + ('<p class="sub" style="margin:.9rem 0 0;font-size:.85rem">'
@@ -585,16 +589,15 @@ def _percentile_bars(payload: dict) -> str:
             f'</div><span class="val">{_e(text)} percentile</span></div>')
     return ('<div style="margin-top:1.2rem">' + "".join(out) + "</div>"
             '<p class="sub" style="margin:.9rem 0 0;font-size:.85rem">'
-            "Percentile is the share of the submitting field this ensemble "
+            "Percentile is the share of the submitting field this model "
             "beat, from the lab's own scoring of the whole FluSight field on "
             "identical cells.</p>")
 
 
 def _member_table(payload: dict) -> str:
     seasons = payload["seasons"]
-    # members first, the blend last as the total row: the table's argument
-    # is that the blend beats members that individually take turns losing,
-    # and that reads bottom-up
+    # the two models in order; a stored blend (a payload from before
+    # 2026-09-22) last, as the row it was
     members = [m for m in payload["model_order"]
                if m != "ensemble" and any(m in s["models"] for s in seasons)]
     if any("ensemble" in s["models"] for s in seasons):
@@ -658,7 +661,8 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
     src = ol["source"]
     n_loc = len(payload["fans"])
     seasons = payload["seasons"]
-    pooled_ens = (payload["pooled"].get("ensemble") or {}).get("rel")
+    pooled_pf = (payload["pooled"].get("pf") or {}).get("rel")
+    pooled_gh = (payload["pooled"].get("analogue") or {}).get("rel")
 
     data_json = json.dumps(payload, indent=1, sort_keys=True,
                            ensure_ascii=False)
@@ -731,19 +735,24 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
                 f'{_e(seasons[-1]["season"])}' if len(seasons) > 1
                 else _e(seasons[0]["season"]))
 
-    if pooled_ens is not None and seasons:
+    if (pooled_pf is not None or pooled_gh is not None) and seasons:
         # THE convention, on the landing tab. This banner is the site's
         # first and most-read figure, it sits on the home tab, and the
         # season table that carries the same sentence is on a DIFFERENT tab
         # a reader may never open, so "against the CDC FluSight baseline"
         # was standing here alone. That phrase is true of both conventions,
         # which is exactly why it labels neither; the note names which one.
+        parts = []
+        if pooled_pf is not None:
+            parts.append(f"the SIHRS particle filter <b>{pooled_pf:.3f}</b>")
+        if pooled_gh is not None:
+            parts.append(f"the Groundhog <b>{pooled_gh:.3f}</b>")
         headline = (
             f"Across {len(seasons)} replayed season"
-            f"{'s' if len(seasons) != 1 else ''} ({span}) the submitted "
-            f"ensemble scores a pooled relWIS of "
-            f'<b>{pooled_ens:.3f}</b> against the CDC FluSight baseline. '
-            "Below 1 beats it. " + relwis.PUBLISHED_CONVENTION_NOTE)
+            f"{'s' if len(seasons) != 1 else ''} ({span}) the two submitted "
+            "models score a pooled relWIS of " + " and ".join(parts)
+            + " against the CDC FluSight baseline. Below 1 beats it. "
+            + relwis.PUBLISHED_CONVENTION_NOTE)
     else:
         headline = ("No season has been scored yet. The table fills in as "
                     "retrospectives complete.")
@@ -828,9 +837,10 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
   <section>
     <div class="kick">Probabilistic forecast</div>
     <p class="sub">The observed weeks behind the forecast date, then the
-    ensemble's next four as a median with 50% and 80% intervals, from the
-    same forecast week. The CDC submission carries this at 23 quantile
-    levels for every jurisdiction, every week. {settled_line}</p>
+    particle filter's next four as a median with 50% and 80% intervals,
+    from the same forecast week, with the Groundhog's median on the legend.
+    Each CDC submission carries its model at 23 quantile levels for every
+    jurisdiction, every week. {settled_line}</p>
     <div class="card">
       <div class="fpick">
         <button id="fprev" aria-label="previous location">&#9664;</button>
@@ -900,9 +910,9 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
 
   <section>
     <div class="kick">Season replays</div>
-    <p class="sub">The members alternate in strength season to season; the
-    equal-weight blend is the forecast we submit. That asymmetry is the
-    ensemble's whole argument.</p>
+    <p class="sub">Two models, each submitted on its own: the mechanistic
+    particle filter and the empirical Groundhog. They fail differently
+    season to season, which is why both are filed.</p>
     <div class="card scroll">
       {_member_table(payload)}
     </div>

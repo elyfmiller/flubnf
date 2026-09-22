@@ -52,7 +52,10 @@ from flubnf.settings import HUB
 from flubnf.wis import wis as wis_fn
 
 OFFICIAL = ("FluSight-baseline", "FluSight-ensemble")
-CACHE_V = 2   # bump when cached shapes or scoring logic change
+#: bump when cached shapes or scoring logic change. v3 (2026-09-22): the
+#: payload carries the stored members only; a v2 payload holds a blend
+#: computed on the fly that nothing computes any more, and is rebuilt
+CACHE_V = 3
 TARGET = "wk inc flu hosp"
 #: canonical hub horizons; app.core.horizons owns the convention
 HORIZONS = hz.HORIZONS

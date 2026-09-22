@@ -2207,7 +2207,7 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
         _vs_all = data_mod.vintages()
         if _vs_all and _vs_all[-1] > spec.forecast_date:
             _lim = (_dd.fromisoformat(spec.forecast_date)
-                    + _tdd(days=35)).isoformat()
+                    + _tdd(days=28)).isoformat()
             ldf = pd.read_csv(data_mod.vintage_path(_vs_all[-1]),
                               dtype={"location": str})
             ldf["location"] = ldf["location"].str.zfill(2)
