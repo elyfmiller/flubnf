@@ -48,7 +48,9 @@ AGGREGATED = "aggregated"
 OFFICIALS_ONLY = "officials_only"
 PROVENANCES = (FITTED, AGGREGATED, OFFICIALS_ONLY)
 
-#: The members a season scores, in the order every table prints them.
+#: The models a season scores, in the order every table prints them, and
+#: the retired blend last: a scores frame written before 2026-09-22 still
+#: carries its rows, and a US view of that season prints them as its record.
 MODELS = ("pf", "analogue", "ensemble")
 
 #: THE long label for each provenance: what a location picker, a chart
@@ -87,10 +89,9 @@ NOTES = {
         "aggregated from its state forecasts "
         "with states treated as independent (PF by summing its per-state "
         "sample draws, aligned by draw index; the analogue by drawing from "
-        "each state's quantile curve independently and summing), and the two "
-        "national member quantile sets are then vincentized 50/50, the "
-        "shipped ensemble recipe. Scored against the US truth row with the "
-        "same relWIS machinery as every state."),
+        "each state's quantile curve independently and summing). Scored "
+        "against the US truth row with the same relWIS machinery as every "
+        "state."),
     OFFICIALS_ONLY: (
         "No national forecast of ours exists for this season: the run fitted "
         "states only and the sum-of-states aggregate could not be "
@@ -285,11 +286,6 @@ class UsNational:
         return d
 
 
-#: The shipped, never-self-fitted member weights the season scoring uses.
-#: The aggregate must be THE aggregate, not a reweighted cousin.
-DEFAULT_WEIGHTS = {"pf": 0.5, "analogue": 0.5}
-
-
 def from_scores(df) -> UsNational | None:
     """The fitted answer read straight out of a season's scores frame, or
     None when the frame carries no national rows. relWIS is sum(wis) over
@@ -309,8 +305,7 @@ def from_scores(df) -> UsNational | None:
     return UsNational(FITTED, scores=scores, cells=cells, n_states=n_states)
 
 
-def resolve(root, scores_df=None, ensemble_weights=None,
-            allow_aggregate: bool = True) -> UsNational:
+def resolve(root, scores_df=None, allow_aggregate: bool = True) -> UsNational:
     """THE resolution order for one season root: a fitted US cell, else the
     sum-of-states aggregate, else officials only.
 
@@ -319,9 +314,7 @@ def resolve(root, scores_df=None, ensemble_weights=None,
     prints the label it returns; none of them re-derives the order.
 
     `scores_df` is the season's scores frame when the caller already holds
-    it (the season page does), and is loaded here otherwise. `ensemble_
-    weights` is passed straight through to the aggregate construction; the
-    default is the shipped 50/50 pair the season scoring uses.
+    it (the season page does), and is loaded here otherwise.
 
     `allow_aggregate=False` skips the constructed fallback for callers that
     must not pay its compute cost (it is minutes on a cold cache). Such a
@@ -348,7 +341,7 @@ def resolve(root, scores_df=None, ensemble_weights=None,
         return UsNational(OFFICIALS_ONLY, n_states=n_states,
                           reason="the aggregate was not computed here")
 
-    row, reason = aggregate_row(root, ensemble_weights)
+    row, reason = aggregate_row(root)
     if row:
         scores = {m: (float(row[m]) if row.get(m) else None) for m in MODELS}
         cells = {m: int((row.get("cells") or {}).get(m, 0)) for m in MODELS}
@@ -357,15 +350,13 @@ def resolve(root, scores_df=None, ensemble_weights=None,
     return UsNational(OFFICIALS_ONLY, n_states=n_states, reason=reason)
 
 
-def aggregate_row(root, ensemble_weights=None) -> tuple:
+def aggregate_row(root) -> tuple:
     """(row, reason): the constructed sum-of-states aggregate for a season
     root, or (None, why it could not be delivered) in words an artifact can
     print. Silent omission is the failure class this replaced."""
     from app.core import retro as _retro
-    weights = ensemble_weights if ensemble_weights is not None \
-        else DEFAULT_WEIGHTS
     try:
-        row = _retro.national_aggregate(Path(root), ensemble_weights=weights)
+        row = _retro.national_aggregate(Path(root))
     except Exception as e:
         return None, ("its construction failed while this view was built "
                       f"({type(e).__name__}: {str(e)[:120]})")

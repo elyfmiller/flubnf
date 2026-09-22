@@ -3945,7 +3945,8 @@ def _scan_archive_entries(retro_root: Path, season: str) -> list:
         size = retro.dir_size(p)
         out.append({"id": stamp, "when": retro.stamp_human(stamp),
                     "weeks": s["weeks"], "elapsed_s": s["elapsed_s"],
-                    "rel": s["headline_rel"], "scored": s["scored"],
+                    "rel": s["headline_rel"], "rels": s.get("headline_rels"),
+                    "scored": s["scored"],
                     "size": size, "size_h": retro.human_bytes(size)})
     return out
 
@@ -4378,9 +4379,13 @@ def retro_index(request: Request):
         done = _weeks_done(root)
         prog = _retro_progress(s)
         status = prog["status"]
-        # the head score (season ensemble relWIS), so a completed season
-        # shows its verdict on the index instead of a ceremonial 100% bar
-        rel = _retro.run_summary(root)["headline_rel"]
+        # the head scores (one relWIS per model the season scored), so a
+        # completed season shows its verdict on the index instead of a
+        # ceremonial 100% bar
+        _summ = _retro.run_summary(root)
+        rel = _summ.get("headline_rel")
+        rels = _summ.get("headline_rels") or ({"": rel} if rel is not None
+                                              else {})
         # a stopped or interrupted replay offers one-click resumption with
         # the settings its own run record holds. The fields come from the
         # LIVE root's record, never the seal's: the live tree is the only
@@ -4393,7 +4398,7 @@ def retro_index(request: Request):
         seasons.append({"name": s, "total": total, "done": done,
                         "seal": is_seal,
                         "seal_label": _sealed_label(root) if is_seal else "",
-                        "rel": rel,
+                        "rel": rel, "rels": rels,
                         "resume_fields": resume_fields,
                         "settings": prog["settings"],
                         "archives": _archive_entries(s),
@@ -4544,9 +4549,6 @@ def retro_archive_delete(request: Request, season: str, stamp: str,
 # progress state polled from /api/retro/{season}/results_status.
 # --------------------------------------------------------------------------
 
-#: the shipped, never-self-fitted member weights every scoring surface uses
-RETRO_WEIGHTS = {"pf": 0.5, "analogue": 0.5}
-
 #: how long the results route waits for a just-started job before rendering
 #: the preparing state instead: small seasons (and every test tree) finish
 #: inside it, so the page renders complete exactly as it always did
@@ -4664,7 +4666,7 @@ def _ensure_results_job(root: Path, season: str,
     def _run():
         try:
             job["seconds"] = retro.finalize_season(
-                root, season, ensemble_weights=RETRO_WEIGHTS,
+                root, season,
                 phase_cb=lambda p: job.__setitem__("phase", p),
                 force=force)
             # the page's default view is the LAST week's map: warm its
@@ -4854,7 +4856,7 @@ def _results_pending(root: Path) -> str:
         return "scores stale"
     if not _scores_scoreable_fast(root):
         return "" if _job_covered(root) else "scores empty"
-    if not retro.national_aggregate_fresh(root, RETRO_WEIGHTS):
+    if not retro.national_aggregate_fresh(root):
         return "national aggregate stale"
     return ""
 
@@ -5236,7 +5238,9 @@ def retro_results(request: Request, season: str, week: str = "",
                               "elapsed_s": round(time.time() - job["t0"], 1)},
                 "archive": archive,
                 "archive_when": retro.stamp_human(archive) if archive else "",
-                "heads": {}, "curve": [], "states": [], "us_row": None,
+                "heads": {}, "curve": [], "curves": {}, "states": [],
+                "season_models": [], "member_colors": _member_colors(),
+                "us_row": None,
                 "us": None, "pooled_note": "",
                 "conv": relwis.DEFAULT_CONVENTION, "figs": None,
                 "conventions": _relwis_conventions(),
@@ -5263,6 +5267,7 @@ def retro_results(request: Request, season: str, week: str = "",
     # the published headline.
     df = usn.pooled_frame(df_all)
     heads, curve, states = {}, [], []
+    curves: dict = {}
     scoreable = (not df.empty) and ("model" in df.columns)
     # THE convention gate. One convention governs the head tiles and the
     # per-state table together (app/core/relwis computes both from the same
@@ -5285,13 +5290,19 @@ def retro_results(request: Request, season: str, week: str = "",
         # printing this line under a heading it does not belong to. One
         # grouped pass: the old loop re-scanned the frame per asof.
         asofs = sorted(df["asof"].unique())
-        ens = df[df.model == "ensemble"]
-        if len(ens):
-            cum = ens.groupby("asof")[["wis", "base_wis"]].sum() \
-                     .sort_index().cumsum()
+        # one line per model the frame carries, in relwis.MODELS order:
+        # the two that ship, and the retired blend's rows where a season
+        # scored before 2026-09-22 stored them
+        for m in relwis.MODELS:
+            g = df[df.model == m]
+            if not len(g):
+                continue
+            cum = g.groupby("asof")[["wis", "base_wis"]].sum() \
+                   .sort_index().cumsum()
             cum = cum.reindex(asofs).ffill().dropna()
-            curve = [(str(a)[:10], r.wis / r.base_wis)
-                     for a, r in cum.iterrows()]
+            curves[m] = [(str(a)[:10], r.wis / r.base_wis)
+                         for a, r in cum.iterrows()]
+        curve = curves.get("pf") or next(iter(curves.values()), [])
     # the national series, through THE resolution order (app/core/
     # us_national.resolve): a fitted US cell when the replay ran one, else
     # the constructed sum-of-states aggregate, else the officials alone.
@@ -5305,8 +5316,7 @@ def retro_results(request: Request, season: str, week: str = "",
     us = None
     if scoreable:
         try:
-            us = usn.resolve(root, df_all,
-                             ensemble_weights={"pf": 0.5, "analogue": 0.5})
+            us = usn.resolve(root, df_all)
         except Exception:
             us = None
     # us_row keeps the template's existing shape (a mapping carrying
@@ -5412,7 +5422,16 @@ def retro_results(request: Request, season: str, week: str = "",
     except Exception:
         official_catalog = []
     return templates.TemplateResponse(request, "retro_season.html", {
-        "active": "Retrospective", "season": season, "heads": heads, "curve": curve, "states": states,
+        "active": "Retrospective", "season": season, "heads": heads,
+        "curve": curve, "curves": curves, "states": states,
+        "member_colors": _member_colors(),
+        # the models this season scored, in table order: the two that ship
+        # and, for a season scored before 2026-09-22, the retired blend
+        "season_models": [m for m in relwis.MODELS
+                          if m in heads or m in curves
+                          or any((r.get(m) if isinstance(r, dict)
+                                  else getattr(r, m, None))
+                                 for r in states)],
         "us_row": us_row,
         # the provenance travels WITH the numbers: nothing on the page may
         # print a US score without also printing the label that says

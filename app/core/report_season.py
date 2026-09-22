@@ -190,12 +190,6 @@ def _settings_note(root: Path, build: str = "",
                          title=SETTINGS_MARK, cls="sub")
 
 
-#: the shipped, never-self-fitted member weights, the same pair the season
-#: page scores with -- the export's aggregate must be THE aggregate, not a
-#: reweighted cousin
-_US_AGG_WEIGHTS = dict(usn.DEFAULT_WEIGHTS)
-
-
 def player_us_labels() -> dict:
     """The player's own US provenance labels, read from its marked JSON
     literal, the MODEL_NAMES pattern applied to the national row. Parsed so
@@ -230,7 +224,7 @@ def _us_national(root: Path, df) -> tuple:
         return None, ("the season has not been scored yet, and the national "
                       "figure joins the scored verdict table only")
     try:
-        us = usn.resolve(root, df, ensemble_weights=_US_AGG_WEIGHTS)
+        us = usn.resolve(root, df)
     except Exception as e:
         return None, ("its construction failed while this export was "
                       f"built ({type(e).__name__}: {str(e)[:120]})")
@@ -248,43 +242,73 @@ _MON_NAME = {8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec", 1: "Jan",
 
 #: the cumulative chart's heading, EXACTLY the season page's own, so the
 #: report-vs-app parity test can match the sections by name
-CURVE_HEADING = "Cumulative ensemble relWIS through the season"
+CURVE_HEADING = "Cumulative relWIS through the season"
+
+#: the models a season's curve and tables carry, in order: the two that
+#: ship, the research member, and the retired blend where a scores.json
+#: written before 2026-09-22 stored its rows
+SEASON_MODELS = ("pf", "analogue", "pf2s", "ensemble")
 
 
-def _cumulative_curve(df) -> list:
-    """[(iso week, cumulative ensemble relWIS)], the same series the
-    console's season page charts: ensemble rows grouped by asof, summed,
-    and accumulated (the arithmetic mirrors app/ui/server.py's
-    retro_results; the parity test holds the two together)."""
+def _cumulative_curves(df) -> dict:
+    """{model: [(iso week, cumulative relWIS)]} for every SEASON_MODELS
+    entry the frame carries, the same series the console's season page
+    charts: that model's rows grouped by asof, summed, and accumulated
+    (the arithmetic mirrors app/ui/server.py's retro_results; the parity
+    test holds the two together)."""
     if df is None or "model" not in getattr(df, "columns", ()):
-        return []
+        return {}
     # the pooled gate: the curve is the 52-jurisdiction cumulative figure,
     # by named policy (us_national.POOLED_INCLUDES_US), so a fitted
     # national row can never bend the season's published line
     df = usn.pooled_frame(df)
-    ens_rows = df[df.model == "ensemble"]
-    if not len(ens_rows):
-        return []
     asofs = sorted(df["asof"].unique())
-    cum = (ens_rows.groupby("asof")[["wis", "base_wis"]].sum()
-           .sort_index().cumsum())
-    cum = cum.reindex(asofs).ffill().dropna()
-    return [(str(a)[:10], r.wis / r.base_wis) for a, r in cum.iterrows()]
+    out = {}
+    for m in SEASON_MODELS:
+        rows = df[df.model == m]
+        if not len(rows):
+            continue
+        cum = (rows.groupby("asof")[["wis", "base_wis"]].sum()
+               .sort_index().cumsum())
+        cum = cum.reindex(asofs).ffill().dropna()
+        out[m] = [(str(a)[:10], r.wis / r.base_wis)
+                  for a, r in cum.iterrows()]
+    return out
 
 
-def _curve_svg(curve: list) -> str:
+def _cumulative_curve(df) -> list:
+    """The PF's cumulative series (the first model's when a frame carries
+    no PF rows), for callers that want one line; the report draws them
+    all through _cumulative_curves."""
+    curves = _cumulative_curves(df)
+    return curves.get("pf") or next(iter(curves.values()), [])
+
+
+def _model_colors() -> dict:
+    """The one member-colour map (the player's marked JSON, via
+    report_v2), with the retired blend on the gold token as every console
+    surface draws it."""
+    colors = dict(report_v2.model_colors())
+    colors["ensemble"] = "var(--gold)"
+    return colors
+
+
+def _curve_svg(curves: dict) -> str:
     """The cumulative chart as one inline SVG, the season page's own
-    geometry (viewBox 720x180, gridlines at 1.0 and 0.5, gold line, the
-    final value printed at the endpoint, month ticks at each month change,
-    corner dates). Token colors, so it follows the resolved theme."""
-    vals = [v for _, v in curve]
-    n = len(curve)
+    geometry (viewBox 720x180, gridlines at 1.0 and 0.5, one line per
+    model in its member colour, each final value printed at its endpoint,
+    month ticks at each month change, corner dates). Token colors, so it
+    follows the resolved theme."""
+    first = next(iter(curves.values()))
+    vals = [v for c in curves.values() for _, v in c]
+    n = len(first)
     hi = max(max(vals), 1.05)
     lo = min(min(vals), 0.45)
     yspan = hi - lo
+    colors = _model_colors()
 
-    def x_at(i):
-        return round(20 + i * (635 / (n - 1 if n > 1 else 1)), 1)
+    def x_at(i, count):
+        return round(20 + i * (635 / (count - 1 if count > 1 else 1)), 1)
 
     def y_at(v):
         return round(12 + (hi - v) * 124 / yspan, 1)
@@ -297,34 +321,43 @@ def _curve_svg(curve: list) -> str:
                      'stroke="var(--mut)" stroke-dasharray="3"/>'
                      f'<text x="660" y="{gy + 4}" fill="var(--mut)" '
                      f'font-size="13">{gl}</text>')
-    pts = " ".join(f"{x_at(i)},{y_at(v)}" for i, (_, v) in enumerate(curve))
-    parts.append('<polyline fill="none" stroke="var(--gold)" '
-                 f'stroke-width="2.5" points="{pts}"/>')
-    for i, (d, v) in enumerate(curve):
-        parts.append(f'<circle cx="{x_at(i)}" cy="{y_at(v)}" r="3" '
-                     f'fill="var(--gold)"><title>{d}: {v:.3f}</title>'
-                     '</circle>')
-    lx, ly = x_at(n - 1), y_at(vals[-1])
-    parts.append(f'<text x="{round(lx - 8, 1)}" '
-                 f'y="{round(ly - 8 if ly - 8 >= 20 else ly + 18, 1)}" '
-                 'text-anchor="end" font-weight="700" font-size="17" '
-                 f'fill="var(--gold)">{vals[-1]:.3f}</text>')
+    for m, curve in curves.items():
+        col = colors.get(m, "var(--mut)")
+        cn = len(curve)
+        pts = " ".join(f"{x_at(i, cn)},{y_at(v)}"
+                       for i, (_, v) in enumerate(curve))
+        parts.append(f'<polyline fill="none" stroke="{col}" '
+                     f'stroke-width="2.5" data-model="{m}" points="{pts}"/>')
+        name = MODEL_NAMES.get(m, m)
+        for i, (d, v) in enumerate(curve):
+            parts.append(f'<circle cx="{x_at(i, cn)}" cy="{y_at(v)}" r="3" '
+                         f'fill="{col}"><title>{name} {d}: {v:.3f}</title>'
+                         '</circle>')
+        lx, ly = x_at(cn - 1, cn), y_at(curve[-1][1])
+        parts.append(f'<text x="{round(lx - 8, 1)}" '
+                     f'y="{round(ly - 8 if ly - 8 >= 20 else ly + 18, 1)}" '
+                     'text-anchor="end" font-weight="700" font-size="17" '
+                     f'fill="{col}">{curve[-1][1]:.3f}</text>')
     prev = None
-    for i, (d, _v) in enumerate(curve):
+    for i, (d, _v) in enumerate(first):
         mm = str(d)[5:7]
         if prev is not None and mm != prev and mm.isdigit():
             lab = _MON_NAME.get(int(mm), "")
-            parts.append(f'<line x1="{x_at(i)}" y1="136" x2="{x_at(i)}" '
+            parts.append(f'<line x1="{x_at(i, n)}" y1="136" x2="{x_at(i, n)}" '
                          'y2="142" stroke="var(--mut)"/>'
-                         f'<text x="{x_at(i)}" y="154" text-anchor="middle" '
+                         f'<text x="{x_at(i, n)}" y="154" text-anchor="middle" '
                          f'fill="var(--mut)" font-size="13">{lab}</text>')
         prev = mm
     parts.append(f'<text x="20" y="168" fill="var(--mut)" font-size="13">'
-                 f'{curve[0][0]}</text>')
+                 f'{first[0][0]}</text>')
     if n > 1:
         parts.append('<text x="655" y="168" text-anchor="end" '
-                     f'fill="var(--mut)" font-size="13">{curve[-1][0]}</text>')
+                     f'fill="var(--mut)" font-size="13">{first[-1][0]}</text>')
     parts.append("</svg>")
+    legend = " · ".join(
+        f'<span style="color:{colors.get(m, "var(--mut)")}">&#9632;</span> '
+        f'{MODEL_NAMES.get(m, m)}' for m in curves)
+    parts.append(f'<p class="hint">{legend}</p>')
     return "".join(parts)
 
 
@@ -333,18 +366,18 @@ def _curve_block(df) -> str:
     unscored seasons alike: the season page always shows this card, and an
     unscored season states the same arrival note the console does rather
     than leaving a hole."""
-    curve = _cumulative_curve(df)
+    curves = _cumulative_curves(df)
     head = f'<h2 style="margin-top:.9rem">{CURVE_HEADING}</h2>'
-    if not curve:
+    if not curves:
         return head + ('<p class="hint">Arrives with the first scored '
                        "week.</p>")
-    return head + _curve_svg(curve)
+    return head + _curve_svg(curves)
 
 
 def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
     """The static season verdict, printed ahead of the player.
 
-    Final relWIS tiles for each member and the ensemble come from the final
+    Final relWIS tiles for each model come from the final
     week's cumulative stats, which are the very numbers the player's live
     table reaches at the last frame, so the static block and the player can
     never disagree. The line beneath states the weeks covered and, when the
@@ -352,8 +385,8 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
     final table reads the season's scores.json, the same file the console's
     season page renders; when the season has not been scored yet the table
     is omitted with a plain statement rather than invented. The cumulative
-    ensemble chart sits between them, the same series the season page
-    draws. The US national aggregate joins both surfaces exactly as it
+    chart sits between them, the same series the season page draws. The
+    US national aggregate joins both surfaces exactly as it
     does in the console -- a verdict tile and a leading table row, each
     wearing the honest independence label -- computed when its cache is
     cold; when it cannot be delivered at all, the artifact SAYS so instead
@@ -361,7 +394,7 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
     final = payloads.get(weeks[-1]) or {}
     stats = final.get("stats") or {}
     tiles = []
-    for m in ("ensemble", "pf", "analogue", "pf2s"):
+    for m in SEASON_MODELS:
         v = (stats.get(m) or {}).get("cum_rel")
         if v is None:
             continue
@@ -383,32 +416,40 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
     # 52-jurisdiction scope, and the national row is resolved separately
     df = usn.pooled_frame(df_all)
     us, us_reason = _us_national(root, df_all)
-    if us and us.get("ensemble"):
-        # the national figure as a verdict tile, ALWAYS labelled for what
-        # it is: fitted at the national level, or constructed from the
-        # state forecasts. The two are different model outputs.
-        v = us["ensemble"]
+    # the models this season scored, in order, from its own rows
+    have = ([m for m in SEASON_MODELS
+             if "model" in getattr(df, "columns", ()) and (df.model == m).any()]
+            if df is not None else [])
+    for m in have:
+        if not (us and us.get(m)):
+            continue
+        # the national figure as a verdict tile per model, ALWAYS labelled
+        # for what it is: fitted at the national level, or constructed
+        # from the state forecasts. The two are different model outputs.
+        v = us[m]
         cls = "ok" if v < 1 else "bad"
         sub = ("fitted at the national level, outside the pooled figures"
                if us.is_fitted else us.fallback_note
                + ", states treated as independent")
         tiles.append('<div class="tile"><div class="tilename">'
-                     + us.short_label + '</div>'
+                     + us.short_label + ": " + MODEL_NAMES.get(m, m)
+                     + '</div>'
                      + f'<div class="tileval {cls}">{v:.3f}</div>'
                      + f'<div class="hint">{sub}</div></div>')
-    if df is not None and "model" in getattr(df, "columns", ()):
+    if have:
         # cell coverage, stated when the scores file can supply it and
         # omitted (the generic phrase stands) rather than invented
-        n = int((df.model == "ensemble").sum())
+        n = int((df.model == have[0]).sum())
         if n:
-            cover = f"the season's {n} scored ensemble cells"
+            cover = (f"the season's {n} scored {MODEL_NAMES.get(have[0], have[0])}"
+                     " cells")
     if df is not None and "location" in df.columns:
         if us:
             # the national row leads the table as a DISTINCT row, the
             # console's own placement, wearing the label that says where it
             # came from; a member with no score prints n/a
             cells = [f"<td>{us.short_label}</td>"]
-            for m in ("pf", "analogue", "ensemble"):
+            for m in have:
                 v = us.get(m)
                 if v:
                     cells.append('<td class="num '
@@ -419,7 +460,7 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
             rows.append('<tr class="usagg">' + "".join(cells) + "</tr>")
         for loc in sorted(df.location.unique()):
             cells = [f"<td>{loc}</td>"]
-            for m in ("pf", "analogue", "ensemble"):
+            for m in have:
                 g = df[(df.model == m) & (df.location == loc)]
                 bs = g.base_wis.sum() if len(g) else 0
                 if bs:
@@ -432,9 +473,10 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
             rows.append("<tr>" + "".join(cells) + "</tr>")
     if rows:
         states = ('<h2 style="margin-top:.9rem">Per-state final scores</h2>'
-                  '<table><thead><tr><th>State</th><th class="num">PF</th>'
-                  '<th class="num">Analogue</th>'
-                  '<th class="num">Ensemble</th></tr></thead><tbody>'
+                  '<table><thead><tr><th>State</th>'
+                  + "".join(f'<th class="num">{MODEL_NAMES.get(m, m)}</th>'
+                            for m in have)
+                  + '</tr></thead><tbody>'
                   + "".join(rows) + "</tbody></table>"
                   + (f'<p class="hint">{us.note}</p>'
                      f'<p class="hint">{usn.POOLED_SCOPE_NOTE}</p>'

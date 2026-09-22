@@ -363,14 +363,14 @@ def test_compressed_season_scores_plays_back_and_exports_identically(
     monkeypatch.setattr(settings_mod, "HUB", tmp_path / "hub")
     root = _mk_scoreable_tree(tmp_path)
 
-    df1 = retro.score_season(root, SEASON, ensemble_weights=WEIGHTS)
+    df1 = retro.score_season(root, SEASON)
     tmpj = root / "scores.json.tmp"
     df1.to_json(tmpj)
     import os as _os
     _os.replace(tmpj, root / "scores.json")
     assert retro.scores_current(root)
     p1 = playback.build_week(root, SEASON, W2)
-    n1 = retro.national_aggregate(root, ensemble_weights=WEIGHTS)
+    n1 = retro.national_aggregate(root)
     export_key1 = report_season._newest_input(root)
 
     # migrate: prune the intermediates AND compress every stored week
@@ -388,7 +388,7 @@ def test_compressed_season_scores_plays_back_and_exports_identically(
     assert retro.scores_current(root)
 
     # scores: recomputed FRESH from the compressed store, cell-identical
-    df2 = retro.score_season(root, SEASON, ensemble_weights=WEIGHTS)
+    df2 = retro.score_season(root, SEASON)
     pd.testing.assert_frame_equal(
         df1.reset_index(drop=True), df2.reset_index(drop=True))
 
@@ -401,8 +401,8 @@ def test_compressed_season_scores_plays_back_and_exports_identically(
     assert p1["stats"] == p2["stats"]
 
     # the national aggregate: recomputed fresh, same numbers
-    n2 = retro.national_aggregate(root, ensemble_weights=WEIGHTS)
-    for k in ("pf", "analogue", "ensemble"):
+    n2 = retro.national_aggregate(root)
+    for k in ("pf", "analogue"):
         assert n1[k] == pytest.approx(n2[k])
 
 
@@ -486,7 +486,7 @@ def test_finalize_season_sweeps_leftover_intermediates(tmp_path, _stubbed,
     monkeypatch.setattr(settings_mod, "HUB", tmp_path / "hub")
     root = _mk_scoreable_tree(tmp_path)          # weeks carry intermediates
     phases = []
-    sec = retro.finalize_season(root, SEASON, ensemble_weights=WEIGHTS,
+    sec = retro.finalize_season(root, SEASON,
                                 phase_cb=phases.append)
     assert "pruning intermediates" in phases
     assert "prune" in sec

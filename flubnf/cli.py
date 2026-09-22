@@ -2175,10 +2175,13 @@ def retro_cmd(season: str, locations: str = "all", width: int = 0,
     width 0 means auto: sized to this machine's cores by the engine's
     default_shard_width(), the same default the console form offers.
 
-    aux names an auxiliary donor configuration for the analogue member
+    aux names the analogue member's donor configuration
     (app.core.engines.analogue.AUX_PRESETS, e.g. 'flusurv'). Empty, the
-    default, runs the shipped single-pool analogue. The preset's name is
-    written into run_meta.json, so a spliced replay says so on its face."""
+    default, runs the shipped Groundhog (analogue.SHIPPED_AUX); 'none'
+    runs the bare calendar analogue that shipped inside the blend until
+    2026-09-22, a research configuration now. The configuration's name is
+    written into run_meta.json with its bank digests, so a replay says on
+    its face which donors it ran."""
     import pandas as pd
     from pathlib import Path as _P
     from app.core import retro
@@ -2196,11 +2199,14 @@ def retro_cmd(season: str, locations: str = "all", width: int = 0,
     # 2026-09-07: 'Configuration file app/state/.../pf.conf not found' for
     # all 156 cells of every week, and the season 'completed' empty).
     r = (_P(root) if root else _P("app/state/retro") / season).resolve()
-    week_extra = None
-    if aux:
-        from app.core.engines.analogue import aux_preset
-        week_extra = aux_preset(aux)          # unknown name raises here
-        print(f"  auxiliary donor configuration: {aux}")
+    from app.core.engines import analogue as _an
+    if aux == "none":
+        week_extra = _an.bare_analogue
+    elif aux:
+        week_extra = _an.aux_preset(aux)      # unknown name raises here
+    else:
+        week_extra = _an.aux_preset(_an.SHIPPED_AUX)
+    print(f"  analogue donor configuration: {week_extra.__name__}")
     done = retro.run_season(r, season, names, replicates=replicates,
                             width=width, week_extra=week_extra,
                             progress=lambda a: print(f"  {a} done", flush=True))

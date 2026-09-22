@@ -159,8 +159,10 @@ def test_per_state_table_colors_only_scores_at_or_above_one():
     assert re.search(r'<td class="num">\s*n/a</td>', body)
     # the headers are the sort controls now: aria-pressed buttons in the
     # th's own type, still under the shared .num right alignment
-    for key, label in (("pf", "PF"), ("analogue", "Analogue"),
-                       ("ensemble", "Ensemble")):
+    # the column labels are the shared model names; the retired blend's
+    # column renders here because this render's context still lists it
+    for key, label in (("pf", "PF-SIHRS"), ("analogue", "Groundhog"),
+                       ("ensemble", "FluBNF Ensemble \(retired\)")):
         assert re.search(r'<th class="num"><button type="button" '
                          r'class="thsort" data-key="' + key + r'"\s+'
                          r'aria-pressed="false">' + label, body), key

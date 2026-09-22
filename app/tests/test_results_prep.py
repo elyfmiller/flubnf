@@ -115,7 +115,7 @@ def _routed(monkeypatch, tmp_path):
 def test_finalize_builds_every_cache_and_times_each_phase(tmp_path, _stubbed):
     root = _mk_tree(tmp_path)
     phases = []
-    sec = retro.finalize_season(root, SEASON, ensemble_weights=WEIGHTS,
+    sec = retro.finalize_season(root, SEASON,
                                 phase_cb=phases.append)
     assert phases == list(retro.FINALIZE_PHASES)
     for k in ("scoring", "national", "playback", "total"):
@@ -125,7 +125,7 @@ def test_finalize_builds_every_cache_and_times_each_phase(tmp_path, _stubbed):
     assert "model" in df.columns and len(df)
     # the national aggregate cache, valid for the tree as it stands
     assert (root / "playback_cache" / "us_aggregate.json").is_file()
-    assert retro.national_aggregate_fresh(root, WEIGHTS)
+    assert retro.national_aggregate_fresh(root)
     # every week's playback payload warmed
     for w in (W1, W2):
         assert (root / "playback_cache" / f"{w}.json").is_file(), w
@@ -136,16 +136,16 @@ def test_finalize_skips_scoring_when_current_unless_forced(tmp_path,
                                                            _stubbed,
                                                            monkeypatch):
     root = _mk_tree(tmp_path)
-    retro.finalize_season(root, SEASON, ensemble_weights=WEIGHTS)
+    retro.finalize_season(root, SEASON)
     calls = []
     real = retro.score_season
     monkeypatch.setattr(retro, "score_season",
                         lambda *a, **k: calls.append(1) or real(*a, **k))
     # current and scoreable: the aggregate-only path must not pay a rescore
-    sec = retro.finalize_season(root, SEASON, ensemble_weights=WEIGHTS)
+    sec = retro.finalize_season(root, SEASON)
     assert not calls and "scoring" not in sec
     # the explicit-rescore path still forces it
-    retro.finalize_season(root, SEASON, ensemble_weights=WEIGHTS, force=True)
+    retro.finalize_season(root, SEASON, force=True)
     assert calls
 
 
@@ -162,8 +162,8 @@ def test_record_finalize_lands_in_run_meta(tmp_path):
 def test_freshness_helpers_read_the_tree_honestly(tmp_path, _stubbed):
     root = _mk_tree(tmp_path)
     assert not retro.scores_current(root)              # never scored
-    assert not retro.national_aggregate_fresh(root, WEIGHTS)
-    retro.finalize_season(root, SEASON, ensemble_weights=WEIGHTS)
+    assert not retro.national_aggregate_fresh(root)
+    retro.finalize_season(root, SEASON)
     assert retro.scores_current(root)
     # a new week staled everything
     import os
@@ -171,7 +171,7 @@ def test_freshness_helpers_read_the_tree_honestly(tmp_path, _stubbed):
     later = time.time() + 60
     os.utime(sp, (later, later))
     assert not retro.scores_current(root)
-    assert not retro.national_aggregate_fresh(root, WEIGHTS)
+    assert not retro.national_aggregate_fresh(root)
 
 
 # ------------------------------------------ the worker finalizes before done
@@ -184,7 +184,7 @@ def test_season_worker_finalizes_and_records_before_done(tmp_path, _stubbed,
     srv._retro_bg(SEASON, ["Ohio"], width=1)
     assert srv._retro_status[SEASON] == "done"
     assert retro.scores_scoreable(root)
-    assert retro.national_aggregate_fresh(root, WEIGHTS)
+    assert retro.national_aggregate_fresh(root)
     m = retro.read_meta(root)
     assert "finalize_seconds" in m and m["finalize_seconds"]["total"] >= 0.0
 
@@ -205,7 +205,7 @@ def test_slow_job_shows_the_preparing_state_and_status_endpoint(
     _mk_tree(_routed)
     hold = threading.Event()
 
-    def _slow(root, season, ensemble_weights=None, phase_cb=None,
+    def _slow(root, season, phase_cb=None,
               force=False):
         if phase_cb:
             phase_cb("scoring cells")
@@ -240,7 +240,7 @@ def test_one_job_per_root_even_under_concurrent_visits(tmp_path, _stubbed,
     starts = []
     hold = threading.Event()
 
-    def _slow(root, season, ensemble_weights=None, phase_cb=None,
+    def _slow(root, season, phase_cb=None,
               force=False):
         starts.append(1)
         hold.wait(10)
@@ -288,9 +288,9 @@ def test_rescore_forces_a_fresh_job_over_current_scores(tmp_path, _stubbed,
     forces = []
     real = retro.finalize_season
 
-    def _spy(root, season, ensemble_weights=None, phase_cb=None, force=False):
+    def _spy(root, season, phase_cb=None, force=False):
         forces.append(force)
-        return real(root, season, ensemble_weights=ensemble_weights,
+        return real(root, season,
                     phase_cb=phase_cb, force=force)
 
     monkeypatch.setattr(retro, "finalize_season", _spy)
@@ -338,7 +338,7 @@ def test_season_report_carries_the_us_aggregate_with_the_honest_label(
     from app.core import report_season
     monkeypatch.setattr(report_season, "_plotlyjs", lambda: "/* stub */")
     root = _mk_tree(tmp_path)
-    retro.finalize_season(root, SEASON, ensemble_weights=WEIGHTS)
+    retro.finalize_season(root, SEASON)
     html = report_season.build_season_report(root, SEASON).read_text()
     # the verdict tile, wearing the independence label
     assert "US (aggregated)" in html
@@ -348,7 +348,7 @@ def test_season_report_carries_the_us_aggregate_with_the_honest_label(
     assert '<tr class="usagg"><td>US (aggregated)</td>' in html
     # the construction stated in full under the table
     assert "not a fitted national forecast" in html
-    assert "vincentized 50/50" in html
+    assert "vincentized" not in html               # no blend since 2026-09-22
     assert "aligned by draw index" in html
     # still self-contained
     assert "<script src" not in html and "fetch(" not in html
@@ -385,7 +385,7 @@ def test_export_freshness_covers_the_aggregate_cache(tmp_path, _stubbed,
     os.utime(p, (future, future))
     assert report_season.build_season_report(root, SEASON).read_text() \
         == "sentinel"                        # fresh: reused
-    retro.finalize_season(root, SEASON, ensemble_weights=WEIGHTS)
+    retro.finalize_season(root, SEASON)
     cf = root / "playback_cache" / "us_aggregate.json"
     os.utime(cf, (future + 60, future + 60))
     html = report_season.build_season_report(root, SEASON).read_text()

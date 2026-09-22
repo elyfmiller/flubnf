@@ -427,7 +427,10 @@ function createPlayer(cfg){
     var have = {};
     ((cat && cat.models) || (pl ? Object.keys(pl.models || {}) : []))
       .forEach(function(m){ have[m] = 1; });
-    var ours = ['ensemble', 'pf', 'analogue', 'pf2s']
+    // the two models that ship first; a stored blend (a payload from a
+    // season played back before it was retired) is still offered as that
+    // season's record
+    var ours = ['pf', 'analogue', 'pf2s', 'ensemble']
       .filter(function(m){ return have[m]; });
     ALLM = ours.concat(OFFS);
     var dflt = {ensemble: true, pf: true, analogue: true};

@@ -81,28 +81,26 @@ def test_pf_national_sums_draws_by_index_not_by_rank(tmp_path, _stub_scoring):
     a degenerate national forecast exactly on the US truth, so PF relWIS is
     0. A rank-aligned (comonotone) sum would spread 80..120 and score a
     strictly positive WIS; zero is the fingerprint of index alignment."""
-    r = retro.national_aggregate(_tree(tmp_path),
-                                 ensemble_weights={"pf": .5, "analogue": .5})
+    r = retro.national_aggregate(_tree(tmp_path))
     assert r is not None
     assert r["pf"] == 0.0
     assert r["cells"]["pf"] == 4                    # four horizons, one week
 
 
-def test_all_three_national_scores_arrive_scored_like_states(
+def test_both_national_scores_arrive_scored_like_states(
         tmp_path, _stub_scoring):
-    r = retro.national_aggregate(_tree(tmp_path),
-                                 ensemble_weights={"pf": .5, "analogue": .5})
-    for m in ("pf", "analogue", "ensemble"):
+    r = retro.national_aggregate(_tree(tmp_path))
+    for m in ("pf", "analogue"):
         assert m in r, m
         assert r[m] >= 0.0
         assert r["cells"][m] == 4
+    # nothing is blended since 2026-09-22: no national blend row either
+    assert "ensemble" not in r and "ensemble" not in r["cells"]
     # the analogue national set comes from two independent draws around a
     # symmetric curve summing to ~100: its relWIS is positive (it carries
     # spread) and finite
     assert r["analogue"] > 0.0
-    # the ensemble blends a degenerate PF set with the analogue set 50/50,
-    # so its intervals are half the analogue's: strictly between the two
-    assert r["pf"] < r["ensemble"] < r["analogue"]
+    assert r["pf"] < r["analogue"]
     assert r["weeks"] == 1
     assert r["seconds"] >= 0.0
 
@@ -117,8 +115,7 @@ def test_a_fitted_national_block_is_never_summed_into_the_aggregate(
     Both member loops must skip it, so a week with a fitted national block
     scores exactly as the same week without one."""
     w = {"pf": .5, "analogue": .5}
-    plain = retro.national_aggregate(_tree(tmp_path / "a"),
-                                     ensemble_weights=w)
+    plain = retro.national_aggregate(_tree(tmp_path / "a"))
     root = _tree(tmp_path / "b")
     sp = root / "weeks" / W1 / "samples.json"
     d = json.loads(sp.read_text())
@@ -127,7 +124,7 @@ def test_a_fitted_national_block_is_never_summed_into_the_aggregate(
     d["analogue"]["US"] = {str(h): {str(L): 100.0 for L in QL}
                            for h in range(1, 5)}
     sp.write_text(json.dumps(d))
-    with_us = retro.national_aggregate(root, ensemble_weights=w)
+    with_us = retro.national_aggregate(root)
 
     for r in (plain, with_us):
         r.pop("seconds", None)          # wall clock, not a result
@@ -149,27 +146,27 @@ def test_cached_under_the_stats_validity_key(tmp_path, _stub_scoring,
                                              monkeypatch):
     root = _tree(tmp_path)
     w = {"pf": .5, "analogue": .5}
-    r1 = retro.national_aggregate(root, ensemble_weights=w)
+    r1 = retro.national_aggregate(root)
     cf = root / "playback_cache" / "us_aggregate.json"
     assert cf.is_file()
     # a second call is served from the cache: truth loading would raise
     monkeypatch.setattr(scoring, "load_truth",
                         lambda: (_ for _ in ()).throw(AssertionError(
                             "cache miss recomputed")))
-    assert retro.national_aggregate(root, ensemble_weights=w) == r1
+    assert retro.national_aggregate(root) == r1
 
 
 def test_new_samples_invalidate_the_cache(tmp_path, _stub_scoring):
     root = _tree(tmp_path)
     w = {"pf": .5, "analogue": .5}
-    r1 = retro.national_aggregate(root, ensemble_weights=w)
+    r1 = retro.national_aggregate(root)
     sp = root / "weeks" / W1 / "samples.json"
     later = time.time() + 5
     os.utime(sp, (later, later))
-    r2 = retro.national_aggregate(root, ensemble_weights=w)
+    r2 = retro.national_aggregate(root)
     # deterministic recompute: the analogue draws are seeded per cell
-    assert {m: r2[m] for m in ("pf", "analogue", "ensemble")} \
-        == {m: r1[m] for m in ("pf", "analogue", "ensemble")}
+    assert {m: r2[m] for m in ("pf", "analogue")} \
+        == {m: r1[m] for m in ("pf", "analogue")}
     key = json.loads((root / "playback_cache"
                       / "us_aggregate.json").read_text())["key"]
     assert key["weeks"][W1] == int(later)
@@ -214,7 +211,7 @@ def test_us_row_and_tile_carry_the_honest_label():
     body = html.replace("\n", " ")
     assert "not a fitted national forecast" in body
     assert "states treated as independent" in body
-    assert "vincentized 50/50" in body
+    assert "vincentized" not in body               # no blend since 2026-09-22
     assert "aligned by draw index" in body
 
 

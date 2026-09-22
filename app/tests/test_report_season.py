@@ -93,8 +93,9 @@ def test_report_self_contained_with_player_and_data(tmp_path, monkeypatch):
     assert set(data["payloads"]) == {W1, W2}
     pl = data["payloads"][W1]
     assert set(pl) == {"_v", "asof", "locations", "truth", "models", "official", "stats"}
-    assert set(pl["models"]) == {"pf", "analogue", "ensemble"}
-    assert pl["stats"]["ensemble"]["cum_rel"] is not None
+    assert set(pl["models"]) == {"pf", "analogue"}
+    assert pl["stats"]["pf"]["cum_rel"] is not None
+    assert pl["stats"]["analogue"]["cum_rel"] is not None
 
     # player controls, forecast detail, and the stats table are all inline
     for marker in ('id="pb-prev"', 'id="pb-play"', 'id="pb-next"',
@@ -365,8 +366,8 @@ def test_report_verdict_states_cell_coverage_when_scored(tmp_path,
     root = _mk_root(tmp_path, monkeypatch)
     _write_scores(root)
     html = report_season.build_season_report(root, SEASON).read_text()
-    # 2 weeks x 2 states of synthetic ensemble rows
-    assert "the season's 4 scored ensemble cells" in html
+    # 2 weeks x 2 states of synthetic rows, counted on the first model
+    assert "the season's 4 scored PF-SIHRS cells" in html
     # unscored: the generic phrase stands, never an invented count
     root2 = _mk_root(tmp_path / "b", monkeypatch)
     html2 = report_season.build_season_report(root2, SEASON).read_text()

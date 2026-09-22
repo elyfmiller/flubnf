@@ -556,7 +556,7 @@ def test_archived_run_loads_through_the_playback_api(tmp_path, monkeypatch):
     pl = r.json()
     assert pl["asof"] == W1
     assert pl["locations"] == ["Ohio", "Utah"]
-    assert set(pl["models"]) == {"pf", "analogue", "ensemble"}
+    assert set(pl["models"]) == {"pf", "analogue"}
     # the playback payload is canonical, so the first FORECAST week is
     # hz.HORIZONS[0] and the anchor is not a numbered horizon here at all.
     # _write_week centres that week's draws on truth at W1 + 7d = 101.0 (it

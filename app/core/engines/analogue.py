@@ -186,6 +186,15 @@ def shipped_aux_label() -> str:
     return aux_preset(SHIPPED_AUX).__name__.split(":", 1)[1]
 
 
+def bare_analogue(asof=None, i=None, vintages=None) -> dict:
+    """The `week_extra` that replays the calendar analogue WITHOUT auxiliary
+    donors: the member every sealed number was scored with, and since
+    2026-09-22 a research configuration, not the shipped Groundhog. Named
+    so run_meta.json says which was run; a replay never falls into it by
+    omission."""
+    return {}
+
+
 def aux_preset(name: str):
     """A `week_extra` callable for `app.core.retro.run_season`, by preset name.
 

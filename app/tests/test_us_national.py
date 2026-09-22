@@ -184,8 +184,10 @@ def test_the_season_report_table_reports_us_apart_from_its_pooled_figures(
     (root / "scores.json").write_text(_frame().to_json(orient="records"))
     html = report_season._summary_block(root, ["2098-01-03"], {})
     # the pooled scope: eight state cells, never the twelve a leak gives
-    assert "the season's 8 scored ensemble cells" in html
-    assert "the season's 12 scored ensemble cells" not in html
+    # (this frame carries the retired blend's rows alone, a season scored
+    # before 2026-09-22, and the count names that model)
+    assert "the season's 8 scored FluBNF Ensemble (retired) cells" in html
+    assert "12 scored" not in html
     # the cumulative curve endpoint is the state-only value
     assert ">0.500<" in html
     # the national figure IS reported, on its own labelled row and tile

@@ -104,7 +104,8 @@ def test_payload_structure_members_official_truth_stats(tmp_path, monkeypatch):
     assert p["locations"] == ["Ohio", "Utah"]
 
     # members: sample-shaped converted, analogue as-is, pf2s included
-    assert set(p["models"]) == {"pf", "pf2s", "analogue", "ensemble"}
+    # no blend since 2026-09-22: the stored members and nothing computed
+    assert set(p["models"]) == {"pf", "pf2s", "analogue"}
     oh = p["models"]["pf"]["Ohio"]
     # the four canonical forecast horizons and nothing else: the anchor
     # week sits in the stored file under "0", becomes hz.ORIGIN at the
@@ -112,8 +113,9 @@ def test_payload_structure_members_official_truth_stats(tmp_path, monkeypatch):
     assert set(oh) == set(hz.HORIZONS)
     assert set(oh["0"]) == {str(float(L)) for L in QL}
     assert oh["0"]["0.5"] == pytest.approx(101.0)   # truth base 100, k=1
-    # ensemble = equal-weight blend: medians 101 (pf), 103 (pf2s), 105 (an)
-    assert p["models"]["ensemble"]["Ohio"]["0"]["0.5"] == pytest.approx(103.0)
+    # the members are served as stored: pf2s 103, the analogue 105
+    assert p["models"]["pf2s"]["Ohio"]["0"]["0.5"] == pytest.approx(103.0)
+    assert p["models"]["analogue"]["Ohio"]["0"]["0.5"] == pytest.approx(105.0)
 
     # truth: full-season settled series, US always included (the player
     # offers a US view in every week)
@@ -133,8 +135,7 @@ def test_payload_structure_members_official_truth_stats(tmp_path, monkeypatch):
     assert ob["US"]["0"]["0.5"] == pytest.approx(1001.0)
 
     # stats: every member plus covered officials; single week => cum == week
-    assert set(p["stats"]) == {"pf", "pf2s", "analogue", "ensemble",
-                               "FluSight-baseline"}
+    assert set(p["stats"]) == {"pf", "pf2s", "analogue", "FluSight-baseline"}
     for m, s in p["stats"].items():
         assert s["week_rel"] is not None and s["week_rel"] > 0
         assert s["cum_rel"] == pytest.approx(s["week_rel"])

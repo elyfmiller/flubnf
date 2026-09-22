@@ -527,9 +527,11 @@ def load_field_cells(directory=None) -> FieldCells:
 # what a page asks for
 # --------------------------------------------------------------------------
 
-#: The members every retrospective surface prints, in the order it prints
-#: them. Same tuple as us_national.MODELS; repeated here so this module can
-#: be read and tested without that one.
+#: The models every retrospective surface prints, in the order it prints
+#: them, the retired blend last (its rows exist only in a scores frame
+#: written before 2026-09-22, and a figure set simply lacks it otherwise).
+#: Same tuple as us_national.MODELS; repeated here so this module can be
+#: read and tested without that one.
 MODELS = ("pf", "analogue", "ensemble")
 
 

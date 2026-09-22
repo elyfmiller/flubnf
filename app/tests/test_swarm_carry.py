@@ -440,9 +440,22 @@ def test_run_season_asks_week_extra_for_every_week_in_order(tmp_path,
     assert got == [(W1, {"continue_states": None}),
                    (W2, {"continue_states": W1})]
     assert retro.read_meta(root)["settings"]["week_extra"] == "carry"
-    # without the callable nothing is asked and nothing is recorded
+    # without the callable every week carries the shipped Groundhog donors
+    # (analogue.SHIPPED_AUX, resolved against the committed bank) and the
+    # record names the preset with its bank digest (2026-09-22)
+    from app.core.engines import analogue as an
     got.clear()
     root2 = tmp_path / "plain"
     retro.run_season(root2, SEASON, ["Ohio"], width=1)
-    assert got == [(W1, None), (W2, None)]
-    assert "week_extra" not in retro.read_meta(root2)["settings"]
+    shipped = {"aux_pools": an.shipped_aux_pools()}
+    assert got == [(W1, shipped), (W2, shipped)]
+    rec = retro.read_meta(root2)["settings"]["week_extra"]
+    assert rec == "aux_preset:" + an.shipped_aux_label()
+    assert rec.startswith("aux_preset:flusurv+flusurv@")
+    # the bare analogue must be asked for by name, and is recorded as such
+    got.clear()
+    root3 = tmp_path / "bare"
+    retro.run_season(root3, SEASON, ["Ohio"], width=1,
+                     week_extra=an.bare_analogue)
+    assert got == [(W1, {}), (W2, {})]
+    assert retro.read_meta(root3)["settings"]["week_extra"] == "bare_analogue"

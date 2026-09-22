@@ -94,7 +94,7 @@ def test_playback_members_come_from_the_sidecar_and_match_the_formula(tmp_path):
     q = playback._week_model_quantiles(root, W)
     assert q["pf"]["Ohio"] == playback._member_q(p["pf"]["Ohio"])
     assert q["analogue"]["Utah"]["1"][0.5] == 5.0
-    assert "ensemble" in q and "Ohio" in q["ensemble"] and "Utah" in q["ensemble"]
+    assert "ensemble" not in q                  # nothing blended (2026-09-22)
     # the samples are not needed once the sidecar exists
     (wd / retro.SAMPLES_GZ).rename(wd / "samples.json.gz.away")
     (wd / retro.SAMPLES_GZ).write_text("")          # present for samples_file, unreadable
