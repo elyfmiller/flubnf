@@ -49,7 +49,7 @@ LOCATION_LIST_LIMIT = 8
 #: covering all of them says so instead of reporting a bare number.
 ALL_JURISDICTIONS = 52
 
-ENGINE_LABELS = {"all": "both models (PF-SIHRS and Groundhog)",
+ENGINE_LABELS = {"all": "both models (Oracle SIHRS and Groundhog)",
                  "pf": "particle filter only",
                  "analogue": "Groundhog only",
                  "amcmc": "adaptive MCMC",
@@ -219,7 +219,7 @@ MODE_LABELS = {"realtime": "real-time run (the newest vintage)",
 #: the models a console run can score, in table order, with the outcome
 #: keys each writes at run end. The blend's row renders only for a ledger
 #: row from before it was retired (2026-09-22), which still carries it.
-_RESULT_ROWS = (("PF-SIHRS", "pf_relwis", "pf_relwis_cells"),
+_RESULT_ROWS = (("Oracle SIHRS", "pf_relwis", "pf_relwis_cells"),
                 ("Groundhog", "analogue_relwis", "analogue_relwis_cells"),
                 ("FluBNF ensemble (retired)", "ensemble_relwis",
                  "ensemble_relwis_cells"))

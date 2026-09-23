@@ -299,9 +299,9 @@ JS = r"""
        hoverinfo:'skip'},
       {x:fx, y:lo5, mode:'lines', fill:'tonexty', fillcolor:rgba(acc,.28),
        line:{width:0}, name:'50% interval', hoverinfo:'skip'},
-      {x:fx, y:med, mode:'lines+markers', name:'PF-SIHRS median',
+      {x:fx, y:med, mode:'lines+markers', name:'Oracle SIHRS median',
        line:{color:acc,width:2.5}, marker:{size:6},
-       hovertemplate:'%{x|%b %e, %Y}<br>%{y:,.0f}<extra>PF-SIHRS median</extra>'}
+       hovertemplate:'%{x|%b %e, %Y}<br>%{y:,.0f}<extra>Oracle SIHRS median</extra>'}
     ];
     // The Groundhog's median is drawn when the source stored it, and
     // starts hidden: it is the other submission, on the same axes.
@@ -483,7 +483,7 @@ def _season_table(payload: dict) -> str:
     # Every score column is named for whose forecast it scores, so none
     # reads as the FluSight ensemble's; the note below carries the relWIS
     # unit for all of them at once. Two models, submitted separately.
-    head = ('<tr><th>Season</th><th class="n">PF-SIHRS</th>'
+    head = ('<tr><th>Season</th><th class="n">Oracle SIHRS</th>'
             '<th class="n">Groundhog</th>'
             '<th class="n">FluSight Ensemble</th>'
             '<th class="n">Cells</th><th>FluSight field</th></tr>')
@@ -608,7 +608,7 @@ def _member_table(payload: dict) -> str:
     # table sat on the same published page as the season table's "FluBNF
     # Ensemble" header while calling that same model by the older
     # team-prefixed name, so one page named one model twice.
-    labels = {"pf": "PF-SIHRS", "analogue": "Groundhog",
+    labels = {"pf": "Oracle SIHRS", "analogue": "Groundhog",
               "ensemble": "FluBNF Ensemble (retired)",
               "pf2s": "Two-strain SIHRS"}
     head = ('<tr><th>relWIS by member</th>'
@@ -744,7 +744,7 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
         # which is exactly why it labels neither; the note names which one.
         parts = []
         if pooled_pf is not None:
-            parts.append(f"the SIHRS particle filter <b>{pooled_pf:.3f}</b>")
+            parts.append(f"the Oracle SIHRS <b>{pooled_pf:.3f}</b>")
         if pooled_gh is not None:
             parts.append(f"the Groundhog <b>{pooled_gh:.3f}</b>")
         headline = (

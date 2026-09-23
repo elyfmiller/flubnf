@@ -11,7 +11,7 @@ Covered templates:
 
 | Template | Role |
 |---|---|
-| `SIHRS_pop_min.bngl` | Single-strain production model (5 fitted parameters); the PF engine's template |
+| `SIHRS_pop_min.bngl` | Single-strain production model (5 fitted parameters); the PF engine's template, and so the Oracle SIHRS member's (the filter plus the post-fit Oracle step, docs/ORACLE-SIHRS.md; the step changes nothing in the template) |
 | `SIHRS_pop_2strain_min.bngl` | Two-strain (A/B) production variant (7 fitted parameters) |
 | `SIHRS_pop_natg.bngl` | `min` plus one exogenous national-growth factor, zero new fitted parameters |
 | `SIHRS_pop_covid.bngl` | COVID-19 port: `min` with `omega` fitted instead of fixed (6 parameters) |

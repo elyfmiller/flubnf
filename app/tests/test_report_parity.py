@@ -211,7 +211,7 @@ def test_verdict_tiles_match_including_us_aggregate(built):
         r'<div class="card"><h2>([^<]+)</h2><div class="big', app_html))
     rep_tiles = set(re.findall(r'class="tilename">([^<]+)<', report_html))
     # one national tile per model, named for both (2026-09-22)
-    assert "US (aggregated): PF-SIHRS" in app_tiles
+    assert "US (aggregated): Oracle SIHRS" in app_tiles
     assert "US (aggregated): Groundhog" in app_tiles
     assert app_tiles == rep_tiles
 

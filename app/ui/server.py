@@ -2694,7 +2694,7 @@ def _run_all(spec: RunSpec) -> None:
         if _research:
             outcome["archived"] = "skipped: research run"
         elif spec.engine in ("analogue", "pf"):
-            outcome["archived"] = (f"skipped: {'analogue' if spec.engine == 'analogue' else 'SIHRS'}"
+            outcome["archived"] = (f"skipped: {'analogue' if spec.engine == 'analogue' else 'Oracle SIHRS'}"
                                    "-only run is not the date's forecast")
         else:
             try:
@@ -3751,8 +3751,16 @@ def models_page(request: Request):
 @app.get("/model/{name}", response_class=HTMLResponse)
 def model_page(request: Request, name: str):
     blurbs = {
-        "pf": ("PF-SIHRS",
-               "The mechanistic model, submitted on its own. It assumes "
+        "pf": ("Oracle SIHRS",
+               "The mechanistic model, submitted on its own. Since "
+               "2026-09-22 the submitted member is the Oracle SIHRS: the "
+               "filter's stored forward samples with their growth replaced "
+               "by the geometric mean, at weight one half, of the filter's "
+               "own origin growth and one donor growth path drawn from a "
+               "calendar-matched bank of past seasons' admission growth, a "
+               "post-fit step on the filter's output specified by a frozen "
+               "pre-registration (docs/ORACLE-SIHRS.md). The filter itself "
+               "is unchanged. It assumes "
                "influenza moves people "
                "through Susceptible, Infected, Hospitalized, and Recovered "
                "compartments, with seasonally varying transmission and "
@@ -3763,8 +3771,8 @@ def model_page(request: Request, name: str):
                "the newest hospital admissions, and their spread is the "
                "forecast uncertainty. It fits weekly NHSN admissions exactly "
                "as archived on each forecast date. Measured three-season "
-               "retrospective relWIS against the FluSight baseline, "
-               "ratio of sums "
+               "retrospective relWIS of the filter alone against the "
+               "FluSight baseline, ratio of sums "
                "(values below 1 beat it): 1.023 in 2023-24, 0.636 in "
                "2024-25, 0.825 in 2025-26."),
         "analogue": ("Groundhog",

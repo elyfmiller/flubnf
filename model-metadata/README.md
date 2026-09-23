@@ -5,14 +5,15 @@ on 2026-09-22. The hub builds a model_id as `<team_abbr>-<model_abbr>`, so
 the hyphen is the separator and neither field may contain one: both must
 match `^[a-zA-Z0-9_+]+$` and be at most 16 characters.
 
-  NAU_PyBNF-OracleSIHRS.yml   the SIHRS particle filter, designated
+  NAU_PyBNF-OracleSIHRS.yml   the Oracle SIHRS (the particle filter plus the Oracle step), designated
   NAU_PyBNF-GroundHogCGR.yml  the Groundhog, designated
 
 Two models, submitted separately. The Oracle SIHRS is the mechanistic
-model, parameterised from past seasons; its card's `methods_long` is
-marked PENDING until the team building that parameterisation has written
-it. The Groundhog is the calendar analogue with a committed FluSurv-NET
-donor bank spliced in. Both are designated: a team may designate at most
+model: the particle filter, plus a post-fit step that blends each stored
+forward sample's growth with one calendar-matched past season's admission
+growth (docs/ORACLE-SIHRS.md); its card's `methods_long` describes both
+and carries the frozen pre-registration's hash. The Groundhog is the
+calendar analogue with a committed FluSurv-NET donor bank spliced in. Both are designated: a team may designate at most
 two models, and designation makes a model eligible for the hub ensemble
 and the public visualisation.
 

@@ -233,7 +233,7 @@ def test_report_carries_the_season_verdict_before_the_player(tmp_path,
     # final relWIS tiles for each member and the ensemble, colored by the
     # below-1 rule; the values are the final week's cumulative stats
     for name, val, cls in (("FluBNF Ensemble (retired)", "0.900", "ok"),
-                           ("PF-SIHRS", "0.500", "ok"),
+                           ("Oracle SIHRS", "0.500", "ok"),
                            ("Groundhog", "1.500", "bad")):
         assert name in html, name
         assert f'class="tileval {cls}">{val}' in html, (name, val)
@@ -367,7 +367,7 @@ def test_report_verdict_states_cell_coverage_when_scored(tmp_path,
     _write_scores(root)
     html = report_season.build_season_report(root, SEASON).read_text()
     # 2 weeks x 2 states of synthetic rows, counted on the first model
-    assert "the season's 4 scored PF-SIHRS cells" in html
+    assert "the season's 4 scored Oracle SIHRS cells" in html
     # unscored: the generic phrase stands, never an invented count
     root2 = _mk_root(tmp_path / "b", monkeypatch)
     html2 = report_season.build_season_report(root2, SEASON).read_text()

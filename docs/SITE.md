@@ -93,7 +93,8 @@ scored, and `discover_seasons` accepts any season root under `app/state`,
 including research runs. Every season is instead rescored
 from each week's playback payload, the stored members as stored, through
 the validated baseline construction and the frozen cell rule.
-`app/tests/test_site_build.py` pins the seal's member figures (PF 1.023 /
+`app/tests/test_site_build.py` pins the seal's member figures (the
+mechanistic member, the filter alone on the seal, 1.023 /
 0.636 / 0.825, analogue 1.045 / 0.756 / 0.621) when the seal is the tree on
 the machine. A tree replayed by the bare analogue prints that member's
 figure under the Groundhog's name; publish from a Groundhog replay

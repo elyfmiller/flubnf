@@ -135,7 +135,7 @@ function pickLoc(map, loc){
 // registered model_id built in app/core/submit.py, not a display name.
 var MODEL_NAMES = /*MODEL_NAMES_JSON*/{
   "ensemble": "FluBNF Ensemble (retired)",
-  "pf": "PF-SIHRS",
+  "pf": "Oracle SIHRS",
   "analogue": "Groundhog",
   "pf2s": "Two-strain SIHRS",
   "FluSight-ensemble": "FluSight ensemble (official)",

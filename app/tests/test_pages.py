@@ -39,7 +39,7 @@ def test_home_renders_workflow_performance_and_component_cards():
     for cell in ("0.840", "0.797", "0.846", "0.821",
                  "0.722", "0.653", "0.651", "0.666",
                  "0.741", "0.663", "0.684", "0.685",
-                 "15,460", "15,340", "PF-SIHRS", "Groundhog"):
+                 "15,460", "15,340", "Oracle SIHRS", "Groundhog"):
         assert cell in r.text, cell
     # the performance card names no blend; the outlook label above it is
     # whatever the latest STORED run on this machine was and may still
@@ -122,7 +122,7 @@ def test_storage_page_serves_on_both_routes_with_the_ledger_inside():
 def test_models_route_defaults_to_pf_and_owns_the_active_tab():
     r = client.get("/models")
     assert r.status_code == 200
-    assert "PF-SIHRS" in r.text
+    assert "Oracle SIHRS" in r.text
     assert _pressed_model(r.text) == "pf"
     assert re.search(r'<a class="tab active" href="/models">Models</a>',
                      r.text)

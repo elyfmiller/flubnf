@@ -27,7 +27,7 @@ Delphi Epidata API and data.cdc.gov, cached under `app/state`.
 The shipped forecast is an equal weight, unfitted quantile average of two
 members:
 
-* PF-SIHRS, mechanistic. An SIHRS compartmental model (susceptible,
+* Oracle SIHRS, mechanistic. An SIHRS compartmental model (susceptible,
   infected, hospitalized, recovered, with waning immunity and seasonal
   transmission) written in BNGL and fitted by a sequential particle filter:
   10,000 candidate epidemics per jurisdiction, refitted every week from the
@@ -88,8 +88,10 @@ checkout).
 FluBNF submits two models to FluSight, each under its own hub identity
 (`model-metadata/`):
 
-* **PF-SIHRS** (`NAU_PyBNF-OracleSIHRS`): an SIHRS compartmental model
-  fitted each week by a sequential particle filter.
+* **Oracle SIHRS** (`NAU_PyBNF-OracleSIHRS`): an SIHRS compartmental model
+  fitted each week by a sequential particle filter, its forward samples
+  then given the growth of a calendar-matched past season blended with
+  the filter's own (docs/ORACLE-SIHRS.md).
 * **Groundhog** (`NAU_PyBNF-GroundHogCGR`): the calendar analogue.
   The last observed count scaled by the empirical quantiles of growth
   ratios seen at the same MMWR epiweek in strictly earlier seasons, pooled
@@ -106,7 +108,7 @@ CDC dashboard, so the two are not comparable.
 
 | model | 2023-24 | 2024-25 | 2025-26 | pooled | cells |
 |---|---|---|---|---|---|
-| PF-SIHRS, production engine (reseal of 2026-09-07) | 0.840 | 0.797 | 0.846 | 0.821 | 15,460 |
+| Oracle SIHRS, the filter alone, production engine (reseal of 2026-09-07) | 0.840 | 0.797 | 0.846 | 0.821 | 15,460 |
 | Groundhog (replay of 2026-09-21) | 0.722 | 0.653 | 0.651 | 0.666 | 15,340 |
 | calendar analogue without the donor bank, on the Groundhog's cells | 1.045 | 0.756 | 0.618 | 0.771 | 15,340 |
 

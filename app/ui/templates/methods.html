@@ -50,7 +50,7 @@
  behind them; the provenance module
  (<code>flubnf/sihrs_priors.py</code>) records each value's status,
  including which ones are assumptions.</p>
- <p class="hint">Model tab: <a href="/model/pf">PF-SIHRS</a>.</p>
+ <p class="hint">Model tab: <a href="/model/pf">Oracle SIHRS</a>.</p>
 </div>
 
 <div class="card" id="fitting"><h2>Fitting: a sequential particle filter</h2>
@@ -178,11 +178,11 @@
     to the baseline must not read as neutral #}
  <div style="overflow-x:auto"><table>
   <tr><th>Model</th><th>2023-24</th><th>2024-25</th><th>2025-26</th></tr>
-  <tr><td>PF-SIHRS</td><td class="ok">0.840</td><td class="ok">0.797</td><td class="ok">0.846</td></tr>
+  <tr><td>Oracle SIHRS (the filter alone)</td><td class="ok">0.840</td><td class="ok">0.797</td><td class="ok">0.846</td></tr>
   <tr><td>Groundhog</td><td class="ok">0.722</td><td class="ok">0.653</td><td class="ok">0.651</td></tr>
   <tr><td>Calendar analogue without auxiliary donors (retired)</td><td class="bad">1.045</td><td class="ok">0.756</td><td class="ok">0.618</td></tr>
  </table></div>
- <p class="hint">PF-SIHRS: measured 2026-09-07 with the production engine
+ <p class="hint">Oracle SIHRS: the filter alone, measured 2026-09-07 with the production engine
  through the console's own replay command. Groundhog and the bare analogue:
  measured 2026-09-21 on the same 15,340 cells over the 52 jurisdictions
  (<code>flubnf groundhog retro all --aux flusurv</code>), pooled 0.666

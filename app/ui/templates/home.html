@@ -76,7 +76,7 @@
    {# every score column is named for whose forecast it scores, so no
       column reads as the FluSight ensemble's. The relWIS unit for all of
       them is stated once in the hint below. #}
-   <thead><tr><th>Season</th><th class="num">PF-SIHRS</th>
+   <thead><tr><th>Season</th><th class="num">Oracle SIHRS</th>
     <th class="num">Groundhog</th><th class="num">FluSight Ensemble</th>
     </tr></thead>
    <tbody>
@@ -90,7 +90,7 @@
      <td class="num rel">0.666</td><td class="num">0.685</td></tr>
    </tbody>
   </table>
-  {# PF-SIHRS and FluSight Ensemble are the production engine's record
+  {# Oracle SIHRS and FluSight Ensemble are the production engine's record
      (the reseal of 2026-09-07, app/state/retro_reseal, 15,460 cells); the
      Groundhog column is its own replay (flubnf groundhog retro, 15,340
      cells over the 52 jurisdictions, 2026-09-21). The two universes are
@@ -98,7 +98,7 @@
      between the two stay on Methods and in docs/archive/RELEASE-1.0.md. #}
   <p class="hint">Two models, submitted separately, three seasons replayed
   on vintage data only, each scored against the CDC FluSight baseline.
-  PF-SIHRS and the FluSight Ensemble columns score the same 15,460 cells;
+  Oracle SIHRS and the FluSight Ensemble columns score the same 15,460 cells;
   the Groundhog column is its own replay over 15,340 cells of the 52
   jurisdictions. The FluSight Ensemble column is this app's own scoring of
   the official ensemble, not FluSight's pairwise relative WIS, so it is not

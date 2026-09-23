@@ -914,7 +914,7 @@ def cross_check(scored: list, placement: dict) -> list:
         app = (placement.get(s["season"]) or {}).get("app_rel")
         if rel is None or app is None:
             continue
-        out.append({"what": f"{s['season']} PF-SIHRS relWIS",
+        out.append({"what": f"{s['season']} Oracle SIHRS relWIS",
                     "computed": rel, "app": app,
                     "ok": abs(rel - app) <= 0.0006})
     return out

@@ -331,7 +331,7 @@ def test_every_computed_score_matches_what_the_console_publishes(built):
     res, out, html, payload = built
     checks = payload["consistency"]
     assert checks, "nothing was cross-checked"
-    assert all("PF-SIHRS" in c["what"] for c in checks)
+    assert all("Oracle SIHRS" in c["what"] for c in checks)
     seasons = sb.discover_seasons()
     if not all("retro_reseal" in str(v["root"]) for v in seasons.values()):
         pytest.skip("the console publishes the reseal; this machine's "

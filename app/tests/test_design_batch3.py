@@ -161,7 +161,7 @@ def test_per_state_table_colors_only_scores_at_or_above_one():
     # th's own type, still under the shared .num right alignment
     # the column labels are the shared model names; the retired blend's
     # column renders here because this render's context still lists it
-    for key, label in (("pf", "PF-SIHRS"), ("analogue", "Groundhog"),
+    for key, label in (("pf", "Oracle SIHRS"), ("analogue", "Groundhog"),
                        ("ensemble", "FluBNF Ensemble \(retired\)")):
         assert re.search(r'<th class="num"><button type="button" '
                          r'class="thsort" data-key="' + key + r'"\s+'
@@ -278,7 +278,7 @@ def test_one_name_for_the_ensemble_on_every_human_facing_surface():
 
 def test_template_global_resolves_names_and_passes_unknowns_through():
     name = srv.templates.env.globals["model_name"]
-    assert name("pf") == "PF-SIHRS"
+    assert name("pf") == "Oracle SIHRS"
     assert name("ensemble") == "FluBNF Ensemble (retired)"
     assert name("analogue") == "Groundhog"
     assert name("mystery") == "mystery"
@@ -287,7 +287,7 @@ def test_template_global_resolves_names_and_passes_unknowns_through():
 def test_season_head_cards_wear_the_shared_names():
     html = _season(heads={"ensemble": 0.9, "pf": 1.02})
     assert "<h2>FluBNF Ensemble (retired)</h2>" in html
-    assert "<h2>PF-SIHRS</h2>" in html
+    assert "<h2>Oracle SIHRS</h2>" in html
     assert "<h2>pf</h2>" not in html and "<h2>ensemble</h2>" not in html
 
 
@@ -296,12 +296,12 @@ def test_fan_selector_buttons_use_the_shared_names():
     assert "(MNAMES[m]||m)" in FORECAST_T           # button labels
     r = client.get("/forecast")
     assert r.status_code == 200
-    assert '"pf": "PF-SIHRS"' in r.text             # the map ships to the page
+    assert '"pf": "Oracle SIHRS"' in r.text             # the map ships to the page
 
 
 def test_model_switcher_reads_the_shared_map():
     t = client.get("/models").text
-    for label in ("PF-SIHRS", "Groundhog", "Two-strain SIHRS"):
+    for label in ("Oracle SIHRS", "Groundhog", "Two-strain SIHRS"):
         assert label in t, label
     # no tab for the retired blend (the shared map still ships to the
     # page's script, entry and all, so look at the switcher itself)
