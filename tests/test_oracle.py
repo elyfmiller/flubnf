@@ -319,3 +319,81 @@ def test_the_member_is_bitwise_the_dry_run_and_the_screen():
             total[k] += res[k]
     assert total["dates"] >= 3 and total["diff"] == 0
     print(f"\noracle bitwise: {total}")
+
+
+# ------------------------------------------- the shipped bank (bank change B2)
+
+B2ARMS = OM / "b2" / "results" / "arms_by_date"
+
+record_b2 = pytest.mark.skipif(
+    not (GRID.is_dir() and PINNED_HUB.is_dir() and B2ARMS.is_dir() and ARMS.is_dir()),
+    reason="the registered B2 record is not on this machine")
+
+
+def _b2_dates() -> list:
+    npz = sorted(p.name[:-4] for p in B2ARMS.glob("*.npz"))
+    if FULL:
+        return npz
+    # a FluSurv-NET-only date of 2023-24, an identity date, a window date,
+    # the one admissions-only date, the epiweek-53 date
+    return [d for d in ("2023-12-09", "2024-04-13", "2025-01-11", "2025-06-14",
+                        "2026-01-03") if d in npz]
+
+
+@record_b2
+def test_the_shipped_member_is_bitwise_the_b2_screen():
+    """The member on the mixture bank at w = 0.5 (LBGH, shipped) and at
+    w = 0.25 (LB25GH, reported) per seed against b2/results/arms_by_date,
+    with the active flags and the NULL; the admissions-only member (no
+    FluSurv-NET half, and the mixture at w_aux = 0) against the B2 screen's
+    L0 reproduction and the admissions-only screen's arms_by_date."""
+    from flubnf import oracle_mix as MX
+    pops = OB.load_populations(PINNED_HUB / "auxiliary-data" / "locations.csv")
+    n2f = _name_to_fips()
+    aux = MX.read_bank()
+    total = {"dates": 0, "LBGH": 0, "LB25GH": 0, "LB": 0, "diff": 0}
+    for asof in _b2_dates():
+        season = _season_of(asof)
+        sf = GRID / season / "weeks" / asof / "samples.json.gz"
+        if not sf.is_file():
+            continue
+        T_ = date.fromisoformat(asof)
+        vf = (PINNED_HUB / "auxiliary-data" / "target-data-archive"
+              / f"target-hospital-admissions_{asof}.csv")
+        built = OB.build_pool(asof, vf, pops)
+        pool = built["pool"]
+        auxp = MX.build_week(asof, built["vintage"].count_bank, aux=aux)["pool"]
+        with gzip.open(sf, "rt") as fh:
+            S = json.load(fh)
+        zb = np.load(B2ARMS / f"{asof}.npz")
+        zs = np.load(ARMS / f"{asof}.npz", allow_pickle=True) if (ARMS / f"{asof}.npz").is_file() else None
+        fb = list(zb["fips"])
+        for loc, blk in S["pf"].items():
+            fips = n2f[loc]
+            j = fb.index(fips)
+            x0, xh = blk["0"], [blk[h] for h in ("1", "2", "3", "4")]
+            r = OR.member_for_cell(x0, xh, pool, T_, fips, aux_pool=auxp)
+            r25 = OR.member_for_cell(x0, xh, pool, T_, fips, w=OR.W_SECONDARY, aux_pool=auxp)
+            lb = OR.member_for_cell(x0, xh, pool, T_, fips)
+            assert r.active == bool(zb["active__LBGH"][j]), (asof, fips)
+            assert r25.active == bool(zb["active__LB25GH"][j]), (asof, fips)
+            assert lb.active == bool(zb["active__LB_B2"][j]), (asof, fips)
+            assert np.array_equal(r.q_null, zb["sidecar"][j]), (asof, fips)
+            if pool["rule"] == 1:
+                r0 = OR.member_for_cell(x0, xh, pool, T_, fips, aux_pool=auxp, w_aux=0.0)
+            for si, s in enumerate(OR.SEEDS):
+                total["LBGH"] += 1
+                total["diff"] += int(not np.array_equal(r.q_seed[s], zb["Q__LBGH"][si, j]))
+                total["LB25GH"] += 1
+                total["diff"] += int(not np.array_equal(r25.q_seed[s], zb["Q__LB25GH"][si, j]))
+                total["LB"] += 1
+                total["diff"] += int(not np.array_equal(lb.q_seed[s], zb["Q__LB_B2"][si, j]))
+                if pool["rule"] == 1:
+                    total["diff"] += int(not np.array_equal(r0.q_seed[s], lb.q_seed[s]))
+                if zs is not None and "Q__LB" in zs.files:
+                    js = list(zs["fips"]).index(fips)
+                    total["diff"] += int(not np.array_equal(lb.q_seed[s], zs["Q__LB"][si, js]))
+        assert total["diff"] == 0, (asof, total)
+        total["dates"] += 1
+    assert total["dates"] >= 3 and total["diff"] == 0
+    print(f"\noracle B2 bitwise (seed x location cells of 4 x 23): {total}")
