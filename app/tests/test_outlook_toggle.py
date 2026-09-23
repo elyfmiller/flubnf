@@ -119,7 +119,7 @@ def test_bundle_v3_carries_every_model_via_the_one_quantile_cdf_path(
         # the card is the 1-week-ahead outlook, so the grid it reads is
         # the FIRST canonical forecast horizon
         expect = categorical_probs_from_quantiles(
-            q["Ohio"][hz.HORIZONS[0]], lo, pop, 1)
+            q["Ohio"][hz.HORIZONS[0]], lo, pop, 0)
         got = cbm[model]["OH"]["probs"]
         for c in expect:
             assert abs(got[c] - expect[c]) < 1e-9, (model, c)
@@ -322,7 +322,7 @@ def test_stored_pre_bundle_run_gets_the_approximate_toggle(
                      ("analogue", parts["an_q"])):
         grid = {str(l): v for l, v in q["Ohio"][hz.HORIZONS[0]].items()
                 if str(l) in LV}
-        expect = categorical_probs_from_quantiles(grid, lo, pop, 1)
+        expect = categorical_probs_from_quantiles(grid, lo, pop, 0)
         got = bm[model]["39"]["probs"]
         for c in expect:
             assert abs(got[c] - expect[c]) < 1e-9, (model, c)

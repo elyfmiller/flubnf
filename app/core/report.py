@@ -8,9 +8,9 @@ external assets, viewable from a file:// open or a static host.
 Missing data renders as explicit hatched gap markers (constitutional rule 10)
 -- never a smooth line implying data existed.
 
-NOTE: categorical cutpoints below follow the FluSight rate-change definition
-(rate difference per 100k, horizon-scaled). Marked for verification against
-the season's official hub definition before first submission.
+The categorical probabilities are app.core.categorical's: the hub's own
+rate-trend definition, one CDF path for every model. The two functions
+kept here are its entry points under their historical names.
 """
 from __future__ import annotations
 
@@ -40,81 +40,24 @@ COLORS = {"large_decrease": "#1a66a8", "decrease": "#7fb2d9",
 
 
 def categorical_probs(samples, last_observed: float, population: int,
-                      horizon: int = 1) -> dict:
-    """P(category) from forecast samples vs the current level.
-
-    Cutpoints: rate difference per 100k, scaled by horizon (VERIFY against the
-    official hub definition for the season before first submission).
-    """
-    s = np.asarray(samples, float)
-    s = s[np.isfinite(s)]
-    if not s.size or population <= 0:
-        return {}
-    diff_rate = (s - last_observed) / population * 1e5
-    k = {1: 1.0, 2: 1.0, 3: 2.0, 4: 2.5}.get(horizon, 1.0)
-    lo, hi = 0.3 * k, 1.7 * k
-    p = {
-        "large_increase": float(np.mean(diff_rate >= hi)),
-        "increase": float(np.mean((diff_rate >= lo) & (diff_rate < hi))),
-        "stable": float(np.mean(np.abs(diff_rate) < lo)),
-        "decrease": float(np.mean((diff_rate <= -lo) & (diff_rate > -hi))),
-        "large_decrease": float(np.mean(diff_rate <= -hi)),
-    }
-    return p
+                      horizon: int = 0) -> dict:
+    """P(category) from forecast draws, the FluSight rate-trend
+    definition (app.core.categorical). `horizon` is the HUB horizon, 0 for
+    one week ahead, the convention every stored grid carries since the
+    reindex; until 2026-09-23 this argument counted weeks ahead from 1."""
+    from app.core import categorical as _cat
+    return _cat.probs_from_samples(samples, last_observed, population, horizon)
 
 
 def categorical_probs_from_quantiles(qmap: dict, last_observed: float,
                                      population: int,
-                                     horizon: int = 1) -> dict:
-    """P(category) from a stored quantile grid {level: value}.
-
-    The quantile-only twin of categorical_probs, for members that carry no
-    sample array (the vincentized ensemble): the grid is read as the
-    forecast CDF, with level a piecewise-linear function of value between
-    the stored quantiles and clamped at the outermost levels, and each
-    category's probability is a CDF difference at the same rate-change
-    cutpoints categorical_probs uses. Exact within the resolution of the
-    grid; with the 23-level FluSight grid the unmodeled tails clamp at the
-    1 percent levels. Level keys may be float or str (results.json
-    round-trips them as str). Ties in value (a partially degenerate grid)
-    collapse to the highest level, the right-continuous CDF reading.
-    Returns {} rather than inventing numbers when the grid is unusable."""
-    if not qmap or population <= 0:
-        return {}
-    try:
-        pairs = sorted((float(v), float(l)) for l, v in qmap.items())
-    except (TypeError, ValueError):
-        return {}
-    xs: list = []
-    ls: list = []
-    for v, l in pairs:
-        if not np.isfinite(v):
-            continue
-        if xs and v <= xs[-1]:
-            ls[-1] = max(ls[-1], l)
-        else:
-            xs.append(v)
-            ls.append(l)
-    if not xs:
-        return {}
-
-    def cdf(c: float) -> float:
-        if len(xs) == 1:
-            return 1.0 if c >= xs[0] else 0.0
-        return float(np.interp(c, xs, ls))
-
-    k = {1: 1.0, 2: 1.0, 3: 2.0, 4: 2.5}.get(horizon, 1.0)
-    lo, hi = 0.3 * k, 1.7 * k
-    scale = population / 1e5          # rate cutpoint -> admissions cutpoint
-    F = {t: cdf(last_observed + t * scale) for t in (-hi, -lo, lo, hi)}
-    p = {
-        "large_increase": 1.0 - F[hi],
-        "increase": F[hi] - F[lo],
-        "stable": F[lo] - F[-lo],
-        "decrease": F[-lo] - F[-hi],
-        "large_decrease": F[-hi],
-    }
-    return {c: min(1.0, max(0.0, v)) for c, v in p.items()}
+                                     horizon: int = 0) -> dict:
+    """P(category) from a stored quantile grid {level: value}, the same
+    definition and cutpoints as categorical_probs through the same CDF
+    differencing (app.core.categorical.probs_from_quantiles). `horizon` is
+    the hub horizon, 0 for one week ahead."""
+    from app.core import categorical as _cat
+    return _cat.probs_from_quantiles(qmap, last_observed, population, horizon)
 
 
 def _tile(abbr: str, probs: dict, x: int, y: int, size: int = 56) -> str:

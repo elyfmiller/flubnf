@@ -813,7 +813,7 @@ def _outlook_cards(res: dict | None, rid: str | None = None) -> tuple:
             if len(fips) != 2 or not isinstance(q1, dict) or not obs:
                 continue
             lo = float(obs[-1][1])
-            probs = categorical_probs_from_quantiles(q1, lo, int(n2p[loc]), 1)
+            probs = categorical_probs_from_quantiles(q1, lo, int(n2p[loc]), 0)
             if not probs:
                 continue
             vals = [float(v) for v in q1.values()]
@@ -2141,7 +2141,7 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
             if q1 is None or lo is None or loc not in n2a:
                 continue
             probs = categorical_probs_from_quantiles(
-                q1, lo, int(n2p.get(loc, 0)), 1)
+                q1, lo, int(n2p.get(loc, 0)), 0)
             if not probs:
                 continue
             med1 = float(min(q1.items(),
@@ -2170,7 +2170,7 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
         if q1 is None or lo_us is None:
             return None
         probs_us = categorical_probs_from_quantiles(
-            q1, lo_us, 340_000_000, 1)
+            q1, lo_us, 340_000_000, 0)
         if not probs_us:
             return None
         med_us = float(min(q1.items(),
@@ -4568,23 +4568,28 @@ def _scoring_failed_hint(score_error: str) -> str:
             "hub clone, via the Data tab) and reload this page.</p>")
 
 
-def _week_map_cards(root: Path, wk: str) -> dict:
-    """The categorical outlook-map cards for one stored retrospective week,
-    cached on disk under playback_cache/map_cards/<wk>.json keyed by the
-    week's samples mtime. A full-grid week's raw samples.json runs to
-    ~140 MB, and parsing it inside every page view held the season page
-    (and, through the GIL, the whole window) for about two seconds; the
-    cards it reduces to are a few kilobytes. Computed from the raw sample
-    draws exactly as before -- the exact path, never the quantile
-    approximation. A SUBDIRECTORY on purpose: report_season._newest_input
-    globs playback_cache/*.json as report inputs, and a map cache warming
-    on first view must not read as a data change that rebuilds the
-    25 MB export."""
+def _week_map_cards_by_model(root: Path, wk: str) -> dict:
+    """{model: {fips: card}}: the categorical outlook-map cards of one
+    stored retrospective week for EVERY model the week stored (the PF,
+    the Groundhog, the retired blend where a season from before carries
+    it), cached on disk under playback_cache/map_cards/<wk>.json keyed by
+    the week's samples mtime.
+
+    One computation for every model: each member's 23-level quantile grid
+    (the week's sidecar, retro.week_member_quantiles; the PF's draws are
+    reduced to the grid there, the Groundhog's grid is its native output)
+    through app.core.categorical's CDF path, with the anchor week's median
+    as the baseline value. Until 2026-09-23 this read the PF's raw draws
+    alone, so the map could show no other model, and parsing a full-grid
+    week's 140 MB samples file for it held the page for seconds. A
+    SUBDIRECTORY on purpose: report_season._newest_input globs
+    playback_cache/*.json as report inputs, and a map cache warming on
+    first view must not read as a data change that rebuilds the 25 MB
+    export."""
     import json as _json
     import numpy as np
     from app.core import retro
-    from app.core.report import categorical_probs
-    from app.core.report_v2 import CATS
+    from app.core.categorical import CATS, probs_from_quantiles
     root = Path(root)
     sp = retro.week_samples_path(root, wk)
     if sp is None:
@@ -4596,7 +4601,7 @@ def _week_map_cards(root: Path, wk: str) -> dict:
     cf = root / "playback_cache" / "map_cards" / f"{wk}.json"
     try:
         cached = _json.loads(cf.read_text())
-        if cached.get("mtime") == mtime and cached.get("v") == 1:
+        if cached.get("mtime") == mtime and cached.get("v") == 2:
             return cached["cards"]
     except Exception:
         pass
@@ -4605,31 +4610,86 @@ def _week_map_cards(root: Path, wk: str) -> dict:
     n2a = dict(zip(locs.location_name, locs.abbreviation))
     n2p = dict(zip(locs.location_name, locs.population.astype(float)))
     n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
-    d = retro.read_samples(sp)
-    cards = {}
-    for loc, s in d.get("pf", {}).items():
-        arr = np.asarray(s["0"], float)            # one week ahead
-        origin = np.asarray(s[_hzmod.ORIGIN], float)   # the anchor week
-        lo = float(np.median(origin[np.isfinite(origin)]))
-        probs = categorical_probs(arr, lo, int(n2p[loc]), 1)
-        # escaped like every hover_html producer: the name reaches the
-        # map tooltip through innerHTML
-        hover = (f"<b>{_htmlmod.escape(loc)}</b><br>1-wk median: "
-                 f"{float(np.median(arr[np.isfinite(arr)])):.0f}<br>" +
-                 "<br>".join(f"{c.replace('_',' ')}: {probs.get(c,0):.0%}"
-                             for c in CATS))
-        cards[n2f[loc]] = {"probs": probs, "name": loc, "abbr": n2a[loc],
-                           "fips": n2f[loc], "hover_html": hover}
+    # the baseline: the anchor week's stored value, read once from the
+    # samples record (the PF's origin draws are the reported value
+    # replicated; the analogue-only week stores no origin and the
+    # baseline then comes from the vintage the week was forecast from)
+    mq = retro.week_member_quantiles(root, wk)
+    base = {}
+    try:
+        d = retro.read_samples(sp)
+        for loc, sm in (d.get("pf") or {}).items():
+            o = np.asarray(sm.get(_hzmod.ORIGIN, []), float)
+            o = o[np.isfinite(o)]
+            if o.size:
+                base[loc] = float(np.median(o))
+    except Exception:
+        pass
+    if not base:
+        try:
+            base = _last_reported_before(wk, n2f)
+        except Exception:
+            base = {}
+    by_model = {}
+    for model, by_loc in mq.items():
+        cards = {}
+        for loc, qs in by_loc.items():
+            q1 = qs.get("0")                      # one week ahead, canonical
+            lo = base.get(loc)
+            if not q1 or lo is None or loc not in n2f:
+                continue
+            probs = probs_from_quantiles(q1, lo, int(n2p.get(loc, 0)), 0)
+            if not probs:
+                continue
+            med = float(q1.get(0.5, 0.0))
+            # escaped like every hover_html producer: the name reaches the
+            # map tooltip through innerHTML
+            hover = (f"<b>{_htmlmod.escape(loc)}</b><br>1-wk median: "
+                     f"{med:.0f}<br>" +
+                     "<br>".join(f"{c.replace('_',' ')}: {probs.get(c,0):.0%}"
+                                 for c in CATS))
+            cards[n2f[loc]] = {"probs": probs, "name": loc,
+                               "abbr": n2a.get(loc, ""), "fips": n2f[loc],
+                               "hover_html": hover}
+        if cards:
+            by_model[model] = cards
     try:
         # write beside, then replace, the cache-file rule everywhere else
         import os as _os
         cf.parent.mkdir(parents=True, exist_ok=True)
         tmp = cf.with_name(cf.name + ".tmp")
-        tmp.write_text(_json.dumps({"mtime": mtime, "v": 1, "cards": cards}))
+        tmp.write_text(_json.dumps({"mtime": mtime, "v": 2, "cards": by_model}))
         _os.replace(tmp, cf)
     except Exception:
         pass                      # an unwritable cache costs speed, not truth
-    return cards
+    return by_model
+
+
+def _last_reported_before(wk: str, n2f: dict) -> dict:
+    """{location: last reported value} from the vintage dated `wk`, the
+    baseline a week stores no anchor draws for."""
+    import pandas as pd
+    df = pd.read_csv(data_mod.vintage_path(wk), dtype={"location": str})
+    df["location"] = df["location"].str.zfill(2)
+    df = df[df.date <= wk].dropna(subset=["value"]).sort_values("date")
+    last = df.groupby("location")["value"].last()
+    return {loc: float(last[f]) for loc, f in n2f.items() if f in last.index}
+
+
+def _retro_map_models(by_model: dict) -> list:
+    """The models a week's map can show, in display order."""
+    from app.core import report_v2
+    order = [m for m in report_v2.MODEL_ORDER if m in by_model]
+    return order + [m for m in by_model if m not in order]
+
+
+def _week_map_cards(root: Path, wk: str) -> dict:
+    """One model's cards for the week, the first in display order (the
+    PF when the week stored it): what the season page renders before the
+    reader touches the model toggle."""
+    by_model = _week_map_cards_by_model(root, wk)
+    order = _retro_map_models(by_model)
+    return dict(by_model[order[0]]) if order else {}
 
 
 def _ensure_results_job(root: Path, season: str,
@@ -5363,11 +5423,26 @@ def retro_results(request: Request, season: str, week: str = "",
     locs = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
     n2a = dict(zip(locs.location_name, locs.abbreviation))
     n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
-    cards = dict(_week_map_cards(root, wk))
+    by_model = _week_map_cards_by_model(root, wk)
+    map_models = _retro_map_models(by_model)
+    cards = dict(by_model[map_models[0]]) if map_models else {}
     for name, abbr in n2a.items():
         cards.setdefault(n2f.get(name, name), {"name": name, "abbr": abbr,
                                                "fips": n2f.get(name, "")})
-    map_html = svg_map(cards)
+    # the model switch above the map, the home page's own control: emitted
+    # only when the week stored two or more models, and swapping the same
+    # cards the mapswap route serves per week
+    map_toggle = ""
+    if len(map_models) >= 2:
+        from app.core import report_v2
+        from app.core import usmap as _usmap
+        map_toggle = _usmap.model_toggle(
+            map_models, report_v2.MODEL_LABEL, map_models[0],
+            {m: {"states": _usmap.state_swap_payload(by_model[m]), "us": {}}
+             for m in map_models},
+            group_id="retro-model", btn_class="quiet",
+            active_class="gold", wrap_class="row viewtabs")
+    map_html = map_toggle + svg_map(cards)
     if not scoreable and not score_error:
         # scored zero cells with no exception: diagnose WHICH input is empty
         try:
@@ -5521,7 +5596,15 @@ def api_retro_mapswap(season: str, asof: str, archive: str = ""):
     from app.core import retro as _retro
     if _retro.week_samples_path(root, asof) is None:
         return PlainTextResponse(f"no stored week {asof}", status_code=404)
-    return {"states": state_swap_payload(_week_map_cards(root, asof))}
+    by_model = _week_map_cards_by_model(root, asof)
+    order = _retro_map_models(by_model)
+    models = {m: {"states": state_swap_payload(by_model[m])} for m in order}
+    default = order[0] if order else ""
+    # `states` stays the default model's, the shape the player read before
+    # the map learned every model (2026-09-23)
+    return {"default": default, "models": models,
+            "states": (models[default]["states"] if default
+                       else state_swap_payload({}))}
 
 
 @app.get("/retro/{season}/report")

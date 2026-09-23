@@ -72,7 +72,7 @@ def test_submission_writes_hub_layout(tmp_path):
 def test_choropleth_renders_gaps_explicitly():
     from app.core.report import categorical_probs, choropleth_svg
     probs = categorical_probs(np.full(1000, 450.0), last_observed=400.0,
-                              population=10_000_000, horizon=1)
+                              population=10_000_000, horizon=0)
     assert abs(sum(probs.values()) - 1.0) < 1e-9
     svg = choropleth_svg({"OH": probs, "MA": {}})             # MA = reporting gap
     assert "no data (reporting gap)" in svg                   # rule 10: gaps visible
