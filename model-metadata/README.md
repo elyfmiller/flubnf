@@ -9,13 +9,17 @@ match `^[a-zA-Z0-9_+]+$` and be at most 16 characters.
   NAU_PyBNF-GroundHogCGR.yml  the Groundhog, designated
 
 Two models, submitted separately. The Oracle SIHRS is the mechanistic
-model: the particle filter, plus a post-fit step that blends each stored
-forward sample's growth with one calendar-matched past season's admission
-growth (docs/ORACLE-SIHRS.md); its card's `methods_long` describes both
-and carries the frozen pre-registration's hash. The Groundhog is the
-calendar analogue with a committed FluSurv-NET donor bank spliced in. Both are designated: a team may designate at most
-two models, and designation makes a model eligible for the hub ensemble
-and the public visualisation.
+model: the SIHRS compartment model fitted weekly by the particle filter,
+plus a post-fit step that blends each stored forward sample's growth with
+one donor growth path from an earlier season at the same calendar week
+(docs/ORACLE-SIHRS.md); its card's `methods_long` describes both, carries
+the frozen pre-registration's hash, and carries verbatim the donor-bank
+sentence of `app/core/oracle_text.BANK_TEXT["card"]` (the one marked place
+for which data streams form the pool; the test holds the two equal). The
+Groundhog is the calendar analogue with a committed FluSurv-NET donor bank
+spliced in. Both are designated: a team may designate at most two models,
+and designation makes a model eligible for the hub ensemble and the public
+visualisation.
 
 The previous registration, `LosAlamos_NAU`, submitted from 2023 through
 2026-09 (`LosAlamos_NAU-CModel_Flu` and `LosAlamos_NAU-SIHRS`). Those
@@ -40,3 +44,8 @@ other registration step; the FluSight contact is flusight@cdc.gov.
 Validate against the hub's own schema before opening a pull request:
 
   hub-config/model-metadata-schema.json
+
+`app/tests/test_model_metadata.py` does that on every run: it validates
+both cards against `app/tests/hub_model_metadata_schema.json`, a byte copy
+of that schema (sha256 7fb27f66e7e2a573, checked against the hub clone
+whenever one is present), including the 200-character limit on `methods`.
