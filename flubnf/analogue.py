@@ -433,6 +433,85 @@ def donor_ratios(bank: Mapping[tuple, float], target_epiweek: int,
     """
     drop = resolve_donor_exclusions(exclude_seasons)
     out = []
+    for (loc, d), v0 in _donor_cells(bank, target_epiweek, target_season,
+                                     bandwidth, allow_same_season, drop):
+        v1 = bank.get((loc, d + timedelta(days=7 * horizon)))
+        if v1 is None or not np.isfinite(v1) or v1 <= 0:
+            continue
+        out.append(v1 / v0)
+    arr = np.asarray(out, dtype=float)
+    return arr[np.isfinite(arr)]
+
+
+def donor_paths(bank: Mapping[tuple, float], target_epiweek: int,
+                target_season: int, length: int = 6,
+                bandwidth: int = DEFAULT_BANDWIDTH,
+                allow_same_season: bool = False, *,
+                exclude_seasons: Iterable[int] = EXCLUDED_DONOR_SEASONS,
+                with_keys: bool = False):
+    """Growth PATHS, one row per donor: `v(d + 7k) / v(d)` for k = 1..length.
+
+    The donors are the ones `donor_ratios` selects (the selection rule is
+    shared, `_donor_cells`, so the two cannot disagree about the pool), but
+    a donor is kept only when every one of its `length` future cells is
+    present, finite and positive. Each row is therefore a complete
+    trajectory, and column k-1 holds that donor's `horizon = k` ratio; the
+    column is a subset of `donor_ratios(..., k)`, which only needs the one
+    future cell. Built for a consumer that wants a trajectory rather than
+    one horizon's marginal, such as a mechanistic model taking a prior on
+    the next `length` weeks' growth.
+
+    Returns an array of shape `(n, length)`, and `(0, length)` when no donor
+    qualifies, so a column can be indexed without a special case. With
+    `with_keys=True` returns `(paths, keys)`, `keys[i]` being the `(loc, d)`
+    of row i in the bank's own iteration order, for a caller that weights
+    or groups donors by `season_of(d)`.
+
+    Like `donor_ratios` this applies NO donor floor: `MIN_DONORS` is the
+    caller's to enforce, and a thin pool is an abstention to make loudly,
+    not a thin forecast. Future values are read by date arithmetic, never
+    by week label, so the week-53 seam is handled by construction. The
+    ratios are on the bank's own scale; a caller putting them on another
+    stream's scale applies `fit_log_ratio_shrink` in log space, per target
+    season.
+    """
+    length = int(length)
+    if length < 1:
+        raise ValueError(f"donor_paths: length must be >= 1, got {length}")
+    drop = resolve_donor_exclusions(exclude_seasons)
+    rows, keys = [], []
+    for (loc, d), v0 in _donor_cells(bank, target_epiweek, target_season,
+                                     bandwidth, allow_same_season, drop):
+        row = []
+        for k in range(1, length + 1):
+            v = bank.get((loc, d + timedelta(days=7 * k)))
+            if v is None or not np.isfinite(v) or v <= 0:
+                break
+            row.append(v / v0)
+        else:
+            if all(math.isfinite(x) for x in row):
+                rows.append(row)
+                keys.append((loc, d))
+    paths = (np.asarray(rows, dtype=float) if rows
+             else np.empty((0, length), dtype=float))
+    return (paths, keys) if with_keys else paths
+
+
+def _donor_cells(bank: Mapping[tuple, float], target_epiweek: int,
+                 target_season: int, bandwidth: int,
+                 allow_same_season: bool, drop):
+    """The donor SELECTION rule, in one place.
+
+    Yields `((loc, d), v0)` in the bank's own iteration order for every cell
+    that is finite and positive, in a strictly prior season (unless
+    `allow_same_season`), not in `drop` (an already-resolved exclusion set),
+    and within `bandwidth` epiweeks of the target by `calendar_distance`.
+    It reads no future value and applies no floor: what is done with a
+    selected donor is the caller's business. `donor_ratios` and
+    `donor_paths` both consume it, so a change here moves both, and
+    `tests/test_donor_paths.py` pins `donor_ratios` byte for byte on the
+    committed banks.
+    """
     for (loc, d), v0 in bank.items():
         if not np.isfinite(v0) or v0 <= 0:
             continue
@@ -443,12 +522,7 @@ def donor_ratios(bank: Mapping[tuple, float], target_epiweek: int,
             continue
         if calendar_distance(epiweek(d), target_epiweek) > bandwidth:
             continue
-        v1 = bank.get((loc, d + timedelta(days=7 * horizon)))
-        if v1 is None or not np.isfinite(v1) or v1 <= 0:
-            continue
-        out.append(v1 / v0)
-    arr = np.asarray(out, dtype=float)
-    return arr[np.isfinite(arr)]
+        yield (loc, d), v0
 
 
 def analogue_quantiles(anchor: float, ratios: np.ndarray,
