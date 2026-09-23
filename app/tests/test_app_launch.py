@@ -982,3 +982,132 @@ def test_pid_helpers_dispatch_on_windows(monkeypatch):
     monkeypatch.setattr(cli, "_pid_alive_windows", lambda pid: True)
     assert cli._pid_cmdline(7) == "win:7"
     assert cli._pid_alive(7) is True
+
+
+# ------------------------------------------------ window activation (macOS)
+
+class _FakeNSWindow:
+    def __init__(self):
+        self.front = 0
+
+    def isVisible(self):
+        return True
+
+    def makeKeyAndOrderFront_(self, sender):
+        self.front += 1
+
+    def orderFrontRegardless(self):
+        pass
+
+
+class _FakeNSApp:
+    """NSApplication as macOS 14 treats a process Terminal launched: it
+    becomes active only on the request numbered `grant_on` (None: never),
+    the way cooperative activation can decline requests."""
+
+    def __init__(self, grant_on=1, has_activate=True):
+        self.grant_on = grant_on
+        self.requests = 0
+        self.modern = 0
+        self.legacy = 0
+        self.active = False
+        self.win = _FakeNSWindow()
+        self.has_activate = has_activate
+
+    def setActivationPolicy_(self, p):
+        pass
+
+    def respondsToSelector_(self, sel):
+        return sel == "activate" and self.has_activate
+
+    def activate(self):
+        self.modern += 1
+
+    def activateIgnoringOtherApps_(self, flag):
+        self.legacy += 1
+        self.requests += 1
+        if self.grant_on is not None and self.requests >= self.grant_on:
+            self.active = True
+
+    def windows(self):
+        return [self.win]
+
+    def isActive(self):
+        return self.active
+
+    def keyWindow(self):
+        return self.win if self.active else None
+
+
+def _fake_appkit(app):
+    running = types.SimpleNamespace(activateWithOptions_=lambda o: True)
+    return types.SimpleNamespace(
+        NSApplication=types.SimpleNamespace(sharedApplication=lambda: app),
+        NSRunningApplication=types.SimpleNamespace(
+            currentApplication=lambda: running),
+        NSApplicationActivationPolicyRegular=0,
+        NSApplicationActivateAllWindows=1)
+
+
+class _Clock:
+    def __init__(self):
+        self.t = 0.0
+
+    def __call__(self):
+        return self.t
+
+    def sleep(self, s):
+        self.t += s
+
+
+def test_activation_stops_at_the_first_granted_request(monkeypatch, tmp_path):
+    trace = tmp_path / "trace.txt"
+    monkeypatch.setenv("FLUBNF_STARTUP_TRACE", str(trace))
+    app, clock = _FakeNSApp(grant_on=1), _Clock()
+    ok = cli._bring_window_forward(_fake_appkit(app), lambda f: f(),
+                                   sleep=clock.sleep, clock=clock)
+    assert ok and app.requests == 1
+    # the macOS 14 request is made, not only the deprecated one
+    assert app.modern == 1 and app.win.front == 1
+    assert "activation request 1 at +0.0s: active=True" in trace.read_text()
+
+
+def test_activation_is_retried_until_macos_grants_it(monkeypatch, tmp_path):
+    trace = tmp_path / "trace.txt"
+    monkeypatch.setenv("FLUBNF_STARTUP_TRACE", str(trace))
+    app, clock = _FakeNSApp(grant_on=4), _Clock()
+    ok = cli._bring_window_forward(_fake_appkit(app), lambda f: f(),
+                                   sleep=clock.sleep, clock=clock)
+    assert ok and app.requests == 4
+    assert clock.t == cli.ACTIVATE_DELAYS[3]
+    text = trace.read_text()
+    assert "activation request 3" in text and "active=False" in text
+    assert "activation request 4 at +2.0s: active=True" in text
+
+
+def test_a_declined_activation_is_watched_and_traced(monkeypatch, tmp_path):
+    trace = tmp_path / "trace.txt"
+    monkeypatch.setenv("FLUBNF_STARTUP_TRACE", str(trace))
+    app, clock = _FakeNSApp(grant_on=None), _Clock()
+    appkit = _fake_appkit(app)
+
+    def sleep(s):
+        clock.sleep(s)
+        if clock.t >= 64.0:         # the user switches away and back
+            app.active = True
+    ok = cli._bring_window_forward(appkit, lambda f: f(),
+                                   sleep=sleep, clock=clock)
+    assert not ok
+    assert app.requests == len(cli.ACTIVATE_DELAYS)
+    text = trace.read_text()
+    assert "macOS declined every activation request" in text
+    assert "app became active at +64.0s (not by request)" in text
+
+
+def test_activation_without_the_macos_14_call(monkeypatch, tmp_path):
+    # an older macOS: NSApplication has no activate; the legacy call alone
+    monkeypatch.delenv("FLUBNF_STARTUP_TRACE", raising=False)
+    app, clock = _FakeNSApp(grant_on=1, has_activate=False), _Clock()
+    assert cli._bring_window_forward(_fake_appkit(app), lambda f: f(),
+                                     sleep=clock.sleep, clock=clock)
+    assert app.modern == 0 and app.legacy == 1
