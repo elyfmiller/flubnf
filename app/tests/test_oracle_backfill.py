@@ -9,6 +9,7 @@ business (app/tests/test_retro_national.py and friends pin it).
 """
 import csv
 import json
+import re
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -108,8 +109,13 @@ def test_the_destination_is_never_the_source_the_seal_or_a_full_tree(source, tmp
         OBF.guard_out(source, source)
     with pytest.raises(ValueError, match="own source"):
         OBF.guard_out(source, source / "weeks" / "x")
-    with pytest.raises(ValueError, match="app/state"):
+    # the message names the directory as the platform prints it (backslashes
+    # on Windows), so the check escapes that string rather than spelling a
+    # POSIX path, and reads the phrase that says why
+    state = (OBF.REPO / "app" / "state").resolve()
+    with pytest.raises(ValueError, match=re.escape(str(state))) as e:
         OBF.guard_out(source, OBF.REPO / "app" / "state" / "retro" / "2097-98")
+    assert "sealed and live retrospective trees" in str(e.value)
     full = tmp_path / "full"
     full.mkdir()
     (full / "a").write_text("")

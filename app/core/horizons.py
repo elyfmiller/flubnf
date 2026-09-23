@@ -78,8 +78,9 @@ def _map_locations(by_loc, fn) -> dict:
 
 #: the sample-shaped and quantile-shaped members a week record may carry:
 #: the mechanistic member, the two-strain research member, the filter's
-#: own samples kept beside the Oracle member (app.core.oracle.FILTER_KEY,
-#: never displayed), and the Groundhog
+#: own samples (app.core.oracle.FILTER_KEY: a console run's courtesy copy
+#: and a `flubnf oracle backfill` research root; a replay's stored week
+#: does not carry them; never displayed), and the Groundhog
 MEMBERS = ("pf", "pf2s", "pf_filter", "analogue")
 
 

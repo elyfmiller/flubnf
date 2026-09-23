@@ -3997,129 +3997,6 @@ def _sealed_roots() -> tuple:
                          "pooled, see Methods"))
 
 
-# --------------------------------------------------------------------------
-# a READ-ONLY retrospective source: backfilled Oracle SIHRS seasons
-#
-# `flubnf oracle backfill` refuses app/state on purpose (the live and sealed
-# trees are never its output), so the seasons it writes live elsewhere. The
-# Retrospective tab can SHOW them without copying a byte: a directory of
-# backfilled season roots, app/state/retro_oracle by default (gitignored
-# with the rest of app/state) or any existing directory named by
-# FLUBNF_RETRO_ORACLE, read at call time. It is selected with src=oracle on
-# every retrospective route that reads a season, exactly as `archive`
-# selects an archived run, and nothing that writes (run, stop, pause,
-# resume, start over, archive, delete) ever takes it. Viewing adds only the
-# derived caches every season root gets (scores.json, the national
-# aggregate, the playback and map caches) beside the weeks; the weeks
-# themselves are never touched, and reclaim protects the tree.
-# --------------------------------------------------------------------------
-
-RETRO_ORACLE = Path(__file__).resolve().parents[1] / "state" / "retro_oracle"
-RETRO_ORACLE_ENV = "FLUBNF_RETRO_ORACLE"
-#: the source keys a request may name; "" is the console's own trees
-RETRO_SOURCES = ("oracle",)
-
-
-def _valid_src(src: str) -> bool:
-    return src in ("",) + RETRO_SOURCES
-
-
-def _retro_source(src: str = "oracle") -> dict:
-    """The backfilled source as the pages describe it: its root, how the
-    root was chosen, and the reason it is refused, if it is. A root that
-    is, contains, or lies inside the live or sealed trees is refused: those
-    are never a source, and a view must never be able to write into them.
-    Read at call time, so a test (or the lead) can point it anywhere."""
-    import os as _os
-    env = _os.environ.get(RETRO_ORACLE_ENV, "").strip()
-    root = Path(env).expanduser() if env else RETRO_ORACLE
-    how = (f"set by {RETRO_ORACLE_ENV}" if env else
-           f"the default; set {RETRO_ORACLE_ENV} to show another directory")
-    refused = ""
-    try:
-        r = root.resolve()
-        for base in (RETRO_ROOT, RETRO_SEAL, RETRO_RESEAL):
-            b = Path(base).resolve()
-            if r == b or r.is_relative_to(b) or b.is_relative_to(r):
-                refused = (f"{root} overlaps {base}, one of the console's "
-                           "own retrospective trees; a backfilled source "
-                           "must be a separate directory, so nothing is read "
-                           "from it")
-                break
-    except OSError as e:
-        refused = f"{root} cannot be resolved: {e}"
-    return {"key": src, "root": root, "configured_by": how,
-            "refused": refused,
-            "title": "Oracle SIHRS backfill",
-            "exists": (not refused) and root.is_dir()}
-
-
-def _source_root(src: str, season: str) -> Path | None:
-    """The season root inside a backfilled source, or None when the source
-    is refused or the season is not there."""
-    s = _retro_source(src)
-    if s["refused"] or not _valid_season(season):
-        return None
-    return Path(s["root"]) / season
-
-
-def _source_seasons(src: str = "oracle") -> list:
-    """Season roots under the source, with what the index shows for each."""
-    from app.core import retro
-    s = _retro_source(src)
-    if not s["exists"]:
-        return []
-    out = []
-    for d in sorted(Path(s["root"]).iterdir()):
-        if not (d.is_dir() and _valid_season(d.name)):
-            continue
-        done = _weeks_done(d)
-        if not done:
-            continue
-        summ = retro.run_summary(d)
-        meta = retro.read_meta(d)
-        bf = meta.get("backfill") if isinstance(meta.get("backfill"), dict) \
-            else {}
-        out.append({"name": d.name, "done": done,
-                    "rels": summ.get("headline_rels") or {},
-                    # pf's name on THIS tree: a backfilled root carries the
-                    # step, a copied plain replay does not
-                    "pf_name": _pf_name(d),
-                    "scored": (d / "scores.json").is_file(),
-                    "source_root": bf.get("source_root", ""),
-                    "prereg": str(bf.get("prereg_sha256") or "")[:16],
-                    "settings": retro.settings_summary(meta)})
-    return out
-
-
-def _source_note(root: Path) -> dict:
-    """What the season page says about a backfilled root, from its own run
-    record: where the stored filter samples came from, the pre-registration
-    hash the step ran under, and what the second member is. The backfill
-    copies the source's analogue verbatim, so it is the shipped Groundhog
-    only when the source replay ran with the FluSurv-NET donors; the stored
-    grid ran none, and the page must not pass it off as the Groundhog."""
-    from app.core import retro
-    meta = retro.read_meta(root)
-    bf = meta.get("backfill") if isinstance(meta.get("backfill"), dict) else {}
-    ss = bf.get("source_settings") or meta.get("settings") or {}
-    wx = str(ss.get("week_extra") or "")
-    return {"source_root": bf.get("source_root", ""),
-            "prereg": str(bf.get("prereg_sha256") or ""),
-            "utc": bf.get("utc", ""),
-            "week_extra": wx,
-            "analogue_is_groundhog": wx.startswith("flusurv")}
-
-
-def _source_progress(root: Path, season: str) -> dict:
-    """The timing block for a backfilled root: an archived-shape record
-    with no clock (the backfill's own seconds are not a replay's)."""
-    prog = _archive_progress(root, season)
-    prog.update({"status": "source", "elapsed_s": None, "mean_s": None,
-                 "slowest_week": None})
-    return prog
-
-
 def _sealed_label(root: Path) -> str:
     """The label of the sealed record `root` lies in, or an empty string."""
     for base, label in _sealed_roots():
@@ -4131,16 +4008,7 @@ def _sealed_label(root: Path) -> str:
     return ""
 
 
-def _root_for(season: str, archive: str = "", src: str = "") -> tuple:
-    """_season_root, naming the source only when one is in play, so every
-    caller (and every test that stands in for _season_root with its
-    two-argument shape) sees exactly the call it saw before sources."""
-    if src:
-        return _season_root(season, archive, src)
-    return _season_root(season, archive)
-
-
-def _season_root(season: str, archive: str = "", src: str = "") -> tuple:
+def _season_root(season: str, archive: str = "") -> tuple:
     """(root, is_seal): a season may live under the app's retro root or one
     of the sealed full-grid records; show whichever has the most completed
     weeks so a flagship validation run is never invisible in the app. On a
@@ -4149,11 +4017,6 @@ def _season_root(season: str, archive: str = "", src: str = "") -> tuple:
     With an archive identifier the answer is exactly one directory -- the
     archived run's own tree -- so every page, the playback API, and the
     report builder read the same frozen files."""
-    if src:
-        # a backfilled source (src=oracle): exactly its own season root;
-        # a refused source resolves to a path that holds no weeks
-        r = _source_root(src, season)
-        return (r if r is not None else Path("/nonexistent") / season), False
     if archive:
         from app.core import retro
         return retro.archive_dir(RETRO_ROOT, season, archive), False
@@ -4666,22 +4529,9 @@ def _retro_national_name() -> str:
 
 
 @app.get("/retro", response_class=HTMLResponse)
-def retro_index(request: Request, src: str = ""):
+def retro_index(request: Request):
     from app.core import retro as _retro
     from app.core.retro import available_seasons, season_vintages
-    if src and not _valid_src(src):
-        _flash("Unrecognized retrospective source.")
-        return RedirectResponse("/retro", status_code=303)
-    if src:
-        # the backfilled source: its seasons, read only. No run form and no
-        # control that writes: the console never replays, archives or
-        # deletes anything there.
-        return templates.TemplateResponse(request, "retro.html", {
-            "active": "Retrospective", "src": src, "seasons": [],
-            "source": _retro_source(src),
-            "source_seasons": _source_seasons(src),
-            "state_names": [], "default_width": 1, "width_cap": 1,
-            "engine_ok": True})
     seasons = []
     for s in available_seasons():
         total = len(season_vintages(s))
@@ -4729,7 +4579,6 @@ def retro_index(request: Request, src: str = ""):
     from app.core.engines.pf import DEFAULT_SHARD_WIDTH, SHARD_WIDTH_CAP
     return templates.TemplateResponse(request, "retro.html",
                                       {"active": "Retrospective", "seasons": seasons,
-                                       "src": "", "source": _retro_source(),
                                        "state_names": _retro_state_names(),
                                        "default_width": DEFAULT_SHARD_WIDTH,
                                        "width_cap": SHARD_WIDTH_CAP,
@@ -5237,7 +5086,7 @@ def _results_pending(root: Path) -> str:
 
 
 @app.get("/api/retro/{season}/results_status")
-def api_retro_results_status(season: str, archive: str = "", src: str = ""):
+def api_retro_results_status(season: str, archive: str = ""):
     """The preparing state's poll: whether the finalize job for this season
     root is still working, and which phase it is in. Never starts work
     itself; the results page owns that."""
@@ -5245,9 +5094,7 @@ def api_retro_results_status(season: str, archive: str = "", src: str = ""):
         return {"pending": False, "error": "unrecognized archive"}
     if not _valid_season(season):
         return {"pending": False, "error": "unrecognized season"}
-    if not _valid_src(src) or (src and archive):
-        return {"pending": False, "error": "unrecognized source"}
-    root, _is_seal = _root_for(season, archive, src)
+    root, _is_seal = _season_root(season, archive)
     job = _results_jobs.get(str(root))
     if job and not job["done"].is_set():
         return {"pending": True, "phase": job["phase"],
@@ -5481,8 +5328,8 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
             # pf2s slots in HERE later: accept engine == "pf2s", thread a
             # {"variant": "2strain"} extra through retro.run_week's RunSpec,
             # and collect the member alongside pf in samples.json.
-            _flash("The engine presets for a retrospective are the particle "
-                   "filter with the Groundhog, or the Groundhog alone.")
+            _flash("The engine presets for a retrospective are the Oracle "
+                   "SIHRS and the Groundhog, or the Groundhog alone.")
             return RedirectResponse("/retro", status_code=303)
         from app.core import us_national as usn
         all_states = _retro_state_names()
@@ -5577,7 +5424,7 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
 
 
 #: the retrospective engine presets as the form and the record name them
-RETRO_ENGINE_LABELS = {"pf": "particle filter with the Groundhog",
+RETRO_ENGINE_LABELS = {"pf": "Oracle SIHRS and the Groundhog",
                        "analogue": "Groundhog only"}
 
 
@@ -5587,7 +5434,7 @@ def retro_engine_label(engine: str) -> str:
 
 @app.get("/retro/{season}", response_class=HTMLResponse)
 def retro_results(request: Request, season: str, week: str = "",
-                  archive: str = "", conv: str = "", src: str = ""):
+                  archive: str = "", conv: str = ""):
     """The season results page. `archive` selects an archived run instead of
     the live season; everything below (scores, player, per-state table, the
     report link) then reads that run's own tree.
@@ -5604,26 +5451,13 @@ def retro_results(request: Request, season: str, week: str = "",
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         _flash("Unrecognized archived run identifier.")
         return RedirectResponse("/retro", status_code=303)
-    if src and (not _valid_src(src) or archive or not _valid_season(season)):
-        _flash("Unrecognized retrospective source.")
-        return RedirectResponse("/retro", status_code=303)
-    root, _is_seal = _root_for(season, archive, src)
+    root, _is_seal = _season_root(season, archive)
     # the names this page prints, for THIS tree: pf is the particle filter
     # alone on a sealed record or a replay from before the Oracle step.
     # Passed as the page's model_name, which shadows the template global,
     # and read by the page script into the player's shared map
     names = _names_for_root(root)
-    # the backfilled source, named on the page with its own record
-    source = None
-    if src:
-        source = dict(_retro_source(src), **_source_note(root))
-        if source["refused"]:
-            _flash(source["refused"])
-            return RedirectResponse(f"/retro?src={src}", status_code=303)
     weeks = [p.parent.name for p in retro.season_sample_files(root)]
-    if not weeks and src:
-        _flash(f"{season}: no backfilled weeks under {root}.")
-        return RedirectResponse(f"/retro?src={src}", status_code=303)
     if not weeks:
         # a raw unthemed dead-end helps nobody: back to the season list,
         # which already knows how to show a 0-weeks season
@@ -5656,7 +5490,7 @@ def retro_results(request: Request, season: str, week: str = "",
                 "model_name": _name_fn(names),
                 "preparing": {"phase": job["phase"],
                               "elapsed_s": round(time.time() - job["t0"], 1)},
-                "archive": archive, "src": src, "source": source,
+                "archive": archive,
                 "archive_when": retro.stamp_human(archive) if archive else "",
                 "heads": {}, "curve": [], "curves": {}, "states": [],
                 "season_models": [], "member_colors": _member_colors(),
@@ -5888,16 +5722,14 @@ def retro_results(request: Request, season: str, week: str = "",
         "weeks": weeks, "week": wk, "map_html": map_html,
         "official_catalog": official_catalog,
         "prog": (_archive_progress(root, season) if archive
-                 else _source_progress(root, season) if src
                  else _retro_progress(season)),
-        "archive": archive, "src": src, "source": source,
+        "archive": archive,
         "archive_when": retro.stamp_human(archive) if archive else "",
         "n_weeks": len(weeks) if scoreable else 0, "score_error": score_error})
 
 
 @app.get("/api/retro/{season}/playback/{asof}")
-def api_retro_playback(season: str, asof: str, archive: str = "",
-                       src: str = ""):
+def api_retro_playback(season: str, asof: str, archive: str = ""):
     """One stored retrospective week as a playback payload: member and
     ensemble quantile fans, settled truth, the CDC's submitted comparators,
     and running relWIS stats. Cached under <season_root>/playback_cache/.
@@ -5910,10 +5742,7 @@ def api_retro_playback(season: str, asof: str, archive: str = "",
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         return PlainTextResponse("unrecognized archived run identifier",
                                  status_code=404)
-    if src and (not _valid_src(src) or archive or not _valid_season(season)):
-        return PlainTextResponse("unrecognized retrospective source",
-                                 status_code=404)
-    root, _is_seal = _root_for(season, archive, src)
+    root, _is_seal = _season_root(season, archive)
     try:
         return playback.build_week(root, season, asof)
     except playback.UnknownWeek as e:
@@ -5921,8 +5750,7 @@ def api_retro_playback(season: str, asof: str, archive: str = "",
 
 
 @app.get("/api/retro/{season}/mapswap/{asof}")
-def api_retro_mapswap(season: str, asof: str, archive: str = "",
-                      src: str = ""):
+def api_retro_mapswap(season: str, asof: str, archive: str = ""):
     """One stored week's categorical map as a swap payload: fips to
     {fill, opacity, hover}, a few kilobytes, from the same disk-cached
     cards the page render uses. The season player's map view renders its
@@ -5940,10 +5768,7 @@ def api_retro_mapswap(season: str, asof: str, archive: str = "",
     import re as _re
     if not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", asof):
         return PlainTextResponse(f"no stored week {asof}", status_code=404)
-    if src and (not _valid_src(src) or archive or not _valid_season(season)):
-        return PlainTextResponse("unrecognized retrospective source",
-                                 status_code=404)
-    root, _is_seal = _root_for(season, archive, src)
+    root, _is_seal = _season_root(season, archive)
     from app.core import retro as _retro
     if _retro.week_samples_path(root, asof) is None:
         return PlainTextResponse(f"no stored week {asof}", status_code=404)
@@ -5959,7 +5784,7 @@ def api_retro_mapswap(season: str, asof: str, archive: str = "",
 
 
 @app.get("/retro/{season}/report")
-def retro_season_report(season: str, archive: str = "", src: str = ""):
+def retro_season_report(season: str, archive: str = ""):
     """Generate (cached by mtime) and download the self-contained season
     report: the season player with every week's data embedded, one HTML
     file, no server needed. `archive` builds the report for an archived run
@@ -5969,10 +5794,7 @@ def retro_season_report(season: str, archive: str = "", src: str = ""):
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         return PlainTextResponse("unrecognized archived run identifier",
                                  status_code=404)
-    if src and (not _valid_src(src) or archive or not _valid_season(season)):
-        return PlainTextResponse("unrecognized retrospective source",
-                                 status_code=404)
-    root, _is_seal = _root_for(season, archive, src)
+    root, _is_seal = _season_root(season, archive)
     try:
         p = report_season.build_season_report(
             root, season, archive=archive,
@@ -5984,7 +5806,7 @@ def retro_season_report(season: str, archive: str = "", src: str = ""):
 
 
 @app.get("/api/retro/{season}/report_path")
-def api_retro_report_path(season: str, archive: str = "", src: str = ""):
+def api_retro_report_path(season: str, archive: str = ""):
     """Build the season report if absent (same builder as the download
     route, cached by mtime) and return its absolute path. The results
     page's Reveal-in-Finder button feeds this path to /output/reveal, the
@@ -5994,10 +5816,7 @@ def api_retro_report_path(season: str, archive: str = "", src: str = ""):
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         return PlainTextResponse("unrecognized archived run identifier",
                                  status_code=404)
-    if src and (not _valid_src(src) or archive or not _valid_season(season)):
-        return PlainTextResponse("unrecognized retrospective source",
-                                 status_code=404)
-    root, _is_seal = _root_for(season, archive, src)
+    root, _is_seal = _season_root(season, archive)
     try:
         p = report_season.build_season_report(
             root, season, archive=archive,

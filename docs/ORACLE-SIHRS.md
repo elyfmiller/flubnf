@@ -147,6 +147,22 @@ A week that ran the plain filter carries `applied: false` and the reason.
 The console run's outcome and results.json carry the bank label under
 `oracle`; the ledger's settings line reads "Oracle step".
 
+## 3b. A season's Oracle SIHRS: replay it in the console
+
+Nothing is kept for a retrospective to be assembled from: no fits, no
+forecasts, no particles. A season's Oracle SIHRS is made by replaying it,
+the way a live week is made: the Retrospective tab, a season, the preset
+"Oracle SIHRS and the Groundhog", Run (or `flubnf retro <season>`). Each
+week (`app.core.retro.run_season` -> `run_week`) the particle filter is
+fitted from the season start (August 1) through that as-of week on that
+week's vintage, the Oracle step is applied with that week's vintage and
+donor pool, and the week is stored with oracle.json beside it (section
+3). run_meta.json records `settings.oracle = "applied"`, and the season
+is titled the Oracle SIHRS on the Retrospective index and its season page
+(a tree with no oracle.json and no such record, as every sealed record
+is, reads "Particle filter alone"). Scoring, the season player and the
+season report read the replayed tree like any other.
+
 ## 4. The plain filter: a research run (the Groundhog precedent)
 
 The un-informed filter is reachable the way the bare calendar analogue is
@@ -162,16 +178,24 @@ file is withheld with the reason in the outcome, the run is a research
 run everywhere the ledger shows it and it never archives as the date's
 forecast, and oracle.json says the step was not applied.
 
-Under the default, every stored week also keeps the filter's own samples
-beside the member under the research key `pf_filter` (a console run keeps
-them as `pf_filter.json.gz` in the workroot). Nothing displays, scores or
-exports that key; it is there so the paired comparison and the season-end
-reading need no refit.
+Under the default, a replay's stored week holds the member under `pf`
+and the Groundhog under `analogue`, and nothing else: the filter's own
+samples are not stored. Its 23 quantiles per location and horizon are in
+the week's oracle.json (`quantiles.null`), which is all the paired
+comparison and the season-end reading need. A live console run keeps the
+filter's samples as `pf_filter.json.gz` in its workroot, the courtesy copy
+the 2026-27 shadow run reads; nothing displays, scores or exports it.
 
-## 5. Backfill and reproduce
+## 5. Backfill and reproduce: a verification tool
 
-Compute the member for every stored week of a season root, from the
-stored samples and no refit, into a NEW root:
+The two `flubnf oracle` commands are for verification only: they prove
+that the app's code reproduces the registered screens from the forecasts
+those screens saved, without a refit. They are not how a season is run or
+viewed; that is a console replay (section 3b), and a backfilled root is a
+research directory the console does not show.
+
+`backfill` computes the member for every stored week of a season root,
+from the stored samples and no refit, into a NEW root:
 
     flubnf oracle backfill 2025-26 --source <season root> --out <new root>
 
@@ -180,11 +204,13 @@ app/state (the sealed and live trees) or a non-empty tree (unless
 `--force`). Each week is read through the storage boundary and written
 back through it: `pf` the member, `pf_filter` the source's pf verbatim,
 `analogue` verbatim, the sidecar, oracle.json (with the source file's
-sha256 folded in) and the pool. The hub the process reads (FLUBNF_HUB)
+sha256 folded in) and the pool. Keeping `pf_filter` (the default,
+`--no-keep-filter` drops it) is the research root's choice; a replay's
+stored week does not carry it (section 4). The hub the process reads (FLUBNF_HUB)
 supplies the vintages.
 
-Score a backfilled root with the app's own scorer and print relWIS beside
-the screen's tables:
+`reproduce` scores a backfilled root with the app's own scorer and prints
+relWIS beside the screen's tables:
 
     flubnf oracle reproduce <new root>/2024-25 <new root>/2025-26 \
         --source <grid>/2024-25 --source <grid>/2025-26 \
@@ -232,46 +258,6 @@ figures with 2023-24 (LB 0.7610, NULL 0.8188 on 15,300 cells) are the
 same numbers with the identity season added. The 2024-25 and 2025-26
 seasons are 24 and 22 scored as-of dates; the three dates of each season
 without a FluSight-baseline file score no cell, as on the screen.
-
-### Backfill, then view it in the console
-
-The backfill refuses `app/state` on purpose, so a backfilled season lives in
-a directory of its own. The Retrospective tab shows such a directory READ
-ONLY, without copying it: the source switch at the top of the tab
-("Oracle SIHRS backfill"), or `/retro?src=oracle`. The directory is
-`app/state/retro_oracle` by default (gitignored with the rest of
-`app/state`), or any directory named by `FLUBNF_RETRO_ORACLE`, read when
-the page is served. A directory that is, contains or lies inside the
-console's own trees (`app/state/retro`, `retro_seal`, `retro_reseal`) is
-refused and nothing is read from it.
-
-    # 1. backfill each season into the source directory
-    flubnf oracle backfill 2024-25 --source <grid>/2024-25 --out <dir>/2024-25
-    flubnf oracle backfill 2025-26 --source <grid>/2025-26 --out <dir>/2025-26
-
-    # 2. start the console with the source named (or use the default,
-    #    app/state/retro_oracle, as <dir>)
-    FLUBNF_RETRO_ORACLE=<dir> flubnf app
-
-    # 3. Retrospective tab -> "Oracle SIHRS backfill" -> a season -> Results
-
-The index lists every season under the directory with its backfilled weeks
-and the stored filter samples it came from; a season's page is the same
-results page every replay gets (head tiles, cumulative curve, per-state
-table, the season player, the map, the season report), every link and
-fetch carrying `src=oracle`, with a banner naming the directory, the source
-root, the pre-registration hash and what the second member is: the
-backfill copies the source's analogue verbatim, so over the stored grid it
-is the bare calendar analogue, not the shipped Groundhog, and the banner
-says so. Nothing that writes (run, pause, stop, start over, archive,
-delete) takes the source. Opening a season for the first time scores it
-with the app's own scorer: the derived caches every season root gets
-(`scores.json`, the national aggregate, the playback and map caches) are
-written beside its weeks, and the weeks themselves are never touched;
-`app.core.reclaim` protects the directory, so no finalize prune or storage
-sweep reaches them. Point FLUBNF_HUB at the hub whose truth the record was
-scored against (the pinned copy for the numbers above) to reproduce them
-on the page.
 
 ## 5b. The shipped donor bank (bank change B2, addendum A2)
 
@@ -415,14 +401,6 @@ screen's NULL likewise; the seed mean differs by the seed noise (at most
 record definition and the common set coincide (6,021 + 4,859 + 4,420 =
 15,300). The last two columns are the grid's own bare calendar analogue,
 copied verbatim by the backfill, not the shipped Groundhog.
-
-To look at the backfilled seasons in the console, start it with the
-directory named (nothing is configured permanently; the backfill is not
-under app/state) and open the Retrospective tab's backfill view:
-
-    FLUBNF_RETRO_ORACLE=<dir> flubnf app      # then /retro?src=oracle
-
-as "Backfill, then view it in the console" in section 5 describes.
 
 ## 6. The engine key
 

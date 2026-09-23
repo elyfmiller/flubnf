@@ -5,54 +5,6 @@
 <h1>Retrospective</h1>
 <p class="sub">Each week the models see only that Saturday's data, submit,
 and move on; scoring waits for settled truth.</p>
-{% if src is not defined %}{% set src = '' %}{% endif %}
-{# the source switch: the console's own replays and sealed records, or the
-   backfilled Oracle SIHRS seasons (read only; app/ui/server._retro_source).
-   The same honest-toggle pattern as the Models switcher: aria-pressed
-   buttons, each navigating to its view. #}
-<div class="row viewtabs" role="group" aria-label="Retrospective source">
- <button type="button" class="quiet{% if not src %} gold{% endif %}"
-   aria-pressed="{{ 'false' if src else 'true' }}"
-   {% if src %}onclick="location='/retro'"{% endif %}>Console replays</button>
- <button type="button" class="quiet{% if src == 'oracle' %} gold{% endif %}"
-   aria-pressed="{{ 'true' if src == 'oracle' else 'false' }}"
-   {% if src != 'oracle' %}onclick="location='/retro?src=oracle'"{% endif %}>Oracle SIHRS backfill</button>
-</div>
-{% if src %}
-<div class="card"><h2>{{ source.title }}</h2>
- <p>Seasons whose stored particle-filter samples were run through the
- Oracle step by <code>flubnf oracle backfill</code>, with no refit: the
- Oracle SIHRS as it would have been submitted, beside the season's other
- stored member. Read only, from <code>{{ source.root }}</code>
- ({{ source.configured_by }}).</p>
- {% if source.refused %}<p class="bad">{{ source.refused }}.</p>
- {% elif not source.exists %}<p class="warn">That directory does not exist
- yet.</p>{% endif %}
- <p class="hint">To add a season, backfill a stored season root into this
- directory (the command refuses the console's own trees):
- <code>flubnf oracle backfill &lt;season&gt; --source &lt;season root&gt;
- --out {{ source.root }}/&lt;season&gt;</code>. The console never replays,
- archives or deletes anything here; opening a season scores it into caches
- beside its weeks (docs/ORACLE-SIHRS.md).</p>
-</div>
-{% for s in source_seasons %}
-<div class="card source-card" data-season="{{ s.name }}" data-source="{{ src }}">
- <h2>{{ s.name }}</h2>
- <div class="row" style="justify-content:space-between">
-  <span class="hint">{{ s.done }} backfilled week{{ '' if s.done == 1 else 's' }}
-   {%- if s.rels %}{% for m, v in s.rels.items() %} &middot; {{ ((s.pf_name if (m == 'pf' and s.pf_name) else model_name(m)) ~ ' ') if m }}relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{% endfor %} vs FluSight baseline, ratio of sums{% else %} &middot; not scored yet; Results scores it{% endif %}</span>
-  <a href="/retro/{{ s.name }}?src={{ src }}"><button class="quiet" type="button" style="margin-top:0">Results &rarr;</button></a>
- </div>
- {% if s.source_root %}<p class="hint">from the stored filter samples of
- <code>{{ s.source_root }}</code>{% if s.prereg %}, pre-registration
- {{ s.prereg }}{% endif %}</p>{% endif %}
- {{ settings_html(s.settings) | safe }}
-</div>
-{% else %}
-{% if source.exists %}<p class="hint">No backfilled season under this
-directory yet.</p>{% endif %}
-{% endfor %}
-{% else %}
 <div class="cols">
  <div><div class="card"><h2>Settings</h2>
   {# platform-aware: app/ui/server.py:_engine_setup_hint. Never hardcode a
@@ -91,13 +43,19 @@ directory yet.</p>{% endif %}
    <label>Shard width (parallel runners; auto for this machine)</label>
    <input type="number" name="width" value="{{ default_width }}" min="1" max="{{ width_cap }}">
    <label>Engine preset</label>
-   {# the full competition path fits the particle filter beside the
-      Groundhog (hours per season, needs the engine venv); the Groundhog
-      alone replays in minutes with no engine at all, and is the way to
-      reproduce its published numbers on any machine #}
+   {# the full competition path is the Oracle SIHRS beside the Groundhog:
+      every week the particle filter is fitted from the season start and
+      the Oracle step applied with that week's vintage and donor pool
+      (hours per season, needs the engine venv). The value stays "pf", the
+      member's internal key. The Groundhog alone replays in minutes with no
+      engine at all, and is the way to reproduce its published numbers on
+      any machine #}
    <select name="engine" id="retro-engine">
-     <option value="pf">Particle filter with the Groundhog (hours)</option>
+     <option value="pf">Oracle SIHRS and the Groundhog (hours)</option>
      <option value="analogue">Groundhog only (minutes, no engine needed)</option></select>
+   <p class="hint">A replay is how a season's Oracle SIHRS numbers are made:
+   each week the filter is fitted from the season start and the Oracle step
+   applied with that week's data and donor pool, as a live run does.</p>
    {# what the start-over prompt resolves to. 'resume' is the historical
       behaviour and the value a keyboard submit carries, so the form is
       always safe even if the prompt never runs. #}
@@ -299,6 +257,5 @@ directory yet.</p>{% endif %}
      || (document.activeElement && document.activeElement.form);
  }});
 </script>
-{% endif %}
 {% endif %}
 {% endblock %}

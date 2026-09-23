@@ -10,9 +10,9 @@ tree, by the public site's own test (site_build.tree_carries_oracle):
 
   * a tree with no oracle.json in its weeks and no run record naming the
     step is "Particle filter alone" on the index (live or sealed season
-    cards, archived rows, backfilled-source cards), on the season page
-    (tiles, chart legend, table, map toggle and the in-page player) and in
-    the exported season report (tiles, table and the embedded player);
+    cards, archived rows), on the season page (tiles, chart legend, table,
+    map toggle and the in-page player) and in the exported season report
+    (tiles, table and the embedded player);
   * a tree whose weeks carry oracle.json, or whose run record says the
     step was applied, keeps "Oracle SIHRS";
   * an export built before names were per tree is rebuilt, not served.
@@ -64,9 +64,8 @@ def _tree(root: Path, oracle: str = "", season: str = SEASON) -> Path:
     oracle "" is the plain filter as every sealed record stores it: no
     oracle.json in the weeks and a run record whose settings say nothing
     about the step. "weeks" writes the step's oracle.json beside every
-    week (a backfill, or a replay run with the step) and leaves the run
-    record silent; "meta" records settings.oracle = "applied" and writes
-    no oracle.json."""
+    week (a replay run with the step) and leaves the run record silent;
+    "meta" records settings.oracle = "applied" and writes no oracle.json."""
     truth = _truth()
     for asof in (W1, W2):
         wd = root / "weeks" / asof
@@ -97,8 +96,8 @@ def _tree(root: Path, oracle: str = "", season: str = SEASON) -> Path:
 @pytest.fixture
 def world(monkeypatch, tmp_path):
     """Truth and baselines stubbed for both scoring surfaces, every console
-    tree and the backfilled source pointed at empty directories, and a
-    season list the index controls."""
+    tree pointed at empty directories, and a season list the index
+    controls."""
     truth = _truth()
     for mod in (scoring, playback):
         monkeypatch.setattr(mod, "load_truth", lambda: (truth, dict(N2F)))
@@ -115,9 +114,6 @@ def world(monkeypatch, tmp_path):
     monkeypatch.setattr(srv, "RETRO_ROOT", live)
     monkeypatch.setattr(srv, "RETRO_SEAL", seal)
     monkeypatch.setattr(srv, "RETRO_RESEAL", reseal)
-    source = tmp_path / "backfill_out"
-    source.mkdir()
-    monkeypatch.setenv(srv.RETRO_ORACLE_ENV, str(source))
     monkeypatch.setattr(retro, "available_seasons", lambda: [SEASON, OTHER])
     monkeypatch.setattr(retro, "season_vintages", lambda s: [W1, W2])
     monkeypatch.setattr(srv, "_retro_bg", lambda *a, **k: None)
@@ -125,7 +121,7 @@ def world(monkeypatch, tmp_path):
     srv._retro_status.clear()
     srv._results_jobs.clear()
     srv._invalidate_scans()
-    yield {"live": live, "seal": seal, "reseal": reseal, "source": source}
+    yield {"live": live, "seal": seal, "reseal": reseal}
     srv._results_jobs.clear()
     srv._retro_status.clear()
     srv._retro_status.update(status_before)
@@ -193,18 +189,14 @@ def test_each_archived_run_is_named_for_its_own_tree(world):
     assert FILTER not in by_stamp[STAMP_ORACLE]
 
 
-def test_each_backfilled_source_season_is_named_for_its_own_tree(world):
-    # a backfilled root carries oracle.json; a plain replay copied into the
-    # source directory does not, and must not be titled the member
-    _tree(world["source"] / SEASON, oracle="weeks")
-    _tree(world["source"] / OTHER, season=OTHER)
-    html = client.get("/retro?src=oracle").text
-    oracle_card = _card(html, f'data-season="{SEASON}"')
-    plain_card = _card(html, f'data-season="{OTHER}"')
-    assert f"{ORACLE} relWIS" in oracle_card
-    assert FILTER not in oracle_card
-    assert f"{FILTER} relWIS" in plain_card
-    assert f"{ORACLE} relWIS" not in plain_card
+def test_the_replay_form_names_the_oracle_sihrs(world):
+    """The run form's full preset is the Oracle SIHRS beside the Groundhog;
+    its value is still the member's internal key."""
+    t = _text(client.get("/retro").text)
+    assert '<option value="pf">Oracle SIHRS and the Groundhog (hours)</option>' in t
+    assert "Particle filter with the Groundhog" not in t
+    assert "how a season's Oracle SIHRS numbers are made" in t
+    assert srv.retro_engine_label("pf") == "Oracle SIHRS and the Groundhog"
 
 
 # ------------------------------------------------------- the season page

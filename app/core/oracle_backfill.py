@@ -1,7 +1,10 @@
 """Backfill and reproduce: the Oracle member computed for every stored week
 of a season root, from the stored samples and no refit, into a NEW root;
 and the app's own scorer on such a root, printed beside the registered
-screen's tables.
+screen's tables. A verification tool: it proves the app's code reproduces
+the registered screens from the forecasts they saved, with no refit. A
+season's Oracle SIHRS is run and viewed by a console replay
+(app.core.retro.run_season), never through a backfilled root.
 
 BACKFILL. A season root is a tree of stored weeks (weeks/<T>/samples.json
 or .gz, the stored horizon convention, sealed since the record was made).

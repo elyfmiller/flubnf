@@ -1077,9 +1077,11 @@ def run_week(root: Path, season: str, asof: str, locations: list,
             f"{asof}: {len(failed)} PF cell(s) failed and are absent from "
             f"the stored week: {sorted(failed)[:6]}\n")
     # the Oracle step (app/core/oracle.py), on the collected samples and
-    # before the storage boundary: the member is stored under pf and the
-    # filter's own samples are kept under the research key beside it. A
-    # spec asking for the plain filter (oracle = none, the Groundhog's
+    # before the storage boundary: the member is stored under pf, beside
+    # the analogue, as every week is. The filter's own samples are not
+    # stored: its 23 quantiles per location and horizon are in oracle.json
+    # (quantiles.null), which is all scoring and comparison read. A spec
+    # asking for the plain filter (oracle = none, the Groundhog's
     # `aux = none` precedent) stores the filter as is, and oracle.json
     # beside the week says the step was not applied.
     if oracle_mod.wanted(extra):
@@ -1087,7 +1089,7 @@ def run_week(root: Path, season: str, asof: str, locations: list,
             pf_samples, asof, wd, extra=extra,
             weeks_to_drop=int(spec.weeks_to_drop or 0),
             drop_same_day=bool(drop_same_day))
-        stored = {"pf": member, oracle_mod.FILTER_KEY: pf_samples}
+        stored = {"pf": member}
     else:
         oracle_mod.write_not_applied(
             wd, asof, "the replay asked for the plain filter (oracle = none)")
