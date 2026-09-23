@@ -1190,16 +1190,19 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
             # can now hold INSIDE the week, and elapsed_now already excludes
             # held time, so the week's entry measures only work
             e0 = elapsed_now(read_meta(root))
-            wx = week_extra(asof, i, vintages) if week_extra else None
-            if engine == "pf" and "oracle" not in (read_meta(root).get("settings") or {}):
-                # the Oracle step's setting, read off the dictionary the
-                # first fitted week runs under, so run_meta.json says on its
-                # face whether the stored pf is the member or the plain
-                # filter; each week's oracle.json names the bank
-                _record_setting(root, "oracle",
-                                "applied" if oracle_mod.wanted(wx)
-                                else "none (the plain filter, a research run)")
             try:
+                # the week's research dictionary is asked for INSIDE the
+                # try: a callback that raises for one week is that week's
+                # failure, logged below like any other, not the season's
+                wx = week_extra(asof, i, vintages) if week_extra else None
+                if engine == "pf" and "oracle" not in (read_meta(root).get("settings") or {}):
+                    # the Oracle step's setting, read off the dictionary the
+                    # first fitted week runs under, so run_meta.json says on
+                    # its face whether the stored pf is the member or the
+                    # plain filter; each week's oracle.json names the bank
+                    _record_setting(root, "oracle",
+                                    "applied" if oracle_mod.wanted(wx)
+                                    else "none (the plain filter, a research run)")
                 run_week(root, season, asof, locations, replicates, particles,
                          width, drop_same_day=drop_same_day, extra=wx,
                          engine=engine)

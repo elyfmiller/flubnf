@@ -421,6 +421,41 @@ def test_run_week_takes_the_season_start_from_extra(tmp_path, monkeypatch):
     assert seen == [("2098-06-21", 0.20), (retro.season_bounds(SEASON)[0], 0.15)]
 
 
+def test_run_season_logs_a_week_whose_week_extra_raises(tmp_path,
+                                                        monkeypatch):
+    """A week_extra that raises for one week is that week's failure: it
+    lands in failures.log, the next week still runs and the season ends
+    'done'. The call sits inside the per-week try for exactly this reason
+    (the Oracle wiring once moved it out, and one bad week killed the
+    season; WIRING_CHECK.md D1, 2026-09-22)."""
+    clock = {"t": 1_000_000.0}
+    monkeypatch.setattr(retro, "_now", lambda: clock["t"])
+    monkeypatch.setattr(retro, "season_vintages", lambda s: [W1, W2])
+    got = []
+
+    def fake_week(r, season, asof, locations, replicates, particles, width,
+                  **kw):
+        clock["t"] += 60.0
+        got.append(asof)
+        wd = Path(r) / "weeks" / asof
+        wd.mkdir(parents=True, exist_ok=True)
+        (wd / "samples.json").write_text(json.dumps({"asof": asof}))
+        return {"asof": asof}
+
+    monkeypatch.setattr(retro, "run_week", fake_week)
+
+    def flaky(asof, i, vintages):
+        if asof == W1:
+            raise RuntimeError("no donors this week")
+        return {}
+
+    root = tmp_path / SEASON
+    retro.run_season(root, SEASON, ["Ohio"], width=1, week_extra=flaky)
+    assert got == [W2]
+    assert (root / "failures.log").read_text().startswith(W1 + ": ")
+    assert retro.read_meta(root)["status"] == "done"
+
+
 def test_run_season_asks_week_extra_for_every_week_in_order(tmp_path,
                                                             monkeypatch):
     clock = {"t": 1_000_000.0}
