@@ -447,7 +447,7 @@ class RunSpec:
     #: kernel that jittered in raw parameter space; the contract-correct
     #: kernel takes 0.15 by the regularizer sweep's rule 4.2 (2026-09-06:
     #: full grid 0.723 pooled against 0.735 at 0.30 and the sealed 0.678;
-    #: the gap is disclosed in docs/RELEASE-1.0.md). Reproducing the seal
+    #: the gap is disclosed in docs/archive/RELEASE-1.0.md). Reproducing the seal
     #: needs 0.30 stated explicitly, with the sealed fork.
     jitter: float = 0.15
     extra: dict = field(default_factory=dict)

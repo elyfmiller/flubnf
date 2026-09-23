@@ -13,9 +13,8 @@ Two configurations of the one engine matter:
     the historical member, the one every sealed number was scored with,
     and its output is byte-identical to what it always was.
   * the GROUNDHOG, the same engine with the shipped auxiliary donor bank
-    spliced in (`SHIPPED_AUX`, `shipped_aux_pools()`). Since 2026-09-22
-    this is what the console ships in the calendar's slot, as a standalone
-    submission beside the SIHRS; there is no blend.
+    spliced in (`SHIPPED_AUX`, `shipped_aux_pools()`): what the console
+    ships, as a standalone submission beside the SIHRS.
 
 The engine itself never reads `SHIPPED_AUX`: `run(spec)` does exactly what
 `spec.extra` says. The console and the retrospective put the shipped pools
@@ -41,7 +40,7 @@ def completeness_args(spec, fips: str, anchor_date, newest_date) -> tuple:
     """(completeness, widen_log_sd) for one state, or (None, None).
     This path is DORMANT: no shipped configuration sets these keys, and
     both pre-registered completeness corrections were tested and killed
-    (docs/RELEASE-1.0.md, the two reporting-completeness entries).
+    (docs/archive/RELEASE-1.0.md, the two reporting-completeness entries).
 
     Build 2 (2026-08-21 handoff section 4): a frozen per-state first-issue
     completeness table may ride in `spec.extra["analogue_completeness"]`

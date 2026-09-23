@@ -14,8 +14,7 @@
  forecast hub</a>. Two models run each week and each is submitted on its
  own: a mechanistic SIHRS model fitted by a sequential particle filter, and
  the Groundhog, a calendar analogue built from historical seasons with an
- auxiliary donor bank. Nothing is blended; the equal-weight ensemble that
- was submitted until 2026-09-22 is retired.</p>
+ auxiliary donor bank. Nothing is blended.</p>
 </div>
 
 <div class="card" id="sihrs"><h2>The SIHRS model</h2>
@@ -106,12 +105,10 @@
  {{ dg.eq_pf2s() }}
 
  <p><b>Why it does not ship.</b> The two-strain member is stronger than the
- single-strain filter at turning points, but membership was decided on the
- full grid while the blend still shipped: there the equal-weight
- three-member ensemble scored relWIS 0.719 against 0.704 for the two-member
- blend, so adding it made the submitted forecast worse. Those figures
- predate the 2021-22 donor exclusion, which moved the two-member reference
- to 0.678. The blend is retired; this engine remains a research run.</p>
+ single-strain filter at turning points and weaker on the full grid: when
+ it was evaluated (August 2026, three replayed seasons) it scored worse
+ than the single-strain model overall, and the turning-point gain did not
+ pay for that. It remains a research run.</p>
 
  <p>The engine remains available for research runs. The
  <a href="/model/pf2s">two-strain model page</a> stays reachable by direct
@@ -145,8 +142,8 @@
  Its growth ratios are shrunk toward the admissions scale by a factor fitted
  only on strictly earlier overlap seasons, and the two ratio quantile
  functions are averaged at a fixed equal weight that is not fitted. This is
- what separates the Groundhog from the calendar analogue that shipped inside
- the blend: the same engine, the same admissions pool, plus these donors.
+ what separates the Groundhog from the bare calendar analogue: the same
+ engine, the same admissions pool, plus these donors.
  The arm was pre-registered and selected against an ILI+ bank on the same
  cells; both banks are committed and either can be run.</p>
  <p><b>Coverage.</b> The construction is split-conformal in form only. The
@@ -164,20 +161,10 @@
  calendar-matched pool asks what happened in March and 2021-22 answers that
  the epidemic was still growing: it is the only donor season whose March
  ratios have a median above one, with a far heavier upper tail than any
- other season's. Excluding it improved the blend that then shipped by 3.66
- percent pooled, positive in all three sealed seasons and in 50 of 52
- jurisdictions; the full measurement and its controls are in the release
- record (docs/RELEASE-1.0.md).</p>
+ other season's. Excluding it was pre-registered and measured before it
+ shipped (August 2026): the improvement held in all three replayed seasons
+ and in 50 of 52 jurisdictions.</p>
  <p class="hint">Model tab: <a href="/model/analogue">Groundhog</a>.</p>
-</div>
-
-<div class="card" id="ensemble"><h2>Retired: the blend</h2>
- <p>Until 2026-09-22 the submitted forecast was an equal-weight quantile
- average of the particle filter and the calendar analogue, under the
- registered identity LosAlamos_NAU-CModel_Flu. It is retired: the two
- models are now submitted separately and nothing computes the blend. Runs
- and sealed seasons from before that date keep their blend rows and read
- as they did; the sealed record is docs/RELEASE-1.0.md.</p>
 </div>
 
 <div class="card"><h2>Measured performance</h2>
@@ -200,12 +187,8 @@
  measured 2026-09-21 on the same 15,340 cells over the 52 jurisdictions
  (<code>flubnf groundhog retro all --aux flusurv</code>), pooled 0.666
  against 0.771; the paired difference over the 76 forecast dates is below
- zero in every one of 4,000 bootstrap replicates. The blend of the PF and
- the bare analogue that shipped until 2026-09-22 pooled 0.723 over 15,460
- cells; its sealed record (sealed 2026-08-19, rebuilt 2026-08-24; 0.678
- pooled, from an engine whose kernel jittered in raw space) is kept in
- docs/RELEASE-1.0.md. On placement against the real FluSight fields, see
- the verification policies below.</p>
+ zero in every one of 4,000 bootstrap replicates. On placement against the
+ real FluSight fields, see the verification policies below.</p>
 </div>
 
 <div class="card"><h2>Under the hood</h2>
@@ -273,7 +256,7 @@
  yardstick, and evaluation touches only data that was available at forecast
  time.</p>
  <p class="hint">Two measured qualifications, itemized in the release
- record's seal caveats (docs/RELEASE-1.0.md): for seven of the 76 sealed
+ record's seal caveats (docs/archive/RELEASE-1.0.md): for seven of the 76 sealed
  as-of weeks the archived vintage differs from what was public by that
  week's submission deadline, and the sealed scores are computed on the
  members' internal forecasts at float precision rather than on the rounded
@@ -299,7 +282,7 @@
  outside this repository and cannot be rerun from it. Until the field and
  this project's entry are scored that way, no placement is claimed
  anywhere in this application; the full account is in the release record
- (docs/RELEASE-1.0.md).</p>
+ (docs/archive/RELEASE-1.0.md).</p>
  {# THE labelling defect this paragraph used to carry: it closed by calling
     the page's figures "a ratio against the FluSight baseline", which is
     true of BOTH conventions, since both are scaled to put the baseline at

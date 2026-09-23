@@ -302,7 +302,7 @@ def test_placements_are_harvested_not_invented(built):
     Since 2026-08-24 the console's table carries no standings at all: they
     were withdrawn because the scorer that produced them does not survive
     and this project's own entries in the archived field were not computed
-    on one convention (docs/RELEASE-1.0.md). This test therefore normally
+    on one convention (docs/archive/RELEASE-1.0.md). This test therefore normally
     exercises the empty branch, which is the point of it."""
     res, out, html, payload = built
     harvested = sb.harvest_placement()

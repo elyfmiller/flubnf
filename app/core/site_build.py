@@ -24,19 +24,13 @@ THE SCORES
 ----------
 relWIS here is each shipped model's own: the particle filter and the
 Groundhog (the calendar analogue with its banked auxiliary donors), each
-a standalone submission since 2026-09-22. Nothing is blended. The
-equal-weight ensemble that was the submitted forecast until then has a
-history worth keeping straight: until v1.0, retro.score_season defaulted
-to a FROZEN fitted table the lab evaluated and rejected, so a scores.json
-written before v1.0 carries that rejected blend under "ensemble"; the
-seal was rescored under the equal blend on 2026-08-24 (0.813 / 0.618 /
-0.683, pooled 0.678). Those numbers are the release record's
-(docs/RELEASE-1.0.md), not this page's: no payload carries a blend any
-more, so the site never recomputes one and never prints one.
+a standalone submission. A payload from before 2026-09-22 may carry a
+stored "ensemble" model; the site prints what a payload carries and
+computes nothing beyond it.
 
-The build does not read a stored scores.json at all, for a reason that
-outlives the blend: discover_seasons accepts ANY season root under
-app/state, and a file records nothing about how it was scored. Instead
+The build does not read a stored scores.json at all: discover_seasons
+accepts ANY season root under app/state, and a file records nothing about
+how it was scored. Instead
 every season is rescored from each week's playback payload, the stored
 members as stored, through the validated baseline construction and the
 frozen cell rule: settled truth above zero, a positive median, and a cell
@@ -53,7 +47,7 @@ WHAT IS HARVESTED RATHER THAN RESTATED
   * The FluSight field placements, when the perf table in home.html carries
     them: rank, field size and percentile are read as data, not retyped. As
     of 2026-08-24 that table carries none, because the standings were
-    withdrawn (docs/RELEASE-1.0.md), so every season renders without a
+    withdrawn (docs/archive/RELEASE-1.0.md), so every season renders without a
     placement rather than with an invented one. The same table's relWIS
     column is still read, because it is what the drift alarm below compares
     against.
@@ -743,7 +737,7 @@ def harvest_placement() -> dict:
     The FluSight standings are optional, and are absent as of 2026-08-24.
     They were withdrawn because the scorer that produced them does not
     survive and this project's own entries in the archived field were not
-    computed on one convention (see docs/RELEASE-1.0.md). A season with no
+    computed on one convention (see docs/archive/RELEASE-1.0.md). A season with no
     standing simply has no placement on the site, and site_page renders that
     cell as "placement withdrawn" rather than as work still to do: the
     measurement happened and its result was retracted, so "not yet scored"

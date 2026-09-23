@@ -20,7 +20,7 @@ Covered templates:
 
 Companion sources of record. The research tree behind the measurements
 below is kept in the lab's archive, not in this repository, and is available
-on request (docs/RELEASE-1.0.md, "Where the evidence lives", states the same
+on request (docs/archive/RELEASE-1.0.md, "Where the evidence lives", states the same
 policy). Two of the pointers below name files in that archive.
 
 * `flubnf/sihrs_priors.py` -- the DOI or data derivation behind every fixed
@@ -208,7 +208,7 @@ pool, which narrowed the analogue materially: its pooled member relWIS moved
 from 0.8290 to 0.7723, and the pooled ensemble's central 50, 80 and 95
 percent widths fell to 0.93, 0.92 and 0.90 of their previous totals. The
 figures below have not been re-derived on the shipped pool. See
-`docs/RELEASE-1.0.md` for the change and its evidence.
+`docs/archive/RELEASE-1.0.md` for the change and its evidence.
 
 ### 3.1 Why 5 parameters, not 8 (measured)
 

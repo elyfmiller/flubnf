@@ -33,7 +33,7 @@ def test_home_renders_workflow_performance_and_component_cards():
     # for the PF (the reseal of 2026-09-07) and the Groundhog's own replay,
     # each column named for whose forecast it scores, both universes named.
     # The FluSight field placements were withdrawn on 2026-08-24
-    # (docs/RELEASE-1.0.md), so the table must NOT carry them and must say
+    # (docs/archive/RELEASE-1.0.md), so the table must NOT carry them and must say
     # so rather than leaving a reader to assume they still hold.
     assert 'class="perf"' in r.text
     for cell in ("0.840", "0.797", "0.846", "0.821",
@@ -174,14 +174,18 @@ def test_methods_anchors_and_backlinks():
     r = client.get("/methods")
     assert r.status_code == 200
     for anchor in ('id="sihrs"', 'id="fitting"', 'id="two-strain"',
-                   'id="analogue"', 'id="ensemble"'):
+                   'id="analogue"'):
         assert anchor in r.text, anchor
     for back in ('href="/model/pf"', 'href="/model/pf2s"',
                  'href="/model/analogue"'):
         assert back in r.text, back
-    # the retired blend keeps its anchor (bookmarks) and links no model tab
+    # nothing on the page documents the retired blend ("nothing is
+    # blended" describes the product; the blend's own card, identity and
+    # figures are gone)
     assert 'href="/model/ensemble"' not in r.text
-    assert "Retired: the blend" in r.text
+    assert 'id="ensemble"' not in r.text
+    for gone in ("Retired: the blend", "CModel_Flu", "0.723", "0.678"):
+        assert gone not in r.text, gone
     # the respread diagram: no label sits on the return arc anymore
     assert "M762,182 C762,330 87,330 87,182" in r.text
 
@@ -334,8 +338,7 @@ def test_diagram_svgs_use_aria_label_not_hover_title():
     assert "<title" not in t
     for label in ("SIHRS compartment diagram",
                   "Two-strain SIHRS compartment diagram",
-                  "Calendar analogue mechanism",
-                  "Ensemble blending diagram"):
+                  "Calendar analogue mechanism"):
         assert f'aria-label="{label}"' in t, label
 
 

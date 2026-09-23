@@ -83,11 +83,11 @@ from the sealed per-cell scores that ship with the retrospective, whereas
 the RANK additionally asserts that the whole FluSight field was scored on
 that same convention, and that half rests on an out-of-repo builder nobody
 can rerun from this checkout. Placement against the field was withdrawn on
-2026-08-24 (see app/ui/templates/methods.html and docs/RELEASE-1.0.md).
+2026-08-24 (see app/ui/templates/methods.html and docs/archive/RELEASE-1.0.md).
 
 Porting that builder in is NOT on its own the condition for lifting the
 withdrawal, and this comment said it was until 2026-08-31. The record in
-docs/RELEASE-1.0.md found three faults, and the missing builder is only the
+docs/archive/RELEASE-1.0.md found three faults, and the missing builder is only the
 first: the archived field could not be reproduced from this repository's
 scoring code either, and one of this project's own published rows carried
 the leave-one-season-out fitted ensemble weights it rejects and does not

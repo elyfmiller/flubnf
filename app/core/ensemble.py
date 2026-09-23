@@ -1,15 +1,8 @@
 """Member quantiles from sample arrays. The one formula every surface
 uses to reduce a sample-shaped member (the PF's draws) to the 23-level
 FluSight grid, so a served fan, a scored cell and a written submission
-cannot disagree about what a member forecast.
-
-The blend that used to live here, vincentize() at equal unfitted weights,
-was retired on 2026-09-22 with the equal-weight ensemble it produced
-(LosAlamos_NAU-CModel_Flu, submitted through version 3.0). The two models
-now ship as standalone submissions and nothing in the product computes a
-blend; its history is docs/RELEASE-1.0.md. The fitted-weight table that
-the retired path could be asked for by name never shipped and has no
-reader now.
+cannot disagree about what a member forecast. (The module name is
+historical; nothing here blends anything.)
 """
 from __future__ import annotations
 

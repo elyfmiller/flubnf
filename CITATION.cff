@@ -34,7 +34,7 @@ abstract: >-
   0.834, 0.716 and 0.663 by season), beating the baseline in every season.
   The v1.0.0 release sealed a record of 0.678 (0.813, 0.618, 0.683) on a
   particle filter kernel with an undeclared behaviour that has since been
-  corrected; both records and the correction are in docs/RELEASE-1.0.md.
+  corrected; both records and the correction are in docs/archive/RELEASE-1.0.md.
   All scores are self-computed from the hub's archived vintage data and
   baseline files, and are retrospective replays rather than real-time
   submissions.

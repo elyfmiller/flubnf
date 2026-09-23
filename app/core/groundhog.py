@@ -28,7 +28,7 @@ WHAT IS SCORED
 --------------
 The console's own universe: the 52 jurisdictions with a two-character FIPS,
 US national excluded (`flubnf/cli.py:retro_cmd`), which is the convention
-`docs/RELEASE-1.0.md` publishes on. The national row can be added with
+`docs/archive/RELEASE-1.0.md` publishes on. The national row can be added with
 `with_us=True` and is then reported SEPARATELY, never pooled in: pooling
 it is what made an earlier set of member figures read 0.7613 where the
 published convention gives 0.7714.
