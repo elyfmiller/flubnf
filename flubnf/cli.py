@@ -2269,8 +2269,9 @@ def groundhog_retro_cmd(
         ..., help="A season such as 2024-25, or 'all' for the three on record."),
     aux: str = typer.Option(
         "", "--aux",
-        help="Auxiliary donor preset (flusurv, iliplus, both). Empty runs "
-             "the shipped single-pool member."),
+        help="Auxiliary donor preset (flusurv, iliplus, both); flusurv is "
+             "the Groundhog. Empty runs the bare single-pool analogue "
+             "(arm directory 'shipped', its historical name)."),
     compare: bool = typer.Option(
         True, "--compare/--no-compare",
         help="With --aux: also run the shipped member and report both on "
