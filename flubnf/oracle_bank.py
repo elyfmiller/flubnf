@@ -72,11 +72,11 @@ from . import analogue as AN
 # were written after looks at the scored seasons (its sections 10.1 and 10.2).
 # ---------------------------------------------------------------------------
 
-#: The stream name of the pool this module builds, the admissions-only bank
-#: this member ships; a week records "<STREAM>@<digest8>". Bank change B2
-#: (frozen and screened, not adopted here; docs/ORACLE-SIHRS.md, open
-#: items) is not a switch of this name alone: it changes the pool builder,
-#: the per-sample draw, the identity rule and the label a week records.
+#: The stream name of the pool this module builds: the admissions half of
+#: the member's donor bank, recorded as "<STREAM>@<digest8>". The shipped
+#: bank is the mixture of this half with the FluSurv-NET half (bank change
+#: B2, flubnf.oracle_mix, stream "admissions-fbase+flusurv"; the week records
+#: both digests in its label).
 STREAM = "admissions-fbase"
 
 #: Bumped when the on-disk layout of a written pool changes.

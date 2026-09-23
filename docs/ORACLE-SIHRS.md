@@ -435,23 +435,19 @@ the first fitted week of a season.
 
 ## 7. Open items
 
-* Bank change B2 is not made here: this branch ships the admissions-only
-  bank (`flubnf.oracle_bank.STREAM`, "admissions-fbase"). B2 gives this
-  member the Groundhog's donor bank: the admissions pool plus FluSurv-NET
-  at weight 0.5 as a per-sample mixture, a shrink per as-of date, and the
-  identity only when neither half is admissible. It was frozen on
-  2026-09-23 by its own research pre-registration (sha256
-  `2ce3564622296f490a435b773a3b34d431d889b3e0d4fe4b32ff6aeb8ede9249`) and
-  screened on the stored forecasts. Its primary claim is UNRESOLVED: the
-  mixture member minus the admissions-only member on the 2024-25 and
-  2025-26 active dates is -0.0103, 95 percent reading interval -0.0289 to
-  +0.0084 (0.7307 against 0.7409), so the choice is the lead's. Adopting
-  B2 is not a switch of the stream name: it changes the pool builder, the
-  per-sample draw, the identity rule and the label every week's provenance
-  records, and the bank-text guard in `app/tests/test_oracle_text.py`
-  forces the page text to change with it.
+* Bank change B2 ships on this branch (section 5b): the member's donor
+  bank is the Groundhog's, the admissions pool plus FluSurv-NET at weight
+  0.5 as a per-sample mixture (`flubnf.oracle_mix`, stream
+  "admissions-fbase+flusurv"; the admissions half keeps
+  `flubnf.oracle_bank.STREAM`, "admissions-fbase"). Its screen did not
+  decide it: the primary claim is UNRESOLVED (the mixture member minus the
+  admissions-only member on the 2024-25 and 2025-26 active dates -0.0103,
+  95 percent reading interval -0.0289 to +0.0084; 0.7307 against 0.7409),
+  and shipping it is the lead's decision of 2026-09-23 (addendum A2). The
+  2026-27 shadow run logs the admissions-only member beside the shipped one
+  every week and reads the two against each other at season end.
 * A one-row .exp (the first fitted week of a season) needs the engine key
-  above on the a827e2f8 tree. The console now writes it wherever the
-  installed engine accepts it; on an engine that does not, the first week
-  is refused by the engine as before, and the shadow run starts at the
-  first stored week.
+  above on the a827e2f8 tree, which refuses one row without it. The
+  console writes it wherever the installed engine accepts it. The engine
+  before that tree (2fdadee0) does not accept the key and does not need
+  it: it takes a one-week interval when the file has one row.
