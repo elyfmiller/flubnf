@@ -55,8 +55,8 @@ def test_outcome_chips_apply_the_rule():
 
 
 def test_outcome_chips_name_the_mechanistic_member_by_what_the_row_ran():
-    """A row that recorded the Oracle step's bank label scored the Oracle
-    SIHRS; a row that asked for oracle = none scored the plain filter; a
+    """A row that recorded the Oracle step's bank label scored the
+    Oracle SIHRS; a row that asked for oracle = none scored the plain filter; a
     row from before the step existed keeps the name it was recorded under
     (it scored the plain filter too, and relabelling it would rewrite the
     ledger's history)."""

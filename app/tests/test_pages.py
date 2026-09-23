@@ -23,9 +23,12 @@ def test_home_renders_workflow_performance_and_component_cards():
     assert 'id="diag-loc"' not in r.text            # no region select
     assert 'id="vals-1"' not in r.text              # no values panel
     assert "const DIAG" not in r.text               # no diagram feed script
-    # weekly workflow pipeline diagram
+    # weekly workflow pipeline diagram: the mechanistic box is the
+    # Oracle SIHRS, the filter's fit with donor growth blended in
+    # (2026-09-23)
     assert "Weekly forecasting workflow" in r.text
-    assert "10,000 candidate epidemics" in r.text
+    assert "particle-filter fit, then" in r.text
+    assert "donor growth blended in" in r.text
     # two submissions, nothing blended (2026-09-22)
     assert "Two submissions" in r.text and "Equal-weight blend" not in r.text
     assert "Groundhog" in r.text
@@ -39,7 +42,11 @@ def test_home_renders_workflow_performance_and_component_cards():
     for cell in ("0.840", "0.797", "0.846", "0.821",
                  "0.722", "0.653", "0.651", "0.666",
                  "0.741", "0.663", "0.684", "0.685",
-                 "15,460", "15,340", "Oracle SIHRS", "Groundhog"):
+                 "15,460", "15,340", "Oracle SIHRS", "Groundhog",
+                 # the Oracle SIHRS against the plain filter, same cells,
+                 # and the three-season column named for what it scores
+                 "0.719", "0.794", "0.774", "0.843", "0.813", "9,279",
+                 "Filter alone", "frozen-specification replication"):
         assert cell in r.text, cell
     # the performance card names no blend; the outlook label above it is
     # whatever the latest STORED run on this machine was and may still
@@ -67,7 +74,10 @@ def test_home_renders_workflow_performance_and_component_cards():
     assert 'class="steps"' in r.text
     assert 'class="stepnum"' in r.text
     assert "nothing blended" in r.text
-    assert "frozen" not in r.text
+    # no frozen blend weights (the retired blend); the Oracle SIHRS's
+    # record names its own caveat, a frozen-specification replication
+    assert "frozen" not in r.text.replace("frozen-specification replication",
+                                          "")
 
 
 def test_two_strain_is_off_the_navbar_but_still_routed():
@@ -287,7 +297,9 @@ def test_published_likelihood_is_the_integrated_form_not_the_instant_flux():
 
 def test_methods_carries_the_pf_and_two_strain_equations():
     t = client.get("/methods").text
-    assert t.count('class="eqpanel"') == 2       # SIHRS card + two-strain card
+    # the SIHRS card, the Oracle step card, the two-strain card
+    assert t.count('class="eqpanel"') == 3
+    assert "the growth blend" in t
     assert "NegBin(" in t
     assert "Binomial(" in t
 

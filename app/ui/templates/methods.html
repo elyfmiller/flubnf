@@ -12,13 +12,18 @@
  hospital admissions for all 52 US jurisdictions, in the quantile format
  required by the CDC <a href="https://github.com/cdcepi/FluSight-forecast-hub" target="_blank" rel="noopener">FluSight
  forecast hub</a>. Two models run each week and each is submitted on its
- own: a mechanistic SIHRS model fitted by a sequential particle filter, and
- the Groundhog, a calendar analogue built from historical seasons with an
- auxiliary donor bank. Nothing is blended.</p>
+ own. The <b>Oracle SIHRS</b> is a mechanistic forecast: the SIHRS
+ compartment model, fitted each week by a sequential particle filter, whose
+ forecast growth is then blended with donor growth from past seasons at the
+ same calendar week. The <b>Groundhog</b> is a calendar analogue built from
+ historical seasons with an auxiliary donor bank. Both draw on past seasons
+ at the same point in the calendar, in different ways; the two are
+ submitted separately and nothing is blended between them.</p>
 </div>
 
 <div class="card" id="sihrs"><h2>The SIHRS compartment model</h2>
- <p><b>SIHRS</b> is a compartmental model of influenza transmission.
+ <p>The <b>SIHRS compartment model</b> is the model of influenza
+ transmission the Oracle SIHRS is built on.
  Individuals move from <b>Susceptible</b> to <b>Infected</b>; most infections
  recover directly, while a small severe fraction is admitted to
  <b>Hospitalized</b> before reaching <b>Recovered</b>. Immunity wanes, so
@@ -70,7 +75,9 @@
  uncertainty. Each week's forecast is a fresh filter run from the season's
  August 1 anchor through that week's data vintage, never a cloud carried
  over from the week before: a refit sees every revision to earlier weeks,
- and the carried-cloud alternative was measured and declined.</p>
+ and the carried-cloud alternative was measured and declined. The filter's
+ forecast is not submitted as it stands: the Oracle step below blends its
+ growth with past seasons' before anything is written.</p>
  <p>BioNetGen's BNG2.pl is invoked once per state cell when a run is
  prepared, expanding the BNGL model into its reaction network. During
  fitting, the particle filter integrates that network's differential
@@ -78,6 +85,63 @@
  an in-process BioNetGen simulation engine: no per-simulation BNG2.pl
  subprocess is launched, so a full state-season fit completes in
  seconds.</p>
+</div>
+
+<div class="card" id="oracle"><h2>The Oracle step: past seasons' growth, blended in</h2>
+ {{ dg.oracle_pipeline(uid='mp') }}
+ <p><b>What it does.</b> After the weekly fit, the filter's forecast is a
+ set of sample paths for the next four weeks (30,000 per state at the
+ default three replicates), each one carrying the filter's own growth at the forecast origin. The Oracle step
+ gives every sample path one donor: a growth path drawn at random from an
+ earlier season at the same calendar week (within two MMWR epiweeks of the
+ forecast week, from any jurisdiction), the same calendar-donor principle
+ the Groundhog uses for its donor ratios. The path's growth over each of
+ the four forecast weeks becomes the geometric mean, half and half, of the
+ filter's own growth and its donor's. The blended growth is propagated in
+ closed form from the filter's own current state, so each sample is
+ rescaled rather than refitted: the filter's uncertainty rides on the new
+ path and the donors add the spread of how past seasons moved. One donor
+ per sample, not one donor per forecast, is what keeps both.</p>
+ {{ dg.eq_oracle() }}
+ <p><b>Donors.</b> {{ oracle_text.BANK_TEXT.pool }}</p>
+ <p><b>Why.</b> A particle filter tracks the season it has seen so far, and
+ its forecast carries the growth it sees today forward. That is right while
+ a season keeps its course and wrong at the turns, which the season so far
+ cannot show. Past seasons at the same calendar week show how seasons have
+ moved on from this point of the year. The blend keeps the filter's reading
+ of the current state and borrows the calendar's knowledge of what usually
+ comes next.</p>
+ <p><b>How it relates to the Groundhog.</b> Both models read past seasons at
+ the same calendar week. The Groundhog applies donor growth <em>ratios</em>
+ to the last observed count and has no mechanism at all; the Oracle SIHRS
+ applies donor <em>growth</em> to the mechanistic model's own fitted
+ state, at half weight beside the filter's own. The two are submitted as separate models, each
+ under its own hub identity, and nothing is blended between them.</p>
+ <p><b>The record.</b> Every rule of the step (the weight, one donor per
+ sample path, the pool rule, five seeds logged with the first submitted)
+ was fixed by a frozen pre-registration before any score was read (sha256
+ <code>{{ oracle_text.PREREG_SHA256[:16] }}</code>, docs/ORACLE-SIHRS.md).
+ On the stored forecasts of the two seasons with more than one earlier
+ season to draw from, scored against the FluSight baseline as a ratio of
+ sums on the cells where both scored:</p>
+ <div style="overflow-x:auto"><table>
+  <tr><th>Season</th><th class="num">Oracle SIHRS</th><th class="num">Plain filter</th><th class="num">Cells</th></tr>
+  {% for key, label in [("2024-25", "2024-25"), ("2025-26", "2025-26"), ("both", "Both seasons")] %}
+  {% set r = oracle_text.RECORD[key] %}
+  <tr><td>{{ label }}</td>
+   <td class="num {{ 'ok' if r.oracle < 1 else 'bad' }}">{{ oracle_text.fmt(r.oracle) }}</td>
+   <td class="num {{ 'ok' if r.filter < 1 else 'bad' }}">{{ oracle_text.fmt(r.filter) }}</td>
+   <td class="num">{{ oracle_text.cells(r.cells) }}</td></tr>
+  {% endfor %}
+ </table></div>
+ <p class="hint">A frozen-specification replication, not an independent
+ confirmation: this family of blends had been looked at on the same stored
+ forecasts before the primary arm was fixed, so the 2026-27 season is the
+ prospective test. In 2023-24 only one earlier season exists and the step
+ leaves the filter unchanged by its own rule. The plain filter remains
+ reachable as a research run (<code>flubnf retro --oracle none</code>),
+ never as a submission. Source: {{ oracle_text.RECORD_SOURCE }}.</p>
+ <p class="hint">Model tab: <a href="/model/pf">Oracle SIHRS</a>.</p>
 </div>
 
 <div class="card" id="two-strain">
@@ -179,12 +243,15 @@
     to the baseline must not read as neutral #}
  <div style="overflow-x:auto"><table>
   <tr><th>Model</th><th>2023-24</th><th>2024-25</th><th>2025-26</th></tr>
-  <tr><td>Oracle SIHRS (the filter alone)</td><td class="ok">0.840</td><td class="ok">0.797</td><td class="ok">0.846</td></tr>
+  <tr><td>Particle filter alone (the Oracle SIHRS before its step)</td><td class="ok">0.840</td><td class="ok">0.797</td><td class="ok">0.846</td></tr>
   <tr><td>Groundhog</td><td class="ok">0.722</td><td class="ok">0.653</td><td class="ok">0.651</td></tr>
   <tr><td>Calendar analogue without auxiliary donors (retired)</td><td class="bad">1.045</td><td class="ok">0.756</td><td class="ok">0.618</td></tr>
  </table></div>
- <p class="hint">Oracle SIHRS: the filter alone, measured 2026-09-07 with the production engine
- through the console's own replay command. Groundhog and the bare analogue:
+ <p class="hint">Particle filter alone: measured 2026-09-07 with the
+ production engine through the console's own replay command. The
+ Oracle SIHRS's own record, on the stored 2024-25 and 2025-26 forecasts, is in
+ the Oracle step card above; its cells and runs differ from these, so the
+ two tables are not read across. Groundhog and the bare analogue:
  measured 2026-09-21 on the same 15,340 cells over the 52 jurisdictions
  (<code>flubnf groundhog retro all --aux flusurv</code>), pooled 0.666
  against 0.771; the paired difference over the 76 forecast dates is below

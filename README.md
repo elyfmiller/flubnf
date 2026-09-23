@@ -24,24 +24,32 @@ Delphi Epidata API and data.cdc.gov, cached under `app/state`.
 
 ## The models
 
-The shipped forecast is an equal weight, unfitted quantile average of two
-members:
+Two models are submitted each week, each on its own; nothing is blended
+between them:
 
-* Oracle SIHRS, mechanistic. An SIHRS compartmental model (susceptible,
+* Oracle SIHRS, mechanistic. The SIHRS compartment model (susceptible,
   infected, hospitalized, recovered, with waning immunity and seasonal
   transmission) written in BNGL and fitted by a sequential particle filter:
   10,000 candidate epidemics per jurisdiction, refitted every week from the
   season's start on that week's data. The filter runs in a fork of PyBNF
   with bngsim integrating the model in process; a jurisdiction season fits
-  in seconds.
-* Calendar analog, empirical. It scales the latest observation by growth
-  ratios drawn from prior seasons at the same point in the calendar, pooled
-  across jurisdictions. Nothing is fitted.
+  in seconds. After the fit, the Oracle step blends the filter's forecast
+  growth with donor growth from past seasons at the same calendar week:
+  each forecast sample path draws one donor growth path from an earlier
+  season (within two epiweeks, any jurisdiction) and grows at the
+  geometric mean, half and half, of its own growth and the donor's,
+  propagated in closed form from the filter's own state
+  (docs/ORACLE-SIHRS.md).
+* Groundhog, empirical. It scales the latest observation by growth ratios
+  drawn from prior seasons at the same point in the calendar, pooled across
+  jurisdictions, with a banked FluSurv-NET donor pool beside the admissions
+  one. Nothing is fitted.
 
-The members fail in different regimes: the mechanistic member can follow a
-turn the analog cannot anticipate, and the analog holds when a season
-behaves like past seasons. Interval coverage at the January turn is the
-known weakness. Model definitions and parameter sources are in
+Both read past seasons at the same calendar week, in different ways: the
+Groundhog applies donor growth ratios to the last observed count, the
+Oracle SIHRS applies donor growth to the mechanistic model's fitted state.
+Interval coverage at the January turn is the known weakness of the
+mechanistic fit. Model definitions and parameter sources are in
 docs/MODEL-PROVENANCE.md.
 
 The Sandbox tab runs the same particle filter on a model of your own, in
@@ -88,10 +96,10 @@ checkout).
 FluBNF submits two models to FluSight, each under its own hub identity
 (`model-metadata/`):
 
-* **Oracle SIHRS** (`NAU_PyBNF-OracleSIHRS`): an SIHRS compartmental model
-  fitted each week by a sequential particle filter, its forward samples
-  then given the growth of a calendar-matched past season blended with
-  the filter's own (docs/ORACLE-SIHRS.md).
+* **Oracle SIHRS** (`NAU_PyBNF-OracleSIHRS`): the SIHRS compartment model
+  fitted each week by a sequential particle filter, each forward sample's
+  growth then blended half and half with a donor growth path from an
+  earlier season at the same calendar week (docs/ORACLE-SIHRS.md).
 * **Groundhog** (`NAU_PyBNF-GroundHogCGR`): the calendar analogue.
   The last observed count scaled by the empirical quantiles of growth
   ratios seen at the same MMWR epiweek in strictly earlier seasons, pooled
@@ -108,9 +116,15 @@ CDC dashboard, so the two are not comparable.
 
 | model | 2023-24 | 2024-25 | 2025-26 | pooled | cells |
 |---|---|---|---|---|---|
-| Oracle SIHRS, the filter alone, production engine (reseal of 2026-09-07) | 0.840 | 0.797 | 0.846 | 0.821 | 15,460 |
+| particle filter alone, the Oracle SIHRS before its step, production engine (reseal of 2026-09-07) | 0.840 | 0.797 | 0.846 | 0.821 | 15,460 |
 | Groundhog (replay of 2026-09-21) | 0.722 | 0.653 | 0.651 | 0.666 | 15,340 |
 | calendar analogue without the donor bank, on the Groundhog's cells | 1.045 | 0.756 | 0.618 | 0.771 | 15,340 |
+
+The Oracle SIHRS itself, on the stored 2024-25 and 2025-26 forecasts with
+the step applied (docs/ORACLE-SIHRS.md): relWIS 0.741 against the plain
+filter's 0.813 on the same 9,279 cells (0.719 and 0.774 by season), a
+frozen-specification replication; the 2026-27 season is the prospective
+test. The two tables' cells and runs differ and are not read across.
 
 The Groundhog's row reproduces on any machine with a hub clone and no
 engine:

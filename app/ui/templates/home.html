@@ -4,8 +4,10 @@
  <p>FluBNF produces weekly probabilistic forecasts of influenza hospital
  admissions for all 52 US jurisdictions, in the CDC FluSight submission
  format and with a shareable weekly report. Two models are submitted each
- week: a mechanistic transmission model fitted to each week's data, and the
- Groundhog, an empirical calendar model with banked donors.</p>
+ week: the Oracle SIHRS, a mechanistic transmission model fitted to each
+ week's data whose forecast growth is then blended with past seasons' growth
+ at the same calendar week, and the Groundhog, an empirical calendar model
+ with banked donors.</p>
 </div>
 
 <div class="card">
@@ -72,11 +74,35 @@
    below. #}
 <div class="grid2">
  <div class="card"><h2>Measured performance</h2>
+  {# the submitted mechanistic member's own record first: the Oracle SIHRS
+     against the plain filter on the same cells (app/core/oracle_text
+     .RECORD, docs/ORACLE-SIHRS.md). Its class list is not the bare "perf"
+     on purpose: app/core/site_build.harvest_placement reads the FIRST
+     table whose class is exactly "perf" as the console's published
+     three-season figures, which is the table below. #}
+  <table class="perf oraclerec">
+   <thead><tr><th>Season</th><th class="num">Oracle SIHRS</th>
+    <th class="num">Plain filter</th><th class="num">Cells</th></tr></thead>
+   <tbody>
+    {% for key, label in [("2024-25", "2024-25"), ("2025-26", "2025-26"), ("both", "Both")] %}
+    {% set r = oracle_text.RECORD[key] %}
+    <tr{% if key == "both" %} class="total"{% endif %}><td>{{ label }}</td>
+     <td class="num rel">{{ oracle_text.fmt(r.oracle) }}</td>
+     <td class="num">{{ oracle_text.fmt(r.filter) }}</td>
+     <td class="num">{{ oracle_text.cells(r.cells) }}</td></tr>
+    {% endfor %}
+   </tbody>
+  </table>
+  <p class="hint">The Oracle SIHRS against the plain particle filter on the
+  same cells: the stored 2024-25 and 2025-26 forecasts with the Oracle step
+  applied, a frozen-specification replication; the 2026-27 season is the
+  prospective test. In 2023-24 only one earlier season exists, so the step
+  leaves the filter unchanged there (docs/ORACLE-SIHRS.md).</p>
   <table class="perf">
    {# every score column is named for whose forecast it scores, so no
       column reads as the FluSight ensemble's. The relWIS unit for all of
       them is stated once in the hint below. #}
-   <thead><tr><th>Season</th><th class="num">Oracle SIHRS</th>
+   <thead><tr><th>Season</th><th class="num">Filter alone</th>
     <th class="num">Groundhog</th><th class="num">FluSight Ensemble</th>
     </tr></thead>
    <tbody>
@@ -90,15 +116,20 @@
      <td class="num rel">0.666</td><td class="num">0.685</td></tr>
    </tbody>
   </table>
-  {# Oracle SIHRS and FluSight Ensemble are the production engine's record
-     (the reseal of 2026-09-07, app/state/retro_reseal, 15,460 cells); the
+  {# Filter alone and FluSight Ensemble are the production engine's record
+     (the reseal of 2026-09-07, app/state/retro_reseal, 15,460 cells; the
+     reseal predates the Oracle step, so its mechanistic column is the
+     particle filter alone); the
      Groundhog column is its own replay (flubnf groundhog retro, 15,340
      cells over the 52 jurisdictions, 2026-09-21). The two universes are
      named in the hint. The sealed engine's table and the disclosure
      between the two stay on Methods and in docs/archive/RELEASE-1.0.md. #}
-  <p class="hint">Two models, submitted separately, three seasons replayed
-  on vintage data only, each scored against the CDC FluSight baseline.
-  Oracle SIHRS and the FluSight Ensemble columns score the same 15,460 cells;
+  <p class="hint">Three seasons replayed on vintage data only, each scored
+  against the CDC FluSight baseline. The first column is the particle filter
+  alone, the Oracle SIHRS before its step (these replays predate it); it
+  and the FluSight Ensemble column score the same 15,460 cells, which differ
+  from the cells and runs of the table above, so the two plain-filter
+  figures of a season are not read across;
   the Groundhog column is its own replay over 15,340 cells of the 52
   jurisdictions. The FluSight Ensemble column is this app's own scoring of
   the official ensemble, not FluSight's pairwise relative WIS, so it is not
@@ -131,9 +162,11 @@
     drawing on hover. #}
  <div class="pipe">
  <svg viewBox="0 0 990 264" role="img" aria-label="Weekly forecasting workflow">
-  <desc>One weekly data pull feeds the particle-filter fits and the
-  Groundhog; each model's quantiles are written as its own FluSight CSV,
-  nothing is blended, and the weekly report shows both.</desc>
+  <desc>One weekly data pull feeds the Oracle SIHRS (the particle-filter
+  fit, its forecast growth then blended with donor growth from past seasons
+  at the same calendar week) and the Groundhog; each model's quantiles are
+  written as its own FluSight CSV, nothing is blended between the two, and
+  the weekly report shows both.</desc>
   <defs>
    <marker id="wf-arr" viewBox="0 0 10 10" refX="9" refY="5"
            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -173,9 +206,9 @@
    <text x="78"  y="117" class="svgt-md" font-weight="700">Data pull</text>
    <text x="78"  y="138" class="svgt-sm">NHSN admissions</text>
    <text x="78"  y="156" class="svgt-sm">latest vintage</text>
-   <text x="382" y="45"  class="svgt-md" font-weight="700">Particle-filter fits</text>
-   <text x="382" y="64"  class="svgt-sm">10,000 candidate epidemics</text>
-   <text x="382" y="81"  class="svgt-sm">per state, reweighted weekly</text>
+   <text x="382" y="45"  class="svgt-md" font-weight="700">Oracle SIHRS</text>
+   <text x="382" y="64"  class="svgt-sm">particle-filter fit, then</text>
+   <text x="382" y="81"  class="svgt-sm">donor growth blended in</text>
    <text x="382" y="193" class="svgt-md" font-weight="700">Groundhog</text>
    <text x="382" y="212" class="svgt-sm">growth ratios from matched</text>
    <text x="382" y="229" class="svgt-sm">weeks, NHSN and FluSurv-NET</text>
@@ -197,6 +230,13 @@
    <span class="eqnote">the seasonal forcing inside the particle-filter fits:
    the curve the filter bends each week</span></p>
   {{ dg.harmonic() }}
+  <p><span class="math">ln <i>G</i><sub><i>k</i></sub> =
+   &#189; ln <i>G</i><sub><i>T</i></sub> +
+   &#189; ln <i>G</i><sub><i>d</i></sub></span>
+   <span class="eqnote">the Oracle SIHRS's growth blend: each of the
+   filter's forecast sample paths grows at the geometric mean of its own
+   growth and one donor's, from an earlier season at the same calendar
+   week (<a href="/methods#oracle">Methods</a>)</span></p>
   <p><span class="math"><i>q</i><sub>h</sub>(<i>&#964;</i>) =
    <i>y</i><sub>last</sub> &#183; <i>Q</i><sub><i>&#964;</i></sub>(&#8239;growth
    ratios at matched calendar weeks&#8239;)</span>
@@ -260,8 +300,8 @@
     </g>
    </svg></div>
   <p>The BioNetGen model specification language, in which the
-  <a href="/methods#sihrs">SIHRS compartment model</a> that the Oracle
-  SIHRS is built on is written. At run
+  <a href="/methods#sihrs">SIHRS compartment model</a> that the
+  Oracle SIHRS is built on is written. At run
   preparation BNG2.pl expands the rule-based definition into a reaction
   network, once per state cell, which bngsim then integrates throughout the
   fit. Keeping the model in BNGL makes its structure explicit and

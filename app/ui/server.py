@@ -243,6 +243,14 @@ from app.core.relwis import PUBLISHED_CONVENTION_NOTE     # noqa: E402
 
 templates.env.globals["relwis_convention_note"] = PUBLISHED_CONVENTION_NOTE
 
+# THE words for the Oracle SIHRS (app/core/oracle_text): the donor-bank
+# sentences, kept in that one marked place so bank change B2 is one edit,
+# and the record's figures with their source. Home, Methods, the model
+# tab, the diagrams and the harvested public site all read this global.
+from app.core import oracle_text as _oracle_text              # noqa: E402
+
+templates.env.globals["oracle_text"] = _oracle_text
+
 
 def _member_colors() -> dict:
     """The one member-color map: the marked JSON literal in the shared
@@ -3764,31 +3772,54 @@ def models_page(request: Request):
 
 @app.get("/model/{name}", response_class=HTMLResponse)
 def model_page(request: Request, name: str):
+    ot = _oracle_text
+    rec = ot.RECORD
     blurbs = {
         "pf": ("Oracle SIHRS",
-               "The mechanistic model, submitted on its own. Since "
-               "2026-09-22 the submitted member is the Oracle SIHRS: the "
-               "filter's stored forward samples with their growth replaced "
-               "by the geometric mean, at weight one half, of the filter's "
-               "own origin growth and one donor growth path drawn from a "
-               "calendar-matched bank of past seasons' admission growth, a "
-               "post-fit step on the filter's output specified by a frozen "
-               "pre-registration (docs/ORACLE-SIHRS.md). The filter itself "
-               "is unchanged. It assumes "
-               "influenza moves people "
-               "through Susceptible, Infected, Hospitalized, and Recovered "
-               "compartments, with seasonally varying transmission and "
-               "immunity that wanes back to susceptibility. The model is "
-               "written in BNGL and fitted by PyBNF's sequential particle "
-               "filter on the bngsim engine: each week, 10,000 candidate "
-               "epidemics per state are reweighted by how well they explain "
-               "the newest hospital admissions, and their spread is the "
-               "forecast uncertainty. It fits weekly NHSN admissions exactly "
-               "as archived on each forecast date. Measured three-season "
-               "retrospective relWIS of the filter alone against the "
-               "FluSight baseline, ratio of sums "
-               "(values below 1 beat it): 1.023 in 2023-24, 0.636 in "
-               "2024-25, 0.825 in 2025-26."),
+               "The mechanistic model, submitted on its own: a mechanistic "
+               "forecast whose growth is blended with donor growth from past "
+               "seasons. It is built on the SIHRS compartment model: "
+               "influenza moves people through Susceptible, Infected, "
+               "Hospitalized and Recovered compartments, with seasonally "
+               "varying transmission and immunity that wanes back to "
+               "susceptibility, written in BNGL. Each week PyBNF's "
+               "sequential particle filter, on the bngsim engine, fits that "
+               "model from the season's start on August 1 through the newest "
+               "week of NHSN admissions exactly as archived on the forecast "
+               "date: 10,000 candidate epidemics per state are reweighted by "
+               "how well they explain the data, and their spread is the "
+               "filter's own uncertainty. On its own a filter carries the "
+               "growth it sees today forward; it cannot know how a season "
+               "usually turns. Past seasons can, so after the fit the "
+               "Oracle step blends them in, on the same calendar-donor principle "
+               "the Groundhog uses: each of the filter's forecast sample "
+               "paths draws one donor growth path from an earlier season at "
+               "the same calendar week (within two epiweeks, any "
+               "jurisdiction), and its growth over the next four weeks "
+               "becomes the geometric mean, half and half, of the filter's "
+               "own growth at the forecast origin and the donor's. The "
+               "blended growth is propagated in closed form from the "
+               "filter's own current state, so the filter's uncertainty and "
+               "the donors' spread both survive. " + ot.BANK_TEXT["pool"] +
+               " Every rule of the step was fixed by a frozen "
+               "pre-registration before any score was read "
+               "(docs/ORACLE-SIHRS.md). On the stored 2024-25 and 2025-26 "
+               "forecasts it scores relWIS " + ot.fmt(rec["both"]["oracle"])
+               + " against the plain filter's " + ot.fmt(rec["both"]["filter"])
+               + " on the same " + ot.cells(rec["both"]["cells"]) + " cells ("
+               + ot.fmt(rec["2024-25"]["oracle"]) + " and "
+               + ot.fmt(rec["2025-26"]["oracle"]) + " by season; FluSight "
+               "baseline, ratio of sums, values below 1 beat it). That is a "
+               "frozen-specification replication on forecasts the method "
+               "was screened on; the 2026-27 season is its prospective test. "
+               "In 2023-24 only one earlier season exists, so the member is "
+               "the filter unchanged there. The Groundhog applies donor "
+               "growth ratios to the last observed count; the Oracle SIHRS "
+               "applies donor growth to the mechanistic state. The two are "
+               "submitted as separate models and nothing is blended between "
+               "them. The filter alone, three seasons replayed with the "
+               "production engine: 0.840 in 2023-24, 0.797 in 2024-25, 0.846 "
+               "in 2025-26."),
         "analogue": ("Groundhog",
                      "The empirical model, submitted on its own. It assumes "
                      "the current season will resemble past seasons at the "
@@ -3841,8 +3872,9 @@ def model_page(request: Request, name: str):
     # ship.
     # one-line summaries: the collapsed <details> summary on each model tab
     onelines = {
-        "pf": ("The mechanistic model: an SIHRS compartmental model fitted "
-               "weekly by a sequential particle filter."),
+        "pf": ("The mechanistic model: the SIHRS compartment model fitted "
+               "weekly by a particle filter, its forecast growth blended with "
+               "donor growth from past seasons at the same calendar week."),
         "analogue": ("The empirical model: it scales the latest observation "
                      "by historical growth ratios from matching calendar "
                      "weeks, with banked FluSurv-NET donors."),
@@ -3850,7 +3882,7 @@ def model_page(request: Request, name: str):
                  "parallel SIHRS circuits fitted to two data channels."),
     }
     # where each model tab points into the Methods page
-    manchor = {"pf": "fitting", "analogue": "analogue",
+    manchor = {"pf": "oracle", "analogue": "analogue",
                "pf2s": "two-strain"}
     if name not in blurbs:
         return HTMLResponse("unknown model", status_code=404)

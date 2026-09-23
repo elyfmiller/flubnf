@@ -197,7 +197,7 @@ ratio of WIS sums against the FluSight baseline, US excluded; the stored
 member is the submitted seed's realisation, so the screen's seed-1 value
 is the one to match and its seed mean is beside it:
 
-| scope | cell set | Oracle SIHRS | cells | screen LB seed 1 | screen LB seed mean | plain filter | cells | screen NULL | Groundhog | cells |
+| scope | cell set | Oracle SIHRS | cells | screen LB seed 1 | screen LB seed mean | plain filter | cells | screen NULL | grid's calendar analogue | cells |
 |---|---|---|---|---|---|---|---|---|---|---|
 | 2024-25 | common | 0.7192 | 4,859 | 0.7192 | 0.7192 | 0.7944 | 4,859 | 0.7944 | 0.7561 | 4,859 |
 | 2024-25 | record definition | 0.7192 | 4,859 | 0.7192 | | 0.7944 | 4,859 | | 0.7560 | 4,922 |
@@ -206,8 +206,14 @@ is the one to match and its seed mean is beside it:
 | both (active2) | common | 0.7409 | 9,279 | 0.7409 | 0.7409 | 0.8135 | 9,279 | 0.8135 | 0.7014 | 9,279 |
 | both (active2) | record definition | 0.7409 | 9,279 | 0.7409 | | 0.8135 | 9,279 | | 0.7013 | 9,397 |
 
-The filter's scored cells are a subset of the Groundhog's, so the record
-definition and the common set coincide for the mechanistic member (the
+The last two columns are the grid's own second member, stored under
+`analogue` and copied verbatim by the backfill: the bare calendar analogue
+WITHOUT the FluSurv-NET donors (the grid ran no auxiliary preset; its
+figures are the retired bare analogue's 0.756 and 0.618 on the console's
+Methods page), not the shipped Groundhog, whose own record (0.653 and
+0.651) is its separate replay. The filter's scored cells are a subset of
+the analogue's, so the record definition and the common set coincide for
+the mechanistic member (the
 screen's 9,279 common cells on active2; its 15,300 native cells include
 the 2023-24 identity season, not backfilled here). The Oracle SIHRS
 equals the screen's seed-1 value to machine precision on every scope and

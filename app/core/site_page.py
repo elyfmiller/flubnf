@@ -207,6 +207,10 @@ BOOT = """
 JS = r"""
 (function(){
   var D = JSON.parse(document.getElementById('flubnf-payload').textContent);
+  // the fan's mechanistic median, named for what the source stored
+  var FANNAME = ((D.outlook && D.outlook.source && D.outlook.source.pf_label)
+                 || 'Oracle SIHRS') === 'Oracle SIHRS'
+                ? 'Oracle SIHRS' : 'particle filter';
   window.FLUBNF = D;
 
   // ---- tabs -------------------------------------------------------------
@@ -299,9 +303,9 @@ JS = r"""
        hoverinfo:'skip'},
       {x:fx, y:lo5, mode:'lines', fill:'tonexty', fillcolor:rgba(acc,.28),
        line:{width:0}, name:'50% interval', hoverinfo:'skip'},
-      {x:fx, y:med, mode:'lines+markers', name:'Oracle SIHRS median',
+      {x:fx, y:med, mode:'lines+markers', name:FANNAME+' median',
        line:{color:acc,width:2.5}, marker:{size:6},
-       hovertemplate:'%{x|%b %e, %Y}<br>%{y:,.0f}<extra>Oracle SIHRS median</extra>'}
+       hovertemplate:'%{x|%b %e, %Y}<br>%{y:,.0f}<extra>'+FANNAME+' median</extra>'}
     ];
     // The Groundhog's median is drawn when the source stored it, and
     // starts hidden: it is the other submission, on the same axes.
@@ -483,7 +487,8 @@ def _season_table(payload: dict) -> str:
     # Every score column is named for whose forecast it scores, so none
     # reads as the FluSight ensemble's; the note below carries the relWIS
     # unit for all of them at once. Two models, submitted separately.
-    head = ('<tr><th>Season</th><th class="n">Oracle SIHRS</th>'
+    pf_name = payload.get("pf_label") or "Oracle SIHRS"
+    head = ('<tr><th>Season</th><th class="n">' + _e(pf_name) + '</th>'
             '<th class="n">Groundhog</th>'
             '<th class="n">FluSight Ensemble</th>'
             '<th class="n">Cells</th><th>FluSight field</th></tr>')
@@ -556,6 +561,15 @@ def _season_table(payload: dict) -> str:
                          f"gap of {gap:.3f} over {weeks} forecast weeks, "
                          "inside the sealed record's measured week-to-week "
                          "variation.")
+    if pf_name != "Oracle SIHRS":
+        # the sealed replays predate the Oracle step: their mechanistic
+        # column is the particle filter alone, and the page says so rather
+        # than publishing it under the member's name
+        note += (" The mechanistic column is the particle filter alone: "
+                 "these replays predate the Oracle step, which blends the "
+                 "filter's forecast growth with past seasons' at the same "
+                 "calendar week. The Oracle SIHRS's own record is on the "
+                 "Methods tab.")
     note += (" Methods carries the donor pool, the withdrawn field "
              "placement, and the two-strain result.")
     return table + ('<p class="sub" style="margin:.9rem 0 0;font-size:.85rem">'
@@ -608,7 +622,8 @@ def _member_table(payload: dict) -> str:
     # table sat on the same published page as the season table's "FluBNF
     # Ensemble" header while calling that same model by the older
     # team-prefixed name, so one page named one model twice.
-    labels = {"pf": "Oracle SIHRS", "analogue": "Groundhog",
+    labels = {"pf": payload.get("pf_label") or "Oracle SIHRS",
+              "analogue": "Groundhog",
               "ensemble": "FluBNF Ensemble (retired)",
               "pf2s": "Two-strain SIHRS"}
     head = ('<tr><th>relWIS by member</th>'
@@ -679,6 +694,11 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
         f'"{"true" if m == ol["default_model"] else "false"}">'
         f'{_e(ol["labels"][m])}</button>' for m in ol["models"])
 
+    # the fan's mechanistic median, named for what the source stored
+    # (site_build: the member when the run or week carries the Oracle step)
+    fan_name = ("Oracle SIHRS" if src.get("pf_label", "Oracle SIHRS")
+                == "Oracle SIHRS" else "particle filter")
+
     tally = ol.get("modal_tally") or {}
     if tally:
         parts = [f"{n} {k.replace('_', ' ')}" for k, n in tally.items()]
@@ -744,13 +764,18 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
         # which is exactly why it labels neither; the note names which one.
         parts = []
         if pooled_pf is not None:
-            parts.append(f"the Oracle SIHRS <b>{pooled_pf:.3f}</b>")
+            parts.append(
+                f"the Oracle SIHRS <b>{pooled_pf:.3f}</b>"
+                if (payload.get("pf_label") or "Oracle SIHRS")
+                == "Oracle SIHRS" else
+                f"the particle filter alone (before the Oracle step) "
+                f"<b>{pooled_pf:.3f}</b>")
         if pooled_gh is not None:
             parts.append(f"the Groundhog <b>{pooled_gh:.3f}</b>")
         headline = (
             f"Across {len(seasons)} replayed season"
-            f"{'s' if len(seasons) != 1 else ''} ({span}) the two submitted "
-            "models score a pooled relWIS of " + " and ".join(parts)
+            f"{'s' if len(seasons) != 1 else ''} ({span}) the two models "
+            "score a pooled relWIS of " + " and ".join(parts)
             + " against the CDC FluSight baseline. Below 1 beats it. "
             + relwis.PUBLISHED_CONVENTION_NOTE)
     else:
@@ -782,8 +807,10 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FluBNF</title>
 <meta name="description" content="Weekly US influenza hospital-admission
- forecasts from the Posner Lab at Northern Arizona University: a mechanistic
- SIHRS model and a calendar analogue, blended and scored on vintage data.">
+ forecasts from the Posner Lab at Northern Arizona University: the
+ Oracle SIHRS, a mechanistic model whose forecast growth is blended with past
+ seasons', and the Groundhog, a calendar analogue; submitted separately and
+ scored on vintage data.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=DM+Mono:wght@400;500&display=swap">
@@ -809,10 +836,12 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
 
 <div class="page on" id="p-home">
   <div class="banner"><b>FluBNF</b> forecasts weekly US influenza hospital
-  admissions for every reporting jurisdiction: a mechanistic transmission
-  model and a calendar analogue, blended with equal weights and scored only
-  on the data that existed on each forecast date. Click any state for its
-  full probabilistic forecast.</div>
+  admissions for every reporting jurisdiction with two models, submitted
+  separately: the Oracle SIHRS, a mechanistic transmission model fitted each
+  week whose forecast growth is blended with past seasons' growth at the
+  same calendar week, and the Groundhog, a calendar analogue. Both are
+  scored only on the data that existed on each forecast date. Click any
+  state for its full probabilistic forecast.</div>
 
   <div class="maphero">
     <div class="maptop">
@@ -837,7 +866,7 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
   <section>
     <div class="kick">Probabilistic forecast</div>
     <p class="sub">The observed weeks behind the forecast date, then the
-    particle filter's next four as a median with 50% and 80% intervals,
+    {fan_name}'s next four as a median with 50% and 80% intervals,
     from the same forecast week, with the Groundhog's median on the legend.
     Each CDC submission carries its model at 23 quantile levels for every
     jurisdiction, every week. {settled_line}</p>
@@ -912,8 +941,8 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
   <section>
     <div class="kick">Season replays</div>
     <p class="sub">Two models, each submitted on its own: the mechanistic
-    particle filter and the empirical Groundhog. They fail differently
-    season to season, which is why both are filed.</p>
+    Oracle SIHRS and the empirical Groundhog. They fail differently season
+    to season, which is why both are filed.</p>
     <div class="card scroll">
       {_member_table(payload)}
     </div>

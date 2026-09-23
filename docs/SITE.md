@@ -99,7 +99,13 @@ mechanistic member, the filter alone on the seal, 1.023 /
 the machine. A tree replayed by the bare analogue prints that member's
 figure under the Groundhog's name; publish from a Groundhog replay
 (Retrospective tab, "Groundhog only", or `flubnf retro`), whose record
-names the donor bank.
+names the donor bank. The mechanistic column is named for what the trees
+store (`site_build.pf_label`): "Oracle SIHRS" only when every published
+season carries the member (its run record says the Oracle step was applied,
+or its weeks carry `oracle.json`), otherwise "Particle filter alone"
+with a note that those replays predate the step. Every sealed record
+predates it, so a site built from them prints the particle filter alone,
+and the live fan is named the same way from the run's recorded step.
 
 **Placements are not published.** Ranking against the whole FluSight field
 means scoring every submitting team on identical cells, around 1.6 GB of hub
