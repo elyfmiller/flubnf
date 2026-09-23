@@ -93,12 +93,19 @@ scored, and `discover_seasons` accepts any season root under `app/state`,
 including research runs. Every season is instead rescored
 from each week's playback payload, the stored members as stored, through
 the validated baseline construction and the frozen cell rule.
-`app/tests/test_site_build.py` pins the seal's member figures (PF 1.023 /
+`app/tests/test_site_build.py` pins the seal's member figures (the
+mechanistic member, the filter alone on the seal, 1.023 /
 0.636 / 0.825, analogue 1.045 / 0.756 / 0.621) when the seal is the tree on
 the machine. A tree replayed by the bare analogue prints that member's
 figure under the Groundhog's name; publish from a Groundhog replay
 (Retrospective tab, "Groundhog only", or `flubnf retro`), whose record
-names the donor bank.
+names the donor bank. The mechanistic column is named for what the trees
+store (`site_build.pf_label`): "Oracle SIHRS" only when every published
+season carries the member (its run record says the Oracle step was applied,
+or its weeks carry `oracle.json`), otherwise "Particle filter alone"
+with a note that those replays predate the step. Every sealed record
+predates it, so a site built from them prints the particle filter alone,
+and the live fan is named the same way from the run's recorded step.
 
 **Placements are not published.** Ranking against the whole FluSight field
 means scoring every submitting team on identical cells, around 1.6 GB of hub

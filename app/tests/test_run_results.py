@@ -74,7 +74,7 @@ def test_results_table_states_type_members_fits_files_and_report():
     assert "2 files" in html and "written" in html
     # the blend's row still renders for a ledger row that carries its
     # score (a run from before 2026-09-22), after the two models that ship
-    assert html.index("PF-SIHRS") < html.index("Groundhog") < html.index("FluBNF ensemble (retired)")
+    assert html.index("Oracle SIHRS") < html.index("Groundhog") < html.index("FluBNF ensemble (retired)")
     # a JSON spec and outcome, as the ledger row carries them
     again = results_html(json.dumps(outcome), json.dumps({"extra": {"mode": "realtime"}}))
     assert "real-time run" in again

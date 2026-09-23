@@ -27,23 +27,32 @@ Delphi Epidata API and data.cdc.gov, cached under `app/state`.
 FluBNF submits two models to FluSight, each under its own hub identity
 (`model-metadata/`), and nothing is blended:
 
-* **PF-SIHRS** (`NAU_PyBNF-OracleSIHRS`), mechanistic. An SIHRS
-  compartmental model (susceptible, infected, hospitalized, recovered, with
+* **Oracle SIHRS** (`NAU_PyBNF-OracleSIHRS`), mechanistic. The SIHRS
+  compartment model (susceptible, infected, hospitalized, recovered, with
   waning immunity and seasonal transmission) written in BNGL and fitted by
   a sequential particle filter: 10,000 candidate epidemics per
   jurisdiction, refitted every week from the season's start on that week's
   data. The filter runs in a fork of PyBNF with bngsim integrating the
-  model in process; a jurisdiction season fits in seconds.
+  model in process; a jurisdiction season fits in seconds. After the fit,
+  the Oracle step blends the filter's forecast growth with donor growth
+  from past seasons at the same calendar week: each forecast sample path
+  draws one donor growth path from an earlier season (within two epiweeks,
+  any jurisdiction) and grows at the geometric mean, half and half, of the
+  filter's growth and the donor's, propagated in closed form from the
+  filter's own state. The donors come from the Groundhog's own donor bank:
+  NHSN admissions growth and FluSurv-NET hospitalization-rate growth, half
+  and half (docs/ORACLE-SIHRS.md).
 * **Groundhog** (`NAU_PyBNF-GroundHogCGR`), empirical. The last observed
   count scaled by the empirical quantiles of growth ratios seen at the same
   MMWR epiweek in strictly earlier seasons, pooled across jurisdictions,
   with a committed FluSurv-NET donor bank spliced in (`data/banks/`).
   Epiweek 53 is seated between weeks 52 and 1. Nothing is fitted.
 
-The two fail in different regimes: the mechanistic model can follow a turn
-the Groundhog cannot anticipate, and the Groundhog holds when a season
-behaves like past seasons. Interval coverage at the January turn is the
-known weakness. Model definitions and parameter sources are in
+Both read past seasons at the same calendar week, in different ways: the
+Groundhog applies donor growth ratios to the last observed count, the
+Oracle SIHRS applies donor growth to the mechanistic model's fitted state.
+Interval coverage at the January turn is the known weakness of the
+mechanistic fit. Model definitions and parameter sources are in
 docs/MODEL-PROVENANCE.md.
 
 The Sandbox tab runs the same particle filter on a model of your own, in
@@ -95,9 +104,18 @@ CDC dashboard, so the two are not comparable.
 
 | model | 2023-24 | 2024-25 | 2025-26 | pooled | cells |
 |---|---|---|---|---|---|
-| PF-SIHRS, production engine (reseal of 2026-09-07) | 0.840 | 0.797 | 0.846 | 0.821 | 15,460 |
+| particle filter alone, the Oracle SIHRS before its step, production engine (reseal of 2026-09-07) | 0.840 | 0.797 | 0.846 | 0.821 | 15,460 |
 | Groundhog (replay of 2026-09-21) | 0.722 | 0.653 | 0.651 | 0.666 | 15,340 |
 | calendar analogue without the donor bank, on the Groundhog's cells | 1.045 | 0.756 | 0.618 | 0.771 | 15,340 |
+
+The Oracle SIHRS itself, on the stored forecasts with the step and its
+donor bank applied (docs/ORACLE-SIHRS.md): relWIS 0.731 against the plain
+filter's 0.813 on the same 9,279 cells of 2024-25 and 2025-26 (0.697 and
+0.781 by season), 0.767 against 0.840 in 2023-24 and 0.738 against 0.819
+over the three seasons. Choosing the Groundhog's bank over admissions
+growth alone (0.741 on the same cells) was the project lead's decision on
+a screen that did not resolve it; the record is a frozen-specification
+replication, and the 2026-27 season is the prospective test. The two tables' cells and runs differ and are not read across.
 
 The Groundhog's row reproduces on any machine with a hub clone and no
 engine:

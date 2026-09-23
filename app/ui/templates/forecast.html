@@ -119,16 +119,19 @@
    <label>Model</label>
    {# the form still posts `engine`: the run path's names for the three
       configurations. The reader picks what to run; the engine row below
-      appears only when the SIHRS is part of the run. Both models are
+      appears only when the Oracle SIHRS is part of the run. Both models are
       submitted on their own; "all" writes both files. #}
-   {% set engine_names = {"all": "Both models: SIHRS and Groundhog",
-                          "pf": "SIHRS only",
+   {% set engine_names = {"all": "Both models: Oracle SIHRS and Groundhog",
+                          "pf": "Oracle SIHRS only",
                           "analogue": "Groundhog only"} %}
    <select name="engine" id="model-pick">{% for e in engines %}
      <option value="{{ e }}" {% if e == form.engine %}selected{% endif %}>{{ engine_names.get(e, e) }}</option>{% endfor %}</select>
    <div id="engine-row">
     <label>Engine</label>
-    <select aria-label="SIHRS engine"><option>Particle filter</option></select>
+    <select aria-label="Oracle SIHRS engine"><option>Particle filter</option></select>
+    <p class="hint">After the fit, the Oracle step blends the filter's
+     forecast growth with donor growth from past seasons at the same
+     calendar week (<a href="/methods#oracle">Methods</a>).</p>
    </div>
    <script>
     (function(){

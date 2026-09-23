@@ -271,6 +271,42 @@ def engine_current() -> bool:
     return not engine_missing_keys()
 
 
+#: The engine's per-algorithm key sets (Configuration.check_unused_params):
+#: what the filter READS, where the parser's lists say what it accepts.
+CONFIG_MODULE = "pybnf/config.py"
+
+#: The sampling interval of the fitted .exp, written as 1 (one row per
+#: week) so an engine that reads it can fit a ONE-ROW .exp, the first
+#: fitted week of a season. The upstream tree a827e2f8 lists the key in
+#: its parser and in its pf key set; the engine before it lists it in
+#: neither and refuses an unknown key, so the line is written only when
+#: the installed engine's own source accepts it (engine_accepts_pf_key),
+#: never assumed, and the cell records whether it was.
+SAMPLING_INTERVAL_KEY = "pf_sampling_interval"
+
+
+def engine_accepts_pf_key(key: str) -> bool:
+    """Whether the installed fork both parses `key` (pybnf/parse.py, the
+    grammar that refuses an unknown key) and lists it among the pf keys
+    (pybnf/config.py). Both files are read; a tree that lacks either says
+    no. Distinct from engine_accepts, which asks the grammar alone for the
+    keys every console conf requires."""
+    if not engine_accepts(key):
+        return False
+    try:
+        text = (Path(PYBNF_PF) / CONFIG_MODULE).read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return ("'%s'" % key) in text
+
+
+def sampling_interval_line() -> str:
+    """The conf line `pf_sampling_interval = 1`, or nothing, by the
+    installed engine's own source."""
+    return (f"{SAMPLING_INTERVAL_KEY} = 1\n"
+            if engine_accepts_pf_key(SAMPLING_INTERVAL_KEY) else "")
+
+
 def engine_stale_message() -> str:
     """What to tell an operator whose engine predates the console: named
     once at prepare, not 159 times at the end of the run."""
@@ -470,6 +506,9 @@ def prepare(spec, workroot: Path) -> list:
         raise RuntimeError(engine_missing_message())
     if not engine_current():
         raise RuntimeError(engine_stale_message())
+    # read once per prepare, off the installed engine's own source: the
+    # line is written into every cell's conf or into none
+    si_line = sampling_interval_line()
 
     vintage = vintage_path(spec.forecast_date)
     variant = (spec.extra or {}).get("variant")
@@ -753,7 +792,7 @@ population_size = 1
 max_iterations = 1
 pf_seed = {seed}
 initialization = {initialization_for(spec)}
-{pf_key_lines(spec)}{priors_for(spec, two_strain)}"""
+{si_line}{pf_key_lines(spec)}{priors_for(spec, two_strain)}"""
 + (f"loguniform_var = i0__FREE {fit_i0[0]:g} {fit_i0[1]:g}\n" if fit_i0 else "")
 + (f"pf_binom_neff_cap = {(spec.extra or {}).get('neff_cap', 300)}\n"
    if two_strain else "")
@@ -788,6 +827,9 @@ initialization = {initialization_for(spec)}
                 "last_week_offset": int(s.last_week_offset),
                 "seed_date": seed_date_for(spec),
                 "initialization": initialization_for(spec),
+                # 1 when the installed engine accepted the key and the
+                # conf carries the line, None when it did not
+                SAMPLING_INTERVAL_KEY: (1 if si_line else None),
                 "pf_keys": dict((spec.extra or {}).get("pf_keys") or {}),
                 "prior_ranges": {k: list(v) for k, v in
                                  ((spec.extra or {}).get("prior_ranges") or {}).items()},

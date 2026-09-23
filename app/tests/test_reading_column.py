@@ -105,7 +105,7 @@ def test_figures_and_equations_center():
     margin auto); equation panels span the card as sunken wells with the
     equation lines centered inside."""
     html = client.get("/methods").text
-    assert html.count('role="img"') >= 2             # SIHRS + two-strain
+    assert html.count('role="img"') >= 2             # compartment + two-strain
     assert "display:block;margin:.6rem auto" in html  # the diagram macros
     assert 'class="eqpanel"' in html
     assert ".eqpanel{margin:.45rem 0 .25rem;" in JOINED

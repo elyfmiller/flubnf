@@ -31,8 +31,26 @@
 </details>
 <div class="card mech">
  {# each mechanism drawing carries its defining equation directly beneath
-    it: the compact line that states what the picture computes #}
- {% if name == "pf" %}{{ dg.sihrs(uid='m') }}{{ dg.eq_pf() }}
+    it: the compact line that states what the picture computes. The
+    Oracle SIHRS is two pictures: the pipeline that makes the submitted forecast
+    (the filter's fit, the donor pool, the per-sample growth blend) with
+    the blend's equations, then the compartment model the filter fits,
+    with its own. #}
+ {% if name == "pf" %}
+ <h2>How the forecast is made</h2>
+ {{ dg.oracle_pipeline(uid='mo') }}{{ dg.eq_oracle() }}
+ <p class="hint">{{ oracle_text.BANK_TEXT.pool }} Record: relWIS
+ {{ oracle_text.fmt(oracle_text.RECORD.both.oracle) }} against the plain
+ filter's {{ oracle_text.fmt(oracle_text.RECORD.both.filter) }} on the same
+ {{ oracle_text.cells(oracle_text.RECORD.both.cells) }} cells of 2024-25 and
+ 2025-26; {{ oracle_text.fmt(oracle_text.RECORD["2023-24"].oracle) }} against
+ {{ oracle_text.fmt(oracle_text.RECORD["2023-24"].filter) }} in 2023-24, where
+ the FluSurv-NET stream supplies the donors; and
+ {{ oracle_text.fmt(oracle_text.RECORD.three.oracle) }} against
+ {{ oracle_text.fmt(oracle_text.RECORD.three.filter) }} over the three
+ seasons. {{ oracle_text.caveat() }} (docs/ORACLE-SIHRS.md)</p>
+ <h2>The compartment model the filter fits</h2>
+ {{ dg.sihrs(uid='m') }}{{ dg.eq_pf() }}
  {% elif name == "pf2s" %}{{ dg.sihrs2(uid='m') }}{{ dg.eq_pf2s() }}
  {% else %}{{ dg.analogue_mech(uid='m') }}{{ dg.eq_analogue() }}{% endif %}
  <p class="hint">Full methodology:

@@ -14,7 +14,7 @@ Two configurations of the one engine matter:
     and its output is byte-identical to what it always was.
   * the GROUNDHOG, the same engine with the shipped auxiliary donor bank
     spliced in (`SHIPPED_AUX`, `shipped_aux_pools()`): what the console
-    ships, as a standalone submission beside the SIHRS.
+    ships, as a standalone submission beside the Oracle SIHRS.
 
 The engine itself never reads `SHIPPED_AUX`: `run(spec)` does exactly what
 `spec.extra` says. The console and the retrospective put the shipped pools

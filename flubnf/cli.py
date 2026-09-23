@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import typer
 from rich.console import Console
@@ -2457,7 +2457,8 @@ def app_window(port: int = 8710):
 
 @app.command("retro")
 def retro_cmd(season: str, locations: str = "all", width: int = 0,
-              replicates: int = 3, root: str = "", aux: str = ""):
+              replicates: int = 3, root: str = "", aux: str = "",
+              oracle: str = ""):
     """Run a season-as-competition retrospective (resumable).
 
     width 0 means auto: sized to this machine's cores by the engine's
@@ -2469,7 +2470,13 @@ def retro_cmd(season: str, locations: str = "all", width: int = 0,
     runs the bare calendar analogue that shipped inside the blend until
     2026-09-22, a research configuration now. The configuration's name is
     written into run_meta.json with its bank digests, so a replay says on
-    its face which donors it ran."""
+    its face which donors it ran.
+
+    oracle is the mechanistic member's switch, the same shape. Empty, the
+    default, stores the Oracle SIHRS under pf (the step of app/core/
+    oracle.py on the filter's collected samples, the filter's own samples
+    kept beside it under a research key); 'none' stores the plain filter,
+    a research configuration whose week says so in oracle.json."""
     import pandas as pd
     from pathlib import Path as _P
     from app.core import retro
@@ -2495,6 +2502,22 @@ def retro_cmd(season: str, locations: str = "all", width: int = 0,
     else:
         week_extra = _an.aux_preset(_an.SHIPPED_AUX)
     print(f"  analogue donor configuration: {week_extra.__name__}")
+    if oracle == "none":
+        inner = week_extra
+
+        def week_extra(asof, i, vintages, _inner=inner):
+            d = dict(_inner(asof, i, vintages))
+            d["oracle"] = "none"
+            return d
+        week_extra.__name__ = inner.__name__ + "+oracle:none"
+        print("  Oracle step: none (the plain filter, a research run)")
+    elif oracle:
+        raise typer.BadParameter(
+            "--oracle takes 'none' (the plain filter, a research run) or "
+            "nothing (the Oracle SIHRS)")
+    else:
+        print("  Oracle step: applied (w = 0.5; the donor bank built from "
+              "each week's vintage, named in the week's oracle.json)")
     done = retro.run_season(r, season, names, replicates=replicates,
                             width=width, week_extra=week_extra,
                             progress=lambda a: print(f"  {a} done", flush=True))
@@ -2753,6 +2776,100 @@ def bank_show_cmd(
     console.print(f"  {'locations':<15} {', '.join(man['locations'])}")
 
 
+# ---------------------------------------------------------------------------
+# oracle -- the Oracle SIHRS member on a stored season, without a refit
+#
+# A sub-app for the same reason the Groundhog has one: the member has a
+# lifecycle apart from the product. `flubnf retro` fits and stores a season
+# with the step applied; these two commands take a season that is already
+# stored, compute the member from its samples into a NEW root, and score
+# that root with the app's own scorer beside the registered screen's tables
+# (docs/ORACLE-SIHRS.md). Neither needs the engine.
+# ---------------------------------------------------------------------------
+oracle_app = typer.Typer(
+    add_completion=False, no_args_is_help=True,
+    help="The Oracle SIHRS on a stored season: backfill into a new root, "
+         "and reproduce the screen's relWIS with the app's scorer.")
+app.add_typer(oracle_app, name="oracle")
+
+
+@oracle_app.command("backfill")
+def oracle_backfill_cmd(
+    season: str = typer.Argument(..., help="The season the root holds, e.g. 2025-26."),
+    source: Path = typer.Option(
+        ..., "--source", help="A season root of stored weeks. Read only."),
+    out: Path = typer.Option(
+        ..., "--out",
+        help="A NEW season root to write. Never the source or a path under "
+             "it, never under app/state, never a non-empty tree without --force."),
+    force: bool = typer.Option(
+        False, "--force", help="Write into a non-empty --out."),
+    keep_filter: bool = typer.Option(
+        True, "--keep-filter/--no-keep-filter",
+        help="Keep the source's pf verbatim under the research key pf_filter "
+             "beside the member (the production layout)."),
+):
+    """Compute the Oracle SIHRS for every stored week of a season root, from
+    the stored samples and no refit, into a new root.
+
+    Each week is read through the storage boundary and written back
+    through it: pf the member (the submitted seed's samples), pf_filter
+    the source's pf, analogue verbatim, the sidecar, oracle.json and the
+    donor pool beside it. The hub this process reads (FLUBNF_HUB) supplies
+    the vintages the pools are built from.
+    """
+    from app.core import oracle_backfill as obf
+    try:
+        res = obf.backfill_season(
+            source, out, season, force=force, keep_filter=keep_filter,
+            progress=lambda a, m: console.print(f"  {a}  {m}"))
+    except (ValueError, FileNotFoundError) as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(2)
+    console.print(f"[bold]{season}[/bold]: {len(res['weeks'])} weeks backfilled "
+                  f"-> {res['out']} in {res['seconds']}s"
+                  + (f"; skipped (no pf block): {', '.join(res['skipped'])}"
+                     if res["skipped"] else ""))
+
+
+@oracle_app.command("reproduce")
+def oracle_reproduce_cmd(
+    roots: List[Path] = typer.Argument(
+        ..., help="Backfilled season roots (one or more)."),
+    source: Optional[List[Path]] = typer.Option(
+        None, "--source",
+        help="The source roots, scored read only for the plain filter (the "
+             "NULL); every week's quantile sidecar must be current."),
+    screen: Optional[Path] = typer.Option(
+        None, "--screen",
+        help="The registered screen's screen_scores.json (or the B2 screen's "
+             "screen_b2_scores.json, the shipped bank), printed beside."),
+):
+    """Score backfilled roots with the app's own scorer and print relWIS
+    per season and over the seasons together, on the record definition
+    (each member's own scored cells) and on the common set (cells both
+    stored members scored), each with its cell count, beside the screen's
+    tables. FLUBNF_HUB must be the hub whose truth and baseline the screen
+    used.
+    """
+    from flubnf.settings import HUB
+    from app.core import oracle_backfill as obf
+    try:
+        res = obf.reproduce(list(roots), source_roots=(list(source) if source else None),
+                            screen_json=screen)
+    except (ValueError, FileNotFoundError) as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(2)
+    console.print(f"[bold]reproduce[/bold]  hub {HUB}")
+    for line in obf.report_lines(res):
+        console.print(line, highlight=False)
+    console.print(f"  cells scored (member root): {res['cells_scored']:,}")
+    if res.get("screen"):
+        console.print(f"  screen frozen document {res['screen'].get('frozen_document_sha256')}"
+                      + (f", B2 document {res['screen']['b2_frozen_sha256']}"
+                         if res['screen'].get('b2_frozen_sha256') else ""))
+
+
 site_app = typer.Typer(
     add_completion=False, no_args_is_help=True,
     help="Build the public static site from the lab's retrospectives.")
@@ -2802,7 +2919,7 @@ def site_build_cmd(
     console.print(f"  locations {res['locations']}")
     console.print(f"  seasons   {', '.join(res['seasons']) or 'none'}")
     if res["pooled"] is not None:
-        console.print(f"  pooled    PF-SIHRS relWIS {res['pooled']:.4f}")
+        console.print(f"  pooled    Oracle SIHRS relWIS {res['pooled']:.4f}")
     console.print(f"  built in  {res['elapsed_s']:.1f}s")
 
     if res["mismatches"]:

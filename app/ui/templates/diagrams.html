@@ -230,6 +230,122 @@
 </svg>
 {%- endmacro %}
 
+{# ---- the Oracle SIHRS pipeline ------------------------------------------
+   What the submitted mechanistic member IS, in one picture: the weekly
+   particle-filter fit of the SIHRS compartment model from the season start,
+   the filter's own forecast sample paths, the donor pool of earlier seasons
+   at this calendar week, the per-sample geometric growth blend, and the
+   Oracle SIHRS forecast. The donor pool wears the Groundhog's warm accent
+   (--warn, as on Home's workflow): the same calendar-donor principle feeds
+   both models. The pool's data stream is named from the one marked place
+   (app/core/oracle_text.BANK_TEXT), never typed here. Label boxes are
+   audited at the A+ text step: every line is at most 22 characters, which
+   fits a 210-unit box at 115%. No title element (see the header note). #}
+
+{% macro oracle_pipeline(uid='o') -%}
+<svg viewBox="0 28 1000 302" role="img"
+     aria-label="Oracle SIHRS pipeline: weekly fit, filter forecast samples, donor pool from earlier seasons, per-sample growth blend, Oracle SIHRS forecast"
+     style="width:100%;max-width:940px;display:block;margin:.6rem auto;color:inherit">
+ <desc>Four boxes left to right. First, the weekly fit: the particle filter
+ fits the SIHRS compartment model from the season start on August 1 through
+ the as-of week. Second, the filter's forecast: its sample paths for the
+ next four weeks, and the filter's own growth at the forecast origin.
+ Third, the growth blend: each sample path draws one donor path, and its
+ forward growth becomes the geometric mean, half and half, of the filter's
+ growth and that donor's growth. Fourth, the Oracle SIHRS forecast, propagated from the
+ filter's own state and reduced to 23 quantiles. Below the blend, the donor
+ pool feeds it: growth paths from strictly earlier seasons at this calendar
+ week, within two epiweeks, half from NHSN admissions and half from
+ FluSurv-NET hospitalization rates (the Groundhog's own donor bank), one
+ donor drawn per sample path.</desc>
+ <defs>
+  <marker id="arr-{{ uid }}" viewBox="0 0 10 10" refX="9" refY="5"
+          markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+   <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+  </marker>
+ </defs>
+ <!-- flows: the forecast path left to right, the donors up into the blend -->
+ <g fill="none" stroke="currentColor" stroke-width="1.7">
+  <path d="M220,92 H266" marker-end="url(#arr-{{ uid }})"/>
+  <path d="M480,92 H526" marker-end="url(#arr-{{ uid }})"/>
+  <path d="M740,92 H786" marker-end="url(#arr-{{ uid }})"/>
+  <path d="M635,200 V146" marker-end="url(#arr-{{ uid }})"/>
+ </g>
+ <text x="622" y="180" text-anchor="end" class="svgt-sm"
+       fill="var(--mut)">one donor per path</text>
+ <!-- stages -->
+ <g stroke-width="2">
+  <rect x="10"  y="40" width="210" height="104" rx="10"
+        fill="var(--slate)" fill-opacity=".12" stroke="var(--slate)"/>
+  <rect x="270" y="40" width="210" height="104" rx="10"
+        fill="var(--slate)" fill-opacity=".12" stroke="var(--slate)"/>
+  <rect x="530" y="40" width="210" height="104" rx="10"
+        fill="var(--gold)" fill-opacity=".12" stroke="var(--gold)"/>
+  <rect x="790" y="40" width="200" height="104" rx="10"
+        fill="var(--gold-bright)" fill-opacity=".14"
+        stroke="var(--gold-bright)"/>
+  <rect x="530" y="202" width="210" height="122" rx="10"
+        fill="var(--warn)" fill-opacity=".12" stroke="var(--warn)"/>
+ </g>
+ <g text-anchor="middle" fill="currentColor">
+  <text x="115" y="66"  class="svgt-md" font-weight="700">Weekly fit</text>
+  <text x="115" y="88"  class="svgt-sm">particle filter on the</text>
+  <text x="115" y="106" class="svgt-sm">SIHRS compartment</text>
+  <text x="115" y="124" class="svgt-sm">model, Aug 1 to date</text>
+  <text x="375" y="66"  class="svgt-md" font-weight="700">Filter forecast</text>
+  <text x="375" y="88"  class="svgt-sm">30,000 sample paths</text>
+  <text x="375" y="106" class="svgt-sm">per state, 4 weeks,</text>
+  <text x="375" y="124" class="svgt-sm">filter growth G<tspan class="svgt-sub" dy="3">T</tspan></text>
+  <text x="635" y="66"  class="svgt-md" font-weight="700">Growth blend</text>
+  <text x="635" y="88"  class="svgt-sm">per sample path:</text>
+  <text x="635" y="106" class="svgt-sm">half filter growth,</text>
+  <text x="635" y="124" class="svgt-sm">half its donor's</text>
+  <text x="890" y="66"  class="svgt-md" font-weight="700">Oracle SIHRS</text>
+  <text x="890" y="88"  class="svgt-sm">from the filter's</text>
+  <text x="890" y="106" class="svgt-sm">own current state,</text>
+  <text x="890" y="124" class="svgt-sm">23 quantiles</text>
+  <text x="635" y="228" class="svgt-md" font-weight="700">Donor pool</text>
+  <text x="635" y="250" class="svgt-sm">earlier seasons, this</text>
+  <text x="635" y="268" class="svgt-sm">calendar week &#177; 2,</text>
+  <text x="635" y="286" class="svgt-sm">half and half from</text>
+  <text x="635" y="304" class="svgt-sm">{{ oracle_text.BANK_TEXT.diagram }}</text>
+ </g>
+</svg>
+{%- endmacro %}
+
+{% macro eq_oracle() -%}
+<div class="eqpanel">
+ <p><span class="math">ln <i>G</i><sub><i>k</i></sub> =
+  &#189; ln <i>G</i><sub><i>T</i></sub> +
+  &#189; ln <i>G</i><sub><i>d</i></sub>(<i>W</i> + <i>k</i> &#8722; &#189;),
+  &#8195;<i>k</i> = 1..4</span>
+  <span class="eqnote">the growth blend: over forecast week <i>k</i>, each
+  sample path's growth rate is the geometric mean of the filter's own rate
+  <i>G</i><sub><i>T</i></sub> at the forecast origin <i>T</i> and the rate
+  <i>G</i><sub><i>d</i></sub> of its donor path <i>d</i>, read at the
+  matching week of an earlier season (<i>W</i> is the donor week, within
+  two epiweeks of <i>T</i>'s)</span></p>
+ <p><span class="math"><i>G</i> = <i>&#947;</i> + <i>&#955;</i>,&#8195;
+  <i>&#955;</i><sub><i>T</i></sub> = ln(&#8202;<i>m</i><sub>1</sub>&#8202;/&#8202;<i>m</i><sub>0</sub>&#8202;)</span>
+  <span class="eqnote"><i>G</i> is the rate at which the infected
+  generate new infections, per week: the weekly log growth <i>&#955;</i>
+  plus the removal rate <i>&#947;</i> = 7/3.2 per week the compartment
+  model fixes; <i>m</i><sub>0</sub> and <i>m</i><sub>1</sub> are the
+  filter's own medians at the origin and one week ahead</span></p>
+ <p><span class="math"><i>x</i>&#8242;<sub><i>i,h</i></sub> =
+  <i>x</i><sub><i>i,h</i></sub> &#183; <i>F</i><sub><i>h</i></sub>(<i>d</i><sub><i>i</i></sub>)</span>
+  <span class="eqnote">each of the filter's samples <i>x</i><sub><i>i,h</i></sub>
+  is rescaled so its path follows the blended growth, propagated in closed
+  form from the filter's own state at <i>T</i>: the filter's spread rides
+  on the new path and the donors add theirs</span></p>
+ <p class="eqnote">Frozen before the step was scored (docs/ORACLE-SIHRS.md):
+ the weight &#189;, one donor per sample path, five seeds logged and the
+ first submitted, the pool rule. A week where neither donor stream
+ qualifies (admissions needs two donor seasons and 30 paths, FluSurv-NET
+ 30 paths) is the filter unchanged.</p>
+</div>
+{%- endmacro %}
+
 {# ---- what the analogue actually MEASURES ---------------------------------
    analogue_mech shows the shape of the method; this shows the arithmetic.
    Each donor season contributes one number per horizon: the ratio of its

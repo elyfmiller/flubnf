@@ -232,6 +232,36 @@ def _model_names() -> dict:
 
 templates.env.globals["model_name"] = lambda m: _model_names().get(m, m)
 
+
+def _names_for_root(root) -> dict:
+    """The model-name map for one season tree: the shared map, with pf
+    called "Particle filter alone" unless the tree carries the Oracle step
+    (app/core/site_build.tree_carries_oracle, the public site's own test;
+    an unreadable tree is named the filter). Every sealed record and every
+    replay from before the step stores the filter alone under pf, and the
+    Retrospective tab titling it "Oracle SIHRS" named a forecast the member
+    never made. One implementation (report_season.names_for_root), so the
+    season page, the index and the exported report cannot disagree."""
+    from app.core import report_season
+    try:
+        return report_season.names_for_root(root, _model_names())
+    except Exception:
+        from app.core.site_build import PF_LABEL_FILTER
+        return dict(_model_names(), pf=PF_LABEL_FILTER)
+
+
+def _pf_name(root) -> str:
+    """pf's name on one season tree (see _names_for_root)."""
+    return _names_for_root(root).get("pf", "pf")
+
+
+def _name_fn(names: dict):
+    """A page's model_name: the template global's shape over one tree's
+    names. Passed in a page's context it shadows the global of the same
+    name for that render only."""
+    return lambda m: names.get(m, m)
+
+
 # THE one sentence naming the convention behind every published relWIS
 # (app/core/relwis.PUBLISHED_CONVENTION_NOTE). A template global rather
 # than four typed copies: the home page, Methods, the harvested public site
@@ -242,6 +272,14 @@ templates.env.globals["model_name"] = lambda m: _model_names().get(m, m)
 from app.core.relwis import PUBLISHED_CONVENTION_NOTE     # noqa: E402
 
 templates.env.globals["relwis_convention_note"] = PUBLISHED_CONVENTION_NOTE
+
+# THE words for the Oracle SIHRS (app/core/oracle_text): the donor-bank
+# sentences, kept in that one marked place so bank change B2 is one edit,
+# and the record's figures with their source. Home, Methods, the model
+# tab, the diagrams and the harvested public site all read this global.
+from app.core import oracle_text as _oracle_text              # noqa: E402
+
+templates.env.globals["oracle_text"] = _oracle_text
 
 
 def _member_colors() -> dict:
@@ -887,7 +925,7 @@ def _outlook_models(rid: str | None) -> dict:
 
 
 def _diagram_data(res: dict | None) -> dict:
-    """Annotation feed for the home page's interactive SIHRS diagram: per
+    """Annotation feed for the home page's interactive compartment diagram: per
     location, the latest run's fitted-parameter posterior medians (harvested
     into results.json at run time), the last observed admissions point, and
     the 1-week median from the same model the outlook cards use. Empty when
@@ -1090,8 +1128,9 @@ def api_outlook_ready():
 
 @app.get("/methods", response_class=HTMLResponse)
 def methods_page(request: Request):
-    """Methodology reference: the SIHRS model, the fitting machinery, the
-    ensemble, and the data and verification policies."""
+    """Methodology reference: the SIHRS compartment model, the fitting
+    machinery, the Oracle step, the Groundhog, and the data and verification
+    policies."""
     return templates.TemplateResponse(request, "methods.html", {
         "active": "Methods", "versions": VERSIONS})
 
@@ -2345,7 +2384,7 @@ def _run_all(spec: RunSpec) -> None:
     """The competition path: engines in ascending cost, then the two
     standalone submissions, scoring and the weekly report. Every step lands
     in ONE workroot and ONE ledger row. Nothing is blended: since
-    2026-09-22 the SIHRS and the Groundhog each ship under their own hub
+    2026-09-22 the Oracle SIHRS and the Groundhog each ship under their own hub
     identity (app/core/submit.MODEL_ABBR)."""
     import pandas as pd
     from app.core import scoring
@@ -2449,6 +2488,31 @@ def _run_all(spec: RunSpec) -> None:
             outcome["pf_cells"] = len(status)
             outcome["pf_failures"] = fails
             pf_samples = pf_engine.collect(workroot)
+            # the Oracle step (app/core/oracle.py): on the filter's
+            # collected samples, before anything downstream sees the
+            # member, and before the output floor below guards what
+            # leaves. The plain filter (oracle = none) is a research
+            # configuration: stored as is, its file withheld in step 4,
+            # and oracle.json in the workroot says the step did not run.
+            from app.core import oracle as oracle_mod
+            if oracle_mod.wanted(spec.extra):
+                _phase("the Oracle step: the donor bank from the vintage")
+                pf_raw = pf_samples
+                pf_samples, oprov = oracle_mod.apply_week(
+                    pf_raw, spec.forecast_date, workroot, extra=spec.extra,
+                    weeks_to_drop=int(spec.weeks_to_drop or 0),
+                    drop_same_day=bool(getattr(spec, "drop_same_day", False)))
+                outcome["oracle"] = oprov["bank"]["label"]
+                try:
+                    oracle_mod.write_filter_record(workroot, spec.forecast_date,
+                                                   pf_raw)
+                except Exception:
+                    pass      # the kept copy is a courtesy; the member stands
+            else:
+                oracle_mod.write_not_applied(
+                    workroot, spec.forecast_date,
+                    "the run asked for the plain filter (oracle = none)")
+                outcome["oracle"] = "none"
             try:
                 params["pf"] = _harvest_params(workroot)
             except Exception:
@@ -2510,7 +2574,7 @@ def _run_all(spec: RunSpec) -> None:
         outcome["analogue_aux"] = str(
             (spec.extra or {}).get("analogue_aux") or "")
         # 3. no blend. Each member is its own submission; a location the
-        # PF failed on is simply absent from the SIHRS file and present in
+        # PF failed on is simply absent from the Oracle SIHRS file and present in
         # the Groundhog's, and the ledger row's failure count names it.
         _phase("writing submissions")
         # 4. submissions (identity in the path)
@@ -2524,6 +2588,12 @@ def _run_all(spec: RunSpec) -> None:
         # rows do not carry
         from app.core.runs import is_research as _is_research
         _research = _is_research(spec)
+
+        def _withhold(reason: str) -> None:
+            # one outcome key, every withheld file named in it
+            prior = outcome.get("submission_withheld")
+            outcome["submission_withheld"] = (f"{prior}; {reason}" if prior
+                                              else reason)
         for model, rows in (
             ("pf", [r for loc, s in pf_samples.items()
                     for r in quantile_rows(s, n2f[loc], spec.forecast_date)]),
@@ -2534,7 +2604,7 @@ def _run_all(spec: RunSpec) -> None:
             if not rows:
                 continue
             if model == "analogue" and spec.engine == "pf":
-                # a SIHRS-only run: the Groundhog was consulted for the
+                # an Oracle SIHRS-only run: the Groundhog was consulted for the
                 # pages, not asked for as a submission
                 continue
             if model == "analogue" and not (spec.extra or {}).get("aux_pools"):
@@ -2542,10 +2612,19 @@ def _run_all(spec: RunSpec) -> None:
                 # now, not the Groundhog; a hub-named CSV of it would be
                 # indistinguishable from the real submission (the rr-1
                 # rule, applied to this member)
-                outcome["submission_withheld"] = (
+                _withhold(
                     "Groundhog: the run carried no auxiliary donors, so "
                     "this is the bare calendar analogue and does not ship "
                     "under the Groundhog's hub name")
+                continue
+            if model == "pf" and outcome.get("oracle") == "none":
+                # the same rule for the mechanistic member: the plain
+                # filter is a research configuration, not the
+                # Oracle SIHRS, and does not ship under its hub name
+                _withhold(
+                    "Oracle SIHRS: the run asked for the plain filter "
+                    "(oracle = none), a research configuration that does "
+                    "not ship under the Oracle SIHRS hub name")
                 continue
             # Contained per model, the same rule steps 5 and 5b follow: the
             # writer REFUSES rows the hub would bounce (an incomplete
@@ -2637,6 +2716,9 @@ def _run_all(spec: RunSpec) -> None:
         _tmp.write_text(_json.dumps({
             "spec": spec.to_json(), "forecast_date": spec.forecast_date,
             "research": _research,
+            # the Oracle step's bank as stream@digest8, or "none" for the
+            # plain filter; the full record is oracle.json beside this file
+            "oracle": outcome.get("oracle"),
             "observed": obs,
             "params": params,
             # results.json stays in the STORED convention: the console
@@ -2659,7 +2741,7 @@ def _run_all(spec: RunSpec) -> None:
         if _research:
             outcome["archived"] = "skipped: research run"
         elif spec.engine in ("analogue", "pf"):
-            outcome["archived"] = (f"skipped: {'analogue' if spec.engine == 'analogue' else 'SIHRS'}"
+            outcome["archived"] = (f"skipped: {'analogue' if spec.engine == 'analogue' else 'Oracle SIHRS'}"
                                    "-only run is not the date's forecast")
         else:
             try:
@@ -2960,6 +3042,9 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
     _x = d.get("extra") if isinstance(d.get("extra"), dict) else {}
     aux = (str(_x.get("analogue_aux") or "").split("+", 1)[0]
            if _x.get("aux_pools") else "")
+    # the Oracle step is part of the record the same way: a row that ran
+    # the plain filter re-runs the plain filter
+    oracle = "none" if str(_x.get("oracle") or "") == "none" else None
     # the spec the /run path will actually build from these fields, compared
     # against the stored one field by field before anything starts
     candidate = RunSpec(
@@ -2977,7 +3062,7 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
         drop_same_day=bool(d.get("drop_same_day", False)),
         replicates=int(d.get("replicates") or 3),
         particles=int(d.get("particles") or 10_000),
-        extra=_run_extra(members, _spec_mode(d), aux))
+        extra=_run_extra(members, _spec_mode(d), aux, oracle))
     # a row recorded before the mode existed reads as a real-time run
     if isinstance(d.get("extra"), dict):
         d["extra"].setdefault("mode", "realtime")
@@ -3010,7 +3095,7 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
                       particles=candidate.particles,
                       mode=_spec_mode(d),
                       drop_same_day=1 if candidate.drop_same_day else 0,
-                      aux=aux)
+                      aux=aux, oracle=oracle)
 
 
 @app.get("/api/series")
@@ -3113,17 +3198,24 @@ def _run_label(run_id: str, spec_json: str = "", tag: bool = True) -> str:
         return when + suffix
 
 
-def _run_extra(members: int, mode: str, aux: str | None = None) -> dict:
+def _run_extra(members: int, mode: str, aux: str | None = None,
+               oracle: str | None = None) -> dict:
     """The research dictionary a console run carries: the mode the form was
     in (vintage or real-time), the two-strain research flag when asked,
-    and the Groundhog's auxiliary donor pools.
+    the Groundhog's auxiliary donor pools, and the Oracle step's switch.
 
     `aux` is None for the shipped configuration (analogue.SHIPPED_AUX,
     resolved against the committed banks so the row records the digests),
     a preset name for another registered configuration, or "" for the bare
     calendar analogue, a research run whose file is withheld. The pools
     go INTO the spec, so the ledger row of record says which donors ran
-    and a stored spec replays the same way."""
+    and a stored spec replays the same way.
+
+    `oracle` is None for the shipped configuration (the Oracle SIHRS: the
+    step applied to the filter's samples, app/core/oracle.py) or "none"
+    for the plain filter, the same shape as `aux`: a research run whose
+    file is withheld. Anything else is refused, so a typo cannot run the
+    plain filter under the member's name."""
     from app.core.engines import analogue as _an
     mode = mode if mode in ("realtime", "vintage") else "realtime"
     extra = {"mode": mode}
@@ -3134,6 +3226,11 @@ def _run_extra(members: int, mode: str, aux: str | None = None) -> dict:
         fn = _an.aux_preset(name)                # unknown name raises here
         extra["aux_pools"] = fn(None, 0, None)["aux_pools"]
         extra["analogue_aux"] = fn.__name__.split(":", 1)[1]
+    if oracle is not None and str(oracle) != "":
+        if str(oracle) != "none":
+            raise ValueError(f"oracle must be 'none' (the plain filter, a "
+                             f"research run) or absent, not {oracle!r}")
+        extra["oracle"] = "none"
     return extra
 
 
@@ -3164,6 +3261,18 @@ def relwis_chip(value, cells=None, member: str = "PF") -> str:
     return (f'{member} relWIS <span class="relwis '
             f'{"ok" if v < 1 else "bad"}">{v:.3f}</span>'
             f' vs FluSight baseline, ratio of sums{cov}')
+
+
+def _pf_member_label(o: dict) -> str:
+    """The mechanistic member's name on one ledger row, by what that row
+    ran: "Oracle SIHRS" when the outcome records the step's bank label,
+    "plain filter" when the run asked for oracle = none (a research run),
+    and "PF" for a row from before the step existed, which scored the
+    plain filter and keeps the name it was recorded under."""
+    ox = (o or {}).get("oracle")
+    if ox == "none":
+        return "plain filter"
+    return "Oracle SIHRS" if ox else "PF"
 
 
 def _outcome_chips(outcome_json: str) -> str:
@@ -3218,7 +3327,8 @@ def _outcome_chips(outcome_json: str) -> str:
         # only carried the fit-cell count (locations x replicates)
         bits.append(relwis_chip(o["pf_relwis"],
                                 cells=o.get("pf_relwis_cells",
-                                            o.get("pf_cells"))))
+                                            o.get("pf_cells")),
+                                member=_pf_member_label(o)))
     # every member the run scored, not the PF alone (lead, 2026-09-07):
     # the Groundhog carries the same ratio and gate; "ensemble" only on a
     # row from before the blend was retired
@@ -3700,23 +3810,56 @@ def models_page(request: Request):
 
 @app.get("/model/{name}", response_class=HTMLResponse)
 def model_page(request: Request, name: str):
+    ot = _oracle_text
+    rec = ot.RECORD
     blurbs = {
-        "pf": ("PF-SIHRS",
-               "The mechanistic model, submitted on its own. It assumes "
-               "influenza moves people "
-               "through Susceptible, Infected, Hospitalized, and Recovered "
-               "compartments, with seasonally varying transmission and "
-               "immunity that wanes back to susceptibility. The model is "
-               "written in BNGL and fitted by PyBNF's sequential particle "
-               "filter on the bngsim engine: each week, 10,000 candidate "
-               "epidemics per state are reweighted by how well they explain "
-               "the newest hospital admissions, and their spread is the "
-               "forecast uncertainty. It fits weekly NHSN admissions exactly "
-               "as archived on each forecast date. Measured three-season "
-               "retrospective relWIS against the FluSight baseline, "
-               "ratio of sums "
-               "(values below 1 beat it): 1.023 in 2023-24, 0.636 in "
-               "2024-25, 0.825 in 2025-26."),
+        "pf": ("Oracle SIHRS",
+               "The mechanistic model, submitted on its own: a mechanistic "
+               "forecast whose growth is blended with donor growth from past "
+               "seasons. It is built on the SIHRS compartment model: "
+               "influenza moves people through Susceptible, Infected, "
+               "Hospitalized and Recovered compartments, with seasonally "
+               "varying transmission and immunity that wanes back to "
+               "susceptibility, written in BNGL. Each week PyBNF's "
+               "sequential particle filter, on the bngsim engine, fits that "
+               "model from the season's start on August 1 through the newest "
+               "week of NHSN admissions exactly as archived on the forecast "
+               "date: 10,000 candidate epidemics per state are reweighted by "
+               "how well they explain the data, and their spread is the "
+               "filter's own uncertainty. On its own a filter carries the "
+               "growth it sees today forward; it cannot know how a season "
+               "usually turns. Past seasons can, so after the fit the "
+               "Oracle step blends them in, on the same calendar-donor principle "
+               "the Groundhog uses: each of the filter's forecast sample "
+               "paths draws one donor growth path from an earlier season at "
+               "the same calendar week (within two epiweeks, any "
+               "jurisdiction), and its growth over the next four weeks "
+               "becomes the geometric mean, half and half, of the filter's "
+               "own growth at the forecast origin and the donor's. The "
+               "blended growth is propagated in closed form from the "
+               "filter's own current state, so the filter's uncertainty and "
+               "the donors' spread both survive. " + ot.BANK_TEXT["pool"] +
+               " Every rule of the step and of its donor bank was frozen by "
+               "a pre-registration before either was scored "
+               "(docs/ORACLE-SIHRS.md). On the stored 2024-25 and 2025-26 "
+               "forecasts it scores relWIS " + ot.fmt(rec["both"]["oracle"])
+               + " against the plain filter's " + ot.fmt(rec["both"]["filter"])
+               + " on the same " + ot.cells(rec["both"]["cells"]) + " cells ("
+               + ot.fmt(rec["2024-25"]["oracle"]) + " and "
+               + ot.fmt(rec["2025-26"]["oracle"]) + " by season; FluSight "
+               "baseline, ratio of sums, values below 1 beat it), "
+               + ot.fmt(rec["2023-24"]["oracle"]) + " against "
+               + ot.fmt(rec["2023-24"]["filter"]) + " in 2023-24 and "
+               + ot.fmt(rec["three"]["oracle"]) + " against "
+               + ot.fmt(rec["three"]["filter"]) + " over the three seasons. "
+               + ot.BANK_TEXT["coverage"] + " " + ot.caveat() +
+               " The Groundhog applies donor "
+               "growth ratios to the last observed count; the Oracle SIHRS "
+               "applies donor growth to the mechanistic state. The two are "
+               "submitted as separate models and nothing is blended between "
+               "them. The filter alone, three seasons replayed with the "
+               "production engine: 0.840 in 2023-24, 0.797 in 2024-25, 0.846 "
+               "in 2025-26."),
         "analogue": ("Groundhog",
                      "The empirical model, submitted on its own. It assumes "
                      "the current season will resemble past seasons at the "
@@ -3769,8 +3912,9 @@ def model_page(request: Request, name: str):
     # ship.
     # one-line summaries: the collapsed <details> summary on each model tab
     onelines = {
-        "pf": ("The mechanistic model: an SIHRS compartmental model fitted "
-               "weekly by a sequential particle filter."),
+        "pf": ("The mechanistic model: the SIHRS compartment model fitted "
+               "weekly by a particle filter, its forecast growth blended with "
+               "donor growth from past seasons at the same calendar week."),
         "analogue": ("The empirical model: it scales the latest observation "
                      "by historical growth ratios from matching calendar "
                      "weeks, with banked FluSurv-NET donors."),
@@ -3778,7 +3922,7 @@ def model_page(request: Request, name: str):
                  "parallel SIHRS circuits fitted to two data channels."),
     }
     # where each model tab points into the Methods page
-    manchor = {"pf": "fitting", "analogue": "analogue",
+    manchor = {"pf": "oracle", "analogue": "analogue",
                "pf2s": "two-strain"}
     if name not in blurbs:
         return HTMLResponse("unknown model", status_code=404)
@@ -3853,6 +3997,129 @@ def _sealed_roots() -> tuple:
                          "pooled, see Methods"))
 
 
+# --------------------------------------------------------------------------
+# a READ-ONLY retrospective source: backfilled Oracle SIHRS seasons
+#
+# `flubnf oracle backfill` refuses app/state on purpose (the live and sealed
+# trees are never its output), so the seasons it writes live elsewhere. The
+# Retrospective tab can SHOW them without copying a byte: a directory of
+# backfilled season roots, app/state/retro_oracle by default (gitignored
+# with the rest of app/state) or any existing directory named by
+# FLUBNF_RETRO_ORACLE, read at call time. It is selected with src=oracle on
+# every retrospective route that reads a season, exactly as `archive`
+# selects an archived run, and nothing that writes (run, stop, pause,
+# resume, start over, archive, delete) ever takes it. Viewing adds only the
+# derived caches every season root gets (scores.json, the national
+# aggregate, the playback and map caches) beside the weeks; the weeks
+# themselves are never touched, and reclaim protects the tree.
+# --------------------------------------------------------------------------
+
+RETRO_ORACLE = Path(__file__).resolve().parents[1] / "state" / "retro_oracle"
+RETRO_ORACLE_ENV = "FLUBNF_RETRO_ORACLE"
+#: the source keys a request may name; "" is the console's own trees
+RETRO_SOURCES = ("oracle",)
+
+
+def _valid_src(src: str) -> bool:
+    return src in ("",) + RETRO_SOURCES
+
+
+def _retro_source(src: str = "oracle") -> dict:
+    """The backfilled source as the pages describe it: its root, how the
+    root was chosen, and the reason it is refused, if it is. A root that
+    is, contains, or lies inside the live or sealed trees is refused: those
+    are never a source, and a view must never be able to write into them.
+    Read at call time, so a test (or the lead) can point it anywhere."""
+    import os as _os
+    env = _os.environ.get(RETRO_ORACLE_ENV, "").strip()
+    root = Path(env).expanduser() if env else RETRO_ORACLE
+    how = (f"set by {RETRO_ORACLE_ENV}" if env else
+           f"the default; set {RETRO_ORACLE_ENV} to show another directory")
+    refused = ""
+    try:
+        r = root.resolve()
+        for base in (RETRO_ROOT, RETRO_SEAL, RETRO_RESEAL):
+            b = Path(base).resolve()
+            if r == b or r.is_relative_to(b) or b.is_relative_to(r):
+                refused = (f"{root} overlaps {base}, one of the console's "
+                           "own retrospective trees; a backfilled source "
+                           "must be a separate directory, so nothing is read "
+                           "from it")
+                break
+    except OSError as e:
+        refused = f"{root} cannot be resolved: {e}"
+    return {"key": src, "root": root, "configured_by": how,
+            "refused": refused,
+            "title": "Oracle SIHRS backfill",
+            "exists": (not refused) and root.is_dir()}
+
+
+def _source_root(src: str, season: str) -> Path | None:
+    """The season root inside a backfilled source, or None when the source
+    is refused or the season is not there."""
+    s = _retro_source(src)
+    if s["refused"] or not _valid_season(season):
+        return None
+    return Path(s["root"]) / season
+
+
+def _source_seasons(src: str = "oracle") -> list:
+    """Season roots under the source, with what the index shows for each."""
+    from app.core import retro
+    s = _retro_source(src)
+    if not s["exists"]:
+        return []
+    out = []
+    for d in sorted(Path(s["root"]).iterdir()):
+        if not (d.is_dir() and _valid_season(d.name)):
+            continue
+        done = _weeks_done(d)
+        if not done:
+            continue
+        summ = retro.run_summary(d)
+        meta = retro.read_meta(d)
+        bf = meta.get("backfill") if isinstance(meta.get("backfill"), dict) \
+            else {}
+        out.append({"name": d.name, "done": done,
+                    "rels": summ.get("headline_rels") or {},
+                    # pf's name on THIS tree: a backfilled root carries the
+                    # step, a copied plain replay does not
+                    "pf_name": _pf_name(d),
+                    "scored": (d / "scores.json").is_file(),
+                    "source_root": bf.get("source_root", ""),
+                    "prereg": str(bf.get("prereg_sha256") or "")[:16],
+                    "settings": retro.settings_summary(meta)})
+    return out
+
+
+def _source_note(root: Path) -> dict:
+    """What the season page says about a backfilled root, from its own run
+    record: where the stored filter samples came from, the pre-registration
+    hash the step ran under, and what the second member is. The backfill
+    copies the source's analogue verbatim, so it is the shipped Groundhog
+    only when the source replay ran with the FluSurv-NET donors; the stored
+    grid ran none, and the page must not pass it off as the Groundhog."""
+    from app.core import retro
+    meta = retro.read_meta(root)
+    bf = meta.get("backfill") if isinstance(meta.get("backfill"), dict) else {}
+    ss = bf.get("source_settings") or meta.get("settings") or {}
+    wx = str(ss.get("week_extra") or "")
+    return {"source_root": bf.get("source_root", ""),
+            "prereg": str(bf.get("prereg_sha256") or ""),
+            "utc": bf.get("utc", ""),
+            "week_extra": wx,
+            "analogue_is_groundhog": wx.startswith("flusurv")}
+
+
+def _source_progress(root: Path, season: str) -> dict:
+    """The timing block for a backfilled root: an archived-shape record
+    with no clock (the backfill's own seconds are not a replay's)."""
+    prog = _archive_progress(root, season)
+    prog.update({"status": "source", "elapsed_s": None, "mean_s": None,
+                 "slowest_week": None})
+    return prog
+
+
 def _sealed_label(root: Path) -> str:
     """The label of the sealed record `root` lies in, or an empty string."""
     for base, label in _sealed_roots():
@@ -3864,7 +4131,16 @@ def _sealed_label(root: Path) -> str:
     return ""
 
 
-def _season_root(season: str, archive: str = "") -> tuple:
+def _root_for(season: str, archive: str = "", src: str = "") -> tuple:
+    """_season_root, naming the source only when one is in play, so every
+    caller (and every test that stands in for _season_root with its
+    two-argument shape) sees exactly the call it saw before sources."""
+    if src:
+        return _season_root(season, archive, src)
+    return _season_root(season, archive)
+
+
+def _season_root(season: str, archive: str = "", src: str = "") -> tuple:
     """(root, is_seal): a season may live under the app's retro root or one
     of the sealed full-grid records; show whichever has the most completed
     weeks so a flagship validation run is never invisible in the app. On a
@@ -3873,6 +4149,11 @@ def _season_root(season: str, archive: str = "") -> tuple:
     With an archive identifier the answer is exactly one directory -- the
     archived run's own tree -- so every page, the playback API, and the
     report builder read the same frozen files."""
+    if src:
+        # a backfilled source (src=oracle): exactly its own season root;
+        # a refused source resolves to a path that holds no weeks
+        r = _source_root(src, season)
+        return (r if r is not None else Path("/nonexistent") / season), False
     if archive:
         from app.core import retro
         return retro.archive_dir(RETRO_ROOT, season, archive), False
@@ -3960,6 +4241,8 @@ def _scan_archive_entries(retro_root: Path, season: str) -> list:
         out.append({"id": stamp, "when": retro.stamp_human(stamp),
                     "weeks": s["weeks"], "elapsed_s": s["elapsed_s"],
                     "rel": s["headline_rel"], "rels": s.get("headline_rels"),
+                    # each archive is its own tree, named for what it holds
+                    "pf_name": _pf_name(p),
                     "scored": s["scored"],
                     "size": size, "size_h": retro.human_bytes(size)})
     return out
@@ -4383,9 +4666,22 @@ def _retro_national_name() -> str:
 
 
 @app.get("/retro", response_class=HTMLResponse)
-def retro_index(request: Request):
+def retro_index(request: Request, src: str = ""):
     from app.core import retro as _retro
     from app.core.retro import available_seasons, season_vintages
+    if src and not _valid_src(src):
+        _flash("Unrecognized retrospective source.")
+        return RedirectResponse("/retro", status_code=303)
+    if src:
+        # the backfilled source: its seasons, read only. No run form and no
+        # control that writes: the console never replays, archives or
+        # deletes anything there.
+        return templates.TemplateResponse(request, "retro.html", {
+            "active": "Retrospective", "src": src, "seasons": [],
+            "source": _retro_source(src),
+            "source_seasons": _source_seasons(src),
+            "state_names": [], "default_width": 1, "width_cap": 1,
+            "engine_ok": True})
     seasons = []
     for s in available_seasons():
         total = len(season_vintages(s))
@@ -4413,6 +4709,9 @@ def retro_index(request: Request):
                         "seal": is_seal,
                         "seal_label": _sealed_label(root) if is_seal else "",
                         "rel": rel, "rels": rels,
+                        # pf's name on the tree the card reads: a sealed
+                        # record stores the particle filter alone
+                        "pf_name": _pf_name(root),
                         "resume_fields": resume_fields,
                         "settings": prog["settings"],
                         "archives": _archive_entries(s),
@@ -4430,6 +4729,7 @@ def retro_index(request: Request):
     from app.core.engines.pf import DEFAULT_SHARD_WIDTH, SHARD_WIDTH_CAP
     return templates.TemplateResponse(request, "retro.html",
                                       {"active": "Retrospective", "seasons": seasons,
+                                       "src": "", "source": _retro_source(),
                                        "state_names": _retro_state_names(),
                                        "default_width": DEFAULT_SHARD_WIDTH,
                                        "width_cap": SHARD_WIDTH_CAP,
@@ -4937,7 +5237,7 @@ def _results_pending(root: Path) -> str:
 
 
 @app.get("/api/retro/{season}/results_status")
-def api_retro_results_status(season: str, archive: str = ""):
+def api_retro_results_status(season: str, archive: str = "", src: str = ""):
     """The preparing state's poll: whether the finalize job for this season
     root is still working, and which phase it is in. Never starts work
     itself; the results page owns that."""
@@ -4945,7 +5245,9 @@ def api_retro_results_status(season: str, archive: str = ""):
         return {"pending": False, "error": "unrecognized archive"}
     if not _valid_season(season):
         return {"pending": False, "error": "unrecognized season"}
-    root, _is_seal = _season_root(season, archive)
+    if not _valid_src(src) or (src and archive):
+        return {"pending": False, "error": "unrecognized source"}
+    root, _is_seal = _root_for(season, archive, src)
     job = _results_jobs.get(str(root))
     if job and not job["done"].is_set():
         return {"pending": True, "phase": job["phase"],
@@ -5285,7 +5587,7 @@ def retro_engine_label(engine: str) -> str:
 
 @app.get("/retro/{season}", response_class=HTMLResponse)
 def retro_results(request: Request, season: str, week: str = "",
-                  archive: str = "", conv: str = ""):
+                  archive: str = "", conv: str = "", src: str = ""):
     """The season results page. `archive` selects an archived run instead of
     the live season; everything below (scores, player, per-state table, the
     report link) then reads that run's own tree.
@@ -5302,8 +5604,26 @@ def retro_results(request: Request, season: str, week: str = "",
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         _flash("Unrecognized archived run identifier.")
         return RedirectResponse("/retro", status_code=303)
-    root, _is_seal = _season_root(season, archive)
+    if src and (not _valid_src(src) or archive or not _valid_season(season)):
+        _flash("Unrecognized retrospective source.")
+        return RedirectResponse("/retro", status_code=303)
+    root, _is_seal = _root_for(season, archive, src)
+    # the names this page prints, for THIS tree: pf is the particle filter
+    # alone on a sealed record or a replay from before the Oracle step.
+    # Passed as the page's model_name, which shadows the template global,
+    # and read by the page script into the player's shared map
+    names = _names_for_root(root)
+    # the backfilled source, named on the page with its own record
+    source = None
+    if src:
+        source = dict(_retro_source(src), **_source_note(root))
+        if source["refused"]:
+            _flash(source["refused"])
+            return RedirectResponse(f"/retro?src={src}", status_code=303)
     weeks = [p.parent.name for p in retro.season_sample_files(root)]
+    if not weeks and src:
+        _flash(f"{season}: no backfilled weeks under {root}.")
+        return RedirectResponse(f"/retro?src={src}", status_code=303)
     if not weeks:
         # a raw unthemed dead-end helps nobody: back to the season list,
         # which already knows how to show a 0-weeks season
@@ -5333,9 +5653,10 @@ def retro_results(request: Request, season: str, week: str = "",
         if not job["done"].is_set():
             return templates.TemplateResponse(request, "retro_season.html", {
                 "active": "Retrospective", "season": season,
+                "model_name": _name_fn(names),
                 "preparing": {"phase": job["phase"],
                               "elapsed_s": round(time.time() - job["t0"], 1)},
-                "archive": archive,
+                "archive": archive, "src": src, "source": source,
                 "archive_when": retro.stamp_human(archive) if archive else "",
                 "heads": {}, "curve": [], "curves": {}, "states": [],
                 "season_models": [], "member_colors": _member_colors(),
@@ -5451,8 +5772,13 @@ def retro_results(request: Request, season: str, week: str = "",
     if len(map_models) >= 2:
         from app.core import report_v2
         from app.core import usmap as _usmap
+        # the map labels are the shared names with "outlook" appended
+        # (report_v2.MODEL_LABEL); pf's follows this tree's name
+        map_labels = dict(report_v2.MODEL_LABEL)
+        if names.get("pf") != _model_names().get("pf"):
+            map_labels["pf"] = f"{names['pf']} outlook"
         map_toggle = _usmap.model_toggle(
-            map_models, report_v2.MODEL_LABEL, map_models[0],
+            map_models, map_labels, map_models[0],
             {m: {"states": _usmap.state_swap_payload(by_model[m]), "us": {}}
              for m in map_models},
             group_id="retro-model", btn_class="quiet",
@@ -5537,6 +5863,7 @@ def retro_results(request: Request, season: str, week: str = "",
         official_catalog = []
     return templates.TemplateResponse(request, "retro_season.html", {
         "active": "Retrospective", "season": season, "heads": heads,
+        "model_name": _name_fn(names),
         "curve": curve, "curves": curves, "states": states,
         "member_colors": _member_colors(),
         # the models this season scored, in table order: the two that ship
@@ -5561,14 +5888,16 @@ def retro_results(request: Request, season: str, week: str = "",
         "weeks": weeks, "week": wk, "map_html": map_html,
         "official_catalog": official_catalog,
         "prog": (_archive_progress(root, season) if archive
+                 else _source_progress(root, season) if src
                  else _retro_progress(season)),
-        "archive": archive,
+        "archive": archive, "src": src, "source": source,
         "archive_when": retro.stamp_human(archive) if archive else "",
         "n_weeks": len(weeks) if scoreable else 0, "score_error": score_error})
 
 
 @app.get("/api/retro/{season}/playback/{asof}")
-def api_retro_playback(season: str, asof: str, archive: str = ""):
+def api_retro_playback(season: str, asof: str, archive: str = "",
+                       src: str = ""):
     """One stored retrospective week as a playback payload: member and
     ensemble quantile fans, settled truth, the CDC's submitted comparators,
     and running relWIS stats. Cached under <season_root>/playback_cache/.
@@ -5581,7 +5910,10 @@ def api_retro_playback(season: str, asof: str, archive: str = ""):
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         return PlainTextResponse("unrecognized archived run identifier",
                                  status_code=404)
-    root, _is_seal = _season_root(season, archive)
+    if src and (not _valid_src(src) or archive or not _valid_season(season)):
+        return PlainTextResponse("unrecognized retrospective source",
+                                 status_code=404)
+    root, _is_seal = _root_for(season, archive, src)
     try:
         return playback.build_week(root, season, asof)
     except playback.UnknownWeek as e:
@@ -5589,7 +5921,8 @@ def api_retro_playback(season: str, asof: str, archive: str = ""):
 
 
 @app.get("/api/retro/{season}/mapswap/{asof}")
-def api_retro_mapswap(season: str, asof: str, archive: str = ""):
+def api_retro_mapswap(season: str, asof: str, archive: str = "",
+                      src: str = ""):
     """One stored week's categorical map as a swap payload: fips to
     {fill, opacity, hover}, a few kilobytes, from the same disk-cached
     cards the page render uses. The season player's map view renders its
@@ -5607,7 +5940,10 @@ def api_retro_mapswap(season: str, asof: str, archive: str = ""):
     import re as _re
     if not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", asof):
         return PlainTextResponse(f"no stored week {asof}", status_code=404)
-    root, _is_seal = _season_root(season, archive)
+    if src and (not _valid_src(src) or archive or not _valid_season(season)):
+        return PlainTextResponse("unrecognized retrospective source",
+                                 status_code=404)
+    root, _is_seal = _root_for(season, archive, src)
     from app.core import retro as _retro
     if _retro.week_samples_path(root, asof) is None:
         return PlainTextResponse(f"no stored week {asof}", status_code=404)
@@ -5623,7 +5959,7 @@ def api_retro_mapswap(season: str, asof: str, archive: str = ""):
 
 
 @app.get("/retro/{season}/report")
-def retro_season_report(season: str, archive: str = ""):
+def retro_season_report(season: str, archive: str = "", src: str = ""):
     """Generate (cached by mtime) and download the self-contained season
     report: the season player with every week's data embedded, one HTML
     file, no server needed. `archive` builds the report for an archived run
@@ -5633,7 +5969,10 @@ def retro_season_report(season: str, archive: str = ""):
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         return PlainTextResponse("unrecognized archived run identifier",
                                  status_code=404)
-    root, _is_seal = _season_root(season, archive)
+    if src and (not _valid_src(src) or archive or not _valid_season(season)):
+        return PlainTextResponse("unrecognized retrospective source",
+                                 status_code=404)
+    root, _is_seal = _root_for(season, archive, src)
     try:
         p = report_season.build_season_report(
             root, season, archive=archive,
@@ -5645,7 +5984,7 @@ def retro_season_report(season: str, archive: str = ""):
 
 
 @app.get("/api/retro/{season}/report_path")
-def api_retro_report_path(season: str, archive: str = ""):
+def api_retro_report_path(season: str, archive: str = "", src: str = ""):
     """Build the season report if absent (same builder as the download
     route, cached by mtime) and return its absolute path. The results
     page's Reveal-in-Finder button feeds this path to /output/reveal, the
@@ -5655,7 +5994,10 @@ def api_retro_report_path(season: str, archive: str = ""):
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         return PlainTextResponse("unrecognized archived run identifier",
                                  status_code=404)
-    root, _is_seal = _season_root(season, archive)
+    if src and (not _valid_src(src) or archive or not _valid_season(season)):
+        return PlainTextResponse("unrecognized retrospective source",
+                                 status_code=404)
+    root, _is_seal = _root_for(season, archive, src)
     try:
         p = report_season.build_season_report(
             root, season, archive=archive,
@@ -5690,7 +6032,13 @@ def run_models(request: Request,
                # passes what its row recorded, "" for a row that ran the
                # bare analogue before the bank shipped, so a recorded run
                # reproduces instead of silently adopting today's donors
-               aux: str | None = Form(None)):
+               aux: str | None = Form(None),
+               # not on the form either: the Oracle step. Absent (None) is
+               # the shipped configuration, the member; "none" runs the
+               # plain filter as a research run with its file withheld
+               # (app/core/oracle.py); the re-run path passes what its
+               # row recorded
+               oracle: str | None = Form(None)):
     # Any day of the week is a legitimate thing to type. Surveillance weeks
     # END on Saturday, but NHSN publishes the finished week the following
     # WEDNESDAY, so the natural human action -- open the console on the day
@@ -5863,7 +6211,7 @@ def run_models(request: Request,
                    drop_same_day=bool(int(drop_same_day)),
                    replicates=replicates,
                    particles=particles,
-                   extra=_run_extra(members, mode, aux))
+                   extra=_run_extra(members, mode, aux, oracle))
 
     if engine in ("all", "pf", "analogue"):
         # 'analogue' rides the same pipeline with the PF block skipped --

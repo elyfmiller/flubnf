@@ -48,6 +48,7 @@ from app.core.data import ARCHIVE, LOCATIONS          # noqa: E402
 from app.core.engines import analogue as an_engine    # noqa: E402
 from app.core.engines import pf as pf_engine          # noqa: E402
 from app.core import horizons as hz
+from app.core import oracle as oracle_mod             # noqa: E402
 from app.core import ensemble as ens                  # noqa: E402
 from app.core import proc as proc_mod                 # noqa: E402
 from app.core.runs import (LOCATION_LIST_LIMIT,       # noqa: E402
@@ -626,6 +627,16 @@ def _start_record(root: Path, season: str, total_weeks: int,
         return m
 
 
+def _record_setting(root: Path, key: str, value) -> None:
+    """Fold one setting into the season's run record, under the lock."""
+    with _META_LOCK:
+        m = read_meta(root)
+        st = dict(m.get("settings") or {})
+        st[key] = value
+        m["settings"] = st
+        write_meta(root, m)
+
+
 def _record_week(root: Path, asof: str, seconds: float) -> None:
     with _META_LOCK:
         m = read_meta(root)
@@ -1065,9 +1076,25 @@ def run_week(root: Path, season: str, asof: str, locations: list,
         (Path(root) / "failures.log").open("a").write(
             f"{asof}: {len(failed)} PF cell(s) failed and are absent from "
             f"the stored week: {sorted(failed)[:6]}\n")
+    # the Oracle step (app/core/oracle.py), on the collected samples and
+    # before the storage boundary: the member is stored under pf and the
+    # filter's own samples are kept under the research key beside it. A
+    # spec asking for the plain filter (oracle = none, the Groundhog's
+    # `aux = none` precedent) stores the filter as is, and oracle.json
+    # beside the week says the step was not applied.
+    if oracle_mod.wanted(extra):
+        member, _prov = oracle_mod.apply_week(
+            pf_samples, asof, wd, extra=extra,
+            weeks_to_drop=int(spec.weeks_to_drop or 0),
+            drop_same_day=bool(drop_same_day))
+        stored = {"pf": member, oracle_mod.FILTER_KEY: pf_samples}
+    else:
+        oracle_mod.write_not_applied(
+            wd, asof, "the replay asked for the plain filter (oracle = none)")
+        stored = {"pf": pf_samples}
     an_q = an_engine.run(spec)
     out = {"asof": asof,
-           "pf": pf_samples,
+           **stored,
            "analogue": {loc: {h: {str(k): v for k, v in q.items()}
                               for h, q in qs.items()}
                         for loc, qs in an_q.items()}}
@@ -1164,10 +1191,20 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
             # held time, so the week's entry measures only work
             e0 = elapsed_now(read_meta(root))
             try:
+                # the week's research dictionary is asked for INSIDE the
+                # try: a callback that raises for one week is that week's
+                # failure, logged below like any other, not the season's
+                wx = week_extra(asof, i, vintages) if week_extra else None
+                if engine == "pf" and "oracle" not in (read_meta(root).get("settings") or {}):
+                    # the Oracle step's setting, read off the dictionary the
+                    # first fitted week runs under, so run_meta.json says on
+                    # its face whether the stored pf is the member or the
+                    # plain filter; each week's oracle.json names the bank
+                    _record_setting(root, "oracle",
+                                    "applied" if oracle_mod.wanted(wx)
+                                    else "none (the plain filter, a research run)")
                 run_week(root, season, asof, locations, replicates, particles,
-                         width, drop_same_day=drop_same_day,
-                         extra=(week_extra(asof, i, vintages)
-                                if week_extra else None),
+                         width, drop_same_day=drop_same_day, extra=wx,
                          engine=engine)
                 done.append(asof)
                 # timing is recorded HERE, for completed weeks only: the

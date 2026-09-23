@@ -331,7 +331,11 @@ def test_every_computed_score_matches_what_the_console_publishes(built):
     res, out, html, payload = built
     checks = payload["consistency"]
     assert checks, "nothing was cross-checked"
-    assert all("PF-SIHRS" in c["what"] for c in checks)
+    # the mechanistic column is named for what the published trees store:
+    # the Oracle SIHRS when every season carries the member, the particle
+    # filter alone when the trees predate the step (every sealed record)
+    assert payload["pf_label"] in (sb.PF_LABEL_ORACLE, sb.PF_LABEL_FILTER)
+    assert all(payload["pf_label"] in c["what"] for c in checks)
     seasons = sb.discover_seasons()
     if not all("retro_reseal" in str(v["root"]) for v in seasons.values()):
         pytest.skip("the console publishes the reseal; this machine's "

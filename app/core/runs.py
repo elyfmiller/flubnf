@@ -49,8 +49,8 @@ LOCATION_LIST_LIMIT = 8
 #: covering all of them says so instead of reporting a bare number.
 ALL_JURISDICTIONS = 52
 
-ENGINE_LABELS = {"all": "both models (PF-SIHRS and Groundhog)",
-                 "pf": "particle filter only",
+ENGINE_LABELS = {"all": "both models (Oracle SIHRS and Groundhog)",
+                 "pf": "Oracle SIHRS only",
                  "analogue": "Groundhog only",
                  "amcmc": "adaptive MCMC",
                  "retro": "particle filter (retrospective)"}
@@ -134,7 +134,23 @@ def spec_settings(spec) -> list:
     # the auxiliary bank shipped (2026-09-22) carries no key and ran the
     # bare calendar analogue, which is what this line then says
     pairs.append(("Groundhog donors", analogue_donors_label(extra)))
+    pairs.append(("Oracle step", oracle_label(extra)))
     return [(k, v) for k, v in pairs if v not in ("", None)]
+
+
+def oracle_label(extra: dict | None) -> str:
+    """One phrase for the Oracle step, from a spec's research dictionary:
+    the plain filter when the spec asked for it (`oracle = none`, a research
+    run), else the default. The bank a run drew from is named in its
+    OUTCOME (`oracle`, as stream@digest8), because the pool is built from
+    the week's vintage at run time and is not known when the spec is
+    written; a spec from before the step existed (2026-09-22) carries no
+    key either, which is why the default is worded as the console's
+    default and not as a fact about that run."""
+    extra = extra if isinstance(extra, dict) else {}
+    if str(extra.get("oracle") or "") == "none":
+        return "none (the plain filter, a research run)"
+    return "the console's default (the Oracle SIHRS since 2026-09-22; the outcome names the bank)"
 
 
 def analogue_donors_label(extra: dict | None) -> str:
@@ -173,7 +189,12 @@ def is_research(spec) -> bool:
     extra = d.get("extra") if isinstance(d, dict) else None
     if not isinstance(extra, dict):
         return False
-    return extra.get("members") == 3 or extra.get("variant") == "2strain"
+    # the plain filter (oracle = none) is a research configuration too, the
+    # Groundhog's `aux = none` precedent applied to the mechanistic member:
+    # its file is withheld and a plain-filter run is never the date's
+    # forecast, so it carries the tag on every surface and never archives
+    return (extra.get("members") == 3 or extra.get("variant") == "2strain"
+            or str(extra.get("oracle") or "") == "none")
 
 
 def version_pairs(build: str = "", versions: dict | None = None) -> list:
@@ -198,7 +219,7 @@ MODE_LABELS = {"realtime": "real-time run (the newest vintage)",
 #: the models a console run can score, in table order, with the outcome
 #: keys each writes at run end. The blend's row renders only for a ledger
 #: row from before it was retired (2026-09-22), which still carries it.
-_RESULT_ROWS = (("PF-SIHRS", "pf_relwis", "pf_relwis_cells"),
+_RESULT_ROWS = (("Oracle SIHRS", "pf_relwis", "pf_relwis_cells"),
                 ("Groundhog", "analogue_relwis", "analogue_relwis_cells"),
                 ("FluBNF ensemble (retired)", "ensemble_relwis",
                  "ensemble_relwis_cells"))

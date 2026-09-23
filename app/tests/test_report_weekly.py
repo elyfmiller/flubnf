@@ -170,7 +170,7 @@ def test_summary_table_applies_the_relwis_rule():
     ])
     html = summary_table_html(df)
     # member label in the header, never a bare "relWIS"
-    assert "PF-SIHRS relWIS" in html
+    assert "Oracle SIHRS relWIS" in html
     # ok/bad by the below-1 rule
     assert '<td class="num ok">0.500</td>' in html
     assert '<td class="num bad">1.500</td>' in html

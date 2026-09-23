@@ -35,8 +35,11 @@ from pathlib import Path
 from app.core import retro
 from app.core.runs import APP_STATE
 
-#: what survives a completed week's prune: the samples record, both forms
-WEEK_KEEP = (retro.SAMPLES_JSON, retro.SAMPLES_GZ, retro.QUANTILES_NAME)
+#: what survives a completed week's prune: the samples record, both forms,
+#: its quantile sidecar, and the Oracle step's provenance beside it (the
+#: oracle.json record and the donor pool it drew from, app/core/oracle.py)
+WEEK_KEEP = (retro.SAMPLES_JSON, retro.SAMPLES_GZ, retro.QUANTILES_NAME,
+             "oracle.json", "oracle_bank")
 
 #: a per-cell fit tree inside a workroot or week: <location>_r<replicate>
 CELL_DIR_RE = re.compile(r".+_r\d+$")
@@ -73,6 +76,13 @@ def _protected_roots() -> list:
     before the measurement can be made."""
     from flubnf.settings import HUB
     roots = [APP_STATE / "retro_seal", Path(HUB)]
+    # the backfilled Oracle SIHRS seasons the Retrospective tab shows read
+    # only (app/ui/server._retro_source): a view of a record, never pruned
+    # or compressed by a finalize job or a storage sweep
+    roots.append(APP_STATE / "retro_oracle")
+    src = os.environ.get("FLUBNF_RETRO_ORACLE", "").strip()
+    if src:
+        roots.append(Path(src).expanduser())
     extra = os.environ.get("FLUBNF_PROTECT_ROOTS", "")
     roots.extend(Path(x) for x in extra.split(os.pathsep) if x.strip())
     return roots

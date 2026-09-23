@@ -139,7 +139,7 @@ QBANDS = ((0.025, 0.975, _rgba(_PF_COLOR, 0.13), "95% interval"),
 #: step with that map. The blend's entry renders only a bundle written
 #: before it was retired (2026-09-22).
 MODEL_LABEL = {"ensemble": "FluBNF Ensemble (retired) outlook",
-               "pf": "PF-SIHRS outlook",
+               "pf": "Oracle SIHRS outlook",
                "analogue": "Groundhog outlook"}
 #: display order for the outlook model toggle: the two models that ship,
 #: the PF first; a stored blend last

@@ -11,7 +11,7 @@ Covered templates:
 
 | Template | Role |
 |---|---|
-| `SIHRS_pop_min.bngl` | Single-strain production model (5 fitted parameters); the PF engine's template |
+| `SIHRS_pop_min.bngl` | Single-strain production model (5 fitted parameters); the PF engine's template, and so the Oracle SIHRS member's (the filter plus the post-fit Oracle step, docs/ORACLE-SIHRS.md; the step changes nothing in the template) |
 | `SIHRS_pop_2strain_min.bngl` | Two-strain (A/B) production variant (7 fitted parameters) |
 | `SIHRS_pop_natg.bngl` | `min` plus one exogenous national-growth factor, zero new fitted parameters |
 | `SIHRS_pop_covid.bngl` | COVID-19 port: `min` with `omega` fitted instead of fixed (6 parameters) |
@@ -212,8 +212,9 @@ figures below have not been re-derived on the shipped pool. See
 
 ### 3.1 Why 5 parameters, not 8 (measured)
 
-The entire gap between SIHRS and a well-calibrated reference is SPREAD, not
-the central estimate. Swapping SIHRS's median for the analogue's gains 0.003
+The entire gap between the compartment model's fitted forecast (measured
+before the Oracle step existed) and a well-calibrated reference is SPREAD,
+not the central estimate. Swapping its median for the analogue's gains 0.003
 relWIS; swapping the SPREAD gains 0.070. So the median is fine and the
 predictive distribution is too wide. Both figures are pre-exclusion, per the
 notice above, and neither has been re-measured against the shipped analogue.
@@ -417,10 +418,10 @@ identified and `mult` is fitted, so this moves the S/I dynamics negligibly.
 See `flubnf/profiles.py` for the value and source.
 
 `omega` FITTED: prior loguniform over `[0.01278, 0.12780]` per week, i.e. a
-mean protected duration of 1.8 to 18 months. Sourced: in SIHRS an individual
-in `R` is fully protected and leaves at hazard `omega`, so the fraction still
-protected `t` weeks after infection is `exp(-omega*t)`, and two systematic
-reviews give that curve directly:
+mean protected duration of 1.8 to 18 months. Sourced: in the SIHRS
+compartment model an individual in `R` is fully protected and leaves at
+hazard `omega`, so the fraction still protected `t` weeks after infection
+is `exp(-omega*t)`, and two systematic reviews give that curve directly:
 
 * Bobrovitz 2023, Lancet Infect Dis, doi:10.1016/S1473-3099(22)00801-5 --
   protection against reinfection 24.7% (16.4-35.5) at 12 months

@@ -199,9 +199,9 @@ def summary_table_html(df: pd.DataFrame) -> str:
                 "truth for forecast weeks is published.</p>")
     try:                       # the shared name map, one source (no drift)
         from app.core.report_season import MODEL_NAMES
-        member = MODEL_NAMES.get("pf", "PF-SIHRS")
+        member = MODEL_NAMES.get("pf", "Oracle SIHRS")
     except Exception:
-        member = "PF-SIHRS"
+        member = "Oracle SIHRS"
     per_loc = (df.groupby("location")
                  .apply(lambda g: g.wis.sum() / g.base_wis.sum(),
                         include_groups=False)

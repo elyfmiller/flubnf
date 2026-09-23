@@ -128,6 +128,62 @@ class BuildError(RuntimeError):
 
 # ---------------------------------------------------------------- discovery
 
+#: the mechanistic column's two names. A season tree replayed before the
+#: console applied the Oracle step (every sealed record) stores the particle
+#: filter alone under pf, and publishing it as the Oracle SIHRS would name a
+#: forecast the member never made; the label follows what the tree holds.
+PF_LABEL_ORACLE = "Oracle SIHRS"
+PF_LABEL_FILTER = "Particle filter alone"
+
+
+def tree_carries_oracle(root: Path) -> bool:
+    """Whether a season tree's pf is the Oracle SIHRS member: its run
+    record says the step was applied, or its weeks carry the step's
+    provenance (oracle.json, written beside every week the step touched)."""
+    from app.core import retro
+    root = Path(root)
+    s = (retro.read_meta(root).get("settings") or {})
+    if s.get("oracle") == "applied":
+        return True
+    if str(s.get("oracle") or "").startswith("none"):
+        return False
+    # the provenance file itself says whether the step ran: a plain-filter
+    # research run writes oracle.json too, with "applied": false
+    import json
+    try:
+        for w in sorted((root / "weeks").iterdir())[:3]:
+            f = w / "oracle.json"
+            if f.is_file():
+                try:
+                    return json.loads(f.read_text()).get("applied") is True
+                except (OSError, ValueError):
+                    return False
+        return False
+    except OSError:
+        return False
+
+
+def _week_applied(week_dir: Path) -> bool:
+    """Whether one stored week's pf is the Oracle SIHRS: its oracle.json
+    says the step was applied. A plain-filter research week writes the file
+    too, with "applied": false, so presence alone is not the answer."""
+    import json
+    try:
+        return json.loads((Path(week_dir) / "oracle.json").read_text()
+                          ).get("applied") is True
+    except (OSError, ValueError):
+        return False
+
+
+def pf_label(seasons: dict) -> str:
+    """The season tables' name for pf: the Oracle SIHRS only when every
+    published season stores the member."""
+    if seasons and all(tree_carries_oracle(i["root"])
+                       for i in seasons.values()):
+        return PF_LABEL_ORACLE
+    return PF_LABEL_FILTER
+
+
 def discover_seasons(roots=ROOT_ORDER) -> dict:
     """{season: {"root", "origin", "weeks"}} for every season with stored
     weeks, across every known root.
@@ -506,9 +562,14 @@ def build_outlook(seasons: dict, pin: tuple | None = None) -> dict:
         cards_by_model = {m: c for m, c in cards_by_model.items() if c}
         asof = (results.get("forecast_date")
                 or bundle.get("reference_date") or "")
+        ox = results.get("oracle")
         source = {"kind": "run", "run_id": rid, "asof": asof,
                   "season": None, "origin": "live run",
-                  "label": f"this week's run, forecast date {asof}"}
+                  "label": f"this week's run, forecast date {asof}",
+                  # what the fan's mechanistic median is: the member when
+                  # the run recorded the step's bank label, else the filter
+                  "pf_label": (PF_LABEL_ORACLE if ox and ox != "none"
+                               else PF_LABEL_FILTER)}
         fans = _fans_from_results(results, bundle)
     else:
         if not seasons:
@@ -544,7 +605,10 @@ def build_outlook(seasons: dict, pin: tuple | None = None) -> dict:
                                    if vintage is not None else
                                    "settled truth (no vintage archived for "
                                    "this date)"),
-                  "label": f"{season} retrospective, week of {asof}"}
+                  "label": f"{season} retrospective, week of {asof}",
+                  "pf_label": (PF_LABEL_ORACLE if _week_applied(
+                      Path(info["root"]) / "weeks" / asof)
+                      else PF_LABEL_FILTER)}
         fans = _fans_from_payload(payload, observed)
 
     models = [m for m in MODEL_ORDER if m in cards_by_model]
@@ -875,7 +939,7 @@ def harvest_bibliography() -> list:
          "label": "doi:10.1016/j.isci.2019.08.045"},
         {"what": "Model language",
          "text": ("BioNetGen: the rule-based modeling language and compiler "
-                  "the SIHRS model is written in."),
+                  "the SIHRS compartment model is written in."),
          "href": "https://bionetgen.org", "label": "bionetgen.org"},
         {"what": "Target data and comparators",
          "text": ("CDC FluSight forecast hub: NHSN target data, the "
@@ -896,7 +960,8 @@ def harvest_bngl() -> dict:
 
 # -------------------------------------------------------------- consistency
 
-def cross_check(scored: list, placement: dict) -> list:
+def cross_check(scored: list, placement: dict,
+                label: str = PF_LABEL_ORACLE) -> list:
     """Compare every computed season score against the number the console
     publishes for the same season, and record the comparison.
 
@@ -914,7 +979,7 @@ def cross_check(scored: list, placement: dict) -> list:
         app = (placement.get(s["season"]) or {}).get("app_rel")
         if rel is None or app is None:
             continue
-        out.append({"what": f"{s['season']} PF-SIHRS relWIS",
+        out.append({"what": f"{s['season']} {label} relWIS",
                     "computed": rel, "app": app,
                     "ok": abs(rel - app) <= 0.0006})
     return out
@@ -983,7 +1048,9 @@ def build_payload(seasons: dict | None = None,
                    for m, a in sorted(pooled.items()) if _rel(a) is not None},
         "model_order": list(MODEL_ORDER),
         "official_order": list(OFFICIAL_ORDER),
-        "consistency": cross_check(scored, placement),
+        "consistency": cross_check(scored, placement, pf_label(seasons)),
+        # the season tables' name for the mechanistic column (pf_label)
+        "pf_label": pf_label(seasons),
         "elapsed_s": round(time.time() - t0, 2),
     }
 

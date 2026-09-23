@@ -63,6 +63,13 @@ def _mk_root(tmp_path, monkeypatch, stub_plotly=True):
     return root
 
 
+def _sentinel(root):
+    """A stand-in cached export that passes the builder's CONTENT test (it
+    carries the tree's names line), so a caching test sees only mtime."""
+    return ("sentinel " + report_season._names_line(
+        report_season.names_for_root(root)))
+
+
 def _data_block(html):
     m = re.search(r'<script id="pbdata" type="application/json">(.*?)'
                   r'</script>', html, re.S)
@@ -170,16 +177,17 @@ def test_report_rebuilds_when_player_source_changes(tmp_path, monkeypatch):
     fake.write_text(report_season.PLAYER_SRC.read_text())
     monkeypatch.setattr(report_season, "PLAYER_SRC", fake)
     p = report_season.build_season_report(root, SEASON)
-    p.write_text("sentinel")
+    sentinel = _sentinel(root)
+    p.write_text(sentinel)
     future = p.stat().st_mtime + 60
     os.utime(p, (future, future))
     # fresh: reused
     assert report_season.build_season_report(root, SEASON).read_text() \
-        == "sentinel"
+        == sentinel
     # a newer player.js invalidates the cached report
     os.utime(fake, (future + 60, future + 60))
     html = report_season.build_season_report(root, SEASON).read_text()
-    assert html != "sentinel" and "flubnf-player-v1" in html
+    assert html != sentinel and "flubnf-player-v1" in html
 
 
 def test_builder_source_is_a_report_input(tmp_path, monkeypatch):
@@ -233,7 +241,7 @@ def test_report_carries_the_season_verdict_before_the_player(tmp_path,
     # final relWIS tiles for each member and the ensemble, colored by the
     # below-1 rule; the values are the final week's cumulative stats
     for name, val, cls in (("FluBNF Ensemble (retired)", "0.900", "ok"),
-                           ("PF-SIHRS", "0.500", "ok"),
+                           ("Oracle SIHRS", "0.500", "ok"),
                            ("Groundhog", "1.500", "bad")):
         assert name in html, name
         assert f'class="tileval {cls}">{val}' in html, (name, val)
@@ -366,8 +374,10 @@ def test_report_verdict_states_cell_coverage_when_scored(tmp_path,
     root = _mk_root(tmp_path, monkeypatch)
     _write_scores(root)
     html = report_season.build_season_report(root, SEASON).read_text()
-    # 2 weeks x 2 states of synthetic rows, counted on the first model
-    assert "the season's 4 scored PF-SIHRS cells" in html
+    # 2 weeks x 2 states of synthetic rows, counted on the first model,
+    # named for what this tree stores: no oracle.json and no run record
+    # naming the step, so the particle filter alone
+    assert "the season's 4 scored Particle filter alone cells" in html
     # unscored: the generic phrase stands, never an invented count
     root2 = _mk_root(tmp_path / "b", monkeypatch)
     html2 = report_season.build_season_report(root2, SEASON).read_text()
@@ -380,16 +390,17 @@ def test_report_cached_by_mtime_and_invalidated(tmp_path, monkeypatch):
     root = _mk_root(tmp_path, monkeypatch)
     p = report_season.build_season_report(root, SEASON)
     # fresh report is reused verbatim
-    p.write_text("sentinel")
+    sentinel = _sentinel(root)
+    p.write_text(sentinel)
     future = p.stat().st_mtime + 60
     os.utime(p, (future, future))
     assert report_season.build_season_report(root, SEASON).read_text() \
-        == "sentinel"
+        == sentinel
     # a newer samples.json invalidates it
     sp = root / "weeks" / W2 / "samples.json"
     os.utime(sp, (future + 60, future + 60))
     html = report_season.build_season_report(root, SEASON).read_text()
-    assert html != "sentinel" and "pbdata" in html
+    assert html != sentinel and "pbdata" in html
 
 
 # ---------------------------------------------------------------- size guard
