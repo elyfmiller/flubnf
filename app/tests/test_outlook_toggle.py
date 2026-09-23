@@ -307,19 +307,21 @@ def test_stored_pre_bundle_run_gets_the_approximate_toggle(
     srv._invalidate_scans()
     rid, res = srv._latest_results()
     cards, meta = srv._outlook_cards(res, rid)
-    # a legacy run stores all three; the PF is the default now and the
-    # stored blend is still offered, since it is that run's record
+    # a legacy run stores all three; the PF is the default and the two
+    # models that ship are offered. The stored blend is not a choice
+    # beside them (2026-09-23); it renders only where a run stored nothing
+    # else, and test_home_shows_no_toggle_for_a_single_model_pre_v3_bundle
+    # covers that case
     assert meta["approx"] is True and meta["model"] == "pf"
     bm = meta["by_model"]
-    assert set(bm) == {"pf", "analogue", "ensemble"}
+    assert set(bm) == {"pf", "analogue"}
     # every model's Ohio card equals the exact CDF reading of ITS OWN
     # stored five-level grid -- never the few-values-as-samples stand-in
     locs = load_locations()
     pop = int(dict(zip(locs.location_name,
                        locs.population.astype(float)))["Ohio"])
     lo = parts["obs"]["Ohio"][-1][1]
-    for model, q in (("ensemble", parts["ens_q"]), ("pf", parts["pf_q"]),
-                     ("analogue", parts["an_q"])):
+    for model, q in (("pf", parts["pf_q"]), ("analogue", parts["an_q"])):
         grid = {str(l): v for l, v in q["Ohio"][hz.HORIZONS[0]].items()
                 if str(l) in LV}
         expect = categorical_probs_from_quantiles(grid, lo, pop, 0)
@@ -327,11 +329,12 @@ def test_stored_pre_bundle_run_gets_the_approximate_toggle(
         for c in expect:
             assert abs(got[c] - expect[c]) < 1e-9, (model, c)
     home = client.get("/").text
-    # the working toggle, default PF, all three stored models
+    # the working toggle, default PF, the two models that ship; the stored
+    # blend is never offered as a choice beside them (2026-09-23)
     assert 'id="outlook-model"' in home
     assert 'data-mmodel="pf" aria-pressed="true"' in home
     assert 'data-mmodel="analogue" aria-pressed="false"' in home
-    assert 'data-mmodel="ensemble" aria-pressed="false"' in home
+    assert 'data-mmodel="ensemble"' not in home
     # the honesty marker rides the caption, and the label span is the
     # relabel target
     assert "approximate, from stored quantiles" in home
