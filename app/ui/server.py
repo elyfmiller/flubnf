@@ -4088,6 +4088,15 @@ def _sealed_label(root: Path) -> str:
     return ""
 
 
+def _root_for(season: str, archive: str = "", src: str = "") -> tuple:
+    """_season_root, naming the source only when one is in play, so every
+    caller (and every test that stands in for _season_root with its
+    two-argument shape) sees exactly the call it saw before sources."""
+    if src:
+        return _season_root(season, archive, src)
+    return _season_root(season, archive)
+
+
 def _season_root(season: str, archive: str = "", src: str = "") -> tuple:
     """(root, is_seal): a season may live under the app's retro root or one
     of the sealed full-grid records; show whichever has the most completed
@@ -5190,7 +5199,7 @@ def api_retro_results_status(season: str, archive: str = "", src: str = ""):
         return {"pending": False, "error": "unrecognized season"}
     if not _valid_src(src) or (src and archive):
         return {"pending": False, "error": "unrecognized source"}
-    root, _is_seal = _season_root(season, archive, src)
+    root, _is_seal = _root_for(season, archive, src)
     job = _results_jobs.get(str(root))
     if job and not job["done"].is_set():
         return {"pending": True, "phase": job["phase"],
@@ -5550,7 +5559,7 @@ def retro_results(request: Request, season: str, week: str = "",
     if src and (not _valid_src(src) or archive or not _valid_season(season)):
         _flash("Unrecognized retrospective source.")
         return RedirectResponse("/retro", status_code=303)
-    root, _is_seal = _season_root(season, archive, src)
+    root, _is_seal = _root_for(season, archive, src)
     # the backfilled source, named on the page with its own record
     source = None
     if src:
@@ -5844,7 +5853,7 @@ def api_retro_playback(season: str, asof: str, archive: str = "",
     if src and (not _valid_src(src) or archive or not _valid_season(season)):
         return PlainTextResponse("unrecognized retrospective source",
                                  status_code=404)
-    root, _is_seal = _season_root(season, archive, src)
+    root, _is_seal = _root_for(season, archive, src)
     try:
         return playback.build_week(root, season, asof)
     except playback.UnknownWeek as e:
@@ -5874,7 +5883,7 @@ def api_retro_mapswap(season: str, asof: str, archive: str = "",
     if src and (not _valid_src(src) or archive or not _valid_season(season)):
         return PlainTextResponse("unrecognized retrospective source",
                                  status_code=404)
-    root, _is_seal = _season_root(season, archive, src)
+    root, _is_seal = _root_for(season, archive, src)
     from app.core import retro as _retro
     if _retro.week_samples_path(root, asof) is None:
         return PlainTextResponse(f"no stored week {asof}", status_code=404)
@@ -5903,7 +5912,7 @@ def retro_season_report(season: str, archive: str = "", src: str = ""):
     if src and (not _valid_src(src) or archive or not _valid_season(season)):
         return PlainTextResponse("unrecognized retrospective source",
                                  status_code=404)
-    root, _is_seal = _season_root(season, archive, src)
+    root, _is_seal = _root_for(season, archive, src)
     try:
         p = report_season.build_season_report(
             root, season, archive=archive,
@@ -5928,7 +5937,7 @@ def api_retro_report_path(season: str, archive: str = "", src: str = ""):
     if src and (not _valid_src(src) or archive or not _valid_season(season)):
         return PlainTextResponse("unrecognized retrospective source",
                                  status_code=404)
-    root, _is_seal = _season_root(season, archive, src)
+    root, _is_seal = _root_for(season, archive, src)
     try:
         p = report_season.build_season_report(
             root, season, archive=archive,
