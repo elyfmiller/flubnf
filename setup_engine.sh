@@ -55,7 +55,8 @@ done
 if [ -z "$PY" ]; then
   for cand in /opt/anaconda3/bin/python3.12 "$HOME/anaconda3/bin/python3.12" \
               /opt/homebrew/bin/python3.12 /usr/local/bin/python3.12 \
-              /opt/homebrew/bin/python3.11 /usr/local/bin/python3.11; do
+              /opt/homebrew/bin/python3.11 /usr/local/bin/python3.11 \
+              /Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12; do
     [ -x "$cand" ] && { PY="$cand"; break; }
   done
 fi

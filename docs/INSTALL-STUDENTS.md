@@ -136,11 +136,57 @@ it. Install it from the link at the top, then close and reopen the window.
 
 ---
 
+## Reinstalling from scratch (macOS)
+
+If your copy is out of date or broken, or Ely asks everyone to reinstall,
+do this instead of the steps above. Restart your Mac first, so no old
+FluBNF is still running. Save the engine file you were sent into Downloads
+(Step 2), and delete any older `pybnf-pf-….tar.gz` files from Downloads
+and the Desktop, so the file you were sent is the only engine file on the
+machine. Then paste this one line into Terminal:
+
+```bash
+curl -sL https://raw.githubusercontent.com/elyfmiller/flubnf/main/reinstall.sh | bash
+```
+
+It checks first and changes nothing until the checks pass: git, a Python
+the engine can use (Anaconda from "Before you start", or Python 3.12), no
+FluBNF running, GitHub reachable, an engine file saved where setup looks.
+Then it renames your old FluBNF folder, the engine's Python environment
+and any unpacked engine copy with `-old-` and the date and time (nothing
+is deleted; your old runs stay inside the renamed folder, and the new
+console starts without them), moves every other engine file
+(`pybnf….tar.gz`, `pybnf….bundle`) sitting in Downloads, Desktop,
+Documents or the GitHub folder beside FluBNF into
+`Downloads/old-engine-files`, installs FluBNF fresh, installs the engine
+from the file it found, and opens the console. If the install stops before
+a new console exists, it puts the old copies back.
+
+Once the new console works, the `-old-` folders and
+`Downloads/old-engine-files` (your old engine `.tar.gz` files) can go in
+the Trash. Old `pybnf-pf-….tar.gz` files left in Downloads are how a
+machine ends up with the wrong engine, because setup takes the newest file
+it finds, so delete them whenever a new one arrives. If FluBNF was in your
+Dock, that icon now points at the renamed copy and will not open; drag it
+off and drag `FluBNF.app` from the new folder on instead.
+
+Pasting the line again on a machine that is already current changes
+nothing; it just opens the console. If it says `already current` but the
+console is still broken, paste this instead:
+
+```bash
+curl -sL https://raw.githubusercontent.com/elyfmiller/flubnf/main/reinstall.sh | FLUBNF_REINSTALL_FORCE=1 bash
+```
+
+---
+
 ## Notes
 
 The engine you were sent is a **snapshot**, so it does not update itself
 from GitHub. When the engine changes you are sent a newer file: save it in
-Downloads and open FluBNF again. Setup takes the newest archive it can find,
+Downloads, delete the old `pybnf-pf-….tar.gz` from Downloads so there is
+no doubt which one was installed, and open FluBNF again. Setup takes the
+newest archive it can find,
 and since 2026-09-09 a newer one also replaces an engine that is already
 unpacked (the old copy is moved aside, never deleted). Before that it did
 not, and a laptop kept a three week old engine through a clean reinstall
