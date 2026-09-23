@@ -123,7 +123,12 @@ engine:
     flubnf groundhog retro all --aux flusurv
 
 or from the console, Retrospective tab, engine preset "Groundhog only"
-(minutes per season; the two paths agree cell for cell). These are self
+(minutes per season; the two paths agree cell for cell). A season's
+Oracle SIHRS is made the same way a live week is: a console replay,
+Retrospective tab, preset "Oracle SIHRS and the Groundhog" (or
+`flubnf retro <season>`), which fits every week from the season start and
+applies the Oracle step with that week's data and donor pool (hours per
+season, needs the engine venv). These are self
 computed retrospective replays, not real time submissions. Methodology
 and caveats are on the console's Methods page; the research outputs
 behind these records live in the lab's archive, not in this repository's

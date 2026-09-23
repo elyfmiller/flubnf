@@ -147,6 +147,22 @@ A week that ran the plain filter carries `applied: false` and the reason.
 The console run's outcome and results.json carry the bank label under
 `oracle`; the ledger's settings line reads "Oracle step".
 
+## 3b. A season's Oracle SIHRS: replay it in the console
+
+Nothing is kept for a retrospective to be assembled from: no fits, no
+forecasts, no particles. A season's Oracle SIHRS is made by replaying it,
+the way a live week is made: the Retrospective tab, a season, the preset
+"Oracle SIHRS and the Groundhog", Run (or `flubnf retro <season>`). Each
+week (`app.core.retro.run_season` -> `run_week`) the particle filter is
+fitted from the season start (August 1) through that as-of week on that
+week's vintage, the Oracle step is applied with that week's vintage and
+donor pool, and the week is stored with oracle.json beside it (section
+3). run_meta.json records `settings.oracle = "applied"`, and the season
+is titled the Oracle SIHRS on the Retrospective index and its season page
+(a tree with no oracle.json and no such record, as every sealed record
+is, reads "Particle filter alone"). Scoring, the season player and the
+season report read the replayed tree like any other.
+
 ## 4. The plain filter: a research run (the Groundhog precedent)
 
 The un-informed filter is reachable the way the bare calendar analogue is
@@ -170,10 +186,16 @@ comparison and the season-end reading need. A live console run keeps the
 filter's samples as `pf_filter.json.gz` in its workroot, the courtesy copy
 the 2026-27 shadow run reads; nothing displays, scores or exports it.
 
-## 5. Backfill and reproduce
+## 5. Backfill and reproduce: a verification tool
 
-Compute the member for every stored week of a season root, from the
-stored samples and no refit, into a NEW root:
+The two `flubnf oracle` commands are for verification only: they prove
+that the app's code reproduces the registered screens from the forecasts
+those screens saved, without a refit. They are not how a season is run or
+viewed; that is a console replay (section 3b), and a backfilled root is a
+research directory the console does not show.
+
+`backfill` computes the member for every stored week of a season root,
+from the stored samples and no refit, into a NEW root:
 
     flubnf oracle backfill 2025-26 --source <season root> --out <new root>
 
@@ -182,11 +204,13 @@ app/state (the sealed and live trees) or a non-empty tree (unless
 `--force`). Each week is read through the storage boundary and written
 back through it: `pf` the member, `pf_filter` the source's pf verbatim,
 `analogue` verbatim, the sidecar, oracle.json (with the source file's
-sha256 folded in) and the pool. The hub the process reads (FLUBNF_HUB)
+sha256 folded in) and the pool. Keeping `pf_filter` (the default,
+`--no-keep-filter` drops it) is the research root's choice; a replay's
+stored week does not carry it (section 4). The hub the process reads (FLUBNF_HUB)
 supplies the vintages.
 
-Score a backfilled root with the app's own scorer and print relWIS beside
-the screen's tables:
+`reproduce` scores a backfilled root with the app's own scorer and prints
+relWIS beside the screen's tables:
 
     flubnf oracle reproduce <new root>/2024-25 <new root>/2025-26 \
         --source <grid>/2024-25 --source <grid>/2025-26 \

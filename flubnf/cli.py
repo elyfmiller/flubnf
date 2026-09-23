@@ -2785,12 +2785,16 @@ def bank_show_cmd(
 # with the step applied; these two commands take a season that is already
 # stored, compute the member from its samples into a NEW root, and score
 # that root with the app's own scorer beside the registered screen's tables
-# (docs/ORACLE-SIHRS.md). Neither needs the engine.
+# (docs/ORACLE-SIHRS.md). Neither needs the engine. They verify that the
+# app's code reproduces the registered screens; a season is run and viewed
+# by a console replay, never by backfilling.
 # ---------------------------------------------------------------------------
 oracle_app = typer.Typer(
     add_completion=False, no_args_is_help=True,
-    help="The Oracle SIHRS on a stored season: backfill into a new root, "
-         "and reproduce the screen's relWIS with the app's scorer.")
+    help="Verification only: backfill a stored season into a new root and "
+         "reproduce the registered screen's relWIS with the app's scorer, "
+         "no refit. A season is run and viewed by a console replay "
+         "(flubnf retro, or the Retrospective tab).")
 app.add_typer(oracle_app, name="oracle")
 
 
@@ -2812,7 +2816,9 @@ def oracle_backfill_cmd(
              "does not carry it)."),
 ):
     """Compute the Oracle SIHRS for every stored week of a season root, from
-    the stored samples and no refit, into a new root.
+    the stored samples and no refit, into a new root: a verification that
+    the app's code reproduces the registered screen, not how a season is
+    run or viewed (that is a console replay, flubnf retro).
 
     Each week is read through the storage boundary and written back
     through it: pf the member (the submitted seed's samples), pf_filter
