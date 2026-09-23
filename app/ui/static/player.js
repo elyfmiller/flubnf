@@ -346,6 +346,18 @@ function weekCellState(v, isOfficial, weekKnown, weekHas, seasonHas){
 // US the reason is structural: the fitted members are per-state, so the
 // officials are the US view's only source, and a week they did not submit
 // (outside the competition window) has nothing to draw.
+// The models the player offers, in display order: the models that ship,
+// never the retired blend beside them (a season played back before
+// 2026-09-22 stored its forecasts and scores). The blend is offered only
+// when a stored season has nothing else, so such a season still plays.
+// app/core/report_v2.py RETIRED_MODELS names the same set for the pages.
+var RETIRED_MODELS = ['ensemble'];
+function offeredModels(have){
+  var live = ['pf', 'analogue', 'pf2s'].filter(function(m){ return have[m]; });
+  if(live.length) return live;
+  return RETIRED_MODELS.filter(function(m){ return have[m]; });
+}
+
 function noForecastNote(loc, available, enabled, us){
   if(available > 0 && enabled > 0) return '';
   if(available > 0) return 'no models enabled';
@@ -423,11 +435,9 @@ function createPlayer(cfg){
     var have = {};
     ((cat && cat.models) || (pl ? Object.keys(pl.models || {}) : []))
       .forEach(function(m){ have[m] = 1; });
-    // the two models that ship first; a stored blend (a payload from a
-    // season played back before it was retired) is still offered as that
-    // season's record
-    var ours = ['pf', 'analogue', 'pf2s', 'ensemble']
-      .filter(function(m){ return have[m]; });
+    // the models that ship, never the retired blend beside them
+    // (offeredModels); the season's headline keeps the blend's score
+    var ours = offeredModels(have);
     ALLM = ours.concat(OFFS);
     var dflt = {ensemble: true, pf: true, analogue: true};
     ALLM.forEach(function(m){ if(!(m in P.on)) P.on[m] = !!dflt[m]; });
@@ -848,6 +858,8 @@ var FluBNFPlayer = {
     availabilityTier: availabilityTier,
     weekCellState: weekCellState,
     noForecastNote: noForecastNote,
+    offeredModels: offeredModels,
+    RETIRED_MODELS: RETIRED_MODELS,
     US_LABELS: US_LABELS,
     US_PROVENANCE: US_PROVENANCE,
     usProvenance: usProvenance,

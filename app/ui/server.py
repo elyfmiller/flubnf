@@ -1147,6 +1147,14 @@ def forecast_page(request: Request):
                     if all(isinstance(v, dict) for v in qs.values())}
             if good:
                 fanq[mname] = good
+        # one model button per key: the retired blend is never a choice
+        # beside the models that ship (report_v2.toggle_models, the home
+        # outlook's rule), and a run from before 2026-09-22 stored one. It
+        # is drawn only when a legacy run stored nothing else.
+        from app.core.report_v2 import toggle_models
+        live = toggle_models(fanq)
+        if live:
+            fanq = {m: fanq[m] for m in live}
     ledger_rows = Ledger().rows(5)
     for r in ledger_rows:
         r["label"] = _run_label(r["run_id"], r.get("spec", ""))
