@@ -84,9 +84,10 @@
    <thead><tr><th>Season</th><th class="num">Oracle SIHRS</th>
     <th class="num">Plain filter</th><th class="num">Cells</th></tr></thead>
    <tbody>
-    {% for key, label in [("2024-25", "2024-25"), ("2025-26", "2025-26"), ("both", "Both")] %}
+    {% for key, label in [("2023-24", "2023-24"), ("2024-25", "2024-25"), ("2025-26", "2025-26"),
+                          ("both", "2024-25 and 2025-26"), ("three", "Three seasons")] %}
     {% set r = oracle_text.RECORD[key] %}
-    <tr{% if key == "both" %} class="total"{% endif %}><td>{{ label }}</td>
+    <tr{% if key in ("both", "three") %} class="total"{% endif %}><td>{{ label }}</td>
      <td class="num rel">{{ oracle_text.fmt(r.oracle) }}</td>
      <td class="num">{{ oracle_text.fmt(r.filter) }}</td>
      <td class="num">{{ oracle_text.cells(r.cells) }}</td></tr>
@@ -94,11 +95,11 @@
    </tbody>
   </table>
   <p class="hint">The Oracle SIHRS against the plain particle filter on the
-  same cells: the stored 2024-25 and 2025-26 forecasts with the Oracle step
-  applied, a frozen-specification replication; the 2026-27 season is the
-  prospective test. In 2023-24 only one earlier season (2022-23) is
-  admissible as a donor, fewer than the two the rule needs, so the step
-  leaves the filter unchanged there (docs/ORACLE-SIHRS.md).</p>
+  same cells: the stored forecasts of the three record seasons with the
+  Oracle step and its donor bank (NHSN admissions and FluSurv-NET growth,
+  the Groundhog's own, half and half) applied.
+  {{ oracle_text.BANK_TEXT.coverage }} {{ oracle_text.caveat() }}
+  (docs/ORACLE-SIHRS.md)</p>
   <table class="perf">
    {# every score column is named for whose forecast it scores, so no
       column reads as the FluSight ensemble's. The relWIS unit for all of

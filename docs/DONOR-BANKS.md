@@ -193,6 +193,54 @@ enforced at `MIN_DONORS = 30` in `analogue_quantiles` and
 `spliced_quantiles`, reached through `forecast()`. A reuse that calls
 `donor_ratios` directly must enforce the floor itself.
 
+### Growth paths: the same donors as trajectories
+
+```python
+from flubnf.analogue import donor_paths
+
+paths = donor_paths(b, epiweek(asof), season_of(asof), length=6)
+paths, keys = donor_paths(b, epiweek(asof), season_of(asof), length=6,
+                          with_keys=True)
+```
+
+`donor_paths` selects from exactly the cells `donor_ratios` selects: the
+first three rules above and the anchor half of the fourth live in one
+shared helper, `_donor_cells`, so the two cannot disagree about the pool.
+The future-cell half of the fourth rule is where they differ by design:
+`donor_ratios` needs the one cell at `h`, `donor_paths` keeps a donor only
+when every one of its `length` future cells is present, finite and
+positive, and returns one row per donor, `v(d + 7k) / v(d)` for k = 1 to
+`length`. Column k-1 is therefore a
+subset of `donor_ratios(..., k)`, and at `length=1` the two are identical,
+order included. The shape is `(n, length)`, `(0, length)` when nothing
+qualifies; `with_keys=True` also returns each row's `(loc, d)` so a caller
+can weight or group donors by `season_of(d)`. Future values are read by
+date arithmetic, so the week-53 seam is handled. Like `donor_ratios` it
+applies no floor. The ratios are on the bank's own scale; to put them on
+another stream's scale apply `fit_log_ratio_shrink` in log space (section
+6). `tests/test_donor_paths.py` pins these properties on a synthetic bank,
+pins four cells of the table below on the committed banks, and pins
+`donor_ratios` byte for byte at four points on the committed banks across
+the refactor (an independent full-grid comparison against main, 118,720
+calls, found no difference).
+
+What the committed banks can supply as complete paths (target season 2026,
+default exclusions and bandwidth):
+
+| epiweek | FluSurv-NET, 4 weeks | FluSurv-NET, 6 weeks | ILI+, 4 weeks | ILI+, 6 weeks |
+|---|---|---|---|---|
+| 48 | 1,067 | 1,048 | 1,543 | 1,536 |
+| 2 | 1,202 | 1,192 | 1,674 | 1,658 |
+| 6 | 1,204 | 1,179 | 1,613 | 1,587 |
+| 10 | 1,145 | 889 | 1,529 | 1,407 |
+| 14 | 501 | 142 | 1,267 | 1,099 |
+| 18 | 110 | 83 | 929 | 739 |
+
+Mid-season the completeness requirement costs almost nothing. From epiweek
+10 the FluSurv-NET paths thin out, because that stream has almost no May to
+September cells (section 3), while ILI+ holds up; a late-season use draws
+paths from ILI+ or accepts the smaller pool, and says which.
+
 `DEFAULT_BANDWIDTH = 2` is the value the sealed record ran at, inherited
 rather than selected on the current pipeline (the provenance comment above
 it in `flubnf/analogue.py` says so). Changing it invalidates every sealed
@@ -321,8 +369,9 @@ What transfers directly:
 * **The banks.** `bank.read(stream)` gives the mapping; both are committed,
   offline, digest-verified.
 * **Calendar-matched, strictly-prior, exclusion-respecting donor selection.**
-  `donor_ratios` on any bank, a pure function of the bank and the target
-  date. `in_season_log_ratios(bank, horizon, seasons)` gives the log
+  `donor_ratios` (one horizon's ratios) and `donor_paths` (complete
+  trajectories, section 5) on any bank, pure functions of the bank and the
+  target date. `in_season_log_ratios(bank, horizon, seasons)` gives the log
   growth of NAMED seasons inside the in-season window (epiweek >= 47 or
   <= 20); it applies no strictly-prior test, no bandwidth and no
   exclusion, so the caller picks the seasons, the way `fit_log_ratio_shrink`
@@ -355,20 +404,35 @@ What does not transfer and must be decided on the Oracle SIHRS side:
   measurements above all followed that rule; the mechanistic reuse should
   too.
 
-Two uses that fit the primitives with little glue: an empirical prior on
-the next four weeks' growth (the pooled ratio quantiles for the current
-epiweek and horizon from `donor_ratios`; for per-donor-season ratios,
-filter the bank by `season_of` first, since `exclude_seasons` accepts only
-registered seasons and cannot be used to isolate one), and a per-season
-shape library (`in_season_log_ratios` over a season list the caller has
-already restricted to strictly prior, non-excluded seasons). Both are
-ratio-space and inherit the vintage safety argument.
+Three uses that fit the primitives with little glue: an empirical prior
+on the next four weeks' growth (the pooled ratio quantiles for the current
+epiweek and horizon from `donor_ratios`); a prior on the next six weeks'
+growth as trajectories (`donor_paths` with `length=6`, taking `np.log` of
+the rows, grouped by season through `with_keys` where the model weights
+donor seasons; per-donor-season isolation goes through the keys, since
+`exclude_seasons` accepts only registered seasons and cannot isolate
+one); and a per-season shape library (`in_season_log_ratios` over a season
+list the caller has already restricted to strictly prior, non-excluded
+seasons). All are ratio-space and inherit the vintage safety argument.
+
+How the Oracle SIHRS ships them (bank change B2, 2026-09-23;
+docs/ORACLE-SIHRS.md section 5b): `flubnf/oracle_mix.py` takes the donor
+cells of the committed FluSurv-NET bank from `donor_paths(..., length=6,
+with_keys=True)`, adds the W-1 cell the eight-week growth path needs, the
+season-crossing rule and the guards, stamps the paths with the admissions
+bank's smoother on the rate series, and scales their log growth by the
+`fit_log_ratio_shrink` factor the Groundhog fits on the same vintage. The
+Groundhog's weight 0.5 becomes a per-sample mixture: each forecast sample
+path draws its donor from the admissions or the FluSurv-NET pool with
+equal probability. Nothing in `flubnf/analogue.py` changed for it.
 
 ## 8. Tests that pin this
 
 `tests/test_epiweek53.py` (window and date arithmetic across the week-53
 seam), `tests/test_analogue.py` (donor selection, and that the 2020-21
-exclusion changes only the ILI+ pool), `app/tests/test_analogue_splice.py`
+exclusion changes only the ILI+ pool), `tests/test_donor_paths.py` (growth
+paths, the shared selection rule, and the byte-identity of `donor_ratios`
+on the committed banks), `app/tests/test_analogue_splice.py`
 (vincentization, shrink fit, abstention, the pool contract, presets),
 `app/tests/test_horizon_convention.py` (the 0 to 3 boundary),
 `app/tests/test_bank.py`

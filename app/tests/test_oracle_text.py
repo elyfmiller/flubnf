@@ -25,6 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+import pytest                                              # noqa: E402
 from fastapi.testclient import TestClient                  # noqa: E402
 from markupsafe import escape                              # noqa: E402
 
@@ -40,15 +41,21 @@ client = TestClient(srv.app)
 # ------------------------------------------------------- the one marked place
 
 def test_the_bank_words_follow_the_library_stream():
-    from flubnf import oracle_bank
-    assert ot.BANK_STREAM == oracle_bank.STREAM, (
-        "the Oracle step's donor stream changed (bank change B2?): rewrite "
+    from flubnf import oracle_mix
+    assert ot.BANK_STREAM == oracle_mix.STREAM, (
+        "the Oracle step's shipped donor bank changed: rewrite "
         "app/core/oracle_text.BANK_TEXT, then BANK_STREAM, together")
+    # both streams are named wherever the bank is described
+    for key in ("phrase", "diagram", "pool", "card"):
+        assert "NHSN" in ot.BANK_TEXT[key] and "FluSurv-NET" in ot.BANK_TEXT[key], key
+    assert "Groundhog's own" in ot.BANK_TEXT["pool"] and "half and half" in ot.BANK_TEXT["pool"]
 
 
-def test_the_prereg_hash_is_the_librarys():
+def test_the_document_hashes_are_the_librarys():
     from flubnf import oracle
     assert ot.PREREG_SHA256 == oracle.PREREG_SHA256
+    assert ot.B2_SHA256 == oracle.B2_SHA256
+    assert ot.ADDENDUM_A2_SHA256 == oracle.ADDENDUM_A2_SHA256
 
 
 def test_no_template_types_the_bank_itself():
@@ -67,9 +74,38 @@ def test_every_record_figure_is_in_the_oracle_doc():
         for field in ("oracle", "filter"):
             assert ot.fmt(r[field], 4) in doc, (key, field)
         assert ot.cells(r["cells"]) in doc, key
+    assert ot.fmt(ot.RECORD_ADMISSIONS_ONLY["both"], 4) in doc
+    lo, hi = ot.RECORD_B2_1["reading95"]
+    assert f"{lo:+.4f} to {hi:+.4f}" in doc and ot.RECORD_B2_1["outcome"] in doc
     # the three-place figures the pages print are those, rounded
-    assert ot.fmt(ot.RECORD["both"]["oracle"]) == "0.741"
+    assert ot.fmt(ot.RECORD["both"]["oracle"]) == "0.731"
     assert ot.fmt(ot.RECORD["both"]["filter"]) == "0.813"
+    assert ot.fmt(ot.RECORD_ADMISSIONS_ONLY["both"]) == "0.741"
+
+
+_B2_SCORES = (Path("~/Documents/FluBNF-local/research/groundhog-beta/oracle_member/b2/"
+                   "results/screen_b2_scores.json").expanduser())
+
+
+@pytest.mark.skipif(not _B2_SCORES.is_file(), reason="the B2 screen's scores are not on this machine")
+def test_the_record_is_the_b2_screens_own_numbers():
+    """RECORD is read from the B2 screen, never typed: the shipped member
+    (LBGH) and the plain filter (NULL) on the common set, seed mean, and
+    the screen's cell counts; the admissions-only member (LB) and claim
+    B2-1's reading beside them."""
+    d = json.loads(_B2_SCORES.read_text())
+    assert d["b2_frozen_sha256"] == ot.B2_SHA256
+    rt, ps = d["relwis_tables"], d["per_season"]
+    scope = {"2023-24": "2023-24", "2024-25": "2024-25", "2025-26": "2025-26",
+             "both": "active2", "three": "pooled3"}
+    for key, sc in scope.items():
+        assert ot.RECORD[key]["oracle"] == rt["LBGH"]["common"][sc], key
+        assert ot.RECORD[key]["filter"] == rt["NULL"]["common"][sc], key
+        assert ot.RECORD[key]["cells"] == ps[sc]["cells_common"], key
+    assert ot.RECORD_ADMISSIONS_ONLY["both"] == rt["LB"]["common"]["active2"]
+    r = d["readings"]["claim_B2_1_BEATS_THE_FROZEN_MEMBER"]
+    assert ot.RECORD_B2_1["point"] == r["point"] and ot.RECORD_B2_1["outcome"] == r["outcome"]
+    assert list(ot.RECORD_B2_1["reading95"]) == r["reading95"]
 
 
 # ----------------------------------------------------------- the pipeline
@@ -119,7 +155,9 @@ def test_model_tab_describes_the_member_as_it_is():
                    "donor growth ratios to the last observed count",
                    "separate models", "frozen-specification replication",
                    "2026-27 season is its prospective test",
-                   "relWIS 0.741 against the plain filter's 0.813",
+                   "relWIS 0.731 against the plain filter's 0.813",
+                   "0.767 against 0.840 in 2023-24", "0.738 against 0.819",
+                   "0.731 against 0.741", "includes zero",
                    "9,279 cells", "How the forecast is made",
                    "The compartment model the filter fits"):
         assert needle in t, needle
@@ -131,8 +169,11 @@ def test_methods_carries_the_oracle_step_card():
     for needle in ("The Oracle step", "One donor per sample",
                    "How it relates to the Groundhog", "Why.",
                    "frozen by a pre-registration", ot.PREREG_SHA256[:16],
-                   "0.719", "0.794", "0.774", "0.843", "0.741", "0.813",
-                   "2023-24 only one earlier season (2022-23) is admissible",
+                   ot.B2_SHA256[:16],
+                   "0.697", "0.794", "0.781", "0.843", "0.731", "0.813",
+                   "0.767", "0.840", "0.738", "0.819", "0.741",
+                   "only one earlier NHSN season (2022-23) is admissible",
+                   "includes zero",
                    "flubnf retro --oracle none"):
         assert needle in t, needle
     # the three-season table names the filter it scores

@@ -255,8 +255,9 @@
  growth and that donor's growth. Fourth, the Oracle SIHRS forecast, propagated from the
  filter's own state and reduced to 23 quantiles. Below the blend, the donor
  pool feeds it: growth paths from strictly earlier seasons at this calendar
- week, within two epiweeks, from every jurisdiction, one donor drawn per
- sample path.</desc>
+ week, within two epiweeks, half from NHSN admissions and half from
+ FluSurv-NET hospitalization rates (the Groundhog's own donor bank), one
+ donor drawn per sample path.</desc>
  <defs>
   <marker id="arr-{{ uid }}" viewBox="0 0 10 10" refX="9" refY="5"
           markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -306,7 +307,7 @@
   <text x="635" y="228" class="svgt-md" font-weight="700">Donor pool</text>
   <text x="635" y="250" class="svgt-sm">earlier seasons, this</text>
   <text x="635" y="268" class="svgt-sm">calendar week &#177; 2,</text>
-  <text x="635" y="286" class="svgt-sm">every jurisdiction:</text>
+  <text x="635" y="286" class="svgt-sm">half and half from</text>
   <text x="635" y="304" class="svgt-sm">{{ oracle_text.BANK_TEXT.diagram }}</text>
  </g>
 </svg>

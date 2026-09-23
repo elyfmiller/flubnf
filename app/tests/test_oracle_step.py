@@ -23,6 +23,7 @@ from app.core import reclaim, retro                      # noqa: E402
 from app.core.runs import RunSpec, is_research, spec_settings   # noqa: E402
 from flubnf import oracle as OR                          # noqa: E402
 from flubnf import oracle_bank as OB                     # noqa: E402
+from flubnf import oracle_mix as MX                      # noqa: E402
 
 ASOF = "2098-01-04"                                       # a Saturday
 FIPS = {"Ohio": "39", "Utah": "49", "California": "06", "Texas": "48"}
@@ -37,6 +38,22 @@ def _saturdays(first: date, last: date) -> list:
         out.append(d)
         d += timedelta(days=7)
     return out
+
+def _synthetic_flusurv(monkeypatch, first: date, last: date) -> dict:
+    """A FluSurv-NET bank over the synthetic hub's own seasons, put where
+    flubnf.oracle_mix reads the committed one: the committed bank ends in
+    2026 and shares no season with a hub of the 2090s, so no shrink could
+    be fitted against it (the step raises then, by design)."""
+    from flubnf import bank as BK
+    from flubnf import oracle_mix as MX
+    b = {}
+    for i, d in enumerate(_saturdays(first, last)):
+        for j, loc in enumerate(("ca", "co", "network_all")):
+            b[(loc, d)] = round(1.9 + 0.8 * np.sin(2 * np.pi * (i + 5 * j) / 52.0)
+                                + 0.05 * ((i * 7 + j) % 5), 4)
+    man = {"stream": "flusurv", "digest": BK.digest(b), "cells": len(b)}
+    monkeypatch.setattr(MX, "read_bank", lambda banks_dir=None: (b, man))
+    return {"bank": b, "manifest": man}
 
 
 @pytest.fixture
@@ -62,7 +79,8 @@ def hubfiles(tmp_path, monkeypatch):
                 w.writerow([d.isoformat(), f, name, round(v, 3)])
     monkeypatch.setattr(oracle_mod, "LOCATIONS", loc)
     monkeypatch.setattr(oracle_mod, "vintage_path", lambda d: vf)
-    return {"locations": loc, "vintage": vf}
+    aux = _synthetic_flusurv(monkeypatch, date(2095, 8, 1), T)
+    return {"locations": loc, "vintage": vf, "aux": aux}
 
 
 def _samples(locs=("Ohio", "Utah", "US"), n=400, seed=1) -> dict:
@@ -94,21 +112,36 @@ def test_apply_week_stores_the_member_and_writes_the_provenance(hubfiles, tmp_pa
     assert member["US"] == raw["US"]
     assert prov["locations"]["US"]["reason"].startswith("outside the registered member")
     assert prov["cells"]["outside_member"] == ["US"]
-    # the library's own answer, bit for bit
+    # the library's own answer, bit for bit: the mixture of the two written
+    # halves (bank change B2)
     pool, man = OB.read_pool(wd / oracle_mod.BANK_DIRNAME, ASOF)
+    araw, aman = MX.read_pool(wd / oracle_mod.BANK_DIRNAME, ASOF)
+    auxp = MX.shrunk_pool(araw, aman["shrink"])
     r = OR.member_for_cell(raw["Ohio"][hz.ORIGIN], [raw["Ohio"][h] for h in hz.HORIZONS],
-                           pool, date.fromisoformat(ASOF), "39")
-    assert r.active
+                           pool, date.fromisoformat(ASOF), "39", aux_pool=auxp)
+    assert r.active and r.w_aux == 0.5 and 0 < r.n_aux_drawn < len(raw["Ohio"]["0"])
     for hi, h in enumerate(hz.HORIZONS):
         assert member["Ohio"][h] == r.samples[hi].tolist()
+    lb = OR.member_for_cell(raw["Ohio"][hz.ORIGIN], [raw["Ohio"][h] for h in hz.HORIZONS],
+                            pool, date.fromisoformat(ASOF), "39")
     # the provenance
     fp = wd / oracle_mod.PROVENANCE_NAME
     assert fp.is_file() and json.loads(fp.read_text()) == prov
     assert prov["applied"] is True and prov["member"] == "Oracle SIHRS"
     assert prov["prereg_sha256"] == OR.PREREG_SHA256
-    assert prov["bank"]["label"] == f"admissions-fbase@{man['digest'][:8]}"
-    assert prov["bank"]["digest"] == man["digest"] and prov["bank"]["n_paths"] == pool["n"]
+    assert prov["b2_sha256"] == OR.B2_SHA256
+    assert prov["addendum_a2_sha256"] == OR.ADDENDUM_A2_SHA256
+    aux_digest = hubfiles["aux"]["manifest"]["digest"]
+    assert prov["bank"]["label"] == f"admissions-fbase@{man['digest'][:8]}+flusurv@{aux_digest[:8]}"
+    assert prov["bank"]["stream"] == MX.STREAM == "admissions-fbase+flusurv"
+    ba, bx, bm = prov["bank"]["admissions"], prov["bank"]["flusurv"], prov["bank"]["mixture"]
+    assert ba["digest"] == man["digest"] and ba["n_paths"] == pool["n"] and ba["admissible"]
+    assert bx["bank_digest"] == aux_digest and bx["pool_digest"] == aman["digest"]
+    assert bx["n_paths"] == araw["n"] >= 30 and bx["admissible"]
+    assert bx["shrink"] == aman["shrink"] and 0 < bx["shrink"] and bx["shrink_prior_seasons"]
+    assert bm == {"identity_rule": "R_EITHER", "state": "both", "w_aux": 0.5, "w_aux_nominal": 0.5}
     assert prov["vintage"]["sha256"] == OB.sha256_file(hubfiles["vintage"])
+    assert prov["rule_flusurv"]["count_floor"] is None and prov["rule_flusurv"]["w_aux"] == 0.5
     assert prov["rule"]["name"] == "FBASE" and prov["rule"]["bandwidth"] == 2
     assert prov["rule"]["min_donors"] == 30 and prov["rule"]["min_donor_seasons"] == 2
     assert prov["rule"]["floor_weeks"] == [-1, 0, 1, 2] and prov["rule"]["path_weeks"] == list(range(-1, 7))
@@ -119,6 +152,7 @@ def test_apply_week_stores_the_member_and_writes_the_provenance(hubfiles, tmp_pa
     assert "the spec" in prov["trimmed_weeks"]["source"]
     o = prov["locations"]["Ohio"]
     assert o["fips"] == "39" and o["eligible"] and o["active"] == 1
+    assert o["state"] == "both" and o["w_aux"] == 0.5 and o["n_flusurv_drawn"] == r.n_aux_drawn
     assert o["m_0"] == float(np.median(raw["Ohio"][hz.ORIGIN]))
     assert o["y_T"] is not None and o["m0_over_yT"] == o["m_0"] / o["y_T"]
     assert o["abstentions"] == 0 and o["guard_hits"] == 0
@@ -134,6 +168,12 @@ def test_apply_week_stores_the_member_and_writes_the_provenance(hubfiles, tmp_pa
         assert blk["0"]["internal_h"] == 1 and len(blk["0"]["unrounded"]) == 23
         assert blk["0"]["unrounded"] == [float(z) for z in r.q_seed[s][0]]
     assert q["null"]["Ohio"]["3"]["unrounded"] == [float(z) for z in r.q_null[3]]
+    # the admissions-only member (LB), logged beside the primary
+    assert q["primary"]["bank"] == "admissions-fbase+flusurv"
+    assert q["admissions_only"]["bank"] == "admissions-fbase"
+    for s in OR.SEEDS:
+        assert q["admissions_only"]["per_seed"][str(s)]["Ohio"]["2"]["unrounded"] == \
+            [float(z) for z in lb.q_seed[s][2]]
     assert q["horizons"]["table"][0]["flusight_horizon"] == -1
     assert [t["flusight_horizon"] for t in q["horizons"]["table"][1:]] == [0, 1, 2, 3]
     assert q["horizons"]["reference_date"] == "2098-01-11"
@@ -167,6 +207,25 @@ def test_a_missing_vintage_raises_rather_than_shipping_the_identity(hubfiles, tm
     with pytest.raises(FileNotFoundError):
         oracle_mod.apply_week(_samples(), ASOF, tmp_path / "w")
     assert not (tmp_path / "w" / oracle_mod.PROVENANCE_NAME).exists()
+
+
+def test_a_missing_or_unfittable_flusurv_half_raises(hubfiles, tmp_path, monkeypatch):
+    """No silent fall back to the admissions-only member: a bank that cannot
+    be read, or a shrink that cannot be fitted, stops the week."""
+    def gone(banks_dir=None):
+        raise FileNotFoundError("no committed 'flusurv' donor bank")
+    monkeypatch.setattr(MX, "read_bank", gone)
+    with pytest.raises(FileNotFoundError):
+        oracle_mod.apply_week(_samples(), ASOF, tmp_path / "w")
+    assert not (tmp_path / "w" / oracle_mod.PROVENANCE_NAME).exists()
+    # the committed bank ends in 2026: against a hub of the 2090s it shares
+    # no season, so the shrink cannot be fitted
+    monkeypatch.undo()
+    monkeypatch.setattr(oracle_mod, "LOCATIONS", hubfiles["locations"])
+    monkeypatch.setattr(oracle_mod, "vintage_path", lambda d: hubfiles["vintage"])
+    with pytest.raises(ValueError, match="cannot be fitted"):
+        oracle_mod.apply_week(_samples(), ASOF, tmp_path / "w2")
+    assert not (tmp_path / "w2" / oracle_mod.PROVENANCE_NAME).exists()
 
 
 def test_the_option_and_the_research_tag():
@@ -253,6 +312,7 @@ def test_run_week_stores_the_member_under_pf_and_keeps_the_filter(hubfiles, tmp_
     # the provenance beside the week, and it survived the prune
     prov = oracle_mod.read_provenance(wd)
     assert prov["applied"] and prov["bank"]["label"].startswith("admissions-fbase@")
+    assert "+flusurv@" in prov["bank"]["label"]
     assert prov["trimmed_weeks"]["source"].startswith("cells.json")
     assert (wd / oracle_mod.BANK_DIRNAME / f"paths_{ASOF}.csv").is_file()
     assert not (wd / "cells.json").exists()               # pruned, as before

@@ -120,13 +120,16 @@
  <p><b>The record.</b> Every rule of the step (the weight, one donor per
  sample path, the pool rule, five seeds logged with the first submitted)
  was frozen by a pre-registration before the step itself was ever scored (sha256
- <code>{{ oracle_text.PREREG_SHA256[:16] }}</code>, docs/ORACLE-SIHRS.md).
- On the stored forecasts of the two seasons with at least two admissible
- donor seasons, scored against the FluSight baseline as a ratio of
- sums on the cells where both scored:</p>
+ <code>{{ oracle_text.PREREG_SHA256[:16] }}</code>), and the shipped donor
+ bank (its two streams, the half-and-half draw, the shrink) by a second one
+ before that bank was scored (sha256
+ <code>{{ oracle_text.B2_SHA256[:16] }}</code>; docs/ORACLE-SIHRS.md).
+ On the stored forecasts of the three record seasons, scored against the
+ FluSight baseline as a ratio of sums on the cells where both scored:</p>
  <div style="overflow-x:auto"><table>
   <tr><th>Season</th><th class="num">Oracle SIHRS</th><th class="num">Plain filter</th><th class="num">Cells</th></tr>
-  {% for key, label in [("2024-25", "2024-25"), ("2025-26", "2025-26"), ("both", "Both seasons")] %}
+  {% for key, label in [("2023-24", "2023-24"), ("2024-25", "2024-25"), ("2025-26", "2025-26"),
+                         ("both", "2024-25 and 2025-26"), ("three", "Three seasons")] %}
   {% set r = oracle_text.RECORD[key] %}
   <tr><td>{{ label }}</td>
    <td class="num {{ 'ok' if r.oracle < 1 else 'bad' }}">{{ oracle_text.fmt(r.oracle) }}</td>
@@ -134,12 +137,10 @@
    <td class="num">{{ oracle_text.cells(r.cells) }}</td></tr>
   {% endfor %}
  </table></div>
- <p class="hint">A frozen-specification replication, not an independent
- confirmation: this family of blends had been looked at on the same stored
- forecasts before the primary arm was fixed, so the 2026-27 season is the
- prospective test. In 2023-24 only one earlier season (2022-23) is
- admissible as a donor (2021-22 is excluded by rule), fewer than the two
- the rule needs, so the step leaves the filter unchanged there. The plain filter remains
+ <p class="hint">Not an independent confirmation: this family of blends
+ had been looked at on the same stored forecasts before the primary arm was
+ fixed. {{ oracle_text.BANK_TEXT.coverage }} {{ oracle_text.caveat() }}
+ The plain filter remains
  reachable as a research run (<code>flubnf retro --oracle none</code>),
  never as a submission. Source: {{ oracle_text.RECORD_SOURCE }}.</p>
  <p class="hint">Model tab: <a href="/model/pf">Oracle SIHRS</a>.</p>

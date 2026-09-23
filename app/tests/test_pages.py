@@ -43,9 +43,12 @@ def test_home_renders_workflow_performance_and_component_cards():
                  "0.722", "0.653", "0.651", "0.666",
                  "0.741", "0.663", "0.684", "0.685",
                  "15,460", "15,340", "Oracle SIHRS", "Groundhog",
-                 # the Oracle SIHRS against the plain filter, same cells,
-                 # and the three-season column named for what it scores
-                 "0.719", "0.794", "0.774", "0.843", "0.813", "9,279",
+                 # the Oracle SIHRS (on the Groundhog's donor bank) against
+                 # the plain filter, same cells, the three seasons and the
+                 # caveat, and the three-season column named for what it scores
+                 "0.697", "0.794", "0.781", "0.843", "0.731", "0.813", "9,279",
+                 "0.767", "0.840", "0.738", "0.819", "6,021", "15,300",
+                 "FluSurv-NET", "includes zero",
                  "Filter alone", "frozen-specification replication"):
         assert cell in r.text, cell
     # the performance card names no blend; the outlook label above it is

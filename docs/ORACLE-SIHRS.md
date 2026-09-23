@@ -14,6 +14,11 @@ that hash is written into every week's provenance
 (`flubnf.oracle.PREREG_SHA256`). Section numbers below are that
 document's.
 
+Since 2026-09-23 the member ships on the Groundhog's own donor bank (bank
+change B2, section 5b): the admissions pool described in section 1 is one
+half of it, unchanged, and a FluSurv-NET half is the other. Sections 1 to
+5 describe the admissions half and the machinery both halves share.
+
 Vocabulary of this repository: a MEMBER is one of the two models the
 console submits (the Oracle SIHRS and the Groundhog); the ENGINE is the
 particle filter in the PyBNF fork; the STORED WEEK is
@@ -112,11 +117,15 @@ Beside every stored week (`weeks/<T>/oracle.json`) and in every console
 run's workroot, with the pool under `oracle_bank/` next to it:
 
     applied            true; "member": "Oracle SIHRS"; "reading": "F"; "transform": "REPLACE"
-    prereg_sha256      the frozen document's hash
-    bank.label         "admissions-fbase@<digest8>": the stream and the first eight
-                       characters of the pool's content digest, the stamp the Groundhog
-                       writes for its own bank ("flusurv@06eff6a7"); the manifest beside
-                       the pool file carries the full digest and read_pool verifies it
+    prereg_sha256      the frozen document's hash; b2_sha256 and addendum_a2_sha256
+                       beside it (section 5b)
+    bank.label         "admissions-fbase@<digest8>+flusurv@<digest8>": the admissions
+                       pool's content digest and the committed FluSurv-NET bank's, the
+                       stamp the Groundhog writes for its own bank ("flusurv@06eff6a7");
+                       bank.admissions and bank.flusurv carry each half's pool, digest,
+                       counts and rule, bank.mixture the state and w_aux (section 5b);
+                       the manifests beside the pool files carry the full digests and
+                       the readers verify them
     vintage.sha256     the hub vintage file the pool was built from, and its newest row
     rule               FBASE: count floor 10 on W-1..W+2, path weeks W-1..W+6, bandwidth 2,
                        min donors 30, min donor seasons 2, the registered exclusions, the
@@ -262,6 +271,157 @@ written beside its weeks, and the weeks themselves are never touched;
 sweep reaches them. Point FLUBNF_HUB at the hub whose truth the record was
 scored against (the pinned copy for the numbers above) to reproduce them
 on the page.
+
+## 5b. The shipped donor bank (bank change B2, addendum A2)
+
+The lead decided on 2026-09-23 to ship the member on the Groundhog's own
+donor bank: `PREREG_oracle_member_ADDENDUM_A2.md` (sha256
+`85ac546416bbb20ed1b87ce9289f50645ff1e22169b0bed9ae0a054e3e449f27`,
+`flubnf.oracle.ADDENDUM_A2_SHA256`, a separate file so the frozen
+document's hash does not move) records it, for the member that
+`b2/PREREG_b2_FROZEN.md` specifies (sha256
+`2ce3564622296f490a435b773a3b34d431d889b3e0d4fe4b32ff6aeb8ede9249`,
+`flubnf.oracle.B2_SHA256`, every blank at its printed recommendation). All
+three hashes are written into every week's oracle.json. The member is
+called LBGH in the research record; the hub model name does not change.
+
+The bank (`flubnf/oracle_mix.py`, stream `admissions-fbase+flusurv`):
+
+* The ADMISSIONS HALF is the pool of section 1, unchanged: the FBASE rule
+  on the week's own hub vintage.
+* The FLUSURV-NET HALF is the committed bank the Groundhog splices,
+  `data/banks/flusurv.json`, read by `flubnf.bank.read`, which verifies the
+  content digest (06eff6a7) and raises on a mismatch. Its donor cells are
+  the Groundhog's shared selection, `flubnf.analogue.donor_paths(...,
+  length=6, with_keys=True)` over `_donor_cells` (strictly earlier season,
+  the registered exclusions, within two epiweeks with week 53 at 52.5, six
+  forward cells present by date arithmetic); a path then also needs its
+  W-1 cell (the smoother reads it), the season-crossing rule and the
+  guards. There is no count floor (a rate per 100k has none); the three
+  network aggregates and the two New York sites are donors, as the
+  Groundhog treats them. The stamps are the admissions half's smoother
+  (`flubnf.oracle_bank.estimate_G`) on the location's weekly rate series,
+  at the path table's five decimals. A half is admissible with at least
+  30 paths.
+* THE SHRINK. The FluSurv-NET growth is scaled by the Groundhog's own
+  factor, `flubnf.analogue.fit_log_ratio_shrink` fitted for the target
+  season on the week's own admissions vintage (the engine's shrink =
+  "auto"), applied as G' = gamma + shrink * (G - gamma). It moves a little
+  with the vintage: 0.861 to 0.864 on 2023-24 targets, 0.977 to 0.980 on
+  2024-25, 0.974 on 2025-26. A shrink that cannot be fitted raises.
+* THE MIXTURE. Identity rule R_EITHER: the week is active when either
+  half is admissible; w_aux, the chance a sample path's donor comes from
+  the FluSurv-NET half, is 0.5 when both are, 1 when only the FluSurv-NET
+  half is, 0 when only the admissions half is. The draw uses a SECOND
+  uniform stream on the frozen generator: sample i keeps its admissions
+  donor floor(u_i n_adm) unless v_i < w_aux, in which case it draws the
+  FluSurv-NET path floor((v_i / w_aux) n_aux). Half of every cell's samples
+  therefore carry exactly the admissions-only member's donor, and that
+  member is recovered bitwise at w_aux = 0.
+
+On the record's 85 as-of dates both halves are admissible on 52, the
+FluSurv-NET half alone on 28 (2023-24 up to the end of March: only one
+earlier NHSN season, 2022-23, is admissible there), the admissions half
+alone on one (2025-06-14, unscored), and neither on the four April dates
+of 2023-24, where the step leaves the filter unchanged. On the two active
+seasons the admissions half holds 117 to 748 paths per week and the
+FluSurv-NET half 23 to 1,090.
+
+The week's provenance (section 3) records the bank label
+`admissions-fbase@<pool digest8>+flusurv@06eff6a7`, both halves' pool
+sizes and digests (the FluSurv-NET table is written beside the admissions
+one as `oracle_bank/flusurv_paths_<T>.csv` with its manifest), the shrink
+and the seasons it was fitted on, the mixture state and w_aux, per
+location its state and how many samples drew a FluSurv-NET path, and per
+seed the shipped member, the registered w = 0.25 secondary on the same
+bank, and the admissions-only member (LB), logged beside them as
+addendum A2 (2) asks. The plain filter stays reachable as the research
+option `oracle = none`.
+
+Bitwise against the B2 screen (`b2/results/arms_by_date`), run
+2026-09-23 on every one of the 85 record dates from the stored grid
+samples and the pinned hub vintages: the library's FluSurv-NET pools equal
+the screen's written pools by content digest and file bytes, every count
+of `calibration_b2.json` and the 85 shrink values exactly; the member per
+seed equals the screen's LBGH on 88,400 (seed, location, horizon) blocks
+and its LB25GH on 88,400, 0 differing; the admissions-only member equals
+the B2 screen's reproduction on 88,400 blocks and the frozen screen's LB
+and LB25 on 47,840 blocks each (the 46 dates it stored), 0 differing; the
+mixture at w_aux = 0 equals the admissions-only member on 55,120 blocks.
+The 1,682 cells that have six forward cells but no W-1 cell (summed over
+the 85 dates) are exactly the difference between the shared selection's
+six-week paths and the eight-week path; the selection itself agrees with
+the screen's own loop on every date. `tests/test_oracle.py` and
+`tests/test_oracle_mix.py` keep a subset of dates in the suite;
+`FLUBNF_ORACLE_FULL=1` runs all of them.
+
+The numbers, from the B2 screen (`b2/results/screen_b2_scores.json`,
+common cells, relWIS against the FluSight baseline as a ratio of WIS sums,
+US excluded, seed mean over the five seeds):
+
+| scope | cells | Oracle SIHRS (shipped bank) | admissions-only member | plain filter |
+|---|---|---|---|---|
+| 2023-24 | 6,021 | 0.7667 | 0.8395 (the identity) | 0.8395 |
+| 2024-25 | 4,859 | 0.6975 | 0.7192 | 0.7944 |
+| 2025-26 | 4,420 | 0.7813 | 0.7741 | 0.8426 |
+| 2024-25 and 2025-26 (active2) | 9,279 | 0.7307 | 0.7409 | 0.8135 |
+| three seasons (pooled3) | 15,300 | 0.7380 | 0.7610 | 0.8188 |
+
+The shipped bank against the admissions-only one (claim B2-1, active2):
+-0.0103, reading interval
+-0.0289 to +0.0084, UNRESOLVED; by
+season -0.0217 in 2024-25 and +0.0072 in 2025-26, the advantage
+concentrated on five December and January dates (without them the sign
+flips). In 2023-24 the member is active for the first time: -0.0728
+against the plain filter, UNRESOLVED. Against the shipped Groundhog on the
+same cells (0.6524 on active2) the member remains worse, +0.0782 (reported
+only). THE CAVEAT that travels with every figure: choosing this bank over
+the admissions-only one was the lead's decision (addendum A2) on a screen
+that did not resolve it, 0.7307 against 0.7409 with an interval that
+includes zero, taken on the pooled and by-season point estimates, the
+2023-24 coverage the admissions-only member cannot provide, and the wish
+to give the Oracle SIHRS the Groundhog's donor information. The screen is
+a frozen-specification replication on seasons the family had been looked
+at on; the 2026-27 season is the prospective test, and its shadow run
+logs the shipped member first with the admissions-only member, the w =
+0.25 secondaries and the calendar placebos beside it.
+
+Reproduced with the app's own scorer, 2026-09-23: the three seasons
+backfilled with the shipped bank from the stored grid (`flubnf oracle
+backfill <season> --source <grid>/<season> --out <dir>/<season>`, 32, 27
+and 26 weeks) and scored against the pinned hub copy the screen used by
+
+    flubnf oracle reproduce <dir>/2023-24 <dir>/2024-25 <dir>/2025-26 \
+        --source <grid>/2023-24 --source <grid>/2024-25 --source <grid>/2025-26 \
+        --screen <b2>/results/screen_b2_scores.json
+
+(given the B2 screen's file, the reproduce prints its LBGH tables beside
+its own). The stored member is the submitted seed's realisation, so the
+screen's seed-1 value is the one to match:
+
+| scope | Oracle SIHRS, common | cells | record definition | cells | screen LBGH seed 1 | screen LBGH seed mean | plain filter | cells | grid's calendar analogue, record | cells |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 2023-24 | 0.7668 | 6,021 | 0.7668 | 6,021 | 0.7668 | 0.7667 | 0.8395 | 6,021 | 1.0449 | 6,063 |
+| 2024-25 | 0.6975 | 4,859 | 0.6975 | 4,859 | 0.6975 | 0.6975 | 0.7944 | 4,859 | 0.7560 | 4,922 |
+| 2025-26 | 0.7811 | 4,420 | 0.7811 | 4,420 | 0.7811 | 0.7813 | 0.8426 | 4,420 | 0.6180 | 4,475 |
+| active2 | 0.7306 | 9,279 | 0.7306 | 9,279 | 0.7306 | 0.7307 | 0.8135 | 9,279 | 0.7013 | 9,397 |
+| three seasons | 0.7380 | 15,300 | 0.7380 | 15,300 | 0.7380 | 0.7380 | 0.8188 | 15,300 | 0.7714 | 15,460 |
+
+The Oracle SIHRS equals the screen's seed-1 value to machine precision on
+every scope (differences at most 3.3e-16) and the plain filter the
+screen's NULL likewise; the seed mean differs by the seed noise (at most
+2.2e-4, in 2025-26). The member's scored cells equal the filter's, so its
+record definition and the common set coincide (6,021 + 4,859 + 4,420 =
+15,300). The last two columns are the grid's own bare calendar analogue,
+copied verbatim by the backfill, not the shipped Groundhog.
+
+To look at the backfilled seasons in the console, start it with the
+directory named (nothing is configured permanently; the backfill is not
+under app/state) and open the Retrospective tab's backfill view:
+
+    FLUBNF_RETRO_ORACLE=<dir> flubnf app      # then /retro?src=oracle
+
+as "Backfill, then view it in the console" in section 5 describes.
 
 ## 6. The engine key
 

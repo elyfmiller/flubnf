@@ -43,8 +43,12 @@
  {{ oracle_text.fmt(oracle_text.RECORD.both.oracle) }} against the plain
  filter's {{ oracle_text.fmt(oracle_text.RECORD.both.filter) }} on the same
  {{ oracle_text.cells(oracle_text.RECORD.both.cells) }} cells of 2024-25 and
- 2025-26, a frozen-specification replication; 2026-27 is the prospective
- test (docs/ORACLE-SIHRS.md).</p>
+ 2025-26; {{ oracle_text.fmt(oracle_text.RECORD["2023-24"].oracle) }} against
+ {{ oracle_text.fmt(oracle_text.RECORD["2023-24"].filter) }} in 2023-24, where
+ the FluSurv-NET stream supplies the donors; and
+ {{ oracle_text.fmt(oracle_text.RECORD.three.oracle) }} against
+ {{ oracle_text.fmt(oracle_text.RECORD.three.filter) }} over the three
+ seasons. {{ oracle_text.caveat() }} (docs/ORACLE-SIHRS.md)</p>
  <h2>The compartment model the filter fits</h2>
  {{ dg.sihrs(uid='m') }}{{ dg.eq_pf() }}
  {% elif name == "pf2s" %}{{ dg.sihrs2(uid='m') }}{{ dg.eq_pf2s() }}

@@ -56,6 +56,17 @@ Five seeds, 2026091801 to 2026091805; the submitted quantiles come from
 the first (the producer's choice C2), the other four are logged for the
 season-end reading.
 
+THE SHIPPED BANK (bank change B2, addendum A2). The member ships on the
+mixture bank of flubnf.oracle_mix: the admissions pool above plus a
+FluSurv-NET path pool, the Groundhog's own donor bank. With `aux_pool` the
+draw takes a SECOND uniform v_i from the same generator: v_i < w_aux (0.5
+when both halves are admissible) draws the FluSurv-NET path
+floor((v_i / w_aux) n_aux), and every other sample keeps its admissions
+donor floor(u_i n_adm) exactly as the admissions-only member draws it, so
+that member is recovered bitwise at w_aux = 0. A week with only one
+admissible half draws from it alone (w_aux 1 or 0); a week with neither is
+the identity (R_EITHER, S-B2-3).
+
 HORIZONS. Everything here counts PHYSICAL weeks, 1 to 4, the library's
 unit; the app translates at its own edge (app/core/oracle.py), and every
 hub-facing row still goes through app.core.submit.quantile_rows. Nothing
@@ -81,6 +92,15 @@ from .quantiles import FLUSIGHT_QUANTILES
 #: recomputed at the wiring and equal to the value the producer refuses to
 #: run without. Written into every week's provenance.
 PREREG_SHA256 = "67c9fa49a195908312f34ca783b21d85377759309df14461f86fbfd54d30c56f"
+
+#: Bank change B2 (b2/PREREG_b2_FROZEN.md, 1,008 lines): the mixture donor
+#: bank of flubnf.oracle_mix, every blank at its printed recommendation.
+B2_SHA256 = "2ce3564622296f490a435b773a3b34d431d889b3e0d4fe4b32ff6aeb8ede9249"
+#: Addendum A2 to section 10.3 (PREREG_oracle_member_ADDENDUM_A2.md, a
+#: separate file so PREREG_SHA256 does not move): the lead's decision of
+#: 2026-09-23 to ship the member on the B2 bank (LBGH). All three hashes
+#: go into every week's provenance.
+ADDENDUM_A2_SHA256 = "85ac546416bbb20ed1b87ce9289f50645ff1e22169b0bed9ae0a054e3e449f27"
 
 GAMMA = OB.GAMMA
 H4 = 4
@@ -205,6 +225,14 @@ def uniforms(seed: int, asof: date, fips: str, n: int) -> np.ndarray:
     return rng.random(n)
 
 
+def two_uniforms(seed: int, asof: date, fips: str, n: int) -> tuple:
+    """(u, v): u is `uniforms` (the first call on the frozen generator,
+    bitwise), v the second call on the same generator, the mixture's coin
+    (b2 S-B2-2)."""
+    rng = np.random.default_rng([int(seed), season_index(asof), asof.toordinal(), int(fips)])
+    return rng.random(n), rng.random(n)
+
+
 def donor_index(u: np.ndarray, n: int) -> tuple:
     """d_i = floor(u_i n), with min(d_i, n - 1) as a guard; returns
     (d, guard hits)."""
@@ -222,6 +250,39 @@ def member_levels(cell: dict, pool: dict, w: float):
     if pool['rule'] != 1 or pool['n'] == 0:
         return None
     return blend(cell['G_T'], pool['G_mid'], w)
+
+
+def _admissible(pool) -> bool:
+    return pool is not None and pool['rule'] == 1 and pool['n'] > 0
+
+
+def mixture_rows(Fa, va, Fx, vx, u, v, w_aux: float, n_adm: int, n_aux: int) -> tuple:
+    """The per-sample factor rows of the mixture (b2 S-B2-2, the screen's
+    arms_b2.build_date): at 0 < w_aux < 1, v_i < w_aux draws the FluSurv-NET
+    path floor((v_i / w_aux) n_aux) and every other sample keeps the
+    admissions donor floor(u_i n_adm); at w_aux = 1 the index is
+    floor(v_i n_aux); at w_aux = 0 it is floor(u_i n_adm), the
+    admissions-only member. The guard min(d, n - 1) counts only the indices
+    used. Returns (rows (n, 4), changed (n,) bool, abstentions, guard hits)."""
+    n = len(u)
+    if w_aux == 0.0:
+        d, g = donor_index(u, n_adm)
+        return Fa[d], np.zeros(n, bool), int((~va[d]).sum()), g
+    if w_aux == 1.0:
+        d, g = donor_index(v, n_aux)
+        return Fx[d], np.ones(n, bool), int((~vx[d]).sum()), g
+    sel = v < w_aux
+    ix = ((v / w_aux) * n_aux).astype(int)
+    ia = (u * n_adm).astype(int)
+    g = int((ix[sel] >= n_aux).sum() + (ia[~sel] >= n_adm).sum())
+    if g:
+        ix = np.minimum(ix, n_aux - 1)
+        ia = np.minimum(ia, n_adm - 1)
+    rows = np.empty((n, H4))
+    rows[~sel] = Fa[ia[~sel]]
+    rows[sel] = Fx[ix[sel]]
+    ab = int((~va[ia[~sel]]).sum() + (~vx[ix[sel]]).sum())
+    return rows, sel, ab, g
 
 
 @dataclass
@@ -243,6 +304,11 @@ class CellMember:
     n_finite: list = field(default_factory=list)
     n0_total: int = 0
     n0_finite: int = 0
+    #: the week's FluSurv-NET probability this cell drew with (None: the
+    #: identity; 0.0: the admissions half alone)
+    w_aux: float | None = None
+    #: samples of the submitted seed that drew a FluSurv-NET path
+    n_aux_drawn: int = 0
 
     def q_mean(self) -> np.ndarray:
         return np.mean(np.stack([self.q_seed[s] for s in self.q_seed]), axis=0)
@@ -250,17 +316,43 @@ class CellMember:
 
 def member_for_cell(x0, xh: list, pool: dict, asof: date, fips: str, *,
                     w: float = W_PRODUCTION, seeds=SEEDS,
-                    submitted_seed: int = SUBMITTED_SEED) -> CellMember:
+                    submitted_seed: int = SUBMITTED_SEED,
+                    aux_pool: dict | None = None, w_aux="auto") -> CellMember:
     """The member on one cell: the transformed samples of `submitted_seed`
     and the 23 finite-only quantiles of every seed in `seeds`.
 
     `x0` is the origin block, `xh` the four forecast blocks in PHYSICAL
-    order, `pool` a pool as flubnf.oracle_bank reads it (rule 1 with G_mid
-    (n, 4), or rule 0 for the identity), `fips` the two-character FIPS the
-    RNG key uses. A cell that is not eligible, or a pool that is not
-    admissible, returns the identity: the NULL quantiles under every seed
-    and the samples untouched, active False.
+    order, `pool` the admissions half as flubnf.oracle_bank reads it (rule 1
+    with G_mid (n, 4), or rule 0 for the identity), `fips` the
+    two-character FIPS the RNG key uses.
+
+    Without `aux_pool` this is the admissions-only member of the frozen
+    document (LB), unchanged. With `aux_pool` (the FluSurv-NET half as
+    flubnf.oracle_mix.shrunk_pool gives it: G_mid already shrunk) it is the
+    shipped mixture member (LBGH, bank change B2): `w_aux` "auto" resolves
+    the week's FluSurv-NET probability under R_EITHER
+    (flubnf.oracle_mix.resolve_w_aux: 0.5 when both halves are admissible,
+    1 or 0 when one is, the identity when neither is); a number or None
+    sets it (None: the identity), for research controls.
+
+    A cell that is not eligible, or a week with no admissible half, returns
+    the identity: the NULL quantiles under every seed and the samples
+    untouched, active False.
     """
+    if aux_pool is None:
+        wa = 0.0 if _admissible(pool) else None
+    elif isinstance(w_aux, str):
+        if w_aux != "auto":
+            raise ValueError(f"w_aux must be 'auto', a number or None, got {w_aux!r}")
+        from . import oracle_mix as MX
+        wa = MX.resolve_w_aux(_admissible(pool), _admissible(aux_pool))
+    else:
+        wa = None if w_aux is None else float(w_aux)
+        if wa is not None and not 0.0 <= wa <= 1.0:
+            raise ValueError(f"w_aux must lie in [0, 1], got {wa}")
+        if wa is not None and ((wa < 1.0 and not _admissible(pool))
+                               or (wa > 0.0 and not _admissible(aux_pool))):
+            raise ValueError(f"w_aux {wa} draws from a half that is not admissible")
     c = cell_quantities(x0, xh)
     x = c['x']
     null_q = c['q_null']
@@ -270,37 +362,43 @@ def member_for_cell(x0, xh: list, pool: dict, asof: date, fips: str, *,
         lam_T=c['lam_T'], G_T=c['G_T'], q_null=null_q,
         q_seed={s: null_q.copy() for s in seeds}, samples=list(x),
         n_total=c['n_total'], n_finite=c['n_finite'],
-        n0_total=c['n0_total'], n0_finite=c['n0_finite'])
-    if not c['eligible']:
-        return identity
-    G = member_levels(c, pool, w)
-    if G is None:
+        n0_total=c['n0_total'], n0_finite=c['n0_finite'], w_aux=None)
+    if not c['eligible'] or wa is None:
         return identity
     cell = {'lam_T': c['lam_T'], 'G_T': c['G_T'], 'o': c['o']}
-    F, valid = factors(cell, G)
-    assert np.isfinite(F).all() and (F > 0).all(), (fips, asof)
-    n = pool['n']
+    Fa = va = Fx = vx = None
+    if wa < 1.0:
+        Fa, va = factors(cell, member_levels(c, pool, w))
+        assert np.isfinite(Fa).all() and (Fa > 0).all(), (fips, asof)
+    if wa > 0.0:
+        Fx, vx = factors(cell, blend(c['G_T'], aux_pool['G_mid'], w))
+        assert np.isfinite(Fx).all() and (Fx > 0).all(), (fips, asof)
+    n_adm = pool['n'] if Fa is not None else 0
+    n_aux = aux_pool['n'] if Fx is not None else 0
     lengths = {len(a) for a in x}
     if len(lengths) != 1:
         raise ValueError(f"{fips} {asof}: the four forecast blocks differ in "
                          f"length ({sorted(lengths)}); a torn record is not transformed")
     n_paths = len(x[0])
-    q_seed, samples, absten, guard = {}, None, 0, 0
+    q_seed, samples, absten, guard, n_drawn = {}, None, 0, 0, 0
     for s in seeds:
-        u = uniforms(s, asof, fips, n_paths)
-        d, g = donor_index(u, n)
+        if wa == 0.0:
+            u, v = uniforms(s, asof, fips, n_paths), None
+        else:
+            u, v = two_uniforms(s, asof, fips, n_paths)
+        rows, changed, ab, g = mixture_rows(Fa, va, Fx, vx, u, v, wa, n_adm, n_aux)
         guard += g
-        Fd = F[d]
+        absten += ab
         out = np.empty((H4, len(QL)))
         xs = []
         for hi in range(H4):
-            xp = x[hi] * Fd[:, hi]
+            xp = x[hi] * rows[:, hi]
             xs.append(xp)
             out[hi] = finite_quantiles(xp)
-        absten += int((~valid[d]).sum())
         q_seed[s] = out
         if s == submitted_seed:
             samples = xs
+            n_drawn = int(changed.sum())
     if samples is None:
         raise ValueError(f"the submitted seed {submitted_seed} is not among the seeds run {seeds}")
     return CellMember(
@@ -308,4 +406,5 @@ def member_for_cell(x0, xh: list, pool: dict, asof: date, fips: str, *,
         lam_T=c['lam_T'], G_T=c['G_T'], q_null=null_q, q_seed=q_seed,
         samples=samples, abstentions=absten, guard_hits=guard,
         n_total=c['n_total'], n_finite=c['n_finite'],
-        n0_total=c['n0_total'], n0_finite=c['n0_finite'])
+        n0_total=c['n0_total'], n0_finite=c['n0_finite'],
+        w_aux=wa, n_aux_drawn=n_drawn)

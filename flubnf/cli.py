@@ -1529,14 +1529,118 @@ Terminal (<code>.venv/bin/flubnf app</code>) to see the error output.</p>
 </body></html>"""
 
 
+def _pid_cmdline_windows_native(pid: int, ntdll=None,
+                                kernel32=None) -> str:
+    """Windows: the command line read in process, from the kernel, with no
+    subprocess. NtQueryInformationProcess with ProcessCommandLineInformation
+    (class 60, Windows 8.1 and later) needs only
+    PROCESS_QUERY_LIMITED_INFORMATION, the access psutil uses for the same
+    query, and answers in milliseconds.
+
+    Why it exists: the WMI route below spawns wmic or PowerShell, and on
+    Windows Server 2025 (the GitHub windows-latest image, which no longer
+    ships wmic) a cold PowerShell start sometimes exceeds the 10 second
+    query timeout. The read then came back empty, the takeover failed safe
+    and did not signal the predecessor, and
+    test_takeover_terminates_marked_predecessor failed at 10.2 seconds
+    where a passing run takes well under one. A user relaunching on a slow
+    machine hit the same path.
+
+    The result is decoded as UTF-16-LE from the UNICODE_STRING's byte
+    length rather than with ctypes.wstring_at, whose unit is the platform
+    wchar_t (4 bytes off Windows), so the stubbed tests read what Windows
+    would. Like psutil, it answers only for a process that is still
+    running (GetExitCodeProcess == STILL_ACTIVE): an exited process whose
+    handle someone still holds stays openable, and the kernel's answer for
+    it is not documented. Never raises; '' means "could not inspect" and
+    the caller falls back. `ntdll` and `kernel32` are injectable for tests
+    on other platforms."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        if kernel32 is None:
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.OpenProcess.restype = wintypes.HANDLE
+            kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL,
+                                             wintypes.DWORD)
+            kernel32.CloseHandle.restype = wintypes.BOOL
+            kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+            kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+            kernel32.GetExitCodeProcess.argtypes = (
+                wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+        if ntdll is None:
+            ntdll = ctypes.WinDLL("ntdll")
+            ntdll.NtQueryInformationProcess.restype = ctypes.c_long
+            ntdll.NtQueryInformationProcess.argtypes = (
+                wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p,
+                wintypes.ULONG, ctypes.POINTER(wintypes.ULONG))
+
+        class _UnicodeString(ctypes.Structure):
+            _fields_ = [("Length", ctypes.c_ushort),
+                        ("MaximumLength", ctypes.c_ushort),
+                        ("Buffer", ctypes.c_void_p)]
+
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        PROCESS_COMMAND_LINE_INFORMATION = 60
+        STILL_ACTIVE = 259
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,
+                                      False, int(pid))
+        if not handle:
+            return ""
+        try:
+            code = wintypes.DWORD(0)
+            if not (kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
+                    and code.value == STILL_ACTIVE):
+                return ""                    # exited, or cannot tell
+            need = wintypes.ULONG(0)
+            # sizing call: fails with STATUS_INFO_LENGTH_MISMATCH and says
+            # how large the buffer must be
+            ntdll.NtQueryInformationProcess(
+                handle, PROCESS_COMMAND_LINE_INFORMATION, None, 0,
+                ctypes.byref(need))
+            size = int(need.value)
+            if size < ctypes.sizeof(_UnicodeString) or size > (1 << 20):
+                return ""
+            buf = ctypes.create_string_buffer(size)
+            status = ntdll.NtQueryInformationProcess(
+                handle, PROCESS_COMMAND_LINE_INFORMATION, buf, size,
+                ctypes.byref(need))
+            if status != 0:
+                return ""
+            ustr = _UnicodeString.from_buffer(buf)
+            if not ustr.Buffer or not ustr.Length:
+                return ""
+            base = ctypes.addressof(buf)
+            if not (base <= ustr.Buffer
+                    and ustr.Buffer + ustr.Length <= base + size):
+                return ""                    # never read outside our buffer
+            raw = ctypes.string_at(ustr.Buffer, ustr.Length)
+            return raw.decode("utf-16-le", errors="replace").strip()
+        finally:
+            kernel32.CloseHandle(handle)
+    except Exception:
+        return ""
+
+
 def _pid_cmdline_windows(pid: int) -> str:
-    """Windows: the command line via WMI -- wmic where present, PowerShell
-    CIM otherwise (wmic is removed from newer Windows 11 builds). An empty
-    result fails safe: the takeover only ever signals a process whose
-    command line matched an entry marker, so "could not inspect" means
-    "do not touch", and the relaunch falls back to a nearby free port
-    instead of killing a possibly-recycled pid."""
+    """Windows: the command line, read natively first
+    (_pid_cmdline_windows_native), then via WMI -- wmic where present,
+    PowerShell CIM otherwise (wmic is removed from newer Windows 11 builds
+    and from Windows Server 2025). An empty result fails safe: the takeover
+    only ever signals a process whose command line matched an entry marker,
+    so "could not inspect" means "do not touch", and the relaunch falls
+    back to a nearby free port instead of killing a possibly-recycled
+    pid. A pid that is not alive skips the WMI queries: there is nothing
+    to identify, and on a machine without wmic each query is a PowerShell
+    start that can take seconds (a stale app.pid after a crash, or stale
+    runner-registry entries, would otherwise pay that on every
+    relaunch)."""
     import subprocess
+    native = _pid_cmdline_windows_native(pid)
+    if native:
+        return native
+    if not _pid_alive_windows(pid):
+        return ""
     queries = (
         ["wmic", "process", "where", f"ProcessId={int(pid)}",
          "get", "CommandLine", "/format:list"],
@@ -1565,8 +1669,9 @@ def _pid_cmdline(pid: int) -> str:
     """The command line of a live process, or '' when it does not exist
     (or cannot be inspected). Linux reads the kernel's own record
     (/proc/<pid>/cmdline, exact and immune to ps formatting or zombie
-    <defunct> rewriting, which broke the takeover on CI); Windows asks WMI
-    (see _pid_cmdline_windows); everywhere else falls back to ps, which
+    <defunct> rewriting, which broke the takeover on CI); Windows reads the
+    kernel record natively and falls back to WMI (see
+    _pid_cmdline_windows); everywhere else falls back to ps, which
     ships with macOS. No psutil dependency."""
     import os
     import subprocess
@@ -2571,7 +2676,8 @@ def oracle_reproduce_cmd(
              "NULL); every week's quantile sidecar must be current."),
     screen: Optional[Path] = typer.Option(
         None, "--screen",
-        help="The registered screen's screen_scores.json, printed beside."),
+        help="The registered screen's screen_scores.json (or the B2 screen's "
+             "screen_b2_scores.json, the shipped bank), printed beside."),
 ):
     """Score backfilled roots with the app's own scorer and print relWIS
     per season and over the seasons together, on the record definition
@@ -2593,7 +2699,9 @@ def oracle_reproduce_cmd(
         console.print(line, highlight=False)
     console.print(f"  cells scored (member root): {res['cells_scored']:,}")
     if res.get("screen"):
-        console.print(f"  screen frozen document {res['screen'].get('frozen_document_sha256')}")
+        console.print(f"  screen frozen document {res['screen'].get('frozen_document_sha256')}"
+                      + (f", B2 document {res['screen']['b2_frozen_sha256']}"
+                         if res['screen'].get('b2_frozen_sha256') else ""))
 
 
 site_app = typer.Typer(
