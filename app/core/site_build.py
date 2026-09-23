@@ -875,7 +875,7 @@ def harvest_bibliography() -> list:
          "label": "doi:10.1016/j.isci.2019.08.045"},
         {"what": "Model language",
          "text": ("BioNetGen: the rule-based modeling language and compiler "
-                  "the SIHRS model is written in."),
+                  "the SIHRS compartment model is written in."),
          "href": "https://bionetgen.org", "label": "bionetgen.org"},
         {"what": "Target data and comparators",
          "text": ("CDC FluSight forecast hub: NHSN target data, the "

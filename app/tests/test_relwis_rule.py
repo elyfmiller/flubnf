@@ -54,6 +54,24 @@ def test_outcome_chips_apply_the_rule():
             ' vs FluSight baseline, ratio of sums (1 cell)') in good
 
 
+def test_outcome_chips_name_the_mechanistic_member_by_what_the_row_ran():
+    """A row that recorded the Oracle step's bank label scored the Oracle
+    SIHRS; a row that asked for oracle = none scored the plain filter; a
+    row from before the step existed keeps the name it was recorded under
+    (it scored the plain filter too, and relabelling it would rewrite the
+    ledger's history)."""
+    member = srv._outcome_chips(json.dumps(
+        {"pf_relwis": 0.741, "pf_relwis_cells": 9,
+         "oracle": "admissions-fbase@288b139f"}))
+    assert ('Oracle SIHRS relWIS <span class="relwis ok">0.741</span>'
+            ' vs FluSight baseline, ratio of sums (9 cells)') in member
+    plain = srv._outcome_chips(json.dumps(
+        {"pf_relwis": 0.813, "oracle": "none"}))
+    assert plain.startswith('plain filter relWIS')
+    old = srv._outcome_chips(json.dumps({"pf_relwis": 0.813}))
+    assert old.startswith('PF relWIS')
+
+
 def test_error_chips_speak_plain_language_never_tracebacks():
     raw = "module 'pandas.io.json' has no attribute 'dumps'"
     chips = srv._outcome_chips(json.dumps({"error": raw}))

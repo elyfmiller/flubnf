@@ -887,7 +887,7 @@ def _outlook_models(rid: str | None) -> dict:
 
 
 def _diagram_data(res: dict | None) -> dict:
-    """Annotation feed for the home page's interactive SIHRS diagram: per
+    """Annotation feed for the home page's interactive compartment diagram: per
     location, the latest run's fitted-parameter posterior medians (harvested
     into results.json at run time), the last observed admissions point, and
     the 1-week median from the same model the outlook cards use. Empty when
@@ -1090,8 +1090,9 @@ def api_outlook_ready():
 
 @app.get("/methods", response_class=HTMLResponse)
 def methods_page(request: Request):
-    """Methodology reference: the SIHRS model, the fitting machinery, the
-    ensemble, and the data and verification policies."""
+    """Methodology reference: the SIHRS compartment model, the fitting
+    machinery, the Oracle step, the Groundhog, and the data and verification
+    policies."""
     return templates.TemplateResponse(request, "methods.html", {
         "active": "Methods", "versions": VERSIONS})
 
@@ -2337,7 +2338,7 @@ def _run_all(spec: RunSpec) -> None:
     """The competition path: engines in ascending cost, then the two
     standalone submissions, scoring and the weekly report. Every step lands
     in ONE workroot and ONE ledger row. Nothing is blended: since
-    2026-09-22 the SIHRS and the Groundhog each ship under their own hub
+    2026-09-22 the Oracle SIHRS and the Groundhog each ship under their own hub
     identity (app/core/submit.MODEL_ABBR)."""
     import pandas as pd
     from app.core import scoring
@@ -2527,7 +2528,7 @@ def _run_all(spec: RunSpec) -> None:
         outcome["analogue_aux"] = str(
             (spec.extra or {}).get("analogue_aux") or "")
         # 3. no blend. Each member is its own submission; a location the
-        # PF failed on is simply absent from the SIHRS file and present in
+        # PF failed on is simply absent from the Oracle SIHRS file and present in
         # the Groundhog's, and the ledger row's failure count names it.
         _phase("writing submissions")
         # 4. submissions (identity in the path)
@@ -2557,7 +2558,7 @@ def _run_all(spec: RunSpec) -> None:
             if not rows:
                 continue
             if model == "analogue" and spec.engine == "pf":
-                # a SIHRS-only run: the Groundhog was consulted for the
+                # an Oracle SIHRS-only run: the Groundhog was consulted for the
                 # pages, not asked for as a submission
                 continue
             if model == "analogue" and not (spec.extra or {}).get("aux_pools"):
@@ -2572,8 +2573,8 @@ def _run_all(spec: RunSpec) -> None:
                 continue
             if model == "pf" and outcome.get("oracle") == "none":
                 # the same rule for the mechanistic member: the plain
-                # filter is a research configuration, not the Oracle
-                # SIHRS, and does not ship under its hub name
+                # filter is a research configuration, not the
+                # Oracle SIHRS, and does not ship under its hub name
                 _withhold(
                     "Oracle SIHRS: the run asked for the plain filter "
                     "(oracle = none), a research configuration that does "
@@ -3216,6 +3217,18 @@ def relwis_chip(value, cells=None, member: str = "PF") -> str:
             f' vs FluSight baseline, ratio of sums{cov}')
 
 
+def _pf_member_label(o: dict) -> str:
+    """The mechanistic member's name on one ledger row, by what that row
+    ran: "Oracle SIHRS" when the outcome records the step's bank label,
+    "plain filter" when the run asked for oracle = none (a research run),
+    and "PF" for a row from before the step existed, which scored the
+    plain filter and keeps the name it was recorded under."""
+    ox = (o or {}).get("oracle")
+    if ox == "none":
+        return "plain filter"
+    return "Oracle SIHRS" if ox else "PF"
+
+
 def _outcome_chips(outcome_json: str) -> str:
     """One run's outcome as short chips. Returns MARKUP (rendered with
     |safe): every fragment is a fixed phrase or a number, never free text,
@@ -3268,7 +3281,8 @@ def _outcome_chips(outcome_json: str) -> str:
         # only carried the fit-cell count (locations x replicates)
         bits.append(relwis_chip(o["pf_relwis"],
                                 cells=o.get("pf_relwis_cells",
-                                            o.get("pf_cells"))))
+                                            o.get("pf_cells")),
+                                member=_pf_member_label(o)))
     # every member the run scored, not the PF alone (lead, 2026-09-07):
     # the Groundhog carries the same ratio and gate; "ensemble" only on a
     # row from before the blend was retired

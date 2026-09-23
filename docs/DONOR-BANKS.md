@@ -88,7 +88,7 @@ Regions requested are every FluSight jurisdiction except the national row
 (ILINet's national value is a weighted average, not a sum). A week is kept
 only when both halves exist for the same Saturday, `total_specimens >= 1`
 and the product is positive; there is deliberately no HHS-region fallback
-(unlike `nrevss.a_share_series`, which the SIHRS side uses for typed
+(unlike `nrevss.a_share_series`, which the Oracle SIHRS side uses for typed
 shares). Four jurisdictions are absent from the bank: `ny` and `ri` return
 no `fluview_clinical` rows at all, and `dc` and `pr` return rows whose
 `total_specimens` is zero throughout, so the `>= 1` rule drops them. All
@@ -126,11 +126,11 @@ is mostly in-season: May to September cells exist only in 2009 (the
 pandemic), 2022, 2024 and 2026, with a handful in 2010 and 2015, so it
 cannot generally supply off-season donors or a full-year curve.
 
-A caution the SIHRS side already carries (`flubnf/sihrs_priors.py`):
+A caution the Oracle SIHRS side already carries (`flubnf/sihrs_priors.py`):
 FluSurv-NET rates are a different quantity from NHSN admissions. On 2024-25
 the NHSN-derived national median was 153.0 per 100k against FluSurv-NET's
 127.1, an ascertainment ratio of 1.20, so the rate must not calibrate the
-SIHRS's reporting multiplier. The Groundhog sidesteps this by using growth
+reporting multiplier of the SIHRS compartment model. The Groundhog sidesteps this by using growth
 ratios only.
 
 ## 4. Calendar conventions
@@ -330,7 +330,7 @@ What transfers directly:
 * **The calendar helpers**: `epiweek`, `season_of`, `calendar_distance`.
 * **The exclusion registry**, through `resolve_donor_exclusions`.
 
-What does not transfer and must be decided on the SIHRS side:
+What does not transfer and must be decided on the Oracle SIHRS side:
 
 * **Levels versus ratios.** The Groundhog uses ratios, so ILI+'s odd units
   and FluSurv-NET's ascertainment gap never enter. A mechanistic use that

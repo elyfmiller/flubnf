@@ -865,7 +865,8 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
         modeling, Bayesian inference and uncertainty quantification,
         sequential Monte Carlo and MCMC methods, rule-based simulation, and
         high-performance computing. Builds and operates FluBNF end to end:
-        the SIHRS model and its priors, the particle-filter fitting, the
+        the SIHRS compartment model and its priors, the particle-filter
+        fitting, the Oracle SIHRS's donor-growth step, the
         validation record, and the weekly CDC submissions.</p>
         <div class="linkrow"><a href="https://github.com/elyfmiller">GitHub</a>
         <a href="https://orcid.org/0000-0003-3480-8377">ORCID</a></div></div>

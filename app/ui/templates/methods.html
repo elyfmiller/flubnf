@@ -17,7 +17,7 @@
  auxiliary donor bank. Nothing is blended.</p>
 </div>
 
-<div class="card" id="sihrs"><h2>The SIHRS model</h2>
+<div class="card" id="sihrs"><h2>The SIHRS compartment model</h2>
  <p><b>SIHRS</b> is a compartmental model of influenza transmission.
  Individuals move from <b>Susceptible</b> to <b>Infected</b>; most infections
  recover directly, while a small severe fraction is admitted to
@@ -54,12 +54,13 @@
 </div>
 
 <div class="card" id="fitting"><h2>Fitting: a sequential particle filter</h2>
- <p>FluBNF fits the SIHRS model with a particle filter, implemented as
+ <p>FluBNF fits the SIHRS compartment model with a particle filter,
+ implemented as
  <code>fit_type=pf</code> in a fork of
  <a href="https://github.com/lanl/PyBNF" target="_blank" rel="noopener">PyBNF</a>, Los Alamos National
  Laboratory's parameter-fitting suite for BioNetGen models. The filter
  maintains 10,000 candidate epidemics per state, each a complete
- SIHRS trajectory with its own parameters. Every week the newest admissions
+ trajectory of the compartment model with its own parameters. Every week the newest admissions
  reweight the candidates by how well they explain the data; a Liu-West
  kernel then jitters the surviving parameters at scale 0.15 (chosen by a
  pre-registered sweep), the log-uniform ascertainment and dispersion on the

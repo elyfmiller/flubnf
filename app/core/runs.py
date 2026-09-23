@@ -50,7 +50,7 @@ LOCATION_LIST_LIMIT = 8
 ALL_JURISDICTIONS = 52
 
 ENGINE_LABELS = {"all": "both models (Oracle SIHRS and Groundhog)",
-                 "pf": "particle filter only",
+                 "pf": "Oracle SIHRS only",
                  "analogue": "Groundhog only",
                  "amcmc": "adaptive MCMC",
                  "retro": "particle filter (retrospective)"}

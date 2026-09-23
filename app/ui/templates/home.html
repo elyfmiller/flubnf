@@ -188,7 +188,8 @@
  </svg>
  </div>
  {# the two defining equations behind the pipeline: the seasonal forcing
-    the SIHRS fits bend, and the Groundhog's scaled growth-ratio quantile #}
+    the particle-filter fits bend, the Oracle SIHRS's growth blend, and the
+   Groundhog's scaled growth-ratio quantile #}
  <div class="eqpanel">
   <p><span class="math"><i>&#946;</i>(<i>t</i>) = <i>&#946;</i><sub>0</sub>
    exp(&#8239;<i>&#949;</i><sub>1</sub> cos(&#8239;2&#960;(<i>t</i> &#8722;
@@ -259,7 +260,8 @@
     </g>
    </svg></div>
   <p>The BioNetGen model specification language, in which the
-  <a href="/methods#sihrs">SIHRS transmission model</a> is written. At run
+  <a href="/methods#sihrs">SIHRS compartment model</a> that the Oracle
+  SIHRS is built on is written. At run
   preparation BNG2.pl expands the rule-based definition into a reaction
   network, once per state cell, which bngsim then integrates throughout the
   fit. Keeping the model in BNGL makes its structure explicit and
