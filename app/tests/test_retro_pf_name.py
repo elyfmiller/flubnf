@@ -189,6 +189,16 @@ def test_each_archived_run_is_named_for_its_own_tree(world):
     assert FILTER not in by_stamp[STAMP_ORACLE]
 
 
+def test_the_replay_form_names_the_oracle_sihrs(world):
+    """The run form's full preset is the Oracle SIHRS beside the Groundhog;
+    its value is still the member's internal key."""
+    t = _text(client.get("/retro").text)
+    assert '<option value="pf">Oracle SIHRS and the Groundhog (hours)</option>' in t
+    assert "Particle filter with the Groundhog" not in t
+    assert "how a season's Oracle SIHRS numbers are made" in t
+    assert srv.retro_engine_label("pf") == "Oracle SIHRS and the Groundhog"
+
+
 # ------------------------------------------------------- the season page
 
 def test_the_season_page_names_pf_for_the_tree_it_shows(world):

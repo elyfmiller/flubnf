@@ -43,13 +43,19 @@ and move on; scoring waits for settled truth.</p>
    <label>Shard width (parallel runners; auto for this machine)</label>
    <input type="number" name="width" value="{{ default_width }}" min="1" max="{{ width_cap }}">
    <label>Engine preset</label>
-   {# the full competition path fits the particle filter beside the
-      Groundhog (hours per season, needs the engine venv); the Groundhog
-      alone replays in minutes with no engine at all, and is the way to
-      reproduce its published numbers on any machine #}
+   {# the full competition path is the Oracle SIHRS beside the Groundhog:
+      every week the particle filter is fitted from the season start and
+      the Oracle step applied with that week's vintage and donor pool
+      (hours per season, needs the engine venv). The value stays "pf", the
+      member's internal key. The Groundhog alone replays in minutes with no
+      engine at all, and is the way to reproduce its published numbers on
+      any machine #}
    <select name="engine" id="retro-engine">
-     <option value="pf">Particle filter with the Groundhog (hours)</option>
+     <option value="pf">Oracle SIHRS and the Groundhog (hours)</option>
      <option value="analogue">Groundhog only (minutes, no engine needed)</option></select>
+   <p class="hint">A replay is how a season's Oracle SIHRS numbers are made:
+   each week the filter is fitted from the season start and the Oracle step
+   applied with that week's data and donor pool, as a live run does.</p>
    {# what the start-over prompt resolves to. 'resume' is the historical
       behaviour and the value a keyboard submit carries, so the form is
       always safe even if the prompt never runs. #}

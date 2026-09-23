@@ -5328,8 +5328,8 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
             # pf2s slots in HERE later: accept engine == "pf2s", thread a
             # {"variant": "2strain"} extra through retro.run_week's RunSpec,
             # and collect the member alongside pf in samples.json.
-            _flash("The engine presets for a retrospective are the particle "
-                   "filter with the Groundhog, or the Groundhog alone.")
+            _flash("The engine presets for a retrospective are the Oracle "
+                   "SIHRS and the Groundhog, or the Groundhog alone.")
             return RedirectResponse("/retro", status_code=303)
         from app.core import us_national as usn
         all_states = _retro_state_names()
@@ -5424,7 +5424,7 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
 
 
 #: the retrospective engine presets as the form and the record name them
-RETRO_ENGINE_LABELS = {"pf": "particle filter with the Groundhog",
+RETRO_ENGINE_LABELS = {"pf": "Oracle SIHRS and the Groundhog",
                        "analogue": "Groundhog only"}
 
 

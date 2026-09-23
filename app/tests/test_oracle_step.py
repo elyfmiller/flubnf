@@ -356,6 +356,82 @@ def test_run_season_records_the_oracle_setting(tmp_path, monkeypatch):
     assert "oracle" not in retro.read_meta(root3)["settings"]
 
 
+def test_a_console_replay_is_the_oracle_sihrs_from_the_season_start(hubfiles, tmp_path, monkeypatch):
+    """The path a season's Oracle SIHRS numbers come from: the
+    Retrospective tab's run form (POST /retro/run) -> server._retro_bg ->
+    retro.run_season -> run_week. The replay fits the week from the season
+    start, applies the step by default with that week's vintage and donor
+    pool, records settings.oracle = "applied" in run_meta.json, writes
+    oracle.json beside the week, stores no filter samples, and the tree is
+    named the Oracle SIHRS (the index and the season page name pf by
+    _names_for_root: test_retro_pf_name.py)."""
+    from fastapi.testclient import TestClient
+    from app.ui import server as srv
+    season = "2097-98"
+    raw = _samples(("Ohio", "Utah"))
+    _stub_retro(monkeypatch, raw)
+    stub_prepare, specs = retro.pf_engine.prepare, []
+
+    def spy(spec, wd):
+        specs.append(spec)
+        return stub_prepare(spec, wd)
+    monkeypatch.setattr(retro.pf_engine, "prepare", spy)
+    monkeypatch.setattr(retro, "available_seasons", lambda: [season])
+    monkeypatch.setattr(retro, "season_vintages", lambda s: [ASOF])
+    live = tmp_path / "retro"
+    live.mkdir()
+    monkeypatch.setattr(srv, "RETRO_ROOT", live)
+    monkeypatch.setattr(srv, "_sleep_guard", lambda: None)
+
+    class _Done:
+        def is_set(self):
+            return True
+
+        def wait(self, *a):
+            return True
+    monkeypatch.setattr(srv, "_ensure_results_job",
+                        lambda root, s, **k: {"done": _Done(), "error": ""})
+    real_bg, calls = srv._retro_bg, []
+    monkeypatch.setattr(srv, "_retro_bg", lambda *a: calls.append(a))
+    status_before = dict(srv._retro_status)
+    try:
+        r = TestClient(srv.app).post("/retro/run", data={
+            "season": season, "locations": "custom",
+            "custom_locations": ["Ohio", "Utah"], "national": "0",
+            "particles": "1000", "replicates": "1", "width": "1",
+            "engine": "pf", "mode": "resume"}, follow_redirects=False)
+        assert r.status_code == 303 and len(calls) == 1
+        # the form's arguments, run by the real season worker
+        assert calls[0][-1] == "pf" and calls[0][1] == ["Ohio", "Utah"]
+        real_bg(*calls[0])
+        assert srv._retro_status[season] == "done", srv._retro_status[season]
+    finally:
+        srv._retro_status.clear()
+        srv._retro_status.update(status_before)
+        srv._invalidate_scans()
+    root = live / season
+    # the fit runs from the season start through the as-of week
+    assert [(sp.forecast_date, sp.season_start) for sp in specs] == \
+        [(ASOF, retro.season_bounds(season)[0])]
+    # the run record says the step ran, and the week says with what
+    meta = retro.read_meta(root)
+    assert meta["settings"]["engine"] == "pf"
+    assert meta["settings"]["oracle"] == "applied"
+    wd = root / "weeks" / ASOF
+    prov = oracle_mod.read_provenance(wd)
+    assert prov["applied"] is True and prov["member"] == oracle_mod.MEMBER_NAME
+    assert prov["asof"] == ASOF
+    assert Path(prov["vintage"]["file"]) == hubfiles["vintage"]
+    assert prov["bank"]["label"].startswith("admissions-fbase@")
+    assert "+flusurv@" in prov["bank"]["label"]
+    # the stored week is the member and the Groundhog, nothing else
+    back = retro.read_week_samples(root, ASOF)
+    assert oracle_mod.FILTER_KEY not in back and "pf" in back
+    assert back["pf"]["Ohio"]["3"] != raw["Ohio"]["3"]
+    # and the tree is titled the Oracle SIHRS wherever pf is named
+    assert srv._names_for_root(root)["pf"] == "Oracle SIHRS"
+
+
 # ------------------------------------------------------------ the console
 
 @pytest.fixture
