@@ -27,6 +27,7 @@ The rules under test (app/core/reclaim.py and the /storage/reclaim routes):
 import gzip
 import hashlib
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -629,7 +630,8 @@ def test_protect_roots_env_keeps_a_research_arms_evidence(tmp_path, monkeypatch)
     monkeypatch.delenv("FLUBNF_PROTECT_ROOTS", raising=False)
     assert not reclaim.is_protected(wd)
     assert [p.name for p in reclaim.week_intermediates(wd)] == ["ess_0.txt"]
-    monkeypatch.setenv("FLUBNF_PROTECT_ROOTS", f"/nonexistent/other:{arm}")
+    monkeypatch.setenv("FLUBNF_PROTECT_ROOTS",
+                       os.pathsep.join(["/nonexistent/other", str(arm)]))
     assert reclaim.is_protected(wd)
     assert reclaim.week_intermediates(wd) == []
     assert reclaim.prune_week(wd) == 0

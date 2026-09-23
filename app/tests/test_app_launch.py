@@ -326,8 +326,8 @@ def _hold_the_top_port():
     reach the boundary this test exists to exercise."""
     s = socket.socket()
     try:
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.bind(("127.0.0.1", MAX_PORT))
+        cli._set_port_reuse(s)          # the app's own option, so the hold
+        s.bind(("127.0.0.1", MAX_PORT))  # is one the app's probe respects
         s.listen(1)
     except OSError:
         s.close()

@@ -36,8 +36,10 @@ def _fake_winreg(pv=None, raise_all=False):
     return m
 
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="asserts the non-Windows answer; the Windows "
+                           "cases below fake the platform")
 def test_not_windows_is_never_mshtml_only():
-    assert sys.platform != "win32", "this suite does not run on Windows"
     assert _windows_mshtml_only() is False
 
 

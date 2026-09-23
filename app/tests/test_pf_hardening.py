@@ -47,7 +47,7 @@ from app.core.engines import pf                          # noqa: E402
 
 def test_conf_safe_path_passes_space_free_paths_unchanged():
     assert pf.conf_safe_path("/a/b/c") == "/a/b/c"
-    assert pf.conf_safe_path(Path("/a/b/c")) == "/a/b/c"
+    assert pf.conf_safe_path(Path("/a/b/c")) == str(Path("/a/b/c"))
     assert pf.conf_safe_path("C:\\x\\y", _platform="win32") == "C:\\x\\y"
 
 

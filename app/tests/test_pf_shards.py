@@ -454,7 +454,11 @@ def test_every_runner_starts_at_reduced_priority(engine, tmp_path, monkeypatch):
     made = _spy_popen(monkeypatch)
     pf.execute(w, width=2)
     prefix = proc_mod.low_priority_prefix()
-    kwargs = proc_mod.low_priority_popen_kwargs()
+    # the priority keywords as execute() actually passes them: folded
+    # together with the runner's own process group (on Windows both are
+    # bits of one creationflags integer, so equality on the bare priority
+    # flag alone was the wrong test)
+    kwargs = pf.runner_popen_kwargs(proc_mod.low_priority_popen_kwargs())
     assert len(made) == 2
     for m in made:
         assert m["cmd"][:len(prefix)] == prefix        # [] on non-POSIX: fine
