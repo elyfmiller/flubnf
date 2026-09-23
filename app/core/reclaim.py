@@ -63,7 +63,9 @@ RESEARCH_ROOTS = (APP_STATE / "retro_2s",)
 def _protected_roots() -> list:
     """The trees reclaim never touches: the sealed record, the hub clone,
     the research roots under app/state, and any roots named in
-    FLUBNF_PROTECT_ROOTS (colon separated), read at call time so a
+    FLUBNF_PROTECT_ROOTS (os.pathsep separated, a colon on POSIX and a
+    semicolon on Windows, where a colon would cut a drive letter off its
+    path), read at call time so a
     research arm running OUTSIDE app/state can keep its per-cell evidence
     (ESS files, parameter samples, cells.json) for a pre-registered
     diagnostic instead of being pruned to its samples file the moment a
@@ -72,7 +74,7 @@ def _protected_roots() -> list:
     from flubnf.settings import HUB
     roots = [APP_STATE / "retro_seal", Path(HUB)]
     extra = os.environ.get("FLUBNF_PROTECT_ROOTS", "")
-    roots.extend(Path(x) for x in extra.split(":") if x.strip())
+    roots.extend(Path(x) for x in extra.split(os.pathsep) if x.strip())
     return roots
 
 

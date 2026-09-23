@@ -1830,17 +1830,34 @@ def _port_candidates(preferred: int, tries: int) -> range:
     return range(preferred, min(preferred + max(1, tries), _MAX_PORT + 1))
 
 
+def _set_port_reuse(s) -> None:
+    """The socket option that makes a probe or a bind mean 'a TIME_WAIT
+    ghost passes, a live listener fails'. That is SO_REUSEADDR on POSIX,
+    exactly as uvicorn binds. On Windows SO_REUSEADDR means something
+    else: it lets a second socket take a port another process is
+    LISTENING on, so a probe said free for a port that was not, and the
+    window path could bind on top of a live server. SO_EXCLUSIVEADDRUSE is
+    the Windows spelling of the intent."""
+    import socket
+    import sys
+    if sys.platform == "win32" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+    else:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+
 def _pick_port(preferred: int = 8710, tries: int = 10) -> int:
     """The first bindable port in preferred..preferred+tries-1. Probing
-    binds with SO_REUSEADDR, exactly as uvicorn will: a TIME_WAIT ghost
-    passes, a live listener fails. When every probe fails the preferred
-    port is returned so uvicorn reports the real conflict loudly. The
-    search is clamped at 65535, see _port_candidates for why."""
+    binds with the reuse option _set_port_reuse chooses, exactly as
+    uvicorn will: a TIME_WAIT ghost passes, a live listener fails. When
+    every probe fails the preferred port is returned so uvicorn reports
+    the real conflict loudly. The search is clamped at 65535, see
+    _port_candidates for why."""
     import socket
     for port in _port_candidates(preferred, tries):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                _set_port_reuse(s)
                 s.bind(("127.0.0.1", port))
             return port
         except OSError:
@@ -1869,7 +1886,7 @@ def _bind_app_socket(preferred: int = 8710, tries: int = 10):
     for port in _port_candidates(preferred, tries):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            _set_port_reuse(s)
             s.bind(("127.0.0.1", port))
             s.listen(128)
             # the KERNEL's port, so a preferred of 0 (tests) reports the
