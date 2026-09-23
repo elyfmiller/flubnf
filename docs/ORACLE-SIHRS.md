@@ -162,11 +162,13 @@ file is withheld with the reason in the outcome, the run is a research
 run everywhere the ledger shows it and it never archives as the date's
 forecast, and oracle.json says the step was not applied.
 
-Under the default, every stored week also keeps the filter's own samples
-beside the member under the research key `pf_filter` (a console run keeps
-them as `pf_filter.json.gz` in the workroot). Nothing displays, scores or
-exports that key; it is there so the paired comparison and the season-end
-reading need no refit.
+Under the default, a replay's stored week holds the member under `pf`
+and the Groundhog under `analogue`, and nothing else: the filter's own
+samples are not stored. Its 23 quantiles per location and horizon are in
+the week's oracle.json (`quantiles.null`), which is all the paired
+comparison and the season-end reading need. A live console run keeps the
+filter's samples as `pf_filter.json.gz` in its workroot, the courtesy copy
+the 2026-27 shadow run reads; nothing displays, scores or exports it.
 
 ## 5. Backfill and reproduce
 

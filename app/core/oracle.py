@@ -22,9 +22,8 @@ on the week's vintage), both written beside the week with their manifests
 and digests. Applies flubnf.oracle.member_for_cell on the mixture to every
 jurisdiction (w = 0.5, w_aux = 0.5 under R_EITHER, the five seeds of S14,
 the submitted seed's transformed samples kept), and returns the member in
-the record's shape under the key `pf`, the filter's own samples kept under
-FILTER_KEY, and a provenance record that oracle.json beside the week
-carries: the frozen pre-registration's, the B2 document's and addendum
+the record's shape (stored under the key `pf`) and a provenance record
+that oracle.json beside the week carries: the frozen pre-registration's, the B2 document's and addendum
 A2's sha256, the bank label "admissions-fbase@<8>+flusurv@<8>", each
 half's pool size and digest, the shrink, the mixture state and every
 location's identity state, the vintage's sha256, the rules, w, the seeds
@@ -74,8 +73,12 @@ from flubnf import oracle_mix as MX
 from flubnf.settings import LOCATIONS
 
 #: the research member key: the filter's own samples, before the step.
-#: Stored beside `pf` in the week record, never in the quantile sidecar
-#: (the playback shows every sidecar member), never scored, never shown.
+#: A console run keeps them in its workroot (FILTER_RECORD_NAME, which the
+#: 2026-27 shadow run reads) and `flubnf oracle backfill` beside `pf` in
+#: its research root; a replay's stored week does not carry them, since
+#: oracle.json's quantiles.null holds the filter's 23 quantiles per
+#: location and horizon. Never in the quantile sidecar (the playback shows
+#: every sidecar member), never scored, never shown.
 FILTER_KEY = "pf_filter"
 
 #: the spec.extra key; "none" asks for the plain filter (a research run)
@@ -370,7 +373,8 @@ def read_provenance(out_dir) -> dict | None:
 def write_filter_record(workroot, asof: str, raw: dict) -> Path:
     """A console run keeps the filter's own samples beside its provenance,
     in the stored convention and gzipped like a week record, under the
-    research key. Nothing reads it back but a person."""
+    research key. The 2026-27 shadow run reads it; nothing in the console
+    does."""
     fp = Path(workroot) / FILTER_RECORD_NAME
     tmp = fp.with_name(fp.name + ".tmp")
     with gzip.open(tmp, "wt", encoding="utf-8", compresslevel=6) as fh:

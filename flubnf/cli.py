@@ -2474,9 +2474,10 @@ def retro_cmd(season: str, locations: str = "all", width: int = 0,
 
     oracle is the mechanistic member's switch, the same shape. Empty, the
     default, stores the Oracle SIHRS under pf (the step of app/core/
-    oracle.py on the filter's collected samples, the filter's own samples
-    kept beside it under a research key); 'none' stores the plain filter,
-    a research configuration whose week says so in oracle.json."""
+    oracle.py on the filter's collected samples; the filter's own
+    quantiles are in the week's oracle.json, its samples are not stored);
+    'none' stores the plain filter, a research configuration whose week
+    says so in oracle.json."""
     import pandas as pd
     from pathlib import Path as _P
     from app.core import retro
@@ -2807,7 +2808,8 @@ def oracle_backfill_cmd(
     keep_filter: bool = typer.Option(
         True, "--keep-filter/--no-keep-filter",
         help="Keep the source's pf verbatim under the research key pf_filter "
-             "beside the member (the production layout)."),
+             "beside the member (a research root; a replay's stored week "
+             "does not carry it)."),
 ):
     """Compute the Oracle SIHRS for every stored week of a season root, from
     the stored samples and no refit, into a new root.

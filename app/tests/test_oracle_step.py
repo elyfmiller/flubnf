@@ -293,25 +293,32 @@ def _stub_retro(monkeypatch, raw):
     monkeypatch.setattr(retro, "_sleep", lambda s: None)
 
 
-def test_run_week_stores_the_member_under_pf_and_keeps_the_filter(hubfiles, tmp_path, monkeypatch):
+def test_run_week_stores_the_member_under_pf_and_not_the_filter(hubfiles, tmp_path, monkeypatch):
     raw = _samples(("Ohio", "Utah"))
     _stub_retro(monkeypatch, raw)
     root = tmp_path / "2097-98"
     out = retro.run_week(root, "2097-98", ASOF, ["Ohio", "Utah"], width=1)
     wd = root / "weeks" / ASOF
-    assert set(out) == {"asof", "pf", "pf_filter", "analogue"}
-    assert out["pf_filter"] == raw
+    # the stored week holds the member and the analogue, as on main: the
+    # filter's own samples are not stored
+    assert set(out) == {"asof", "pf", "analogue"}
     assert out["pf"]["Ohio"]["0"] != raw["Ohio"]["0"]
-    # the stored week reads back canonical for every member, the filter's
-    # own samples included, and the sidecar carries the shown members only
     back = retro.read_week_samples(root, ASOF)
-    assert back["pf_filter"]["Ohio"][hz.ORIGIN] == raw["Ohio"][hz.ORIGIN]
+    assert oracle_mod.FILTER_KEY not in back
+    assert set(back) >= {"pf", "analogue"}
     assert back["pf"]["Ohio"]["3"] == out["pf"]["Ohio"]["3"]
     side = retro.read_week_quantiles(wd)
     assert set(side) == {"pf", "analogue"}
     # the provenance beside the week, and it survived the prune
     prov = oracle_mod.read_provenance(wd)
     assert prov["applied"] and prov["bank"]["label"].startswith("admissions-fbase@")
+    # the filter's own 23 quantiles per location and horizon are there
+    # instead, which is all scoring and the comparison read
+    null = prov["quantiles"]["null"]
+    assert set(null) == {"Ohio", "Utah"}
+    for loc in null:
+        assert set(null[loc]) == {"0", "1", "2", "3"}
+        assert all(len(null[loc][h]["unrounded"]) == 23 for h in null[loc])
     assert "+flusurv@" in prov["bank"]["label"]
     assert prov["trimmed_weeks"]["source"].startswith("cells.json")
     assert (wd / oracle_mod.BANK_DIRNAME / f"paths_{ASOF}.csv").is_file()
