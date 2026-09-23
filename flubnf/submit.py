@@ -49,8 +49,9 @@ log = logging.getLogger(__name__)
 #:
 #: The literal was still the wrong string here, for a reason that outlives
 #: that history. This loop forecasts the mechanistic model on its own, so
-#: its file belongs under SIHRS. Deriving the name means neither producer
-#: can drift from the registration or from the other.
+#: its file belongs under the mechanistic member's hub identity. Deriving
+#: the name means neither producer can drift from the registration or from
+#: the other.
 DEFAULT_TEAM_MODEL = hub_model_id("pf")
 
 

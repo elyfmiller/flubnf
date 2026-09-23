@@ -130,8 +130,8 @@ A caution the Oracle SIHRS side already carries (`flubnf/sihrs_priors.py`):
 FluSurv-NET rates are a different quantity from NHSN admissions. On 2024-25
 the NHSN-derived national median was 153.0 per 100k against FluSurv-NET's
 127.1, an ascertainment ratio of 1.20, so the rate must not calibrate the
-reporting multiplier of the SIHRS compartment model. The Groundhog sidesteps this by using growth
-ratios only.
+reporting multiplier of the SIHRS compartment model. The Groundhog
+sidesteps this by using growth ratios only.
 
 ## 4. Calendar conventions
 

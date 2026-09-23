@@ -227,8 +227,8 @@ without a FluSight-baseline file score no cell, as on the screen.
 
 The backfill refuses `app/state` on purpose, so a backfilled season lives in
 a directory of its own. The Retrospective tab shows such a directory READ
-ONLY, without copying it: the source switch at the top of the tab ("Oracle
-SIHRS backfill"), or `/retro?src=oracle`. The directory is
+ONLY, without copying it: the source switch at the top of the tab
+("Oracle SIHRS backfill"), or `/retro?src=oracle`. The directory is
 `app/state/retro_oracle` by default (gitignored with the rest of
 `app/state`), or any directory named by `FLUBNF_RETRO_ORACLE`, read when
 the page is served. A directory that is, contains or lies inside the
