@@ -76,7 +76,14 @@ def _map_locations(by_loc, fn) -> dict:
     return {loc: fn(hz) for loc, hz in by_loc.items()}
 
 
-def record_to_canonical(rec: dict, members=("pf", "pf2s", "analogue")) -> dict:
+#: the sample-shaped and quantile-shaped members a week record may carry:
+#: the mechanistic member, the two-strain research member, the filter's
+#: own samples kept beside the Oracle member (app.core.oracle.FILTER_KEY,
+#: never displayed), and the Groundhog
+MEMBERS = ("pf", "pf2s", "pf_filter", "analogue")
+
+
+def record_to_canonical(rec: dict, members=MEMBERS) -> dict:
     """A whole stored week record, members converted in place of a copy of
     the mapping. Non-member keys (``asof``, ``pf_failures``) are carried
     through untouched."""
@@ -87,7 +94,7 @@ def record_to_canonical(rec: dict, members=("pf", "pf2s", "analogue")) -> dict:
     return out
 
 
-def record_to_stored(rec: dict, members=("pf", "pf2s", "analogue")) -> dict:
+def record_to_stored(rec: dict, members=MEMBERS) -> dict:
     """The inverse of :func:`record_to_canonical`."""
     out = dict(rec)
     for m in members:

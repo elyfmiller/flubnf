@@ -2441,6 +2441,31 @@ def _run_all(spec: RunSpec) -> None:
             outcome["pf_cells"] = len(status)
             outcome["pf_failures"] = fails
             pf_samples = pf_engine.collect(workroot)
+            # the Oracle step (app/core/oracle.py): on the filter's
+            # collected samples, before anything downstream sees the
+            # member, and before the output floor below guards what
+            # leaves. The plain filter (oracle = none) is a research
+            # configuration: stored as is, its file withheld in step 4,
+            # and oracle.json in the workroot says the step did not run.
+            from app.core import oracle as oracle_mod
+            if oracle_mod.wanted(spec.extra):
+                _phase("the Oracle step: the donor bank from the vintage")
+                pf_raw = pf_samples
+                pf_samples, oprov = oracle_mod.apply_week(
+                    pf_raw, spec.forecast_date, workroot, extra=spec.extra,
+                    weeks_to_drop=int(spec.weeks_to_drop or 0),
+                    drop_same_day=bool(getattr(spec, "drop_same_day", False)))
+                outcome["oracle"] = oprov["bank"]["label"]
+                try:
+                    oracle_mod.write_filter_record(workroot, spec.forecast_date,
+                                                   pf_raw)
+                except Exception:
+                    pass      # the kept copy is a courtesy; the member stands
+            else:
+                oracle_mod.write_not_applied(
+                    workroot, spec.forecast_date,
+                    "the run asked for the plain filter (oracle = none)")
+                outcome["oracle"] = "none"
             try:
                 params["pf"] = _harvest_params(workroot)
             except Exception:
@@ -2516,6 +2541,12 @@ def _run_all(spec: RunSpec) -> None:
         # rows do not carry
         from app.core.runs import is_research as _is_research
         _research = _is_research(spec)
+
+        def _withhold(reason: str) -> None:
+            # one outcome key, every withheld file named in it
+            prior = outcome.get("submission_withheld")
+            outcome["submission_withheld"] = (f"{prior}; {reason}" if prior
+                                              else reason)
         for model, rows in (
             ("pf", [r for loc, s in pf_samples.items()
                     for r in quantile_rows(s, n2f[loc], spec.forecast_date)]),
@@ -2534,10 +2565,19 @@ def _run_all(spec: RunSpec) -> None:
                 # now, not the Groundhog; a hub-named CSV of it would be
                 # indistinguishable from the real submission (the rr-1
                 # rule, applied to this member)
-                outcome["submission_withheld"] = (
+                _withhold(
                     "Groundhog: the run carried no auxiliary donors, so "
                     "this is the bare calendar analogue and does not ship "
                     "under the Groundhog's hub name")
+                continue
+            if model == "pf" and outcome.get("oracle") == "none":
+                # the same rule for the mechanistic member: the plain
+                # filter is a research configuration, not the Oracle
+                # SIHRS, and does not ship under its hub name
+                _withhold(
+                    "Oracle SIHRS: the run asked for the plain filter "
+                    "(oracle = none), a research configuration that does "
+                    "not ship under the Oracle SIHRS hub name")
                 continue
             # Contained per model, the same rule steps 5 and 5b follow: the
             # writer REFUSES rows the hub would bounce (an incomplete
@@ -2629,6 +2669,9 @@ def _run_all(spec: RunSpec) -> None:
         _tmp.write_text(_json.dumps({
             "spec": spec.to_json(), "forecast_date": spec.forecast_date,
             "research": _research,
+            # the Oracle step's bank as stream@digest8, or "none" for the
+            # plain filter; the full record is oracle.json beside this file
+            "oracle": outcome.get("oracle"),
             "observed": obs,
             "params": params,
             # results.json stays in the STORED convention: the console
@@ -2952,6 +2995,9 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
     _x = d.get("extra") if isinstance(d.get("extra"), dict) else {}
     aux = (str(_x.get("analogue_aux") or "").split("+", 1)[0]
            if _x.get("aux_pools") else "")
+    # the Oracle step is part of the record the same way: a row that ran
+    # the plain filter re-runs the plain filter
+    oracle = "none" if str(_x.get("oracle") or "") == "none" else None
     # the spec the /run path will actually build from these fields, compared
     # against the stored one field by field before anything starts
     candidate = RunSpec(
@@ -2969,7 +3015,7 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
         drop_same_day=bool(d.get("drop_same_day", False)),
         replicates=int(d.get("replicates") or 3),
         particles=int(d.get("particles") or 10_000),
-        extra=_run_extra(members, _spec_mode(d), aux))
+        extra=_run_extra(members, _spec_mode(d), aux, oracle))
     # a row recorded before the mode existed reads as a real-time run
     if isinstance(d.get("extra"), dict):
         d["extra"].setdefault("mode", "realtime")
@@ -3002,7 +3048,7 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
                       particles=candidate.particles,
                       mode=_spec_mode(d),
                       drop_same_day=1 if candidate.drop_same_day else 0,
-                      aux=aux)
+                      aux=aux, oracle=oracle)
 
 
 @app.get("/api/series")
@@ -3105,17 +3151,24 @@ def _run_label(run_id: str, spec_json: str = "", tag: bool = True) -> str:
         return when + suffix
 
 
-def _run_extra(members: int, mode: str, aux: str | None = None) -> dict:
+def _run_extra(members: int, mode: str, aux: str | None = None,
+               oracle: str | None = None) -> dict:
     """The research dictionary a console run carries: the mode the form was
     in (vintage or real-time), the two-strain research flag when asked,
-    and the Groundhog's auxiliary donor pools.
+    the Groundhog's auxiliary donor pools, and the Oracle step's switch.
 
     `aux` is None for the shipped configuration (analogue.SHIPPED_AUX,
     resolved against the committed banks so the row records the digests),
     a preset name for another registered configuration, or "" for the bare
     calendar analogue, a research run whose file is withheld. The pools
     go INTO the spec, so the ledger row of record says which donors ran
-    and a stored spec replays the same way."""
+    and a stored spec replays the same way.
+
+    `oracle` is None for the shipped configuration (the Oracle SIHRS: the
+    step applied to the filter's samples, app/core/oracle.py) or "none"
+    for the plain filter, the same shape as `aux`: a research run whose
+    file is withheld. Anything else is refused, so a typo cannot run the
+    plain filter under the member's name."""
     from app.core.engines import analogue as _an
     mode = mode if mode in ("realtime", "vintage") else "realtime"
     extra = {"mode": mode}
@@ -3126,6 +3179,11 @@ def _run_extra(members: int, mode: str, aux: str | None = None) -> dict:
         fn = _an.aux_preset(name)                # unknown name raises here
         extra["aux_pools"] = fn(None, 0, None)["aux_pools"]
         extra["analogue_aux"] = fn.__name__.split(":", 1)[1]
+    if oracle is not None and str(oracle) != "":
+        if str(oracle) != "none":
+            raise ValueError(f"oracle must be 'none' (the plain filter, a "
+                             f"research run) or absent, not {oracle!r}")
+        extra["oracle"] = "none"
     return extra
 
 
@@ -5682,7 +5740,13 @@ def run_models(request: Request,
                # passes what its row recorded, "" for a row that ran the
                # bare analogue before the bank shipped, so a recorded run
                # reproduces instead of silently adopting today's donors
-               aux: str | None = Form(None)):
+               aux: str | None = Form(None),
+               # not on the form either: the Oracle step. Absent (None) is
+               # the shipped configuration, the member; "none" runs the
+               # plain filter as a research run with its file withheld
+               # (app/core/oracle.py); the re-run path passes what its
+               # row recorded
+               oracle: str | None = Form(None)):
     # Any day of the week is a legitimate thing to type. Surveillance weeks
     # END on Saturday, but NHSN publishes the finished week the following
     # WEDNESDAY, so the natural human action -- open the console on the day
@@ -5855,7 +5919,7 @@ def run_models(request: Request,
                    drop_same_day=bool(int(drop_same_day)),
                    replicates=replicates,
                    particles=particles,
-                   extra=_run_extra(members, mode, aux))
+                   extra=_run_extra(members, mode, aux, oracle))
 
     if engine in ("all", "pf", "analogue"):
         # 'analogue' rides the same pipeline with the PF block skipped --

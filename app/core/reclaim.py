@@ -35,8 +35,11 @@ from pathlib import Path
 from app.core import retro
 from app.core.runs import APP_STATE
 
-#: what survives a completed week's prune: the samples record, both forms
-WEEK_KEEP = (retro.SAMPLES_JSON, retro.SAMPLES_GZ, retro.QUANTILES_NAME)
+#: what survives a completed week's prune: the samples record, both forms,
+#: its quantile sidecar, and the Oracle step's provenance beside it (the
+#: oracle.json record and the donor pool it drew from, app/core/oracle.py)
+WEEK_KEEP = (retro.SAMPLES_JSON, retro.SAMPLES_GZ, retro.QUANTILES_NAME,
+             "oracle.json", "oracle_bank")
 
 #: a per-cell fit tree inside a workroot or week: <location>_r<replicate>
 CELL_DIR_RE = re.compile(r".+_r\d+$")

@@ -2186,7 +2186,8 @@ def app_window(port: int = 8710):
 
 @app.command("retro")
 def retro_cmd(season: str, locations: str = "all", width: int = 0,
-              replicates: int = 3, root: str = "", aux: str = ""):
+              replicates: int = 3, root: str = "", aux: str = "",
+              oracle: str = ""):
     """Run a season-as-competition retrospective (resumable).
 
     width 0 means auto: sized to this machine's cores by the engine's
@@ -2198,7 +2199,13 @@ def retro_cmd(season: str, locations: str = "all", width: int = 0,
     runs the bare calendar analogue that shipped inside the blend until
     2026-09-22, a research configuration now. The configuration's name is
     written into run_meta.json with its bank digests, so a replay says on
-    its face which donors it ran."""
+    its face which donors it ran.
+
+    oracle is the mechanistic member's switch, the same shape. Empty, the
+    default, stores the Oracle SIHRS under pf (the step of app/core/
+    oracle.py on the filter's collected samples, the filter's own samples
+    kept beside it under a research key); 'none' stores the plain filter,
+    a research configuration whose week says so in oracle.json."""
     import pandas as pd
     from pathlib import Path as _P
     from app.core import retro
@@ -2224,6 +2231,22 @@ def retro_cmd(season: str, locations: str = "all", width: int = 0,
     else:
         week_extra = _an.aux_preset(_an.SHIPPED_AUX)
     print(f"  analogue donor configuration: {week_extra.__name__}")
+    if oracle == "none":
+        inner = week_extra
+
+        def week_extra(asof, i, vintages, _inner=inner):
+            d = dict(_inner(asof, i, vintages))
+            d["oracle"] = "none"
+            return d
+        week_extra.__name__ = inner.__name__ + "+oracle:none"
+        print("  Oracle step: none (the plain filter, a research run)")
+    elif oracle:
+        raise typer.BadParameter(
+            "--oracle takes 'none' (the plain filter, a research run) or "
+            "nothing (the Oracle SIHRS)")
+    else:
+        print("  Oracle step: applied (w = 0.5; the donor bank built from "
+              "each week's vintage, named in the week's oracle.json)")
     done = retro.run_season(r, season, names, replicates=replicates,
                             width=width, week_extra=week_extra,
                             progress=lambda a: print(f"  {a} done", flush=True))

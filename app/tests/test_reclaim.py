@@ -452,6 +452,11 @@ def test_run_week_prunes_the_week_it_just_assembled(tmp_path, monkeypatch):
     monkeypatch.setattr(retro.pf_engine, "prepare", fake_prepare)
     monkeypatch.setattr(retro.pf_engine, "collect",
                         lambda w: {"Ohio": {"0": [1.0]}})
+    # the Oracle step reads the week's vintage, which this hub-free test
+    # has none of: the engines are stubbed and so is the step
+    monkeypatch.setattr(retro.oracle_mod, "apply_week",
+                        lambda s, asof, wd, **kw: (s, {"applied": True,
+                                                       "bank": {"label": "stub"}}))
     monkeypatch.setattr(retro.an_engine, "run",
                         lambda spec: {"Ohio": {"1": {0.5: 2.0}}})
 

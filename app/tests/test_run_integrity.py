@@ -75,6 +75,12 @@ def _fake_run(monkeypatch, tmp_path, status_by_cell, collected, aux=None):
     monkeypatch.setattr(pf_engine, "collect",
                         lambda w: {loc: {h: list(v) for h, v in s.items()}
                                    for loc, s in collected.items()})
+    import app.core.oracle as oracle_mod
+    # the Oracle step reads the week's vintage, which this hub-free test
+    # has none of: the engines are stubbed and so is the step
+    monkeypatch.setattr(oracle_mod, "apply_week",
+                        lambda s, asof, wd, **kw: (s, {"applied": True,
+                                                       "bank": {"label": "stub"}}))
     monkeypatch.setattr(an_engine, "run",
                         lambda spec: {loc: {h: dict(q)
                                             for h, q in AN_Q.items()}

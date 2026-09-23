@@ -348,6 +348,11 @@ def test_run_week_hands_extra_to_prepare_and_records_it_in_the_manifest(
     monkeypatch.setattr(retro.pf_engine, "prepare", fake_prepare)
     monkeypatch.setattr(retro.pf_engine, "collect",
                         lambda wd: {"Ohio": {"0": [1.0]}})
+    # the Oracle step reads the week's vintage, which this hub-free test
+    # has none of: the engines are stubbed and so is the step
+    monkeypatch.setattr(retro.oracle_mod, "apply_week",
+                        lambda s, asof, wd, **kw: (s, {"applied": True,
+                                                       "bank": {"label": "stub"}}))
     monkeypatch.setattr(retro.an_engine, "run",
                         lambda spec: {"Ohio": {"1": {0.5: 2.0}}})
     monkeypatch.setattr(retro, "_launch_runners",
@@ -396,6 +401,11 @@ def test_run_week_takes_the_season_start_from_extra(tmp_path, monkeypatch):
     monkeypatch.setattr(retro.pf_engine, "prepare", fake_prepare)
     monkeypatch.setattr(retro.pf_engine, "collect",
                         lambda wd: {"Ohio": {"0": [1.0]}})
+    # the Oracle step reads the week's vintage, which this hub-free test
+    # has none of: the engines are stubbed and so is the step
+    monkeypatch.setattr(retro.oracle_mod, "apply_week",
+                        lambda s, asof, wd, **kw: (s, {"applied": True,
+                                                       "bank": {"label": "stub"}}))
     monkeypatch.setattr(retro.an_engine, "run",
                         lambda spec: {"Ohio": {"1": {0.5: 2.0}}})
     monkeypatch.setattr(retro, "_launch_runners",
