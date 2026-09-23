@@ -110,10 +110,10 @@ def _fake_run(monkeypatch, tmp_path, status_by_cell, collected, aux=None):
 def test_a_location_with_no_pf_member_is_absent_from_the_sihrs_file_only(
         tmp_path, monkeypatch):
     """Every Texas replicate fails, Ohio's succeeds. Since the blend was
-    retired (2026-09-22) nothing carries Texas under the SIHRS name: the
-    SIHRS file holds Ohio alone, the Groundhog file holds both, the row is
-    partial and its failure count names the cell. No blend bookkeeping
-    keys are written."""
+    retired (2026-09-22) nothing carries Texas under the Oracle SIHRS name:
+    the Oracle SIHRS file holds Ohio alone, the Groundhog file holds both,
+    the row is partial and its failure count names the cell. No blend
+    bookkeeping keys are written."""
     row, outcome, w = _fake_run(
         monkeypatch, tmp_path,
         {"Ohio_r0": "ok", "Texas_r0": "error: fit failed"},
@@ -134,9 +134,9 @@ def test_a_location_with_no_pf_member_is_absent_from_the_sihrs_file_only(
 
 def test_all_pf_fits_failed_still_ships_the_groundhog(
         tmp_path, monkeypatch):
-    """Both locations fail, nothing is collected: there is no SIHRS file,
-    and that costs the SIHRS file only. The Groundhog is a standalone
-    submission and writes under its own name."""
+    """Both locations fail, nothing is collected: there is no Oracle SIHRS
+    file, and that costs the Oracle SIHRS file only. The Groundhog is a
+    standalone submission and writes under its own name."""
     row, outcome, w = _fake_run(
         monkeypatch, tmp_path,
         {"Ohio_r0": "error: fit failed", "Texas_r0": "error: fit failed"},

@@ -3,8 +3,8 @@
 One parameterized macro draws beta(t)/beta0 over a season from the same
 cosine-exponential the equation states, computed by a template global rather
 than traced by hand, and appears on every surface that shows the equation:
-the Models PF view, Methods (both the SIHRS card and the two-strain
-section), the home workflow card, and the two-strain model page. The theme
+the Models PF view, Methods (both the SIHRS compartment card and the
+two-strain section), the home workflow card, and the two-strain model page. The theme
 system grows two intermediate themes, paper and dim, selected by a compact
 navbar picker; every theme block defines the same token set (no color may
 fall through to another theme's value), and both new themes hold the
