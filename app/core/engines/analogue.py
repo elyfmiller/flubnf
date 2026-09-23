@@ -83,9 +83,10 @@ def load_aux_bank(path: str) -> dict:
     pool is cross-location by construction and a location key is used only to
     find a week's own future value.
 
-    The file is a local data artefact, not repository content (`app/state/`
-    and `data/` are gitignored), so a relative path resolves against the repo
-    root and a missing file raises rather than yielding an empty pool: an
+    The file is a local data artefact, not one of the committed banks under
+    `data/banks/` (those are read by name through `flubnf.bank.read`), so a
+    relative path resolves against the repo root and a missing file raises
+    rather than yielding an empty pool: an
     empty auxiliary bank would silently halve the splice into the single-pool
     forecast while still being labelled spliced.
     """
@@ -101,9 +102,9 @@ def load_aux_bank(path: str) -> dict:
         return hit
     if not fp.exists():
         raise FileNotFoundError(
-            f"auxiliary donor bank not found: {fp}. spec.extra['iliplus']"
-            f"['bank'] must name a readable JSON file; it is a local data "
-            f"artefact and is not carried in this repository.")
+            f"auxiliary donor bank not found: {fp}. A pool's 'bank' entry in "
+            f"spec.extra['aux_pools'] must name a readable JSON file; use "
+            f"'committed': True for the banks carried in data/banks/.")
     raw = json.load(open(fp))
     bank = {}
     for k, v in raw.items():
@@ -372,10 +373,11 @@ def _one_pool(spec, bank, cfg):
 def splice_args(spec, bank):
     """`flubnf.analogue.DonorSplice` from `spec.extra['aux_pools']`, or None.
 
-    This path is DORMANT: no shipped configuration sets the key, and a spec
-    without it leaves the analogue byte-identical to the single-pool path
-    (verified over all 85 archived as-of weeks, 405,904 quantile values,
-    zero differences).
+    The shipped configuration sets the key (SHIPPED_AUX, put into the spec
+    by the console and the replay); a spec without it runs the bare
+    analogue, byte-identical to the historical single-pool path (verified
+    over all 85 archived as-of weeks, 405,904 quantile values, zero
+    differences).
 
     `aux_pools` is a list of pool configs; see `_one_pool`. Absent, or
     explicitly False, means dormant. An empty list does NOT: the key is
@@ -429,8 +431,8 @@ def run(spec) -> dict:
     # With both off the arithmetic is byte-identical to the historical path.
     k_user = int(getattr(spec, "weeks_to_drop", 0) or 0)
     drop_same = bool(getattr(spec, "drop_same_day", False))
-    # Dormant unless spec.extra["iliplus"] is set; None keeps AN.forecast on
-    # its historical single-pool arithmetic. Built once per run: it depends
+    # From spec.extra["aux_pools"]; None keeps AN.forecast on its
+    # historical single-pool arithmetic. Built once per run: it depends
     # only on the spec and the vintage bank, not on the location.
     splice = splice_args(spec, bank)
     for loc in spec.locations:

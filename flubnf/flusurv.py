@@ -74,7 +74,7 @@ def build_url(locations, ew_start: int, ew_end: int) -> str:
     Note the parameter is ``locations``, not the ``regions`` that fluview and
     fluview_clinical take. Getting that wrong returns an empty result rather
     than an error, which is exactly the kind of silence a donor pool should
-    never absorb, so it is pinned by a test.
+    never absorb, so it is pinned by a test (app/tests/test_flusurv.py).
     """
     return BASE_URL + "?" + urllib.parse.urlencode({
         "locations": ",".join(locations),

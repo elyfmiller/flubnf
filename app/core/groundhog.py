@@ -65,7 +65,11 @@ STATE = REPO / "app" / "state" / "groundhog"
 BANDS = (("50", 0.25, 0.75, 0.50), ("80", 0.10, 0.90, 0.80),
          ("95", 0.025, 0.975, 0.95))
 
-SHIPPED = "shipped"          # the arm with no auxiliary pool
+#: the arm with no auxiliary pool: the bare calendar analogue. The
+#: directory keeps the name it had when the bare analogue was what
+#: shipped; since 2026-09-22 the shipped member is the Groundhog, which
+#: this module runs as the `flusurv` arm (`--aux flusurv`).
+SHIPPED = "shipped"
 
 
 def console_locations() -> list:
@@ -149,7 +153,9 @@ def run_season(season: str, aux: str = "", *, with_us: bool = False,
     """Replay one season of the calendar member alone and store the record.
 
     `aux` names an auxiliary preset (`an_engine.AUX_PRESETS`); empty runs
-    the shipped single-pool member. Returns the season summary."""
+    the bare single-pool analogue (the `shipped` arm directory, its
+    historical name; the Groundhog is `aux="flusurv"`). Returns the season
+    summary."""
     arm = aux or SHIPPED
     week_extra = an_engine.aux_preset(aux) if aux else None
     locations = console_locations() + (["US"] if with_us else [])

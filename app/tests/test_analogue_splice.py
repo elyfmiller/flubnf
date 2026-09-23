@@ -538,7 +538,7 @@ def test_load_aux_bank_fails_loudly(tmp_path):
     from app.core.engines.analogue import load_aux_bank
     # The bare open() would raise FileNotFoundError on its own, so assert on
     # the guard's MESSAGE: that is the part carrying the diagnosis.
-    with pytest.raises(FileNotFoundError, match="not carried in this repository"):
+    with pytest.raises(FileNotFoundError, match="auxiliary donor bank not found"):
         load_aux_bank(str(tmp_path / "absent.json"))
     bad = tmp_path / "bad.json"
     bad.write_text(json.dumps({"no-pipe-separator": 1.0}))

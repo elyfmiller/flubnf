@@ -86,12 +86,16 @@ The 0.665 anchor-alignment figure elsewhere in this module was also measured
 on the UNRESTRICTED pool, before the 2021-22 exclusion adopted on 2026-08-24,
 and is a historical record of that configuration.
 
-THE 2021-22 DONOR EXCLUSION (adopted 2026-08-24)
-------------------------------------------------
-Season 2021-22 is excluded from the donor pool. `DONOR_SEASON_EXCLUSIONS` is
-the registry, `EXCLUDED_DONOR_SEASONS` is the default `donor_ratios` applies,
-and `SEASON_2021_22_CALENDAR_INVERSION` carries the full provenance. The short
-version, because a donor pool that quietly differs from the published one is
+THE REGISTERED DONOR EXCLUSIONS (2021-22 adopted 2026-08-24, 2020-21 adopted
+2026-09-19)
+-----------------------------------------------------------------------------
+Two seasons are excluded from the donor pool. `DONOR_SEASON_EXCLUSIONS` is
+the registry, `EXCLUDED_DONOR_SEASONS` is the default `donor_ratios` applies
+({2020, 2021}), and `SEASON_2021_22_CALENDAR_INVERSION` and
+`SEASON_2020_21_SUPPRESSED` carry the full provenance. The 2020-21 record is
+inert for the admissions bank (no data before 2022-02-05) and applies to
+every auxiliary pool. The 2021-22 short version, because a donor pool that
+quietly differs from the published one is
 the worst failure available here:
 
   MECHANISM. 2021-22 peaked at epiweek 16 (2022-04-23); the other four donor
@@ -417,7 +421,9 @@ def donor_ratios(bank: Mapping[tuple, float], target_epiweek: int,
     target season improves the score. It must never be True in production.
 
     `exclude_seasons` defaults to `EXCLUDED_DONOR_SEASONS`, which is the
-    shipped donor pool: every strictly prior season EXCEPT 2021-22. Pass `()`
+    shipped donor pool: every strictly prior season except the registered
+    exclusions, 2020-21 and 2021-22 (the first is inert for the admissions
+    bank, which starts 2022-02-05, and applies to the auxiliary pools). Pass `()`
     to restore the unrestricted pool that figures published before 2026-08-24
     were measured on, and pass another profile's set (see `flubnf.profiles`)
     when forecasting a disease whose seasons this module does not label. Every
@@ -738,7 +744,7 @@ def forecast(anchor: float, as_of: date, horizon: int,
     their None defaults keep this byte-identical to the historical path.
 
     `exclude_seasons` passes through to `donor_ratios` and defaults to the
-    shipped pool, which excludes 2021-22.
+    shipped pool, which excludes the registered seasons 2020-21 and 2021-22.
 
     `splice`, when given, adds a second donor pool from another surveillance
     stream and vincentizes the two ratio quantile functions (see
