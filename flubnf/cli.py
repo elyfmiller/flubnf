@@ -2186,6 +2186,129 @@ def _server_answering(url: str, timeout: float = 1.0) -> bool:
         return False
 
 
+#: When to ask macOS to bring the console window forward, in seconds after
+#: the window is shown. The first request usually lands. The later ones
+#: exist because macOS 14 and later decide activation cooperatively: a
+#: request from a process that Terminal launched can be declined while
+#: Terminal is the active app, and the window then ignores clicks until the
+#: user switches away and back (measured on the lead's MacBook Air,
+#: 2026-09-23: about a minute of dead clicks through FluBNF.command while
+#: the server had answered in under half a second). Retrying stops as soon
+#: as the app is active with a key window.
+ACTIVATE_DELAYS = (0.0, 0.3, 1.0, 2.0, 4.0, 8.0)
+
+#: After the requests, how long to keep watching (seconds, and how often)
+#: so the startup trace records when the app did become active, if macOS
+#: declined every request. Watching only: nothing is requested.
+ACTIVATE_WATCH = (120.0, 2.0)
+
+
+def _activate_once(appkit) -> tuple:
+    """One request, run on the Cocoa main thread, to make this process the
+    active app with its window key and in front. Returns (active, key).
+
+    Every call is tried on its own: the macOS 14 cooperative request
+    (NSApplication.activate), the older activateIgnoringOtherApps_, which
+    macOS 14 deprecated and often ignores when another app is active, the
+    running-application form, and ordering the visible windows front and
+    key, which the window library does only once, before its run loop
+    starts."""
+    app = appkit.NSApplication.sharedApplication()
+    try:
+        app.setActivationPolicy_(appkit.NSApplicationActivationPolicyRegular)
+    except Exception:
+        pass
+    try:
+        if app.respondsToSelector_("activate"):
+            app.activate()
+    except Exception:
+        pass
+    try:
+        app.activateIgnoringOtherApps_(True)
+    except Exception:
+        pass
+    try:
+        appkit.NSRunningApplication.currentApplication().activateWithOptions_(
+            appkit.NSApplicationActivateAllWindows)
+    except Exception:
+        pass
+    # macOS 14 and later: ask on behalf of the app that has focus now (the
+    # Terminal that ran the launcher), the form cooperative activation is
+    # designed around
+    try:
+        me = appkit.NSRunningApplication.currentApplication()
+        front = appkit.NSWorkspace.sharedWorkspace().frontmostApplication()
+        if (front is not None and me.respondsToSelector_(
+                "activateFromApplication:options:")):
+            me.activateFromApplication_options_(
+                front, appkit.NSApplicationActivateAllWindows)
+    except Exception:
+        pass
+    for w in (app.windows() or []):
+        try:
+            if w.isVisible():
+                w.makeKeyAndOrderFront_(None)
+                w.orderFrontRegardless()
+        except Exception:
+            pass
+    return bool(app.isActive()), app.keyWindow() is not None
+
+
+def _bring_window_forward(appkit, call_after, delays=ACTIVATE_DELAYS,
+                          watch=ACTIVATE_WATCH, sleep=None,
+                          clock=None) -> bool:
+    """Ask macOS, at each of `delays`, to activate this app, until it is
+    active with a key window; each request runs on the Cocoa main thread
+    through `call_after`. Every outcome goes to the startup trace, so a
+    trace from a machine where the window ignored clicks says whether
+    macOS declined the requests and when the app did become active.
+    Returns whether a request succeeded."""
+    import platform
+    import threading as _th
+    import time as _t
+    sleep = sleep or _t.sleep
+    clock = clock or _t.monotonic
+    t0 = clock()
+    _trace(f"window: macOS {platform.mac_ver()[0] or 'unknown'}, "
+           f"{len(delays)} activation requests planned")
+
+    def _on_main(fn):
+        box, done = {}, _th.Event()
+
+        def _run():
+            try:
+                box["r"] = fn()
+            except Exception:
+                box["r"] = None
+            done.set()
+        call_after(_run)
+        done.wait(2.0)
+        return box.get("r")
+
+    for i, d in enumerate(delays):
+        wait = d - (clock() - t0)
+        if wait > 0:
+            sleep(wait)
+        r = _on_main(lambda: _activate_once(appkit)) or (False, False)
+        active, key = r
+        _trace(f"window: activation request {i + 1} at "
+               f"+{clock() - t0:.1f}s: active={active} key_window={key}")
+        if active and key:
+            return True
+    _trace("window: macOS declined every activation request; clicks may be "
+           "ignored until the user switches to another app and back")
+    total, step = watch
+    while clock() - t0 < total:
+        sleep(step)
+        app = appkit.NSApplication.sharedApplication()
+        if _on_main(lambda: bool(app.isActive())):
+            _trace(f"window: app became active at +{clock() - t0:.1f}s "
+                   "(not by request)")
+            return False
+    _trace(f"window: still not active after +{total:.0f}s")
+    return False
+
+
 def _window_watchdog(window, url: str, wait: float = 4.0, retries: int = 3,
                      fail_page: str = _SERVER_FAIL_PAGE,
                      probe=None) -> str:
@@ -2423,6 +2546,7 @@ def app_window(port: int = 8710):
                          daemon=True).start()
         try:
             # pyobjc ships with pywebview
+            import AppKit
             from AppKit import NSApplication, NSImage
             from PyObjCTools import AppHelper
 
@@ -2434,21 +2558,19 @@ def app_window(port: int = 8710):
                         / "app" / "ui" / "static" / "brand"
                         / "pybnf_icon_512.png")
 
-            def _front():
-                app = NSApplication.sharedApplication()
-                app.activateIgnoringOtherApps_(True)
+            def _icon():
                 try:
                     if icon_png.is_file():
                         img = NSImage.alloc().initWithContentsOfFile_(
                             str(icon_png))
                         if img:
-                            app.setApplicationIconImage_(img)
+                            NSApplication.sharedApplication() \
+                                .setApplicationIconImage_(img)
                 except Exception:
                     pass
-            AppHelper.callAfter(_front)
-            import time as _t
-            _t.sleep(1.0)          # once more after the window settles
-            AppHelper.callAfter(_front)
+            AppHelper.callAfter(_icon)
+            # activation, retried until macOS grants it (_bring_window_forward)
+            _bring_window_forward(AppKit, AppHelper.callAfter)
         except Exception:
             pass
     _trace("window: entering webview.start (main loop)")
