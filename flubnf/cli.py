@@ -2676,7 +2676,8 @@ def oracle_reproduce_cmd(
              "NULL); every week's quantile sidecar must be current."),
     screen: Optional[Path] = typer.Option(
         None, "--screen",
-        help="The registered screen's screen_scores.json, printed beside."),
+        help="The registered screen's screen_scores.json (or the B2 screen's "
+             "screen_b2_scores.json, the shipped bank), printed beside."),
 ):
     """Score backfilled roots with the app's own scorer and print relWIS
     per season and over the seasons together, on the record definition
@@ -2698,7 +2699,9 @@ def oracle_reproduce_cmd(
         console.print(line, highlight=False)
     console.print(f"  cells scored (member root): {res['cells_scored']:,}")
     if res.get("screen"):
-        console.print(f"  screen frozen document {res['screen'].get('frozen_document_sha256')}")
+        console.print(f"  screen frozen document {res['screen'].get('frozen_document_sha256')}"
+                      + (f", B2 document {res['screen']['b2_frozen_sha256']}"
+                         if res['screen'].get('b2_frozen_sha256') else ""))
 
 
 site_app = typer.Typer(

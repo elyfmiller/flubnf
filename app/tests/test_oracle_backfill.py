@@ -38,6 +38,22 @@ def _saturdays(first: date, last: date) -> list:
         d += timedelta(days=7)
     return out
 
+def _synthetic_flusurv(monkeypatch, first: date, last: date) -> dict:
+    """A FluSurv-NET bank over the synthetic hub's own seasons, put where
+    flubnf.oracle_mix reads the committed one: the committed bank ends in
+    2026 and shares no season with a hub of the 2090s, so no shrink could
+    be fitted against it (the step raises then, by design)."""
+    from flubnf import bank as BK
+    from flubnf import oracle_mix as MX
+    b = {}
+    for i, d in enumerate(_saturdays(first, last)):
+        for j, loc in enumerate(("ca", "co", "network_all")):
+            b[(loc, d)] = round(1.9 + 0.8 * np.sin(2 * np.pi * (i + 5 * j) / 52.0)
+                                + 0.05 * ((i * 7 + j) % 5), 4)
+    man = {"stream": "flusurv", "digest": BK.digest(b), "cells": len(b)}
+    monkeypatch.setattr(MX, "read_bank", lambda banks_dir=None: (b, man))
+    return {"bank": b, "manifest": man}
+
 
 @pytest.fixture
 def source(tmp_path, monkeypatch):
@@ -63,6 +79,7 @@ def source(tmp_path, monkeypatch):
         vint[asof] = vf
     monkeypatch.setattr(oracle_mod, "LOCATIONS", loc)
     monkeypatch.setattr(oracle_mod, "vintage_path", lambda d: vint[d])
+    _synthetic_flusurv(monkeypatch, date(2095, 8, 1), date.fromisoformat(max(WEEKS)))
     root = tmp_path / "src" / "2097-98"
     rng = np.random.default_rng(5)
     for asof in WEEKS:

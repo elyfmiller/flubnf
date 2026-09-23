@@ -20,9 +20,11 @@ scorer, the same cell rule, the same baseline construction the console
 uses everywhere), pooled through app.core.us_national.pooled_frame, then
 relWIS per season and over the seasons together on two cell sets: the
 record definition (each member on its own scored cells) and the common set
-(cells where both stored members scored), each with its cell count. The
-screen's screen_scores.json relwis_tables are printed beside them when
-given. The hub the process reads (FLUBNF_HUB) must be the one whose truth
+(cells where both stored members scored), each with its cell count; with
+2023-24 among the roots, the two active seasons (active2) as well. The
+screen's relwis_tables are printed beside them when given: the frozen
+screen's screen_scores.json (the admissions-only member LB) or the B2
+screen's screen_b2_scores.json (the shipped member LBGH, bank change B2). The hub the process reads (FLUBNF_HUB) must be the one whose truth
 and baseline files the screen used, or the numbers describe two truths.
 """
 from __future__ import annotations
@@ -132,6 +134,9 @@ def backfill_season(source, out, season: str, *, force: bool = False,
                          "weeks_done": done, "weeks_skipped": skipped,
                          "keep_filter": bool(keep_filter),
                          "prereg_sha256": oracle_mod.OR.PREREG_SHA256,
+                         "b2_sha256": oracle_mod.OR.B2_SHA256,
+                         "addendum_a2_sha256": oracle_mod.OR.ADDENDUM_A2_SHA256,
+                         "bank_stream": oracle_mod.MX.STREAM,
                          "utc": oracle_mod._utc()}}
     retro.write_meta(dst, meta)
     return {"out": dst, "weeks": done, "skipped": skipped,
@@ -173,6 +178,8 @@ def relwis_tables(df: pd.DataFrame, models=("pf", "analogue")) -> dict:
     if df is None or df.empty:
         return out
     scopes = {s: df[df.season == s] for s in sorted(df.season.unique())}
+    if len(scopes) > 2 and {"2024-25", "2025-26"} <= set(scopes):
+        scopes["active2"] = df[df.season.isin(["2024-25", "2025-26"])]
     if len(scopes) > 1:
         scopes["all"] = df
     for name, g in scopes.items():
@@ -196,14 +203,18 @@ def relwis_tables(df: pd.DataFrame, models=("pf", "analogue")) -> dict:
 
 
 def screen_tables(screen_json) -> dict:
-    """The screen's relwis_tables for LB, LB25 and NULL, as printed beside
-    the reproduced numbers: common and native by scope, seed 1 and the
-    per-seed list."""
+    """The screen's relwis_tables for LB, LB25 and NULL (and, from the B2
+    screen, the shipped LBGH and LB25GH), as printed beside the reproduced
+    numbers: common and native by scope, seed 1 and the per-seed list."""
     d = json.loads(Path(screen_json).read_text())
     rt = d.get("relwis_tables") or {}
     seeds = [str(s) for s in d.get("seeds") or []]
-    out = {"seeds": seeds, "frozen_document_sha256": d.get("frozen_document_sha256")}
-    for arm in ("NULL", "LB", "LB25"):
+    out = {"seeds": seeds, "frozen_document_sha256": d.get("frozen_document_sha256"),
+           "b2_frozen_sha256": d.get("b2_frozen_sha256"),
+           "member_arm": "LBGH" if "LBGH" in rt else "LB"}
+    for arm in ("NULL", "LB", "LB25", "LBGH", "LB25GH"):
+        if arm not in rt and arm in ("LBGH", "LB25GH"):
+            continue
         t = rt.get(arm) or {}
         out[arm] = {"common": t.get("common") or {}, "native": t.get("native") or {},
                     "native_cells": t.get("native_cells"),
@@ -229,7 +240,9 @@ def reproduce(roots: list, *, source_roots: list | None = None,
         frames.append(score_root(r, season))
     df = pd.concat([f for f in frames if not f.empty], ignore_index=True) if frames else pd.DataFrame()
     res = {"roots": [str(r) for r in roots], "member": relwis_tables(df),
-           "cells_scored": int(len(df))}
+           "cells_scored": int(len(df)),
+           "pooled_scope": ("pooled3" if df is not None and not df.empty
+                            and df.season.nunique() > 2 else "active2")}
     if source_roots:
         sf = []
         for r in source_roots:
@@ -255,7 +268,8 @@ def report_lines(res: dict) -> list:
     lines = []
     scr = res.get("screen") or {}
     seed1 = (scr.get("seeds") or [""])[0]
-    scope_map = {"all": "active2"}
+    arm = scr.get("member_arm") or "LB"
+    scope_map = {"all": res.get("pooled_scope") or "active2"}
     for scope, entry in (res.get("member") or {}).items():
         sscope = scope_map.get(scope, scope)
         lines.append(f"{scope}:")
@@ -264,14 +278,14 @@ def report_lines(res: dict) -> list:
                 who = {"pf": "Oracle SIHRS (pf)", "analogue": "Groundhog"}.get(m, m)
                 line = f"  {setname:<7} {who:<20} relWIS {v['relwis']:.4f} on {v['cells']:,} cells"
                 if m == "pf" and scr:
-                    lb = scr.get("LB") or {}
+                    lb = scr.get(arm) or {}
                     key = "common" if setname == "common" else "native"
                     s_val = (lb.get(key) or {}).get(sscope)
                     ps = (lb.get("per_seed_common") or {}).get(sscope) or []
                     s1 = ps[0] if ps else None
-                    lines.append(f"{line}   screen LB {key} (seed mean) {_fmt(s_val)}"
+                    lines.append(f"{line}   screen {arm} {key} (seed mean) {_fmt(s_val)}"
                                  + (f", seed {seed1} {_fmt(s1)}" if s1 is not None else "")
-                                 + (f", native cells {scr['LB'].get('native_cells')}"
+                                 + (f", native cells {lb.get('native_cells')}"
                                     if key == "native" and scope == "all" else ""))
                 else:
                     lines.append(line)

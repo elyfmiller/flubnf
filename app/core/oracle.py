@@ -13,17 +13,25 @@ week's production filter samples").
 
 WHAT IT DOES
 ------------
-Builds the week's donor pool from the week's own hub vintage through
-flubnf.oracle_bank (the FBASE rule; vintage true; written beside the week
-with its manifest and digest), applies flubnf.oracle.member_for_cell to
-every jurisdiction (w = 0.5, the five seeds of S14, the submitted seed's
-transformed samples kept), and returns the member in the record's shape
-under the key `pf`, the filter's own samples kept under FILTER_KEY, and a
-provenance record that oracle.json beside the week carries: the frozen
-pre-registration's sha256, the bank as stream@digest8, the vintage's
-sha256, the rule, w, the seeds and which one the submitted quantiles used,
-k trimmed weeks, m_0 and y_T per location, the pool size, abstentions and
-identity cells, and the quantiles of every seed and of the secondary weight.
+Builds the week's donor bank, the Groundhog's own (bank change B2, shipped
+by addendum A2): the admissions half from the week's own hub vintage
+through flubnf.oracle_bank (the FBASE rule; vintage true) and the
+FluSurv-NET half from the committed bank by digest through
+flubnf.oracle_mix (the eight-week rate paths, the per-date shrink fitted
+on the week's vintage), both written beside the week with their manifests
+and digests. Applies flubnf.oracle.member_for_cell on the mixture to every
+jurisdiction (w = 0.5, w_aux = 0.5 under R_EITHER, the five seeds of S14,
+the submitted seed's transformed samples kept), and returns the member in
+the record's shape under the key `pf`, the filter's own samples kept under
+FILTER_KEY, and a provenance record that oracle.json beside the week
+carries: the frozen pre-registration's, the B2 document's and addendum
+A2's sha256, the bank label "admissions-fbase@<8>+flusurv@<8>", each
+half's pool size and digest, the shrink, the mixture state and every
+location's identity state, the vintage's sha256, the rules, w, the seeds
+and which one the submitted quantiles used, k trimmed weeks, m_0 and y_T
+per location, abstentions, and the quantiles of every seed of the primary,
+of the registered secondary weight on the same bank and of the
+admissions-only member (logged beside the primary, addendum A2 (2)).
 
 HORIZONS. The record above the storage boundary is canonical (app.core
 .horizons: the anchor under ORIGIN, the forecasts under "0".."3"); the
@@ -38,8 +46,10 @@ own samples are stored under `pf`, the mechanistic member's submission is
 withheld, the run is a research run in the ledger and oracle.json says
 the step was not applied. Not a model tile, not a toggle, not on the site.
 
-NO SILENT IDENTITY. A vintage that cannot be read or a pool that cannot be
-built RAISES, as a missing auxiliary bank does for the Groundhog: a week
+NO SILENT IDENTITY. A vintage that cannot be read, a pool that cannot be
+built, a FluSurv-NET bank that is missing or fails its digest, or a shrink
+that cannot be fitted RAISES, as a missing auxiliary bank does for the
+Groundhog: a week
 shipped under the Oracle SIHRS's name that quietly was the plain filter is
 the failure this whole line of work exists to prevent. The identity rule
 of the pool (fewer than two donor seasons) is not that case: it is the
@@ -60,6 +70,7 @@ from app.core import horizons as hz
 from app.core.data import vintage_path
 from flubnf import oracle as OR
 from flubnf import oracle_bank as OB
+from flubnf import oracle_mix as MX
 from flubnf.settings import LOCATIONS
 
 #: the research member key: the filter's own samples, before the step.
@@ -150,8 +161,8 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
                weeks_to_drop: int = 0, drop_same_day: bool = False,
                populations: dict | None = None, vintage=None,
                locations_csv=None, w: float = OR.W_PRODUCTION,
-               seeds=OR.SEEDS, submitted_seed: int = OR.SUBMITTED_SEED
-               ) -> tuple:
+               seeds=OR.SEEDS, submitted_seed: int = OR.SUBMITTED_SEED,
+               aux=None, shrink: float | None = None) -> tuple:
     """The member for one week. Returns (member, provenance).
 
     `pf_samples` is collect()'s output in canonical horizons: location ->
@@ -159,7 +170,9 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
     week's provenance lands (oracle.json and oracle_bank/ beside the week
     or in the workroot); its cells.json, when present, supplies k. The
     vintage defaults to app.core.data.vintage_path(asof) and populations
-    to the hub's locations.csv.
+    to the hub's locations.csv. `aux` ((bank, manifest)) defaults to the
+    committed FluSurv-NET bank read by digest and `shrink` to the value
+    fitted on the week's vintage; both are for tests and research only.
     """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -169,6 +182,13 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
     n2f = name_to_fips(locations_csv)
     built = OB.build_pool(asof, vf, pops, out_dir / BANK_DIRNAME, built_utc=_utc())
     pool, man, vb = built["pool"], built["manifest"], built["vintage"]
+    mix = MX.build_week(asof, vb.count_bank, aux=aux, shrink=shrink,
+                        out_dir=out_dir / BANK_DIRNAME, built_utc=_utc())
+    auxp = mix["pool"]
+    adm_ok = pool["rule"] == 1 and pool["n"] > 0
+    state = MX.mixture_state(adm_ok, mix["admissible"])
+    w_aux = MX.resolve_w_aux(adm_ok, mix["admissible"])
+    bank_label = MX.label(man["digest"], mix["bank_digest"])
     yT = vb.y_T()
     k_cells = weeks_dropped(out_dir)
     k_source = ("cells.json (weeks_dropped per cell, the same-day trim included)"
@@ -182,8 +202,10 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
     q_null: dict = {}
     q_primary: dict = {s: {} for s in seeds}
     q_secondary: dict = {s: {} for s in seeds}
+    q_adm: dict = {s: {} for s in seeds}
     mean_primary: dict = {}
     mean_secondary: dict = {}
+    mean_adm: dict = {}
     n_active = n_elig = absten = guard = 0
     identity, not_eligible, outside = [], [], []
     for loc, blocks in pf_samples.items():
@@ -197,7 +219,7 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
             # the US row (or a location the hub does not know): outside the
             # registered member, the filter's own samples untouched
             member[loc] = {h: list(v) for h, v in blocks.items()}
-            entry.update({"eligible": None, "active": 0, "k": k,
+            entry.update({"eligible": None, "active": 0, "k": k, "state": "outside",
                           "reason": "outside the registered member (no integer FIPS key)",
                           "y_T": y})
             outside.append(loc)
@@ -205,14 +227,18 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
             continue
         xh = [blocks.get(h, []) for h in hz.HORIZONS]      # physical 1..4, in order
         r = OR.member_for_cell(origin, xh, pool, T, fips, w=w, seeds=seeds,
-                               submitted_seed=submitted_seed)
+                               submitted_seed=submitted_seed, aux_pool=auxp)
         r2 = OR.member_for_cell(origin, xh, pool, T, fips, w=OR.W_SECONDARY,
-                                seeds=seeds, submitted_seed=submitted_seed)
+                                seeds=seeds, submitted_seed=submitted_seed, aux_pool=auxp)
+        r0 = OR.member_for_cell(origin, xh, pool, T, fips, w=w, seeds=seeds,
+                                submitted_seed=submitted_seed)
         member[loc] = {hz.ORIGIN: list(origin),
                        **{h: r.samples[hi].tolist() for hi, h in enumerate(hz.HORIZONS)}}
         m0 = float(r.m0) if np.isfinite(r.m0) else None
         entry.update({
             "eligible": bool(r.eligible), "active": int(r.active), "k": k,
+            "state": (state if r.active else ("not eligible" if not r.eligible else "identity")),
+            "w_aux": r.w_aux, "n_flusurv_drawn": int(r.n_aux_drawn),
             "m_0": m0, "y_T": y,
             "m0_over_yT": (m0 / y if (m0 is not None and y and y > 0) else None),
             "m0_equals_yT_1e-9_relative": (bool(abs(m0 - y) <= 1e-9 * max(1.0, abs(y)))
@@ -227,7 +253,8 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
             entry["reason"] = "not eligible (m_0, m_1..m_4 or G_T not positive): the identity"
             not_eligible.append(loc)
         elif not r.active:
-            entry["reason"] = f"the pool is the identity ({pool['rule_text']})"
+            entry["reason"] = ("neither half of the donor bank is admissible "
+                               f"({pool['rule_text']}; FluSurv-NET {mix['rule']}): the identity")
             identity.append(loc)
         n_elig += int(r.eligible)
         n_active += int(r.active)
@@ -237,24 +264,44 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
         for s in seeds:
             q_primary[s][loc] = _by_horizon(r.q_seed[s])
             q_secondary[s][loc] = _by_horizon(r2.q_seed[s])
+            q_adm[s][loc] = _by_horizon(r0.q_seed[s])
         mean_primary[loc] = _by_horizon(r.q_mean())
         mean_secondary[loc] = _by_horizon(r2.q_mean())
+        mean_adm[loc] = _by_horizon(r0.q_mean())
         locs_prov[loc] = entry
 
     prov = {
         "written_by": "app.core.oracle.apply_week", "utc": _utc(),
         "member": MEMBER_NAME, "applied": True, "reading": "F", "transform": "REPLACE",
         "prereg_sha256": OR.PREREG_SHA256,
+        "b2_sha256": OR.B2_SHA256, "addendum_a2_sha256": OR.ADDENDUM_A2_SHA256,
         "asof": asof, "season_index": OR.season_index(T),
-        "bank": {"label": built["label"], "stream": man["stream"], "digest": man["digest"],
-                 "file": str(OB.pool_path(out_dir / BANK_DIRNAME, asof)),
-                 "manifest": str(OB.manifest_path(out_dir / BANK_DIRNAME, asof)),
-                 "pool_rule": man["pool_rule"], "pool_reason": man["pool_reason"],
-                 "n_paths": man["cells"], "n_by_season": man["n_by_season"],
-                 "counts": man["counts"]},
+        "bank": {"label": bank_label, "stream": MX.STREAM,
+                 "admissions": {"label": built["label"], "stream": man["stream"],
+                                "digest": man["digest"],
+                                "file": str(OB.pool_path(out_dir / BANK_DIRNAME, asof)),
+                                "manifest": str(OB.manifest_path(out_dir / BANK_DIRNAME, asof)),
+                                "pool_rule": man["pool_rule"], "pool_reason": man["pool_reason"],
+                                "admissible": bool(adm_ok),
+                                "n_paths": man["cells"], "n_by_season": man["n_by_season"],
+                                "counts": man["counts"]},
+                 "flusurv": {"label": mix["bank_label"], "stream": MX.AUX_STREAM,
+                             "bank_digest": mix["bank_digest"], "pool_digest": mix["digest"],
+                             "file": str(MX.pool_path(out_dir / BANK_DIRNAME, asof)),
+                             "manifest": str(MX.manifest_path(out_dir / BANK_DIRNAME, asof)),
+                             "pool_rule": mix["rule"], "admissible": bool(mix["admissible"]),
+                             "n_paths": mix["n_paths"],
+                             "n_by_season": {str(k): v for k, v in mix["counts"]["by_season"].items()},
+                             "n_aggregate": mix["n_aggregate"], "n_ny_site": mix["n_ny_site"],
+                             "counts": {**mix["counts"], "by_season": {
+                                 str(k): v for k, v in mix["counts"]["by_season"].items()}},
+                             "shrink": mix["shrink"],
+                             "shrink_prior_seasons": mix["shrink_prior_seasons"]},
+                 "mixture": {"identity_rule": MX.IDENTITY_RULE, "state": state,
+                             "w_aux": w_aux, "w_aux_nominal": MX.W_AUX}},
         "vintage": {"file": str(vf), "sha256": man["source_sha256"],
                     "newest_row_date": vb.newest_row_date().isoformat()},
-        "rule": man["rule"],
+        "rule": man["rule"], "rule_flusurv": MX.rule_block(mix["bank_digest"]),
         "w": float(w), "w_secondary": float(OR.W_SECONDARY),
         "seeds": [int(s) for s in seeds], "submitted_seed": int(submitted_seed),
         "trimmed_weeks": {"source": k_source,
@@ -272,11 +319,19 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
         "quantiles": {"levels": OR.QL, "horizons": horizon_table(asof),
                       "rule": "numpy.quantile (linear) of the finite entries; None where none is finite",
                       "null": q_null,
-                      "primary": {"w": float(w), "seed_mean": mean_primary,
+                      "primary": {"w": float(w), "bank": MX.STREAM, "seed_mean": mean_primary,
                                   "per_seed": {str(s): q_primary[s] for s in seeds}},
-                      "secondary": {"w": float(OR.W_SECONDARY), "seed_mean": mean_secondary,
+                      "secondary": {"w": float(OR.W_SECONDARY), "bank": MX.STREAM,
+                                    "seed_mean": mean_secondary,
                                     "per_seed": {str(s): q_secondary[s] for s in seeds},
-                                    "note": "the registered secondary (A1 (2)); logged, ships nothing"}},
+                                    "note": ("the registered secondary weight on the shipped "
+                                             "bank (LB25GH); logged, ships nothing")},
+                      "admissions_only": {"w": float(w), "bank": OB.STREAM,
+                                          "seed_mean": mean_adm,
+                                          "per_seed": {str(s): q_adm[s] for s in seeds},
+                                          "note": ("the frozen document's member on the "
+                                                   "admissions half alone (LB), logged beside "
+                                                   "the primary (addendum A2 (2)); ships nothing")}},
     }
     write_provenance(out_dir, prov)
     return member, prov
@@ -300,6 +355,7 @@ def write_not_applied(out_dir, asof: str, reason: str) -> Path:
         "written_by": "app.core.oracle.write_not_applied", "utc": _utc(),
         "member": MEMBER_NAME, "applied": False, "asof": asof, "reason": reason,
         "prereg_sha256": OR.PREREG_SHA256,
+        "b2_sha256": OR.B2_SHA256, "addendum_a2_sha256": OR.ADDENDUM_A2_SHA256,
         "stored_pf": "the filter's own samples (the plain filter, a research configuration)"})
 
 
