@@ -13,7 +13,8 @@
 {# every link and fetch on this page carries the archive identifier when one
    is in play, so the page, the playback API, and the report all read the
    same frozen tree #}
-{% set aq = ('?archive=' ~ archive) if archive else '' %}
+{% if src is not defined %}{% set src = '' %}{% endif %}
+{% set aq = ('?archive=' ~ archive) if archive else (('?src=' ~ src) if src else '') %}
 {% if preparing %}
 {# the preparing state (frozen-page fix): scoring, the national aggregate,
    and playback warming run as one background job; this page polls the
@@ -54,7 +55,7 @@
     if(inflight){schedule(POLL_MS); return;}
     if(document.hidden){schedule(POLL_HIDDEN_MS); return;}
     inflight=true;
-    fetch('/api/retro/{{ season }}/results_status{{ ('?archive=' ~ archive) if archive else '' }}')
+    fetch('/api/retro/{{ season }}/results_status{{ aq }}')
      .then(function(r){return r.json();})
      .then(function(d){
        if(!d.pending){location.reload();return;}
@@ -71,6 +72,25 @@
 </script>
 {% else %}
 <h1><span class="accent">{{ season }}</span>: {{ n_weeks }} weeks scored</h1>
+{% if src and source %}
+{# a backfilled source (src=oracle), named on the page with its own record:
+   where the week's filter samples came from, the pre-registration the step
+   ran under, and what the second member is, so a grid's bare analogue is
+   never read as the shipped Groundhog #}
+<p class="banner" role="status"><strong>{{ source.title }}, read only.</strong>
+ Read from <code>{{ source.root }}/{{ season }}</code> ({{ source.configured_by }}).
+ {% if source.source_root %}The Oracle SIHRS here was computed by
+ <code>flubnf oracle backfill</code> from the stored filter samples of
+ <code>{{ source.source_root }}</code>, with no refit{% if source.prereg %}
+ (pre-registration {{ source.prereg[:16] }}){% endif %}.{% endif %}
+ {% if source.analogue_is_groundhog %}The Groundhog here is the source
+ replay's own, copied verbatim.{% else %}The second member is the source
+ replay's stored calendar analogue{% if source.week_extra %} ({{ source.week_extra }}){% endif %},
+ copied verbatim: it ran without the FluSurv-NET donors, so it is not the
+ shipped Groundhog, whatever its tiles are titled.{% endif %}
+ <a href="/retro/{{ season }}">Open the console's own {{ season }} season</a>
+ or <a href="/retro?src={{ src }}">every backfilled season</a>.</p>
+{% endif %}
 {% if archive %}
 <p class="banner" role="status"><strong>Archived run{% if archive_when %} from
  {{ archive_when }}{% endif %}.</strong> These results were set aside so a
@@ -113,7 +133,7 @@
  {# the same query the convention switch itself carries: dropping the week
     sent a reader who had scrubbed to a particular week back to the last
     one, which reads as the page losing their place #}
- <a href="/retro/{{ season }}?conv=ratio_of_sums{% if archive %}&amp;archive={{ archive }}{% endif %}{% if week %}&amp;week={{ week }}{% endif %}">ratio
+ <a href="/retro/{{ season }}?conv=ratio_of_sums{% if archive %}&amp;archive={{ archive }}{% endif %}{% if src %}&amp;src={{ src }}{% endif %}{% if week %}&amp;week={{ week }}{% endif %}">ratio
  of sums view</a> is computed from this project's own sealed scores and is
  always available, but it is a different quantity: it is not a substitute
  for the figure missing here.
@@ -175,7 +195,8 @@
  <a href="/retro/{{ season }}/report{{ aq }}" download><button class="gold"
    type="button" style="margin-top:0">Download season report</button></a>
  <button type="button" class="quiet" id="rev-report" style="margin-top:0"
-   data-season="{{ season }}" data-archive="{{ archive }}">Reveal in Finder</button>
+   data-season="{{ season }}" data-archive="{{ archive }}"
+   data-src="{{ src }}">Reveal in Finder</button>
 </p>
 <script>
  // belt and braces for the native window: generate the report if absent
@@ -188,7 +209,8 @@
     var t=b.textContent;
     b.disabled=true;b.textContent='Preparing…';
     fetch('/api/retro/'+encodeURIComponent(b.dataset.season)+'/report_path'
-          +(b.dataset.archive?'?archive='+encodeURIComponent(b.dataset.archive):''))
+          +(b.dataset.archive?'?archive='+encodeURIComponent(b.dataset.archive)
+            :(b.dataset.src?'?src='+encodeURIComponent(b.dataset.src):'')))
       .then(function(r){if(!r.ok)throw new Error('report unavailable');
         return r.json();})
       .then(function(d){return fetch('/output/reveal',{method:'POST',
@@ -541,7 +563,10 @@
  // an archived run is read through the very same routes, identified by one
  // query parameter that every fetch below appends
  const ARCHIVE = {{ (archive or '') | tojson }};
- const AQ = ARCHIVE ? 'archive=' + encodeURIComponent(ARCHIVE) : '';
+ // a backfilled source (src=oracle) rides the same single parameter slot
+ const SRC = {{ (src or '') | tojson }};
+ const AQ = ARCHIVE ? 'archive=' + encodeURIComponent(ARCHIVE)
+          : (SRC ? 'src=' + encodeURIComponent(SRC) : '');
  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 
  // ---- playback payload cache, with in-flight dedupe. A failed fetch keeps

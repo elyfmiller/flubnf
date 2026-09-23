@@ -223,6 +223,46 @@ same numbers with the identity season added. The 2024-25 and 2025-26
 seasons are 24 and 22 scored as-of dates; the three dates of each season
 without a FluSight-baseline file score no cell, as on the screen.
 
+### Backfill, then view it in the console
+
+The backfill refuses `app/state` on purpose, so a backfilled season lives in
+a directory of its own. The Retrospective tab shows such a directory READ
+ONLY, without copying it: the source switch at the top of the tab ("Oracle
+SIHRS backfill"), or `/retro?src=oracle`. The directory is
+`app/state/retro_oracle` by default (gitignored with the rest of
+`app/state`), or any directory named by `FLUBNF_RETRO_ORACLE`, read when
+the page is served. A directory that is, contains or lies inside the
+console's own trees (`app/state/retro`, `retro_seal`, `retro_reseal`) is
+refused and nothing is read from it.
+
+    # 1. backfill each season into the source directory
+    flubnf oracle backfill 2024-25 --source <grid>/2024-25 --out <dir>/2024-25
+    flubnf oracle backfill 2025-26 --source <grid>/2025-26 --out <dir>/2025-26
+
+    # 2. start the console with the source named (or use the default,
+    #    app/state/retro_oracle, as <dir>)
+    FLUBNF_RETRO_ORACLE=<dir> flubnf app
+
+    # 3. Retrospective tab -> "Oracle SIHRS backfill" -> a season -> Results
+
+The index lists every season under the directory with its backfilled weeks
+and the stored filter samples it came from; a season's page is the same
+results page every replay gets (head tiles, cumulative curve, per-state
+table, the season player, the map, the season report), every link and
+fetch carrying `src=oracle`, with a banner naming the directory, the source
+root, the pre-registration hash and what the second member is: the
+backfill copies the source's analogue verbatim, so over the stored grid it
+is the bare calendar analogue, not the shipped Groundhog, and the banner
+says so. Nothing that writes (run, pause, stop, start over, archive,
+delete) takes the source. Opening a season for the first time scores it
+with the app's own scorer: the derived caches every season root gets
+(`scores.json`, the national aggregate, the playback and map caches) are
+written beside its weeks, and the weeks themselves are never touched;
+`app.core.reclaim` protects the directory, so no finalize prune or storage
+sweep reaches them. Point FLUBNF_HUB at the hub whose truth the record was
+scored against (the pinned copy for the numbers above) to reproduce them
+on the page.
+
 ## 6. The engine key
 
 `pf_sampling_interval = 1` is written into a cell's pf.conf only when the

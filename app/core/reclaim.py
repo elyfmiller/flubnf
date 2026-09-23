@@ -76,6 +76,13 @@ def _protected_roots() -> list:
     before the measurement can be made."""
     from flubnf.settings import HUB
     roots = [APP_STATE / "retro_seal", Path(HUB)]
+    # the backfilled Oracle SIHRS seasons the Retrospective tab shows read
+    # only (app/ui/server._retro_source): a view of a record, never pruned
+    # or compressed by a finalize job or a storage sweep
+    roots.append(APP_STATE / "retro_oracle")
+    src = os.environ.get("FLUBNF_RETRO_ORACLE", "").strip()
+    if src:
+        roots.append(Path(src).expanduser())
     extra = os.environ.get("FLUBNF_PROTECT_ROOTS", "")
     roots.extend(Path(x) for x in extra.split(os.pathsep) if x.strip())
     return roots
