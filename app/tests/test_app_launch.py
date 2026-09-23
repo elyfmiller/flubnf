@@ -98,7 +98,14 @@ def test_takeover_never_signals_self(tmp_path):
     # relaunch path) must not lead to self-termination
     pf = tmp_path / "app.pid"
     pf.write_text(str(os.getpid()))
-    assert cli._terminate_predecessor(pf, markers=("python",)) is False
+    # a marker built from this process's own command line, checked to match
+    # first, so the only thing that can stop the signal is the self-guard
+    own = cli._pid_cmdline(os.getpid())
+    if not own:
+        pytest.skip("cannot read this process's own command line here")
+    mk = own.replace('"', " ").split()[0].replace("\\", "/").rsplit("/", 1)[-1]
+    assert cli._cmdline_has_marker(own, (mk,)), (own, mk)
+    assert cli._terminate_predecessor(pf, markers=(mk,)) is False
     assert not pf.exists()
 
 
@@ -648,9 +655,325 @@ def test_windows_native_cmdline_on_a_real_process_is_fast():
     assert cli._pid_cmdline_windows_native(proc.pid) == ""
 
 
-def test_entry_markers_match_the_windows_exe_spelling():
-    cmd = r"C:\repo\.venv\Scripts\flubnf.exe app"
-    assert any(mk in cmd for mk in cli.APP_ENTRY_MARKERS)
+# ------------------------------------------------ entry-marker matching
+
+# What the console server's command line really looks like on each
+# platform. The Windows spelling is what pip's console-script launcher
+# builds (see test_markers_match_what_pips_windows_launcher_builds, which
+# derives it from the launcher binary itself).
+WINDOWS_APP = r'"C:\py\python.exe"  "C:\repo\.venv\Scripts\flubnf.exe" app'
+WINDOWS_SPACE = (r'"C:\Program Files\Python312\python.exe"  '
+                 r'"C:\Users\Jane Doe\flubnf\.venv\Scripts\flubnf.exe" window')
+POSIX_APP = "/Users/x/flubnf/.venv/bin/python3 /Users/x/flubnf/.venv/bin/flubnf app"
+POSIX_WINDOW = "/home/x/flubnf/.venv/bin/python /home/x/flubnf/.venv/bin/flubnf window --port 8711"
+
+
+@pytest.mark.parametrize("cmd", [WINDOWS_APP, WINDOWS_SPACE, POSIX_APP,
+                                 POSIX_WINDOW,
+                                 r"C:\repo\.venv\Scripts\flubnf.exe app",
+                                 '"C:\\py\\python.exe" "C:\\r\\flubnf.exe"   app'])
+def test_entry_markers_match_real_launch_spellings(cmd):
+    assert cli._cmdline_has_marker(cmd, cli.APP_ENTRY_MARKERS), cmd
+
+
+@pytest.mark.parametrize("cmd", [
+    "grep flubnf app.log",                       # a word, not the command
+    "/usr/bin/notflubnf app",                     # a different program
+    r'"C:\py\python.exe" "C:\r\flubnf.exe" apple',
+    "flubnf-app",
+    "python -m pytest app/tests",
+    "/x/.venv/bin/flubnf doctor",                 # our program, not the app
+    "",
+])
+def test_entry_markers_reject_lookalikes(cmd):
+    assert not cli._cmdline_has_marker(cmd, cli.APP_ENTRY_MARKERS), cmd
+
+
+def test_the_old_substring_test_missed_the_windows_launch():
+    """The bug this matcher fixes, pinned: a substring test never found an
+    entry marker in the launcher's quoted command line."""
+    assert not any(mk in WINDOWS_APP for mk in cli.APP_ENTRY_MARKERS)
+    assert cli._cmdline_has_marker(WINDOWS_APP, cli.APP_ENTRY_MARKERS)
+
+
+@pytest.mark.parametrize("cmd", [
+    "/x/.venv/bin/python /x/.venv/bin/flubnf -v app",
+    "/x/.venv/bin/python /x/.venv/bin/flubnf --verbose window --port 8711",
+    r'"C:\py\python.exe"  "C:\r\Scripts\flubnf.exe" -v app',
+])
+def test_the_verbose_flag_may_precede_the_subcommand(cmd):
+    assert cli._cmdline_has_marker(cmd, cli.APP_ENTRY_MARKERS), cmd
+
+
+@pytest.mark.parametrize("cmd", [
+    "/x/bin/flubnf -v doctor",
+    "/x/bin/flubnf -v",
+    "/x/.venv/bin/flubnf doctor app",             # app is not the subcommand
+    "/x/.venv/bin/flubnf -v fit --out window",
+    r'"C:\py\python.exe"  "C:\r\flubnf.exe" doctor app',
+    "grep flubnf -r app",                         # only the root switches skip
+    "rg flubnf -uu app",
+])
+def test_the_subcommand_must_follow_the_program(cmd):
+    assert not cli._cmdline_has_marker(cmd, cli.APP_ENTRY_MARKERS), cmd
+
+
+def test_empty_markers_match_nothing_and_do_not_disable_the_rest():
+    assert not cli._cmdline_has_marker("/x/flubnf app", ("",))
+    assert not cli._cmdline_has_marker("/x/flubnf app", ("   ",))
+    assert cli._cmdline_has_marker("/x/flubnf app", ("", "flubnf app"))
+
+
+def test_windows_file_names_match_without_case(monkeypatch):
+    cmd = r'"C:\py\python.exe"  "C:\r\Scripts\FluBNF.EXE" app'
+    monkeypatch.setattr(os, "name", "nt")
+    assert cli._cmdline_has_marker(cmd, cli.APP_ENTRY_MARKERS)
+    monkeypatch.setattr(os, "name", "posix")          # case matters there
+    assert not cli._cmdline_has_marker(cmd, cli.APP_ENTRY_MARKERS)
+
+
+def test_single_word_markers_match_a_whole_word():
+    assert cli._cmdline_has_marker("python -c pass flubnf-test-entry",
+                                   ("flubnf-test-entry",))
+    assert not cli._cmdline_has_marker("python -c pass flubnf-test-entry-2",
+                                       ("flubnf-test-entry",))
+
+
+def test_takeover_signals_a_windows_launched_predecessor(tmp_path, monkeypatch):
+    """The takeover itself reads the quoted Windows spelling, on any
+    platform: the command-line read and the signal are faked, the
+    decision is real."""
+    killed = []
+    monkeypatch.setattr(cli, "_pid_cmdline", lambda pid: WINDOWS_APP)
+    monkeypatch.setattr(cli, "_pid_alive", lambda pid: False)
+    monkeypatch.setattr(os, "kill", lambda pid, sig: killed.append(pid))
+    pf = tmp_path / "app.pid"
+    pf.write_text("424242")
+    assert cli._terminate_predecessor(pf) is True
+    assert killed == [424242]
+    assert not pf.exists()
+
+
+def test_takeover_never_signals_its_own_parent(tmp_path, monkeypatch):
+    """On Windows the new console's launcher and venv redirector carry the
+    entry shape too; a stale app.pid naming a recycled pid that is now one
+    of them must not be signalled, or the relaunch kills itself."""
+    killed = []
+    monkeypatch.setattr(cli, "_pid_cmdline", lambda pid: WINDOWS_APP)
+    monkeypatch.setattr(os, "kill", lambda pid, sig: killed.append(pid))
+    pf = tmp_path / "app.pid"
+    pf.write_text(str(os.getppid()))
+    assert cli._terminate_predecessor(pf) is False
+    assert killed == []
+    assert not pf.exists()                         # the stale record goes
+
+
+def test_takeover_never_signals_any_ancestor(tmp_path, monkeypatch):
+    killed = []
+    monkeypatch.setattr(cli, "_pid_cmdline", lambda pid: WINDOWS_APP)
+    monkeypatch.setattr(cli, "_ancestor_pids", lambda: {111, 222, 333})
+    monkeypatch.setattr(os, "kill", lambda pid, sig: killed.append(pid))
+    pf = tmp_path / "app.pid"
+    pf.write_text("222")                           # the launcher, say
+    assert cli._terminate_predecessor(pf) is False
+    assert killed == []
+
+
+def test_ancestor_pids_of_this_process_hold_the_parent_not_self():
+    anc = cli._ancestor_pids()
+    assert os.getppid() in anc
+    assert os.getpid() not in anc
+
+
+def test_ancestor_walk_follows_the_chain_and_stops():
+    chain = {10: 9, 9: 8, 8: 7, 7: 0}
+    assert cli._ancestor_pids(10, parent_of=chain.get) == {9, 8, 7}
+    loop = {10: 9, 9: 8, 8: 9}                     # stale Windows parents
+    assert cli._ancestor_pids(10, parent_of=loop.get) == {9, 8}
+    back = {10: 9, 9: 10}                          # back to the start
+    assert cli._ancestor_pids(10, parent_of=back.get) == {9}
+    deep = {n: n - 1 for n in range(1, 1000)}
+    assert len(cli._ancestor_pids(999, parent_of=deep.get, limit=5)) == 5
+
+    def boom(pid):
+        raise OSError("gone")
+    assert cli._ancestor_pids(10, parent_of=boom) == set()
+
+
+class _StubToolhelp:
+    """CreateToolhelp32Snapshot / Process32FirstW / Process32NextW."""
+
+    def __init__(self, rows, snap=55):
+        self.rows, self.snap, self.closed, self.i = rows, snap, [], 0
+
+    def CreateToolhelp32Snapshot(self, flags, pid):
+        assert flags == 0x2                        # TH32CS_SNAPPROCESS
+        return self.snap
+
+    def _fill(self, ref):
+        if self.i >= len(self.rows):
+            return 0
+        e = ref._obj
+        e.th32ProcessID, e.th32ParentProcessID = self.rows[self.i]
+        self.i += 1
+        return 1
+
+    def Process32FirstW(self, snap, ref):
+        self.i = 0
+        return self._fill(ref)
+
+    def Process32NextW(self, snap, ref):
+        return self._fill(ref)
+
+    def CloseHandle(self, h):
+        self.closed.append(h)
+        return 1
+
+
+def test_windows_parent_map_reads_the_snapshot():
+    k32 = _StubToolhelp([(4, 0), (500, 4), (612, 500)])
+    assert cli._windows_parent_map(kernel32=k32) == {4: 0, 500: 4, 612: 500}
+    assert k32.closed == [55]
+
+
+def test_windows_parent_map_fails_to_empty():
+    assert cli._windows_parent_map(kernel32=_StubToolhelp([], snap=0)) == {}
+
+    class Boom:
+        def CreateToolhelp32Snapshot(self, *a):
+            raise OSError("boom")
+    assert cli._windows_parent_map(kernel32=Boom()) == {}
+
+
+@pytest.mark.skipif(os.name == "nt", reason="asserts the non-Windows answer")
+def test_windows_parent_map_without_windows_is_empty():
+    assert cli._windows_parent_map() == {}
+
+
+def test_takeover_leaves_a_lookalike_alone(tmp_path, monkeypatch):
+    killed = []
+    monkeypatch.setattr(cli, "_pid_cmdline", lambda pid: "grep flubnf app.log")
+    monkeypatch.setattr(os, "kill", lambda pid, sig: killed.append(pid))
+    pf = tmp_path / "app.pid"
+    pf.write_text("424242")
+    assert cli._terminate_predecessor(pf) is False
+    assert killed == []
+
+
+def _launcher_formats():
+    """The wide format strings in pip's vendored Windows console-script
+    launcher that splice in the script path, or None when pip's vendored
+    distlib or its launcher is not installed."""
+    import re
+    try:
+        from pip._vendor import distlib
+    except Exception:
+        return None
+    exe = Path(distlib.__file__).parent / "t64.exe"
+    if not exe.is_file():
+        return None
+    data = exe.read_bytes()
+    out = []
+    for m in re.finditer(rb"(?:[\x20-\x7e]\x00){4,}", data):
+        s = m.group().decode("utf-16-le")
+        if s.count("%ls") == 4:
+            out.append(s)
+    return out
+
+
+def test_markers_match_what_pips_windows_launcher_builds():
+    """Build the server's command line exactly as the launcher does, from
+    the format string inside the launcher binary, and match it. Python's %
+    operator ignores the 'l' length modifier, so the C format applies
+    as is. Runs everywhere pip is installed; the Windows-only test below
+    does the same with a real launcher and a real process."""
+    fmts = _launcher_formats()
+    if not fmts:
+        pytest.skip("pip's vendored distlib launcher is not available")
+    assert fmts == ['"%ls" %ls "%ls" %ls'], fmts
+    for sub in ("app", "window"):
+        cmd = fmts[0] % (r"C:\py\python.exe", "",
+                         r"C:\repo\.venv\Scripts\flubnf.exe", sub)
+        assert cli._cmdline_has_marker(cmd, cli.APP_ENTRY_MARKERS), cmd
+        assert not any(mk in cmd for mk in cli.APP_ENTRY_MARKERS), cmd
+
+
+@pytest.mark.skipif(os.name != "nt",
+                    reason="builds and runs a real Windows console-script launcher")
+@pytest.mark.parametrize("interpreter", ["base", "venv"])
+def test_takeover_recognises_a_real_windows_console_script_launch(tmp_path,
+                                                                   interpreter):
+    """End to end on Windows: build a flubnf.exe launcher the way pip
+    installs one (pip's own vendored distlib ScriptMaker), start it the way
+    FluBNF.bat does (cmd resolving the extensionless "Scripts\\flubnf"),
+    and check the takeover recognises and signals the Python process
+    behind it, which is the process whose pid the real console writes to
+    app.pid. The replaced console must exit with code 15, the code
+    FluBNF.bat treats as a takeover rather than an error."""
+    import time
+    scripts = pytest.importorskip("pip._vendor.distlib.scripts")
+    (tmp_path / "flubnf_takeover_probe.py").write_text(
+        "import os, time\n"
+        "def main():\n"
+        "    with open(os.environ['FLUBNF_PROBE_PIDOUT'], 'w') as f:\n"
+        "        f.write(str(os.getpid()))\n"
+        "    time.sleep(60)\n")
+    bindir = tmp_path / "Scripts"
+    bindir.mkdir()
+    maker = scripts.ScriptMaker(None, str(bindir))
+    maker.variants = {""}
+    if interpreter == "venv":
+        # the production chain: FluBNF.bat's .venv\Scripts\flubnf.exe
+        # names the venv's python.exe, CPython's redirector, which starts
+        # the base interpreter; the server is that grandchild
+        venv = tmp_path / "venv"
+        subprocess.run([sys.executable, "-m", "venv", "--without-pip",
+                        str(venv)], check=True, timeout=120)
+        maker.executable = str(venv / "Scripts" / "python.exe")
+    maker.make("flubnf = flubnf_takeover_probe:main")
+    exe = bindir / "flubnf.exe"
+    assert exe.is_file(), sorted(os.listdir(bindir))
+    pidout = tmp_path / "server.pid"
+    env = dict(os.environ, PYTHONPATH=str(tmp_path),
+               FLUBNF_PROBE_PIDOUT=str(pidout))
+    launcher = subprocess.Popen('cmd /d /c "Scripts\\flubnf" app',
+                                cwd=str(tmp_path), env=env)
+    pid = None
+    try:
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            if pidout.is_file() and pidout.read_text().strip():
+                pid = int(pidout.read_text().strip())
+                break
+            assert launcher.poll() is None, "the launcher exited early"
+            time.sleep(0.1)
+        assert pid is not None, "the probe never recorded its pid"
+        cmd = cli._pid_cmdline(pid)
+        assert cli._cmdline_has_marker(cmd, cli.APP_ENTRY_MARKERS), cmd
+        pf = tmp_path / "app.pid"
+        pf.write_text(str(pid))
+        assert cli._terminate_predecessor(pf) is True, cmd
+        deadline = time.monotonic() + 10
+        while cli._pid_alive(pid) and time.monotonic() < deadline:
+            time.sleep(0.1)
+        assert not cli._pid_alive(pid), "the server survived the takeover"
+        assert launcher.wait(timeout=30) == 15, (
+            "FluBNF.bat treats 15 as a takeover; the launcher chain returned "
+            "something else")
+    finally:
+        if pid is not None and cli._pid_alive(pid):
+            try:
+                os.kill(pid, 15)
+            except OSError:
+                pass
+        if launcher.poll() is None:
+            # launcher is cmd.exe; killing it alone would leave flubnf.exe
+            # and the probe running, so take down the whole tree
+            subprocess.run(["taskkill", "/PID", str(launcher.pid), "/T", "/F"],
+                           capture_output=True, timeout=15)
+            if launcher.poll() is None:
+                launcher.kill()
+        launcher.wait(timeout=10)
 
 
 def test_pid_helpers_dispatch_on_windows(monkeypatch):
