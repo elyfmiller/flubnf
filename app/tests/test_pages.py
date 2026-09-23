@@ -297,7 +297,7 @@ def test_published_likelihood_is_the_integrated_form_not_the_instant_flux():
 
 def test_methods_carries_the_pf_and_two_strain_equations():
     t = client.get("/methods").text
-    # the SIHRS card, the Oracle step card, the two-strain card
+    # the compartment card, the Oracle step card, the two-strain card
     assert t.count('class="eqpanel"') == 3
     assert "the growth blend" in t
     assert "NegBin(" in t

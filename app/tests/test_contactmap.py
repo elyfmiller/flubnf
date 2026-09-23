@@ -23,8 +23,8 @@ HERE = Path(__file__).resolve().parent
 BIND = (HERE / "contactmap_bind.graphml").read_text()
 client = TestClient(srv.app)
 
-#: The network BNG2.pl writes for the SIHRS example, cut to the lines the
-#: parser reads: the rate law names live in the parameters block (a
+#: The network BNG2.pl writes for the sihrs_example model, cut to the lines
+#: the parser reads: the rate law names live in the parameters block (a
 #: constant expression) or the functions block (one that reads an
 #: observable), a plain parameter name (gammaH) stays a name.
 NET = """# Created by BioNetGen 2.9.2
