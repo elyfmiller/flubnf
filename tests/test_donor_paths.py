@@ -9,6 +9,7 @@ where it was, because the shipped Groundhog path runs through it.
 from __future__ import annotations
 
 import hashlib
+import random
 from datetime import date, timedelta
 
 import numpy as np
@@ -22,19 +23,21 @@ from flubnf.analogue import (DEFAULT_BANDWIDTH, EXCLUDED_DONOR_SEASONS,
 
 def _bank(seasons=(2022, 2023, 2024), states=("01", "02", "03", "04", "05"),
           weeks=20):
-    """Synthetic seasons on Saturdays, gapless, whose weekly growth depends
-    on the season, the state and the week, so no two donors share a ratio
-    and membership can be tested by value (a checker found the earlier
-    fixture repeated every season bit for bit)."""
+    """Synthetic seasons on Saturdays, gapless, with a seeded pseudo-random
+    weekly growth per cell, so no two donors share a ratio and membership
+    can be tested by value. (A checker found an earlier fixture repeated
+    every season bit for bit, and fixed per-state and per-week increments
+    collide.) `test_no_two_donors_share_a_ratio_in_the_fixture` holds it."""
+    rng = random.Random(20260922)
     b = {}
-    for j, s in enumerate(seasons):
+    for s in seasons:
         d0 = date(s, 11, 1)
         d0 += timedelta(days=(5 - d0.weekday()) % 7)      # first Saturday
         for i, st in enumerate(states):
             v = 100.0 + i
             for wk in range(weeks):
                 b[(st, d0 + timedelta(days=7 * wk))] = v
-                v *= 1.0 + 0.02 * (i + 1) + 0.01 * wk + 0.003 * (j + 1)
+                v *= rng.uniform(1.05, 1.35)
     return b
 
 
