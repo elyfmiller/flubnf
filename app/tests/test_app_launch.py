@@ -4,6 +4,7 @@ headlessly. The takeover runs against real spawned processes (a marked fake
 predecessor and an unmarked bystander); the watchdog runs against a fake
 window that mimics the pywebview 6.2.1 semantics verified in cli.py
 (events.loaded supports +=, load_url clears the loaded event)."""
+import ctypes
 import os
 import socket
 import subprocess
@@ -421,6 +422,9 @@ def test_windows_access_denied_means_alive_but_not_ours():
 
 
 def test_windows_cmdline_parses_the_wmic_list_format(monkeypatch):
+    monkeypatch.setattr(cli, "_pid_cmdline_windows_native",
+                        lambda pid: "")    # WMI fallback path
+    monkeypatch.setattr(cli, "_pid_alive_windows", lambda pid: True)
     def fake_run(q, **kw):
         assert q[0] == "wmic"
         return types.SimpleNamespace(
@@ -433,6 +437,9 @@ def test_windows_cmdline_parses_the_wmic_list_format(monkeypatch):
 
 
 def test_windows_cmdline_falls_back_to_powershell(monkeypatch):
+    monkeypatch.setattr(cli, "_pid_cmdline_windows_native",
+                        lambda pid: "")    # WMI fallback path
+    monkeypatch.setattr(cli, "_pid_alive_windows", lambda pid: True)
     def fake_run(q, **kw):
         if q[0] == "wmic":                         # removed on new Win11
             raise FileNotFoundError("wmic not found")
@@ -444,12 +451,201 @@ def test_windows_cmdline_falls_back_to_powershell(monkeypatch):
 
 
 def test_windows_cmdline_empty_result_fails_safe(monkeypatch):
+    monkeypatch.setattr(cli, "_pid_cmdline_windows_native",
+                        lambda pid: "")    # WMI fallback path
+    monkeypatch.setattr(cli, "_pid_alive_windows", lambda pid: True)
     # "could not inspect" must come back as '' so the takeover never kills
     # a pid it could not positively identify
     monkeypatch.setattr(
         subprocess, "run",
         lambda q, **kw: types.SimpleNamespace(returncode=1, stdout=""))
     assert cli._pid_cmdline_windows(1) == ""
+
+
+class _UStr(ctypes.Structure):
+    """The UNICODE_STRING header, laid out as the platform lays it out."""
+    _fields_ = [("Length", ctypes.c_ushort),
+                ("MaximumLength", ctypes.c_ushort),
+                ("Buffer", ctypes.c_void_p)]
+
+
+class _StubNtdll:
+    """Emulates NtQueryInformationProcess(ProcessCommandLineInformation):
+    a sizing call with no buffer, then a filling call that writes the
+    UNICODE_STRING header followed by the UTF-16-LE text, Buffer pointing
+    just past the header, as Windows does."""
+
+    def __init__(self, text="C:\\py\\python.exe -m flubnf app", status=0,
+                 point_outside=False, size_override=None, fill_first=False):
+        self.data = text.encode("utf-16-le")
+        self.status = status
+        self.point_outside = point_outside
+        self.size_override = size_override
+        self.fill_first = fill_first            # write a valid answer, THEN fail
+        self.classes = []
+        # a real, readable block OUTSIDE the returned buffer: if the bounds
+        # check were removed the reader would return this text, a clean
+        # assertion failure rather than a read of unmapped memory
+        self.elsewhere = ctypes.create_string_buffer(self.data, len(self.data))
+
+    def NtQueryInformationProcess(self, handle, cls, buf, length, need_ref):
+        self.classes.append(cls)
+        total = ctypes.sizeof(_UStr) + len(self.data)
+        if buf is None:
+            need_ref._obj.value = (self.size_override
+                                   if self.size_override is not None
+                                   else total)
+            return -1073741820                  # STATUS_INFO_LENGTH_MISMATCH
+        if self.status and not self.fill_first:
+            return self.status
+        base = ctypes.addressof(buf)
+        hdr = _UStr.from_buffer(buf)
+        hdr.Length = hdr.MaximumLength = len(self.data)
+        hdr.Buffer = (ctypes.addressof(self.elsewhere) if self.point_outside
+                      else base + ctypes.sizeof(_UStr))
+        ctypes.memmove(base + ctypes.sizeof(_UStr), self.data, len(self.data))
+        return self.status
+
+
+class _StubKernel32Open:
+    def __init__(self, handle=77, exit_code=259):
+        self.handle = handle
+        self.exit_code = exit_code              # 259 is STILL_ACTIVE
+        self.closed = []
+        self.access = []
+
+    def OpenProcess(self, access, inherit, pid):
+        self.access.append(access)
+        return self.handle
+
+    def GetExitCodeProcess(self, handle, code_ref):
+        code_ref._obj.value = self.exit_code
+        return 1
+
+    def CloseHandle(self, handle):
+        self.closed.append(handle)
+        return 1
+
+
+def test_windows_native_cmdline_reads_the_kernel_record():
+    nt, k32 = _StubNtdll(), _StubKernel32Open()
+    got = cli._pid_cmdline_windows_native(4242, ntdll=nt, kernel32=k32)
+    assert got == "C:\\py\\python.exe -m flubnf app"
+    assert nt.classes == [60, 60]               # ProcessCommandLineInformation
+    assert k32.access == [0x1000]               # limited query access only
+    assert k32.closed == [77]                   # handle released
+
+
+def test_windows_native_cmdline_decodes_utf16_not_platform_wchar():
+    text = "C:\\Users\\Z\u00e9lie\\flubnf.exe app \u6d4b\u8bd5"
+    nt, k32 = _StubNtdll(text=text), _StubKernel32Open()
+    assert cli._pid_cmdline_windows_native(1, ntdll=nt, kernel32=k32) == text
+
+
+@pytest.mark.parametrize("nt,why", [
+    (_StubNtdll(status=-1073741790), "access denied on the filling call"),
+    (_StubNtdll(status=-2147483643, fill_first=True),
+     "a full answer written but a failure status returned"),
+    (_StubNtdll(point_outside=True), "Buffer outside the returned block"),
+    (_StubNtdll(size_override=0), "sizing call reported nothing"),
+    (_StubNtdll(size_override=(1 << 20) + 1), "absurd size"),
+    (_StubNtdll(text=""), "empty command line"),
+])
+def test_windows_native_cmdline_fails_safe_to_empty(nt, why):
+    k32 = _StubKernel32Open()
+    assert cli._pid_cmdline_windows_native(1, ntdll=nt, kernel32=k32) == "", why
+    assert k32.closed == [77], why              # handle released either way
+
+
+def test_windows_native_cmdline_exited_process_is_empty():
+    # an exited process stays openable while any handle to it is held; the
+    # reader must not query it (psutil's rule), and must release the handle
+    nt, k32 = _StubNtdll(), _StubKernel32Open(exit_code=0)
+    assert cli._pid_cmdline_windows_native(1, ntdll=nt, kernel32=k32) == ""
+    assert nt.classes == [] and k32.closed == [77]
+
+
+def test_windows_native_cmdline_unopenable_process_is_empty():
+    nt, k32 = _StubNtdll(), _StubKernel32Open(handle=0)
+    assert cli._pid_cmdline_windows_native(1, ntdll=nt, kernel32=k32) == ""
+    assert nt.classes == [] and k32.closed == []
+
+
+def test_windows_native_cmdline_never_raises():
+    class Boom:
+        def OpenProcess(self, *a):
+            raise OSError("boom")
+    assert cli._pid_cmdline_windows_native(1, ntdll=_StubNtdll(),
+                                           kernel32=Boom()) == ""
+
+
+@pytest.mark.skipif(os.name == "nt", reason="asserts the non-Windows answer")
+def test_windows_native_cmdline_without_windows_is_empty():
+    # no ctypes.WinDLL off Windows: '' and no exception
+    assert cli._pid_cmdline_windows_native(os.getpid()) == ""
+
+
+def _record_wmi(monkeypatch):
+    """subprocess.run that records each query and answers distinguishably.
+    Recording rather than raising matters: the WMI loop swallows every
+    exception, so a raising fake could never fail a test."""
+    calls = []
+
+    def fake_run(q, **kw):
+        calls.append(q[0])
+        return types.SimpleNamespace(returncode=0, stdout="from-wmi\n")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    return calls
+
+
+def test_windows_cmdline_prefers_native_and_spawns_nothing(monkeypatch):
+    monkeypatch.setattr(cli, "_pid_cmdline_windows_native",
+                        lambda pid: f"native:{pid}")
+    monkeypatch.setattr(cli, "_pid_alive_windows", lambda pid: True)
+    calls = _record_wmi(monkeypatch)
+    assert cli._pid_cmdline_windows(9) == "native:9"
+    assert calls == []                          # no wmic, no PowerShell
+
+
+def test_windows_cmdline_falls_back_to_wmi_for_a_live_process(monkeypatch):
+    monkeypatch.setattr(cli, "_pid_cmdline_windows_native", lambda pid: "")
+    monkeypatch.setattr(cli, "_pid_alive_windows", lambda pid: True)
+    calls = _record_wmi(monkeypatch)
+    assert cli._pid_cmdline_windows(9) == "from-wmi"
+    assert calls == ["wmic"]
+
+
+def test_windows_cmdline_skips_wmi_for_a_dead_pid(monkeypatch):
+    # a stale app.pid or runner entry must not pay a PowerShell start
+    monkeypatch.setattr(cli, "_pid_cmdline_windows_native", lambda pid: "")
+    monkeypatch.setattr(cli, "_pid_alive_windows", lambda pid: False)
+    calls = _record_wmi(monkeypatch)
+    assert cli._pid_cmdline_windows(9) == ""
+    assert calls == []
+
+
+@pytest.mark.skipif(os.name != "nt", reason="reads a real Windows process")
+def test_windows_native_cmdline_on_a_real_process_is_fast():
+    """The regression this guards: the WMI route took over 10 seconds on a
+    cold Windows Server 2025 runner, so the takeover could not identify its
+    predecessor. The native read must see the marker, quickly."""
+    import time
+    proc = _spawn_sleeper(MARK)
+    try:
+        t0 = time.monotonic()
+        cmd = cli._pid_cmdline_windows_native(proc.pid)
+        took = time.monotonic() - t0
+        assert MARK in cmd, cmd
+        assert took < 2.0, took
+    finally:
+        proc.kill()
+        proc.wait()
+    # Popen still holds the process handle, so the pid cannot be reused
+    # here and the process object still exists; what the reader must do is
+    # see that it has exited (the exit-code check) and answer ''
+    assert cli._pid_alive_windows(proc.pid) is False
+    assert cli._pid_cmdline_windows_native(proc.pid) == ""
 
 
 def test_entry_markers_match_the_windows_exe_spelling():

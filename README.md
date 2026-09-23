@@ -24,26 +24,27 @@ Delphi Epidata API and data.cdc.gov, cached under `app/state`.
 
 ## The models
 
-Two models are submitted each week, each on its own; nothing is blended
-between them:
+FluBNF submits two models to FluSight, each under its own hub identity
+(`model-metadata/`), and nothing is blended:
 
-* Oracle SIHRS, mechanistic. The SIHRS compartment model (susceptible,
-  infected, hospitalized, recovered, with waning immunity and seasonal
-  transmission) written in BNGL and fitted by a sequential particle filter:
-  10,000 candidate epidemics per jurisdiction, refitted every week from the
-  season's start on that week's data. The filter runs in a fork of PyBNF
-  with bngsim integrating the model in process; a jurisdiction season fits
-  in seconds. After the fit, the Oracle step blends the filter's forecast
-  growth with donor growth from past seasons at the same calendar week:
-  each forecast sample path draws one donor growth path from an earlier
-  season (within two epiweeks, any jurisdiction) and grows at the
-  geometric mean, half and half, of the filter's growth and the donor's,
-  propagated in closed form from the filter's own state
-  (docs/ORACLE-SIHRS.md).
-* Groundhog, empirical. It scales the latest observation by growth ratios
-  drawn from prior seasons at the same point in the calendar, pooled across
-  jurisdictions, with a banked FluSurv-NET donor pool beside the admissions
-  one. Nothing is fitted.
+* **Oracle SIHRS** (`NAU_PyBNF-OracleSIHRS`), mechanistic. The SIHRS
+  compartment model (susceptible, infected, hospitalized, recovered, with
+  waning immunity and seasonal transmission) written in BNGL and fitted by
+  a sequential particle filter: 10,000 candidate epidemics per
+  jurisdiction, refitted every week from the season's start on that week's
+  data. The filter runs in a fork of PyBNF with bngsim integrating the
+  model in process; a jurisdiction season fits in seconds. After the fit,
+  the Oracle step blends the filter's forecast growth with donor growth
+  from past seasons at the same calendar week: each forecast sample path
+  draws one donor growth path from an earlier season (within two epiweeks,
+  any jurisdiction) and grows at the geometric mean, half and half, of the
+  filter's growth and the donor's, propagated in closed form from the
+  filter's own state (docs/ORACLE-SIHRS.md).
+* **Groundhog** (`NAU_PyBNF-GroundHogCGR`), empirical. The last observed
+  count scaled by the empirical quantiles of growth ratios seen at the same
+  MMWR epiweek in strictly earlier seasons, pooled across jurisdictions,
+  with a committed FluSurv-NET donor bank spliced in (`data/banks/`).
+  Epiweek 53 is seated between weeks 52 and 1. Nothing is fitted.
 
 Both read past seasons at the same calendar week, in different ways: the
 Groundhog applies donor growth ratios to the last observed count, the
@@ -90,21 +91,6 @@ from `flubnf/settings.py` and can be pointed elsewhere by environment
 variable: `FLUBNF_HUB` (the hub clone), `FLUBNF_BNG` (BNG2.pl),
 `FLUBNF_PY_ENGINE` (python of the engine venv), `FLUBNF_PYBNF` (the PyBNF
 checkout).
-
-## The two models
-
-FluBNF submits two models to FluSight, each under its own hub identity
-(`model-metadata/`):
-
-* **Oracle SIHRS** (`NAU_PyBNF-OracleSIHRS`): the SIHRS compartment model
-  fitted each week by a sequential particle filter, each forward sample's
-  growth then blended half and half with a donor growth path from an
-  earlier season at the same calendar week (docs/ORACLE-SIHRS.md).
-* **Groundhog** (`NAU_PyBNF-GroundHogCGR`): the calendar analogue.
-  The last observed count scaled by the empirical quantiles of growth
-  ratios seen at the same MMWR epiweek in strictly earlier seasons, pooled
-  across jurisdictions, with a committed FluSurv-NET donor bank spliced in
-  (`data/banks/`). Epiweek 53 is seated between weeks 52 and 1.
 
 ## Measured record
 
