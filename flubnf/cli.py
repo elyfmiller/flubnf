@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import typer
 from rich.console import Console
@@ -2503,6 +2503,97 @@ def bank_show_cmd(
         if k in man:
             console.print(f"  {k:<15} {man[k]}")
     console.print(f"  {'locations':<15} {', '.join(man['locations'])}")
+
+
+# ---------------------------------------------------------------------------
+# oracle -- the Oracle SIHRS member on a stored season, without a refit
+#
+# A sub-app for the same reason the Groundhog has one: the member has a
+# lifecycle apart from the product. `flubnf retro` fits and stores a season
+# with the step applied; these two commands take a season that is already
+# stored, compute the member from its samples into a NEW root, and score
+# that root with the app's own scorer beside the registered screen's tables
+# (docs/ORACLE-SIHRS.md). Neither needs the engine.
+# ---------------------------------------------------------------------------
+oracle_app = typer.Typer(
+    add_completion=False, no_args_is_help=True,
+    help="The Oracle SIHRS on a stored season: backfill into a new root, "
+         "and reproduce the screen's relWIS with the app's scorer.")
+app.add_typer(oracle_app, name="oracle")
+
+
+@oracle_app.command("backfill")
+def oracle_backfill_cmd(
+    season: str = typer.Argument(..., help="The season the root holds, e.g. 2025-26."),
+    source: Path = typer.Option(
+        ..., "--source", help="A season root of stored weeks. Read only."),
+    out: Path = typer.Option(
+        ..., "--out",
+        help="A NEW season root to write. Never the source or a path under "
+             "it, never under app/state, never a non-empty tree without --force."),
+    force: bool = typer.Option(
+        False, "--force", help="Write into a non-empty --out."),
+    keep_filter: bool = typer.Option(
+        True, "--keep-filter/--no-keep-filter",
+        help="Keep the source's pf verbatim under the research key pf_filter "
+             "beside the member (the production layout)."),
+):
+    """Compute the Oracle SIHRS for every stored week of a season root, from
+    the stored samples and no refit, into a new root.
+
+    Each week is read through the storage boundary and written back
+    through it: pf the member (the submitted seed's samples), pf_filter
+    the source's pf, analogue verbatim, the sidecar, oracle.json and the
+    donor pool beside it. The hub this process reads (FLUBNF_HUB) supplies
+    the vintages the pools are built from.
+    """
+    from app.core import oracle_backfill as obf
+    try:
+        res = obf.backfill_season(
+            source, out, season, force=force, keep_filter=keep_filter,
+            progress=lambda a, m: console.print(f"  {a}  {m}"))
+    except (ValueError, FileNotFoundError) as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(2)
+    console.print(f"[bold]{season}[/bold]: {len(res['weeks'])} weeks backfilled "
+                  f"-> {res['out']} in {res['seconds']}s"
+                  + (f"; skipped (no pf block): {', '.join(res['skipped'])}"
+                     if res["skipped"] else ""))
+
+
+@oracle_app.command("reproduce")
+def oracle_reproduce_cmd(
+    roots: List[Path] = typer.Argument(
+        ..., help="Backfilled season roots (one or more)."),
+    source: Optional[List[Path]] = typer.Option(
+        None, "--source",
+        help="The source roots, scored read only for the plain filter (the "
+             "NULL); every week's quantile sidecar must be current."),
+    screen: Optional[Path] = typer.Option(
+        None, "--screen",
+        help="The registered screen's screen_scores.json, printed beside."),
+):
+    """Score backfilled roots with the app's own scorer and print relWIS
+    per season and over the seasons together, on the record definition
+    (each member's own scored cells) and on the common set (cells both
+    stored members scored), each with its cell count, beside the screen's
+    tables. FLUBNF_HUB must be the hub whose truth and baseline the screen
+    used.
+    """
+    from flubnf.settings import HUB
+    from app.core import oracle_backfill as obf
+    try:
+        res = obf.reproduce(list(roots), source_roots=(list(source) if source else None),
+                            screen_json=screen)
+    except (ValueError, FileNotFoundError) as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(2)
+    console.print(f"[bold]reproduce[/bold]  hub {HUB}")
+    for line in obf.report_lines(res):
+        console.print(line, highlight=False)
+    console.print(f"  cells scored (member root): {res['cells_scored']:,}")
+    if res.get("screen"):
+        console.print(f"  screen frozen document {res['screen'].get('frozen_document_sha256')}")
 
 
 site_app = typer.Typer(
