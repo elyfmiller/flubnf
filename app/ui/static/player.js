@@ -129,14 +129,10 @@ function pickLoc(map, loc){
 // the markers for that reason.
 //
 // "analogue" is the Groundhog: the calendar analogue engine with its
-// shipped auxiliary donor bank, a standalone submission since 2026-09-22.
-// A stored run or season from before that date ran the same engine
-// without the donors; the surfaces that know (the run page, the season
-// page) say so beside the name. The blend was retired the same day; its
-// entry stays so the record of the runs that shipped it still reads.
-// The hub submission identity is a SEPARATE thing and does not change
-// with this: forecasts go out under the registered model_id built in
-// app/core/submit.py, which is not a display name.
+// shipped auxiliary donor bank. "ensemble" names a model a stored run or
+// season from before 2026-09-22 may carry; nothing computes it now. The
+// hub submission identity is a SEPARATE thing: forecasts go out under the
+// registered model_id built in app/core/submit.py, not a display name.
 var MODEL_NAMES = /*MODEL_NAMES_JSON*/{
   "ensemble": "FluBNF Ensemble (retired)",
   "pf": "PF-SIHRS",

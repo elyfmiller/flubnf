@@ -1,9 +1,8 @@
 """Season playback: one JSON payload per stored retrospective week.
 
 GET /api/retro/{season}/playback/{asof} serves what a viewer needs to replay
-a submission day: every member's quantile fan (pf and analogue; nothing is
-blended since 2026-09-22), the settled full-season truth, the CDC's own
-submitted comparators
+a submission day: every member's quantile fan (pf and analogue), the
+settled full-season truth, the CDC's own submitted comparators
 (FluSight-baseline and FluSight-ensemble, including their US national cell),
 and running relWIS stats.
 

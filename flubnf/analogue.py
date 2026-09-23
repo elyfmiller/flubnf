@@ -280,7 +280,7 @@ SEASON_2021_22_CALENDAR_INVERSION = DonorSeasonExclusion(
         "+0.199 percent, while removing 2021-22 moves it +17.64 percent."),
     evidence=(
         "Pre-registered harness, arm A2 (donor-floor harness, lab archive, "
-        "not in this repository; docs/RELEASE-1.0.md restates the result). "
+        "not in this repository; docs/archive/RELEASE-1.0.md restates the result). "
         "Its control arm A0 "
         "reproduces the sealed analogue quantiles to 0.0 and the sealed "
         "member WIS to 3.05e-10. The bootstrap endpoints are Monte Carlo and "

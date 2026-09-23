@@ -42,12 +42,10 @@ def test_methods_page_carries_two_strain_research_section():
     assert "the two-strain variant" in r.text and "NREVSS" in r.text
     # the A/B parallel-circuit diagram moved here with the section
     assert "Two-strain SIHRS compartment diagram" in r.text
-    # the decisive full-grid comparison survives the condensed copy
-    for n in ("0.719", "0.704"):
-        assert n in r.text, n
-    # and the note that both sides of that comparison predate the donor
-    # exclusion, so a reader does not weigh 0.719 against today's 0.678
-    assert "0.678" in r.text
+    # the verdict survives the condensed copy without the retired blend's
+    # figures, which described a comparison that no longer exists
+    assert "Why it does not ship" in r.text
+    assert "remains a research run" in r.text
     assert "not a shipped model" in r.text
     assert "validation is in progress" not in r.text
     assert "validation now in progress" not in r.text

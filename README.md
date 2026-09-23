@@ -86,7 +86,7 @@ checkout).
 ## The two models
 
 FluBNF submits two models to FluSight, each under its own hub identity
-(`model-metadata/`), and blends nothing:
+(`model-metadata/`):
 
 * **PF-SIHRS** (`NAU_PyBNF-OracleSIHRS`): an SIHRS compartmental model
   fitted each week by a sequential particle filter.
@@ -95,11 +95,6 @@ FluBNF submits two models to FluSight, each under its own hub identity
   ratios seen at the same MMWR epiweek in strictly earlier seasons, pooled
   across jurisdictions, with a committed FluSurv-NET donor bank spliced in
   (`data/banks/`). Epiweek 53 is seated between weeks 52 and 1.
-
-The equal-weight blend of the two (`LosAlamos_NAU-CModel_Flu`, version
-3.0, under the group's previous team registration) was the submitted
-forecast until 2026-09-22 and is retired; its record is
-docs/RELEASE-1.0.md.
 
 ## Measured record
 
@@ -122,13 +117,11 @@ engine:
 
 or from the console, Retrospective tab, engine preset "Groundhog only"
 (minutes per season; the two paths agree cell for cell). These are self
-computed retrospective replays, not real time submissions. The retired
-blend scored 0.723 pooled on the production engine and 0.678 on the
-sealed v1.0.0 engine. Methodology, caveats, the independent replication,
-and everything that was tested and did not ship are in docs/RELEASE-1.0.md
-and on the console's Methods page. The research outputs behind those
-records live in the lab's archive, not in this repository's tip; some
-earlier commits retain copies.
+computed retrospective replays, not real time submissions. Methodology
+and caveats are on the console's Methods page; the research outputs
+behind these records live in the lab's archive, not in this repository's
+tip. The record of the 1.0 and 1.1 releases, which shipped a different
+product, is docs/archive/RELEASE-1.0.md.
 
 ## Layout
 

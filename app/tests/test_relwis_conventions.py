@@ -325,7 +325,7 @@ def test_pairwise_season_figures_carry_rank_and_field_size(tmp_path):
     """Computed, and deliberately not printed.
 
     Placement against the FluSight field is withdrawn (methods.html,
-    docs/RELEASE-1.0.md) because the field's own scores come from a builder
+    docs/archive/RELEASE-1.0.md) because the field's own scores come from a builder
     outside this repository. The machinery stays covered here so that
     lifting the withdrawal is a template change; the page tests below pin
     that nothing renders it.

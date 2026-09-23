@@ -18,7 +18,7 @@ first vintages of a season) also carry 1.
 The reporting-model pre-registration (research/reporting-model) is what
 this exists for; no shipped configuration sets it. The factor is pooled,
 never per state: the per-state forms were tested and killed
-(docs/RELEASE-1.0.md, the two reporting-completeness entries and the
+(docs/archive/RELEASE-1.0.md, the two reporting-completeness entries and the
 declined completeness-conditional drop).
 """
 from __future__ import annotations

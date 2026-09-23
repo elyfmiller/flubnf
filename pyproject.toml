@@ -40,7 +40,7 @@ dependencies = [
 Homepage = "https://github.com/elyfmiller/flubnf"
 Repository = "https://github.com/elyfmiller/flubnf"
 Issues = "https://github.com/elyfmiller/flubnf/issues"
-Release-notes = "https://github.com/elyfmiller/flubnf/blob/main/docs/RELEASE-1.0.md"
+Release-notes = "https://github.com/elyfmiller/flubnf/blob/main/docs/archive/RELEASE-1.0.md"
 
 [project.optional-dependencies]
 app = ["fastapi", "uvicorn", "jinja2", "python-multipart", "plotly", "pywebview"]

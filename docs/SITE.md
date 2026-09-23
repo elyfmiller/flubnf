@@ -87,16 +87,10 @@ Lab members do not push; the site would change only when you push.
 
 Three of those deserve a note.
 
-**The scores are each model's own, and no blend is printed.** Since
-2026-09-22 the two models are submitted separately and nothing computes
-the equal-weight ensemble; the seal's blend figures (0.813 / 0.618 / 0.683,
-pooled 0.678, rescored under the equal blend on 2026-08-24) stay in
-`docs/RELEASE-1.0.md` as the record of what shipped until then.
-
-The build does not read a stored `scores.json` at all. A `scores.json`
-records nothing about how it was scored, and `discover_seasons` accepts any
-season root under `app/state`, including a lab run scored before v1.0 under
-a frozen fitted table the lab rejected. Every season is instead rescored
+**The scores are each model's own.** The build does not read a stored
+`scores.json` at all. A `scores.json` records nothing about how it was
+scored, and `discover_seasons` accepts any season root under `app/state`,
+including research runs. Every season is instead rescored
 from each week's playback payload, the stored members as stored, through
 the validated baseline construction and the frozen cell rule.
 `app/tests/test_site_build.py` pins the seal's member figures (PF 1.023 /
@@ -112,7 +106,7 @@ CSVs across three seasons, and a field definition (which hub-run models count
 as competitors) that is a lab decision, not a formula. The standings the site
 used to carry were withdrawn on 2026-08-24 because the scorer that produced
 them does not survive and the entries for this project were not computed on
-one convention; see `docs/RELEASE-1.0.md`. Until they are measured again the
+one convention; see `docs/archive/RELEASE-1.0.md`. Until they are measured again the
 performance card carries no field column, and a season with no standing
 renders as "not yet scored against the field" rather than with an invented
 rank.

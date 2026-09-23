@@ -1,3 +1,10 @@
+> Archived record. This documents FluBNF 1.0 and 1.1, whose submitted
+> forecast was an equal-weight blend of the particle filter and the
+> calendar analogue under `LosAlamos_NAU-CModel_Flu`. That blend was
+> retired on 2026-09-22; the two models now ship on their own (README).
+> Nothing below describes the current product; it is kept because the
+> tags v1.0.0 and v1.1.0 and the sealed retrospective record refer to it.
+
 # FluBNF 1.0.0
 
 Released 2026-08-23. First stable release. Amended 2026-08-24, before the tag

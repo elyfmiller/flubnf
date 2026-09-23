@@ -9,10 +9,8 @@ Engineering rules (each one paid for):
     The analogue runs as the Groundhog by default (the shipped auxiliary
     donors, app/core/engines/analogue.SHIPPED_AUX, put into every week's
     spec unless `week_extra` says otherwise, and named in run_meta.json).
-    No blend: the equal-weight ensemble that every published score before
-    2026-09-22 was computed with is retired, and nothing here computes
-    it. Sealed seasons keep their stored "ensemble" score rows as the
-    record; a new scoring pass writes rows for the stored members only.
+    A scores.json written before 2026-09-22 may carry "ensemble" rows; a
+    scoring pass writes rows for the stored members only.
   * parallel width: PF cells sharded across N runner subprocesses (entry-point
     files, never stdin -- macOS spawn rule).
   * CONTROLLABLE: STOP and PAUSE are files in the season root, polled at FIT

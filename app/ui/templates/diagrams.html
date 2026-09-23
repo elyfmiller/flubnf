@@ -334,69 +334,6 @@
 </svg>
 {%- endmacro %}
 
-{% macro ensemble_mech(uid='e') -%}
-{# members sit side by side and their quantiles flow DOWN into the blend:
-   the row layout fills the drawing's width (the old left-hand stack left
-   two thirds of the canvas empty), and the fan-in leaves a clear pocket
-   beside the middle arrow where its label sits against the arrow it names #}
-<svg viewBox="0 0 780 244" role="img" aria-label="Ensemble blending diagram"
-     style="width:100%;max-width:800px;display:block;margin:.6rem auto;color:inherit">
- <desc>Three member forecasts side by side; their quantiles flow down into an
- equal-weight quantile average, which produces the submitted ensemble
- forecast.</desc>
- <defs>
-  <marker id="arr-{{ uid }}" viewBox="0 0 10 10" refX="9" refY="5"
-          markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-   <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
-  </marker>
- </defs>
- <!-- members -->
- <g stroke-width="1.8">
-  <rect x="10"  y="14" width="240" height="64" rx="9"
-        fill="var(--slate)" fill-opacity=".12" stroke="var(--slate)"/>
-  <rect x="270" y="14" width="240" height="64" rx="9"
-        fill="var(--warn)" fill-opacity=".12" stroke="var(--warn)"/>
-  <rect x="530" y="14" width="240" height="64" rx="9" stroke-dasharray="5 4"
-        fill="var(--mut)" fill-opacity=".08" stroke="var(--mut)"/>
- </g>
- <g text-anchor="middle" class="svgt-md" font-weight="600" fill="currentColor">
-  <text x="130" y="52">PF-SIHRS</text>
-  <text x="390" y="52">Calendar analogue</text>
-  <text x="650" y="44">Two-strain SIHRS</text>
- </g>
- <text x="650" y="64" text-anchor="middle" class="svgt-sm"
-       fill="var(--mut)">(optional third member)</text>
- <!-- quantiles converge on the blend node -->
- <g fill="none" stroke="currentColor" stroke-width="1.6">
-  <path d="M130,82 L350,164" marker-end="url(#arr-{{ uid }})"/>
-  <path d="M390,82 V164"     marker-end="url(#arr-{{ uid }})"/>
-  <path d="M650,82 L430,164" marker-end="url(#arr-{{ uid }})"/>
-  <path d="M490,200 H546"    marker-end="url(#arr-{{ uid }})"/>
- </g>
- <!-- the edge label hugs the middle arrow it annotates -->
- <text x="402" y="104" class="svgt-sm" fill="var(--mut)">member quantiles</text>
- <!-- blend node -->
- <rect x="290" y="168" width="200" height="64" rx="10"
-       fill="var(--gold)" fill-opacity=".12" stroke="var(--gold)"
-       stroke-width="2"/>
- <g text-anchor="middle" fill="currentColor">
-  <text x="390" y="190" class="svgt-md" font-weight="700">quantile average</text>
-  <text x="390" y="208" class="svgt-sm">equal weights, 50/50,</text>
-  <text x="390" y="226" class="svgt-sm">never fitted</text>
- </g>
- <!-- submitted forecast -->
- <rect x="554" y="168" width="216" height="64" rx="10"
-       fill="var(--gold-bright)" fill-opacity=".14"
-       stroke="var(--gold-bright)" stroke-width="2"/>
- <text x="662" y="192" text-anchor="middle" class="svgt-md" font-weight="700"
-       fill="currentColor">submitted forecast</text>
- <polygon points="576,214 748,198 748,212 576,222"
-          fill="var(--gold-bright)" fill-opacity=".35"/>
- <path d="M576,218 L748,206" fill="none" stroke="var(--gold)"
-       stroke-width="2"/>
-</svg>
-{%- endmacro %}
-
 {# ---- the seasonal-harmonic figure ----------------------------------------
    beta(t) relative to beta0 over one season (August to August, the axis
    ticked in month names from the shared season month offsets), drawn
@@ -585,12 +522,3 @@
 </div>
 {%- endmacro %}
 
-{% macro eq_ensemble() -%}
-<div class="eqpanel">
- <p><span class="math"><i>q</i><sub>ens</sub>(<i>&#964;</i>) =
-  mean<sub>m</sub>&#8239;<i>q</i><sub>m</sub>(<i>&#964;</i>)</span>
-  <span class="eqnote">each submitted quantile is the equal-weight mean of the
-  member quantiles at the same level <i>&#964;</i>; the weights are never
-  fitted</span></p>
-</div>
-{%- endmacro %}
