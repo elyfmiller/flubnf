@@ -249,10 +249,10 @@
  <desc>Four boxes left to right. First, the weekly fit: the particle filter
  fits the SIHRS compartment model from the season start on August 1 through
  the as-of week. Second, the filter's forecast: its sample paths for the
- next four weeks, each carrying the filter's own growth at the forecast
- origin. Third, the growth blend: each sample path's forward growth becomes
- the geometric mean, half and half, of its own growth and the growth of one
- donor path. Fourth, the Oracle SIHRS forecast, propagated from the
+ next four weeks, and the filter's own growth at the forecast origin.
+ Third, the growth blend: each sample path draws one donor path, and its
+ forward growth becomes the geometric mean, half and half, of the filter's
+ growth and that donor's growth. Fourth, the Oracle SIHRS forecast, propagated from the
  filter's own state and reduced to 23 quantiles. Below the blend, the donor
  pool feeds it: growth paths from strictly earlier seasons at this calendar
  week, within two epiweeks, from every jurisdiction, one donor drawn per
@@ -294,10 +294,10 @@
   <text x="375" y="66"  class="svgt-md" font-weight="700">Filter forecast</text>
   <text x="375" y="88"  class="svgt-sm">30,000 sample paths</text>
   <text x="375" y="106" class="svgt-sm">per state, 4 weeks,</text>
-  <text x="375" y="124" class="svgt-sm">its own growth G<tspan class="svgt-sub" dy="3">T</tspan></text>
+  <text x="375" y="124" class="svgt-sm">filter growth G<tspan class="svgt-sub" dy="3">T</tspan></text>
   <text x="635" y="66"  class="svgt-md" font-weight="700">Growth blend</text>
   <text x="635" y="88"  class="svgt-sm">per sample path:</text>
-  <text x="635" y="106" class="svgt-sm">half its own growth,</text>
+  <text x="635" y="106" class="svgt-sm">half filter growth,</text>
   <text x="635" y="124" class="svgt-sm">half its donor's</text>
   <text x="890" y="66"  class="svgt-md" font-weight="700">Oracle SIHRS</text>
   <text x="890" y="88"  class="svgt-sm">from the filter's</text>
@@ -337,7 +337,7 @@
   is rescaled so its path follows the blended growth, propagated in closed
   form from the filter's own state at <i>T</i>: the filter's spread rides
   on the new path and the donors add theirs</span></p>
- <p class="eqnote">Fixed before any score was read (docs/ORACLE-SIHRS.md):
+ <p class="eqnote">Frozen before the step was scored (docs/ORACLE-SIHRS.md):
  the weight &#189;, one donor per sample path, five seeds logged and the
  first submitted, the pool rule. A week with fewer than two donor seasons
  is the filter unchanged.</p>

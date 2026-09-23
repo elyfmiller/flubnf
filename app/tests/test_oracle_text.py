@@ -130,9 +130,9 @@ def test_methods_carries_the_oracle_step_card():
     assert 'id="oracle"' in t
     for needle in ("The Oracle step", "One donor per sample",
                    "How it relates to the Groundhog", "Why.",
-                   "frozen pre-registration", ot.PREREG_SHA256[:16],
+                   "frozen by a pre-registration", ot.PREREG_SHA256[:16],
                    "0.719", "0.794", "0.774", "0.843", "0.741", "0.813",
-                   "2023-24 only one earlier season exists",
+                   "2023-24 only one earlier season (2022-23) is admissible",
                    "flubnf retro --oracle none"):
         assert needle in t, needle
     # the three-season table names the filter it scores

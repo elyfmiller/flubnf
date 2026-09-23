@@ -37,7 +37,7 @@ between them:
   growth with donor growth from past seasons at the same calendar week:
   each forecast sample path draws one donor growth path from an earlier
   season (within two epiweeks, any jurisdiction) and grows at the
-  geometric mean, half and half, of its own growth and the donor's,
+  geometric mean, half and half, of the filter's growth and the donor's,
   propagated in closed form from the filter's own state
   (docs/ORACLE-SIHRS.md).
 * Groundhog, empirical. It scales the latest observation by growth ratios

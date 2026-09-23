@@ -3801,8 +3801,8 @@ def model_page(request: Request, name: str):
                "blended growth is propagated in closed form from the "
                "filter's own current state, so the filter's uncertainty and "
                "the donors' spread both survive. " + ot.BANK_TEXT["pool"] +
-               " Every rule of the step was fixed by a frozen "
-               "pre-registration before any score was read "
+               " Every rule of the step was frozen by a "
+               "pre-registration before the step itself was scored "
                "(docs/ORACLE-SIHRS.md). On the stored 2024-25 and 2025-26 "
                "forecasts it scores relWIS " + ot.fmt(rec["both"]["oracle"])
                + " against the plain filter's " + ot.fmt(rec["both"]["filter"])
@@ -3812,7 +3812,8 @@ def model_page(request: Request, name: str):
                "baseline, ratio of sums, values below 1 beat it). That is a "
                "frozen-specification replication on forecasts the method "
                "was screened on; the 2026-27 season is its prospective test. "
-               "In 2023-24 only one earlier season exists, so the member is "
+               "In 2023-24 only one earlier season (2022-23) is admissible as "
+               "a donor, fewer than the two the rule needs, so the member is "
                "the filter unchanged there. The Groundhog applies donor "
                "growth ratios to the last observed count; the Oracle SIHRS "
                "applies donor growth to the mechanistic state. The two are "

@@ -96,7 +96,8 @@
   <p class="hint">The Oracle SIHRS against the plain particle filter on the
   same cells: the stored 2024-25 and 2025-26 forecasts with the Oracle step
   applied, a frozen-specification replication; the 2026-27 season is the
-  prospective test. In 2023-24 only one earlier season exists, so the step
+  prospective test. In 2023-24 only one earlier season (2022-23) is
+  admissible as a donor, fewer than the two the rule needs, so the step
   leaves the filter unchanged there (docs/ORACLE-SIHRS.md).</p>
   <table class="perf">
    {# every score column is named for whose forecast it scores, so no
@@ -234,9 +235,9 @@
    &#189; ln <i>G</i><sub><i>T</i></sub> +
    &#189; ln <i>G</i><sub><i>d</i></sub></span>
    <span class="eqnote">the Oracle SIHRS's growth blend: each of the
-   filter's forecast sample paths grows at the geometric mean of its own
-   growth and one donor's, from an earlier season at the same calendar
-   week (<a href="/methods#oracle">Methods</a>)</span></p>
+   filter's forecast sample paths grows at the geometric mean of the
+   filter's growth G<sub><i>T</i></sub> and one donor's, from an earlier
+   season at the same calendar week (<a href="/methods#oracle">Methods</a>)</span></p>
   <p><span class="math"><i>q</i><sub>h</sub>(<i>&#964;</i>) =
    <i>y</i><sub>last</sub> &#183; <i>Q</i><sub><i>&#964;</i></sub>(&#8239;growth
    ratios at matched calendar weeks&#8239;)</span>

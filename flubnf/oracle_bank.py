@@ -68,7 +68,8 @@ import numpy as np
 from . import analogue as AN
 
 # ---------------------------------------------------------------------------
-# A PRIORI CONSTANTS. Fixed before any look at a scored season; none was tuned.
+# CONSTANTS. Frozen by the pre-registration before the member was scored; some
+# were written after looks at the scored seasons (its sections 10.1 and 10.2).
 # ---------------------------------------------------------------------------
 
 #: The stream name of the pool this module builds. Bank change B2 is a

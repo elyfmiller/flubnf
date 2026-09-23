@@ -77,7 +77,7 @@
  over from the week before: a refit sees every revision to earlier weeks,
  and the carried-cloud alternative was measured and declined. The filter's
  forecast is not submitted as it stands: the Oracle step below blends its
- growth with past seasons' before anything is written.</p>
+ growth with past seasons' before anything is submitted.</p>
  <p>BioNetGen's BNG2.pl is invoked once per state cell when a run is
  prepared, expanding the BNGL model into its reaction network. During
  fitting, the particle filter integrates that network's differential
@@ -91,7 +91,7 @@
  {{ dg.oracle_pipeline(uid='mp') }}
  <p><b>What it does.</b> After the weekly fit, the filter's forecast is a
  set of sample paths for the next four weeks (30,000 per state at the
- default three replicates), each one carrying the filter's own growth at the forecast origin. The Oracle step
+ default three replicates), with one growth rate for the filter at the forecast origin. The Oracle step
  gives every sample path one donor: a growth path drawn at random from an
  earlier season at the same calendar week (within two MMWR epiweeks of the
  forecast week, from any jurisdiction), the same calendar-donor principle
@@ -119,10 +119,10 @@
  under its own hub identity, and nothing is blended between them.</p>
  <p><b>The record.</b> Every rule of the step (the weight, one donor per
  sample path, the pool rule, five seeds logged with the first submitted)
- was fixed by a frozen pre-registration before any score was read (sha256
+ was frozen by a pre-registration before the step itself was ever scored (sha256
  <code>{{ oracle_text.PREREG_SHA256[:16] }}</code>, docs/ORACLE-SIHRS.md).
- On the stored forecasts of the two seasons with more than one earlier
- season to draw from, scored against the FluSight baseline as a ratio of
+ On the stored forecasts of the two seasons with at least two admissible
+ donor seasons, scored against the FluSight baseline as a ratio of
  sums on the cells where both scored:</p>
  <div style="overflow-x:auto"><table>
   <tr><th>Season</th><th class="num">Oracle SIHRS</th><th class="num">Plain filter</th><th class="num">Cells</th></tr>
@@ -137,8 +137,9 @@
  <p class="hint">A frozen-specification replication, not an independent
  confirmation: this family of blends had been looked at on the same stored
  forecasts before the primary arm was fixed, so the 2026-27 season is the
- prospective test. In 2023-24 only one earlier season exists and the step
- leaves the filter unchanged by its own rule. The plain filter remains
+ prospective test. In 2023-24 only one earlier season (2022-23) is
+ admissible as a donor (2021-22 is excluded by rule), fewer than the two
+ the rule needs, so the step leaves the filter unchanged there. The plain filter remains
  reachable as a research run (<code>flubnf retro --oracle none</code>),
  never as a submission. Source: {{ oracle_text.RECORD_SOURCE }}.</p>
  <p class="hint">Model tab: <a href="/model/pf">Oracle SIHRS</a>.</p>
