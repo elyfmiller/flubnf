@@ -84,6 +84,33 @@ def model_names() -> dict:
 MODEL_NAMES = model_names()
 
 
+def names_for_root(root: Path, base: dict | None = None) -> dict:
+    """The model-name map for ONE season tree: `base` (the shared map by
+    default) with pf named for what the tree stores.
+
+    The shared map calls pf the Oracle SIHRS, and that is true only of a
+    tree whose weeks went through the Oracle step. Every sealed record and
+    every replay from before the step stores the particle filter alone
+    under pf, and titling its relWIS "Oracle SIHRS" names a forecast the
+    member never made (the sealed 2024-25 record scores 0.797, the filter's
+    figure; the member's is 0.719). The test is the public site's own,
+    app/core/site_build.tree_carries_oracle, and the other name is its own
+    phrase, the one Home and Methods print. A tree that cannot be read is
+    named the filter: the full name is claimed only when the tree shows it.
+
+    A copy, never the module map: the console serves requests on several
+    threads, and one season's name must not leak into another's page."""
+    from app.core import site_build
+    names = dict(MODEL_NAMES if base is None else base)
+    try:
+        carries = site_build.tree_carries_oracle(Path(root))
+    except Exception:
+        carries = False
+    if not carries:
+        names["pf"] = site_build.PF_LABEL_FILTER
+    return names
+
+
 def report_path(root: Path, season: str) -> Path:
     return Path(root) / f"{season}-FluBNF-season-report.html"
 
@@ -293,12 +320,14 @@ def _model_colors() -> dict:
     return colors
 
 
-def _curve_svg(curves: dict) -> str:
+def _curve_svg(curves: dict, names: dict | None = None) -> str:
     """The cumulative chart as one inline SVG, the season page's own
     geometry (viewBox 720x180, gridlines at 1.0 and 0.5, one line per
     model in its member colour, each final value printed at its endpoint,
     month ticks at each month change, corner dates). Token colors, so it
-    follows the resolved theme."""
+    follows the resolved theme. `names` is the season tree's own map
+    (names_for_root); the shared map when a caller has no tree."""
+    names = MODEL_NAMES if names is None else names
     first = next(iter(curves.values()))
     vals = [v for c in curves.values() for _, v in c]
     n = len(first)
@@ -328,7 +357,7 @@ def _curve_svg(curves: dict) -> str:
                        for i, (_, v) in enumerate(curve))
         parts.append(f'<polyline fill="none" stroke="{col}" '
                      f'stroke-width="2.5" data-model="{m}" points="{pts}"/>')
-        name = MODEL_NAMES.get(m, m)
+        name = names.get(m, m)
         for i, (d, v) in enumerate(curve):
             parts.append(f'<circle cx="{x_at(i, cn)}" cy="{y_at(v)}" r="3" '
                          f'fill="{col}"><title>{name} {d}: {v:.3f}</title>'
@@ -356,12 +385,12 @@ def _curve_svg(curves: dict) -> str:
     parts.append("</svg>")
     legend = " · ".join(
         f'<span style="color:{colors.get(m, "var(--mut)")}">&#9632;</span> '
-        f'{MODEL_NAMES.get(m, m)}' for m in curves)
+        f'{names.get(m, m)}' for m in curves)
     parts.append(f'<p class="hint">{legend}</p>')
     return "".join(parts)
 
 
-def _curve_block(df) -> str:
+def _curve_block(df, names: dict | None = None) -> str:
     """The cumulative chart as its own section, present in scored and
     unscored seasons alike: the season page always shows this card, and an
     unscored season states the same arrival note the console does rather
@@ -371,10 +400,11 @@ def _curve_block(df) -> str:
     if not curves:
         return head + ('<p class="hint">Arrives with the first scored '
                        "week.</p>")
-    return head + _curve_svg(curves)
+    return head + _curve_svg(curves, names)
 
 
-def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
+def _summary_block(root: Path, weeks: list, payloads: dict,
+                   names: dict | None = None) -> str:
     """The static season verdict, printed ahead of the player.
 
     Final relWIS tiles for each model come from the final
@@ -390,7 +420,12 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
     does in the console -- a verdict tile and a leading table row, each
     wearing the honest independence label -- computed when its cache is
     cold; when it cannot be delivered at all, the artifact SAYS so instead
-    of leaving a hole."""
+    of leaving a hole.
+
+    Every model name comes from `names`, the tree's own map
+    (names_for_root, computed here when the caller passes none), so a
+    sealed record's pf is titled the particle filter alone it is."""
+    names = names_for_root(root) if names is None else names
     final = payloads.get(weeks[-1]) or {}
     stats = final.get("stats") or {}
     tiles = []
@@ -400,7 +435,7 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
             continue
         cls = "ok" if v < 1 else "bad"
         tiles.append('<div class="tile"><div class="tilename">'
-                     + MODEL_NAMES.get(m, m) + '</div>'
+                     + names.get(m, m) + '</div>'
                      + f'<div class="tileval {cls}">{v:.3f}</div></div>')
     line = f"{len(weeks)} weeks covered, {weeks[0]} to {weeks[-1]}"
     meta = retro.read_meta(root)
@@ -432,7 +467,7 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
                if us.is_fitted else us.fallback_note
                + ", states treated as independent")
         tiles.append('<div class="tile"><div class="tilename">'
-                     + us.short_label + ": " + MODEL_NAMES.get(m, m)
+                     + us.short_label + ": " + names.get(m, m)
                      + '</div>'
                      + f'<div class="tileval {cls}">{v:.3f}</div>'
                      + f'<div class="hint">{sub}</div></div>')
@@ -441,7 +476,7 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
         # omitted (the generic phrase stands) rather than invented
         n = int((df.model == have[0]).sum())
         if n:
-            cover = (f"the season's {n} scored {MODEL_NAMES.get(have[0], have[0])}"
+            cover = (f"the season's {n} scored {names.get(have[0], have[0])}"
                      " cells")
     if df is not None and "location" in df.columns:
         if us:
@@ -474,7 +509,7 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
     if rows:
         states = ('<h2 style="margin-top:.9rem">Per-state final scores</h2>'
                   '<table><thead><tr><th>State</th>'
-                  + "".join(f'<th class="num">{MODEL_NAMES.get(m, m)}</th>'
+                  + "".join(f'<th class="num">{names.get(m, m)}</th>'
                             for m in have)
                   + '</tr></thead><tbody>'
                   + "".join(rows) + "</tbody></table>"
@@ -515,6 +550,17 @@ def _summary_block(root: Path, weeks: list, payloads: dict) -> str:
 ARCHIVE_MARK = "Archived run"
 
 
+def _names_line(names: dict) -> str:
+    """The one line of the export's host script that hands the tree's names
+    to the inlined player, whose legend, toggles and stats table read
+    FluBNFPlayer.MODEL_NAMES (the object player.js keeps and reads by
+    reference). The same string is the cache test in build_season_report:
+    an export built under other names, or before names were per tree, is
+    rebuilt rather than served."""
+    nj = json.dumps(names, separators=(",", ":")).replace("</", "<\\/")
+    return f"Object.assign(FluBNFPlayer.MODEL_NAMES, {nj});"
+
+
 def _archive_note(archive: str) -> str:
     """One line saying the export came from an archived run, not the live
     season. Without it two exports of the same season are indistinguishable
@@ -544,6 +590,11 @@ def build_season_report(root: Path, season: str, archive: str = "",
     newest = _newest_input(root)
     settings_note = _settings_note(root, build, versions)
     timing_line = _timing_note(root)
+    # the tree's own names (pf is the particle filter alone on a sealed
+    # record or a replay from before the Oracle step), threaded through the
+    # summary and the player, never written into the shared module map
+    names = names_for_root(root)
+    names_line = _names_line(names)
     if out.is_file() and out.stat().st_mtime >= newest:
         # a report that travelled INTO an archive with the season tree keeps
         # its old mtime, so freshness alone would serve it unlabelled: make
@@ -560,10 +611,15 @@ def build_season_report(root: Path, season: str, archive: str = "",
         # clock tick as the report reads no newer on a filesystem with a
         # coarse timestamp (Windows), and the cached export would keep
         # serving a header without the total the record now carries.
+        # The names line joins it the same way: pf's name follows what the
+        # tree stores (oracle.json in its weeks, or its run record), and
+        # neither is an mtime input above, so an export that titled a
+        # sealed record's filter "Oracle SIHRS" is rebuilt, not served.
         text = out.read_text(encoding="utf-8")
         if ((not archive or ARCHIVE_MARK in text)
                 and (not settings_note or SETTINGS_MARK in text)
-                and (not timing_line or timing_line in text)):
+                and (not timing_line or timing_line in text)
+                and names_line in text):
             return out
     payloads = {w: playback.build_week(root, season, w) for w in weeks}
     data = {"season": season, "weeks": weeks, "payloads": payloads}
@@ -573,7 +629,7 @@ def build_season_report(root: Path, season: str, archive: str = "",
     player_js = _player_js()
     timing_note = (_archive_note(archive) + _timing_note(root)
                    + settings_note)
-    summary = _summary_block(root, weeks, payloads)
+    summary = _summary_block(root, weeks, payloads, names)
     # the SAME resolution the summary block printed, frozen into the
     # exported player's config: one answer per file, never two
     us_obj, _ = _us_national(root, playback._season_scores(root))
@@ -582,7 +638,7 @@ def build_season_report(root: Path, season: str, archive: str = "",
                          separators=(",", ":")).replace("</", "<\\/")
     html = _compose(season, weeks, data_json, plotly_js, player_js,
                     size_note="", timing_note=timing_note, summary=summary,
-                    us_json=us_json)
+                    us_json=us_json, names_line=names_line)
     size = len(html.encode("utf-8"))
     if size > SIZE_WARN_BYTES:
         note = ('<p class="warn">Size notice: this file is %.0f MB, above '
@@ -591,7 +647,8 @@ def build_season_report(root: Path, season: str, archive: str = "",
                 % (size / (1024 * 1024)))
         html = _compose(season, weeks, data_json, plotly_js, player_js,
                         size_note=note, timing_note=timing_note,
-                        summary=summary, us_json=us_json)
+                        summary=summary, us_json=us_json,
+                        names_line=names_line)
     # atomic: two concurrent downloads must never interleave a garbled file
     tmp = out.with_suffix(".html.tmp")
     # newline pinned: the report is served as text (universal-newline read)
@@ -604,9 +661,11 @@ def build_season_report(root: Path, season: str, archive: str = "",
 
 def _compose(season: str, weeks: list, data_json: str, plotly_js: str,
              player_js: str, size_note: str, timing_note: str = "",
-             summary: str = "", us_json: str = "{}") -> str:
+             summary: str = "", us_json: str = "{}",
+             names_line: str = "") -> str:
     return (_PAGE
             .replace("@@USNAT@@", us_json)
+            .replace("@@NAMES@@", names_line)
             .replace("@@BOOT@@", report_v2.theme_boot_script())
             .replace("@@THEMETOKENS@@", report_v2.theme_token_css())
             .replace("@@SEASON@@", season)
@@ -813,6 +872,11 @@ function css(n, fb){
     .getPropertyValue(n).trim();
   return v || fb;
 }
+// the season tree's own model names (report_season.names_for_root), set
+// before anything draws: a sealed record or a replay from before the
+// Oracle step stores the particle filter alone under pf, and the player
+// must title it as the summary above does
+@@NAMES@@
 var player = FluBNFPlayer.init({
   weeks: WEEKS,
   mode: 'static',

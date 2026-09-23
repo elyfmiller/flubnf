@@ -30,6 +30,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.core import playback, report_season, retro       # noqa: E402
+from app.core import site_build                           # noqa: E402
 import app.core.scoring as scoring                        # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL     # noqa: E402
 
@@ -184,7 +185,10 @@ def test_every_app_section_has_a_report_counterpart(built):
     """The data-driven guard: a NEW season-page section must be mapped to a
     report counterpart or declared app-only, or this fails."""
     app_html, report_html = built
-    names = set(report_season.MODEL_NAMES.values())
+    # pf's tile is named for what the tree stores (names_for_root): this
+    # fixture's weeks carry no oracle.json, so the particle filter alone
+    names = (set(report_season.MODEL_NAMES.values())
+             | {site_build.PF_LABEL_FILTER})
     tile_names = names | {f"US (aggregated): {n}" for n in names}
     for h in _headings(app_html):
         if h in APP_ONLY_HEADINGS:
@@ -210,8 +214,9 @@ def test_verdict_tiles_match_including_us_aggregate(built):
     app_tiles = set(re.findall(
         r'<div class="card"><h2>([^<]+)</h2><div class="big', app_html))
     rep_tiles = set(re.findall(r'class="tilename">([^<]+)<', report_html))
-    # one national tile per model, named for both (2026-09-22)
-    assert "US (aggregated): Oracle SIHRS" in app_tiles
+    # one national tile per model, named for both (2026-09-22); pf's name
+    # is the tree's own, and this fixture stores the particle filter alone
+    assert "US (aggregated): Particle filter alone" in app_tiles
     assert "US (aggregated): Groundhog" in app_tiles
     assert app_tiles == rep_tiles
 

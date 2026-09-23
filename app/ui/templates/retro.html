@@ -40,7 +40,7 @@ and move on; scoring waits for settled truth.</p>
  <h2>{{ s.name }}</h2>
  <div class="row" style="justify-content:space-between">
   <span class="hint">{{ s.done }} backfilled week{{ '' if s.done == 1 else 's' }}
-   {%- if s.rels %}{% for m, v in s.rels.items() %} &middot; {{ model_name(m) ~ ' ' if m }}relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{% endfor %} vs FluSight baseline, ratio of sums{% else %} &middot; not scored yet; Results scores it{% endif %}</span>
+   {%- if s.rels %}{% for m, v in s.rels.items() %} &middot; {{ ((s.pf_name if (m == 'pf' and s.pf_name) else model_name(m)) ~ ' ') if m }}relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{% endfor %} vs FluSight baseline, ratio of sums{% else %} &middot; not scored yet; Results scores it{% endif %}</span>
   <a href="/retro/{{ s.name }}?src={{ src }}"><button class="quiet" type="button" style="margin-top:0">Results &rarr;</button></a>
  </div>
  {% if s.source_root %}<p class="hint">from the stored filter samples of
@@ -172,7 +172,10 @@ directory yet.</p>{% endif %}
         blend where a season scored before 2026-09-22 stored its rows); a
         card carrying only `rel` prints it unnamed #}
      {% set s_rels = s.rels if (s.rels is defined and s.rels) else ({'': s.rel} if s_complete else {}) %}
-     {% if s_complete %}{% for m, v in s_rels.items() %} · {{ model_name(m) ~ ' ' if m }}relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{% endfor %} vs FluSight baseline, ratio of sums{% endif %}
+     {# pf is named for what THIS card's tree stores (s.pf_name, from
+        server._names_for_root): a sealed record, or a replay from before
+        the Oracle step, holds the particle filter alone #}
+     {% if s_complete %}{% for m, v in s_rels.items() %} &middot; {{ ((s.pf_name if (m == 'pf' and s.pf_name) else model_name(m)) ~ ' ') if m }}relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{% endfor %} vs FluSight baseline, ratio of sums{% endif %}
      {% if s.status == 'running' %}<span class="warn">· running</span>
      {% elif s.status == 'stopping' %}<span class="warn">· stopping after the fits in flight</span>
      {% elif s.status == 'paused' %}<span class="warn">· paused</span>
@@ -240,7 +243,7 @@ directory yet.</p>{% endif %}
     <span class="grow"><strong>{{ a.when }}</strong>
      <span class="hint">· {{ a.weeks }} week{{ "" if a.weeks == 1 else "s" }}{%
       if a.elapsed_s and a.elapsed_s >= 1 %} · {{ a.elapsed_s | hms }}{% endif %}{%
-      if a.rel is not none %}{% set a_rels = a.rels if (a.rels is defined and a.rels) else {'': a.rel} %}{% for m, v in a_rels.items() %} · {{ model_name(m) ~ ' ' if m }}relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{
+      if a.rel is not none %}{% set a_rels = a.rels if (a.rels is defined and a.rels) else {'': a.rel} %}{% for m, v in a_rels.items() %} &middot; {{ ((a.pf_name if (m == 'pf' and a.pf_name) else model_name(m)) ~ ' ') if m }}relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{
       "%.3f"|format(v) }}</span>{% endfor %} vs FluSight baseline, ratio of sums{% endif %} · {{ a.size_h }}</span></span>
     <a href="/retro/{{ s.name }}?archive={{ a.id }}"><button class="quiet"
       type="button">Results →</button></a>

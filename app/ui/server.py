@@ -232,6 +232,36 @@ def _model_names() -> dict:
 
 templates.env.globals["model_name"] = lambda m: _model_names().get(m, m)
 
+
+def _names_for_root(root) -> dict:
+    """The model-name map for one season tree: the shared map, with pf
+    called "Particle filter alone" unless the tree carries the Oracle step
+    (app/core/site_build.tree_carries_oracle, the public site's own test;
+    an unreadable tree is named the filter). Every sealed record and every
+    replay from before the step stores the filter alone under pf, and the
+    Retrospective tab titling it "Oracle SIHRS" named a forecast the member
+    never made. One implementation (report_season.names_for_root), so the
+    season page, the index and the exported report cannot disagree."""
+    from app.core import report_season
+    try:
+        return report_season.names_for_root(root, _model_names())
+    except Exception:
+        from app.core.site_build import PF_LABEL_FILTER
+        return dict(_model_names(), pf=PF_LABEL_FILTER)
+
+
+def _pf_name(root) -> str:
+    """pf's name on one season tree (see _names_for_root)."""
+    return _names_for_root(root).get("pf", "pf")
+
+
+def _name_fn(names: dict):
+    """A page's model_name: the template global's shape over one tree's
+    names. Passed in a page's context it shadows the global of the same
+    name for that render only."""
+    return lambda m: names.get(m, m)
+
+
 # THE one sentence naming the convention behind every published relWIS
 # (app/core/relwis.PUBLISHED_CONVENTION_NOTE). A template global rather
 # than four typed copies: the home page, Methods, the harvested public site
@@ -4043,6 +4073,9 @@ def _source_seasons(src: str = "oracle") -> list:
             else {}
         out.append({"name": d.name, "done": done,
                     "rels": summ.get("headline_rels") or {},
+                    # pf's name on THIS tree: a backfilled root carries the
+                    # step, a copied plain replay does not
+                    "pf_name": _pf_name(d),
                     "scored": (d / "scores.json").is_file(),
                     "source_root": bf.get("source_root", ""),
                     "prereg": str(bf.get("prereg_sha256") or "")[:16],
@@ -4199,6 +4232,8 @@ def _scan_archive_entries(retro_root: Path, season: str) -> list:
         out.append({"id": stamp, "when": retro.stamp_human(stamp),
                     "weeks": s["weeks"], "elapsed_s": s["elapsed_s"],
                     "rel": s["headline_rel"], "rels": s.get("headline_rels"),
+                    # each archive is its own tree, named for what it holds
+                    "pf_name": _pf_name(p),
                     "scored": s["scored"],
                     "size": size, "size_h": retro.human_bytes(size)})
     return out
@@ -4665,6 +4700,9 @@ def retro_index(request: Request, src: str = ""):
                         "seal": is_seal,
                         "seal_label": _sealed_label(root) if is_seal else "",
                         "rel": rel, "rels": rels,
+                        # pf's name on the tree the card reads: a sealed
+                        # record stores the particle filter alone
+                        "pf_name": _pf_name(root),
                         "resume_fields": resume_fields,
                         "settings": prog["settings"],
                         "archives": _archive_entries(s),
@@ -5561,6 +5599,11 @@ def retro_results(request: Request, season: str, week: str = "",
         _flash("Unrecognized retrospective source.")
         return RedirectResponse("/retro", status_code=303)
     root, _is_seal = _root_for(season, archive, src)
+    # the names this page prints, for THIS tree: pf is the particle filter
+    # alone on a sealed record or a replay from before the Oracle step.
+    # Passed as the page's model_name, which shadows the template global,
+    # and read by the page script into the player's shared map
+    names = _names_for_root(root)
     # the backfilled source, named on the page with its own record
     source = None
     if src:
@@ -5601,6 +5644,7 @@ def retro_results(request: Request, season: str, week: str = "",
         if not job["done"].is_set():
             return templates.TemplateResponse(request, "retro_season.html", {
                 "active": "Retrospective", "season": season,
+                "model_name": _name_fn(names),
                 "preparing": {"phase": job["phase"],
                               "elapsed_s": round(time.time() - job["t0"], 1)},
                 "archive": archive, "src": src, "source": source,
@@ -5719,8 +5763,13 @@ def retro_results(request: Request, season: str, week: str = "",
     if len(map_models) >= 2:
         from app.core import report_v2
         from app.core import usmap as _usmap
+        # the map labels are the shared names with "outlook" appended
+        # (report_v2.MODEL_LABEL); pf's follows this tree's name
+        map_labels = dict(report_v2.MODEL_LABEL)
+        if names.get("pf") != _model_names().get("pf"):
+            map_labels["pf"] = f"{names['pf']} outlook"
         map_toggle = _usmap.model_toggle(
-            map_models, report_v2.MODEL_LABEL, map_models[0],
+            map_models, map_labels, map_models[0],
             {m: {"states": _usmap.state_swap_payload(by_model[m]), "us": {}}
              for m in map_models},
             group_id="retro-model", btn_class="quiet",
@@ -5805,6 +5854,7 @@ def retro_results(request: Request, season: str, week: str = "",
         official_catalog = []
     return templates.TemplateResponse(request, "retro_season.html", {
         "active": "Retrospective", "season": season, "heads": heads,
+        "model_name": _name_fn(names),
         "curve": curve, "curves": curves, "states": states,
         "member_colors": _member_colors(),
         # the models this season scored, in table order: the two that ship

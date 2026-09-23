@@ -380,16 +380,20 @@ def test_export_freshness_covers_the_aggregate_cache(tmp_path, _stubbed,
     monkeypatch.setattr(report_season, "_plotlyjs", lambda: "/* stub */")
     root = _mk_tree(tmp_path)
     p = report_season.build_season_report(root, SEASON)
-    p.write_text("sentinel")
+    # the stand-in carries the tree's names line, the builder's content
+    # test, so only the mtime half is exercised here
+    sentinel = "sentinel " + report_season._names_line(
+        report_season.names_for_root(root))
+    p.write_text(sentinel)
     future = p.stat().st_mtime + 60
     os.utime(p, (future, future))
     assert report_season.build_season_report(root, SEASON).read_text() \
-        == "sentinel"                        # fresh: reused
+        == sentinel                          # fresh: reused
     retro.finalize_season(root, SEASON)
     cf = root / "playback_cache" / "us_aggregate.json"
     os.utime(cf, (future + 60, future + 60))
     html = report_season.build_season_report(root, SEASON).read_text()
-    assert html != "sentinel" and "US (aggregated)" in html
+    assert html != sentinel and "US (aggregated)" in html
 
 
 # --------------------------------------------------- startup: lazy and warm

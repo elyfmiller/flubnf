@@ -558,6 +558,12 @@
  // locations, truth, models, official, stats. The payload variable is
  // ALWAYS named `pl` so the contract test can verify the JS reads only
  // fields the API defines.
+ // pf's name on THIS tree (server._names_for_root: the particle filter
+ // alone on a sealed record or a replay from before the Oracle step), set
+ // into the player's shared name map before anything below draws. player.js
+ // keeps one MODEL_NAMES object and reads it by reference (nameOf), so the
+ // legend, toggles and stats table follow, as does MNAMES below.
+ FluBNFPlayer.MODEL_NAMES.pf = {{ model_name('pf') | tojson }};
  const SEASON = {{ season | tojson }};
  const WEEKS = {{ weeks | tojson }};
  // an archived run is read through the very same routes, identified by one
