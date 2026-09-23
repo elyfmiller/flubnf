@@ -1494,17 +1494,182 @@ if __name__ == "__main__":
 # the pidfile lives with the app's other state, next to retro/ and ledger
 APP_PID_FILE = (Path(__file__).resolve().parents[1]
                 / "app" / "state" / "app.pid")
-# the predecessor check requires one of these substrings in the process
-# command line before anything is signalled. They are command-shaped on
-# purpose: a bare "flubnf" would match ANY process started from this venv
-# (the interpreter path contains it), so a recycled pid landing on, say, a
-# multi-hour PyBNF fit could be killed. "flubnf app" and "flubnf window"
-# cover every launch path (FluBNF.command's `.venv/bin/flubnf app`, a
-# manual `flubnf window`, extra flags after the command). The .exe forms
-# are the same entry points as Windows spells them (FluBNF.bat launches
-# `.venv\Scripts\flubnf.exe app`); they never match elsewhere.
+# the predecessor check requires one of these entry shapes in the process
+# command line before anything is signalled (matched on words, see
+# _cmdline_has_marker). They are command-shaped on purpose: a bare "flubnf"
+# would match ANY process started from this venv (the interpreter path
+# contains it), so a recycled pid landing on, say, a multi-hour PyBNF fit
+# could be killed. "flubnf app" and "flubnf window" cover every launch path
+# (FluBNF.command's `.venv/bin/flubnf app`, a manual `flubnf window`, extra
+# flags after the command, `flubnf -v app`). The .exe forms are the same
+# entry points as Windows spells them: FluBNF.bat runs
+# `".venv\Scripts\flubnf" app`, and pip's console-script launcher starts
+# the server with a command line of the form
+# `"...\python.exe"  "...\Scripts\flubnf.exe" app`.
 APP_ENTRY_MARKERS = ("flubnf app", "flubnf window",
                      "flubnf.exe app", "flubnf.exe window")
+
+
+#: the root command's options (see _root): the only words that may come
+#: between the program and its subcommand in a console command line
+_ROOT_SWITCHES = frozenset({"-v", "--verbose"})
+
+
+def _cmdline_has_marker(cmd: str, markers) -> bool:
+    """Whether a process command line is one of our entry points.
+
+    Matched on WORDS, not as a substring. The command line has its double
+    quotes removed and is split on whitespace; a marker of n words matches
+    n consecutive words, the first compared by its file name (the part
+    after the last / or \\) and the rest exactly.
+
+    Why not a substring: on Windows the console server is started through
+    pip's console-script launcher, whose child command line is built from
+    the format '"%ls" %ls "%ls" %ls' (read out of pip's vendored t64.exe),
+    so the server's own command line reads
+    '"C:\\...\\python.exe"  "C:\\...\\Scripts\\flubnf.exe" app', with a quote
+    between the executable and 'app'. 'flubnf.exe app' was never a
+    substring of that, so the takeover never recognised its predecessor on
+    Windows and always fell back to a free port. The word match reads that
+    line correctly and is also stricter than a substring: 'grep flubnf
+    app.log' and 'notflubnf app' are not the console. POSIX command lines
+    (/proc, ps) carry no quotes, and '/x/.venv/bin/flubnf app' matches as
+    before."""
+    if not cmd:
+        return False
+    import os
+    fold = os.name == "nt"           # NTFS file names ignore case
+    words = cmd.replace('"', " ").split()
+    for mk in markers:
+        want = str(mk).split()
+        if not want:
+            continue
+        first = want[0].casefold() if fold else want[0]
+        for i, word in enumerate(words):
+            head = word.replace("\\", "/").rsplit("/", 1)[-1]
+            if (head.casefold() if fold else head) != first:
+                continue
+            j = i + 1
+            if len(want) > 1:
+                # the root command's switches may sit between the program
+                # and its subcommand (`flubnf -v app`). Only those: its
+                # only option is --verbose / -v, which takes no value, and
+                # skipping any '-' word would let `grep flubnf -r app`
+                # pass for the console
+                while j < len(words) and words[j] in _ROOT_SWITCHES:
+                    j += 1
+            if words[j:j + len(want) - 1] == want[1:]:
+                return True
+    return False
+
+
+def _posix_parent_pid(pid: int):
+    """The parent of `pid` on Linux (/proc) or macOS (ps), or None."""
+    import subprocess
+    try:
+        stat = Path(f"/proc/{int(pid)}/stat")
+        if stat.exists():
+            # the command name is parenthesised and may hold spaces; the
+            # fields after it are: state, ppid, ...
+            return int(stat.read_text().rsplit(")", 1)[1].split()[1])
+    except Exception:
+        pass
+    try:
+        out = subprocess.run(["ps", "-o", "ppid=", "-p", str(int(pid))],
+                             capture_output=True, text=True, timeout=5)
+        return int(out.stdout.strip()) if out.returncode == 0 else None
+    except Exception:
+        return None
+
+
+def _windows_parent_map(kernel32=None) -> dict:
+    """pid -> parent pid for every process, from one Toolhelp snapshot
+    (CreateToolhelp32Snapshot / Process32FirstW / Process32NextW). {} when
+    the snapshot cannot be taken. Never raises. `kernel32` is injectable
+    for tests on other platforms."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class _Entry(ctypes.Structure):          # PROCESSENTRY32W
+            _fields_ = [("dwSize", wintypes.DWORD),
+                        ("cntUsage", wintypes.DWORD),
+                        ("th32ProcessID", wintypes.DWORD),
+                        ("th32DefaultHeapID", ctypes.c_size_t),
+                        ("th32ModuleID", wintypes.DWORD),
+                        ("cntThreads", wintypes.DWORD),
+                        ("th32ParentProcessID", wintypes.DWORD),
+                        ("pcPriClassBase", ctypes.c_long),
+                        ("dwFlags", wintypes.DWORD),
+                        ("szExeFile", ctypes.c_wchar * 260)]
+
+        if kernel32 is None:
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+            kernel32.CreateToolhelp32Snapshot.argtypes = (wintypes.DWORD,
+                                                          wintypes.DWORD)
+            for fn in (kernel32.Process32FirstW, kernel32.Process32NextW):
+                fn.restype = wintypes.BOOL
+                fn.argtypes = (wintypes.HANDLE, ctypes.POINTER(_Entry))
+            kernel32.CloseHandle.restype = wintypes.BOOL
+            kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        TH32CS_SNAPPROCESS = 0x2
+        INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
+        snap = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+        if not snap or snap == INVALID_HANDLE_VALUE:
+            return {}
+        try:
+            entry = _Entry()
+            entry.dwSize = ctypes.sizeof(_Entry)
+            out = {}
+            ok = kernel32.Process32FirstW(snap, ctypes.byref(entry))
+            while ok and len(out) < 1_000_000:
+                out[int(entry.th32ProcessID)] = int(entry.th32ParentProcessID)
+                ok = kernel32.Process32NextW(snap, ctypes.byref(entry))
+            return out
+        finally:
+            kernel32.CloseHandle(snap)
+    except Exception:
+        return {}
+
+
+def _ancestor_pids(start=None, parent_of=None, limit: int = 32) -> set:
+    """The pids of `start`'s ancestors (default: this process's), nearest
+    first until the chain ends, loops, or `limit` is reached.
+
+    The takeover must never signal one of these. On Windows the console
+    runs at the end of a launcher chain (cmd, pip's flubnf.exe launcher,
+    a venv redirector when there is one, then the interpreter), and the
+    launcher's and redirector's command lines carry the same entry shape
+    as the server's. If a stale app.pid names a pid Windows has since
+    reused for one of them, signalling it would take the new console down
+    with it: both put their child in a kill-on-close job object. Never
+    raises; a parent that cannot be read ends the walk, which only ever
+    shrinks the set (os.getppid() is always included for this process)."""
+    import os
+    me = os.getpid()
+    start = me if start is None else int(start)
+    if parent_of is None:
+        parent_of = (_windows_parent_map().get if os.name == "nt"
+                     else _posix_parent_pid)
+    out = set()
+    cur = start
+    for _ in range(max(0, int(limit))):
+        try:
+            ppid = parent_of(cur)
+        except Exception:
+            ppid = None
+        if not ppid or int(ppid) <= 0 or int(ppid) == start or ppid in out:
+            break
+        out.add(int(ppid))
+        cur = int(ppid)
+    if start == me:
+        try:
+            if os.getppid() > 0:
+                out.add(os.getppid())
+        except Exception:
+            pass
+    return out
 
 # The PF runners a server launches are plain Popen children supervised
 # from daemon threads, each in its own process group: a takeover or a
@@ -1850,7 +2015,8 @@ def _terminate_predecessor(pidfile: Optional[Path] = None,
             pid = int(pidfile.read_text().strip())
             if pid != os.getpid():
                 cmd = _pid_cmdline(pid)
-                if cmd and any(mk in cmd for mk in markers):
+                if (_cmdline_has_marker(cmd, markers)
+                        and pid not in _ancestor_pids()):
                     try:
                         os.kill(pid, signal.SIGTERM)
                         signalled = True
