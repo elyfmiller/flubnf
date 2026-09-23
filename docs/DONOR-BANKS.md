@@ -415,6 +415,17 @@ one); and a per-season shape library (`in_season_log_ratios` over a season
 list the caller has already restricted to strictly prior, non-excluded
 seasons). All are ratio-space and inherit the vintage safety argument.
 
+How the Oracle SIHRS ships them (bank change B2, 2026-09-23;
+docs/ORACLE-SIHRS.md section 5b): `flubnf/oracle_mix.py` takes the donor
+cells of the committed FluSurv-NET bank from `donor_paths(..., length=6,
+with_keys=True)`, adds the W-1 cell the eight-week growth path needs, the
+season-crossing rule and the guards, stamps the paths with the admissions
+bank's smoother on the rate series, and scales their log growth by the
+`fit_log_ratio_shrink` factor the Groundhog fits on the same vintage. The
+Groundhog's weight 0.5 becomes a per-sample mixture: each forecast sample
+path draws its donor from the admissions or the FluSurv-NET pool with
+equal probability. Nothing in `flubnf/analogue.py` changed for it.
+
 ## 8. Tests that pin this
 
 `tests/test_epiweek53.py` (window and date arithmetic across the week-53

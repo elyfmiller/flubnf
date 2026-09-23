@@ -39,7 +39,9 @@ FluBNF submits two models to FluSight, each under its own hub identity
   draws one donor growth path from an earlier season (within two epiweeks,
   any jurisdiction) and grows at the geometric mean, half and half, of the
   filter's growth and the donor's, propagated in closed form from the
-  filter's own state (docs/ORACLE-SIHRS.md).
+  filter's own state. The donors come from the Groundhog's own donor bank:
+  NHSN admissions growth and FluSurv-NET hospitalization-rate growth, half
+  and half (docs/ORACLE-SIHRS.md).
 * **Groundhog** (`NAU_PyBNF-GroundHogCGR`), empirical. The last observed
   count scaled by the empirical quantiles of growth ratios seen at the same
   MMWR epiweek in strictly earlier seasons, pooled across jurisdictions,
@@ -106,11 +108,14 @@ CDC dashboard, so the two are not comparable.
 | Groundhog (replay of 2026-09-21) | 0.722 | 0.653 | 0.651 | 0.666 | 15,340 |
 | calendar analogue without the donor bank, on the Groundhog's cells | 1.045 | 0.756 | 0.618 | 0.771 | 15,340 |
 
-The Oracle SIHRS itself, on the stored 2024-25 and 2025-26 forecasts with
-the step applied (docs/ORACLE-SIHRS.md): relWIS 0.741 against the plain
-filter's 0.813 on the same 9,279 cells (0.719 and 0.774 by season), a
-frozen-specification replication; the 2026-27 season is the prospective
-test. The two tables' cells and runs differ and are not read across.
+The Oracle SIHRS itself, on the stored forecasts with the step and its
+donor bank applied (docs/ORACLE-SIHRS.md): relWIS 0.731 against the plain
+filter's 0.813 on the same 9,279 cells of 2024-25 and 2025-26 (0.697 and
+0.781 by season), 0.767 against 0.840 in 2023-24 and 0.738 against 0.819
+over the three seasons. Choosing the Groundhog's bank over admissions
+growth alone (0.741 on the same cells) was the project lead's decision on
+a screen that did not resolve it; the record is a frozen-specification
+replication, and the 2026-27 season is the prospective test. The two tables' cells and runs differ and are not read across.
 
 The Groundhog's row reproduces on any machine with a hub clone and no
 engine:
