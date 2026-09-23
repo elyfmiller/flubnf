@@ -609,6 +609,10 @@ echo FluBNF console starting - a window (or browser tab) will open. Ctrl-C here 
 ".venv\Scripts\flubnf" app
 set STATUS=%errorlevel%
 if "%STATUS%"=="0" exit /b 0
+rem 15 is a takeover: a newer launch replaced this console (the
+rem single-instance check terminates its predecessor with exit code
+rem 15, as FluBNF.command treats 143). Not an error, so close quietly.
+if "%STATUS%"=="15" exit /b 0
 echo.
 echo FluBNF exited with an error (code %STATUS%). Press any key to close.
 pause >nul
