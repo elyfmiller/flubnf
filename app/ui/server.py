@@ -830,6 +830,13 @@ def _outlook_cards(res: dict | None, rid: str | None = None) -> tuple:
                            "fips": fips, "hover_html": hover}
         if cards:
             by_model[mname] = cards
+    # the retired blend is never a choice beside the models that ship;
+    # it is the map only when a legacy run stored nothing else
+    from app.core.report_v2 import RETIRED_MODELS
+    live = {m: c for m, c in by_model.items() if m not in RETIRED_MODELS}
+    by_model = live or by_model
+    if model not in by_model and by_model:
+        model = next(iter(by_model))
     # a pre-v3 bundle whose results.json cannot fund the toggle keeps its
     # exact single-model cards: an exact map beats a toggle-less
     # approximation of the same one model
@@ -996,16 +1003,15 @@ def _outlook_block_cached(rid: str | None, mtime: float) -> dict:
             by_model = _outlook_models(rid) if outlook_src else {}
             if not by_model and outlook_src.get("approx"):
                 by_model = outlook_src.get("by_model") or {}
-            if len(by_model) >= 2:
-                order = [m for m in report_v2.MODEL_ORDER if m in by_model]
-                order += [m for m in by_model if m not in order]
+            order = report_v2.toggle_models(by_model)
+            if len(order) >= 2:
                 default = (outlook_src.get("model")
-                           if outlook_src.get("model") in by_model
+                           if outlook_src.get("model") in order
                            else order[0])
                 payload = {m: {"states": usmap.state_swap_payload(
-                                   byf, scope_fips=scope),
+                                   by_model[m], scope_fips=scope),
                                "us": {}}
-                           for m, byf in by_model.items()}
+                           for m in order}
                 outlook_toggle = usmap.model_toggle(
                     order, report_v2.MODEL_LABEL, default, payload,
                     group_id="outlook-model", btn_class="quiet",
@@ -4677,10 +4683,11 @@ def _last_reported_before(wk: str, n2f: dict) -> dict:
 
 
 def _retro_map_models(by_model: dict) -> list:
-    """The models a week's map can show, in display order."""
+    """The models a week's map can show, in display order: the models
+    that ship; a stored blend only when the week holds nothing else."""
     from app.core import report_v2
-    order = [m for m in report_v2.MODEL_ORDER if m in by_model]
-    return order + [m for m in by_model if m not in order]
+    order = report_v2.toggle_models(by_model)
+    return order or [m for m in report_v2.MODEL_ORDER if m in by_model]
 
 
 def _week_map_cards(root: Path, wk: str) -> dict:

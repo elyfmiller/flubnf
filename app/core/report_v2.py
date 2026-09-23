@@ -145,6 +145,22 @@ MODEL_LABEL = {"ensemble": "FluBNF Ensemble (retired) outlook",
 #: the PF first; a stored blend last
 MODEL_ORDER = ("pf", "analogue", "ensemble")
 
+#: models that never get a toggle button: a stored run or season from
+#: before 2026-09-22 may still carry the retired blend's cards, and a map
+#: with nothing else renders them under their own label, but no surface
+#: offers the retired blend as a choice beside the models that ship
+RETIRED_MODELS = ("ensemble",)
+
+
+def toggle_models(available) -> list:
+    """The models a surface may offer on its model toggle, in display
+    order: every available model except the retired ones. Empty when
+    nothing but a retired model is available (the map then renders that
+    model, label only, no toggle)."""
+    avail = [m for m in available if m not in RETIRED_MODELS]
+    order = [m for m in MODEL_ORDER if m in avail]
+    return order + [m for m in avail if m not in MODEL_ORDER]
+
 # Shared embed config: wheel zooms both ways, double-click resets, hover
 # modebar offers zoom-out/reset (lasso/box-select/autoscale pruned);
 # responsive so figures track their container when it appears or resizes.
@@ -648,10 +664,9 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
     cbm = {m: c for m, c in (cards_by_model or {}).items()
            if any(isinstance(v, dict) and v.get("fips") and v.get("probs")
                   for v in (c or {}).values())}
-    if len(cbm) >= 2:
-        order = [m for m in MODEL_ORDER if m in cbm] \
-            + [m for m in cbm if m not in MODEL_ORDER]
-        default = cards_model if cards_model in cbm else order[0]
+    order = toggle_models(cbm)
+    if len(order) >= 2:
+        default = cards_model if cards_model in order else order[0]
         payload = {}
         for m in order:
             byf = {c["fips"]: c for c in cbm[m].values()
