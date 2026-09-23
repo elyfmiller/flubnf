@@ -147,9 +147,18 @@ def tree_carries_oracle(root: Path) -> bool:
         return True
     if str(s.get("oracle") or "").startswith("none"):
         return False
+    # the provenance file itself says whether the step ran: a plain-filter
+    # research run writes oracle.json too, with "applied": false
+    import json
     try:
-        return any((w / "oracle.json").is_file()
-                   for w in sorted((root / "weeks").iterdir())[:3])
+        for w in sorted((root / "weeks").iterdir())[:3]:
+            f = w / "oracle.json"
+            if f.is_file():
+                try:
+                    return json.loads(f.read_text()).get("applied") is True
+                except (OSError, ValueError):
+                    return False
+        return False
     except OSError:
         return False
 

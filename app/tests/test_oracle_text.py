@@ -188,6 +188,13 @@ def test_site_names_the_mechanistic_column_for_what_the_trees_store(tmp_path):
     assert sb.tree_carries_oracle(member)
     assert sb.tree_carries_oracle(by_meta)
     assert not sb.tree_carries_oracle(research)
+    # no run record to say so: the week's own oracle.json decides, and a
+    # plain-filter research week writes one with "applied": false
+    unrecorded = tmp_path / "2022-23"
+    (unrecorded / "weeks" / "2022-11-05").mkdir(parents=True)
+    (unrecorded / "weeks" / "2022-11-05" / "oracle.json").write_text(
+        json.dumps({"applied": False, "reason": "oracle = none"}))
+    assert not sb.tree_carries_oracle(unrecorded)
     assert sb.pf_label({"a": {"root": member}, "b": {"root": by_meta}}) \
         == sb.PF_LABEL_ORACLE
     assert sb.pf_label({"a": {"root": member}, "b": {"root": plain}}) \
