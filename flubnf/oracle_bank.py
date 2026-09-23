@@ -72,9 +72,11 @@ from . import analogue as AN
 # were written after looks at the scored seasons (its sections 10.1 and 10.2).
 # ---------------------------------------------------------------------------
 
-#: The stream name of the pool this module builds. Bank change B2 is a
-#: registered switch of this name (and of the rule behind it); the label a
-#: week records, "<STREAM>@<digest8>", changes with it and nothing else does.
+#: The stream name of the pool this module builds, the admissions-only bank
+#: this member ships; a week records "<STREAM>@<digest8>". Bank change B2
+#: (frozen and screened, not adopted here; docs/ORACLE-SIHRS.md, open
+#: items) is not a switch of this name alone: it changes the pool builder,
+#: the per-sample draw, the identity rule and the label a week records.
 STREAM = "admissions-fbase"
 
 #: Bumped when the on-disk layout of a written pool changes.

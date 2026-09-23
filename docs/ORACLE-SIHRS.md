@@ -275,11 +275,21 @@ the first fitted week of a season.
 
 ## 7. Open items
 
-* Bank change B2 is a registered switch of the stream name
-  (`flubnf.oracle_bank.STREAM`, "admissions-fbase" today): the label every
-  week records changes with it, and nothing else does. It is not made
-  here; the pre-registration's rule is that no bank change of any kind is
-  made after the freeze without its own registration.
+* Bank change B2 is not made here: this branch ships the admissions-only
+  bank (`flubnf.oracle_bank.STREAM`, "admissions-fbase"). B2 gives this
+  member the Groundhog's donor bank: the admissions pool plus FluSurv-NET
+  at weight 0.5 as a per-sample mixture, a shrink per as-of date, and the
+  identity only when neither half is admissible. It was frozen on
+  2026-09-23 by its own research pre-registration (sha256
+  `2ce3564622296f490a435b773a3b34d431d889b3e0d4fe4b32ff6aeb8ede9249`) and
+  screened on the stored forecasts. Its primary claim is UNRESOLVED: the
+  mixture member minus the admissions-only member on the 2024-25 and
+  2025-26 active dates is -0.0103, 95 percent reading interval -0.0289 to
+  +0.0084 (0.7307 against 0.7409), so the choice is the lead's. Adopting
+  B2 is not a switch of the stream name: it changes the pool builder, the
+  per-sample draw, the identity rule and the label every week's provenance
+  records, and the bank-text guard in `app/tests/test_oracle_text.py`
+  forces the page text to change with it.
 * A one-row .exp (the first fitted week of a season) needs the engine key
   above on the a827e2f8 tree. The console now writes it wherever the
   installed engine accepts it; on an engine that does not, the first week
