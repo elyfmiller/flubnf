@@ -410,7 +410,7 @@ def _cards_from_quantiles(models: dict, truth_by_loc: dict, asof: str) -> dict:
                 continue
             last = float(series[-1][1])
             probs = categorical_probs_from_quantiles(
-                q1, last, int(n2p.get(name, 0)), 1)
+                q1, last, int(n2p.get(name, 0)), 0)
             if not probs:
                 continue
             med = float(q1.get(0.5, 0.0))

@@ -388,16 +388,16 @@ def test_categorical_probs_from_quantiles_matches_the_sample_computation():
     s = rng.gamma(5.0, 20.0, 200_000)
     pop, lo = 5_000_000, 100.0
     grid = {float(l): float(np.quantile(s, l)) for l in FLUSIGHT_QUANTILES}
-    exact = categorical_probs(s, lo, pop, 1)
-    approx = categorical_probs_from_quantiles(grid, lo, pop, 1)
+    exact = categorical_probs(s, lo, pop, 0)
+    approx = categorical_probs_from_quantiles(grid, lo, pop, 0)
     assert set(approx) == set(exact)
     for c in exact:
         assert abs(approx[c] - exact[c]) < 0.02, (c, approx[c], exact[c])
     assert abs(sum(approx.values()) - 1.0) < 1e-9
     # degenerate and hostile grids answer honestly, never raise
-    assert categorical_probs_from_quantiles({}, lo, pop, 1) == {}
-    assert categorical_probs_from_quantiles(grid, lo, 0, 1) == {}
-    point = categorical_probs_from_quantiles({"0.5": 100.0}, lo, pop, 1)
+    assert categorical_probs_from_quantiles({}, lo, pop, 0) == {}
+    assert categorical_probs_from_quantiles(grid, lo, 0, 0) == {}
+    point = categorical_probs_from_quantiles({"0.5": 100.0}, lo, pop, 0)
     assert point["stable"] == 1.0
 
 
