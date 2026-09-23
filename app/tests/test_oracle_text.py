@@ -236,6 +236,10 @@ def test_site_names_the_mechanistic_column_for_what_the_trees_store(tmp_path):
     (unrecorded / "weeks" / "2022-11-05" / "oracle.json").write_text(
         json.dumps({"applied": False, "reason": "oracle = none"}))
     assert not sb.tree_carries_oracle(unrecorded)
+    # the public site's per-week fan name reads the same flag (build_outlook)
+    assert sb._week_applied(member / "weeks" / "2025-11-15")
+    assert not sb._week_applied(unrecorded / "weeks" / "2022-11-05")
+    assert not sb._week_applied(plain / "weeks" / "2024-11-16")
     assert sb.pf_label({"a": {"root": member}, "b": {"root": by_meta}}) \
         == sb.PF_LABEL_ORACLE
     assert sb.pf_label({"a": {"root": member}, "b": {"root": plain}}) \

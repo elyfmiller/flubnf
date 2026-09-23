@@ -55,8 +55,9 @@ strictly earlier season (the season-crossing rule), with G_inst(W) > 0 and
 finite midpoint stamps, the bank holds the origin stamp G_inst(W) and the
 four midpoint stamps G_week(W+k), k = 1..4, from the centred three-point
 smoother of the log counts. Fewer than two donor seasons or fewer than 30
-paths is the identity rule (the 2023-24 targets, which have one donor
-season). All rows are pooled across locations, the US row included.
+paths makes the admissions half inadmissible (the 2023-24 targets, which
+have one donor season); with the shipped bank the week is the identity
+only when the FluSurv-NET half is inadmissible too (section 5b). All rows are pooled across locations, the US row included.
 
 Each stored sample path draws one donor path (one uniform per sample path
 from numpy's default_rng on [seed, season index, T's ordinal, FIPS], d_i =

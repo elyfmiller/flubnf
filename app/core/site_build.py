@@ -163,6 +163,18 @@ def tree_carries_oracle(root: Path) -> bool:
         return False
 
 
+def _week_applied(week_dir: Path) -> bool:
+    """Whether one stored week's pf is the Oracle SIHRS: its oracle.json
+    says the step was applied. A plain-filter research week writes the file
+    too, with "applied": false, so presence alone is not the answer."""
+    import json
+    try:
+        return json.loads((Path(week_dir) / "oracle.json").read_text()
+                          ).get("applied") is True
+    except (OSError, ValueError):
+        return False
+
+
 def pf_label(seasons: dict) -> str:
     """The season tables' name for pf: the Oracle SIHRS only when every
     published season stores the member."""
@@ -594,9 +606,9 @@ def build_outlook(seasons: dict, pin: tuple | None = None) -> dict:
                                    "settled truth (no vintage archived for "
                                    "this date)"),
                   "label": f"{season} retrospective, week of {asof}",
-                  "pf_label": (PF_LABEL_ORACLE if (
-                      Path(info["root"]) / "weeks" / asof / "oracle.json")
-                      .is_file() else PF_LABEL_FILTER)}
+                  "pf_label": (PF_LABEL_ORACLE if _week_applied(
+                      Path(info["root"]) / "weeks" / asof)
+                      else PF_LABEL_FILTER)}
         fans = _fans_from_payload(payload, observed)
 
     models = [m for m in MODEL_ORDER if m in cards_by_model]
