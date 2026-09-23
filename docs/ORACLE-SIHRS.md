@@ -386,11 +386,42 @@ at on; the 2026-27 season is the prospective test, and its shadow run
 logs the shipped member first with the admissions-only member, the w =
 0.25 secondaries and the calendar placebos beside it.
 
-Reproduced with the app's own scorer: the three seasons backfilled with
-the shipped bank from the stored grid and scored by `flubnf oracle
-reproduce --screen <b2>/results/screen_b2_scores.json` (the reproduce
-prints the B2 screen's LBGH tables beside its own when given that file);
-the numbers are below.
+Reproduced with the app's own scorer, 2026-09-23: the three seasons
+backfilled with the shipped bank from the stored grid (`flubnf oracle
+backfill <season> --source <grid>/<season> --out <dir>/<season>`, 32, 27
+and 26 weeks) and scored against the pinned hub copy the screen used by
+
+    flubnf oracle reproduce <dir>/2023-24 <dir>/2024-25 <dir>/2025-26 \
+        --source <grid>/2023-24 --source <grid>/2024-25 --source <grid>/2025-26 \
+        --screen <b2>/results/screen_b2_scores.json
+
+(given the B2 screen's file, the reproduce prints its LBGH tables beside
+its own). The stored member is the submitted seed's realisation, so the
+screen's seed-1 value is the one to match:
+
+| scope | Oracle SIHRS, common | cells | record definition | cells | screen LBGH seed 1 | screen LBGH seed mean | plain filter | cells | grid's calendar analogue, record | cells |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 2023-24 | 0.7668 | 6,021 | 0.7668 | 6,021 | 0.7668 | 0.7667 | 0.8395 | 6,021 | 1.0449 | 6,063 |
+| 2024-25 | 0.6975 | 4,859 | 0.6975 | 4,859 | 0.6975 | 0.6975 | 0.7944 | 4,859 | 0.7560 | 4,922 |
+| 2025-26 | 0.7811 | 4,420 | 0.7811 | 4,420 | 0.7811 | 0.7813 | 0.8426 | 4,420 | 0.6180 | 4,475 |
+| active2 | 0.7306 | 9,279 | 0.7306 | 9,279 | 0.7306 | 0.7307 | 0.8135 | 9,279 | 0.7013 | 9,397 |
+| three seasons | 0.7380 | 15,300 | 0.7380 | 15,300 | 0.7380 | 0.7380 | 0.8188 | 15,300 | 0.7714 | 15,460 |
+
+The Oracle SIHRS equals the screen's seed-1 value to machine precision on
+every scope (differences at most 3.3e-16) and the plain filter the
+screen's NULL likewise; the seed mean differs by the seed noise (at most
+2.2e-4, in 2025-26). The member's scored cells equal the filter's, so its
+record definition and the common set coincide (6,021 + 4,859 + 4,420 =
+15,300). The last two columns are the grid's own bare calendar analogue,
+copied verbatim by the backfill, not the shipped Groundhog.
+
+To look at the backfilled seasons in the console, start it with the
+directory named (nothing is configured permanently; the backfill is not
+under app/state) and open the Retrospective tab's backfill view:
+
+    FLUBNF_RETRO_ORACLE=<dir> flubnf app      # then /retro?src=oracle
+
+as "Backfill, then view it in the console" in section 5 describes.
 
 ## 6. The engine key
 
