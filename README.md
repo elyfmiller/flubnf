@@ -24,22 +24,24 @@ Delphi Epidata API and data.cdc.gov, cached under `app/state`.
 
 ## The models
 
-The shipped forecast is an equal weight, unfitted quantile average of two
-members:
+FluBNF submits two models to FluSight, each under its own hub identity
+(`model-metadata/`), and nothing is blended:
 
-* PF-SIHRS, mechanistic. An SIHRS compartmental model (susceptible,
-  infected, hospitalized, recovered, with waning immunity and seasonal
-  transmission) written in BNGL and fitted by a sequential particle filter:
-  10,000 candidate epidemics per jurisdiction, refitted every week from the
-  season's start on that week's data. The filter runs in a fork of PyBNF
-  with bngsim integrating the model in process; a jurisdiction season fits
-  in seconds.
-* Calendar analog, empirical. It scales the latest observation by growth
-  ratios drawn from prior seasons at the same point in the calendar, pooled
-  across jurisdictions. Nothing is fitted.
+* **PF-SIHRS** (`NAU_PyBNF-OracleSIHRS`), mechanistic. An SIHRS
+  compartmental model (susceptible, infected, hospitalized, recovered, with
+  waning immunity and seasonal transmission) written in BNGL and fitted by
+  a sequential particle filter: 10,000 candidate epidemics per
+  jurisdiction, refitted every week from the season's start on that week's
+  data. The filter runs in a fork of PyBNF with bngsim integrating the
+  model in process; a jurisdiction season fits in seconds.
+* **Groundhog** (`NAU_PyBNF-GroundHogCGR`), empirical. The last observed
+  count scaled by the empirical quantiles of growth ratios seen at the same
+  MMWR epiweek in strictly earlier seasons, pooled across jurisdictions,
+  with a committed FluSurv-NET donor bank spliced in (`data/banks/`).
+  Epiweek 53 is seated between weeks 52 and 1. Nothing is fitted.
 
-The members fail in different regimes: the mechanistic member can follow a
-turn the analog cannot anticipate, and the analog holds when a season
+The two fail in different regimes: the mechanistic model can follow a turn
+the Groundhog cannot anticipate, and the Groundhog holds when a season
 behaves like past seasons. Interval coverage at the January turn is the
 known weakness. Model definitions and parameter sources are in
 docs/MODEL-PROVENANCE.md.
@@ -82,19 +84,6 @@ from `flubnf/settings.py` and can be pointed elsewhere by environment
 variable: `FLUBNF_HUB` (the hub clone), `FLUBNF_BNG` (BNG2.pl),
 `FLUBNF_PY_ENGINE` (python of the engine venv), `FLUBNF_PYBNF` (the PyBNF
 checkout).
-
-## The two models
-
-FluBNF submits two models to FluSight, each under its own hub identity
-(`model-metadata/`):
-
-* **PF-SIHRS** (`NAU_PyBNF-OracleSIHRS`): an SIHRS compartmental model
-  fitted each week by a sequential particle filter.
-* **Groundhog** (`NAU_PyBNF-GroundHogCGR`): the calendar analogue.
-  The last observed count scaled by the empirical quantiles of growth
-  ratios seen at the same MMWR epiweek in strictly earlier seasons, pooled
-  across jurisdictions, with a committed FluSurv-NET donor bank spliced in
-  (`data/banks/`). Epiweek 53 is seated between weeks 52 and 1.
 
 ## Measured record
 
