@@ -32,6 +32,7 @@ import pandas as pd
 
 from app.core import custom_run as CR
 from app.core import horizons as hz
+from app.core import missing as MS
 from app.core.runs import RunSpec, default_season_start
 
 #: (label, lower level, upper level, nominal): groundhog.BANDS' intervals
@@ -228,6 +229,7 @@ def run(ds, weeks: list, groups: list, *, engine: str = "analogue",
         raise RuntimeError(pf_engine.engine_missing_message())
     x0 = dict(extra or {})
     record = K.record_of({"extra": x0})
+    rules = MS.rules_of(x0)
     lam = K.value_of(x0, "output.floor_lam")
     fkw = {} if lam is None else {"lam": float(lam)}
     meta = {
@@ -272,7 +274,12 @@ def run(ds, weeks: list, groups: list, *, engine: str = "analogue",
                              jitter=jitter, season_start=season_start,
                              drop_same_day=drop_same_day)
             members = {}
-            an_q = an_engine.run(spec)
+            # the missing-data rules (app/core/missing.py): the week's
+            # flagged newest weeks, recorded only when a rule is on
+            gh_flags: list = []
+            an_q = an_engine.run(spec, **({"flags": gh_flags} if rules
+                                          else {}))
+            wk_flags = {"analogue": gh_flags} if rules else None
             if count:
                 an_q = {n: floor_quantiles(q, **fkw)
                         for n, q in an_q.items()}
@@ -283,7 +290,9 @@ def run(ds, weeks: list, groups: list, *, engine: str = "analogue",
                     shutil.rmtree(wr)
                 if on_workroot:
                     on_workroot(wr)
-                pf_engine.prepare(spec, wr)
+                pf_cells = pf_engine.prepare(spec, wr)
+                if wk_flags is not None:
+                    wk_flags["pf"] = MS.cell_flags(pf_cells)
                 status = pf_engine.execute(wr)
                 fails = {k: v for k, v in status.items() if v != "ok"}
                 samples = pf_engine.collect(wr)
@@ -312,6 +321,8 @@ def run(ds, weeks: list, groups: list, *, engine: str = "analogue",
                     df["asof"] = asof
                 cells.append(c)
                 covs.append(v)
+            if wk_flags is not None:
+                meta.setdefault("data_flags", {})[asof] = wk_flags
             meta["weeks_completed"] = i + 1
             write_meta(out_dir, meta)
             if progress:

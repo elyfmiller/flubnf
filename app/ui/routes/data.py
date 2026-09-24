@@ -66,6 +66,12 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
            # season-over-season chart palette (fallback for --season-N)
            "season_colors_json": _script_json(_season_colors())}
     ctx["vintage_rows"] = _vintage_rows(vs)
+    # the live target file: its newest week is what a real-time run reads
+    # when the hand-kept archive has not caught up yet
+    try:
+        ctx["live_week"] = state.data_mod.live_newest_week()
+    except Exception:
+        ctx["live_week"] = None
     # the "Your datasets" card (built here so /freshness keeps it)
     from app.ui import datasets_ui as _dsu
     ctx.update({"datasets": _dsu.dataset_rows(), "upload": None, "ds": None})
@@ -180,6 +186,10 @@ def data_pull():
                    "nothing was pulled. Try again once fitting starts or "
                    "the run finishes.")
             return RedirectResponse("/data", status_code=303)
+    try:
+        before = state.data_mod.newest_week()
+    except Exception:
+        before = None
     ok, msg = state.data_mod.pull_hub()
     _invalidate_scans()
     if not ok:
@@ -189,12 +199,24 @@ def data_pull():
                "the hub clone, then try again.")
         return RedirectResponse("/data", status_code=303)
     vs = state.data_mod.vintages()
+    try:
+        after = state.data_mod.newest_week()
+    except Exception:
+        after = None
+    if after and after != before:
+        # new data: the Forecast tab's date follows it (a stale remembered
+        # date would otherwise hold the form on last week)
+        from app.ui.state import _last_form
+        if _last_form:
+            _last_form["forecast_date"] = after
     from flubnf.settings import HUB as _H
     comp = (" · comparators: baseline "
             + ("ok" if (_H / "model-output/FluSight-baseline").is_dir() else "missing")
             + ", official ensemble "
             + ("ok" if (_H / "model-output/FluSight-ensemble").is_dir() else "missing"))
-    _flash(f"{msg[:140]}" + (f" · latest vintage {vs[-1]}" if vs else "") + comp)
+    _flash(f"{msg[:140]}"
+           + (f" · data through {after}" if after else "")
+           + (f" · latest vintage {vs[-1]}" if vs else "") + comp)
     return RedirectResponse("/data", status_code=303)
 
 

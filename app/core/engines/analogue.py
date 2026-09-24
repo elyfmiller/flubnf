@@ -24,7 +24,8 @@ sys.path.insert(0, str(REPO))
 
 from flubnf import analogue as AN                     # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL # noqa: E402
-from app.core.data import LOCATIONS, vintage_path     # noqa: E402
+from app.core.data import LOCATIONS, spec_source, vintage_path  # noqa: E402
+from app.core import missing as MS                    # noqa: E402
 
 
 def completeness_args(spec, fips: str, anchor_date, newest_date) -> tuple:
@@ -328,20 +329,39 @@ def _source(spec) -> tuple:
     from app.core import datasets as _ds
     ds = _ds.from_spec(spec)
     if ds is None:
-        return vintage_path(spec.forecast_date), LOCATIONS, {}
+        # the dated vintage, or the live target file for a real-time run
+        # (app.core.data.observed_source, the one resolver)
+        return spec_source(spec, archive=vintage_path)[0], LOCATIONS, {}
     extra = getattr(spec, "extra", None) or {}
     bad = [k for k in HUB_ONLY_KEYS if extra.get(k)]
     if bad:
         raise ValueError(
             f"{', '.join(bad)}: these read FluSight's own completeness "
             f"factors and cannot run on the custom dataset {ds.name!r}")
+    MS.refuse_on_dataset(extra, ds.name)
     excl = tuple(sorted(int(x) for x in extra.get("donor_exclusions", ())))
     return (ds.truth_path(spec.forecast_date), ds.locations_csv,
             {"exclude_seasons": excl})
 
 
-def run(spec) -> dict:
-    """location -> {horizon(str): {level(float): value}} quantiles."""
+#: the most weeks the anchor may sit before the as-of beyond the requested
+#: trims; an older anchor is stale and the location abstains
+MAX_ANCHOR_LAG = 2
+
+
+def _walk(spec, notes: dict | None = None, flags: list | None = None):
+    """Per location, what the Groundhog forecasts from: yields (loc,
+    anchor, anchor_date, lag, forecast), where `lag` is the weeks between
+    the anchor and the as-of week and `forecast(h)` is the quantile dict h
+    PHYSICAL weeks past the as-of week (the donor ratio spans h + lag weeks
+    from the anchor), or None when the donors abstain. One walk for run()
+    and nowcast().
+
+    `notes`, when given, receives location -> reason for every location
+    whose anchor is not the week the trims ask for (a trailing unreported
+    week moved it back, or it abstained). `flags`, when given, receives
+    one row per newest week a missing-data rule treated as unreported
+    ({location, week, value, rule})."""
     v, loc_csv, src_kw = _source(spec)
     t = pd.read_csv(v, dtype={"location": str})
     t["location"] = t["location"].str.zfill(2)
@@ -353,7 +373,6 @@ def run(spec) -> dict:
     locs = pd.read_csv(loc_csv, dtype=str)
     name2fips = dict(zip(locs.location_name, locs.location))
 
-    out = {}
     T = pd.Timestamp(spec.forecast_date)
     # Trims (weeks_to_drop + the optional same-day rule) move the ANCHOR
     # back as they move the PF's fit origin; ratios span h + k weeks so each
@@ -368,6 +387,7 @@ def run(spec) -> dict:
         "groundhog.bandwidth")
     bw_kw = {} if bw is None else {"bandwidth": int(bw)}
     bw_kw.update(src_kw)                     # empty on the hub path
+    rules = MS.rules_of(getattr(spec, "extra", None))   # {} when shipped
     for loc in spec.locations:
         fips = name2fips.get(loc)
         if fips is None:
@@ -379,21 +399,82 @@ def run(spec) -> dict:
         k = k_user + auto
         if k:
             vals = vals.iloc[:-k] if len(vals) > k else vals.iloc[0:0]
+        # optional missing-data rules (app/core/missing.py, off by default):
+        # flagged newest weeks leave like weeks_to_drop, horizons as-of-aligned
+        fl = MS.tail_flags(vals.to_numpy(), rules) if rules else []
+        if fl:
+            if flags is not None:
+                flags.extend({"location": loc, "rule": why,
+                              "week": str(g.date.loc[vals.index[i]])[:10],
+                              "value": float(vals.iloc[i])} for i, why in fl)
+            vals = vals.iloc[:-len(fl)]
+            k += len(fl)
         if not len(vals):
             continue                                       # gap: engine skips, report shows it
         anchor = float(vals.iloc[-1])
         anchor_date = g.date.loc[vals.index[-1]]
-        window_ref = (T - pd.Timedelta(days=7 * k)).date()
+        # the ANCHOR's own date drives the donor window and the horizons: a
+        # trailing unreported week (NaN, dropped above) moves the anchor
+        # back a week the trims did not ask for, and a window taken from
+        # T - 7k would then pair it with the wrong week (one week of
+        # look-ahead is worth ~0.18 relWIS, flubnf/analogue.py)
+        lag = int((T - anchor_date).days // 7)
+        if lag > k:
+            if lag - k > MAX_ANCHOR_LAG:
+                if notes is not None:
+                    notes[loc] = (f"abstained: newest reported week "
+                                  f"{anchor_date.date()} is {lag} weeks "
+                                  f"before the as-of")
+                continue
+            if notes is not None:
+                notes[loc] = (f"anchored on {anchor_date.date()}: "
+                              f"{lag - k} newer week(s) unreported")
+        window_ref = anchor_date.date()
         c, sig = completeness_args(spec, fips, anchor_date, newest)
+
+        def forecast(h, anchor=anchor, window_ref=window_ref, lag=lag, c=c,
+                     sig=sig):
+            # default donor pool = the registered exclusions; never restated
+            return AN.forecast(anchor, window_ref, h + lag, bank, QL,
+                               completeness=c, widen_log_sd=sig,
+                               splice=splice, **bw_kw)
+        yield loc, anchor, anchor_date, lag, forecast
+
+
+def run(spec, notes: dict | None = None, flags: list | None = None) -> dict:
+    """location -> {horizon(str): {level(float): value}} quantiles; `notes`
+    and `flags` as in _walk."""
+    out = {}
+    for loc, _anchor, _date, _lag, forecast in _walk(spec, notes, flags):
         qs = {}
         for h in (1, 2, 3, 4):     # PHYSICAL weeks ahead, the library's unit
-            # default donor pool = the registered exclusions; never restated
-            q = AN.forecast(anchor, window_ref, h + k, bank, QL,
-                            completeness=c, widen_log_sd=sig, splice=splice,
-                            **bw_kw)
+            q = forecast(h)
             if q:
                 # canonical (hub) key: h weeks ahead is hub horizon h-1
                 qs[str(h - 1)] = {float(L): float(x) for L, x in q.items()}
         if qs:
             out[loc] = qs
+    return out
+
+
+def nowcast(spec) -> dict:
+    """The as-of week, FluSight horizon -1 (target_end_date = reference
+    date - 7), for the optional output knob output.horizon_minus1:
+    location -> {"anchor", "anchor_date" (ISO), "k", "q"}.
+
+    `q` is the Groundhog's forecast of the as-of week, {level: value},
+    only where its anchor sits k >= 1 weeks before that week
+    (weeks_to_drop or the same-day trim), so the week is k weeks ahead
+    of what it saw. With k = 0 the as-of week IS the anchor: a donor
+    ratio over zero weeks is 1, the Groundhog has no distribution for
+    it, and `q` is None (no rows, rather than a point mass at the
+    reported count)."""
+    out = {}
+    for loc, anchor, anchor_date, k, forecast in _walk(spec):
+        q = forecast(0) if k else None
+        out[loc] = {"anchor": anchor,
+                    "anchor_date": str(pd.Timestamp(anchor_date).date()),
+                    "k": int(k),
+                    "q": ({float(L): float(x) for L, x in q.items()}
+                          if q else None)}
     return out

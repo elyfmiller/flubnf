@@ -110,8 +110,8 @@ def test_every_stored_model_gets_map_cards_from_the_one_rule(tmp_path):
     assert pf_oh["increase"] > 0.9
     assert gh_oh["stable"] > 0.9
     # Utah, 3.4 million: both say no change; stable by rate and by count.
-    # The PF's three draws become a 23-level grid whose outermost levels
-    # clamp the CDF at 1 and 99 percent, so the grid path reads 0.98.
+    # The PF's three draws become a 23-level grid; its tails carry the
+    # outermost segments on to levels 0 and 1, all inside the stable band.
     assert by_model["pf"]["49"]["probs"]["stable"] > 0.97
     assert by_model["analogue"]["49"]["probs"]["stable"] > 0.9
     # the hover carries the model's own numbers, escaped

@@ -15,10 +15,10 @@ from app.core.engines import pf                          # noqa: E402
 class _State:
     def __init__(self):
         import numpy as np
-        self.times = np.array([0, 1, 2])
+        self.times = np.array([12, 13, 14])   # newest = the as-of week
         self.observed = np.array([4.0, 5.0, 6.0])
         self.n_obs = 3
-        self.last_week_offset = 2
+        self.last_week_offset = 14
         self.i0 = 5e-3
         self.rhomult = 0.05
 

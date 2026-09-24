@@ -1,7 +1,9 @@
 # An SEIR outbreak: infection, a latent stage before infectiousness,
 # recovery, and a tally of the E to I transitions (symptom onsets) whose
 # weekly increment, scaled by the ascertainment, is the observed count.
-# Time is in weeks.
+# Time is in weeks. The counts in data.exp were simulated from this model
+# at the values written below, with negative-binomial noise (r = 10), so
+# a fit should find Reff near 2 and scale near 0.25.
 begin model
 begin parameters
 Reff__FREE  2.0      # reproduction number; fitted

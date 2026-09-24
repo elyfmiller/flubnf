@@ -44,7 +44,7 @@
     <button type="button" class="pill mode" data-mode="realtime" role="tab">Real-time</button>
     <button type="button" class="pill mode" data-mode="vintage" role="tab">Vintage</button>
     </div>
-    {% if dataset %}{{ tips.tip("fc-mode", "the forecast modes", "Real-time: the dataset's newest week. Vintage: any earlier week of the dataset.") }}{% else %}{{ tips.tip("fc-mode", "the forecast modes", "Real-time: the newest archived week. Vintage: any archived week, with the data as it stood then.") }}{% endif %}
+    {% if dataset %}{{ tips.tip("fc-mode", "the forecast modes", "Real-time: the dataset's newest week. Vintage: any earlier week of the dataset.") }}{% else %}{{ tips.tip("fc-mode", "the forecast modes", "Real-time: the newest week of the hub's data, read from target-data when the archive has not caught up. Vintage: any archived week, with the data as it stood then.") }}{% endif %}
    </div>
    <input type="hidden" name="mode" id="mode-field" value="realtime">
    {% if dataset %}{{ tips.label("Forecast date", "fc-date", "A week of the dataset; any other day anchors on the latest week on or before it.") }}{% else %}{{ tips.label("Forecast date", "fc-date", "Any day; the run anchors on the latest archived week on or before it.") }}{% endif %}
@@ -61,6 +61,8 @@
    <script>
     (function () {
       var VS = {{ vintage_dates | default([], true) | tojson }};
+      var LIVE = {{ (live_only or "") | tojson }};
+      var LIVE_NOTE = {{ (live_only_note or ".") | tojson }};
       var box = document.querySelector('input[name=forecast_date]');
       var line = document.getElementById('anchor-line');
       var pick = document.getElementById('vintage-pick');
@@ -78,7 +80,7 @@
         if (!line || !box) return;
         var a = anchorFor(box.value);
         line.textContent = a
-          ? 'Anchor week: ' + a + '.'
+          ? 'Anchor week: ' + a + (a === LIVE ? LIVE_NOTE : '.')
           : 'No archived week on or before ' + box.value + '.';
       }
       // the settings panel follows the date (its Season start default is
@@ -123,7 +125,7 @@
    {% if dataset %}
    <div class="lblrow"><label>Groups <span id="lcount" class="hint"></span></label>{{ tips.tip("fc-locs", "groups", "The dataset's groups; each is forecast on its own." ~ (" " ~ dataset.national ~ " is the national group: scored beside the others, never pooled with them." if dataset.national else "")) }}</div>
    {% else %}
-   <div class="lblrow"><label>Locations <span id="lcount" class="hint"></span></label>{{ tips.tip("fc-locs", "locations", "US national is always fitted too, and scored separately.") }}</div>
+   <div class="lblrow"><label>Locations <span id="lcount" class="hint"></span></label>{{ tips.tip("fc-locs", "locations", "The 52 are the 50 states, DC and Puerto Rico. US (national), last in the list, is a location of its own: off by default, fitted only when ticked, and scored apart from the 52. A full hub submission holds all 53, so tick it for a submission run.") }}</div>
    {% endif %}
    <div class="checklist">
      <label class="ck"><input type="checkbox" id="ck-all" value="all" name="locations"
@@ -133,6 +135,12 @@
      <label class="ck"><input type="checkbox" class="ck-one" name="locations" value="{{ l }}"
        {% if l in form.locations %}checked{% endif %}> {{ l }}</label>
      {% endfor %}
+     {% if not dataset %}
+     {# the 53rd location: the national series, its own choice (never
+        added behind the user's back); it combines with "all 52" #}
+     <label class="ck ck-national"><input type="checkbox" id="ck-us" name="locations" value="{{ us_choice }}"
+       {% if us_checked %}checked{% endif %}> <b>US (national)</b></label>
+     {% endif %}
    </div>
    {% if dataset %}
    {{ tips.label("Model", "fc-model", "Each model writes its own export file (FluBNF-Groundhog, FluBNF-SIHRS-PF); nothing is blended or submitted. The plain SIHRS particle filter needs counts with a population and runs without the Oracle step, whose donor bank is FluSight's.") }}
@@ -174,21 +182,27 @@
    <button class="gold" data-guard="console-run">Run models</button>
   </form>
   <script>
+   const CKUS=document.getElementById('ck-us');   // absent on a dataset
    function updCount(){
      const all=document.getElementById('ck-all').checked;
+     const us=!!(CKUS&&CKUS.checked);
      const n=document.querySelectorAll('.ck-one:checked').length;
      document.getElementById('lcount').textContent =
-       all? '(all '+{{ (all_locs | length if dataset else 52) | tojson }}+')' : n? '('+n+' selected)' : '';
+       all? '(all '+{{ (all_locs | length if dataset else 52) | tojson }}+(us?' + US':'')+')'
+       : n? '('+n+(us?' + US':'')+' selected)' : us? '(US only)' : '';
    }
-   // 'all' and specific states are mutually exclusive; nothing is disabled
+   // 'all' and specific states are mutually exclusive; nothing is disabled.
+   // US (national) is its own box: neither 'all' nor a state pick touches it
    document.getElementById('ck-all').addEventListener('change', function(){
      if(this.checked) document.querySelectorAll('.ck-one').forEach(c => c.checked=false);
      updCount();
    });
    // the checklist decides what RUNS; the data panel has its own dropdown
    document.querySelectorAll('.ck-one').forEach(c=>c.addEventListener('change',()=>{
-     if(c.checked) document.getElementById('ck-all').checked=false;
+     const all=document.getElementById('ck-all');
+     if(c.checked && all.checked) all.checked=false;
      updCount();}));
+   if(CKUS) CKUS.addEventListener('change', updCount);
    updCount();
   </script>
  </div></div>
@@ -387,10 +401,16 @@
   <div id="fanxplot"></div>
  </div>
 </div>
+{# the fan card's comparator switch, cloned in by the script only when the
+   hub recorded FluSight forecasts for the run's date (a server-side tip) #}
+<template id="fan-offctl"><label class="ck fan-official"><input type="checkbox" id="fan-official"> FluSight ensemble and baseline</label>{{ tips.tip("fc-official", "the FluSight forecasts", "The hub's own FluSight-ensemble and FluSight-baseline forecasts recorded for this week, drawn as on the Retrospective. The dotted ink line after the forecast date is what was later reported, from the newest archived data.") }}</template>
 <script>
  const SERIES = {{ series_json | safe }};
  const FANQ = {{ fanq_json | safe }};   // {model: {loc: {h: {q: v}}}}
  const ROBS = {{ run_obs_json | safe }};  // loc -> [[date, value]...] AS OF the run's vintage
+ // the hub's recorded FluSight-ensemble / -baseline forecasts for the run's
+ // date, keyed like FANQ ({} when none were recorded: no toggle)
+ const OFFQ = {{ official_json | default('{}', true) | safe }};
  const FCDATE = {{ fc_date | tojson }};
  // the data source for /api/series: '' = the FluSight hub
  const SRCQ = {{ ("&source=" ~ dataset.id if dataset else "") | tojson }};
@@ -425,7 +445,9 @@
    font:{color:css('--ink'),family:'"DM Sans",system-ui,sans-serif',
          size:Math.round(fs*.85)},
    // legend under the plot (a right-hand one ate up to a third of the width)
-   legend:{orientation:'h',x:0,xanchor:'left',y:-0.22,yanchor:'top'},
+   // traceorder: a filled band would otherwise reverse the legend
+   legend:{orientation:'h',x:0,xanchor:'left',y:-0.22,yanchor:'top',
+           traceorder:'normal'},
    xaxis:{gridcolor:css('--line'), automargin:true},
    yaxis:{gridcolor:css('--line'), rangemode:'tozero', automargin:true}};}
  // parse Y-M-D components: new Date on a date-only string is UTC and shifts
@@ -502,6 +524,8 @@
      // month ticks at the month-boundary week offsets
      L.xaxis.tickvals=SEASON_MONTHS.map(m=>m[1]);
      L.xaxis.ticktext=SEASON_MONTHS.map(m=>m[0]);
+     // a little air left of week 0, so "Aug" never sits on the y axis's "0"
+     L.xaxis.range=[-1.5,53];
      Plotly.react(div,traces,L,pconf('data_seasons_'+loc));
    }
  }
@@ -531,6 +555,34 @@
    if(SERIES[loc]) return;
    try{const r=await fetch('/api/series?locs='+encodeURIComponent(loc)+SRCQ);
      Object.assign(SERIES, await r.json());}catch(e){}
+ }
+ // the FluSight comparators, drawn as the Retrospective's player draws them
+ // (player.js): the ensemble dashed with a faint band, the baseline a bare
+ // dotted median; both anchored on the last observed point like our fan
+ const OFFMODELS=['FluSight-ensemble','FluSight-baseline'].filter(m=>OFFQ[m]);
+ let SHOWOFF=false;
+ try{SHOWOFF=OFFMODELS.length>0 && localStorage.getItem('fcofficial')!=='0';}catch(e){SHOWOFF=OFFMODELS.length>0;}
+ function offTraces(loc, xs, ax, ay){
+   const out=[];
+   OFFMODELS.forEach(m=>{
+     const qs=(OFFQ[m]||{})[loc]; if(!qs) return;
+     const hs=Object.keys(qs).sort();
+     const X=[...ax,...hs.map(h=>xs[parseInt(h)-1])];
+     const seq=t=>[...ay,...hs.map(h=>{const v=qs[h][t]; return v==null?null:v;})];
+     const ens=m==='FluSight-ensemble';
+     const col=ens?(css('--official')||'#AAB1C9'):css('--mut');
+     if(ens){
+       [['0.05','0.95',.07],['0.25','0.75',.10]].forEach(([lo,hi,a])=>{
+         out.push({x:X,y:seq(hi),mode:'lines',line:{width:0},showlegend:false,
+           hoverinfo:'skip',legendgroup:m});
+         out.push({x:X,y:seq(lo),mode:'lines',line:{width:0},fill:'tonexty',
+           fillcolor:rgba(col,a),showlegend:false,hoverinfo:'skip',legendgroup:m});
+       });
+     }
+     out.push({x:X,y:seq('0.5'),mode:'lines+markers',name:MNAMES[m]||m,
+       line:{color:col,width:2,dash:ens?'dash':'dot'},marker:{size:4},legendgroup:m});
+   });
+   return out;
  }
  let fanSeq=0;
  async function drawFan(){
@@ -574,9 +626,12 @@
       line:{width:0},name:'10-90% interval'},
      {x:fx,y:med,mode:'lines+markers',name:'median',line:{color:mc,width:2.5}},
    ];
+   if(SHOWOFF) traces.push(...offTraces(loc, xs, obsX.slice(-1), obsY.slice(-1)));
    if(aftX.length) traces.push({x:aftX,y:aftY,mode:'lines+markers',
+     // dotted ink, as on every surface; hollow markers tell it from the
+     // dotted grey FluSight baseline
      name:'settled outcome',line:{color:css('--ink'),dash:'dot',width:1.4},
-     marker:{size:4}});
+     marker:{size:6,symbol:'circle-open'}});
    // react repaints in place: a page flip never collapses the card or
    // moves the scroll
    Plotly.react(document.getElementById('fanplot'),traces,lay(loc,400),
@@ -609,7 +664,8 @@
    // the title says latest STORED forecasts (honest across a restart)
    const mbtns=MODELS.map(m=>'<button type="button" class="quiet mbtn" data-m="'+m+'">'+(MNAMES[m]||m)+'</button>').join('');
    wrap.innerHTML='<div class="card" id="fancard"><h2>Forecasts: latest stored run, '+FCDATE+'</h2>'
-     +'<div class="seg" role="group" aria-label="model">'+mbtns+'</div>'
+     +'<div class="fanbar"><div class="seg" role="group" aria-label="model">'+mbtns+'</div>'
+     +'<span class="fanoff" id="fan-offslot"></span></div>'
      +'<div class="carousel"><button type="button" class="quiet cnav" id="fan-prev">◀</button>'
      +'<select id="fan-loc" aria-label="forecast location"'
      +' style="width:auto;min-width:min(230px,45vw);max-width:100%"></select>'
@@ -631,6 +687,17 @@
        const nl=Object.keys(FANQ[FMODEL]||{});
        FIDX=Math.max(0, nl.indexOf(cur));
        drawFan();};});
+   // the comparator switch: only when the hub recorded forecasts this week
+   const oslot=document.getElementById('fan-offslot'),
+         otpl=document.getElementById('fan-offctl');
+   if(OFFMODELS.length && oslot && otpl){
+     oslot.appendChild(otpl.content.cloneNode(true));
+     const ock=document.getElementById('fan-official');
+     ock.checked=SHOWOFF;
+     ock.onchange=()=>{SHOWOFF=ock.checked;
+       try{localStorage.setItem('fcofficial',SHOWOFF?'1':'0');}catch(e){}
+       drawFan();};
+   }else if(oslot) oslot.remove();
    document.getElementById('fan-prev').onclick=()=>{FIDX--;drawFan();};
    document.getElementById('fan-next').onclick=()=>{FIDX++;drawFan();};
    document.getElementById('fan-loc').onchange=function(){FIDX=this.selectedIndex;drawFan();};

@@ -69,6 +69,9 @@
     function show() {
       var v = start.value, hub = v === 'shipped:sihrs', ds = v.indexOf('shipped:dataset:') === 0 ? v.slice(16) : '';
       box.hidden = !(hub || ds);
+      // what the chosen start is: its note (the Oracle start shows its fields)
+      var about = $('sbnew-about'), o = start.options[start.selectedIndex];
+      if (about) about.textContent = (o && o.getAttribute('data-note')) || '';
       each('.sbnew-hub', function (e) { e.hidden = !hub; });
       each('.sbnew-ds', function (e) { e.hidden = !ds; });
       each('select, input', function (e) {
@@ -262,14 +265,18 @@
             if (f.network) facts.push('network ' + f.network + (f.species != null ? ' (' + f.species + ' species, ' + f.reactions + ' reactions)' : ''));
             var probs = d.problems || [], warns = d.warnings || [];
             out.appendChild(list(probs.length ? probs.length + ' problem' + (probs.length === 1 ? '' : 's') + ': a run would fail.'
-              : 'No problems found.', probs, probs.length ? 'sb-bad' : 'sb-ok'));
+              : 'No problems found: the model can run. Only a run shows whether it fits the data.',
+              probs, probs.length ? 'sb-bad' : 'sb-ok'));
             if (warns.length) out.appendChild(list('Worth a look:', warns, 'sb-warn'));
-            if (facts.length) {
+            // the model at its written values beside the data, then the facts
+            [f.at_start ? f.at_start.charAt(0).toUpperCase() + f.at_start.slice(1) + '.' : '',
+             facts.join(' · ')].forEach(function (text) {
+              if (!text) return;
               var p = document.createElement('p');
               p.className = 'hint';
-              p.textContent = facts.join(' · ');
+              p.textContent = text;
               out.appendChild(p);
-            }
+            });
           })
           .catch(function () { out.textContent = 'The check could not be run.'; })
           .then(function () { check.disabled = false; });
@@ -331,7 +338,9 @@
     var band = {x: xs.concat(xs.slice().reverse()), y: t.q90.concat(t.q10.slice().reverse()),
                 fill: 'toself', fillcolor: hexa(acc, 0.22), line: {width: 0}, name: '10 to 90%', hoverinfo: 'skip'};
     var med = {x: xs, y: t.q50, mode: 'lines', name: 'median', line: {color: accInk, width: 2}};
-    var pts = {x: xs.slice(0, times.length), y: RES.meta.observed || [], mode: 'markers',
+    // a negative count is a missing week (the data writer's mark): no point
+    var obs = (RES.meta.observed || []).map(function (v) { return v < 0 ? null : v; });
+    var pts = {x: xs.slice(0, times.length), y: obs, mode: 'markers',
                name: RES.meta.obs_col || 'observed', marker: {color: ink, size: 6}};
     var traces = [band, med, pts];
     // a compared run: its band and median dashed, on the same axis

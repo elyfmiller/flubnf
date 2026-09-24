@@ -139,8 +139,12 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
         except Exception as e:
             _flash(f"Not compared: {e}")
             cmp, diff = None, None
+    examples = sandbox_mod.list_examples()
     ctx = {"active": "Sandbox", "models": models, "last": last,
-           "examples": sandbox_mod.list_examples(), "runs": runs,
+           "examples": [e for e in examples if not e.endswith("_template")],
+           "templates": [e for e in examples if e.endswith("_template")],
+           "example_notes": {e: sandbox_mod.example_note(e) for e in examples},
+           "runs": runs,
            "res": res, "res_json": _script_json(res or {}),
            "cmp": cmp, "cmp_json": _script_json(cmp or {}), "diff": diff,
            "editing": editing, "busy": _sandbox_busy_reason(),
@@ -167,13 +171,15 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
                                                    times=times)
         except Exception:
             settings = []
-        # the run form starts from this model's newest run, else a quick
-        # check (a shipped start: its production seed, 4 forecast weeks)
+        # the run form starts from this model's newest run, else the full
+        # fit: a first run should give estimates, and a quick check's 200
+        # particles often collapse on a real prior (a shipped start: its
+        # production seed, 4 forecast weeks)
         prev = runs[0] if runs else {}
         shipped = sandbox_mod.shipped_state(name, {
             f: editing[f] for f in sandbox_mod.REQUIRED})
         form = {"particles": int(prev.get("particles")
-                                 or sandbox_mod.DRY_RUN_PARTICLES),
+                                 or sandbox_mod.FULL_FIT_PARTICLES),
                 "jitter": prev.get("jitter", 0.15),
                 "forecast_weeks": prev.get("forecast_weeks", 4),
                 "seed": prev.get("seed", shipped["info"].get("seed", 0)
@@ -368,6 +374,31 @@ def sandbox_fill_data(request: Request, name: str, location: str = Form(""),
         _sandbox_fill_flash(info)
     except Exception as e:
         _flash(str(e))
+    return _sandbox_redirect(name)
+
+
+@router.post("/sandbox/models/{name}/simulate-data")
+def sandbox_simulate_data(name: str, model_bngl: str = Form(""),
+                          data_exp: str = Form(""), priors_conf: str = Form(""),
+                          sim_seed: str = Form("")):
+    """data.exp from the model itself: counts drawn around what the model
+    gives at the values model.bngl writes, over data.exp's own weeks, so a
+    fit can be seen to recover values that are known. The editor's text
+    is saved first."""
+    try:
+        saved = _sandbox_save_posted(name, model_bngl, data_exp, priors_conf)
+        if saved:
+            _flash(f"Saved {', '.join(saved)} first.")
+        s = int(sim_seed) if str(sim_seed).strip().isdigit() else 1
+        f = sandbox_mod.simulate_data(name, seed=s)
+        noise = (f"negative-binomial noise at r = {f['r']:g}" if f["r"]
+                 else "Poisson noise")
+        _flash(f"data.exp filled with {f['rows']} weeks of {f['column']} "
+               "simulated from the model at the values written in "
+               f"model.bngl, with {noise}: a fit should find values near "
+               "them.")
+    except Exception as e:
+        _flash(f"Not simulated: {e}")
     return _sandbox_redirect(name)
 
 

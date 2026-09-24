@@ -207,13 +207,16 @@ def test_analogue_drop_moves_anchor_and_extends_span(tmp_path, monkeypatch):
     eng.run(spec(0, True))
     assert calls[0] == (8.0, "2025-12-27", 2)
     calls.clear()
-    # no same-day row: the rule trims nothing
+    # no same-day row: the rule trims nothing, and the anchor is the newest
+    # REPORTED week (2026-01-03), a week before the as-of: its own date
+    # drives the window and the span reaches as-of + 7 (the anchor was once
+    # paired with a window a week later, a week of look-ahead)
     spec_late = type("S", (), {"forecast_date": "2026-01-10",
                                "locations": ["Ohio"],
                                "weeks_to_drop": 0,
                                "drop_same_day": True})()
     eng.run(spec_late)
-    assert calls[0] == (9.0, "2026-01-10", 1)
+    assert calls[0] == (9.0, "2026-01-03", 2)
 
 
 def test_calendar_distance_week53_sits_between_52_and_1():

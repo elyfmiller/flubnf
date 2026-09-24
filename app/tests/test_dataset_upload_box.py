@@ -76,13 +76,23 @@ def test_the_box_is_on_data_forecast_and_retrospective():
         page = client.get(url).text
         assert boxes(page) == [where], url
         assert page.count('src="/static/dataset_upload.js"') == 1, url
-        assert f'<label class="dsdrop" for="dsup-{where}-file" data-drop>' \
-            in page
+        # two zones side by side: one weekly CSV, and snapshot files
+        assert (f'<label class="dsdrop" for="dsup-{where}-file" '
+                'data-drop="one">') in page
+        assert (f'<label class="dsdrop" for="dsup-{where}-snap" '
+                'data-drop="snap">') in page
+        assert page.index('data-drop="one"') < page.index('data-drop="snap"')
         # shown (instead of the title) while a file is dragged over
         assert '<span class="dsdrop-on" aria-hidden="true">Drop to check' \
             in page
+        # not required: the other zone may hold the files (the server
+        # asks for a file when neither does)
         assert (f'<input type="file" name="file" id="dsup-{where}-file" '
-                'required') in page
+                'data-one accept=') in page
+        assert (f'<input type="file" name="snapshots" id="dsup-{where}-snap" '
+                'data-snap multiple accept=') in page
+        assert "Drop a CSV here or" in page
+        assert "Drop snapshots here or" in page
         assert 'accept=".csv,.tsv,.txt,' in page
         assert "dataset-template.csv" in page
         assert '<option value="" selected>detect</option>' in page
@@ -141,14 +151,17 @@ El.prototype.contains = function () { return false; };
 El.prototype.focus = function () {};
 El.prototype.querySelector = function (q) { return (this.q || {})[q] || null; };
 El.prototype.closest = function () { return null; };
-var input = new El(), zone = new El(), name = new El(), kind = new El(),
-    auto = new El(), out = new El(), status = new El(), go = new El();
-var form = new El({q: {'input[type=file]': input, '[data-drop]': zone,
+var input = new El(), zone = new El(), snap = new El(), snapZone = new El(),
+    name = new El(), kind = new El(), auto = new El(), out = new El(),
+    status = new El(), go = new El();
+var form = new El({q: {'[data-one]': input, '[data-drop="one"]': zone,
+  '[data-snap]': snap, '[data-drop="snap"]': snapZone,
   '[data-name]': name, '[data-kind]': kind, '[data-kind-auto]': auto,
   '[data-result]': out, '[data-dsup-status]': status,
   '.dsup-go button': go}});
 function FormData(f) {
-  this.d = f ? {file: input.files && input.files[0], name: name.value,
+  this.d = f ? {file: input.files && input.files[0],
+                snapshots: snap.files && snap.files[0], name: name.value,
                 kind: kind.value, kind_auto: auto.value} : {};
 }
 FormData.prototype.get = function (k) { return this.d[k]; };
@@ -160,7 +173,8 @@ FormData.prototype.append = function (k, v, n) {
 var posted = [], kinds = [];
 function fetch(url, opts) {
   posted.push({file: opts.body.d.file && opts.body.d.file.name,
-               files: opts.body.d['file[]'] || null,
+               files: opts.body.d['snapshots[]'] || null,
+               status: status.textContent,
                kind: opts.body.d.kind, kind_auto: opts.body.d.kind_auto});
   var k = kinds.length ? kinds.shift() : 'count';
   return Promise.resolve({json: function () {
@@ -241,22 +255,37 @@ def test_a_kind_the_values_no_longer_say_is_cleared():
 
 @pytest.mark.skipif(not Path(NODE).exists(), reason="node not available")
 def test_several_files_are_checked_together_with_their_folder():
-    """Several files chosen or dropped at once are one check, each posted
-    under its folder path (the dataset takes the folder's name)."""
+    """Snapshot files chosen in the snapshot zone are one check, each
+    posted as "snapshots" under its folder path (the dataset takes the
+    folder's name); several files dropped on the one-CSV zone go to the
+    snapshot zone (only its tables) and the status line says so; one
+    dropped there stays; one dropped on the snapshot zone is a snapshot."""
     got = _drive("""
-      input.files = [{name: '2024-10-05.csv',
-                      webkitRelativePath: 'flu/2024-10-05.csv'},
-                     {name: '2024-10-12.csv',
-                      webkitRelativePath: 'flu/2024-10-12.csv'}];
-      input.fire('change'); await settle();
+      snap.files = [{name: '2024-10-05.csv',
+                     webkitRelativePath: 'flu/2024-10-05.csv'},
+                    {name: '2024-10-12.csv',
+                     webkitRelativePath: 'flu/2024-10-12.csv'}];
+      snap.fire('change'); await settle();
       zone.fire('drop', {dataTransfer: {types: ['Files'],
-        files: [{name: 'a_2024-10-05.csv'}, {name: 'a_2024-10-12.csv'}]}});
+        files: [{name: 'a_2024-10-05.csv'}, {name: 'a_2024-10-12.csv'},
+                {name: 'notes.md'}]}});
+      await settle();
+      zone.fire('drop', {dataTransfer: {types: ['Files'],
+        files: [{name: 'b.csv'}]}});
+      await settle();
+      snapZone.fire('drop', {dataTransfer: {types: ['Files'],
+        files: [{name: 'c_2024-10-05.csv'}]}});
     """)
     posted = got["posted"]
     assert [p["files"] for p in posted] == [
         ["flu/2024-10-05.csv", "flu/2024-10-12.csv"],
-        ["a_2024-10-05.csv", "a_2024-10-12.csv"]]
-    assert all(p.get("file") is None for p in posted)   # none single
+        ["a_2024-10-05.csv", "a_2024-10-12.csv"], None,
+        ["c_2024-10-05.csv"]]
+    assert [p.get("file") for p in posted] == [None, None, "b.csv", None]
+    assert posted[1]["status"].startswith(
+        "2 files: checked together as snapshots, in the snapshot box. "
+        "Checking 2 files")
+    assert posted[2]["status"] == "Checking b.csv…"
 
 
 # ------------------------------------------------------------ the check

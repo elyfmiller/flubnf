@@ -7,9 +7,17 @@ Hub facts (model-metadata/README.md):
   * model identity lives in the PATH (model-output/<team>-<model>/), never in
     a CSV column: one file per model_id per reference date;
   * a team may designate up to two models for the ensemble;
-  * quantile targets: 'wk inc flu hosp' at 23 quantiles, horizons -1..3;
-  * value precision: whole admissions, like every official 'wk inc flu hosp'
-    value from 2025 on (_hub_values).
+  * quantile targets: 'wk inc flu hosp' at 23 quantiles; the hub takes
+    horizons -1..3 and this app writes 0..3 (-1, the week already reported,
+    is optional and never scored: the output.horizon_minus1 knob adds it);
+  * the optional 'wk flu hosp rate change' target (pmf over five
+    categories, horizons 0..3; app.core.categorical) is added by the
+    output.rate_change_pmf knob; both are off by default, and a default
+    file is byte for byte the file written without them;
+  * value precision: whole admissions, which FluSight requires from 2026-27
+    (model-output/README.md; _hub_values);
+  * every file is checked the way the hub checks it before it takes its
+    name (app/core/hubcheck.py, the vendored tasks.json).
 """
 from __future__ import annotations
 
@@ -19,6 +27,24 @@ from typing import Iterable
 
 import numpy as np
 import pandas as pd
+
+#: optional hub outputs, off by default (the knobs output.horizon_minus1
+#: and output.rate_change_pmf read their defaults here)
+HORIZON_MINUS1 = False
+RATE_CHANGE_PMF = False
+
+#: the 'wk inc flu hosp' horizons written by default; -1 (the as-of week,
+#: reference_date - 7) is added only by output.horizon_minus1
+HORIZONS = (0, 1, 2, 3)
+HORIZONS_WITH_MINUS1 = (-1, 0, 1, 2, 3)
+
+#: the rate-trend target: its horizons are 0..3 (model-output/README.md
+#: "horizon"; tasks.json also lists -1, a change from the baseline week to
+#: itself, which the hub's scoring code never computes)
+RATE_CHANGE_TARGET = "wk flu hosp rate change"
+RATE_CHANGE_HORIZONS = (0, 1, 2, 3)
+#: pmf values are written to this many decimals, summing to exactly 1
+PMF_DECIMALS = 4
 
 QUANTILES = (0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45,
              0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.975, 0.99)
@@ -37,6 +63,18 @@ MODEL_ABBR = {"pf": "OracleSIHRS", "analogue": "GroundHogCGR"}
 #: identities no longer produced; empty (the retired cards belong to the old
 #: LosAlamos_NAU registration)
 RETIRED_ABBR = ()
+
+#: model-output directory names earlier versions of this app wrote, under
+#: registrations since retired, -> the member that wrote them ("pf",
+#: "analogue") or "blend" (the retired blend, which has no successor).
+#: Read only, to present old run folders; nothing writes these names.
+LEGACY_DIRS = {
+    "NAU-PF-SIHRS": "pf", "NAU_FluBNF-SIHRS": "pf",
+    "LosAlamos_NAU-SIHRS": "pf",
+    "LosAlamos_NAU-GroundhogCGR": "analogue",
+    "NAU-Ensemble": "blend", "NAU_FluBNF-ensemble": "blend",
+    "LosAlamos_NAU-CModel_Flu": "blend",
+}
 
 
 def hub_model_id(model: str) -> str:
@@ -69,17 +107,26 @@ def _hub_values(vals) -> list:
     return [int(x) for x in v]
 
 
-def quantile_rows(samples: dict, location_fips: str, asof: str) -> list:
+def _key(h: int) -> str:
+    """The canonical in-memory key of hub horizon h: "0".."3", and the
+    anchor block (horizons.ORIGIN, the as-of week) for -1."""
+    from app.core.horizons import ORIGIN
+    return ORIGIN if int(h) == -1 else str(int(h))
+
+
+def quantile_rows(samples: dict, location_fips: str, asof: str,
+                  horizons=HORIZONS) -> list:
     """FluSight rows for one location from horizon->samples arrays.
 
-    Hub horizon 0..3 carries our canonical "0".."3" (the anchor under ORIGIN
-    is never submitted). Callers pass the AS-OF date; the reference comes
-    from hub_reference_date."""
+    Hub horizon 0..3 carries our canonical "0".."3"; the anchor under
+    ORIGIN (the as-of week) is submitted only as horizon -1, when
+    `horizons` includes it (output.horizon_minus1). Callers pass the AS-OF
+    date; the reference comes from hub_reference_date."""
     ref = hub_reference_date(asof)
     reference_date = str(ref.date())
     rows = []
-    for h in (0, 1, 2, 3):
-        s = np.asarray(samples.get(str(h), []), float)
+    for h in horizons:
+        s = np.asarray(samples.get(_key(h), []), float)
         s = s[np.isfinite(s)]
         if not s.size:
             continue
@@ -188,23 +235,46 @@ def write_submission(all_rows: Iterable[dict], model: str, asof: str,
     # atomic: every CSV here is listed as submittable, so never a truncated one
     tmp = p.with_name(p.name + ".tmp")
     try:
-        df.to_csv(tmp, index=False)
+        # LF on every platform (pandas defaults to os.linesep): the hub's
+        # files are LF, and a Windows lab machine writes the same bytes
+        df.to_csv(tmp, index=False, lineterminator="\n")
+        _hub_gate(tmp, p.name, d.name, hub_named=not suffix)
         os.replace(tmp, p)
     finally:
         tmp.unlink(missing_ok=True)
     return p
 
 
-def rows_from_quantiles(qs: dict, location_fips: str, asof: str) -> list:
+def _hub_gate(tmp: Path, name: str, dir_name: str, hub_named: bool) -> None:
+    """The written bytes, checked the way the hub checks them
+    (app/core/hubcheck.py, rules from the vendored tasks.json). Any defect
+    is fatal before the file takes its name. An off-season reference date
+    is not a defect (replays of summer weeks are records, not
+    submissions); a <hub id>-modified file skips the name checks, since
+    its name is deliberately not a hub name."""
+    from app.core import hubcheck
+    res = hubcheck.check_frame(hubcheck.read_text_frame(tmp),
+                               name if hub_named else None,
+                               dir_name if hub_named else None)
+    bad = hubcheck.failures(res)
+    if bad:
+        raise ValueError("submission failed the hub's checks "
+                         "(app/core/hubcheck.py):\n  "
+                         + "\n  ".join(bad[:10]))
+
+
+def rows_from_quantiles(qs: dict, location_fips: str, asof: str,
+                        horizons=HORIZONS) -> list:
     """FluSight rows from horizon -> {level: value} (quantile-native members).
-    Same frozen join as quantile_rows, from the same hub_reference_date.
+    Same frozen join as quantile_rows, from the same hub_reference_date;
+    horizon -1 is read from the ORIGIN key when `horizons` includes it.
 
     Emits only the levels given; `validate` refuses a partial set at the writer."""
     ref = hub_reference_date(asof)
     reference_date = str(ref.date())
     rows = []
-    for h in (0, 1, 2, 3):
-        q = qs.get(str(h))
+    for h in horizons:
+        q = qs.get(_key(h))
         if not q:
             continue
         target_end = ref + pd.Timedelta(weeks=h)
@@ -219,6 +289,50 @@ def rows_from_quantiles(qs: dict, location_fips: str, asof: str) -> list:
                 "location": location_fips,
                 "output_type": "quantile",
                 "output_type_id": level,
+                "value": v,
+            })
+    return rows
+
+
+def pmf_values(probs: dict, cats) -> list:
+    """Probabilities for `cats`, in that order, as text to PMF_DECIMALS
+    places, summing to exactly 1: each rounded to whole units of
+    10**-PMF_DECIMALS, the remainder of the rounding (a unit or two) given
+    to the most likely category. Refuses what is not a distribution."""
+    p = np.array([float(probs.get(c, 0.0)) for c in cats])
+    if (not np.isfinite(p).all() or (p < -1e-9).any()
+            or abs(p.sum() - 1.0) > 1e-6):
+        raise ValueError("rate-change probabilities are not a distribution: "
+                         f"{dict(zip(cats, p.tolist()))}")
+    unit = 10 ** PMF_DECIMALS
+    n = np.rint(np.clip(p, 0.0, 1.0) * unit).astype(int)
+    n[int(np.argmax(p))] += unit - int(n.sum())
+    return [str(int(x) / unit) for x in n]
+
+
+def rate_change_rows(probs_by_h: dict, location_fips: str, asof: str) -> list:
+    """'wk flu hosp rate change' pmf rows for one location from hub horizon
+    -> {category: probability} (app.core.categorical). Horizons outside
+    RATE_CHANGE_HORIZONS and empty entries are skipped. The values are
+    text ("0.1234"), so the file's whole-number admissions stay whole."""
+    from app.core.categorical import CATS
+    ref = hub_reference_date(asof)
+    reference_date = str(ref.date())
+    rows = []
+    for h in RATE_CHANGE_HORIZONS:
+        probs = probs_by_h.get(h) or probs_by_h.get(str(h))
+        if not probs:
+            continue
+        target_end = ref + pd.Timedelta(weeks=h)
+        for cat, v in zip(CATS, pmf_values(probs, CATS)):
+            rows.append({
+                "reference_date": reference_date,
+                "target": RATE_CHANGE_TARGET,
+                "horizon": h,
+                "target_end_date": str(target_end.date()),
+                "location": location_fips,
+                "output_type": "pmf",
+                "output_type_id": cat,
                 "value": v,
             })
     return rows

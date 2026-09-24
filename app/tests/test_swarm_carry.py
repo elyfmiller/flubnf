@@ -23,10 +23,10 @@ from app.core.runs import derive_seed                    # noqa: E402
 
 class _State:
     def __init__(self):
-        self.times = [0, 1, 2]
+        self.times = [12, 13, 14]   # true offsets: newest = the as-of week
         self.observed = [4.0, 5.0, 6.0]
         self.n_obs = 3
-        self.last_week_offset = 2
+        self.last_week_offset = 14
         self.i0 = 5e-3          # prepare() records the anchor it used
         self.rhomult = 0.05
 
@@ -208,7 +208,7 @@ def test_prepare_pins_the_initial_state_to_the_anchor_week(monkeypatch,
             self.rhomult = self.i0 * 10
             if as_of == "2098-11-07":
                 self.observed = [4.0, 5.0, 6.0, 7.0]
-                self.times, self.n_obs, self.last_week_offset = [0, 1, 2, 3], 4, 3
+                self.times, self.n_obs, self.last_week_offset = [11, 12, 13, 14], 4, 14
 
     monkeypatch.setattr(sf, "resolve_state",
                         lambda loc, **kw: S(kw["as_of"]))

@@ -14,7 +14,9 @@ import pytest
 from typer.testing import CliRunner
 
 from app.core import floor as FL
+from app.core import submit as SB
 from app.core import knobs as K
+from app.core import missing as MS
 from app.core.engines import analogue as EA
 from app.core.engines import pf as PF
 from app.core.runs import RunSpec, default_season_start
@@ -41,6 +43,8 @@ SOURCES = {
     "pf.initialization": PF.initialization_for(RunSpec("pf", FD)),
     "run.weeks_to_drop": RunSpec.weeks_to_drop,
     "run.drop_same_day": RunSpec.drop_same_day,
+    "data.trailing_zero": MS.TRAILING_ZERO,
+    "data.partial_week": MS.PARTIAL_WEEK,
     "oracle.w": OR.W_PRODUCTION,
     "oracle.w_aux": MX.W_AUX,
     "oracle.submitted_seed": OR.SUBMITTED_SEED,
@@ -54,6 +58,8 @@ SOURCES = {
     "groundhog.bandwidth": AN.DEFAULT_BANDWIDTH,
     "groundhog.min_donors": AN.MIN_DONORS,
     "output.floor_lam": FL.LAM,
+    "output.horizon_minus1": SB.HORIZON_MINUS1,
+    "output.rate_change_pmf": SB.RATE_CHANGE_PMF,
 }
 
 
@@ -99,7 +105,7 @@ def test_registry_is_well_formed():
     assert not K.LOCKED_KEYS & set(K.BY_KEY)
     for k in K.REGISTRY:
         assert k.kind in K.KINDS and k.stage in K.STAGES, k.key
-        assert k.klass in ("run", "method"), k.key
+        assert k.klass in ("run", "method", "optional"), k.key
         assert k.affects and k.affects <= K.BOTH, k.key
         assert k.label and k.help and "\n" not in k.help, k.key
         assert len(k.help) <= 100, k.key
@@ -112,7 +118,16 @@ def test_registry_is_well_formed():
             assert k.affects == K.PF_ONLY, k.key
     assert {k.key for k in K.REGISTRY if k.klass == "run"} == {
         "pf.particles", "pf.replicates", "run.season_start",
-        "run.weeks_to_drop", "run.drop_same_day"}
+        "run.weeks_to_drop", "run.drop_same_day", "data.trailing_zero",
+        "data.partial_week"}
+    # the optional hub rows: off by default, both members, the output stage
+    assert K.OPTIONAL_KEYS == {"output.horizon_minus1",
+                               "output.rate_change_pmf"}
+    for key in K.OPTIONAL_KEYS:
+        k = K.BY_KEY[key]
+        assert (k.kind, k.default, k.affects, k.stage) == (
+            "bool", False, K.BOTH, "output"), key
+        assert k.help.startswith("Optional;"), key
 
 
 def test_shipped_defaults_parse_back_to_themselves():

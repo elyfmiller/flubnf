@@ -18,9 +18,10 @@ def resolve_anchor(day: str, vintages=None):
     """(anchor_vintage, why) for any typed date; ONE definition for the
     form's anchor line and the run, so they cannot disagree.
 
-    A non-Saturday snaps back to Saturday, then to the newest archived
-    vintage. A typed Saturday is returned as-is even when its vintage is
-    missing (the caller refuses it rather than re-aiming).
+    A non-Saturday snaps back to Saturday, then to the newest available
+    week (an archived vintage, or the live target file's newest week). A
+    typed Saturday is returned as-is even when it has no data (the caller
+    refuses it rather than re-aiming).
     """
     from datetime import date as _d, timedelta as _td
     try:
@@ -29,7 +30,7 @@ def resolve_anchor(day: str, vintages=None):
         return None, ""
     if vintages is None:
         try:
-            vintages = state.data_mod.vintages()
+            vintages = state.data_mod.available_weeks()
         except Exception:
             vintages = []
     if d.weekday() == 5:
@@ -42,13 +43,14 @@ def resolve_anchor(day: str, vintages=None):
 
 
 def _default_forecast_date() -> str:
-    """Latest Saturday, clamped to the latest archived vintage (the hub
-    stops publishing off-season)."""
+    """Latest Saturday, clamped to the newest week the hub's data holds
+    (the live target file's, or the newest archived vintage: the hub stops
+    publishing off-season and archives by hand)."""
     import datetime as dt
     d = dt.date.today()
     sat = str(d - dt.timedelta(days=(d.weekday() - 5) % 7))
-    vs = state.data_mod.vintages()
-    return min(sat, vs[-1]) if vs else sat
+    newest = state.data_mod.newest_week()
+    return min(sat, newest) if newest else sat
 
 
 # === Model knobs (app/core/knobs.py) on the run and retro forms ===

@@ -234,8 +234,9 @@ def engine_current() -> bool:
 CONFIG_MODULE = "pybnf/config.py"
 
 #: `pf_sampling_interval = 1` lets an engine fit a ONE-ROW .exp (a season's
-#: first week). Engines before a827e2f8 refuse the key, so it is written only
-#: when the installed source accepts it; the cell records whether it was.
+#: first week). Only the upstream PR trees (a827e2f8 on) know the key; the
+#: production engine (feature/particle-filter, 2fdadee0) refuses it, so it is
+#: written only when the installed source accepts it; the cell records whether.
 SAMPLING_INTERVAL_KEY = "pf_sampling_interval"
 
 
@@ -281,6 +282,20 @@ def engine_stale_message() -> str:
 #: cell key). execute() and retro.run_week fold them in, so a state the
 #: vintage cannot resolve costs that state, not the run.
 PREPARE_FAILURES_NAME = "pf_prepare_failures.json"
+
+
+#: location -> note, written by prepare() only for a location whose fit
+#: origin unreported newest weeks moved back (or that abstained for it)
+ANCHOR_NOTES_NAME = "pf_anchor_notes.json"
+
+
+def read_anchor_notes(workroot: Path) -> dict:
+    """prepare()'s anchor notes for a workroot; {} if absent/unreadable."""
+    try:
+        d = json.loads((Path(workroot) / ANCHOR_NOTES_NAME).read_text())
+    except Exception:
+        return {}
+    return d if isinstance(d, dict) else {}
 
 
 def read_prepare_failures(workroot: Path) -> dict:
@@ -432,7 +447,7 @@ def prepare(spec, workroot: Path) -> list:
     one error verbatim."""
     from flubnf.sihrs_fit import materialize_model, resolve_state, write_exp
     from flubnf.settings import BNG
-    from app.core.data import LOCATIONS, vintage_path
+    from app.core.data import LOCATIONS, spec_source, vintage_path
     from app.core.runs import derive_seed
 
     # Run-level preflight, once, before any location. The workroot is
@@ -458,7 +473,9 @@ def prepare(spec, workroot: Path) -> list:
     from app.core import datasets as _ds
     ds = _ds.from_spec(spec)
     if ds is None:
-        vintage = vintage_path(spec.forecast_date)
+        # the dated vintage, or the live target file for a real-time run
+        # (app.core.data.observed_source, the one resolver)
+        vintage = spec_source(spec, archive=vintage_path)[0]
         loc_csv = LOCATIONS
         tag_of = _hub_tag
     else:
@@ -469,6 +486,8 @@ def prepare(spec, workroot: Path) -> list:
                 f"{', '.join(bad)}: these read FluSight, NREVSS or hub "
                 f"completeness data and cannot run on the custom dataset "
                 f"{ds.name!r}; the plain SIHRS filter can")
+        from app.core import missing as _ms_ds
+        _ms_ds.refuse_on_dataset(spec.extra, ds.name)
         vintage = ds.truth_path(spec.forecast_date)
         loc_csv = ds.locations_csv
         tag_of = dataset_tag
@@ -498,6 +517,18 @@ def prepare(spec, workroot: Path) -> list:
         nrevss_asof = (_d.fromisoformat(spec.forecast_date)
                        - _td(days=7)).isoformat()
 
+    from app.core import missing as _missing
+    from datetime import date as _date_fl, timedelta as _td_fl
+    rules = _missing.rules_of(spec.extra)          # {} on a shipped run
+    anchor_notes: dict = {}     # location -> why its origin is not the trims'
+    _fd_fl = _date_fl.fromisoformat(spec.forecast_date)
+    _asof_fl = (_fd_fl - _date_fl.fromisoformat(spec.season_start)).days // 7
+
+    def _week_of(t) -> str:
+        """The data week (the as-of date's weekday) of week offset t; the
+        season start need not share that weekday."""
+        return (_fd_fl - _td_fl(weeks=_asof_fl - int(t))).isoformat()
+
     def _one_location(loc: str) -> list:
         """Every prepared cell for one location; the caller contains raises."""
         s = resolve_state(loc, truth_csv=vintage, locations_csv=loc_csv,
@@ -508,7 +539,10 @@ def prepare(spec, workroot: Path) -> list:
         # to one as-of week's vintage (needed when a cloud is carried).
         anchor = (spec.extra or {}).get("anchor_asof")
         if anchor:
-            sa = resolve_state(loc, truth_csv=vintage_path(anchor),
+            sa = resolve_state(loc, truth_csv=(
+                                   vintage if anchor == spec.forecast_date
+                                   else spec_source(spec, anchor,
+                                                    archive=vintage_path)[0]),
                                locations_csv=loc_csv,
                                season_start=spec.season_start, as_of=anchor)
             s.i0, s.rhomult = sa.i0, sa.rhomult   # a fresh object per call
@@ -523,30 +557,62 @@ def prepare(spec, workroot: Path) -> list:
             if int(s.times[-1]) == int(asof_off):
                 auto_drop = 1
         k_total = int(spec.weeks_to_drop or 0) + auto_drop
-        if k_total:
-            from datetime import date as _date2
-            _off = (_date2.fromisoformat(spec.forecast_date)
-                    - _date2.fromisoformat(spec.season_start)).days // 7
-            if len(s.observed) <= k_total:
+        # optional missing-data rules (app/core/missing.py, off by default):
+        # flagged newest weeks are trimmed with the rest, labels as-of-relative
+        fl = []
+        if rules:
+            kept = len(s.observed) - k_total
+            fl = [(int(s.times[i]), why, float(s.observed[i])) for i, why in
+                  _missing.tail_flags(s.observed[:max(kept, 0)], rules)]
+            k_total += len(fl)
+        _off = _asof_fl       # the as-of week: horizons are counted from it
+        n_trim = k_total                  # reported rows trimmed on request
+        if n_trim:
+            if len(s.observed) <= n_trim:
                 raise ValueError(
-                    f"{loc}: trimming {k_total} week(s) "
+                    f"{loc}: trimming {n_trim} week(s) "
                     f"(weeks_to_drop={int(spec.weeks_to_drop or 0)}, "
                     f"same-day {auto_drop}) leaves no observations at "
                     f"{spec.forecast_date}; lower weeks_to_drop or pick a "
                     "later forecast date")
-            s.observed = s.observed[:-k_total]
-            s.times = s.times[:-k_total]
+            s.observed = s.observed[:-n_trim]
+            s.times = s.times[:-n_trim]
             s.n_obs = len(s.observed)
-            # Labels shift by k_total: valid only on a calendar-consecutive
-            # tail (a NaN reporting gap breaks it), so refuse otherwise.
-            if _off - int(s.times[-1]) != k_total:
+        # The fit origin's distance from the as-of week. resolve_state drops
+        # NaN (unreported) weeks as rows, so a trailing unreported week moves
+        # the origin back further than the trims asked for; it counts like a
+        # dropped week (the forecast intervals and collect()'s horizon shift
+        # both use `lag`), as the Groundhog's anchor does
+        # (app/core/engines/analogue.py _walk). Beyond MAX_ANCHOR_LAG
+        # unreported weeks the location abstains.
+        from app.core.engines.analogue import MAX_ANCHOR_LAG as _max_lag
+        lag = _off - int(s.times[-1])
+        if lag < n_trim:
+            raise ValueError(
+                f"{loc}: after trimming {n_trim} week(s) the fit "
+                f"origin sits {lag} weeks before "
+                f"{spec.forecast_date}, not {n_trim}: the series tail "
+                "is not calendar-consecutive, so "
+                "horizon labels cannot be kept as-of-relative. "
+                "Refusing rather than mislabelling.")
+        anchor_note = None
+        if lag > n_trim:
+            _last = _week_of(s.times[-1])
+            if lag - n_trim > _max_lag:
+                anchor_notes[loc] = (f"abstained: newest reported week "
+                                     f"{_last} is {lag} weeks before the "
+                                     f"as-of")
                 raise ValueError(
-                    f"{loc}: after trimming {k_total} week(s) the fit "
-                    f"origin sits {_off - int(s.times[-1])} weeks before "
-                    f"{spec.forecast_date}, not {k_total}: the series tail "
-                    "is not calendar-consecutive (a reporting gap), so "
-                    "horizon labels cannot be kept as-of-relative. "
-                    "Refusing rather than mislabelling.")
+                    f"{loc}: abstained: newest reported week {_last} is "
+                    f"{lag} weeks before {spec.forecast_date}, "
+                    f"{lag - n_trim} unreported beyond the {n_trim} "
+                    f"trimmed (at most {_max_lag}); the series tail is "
+                    "not calendar-consecutive")
+            anchor_note = (f"anchored on {_last}: {lag - n_trim} newer "
+                           f"week(s) unreported")
+            anchor_notes[loc] = anchor_note
+        k_total = lag
+        if n_trim:
             # Re-derive rhomult/i0 from the trimmed series (resolve_state
             # used the untrimmed one) unless anchor_asof pins them.
             if not (spec.extra or {}).get("anchor_asof"):
@@ -710,6 +776,13 @@ initialization = {initialization_for(spec)}
                 # collect() shifts forecast columns by this (incl. the
                 # same-day trim) so horizon labels stay as-of-relative.
                 "weeks_dropped": k_total,
+                # only when unreported newest weeks moved the origin back
+                **({"anchor_note": anchor_note} if anchor_note else {}),
+                # only when a missing-data rule fired: shipped cells unchanged
+                **({"data_flags": [
+                    {"week": _week_of(t),
+                     "rule": why, "value": val} for t, why, val in fl]}
+                   if fl else {}),
                 "variant": ("2strain" if two_strain
                             else "natg" if natg else "1strain"),
                 "a0": a0 if two_strain else None,
@@ -746,6 +819,9 @@ initialization = {initialization_for(spec)}
             failures[tag_of(loc)] = f"FAIL: prepare: {e}"[:200]
             errors.append(e)
     (workroot / PREPARE_FAILURES_NAME).write_text(json.dumps(failures))
+    if anchor_notes:
+        # absent when every origin is where the trims put it (shipped runs)
+        (workroot / ANCHOR_NOTES_NAME).write_text(json.dumps(anchor_notes))
     (workroot / "cells.json").write_text(json.dumps(cells))
     if failures and not cells:
         if len(errors) == 1:

@@ -231,15 +231,105 @@ def _post(url, files, **data):
 
 
 def test_the_box_takes_several_files_and_a_folder():
+    """Snapshots have a zone of their own beside the one-CSV zone, with a
+    folder pick; both post as "snapshots", so without script the folder's
+    files are posted too."""
     page = client.get("/retro?tab=own").text
-    assert ('<input type="file" name="file" id="dsup-replay-file" required '
-            'multiple') in page
-    # the folder pick: shown by the script where the browser offers one,
-    # posted by it (the input has no name)
-    assert ('<span class="dsfolder" data-folder-wrap hidden>' in page)
-    assert ('<input type="file" id="dsup-replay-folder" data-folder '
-            'webkitdirectory multiple>') in page
+    assert ('<input type="file" name="file" id="dsup-replay-file" data-one '
+            'accept=') in page
+    assert ('<input type="file" name="snapshots" id="dsup-replay-snap" '
+            'data-snap multiple accept=') in page
+    # the folder pick: shown without script too, posting the folder
+    assert ('<span class="dsfolder"><label class="dslink" '
+            'for="dsup-replay-folder">Choose a folder</label>') in page
+    assert ('<input type="file" name="snapshots" id="dsup-replay-folder" '
+            'data-folder webkitdirectory multiple>') in page
+    assert "data-folder-wrap" not in page
+    assert "Optional: dated snapshots, one file per as_of." in page
     assert "one snapshot per as_of" in page                 # the ? tip
+
+
+def _snap_post(url, files, field="snapshots", **data):
+    return client.post(url, files=[(field, (n, b, "text/csv"))
+                                   for n, b in files],
+                       data=data, follow_redirects=False)
+
+
+COVID = sorted((Path(__file__).resolve().parent / "fixtures"
+                / "covid_snapshots").iterdir())
+
+
+def covid(folder="covid_snapshots"):
+    return [(f"{folder}/{p.name}", p.read_bytes()) for p in COVID]
+
+
+def test_a_covid_snapshot_folder_is_one_vintage_true_dataset():
+    """A made-up COVID-19 admissions series, 6 weekly snapshot files as
+    the snapshot zone posts them (a folder, without script too), its
+    columns named week_ending, jurisdiction, admissions, population."""
+    j = _snap_post("/data/datasets/check?where=replay", covid()).json()
+    assert j["ok"] and j["name"] == "covid_snapshots"
+    assert j["status"] == "Ready to use: 2 groups, 18 weeks, 6 snapshot files."
+    assert ('<dt>Snapshots</dt><dd>6 files, as_of <span class="nw">'
+            '2024-11-02</span> to <span class="nw">2024-12-07</span></dd>'
+            in j["html"])
+    # a folder picked without script posts its other files too: skipped
+    r = _snap_post("/data/datasets", covid() + [
+        ("covid_snapshots/README.md", b"# notes\n"),
+        ("covid_snapshots/.DS_Store", b"\0\1")], name="", next="replay")
+    assert r.status_code == 303, r.text[:400]
+    (ds,) = D.list_datasets()
+    assert ds.name == "covid_snapshots" and ds.vintage_true
+    assert ds.vintages()[0] == "2024-11-02" and len(ds.vintages()) == 6
+    assert r.headers["location"] == f"/retro?dataset={ds.id}#main"
+
+
+def test_a_folder_without_tables_is_said_so():
+    j = _snap_post("/data/datasets/check", [("f/README.md", b"x"),
+                                            ("f/notes.pdf", b"y")]).json()
+    assert not j["ok"]
+    assert "That folder holds no CSV, TSV or TXT files." in j["html"]
+
+
+def test_one_csv_and_snapshots_at_once_are_refused():
+    """Without script both zones can be filled; which was meant is not
+    clear, so nothing is read or stored."""
+    files = [("file", ("kids.csv", FILES[0].read_bytes(), "text/csv"))] + [
+        ("snapshots", (n, b, "text/csv")) for n, b in covid()]
+    j = client.post("/data/datasets/check", files=files).json()
+    assert "Choose one CSV or snapshot files, not both." in j["html"]
+    r = client.post("/data/datasets", files=files, follow_redirects=False)
+    assert r.status_code == 400 and D.list_datasets() == []
+    assert "Choose one CSV or snapshot files, not both." in r.text
+    # neither zone chosen: a browser posts both inputs empty
+    empty = ("", b"", "application/octet-stream")
+    r = client.post("/data/datasets", data={"name": "x"},
+                    files=[("file", empty), ("snapshots", empty)],
+                    follow_redirects=False)
+    assert r.status_code == 400
+    assert "Choose a CSV file, or snapshot files." in r.text
+
+
+def test_one_file_in_the_snapshot_zone_says_it_is_final_data():
+    """One snapshot file alone, without an as_of column, cannot be
+    vintage-true: it is read and stored as final data, and said so; one
+    with an as_of column is vintage-true as it would be in the first
+    zone."""
+    (one,) = covid()[:1]
+    j = _snap_post("/data/datasets/check", [one]).json()
+    assert j["ok"]
+    assert ("One snapshot file without an as_of column is read as final "
+            "data, not vintage-true") in j["html"]
+    # the same file in the one-CSV zone is plain weekly data: no notice
+    j = _snap_post("/data/datasets/check", [one], field="file").json()
+    assert j["ok"] and "One snapshot file" not in j["html"]
+    j = _snap_post("/data/datasets/check", [("all.csv", as_of_csv())]).json()
+    assert j["ok"] and "One snapshot file" not in j["html"]
+    r = _snap_post("/data/datasets", [one], name="lone", next="forecast")
+    assert r.status_code == 303
+    (ds,) = D.list_datasets()
+    assert not ds.vintage_true
+    assert "read as final data" in client.get(r.headers["location"]).text
 
 
 def test_several_files_are_checked_together():

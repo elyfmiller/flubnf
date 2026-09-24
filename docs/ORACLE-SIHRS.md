@@ -412,6 +412,19 @@ and the engine before it does not. Never assumed; recorded per cell in
 cells.json. That key is what lets the a827e2f8 tree fit a one-row .exp,
 the first fitted week of a season.
 
+Engine line-up for the 2026-27 season: production is the fork's
+`feature/particle-filter` branch at 2fdadee0 (archive
+`pybnf-pf-2fdadee0.tar.gz`) on bngsim 0.15.1, which every install route
+pins. It does not have `pf_sampling_interval`; the console leaves the key
+out there. The engine PR (3a39d0d1, into the private upstream's
+`feature/bngsim`) was measured on 2026-09-24: byte-identical on the two
+reference cells, saved clouds load both ways, and the extra
+`pf_sampling_interval = 1` the console writes for it is inert. The four
+pf keys it drops (`pf_shrink`, `pf_forecast_jitter`, `pf_binom_neff_cap`,
+`pf_mean_scale_column`) are never written by the production conf (only by
+research, two-strain and reporting-model runs). Lab machines stay on
+2fdadee0; bngsim 0.16 is not adopted until measured against 0.15.1.
+
 ## 7. Open items
 
 * Bank change B2 ships on this branch (section 5b): the member's donor

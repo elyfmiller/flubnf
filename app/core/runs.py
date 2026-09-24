@@ -76,12 +76,24 @@ def locations_phrase(locations) -> str:
     return f"{len(states)} {noun}{tail}"
 
 
-def spec_settings(spec) -> list:
+def _outcome_dict(outcome) -> dict:
+    if isinstance(outcome, str):
+        try:
+            outcome = json.loads(outcome or "{}")
+        except (ValueError, TypeError):
+            return {}
+    return outcome if isinstance(outcome, dict) else {}
+
+
+def spec_settings(spec, outcome=None) -> list:
     """The settings that produced a console run, as (label, value) pairs.
 
     One formatter for the progress card, the run page and the weekly report.
     `spec` may be a RunSpec, the ledger's dict, or its JSON text; an
-    unreadable spec yields [] rather than raising.
+    unreadable spec yields [] rather than raising. `outcome` (the ledger's
+    outcome, dict or JSON), when given, makes the list say what RAN rather
+    than what was asked: the data file read, and a PF member that did not
+    run (no engine on this machine) is not listed as run.
     """
     if isinstance(spec, RunSpec):
         d = asdict(spec)
@@ -100,14 +112,28 @@ def spec_settings(spec) -> list:
     if extra.get("dataset"):
         return dataset_settings(d)
     engine = str(d.get("engine", "") or "")
+    o = _outcome_dict(outcome)
+    # the PF member asked for but not run: this machine has no engine
+    pf_absent = (engine in ("all", "pf") and bool(o.get("pf_skipped"))
+                 and "analogue" not in str(o.get("pf_skipped")))
+    engine_label = ENGINE_LABELS.get(engine, engine or "unknown")
+    if pf_absent:
+        engine_label = (ENGINE_LABELS["analogue"]
+                        + " (no PF engine on this machine)")
     pairs = [("forecast date", str(d.get("forecast_date", "") or "unknown")),
              ("locations", locations_phrase(d.get("locations"))),
-             ("engine", ENGINE_LABELS.get(engine, engine or "unknown")),
-             ("replicates", str(d.get("replicates", "") or "")),
-             ("particles", f"{int(d.get('particles') or 0):,}")]
+             ("engine", engine_label)]
+    if not (pf_absent or engine == "analogue"):
+        pairs += [("replicates", str(d.get("replicates", "") or "")),
+                  ("particles", f"{int(d.get('particles') or 0):,}")]
     # season start beside the date: it fixes the first observed week and anchor
     if d.get("season_start"):
         pairs.insert(1, ("season start", str(d["season_start"])))
+    # the file the run read (app.core.data.source_record), after the date
+    from app.core.data import source_phrase
+    src = source_phrase(o.get("data_source"))
+    if src:
+        pairs.insert(1, ("data", src))
     pairs.append(("weeks dropped", str(int(d.get("weeks_to_drop") or 0))))
     # only when the spec records the choice (older rows would be misdescribed)
     if "drop_same_day" in d:
@@ -118,11 +144,17 @@ def spec_settings(spec) -> list:
         pairs.append(("research member", "two-strain SIHRS"))
     # older rows carry no aux key and ran the bare analogue, which this then says
     pairs.append(("Groundhog donors", analogue_donors_label(extra)))
-    pairs.append(("Oracle step", oracle_label(extra)))
+    if pf_absent or engine == "analogue":
+        pairs.append(("Oracle step", "not run (no PF member ran)"))
+    else:
+        pairs.append(("Oracle step", oracle_label(extra)))
     # only a spec with a knobs record: shipped and older rows are unchanged
     mk = model_settings_label(d)
     if mk:
         pairs.append(("model settings", mk))
+    # the optional hub rows (knobs.OPTIONAL_KEYS): only when one is on
+    from app.core import knobs as K
+    pairs.append(("optional hub rows", K.optional_label(d)))
     return [(k, v) for k, v in pairs if v not in ("", None)]
 
 
@@ -186,7 +218,8 @@ def model_settings_label(spec) -> str:
     'modified: oracle.w=0.25 (1a2b3c4d)', plus how its files were named.
     Lazy import: app.core.knobs imports this module."""
     from app.core import knobs as K
-    rec = K.record_of(spec)
+    # the optional-output knobs change no model (spec_settings names them)
+    rec = K.model_record(spec)
     if not rec:
         return ""
     why = K.override_reason(spec)
@@ -300,6 +333,46 @@ def _tip(tid: str, label: str, text: str) -> str:
             f'><span class="tipbox" role="tooltip" id="tip-{tid}">{t}</span></span>')
 
 
+#: the run record's per-member anchor notes (engine notes: a location whose
+#: anchor or fit origin unreported newest weeks moved back, or that abstained)
+ANCHOR_NOTE_KEYS = (("pf", "pf_anchor_notes"),
+                    ("analogue", "analogue_anchor_notes"))
+#: the members as the hub run page names them
+HUB_MEMBER_NAMES = {"pf": "Oracle SIHRS", "analogue": "Groundhog"}
+
+
+def anchor_notes_row(o: dict, names: dict):
+    """The Results table's one row for both members' anchor notes, or None
+    when neither recorded any (a shipped run on complete data): a count per
+    member in the cell, every location's note in the "?" tip."""
+    import html as _html
+    parts, lines = [], []
+    for m, key in ANCHOR_NOTE_KEYS:
+        notes = o.get(key)
+        if not isinstance(notes, dict) or not notes:
+            continue
+        name = names.get(m, m)
+        ab = sum(str(v).startswith("abstained") for v in notes.values())
+        moved = len(notes) - ab
+        bits = []
+        if moved:
+            bits.append(f"{moved} location{'s' if moved != 1 else ''} "
+                        "anchored earlier")
+        if ab:
+            bits.append(f"{ab} abstained")
+        parts.append(f"{name}: {', '.join(bits)}")
+        lines += [f"{name}, {loc}: {v}." for loc, v in sorted(notes.items())]
+    if not parts:
+        return None
+    tip = _tip("anchor-notes", "unreported newest weeks",
+               "The newest week or two was not reported, so the forecast "
+               "starts from the last reported week and every horizon is "
+               "still counted from the forecast date. More than two such "
+               "weeks and the location abstains. " + " ".join(lines))
+    return ("Unreported newest weeks",
+            _html.escape("; ".join(parts)) + tip)
+
+
 def _results_note(d: dict) -> str:
     extra = d.get("extra") if isinstance(d.get("extra"), dict) else {}
     if extra.get("dataset"):
@@ -383,8 +456,17 @@ def results_html(outcome, spec, heading: bool = True) -> str:
                                 'incomplete)</span> <span class="hint">'
                                 f'{_html.escape(str(o["pf_engine_broken"]))}'
                                 '</span>'))
+    arow = anchor_notes_row(o, HUB_MEMBER_NAMES)
+    if arow:
+        rows.append(arow)
+    if "data_flags" in o:
+        # only a run with a missing-data rule on carries the key
+        import html as _html_fl
+        from app.core import missing as _missing
+        rows.append(("Missing-data rules", _html_fl.escape(
+            _missing.line(o["data_flags"]) or "on; no week flagged")))
     if o.get("submission_withheld"):
-        rows.append(("Submission", f'<span class="bad">withheld</span> '
+        rows.append(("Submission",f'<span class="bad">withheld</span> '
                      f'<span class="hint">{o["submission_withheld"]}</span>'))
     if o.get("submission_errors"):
         n = len(o["submission_errors"])
@@ -434,6 +516,14 @@ def dataset_results_html(o: dict, d: dict, heading: bool = True) -> str:
         rows.append((f"{MEMBER_LABELS.get(m, m)} abstained",
                      _html.escape(", ".join(names[:8]))
                      + (" …" if len(names) > 8 else "")))
+    arow = anchor_notes_row(o, MEMBER_LABELS)
+    if arow:
+        rows.append(arow)
+    if "data_flags" in o:
+        # only a run with a missing-data rule on carries the key
+        from app.core import missing as _missing
+        rows.append(("Missing-data rules", _html.escape(
+            _missing.line(o["data_flags"]) or "on; no week flagged")))
     ex = o.get("exports") or {}
     rows.append(("Export files", f"{len(ex)} file{'s' if len(ex) != 1 else ''}"
                  if ex else "none"))

@@ -798,10 +798,11 @@ button.tipbtn:hover,[data-theme="dark"] button.tipbtn:hover,
 @media (prefers-reduced-motion:reduce){.tipbox{transition:none}}
 
 /* the latest-run card: settings left, results right. Tracks auto-fit at a
-   18rem floor and children may shrink (min-width:0), so the settings grid's
-   max-content width can never starve the results column; values wrap in
-   their own track instead of one word per line. */
-.runsplit{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr));
+   20rem floor (so they stack in a 700px window) and children may shrink
+   (min-width:0), so the settings grid's max-content width can never starve
+   the results column; values wrap in their own track instead of one word
+   per line. */
+.runsplit{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr));
   gap:.5rem 1.5rem;align-items:start}
 .runsplit > *{min-width:0}
 .runsplit .runsettings .kv{width:auto;grid-template-columns:max-content minmax(0,1fr)}
@@ -1138,3 +1139,89 @@ pre.sberr{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);
 .dsfolder label{display:inline;margin:0;font-size:inherit}
 /* a date in the preview's facts or the stored note stays on one line */
 .dsfacts .nw,.dsr-stored .nw{white-space:nowrap}
+
+/* round3: dataset upload */
+/* two drop zones side by side, one form: one weekly CSV, and the optional
+   snapshot files; stacked once the card is narrower than two 17rem boxes.
+   Each box spans two rows of the grid (subgrid): the zones share one
+   height and their lines start level. The zone holding the chosen files
+   keeps a solid edge. */
+.dsboxes{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),1fr));
+  gap:0 1rem}
+.dsbox{min-width:0;display:grid;grid-row:span 2;grid-template-rows:subgrid}
+.dsbox .dsdrop{justify-content:center;margin:.3rem 0 .35rem}
+.dsbox>.hint{margin:0 0 .5rem}
+.dsdrop.picked{border-style:solid;border-color:var(--accent-ink)}
+/* a link and its "?" stay together on one line; the tip's own text wraps */
+.dskeep{white-space:nowrap}
+.dskeep .tipbox{white-space:normal}
+
+/* round3: forecast tab and run pages */
+/* US (national), the 53rd location, set apart at the end of the list */
+.ck.ck-national{border-top:1px solid var(--line);padding-top:.3rem;margin-top:.3rem}
+/* the fan card's model buttons, and the FluSight comparator switch beside them */
+.fanbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;
+  gap:.2rem 1rem}
+.fanbar .seg{margin:.45rem 0}
+.fanoff{display:inline-flex;align-items:center;gap:.35rem}
+.fanoff .ck{margin:0}
+/* beside the settings form the latest-run card is narrow: the settings get
+   the wider column, so a donor-bank digest keeps to one line */
+@media(min-width:1080px){
+  .runsplit{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)}
+}
+
+/* round3: sandbox */
+/* run settings: Particles on its own line, then Jitter, Forecast weeks
+   and Seed side by side; a field wraps before its label can run into the
+   next one (a label never shrinks below its own width) */
+.sbrun-grid{display:flex;flex-wrap:wrap;gap:0 .9rem;align-items:flex-end}
+.sbrun-grid > span{flex:1 1 6.5rem;min-width:auto}
+.sbrun-grid > .sbrun-parts{flex:1 1 100%}
+.sbrun-parts .sbpair{max-width:24rem}
+.sbrun-grid > span:nth-child(3){flex-basis:9.5rem}
+@media(max-width:560px){.sbrun-grid > span{flex-basis:100%}}
+/* the run's outcome in plain words, what to try, the full-fit offer */
+.sbhealth{margin:.6rem 0 .2rem}
+.pill.sbh{font-weight:650;font-size:var(--fs-label);border-color:currentColor;margin-right:.25rem}
+.sbh-good{color:var(--ok)}.sbh-rough{color:var(--warn)}.sbh-collapsed{color:var(--bad)}
+details.sbtries{margin:.3rem 0 .4rem}
+.sbtries ul{margin:.3rem 0 .2rem 1.1rem;padding:0}
+.sbtries li{margin:.15rem 0}
+form.sbfull{margin:.5rem 0 .6rem}
+details.sbengine{margin:.3rem 0 .5rem}
+/* How the Sandbox works: a folding card on the gallery, a menu on the
+   workbench beside Manage */
+details.sbhow > summary{list-style:none;cursor:pointer}
+details.sbhow > summary::-webkit-details-marker{display:none}
+details.sbhow > summary h2{display:inline;margin:0}
+.sbsteps{margin:.6rem 0 .5rem 1.25rem;padding:0}
+.sbsteps li{margin:.3rem 0;max-width:62rem}
+.sbhow .hint,.sbhelpmenu .hint{margin:.2rem 0 0}
+.sbhead-menus{display:flex;gap:.5rem;align-items:flex-start;flex:none}
+.sbmenu.sbhelpmenu{width:min(34rem,calc(100vw - 2rem));max-width:none}
+.sbhelpmenu .sbsteps{margin-top:0}
+#sbnew-about:empty{display:none}
+.sbsim{margin-top:.6rem}
+
+/* round3: submission files and model identities */
+.subrow{justify-content:space-between;margin:.45rem 0}
+.subacts{display:flex;align-items:center;gap:.9rem;white-space:nowrap}
+.subfile > p.hint{margin:.1rem 0 .3rem}
+details.archived{margin-top:.6rem;padding-top:.4rem;border-top:1px solid var(--line)}
+details.archived > p.hint{margin:.3rem 0}
+details.archived .subrow{margin:.3rem 0}
+
+/* round4: data source */
+/* a week date never breaks across lines (Data tab: the live-file line) */
+#live-newer .wk{white-space:nowrap}
+.datasrc{white-space:nowrap}
+
+/* round4: navbar edges: a scrolled tab strip fades at the side with more */
+header.nav .navtabs.more-r{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 2.5rem),transparent);
+  mask-image:linear-gradient(to right,#000 calc(100% - 2.5rem),transparent)}
+header.nav .navtabs.more-l{-webkit-mask-image:linear-gradient(to left,#000 calc(100% - 2.5rem),transparent);
+  mask-image:linear-gradient(to left,#000 calc(100% - 2.5rem),transparent)}
+header.nav .navtabs.more-l.more-r{
+  -webkit-mask-image:linear-gradient(to right,transparent,#000 2.5rem,#000 calc(100% - 2.5rem),transparent);
+  mask-image:linear-gradient(to right,transparent,#000 2.5rem,#000 calc(100% - 2.5rem),transparent)}

@@ -141,6 +141,10 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
     from app.core.scoring import summary_table_html
     n2a = dict(zip(locs.location_name, locs.abbreviation))
     n2p = dict(zip(locs.location_name, locs.population.astype(float)))
+    # the national population from the same table (the hub's "US" row)
+    _us_row = locs[locs.location.astype(str) == "US"]
+    us_pop = (int(float(_us_row.population.iloc[0])) if len(_us_row)
+              else 340_000_000)
     # cells.json is read only when there are fitted samples
     cells = (_json.loads((workroot / "cells.json").read_text())
              if pf_samples else [])
@@ -199,7 +203,7 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
         if q1 is None or lo_us is None:
             return None
         probs_us = categorical_probs_from_quantiles(
-            q1, lo_us, 340_000_000, 0)
+            q1, lo_us, us_pop, 0)
         if not probs_us:
             return None
         med_us = float(min(q1.items(),
@@ -269,7 +273,7 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
             # one week ahead = canonical "0", matching the fan above
             probs_l = categorical_probs(
                 _np.asarray(s["0"], float), lo_l,
-                int(n2p.get(loc, 1e6)), 1)
+                us_pop if fips_l == "US" else int(n2p.get(loc, 1e6)), 0)
             key = "US" if fips_l == "US" else n2a.get(loc, loc)
             meds = [q_by_t[t]["0.5"] for t in f_t]
             note = ("Off-season: the model finds no sustained "
@@ -305,7 +309,7 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
               "elapsed_s": elapsed_s,
               # run settings, app build and engine versions
               "settings_html": settings_html(
-                  spec_settings(spec)
+                  spec_settings(spec, outcome)
                   + version_pairs(RUNNING_SHA, VERSIONS))}
     try:
         bp = report_v2.save_bundle(bundle, workroot)
@@ -332,6 +336,61 @@ def _pf_engine_state() -> str:
     return "ready" if pf_engine.engine_available() else "broken"
 
 
+def _optional_rows(spec, workroot: Path, pf_samples: dict, an_q: dict,
+                   locs, n2f: dict, minus1: bool, pmf: bool,
+                   floor_kw: dict) -> tuple:
+    """(pf rows, Groundhog rows, {model: counts}) for a run with an
+    optional-output knob on: each location's quantile rows (horizon -1
+    included when `minus1`), then its rate-change pmf rows when `pmf`.
+    The rules per model are app/core/optional_outputs.py's."""
+    from app.core import optional_outputs as OPT
+    from app.core.data import vintage_path
+    from app.core.engines import analogue as an_engine
+    from app.core.floor import floor_quantiles
+    from app.core.horizons import ORIGIN
+    from app.core.submit import (HORIZONS, HORIZONS_WITH_MINUS1,
+                                 quantile_rows, rate_change_rows,
+                                 rows_from_quantiles)
+    asof = spec.forecast_date
+    hzs = HORIZONS_WITH_MINUS1 if minus1 else HORIZONS
+    pops = dict(zip(locs.location_name, locs.population.astype(float)))
+    reported = OPT.reported_counts(vintage_path(asof), asof)
+    pf_k = OPT.pf_weeks_dropped(workroot, spec, reported,
+                                {l: n2f[l] for l in pf_samples})
+    counts = {"pf": {"m1": 0, "pmf": 0},
+              "analogue": {"m1": 0, "pmf": 0, "groundhog": True}}
+    pf_rows = []
+    for loc, s in pf_samples.items():
+        fips = n2f[loc]
+        rows = quantile_rows(s, fips, asof, horizons=hzs)
+        counts["pf"]["m1"] += any(r["horizon"] == -1 for r in rows)
+        if pmf:
+            probs = OPT.pf_rate_change(s, reported.get(fips),
+                                       pops.get(loc, 0.0), pf_k.get(loc, 0))
+            rows += rate_change_rows(probs, fips, asof)
+            counts["pf"]["pmf"] += bool(probs)
+        pf_rows += rows
+    now = an_engine.nowcast(spec) if an_q else {}
+    an_rows = []
+    for loc, q in an_q.items():
+        fips = n2f[loc]
+        info = now.get(loc)
+        qs = dict(q)
+        if minus1 and info and info.get("q"):
+            # the as-of week under the anchor key, floored like the rest
+            qs[ORIGIN] = floor_quantiles({ORIGIN: info["q"]},
+                                         **floor_kw)[ORIGIN]
+        rows = rows_from_quantiles(qs, fips, asof, horizons=hzs)
+        counts["analogue"]["m1"] += any(r["horizon"] == -1 for r in rows)
+        if pmf:
+            probs = OPT.groundhog_rate_change(q, info, reported.get(fips),
+                                              asof, pops.get(loc, 0.0))
+            rows += rate_change_rows(probs, fips, asof)
+            counts["analogue"]["pmf"] += bool(probs)
+        an_rows += rows
+    return pf_rows, an_rows, counts
+
+
 def _run_all(spec: RunSpec) -> None:
     """The competition path: engines in ascending cost, then the two
     standalone submissions (no blend; each under its own hub identity,
@@ -353,12 +412,10 @@ def _run_all(spec: RunSpec) -> None:
     if not _status.get("started_utc"):
         _status["started_utc"] = _time.time()
     t_start = float(_status["started_utc"])
-    n_states = sum(1 for l in spec.locations
-                   if str(l).upper() not in ("US", "US (NATIONAL)"))
+    # the same scope wording as the route's queued label
+    from app.ui.routes.forecast import _scope_label
     _status["run_label"] = (
-        f"{spec.forecast_date} · {n_states} state(s) + US"
-        if n_states < len(spec.locations)
-        else f"{spec.forecast_date} · {len(spec.locations)} location(s)")
+        f"{spec.forecast_date} · {_scope_label(spec.locations)}")
     # also set by the route; here so direct calls are described too
     _status["settings"] = spec_settings(spec)
     try:
@@ -384,15 +441,29 @@ def _run_all(spec: RunSpec) -> None:
         # 1. PF (primary); absent on Tier-A machines, where the run proceeds
         # with the analogue (see _pf_engine_state)
         fails = {}
+        # the observed file every step reads, resolved ONCE (the dated
+        # vintage, or the live target file for a real-time run) and recorded
+        # with its sha256 and newest week
+        # (a missing file is recorded here; each engine then refuses it
+        # loudly in its own words, as before)
+        from app.core import data as _data
+        try:
+            src_path, src_kind = _data.spec_source(spec)
+            outcome["data_source"] = _data.source_record(src_path, src_kind)
+        except OSError as e:
+            src_path, src_kind = None, None
+            outcome["data_source_error"] = str(e)[:300]
         # observed admissions per location (vintage-true): floor, report, run page
         obs = {}
         try:
             from flubnf.settings import LOCATIONS as _LOCCSV
-            from app.core.data import vintage_path as _vpo
             _lo = pd.read_csv(_LOCCSV, dtype=str)
             _n2fo = dict(zip(_lo.location_name, _lo.location.str.zfill(2)))
-            tdf = pd.read_csv(_vpo(spec.forecast_date),
+            tdf = pd.read_csv(src_path if src_path is not None
+                              else _data.vintage_path(spec.forecast_date),
                               dtype={"location": str})
+            tdf = tdf[tdf["date"].astype(str).str[:10]
+                      <= str(spec.forecast_date)].copy()
             tdf["location"] = tdf["location"].str.zfill(2)
             # nowcast rule: the engines treat the same-day row as unreported,
             # so obs must not see it (else cards announce a spurious surge)
@@ -427,6 +498,11 @@ def _run_all(spec: RunSpec) -> None:
             fails = {k: v for k, v in status.items() if v != "ok"}
             outcome["pf_cells"] = len(status)
             outcome["pf_failures"] = fails
+            # fit origins moved back by an unreported newest week, or
+            # abstentions (prepare's notes; absent on a shipped run)
+            _pf_notes = pf_engine.read_anchor_notes(workroot)
+            if _pf_notes:
+                outcome["pf_anchor_notes"] = _pf_notes
             pf_samples = pf_engine.collect(workroot)
             # the Oracle step (app/core/oracle.py), before anything downstream
             # and before the floor. oracle = none is research: file withheld
@@ -437,6 +513,7 @@ def _run_all(spec: RunSpec) -> None:
                 pf_raw = pf_samples
                 pf_samples, oprov = oracle_mod.apply_week(
                     pf_raw, spec.forecast_date, workroot, extra=spec.extra,
+                    vintage=src_path, source_kind=src_kind,
                     weeks_to_drop=int(spec.weeks_to_drop or 0),
                     drop_same_day=bool(getattr(spec, "drop_same_day", False)))
                 outcome["oracle"] = oprov["bank"]["label"]
@@ -501,8 +578,34 @@ def _run_all(spec: RunSpec) -> None:
         # its FILE is written only when the run asked for it.
         _phase("consulting the Groundhog")
         from app.core.floor import floor_quantiles
+        # anchors moved back by an unreported newest week, or abstentions,
+        # are recorded per location (the engine's notes); the missing-data
+        # rules (app/core/missing.py) are recorded only when one is set, so
+        # a shipped run's outcome is unchanged
+        import inspect as _inspect
+        from app.core import missing as _missing
+        _rules = _missing.rules_of(spec.extra)
+        _gh_flags: list = []
+        an_notes: dict = {}
+        _an_kw = ({"notes": an_notes} if "notes" in
+                  _inspect.signature(an_engine.run).parameters else {})
+        if _rules:
+            _an_kw["flags"] = _gh_flags
         an_q = {loc: floor_quantiles(q, **_fkw)
-                for loc, q in an_engine.run(spec).items()}
+                for loc, q in an_engine.run(spec, **_an_kw).items()}
+        if an_notes:
+            outcome["analogue_anchor_notes"] = an_notes
+        if _rules:
+            _pf_flags = []
+            try:
+                import json as _jfl
+                for c in _jfl.loads((workroot / "cells.json").read_text()):
+                    if c.get("replicate") == 0:
+                        _pf_flags += [{"location": c["location"], **r}
+                                      for r in c.get("data_flags") or ()]
+            except Exception:
+                pass
+            outcome["data_flags"] = {"analogue": _gh_flags, "pf": _pf_flags}
         outcome["analogue_aux"] = str(
             (spec.extra or {}).get("analogue_aux") or "")
         # 3. no blend: each member is its own submission; PF failures are just
@@ -526,13 +629,25 @@ def _run_all(spec: RunSpec) -> None:
             prior = outcome.get("submission_withheld")
             outcome["submission_withheld"] = (f"{prior}; {reason}" if prior
                                               else reason)
-        for model, rows in (
-            ("pf", [r for loc, s in pf_samples.items()
-                    for r in quantile_rows(s, n2f[loc], spec.forecast_date)]),
-            ("analogue", [r for loc, q in an_q.items()
-                          for r in rows_from_quantiles(q, n2f[loc],
-                                                       spec.forecast_date)]),
-        ):
+        # the optional hub rows (knobs output.horizon_minus1 and
+        # output.rate_change_pmf, app/core/optional_outputs.py); both off by
+        # default, and then the rows below are exactly the shipped ones
+        _m1 = _knobs.optional_output(spec, "output.horizon_minus1")
+        _pmf = _knobs.optional_output(spec, "output.rate_change_pmf")
+        if _m1 or _pmf:
+            pf_rows, an_rows, _opt_counts = _optional_rows(
+                spec, workroot, pf_samples, an_q, locs, n2f, _m1, _pmf, _fkw)
+            from app.core.optional_outputs import notes as _opt_notes
+            outcome["optional_rows"] = _opt_notes(
+                {hub_model_id(m) + _suffix: c
+                 for m, c in _opt_counts.items()}, _m1, _pmf)
+        else:
+            pf_rows = [r for loc, s in pf_samples.items()
+                       for r in quantile_rows(s, n2f[loc], spec.forecast_date)]
+            an_rows = [r for loc, q in an_q.items()
+                       for r in rows_from_quantiles(q, n2f[loc],
+                                                    spec.forecast_date)]
+        for model, rows in (("pf", pf_rows), ("analogue", an_rows)):
             if not rows:
                 continue
             if model == "analogue" and spec.engine == "pf":
@@ -563,6 +678,10 @@ def _run_all(spec: RunSpec) -> None:
                 outcome.setdefault("submission_errors", {})[
                     hub_model_id(model) + _suffix] = str(e)[:400]
         outcome["submissions"] = subs
+        if "optional_rows" in outcome:
+            outcome["optional_rows"] = {k: v for k, v in
+                                        outcome["optional_rows"].items()
+                                        if k in subs}
         # 5. retrospective scoring (once truth exists); contained, like 5b
         df = pd.DataFrame()
         try:

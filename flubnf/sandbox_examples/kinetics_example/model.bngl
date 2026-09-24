@@ -1,7 +1,10 @@
 # A model that is not an epidemic: first-order conversion A -> B.
 # An accumulator counts the B made, and the model applies its own observation
 # scale through a function, so nothing here is called mult, rho, H or I: the
-# filter fits any model written this way. Time is in weeks.
+# filter fits any model written this way. Time is in weeks. The counts in
+# data.exp were simulated from this model at the values written below,
+# with negative-binomial noise (r = 8), so a fit should find k near 0.3
+# and scale near 0.5.
 begin model
 begin parameters
 k__FREE 0.30

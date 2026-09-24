@@ -89,6 +89,38 @@ def network_from_bngl(bngl_text: str, workdir: Path, timeout: int = 120) -> str:
                     "generate the network")
 
 
+def simulate_bngl(bngl_text: str, t_end: int) -> str:
+    """The model with its actions replaced by one ODE run from 0 to t_end,
+    one output row per unit of time, functions printed (the sandbox's
+    look at the model at its written values; never the engine's run)."""
+    t_end = max(1, int(t_end))
+    return _with_actions(
+        bngl_text, "generate_network({overwrite=>1})\n"
+        f'simulate({{method=>"ode",t_start=>0,t_end=>{t_end},'
+        f"n_steps=>{t_end},print_functions=>1}})", "the simulation")
+
+
+def trajectory_from_bngl(bngl_text: str, workdir: Path, t_end: int,
+                         timeout: int = 120) -> dict:
+    """Run BNG2.pl's ODE simulation of the model at its written values:
+    {"time": [...], column name: [...]} for every observable and function
+    in the .gdat it writes."""
+    text = _run_bng(simulate_bngl(bngl_text, t_end), workdir, "cm.gdat",
+                    timeout, "simulate the model")
+    lines = [l for l in text.splitlines() if l.strip()]
+    if not lines or not lines[0].lstrip().startswith("#"):
+        raise ContactMapError("BNG2.pl wrote a trajectory without a header")
+    cols = lines[0].lstrip("#").split()
+    out = {c: [] for c in cols}
+    for l in lines[1:]:
+        vals = l.split()
+        if len(vals) != len(cols):
+            continue
+        for c, v in zip(cols, vals):
+            out[c].append(float(v))
+    return out
+
+
 def _label(node) -> str:
     lab = node.find("./g:data//y:NodeLabel", NS)
     return (lab.text or "").strip() if lab is not None else ""
