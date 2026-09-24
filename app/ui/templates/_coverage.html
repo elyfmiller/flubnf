@@ -1,0 +1,27 @@
+{# One submission file's location coverage (app/core/coverage.py, set as
+   entry.cov by routes/output._attach_coverage): "N of M locations", and
+   when a location is missing or anchored on an earlier week, a small fold
+   naming each one with the run record's reason.
+
+   {% import "_coverage.html" as covm %}{{ covm.line(f.cov) }} #}
+{% macro line(c) -%}
+{% if c %}
+{%- set word = "location" if c.of == 1 else "locations" -%}
+{%- set head -%}{{ c.n }} of {{ c.of }} {{ word }}{% if c.not_requested %} (the run asked for {{ c.of }} of the hub's {{ c.of + c.not_requested }}){% endif %}{%- endset -%}
+{% if c.missing or c.moved %}
+<details class="preview covfold">
+ <summary class="hint">{{ head }}{% if c.missing %} · {{ c.missing | length }} missing{% endif %}{% if c.moved %} · {{ c.moved | length }} anchored earlier{% endif %}</summary>
+ {% if c.missing %}
+ <p class="hint covhead">Missing from this file</p>
+ <ul class="covlist">{% for loc, why in c.missing %}<li><b>{{ loc }}</b>: {{ why }}</li>{% endfor %}</ul>
+ {% endif %}
+ {% if c.moved %}
+ <p class="hint covhead">Anchored on an earlier week</p>
+ <ul class="covlist">{% for loc, why in c.moved %}<li><b>{{ loc }}</b>: {{ why }}</li>{% endfor %}</ul>
+ {% endif %}
+</details>
+{% else %}
+<p class="hint cov">{{ head }}</p>
+{% endif %}
+{% endif %}
+{%- endmacro %}

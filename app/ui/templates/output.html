@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% block title %}FluBNF · Output{% endblock %}
-{% block content %}{% import "_tips.html" as tips %}
+{% block content %}{% import "_tips.html" as tips %}{% import "_coverage.html" as covm %}
 <h1>Output</h1>
 {% if not rid %}<div class="card"><p class="hint">Nothing here yet. Run a forecast first.</p></div>
 {% else %}
@@ -27,6 +27,7 @@
      {% elif f.modified %}
      <p class="hint">Non-hub name: this run's model settings differ from the defaults.</p>
      {% endif %}
+     {{ covm.line(f.cov) }}
      {% if f.cols %}
      <details class="preview">
       <summary class="hint">Preview: first {{ f.rows | length }} rows</summary>
@@ -43,6 +44,34 @@
      {% endif %}
     </div>
    {% else %}<p class="hint">{% if archived %}No current submission files in this run: run the models to write them under the registered names.{% else %}No submission files in the latest run.{% endif %}</p>{% endfor %}
+   {% if arch %}
+   {# the date's forecast archive (app/core/archive_record.py): which run
+      it holds, and the operator's "submitted" mark; FluBNF never uploads #}
+   <div class="archmark" id="archive-mark">
+    <p class="hint">
+     {% if arch.submitted %}<span class="pill ok subbadge">Submitted</span> {{ arch.submitted_at }}.
+     {% endif %}
+     {% if arch.this_run %}Archived as the forecast for {{ arch.date }}.
+     {% elif arch.kept %}{% if arch.submitted %}The archive keeps the submitted run{% else %}This run is not complete, so the archive kept the earlier complete run{% endif %}{% if arch.run_id %} <a href="/runs/{{ arch.run_id }}">{{ arch.run_id }}</a>{% endif %}; this run's files stay in its own folder.
+     {% else %}The archive for {{ arch.date }} holds {% if arch.run_id %}run <a href="/runs/{{ arch.run_id }}">{{ arch.run_id }}</a>{% else %}an earlier run{% endif %}.
+     {% endif %}
+     {{ tips.tip("out-mark", "marking as submitted", "Mark the archive once you have uploaded its files to the FluSight hub yourself; FluBNF only writes them. A marked archive is never replaced by a later run and cannot be deleted from Storage until you unmark it. Without a mark, a later run replaces the archive only when it finished ok with every file written in full.") }}
+    </p>
+    {% if not arch.busy %}
+    <form method="post" action="/output/submitted" class="archform">
+     <input type="hidden" name="date" value="{{ arch.date }}">
+     <input type="hidden" name="run" value="{{ arch.run_id }}">
+     {% if arch.submitted %}
+     <input type="hidden" name="mark" value="0">
+     <button class="linkish" type="submit">Unmark</button>
+     {% else %}
+     <input type="hidden" name="mark" value="1">
+     <button class="quiet" type="submit">Mark as submitted</button>
+     {% endif %}
+    </form>
+    {% endif %}
+   </div>
+   {% endif %}
    {% if archived %}
    <details class="preview archived">
     <summary class="hint">Archived files ({{ archived | length }})</summary>

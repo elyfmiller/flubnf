@@ -164,3 +164,67 @@ def test_the_run_records_the_dropped_location(pipeline_env, monkeypatch):
     d = pd.read_csv(out["submissions"][SB.hub_model_id("pf")], dtype=str)
     assert d.location.nunique() == 3
     json.dumps(out)
+
+
+# ------------------------------------------ coverage on the pages
+
+def test_the_pages_say_how_many_locations_and_why_one_is_missing(
+        pipeline_env, monkeypatch):
+    """The Output page and the run page: "3 of 4 locations", the missing
+    location named with its reason; the other file reads 4 of 4."""
+    from fastapi.testclient import TestClient
+    from app.core.runs import Ledger
+    from app.ui import server as srv
+    from app.ui import shared as ui_shared
+    real = SB.write_submission
+
+    def _corrupt(rows, model, *a, **k):
+        rows = list(rows)
+        if model == "pf":
+            rows = _flatten(rows, rows[0]["location"])
+        return real(rows, model, *a, **k)
+    monkeypatch.setattr(SB, "write_submission", _corrupt)
+    _spec, out = _default_run(pipeline_env["names"])
+    (name, _why), = out["submission_dropped"][SB.hub_model_id("pf")].items()
+    rid = next(iter(Ledger().rows(1)))["run_id"]
+    ui_shared._invalidate_scans()
+    client = TestClient(srv.app)
+    for url in ("/output", f"/runs/{rid}"):
+        html = client.get(url).text
+        assert "3 of 4 locations" in html and "1 missing" in html, url
+        assert (f"<b>{name}</b>: left out of the file, its rows failed a "
+                "check:") in html, url
+        assert "zero-width" in html
+        assert "4 of 4 locations" in html, url
+
+
+def test_each_missing_reason_is_named():
+    from app.core import coverage as C
+    o = {"pf_failures": {"New_York_r0": "FAIL: runner died",
+                         "Utah": "FAIL: prepare: no data",
+                         "Iowa": "FAIL: prepare: Iowa: abstained: ..."},
+         "pf_anchor_notes": {"Iowa": "abstained: newest reported week "
+                                     "2026-09-12 is 3 weeks before the as-of",
+                             "Ohio": "anchored on 2026-09-26: 1 newer "
+                                     "week(s) unreported"},
+         "analogue_anchor_notes": {"Utah": "no forecast: newest week reads 0"},
+         "submission_dropped": {"X-pf": {"Texas": "h=0: zero-width"}},
+         "data_flags": {"pf": [{"location": "Maine", "week": "2026-10-03",
+                                "rule": "zero after nonzero",
+                                "value": 0.0}], "analogue": []}}
+    req = ["New York", "Utah", "Iowa", "Ohio", "Texas", "Maine"]
+    c = C.file_coverage(o, "pf", "X-pf", req, {"Ohio", "Maine"},
+                        hub_total=53)
+    why = dict(c["missing"])
+    assert c["n"] == 2 and c["of"] == 6 and c["not_requested"] == 47
+    assert why["New York"] == "the fit failed: runner died"
+    assert why["Utah"] == "the fit could not be prepared: no data"
+    assert why["Iowa"].startswith("abstained: newest reported week")
+    assert why["Texas"].startswith("left out of the file")
+    moved = dict(c["moved"])
+    assert moved["Ohio"].startswith("anchored on 2026-09-26")
+    assert moved["Maine"] == ("newest week 2026-10-03 set aside "
+                              "(zero after nonzero)")
+    g = C.file_coverage(o, "analogue", "X-gh", ["Utah", "Ohio"], {"Ohio"})
+    assert dict(g["missing"])["Utah"] == "no forecast: newest week reads 0"
+    assert g["moved"] == [] and g["not_requested"] == 0

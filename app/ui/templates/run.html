@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% block title %}FluBNF · Run{% endblock %}
 {% block head %}{% if dataset %}<script src="/static/plotly.min.js"></script>{% endif %}{% endblock %}
-{% block content %}{% import "_tips.html" as tips %}
+{% block content %}{% import "_tips.html" as tips %}{% import "_coverage.html" as covm %}
 
 <h1>Run: {{ label or "details" }}
  {# research badge from the ledger row's spec (the record of record) #}
@@ -105,11 +105,13 @@
 {% set archived = subs | selectattr("archived") | list %}
 {% for s in subs | rejectattr("archived") %}
  {% if s.submittable %}
- <p>{{ s.model }}: <a href="/output/download?path={{ s.path | urlencode }}">{{ s.name }}</a></p>
+ <p class="subline">{{ s.model }}: <a href="/output/download?path={{ s.path | urlencode }}">{{ s.name }}</a></p>
+ {{ covm.line(s.cov) }}
  {% elif s.modified %}
- <p>{{ s.model }}: <a href="/output/download?path={{ s.path | urlencode }}">{{ s.name }}</a><br>
+ <p class="subline">{{ s.model }}: <a href="/output/download?path={{ s.path | urlencode }}">{{ s.name }}</a><br>
   <span class="hint">Non-hub name: this run's model settings differ from
   the defaults.</span></p>
+ {{ covm.line(s.cov) }}
  {% endif %}
 {% else %}{% if not archived %}<p class="hint">None yet. Submissions appear when a run
  completes.</p>{% endif %}{% endfor %}
