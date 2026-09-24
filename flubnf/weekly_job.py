@@ -481,12 +481,14 @@ def _ingest_realized_actuals(
     # mapped back to weekly dates. The simplest robust path: derive the
     # Saturday of each observed week from the season onset.
     from datetime import timedelta as _td
-    onset_sat = pm.epiweek_to_date(pm.Epiweek(
+    onset_sun = pm.epiweek_to_date(pm.Epiweek(
         config.season.year, config.season.onset_week))
-    # `onset_sat` is the Saturday-aligned date for week 0.
+    # pymmwr returns the SUNDAY that starts the onset epiweek; observed week
+    # `idx` is dated by its MMWR week-ending Saturday, the target-data and
+    # target_end_date convention (see exp_files: date - 1 day >= onset).
 
     def _date_for_week_idx(idx: int) -> str:
-        return (onset_sat + _td(days=7 * idx)).isoformat()
+        return (onset_sun + _td(days=7 * idx + 6)).isoformat()
 
     state_to_dated_obs: dict[str, dict[str, float]] = {}
     for state, obs in obs_by_state.items():

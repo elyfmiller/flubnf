@@ -985,9 +985,11 @@ def _tune_slope_for_state(
     if obs is None or len(obs) == 0:
         return "no-observed", None, None
 
-    onset_sat = pm.epiweek_to_date(pm.Epiweek(
+    # pymmwr gives the onset epiweek's SUNDAY; observed week i is dated by
+    # its MMWR week-ending Saturday, as target_end_date is
+    onset_sun = pm.epiweek_to_date(pm.Epiweek(
         cfg.season.year, cfg.season.onset_week))
-    obs_by_date = {(onset_sat + _td(days=7 * i)).isoformat(): float(obs[i])
+    obs_by_date = {(onset_sun + _td(days=7 * i + 6)).isoformat(): float(obs[i])
                    for i in range(len(obs)) if _np.isfinite(obs[i])}
 
     actuals: dict[int, float] = {}
@@ -999,7 +1001,9 @@ def _tune_slope_for_state(
     if not actuals:
         return "no-actuals", None, None
 
-    n_observed = sum(1 for d in obs_by_date if d <= ref_date)
+    # history as of the forecast (reference_date - 7): the week ending
+    # reference_date is FluSight horizon 0, a target, not an observation
+    n_observed = sum(1 for d in obs_by_date if d < ref_date)
     res = sweep_slope_blend(
         traj, _np.asarray(obs[:n_observed], dtype=float),
         actuals, state=state,
