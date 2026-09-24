@@ -491,7 +491,8 @@ def test_a_note_never_says_anchored_for_a_location_that_abstained(tmp_path, monk
     moves back to that 0, and the Groundhog's ratio of nothing abstains
     (flubnf.analogue returns no forecast). The note must say it abstained,
     not that it forecast from that week; a location reported at the as-of
-    with 0 abstains as before, with no note (nothing was unreported)."""
+    with 0 has no forecast either, and its note says why (the owner's
+    round-7 rule: no location leaves a file silently)."""
     from app.core.engines import analogue as eng
     from app.core.runs import anchor_notes_row
     weeks = [str(d.date()) for d in pd.date_range("2025-12-06", periods=6, freq="7D")]
@@ -518,7 +519,13 @@ def test_a_note_never_says_anchored_for_a_location_that_abstained(tmp_path, monk
     assert set(out) == {"California"}
     assert notes["Montana"] == ("abstained: newest reported week 2026-01-03 "
                                 "reads 0 (1 newer week(s) unreported)")
-    assert "Utah" not in notes
+    assert notes["Utah"] == "no forecast: newest week reads 0"
     row = anchor_notes_row({"analogue_anchor_notes": notes},
                            {"analogue": "Groundhog"})
     assert "1 abstained" in str(row) and "anchored earlier" not in str(row)
+    # the zero-count note has its own row, never "anchored earlier"
+    from app.core.runs import no_forecast_row
+    nrow = no_forecast_row({"analogue_anchor_notes": notes},
+                           {"analogue": "Groundhog"})
+    assert nrow[0] == "No forecast" and "Groundhog: 1 location" in nrow[1]
+    assert "Utah: no forecast: newest week reads 0." in nrow[1]
