@@ -1011,6 +1011,12 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
                           + ", ".join(live) + "). Stop or pause it from the "
                           "Retrospective tab first; nothing was run.")
             return RedirectResponse(here, status_code=303)
+        # the sandbox's claim, as /run reads it (its middleware guard
+        # covers /run and /retro/run only)
+        sb = shared._sandbox_live_reason()
+        if sb:
+            shared._flash(f"Not run: {sb}. Stop it from the Sandbox first.")
+            return RedirectResponse(here, status_code=303)
         ui_state._status["running"] = "starting"
         ui_state._status["dataset_id"] = ds.id
         shared._invalidate_scans()
@@ -1428,6 +1434,11 @@ def replay_start(background: BackgroundTasks, dataset: str = Form(...),
             shared._flash("A season replay holds the engine ("
                           + ", ".join(live) + "); stop or pause it first. "
                           "Nothing was started.")
+            return back
+        sb = shared._sandbox_live_reason()
+        if sb:
+            shared._flash(f"Not started: {sb}. Stop it from the Sandbox "
+                          "first.")
             return back
         stamp = CX.new_stamp(ds)
         _REPLAY.update({"id": ds.id, "stamp": stamp})

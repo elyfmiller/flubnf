@@ -402,6 +402,26 @@ def test_a_second_replay_is_refused_while_one_runs():
     assert r.headers["location"] == f"/retro?dataset={ds.id}"
 
 
+def test_a_live_sandbox_fit_refuses_a_dataset_run_and_replay(monkeypatch):
+    """The sandbox's claim holds the engine for the dataset forms too (the
+    sandbox middleware guards /run and /retro/run only)."""
+    ds = stored()
+    got = _capture(monkeypatch)
+    started = []
+    monkeypatch.setattr(DU, "replay_worker", lambda *a, **k: started.append(a))
+    monkeypatch.setitem(ui_state._sandbox_status, "running", "sb-run-1")
+    client.post("/run/dataset", data={
+        "dataset": ds.id, "forecast_date": ds.forecast_dates()[-1],
+        "locations": "all", "engine": "analogue"}, follow_redirects=False)
+    assert not got and not ui_state._status.get("running")
+    assert "sandbox run sb-run-1" in ui_state._status.get("flash", "")
+    ui_state._status.pop("flash", None)
+    client.post("/retro/dataset/run", data={"dataset": ds.id},
+                follow_redirects=False)
+    assert not started and not DU._REPLAY
+    assert "sandbox run sb-run-1" in ui_state._status.get("flash", "")
+
+
 def test_replay_routes_refuse_bad_stamps_and_foreign_hosts():
     ds = stored()
     assert client.get(f"/retro/dataset/{ds.id}/nope").status_code == 404
