@@ -587,6 +587,8 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
 .modal .row button{margin-top:0}
 /* .row's display:flex outranks the UA [hidden] rule */
 .row[hidden]{display:none}
+/* any element's own display rule would outrank the UA [hidden] rule */
+[hidden]{display:none !important}
 /* dialog titles: undo the .card h2 kicker style; wins by coming later */
 .modal h2{font-size:var(--fs-lead);font-weight:700;text-transform:none;
   letter-spacing:0;color:var(--ink);margin:0 0 .35rem}
@@ -600,29 +602,28 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
    Data tab list; the own-data replay card). Every track may shrink to the
    card (min(100%,...)), so the box never widens a narrow page. */
 .dsup{margin:.2rem 0 .4rem;min-width:0}
-.dsdrop{display:flex;flex-direction:column;gap:.4rem;align-items:stretch;
-  border:1.5px dashed var(--mut);border-radius:10px;padding:.75rem .85rem;
-  margin:.3rem 0;background:var(--bg);color:var(--ink);cursor:pointer}
+.dsdrop{position:relative;display:flex;flex-direction:column;align-items:center;
+  gap:.25rem;border:1.5px dashed var(--mut);border-radius:10px;padding:1.1rem .85rem;
+  margin:.3rem 0;color:var(--ink);text-align:center;cursor:pointer}
+.dsdrop:hover{border-color:var(--accent-ink)}
 .dsdrop:focus-within{border-color:var(--accent-ink);
-  background:color-mix(in srgb,var(--accent) 12%,var(--bg))}
+  background:color-mix(in srgb,var(--accent) 12%,transparent)}
 /* a file dragged over: a solid, doubled edge, a stronger tint and "Drop to
    check", unlike the keyboard focus above (visible in every theme) */
 .dsdrop.over{border-style:solid;border-color:var(--accent-ink);
   box-shadow:inset 0 0 0 2px var(--accent-ink);
-  background:color-mix(in srgb,var(--accent) 26%,var(--bg))}
-.dsdrop-t,.dsdrop-on{font-weight:650;font-size:var(--fs-label)}
+  background:color-mix(in srgb,var(--accent) 26%,transparent)}
+.dsdrop-t,.dsdrop-on{font-weight:600}
+.dslink{color:var(--gold);text-decoration:underline;text-underline-offset:2px}
 .dsdrop-on,.dsdrop.over .dsdrop-t{display:none}
 .dsdrop.over .dsdrop-on{display:block}
-.dsdrop input[type=file]{width:100%;max-width:100%;min-width:0;padding:.3rem;
-  background:var(--card)}
-/* the native "Choose File" button takes the theme (it stayed light grey
-   on the dark grounds) */
-.dsdrop input[type=file]::file-selector-button{margin-right:.7rem;
-  padding:.3rem .8rem;border:1px solid var(--field-line);border-radius:6px;
-  background:var(--bg);color:var(--ink);font:inherit;font-weight:600;
-  cursor:pointer}
-.dsdrop input[type=file]::file-selector-button:hover{
-  background:color-mix(in srgb,var(--accent) 14%,var(--bg))}
+.dsdrop-f{font-size:var(--fs-label);color:var(--mut);overflow-wrap:anywhere}
+.dsdrop-f:empty{display:none}
+/* the native input stays in the page (keyboard, screen readers, no-script
+   submit) but out of sight: the zone is the control */
+.dsdrop input[type=file]{position:absolute;inset:0;width:100%;height:100%;
+  opacity:0;cursor:pointer}
+.dsup.js:not(.has-file) .dsup-fields{display:none}
 .dsup-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr));
   gap:0 .9rem}
 .dsup.js .dsup-go{display:none}
@@ -638,9 +639,8 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
 .dsproblems ul{margin:.2rem 0 .3rem;padding-left:1.2rem}
 .dsproblems li{overflow-wrap:break-word}
 .dsproblems .nw,.dsnotes .nw{white-space:nowrap}
-.dsmap{border:1px solid var(--line);border-radius:10px;padding:.2rem .8rem .6rem;
-  margin:.6rem 0;min-width:0}
-.dsmap legend{font-weight:650;font-size:.92rem;padding:0 .3rem}
+.dsmap{border:0;padding:0;margin:.8rem 0;min-width:0}
+.dsmap legend{font-weight:650;font-size:.92rem;padding:0}
 .dsmap-roles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,9rem),1fr));
   gap:0 .8rem}
 .dsnotes{margin:.4rem 0;padding-left:1.1rem;color:var(--mut);font-size:var(--fs-hint)}
@@ -795,9 +795,9 @@ form.sbnew select{width:14rem;max-width:100%;margin-right:.4rem}
 .sbcrumb{margin:0}
 /* the form's default (Enter) button: present, never seen */
 .sb-default{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
-fieldset.sbrun{border:1px solid var(--line);border-radius:8px;
-  padding:.35rem .8rem .5rem;margin:.8rem 0 .4rem}
-fieldset.sbrun legend{color:var(--mut);font-size:var(--fs-label);padding:0 .3rem}
+/* sub-groups inside a card are a heading, not another box */
+fieldset.sbrun{border:0;padding:0;margin:1rem 0 .4rem;min-width:0}
+fieldset.sbrun legend{font-weight:650;font-size:.92rem;padding:0}
 .sbrun .row{align-items:flex-end}
 .sbrun .row > span{display:flex;flex-direction:column}
 .sbrun input[type=number]{width:6.5rem}
@@ -817,9 +817,8 @@ details.sbfill input[type=file]{padding:.3rem}
 .sbreport p{margin:.4rem 0 .1rem}
 .sbactions{margin-top:.5rem}
 /* the New model form's Oracle SIHRS start; compare, diff, the Oracle step */
-fieldset.sbshipped{border:1px solid var(--line);border-radius:8px;
-  padding:.35rem .8rem .5rem;margin:.6rem 0}
-fieldset.sbshipped legend{color:var(--mut);font-size:var(--fs-label);padding:0 .3rem}
+fieldset.sbshipped{border:0;padding:0;margin:.8rem 0;min-width:0}
+fieldset.sbshipped legend{font-weight:650;font-size:.92rem;padding:0}
 .sbshipped .row{align-items:flex-end}
 .sbshipped .row > span{display:flex;flex-direction:column}
 .sbshipped .row > span[hidden]{display:none}

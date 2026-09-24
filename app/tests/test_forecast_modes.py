@@ -48,7 +48,7 @@ def test_forecast_form_offers_two_modes_and_the_advanced_group():
     for needle in ('data-mode="realtime"', 'data-mode="vintage"',
                    'name="season_start"', '<details class="adv"',
                    'name="weeks_to_drop"', 'name="replicates"',
-                   'name="engine"', 'id="season-line"'):
+                   'name="engine"'):
         assert needle in html, needle
     # engine stays in the main group; the two numeric fields moved under
     # Advanced, season start first

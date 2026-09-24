@@ -43,7 +43,7 @@
   <span>{{ tips.label("Upload a CSV", "sb-upload", "A grouped CSV (date, target_group, value, optional population) or a hubverse time series (target_end_date, location, observation); weekly, comma, semicolon or tab separated, up to " ~ upload_mb ~ " MB. It is checked as the Data tab checks it, then kept as one of your datasets.", for_="sbfill-csv") }}
    <input id="sbfill-csv" name="csv" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain"></span>
   <span><label for="sbfill-kind">Values</label>
-   <select id="sbfill-kind" name="kind"><option value="">from the values</option><option value="count">counts</option><option value="rate">rates</option></select></span>
+   <select id="sbfill-kind" name="kind"><option value="">detect</option><option value="count">counts</option><option value="rate">rates</option></select></span>
   <button class="pill" formaction="/sandbox/models/{{ editing.name }}/upload-data" formmethod="post" formenctype="multipart/form-data">Upload and load</button>
  </div>
  {% if upload_report %}

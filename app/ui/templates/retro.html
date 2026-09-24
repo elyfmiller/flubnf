@@ -8,9 +8,9 @@ had, then scores against settled truth.</p>
 <div class="cols">
  <div><div class="card"><h2>Settings</h2>
   {# platform-aware (templating.py _engine_setup_hint): never a macOS-only filename #}
-  {% if not engine_ok %}<p class="warn">The full replay requires the
-  particle-filter engine: {{ engine_setup_hint() }}. The Groundhog-only
-  preset and everything else work without it.</p>{% endif %}
+  {% if not engine_ok %}<p class="warn">The Oracle SIHRS needs the
+  particle-filter engine: {{ engine_setup_hint() }}. Groundhog only works
+  without it.</p>{% endif %}
   <form method="post" action="/retro/run">
    <label>Season</label>
    <select name="season">{% for s in seasons %}<option>{{ s.name }}</option>{% endfor %}</select>
@@ -39,8 +39,8 @@ had, then scores against settled truth.</p>
       venv. "analogue" = Groundhog alone: minutes, no engine, reproduces its
       published numbers anywhere #}
    <select name="engine" id="retro-engine">
-     <option value="pf">Oracle SIHRS and the Groundhog (hours)</option>
-     <option value="analogue">Groundhog only (minutes, no engine needed)</option></select>
+     <option value="pf">Oracle SIHRS + Groundhog (hours)</option>
+     <option value="analogue">Groundhog only (minutes)</option></select>
    {# particles and replicates live in the panel, under their field names #}
    {% include "_model_settings.html" %}
    {# set by the start-over prompt; defaults to 'resume', so a keyboard submit
@@ -89,12 +89,12 @@ had, then scores against settled truth.</p>
    <div class="runbar"><div class="rfill" style="width:2%"></div></div>
    <p class="runstat rstat">{{ s.done }}/{{ s.total }} weeks</p>
    <p class="hint rbasis"></p>
-   {% elif not s_complete %}
+   {% elif not s_complete and s.total %}
    <progress value="{{ s.done }}" max="{{ s.total }}"></progress>
    {% endif %}
    <div class="row" style="justify-content:space-between">
     {# .rcount is repainted by the ticker with .rstat, so they never disagree #}
-    <span class="hint"><span class="rcount">{{ s.done }}/{{ s.total }} weeks</span>{% if s.seal %} · {{ s.seal_label }}{% endif %}
+    <span class="hint"><span class="rcount">{{ "%d/%d weeks"|format(s.done, s.total) if s.total or s.active else "no hub weeks yet" }}</span>{% if s.seal %} · {{ s.seal_label }}{% endif %}
      {# the convention travels with the score: every relWIS on this page is
         the ratio of sums (the sealed numbers' convention). One headline per
         shipped model (PF first); a card with only `rel` prints it unnamed #}

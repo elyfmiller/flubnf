@@ -1,7 +1,7 @@
 /* The Model settings panel (templates/_model_settings.html): the live
-   "shipped / modified" badge, the rows that do not apply to the chosen
+   "default / modified" badge, the rows that do not apply to the chosen
    engine hidden (the server ignores them too, and never records them),
-   "Reset to shipped", and the override's reason made required when its
+   "Reset to defaults", and the override's reason made required when its
    box is ticked. The server is the authority; this only keeps the page
    honest while the form is filled in.
 
@@ -34,6 +34,18 @@
       m = s ? (s.value || '').match(/^(\d{4})-/) : null;
       return m ? m[1] + '-08-01' : '';
     }
+    // Season start shows its default (a blank date field reads as today in
+    // some browsers); it follows the date until someone types their own
+    function syncSeason() {
+      inputs.forEach(function (el) {
+        if (el.dataset.knob !== 'run.season_start') return;
+        var d = seasonDefault();
+        if (el.value === '' || el.value === el.dataset.auto) {
+          el.value = d;
+          el.dataset.auto = d;
+        }
+      });
+    }
     function nums(v) {
       return String(v).split(',').map(function (x) { return parseFloat(x); });
     }
@@ -41,7 +53,7 @@
       if (el.disabled) return false;
       var v = String(el.value || '').trim(), d = el.dataset.default || '';
       if (el.dataset.knob === 'run.season_start') return v !== '' && v !== seasonDefault();
-      if (v === '') return false;                      // blank means shipped
+      if (v === '') return false;                      // blank means the default
       if (el.type === 'number') return parseFloat(v) !== parseFloat(d);
       if (el.dataset.knob.indexOf('pf.prior.') === 0) {
         var a = nums(v), b = nums(d);
@@ -82,7 +94,7 @@
         return !el.closest('[hidden]') && isModified(el);
       });
       if (badge) {
-        badge.textContent = any ? 'modified' : 'shipped';
+        badge.textContent = any ? 'modified' : 'default';
         badge.className = 'ms-badge ' + (any ? 'warn' : 'ok');
       }
       if (ovr) ovr.hidden = !any;
@@ -92,6 +104,7 @@
       inputs.forEach(function (el) {
         if (!el.disabled) el.value = el.dataset.default || '';
       });
+      syncSeason();
       if (tick) tick.checked = false;
       if (reason) reason.value = '';
       update();
@@ -103,13 +116,13 @@
       if (t && (t === engineSelect() || t.id === 'model-pick' || t.id === 'retro-engine'
                 || t.name === 'forecast_date' || t.name === 'season'
                 || t.name === 'dataset')) {
-        filter(); update();
+        syncSeason(); filter(); update();
       }
     });
     // the page says the kind of data changed (the own-data replay's
     // dataset select): refilter without waiting for a form change
-    box.addEventListener('ms-refilter', function () { filter(); update(); });
-    filter(); update();
+    box.addEventListener('ms-refilter', function () { syncSeason(); filter(); update(); });
+    syncSeason(); filter(); update();
   }
   document.querySelectorAll('details[data-scope]').forEach(init);
 })();

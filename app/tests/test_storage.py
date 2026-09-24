@@ -438,7 +438,7 @@ def test_ledger_collapses_behind_a_summary_by_default(state):
     assert "<details class=\"ledgerfold\" id=\"ledgerfold\" open" not in html
     assert "4 runs recorded" in joined
     # the ledger keeps its own clear heading on the Storage page
-    assert "<h2>Run ledger</h2>" in html
+    assert "<h2>Run ledger " in html
     # the newest entry (the live run) is named in the summary line
     summary = html.split('id="ledgerfold">', 1)[1].split("</summary>", 1)[0]
     assert "newest" in summary

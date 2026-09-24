@@ -55,6 +55,7 @@
  {# plain GET form (shareable URL), no auto-submit: a scripted submit
     reloads per ArrowDown on a closed select in Chrome/Edge on Windows
     (WCAG 3.2.2) #}
+ {% if ds or vintages %}
  <form method="get" action="/data" class="row" style="align-items:flex-end">
   {% if ds %}<input type="hidden" name="source" value="{{ ds.id }}">{% endif %}
   {% if not ds or ds.vintage_true %}
@@ -69,6 +70,7 @@
    </select></span>
   <button class="quiet">Show</button>
  </form>
+ {% else %}<p class="hint">Nothing archived yet.</p>{% endif %}
  {% if view_note %}<p class="warn">{{ view_note }}</p>{% endif %}
  {% if sel_summary %}
  <p class="hint">As archived on {{ sel_vintage }}: {{ "{:,}".format(sel_summary.rows) }}

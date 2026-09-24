@@ -256,7 +256,7 @@
 {% endif %}
 
 <div class="card">
-<h2>Run ledger</h2>
+<h2>Run ledger {{ tips.tip("st-ledger", "the run ledger", "Elapsed is wall time (a dash: recorded before timing existed). A dash under on disk: the workroot was deleted and the ledger row remains.") }}</h2>
 {# ledger fold: one-line summary (count, newest); open state persists #}
 {% if ledger %}
 <details class="ledgerfold" id="ledgerfold">
@@ -280,9 +280,6 @@
  <td>{{ r.chips | safe }}</td></tr>
 {% else %}<tr><td colspan="5" class="hint">No runs yet.</td></tr>{% endfor %}
 </table>
-<p class="hint">Elapsed is wall time (a dash: recorded before timing
- existed); a dash under "on disk": the workroot was deleted, the ledger row
- remains.</p>
 {% if clear_count %}
 {# clear via the shared confirmation (names the count); the server refuses a
    stale count, skips the active run, and never deletes workroot data #}

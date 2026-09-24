@@ -85,7 +85,7 @@ def test_the_box_is_on_data_forecast_and_retrospective():
                 'required') in page
         assert 'accept=".csv,.tsv,.txt,' in page
         assert "dataset-template.csv" in page
-        assert '<option value="" selected>from the values</option>' in page
+        assert '<option value="" selected>detect</option>' in page
     # the old manual weekday option is gone from every page
     assert "week-start Sundays" not in client.get("/data").text
 
