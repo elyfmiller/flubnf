@@ -18,23 +18,12 @@
 </div>
 {% endif %}
 
-{% if pf_failures or step_errors or ensemble_analogue_only or ensemble_withheld %}
+{% if pf_failures or step_errors %}
 {# partial-run record from the ledger outcome: names each failed cell and
    reason as copyable text (the ledger chips only count them) #}
 <div class="card"><h2>Partial-run detail</h2>
  <p class="hint">Recorded on this run's ledger row; copy this block when
   reporting a partial run.</p>
- {# the next two blocks render ledger rows from before the blend was
-    retired (2026-09-22); no current run writes these keys #}
- {% if ensemble_withheld %}
- <p><b>ensemble</b>: <span class="bad">no file written</span><br>
-  <span class="hint">{{ ensemble_withheld }}</span></p>
- {% endif %}
- {% if ensemble_analogue_only %}
- <p><span class="warn">Analogue-only in the ensemble</span>: every PF
-  replicate failed for {{ ensemble_analogue_only | join(", ") }}, so the
-  ensemble file carried the analogue member alone there.</p>
- {% endif %}
  {% if pf_failures %}
  <p>PF fit{{ 's' if pf_failures | length != 1 }} that failed
   ({{ pf_failures | length }}):</p>

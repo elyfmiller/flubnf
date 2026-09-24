@@ -238,10 +238,11 @@ def test_report_carries_the_season_verdict_before_the_player(tmp_path,
     # the static verdict block precedes the player card
     assert html.index('id="season-summary"') < html.index('id="pb-play"')
     assert "Season verdict" in html
-    # final relWIS tiles for each member and the ensemble, colored by the
-    # below-1 rule; the values are the final week's cumulative stats
-    for name, val, cls in (("FluBNF Ensemble (retired)", "0.900", "ok"),
-                           ("Oracle SIHRS", "0.500", "ok"),
+    # final relWIS tiles for each shipped member, colored by the below-1
+    # rule; the values are the final week's cumulative stats. The retired
+    # blend's stored rows get no tile.
+    assert 'class="tileval ok">0.900' not in html
+    for name, val, cls in (("Oracle SIHRS", "0.500", "ok"),
                            ("Groundhog", "1.500", "bad")):
         assert name in html, name
         assert f'class="tileval {cls}">{val}' in html, (name, val)
@@ -254,7 +255,7 @@ def test_report_carries_the_season_verdict_before_the_player(tmp_path,
         assert f"<td>{loc}</td>" in html, loc
     assert '<td class="num ok">0.500</td>' in html
     assert '<td class="num bad">1.500</td>' in html
-    assert '<td class="num ok">0.900</td>' in html
+    assert '<td class="num ok">0.900</td>' not in html
 
 
 def test_the_export_names_the_scoring_convention_on_its_own(tmp_path,

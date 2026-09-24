@@ -483,9 +483,8 @@
  drawData('season');
  // forecast fans (interactive, full width)
  const MODELS=Object.keys(FANQ);
- // PF first, then the Groundhog; "ensemble" only on runs stored before the
- // blend was retired (2026-09-22)
- let FMODEL=['pf','analogue','ensemble'].find(m=>MODELS.includes(m))||MODELS[0];
+ // PF first, then the Groundhog
+ let FMODEL=['pf','analogue'].find(m=>MODELS.includes(m))||MODELS[0];
  let FLOCS=FMODEL?Object.keys(FANQ[FMODEL]):[];
  let FIDX=0;
  async function ensureSeries(loc){
@@ -538,17 +537,6 @@
    if(aftX.length) traces.push({x:aftX,y:aftY,mode:'lines+markers',
      name:'settled outcome',line:{color:css('--ink'),dash:'dot',width:1.4},
      marker:{size:4}});
-   // a stored blend: member medians as legend-only lines
-   if(FMODEL==='ensemble'){
-     const MDASH={pf:'solid',analogue:'dash',pf2s:'dot'};
-     for(const m of MODELS){
-       if(m==='ensemble') continue;
-       const mq=(FANQ[m]||{})[loc]; if(!mq) continue;
-       traces.push({x:xs,y:hs.map(h=>mq[h]?mq[h]['0.5']:null),mode:'lines',
-         name:(MNAMES[m]||m)+' median',visible:'legendonly',
-         line:{color:memberColor(m),width:1.4,dash:MDASH[m]||'dot'}});
-     }
-   }
    // react repaints in place: a page flip never collapses the card or
    // moves the scroll
    Plotly.react(document.getElementById('fanplot'),traces,lay(loc,400),

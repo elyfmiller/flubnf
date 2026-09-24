@@ -8,7 +8,7 @@
    draws, unlabelled, in the accent colour #}
 {% if curves is not defined %}{% set curves = ({'': curve} if curve else {}) %}{% endif %}
 {% if member_colors is not defined %}{% set member_colors = {} %}{% endif %}
-{% if season_models is not defined %}{% set season_models = ['pf', 'analogue', 'ensemble'] %}{% endif %}
+{% if season_models is not defined %}{% set season_models = ['pf', 'analogue'] %}{% endif %}
 {# every link and fetch carries the archive id, so all read the same tree #}
 {% set aq = ('?archive=' ~ archive) if archive else '' %}
 {% if preparing %}
@@ -349,7 +349,7 @@
  <tbody>
  {# the national row leads as a DISTINCT row with its provenance label; it
     sorts and filters with the states but is NOT in the pooled figures #}
- {% if us_row and (us_row.pf or us_row.analogue or us_row.ensemble) %}
+ {% if us_row and (us_row.pf or us_row.analogue) %}
  <tr class="usagg" data-name="{{ us_row.short_label }}"
   {%- for m in season_models %} data-{{ m }}="{{ "%.6f"|format(us_row[m]) if us_row[m] else '' }}"{% endfor %}>
   <td>{{ us_row.short_label }}</td>
@@ -364,7 +364,7 @@
  <td class="num{% if r[m] and r[m] >= 1 %} bad{% endif %}">
   {{ "%.3f"|format(r[m]) if r[m] else "n/a" }}</td>{% endfor %}</tr>
 {% endfor %}</tbody></table>
-{% if us_row and (us_row.pf or us_row.analogue or us_row.ensemble) %}
+{% if us_row and (us_row.pf or us_row.analogue) %}
 <p class="hint">{{ us_row.note }}</p>
 {% if pooled_note %}<p class="hint">{{ pooled_note }}</p>{% endif %}
 {% endif %}

@@ -700,8 +700,9 @@ def _outlook_cards(res: dict | None, rid: str | None = None) -> tuple:
                     cards = {c["fips"]: c
                              for c in (bundle.get("cards") or {}).values()
                              if isinstance(c, dict) and c.get("fips")}
-                    if any(c.get("probs") for c in cards.values()):
-                        model = bundle.get("cards_model") or "pf"
+                    model = bundle.get("cards_model") or "pf"
+                    if (model not in report_v2.RETIRED_MODELS
+                            and any(c.get("probs") for c in cards.values())):
                         bundle_cards = cards
                         bundle_meta = {"model": model, "approx": False,
                                        "label": report_v2.MODEL_LABEL.get(
@@ -722,9 +723,8 @@ def _outlook_cards(res: dict | None, rid: str | None = None) -> tuple:
     n2a = dict(zip(_l.location_name, _l.abbreviation))
     n2p = dict(zip(_l.location_name, _l.population.astype(float)))
     models = (res or {}).get("models", {})
-    # PF first, then the Groundhog; "ensemble" only on legacy runs
-    model = next((m for m in ("pf", "analogue", "ensemble")
-                  if models.get(m)), "pf")
+    # PF first, then the Groundhog (a legacy run's blend is not shown)
+    model = next((m for m in ("pf", "analogue") if models.get(m)), "pf")
     observed = (res or {}).get("observed", {})
     by_model: dict = {}
     models = _hzmod.models_to_canonical(models)
@@ -753,10 +753,9 @@ def _outlook_cards(res: dict | None, rid: str | None = None) -> tuple:
                            "fips": fips, "hover_html": hover}
         if cards:
             by_model[mname] = cards
-    # the retired blend is the map only when a legacy run stored nothing else
+    # the retired blend is never the map, even on a legacy run
     from app.core.report_v2 import RETIRED_MODELS
-    live = {m: c for m, c in by_model.items() if m not in RETIRED_MODELS}
-    by_model = live or by_model
+    by_model = {m: c for m, c in by_model.items() if m not in RETIRED_MODELS}
     if model not in by_model and by_model:
         model = next(iter(by_model))
     # no toggle possible: an exact single-model bundle beats the approximation
@@ -1027,12 +1026,9 @@ def forecast_page(request: Request):
                     if all(isinstance(v, dict) for v in qs.values())}
             if good:
                 fanq[mname] = good
-        # retired blend only when a legacy run stored nothing else
-        # (report_v2.toggle_models, the home outlook's rule)
+        # the shipped models only: a legacy run's retired blend is not drawn
         from app.core.report_v2 import toggle_models
-        live = toggle_models(fanq)
-        if live:
-            fanq = {m: fanq[m] for m in live}
+        fanq = {m: fanq[m] for m in toggle_models(fanq)}
     ledger_rows = Ledger().rows(5)
     for r in ledger_rows:
         r["label"] = _run_label(r["run_id"], r.get("spec", ""))
@@ -2505,9 +2501,6 @@ def run_page(request: Request, run_id: str):
                                ("score_error", "archive_error",
                                 "report_inputs_error", "report_error")
                                if o.get(k)}
-                ens_analogue_only = list(
-                    o.get("ensemble_analogue_only") or [])
-                ens_withheld = str(o.get("ensemble_withheld") or "")
             except Exception:
                 err = ""
             break
@@ -2529,8 +2522,6 @@ def run_page(request: Request, run_id: str):
         "versions": version_pairs(row_sha, row_engine_versions),
         "can_rerun": bool(spec_json) and status in RERUN_STATUSES,
         "pf_failures": pf_failures, "step_errors": step_errors,
-        "ensemble_analogue_only": ens_analogue_only,
-        "ensemble_withheld": ens_withheld,
         "subs": subs, "sub_errors": sub_errors, "report": report})
 
 
@@ -2812,15 +2803,6 @@ def _outcome_chips(outcome_json: str) -> str:
         # deliberate withholding (research run); the run page names the model
         bits.append('<span class="hint">submission withheld '
                     '(research run)</span>')
-    # LEGACY ensemble keys (see ENGINES note): old rows only
-    if o.get("ensemble_withheld"):
-        bits.append('<span class="bad">ensemble withheld: '
-                    'no PF member</span>')
-    if o.get("ensemble_analogue_only"):
-        n = len(o["ensemble_analogue_only"])
-        bits.append(f'<span class="bad">{n} location'
-                    f'{"s" if n != 1 else ""} analogue-only in the '
-                    'ensemble</span>')
     if o.get("report"): bits.append("report ✓")
     if o.get("pf_relwis"):
         # scored-cell count; older rows only carry the fit-cell count
@@ -2828,9 +2810,8 @@ def _outcome_chips(outcome_json: str) -> str:
                                 cells=o.get("pf_relwis_cells",
                                             o.get("pf_cells")),
                                 member=_pf_member_label(o)))
-    # every scored member; "ensemble" only on legacy rows
-    for key, member in (("analogue_relwis", "Groundhog"),
-                        ("ensemble_relwis", "ensemble")):
+    # every scored member (older rows' retired-blend keys are not shown)
+    for key, member in (("analogue_relwis", "Groundhog"),):
         if o.get(key):
             bits.append(relwis_chip(o[key], cells=o.get(f"{key}_cells"),
                                     member=member))
@@ -4687,14 +4668,20 @@ def retro_results(request: Request, season: str, week: str = "",
     # numbers (pairwise without field data) the page says why, never falls back
     convention = relwis.convention_of(conv)
     figs = _relwis_figures(root, convention) if scoreable else None
+    # a season scored before 2026-09-22 also carries the retired blend's
+    # rows; they are read (scoring stays whole) but never shown
+    from app.core.report_v2 import RETIRED_MODELS
     if figs is not None and figs.available:
-        heads = figs.values
+        heads = {m: v for m, v in figs.values.items()
+                 if m not in RETIRED_MODELS}
         states = list(figs.states)
     if scoreable and convention == relwis.RATIO_OF_SUMS:
         # the cumulative curve is a running ratio of sums: this convention only
         asofs = sorted(df["asof"].unique())
-        # one line per model in the frame (relwis.MODELS order; legacy blend too)
+        # one line per shipped model in the frame (relwis.MODELS order)
         for m in relwis.MODELS:
+            if m in RETIRED_MODELS:
+                continue
             g = df[df.model == m]
             if not len(g):
                 continue
@@ -4810,12 +4797,13 @@ def retro_results(request: Request, season: str, week: str = "",
         "model_name": _name_fn(names),
         "curve": curve, "curves": curves, "states": states,
         "member_colors": _member_colors(),
-        # the models this season scored, in table order (legacy blend too)
+        # the shipped models this season scored, in table order
         "season_models": [m for m in relwis.MODELS
-                          if m in heads or m in curves
+                          if m not in RETIRED_MODELS
+                          and (m in heads or m in curves
                           or any((r.get(m) if isinstance(r, dict)
                                   else getattr(r, m, None))
-                                 for r in states)],
+                                 for r in states))],
         "us_row": us_row,
         # provenance travels WITH the numbers (fitted vs constructed)
         "us": (us.as_dict() if us is not None

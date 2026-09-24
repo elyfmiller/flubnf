@@ -183,12 +183,10 @@ def version_pairs(build: str = "", versions: dict | None = None) -> list:
 MODE_LABELS = {"realtime": "real-time (newest week)",
                "vintage": "vintage (archived week)"}
 
-#: (label, relWIS key, cells key) per scored model, in table order; the
-#: retired blend's row renders only for older ledger rows
+#: (label, relWIS key, cells key) per scored model, in table order. Older
+#: ledger rows may also carry the retired blend's keys; they are not shown.
 _RESULT_ROWS = (("Oracle SIHRS", "pf_relwis", "pf_relwis_cells"),
-                ("Groundhog", "analogue_relwis", "analogue_relwis_cells"),
-                ("FluBNF ensemble (retired)", "ensemble_relwis",
-                 "ensemble_relwis_cells"))
+                ("Groundhog", "analogue_relwis", "analogue_relwis_cells"))
 
 
 def results_html(outcome, spec) -> str:
@@ -245,16 +243,6 @@ def results_html(outcome, spec) -> str:
                                 'incomplete)</span> <span class="hint">'
                                 f'{_html.escape(str(o["pf_engine_broken"]))}'
                                 '</span>'))
-    # the next two keys exist only on rows from before the blend was retired
-    if o.get("ensemble_analogue_only"):
-        names = list(o["ensemble_analogue_only"])
-        rows.append(("Analogue only", f'<span class="bad">{len(names)} location'
-                     f'{"s" if len(names) != 1 else ""}</span> '
-                     f'<span class="hint">({", ".join(map(str, names[:6]))}'
-                     f'{", ..." if len(names) > 6 else ""})</span>'))
-    if o.get("ensemble_withheld"):
-        rows.append(("Ensemble file", f'<span class="bad">withheld</span> '
-                     f'<span class="hint">{o["ensemble_withheld"]}</span>'))
     if o.get("submission_withheld"):
         rows.append(("Submission", f'<span class="bad">withheld</span> '
                      f'<span class="hint">{o["submission_withheld"]}</span>'))

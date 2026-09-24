@@ -102,8 +102,7 @@ and move on; scoring waits for settled truth.</p>
     <span class="hint"><span class="rcount">{{ s.done }}/{{ s.total }} weeks</span>{% if s.seal %} · {{ s.seal_label }}{% endif %}
      {# the convention travels with the score: every relWIS on this page is
         the ratio of sums (the sealed numbers' convention). One headline per
-        scored model (PF first; the retired blend for seasons scored before
-        2026-09-22); a card with only `rel` prints it unnamed #}
+        shipped model (PF first); a card with only `rel` prints it unnamed #}
      {% set s_rels = s.rels if (s.rels is defined and s.rels) else ({'': s.rel} if s_complete else {}) %}
      {# pf is named for THIS card's tree (s.pf_name, server._names_for_root):
         sealed or pre-Oracle trees hold the particle filter alone #}

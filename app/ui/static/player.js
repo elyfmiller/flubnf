@@ -262,14 +262,13 @@ function weekCellState(v, isOfficial, weekKnown, weekHas, seasonHas){
   return 'pending';
 }
 
-// models offered, in display order: the ones that ship; the retired blend
-// only when a stored season has nothing else (report_v2.RETIRED_MODELS is
-// the same set)
+// models offered, in display order: the ones that ship. A stored season's
+// retired blend is never offered (report_v2.RETIRED_MODELS is the same set)
 var RETIRED_MODELS = ['ensemble'];
 function offeredModels(have){
-  var live = ['pf', 'analogue', 'pf2s'].filter(function(m){ return have[m]; });
-  if(live.length) return live;
-  return RETIRED_MODELS.filter(function(m){ return have[m]; });
+  return ['pf', 'analogue', 'pf2s'].filter(function(m){
+    return have[m] && RETIRED_MODELS.indexOf(m) < 0;
+  });
 }
 
 // caption when a frame draws no fan: `available` models cover the location
@@ -350,8 +349,7 @@ function createPlayer(cfg){
     var have = {};
     ((cat && cat.models) || (pl ? Object.keys(pl.models || {}) : []))
       .forEach(function(m){ have[m] = 1; });
-    // the models that ship, never the retired blend beside them
-    // (offeredModels); the season's headline keeps the blend's score
+    // the models that ship, never the retired blend (offeredModels)
     var ours = offeredModels(have);
     ALLM = ours.concat(OFFS);
     var dflt = {ensemble: true, pf: true, analogue: true};

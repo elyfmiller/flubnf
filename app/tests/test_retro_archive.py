@@ -87,7 +87,7 @@ def _season_tree(retro_root: Path, season: str, weeks=(W1, W2),
     (root / "playback_cache" / "stats_cells.json").write_text('{"weeks":{}}')
     # scores.json in the exact shape score_season writes: pooled ensemble
     # relWIS works out to 0.500, the headline the index must show
-    rows = [{"model": "ensemble", "location": "Ohio", "fips": "39",
+    rows = [{"model": "pf", "location": "Ohio", "fips": "39",
              "asof": w, "horizon": 0, "wis": 1.0 + i * 2.0,
              "base_wis": 2.0 + i * 4.0, "rel": 0.5}
             for i, w in enumerate(weeks)]

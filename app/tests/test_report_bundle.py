@@ -349,14 +349,12 @@ def test_pre_bundle_run_falls_back_and_labels_the_approximation(
     rid, res = srv._latest_results()
     cards, meta = srv._outlook_cards(res, rid)
     # the stored results carry the blend alone (a run from before it was
-    # retired), so that is the one model the fallback can offer
-    assert meta["approx"] is True and meta["model"] == "ensemble"
-    assert any(c.get("probs") for c in cards.values())
+    # retired): it is read without error but never colors the map
+    assert meta["approx"] is True and meta["by_model"] == {}
+    assert not any(c.get("probs") for c in cards.values())
     home = client.get("/")
-    # the label span is the model toggle's relabel target, so the phrase
-    # spans a data-mapmodel-label element
-    assert "FluBNF Ensemble (retired) outlook" in home.text
-    assert "approximate, from stored quantiles" in home.text
+    assert home.status_code == 200
+    assert "Ensemble (retired)" not in home.text
 
 
 def test_v1_bundle_still_loads_and_renders_as_pf(tmp_path, monkeypatch):

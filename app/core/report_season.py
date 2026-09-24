@@ -193,9 +193,9 @@ def _us_national(root: Path, df) -> tuple:
 #: the season page's cumulative chart heading, verbatim (the parity test matches it)
 CURVE_HEADING = "Cumulative relWIS through the season"
 
-#: in order: the two shipped members, the research member, the retired blend
-#: (present only in older scores.json files)
-SEASON_MODELS = ("pf", "analogue", "pf2s", "ensemble")
+#: in order: the two shipped members, the research member. Older
+#: scores.json files also carry the retired blend's rows; they are not shown.
+SEASON_MODELS = ("pf", "analogue", "pf2s")
 
 
 def _cumulative_curves(df) -> dict:

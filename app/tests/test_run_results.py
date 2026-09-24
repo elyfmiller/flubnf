@@ -69,12 +69,13 @@ def test_results_table_states_type_members_fits_files_and_report():
     assert "vintage (archived week)" in html and "real-time" not in html.split("vintage")[0]
     assert '<span class="relwis bad">1.774</span>' in html
     assert '<span class="relwis ok">0.913</span>' in html
-    assert '<span class="relwis ok">0.842</span>' in html and "(4 cells)" in html
+    assert "(4 cells)" in html
     assert "3 fits" in html and '<span class="bad">1 failure</span>' in html
     assert "2 files" in html and "written" in html
-    # the blend's row still renders for a ledger row that carries its
-    # score (a run from before 2026-09-22), after the two models that ship
-    assert html.index("Oracle SIHRS") < html.index("Groundhog") < html.index("FluBNF ensemble (retired)")
+    # a ledger row from before 2026-09-22 still carries the retired blend's
+    # score: read without error, not shown; the two shipped models in order
+    assert html.index("Oracle SIHRS") < html.index("Groundhog")
+    assert "0.842" not in html and "ensemble" not in html.lower()
     # a JSON spec and outcome, as the ledger row carries them
     again = results_html(json.dumps(outcome), json.dumps({"extra": {"mode": "realtime"}}))
     assert "real-time (newest week)" in again

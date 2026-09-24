@@ -151,7 +151,8 @@ def test_cumulative_chart_absent_curve_says_so():
 # ------------------------- finding 20: exceptions only, numerals aligned
 
 def test_per_state_table_colors_only_scores_at_or_above_one():
-    html = _season()
+    html = _season(states=[{"name": "Ohio", "pf": 0.9, "analogue": 1.1},
+                           {"name": "Utah", "pf": 0.8, "analogue": None}])
     body = html.split("Per-state scores")[1].split("</table>")[0]
     assert re.search(r'<td class="num bad">\s*1\.100</td>', body)
     assert re.search(r'<td class="num">\s*0\.900</td>', body)   # quiet win
@@ -159,10 +160,10 @@ def test_per_state_table_colors_only_scores_at_or_above_one():
     assert re.search(r'<td class="num">\s*n/a</td>', body)
     # the headers are the sort controls now: aria-pressed buttons in the
     # th's own type, still under the shared .num right alignment
-    # the column labels are the shared model names; the retired blend's
-    # column renders here because this render's context still lists it
-    for key, label in (("pf", "Oracle SIHRS"), ("analogue", "Groundhog"),
-                       ("ensemble", "FluBNF Ensemble \(retired\)")):
+    # the column labels are the shared model names; the retired blend has
+    # no column (the default season_models are the two shipped models)
+    assert 'data-key="ensemble"' not in body
+    for key, label in (("pf", "Oracle SIHRS"), ("analogue", "Groundhog")):
         assert re.search(r'<th class="num"><button type="button" '
                          r'class="thsort" data-key="' + key + r'"\s+'
                          r'aria-pressed="false">' + label, body), key
@@ -313,7 +314,7 @@ def test_model_switcher_reads_the_shared_map():
 
 def test_stored_forecasts_render_without_a_session_gate(monkeypatch):
     res = {"forecast_date": "2098-11-14",
-           "models": {"ensemble": {"Ohio": {"1": {"0.1": 1.0, "0.5": 2.0,
+           "models": {"pf": {"Ohio": {"1": {"0.1": 1.0, "0.5": 2.0,
                                                   "0.9": 3.0}}}},
            "observed": {}}
     monkeypatch.setattr(srv, "_latest_results", lambda: ("r1", res))
@@ -321,7 +322,7 @@ def test_stored_forecasts_render_without_a_session_gate(monkeypatch):
     srv._status.pop("session_ran", None)            # a fresh process has none
     r = client.get("/forecast")
     assert r.status_code == 200
-    assert '"ensemble": {"Ohio"' in r.text          # the stored fans ship
+    assert '"pf": {"Ohio"' in r.text          # the stored fans ship
     assert "latest stored run" in r.text            # and the title says so
     # the gate is gone from the codebase, not merely bypassed
     assert "session_ran" not in SERVER_SRC

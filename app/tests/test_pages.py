@@ -177,10 +177,10 @@ def test_model_pages_render_mechanism_and_collapsed_intro():
         assert 'href="/methods#' in r.text, name
 
 
-def test_forecast_page_renders_with_ensemble_overlay_js():
+def test_forecast_page_renders_without_the_retired_blend_overlay():
     r = client.get("/forecast")
     assert r.status_code == 200
-    assert "legendonly" in r.text
+    assert "legendonly" not in r.text and "FMODEL==='ensemble'" not in r.text
 
 
 def test_methods_anchors_and_backlinks():
