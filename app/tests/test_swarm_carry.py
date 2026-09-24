@@ -266,6 +266,28 @@ def test_prepare_can_fit_the_initial_infected_fraction(monkeypatch, tmp_path):
                    tmp_path / "wr3")
 
 
+def test_fit_i0_refuses_an_upper_bound_that_makes_recovered_negative(
+        monkeypatch, tmp_path):
+    """The model starts R() at N*(1 - s0 - i0): an i0 above 1 - s0 (0.15 at
+    the fixed s0 = 0.85) is a negative population, so the bound is refused
+    in plain words before any location is prepared; one below it runs."""
+    import flubnf.sihrs_fit as sf
+    from flubnf.sihrs_priors import S0_DEFAULT
+    _prep_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(sf, "materialize_model", lambda s, t, out, sfx, **k: (
+        Path(out).write_text("begin parameters\ni0  %.8e\nend parameters\n"
+                             % s.i0) and Path(out)))
+    for hi in (0.5, 0.99, 1 - S0_DEFAULT):
+        with pytest.raises(ValueError, match=r"below 1 - s0 = 0\.15"):
+            pf.prepare(_spec(["Ohio"], replicates=1,
+                             extra={"fit_i0": [1e-6, hi]}),
+                       tmp_path / f"wr{hi}")
+        assert not list((tmp_path / f"wr{hi}").glob("*/m.bngl"))
+    cells = pf.prepare(_spec(["Ohio"], replicates=1,
+                             extra={"fit_i0": [1e-6, 0.1]}), tmp_path / "ok")
+    assert cells[0]["fit_i0"] == [1e-6, 0.1]
+
+
 def _traj_cell(w, key, loc, content, **more):
     d = w / key
     runs = d / "out" / "Results" / "PF" / "Runs"

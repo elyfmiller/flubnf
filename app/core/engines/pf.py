@@ -499,6 +499,15 @@ def prepare(spec, workroot: Path) -> list:
         if not (0 < fit_i0[0] < fit_i0[1] < 1):
             raise ValueError(f"fit_i0 must be [lo, hi] with 0 < lo < hi < 1, "
                              f"not {fit_i0}")
+        # the model starts R() at N*(1 - s0 - i0): an i0 at or above 1 - s0
+        # is a negative (or no) recovered population, never a valid start
+        from flubnf.sihrs_priors import S0_DEFAULT
+        if fit_i0[1] >= 1 - S0_DEFAULT:
+            raise ValueError(
+                f"fit_i0 upper bound {fit_i0[1]:g} is too large: it must be "
+                f"below 1 - s0 = {1 - S0_DEFAULT:g} (s0, the susceptible "
+                f"fraction, is {S0_DEFAULT:g}), or the model would start "
+                "with a negative recovered count")
     two_strain = variant == "2strain"
     natg = variant == "natg"
     if natg:
