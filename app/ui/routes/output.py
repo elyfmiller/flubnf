@@ -98,10 +98,39 @@ def _submission_files(d: Path) -> list:
     return out
 
 
-def _hub_status(path: str, today=None) -> dict:
+#: the hub's clock: the window closes at this hour, Eastern, on its last day
+HUB_CLOSE_HOUR = 23
+
+
+def _eastern(now):
+    """An aware datetime as US Eastern wall time (EST/EDT). zoneinfo when
+    the tz database is there; else the US rule (EDT from 2 AM on March's
+    second Sunday to 2 AM on November's first), which is what it holds."""
+    import datetime as _dt
+    try:
+        from zoneinfo import ZoneInfo
+        return now.astimezone(ZoneInfo("America/New_York"))
+    except Exception:
+        pass
+    utc = now.astimezone(_dt.timezone.utc).replace(tzinfo=None)
+
+    def _sunday(year, month, n):
+        d = _dt.datetime(year, month, 1)
+        return d + _dt.timedelta(days=(6 - d.weekday()) % 7 + 7 * (n - 1))
+    y = utc.year
+    start = _sunday(y, 3, 2) + _dt.timedelta(hours=2 + 5)    # 2 AM EST
+    end = _sunday(y, 11, 1) + _dt.timedelta(hours=2 + 4)     # 2 AM EDT
+    off = -4 if start <= utc < end else -5
+    return (utc + _dt.timedelta(hours=off)).replace(
+        tzinfo=_dt.timezone(_dt.timedelta(hours=off)))
+
+
+def _hub_status(path: str, today=None, now=None) -> dict:
     """One registered file's hub check for the page: {"ok", "text"}, the
     text one short line (app/core/hubcheck.summary; the window from
-    tasks.json, the hub closing at 11 PM Eastern on its last day)."""
+    tasks.json, the hub closing at 11 PM Eastern on its last day). The
+    clock is Eastern time, not the machine's: `now` (an aware datetime,
+    default the current time) or, for a whole-day answer, `today`."""
     import datetime as _dt
     from app.core import hubcheck
     s = hubcheck.summary(path)
@@ -115,7 +144,11 @@ def _hub_status(path: str, today=None) -> dict:
                 "text": f"Passes the hub's checks. {s['reference_date']} is "
                         "not a FluSight round, so this file is a record."}
     first, last = s["due"]
-    today = today or _dt.date.today()
+    if today is None:
+        et = _eastern(now or _dt.datetime.now(_dt.timezone.utc))
+        today = et.date()
+        if today == last and et.hour >= HUB_CLOSE_HOUR:
+            today = last + _dt.timedelta(days=1)     # closed at 11 PM ET
     if today > last:
         when = f"The window closed {last:%a %Y-%m-%d}."
     elif today < first:
