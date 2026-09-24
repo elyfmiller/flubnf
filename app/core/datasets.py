@@ -1010,9 +1010,78 @@ class Dataset:
     def reference_dates(self) -> list:
         """MicroHub's retrospective dates: every distinct week except the
         first, from the final data."""
-        with open(self.final_path, newline="") as fh:
-            ds = sorted({r["date"] for r in csv.DictReader(fh)})
-        return ds[1:]
+        return self.weeks()[1:]
+
+    # ---- the engines' view (later stages): one path per as-of -------------
+
+    @property
+    def vintage_true(self) -> bool:
+        """True when the upload carried as_of snapshots: a forecast at a
+        key sees the data as it stood then. Otherwise every as-of reads
+        the final series truncated at the as-of (final data, not
+        vintage-true)."""
+        return self.has_as_of
+
+    def _final_rows(self) -> list:
+        """The final snapshot's rows, read once per Dataset object."""
+        rows = self.__dict__.get("_final_cache")
+        if rows is None:
+            with open(self.final_path, newline="") as fh:
+                rows = list(csv.DictReader(fh))
+            self.__dict__["_final_cache"] = rows
+        return rows
+
+    def weeks(self) -> list:
+        """Every distinct week (Saturday, ISO) in the final data, ascending."""
+        return sorted({r["date"] for r in self._final_rows()})
+
+    def forecast_dates(self) -> list:
+        """The as-of weeks a forecast may anchor on: every vintage key when
+        versioned; otherwise every week but the first (MicroHub's
+        reference dates: a forecast needs one observed week)."""
+        return self.vintages() if self.vintage_true else self.reference_dates()
+
+    def truth_path(self, as_of: str) -> Path:
+        """The archive-shaped CSV an engine reads for one as-of. Versioned:
+        that key's snapshot (exact, rule 5). Unversioned: the final data,
+        which every engine truncates at the as-of; a week the data does
+        not hold is refused loudly, naming nearby weeks."""
+        as_of = str(as_of)
+        if self.vintage_true:
+            return self.vintage_path(as_of)
+        weeks = self.weeks()
+        if as_of not in weeks:
+            try:
+                t = date_fromiso(as_of)
+                near = [w for w in weeks
+                        if abs((date_fromiso(w) - t).days) <= 45]
+            except (TypeError, ValueError):
+                near = []
+            raise FileNotFoundError(
+                f"No week {as_of} in dataset {self.name!r}. "
+                f"Nearby: {near or weeks[-3:]}")
+        return self.final_path
+
+    def series(self, name: str, as_of: Optional[str] = None) -> dict:
+        """{"dates": [...], "values": [...]} for one group as it stood at
+        `as_of` (the newest vintage when None), truncated at the as-of so
+        final data never leaks later weeks into a view; the shape of
+        data.vintage_series."""
+        if as_of is None:
+            rows = self._final_rows()
+        else:
+            with open(self.truth_path(as_of), newline="") as fh:
+                rows = list(csv.DictReader(fh))
+        out = sorted((r["date"], float(r["value"])) for r in rows
+                     if r["location_name"] == name and r["value"] != ""
+                     and (as_of is None or r["date"] <= str(as_of)))
+        return {"dates": [d for d, _ in out], "values": [v for _, v in out]}
+
+    def truth(self) -> dict:
+        """{(group name, ISO date): value} from the final data: what a
+        dataset forecast is scored against."""
+        return {(r["location_name"], r["date"]): float(r["value"])
+                for r in self._final_rows() if r["value"] != ""}
 
     def population_series(self, name: str) -> list:
         """[(date, population)] for one group from the final snapshot,
@@ -1055,6 +1124,19 @@ def resolve(ref: Optional[dict]) -> Optional[Dataset]:
         raise DatasetError(f"Dataset {ds.id!r} no longer matches the "
                            "digest this run pinned.")
     return ds
+
+
+def from_spec(spec) -> Optional[Dataset]:
+    """The dataset a run spec (RunSpec, or its dict) names in
+    ``extra["dataset"]``, else None WITHOUT touching the store: the hub
+    path's call is a dictionary lookup and nothing more. A named dataset
+    that is gone or changed raises (never a silent substitute)."""
+    extra = (spec.get("extra") if isinstance(spec, dict)
+             else getattr(spec, "extra", None))
+    ref = extra.get("dataset") if isinstance(extra, dict) else None
+    if not ref:
+        return None
+    return resolve(ref)
 
 
 def list_datasets() -> list:
