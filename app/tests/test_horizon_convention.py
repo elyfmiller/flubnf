@@ -54,8 +54,10 @@ def test_pf_collect_emits_the_anchor_under_origin():
     import inspect
     src = inspect.getsource(PF.collect)
     assert "d[hz.ORIGIN].extend" in src
-    assert "tr[:, n - 1 + k]" in src            # the origin: no horizon added
-    assert "tr[:, n - 1 + k + h]" in src        # the forecasts: h weeks on
+    # col is the fit origin's column (n - 1, or the last week offset for a
+    # gapped series laid out one column per week)
+    assert "tr[:, col + k]" in src              # the origin: no horizon added
+    assert "tr[:, col + k + h]" in src          # the forecasts: h weeks on
     assert "d[str(h - 1)]" in src               # ... stored under hub labels
 
 

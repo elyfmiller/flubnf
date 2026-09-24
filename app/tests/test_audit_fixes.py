@@ -168,6 +168,44 @@ def test_collect_refuses_pre_fix_workroot_with_drop(tmp_path):
         pf_engine.collect(wr)
 
 
+def _gapped(tmp_path, n_cols, k=0):
+    # 3 .exp rows at week offsets 0, 2, 4 (weeks 1 and 3 unreported)
+    wr = _fake_cell(tmp_path, n_obs=3, n_cols=n_cols, k=k)
+    cells = json.loads((wr / "cells.json").read_text())
+    cells[0]["last_week_offset"] = 4
+    (wr / "cells.json").write_text(json.dumps(cells))
+    return wr
+
+
+def test_collect_reads_a_gapped_series_by_week_columns(tmp_path):
+    # one column per WEEK: offsets 0..4 plus 4 forecast weeks = 9 columns;
+    # the origin is column 4 (not n_obs-1 = 2), scale 10/4
+    from app.core import horizons as hz
+    from app.core.engines import pf as pf_engine
+    d = pf_engine.collect(_gapped(tmp_path, n_cols=9))["Ohio"]
+    assert d[hz.ORIGIN] == [10.0, 10.0]
+    assert d["0"] == [12.5, 12.5]           # col 5 * 2.5
+    assert d["3"] == [20.0, 20.0]           # col 8 * 2.5
+
+
+def test_collect_reads_a_gapped_series_by_row_columns(tmp_path):
+    # one column per .exp ROW: 3 rows plus 4 forecast = 7 columns, origin 2
+    from app.core import horizons as hz
+    from app.core.engines import pf as pf_engine
+    d = pf_engine.collect(_gapped(tmp_path, n_cols=7))["Ohio"]
+    assert d[hz.ORIGIN] == [10.0, 10.0]
+    assert d["0"] == [15.0, 15.0]
+    assert d["3"] == [30.0, 30.0]
+
+
+def test_collect_refuses_a_gapped_series_of_neither_width(tmp_path):
+    from app.core.engines import pf as pf_engine
+    wr = _gapped(tmp_path, n_cols=8)
+    assert "Ohio" not in pf_engine.collect(wr)
+    status = json.loads((wr / "pf_status.json").read_text())
+    assert "8 columns; a gapped series needs 9" in status["Ohio_r0"]
+
+
 def test_analogue_drop_moves_anchor_and_extends_span(tmp_path, monkeypatch):
     from app.core.engines import analogue as eng
     vintage = tmp_path / "v.csv"

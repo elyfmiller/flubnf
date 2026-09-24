@@ -1331,15 +1331,34 @@ def collect(workroot: Path) -> dict:
         if c.get("save_state_to"):
             _save_cloud(workroot, c)
         n = c["n_obs"]
-        origin = tr[:, n - 1]
+        k = int(c.get("weeks_dropped", 0) or 0)
+        # The fit origin's column. With no interior gap it is n-1 whichever
+        # way the engine lays columns out. With a gap (a week missing inside
+        # the fit window, so the .exp offsets skip) one column per WEEK puts
+        # it at the last week offset, one per .exp ROW at n-1: the width
+        # tells them apart, and a width that is neither is refused rather
+        # than read at a guessed week.
+        lwo = int(c.get("last_week_offset", n - 1))
+        col = n - 1
+        if lwo != n - 1:
+            if tr.shape[1] == lwo + k + 5:
+                col = lwo
+            elif tr.shape[1] != n + k + 4:
+                _record_collect_failure(
+                    workroot, c["key"],
+                    f"FAIL: trajectory {tr_files[0].name} has "
+                    f"{tr.shape[1]} columns; a gapped series needs "
+                    f"{lwo + k + 5} (one per week) or {n + k + 4} (one "
+                    "per data row); the cell is excluded from assembly")
+                continue
+        origin = tr[:, col]
         med = float(np.median(origin[np.isfinite(origin)]))
         scale = c["last_observed"] / med if med > 0 else 1.0
         # Horizons are AS-OF-relative: with k trimmed weeks the conf asked for
-        # pf_forecast_intervals = 4 + k, so horizon h is column n-1+k+h and
-        # the as-of week is n-1+k. The anchor pair (last_observed, med) is
+        # pf_forecast_intervals = 4 + k, so horizon h is column col+k+h and
+        # the as-of week is col+k. The anchor pair (last_observed, med) is
         # still the fit origin's.
-        k = int(c.get("weeks_dropped", 0) or 0)
-        need = n + k + 4
+        need = col + 1 + k + 4
         if tr.shape[1] < need:
             # a recorded trim the engine did not extend the forecast for
             raise RuntimeError(
@@ -1352,7 +1371,7 @@ def collect(workroot: Path) -> dict:
         # submitted row a week early).
         d = by_loc.setdefault(c["location"],
                               {hz.ORIGIN: [], **{h: [] for h in hz.HORIZONS}})
-        d[hz.ORIGIN].extend((tr[:, n - 1 + k] * scale).tolist())
+        d[hz.ORIGIN].extend((tr[:, col + k] * scale).tolist())
         for h in (1, 2, 3, 4):
-            d[str(h - 1)].extend((tr[:, n - 1 + k + h] * scale).tolist())
+            d[str(h - 1)].extend((tr[:, col + k + h] * scale).tolist())
     return by_loc
