@@ -141,6 +141,23 @@ def test_prepare_writes_the_engine_configuration_from_the_three_files(box):
     assert w2 != w and w2.is_dir()
 
 
+@pytest.mark.parametrize("line, words", [
+    ("pf_jitter = 1.5", "not between 0 and 1"),
+    ("pf_jitter = abc", "not a number"),
+    ("pf_forecast_intervals = 4.0", "not a whole number"),
+    ("pf_forecast_intervals = -2", "negative")])
+def test_a_priors_conf_override_is_refused_like_the_form(box, line, words):
+    # the form's jitter was checked but priors.conf's replaced it unchecked,
+    # and a malformed value failed in Python's words after the run folder
+    # was made
+    sb.add_example("kinetics_example")
+    f = sb.read_model("kinetics_example")
+    sb.save_model("kinetics_example", {"priors.conf": f["priors.conf"] + line + "\n"})
+    with pytest.raises(sb.SandboxError, match=words):
+        sb.prepare("kinetics_example", particles=100)
+    assert not sb.RUNS.exists() or not any(sb.RUNS.iterdir())
+
+
 def test_a_model_that_does_not_generate_is_refused_with_bngs_words(box):
     sb.add_example("kinetics_example")
     sb.save_model("kinetics_example", {"model.bngl": "# broken\n" + (

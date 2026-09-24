@@ -1148,7 +1148,26 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
     priors, _ = split_priors(files["priors.conf"])
     val = {k: v for k, v, _ in settings}
     particles = int(val["pf_particles"])
-    forecast_weeks = int(val["pf_forecast_intervals"])
+    # a priors.conf line overrides the form's jitter and forecast weeks:
+    # the same refusals, in words and before anything is written
+    try:
+        eff_jitter = float(val["pf_jitter"])
+    except ValueError:
+        raise SandboxError(f"priors.conf sets pf_jitter = {val['pf_jitter']}, "
+                           "which is not a number") from None
+    if not 0 < eff_jitter < 1:
+        raise SandboxError(f"priors.conf sets pf_jitter = {val['pf_jitter']}, "
+                           "which is not between 0 and 1 (0.15 is the "
+                           "production setting)")
+    try:
+        forecast_weeks = int(val["pf_forecast_intervals"])
+    except ValueError:
+        raise SandboxError("priors.conf sets pf_forecast_intervals = "
+                           f"{val['pf_forecast_intervals']}, which is not a "
+                           "whole number of weeks") from None
+    if forecast_weeks < 0:
+        raise SandboxError(f"priors.conf sets pf_forecast_intervals = "
+                           f"{forecast_weeks}, which is negative")
     stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
     workroot = (runs_root or RUNS) / f"{stamp}_{name}"
     n = 1
