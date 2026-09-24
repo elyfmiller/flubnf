@@ -3,9 +3,10 @@ archive by location and date range (app/core/sandbox.py locations,
 series_for, fill_data, read_data_source; the /sandbox/models/<name>/
 fill-data route; the fieldset the editor includes). Hub-free: the
 locations table, the settled truth and the vintage reader are faked.
-What is tested is the row contract (t from 0, the header kept, missing
-weeks dropped and counted, never imputed), the sidecar, the refusals,
-and the page with and without an archive.
+What is tested is the row contract (t in calendar weeks from the range
+start, the header kept, missing weeks dropped and counted, never imputed
+and never renumbered), the sidecar, the refusals, and the page with and
+without an archive.
 """
 import json
 import sys
@@ -47,20 +48,15 @@ def fake_vintage_series(date, location_name):
 
 
 @pytest.fixture
-def box(tmp_path, monkeypatch):
-    """A sandbox rooted in tmp_path with the archive faked: three
-    locations, settled truth with one missing week, one vintage."""
-    monkeypatch.setattr(sb, "SANDBOX", tmp_path / "sandbox")
-    monkeypatch.setattr(sb, "MODELS", tmp_path / "sandbox" / "models")
-    monkeypatch.setattr(sb, "RUNS", tmp_path / "sandbox" / "runs")
+def box(sandbox_root, monkeypatch):
+    """A sandbox rooted in tmp_path (conftest.sandbox_root) with the
+    archive faked: three locations, settled truth with one missing week,
+    one vintage."""
     monkeypatch.setattr(sb, "locations", lambda: list(LOCS))
     monkeypatch.setattr(sb, "vintages", lambda: ["2024-11-09", "2024-11-02"])
     monkeypatch.setattr(scoring, "load_truth", fake_truth)
     monkeypatch.setattr(data_mod, "vintage_series", fake_vintage_series)
-    srv._status.pop("flash", None)
-    srv._status["running"] = None
-    srv._sandbox_status["running"] = None
-    return tmp_path / "sandbox"
+    return sandbox_root
 
 
 # ----------------------------------------------------------- the archive
@@ -115,13 +111,13 @@ def test_series_drops_missing_weeks_and_counts_them(box):
         sb.series_for("Alabama", "October 5", WEEKS[3])
 
 
-def test_fill_data_writes_rows_from_zero_and_the_sidecar(box):
+def test_fill_data_writes_calendar_week_rows_and_the_sidecar(box):
     sb.new_model("mine")                                  # header: time T_weekly
     info = sb.fill_data("mine", "Alabama", WEEKS[0], WEEKS[3])
     text = (sb.MODELS / "mine" / "data.exp").read_text()
-    assert text == "# time T_weekly\n0 8\n1 10\n2 14.5\n"
+    assert text == "# time T_weekly\n0 8\n1 10\n3 14.5\n"
     assert text.count("#") == 1                           # one header line only
-    assert sb.read_exp(text)["rows"] == [[0, 8], [1, 10], [2, 14.5]]
+    assert sb.read_exp(text)["rows"] == [[0, 8], [1, 10], [3, 14.5]]
     for k in ("location", "start", "end", "asof", "rows", "dropped", "written_utc"):
         assert k in info, k
     assert (info["location"], info["start"], info["end"]) == ("Alabama", WEEKS[0], WEEKS[3])
@@ -130,11 +126,11 @@ def test_fill_data_writes_rows_from_zero_and_the_sidecar(box):
     assert side == info
     assert sb.read_data_source("mine") == info
     assert sorted(p.name for p in (sb.MODELS / "mine").iterdir()) == sorted(
-        list(sb.REQUIRED) + [sb.SOURCE_FILE])
+        list(sb.REQUIRED) + [sb.MODEL_FILE, sb.SOURCE_FILE])
     # a vintage fill names its as-of date
     info = sb.fill_data("mine", "Alabama", WEEKS[0], WEEKS[3], asof="2024-11-09")
     assert info["asof"] == "2024-11-09" and info["rows"] == 3
-    assert (sb.MODELS / "mine" / "data.exp").read_text() == "# time T_weekly\n0 7\n1 9\n2 12\n"
+    assert (sb.MODELS / "mine" / "data.exp").read_text() == "# time T_weekly\n0 7\n1 9\n3 12\n"
     # data.exp edited by hand since: the sidecar no longer describes it
     sb.save_model("mine", {"data.exp": "# time T_weekly\n0 7\n1 9\n2 99\n"})
     assert sb.read_data_source("mine") is None
@@ -178,7 +174,7 @@ def test_the_route_fills_flashes_and_the_page_shows_the_source(box):
             "truth, 3 weeks, 1 missing weeks dropped") in html
     assert ("data.exp holds Alabama, 2024-10-05 to 2024-10-26, settled truth "
             "(3 weeks, 1 dropped missing)") in html
-    assert "0 8\n1 10\n2 14.5" in html                    # the editor holds it
+    assert "0 8\n1 10\n3 14.5" in html                    # the editor holds it
     assert 'value="Alabama" selected' in html             # the form recalls it
     r = client.post("/sandbox/models/mine/fill-data",
                     data={"location": "Alabama", "start": WEEKS[0],
@@ -195,17 +191,19 @@ def test_the_route_fills_flashes_and_the_page_shows_the_source(box):
                     follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/sandbox?model=mine"
     html = client.get("/sandbox?model=mine").text
-    assert "unknown location" in html and "0 7\n1 9\n2 12" in html
+    assert "unknown location" in html and "0 7\n1 9\n3 12" in html
 
 
 def test_the_editor_shows_the_fieldset_or_the_no_archive_hint(box, monkeypatch):
     sb.new_model("mine")
     html = client.get("/sandbox?model=mine").text
-    assert "<fieldset" in html and "Fill from the archive" in html
+    assert "<summary>Load data</summary>" in html
     assert 'formaction="/sandbox/models/mine/fill-data"' in html
-    assert "Fill data.exp" in html and "No hub archive here" not in html
+    assert "Load into data.exp" in html and "No hub archive here" not in html
     assert html.index('value="US"') < html.index('value="Alabama"') < html.index('value="Wyoming"')
-    assert '<option value="settled" >settled truth</option>' in html
+    assert '<optgroup label="FluSight hub">' in html
+    assert '<option value="settled" >latest (settled)</option>' in html
+    assert '<option value="2024-11-09" >as of 2024-11-09</option>' in html
     assert html.index('value="2024-11-09"') < html.index('value="2024-11-02"')
     assert 'name="start" type="date" step="7"' in html
     assert 'value="2024-06-29"' in html and 'value="2024-11-09"' in html  # 20 weeks
@@ -215,6 +213,67 @@ def test_the_editor_shows_the_fieldset_or_the_no_archive_hint(box, monkeypatch):
     monkeypatch.setattr(sb, "vintages", lambda: [])
     r = client.get("/sandbox?model=mine")
     assert r.status_code == 200
-    assert "No hub archive here: type the rows or copy an example." in r.text
+    assert "No hub archive here: upload a CSV, type the rows or copy an example." in r.text
     assert 'name="location"' not in r.text
     assert client.get("/sandbox").status_code == 200      # no editor, no fieldset
+
+
+def test_fill_keeps_calendar_offsets_anchored_like_the_console(box):
+    sb.new_model("mine")
+    # a range starting on a Thursday counts from the first Saturday after
+    info = sb.fill_data("mine", "Alabama", "2024-10-03", WEEKS[3])
+    assert info["origin"] == WEEKS[0]
+    assert info["dates"] == [WEEKS[0], WEEKS[1], WEEKS[3]]
+    rows = sb.read_exp(sb.read_model("mine")["data.exp"])["rows"]
+    assert [r[0] for r in rows] == [0, 1, 3]                 # the gap stays a gap
+    # a range starting on a missing week leaves t = 0 unreported
+    info = sb.fill_data("mine", "Alabama", "2024-09-28", WEEKS[3])
+    assert [r[0] for r in sb.read_exp(sb.read_model("mine")["data.exp"])["rows"]] == [1, 2, 4]
+    # a model that records its season start is anchored there
+    (sb.MODELS / "mine" / sb.MODEL_FILE).write_text(json.dumps({"season_start": "2024-09-21"}))
+    info = sb.fill_data("mine", "Alabama", WEEKS[0], WEEKS[3])
+    assert info["origin"] == "2024-09-21"
+    assert [r[0] for r in sb.read_exp(sb.read_model("mine")["data.exp"])["rows"]] == [2, 3, 5]
+    (sb.MODELS / "mine" / sb.MODEL_FILE).write_text(json.dumps({"season_start": "2024-10-12"}))
+    with pytest.raises(sb.SandboxError, match="before t = 0"):
+        sb.fill_data("mine", "Alabama", WEEKS[0], WEEKS[3])
+    # a run records the dates, so the plot places every point by calendar
+    (sb.MODELS / "mine" / sb.MODEL_FILE).unlink()
+    sb.fill_data("mine", "Alabama", WEEKS[0], WEEKS[3])
+    w = sb.prepare("mine")
+    meta = json.loads((w / "meta.json").read_text())
+    assert meta["time"] == [0, 1, 3] and meta["dates"] == [WEEKS[0], WEEKS[1], WEEKS[3]]
+    cells = json.loads((w / "cells.json").read_text())
+    assert cells[0]["last_week_offset"] == 3
+
+
+def test_the_plot_places_forecast_points_by_real_spacing():
+    src = (Path(srv.__file__).parent / "templates" / "sandbox.html").read_text()
+    js_dir = Path(srv.__file__).parent / "static"
+    if (js_dir / "sandbox.js").is_file():
+        src += (js_dir / "sandbox.js").read_text()
+    assert "(times[times.length - 1] - times[0]) / (times.length - 1)" not in src
+    assert "7 * 864e5" in src                                # dates by weeks
+
+
+def test_fill_keeps_unsaved_model_and_priors_edits(box):
+    sb.new_model("mine")
+    files = sb.read_model("mine")
+    bngl = files["model.bngl"].replace("# mine:", "# mine, edited:")
+    priors = files["priors.conf"] + "# a note\n"
+    r = client.post("/sandbox/models/mine/fill-data",
+                    data={"location": "Alabama", "start": WEEKS[0],
+                          "end": WEEKS[3], "source": "settled",
+                          "model_bngl": bngl, "priors_conf": priors,
+                          "data_exp": "# time T_weekly\n0 1\n"},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    now = sb.read_model("mine")
+    assert now["model.bngl"] == bngl and now["priors.conf"] == priors
+    assert now["data.exp"].startswith("# time T_weekly\n0 8\n")   # filled
+    # a post without the editor fields blanks nothing
+    client.post("/sandbox/models/mine/fill-data",
+                data={"location": "Alabama", "start": WEEKS[0],
+                      "end": WEEKS[3], "source": "settled"},
+                follow_redirects=False)
+    assert sb.read_model("mine")["model.bngl"] == bngl

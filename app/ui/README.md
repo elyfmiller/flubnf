@@ -60,13 +60,15 @@ Every route lives in `server.py`, grouped under `# === <Tab> ===` banners; this 
 | **Methods** | | | | |
 | GET | `/methods` | `methods_page` | `methods.html` | nav |
 | **Sandbox** | | | | |
-| GET | `/sandbox` | `sandbox_page` | `sandbox.html` | nav |
-| POST | `/sandbox/add-example`, `/sandbox/new` | `sandbox_add_example`, `sandbox_new` | redirect | `sandbox.html` forms |
-| POST | `/sandbox/models/{name}/save` | `sandbox_save` | | `sandbox.html` editor form |
-| POST | `/sandbox/models/{name}/fill-data` | `sandbox_fill_data` | redirect | `sandbox_data.html` (`formaction`) |
-| POST | `/sandbox/run` | `sandbox_run` | | `sandbox.html` forms |
-| GET | `/api/sandbox/models/{name}/contactmap`, `/network` | `api_sandbox_contactmap`, `api_sandbox_network` | | `sandbox_views.html` (drawn by `static/model-views.js`) |
-| GET | `/api/sandbox/runs/{run_id}` | `api_sandbox_run` | | `sandbox.html` plot |
+| GET | `/sandbox` (`?model=`, `?run=`, `?dataset=`) | `sandbox_page` | `sandbox.html` (gallery, or one model's workbench) | nav |
+| POST | `/sandbox/new` (`start=skeleton\|example:<n>\|copy:<m>`), `/sandbox/add-example` (alias) | `sandbox_new`, `sandbox_add_example` | redirect | `sandbox.html` forms |
+| POST | `/sandbox/models/{name}/save`, `/run` (save, then run), `/delete` | `sandbox_save`, `sandbox_model_run`, `sandbox_delete_model` | redirect | `sandbox.html` workbench form |
+| POST | `/sandbox/models/{name}/fill-data`, `/upload-data` (multipart, size-capped) | `sandbox_fill_data`, `sandbox_upload_data` | redirect | `sandbox_data.html` (`formaction`) |
+| POST | `/sandbox/run` (alias) | `sandbox_run` | redirect | scripts |
+| POST | `/sandbox/runs/{run_id}/stop`, `/delete`; `/sandbox/stop` | `sandbox_run_stop`, `sandbox_delete_run`, `sandbox_stop` | redirect | results card; the guard modal |
+| POST | `/api/sandbox/models/{name}/check` | `api_sandbox_check` | JSON | `static/sandbox.js` |
+| GET | `/api/sandbox/models/{name}/contactmap`, `/network` | `api_sandbox_contactmap`, `api_sandbox_network` | | `sandbox_views.html` (drawn by `static/model-views.js`; cached by the model text) |
+| GET | `/api/sandbox/runs/{run_id}` | `api_sandbox_run` | | `static/sandbox.js` poll |
 | **Shared** | | | | |
 | GET | `/api/busy` | `api_busy` | | `base.html` guard modal |
 
@@ -91,6 +93,6 @@ Template names that differ from their tab: `runs.html` is Storage, `run.html` is
 | `retro_progress.js` | `retro.html`, `retro_season.html` |
 | `quips.js` | `forecast.html`, `retro.html`, `retro_season.html` |
 | `plotly.min.js` | `data.html`, `forecast.html`, `model.html`, `retro_season.html`, `sandbox.html` |
-| `bngl-editor.js`, `bngl-editor.css` | `sandbox.html` |
+| `bngl-editor.js`, `bngl-editor.css`, `sandbox.js` | `sandbox.html` |
 | `model-views.js`, `model-views.css` | `sandbox_views.html` |
 | `brand/`, `fonts/` | `base.html`, `home.html`, `/favicon.ico` (icons); `base.html` (DM Sans) |

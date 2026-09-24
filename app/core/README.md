@@ -69,7 +69,7 @@ See [docs/SITE.md](../../docs/SITE.md).
 
 | Module | Tag | Role | Main callers |
 |---|---|---|---|
-| `sandbox.py` | SANDBOX | user models through the PF engine in `sandbox/`; examples from `flubnf/sandbox_examples/` | server `/sandbox` routes |
+| `sandbox.py` | SANDBOX | user models through the PF engine in `sandbox/` (the production preflight, `check` without the engine, stop, delete); examples from `flubnf/sandbox_examples/`; data from the hub or a `datasets.py` dataset | server `/sandbox` routes |
 | `contactmap.py` | SANDBOX | contact map and reaction network from BNG2.pl, as SVG and graph JSON | server `/api/sandbox/models/...` |
 
 `assets/states-albers-10m.json` is the US map geometry `usmap.py` draws.

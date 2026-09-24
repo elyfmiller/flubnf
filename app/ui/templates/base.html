@@ -185,9 +185,11 @@
     dispatchEvent(new Event('fontsizechange'));};});})();
  // run-interference guards: a data-guard control checks /api/busy on
  // click; only a genuine conflict raises the modal. Kinds and conflicts:
- //   console-run: starting a console run while a retrospective is fitting
- //   retro-run:   starting a retrospective while a console run is fitting,
- //                or while another retrospective runs
+ //   console-run: starting a console run while a retrospective or a
+ //                sandbox fit is running
+ //   retro-run:   starting a retrospective while a console run, another
+ //                retrospective or a sandbox fit runs
+ //   sandbox-run: starting a sandbox fit while any of those runs
  //   data-pull:   Update data while a fit is in its preparation phase
  //                (phase contains "materializing" or "preparing"; a pull
  //                during pure fitting is safe and passes through)
@@ -229,9 +231,17 @@
       stop:'/run/stop',
       done:function(x){return !x.console_run;}}:null;
   }
+  function sandboxConflict(b){
+    return b.sandbox?{label:'sandbox fit ('+b.sandbox+')',
+      stop:'/sandbox/stop',
+      done:function(x){return !x.sandbox;}}:null;
+  }
   function conflictFor(kind,b){
-    if(kind==='console-run') return retroConflict(b);
-    if(kind==='retro-run') return consoleConflict(b)||retroConflict(b);
+    if(kind==='console-run') return retroConflict(b)||sandboxConflict(b);
+    if(kind==='retro-run')
+      return consoleConflict(b)||retroConflict(b)||sandboxConflict(b);
+    if(kind==='sandbox-run')
+      return consoleConflict(b)||retroConflict(b)||sandboxConflict(b);
     if(kind==='data-pull'&&/materializing|preparing/i.test(b.phase||''))
       return consoleConflict(b);
     return null;

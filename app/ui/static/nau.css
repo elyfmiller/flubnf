@@ -693,6 +693,43 @@ form.sbnew{margin-top:.6rem}
 form.sbnew label{display:block;margin-bottom:.25rem}
 form.sbnew input{width:14rem;max-width:100%;margin-right:.4rem}
 form.sbnew .hint{margin-top:.3rem}
+form.sbnew select{width:14rem;max-width:100%;margin-right:.4rem}
+/* the sandbox workbench: the editor beside its results and diagram */
+.sbwork{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);
+  gap:.75rem;align-items:start}
+@media(max-width:1100px){.sbwork{grid-template-columns:1fr}}
+.sbcrumb{margin:0}
+/* the form's default (Enter) button: present, never seen */
+.sb-default{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+fieldset.sbrun{border:1px solid var(--line);border-radius:8px;
+  padding:.35rem .8rem .5rem;margin:.8rem 0 .4rem}
+fieldset.sbrun legend{color:var(--mut);font-size:var(--fs-label);padding:0 .3rem}
+.sbrun .row{align-items:flex-end}
+.sbrun .row > span{display:flex;flex-direction:column}
+.sbrun input[type=number]{width:6.5rem}
+.sbpair{display:flex;gap:.4rem}
+.sbpair select{width:auto}
+details.sbfill .row{align-items:flex-end}
+details.sbfill .row > span{display:flex;flex-direction:column}
+details.sbfill .row > span[hidden]{display:none}
+/* a label with its tip and one without sit on one baseline */
+.sbfill .row > span > label,.sbrun .row > span > label,
+.sbfill .row .lblrow,.sbrun .row .lblrow{min-height:1.5rem;display:flex;
+  align-items:center;margin:.5rem 0 .2rem}
+details.sbfill input[type=file]{padding:.3rem}
+.sbupload{margin-top:.5rem}
+.sbreport ul{margin:.2rem 0 .4rem 1.1rem;padding:0}
+.sbreport p{margin:.4rem 0 .1rem}
+.sbactions{margin-top:.5rem}
+#sb-checked ul{margin:.2rem 0 .4rem 1.1rem;padding:0}
+#sb-checked p{margin:.4rem 0 .1rem}
+.sb-bad{color:var(--bad);font-weight:600}
+.sb-ok{color:var(--ok);font-weight:600}
+.sb-warn{color:var(--ink);font-weight:600}
+tr[aria-current="true"] td{font-weight:600}
+#sb-dirty[hidden]{display:none}
+@media(max-width:640px){.sbmodels th:nth-child(2),.sbmodels td:nth-child(2),
+  .sbmodels th:nth-child(4),.sbmodels td:nth-child(4){display:none}}
 
 /* sandbox model views */
 /* pills pick a view; wide networks scroll sideways, BNG text wraps */
