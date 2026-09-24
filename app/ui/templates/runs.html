@@ -188,6 +188,14 @@
  <p class="hint">The sealed record backs the shipped configuration; the hub
   clone is shared source data.</p>
  {% endif %}
+ {% set sbx = sandbox_storage() %}
+ {% if sbx %}
+ <h3 class="hint" style="margin:.8rem 0 .2rem">Sandbox</h3>
+ <div class="archrow">
+  <span class="grow"><strong><a href="/sandbox">Sandbox models and runs</a></strong>
+   <span class="hint">· {{ sbx.size_h }} · {{ sbx.models }} model{{ "" if sbx.models == 1 else "s" }}, {{ sbx.runs }} run{{ "" if sbx.runs == 1 else "s" }}; delete them in the Sandbox</span></span>
+ </div>
+ {% endif %}
 </details>
 </div>
 <script>

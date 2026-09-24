@@ -75,32 +75,59 @@ def check_name(name: str) -> str:
 
 
 def _first_comment(path: Path) -> str:
+    """The model's note: the first sentence of its leading comment, which
+    may run over several comment lines (at most 280 characters)."""
+    words = []
     try:
         for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
             s = line.strip()
-            if s.startswith("#") and s.strip("# ").strip():
-                return s.strip("# ").strip()
-            if s and not s.startswith("#"):
+            if not s.startswith("#"):
+                if s or words:
+                    break
+                continue
+            text = s.strip("# ").strip()
+            if not text:
+                if words:
+                    break
+                continue
+            words.append(text)
+            if re.search(r"[.:!?]$", text) or re.search(r"[.!?]\s", text):
                 break
     except OSError:
         pass
-    return ""
+    note = " ".join(words)
+    m = re.match(r"(.+?[.!?])(\s|$)", note)
+    note = m.group(1) if m else note
+    return note if len(note) <= 280 else note[:277].rstrip() + "..."
 
 
 def list_models() -> list:
-    """Every model folder, with which of the three files it has."""
+    """Every model folder: which of the three files it has, the note (its
+    first comment line), where it came from, and when it last changed."""
     out = []
     if not MODELS.is_dir():
         return out
     for d in sorted(p for p in MODELS.iterdir() if p.is_dir()):
         present = [f for f in REQUIRED if (d / f).is_file()]
+        mtime = max((int((d / f).stat().st_mtime) for f in present), default=0)
         out.append({"name": d.name, "present": present,
+                    "modified_h": (time.strftime("%Y-%m-%d %H:%M",
+                                                 time.localtime(mtime))
+                                   if mtime else ""),
                     "missing": [f for f in REQUIRED if f not in present],
                     "complete": len(present) == len(REQUIRED),
                     "note": _first_comment(d / "model.bngl"),
+                    "origin": origin_label(read_info(d.name).get("origin", "")),
                     "modified": max((int((d / f).stat().st_mtime)
                                      for f in present), default=0)})
     return out
+
+
+def origin_label(origin: str) -> str:
+    """model.json's origin in words for the gallery."""
+    kind, _, what = str(origin or "").partition(":")
+    return {"skeleton": "skeleton", "example": f"example {what}",
+            "copy": f"copy of {what}"}.get(kind, "")
 
 
 def list_examples() -> list:
@@ -110,20 +137,108 @@ def list_examples() -> list:
                   if p.is_dir() and all((p / f).is_file() for f in REQUIRED))
 
 
-def add_example(name: str) -> Path:
-    """Copy a shipped example into the sandbox as a model of the same
-    name. An existing model of that name is left alone."""
+def _write_info(name: str, info: dict) -> None:
+    (MODELS / check_name(name) / MODEL_FILE).write_text(
+        json.dumps(info, indent=1) + "\n", encoding="utf-8", newline="\n")
+
+
+def _new_folder(name: str) -> Path:
+    dst = MODELS / check_name(name)
+    if dst.exists():
+        raise SandboxError(f"a sandbox model named {name!r} already exists")
+    return dst
+
+
+def _stamp() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def add_example(name: str, as_name: str | None = None) -> Path:
+    """Copy a shipped example into the sandbox, under its own name or
+    as_name. An existing model of that name is left alone."""
     check_name(name)
     src = EXAMPLES / name
     if not all((src / f).is_file() for f in REQUIRED):
         raise SandboxError(f"no shipped example named {name!r}")
-    dst = MODELS / name
-    if dst.exists():
-        raise SandboxError(f"a sandbox model named {name!r} already exists")
+    target = as_name or name
+    dst = _new_folder(target)
     dst.mkdir(parents=True)
     for f in REQUIRED:
         shutil.copy2(src / f, dst / f)
+    _write_info(target, {"origin": f"example:{name}", "created_utc": _stamp()})
     return dst
+
+
+def copy_model(src: str, dst: str) -> Path:
+    """A copy of a sandbox model under a new name: its three files and its
+    data sidecar. The copy's origin names the model it came from (never
+    the original's origin, which it no longer is)."""
+    s = model_dir(src)
+    d = _new_folder(dst)
+    d.mkdir(parents=True)
+    for f in REQUIRED + (SOURCE_FILE,):
+        if (s / f).is_file():
+            shutil.copy2(s / f, d / f)
+    info = {k: v for k, v in read_info(src).items()
+            if k in ("season_start",)}
+    _write_info(dst, {**info, "origin": f"copy:{src}", "created_utc": _stamp()})
+    return d
+
+
+def _live_model(live) -> str:
+    """The model of the live run id, or ''."""
+    if not live:
+        return ""
+    try:
+        return json.loads((RUNS / str(live) / "meta.json").read_text())["model"]
+    except Exception:
+        return ""
+
+
+def delete_model(name: str, live=None) -> int:
+    """Delete a model with its runs and its diagram folder; the number of
+    runs deleted. Refused while one of its runs is the live fit."""
+    d = MODELS / check_name(name)
+    if not d.is_dir():
+        raise SandboxError(f"no sandbox model named {name!r}")
+    if _live_model(live) == name:
+        raise SandboxError(f"a run of {name} is fitting; stop it first")
+    runs = list_runs(model=name)
+    for r in runs:
+        shutil.rmtree(RUNS / r["run_id"], ignore_errors=True)
+    shutil.rmtree(SANDBOX / "contactmap" / name, ignore_errors=True)
+    shutil.rmtree(d)
+    return len(runs)
+
+
+def delete_run(run_id: str, live=None) -> str:
+    """Delete one run folder (never the live fit); its model's name."""
+    d = run_dir(run_id)
+    if live and run_id == live:
+        raise SandboxError(f"sandbox run {run_id} is fitting; stop it first")
+    try:
+        model = json.loads((d / "meta.json").read_text()).get("model", "")
+    except Exception:
+        model = ""
+    shutil.rmtree(d)
+    return model
+
+
+def storage() -> dict:
+    """The sandbox folder's size for the Storage panel (read-only)."""
+    total, files = 0, 0
+    if SANDBOX.is_dir():
+        for p in SANDBOX.rglob("*"):
+            try:
+                if p.is_file() and not p.is_symlink():
+                    total += p.stat().st_size
+                    files += 1
+            except OSError:
+                continue
+    n_runs = (sum(1 for p in RUNS.iterdir() if p.is_dir())
+              if RUNS.is_dir() else 0)
+    return {"bytes": total, "files": files, "models": len(list_models()),
+            "runs": n_runs}
 
 
 #: The skeleton new_model writes: a one-step conversion with a tally,
@@ -211,11 +326,10 @@ def skeleton(name: str) -> dict:
 def new_model(name: str) -> Path:
     """Write the skeleton as a new sandbox model. An existing model of
     that name is left alone."""
-    check_name(name)
-    dst = MODELS / name
-    if dst.exists():
-        raise SandboxError(f"a sandbox model named {name!r} already exists")
-    return save_model(name, skeleton(name))
+    _new_folder(name)
+    d = save_model(name, skeleton(name))
+    _write_info(name, {"origin": "skeleton", "created_utc": _stamp()})
+    return d
 
 
 def model_dir(name: str) -> Path:
@@ -314,6 +428,177 @@ def split_priors(priors_text: str) -> tuple:
                            "(no uniform_var, loguniform_var, normal_var or "
                            "lognormal_var line)")
     return priors, keys
+
+
+def _strip_comments(text: str) -> list:
+    return [l.split("#", 1)[0].strip() for l in text.splitlines()]
+
+
+def _block(bngl: str, name: str) -> list:
+    """The non-empty, comment-free lines of one `begin <name>` block."""
+    out, inside = [], False
+    for s in _strip_comments(bngl):
+        low = " ".join(s.lower().split())
+        if low == f"begin {name}":
+            inside = True
+        elif low == f"end {name}":
+            inside = False
+        elif inside and s:
+            out.append(s)
+    return out
+
+
+def bngl_parameters(bngl: str) -> list:
+    """The names the parameters block defines ('k 0.5', 'k = 0.5' and an
+    index before the name all read)."""
+    names = []
+    for s in _block(bngl, "parameters"):
+        toks = s.replace("=", " ").split()
+        if toks and toks[0].isdigit():
+            toks = toks[1:]
+        if toks:
+            names.append(toks[0])
+    return names
+
+
+def bngl_outputs(bngl: str) -> list:
+    """The observable and function names: what pf_cumulative_observable
+    may name."""
+    names = []
+    for s in _block(bngl, "observables"):
+        toks = s.split()
+        if toks and toks[0].isdigit():
+            toks = toks[1:]
+        if len(toks) >= 2:
+            names.append(toks[1])
+    for s in _block(bngl, "functions"):
+        toks = s.split()
+        if toks and toks[0].isdigit():
+            toks = toks[1:]
+        if toks:
+            names.append(re.split(r"[(=\s]", toks[0])[0])
+    return [n for n in names if n]
+
+
+#: prior lines whose two numbers are a range (the others are mu, sigma)
+RANGE_PRIORS = ("uniform_var", "loguniform_var")
+SPREAD_PRIORS = ("normal_var", "lognormal_var")
+
+
+def _check_prior(line: str, params: set, problems: list) -> str:
+    """One *_var line; its parameter name ('' when unreadable)."""
+    kind, _, rest = (x.strip() for x in line.partition("="))
+    toks = rest.split()
+    if len(toks) < 3:
+        problems.append(f"'{line}' needs a parameter name and two numbers")
+        return ""
+    name = toks[0]
+    try:
+        a, b = float(toks[1]), float(toks[2])
+    except ValueError:
+        problems.append(f"'{line}': {toks[1]} and {toks[2]} must be numbers")
+        return name
+    if name not in params:
+        problems.append(f"{kind} names {name}, which the parameters block "
+                        "does not define")
+    if kind in RANGE_PRIORS and a >= b:
+        problems.append(f"{kind} {name}: the low end {toks[1]} is not below "
+                        f"the high end {toks[2]}")
+    if kind == "loguniform_var" and a <= 0:
+        problems.append(f"loguniform_var {name}: the low end must be above 0")
+    if kind in SPREAD_PRIORS and b <= 0:
+        problems.append(f"{kind} {name}: the spread {toks[2]} must be above 0")
+    return name
+
+
+def check(files: dict, *, work: Path | None = None) -> dict:
+    """What can be known about a model without the engine: fatal problems
+    (a run would fail), warnings (it may run but likely not as meant) and
+    facts. Network generation runs through BNG2.pl in `work` (a scratch
+    folder, never the diagram's) with the model's actions replaced by
+    generate_network; without Perl or BNG2.pl it reads 'not checked'.
+    Never a precondition of a run: the run makes its own checks."""
+    from app.core import contactmap
+    problems, warnings = [], []
+    facts = {"suffix": "", "free": [], "priors": [], "rows": 0,
+             "columns": [], "cumulative": "", "species": None,
+             "reactions": None, "network": "not checked"}
+    bngl = str(files.get("model.bngl", ""))
+    try:
+        facts["suffix"] = simulate_suffix(bngl)
+    except SandboxError as e:
+        problems.append(str(e))
+    code = "\n".join(_strip_comments(bngl))
+    if "generate_network(" not in code:
+        problems.append("the actions never call generate_network(...): the "
+                        "run generates the network with the model's own "
+                        "actions")
+    params = bngl_parameters(bngl)
+    facts["free"] = [p for p in params if p.endswith("__FREE")]
+    outputs = bngl_outputs(bngl)
+    times = None
+    try:
+        exp = read_exp(str(files.get("data.exp", "")))
+        facts["rows"], facts["columns"] = len(exp["rows"]), exp["columns"]
+        times = [r[0] for r in exp["rows"]]
+        if any(b <= a for a, b in zip(times, times[1:])):
+            problems.append("data.exp: time must increase from row to row")
+    except SandboxError as e:
+        problems.append(str(e))
+    except ValueError as e:
+        problems.append(f"data.exp holds a value that is not a number ({e})")
+    priors, keys = [], {}
+    try:
+        priors, keys = split_priors(str(files.get("priors.conf", "")))
+    except SandboxError as e:
+        problems.append(str(e))
+    named = set()
+    for line in priors:
+        k = line.split("=", 1)[0].strip()
+        if k.endswith("_var"):
+            named.add(_check_prior(line, set(params), problems))
+    facts["priors"] = sorted(n for n in named if n)
+    for p in facts["free"]:
+        if p not in named:
+            warnings.append(f"{p} ends in __FREE but has no prior line")
+    cum = keys.get("pf_cumulative_observable", "")
+    facts["cumulative"] = cum
+    if not cum:
+        warnings.append("no pf_cumulative_observable line: the filter reads "
+                        "the observation column itself, not a weekly "
+                        "increment")
+    elif cum not in outputs:
+        problems.append(f"pf_cumulative_observable names {cum}, which is "
+                        "neither an observable nor a function of the model")
+    if pf_engine.engine_available():
+        for line in priors:
+            k = line.split("=", 1)[0].strip()
+            if k.startswith("pf_") and not pf_engine.engine_accepts_pf_key(k):
+                warnings.append(f"the installed engine does not accept {k}")
+    if (times is not None and len(times) == 1
+            and "pf_sampling_interval" not in keys
+            and not pf_engine.sampling_interval_line()):
+        warnings.append("one data row: this engine needs two or more "
+                        "(it does not accept pf_sampling_interval)")
+    if not pf_engine.perl_available() or not Path(BNG).is_file():
+        facts["network"] = "not checked (no Perl or BNG2.pl here)"
+    else:
+        import tempfile
+        if work:
+            Path(work).mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=str(work) if work else None) as tmp:
+            try:
+                net = contactmap.parse_net(
+                    contactmap.network_from_bngl(bngl, Path(tmp)))
+                facts["species"] = len(net["species"])
+                facts["reactions"] = len(net["reactions"])
+                facts["network"] = "generates"
+            except (contactmap.ContactMapError, OSError,
+                    subprocess.SubprocessError) as e:
+                facts["network"] = "fails"
+                problems.append(str(e).strip())
+    return {"ok": not problems, "problems": problems, "warnings": warnings,
+            "facts": facts}
 
 
 def preflight() -> None:
@@ -818,3 +1103,42 @@ def read_data_source(name: str) -> dict | None:
         return info
     except Exception:
         return None
+
+
+# --------------------------------------------------------- the diagram cache
+# The contact map and network routes keep their parsed JSON beside the
+# drawing, keyed by the model text and the BNG2.pl path, so reloading the
+# workbench does not rerun BNG2.pl until the model (or BNG) changes. A
+# failure is never cached: the next request tries again.
+
+def _view_file(name: str, kind: str) -> Path:
+    return SANDBOX / "contactmap" / check_name(name) / f"{kind}.json"
+
+
+def _view_key(bngl: str) -> str:
+    return _digest(str(bngl) + "\n" + str(BNG))
+
+
+def cached_view(name: str, kind: str, bngl: str) -> dict | None:
+    try:
+        d = json.loads(_view_file(name, kind).read_text(encoding="utf-8"))
+        return d["payload"] if d.get("key") == _view_key(bngl) else None
+    except Exception:
+        return None
+
+
+def store_view(name: str, kind: str, bngl: str, payload: dict) -> None:
+    try:
+        f = _view_file(name, kind)
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(json.dumps({"key": _view_key(bngl), "payload": payload}),
+                     encoding="utf-8")
+    except OSError:
+        pass
+
+
+def eta_seconds(n_obs: int, particles: int) -> float:
+    """The engine's own cost model (pf.cell_seconds), calibrated on the
+    production cell: approximate for any other model."""
+    return pf_engine.cell_seconds({"n_obs": int(n_obs),
+                                   "particles": int(particles)})

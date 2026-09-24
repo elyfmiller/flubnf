@@ -3103,21 +3103,10 @@ def _sandbox_save_posted(name: str, model_bngl: str, data_exp: str,
 
 @app.get("/sandbox", response_class=HTMLResponse)
 def sandbox_page(request: Request, run: str = "", model: str = ""):
-    models = sandbox_mod.list_models()
-    have = {m["name"] for m in models}
-    examples = [e for e in sandbox_mod.list_examples() if e not in have]
+    """The gallery (no model) or one model's workbench (?model=): the
+    editor, its run settings, its runs and their results, its diagram."""
     live = _sandbox_status.get("running")
-    runs = sandbox_mod.list_runs(model=model or None, live=live)[:25]
-    res = None
-    try:
-        if run:
-            res = sandbox_mod.results(_sandbox_run_dir(run), live=live)
-        elif runs:
-            res = sandbox_mod.results(sandbox_mod.RUNS / runs[0]["run_id"],
-                                      live=live)
-    except Exception as e:
-        _flash(f"That sandbox run could not be read: {e}")
-        res = None
+    models = sandbox_mod.list_models()
     editing = None
     if model:
         try:
@@ -3125,8 +3114,31 @@ def sandbox_page(request: Request, run: str = "", model: str = ""):
                        **sandbox_mod.read_model(model)}
         except Exception as e:
             _flash(str(e))
-    settings = []
+            model = ""
+    all_runs = sandbox_mod.list_runs(live=live)
+    last = {}
+    for r in all_runs:
+        last.setdefault(r.get("model"), r)
+    runs = [r for r in all_runs if r.get("model") == model][:25] if model else []
+    res = None
+    try:
+        if run:
+            res = sandbox_mod.results(_sandbox_run_dir(run), live=live)
+            if model and res["meta"].get("model") != model:
+                res = None
+        elif runs:
+            res = sandbox_mod.results(sandbox_mod.RUNS / runs[0]["run_id"],
+                                      live=live)
+    except Exception as e:
+        _flash(f"That sandbox run could not be read: {e}")
+        res = None
+    ctx = {"active": "Sandbox", "models": models, "last": last,
+           "examples": sandbox_mod.list_examples(), "runs": runs,
+           "res": res, "res_json": _script_json(res or {}),
+           "editing": editing, "busy": _sandbox_busy_reason(),
+           "running_id": live}
     if editing:
+        name = editing["name"]
         try:
             times = [r[0] for r in
                      sandbox_mod.read_exp(editing["data.exp"])["rows"]]
@@ -3137,22 +3149,34 @@ def sandbox_page(request: Request, run: str = "", model: str = ""):
                                                    times=times)
         except Exception:
             settings = []
-    return templates.TemplateResponse(request, "sandbox.html", {
-        "active": "Sandbox", "models": models, "examples": examples,
-        "runs": runs, "res": res, "res_json": _script_json(res or {}),
-        "editing": editing, "busy": _sandbox_busy_reason(),
-        "running_id": live, "settings": settings,
-        "dry_particles": sandbox_mod.DRY_RUN_PARTICLES,
-        # the archive as a data source (empty lists with no hub)
-        "locations": sandbox_mod.locations(),
-        "vintages": sandbox_mod.vintages(),
-        "data_range": sandbox_mod.default_range(sandbox_mod.vintages()),
-        "data_source": (sandbox_mod.read_data_source(editing["name"])
-                        if editing else None)})
+        # the run form starts from this model's newest run, else a quick check
+        prev = runs[0] if runs else {}
+        form = {"particles": int(prev.get("particles")
+                                 or sandbox_mod.DRY_RUN_PARTICLES),
+                "jitter": prev.get("jitter", 0.15),
+                "forecast_weeks": prev.get("forecast_weeks", 4),
+                "seed": prev.get("seed", 0)}
+        ctx.update({
+            "info": sandbox_mod.read_info(name),
+            "note": next((m["note"] for m in models if m["name"] == name), ""),
+            "origin": next((m["origin"] for m in models if m["name"] == name), ""),
+            "settings": settings, "form": form,
+            "presets": {"quick": sandbox_mod.DRY_RUN_PARTICLES,
+                        "full": sandbox_mod.FULL_FIT_PARTICLES},
+            # seconds at the reference 10,000 particles; the page scales it
+            "eta_full": round(sandbox_mod.eta_seconds(
+                len(times or []), sandbox_mod.FULL_FIT_PARTICLES), 1),
+            # the archive as a data source (empty lists with no hub)
+            "locations": sandbox_mod.locations(),
+            "vintages": sandbox_mod.vintages(),
+            "data_range": sandbox_mod.default_range(sandbox_mod.vintages()),
+            "data_source": sandbox_mod.read_data_source(name)})
+    return templates.TemplateResponse(request, "sandbox.html", ctx)
 
 
 @app.post("/sandbox/add-example")
 def sandbox_add_example(request: Request, name: str = Form(...)):
+    """Kept for scripts and old pages: an example under its own name."""
     try:
         sandbox_mod.add_example(name)
         _flash(f"Example {name} copied into the sandbox.")
@@ -3163,13 +3187,56 @@ def sandbox_add_example(request: Request, name: str = Form(...)):
 
 
 @app.post("/sandbox/new")
-def sandbox_new(request: Request, name: str = Form(...)):
-    """A new model from the skeleton's three files (fits as written)."""
+def sandbox_new(request: Request, name: str = Form(...),
+                start: str = Form("skeleton")):
+    """A new model: the skeleton (fits as written), a copy of a shipped
+    example (example:<name>) or of a sandbox model (copy:<name>)."""
     name = (name or "").strip()
+    kind, _, what = (start or "skeleton").partition(":")
     try:
-        sandbox_mod.new_model(name)
-        _flash(f"New model {name} written from the skeleton; edit it below.")
+        if kind == "example":
+            sandbox_mod.add_example(what, as_name=name)
+            _flash(f"{name} copied from the example {what}.")
+        elif kind == "copy":
+            sandbox_mod.copy_model(what, name)
+            _flash(f"{name} copied from {what}.")
+        elif kind == "skeleton":
+            sandbox_mod.new_model(name)
+            _flash(f"{name} written from the skeleton.")
+        else:
+            raise sandbox_mod.SandboxError(f"{start!r} is not a way to start")
         return _sandbox_redirect(name)
+    except Exception as e:
+        _flash(str(e))
+        return _sandbox_redirect(what if kind == "copy" else "")
+
+
+@app.post("/sandbox/models/{name}/delete")
+def sandbox_delete_model(name: str, confirm: str = Form("")):
+    """Delete a model with its runs (never while one of them fits)."""
+    if confirm != name:
+        _flash("Not deleted: the confirmation did not name the model.")
+        return _sandbox_redirect(name)
+    try:
+        n = sandbox_mod.delete_model(name, live=_sandbox_status.get("running"))
+        _flash(f"Deleted {name}" + (f" and its {n} run{'' if n == 1 else 's'}"
+                                    if n else "") + ".")
+        return _sandbox_redirect()
+    except Exception as e:
+        _flash(str(e))
+        return _sandbox_redirect(name)
+
+
+@app.post("/sandbox/runs/{run_id}/delete")
+def sandbox_delete_run(run_id: str, confirm: str = Form("")):
+    """Delete one run folder (never the live fit)."""
+    if confirm != run_id:
+        _flash("Not deleted: the confirmation did not name the run.")
+        return _sandbox_redirect()
+    try:
+        model = sandbox_mod.delete_run(run_id, live=_sandbox_status.get("running"))
+        _flash(f"Deleted sandbox run {run_id}.")
+        return _sandbox_redirect(model)
     except Exception as e:
         _flash(str(e))
         return _sandbox_redirect()
@@ -3187,6 +3254,23 @@ def sandbox_save(request: Request, name: str,
     except Exception as e:
         _flash(str(e))
     return _sandbox_redirect(name)
+
+
+@app.post("/api/sandbox/models/{name}/check")
+def api_sandbox_check(name: str, model_bngl: str = Form(""),
+                      data_exp: str = Form(""), priors_conf: str = Form("")):
+    """Check the posted editor text (each field falling back to the saved
+    file) without the engine: JSON problems, warnings and facts."""
+    try:
+        files = sandbox_mod.read_model(name)
+        for f, v in (("model.bngl", model_bngl), ("data.exp", data_exp),
+                     ("priors.conf", priors_conf)):
+            if (v or "").strip():
+                files[f] = v.replace("\r\n", "\n")
+        return sandbox_mod.check(files, work=sandbox_mod.SANDBOX / "check")
+    except Exception as e:
+        return JSONResponse({"ok": False, "problems": [str(e)[:1500]],
+                             "warnings": [], "facts": {}}, status_code=200)
 
 
 @app.post("/sandbox/models/{name}/fill-data")
@@ -3276,7 +3360,27 @@ def sandbox_run(request: Request, model: str = Form(...),
                 particles: int = Form(sandbox_mod.DRY_RUN_PARTICLES),
                 jitter: float = Form(0.15), forecast_weeks: int = Form(4),
                 seed: int = Form(0)):
+    """Kept for scripts and old pages: run a model's saved files."""
     return _sandbox_start(model, particles=particles, jitter=jitter,
+                          forecast_weeks=forecast_weeks, seed=seed)
+
+
+@app.post("/sandbox/models/{name}/run")
+def sandbox_model_run(name: str, model_bngl: str = Form(""),
+                      data_exp: str = Form(""), priors_conf: str = Form(""),
+                      particles: int = Form(sandbox_mod.DRY_RUN_PARTICLES),
+                      jitter: float = Form(0.15), forecast_weeks: int = Form(4),
+                      seed: int = Form(0)):
+    """Save and run: the posted editor fields are saved first (the run's
+    workroot keeps its own copy), then the run starts as /sandbox/run's."""
+    try:
+        saved = _sandbox_save_posted(name, model_bngl, data_exp, priors_conf)
+        if saved:
+            _flash(f"Saved {name}.")
+    except Exception as e:
+        _flash(f"Not saved, not started: {e}")
+        return _sandbox_redirect(name)
+    return _sandbox_start(name, particles=particles, jitter=jitter,
                           forecast_weeks=forecast_weeks, seed=seed)
 
 
@@ -3319,14 +3423,21 @@ def sandbox_stop():
 @app.get("/api/sandbox/models/{name}/contactmap")
 def api_sandbox_contactmap(name: str):
     """The model's contact map as an inline SVG, drawn by BNG2.pl's
-    visualize action on a copy of the model (no engine, no run)."""
+    visualize action on a copy of the model (no engine, no run); cached
+    by the model text until it changes."""
     from app.core import contactmap
     try:
         files = sandbox_mod.read_model(name)
+        bngl = files["model.bngl"]
+        hit = sandbox_mod.cached_view(name, "contactmap", bngl)
+        if hit is not None:
+            return hit
         work = sandbox_mod.SANDBOX / "contactmap" / sandbox_mod.check_name(name)
-        cm = contactmap.parse(contactmap.graphml_from_bngl(files["model.bngl"], work))
-        return {"svg": contactmap.svg(cm), "molecules": len(cm["molecules"]),
-                "bonds": len(cm["bonds"]), "graph": contactmap.contact_graph(cm)}
+        cm = contactmap.parse(contactmap.graphml_from_bngl(bngl, work))
+        out = {"svg": contactmap.svg(cm), "molecules": len(cm["molecules"]),
+               "bonds": len(cm["bonds"]), "graph": contactmap.contact_graph(cm)}
+        sandbox_mod.store_view(name, "contactmap", bngl, out)
+        return out
     except Exception as e:
         return JSONResponse({"error": str(e)[:1500]}, status_code=200)
 
@@ -3334,18 +3445,24 @@ def api_sandbox_contactmap(name: str):
 @app.get("/api/sandbox/models/{name}/network")
 def api_sandbox_network(name: str):
     """BNG2.pl's generated reaction network as inline SVG (generate-only
-    copy, no run); too large -> counts and a note. "graph" always returned."""
+    copy, no run); too large -> counts and a note. "graph" always returned.
+    Cached by the model text until it changes."""
     from app.core import contactmap
     try:
         files = sandbox_mod.read_model(name)
+        bngl = files["model.bngl"]
+        hit = sandbox_mod.cached_view(name, "network", bngl)
+        if hit is not None:
+            return hit
         work = sandbox_mod.SANDBOX / "contactmap" / sandbox_mod.check_name(name)
-        net = contactmap.parse_net(contactmap.network_from_bngl(files["model.bngl"], work))
+        net = contactmap.parse_net(contactmap.network_from_bngl(bngl, work))
         drawing = contactmap.svg_network(net)
         out = {"svg": drawing if drawing.startswith("<svg") else "",
                "species": len(net["species"]), "reactions": len(net["reactions"]),
                "graph": contactmap.network_graph(net)}
         if not out["svg"]:
             out["note"] = drawing
+        sandbox_mod.store_view(name, "network", bngl, out)
         return out
     except Exception as e:
         return JSONResponse({"error": str(e)[:1500]}, status_code=200)
@@ -3358,6 +3475,20 @@ def api_sandbox_run(run_id: str):
                                    live=_sandbox_status.get("running"))
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=404)
+
+
+def _sandbox_storage_line() -> dict:
+    """The Storage panel's read-only sandbox line (kept out of its total:
+    the sandbox's runs are deleted from the sandbox, not from there)."""
+    from app.core import retro
+    try:
+        s = sandbox_mod.storage()
+    except Exception:
+        return {}
+    return {**s, "size_h": retro.human_bytes(s["bytes"])} if s["bytes"] else {}
+
+
+templates.env.globals["sandbox_storage"] = _sandbox_storage_line
 
 
 # === Models (/models, /model/{name}) -> model.html ===

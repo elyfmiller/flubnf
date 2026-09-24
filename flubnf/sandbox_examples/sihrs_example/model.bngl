@@ -1,4 +1,5 @@
-# SIHRS influenza: the production single-strain seasonal model, one state.
+# Influenza on the SIHRS compartment model, one state, as the production
+# single-strain seasonal model writes it.
 #
 # The per-state data are filled in for a synthetic state of five million
 # people. Five fitted parameters (Reff, eps1, phi1, mult, r); everything else

@@ -126,7 +126,7 @@ def test_fill_data_writes_calendar_week_rows_and_the_sidecar(box):
     assert side == info
     assert sb.read_data_source("mine") == info
     assert sorted(p.name for p in (sb.MODELS / "mine").iterdir()) == sorted(
-        list(sb.REQUIRED) + [sb.SOURCE_FILE])
+        list(sb.REQUIRED) + [sb.MODEL_FILE, sb.SOURCE_FILE])
     # a vintage fill names its as-of date
     info = sb.fill_data("mine", "Alabama", WEEKS[0], WEEKS[3], asof="2024-11-09")
     assert info["asof"] == "2024-11-09" and info["rows"] == 3
@@ -197,11 +197,13 @@ def test_the_route_fills_flashes_and_the_page_shows_the_source(box):
 def test_the_editor_shows_the_fieldset_or_the_no_archive_hint(box, monkeypatch):
     sb.new_model("mine")
     html = client.get("/sandbox?model=mine").text
-    assert "<fieldset" in html and "Fill from the archive" in html
+    assert "<summary>Load data</summary>" in html
     assert 'formaction="/sandbox/models/mine/fill-data"' in html
-    assert "Fill data.exp" in html and "No hub archive here" not in html
+    assert "Load into data.exp" in html and "No hub archive here" not in html
     assert html.index('value="US"') < html.index('value="Alabama"') < html.index('value="Wyoming"')
-    assert '<option value="settled" >settled truth</option>' in html
+    assert '<optgroup label="FluSight hub">' in html
+    assert '<option value="settled" >latest (settled)</option>' in html
+    assert '<option value="2024-11-09" >as of 2024-11-09</option>' in html
     assert html.index('value="2024-11-09"') < html.index('value="2024-11-02"')
     assert 'name="start" type="date" step="7"' in html
     assert 'value="2024-06-29"' in html and 'value="2024-11-09"' in html  # 20 weeks

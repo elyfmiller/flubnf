@@ -48,7 +48,7 @@ def test_names_are_checked_and_examples_ship_complete():
 
 def test_a_model_from_scratch_is_a_runnable_skeleton(box):
     d = sb.new_model("mine")
-    assert sorted(p.name for p in d.iterdir()) == sorted(sb.REQUIRED)
+    assert sorted(p.name for p in d.iterdir()) == sorted(sb.REQUIRED + (sb.MODEL_FILE,))
     files = sb.read_model("mine")
     bngl = files["model.bngl"]
     for block in ("begin model", "begin parameters", "begin molecule types",
@@ -80,7 +80,7 @@ def test_a_model_from_scratch_is_a_runnable_skeleton(box):
 
 def test_an_example_copies_in_once_and_lists_complete(box):
     d = sb.add_example("kinetics_example")
-    assert sorted(p.name for p in d.iterdir()) == sorted(sb.REQUIRED)
+    assert sorted(p.name for p in d.iterdir()) == sorted(sb.REQUIRED + (sb.MODEL_FILE,))
     with pytest.raises(sb.SandboxError, match="already exists"):
         sb.add_example("kinetics_example")
     with pytest.raises(sb.SandboxError, match="no shipped example"):
@@ -190,15 +190,19 @@ def test_run_records_the_outcome_and_results_read_the_outputs(box, monkeypatch):
 def test_sandbox_page_lists_examples_models_and_runs(box):
     html = client.get("/sandbox").text
     assert 'href="/sandbox"' in html and "Sandbox" in html
-    assert 'value="kinetics_example"' in html                # add-example form
+    assert 'value="example:kinetics_example"' in html        # the New model form
+    assert 'value="skeleton"' in html and 'action="/sandbox/new"' in html
     assert "No models yet" in html
     client.post("/sandbox/add-example", data={"name": "sihrs_example"},
                 follow_redirects=False)
+    html = client.get("/sandbox").text                        # the gallery lists it
+    assert 'href="/sandbox?model=sihrs_example"' in html
+    assert 'value="copy:sihrs_example"' in html
     html = client.get("/sandbox?model=sihrs_example").text
-    assert "sihrs_example" in html and "complete" in html
+    assert "<h1>sihrs_example</h1>" in html
     assert 'name="model_bngl"' in html                       # the editor
     assert "Hobs() = mult*H_Cum" in html
-    assert 'action="/sandbox/new"' in html                   # from scratch
+    assert 'action="/sandbox/new"' in html                   # Duplicate
     r = client.post("/sandbox/new", data={"name": "scratch"}, follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"].endswith("/sandbox?model=scratch")
     import html as H
