@@ -10,8 +10,8 @@ jobs:
     strategy:
       matrix: {python-version: ["3.11", "3.12"]}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with: {python-version: "${{ matrix.python-version }}"}
       # ruff: test_ui_layout.py lints app/ui with it (the case skips without it)
       - run: pip install -e ".[app,dev]" bionetgen ruff
@@ -63,8 +63,8 @@ jobs:
       fail-fast: false
       matrix: {python-version: ["3.11", "3.12"]}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with: {python-version: "${{ matrix.python-version }}"}
 
       - run: pip install -e ".[app,dev]" bionetgen ruff
@@ -121,8 +121,8 @@ jobs:
     timeout-minutes: 60
     steps:
       # .gitattributes checks out *.ps1/*.bat as CRLF, the bytes users get.
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with: {python-version: "3.12"}
 
       - name: setup.ps1 parses under Windows PowerShell 5.1

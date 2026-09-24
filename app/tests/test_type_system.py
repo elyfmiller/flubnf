@@ -1,7 +1,7 @@
 """The data layer joins the type system: the A-/A/A+ control dispatches
 fontsizechange; Plotly layouts use the brand face with a system fallback and
 root-relative text sizes, redrawing on both events; SVG labels use rem
-classes; nav tabs step below 1100px to survive A+. The static report has no
+classes; nav tab size follows the window (clamp) on one row. The static report has no
 control, so the player's hook is a no-op there.
 """
 import sys
@@ -114,10 +114,16 @@ def test_svg_labels_are_sized_in_rem_classes_not_viewbox_units():
 
 # ------------------------------------------------------ nav tab type step
 
-def test_tab_type_steps_below_1100px():
-    # eight title-case tabs at 1.05rem wrap at 900, and at 1280 with the A+
-    # text size; below 1100px the tabs step to .95rem so the row holds
-    i = NAU.index("@media(max-width:1100px)")
-    block = NAU[i:i + 200]
-    assert "header.nav a.tab" in block
-    assert "font-size:.95rem" in block
+def test_tab_type_scales_with_the_window():
+    # nine title-case tabs share one row with the brand and the Display
+    # menu: their size follows the window (a clamp, not a breakpoint step),
+    # and the strip scrolls sideways where it no longer fits
+    i = NAU.index("header.nav a.tab{")
+    block = NAU[i:NAU.index("}", i)]
+    assert "font-size:clamp(.85rem," in block
+    assert "padding:.8rem .45em" in block           # scales with the size
+    j = NAU.index("header.nav .navtabs{")
+    strip = NAU[j:NAU.index("}", j)]
+    assert "overflow-x:auto" in strip and "min-width:0" in strip
+    k = NAU.index("header.nav{")
+    assert "flex-wrap:nowrap" in NAU[k:NAU.index("}", k)]

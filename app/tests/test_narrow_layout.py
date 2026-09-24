@@ -36,8 +36,9 @@ def test_the_one_column_fallback_can_shrink_below_its_content():
 
 
 def test_the_desktop_layout_is_unchanged():
-    assert (".cols{display:grid;grid-template-columns:minmax(260px,360px) "
-            "minmax(0,1fr);gap:.75rem; align-items:start}") in JOINED
+    # the side track and the gap scale with the window (spacing tokens)
+    assert (".cols{display:grid;grid-template-columns:minmax(260px,var(--side-col)) "
+            "minmax(0,1fr); gap:var(--gap);align-items:start}") in JOINED
 
 
 def test_carousel_rows_wrap_instead_of_scrolling_the_card():

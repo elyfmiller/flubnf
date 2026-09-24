@@ -17,8 +17,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.core import runs as _runs
-from app.core.runs import (Ledger, RunSpec, results_html, spec_settings,
-                           version_pairs)
+from app.core.runs import (Ledger, RunSpec, results_html, results_tip,
+                           spec_settings, version_pairs)
 from app.ui import pipeline, retro_seasons, shared, state, templating
 from app.ui.forms import (_default_forecast_date, _int_field, _knob_form,
                           _knob_panel, _knob_raw, _knobs, _str_field,
@@ -230,7 +230,8 @@ def run_page(request: Request, run_id: str):
     return templates.TemplateResponse(request, "run.html", {
         **dsx,
         "active": "Storage", "run_id": run_id, "status": status, "error": err,
-        "results": results_html(o, spec_json),
+        "results": results_html(o, spec_json, heading=False),
+        "results_tip": results_tip(spec_json),
         # the page shows a research badge, so the label stays untagged
         "label": _run_label(run_id, spec_json, tag=False),
         "research": is_research(spec_json),
