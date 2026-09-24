@@ -553,8 +553,9 @@ def set_population(name: str, population: int) -> None:
         elif low == "end parameters":
             inside = False
         elif inside and not done:
-            m = re.match(r"^(\s*(?:\d+\s+)?N)(\s*=?\s*)(\S+)(.*)$", line,
-                         flags=re.S)
+            # N itself, not N_y or No: the name ends at a space or '='
+            m = re.match(r"^(\s*(?:\d+\s+)?N)(?=[\s=])(\s*=?\s*)(\S+)(.*)$",
+                         line, flags=re.S)
             if m:
                 line = f"{m.group(1)}{m.group(2)}{pop}{m.group(4)}"
                 done = 1
