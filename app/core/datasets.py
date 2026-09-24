@@ -25,10 +25,10 @@ dataset`` all read through it):
     decimal could as well be a thousands separator (987, 1.234, 12.345 in
     a comma file; 1,234 in a semicolon or tab file) is read by the
     declared kind: rates as decimals, counts refused (written without
-    separators); undeclared, the kind is asked for, never inferred. A value or name that an
-    unquoted separator split (1,234 or Bern, Stadt without quotes) is
-    refused, whether its second half lands past the header or in an
-    ignored column.
+    separators); undeclared, the kind is asked for, never inferred. A
+    value or name that an unquoted separator split (1,234 or Bern, Stadt
+    without quotes) is refused, whether its second half lands past the
+    header or in an ignored column.
   * headers: case, space and underscore do not matter, and obvious aliases
     are read (``ROLE_ALIASES``). A required column that cannot be matched,
     or two columns that could both be it, asks for a column mapping
@@ -1617,7 +1617,7 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
                     "dates read both month-first and day-first "
                     f"({_rows(asof_both.lines, asof_both.n)}; e.g., {t} is "
                     f"{a.isoformat()} or {_swapped(t).isoformat()}, row "
-                    f"{ln}: {r0['date'].strip()}, {_text(r0['group'])}), and "
+                    f"{ln}: {_place(r0)}), and "
                     f"{why}.{proven} Write as_of dates as YYYY-MM-DD.",
                     asof_both.lines)
     if bad_vals:
@@ -1630,8 +1630,7 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
         lines = [ln for ln, _ in neg]
         rep.add("value_negative", f"The '{vcol}' column contains {len(neg)} "
                 f"negative value(s) ({_rows(lines)}; e.g., {cells(neg)}). "
-                "Values "
-                "must be zero or positive.", lines)
+                "Values must be zero or positive.", lines)
     if na and fmt == "grouped":
         # a grouped CSV lists only reported weeks: NA is an error
         lines = [ln for ln, _ in na]
@@ -2059,13 +2058,12 @@ def ingest(source, name: Optional[str], *, kind: Optional[str] = None,
     ``name`` None or '' takes default_name (the file name, with the target
     of a file that holds several). ``kind`` None or '' takes the kind the
     values show (whole numbers are counts); ``columns`` is validate's
-    column mapping; ``week_start_sunday``
-    is accepted and ignored (see validate). Raises DatasetError (with
-    ``.problems``) and writes nothing when any problem is found.
-    Re-ingesting identical bytes with identical options under the same name
-    returns the existing dataset (idempotent). The folder is built beside
-    the store and renamed into place, so a reader never sees a half-written
-    dataset."""
+    column mapping; ``week_start_sunday`` is accepted and ignored (see
+    validate). Raises DatasetError (with ``.problems``) and writes nothing
+    when any problem is found. Re-ingesting identical bytes with identical
+    options under the same name returns the existing dataset (idempotent).
+    The folder is built beside the store and renamed into place, so a
+    reader never sees a half-written dataset."""
     kind = kind or None
     if kind is not None and kind not in KINDS:
         raise DatasetError(f"Declare the value kind: one of {', '.join(KINDS)}.",

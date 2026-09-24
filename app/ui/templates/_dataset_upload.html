@@ -33,7 +33,7 @@
   <div>{{ tips.label("Name", fid ~ "-name", "Shown wherever the dataset is used; the file name unless you change it.", for_=fid ~ "-name") }}
    <input type="text" name="name" id="{{ fid }}-name" maxlength="80" data-name
      value="{{ upload.name if upload else '' }}" placeholder="the file name"></div>
-  <div>{{ tips.label("Values are", fid ~ "-kind", "Read from the values: whole numbers are counts, anything else rates. Counts with a population can also run the particle filter and are exported as whole numbers; rates run the Groundhog (own data) only.", for_=fid ~ "-kind") }}
+  <div>{{ tips.label("Values are", fid ~ "-kind", "Read from the values: whole numbers are counts, anything else rates; numbers like 1.234, whose dot could separate thousands, are left to you. Counts with a population can also run the particle filter and are exported as whole numbers; rates run the Groundhog (own data) only.", for_=fid ~ "-kind") }}
    <input type="hidden" name="kind_auto" value="" data-kind-auto>
    <select name="kind" id="{{ fid }}-kind" data-kind>
     <option value="" {% if not upload or not upload.kind %}selected{% endif %}>from the values</option>

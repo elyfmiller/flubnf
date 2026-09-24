@@ -2943,7 +2943,8 @@ dataset_app = typer.Typer(
 app.add_typer(dataset_app, name="dataset")
 
 _KIND_HELP = ("'count' or 'rate'; default: from the values (whole numbers "
-              "are counts).")
+              "are counts; numbers like 1.234, whose dot could separate "
+              "thousands, need it).")
 _COLUMN_HELP = ("ROLE=HEADER (or ROLE=#N, the Nth column) when the headers "
                 "do not say which column is which; ROLE is date, group, "
                 "value or population. Repeat for each.")
