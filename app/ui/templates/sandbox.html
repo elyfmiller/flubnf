@@ -122,18 +122,42 @@
     · <strong>{{ res.meta.status }}</strong>{% if res.meta.seconds is defined %} in {{ res.meta.seconds }} s{% endif %}</p>
    <div class="row">
     {% if res.run_id == running_id %}<form method="post" action="/sandbox/runs/{{ res.run_id }}/stop"><button class="quiet">Stop</button></form>
-    {% else %}<form method="post" action="/sandbox/runs/{{ res.run_id }}/delete"><input type="hidden" name="ident" value="{{ res.run_id }}"><input type="hidden" name="confirm" value=""><button type="button" class="quiet" data-sb-delete="run {{ res.run_id }}">Delete run</button></form>{% endif %}
+    {% else %}<form method="post" action="/sandbox/runs/{{ res.run_id }}/delete"><input type="hidden" name="ident" value="{{ res.run_id }}"><input type="hidden" name="confirm" value=""><button type="button" class="quiet" data-sb-delete="run {{ res.run_id }}">Delete run</button></form>
+    <a href="/sandbox/runs/{{ res.run_id }}/download" download><button type="button" class="quiet">Download run (.zip)</button></a>{% endif %}
+    {% set others = runs | rejectattr("run_id", "equalto", res.run_id) | list %}
+    {% if others %}<form method="get" action="/sandbox" class="row sbcompare">
+     <input type="hidden" name="model" value="{{ name }}"><input type="hidden" name="run" value="{{ res.run_id }}">
+     <label for="sb-compare">Compare with</label>
+     <select id="sb-compare" name="compare"><option value="">none</option>{% for r in others %}<option value="{{ r.run_id }}"{% if cmp and cmp.run_id == r.run_id %} selected{% endif %}>{{ r.run_id }} ({{ r.status }})</option>{% endfor %}</select>
+     <button class="quiet">Compare</button>
+     {{ tips.tip("sb-compare", "compare", "The other run's median and band are drawn dashed over this one; the parameter tables sit side by side, and What changed lists every edit between the two.") }}
+    </form>{% endif %}
    </div>
    {% if res.meta.error %}<pre class="hint">{{ res.meta.error }}</pre>{% endif %}
    {% if res.stderr %}<pre class="hint">{{ res.stderr }}</pre>{% endif %}
-   {% if res.params %}
+   {% if res.params and cmp and cmp.params %}
+   {% set cp = {} %}{% for p in cmp.params %}{% set _ = cp.update({p.name: p}) %}{% endfor %}
+   <table class="kv sbparams2"><thead><tr><th>parameter</th><th>this run: median (5 to 95%)</th><th>compared run</th></tr></thead><tbody>
+   {% for p in res.params %}{% set q = cp.get(p.name) %}<tr><td>{{ p.name }}</td><td>{{ "%.4g" | format(p.p50) }} ({{ "%.4g" | format(p.p5) }} to {{ "%.4g" | format(p.p95) }})</td><td>{% if q %}{{ "%.4g" | format(q.p50) }} ({{ "%.4g" | format(q.p5) }} to {{ "%.4g" | format(q.p95) }}){% else %}absent{% endif %}</td></tr>{% endfor %}
+   {% for q in cmp.params if q.name not in (res.params | map(attribute="name") | list) %}<tr><td>{{ q.name }}</td><td>absent</td><td>{{ "%.4g" | format(q.p50) }} ({{ "%.4g" | format(q.p5) }} to {{ "%.4g" | format(q.p95) }})</td></tr>{% endfor %}
+   </tbody></table>
+   {% elif res.params %}
    <table class="kv"><thead><tr><th>parameter</th><th>5%</th><th>median</th><th>95%</th></tr></thead><tbody>
    {% for p in res.params %}<tr><td>{{ p.name }}</td><td>{{ "%.4g" | format(p.p5) }}</td><td>{{ "%.4g" | format(p.p50) }}</td><td>{{ "%.4g" | format(p.p95) }}</td></tr>{% endfor %}
    </tbody></table>
-   <p class="hint">{{ res.distinct }} distinct parameter vectors of {{ res.sample }}{% if res.ess %}; ESS at the last week {{ "%.0f" | format(res.ess[-1].ess) }}, minimum {{ "%.0f" | format(res.ess | map(attribute="ess") | min) }}{% endif %}.</p>
    {% endif %}
+   {% if res.params %}<p class="hint">{{ res.distinct }} distinct parameter vectors of {{ res.sample }}{% if res.ess %}; ESS at the last week {{ "%.0f" | format(res.ess[-1].ess) }}, minimum {{ "%.0f" | format(res.ess | map(attribute="ess") | min) }}{% endif %}.</p>{% endif %}
    <div id="sbplot" style="min-height:320px"></div>
   </div>
+  {% if diff %}
+  <div class="card sbdiff"><h2>What changed</h2>
+   <p class="hint">From the compared run {{ diff.a }} to this one.</p>
+   {% if diff.settings %}<table class="kv"><thead><tr><th>run setting</th><th>compared run</th><th>this run</th></tr></thead><tbody>
+    {% for s in diff.settings %}<tr><td>{{ s.key }}</td><td>{{ s.a }}</td><td>{{ s.b }}</td></tr>{% endfor %}</tbody></table>{% endif %}
+   {% if diff.data_source %}<p class="hint">Data: {{ diff.data_source.a.location or "typed" }} {{ diff.data_source.a.asof or "" }} to {{ diff.data_source.b.location or "typed" }} {{ diff.data_source.b.asof or "" }}.</p>{% endif %}
+   {% for f in diff.files %}{% if f.same %}<p class="hint">{{ f.name }}: unchanged.</p>{% else %}<details class="adv" open><summary>{{ f.name }}</summary><pre class="sbdiffpre">{{ f.diff }}</pre></details>{% endif %}{% endfor %}
+  </div>
+  {% endif %}
   {% endif %}
   {% if runs %}
   <div class="card"><h2>Runs of {{ name }}</h2>
@@ -152,6 +176,7 @@
     <input name="name" aria-label="name of the copy" placeholder="name of the copy" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,63}" required style="width:14rem">
     <button class="quiet">Duplicate</button>
    </form>
+   <a href="/sandbox/models/{{ name }}/download" download><button type="button" class="quiet">Download model (.zip)</button></a>
    <form method="post" action="/sandbox/models/{{ name }}/delete">
     <input type="hidden" name="ident" value="{{ name }}"><input type="hidden" name="confirm" value="">
     <button type="button" class="quiet" data-sb-delete="{{ name }} and its {{ runs | length }} run{{ '' if runs | length == 1 else 's' }}">Delete model</button>
@@ -160,5 +185,5 @@
  </div>
 </div>
 {% endif %}
-<script>window.SANDBOX_RES = {{ res_json | safe }};</script>
+<script>window.SANDBOX_RES = {{ res_json | safe }}; window.SANDBOX_CMP = {{ cmp_json | safe }};</script>
 {% endblock %}

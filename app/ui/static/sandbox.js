@@ -281,6 +281,19 @@
     var pts = {x: xs.slice(0, times.length), y: RES.meta.observed || [], mode: 'markers',
                name: RES.meta.obs_col || 'observed', marker: {color: ink, size: 6}};
     var traces = [band, med, pts];
+    // a compared run: its band and median dashed, on the same axis
+    var C = root.SANDBOX_CMP;
+    if (C && C.traj && C.meta) {
+      var ct = C.meta.time || [], cd = C.meta.dates || [];
+      var cCal = cd.length === ct.length && ct.length > 0;
+      if (cCal === calendar) {
+        var cx = xsFor(ct, cCal ? cd : [], C.traj.columns), mu = css('--mut');
+        traces.unshift({x: cx.concat(cx.slice().reverse()), y: C.traj.q90.concat(C.traj.q10.slice().reverse()),
+                        fill: 'toself', fillcolor: hexa(mu, 0.14), line: {width: 0}, name: 'compared 10 to 90%', hoverinfo: 'skip'});
+        traces.push({x: cx, y: C.traj.q50, mode: 'lines', name: 'compared median',
+                     line: {color: mu, width: 2, dash: 'dash'}});
+      }
+    }
     var shapes = n < t.columns ? [{type: 'line', x0: xs[n - 1], x1: xs[n - 1], y0: 0, y1: 1, yref: 'paper',
                                    line: {dash: 'dot', color: mut}}] : [];
     root.Plotly.newPlot(el, traces, {margin: {t: 30, r: 10, l: 64, b: 48}, shapes: shapes,

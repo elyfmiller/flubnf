@@ -28,7 +28,8 @@ templates under app/ui/templates):
   Output              GET /output, /output/download, POST /output/reveal,
                       GET /output/report, /output/report/download
                                                                output.html
-  Sandbox             GET /sandbox, POST /sandbox/*, GET /api/sandbox/*
+  Sandbox             GET /sandbox, POST /sandbox/*, GET /api/sandbox/*,
+                      GET /sandbox/models|runs/{id}/download
                                                                sandbox.html
   Models              GET /models, /model/{name}               model.html
   Retrospective       roots/claims/status, ETA estimate
@@ -3350,9 +3351,10 @@ def _sandbox_save_posted(name: str, model_bngl: str, data_exp: str,
 
 @app.get("/sandbox", response_class=HTMLResponse)
 def sandbox_page(request: Request, run: str = "", model: str = "",
-                 dataset: str = ""):
+                 dataset: str = "", compare: str = ""):
     """The gallery (no model) or one model's workbench (?model=): the
-    editor, its run settings, its runs and their results, its diagram."""
+    editor, its run settings, its runs and their results (with ?compare=
+    a second run overlaid and diffed), its diagram."""
     live = _sandbox_status.get("running")
     models = sandbox_mod.list_models()
     editing = None
@@ -3380,9 +3382,22 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
     except Exception as e:
         _flash(f"That sandbox run could not be read: {e}")
         res = None
+    # a second run of the same model, overlaid and diffed against the open one
+    cmp, diff = None, None
+    if res and compare and compare != res["run_id"]:
+        try:
+            cmp = sandbox_mod.results(_sandbox_run_dir(compare), live=live)
+            if cmp["meta"].get("model") != res["meta"].get("model"):
+                raise sandbox_mod.SandboxError(
+                    f"{compare} is a run of another model")
+            diff = sandbox_mod.diff_runs(compare, res["run_id"])
+        except Exception as e:
+            _flash(f"Not compared: {e}")
+            cmp, diff = None, None
     ctx = {"active": "Sandbox", "models": models, "last": last,
            "examples": sandbox_mod.list_examples(), "runs": runs,
            "res": res, "res_json": _script_json(res or {}),
+           "cmp": cmp, "cmp_json": _script_json(cmp or {}), "diff": diff,
            "editing": editing, "busy": _sandbox_busy_reason(),
            "running_id": live,
            # the Oracle SIHRS start (the gallery's New model form)
@@ -3873,6 +3888,48 @@ def api_sandbox_run(run_id: str):
                                    live=_sandbox_status.get("running"))
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=404)
+
+
+def _sandbox_local_get(request: Request) -> bool:
+    """A download is served only to a localhost Host (and Origin, when
+    sent): GET stays open elsewhere, but a model or a run is the user's
+    own files, not for a DNS-rebinding page to read."""
+    origin = request.headers.get("origin")
+    return (_authority_hostname(request.headers.get("host", ""))
+            in _LOCAL_HOSTNAMES
+            and (origin is None
+                 or _authority_hostname(origin) in _LOCAL_HOSTNAMES))
+
+
+def _sandbox_zip(data: bytes, filename: str):
+    from fastapi.responses import Response
+    return Response(data, media_type="application/zip", headers={
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Cache-Control": "no-store"})
+
+
+@app.get("/sandbox/models/{name}/download")
+def sandbox_model_download(request: Request, name: str):
+    """The model's three files and sidecars as a zip."""
+    if not _sandbox_local_get(request):
+        return PlainTextResponse("Refused: not a localhost request.\n",
+                                 status_code=403)
+    try:
+        return _sandbox_zip(sandbox_mod.model_zip(name), f"{name}.zip")
+    except Exception as e:
+        return PlainTextResponse(f"{e}\n", status_code=404)
+
+
+@app.get("/sandbox/runs/{run_id}/download")
+def sandbox_run_download(request: Request, run_id: str):
+    """A run's inputs, engine outputs and summary.csv as a zip."""
+    if not _sandbox_local_get(request):
+        return PlainTextResponse("Refused: not a localhost request.\n",
+                                 status_code=403)
+    try:
+        return _sandbox_zip(sandbox_mod.run_zip(run_id), f"{run_id}.zip")
+    except Exception as e:
+        return PlainTextResponse(f"{e}\n", status_code=404)
 
 
 def _sandbox_storage_line() -> dict:

@@ -66,12 +66,13 @@ Every route lives in `server.py`, grouped under `# === <Tab> ===` banners, excep
 | **Methods** | | | | |
 | GET | `/methods` | `methods_page` | `methods.html` | nav |
 | **Sandbox** | | | | |
-| GET | `/sandbox` (`?model=`, `?run=`, `?dataset=`) | `sandbox_page` | `sandbox.html` (gallery, or one model's workbench) | nav |
+| GET | `/sandbox` (`?model=`, `?run=`, `?dataset=`, `?compare=`) | `sandbox_page` | `sandbox.html` (gallery, or one model's workbench) | nav |
 | POST | `/sandbox/new` (`start=skeleton\|example:<n>\|copy:<m>\|shipped:sihrs\|shipped:dataset:<id>`), `/sandbox/add-example` (alias) | `sandbox_new`, `sandbox_add_example` | redirect | `sandbox.html` forms |
 | POST | `/sandbox/models/{name}/save`, `/run` (save, then run), `/delete` | `sandbox_save`, `sandbox_model_run`, `sandbox_delete_model` | redirect | `sandbox.html` workbench form |
 | POST | `/sandbox/models/{name}/fill-data`, `/upload-data` (multipart, size-capped) | `sandbox_fill_data`, `sandbox_upload_data` | redirect | `sandbox_data.html` (`formaction`) |
 | POST | `/sandbox/run` (alias) | `sandbox_run` | redirect | scripts |
 | POST | `/sandbox/runs/{run_id}/stop`, `/delete`; `/sandbox/stop` | `sandbox_run_stop`, `sandbox_delete_run`, `sandbox_stop` | redirect | results card; the guard modal |
+| GET | `/sandbox/models/{name}/download`, `/sandbox/runs/{run_id}/download` (localhost Host only) | `sandbox_model_download`, `sandbox_run_download` | zip | workbench |
 | POST | `/api/sandbox/models/{name}/check` | `api_sandbox_check` | JSON | `static/sandbox.js` |
 | GET | `/api/sandbox/models/{name}/contactmap`, `/network` | `api_sandbox_contactmap`, `api_sandbox_network` | | `sandbox_views.html` (drawn by `static/model-views.js`; cached by the model text) |
 | GET | `/api/sandbox/runs/{run_id}` | `api_sandbox_run` | | `static/sandbox.js` poll |

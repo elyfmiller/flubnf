@@ -25,7 +25,8 @@ console's particle filter builds it for one jurisdiction and week, with
 creation digests so an edited copy never passes for it. check() reads a
 model without the engine; prepare() runs the production preflight first.
 data.exp can be filled from the hub archive or from a stored custom
-dataset (app/core/datasets.py), always in calendar weeks.
+dataset (app/core/datasets.py), always in calendar weeks. Runs can be
+compared (diff_runs) and downloaded (model_zip, run_zip).
 """
 from __future__ import annotations
 
@@ -936,6 +937,10 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
     conf += [f"{k} = {v}" for k, v, _ in settings]
     (cell / "pf.conf").write_text("\n".join(conf) + "\n" + "\n".join(priors)
                                   + "\n", encoding="utf-8", newline="\n")
+    # the run's own copy of priors.conf (the engine never reads it): what
+    # the run's diff and download show as the third file
+    (cell / "priors.conf").write_text(files["priors.conf"].replace("\r\n", "\n"),
+                                      encoding="utf-8", newline="\n")
     obs_col = exp["columns"][1]
     observed = [row[1] for row in exp["rows"]]
     shipped = shipped_state(name, files)
@@ -1503,3 +1508,174 @@ def eta_seconds(n_obs: int, particles: int) -> float:
     production cell: approximate for any other model."""
     return pf_engine.cell_seconds({"n_obs": int(n_obs),
                                    "particles": int(particles)})
+
+
+# ------------------------------------------------ compare, export, clean up
+# A run's three files are its own copies in the cell folder (m.bngl, the
+# <suffix>.exp and priors.conf; runs made before priors.conf was copied
+# fall back to pf.conf's prior lines). Downloads are built in memory and
+# carry no absolute path: pf.conf's paths are rewritten relative to the
+# cell, as the zip lays it out.
+
+#: the raw trajectory rides in a run's zip only up to this size
+TRAJ_ZIP_MAX = 2 * 1024 * 1024
+#: settings a comparison lists when they differ
+RUN_SETTINGS = ("particles", "jitter", "forecast_weeks", "seed", "cumulative",
+                "suffix", "obs_col", "n_obs")
+
+
+def _run_meta(run_id: str) -> tuple:
+    d = run_dir(run_id)
+    return d, json.loads((d / "meta.json").read_text())
+
+
+def run_files(run_id: str) -> dict:
+    """The three files as the run used them: {"model.bngl", "data.exp",
+    "priors.conf"} (a missing one reads '')."""
+    d, meta = _run_meta(run_id)
+    cell = d / f"{meta['model']}_r0"
+
+    def read(p: Path) -> str:
+        try:
+            return p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return ""
+    priors = read(cell / "priors.conf")
+    if not priors:
+        conf = read(cell / "pf.conf").splitlines()
+        priors = "".join(l + "\n" for l in conf
+                         if l.split("=", 1)[0].strip().endswith("_var"))
+    return {"model.bngl": read(cell / "m.bngl"),
+            "data.exp": read(cell / f"{meta.get('suffix', '')}.exp"),
+            "priors.conf": priors}
+
+
+def diff_runs(a: str, b: str, max_lines: int = 400) -> dict:
+    """What changed from run a to run b: a unified diff of each of the
+    three files (empty when identical) and the run settings that differ,
+    as {"files": [{"name", "diff", "same"}], "settings": [{"key", "a",
+    "b"}], "data_source": {"a", "b"} when the data came from elsewhere}."""
+    import difflib
+    fa, fb = run_files(a), run_files(b)
+    _, ma = _run_meta(a)
+    _, mb = _run_meta(b)
+    files = []
+    for f in REQUIRED:
+        lines = list(difflib.unified_diff(
+            fa[f].splitlines(), fb[f].splitlines(), fromfile=f"{a}/{f}",
+            tofile=f"{b}/{f}", n=2, lineterm=""))
+        if len(lines) > max_lines:
+            lines = lines[:max_lines] + [f"... {len(lines) - max_lines} more lines"]
+        files.append({"name": f, "diff": "\n".join(lines),
+                      "same": fa[f] == fb[f]})
+    settings = [{"key": k, "a": ma.get(k), "b": mb.get(k)} for k in RUN_SETTINGS
+                if ma.get(k) != mb.get(k)]
+    out = {"a": a, "b": b, "files": files, "settings": settings}
+
+    def src(m):
+        s = m.get("source") or {}
+        return {k: s.get(k) for k in ("location", "asof", "start", "end")} if s else {}
+    if src(ma) != src(mb):
+        out["data_source"] = {"a": src(ma), "b": src(mb)}
+    return out
+
+
+def _zip(entries: list) -> bytes:
+    import io
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for arc, data in entries:
+            info = zipfile.ZipInfo(arc, date_time=(2020, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            z.writestr(info, data if isinstance(data, bytes)
+                       else str(data).encode("utf-8"))
+    return buf.getvalue()
+
+
+def model_zip(name: str) -> bytes:
+    """The model folder as a zip: its three files and the model.json and
+    data.source.json sidecars, under <name>/."""
+    d = model_dir(name)
+    return _zip([(f"{name}/{f}", (d / f).read_bytes())
+                 for f in REQUIRED + (MODEL_FILE, SOURCE_FILE)
+                 if (d / f).is_file()])
+
+
+def _relative_conf(text: str, cell: Path) -> str:
+    """pf.conf with the cell's and BNG2.pl's absolute paths removed."""
+    out = []
+    for line in text.splitlines():
+        if line.split("=", 1)[0].strip() == "bng_command":
+            line = "bng_command = BNG2.pl"
+        else:
+            for p in sorted({pf_engine.conf_safe_path(cell), str(cell)},
+                            key=len, reverse=True):
+                line = line.replace(p + "/", "").replace(p, ".")
+        out.append(line)
+    return "\n".join(out) + "\n"
+
+
+def summary_rows(res: dict) -> list:
+    """One row per trajectory column: [column, t, date, q10, q50, q90,
+    observed]; forecast columns step past the last row by the closest
+    spacing of the observed times (as the page plots them)."""
+    import datetime as dt
+    meta, traj = res["meta"], res.get("traj") or {}
+    times = list(meta.get("time") or [])
+    obs = list(meta.get("observed") or [])
+    dates = list(meta.get("dates") or [])
+    ncol = int(traj.get("columns") or 0)
+    gaps = [b - a for a, b in zip(times, times[1:]) if b > a]
+    step = min(gaps) if gaps else 1
+    rows = []
+    for i in range(ncol):
+        t = times[i] if i < len(times) else (
+            (times[-1] if times else 0) + step * (i - len(times) + 1))
+        day = ""
+        if dates and len(dates) == len(times) and times:
+            day = (dt.date.fromisoformat(dates[0])
+                   + dt.timedelta(days=round(7 * (t - times[0])))).isoformat()
+        rows.append([i, _fmt(t), day] + [f"{float(traj[q][i]):.6g}"
+                                         for q in ("q10", "q50", "q90")]
+                    + [_fmt(obs[i]) if i < len(obs) else ""])
+    return rows
+
+
+def run_zip(run_id: str) -> bytes:
+    """A run as a zip under <run_id>/: meta.json, pf.conf (paths made
+    relative), the three files, the engine's parameter sample and ESS
+    record, summary.csv (the 10/50/90% trajectory per week beside the
+    observed count), and the raw trajectory only when it is small
+    (TRAJ_ZIP_MAX)."""
+    import csv
+    import io
+    d, meta = _run_meta(run_id)
+    cell = d / f"{meta['model']}_r0"
+    files = run_files(run_id)
+    entries = [(f"{run_id}/meta.json", (d / "meta.json").read_bytes())]
+    if (cell / "pf.conf").is_file():
+        entries.append((f"{run_id}/pf.conf", _relative_conf(
+            (cell / "pf.conf").read_text(encoding="utf-8", errors="replace"),
+            cell)))
+    entries += [(f"{run_id}/m.bngl", files["model.bngl"]),
+                (f"{run_id}/{meta.get('suffix') or 'data'}.exp", files["data.exp"]),
+                (f"{run_id}/priors.conf", files["priors.conf"])]
+    pf_out = cell / "out" / "Results" / "PF"
+    runs = pf_out / "Runs"
+    for p in sorted(runs.glob("params_*.txt")) if runs.is_dir() else []:
+        entries.append((f"{run_id}/{p.name}", p.read_bytes()))
+    if (pf_out / "ess_0.txt").is_file():
+        entries.append((f"{run_id}/ess_0.txt", (pf_out / "ess_0.txt").read_bytes()))
+    res = results(d)
+    if res.get("traj"):
+        buf = io.StringIO()
+        w = csv.writer(buf, lineterminator="\n")
+        w.writerow(["column", "t", "date", "q10", "q50", "q90",
+                    meta.get("obs_col") or "observed"])
+        w.writerows(summary_rows(res))
+        entries.append((f"{run_id}/summary.csv", buf.getvalue()))
+    for p in sorted(runs.glob("*traj_noise*")) if runs.is_dir() else []:
+        if p.stat().st_size <= TRAJ_ZIP_MAX:
+            entries.append((f"{run_id}/{p.name}", p.read_bytes()))
+    return _zip(entries)
