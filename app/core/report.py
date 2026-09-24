@@ -1,22 +1,13 @@
-"""Weekly HTML report — the flagship shareable.
-
-Opening view: a US tile-grid choropleth of categorical rate-change forecasts
-(the FluSight bins), one tile per jurisdiction, colored by the modal category
-with opacity from its probability. Self-contained HTML: inline CSS/SVG, no
-external assets, viewable from a file:// open or a static host.
-
-Missing data renders as explicit hatched gap markers (constitutional rule 10)
--- never a smooth line implying data existed.
+"""LEGACY (v1 tile-grid weekly report): superseded by report_v2. Kept as a
+module because callers import the categorical shims through it (server,
+site_build); choropleth_svg and its tile grid remain only for
+app/tests/test_core.py.
 
 The categorical probabilities are app.core.categorical's: the hub's own
-rate-trend definition, one CDF path for every model. The two functions
-kept here are its entry points under their historical names.
+rate-trend definition, one CDF path for every model. The two shims keep
+their historical names.
 """
 from __future__ import annotations
-
-from pathlib import Path
-
-import numpy as np
 
 # Tile-grid positions (col, row) — the standard US state tile map.
 TILES = {
@@ -41,10 +32,8 @@ COLORS = {"large_decrease": "#1a66a8", "decrease": "#7fb2d9",
 
 def categorical_probs(samples, last_observed: float, population: int,
                       horizon: int = 0) -> dict:
-    """P(category) from forecast draws, the FluSight rate-trend
-    definition (app.core.categorical). `horizon` is the HUB horizon, 0 for
-    one week ahead, the convention every stored grid carries since the
-    reindex; until 2026-09-23 this argument counted weeks ahead from 1."""
+    """P(category) from forecast draws (app.core.categorical). `horizon` is
+    the hub horizon (0 = one week ahead)."""
     from app.core import categorical as _cat
     return _cat.probs_from_samples(samples, last_observed, population, horizon)
 
@@ -52,10 +41,8 @@ def categorical_probs(samples, last_observed: float, population: int,
 def categorical_probs_from_quantiles(qmap: dict, last_observed: float,
                                      population: int,
                                      horizon: int = 0) -> dict:
-    """P(category) from a stored quantile grid {level: value}, the same
-    definition and cutpoints as categorical_probs through the same CDF
-    differencing (app.core.categorical.probs_from_quantiles). `horizon` is
-    the hub horizon, 0 for one week ahead."""
+    """P(category) from a stored quantile grid {level: value}
+    (app.core.categorical). `horizon` is the hub horizon (0 = one week ahead)."""
     from app.core import categorical as _cat
     return _cat.probs_from_quantiles(qmap, last_observed, population, horizon)
 
@@ -91,32 +78,3 @@ def choropleth_svg(state_probs: dict, size: int = 56) -> str:
             f'style="max-width:100%;height:auto">'
             f'<style>.tl{{font:600 13px system-ui;fill:#222;text-anchor:middle}}'
             f'.lg{{font:12px system-ui;fill:#444}}</style>{"".join(tiles)}{legend}</svg>')
-
-
-def weekly_report(reference_date: str, state_probs: dict,
-                  extras_html: str = "") -> str:
-    """The static weekly page. state_probs keyed by state ABBR."""
-    return f"""<!doctype html><html><head><meta charset="utf-8">
-<title>FluBNF — week of {reference_date}</title>
-<style>
- body{{font:15px/1.5 system-ui;margin:0;background:#faf9f6;color:#1e1e1c}}
- main{{max-width:960px;margin:0 auto;padding:2rem 1rem}}
- h1{{font-size:1.5rem}} .sub{{color:#666}}
- .card{{background:#fff;border:1px solid #e4e1da;border-radius:12px;
-        padding:1.2rem;margin:1rem 0}}
-</style></head><body><main>
-<h1>US influenza forecast — week of {reference_date}</h1>
-<p class="sub">Categorical rate-change outlook by jurisdiction. Tile color =
-most likely category; intensity = its probability. Hover for the full
-distribution. Grey tiles: no reported data (reporting gap — shown, not
-smoothed over).</p>
-<div class="card">{choropleth_svg(state_probs)}</div>
-{extras_html}
-</main></body></html>"""
-
-
-def write_report(out_path: Path, **kw) -> Path:
-    out_path = Path(out_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(weekly_report(**kw))
-    return out_path

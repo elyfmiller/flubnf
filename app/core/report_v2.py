@@ -1,32 +1,20 @@
-"""Weekly HTML report v2: real US map, drill-down, theme-aware.
+"""PRODUCTION: the weekly run report (server._write_weekly_report,
+/output/report refresh via render_bundle).
 
-One self-contained file per week (plotly.js embedded once, no network):
-  * geographic US choropleth, states shaded by modal rate-change category,
-    intensity by its probability; hover = full stats card
-  * optional national map view (one shared fill = national modal category),
-    toggled with 'state view' / 'national view' buttons above the map
-  * CLICK a state -> its section: forecast fan vs observed, categorical bar,
-     recent-data table; every section
-    has a '<- back to map' button (window.backToMap)
-  * a National section with the same drill-down
-  * no-data states render explicitly, never smoothed over, and say only
-    what was checked: a card-less state inside the run's recorded scope is
-    a verified reporting gap, one outside it is 'not fitted in this run',
-    and a bundle with no scope record claims just 'no data'; annotated
-    gaps in fans likewise (constitutional rule 10)
-  * fluid layout: no fixed max-width, the map scales with the window
-  * theme-aware, self-contained: the stylesheet embeds the console's four
-    theme token blocks and both accessibility modifier blocks verbatim
-    from nau.css, and a tiny inline script resolves the theme at open:
-    served same-origin it reads the console's own localStorage keys, so
-    the report opens in the reader's console preferences; opened as a
-    standalone file it follows the OS (prefers-color-scheme,
-    prefers-contrast). Print keeps the light stylesheet regardless.
+The weekly run report (the "v2" is historical): one self-contained,
+theme-aware HTML file per week (plotly.js embedded once, no network).
 
-The reports followed the app theme starting 2026-08-21 (user request),
-superseding the fixed-dark spec of 2026-08-17. The colors and type stay
-the console's own identity (nau.css tokens, DM Sans with a system fallback
-and no webfont fetch).
+  * build-time SVG US map (usmap), states shaded by modal rate-change
+    category, intensity by probability, hover card; optional national map
+    view and a per-model outlook toggle
+  * click a state -> its section (fan vs observed, categorical bar, recent
+    data), each with a back-to-map button; a National section likewise
+  * no-data states are explicit and claim only what was checked: in the
+    run's recorded scope = reporting gap, outside = 'not fitted in this
+    run', no scope record = 'no data'; fan gaps annotated, never smoothed
+  * nau.css token blocks embedded verbatim; a boot script resolves the
+    theme at open (console localStorage same-origin, else OS preferences);
+    print is always light
 """
 from __future__ import annotations
 
@@ -37,18 +25,12 @@ from pathlib import Path
 
 import numpy as np
 
-# Build-time chart palette (nau.css dark theme, LANL Mesa-aligned):
-# Near-Black ground, stepped indigo card, Cyan #34C0F0 as THE accent. The
-# figures are BUILT with these literals and re-resolved at open against the
-# embedded theme tokens (see _retint_js), so the charts wear the reader's
-# resolved theme; a no-script render keeps the light chrome with the
-# dark-kit charts, legible even if mismatched.
+# build-time chart palette (nau.css dark theme): figures are built with these
+# literals and re-resolved against the page tokens at open (_retint_js)
 INK = "#E9EAF4"; MUT = "#9AA1C4"; PAPER = "#0C0D17"; CARD = "#151729"
 LINE = "#262A45"; ACCENT = "#34C0F0"
 OK = "#4CC38A"; BAD = "#FB4653"
-# the brand face with a system fallback: the report stays fully offline
-# (no webfont fetch), so the stack simply upgrades to DM Sans wherever
-# the font is installed
+# DM Sans where installed, system fallback: no webfont fetch
 FONT_STACK = '"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif'
 CATS = ("large_decrease", "decrease", "stable", "increase", "large_increase")
 CAT_COLOR = {"large_decrease": "#2e7d4f", "decrease": "#7fc97f",
@@ -57,28 +39,20 @@ CAT_COLOR = {"large_decrease": "#2e7d4f", "decrease": "#7fc97f",
 NO_DATA = "var(--map-nodata, #0a0a0a)"   # falls back to black without tokens
 CAT_LABEL = {c: c.replace("_", " ") for c in CATS}
 
-#: the console stylesheet: the ONE source of the theme token values every
-#: report embeds, and therefore a builder input (builder_sources_mtime)
+#: the one source of the embedded theme tokens, hence a builder input
 NAU_CSS = Path(__file__).resolve().parents[1] / "ui" / "static" / "nau.css"
 #: the shared player core carries the one member-color map (marked JSON)
 PLAYER_SRC = Path(__file__).resolve().parents[1] / "ui" / "static" \
     / "player.js"
 
-#: fallback member colors, equal to the player's map: used only if the
-#: marked JSON cannot be read (a broken checkout must not sink the report)
+#: equal to the player's map; used only if its marked JSON cannot be read
 _MEMBER_COLOR_FALLBACK = {"ensemble": "#34C0F0", "pf": "#1979FF",
                           "analogue": "#FFC72C", "pf2s": "#A66395"}
 
 
 def model_colors() -> dict:
-    """The one member-color map, read from the shared player core.
-
-    player.js carries the map as a marked JSON literal (the MODEL_NAMES
-    pattern); the player and the console templates read it directly, and
-    this parse hands the SAME values to every Python surface (both report
-    builders, the server's template contexts), so a member can never wear
-    different colors on different surfaces. Degrades to the equal
-    fallback literals rather than raising."""
+    """The one member-color map: player.js's marked JSON literal, parsed so
+    every Python surface wears the player's colours. Falls back, never raises."""
     try:
         src = PLAYER_SRC.read_text(encoding="utf-8")
         m = re.search(r"/\*MODEL_COLORS_JSON\*/\s*(\{.*?\})"
@@ -90,26 +64,14 @@ def model_colors() -> dict:
 
 MEMBER_COLORS = model_colors()
 
-#: fallback season-line palette, equal to the player's marked list: used
-#: only if the marked JSON cannot be read (a broken checkout must not sink
-#: the forecast data panel)
+#: equal to the player's marked list; used only if it cannot be read
 _SEASON_COLOR_FALLBACK = ["#A87300", "#3375FB", "#C9568C",
                           "#0087AF", "#B96D36", "#8568E3"]
 
 
 def season_colors() -> list:
-    """The one season-line palette, read from the shared player core.
-
-    The model_colors contract applied to the season-over-season charts:
-    player.js carries the palette as a marked JSON literal (SEASON_COLORS),
-    and this parse hands the SAME values to every Python surface. Since
-    2026-08-21 these literals are the RED-GREEN-SAFE set: the console
-    resolves the --season-N tokens per draw (normal-vision tab10-adjacent
-    by default, remapped onto these values under data-vision="cvd"), and
-    this list is the fallback where the tokens are absent, so a surface
-    without the stylesheet still wears the dichromat-spaced, ground-audited
-    palette (see the SEASON_COLORS comment in player.js). Degrades to the
-    equal fallback literals rather than raising."""
+    """The one season-line palette: player.js SEASON_COLORS (the CVD-safe
+    set, used where the --season-N tokens are absent). Falls back, never raises."""
     try:
         src = PLAYER_SRC.read_text(encoding="utf-8")
         m = re.search(r"/\*SEASON_COLORS_JSON\*/\s*(\[.*?\])"
@@ -124,46 +86,33 @@ def _rgba(hexs: str, alpha: float) -> str:
     return f"rgba({r},{g},{b},{alpha})"
 
 
-# fan bands derive from the PF member's shared color (the weekly fan IS the
-# PF forecast): same alpha ramp as before, rgb from the one member map
+# fan bands in the PF member's colour (the weekly fan is the PF forecast)
 _PF_COLOR = MEMBER_COLORS.get("pf", _MEMBER_COLOR_FALLBACK["pf"])
 QBANDS = ((0.025, 0.975, _rgba(_PF_COLOR, 0.13), "95% interval"),
           (0.10, 0.90, _rgba(_PF_COLOR, 0.20), "80% interval"),
           (0.25, 0.75, _rgba(_PF_COLOR, 0.30), "50% interval"))
 
-#: what each map-producing model is called ON the map surfaces (home and
-#: the weekly report label their maps with the model that computed them).
-#: These are the shared display names (the marked map in player.js) with
-#: "outlook" appended; they are typed here rather than derived because the
-#: parse lives in report_season, which imports this module. Keep them in
-#: step with that map. The blend's entry renders only a bundle written
-#: before it was retired (2026-09-22).
+#: map labels: player.js display names + " outlook". Typed, not derived
+#: (report_season, which parses the names, imports this module): keep in step.
+#: The retired blend's entry serves only older bundles.
 MODEL_LABEL = {"ensemble": "FluBNF Ensemble (retired) outlook",
                "pf": "Oracle SIHRS outlook",
                "analogue": "Groundhog outlook"}
-#: display order for the outlook model toggle: the two models that ship,
-#: the PF first; a stored blend last
+#: outlook toggle order: the shipped models, PF first; a stored blend last
 MODEL_ORDER = ("pf", "analogue", "ensemble")
 
-#: models that never get a toggle button: a stored run or season from
-#: before 2026-09-22 may still carry the retired blend's cards, and a map
-#: with nothing else renders them under their own label, but no surface
-#: offers the retired blend as a choice beside the models that ship
+#: never offered on a toggle (older bundles may still render them, label only)
 RETIRED_MODELS = ("ensemble",)
 
 
 def toggle_models(available) -> list:
-    """The models a surface may offer on its model toggle, in display
-    order: every available model except the retired ones. Empty when
-    nothing but a retired model is available (the map then renders that
-    model, label only, no toggle)."""
+    """Models a surface may offer on its toggle, in display order: every
+    available model except the retired ones."""
     avail = [m for m in available if m not in RETIRED_MODELS]
     order = [m for m in MODEL_ORDER if m in avail]
     return order + [m for m in avail if m not in MODEL_ORDER]
 
-# Shared embed config: wheel zooms both ways, double-click resets, hover
-# modebar offers zoom-out/reset (lasso/box-select/autoscale pruned);
-# responsive so figures track their container when it appears or resizes.
+# wheel zoom, double-click reset, pruned hover modebar, responsive sizing
 PLOTLY_CONFIG = {"scrollZoom": True, "doubleClick": "reset+autosize",
                  "responsive": True,
                  "displayModeBar": "hover", "displaylogo": False,
@@ -172,26 +121,13 @@ PLOTLY_CONFIG = {"scrollZoom": True, "doubleClick": "reset+autosize",
 
 # ---------------------------------------------------------------------------
 # Inputs bundle: everything render_bundle needs to rebuild report.html,
-# persisted next to it as report_inputs.json. The raw forecast samples
-# (10,000 per horizon per state) never enter the bundle; fans are reduced
-# to the quantile grid below, which keeps the file around 100 KB while
-# still covering every band the fan draws plus room for future band
-# choices (the FluSight 23-level grid).
+# saved beside it. Fans are reduced to the 23-level grid (FAN_LEVELS), never
+# raw samples, keeping it ~100 KB.
 BUNDLE_NAME = "report_inputs.json"
 BUNDLE_VERSION = 4
-#: every bundle format this builder can render. v2 added one ADDITIVE
-#: field, cards_model (which model computed the map cards); a v1 bundle
-#: simply lacks it and renders as PF, which is what every v1 run's cards
-#: were computed from. v3 added the ADDITIVE cards_by_model and
-#: national_map_cards fields (per-model hover cards, all computed by the
-#: same quantile-CDF path), which power the outlook model toggle; a v1/v2
-#: bundle simply lacks them and renders its one model with no toggle, its
-#: label as honest as ever. v4 added the ADDITIVE fitted_fips field (which
-#: states the run covered), so the map can tell a verified reporting gap
-#: from a state the run never fitted; a v1-v3 bundle lacks it and its
-#: card-less states render the neutral 'no data in this view' wording,
-#: because the gap claim was never checked for them. Serving code accepts
-#: any version listed here.
+#: renderable bundle versions; each bump was ADDITIVE and older bundles
+#: render without it: v2 cards_model (else PF), v3 cards_by_model +
+#: national_map_cards (model toggle), v4 fitted_fips (gap vs not-fitted wording)
 SUPPORTED_BUNDLE_VERSIONS = (1, 2, 3, 4)
 FAN_LEVELS = (0.01, 0.025, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35,
               0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80,
@@ -199,23 +135,15 @@ FAN_LEVELS = (0.01, 0.025, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35,
 
 
 def _fig_layout(fig, height=340, title="", legend=False):
-    # Chart text on the report's type scale (the report root is a fixed
-    # 16px; it has no A-/A/A+ control): ticks and the interval legend at
-    # 14px, above the 13.1px hint floor and no longer dwarfed by their
-    # plots; the title one step up. automargin lets the tick labels and
-    # the below-plot legend size their own margins, so the tight base
-    # margins leave no dead band and long labels never clip.
-    # a legended figure carries extra height: the horizontal legend band
-    # under the axis is paid for by the figure, not taken out of the plot
+    # 14px chart text (above the 13.1px hint floor), title a step up;
+    # automargin sizes margins to the labels; a legend adds figure height
     fig.update_layout(
         template=None, paper_bgcolor=CARD, plot_bgcolor=CARD,
         font=dict(color=INK, family=FONT_STACK, size=14),
         margin=dict(l=8, r=8, t=42 if title else 12, b=8),
         height=height + (36 if legend else 0),
         title=dict(text=title, font=dict(size=16)),
-        # single-line date ticks (no stacked year line): the legend hangs
-        # a fraction of the plot area below the axis, and the two-line
-        # date band was tall enough to reach it at half-card widths
+        # single-line date ticks: a two-line band collides with the legend
         xaxis=dict(gridcolor=LINE, zerolinecolor=LINE, automargin=True,
                    tickformat="%b %-d"),
         yaxis=dict(gridcolor=LINE, zerolinecolor=LINE, automargin=True),
@@ -324,9 +252,7 @@ def cat_bar(probs):
 
 
 def _html(fig, include_js=False, div_id=None):
-    # figures already carry the opaque CARD ground (_fig_layout), so the
-    # modebar's save-PNG is readable on its own; the per-figure config adds
-    # a 2x export scale and a meaningful filename instead of "newplot"
+    # save-PNG at 2x with a meaningful filename (figures have an opaque ground)
     config = dict(PLOTLY_CONFIG)
     config["toImageButtonOptions"] = {
         "format": "png", "scale": 2,
@@ -336,31 +262,17 @@ def _html(fig, include_js=False, div_id=None):
                        div_id=div_id, config=config)
 
 
-#: the token blocks every report embeds, in cascade order: the light
-#: palette (nau.css's first :root block), the fluid type scale (its second
-#: :root block), the three named themes, then the two accessibility
-#: modifier blocks (which only remap onto per-theme literals, so they
-#: compose exactly as they do in the console)
+#: the embedded token blocks: both :root blocks (palette, type scale), the
+#: named themes and the two accessibility modifiers
 _THEME_SELECTORS = (":root", '[data-theme="dark"]', '[data-theme="paper"]',
                     '[data-theme="dim"]', '[data-contrast="high"]',
                     '[data-vision="cvd"]')
 
 
 def theme_token_css() -> str:
-    """The console's tokens, verbatim from nau.css: the four theme blocks,
-    the fluid type scale, and the high-contrast and color-vision modifier
-    blocks.
-
-    One source: page_style embeds this, so a token changed in nau.css
-    lands in every rebuilt report (builder_sources_mtime counts nau.css,
-    and the season builder counts it as an input too). BOTH :root blocks
-    are taken since the 2026-08-22 consistency pass -- the color palette
-    and the --fs-* type scale -- and every block is emitted in nau.css
-    document order, so the cascade (the type block before the modifier
-    blocks, which retarget --focus-w) behaves exactly as it does in the
-    console. The print block in page_style sits after all of these, so at
-    equal specificity it wins the cascade and print stays light in every
-    theme."""
+    """nau.css token blocks verbatim, in document order (the cascade
+    matters: modifiers retarget type tokens; page_style's print block
+    comes after and wins)."""
     css = NAU_CSS.read_text()
     blocks = []
     for sel in _THEME_SELECTORS:
@@ -374,15 +286,8 @@ def theme_token_css() -> str:
 
 
 def theme_boot_script() -> str:
-    """First-paint theme resolution, mirroring the console's base.html.
-
-    Served same-origin (http/https), the report reads the SAME
-    localStorage keys the console writes (theme, contrast, vision), so it
-    opens in the reader's current console preferences. Opened as a
-    standalone file (file://, where that storage is absent or belongs to
-    no app), it falls back to the OS preferences: prefers-color-scheme
-    for the theme and prefers-contrast for the contrast modifier. Print
-    is unaffected: the print block outranks every theme block."""
+    """First-paint theme resolution, mirroring base.html: the console's
+    localStorage keys when served same-origin, else the OS preferences."""
     return """<script>
 (function(){var de=document.documentElement,t=null,c=null,v=null;
  try{if(location.protocol==='http:'||location.protocol==='https:'){
@@ -399,28 +304,10 @@ def theme_boot_script() -> str:
 
 
 def _retint_js() -> str:
-    """Serve-time chart theming: re-resolve the baked figure palette.
-
-    The figures are built with the dark-kit literals (module constants
-    above); this script, run after the boot script resolved the theme and
-    every figure initialized, reads the SAME tokens the page chrome wears
-    (getComputedStyle at draw time, never a baked guess) and rewrites each
-    plot's matching colors, Plotly.react-ing the graph. The category bar
-    colors re-resolve through the --cat-* tokens and the semantic pair
-    through --ok/--bad, so the color-vision modifier reaches every
-    chart-internal category and ok/bad encoding exactly as it reaches the
-    map; the accent line resolves through --gold, which is the readable
-    accent-ink variant of the same cyan on light grounds. Member line
-    colors are DELIBERATELY absent from this map: the shared member
-    palette is dichromat-spaced by construction (player.js MODEL_COLORS),
-    so the CV-safe mode must not move them.
-
-    Each plot's baked figure is snapshotted once before the first tint,
-    and the pass re-runs from that snapshot on any later themechange
-    event, so a host that flips tokens live retints correctly in both
-    directions (a standalone open never fires the event and simply keeps
-    the boot-resolved tint). On the dark theme, with no prior tint, every
-    replacement is identity and the plots are left untouched."""
+    """Rewrite the baked dark-kit literals to the resolved theme tokens
+    (incl. --cat-*, --ok/--bad, the accent via --gold). Member colours are
+    deliberately excluded (already dichromat-spaced). Re-runs from a
+    snapshot of the baked figure on every themechange."""
     pairs = [(CARD, "--card"), (INK, "--ink"), (MUT, "--mut"),
              (LINE, "--line"), (OK, "--ok"), (BAD, "--bad"),
              (ACCENT, "--gold")]
@@ -587,39 +474,19 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
     """state_cards: abbr -> hover-card data (choropleth).
     state_details: abbr -> dict(name, fan=…, cat=…, acc=…, table_rows=[…]).
     national: dict(fan=…, acc=…, summary_html=str).
-    national_map_html: pre-rendered usmap.national_svg(...) output; when given,
-    a 'state view' / 'national view' toggle appears above the map.
-    elapsed_s: this run's wall time in seconds; when given, the footer states
-    it. Omitted rather than guessed when the caller does not know.
-    settings_html: the run-settings block (app.core.runs.settings_html),
-    rendered beside the wall-time line so the report states exactly what
-    produced it. Omitted when the caller does not supply it.
-    model_label: which model computed the MAP's cards, as shown to the
-    reader (see MODEL_LABEL); defaults to the PF label, which is what
-    every card set predating the label was computed from.
-    cards_by_model: OPTIONAL per-model hover cards (model -> abbr -> card,
-    the v3 bundle's cards_by_model), all computed by the same quantile-CDF
-    path; with two or more models an aria-pressed model toggle appears
-    above the map and swaps the fills, hovers, and label client-side.
-    national_map_cards: the per-model national cards riding with it.
-    cards_model: which model the map was RENDERED with (the toggle's
-    default); label and toggle stay honest for bundles that lack the
-    per-model cards, which simply render their one model, no toggle.
-    fitted_fips: the fips the producing RUN actually fitted (iterable), or
-    None when the bundle never recorded it. This gates every no-data claim
-    on the map: a card-less state inside the scope is a verified reporting
-    gap, one outside it is 'not fitted in this run', and with no recorded
-    scope the map and caption claim only 'no data', because the old
-    unconditional 'reporting gap' wording labeled 51 unfitted states as
-    reporting gaps on a one-state run (review finding 2026-08)."""
-    # Build-time SVG map (see usmap.py) -- the plotly geo choropleth fetched
-    # its geometry from cdn.plot.ly at runtime and rendered empty offline/CSP.
+    national_map_html: usmap.national_svg output; adds the state/national view toggle.
+    elapsed_s, settings_html: footer lines; omitted when not given.
+    model_label: who computed the map's cards (MODEL_LABEL); default PF.
+    cards_by_model / national_map_cards: per-model cards; with two or more
+    models a model toggle swaps fills, hovers and label client-side.
+    cards_model: the model the map is rendered with (the toggle's default).
+    fitted_fips: fips the run fitted, or None; gates every no-data claim
+    (in scope = reporting gap, outside = not fitted, None = only 'no data')."""
+    # build-time SVG map: plotly geo fetches its geometry from a CDN
     from app.core import usmap
     from app.core.usmap import cat_fill, svg_map
     cards_by_fips = {c["fips"]: c for c in state_cards.values() if "fips" in c}
-    # the run's coverage, when the bundle recorded it: card-less states are
-    # split into verified reporting gaps (in scope) and 'not fitted in this
-    # run' (out of scope); with no record the map claims only 'no data'
+    # card-less states: gaps (in scope) vs not fitted (out); no record: 'no data'
     scope = set(fitted_fips) if fitted_fips is not None else None
     no_card = set(usmap.state_paths()) - set(cards_by_fips)
     gap_states = (no_card & scope) if scope is not None else set()
@@ -627,10 +494,7 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
     # only states that actually have a detail section invite a click
     map_html = svg_map(cards_by_fips, clickable=set(state_details),
                        scope_fips=scope)
-    # legend and caption say only what the scope record supports; each
-    # no-data flavor appears exactly when a state on the map wears it, and
-    # the old unconditional 'reporting gap' sentence is never asserted for
-    # states nobody checked
+    # legend/caption: each no-data flavour only when some state wears it
     _sw = f'<i class="sw" style="background:{NO_DATA}"></i>'
     legend_bits, caption_bits = [], []
     if scope is None:
@@ -655,11 +519,8 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
     no_data_legend = "".join(legend_bits)
     no_data_caption = "".join(caption_bits)
     model_label = model_label or MODEL_LABEL["pf"]
-    # the outlook model toggle (v3 bundles): rendered only when the bundle
-    # actually carries SWAPPABLE cards (probs-bearing, fips-keyed -- the
-    # same bar the home outlook's _outlook_models applies) for two or more
-    # models; a model whose cards hold no data would render an inert
-    # button, so it is dropped here and the emitter guards again
+    # model toggle only for 2+ models with usable (fips + probs) cards, the
+    # bar the home outlook applies; an empty model would be an inert button
     model_toggle_html = ""
     cbm = {m: c for m, c in (cards_by_model or {}).items()
            if any(isinstance(v, dict) and v.get("fips") and v.get("probs")
@@ -672,8 +533,7 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
             byf = {c["fips"]: c for c in cbm[m].values()
                    if isinstance(c, dict) and c.get("fips")}
             payload[m] = {
-                # scope rides along so the toggle's rewritten hovers tell
-                # the same story as the server-rendered map (usmap contract)
+                # scope rides along so swapped hovers match the rendered map
                 "states": usmap.state_swap_payload(byf, scope_fips=scope),
                 "us": usmap.nat_swap_payload(
                     (national_map_cards or {}).get(m) or {})}
@@ -702,37 +562,17 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
   </div>
 </section>""")
 
-    # emit each national chart card only when its figure exists -- two empty
-    # bordered boxes say less than one honest hint line
+    # national chart cards only when their figure exists; else one hint line
     nat_cards = []
     if national.get("fan"):
         nat_cards.append(f'<div class="card">{_html(national["fan"])}</div>')
     nat_body = "\n  ".join(nat_cards) or (
         '<p class="hint">National fan and accuracy charts appear once the '
         'national model run lands.</p>')
-    # the console run fits the national series directly (it appends the US
-    # location to every run), so WHEN THIS SECTION CARRIES A FORECAST it is
-    # a FITTED national one, never the retrospective's constructed
-    # sum-of-states fallback. It says so, in the shared wording, so a reader
-    # holding this artifact beside a season report cannot mistake one for
-    # the other.
-    #
-    # The claim is DERIVED from the run, never hardcoded. A report built
-    # before the national run lands carries no national output at all, and
-    # an unconditional provenance line printed "fitted" directly above
-    # nat_body's placeholder saying the national run had not landed: two
-    # contradictory sentences in one section, with the absent half reading
-    # as a fit. That is exactly the fallback-as-fit failure this module's
-    # wording exists to prevent, so the line is gated.
-    #
-    # The signal is nat_cards, and ONLY nat_cards -- the national fan IS the
-    # national model output. summary_html is not evidence: the run bundle
-    # fills it unconditionally with the accuracy card (app/ui/server.py
-    # builds it from summary_table_html, which returns its own placeholder
-    # for an unscored run), so gating on it would assert a fitted national
-    # forecast on every report ever built. A national figure reached through
-    # that table carries its own provenance label from scoring.py in any
-    # case, so the worst this gate can do is stay silent.
+    # A console run fits US directly, so a national forecast here is FITTED
+    # (never the constructed sum) and says so. Claim it only when the
+    # national fan exists (nat_cards); summary_html is always filled (even
+    # unscored), so it is not evidence of a national run.
     from app.core import us_national as _usn
     has_national = bool(nat_cards)
     nat_prov = (f'<p class="hint">{_usn.LABELS[_usn.FITTED]}. '
@@ -758,18 +598,14 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
 </div>"""
         nat_map_div = f'<div id="map-national" class="mapcap" hidden>{national_map_html}</div>'
 
-    # plotly.js goes in the head, once, iff any figure is embedded: a chart
-    # must never render without its library, and a chartless report should
-    # not carry the payload.
+    # plotly.js in the head, once, iff any figure is embedded
     if state_details or national.get("fan"):
         from plotly.offline import get_plotlyjs
         plotly_js = "<script>" + get_plotlyjs() + "</script>"
     else:
         plotly_js = ""
 
-    # footer: what this report cost to produce, and what produced it. The
-    # settings sit with the wall time because they answer the same question
-    # a reader asks of an artifact months later: which run was this?
+    # footer: wall time and settings (which run produced this?)
     footer = ""
     if elapsed_s is not None:
         from app.core.runs import fmt_hms
@@ -852,29 +688,18 @@ document.getElementById('natbtn').addEventListener('click', () => show('st-US'))
 </main></body></html>"""
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    # atomic: a reader mid-refresh (the stale-report rebuild on serve)
-    # never sees a half-write, and a failed build leaves the stored file
+    # atomic (a serve-time rebuild never exposes a half-write), and LF pinned:
+    # /output/report (text read) and /output/report/download (raw bytes) must
+    # return identical text on Windows too
     tmp = out_path.with_name(out_path.name + ".tmp")
-    # newline pinned. report.html is delivered two ways -- /output/report
-    # reads it as text (universal newlines, so \r\n collapses to \n) and
-    # /output/report/download hands the raw file over untouched -- and the
-    # contract those two routes share is that they are the same bytes. A
-    # plain write_text takes newline=None, which on Windows writes \r\n, so
-    # the page and the saved file stopped agreeing there and nowhere else.
-    # The Windows CI job caught it in test_report_bundle, as the download
-    # and the inline view returning different text for the same report. LF
-    # here keeps one report, two deliveries, on every platform.
     tmp.write_text(html, newline="\n")
     os.replace(tmp, out_path)
     return out_path
 
 
 def save_bundle(bundle: dict, dirpath: Path) -> Path:
-    """Persist the report's inputs bundle next to report.html, atomically.
-
-    The bundle carries everything render_bundle needs (fans already reduced
-    to their quantile grid, never the raw samples), so the stored report can
-    be rebuilt after any builder change without rerunning the models."""
+    """Persist the inputs bundle beside report.html, atomically, so the
+    report can be rebuilt after any builder change without rerunning models."""
     p = Path(dirpath) / BUNDLE_NAME
     tmp = p.with_name(p.name + ".tmp")
     tmp.write_text(json.dumps(bundle, separators=(",", ":"), default=float))
@@ -883,12 +708,8 @@ def save_bundle(bundle: dict, dirpath: Path) -> Path:
 
 
 def render_bundle(bundle: dict, out_path: Path) -> Path:
-    """Render the weekly report from its pure-data inputs bundle.
-
-    The one render path: the live run (server step 5b) and the stale-report
-    refresh on /output/report both come through here, so rebuilding a
-    stored bundle reproduces exactly what a fresh run would render with the
-    current builder code, fans and map included."""
+    """Render the weekly report from its inputs bundle: the one render path
+    (live run and stale-report refresh alike)."""
     details = {}
     for key, d in (bundle.get("details") or {}).items():
         fan_in = d.get("fan") or {}
@@ -915,8 +736,7 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
             nat_map_html = ""
     us_d = details.get("US", {})
     national = bundle.get("national") or {}
-    # the additive v2 field: which model computed the map cards. A v1
-    # bundle lacks it and renders as PF, which its cards were computed from.
+    # v2 field; v1 bundles were PF
     cards_model = bundle.get("cards_model") or "pf"
     return build_report(
         bundle["reference_date"], bundle.get("cards") or {}, details,
@@ -927,25 +747,17 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
         elapsed_s=bundle.get("elapsed_s"),
         settings_html=bundle.get("settings_html", ""),
         model_label=MODEL_LABEL.get(cards_model, MODEL_LABEL["pf"]),
-        # the additive v3 fields: per-model cards for the outlook model
-        # toggle. A v1/v2 bundle lacks them and renders its one model with
-        # no toggle, exactly as before.
+        # v3 fields (absent: one model, no toggle)
         cards_by_model=bundle.get("cards_by_model") or {},
         national_map_cards=bundle.get("national_map_cards") or {},
         cards_model=cards_model,
-        # the additive v4 field: which fips the run fitted. Bundles from
-        # before it exist pass None, and the map then claims only 'no
-        # data' for card-less states, never a reporting gap nobody checked.
+        # v4 field (absent: None, the map claims only 'no data')
         fitted_fips=bundle.get("fitted_fips"))
 
 
 def builder_sources_mtime() -> float:
-    """Newest mtime of the weekly report's builder sources: this module,
-    the scoring module (the embedded WIS summary card), the map renderer,
-    and the console stylesheet (the report embeds its token blocks, so a
-    theme change is a design change). The report_season freshness pattern
-    applied to the weekly report: a stored report.html older than this was
-    built by an earlier design and is stale."""
+    """Newest mtime of the weekly report's builder sources (this module,
+    scoring, usmap, nau.css): a stored report.html older than this is stale."""
     times = [0.0]
     for mod in ("report_v2", "scoring", "usmap"):
         p = Path(__file__).with_name(mod + ".py")
@@ -962,31 +774,17 @@ STALE_NOTE_ID = "earlier-design-note"
 
 
 def _css_class_names(css: str) -> set:
-    import re
     return set(re.findall(r"\.([A-Za-z_][A-Za-z0-9_-]*)", css))
 
 
 def legacy_theme_carry(html: str) -> str:
-    """Serve-time refresh for a stored report that predates the inputs
-    bundle.
+    """Serve-time restyle of a stored report that predates the inputs bundle
+    (it cannot be rebuilt: results.json lacks samples and categories).
 
-    Such a report cannot be rebuilt honestly: results.json keeps five
-    quantile levels per horizon, no samples, and no categorical
-    probabilities, so the 95 percent bands and the map's category shading
-    would have to be invented. Instead this swaps in the current stylesheet
-    and header lockup, but only when every class the old stylesheet styled
-    and the body still uses is also styled by the current stylesheet (the
-    compatibility check the swap rests on). A carried page with embedded
-    charts also gains the retint pass, so its chart colors re-resolve
-    against the carried tokens at open: the rate-change bars follow the
-    color-vision mode through --cat-* exactly as a current report's do,
-    since the old builds baked the same category literals. Colors the map
-    does not recognize keep the palette they were built with, and one
-    quiet line says so. When the swap cannot be proven safe, only the
-    quiet line is added. The transform is applied to the served page only;
-    the stored file is never modified. Returns the input unchanged on any
-    surprise."""
-    import re
+    Swaps in the current stylesheet, header and retint pass only when every
+    class the body uses and the old stylesheet styled is still styled; adds
+    a one-line note either way. Never modifies the stored file; returns the
+    input unchanged on any surprise."""
     try:
         if 'class="brandrow"' in html or STALE_NOTE_ID in html:
             return html            # already current, or already annotated
@@ -1010,11 +808,7 @@ def legacy_theme_carry(html: str) -> str:
                     # floating one would duplicate its id
                     out = re.sub(r'<a id="appback".*?</a>', "", out,
                                  count=1, flags=re.S)
-                    # a carried page with embedded charts gains the retint
-                    # pass: the tokens it resolves arrived with the swapped
-                    # stylesheet, so the category bars follow the reader's
-                    # theme and color-vision mode (unmatched legacy colors
-                    # resolve to themselves and stay untouched)
+                    # charts gain the retint pass (unmatched legacy colours stay)
                     if "Plotly.newPlot" in out or "js-plotly-plot" in out:
                         j = out.rfind("</body>")
                         if j >= 0:

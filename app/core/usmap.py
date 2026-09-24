@@ -1,28 +1,22 @@
-"""Build-time US choropleth: TopoJSON -> inline SVG paths, zero runtime fetches.
+"""PRODUCTION: the build-time US map (report_v2, server home outlook,
+site_build).
 
-Replaces the plotly geo choropleth, which loads its geometry from cdn.plot.ly
-AT RUNTIME and therefore renders an empty box in any CSP-sandboxed or offline
-context (found the hard way, 2026-08-17). Geometry is vendored:
-app/core/assets/states-albers-10m.json (us-atlas, US Census-derived, public
-domain, pre-projected Albers composite with AK/HI insets on a 975x610 plane).
+Build-time US choropleth: TopoJSON -> inline SVG paths, zero runtime fetches.
 
-Hover card, click drill-down, and pan/zoom are vanilla JS on the inline SVG --
-no library, works from file://, artifacts, or any static host. A clicked
-(selected) state keeps its categorical fill and gains a cyan #34C0F0 OUTLINE
-(brand accent, stroke only) so selection never collides with the green
-category colors. Pan/zoom mutates
-the SVG viewBox: Ctrl/Cmd+wheel zooms about the cursor (plain scroll keeps
-scrolling the page), drag pans within a clamped extent, double-click resets.
-A press that travels < 5px still counts as a state click (drag never
-click-throughs).
+Plotly geo loads its geometry from a CDN at runtime (empty offline or under
+CSP), so the geometry is vendored: app/core/assets/states-albers-10m.json
+(us-atlas, public domain, pre-projected Albers with AK/HI insets, 975x610).
+
+Hover card, click drill-down and pan/zoom are vanilla JS (works from
+file://). Selection is an accent OUTLINE, never a fill, so category colours
+stay legible. Ctrl/Cmd+wheel zooms (plain scroll scrolls the page), drag pans
+within a clamped extent, double-click resets; a press under 5px is a click.
 
 Two render modes:
-  * svg_map(cards_by_fips)  -- per-state choropleth (modal category color,
-    opacity by its probability; no-data states take --map-nodata, falling
-    back to near-black)
-  * national_svg(us_card)   -- same geography, one shared fill = the national
-    card's modal category; hover anywhere shows the national card, click
-    anywhere opens the st-US section
+  * svg_map(cards_by_fips): per-state modal category, opacity by probability,
+    no-data states in --map-nodata
+  * national_svg(us_card): one shared fill from the national card; hover
+    shows it, click opens the st-US section
 """
 from __future__ import annotations
 
@@ -36,28 +30,20 @@ CATS = ("large_decrease", "decrease", "stable", "increase", "large_increase")
 CAT_COLOR = {"large_decrease": "#2e7d4f", "decrease": "#7fc97f",
              "stable": "#b9b09b", "increase": "#e8a33d",
              "large_increase": "#c0392b"}
-# Emitted as a CSS variable so host pages can soften it per theme (the app's
-# light theme uses a pale neutral; the fixed-dark report falls back to black).
+# a CSS variable so each theme can set it; near-black without tokens
 NO_DATA = "var(--map-nodata, #0a0a0a)"
 
 
 def cat_fill(cat: str) -> str:
-    """One category's fill, as a CSS variable with the classic literal as
-    its fallback. The console defines --cat-* in every theme block of
-    nau.css and remaps them under data-vision="cvd" (the red-green-safe
-    blue/orange scale), so the map and its legend follow the color-vision
-    mode with no server round trip; a standalone export without those
-    tokens (the fixed-dark weekly report) falls back to CAT_COLOR."""
+    """One category's fill: var(--cat-*) (nau.css, remapped under
+    data-vision="cvd") with the CAT_COLOR literal as fallback."""
     return f"var(--cat-{cat.replace('_', '-')}, {CAT_COLOR[cat]})"
 
 
 def _card_fill(card: dict) -> tuple:
-    """(fill, opacity) for one hover card, the ONE fill computation every
-    map surface uses: modal category color, opacity by its probability;
-    no data takes the explicit no-data tone at full opacity. Shared by the
-    server-side renders (svg_map, national_svg) and the client-side model
-    toggle's swap payloads, so switching models recolors with exactly the
-    computation the server rendered."""
+    """(fill, opacity) for one hover card: the ONE fill computation, shared
+    by the server renders and the model toggle's swap payloads. Modal
+    category, opacity by its probability; no data at full opacity."""
     probs = (card or {}).get("probs") or {}
     if probs:
         modal = max(probs, key=probs.get)
@@ -235,17 +221,9 @@ def _shell(dom_id: str, inner: str, ink: str, paper: str, interactive=True) -> s
 
 
 def _no_card_hover(name: str, fips: str, scope_fips) -> str:
-    """The hover for a state with no card, saying only what the caller
-    actually knows (review finding 2026-08: partial-scope runs used to label
-    every unfitted state 'reporting gap', a claim nobody had checked).
-
-      * scope known, state in scope: the run fitted it and its vintage held
-        no row, so 'reporting gap' is a verified claim.
-      * scope known, state outside it: 'not fitted in this run'.
-      * scope unknown (older bundles, callers that never learned it): the
-        neutral 'no data in this view', which claims neither a gap nor an
-        unfitted state, because neither was verified.
-    """
+    """Hover for a card-less state, claiming only what is known: in scope =
+    reporting gap, outside = not fitted in this run, scope unknown = no data
+    in this view."""
     if scope_fips is not None:
         if fips in scope_fips:
             return f"<b>{name}</b><br>no reported data (reporting gap)"
@@ -259,17 +237,10 @@ def svg_map(cards_by_fips: dict, ink="#e9ecf2",
             scope_fips=None) -> str:
     """cards_by_fips: fips -> {probs, name, abbr, hover_html} ({} = no data).
 
-    Emits the full SVG + tooltip div + interaction script (hover card, click
-    drill-down, wheel-zoom / drag-pan / dblclick-reset). Each state path
-    carries data-attributes; JS is dependency-free. `dom_id` must be unique
-    per page when several maps are embedded together. `clickable` (a set of
-    abbrs) limits drill-down to states that have somewhere to go: the rest
-    keep their hover card but lose the pointer cursor, the data-abbr hook,
-    and the 'click for details' hint. None = every state is clickable.
-    `scope_fips` (a set of fips, or None = unknown) names the states the
-    producing run actually covered, so a card-less state's hover can tell a
-    verified reporting gap from a state the run never fitted; see
-    _no_card_hover.
+    Emits the SVG, tooltip div and interaction script. `dom_id` must be
+    unique per page. `clickable` (abbrs; None = all) limits drill-down to
+    states with a section. `scope_fips` (None = unknown): the run's
+    coverage, for _no_card_hover.
     """
     paths = []
     for fips, (topo_name, d) in state_paths().items():
@@ -298,11 +269,8 @@ def national_svg(us_card: dict, ink="#e9ecf2",
                  dom_id: str = "usmap-nat") -> str:
     """National mode: same geography, one shared fill.
 
-    us_card has the same shape as a state card: {probs, name, abbr, fips,
-    hover_html}. Every state is filled with the national modal category's
-    color (opacity by its probability); hovering anywhere shows the national
-    hover card; clicking anywhere calls window.showState('st-US'). One <g>
-    with a single shared fill, one tooltip; pan/zoom identical to svg_map.
+    us_card is shaped like a state card. One <g> with the national fill;
+    hover shows its card, click calls window.showState('st-US').
     """
     card = us_card or {}
     fill, op = _card_fill(card)
@@ -317,24 +285,15 @@ def national_svg(us_card: dict, ink="#e9ecf2",
 
 
 # ---------------------------------------------------------------------------
-# The outlook model toggle: one map, N models, client-side fill swap.
-#
-# The bundle (report_v2, v3) carries hover cards for EVERY available model,
-# all computed by the same quantile-CDF path. The map is rendered once for
-# the default model; the toggle below recolors it in place -- fill, opacity,
-# hover card, and the surface's model label -- from a payload built by the
-# SAME _card_fill computation the server render used, so switching models
-# can never disagree with a server-rendered map of that model. Shared by the
-# home outlook and the weekly report (both embed the same emitted script).
+# The outlook model toggle: the map is rendered once for the default model
+# and recoloured client-side (fill, opacity, hover, label) from payloads built
+# by the same _card_fill. Shared by the home outlook and the weekly report.
 # ---------------------------------------------------------------------------
 
 def state_swap_payload(cards_by_fips: dict, scope_fips=None) -> dict:
     """fips -> {f: fill, o: opacity, h: hover_html} for every state on the
-    map, from one model's hover cards (the svg_map computation as data).
-    `scope_fips` carries the producing run's coverage exactly as in svg_map,
-    and MUST be passed wherever svg_map got it: this payload rewrites the
-    hovers on the model toggle, so the two paths must tell the same story
-    about a card-less state (see _no_card_hover)."""
+    map, from one model's cards (svg_map's computation as data). Pass the
+    same `scope_fips` as svg_map, or swapped hovers tell a different story."""
     out = {}
     for fips, (topo_name, _d) in state_paths().items():
         card = cards_by_fips.get(fips, {})
@@ -368,20 +327,10 @@ def model_toggle(models: list, labels: dict, default: str, payload: dict,
     labels: model -> surface label (report_v2.MODEL_LABEL).
     payload: model -> {"states": state_swap_payload(...),
                        "us": nat_swap_payload(...)}.
-    The buttons state aria-pressed and swap `active_class` (the host's own
-    selected-button treatment: 'gold' in the console, 'on' in the report);
-    every element carrying data-mapmodel-label follows the selected model's
-    label, so the surface never shows one model's map under another's name.
-    Callers emit the toggle only when two or more models exist -- a
-    one-model surface needs no switch, and an older bundle without
-    per-model cards renders exactly as before.
-
-    THE EMITTER ENFORCES THAT CONTRACT ITSELF: models whose payload
-    carries no per-state fills are dropped (their button could only sit
-    inert -- the swap script finds nothing to recolor), and with fewer
-    than two swappable models nothing is emitted at all. A pre-v3 or
-    partial bundle therefore renders label only, never a toggle-like
-    control that does nothing (user report 2026-08-21)."""
+    Buttons swap `active_class` ('gold' in the console, 'on' in the report);
+    every [data-mapmodel-label] element follows the selected model. Models
+    without per-state fills are dropped, and with fewer than two nothing is
+    emitted (never an inert control)."""
     models = [m for m in models if (payload.get(m) or {}).get("states")]
     if len(models) < 2:
         return ""
@@ -449,12 +398,8 @@ def model_toggle(models: list, labels: dict, default: str, payload: dict,
 
 
 def map_legend() -> str:
-    """One-line legend for the categorical choropleth: the five outlook
-    categories in their fixed colors plus the no-data tone, each as a swatch
-    (the .sw class the season player's toggles already use) with its label.
-    Emitted beside every map that colors by category, so the encoding never
-    has to be learned by hovering. Swatches ride the same --cat-* tokens as
-    the map fills, so the legend follows the color-vision mode with them."""
+    """One-line legend beside every category map: the five categories and
+    no-data as .sw swatches on the same --cat-* tokens as the fills."""
     items = [
         (cat_fill(c), c.replace("_", " ")) for c in CATS
     ] + [(NO_DATA, "no data")]

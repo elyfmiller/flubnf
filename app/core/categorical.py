@@ -1,37 +1,23 @@
-"""The FluSight rate-trend categories, computed the one way for every model.
+"""PRODUCTION: FluSight rate-change categories for every map and card (via
+report.categorical_probs*, server).
 
-The hub's "wk flu hosp rate change" target (model-output/README.md of
-cdcepi/FluSight-forecast-hub, read 2026-09-23) puts a forecast week into
-one of five categories by its change from the BASELINE week, the last
-reported week before the reference date, which is this project's anchor:
+The FluSight rate-trend categories, computed one way for every model.
 
-  * stable: the magnitude of the rate change is below the horizon's stable
-    cut (per 100,000 population) OR the magnitude of the count change is
-    below 10 admissions;
-  * increase / decrease: not stable, and the magnitude of the rate change
-    is below the horizon's large cut;
-  * large_increase / large_decrease: not stable, and at or above it.
+The hub's "wk flu hosp rate change" target (FluSight-forecast-hub
+model-output/README.md) classifies a forecast week by its change from the
+baseline week (the last reported week, this project's anchor):
 
-The cuts grow with the hub horizon (0 is one week ahead):
+  * stable: |rate change| below the horizon's stable cut (per 100k) OR
+    |count change| below 10 admissions;
+  * increase / decrease: not stable, |rate change| below the large cut;
+  * large_increase / large_decrease: at or above it.
 
-  horizon 0: 0.3 and 1.7 per 100k;  1: 0.5 and 3;  2: 0.7 and 4;  3: 1 and 5.
+Cuts by hub horizon (0 = one week ahead): 0: 0.3/1.7; 1: 0.5/3; 2: 0.7/4; 3: 1/5.
 
-The probabilities come from the forecast's distribution the way the CDC's
-own report code derives a pmf from a quantile forecast: the CDF is read at
-the category cutpoints and differenced. Here that is done once, in
-`probs_from_cdf`, and both shapes a member comes in feed it: a sample
-array (the particle filter's draws, read as an empirical CDF) and a
-quantile grid (the Groundhog's native output, and every stored model, read
-as a piecewise-linear CDF between its levels, clamped at the outermost
-ones). So a map, a card or a toggle never shows two models' categories
+As in the CDC's report code, the CDF is read at the cutpoints and
+differenced (`probs_from_cdf`), fed by either samples (empirical CDF) or a
+quantile grid (piecewise-linear CDF), so no two models' categories are
 computed by two rules.
-
-Until 2026-09-23 the app applied 0.3 and 1.7 scaled by a per-horizon
-factor of its own and had no count criterion; the cuts for two or more
-weeks ahead were wrong against the hub's definition and small
-jurisdictions were never read as stable by count. The old code carried a
-note to verify this before a first submission; this module is that
-verification.
 """
 from __future__ import annotations
 

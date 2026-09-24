@@ -1,29 +1,25 @@
-"""Storage reclaim: what may be deleted, what must survive, as code.
+"""PRODUCTION: the storage-reclaim policy (server storage panel, retro
+week/season pruning).
 
-Reproducibility is the hard constraint, so the split is explicit:
+Storage reclaim: what may be deleted, what must survive, as code.
 
-LOAD-BEARING (never touched by anything in this module):
-  * the stored week samples (samples.json / samples.json.gz) -- the season
-    record every score, playback frame, and export derives from;
+LOAD-BEARING (never touched here):
+  * stored week samples (samples.json / .gz): every score, frame and export
+    derives from them;
   * scores.json, run_meta.json, playback caches, season report HTML;
-  * a workroot's assembled record: results.json, pf_status.json,
-    cells.json, scores_pf.json, report.html and its inputs bundle, and
-    every submission CSV;
-  * the sealed validation record (app/state/retro_seal) and the FluSight
-    hub clone -- protected wholesale, refused by path resolution before any
-    other rule runs, exactly as the storage panel's delete barrier does.
+  * a workroot's record: results.json, pf_status.json, cells.json,
+    scores_pf.json, report.html and its bundle, every submission CSV;
+  * the sealed record (app/state/retro_seal) and the hub clone: refused
+    wholesale by path resolution before any other rule.
 
-INTERMEDIATE (deletable once its week or run is COMPLETE, i.e. once the
-record above exists):
-  * per-cell fit trees (<location>_r<n>/ -- BNGL copies, netgen .net
-    files, .cdat/.gdat sims, trajectory outputs, pf_state.npz);
-  * runner scripts, shard lists, prep manifests, cells_done/ markers,
-    HALT flags, .prog progress files.
+INTERMEDIATE (deletable once its week or run is COMPLETE):
+  * per-cell fit trees (<location>_r<n>/: BNGL copies, .net, .cdat/.gdat,
+    trajectories, pf_state.npz);
+  * runner scripts, shard lists, prep manifests, cells_done/, HALT flags,
+    .prog files.
 
-Everything here refuses protected trees on its own, so no caller mistake
-(a finalize job pointed at a sealed root, a crafted request) can reach
-them. Deleting is per completed week / per completed run only: an
-interrupted week keeps every checkpoint and resumes exactly as before.
+Every function refuses protected trees itself, so no caller mistake can
+reach them. An interrupted week keeps every checkpoint and resumes.
 """
 from __future__ import annotations
 
@@ -35,45 +31,32 @@ from pathlib import Path
 from app.core import retro
 from app.core.runs import APP_STATE
 
-#: what survives a completed week's prune: the samples record, both forms,
-#: its quantile sidecar, and the Oracle step's provenance beside it (the
-#: oracle.json record and the donor pool it drew from, app/core/oracle.py)
+#: survives a week's prune: samples (both forms), the quantile sidecar, and
+#: the Oracle step's oracle.json and donor bank
 WEEK_KEEP = (retro.SAMPLES_JSON, retro.SAMPLES_GZ, retro.QUANTILES_NAME,
              "oracle.json", "oracle_bank")
 
 #: a per-cell fit tree inside a workroot or week: <location>_r<replicate>
 CELL_DIR_RE = re.compile(r".+_r\d+$")
 
-#: the console run's per-shard fit scaffolding: the generated runner scripts
-#: and their stderr, each shard's cell list, and each shard's own status
-#: file. The MERGED pf_status.json and cells.json are the run's record and
-#: are deliberately not in this pattern. The unnumbered pf_runner.py is the
-#: shape a run wrote before the forecast path was sharded.
+#: per-shard scaffolding (runner scripts + stderr, cell lists, status files;
+#: unnumbered pf_runner.py is pre-sharding). The MERGED pf_status.json and
+#: cells.json are the record and deliberately do not match.
 WORKROOT_SCAFFOLD_RE = re.compile(
     r"^(pf_runner(_\d+)?\.(py|err)|pf_cells_\d+\.json|pf_status_\d+\.json)$")
 
-#: measured on a 144 MB full-grid week: gzip -6 gives 3.67x; the dry-run
-#: estimate uses a slightly conservative figure and the perform step
-#: reports the real bytes.
+#: dry-run estimate (gzip -6 measured 3.67x); the perform step reports real bytes
 EST_GZ_RATIO = 3.5
 
-#: research season trees outside the managed retro root that the reclaim
-#: sweep may COMPRESS (lossless, reversible) but never prune or delete:
-#: the two-strain evidence tree.
+#: research season trees (the two-strain evidence) the sweep may COMPRESS
+#: (lossless) but never prune or delete
 RESEARCH_ROOTS = (APP_STATE / "retro_2s",)
 
 
 def _protected_roots() -> list:
-    """The trees reclaim never touches: the sealed record, the hub clone,
-    the research roots under app/state, and any roots named in
-    FLUBNF_PROTECT_ROOTS (os.pathsep separated, a colon on POSIX and a
-    semicolon on Windows, where a colon would cut a drive letter off its
-    path), read at call time so a
-    research arm running OUTSIDE app/state can keep its per-cell evidence
-    (ESS files, parameter samples, cells.json) for a pre-registered
-    diagnostic instead of being pruned to its samples file the moment a
-    week completes. Without this, evidence a measurement needs is gone
-    before the measurement can be made."""
+    """The trees reclaim never touches: the sealed record, the hub clone, and
+    FLUBNF_PROTECT_ROOTS (os.pathsep-separated, read per call) so a research
+    arm outside app/state keeps the per-cell evidence a diagnostic needs."""
     from flubnf.settings import HUB
     roots = [APP_STATE / "retro_seal", Path(HUB)]
     extra = os.environ.get("FLUBNF_PROTECT_ROOTS", "")
@@ -82,9 +65,8 @@ def _protected_roots() -> list:
 
 
 def is_protected(p: Path) -> bool:
-    """True when a path lies inside (or is) the sealed validation record or
-    the hub clone -- resolved first, so a symlink pointing into either is
-    caught. Unresolvable paths are refused, never guessed at."""
+    """True when a path is inside (or is) a protected root, resolved first so
+    a symlink into one is caught. Unresolvable paths count as protected."""
     try:
         rp = Path(p).resolve()
     except OSError:
@@ -174,9 +156,7 @@ def workroot_intermediates(w: Path) -> list:
     out = []
     try:
         scopes = [w]
-        # a research run's two-strain member fits in a pf2s/ subdirectory
-        # laid out exactly like the workroot top level; without this its
-        # heaviest trees survived every prune (review finding)
+        # a research run's pf2s/ has the same layout as the top level
         if (w / "pf2s").is_dir() and not (w / "pf2s").is_symlink():
             scopes.append(w / "pf2s")
         for scope in scopes:
@@ -248,11 +228,9 @@ def compress_tree(root: Path) -> dict:
 # ------------------------------------------------------------ the full plan
 
 def _season_entries(retro_root: Path, skip: set) -> list:
-    """Season-shaped trees under the retro root -- live seasons and
-    archived runs alike -- excluding skipped (busy) names and anything
-    resolving into a protected tree. Symlinked seasons (parked on another
-    volume) are operated on THROUGH the link, exactly as every read and
-    write path does; only sizes-in-the-panel and delete refuse to follow."""
+    """Season trees under the retro root (live and archived), minus skipped
+    (busy) names and protected trees. Symlinked seasons are operated on
+    through the link, as every read/write path does."""
     root = Path(retro_root)
     if not root.is_dir():
         return []
@@ -301,8 +279,7 @@ def survey(retro_root: Path, workroot_base: Path,
                     pruned_here = True
         if pruned_here:
             plan["season_ids"].append(entry.name)
-    # research trees are compress-only (lossless, reversible): their
-    # intermediates, if any existed, are not this module's to judge
+    # research trees are compress-only
     for entry in managed + research:
         comp = compressible_files(entry)
         if comp:

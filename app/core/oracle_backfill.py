@@ -1,44 +1,32 @@
-"""Backfill and reproduce: the Oracle member computed for every stored week
-of a season root, from the stored samples and no refit, into a NEW root;
-and the app's own scorer on such a root, printed beside the registered
-screen's tables. A verification tool: it proves the app's code reproduces
-the registered screens from the forecasts they saved, with no refit. A
-season's Oracle SIHRS is run and viewed by a console replay
-(app.core.retro.run_season), never through a backfilled root.
+"""VERIFICATION CLI ONLY (`flubnf oracle backfill` / `flubnf oracle
+reproduce`); never on the console path.
 
-BACKFILL. A season root is a tree of stored weeks (weeks/<T>/samples.json
-or .gz, the stored horizon convention, sealed since the record was made).
-The step of app/core/oracle.py is applied to each week's `pf` block, read
-through the storage boundary and written back through it, so nothing about
-the stored convention changes: the new root's week carries `pf` (the
-member, the submitted seed's samples), `pf_filter` (the source's pf,
-verbatim), `analogue` (the source's, verbatim), the sidecar the boundary
-writes, oracle.json and oracle_bank/ beside it. The source is never
-written, and the destination may not be the source, inside it, inside the
-repository's app/state (the sealed and live retro trees), or a non-empty
-tree unless the caller says so.
+Backfill and reproduce: proves the app's code reproduces the registered
+Oracle screens from their saved forecasts, with no refit. A season's Oracle
+SIHRS is run and viewed by a console replay (retro.run_season), never
+through a backfilled root.
 
-REPRODUCE. app.core.retro.score_season on the backfilled root (the same
-scorer, the same cell rule, the same baseline construction the console
-uses everywhere), pooled through app.core.us_national.pooled_frame, then
-relWIS per season and over the seasons together on two cell sets: the
-record definition (each member on its own scored cells) and the common set
-(cells where both stored members scored), each with its cell count; with
-2023-24 among the roots, the two active seasons (active2) as well. The
-screen's relwis_tables are printed beside them when given: the frozen
-screen's screen_scores.json (the admissions-only member LB) or the B2
-screen's screen_b2_scores.json (the shipped member LBGH, bank change B2). The hub the process reads (FLUBNF_HUB) must be the one whose truth
-and baseline files the screen used, or the numbers describe two truths.
+BACKFILL. Applies oracle.apply_week to each stored week's `pf` of a source
+root, through the storage boundary both ways, into a NEW root whose weeks
+carry `pf` (the member), `pf_filter` (the source's pf), `analogue`
+(verbatim), the sidecar, oracle.json and oracle_bank/. The destination may
+not be the source, inside it, under app/state (the sealed and live trees),
+or a non-empty tree unless forced.
+
+REPRODUCE. retro.score_season on the backfilled root (the console's scorer
+and cell rule), pooled via us_national.pooled_frame; relWIS per season and
+overall on the record cells (each member's own) and the common cells, plus
+active2 when 2023-24 is among the roots; printed beside the screen's
+relwis_tables (screen_scores.json: LB; screen_b2_scores.json: LBGH). FLUBNF_HUB
+must be the hub whose truth and baseline the screen used.
 """
 from __future__ import annotations
 
 import hashlib
 import json
-import os
 import time
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 from app.core import oracle as oracle_mod
@@ -229,8 +217,7 @@ def reproduce(roots: list, *, source_roots: list | None = None,
               screen_json=None) -> dict:
     """Score one or more backfilled season roots (and, read only, their
     sources for the NULL) and lay the numbers beside the screen's."""
-    # the read-only promise is checked before any scoring, so a source
-    # that would have to be written is refused before a hub is even read
+    # check the read-only promise before any scoring (or hub read)
     for r in (source_roots or []):
         if not sidecars_current(r):
             raise ValueError(f"{r}: a week's quantile sidecar is absent or stale, "

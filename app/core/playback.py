@@ -1,36 +1,27 @@
-"""Season playback: one JSON payload per stored retrospective week.
+"""PRODUCTION: season-player payloads and their cache (server /api/retro
+playback, report_season, site_build, retro.finalize_season).
+
+Season playback: one JSON payload per stored retrospective week.
 
 GET /api/retro/{season}/playback/{asof} serves what a viewer needs to replay
-a submission day: every member's quantile fan (pf and analogue), the
-settled full-season truth, the CDC's own submitted comparators
-(FluSight-baseline and FluSight-ensemble, including their US national cell),
+a submission day: every member's quantile fan, the settled truth, the CDC's
+submitted comparators (FluSight-baseline and -ensemble, US cell included)
 and running relWIS stats.
 
-Conventions inherited from the rest of the app (do not re-derive):
-  * hub reference_date = our asof + 7 days; hub horizon 0..3 = our "1".."4"
-    (the join verified in scripts/ensemble_vs_team.py of the archive repo).
-  * relWIS uses THE frozen formula: cells need settled truth > 0 and a
-    positive median, and the denominator is scoring._baseline_cells -- the
-    validated baseline construction, never a hand-rolled one.
-  * stats exclude the US national cell, fitted or not. The policy is named
-    in app/core/us_national (POOLED_INCLUDES_US) and applied here through
-    us_national.pooled_frame / pooled_locations, so fitting the national
-    series changes no pooled number. Two reasons stand behind it: US is the
-    sum of all 52 jurisdictions, so it would count them twice and dominate
-    any sum-based aggregate (~50x a state's WIS), and the published pooled
-    headline is a 52-jurisdiction figure. The national score is reported
-    SEPARATELY, with the provenance that says whether it was fitted or
-    constructed.
+Conventions (do not re-derive):
+  * hub reference_date = asof + 7; horizons are canonical "0".."3"
+    (app.core.horizons).
+  * relWIS uses THE frozen cell rule: settled truth > 0, positive median,
+    denominator from scoring._baseline_cells (never hand-rolled).
+  * stats exclude US, fitted or not (us_national.POOLED_INCLUDES_US, applied
+    via pooled_frame / pooled_locations): US is the sum of the 52 and would
+    dominate any sum. The national score is reported separately.
 
-Caching: each built payload lands in <season_root>/playback_cache/<asof>.json
-and is served from there while fresh (mtime vs every samples.json at or
-before the asof, and vs scores.json). Per-week score aggregates for models
-not covered by scores.json live in playback_cache/stats_cells.json so
-cumulative stats never rescore old weeks twice; each entry stays valid only
-while its samples mtime, the scores.json mtime, and the week's set of
-present official files are all unchanged (a scores.json that lands after
-the cache was built, or officials a later Update data fetched, must
-propagate rather than leave relWIS pending forever).
+Caching: payloads live in <season_root>/playback_cache/<asof>.json, fresh
+while newer than every samples file at or before asof, scores.json and the
+truth. Per-week aggregates for models scores.json does not cover live in
+stats_cells.json, keyed on the samples mtime, scores.json mtime, truth mtime
+and the set of official files present, so late scores or officials propagate.
 """
 from __future__ import annotations
 
@@ -51,9 +42,7 @@ from flubnf.settings import HUB
 from flubnf.wis import wis as wis_fn
 
 OFFICIAL = ("FluSight-baseline", "FluSight-ensemble")
-#: bump when cached shapes or scoring logic change. v3 (2026-09-22): the
-#: payload carries the stored members only; a v2 payload holds a blend
-#: computed on the fly that nothing computes any more, and is rebuilt
+#: bump when cached shapes or scoring logic change (v3: stored members only, no blend)
 CACHE_V = 3
 TARGET = "wk inc flu hosp"
 #: canonical hub horizons; app.core.horizons owns the convention
@@ -82,13 +71,9 @@ def _cache_dir(root: Path) -> Path:
 
 
 def _write_cache(cf: Path, obj) -> None:
-    """Every cache write in this file goes through here: write beside, then
-    os.replace, the rule the cards cache in server.py states. The readers
-    above treat presence as validity, and these payloads run to megabytes,
-    so a bare write_text torn by a concurrent writer or a kill mid-write
-    would be served as a complete payload on the next request. os.replace
-    is atomic within one filesystem, and the .tmp sits beside its target
-    precisely to stay on that filesystem."""
+    """Every cache write in this file: write beside, then os.replace. Readers
+    treat presence as validity, so a torn multi-MB write would be served as
+    complete; the .tmp sits beside its target to stay on one filesystem."""
     cf.parent.mkdir(parents=True, exist_ok=True)
     tmp = cf.with_name(cf.name + ".tmp")
     tmp.write_text(json.dumps(obj))
@@ -98,10 +83,8 @@ def _write_cache(cf: Path, obj) -> None:
 # ------------------------------------------------------------- member models
 
 def _member_q(samples_by_h: dict) -> dict:
-    """ens.member_quantiles_from_samples, vectorized: one np.quantile call
-    per horizon instead of 23 (each re-sorts 30k samples; a season replay
-    makes ~5,000 such cells). Same formula, bit-identical output -- guarded
-    by test_vectorized_member_quantiles_match_reference."""
+    """ens.member_quantiles_from_samples, vectorized (one np.quantile call
+    per horizon instead of 23); bit-identical, which the tests check."""
     out = {}
     for h in HORIZONS:
         s = np.asarray(samples_by_h.get(h, []), float)
@@ -114,13 +97,8 @@ def _member_q(samples_by_h: dict) -> dict:
 def _week_model_quantiles(root: Path, asof: str) -> dict:
     """{model: {location: {"0".."3": {float level: value}}}} for one stored
     week: sample-shaped members (pf, pf2s) through the member-quantile
-    formula and the analogue's stored quantiles as-is. No blend: the
-    equal-weight ensemble the player used to draw on the fly is retired
-    (2026-09-22), and a sealed season's stored score rows are the only
-    place it survives."""
-    # the members come from the week's quantile sidecar (retro_store
-    # .week_member_quantiles): the same formula _member_q applies, without
-    # parsing the draws on every cold cache
+    formula and the analogue's stored quantiles as-is. No blend (retired).
+    Read from the week's quantile sidecar, so draws are not parsed per cold cache."""
     return dict(retro_store.week_member_quantiles(root, asof))
 
 
@@ -136,19 +114,16 @@ def _official_files_present(asof: str) -> list:
 
 
 def season_official_catalog(root: Path) -> list:
-    """Official models that submitted in at least one week of the season.
-    The season page hands this to the player as its two-tier availability
-    catalog: a model on this list keeps a live toggle even in weeks it
-    skipped (outside the competition window), while a model absent here is
-    disabled with the Update-data note. Computed server-side so it is
-    correct before playback starts."""
+    """Official models that submitted in at least one week of the season:
+    the player's availability catalog (listed models keep a live toggle in
+    weeks they skipped; absent ones are disabled with the Update-data note)."""
     weeks = season_weeks(root)
     return [om for om in OFFICIAL
             if any(om in _official_files_present(w) for w in weeks)]
 
 
 def _official_quantiles(model: str, asof: str, f2n: dict) -> dict | None:
-    """{location_name_or_US: {"1".."4": {float level: value}}} parsed from the
+    """{location_name_or_US: {"0".."3": {float level: value}}} parsed from the
     hub's submitted file for this week, or None when the file is absent
     (early weeks, sparse clones). f2n scopes which locations are kept."""
     ref = (pd.Timestamp(asof) + timedelta(days=7)).date().isoformat()
@@ -213,10 +188,7 @@ def _score_block(qbl: dict, asof: str, truth: dict, n2f: dict,
 def _week_aggregates(asof: str, truth: dict, n2f: dict, model_q: dict,
                      official_q: dict) -> dict:
     """{model: {"wis", "base", "n"}} for one week, members and officials
-    alike, US excluded under the named policy (us_national.POOLED_INCLUDES_
-    US). The exclusion is applied to OUR members too, not only to the
-    officials: once the national series is fitted its cell would otherwise
-    walk straight into the pooled week and cumulative figures."""
+    alike, US excluded for all of them (us_national.POOLED_INCLUDES_US)."""
     locs = usn.pooled_locations(
         set().union(*(set(q) for q in model_q.values())) if model_q else [])
     locs = set(locs)
@@ -242,10 +214,8 @@ def _week_aggregates(asof: str, truth: dict, n2f: dict, model_q: dict,
 def _season_scores(root: Path):
     """scores.json as a DataFrame, or None when absent/empty/invalid.
 
-    The FULL frame, national rows included. Callers that compute a POOLED
-    figure must pass it through us_national.pooled_frame first; callers
-    that want the national figure use us_national.resolve. Nothing here
-    silently drops rows, because the same file feeds both answers."""
+    The FULL frame, US included: pooled figures go through
+    us_national.pooled_frame, the national one through us_national.resolve."""
     sf = root / "scores.json"
     if not sf.is_file():
         return None
@@ -280,8 +250,7 @@ def _stats(root: Path, season: str, asof: str, truth: dict, n2f: dict,
     season's scores.json are read from it (one formula, computed once);
     everything else (pf2s, officials, unscored roots) is scored on the fly
     with per-week aggregates cached in playback_cache/stats_cells.json."""
-    # the pooled gate, applied at the ONE place the stats table reads
-    # scores.json: a fitted US row must never move a pooled figure
+    # the pooled gate: a fitted US row must never move a pooled figure
     scores = usn.pooled_frame(_season_scores(root))
     scored_models = set(scores.model.unique()) if scores is not None else set()
     upto = [w for w in season_weeks(root) if w <= asof]
@@ -293,10 +262,8 @@ def _stats(root: Path, season: str, asof: str, truth: dict, n2f: dict,
         cache = {"weeks": {}}
     f2n_all = {v: k for k, v in n2f.items()}
     f2n_all["US"] = "US"
-    # cache validity mirrors the payload-cache rules in build_week: sample
-    # mtimes alone cannot see a scores.json that landed AFTER the cache was
-    # built (scoring succeeding late, the field case) or official files a
-    # later Update data fetched, so both join the per-week validity key
+    # sample mtimes cannot see a late scores.json or newly fetched officials,
+    # so both join the per-week validity key
     sf = root / "scores.json"
     scores_mtime = sf.stat().st_mtime if sf.is_file() else None
     dirty = False
@@ -320,9 +287,8 @@ def _stats(root: Path, season: str, asof: str, truth: dict, n2f: dict,
         suspect = any(om in aggs[w] and aggs[w][om].get("base", 0) == 0
                       and oq.get(om) for om in OFFICIAL)
         if not suspect:
-            # a zero-base official aggregate with a parsed file is a
-            # transient scoring failure; recompute next request instead of
-            # freezing "pending" into the cache (the field bug, act three)
+            # a zero-base official with a parsed file is a transient failure:
+            # recompute next time rather than cache "pending"
             cache["weeks"][w] = {"mtime": m, "scores_mtime": scores_mtime,
                                  "truth_mtime": _tm(),
                                  "officials": offs, "agg": aggs[w], "v": CACHE_V}
@@ -336,9 +302,7 @@ def _stats(root: Path, season: str, asof: str, truth: dict, n2f: dict,
     stats = {}
     wanted = list(model_q) + [om for om in OFFICIAL
                               if any(om in aggs[w] for w in upto)]
-    # a season scored before 2026-09-22 carries the retired blend's rows in
-    # scores.json and nowhere else: its stats read from there as that
-    # season's record, though no payload draws it any more
+    # older scores.json files carry the retired blend's rows: show them as record
     if "ensemble" in scored_models and "ensemble" not in wanted:
         wanted.append("ensemble")
     for m in wanted:
@@ -356,9 +320,7 @@ def _stats(root: Path, season: str, asof: str, truth: dict, n2f: dict,
             stats[m] = {"week_rel": _rel(wk["wis"], wk["base"]) if wk else None,
                         "cum_rel": _rel(cw, cb)}
             if m in OFFICIAL and stats[m]["cum_rel"] is None:
-                # A cataloged official with no cumulative score is the
-                # field bug that keeps resurfacing; explain the first
-                # file-bearing week's pipeline instead of showing "pending".
+                # say where the official pipeline starves instead of "pending"
                 stats[m]["debug"] = _official_debug(root, m, upto, n2f)
     return stats
 
@@ -430,26 +392,17 @@ def build_week(root: Path, season: str, asof: str) -> dict:
             payload = json.loads(cf.read_text())
             if payload.get("_v") != CACHE_V:
                 raise ValueError("cache version bump")
-            # A payload cached before the official comparator files were
-            # fetched must rebuild once they exist: Update data healing the
-            # sparse clone changes no samples mtime, so timestamps alone
-            # cannot see it (field-found on the first laptop).
+            # rebuild once official files appear (Update data changes no sample mtime)
             from datetime import date as _d, timedelta as _td
             ref = (_d.fromisoformat(asof) + _td(days=7)).isoformat()
             missing_now_present = any(
                 name not in payload.get("official", {})
                 and (HUB / "model-output" / name / f"{ref}-{name}.csv").is_file()
                 for name in ("FluSight-baseline", "FluSight-ensemble"))
-            # A payload cached before US truth rode along unconditionally
-            # (weeks with no official submission) upgrades on first serve,
-            # the same lazy-heal pattern as the officials check above; the
-            # key is always written now, so this fires once per stale week.
+            # ... and once for payloads cached before US truth always rode along
             us_truth_missing = "US" not in payload.get("truth", {})
             if not missing_now_present and not us_truth_missing:
-                # Stats are recomputed EVERY serve: they depend on scores,
-                # officials, and scoring code, and caching them once froze a
-                # broken "pending" into the payload files for days in the
-                # field. Only the heavy quantiles/truth stay cached.
+                # stats are recomputed on every serve; only quantiles/truth are cached
                 truth_c, n2f_c = load_truth()
                 payload["stats"] = _stats_fresh(root, asof, payload,
                                                 truth_c, n2f_c)
@@ -468,13 +421,8 @@ def build_week(root: Path, season: str, asof: str) -> dict:
     from app.core.retro import season_bounds
     lo, hi = season_bounds(season)
     hi_ext = (pd.Timestamp(hi) + timedelta(days=28)).date().isoformat()
-    # US truth ALWAYS rides along, never only when an official submitted:
-    # the player's location list carries a US entry in every week (served by
-    # the official comparators), so a week the officials skipped -- the
-    # season-boundary weeks sit outside the competition window -- must still
-    # show the settled national truth. Gating US truth on official presence
-    # made those frames render as bare empty axes (field-found on the
-    # 2025-26 season player, weeks 2026-05-30 and 2026-06-13).
+    # US truth always rides along: the player lists US every week, including
+    # weeks outside the officials' window (else empty axes)
     truth_locs = list(locs) + ["US"]
     truth_out = {}
     for name in truth_locs:

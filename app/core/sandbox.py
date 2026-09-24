@@ -1,4 +1,7 @@
-"""The sandbox: the particle filter on a model of your own, outside the
+"""SANDBOX: user models run through the PF engine outside production (server
+/sandbox routes).
+
+The sandbox: the particle filter on a model of your own, outside the
 production path.
 
 A model lives in sandbox/models/<name>/ as three files: model.bngl (any
@@ -291,7 +294,6 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
     generate is refused before the engine is asked for anything, with
     BNG2.pl's own words.
     """
-    d = model_dir(name)
     files = read_model(name)
     sfx = simulate_suffix(files["model.bngl"])
     exp = read_exp(files["data.exp"])

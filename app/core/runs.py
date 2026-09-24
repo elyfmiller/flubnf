@@ -1,14 +1,16 @@
-"""Run ledger, workroot leasing, and seed derivation.
+"""PRODUCTION: run ledger, workroot leasing, seeds and run-display helpers
+(server, engines, retro).
 
-This module IS the constitutional rules as code (the lab archive's docs/APP_DESIGN.md):
+Run ledger, workroot leasing, seed derivation, and run display helpers.
+
+The lab's constitutional rules as code (the lab archive's docs/APP_DESIGN.md):
 
   rule 1  every run gets a fresh, exclusive workroot        -> lease_workroot()
   rule 2  every conf carries an explicit derived seed        -> derive_seed()
   rule 3  per-state numbers ship as >=3 seeded replicates    -> RunSpec.replicates
   ledger  every run reproducible from its row                -> Ledger
 
-Each lesson has a date and a cost; see the design doc. None of these are
-advisory -- the engines refuse to run outside a leased workroot.
+None is advisory: the engines refuse to run outside a leased workroot.
 """
 from __future__ import annotations
 
@@ -27,10 +29,8 @@ APP_STATE = Path(__file__).resolve().parents[1] / "state"
 
 
 def fmt_hms(seconds) -> str:
-    """Wall time as h:mm:ss -- the one formatter the console, the retro
-    pages, and both report exports share, so a duration reads identically
-    wherever it appears. None or a negative value renders as an em space
-    dash rather than a fake zero."""
+    """Wall time as h:mm:ss, the one formatter every surface shares; None,
+    NaN or negative -> '--' (never a fake zero)."""
     try:
         s = float(seconds)
     except (TypeError, ValueError):
@@ -41,12 +41,10 @@ def fmt_hms(seconds) -> str:
     return f"{s // 3600:d}:{(s % 3600) // 60:02d}:{s % 60:02d}"
 
 
-#: A location list this long or shorter is named in full; longer ones are
-#: counted. Naming six states is useful, naming forty is noise.
+#: location lists up to this long are named in full; longer ones are counted
 LOCATION_LIST_LIMIT = 8
 
-#: The FluSight jurisdiction count (50 states, DC, Puerto Rico). A run
-#: covering all of them says so instead of reporting a bare number.
+#: the FluSight jurisdiction count (50 states, DC, Puerto Rico)
 ALL_JURISDICTIONS = 52
 
 ENGINE_LABELS = {"all": "both models (Oracle SIHRS and Groundhog)",
@@ -57,18 +55,14 @@ ENGINE_LABELS = {"all": "both models (Oracle SIHRS and Groundhog)",
 
 
 def _is_national(loc) -> bool:
-    """One spelling test for the whole application: app.core.us_national.
-    This module keeps the private alias so its own call sites read locally,
-    but the rule itself is defined exactly once."""
+    """Local alias of us_national.is_us (lazy import breaks a cycle)."""
     from app.core.us_national import is_us
     return is_us(loc)
 
 
 def locations_phrase(locations) -> str:
-    """How a run's location scope reads to a person: the count always, the
-    names too when the list is short enough to be worth reading. The
-    national fit is reported separately from the state count, because it is
-    always added and would otherwise inflate every number by one."""
+    """A run's location scope for a person: the count, plus names when the
+    list is short. US national is reported apart from the state count."""
     locs = [str(l) for l in (locations or [])]
     states = [l for l in locs if not _is_national(l)]
     tail = " plus US national" if len(states) != len(locs) else ""
@@ -85,14 +79,9 @@ def locations_phrase(locations) -> str:
 def spec_settings(spec) -> list:
     """The settings that produced a console run, as (label, value) pairs.
 
-    One formatter, three audiences: the live progress card, the run page,
-    and the weekly report all render this same list, so a reader comparing
-    an artifact against the console never has to reconcile two wordings.
-
-    `spec` may be a RunSpec, the dict the ledger stores, or that dict's JSON
-    text (the ledger row carries the JSON verbatim, which is the record of
-    record). An unreadable spec yields an empty list rather than raising:
-    settings are context, and context must never take a page down.
+    One formatter for the progress card, the run page and the weekly report.
+    `spec` may be a RunSpec, the ledger's dict, or its JSON text; an
+    unreadable spec yields [] rather than raising.
     """
     if isinstance(spec, RunSpec):
         d = asdict(spec)
@@ -114,39 +103,28 @@ def spec_settings(spec) -> list:
              ("engine", ENGINE_LABELS.get(engine, engine or "unknown")),
              ("replicates", str(d.get("replicates", "") or "")),
              ("particles", f"{int(d.get('particles') or 0):,}")]
-    # the season start sits beside the date it belongs to: it fixes the
-    # model's first observed week and its initial-state anchor, which the
-    # swarm-carry study measured as the largest single lever in the engine
+    # season start beside the date: it fixes the first observed week and anchor
     if d.get("season_start"):
         pairs.insert(1, ("season start", str(d["season_start"])))
     pairs.append(("weeks dropped", str(int(d.get("weeks_to_drop") or 0))))
-    # only when the spec RECORDS the choice: a ledger row from before the
-    # field existed ran with the same-day week in the fit, and displaying
-    # the new default for it would misdescribe the recorded run (review
-    # finding). Absent key -> no line, which is the honest statement.
+    # only when the spec records the choice (older rows would be misdescribed)
     if "drop_same_day" in d:
         pairs.append(("same-day week",
                       "treated as unreported"
                       if d.get("drop_same_day") else "kept"))
     if int(extra.get("members") or 2) == 3:
         pairs.append(("research member", "two-strain SIHRS"))
-    # the Groundhog's donors, from the spec of record: a row from before
-    # the auxiliary bank shipped (2026-09-22) carries no key and ran the
-    # bare calendar analogue, which is what this line then says
+    # older rows carry no aux key and ran the bare analogue, which this then says
     pairs.append(("Groundhog donors", analogue_donors_label(extra)))
     pairs.append(("Oracle step", oracle_label(extra)))
     return [(k, v) for k, v in pairs if v not in ("", None)]
 
 
 def oracle_label(extra: dict | None) -> str:
-    """One phrase for the Oracle step, from a spec's research dictionary:
-    the plain filter when the spec asked for it (`oracle = none`, a research
-    run), else the default. The bank a run drew from is named in its
-    OUTCOME (`oracle`, as stream@digest8), because the pool is built from
-    the week's vintage at run time and is not known when the spec is
-    written; a spec from before the step existed (2026-09-22) carries no
-    key either, which is why the default is worded as the console's
-    default and not as a fact about that run."""
+    """One phrase for the Oracle step from a spec's extra: the plain filter
+    for `oracle = none`, else the console default (worded as a default: the
+    bank is known only at run time and is named in the OUTCOME, and older
+    specs carry no key)."""
     extra = extra if isinstance(extra, dict) else {}
     if str(extra.get("oracle") or "") == "none":
         return "none (the plain filter, a research run)"
@@ -165,16 +143,10 @@ def analogue_donors_label(extra: dict | None) -> str:
 
 
 def is_research(spec) -> bool:
-    """True when a run's spec asked for the two-strain research member
-    (a three-member ensemble, or an explicit variant marker in extra).
-
-    The two-strain engine failed its full-grid ensemble gate and is kept
-    for research only, so every surface that shows such a run tags it
-    'research'. The tag is derived here, from the spec the ledger row
-    stores (the record of record), so it follows the run everywhere the
-    run appears and can never disagree between surfaces. Accepts the same
-    three spec shapes as spec_settings; anything unreadable is simply not
-    research."""
+    """True when a run's spec is a research configuration: the two-strain
+    member (members == 3 or variant 2strain; it failed its gate) or the
+    plain filter. Derived from the ledger spec, so every surface agrees.
+    Accepts spec_settings' three shapes; unreadable is not research."""
     if isinstance(spec, RunSpec):
         d = asdict(spec)
     elif isinstance(spec, str):
@@ -189,18 +161,13 @@ def is_research(spec) -> bool:
     extra = d.get("extra") if isinstance(d, dict) else None
     if not isinstance(extra, dict):
         return False
-    # the plain filter (oracle = none) is a research configuration too, the
-    # Groundhog's `aux = none` precedent applied to the mechanistic member:
-    # its file is withheld and a plain-filter run is never the date's
-    # forecast, so it carries the tag on every surface and never archives
+    # the plain filter: file withheld, never the date's forecast
     return (extra.get("members") == 3 or extra.get("variant") == "2strain"
             or str(extra.get("oracle") or "") == "none")
 
 
 def version_pairs(build: str = "", versions: dict | None = None) -> list:
-    """What produced an artifact, beyond its settings: the application build
-    and the engine versions. Recorded in the artifacts so a report states
-    exactly which code wrote it; omitted, never guessed, when unknown."""
+    """The app build and engine versions behind an artifact; omitted when unknown."""
     v = versions or {}
     pairs = []
     if build:
@@ -216,9 +183,8 @@ def version_pairs(build: str = "", versions: dict | None = None) -> list:
 MODE_LABELS = {"realtime": "real-time run (the newest vintage)",
                "vintage": "vintage run (an archived week, not real-time)"}
 
-#: the models a console run can score, in table order, with the outcome
-#: keys each writes at run end. The blend's row renders only for a ledger
-#: row from before it was retired (2026-09-22), which still carries it.
+#: (label, relWIS key, cells key) per scored model, in table order; the
+#: retired blend's row renders only for older ledger rows
 _RESULT_ROWS = (("Oracle SIHRS", "pf_relwis", "pf_relwis_cells"),
                 ("Groundhog", "analogue_relwis", "analogue_relwis_cells"),
                 ("FluBNF ensemble (retired)", "ensemble_relwis",
@@ -226,12 +192,9 @@ _RESULT_ROWS = (("Oracle SIHRS", "pf_relwis", "pf_relwis_cells"),
 
 
 def results_html(outcome, spec) -> str:
-    """One run's results as a small table: the run type (real-time or
-    vintage), each member's relWIS against the FluSight baseline with the
-    cells it rests on, the PF fits and failures, the submission files, the
-    report. Replaces the one-line chip summary on the latest-run card
-    (lead, 2026-09-07). Markup from fixed phrases and numbers only; an
-    unreadable outcome yields an empty string, never an exception."""
+    """One run's results as a small table: run type, each member's relWIS
+    with its cells, PF fits and failures, submissions, report. Markup from
+    fixed phrases and numbers only; unreadable input yields ""."""
     if isinstance(outcome, str):
         try:
             o = json.loads(outcome or "{}")
@@ -275,17 +238,14 @@ def results_html(outcome, spec) -> str:
     elif o.get("pf_skipped"):
         rows.append(("PF fits", "none (analogue-only run)" if "analogue" in str(o["pf_skipped"]) else "none (no engine)"))
     elif o.get("pf_engine_broken"):
-        # never "none (no engine)": the engine IS installed, it just cannot
-        # filter, and the two need different remedies. The recorded message
-        # names the fork path and the fix; it is escaped because it carries
-        # a filesystem path and everything else here is a fixed phrase.
+        # installed but broken (a different remedy from "no engine"); the
+        # message carries a path, so it is escaped
         import html as _html
         rows.append(("PF fits", '<span class="bad">none (engine install '
                                 'incomplete)</span> <span class="hint">'
                                 f'{_html.escape(str(o["pf_engine_broken"]))}'
                                 '</span>'))
-    # the next two keys are written by no run since the blend was retired;
-    # rows from before carry them and are the record
+    # the next two keys exist only on rows from before the blend was retired
     if o.get("ensemble_analogue_only"):
         names = list(o["ensemble_analogue_only"])
         rows.append(("Analogue only", f'<span class="bad">{len(names)} location'
@@ -316,20 +276,10 @@ def results_html(outcome, spec) -> str:
 
 def settings_html(pairs, title: str = "Run settings",
                   cls: str = "hint runsettings", el_id: str = "") -> str:
-    """The one rendering of a settings block, used by the console cards, the
-    run page, the retrospective surfaces, and both report exports -- every
-    surface renders settings through here, so they cannot drift apart.
-    Compact and secondary by design: it sits under the readouts a reader
-    came for, never above them.
-
-    A tight two-column label/value grid (dl.kv, the definition-grid style
-    in nau.css: natural width, values in tabular figures at the standard
-    body size), replacing the old one-line small-print prose per user
-    report 2026-08-21. The wrapper keeps the runsettings class the grid
-    styles hang from; the title keeps the literal text callers and the
-    report freshness check (report_season.SETTINGS_MARK) key on.
-
-    Everything is escaped; the values include user-supplied location names.
+    """The one rendering of a settings block (every surface uses it): a
+    two-column dl.kv grid inside the runsettings wrapper. The title is a
+    literal callers key on (report_season.SETTINGS_MARK). Everything is
+    escaped (values include user-supplied location names).
     """
     import html as _html
     items = [(k, v) for k, v in (pairs or []) if v not in ("", None)]
@@ -346,10 +296,8 @@ def settings_html(pairs, title: str = "Run settings",
 
 
 def run_id_time(run_id: str) -> str:
-    """The wall-clock moment a workroot id carries: '20260821T163029-5dbec2'
-    reads as '2026-08-21 16:30'. The id is minted with time.strftime (local
-    time) in open_run, so this is the run's own clock, not a guess. '' when
-    the name carries no timestamp (hand-made workroots)."""
+    """The local time a workroot id carries ('20260821T163029-5dbec2' ->
+    '2026-08-21 16:30', minted in open_run); '' when it has none."""
     m = re.match(r"(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})\d{2}", run_id or "")
     if not m:
         return ""
@@ -358,20 +306,16 @@ def run_id_time(run_id: str) -> str:
 
 
 def run_display(run_id: str, spec=None, created_utc=None) -> dict:
-    """How one run reads to a person, built from its ledger row (the record
-    of record) and the run's own id:
+    """How one run reads to a person, from its ledger row and id:
 
-      what      'Forecast for 2026-01-24' / 'Retrospective fit 2026-01-24',
-                or 'Unrecorded run' when no ledger row describes it;
-      when      the run's wall-clock start -- the ledger's created_utc when
-                recorded, else the timestamp the workroot id itself carries;
-      scope     the location scope phrase ('all 52 jurisdictions',
-                '6 states: ...'), '' when unrecorded;
+      what      'Forecast for <date>' / 'Retrospective fit <date>' /
+                'Unrecorded run';
+      when      the ledger's created_utc, else the id's timestamp;
+      scope     locations_phrase, '' when unrecorded;
       recorded  whether a ledger row stood behind the label.
 
-    Accepts the same three spec shapes as spec_settings. Every field
-    degrades to the honest minimum rather than raising: an orphaned
-    workroot is a real thing on disk and must still render."""
+    Accepts spec_settings' three shapes; never raises (orphaned workroots
+    must still render)."""
     if isinstance(spec, RunSpec):
         d = asdict(spec)
     elif isinstance(spec, str):
@@ -406,10 +350,8 @@ def run_display(run_id: str, spec=None, created_utc=None) -> dict:
 def derive_seed(location: str, forecast_date: str, replicate: int) -> int:
     """Deterministic per-(location, date, replicate) seed.
 
-    Unseeded prior draws produced relWIS 0.894 vs 0.946 from the SAME script
-    (2026-08-17); per-state spread is ~±0.05 and fat-tailed. Identical specs
-    must reproduce bit-for-bit -- verified across a bngsim minor-version
-    upgrade (max quantile diff 0.00e+00).
+    Unseeded draws moved relWIS 0.894 vs 0.946 on the same script; identical
+    specs must reproduce bit-for-bit.
     """
     h = hashlib.sha256(f"{location}|{forecast_date}|{replicate}".encode()).digest()
     return int.from_bytes(h[:4], "little") % (2**31 - 1)
@@ -428,59 +370,30 @@ def default_season_start(forecast_date: str) -> str:
 @dataclass
 class RunSpec:
     """Everything that defines one model run. The ledger stores this verbatim."""
-    # 'einn' was listed here as an aspiration; it is RETIRED and must not be
-    # revived without new evidence. EINN as published emits no quantiles at
-    # all, and no neural model has topped a FluSight hospital-admissions
-    # season. See research/2026-08-21-nn-landscape.md.
+    # (einn is retired: it emits no quantiles; see research/2026-08-21-nn-landscape.md)
     engine: str                      # 'pf' | 'analogue' | 'amcmc'
     forecast_date: str               # YYYY-MM-DD, a Saturday
     locations: list = field(default_factory=list)
     season_start: str = ""
     weeks_to_drop: int = 0           # trim newest N weeks before fitting
     weeks_to_nowcast: int = 0        # framework now, method later (no-op nowcaster)
-    #: Treat the archive's SAME-DAY week as unreported (default on). The
-    #: hub's vintage archived on Saturday D carries a row for the week
-    #: ending D itself, archived hours into its reporting window: measured
-    #: across all 90 vintages it averages 92% complete nationally but
-    #: swings to ~1% for individual states (Alabama 2026-02-14: 6 reported
-    #: of a settled 437), and the hub's own horizon convention calls that
-    #: week a nowcast target, i.e. unobserved. Fitting and anchoring to it
-    #: collapsed live forecasts to zero (field report + audit, 2026-08-26).
-    #: The engines drop that row per state when present; horizon labels
-    #: stay as-of-relative via the weeks_dropped machinery.
-    #:
-    #: DEFAULT OFF, by measurement (2026-08-27): the pre-registered v1.1
-    #: re-baseline (prereg ddf3357a442946e3) ran 2023-24 under the rule
-    #: and the season degraded from 0.813 to 1.055 pooled relWIS - the
-    #: same-day row, ~92% complete on average, carries the turn signal
-    #: (whether growth broke this week), and dropping it made the filter
-    #: extrapolate pre-peak growth through every turning point (Ohio
-    #: 2024-01-06: forecast 1290 vs truth 542 at h1). Gate G3 (any season
-    #: worse by >0.02) was exceeded twelvefold, so the rule was reverted
-    #: everywhere. The machinery stays: the setting is recorded per run,
-    #: an operator can enable it deliberately, and the catastrophic-anchor
-    #: case (a ~1%-reported same-day row) is met with a loud warning
-    #: instead of a blanket drop.
+    #: Treat the vintage's same-day week (archived hours into its reporting
+    #: window: ~92% complete nationally, ~1% for some states) as unreported;
+    #: the engines drop that row per state, labels stay as-of-relative.
+    #: DEFAULT OFF: enabling it degraded 2023-24 pooled relWIS 0.813 -> 1.055
+    #: (the row carries the turn signal). Recorded per run; a ~1%-reported
+    #: anchor gets a loud warning instead.
     drop_same_day: bool = False
     replicates: int = 3
     particles: int = 10_000          # sit-down verdict 2026-08-17
-    #: kernel scale h of the Liu-West step. The seal ran 0.30 under a
-    #: kernel that jittered in raw parameter space; the contract-correct
-    #: kernel takes 0.15 by the regularizer sweep's rule 4.2 (2026-09-06:
-    #: full grid 0.723 pooled against 0.735 at 0.30 and the sealed 0.678;
-    #: the gap is disclosed in docs/archive/RELEASE-1.0.md). Reproducing the seal
-    #: needs 0.30 stated explicitly, with the sealed fork.
+    #: Liu-West kernel scale: 0.15 per the regularizer sweep (the seal ran 0.30
+    #: on the sealed fork's raw-space kernel; reproducing it needs 0.30 explicitly)
     jitter: float = 0.15
     extra: dict = field(default_factory=dict)
 
     def __post_init__(self):
-        # Aug-Jul season: a blank season_start derives from the forecast
-        # date so specs built anywhere (routes, scripts, tests) agree and
-        # nothing hardcodes a season year. A typed one (the Forecast form's
-        # advanced setting since 2026-09-04) is kept verbatim: the model's
-        # first observed week, its initial-state anchor and, under
-        # season-start seeding, its random draws all follow it, so the
-        # ledger must carry the value that actually ran.
+        # a blank season_start derives from the date (Aug-Jul); a typed one
+        # is kept verbatim so the ledger records what actually ran
         if not self.season_start and self.forecast_date:
             self.season_start = default_season_start(self.forecast_date)
 
@@ -509,17 +422,11 @@ class Ledger:
             run_id TEXT PRIMARY KEY, created_utc REAL, spec_json TEXT,
             flubnf_sha TEXT, pybnf_sha TEXT, engine_versions TEXT,
             workroot TEXT, status TEXT, outcome_json TEXT)""")
-        # wall time per run: created_utc alone cannot say how long a run took.
-        # Added by migration so an existing ledger keeps every historical row
-        # (they simply report no elapsed time, which is the truth about them).
+        # wall-time columns, added by migration (old rows report none)
         have = {r[1] for r in self._db.execute("PRAGMA table_info(runs)")}
         for col in ("finished_utc", "elapsed_s"):
             if col not in have:
-                # Two Ledgers constructed at once (a route and the season
-                # worker share the default path) both pass the PRAGMA check;
-                # the loser's ALTER then reports the column the winner just
-                # added. That is the migration already applied, not a
-                # failure, so it is the one OperationalError swallowed here.
+                # concurrent Ledgers race the migration; duplicate column = applied
                 try:
                     self._db.execute(f"ALTER TABLE runs ADD COLUMN {col} REAL")
                 except sqlite3.OperationalError as e:
@@ -543,17 +450,14 @@ class Ledger:
         return run_id
 
     def set_workroot(self, run_id: str, workroot: Path) -> None:
-        """Replace the placeholder recorded at open time with the leased
-        workroot. The row is the record of record for reproducing a run;
-        a row whose workroot forever reads 'pending' cannot honor that."""
+        """Replace the open-time placeholder with the leased workroot."""
         self._db.execute("UPDATE runs SET workroot=? WHERE run_id=?",
                          (str(workroot), run_id))
         self._db.commit()
 
     def close_run(self, run_id: str, status: str, outcome: dict) -> None:
-        """Record the outcome and the run's wall time. elapsed_s is derived
-        in SQL from the row's own created_utc, so the number can never drift
-        from the timestamp the ledger already holds."""
+        """Record the outcome and wall time (elapsed_s derived in SQL from
+        the row's own created_utc)."""
         now = time.time()
         self._db.execute(
             "UPDATE runs SET status=?, outcome_json=?, finished_utc=?, "
@@ -562,9 +466,7 @@ class Ledger:
         self._db.commit()
 
     def rows(self, limit: int = 50) -> list:
-        # flubnf_sha and engine_versions ride along so the run page can say
-        # what PRODUCED a run (the row's record) rather than printing the
-        # viewing process's own build, which may be days newer than the run.
+        # sha and engine versions: the run page names what produced the run
         cur = self._db.execute(
             "SELECT run_id, created_utc, spec_json, status, outcome_json, "
             "finished_utc, elapsed_s, flubnf_sha, engine_versions "
@@ -575,16 +477,9 @@ class Ledger:
                 for r in cur.fetchall()]
 
     def delete_runs(self, run_ids) -> int:
-        """Remove the named rows from the ledger, permanently. Returns the
-        number of rows removed.
-
-        The ledger is append-only in OPERATION -- no code path edits a row's
-        record -- but the operator may clear completed rows to keep the
-        ledger readable. Two boundaries are the caller's contract: never
-        pass the row of a run that is still active, and be explicit with the
-        user that clearing a row deletes only the LEDGER ENTRY -- the run's
-        workroot on disk is not touched from here, and stays until deleted
-        through the storage panel's own confirmed control."""
+        """Permanently remove the named rows; returns the count. Callers must
+        never pass an active run, and must tell the user only the ledger
+        entry goes (the workroot stays until the storage panel deletes it)."""
         ids = [str(r) for r in (run_ids or []) if r]
         if not ids:
             return 0
@@ -598,9 +493,7 @@ class Ledger:
 def lease_workroot(run_id: str, base: Optional[Path] = None) -> Path:
     """Fresh, exclusive directory for ONE run. Never reused, never shared.
 
-    Three concurrent experiments sharing one /tmp tree cost a morning and
-    tainted two results (2026-08-17). mkdir(exist_ok=False) makes a collision
-    an ERROR, not a silent overlap.
+    mkdir(exist_ok=False): a collision is an ERROR, never a silent overlap.
     """
     root = (base or APP_STATE / "workroots") / run_id
     root.mkdir(parents=True, exist_ok=False)

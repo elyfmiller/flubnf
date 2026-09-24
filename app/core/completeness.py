@@ -1,25 +1,16 @@
-"""Real-time reporting completeness by lag, pooled across jurisdictions.
+"""RESEARCH (not on the shipped path): reached only through the spec.extra keys
+analogue_completeness (engines/analogue.py) and pf_mean_scale_column
+(engines/pf.py); no shipped configuration sets them.
 
-For an as-of date v (a vintage's date) the factor c_k(v) for lag k is the
-median, over every (jurisdiction, week) pair the archive dated at or
-before v can form, of
+Real-time reporting completeness c_k(v) by lag, pooled across jurisdictions.
 
-    value for week w in the vintage published k weeks after w
-    / value for week w in vintage v
-
-taken over weeks w of the current season whose lag-k vintage is at least
-MATURITY_WEEKS older than v and whose value in v is at least MIN_VALUE.
-Nothing dated after v is opened: no later vintage, no settled truth. Rows
-three or more weeks old are complete at the median in every measured
-season (analyses/2026-09-04-completeness-by-lag.md), so lags 0 to 2 carry
-a factor and everything older carries 1. Fewer than MIN_PAIRS pairs (the
-first vintages of a season) also carry 1.
-
-The reporting-model pre-registration (research/reporting-model) is what
-this exists for; no shipped configuration sets it. The factor is pooled,
-never per state: the per-state forms were tested and killed
-(docs/archive/RELEASE-1.0.md, the two reporting-completeness entries and the
-declined completeness-conditional drop).
+c_k(v) = median, over (jurisdiction, week) pairs formed from vintages dated
+<= v, of value(week, vintage at lag k) / value(week, v), for weeks of the
+current season whose lag-k vintage is >= MATURITY_WEEKS older than v and whose
+value in v is >= MIN_VALUE. Nothing dated after v is read. Lags 0-2 carry a
+factor (older rows are complete at the median); older lags, and lags with
+< MIN_PAIRS pairs, carry 1. Pooled, never per state: the per-state forms were
+rejected (docs/archive/RELEASE-1.0.md).
 """
 from __future__ import annotations
 

@@ -1,25 +1,15 @@
-"""One tiny time-to-live cache, shared by every cheap-but-repeated scan.
+"""PRODUCTION: the short TTL cache behind the server's repeated filesystem
+scans.
 
-Several console pages answer the same filesystem question on every request:
-how many weeks of a season are on disk, which workroots hold results, what
-is archived. Each answer costs a directory walk that stats one file per
-week, and the pages ask for it several times per render. Measured idle on
-the development machine, /retro spent 68 ms of its 71 ms doing exactly that,
-and the cost multiplies under load, because the interactive server is then
-competing with the fitting processes for the CPU.
+One tiny time-to-live cache, shared by every cheap-but-repeated scan.
 
-The remedy is deliberately small. A scan is cached for a couple of seconds,
-which is short enough that a progress bar still feels live (the pollers run
-at 2 to 3 seconds) and long enough that one page render asks the filesystem
-once instead of a dozen times. Anything that CHANGES the underlying state
-(starting or stopping a run, archiving, deleting) calls clear_all(), so the
-interface never shows a stale count after a user action. Staleness is
-therefore bounded by the TTL for background drift and is zero for anything
-the user did.
+Console pages ask the same filesystem questions (weeks on disk, workroots
+with results, archives) several times per render; idle, /retro spent 68 of
+its 71 ms on them. A 2.5 s TTL collapses one render's repeats yet keeps
+progress bars live (pollers run at 2-3 s). State-changing actions call
+clear_all(), so staleness is zero for anything the user did.
 
-Values are shared between callers, so a cached function must return data its
-callers only read. Nothing here copies on the way out; a caller that needs to
-mutate should build its own structure from the cached one.
+Values are shared between callers and not copied: never mutate them.
 """
 from __future__ import annotations
 
@@ -27,8 +17,6 @@ import functools
 import threading
 import time
 
-#: Long enough to collapse the repeats inside one page render, short enough
-#: that a progress readout still tracks a running fit.
 DEFAULT_TTL_S = 2.5
 
 _REGISTRY: list = []
@@ -38,12 +26,9 @@ _LOCK = threading.Lock()
 def ttl_cache(ttl_s: float = DEFAULT_TTL_S, clock=time.monotonic):
     """Cache a function's result per argument tuple for `ttl_s` seconds.
 
-    Arguments must be hashable, which every call site here satisfies (paths
-    and season names). The wrapper gains cache_clear(), and every wrapper is
-    registered so clear_all() can invalidate the lot after a state change.
-
-    A monotonic clock by default: a system clock adjustment mid-run must not
-    freeze a cache or expire one early.
+    Arguments must be hashable. The wrapper gains cache_clear() and is
+    registered for clear_all(). Monotonic clock: a wall-clock adjustment must
+    not freeze or expire a cache.
     """
     def deco(fn):
         store: dict = {}
@@ -55,16 +40,11 @@ def ttl_cache(ttl_s: float = DEFAULT_TTL_S, clock=time.monotonic):
                 hit = store.get(args)
                 if hit is not None and (now - hit[0]) < ttl_s:
                     return hit[1]
-            # computed outside the lock: a slow scan must not block every
-            # other cached read in the process
+            # outside the lock: a slow scan must not block other cached reads
             value = fn(*args)
             with _LOCK:
-                # stamped on COMPLETION, not on entry. Stamping with the
-                # pre-call `now` made any scan slower than its own TTL be
-                # born already expired, so it re-ran on every request --
-                # the cache switching itself off under exactly the load it
-                # exists to absorb (a busy machine, where the scans are
-                # slow because the fitting processes have the CPU).
+                # stamp on completion: a scan slower than the TTL would
+                # otherwise be born expired and never cached (under load)
                 store[args] = (clock(), value)
             return value
 
@@ -80,13 +60,8 @@ def ttl_cache(ttl_s: float = DEFAULT_TTL_S, clock=time.monotonic):
 
 
 def clear_all() -> None:
-    """Invalidate every TTL cache in this process.
-
-    Called from the actions that change what the caches describe: a run
-    starting or stopping, a season archived or discarded, an archive
-    deleted. It is cheap (a handful of dict clears), so erring toward
-    calling it is always right: a stale count after a click is a bug, a
-    redundant rescan is a millisecond.
-    """
+    """Invalidate every TTL cache in this process. Cheap: call it after any
+    action that changes what the caches describe (run start/stop, archive,
+    delete)."""
     for wrapper in list(_REGISTRY):
         wrapper.cache_clear()

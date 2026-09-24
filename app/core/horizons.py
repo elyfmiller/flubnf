@@ -1,4 +1,7 @@
-"""The horizon convention, and the one place the two of them meet.
+"""PRODUCTION: canonical vs stored horizon translation at the storage boundary
+(retro, engines, playback, server).
+
+The horizon convention, and the one place the two of them meet.
 
 TWO CONVENTIONS, DELIBERATELY
 -----------------------------
@@ -15,17 +18,10 @@ can never be migrated.
 
 WHY NOT JUST RENAME
 -------------------
-Because ``"0"`` already exists and already means something else. The two
-zero-horizons are one week apart, so a rename does not drop a key, it
-OVERWRITES the anchor with a forecast and shifts every submitted row one
-week early. That failure is silent: the file still validates, the row
-count is right, and only the dates are wrong. This repository has shipped
-one off-by-one of that exact shape already (``app/core/submit.py``,
-``hub_reference_date``, the 2026-08-26 run whose file name and rows
-disagreed by a week).
-
-So the stored form is frozen and the translation happens HERE, at the
-storage boundary, and nowhere else. Two rules keep it that way:
+Stored ``"0"`` is the anchor, one week before canonical ``"0"``: a rename
+overwrites the anchor with a forecast and silently shifts every submitted
+row a week early (the file still validates). So the stored form is frozen
+and the translation happens HERE, at the storage boundary, and nowhere else:
 
 1. Anything read from or written to a week file passes through
    :func:`to_canonical` or :func:`to_stored`. `app.core.retro` is the only
@@ -33,10 +29,9 @@ storage boundary, and nowhere else. Two rules keep it that way:
 2. No other module under `app/` writes a horizon literal in ``1..4``.
    `app/tests/test_horizon_convention.py` holds the line.
 
-The `flubnf/` library keeps its own PHYSICAL horizons (1 to 4 weeks
-ahead), because ``n_observed + h - 1`` indexes a trajectory array and 1 is
-genuinely one week on. Producers under `app/core/engines/` translate at
-their own edge. That boundary is real and is not an accident of history.
+The `flubnf/` library keeps PHYSICAL horizons (1 to 4 weeks ahead) because
+``n_observed + h - 1`` indexes a trajectory array; producers under
+`app/core/engines/` translate at their own edge.
 """
 from __future__ import annotations
 
@@ -59,10 +54,8 @@ _TO_STORED = {v: k for k, v in _TO_CANONICAL.items()}
 def to_canonical(by_h) -> dict:
     """One location's ``{stored horizon: value}`` in canonical keys.
 
-    A key the stored convention does not define is passed through
-    unchanged rather than guessed at: a record carrying something this
-    module has not been taught about must reach a reader intact and be
-    refused there, not be silently renamed here.
+    An unknown key passes through unchanged, to be refused by the reader
+    rather than silently renamed here.
     """
     return {_TO_CANONICAL.get(str(h), str(h)): v for h, v in by_h.items()}
 
@@ -76,11 +69,9 @@ def _map_locations(by_loc, fn) -> dict:
     return {loc: fn(hz) for loc, hz in by_loc.items()}
 
 
-#: the sample-shaped and quantile-shaped members a week record may carry:
-#: the mechanistic member, the two-strain research member, the filter's
-#: own samples (app.core.oracle.FILTER_KEY: a console run's courtesy copy
-#: and a `flubnf oracle backfill` research root; a replay's stored week
-#: does not carry them; never displayed), and the Groundhog
+#: members a week record may carry: the mechanistic member, the two-strain
+#: research member, the plain filter's samples (oracle.FILTER_KEY; console
+#: runs and backfill roots only, never displayed), and the Groundhog
 MEMBERS = ("pf", "pf2s", "pf_filter", "analogue")
 
 
@@ -115,22 +106,14 @@ def quantiles_to_stored(mq: dict) -> dict:
     return {m: _map_locations(locs, to_stored) for m, locs in mq.items()}
 
 
-#: Run artefacts (``results.json`` under a workroot) also predate the
-#: canonical convention. Unlike a week's samples they carry NO anchor, so
-#: the two forms are told apart without ambiguity by the presence of "4":
-#:
-#:    legacy    {"1","2","3","4"}
-#:    canonical {"0","1","2","3"}
-#:
-#: A workroot written before this change still renders correctly in the
-#: console, which is the whole reason this detection exists rather than a
-#: migration: those runs are the user's record of what was forecast.
+#: Run artefacts (workroot results.json) carry no anchor, so legacy
+#: {"1".."4"} vs canonical {"0".."3"} is told apart by the presence of "4".
+#: Detected rather than migrated: old workroots are the user's record.
 def models_to_canonical(models) -> dict:
     """``{model: {location: {horizon: ...}}}`` from a run artefact, in
     canonical horizons whichever convention it was written in.
-
-    Detection is per location map, not per file, so a partially rewritten
-    artefact cannot end up half converted by a whole-file guess.
+    Detected per location map, not per file, so a partly rewritten
+    artefact is never half converted.
     """
     if not isinstance(models, dict):
         return models

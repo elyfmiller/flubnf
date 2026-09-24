@@ -1,39 +1,25 @@
-"""Season report export: one self-contained interactive HTML file.
+"""PRODUCTION: the season HTML export (server /retro/{season}/report).
 
-The console's season player, frozen into a downloadable artifact. The file
-carries plotly.js inline (the report_v2 pattern), every stored week's
-playback payload embedded as one JSON block, and the SHARED player
-(app/ui/static/player.js, the same file the console's season page loads)
-inlined verbatim, fed by a getPayload backed by the embedded block. Every
-future player feature lands in the console and in this export
-automatically. No server and no network are needed; the file works from a
-desktop or an email attachment.
+Season report export: one self-contained interactive HTML file.
 
-Scope, by design: the export carries the season verdict (tiles, the US
-national aggregate, the cumulative relWIS chart, the per-state table), the
-forecast detail view, and the live relWIS table -- the same substantive
-content as the console's season page, held together by the parity test
-(app/tests/test_report_parity.py). The categorical weekly maps alone are
-omitted, since 30-plus inline SVG maps would multiply the file size for a
-view the console already serves live; the header note says so. Anything
-else the page shows that the export cannot deliver must be STATED in the
-artifact, never silently absent: the report builder computes what it needs
-when a cache is cold, and prints the reason when it truly cannot.
+The console's season player frozen into a download: plotly.js inline, every
+stored week's playback payload embedded as JSON, and the SHARED player
+(app/ui/static/player.js, the file the season page loads) inlined verbatim,
+so player features reach the export automatically. Works offline.
 
-Theme-aware on screen, like report_v2 (both follow the app theme since
-2026-08-21, superseding the fixed-dark spec): the stylesheet embeds the
-console's four theme token blocks and both accessibility modifier blocks
-verbatim from nau.css, and the shared boot script resolves the theme at
-open -- the console's own localStorage keys when served same-origin, the
-OS preferences when opened as a standalone file. The player reads the
-resolved tokens per redraw through its palette hook, so the charts follow
-too. A print stylesheet flips the page to the console's light theme so the
-report always prints as dark ink on a light surface. The identity stays
-the console's own: DM Sans with a system fallback and no webfont fetch.
+Scope: the season verdict (tiles, the US national aggregate, per-state
+table), the forecast detail view and the live relWIS table, held to the
+season page by app/tests/test_report_parity.py. The cumulative chart and the
+categorical weekly maps stay on the season page (size); anything else the
+page shows that the export cannot deliver must be STATED, never silently absent.
 
-Caching: the report lands at <season_root>/<season>-FluBNF-season-report.html
-and is reused while fresh (mtime vs every samples.json and scores.json),
-matching the playback payload cache convention.
+Theme-aware like report_v2: nau.css token blocks embedded verbatim, the
+shared boot script resolves the theme at open, and a print block flips to
+the light theme. DM Sans with a system fallback, no webfont fetch.
+
+Cached at <season_root>/<season>-FluBNF-season-report.html while newer than
+every input (_newest_input) and carrying the current markers
+(build_season_report).
 """
 from __future__ import annotations
 
@@ -45,31 +31,18 @@ from app.core import playback, relwis, report_v2, retro
 from app.core import us_national as usn
 from app.core.runs import fmt_hms, settings_html, version_pairs
 
-# console identity (nau.css dark theme), shared with report_v2
-INK = "#E9EAF4"; MUT = "#9AA1C4"; PAPER = "#0C0D17"; CARD = "#151729"
-LINE = "#262A45"; ACCENT = "#34C0F0"
-
-# the one member-color map: the shared player's marked JSON literal,
-# parsed by report_v2.model_colors (officials stay the muted greys the
-# player states for itself)
+# the player's member colours (report_v2.model_colors); officials stay grey
 MODEL_COLORS = report_v2.model_colors()
 
 SIZE_WARN_BYTES = 25 * 1024 * 1024
 
-# the shared player: the very file the console's season page loads. It is
-# inlined verbatim at build time so both hosts run identical player code.
+# the shared player, inlined verbatim so both hosts run identical code
 PLAYER_SRC = report_v2.PLAYER_SRC
 
 
 def model_names() -> dict:
-    """The one model-name map, read from the shared player core.
-
-    player.js carries the map as a marked JSON literal; the player's own
-    legend and toggles read it directly, and this parse hands the SAME
-    names to every Python surface (this report's summary tiles, and the
-    console templates via app/ui/server.py), so pf/analogue/ensemble can
-    never drift apart across surfaces again. Degrades to an empty map
-    (raw ids print) rather than raising."""
+    """The one model-name map: player.js's marked JSON literal, parsed so
+    every Python surface uses the player's names. {} (raw ids) on failure."""
     import re
     try:
         src = PLAYER_SRC.read_text(encoding="utf-8")
@@ -88,18 +61,10 @@ def names_for_root(root: Path, base: dict | None = None) -> dict:
     """The model-name map for ONE season tree: `base` (the shared map by
     default) with pf named for what the tree stores.
 
-    The shared map calls pf the Oracle SIHRS, and that is true only of a
-    tree whose weeks went through the Oracle step. Every sealed record and
-    every replay from before the step stores the particle filter alone
-    under pf, and titling its relWIS "Oracle SIHRS" names a forecast the
-    member never made (the sealed 2024-25 record scores 0.797, the filter's
-    figure; the member's is 0.719). The test is the public site's own,
-    app/core/site_build.tree_carries_oracle, and the other name is its own
-    phrase, the one Home and Methods print. A tree that cannot be read is
-    named the filter: the full name is claimed only when the tree shows it.
-
-    A copy, never the module map: the console serves requests on several
-    threads, and one season's name must not leak into another's page."""
+    pf is "Oracle SIHRS" only when the tree carries the Oracle step
+    (site_build.tree_carries_oracle); sealed records and older replays
+    store the plain filter, named site_build.PF_LABEL_FILTER (also when the
+    tree is unreadable). Returns a copy: requests run on several threads."""
     from app.core import site_build
     names = dict(MODEL_NAMES if base is None else base)
     try:
@@ -125,8 +90,10 @@ def _player_js() -> str:
 
 
 def _newest_input(root: Path) -> float:
-    """mtime of the newest report input: any samples.json, scores.json, or
-    the shared player source itself (a player fix must refresh the export).
+    """Newest mtime among the export's inputs: stored weeks, scores.json,
+    settled truth, player.js, this builder, playback_cache/*.json, the hub's
+    official model-output dirs (new comparators land there before any cache
+    rebuild), run_meta.json (wall time) and nau.css (theme tokens).
     """
     times = [p.stat().st_mtime for p in retro.season_sample_files(root)]
     sf = root / "scores.json"
@@ -136,27 +103,12 @@ def _newest_input(root: Path) -> float:
     times.append(truth_mtime())          # the report scores against it
     if PLAYER_SRC.is_file():
         times.append(PLAYER_SRC.stat().st_mtime)
-    # this builder is an input to its own output: a restyle or template fix
-    # here must refresh every cached export, exactly as a player fix does
-    # (without this, seasons whose data never changes serve the old face
-    # forever)
     src = Path(__file__)
     if src.is_file():
         times.append(src.stat().st_mtime)
-    # Rebuilt playback payloads must refresh the export too: official
-    # comparator files arriving (Update data on a sparse clone) rebuild the
-    # per-week caches without touching any input above, and a report built
-    # earlier would keep serving "pending" stats forever (field-found, the
-    # third organ of the same staleness disease).
     pc = root / "playback_cache"
     if pc.is_dir():
         times.extend(f.stat().st_mtime for f in pc.glob("*.json"))
-    # The hub tree itself is an input, directly: Update data drops new
-    # official comparator files without touching playback_cache until
-    # someone opens the console season player (the lazy heal), so a report
-    # exported before that visit kept serving "pending" official stats
-    # forever (audit finding). A directory's mtime moves when files land in
-    # it, which is exactly the arrival this gate must see.
     try:
         from flubnf.settings import HUB
         for name in ("FluSight-ensemble", "FluSight-baseline"):
@@ -165,23 +117,17 @@ def _newest_input(root: Path) -> float:
                 times.append(d.stat().st_mtime)
     except Exception:
         pass
-    # the run record carries the header's wall-time line: a replay that
-    # resumed and finished must refresh the export, not serve the old total
     mp = root / retro.META_NAME
     if mp.is_file():
         times.append(mp.stat().st_mtime)
-    # the console stylesheet is embedded as the report's theme tokens: a
-    # token change is a design change and must refresh cached exports
     if report_v2.NAU_CSS.is_file():
         times.append(report_v2.NAU_CSS.stat().st_mtime)
     return max(times)
 
 
 def _timing_note(root: Path) -> str:
-    """One factual line for the header: total wall time, weeks measured, and
-    the mean per week. Absent when the season carries no run record (the
-    sealed validation runs predate the record, and inventing a number for
-    them would be worse than saying nothing)."""
+    """Header line: total wall time, weeks, mean per week. Absent without a
+    run record (the sealed runs predate it)."""
     meta = retro.read_meta(root)
     if not meta:
         return ""
@@ -203,13 +149,9 @@ SETTINGS_MARK = "Run settings"
 
 def _settings_note(root: Path, build: str = "",
                    versions: dict | None = None) -> str:
-    """The replay's settings, the application build, and the engine
-    versions, so the export states exactly what produced it.
-
-    Read from the season's own run record, which means an archived run's
-    export describes that run and not the live season. Absent, never
-    invented, when the record carries no settings: the sealed validation
-    runs predate the record."""
+    """The replay's settings, app build and engine versions, from the tree's
+    own run record (so an archived run describes itself). Absent when the
+    record has no settings."""
     pairs = retro.settings_summary(retro.read_meta(root))
     if not pairs:
         return ""
@@ -218,11 +160,8 @@ def _settings_note(root: Path, build: str = "",
 
 
 def player_us_labels() -> dict:
-    """The player's own US provenance labels, read from its marked JSON
-    literal, the MODEL_NAMES pattern applied to the national row. Parsed so
-    a test can hold the JS literal and us_national.LABELS together: the
-    wording of the three provenance states is defined once, and neither
-    host may drift from the other. Degrades to an empty map."""
+    """The player's US provenance labels (its marked JSON literal), so a
+    test can hold them equal to us_national.LABELS. {} on failure."""
     import re
     try:
         src = PLAYER_SRC.read_text(encoding="utf-8")
@@ -234,19 +173,9 @@ def player_us_labels() -> dict:
 
 
 def _us_national(root: Path, df) -> tuple:
-    """(us, reason): the US national series for the export, through THE
-    resolution order (app/core/us_national.resolve) -- a fitted US cell
-    when the replay ran one, else the constructed sum-of-states aggregate,
-    else neither. The aggregate COMPUTES when its cache is cold, exactly as
-    the season page does, so an export downloaded before the page was ever
-    visited still carries it; the result is cached in
-    playback_cache/us_aggregate.json, which _newest_input already covers,
-    so a rebuilt aggregate refreshes an already-exported report.
-
-    When nothing can be delivered, us is None and reason states why, in
-    words the artifact prints. Silent omission is the recurring failure
-    class this replaced: the export must never lack a section the
-    application shows without saying so."""
+    """(us, reason) via us_national.resolve: fitted US cell, else the
+    sum-of-states aggregate (computed when its cache is cold), else None
+    with a printable reason. Never a silent omission."""
     if df is None:
         return None, ("the season has not been scored yet, and the national "
                       "figure joins the scored verdict table only")
@@ -261,33 +190,20 @@ def _us_national(root: Path, df) -> tuple:
     return us, ""
 
 
-#: calendar month number -> label, the season order the console's month
-#: helper uses (app/ui/server.py _MON_NAME); restated because the report
-#: builder is a core module and must not import the UI layer
-_MON_NAME = {8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec", 1: "Jan",
-             2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun", 7: "Jul"}
-
-#: the cumulative chart's heading, EXACTLY the season page's own, so the
-#: report-vs-app parity test can match the sections by name
+#: the season page's cumulative chart heading, verbatim (the parity test matches it)
 CURVE_HEADING = "Cumulative relWIS through the season"
 
-#: the models a season's curve and tables carry, in order: the two that
-#: ship, the research member, and the retired blend where a scores.json
-#: written before 2026-09-22 stored its rows
+#: in order: the two shipped members, the research member, the retired blend
+#: (present only in older scores.json files)
 SEASON_MODELS = ("pf", "analogue", "pf2s", "ensemble")
 
 
 def _cumulative_curves(df) -> dict:
-    """{model: [(iso week, cumulative relWIS)]} for every SEASON_MODELS
-    entry the frame carries, the same series the console's season page
-    charts: that model's rows grouped by asof, summed, and accumulated
-    (the arithmetic mirrors app/ui/server.py's retro_results; the parity
-    test holds the two together)."""
+    """{model: [(iso week, cumulative relWIS)]} per SEASON_MODELS entry,
+    the season page's series (mirrors server.retro_results)."""
     if df is None or "model" not in getattr(df, "columns", ()):
         return {}
-    # the pooled gate: the curve is the 52-jurisdiction cumulative figure,
-    # by named policy (us_national.POOLED_INCLUDES_US), so a fitted
-    # national row can never bend the season's published line
+    # the pooled gate: a fitted US row never bends the line
     df = usn.pooled_frame(df)
     asofs = sorted(df["asof"].unique())
     out = {}
@@ -304,127 +220,20 @@ def _cumulative_curves(df) -> dict:
 
 
 def _cumulative_curve(df) -> list:
-    """The PF's cumulative series (the first model's when a frame carries
-    no PF rows), for callers that want one line; the report draws them
-    all through _cumulative_curves."""
+    """The PF's cumulative series (else the first model's); used by tests
+    since the curve left the export."""
     curves = _cumulative_curves(df)
     return curves.get("pf") or next(iter(curves.values()), [])
-
-
-def _model_colors() -> dict:
-    """The one member-colour map (the player's marked JSON, via
-    report_v2), with the retired blend on the gold token as every console
-    surface draws it."""
-    colors = dict(report_v2.model_colors())
-    colors["ensemble"] = "var(--gold)"
-    return colors
-
-
-def _curve_svg(curves: dict, names: dict | None = None) -> str:
-    """The cumulative chart as one inline SVG, the season page's own
-    geometry (viewBox 720x180, gridlines at 1.0 and 0.5, one line per
-    model in its member colour, each final value printed at its endpoint,
-    month ticks at each month change, corner dates). Token colors, so it
-    follows the resolved theme. `names` is the season tree's own map
-    (names_for_root); the shared map when a caller has no tree."""
-    names = MODEL_NAMES if names is None else names
-    first = next(iter(curves.values()))
-    vals = [v for c in curves.values() for _, v in c]
-    n = len(first)
-    hi = max(max(vals), 1.05)
-    lo = min(min(vals), 0.45)
-    yspan = hi - lo
-    colors = _model_colors()
-
-    def x_at(i, count):
-        return round(20 + i * (635 / (count - 1 if count > 1 else 1)), 1)
-
-    def y_at(v):
-        return round(12 + (hi - v) * 124 / yspan, 1)
-
-    parts = ['<svg viewBox="0 0 720 180" style="width:100%" role="img" '
-             f'aria-label="{CURVE_HEADING}">']
-    for gv, gl in ((1.0, "1.0"), (0.5, "0.5")):
-        gy = y_at(gv)
-        parts.append(f'<line x1="20" y1="{gy}" x2="655" y2="{gy}" '
-                     'stroke="var(--mut)" stroke-dasharray="3"/>'
-                     f'<text x="660" y="{gy + 4}" fill="var(--mut)" '
-                     f'font-size="13">{gl}</text>')
-    for m, curve in curves.items():
-        col = colors.get(m, "var(--mut)")
-        cn = len(curve)
-        pts = " ".join(f"{x_at(i, cn)},{y_at(v)}"
-                       for i, (_, v) in enumerate(curve))
-        parts.append(f'<polyline fill="none" stroke="{col}" '
-                     f'stroke-width="2.5" data-model="{m}" points="{pts}"/>')
-        name = names.get(m, m)
-        for i, (d, v) in enumerate(curve):
-            parts.append(f'<circle cx="{x_at(i, cn)}" cy="{y_at(v)}" r="3" '
-                         f'fill="{col}"><title>{name} {d}: {v:.3f}</title>'
-                         '</circle>')
-        lx, ly = x_at(cn - 1, cn), y_at(curve[-1][1])
-        parts.append(f'<text x="{round(lx - 8, 1)}" '
-                     f'y="{round(ly - 8 if ly - 8 >= 20 else ly + 18, 1)}" '
-                     'text-anchor="end" font-weight="700" font-size="17" '
-                     f'fill="{col}">{curve[-1][1]:.3f}</text>')
-    prev = None
-    for i, (d, _v) in enumerate(first):
-        mm = str(d)[5:7]
-        if prev is not None and mm != prev and mm.isdigit():
-            lab = _MON_NAME.get(int(mm), "")
-            parts.append(f'<line x1="{x_at(i, n)}" y1="136" x2="{x_at(i, n)}" '
-                         'y2="142" stroke="var(--mut)"/>'
-                         f'<text x="{x_at(i, n)}" y="154" text-anchor="middle" '
-                         f'fill="var(--mut)" font-size="13">{lab}</text>')
-        prev = mm
-    parts.append(f'<text x="20" y="168" fill="var(--mut)" font-size="13">'
-                 f'{first[0][0]}</text>')
-    if n > 1:
-        parts.append('<text x="655" y="168" text-anchor="end" '
-                     f'fill="var(--mut)" font-size="13">{first[-1][0]}</text>')
-    parts.append("</svg>")
-    legend = " · ".join(
-        f'<span style="color:{colors.get(m, "var(--mut)")}">&#9632;</span> '
-        f'{names.get(m, m)}' for m in curves)
-    parts.append(f'<p class="hint">{legend}</p>')
-    return "".join(parts)
-
-
-def _curve_block(df, names: dict | None = None) -> str:
-    """The cumulative chart as its own section, present in scored and
-    unscored seasons alike: the season page always shows this card, and an
-    unscored season states the same arrival note the console does rather
-    than leaving a hole."""
-    curves = _cumulative_curves(df)
-    head = f'<h2 style="margin-top:.9rem">{CURVE_HEADING}</h2>'
-    if not curves:
-        return head + ('<p class="hint">Arrives with the first scored '
-                       "week.</p>")
-    return head + _curve_svg(curves, names)
 
 
 def _summary_block(root: Path, weeks: list, payloads: dict,
                    names: dict | None = None) -> str:
     """The static season verdict, printed ahead of the player.
 
-    Final relWIS tiles for each model come from the final
-    week's cumulative stats, which are the very numbers the player's live
-    table reaches at the last frame, so the static block and the player can
-    never disagree. The line beneath states the weeks covered and, when the
-    season's run record carries one, the total wall time. The per-state
-    final table reads the season's scores.json, the same file the console's
-    season page renders; when the season has not been scored yet the table
-    is omitted with a plain statement rather than invented. The cumulative
-    chart sits between them, the same series the season page draws. The
-    US national aggregate joins both surfaces exactly as it
-    does in the console -- a verdict tile and a leading table row, each
-    wearing the honest independence label -- computed when its cache is
-    cold; when it cannot be delivered at all, the artifact SAYS so instead
-    of leaving a hole.
-
-    Every model name comes from `names`, the tree's own map
-    (names_for_root, computed here when the caller passes none), so a
-    sealed record's pf is titled the particle filter alone it is."""
+    Tiles: the final week's cum_rel (the numbers the player's last frame
+    shows), plus the US tile/row with its provenance label (or a stated
+    reason when absent). Per-state table from scores.json (pooled gate), or
+    a statement when unscored. Names from `names` (names_for_root)."""
     names = names_for_root(root) if names is None else names
     final = payloads.get(weeks[-1]) or {}
     stats = final.get("stats") or {}
@@ -447,8 +256,7 @@ def _summary_block(root: Path, weeks: list, payloads: dict,
     rows = []
     cover = "every scored cell of the season"
     df_all = playback._season_scores(root)
-    # the pooled gate, applied once: every per-state figure below is the
-    # 52-jurisdiction scope, and the national row is resolved separately
+    # pooled gate once; the national row is resolved separately
     df = usn.pooled_frame(df_all)
     us, us_reason = _us_national(root, df_all)
     # the models this season scored, in order, from its own rows
@@ -458,9 +266,7 @@ def _summary_block(root: Path, weeks: list, payloads: dict,
     for m in have:
         if not (us and us.get(m)):
             continue
-        # the national figure as a verdict tile per model, ALWAYS labelled
-        # for what it is: fitted at the national level, or constructed
-        # from the state forecasts. The two are different model outputs.
+        # always labelled fitted vs constructed: different model outputs
         v = us[m]
         cls = "ok" if v < 1 else "bad"
         sub = ("fitted at the national level, outside the pooled figures"
@@ -472,17 +278,14 @@ def _summary_block(root: Path, weeks: list, payloads: dict,
                      + f'<div class="tileval {cls}">{v:.3f}</div>'
                      + f'<div class="hint">{sub}</div></div>')
     if have:
-        # cell coverage, stated when the scores file can supply it and
-        # omitted (the generic phrase stands) rather than invented
+        # cell coverage when the scores file supplies it
         n = int((df.model == have[0]).sum())
         if n:
             cover = (f"the season's {n} scored {names.get(have[0], have[0])}"
                      " cells")
     if df is not None and "location" in df.columns:
         if us:
-            # the national row leads the table as a DISTINCT row, the
-            # console's own placement, wearing the label that says where it
-            # came from; a member with no score prints n/a
+            # the national row leads as a distinct, labelled row (console placement)
             cells = [f"<td>{us.short_label}</td>"]
             for m in have:
                 v = us.get(m)
@@ -519,8 +322,7 @@ def _summary_block(root: Path, weeks: list, payloads: dict,
     else:
         states = ('<p class="hint">Per-state scores appear here once the '
                   "season has been scored in the console.</p>")
-    # a missing national figure is STATED, never a silent hole: the console
-    # shows this figure, so an export without it must say why it is absent
+    # a missing national figure is stated, never a silent hole
     us_absent = ""
     if not us:
         reason = (us_reason.replace("&", "&amp;").replace("<", "&lt;")
@@ -536,35 +338,24 @@ def _summary_block(root: Path, weeks: list, payloads: dict,
             f'<p class="hint">Final relWIS pooled over {cover}, ratio of '
             "sums; below 1 beats the CDC FluSight baseline. "
             f"{usn.POOLED_SCOPE_NOTE}</p>"
-            # THIS FILE LEAVES THE MACHINE. It is opened without the console
-            # around it, months later, beside whatever else the reader has
-            # open, and the likeliest neighbour is the CDC FluSight
-            # dashboard, which publishes a DIFFERENT quantity under the same
-            # name. Every other surface can lean on the pages around it;
-            # this one has to carry the convention itself, in the wording
-            # the console and the public site use.
+            # the file leaves the machine: it carries the convention note itself
             f'<p class="hint">{relwis.PUBLISHED_CONVENTION_NOTE}</p>'
-            + states + "</div>")     # the cumulative chart stays on the season page only (lead, 2026-09-07)
+            + states + "</div>")     # the cumulative chart stays on the season page
 
 
 ARCHIVE_MARK = "Archived run"
 
 
 def _names_line(names: dict) -> str:
-    """The one line of the export's host script that hands the tree's names
-    to the inlined player, whose legend, toggles and stats table read
-    FluBNFPlayer.MODEL_NAMES (the object player.js keeps and reads by
-    reference). The same string is the cache test in build_season_report:
-    an export built under other names, or before names were per tree, is
-    rebuilt rather than served."""
+    """The host-script line handing the tree's names to the inlined player
+    (FluBNFPlayer.MODEL_NAMES, read by reference). Also a cache marker in
+    build_season_report: an export under other names is rebuilt."""
     nj = json.dumps(names, separators=(",", ":")).replace("</", "<\\/")
     return f"Object.assign(FluBNFPlayer.MODEL_NAMES, {nj});"
 
 
 def _archive_note(archive: str) -> str:
-    """One line saying the export came from an archived run, not the live
-    season. Without it two exports of the same season are indistinguishable
-    once they leave the machine."""
+    """Header line marking an export of an archived run, not the live season."""
     if not archive:
         return ""
     return ('<p class="sub">' + ARCHIVE_MARK + " "
@@ -576,10 +367,8 @@ def build_season_report(root: Path, season: str, archive: str = "",
                         build: str = "", versions: dict | None = None) -> Path:
     """Build (or reuse, when fresh) the self-contained season report.
 
-    `archive` is the identifier of an archived run whose tree `root` is; it
-    only labels the header, since the data all comes from `root`. `build`
-    and `versions` name the code that produced the export; both are omitted
-    from the header rather than guessed when the caller does not know."""
+    `archive` (the archived run `root` is) only labels the header. `build`
+    and `versions` name the producing code; omitted when unknown."""
     root = Path(root)
     weeks = playback.season_weeks(root)
     if not weeks:
@@ -590,31 +379,14 @@ def build_season_report(root: Path, season: str, archive: str = "",
     newest = _newest_input(root)
     settings_note = _settings_note(root, build, versions)
     timing_line = _timing_note(root)
-    # the tree's own names (pf is the particle filter alone on a sealed
-    # record or a replay from before the Oracle step), threaded through the
-    # summary and the player, never written into the shared module map
+    # the tree's own names, never written into the shared module map
     names = names_for_root(root)
     names_line = _names_line(names)
     if out.is_file() and out.stat().st_mtime >= newest:
-        # a report that travelled INTO an archive with the season tree keeps
-        # its old mtime, so freshness alone would serve it unlabelled: make
-        # the label part of the freshness test. The settings block joins it,
-        # so a report built before the settings were recorded is rebuilt
-        # rather than served without them.
-        # Search the WHOLE file: the markers sit in the body, megabytes past
-        # the embedded plotly bundle in <head>, so an 8 KB head slice could
-        # never contain them and every download rebuilt the full report
-        # while believing it had checked the cache (audit finding). The
-        # full read was already being paid; only the slice was wrong.
-        # The timing line joins the same test by CONTENT, not by mtime: the
-        # run record is an input above, but a record written in the same
-        # clock tick as the report reads no newer on a filesystem with a
-        # coarse timestamp (Windows), and the cached export would keep
-        # serving a header without the total the record now carries.
-        # The names line joins it the same way: pf's name follows what the
-        # tree stores (oracle.json in its weeks, or its run record), and
-        # neither is an mtime input above, so an export that titled a
-        # sealed record's filter "Oracle SIHRS" is rebuilt, not served.
+        # mtime is not enough: an archived copy keeps its old mtime, coarse
+        # (Windows) timestamps can tie with run_meta, and pf's name depends on
+        # the tree. So the markers must be present too. Search the whole
+        # file: they sit past the inlined plotly.
         text = out.read_text(encoding="utf-8")
         if ((not archive or ARCHIVE_MARK in text)
                 and (not settings_note or SETTINGS_MARK in text)
@@ -630,8 +402,7 @@ def build_season_report(root: Path, season: str, archive: str = "",
     timing_note = (_archive_note(archive) + _timing_note(root)
                    + settings_note)
     summary = _summary_block(root, weeks, payloads, names)
-    # the SAME resolution the summary block printed, frozen into the
-    # exported player's config: one answer per file, never two
+    # the same resolution the summary printed: one answer per file
     us_obj, _ = _us_national(root, playback._season_scores(root))
     us_json = json.dumps((us_obj.as_dict() if us_obj
                           else usn.UsNational(usn.OFFICIALS_ONLY).as_dict()),
@@ -651,9 +422,7 @@ def build_season_report(root: Path, season: str, archive: str = "",
                         names_line=names_line)
     # atomic: two concurrent downloads must never interleave a garbled file
     tmp = out.with_suffix(".html.tmp")
-    # newline pinned: the report is served as text (universal-newline read)
-    # and downloaded raw; on Windows an unpinned write makes those two
-    # deliveries different text, the exact report_v2 defect from Windows CI.
+    # LF pinned: served as text and downloaded raw, which must match on Windows
     tmp.write_text(html, encoding="utf-8", newline="\n")
     os.replace(tmp, out)
     return out
@@ -682,7 +451,7 @@ def _compose(season: str, weeks: list, data_json: str, plotly_js: str,
 
 
 # The page template. Plain token replacement, never str.format: the JS and
-# CSS are full of braces. Fixed dark palette painted inline throughout.
+# CSS are full of braces. Theme-aware via the embedded token blocks.
 _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FluBNF season report @@SEASON@@</title>

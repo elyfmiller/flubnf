@@ -1,28 +1,19 @@
-"""The public site's HTML: one page, three tabs, no network but the fonts.
+"""PUBLIC SITE: how the site looks (site_build.build).
 
-Split from site_build.py because the two answer different questions.
-site_build decides WHAT is true -- which seasons exist, what they scored,
-which forecast is the current one. This module decides how that is shown,
-and holds the whole of the page's markup, CSS and behavior so the design is
-reviewable in one file.
+The public site's HTML: one page, three tabs, no network but the fonts.
 
-Constraints the page is built to, each of them tested:
+site_build decides WHAT is true; this module holds all of the page's markup,
+CSS and behaviour, so the design is reviewable in one file. Constraints,
+each tested:
 
-  * OFFLINE FROM DISK. A reviewer opens site/index.html with a double click
-    before deciding to commit it, so every asset is either inline or a
-    sibling file. The one exception is the Google Fonts stylesheet, which
-    degrades to the system stack when it cannot load.
-  * PLOTLY IS A SIBLING, NOT AN INLINE BLOB. 4.9 MB inlined into the page
-    would dominate every diff of a file whose diffs are the review. It
-    ships as site/plotly.min.js, cached by the browser across visits and
-    changed only when the library is upgraded.
-  * NO UNRESOLVED PLACEHOLDERS. Anything the state cannot fund is omitted
-    with a stated reason -- never rendered as an empty cell, a dash, or a
-    number the build invented.
-  * THEME-AWARE AND ACCESSIBLE. Light and dark from tokens, a high-contrast
-    mode, and a colour-vision-safe categorical scale for the map, all
-    stamped on the root element and persisted, mirroring the console's own
-    accessibility controls.
+  * OFFLINE FROM DISK: every asset inline or a sibling file (Google Fonts
+    degrades to the system stack).
+  * PLOTLY IS A SIBLING (site/plotly.min.js), not 4.9 MB inlined into every
+    diff.
+  * NO UNRESOLVED PLACEHOLDERS: missing state is omitted with a stated
+    reason, never an empty cell, a dash, or an invented number.
+  * THEME-AWARE AND ACCESSIBLE: light/dark tokens, high contrast, a
+    CVD-safe map scale, persisted like the console's controls.
 """
 from __future__ import annotations
 
@@ -282,12 +273,12 @@ JS = r"""
         fx.push(t.toISOString().slice(0,10)); }
     }
     var med=[last[1]], lo8=[last[1]], hi8=[last[1]],
-        lo5=[last[1]], hi5=[last[1]], pf=[last[1]], an=[last[1]];
+        lo5=[last[1]], hi5=[last[1]], an=[last[1]];
     hs.forEach(function(h){
       var q = d.q[h] || {};
       med.push(q['0.5']); lo8.push(q['0.1']); hi8.push(q['0.9']);
       lo5.push(q['0.25']); hi5.push(q['0.75']);
-      pf.push(d.pf ? d.pf[h] : null); an.push(d.an ? d.an[h] : null); });
+      an.push(d.an ? d.an[h] : null); });
     var ink=css('--ink'), acc=css('--accent'), mut=css('--mut'),
         line=css('--line'), card=css('--card'), gold=css('--gold');
     var T = [
@@ -463,14 +454,9 @@ def _score_td(v) -> str:
     return f'<td class="n {cls}">{float(v):.3f}</td>'
 
 
-#: how close the two pooled scores must sit before the panel is allowed to
-#: call them level. No statistical test runs at build time: this is a fixed
-#: threshold, so the sentence below must claim no more than the threshold
-#: verifies. 0.02 sits inside the week-clustered bootstrap interval measured
-#: once on the sealed three seasons (offline; half-width about 0.05, CI
-#: spanning zero, recorded in the lab archive's 2026-08 audit record), but
-#: that measurement is not recomputed for future payloads; anything wider
-#: than 0.02 keeps the sentence off rather than talking past the table.
+#: the largest pooled gap the panel may call "level": a fixed threshold (no
+#: test runs at build time), inside the sealed record's week-clustered
+#: bootstrap interval (half-width ~0.05); wider gaps withhold the sentence
 LEVEL_GAP = 0.02
 
 
@@ -478,15 +464,8 @@ def _season_table(payload: dict) -> str:
     seasons = payload["seasons"]
     pooled = payload["pooled"]
     has_official = any("FluSight-ensemble" in s["models"] for s in seasons)
-    # The comparator column carries the official FluSight ensemble rather
-    # than a constant 1.000 for the baseline: the baseline is already the
-    # denominator of every score in the table, so a column of ones restated
-    # it, while the hub's own ensemble is a comparator a reader learns from.
-    # A season with no official score prints "not scored" rather than a
-    # blank that would read as a zero.
-    # Every score column is named for whose forecast it scores, so none
-    # reads as the FluSight ensemble's; the note below carries the relWIS
-    # unit for all of them at once. Two models, submitted separately.
+    # comparator: the FluSight ensemble (the baseline is already every
+    # score's denominator); each column named for whose forecast it scores
     pf_name = payload.get("pf_label") or "Oracle SIHRS"
     head = ('<tr><th>Season</th><th class="n">' + _e(pf_name) + '</th>'
             '<th class="n">Groundhog</th>'
@@ -506,12 +485,7 @@ def _season_table(payload: dict) -> str:
                           or {}).get("rel")))
         r += f'<td class="n">{cells:,}</td>' if cells else \
              '<td class="n na">--</td>'
-        # WITHDRAWN, not pending. The empty cell used to read "not yet
-        # scored against the field", which says the work has not happened;
-        # it has, and the result was retracted (Methods, and the release
-        # record). The note directly under this table calls it "the
-        # withdrawn field placement", so the two were describing the same
-        # fact two different ways one line apart.
+        # withdrawn, not pending: the placement was measured and retracted
         r += (f'<td>{_e(pl["text"])}</td>' if pl.get("text")
               else '<td class="na">placement withdrawn, see Methods</td>')
         rows.append(r + "</tr>")
@@ -525,12 +499,7 @@ def _season_table(payload: dict) -> str:
              '<td></td></tr>')
     table = "<table>" + head + "".join(rows) + prow + "</table>"
 
-    # The convention, named on the published panel too. This page is the
-    # one a reader is likeliest to open beside the CDC dashboard, and
-    # "against the CDC FluSight baseline" describes both conventions
-    # equally, so on its own it labels nothing. The sentence is imported
-    # rather than typed: the console, this site and the exported report
-    # carry the identical wording (app/core/relwis).
+    # name the convention here too (imported, never retyped)
     note = ("Every column is relWIS against the same CDC FluSight baseline "
             "on the same cells, so lower is better and below 1.000 beats "
             "that baseline. " + relwis.PUBLISHED_CONVENTION_NOTE)
@@ -538,19 +507,9 @@ def _season_table(payload: dict) -> str:
         note += (" The comparator is the hub's own combination of every "
                  "team's forecasts, a strong reference rather than a naive "
                  "one.")
-        # The gap and the week count are computed here rather than typed.
-        # The finding they carry (the pooled difference is inside sampling
-        # noise) belongs to the sealed seasons, so if a future build ever
-        # produces a gap that is not small the sentence is withheld instead
-        # of asserting "level" against its own table. The sentence used to
-        # attribute the verdict to "a paired bootstrap", but no bootstrap
-        # runs here (see LEVEL_GAP above), so it now claims only what the
-        # threshold check verifies.
+        # computed, not typed; withheld when the gap exceeds LEVEL_GAP
         off = (pooled.get("FluSight-ensemble") or {}).get("rel")
-        # the weeks a paired test actually has: both models scored in the
-        # same week. Not season["scored_weeks"], which counts every stored
-        # week including the pre-season ones that scored nothing at all, and
-        # would overstate the sample any paired test has to work with.
+        # weeks where both the PF and the ensemble scored (not scored_weeks)
         weeks = sum(1 for s in seasons for w in s.get("weekly") or []
                     if "pf" in w.get("week", {})
                     and "FluSight-ensemble" in w.get("week", {}))
@@ -562,9 +521,7 @@ def _season_table(payload: dict) -> str:
                          "inside the sealed record's measured week-to-week "
                          "variation.")
     if pf_name != "Oracle SIHRS":
-        # the sealed replays predate the Oracle step: their mechanistic
-        # column is the particle filter alone, and the page says so rather
-        # than publishing it under the member's name
+        # sealed replays predate the Oracle step: say the column is the plain filter
         note += (" The mechanistic column is the particle filter alone: "
                  "these replays predate the Oracle step, which blends the "
                  "filter's forecast growth with past seasons' at the same "
@@ -610,18 +567,14 @@ def _percentile_bars(payload: dict) -> str:
 
 def _member_table(payload: dict) -> str:
     seasons = payload["seasons"]
-    # the two models in order; a stored blend (a payload from before
-    # 2026-09-22) last, as the row it was
+    # the two models in order; an older payload's stored blend last
     members = [m for m in payload["model_order"]
                if m != "ensemble" and any(m in s["models"] for s in seasons)]
     if any("ensemble" in s["models"] for s in seasons):
         members.append("ensemble")
     if not members:
         return ""
-    # the same names the console prints (the shared map in player.js). This
-    # table sat on the same published page as the season table's "FluBNF
-    # Ensemble" header while calling that same model by the older
-    # team-prefixed name, so one page named one model twice.
+    # the console's names (player.js map), so one page never names a model twice
     labels = {"pf": payload.get("pf_label") or "Oracle SIHRS",
               "analogue": "Groundhog",
               "ensemble": "FluBNF Ensemble (retired)",
@@ -707,8 +660,7 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
     else:
         tally_line = ""
 
-    # said out loud rather than smoothed over: the forecast covers
-    # jurisdictions the Albers map has no shape for
+    # name the forecast jurisdictions the Albers map cannot draw
     unmapped = ol.get("unmapped") or []
     if unmapped:
         tally_line += (" " + " and ".join(unmapped) +
@@ -730,9 +682,7 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
                 f'&middot; {_e(src["season"])} {_e(src["origin"])}')
         badge = f'week of <b>{_e(src["asof"])}</b>'
 
-    # the settled overlay is conditional, so the sentence describing it has
-    # to be too: "all four weeks", "some weeks" and "none yet" are three
-    # different claims and only one of them is true of any given build
+    # the sentence matches the overlay: all four, some, or none settled
     counts = [len(f.get("settled") or []) for f in payload["fans"].values()]
     lo, hi = (min(counts), max(counts)) if counts else (0, 0)
     if lo == hi == 4:
@@ -756,12 +706,7 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
                 else _e(seasons[0]["season"]))
 
     if (pooled_pf is not None or pooled_gh is not None) and seasons:
-        # THE convention, on the landing tab. This banner is the site's
-        # first and most-read figure, it sits on the home tab, and the
-        # season table that carries the same sentence is on a DIFFERENT tab
-        # a reader may never open, so "against the CDC FluSight baseline"
-        # was standing here alone. That phrase is true of both conventions,
-        # which is exactly why it labels neither; the note names which one.
+        # the convention on the landing tab too (the season table is elsewhere)
         parts = []
         if pooled_pf is not None:
             parts.append(
