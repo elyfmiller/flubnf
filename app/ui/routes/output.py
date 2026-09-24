@@ -221,7 +221,10 @@ def output_download(request: Request, path: str):
     from fastapi.responses import FileResponse
     from app.core.runs import APP_STATE
     from app.core import datasets as _datasets
-    p = Path(path).resolve()
+    try:
+        p = Path(path).resolve()
+    except (OSError, ValueError):       # a NUL byte or an unusable name
+        return HTMLResponse("<p>file not found in app state</p>", status_code=404)
     if not (p.is_relative_to(APP_STATE.resolve()) and p.is_file()):
         return HTMLResponse("<p>file not found in app state</p>", status_code=404)
     if p.is_relative_to(Path(_datasets.ROOT).resolve()):
@@ -251,7 +254,10 @@ def output_reveal(path: str = Form(...)):
     """Show the file in Finder / Explorer (a local desktop app)."""
     import subprocess
     from app.core.runs import APP_STATE
-    p = Path(path).resolve()
+    try:
+        p = Path(path).resolve()
+    except (OSError, ValueError):       # a NUL byte or an unusable name
+        return RedirectResponse("/output", status_code=303)
     # containment via is_relative_to, as in /output/download: a string-prefix
     # test would admit siblings such as app/state_defaults
     if p.is_relative_to(APP_STATE.resolve()) and p.exists():
