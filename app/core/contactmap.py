@@ -38,7 +38,7 @@ class ContactMapError(ValueError):
 
 
 def _with_actions(bngl_text: str, actions: str, what: str) -> str:
-    m = re.search(r"^\s*end\s+model\s*$", bngl_text, flags=re.M)
+    m = re.search(r"^\s*end\s+model\s*(?:#.*)?$", bngl_text, flags=re.M)
     if not m:
         raise ContactMapError(f"{what} needs a begin model / end model block "
                               "around the model")
@@ -535,6 +535,8 @@ def network_graph(net: dict) -> dict:
 
 _NAME = re.compile(r"[A-Za-z_]\w*")
 _TAG = re.compile(r"(?:[@%]\w+)*")
+#: a species' compartment written before it (cBNGL "@EC:A()" or "@EC::A()")
+_PREFIX = re.compile(r"@\w+\s*::?\s*")
 
 
 def _patterns(side: str) -> tuple:
@@ -549,6 +551,9 @@ def _patterns(side: str) -> tuple:
             i += 1
         else:
             while True:
+                pre = _PREFIX.match(side, i)
+                if pre:
+                    i = pre.end()
                 m = _NAME.match(side, i)
                 if not m:
                     return names, side[i:]
@@ -575,6 +580,17 @@ def _patterns(side: str) -> tuple:
         return names, side[i:]
 
 
+def _top_level_comma(text: str) -> tuple:
+    """text.partition(",") at the first comma outside parentheses, so a
+    rate law such as Sat(k,K) stays whole."""
+    depth = 0
+    for i, ch in enumerate(text):
+        depth += {"(": 1, ")": -1}.get(ch, 0)
+        if ch == "," and depth == 0:
+            return text[:i], ",", text[i + 1:]
+    return text, "", ""
+
+
 def rule_flow(bngl_text: str) -> dict | None:
     """The model's rules as a flow between molecule types, in the graph
     shape network_graph() returns: each rule is read as one reaction over
@@ -586,9 +602,10 @@ def rule_flow(bngl_text: str) -> dict | None:
         s = raw.split("#", 1)[0].strip()
         if not s:
             continue
-        m = re.match(r"(begin|end)\s+(molecule types|reaction rules)\b", s)
+        m = re.match(r"(begin|end)\s+(molecule\s+types|reaction\s+rules)\b", s)
         if m:
-            where = m.group(2) if m.group(1) == "begin" else None
+            where = (" ".join(m.group(2).split()) if m.group(1) == "begin"
+                     else None)
             continue
         if where == "molecule types":
             t = _NAME.match(s)
@@ -605,12 +622,16 @@ def rule_flow(bngl_text: str) -> dict | None:
             lhs, rhs = s.split(arrow, 1)
             left, _ = _patterns(lhs.strip())
             right, rest = _patterns(rhs.strip())
-            rates = rest.split()
             name = label or str(len(rules) + 1)
-            rules.append((left, right, rates[0] if rates else "", name))
             if arrow == "<->":
-                rules.append((right, left, rates[1].rstrip(",") if len(rates) > 1 else "",
+                # "kf, kr" or "kf,kr": the two rates split at the comma
+                fwd, _, rev = _top_level_comma(rest.strip())
+                rules.append((left, right, (fwd.split() or [""])[0], name))
+                rules.append((right, left, (rev.split() or [""])[0],
                               name + " (reverse)"))
+            else:
+                rates = rest.split()
+                rules.append((left, right, rates[0] if rates else "", name))
     if not rules:
         return None
     for left, right, _, _ in rules:
