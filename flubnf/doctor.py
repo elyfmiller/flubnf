@@ -14,6 +14,7 @@ import importlib
 import os
 import platform
 import shutil
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from enum import Enum
@@ -99,24 +100,43 @@ _REQUIRED_PACKAGES: tuple[tuple[str, str], ...] = (
 )
 
 # pybnf/bngsim live in the ENGINE venv (two-venv architecture), so they are
-# probed there.
+# probed there, with the engine's python, never imported in this (console)
+# venv. The engine is optional: without it the console runs Groundhog-only,
+# so an ABSENT engine is a WARN; a present engine that cannot import is a
+# FAIL.
+
+#: The console's own readiness probe (setup.ps1 / FluBNF.bat): pybnf is
+#: loaded off the fork checkout, as the fit runners load it.
+ENGINE_PROBE = ("import sys; sys.path.insert(0, {pybnf!r}); import bngsim; "
+                "from pybnf.pf import ParticleFilter; print(bngsim.__version__)")
+
+_ENGINE_ABSENT_HINT = ("Optional: without the engine the console runs "
+                       "Groundhog-only. To add the particle filter, run "
+                       "./setup_engine.sh (or set FLUBNF_PY_ENGINE and "
+                       "FLUBNF_PYBNF), then re-run doctor.")
 
 
 def _check_engine_venv() -> "CheckResult":
-    """Whether the engine venv can import what a fit needs (run WITHOUT the
-    fork on sys.path, so stock PyBNF passes; _check_pf_engine is the other
-    half)."""
-    import subprocess
-    from flubnf.settings import PY_ENGINE
-    if not PY_ENGINE.exists():
+    """Whether the engine venv can import what a fit needs, probed exactly
+    as the console probes it: the engine python, the fork on sys.path,
+    `import bngsim; from pybnf.pf import ParticleFilter`."""
+    from flubnf.settings import PY_ENGINE, PYBNF
+    if not Path(PY_ENGINE).exists():
+        return CheckResult("engine venv", Status.WARN,
+                           f"{PY_ENGINE} missing (set FLUBNF_PY_ENGINE)",
+                           _ENGINE_ABSENT_HINT)
+    try:
+        r = subprocess.run([str(PY_ENGINE), "-c",
+                            ENGINE_PROBE.format(pybnf=str(PYBNF))],
+                           capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as e:
         return CheckResult("engine venv", Status.FAIL,
-                           f"{PY_ENGINE} missing (set FLUBNF_PY_ENGINE)")
-    r = subprocess.run([str(PY_ENGINE), "-c",
-                        "import pybnf, bngsim; print(bngsim.__version__)"],
-                       capture_output=True, text=True, timeout=60)
+                           f"could not run {PY_ENGINE}: {e}")
     if r.returncode != 0:
         return CheckResult("engine venv", Status.FAIL,
-                           f"pybnf/bngsim not importable: {r.stderr[-120:]}")
+                           "bngsim / pybnf.pf not importable in the engine "
+                           f"venv: {(r.stderr or '')[-120:]}",
+                           "Re-run ./setup_engine.sh, then re-run doctor.")
     return CheckResult("engine venv", Status.OK,
                        f"bngsim {r.stdout.strip()}")
 
@@ -129,6 +149,12 @@ def _check_pf_engine() -> "CheckResult":
     from app.core.engines import pf as _pf
     from flubnf.settings import PYBNF
     if not _pf.engine_available():
+        # no checkout at all: the engine is simply not installed (WARN);
+        # a checkout without pf.py is a broken install (FAIL)
+        if not Path(_pf.PYBNF_PF).exists():
+            return CheckResult("PyBNF fork (fit_type=pf)", Status.WARN,
+                               _pf.engine_missing_message(),
+                               _ENGINE_ABSENT_HINT)
         return CheckResult("PyBNF fork (fit_type=pf)", Status.FAIL,
                            _pf.engine_missing_message(),
                            "Run ./setup_engine.sh (or set FLUBNF_PYBNF), then "
@@ -139,6 +165,31 @@ def _check_pf_engine() -> "CheckResult":
                            "Save the current engine archive in Downloads and "
                            "run ./setup_engine.sh, then re-run doctor.")
     return CheckResult("PyBNF fork (fit_type=pf)", Status.OK, str(PYBNF))
+
+
+#: what a usable hub clone must hold (a sparse checkout can lack either)
+HUB_DIRS = ("target-data", "auxiliary-data/target-data-archive")
+
+
+def _check_hub() -> CheckResult:
+    """The FluSight hub clone (settings.HUB, FLUBNF_HUB): truth and its
+    vintages. Tested by its data directories, not by the clone existing."""
+    from flubnf.settings import HUB
+    hub = Path(HUB)
+    if not hub.is_dir():
+        return CheckResult(
+            "FluSight hub", Status.FAIL, f"no clone at {hub}",
+            "Clone cdcepi/FluSight-forecast-hub there, or set FLUBNF_HUB "
+            "to an existing clone.")
+    missing = [d for d in HUB_DIRS if not (hub / d).is_dir()]
+    if missing:
+        return CheckResult(
+            "FluSight hub", Status.FAIL,
+            f"{hub} lacks {', '.join(missing)}",
+            "A sparse checkout must include target-data/ and "
+            "auxiliary-data/ (sparse-checkout add target-data "
+            "auxiliary-data).")
+    return CheckResult("FluSight hub", Status.OK, str(hub))
 
 
 def _check_imports() -> list[CheckResult]:
@@ -163,14 +214,22 @@ def _check_numpy2_pybnf() -> CheckResult:
     `nbinom.rvs(...)` -> `float(nbinom.rvs(..., size=1)[0])` to coerce
     the 0-d / array returns the new SciPy emits.
     """
-    try:
-        import pybnf  # noqa: F401
-    except Exception:
-        return CheckResult(
-            "pybnf NumPy 2.0 patch", Status.FAIL,
-            "pybnf not importable; cannot verify patch",
-            "pip install pybnf, then re-run doctor.",
-        )
+    # The engine's pybnf, read as a file: the fork checkout the runners put
+    # first on sys.path, else a pybnf this venv happens to carry. pybnf is
+    # an engine-venv package, so neither being present means the engine is
+    # absent (WARN; the console runs Groundhog-only), not a broken install.
+    from flubnf.settings import PYBNF
+    alg_path = Path(PYBNF) / "pybnf" / "algorithms.py"
+    if not alg_path.is_file():
+        try:
+            from pybnf import algorithms as _alg
+            alg_path = Path(_alg.__file__)
+        except Exception:
+            return CheckResult(
+                "pybnf NumPy 2.0 patch", Status.WARN,
+                f"no engine pybnf (no {alg_path}); cannot verify patch",
+                _ENGINE_ABSENT_HINT,
+            )
     try:
         import numpy as _np
         if int(_np.__version__.split(".")[0]) < 2:
@@ -180,10 +239,9 @@ def _check_numpy2_pybnf() -> CheckResult:
             )
     except Exception:
         pass
-    # Locate pybnf.algorithms and grep its source for np.Inf occurrences.
+    # Grep the engine's pybnf/algorithms.py for np.Inf occurrences.
     try:
-        from pybnf import algorithms as _alg
-        src = Path(_alg.__file__).read_text(encoding="utf-8", errors="ignore")
+        src = alg_path.read_text(encoding="utf-8", errors="ignore")
     except Exception as e:  # noqa: BLE001
         return CheckResult(
             "pybnf NumPy 2.0 patch", Status.WARN,
@@ -657,6 +715,7 @@ def run_doctor(
     rep.add(_check_numpy2_pybnf())
     rep.add(_check_engine_venv())        # can the engine venv import at all
     rep.add(_check_pf_engine())          # and does the fork carry pf.py
+    rep.add(_check_hub())                # truth + vintages for scoring
     rep.add(_check_bng(config))
     for c in _check_templates(config):
         rep.add(c)
