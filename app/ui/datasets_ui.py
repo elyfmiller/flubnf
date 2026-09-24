@@ -4,9 +4,16 @@ Routes (an APIRouter included by app/ui/server.py; the same-host guard
 covers every POST, and each GET that returns dataset content checks the
 Host header too, since an upload may be private data):
 
-  POST /data/datasets                  multipart upload (size capped before
-                                       and while parsing)
+  POST /data/datasets/check            check an upload without storing it:
+                                       JSON with the result box's HTML (every
+                                       problem, a column mapping, or a
+                                       preview) for static/dataset_upload.js
+  POST /data/datasets                  store an upload (size capped before
+                                       and while parsing), then open it where
+                                       `next` says: data, forecast or replay
   POST /data/datasets/{id}/delete      delete, with the name as confirmation
+  POST /storage/datasets/{id}/delete   delete from the Storage tab, with its
+                                       runs' workroots (the name confirms)
   POST /run/dataset                    a forecast on a dataset
   POST /retro/dataset/run              replay a week range on a dataset
   GET  /retro/dataset/{id}/{stamp}     one replay's results
@@ -18,13 +25,18 @@ default source: every page and run opts in by naming it.
 from __future__ import annotations
 
 import json
-import threading
+import re
 import time
+from datetime import date as _date
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request
-from fastapi.responses import (HTMLResponse, PlainTextResponse,
+from fastapi.responses import (HTMLResponse, JSONResponse, PlainTextResponse,
                                RedirectResponse)
+from markupsafe import Markup, escape
+from starlette.concurrency import run_in_threadpool
+
+from app.core.runs import GROUNDHOG_OWN_DATA
 
 router = APIRouter()
 
@@ -32,15 +44,29 @@ router = APIRouter()
 _LAST: dict = {}
 #: the replay a worker is running now: {"id", "stamp"} or {}
 _REPLAY: dict = {}
+#: what "Replay this" just stored, for the replay card it opens (one slot,
+#: taken by the card's next render): {dataset id: {"text", "warnings"}}
+_STORED: dict = {}
 
+#: the Groundhog wherever it runs on a dataset (exported as FluBNF-Groundhog)
+GROUNDHOG = GROUNDHOG_OWN_DATA
 #: the dataset members as the Forecast form names them
-ENGINE_NAMES = {"all": "Both (plain SIHRS particle filter + Groundhog)",
+ENGINE_NAMES = {"all": f"Both: plain SIHRS particle filter + {GROUNDHOG}",
                 "pf": "plain SIHRS particle filter only",
-                "analogue": "Groundhog only"}
+                "analogue": f"{GROUNDHOG} only"}
+#: the members as the Retrospective card's replay form names them
+REPLAY_ENGINE_NAMES = {"analogue": f"{GROUNDHOG} only",
+                       "all": f"{GROUNDHOG} and plain SIHRS particle filter"}
 #: fan and table names on dataset pages
-MEMBER_NAMES = {"pf": "plain SIHRS PF", "analogue": "Groundhog"}
+MEMBER_NAMES = {"pf": "plain SIHRS PF", "analogue": GROUNDHOG}
 #: the upload body may exceed the file by the multipart framing and fields
 FORM_SLACK = 64 * 1024
+#: where a stored upload opens (the upload box's buttons post `next`)
+NEXT_PAGES = ("data", "forecast", "replay")
+#: groups drawn in an upload's preview (the rest are counted)
+PREVIEW_GROUPS = 12
+#: a preview sparkline's viewBox
+SPARK_W, SPARK_H = 160, 40
 
 
 def _S():
@@ -188,18 +214,264 @@ async def _capped_form(request: Request, cap: int):
 
 
 def _render_data(request, _code: int = 200, **extra):
-    """data.html with the upload's report inline (not the one-slot flash)."""
+    """data.html with a refused store's report inline (not the one-slot
+    flash); its result box says nothing was stored ("refused"), which a
+    check, storing nothing by design, never says."""
     S = _S()
+    up = extra.get("upload")
+    if up and up.get("chk"):
+        extra["upload"] = {**up, "chk": {**up["chk"], "refused": True}}
     ctx = S._data_context()
     ctx.update(extra)
     return S.templates.TemplateResponse(request, "data.html", ctx,
                                         status_code=_code)
 
 
+# ------------------------------------------------ the upload box (one partial)
+
+def _form_columns(form) -> dict:
+    """The column mapping the result box posts (col_<role> = '#N')."""
+    D = _D()
+    return {r: str(form.get(f"col_{r}") or "").strip() for r in D.ROLES
+            if str(form.get(f"col_{r}") or "").strip()}
+
+
+def _sparkline(points, first: _date, last: _date, top: float) -> str:
+    """SVG polyline points for one group's weeks on the shared date axis."""
+    span = max((last - first).days, 1)
+    pad = 2.0
+    if len(points) > 400:                       # a long series, thinned
+        step = len(points) / 400.0
+        points = [points[int(i * step)] for i in range(400)] + [points[-1]]
+    out = []
+    for d, v in points:
+        x = pad + (SPARK_W - 2 * pad) * (d - first).days / span
+        y = SPARK_H - pad - ((SPARK_H - 2 * pad) * v / top if top > 0 else 0)
+        out.append(f"{x:.1f},{y:.1f}")
+    return " ".join(out)
+
+
+def _preview(rep, kind: str) -> dict:
+    """What a valid upload holds: counts and dates, the first rows as read,
+    and a sparkline per group (the newest snapshot of each week)."""
+    s = rep.summary
+    newest = {}
+    for a, name, _, d, v, _ in rep.records:
+        if v is None:
+            continue
+        k = (name, d)
+        if k not in newest or (a or _date.min) >= newest[k][0]:
+            newest[k] = (a or _date.min, v)
+    by = {}
+    for (name, d), (_, v) in newest.items():
+        by.setdefault(name, []).append((d, v))
+    first = _date.fromisoformat(s["first"])
+    last = _date.fromisoformat(s["last"])
+    sparks = []
+    for name in s["groups"][:PREVIEW_GROUPS]:
+        pts = sorted(by.get(name, []))
+        if not pts:
+            continue
+        top = max(v for _, v in pts)
+        peak = max(pts, key=lambda p: p[1])
+        sparks.append({"name": name, "points": _sparkline(pts, first, last,
+                                                          top),
+                       "label": f"{name}: {len(pts)} weeks, peak "
+                                f"{peak[1]:,.6g} ({peak[0].isoformat()})"})
+    return {"groups": s["groups"], "n_groups": len(s["groups"]),
+            "more": max(0, len(s["groups"]) - PREVIEW_GROUPS),
+            "first": s["first"], "last": s["last"], "weeks": s["weeks"],
+            "rows": s["rows"], "kind": kind or s["inferred_kind"],
+            "inferred": not kind, "population": s["has_population"],
+            "snapshots": len(s["as_of"]), "national": s.get("national_group"),
+            "target": s.get("target"),
+            "read_as": f"{s['delimiter']}-separated, {s['encoding']}",
+            "first_rows": s.get("first_rows") or [],
+            # the file's own date column only when it differs from the week
+            "dates_differ": any(r["date"] != r["week"]
+                                for r in s.get("first_rows") or []),
+            "sparks": sparks, "w": SPARK_W, "h": SPARK_H}
+
+
+#: mapping-step problems shown in the problem box: a reason to choose (two
+#: columns that could each be a role, a mapping that named nothing), never
+#: a silent pick; a role no header matched is only asked for
+MAPPING_PROBLEMS = ("ambiguous_columns", "column_unknown")
+
+
+def _mapping_why(rep) -> list:
+    """The mapping's own hint: one line naming the roles no header matched
+    (the reasons to choose are problems, MAPPING_PROBLEMS)."""
+    D = _D()
+    if not rep.needs_mapping:
+        return []
+    unset = [r for r in D.REQUIRED
+             if r not in rep.guess and r not in rep.ambiguous]
+    out = []
+    if unset:
+        names = [f"the {r}" for r in unset]
+        out.append("Choose the column that holds "
+                   + (", ".join(names[:-1]) + " and " if len(names) > 1
+                      else "") + names[-1] + ".")
+    return out
+
+
+#: a date in a problem or a notice (2024-03-16, or 2024-03-32 as written)
+_DATE_TOKEN = re.compile(r"\d{4}-\d{1,2}-\d{1,2}")
+
+
+def _whole_dates(text) -> Markup:
+    """Problem or notice text, escaped, with each date kept on one line: at
+    phone width a browser breaks it after a hyphen ('2024-03-' / '16')."""
+    return Markup(_DATE_TOKEN.sub(lambda m: f'<span class="nw">{m[0]}</span>',
+                                  str(escape(text))))
+
+
+def check_view(rep, *, kind: str = "", columns=None) -> dict:
+    """The result box's context (templates/_dataset_check.html) for one
+    report: every problem grouped by kind, a column mapping when that is
+    what is missing (instead of an error; two columns that could each be
+    a role are also a problem, with its reason, and neither is picked),
+    the target picker when a file holds several (a choice to make, not a
+    problem; nothing is picked for the user), the notices, and a preview
+    when it is valid."""
+    D = _D()
+    columns = columns or {}
+    choose = len(rep.targets) > 1 and "target_required" in rep.codes
+    mapping = None
+    if rep.headers and (rep.needs_mapping or columns):
+        labels = {"date": "Date", "group": "Group", "value": "Value",
+                  "population": "Population"}
+        mapping = {
+            "headers": [(f"#{i + 1}", h) for i, h in enumerate(rep.headers)
+                        if h],
+            "why": _mapping_why(rep),
+            "roles": [{"role": r, "label": labels[r],
+                       "required": r in D.REQUIRED,
+                       "value": columns.get(r) or rep.guess.get(r, "")}
+                      for r in D.ROLES]}
+    shown = [p for p in rep.problems
+             if not (choose and p.code == "target_required")
+             and (p.code in MAPPING_PROBLEMS or not rep.needs_mapping)]
+    problems = [(k, [{"message": _whole_dates(p), "rows": list(p.rows)}
+                     for p in ps])
+                for k, ps in D.problem_groups(shown)]
+    return {"ok": rep.ok, "problems": problems,
+            "n": sum(len(ps) for _, ps in problems),
+            "mapping": mapping, "needs_mapping": rep.needs_mapping,
+            "notices": [_whole_dates(w) for w in rep.warnings],
+            "targets": rep.targets if len(rep.targets) > 1 else [],
+            "target": (rep.summary or {}).get("target") or "",
+            "preview": _preview(rep, kind) if rep.ok and rep.summary else None}
+
+
+def check_status(chk: dict) -> str:
+    """The upload box's status line (role=status): what a check found, in
+    a few words, read out instead of the whole result."""
+    if chk.get("preview"):
+        pv = chk["preview"]
+        return (f"Ready to use: {pv['n_groups']} group"
+                f"{'' if pv['n_groups'] == 1 else 's'}, {pv['weeks']} week"
+                f"{'' if pv['weeks'] == 1 else 's'}.")
+    n = chk.get("n") or 0
+    if chk.get("needs_mapping"):
+        return "Choose which column is which." + (
+            f" {n} problem{'' if n == 1 else 's'} to fix." if n else "")
+    if chk.get("targets") and not chk.get("target") and not n:
+        return "Choose the target."
+    return f"{n} problem{'' if n == 1 else 's'} to fix."
+
+
+def _message_view(message: str) -> dict:
+    """The result box for a refusal that is not about the file's content."""
+    return {"ok": False, "problems": [("File", [{"message": message,
+                                                 "rows": []}])],
+            "n": 1, "mapping": None, "notices": [], "targets": [],
+            "target": "", "preview": None}
+
+
+def render_check(chk: dict, where: str = "data") -> str:
+    """The result box's HTML (the same macro the pages render)."""
+    tpl = _S().templates.get_template("_dataset_check.html")
+    return str(tpl.module.result(chk, where))
+
+
+def _kind_field(form):
+    """The posted kind: '' = from the values; None = not a kind. A kind
+    the upload box filled in from the values (kind_auto=1, never picked by
+    hand) stays "from the values", as the CLI records it."""
+    k = str(form.get("kind") or "").strip()
+    if k not in ("",) + _D().KINDS:
+        return None
+    return "" if str(form.get("kind_auto") or "") == "1" else k
+
+
+@router.post("/data/datasets/check")
+async def check(request: Request):
+    """Check one upload and store nothing: JSON with the result box's HTML
+    and what the form needs (the inferred kind, the targets, whether a
+    column mapping is asked for). A file with several targets shows the
+    picker and no preview until one is chosen."""
+    refused = local_only(request)
+    if refused:
+        return refused
+    D = _D()
+    where = str(request.query_params.get("where") or "data")
+    where = where if where in NEXT_PAGES else "data"
+
+    def answer(chk, code=200, **extra):
+        return JSONResponse({"ok": chk["ok"], "html": render_check(chk, where),
+                             "status": check_status(chk), **extra},
+                            status_code=code)
+    if not request.headers.get("content-type", "").startswith(
+            "multipart/form-data"):
+        return answer(_message_view("Expected a multipart/form-data upload."),
+                      400)
+    try:
+        form = await _capped_form(request,
+                                  D.DEFAULT_LIMITS.max_bytes + FORM_SLACK)
+    except Exception:
+        return answer(_message_view("The upload could not be read; choose "
+                                    "the file again."), 400)
+    if form is None:
+        return answer(_message_view(
+            f"The file is larger than the {max_mb()} MB limit; nothing was "
+            "read."), 413)
+    f = form.get("file")
+    if f is None or not hasattr(f, "file") or not getattr(f, "filename", ""):
+        return answer(_message_view("Choose a CSV file."), 400)
+    kind = _kind_field(form)
+    if kind is None:
+        return answer(_message_view("Say whether the values are counts or "
+                                    "rates."), 400)
+    target = str(form.get("target") or "").strip() or None
+    columns = _form_columns(form)
+    try:
+        def run():
+            f.file.seek(0)
+            return D.validate(f.file, kind=kind or None, target=target,
+                              columns=columns)
+        rep = await run_in_threadpool(run)
+    finally:
+        try:
+            await f.close()
+        except Exception:
+            pass
+    chk = check_view(rep, kind=kind, columns=columns)
+    return answer(chk, inferred_kind=(rep.summary or {}).get("inferred_kind"),
+                  target=target or "", targets=rep.targets,
+                  needs_mapping=rep.needs_mapping,
+                  # the name a store takes when none is typed
+                  name=D.default_name(Path(str(f.filename)).name,
+                                      rep.targets, target))
+
+
 @router.post("/data/datasets")
 async def upload(request: Request):
-    """Validate and store one CSV. Problems are shown inline on the Data
-    tab (every one at once) and nothing is stored."""
+    """Validate and store one CSV, then open it where `next` says (the
+    Data tab, the Forecast tab, or the Retrospective tab's replay card).
+    Problems are shown inline on the Data tab (every one at once) and
+    nothing is stored."""
     S, D = _S(), _D()
     cap = D.DEFAULT_LIMITS.max_bytes + FORM_SLACK
     ctype = request.headers.get("content-type", "")
@@ -210,38 +482,34 @@ async def upload(request: Request):
     mb = D.DEFAULT_LIMITS.max_bytes // (1024 * 1024)
     if form is None:
         return _render_data(request, upload={
-            "name": "", "problems": [f"The upload is larger than the {mb} MB "
-                                     "limit; nothing was read or stored."],
-            "warnings": []}, _code=413)
+            "name": "", "kind": "", "chk": _message_view(
+                f"The upload is larger than the {mb} MB limit; nothing was "
+                "read or stored.")}, _code=413)
     f = form.get("file")
     name = str(form.get("name") or "").strip()
-    kind = str(form.get("kind") or "")
-    sunday = str(form.get("sunday") or "") in ("1", "on", "true")
+    kind = _kind_field(form)
     target = str(form.get("target") or "").strip() or None
-    back = {"name": name, "kind": kind, "sunday": sunday, "target": target or ""}
+    columns = _form_columns(form)
+    nxt = str(form.get("next") or "data")
+    back = {"name": name, "kind": kind or "", "target": target or ""}
     if f is None or not hasattr(f, "file") or not getattr(f, "filename", ""):
         return _render_data(request, upload={
-            **back, "problems": ["Choose a CSV file to upload."],
-            "warnings": []}, _code=400)
+            **back, "chk": _message_view("Choose a CSV file to upload.")},
+            _code=400)
     fname = Path(str(f.filename)).name
-    if not name:
-        name = Path(fname).stem or "dataset"
-    if kind not in D.KINDS:
+    if kind is None:
         return _render_data(request, upload={
-            **back, "problems": ["Say whether the values are counts or "
-                                 "rates."], "warnings": []}, _code=400)
+            **back, "chk": _message_view("Say whether the values are counts "
+                                         "or rates.")}, _code=400)
     try:
         f.file.seek(0)
-        ds = D.ingest(f.file, name[:80], kind=kind, week_start_sunday=sunday,
-                      target=target, filename=fname)
+        ds = await run_in_threadpool(
+            lambda: D.ingest(f.file, name[:80] or None, kind=kind or None,
+                             target=target, filename=fname, columns=columns))
     except D.DatasetError as e:
-        f.file.seek(0)
-        targets = []
-        if any(p.code == "target_required" for p in e.problems):
-            targets = _targets_in(f.file)
-        return _render_data(request, upload={
-            **back, "problems": [str(p) for p in e.problems] or [str(e)],
-            "warnings": [], "targets": targets}, _code=422)
+        chk = (check_view(e.report, kind=kind, columns=columns)
+               if e.report is not None else _message_view(str(e)))
+        return _render_data(request, upload={**back, "chk": chk}, _code=422)
     finally:
         try:
             await f.close()
@@ -249,38 +517,24 @@ async def upload(request: Request):
             pass
     S._invalidate_scans()
     warn = ds.meta.get("warnings") or []
-    S._flash(f"Stored the dataset {ds.name}: {len(ds.groups)} group(s), "
-             f"{len(ds.weeks())} week(s)."
-             + (" " + " ".join(warn) if warn else ""))
+    done = (f"Stored the dataset {ds.name}: {len(ds.groups)} group(s), "
+            f"{len(ds.weeks())} week(s).")
+    if nxt == "replay":
+        # said in the replay card the page scrolls to, not at its top
+        _STORED.clear()
+        _STORED[ds.id] = {"text": done, "warnings": list(warn)}
+        S._status["log"].append(" ".join([done] + warn))
+        return RedirectResponse(f"/retro?dataset={ds.id}#dataset-replay",
+                                status_code=303)
+    S._flash(done + (" " + " ".join(warn) if warn else ""))
+    if nxt == "forecast":
+        return RedirectResponse(f"/forecast?source={ds.id}", status_code=303)
     return RedirectResponse(f"/data?source={ds.id}#datasets", status_code=303)
-
-
-def _targets_in(fh) -> list:
-    """The target names a multi-target file holds (for the form's picker)."""
-    import csv
-    import io
-    try:
-        text = io.TextIOWrapper(fh, encoding="utf-8-sig", newline="")
-        r = csv.reader(text)
-        head = [h.strip().lower() for h in next(r)]
-        i = head.index("target")
-        seen = []
-        for n, row in enumerate(r):
-            if n > 2_000_000:
-                break
-            if len(row) > i and row[i].strip() and row[i].strip() not in seen:
-                seen.append(row[i].strip())
-                if len(seen) > 20:
-                    break
-        text.detach()
-        return seen
-    except Exception:
-        return []
 
 
 @router.post("/data/datasets/{ds_id}/delete")
 def delete(request: Request, ds_id: str, confirm: str = Form("")):
-    S, D = _S(), _D()
+    S = _S()
     ds = get_dataset(ds_id)
     if ds is None:
         S._flash("No such dataset; nothing was deleted.")
@@ -292,11 +546,7 @@ def delete(request: Request, ds_id: str, confirm: str = Form("")):
     if confirm != ds.name:
         S._flash(f"Deleting {ds.name} was not confirmed; nothing was deleted.")
         return RedirectResponse("/data#datasets", status_code=303)
-    D.delete(ds.id)
-    _LAST.pop(ds.id, None)
-    S._invalidate_scans()
-    S._flash(f"Deleted the dataset {ds.name}, with its replays. Runs made "
-             "from it keep their results but cannot be re-run.")
+    S._flash(deleted_message(ds, *delete_everything(ds)))
     return RedirectResponse("/data#datasets", status_code=303)
 
 
@@ -355,24 +605,86 @@ def latest_results_for(ds_id: str):
     return None, None
 
 
-def panel_for_dataset(panel):
-    """The Model settings panel as a dataset run reads it: no Oracle step
-    (it does not run on custom data), no auxiliary-bank rows (the form's
-    FluSurv-NET box decides), no hub-name override (there is none)."""
+#: knobs a dataset form never shows or records: its FluSurv-NET box
+#: decides the Groundhog's auxiliary bank
+AUX_KEYS = ("groundhog.aux", "groundhog.aux_weight")
+#: knobs that apply to counts alone (a rate dataset is never floored), with
+#: the help their tip carries on a dataset
+COUNT_ONLY = {"output.floor_lam": "Poisson noise floor so no cell is a "
+                                  "point mass; applied to counts only."}
+#: the members as a dataset panel's tips name them
+PANEL_MEMBERS = {"pf": "plain SIHRS particle filter", "analogue": GROUNDHOG}
+#: (title, tip) of a dataset panel's groups
+PANEL_GROUPS = {
+    "data": ("Fit window", "Which of the dataset's weeks the models see."),
+    "fit": ("Particle filter (plain SIHRS)",
+            "Settings of the fit itself; a change refits every group."),
+    "groundhog": (GROUNDHOG, "The calendar analogue on your data's earlier "
+                             "seasons; instant."),
+    "output": ("Output", "Applied to the finished forecasts of counts."),
+}
+#: what the panel's "?" says a change does, on a run and on a replay
+PANEL_ABOUT = {
+    "forecast": ("Every value starts at the shipped model's. Changing any of "
+                 "them marks the run modified wherever it appears, and its "
+                 "export files are named <model>-modified."),
+    "replay": ("Every value starts at the shipped model's. Changing any of "
+               "them marks the replay modified wherever it is listed, and "
+               "the values are recorded with it."),
+}
+
+
+def dataset_panel(panel, *, kind: str = "", where: str = "forecast",
+                  prefix: str = "", engine: str = ""):
+    """The Model settings panel (server._knob_panel with PANEL_MEMBERS) as
+    a dataset run or replay reads it: no Oracle step (it does not run on
+    custom data), no auxiliary-bank rows, no hub-name override (there is
+    none), the groups named as the members run on the data.
+
+    `kind`: the dataset's kind; a rate dataset has no floor row, and ''
+    (a form that picks among datasets) keeps it marked counts-only for the
+    page to hide. `where`: "forecast" or "replay". `prefix` and `engine`:
+    a second panel's id prefix and the id of its model select."""
     if not panel:
         return panel
-    p = dict(panel)
+    by_key = _S()._knobs.BY_KEY
     groups = []
-    for g in p["groups"]:
+    for g in panel["groups"]:
         if g["id"] == "step":
             continue
-        rows = [r for r in g["rows"]
-                if r["key"] not in ("groundhog.aux", "groundhog.aux_weight")]
-        if rows:
-            groups.append({**g, "rows": rows})
-    p["groups"] = groups
-    p["override"] = False
-    return p
+        rows = []
+        for r in g["rows"]:
+            if r["key"] in AUX_KEYS:
+                continue
+            if r["key"] in COUNT_ONLY:
+                if kind and kind != "count":
+                    continue
+                r = {**r, "only": "count", "tip": r["tip"].replace(
+                    by_key[r["key"]].help, COUNT_ONLY[r["key"]])}
+            rows.append(r)
+        if not rows:
+            continue
+        title, tip = PANEL_GROUPS.get(g["id"], (g["title"], g["tip"]))
+        groups.append({**g, "title": title, "tip": tip, "rows": rows,
+                       "affects": " ".join(sorted(
+                           {m for r in rows for m in r["affects"].split()}))})
+    modified = any(r["value"].strip() not in ("", r["default"])
+                   for g in groups for r in g["rows"] if not r["later"])
+    return {**panel, "groups": groups, "modified": modified,
+            "override": False, "about": PANEL_ABOUT[where],
+            "scope": panel["scope"] if where == "forecast"
+            else "dataset-replay",
+            "prefix": prefix, "engine": engine}
+
+
+def knob_values(ds, knob_fields, knobs_json) -> dict:
+    """The knob channel's raw values as a dataset form posts them, less
+    what a dataset never records: the auxiliary-bank knobs, and the
+    counts-only knobs on a rate dataset."""
+    return {k: v for k, v in _S()._knob_raw(knob_fields or {},
+                                            knobs_json).items()
+            if k not in AUX_KEYS
+            and not (k in COUNT_ONLY and ds.kind != "count")}
 
 
 def forecast_page(request: Request, ds):
@@ -420,7 +732,9 @@ def forecast_page(request: Request, ds):
         "ledger": rows, "all_locs": ds.groups,
         "vintage_dates": list(reversed(dates)), "anchor_note": note,
         "default_date": newest, "locations_error": "", "form": form,
-        "knob_panel": panel_for_dataset(S._knob_panel("forecast", form)),
+        "knob_panel": dataset_panel(
+            S._knob_panel("forecast", form, names=PANEL_MEMBERS),
+            kind=ds.kind),
         "elapsed0": S._console_elapsed(),
         "series_json": S._script_json(series),
         "fanq_json": S._script_json(fanq),
@@ -523,7 +837,8 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
     view = _dataset_view(ds)
     if engine in ("all", "pf") and not view["pf_ok"]:
         S._flash(f"The plain SIHRS particle filter cannot run on {ds.name}: "
-                 f"{view['pf_why']}. Choose the Groundhog. Nothing was run.")
+                 f"{view['pf_why']}. Choose {GROUNDHOG} only. Nothing was "
+                 "run.")
         return RedirectResponse(here, status_code=303)
     groups = [x.strip() for l in locations for x in str(l).split("|")
               if x.strip()]
@@ -540,9 +855,7 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
         return RedirectResponse(here, status_code=303)
     want_fs = S._str_field(flusurv).lower() in ("1", "on", "true", "yes")
     season_start = S._str_field(season_start).strip()
-    kraw = {k: v for k, v in S._knob_raw(knob_fields or {},
-                                         knobs_json).items()
-            if k not in ("groundhog.aux", "groundhog.aux_weight")}
+    kraw = knob_values(ds, knob_fields, knobs_json)
     _LAST[ds.id] = {"forecast_date": fd, "locations": groups
                     if len(groups) < len(ds.groups) else ["all"],
                     "engine": engine, "weeks_to_drop": weeks_to_drop,
@@ -700,11 +1013,171 @@ def run_page_extra(workroot: Path, res: dict) -> dict:
                 "colors": S._member_colors()})}
 
 
+# ----------------------------------------------------------- Storage tab
+
+def spec_dataset(spec) -> str:
+    """The id of the dataset a run's spec (a ledger row's JSON) names; ''
+    for a hub run or an unreadable spec."""
+    try:
+        d = json.loads(spec) if isinstance(spec, str) else (spec or {})
+        ref = (d.get("extra") or {}).get("dataset") or {}
+        return str(ref.get("id") or "") if isinstance(ref, dict) else ""
+    except Exception:
+        return ""
+
+
+def storage_rows(workroots: list) -> list:
+    """The Storage tab's rows for the stored datasets, newest first: each
+    one's size with everything it holds (the upload, its replays, its runs'
+    workroots) and the parts ("parts": the upload's data, replays and runs,
+    each only when there are replays or runs to set it apart from; "goes":
+    what a delete takes with it, '' for the upload alone). `workroots`: the
+    panel's workroot rows, each with "bytes" and the "dataset" its spec
+    names; a row on a stored dataset gets "dataset_name". "own_bytes" (the
+    upload and replays) is what the panel's total adds: the runs are
+    counted there as workroots."""
+    from app.core import custom_retro as CX
+    from app.core import retro
+    S = _S()
+    try:
+        items = _D().list_datasets()
+    except Exception:
+        return []
+    out = []
+    for ds in items:
+        own = S._tree_size(str(ds.path))
+        rep = S._tree_size(str(CX.replay_root(ds)))
+        runs = [w for w in workroots if w.get("dataset") == ds.id]
+        for w in runs:
+            w["dataset_name"] = ds.name
+        run_b = sum(int(w.get("bytes") or 0) for w in runs)
+        n_rep = len(CX.list_replays(ds))
+        n_run = len(runs)
+        # no "0 replays 0 B": a part shows only when it holds something
+        parts, goes = [], []
+        if n_rep or n_run:
+            parts.append(f"data {retro.human_bytes(own - rep)}")
+        if n_rep:
+            parts.append(f"{n_rep} replay{'' if n_rep == 1 else 's'} "
+                         f"{retro.human_bytes(rep)}")
+            goes.append(f"its {n_rep} replay{'' if n_rep == 1 else 's'}")
+        if n_run:
+            parts.append(f"{n_run} run{'' if n_run == 1 else 's'} "
+                         f"{retro.human_bytes(run_b)}")
+            goes.append(f"its {n_run} run workroot"
+                        f"{'' if n_run == 1 else 's'}")
+        out.append({"id": ds.id, "name": ds.name, "own_bytes": own,
+                    "bytes": own + run_b,
+                    "size_h": retro.human_bytes(own + run_b),
+                    "data_h": retro.human_bytes(own - rep),
+                    "replays": n_rep, "replays_h": retro.human_bytes(rep),
+                    "runs": n_run, "runs_h": retro.human_bytes(run_b),
+                    "parts": parts,
+                    "goes": ("With it go " + " and ".join(goes)
+                             + ("; the runs' ledger rows are kept."
+                                if n_run else ".")) if goes else "",
+                    "busy": busy_with(ds.id)})
+    return out
+
+
+def delete_everything(ds) -> tuple:
+    """Delete a dataset with everything its Storage size counts: the upload,
+    its replays and its runs' workroots (their ledger rows are kept, as a
+    workroot delete keeps them). Both delete routes use this, so the Data
+    and Storage tabs free the same bytes. Returns (freed, gone, kept)."""
+    S = _S()
+    from app.core import retro
+    freed, gone, kept = 0, 0, 0
+    for w in S._storage_inventory()["workroots"]:
+        if w.get("dataset") != ds.id:
+            continue
+        # the workroot delete's own checks: never a live or protected tree
+        p, _why = S._storage_target("workroot", w["id"])
+        if p is None:
+            kept += 1
+            continue
+        try:
+            size = retro.dir_size(p)
+            retro.delete_tree(p)
+            freed, gone = freed + size, gone + 1
+        except Exception:
+            kept += 1
+    freed += retro.dir_size(ds.path)
+    _D().delete(ds.id)
+    _LAST.pop(ds.id, None)
+    S._invalidate_scans()
+    return freed, gone, kept
+
+
+def deleted_message(ds, freed: int, gone: int, kept: int) -> str:
+    from app.core import retro
+    return (f"Deleted the dataset {ds.name}, its replays and {gone} run "
+            f"workroot{'' if gone == 1 else 's'}: "
+            f"{retro.human_bytes(freed)} freed. The runs' ledger rows are "
+            "kept."
+            + (f" {kept} run workroot{'' if kept == 1 else 's'} could not "
+               "be deleted and stay under Run workroots." if kept else ""))
+
+
+@router.post("/storage/datasets/{ds_id}/delete")
+def storage_delete(request: Request, ds_id: str, confirm: str = Form("")):
+    """Delete a dataset from the Storage tab with everything its size there
+    counts: the upload, its replays and its runs' workroots (their ledger
+    rows are kept, as a workroot delete keeps them). The name confirms it;
+    refused while a run or replay uses it."""
+    S = _S()
+    back = S._back(request, "/storage")
+    S._invalidate_scans()
+    ds = get_dataset(ds_id)
+    if ds is None:
+        S._flash("No such dataset; nothing was deleted.")
+        return back
+    why = busy_with(ds.id)
+    if why:
+        S._flash(f"{ds.name} was not deleted: {why}.")
+        return back
+    if confirm != ds.name:
+        S._flash(f"Deleting {ds.name} was not confirmed; nothing was "
+                 "deleted.")
+        return back
+    S._flash(deleted_message(ds, *delete_everything(ds)))
+    return back
+
+
 # -------------------------------------------------------- Retrospective
 
-def retro_context() -> dict:
+#: a replay's default weeks: the flu-season months (October to June)
+REPLAY_MONTHS = (10, 11, 12, 1, 2, 3, 4, 5, 6)
+
+
+def replay_window(dates: list) -> tuple:
+    """(first, last) a replay offers by default: the flu-season weeks
+    (October to June) of the newest season (August to July) holding 8 or
+    more of them, so a summer tail is never the default; the whole range
+    when the data span one season or no season holds 8 such weeks."""
+    if not dates:
+        return "", ""
+
+    def season(d):
+        y, m = int(d[:4]), int(d[5:7])
+        return y if m >= 8 else y - 1
+    if len({season(d) for d in dates}) < 2:
+        return dates[0], dates[-1]
+    by = {}
+    for d in dates:
+        if int(d[5:7]) in REPLAY_MONTHS:
+            by.setdefault(season(d), []).append(d)
+    for k in sorted(by, reverse=True):
+        if len(by[k]) >= 8:
+            return by[k][0], by[k][-1]
+    return dates[0], dates[-1]
+
+
+def retro_context(selected: str = "") -> dict:
     """The Retrospective tab's own-data card: datasets and their replays
-    (kept in their own card, never beside the hub seasons)."""
+    (kept in their own card, never beside the hub seasons); ``selected``
+    names the dataset the card opens on (an upload's "Replay this"), whose
+    store confirmation and notices the card shows once ("stored")."""
     from app.core import custom_retro as CX
     out = []
     try:
@@ -722,73 +1195,115 @@ def retro_context() -> dict:
                     for m, s in summ.items()}
             reps.append({"stamp": stamp, "status": st,
                          "kind": meta.get("replay_kind", ""),
+                         "modified": bool(meta.get("knobs")),
                          "first": meta.get("first"), "last": meta.get("last"),
                          "done": meta.get("weeks_completed", 0),
                          "total": meta.get("total_weeks", 0),
                          "rels": {m: v for m, v in rels.items()
                                   if v is not None}})
         dates = ds.forecast_dates()
+        w0, w1 = replay_window(dates)
         out.append({"id": ds.id, "name": ds.name, "groups": ds.groups,
                     "vintage_true": ds.vintage_true, "pf": ds.pf_eligible,
+                    "kind": ds.kind,
                     "first": dates[0] if dates else "",
                     "last": dates[-1] if dates else "",
+                    "default_first": w0, "default_last": w1,
                     "dates": dates, "replays": reps})
+    # the Model settings panel of the card's form: a second panel on the
+    # page (ids prefixed), following the card's own model select; the
+    # counts-only rows hide for a rate dataset (the card sets its kind)
+    sel = selected if any(d["id"] == selected for d in out) else ""
+    stored = _STORED.pop(sel, None) if sel else None
+    if stored:
+        stored = {"text": stored["text"],
+                  "warnings": [_whole_dates(w) for w in stored["warnings"]]}
+    panel = (dataset_panel(_S()._knob_panel("forecast",
+                                            names=PANEL_MEMBERS),
+                           where="replay", prefix="dsr-",
+                           engine="dsr-engine") if out else None)
     return {"dataset_replay": {"datasets": out,
                                "pf_state": _S()._pf_engine_state(),
-                               "running": dict(_REPLAY)}}
+                               "running": dict(_REPLAY),
+                               "names": MEMBER_NAMES,
+                               "engine_names": REPLAY_ENGINE_NAMES,
+                               "knob_panel": panel,
+                               "selected": sel,
+                               "stored": stored}}
 
 
 @router.post("/retro/dataset/run")
 def replay_start(background: BackgroundTasks, dataset: str = Form(...),
                  first: str = Form(""), last: str = Form(""),
                  groups: list = Form([]), engine: str = Form("analogue"),
-                 weeks_to_drop: int = Form(0), flusurv: str = Form("")):
-    """Replay a week range of a dataset (the Retrospective tab's card)."""
+                 weeks_to_drop: str = Form(""), flusurv: str = Form(""),
+                 particles: str = Form(""), replicates: str = Form(""),
+                 season_start: str = Form(""), drop_same_day: str = Form(""),
+                 knob_fields: dict = Depends(_knob_fields),
+                 knobs: str = Form("")):
+    """Replay a week range of a dataset (the Retrospective tab's card),
+    with the Model settings panel's values (dataset_panel): resolved as a
+    dataset run resolves them, recorded with the replay when any is off
+    the shipped value, and none that does not apply."""
     S = _S()
     from app.core import custom_retro as CX
+    back = RedirectResponse("/retro#dataset-replay", status_code=303)
     ds = get_dataset(dataset)
     if ds is None:
         S._flash("That dataset no longer exists. Nothing was started.")
-        return RedirectResponse("/retro#dataset-replay", status_code=303)
+        return back
     if engine not in CX.ENGINES:
-        S._flash("Choose the Groundhog, or the Groundhog with the plain SIHRS "
-                 "particle filter (plain). Nothing was started.")
-        return RedirectResponse("/retro#dataset-replay", status_code=303)
+        S._flash(f"Choose {GROUNDHOG} only, or {GROUNDHOG} and the plain "
+                 "SIHRS particle filter. Nothing was started.")
+        return back
     if engine == "all" and not (ds.pf_eligible
                                 and S._pf_engine_state() == "ready"):
         S._flash(f"The plain SIHRS particle filter cannot replay {ds.name}: "
                  f"{_dataset_view(ds)['pf_why']}. Nothing was started.")
-        return RedirectResponse("/retro#dataset-replay", status_code=303)
+        return back
     weeks = CX.weeks_between(ds, S._str_field(first).strip(),
                              S._str_field(last).strip())
     if not weeks:
         S._flash(f"No weeks of {ds.name} fall in that range. Nothing was "
                  "started.")
-        return RedirectResponse("/retro#dataset-replay", status_code=303)
+        return back
     pick = [g for g in groups if g in ds.groups]
     if not pick or "all" in groups:
         pick = list(ds.groups)
-    k = S._int_field(weeks_to_drop)
-    if not 0 <= k <= 4:
-        S._flash("Weeks to drop must be 0 to 4. Nothing was started.")
-        return RedirectResponse("/retro#dataset-replay", status_code=303)
-    extra = {}
-    if S._str_field(flusurv).lower() in ("1", "on", "true", "yes"):
-        from app.core.engines import analogue as _an
-        fn = _an.aux_preset("flusurv")
-        extra = {"aux_pools": fn(None, 0, None)["aux_pools"],
-                 "analogue_aux": fn.__name__.split(":", 1)[1]}
+    # the panel's values: the older field names ride as legacy fields; a
+    # fixed season start must precede every replayed week (check_dates)
+    legacy = {f: S._str_field(v).strip() for f, v in (
+        ("particles", particles), ("replicates", replicates),
+        ("season_start", season_start), ("weeks_to_drop", weeks_to_drop),
+        ("drop_same_day", drop_same_day)) if S._str_field(v).strip()}
+    try:
+        nd = S._knobs.resolve(
+            knob_values(ds, knob_fields, knobs), engine, scope="forecast",
+            forecast_date=weeks[0], oracle_step=False, legacy=legacy,
+            check_dates=tuple(weeks[-1:]))
+        extra = {}
+        if S._str_field(flusurv).lower() in ("1", "on", "true", "yes"):
+            from app.core.engines import analogue as _an
+            fn = _an.aux_preset("flusurv")
+            extra = {"aux_pools": fn(None, 0, None)["aux_pools"],
+                     "analogue_aux": fn.__name__.split(":", 1)[1]}
+        S._knobs.write_extra(nd, extra)
+    except ValueError as e:                  # KnobError is a ValueError
+        S._flash(f"Model settings: {e}. Nothing was started.")
+        return back
+    kspec = S._knobs.spec_fields(nd)
+    k = int(kspec.pop("weeks_to_drop", 0))
     with S._engine_lock:
         if S._status.get("running") or _REPLAY:
             S._flash("A run or replay holds the engine; wait for it or stop "
                      "it first. Nothing was started.")
-            return RedirectResponse("/retro#dataset-replay", status_code=303)
+            return back
         live = sorted(x for x in S._known_seasons()
                       if S._season_status(x) in S._RETRO_ACTIVE)
         if live:
             S._flash("A season replay holds the engine (" + ", ".join(live)
                      + "); stop or pause it first. Nothing was started.")
-            return RedirectResponse("/retro#dataset-replay", status_code=303)
+            return back
         stamp = CX.new_stamp(ds)
         _REPLAY.update({"id": ds.id, "stamp": stamp})
         S._status["running"] = f"dataset-replay:{stamp}"
@@ -799,13 +1314,18 @@ def replay_start(background: BackgroundTasks, dataset: str = Form(...),
         S._status["settings"] = []
         S._status["workroot"] = None
         S._status["expected_total"] = None
+    # knob keywords only when set: a shipped replay's call is as before
     background.add_task(replay_worker, ds.id, stamp, weeks, pick, engine, k,
-                        extra)
+                        extra, **kspec)
     return RedirectResponse(f"/retro/dataset/{ds.id}/{stamp}",
                             status_code=303)
 
 
-def replay_worker(ds_id, stamp, weeks, groups, engine, k, extra) -> None:
+def replay_worker(ds_id, stamp, weeks, groups, engine, k, extra,
+                  **kspec) -> None:
+    """One dataset replay (custom_retro.run) holding the engine claim;
+    `kspec`: the knobs' RunSpec fields (particles, replicates, jitter,
+    season_start, drop_same_day), only those set."""
     S = _S()
     from app.core import custom_retro as CX
     guard = S._sleep_guard()
@@ -823,7 +1343,7 @@ def replay_worker(ds_id, stamp, weeks, groups, engine, k, extra) -> None:
         stop = out / "STOP"
         CX.run(ds, weeks, groups, engine=engine, weeks_to_drop=k,
                extra=extra, out_dir=out, pf_state=state, progress=progress,
-               stop_file=stop, on_workroot=on_wr)
+               stop_file=stop, on_workroot=on_wr, **kspec)
     except Exception as e:
         S._status["log"].append(f"dataset replay {stamp}: ERROR {e}")
     finally:
@@ -905,10 +1425,22 @@ def replay_page(request: Request, ds_id: str, stamp: str, h: str = "0"):
         ("weeks", f"{meta.get('total_weeks', 0)} ({meta.get('first')} to "
                   f"{meta.get('last')})"),
         ("groups", ", ".join(meta.get("groups") or [])),
-        ("Groundhog", meta.get("analogue") or ""),
+        # the donors (a replay recorded before the own-data label
+        # carries only the full label)
+        (GROUNDHOG, meta.get("analogue_donors") or meta.get("analogue")
+         or ""),
         ("particle filter", pf),
         ("weeks dropped", str(meta.get("weeks_to_drop", 0))),
         ("baseline", meta.get("baseline") or "")]
+    if meta.get("knobs"):
+        # recorded only off the shipped values, as a hub replay's is
+        try:
+            K = S._knobs
+            settings.append(("model settings",
+                             K.label(K.from_record(meta["knobs"]))))
+        except Exception:
+            settings.append(("model settings",
+                             "modified (unreadable record)"))
     return S.templates.TemplateResponse(request, "retro_dataset.html", {
         "active": "Retrospective", "ds": ds, "stamp": stamp, "meta": meta,
         "status": status, "live": live, "h": h,

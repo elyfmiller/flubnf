@@ -17,6 +17,13 @@
    <button class="quiet">Use</button>
   </form>
   {% endif %}
+  {# your own data, uploaded here: the shared upload box; "Forecast this"
+     stores it and reopens this tab on it #}
+  {% import "_dataset_upload.html" as dsup %}
+  <details class="dsup-fold" id="fc-upload">
+   <summary>Upload your own data</summary>
+   {{ dsup.box("forecast") }}
+  </details>
   <form method="post" action="{{ '/run/dataset' if dataset else '/run' }}" id="fcform">
    {% if dataset %}<input type="hidden" name="dataset" value="{{ dataset.id }}">
    <p class="hint">{{ dataset.name }}: {{ "vintage-true" if dataset.vintage_true else "final data, not vintage-true" }}.
@@ -130,7 +137,7 @@
    <select name="engine" id="model-pick">{% for e in engines %}
      <option value="{{ e }}" {% if e == form.engine %}selected{% endif %}
        {% if e != "analogue" and not dataset.pf_ok %}disabled{% endif %}>{{ engine_names.get(e, e) }}</option>{% endfor %}</select>
-   {% if not dataset.pf_ok %}<p class="hint">Groundhog only: {{ dataset.pf_why }}.</p>{% endif %}
+   {% if not dataset.pf_ok %}<p class="hint">{{ engine_names.analogue }}: {{ dataset.pf_why }}.</p>{% endif %}
    <div class="lblrow"><label class="ck" for="fc-flusurv"><input type="checkbox" name="flusurv" value="1" id="fc-flusurv"
      {% if form.flusurv %}checked{% endif %}> Add FluSurv-NET donors</label>
     {{ tips.tip("fc-flusurv", "FluSurv-NET donors", "Off by default: the Groundhog draws growth only from your data's earlier seasons. Tick only for US influenza hospitalization-like data, where the FluSurv-NET bank's seasons are relevant.") }}</div>

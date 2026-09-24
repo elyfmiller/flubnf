@@ -43,9 +43,10 @@ templates under app/ui/templates):
                       /api/retro/{s}/report_path           retro_season.html
   Forecast            POST /run (form and rerun entry to _run_all)
   Custom datasets     app/ui/datasets_ui.py's router: POST /data/datasets,
-                      /data/datasets/{id}/delete, /run/dataset,
-                      /retro/dataset/run; GET /retro/dataset/{id}/{stamp};
-                      Data, Forecast and /api/series take ?source=<id>
+                      /data/datasets/check, /data/datasets/{id}/delete,
+                      /run/dataset, /retro/dataset/run; GET
+                      /retro/dataset/{id}/{stamp}; Data, Forecast and
+                      /api/series take ?source=<id>, /retro ?dataset=<id>
   Startup warm        _start_background_warm() at import
 """
 from __future__ import annotations
@@ -1138,8 +1139,7 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
     ctx["vintage_rows"] = _vintage_rows(vs)
     # the "Your datasets" card (built here so /freshness keeps it)
     from app.ui import datasets_ui as _dsu
-    ctx.update({"datasets": _dsu.dataset_rows(), "upload": None, "ds": None,
-                "max_mb": _dsu.max_mb()})
+    ctx.update({"datasets": _dsu.dataset_rows(), "upload": None, "ds": None})
     if not vs:
         return ctx
     latest = vs[-1]
@@ -1276,15 +1276,17 @@ def _live_workroot_ids() -> set:
 
 def _storage_inventory() -> dict:
     """Storage panel rows with sizes: workroots, live retro seasons, retro
-    archives, report archives (each with a busy flag), plus the protected
-    trees (no controls). total_bytes/total_h sum the four managed
-    categories only."""
+    archives, report archives, your datasets (each with a busy flag), plus
+    the protected trees (no controls). total_bytes/total_h sum the managed
+    categories only, each byte once: a dataset adds its own folder (the
+    upload and its replays), its runs being counted as workroots."""
     import re as _re
     from app.core import retro
     from app.core.runs import APP_STATE, is_research, run_display
+    from app.ui import datasets_ui as _dsu
     from flubnf.settings import HUB
     inv = {"workroots": [], "retro": [], "retro_archives": [],
-           "report_archives": [], "protected": [],
+           "report_archives": [], "datasets": [], "protected": [],
            "total_bytes": 0, "total_h": ""}
     live_ids = _live_workroot_ids()
     console_busy = bool(_status.get("running"))
@@ -1308,7 +1310,9 @@ def _storage_inventory() -> dict:
                 "scope": disp["scope"], "recorded": disp["recorded"],
                 "research": is_research(row.get("spec", "")),
                 "modified": _runs.is_modified(row.get("spec", "")),
-                "busy": p.name in live_ids})
+                "busy": p.name in live_ids,
+                # for the dataset rows: the run's size and its dataset
+                "bytes": size, "dataset": _dsu.spec_dataset(row.get("spec"))})
     if RETRO_ROOT.is_dir():
         for p in sorted(RETRO_ROOT.iterdir()):
             if not p.is_dir() and not p.is_symlink():
@@ -1339,6 +1343,8 @@ def _storage_inventory() -> dict:
         inv["report_archives"].append({
             "id": d, "size_h": retro.human_bytes(size),
             "busy": console_busy})
+    inv["datasets"] = _dsu.storage_rows(inv["workroots"])
+    inv["total_bytes"] += sum(d["own_bytes"] for d in inv["datasets"])
     for label, p in (("Production engine record", RETRO_RESEAL),
                      ("Sealed validation record", RETRO_SEAL),
                      ("FluSight hub clone", HUB)):
@@ -2902,10 +2908,12 @@ def _int_field(v, default: int = 0) -> int:
         return default
 
 
-def _knob_panel(scope: str, form: dict | None = None) -> dict | None:
+def _knob_panel(scope: str, form: dict | None = None,
+                **panel_kw) -> dict | None:
     """The Model settings panel's context (knobs.panel) with the values a
     form last held: the knob fields, then the older field names. None
-    (no panel) if the registry cannot be read, so a page still renders."""
+    (no panel) if the registry cannot be read, so a page still renders.
+    `panel_kw` passes through to knobs.panel (a dataset's member names)."""
     form = form or {}
     vals = {k: str(v) for k, v in (form.get("knobs") or {}).items()}
     for fld, key in _knobs.LEGACY_FIELDS.items():
@@ -2916,7 +2924,7 @@ def _knob_panel(scope: str, form: dict | None = None) -> dict | None:
             v = "1" if _int_field(v) else "0"
         vals.setdefault(key, str(v))
     try:
-        return _knobs.panel(scope, vals)
+        return _knobs.panel(scope, vals, **panel_kw)
     except Exception:
         return None
 
@@ -3696,7 +3704,7 @@ async def sandbox_upload_data(request: Request, name: str):
     if not isinstance(up, UploadFile) or not up.filename:
         _sandbox_upload_report[name] = {"problems": ["Choose a CSV file to upload."]}
         return _sandbox_redirect(name)
-    kind = str(form.get("kind") or "count")
+    kind = str(form.get("kind") or "")          # '' = from the values
     try:
         ds = await run_in_threadpool(sandbox_mod.ingest_upload, up.file,
                                      up.filename, kind, cap)
@@ -4539,7 +4547,7 @@ def _retro_national_name() -> str:
 
 
 @app.get("/retro", response_class=HTMLResponse)
-def retro_index(request: Request):
+def retro_index(request: Request, dataset: str = ""):
     from app.core import retro as _retro
     from app.core.retro import available_seasons, season_vintages
     seasons = []
@@ -4583,7 +4591,7 @@ def retro_index(request: Request):
     # the own-data replays: their own card, never beside the hub seasons
     from app.ui import datasets_ui as _dsu
     return templates.TemplateResponse(request, "retro.html",
-                                      {**_dsu.retro_context(),
+                                      {**_dsu.retro_context(dataset),
                                        "active": "Retrospective", "seasons": seasons,
                                        "state_names": _retro_state_names(),
                                        "default_width": DEFAULT_SHARD_WIDTH,
@@ -5881,6 +5889,8 @@ def run_models(request: Request,
 # === Custom datasets: upload, browse, forecast, replay (app/ui/datasets_ui.py) ===
 from app.ui import datasets_ui as _datasets_ui              # noqa: E402
 app.include_router(_datasets_ui.router)
+# the upload box's size limit, wherever the box is placed
+templates.env.globals["dataset_upload_mb"] = _datasets_ui.max_mb
 
 
 # === Startup warm (LAST, so every function it reaches is defined) ===

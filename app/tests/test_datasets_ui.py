@@ -75,12 +75,13 @@ def test_upload_stores_and_lists_the_dataset():
 
 
 def test_a_bad_upload_shows_every_problem_inline_and_stores_nothing():
-    raw = b"date,target_group,value\n2024-08-04,A,-1\nbad,A/B,x\n"
+    raw = (b"date,target_group,value\n2024-08-04,A,-1\nbad,A/B,x\n"
+           b"2024-08-10,A,2\n")
     r = upload(raw, "bad")
     assert r.status_code == 422
     assert "Nothing was stored." in r.text
     assert "negative" in r.text and "could not be parsed" in r.text
-    assert "not Saturdays" in r.text
+    assert "different weekdays" in r.text
     assert D.list_datasets() == []
     assert not srv._status.get("flash")          # inline, not the flash slot
 
@@ -97,9 +98,11 @@ def test_a_multi_target_file_offers_its_targets():
     assert r2.status_code == 303
 
 
-def test_the_kind_must_be_declared():
-    r = upload(grouped_bytes(), kind="")
+def test_an_undeclared_kind_comes_from_the_values_and_a_bad_one_is_refused():
+    r = upload(grouped_bytes(), kind="percent")
     assert r.status_code == 400 and "counts or rates" in r.text
+    ds = stored(kind="")
+    assert ds.kind == "count" and ds.meta["options"]["kind_from"] == "values"
 
 
 def test_oversize_is_refused_by_content_length(monkeypatch):

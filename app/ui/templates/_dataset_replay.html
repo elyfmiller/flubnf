@@ -1,18 +1,29 @@
 {# "Replay your own data" on the Retrospective tab (app/ui/datasets_ui.py):
-   its own card, below the FluSight seasons and never among them. Tips
-   imported by retro.html. #}
+   its own card, below the FluSight seasons and never among them, with the
+   shared upload box ("Replay this" stores a file and reopens this card on
+   it). Tips imported by retro.html. #}
+{% import "_dataset_upload.html" as dsup %}
 {% set dr = dataset_replay %}
 <div class="card" id="dataset-replay"><h2>Replay your own data
  {{ tips.tip("rt-ds-about", "replaying your own data", "Each week of the range is forecast with only the data before it and scored against the dataset's later weeks, relative to an in-house persistence baseline (not FluSight-baseline). Replays are kept with the dataset, apart from the FluSight seasons, and never published.") }}</h2>
- <p class="hint">A week range of a dataset from the Data tab, kept apart from the FluSight seasons.</p>
+ <p class="hint">A week range of one of your datasets, kept apart from the FluSight seasons.</p>
+ {% if dr.stored %}{# "Replay this" just stored it: said here, where the page lands #}
+ <div class="banner dsr-stored" role="status"><p>{{ dr.stored.text }}</p>
+  {% if dr.stored.warnings %}<ul class="dsnotes">{% for w in dr.stored.warnings %}<li>{{ w }}</li>{% endfor %}</ul>{% endif %}</div>
+ {% endif %}
  {% if not dr.datasets %}
- <p class="hint">No datasets yet: upload one on the <a href="/data#datasets">Data tab</a>.</p>
+ <p class="hint">No datasets yet: drop a CSV below.</p>
+ {{ dsup.box("replay") }}
  {% else %}
+ <details class="dsup-fold" id="dsr-upload">
+  <summary>Upload another CSV</summary>
+  {{ dsup.box("replay") }}
+ </details>
  <form method="post" action="/retro/dataset/run" id="dsr-form">
   <div class="row" style="align-items:flex-end">
    <span><label for="dsr-ds">Dataset</label>
     <select name="dataset" id="dsr-ds">{% for d in dr.datasets %}
-     <option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select></span>
+     <option value="{{ d.id }}"{% if d.id == dr.selected %} selected{% endif %}>{{ d.name }}</option>{% endfor %}</select></span>
    <span><label for="dsr-first">From</label><select name="first" id="dsr-first"></select></span>
    <span><label for="dsr-last">To</label><select name="last" id="dsr-last"></select></span>
   </div>
@@ -20,14 +31,14 @@
    {{ tips.tip("dsr-kind-tip", "vintage-true and final data", "With an as_of column, each replayed week sees the snapshot that held it, as it stood then. Without one, each week is cut from the final series: later revisions leak in, so the scores are optimistic and are labelled so wherever they appear.") }}</p>
   {{ tips.label("Groups", "dsr-groups", "Every group by default; a national group is scored beside the others, never pooled.", for_="dsr-groups") }}
   <select name="groups" id="dsr-groups" multiple size="4"></select>
-  {{ tips.label("Models", "dsr-engine", "The Groundhog is instant. The plain SIHRS particle filter (no Oracle step) needs counts with a population and the engine, and takes minutes per week.", for_="dsr-engine") }}
-  <select name="engine" id="dsr-engine">
-   <option value="analogue">Groundhog only</option>
-   <option value="all">Groundhog and plain SIHRS particle filter</option></select>
-  {{ tips.label("Weeks to drop", "dsr-drop", "Ignore each week's newest 0 to 4 weeks (the latest reports, often still incomplete); horizons keep their labels.", for_="dsr-drop") }}
-  <input type="number" name="weeks_to_drop" id="dsr-drop" value="0" min="0" max="4">
+  {{ tips.label("Models", "dsr-engine", dr.names.analogue ~ " is instant. The plain SIHRS particle filter (no Oracle step) needs counts with a population and the engine, and takes minutes per week.", for_="dsr-engine") }}
+  <select name="engine" id="dsr-engine">{% for e, text in dr.engine_names.items() %}
+   <option value="{{ e }}">{{ text }}</option>{% endfor %}</select>
   <div class="lblrow"><label class="ck" for="dsr-fs"><input type="checkbox" name="flusurv" value="1" id="dsr-fs"> Add FluSurv-NET donors</label>
    {{ tips.tip("dsr-fs", "FluSurv-NET donors", "Off by default. Tick only for US influenza hospitalization-like data.") }}</div>
+  {# the shared Model settings panel (weeks to drop is in its fit window),
+     ids prefixed dsr-: the FluSight replay's panel is on this page too #}
+  {% with knob_panel = dr.knob_panel %}{% include "_model_settings.html" %}{% endwith %}
   <button class="gold" data-guard="console-run">Replay</button>
  </form>
  {% for d in dr.datasets if d.replays %}
@@ -35,8 +46,9 @@
  {% for r in d.replays %}
  <div class="archrow">
   <span class="grow"><strong>{{ r.first }} to {{ r.last }}</strong>
+   {% if r.modified %}<span class="pill warn">modified settings</span>{% endif %}
    <span class="hint">· {{ r.kind }} · {{ r.done }}/{{ r.total }} weeks · {{ r.status }}{% for m, v in r.rels.items() %}
-    · {{ "Groundhog" if m == "analogue" else "plain SIHRS PF" }} relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{% endfor %}{% if r.rels %} vs in-house persistence baseline{% endif %}</span></span>
+    · {{ dr.names.get(m, m) }} relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{% endfor %}{% if r.rels %} vs in-house persistence baseline{% endif %}</span></span>
   <a href="/retro/dataset/{{ d.id }}/{{ r.stamp }}"><button class="quiet" type="button">Results →</button></a>
  </div>
  {% endfor %}
@@ -53,8 +65,9 @@
    }
    function sync(){
      const d = DS.find(x=>x.id===$('dsr-ds').value) || DS[0];
-     opts($('dsr-first'), d.dates, d.dates[0]);
-     opts($('dsr-last'), d.dates, d.dates[d.dates.length-1]);
+     // the newest flu season's weeks by default (datasets_ui.replay_window)
+     opts($('dsr-first'), d.dates, d.default_first || d.dates[0]);
+     opts($('dsr-last'), d.dates, d.default_last || d.dates[d.dates.length-1]);
      const g=$('dsr-groups'); g.innerHTML='';
      d.groups.forEach(n=>{const o=document.createElement('option'); o.value=n;
        o.textContent=n; o.selected=true; g.appendChild(o);});
@@ -64,6 +77,10 @@
      const pf=$('dsr-engine').querySelector('option[value=all]');
      pf.disabled = !(d.pf && PF);
      if(pf.disabled) $('dsr-engine').value='analogue';
+     // the panel's counts-only rows (the output floor) follow the data
+     const ms=$('dsr-model-settings');
+     if(ms){ ms.dataset.kind = d.kind || '';
+       ms.dispatchEvent(new Event('ms-refilter')); }
    }
    $('dsr-ds').addEventListener('change', sync);
    sync();

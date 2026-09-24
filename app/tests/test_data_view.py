@@ -181,7 +181,7 @@ def test_data_page_stays_read_only(archive):
     html = client.get("/data").text
     assert html.count('method="post"') == 3
     assert 'action="/freshness"' in html and 'action="/data/pull"' in html
-    assert 'action="/data/datasets"' in html
+    assert 'action="/data/datasets#datasets"' in html
     assert 'method="get" action="/data"' in html
 
 

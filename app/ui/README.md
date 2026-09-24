@@ -15,7 +15,8 @@ Every route lives in `server.py`, grouped under `# === <Tab> ===` banners, excep
 | GET | `/favicon.ico` | `favicon` | | `base.html` |
 | **Data** | | | | |
 | GET | `/data` | `data_page` (`?source=<dataset>`: `datasets_ui.data_context`) | `data.html` | nav; `data.html` vintage form |
-| POST | `/data/datasets` | `datasets_ui.upload` | `data.html` (problems) or redirect | `_datasets_card.html` form |
+| POST | `/data/datasets/check` | `datasets_ui.check` | JSON: the result box's HTML (`_dataset_check.html`), the inferred kind, the targets | `static/dataset_upload.js` |
+| POST | `/data/datasets` | `datasets_ui.upload` | `data.html` (problems) or redirect to Data, Forecast or Retrospective (`next`) | `_dataset_upload.html` form (Data, Forecast, Retrospective) |
 | POST | `/data/datasets/{id}/delete` | `datasets_ui.delete` | redirect | `_datasets_card.html` form |
 | POST | `/data/pull` | `data_pull` | redirect | `data.html` form |
 | POST | `/freshness` | `freshness` | `data.html` | `data.html` form |
@@ -37,7 +38,7 @@ Every route lives in `server.py`, grouped under `# === <Tab> ===` banners, excep
 | GET | `/output/report` | `output_report` | weekly report | `output.html` link and date picker |
 | GET | `/output/report/download` | `output_report_download` | | `output.html` |
 | **Retrospective** | | | | |
-| GET | `/retro` | `retro_index` | `retro.html` | nav |
+| GET | `/retro` | `retro_index` (`?dataset=<id>`: the replay card opens on it) | `retro.html` | nav; the upload box's "Replay this" |
 | POST | `/retro/run` | `retro_run` | redirect | `retro.html` start and resume forms |
 | POST | `/retro/stop` | `retro_stop` | redirect | `base.html` guard modal |
 | POST | `/retro/{season}/stop`, `/pause`, `/resume` | `retro_season_stop`, `_pause`, `_resume` | | `retro.html`, `retro_season.html` forms |
@@ -59,6 +60,7 @@ Every route lives in `server.py`, grouped under `# === <Tab> ===` banners, excep
 | POST | `/storage/reclaim` | `storage_reclaim` | | `runs.html` `#reclaim-form` |
 | POST | `/storage/delete` | `storage_delete` | | `runs.html` forms |
 | POST | `/storage/clear-workroots` | `storage_clear_workroots` | | `runs.html` `#clear-workroots` |
+| POST | `/storage/datasets/{id}/delete` | `datasets_ui.storage_delete` (the dataset, its replays and its runs' workroots; the name confirms) | redirect | `runs.html` Your datasets forms |
 | POST | `/runs/clear` | `runs_clear` | | `runs.html` `#clear-ledger` |
 | **Models** | | | | |
 | GET | `/models` | `models_page` (calls `model_page`) | `model.html` | nav |
@@ -89,10 +91,12 @@ Every route lives in `server.py`, grouped under `# === <Tab> ===` banners, excep
 | `research_run.html` | `base.html`, only on `/model/pf2s` (`research_panel`) |
 | `sandbox_views.html` | `sandbox.html`; loads `static/model-views.js` and `.css` |
 | `sandbox_data.html` | `sandbox.html`, inside the editor's save form |
-| `_datasets_card.html` | `data.html` (Your datasets: upload and list) |
+| `_datasets_card.html` | `data.html` (Your datasets: the upload box and the list) |
+| `_dataset_upload.html` | the upload box: `_datasets_card.html`, `forecast.html`, `_dataset_replay.html`; loads `static/dataset_upload.js` |
+| `_dataset_check.html` | the upload box's result (problems, column mapping, preview): `_dataset_upload.html`, and `datasets_ui.render_check` for `/data/datasets/check` |
 | `_dataset_run.html` | `run.html`, for a run on a custom dataset (fans, export files) |
 | `_dataset_replay.html` | `retro.html` (Replay your own data) |
-| `_model_settings.html` | `forecast.html`, `retro.html` (Model settings panel; loads `static/model_settings.js`) |
+| `_model_settings.html` | the Model settings panel: `forecast.html`, `retro.html`, and `_dataset_replay.html` (a second panel on that page: `datasets_ui.dataset_panel`, ids prefixed `dsr-`); loads `static/model_settings.js` |
 | `_tips.html` | macros for the "?" tips, imported by most pages (`base.html` loads `static/tips.js`) |
 
 Template names that differ from their tab: `runs.html` is Storage, `run.html` is one run's page, `model.html` is Models.
@@ -106,7 +110,9 @@ Template names that differ from their tab: `runs.html` is Storage, `run.html` is
 | `retro_progress.js` | `retro.html`, `retro_season.html` |
 | `quips.js` | `forecast.html`, `retro.html`, `retro_season.html` |
 | `plotly.min.js` | `data.html`, `forecast.html`, `model.html`, `retro_season.html`, `retro_dataset.html`, `run.html` (dataset runs), `sandbox.html` |
-| `dataset-template.csv` | `_datasets_card.html` download link (FluBNF's synthetic grouped-CSV template: three groups, Overall the sum, with populations) |
+| `dataset-template.csv` | `_dataset_upload.html` download link (FluBNF's synthetic grouped-CSV template: three groups, Overall the sum, with populations) |
+| `dataset_upload.js` | `_dataset_upload.html` (drop or choose, check at once, recheck on kind/target/column changes) |
+| `model_settings.js` | `_model_settings.html` (every panel on the page, each set up once: badge, engine and kind filters, reset, the override's reason) |
 | `bngl-editor.js`, `bngl-editor.css`, `sandbox.js` | `sandbox.html` |
 | `model-views.js`, `model-views.css` | `sandbox_views.html` |
 | `brand/`, `fonts/` | `base.html`, `home.html`, `/favicon.ico` (icons); `base.html` (DM Sans) |

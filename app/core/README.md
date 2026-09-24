@@ -17,9 +17,9 @@ One line per module, with the role tag its docstring opens with and its main cal
 | `runs.py` | PRODUCTION | run ledger, workroot leasing, seeds, run-display helpers | server, engines, `retro` |
 | `knobs.py` | REGISTRY | every model tunable: shipped value read from its constant, bounds, members affected, card phrase; parse, digest, label (not read at run time yet) | `flubnf knobs` |
 | `data.py` | PRODUCTION | vintage registry and hub freshness | server Data tab, `retro`, `scoring`, engines |
-| `datasets.py` | RESEARCH | custom target data (grouped or hubverse CSV): validate, store under `app/state/datasets/`, FluSight-shaped locations and vintage CSVs; `from_spec` for the engines | `flubnf dataset`, `app/ui/datasets_ui.py`, both engines |
+| `datasets.py` | RESEARCH | custom target data (grouped or hubverse CSV): the one lenient reader (separators, encodings, header aliases and column mapping, any one weekday to Saturday; ambiguity refused), validate, store under `app/state/datasets/`, FluSight-shaped locations and vintage CSVs; `from_spec` for the engines | `flubnf dataset`, `app/ui/datasets_ui.py`, `sandbox.py` uploads, both engines |
 | `custom_run.py` | RESEARCH | one forecast on a custom dataset: Groundhog and plain SIHRS filter, hubverse exports under non-hub names, persistence-baseline scoring | `app/ui/datasets_ui.py` |
-| `custom_retro.py` | RESEARCH | replay a week range on a custom dataset, stored under the dataset | `app/ui/datasets_ui.py` |
+| `custom_retro.py` | RESEARCH | replay a week range on a custom dataset, stored under the dataset, with the Model settings knobs it was given recorded | `app/ui/datasets_ui.py` |
 | `horizons.py` | PRODUCTION | canonical vs stored horizon translation | `retro`, engines, `playback`, server |
 | `playback.py` | PRODUCTION | season-player payloads and their cache | server `/api/retro/...`, `report_season`, `site_build` |
 | `reclaim.py` | PRODUCTION | storage-reclaim policy | server Storage tab, `retro` |

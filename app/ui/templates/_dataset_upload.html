@@ -1,0 +1,50 @@
+{# The one upload box, on the Data tab, the Forecast tab and the
+   Retrospective tab's replay card (app/ui/datasets_ui.py):
+
+   {% import "_dataset_upload.html" as dsup %}{{ dsup.box("forecast") }}
+
+   Drop a CSV on the zone, or choose one with the file input inside it (a
+   native input: keyboard and screen readers reach it as usual). With
+   script (static/dataset_upload.js) the file is checked at once and the
+   result box (_dataset_check.html) shows every problem, a column mapping,
+   or a preview whose buttons store it and open it where it is needed; a
+   status line (role=status) says in a few words what the check found.
+   Without script the form stores it (POST /data/datasets) and a refusal
+   comes back on the Data tab, scrolled to its upload box (#datasets) with
+   the problems announced (role=alert). `upload` is a refused store's
+   report. #}
+{% import "_tips.html" as tips %}
+{% import "_dataset_check.html" as dscheck %}
+{% macro box(where, upload=none) -%}
+{% set fid = "dsup-" ~ where %}
+<form method="post" action="/data/datasets#datasets" enctype="multipart/form-data"
+  class="dsup" id="{{ fid }}" data-dsup data-where="{{ where }}">
+ <label class="dsdrop" for="{{ fid }}-file" data-drop>
+  <span class="dsdrop-t">Drop a CSV here, or choose a file</span>
+  <span class="dsdrop-on" aria-hidden="true">Drop to check</span>
+  <input type="file" name="file" id="{{ fid }}-file" required
+    accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain">
+ </label>
+ <p class="hint">A weekly table: a date, a group and a value per row.
+  {{ tips.tip(fid ~ "-about", "the file", "Columns may be named date (or week, week_ending, target_end_date), group (or target_group, location, region, jurisdiction) and value (or count, cases, admissions, observation), with an optional population; other columns are ignored. Comma, semicolon or tab separated; UTF-8, UTF-16 or Windows-1252. Dates as YYYY-MM-DD or M/D/YYYY on one weekday, moved to the Saturday that ends each week. Up to " ~ dataset_upload_mb() ~ " MB.") }}
+  <a href="/static/dataset-template.csv" download="dataset-template.csv">Template CSV</a>
+  {{ tips.tip(fid ~ "-template", "the template", "Made-up example data (three groups, Overall the sum of the other two, 143 weeks from January 2022, with populations): the columns and date style an upload can use.") }}</p>
+ <div class="dsup-fields">
+  <div>{{ tips.label("Name", fid ~ "-name", "Shown wherever the dataset is used; the file name unless you change it.", for_=fid ~ "-name") }}
+   <input type="text" name="name" id="{{ fid }}-name" maxlength="80" data-name
+     value="{{ upload.name if upload else '' }}" placeholder="the file name"></div>
+  <div>{{ tips.label("Values are", fid ~ "-kind", "Read from the values: whole numbers are counts, anything else rates; numbers like 1.234, whose dot could separate thousands, are left to you. Counts with a population can also run the particle filter and are exported as whole numbers; rates run the Groundhog (own data) only.", for_=fid ~ "-kind") }}
+   <input type="hidden" name="kind_auto" value="" data-kind-auto>
+   <select name="kind" id="{{ fid }}-kind" data-kind>
+    <option value="" {% if not upload or not upload.kind %}selected{% endif %}>from the values</option>
+    <option value="count" {% if upload and upload.kind == "count" %}selected{% endif %}>counts</option>
+    <option value="rate" {% if upload and upload.kind == "rate" %}selected{% endif %}>rates or proportions</option>
+   </select></div>
+ </div>
+ <p class="dsup-status" data-dsup-status role="status"></p>
+ <div class="dsup-result" data-result>{% if upload and upload.chk %}{{ dscheck.result(upload.chk, where) }}{% endif %}</div>
+ <div class="dsup-go"><button class="gold" name="next"
+   value="{{ where }}">Upload and check</button></div>
+</form>
+<script src="/static/dataset_upload.js" defer></script>
+{%- endmacro %}

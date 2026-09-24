@@ -5,8 +5,9 @@ model card states it.
 Each default is READ from the constant the engine uses (never restated),
 and app/tests/test_knobs.py holds the defaults, the source labels and the
 card phrases in step with the code and model-metadata/*.yml. The console
-(/run), the retrospective (/retro/run, `flubnf retro --knob`) and the
-Model settings panel go through resolve() and write_extra() below; see
+(/run), the retrospective (/retro/run, `flubnf retro --knob`), a custom
+dataset's run and replay (app/ui/datasets_ui.py) and the Model settings
+panel go through resolve() and write_extra() below; see
 "Stage 2" for the record a modified run carries and what reads it.
 
 Members use the submit.MODEL_ABBR keys: "pf" is the Oracle SIHRS (the
@@ -900,8 +901,9 @@ def _raw(knob: Knob, v) -> str:
     return str(v)
 
 
-def _tip(knob: Knob, scope: str) -> str:
-    who = " and ".join(MEMBER_NAMES[m] for m in MEMBERS if m in knob.affects)
+def _tip(knob: Knob, scope: str, names: Optional[Mapping] = None) -> str:
+    names = names or MEMBER_NAMES
+    who = " and ".join(names[m] for m in MEMBERS if m in knob.affects)
     dflt = ("August 1 of the forecast's season" if callable(knob.default)
             else _fmt(knob.default))
     unit = f" {knob.unit}" if knob.unit and knob.kind in ("int", "float") else ""
@@ -915,14 +917,17 @@ def _tip(knob: Knob, scope: str) -> str:
     return " ".join(bits)
 
 
-def panel(scope: str, values: Optional[Mapping] = None) -> dict:
+def panel(scope: str, values: Optional[Mapping] = None,
+          names: Optional[Mapping] = None) -> dict:
     """The Model settings panel, rendered by templates/_model_settings.html.
 
     `scope` "forecast" or "retro"; `values` {key: raw} the form held (a
     refused submission keeps what was typed). Knobs with an older field
     name keep it (season_start, weeks_to_drop, drop_same_day, replicates,
     particles), so every earlier poster still works; the rest post as
-    knob.<key>. Coming-later knobs render disabled."""
+    knob.<key>. Coming-later knobs render disabled. `names`: the members
+    as the tips' "Affects" line names them (MEMBER_NAMES by default; a
+    dataset's panel names its own)."""
     values = dict(values or {})
     groups = []
     for gid, title, tip in PANEL_GROUPS:
@@ -951,7 +956,7 @@ def panel(scope: str, values: Optional[Mapping] = None) -> dict:
                                                else "")) for c in k.choices],
                 "later": k.key in LATER,
                 "affects": " ".join(sorted(k.affects)),
-                "unit": k.unit, "tip": _tip(k, scope)})
+                "unit": k.unit, "tip": _tip(k, scope, names)})
         if rows:
             groups.append({"id": gid, "title": title, "tip": tip,
                            "affects": " ".join(sorted(

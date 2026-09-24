@@ -180,6 +180,34 @@ def test_high_contrast_holds_well_above_the_review_bars():
             assert _cr(danger_ink[th], r["bad"]) >= 4.5, (th, vision)
 
 
+def _rule(selector: str) -> dict:
+    """One plain rule's declarations (not a token block)."""
+    m = re.search(re.escape(selector) + r"\{([^}]*)\}", NAU)
+    assert m, f"missing rule {selector}"
+    return {k.strip(): v.strip() for k, v in re.findall(
+        r"([\w-]+)\s*:\s*([^;]+);?", m.group(1))}
+
+
+def _color(value: str, toks: dict) -> str:
+    m = re.fullmatch(r"var\(--([\w-]+)\)", value.strip())
+    return toks[m.group(1)] if m else value.strip()
+
+
+def test_the_open_model_settings_button_reads_at_aa_everywhere():
+    """.adv[open] > summary.advbtn was white on raw cyan, 2.11:1."""
+    closed = _rule(".adv > summary.advbtn")
+    assert closed["color"] == "var(--accent-ink)"          # unchanged
+    assert closed["border"] == "1.5px solid var(--accent)"
+    opened = _rule(".adv[open] > summary.advbtn")
+    for th in ("light", "paper", "dim", "dark"):
+        for contrast in (False, True):
+            for vision in (False, True):
+                r = resolve(th, contrast=contrast, vision=vision)
+                fg = _color(opened["color"], r)
+                bg = _color(opened["background"], r)
+                assert _cr(fg, bg) >= 4.5, (th, contrast, vision, fg, bg)
+
+
 def test_cvd_pair_holds_the_ratios_of_the_pair_it_replaces():
     # in every theme and contrast strength, the blue/orange pair meets the
     # worst-surface ratio of the green/red it replaces

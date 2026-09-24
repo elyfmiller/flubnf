@@ -1283,16 +1283,18 @@ def display_name(filename) -> str:
     return re.sub(r"[^A-Za-z0-9._ -]", "", base)[:80].strip(" .")
 
 
-def ingest_upload(fileobj, filename: str, kind: str,
+def ingest_upload(fileobj, filename: str, kind: str = "",
                   max_bytes: int = UPLOAD_MAX_BYTES):
     """Validate and store one uploaded CSV through the dataset store
-    (a grouped CSV or a hubverse time series); the stored Dataset.
-    Refusals carry the validator's problems, each in words."""
+    (a grouped CSV or a hubverse time series, read as leniently as the
+    console's upload box reads it); the stored Dataset. ``kind`` '' takes
+    the kind the values show. Refusals carry the validator's problems,
+    each in words."""
     from app.core import datasets
     shown = display_name(filename)
     stem = shown.rsplit(".", 1)[0] if "." in shown else shown
     try:
-        return datasets.ingest(fileobj, stem or "upload", kind=kind,
+        return datasets.ingest(fileobj, stem or "upload", kind=kind or None,
                                limits=datasets.Limits(max_bytes=max_bytes),
                                filename=shown)
     except datasets.DatasetError as e:
