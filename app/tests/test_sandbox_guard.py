@@ -295,3 +295,19 @@ def test_api_busy_reports_the_sandbox_and_the_guard_knows_it(box):
     sb.add_example("kinetics_example")
     html = client.get("/sandbox?model=kinetics_example").text
     assert 'data-guard="sandbox-run"' in html and 'data-guard="console-run"' not in html
+
+
+def test_run_and_retro_refuse_a_sandbox_claim_under_the_engine_lock(monkeypatch):
+    """The in-handler check (under _engine_lock) refuses even when the
+    middleware's lock-free read raced past a claim."""
+    import inspect
+    from app.ui import server
+    src_run = inspect.getsource(server.run_models)
+    src_retro = inspect.getsource(server.retro_run)
+    for src in (src_run, src_retro):
+        lock = src.index("with _engine_lock:")
+        assert src.index("_sandbox_live_reason()", lock) > lock
+    monkeypatch.setitem(server._sandbox_status, "claim", "m1")
+    assert "being prepared" in server._sandbox_live_reason()
+    monkeypatch.setitem(server._sandbox_status, "claim", None)
+    assert server._sandbox_live_reason() == ""

@@ -3227,6 +3227,12 @@ def _sandbox_busy_reason() -> str:
     live = [x for x in _known_seasons() if _season_status(x) in _RETRO_ACTIVE]
     if live:
         return "a retrospective replay is running (" + ", ".join(live) + ")"
+    return _sandbox_live_reason()
+
+
+def _sandbox_live_reason() -> str:
+    """Why the sandbox holds the engine ("" when it does not). Read under
+    _engine_lock by /run and /retro/run as well as by the sandbox itself."""
     if _sandbox_status.get("running"):
         return f"sandbox run {_sandbox_status['running']} is still fitting"
     if _sandbox_status.get("claim"):
@@ -5038,6 +5044,10 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                    + "). Stop it from the Forecast tab first; nothing was "
                    "started.")
             return RedirectResponse("/retro", status_code=303)
+        sb = _sandbox_live_reason()
+        if sb:
+            _flash(f"Not started: {sb}. Stop it from the Sandbox first.")
+            return RedirectResponse("/retro", status_code=303)
         other = sorted(x for x in _known_seasons()
                        if x != season and _season_status(x) in _RETRO_ACTIVE)
         if other:
@@ -5628,6 +5638,10 @@ def run_models(request: Request,
             _flash("A retrospective replay holds the engine ("
                    + ", ".join(live_retro) + "). Stop or pause it from the "
                    "Retrospective tab first; nothing was run.")
+            return _back(request, "/forecast")
+        sb = _sandbox_live_reason()
+        if sb:
+            _flash(f"Not run: {sb}. Stop it from the Sandbox first.")
             return _back(request, "/forecast")
         # background tasks fire after the redirect: claim NOW so the landing
         # page shows the run
