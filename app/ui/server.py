@@ -2518,7 +2518,9 @@ def run_page(request: Request, run_id: str):
         # the page shows a research badge, so the label stays untagged
         "label": _run_label(run_id, spec_json, tag=False),
         "research": is_research(spec_json),
-        "models": res.get("models", {}),
+        # a legacy run's retired blend is not shown
+        "models": {m: v for m, v in (res.get("models") or {}).items()
+                   if m not in _report_v2_retired()},
         "settings": spec_settings(spec_json),
         "versions": version_pairs(row_sha, row_engine_versions),
         "can_rerun": bool(spec_json) and status in RERUN_STATUSES,
@@ -2820,6 +2822,12 @@ def _outcome_chips(outcome_json: str) -> str:
         bits.append('<span class="bad">failed</span>; the full error is on '
                     'the run page')
     return " · ".join(bits)
+
+
+def _report_v2_retired() -> tuple:
+    """report_v2.RETIRED_MODELS, imported lazily (report_v2 pulls plotly)."""
+    from app.core.report_v2 import RETIRED_MODELS
+    return RETIRED_MODELS
 
 
 def _latest_results():
