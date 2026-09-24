@@ -178,6 +178,37 @@ def test_print_bundle_prints_the_path_and_nothing_else(tmp_path):
 
 
 @posix_only
+def test_print_bundle_needs_no_engine_python(tmp_path):
+    """--print-bundle must answer before the Python 3.11/3.12 probe: on a
+    machine with neither, the probe's warnings (or a `conda create`) would
+    otherwise land in the launchers' command substitution as the path."""
+    import shutil
+
+    bundle = _make_bundle(tmp_path)
+    home = _home(tmp_path)
+    (home / "Downloads" / "pybnf.bundle").write_bytes(bundle.read_bytes())
+    # A PATH with bash and dirname, a python3 that is not 3.11/3.12 and a
+    # conda that records being asked. Absolute-path candidates in the probe
+    # are outside this test's control, so the conda marker is only reached
+    # on machines without them; the stdout check holds everywhere.
+    shim = tmp_path / "bin"
+    shim.mkdir()
+    for tool in ("bash", "dirname"):
+        (shim / tool).symlink_to(shutil.which(tool))
+    marker = tmp_path / "conda-was-called"
+    (shim / "python3").write_text("#!/bin/sh\nexit 1\n")
+    (shim / "conda").write_text(f"#!/bin/sh\n: > '{marker}'\nexit 1\n")
+    for tool in ("python3", "conda"):
+        (shim / tool).chmod(0o755)
+
+    out = _run(SCRIPT, home, args=("--print-bundle",), PATH=str(shim))
+
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert out.stdout.splitlines() == [str(home / "Downloads" / "pybnf.bundle")]
+    assert not marker.exists(), "--print-bundle ran the conda fallback"
+
+
+@posix_only
 def test_no_bundle_prints_nothing_rather_than_a_guess(tmp_path):
     out = _run(SCRIPT, _home(tmp_path), args=("--print-bundle",))
     assert out.returncode == 0

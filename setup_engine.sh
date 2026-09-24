@@ -23,40 +23,6 @@ else
 fi
 BNGSIM_REMOTE="${FLUBNF_BNGSIM_REMOTE:-https://github.com/elyfmiller/bngsim}"
 ENGINE_VENV="${FLUBNF_ENGINE_VENV:-$HOME/.venvs/flubnf-engine}"
-# The engine needs Python 3.11/3.12: the fork pins numpy<2, whose wheels stop
-# at cp312 (newer Pythons build numpy from source and fail). Else conda makes a 3.12.
-PY=""
-for c in python3.12 python3.11 python3; do
-  cand=$(command -v "$c" 2>/dev/null) || continue
-  "$cand" -c 'import sys; assert sys.version_info[:2] in ((3,11),(3,12))' 2>/dev/null \
-    && { PY="$cand"; break; }
-done
-if [ -z "$PY" ]; then
-  for cand in /opt/anaconda3/bin/python3.12 "$HOME/anaconda3/bin/python3.12" \
-              /opt/homebrew/bin/python3.12 /usr/local/bin/python3.12 \
-              /opt/homebrew/bin/python3.11 /usr/local/bin/python3.11 \
-              /Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12; do
-    [ -x "$cand" ] && { PY="$cand"; break; }
-  done
-fi
-if [ -z "$PY" ]; then
-  CONDA=$(command -v conda 2>/dev/null)
-  [ -z "$CONDA" ] && for c in /opt/anaconda3/bin/conda "$HOME/anaconda3/bin/conda" \
-                              "$HOME/miniconda3/bin/conda"; do
-    [ -x "$c" ] && { CONDA="$c"; break; }
-  done
-  if [ -n "$CONDA" ]; then
-    echo "  no Python 3.11/3.12 found; asking conda for one (a few minutes)"
-    "$CONDA" create -y -p "$HOME/.venvs/flubnf-engine-py312" python=3.12 >/dev/null \
-      && PY="$HOME/.venvs/flubnf-engine-py312/bin/python3"
-  fi
-fi
-if [ -z "$PY" ]; then
-  warn "the engine needs Python 3.11 or 3.12 (its numpy pin has no wheels"
-  warn "for newer Pythons) and none was found or creatable. Install 3.12"
-  warn "(python.org, Homebrew, or conda) and re-run."
-  exit 1
-fi
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 # Offline engine files. The fork is private, so cloning it is the one install
@@ -162,9 +128,46 @@ install_engine_archive() {
 case "${1:-}" in
   --print-bundle)
     # The launchers call this (retry fingerprint) so the search lives only here.
+    # Dispatched before the Python probe below: stdout must carry only the path,
+    # and the probe can print (or run conda create) on a machine without 3.11/3.12.
     find_engine_bundle
     exit 0 ;;
 esac
+
+# The engine needs Python 3.11/3.12: the fork pins numpy<2, whose wheels stop
+# at cp312 (newer Pythons build numpy from source and fail). Else conda makes a 3.12.
+PY=""
+for c in python3.12 python3.11 python3; do
+  cand=$(command -v "$c" 2>/dev/null) || continue
+  "$cand" -c 'import sys; assert sys.version_info[:2] in ((3,11),(3,12))' 2>/dev/null \
+    && { PY="$cand"; break; }
+done
+if [ -z "$PY" ]; then
+  for cand in /opt/anaconda3/bin/python3.12 "$HOME/anaconda3/bin/python3.12" \
+              /opt/homebrew/bin/python3.12 /usr/local/bin/python3.12 \
+              /opt/homebrew/bin/python3.11 /usr/local/bin/python3.11 \
+              /Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12; do
+    [ -x "$cand" ] && { PY="$cand"; break; }
+  done
+fi
+if [ -z "$PY" ]; then
+  CONDA=$(command -v conda 2>/dev/null)
+  [ -z "$CONDA" ] && for c in /opt/anaconda3/bin/conda "$HOME/anaconda3/bin/conda" \
+                              "$HOME/miniconda3/bin/conda"; do
+    [ -x "$c" ] && { CONDA="$c"; break; }
+  done
+  if [ -n "$CONDA" ]; then
+    echo "  no Python 3.11/3.12 found; asking conda for one (a few minutes)"
+    "$CONDA" create -y -p "$HOME/.venvs/flubnf-engine-py312" python=3.12 >/dev/null \
+      && PY="$HOME/.venvs/flubnf-engine-py312/bin/python3"
+  fi
+fi
+if [ -z "$PY" ]; then
+  warn "the engine needs Python 3.11 or 3.12 (its numpy pin has no wheels"
+  warn "for newer Pythons) and none was found or creatable. Install 3.12"
+  warn "(python.org, Homebrew, or conda) and re-run."
+  exit 1
+fi
 
 say "PyBNF fork (feature/particle-filter)"
 if [ -d "$PYBNF/.git" ]; then
