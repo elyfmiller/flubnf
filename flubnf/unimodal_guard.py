@@ -1,29 +1,14 @@
-"""Guards for the code that assumes exactly one epidemic per season.
+"""RESEARCH (COVID profile seam, reached only via app/core/engines/profiles.py):
+guards for code that assumes exactly one epidemic per season.
 
-THE FAILURE MODE THIS PREVENTS
-------------------------------
-Phase classification, transition-center placement, peak reporting and the
-shoulder decomposition all assume a season is one rise, one peak, one fall.
-72.5% of COVID state-seasons carry two or more distinct waves. Run on such a
-season these functions do not raise: they return a well-formed answer about a
-peak that is one of two, or a "post-peak shoulder" that is really the trough
-between waves. Well-formed nonsense is the dangerous kind of breakage, because
-nothing downstream can tell it from a result.
-
-THE RULE
---------
-Under a profile with `bimodal_capable=True` these operations REFUSE by default.
-A caller who genuinely wants the unimodal answer must pass
-`acknowledge_bimodal=True`, and then gets a `Guarded` whose
-`unimodal_assumption_violated` flag is set and whose `mark` string travels with
-the value into any report. There is no way to obtain an unmarked answer under a
-bimodal-capable profile, which is the whole point.
-
-The guard is also DATA-AWARE. Even under influenza, a series that actually shows
-two waves is marked, because the assumption is about the series and not only
-about the disease. That costs nothing when the assumption holds -- `waves` is 1
-for an ordinary flu season, the flag stays False, and the value is the value the
-unguarded function would have returned.
+Phase classification, center placement, peak reporting and the shoulder
+decomposition return well-formed nonsense on a multi-wave season (72.5% of
+COVID state-seasons) instead of raising. Under a `bimodal_capable` profile
+they REFUSE unless the caller passes `acknowledge_bimodal=True`, and then the
+`Guarded` result carries `unimodal_assumption_violated` and a `mark` string
+into any report: no unmarked answer exists. The guard is also DATA-AWARE: a
+flu series that shows two waves is marked too; a one-wave series returns the
+unguarded value unchanged.
 """
 from __future__ import annotations
 

@@ -14,7 +14,7 @@ import pytest
 
 from flubnf import analogue, sihrs_fit, sihrs_priors
 from flubnf.profiles import (COVID, COVID_OMEGA_GATE, COVID_OMEGA_PRIOR,
-                             INFLUENZA, PROFILES, DiseaseProfile, get_profile)
+                             COVID_OMEGA_SOURCES, INFLUENZA, PROFILES, DiseaseProfile, get_profile)
 
 
 class TestInfluenzaIsUnchanged:
@@ -95,6 +95,14 @@ class TestCovidProfile:
         assert COVID.target_name == "wk inc covid hosp"
         assert COVID.truth_column_alias == "totalconfc19newadm"
         assert COVID.baseline_model == "CovidHub-baseline"
+
+    def test_omega_source_lists_its_dois(self):
+        """omega is fitted from two cited meta-analyses, so its source is
+        those DOIs joined, not an UNSOURCED label used as the separator."""
+        assert COVID.fixed.omega_source == " / ".join(COVID_OMEGA_SOURCES)
+        assert "UNSOURCED" not in COVID.fixed.omega_source
+        for doi in COVID_OMEGA_SOURCES:
+            assert doi in COVID.fixed.omega_source
 
     def test_omega_is_fitted_and_supplies_no_token(self):
         assert COVID.fixed.omega_is_fitted

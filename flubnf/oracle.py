@@ -1,14 +1,13 @@
-"""The Oracle SIHRS member: the filter's stored forward samples with their
-growth replaced by a blend of the filter's own origin growth and one
+"""SHIPPED: the Oracle SIHRS member, the filter's stored forward samples
+with their growth replaced by a blend of the filter's own origin growth and one
 calendar-matched donor growth path from past seasons.
 
 THE MEMBER (pre-registration PREREG_oracle_member_FROZEN.md, sha256
 PREREG_SHA256 below; sections 4.1, 4.2, 4.3 LB, 10.3, addendum A1)
 --------------------------------------------------------------------
 For one cell (location L, as-of Saturday T) the stored particle-filter
-samples are x_ih, i over the sample paths, h = 1..4 the PHYSICAL forecast
-weeks; block "0" is the anchored origin. The cell quantities, from the
-filter's own output alone:
+samples are x_ih (h = 1..4 PHYSICAL weeks; block "0" the anchored origin).
+From the filter's own output alone:
 
     m_0   = median of the finite entries of block "0"
     m_h   = the 0.5 entry of the finite-only quantile vector of block h
@@ -16,66 +15,42 @@ filter's own output alone:
     G_T   = gamma + lam_T           the filter's own G at the origin instant
     o_h   = ln(m_h / m_0)           the filter's own cumulated log path
 
-A cell is eligible when m_0 > 0, m_1..m_4 > 0 and G_T > 0 (no guard on the
-size of lam_T, S3). A date is active when the week's donor pool is
-admissible under the identity rule (flubnf.oracle_bank). On every cell that
-is not active the member is the identity: the filter's samples untouched.
+A cell is eligible when m_0 > 0, m_1..m_4 > 0 and G_T > 0 (S3); a date is
+active when the week's pool is admissible (flubnf.oracle_bank). Otherwise
+the member is the identity: the filter's samples untouched.
 
-Each stored sample path i draws one donor path d_i from the pool (one
-uniform u_i per sample path, d_i = floor(u_i n)), and its four segment
-levels are the GEOMETRIC blend, in G, of the filter's origin G and the
-donor's midpoint stamps:
+Each sample path i draws one donor d_i = floor(u_i n); its segment levels
+are the GEOMETRIC blend in G of the filter's origin G and the donor's
+midpoint stamps:
 
     ln G_k = w ln G_T + (1 - w) ln Ghat_d(W + k - 0.5),   k = 1..4,
 
-w = 0.5 fixed a priori (W_PRODUCTION); w = 0.25 is the registered
-secondary (A1 (2)), logged beside the primary and shipping nothing. The
-closed form of 4.2 under reading F (the filter's own state at T, its own
-half week inside the last observed week) gives the cumulated log median
-path
+w = 0.5 a priori (W_PRODUCTION; 0.25 is the logged secondary). The
+closed form of 4.2 under reading F gives the cumulated log median path
 
     P_h(d) = lam_T - ln phi(lam_T) + sum_{i<h} lam_i(d) + ln phi(lam_h(d)),
     lam_k = G_k - gamma,   phi(x) = (exp(x) - 1) / x,   phi(0) = 1,
 
-and the REPLACE factor F_h(d) = exp(P_h(d) - o_h). The member's samples are
-x'_ih = x_ih * F_h(d_i): the stored spread rides on the new median path and
-the donor draw adds the donors' spread of level on top. Check: G_k = G_T
-for all k gives P_h = h lam_T and F = 1.
+and the REPLACE factor F_h(d) = exp(P_h(d) - o_h); samples become
+x'_ih = x_ih * F_h(d_i). Check: G_k = G_T for all k gives F = 1. A drawn
+path with a non-positive stamp abstains (F = 1, counted). Non-finite samples
+stay non-finite and are dropped before every quantile.
 
-A drawn path with a non-positive midpoint stamp is an abstention: F = 1
-for that (cell, sample), counted (0 on the registered pool). Non-finite
-samples stay non-finite through the transform and are dropped before every
-quantile, the console's rule.
+DONOR INDEX (S14). One uniform per sample path from default_rng([seed,
+season_of(T) - 2023, T.toordinal(), int(FIPS)]), shared by every horizon
+and weight. Five SEEDS; the submitted quantiles use the first (C2).
 
-THE DONOR INDEX (S14, the producer's draw). One uniform per stored sample
-path from numpy.random.default_rng([seed, season index, T.toordinal(),
-int(FIPS)]) with the season index flubnf.analogue.season_of(T) - 2023
-(0 / 1 / 2 for 2023-24 / 2024-25 / 2025-26); the same uniforms serve every
-horizon and every weight, so the primary and the secondary are paired.
-Five seeds, 2026091801 to 2026091805; the submitted quantiles come from
-the first (the producer's choice C2), the other four are logged for the
-season-end reading.
+SHIPPED BANK (B2, addendum A2): the flubnf.oracle_mix mixture, admissions
+pool plus the FluSurv-NET path pool. With `aux_pool` a SECOND uniform v_i
+from the same generator picks the half: v_i < w_aux (0.5 when both are
+admissible) draws floor((v_i / w_aux) n_aux), else the admissions donor
+floor(u_i n_adm), so w_aux = 0 is the admissions-only member bitwise. One
+admissible half: draw from it alone; neither: identity (R_EITHER).
 
-THE SHIPPED BANK (bank change B2, addendum A2). The member ships on the
-mixture bank of flubnf.oracle_mix: the admissions pool above plus a
-FluSurv-NET path pool, the Groundhog's own donor bank. With `aux_pool` the
-draw takes a SECOND uniform v_i from the same generator: v_i < w_aux (0.5
-when both halves are admissible) draws the FluSurv-NET path
-floor((v_i / w_aux) n_aux), and every other sample keeps its admissions
-donor floor(u_i n_adm) exactly as the admissions-only member draws it, so
-that member is recovered bitwise at w_aux = 0. A week with only one
-admissible half draws from it alone (w_aux 1 or 0); a week with neither is
-the identity (R_EITHER, S-B2-3).
-
-HORIZONS. Everything here counts PHYSICAL weeks, 1 to 4, the library's
-unit; the app translates at its own edge (app/core/oracle.py), and every
-hub-facing row still goes through app.core.submit.quantile_rows. Nothing
-in this module reads a vintage, a truth file or a hub.
-
-Every numeric step is written as the registered screen's arms.py wrote it,
-so the member quantiles are bitwise the screen's per seed where the stored
-block holds the same finite values (tests/test_oracle.py pins that against
-the record where the record is on the machine).
+HORIZONS are PHYSICAL weeks 1-4 here; app/core/oracle.py translates. No
+vintage, truth file or hub is read here. Every numeric step is the
+registered screen's arms.py verbatim, so quantiles match the record bitwise
+(tests/test_oracle.py).
 """
 from __future__ import annotations
 
@@ -88,38 +63,31 @@ from . import analogue as AN
 from . import oracle_bank as OB
 from .quantiles import FLUSIGHT_QUANTILES
 
-#: The frozen pre-registration, version 2 with addendum A1 (2,490 lines),
-#: recomputed at the wiring and equal to the value the producer refuses to
-#: run without. Written into every week's provenance.
+#: The frozen pre-registration (v2 + addendum A1); the producer refuses to
+#: run without it. Written into every week's provenance.
 PREREG_SHA256 = "67c9fa49a195908312f34ca783b21d85377759309df14461f86fbfd54d30c56f"
 
 #: Bank change B2 (b2/PREREG_b2_FROZEN.md, 1,008 lines): the mixture donor
 #: bank of flubnf.oracle_mix, every blank at its printed recommendation.
 B2_SHA256 = "2ce3564622296f490a435b773a3b34d431d889b3e0d4fe4b32ff6aeb8ede9249"
-#: Addendum A2 to section 10.3 (PREREG_oracle_member_ADDENDUM_A2.md, a
-#: separate file so PREREG_SHA256 does not move): the lead's decision of
-#: 2026-09-23 to ship the member on the B2 bank (LBGH). All three hashes
-#: go into every week's provenance.
+#: Addendum A2 (a separate file so PREREG_SHA256 does not move): ship on
+#: the B2 bank (LBGH). All three hashes go into every week's provenance.
 ADDENDUM_A2_SHA256 = "85ac546416bbb20ed1b87ce9289f50645ff1e22169b0bed9ae0a054e3e449f27"
 
 GAMMA = OB.GAMMA
 H4 = 4
 
-#: The weight, fixed a priori (section 3, "weight"): the only weight that
-#: treats the two sources alike, and the lab never fits blend weights.
+#: Fixed a priori: treats both sources alike (the lab never fits blend weights).
 W_PRODUCTION = 0.5
 #: The registered secondary (A1 (2)): logged beside the primary, ships nothing.
 W_SECONDARY = 0.25
 
-#: S14: the five donor-index seeds. The submitted quantiles are the first
-#: seed's realisation (the producer's recorded choice C2); the screen
-#: measured the seed noise at sd <= 7e-5 on every contrast.
+#: S14 donor-index seeds; the first is submitted (C2). Seed noise sd <= 7e-5.
 SEEDS = (2026091801, 2026091802, 2026091803, 2026091804, 2026091805)
 SUBMITTED_SEED = SEEDS[0]
 
 #: The 23 FluSight levels, as a list (numpy.quantile takes the list).
 QL = [float(q) for q in FLUSIGHT_QUANTILES]
-QA = np.array(QL)
 
 
 # ---------------------------------------------------------------------------
@@ -318,26 +286,18 @@ def member_for_cell(x0, xh: list, pool: dict, asof: date, fips: str, *,
                     w: float = W_PRODUCTION, seeds=SEEDS,
                     submitted_seed: int = SUBMITTED_SEED,
                     aux_pool: dict | None = None, w_aux="auto") -> CellMember:
-    """The member on one cell: the transformed samples of `submitted_seed`
-    and the 23 finite-only quantiles of every seed in `seeds`.
+    """The member on one cell: `submitted_seed`'s transformed samples and
+    every seed's 23 finite-only quantiles.
 
-    `x0` is the origin block, `xh` the four forecast blocks in PHYSICAL
-    order, `pool` the admissions half as flubnf.oracle_bank reads it (rule 1
-    with G_mid (n, 4), or rule 0 for the identity), `fips` the
-    two-character FIPS the RNG key uses.
+    `xh` are the four forecast blocks in PHYSICAL order; `pool` the
+    admissions half from flubnf.oracle_bank (rule 1 with G_mid (n, 4), or
+    rule 0); `fips` the RNG key's two-character FIPS. Without `aux_pool`:
+    the admissions-only member (LB). With it (oracle_mix.shrunk_pool): the
+    shipped mixture (LBGH); `w_aux` "auto" = oracle_mix.resolve_w_aux, a
+    number or None (identity) for research controls.
 
-    Without `aux_pool` this is the admissions-only member of the frozen
-    document (LB), unchanged. With `aux_pool` (the FluSurv-NET half as
-    flubnf.oracle_mix.shrunk_pool gives it: G_mid already shrunk) it is the
-    shipped mixture member (LBGH, bank change B2): `w_aux` "auto" resolves
-    the week's FluSurv-NET probability under R_EITHER
-    (flubnf.oracle_mix.resolve_w_aux: 0.5 when both halves are admissible,
-    1 or 0 when one is, the identity when neither is); a number or None
-    sets it (None: the identity), for research controls.
-
-    A cell that is not eligible, or a week with no admissible half, returns
-    the identity: the NULL quantiles under every seed and the samples
-    untouched, active False.
+    Ineligible cell or no admissible half: the identity (NULL quantiles for
+    every seed, samples untouched, active False).
     """
     if aux_pool is None:
         wa = 0.0 if _admissible(pool) else None

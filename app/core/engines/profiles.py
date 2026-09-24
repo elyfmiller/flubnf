@@ -1,27 +1,12 @@
-"""The seam between a DiseaseProfile and the engine layer. Purely additive.
+"""RESEARCH (COVID profile seam, test-only): pf.py's four disease-specific
+constants (template, defaults block, fitted-variable block, vintage source)
+as functions of a DiseaseProfile. Purely additive: nothing here imports
+pf.py and pf.py does not import this.
 
-`app/core/engines/pf.py` hardcodes four things that are disease-specific: the
-template path, the defaults block, the fitted-variable block, and the vintage
-source (`app.core.data.vintage_path`, which reads FluSight's archive). Its
-fitting internals are frozen -- the sealed three-season result came out of them.
-
-This module supplies the same four things AS FUNCTIONS OF A PROFILE, so a future
-change to pf.py is a substitution rather than a rewrite, and so the COVID pieces
-are testable now without running a filter. Nothing here imports pf.py, and
-pf.py's behaviour is unchanged.
-
-The influenza branch is asserted equal to pf.py's own constants in
-tests/test_engine_profiles.py by reading the pf.py source. If pf.py changes, the
-test fails and this file gets updated -- the seam cannot rot silently.
-
-ONE PRE-EXISTING DISAGREEMENT, RECORDED RATHER THAN SILENTLY PICKED
--------------------------------------------------------------------
-pf.py's VARS_1S proposes `Reff__FREE` with `uniform_var`; the AMCMC path
-(`sihrs_fit.LOG_SCALE_VARS`) proposes it with `loguniform_var`. Both predate
-this module. Names and bounds agree; only the proposal scale differs. The seam
-follows the AMCMC set, because that is what `DiseaseProfile.log_scale_vars`
-mirrors and what a profile-aware conf writer would emit. The divergence is
-asserted explicitly in the tests so that resolving it is a deliberate act.
+tests/test_engine_profiles.py asserts the influenza branch equals pf.py's
+constants, so the seam cannot rot silently. One known difference is asserted
+there on purpose: pf.py proposes Reff__FREE with uniform_var, this seam (like
+sihrs_fit.LOG_SCALE_VARS) with loguniform_var.
 """
 from __future__ import annotations
 
@@ -34,12 +19,11 @@ if str(REPO) not in sys.path:
 
 from flubnf.profiles import COVID, INFLUENZA, DiseaseProfile, get_profile  # noqa: E402
 
-#: Byte-identical to pf.py's DEFAULTS_BLOCK. The starting point of every chain.
+#: Byte-identical to pf.py's DEFAULTS_BLOCK.
 _DEFAULTS_1S = ("begin parameters\nReff__FREE 1.20\neps1__FREE 0.15\n"
                 "phi1__FREE 22.0\nmult__FREE 0.05\nr__FREE 8.0\n")
-#: The same, plus omega seeded at the literature centre (9-month protection,
-#: 0.0256/wk). Starting a chain at a bound is the fastest way to manufacture the
-#: pinning the gate is meant to detect.
+#: Plus omega at the literature centre (9 months, 0.0256/wk), not at a bound,
+#: which would manufacture the pinning the gate detects.
 _DEFAULTS_COVID = ("begin parameters\nReff__FREE 1.20\neps1__FREE 0.15\n"
                    "phi1__FREE 22.0\nomega__FREE 0.0256\nmult__FREE 0.05\n"
                    "r__FREE 8.0\n")
@@ -50,13 +34,8 @@ def defaults_block(profile: DiseaseProfile) -> str:
 
 
 def vars_block(profile: DiseaseProfile) -> str:
-    """The `*_var` lines a PyBNF conf needs, in the profile's own order.
-
-    Order matters only for readability; the log-scale choice does not. A
-    strictly positive scale parameter spanning decades must be proposed in log
-    space or the sampler wastes its budget on extreme values that stiffen the
-    ODE (measured: 5-10x wall time on `impr`).
-    """
+    """The `*_var` lines, in the profile's order. Positive parameters spanning
+    decades are proposed in log space (5-10x wall time on `impr` otherwise)."""
     out = []
     for name, (lo, hi) in profile.fitted_priors.items():
         kw = "loguniform_var" if (name in profile.log_scale_vars and lo > 0) \
@@ -78,13 +57,8 @@ def suffix(profile: DiseaseProfile, location: str) -> str:
 
 
 def vintage_path(profile: DiseaseProfile, date: str) -> Path:
-    """The truth vintage for one as-of date, from this profile's archive.
-
-    Both branches fail LOUDLY on a miss, naming nearby alternatives (rule 5).
-    The COVID branch additionally refuses any date before 2024-11-20, because no
-    vintage exists there and using settled truth would be a silent lie about
-    what the model could have known.
-    """
+    """The truth vintage for one as-of date from this profile's archive; a
+    miss raises (rule 5). COVID refuses dates before 2024-11-20 (no vintage)."""
     if profile.key == "covid":
         from flubnf.covid_vintage import vintage_path as covid_vintage_path
         return covid_vintage_path(date)
@@ -110,13 +84,8 @@ def resolve(profile: DiseaseProfile, location: str, *, truth_csv,
 
 
 def guards(profile: DiseaseProfile) -> dict:
-    """The one-epidemic-per-season operations, already bound to this profile.
-
-    Re-exported here so a report or a season page reaches the guarded versions
-    by the same import it uses for everything else profile-shaped. Calling
-    `flubnf.phase.detect_phase` directly still works and is still unguarded --
-    the guard is a discipline at the call site, not a lock on the function.
-    """
+    """The one-epidemic-per-season operations bound to this profile
+    (flubnf.phase.detect_phase itself stays unguarded)."""
     from functools import partial
 
     from flubnf import unimodal_guard as ug
@@ -130,11 +99,7 @@ def guards(profile: DiseaseProfile) -> dict:
 
 
 def engine_spec(profile: DiseaseProfile) -> dict:
-    """Everything the engine layer needs from a profile, in one dict.
-
-    Intended as the argument a profile-aware `prepare()` would take, so the
-    call site stays a single lookup instead of four scattered constants.
-    """
+    """Everything a profile-aware prepare() would need, in one dict."""
     return {"profile": profile.key,
             "template": str(template(profile)),
             "defaults_block": defaults_block(profile),

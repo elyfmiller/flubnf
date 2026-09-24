@@ -1,25 +1,16 @@
-"""Minimal in-Python differential-evolution fitter for the SIR model.
-
-This is a stand-in for PyBNF runs in contexts where we don't want to spawn
-BioNetGen — namely the walk-forward backtest in `flubnf.backtest`. It uses
-scipy's differential-evolution under the hood but captures the final
-population and writes it to disk in PyBNF's exact `sorted_params_final.txt`
-format so the same downstream parser / analyzer code works without
-modification.
-
-Objective: Gaussian negative log-likelihood on the H_weekly trajectory.
-We don't use the negative-binomial PyBNF default because for this purpose
-(decision-relevant point fits + bounds analysis) Gaussian is fine and far
-simpler — and the analyzer's AICc code already assumes Gaussian residuals.
+"""LEGACY (DE SIR CLI): minimal in-Python differential-evolution fitter for
+the SIR model, a stand-in for PyBNF in the walk-forward backtest. Writes the
+final population in PyBNF's sorted_params_final.txt format so the same
+parsers work. Objective: Gaussian NLL on H_weekly (the analyzer's AICc
+assumes Gaussian residuals).
 """
 
 from __future__ import annotations
 
 import logging
-import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Sequence
 
 import numpy as np
 from scipy.optimize._differentialevolution import DifferentialEvolutionSolver

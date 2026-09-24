@@ -1,40 +1,17 @@
-"""Vintage-true truth for COVID-19, from the CovidHub's versioned time series.
+"""RESEARCH (COVID profile seam, reached only via app/core/engines/profiles.py):
+vintage-true COVID-19 truth from the CovidHub's versioned
+`target-data/time-series.parquet`, sliced by its `as_of` column (one snapshot
+per week; each vintage's data edge is the Saturday before its as-of date).
 
-WHAT THIS REPLACES
-------------------
-FluSight ships one dated CSV per week in `auxiliary-data/target-data-archive/`,
-and `app/core/data.py::vintage_path` reads that naming convention. The CovidHub
-ships no such directory. It ships something better: a single hubverse
-`target-data/time-series.parquet` carrying an `as_of` column with one snapshot
-per week. Slicing by `as_of` yields exactly the frame the FluSight archive files
-carry, so the model-facing contract is unchanged and no git archaeology is
-needed.
+HARD LIMIT: the record begins 2024-11-20; nothing earlier can be made
+vintage-true from any source, so a COVID retrospective has ~1.5 seasons, not
+the flu seal's standing. `assert_vintage_true` fails loudly before it.
 
-Verified against the file itself (as_of 2026-08-19 snapshot, 702,878 rows):
-84 distinct `as_of` vintages for `wk inc covid hosp`, 2024-11-20 through
-2026-08-19, 53 locations, observations 2024-11-09 through 2026-08-15. Each
-vintage's data edge is the Saturday before its as-of date, which is what a
-Wednesday forecaster would have seen.
-
-THE HARD LIMIT, STATED WHERE IT CANNOT BE MISSED
-------------------------------------------------
-The record begins 2024-11-20. Nothing earlier can be made vintage-true for
-COVID from any source. That is 1.5 to 1.75 usable seasons against FluSight's
-three, and a COVID retrospective does NOT have the flu seal's standing.
-`assert_vintage_true` exists so a caller that wanders before the horizon fails
-loudly instead of silently scoring settled truth as if it were vintage.
-
-THE CONTRACT
-------------
-`vintage_path(as_of)` returns a filesystem path to a CSV with the FluSight
-archive's own columns (date, location, location_name, value) so every existing
-consumer -- `sihrs_fit.resolve_state`, `natgrowth`, the analogue bank builder --
-reads it unchanged. Materialized CSVs are cached and content-stable: the same
-as-of always yields the same bytes.
-
-Rule 5 is honoured verbatim: a nonexistent vintage raises FileNotFoundError
-naming the nearby alternatives. The silent per-record "no vintage" skip cost an
-overnight queue slot on 2026-08-16 and must not be reintroduced here.
+CONTRACT: `vintage_path(as_of)` returns a CSV with the FluSight archive's
+columns (date, location, location_name, value), so resolve_state, natgrowth
+and the analogue bank builder read it unchanged; the bytes are stable per
+as-of. A missing vintage raises FileNotFoundError naming nearby alternatives
+(rule 5; never a silent skip).
 """
 from __future__ import annotations
 
@@ -44,33 +21,21 @@ from pathlib import Path
 
 import pandas as pd
 
-from .settings import LOCATIONS, load_locations
+from .settings import load_locations
 
 COVID_TARGET = "wk inc covid hosp"
 COVID_ED_TARGET = "wk inc covid prop ed visits"
-#: Earliest as-of for which a COVID vintage exists anywhere. Three independent
-#: sources agree: the parquet (2024-11-20), the hub's git history (2024-11-18),
-#: and Delphi Epidata's earliest issue (epiweek 202447).
+#: Earliest COVID vintage anywhere (parquet, hub git history and Delphi agree).
 VINTAGE_HORIZON = "2024-11-20"
 
 # ---------------------------------------------------------------------------
 # WHAT THE HORIZON COSTS THE ANALOGUE MEMBER, MEASURED
 # ---------------------------------------------------------------------------
-# The analogue draws donors from STRICTLY PRIOR seasons at the matching epiweek.
-# Under the June boundary, target season 2025 (2025-06-01 to 2026-05-31) may only
-# use season 2024 or earlier, and vintage-true that means weeks from 2024-11-09
-# onward. Epiweeks roughly 23 to 44 therefore have NO prior-season donor at all.
-#
-# Measured by research/covid-phase0/analogue_vintage_true.py on the 2025-26
-# season: 14 of 45 as-of weeks return zero calendar-matched donors, a contiguous
-# block at epiweeks 25 to 38, i.e. 2025-06-25 through 2025-09-24. That block
-# BRACKETS the 2025 summer wave, whose national peak of 11,010 admissions
-# (week ending 2025-09-06) was the LARGER of that year's two waves.
-#
-# THIS IS A ONE-TIME COST, NOT A PERMANENT PROPERTY. It is the first target
-# season paying for the archive's start date. Once season 2025 is complete it
-# becomes a donor season covering the whole calendar, so target season 2026 has
-# donors at every epiweek. Say which of the two situations a result comes from.
+# With donors only from vintage-true prior seasons (from 2024-11-09), target
+# season 2025-26 has no calendar-matched donor at epiweeks 25-38 (14 of 45
+# as-of weeks), bracketing the larger summer wave. A ONE-TIME cost: season
+# 2026 has donors at every epiweek. Say which situation a result comes from.
+# (Pinned by tests/test_covid_vintage.py.)
 ANALOGUE_SILENT_EPIWEEKS_2025_26 = tuple(range(25, 39))
 ANALOGUE_SILENT_WEEKS_2025_26 = 14
 ANALOGUE_ASOF_WEEKS_2025_26 = 45

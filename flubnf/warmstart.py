@@ -1,43 +1,18 @@
-"""Carry last week's converged posterior into this week's fit.
+"""LEGACY (DE/AMCMC weekly loop): carry last week's posterior into this
+week's fit. ~90% of the likelihood is unchanged week to week (revisions
+concentrate in the newest rows), so a warm start only has to absorb a small
+perturbation.
 
-WHY THIS IS THE RIGHT SHAPE FOR A COMPETITION WEEK
---------------------------------------------------
-Measured over the 2025-26 vintages, one competition week changes almost nothing
-in the fitted series. Revision mass by age of the observation:
-
-    newest week   68%      median revision +4.2%, mean +21.1%
-    one week old  12%
-    two weeks old  6%
-    three or more 14%      median revision 0.0%, p90 under 1%
-
-So ~90% of the likelihood is bit-identical to what was already converged on. The
-fit does not need rediscovering; it needs perturbing by one new point and one
-revision. Starting from last week's posterior is therefore not an optimisation
-trick -- it is a statement about how little actually changed.
-
-That also means the between-week budget is where convergence should be bought.
-Competition day only has to absorb a small perturbation, which is what makes a
-wall-clock deadline with a best-fit-so-far guarantee affordable.
-
-THE FOOTGUN, AND WHY EVERY FUNCTION HERE TAKES `priors`
--------------------------------------------------------
-PyBNF assigns starting values BY INDEX:
-
-    p.value = self.config.config['starting_params'][i]      # algorithms.py:2175
-
-and orders parameters by the order their `*_var` lines appear in the .conf,
-because `Config._load_variables` iterates `config.keys()` and dicts preserve
-insertion order. Emit the values in a different order and PyBNF will warm-start
-Reff with mult's value, fit happily, and tell you nothing. This project has just
-spent a day on a bug whose entire signature was silence, so `starting_params`
-refuses to build a line unless the names it was given match, in order, the
-priors dict that wrote the conf.
+GOTCHA: PyBNF assigns starting_params BY INDEX in the order of the conf's
+*_var lines (algorithms.py), so a misordered line warm-starts Reff with
+mult's value silently. Every function here takes the `priors` dict that
+wrote the conf and refuses a misaligned line.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, Optional, Sequence
+from typing import Mapping, Optional
 
 import numpy as np
 import pandas as pd
@@ -93,20 +68,16 @@ def read_posterior(runs_dir: Path, priors: Mapping[str, tuple],
                     obj = min(obj, float(v.min()))
         n_ok += bool(got)
 
-    # params_*.txt carries no objective column (verified on real output); the
-    # objective lives in Results/sorted_params*.txt one level up. Leaving this
-    # unread meant objective=inf everywhere downstream: the preseason
-    # tol-stopping rule could never fire, and choose() compared inf to inf.
+    # params_*.txt has no objective column; it lives in
+    # Results/sorted_params*.txt (else objective=inf everywhere downstream).
     if not np.isfinite(obj):
         results_dir = runs_dir.parents[1]
         for name in ("sorted_params_final.txt", "sorted_params.txt",
                      "sorted_params_backup.txt"):
             f = results_dir / name
             if f.is_file():
-                # The header line has one more token than data rows (a leading
-                # '#'), so a naive read_csv silently shifts every column left
-                # and "Obj" lands on the first parameter's values. Parse the
-                # header ourselves.
+                # the header has a leading '#' token: parse it ourselves or
+                # every column shifts left
                 try:
                     with open(f) as fh:
                         header = fh.readline().split()

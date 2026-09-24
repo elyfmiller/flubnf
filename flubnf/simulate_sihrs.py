@@ -1,14 +1,10 @@
-"""In-Python mirror of the SIHRS model in `models/SIHRS.bngl`.
+"""RESEARCH: in-Python mirror of the SIHRS model (used by profile_mult and
+scripts/profiled_fit_run.py). Two forms: the historical NORMALIZED model
+(the lab archive's models/SIHRS.bngl, not in this repo), whose `scaled`
+magnitude anchor is exercised only by tests/test_sihrs_anchor.py; and the
+population form of templates/SIHRS_pop.bngl, selected by passing N.
 
-A 1-to-1 numerical re-implementation of the flagship SIHRS model, used the same
-way `simulate.py` mirrors the legacy SIR: to predict `H_weekly(t)` from a
-parameter set without shelling out to BioNetGen. Two jobs:
-
-  1. compute the per-state `scaled` magnitude anchor analytically, so `mult`
-     lands in the middle of its prior instead of pinning at the ceiling; and
-  2. drive residual-based diagnostics and DE-bootstrap quantiles.
-
-Compartments are FRACTIONS of the initial susceptible pool (S(0)=1, I(0)=I0),
+Normalized form: compartments are FRACTIONS of the initial susceptible pool (S(0)=1, I(0)=I0),
 time is in weeks, all rates are per week, seasonal period is 52 weeks:
 
     beta(t) = beta0 * exp( eps1*cos(2*pi*(t-phi1)/52)
@@ -34,10 +30,9 @@ from typing import Mapping
 import numpy as np
 from scipy.integrate import solve_ivp
 
-# Free parameters of models/SIHRS.bngl (11), plus the fixed structural ones.
+# Free parameters of the normalized model (11), plus the fixed structural ones.
 SIHRS_FREE = ("R0", "eps1", "phi1", "eps2", "phi2",
               "gamma", "rho", "gammaH", "omega", "mult", "r")
-SIHRS_FIXED = ("scaled", "I0", "pi")
 
 # Literature-ish nominal values; used only for the analytic anchor, never fitted.
 NOMINAL: dict = {
@@ -90,18 +85,14 @@ def simulate_sihrs(params: Mapping[str, float], n_weeks: int = 48) -> SihrsResul
     mult = float(p.get("mult", 1.0))
     scaled = float(p.get("scaled", 1.0))
 
-    # Population form (templates/SIHRS_pop.bngl): absolute people, frequency-
-    # dependent infection beta*S*I/N, and NO magnitude anchor -- `mult` is a pure
-    # ascertainment fraction. Selected by passing N. Substituting s=S/N, i=I/N
-    # recovers the normalized dynamics identically, so R0/gamma/eps/phi priors
-    # transfer unchanged (asserted in tests/test_sihrs_anchor.py).
+    # Population form (pass N): absolute people, beta*S*I/N, no magnitude
+    # anchor. s=S/N, i=I/N recovers the normalized dynamics exactly
+    # (tests/test_sihrs_anchor.py).
     N = float(p.get("N", 1.0))
     if N != 1.0:
         s0 = float(p.get("s0", 1.0))
         i0 = float(p.get("i0", I0))
         y0 = [N * s0, N * i0, 0.0, N * max(0.0, 1.0 - s0 - i0), 0.0]
-        # No `scaled` in the population form; keep it multiplicative-neutral.
-        scaled = float(p.get("scaled", 1.0))
     else:
         y0 = [1.0, I0, 0.0, 0.0, 0.0]
 

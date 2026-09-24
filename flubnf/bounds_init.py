@@ -1,29 +1,13 @@
-"""State-adaptive initial bounds for the SIR fit.
+"""LEGACY (DE SIR CLI, `flubnf init`/`backtest`): state-adaptive initial
+bounds. The template's fixed `mult` ceiling (8000) breaks for high-volume
+states, so for sir_piecewise, deterministically:
 
-The legacy template `Alabama.conf` uses fixed bounds:
+    mult.upper = max(template high, 5 x peak_observed)
+    mult.lower = min(template low,  max(1, 0.01 x peak_observed))
+    everything else: template defaults
 
-    uniform_var = I0__FREE  0.001 0.01
-    uniform_var = b0__FREE  0.1   1.5
-    uniform_var = gamma__FREE 0.01 0.5
-    uniform_var = mult__FREE 100  8000
-    uniform_var = r__FREE    1    30
-    uniform_var = t0__FREE   0    12
-
-The `mult` ceiling of 8000 silently breaks for high-volume jurisdictions
-(California, Texas, Florida, New York) whose weekly admissions exceed it.
-PyBNF's DE then sits at the ceiling, finds no good fit, and the backtest
-records terrible WIS.
-
-This module computes per-state initial bounds as a function of the observed
-admissions to date. The rules are deterministic — same input, same bounds:
-
-    mult.upper  = max(8000, 5 × peak_observed)
-    mult.lower  = max(100,  0.01 × peak_observed)
-    everything else: keep template defaults
-
-The 5× / 0.01× factors give the DE meaningful headroom without being
-absurdly wide. `r` (negbin dispersion) and the structural SIR params don't
-scale with admissions volume — only `mult` does.
+sirs_logistic anchors mult and I0 to the peak and population instead
+(_sirs_adaptive_bounds).
 """
 
 from __future__ import annotations

@@ -1,24 +1,14 @@
-"""Run real PyBNF as a fit engine, returning the same FitResult shape that
-the in-Python DE in `fitting.fit()` produces.
+"""LEGACY (DE SIR CLI, backtest `engine="pybnf"`): run real PyBNF and return
+the FitResult shape `fitting.fit()` produces.
 
-This is what the backtest harness uses when `engine="pybnf"`. It's not the
-same as `runs.run_one()` — that wrapper just launches PyBNF and exits. This
-module also materializes the per-state conf/bngl/exp files with the current
-bounds + piecewise structure + simulation window, then reads back the
-PyBNF-written `sorted_params_final.txt` and packages it as a FitResult.
-
-Compared to the in-Python DE (`fitting.fit`):
-  - Uses BioNetGen + neg-binomial objective (the real PyBNF stack).
-  - Slower per fit (~10-30s) but matches production behavior.
-  - The DE settings come from the conf file; this module patches a few
-    key fields (bounds, simulate window, max_iter, popsize) per call.
+Materializes the per-state conf/bngl/exp (bounds, piecewise structure,
+simulation window patched per call), runs PyBNF (BioNetGen + neg-binomial
+objective, ~10-30 s per fit) and reads back sorted_params_final.txt.
 """
 
 from __future__ import annotations
 
 import logging
-import os
-import re
 import shutil
 import subprocess
 import time
@@ -120,10 +110,8 @@ def fit_with_pybnf(
 
     n_obs = len(observed)
 
-    # 1. Materialize conf + bngl. We force-regenerate the BNGL each call so
-    # that stale b1/t1/... parameter declarations from a previous higher-K
-    # run can't bleed into this fit (PyBNF would KeyError trying to look
-    # them up in the uniform_var block).
+    # 1. Materialize conf + bngl, BNGL force-regenerated so a previous
+    # higher-K run's b1/t1/... declarations cannot bleed in (PyBNF KeyError).
     conf_path = conf_files.materialize_conf_from_template(state, paths, config)
     bngl_path = bngl_files.materialize_bngl_from_template(
         state, paths, config, force=True,
@@ -131,10 +119,8 @@ def fit_with_pybnf(
 
     # 2. Add the time-varying-beta parameters + rewrite beta(), per model type.
     if config.model.model_type == "sirs_logistic":
-        # `n_steps` is the transition count T (>=1). db1 ships in the template;
-        # add db2..dbT. The centers tc_k, width sw, waning omega and population
-        # N are FIXED in the template, so they cost no free parameters and need
-        # no uniform_var. The bounds passed in must include db1..dbT.
+        # n_steps = transition count T; add db2..dbT (db1 ships in the
+        # template; tc_k, sw, omega, N are fixed). Bounds must cover db1..dbT.
         n_trans = max(1, int(n_steps))
         new_params = [f"db{k}" for k in range(2, n_trans + 1)]
         if new_params:
@@ -172,11 +158,8 @@ def fit_with_pybnf(
         "verbosity": 0,
     }
     if options.method == "am":
-        # AMCMC-specific settings. PyBNF interprets `population_size` for
-        # AMCMC as the number of parallel chains. popsize=1 on laptops;
-        # popsize=4 on the Mac Studio gives multi-chain Gelman-Rubin
-        # diagnostics. parallel_count == chain count so each chain runs
-        # on its own subprocess thread.
+        # population_size is the AMCMC chain count; parallel_count matches
+        # it so chains run concurrently.
         n_chains = max(1, int(options.popsize))
         conf_updates.update({
             "population_size": n_chains,

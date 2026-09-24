@@ -1,10 +1,7 @@
-"""Tiny in-Python SIR simulator with piecewise-constant beta.
+"""LEGACY (DE SIR CLI): tiny in-Python SIR simulator with piecewise-constant
+beta, to predict H_weekly(t) from best-fit parameters without BioNetGen.
 
-For the *analysis* layer we need to predict H_weekly(t) given best-fit
-parameters so we can compute residuals against observed data — without
-shelling out to BioNetGen, which adds latency and a dependency.
-
-This is a 1-to-1 numerical re-implementation of the BNGL model in
+A 1-to-1 numerical re-implementation of the BNGL model in
 `flubnf/templates/Alabama.bngl`:
 
     dS/dt = -beta(t) * S * I

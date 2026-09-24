@@ -1,13 +1,6 @@
-"""Per-state slope_blend auto-tuning via re-quantile sweep.
-
-For each state we already have AMCMC posterior trajectories on disk (the
-expensive part). Picking the right `slope_blend` does NOT require re-fitting:
-we re-anchor + re-quantile the existing trajectory for a sweep of candidate
-blends and score each against a held-out actual.
-
-This makes slope_blend a "free" hyperparameter we can re-tune retroactively
-each week using last week's now-observed actuals — a cheap closed-loop on
-top of the expensive AMCMC.
+"""LEGACY (AMCMC, `flubnf tune-slope`): per-state slope_blend tuning by
+re-anchoring and re-quantiling existing AMCMC trajectories for a sweep of
+candidate blends, scored against a held-out actual. No refit needed.
 """
 
 from __future__ import annotations

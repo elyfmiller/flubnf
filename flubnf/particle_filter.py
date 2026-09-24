@@ -1,52 +1,17 @@
-"""REFERENCE IMPLEMENTATION, not the shipped engine. The shipped filter is
-fit_type=pf in the private PyBNF fork (app/core/engines/pf.py imports
-pybnf.pf.ParticleFilter); this module exists to develop and test the
-mechanism and to benchmark it.
+"""RESEARCH (reference implementation, not the shipped engine): a sequential
+particle filter for SIHRS. The shipped filter is fit_type = pf in the PyBNF
+fork, driven by app/core/engines/pf.py; this module is used by
+scripts/pf_run.py and tests to develop and benchmark the mechanism.
 
-Sequential particle filter for the SIHRS mechanism.
+Last week's posterior is this week's prior, so old data decays through the
+prior instead of weighing equally in a batch refit. Parameters drift too
+(Liu-West jitter shrunk toward the ensemble mean): `jitter` sets how fast
+the mechanism may change its mind; too much and it becomes a random walk.
 
-WHY THIS RATHER THAN WEEKLY BATCH REFITS
-----------------------------------------
-The production pipeline refits from scratch every week, so a 20-week-old
-observation carries exactly the same weight as the one that arrived yesterday.
-That is not a weekly-updating model; it is a sequence of independent batch fits
-wearing a filter's clothes. It is also the root of a measured problem: over a
-full season the rigid SIR shape cannot fit a rise AND a fall, so the posterior
-spreads over many mediocre compromises (predictive log-sd 1.6-1.8 against the
-calibrated target of 0.44-0.88).
-
-A filter carries last week's posterior forward as this week's prior and updates
-on the new observation. Old data enters ONLY through the prior, and its
-influence decays naturally as later observations reweight the ensemble. New data
-takes priority structurally, not because a weighting knob was tuned.
-
-PARAMETERS DRIFT, NOT JUST THE STATE
-------------------------------------
-A pure state filter with frozen parameters cannot react to a changed
-transmission regime -- it would explain a rebound entirely through observation
-noise. So parameters get a small Liu-West style jitter each step, shrunk toward
-the ensemble mean to avoid variance inflation. `jitter` is the single knob that
-sets how fast the mechanism is allowed to change its mind.
-
-FIDELITY
---------
-Propagation uses the same ODE system as templates/SIHRS_pop.bngl UNDER THE PINS eps2 = 0 and impr = 0 (equivalently,
-    templates/SIHRS_pop_min.bngl: this module has only the annual harmonic
-    and no external-import term), integrated
-with fixed-step RK4 (daily steps) vectorised across particles. The BNGL model
-remains the definition of the mechanism; this integrates it. Forward simulation
-    verification the repo can show: tests/test_particle_filter.py pins the
-    RK4 propagation against scipy solve_ivp at 2e-3 relative. (An earlier
-    1.5e-9 claim had no surviving artifact and is withdrawn.)
-
-WHAT WOULD MAKE THIS FAIL
--------------------------
-* Particle depletion -- if the ensemble collapses to a few distinct particles the
-  posterior is fake. `ess` is reported every step and resampling is triggered on
-  it, not blindly.
-* Too much jitter and the filter forgets the mechanism, becoming a random walk
-  with extra steps; too little and it cannot react at all, which is the current
-  problem.
+Propagation is the SIHRS_pop_min.bngl ODE system (annual harmonic only, no
+import term) with daily fixed-step RK4 vectorised across particles, pinned
+against scipy solve_ivp at 2e-3 relative in tests/test_particle_filter.py.
+Resampling is ESS-triggered; watch `ess` for particle depletion.
 """
 from __future__ import annotations
 
@@ -81,7 +46,7 @@ def _beta(t, Reff, eps1, phi1, s0):
     return (Reff * GAMMA_W / s0) * np.exp(eps1 * np.cos(2 * np.pi * (t - phi1) / 52))
 
 
-GAMMA_W = 7.0 / 3.2  # == sihrs_priors.gamma_per_week(); was 2.188, a 2.3e-4 mismatch vs the materialized model
+GAMMA_W = 7.0 / 3.2  # must equal sihrs_priors.gamma_per_week()
 
 
 def propagate(p: Particles, t0: float, weeks: float, N: float, s0: float,
@@ -157,25 +122,11 @@ def anchor_factors(mu_hist, obs_hist, clamp=(0.25, 4.0),
                    mode: str = "particle") -> np.ndarray:
     """Per-particle multiplicative anchor, matching amcmc.anchor_trajectories.
 
-    WHY THE FILTER NEEDS THIS. The production SIHRS pipeline anchors and the
-    filter did not, and it shows exactly where theory says it should: the
-    filter scores 1.044 at h=0 -- worse than the naive baseline one week out --
-    while being the best single member at h=3 (0.789). Anchoring forces the
-    origin to agree with what was actually observed, which is knowledge the
-    filter has but was throwing away.
-
-    factor_i = geomean over the lookback window of (observed / particle i's
-    predicted mean), clipped. Per-particle rather than a single scalar: a
-    scalar shifts the ensemble, while this also CONTRACTS it, because particles
-    that were badly wrong recently get pulled further.
-
-    TWO MODES, and the difference matters here. "particle" is the per-particle
-    geometric mean above. "scalar" matches what the production scoring path
-    actually does (anchor_analysis.transform): one factor for the whole
-    ensemble, last / median(origin). A scalar only SHIFTS the predictive; the
-    per-particle version also CONTRACTS it. Since the filter was measured to be
-    overconfident at low jitter, extra contraction can easily hurt there, so
-    both are available and the choice is decided by measurement.
+    Unanchored, the filter scored worse than baseline at h=0. mode
+    "particle": factor_i = clipped geomean over the lookback of observed /
+    particle i's mean, which shifts AND contracts the ensemble. mode
+    "scalar": one factor for all (as anchor_analysis.transform), a pure
+    shift; contraction can hurt an already overconfident filter.
     """
     mu = np.vstack(mu_hist)                      # (k, n_particles)
     obs = np.asarray(obs_hist, float)[:, None]   # (k, 1)
@@ -220,8 +171,7 @@ def update(p: Particles, y: float, t0: float, N: float, s0: float, rng,
     if not np.isfinite(tot) or tot <= 0:
         return {"ok": False, "ess": 0.0}
 
-    # PIT under the prior predictive, i.e. using the weights carried IN, not the
-    # ones we just computed. Using the updated weights would be circular.
+    # PIT under the weights carried IN (the updated ones would be circular)
     pit = _pit(y, mu, p.r, p.w, rng)
 
     p.w = w / tot
@@ -237,10 +187,8 @@ def update(p: Particles, y: float, t0: float, N: float, s0: float, rng,
 def _pit(y, mu, r, w, rng, n_draw: int = 2000) -> float:
     """P(Y_pred <= y) under the mixture predictive, randomised for discreteness.
 
-    A negative binomial is discrete, so the raw CDF cannot be uniform even for a
-    perfect forecaster; the randomised version P(Y<y) + U*P(Y=y) is. Without
-    that correction the calibration statistic is biased at the low counts that
-    dominate the shoulder and off-season.
+    P(Y<y) + U*P(Y=y): uniform for a perfect forecaster despite discreteness
+    (the raw CDF is biased at low counts).
     """
     idx = rng.choice(w.size, size=min(n_draw, w.size * 4), p=w)
     m, rr = np.maximum(mu[idx], 1e-9), r[idx]
@@ -253,28 +201,11 @@ def _pit(y, mu, r, w, rng, n_draw: int = 2000) -> float:
 class AdaptiveJitter:
     """Choose `jitter` online from the filter's own calibration. No constant.
 
-    WHY THIS EXISTS
-    ---------------
-    A swept fixed jitter has a clean interior optimum in every season, but the
-    optimum MOVES: 0.25 in 2023-24, 0.30 in 2025-26, >=0.45 in 2024-25. A knob
-    that must be re-picked per season is a knob that has to be selected
-    out-of-season, and this project has already measured what that costs (the
-    analogue's bandwidth optimum reversed across seasons, +0.259 relWIS).
-
-    THE SIGNAL
-    ----------
-    Under a calibrated one-step predictive the PIT is uniform, so
-    E|PIT - 1/2| = 1/4. Larger means observations keep landing in the tails --
-    the ensemble is too tight, and jitter should rise. Smaller means the
-    predictive is wider than it needs to be. Both are computable at the time
-    from data already in hand, which is the point: no future season is
-    consulted, and no historical trend is fitted. The mechanism reacts to the
-    new observation, and the amount it is allowed to react is itself set by how
-    badly it has been predicting recent observations.
-
-    The update is multiplicative on log-jitter with a small gain, clipped to
-    [lo, hi]. `warmup` steps pass before adapting, because the first few PITs of
-    a season carry almost no information and would swing the knob wildly.
+    The best fixed jitter moves from season to season, so it cannot be
+    chosen in advance. Under a calibrated one-step predictive E|PIT - 1/2| =
+    1/4: larger means too tight (raise jitter), smaller too wide. Only data
+    in hand is used. Multiplicative update on log-jitter, clipped to [lo, hi],
+    after `warmup` uninformative early PITs.
     """
 
     def __init__(self, init: float = 0.30, gain: float = 0.6,
@@ -310,20 +241,9 @@ def forecast(p: Particles, t0: float, horizons, N: float, s0: float, rng,
              drift: float = 0.0, bounds: Optional[dict] = None) -> dict:
     """Predictive draws at each horizon, with negative-binomial observation noise.
 
-    Operates on a COPY so the filter state is not advanced by forecasting.
-    `factors` is the per-particle anchor from `anchor_factors`, applied to the
-    predicted mean before observation noise -- the same order as the production
-    path, where anchoring scales the trajectory and noise is added on top.
-
-    KEEP DRIFTING WHILE FORECASTING.
-    -------------------------------
-    `jitter` is applied during filtering but historically NOT during forecasting,
-    which freezes the parameter ensemble the moment prediction starts. That is
-    why the filter's spread barely widens with horizon -- dispersion grows only
-    1.4x from h=0 to h=3 where the calibrated analogue grows 3.7x -- and why its
-    underprediction explodes 7x across horizons. `drift` lets parameters keep
-    moving over the forecast horizon, which is what the model says happens: if
-    transmission could change last week, it can change next week too.
+    Works on a COPY. `factors` (anchor_factors) scale the mean before
+    observation noise, as in production. `drift` keeps jittering parameters
+    over the horizon; without it the spread barely widens with h.
     """
     import copy
     q = copy.deepcopy(p)

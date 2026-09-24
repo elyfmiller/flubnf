@@ -1,48 +1,15 @@
-"""Estimate `mult` analytically and fix it, instead of sampling it.
+"""RESEARCH: estimate `mult` in closed form on the in-Python mirror and fix
+it in the model, instead of sampling it (scripts/profiled_fit_run.py).
 
-WHY
----
-`mult` is an ascertainment fraction that appears ONLY in the observable
-(`H_weekly = rho*mult*gamma*I`) and never in the dynamics. So for any trajectory
-its optimum is available in closed form, and sampling it buys nothing except a
-badly conditioned posterior:
+`mult` appears only in the observable (H_weekly = rho*mult*gamma*I), so
+sampling it only adds a ridge (Hessian condition number 402k -> 37k when
+profiled, at equal forecast error). This is the cheap approximation to true
+profiling: mult* is computed once at the mirror's optimum (log-space squared
+error, not PyBNF's NB likelihood), a good starting value rather than exact;
+needs_fallback() says when to sample mult normally.
 
-    sampled (5 params)    Hessian condition number  402,219
-    profiled (4 params)                              36,773   <- 10.9x better
-    fit error   0.154 -> 0.158     forecast error 0.628 -> 0.644 (p=0.846)
-
-Two of the four worst posterior ridges involve `mult` (Reff<->mult -0.668,
-eps1<->mult -0.548), and the sampler cannot traverse them: measured multi-chain
-R-hat 3.25 and ESS 44 with `mult` free.
-
-THIS IS THE CHEAP APPROXIMATION TO PROFILING
---------------------------------------------
-True profiling recomputes `mult*` inside the objective at every proposal, which
-needs a PyBNF change. This module does it once, up front, on the in-Python
-mirror -- a DE fit costing seconds rather than a second 14-minute AMCMC run --
-then FIXES `mult` in the materialised model so PyBNF samples one fewer
-dimension.
-
-The approximation is that `mult*` is computed at the mirror's optimum rather
-than at every point the chain visits. Because `mult` enters purely
-multiplicatively, the optimum moves little as the other parameters vary, so this
-recovers most of the geometric benefit. It is an approximation, not an identity
--- `needs_fallback()` exists to catch the cases where it is a bad one.
-
-THE CLAMP IS A DIAGNOSTIC, NOT A DETAIL
----------------------------------------
-`mult` is a FRACTION: ascertainment cannot exceed 1. Measured across 36 fits the
-analytic optimum ranged 0.013 to 1.777, exceeding 1.0 in **8%** of cases. The
-prior wall used to hide that; profiling exposes it. When the clamp fires it means
-the model cannot generate as many admissions as are reported, i.e. the FIXED
-`rho` (IHR = 0.02) is too small for that state -- a different repair, and worth
-surfacing rather than silently clipping.
-
-OBJECTIVE MISMATCH, STATED
---------------------------
-The mirror optimises log-space squared error; PyBNF optimises a negative-binomial
-likelihood. For a pure multiplicative scale the two optima are close but not
-identical, so `mult*` is a good starting value rather than the exact NB optimum.
+The clamp at 1 is a diagnostic: ascertainment cannot exceed 1, so a fired
+clamp means the fixed rho (IHR 0.02) is too small for that state.
 """
 from __future__ import annotations
 

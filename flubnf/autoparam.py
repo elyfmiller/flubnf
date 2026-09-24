@@ -1,45 +1,17 @@
-"""SUPERSEDED 2026-08-03 — do not wire into the pipeline.
+"""LEGACY (AMCMC weekly loop, imported by flubnf/weekly_loop.py and
+flubnf/warmstart.py): read a fit, classify pinned parameters, propose the
+next prior box, refit.
 
-This module was built to fix parameter pinning, on the belief that 78% of fits
-pinned a parameter against a prior wall. That measurement came from chains with
-ESS ~9 that had not mixed, and A CHAIN THAT DOES NOT MOVE LOOKS PINNED.
+SUPERSEDED 2026-08-03 as a pinning fix: its pin statistics came from unmixed
+chains (ESS ~9), and "a chain that does not move looks pinned". With the
+current sampler the seasonal pins mostly vanish and impr/mult pin instead.
+Kept because the decision logic is sound and tested (tests/test_autoparam.py);
+do not re-tune it on the old measurements.
 
-With a working sampler (population_size=4 + loguniform_var, now the default in
-sihrs_fit.write_conf) the picture changes completely:
-
-  * the seasonal pins this module was designed around largely vanish --
-    eps1 40% -> 16%, eps2 34% -> under 8%;
-  * the pins that remain are DIFFERENT parameters -- impr 19% -> 88%,
-    mult 25% -> 76% -- so its central rule ("49% of pins are eps1/eps2 collapsed
-    to zero, therefore drop them") was reading an artefact;
-  * the sampler fix ALONE reaches relWIS 1.027 over 52 states x 5 dates versus
-    1.584 before, with no round-2 refitting at all.
-
-Kept because the decision logic is sound and independently tested (24 tests in
-tests/test_autoparam.py), and because a RETARGETED version -- widening impr and
-mult rather than dropping the harmonics -- may be worth revisiting once the
-season sweep supplies enough as-of dates to validate it. Do not re-enable it on
-the strength of the superseded measurements below.
-
---- ORIGINAL DESIGN NOTES (measurements now known to be sampler artefacts) ---
-
-Automatic parameterisation: read a fit, decide what to change, refit.
-
-It replaced the manual step -- a human looks at a fitted posterior, sees a
-parameter jammed against a prior wall, moves the wall (or removes the
-parameter), and refits.
-
-Three diagnoses, not one. Of 379 pin flags across 255 fits:
-  MOVABLE (51%)   mult, impr, Reff, r pushing outward. Slide the window.
-  FLOOR   (49%)   eps1/eps2 collapsing to exactly 0. Cannot widen below a
-                  physical floor, so DROP the parameter.
-  CIRCULAR ( 7%)  phi1 (period 52), phi2 (period 26). phi=0 and phi=52 are the
-                  SAME POINT, so a boundary "pin" is a wrap, not a wall.
-                  (This one is still correct -- it is geometry, not sampling.)
-
-`choose()` exists because a refit whose pins did NOT clear measured 20% WORSE
-than the original, so "always take the newer fit" is the wrong rule. It compares
-only forecast-time-knowable quantities -- never WIS or realised actuals.
+Three diagnoses: MOVABLE (slide the window), FLOOR (eps at a physical zero:
+drop it), CIRCULAR (phi1/phi2 wrap, so a boundary "pin" is not a wall).
+choose() picks between rounds on forecast-time-knowable quantities only (a
+refit whose pins did not clear measured worse), never WIS or actuals.
 """
 from __future__ import annotations
 
@@ -53,9 +25,7 @@ from .sihrs_fit import FITTED_PRIORS
 # Phases are circular; a boundary "pin" is a wrap, not a wall.
 CIRCULAR: tuple[str, ...] = ("phi1__FREE", "phi2__FREE")
 
-# Amplitudes whose lower bound is a hard physical floor at zero. When the
-# posterior collapses here the parameter is contributing nothing and should be
-# removed rather than re-bounded.
+# Amplitudes with a physical floor at zero: collapsed there, drop them.
 FLOOR_AT_ZERO: tuple[str, ...] = ("eps1__FREE", "eps2__FREE")
 
 # Hard physical limits no adjustment may cross.

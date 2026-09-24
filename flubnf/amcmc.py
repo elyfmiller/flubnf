@@ -1,4 +1,4 @@
-"""AMCMC posterior → FluSight quantile forecasts.
+"""LEGACY (AMCMC weekly loop): AMCMC posterior → FluSight quantile forecasts.
 
 When PyBNF is run with `fit_type = am` and `output_noise_trajectory = H_weekly`,
 it writes a noise-augmented predictive trajectory to
@@ -10,16 +10,9 @@ shape (n_samples, n_weeks). Each row is one posterior draw with
 negative-binomial observation noise applied at each time point. The last
 `forecast_horizon` columns are the future-week predictions we forecast on.
 
-This is a strictly stronger quantile source than the DE-population +
-bootstrap-negbin approach in `flubnf.quantiles`:
-  - Real Bayesian posterior over (b0, t0, ..., r, gamma, mult, I0).
-  - Observation noise is sampled from PyBNF's own neg_bin_dynamic, not our
-    Python reimplementation, so the calibration matches the team's pipeline.
-  - No bootstrap variance.
-
-`quantile_forecast_from_amcmc()` returns a `QuantileForecast` with the same
-shape `flubnf.quantiles.QuantileForecast` produces, so downstream code
-(submission CSV, WIS scoring) works identically.
+Observation noise comes from PyBNF's own neg_bin_dynamic (no bootstrap).
+`quantile_forecast_from_amcmc()` returns the same `QuantileForecast` shape
+as flubnf.quantiles, so downstream code works unchanged.
 """
 
 from __future__ import annotations
@@ -30,7 +23,6 @@ from typing import Optional, Sequence
 
 import numpy as np
 
-from .paths import WorkspacePaths
 from .quantiles import FLUSIGHT_QUANTILES, QuantileForecast
 
 log = logging.getLogger(__name__)
@@ -91,17 +83,8 @@ def anchor_trajectories(
 ) -> np.ndarray:
     """Shift / scale each posterior trajectory so it matches recently observed values.
 
-    Why: the model is fit on observations 0..W and forecasts W+1..W+H. The
-    posterior at week W is uncertain, but we KNOW where W (and W-1, W-2, ...)
-    actually landed. Conditioning on those observations tightens the
-    predictive distribution where we have data, which dramatically improves
-    h=0 calibration (where the manual pipeline has historically been
-    strongest). Costs zero extra compute.
-
-    Anchoring uses the most recent `lookback` observed weeks. For each
-    sample trajectory, we compute the geometric-mean (multiplicative) or
-    arithmetic-mean (additive) ratio over those weeks and apply the result
-    forward. Lookback > 1 makes the shift robust to a single noisy week.
+    Conditioning on the last `lookback` observed weeks (robust to one noisy
+    week) tightens the predictive where we have data, mostly helping h=0.
 
     Modes:
       - "multiplicative": scale each sample by geo-mean(obs / sample) over
@@ -119,8 +102,7 @@ def anchor_trajectories(
 
     `slope_blend = 0` (default): pure anchored model dynamics.
     `slope_blend = 1`: pure persistence with recent growth.
-    Useful when the model is fundamentally misfitting trajectory shape
-    (e.g., predicting decline while obs is still rising).
+    `slope_blend < 0`: auto-tune (see below).
     """
     if mode == "none" or len(observed) == 0:
         return traj
@@ -153,19 +135,11 @@ def anchor_trajectories(
     model_growth_per_sample = (sample_window[:, -1] / safe_sample[:, 0]) ** (1.0 / max(1, k - 1))
     model_growth_per_sample = np.clip(model_growth_per_sample, 1e-6, 1e6)
 
-    # Adaptive slope_blend: `slope_blend < 0` triggers auto-tuning based on
-    # disagreement between the recent *observed* growth and the model's
-    # *forward* (predicted) growth. The blend scales smoothly from 0 (model
-    # extrapolation matches observed momentum -> trust model) to 0.5 (model
-    # extrapolation diverges by ~e^1 -> half-blend toward persistence).
-    # This handles California-style multi-wave dynamics where the model
-    # in-sample fit looks fine but its forward forecast declines while obs
-    # is still rising.
+    # slope_blend < 0: auto-tune from |log(observed growth / model forward
+    # growth)|: no blend inside a dead zone, then linear up to 0.6.
     if slope_blend < 0:
         n_total = traj.shape[1]
-        # Forward window = the same k weeks immediately after last_idx, if
-        # the trajectory extends that far. Otherwise fall back to the
-        # in-sample model growth.
+        # forward window: the k weeks after last_idx, else in-sample growth
         fwd_end = min(n_total - 1, last_idx + k - 1)
         if fwd_end > last_idx:
             fwd_window = anchored[:, last_idx: fwd_end + 1]
@@ -179,11 +153,7 @@ def anchor_trajectories(
             # Trajectory doesn't extend forward; use in-sample as proxy.
             model_fwd_growth_median = float(np.median(model_growth_per_sample))
         log_disagreement = abs(np.log(obs_growth / max(model_fwd_growth_median, 1e-6)))
-        # Dead-zone: when the model and observed growth agree within ~25%
-        # (log ratio < 0.22), trust the model entirely. Only blend when
-        # disagreement is clearly above noise. This prevents over-
-        # correction in states like Alabama where the model is roughly
-        # right and small blend × 3 horizon weeks compounds badly.
+        # dead zone (~25% agreement): a small blend compounds over horizons
         DEAD_ZONE = 0.22
         if log_disagreement < DEAD_ZONE:
             slope_blend = 0.0
@@ -191,13 +161,7 @@ def anchor_trajectories(
             # Map [0.22, 0.22+1.0] disagreement -> [0, 0.6] blend.
             slope_blend = float(min(0.6, 0.6 * (log_disagreement - DEAD_ZONE)))
 
-    # Phase-aware gating: when the outbreak is in a transition phase
-    # (NEAR_PEAK or TROUGH), the observed slope is an unreliable proxy
-    # for forward dynamics — the curve is bending and persistence would
-    # propagate the wrong direction. Suppress slope_blend in those
-    # phases. RISING / FALLING phases have clear, exploitable momentum.
-    # UNKNOWN / PRE_OUTBREAK weren't reliably classified; leave blend on
-    # and let the dead-zone in the disagreement metric do its job.
+    # No momentum blend at NEAR_PEAK/TROUGH: the curve is bending.
     if phase_aware and slope_blend > 0:
         try:
             from .phase import detect_phase, Phase
