@@ -28,7 +28,8 @@ templates under app/ui/templates):
   Output              GET /output, /output/download, POST /output/reveal,
                       GET /output/report, /output/report/download
                                                                output.html
-  Sandbox             GET /sandbox, POST /sandbox/*, GET /api/sandbox/*
+  Sandbox             GET /sandbox, POST /sandbox/*, GET /api/sandbox/*,
+                      GET /sandbox/models|runs/{id}/download
                                                                sandbox.html
   Models              GET /models, /model/{name}               model.html
   Retrospective       roots/claims/status, ETA estimate
@@ -3350,9 +3351,10 @@ def _sandbox_save_posted(name: str, model_bngl: str, data_exp: str,
 
 @app.get("/sandbox", response_class=HTMLResponse)
 def sandbox_page(request: Request, run: str = "", model: str = "",
-                 dataset: str = ""):
+                 dataset: str = "", compare: str = ""):
     """The gallery (no model) or one model's workbench (?model=): the
-    editor, its run settings, its runs and their results, its diagram."""
+    editor, its run settings, its runs and their results (with ?compare=
+    a second run overlaid and diffed), its diagram."""
     live = _sandbox_status.get("running")
     models = sandbox_mod.list_models()
     editing = None
@@ -3380,11 +3382,34 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
     except Exception as e:
         _flash(f"That sandbox run could not be read: {e}")
         res = None
+    # a second run of the same model, overlaid and diffed against the open one
+    cmp, diff = None, None
+    if res and compare and compare != res["run_id"]:
+        try:
+            cmp = sandbox_mod.results(_sandbox_run_dir(compare), live=live)
+            if cmp["meta"].get("model") != res["meta"].get("model"):
+                raise sandbox_mod.SandboxError(
+                    f"{compare} is a run of another model")
+            diff = sandbox_mod.diff_runs(compare, res["run_id"])
+        except Exception as e:
+            _flash(f"Not compared: {e}")
+            cmp, diff = None, None
     ctx = {"active": "Sandbox", "models": models, "last": last,
            "examples": sandbox_mod.list_examples(), "runs": runs,
            "res": res, "res_json": _script_json(res or {}),
+           "cmp": cmp, "cmp_json": _script_json(cmp or {}), "diff": diff,
            "editing": editing, "busy": _sandbox_busy_reason(),
-           "running_id": live}
+           "running_id": live,
+           # the Oracle SIHRS start (the gallery's New model form)
+           "vintages": sandbox_mod.vintages(),
+           "locations": sandbox_mod.locations(),
+           "datasets": sandbox_mod.dataset_choices()}
+    if res:
+        ctx["oracle"] = sandbox_mod.read_oracle(res["run_id"])
+        ctx["oracle_gate"] = sandbox_mod.oracle_gate(res["run_id"])
+        ctx["oracle_w_production"] = sandbox_mod.oracle_default_w()
+        ctx["oracle_w"] = (ctx["oracle"] or {}).get(
+            "w", ctx["oracle_w_production"])
     if editing:
         name = editing["name"]
         try:
@@ -3397,14 +3422,19 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
                                                    times=times)
         except Exception:
             settings = []
-        # the run form starts from this model's newest run, else a quick check
+        # the run form starts from this model's newest run, else a quick
+        # check (a shipped start: its production seed, 4 forecast weeks)
         prev = runs[0] if runs else {}
+        shipped = sandbox_mod.shipped_state(name, {
+            f: editing[f] for f in sandbox_mod.REQUIRED})
         form = {"particles": int(prev.get("particles")
                                  or sandbox_mod.DRY_RUN_PARTICLES),
                 "jitter": prev.get("jitter", 0.15),
                 "forecast_weeks": prev.get("forecast_weeks", 4),
-                "seed": prev.get("seed", 0)}
+                "seed": prev.get("seed", shipped["info"].get("seed", 0)
+                                 if shipped["shipped"] else 0)}
         ctx.update({
+            "shipped": shipped,
             "info": sandbox_mod.read_info(name),
             "note": next((m["note"] for m in models if m["name"] == name), ""),
             "origin": next((m["origin"] for m in models if m["name"] == name), ""),
@@ -3441,13 +3471,29 @@ def sandbox_add_example(request: Request, name: str = Form(...)):
 
 @app.post("/sandbox/new")
 def sandbox_new(request: Request, name: str = Form(...),
-                start: str = Form("skeleton")):
+                start: str = Form("skeleton"), location: str = Form(""),
+                forecast_date: str = Form(""), season_start: str = Form(""),
+                group: str = Form(""), as_of: str = Form("")):
     """A new model: the skeleton (fits as written), a copy of a shipped
-    example (example:<name>) or of a sandbox model (copy:<name>)."""
+    example (example:<name>) or of a sandbox model (copy:<name>), or the
+    Oracle SIHRS filter as production builds it for one hub location and
+    forecast date (shipped:sihrs) or one group of a stored dataset with a
+    population (shipped:dataset:<id>, as of as_of)."""
     name = (name or "").strip()
     kind, _, what = (start or "skeleton").partition(":")
     try:
-        if kind == "example":
+        if kind == "shipped" and what == "sihrs":
+            sandbox_mod.from_shipped(name, location, forecast_date,
+                                     season_start=season_start)
+            _flash(f"{name}: the Oracle SIHRS filter for {location.strip()} "
+                   f"as of {forecast_date.strip()}.")
+        elif kind == "shipped" and what.startswith("dataset:"):
+            sandbox_mod.from_shipped(name, group, as_of,
+                                     season_start=season_start,
+                                     dataset=what.split(":", 1)[1])
+            _flash(f"{name}: the Oracle SIHRS filter for {group.strip()} "
+                   f"as of {as_of.strip()}.")
+        elif kind == "example":
             sandbox_mod.add_example(what, as_name=name)
             _flash(f"{name} copied from the example {what}.")
         elif kind == "copy":
@@ -3537,6 +3583,8 @@ def _sandbox_fill_flash(info: dict) -> None:
            f"{info['end']}, {what}, {info['rows']} weeks")
     if info["dropped"]:
         msg += f", {info['dropped']} missing weeks dropped"
+    if info.get("population_set"):
+        msg += f"; N set to {info['population_set']:,}"
     if info.get("kind") == "rate":
         msg += (" (rates, not counts: the default objfunc expects counts; "
                 "set objfunc in priors.conf)")
@@ -3548,12 +3596,14 @@ def sandbox_fill_data(request: Request, name: str, location: str = Form(""),
                       start: str = Form(""), end: str = Form(""),
                       source: str = Form("settled"), group: str = Form(""),
                       model_bngl: str = Form(""), data_exp: str = Form(""),
-                      priors_conf: str = Form("")):
+                      priors_conf: str = Form(""), set_pop: str = Form("")):
     """data.exp from the hub archive (one location, settled truth or one
     vintage) or from a stored dataset (source=dataset:<id>, one group).
     Missing weeks dropped and counted, never imputed. The editor's other
     fields are saved first, so unsaved edits survive the fill (data.exp
-    gives its header only)."""
+    gives its header only). set_pop also sets the model's N to the
+    location's population (refused for a model that derives i0 from N)."""
+    pop = bool(set_pop)
     src = (source or "settled").strip()
     try:
         saved = _sandbox_save_posted(name, model_bngl, data_exp, priors_conf)
@@ -3563,11 +3613,13 @@ def sandbox_fill_data(request: Request, name: str, location: str = Form(""),
             info = sandbox_mod.fill_data(name, (group or "").strip(),
                                          (start or "").strip(),
                                          (end or "").strip(),
-                                         dataset=src.split(":", 1)[1])
+                                         dataset=src.split(":", 1)[1],
+                                         set_pop=pop)
         else:
             info = sandbox_mod.fill_data(
                 name, (location or "").strip(), (start or "").strip(),
-                (end or "").strip(), asof=None if src == "settled" else src)
+                (end or "").strip(), asof=None if src == "settled" else src,
+                set_pop=pop)
         _sandbox_fill_flash(info)
     except Exception as e:
         _flash(str(e))
@@ -3842,6 +3894,69 @@ def api_sandbox_run(run_id: str):
                                    live=_sandbox_status.get("running"))
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=404)
+
+
+def _sandbox_local_get(request: Request) -> bool:
+    """A download is served only to a localhost Host (and Origin, when
+    sent): GET stays open elsewhere, but a model or a run is the user's
+    own files, not for a DNS-rebinding page to read."""
+    origin = request.headers.get("origin")
+    return (_authority_hostname(request.headers.get("host", ""))
+            in _LOCAL_HOSTNAMES
+            and (origin is None
+                 or _authority_hostname(origin) in _LOCAL_HOSTNAMES))
+
+
+def _sandbox_zip(data: bytes, filename: str):
+    from fastapi.responses import Response
+    return Response(data, media_type="application/zip", headers={
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Cache-Control": "no-store"})
+
+
+@app.get("/sandbox/models/{name}/download")
+def sandbox_model_download(request: Request, name: str):
+    """The model's three files and sidecars as a zip."""
+    if not _sandbox_local_get(request):
+        return PlainTextResponse("Refused: not a localhost request.\n",
+                                 status_code=403)
+    try:
+        return _sandbox_zip(sandbox_mod.model_zip(name), f"{name}.zip")
+    except Exception as e:
+        return PlainTextResponse(f"{e}\n", status_code=404)
+
+
+@app.get("/sandbox/runs/{run_id}/download")
+def sandbox_run_download(request: Request, run_id: str):
+    """A run's inputs, engine outputs and summary.csv as a zip."""
+    if not _sandbox_local_get(request):
+        return PlainTextResponse("Refused: not a localhost request.\n",
+                                 status_code=403)
+    try:
+        return _sandbox_zip(sandbox_mod.run_zip(run_id), f"{run_id}.zip")
+    except Exception as e:
+        return PlainTextResponse(f"{e}\n", status_code=404)
+
+
+@app.post("/sandbox/runs/{run_id}/oracle")
+def sandbox_run_oracle(run_id: str, w: str = Form("")):
+    """The production Oracle step on a finished run of an unedited Oracle
+    SIHRS start, inside the run folder only (sandbox, not a submission):
+    nothing reaches the ledger, the site, the archive or model-output."""
+    model = ""
+    try:
+        model = str(sandbox_mod.results(_sandbox_run_dir(run_id))["meta"]
+                    .get("model", ""))
+        try:
+            wv = float(w) if str(w).strip() else None
+        except ValueError:
+            raise sandbox_mod.SandboxError(f"w must be a number, not {w!r}")
+        out = sandbox_mod.oracle_step(run_id, wv)
+        _flash(f"Oracle step applied to {run_id} with w = {out['w']:g} "
+               "(sandbox, not a submission).")
+    except Exception as e:
+        _flash(f"Oracle step not applied: {e}")
+    return _sandbox_redirect(model, run_id if model else "")
 
 
 def _sandbox_storage_line() -> dict:

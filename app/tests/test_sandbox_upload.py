@@ -1,7 +1,8 @@
 """Your own data in the sandbox: a CSV uploaded through the dataset store
-(app/core/datasets.py, MicroHub or hubverse shape), or a stored dataset,
-loaded into a model's data.exp (sandbox.ingest_upload, dataset_series,
-fill_data(dataset=); the upload-data and fill-data routes). Hub-free:
+(app/core/datasets.py, a grouped CSV or a hubverse time series), or a
+stored dataset, loaded into a model's data.exp (sandbox.ingest_upload,
+dataset_series, fill_data(dataset=); the upload-data and fill-data
+routes). Hub-free:
 the store lives in tmp_path. What is tested is the row contract with
 calendar offsets, the sidecar, the inline refusals, the size cap before
 and while reading, and that a client's file name is never a path.
@@ -9,6 +10,7 @@ and while reading, and that a client's file name is never a path.
 import asyncio
 import json
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -21,9 +23,18 @@ from app.core import sandbox as sb                       # noqa: E402
 from app.ui import server as srv                         # noqa: E402
 
 client = TestClient(srv.app)
-FIX = Path(__file__).resolve().parent / "fixtures"
 
-#: one hubverse location, five weeks (the store refuses gaps, MicroHub's rule)
+#: a grouped CSV with a population: three groups (Overall the sum), ten
+#: weeks from 2022-01-01, synthetic values
+GROUPED = "date,target_group,value,population\n" + "".join(
+    f"{d.month}/{d.day}/{d:%y},{g},{v},{p}\n"
+    for i, d in enumerate(date(2022, 1, 1) + timedelta(days=7 * k)
+                          for k in range(10))
+    for g, v, p in (("Pediatric", 80 + 10 * i, 2_500_000),
+                    ("Adult", 300 + 20 * i, 4_300_000),
+                    ("Overall", 380 + 30 * i, 6_800_000)))
+
+#: one hubverse location, five weeks (the store refuses gaps)
 HUBVERSE = ("target_end_date,location,observation\n"
             "2024-10-05,Springfield,8\n2024-10-12,Springfield,10\n"
             "2024-10-19,Springfield,12\n"
@@ -67,9 +78,8 @@ def test_a_one_location_hubverse_upload_loads_with_calendar_weeks(box):
     assert f'<option value="dataset:{ds[0].id}" selected>counts</option>' in html
 
 
-def test_a_microhub_upload_with_groups_is_stored_then_one_group_loaded(box):
-    text = (FIX / "microhub-template-population-head.csv").read_text()
-    r = _upload(text, name="microhub.csv")
+def test_a_grouped_upload_is_stored_then_one_group_loaded(box):
+    r = _upload(GROUPED, name="grouped.csv")
     (ds,) = D.list_datasets()
     assert sorted(ds.groups) == ["Adult", "Overall", "Pediatric"]
     before = sb.read_model("mine")["data.exp"]
@@ -83,13 +93,13 @@ def test_a_microhub_upload_with_groups_is_stored_then_one_group_loaded(box):
                     follow_redirects=False)
     assert r.headers["location"] == "/sandbox?model=mine"
     rows = _rows()
-    assert rows[0] == [0, 414] and [t for t, _ in rows] == list(range(len(rows)))
+    assert rows[0] == [0, 380] and [t for t, _ in rows] == list(range(len(rows)))
     info = sb.read_data_source("mine")
-    assert info["population"] == 6861528 and info["start"] == "2022-01-01"
-    assert "; population 6,861,528" in client.get("/sandbox?model=mine").text
+    assert info["population"] == 6800000 and info["start"] == "2022-01-01"
+    assert "; population 6,800,000" in client.get("/sandbox?model=mine").text
     # a range within the group's weeks, and a group the dataset lacks
     sb.fill_data("mine", "Adult", "2022-01-08", "2022-01-15", dataset=ds.id)
-    assert _rows() == [[0, 421], [1, 550]]
+    assert _rows() == [[0, 320], [1, 340]]
     with pytest.raises(sb.SandboxError, match="has no group 'Seniors'"):
         sb.fill_data("mine", "Seniors", "", "", dataset=ds.id)
     with pytest.raises(sb.SandboxError):

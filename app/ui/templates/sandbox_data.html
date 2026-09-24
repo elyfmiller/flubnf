@@ -33,13 +33,14 @@
    <input id="sbfill-start" name="start" type="date" step="7" min="2020-01-04" value="{{ _src.start or data_range.start }}"></span>
   <span><label for="sbfill-end">End</label>
    <input id="sbfill-end" name="end" type="date" step="7" min="2020-01-04" value="{{ _src.end or data_range.end }}"></span>
+  <span class="sbsetpop"><span class="lblrow"><label><input type="checkbox" name="set_pop" value="1"> Set N</label>{{ tips.tip("sb-setpop", "set N", "Also sets the model's N line to this location's or group's population. Refused for a model that derives i0 from N; start from the Oracle SIHRS filter for that.") }}</span></span>
   <button class="pill" formaction="/sandbox/models/{{ editing.name }}/fill-data" formmethod="post">Load into data.exp</button>
  </div>
  {% else %}
  <p class="hint">No hub archive here: upload a CSV, type the rows or copy an example.</p>
  {% endif %}
  <div class="row sbupload">
-  <span>{{ tips.label("Upload a CSV", "sb-upload", "MicroHub columns date, target_group, value (and population), or hubverse target_end_date, location, observation; weekly, up to " ~ upload_mb ~ " MB. It is checked, then kept as one of your datasets.", for_="sbfill-csv") }}
+  <span>{{ tips.label("Upload a CSV", "sb-upload", "A grouped CSV (date, target_group, value, optional population) or a hubverse time series (target_end_date, location, observation); weekly, up to " ~ upload_mb ~ " MB. It is checked, then kept as one of your datasets.", for_="sbfill-csv") }}
    <input id="sbfill-csv" name="csv" type="file" accept=".csv,text/csv"></span>
   <span><label for="sbfill-kind">Values</label>
    <select id="sbfill-kind" name="kind"><option value="count">counts</option><option value="rate">rates</option></select></span>
