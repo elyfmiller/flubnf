@@ -123,6 +123,106 @@ def test_spreadsheet_date_numbers_get_a_hint():
     assert "spreadsheet date numbers" in only(rep, "date_parse").message
 
 
+def test_a_day_first_file_is_one_problem_not_three():
+    """Sundays written DD/MM/YYYY: the dates with a day over 12 are
+    day-first; the others (07/01/2024) must not be read month-first into
+    weekday and missing-week problems as well."""
+    days = [date(2023, 12, 31) + timedelta(days=7 * i) for i in range(10)]
+    rows = [f"{d:%d/%m/%Y},{g},{i}" for i, d in enumerate(days)
+            for g in ("Adult", "Pediatric")]
+    rep = D.validate(csv_text("date,target_group,value", rows).encode())
+    assert rep.codes == ["date_day_first"]
+    assert rep.problems[0].rows == (2, 3, 6, 7, 8, 9, 10, 11, 16, 17, 18, 19)
+    assert "31/12/2023" in rep.problems[0].message
+
+
+def test_yy_mm_dd_dates_are_neither_read_nor_called_day_first():
+    rows = [f"{d:%y/%m/%d},A,{i}" for i, d in enumerate(sats("2024-01-06"))]
+    rep = D.validate(csv_text("date,target_group,value", rows).encode())
+    assert rep.codes == ["date_parse"]
+    assert "24/01/06 could be year-first or day-first" in rep.problems[0].message
+
+
+def test_two_digit_years_read_as_a_spreadsheet_reads_them():
+    assert D.parse_date("1/6/68")[0] == date(1968, 1, 6)
+    assert D.parse_date("1/6/30")[0] == date(1930, 1, 6)
+    assert D.parse_date("1/6/29")[0] == date(2029, 1, 6)
+    assert D.parse_date("8/3/24")[0] == date(2024, 8, 3)
+
+
+def test_a_day_first_as_of_says_so():
+    raw = (b"as_of,target_end_date,location,observation\n"
+           b"13/01/2024,2024-01-06,US,1\n13/01/2024,2024-01-13,US,2\n")
+    p = only(D.validate(raw), "as_of_parse")
+    assert "13/01/2024 is day-first" in p.message
+
+
+@pytest.mark.parametrize("header", ["week_ending", "Week End", "end_date",
+                                    "target_end_date"])
+@pytest.mark.parametrize("back,name", [(6, "Sunday"), (5, "Monday"),
+                                       (4, "Tuesday")])
+def test_week_ends_on_a_sunday_monday_or_tuesday_are_refused(header, back,
+                                                              name):
+    """Most of a week ending on these days lies in the MMWR week before;
+    moving each to the Saturday after would label every week a week
+    late."""
+    rows = [f"{(d - timedelta(days=back)).isoformat()},A,{i}"
+            for i, d in enumerate(sats("2024-01-13"))]
+    rep = D.validate(csv_text(f"{header},target_group,value", rows).encode())
+    p = only(rep, "weekday_end")
+    first = date(2024, 1, 13) - timedelta(days=back)
+    assert f"its dates are {name}s" in p.message
+    assert f"{first.isoformat()} -> 2024-01-06" in p.message
+    assert p.rows == (2, 3, 4, 5, 6, 7)
+    # the same dates as week starts (or any date) move forward
+    rep = ok(D.validate(csv_text("date,target_group,value", rows).encode()))
+    assert rep.summary["first"] == "2024-01-13"
+
+
+def test_week_ends_on_a_wednesday_or_friday_move_forward():
+    for back in (3, 1):
+        rows = [f"{(d - timedelta(days=back)).isoformat()},A,{i}"
+                for i, d in enumerate(sats("2024-01-13"))]
+        rep = ok(D.validate(csv_text("week_ending,target_group,value",
+                                     rows).encode()))
+        assert rep.summary["date_shift_days"] == back
+
+
+def test_a_gap_names_the_weeks_it_leaves_out():
+    rows = [f"{d.isoformat()},A,{i}" for i, d in enumerate(sats(n=8))]
+    del rows[2]                                  # 2024-08-17
+    p = only(D.validate(csv_text("date,target_group,value", rows).encode()),
+             "gap")
+    assert p.rows == (3, 4)
+    assert ("2024-08-17 is missing between 2024-08-10 and 2024-08-24 in "
+            "group 'A'") in p.message
+    del rows[2:4]                                # and 08-24, 08-31
+    p = only(D.validate(csv_text("date,target_group,value", rows).encode()),
+             "gap")
+    assert ("2024-08-17 to 2024-08-31 (3 weeks) are missing between "
+            "2024-08-10 and 2024-09-07") in p.message
+
+
+def test_week_problems_quote_the_dates_as_the_file_writes_them():
+    """Wednesdays moved +3: the rows say 2024-01-10, not 2024-01-13."""
+    raw = (b"as_of,target_end_date,location,observation\n"
+           b"2024-01-10,2023-12-27,US,10\n2024-01-10,2024-01-03,US,11\n"
+           b"2024-01-10,2024-01-10,US,12\n")
+    p = only(D.validate(raw), "as_of_before_date")
+    assert ("2024-01-10 (week ending 2024-01-13) in as_of 2024-01-10 (US)"
+            in p.message)
+    rows = [f"{(d - timedelta(days=3)).isoformat()},A,{i}"
+            for i, d in enumerate(sats(n=6))]
+    rows.append(rows[1])
+    del rows[3]
+    rep = D.validate(csv_text("date,target_group,value", rows).encode())
+    assert "2024-07-31 (week ending 2024-08-03) + A" not in str(rep.problems)
+    assert ("2024-08-07 (week ending 2024-08-10) + A"
+            in only(rep, "duplicate").message)
+    assert ("2024-08-21 (week ending 2024-08-24) is missing"
+            in only(rep, "gap").message)
+
+
 # --------------------------------------------------------------- separators
 
 @pytest.mark.parametrize("sep", [",", ";", "\t"])

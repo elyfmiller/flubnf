@@ -29,7 +29,9 @@ dataset`` all read through it):
     without a time ("2024-01-06 00:00:00"). Every date of a file must fall
     on one weekday; it is moved to the MMWR week-ending Saturday of its
     Sunday-to-Saturday week, with a notice. Mixed weekdays and day-first
-    dates are refused.
+    dates are refused, and so is a column named for week ENDS whose dates
+    are Sundays, Mondays or Tuesdays (most of such a week lies in the MMWR
+    week before, so moving it forward would label it a week late).
 
 Every problem is reported at once, each with its row numbers (the
 spreadsheet's rows: the header is row 1) and an example; ``problem_groups``
@@ -143,6 +145,9 @@ REQUIRED = ("date", "group", "value")
 #: the pairs FluBNF always read by precedence (the first wins, silently)
 PRECEDENCE = {"date": ("targetenddate", "date"),
               "value": ("observation", "value")}
+#: date headers that name the END of each week (see weekday_end)
+END_HEADERS = ("targetenddate", "weekend", "weekending", "enddate",
+               "weekenddate", "weekendingdate")
 
 #: separators tried when sniffing, with their names
 DELIMITERS = {",": "comma", ";": "semicolon", "\t": "tab"}
@@ -216,8 +221,8 @@ PROBLEM_KINDS = (
               "target_required", "target_unknown")),
     ("Columns", ("missing_columns", "ambiguous_columns", "column_unknown",
                  "duplicate_columns", "ragged", "extra_fields")),
-    ("Dates", ("date_parse", "date_day_first", "weekday", "as_of_parse",
-               "as_of_before_date")),
+    ("Dates", ("date_parse", "date_day_first", "weekday", "weekday_end",
+               "as_of_parse", "as_of_before_date")),
     ("Values", ("value_numeric", "value_format", "value_negative",
                 "value_na", "value_not_integer")),
     ("Population", ("population_invalid", "population_missing",
@@ -452,12 +457,17 @@ def _date_parts(text: str):
     return None, None, None
 
 
+def _year2(yy: int) -> int:
+    """A two-digit year as a spreadsheet reads it: 00-29 -> 20xx, 30-99 ->
+    19xx (never a year decades ahead)."""
+    return yy + (2000 if yy < 30 else 1900)
+
+
 def _ymd(order, parts):
     a, b, c = parts
     if order == "ymd":
         return a, b, c
-    y = c + ((2000 if c < 69 else 1900) if order == "mdy2" else 0)
-    return y, a, b
+    return (_year2(c) if order == "mdy2" else c), a, b
 
 
 def parse_date(text: str):
@@ -466,8 +476,8 @@ def parse_date(text: str):
     Accepted: YYYY-MM-DD, YYYY/MM/DD, M/D/YYYY, M/D/YY and MM-DD-YYYY,
     each optionally followed by a time ("2024-01-06 00:00:00"), which is
     dropped. Day-first (D/M/Y) is not accepted: it is ambiguous for every
-    day <= 12 and a silent misparse would shift weeks. Two-digit years
-    follow POSIX %y: 00-68 -> 20xx."""
+    day <= 12 and a silent misparse would shift weeks. Two-digit years are
+    read as a spreadsheet reads them: 00-29 -> 20xx, 30-99 -> 19xx."""
     label, order, parts = _date_parts(text)
     if label is None:
         return None, None
@@ -477,11 +487,25 @@ def parse_date(text: str):
         return None, None
 
 
+def _year_first2(text: str) -> bool:
+    """True for a string that reads as YY/MM/DD ('24/01/06'): it could as
+    well be day-first, so it is called neither."""
+    label, order, parts = _date_parts(text)
+    if order != "mdy2":
+        return False
+    try:
+        date(_year2(parts[0]), parts[1], parts[2])
+    except ValueError:
+        return False
+    return True
+
+
 def _day_first(text: str):
     """The date a month-first string would be if read day-first, when only
-    that reading is valid (the first number is over 12), else None."""
+    that reading is valid (the first number is over 12, and it is not a
+    YY/MM/DD date either), else None."""
     label, order, parts = _date_parts(text)
-    if order not in ("mdy", "mdy2") or parts[0] <= 12:
+    if order not in ("mdy", "mdy2") or parts[0] <= 12 or _year_first2(text):
         return None
     y, _, _ = _ymd(order, parts)
     try:
@@ -927,7 +951,8 @@ def _map_columns(header, rep: Report, columns=None):
     if rep.problems:
         return None
     g = norm[chosen["group"]]
-    cols = {"format": "hubverse" if g == "location" else "grouped"}
+    cols = {"format": "hubverse" if g == "location" else "grouped",
+            "_date_header": norm[chosen["date"]]}
     idx = dict(chosen)
     for role, i in chosen.items():
         cols[role] = label[i]
@@ -1078,6 +1103,10 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
         if all(re.fullmatch(r"\d{5}(\.0+)?", t) for _, t in bad_dates):
             hint = (" They look like spreadsheet date numbers: format the "
                     "column as dates before saving.")
+        elif any(_year_first2(t) for _, t in bad_dates):
+            t = next(t for _, t in bad_dates if _year_first2(t))
+            hint = (f" A date like {t} could be year-first or day-first: "
+                    "write it as YYYY-MM-DD.")
         rep.add("date_parse", f"The '{col}' column contains "
                 f"{len(bad_dates)} value(s) that could not be parsed as dates "
                 f"({_rows(lines)}; e.g., {_examples(t for _, t in bad_dates)})."
@@ -1088,12 +1117,32 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
                 f"day-first ({_rows(lines)}; e.g., {eg(day_first)}). "
                 "Day-first dates are ambiguous and not accepted: write them "
                 "as YYYY-MM-DD or M/D/YYYY.", lines)
+    if day_first:
+        # a day-first file: its other dates were read month-first
+        # (07/01/2024 as July 1), so their weekdays and weeks mean nothing
+        parsed, rows = [], []
     shift = 0
     weekday = None
     wds = Counter(d.weekday() for _, _, d in parsed)
     if len(wds) == 1:
         weekday = next(iter(wds))
         shift = (5 - weekday) % 7
+        if shift >= 4 and cols.get("_date_header") in END_HEADERS:
+            # a week ENDING on a Sunday, Monday or Tuesday lies mostly in
+            # the MMWR week before: moving it forward labels it a week late
+            lines = [ln for ln, _, _ in parsed]
+            ln, t, d = parsed[0]
+            rep.add("weekday_end", f"The '{col}' column names the end of "
+                    f"each week, but its dates are {WEEKDAYS[weekday]}s "
+                    f"({_rows(lines)}; e.g., {t}). A week ending on a "
+                    f"{WEEKDAYS[weekday]} lies mostly in the MMWR week that "
+                    f"ends the Saturday before ({t} -> "
+                    f"{saturday_on_or_before(d).isoformat()}); moving it to "
+                    "the Saturday after would label every week a week "
+                    "late. Write each week's MMWR week-ending Saturday, or "
+                    "name the column date if its dates start their weeks.",
+                    lines)
+            shift = 0
     elif len(wds) > 1:
         top = wds.most_common(1)[0][0]
         off = [(ln, t, d) for ln, t, d in parsed if d.weekday() != top]
@@ -1121,10 +1170,13 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
                 for ln, a, n, k, d, v, p in rows]
     if bad_asof:
         lines = [ln for ln, _ in bad_asof]
+        dmy = next((t for _, t in bad_asof if _day_first(t)), None)
         rep.add("as_of_parse", f"The '{cols['as_of']}' column contains "
                 f"{len(bad_asof)} value(s) that could not be parsed as dates "
-                f"({_rows(lines)}; e.g., {_examples(t for _, t in bad_asof)}).",
-                lines)
+                f"({_rows(lines)}; e.g., {_examples(t for _, t in bad_asof)})."
+                + (f" A date like {dmy} is day-first, which is not "
+                   "accepted: write it as YYYY-MM-DD or M/D/YYYY."
+                   if dmy else ""), lines)
     if bad_vals:
         lines = [ln for ln, _ in bad_vals]
         rep.add("value_numeric", f"The '{vcol}' column must contain numbers "
@@ -1166,7 +1218,7 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
                             "each was read by its own pattern.")
 
     national = _check_groups(rep, raw_rows, cols)
-    _check_structure(rep, rows, cols)
+    _check_structure(rep, rows, cols, shift=shift, raw_rows=raw_rows)
 
     recs = [(a, n, k, d, v, p) for _, a, n, k, d, v, p in rows]
     want = {r[0] for r in rows[:5]}
@@ -1298,50 +1350,87 @@ def _suggest(name: str) -> str:
     return s or "group1"
 
 
-def _check_structure(rep: Report, rows: list, cols: dict) -> None:
+def _check_structure(rep: Report, rows: list, cols: dict, *, shift: int = 0,
+                     raw_rows=()) -> None:
     """Duplicates, gaps (per snapshot and group), and snapshot weeks after
     their as_of; ``rows`` are (row number, as_of, name, key, date, value,
-    population)."""
-    seen, dups, dup_lines = {}, [], []
+    population), their dates moved ``shift`` days to Saturdays. Messages
+    name weeks as the file writes them (and their Saturday when moved) and
+    the weeks a gap leaves out."""
+    seen, dups = {}, []
     series = {}
-    late, late_lines = [], []
+    late = []
     for ln, a, name, _, d, _, _ in rows:
         k = (a, name, d)
         if k in seen:
-            dups.append(f"{d.isoformat()} + {name}"
-                        + (f" (as_of {a.isoformat()})" if a else ""))
-            dup_lines += [seen[k], ln]
+            dups.append((seen[k], ln, a, name, d))
         else:
             seen[k] = ln
         series.setdefault((a, name), {})[d] = ln
         if a is not None and d > a:
-            late.append(f"{d.isoformat()} in as_of {a.isoformat()} ({name})")
-            late_lines.append(ln)
-    if dups:
-        unit = ("as_of/date/group" if "as_of" in cols else "date/group")
-        rep.add("duplicate", f"Duplicate rows found for {len(dups)} {unit} "
-                f"combination(s) ({_rows(dup_lines)}; e.g., "
-                f"{_examples(dups)}). Each combination must appear exactly "
-                "once.", dup_lines)
-    gaps, gap_lines = [], []
+            late.append((ln, a, name, d))
+    gaps = []
     for (a, name), ds in sorted(series.items(),
                                 key=lambda kv: (kv[0][0] or date.min,
                                                 kv[0][1])):
         days = sorted(ds)
         for p, q in zip(days, days[1:]):
             if (q - p).days > MAX_GAP_DAYS:
-                gaps.append(f"gap between {p.isoformat()} and "
-                            f"{q.isoformat()} in group '{name}'"
-                            + (f", as_of {a.isoformat()}" if a else ""))
-                gap_lines += [ds[p], ds[q]]
+                gaps.append((ds[p], ds[q], a, name, p, q))
+    if not (dups or gaps or late):
+        return
+    # the dates as written, for the rows the messages quote
+    want = ({x[0] for x in dups[:MAX_EXAMPLES]}
+            | {x[0] for x in late[:MAX_EXAMPLES]}
+            | {x[i] for x in gaps[:MAX_EXAMPLES] for i in (0, 1)})
+    written = {ln: r["date"].strip() for ln, r in raw_rows if ln in want}
+
+    def week(d, ln=None):
+        """A week as the file writes it, with its Saturday when moved."""
+        if not shift:
+            return d.isoformat()
+        return (f"{written.get(ln) or (d - timedelta(days=shift)).isoformat()}"
+                f" (week ending {d.isoformat()})")
+
+    def snap(a):
+        return f", as_of {a.isoformat()}" if a else ""
+    if dups:
+        lines = [ln for x in dups for ln in x[:2]]
+        unit = ("as_of/date/group" if "as_of" in cols else "date/group")
+        rep.add("duplicate", f"Duplicate rows found for {len(dups)} {unit} "
+                f"combination(s) ({_rows(lines)}; e.g., "
+                + _examples(f"{week(d, l0)} + {name}"
+                            + (f" (as_of {a.isoformat()})" if a else "")
+                            for l0, _, a, name, d in dups)
+                + "). Each combination must appear exactly once.", lines)
     if gaps:
+        lines = [ln for x in gaps for ln in x[:2]]
+        eg = []
+        for l0, l1, a, name, p, q in gaps[:MAX_EXAMPLES]:
+            miss = []
+            m = p + timedelta(days=7)
+            while (q - m).days >= 4:
+                miss.append(m)
+                m += timedelta(days=7)
+            where = (f"between {week(p, l0)} and {week(q, l1)} in group "
+                     f"'{name}'{snap(a)}")
+            if not miss:
+                eg.append(f"a gap {where}")
+            elif len(miss) == 1:
+                eg.append(f"{week(miss[0])} is missing {where}")
+            else:
+                eg.append(f"{week(miss[0])} to {week(miss[-1])} "
+                          f"({len(miss)} weeks) are missing {where}")
         rep.add("gap", f"Missing weeks detected in {len(gaps)} place(s) "
-                f"({_rows(gap_lines)}; e.g., {_examples(gaps)}). The data "
-                "should have one row per week per group.", gap_lines)
+                f"({_rows(lines)}; e.g., {'; '.join(eg)}). The data should "
+                "have one row per week per group.", lines)
     if late:
+        lines = [x[0] for x in late]
         rep.add("as_of_before_date", f"{len(late)} row(s) hold a week after "
-                f"their snapshot's as_of ({_rows(late_lines)}; e.g., "
-                f"{_examples(late)}).", late_lines)
+                f"their snapshot's as_of ({_rows(lines)}; e.g., "
+                + _examples(f"{week(d, ln)} in as_of {a.isoformat()} ({name})"
+                            for ln, a, name, d in late)
+                + ").", lines)
 
 
 # ------------------------------------------------------------------ storage
