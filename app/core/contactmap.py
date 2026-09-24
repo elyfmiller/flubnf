@@ -501,6 +501,126 @@ def network_graph(net: dict) -> dict:
     return {"nodes": nodes, "edges": edges, "influences": influences}
 
 
+_NAME = re.compile(r"[A-Za-z_]\w*")
+_TAG = re.compile(r"(?:[@%]\w+)*")
+
+
+def _patterns(side: str) -> tuple:
+    """Read "S() + I()" off the front of a rule side: (the molecule names,
+    one per molecule, complexes split at "."; the text left, the rate).
+    "0" is nothing."""
+    names, i, n = [], 0, len(side)
+    while True:
+        while i < n and side[i] == " ":
+            i += 1
+        if side.startswith("0", i) and not _NAME.match(side, i):
+            i += 1
+        else:
+            while True:
+                m = _NAME.match(side, i)
+                if not m:
+                    return names, side[i:]
+                names.append(m.group(0))
+                i = m.end()
+                if i < n and side[i] == "(":
+                    depth = 0
+                    while i < n:
+                        depth += {"(": 1, ")": -1}.get(side[i], 0)
+                        i += 1
+                        if depth == 0:
+                            break
+                i = _TAG.match(side, i).end()          # @compartment, %label
+                if i < n and side[i] == ".":
+                    i += 1
+                    continue
+                break
+        j = i
+        while j < n and side[j] == " ":
+            j += 1
+        if j < n and side[j] == "+":
+            i = j + 1
+            continue
+        return names, side[i:]
+
+
+def rule_flow(bngl_text: str) -> dict | None:
+    """The model's rules as a flow between molecule types, in the graph
+    shape network_graph() returns: each rule is read as one reaction over
+    molecule types, so S() + I() -> I() + I() is S to I, driven by I.
+    Read from the model text (no BNG2.pl). None when there are no rules."""
+    text = re.sub(r"\\\s*\n", " ", bngl_text)
+    types, rules, where = [], [], None
+    for raw in text.splitlines():
+        s = raw.split("#", 1)[0].strip()
+        if not s:
+            continue
+        m = re.match(r"(begin|end)\s+(molecule types|reaction rules)\b", s)
+        if m:
+            where = m.group(2) if m.group(1) == "begin" else None
+            continue
+        if where == "molecule types":
+            t = _NAME.match(s)
+            if t and t.group(0) not in types:
+                types.append(t.group(0))
+        elif where == "reaction rules":
+            label = ""
+            lm = re.match(r"(\w+)\s*:\s*", s)
+            if lm:
+                label, s = lm.group(1), s[lm.end():]
+            arrow = "<->" if "<->" in s else "->" if "->" in s else None
+            if not arrow:
+                continue
+            lhs, rhs = s.split(arrow, 1)
+            left, _ = _patterns(lhs.strip())
+            right, rest = _patterns(rhs.strip())
+            rates = rest.split()
+            name = label or str(len(rules) + 1)
+            rules.append((left, right, rates[0] if rates else "", name))
+            if arrow == "<->":
+                rules.append((right, left, rates[1].rstrip(",") if len(rates) > 1 else "",
+                              name + " (reverse)"))
+    if not rules:
+        return None
+    for left, right, _, _ in rules:
+        for t in left + right:
+            if t not in types:
+                types.append(t)
+    idx = {t: k + 1 for k, t in enumerate(types)}
+    net = {"species": [{"index": idx[t], "pattern": t} for t in types],
+           "reactions": [{"index": k + 1, "reactants": [idx[t] for t in left],
+                          "products": [idx[t] for t in right], "rate": rate,
+                          "rule": name}
+                         for k, (left, right, rate, name) in enumerate(rules)]}
+    graph = network_graph(net)
+    for nd in graph["nodes"]:
+        if nd["kind"] == "species":
+            nd["text"] = nd["label"]
+    # A tally (Cinf, Hadm: made, never used up) is not where people go: in a
+    # rule that moves S to I and also makes Cinf, only S -> I is a transfer
+    # and the Cinf arrow is dashed, like I -> Hadm.
+    used = set()
+    for left, right, _, _ in rules:
+        c = Counter(right)
+        c.subtract(Counter(left))
+        used |= {f"s{idx[t]}" for t, v in c.items() if v < 0}
+    by_rule = {}
+    for e in graph["edges"]:
+        if e["kind"] == "transfer":
+            by_rule.setdefault(e["rule"], []).append(e)
+    tallies = set()
+    for es in by_rule.values():
+        targets = _unique([e["to"] for e in es])
+        if len(targets) < 2:
+            continue
+        keep = next((t for t in targets if t in used), targets[0])
+        for e in es:
+            if e["to"] != keep and e["to"] not in used:
+                e["kind"] = "catalytic"
+                tallies.add(e["id"])
+    graph["influences"] = [i for i in graph["influences"] if i["edge"] not in tallies]
+    return graph
+
+
 def contact_graph(cm: dict) -> dict:
     """The contact map with ids for the page to draw: {"molecules":
     [{"id": "m<i>", "name", "components": [{"id": "m<i>c<j>", "name",

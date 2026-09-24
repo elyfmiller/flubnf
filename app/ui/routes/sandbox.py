@@ -586,24 +586,35 @@ def sandbox_stop():
 
 @router.get("/api/sandbox/models/{name}/contactmap")
 def api_sandbox_contactmap(name: str):
-    """The model's contact map as an inline SVG, drawn by BNG2.pl's
-    visualize action on a copy of the model (no engine, no run); cached
-    by the model text until it changes."""
+    """The model's diagrams: "flow", the rules as arrows between molecule
+    types (read from the text, no BNG2.pl), and the contact map BNG2.pl's
+    visualize action draws on a copy of the model (no engine, no run).
+    "sites": any molecule with components, the only models whose contact
+    map and network say more than the flow. BNG2.pl's words come back as
+    "error" beside the flow. Cached by the model text until it changes."""
     from app.core import contactmap
     try:
         files = sandbox_mod.read_model(name)
-        bngl = files["model.bngl"]
-        hit = sandbox_mod.cached_view(name, "contactmap", bngl)
-        if hit is not None:
-            return hit
-        work = sandbox_mod.SANDBOX / "contactmap" / sandbox_mod.check_name(name)
-        cm = contactmap.parse(contactmap.graphml_from_bngl(bngl, work))
-        out = {"svg": contactmap.svg(cm), "molecules": len(cm["molecules"]),
-               "bonds": len(cm["bonds"]), "graph": contactmap.contact_graph(cm)}
-        sandbox_mod.store_view(name, "contactmap", bngl, out)
-        return out
     except Exception as e:
         return JSONResponse({"error": str(e)[:1500]}, status_code=200)
+    bngl = files["model.bngl"]
+    hit = sandbox_mod.cached_view(name, "contactmap", bngl)
+    if hit is not None and "flow" in hit:
+        return hit
+    try:
+        flow = contactmap.rule_flow(bngl)
+    except Exception:
+        flow = None
+    try:
+        work = sandbox_mod.SANDBOX / "contactmap" / sandbox_mod.check_name(name)
+        cm = contactmap.parse(contactmap.graphml_from_bngl(bngl, work))
+    except Exception as e:
+        return JSONResponse({"error": str(e)[:1500], "flow": flow}, status_code=200)
+    out = {"svg": contactmap.svg(cm), "molecules": len(cm["molecules"]),
+           "bonds": len(cm["bonds"]), "graph": contactmap.contact_graph(cm),
+           "flow": flow, "sites": any(m["components"] for m in cm["molecules"])}
+    sandbox_mod.store_view(name, "contactmap", bngl, out)
+    return out
 
 
 @router.get("/api/sandbox/models/{name}/network")
