@@ -858,9 +858,11 @@ tr[aria-current="true"] td{font-weight:600}
 .seg button:not(.gold),[data-theme="dark"] .seg button:not(.gold),
 [data-theme="dim"] .seg button:not(.gold){background:transparent;
   color:var(--ink);border:1px solid var(--gold)}
-/* pager rows: every control on one line (a stray button margin-top
-   dropped "expand" below the arrows) */
-.carousel button{margin-top:0;padding:.2rem .6rem}
+/* Forecast pager rows: every control on one line (a stray button
+   margin-top dropped "expand" below the arrows); scoped to this page's
+   pagers so other tabs' carousels keep their look */
+#fancard .carousel button,.fanx .carousel button,
+.dataloc button{margin-top:0;padding:.2rem .6rem}
 .dataloc{margin:.6rem 0 .2rem}
 /* a setting with one possible value, stated as text */
 .fixedval{margin:.1rem 0 .2rem;font-weight:600}
