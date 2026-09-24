@@ -1276,15 +1276,17 @@ def _live_workroot_ids() -> set:
 
 def _storage_inventory() -> dict:
     """Storage panel rows with sizes: workroots, live retro seasons, retro
-    archives, report archives (each with a busy flag), plus the protected
-    trees (no controls). total_bytes/total_h sum the four managed
-    categories only."""
+    archives, report archives, your datasets (each with a busy flag), plus
+    the protected trees (no controls). total_bytes/total_h sum the managed
+    categories only, each byte once: a dataset adds its own folder (the
+    upload and its replays), its runs being counted as workroots."""
     import re as _re
     from app.core import retro
     from app.core.runs import APP_STATE, is_research, run_display
+    from app.ui import datasets_ui as _dsu
     from flubnf.settings import HUB
     inv = {"workroots": [], "retro": [], "retro_archives": [],
-           "report_archives": [], "protected": [],
+           "report_archives": [], "datasets": [], "protected": [],
            "total_bytes": 0, "total_h": ""}
     live_ids = _live_workroot_ids()
     console_busy = bool(_status.get("running"))
@@ -1308,7 +1310,9 @@ def _storage_inventory() -> dict:
                 "scope": disp["scope"], "recorded": disp["recorded"],
                 "research": is_research(row.get("spec", "")),
                 "modified": _runs.is_modified(row.get("spec", "")),
-                "busy": p.name in live_ids})
+                "busy": p.name in live_ids,
+                # for the dataset rows: the run's size and its dataset
+                "bytes": size, "dataset": _dsu.spec_dataset(row.get("spec"))})
     if RETRO_ROOT.is_dir():
         for p in sorted(RETRO_ROOT.iterdir()):
             if not p.is_dir() and not p.is_symlink():
@@ -1339,6 +1343,8 @@ def _storage_inventory() -> dict:
         inv["report_archives"].append({
             "id": d, "size_h": retro.human_bytes(size),
             "busy": console_busy})
+    inv["datasets"] = _dsu.storage_rows(inv["workroots"])
+    inv["total_bytes"] += sum(d["own_bytes"] for d in inv["datasets"])
     for label, p in (("Production engine record", RETRO_RESEAL),
                      ("Sealed validation record", RETRO_SEAL),
                      ("FluSight hub clone", HUB)):

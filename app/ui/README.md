@@ -60,6 +60,7 @@ Every route lives in `server.py`, grouped under `# === <Tab> ===` banners, excep
 | POST | `/storage/reclaim` | `storage_reclaim` | | `runs.html` `#reclaim-form` |
 | POST | `/storage/delete` | `storage_delete` | | `runs.html` forms |
 | POST | `/storage/clear-workroots` | `storage_clear_workroots` | | `runs.html` `#clear-workroots` |
+| POST | `/storage/datasets/{id}/delete` | `datasets_ui.storage_delete` (the dataset, its replays and its runs' workroots; the name confirms) | redirect | `runs.html` Your datasets forms |
 | POST | `/runs/clear` | `runs_clear` | | `runs.html` `#clear-ledger` |
 | **Models** | | | | |
 | GET | `/models` | `models_page` (calls `model_page`) | `model.html` | nav |

@@ -49,6 +49,9 @@ def state(tmp_path, monkeypatch):
     with workroots on disk, a retro season, an archived retro run, a report
     archive, and protected seal and hub trees."""
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
+    # the dataset store too: the panel lists (and totals) your datasets
+    from app.core import datasets as datasets_mod
+    monkeypatch.setattr(datasets_mod, "ROOT", tmp_path / "datasets")
     retro_root = tmp_path / "retro"
     seal_root = tmp_path / "retro_seal"
     monkeypatch.setattr(srv, "RETRO_ROOT", retro_root)

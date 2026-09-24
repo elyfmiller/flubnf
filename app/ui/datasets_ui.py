@@ -12,6 +12,8 @@ Host header too, since an upload may be private data):
                                        and while parsing), then open it where
                                        `next` says: data, forecast or replay
   POST /data/datasets/{id}/delete      delete, with the name as confirmation
+  POST /storage/datasets/{id}/delete   delete from the Storage tab, with its
+                                       runs' workroots (the name confirms)
   POST /run/dataset                    a forecast on a dataset
   POST /retro/dataset/run              replay a week range on a dataset
   GET  /retro/dataset/{id}/{stamp}     one replay's results
@@ -953,6 +955,103 @@ def run_page_extra(workroot: Path, res: dict) -> dict:
                 "observed": res.get("observed") or {},
                 "after": after, "date": fd, "names": MEMBER_NAMES,
                 "colors": S._member_colors()})}
+
+
+# ----------------------------------------------------------- Storage tab
+
+def spec_dataset(spec) -> str:
+    """The id of the dataset a run's spec (a ledger row's JSON) names; ''
+    for a hub run or an unreadable spec."""
+    try:
+        d = json.loads(spec) if isinstance(spec, str) else (spec or {})
+        ref = (d.get("extra") or {}).get("dataset") or {}
+        return str(ref.get("id") or "") if isinstance(ref, dict) else ""
+    except Exception:
+        return ""
+
+
+def storage_rows(workroots: list) -> list:
+    """The Storage tab's rows for the stored datasets, newest first: each
+    one's size with everything it holds (the upload, its replays, its runs'
+    workroots) and the parts. `workroots`: the panel's workroot rows, each
+    with "bytes" and the "dataset" its spec names; a row on a stored
+    dataset gets "dataset_name". "own_bytes" (the upload and replays) is
+    what the panel's total adds: the runs are counted there as
+    workroots."""
+    from app.core import custom_retro as CX
+    from app.core import retro
+    S = _S()
+    try:
+        items = _D().list_datasets()
+    except Exception:
+        return []
+    out = []
+    for ds in items:
+        own = S._tree_size(str(ds.path))
+        rep = S._tree_size(str(CX.replay_root(ds)))
+        runs = [w for w in workroots if w.get("dataset") == ds.id]
+        for w in runs:
+            w["dataset_name"] = ds.name
+        run_b = sum(int(w.get("bytes") or 0) for w in runs)
+        n_rep = len(CX.list_replays(ds))
+        out.append({"id": ds.id, "name": ds.name, "own_bytes": own,
+                    "bytes": own + run_b,
+                    "size_h": retro.human_bytes(own + run_b),
+                    "data_h": retro.human_bytes(own - rep),
+                    "replays": n_rep, "replays_h": retro.human_bytes(rep),
+                    "runs": len(runs), "runs_h": retro.human_bytes(run_b),
+                    "busy": busy_with(ds.id)})
+    return out
+
+
+@router.post("/storage/datasets/{ds_id}/delete")
+def storage_delete(request: Request, ds_id: str, confirm: str = Form("")):
+    """Delete a dataset from the Storage tab with everything its size there
+    counts: the upload, its replays and its runs' workroots (their ledger
+    rows are kept, as a workroot delete keeps them). The name confirms it;
+    refused while a run or replay uses it."""
+    S = _S()
+    from app.core import retro
+    back = S._back(request, "/storage")
+    S._invalidate_scans()
+    ds = get_dataset(ds_id)
+    if ds is None:
+        S._flash("No such dataset; nothing was deleted.")
+        return back
+    why = busy_with(ds.id)
+    if why:
+        S._flash(f"{ds.name} was not deleted: {why}.")
+        return back
+    if confirm != ds.name:
+        S._flash(f"Deleting {ds.name} was not confirmed; nothing was "
+                 "deleted.")
+        return back
+    freed, gone, kept = 0, 0, 0
+    for w in S._storage_inventory()["workroots"]:
+        if w.get("dataset") != ds.id:
+            continue
+        # the workroot delete's own checks: never a live or protected tree
+        p, _why = S._storage_target("workroot", w["id"])
+        if p is None:
+            kept += 1
+            continue
+        try:
+            size = retro.dir_size(p)
+            retro.delete_tree(p)
+            freed, gone = freed + size, gone + 1
+        except Exception:
+            kept += 1
+    freed += retro.dir_size(ds.path)
+    _D().delete(ds.id)
+    _LAST.pop(ds.id, None)
+    S._invalidate_scans()
+    S._flash(f"Deleted the dataset {ds.name}, its replays and {gone} run "
+             f"workroot{'' if gone == 1 else 's'}: "
+             f"{retro.human_bytes(freed)} freed. The runs' ledger rows are "
+             "kept."
+             + (f" {kept} run workroot{'' if kept == 1 else 's'} could not "
+                "be deleted and stay under Run workroots." if kept else ""))
+    return back
 
 
 # -------------------------------------------------------- Retrospective

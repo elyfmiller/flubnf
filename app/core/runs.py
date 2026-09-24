@@ -475,9 +475,12 @@ def run_display(run_id: str, spec=None, created_utc=None) -> dict:
     kind = ("Retrospective fit" if str(d.get("engine")) == "retro"
             else "Forecast for")
     date = str(d.get("forecast_date") or "").strip()
+    # a run on a custom dataset forecasts groups, never states
+    extra = d.get("extra") if isinstance(d.get("extra"), dict) else {}
+    phrase = groups_phrase if extra.get("dataset") else locations_phrase
     return {"what": f"{kind} {date}" if date else kind.split()[0],
             "when": when,
-            "scope": locations_phrase(d.get("locations")),
+            "scope": phrase(d.get("locations")),
             "recorded": True}
 
 

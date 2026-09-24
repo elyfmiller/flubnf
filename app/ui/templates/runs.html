@@ -7,7 +7,7 @@
 <details class="ledgerfold" id="storagefold">
  <summary><h2 style="display:inline">On disk</h2>
   <span class="stotal" style="display:inline;margin-left:.45rem"><span class="big">{{ storage.total_h }}</span></span>
-  <span class="hint"> total</span>{{ tips.tip("st-total", "the total", "Run workroots, retrospective seasons, archived runs and report archives; protected trees are listed but not counted.") }}</summary>
+  <span class="hint"> total</span>{{ tips.tip("st-total", "the total", "Run workroots, retrospective seasons, archived runs, report archives and your datasets, each counted once (a dataset's runs as workroots); protected trees are listed but not counted.") }}</summary>
 
  {# reclaim: dry-run report first, then the shared confirmation. Deletes only
     fit intermediates of COMPLETED weeks/runs and compresses samples
@@ -65,7 +65,7 @@
   <span class="grow"><strong>{{ w.label }}</strong>
    {% if w.research %} <span class="pill">research</span>{% endif %}
    {% if w.modified %} <span class="pill warn">modified settings</span>{% endif %}
-   <span class="hint">{% if w.when %}· run {{ w.when }} {% endif %}{% if w.scope %}· {{ w.scope }} {% endif %}· {{ w.size_h }}{% if w.busy %} · <span class="warn">running now</span>{% endif %}
+   <span class="hint">{% if w.when %}· run {{ w.when }} {% endif %}{% if w.dataset_name %}· on {{ w.dataset_name }} {% endif %}{% if w.scope %}· {{ w.scope }} {% endif %}· {{ w.size_h }}{% if w.busy %} · <span class="warn">running now</span>{% endif %}
    · <code style="font-size:.78em">{{ w.id }}</code></span></span>
   {% if not w.busy %}
   <form method="post" action="/storage/delete">
@@ -177,6 +177,28 @@
  {% endfor %}
  {% endif %}
 
+ {% if storage.datasets %}
+ {# your datasets (app/ui/datasets_ui.storage_rows): each one's size holds
+    its upload, replays and runs; the delete takes all three, confirmed by
+    the dataset's name, and keeps the runs' ledger rows #}
+ <h3 class="hint" style="margin:.8rem 0 .2rem">Your datasets {{ tips.tip("st-datasets", "your datasets", "A dataset's size holds its upload, its replays and its runs; the runs are also listed under Run workroots and counted once in the total. Deleting it here deletes all three and keeps the runs' ledger rows.") }}</h3>
+ {% for d in storage.datasets %}
+ <div class="archrow">
+  <span class="grow"><strong><a href="/data?source={{ d.id }}#browser">{{ d.name }}</a></strong>
+   <span class="hint">· {{ d.size_h }} · data {{ d.data_h }} · {{ d.replays }} replay{{ "" if d.replays == 1 else "s" }} {{ d.replays_h }} · {{ d.runs }} run{{ "" if d.runs == 1 else "s" }} {{ d.runs_h }}{% if d.busy %} · <span class="warn">{{ d.busy }}</span>{% endif %}</span></span>
+  {% if not d.busy %}
+  <form method="post" action="/storage/datasets/{{ d.id }}/delete">
+   <input type="hidden" name="ident" value="{{ d.id }}">
+   <input type="hidden" name="confirm" value="">
+   <button type="button" class="quiet" data-del-storage data-confirm="{{ d.name }}"
+     data-what="the dataset {{ d.name }}" data-size="{{ d.size_h }}"
+     data-hint="With it go its {{ d.replays }} replay{{ '' if d.replays == 1 else 's' }} and {{ d.runs }} run workroot{{ '' if d.runs == 1 else 's' }}; the runs' ledger rows are kept.">Delete</button>
+  </form>
+  {% endif %}
+ </div>
+ {% endfor %}
+ {% endif %}
+
  {% if storage.protected %}
  <h3 class="hint" style="margin:.8rem 0 .2rem">Protected</h3>
  {% for p in storage.protected %}
@@ -224,7 +246,8 @@
        +'It cannot be undone.',
      hint:d.hint||'',
      okLabel:'Delete permanently',
-     onOk:function(){f.confirm.value=f.ident.value;f.submit();}
+     // a dataset is confirmed by its name, every other entry by its id
+     onOk:function(){f.confirm.value=d.confirm||f.ident.value;f.submit();}
     });
    });
   });
