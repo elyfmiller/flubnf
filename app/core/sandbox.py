@@ -843,6 +843,15 @@ def check(files: dict, *, work: Path | None = None) -> dict:
     elif cum not in outputs:
         problems.append(f"pf_cumulative_observable names {cum}, which is "
                         "neither an observable nor a function of the model")
+    # the model starts at pf_start_time and each row is the increment over
+    # the week before it: a row at or before the start has no week
+    t_start = _number(keys.get("pf_start_time", "-1"))
+    if times and t_start is not None and min(times) <= t_start:
+        warnings.append(f"data.exp has a row at t = {min(times):g}, at or "
+                        f"before the model's start time {t_start:g} "
+                        "(pf_start_time): every row must come after it, as "
+                        "the first week's count is the increment from the "
+                        "start")
     if "pf_observable_mode" in keys:
         warnings.append("pf_observable_mode is retired: the filter always "
                         "fits the weekly increment, and runs drop this line, "

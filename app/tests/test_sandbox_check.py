@@ -128,6 +128,18 @@ def test_warnings(box, tmp_path, monkeypatch):
     assert "one data row" in text
 
 
+def test_a_row_at_or_before_the_start_time_is_named(box):
+    files = _files()
+    files["data.exp"] = "# time T_weekly\n-1 3\n0 5\n1 8\n"
+    assert any("a row at t = -1, at or before the model's start time -1"
+               in w for w in sb.check(files)["warnings"])
+    files["data.exp"] = "# time T_weekly\n0 3\n1 5\n2 8\n"
+    assert not any("start time" in w for w in sb.check(files)["warnings"])
+    files["priors.conf"] += "pf_start_time = 0\n"
+    assert any("a row at t = 0, at or before the model's start time 0"
+               in w for w in sb.check(files)["warnings"])
+
+
 def test_a_prior_on_a_fixed_parameter_is_named(box):
     # N is defined, so no problem was raised, yet only __FREE is fitted
     files = _files()
