@@ -50,7 +50,7 @@
    {% if models %}
    <table class="kv sbmodels"><thead><tr><th>model</th><th>from</th><th>last run</th><th>changed</th></tr></thead><tbody>
    {% for m in models %}<tr>
-    <td><a href="/sandbox?model={{ m.name }}">{{ m.name }}</a>{% if m.note %}<div class="hint">{{ m.note }}</div>{% endif %}{% if not m.complete %}<div class="hint">missing {{ m.missing | join(", ") }}</div>{% endif %}</td>
+    <td><a href="/sandbox?model={{ m.name }}">{{ m.name }}</a>{% if m.note %} {{ tips.tip("sb-note-" ~ loop.index, m.name, m.note) }}{% endif %}{% if not m.complete %}<div class="hint">missing {{ m.missing | join(", ") }}</div>{% endif %}</td>
     <td>{{ m.origin }}</td>
     <td>{% set r = last.get(m.name) %}{% if r %}<a href="/sandbox?run={{ r.run_id }}&amp;model={{ m.name }}">{{ r.status }}</a>{% endif %}</td>
     <td>{{ m.modified_h }}</td>
@@ -79,9 +79,9 @@
     {{ tips.label("Priors and engine settings (priors.conf)", "sb-priors", "One *_var line per fitted parameter; pf_ lines set engine keys, such as pf_cumulative_observable, the output whose weekly increment is the count.") }}
     <textarea name="priors_conf" rows="8" spellcheck="false" style="width:100%;font-family:monospace" class="code-editor" data-lang="conf">{{ editing["priors.conf"] }}</textarea>
     <details class="adv"><summary>Engine keys the sandbox writes for you</summary>
-     <table class="kv"><thead><tr><th>key</th><th>value</th><th>from</th></tr></thead><tbody>
+     <div class="sbscroll"><table class="kv sbkeys"><thead><tr><th>key</th><th>value</th><th>from</th></tr></thead><tbody>
       {% for k, v, src in settings %}<tr><td><code>{{ k }}</code></td><td>{{ v }}</td><td>{{ src }}</td></tr>{% endfor %}
-     </tbody></table>
+     </tbody></table></div>
      <p class="hint">A priors.conf line overrides a default; the run settings below set the rest.</p>
     </details>
     <fieldset class="sbrun"><legend>Run settings</legend>
@@ -103,7 +103,7 @@
      <p class="hint" id="sb-eta" data-full="{{ eta_full }}"></p>
     </fieldset>
     <div class="row sbactions">
-     <button class="gold" formaction="/sandbox/models/{{ name }}/save">Save</button>
+     <button formaction="/sandbox/models/{{ name }}/save">Save</button>
      <button type="button" id="sb-check">Check</button>
      <button class="gold" formaction="/sandbox/models/{{ name }}/run" data-guard="sandbox-run">Save and run</button>
      <span class="pill" id="sb-dirty" hidden>unsaved changes</span>
@@ -187,17 +187,19 @@
   </div>
   {% endif %}
   {% include "sandbox_views.html" %}
-  <div class="card"><h2>Manage</h2>
+  <div class="card sbmanage"><h2>Manage</h2>
    <form method="post" action="/sandbox/new" class="row">
     <input type="hidden" name="start" value="copy:{{ name }}">
-    <input name="name" aria-label="name of the copy" placeholder="name of the copy" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,63}" required style="width:14rem">
+    <input name="name" aria-label="name of the copy" placeholder="name of the copy" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,63}" required>
     <button class="quiet">Duplicate</button>
    </form>
+   <div class="row">
    <a href="/sandbox/models/{{ name }}/download" download><button type="button" class="quiet">Download model (.zip)</button></a>
    <form method="post" action="/sandbox/models/{{ name }}/delete">
     <input type="hidden" name="ident" value="{{ name }}"><input type="hidden" name="confirm" value="">
     <button type="button" class="quiet" data-sb-delete="{{ name }} and its {{ runs | length }} run{{ '' if runs | length == 1 else 's' }}">Delete model</button>
    </form>
+   </div>
   </div>
  </div>
 </div>
