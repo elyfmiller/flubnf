@@ -5,8 +5,8 @@ begin model
 # rate is per week. A TOKEN in double braces is per-state data substituted
 # before the fit (strictly: an unresolved token raises); a *__FREE name is
 # a fitted parameter, proposed by the engine against its prior in
-# flubnf/sihrs_fit.py. Single season only; multi-season runs use
-# SIHRS_pop.bngl. Sources and design history: docs/MODEL-PROVENANCE.md.
+# app/core/engines/pf.py (VARS_1S). Single season only. Sources and design
+# history: docs/MODEL-PROVENANCE.md.
 begin parameters
 
 ### -- transmission: scale-free reproduction number + seasonal forcing -- ###

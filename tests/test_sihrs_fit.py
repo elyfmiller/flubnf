@@ -52,10 +52,12 @@ def test_vendored_locations_matches_hub():
     3.3% was found and fixed 2026-08-17. This pins them equal forever."""
     import pandas as pd, pytest
     from pathlib import Path
-    hub = Path.home()/'Documents/GitHub/FluSight-forecast-hub/auxiliary-data/locations.csv'
+    from flubnf import settings
+    hub = Path(settings.HUB) / 'auxiliary-data/locations.csv'
     if not hub.is_file():
         pytest.skip("hub checkout not present")
-    h = pd.read_csv(hub); v = pd.read_csv(Path('flubnf/data/locations.csv'))
+    vendored = Path(__file__).resolve().parents[1] / 'flubnf/data/locations.csv'
+    h = pd.read_csv(hub); v = pd.read_csv(vendored)
     m = h.merge(v, on='location', suffixes=('_h','_v'))
     assert len(m) == len(h)
     assert (m.population_h == m.population_v).all(), "vendored locations.csv drifted from hub — refresh it"

@@ -92,6 +92,8 @@ Every route lives in `server.py`, grouped under `# === <Tab> ===` banners, excep
 | `_datasets_card.html` | `data.html` (Your datasets: upload and list) |
 | `_dataset_run.html` | `run.html`, for a run on a custom dataset (fans, export files) |
 | `_dataset_replay.html` | `retro.html` (Replay your own data) |
+| `_model_settings.html` | `forecast.html`, `retro.html` (Model settings panel; loads `static/model_settings.js`) |
+| `_tips.html` | macros for the "?" tips, imported by most pages (`base.html` loads `static/tips.js`) |
 
 Template names that differ from their tab: `runs.html` is Storage, `run.html` is one run's page, `model.html` is Models.
 

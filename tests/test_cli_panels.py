@@ -1,5 +1,5 @@
 """`flubnf --help` panels: every top-level command sits in exactly one
-HELP_PANELS panel, an unlisted command stops the group from building, and
+HELP_PANELS panel, an unlisted command still builds (under "Other"), and
 the removed legacy DE/AMCMC workspace commands are gone (usage error, 2)."""
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from flubnf.cli import HELP_PANELS, _PanelledGroup, app
+from flubnf.cli import HELP_PANELS, OTHER_PANEL, _PanelledGroup, app
 
 runner = CliRunner()
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")
@@ -46,7 +46,7 @@ def test_help_shows_the_three_panels_in_order_and_no_legacy_panel():
     assert "DE/AMCMC" not in out
 
 
-def test_an_unlisted_command_refuses_to_build():
+def test_an_unlisted_command_builds_under_other():
     stray = typer.Typer(cls=_PanelledGroup, add_completion=False)
 
     @stray.command("app")
@@ -57,8 +57,9 @@ def test_an_unlisted_command_refuses_to_build():
     def _unlisted():
         pass
 
-    with pytest.raises(RuntimeError, match="'stray' is not listed"):
-        typer.main.get_command(stray)
+    group = typer.main.get_command(stray)
+    assert group.commands["stray"].rich_help_panel == OTHER_PANEL
+    assert group.list_commands(None) == ["app", "stray"]
 
 
 @pytest.mark.parametrize("name", REMOVED)

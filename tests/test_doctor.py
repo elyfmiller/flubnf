@@ -165,6 +165,8 @@ def test_cli_doctor_accepts_and_ignores_config_and_workspace(monkeypatch):
     assert "ignored" in result.stdout
 
 
-def test_cli_doctor_pre_studio_is_gone():
+def test_cli_doctor_pre_studio_is_accepted_and_ignored(monkeypatch):
+    monkeypatch.setattr(doctor, "run_doctor", lambda *, online=False:
+                        _report(doctor.Status.OK))
     result = CliRunner().invoke(app, ["doctor", "--pre-studio"])
-    assert result.exit_code == 2
+    assert result.exit_code == 0, result.output

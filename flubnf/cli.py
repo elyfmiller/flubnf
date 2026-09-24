@@ -29,6 +29,9 @@ HELP_PANELS = {
 }
 
 
+OTHER_PANEL = "Other"
+
+
 class _PanelledGroup(TyperGroup):
     """The root group: files each command under its HELP_PANELS panel and
     lists them panel by panel (help order only; dispatch is by name)."""
@@ -38,17 +41,18 @@ class _PanelledGroup(TyperGroup):
         for name, cmd in self.commands.items():
             panel = next(
                 (p for p, names in HELP_PANELS.items() if name in names), None)
-            if panel is None:
-                raise RuntimeError(
-                    f"flubnf command {name!r} is not listed in HELP_PANELS")
-            cmd.rich_help_panel = panel
+            # never refuse to build: `flubnf app` is what the launchers run.
+            # tests/test_cli_panels.py fails when a command is unlisted.
+            cmd.rich_help_panel = panel or OTHER_PANEL
 
     def list_commands(self, ctx):
-        panels = list(HELP_PANELS)
+        panels = list(HELP_PANELS) + [OTHER_PANEL]
 
         def rank(name):
             panel = self.commands[name].rich_help_panel
-            return panels.index(panel), HELP_PANELS[panel].index(name)
+            names = HELP_PANELS.get(panel, ())
+            return panels.index(panel), (names.index(name) if name in names
+                                         else len(names))
         return sorted(super().list_commands(ctx), key=rank)
 
 
@@ -101,12 +105,14 @@ def doctor(
         False, "--online",
         help="Include network checks (Delphi Epidata and GitHub).",
     ),
-    # Accepted and ignored: the checks read no config or workspace (the
-    # legacy workspace CLI that used them is gone), and old scripts pass them.
+    # Accepted and ignored: the checks read no config, workspace or Mac
+    # Studio flag (the legacy workspace CLI that used them is gone), and old
+    # scripts pass them.
     config: Optional[Path] = typer.Option(
         None, "--config", "-c", hidden=True),
     workspace: Optional[str] = typer.Option(
         None, "--workspace", "-w", hidden=True),
+    pre_studio: bool = typer.Option(False, "--pre-studio", hidden=True),
 ):
     """Diagnose the environment and dependencies.
 
@@ -115,9 +121,9 @@ def doctor(
     before they bite mid-run. Exits 1 when any check fails.
     """
     from . import doctor as docmod
-    if config is not None or workspace is not None:
-        console.print("[dim]--config and --workspace are ignored: the "
-                      "doctor reads no config.[/dim]")
+    if config is not None or workspace is not None or pre_studio:
+        console.print("[dim]--config, --workspace and --pre-studio are "
+                      "ignored: the doctor reads no config.[/dim]")
     rep = docmod.run_doctor(online=online)
 
     table = Table(title="FluBNF doctor")
