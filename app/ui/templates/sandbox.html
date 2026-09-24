@@ -28,7 +28,9 @@
     </select>
     {% set _first = (templates or examples or [""])[0] %}
     <p class="hint" id="sbnew-about">{{ example_notes.get(_first, "") }}</p>
-    <fieldset class="sbshipped" id="sbnew-shipped" hidden>
+    {# shown in the markup, so a page without scripts can set its fields;
+       sandbox.js hides it unless an Oracle start is picked #}
+    <fieldset class="sbshipped" id="sbnew-shipped">
      <legend>Oracle SIHRS filter</legend>
      <div class="row">
       {% if vintages and locations %}
