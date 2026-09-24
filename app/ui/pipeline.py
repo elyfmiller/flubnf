@@ -684,14 +684,23 @@ def _run_all(spec: RunSpec) -> None:
                 continue
             # contained per model: a writer refusal (rows the hub would
             # bounce) costs that file, never the run; recorded for the run page
+            # a location whose rows alone fail the checks is dropped and
+            # the file written with the rest (recorded by name, per file)
+            _dropped: dict = {}
             try:
                 subs[hub_model_id(model) + _suffix] = str(write_submission(
                     rows, model, spec.forecast_date,
                     workroot / "submission",
-                    **({"suffix": _suffix} if _suffix else {})))
+                    **({"suffix": _suffix} if _suffix else {}),
+                    dropped=_dropped))
             except Exception as e:
                 outcome.setdefault("submission_errors", {})[
                     hub_model_id(model) + _suffix] = str(e)[:400]
+            if _dropped:
+                _f2n = {f: n for n, f in n2f.items()}
+                outcome.setdefault("submission_dropped", {})[
+                    hub_model_id(model) + _suffix] = {
+                        _f2n.get(f, f): why for f, why in _dropped.items()}
         outcome["submissions"] = subs
         if "optional_rows" in outcome:
             outcome["optional_rows"] = {k: v for k, v in
