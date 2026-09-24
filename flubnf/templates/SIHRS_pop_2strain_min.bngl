@@ -1,22 +1,16 @@
 begin model
-# =====================================================================
-# FluBNF SIHRS -- TWO-STRAIN (A/B) MIN, the PF production variant. Two
-# independent SIHRS circuits over the same population N, in the same trim
-# as SIHRS_pop_min.bngl: no reseeding term, no semi-annual harmonic (the
-# B circuit carries two-wave structure mechanistically). Motivation,
-# structure and channel design: docs/MODEL-PROVENANCE.md section 6; the
-# annotated draft of the same circuit is SIHRS_pop_2strain.bngl.
-#
+# FluBNF SIHRS, TWO-STRAIN (A/B) MIN, the PF two-strain variant. Two
+# independent SIHRS circuits over the same population N, in the same trim as
+# SIHRS_pop_min.bngl: no reseeding term, no semi-annual harmonic (the B
+# circuit carries two-wave structure mechanistically). Design:
+# docs/MODEL-PROVENANCE.md section 6.
 # Fitted (7): ReffA, ReffB, eps1, phi1A, phi1B, mult, r
-# Tokens:     {{POP}} {{S0FRAC}} {{I0FRAC}} {{A0SHARE}} {{GAMMA}} {{RHO}}
-#             {{GAMMAH}} {{OMEGA}} -- per-state DATA, substituted before
-#             the fit and never fitted. {{A0SHARE}} is the strain-A share
-#             of initial infections, read from the season's first NREVSS.
-#
-# Channels: NHSN admissions (NB) on the WEEKLY INCREMENT of the combined
-# H_Cum accumulator, and A_share (NREVSS typed positives, binomial). mult
-# cancels in A_share, so the two channels identify different things.
-# =====================================================================
+# Tokens (per-state data, never fitted): {{POP}} {{S0FRAC}} {{I0FRAC}}
+#   {{A0SHARE}} {{GAMMA}} {{RHO}} {{GAMMAH}} {{OMEGA}}; {{A0SHARE}} is the
+#   strain-A share of initial infections, from the season's first NREVSS.
+# Channels: NHSN admissions (NB) on the weekly increment of the combined
+# H_Cum, and A_share (NREVSS typed positives, binomial); mult cancels in
+# A_share, so the two channels identify different things.
 begin parameters
 
 ReffA   ReffA__FREE    # strain-A BASE reproduction number: harmonic-neutral,
@@ -94,16 +88,12 @@ betaA() = beta0A*exp( eps1*cos(2*pi*(t-phi1A)/52) )
 betaB() = beta0B*exp( eps1*cos(2*pi*(t-phi1B)/52) )
 
 ### channel 1: combined ascertained admission flux, an INSTANTANEOUS rate ###
-# People per week at an instant, NOT a weekly total: the NHSN channel's mean
-# is the weekly increment of H_Cum. This function survives as the name
-# binding the .exp count column to a model output.
+# not a weekly total; kept as the name binding the .exp count column
 H_weekly() = rho*mult*gamma*(Ia+Ib)
 
-### -- the particle filter's fit target: ASCERTAINED cumulative admissions -- ###
-# The engine differences this over each reporting week and multiplies by
-# nothing (PyBNF-pf, 2026-09-04): the model owns its observation scale,
-# so a filter that knows no parameter names can run any model. Named by
-# pf_cumulative_observable in the conf FluBNF writes.
+### -- the particle filter's fit target -- ###
+# the engine differences this over each reporting week; the model owns
+# its observation scale (pf_cumulative_observable in the conf)
 Hobs() = mult*H_Cum
 
 ### channel 2: strain-A share of typed positives (NREVSS, binomial) ###

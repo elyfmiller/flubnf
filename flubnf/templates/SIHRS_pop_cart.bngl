@@ -1,57 +1,20 @@
 begin model
-# =====================================================================
-# FluBNF SIHRS -- CARTESIAN SEASONAL BETA
-# ---------------------------------------------------------------------
-# Identical science to SIHRS_pop.bngl at the same fitted-parameter count;
-# the ONLY change is the seasonal term's coordinate system, polar
-# (amplitude, phase) -> Cartesian:
-#
+# FluBNF SIHRS, CARTESIAN seasonal beta (RESEARCH: no runtime path; pinned by
+# tests/test_seasonal.py). Same model and parameter count as SIHRS_pop.bngl;
+# each harmonic is written a*cos + b*sin instead of eps*cos(t - phi):
 #   eps*cos(2*pi*(t-phi)/P)  ==  a*cos(2*pi*t/P) + b*sin(2*pi*t/P)
 #     a = eps*cos(2*pi*phi/P),  b = eps*sin(2*pi*phi/P)
-#
-# Exact, verified to 2.6e-15 over 2000 random (eps, phi). Recover (eps,
-# phi) post hoc with flubnf.seasonal.to_polar, converting SAMPLES only.
-#
-# WHY. THIS FILE IS THE HOME OF RECORD for the measurement (2026-08-05,
-# 680 sweep fits plus raw chains); flubnf/seasonal.py points here for it.
-# Polar coordinates make this posterior unsamplable by adaptive
-# Metropolis, phase carrying nearly all the damage:
-#   median R-hat  phi1 58.8 (ESS 26)  phi2 26.8  Reff 3.35  eps1 2.90
-#   100% of the 680 fits fail R-hat > 1.1
-#   Alabama 2026-01-24, 4 chains x 8000 iters: acceptance a healthy 15.1%,
-#   yet phi1 chain means 31.6 / 1.2 / 17.3 / 44.8, each chain covering
-#   1.4% of the prior. Circular R-hat 64.3 against linear 127.2.
-# Not stuck, sealed: each chain sits in its own narrow mode. Acceptance is
-# identical across parameters because PyBNF's AM is a joint block
-# proposal, so the worst-conditioned direction throttles all of them.
-#
-# THREE DEFECTS OF THE POLAR FORM, all removed here:
-#  1. FUNNEL: as eps -> 0, phi is unidentified. phi1 R-hat 68.3 at
-#     eps1 < 0.05 against 24.7 at eps1 in [0.30, 0.60]; 46% of fits sit
-#     below 0.05. In (a,b) that origin is an ordinary interior point, and
-#     a short corridor between phase modes rather than a barrier.
-#  2. CIRCULAR WALL: phi's prior is (0,52) but 0 and 52 are the SAME
-#     phase, and PyBNF treats them as hard bounds. (a,b) has no wall.
-#  3. PRIOR ARTIFACT: uniform (eps,phi) implies density proportional to
-#     1/eps in Cartesian coordinates (the polar Jacobian is eps), pushing
-#     amplitude to zero; uniform (a,b) gives p(eps) proportional to eps.
-#     This may explain the long-standing "eps1 collapses to ~0" result,
-#     read until now as evidence about seasonality, not coordinates.
-#
-# Fitted (8): Reff, a1, b1, a2, b2, mult, impr, r. Tokens per state at
-# materialization, unchanged from the polar templates: {{POP}} {{S0FRAC}}
-# {{I0FRAC}} {{GAMMA}} {{RHO}} {{GAMMAH}} {{OMEGA}}. Fit the REPORTED
-# WEEKLY ADMISSIONS, never the census H(t): the weekly count is the
-# increment of H_Cum, not that flux sampled at one instant.
-# =====================================================================
+# Exact. It removes the eps->0 funnel, the 0/52 phase wall and the 1/eps prior
+# artifact that left polar adaptive-MCMC chains unmixed (measurement record:
+# docs/MODEL-PROVENANCE.md section 8). Recover (eps, phi) from SAMPLES with
+# flubnf.seasonal.to_polar.
+# Fitted (8): Reff, a1, b1, a2, b2, mult, impr, r. Tokens as SIHRS_pop.bngl:
+# {{POP}} {{S0FRAC}} {{I0FRAC}} {{GAMMA}} {{RHO}} {{GAMMAH}} {{OMEGA}}.
 begin parameters
 
 ### -- transmission: scale-free reproduction number + seasonal forcing -- ###
 Reff    Reff__FREE     # BASE reproduction number: harmonic-neutral, at the
-                       # initial susceptible fraction s0. NOT the season-start
-                       # value, which is Reff*exp(a1+a2) because both sines
-                       # vanish at t = 0. Fit Reff, never R0 (= Reff/s0, itself
-                       # a BASE value, recovered post hoc)
+                       # initial s0; season-start value Reff*exp(a1+a2); R0 = Reff/s0
 
 # Prior boxes and their stiffness note: flubnf/sihrs_fit.py::CART_PRIORS.
 a1      a1__FREE       # annual  cos coefficient
@@ -69,9 +32,8 @@ gammaH  {{GAMMAH}}     # FIXED: discharge; does not enter the admissions target
 omega   {{OMEGA}}      # FIXED: waning R->S, weakly identified from <3 seasons
 
 ### -- external force of infection (reseeding) -- ###
-# Required, not cosmetic: waning refills the FUEL (S) but supplies no SPARK
-# (I), and infection is proportional to I. Written S()->I(), not 0->I(), so
-# total population is conserved.
+# Required: waning refills S but supplies no I, and infection needs I.
+# S()->I() conserves N.
 impr    impr__FREE     # per-susceptible per-week external infection hazard
 
 ### -- observation noise -- ###

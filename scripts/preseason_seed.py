@@ -1,43 +1,14 @@
-"""Pre-season warm-up: fit to convergence, not to a clock.
+"""RESEARCH (AMCMC-era harness): pre-season seed, fit to convergence, not
+to a clock.
 
-WHY THIS IS A SEPARATE SCRIPT FROM THE WEEKLY LOOP
---------------------------------------------------
-The two have opposite stopping rules and it is a mistake to blur them.
-
-    weekly loop     time-bounded. A deadline exists, and the job is to absorb
-                    one new point and one revision into an already-converged
-                    state before it. Stops when the clock says so.
-    pre-season      convergence-bounded. No deadline exists. The job is to
-                    arrive at the first competition week with a posterior worth
-                    warm-starting from. Stops when the fit stops improving.
-
-Everything downstream assumes the weekly loop begins from a converged state.
-Measured: starting a week cold at 1000 iterations pinned three of five
-parameters on round 0; after a 12,000-iteration seed the same round came back
-with none. The seed is not an optimisation, it is the precondition.
-
-SOLSTICE SEEDING
-----------------
-Fitting starts at the summer solstice rather than a nominal season start. At
-season start there is nothing to fit to; the solstice gives the summer trough as
-fittable signal, which is what pins `mult` and the baseline level before the
-epidemic supplies any curvature.
-
-STOPPING RULE
--------------
-Rounds continue until either
-  * no parameter is pinned AND R-hat is acceptable on every fitted parameter, or
-  * `--max-rounds` is reached, or
-  * a round fails to improve the objective by more than `--tol`.
-Between rounds, pinned bounds are widened (widen only -- never drop a parameter,
-because the BNGL template still declares it and a conf that omits it stops
-matching the model). Each round warm-starts from the last via `continue_run`, so
-the rounds compound rather than restart.
-
-R-HAT NEEDS TWO CHAINS
-----------------------
-`--chains 1` makes R-hat uncomputable, leaving pinning as the only signal. The
-default of 2 is the cheapest setting that keeps both.
+The weekly loop is time-bounded and assumes a converged start (cold, week 1
+pinned three of five parameters; after a 12,000-iteration seed, none). This
+fits from the summer solstice (the trough pins `mult` and the baseline) to
+--through, round after round, each warm-starting from the last via
+continue_run, until nothing is pinned, no bound can widen, or --max-rounds. Only
+pinned bounds widen, per state; a parameter is never dropped, because the
+template still declares it. Default 2 chains: the fewest for which R-hat is
+computable. Reuse the warm state with weekly_loop_run --root.
 """
 from __future__ import annotations
 
@@ -76,17 +47,18 @@ def main() -> None:
     ap.add_argument("--iters", type=int, default=8000, help="per round")
     ap.add_argument("--max-rounds", type=int, default=6)
     ap.add_argument("--tol", type=float, default=0.01,
-                    help="stop when the objective improves by less than this")
-    ap.add_argument("--rhat-max", type=float, default=1.10)
+                    help="accepted for old command lines; unused (a pinned "
+                         "posterior can plateau against its wall, so only "
+                         "'nothing pinned' ends the seed)")
+    ap.add_argument("--rhat-max", type=float, default=1.10,
+                    help="accepted for old command lines; unused")
     ap.add_argument("--timeout", type=float, default=21600.0)
     ap.add_argument("--min-model", action="store_true")
     ap.add_argument("--out", default="backtest_results/preseason.json")
     a = ap.parse_args()
 
-    # PREFLIGHT: a seed date with no published vintage fails every fit with a
-    # quiet per-record "no vintage". Fail loudly instead, and say what exists —
-    # this exact mistake cost a queue slot on 2025-11-08, which sits in the
-    # archive's Sept-20 -> Nov-15 gap.
+    # PREFLIGHT: with no vintage for --through every fit fails quietly with
+    # "no vintage"; fail loudly here and list the nearby vintages.
     from scripts.vintage_run import ARCHIVE, vintage_for
     if vintage_for(a.through) is None:
         avail = sorted(p.name.split("_")[-1].removesuffix(".csv")
@@ -98,7 +70,7 @@ def main() -> None:
     yr = pd.Timestamp(a.through).year
     ss = a.season_start or solstice(yr if pd.Timestamp(a.through).month >= 6 else yr - 1)
     pstate = {s: dict(MIN_PRIORS) for s in a.states}
-    prev_obj, history = None, []
+    history = []
     t0 = time.time()
     print(f"[preseason] {len(a.states)} states | solstice {ss} -> {a.through} | "
           f"{a.chains} chains | up to {a.max_rounds} rounds of {a.iters}", flush=True)
@@ -130,19 +102,8 @@ def main() -> None:
         if not pins:
             print("  converged: nothing pinned", flush=True)
             break
-        if (not pins and prev_obj is not None
-                and np.isfinite(obj) and np.isfinite(prev_obj)):
-            # tol alone must NEVER stop a seed that still has pins: a pinned
-            # posterior can plateau its objective against the wall. Measured
-            # 2026-08-17 -- the first seed with a finite objective stopped at
-            # round 1 with eps1/mult/r pinned and week 1 opened at 100% pins.
-            if abs(prev_obj - obj) / max(abs(prev_obj), 1e-9) < a.tol:
-                print(f"  stopping: pin-free and objective improved < {a.tol:.1%}",
-                      flush=True)
-                break
-        prev_obj = obj
 
-        any_widened = False
+        widened = {}
         for r in ok:                       # PER-STATE: own pins, own medians
             if r.get("pinned") and "medians" in r:
                 pr = pstate[r["state"]]
@@ -150,13 +111,14 @@ def main() -> None:
                 newp = {k: newp.get(k, pr[k]) for k in pr}   # widen only
                 if newp != pr:
                     pstate[r["state"]] = newp
-                    any_widened = True
-        if not any_widened:
+                    widened[r["state"]] = newp
+        if not widened:
             print("  stopping: bounds could not be widened further", flush=True)
             break
-        print(f"    widened -> "
-              f"{ {k: tuple(round(x,4) for x in v) for k,v in priors.items()} }",
-              flush=True)
+        for st, pr in sorted(widened.items()):
+            print(f"    widened {st} -> "
+                  f"{ {k: tuple(round(x, 4) for x in v) for k, v in pr.items()} }",
+                  flush=True)
 
     for s in a.states:
         prune(state_dir(Path(a.root), s) / "res")

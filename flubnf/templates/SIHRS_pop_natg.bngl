@@ -1,35 +1,19 @@
 begin model
-# =====================================================================
-# FluBNF SIHRS-NATG: the production template SIHRS_pop_min.bngl PLUS one
-# exogenous national-growth factor on beta(t), zero new fitted parameters:
-#
-#   beta_s(t)  *=  exp( iota * ( g_nat^{-s}(t) - g_s^obs(t) ) )
-#
-# g_nat^{-s} is leave-one-out national log-growth of vintage-true weekly
-# admissions and g_s^obs the state's own, both built at materialize time by
-# flubnf/natgrowth.py from the as-of vintage, never the latest file. The
-# term acts on GROWTH, never on level.
-#
-# PRE-REGISTERED AND FROZEN A PRIORI (measurements: MODEL-PROVENANCE 4):
-#   * iota = 0.3020 (flubnf/natgrowth.py::IOTA_FROZEN). Never a *__FREE
-#     var line, never retuned after seeing scores (handoff Law 1).
-#   * Forecast rule: the last observed gap is
-#     HELD CONSTANT ACROSS THE 1 TO 4 WEEK HORIZON.
-#     Structural, not a code path: natgap()'s final branch has no upper
-#     guard. No extrapolation, no decay, no forecast of g_nat.
-#   * The gap is clipped to +-1.0 (natgrowth.py::GAP_CLIP), holding the
-#     beta multiplier inside [0.74, 1.35]; clipped weeks are reported.
-#
-# Extra tokens beyond `min`: IOTA, GAPEXPR, GAPNOTE (braces omitted here
-# so this comment survives materialization), from natg_tokens().
-# =====================================================================
+# FluBNF SIHRS-NATG: SIHRS_pop_min.bngl plus one exogenous national-growth
+# factor on beta, no new fitted parameters:
+#   beta_s(t) *= exp( iota * ( g_nat^{-s}(t) - g_s^obs(t) ) )
+# (leave-one-out national minus own log-growth, built by flubnf/natgrowth.py
+# from the as-of vintage; acts on growth, never level).
+# PRE-REGISTERED AND FROZEN (MODEL-PROVENANCE 4): iota = 0.3020
+# (IOTA_FROZEN), never a fitted var, never retuned. The last observed gap is
+# HELD CONSTANT ACROSS THE 1 TO 4 WEEK HORIZON (natgap()'s last branch is
+# unguarded); the gap is clipped to +-1.0 (GAP_CLIP), beta factor in [0.74, 1.35].
+# Extra tokens IOTA, GAPEXPR, GAPNOTE (braces omitted: comments are token-scanned).
 begin parameters
 
 ### -- transmission: scale-free reproduction number + seasonal forcing -- ###
 Reff    Reff__FREE     # BASE reproduction number: harmonic-neutral, at the
-                       # initial susceptible fraction s0. NOT the season-start,
-                       # forced or realised value; here the forced value also
-                       # carries exp(iota*natgap(t)). Fit Reff, never R0
+                       # initial susceptible fraction s0; R0 = Reff/s0 post hoc
 eps1    eps1__FREE     # annual-harmonic amplitude
 phi1    phi1__FREE     # annual-harmonic phase (week of peak transmissibility)
 
@@ -38,9 +22,7 @@ gamma   {{GAMMA}}      # FIXED: 7/3.2 d generation time, Chan 2024 doi:10.1101/2
 rho     {{RHO}}        # FIXED: true IHR branching fraction I->H; rules only,
                        # never the observable
 mult    mult__FREE     # ascertainment, OBSERVATION-ONLY: it must never appear
-                       # in a reaction rule. Admissions identify only the
-                       # product rho*mult; rho is held fixed, so the FIT
-                       # determines the product. Never pinned in this file
+                       # in a reaction rule; admissions identify only rho*mult
 gammaH  {{GAMMAH}}     # FIXED: discharge; moves the census only, unidentifiable here
 omega   {{OMEGA}}      # FIXED: waning R->S, weakly identified from <3 seasons
 
@@ -95,27 +77,21 @@ begin functions
 
 ### -- exogenous national-growth gap, piecewise-constant in t -- ###
 # {{GAPNOTE}}
-# Written at materialize time by natgrowth.py::bngl_gap_expression. A week
-# with no defined growth contributes exactly 0.0; the unguarded final
-# branch IS the pre-registered forecast rule above.
+# Written by natgrowth.py::bngl_gap_expression; a week with no defined growth
+# contributes 0.0, and the unguarded final branch IS the forecast rule above.
 natgap() = {{GAPEXPR}}
 
 ### -- seasonal transmission rate (exp() keeps beta > 0) -- ###
-# The ONLY change from SIHRS_pop_min.bngl: the exp(iota*natgap()) factor.
-# iota = 0 reduces this file to the production template exactly.
+# The ONLY change from SIHRS_pop_min.bngl; iota = 0 reduces to it exactly.
 beta() = beta0*exp( eps1*cos(2*pi*(t-phi1)/52) )*exp( iota*natgap() )
 
-### -- ascertained admission flux into H, an INSTANTANEOUS rate -- ###
-# People per week at an instant, NOT a weekly total: the shipped particle
-# filter uses the weekly increment of H_Cum instead. This function survives
-# as the name binding the .exp count column to a model output.
+### -- ascertained admission flux, an INSTANTANEOUS rate, not a weekly total -- ###
+# kept as the name binding the .exp count column to a model output
 H_weekly() = rho*mult*gamma*I
 
-### -- the particle filter's fit target: ASCERTAINED cumulative admissions -- ###
-# The engine differences this over each reporting week and multiplies by
-# nothing (PyBNF-pf, 2026-09-04): the model owns its observation scale,
-# so a filter that knows no parameter names can run any model. Named by
-# pf_cumulative_observable in the conf FluBNF writes.
+### -- the particle filter's fit target -- ###
+# the engine differences this over each reporting week; the model owns
+# its observation scale (pf_cumulative_observable in the conf)
 Hobs() = mult*H_Cum
 
 end functions

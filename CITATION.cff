@@ -22,19 +22,21 @@ keywords:
   - PyBNF
 abstract: >-
   FluBNF forecasts weekly influenza hospital admissions for the 52 US
-  jurisdictions of the CDC FluSight challenge. Its shipped forecast is an
-  unfitted, equal-weight, quantile-averaged ensemble of two members: a
-  sequential particle filter over an SIHRS compartmental model written in
-  BNGL, fitted with a fork of PyBNF on the bngsim engine, and a calendar
-  analog whose donor pool excludes the calendar-inverted 2021-22 season.
-  In a vintage-true retrospective of the 2023-24, 2024-25 and 2025-26
-  seasons at full grid (15,460 scored cells), the production engine in
-  this repository scores a pooled weighted interval score of 0.723
-  relative to the CDC FluSight-baseline (ratio of WIS sums on shared cells;
-  0.834, 0.716 and 0.663 by season), beating the baseline in every season.
-  The v1.0.0 release sealed a record of 0.678 (0.813, 0.618, 0.683) on a
-  particle filter kernel with an undeclared behaviour that has since been
-  corrected; both records and the correction are in docs/archive/RELEASE-1.0.md.
-  All scores are self-computed from the hub's archived vintage data and
-  baseline files, and are retrospective replays rather than real-time
-  submissions.
+  jurisdictions of the CDC FluSight challenge. It submits two standalone
+  models, each under its own hub identity, and blends nothing. Oracle SIHRS
+  is mechanistic: an SIHRS compartmental model written in BNGL, fitted every
+  week by a sequential particle filter in a fork of PyBNF on the bngsim
+  engine, whose forecast growth is then combined (geometric mean, half and
+  half) with donor growth from earlier seasons at the same calendar week.
+  Groundhog is empirical: the last observed count scaled by the empirical
+  quantiles of growth ratios seen at the same epiweek in strictly earlier
+  seasons, pooled across jurisdictions, with a committed FluSurv-NET donor
+  bank spliced in; nothing is fitted. In vintage-true retrospective replays
+  of the 2023-24, 2024-25 and 2025-26 seasons, scored as weighted interval
+  score relative to the CDC FluSight-baseline (ratio of WIS sums on shared
+  cells), the Groundhog pools at 0.666 and the Oracle SIHRS at 0.738 against
+  the plain filter's 0.819. All scores are self-computed from the hub's
+  archived vintage data and baseline files, and are retrospective replays
+  rather than real-time submissions. The 1.0 and 1.1 releases shipped a
+  different product, an equal-weight ensemble; their record is in
+  docs/archive/RELEASE-1.0.md.

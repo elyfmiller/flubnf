@@ -1,41 +1,16 @@
-"""Score the sequential particle filter, and select its one knob HONESTLY.
+"""RESEARCH (particle-filter jitter study): score the in-Python particle
+filter (flubnf/particle_filter.py) and select its one knob, `jitter`, without
+in-season selection bias.
 
-WHAT THIS IS FOR
-----------------
-`flubnf/particle_filter.py` replaces the weekly batch refit with a filter that
-carries last week's posterior forward. It has exactly one free knob, `jitter`
-(how fast parameters are allowed to drift), and an in-season sweep put its
-optimum at 0.30 with relWIS 0.901 -- better than the 0.918 batch fit.
+  --mode sweep    score a jitter grid per season (diagnostic only)
+  --mode frozen   pick jitter on the other seasons, score the held-out one;
+                  report the frozen number, not the oracle
+  --mode calib    pick jitter online from the filter's own PITs
 
-That number is NOT trustworthy on its own. It was selected on the same season it
-was scored on, which is the precise error that turned the calendar analogue's
-in-season 0.665 into an honest 0.806: +0.141 against that lucky in-season pick,
-and +0.259 against the in-season oracle (0.547), the largest selection penalty
-measured in this project (see the bandwidth provenance note in
-flubnf/analogue.py). So this script does both:
-
-  --mode sweep    score a jitter grid per season  (diagnostic)
-  --mode frozen   pick jitter on the two PRIOR seasons, apply it to the held-out
-                  one, report both the frozen and the oracle value
-
-The gap between frozen and oracle is the honest cost of tuning. Report the
-frozen number.
-
-WHY THE JITTER CURVE IS U-SHAPED
---------------------------------
-Too little and the ensemble is overconfident: at 0.03 the predictive log-sd is
-0.41 and relWIS is 1.549, worse than doing nothing. Too much and the mechanism
-is forgotten -- the filter degenerates toward a random walk and relWIS climbs
-back to 1.084 at 0.60. The minimum is where parameter drift matches the rate at
-which transmission actually changes.
-
-COVERAGE IS THE POINT
----------------------
-This is the first configuration in the project whose intervals are close to
-nominal (49% / 91% against 50% / 95%). The measured defect is SPREAD, not the
-median -- swapping spread gains 0.070 relWIS while swapping the median gains
-0.003 -- so coverage is the diagnostic that matters, and it is reported here
-alongside relWIS rather than derived afterwards.
+Picking on the scored season is what once flattered the analogue by +0.141
+relWIS (flubnf/analogue.py). Jitter is U-shaped: too little is overconfident,
+too much forgets the mechanism. Coverage (50%/95%) is reported beside relWIS:
+the measured defect is predictive spread, not the median.
 """
 from __future__ import annotations
 
@@ -65,9 +40,8 @@ _sp = importlib.util.spec_from_file_location(
 AA = importlib.util.module_from_spec(_sp)
 _sp.loader.exec_module(AA)
 
-# Filter bounds mirror MIN_PRIORS: the filter fits the same five parameters as
-# templates/SIHRS_pop_min.bngl, so a difference between the two is the algorithm
-# and not the parameterisation.
+# Bounds mirror MIN_PRIORS (the five parameters of SIHRS_pop_min.bngl), so a
+# difference from the batch fit is the algorithm, not the parameterisation.
 BOUNDS = dict(Reff=(0.6, 2.5), eps1=(0.0, 1.0), phi1=(0.0, 52.0),
               mult=(0.002, 1.0), r=(0.1, 40.0))
 

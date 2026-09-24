@@ -13,9 +13,8 @@ begin parameters
 Reff    Reff__FREE     # BASE reproduction number at the initial susceptible
                        # fraction s0, harmonic-neutral; R0 = Reff/s0 post hoc
 eps1    eps1__FREE     # annual-harmonic amplitude
-# The clock t starts at 0 in the first FITTED week, one week after the
-# season start, so a fitted phi1 names the peak one week later than its
-# calendar reading; forecasts are unaffected (measured 2026-08-27).
+# t = 0 is the first FITTED week (season start + 1 week), so a fitted phi1
+# reads one week late against the calendar; forecasts are unaffected.
 phi1    phi1__FREE     # annual-harmonic phase
 
 ### -- progression / removal -- ###

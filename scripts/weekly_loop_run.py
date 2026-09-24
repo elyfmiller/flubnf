@@ -1,35 +1,13 @@
-"""Walk a season week by week with warm starts and pinning-driven bound widening.
+"""RESEARCH (AMCMC-era harness; run by app/core/engines/amcmc.py, itself no
+longer wired into the console): walk a season week by week with warm starts
+and pinning-driven bound widening.
 
-WHAT THIS IS TESTING
---------------------
-Whether an auto-parameterised SIHRS, given the compute a between-week schedule
-allows, approaches the sequential filter's 0.772. The filter wins today partly
-because it never re-derives what it already knew; this gives the batch fit the
-same advantage by carrying PyBNF's adapted proposal forward.
-
-WARM START USES PyBNF'S OWN MECHANISM
--------------------------------------
-`Adaptive_MCMC` persists `adaptive_files/{MLE_params,diffMatrix,diff}.txt` and
-reloads all three under `continue_run = 1`. `diffMatrix` is the LEARNED
-COVARIANCE, so this restores the adapted proposal rather than merely a starting
-point -- which is most of what an adaptive chain has earned. `starting_params`
-is the fallback for the case where those files are absent but a posterior is
-known; the two are mutually exclusive in PyBNF (algorithms.py:2172).
-
-THE ONE THING THAT MUST NOT BE DELETED
---------------------------------------
-Every other runner in this repo rmtree's its work directory in a `finally`
-block, which is why scratch stayed at ~120 MB across a 20-hour campaign. That
-would destroy exactly the files a warm start needs. So each state keeps a
-PERSISTENT directory holding only `adaptive_files/` -- ~1-2 KB, about 100 KB for
-all 52 states -- and everything else is still discarded per fit.
-
-BUDGET
-------
-Throughput is I/O-bound at ~2.1 fits/min regardless of worker count (doubling
-workers bought 6%), so a 52-state round costs ~25 min per 1000 iterations. The
-schedule in `flubnf.weekly_loop` sizes rounds from that measurement rather than
-from a guess.
+Warm start is PyBNF's own: continue_run = 1 reloads adaptive_files/
+(MLE_params, diffMatrix = the learned proposal covariance, diff), so the
+adapted proposal carries forward, not just a starting point. Each state keeps
+a PERSISTENT warm/<state>/res holding adaptive_files (~KBs); everything else
+is pruned per fit. Rounds are sized from measured throughput (I/O-bound,
+~2.1 fits/min whatever the worker count) by flubnf.weekly_loop.LoopPlan.
 """
 from __future__ import annotations
 
@@ -50,8 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from flubnf.autoparam import diagnose, next_priors                   # noqa: E402
 from flubnf.sihrs_fit import (MIN_PRIORS, materialize_model,         # noqa: E402
                               resolve_state, run_pybnf, write_conf, write_exp)
-from flubnf.warmstart import (Posterior, cold_start_needed,          # noqa: E402
-                              pinned_parameters, read_posterior, starting_params)
+from flubnf.warmstart import pinned_parameters, read_posterior       # noqa: E402
 from flubnf.weekly_loop import LoopPlan                              # noqa: E402
 from scripts.profiled_fit_run import BNG, LOCS, PYBNF, TEMPLATE      # noqa: E402
 from scripts.vintage_run import MIN_TEMPLATE, vintage_for            # noqa: E402
@@ -93,10 +70,8 @@ def one_fit(args) -> dict:
 
         adaptive = out_dir / "adaptive_files"
         can_continue = warm and (adaptive / "diffMatrix.txt").is_file()
-        # REPLACE, do not append: write_conf already emits a continue_run line,
-        # and PyBNF rejects a duplicated key outright --
-        #   "Config key 'continue_run' is specified multiple times"
-        # which surfaced only as returncode 1 with an empty stderr.
+        # REPLACE, do not append: write_conf already emits continue_run and PyBNF
+        # rejects a duplicated key (returncode 1, empty stderr).
         txt = c.read_text()
         val = "1" if can_continue else "0"
         if re.search(r"^continue_run\s*=", txt, re.M):
@@ -186,23 +161,16 @@ def main() -> None:
     plan = LoopPlan(budget_s=a.budget_min * 60, probe_iters=a.probe_iters,
                     clean_rounds_required=a.clean_required,
                     max_probe_rounds=a.max_probes, n_states=len(a.states))
-    # PER-STATE priors (task #27): the old shared dict meant one pathological
-    # state widened everyone's bounds -- and posterior spread is 83% of this
-    # model's measured gap. Each state's box now widens only on its own pins,
-    # from its own medians.
+    # PER-STATE priors: each state's box widens only on its own pins and
+    # medians (a shared dict let one bad state widen everyone's).
     pstate = {s: dict(MIN_PRIORS) for s in a.states}
     results, t0 = [], time.time()
     print(f"[loop] {len(a.states)} states x {len(a.asofs)} weeks | "
           f"probe {a.probe_iters} iters | budget {a.budget_min:.0f} min/week",
           flush=True)
 
-    # ---- SEED: one long cold fit before the loop begins ----------------
-    #
-    # A competition week is a small perturbation of a converged state, so the
-    # loop assumes it starts from one. Without this, week 1 begins cold at the
-    # probe iteration count and pins nearly every parameter -- observed at
-    # 1000 iters, three of five parameters against a wall on round 0. The real
-    # season has months of quiet data before the first submission; this is that.
+    # SEED: one long cold fit first. The loop assumes a converged start; cold
+    # at probe iterations, week 1 pinned three of five parameters.
     if a.seed_iters:
         seed_asof = a.seed_asof or (
             pd.Timestamp(a.asofs[0]) - pd.Timedelta(days=7)).date().isoformat()
@@ -235,9 +203,8 @@ def main() -> None:
     trusted = False          # previous week clean + bounds unchanged?
     for wi, asof in enumerate(a.asofs):
         wk_start, rounds, best = time.monotonic(), 0, {}
-        # Trusted start (task #27): re-proving last week's cleanliness burns
-        # budget demonstrating the demonstrated -- 18/18 weeks spent 2-3
-        # probes at 0% pinning. Trust is one week deep.
+        # Trusted start: a clean, unchanged last week skips the probes
+        # (re-proving it cost 2-3 probes a week). Trust is one week deep.
         clean_streak = a.clean_required if trusted else 0
         stable = True
         week_changed = False
@@ -272,10 +239,9 @@ def main() -> None:
 
             changed = False
             if allpins:
-                # PER-STATE widening; WIDEN ONLY -- never drop a parameter
-                # (next_priors' eps1-floor rule is SUPERSEDED and fatal here:
-                # the template still declares eps1__FREE, so a conf without it
-                # stops matching the model; observed as silent 0/2 rounds).
+                # PER-STATE, WIDEN ONLY: never drop a parameter (next_priors'
+                # eps1-floor rule): the template still declares eps1__FREE, and a
+                # conf without it silently fails every fit.
                 for r in ok:
                     if r.get("pinned") and "medians" in r:
                         pr = pstate[r["state"]]

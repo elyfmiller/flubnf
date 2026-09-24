@@ -15,8 +15,14 @@ Covered templates:
 | `SIHRS_pop_2strain_min.bngl` | Two-strain (A/B) production variant (7 fitted parameters) |
 | `SIHRS_pop_natg.bngl` | `min` plus one exogenous national-growth factor, zero new fitted parameters |
 | `SIHRS_pop_covid.bngl` | COVID-19 port: `min` with `omega` fitted instead of fixed (6 parameters) |
-| `SIHRS_pop_covid_2h.bngl` | COVID Gate A round two, arm A2: `covid` plus the semi-annual harmonic (8 parameters) |
-| `SIHRS_pop.bngl` | Multi-season 8-parameter model (keeps `impr`, `eps2`, `phi2`); not trimmed, see section 3 |
+| `SIHRS_pop.bngl` | Multi-season 8-parameter model (keeps `impr`, `eps2`, `phi2`); not trimmed, see section 3. Used by the research scripts only |
+| `SIHRS_pop_cart.bngl` | `SIHRS_pop.bngl` with each seasonal harmonic in Cartesian coordinates; research, no runtime path (section 8) |
+| `Alabama.bngl`, `AlabamaSIRS.bngl`, `Alabama.conf` | Legacy piecewise-SIR / SIRS templates of the `flubnf init` workspace CLI; not SIHRS and not covered here |
+
+Removed templates, kept in the lab archive and git history:
+`SIHRS_pop_covid_2h.bngl` (COVID Gate A round two, arm A2: `covid` plus the
+semi-annual harmonic, 8 parameters; section 5.4) and `SIHRS_pop_2strain.bngl`
+(the annotated two-strain draft with `impr` retained; section 6.2).
 
 Companion sources of record. The research tree behind the measurements
 below is kept in the lab's archive, not in this repository, and is available
@@ -296,13 +302,13 @@ country disagree.
 The ODEs are not coupled, no species are added, no movement rates exist.
 Per-state filters, 10k particles, 5 fitted parameters and per-state
 parallelism are all unchanged. A coupled 52-region model was measured and
-rejected (`FINDINGS.md` section 1).
+rejected (the probe's findings, section 1; lab archive).
 
 ### 4.4 iota is frozen a priori -- it is not a fitted parameter
 
 OLS of next-week own log-growth on leave-one-out national growth, given own
 lag-1 growth and a first Fourier harmonic on week-of-season
-(`probe.py::spatial()`'s design matrix), fitted separately on the two seasons
+(the spatial probe's design matrix, lab archive), fitted separately on the two seasons
 the handoff names:
 
     2023-24  n=1393  b[g_nat] = 0.7574
@@ -360,7 +366,7 @@ without braces so they survive materialization.
 
 ---
 
-## 5. The COVID-19 port (`SIHRS_pop_covid.bngl`, `SIHRS_pop_covid_2h.bngl`)
+## 5. The COVID-19 port (`SIHRS_pop_covid.bngl`; `SIHRS_pop_covid_2h.bngl`, removed)
 
 The only structural difference between `SIHRS_pop_covid.bngl` and
 `SIHRS_pop_min.bngl` is that `omega` is FITTED instead of fixed. Everything
@@ -447,7 +453,10 @@ median 11.0 weeks (IQR -14.4 to -7.8) in the same sweep; under influenza
 waning the lead is 4.7 weeks. A prior placing `phi1` near the observed peak
 week would be wrong by roughly a season quarter. The box stays uniform(0, 52).
 
-### 5.4 Round two, arm A2: the second harmonic restored (`SIHRS_pop_covid_2h.bngl`)
+### 5.4 Round two, arm A2: the second harmonic restored (`SIHRS_pop_covid_2h.bngl`, removed; lab archive)
+
+The arm's template is no longer in this repository; the record stays here.
+
 
 Round one (pre-registration `5ad51005a827740c`) freed `omega` and nothing
 else, on the sweep argument above. The fits then landed OUTSIDE the reachable
@@ -468,7 +477,7 @@ the round-one posterior range, e.g. R0 1.2 / eps1 0.03 / eps2 0.20 /
 omega 17 wk -> 2.00 peaks/yr. The regime the arm needs is therefore reachable
 at the amplitudes the priors allow.
 
-Priors for the two added dimensions (frozen record: `gate_a2.py`):
+Priors for the two added dimensions (frozen record: the arm's gate script, lab archive):
 
 * `eps2` uniform(0.0, 0.4). The bound is STIFFNESS-CRITICAL, carried from the
   measured flu 8-parameter box (`sihrs_fit.FITTED_PRIORS`):
@@ -511,7 +520,8 @@ sitting later in the season is the mechanism that generates spring B waves.
 The production `min` trim drops `impr` (single-season fits; the filter
 re-conditions weekly) and the semi-annual harmonic (the B circuit carries
 two-wave structure mechanistically -- the hypothesis under test). The fully
-annotated draft with `impr` retained is `SIHRS_pop_2strain.bngl`.
+annotated draft with `impr` retained, `SIHRS_pop_2strain.bngl`, was removed
+(lab archive and git history).
 
 ### 6.3 Observation channels
 
@@ -558,3 +568,49 @@ history.
   `app/tests/test_natgrowth.py` pins `natg` against `min` (identical
   structure blocks, same `__FREE` set, frozen iota, in-template forecast
   rule). Run both before shipping a template change.
+
+---
+
+## 8. The Cartesian variant (`SIHRS_pop_cart.bngl`)
+
+Same science and fitted-parameter count as `SIHRS_pop.bngl`; only the
+seasonal term's coordinates change, polar (amplitude, phase) to Cartesian:
+
+    eps*cos(2*pi*(t-phi)/P)  ==  a*cos(2*pi*t/P) + b*sin(2*pi*t/P)
+      a = eps*cos(2*pi*phi/P),  b = eps*sin(2*pi*phi/P)
+
+Exact (verified to 2.6e-15 over 2000 random `(eps, phi)`). Recover
+`(eps, phi)` post hoc with `flubnf.seasonal.to_polar`, converting SAMPLES,
+not summaries. Prior boxes: `flubnf/sihrs_fit.py::CART_PRIORS`.
+
+### 8.1 Why, measured (2026-08-05, 680 sweep fits plus raw chains)
+
+Polar coordinates made the posterior unsamplable by adaptive Metropolis,
+with phase carrying nearly all the damage:
+
+* median R-hat: `phi1` 58.8 (ESS 26), `phi2` 26.8, `Reff` 3.35, `eps1` 2.90;
+  100% of the 680 fits fail R-hat > 1.1.
+* Alabama 2026-01-24, 4 chains x 8000 iterations: acceptance a healthy
+  15.1%, yet `phi1` chain means 31.6 / 1.2 / 17.3 / 44.8, each chain covering
+  1.4% of the prior. Circular R-hat 64.3 against linear 127.2.
+
+Not stuck, sealed: each chain sits in its own narrow mode. Acceptance is
+identical across parameters because PyBNF's AM is a joint block proposal, so
+the worst-conditioned direction throttles all of them.
+
+### 8.2 Three defects of the polar form, all removed
+
+1. FUNNEL: as `eps -> 0`, `phi` is unidentified. `phi1` R-hat 68.3 at
+   `eps1 < 0.05` against 24.7 at `eps1` in [0.30, 0.60]; 46% of fits sit
+   below 0.05. In `(a, b)` that origin is an ordinary interior point, a short
+   corridor between phase modes rather than a barrier.
+2. CIRCULAR WALL: `phi`'s prior is (0, 52) but 0 and 52 are the SAME phase,
+   and PyBNF treats them as hard bounds. `(a, b)` has no wall.
+3. PRIOR ARTIFACT: uniform `(eps, phi)` implies density proportional to
+   `1/eps` in Cartesian coordinates (the polar Jacobian is `eps`), pushing
+   amplitude to zero; uniform `(a, b)` gives `p(eps)` proportional to `eps`.
+   This may explain the long-standing "eps1 collapses to ~0" result, read
+   until then as evidence about seasonality, not coordinates.
+
+The season-start reproduction number in this form is `Reff*exp(a1+a2)`,
+because both sines vanish at `t = 0`.

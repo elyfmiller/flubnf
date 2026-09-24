@@ -1,7 +1,7 @@
-# A model that is not an epidemic, for the particle-filter generality
-# tests: first-order conversion A -> B with an accumulator of B made, and
-# an observation scale that the MODEL applies through a function. Nothing
-# in it is called mult, rho, H or I. Time is in weeks.
+# A model that is not an epidemic: first-order conversion A -> B.
+# An accumulator counts the B made, and the model applies its own observation
+# scale through a function, so nothing here is called mult, rho, H or I: the
+# filter fits any model written this way. Time is in weeks.
 begin model
 begin parameters
 k__FREE 0.30

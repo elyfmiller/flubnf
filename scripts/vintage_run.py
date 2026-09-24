@@ -1,36 +1,11 @@
-"""Real-time simulation: fit on the VINTAGE data, score against SETTLED truth.
+"""RESEARCH (AMCMC-era harness): fit on the VINTAGE published at each as-of
+date, score against settled truth.
 
-THE QUESTION
-------------
-relWIS 0.883 was measured with the model seeing FINAL revised admissions at
-every as-of date. A live competition run never has that. This measures the gap.
-
-It is not a hypothetical concern. Two direct observations from this codebase:
-  * California, as-of 2026-01-24: the last observed week read 1324 in real time
-    and 1624 after revision -- a 23% under-count on exactly the point the
-    forecast anchors to.
-  * A lab leading-indicator signal measured at clustered t=3.10 on revised data
-    fell to t=0.63 on first-release data (scripts/lab_signal_vintage_gate.py).
-    Final-data conclusions in this project have already failed to transfer once.
-
-DESIGN
-------
-FIT on the vintage as of date T -- literally the CSV the hub published that week,
-from auxiliary-data/target-data-archive/. SCORE against settled truth, because
-the outcome is what actually happened. Scoring against the vintage would grade
-the model on numbers that were later corrected.
-
-CHANGE ONE THING. This uses the POLAR template and the sweep's exact conf, so
-the only difference from the 728-fit control is the data. The Cartesian
-reparameterization is a separate change and must not be confounded with this one.
-
-COVERAGE
---------
-22 of the 28 sweep dates have an exact vintage. Six do not (2025-11-22,
-2025-12-20, 2026-01-31, 2026-03-07, 2026-04-25, 2026-05-23) and are SKIPPED
-rather than approximated -- substituting a stale vintage would mix a
-week-old-information condition into the comparison. Note 2026-01-31 is a
-shoulder date, so shoulder coverage is 4/5.
+Measures the gap between final-data and real-time skill (a last week can read
+23% low before revision; one lab signal fell from t=3.10 to t=0.63 on
+first-release data, lab archive). Uses the polar template and the sweep's conf,
+so the data is the only change from the settled-truth control. As-of dates with
+no exact vintage are skipped, never approximated with a stale one.
 """
 from __future__ import annotations
 
@@ -54,35 +29,16 @@ from scripts.profiled_fit_run import BNG, LOCS, PYBNF, TEMPLATE, convergence  # 
 
 from flubnf.settings import ARCHIVE  # noqa: E402
 MIN_TEMPLATE = Path(__file__).resolve().parent.parent / "flubnf" / "templates" / "SIHRS_pop_min.bngl"
-# DO NOT put run options here and set them in main(). macOS multiprocessing
-# defaults to SPAWN: a pool worker RE-IMPORTS this module, so any global assigned
-# inside main() reverts to the value below and the flag is silently ignored.
-# That bug made --window-weeks and --min-model no-ops for an entire campaign --
-# three "window" arms were really three identical full-season runs.
-# Options now travel in the args tuple, which is pickled to the worker.
-OPTS = {"min_model": False, "window_weeks": None}   # defaults only; see one_fit
+# Run options travel in the args tuple, never in globals set by main(): macOS
+# spawns pool workers, which re-import this module (tests/test_worker_options.py).
 
 
 def effective_season_start(asof: str, season_start: str,
                            window_weeks: Optional[int] = None) -> str:
-    """A ROLLING FRAME: refit on only the last `window_weeks` of data.
-
-    Why this might help, and why it is not just recency weighting. Weighting
-    downweights old data but the model still carries the susceptible depletion
-    accumulated over the whole season, which is what forces the decline. A hard
-    window RE-INITIALISES: with s0 still 0.85 the model no longer knows the
-    population is depleted, so it can grow again. That is the reactivity the old
-    piecewise SIR got by hand when a human re-pinned the model on recent weeks.
-
-    Suggestive evidence: the calendar analogue uses a ONE-WEEK frame (current
-    level plus historical ratios, no season history) and beats SIHRS's median in
-    exactly the two phases where SIHRS's median is worst -- early growth
-    (-0.299) and the shoulder (-0.095).
-
-    Cost: a short window starves the fit. With 8 observations even 5 parameters
-    is thin, which is why this pairs with the parsimonious template.
-    """
-    w = window_weeks if window_weeks is not None else OPTS.get("window_weeks")
+    """Rolling frame: refit on only the last `window_weeks`, re-initialising
+    depletion (unlike recency weighting). Pair with the 5-parameter template:
+    8 points are thin."""
+    w = window_weeks
     if not w:
         return season_start
     start = pd.Timestamp(asof) - pd.Timedelta(weeks=int(w))
@@ -192,13 +148,10 @@ def main() -> None:
     ap.add_argument("--window-weeks", type=int, default=None,
                     help="rolling frame: fit only the last N weeks")
     a = ap.parse_args()
-    OPTS["min_model"]=bool(a.min_model); OPTS["window_weeks"]=a.window_weeks
 
     if a.asofs is None:
-        # Only vintages inside the season being fitted. The archive spans three
-        # seasons (2023-09-23 .. 2026-05-30); defaulting to all of them launches
-        # ~2262 jobs that fail instantly, because a vintage from 2023 has no data
-        # in a 2025-08-01 window. Season start + 12 months bounds it.
+        # Only vintages within 12 months of season start: older ones have no
+        # data in the window and would each fail instantly.
         lo = pd.Timestamp(a.season_start)
         hi = lo + pd.DateOffset(months=12)
         a.asofs = sorted(

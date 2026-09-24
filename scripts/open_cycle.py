@@ -1,4 +1,4 @@
-"""Manual launch-cycle harness for the REAL windowed app (GUI machine only).
+"""OPS: manual launch-cycle harness for the REAL windowed app (GUI machine only).
 
 Launches `.venv/bin/flubnf app` the way FluBNF.command does, with the
 startup trace enabled (FLUBNF_STARTUP_TRACE), waits for the load watchdog's
@@ -38,8 +38,10 @@ SNAPSHOT = REPO / "app" / "state" / "component_versions.json"
 
 _STAMP = re.compile(r"^(\d+\.\d+) ")
 
+# Verdict lines traced by flubnf/cli.py's load watchdog; keep in step with it.
+# "recovered" is matched by prefix: its suffix has changed wording before.
 RESULTS = ("watchdog: loaded within first wait",
-           "watchdog: recovered after reload",
+           "watchdog: recovered",
            "watchdog: FAILED, showing failure page")
 
 

@@ -1,24 +1,12 @@
-"""Analyse the held-out anchor+damp validation. Written BEFORE the fits landed.
+"""RESEARCH (one-off held-out validation of anchor+damp; also a LIBRARY for
+pf_run.py: TRUTH, LOCS, baseline_cells).
 
-NOTE: always use df["asof"], never df.asof -- DataFrame.asof is a pandas METHOD,
-so attribute access silently returns the method instead of the column.
-
-The selection rule is fixed here in code so it cannot be tuned to whichever
-answer looks better once the numbers are visible:
-
-  * lam is chosen ONLY on the TRAIN dates, by lowest mean relWIS.
-  * the headline is the TEST relWIS at that lam.
-  * the train-test gap is reported as the overfitting estimate. The first
-    (unvalidated) look scored lam=0.5 at relWIS 1.091 on data that had chosen
-    it; if the held-out number is materially worse, that difference IS the
-    overfitting, and it gets stated rather than buried.
-
-lam semantics:  x -> base + (x - base)*lam, base = anchored level at the origin.
-  lam=0    flat persistence at the anchored level -- model dynamics contribute
-           NOTHING. If this wins, the SIHRS dynamics are actively harmful over a
-           4-week horizon and that is the finding.
-  lam=1    anchoring only, dynamics untouched.
-Baselines reported alongside: raw (no post-processing), and FluSight-baseline.
+The selection rule is fixed in code, before the fits landed: lam is chosen on
+the TRAIN dates only, TEST relWIS at that lam is the headline, and test-train
+is reported as the overfitting estimate.
+lam: x -> base + (x - base)*lam, base = anchored level at the origin; lam=0 is
+flat persistence (dynamics contribute nothing), lam=1 anchoring only.
+Gotcha: use df["asof"], never df.asof (a DataFrame method).
 """
 from __future__ import annotations
 
@@ -106,11 +94,7 @@ def build(records: list[dict], truth: dict, n2f: dict, tdf: pd.DataFrame,
 
 
 def baseline_cells(dates, locs_needed, truth) -> pd.DataFrame:
-    """The validated baseline construction, now defined in flubnf.baseline so
-    an installed copy of the package can reach it (this script is not part of
-    a wheel). THIS script keeps its own HUB resolution -- the FLUSIGHT_HUB
-    environment variable read at the top of the file -- and passes it in, so
-    the move changed nothing about how the analysis reads the hub."""
+    """flubnf.baseline.baseline_cells with this script's FLUSIGHT_HUB hub."""
     return _lib_baseline_cells(dates, locs_needed, truth, hub=HUB)
 
 

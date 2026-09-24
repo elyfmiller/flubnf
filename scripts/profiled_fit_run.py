@@ -1,38 +1,15 @@
-"""Fit with `mult` profiled out instead of sampled.
+"""RESEARCH (AMCMC-era harness): fit with `mult` profiled out instead of sampled.
 
-WHAT AND WHY
-------------
-`mult` is an ascertainment fraction appearing ONLY in the observable
-(`H_weekly = rho*mult*gamma*I`), never in a reaction rule. Its optimum is
-therefore analytic, and sampling it buys nothing but a badly conditioned
-posterior. Measured:
+`mult` appears only in the observable (H_weekly = rho*mult*gamma*I), so its
+optimum is analytic and sampling it only conditions the posterior badly
+(profiling cut the Hessian condition number ~11x, forecasts unchanged). It is
+estimated once on the in-Python mirror (~8 s against a ~14 min fit) and fixed
+in the model, so PyBNF samples 7 parameters instead of 8. A wrong fixed mult
+leaves no posterior to reveal it, so MultEstimate.needs_fallback() returns to
+the 8-parameter fit when the mirror fails or mult* > 1 (rho too small there).
 
-  * pinned `mult` -> forecast 6.74x too low, coverage 0.46
-    unpinned       -> 2.15x too low, coverage 0.89;  corr(mult, residual) -0.459
-    -- the strongest single association with the dominant error in this project
-  * profiling it improves the Hessian condition number 402,219 -> 36,773 (10.9x)
-    with fit and forecast statistically unchanged (p = 0.846)
-
-It also matters that this lands BEFORE further sampler work: better-mixed chains
-under-forecast MORE (corr(R-hat, residual) = -0.245), because a chain that
-actually explores finds the low-`mult` arm of the ridge. Improving the sampler
-without removing the ridge makes the symptom worse.
-
-THE TWO-ROUND SHORTCUT
-----------------------
-True profiling recomputes `mult*` inside the objective at every proposal, which
-needs a PyBNF change. This does it once up front on the in-Python mirror --
-about 8 s against a ~14 min AMCMC fit, i.e. 0.9% overhead -- then fixes `mult`
-in the materialised model so PyBNF samples 7 parameters instead of 8.
-
-FALLBACK IS NOT OPTIONAL
-------------------------
-Fixing a wrong `mult` is worse than sampling it, because there is no posterior
-left to reveal the error. `MultEstimate.needs_fallback()` sends a fit back to
-the normal 8-parameter path when the mirror could not fit the state, or when the
-analytic optimum exceeds 1.0 (>100% ascertainment, which means the FIXED `rho`
-is too small for that state -- a different repair). Measured on 10 states: 8 fix,
-2 fall back (Wyoming, fit error 0.98; Alaska, mult* = 1.34).
+Also the shared constants module for the other AMCMC scripts (HUB, TRUTH,
+LOCS, PYBNF, BNG, TEMPLATE, convergence).
 """
 from __future__ import annotations
 
@@ -146,10 +123,8 @@ def one_fit(args) -> dict:
         if drop:
             fix_mult_in_model(m, est.mult)
         e = write_exp(s, W / f"{suffix}.exp")
-        # Reuse the production writer so this conf is byte-identical to the
-        # sweep's except for the dropped `mult` line -- a hand-copied duplicate
-        # silently drifted on backup_every and max_iterations when first written,
-        # which would have confounded the whole comparison.
+        # The production writer, so the conf matches the sweep's except for the
+        # dropped `mult` line (a hand-copied duplicate once drifted silently).
         c = write_conf(s, model=m, exp=e, out_dir=W / "res", conf_path=W / "c.conf",
                        bng_command=BNG, max_iterations=iters,
                        burn_in=max(50, iters // 4), adaptive=max(50, iters // 4),

@@ -1,25 +1,12 @@
-"""Fit SIHRS with a calendar-conditioned Rt prior on Reff.
+"""RESEARCH (AMCMC-era harness): fit SIHRS with a calendar-conditioned prior
+on Reff.
 
-Design and justification: docs/RT_PRIOR_DESIGN.md
-Pre-check: scripts/rt_prior_precheck.py (analogue band covers 93.5% of realised
-Rt in 0.81 of width vs the flat box's 1.90 -- 2.3x more informative and better
-centred, while SIHRS's own Rt posterior is 1.78, i.e. barely narrower than its
-prior, so the likelihood has almost no information to push back with).
-
-CHANGE ONE THING. Identical to the real-time vintage arm (relWIS 0.918) in every
-respect -- same states, same dates, same vintage CSVs, same polar template, same
-sampler settings -- except that
-
-    uniform_var Reff__FREE 0.6 2.5
-
-becomes a lognormal centred on the analogue's implied Rt for that epiweek,
-estimated from STRICTLY PRIOR seasons.
-
-SIGMA IS DELIBERATELY WIDENED. The analogue's own log-sd would be the maximum-
-information choice, but the Reff-vs-Rt mapping neglects the seasonal and
-depletion factors (see the design doc), so the prior is inflated by
-SIGMA_INFLATE to avoid a confidently wrong prior fighting the data. A prior that
-excludes the truth is worse than an uninformative one.
+Reff's flat 0.6-2.5 box becomes a NARROWED UNIFORM centred on the analogue's
+implied Rt for that epiweek (strictly prior seasons), widened by WIDEN and
+clamped inside the stiffness-safe box. Otherwise identical to the real-time
+vintage arm (relWIS 0.918). The analogue band is ~2.3x narrower than the box
+(0.81 vs 1.90), while SIHRS's own Rt posterior is barely narrower than its
+prior. Design and pre-check: lab archive.
 """
 from __future__ import annotations
 
@@ -42,25 +29,16 @@ from flubnf.sihrs_fit import (FITTED_PRIORS, MIN_PRIORS, materialize_model,  # n
                               resolve_state, run_pybnf, write_exp)
 from scripts.profiled_fit_run import BNG, LOCS, PYBNF, TEMPLATE, TRUTH, convergence  # noqa: E402,E501
 MIN_TEMPLATE = ROOT / 'flubnf' / 'templates' / 'SIHRS_pop_min.bngl'
-from scripts.vintage_run import ARCHIVE, vintage_for                      # noqa: E402
+from scripts.vintage_run import vintage_for                               # noqa: E402
 
 GAMMA = 2.188
 WIDEN = 1.3                    # for the Reff-vs-Rt approximation
 HARD_LO, HARD_HI = 0.60, 2.50  # the original stiffness-safe box; never exceed
 PHI_HALFWIDTH = 6.0            # +/- weeks around the analogue's seasonal peak
-PHI_GATE_WEEKS = 20            # do NOT constrain phi1 before this many weeks into
-                               # the season. Measured: the phi1 prior improves
-                               # decline (0.661->0.538) and takeoff+peak
-                               # (0.785->0.644) but DEGRADES early growth
-                               # (1.055->1.143) -- before the peak there is no
-                               # seasonal maximum to locate, so the constraint
-                               # only imposes a shape the data contradicts.
+PHI_GATE_WEEKS = 20            # no phi1 prior before this week of the season:
+                               # it helps decline and peak but degrades early
+                               # growth (no seasonal maximum to locate yet)
 _BANK = None
-# NOT inherited by pool workers -- macOS spawns, so the worker re-imports this
-# module and USE_MIN reverts to [False]. --min-model was silently ignored for an
-# entire campaign, which ran the 8-parameter model while labelled 5-parameter.
-# The flag now travels in the args tuple. This global is a default only.
-USE_MIN = [False]
 
 
 def bank():
@@ -76,25 +54,13 @@ def bank():
 def rt_prior(asof: str):
     """(lo, hi) for a NARROWED but BOUNDED uniform prior on Reff.
 
-    A lognormal was tried first and was a mistake: it has unbounded support, so
-    the sampler proposed Reff of 10-100, beta exploded, and CVODE ground to a
-    halt -- three fits on a FIVE-point series ran 4.9h without finishing. The
-    original `uniform_var 0.6 2.5` box exists partly as a stiffness guard
-    (beta_max), and replacing it with an unbounded distribution removed that
-    guard.
-
-    A narrowed uniform keeps the hard bound AND delivers the measured benefit:
-    the analogue's 95% band is 0.81 wide against the flat box's 1.90, i.e. the
-    same 2.3x information gain, with no tail for the sampler to run off into.
+    Not a lognormal: unbounded support let the sampler propose Reff 10-100 and
+    CVODE stalled for hours. The 0.6-2.5 box is also a stiffness guard.
     """
     T = pd.Timestamp(asof)
-    # exclude_seasons=() on purpose: the 2021-22 donor exclusion adopted
-    # 2026-08-24 was pre-registered and measured on the analogue's FORECAST,
-    # not on this prior, and the sealed particle filter was fitted against the
-    # unrestricted pool. Inheriting the exclusion here would silently change
-    # the prior every future fit sees and make the seal's fitting path
-    # unreproducible, for an effect nobody has measured. Revisit only with its
-    # own pre-registration.
+    # exclude_seasons=() on purpose: the 2021-22 donor exclusion was measured on
+    # the analogue's forecast, not this prior, and the sealed filter was fitted
+    # on the unrestricted pool; inheriting it would make that path unreproducible.
     g = donor_ratios(bank(), epiweek(T.date()), season_of(T.date()), 1,
                      bandwidth=2, exclude_seasons=())
     if g.size < 30:
@@ -105,9 +71,8 @@ def rt_prior(asof: str):
         return None
     lo = float(np.quantile(rt, 0.025))
     hi = float(np.quantile(rt, 0.975))
-    # Widen slightly for the Reff-vs-Rt approximation (seasonal and depletion
-    # factors are treated as ~1), then clamp inside the original stiffness-safe
-    # box. Never widen beyond it.
+    # Widen for the Reff-vs-Rt approximation (seasonal and depletion factors
+    # taken as ~1), then clamp inside the stiffness-safe box.
     mid = 0.5 * (lo + hi)
     half = 0.5 * (hi - lo) * WIDEN
     lo, hi = mid - half, mid + half
@@ -123,28 +88,18 @@ def rt_prior(asof: str):
 def seasonal_prior(season_start: str):
     """(eps1_lo, eps1_hi, phi1_lo, phi1_hi) from the analogue's pooled Rt curve.
 
-    The analogue's implied Rt as a function of CALENDAR week is exactly what
-    eps1/phi1 are supposed to encode, and it is estimated from four pooled
-    seasons rather than the ~26 noisy points a single fit sees. Measured:
-    Rt runs 0.90 in Jan-Feb up to 1.19 at epiweek 50, and a single harmonic fits
-    at R^2 = 0.670 with eps1 ~ 0.095, peak at epiweek ~43.
-
-    This matters most for phi1, whose current prior is 52 WEEKS WIDE and whose
-    median R-hat is 58.8 -- the fit cannot locate a seasonal peak from one
-    season, and has not been.
-
-    PHASE OFFSET, which is the easy thing to get wrong: model time t is weeks
-    since `season_start`, and beta peaks at t = phi1. The analogue speaks in
-    EPIWEEKS. So phi1_model = (epiweek_peak - epiweek(season_start)) mod 52.
+    The analogue's implied Rt by calendar week, pooled over seasons, is what
+    eps1/phi1 encode (measured: one harmonic, R^2 0.670, eps1 ~0.095, peak near
+    epiweek 43). Matters most for phi1, whose 52-week prior leaves it unmixed.
+    Phase offset: model t is weeks since `season_start`, the analogue speaks
+    epiweeks, so phi1_model = (epiweek_peak - epiweek(season_start)) mod 52.
     """
     from scipy.optimize import curve_fit
     b = bank()
     ews, rts = [], []
     for ew in range(1, 53):
-        # 9999 => all seasons usable. exclude_seasons=() for the same reason
-        # as rt_prior above, and one more: the eps1/phi1 figures recorded in
-        # this docstring were measured on the unrestricted pool, so applying
-        # the 2021-22 exclusion here would make them unreproducible.
+        # 9999 => all seasons usable; exclude_seasons=() as in rt_prior (and
+        # the figures in the docstring were measured on the unrestricted pool).
         g = donor_ratios(b, ew, 9999, 1, bandwidth=1, exclude_seasons=())
         if g.size < 40:
             continue
@@ -172,9 +127,8 @@ def seasonal_prior(season_start: str):
     ss_start = pd.Timestamp(season_start)
     phi_model = (phi_ew - epiweek(ss_start.date())) % 52.0
 
-    # Bands, deliberately generous: R^2 is 0.670, not 0.95, and the harmonic is
-    # an approximation to a curve with real extra structure (e.g. the week-52
-    # holiday dip). Wide enough to contain the truth, narrow enough to matter.
+    # Generous bands: R^2 is only 0.670 and the curve has extra structure
+    # (e.g. the week-52 holiday dip).
     e_lo, e_hi = max(0.0, eps - 0.12), min(1.0, eps + 0.20)
     p_lo, p_hi = phi_model - PHI_HALFWIDTH, phi_model + PHI_HALFWIDTH
     return e_lo, e_hi, p_lo, p_hi
@@ -182,7 +136,7 @@ def seasonal_prior(season_start: str):
 
 def write_conf_rt(setup, *, model, exp, out_dir, conf_path, iters, plo, phi,
                   seasonal=None, min_model=False):
-    """The sweep's conf, with Reff's flat box replaced by a lognormal."""
+    """The sweep's conf, with Reff's flat box replaced by the narrowed uniform."""
     lines = [f"bng_command = {BNG}", f"model = {model} : {exp}",
              f"output_dir = {out_dir}", "fit_type = am",
              "objfunc = neg_bin_dynamic", ""]
@@ -304,7 +258,6 @@ def main() -> None:
     ap.add_argument("--min-model", action="store_true",
                     help="use the 5-parameter SIHRS_pop_min.bngl template")
     a = ap.parse_args()
-    USE_MIN[0] = bool(a.min_model)
 
     jobs = [(s, d, a.workroot, a.season_start, a.iters, a.timeout,
              bool(a.min_model))
