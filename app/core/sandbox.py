@@ -1677,7 +1677,10 @@ def calendar_offsets(dates: list, origin: str) -> list:
         days = (dt.date.fromisoformat(d) - o).days
         if days < 0:
             raise SandboxError(f"week {d} is before t = 0 ({origin})")
-        out.append(int(round(days / 7)))
+        # whole weeks, floored as resolve_state counts them: a season
+        # start on a Sunday to Tuesday (1 August 2023) must not put its
+        # first Saturday at t = 1
+        out.append(days // 7)
     return out
 
 
