@@ -41,8 +41,16 @@ def _free_port_with_headroom(headroom, listen=False):
 
 
 def _spawn_sleeper(*extra):
-    return subprocess.Popen([sys.executable, "-c",
+    proc = subprocess.Popen([sys.executable, "-c",
                              "import time; time.sleep(60)", *extra])
+    # until the child has exec'd, its command line is still the parent's
+    # (no marker yet): a loaded machine can show that window, so wait it out
+    import time
+    t0 = time.time()
+    while time.time() - t0 < 10 and extra and not all(
+            m in cli._pid_cmdline(proc.pid) for m in extra):
+        time.sleep(0.02)
+    return proc
 
 
 # ------------------------------------------------- single-instance takeover
