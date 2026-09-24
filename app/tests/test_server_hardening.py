@@ -175,10 +175,21 @@ def test_bracketed_ipv6_and_localhost_hosts_are_accepted():
         assert r.status_code == 303, host
 
 
-def test_gets_stay_open_whatever_the_headers():
-    r = client.get("/api/busy", headers={"Origin": "https://evil.example",
-                                         "Host": "evil.example"})
-    assert r.status_code == 200
+def test_gets_need_a_localhost_host():
+    """Replaces the old "GETs stay open" pin: a DNS-rebinding page names its
+    own hostname, so a GET with a foreign Host is refused (it could
+    otherwise read run pages and app/state files through downloads)."""
+    for host in ("localhost:8710", "127.0.0.1:8710", "[::1]:8710",
+                 "localhost", "127.0.0.1"):
+        r = client.get("/api/busy", headers={"Host": host})
+        assert r.status_code == 200, host
+    for path in ("/api/busy", "/", "/output/download?path=ledger.sqlite"):
+        r = client.get(path, headers={"Host": "evil.example:8710"})
+        assert r.status_code == 403, path
+        assert "Host" in r.text
+    # an unparseable or missing hostname is refused too
+    r = client.get("/api/busy", headers={"Host": ""})
+    assert r.status_code == 403
 
 
 # ------------------------------------------- 3. /data/pull hardening
@@ -254,6 +265,8 @@ def test_pull_hub_returns_gits_own_verdict(monkeypatch):
             self.returncode, self.stdout, self.stderr = rc, out, err
 
     def failing_run(args, **kw):
+        if "rev-parse" in args:          # the hub is its own clone
+            return _R(0, str(data.HUB) + "\n", "")
         if "pull" in args:
             return _R(1, "", "fatal: could not read from remote\n")
         return _R(0, "", "")            # the sparse-checkout heal calls
@@ -264,10 +277,69 @@ def test_pull_hub_returns_gits_own_verdict(monkeypatch):
     assert "fatal: could not read from remote" in msg
 
     def clean_run(args, **kw):
+        if "rev-parse" in args:
+            return _R(0, str(data.HUB) + "\n", "")
         return _R(0, "Already up to date.\n", "")
 
     monkeypatch.setattr(data.subprocess, "run", clean_run)
     assert data.pull_hub() == (True, "Already up to date.")
+
+
+def test_pull_hub_refuses_a_folder_that_is_not_its_own_clone(
+        monkeypatch, tmp_path):
+    """A hub folder inside another repository (or in none at all) is
+    refused before any command that changes files runs."""
+    import subprocess as sp
+    from app.core import data
+    outer = tmp_path / "outer"
+    hub = outer / "hub"
+    hub.mkdir(parents=True)
+    monkeypatch.setattr(data, "HUB", hub)
+    real_run = sp.run
+    calls = []
+
+    def spy(args, **kw):
+        calls.append(list(args))
+        return real_run(args, **kw)
+    monkeypatch.setattr(data.subprocess, "run", spy)
+    ok, msg = data.pull_hub()                 # no repository at all
+    assert ok is False and "is not a git clone" in msg
+    real_run(["git", "init", "-q", str(outer)], check=True)
+    calls.clear()
+    ok, msg = data.pull_hub()                 # inside another repository
+    assert ok is False
+    assert "inside another git repository" in msg and str(outer) in msg
+    assert not any("pull" in c or "sparse-checkout" in c for c in calls)
+    real_run(["git", "init", "-q", str(hub)], check=True)
+    assert data._hub_not_own_repo() is None   # its own clone passes
+
+
+def test_back_keeps_the_query_string_and_stays_local():
+    """A refusal from /forecast?source=... returns to the same view; the
+    Referer's host is never followed."""
+    from starlette.requests import Request
+    from app.ui.shared import _back
+
+    def back(ref):
+        req = Request({"type": "http", "method": "POST", "path": "/run",
+                       "headers": [(b"referer", ref.encode())]})
+        return _back(req, "/forecast").headers["location"]
+    assert (back("http://127.0.0.1:8710/forecast?source=dataset-ab12")
+            == "/forecast?source=dataset-ab12")
+    assert back("http://127.0.0.1:8710/forecast") == "/forecast"
+    assert back("http://evil.example/storage?x=1") == "/storage?x=1"
+    for bad in ("", "http://h//evil.example/x?y=1", "http://h/\\evil.example"):
+        assert back(bad) == "/forecast", bad
+
+
+def test_a_refused_run_returns_to_the_same_forecast_view():
+    r = client.post("/run", data={"forecast_date": "not-a-date"},
+                    headers={"referer": "http://testserver/forecast"
+                                        "?source=dataset-ab12"},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/forecast?source=dataset-ab12"
+    ui_state._status.pop("flash", None)
 
 
 # ------------------------------------- 4. script and HTML hardening

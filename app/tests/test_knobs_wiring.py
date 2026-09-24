@@ -186,6 +186,10 @@ def test_older_field_names_are_the_same_knobs(tmp_path, monkeypatch):
     ({"replicates": "0"}, "pf.replicates"),
     ({"knob.oracle.w": "0.25", "submit_modified": "1"}, "needs a reason"),
     ({"members": "3", "knob.pf.prior.r": "0.1,80"}, "two-strain"),
+    # a knob field repeated in one form: refused, never the last value
+    ({"knob.oracle.w": ["0.25", "0.5"]}, "more than once"),
+    ({"knob.oracle.w": ["0.25", "0.25"]}, "knob.oracle.w"),
+    ({"knobs": "{not json"}, "not readable JSON"),
 ])
 def test_a_refused_knob_starts_nothing(tmp_path, monkeypatch, data, msg):
     started = _capture_run(monkeypatch, tmp_path)
@@ -483,8 +487,10 @@ def test_the_retro_route_refuses_a_resume_with_other_knobs(tmp_path, monkeypatch
                 follow_redirects=False)
     assert launched == []
     assert "mix two configurations" in ui_state._status.get("flash", "")
-    # out of the retro scope, or out of range: refused before anything moves
-    for bad in ({"knob.run.weeks_to_drop": "1"}, {"particles": "500"}):
+    # out of the retro scope, out of range, or one knob sent twice: refused
+    # before anything moves
+    for bad in ({"knob.run.weeks_to_drop": "1"}, {"particles": "500"},
+                {"knob.oracle.w": ["0.25", "0.3"]}):
         ui_retro_seasons._retro_status.pop(SEASON, None)
         client.post("/retro/run", data={**base, **bad}, follow_redirects=False)
         assert launched == [] and "Nothing was started" in ui_state._status["flash"]
@@ -540,6 +546,39 @@ def test_the_retro_route_refuses_a_resume_over_other_locations(
     client.post("/retro/run", data={**base, "locations": "panel6",
                                     "national": "0"}, follow_redirects=False)
     assert len(launched) == 1
+
+
+def test_run_season_refuses_a_resume_over_other_locations(tmp_path,
+                                                          monkeypatch):
+    """The location rule lives in retro.run_season, so the CLI (and any
+    other caller) refuses it like the console; the recorded list, with
+    the national row spelled either way, resumes."""
+    _gh_season(monkeypatch)
+    root = tmp_path / SEASON
+    retro.run_season(root, SEASON, ["Ohio", "US"], width=1,
+                     engine="analogue")
+    for other in (["Ohio"], ["Ohio", "Texas", "US"]):
+        with pytest.raises(retro.LocationsMismatch,
+                           match="mix two location scopes"):
+            retro.run_season(root, SEASON, other, width=1,
+                             engine="analogue")
+    assert retro.read_meta(root)["settings"]["locations"] == ["Ohio", "US"]
+    retro.run_season(root, SEASON, ["US", "Ohio"], width=1,
+                     engine="analogue")
+
+
+def test_cli_retro_reports_a_location_refusal(monkeypatch, tmp_path):
+    from flubnf.cli import app
+    _cli_locations(monkeypatch, tmp_path)
+
+    def refuse(*a, **k):
+        raise retro.LocationsMismatch("mix two location scopes")
+    monkeypatch.setattr(retro, "season_vintages", lambda s: [W1, W2])
+    monkeypatch.setattr(retro, "run_season", refuse)
+    r = CliRunner().invoke(app, ["retro", SEASON, "--locations", "Ohio",
+                                 "--root", str(tmp_path / SEASON)])
+    assert r.exit_code == 2 and "refused" in r.output
+    assert "location scopes" in r.output
 
 
 def _cli_locations(monkeypatch, tmp_path):

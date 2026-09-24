@@ -120,8 +120,8 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         (res or {}).get("forecast_date", ""),
         sorted({l for qs in fanq.values() for l in qs}))
     # the hub view's latest-run card never shows a run on a custom dataset
-    ledger_rows = [r for r in Ledger().rows(25)
-                   if '"dataset": {' not in (r.get("spec") or "")][:5]
+    # (filtered in the query: many dataset runs never hide the hub's)
+    ledger_rows = Ledger().rows(5, hub_only=True)
     for r in ledger_rows:
         r["label"] = _run_label(r["run_id"], r.get("spec", ""))
         r["modified"] = _runs.is_modified(r.get("spec", ""))
@@ -225,20 +225,20 @@ def _official_overlay(fc_date: str, locs: list) -> dict:
 @router.post("/run/stop")
 def run_stop():
     _invalidate_scans()
-    w = _status.get("workroot")
-    running = _status.get("running") or ""
+    with _engine_lock:
+        w = _status.get("workroot")
+        running = _status.get("running") or ""
+        if running and not w:
+            # still starting (no workroot yet): the worker reads this once
+            # it has one and ends the run as stopped before any fit; the
+            # claim is kept until the run really ends
+            _status["stop_requested"] = True
+            _status["phase"] = "stopping…"
     if w and running:
         (Path(w) / "STOP").touch()
         if (Path(w) / "pf2s").is_dir():        # the two-strain pass polls its
             (Path(w) / "pf2s" / "STOP").touch()  # own subdir for the flag
         _status["phase"] = "stopping…"
-    elif running == "starting" and not w:
-        # a claim with no worker behind it: release it so the console unwedges
-        _status["running"] = None
-        _status["run_label"] = ""
-        _status["expected_total"] = None
-        _status["started_utc"] = None
-        _status["phase"] = ""
     return RedirectResponse("/forecast#results", status_code=303)
 
 
@@ -247,7 +247,16 @@ def run_stop():
 def run_page(request: Request, run_id: str):
     import json as _json
     from app.core.runs import APP_STATE, Ledger
+    import html as _html
     w = APP_STATE / "workroots" / run_id
+    # an unknown id (no ledger row, no workroot) is a 404, never an empty
+    # run page; "." and ".." never name a run
+    if run_id in (".", "..") or not (Ledger().row(run_id) or w.is_dir()):
+        return HTMLResponse(
+            f"<!doctype html><title>No such run</title><p>No run "
+            f"<code>{_html.escape(run_id)}</code> is recorded here. "
+            "<a href=\"/runs\">Storage</a> lists the runs.</p>",
+            status_code=404)
     res = {}
     if (w / "results.json").is_file():
         res = _json.loads((w / "results.json").read_text())
@@ -504,8 +513,10 @@ def api_progress():
         done = total = 0
         t0 = None
         # pf_status*.json.prog: the pre-shard merged name and per-shard files
-        for f in (glob.glob(w + "/pf_status*.json.prog")
-                  + glob.glob(w + "/pf2s/pf_status*.json.prog")):
+        # (the workroot escaped: a Windows path may hold [ or ])
+        ew = glob.escape(w)
+        for f in (glob.glob(ew + "/pf_status*.json.prog")
+                  + glob.glob(ew + "/pf2s/pf_status*.json.prog")):
             try:
                 d = _json.loads(open(f).read())
                 done += d["done"]; total += d["total"]
@@ -709,8 +720,12 @@ def run_models(request: Request,
             and season_start == _dss(typed_day)
             and season_start != _dss(forecast_date)):
         season_start = ""
-    kraw = _knob_raw(knob_fields, knobs)
-    override = _str_field(submit_modified).lower() in ("1", "on", "true", "yes")
+    try:
+        kraw = _knob_raw(knob_fields, knobs)
+    except ValueError as e:                  # KnobError is a ValueError
+        _flash(f"Model settings: {e}. Nothing was run.")
+        return _back(request, "/forecast")
+    override =_str_field(submit_modified).lower() in ("1", "on", "true", "yes")
     reason = _str_field(modified_reason).strip()
     _last_form.update({"forecast_date": forecast_date, "locations": locations,
                        "engine": engine, "weeks_to_drop": weeks_to_drop,
@@ -769,66 +784,74 @@ def run_models(request: Request,
         # background tasks fire after the redirect: claim NOW so the landing
         # page shows the run
         _status["running"] = "starting"
+        _status.pop("stop_requested", None)
         _invalidate_scans()
         _status["started_utc"] = __import__("time").time()
         _status["run_label"] = f"{forecast_date} · queued"
-    from app.core import us_national as _usn
-    # "all" is the 52 jurisdictions; US national is its own choice (the
-    # form ticks both for a full hub submission) and is fitted directly
-    want_us = any(_usn.is_us(l) for l in locations)
-    picked = _usn.state_names(locations)
-    if "all" in [l.lower() for l in picked]:
-        _l = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
-        locs_list = list(_l.location_name[(_l.location.str.len() == 2)
-                                          & (_l.abbreviation != "US")])
-    else:
-        locs_list = list(picked)
-    if want_us:
-        # a re-run keeps its recorded spelling; the form's box becomes "US"
-        spelled = [l for l in locations if _usn.is_us(l)][0]
-        locs_list.append("US" if spelled == US_CHOICE else spelled)
-    _status["run_label"] = f"{forecast_date} · {_scope_label(locs_list)} · queued"
-    # progress denominator known now (shards grow toward it); clear the old
-    # workroot so its .prog files never show. The analogue alone gets none.
-    _status["workroot"] = None
-    _status["expected_total"] = (len(locs_list) * int(replicates)
-                                 * (2 if members == 3 else 1)
-                                 if engine in ("all", "pf") else None)
-    # particles, replicates and weeks to drop were range-checked as knobs
-    # above (refused, never clamped: replicates = 0 once ran zero fits)
-    # mode follows the anchor: real-time means the newest week the hub
-    # holds (the live target file's, when the archive has not caught up)
-    if newest and mode == "realtime" and forecast_date != newest:
-        mode = "vintage"
-        extra["mode"] = mode
-        _flash(f"Anchored on the archived week {forecast_date}, not the "
-               f"newest week ({newest}): recorded as a vintage run.")
-    elif newest and forecast_date == newest and mode != "realtime":
-        # the newest week IS real-time data whatever the pill said; recorded
-        # so, which lets the run read the live file when it is not archived
-        mode = "realtime"
-        extra["mode"] = mode
-    spec = RunSpec(engine=engine, forecast_date=forecast_date,
-                   locations=locs_list,
-                   season_start=season_start,
-                   weeks_to_drop=weeks_to_drop,
-                   weeks_to_nowcast=weeks_to_nowcast,
-                   drop_same_day=bool(kspec.get("drop_same_day", False)),
-                   replicates=replicates,
-                   particles=particles,
-                   **({"jitter": float(kspec["jitter"])}
-                      if "jitter" in kspec else {}),
-                   extra=extra)
+    queued = False
+    try:
+        from app.core import us_national as _usn
+        # "all" is the 52 jurisdictions; US national is its own choice (the
+        # form ticks both for a full hub submission) and is fitted directly
+        want_us = any(_usn.is_us(l) for l in locations)
+        picked = _usn.state_names(locations)
+        if "all" in [l.lower() for l in picked]:
+            _l = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
+            locs_list = list(_l.location_name[(_l.location.str.len() == 2)
+                                              & (_l.abbreviation != "US")])
+        else:
+            locs_list = list(picked)
+        if want_us:
+            # a re-run keeps its recorded spelling; the form's box becomes "US"
+            spelled = [l for l in locations if _usn.is_us(l)][0]
+            locs_list.append("US" if spelled == US_CHOICE else spelled)
+        _status["run_label"] = f"{forecast_date} · {_scope_label(locs_list)} · queued"
+        # progress denominator known now (shards grow toward it); clear the old
+        # workroot so its .prog files never show. The analogue alone gets none.
+        _status["workroot"] = None
+        _status["expected_total"] = (len(locs_list) * int(replicates)
+                                     * (2 if members == 3 else 1)
+                                     if engine in ("all", "pf") else None)
+        # particles, replicates and weeks to drop were range-checked as knobs
+        # above (refused, never clamped: replicates = 0 once ran zero fits)
+        # mode follows the anchor: real-time means the newest week the hub
+        # holds (the live target file's, when the archive has not caught up)
+        if newest and mode == "realtime" and forecast_date != newest:
+            mode = "vintage"
+            extra["mode"] = mode
+            _flash(f"Anchored on the archived week {forecast_date}, not the "
+                   f"newest week ({newest}): recorded as a vintage run.")
+        elif newest and forecast_date == newest and mode != "realtime":
+            # the newest week IS real-time data whatever the pill said; recorded
+            # so, which lets the run read the live file when it is not archived
+            mode = "realtime"
+            extra["mode"] = mode
+        spec = RunSpec(engine=engine, forecast_date=forecast_date,
+                       locations=locs_list,
+                       season_start=season_start,
+                       weeks_to_drop=weeks_to_drop,
+                       weeks_to_nowcast=weeks_to_nowcast,
+                       drop_same_day=bool(kspec.get("drop_same_day", False)),
+                       replicates=replicates,
+                       particles=particles,
+                       **({"jitter": float(kspec["jitter"])}
+                          if "jitter" in kspec else {}),
+                       extra=extra)
 
-    if engine in ("all", "pf", "analogue"):
-        # 'analogue' = the same pipeline with the PF block skipped
-        background.add_task(pipeline._run_all, spec)
-    else:
-        # unknown engine: release the claim rather than wedge the console
-        _status["running"] = None
-        _status["run_label"] = ""
-        _status["expected_total"] = None
-        _status["started_utc"] = None
-        _flash(f"'{engine}' is not one of the available engines. "
-               "Nothing was run.")
+        if engine in ("all", "pf", "analogue"):
+            # 'analogue' = the same pipeline with the PF block skipped
+            background.add_task(pipeline._run_all, spec)
+            queued = True
+        else:
+            _flash(f"'{engine}' is not one of the available engines. "
+                   "Nothing was run.")
+    finally:
+        if not queued:
+            # nothing will run (unknown engine, or a failure before the
+            # task was queued): release the claim rather than wedge the
+            # console; Stop does not release a "starting" claim
+            _status["running"] = None
+            _status["run_label"] = ""
+            _status["expected_total"] = None
+            _status["started_utc"] = None
     return RedirectResponse("/forecast#results", status_code=303)
