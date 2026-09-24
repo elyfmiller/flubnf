@@ -303,6 +303,9 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
               # v4: states this run covered (reporting gap vs never fitted)
               "fitted_fips": sorted({n2f.get(l) for l in spec.locations
                                      if n2f.get(l) and n2f.get(l) != "US"}),
+              # v5: whether US was among the run's locations
+              "national_in_run": any(n2f.get(l) == "US"
+                                     for l in spec.locations),
               # v3: every model's cards (the outlook toggle's data)
               "cards_by_model": cards_by_model,
               "national_map_cards": nat_cards,
