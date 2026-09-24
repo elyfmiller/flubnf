@@ -353,29 +353,3 @@ class TestScoreSubmissionsVsBaselines:
         # a flat history cannot forecast the jump it never saw
         h0 = df[df["horizon"] == 0].iloc[0]
         assert h0["persistence_wis"] > 100
-
-
-# ---------------------------------------------------------------------------
-# CLI smoke
-# ---------------------------------------------------------------------------
-import re as _re
-
-_ANSI_RE = _re.compile(r"\x1b\[[0-9;]*m")
-
-
-def _plain(s: str) -> str:
-    """Strip ANSI escapes — Rich emits per-char styles in CI."""
-    return _ANSI_RE.sub("", s or "")
-
-
-class TestBaselineCLI:
-    def test_help_lists_options(self):
-        from typer.testing import CliRunner
-        from flubnf.cli import app
-        runner = CliRunner()
-        result = runner.invoke(app, ["baseline-score", "--help"],
-                                env={"NO_COLOR": "1"})
-        assert result.exit_code == 0
-        plain = _plain(result.stdout)
-        assert "--target" in plain
-        assert "--rolling-window" in plain

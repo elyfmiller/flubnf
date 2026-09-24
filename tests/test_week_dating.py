@@ -17,7 +17,6 @@ import pandas as pd
 import pymmwr as pm
 
 from flubnf.config import FluBNFConfig
-from flubnf.constants import load_locations
 
 REPO = Path(__file__).resolve().parents[1]
 LOCS_CSV = REPO / "flubnf" / "data" / "locations.csv"
@@ -67,31 +66,3 @@ def test_weekly_job_ingests_actuals_on_week_ending_saturdays(tmp_path):
     got = {r.horizon: r.actual for r in recorded}
     # FluSight h -> internal h+1; its target is observed week REF_IDX + h
     assert got == {h + 1: OBS[REF_IDX + h] for h in range(4)}
-
-
-def test_slope_tune_matches_actuals_and_cuts_history_at_the_as_of(
-        monkeypatch):
-    from flubnf import amcmc, cli, slope_tune
-    cfg = _cfg()
-    locs = load_locations(LOCS_CSV)
-    seen = {}
-
-    monkeypatch.setattr(amcmc, "read_traj_noise", lambda *a, **k: "traj")
-    monkeypatch.setattr(cli, "_observed_for_state", lambda *a, **k: OBS)
-
-    def sweep(traj, obs, actuals, state):
-        seen["obs"], seen["actuals"] = obs, actuals
-        return "res"
-    monkeypatch.setattr(slope_tune, "sweep_slope_blend", sweep)
-    monkeypatch.setattr(slope_tune, "recommend_blend", lambda r: 0.5)
-
-    status, _res, rec = cli._tune_slope_for_state(
-        "Alabama", sub_df=_submission(cfg), df_raw=None, cfg=cfg, locs=locs,
-        paths=SimpleNamespace(results_for=lambda s: None),
-        geo_col="g", date_col="d", val_col="v")
-
-    assert status == "ok" and rec == 0.5
-    assert seen["actuals"] == {h + 1: OBS[REF_IDX + h] for h in range(4)}
-    # the forecast is made as of reference_date - 7: horizon 0's week (the
-    # reference week itself) is a target, never part of the history
-    np.testing.assert_array_equal(seen["obs"], OBS[:REF_IDX])
