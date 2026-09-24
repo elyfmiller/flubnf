@@ -647,7 +647,7 @@ def _examples(items) -> str:
     return ", ".join(_vis(x) for x in list(items)[:MAX_EXAMPLES])
 
 
-def _rows(lines, total: Optional[int] = None) -> str:
+def _rows(lines, total=None) -> str:
     """'row 5' / 'rows 5, 9, 12 and 40 more' (``total`` counts rows past
     the ones listed, when only the first few were kept)."""
     ls = sorted(set(lines))
@@ -673,7 +673,7 @@ class _Tally:
         if eg is not None and len(self.eg) < MAX_EXAMPLES:
             self.eg.append((line, eg))
 
-    def merge(self, other: "_Tally") -> None:
+    def merge(self, other: _Tally) -> None:
         self.n += other.n
         self.lines = sorted(self.lines + other.lines)[:MAX_ROWS_KEPT]
         self.eg = sorted(self.eg + other.eg,

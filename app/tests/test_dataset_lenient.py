@@ -678,12 +678,12 @@ def test_extra_fields_name_the_separator_and_spare_empty_cells():
 @pytest.mark.parametrize("raw", [
     # a trailing comment column the writer always writes: once read as
     # value 1 (1234 lost), with only the ignored-column notice
-    b"date,target_group,value,comment\n2024-01-06,A,1,234,\n"
-    b"2024-01-13,A,987,\n2024-01-20,A,1,002,\n",
+    (b"date,target_group,value,comment\n2024-01-06,A,1,234,\n"
+     b"2024-01-13,A,987,\n2024-01-20,A,1,002,\n"),
     # the same from a writer that drops trailing empty cells: the base
     # refused it as ragged, the lenient reader once accepted it
-    b"date,target_group,value,comment\n2024-01-06,A,1,234\n"
-    b"2024-01-13,A,987\n2024-01-20,A,1,002\n",
+    (b"date,target_group,value,comment\n2024-01-06,A,1,234\n"
+     b"2024-01-13,A,987\n2024-01-20,A,1,002\n"),
 ])
 def test_a_number_split_into_an_ignored_column_is_refused(raw):
     """An unquoted "1,234" whose second half lands in an ignored column:
