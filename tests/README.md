@@ -10,20 +10,17 @@ Two pytest suites: `tests/` covers the `flubnf` package and the root scripts, `a
 | Both suites, this machine's hub and engine | `.venv/bin/python -m pytest` (`testpaths` in `pyproject.toml`) |
 | One file | `.venv/bin/python -m pytest app/tests/test_oracle_step.py` |
 
-CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetgen` and runs the first line on Ubuntu and, as experimental jobs, Windows (Python 3.11 and 3.12); a third job runs `setup.ps1` five ways. `.githooks/pre-push` runs the same command before a push to main. The slowest files are `tests/test_quantiles.py`, `tests/test_backtest.py` and `tests/test_fitting.py`.
+CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetgen` and runs the first line on Ubuntu and, as experimental jobs, Windows (Python 3.11 and 3.12); a third job runs `setup.ps1` five ways. `.githooks/pre-push` runs the same command before a push to main.
 
 ## What skips, and why
 
 | Missing on the machine | Skipped |
 |---|---|
-| FluSight hub clone (always, in CI) | hub-reading cases in `app/tests/test_core.py`, `test_model_metadata.py`, `test_playback.py`, `test_site_build.py`; `tests/test_simulate.py`, `test_covid_fit_wiring.py`, `test_engine_profiles.py` |
+| FluSight hub clone (always, in CI) | hub-reading cases in `app/tests/test_core.py`, `test_model_metadata.py`, `test_playback.py`, `test_site_build.py`; `tests/test_sihrs_fit.py` |
 | `app/state` (sealed retrospectives) | `app/tests/test_site_build.py`, parts of `test_core.py`, `test_playback.py` |
-| PyBNF engine | `tests/test_recency_weights.py` (imports `pybnf`); `app/tests/` fakes the fork in `conftest.py`, so nothing there needs it |
 | JavaScriptCore (macOS only) | JS cases in `app/tests/test_player_js.py`, `test_retro_eta.py`, `test_retro_pf_name.py`, `test_sandbox_editor.py`, `test_forecast_retired_tab.py`, `test_template_date_helpers.py`, `test_contactmap.py` |
 | POSIX (on Windows) | `tests/test_engine_bundle.py`, `test_reinstall_script.py`, `test_launcher_update.py` script runs; `app/tests/test_takeover_sweep.py`, parts of `test_pf_hardening.py`, `test_pf_shards.py` |
-| CovidHub parquet | `tests/test_covid_vintage.py`, `test_reporting_breaks.py`, parts of `test_engine_profiles.py` |
-| Lab-only records (`research/`, `FLUBNF_ORACLE_RECORD`) | `tests/test_oracle*.py` record cases, `test_gate_a_preregistration.py`, `test_bimodality_estimator.py`, `test_analogue_profile_boundary.py`, `test_wis_matches_team_scoring.py`; `app/tests/test_oracle_text.py` B2 case |
-| Legacy `NAU_Influenza/` tree | `tests/test_auto.py`, `test_exp_files.py` |
+| Lab-only records (`research/`, `FLUBNF_ORACLE_RECORD`) | `tests/test_oracle*.py` record cases, `test_wis_matches_team_scoring.py`; `app/tests/test_oracle_text.py` B2 case |
 
 `tests/test_reinstall_script.py` fails when run as root (`reinstall.sh` refuses root).
 
@@ -32,13 +29,11 @@ CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetg
 | Subject | Files (`test_*.py`) |
 |---|---|
 | Launchers and setup scripts | `engine_bundle`, `launcher_update`, `reinstall_script`, `first_run_sparse_hub`, `windows_controlled_folder_access`, `window_backend` |
-| SIHRS templates and fit inputs | `min_template`, `seasonal`, `sampler_config`, `sihrs_anchor`, `particle_filter`, `profile_mult` |
-| COVID profile seam | `profiles`, `engine_profiles`, `covid_fit_wiring`, `covid_vintage`, `unimodal_guard`, `submit_profile_target`, `reporting_breaks` |
-| Analogue and donor paths | `analogue`, `analogue_profile_boundary`, `donor_paths`, `epiweek53` |
+| SIHRS templates and fit inputs | `min_template`, `sihrs_fit` |
+| Analogue and donor paths | `analogue`, `donor_paths`, `epiweek53` |
 | Oracle SIHRS | `oracle`, `oracle_bank`, `oracle_mix` |
-| Quantiles and WIS | `quantiles`, `forecast_validation`, `wis`, `wis_matches_team_scoring` |
-| Research scripts and records | `worker_options`, `recency_weights`, `gate_a_preregistration`, `bimodality_estimator`, `error_decomp`, `season_report` |
-| Legacy workspace CLI | `amcmc`, `analysis`, `auto`, `autoparam`, `backfill_priors`, `backtest`, `baseline_forecast`, `bngl_files`, `bounds_init`, `calibration`, `centers`, `compare`, `conf_files`, `config`, `decomp_act`, `diagnostics`, `doctor`, `exp_files`, `fitting`, `fringe_cases`, `historical_priors`, `phase`, `session`, `simulate`, `slope_tune`, `submit`, `validate`, `warmstart`, `weekly_loop`, `weekly_reference_date` |
+| Quantiles and WIS | `quantiles`, `baseline_forecast`, `wis`, `wis_matches_team_scoring` |
+| Console CLI | `doctor`, `doctor_engine_hub`, `dataset_cli`, `cli_panels` |
 
 ## Subject map: `app/tests/`
 

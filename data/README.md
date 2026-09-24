@@ -17,4 +17,4 @@ Every read goes through `flubnf/bank.py`, which checks the manifest digest and r
 | `flubnf bank verify <stream>` | rebuilds from Delphi and reports what moved |
 | `flubnf bank build <stream> [--out DIR]` | rebuilds and writes the bank and manifest; commit both |
 
-Other `data/` folders are made locally: `data/covidhub/` (gitignored COVID research cache) and `data/historical_priors/` (legacy `flubnf record-season` / `backfill-priors`).
+`data/covidhub/` and `data/historical_priors/`, if present, are leftovers of removed code (the COVID research cache and the legacy workspace CLI); nothing creates them now.
