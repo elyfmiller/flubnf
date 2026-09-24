@@ -1,12 +1,11 @@
 {% extends "base.html" %}{% block title %}FluBNF · Output{% endblock %}
 {% block content %}
 <h1>Output</h1>
-{% if not rid %}<div class="card"><p class="hint">Run a forecast first;
-outputs collect here.</p></div>
+{% if not rid %}<div class="card"><p class="hint">Nothing here yet. Run a forecast first.</p></div>
 {% else %}
 <div>
   <div class="card"><h2>Submission files: {{ date }}</h2>
-   <p class="hint">{{ label }}</p>
+   <p class="hint"><a href="/runs/{{ rid }}">{{ label }}</a></p>
    {% for f in files %}
     <div class="subfile">
      <div class="row" style="justify-content:space-between;margin:.45rem 0">
@@ -43,23 +42,25 @@ outputs collect here.</p></div>
    {% else %}<p class="hint">No submission files in the latest run.</p>{% endfor %}
   </div>
   <div class="card"><h2>Weekly report</h2>
-   <div style="display:flex;align-items:center;gap:.9rem;flex-wrap:wrap;margin-top:.4rem">
-   {% if has_report %}<a href="/output/report/download" download><button class="gold" type="button" style="margin-top:0">Download report</button></a>
-    <a href="/output/report" target="_blank"><button class="quiet" type="button" style="margin-top:0">Open report</button></a>
-   {% else %}<p class="hint" style="margin:0">Generated automatically with each full run.</p>{% endif %}
-   {% if archive_dates %}
-    <span style="display:flex;align-items:center;gap:.45rem">
-     <select id="archreport" style="width:auto" aria-label="archived reports">
-      <option value="">archived reports…</option>
-      {% for d in archive_dates %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
-     </select>
-     <button class="linkish" type="button"
-      onclick="var d=document.getElementById('archreport').value;if(d)window.open('/output/report?date='+d,'_blank')">Open</button>
-     <button class="linkish" type="button"
-      onclick="var d=document.getElementById('archreport').value;if(d)window.location='/output/report/download?date='+d">Download</button>
-    </span>
-   {% endif %}
+   {% if has_report %}
+   <div class="row">
+    <a href="/output/report/download" download><button class="gold" type="button">Download report</button></a>
+    <a href="/output/report" target="_blank"><button class="quiet" type="button">Open report</button></a>
    </div>
+   {% else %}<p class="hint">Generated automatically with each full run.</p>{% endif %}
+   {% if archive_dates %}
+   <label for="archreport" class="archlbl">Earlier weeks</label>
+   <div class="row">
+    <select id="archreport" style="width:auto">
+     <option value="">choose a week</option>
+     {% for d in archive_dates %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+    </select>
+    <button class="linkish" type="button"
+     onclick="var d=document.getElementById('archreport').value;if(d)window.open('/output/report?date='+d,'_blank')">Open</button>
+    <button class="linkish" type="button"
+     onclick="var d=document.getElementById('archreport').value;if(d)window.location='/output/report/download?date='+d">Download</button>
+   </div>
+   {% endif %}
   </div>
 </div>
 {% endif %}
