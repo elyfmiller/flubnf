@@ -266,16 +266,18 @@ def _check_bng() -> CheckResult:
             "BNG2.pl", Status.OK, str(bng_cmd),
         )
     # Try fallback discovery via bionetgen package.
+    # (this platform's bundle first: bng-mac's binaries do not run on Linux)
     try:
         import bionetgen
-        bng_pkg_dir = Path(bionetgen.__file__).parent / "bng-mac"
-        candidate = bng_pkg_dir / "BNG2.pl"
-        if candidate.exists():
-            return CheckResult(
-                "BNG2.pl", Status.WARN,
-                f"configured path missing; found at {candidate}",
-                f"Set FLUBNF_BNG to {candidate}.",
-            )
+        from flubnf.settings import bng_platform_dirs
+        for plat in bng_platform_dirs():
+            candidate = Path(bionetgen.__file__).parent / plat / "BNG2.pl"
+            if candidate.exists():
+                return CheckResult(
+                    "BNG2.pl", Status.WARN,
+                    f"configured path missing; found at {candidate}",
+                    f"Set FLUBNF_BNG to {candidate}.",
+                )
     except Exception:
         pass
     return CheckResult(
