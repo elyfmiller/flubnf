@@ -15,7 +15,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -61,8 +60,7 @@ class StateSetup:
 
 
 def resolve_state(state: str, *, truth_csv: str | Path, locations_csv: str | Path,
-                  season_start: str, as_of: str, s0: float = S0_DEFAULT,
-                  attack_rate: Optional[float] = None) -> StateSetup:
+                  season_start: str, as_of: str) -> StateSetup:
     """Resolve every fixed SIHRS input for one state from data + sourced priors.
 
     Observations are as-of filtered. The POPULATION is not: callers pass the
@@ -70,8 +68,7 @@ def resolve_state(state: str, *, truth_csv: str | Path, locations_csv: str | Pat
     output (N only sets the demographic-noise scale; a reproducibility
     hazard, not a measured score distortion).
     """
-    ar = float(attack_rate if attack_rate is not None
-               else np.mean(ATTACK_RATE_RANGE))
+    ar = float(np.mean(ATTACK_RATE_RANGE))
     locs = pd.read_csv(locations_csv, dtype={"location": str})
     locs["location"] = locs["location"].str.zfill(2)
     row = locs[locs.location_name == state]
@@ -111,20 +108,16 @@ def resolve_state(state: str, *, truth_csv: str | Path, locations_csv: str | Pat
     i0 = initial_infected_fraction(max(float(obs[0]), 1.0), pop, rhomult, g)
     return StateSetup(state=state, fips=fips, population=pop, gamma=g,
                       rho=RHO_IHR, rhomult=rhomult, gammaH=GAMMAH_PER_WEEK,
-                      omega=OMEGA_PER_WEEK, s0=float(s0), i0=i0,
+                      omega=OMEGA_PER_WEEK, s0=float(S0_DEFAULT), i0=i0,
                       attack_rate=ar, n_obs=int(obs.size), observed=obs,
                       times=week_off)
 
 
 def materialize_model(setup: StateSetup, template: str | Path, out_path: str | Path,
-                      suffix: str, t_end: int | None = None,
-                      extra_tokens: dict | None = None) -> Path:
+                      suffix: str, extra_tokens: dict | None = None) -> Path:
     """Write the per-state .bngl with every token resolved. Unresolved => error.
     `extra_tokens` lets variant templates carry tokens StateSetup doesn't know
-    (e.g. the two-strain {{A0SHARE}}).
-
-    `t_end` rewrites the simulate window; no flu caller passes it (the PF
-    ignores the actions block)."""
+    (e.g. the two-strain {{A0SHARE}})."""
     txt = Path(template).read_text()
     for tok, val in {**(extra_tokens or {}),
         "{{POP}}": str(int(setup.population)),
@@ -140,9 +133,6 @@ def materialize_model(setup: StateSetup, template: str | Path, out_path: str | P
     if left:
         raise ValueError(f"unresolved tokens {sorted(set(left))} for {setup.state}")
     txt = re.sub(r'suffix=>"[^"]*"', f'suffix=>"{suffix}"', txt)
-    if t_end is not None:
-        txt = re.sub(r"t_end=>\d+", f"t_end=>{int(t_end)}", txt)
-        txt = re.sub(r"n_steps=>\d+", f"n_steps=>{int(t_end)}", txt)
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     # newline pinned: Windows text mode would write CRLF to the engine

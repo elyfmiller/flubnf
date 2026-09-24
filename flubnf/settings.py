@@ -159,7 +159,7 @@ def check(verbose: bool = True) -> list:
     return missing
 
 
-def load_locations(dtype=str):
+def load_locations():
     """The locations table from the hub, else the packaged copy, so UI pages
     do not 500 while the hub clone is missing or still fetching."""
     import pandas as pd
@@ -167,7 +167,7 @@ def load_locations(dtype=str):
     last = None
     for src in (LOCATIONS, packaged):
         try:
-            return pd.read_csv(src, dtype=dtype)
+            return pd.read_csv(src, dtype=str)
         except Exception as e:
             last = e
     raise FileNotFoundError(
