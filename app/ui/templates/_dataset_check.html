@@ -4,13 +4,16 @@
    missing, the target picker for a file with several, the notices, and a
    preview of a valid file with its "Forecast this" / "Replay this" buttons
    (they submit the upload box's form). Selects marked data-recheck make
-   static/dataset_upload.js check again. #}
+   static/dataset_upload.js check again. Only a refused store
+   (chk.refused) says nothing was stored: a check never stores. #}
 {% import "_tips.html" as tips %}
 {% macro result(chk, where) -%}
 {% set fid = "dsup-" ~ where %}
 {% if chk.problems %}
 <div class="dsproblems">
- <p class="bad"><strong>Nothing was stored.</strong> {{ chk.n }} problem{{ "" if chk.n == 1 else "s" }} to fix:</p>
+ {% set many = "" if chk.n == 1 else "s" %}
+ {% if chk.refused %}<p class="bad"><strong>Nothing was stored.</strong> {{ chk.n }} problem{{ many }} to fix:</p>
+ {% else %}<p class="bad"><strong>{{ chk.n }} problem{{ many }} to fix</strong> before this file can be stored:</p>{% endif %}
  {% for kind, probs in chk.problems %}
  <p class="dsp-kind">{{ kind }}</p>
  <ul>{% for p in probs %}<li>{{ p.message }}</li>{% endfor %}</ul>

@@ -212,8 +212,13 @@ async def _capped_form(request: Request, cap: int):
 
 
 def _render_data(request, _code: int = 200, **extra):
-    """data.html with the upload's report inline (not the one-slot flash)."""
+    """data.html with a refused store's report inline (not the one-slot
+    flash); its result box says nothing was stored ("refused"), which a
+    check, storing nothing by design, never says."""
     S = _S()
+    up = extra.get("upload")
+    if up and up.get("chk"):
+        extra["upload"] = {**up, "chk": {**up["chk"], "refused": True}}
     ctx = S._data_context()
     ctx.update(extra)
     return S.templates.TemplateResponse(request, "data.html", ctx,
@@ -372,8 +377,7 @@ def check_status(chk: dict) -> str:
             f" {n} problem{'' if n == 1 else 's'} to fix." if n else "")
     if chk.get("targets") and not chk.get("target") and not n:
         return "Choose the target."
-    return (f"Nothing was stored: {n} problem{'' if n == 1 else 's'} to "
-            "fix.")
+    return f"{n} problem{'' if n == 1 else 's'} to fix."
 
 
 def _message_view(message: str) -> dict:

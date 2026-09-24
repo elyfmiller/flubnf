@@ -237,7 +237,15 @@ def test_problems_come_grouped_by_kind_with_rows():
     j = check(raw).json()
     assert not j["ok"]
     html = j["html"]
-    assert "Nothing was stored." in html and "problems to fix" in html
+    # a check stores nothing by design, so it never says so
+    assert "Nothing was stored" not in html
+    assert ("<strong>6 problems to fix</strong> before this file can be "
+            "stored:") in html
+    assert j["status"] == "6 problems to fix."
+    # a refused store does
+    r = store(raw)
+    assert r.status_code == 422
+    assert "<strong>Nothing was stored.</strong> 6 problems to fix:" in r.text
     kinds = re.findall(r'<p class="dsp-kind">(\w+)</p>', html)
     assert kinds == ["Dates", "Values", "Groups", "Weeks"]
     # each example with its date and group
@@ -366,7 +374,7 @@ def test_a_status_line_is_read_out_not_the_whole_result():
            b"2024-08-03,a,01,1\n2024-08-03,b,01,3\n")
     assert check(two).json()["status"] == "Choose the target."
     j = check(b"date,target_group,value\n2024-08-03,A,-1\nsoon,A,2\n").json()
-    assert j["status"] == "Nothing was stored: 2 problems to fix."
+    assert j["status"] == "2 problems to fix."
     assert 'role="alert"' not in j["html"]
     js = (STATIC / "dataset_upload.js").read_text()
     assert "if (keep !== null) refocus(keep);" in js
