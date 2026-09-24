@@ -99,7 +99,8 @@ def test_import_prints_problems_and_stores_nothing(store, tmp_path):
     r = runner.invoke(app, ["dataset", "import", str(p), "--kind", "count"])
     assert r.exit_code == 1 and "negative" in r.output
     assert store.list_datasets() == []
-    assert "Values:" in r.output and "(row 2; e.g., -1)" in r.output
+    assert ("Values:" in r.output
+            and "(row 2; e.g., -1 (2024-08-03, A))" in r.output)
 
 
 def test_import_infers_the_kind(store, tmp_path):

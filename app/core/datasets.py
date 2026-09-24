@@ -988,7 +988,7 @@ def _read(src: _Replayable, enc: str, limits: Limits, columns,
     need = max(used) + 1
     width = len(header)
     groups_seen = set()
-    ragged, raw_rows = [], []
+    ragged, raw_rows, ragged_eg = [], [], ""
     # cells past the header's columns: an unquoted separator inside a value
     # ("1,234") split it, and slicing would keep the wrong half
     extra = _Tally()
@@ -1067,6 +1067,8 @@ def _read(src: _Replayable, enc: str, limits: Limits, columns,
                     row[k].strip() for k in range(width) if k not in used):
                 longer.setdefault(n, _Tally()).add(line, row)
         if n < need:
+            if not ragged:
+                ragged_eg = delim.join(row)
             ragged.append(line)
             row = row + [""] * (need - n)
         g = row[gcol].strip()
@@ -1103,8 +1105,8 @@ def _read(src: _Replayable, enc: str, limits: Limits, columns,
                 "throughout.", t.lines)
     if ragged:
         rep.add("ragged", f"{len(ragged)} row(s) have fewer fields than the "
-                f"columns they need ({_rows(ragged)}; e.g., row {ragged[0]}).",
-                ragged)
+                f"columns they need ({_rows(ragged)}; e.g., row {ragged[0]}: "
+                f"{_shown(ragged_eg) or '(empty)'}).", ragged)
     for n, t in longer.items():
         if n > complete:
             extra.merge(t)
@@ -1294,7 +1296,8 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
             # which target such a row belongs to, the file does not say
             rep.add("target_blank", f"The '{cols['target']}' column is "
                     f"blank on {len(blank)} row(s) ({_rows(blank)}; e.g., "
-                    f"row {blank[0]}), while the others name "
+                    f"row {blank[0]}: {_place(_rows_of(raw_rows, blank[:1])[0])}"
+                    "), while the others name "
                     f"{_examples(rep.targets)}. Give every row its target, "
                     "or delete those rows.", blank)
             raw_rows = [(ln, r) for ln, r in raw_rows if r["target"].strip()]
@@ -1344,11 +1347,16 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
         if style is None or style == "decimal_comma":
             texts = [r[key].strip() for _, r in raw_rows]
         if style is None:
-            lines = [ln for (ln, _), t in zip(raw_rows, texts)
-                     if "," in t or "." in t]
+            seps = [(ln, t) for (ln, _), t in zip(raw_rows, texts)
+                    if "," in t or "." in t]
+            lines = [ln for ln, _ in seps]
+            # the row of the number the reason quotes
+            at = next((ln for ln, t in seps if t in why), lines[0])
             rep.add(code, f"The '{col}' column's numbers are ambiguous "
-                    f"({_rows(lines)}; e.g., {why}). Write them without "
-                    "thousands separators, with a decimal point.", lines)
+                    f"({_rows(lines)}; e.g., {why}; row {at}: "
+                    f"{_place(_rows_of(raw_rows, [at])[0])}). Write them "
+                    "without thousands separators, with a decimal point.",
+                    lines)
         elif style == "thousands":
             rep.warnings.append(f"Read the '{col}' column's commas as "
                                 "thousands separators (1,234 = 1234).")
@@ -1437,14 +1445,9 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
 
     col = cols["date"]
 
-    def eg(items):
-        return _examples(t for _, t in items)
-
-    def cells(items):
+    def cells(items, date=True):
         """'NA (2024-03-16, Pediatric)': a cell with its date and group."""
-        return _examples(f"{t} ({r['date'].strip()}, {_text(r['group'])})"
-                         for (_, t), r in zip(items, _rows_of(
-                             raw_rows, [ln for ln, _ in items[:MAX_EXAMPLES]])))
+        return _cells(raw_rows, items, date)
     if bad_dates:
         lines = [ln for ln, _ in bad_dates]
         hint = ""
@@ -1457,12 +1460,13 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
                     "write it as YYYY-MM-DD.")
         rep.add("date_parse", f"The '{col}' column contains "
                 f"{len(bad_dates)} value(s) that could not be parsed as dates "
-                f"({_rows(lines)}; e.g., {_examples(t for _, t in bad_dates)})."
+                f"({_rows(lines)}; e.g., {cells(bad_dates, date=False)})."
                 " Write dates as YYYY-MM-DD, M/D/YYYY or M/D/YY." + hint, lines)
     if day_first:
         lines = [ln for ln, _ in day_first]
         rep.add("date_day_first", f"{len(day_first)} date(s) in '{col}' are "
-                f"day-first ({_rows(lines)}; e.g., {eg(day_first)}). "
+                f"day-first ({_rows(lines)}; e.g., "
+                f"{cells(day_first, date=False)}). "
                 "Day-first dates are ambiguous and not accepted: write them "
                 "as YYYY-MM-DD or M/D/YYYY.", lines)
     one = {d for _, _, d in parsed}
@@ -1496,7 +1500,8 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
             ln, t, d = parsed[0]
             rep.add("weekday_end", f"The '{col}' column names the end of "
                     f"each week, but its dates are {WEEKDAYS[weekday]}s "
-                    f"({_rows(lines)}; e.g., {t}). A week ending on a "
+                    f"({_rows(lines)}; e.g., {cells([(ln, t)], date=False)})."
+                    " A week ending on a "
                     f"{WEEKDAYS[weekday]} lies mostly in the MMWR week that "
                     f"ends the Saturday before ({t} -> "
                     f"{saturday_on_or_before(d).isoformat()}); moving it to "
@@ -1512,7 +1517,8 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
             ln, t, d = parsed[0]
             rep.add("weekday_start", f"The '{col}' column names the start "
                     f"of each week, but its dates are {WEEKDAYS[weekday]}s "
-                    f"({_rows(lines)}; e.g., {t}). A week starting on a "
+                    f"({_rows(lines)}; e.g., {cells([(ln, t)], date=False)})."
+                    " A week starting on a "
                     f"{WEEKDAYS[weekday]} lies mostly in the MMWR week that "
                     f"ends the Saturday after ({t} -> "
                     f"{(week_ending(d) + timedelta(days=7)).isoformat()}); "
@@ -1554,7 +1560,7 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
         dmy = next((t for _, t in bad_asof if _day_first(t)), None)
         rep.add("as_of_parse", f"The '{cols['as_of']}' column contains "
                 f"{len(bad_asof)} value(s) that could not be parsed as dates "
-                f"({_rows(lines)}; e.g., {_examples(t for _, t in bad_asof)})."
+                f"({_rows(lines)}; e.g., {cells(bad_asof)})."
                 + (f" A date like {dmy} is day-first, which is not "
                    "accepted: write it as YYYY-MM-DD or M/D/YYYY."
                    if dmy else ""), lines)
@@ -1608,12 +1614,13 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
         lines = [ln for ln, _ in bad_vals]
         rep.add("value_numeric", f"The '{vcol}' column must contain numbers "
                 f"only: {len(bad_vals)} value(s) are not ({_rows(lines)}; "
-                f"e.g., {_examples(dict.fromkeys(t for _, t in bad_vals))}).",
+                f"e.g., {cells(bad_vals)}).",
                 lines)
     if neg:
         lines = [ln for ln, _ in neg]
         rep.add("value_negative", f"The '{vcol}' column contains {len(neg)} "
-                f"negative value(s) ({_rows(lines)}; e.g., {eg(neg)}). Values "
+                f"negative value(s) ({_rows(lines)}; e.g., {cells(neg)}). "
+                "Values "
                 "must be zero or positive.", lines)
     if na and fmt == "grouped":
         # a grouped CSV lists only reported weeks: NA is an error
@@ -1666,7 +1673,7 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
         lines = [ln for ln, _ in bad_pop]
         rep.add("population_invalid", f"The '{cols['population']}' column "
                 f"has {len(bad_pop)} value(s) that are not positive numbers "
-                f"({_rows(lines)}; e.g., {eg(bad_pop)}).", lines)
+                f"({_rows(lines)}; e.g., {cells(bad_pop)}).", lines)
     if miss_pop:
         lines = [ln for ln, _ in miss_pop]
         rep.add("population_missing", f"The '{cols['population']}' column "
@@ -1746,6 +1753,22 @@ def _rows_of(raw_rows, lines) -> list:
     return [got[ln] for ln in lines]
 
 
+def _place(r, date: bool = True) -> str:
+    """Where a raw row is: '2024-03-16, Pediatric' (its group alone when
+    ``date`` is False, the cell quoted being the date itself)."""
+    g = _text(r["group"]) or "no group"
+    return f"{r['date'].strip() or 'no date'}, {g}" if date else g
+
+
+def _cells(raw_rows, items, date: bool = True) -> str:
+    """Examples of cells with their date and group, 'NA (2024-03-16,
+    Pediatric)', from (row number, cell) pairs; a date cell with its group
+    alone ('soon (Pediatric)', ``date`` False)."""
+    items = list(items)[:MAX_EXAMPLES]
+    return _examples(f"{t} ({_place(r, date)})" for (_, t), r in zip(
+        items, _rows_of(raw_rows, [ln for ln, _ in items])))
+
+
 def is_national_name(name) -> bool:
     return str(name or "").strip().upper() in NATIONAL_NAMES
 
@@ -1770,7 +1793,8 @@ def _check_groups(rep: Report, raw_rows: list, cols: dict):
         r = _rows_of(raw_rows, blank[:1])[0]
         rep.add("group_blank", f"The '{cols['group']}' column is blank on "
                 f"{len(blank)} row(s) ({_rows(blank)}; e.g., row {blank[0]}: "
-                f"{_vis(r['date'].strip())}, value {_vis(r['value'].strip())}"
+                f"{_vis(r['date'].strip())}, value "
+                f"{_vis(r['value'].strip() or '(blank)')}"
                 f"). Give every row its {'location' if has_lname else what}"
                 ", or delete those rows.", blank)
     # a national spelling is accepted as is ('US (national)' included)
@@ -1861,11 +1885,14 @@ def _check_structure(rep: Report, rows: list, cols: dict, *, shift: int = 0,
                 gaps.append((ds[p], ds[q], a, name, p, q))
     if not (dups or gaps or late):
         return
-    # the dates as written, for the rows the messages quote
-    want = ({x[0] for x in dups[:MAX_EXAMPLES]}
+    # the dates (and a duplicate's two values) as written, for the rows
+    # the messages quote
+    want = ({x[i] for x in dups[:MAX_EXAMPLES] for i in (0, 1)}
             | {x[0] for x in late[:MAX_EXAMPLES]}
             | {x[i] for x in gaps[:MAX_EXAMPLES] for i in (0, 1)})
     written = {ln: r["date"].strip() for ln, r in raw_rows if ln in want}
+    value = {ln: _vis(r["value"].strip() or "(blank)") for ln, r in raw_rows
+             if ln in want}
 
     def week(d, ln=None):
         """A week as the file writes it, with its Saturday when moved."""
@@ -1881,9 +1908,11 @@ def _check_structure(rep: Report, rows: list, cols: dict, *, shift: int = 0,
         unit = ("as_of/date/group" if "as_of" in cols else "date/group")
         rep.add("duplicate", f"Duplicate rows found for {len(dups)} {unit} "
                 f"combination(s) ({_rows(lines)}; e.g., "
-                + _examples(f"{week(d, l0)} + {name}"
-                            + (f" (as_of {a.isoformat()})" if a else "")
-                            for l0, _, a, name, d in dups)
+                + _examples(f"{week(d, l0)} + {name} ("
+                            + (f"as_of {a.isoformat()}; " if a else "")
+                            + f"values {value.get(l0, '?')} and "
+                            f"{value.get(l1, '?')})"
+                            for l0, l1, a, name, d in dups)
                 + "). Each combination must appear exactly once.", lines)
     if gaps:
         lines = [ln for x in gaps for ln in x[:2]]

@@ -1038,7 +1038,42 @@ def test_a_blank_group_says_blank_and_control_characters_show():
     # a NUL is shown, not an invisible character
     p = only(D.validate(b"date,target_group,value\n2024-01-06,A,5\x00\n"),
              "value_numeric")
-    assert "e.g., 5␀)" in p.message
+    assert "e.g., 5␀ (2024-01-06, A))" in p.message
+
+
+def test_every_example_names_its_date_and_group():
+    """Some problems quoted a bare cell ('e.g., -1'), a duplicate one of
+    its two rows and nothing of their values."""
+    raw = (b"date,target_group,value,population\n"
+           b"2024-08-03,A,1,100\n2024-08-03,A,2,100\n2024-08-10,A,-3,100\n"
+           b"2024-08-17,A,x,0\n2024-08-24,A,4,100\nsoon,B,1,100\n"
+           b"2024-08-31\n")
+    rep = D.validate(raw)
+    msg = {p.code: p.message for p in rep.problems}
+    assert "e.g., 2024-08-03 + A (values 1 and 2))" in msg["duplicate"]
+    assert "e.g., -3 (2024-08-10, A))" in msg["value_negative"]
+    assert "e.g., x (2024-08-17, A))" in msg["value_numeric"]
+    assert "e.g., 0 (2024-08-17, A))" in msg["population_invalid"]
+    assert "e.g., soon (B))" in msg["date_parse"]
+    assert "e.g., row 8: 2024-08-31)" in msg["ragged"]
+    p = only(D.validate(raw, kind="count"), "value_numeric")
+    assert "x (2024-08-17, A)" in p.message
+    # an as_of snapshot's duplicate names its as_of too
+    p = only(D.validate(b"target_end_date,location,observation,as_of\n"
+                        b"2024-01-06,US,1,2024-01-08\n"
+                        b"2024-01-06,US,2,2024-01-08\n"), "duplicate")
+    assert ("2024-01-06 + US (as_of 2024-01-08; values 1 and 2)"
+            in p.message)
+    # an ambiguous number, a day-first date and an as_of that is not one
+    p = only(D.validate(b"date;target_group;value\n2024-01-06;A;9\n"
+                        b"2024-01-13;A;1.234\n"), "value_format")
+    assert "1.234 could be 1234 or 1.234; row 3: 2024-01-13, A)" in p.message
+    p = only(D.validate(b"date,target_group,value\n13/01/2024,A,1\n"
+                        b"20/01/2024,A,2\n"), "date_day_first")
+    assert "e.g., 13/01/2024 (A), 20/01/2024 (A))" in p.message
+    p = only(D.validate(b"as_of,target_end_date,location,observation\n"
+                        b"soon,2024-01-06,US,1\n"), "as_of_parse")
+    assert "e.g., soon (2024-01-06, US))" in p.message
 
 
 def test_row_numbers_are_the_spreadsheets_rows():

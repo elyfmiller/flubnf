@@ -147,7 +147,10 @@ def test_problems_come_grouped_by_kind_with_rows():
     assert "Nothing was stored." in html and "problems to fix" in html
     kinds = re.findall(r'<p class="dsp-kind">(\w+)</p>', html)
     assert kinds == ["Dates", "Values", "Groups", "Weeks"]
-    assert "(row 3; e.g., -2)" in html and "(row 4;" in html
+    # each example with its date and group
+    assert ('(row 3; e.g., -2 (<span class="nw">2024-08-10</span>, A))'
+            in html and "(row 4;" in html)
+    assert "(row 5; e.g., soon (B/C))" in html
     assert "Ready to use." not in html
     # a date stays on one line at phone width (it broke after a hyphen)
     assert '<span class="nw">2024-08-19</span> (A, Monday, row 4)' in html
@@ -212,7 +215,8 @@ def test_blank_target_cells_are_a_problem_not_dropped_rows():
     j = check(raw).json()
     assert not j["ok"] and "Ready to use." not in j["html"]
     assert ("The &#39;target&#39; column is blank on 1 row(s) (row 2; e.g., "
-            "row 2), while the others name wk inc flu hosp.") in j["html"]
+            'row 2: <span class="nw">2024-01-06</span>, US), while the others '
+            "name wk inc flu hosp.") in j["html"]
     assert 'name="target"' not in j["html"]
     rep = D.validate(raw, target="wk inc flu hosp")
     assert rep.codes == ["target_blank"]
