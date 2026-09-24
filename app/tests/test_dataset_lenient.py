@@ -178,12 +178,87 @@ def test_an_as_of_that_reads_both_ways_is_settled_by_its_snapshots():
     rep = ok(D.validate(b"target_end_date,location,observation,as_of\n"
                         b"2024-01-06,A,5,1/8/24\n2023-12-30,A,4,1/8/24\n"))
     assert rep.summary["as_of"] == ["2024-01-08"]
-    # M/D weeks say how the file writes dates; 1/13/2024 reads one way
-    rep = ok(D.validate(b"target_end_date,location,observation,as_of\n"
-                        b"12/30/2023,A,5,03/01/2024\n1/6/2024,A,6,10/01/2024\n"))
-    assert rep.summary["as_of"] == ["2024-03-01", "2024-10-01"]
+    # 1/13/2024 reads one way, and so does the column it is in
     ok(D.validate(b"target_end_date,location,observation,as_of\n"
                   b"2023-12-30,A,5,1/3/2024\n2024-01-06,A,6,1/13/2024\n"))
+
+
+#: an as_of whose day equals its month (05/05/2024) once counted as proof
+#: of month-first and switched the check off: 12/05/2024 was stored as a
+#: December snapshot of weeks that end in May
+ASOF_PALINDROME = (b"target_end_date,location,observation,as_of\n"
+                   b"2024-04-27,A,5,05/05/2024\n2024-04-27,A,5,12/05/2024\n"
+                   b"2024-05-04,A,6,12/05/2024\n")
+#: a date column written M/D once switched the check off, though 02/02/2024
+#: reads the same both ways: 05/02/2024 was stored as May 2, not Feb 5
+ASOF_PAL_DATE = (b"week,location,observation,as_of\n"
+                 b"02/02/2024,US,288,05/02/2024\n02/02/2024,01,20,05/02/2024\n")
+
+
+def test_an_as_of_whose_day_is_its_month_proves_no_order():
+    rep = D.validate(ASOF_PALINDROME)
+    assert rep.codes == ["as_of_ambiguous"]
+    p = rep.problems[0]
+    assert p.rows == (3, 4)
+    assert ("e.g., 12/05/2024 is 2024-12-05 or 2024-05-12, row 3: "
+            "2024-04-27, A") in p.message
+    with pytest.raises(D.DatasetError):
+        D.ingest(ASOF_PALINDROME, "pal")
+    # alone, it is the same date either way
+    rep = ok(D.validate(b"target_end_date,location,observation,as_of\n"
+                        b"2024-04-27,A,5,05/05/2024\n"
+                        b"2024-05-04,A,6,05/05/2024\n"))
+    assert rep.summary["as_of"] == ["2024-05-05"]
+
+
+def test_dates_written_m_d_prove_month_first_only_with_a_day_over_12():
+    rep = D.validate(ASOF_PAL_DATE)
+    assert rep.codes == ["as_of_ambiguous"]
+    p = rep.problems[0]
+    assert p.rows == (2, 3)
+    assert ("05/02/2024 is 2024-05-02 or 2024-02-05, row 2: 02/02/2024, US"
+            in p.message)
+    # dates with both numbers <= 12 say nothing either
+    raw = (b"week,location,observation,as_of\n"
+           b"02/03/2024,A,1,12/02/2024\n02/10/2024,A,2,12/02/2024\n")
+    assert D.validate(raw).codes == ["as_of_ambiguous"]
+    # an as_of that says so itself stands
+    rep = ok(D.validate(b"week,location,observation,as_of\n"
+                        b"02/03/2024,A,1,2/5/2024\n02/10/2024,A,2,2/13/2024\n"
+                        b"02/03/2024,A,1,2/13/2024\n"))
+    assert rep.summary["as_of"] == ["2024-02-05", "2024-02-13"]
+
+
+def test_the_closer_fit_decides_past_the_longest_lag():
+    """A long-lagged ISO snapshot beside an as_of that reads both ways:
+    1/2/2024 is 3 days after its week month-first, 33 day-first."""
+    raw = (b"target_end_date,location,observation,as_of\n"
+           b"2024-03-02,A,5,2024-06-29\n2023-12-30,A,4,1/2/2024\n")
+    assert ok(D.validate(raw)).summary["as_of"] == ["2024-01-02",
+                                                    "2024-06-29"]
+    raw = raw.replace(b"1/2/2024", b"2/1/2024")      # the other way round
+    assert D.validate(raw).codes == ["as_of_ambiguous"]
+
+
+def test_month_first_dates_do_not_carry_an_as_of_that_does_not_fit():
+    """1/13/2024 proves the dates month-first, but as_of dates with both
+    numbers <= 12 must still fit their snapshots read so."""
+    # month-first would put the weeks after their as_of (Jan 12)
+    raw = (b"target_end_date,location,observation,as_of\n"
+           b"1/6/2024,A,5,1/12/2024\n1/13/2024,A,6,1/12/2024\n")
+    p = only(D.validate(raw), "as_of_ambiguous")
+    assert "a snapshot would hold weeks after its as_of" in p.message
+    assert ("The 'target_end_date' dates are month-first (e.g., 1/13/2024)"
+            in p.message)
+    # months after their newest week, where day-first is days after
+    raw = (b"target_end_date,location,observation,as_of\n"
+           b"12/30/2023,A,5,03/01/2024\n1/6/2024,A,6,10/01/2024\n")
+    p = only(D.validate(raw), "as_of_ambiguous")
+    assert "day-first fits the snapshots better" in p.message
+    # month-first that fits stands
+    rep = ok(D.validate(b"target_end_date,location,observation,as_of\n"
+                        b"12/30/2023,A,5,1/8/2024\n1/6/2024,A,6,1/8/2024\n"))
+    assert rep.summary["as_of"] == ["2024-01-08"]
 
 
 def test_an_as_of_passed_only_by_the_move_to_saturday_says_so():

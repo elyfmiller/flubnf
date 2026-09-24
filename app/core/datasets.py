@@ -39,12 +39,15 @@ dataset`` all read through it):
     on one weekday; it is moved to the MMWR week-ending Saturday of its
     Sunday-to-Saturday week, with a notice. Mixed weekdays and day-first
     dates are refused, and so is a single week written M/D that reads both
-    ways, an as_of written M/D that reads both ways when day-first fits
-    its snapshots better, a column whose header names week ENDS ('week
-    ending (Sunday)', 'period_end') whose dates are Sundays, Mondays or
-    Tuesdays, and one naming week STARTS whose dates are Thursdays,
-    Fridays or Saturdays (most of such a week lies in the MMWR week
-    before, or after, so moving it would label it a week late, or early).
+    ways, an as_of written M/D that reads both ways unless its snapshots
+    settle it (day-first would put a week after its as_of, or fits them
+    less closely; a tie stands only when the dates prove month-first by a
+    day over 12, as in 1/13/2024: 05/05/2024 proves neither order), a
+    column whose header names week ENDS ('week ending (Sunday)',
+    'period_end') whose dates are Sundays, Mondays or Tuesdays, and one
+    naming week STARTS whose dates are Thursdays, Fridays or Saturdays
+    (most of such a week lies in the MMWR week before, or after, so moving
+    it would label it a week late, or early).
 
 Every problem is reported at once, each with its row numbers (the
 spreadsheet's rows: the header is row 1) and an example; ``problem_groups``
@@ -542,6 +545,15 @@ def _swapped(text: str):
         return date(y, parts[1], parts[0])
     except ValueError:
         return None
+
+
+def _month_first_only(text: str) -> bool:
+    """True for a date written M/D that reads month-first only: its second
+    number is a day over 12 (1/13/2024). A date whose day equals its month
+    (05/05/2024) reads the same either way and proves neither order."""
+    _, order, parts = _date_parts(text)
+    return (order in ("mdy", "mdy2") and parts[1] > 12
+            and parse_date(text)[0] is not None)
 
 
 def saturday_on_or_before(d: date) -> date:
@@ -1352,7 +1364,8 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
     bad_dates, day_first, bad_asof = [], [], []
     # as_of dates that read both month-first and day-first (03/01/2024),
     # each month-first reading's day-first twin, and whether any as_of
-    # reads month-first only (1/13/2024)
+    # reads month-first only (1/13/2024; never 05/05/2024, which reads the
+    # same both ways)
     asof_both, asof_alt, asof_md = _Tally(), {}, False
     bad_vals, neg, na, nonint = [], [], [], []
     # values written with a mark that could separate thousands (see mark)
@@ -1379,7 +1392,7 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
             elif _swapped(ta) not in (None, a):
                 asof_both.add(ln, (ta, a))
                 asof_alt[a] = _swapped(ta)
-            elif _date_parts(ta)[1] in ("mdy", "mdy2"):
+            elif _month_first_only(ta):
                 asof_md = True
         raw_v = r["value"].strip()
         v = None
@@ -1545,29 +1558,52 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
                 + (f" A date like {dmy} is day-first, which is not "
                    "accepted: write it as YYYY-MM-DD or M/D/YYYY."
                    if dmy else ""), lines)
-    month_first = formats & {"M/D/YYYY", "M/D/YY", "MM-DD-YYYY"}
-    if asof_both.n and rows and not asof_md and not month_first:
-        # every M/D as_of reads both ways and the date column, written
-        # otherwise, does not say which. A snapshot's as_of follows its
-        # newest week by days: month-first stands when it fits the
-        # snapshots at least as closely, else the file is refused (a
-        # silent pick moves the snapshots by months)
+    # the date column proves month-first only by a date whose second
+    # number is a day over 12 (1/13/2024): 02/02/2024 or 03/04/2024 read
+    # either way, whatever the weekdays say
+    dates_md = next((t for _, t, _ in parsed if _month_first_only(t)), None)
+    if asof_both.n and rows and not asof_md:
+        # every M/D as_of reads both ways and none says which. A snapshot's
+        # as_of follows its newest week by days, so the snapshots decide:
+        # month-first stands when day-first would put a week after its
+        # as_of, or fits them less closely (or as closely, when the dates
+        # prove month-first); else the file is refused (a silent pick moves
+        # the snapshots by months). The fit: each snapshot's days from its
+        # newest week to its as_of, the longest first
         def lags(reading):
             newest = {}
             for _, a, _, _, d, _, _ in rows:
                 k = reading(a)
                 newest[k] = max(newest.get(k, d), d)
-            return [(k - d).days for k, d in newest.items()]
+            return sorted(((k - d).days for k, d in newest.items()),
+                          reverse=True)
         mf, df = lags(lambda a: a), lags(lambda a: asof_alt.get(a, a))
-        if min(df) >= 0 and (min(mf) < 0 or max(df) < max(mf)):
+        why = ""
+        if min(df) < 0:
+            pass                    # day-first puts a week after its as_of
+        elif min(mf) < 0:
+            why = ("read month-first, a snapshot would hold weeks after its "
+                   "as_of, while read day-first each as_of follows its "
+                   "newest week")
+        elif df < mf:
+            why = ("day-first fits the snapshots better (each as_of just "
+                   "after its newest week)")
+        elif df == mf and not dates_md:
+            why = ("both readings fit the snapshots, and no as_of or date "
+                   "is written with a day over 12 to say which")
+        if why:
             ln, (t, a) = asof_both.eg[0]
+            (r0,) = _rows_of(raw_rows, [ln])
+            proven = (f" The '{col}' dates are month-first (e.g., "
+                      f"{dates_md}), but the as_of dates must say so "
+                      "themselves." if dates_md else "")
             rep.add("as_of_ambiguous", f"The '{cols['as_of']}' column's "
                     "dates read both month-first and day-first "
                     f"({_rows(asof_both.lines, asof_both.n)}; e.g., {t} is "
-                    f"{a.isoformat()} or {_swapped(t).isoformat()}), and "
-                    "day-first fits the snapshots better (each as_of just "
-                    "after its newest week). Write as_of dates as "
-                    "YYYY-MM-DD.", asof_both.lines)
+                    f"{a.isoformat()} or {_swapped(t).isoformat()}, row "
+                    f"{ln}: {r0['date'].strip()}, {_text(r0['group'])}), and "
+                    f"{why}.{proven} Write as_of dates as YYYY-MM-DD.",
+                    asof_both.lines)
     if bad_vals:
         lines = [ln for ln, _ in bad_vals]
         rep.add("value_numeric", f"The '{vcol}' column must contain numbers "
