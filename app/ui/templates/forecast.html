@@ -123,7 +123,7 @@
    {% if dataset %}
    <div class="lblrow"><label>Groups <span id="lcount" class="hint"></span></label>{{ tips.tip("fc-locs", "groups", "The dataset's groups; each is forecast on its own." ~ (" " ~ dataset.national ~ " is the national group: scored beside the others, never pooled with them." if dataset.national else "")) }}</div>
    {% else %}
-   <div class="lblrow"><label>Locations <span id="lcount" class="hint"></span></label>{{ tips.tip("fc-locs", "locations", "The 52 are the 50 states, DC and Puerto Rico. US (national), last in the list, is fitted as a location of its own and scored apart from them. A full hub submission holds all 53, so ticking all 52 ticks US too; untick it to leave it out.") }}</div>
+   <div class="lblrow"><label>Locations <span id="lcount" class="hint"></span></label>{{ tips.tip("fc-locs", "locations", "The 52 are the 50 states, DC and Puerto Rico. US (national), last in the list, is a location of its own: off by default, fitted only when ticked, and scored apart from the 52. A full hub submission holds all 53, so tick it for a submission run.") }}</div>
    {% endif %}
    <div class="checklist">
      <label class="ck"><input type="checkbox" id="ck-all" value="all" name="locations"
@@ -190,19 +190,15 @@
        : n? '('+n+(us?' + US':'')+' selected)' : us? '(US only)' : '';
    }
    // 'all' and specific states are mutually exclusive; nothing is disabled.
-   // Ticking 'all' picks the full hub set, so it ticks US too (untick it to
-   // leave it out); leaving 'all' for a custom pick starts without US
+   // US (national) is its own box: neither 'all' nor a state pick touches it
    document.getElementById('ck-all').addEventListener('change', function(){
-     if(this.checked){
-       document.querySelectorAll('.ck-one').forEach(c => c.checked=false);
-       if(CKUS) CKUS.checked=true;
-     }
+     if(this.checked) document.querySelectorAll('.ck-one').forEach(c => c.checked=false);
      updCount();
    });
    // the checklist decides what RUNS; the data panel has its own dropdown
    document.querySelectorAll('.ck-one').forEach(c=>c.addEventListener('change',()=>{
      const all=document.getElementById('ck-all');
-     if(c.checked && all.checked){ all.checked=false; if(CKUS) CKUS.checked=false; }
+     if(c.checked && all.checked) all.checked=false;
      updCount();}));
    if(CKUS) CKUS.addEventListener('change', updCount);
    updCount();

@@ -1,9 +1,9 @@
 """US national on the Forecast tab: a location of its own, and the FluSight
 comparators drawn over a vintage run's fans.
 
-US (national) is the 53rd checkbox. "all 52 jurisdictions" is the 52 alone;
-the default run (a full hub submission) ticks both, and a custom pick runs
-exactly what was ticked: US is never added behind the user's back.
+US (national) is the 53rd checkbox, off by default. "all 52 jurisdictions"
+is the 52 alone, and a run fits exactly what was ticked: US is never added
+behind the user's back, nor removed.
 
 A run's Forecasts card overlays the hub's recorded FluSight-ensemble and
 FluSight-baseline forecasts for the same week, read with the
@@ -103,13 +103,13 @@ def test_the_run_scope_reads_without_us_for_a_state_run():
     assert fc._scope_label(["US"]) == "US only"
 
 
-def test_the_default_form_is_the_full_hub_submission(monkeypatch):
-    """A fresh console ticks all 52 AND US: the default real-time run is a
-    complete hub submission, stated on the form rather than implied."""
+def test_the_default_form_ticks_the_52_and_leaves_us_off(monkeypatch):
+    """A fresh console ticks all 52; US (national) is offered last and left
+    unticked, so a national fit is always the user's choice."""
     ui_state._last_form.clear()
     html = client.get("/forecast").text
     assert re.search(r'id="ck-all" value="all" name="locations"\s+checked', html)
-    assert re.search(r'id="ck-us" name="locations" value="US \(national\)"\s+checked',
+    assert re.search(r'id="ck-us" name="locations" value="US \(national\)"\s*>',
                      html)
     assert "<b>US (national)</b>" in html
     # the national box comes after the jurisdictions (the template's order)
@@ -117,10 +117,10 @@ def test_the_default_form_is_the_full_hub_submission(monkeypatch):
 
 
 def test_the_form_script_keeps_us_apart_from_all():
-    """Ticking all ticks US too; leaving all for a custom pick unticks it;
-    the count names US apart ("all 52 + US", "1 + US selected")."""
-    assert "if(CKUS) CKUS.checked=true;" in TEMPLATE
-    assert "if(c.checked && all.checked){ all.checked=false; if(CKUS) CKUS.checked=false; }" in TEMPLATE
+    """Neither ticking all nor a state pick touches US; the count names US
+    apart ("all 52 + US", "1 + US selected")."""
+    assert "CKUS.checked=" not in TEMPLATE
+    assert "if(c.checked && all.checked) all.checked=false;" in TEMPLATE
     assert "(us?' + US':'')" in TEMPLATE
     assert "US national is always fitted" not in TEMPLATE
 

@@ -78,7 +78,7 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
     # US national, both ticked (US is a location of its own, never added
     # behind the user's back)
     form = dict(_last_form) or {"forecast_date": _default_forecast_date(),
-                                "locations": ["all", US_CHOICE],
+                                "locations": ["all"],
                                 "engine": "all",
                                 "weeks_to_drop": 0, "weeks_to_nowcast": 0,
                                 "replicates": 3, "members": 2, "season_start": ""}
