@@ -4,23 +4,17 @@
 <script src="/static/quips.js"></script>
 <script src="/static/retro_progress.js"></script>{% endblock %}
 {% block content %}
-{# the route passes one curve per model, the member colours and the models
-   this season scored; a render without them (a bare `curve`, the shape
-   before 2026-09-22) still draws, unlabelled and in the accent colour #}
+{# one curve per scored model; a bare `curve` (pre-2026-09-22 contexts) still
+   draws, unlabelled, in the accent colour #}
 {% if curves is not defined %}{% set curves = ({'': curve} if curve else {}) %}{% endif %}
 {% if member_colors is not defined %}{% set member_colors = {} %}{% endif %}
 {% if season_models is not defined %}{% set season_models = ['pf', 'analogue', 'ensemble'] %}{% endif %}
-{# every link and fetch on this page carries the archive identifier when one
-   is in play, so the page, the playback API, and the report all read the
-   same frozen tree #}
+{# every link and fetch carries the archive id, so all read the same tree #}
 {% set aq = ('?archive=' ~ archive) if archive else '' %}
 {% if preparing %}
-{# the preparing state (frozen-page fix): scoring, the national aggregate,
-   and playback warming run as one background job; this page polls the
-   status endpoint and reloads into the full results the moment the job
-   lands. The runstat line and the rotating quip are the console's
-   established progress idiom. No bar: the job has no honest denominator,
-   and a fabricated percentage is worse than a live phase line. #}
+{# preparing: scoring, the national aggregate and playback warming run as one
+   background job; poll its status and reload when it lands. No bar: the job
+   has no honest denominator. #}
 <h1><span class="accent">{{ season }}</span>: preparing results</h1>
 <div class="card" data-season="{{ season }}">
  <h2>Preparing the season results</h2>
@@ -42,11 +36,8 @@
     stat.textContent=phase+'… '+(s>=60?Math.floor(s/60)+' min '+(s%60)+' s':s+' s');
   }
   setInterval(paint,1000);paint();
-  // Polling discipline (the forecast page's idiom): a HIDDEN tab skips the
-  // fetch and drops to a slow heartbeat instead of asking every two seconds
-  // for readouts nobody can see, an in-flight request suppresses the next
-  // tick rather than stacking behind a slow reply, and returning to the tab
-  // polls at once, so the phase line is current the moment it matters.
+  // polling: hidden tab -> 20 s heartbeat; never stack requests; poll at
+  // once on return to the tab
   var POLL_MS=2000, POLL_HIDDEN_MS=20000;
   var inflight=false, timer=null;
   function schedule(ms){clearTimeout(timer); timer=setTimeout(poll,ms);}
@@ -77,26 +68,15 @@
  fresh replay could start; nothing here changes when the live season runs.
  <a href="/retro/{{ season }}">Open the live {{ season }} season</a>.</p>
 {% endif %}
-{# ONE availability flag for the whole results block. When the chosen
-   convention has no numbers, several panels below must fall silent
-   together: the banner says so once, and the per-state table, its caption
-   and the player's cross-convention warning must not go on describing
-   scores that are not on the page. Undefined `figs` (the preparing view
-   and the older template contexts) is falsy, so those callers render
-   exactly as before. #}
+{# ONE availability flag: with no scores under the chosen convention, every
+   score-describing panel below falls silent together and the banner says
+   why once. Undefined `figs` (older contexts) is falsy. #}
 {% set unavailable = figs and not figs.available %}
-{# THE scoring convention, chosen once for the whole page.
-
-   Two different quantities are called relative WIS and this project has
-   already been burned by reading one next to the other. The switch below
-   governs the head tiles and the per-state table together, so the page
-   never prints two definitions side by side, and every figure it produces
-   carries the label naming the one that produced it. Panels that exist
-   only under one convention (the cumulative curve, the US national row)
-   say so in the other view rather than reverting. See app/core/relwis. #}
+{# ONE scoring convention per page (two quantities are called relWIS; see
+   app/core/relwis): head tiles and per-state table follow it, every figure
+   is labeled, and convention-specific panels say so rather than revert. #}
 {% if figs and figs.convention == 'pairwise' and figs.available %}
-{# the pairwise view is reachable by URL only (the switch left the page,
-   lead 2026-09-07): the value stays, the placement stays withdrawn #}
+{# the pairwise view is reachable by URL only; placement stays withdrawn #}
 <p class="hint">Scored against the teams that submitted this season,
  jurisdictions only. The figure moves when the field changes, so the field
  is part of the number. Placement within that field, meaning a rank among
@@ -104,15 +84,11 @@
  <a href="/methods">Methods</a>.</p>
 {% endif %}
 {% if unavailable and figs.reason %}
-{# the unavailable path, stated plainly. There is deliberately no fallback:
-   silently showing the other convention's numbers under this heading is
-   the exact failure the switch exists to prevent. #}
+{# deliberately no fallback to the other convention's numbers #}
 <p class="banner" role="status"><strong>No scores under this
  convention.</strong> {{ figs.reason }}.
  {%- if conv != 'ratio_of_sums' %} The
- {# the same query the convention switch itself carries: dropping the week
-    sent a reader who had scrubbed to a particular week back to the last
-    one, which reads as the page losing their place #}
+ {# keeps archive and week, so the reader does not lose their place #}
  <a href="/retro/{{ season }}?conv=ratio_of_sums{% if archive %}&amp;archive={{ archive }}{% endif %}{% if week %}&amp;week={{ week }}{% endif %}">ratio
  of sums view</a> is computed from this project's own sealed scores and is
  always available, but it is a different quantity: it is not a substitute
@@ -123,8 +99,7 @@
  {%- endif %}</p>
 {% endif %}
 {% if prog and prog.active %}
-{# a live replay, driven by the shared ticker in /static/retro_progress.js:
-   the same bar, readouts, and quips the console's run card uses #}
+{# live replay, driven by the shared ticker (retro_progress.js) #}
 <div class="card season-card" data-season="{{ season }}"
      data-status="{{ prog.status }}" data-active="1"
      data-done="{{ prog.done }}" data-total="{{ prog.total }}"
@@ -135,8 +110,8 @@
  <p class="hint rbasis"></p>
  {# the settings this replay runs under, from its run record #}
  {{ settings_html(prog.settings) | safe }}
- {# stopping and pausing are safe: only the fits in flight finish, each
-    finished fit is checkpointed, so neither needs a confirmation modal #}
+ {# stop/pause need no confirmation: in-flight fits finish, each is
+    checkpointed #}
  <div class="row">
   {% if prog.status == 'paused' %}
   <form method="post" action="/retro/{{ season }}/resume"><button class="gold">Resume</button></form>
@@ -148,12 +123,11 @@
  <p class="quip rquip"></p>
 </div>
 <script>
- // the ticker yields to an open run-interference guard modal: while
- // GUARD_BUSY is set nothing reloads, so a pending stop-and-proceed survives
+ // reloads yield to an open guard modal (GUARD_BUSY)
  FluBNFRetroTicker.init({busy: function(){return !!window.GUARD_BUSY;}});
 </script>
 {% elif prog and prog.elapsed_s and prog.elapsed_s >= 1 %}
-{# a sub-second record would render a fabricated 0:00:00: say nothing #}
+{# a sub-second record would read as a fabricated zero: say nothing #}
 <p class="hint">Replay wall time {{ prog.elapsed_s | hms }} over
  {{ prog.done }} weeks{% if prog.mean_s %}, mean {{ "%.0f"|format(prog.mean_s) }} s
  per week over {{ prog.weeks_measured }} timed{% endif %}{% if prog.slowest_week %};
@@ -165,22 +139,17 @@
 {{ settings_html(prog.settings) | safe }}
 {% endif %}
 <p class="row" style="gap:.55rem">
- {# the download attribute makes the native window (WKWebView) treat the
-    click as a download rather than a navigation; pywebview needs
-    ALLOW_DOWNLOADS on as well, set at window launch in flubnf/cli.py #}
- {# the flagship deliverable carries the primary tier; Reveal stays quiet.
-    Button-in-anchor is the app's established download idiom (see the
-    Output tab); the click bubbles to the anchor, whose download attribute
-    does the work. #}
+ {# the download attribute makes WKWebView download rather than navigate
+    (pywebview also needs ALLOW_DOWNLOADS, set in flubnf/cli.py); the
+    button inside the anchor is the app's download idiom (see Output) #}
  <a href="/retro/{{ season }}/report{{ aq }}" download><button class="gold"
    type="button" style="margin-top:0">Download season report</button></a>
  <button type="button" class="quiet" id="rev-report" style="margin-top:0"
    data-season="{{ season }}" data-archive="{{ archive }}">Reveal in Finder</button>
 </p>
 <script>
- // belt and braces for the native window: generate the report if absent
- // (same builder as the download route), then reveal the file in Finder
- // via the existing /output/reveal endpoint.
+ // build the report if absent (same builder as the download route), then
+ // reveal it via /output/reveal
  (function(){
   var b=document.getElementById('rev-report');
   if(!b)return;
@@ -199,31 +168,19 @@
  })();
 </script>
 <div class="grid2">
- {# card titles come from the shared model-name map (the player's own), so
-    the head cards, the fan toggles, and the report tiles all agree #}
+ {# titles from the shared model-name map #}
  {% for m, v in heads.items() %}
  <div class="card"><h2>{{ model_name(m) }}</h2><div class="big
    {% if v < 1 %}ok{% else %}bad{% endif %}">{{ "%.3f"|format(v) }}</div>
-   {# the convention rides with the number, every time: an unlabelled
-      relWIS is the failure this page is built to prevent. Both conventions
-      put FluSight-baseline at 1, which is why both can be stated against
-      it; what differs is how the cells are pooled to get there.
-
-      Coverage is printed, placement is not. `d` also carries a rank and a
-      field size under the pairwise convention (app/core/relwis); they are
-      deliberately not rendered while placement against the FluSight field
-      stays withdrawn, because this page cannot rebuild the field's scores
-      and Methods says the placement is not restated. #}
+   {# the convention label rides with every number. Coverage is printed;
+      `d`'s pairwise rank and field size are deliberately not (placement
+      stays withdrawn, see Methods) #}
    <p class="hint">relWIS vs the FluSight baseline, {{ figs.label if figs else 'ratio of sums' }}
    {%- set d = (figs.detail.get(m) if figs and figs.detail else None) %}
    {%- if d and d.n_cells %} ({{ "{:,}".format(d.n_cells) }} cells){% endif %}</p></div>
  {% endfor %}
- {# the national series rides as a fourth tile, ALWAYS naming its
-    provenance: a fitted US run and a constructed sum-of-states aggregate
-    are different model outputs, and the tile title is what tells them
-    apart. The full statement sits under the per-state table below. This
-    tile is outside the pooled headline by policy; the note under the
-    tiles says so. #}
+ {# the national tile ALWAYS names its provenance (fitted vs sum of
+    states); it is outside the pooled headline by policy #}
  {% for m in season_models %}{% if us_row and us_row[m] %}
  <div class="card"><h2>{{ us_row.short_label }}: {{ model_name(m) }}</h2><div class="big
    {% if us_row[m] < 1 %}ok{% else %}bad{% endif %}">{{ "%.3f"|format(us_row[m]) }}</div>
@@ -231,39 +188,24 @@
    {% if us_row.fitted %}fitted at the national level, and reported apart from the season figures beside it{% else %}{{ us_row.fallback_note }}, states treated as independent{% endif %}</p></div>
  {% endif %}{% endfor %}
 </div>
-{# THE SAME AVAILABILITY GUARD AGAIN. Both notes below describe the tiles
-   above them, and with no scores under the chosen convention there are no
-   tiles: the scope note went on defining a pooled relWIS the page was not
-   printing, and the US line blamed the convention's shape for an absence
-   the banner had just blamed on missing field data. Two reasons for one
-   absence, a paragraph apart, is the failure this guard exists to stop. #}
+{# no tiles under this convention -> no notes about them #}
 {% if pooled_note and not unavailable %}<p class="hint">{{ pooled_note }}</p>{% endif %}
 {% if conv == 'pairwise' and not unavailable %}
-{# the national series is scored as a ratio of sums, and the pairwise
-   convention here is jurisdictions only (the dashboard's rule and this
-   project's pooled scope agree on that). So it is absent from this view
-   rather than printed in a definition the tiles beside it do not share. #}
+{# the national series is ratio-of-sums only; pairwise is jurisdictions only #}
 <p class="hint">The US national row is not shown under this convention: it
  is scored as a ratio of sums, and the pairwise field here is jurisdictions
  only. It is on the ratio of sums view.</p>
 {% endif %}
 <div class="card"><h2>Cumulative relWIS through the season</h2>
 {% if conv == 'pairwise' %}
-{# a running cumulative figure is a ratio of sums by construction: each
-   point pools every cell scored to that week. There is no cumulative
-   pairwise analogue, and drawing the ratio curve under a pairwise heading
-   would be exactly the mixing this page refuses. #}
+{# a cumulative line is a ratio of sums by construction; no pairwise form #}
 <p class="hint">Not available under this convention: a cumulative line is a
  running ratio of sums by construction, and the pairwise figure has no
  cumulative form. The curve is on the ratio of sums view.</p>
 {% elif curves %}
-{# one line per model the season scored (the two that ship; the retired
-   blend where a season scored before 2026-09-22 stored its rows), each in
-   its member colour. The chart states its own scale: the y range hugs the
-   data (always including the 1.0 and 0.5 gridlines), the first and last
-   week dates sit under the corners, and each line's final cumulative
-   value is printed at its endpoint, so the season verdict reads without
-   hovering a dot #}
+{# one line per scored model in its member colour; the y range hugs the data
+   (always showing the 1.0 and 0.5 gridlines); corner dates and each line's
+   final value are printed #}
 {% set ns = namespace(vals=[]) %}
 {% for m, c in curves.items() %}{% set ns.vals = ns.vals + (c | map('last') | list) %}{% endfor %}
 {% set vals = ns.vals %}
@@ -272,10 +214,7 @@
 {% set lo = [vals | min, 0.45] | min %}
 {% set yspan = hi - lo %}
 {% set xs = 635 / (n - 1 if n > 1 else 1) %}
-{# class cumchart: this chart's labels are sized in viewBox units (see the
-   scoped rules in nau.css), so the label height stays a constant fraction
-   of the rendered chart at every window width instead of ballooning with
-   the rem classes at wide renders #}
+{# cumchart: labels in viewBox units (scoped rules in nau.css) #}
 <svg class="cumchart" viewBox="0 0 720 180" style="width:100%">
  {% for gv, gl in [(1.0, "1.0"), (0.5, "0.5")] %}
  {% set gy = (12 + (hi - gv) * 124 / yspan) | round(1) %}
@@ -299,10 +238,8 @@
        text-anchor="end" font-weight="700" class="svgt-md"
        fill="{{ col }}">{{ "%.3f"|format(cvals[-1]) }}</text>
  {% endfor %}
- {# month ticks between the corner dates, in their style: each tick sits on
-    the first scored week of a new month (month_ticks_for_dates, the shared
-    month helper's date-indexed form), so mid-season reading needs no
-    interpolation between the corners #}
+ {# month ticks on the first scored week of each month
+    (month_ticks_for_dates) #}
  {% for i, lab in month_ticks_for_dates(curve | map('first') | list) %}
  <line x1="{{ (20 + i * xs) | round(1) }}" y1="136" x2="{{ (20 + i * xs) | round(1) }}" y2="142" stroke="var(--mut)"/>
  <text x="{{ (20 + i * xs) | round(1) }}" y="154" text-anchor="middle" fill="var(--mut)" class="svgt-sm">{{ lab }}</text>
@@ -321,9 +258,7 @@
  <div class="row playerbar">
   <button type="button" class="quiet" id="pb-prev" title="Previous week (left arrow)"
     aria-label="Previous week">&#9664;</button>
-  {# the play button's aria-label is state-managed by the shared player
-     (Play when paused, Pause when playing); a static label here would
-     misreport the state on every other press #}
+  {# the play button's aria-label is state-managed by the shared player #}
   <button type="button" class="quiet" id="pb-play">&#9654; Play</button>
   <button type="button" class="quiet" id="pb-next" title="Next week (right arrow)"
     aria-label="Next week">&#9654;</button>
@@ -334,14 +269,11 @@
   </select>
   <input type="range" id="pb-scrub" min="0" max="{{ (weeks|length) - 1 }}" step="1"
          value="{{ weeks.index(week) if week in weeks else 0 }}" aria-label="Week scrubber">
-  {# playback announces itself: the week readout and the status line are
-     polite live regions, so assistive tech hears the player advance #}
+  {# polite live regions announce the player advancing #}
   <span class="hint" id="pb-week" aria-live="polite"></span>
  </div>
- {# plain toggle buttons with aria-pressed, not an ARIA tablist: the tab
-    pattern promises aria-controls, tabpanel roles, and arrow-key roving
-    focus, machinery these two buttons do not carry; a pressed-state button
-    is the honest contract and setView() keeps it true #}
+ {# aria-pressed toggles, not a tablist (no tabpanels or roving focus here);
+    setView() keeps them true #}
  <div class="row viewtabs" role="group" aria-label="Playback view">
   <button type="button" class="quiet" id="tab-map" aria-pressed="true">Outlook map</button>
   <button type="button" class="quiet" id="tab-fc" aria-pressed="false">Forecast detail</button>
@@ -358,8 +290,7 @@
        checked> Lock axes</label>
     </div>
     <div class="fdmodels" id="fd-models"></div>
-    {# reserved height (the fan card's rule): the player draws at its
-       default plotHeight 400, so the first chart landing shifts nothing #}
+    {# reserved height = the player's default plotHeight 400 #}
     <div id="fd-plot" style="min-height:400px"></div>
     <p class="hint" id="fd-msg">loading&hellip;</p>
    </div>
@@ -371,16 +302,11 @@
    <p class="hint" id="pb-status" aria-live="polite"></p>
    <p class="hint" id="pb-offhint" hidden>official comparators appear after
     Update data fetches their submissions</p>
-   {# the player's running figures are a ratio of sums and always have
-      been; saying so here is what keeps them from being read against a
-      pairwise headline above #}
+   {# the player's figures are always ratio of sums #}
    <p class="hint">relWIS below 1 beats the CDC FluSight baseline, ratio of
     sums. Week scores this forecast; cumulative pools every week to the
     playback position.</p>
-   {# only when there ARE pairwise scores to be confused with. The banner
-      above has just said the page has none under this convention, and
-      warning against comparing with scores that are not there reads as a
-      contradiction of it. #}
+   {# only when there ARE pairwise scores to be confused with #}
    {% if conv == 'pairwise' and not unavailable %}
    <p class="hint">The player stays on the ratio of sums whichever
     convention the switch above selects, so these running figures are not
@@ -390,29 +316,17 @@
  </div>
 </div>
 
-{# THE SAME AVAILABILITY GUARD THE BANNER USES. With no scores under the
-   chosen convention this card rendered "Per-state scores / 0 states
-   scored" over an empty table, under a caption describing a per-state
-   tournament that had not been run: a full description of a table that is
-   not there. The banner above is the page's one statement of that state,
-   so the card stands down entirely rather than restating it emptily. #}
+{# stands down with the banner: no empty per-state table #}
 {% if not unavailable %}
 <div class="card">
-{# the per-state table folds like the Runs page's storage panel: OPEN by
-   default, the open state persisted per localStorage exactly as the other
-   folds. Inside, client-side controls for a 52-row table: sort by state
-   name or any member's score (aria-pressed header buttons, the app's
-   pressed-state idiom; a second press flips the direction) and a text
-   filter that narrows rows by state name as you type. Plain JS on data
-   attributes; rows only reorder and hide, the markup is the single source.
-   Color still marks exceptions only: scores at or above 1 (lost to the
-   baseline) are colored, beating it is the norm and stays quiet; numeric
-   columns carry the shared .num right alignment. #}
+{# per-state fold: OPEN by default, persisted in localStorage. Client-side
+   sort (aria-pressed header buttons; a second press flips) and a name
+   filter over data-* attributes; rows only reorder and hide. Only scores
+   >= 1 (lost to the baseline) are colored. #}
 <details class="ledgerfold" id="statefold" open>
  <summary><h2 style="display:inline">Per-state scores</h2>
   <span class="hint"> {{ states|length }} state{{ '' if states|length == 1 else 's' }} scored</span></summary>
- {# the table names its convention once, at the top, because every cell in
-    it came from that one definition; the switch above is what changes it #}
+ {# the convention, named once for every cell #}
  <p class="hint">relWIS vs the FluSight baseline, {{ figs.label if figs else 'ratio of sums' }}.
  {% if conv == 'pairwise' %}Each jurisdiction is its own tournament: the
   field is restricted to that jurisdiction's cells, which is a restriction
@@ -433,11 +347,8 @@
   {% endfor %}
  </tr></thead>
  <tbody>
- {# the national series leads the table as a DISTINCT row, wearing the
-    label that says where it came from (fitted, or the sum-of-states
-    fallback), per the note under the table. It sorts and filters with the
-    state rows so a score ranking places it honestly among them, and it is
-    NOT part of the pooled figures above. #}
+ {# the national row leads as a DISTINCT row with its provenance label; it
+    sorts and filters with the states but is NOT in the pooled figures #}
  {% if us_row and (us_row.pf or us_row.analogue or us_row.ensemble) %}
  <tr class="usagg" data-name="{{ us_row.short_label }}"
   {%- for m in season_models %} data-{{ m }}="{{ "%.6f"|format(us_row[m]) if us_row[m] else '' }}"{% endfor %}>
@@ -459,9 +370,8 @@
 {% endif %}
 </details>
 <script>
- // the fold persists like the storage panel's (open by default); the sort
- // and filter state is per-visit only, so the page always loads in the
- // server's alphabetical order
+ // the fold state persists (open by default); sort and filter are
+ // per-visit, so the page always loads in the server's order
  (function(){
   var d=document.getElementById('statefold');
   if(d){
@@ -494,11 +404,8 @@
     var on=b.dataset.key===key;
     b.setAttribute('aria-pressed',String(on));
     b.querySelector('.dir').textContent=on?(dir>0?' ▲':' ▼'):'';
-    // assistive tech hears what the aria-hidden triangle shows: the
-    // sorted column's th states the direction, every other th drops the
-    // attribute (the unsorted initial render legitimately carries none).
-    // Runtime only: a th attribute in the server markup would change the
-    // markup contract this table is pinned to.
+    // aria-sort on the sorted th only, set at runtime (the server markup
+    // is test-pinned)
     var th=b.closest('th');
     if(th){
      if(on)th.setAttribute('aria-sort',dir>0?'ascending':'descending');
@@ -526,33 +433,22 @@
 {% endif %}
 
 <script>
- // live host for the shared season player (loaded above from player.js in
- // the app's static directory): this page supplies the network-backed
- // payload getter, the outlook-map view, and the console palette; the
- // player itself (controls wiring, forecast detail, view-state
- // persistence, per-model availability) is the shared implementation.
- // Forecast and stats data come from the season playback API:
- // /api/retro/{season}/playback/{asof}, whose payload fields are asof,
- // locations, truth, models, official, stats. The payload variable is
- // ALWAYS named `pl` so the contract test can verify the JS reads only
- // fields the API defines.
- // pf's name on THIS tree (server._names_for_root: the particle filter
- // alone on a sealed record or a replay from before the Oracle step), set
- // into the player's shared name map before anything below draws. player.js
- // keeps one MODEL_NAMES object and reads it by reference (nameOf), so the
- // legend, toggles and stats table follow, as does MNAMES below.
+ // live host for the shared player (player.js): fetch-backed payloads from
+ // /api/retro/{season}/playback/{asof} (fields: asof, locations, truth,
+ // models, official, stats), the outlook-map view, the console palette.
+ // The payload variable is ALWAYS `pl` (contract test).
+ // pf's name for THIS tree (server._names_for_root) goes into the player's
+ // shared name map first; everything reads it by reference.
  FluBNFPlayer.MODEL_NAMES.pf = {{ model_name('pf') | tojson }};
  const SEASON = {{ season | tojson }};
  const WEEKS = {{ weeks | tojson }};
- // an archived run is read through the very same routes, identified by one
- // query parameter that every fetch below appends
+ // an archived run: the same routes plus one query parameter
  const ARCHIVE = {{ (archive or '') | tojson }};
  const AQ = ARCHIVE ? 'archive=' + encodeURIComponent(ARCHIVE) : '';
  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 
- // ---- playback payload cache, with in-flight dedupe. A failed fetch keeps
- // the server's own message (or the network error) in PERR so the panel can
- // say what actually went wrong instead of going blank ----
+ // ---- payload cache with in-flight dedupe; PERR keeps the failure message
+ // for the panel ----
  const PAY = {}, PPROM = {}, PERR = {};
  function ensurePayload(w){
    if(w in PAY) return Promise.resolve(PAY[w]);
@@ -573,21 +469,12 @@
    return PPROM[w];
  }
 
- // ---- categorical map per week: ONE SVG, mutated per frame ----
- // The old path refetched this ENTIRE page per week and rebuilt the
- // 52-path SVG with innerHTML (plus re-running its interaction script) on
- // every scrub event, which made map scrubbing visibly slower than the
- // line plots (profiled 2026-08-22). Now the server-rendered map of the
- // initial week is the only SVG this view ever builds; each week fetches
- // a few-kilobyte swap payload (/api/retro/{season}/mapswap/{asof}: fips
- // to fill, opacity, hover -- the model-toggle swap mechanism) and a
- // frame only mutates path fills. Tooltips, zoom, and pan live on the one
- // surviving SVG, so hand zoom even survives scrubbing now.
+ // ---- categorical map per week: ONE SVG, mutated per frame. The
+ // server-rendered SVG is the only one built; each week fetches a small
+ // /api/retro/{season}/mapswap/{asof} payload and only path fills change,
+ // so tooltips, zoom and pan survive scrubbing ----
  const SWAP = {}, SPROM = {};
- // the model the map shows: the toggle's pressed button (the PF when the
- // week stored it), followed across weeks; the toggle's own script swaps
- // the initial week's fills, this re-renders the current one for every
- // other week from its fetched payload
+ // the map's model follows the toggle's pressed button across weeks
  const MNAMES = FluBNFPlayer.MODEL_NAMES || {};
  let CURM = (function(){
    const b = document.querySelector('#retro-model button[aria-pressed="true"]');
@@ -608,8 +495,7 @@
                     + '/mapswap/' + encodeURIComponent(w)
                     + (AQ ? '?' + AQ : ''))
      .then(r => {if(!r.ok) throw new Error(String(r.status)); return r.json();})
-     // every model the week stored, keyed by model; `states` alone is the
-     // shape from before the map learned every model (2026-09-23)
+     // keyed by model; a bare `states` is the pre-2026-09-23 shape
      .then(d => {SWAP[w] = (d && d.models && Object.keys(d.models).length)
                    ? d.models
                    : ((d && d.states) ? {[CURM || 'pf']: {states: d.states}} : null);
@@ -618,10 +504,8 @@
      .finally(() => {delete SPROM[w];});
    return SPROM[w];
  }
- // Scrub coalescing: events only record the wanted week; at most one
- // mutation pass runs per animation frame, always for the LATEST wanted
- // week, so fast scrubbing renders the frames a human can see instead of
- // every intermediate one.
+ // scrub coalescing: one mutation pass per animation frame, for the LATEST
+ // wanted week
  let wantWeek = null, rafPending = false;
  function renderMap(){
    rafPending = false;
@@ -640,8 +524,8 @@
      if(note){note.textContent = 'map unavailable for ' + w; note.hidden = false;}
      return;
    }
-   // the selected model's fills; a week that did not store the selected
-   // model says so instead of showing another model's map under its name
+   // a week without the selected model says so (never another model's map
+   // under its name)
    const pick = (CURM && st[CURM]) ? st[CURM] : st[Object.keys(st)[0]];
    if(!pick || !pick.states){
      if(note){note.textContent = 'map unavailable for ' + w; note.hidden = false;}
@@ -657,8 +541,7 @@
      if(!s) return;
      p.setAttribute('fill', s.f);
      p.setAttribute('fill-opacity', s.o);
-     // the click affordance rides the path, not the week (the model
-     // toggle's own rule)
+     // the click affordance rides the path (the model toggle's rule)
      p.dataset.hover = s.h + (p.dataset.abbr ? '<br>click for details' : '');
    });
  }
@@ -675,14 +558,9 @@
  const player = FluBNFPlayer.init({
    weeks: WEEKS,
    mode: 'live',
-   // season-level official availability, computed server-side so the
-   // two-tier toggles are correct before the first payload arrives
+   // server-side, so the toggles are right before the first payload
    seasonOfficials: {{ (official_catalog or []) | tojson }},
-   // the US national series and WHERE IT CAME FROM, resolved server-side
-   // through the one resolution order (app/core/us_national). The player
-   // labels its location entry, its chart title, and its empty-frame
-   // caption from this, so a fitted national forecast can never be read
-   // as the sum-of-states fallback or the other way round.
+   // the US series and its provenance (app/core/us_national)
    us: {{ (us or {}) | tojson }},
    getPayload: ensurePayload,
    payloadError: w => PERR[w],
@@ -690,15 +568,10 @@
    detailVisible: () => V.view === 'fc',
    onSeek: w => {if(V.view === 'map') showMap(w);},
    preload: w => {if(V.view === 'map') fetchMap(w);},
-   // ours: cyan family plus gold, solid; officials: greys, dashed or
-   // dotted. Re-read per redraw so a theme change repaints correctly.
-   // card is the surface the plot sits on: the layout states it as the
-   // explicit chart background so the save-PNG export stays readable
+   // re-read per redraw; card = the explicit chart background (saved PNGs)
    palette: () => ({ink: css('--ink'), mut: css('--mut'),
      line: css('--line'), card: css('--card'),
-     // the one member-color map the player itself carries; ensemble alone
-     // stays theme-resolved through --gold (the readable accent-ink
-     // variant of the same cyan identity on light grounds)
+     // the player's member colors; ensemble alone resolves through --gold
      models: Object.assign({}, FluBNFPlayer.MODEL_COLORS,
                            {ensemble: css('--gold')
                                       || FluBNFPlayer.MODEL_COLORS.ensemble}),
@@ -718,8 +591,7 @@
  }
  document.getElementById('tab-map').onclick = () => setView('map');
  document.getElementById('tab-fc').onclick = () => setView('fc');
- // the initial week is already painted server-side: mark it rendered and
- // warm its swap payload so returning to it after a scrub is instant
+ // the initial week is painted server-side; warm its swap payload
  (function(){
    const w0 = WEEKS[player.idx()];
    document.getElementById('view-map').dataset.week = w0;

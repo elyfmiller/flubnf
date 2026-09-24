@@ -7,8 +7,7 @@
 and move on; scoring waits for settled truth.</p>
 <div class="cols">
  <div><div class="card"><h2>Settings</h2>
-  {# platform-aware: app/ui/server.py:_engine_setup_hint. Never hardcode a
-     macOS-only filename here; a Windows reader cannot open one. #}
+  {# platform-aware (server.py _engine_setup_hint): never a macOS-only filename #}
   {% if not engine_ok %}<p class="warn">The full replay requires the
   particle-filter engine: {{ engine_setup_hint() }}. The Groundhog-only
   preset and everything else work without it.</p>{% endif %}
@@ -26,12 +25,9 @@ and move on; scoring waits for settled truth.</p>
        value="{{ l }}"> {{ l }}</label>
      {% endfor %}
    </div>
-   {# US national is fitted BY DEFAULT, the same rule the Forecast tab
-      applies (it appends the national location to every run). A select,
-      never a checkbox: a checkbox posts nothing when cleared, so the
-      server could not tell "states only" from an old client that never
-      sent the field, and the default has to be on. The all scope with
-      this on is 53 locations: the 52 jurisdictions plus US national. #}
+   {# US national fitted by default, as on Forecast ("all" = 53 locations).
+      A select, not a checkbox: a cleared checkbox posts nothing, so the
+      server could not tell "states only" from an old client #}
    <label>US national</label>
    <select name="national">
      <option value="1">fit US national too (default)</option>
@@ -43,37 +39,29 @@ and move on; scoring waits for settled truth.</p>
    <label>Shard width (parallel runners; auto for this machine)</label>
    <input type="number" name="width" value="{{ default_width }}" min="1" max="{{ width_cap }}">
    <label>Engine preset</label>
-   {# the full competition path is the Oracle SIHRS beside the Groundhog:
-      every week the particle filter is fitted from the season start and
-      the Oracle step applied with that week's vintage and donor pool
-      (hours per season, needs the engine venv). The value stays "pf", the
-      member's internal key. The Groundhog alone replays in minutes with no
-      engine at all, and is the way to reproduce its published numbers on
-      any machine #}
+   {# "pf" (internal key) = Oracle SIHRS + Groundhog: hours, needs the engine
+      venv. "analogue" = Groundhog alone: minutes, no engine, reproduces its
+      published numbers anywhere #}
    <select name="engine" id="retro-engine">
      <option value="pf">Oracle SIHRS and the Groundhog (hours)</option>
      <option value="analogue">Groundhog only (minutes, no engine needed)</option></select>
    <p class="hint">A replay is how a season's Oracle SIHRS numbers are made:
    each week the filter is fitted from the season start and the Oracle step
    applied with that week's data and donor pool, as a live run does.</p>
-   {# what the start-over prompt resolves to. 'resume' is the historical
-      behaviour and the value a keyboard submit carries, so the form is
-      always safe even if the prompt never runs. #}
+   {# set by the start-over prompt; defaults to 'resume', so a keyboard submit
+      without the prompt is safe #}
    <input type="hidden" name="mode" value="resume">
    <input type="hidden" name="confirm" value="">
-   {# a running season no longer disables this button: the per-button guard
-      checks /api/busy on click and offers stop-and-proceed instead. A PAUSED
-      season is reported busy there too, so starting over one still warns.
-      data-startover adds the second question: a season that already has
-      completed weeks asks whether to resume, archive, or discard them. #}
+   {# data-guard checks /api/busy (a paused season counts as busy) and offers
+      stop-and-proceed; data-startover asks resume/archive/discard when the
+      season has completed weeks #}
    <button class="gold" data-guard="retro-run" data-startover="1"
      id="retro-run-btn" {% if not engine_ok %}disabled{% endif %}>
      Run retrospective</button>
    {% if not engine_ok %}
    <script>
     (function(){
-      // no engine venv: the button follows the preset, since the
-      // Groundhog-only replay needs none
+      // no engine venv: only the Groundhog-only preset can run
       var e=document.getElementById('retro-engine'),
           b=document.getElementById('retro-run-btn');
       function sync(){ b.disabled = (e.value === 'pf'); }
@@ -98,15 +86,11 @@ and move on; scoring waits for settled truth.</p>
        data-done="{{ s.done }}" data-total="{{ s.total }}"
        data-results="{{ 1 if s.done > 0 else 0 }}">
    <h2>{{ s.name }}</h2>
-   {# a completed season's bar says nothing (it is always 100%); the number
-      anyone comes to compare is the season relWIS, so a scored complete
-      season prints it instead, in the same archived-row style the sub-rows
-      below already use. Active and unfinished seasons keep their bars. #}
+   {# a scored complete season prints its relWIS instead of a 100% bar #}
    {% set s_complete = (s.rel is defined) and (s.rel is not none)
       and s.total and s.done >= s.total and not s.active %}
    {% if s.active %}
-   {# a live replay gets the console's run treatment: one solid fill on a
-      visible track, driven by weeks completed out of the season's weeks #}
+   {# live replay: the console's run bar, driven by the ticker #}
    <div class="runbar"><div class="rfill" style="width:2%"></div></div>
    <p class="runstat rstat">{{ s.done }}/{{ s.total }} weeks</p>
    <p class="hint rbasis"></p>
@@ -114,25 +98,15 @@ and move on; scoring waits for settled truth.</p>
    <progress value="{{ s.done }}" max="{{ s.total }}"></progress>
    {% endif %}
    <div class="row" style="justify-content:space-between">
-    {# .rcount: the live ticker updates every element that states progress,
-       so this line can never disagree with the .rstat headline above it
-       (field-found: a card that read "10/32" up top and a stale "1/32"
-       here, because only the headline was ever repainted) #}
+    {# .rcount is repainted by the ticker with .rstat, so they never disagree #}
     <span class="hint"><span class="rcount">{{ s.done }}/{{ s.total }} weeks</span>{% if s.seal %} · {{ s.seal_label }}{% endif %}
-     {# the convention travels with the score. Two quantities are called
-        relWIS and they are not comparable, so an unlabelled one on an
-        index card is how the wrong comparison gets made. Every figure on
-        this page is the ratio of sums, the convention every sealed number
-        was computed under; a season's results page carries the switch to
-        the CDC dashboard's pairwise convention, which needs field data
-        this page would have to load once per card. #}
-     {# one headline per model the season scored (PF first; the retired
-        blend where a season scored before 2026-09-22 stored its rows); a
-        card carrying only `rel` prints it unnamed #}
+     {# the convention travels with the score: every relWIS on this page is
+        the ratio of sums (the sealed numbers' convention). One headline per
+        scored model (PF first; the retired blend for seasons scored before
+        2026-09-22); a card with only `rel` prints it unnamed #}
      {% set s_rels = s.rels if (s.rels is defined and s.rels) else ({'': s.rel} if s_complete else {}) %}
-     {# pf is named for what THIS card's tree stores (s.pf_name, from
-        server._names_for_root): a sealed record, or a replay from before
-        the Oracle step, holds the particle filter alone #}
+     {# pf is named for THIS card's tree (s.pf_name, server._names_for_root):
+        sealed or pre-Oracle trees hold the particle filter alone #}
      {% if s_complete %}{% for m, v in s_rels.items() %} &middot; {{ ((s.pf_name if (m == 'pf' and s.pf_name) else model_name(m)) ~ ' ') if m }}relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{% endfor %} vs FluSight baseline, ratio of sums{% endif %}
      {% if s.status == 'running' %}<span class="warn">· running</span>
      {% elif s.status == 'stopping' %}<span class="warn">· stopping after the fits in flight</span>
@@ -145,24 +119,16 @@ and move on; scoring waits for settled truth.</p>
     {% if s.done > 0 %}<a href="/retro/{{ s.name }}"><button class="quiet" type="button" style="margin-top:0">Results →</button></a>{% endif %}
    </div>
    {% if s.elapsed_s and s.elapsed_s >= 1 and not s.active %}
-   {# a finished replay reports its total; a live one has the ticking
-      readout above, and two clocks on one card would only disagree. A
-      sub-second record (a season replayed before timing existed, touched
-      since) would render as a fabricated 0:00:00: say nothing instead #}
+   {# finished replays only (live ones tick above); a sub-second record
+      predates timing and would read as a fabricated zero, so say nothing #}
    <p class="hint timing">total wall time {{ s.elapsed_s | hms }}{% if s.mean_s %} · mean {{ "%.0f"|format(s.mean_s) }} s per week over {{ s.weeks_measured }} timed{% endif %}</p>
    {% endif %}
-   {# the settings this replay runs under, from its own run record: under
-      the progress readouts and secondary to them. Absent for the sealed
-      validation runs, which predate the record. #}
+   {# settings from the run record (absent for sealed runs, which predate it) #}
    {{ settings_html(s.settings) | safe }}
    {% if not s.active and s.resume_fields %}
-   {# a stopped or interrupted replay resumes in one click, with the
-      settings its own run record holds (server-fed hidden fields): no
-      re-filling the form. mode=resume keeps every completed week, and an
-      interrupted week refits only the cells that never ran. The button
-      carries the same guard as the form it shortcuts, and /retro/run
-      applies the same server-side busy cross-checks. Seasons that predate
-      the record get no button; the form path remains for those. #}
+   {# one-click resume from the run record's settings: completed weeks are
+      kept and an interrupted week refits only the cells that never ran.
+      Same guard and server checks as the form; no record, no button. #}
    <div class="row">
     <form method="post" action="/retro/run" class="resume-run">
      {% for k, v in s.resume_fields.items() if k != "custom_locations" %}
@@ -179,8 +145,8 @@ and move on; scoring waits for settled truth.</p>
     interrupted week refits only the cells that never ran.</p>
    {% endif %}
    {% if s.active %}
-   {# stopping and pausing are safe: only the fits in flight finish, each
-      finished fit is checkpointed, so neither needs a confirmation modal #}
+   {# stop/pause need no confirmation: in-flight fits finish, each is
+      checkpointed #}
    <div class="row">
     {% if s.paused %}
     <form method="post" action="/retro/{{ s.name }}/resume"><button class="gold">Resume</button></form>
@@ -192,9 +158,8 @@ and move on; scoring waits for settled truth.</p>
    <p class="quip rquip"></p>
    {% endif %}
    {% if s.archives %}
-   {# archived runs: secondary entries under their season. Each one is a
-      complete frozen tree, so its results page, player, and report all work
-      exactly as the live season's do. #}
+   {# archived runs: complete frozen trees; results, player and report work
+      as for the live season #}
    <p class="hint" style="margin:.8rem 0 .2rem">{{ s.archives|length }} archived run{{ "" if s.archives|length == 1 else "s" }} kept</p>
    {% for a in s.archives %}
    <div class="archrow">
@@ -220,10 +185,8 @@ and move on; scoring waits for settled truth.</p>
  </div>
 </div>
 <script>
- // Deleting an archived run is permanent, so it goes through the shared
- // confirmation shell in base.html, naming the season, the run, its week
- // count, and what it occupies on disk. The confirmation field is filled in
- // only on confirmation; the server refuses the POST without it.
+ // archive delete: the shared confirmation shell; confirm is filled only on
+ // confirmation (the server refuses the POST without it)
  (function(){
   document.querySelectorAll('[data-del-archive]').forEach(function(b){
    b.addEventListener('click',function(){
@@ -244,14 +207,8 @@ and move on; scoring waits for settled truth.</p>
 </script>
 {% if seasons | selectattr("running") | list or seasons | selectattr("paused") | list %}
 <script>
- // Live replay tickers, from the shared implementation in
- // /static/retro_progress.js (the season page runs the very same code).
- // It yields to an open run-interference guard modal and to a form that
- // holds focus: while GUARD_BUSY is set, or the user is inside a form (a
- // half-marked custom-locations checklist), nothing reloads, so neither a
- // pending stop-and-proceed nor form state is wiped. The ticker keeps
- // polling and painting, so no readout stalls; the reload lands on the
- // first poll after the modal closes or focus leaves the form.
+ // live tickers (retro_progress.js); reloads yield to the guard modal
+ // (GUARD_BUSY) and to a focused form
  FluBNFRetroTicker.init({busy: function(){
    return !!window.GUARD_BUSY
      || (document.activeElement && document.activeElement.form);

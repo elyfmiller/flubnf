@@ -1,21 +1,12 @@
 {% extends "base.html" %}{% import "diagrams.html" as dg %}
 {% block title %}FluBNF · {{ title }}{% endblock %}
-{# rebuild 2026-08-22: the Models views use the same shell as every other
-   page -- cards span the main column, text at the card's content width in
-   normal block flow, figures and equation panels center. #}
 {% block head %}<script src="/static/plotly.min.js"></script>{% endblock %}
 {% block content %}
 <h1>{{ title }}</h1>
-{# the Models tab's in-page switcher: plain buttons stating aria-pressed,
-   the same honest-toggle pattern the season player's view tabs carry. Each
-   button navigates to its model's page (the data behind the fans is
-   rendered server-side per model); the PF button points at the canonical
-   /models route, the rest at the /model/<name> routes that stay live for
-   exported reports and bookmarks. The two-strain page keeps its existing
-   label and is marked as the research option; it has no navigation tab. #}
+{# model switcher: aria-pressed buttons that navigate (PF -> /models, others
+   -> /model/<name>); the research-only page has no nav tab #}
 <div class="row viewtabs" role="group" aria-label="Model view">
- {# labels come from the shared model-name map (the player's own), so the
-    switcher, the fan toggles, and the season head cards agree #}
+ {# labels from the shared model-name map #}
  {% for mn, mhref in [("pf", "/models"),
                       ("analogue", "/model/analogue"),
                       ("pf2s", "/model/pf2s")] %}
@@ -30,12 +21,9 @@
  <p class="sub" style="margin-top:.55rem">{{ blurb }}</p>
 </details>
 <div class="card mech">
- {# each mechanism drawing carries its defining equation directly beneath
-    it: the compact line that states what the picture computes. The
-    Oracle SIHRS is two pictures: the pipeline that makes the submitted forecast
-    (the filter's fit, the donor pool, the per-sample growth blend) with
-    the blend's equations, then the compartment model the filter fits,
-    with its own. #}
+ {# each mechanism drawing carries its defining equation beneath it; the
+    Oracle SIHRS gets two (the forecast pipeline, then the compartment
+    model the filter fits) #}
  {% if name == "pf" %}
  <h2>How the forecast is made</h2>
  {{ dg.oracle_pipeline(uid='mo') }}{{ dg.eq_oracle() }}
@@ -57,9 +45,7 @@
  <a href="/methods#{{ manchor }}">Methods</a>.</p>
 </div>
 {% if bngl_src %}
-{# the model definition itself, read from the template file at render time
-   and shown as stored; presentation only, never written from here. The
-   analogue has no BNGL and renders no such block. #}
+{# the BNGL template file as stored, read at render time (read-only) #}
 <details class="card bngl">
  <summary>View model source (BNGL)</summary>
  <p class="hint">flubnf/templates/{{ bngl_file }}, shown exactly as stored;
@@ -86,9 +72,7 @@
     <input type="hidden" name="engine" value="{{ 'pf' if name == 'pf' else 'analogue' }}">
     <input type="hidden" name="weeks_to_drop" value="0">
     <input type="hidden" name="weeks_to_nowcast" value="0">
-    {# the same interference guard as the Forecast tab's Run button: this
-       posts to the same /run endpoint, and starting it over a fitting
-       retrospective would double-book the engine just the same #}
+    {# same /run endpoint, so the same interference guard as Forecast #}
     <button class="gold" data-guard="console-run">Run {{ title }} only</button>
    </form>
   {% endif %}
@@ -104,19 +88,17 @@
 <script>
  const FANQ = {{ fanq_json | safe }};
  const ROBS = {{ run_obs_json | safe }};
- // raw member medians over the fan (empty since the blend's page went)
+ // raw member medians over the fan: server.py always sends {} now (the
+ // retired blend's page), so the overlay loop below never runs
  const OVERLAY = {{ overlay_json | safe }};
  const MDASH = {pf:'solid', analogue:'dash', pf2s:'dot'};
- // this page's model, and the one model-name map (the shared player's,
- // via the server)
+ // this page's model; the shared model-name map
  const MNAME = {{ name | tojson }};
  const MNAMES = {{ model_names_json | safe }};
  const SERIES = {};
  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
- // the one member-color map (the shared player's marked JSON, via the
- // server), dichromat-spaced 2026-08-21. The retired blend's entry
- // stays theme-resolved through the accent token. Re-read per draw so a
- // theme change repaints correctly.
+ // the shared member-color map; the retired blend resolves through --gold
+ // (re-read per draw)
  const MCOLORS = {{ member_colors_json | safe }};
  function memberColor(m){
    return m==='ensemble'?(css('--gold')||MCOLORS.ensemble)
@@ -127,33 +109,22 @@
      return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';}
    return c;
  }
- // chart text rides the type system: the brand face with a system fallback,
- // sized from the root font size so the A-/A/A+ control reaches it. Ticks
- // and legend sit at .85rem (above the .82rem hint floor), the title one
- // step up; automargin lets the tick labels own their margins, so the
- // tight base margins leave no dead band and nothing clips at A+.
+ // chart text in root px so A-/A/A+ reaches it (ticks/legend .85, title .95)
  const rootPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
- // explicit card-surface background (identical on screen to the old
- // transparency): the save-PNG export then carries an opaque theme ground
- // inside the file, so the image stays readable on its own
+ // explicit card-surface background so a saved PNG stays readable
  function lay(t,h){const fs=rootPx(),surf=css('--card');
   return {title:{text:t,font:{size:Math.round(fs*.95)}},height:h||400,
   margin:{l:8,r:8,t:Math.round(fs*2.2),b:8},paper_bgcolor:surf,
   plot_bgcolor:surf,
   font:{color:css('--ink'),family:'"DM Sans",system-ui,sans-serif',
         size:Math.round(fs*.85)},
-  // horizontal legend under the plot (it pushes the bottom margin out for
-  // itself): a right-hand legend of long entries left a dead band
+  // legend under the plot (a right-hand one left a dead band)
   legend:{orientation:'h',x:0,xanchor:'left',y:-0.22,yanchor:'top'},
   xaxis:{gridcolor:css('--line'),automargin:true},
   yaxis:{gridcolor:css('--line'),rangemode:'tozero',automargin:true}};}
  const LOCS=Object.keys(FANQ); let IDX=0;
- // the pager shell renders ONCE and only the plot content changes:
- // rebuilding the shell on every flip destroyed the plot while the series
- // fetch was in flight, the page briefly lost the chart's height, and the
- // browser clamped the scroll position upward (a visible jump to the top
- // on slow fetches). The plot div reserves the chart's height for the
- // same reason, and Plotly.react below repaints in place.
+ // the pager shell renders once and Plotly.react repaints in place (with a
+ // reserved height), so a flip never collapses the card or jumps the scroll
  if(LOCS.length){
    document.getElementById('mfan').innerHTML=
      '<div class="carousel"><button type="button" class="quiet cnav" id="pv">◀</button>'
@@ -193,8 +164,7 @@
    const med=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.5'])];
    const lo=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.1'])];
    const hi=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.9'])];
-   // the fan wears THIS page's member color: band at .2 alpha, median full
-   // strength, so the PF fan no longer wears the analogue's color
+   // the fan wears THIS page's member color
    const mc=memberColor(MNAME);
    const traces=[
     {x:obsX,y:obsY,mode:'lines+markers',name:'observed (as of '+FD+')',line:{color:css('--ink')}},
@@ -204,9 +174,7 @@
    ];
    if(aftX.length) traces.push({x:aftX,y:aftY,mode:'lines+markers',
     name:'settled outcome',line:{color:css('--ink'),dash:'dot',width:1.4},marker:{size:4}});
-   // raw member medians over the fan: thin distinct lines, hidden until
-   // toggled on via their legend items, each in its member's own color
-   // and shared display name
+   // overlay medians: legend-only lines in each member's color
    for(const m of Object.keys(OVERLAY)){
      const md=(OVERLAY[m]||{})[loc]; if(!md) continue;
      traces.push({x:xs,y:hs.map(h=>md[h]!=null?md[h]:null),mode:'lines',

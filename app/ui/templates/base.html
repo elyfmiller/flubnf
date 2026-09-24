@@ -4,10 +4,8 @@
 <title>{% block title %}FluBNF{% endblock %}</title>
 <link rel="icon" href="/favicon.ico" sizes="48x48">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/brand/favicon-32.png">
-{# DM Sans is self-hosted (static/fonts/, OFL license alongside): the app
-   claims to load no external assets, and until 2026-08-26 this file was
-   the one place that made that claim false. Works offline, phones home to
-   nobody. #}
+{# DM Sans is self-hosted (static/fonts/, OFL): the app loads no external
+   assets and works offline #}
 <link rel="stylesheet" href="/static/fonts/dm-sans.css">
 <link rel="stylesheet" href="/static/nau.css">
 <script>
@@ -17,9 +15,8 @@
   if(['light','paper','dim','dark'].indexOf(t)<0)
    t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
   document.documentElement.setAttribute('data-theme',t);
-  // accessibility modifiers before first paint, mirroring the theme: an
-  // explicit choice persists; with no stored choice, high contrast
-  // follows the OS preference (prefers-contrast: more) as the default
+  // a11y modifiers before first paint: a stored choice wins; otherwise
+  // high contrast follows the OS (prefers-contrast: more)
   var c=localStorage.getItem('contrast');
   if(c!=='high'&&c!=='normal')
    c=matchMedia('(prefers-contrast: more)').matches?'high':'normal';
@@ -37,14 +34,9 @@
   <a class="brand" href="/" aria-label="FluBNF home">
     <img class="mark" src="/static/brand/pybnf_icon.svg" alt="">
     <span><em>Flu</em>BNF</span></a>
-  {# The tab order is the operational loop the home page teaches: Data,
-     Forecast, Output, then the review surfaces. The three model reference
-     pages live behind the one Models tab (canonical /models, defaulting to
-     the PF view, with an in-page switcher); the old /model/<name> routes
-     stay live for exported reports and bookmarks. /model/pf2s stays routed
-     and reachable by direct URL for research use; it is off the primary
-     navigation because the two-strain member failed its full-grid
-     gate and does not ship. See Methods. #}
+  {# tabs follow the weekly loop (Data, Forecast, Output), then the review
+     pages. /model/<name> stays routed for reports and bookmarks; /model/pf2s
+     is research-only (failed its full-grid gate, does not ship). #}
   {% set tabs = [("/","Home"),("/data","Data"),("/forecast","Forecast"),
                  ("/output","Output"),("/retro","Retrospective"),
                  ("/storage","Storage"),("/models","Models"),
@@ -64,9 +56,7 @@
     <button type="button" data-th="dim" title="Dim theme: softened dark">Dim</button>
     <button type="button" data-th="dark" title="Dark theme">Dark</button>
   </div>
-  {# two independent accessibility modifiers, composing with every theme:
-     high contrast (stronger ink, boundaries, fills, focus) and the
-     red-green-safe palette (blue/orange replaces green/red app-wide) #}
+  {# two independent a11y modifiers, composing with every theme #}
   <div class="a11ypick" role="group" aria-label="Accessibility modes">
     <button type="button" data-ax="contrast" aria-pressed="false"
       aria-label="High contrast"
@@ -76,11 +66,8 @@
       title="Color-vision mode: blue and orange replace green and red">CV safe</button>
   </div>
 </header>
-{# one shell for every page (rebuild 2026-08-22): the reference pages use
-   the same fluid main column as the operational pages -- cards span it,
-   text runs at the card's content width, figures and equation panels
-   center. The main_class block remains as an extension point but no page
-   sets it. #}
+{# one shell for every page. No page sets main_class, but tests pin the
+   rendered empty class="" #}
 <main id="main" class="{% block main_class %}{% endblock %}">{% if restart_needed() %}
  <div class="banner" role="alert"><strong>Update pulled.</strong> This window
  still runs build {{ running_sha() }}. Quit the app fully and reopen; a page
@@ -88,9 +75,7 @@
 {% endif %}{% set _f = pop_flash() %}{% if _f %}
  <div class="banner" role="status">{{ _f }}</div>
 {% endif %}{% block content %}{% endblock %}{% if research_panel %}
-{# the research run control, rendered only when a route asks for it (the
-   two-strain model view): the pf2s page's own template belongs to the
-   report/player surface set, so the shell mounts the panel from here #}
+{# research run control, only when a route sets research_panel (/model/pf2s) #}
 {% include "research_run.html" %}
 {% endif %}</main>
 <div id="guard-modal" class="modal-back" hidden>
@@ -106,11 +91,8 @@
   </div>
  </div>
 </div>
-{# The start-over prompt: the same modal component as the run-interference
-   guard above, with the four choices a season that already has results
-   offers. It doubles as the confirmation shell for any destructive control
-   (window.FluBNFConfirm), so a delete confirmation looks and behaves like
-   every other stop-and-think in the application. #}
+{# start-over prompt (four choices for a season with results); doubles as
+   window.FluBNFConfirm for any destructive control #}
 <div id="startover-modal" class="modal-back" hidden>
  <div class="modal wide card" role="dialog" aria-modal="true"
       aria-labelledby="so-title">
@@ -130,12 +112,9 @@
  </div>
 </div>
 <script>
- // external links must never navigate the app shell away: the native window
- // (pywebview/WKWebView) has no back control, so a plain external anchor is a
- // dead end there. Forcing target=_blank makes pywebview hand the URL to the
- // system browser (OPEN_EXTERNAL_LINKS_IN_BROWSER default); in a normal
- // browser it simply opens a new tab. Runs in the capture phase so it also
- // covers anchors injected after load.
+ // external links open in a new window: the pywebview shell has no back
+ // control, and target=_blank hands the URL to the system browser. Capture
+ // phase covers anchors injected after load.
  addEventListener('click',function(e){
    var a=e.target&&e.target.closest?e.target.closest('a[href]'):null;
    if(!a)return;
@@ -153,11 +132,8 @@
  addEventListener('load',()=>{const k='scy:'+location.pathname,y=sessionStorage.getItem(k);
    sessionStorage.removeItem(k);
    if(y && !location.hash) scrollTo(0,parseInt(y));});
- // theme picker: four options stating aria-pressed, mirroring the text-size
- // control beside it. Each press restyles the page through the data-theme
- // token blocks, persists the choice, and dispatches themechange so chart
- // code (Plotly and the season player resolve tokens via getComputedStyle)
- // redraws in the new palette.
+ // theme picker: aria-pressed, persisted; dispatches themechange so charts
+ // re-resolve their tokens
  (function(){
   var picks=document.querySelectorAll('.themepick button');
   function mark(t){picks.forEach(function(b){
@@ -168,12 +144,9 @@
     document.documentElement.setAttribute('data-theme',t);
     localStorage.setItem('theme',t);mark(t);
     dispatchEvent(new Event('themechange'));};});})();
- // accessibility modes: two independent toggles stating aria-pressed,
- // persisted like the theme ('contrast': high/normal, 'vision':
- // cvd/normal; an explicit normal stops the OS preference from
- // re-enabling contrast). Each press restyles the page through the
- // modifier token blocks and dispatches themechange so chart code
- // (Plotly resolves tokens via getComputedStyle) recolors.
+ // accessibility modes: independent aria-pressed toggles, persisted (an
+ // explicit 'normal' stops the OS preference re-enabling contrast);
+ // dispatches themechange so charts recolor
  (function(){
   var de=document.documentElement,
       axb=document.querySelectorAll('.a11ypick button');
@@ -197,9 +170,8 @@
     }
     mark();
     dispatchEvent(new Event('themechange'));};});})();
- // text-size control: root font percentage, saved so every page keeps it.
- // Each press dispatches fontsizechange, mirroring themechange, so chart
- // code (Plotly sizes text in px, not rem) can redraw at the new scale.
+ // text-size control: root font percentage, persisted; dispatches
+ // fontsizechange so charts (px-sized) redraw
  (function(){
   var m={s:'87.5%',m:'100%',l:'115%'},
       btns=document.querySelectorAll('.fontsize button');
@@ -211,10 +183,8 @@
     document.documentElement.style.fontSize=m[f];
     localStorage.setItem('fontsize',f);mark(f);
     dispatchEvent(new Event('fontsizechange'));};});})();
- // per-button run-interference guards: a control marked data-guard checks
- // /api/busy on click. Only a genuine conflict raises the modal; otherwise
- // the click proceeds untouched (including any onsubmit confirm it had).
- // Guard kinds and their conflicts:
+ // run-interference guards: a data-guard control checks /api/busy on
+ // click; only a genuine conflict raises the modal. Kinds and conflicts:
  //   console-run: starting a console run while a retrospective is fitting
  //   retro-run:   starting a retrospective while a console run is fitting,
  //                or while another retrospective runs
@@ -227,10 +197,8 @@
       stopBtn=document.getElementById('guard-stop'),
       cancel=document.getElementById('guard-cancel'),
       pending=null;
-  // ---- modal focus contract (WCAG 2.4.3): opening moves focus onto the
-  // dialog's Cancel button, Tab cycles inside the dialog instead of
-  // escaping into the inert page, and closing returns focus to the element
-  // that opened it. Escape handling is unchanged. ----
+  // ---- modal focus contract (WCAG 2.4.3): focus Cancel, trap Tab, return
+  // focus to the opener on close. Escape handling is unchanged. ----
   var guardRet=null;
   function trapTab(modal){
     modal.addEventListener('keydown',function(e){
@@ -279,12 +247,9 @@
     refocus(t);}
   cancel.onclick=close;
 
-  // ---- start-over prompt ----------------------------------------------
-  // A control marked data-startover asks the server what pressing it would
-  // actually do before it does it. With no completed weeks the click passes
-  // straight through: no friction on the common path. With results, the
-  // four choices appear, and Discard needs a second confirmation before the
-  // form is allowed to carry mode=discard.
+  // ---- start-over prompt: data-startover asks /api/retro/startover first.
+  // No completed weeks -> straight through; with results, four choices, and
+  // Discard needs a second confirmation before mode=discard ----
   var so={back:document.getElementById('startover-modal'),
           title:document.getElementById('so-title'),
           msg:document.getElementById('so-msg'),
@@ -343,10 +308,8 @@
      .then(function(info){
       if(!info||!info.weeks){done();return;}   // nothing to lose: just run
       if(info.sealed){
-       // The results on show come from a SEALED validation run: the live
-       // tree is empty, so resume, archive, and discard have nothing to act
-       // on. Run starts a fresh replay from week one and never touches the
-       // seal; say so before the hours start, instead of starting silently.
+       // SEALED results: the live tree is empty, so only a fresh replay is
+       // offered (the seal is never touched); say so before the hours start
        so.el=el;so.info=info;
        so.onOk=function(){
         if(f){if(f.mode)f.mode.value='resume';
@@ -452,10 +415,8 @@
  })();
 </script>
 <script>
- // Component versions fill in after first paint: the server resolves them on
- // a background thread (startup-freeze fix), so any span still wearing the
- // pending marker polls /api/versions until the probe lands, then updates
- // in place. Pages without version spans skip all of this.
+ // version spans still 'resolving' (background probe) poll /api/versions
+ // until it lands
  (function(){
   var spans=document.querySelectorAll('[data-vkey]');
   if(!spans.length)return;

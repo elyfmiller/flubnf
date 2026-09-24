@@ -4,8 +4,7 @@
 <h1>Data</h1>
 <div class="cols">
  <div><div class="card"><h2>FluSight hub</h2>
-  {# the freshness panel: the LATEST vintage's own numbers, read from the
-     archived file itself, so "fresh" is stated in facts a reader can check #}
+  {# the latest vintage's own numbers, read from the archived file #}
   <p>Latest vintage: <code>{{ latest_vintage }}</code></p>
   {% if latest %}
   <p class="hint">{{ "{:,}".format(latest.rows) }} reported rows ·
@@ -14,19 +13,15 @@
   {% endif %}
   <p class="hint">{{ n_vintages }} archived truth vintages</p>
   <form method="post" action="/freshness"><button class="quiet">Check for new data</button></form>
-  {# no confirmation: pulling is safe and resumable, the flash banner on
-     return says what happened, and a native confirm() was the one dialog
-     outside the app's themed shell. The data-pull guard still intercepts
-     a pull during a run's preparation phase. #}
+  {# no confirmation: pulling is safe and resumable (the flash banner reports
+     it); the data-pull guard still intercepts a pull during run preparation #}
   <form method="post" action="/data/pull">
    <button class="gold" data-guard="data-pull">Update data</button></form>
   {% if freshness %}<p class="{% if freshness.is_fresh %}ok{% else %}warn{% endif %}">
    {{ freshness.detail }}</p>{% endif %}
  </div></div>
  <div><div class="card"><h2>Archive</h2>
-  {# every archived vintage as a dot on its season's row, week of the
-     season along the axis (August 1 at the left): what the replay can and
-     cannot see, at a glance, in place of a policies paragraph #}
+  {# one dot per archived vintage on its season's row (August 1 at left) #}
   {% if vintage_rows %}
   <svg class="archive-strip" viewBox="0 0 560 {{ 20 + 22 * vintage_rows | length }}" role="img"
    aria-label="archived vintages by season">
@@ -49,11 +44,9 @@
 <div class="card"><h2>Vintage browser</h2>
  <p class="hint">The archived truth vintages, exactly as runs fit them.
  Read-only.</p>
- {# plain GET form: the Show button re-renders the page server-side, the
-    URL stays shareable, and the view needs no scripting to work. No
-    auto-submit on the selects: a scripted submit fires a full reload per
-    ArrowDown press on a closed select in Chrome/Edge on Windows, losing
-    keyboard position each step across the vintages (WCAG 3.2.2). #}
+ {# plain GET form (shareable URL), no auto-submit: a scripted submit
+    reloads per ArrowDown on a closed select in Chrome/Edge on Windows
+    (WCAG 3.2.2) #}
  <form method="get" action="/data" class="row" style="align-items:flex-end">
   <span><label for="dv-vintage">Vintage</label>
    <select id="dv-vintage" name="vintage">
@@ -72,24 +65,14 @@
   {{ sel_summary.oldest_week }} to {{ sel_summary.newest_week }}</p>
  {% endif %}
  {% if series_json and series_json != 'null' %}
- {# the same full-series / season-over-season mode pair the forecast data
-    panel carries, in its conventions: quiet buttons wearing gold when
-    active, honest aria-pressed, the shared season palette tokens, month
-    ticks, per-season hover with each season's real dates #}
+ {# the forecast data panel's mode pair, same conventions #}
  <div class="row" style="margin:.4rem 0">
   <button type="button" class="quiet" id="vb-mode-raw" aria-pressed="false">full series</button>
   <button type="button" class="quiet" id="vb-mode-season" aria-pressed="false">season over season</button>
  </div>
  {% endif %}
  {% if series_json and series_json != 'null' %}
- {# the vintage chart and recent-weeks table share the card as two columns
-    at desktop widths (.vintagecols); the table keeps a compact natural
-    width (table.compact) with the numbers right-set in tabular figures
-    directly beside their weeks, instead of a card-wide ledger with an
-    empty band between the columns. The chart is the forecast tab's
-    charting framework (Plotly, theme tokens re-read per draw, month/date
-    axis), replacing the old too-small sparkline per user report
-    2026-08-21, and sized like the forecast data panel. #}
+ {# chart + compact recent-weeks table side by side (.vintagecols) #}
  <div class="vintagecols">
   <div>
    <div id="vintageplot" style="min-height:380px"></div>
@@ -116,17 +99,12 @@
 </div>
 {% if series_json and series_json != 'null' %}
 <script>
- // the vintage chart rides the forecast tab's charting conventions: theme
- // tokens resolved per draw, the type scale via the root font size, the
- // card surface as an explicit background so the save-PNG export stays
- // readable, and a redraw on themechange/fontsizechange. The mode pair
- // (full series / season over season) is the forecast data panel's,
- // sharing its season palette tokens, month ticks, and per-season hover.
+ // vintage chart: the forecast data panel's conventions (tokens per draw,
+ // type scale, explicit surface, redraw on themechange/fontsizechange)
  const VSERIES = {{ series_json | safe }};
  const VLOC = {{ sel_loc | tojson }};
  const VVINTAGE = {{ sel_vintage | tojson }};
- // [month label, week offset from August 1] from the one server-side
- // offset list, so the season axis reads as calendar months
+ // [month label, week offset from August 1] (server-side list)
  const SEASON_MONTHS = {{ season_months | tojson }};
  // the season palette's cvd-safe literals as the fallback; the drawn
  // colors resolve from the --season-N tokens per draw (see forecast.html)
@@ -144,12 +122,9 @@
    legend:{orientation:'h',x:0,xanchor:'left',y:-0.22,yanchor:'top'},
    xaxis:{gridcolor:css('--line'), automargin:true},
    yaxis:{gridcolor:css('--line'), rangemode:'tozero', automargin:true}};}
- // season helpers, the forecast panel's own: seasons run August to August,
- // and hover dates format from the ISO string, never through Date (a UTC
- // parse shifts Saturdays a day back in western timezones)
- // season grouping parses the Y-M-D components itself: a bare new Date(ds)
- // on a date-only string is a UTC parse, one day back in every zone west
- // of Greenwich, which walks Saturdays across month and season lines
+ // season helpers: byte-identical to forecast.html's (test-pinned). Parse
+ // Y-M-D components and format hovers from the ISO string: a UTC parse of a
+ // date-only string shifts Saturdays a day back west of Greenwich
  function localDate(ds){const p=ds.slice(0,10).split('-');
    return new Date(+p[0],+p[1]-1,+p[2]);}
  function seasonOf(ds){const d=localDate(ds); const y=d.getMonth()>=7?d.getFullYear():d.getFullYear()-1;
@@ -179,7 +154,7 @@
        {x:VSERIES.dates,y:VSERIES.values,mode:'lines',name:VLOC,
         line:{color:css('--gold'),width:2},
         hovertemplate:'%{x} · %{y:,.0f} admissions<extra></extra>'},
-       // the newest week this vintage held, marked as the sparkline marked it
+       // marker on the newest week this vintage held
        {x:[VSERIES.dates[n-1]],y:[VSERIES.values[n-1]],mode:'markers',
         name:'newest week',marker:{size:9,color:css('--gold-bright')||css('--gold')},
         hovertemplate:'newest: %{x} · %{y:,.0f}<extra></extra>'}];
@@ -188,11 +163,7 @@
        vconf('flubnf_vintage_'+VVINTAGE+'_'+VLOC));
      return;
    }
-   // season over season: the forecast data panel's rendering on this
-   // vintage's series -- newest season gold and thicker, earlier seasons
-   // on the --season-N tokens newest-first (every drawn-adjacent pair is
-   // one the palette audit measured), each season's hover carrying its
-   // own real Saturday dates
+   // season over season, as the forecast data panel draws it
    const by={};
    VSERIES.dates.forEach((d,i)=>{const k=seasonOf(d);(by[k]=by[k]||{x:[],y:[],d:[]});
      by[k].x.push(weekOfSeason(d)); by[k].y.push(VSERIES.values[i]);

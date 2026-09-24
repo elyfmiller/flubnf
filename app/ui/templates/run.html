@@ -2,8 +2,7 @@
 {% block content %}
 
 <h1>Run: {{ label or "details" }}
- {# the research badge follows the run everywhere it appears; here it is
-    read from the ledger row's spec, the record of record #}
+ {# research badge from the ledger row's spec (the record of record) #}
  {% if research %}<span class="pill">research</span>{% endif %}
  {% if status and status not in ("ok", "done") %}
   <span class="pill {{ 'warn' if status in ('stopped','interrupted','partial') else 'bad' }}">{{ status }}</span>
@@ -20,11 +19,8 @@
 {% endif %}
 
 {% if pf_failures or step_errors or ensemble_analogue_only or ensemble_withheld %}
-{# The partial-run record, read from the ledger row's outcome. The chips
-   on the run ledger only COUNT failures; this block names the cells and
-   reasons, in plain escaped text, so a partial run can be reported by
-   copying it (first Windows full grid, 2026-09-01: 4 failures and no
-   page said which cells or why). #}
+{# partial-run record from the ledger outcome: names each failed cell and
+   reason as copyable text (the ledger chips only count them) #}
 <div class="card"><h2>Partial-run detail</h2>
  <p class="hint">Recorded on this run's ledger row; copy this block when
   reporting a partial run.</p>
@@ -53,12 +49,8 @@
 {% endif %}
 
 {% if settings %}
-{# What produced this run, read entirely from the ledger row: the stored
-   spec (the record of record) plus the row's recorded app build and any
-   engine version numbers it carries. The viewing process's own versions
-   are never printed here: they did not produce the run. settings_html
-   renders nothing for an empty list, so a row with no recorded versions
-   simply omits the block rather than guessing. #}
+{# settings and versions from the ledger row only (the viewer's own
+   versions did not produce this run); no recorded versions, no block #}
 <div class="card"><h2>Run settings</h2>
  {% if results %}<h2>Results</h2>{{ results | safe }}{% endif %}
  {{ settings_html(settings, title="Settings") | safe }}
@@ -67,10 +59,8 @@
 {% endif %}
 
 {% if can_rerun %}
-{# one-click re-run from this run's ledger row: no re-filling the Forecast
-   form. Worded honestly: console fits hold no checkpoint, so this is a
-   fresh run, never a resume. The button carries the console-run guard and
-   /run applies the same server-side busy cross-checks. #}
+{# fresh re-run from the recorded spec (console fits hold no checkpoint);
+   console-run guard plus /run's server-side checks #}
 <div class="card">
  <form method="post" action="/runs/{{ run_id }}/rerun" class="rerun-run">
   <button class="gold" data-guard="console-run">Run again with these settings</button>

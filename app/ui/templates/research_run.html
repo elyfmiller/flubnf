@@ -1,13 +1,8 @@
-{# The research run control, mounted by base.html only on the two-strain
-   model view (research_panel, set by the /model/pf2s route). This is the
-   ONE place the three-member request has a form: the two-strain engine
-   failed its full-grid gate, so the flagship Forecast page never grows a
-   third-member option, and everything this form starts is tagged
-   research in the ledger and on every surface the run appears on.
-   It posts through the same /run path as the flagship forms (same vintage
-   check, same server-side busy cross-checks) with the members=3 selection
-   the server already accepts, and the button carries the same console-run
-   guard as every other control that books the engine. #}
+{# Research run control, included by base.html only on /model/pf2s
+   (research_panel). The ONE form for the three-member request (the
+   two-strain engine failed its full-grid gate, so Forecast never offers
+   it); posts /run with members=3 through the same checks and guard, and
+   everything it starts is tagged research. #}
 <div class="card" id="research-run">
  <h2>Research run <span class="pill">research · not the shipped forecast</span></h2>
  <p class="hint">Runs the full weekly pipeline with the two-strain member
@@ -31,9 +26,7 @@
   <input type="hidden" name="members" value="3">
   <input type="hidden" name="weeks_to_drop" value="0">
   <input type="hidden" name="weeks_to_nowcast" value="0">
-  {# the same interference guard as every control that posts /run: starting
-     this over a fitting retrospective would double-book the engine, and the
-     server applies the same busy cross-checks if the guard is bypassed #}
+  {# same guard as every /run control (the server re-checks if bypassed) #}
   <button class="gold" data-guard="console-run">Start research run</button>
  </form>
 </div>
