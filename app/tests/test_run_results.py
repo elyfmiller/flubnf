@@ -148,3 +148,20 @@ def test_latest_run_card_finds_the_hub_run_behind_many_dataset_runs(
     page = client.get("/forecast").text
     assert f'href="/runs/{hub_id}"' in page
     assert not any(d in page for d in ds_ids)
+
+
+def test_an_unknown_run_is_a_404_with_a_short_page(tmp_path, monkeypatch):
+    import app.core.runs as runs_mod
+    from app.core.runs import Ledger
+    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
+    r = client.get("/runs/20990101T000000-nope<b>")
+    assert r.status_code == 404
+    assert "No run" in r.text and "<b>" not in r.text
+    assert 'href="/runs"' in r.text
+    assert ui_forecast.run_page(None, "..").status_code == 404
+    # a recorded run still opens, with or without its workroot
+    led = Ledger()
+    rid = led.open_run(RunSpec(engine="analogue", forecast_date="2098-01-03",
+                               locations=["Ohio"]), Path("pending"), {})
+    led.close_run(rid, "ok", {})
+    assert client.get(f"/runs/{rid}").status_code == 200

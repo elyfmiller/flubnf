@@ -247,7 +247,16 @@ def run_stop():
 def run_page(request: Request, run_id: str):
     import json as _json
     from app.core.runs import APP_STATE, Ledger
+    import html as _html
     w = APP_STATE / "workroots" / run_id
+    # an unknown id (no ledger row, no workroot) is a 404, never an empty
+    # run page; "." and ".." never name a run
+    if run_id in (".", "..") or not (Ledger().row(run_id) or w.is_dir()):
+        return HTMLResponse(
+            f"<!doctype html><title>No such run</title><p>No run "
+            f"<code>{_html.escape(run_id)}</code> is recorded here. "
+            "<a href=\"/runs\">Storage</a> lists the runs.</p>",
+            status_code=404)
     res = {}
     if (w / "results.json").is_file():
         res = _json.loads((w / "results.json").read_text())
