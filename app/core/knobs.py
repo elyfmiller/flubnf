@@ -293,7 +293,7 @@ LOCKED: tuple = (
            "flubnf.analogue:EXCLUDED_DONOR_SEASONS",
            "A season leaves the pools only through a registered record."),
     Locked("pf.template", PF.TEMPLATE.name, "app.core.engines.pf:TEMPLATE",
-           "The SIHRS model the card describes."),
+           "The SIHRS compartment model the card describes."),
     Locked("pf.engine_keys", "neg_bin_dynamic, reflect, start -1, Hobs",
            "app.core.engines.pf:prepare",
            "Objective, bounds and start time pinned to the records' conventions."),
@@ -859,6 +859,113 @@ def legacy_settings_knobs(settings: Mapping) -> dict:
 #: knobs a retrospective takes as run_season ARGUMENTS, not week extra
 RETRO_ARG_KEYS = frozenset({"pf.particles", "pf.replicates",
                             "run.drop_same_day"})
+
+
+# --- Stage 3: the Model settings panel (templates/_model_settings.html) --------------
+
+#: (group id, heading, one-line tip) in panel order
+PANEL_GROUPS = (
+    ("data", "Fit window",
+     "Which reported weeks the models see. A change refits the Oracle SIHRS."),
+    ("fit", "Oracle SIHRS: particle filter",
+     "Settings of the fit itself; a change refits every state."),
+    ("step", "Oracle SIHRS: Oracle step",
+     "Runs after the fit on its samples; a change costs no refit."),
+    ("groundhog", "Groundhog",
+     "The calendar analogue; instant. Its donor settings are independent "
+     "of the Oracle step's."),
+    ("output", "Output",
+     "Applied to the finished forecasts of a console run."),
+)
+#: the fit group's order: run-class first (what a person changes most)
+_FIT_ORDER = ("pf.replicates", "pf.particles", "pf.jitter",
+              "pf.initialization")
+MEMBER_NAMES = {"pf": "Oracle SIHRS", "analogue": "Groundhog"}
+
+
+def _group_of(knob: Knob) -> str:
+    return "data" if knob.key.startswith("run.") else knob.stage
+
+
+def _raw(knob: Knob, v) -> str:
+    """A value as the panel's input holds it."""
+    if v is None:
+        return ""
+    if knob.kind == "bool":
+        return "1" if v else "0"
+    if knob.kind == "range":
+        return ", ".join(f"{float(x):g}" for x in v)
+    if knob.kind == "float":
+        return f"{float(v):g}"
+    return str(v)
+
+
+def _tip(knob: Knob, scope: str) -> str:
+    who = " and ".join(MEMBER_NAMES[m] for m in MEMBERS if m in knob.affects)
+    dflt = ("August 1 of the forecast's season" if callable(knob.default)
+            else _fmt(knob.default))
+    unit = f" {knob.unit}" if knob.unit and knob.kind in ("int", "float") else ""
+    bits = [knob.help, f"Range: {knob.range_text()}{unit}.",
+            f"Shipped: {dflt}.", f"Affects: {who}."]
+    if knob.card:
+        bits.append("The model card states the shipped value.")
+    if knob.key in LATER:
+        bits.append("Coming later: not wired to its engine yet, so every "
+                    "run uses the shipped value.")
+    return " ".join(bits)
+
+
+def panel(scope: str, values: Optional[Mapping] = None) -> dict:
+    """The Model settings panel, rendered by templates/_model_settings.html.
+
+    `scope` "forecast" or "retro"; `values` {key: raw} the form held (a
+    refused submission keeps what was typed). Knobs with an older field
+    name keep it (season_start, weeks_to_drop, drop_same_day, replicates,
+    particles), so every earlier poster still works; the rest post as
+    knob.<key>. Coming-later knobs render disabled."""
+    values = dict(values or {})
+    groups = []
+    for gid, title, tip in PANEL_GROUPS:
+        ks = [k for k in REGISTRY if _group_of(k) == gid
+              and in_scope(k.key, scope)]
+        if gid == "fit":
+            rank = {key: i for i, key in enumerate(_FIT_ORDER)}
+            ks.sort(key=lambda k: rank.get(k.key, len(rank)))
+        rows = []
+        for k in ks:
+            dflt = "" if callable(k.default) else _raw(k, k.default)
+            got = values.get(k.key)
+            val = dflt if got is None else str(got)
+            if k.key in LATER:
+                val = dflt
+            rows.append({
+                "key": k.key, "label": k.label, "kind": k.kind,
+                "name": FIELD_OF.get(k.key, FORM_PREFIX + k.key),
+                "id": "ks-" + k.key.replace(".", "-"),
+                "value": val, "default": dflt,
+                "placeholder": ("" if callable(k.default)
+                                else f"shipped: {_fmt(k.default)}"),
+                "min": k.lo, "max": k.hi,
+                "step": "any" if k.kind == "float" else "1",
+                "choices": [(str(c), f"{c}" + (" (shipped)" if c == k.default
+                                               else "")) for c in k.choices],
+                "later": k.key in LATER,
+                "affects": " ".join(sorted(k.affects)),
+                "unit": k.unit, "tip": _tip(k, scope)})
+        if rows:
+            groups.append({"id": gid, "title": title, "tip": tip,
+                           "affects": " ".join(sorted(
+                               {m for r in rows for m in r["affects"].split()})),
+                           "rows": rows})
+    modified = any(r["value"].strip() not in ("", r["default"])
+                   for g in groups for r in g["rows"] if not r["later"])
+    return {"scope": scope, "groups": groups, "modified": modified,
+            "locked": [{"key": l.key, "value": _fmt(l.value)
+                        if not isinstance(l.value, tuple)
+                        else ", ".join(map(str, l.value)),
+                        "why": l.why} for l in LOCKED],
+            "override": scope == "forecast",
+            "suffix": MODIFIED_SUFFIX}
 
 
 def retro_week_extra(base, nd: Mapping):

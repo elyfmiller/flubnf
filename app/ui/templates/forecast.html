@@ -126,16 +126,10 @@
    </script>
    {# no control for the research-only member (failed its full-grid gate);
       /run still accepts members=3 for research use #}
-   <details class="adv"><summary class="advbtn">Advanced settings</summary>
-    {{ tips.label("Season start", "fc-season", "The first week the fit sees. Blank means August 1 of the forecast's season.") }}
-    <input type="date" name="season_start" value="{{ form.season_start }}">
-    <p class="hint" id="season-line"></p>
-    {{ tips.label("Weeks to drop", "fc-drop", "Trims the newest N reported weeks before the fit, a guard against incomplete recent data; 0 keeps every week.") }}
-    <input name="weeks_to_drop" type="number" value="{{ form.weeks_to_drop }}" min="0" max="4">
-    <input type="hidden" name="weeks_to_nowcast" value="0">
-    {{ tips.label("Replicates", "fc-reps", "Independent particle-filter fits per state, pooled into one forecast; more is steadier but slower.") }}
-    <input name="replicates" type="number" value="{{ form.replicates }}" min="1" max="9">
-   </details>
+   {# the Model settings panel (absorbs the old Advanced block; season
+      start, weeks to drop and replicates keep their field names) #}
+   <input type="hidden" name="weeks_to_nowcast" value="0">
+   {% include "_model_settings.html" %}
    <button class="gold" data-guard="console-run">Run models</button>
   </form>
   <script>

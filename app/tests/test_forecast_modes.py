@@ -42,13 +42,14 @@ def test_default_season_start_is_august_first_of_the_season():
 def test_forecast_form_offers_two_modes_and_the_advanced_group():
     html = client.get("/forecast").text
     for needle in ('data-mode="realtime"', 'data-mode="vintage"',
-                   'name="season_start"', '<details class="adv">',
+                   'name="season_start"', '<details class="adv"',
                    'name="weeks_to_drop"', 'name="replicates"',
                    'name="engine"', 'id="season-line"'):
         assert needle in html, needle
     # engine stays in the main group; the two numeric fields moved under
     # Advanced, season start first
-    adv = html.index('<details class="adv">')
+    # the fold is the Model settings panel now (app/core/knobs.py)
+    adv = html.index('<details class="adv"')
     assert html.index('name="engine"') < adv
     assert adv < html.index('name="season_start"') < html.index(
         'name="weeks_to_drop"') < html.index('name="replicates"')

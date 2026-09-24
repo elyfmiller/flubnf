@@ -1061,6 +1061,7 @@ def forecast_page(request: Request):
         "vintage_dates": vintage_dates, "anchor_note": anchor_note,
         "default_date": _default_forecast_date(),
         "locations_error": locations_error, "form": form,
+        "knob_panel": _knob_panel("forecast", form),
         "elapsed0": _console_elapsed(),
         "series_json": _script_json(series), "fanq_json": _script_json(fanq),
         "model_names_json": _script_json(_model_names()),
@@ -2850,6 +2851,25 @@ def _int_field(v, default: int = 0) -> int:
         return default
 
 
+def _knob_panel(scope: str, form: dict | None = None) -> dict | None:
+    """The Model settings panel's context (knobs.panel) with the values a
+    form last held: the knob fields, then the older field names. None
+    (no panel) if the registry cannot be read, so a page still renders."""
+    form = form or {}
+    vals = {k: str(v) for k, v in (form.get("knobs") or {}).items()}
+    for fld, key in _knobs.LEGACY_FIELDS.items():
+        v = form.get(fld)
+        if v is None or v == "":
+            continue
+        if fld == "drop_same_day":
+            v = "1" if _int_field(v) else "0"
+        vals.setdefault(key, str(v))
+    try:
+        return _knobs.panel(scope, vals)
+    except Exception:
+        return None
+
+
 def _knob_raw(fields, knobs_json) -> dict:
     """The knob channel's raw values: the JSON field (one-click resume,
     re-run) under the panel's own fields. A malformed JSON field raises
@@ -3993,6 +4013,7 @@ def retro_index(request: Request):
                                        "state_names": _retro_state_names(),
                                        "default_width": DEFAULT_SHARD_WIDTH,
                                        "width_cap": SHARD_WIDTH_CAP,
+                                       "knob_panel": _knob_panel("retro"),
                                        "engine_ok": PY_ENGINE.exists()
                                        and PYBNF.exists()})
 
