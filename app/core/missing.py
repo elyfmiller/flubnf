@@ -102,3 +102,23 @@ def cell_flags(cells) -> list:
             out += [{"location": c.get("location"), **r}
                     for r in c.get("data_flags") or ()]
     return out
+
+
+def replay_count(by_week) -> str:
+    """A replay's settings value for its flagged weeks ({as-of: {member:
+    [rows]}}, recorded only with a rule on): "" when nothing is recorded;
+    else how many newest weeks were treated as unreported (once per as-of
+    week and location, members pooled) in how many forecast weeks."""
+    if not isinstance(by_week, Mapping) or not by_week:
+        return ""
+    n = weeks = 0
+    for flags in by_week.values():
+        seen = {(r.get("location"), r.get("week"))
+                for rows in (flags or {}).values() for r in rows or ()}
+        n += len(seen)
+        weeks += bool(seen)
+    if not n:
+        return "on; no week flagged"
+    total = len(by_week)
+    return (f"{n} newest week{'s' if n != 1 else ''} treated as unreported, "
+            f"in {weeks} of {total} forecast week{'s' if total != 1 else ''}")

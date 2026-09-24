@@ -1530,6 +1530,7 @@ def replay_page(request: Request, ds_id: str, stamp: str, h: str = "0"):
             if pts:
                 per[m] = pts
         fans[g] = {"series": s, "fc": per}
+    from app.core import missing as _missing
     summ = meta.get("summary") or {}
     abst = meta.get("abstained") or {}
     pf = meta.get("pf") or ("not run: " + meta["pf_skipped"]
@@ -1545,7 +1546,9 @@ def replay_page(request: Request, ds_id: str, stamp: str, h: str = "0"):
          or ""),
         ("particle filter", pf),
         ("weeks dropped", str(meta.get("weeks_to_drop", 0))),
-        ("baseline", meta.get("baseline") or "")]
+        ("baseline", meta.get("baseline") or ""),
+        # recorded only with a missing-data rule on ("" otherwise)
+        ("flagged weeks", _missing.replay_count(meta.get("data_flags")))]
     if meta.get("knobs"):
         # recorded only off the shipped values, as a hub replay's is
         try:

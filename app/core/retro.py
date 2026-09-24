@@ -43,6 +43,7 @@ from app.core.data import ARCHIVE                     # noqa: E402
 from app.core.engines import analogue as an_engine    # noqa: E402
 from app.core.engines import pf as pf_engine          # noqa: E402
 from app.core import horizons as hz
+from app.core import missing as MS                   # noqa: E402
 from app.core import oracle as oracle_mod             # noqa: E402
 from app.core import ensemble as ens                  # noqa: E402
 from app.core import proc as proc_mod                 # noqa: E402
@@ -499,6 +500,10 @@ def settings_summary(meta: dict) -> list:
                           _knobs.label(_knobs.from_record(s["knobs"]))))
         except Exception:
             pairs.append(("model settings", "modified (unreadable record)"))
+    # the newest weeks a missing-data rule treated as unreported, counted
+    # (the rows stay in the record's data_flags); absent when no rule is on
+    pairs.append(("flagged weeks",
+                  MS.replay_count((meta or {}).get("data_flags"))))
     return [(k, v) for k, v in pairs if v not in ("", None)]
 
 
@@ -604,6 +609,18 @@ def _record_week(root: Path, asof: str, seconds: float) -> None:
         m["week_seconds"] = ws
         m["weeks_completed"] = _weeks_on_disk(root)
         m["heartbeat_utc"] = now
+        write_meta(root, m)
+
+
+def _record_flags(root: Path, asof: str, flags: dict) -> None:
+    """Fold one week's flagged newest weeks ({member: [{location, week,
+    value, rule}]}) into the run record under data_flags[asof]. Called
+    only when a missing-data rule is on, so a shipped record has no key."""
+    with _META_LOCK:
+        m = read_meta(root)
+        df = dict(m.get("data_flags") or {})
+        df[asof] = flags
+        m["data_flags"] = df
         write_meta(root, m)
 
 
@@ -915,17 +932,24 @@ def run_week(root: Path, season: str, asof: str, locations: list,
         manifest["extra"] = _knobs.fit_extra(extra)
     _check_stop(root)         # a standing flag must not even prepare a week
     hold_while_paused(root)
+    # the missing-data rules (app/core/missing.py): each week's flagged
+    # newest weeks go into the run record, only when a rule is on
+    rules = MS.rules_of(extra)
+    gh_flags: list = []
+    an_kw = {"flags": gh_flags} if rules else {}
     if engine == "analogue":
         # the analogue alone; the manifest still records what produced the week
         manifest["engine"] = "analogue"
         wd.mkdir(parents=True, exist_ok=True)
         (wd / "manifest.json").write_text(json.dumps(manifest, indent=1))
-        an_q = an_engine.run(spec)
+        an_q = an_engine.run(spec, **an_kw)
         out = {"asof": asof,
                "analogue": {loc: {h: {str(k): v for k, v in q.items()}
                                   for h, q in qs.items()}
                             for loc, qs in an_q.items()}}
         write_week_samples(wd, out)
+        if rules:
+            _record_flags(root, asof, {"analogue": gh_flags})
         return out
     cells = _prepare_week(root, asof, spec, manifest)
     # a new call retries failed fits (their markers only let the old loop drain)
@@ -967,7 +991,7 @@ def run_week(root: Path, season: str, asof: str, locations: list,
         oracle_mod.write_not_applied(
             wd, asof, "the replay asked for the plain filter (oracle = none)")
         stored = {"pf": pf_samples}
-    an_q = an_engine.run(spec)
+    an_q = an_engine.run(spec, **an_kw)
     out = {"asof": asof,
            **stored,
            "analogue": {loc: {h: {str(k): v for k, v in q.items()}
@@ -976,6 +1000,9 @@ def run_week(root: Path, season: str, asof: str, locations: list,
     if failed:
         out["pf_failures"] = failed
     write_week_samples(wd, out)
+    if rules:
+        _record_flags(root, asof, {"analogue": gh_flags,
+                                   "pf": MS.cell_flags(cells)})
     # prune intermediates now (never fatal), unless any fit failed: then
     # keep everything as evidence, as the console keeps a failed workroot
     if not failed:
