@@ -904,3 +904,34 @@ form.rerun-run{margin:.6rem 0 .2rem;gap:.2rem}
 /* run page settings: values wrap in their own track at phone width
    instead of running past the card edge */
 .runrec .runsettings .kv{grid-template-columns:max-content minmax(0,1fr)}
+
+/* polish: retro */
+.rt-arch-h{margin:.9rem 0 .2rem;font-size:var(--fs-label);font-weight:650;
+  color:var(--mut)}
+/* dataset and week range on one line, wrapping to dataset over From/To */
+.dsr-range{display:flex;flex-wrap:wrap;gap:0 .8rem;align-items:flex-end}
+.dsr-range>span{flex:1 1 8.5rem;min-width:0}
+.dsr-range>.dsr-dsf{flex:2 1 16rem}
+.rs-h{display:flex;align-items:baseline;gap:.4rem;margin-bottom:.35rem}
+.rs-h h2{margin-bottom:0}
+@media (max-width:640px){
+  /* the card-wide cumulative chart shrinks to a phone: its viewBox-px
+     labels grow so they stay legible */
+  svg.cumchart .svgt-sm{font-size:26px}
+  svg.cumchart .svgt-md{font-size:30px}
+}
+#dsr-groups option:checked{color:var(--ink);background:linear-gradient(
+  color-mix(in srgb,var(--gold-bright) 30%,var(--card)),
+  color-mix(in srgb,var(--gold-bright) 30%,var(--card)))}
+.rd-pick{display:flex;flex-wrap:wrap;gap:.5rem 1rem;align-items:center;
+  margin:.2rem 0 .4rem}
+.rd-pick select{width:auto;min-width:12rem;max-width:100%;margin:0}
+.rd-hz{display:inline-flex;flex-wrap:wrap;gap:.35rem;align-items:center}
+.rd-settings .runsettings>strong{display:none}
+.rd-settings .runsettings .kv{width:auto;
+  grid-template-columns:max-content minmax(0,1fr)}
+.rd-nw{white-space:nowrap}
+@media (max-width:640px){
+  /* six columns fit a phone without the last one at the edge */
+  table.rd-scores td,table.rd-scores th{padding-left:.3rem;padding-right:.3rem}
+}

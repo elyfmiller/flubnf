@@ -3,7 +3,7 @@
 <script src="/static/player.js"></script>
 <script src="/static/quips.js"></script>
 <script src="/static/retro_progress.js"></script>{% endblock %}
-{% block content %}
+{% block content %}{% import "_tips.html" as tips %}
 {# one curve per scored model; a bare `curve` (pre-2026-09-22 contexts) still
    draws, unlabelled, in the accent colour #}
 {% if curves is not defined %}{% set curves = ({'': curve} if curve else {}) %}{% endif %}
@@ -60,7 +60,7 @@
  })();
 </script>
 {% else %}
-<h1><span class="accent">{{ season }}</span>: {{ n_weeks }} weeks scored {% if knobs_label %}<span class="pill warn" title="{{ knobs_label }}">modified settings</span>{% endif %}</h1>
+<h1><span class="accent">{{ season }}</span>: {{ n_weeks }} week{{ "" if n_weeks == 1 else "s" }} scored {% if knobs_label %}<span class="pill warn" title="{{ knobs_label }}">modified settings</span>{% endif %}</h1>
 {% if archive %}
 <p class="banner" role="status"><strong>Archived run{% if archive_when %} from
  {{ archive_when }}{% endif %}.</strong> Set aside when a fresh replay
@@ -168,7 +168,8 @@
       stays withdrawn, see Methods) #}
    <p class="hint">relWIS vs the FluSight baseline, {{ figs.label if figs else 'ratio of sums' }}
    {%- set d = (figs.detail.get(m) if figs and figs.detail else None) %}
-   {%- if d and d.n_cells %} ({{ "{:,}".format(d.n_cells) }} cells){% endif %}</p></div>
+   {%- if d and d.n_cells %} ({{ "{:,}".format(d.n_cells) }} cell{{ "" if d.n_cells == 1 else "s" }}){% endif %}
+   {%- if loop.first and pooled_note and not unavailable %} {{ tips.tip("rs-pooled", "the pooled figure", pooled_note) }}{% endif %}</p></div>
  {% endfor %}
  {# the national tile ALWAYS names its provenance (fitted vs sum of
     states); it is outside the pooled headline by policy #}
@@ -179,8 +180,9 @@
    {% if us_row.fitted %}fitted nationally, apart from the pooled figures{% else %}{{ us_row.fallback_note }}, states treated as independent{% endif %}</p></div>
  {% endif %}{% endfor %}
 </div>
-{# no tiles under this convention -> no notes about them #}
-{% if pooled_note and not unavailable %}<p class="hint">{{ pooled_note }}</p>{% endif %}
+{# no tiles under this convention -> no notes about them; the note rides
+   the first head tile as its tip, and stands as a line only without one #}
+{% if pooled_note and not unavailable and not heads %}<p class="hint">{{ pooled_note }}</p>{% endif %}
 {% if conv == 'pairwise' and not unavailable %}
 {# the national series is ratio-of-sums only; pairwise is jurisdictions only #}
 <p class="hint">The US national row is not shown under this convention;
@@ -223,8 +225,8 @@
   <circle cx="{{ (20 + loop.index0 * cxs) | round(1) }}" cy="{{ (12 + (hi - v) * 124 / yspan) | round(1) }}" r="3"
           fill="{{ col }}"><title>{{ model_name(m) ~ ' ' if m }}{{ d }}: {{ "%.3f"|format(v) }}</title></circle>
  {% endfor %}
- <text x="{{ (lx - 8) | round(1) }}" y="{{ ((ly - 8) if ly - 8 >= 20 else (ly + 18)) | round(1) }}"
-       text-anchor="end" font-weight="700" class="svgt-md"
+ <text x="{{ ((lx + 8) if cn == 1 else (lx - 8)) | round(1) }}" y="{{ ((ly - 8) if ly - 8 >= 20 else (ly + 18)) | round(1) }}"
+       text-anchor="{{ 'start' if cn == 1 else 'end' }}" font-weight="700" class="svgt-md"
        fill="{{ col }}">{{ "%.3f"|format(cvals[-1]) }}</text>
  {% endfor %}
  {# month ticks on the first scored week of each month
@@ -285,15 +287,13 @@
    </div>
   </div>
   <div class="playstats">
-   <h2>Live relWIS</h2>
+   {# the player's figures are always ratio of sums #}
+   <div class="rs-h"><h2>Live relWIS</h2>{{ tips.tip("rs-live", "live relWIS", "relWIS below 1 beats the CDC FluSight baseline, ratio of sums; cumulative pools every week so far.") }}</div>
    <table id="pb-stats"><thead><tr><th>Model</th><th class="num">Week</th>
     <th class="num">Cumulative</th></tr></thead><tbody></tbody></table>
    <p class="hint" id="pb-status" aria-live="polite"></p>
    <p class="hint" id="pb-offhint" hidden>official comparators appear after
     Update data</p>
-   {# the player's figures are always ratio of sums #}
-   <p class="hint">relWIS below 1 beats the CDC FluSight baseline, ratio of
-    sums; cumulative pools every week so far.</p>
    {# only when there ARE pairwise scores to be confused with #}
    {% if conv == 'pairwise' and not unavailable %}
    <p class="hint">The player always uses the ratio of sums, so these
