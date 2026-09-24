@@ -107,6 +107,23 @@ def _phase(msg):
     _status["phase"] = msg
 
 
+def _name_workroot(workroot: Path, running: str) -> bool:
+    """A console run worker publishes its claim and workroot together, under
+    the engine lock, once the workroot is leased. True when Stop was pressed
+    while the run was still "starting" (no workroot to flag yet): the STOP
+    flag is written now and the worker ends the run as stopped before any
+    fit. /run/stop reads the workroot under the same lock, so a press is
+    never lost between the two."""
+    from app.ui.state import _engine_lock
+    with _engine_lock:
+        _status["running"] = running
+        _status["workroot"] = str(workroot)
+        stop = bool(_status.pop("stop_requested", False))
+    if stop:
+        (Path(workroot) / "STOP").touch()
+    return stop
+
+
 def _flash(msg: str) -> None:
     """Notice for the next page the user sees (also appended to the log).
     Unconsumed messages join rather than overwrite."""

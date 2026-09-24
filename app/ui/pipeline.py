@@ -19,7 +19,7 @@ from app.core.runs import (Ledger, RunSpec, lease_workroot, settings_html,
                            spec_settings, version_pairs)
 from app.ui import state, versions
 from app.ui.forms import _knobs
-from app.ui.shared import _invalidate_scans, _phase
+from app.ui.shared import _invalidate_scans, _name_workroot, _phase
 from app.ui.state import _status
 from app.ui.versions import RUNNING_SHA, VERSIONS
 
@@ -431,8 +431,9 @@ def _run_all(spec: RunSpec) -> None:
             versions._engine_versions_for_ledger("pf,analogue"))
         workroot = lease_workroot(run_id)
         ledger.set_workroot(run_id, workroot)   # the row must name the real one
-        _status["running"] = f"all:{run_id}"
-        _status["workroot"] = str(workroot)
+        if _name_workroot(workroot, f"all:{run_id}"):
+            # Stop pressed while starting: end as stopped, nothing fitted
+            raise pf_engine.RunStopped("stopped before fitting")
         # a run with modified model settings records them beside its files
         # (knobs.json; none for a shipped run, whose files are unchanged)
         _knobs_mod = _knobs.modified(spec)
@@ -833,6 +834,7 @@ def _run_all(spec: RunSpec) -> None:
                 pass
         _invalidate_scans()
         _status["running"] = None
+        _status.pop("stop_requested", None)
         _status["phase"] = ""
         _status["settings"] = []
         _status["workroot"] = None
