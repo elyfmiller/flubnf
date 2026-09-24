@@ -547,6 +547,11 @@ _DOTG = re.compile(r"[+-]?[1-9]\d{0,2}(?:\.\d{3})+(?:,\d+)?")
 _ONE_COMMA = re.compile(r"[+-]?\d+,\d+")
 #: "1,234" or "1.234": either separator reading is possible
 _EITHER = re.compile(r"[+-]?[1-9]\d{0,2}[.,]\d{3}")
+#: a plain number as written in a CSV: ASCII digits, an optional decimal
+#: point and exponent (float() alone also takes "1_000", full-width digits
+#: and "infinity")
+_PLAIN = re.compile(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?",
+                    re.ASCII)
 
 
 def number_style(texts, delimiter: str = ","):
@@ -604,6 +609,8 @@ def _num(text: str, style: str = "plain"):
             s = s.replace(".", "")
         s = s.replace(",", ".")
     elif "," in s:
+        raise ValueError(s)
+    if not _PLAIN.fullmatch(s):
         raise ValueError(s)
     v = float(s)
     if v != v or v in (float("inf"), float("-inf")):
@@ -1024,9 +1031,11 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
             (vcol, vstyle, vwhy, "value_format", "value"),
             (cols.get("population"), pstyle, pwhy, "population_format",
              "population")):
+        if style is None or style == "decimal_comma":
+            texts = [r[key].strip() for _, r in raw_rows]
         if style is None:
-            lines = [ln for ln, r in raw_rows
-                     if "," in r[key] or "." in r[key]]
+            lines = [ln for (ln, _), t in zip(raw_rows, texts)
+                     if "," in t or "." in t]
             rep.add(code, f"The '{col}' column's numbers are ambiguous "
                     f"({_rows(lines)}; e.g., {why}). Write them without "
                     "thousands separators, with a decimal point.", lines)
@@ -1034,8 +1043,13 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
             rep.warnings.append(f"Read the '{col}' column's commas as "
                                 "thousands separators (1,234 = 1234).")
         elif style == "decimal_comma":
-            rep.warnings.append(f"Read the '{col}' column's decimal commas "
-                                "(1,5 = 1.5).")
+            read = []
+            if any("," in t for t in texts):
+                read.append("decimal commas (1,5 = 1.5)")
+            if any("." in t for t in texts):
+                read.append("dots as thousands separators (1.234 = 1234)")
+            rep.warnings.append(f"Read the '{col}' column's "
+                                + " and ".join(read) + ".")
 
     bad_dates, day_first, bad_asof = [], [], []
     bad_vals, neg, na, nonint = [], [], [], []
@@ -1066,7 +1080,7 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
                 bad_vals.append((ln, raw_v))
             else:
                 if v is None:
-                    na.append(ln)
+                    na.append((ln, raw_v or "(blank)"))
                 elif v < 0:
                     neg.append((ln, raw_v))
                 elif kind == "count" and not v.is_integer():
@@ -1080,7 +1094,7 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
                 bad_pop.append((ln, raw_p))
             else:
                 if p is None:
-                    miss_pop.append(ln)
+                    miss_pop.append((ln, raw_p or "(blank)"))
                 elif p <= 0:
                     bad_pop.append((ln, raw_p))
                     p = None
@@ -1097,6 +1111,12 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
 
     def eg(items):
         return _examples(t for _, t in items)
+
+    def cells(items):
+        """'NA (2024-03-16, Pediatric)': a cell with its date and group."""
+        return _examples(f"{t} ({r['date'].strip()}, {_text(r['group'])})"
+                         for (_, t), r in zip(items, _rows_of(
+                             raw_rows, [ln for ln, _ in items[:MAX_EXAMPLES]])))
     if bad_dates:
         lines = [ln for ln, _ in bad_dates]
         hint = ""
@@ -1190,9 +1210,11 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
                 "must be zero or positive.", lines)
     if na and fmt == "grouped":
         # a grouped CSV lists only reported weeks: NA is an error
-        rep.add("value_na", f"The '{vcol}' column contains {len(na)} missing "
-                f"(NA) value(s) ({_rows(na)}; e.g., row {na[0]}). All rows "
-                "must have a value; delete rows for weeks not reported.", na)
+        lines = [ln for ln, _ in na]
+        rep.add("value_na", f"The '{vcol}' column is blank or NA on "
+                f"{len(na)} row(s) ({_rows(lines)}; e.g., {cells(na)}). All "
+                "rows must have a value; delete rows for weeks not reported.",
+                lines)
     elif na:
         # hubverse time series carry NA for unreported weeks (FluSight's
         # own file has thousands): dropped after the structural checks,
@@ -1209,10 +1231,11 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
                 f"has {len(bad_pop)} value(s) that are not positive numbers "
                 f"({_rows(lines)}; e.g., {eg(bad_pop)}).", lines)
     if miss_pop:
+        lines = [ln for ln, _ in miss_pop]
         rep.add("population_missing", f"The '{cols['population']}' column "
-                f"is blank on {len(miss_pop)} row(s) ({_rows(miss_pop)}; "
-                f"e.g., row {miss_pop[0]}). Give every row a population, or "
-                "remove the column.", miss_pop)
+                f"is blank or NA on {len(miss_pop)} row(s) ({_rows(lines)}; "
+                f"e.g., {cells(miss_pop)}). Give every row a population, or "
+                "remove the column.", lines)
     if len(formats) > 1:
         rep.warnings.append(f"Dates mix formats ({', '.join(sorted(formats))}); "
                             "each was read by its own pattern.")
@@ -1275,6 +1298,13 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
                     f"Population varies by date for {_examples(varies)}"
                     f"{' and others' if len(varies) > MAX_EXAMPLES else ''}; "
                     "the latest value is used for the particle filter.")
+
+
+def _rows_of(raw_rows, lines) -> list:
+    """The raw rows at these row numbers, in the order given."""
+    want = set(lines)
+    got = {ln: r for ln, r in raw_rows if ln in want}
+    return [got[ln] for ln in lines]
 
 
 def is_national_name(name) -> bool:

@@ -203,7 +203,10 @@ def test_value_non_numeric_negative_and_na():
     rep = D.validate(grouped_csv(rows), kind="count")
     assert "lots" in only(rep, "value_numeric").message
     assert "-4" in only(rep, "value_negative").message
-    assert "2 missing" in only(rep, "value_na").message
+    msg = only(rep, "value_na").message
+    assert "blank or NA on 2 row(s)" in msg
+    # each example is the cell as written, with its date and group
+    assert "e.g., NA (2024-08-10, A), (blank) (2024-08-10, B))" in msg
 
 
 def test_duplicate_date_group():

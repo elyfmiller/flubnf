@@ -314,6 +314,49 @@ def test_a_population_column_is_read_on_its_own_style():
     only(rep, "population_format")
 
 
+def test_dot_thousands_are_named_as_such():
+    """A population read as dot thousands once got the decimal-comma
+    notice."""
+    rows = [f"{d.isoformat()};A;{10 + i};1.234.567" for i, d in
+            enumerate(sats())]
+    rep = ok(D.validate(csv_text("date;target_group;value;Pop",
+                                 rows).encode()))
+    assert rep.records[0][5] == 1234567
+    assert rep.warnings == ["Read the 'Pop' column's dots as thousands "
+                            "separators (1.234 = 1234)."]
+    rows = [f"{d.isoformat()};A;{i},5;1.234.567" for i, d in
+            enumerate(sats())]
+    rep = ok(D.validate(csv_text("date;target_group;value;Pop",
+                                 rows).encode()))
+    assert rep.warnings[0] == "Read the 'value' column's decimal commas (1,5 = 1.5)."
+
+
+@pytest.mark.parametrize("text", ["1_000", "５", "٣", "infinity", "0x10"])
+def test_numbers_are_ascii_digits(text):
+    """float() alone reads '1_000' as 1000 and full-width digits."""
+    rows = [f"{d.isoformat()},A,{i}" for i, d in enumerate(sats())]
+    rows[2] = f"2024-08-17,A,{text}"
+    p = only(D.validate(csv_text("date,target_group,value",
+                                 rows).encode()), "value_numeric")
+    assert p.rows == (4,) and text in p.message
+
+
+def test_missing_values_quote_the_cell_its_date_and_group():
+    rows = [f"{d.isoformat()},{g},{i},1000" for i, d in enumerate(sats())
+            for g in ("A", "B")]
+    rows[3] = "2024-08-10,B,,1000"
+    rows[6] = "2024-08-24,A,NA,"
+    rep = D.validate(csv_text("date,target_group,value,population",
+                              rows).encode())
+    p = only(rep, "value_na")
+    assert p.rows == (5, 8)
+    assert ("(rows 5, 8; e.g., (blank) (2024-08-10, B), NA (2024-08-24, A))"
+            in p.message)
+    assert "row 5; e.g., row 5" not in str(rep.problems)
+    p = only(rep, "population_missing")
+    assert "(row 8; e.g., (blank) (2024-08-24, A))" in p.message
+
+
 # ---------------------------------------------------------------- encodings
 
 def _intl_rows():
