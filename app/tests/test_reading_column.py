@@ -1,20 +1,11 @@
 """The reading pages (Methods, the Models views) use the ONE shell every
-page uses (rebuild, 2026-08-22, fifth report on these surfaces).
+page uses; the retired main.reading column and its prose grid are gone (a
+<details> body sits in ::details-content, so grid placement squeezed it into
+a gutter strip).
 
-The retired system -- main.reading at 92% viewport width, a three-column
-grid inside every reading card with prose pinned to a fluid ch measure,
-and the layered measure/centering exceptions -- is gone, not patched
-over. The grid was the squeeze bug the user kept reporting: Chrome
-renders a <details> body inside an internal ::details-content box, so a
-details card's paragraphs were never the grid items the placement rules
-addressed, and the collapsible description auto-placed into a gutter
-column as a ~200px strip of text.
-
-The replacement, asserted here: cards span the main column with
-symmetric padding; ALL text in a card is normal block flow at the card's
-content width (no measure cap, no grid columns for prose, so a
-details/summary body inherits exactly the width of every other line);
-figures and equation panels center; wide blocks scroll inside the card.
+Asserted: cards span the main column; ALL card text is block flow at the
+card's content width (no measure cap, no prose grid); figures and equation
+panels center; wide blocks scroll inside the card.
 """
 import re
 import sys
@@ -56,18 +47,18 @@ def test_the_reading_column_special_case_is_gone():
 
 def test_no_grid_for_prose_anywhere():
     """Prose is never laid out with grid columns. Every display:grid in
-    the stylesheet belongs to a named panel layout (.cols, .grid2,
-    .grid3, .vintagecols, .playgrid, and the two definition lists), never
-    to .card itself -- so a details body, a paragraph, and a kicker all
-    take the card's own content width by plain block flow."""
+    the stylesheet belongs to a named panel layout (.cols, .grid2, .grid3,
+    .vintagecols, .playgrid, .runsplit, the .runsettings .kv list), never
+    to .card itself, so a details body, a paragraph and a kicker all take
+    the card's content width by plain block flow."""
     for m in re.finditer(r"([^{}]+)\{[^}]*display\s*:\s*grid", NAU):
         selector = " ".join(m.group(1).split())
         assert ".card" not in selector.replace("details.card", ""), selector
         assert not selector.endswith(".card"), selector
         assert "summary" not in selector and "details" not in selector, \
             selector
-    # no per-child placement rules outside the valpanel definition list
-    # (its all-missing note legitimately spans both list columns)
+    # no per-child grid placement: the only exception was the .valpanel
+    # list, whose rules are gone, so any grid-column rule now fails here
     for m in re.finditer(r"([^{}]+)\{[^}]*grid-column", NAU):
         selector = " ".join(m.group(1).split())
         assert selector.startswith(".valpanel"), selector
