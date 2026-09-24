@@ -568,3 +568,34 @@ def test_cli_retro_reports_a_digest_refusal(monkeypatch, tmp_path):
                                  "--root", str(tmp_path / SEASON),
                                  "--knob", "oracle.w=0.25"])
     assert r.exit_code == 2 and "refused" in r.output
+
+
+def test_a_missing_data_rule_records_every_flagged_week(console, monkeypatch):
+    """data.trailing_zero / data.partial_week (app/core/missing.py): each
+    member's flagged weeks go into the run's outcome and its results line;
+    a shipped run carries no such key (the other tests hold that)."""
+    import app.core.engines.analogue as an_engine
+    import app.core.engines.pf as pf_engine
+    srv_, raw = console
+    row = {"week": ASOF, "rule": "trailing zero", "value": 0.0}
+
+    def fake_prepare(spec, w):
+        Path(w).mkdir(parents=True, exist_ok=True)
+        cells = [{"key": "Ohio_r0", "location": "Ohio", "replicate": 0,
+                  "weeks_dropped": 1, "data_flags": [row]}]
+        (Path(w) / "cells.json").write_text(json.dumps(cells))
+        return cells
+
+    real_run = an_engine.run
+
+    def fake_an(spec, flags=None):
+        flags.append({"location": "Ohio", **row})
+        return real_run(spec)
+    monkeypatch.setattr(pf_engine, "prepare", fake_prepare)
+    monkeypatch.setattr(an_engine, "run", fake_an)
+    spec, ledger_row, out, w = _knob_run(srv_, {"data.trailing_zero": "missing"})
+    want = [{"location": "Ohio", **row}]
+    assert out["data_flags"] == {"analogue": want, "pf": want}
+    html = runs_mod.results_html(out, spec.to_json())
+    assert (f"1 week to {ASOF} treated as unreported (trailing zero): "
+            "Ohio 1") in html

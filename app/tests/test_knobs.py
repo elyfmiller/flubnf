@@ -16,6 +16,7 @@ from typer.testing import CliRunner
 from app.core import floor as FL
 from app.core import submit as SB
 from app.core import knobs as K
+from app.core import missing as MS
 from app.core.engines import analogue as EA
 from app.core.engines import pf as PF
 from app.core.runs import RunSpec, default_season_start
@@ -42,6 +43,8 @@ SOURCES = {
     "pf.initialization": PF.initialization_for(RunSpec("pf", FD)),
     "run.weeks_to_drop": RunSpec.weeks_to_drop,
     "run.drop_same_day": RunSpec.drop_same_day,
+    "data.trailing_zero": MS.TRAILING_ZERO,
+    "data.partial_week": MS.PARTIAL_WEEK,
     "oracle.w": OR.W_PRODUCTION,
     "oracle.w_aux": MX.W_AUX,
     "oracle.submitted_seed": OR.SUBMITTED_SEED,
@@ -115,7 +118,8 @@ def test_registry_is_well_formed():
             assert k.affects == K.PF_ONLY, k.key
     assert {k.key for k in K.REGISTRY if k.klass == "run"} == {
         "pf.particles", "pf.replicates", "run.season_start",
-        "run.weeks_to_drop", "run.drop_same_day"}
+        "run.weeks_to_drop", "run.drop_same_day", "data.trailing_zero",
+        "data.partial_week"}
     # the optional hub rows: off by default, both members, the output stage
     assert K.OPTIONAL_KEYS == {"output.horizon_minus1",
                                "output.rate_change_pmf"}

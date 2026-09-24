@@ -25,6 +25,7 @@ sys.path.insert(0, str(REPO))
 from flubnf import analogue as AN                     # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL # noqa: E402
 from app.core.data import LOCATIONS, spec_source, vintage_path  # noqa: E402
+from app.core import missing as MS                    # noqa: E402
 
 
 def completeness_args(spec, fips: str, anchor_date, newest_date) -> tuple:
@@ -347,7 +348,7 @@ def _source(spec) -> tuple:
 MAX_ANCHOR_LAG = 2
 
 
-def _walk(spec, notes: dict | None = None):
+def _walk(spec, notes: dict | None = None, flags: list | None = None):
     """Per location, what the Groundhog forecasts from: yields (loc,
     anchor, anchor_date, lag, forecast), where `lag` is the weeks between
     the anchor and the as-of week and `forecast(h)` is the quantile dict h
@@ -357,7 +358,9 @@ def _walk(spec, notes: dict | None = None):
 
     `notes`, when given, receives location -> reason for every location
     whose anchor is not the week the trims ask for (a trailing unreported
-    week moved it back, or it abstained)."""
+    week moved it back, or it abstained). `flags`, when given, receives
+    one row per newest week a missing-data rule treated as unreported
+    ({location, week, value, rule})."""
     v, loc_csv, src_kw = _source(spec)
     t = pd.read_csv(v, dtype={"location": str})
     t["location"] = t["location"].str.zfill(2)
@@ -383,6 +386,7 @@ def _walk(spec, notes: dict | None = None):
         "groundhog.bandwidth")
     bw_kw = {} if bw is None else {"bandwidth": int(bw)}
     bw_kw.update(src_kw)                     # empty on the hub path
+    rules = MS.rules_of(getattr(spec, "extra", None))   # {} when shipped
     for loc in spec.locations:
         fips = name2fips.get(loc)
         if fips is None:
@@ -394,6 +398,16 @@ def _walk(spec, notes: dict | None = None):
         k = k_user + auto
         if k:
             vals = vals.iloc[:-k] if len(vals) > k else vals.iloc[0:0]
+        # optional missing-data rules (app/core/missing.py, off by default):
+        # flagged newest weeks leave like weeks_to_drop, horizons as-of-aligned
+        fl = MS.tail_flags(vals.to_numpy(), rules) if rules else []
+        if fl:
+            if flags is not None:
+                flags.extend({"location": loc, "rule": why,
+                              "week": str(g.date.loc[vals.index[i]])[:10],
+                              "value": float(vals.iloc[i])} for i, why in fl)
+            vals = vals.iloc[:-len(fl)]
+            k += len(fl)
         if not len(vals):
             continue                                       # gap: engine skips, report shows it
         anchor = float(vals.iloc[-1])
@@ -426,11 +440,11 @@ def _walk(spec, notes: dict | None = None):
         yield loc, anchor, anchor_date, lag, forecast
 
 
-def run(spec, notes: dict | None = None) -> dict:
+def run(spec, notes: dict | None = None, flags: list | None = None) -> dict:
     """location -> {horizon(str): {level(float): value}} quantiles; `notes`
-    as in _walk."""
+    and `flags` as in _walk."""
     out = {}
-    for loc, _anchor, _date, _lag, forecast in _walk(spec, notes):
+    for loc, _anchor, _date, _lag, forecast in _walk(spec, notes, flags):
         qs = {}
         for h in (1, 2, 3, 4):     # PHYSICAL weeks ahead, the library's unit
             q = forecast(h)
