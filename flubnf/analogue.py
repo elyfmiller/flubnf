@@ -23,7 +23,7 @@ underprediction. Skill depends on donor COMPOSITION, not depth.
 Seasons leave the donor pool only through a registered DonorSeasonExclusion
 (DONOR_SEASON_EXCLUSIONS; the records below carry the evidence). A season
 label is relative to the influenza 1 August boundary and is not portable to
-another disease (resolve_donor_exclusions, flubnf.profiles).
+another disease (resolve_donor_exclusions).
 
 Two traps, both paid for:
 1. ANCHOR ALIGNMENT. A one-week look-ahead on the anchor is worth ~0.18
@@ -48,8 +48,7 @@ import numpy as np
 DEFAULT_BANDWIDTH = 2
 MIN_DONORS = 30
 
-#: First month of an influenza season label (season_of). flubnf.profiles
-#: .INFLUENZA mirrors it (asserted in tests/test_profiles.py).
+#: First month of an influenza season label (season_of).
 SEASON_BOUNDARY_MONTH = 8
 
 _STD_NORMAL = NormalDist()
@@ -90,8 +89,8 @@ def calendar_distance(a: int, b: int, period: int = 52) -> int:
 # ---------------------------------------------------------------------------
 # Donor-season exclusions
 # ---------------------------------------------------------------------------
-# A season leaves the donor pool ONLY through a registered record (as with
-# flubnf.profiles.ExcludedWindow): an untraced exclusion looks like a bug.
+# A season leaves the donor pool ONLY through a registered record: an
+# untraced exclusion looks like a bug.
 
 @dataclass(frozen=True)
 class DonorSeasonExclusion:

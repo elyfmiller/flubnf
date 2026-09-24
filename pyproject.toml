@@ -41,8 +41,6 @@ Release-notes = "https://github.com/elyfmiller/flubnf/blob/main/docs/archive/REL
 [project.optional-dependencies]
 app = ["fastapi", "uvicorn", "jinja2", "python-multipart", "plotly", "pywebview"]
 dev = ["pytest", "httpx2"]
-# COVID vintages read the CovidHub parquet; optional so the flu path skips a 36 MB wheel.
-covid = ["pyarrow"]
 
 [project.scripts]
 flubnf = "flubnf.cli:app"
