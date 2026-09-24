@@ -397,9 +397,10 @@ def test_size_guard_warns_in_header(tmp_path, monkeypatch):
 def test_route_downloads_report(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     from app.ui import server as srv
+    from app.ui import retro_seasons as ui_retro_seasons
     root = _mk_root(tmp_path, monkeypatch)
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     root.rename(tmp_path / SEASON)
     r = TestClient(srv.app).get(f"/retro/{SEASON}/report")
     assert r.status_code == 200
@@ -412,8 +413,9 @@ def test_route_downloads_report(tmp_path, monkeypatch):
 def test_route_unknown_season_is_plain_404(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     from app.ui import server as srv
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    from app.ui import retro_seasons as ui_retro_seasons
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     r = TestClient(srv.app).get("/retro/2097-98/report")
     assert r.status_code == 404
     assert "2097-98" in r.text

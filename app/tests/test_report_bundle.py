@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient           # noqa: E402
 
 import app.core.runs as runs_mod                    # noqa: E402
 import app.ui.server as srv                         # noqa: E402
+from app.ui import pipeline as ui_pipeline          # noqa: E402
 from app.ui import shared as ui_shared              # noqa: E402
 from app.core import horizons as hz                 # noqa: E402
 from app.core import report_v2                      # noqa: E402
@@ -56,8 +57,8 @@ def _synth_run(workroot: Path):
         [{"location": "Ohio", "last_observed": 127.0},
          {"location": "US", "last_observed": 127.0}]))
     outcome = {}
-    srv._write_weekly_report(spec, workroot, pf_samples, obs,
-                             pd.DataFrame(), locs, n2f, 42.0, outcome)
+    ui_pipeline._write_weekly_report(spec, workroot, pf_samples, obs,
+                                     pd.DataFrame(), locs, n2f, 42.0, outcome)
     return outcome, spec
 
 
@@ -238,7 +239,7 @@ def test_archive_carries_the_bundle(tmp_path, monkeypatch):
     w.mkdir(parents=True)
     for name in ("results.json", "report.html", report_v2.BUNDLE_NAME):
         (w / name).write_text("{}")
-    srv._archive_run(w, "2098-01-03")
+    ui_pipeline._archive_run(w, "2098-01-03")
     assert (tmp_path / "archive" / "2098-01-03"
             / report_v2.BUNDLE_NAME).is_file()
 
@@ -267,9 +268,9 @@ def _synth_run_with_ensemble(workroot: Path):
         [{"location": "Ohio", "last_observed": 127.0},
          {"location": "US", "last_observed": 127.0}]))
     outcome = {}
-    srv._write_weekly_report(spec, workroot, pf_samples, obs,
-                             pd.DataFrame(), locs, n2f, 42.0, outcome,
-                             ens_q=ens_q)
+    ui_pipeline._write_weekly_report(spec, workroot, pf_samples, obs,
+                                     pd.DataFrame(), locs, n2f, 42.0, outcome,
+                                     ens_q=ens_q)
     (workroot / "results.json").write_text(json.dumps({
         "forecast_date": "2098-01-03", "observed": obs,
         "models": {"ensemble": {loc: {h: {str(l): v for l, v in q.items()

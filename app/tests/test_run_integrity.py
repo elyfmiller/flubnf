@@ -23,6 +23,8 @@ from app.core import data as core_data               # noqa: E402
 from app.core.runs import Ledger, RunSpec            # noqa: E402
 from app.core.submit import hub_model_id             # noqa: E402
 from app.ui import server as srv                     # noqa: E402
+from app.ui import pipeline as ui_pipeline           # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
 from app.ui import shared as ui_shared               # noqa: E402
 from app.ui import state as ui_state                 # noqa: E402
 from app.ui import versions as ui_versions           # noqa: E402
@@ -85,15 +87,15 @@ def _fake_run(monkeypatch, tmp_path, status_by_cell, collected, aux=None):
     def _no_truth():
         raise RuntimeError("no truth in this test")
     monkeypatch.setattr(scoring_mod, "load_truth", _no_truth)
-    monkeypatch.setattr(srv, "_sleep_guard", lambda: None)
+    monkeypatch.setattr(ui_pipeline, "_sleep_guard", lambda: None)
     monkeypatch.setattr(ui_versions, "_engine_versions_for_ledger", lambda e: {})
-    monkeypatch.setattr(srv, "_harvest_params", lambda w: {})
-    monkeypatch.setattr(srv, "_write_weekly_report",
+    monkeypatch.setattr(ui_pipeline, "_harvest_params", lambda w: {})
+    monkeypatch.setattr(ui_pipeline, "_write_weekly_report",
                         lambda *a, **k: None)
     spec = RunSpec(engine="all", forecast_date="2098-01-04",
                    locations=["Ohio", "Texas"], replicates=1,
                    extra=srv._run_extra(2, "realtime", aux))
-    srv._run_all(spec)
+    ui_pipeline._run_all(spec)
     row = next(iter(Ledger().rows(5)))
     outcome = json.loads(row.get("outcome") or "{}")
     return row, outcome, tmp_path / "workroots" / row["run_id"]
@@ -222,11 +224,11 @@ def test_a_failed_archive_copy_keeps_the_previous_archive(tmp_path,
         raise OSError(28, "No space left on device")
     monkeypatch.setattr(shutil_mod, "copytree", _enospc)
     with pytest.raises(OSError):
-        srv._archive_run(w, "2098-01-04")
+        ui_pipeline._archive_run(w, "2098-01-04")
     assert (arch / "results.json").read_text() == '{"old": true}'
     assert sorted(p.name for p in arch.parent.iterdir()) == ["2098-01-04"]
     monkeypatch.setattr(shutil_mod, "copytree", real_copytree)
-    out = srv._archive_run(w, "2098-01-04")
+    out = ui_pipeline._archive_run(w, "2098-01-04")
     assert Path(out) == arch
     assert (arch / "results.json").read_text() == '{"new": true}'
     assert (arch / "submission" / "f.csv").read_text() == "new-file"
@@ -250,7 +252,7 @@ def test_a_crash_between_the_two_renames_is_recovered(tmp_path,
     monkeypatch.setattr(shutil_mod, "copytree", _enospc)
     arch = tmp_path / "archive" / "2098-01-04"
     with pytest.raises(OSError):
-        srv._archive_run(w, "2098-01-04")
+        ui_pipeline._archive_run(w, "2098-01-04")
     assert (arch / "results.json").read_text() == '{"previous": true}'
     assert sorted(p.name for p in arch.parent.iterdir()) == ["2098-01-04"]
 
@@ -260,15 +262,15 @@ def test_a_crash_between_the_two_renames_is_recovered(tmp_path,
 def test_no_underreporting_headsup_on_run(tmp_path, monkeypatch):
     """No same-day under-reporting warning (retired: its remedy cost 0.24
     relWIS and was never used), and the vintage is not read for it."""
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path / "retro")
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path / "retro")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     vint = tmp_path / "v.csv"
     vint.write_text("date,location,location_name,value\n"
                     "2097-12-28,39,Ohio,100\n2098-01-04,39,Ohio,30\n")
     reads = []
     monkeypatch.setattr(core_data, "vintage_path",
                         lambda d: reads.append(d) or vint)
-    monkeypatch.setattr(srv, "_run_all", lambda spec: None)
+    monkeypatch.setattr(ui_pipeline, "_run_all", lambda spec: None)
     r = client.post("/run", data={"forecast_date": "2098-01-04",
                                   "locations": ["Ohio"]},
                     follow_redirects=False)

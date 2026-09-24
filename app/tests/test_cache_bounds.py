@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import pandas as pd                                          # noqa: E402
 
 from app.core import retro                                   # noqa: E402
-from app.ui import server as srv                             # noqa: E402
+from app.ui import retro_prep as ui_retro_prep               # noqa: E402
 
 
 def _root(tmp_path: Path, i: int, cells: int = 3) -> Path:
@@ -27,43 +27,43 @@ def _root(tmp_path: Path, i: int, cells: int = 3) -> Path:
 
 
 def test_scores_frames_is_lru_and_capped(tmp_path):
-    srv._SCORES_FRAMES.clear()
-    cap = srv._SCORES_FRAMES_MAX
+    ui_retro_prep._SCORES_FRAMES.clear()
+    cap = ui_retro_prep._SCORES_FRAMES_MAX
     roots = [_root(tmp_path, i) for i in range(cap + 5)]
     for r in roots:
-        assert srv._scores_df(r) is not None
-        assert len(srv._SCORES_FRAMES) <= cap        # never exceeds, ever
+        assert ui_retro_prep._scores_df(r) is not None
+        assert len(ui_retro_prep._SCORES_FRAMES) <= cap        # never exceeds, ever
 
     # the cap is a plateau, not a sawtooth: after the sweep it is FULL, where
     # a clear-the-whole-dict policy would have just thrown everything away
-    assert len(srv._SCORES_FRAMES) == cap
+    assert len(ui_retro_prep._SCORES_FRAMES) == cap
     # and what it kept is the most recent, not the oldest
-    kept = {k[0] for k in srv._SCORES_FRAMES}
+    kept = {k[0] for k in ui_retro_prep._SCORES_FRAMES}
     assert kept == {str(r / "scores.json") for r in roots[-cap:]}
 
     # touching an old entry promotes it: re-reading the newest then adding
     # one more must evict the one in the middle, not the one just used
-    srv._scores_df(roots[-cap])                      # promote to most-recent
-    srv._scores_df(_root(tmp_path, 99))
-    kept = {k[0] for k in srv._SCORES_FRAMES}
+    ui_retro_prep._scores_df(roots[-cap])                      # promote to most-recent
+    ui_retro_prep._scores_df(_root(tmp_path, 99))
+    kept = {k[0] for k in ui_retro_prep._SCORES_FRAMES}
     assert str(roots[-cap] / "scores.json") in kept
-    srv._SCORES_FRAMES.clear()
+    ui_retro_prep._SCORES_FRAMES.clear()
 
 
 def test_scores_frames_still_serves_the_same_frame_from_cache(tmp_path):
     """Bounding must not change what a hit returns: same object, no reparse."""
-    srv._SCORES_FRAMES.clear()
+    ui_retro_prep._SCORES_FRAMES.clear()
     r = _root(tmp_path, 0)
-    first = srv._scores_df(r)
-    assert srv._scores_df(r) is first                # identity, not a reparse
-    srv._SCORES_FRAMES.clear()
+    first = ui_retro_prep._scores_df(r)
+    assert ui_retro_prep._scores_df(r) is first                # identity, not a reparse
+    ui_retro_prep._SCORES_FRAMES.clear()
 
 
 def test_scores_frames_invalidates_on_rewrite(tmp_path):
     """Content-keyed: a rescore must not be served the stale frame."""
-    srv._SCORES_FRAMES.clear()
+    ui_retro_prep._SCORES_FRAMES.clear()
     r = _root(tmp_path, 0, cells=3)
-    assert len(srv._scores_df(r)) == 3
+    assert len(ui_retro_prep._scores_df(r)) == 3
     df = pd.DataFrame([{"model": "ensemble", "location": "Ohio", "fips": "39",
                         "asof": "2025-11-15", "horizon": h, "wis": 1.0,
                         "base_wis": 2.0, "rel": 0.5} for h in range(7)])
@@ -74,8 +74,8 @@ def test_scores_frames_invalidates_on_rewrite(tmp_path):
     # actually moved rather than trusting the clock
     assert (sf.stat().st_mtime_ns, sf.stat().st_size) != (st.st_mtime_ns,
                                                           st.st_size)
-    assert len(srv._scores_df(r)) == 7
-    srv._SCORES_FRAMES.clear()
+    assert len(ui_retro_prep._scores_df(r)) == 7
+    ui_retro_prep._SCORES_FRAMES.clear()
 
 
 def test_summary_cache_is_lru_and_capped(tmp_path, monkeypatch):
@@ -128,9 +128,9 @@ def test_summary_cache_invalidates_when_scores_change(tmp_path):
 def test_caches_are_ordered_so_eviction_is_possible():
     """A plain dict cannot express least-recently-used. Guard the type."""
     from collections import OrderedDict
-    assert isinstance(srv._SCORES_FRAMES, OrderedDict)
+    assert isinstance(ui_retro_prep._SCORES_FRAMES, OrderedDict)
     assert isinstance(retro._SUMMARY_CACHE, OrderedDict)
-    assert srv._SCORES_FRAMES_MAX >= 1 and retro._SUMMARY_CACHE_MAX >= 1
+    assert ui_retro_prep._SCORES_FRAMES_MAX >= 1 and retro._SUMMARY_CACHE_MAX >= 1
     # the scores frames are the large ones; they must be capped tighter
-    assert srv._SCORES_FRAMES_MAX < retro._SUMMARY_CACHE_MAX
-    json.dumps({"cap": srv._SCORES_FRAMES_MAX})   # plain ints, not surprises
+    assert ui_retro_prep._SCORES_FRAMES_MAX < retro._SUMMARY_CACHE_MAX
+    json.dumps({"cap": ui_retro_prep._SCORES_FRAMES_MAX})   # plain ints, not surprises

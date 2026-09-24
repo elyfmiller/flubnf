@@ -21,6 +21,9 @@ import pytest                                       # noqa: E402
 from fastapi.testclient import TestClient           # noqa: E402
 
 from app.ui import server as srv                    # noqa: E402
+from app.ui import pipeline as ui_pipeline          # noqa: E402
+from app.ui import retro_prep as ui_retro_prep      # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
 from app.ui import state as ui_state                # noqa: E402
 from app.ui import templating as ui_templating      # noqa: E402
 
@@ -36,15 +39,15 @@ SEASON = "2098-99"
 def _isolated_status():
     """Snapshot and restore the module-level status stores."""
     status_before = dict(ui_state._status)
-    retro_before = dict(srv._retro_status)
-    stop_before = set(srv._retro_stop)
-    claim_before = dict(srv._retro_claim_at)
+    retro_before = dict(ui_retro_seasons._retro_status)
+    stop_before = set(ui_retro_seasons._retro_stop)
+    claim_before = dict(ui_retro_seasons._retro_claim_at)
     form_before = dict(ui_state._last_form)
     yield
     ui_state._status.clear(); ui_state._status.update(status_before)
-    srv._retro_status.clear(); srv._retro_status.update(retro_before)
-    srv._retro_stop.clear(); srv._retro_stop.update(stop_before)
-    srv._retro_claim_at.clear(); srv._retro_claim_at.update(claim_before)
+    ui_retro_seasons._retro_status.clear(); ui_retro_seasons._retro_status.update(retro_before)
+    ui_retro_seasons._retro_stop.clear(); ui_retro_seasons._retro_stop.update(stop_before)
+    ui_retro_seasons._retro_claim_at.clear(); ui_retro_seasons._retro_claim_at.update(claim_before)
     ui_state._last_form.clear(); ui_state._last_form.update(form_before)
 
 
@@ -67,20 +70,20 @@ def test_concurrent_run_posts_start_exactly_one_engine_run(tmp_path,
     the check-to-claim window (via _known_seasons), so without the lock both
     threads would pass the busy check."""
     from app.core import data as data_real
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     # patch the REAL module, not srv.data_mod: the lazy proxy (possibly
     # swapped by the import-time warm thread mid-test) would drop it
     monkeypatch.setattr(data_real, "vintage_path", lambda d: tmp_path)
     started = []
-    monkeypatch.setattr(srv, "_run_all", lambda spec: started.append(spec))
+    monkeypatch.setattr(ui_pipeline, "_run_all", lambda spec: started.append(spec))
 
     def slow_known():
         time.sleep(0.25)      # widen the race window deterministically
         return []
 
-    monkeypatch.setattr(srv, "_known_seasons", slow_known)
-    srv._retro_status.clear()
+    monkeypatch.setattr(ui_retro_seasons, "_known_seasons", slow_known)
+    ui_retro_seasons._retro_status.clear()
     ui_state._status.update({"running": None, "phase": "", "run_label": "",
                         "log": []})
 
@@ -101,8 +104,8 @@ def test_concurrent_retro_run_posts_claim_exactly_one_worker(tmp_path,
                                                              monkeypatch):
     """The same race in POST /retro/run claims exactly one season worker."""
     from app.core import retro
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     monkeypatch.setattr(retro, "available_seasons", lambda: [SEASON])
     workers = []
     monkeypatch.setattr(srv, "_retro_bg", lambda *a, **k: workers.append(a))
@@ -111,8 +114,8 @@ def test_concurrent_retro_run_posts_claim_exactly_one_worker(tmp_path,
         time.sleep(0.25)      # inside the locked window, before the claim
         return [SEASON]
 
-    monkeypatch.setattr(srv, "_known_seasons", slow_known)
-    srv._retro_status.clear()
+    monkeypatch.setattr(ui_retro_seasons, "_known_seasons", slow_known)
+    ui_retro_seasons._retro_status.clear()
     ui_state._status.update({"running": None, "phase": "", "run_label": ""})
 
     def post():
@@ -122,7 +125,7 @@ def test_concurrent_retro_run_posts_claim_exactly_one_worker(tmp_path,
     codes = _two_threads(post)
     assert codes == [303, 303]
     assert len(workers) == 1
-    assert srv._retro_status[SEASON] == "running"
+    assert ui_retro_seasons._retro_status[SEASON] == "running"
     assert "already replaying" in ui_state._status.get("flash", "")
 
 
@@ -278,7 +281,7 @@ def test_script_json_escapes_every_angle_bracket():
 
 
 def test_scoring_failed_hint_escapes_the_error_text():
-    frag = srv._scoring_failed_hint("<img src=x onerror=alert(1)> & boom")
+    frag = ui_retro_prep._scoring_failed_hint("<img src=x onerror=alert(1)> & boom")
     assert "<img" not in frag
     assert "&lt;img src=x onerror=alert(1)&gt; &amp; boom" in frag
     assert frag.startswith("<p class='hint'>Scoring failed: <code>")

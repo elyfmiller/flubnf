@@ -19,6 +19,8 @@ import app.core.runs as runs_mod
 from app.core import datasets as D
 from app.ui import datasets_ui as DU
 from app.ui import server as srv
+from app.ui import pipeline as ui_pipeline
+from app.ui import retro_seasons as ui_retro_seasons
 from app.ui import shared as ui_shared
 from app.ui import state as ui_state
 
@@ -34,7 +36,7 @@ TEMPLATE = Path(__file__).resolve().parents[1] / "ui" / "static" / \
 def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(D, "ROOT", tmp_path / "datasets")
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path / "state")
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path / "retro")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path / "retro")
     status, form = dict(ui_state._status), dict(ui_state._last_form)
     ui_state._status["running"] = None
     ui_state._status.pop("flash", None)
@@ -241,7 +243,7 @@ def test_api_series_with_a_source_returns_the_dataset():
 def _capture(monkeypatch):
     got = []
     monkeypatch.setattr(DU, "run_worker", lambda spec: got.append(spec))
-    monkeypatch.setattr(srv, "_run_all", lambda spec: (_ for _ in ()).throw(
+    monkeypatch.setattr(ui_pipeline, "_run_all", lambda spec: (_ for _ in ()).throw(
         AssertionError("the hub pipeline ran")))
     return got
 

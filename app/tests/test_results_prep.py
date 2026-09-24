@@ -26,6 +26,8 @@ from fastapi.testclient import TestClient                  # noqa: E402
 
 from app.core import playback, retro, scoring              # noqa: E402
 from app.ui import server as srv                           # noqa: E402
+from app.ui import retro_prep as ui_retro_prep             # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons       # noqa: E402
 from app.ui import shared as ui_shared                     # noqa: E402
 from app.ui import versions as ui_versions                 # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL      # noqa: E402
@@ -94,12 +96,12 @@ def _routed(monkeypatch, tmp_path):
     """Point the app at a controlled retro root and forget every job."""
     rr = tmp_path / "retro"
     rr.mkdir(exist_ok=True)
-    monkeypatch.setattr(srv, "RETRO_ROOT", rr)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
-    srv._results_jobs.clear()
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", rr)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
+    ui_retro_prep._results_jobs.clear()
     ui_shared._invalidate_scans()
     yield rr
-    srv._results_jobs.clear()
+    ui_retro_prep._results_jobs.clear()
 
 
 # ------------------------------------------- finalize_season, the one job
@@ -174,7 +176,7 @@ def test_season_worker_finalizes_and_records_before_done(tmp_path, _stubbed,
     _mk_tree(_routed)
     monkeypatch.setattr(retro, "run_season", lambda *a, **k: [])
     srv._retro_bg(SEASON, ["Ohio"], width=1)
-    assert srv._retro_status[SEASON] == "done"
+    assert ui_retro_seasons._retro_status[SEASON] == "done"
     assert retro.scores_scoreable(root)
     assert retro.national_aggregate_fresh(root)
     m = retro.read_meta(root)
@@ -220,7 +222,7 @@ def test_slow_job_shows_the_preparing_state_and_status_endpoint(
         assert st["elapsed_s"] >= 0.0
     finally:
         hold.set()
-    job = srv._results_jobs[str(_routed / SEASON)]
+    job = ui_retro_prep._results_jobs[str(_routed / SEASON)]
     assert job["done"].wait(5)
     st = client.get(f"/api/retro/{SEASON}/results_status").json()
     assert st["pending"] is False
@@ -247,7 +249,7 @@ def test_one_job_per_root_even_under_concurrent_visits(tmp_path, _stubbed,
         assert len(starts) == 1
     finally:
         hold.set()
-        srv._results_jobs[str(_routed / SEASON)]["done"].wait(5)
+        ui_retro_prep._results_jobs[str(_routed / SEASON)]["done"].wait(5)
 
 
 def test_unsettled_truth_never_loops(tmp_path, _routed, monkeypatch):
@@ -296,7 +298,7 @@ def test_week_map_cards_cache_on_disk_and_are_reused(tmp_path, _stubbed,
     freshness glob (playback_cache/*.json)."""
     import os
     root = _mk_tree(_routed)
-    cards = srv._week_map_cards(root, W1)
+    cards = ui_retro_prep._week_map_cards(root, W1)
     assert cards["39"]["name"] == "Ohio" and cards["39"]["probs"]
     cf = root / "playback_cache" / "map_cards" / f"{W1}.json"
     assert cf.is_file()
@@ -305,16 +307,16 @@ def test_week_map_cards_cache_on_disk_and_are_reused(tmp_path, _stubbed,
     st = sp.stat()
     sp.write_text("not json")
     os.utime(sp, (st.st_atime, st.st_mtime))
-    again = srv._week_map_cards(root, W1)
+    again = ui_retro_prep._week_map_cards(root, W1)
     assert again["39"]["probs"] == cards["39"]["probs"]
     # a changed mtime invalidates; the corrupt file then raises (honest)
     os.utime(sp, (st.st_atime + 60, st.st_mtime + 60))
     with pytest.raises(Exception):
-        srv._week_map_cards(root, W1)
+        ui_retro_prep._week_map_cards(root, W1)
     # warming map cards must not trigger a rebuild of the 25 MB export
     from app.core import report_season
     newest0 = report_season._newest_input(root)
-    srv._week_map_cards(root, W2)
+    ui_retro_prep._week_map_cards(root, W2)
     assert report_season._newest_input(root) == newest0
 
 

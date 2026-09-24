@@ -33,6 +33,8 @@ from app.core import report_v2                      # noqa: E402
 from app.core import retro                          # noqa: E402
 from app.core import ttlcache                       # noqa: E402
 from app.ui import server as srv                    # noqa: E402
+from app.ui import pipeline as ui_pipeline          # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
 from app.ui import shared as ui_shared              # noqa: E402
 from app.ui import state as ui_state                # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL   # noqa: E402
@@ -59,15 +61,15 @@ GOLDEN_ROUTES = Path(__file__).resolve().parent / "golden" / "ui_routes.json"
 @pytest.fixture(autouse=True)
 def _isolated_state():
     status_before = dict(ui_state._status)
-    retro_before = dict(srv._retro_status)
-    stop_before = set(srv._retro_stop)
-    claim_before = dict(srv._retro_claim_at)
+    retro_before = dict(ui_retro_seasons._retro_status)
+    stop_before = set(ui_retro_seasons._retro_stop)
+    claim_before = dict(ui_retro_seasons._retro_claim_at)
     ttlcache.clear_all()
     yield
     ui_state._status.clear(); ui_state._status.update(status_before)
-    srv._retro_status.clear(); srv._retro_status.update(retro_before)
-    srv._retro_stop.clear(); srv._retro_stop.update(stop_before)
-    srv._retro_claim_at.clear(); srv._retro_claim_at.update(claim_before)
+    ui_retro_seasons._retro_status.clear(); ui_retro_seasons._retro_status.update(retro_before)
+    ui_retro_seasons._retro_stop.clear(); ui_retro_seasons._retro_stop.update(stop_before)
+    ui_retro_seasons._retro_claim_at.clear(); ui_retro_seasons._retro_claim_at.update(claim_before)
     ttlcache.clear_all()
 
 
@@ -77,8 +79,8 @@ def _live_world(tmp_path, monkeypatch):
     """A simulated live application: one console run fitting (in-memory
     claim plus a workroot with a progress shard), one retrospective running
     (fresh-heartbeat record), one paused (record plus its PAUSE flag)."""
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path / "retro")
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "seal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path / "retro")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "seal")
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path / "state")
     # datasets.ROOT was fixed from APP_STATE at import
     monkeypatch.setattr(datasets, "ROOT", tmp_path / "state" / "datasets")
@@ -97,8 +99,8 @@ def _live_world(tmp_path, monkeypatch):
         "segment_start_utc": None, "started_utc": now, "elapsed_s": 9.0,
         "total_weeks": 30, "weeks_completed": 1, "week_seconds": {}})
     retro.pause_path(pause_root).touch()
-    srv._retro_status.update({RUNNING_SEASON: "running",
-                              PAUSED_SEASON: "paused"})
+    ui_retro_seasons._retro_status.update({RUNNING_SEASON: "running",
+                                           PAUSED_SEASON: "paused"})
     workroot = tmp_path / "console_workroot"
     workroot.mkdir()
     (workroot / "pf_status.json.prog").write_text(
@@ -127,8 +129,8 @@ def _control_state(run_root, pause_root, workroot):
         "status": {k: ui_state._status.get(k)
                    for k in ("running", "workroot", "phase", "run_label",
                              "expected_total", "started_utc", "settings")},
-        "retro_status": dict(srv._retro_status),
-        "retro_stop": set(srv._retro_stop),
+        "retro_status": dict(ui_retro_seasons._retro_status),
+        "retro_stop": set(ui_retro_seasons._retro_stop),
     }
 
 
@@ -192,11 +194,11 @@ def test_every_get_route_leaves_the_live_runs_alone(tmp_path, monkeypatch):
 
 def test_cached_scans_never_create_state(tmp_path):
     ghost = tmp_path / "ghost"
-    assert srv._weeks_done(ghost / RUNNING_SEASON) == 0
+    assert ui_retro_seasons._weeks_done(ghost / RUNNING_SEASON) == 0
     assert ui_shared._scan_results(ghost / "workroots") == []
     assert ui_shared._scan_archive_dates(ghost / "archive") == []
-    assert srv._scan_archive_entries(ghost, RUNNING_SEASON) == []
-    assert srv._seasons_on_disk(ghost) == ()
+    assert ui_retro_seasons._scan_archive_entries(ghost, RUNNING_SEASON) == []
+    assert ui_retro_seasons._seasons_on_disk(ghost) == ()
     assert not ghost.exists()
 
 
@@ -222,8 +224,8 @@ def _synth_run(workroot: Path):
     (workroot / "cells.json").write_text(json.dumps(
         [{"location": "Ohio", "last_observed": 127.0},
          {"location": "US", "last_observed": 127.0}]))
-    srv._write_weekly_report(spec, workroot, pf_samples, obs,
-                             pd.DataFrame(), locs, n2f, 42.0, {})
+    ui_pipeline._write_weekly_report(spec, workroot, pf_samples, obs,
+                                     pd.DataFrame(), locs, n2f, 42.0, {})
 
 
 def test_stale_report_rebuild_writes_only_report_html(tmp_path, monkeypatch):
@@ -299,8 +301,8 @@ def test_playback_endpoint_writes_only_its_cache(tmp_path, monkeypatch):
                                                     for f in fips_set
                                                     for h in range(4)})
     monkeypatch.setattr(playback, "HUB", tmp_path / "hub")
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     root = tmp_path / PB_SEASON
     wd = root / "weeks" / ASOF
     wd.mkdir(parents=True)
@@ -341,8 +343,8 @@ def test_playback_endpoint_writes_only_its_cache(tmp_path, monkeypatch):
 def test_retro_worker_writes_scores_atomically(tmp_path, monkeypatch):
     """The worker's final scores.json lands beside-then-replace, so a page
     reading mid-write never sees a half-written file."""
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "_sleep_guard", lambda: None)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_pipeline, "_sleep_guard", lambda: None)
     root = tmp_path / RUNNING_SEASON
     root.mkdir(parents=True)
     monkeypatch.setattr(retro, "run_season", lambda *a, **k: [])
@@ -358,7 +360,7 @@ def test_retro_worker_writes_scores_atomically(tmp_path, monkeypatch):
 
     monkeypatch.setattr(os, "replace", spy)
     srv._retro_bg(RUNNING_SEASON, ["Ohio"], width=1)
-    assert srv._retro_status[RUNNING_SEASON] == "done"
+    assert ui_retro_seasons._retro_status[RUNNING_SEASON] == "done"
     assert json.loads((root / "scores.json").read_text())
     assert not (root / "scores.json.tmp").exists()
     assert any(d.endswith("scores.json") for d in replaced)

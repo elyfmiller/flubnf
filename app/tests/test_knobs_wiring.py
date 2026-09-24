@@ -32,6 +32,8 @@ from app.core import retro                                   # noqa: E402
 from app.core.engines import analogue as EA                  # noqa: E402
 from app.core.runs import Ledger, RunSpec, spec_settings     # noqa: E402
 from app.ui import server as srv                             # noqa: E402
+from app.ui import pipeline as ui_pipeline                   # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons         # noqa: E402
 from app.ui import shared as ui_shared                       # noqa: E402
 from app.ui import state as ui_state                         # noqa: E402
 
@@ -45,24 +47,24 @@ FD = "2098-01-04"                                  # a Saturday
 @pytest.fixture(autouse=True)
 def _isolated():
     status_before, form_before = dict(ui_state._status), dict(ui_state._last_form)
-    retro_before = dict(srv._retro_status)
+    retro_before = dict(ui_retro_seasons._retro_status)
     yield
     ui_state._status.clear(); ui_state._status.update(status_before)
     ui_state._last_form.clear(); ui_state._last_form.update(form_before)
-    srv._retro_status.clear(); srv._retro_status.update(retro_before)
+    ui_retro_seasons._retro_status.clear(); ui_retro_seasons._retro_status.update(retro_before)
     ui_shared._invalidate_scans()
 
 
 def _capture_run(monkeypatch, tmp_path):
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path / "retro")
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path / "retro")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     # the real module, not the lazy proxy (its first use rebinds the name)
     import app.core.data as data
     monkeypatch.setattr(ui_state, "data_mod", data)
     monkeypatch.setattr(data, "vintage_path", lambda d: tmp_path)
     monkeypatch.setattr(data, "vintages", lambda: [FD])
     started = []
-    monkeypatch.setattr(srv, "_run_all", lambda spec: started.append(spec))
+    monkeypatch.setattr(ui_pipeline, "_run_all", lambda spec: started.append(spec))
     return started
 
 
@@ -110,7 +112,7 @@ def test_a_shipped_console_run_writes_what_it_always_wrote(console):
     srv_, raw = console
     spec = RunSpec(engine="all", forecast_date=ASOF, locations=["Ohio", "Utah"],
                    extra=srv_._run_extra(2, "vintage"))
-    srv_._run_all(spec)
+    ui_pipeline._run_all(spec)
     row = Ledger().rows(1)[0]
     out = json.loads(row["outcome"])
     w = runs_mod.APP_STATE / "workroots" / row["run_id"]
@@ -222,7 +224,7 @@ def _knob_run(srv_, nd, override=""):
     spec = RunSpec(engine="all", forecast_date=ASOF, locations=["Ohio", "Utah"],
                    extra=K.write_extra(nd, srv_._run_extra(2, "vintage"),
                                        override=override))
-    srv_._run_all(spec)
+    ui_pipeline._run_all(spec)
     row = Ledger().rows(1)[0]
     return (spec, row, json.loads(row["outcome"]),
             runs_mod.APP_STATE / "workroots" / row["run_id"])
@@ -460,8 +462,8 @@ def test_a_tree_from_before_the_registry_resumes_unmarked(tmp_path, monkeypatch)
 
 
 def test_the_retro_route_refuses_a_resume_with_other_knobs(tmp_path, monkeypatch):
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     monkeypatch.setattr(retro, "available_seasons", lambda: [SEASON])
     monkeypatch.setattr(retro, "season_vintages", lambda s: [W1, W2])
     launched = []
@@ -471,7 +473,7 @@ def test_the_retro_route_refuses_a_resume_with_other_knobs(tmp_path, monkeypatch
     retro.write_meta(root, {"season": SEASON, "status": "stopped",
                             "settings": {"season": SEASON, "engine": "pf",
                                          "knobs": {"oracle.w": 0.25}}})
-    monkeypatch.setattr(srv, "_weeks_done", lambda p: 1)
+    monkeypatch.setattr(ui_retro_seasons, "_weeks_done", lambda p: 1)
     base = {"season": SEASON, "locations": "panel6", "engine": "pf",
             "mode": "resume", "national": "0"}
     client.post("/retro/run", data={**base, "knob.oracle.w": "0.3"},
@@ -480,11 +482,11 @@ def test_the_retro_route_refuses_a_resume_with_other_knobs(tmp_path, monkeypatch
     assert "mix two configurations" in ui_state._status.get("flash", "")
     # out of the retro scope, or out of range: refused before anything moves
     for bad in ({"knob.run.weeks_to_drop": "1"}, {"particles": "500"}):
-        srv._retro_status.pop(SEASON, None)
+        ui_retro_seasons._retro_status.pop(SEASON, None)
         client.post("/retro/run", data={**base, **bad}, follow_redirects=False)
         assert launched == [] and "Nothing was started" in ui_state._status["flash"]
     # the recorded knobs (the one-click resume's JSON field) launch
-    srv._retro_status.pop(SEASON, None)
+    ui_retro_seasons._retro_status.pop(SEASON, None)
     client.post("/retro/run", data={**base, "knobs": '{"oracle.w": 0.25}'},
                 follow_redirects=False)
     assert len(launched) == 1

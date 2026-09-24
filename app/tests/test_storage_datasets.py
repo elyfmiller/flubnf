@@ -23,6 +23,7 @@ from app.core import retro
 from app.core.runs import Ledger, RunSpec
 from app.ui import datasets_ui as DU
 from app.ui import server as srv
+from app.ui import retro_seasons as ui_retro_seasons
 from app.ui import shared as ui_shared
 from app.ui import state as ui_state
 
@@ -36,8 +37,8 @@ def state(tmp_path, monkeypatch):
     """A dataset with one run and one replay, plus one hub run."""
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path / "state")
     monkeypatch.setattr(D, "ROOT", tmp_path / "datasets")
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path / "retro")
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path / "retro")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     import flubnf.settings as settings_mod
     monkeypatch.setattr(settings_mod, "HUB", tmp_path / "hub")
     before = dict(ui_state._status)

@@ -126,8 +126,9 @@ def _warm(root):
 def _app_page(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     from app.ui import server as srv
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    from app.ui import retro_seasons as ui_retro_seasons
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     r = TestClient(srv.app).get(f"/retro/{SEASON}")
     assert r.status_code == 200
     html = r.text

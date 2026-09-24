@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.core import relwis                          # noqa: E402
 from app.ui import server as srv                     # noqa: E402
+from app.ui import retro_prep as ui_retro_prep       # noqa: E402
 
 #: Three cells, two weeks, one jurisdiction. Small enough to check by hand.
 C1 = ("2024-01-06", "01", 0)
@@ -348,15 +349,15 @@ def test_the_server_helper_caches_on_the_scores_file_identity(tmp_path):
     root = tmp_path / "2098-99"
     root.mkdir()
     _seal_frame().to_json(root / "scores.json")
-    a = srv._relwis_figures(root, relwis.RATIO_OF_SUMS)
-    b = srv._relwis_figures(root, relwis.RATIO_OF_SUMS)
+    a = ui_retro_prep._relwis_figures(root, relwis.RATIO_OF_SUMS)
+    b = ui_retro_prep._relwis_figures(root, relwis.RATIO_OF_SUMS)
     assert a is b                                  # same inputs, same object
     assert a.values["pf"] == 0.5
 
 
 def test_the_server_helper_survives_a_root_with_no_scores(tmp_path,
                                                           no_field):
-    figs = srv._relwis_figures(tmp_path / "empty", relwis.PAIRWISE)
+    figs = ui_retro_prep._relwis_figures(tmp_path / "empty", relwis.PAIRWISE)
     assert not figs.available and figs.reason
     assert figs.convention == relwis.PAIRWISE
 
@@ -381,7 +382,7 @@ def _season_page(**kw):
                us_row=None, us=None, pooled_note="", preparing=None,
                archive="", archive_when="", prog=None,
                conv=relwis.RATIO_OF_SUMS, figs=None,
-               conventions=srv._relwis_conventions(),
+               conventions=ui_retro_prep._relwis_conventions(),
                weeks=["2098-11-07", "2098-11-14"], week="2098-11-14",
                map_html="<div id='usmap-wrap'></div>",
                official_catalog=[], n_weeks=2, score_error="")

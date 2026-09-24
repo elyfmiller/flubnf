@@ -19,6 +19,8 @@ from fastapi.testclient import TestClient                # noqa: E402
 from app.core import data as core_data                   # noqa: E402
 from app.core.runs import RunSpec, default_season_start, spec_settings  # noqa: E402
 from app.ui import server as srv                         # noqa: E402
+from app.ui import pipeline as ui_pipeline               # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons     # noqa: E402
 from app.ui import state as ui_state                     # noqa: E402
 
 client = TestClient(srv.app)
@@ -59,11 +61,11 @@ def test_forecast_form_offers_two_modes_and_the_advanced_group():
 
 
 def _capture_run(monkeypatch, tmp_path):
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path / "retro")
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path / "retro")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     monkeypatch.setattr(core_data, "vintage_path", lambda d: tmp_path)
     started = []
-    monkeypatch.setattr(srv, "_run_all", lambda spec: started.append(spec))
+    monkeypatch.setattr(ui_pipeline, "_run_all", lambda spec: started.append(spec))
     return started
 
 

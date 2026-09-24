@@ -24,6 +24,8 @@ from app.core import data as core_data              # noqa: E402
 from app.core import retro                          # noqa: E402
 from app.core import ttlcache                       # noqa: E402
 from app.ui import server as srv                    # noqa: E402
+from app.ui import pipeline as ui_pipeline          # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
 from app.ui import state as ui_state                # noqa: E402
 
 client = TestClient(srv.app)
@@ -36,16 +38,16 @@ SATURDAY = "2025-12-06"     # a real Saturday: /run must not snap it
 def _isolated_state():
     """Snapshot and restore every module-level store a run start mutates."""
     status_before = dict(ui_state._status)
-    retro_before = dict(srv._retro_status)
-    stop_before = set(srv._retro_stop)
-    claim_before = dict(srv._retro_claim_at)
+    retro_before = dict(ui_retro_seasons._retro_status)
+    stop_before = set(ui_retro_seasons._retro_stop)
+    claim_before = dict(ui_retro_seasons._retro_claim_at)
     form_before = dict(ui_state._last_form)
     ttlcache.clear_all()
     yield
     ui_state._status.clear(); ui_state._status.update(status_before)
-    srv._retro_status.clear(); srv._retro_status.update(retro_before)
-    srv._retro_stop.clear(); srv._retro_stop.update(stop_before)
-    srv._retro_claim_at.clear(); srv._retro_claim_at.update(claim_before)
+    ui_retro_seasons._retro_status.clear(); ui_retro_seasons._retro_status.update(retro_before)
+    ui_retro_seasons._retro_stop.clear(); ui_retro_seasons._retro_stop.update(stop_before)
+    ui_retro_seasons._retro_claim_at.clear(); ui_retro_seasons._retro_claim_at.update(claim_before)
     ui_state._last_form.clear(); ui_state._last_form.update(form_before)
     ttlcache.clear_all()
 
@@ -158,8 +160,8 @@ def test_paused_card_keeps_its_own_resume_and_no_shortcut_form():
 
 def test_retro_index_wires_resume_for_stopped_and_interrupted(tmp_path,
                                                               monkeypatch):
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     root = tmp_path / SEASON
     retro.write_meta(root, {"season": SEASON, "status": "stopped",
                             "settings": dict(SETTINGS), "total_weeks": 30})
@@ -189,8 +191,8 @@ def test_retro_index_wires_resume_for_stopped_and_interrupted(tmp_path,
 
 def test_retro_resume_post_launches_with_the_recorded_settings(tmp_path,
                                                                monkeypatch):
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     root = tmp_path / SEASON
     retro.write_meta(root, {"season": SEASON, "status": "stopped",
                             "settings": dict(SETTINGS), "total_weeks": 30})
@@ -210,25 +212,25 @@ def test_retro_resume_post_launches_with_the_recorded_settings(tmp_path,
                           "national": False}, "pf")]
     # mode=resume: the completed week was neither archived nor discarded
     assert (wk / "samples.json").is_file()
-    assert srv._retro_status[SEASON] == "running"
+    assert ui_retro_seasons._retro_status[SEASON] == "running"
 
 
 def test_retro_resume_post_refused_over_a_console_run(tmp_path, monkeypatch):
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     root = tmp_path / SEASON
     retro.write_meta(root, {"season": SEASON, "status": "stopped",
                             "settings": dict(SETTINGS), "total_weeks": 30})
     launched = []
     monkeypatch.setattr(srv, "_retro_bg", lambda *a: launched.append(a))
-    srv._retro_status.clear()
+    ui_retro_seasons._retro_status.clear()
     ui_state._status.update({"running": "all:20990101T000000-abc",
                         "run_label": "2099-01-02 · 3 state(s) + US"})
     fields = retro.resume_form_fields(retro.read_meta(root))
     r = client.post("/retro/run", data=fields, follow_redirects=False)
     assert r.status_code == 303
     assert launched == []
-    assert SEASON not in srv._retro_status
+    assert SEASON not in ui_retro_seasons._retro_status
     assert "console run holds the engine" in ui_state._status.get("flash", "")
 
 
@@ -248,11 +250,11 @@ def test_rerun_reposts_the_stored_spec_verbatim(tmp_path, monkeypatch):
                             locations=["Ohio", "US"], weeks_to_drop=1,
                             replicates=2)
     rid = _ledger_row(tmp_path, monkeypatch, spec)
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path / "retro")
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path / "retro")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     monkeypatch.setattr(core_data, "vintage_path", lambda d: tmp_path)
     started = []
-    monkeypatch.setattr(srv, "_run_all", lambda s: started.append(s))
+    monkeypatch.setattr(ui_pipeline, "_run_all", lambda s: started.append(s))
     ui_state._status.update({"running": None})
     r = client.post(f"/runs/{rid}/rerun", follow_redirects=False)
     assert r.status_code == 303
@@ -271,7 +273,7 @@ def test_rerun_reposts_the_stored_spec_verbatim(tmp_path, monkeypatch):
 def test_rerun_refused_when_settings_were_not_recorded(tmp_path, monkeypatch):
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)   # empty ledger
     started = []
-    monkeypatch.setattr(srv, "_run_all", lambda s: started.append(s))
+    monkeypatch.setattr(ui_pipeline, "_run_all", lambda s: started.append(s))
     r = client.post("/runs/20980101T000000-abcdef/rerun",
                     follow_redirects=False)
     assert r.status_code == 303
@@ -288,7 +290,7 @@ def test_rerun_refuses_a_spec_the_form_path_cannot_reproduce(tmp_path,
                             locations=["Ohio", "US"], jitter=0.55)
     rid = _ledger_row(tmp_path, monkeypatch, spec)
     started = []
-    monkeypatch.setattr(srv, "_run_all", lambda s: started.append(s))
+    monkeypatch.setattr(ui_pipeline, "_run_all", lambda s: started.append(s))
     r = client.post(f"/runs/{rid}/rerun", follow_redirects=False)
     assert r.status_code == 303
     assert started == []
@@ -301,13 +303,13 @@ def test_rerun_refused_while_a_retrospective_replays(tmp_path, monkeypatch):
     spec = runs_mod.RunSpec(engine="all", forecast_date=SATURDAY,
                             locations=["Ohio", "US"])
     rid = _ledger_row(tmp_path, monkeypatch, spec)
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path / "retro")
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path / "retro")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     monkeypatch.setattr(core_data, "vintage_path", lambda d: tmp_path)
     started = []
-    monkeypatch.setattr(srv, "_run_all", lambda s: started.append(s))
+    monkeypatch.setattr(ui_pipeline, "_run_all", lambda s: started.append(s))
     ui_state._status.update({"running": None})
-    srv._retro_status["2097-98"] = "running"
+    ui_retro_seasons._retro_status["2097-98"] = "running"
     r = client.post(f"/runs/{rid}/rerun", follow_redirects=False)
     assert r.status_code == 303
     assert started == []
@@ -320,12 +322,12 @@ def test_rerun_refused_while_a_console_run_is_fitting(tmp_path, monkeypatch):
     spec = runs_mod.RunSpec(engine="all", forecast_date=SATURDAY,
                             locations=["Ohio", "US"])
     rid = _ledger_row(tmp_path, monkeypatch, spec, status="error")
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path / "retro")
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path / "retro")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     monkeypatch.setattr(core_data, "vintage_path", lambda d: tmp_path)
     started = []
-    monkeypatch.setattr(srv, "_run_all", lambda s: started.append(s))
-    srv._retro_status.clear()
+    monkeypatch.setattr(ui_pipeline, "_run_all", lambda s: started.append(s))
+    ui_retro_seasons._retro_status.clear()
     ui_state._status.update({"running": "all:20990101T000000-abc"})
     r = client.post(f"/runs/{rid}/rerun", follow_redirects=False)
     assert r.status_code == 303
@@ -351,7 +353,7 @@ def test_a_completed_run_with_fit_failures_is_partial_not_failed():
     offered), not "failed"; "failed"/"error" are for runs that died."""
     # the module that runs a console forecast (datasets_ui.py holds the same
     # line for dataset runs, so a scan of the package would pass vacuously)
-    runner = inspect.getsource(inspect.getmodule(srv._run_all))
+    runner = inspect.getsource(inspect.getmodule(ui_pipeline._run_all))
     assert '"partial" if fails else "ok"' in runner, (
         "close_run went back to branding a completed run failed for "
         "per-cell fit failures")

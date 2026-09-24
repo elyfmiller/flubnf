@@ -18,6 +18,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.core import knobs as K                              # noqa: E402
 from app.ui import server as srv                             # noqa: E402
+from app.ui import pipeline as ui_pipeline                   # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons         # noqa: E402
 from app.ui import forms as ui_forms                         # noqa: E402
 from app.ui import shared as ui_shared                       # noqa: E402
 from app.ui import state as ui_state                         # noqa: E402
@@ -144,10 +146,10 @@ def test_posting_the_rendered_form_untouched_runs_the_shipped_spec(
     monkeypatch.setattr(ui_state, "data_mod", data)
     monkeypatch.setattr(data, "vintage_path", lambda d: tmp_path)
     monkeypatch.setattr(data, "vintages", lambda: [FD])
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path / "retro")
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path / "retro")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     started = []
-    monkeypatch.setattr(srv, "_run_all", lambda s: started.append(s))
+    monkeypatch.setattr(ui_pipeline, "_run_all", lambda s: started.append(s))
     ui_state._last_form.clear()                   # the page a fresh app shows
     f = _panel_form(client.get("/forecast").text, root="fcform")
     posted = [(n, v) for n, v in f.fields if n not in ("forecast_date",
@@ -170,7 +172,7 @@ def test_a_refused_submission_keeps_the_typed_values_and_reads_modified(
     import app.core.data as data
     monkeypatch.setattr(ui_state, "data_mod", data)
     monkeypatch.setattr(data, "vintage_path", lambda d: tmp_path)
-    monkeypatch.setattr(srv, "_run_all", lambda s: None)
+    monkeypatch.setattr(ui_pipeline, "_run_all", lambda s: None)
     ui_state._status["running"] = None
     client.post("/run", data={"forecast_date": FD, "locations": "Ohio",
                               "knob.oracle.w": "0.25", "replicates": "4",

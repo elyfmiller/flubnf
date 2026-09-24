@@ -14,6 +14,8 @@ from fastapi.testclient import TestClient           # noqa: E402
 
 from app.core import data as core_data              # noqa: E402
 from app.ui import server as srv                    # noqa: E402
+from app.ui import pipeline as ui_pipeline          # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
 from app.ui import state as ui_state                # noqa: E402
 
 client = TestClient(srv.app)
@@ -26,19 +28,19 @@ def _isolated_status():
     """Snapshot and restore the module-level status stores around each test
     so mocked busy states never leak between tests."""
     status_before = dict(ui_state._status)
-    retro_before = dict(srv._retro_status)
-    stop_before = set(srv._retro_stop)
+    retro_before = dict(ui_retro_seasons._retro_status)
+    stop_before = set(ui_retro_seasons._retro_stop)
     yield
     ui_state._status.clear(); ui_state._status.update(status_before)
-    srv._retro_status.clear(); srv._retro_status.update(retro_before)
-    srv._retro_stop.clear(); srv._retro_stop.update(stop_before)
+    ui_retro_seasons._retro_status.clear(); ui_retro_seasons._retro_status.update(retro_before)
+    ui_retro_seasons._retro_stop.clear(); ui_retro_seasons._retro_stop.update(stop_before)
 
 
 # ---------------------------------------------------------------- /api/busy
 
 def test_busy_idle_shape():
     ui_state._status.update({"running": None, "phase": "", "run_label": ""})
-    srv._retro_status.clear()
+    ui_retro_seasons._retro_status.clear()
     r = client.get("/api/busy")
     assert r.status_code == 200
     assert r.json() == {"console_run": None, "retro": {}, "phase": "",
@@ -60,9 +62,9 @@ def test_busy_console_label_falls_back_to_claim():
 
 
 def test_busy_lists_only_running_or_stopping_seasons():
-    srv._retro_status.clear()
-    srv._retro_status.update({SEASON: "running", "2097-98": "done",
-                              "2096-97": "error: boom", "2095-96": "stopping"})
+    ui_retro_seasons._retro_status.clear()
+    ui_retro_seasons._retro_status.update({SEASON: "running", "2097-98": "done",
+                                           "2096-97": "error: boom", "2095-96": "stopping"})
     b = client.get("/api/busy").json()
     assert b["retro"] == {SEASON: "running", "2095-96": "stopping"}
 
@@ -70,44 +72,44 @@ def test_busy_lists_only_running_or_stopping_seasons():
 # --------------------------------------------------------------- retro stop
 
 def test_retro_stop_flags_running_seasons_only():
-    srv._retro_status.clear()
-    srv._retro_stop.clear()
-    srv._retro_status.update({SEASON: "running", "2097-98": "done"})
+    ui_retro_seasons._retro_status.clear()
+    ui_retro_seasons._retro_stop.clear()
+    ui_retro_seasons._retro_status.update({SEASON: "running", "2097-98": "done"})
     r = client.post("/retro/stop", follow_redirects=False)
     assert r.status_code == 303
-    assert srv._retro_status[SEASON] == "stopping"
-    assert srv._retro_status["2097-98"] == "done"
-    assert srv._retro_stop == {SEASON}
+    assert ui_retro_seasons._retro_status[SEASON] == "stopping"
+    assert ui_retro_seasons._retro_status["2097-98"] == "done"
+    assert ui_retro_seasons._retro_stop == {SEASON}
 
 
 def test_retro_stop_idle_is_harmless():
-    srv._retro_status.clear()
-    srv._retro_stop.clear()
+    ui_retro_seasons._retro_status.clear()
+    ui_retro_seasons._retro_stop.clear()
     r = client.post("/retro/stop", follow_redirects=False)
     assert r.status_code == 303
-    assert srv._retro_stop == set()
+    assert ui_retro_seasons._retro_stop == set()
 
 
 def test_retro_run_refused_while_stopping():
-    srv._retro_status.clear()
-    srv._retro_status[SEASON] = "stopping"
+    ui_retro_seasons._retro_status.clear()
+    ui_retro_seasons._retro_status[SEASON] = "stopping"
     r = client.post("/retro/run", data={"season": SEASON},
                     follow_redirects=False)
     assert r.status_code == 303
-    assert srv._retro_status[SEASON] == "stopping"   # unchanged
+    assert ui_retro_seasons._retro_status[SEASON] == "stopping"   # unchanged
 
 
 def test_retro_bg_stops_between_weeks_and_keeps_weeks(monkeypatch, tmp_path):
     from app.core import retro
-    monkeypatch.setattr(srv, "_sleep_guard", lambda: None)
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_pipeline, "_sleep_guard", lambda: None)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
     seen = []
 
     def fake_run_season(root, season, locations, replicates=3,
                         particles=10_000, width=4, progress=None,
                         settings=None, engine="pf"):
         seen.append("week1")                 # first week lands on disk
-        srv._retro_stop.add(season)          # then a stop request arrives
+        ui_retro_seasons._retro_stop.add(season)          # then a stop request arrives
         progress("2098-11-07")               # the between-weeks stop point
         raise AssertionError("worker must stop after the completed week")
 
@@ -118,8 +120,8 @@ def test_retro_bg_stops_between_weeks_and_keeps_weeks(monkeypatch, tmp_path):
     monkeypatch.setattr(retro, "score_season", no_score)
     srv._retro_bg(SEASON, ["Ohio"], width=1)
     assert seen == ["week1"]
-    assert srv._retro_status[SEASON] == "stopped"
-    assert SEASON not in srv._retro_stop     # flag consumed, replay resumable
+    assert ui_retro_seasons._retro_status[SEASON] == "stopped"
+    assert SEASON not in ui_retro_seasons._retro_stop     # flag consumed, replay resumable
 
 
 # ------------------------------------------------------------- modal markup
@@ -177,13 +179,13 @@ def test_guarded_attributes_on_exactly_the_classified_controls():
 
 def test_post_run_refused_while_a_retrospective_replays(tmp_path,
                                                         monkeypatch):
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     monkeypatch.setattr(core_data, "vintage_path", lambda d: tmp_path)
     started = []
-    monkeypatch.setattr(srv, "_run_all", lambda spec: started.append(spec))
+    monkeypatch.setattr(ui_pipeline, "_run_all", lambda spec: started.append(spec))
     form_before = dict(ui_state._last_form)
-    srv._retro_status[SEASON] = "running"
+    ui_retro_seasons._retro_status[SEASON] = "running"
     try:
         r = client.post("/run", data={"forecast_date": "2098-01-04",
                                       "locations": ["Ohio"]},
@@ -200,31 +202,31 @@ def test_post_run_refused_while_a_retrospective_replays(tmp_path,
 
 
 def test_post_retro_run_refused_over_a_console_run(tmp_path, monkeypatch):
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
-    srv._retro_status.clear()
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
+    ui_retro_seasons._retro_status.clear()
     ui_state._status.update({"running": "all:20990101T000000-abc",
                         "run_label": "2099-01-02 · 3 state(s) + US"})
     r = client.post("/retro/run", data={"season": SEASON},
                     follow_redirects=False)
     assert r.status_code == 303
-    assert SEASON not in srv._retro_status           # no season was claimed
+    assert SEASON not in ui_retro_seasons._retro_status           # no season was claimed
     flash = ui_state._status.get("flash", "")
     assert "console run holds the engine" in flash
     assert "2099-01-02" in flash                     # names what holds it
 
 
 def test_post_retro_run_refused_over_another_season(tmp_path, monkeypatch):
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
-    srv._retro_status.clear()
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
+    ui_retro_seasons._retro_status.clear()
     ui_state._status.update({"running": None})
-    srv._retro_status["2097-98"] = "running"
+    ui_retro_seasons._retro_status["2097-98"] = "running"
     r = client.post("/retro/run", data={"season": SEASON},
                     follow_redirects=False)
     assert r.status_code == 303
-    assert SEASON not in srv._retro_status
-    assert srv._retro_status["2097-98"] == "running"  # untouched
+    assert SEASON not in ui_retro_seasons._retro_status
+    assert ui_retro_seasons._retro_status["2097-98"] == "running"  # untouched
     flash = ui_state._status.get("flash", "")
     assert "Another season is already replaying" in flash
     assert "2097-98" in flash
@@ -273,8 +275,8 @@ def test_report_path_endpoint_builds_and_returns_path(tmp_path, monkeypatch):
         return p
 
     monkeypatch.setattr(report_season, "build_season_report", fake_build)
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     r = client.get(f"/api/retro/{SEASON}/report_path")
     assert r.status_code == 200
     assert r.json() == {"path": str(tmp_path / SEASON /
@@ -289,8 +291,8 @@ def test_report_path_unknown_season_is_404(tmp_path, monkeypatch):
         raise playback.UnknownWeek(f"no weeks for {season}")
 
     monkeypatch.setattr(report_season, "build_season_report", raise_unknown)
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     r = client.get("/api/retro/2097-98/report_path")
     assert r.status_code == 404
     assert "2097-98" in r.text

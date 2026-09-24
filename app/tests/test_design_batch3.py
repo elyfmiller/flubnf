@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from fastapi.testclient import TestClient           # noqa: E402
 
 from app.ui import server as srv                    # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
 from app.ui import shared as ui_shared              # noqa: E402
 from app.ui import state as ui_state                # noqa: E402
 from app.ui import templating as ui_templating      # noqa: E402
@@ -104,11 +105,11 @@ def test_index_route_passes_the_head_score(tmp_path, monkeypatch):
         "weeks": 2, "elapsed_s": None, "started_utc": None,
         "finished_utc": None, "status": "done", "scored": True,
         "headline_rel": 0.877})
-    monkeypatch.setattr(srv, "_season_root",
+    monkeypatch.setattr(ui_retro_seasons, "_season_root",
                         lambda s, archive="": (tmp_path / s, False))
-    monkeypatch.setattr(srv, "_weeks_done", lambda root: 2)
-    monkeypatch.setattr(srv, "_archive_entries", lambda s: [])
-    monkeypatch.setattr(srv, "_retro_progress", lambda s: {
+    monkeypatch.setattr(ui_retro_seasons, "_weeks_done", lambda root: 2)
+    monkeypatch.setattr(ui_retro_seasons, "_archive_entries", lambda s: [])
+    monkeypatch.setattr(ui_retro_seasons, "_retro_progress", lambda s: {
         "season": s, "status": "done", "done": 2, "total": 2,
         "settings": [], "elapsed_s": None, "weeks_measured": 0,
         "mean_s": None, "eta_s": None, "slowest_week": None,

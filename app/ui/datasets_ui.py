@@ -37,7 +37,7 @@ from markupsafe import Markup, escape
 from starlette.concurrency import run_in_threadpool
 
 from app.core.runs import GROUNDHOG_OWN_DATA
-from app.ui import forms, shared, templating, versions
+from app.ui import forms, pipeline, retro_seasons, shared, templating, versions
 from app.ui import state as ui_state
 
 router = APIRouter()
@@ -563,8 +563,7 @@ def api_series(ds, locs: str) -> dict:
 # ----------------------------------------------------------- Forecast tab
 
 def _dataset_view(ds) -> dict:
-    S = _S()
-    state = S._pf_engine_state()
+    state = pipeline._pf_engine_state()
     return {"id": ds.id, "name": ds.name, "kind": ds.kind,
             "groups": ds.groups, "national": ds.national_group,
             "vintage_true": ds.vintage_true, "pf_eligible": ds.pf_eligible,
@@ -818,7 +817,6 @@ def run_dataset(request: Request, background: BackgroundTasks,
 def _start_run(request, background, ds_id, forecast_date, locations, engine,
                mode, flusurv, weeks_to_drop, replicates, particles,
                season_start, drop_same_day, knobs_json, knob_fields=None):
-    S = _S()
     from app.core.runs import RunSpec, spec_settings
     ds = get_dataset(ds_id)
     if ds is None:
@@ -897,8 +895,9 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
             shared._flash("A run is already in progress; not starting "
                           "another.")
             return RedirectResponse(here + "#results", status_code=303)
-        live = sorted(x for x in S._known_seasons()
-                      if S._season_status(x) in S._RETRO_ACTIVE)
+        live = sorted(x for x in retro_seasons._known_seasons()
+                      if retro_seasons._season_status(x)
+                      in retro_seasons._RETRO_ACTIVE)
         if live:
             shared._flash("A retrospective replay holds the engine ("
                           + ", ".join(live) + "). Stop or pause it from the "
@@ -929,13 +928,12 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
 def run_worker(spec) -> None:
     """The dataset run: _run_all's claim, ledger, lease and release around
     custom_run.run (hub-only steps are not in it)."""
-    S = _S()
     from app.core import custom_run
     from app.core.runs import Ledger, lease_workroot, spec_settings
     ledger = Ledger()
     run_id = None
     outcome: dict = {}
-    guard = S._sleep_guard()
+    guard = pipeline._sleep_guard()
     if not ui_state._status.get("started_utc"):
         ui_state._status["started_utc"] = time.time()
     ref = (spec.extra or {}).get("dataset") or {}
@@ -953,7 +951,7 @@ def run_worker(spec) -> None:
         ledger.set_workroot(run_id, workroot)
         ui_state._status["running"] = f"dataset:{run_id}"
         ui_state._status["workroot"] = str(workroot)
-        state = (S._pf_engine_state() if spec.engine in ("all", "pf")
+        state = (pipeline._pf_engine_state() if spec.engine in ("all", "pf")
                  else "absent")
         outcome, fails = custom_run.run(spec, ds, workroot,
                                         phase=shared._phase, pf_state=state)
@@ -1231,7 +1229,7 @@ def retro_context(selected: str = "") -> dict:
                            where="replay", prefix="dsr-",
                            engine="dsr-engine") if out else None)
     return {"dataset_replay": {"datasets": out,
-                               "pf_state": _S()._pf_engine_state(),
+                               "pf_state": pipeline._pf_engine_state(),
                                "running": dict(_REPLAY),
                                "names": MEMBER_NAMES,
                                "engine_names": REPLAY_ENGINE_NAMES,
@@ -1253,7 +1251,6 @@ def replay_start(background: BackgroundTasks, dataset: str = Form(...),
     with the Model settings panel's values (dataset_panel): resolved as a
     dataset run resolves them, recorded with the replay when any is off
     the shipped value, and none that does not apply."""
-    S = _S()
     from app.core import custom_retro as CX
     back = RedirectResponse("/retro#dataset-replay", status_code=303)
     ds = get_dataset(dataset)
@@ -1265,7 +1262,7 @@ def replay_start(background: BackgroundTasks, dataset: str = Form(...),
                       "SIHRS particle filter. Nothing was started.")
         return back
     if engine == "all" and not (ds.pf_eligible
-                                and S._pf_engine_state() == "ready"):
+                                and pipeline._pf_engine_state() == "ready"):
         shared._flash(f"The plain SIHRS particle filter cannot replay "
                       f"{ds.name}: {_dataset_view(ds)['pf_why']}. Nothing "
                       "was started.")
@@ -1307,8 +1304,9 @@ def replay_start(background: BackgroundTasks, dataset: str = Form(...),
             shared._flash("A run or replay holds the engine; wait for it "
                           "or stop it first. Nothing was started.")
             return back
-        live = sorted(x for x in S._known_seasons()
-                      if S._season_status(x) in S._RETRO_ACTIVE)
+        live = sorted(x for x in retro_seasons._known_seasons()
+                      if retro_seasons._season_status(x)
+                      in retro_seasons._RETRO_ACTIVE)
         if live:
             shared._flash("A season replay holds the engine ("
                           + ", ".join(live) + "); stop or pause it first. "
@@ -1336,13 +1334,12 @@ def replay_worker(ds_id, stamp, weeks, groups, engine, k, extra,
     """One dataset replay (custom_retro.run) holding the engine claim;
     `kspec`: the knobs' RunSpec fields (particles, replicates, jitter,
     season_start, drop_same_day), only those set."""
-    S = _S()
     from app.core import custom_retro as CX
-    guard = S._sleep_guard()
+    guard = pipeline._sleep_guard()
     try:
         ds = _D().get(ds_id)
         out = CX.replay_dir(ds, stamp)
-        state = S._pf_engine_state() if engine == "all" else "absent"
+        state = pipeline._pf_engine_state() if engine == "all" else "absent"
 
         def progress(asof, i, n):
             ui_state._status["phase"] = f"replayed {asof} ({i} of {n} weeks)"

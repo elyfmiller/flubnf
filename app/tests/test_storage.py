@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import app.core.runs as runs_mod                     # noqa: E402
 from app.core.runs import Ledger, RunSpec            # noqa: E402
 from app.ui import server as srv                     # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
 from app.ui import shared as ui_shared               # noqa: E402
 from app.ui import state as ui_state                 # noqa: E402
 
@@ -36,12 +37,12 @@ ARCH_STAMP = "20980204T101500Z"
 @pytest.fixture(autouse=True)
 def _isolated_status():
     status_before = dict(ui_state._status)
-    retro_before = dict(srv._retro_status)
-    stop_before = set(srv._retro_stop)
+    retro_before = dict(ui_retro_seasons._retro_status)
+    stop_before = set(ui_retro_seasons._retro_stop)
     yield
     ui_state._status.clear(); ui_state._status.update(status_before)
-    srv._retro_status.clear(); srv._retro_status.update(retro_before)
-    srv._retro_stop.clear(); srv._retro_stop.update(stop_before)
+    ui_retro_seasons._retro_status.clear(); ui_retro_seasons._retro_status.update(retro_before)
+    ui_retro_seasons._retro_stop.clear(); ui_retro_seasons._retro_stop.update(stop_before)
     ui_shared._invalidate_scans()
 
 
@@ -56,8 +57,8 @@ def state(tmp_path, monkeypatch):
     monkeypatch.setattr(datasets_mod, "ROOT", tmp_path / "datasets")
     retro_root = tmp_path / "retro"
     seal_root = tmp_path / "retro_seal"
-    monkeypatch.setattr(srv, "RETRO_ROOT", retro_root)
-    monkeypatch.setattr(srv, "RETRO_SEAL", seal_root)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", retro_root)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", seal_root)
     hub = tmp_path / "hub"
     import flubnf.settings as settings_mod
     monkeypatch.setattr(settings_mod, "HUB", hub)
@@ -182,7 +183,7 @@ def test_protected_trees_render_no_delete_controls(state):
 
 
 def test_busy_rows_render_no_delete_controls(state):
-    srv._retro_status[SEASON] = "running"
+    ui_retro_seasons._retro_status[SEASON] = "running"
     html = client.get("/runs").text
     live = state["rids"]["running"]
     # workroot rows are found by their data-wid attribute
@@ -232,14 +233,14 @@ def test_delete_needs_the_confirmation_naming_the_entry(state):
 
 
 def test_delete_retro_season_refused_while_replaying(state):
-    srv._retro_status[SEASON] = "running"
+    ui_retro_seasons._retro_status[SEASON] = "running"
     r = client.post("/storage/delete",
                     data={"kind": "retro-season", "ident": SEASON,
                           "confirm": SEASON}, follow_redirects=False)
     assert r.status_code == 303
     assert (state["retro_root"] / SEASON).is_dir()
     assert "replaying" in _flash()
-    srv._retro_status.pop(SEASON, None)
+    ui_retro_seasons._retro_status.pop(SEASON, None)
     client.post("/storage/delete",
                 data={"kind": "retro-season", "ident": SEASON,
                       "confirm": SEASON}, follow_redirects=False)
@@ -250,12 +251,12 @@ def test_delete_retro_season_refused_while_replaying(state):
 
 def test_delete_retro_archive_and_report_archive(state):
     name = f"{SEASON}__archived_{ARCH_STAMP}"
-    srv._retro_status[SEASON] = "paused"             # paused blocks too
+    ui_retro_seasons._retro_status[SEASON] = "paused"             # paused blocks too
     client.post("/storage/delete", data={"kind": "retro-archive",
                                          "ident": name, "confirm": name},
                 follow_redirects=False)
     assert (state["retro_root"] / name).is_dir()
-    srv._retro_status.pop(SEASON, None)
+    ui_retro_seasons._retro_status.pop(SEASON, None)
     client.post("/storage/delete", data={"kind": "retro-archive",
                                          "ident": name, "confirm": name},
                 follow_redirects=False)

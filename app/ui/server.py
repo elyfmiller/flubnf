@@ -14,6 +14,12 @@ Support modules beside this one (app/ui), read by the tabs below:
                       labels, outcome chips, latest results, sandbox claim
                       readers
   forms.py            the model-settings (knob) form channel, anchor dates
+  retro_seasons.py    retro roots and claims, the season registry and
+                      status, completed weeks, live progress and ETA
+  retro_prep.py       season results preparation (finalize jobs), scores
+                      and relWIS caches, week map cards
+  pipeline.py         the forecast pipeline _run_all, sleep guard, weekly
+                      report, forecast archive
 
 Contents, in file order (each section starts with a `# === ... ===` banner;
 templates under app/ui/templates):
@@ -30,8 +36,7 @@ templates under app/ui/templates):
                                                                runs.html
   Console controls    POST /run/stop, GET /api/busy, POST /data/pull,
                       POST /freshness (renders data.html)
-  Forecast pipeline   _harvest_params, sleep guard, _write_weekly_report,
-                      _run_all, _archive_run, submission files
+  Submission files    registered model ids, _submission_files
   Run pages           GET /runs/{id}, /report, /report/download,
                       POST /runs/{id}/rerun                    run.html
   Forecast APIs       GET /api/series, GET /api/progress
@@ -42,10 +47,10 @@ templates under app/ui/templates):
                       GET /sandbox/models|runs/{id}/download
                                                                sandbox.html
   Models              GET /models, /model/{name}               model.html
-  Retrospective       roots/claims/status, ETA estimate
+  Retrospective       the season worker's stop signal
                       GET /retro, /api/retro/progress, /api/retro/startover,
                       POST /retro/{s}/archive/{stamp}/delete   retro.html
-                      results preparation, GET /api/retro/{s}/results_status
+                      GET /api/retro/{s}/results_status
                       worker _retro_bg, POST /retro/stop, /retro/{s}/stop,
                       /pause, /resume, POST /retro/run
                       GET /retro/{s}, /api/retro/{s}/playback/{asof},
@@ -65,7 +70,6 @@ import html as _htmlmod
 import threading
 import time
 import sys
-from collections import OrderedDict
 from pathlib import Path
 
 from app.ui import state
@@ -82,18 +86,29 @@ from app.core import horizons as _hzmod                         # noqa: E402
 from app.core import ttlcache                                   # noqa: E402
 from app.core import runs as _runs                              # noqa: E402
 from app.core.runs import (Ledger, RunSpec, fmt_hms,            # noqa: E402
-                           lease_workroot, results_html, settings_html,
-                           spec_settings, version_pairs)
+                           results_html, spec_settings, version_pairs)
 from app.core import oracle_text as _oracle_text                # noqa: E402
 from app.ui import shared, templating, versions                 # noqa: E402
+from app.ui import pipeline, retro_prep, retro_seasons          # noqa: E402
 from app.ui.forms import (_default_forecast_date, _int_field,   # noqa: E402
                           _knob_form, _knob_panel, _knob_raw, _knobs,
                           _str_field, resolve_anchor)
+from app.ui.retro_prep import (_job_covered, _relwis_figures,   # noqa: E402
+                               _results_jobs, _results_pending,
+                               _retro_map_models, _scores_df,
+                               _scores_scoreable_fast, _scoring_failed_hint,
+                               _week_map_cards_by_model)
+from app.ui.retro_seasons import (_RETRO_ACTIVE,                # noqa: E402
+                                  _archive_progress, _is_sealed_root,
+                                  _live_root, _retro_claim_at, _retro_status,
+                                  _retro_stop, _sealed_label, _sealed_roots,
+                                  _season_status, _valid_archive,
+                                  _valid_season)
 from app.ui.shared import (_LOCAL_HOSTNAMES, _archive_dates,    # noqa: E402
                            _authority_hostname, _back, _console_elapsed,
                            _flash, _invalidate_scans, _outcome_chips,
-                           _phase, _run_label, _sandbox_live,
-                           _sandbox_live_reason, _scan_archive_dates)
+                           _run_label, _sandbox_live, _sandbox_live_reason,
+                           _scan_archive_dates)
 from app.ui.state import (ENGINES, REPO, _engine_lock,          # noqa: E402
                           _last_form, _sandbox_status, _status)
 from app.ui.templating import (_member_colors, _name_fn,        # noqa: E402
@@ -175,19 +190,6 @@ def api_versions():
     """Versions as known now, and whether the probe landed (home and Methods
     poll this while a value is pending)."""
     return {"versions": dict(VERSIONS), "resolved": versions_resolved()}
-
-
-# === Cached scan: completed retro weeks (the other scans: shared.py) ===
-@ttlcache.ttl_cache()
-def _weeks_done(root: Path) -> int:
-    """Completed weeks in a season tree (stored samples.json count): the
-    retro pages' hot scan."""
-    from app.core import retro
-    root = Path(root)
-    try:
-        return len(retro.season_sample_files(root))
-    except OSError:
-        return 0
 
 
 @app.get("/favicon.ico", include_in_schema=False)
@@ -832,8 +834,8 @@ def _storage_inventory() -> dict:
                 "busy": p.name in live_ids,
                 # for the dataset rows: the run's size and its dataset
                 "bytes": size, "dataset": _dsu.spec_dataset(row.get("spec"))})
-    if RETRO_ROOT.is_dir():
-        for p in sorted(RETRO_ROOT.iterdir()):
+    if retro_seasons.RETRO_ROOT.is_dir():
+        for p in sorted(retro_seasons.RETRO_ROOT.iterdir()):
             if not p.is_dir() and not p.is_symlink():
                 continue
             if _valid_season(p.name):
@@ -864,8 +866,8 @@ def _storage_inventory() -> dict:
             "busy": console_busy})
     inv["datasets"] = _dsu.storage_rows(inv["workroots"])
     inv["total_bytes"] += sum(d["own_bytes"] for d in inv["datasets"])
-    for label, p in (("Production engine record", RETRO_RESEAL),
-                     ("Sealed validation record", RETRO_SEAL),
+    for label, p in (("Production engine record", retro_seasons.RETRO_RESEAL),
+                     ("Sealed validation record", retro_seasons.RETRO_SEAL),
                      ("FluSight hub clone", HUB)):
         if Path(p).exists():
             inv["protected"].append({
@@ -980,8 +982,8 @@ def _storage_target(kind: str, ident: str):
         if _season_status(ident) in _RETRO_ACTIVE:
             return None, (f"{ident} is replaying (status: "
                           f"{_season_status(ident)}); stop it first.")
-        p = RETRO_ROOT / ident
-        base = RETRO_ROOT
+        p = retro_seasons.RETRO_ROOT / ident
+        base = retro_seasons.RETRO_ROOT
     elif kind == "retro-archive":
         m = _re.match(r"(\d{4}-\d{2})", ident or "")
         stamp = (retro.archive_stamp_of(ident, m.group(1)) if m else "")
@@ -991,8 +993,8 @@ def _storage_target(kind: str, ident: str):
         if _season_status(season) in _RETRO_ACTIVE:
             return None, (f"{season} is replaying; stop it before deleting "
                           "its archived runs.")
-        p = RETRO_ROOT / ident
-        base = RETRO_ROOT
+        p = retro_seasons.RETRO_ROOT / ident
+        base = retro_seasons.RETRO_ROOT
     elif kind == "report-archive":
         if not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", ident or ""):
             return None, "Unrecognized report archive date."
@@ -1094,7 +1096,7 @@ def storage_clear_workroots(request: Request, confirm: str = Form("")):
 def _reclaim_skips() -> tuple:
     """(season entry names, workroot names) the reclaim must not touch right
     now: seasons replaying or mid-finalize, and the active run's workroot."""
-    skip_seasons = {s for s in _known_seasons()
+    skip_seasons = {s for s in retro_seasons._known_seasons()
                     if _season_status(s) in _RETRO_ACTIVE}
     for key, job in list(_results_jobs.items()):
         if job and not job["done"].is_set():
@@ -1106,7 +1108,7 @@ def _reclaim_survey() -> dict:
     from app.core import reclaim
     from app.core.runs import APP_STATE
     skip_seasons, skip_workroots = _reclaim_skips()
-    return reclaim.survey(RETRO_ROOT, APP_STATE / "workroots",
+    return reclaim.survey(retro_seasons.RETRO_ROOT, APP_STATE / "workroots",
                           skip_seasons=skip_seasons,
                           skip_workroots=skip_workroots)
 
@@ -1169,7 +1171,7 @@ def storage_reclaim(request: Request, confirm: str = Form("")):
                "review the reclaim report and confirm again.")
         return _back(request, "/storage")
     skip_seasons, skip_workroots = _reclaim_skips()
-    out = reclaim.execute(RETRO_ROOT, APP_STATE / "workroots",
+    out = reclaim.execute(retro_seasons.RETRO_ROOT, APP_STATE / "workroots",
                           skip_seasons=skip_seasons,
                           skip_workroots=skip_workroots)
     _invalidate_scans()
@@ -1224,7 +1226,7 @@ def api_busy():
     a live replay never reads idle."""
     running = _status.get("running")
     live = {}
-    for s in _known_seasons():
+    for s in retro_seasons._known_seasons():
         st = _season_status(s)
         if st in _RETRO_ACTIVE:
             live[s] = st
@@ -1279,725 +1281,7 @@ def freshness(request: Request):
                                       _data_context(freshness=f))
 
 
-# === Forecast pipeline: param harvest, sleep guard, weekly report, _run_all ===
-def _harvest_params(workroot: Path) -> dict:
-    """Per-location posterior medians of the fitted PF parameters, pooled
-    across replicates (params_*.txt under each cell's out/Results/PF/Runs),
-    stored as results.json 'params'. Unreadable cells are skipped."""
-    import json as _json
-    import numpy as _np
-    try:
-        cells = _json.loads((workroot / "cells.json").read_text())
-    except Exception:
-        return {}
-    pooled: dict = {}
-    for c in cells:
-        try:
-            loc = c["location"]
-            runs = Path(c["dir"]) / "out" / "Results" / "PF" / "Runs"
-            for pfile in sorted(runs.glob("params_*.txt")):
-                with open(pfile) as fh:
-                    names = fh.readline().replace("#", " ").split()
-                arr = _np.atleast_2d(_np.loadtxt(str(pfile), skiprows=1))
-                if arr.size == 0 or arr.shape[1] != len(names):
-                    continue
-                for j, name in enumerate(names):
-                    col = arr[:, j]
-                    col = col[_np.isfinite(col)]
-                    if col.size:
-                        pooled.setdefault(loc, {}).setdefault(
-                            name.removesuffix("__FREE"), []).append(col)
-        except Exception:
-            continue
-    return {loc: {name: float(_np.median(_np.concatenate(chunks)))
-                  for name, chunks in by_name.items()}
-            for loc, by_name in pooled.items()}
-
-
-# SetThreadExecutionState flags: CONTINUOUS persists until cleared (clear =
-# CONTINUOUS alone); SYSTEM_REQUIRED blocks idle sleep (caffeinate -i).
-_ES_CONTINUOUS = 0x80000000
-_ES_SYSTEM_REQUIRED = 0x00000001
-
-
-class _WinSleepGuard:
-    """Windows sleep inhibitor with Popen's .terminate(). The flag is
-    thread-affine: create and terminate on the same worker thread."""
-
-    def __init__(self, kernel32):
-        self._kernel32 = kernel32
-
-    def terminate(self):
-        try:
-            self._kernel32.SetThreadExecutionState(_ES_CONTINUOUS)
-        except Exception:
-            pass
-
-
-def _windows_sleep_guard(kernel32=None):
-    """SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED) on the
-    calling (worker) thread; returns a guard with .terminate() or None on
-    any failure. `kernel32` is injectable for tests on other platforms."""
-    try:
-        if kernel32 is None:
-            import ctypes
-            kernel32 = ctypes.windll.kernel32
-        prev = kernel32.SetThreadExecutionState(
-            _ES_CONTINUOUS | _ES_SYSTEM_REQUIRED)
-        if not prev:                    # 0 means the call failed
-            return None
-        return _WinSleepGuard(kernel32)
-    except Exception:
-        return None
-
-
-def _sleep_guard():
-    """Keep the machine awake during a long run: macOS `caffeinate -i -w
-    <pid>`, Windows _windows_sleep_guard. Returns an object with
-    .terminate(), or None elsewhere or on failure (no run depends on it)."""
-    import os
-    import subprocess
-    if sys.platform == "darwin":
-        try:
-            return subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())],
-                                    stdout=subprocess.DEVNULL,
-                                    stderr=subprocess.DEVNULL)
-        except Exception:
-            return None
-    if sys.platform == "win32":
-        return _windows_sleep_guard()
-    return None
-
-
-def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
-                         df, locs, n2f: dict, elapsed_s: float,
-                         outcome: dict, an_q: dict | None = None,
-                         ens_q: dict | None = None) -> None:
-    """Step 5b of _run_all: build the report inputs bundle, save it as
-    report_inputs.json, then render report.html FROM it (one render path,
-    so _report_for_serving can rebuild after a design change).
-
-    Map cards for every model (pf reduced to the 23-level grid; an_q =
-    Groundhog quantiles, loc -> horizon -> {level: value}) come from the
-    one quantile-CDF path; the map renders PF-first and cards_model records
-    which. State drill-down fans are PF's. `ens_q` (retired blend) is
-    accepted and ignored. Mutates `outcome`; the caller contains failures."""
-    import json as _json
-    from datetime import date as _dd
-    from datetime import timedelta as _tdd
-
-    import numpy as _np
-    import pandas as pd
-
-    from app.core import ensemble as _ens
-    from app.core import report_v2
-    from app.core.report import (categorical_probs,
-                                 categorical_probs_from_quantiles)
-    from app.core.report_v2 import CATS
-    from app.core.scoring import summary_table_html
-    n2a = dict(zip(locs.location_name, locs.abbreviation))
-    n2p = dict(zip(locs.location_name, locs.population.astype(float)))
-    # cells.json is read only when there are fitted samples
-    cells = (_json.loads((workroot / "cells.json").read_text())
-             if pf_samples else [])
-    ens_q = ens_q or {}
-    an_q = an_q or {}
-    # PF on the members' 23-level grid, so its cards use the same CDF path
-    pf_q = {loc: _ens.member_quantiles_from_samples(s)
-            for loc, s in pf_samples.items()}
-
-    def _last_obs(loc):
-        o = obs.get(loc) or []
-        if o:
-            return float(o[-1][1])
-        for c in cells:               # degraded runs: cells.json still
-            if c.get("location") == loc:  # knows the anchor value
-                return float(c.get("last_observed", 0.0))
-        return None
-
-    def _q1_of(qd):
-        q1 = (qd or {}).get("0", (qd or {}).get(0))   # one week ahead
-        return q1 if isinstance(q1, dict) and q1 else None
-
-    def _q_cards(q_by_loc):
-        """abbr -> hover card from ONE model's quantiles."""
-        out = {}
-        for loc, qd in (q_by_loc or {}).items():
-            q1 = _q1_of(qd)
-            lo = _last_obs(loc)
-            if q1 is None or lo is None or loc not in n2a:
-                continue
-            probs = categorical_probs_from_quantiles(
-                q1, lo, int(n2p.get(loc, 0)), 0)
-            if not probs:
-                continue
-            med1 = float(min(q1.items(),
-                             key=lambda kv: abs(float(kv[0]) - 0.5))[1])
-            # hover_html reaches innerHTML: escape the name
-            hover = (f"<b>{_htmlmod.escape(loc)}</b><br>current: {lo:.0f}"
-                     f"<br>1-wk median: {med1:.0f}<br>" +
-                     "<br>".join(f"{c.replace('_',' ')}: "
-                                 f"{probs.get(c,0):.0%}" for c in CATS))
-            out[n2a[loc]] = {"probs": probs, "name": loc,
-                             "abbr": n2a[loc], "fips": n2f.get(loc, ""),
-                             "hover_html": hover}
-        return out
-
-    def _q_nat_card(q_by_loc):
-        """The national card from the SAME model's quantiles (never
-        cross-filled from another member)."""
-        us_names = [n for n in (q_by_loc or {}) if n2f.get(n) == "US"] or \
-                   [n for n in (q_by_loc or {})
-                    if "US" in n or "national" in n.lower()]
-        un = us_names[0] if us_names else None
-        q1 = _q1_of((q_by_loc or {}).get(un)) if un else None
-        lo_us = _last_obs(un) if un else None
-        if q1 is None or lo_us is None:
-            return None
-        probs_us = categorical_probs_from_quantiles(
-            q1, lo_us, 340_000_000, 0)
-        if not probs_us:
-            return None
-        med_us = float(min(q1.items(),
-                           key=lambda kv: abs(float(kv[0]) - 0.5))[1])
-        hover_us = ("<b>United States</b><br>current: "
-                    f"{lo_us:.0f}<br>1-wk median: {med_us:.0f}")
-        return {"probs": probs_us, "name": "United States",
-                "abbr": "US", "fips": "US", "hover_html": hover_us}
-
-    cards_by_model = {}
-    nat_cards = {}
-    for model, q_by_loc in (("pf", pf_q), ("analogue", an_q)):
-        c = _q_cards(q_by_loc)
-        if c:
-            cards_by_model[model] = c
-            nc = _q_nat_card(q_by_loc)
-            if nc:
-                nat_cards[model] = nc
-    # PF colors the rendered map; the toggle offers the Groundhog
-    cards_model = next((m for m in ("pf", "analogue")
-                        if m in cards_by_model), "pf")
-    cards = dict(cards_by_model.get(cards_model, {}))
-    for name, abbr in n2a.items():
-        cards.setdefault(abbr, {"name": name, "abbr": abbr,
-                                "fips": n2f.get(name, "")})
-    wis_html = ("<div class='card'><h2>forecast accuracy "
-                "(retrospective)</h2>" + summary_table_html(df)
-                + "</div>")
-    # settled outcomes for backdated runs: the LATEST vintage's values
-    # past the forecast origin, framed to the 4-week horizon
-    settled_by_loc = {}
-    try:
-        _vs_all = state.data_mod.vintages()
-        if _vs_all and _vs_all[-1] > spec.forecast_date:
-            _lim = (_dd.fromisoformat(spec.forecast_date)
-                    + _tdd(days=28)).isoformat()
-            ldf = pd.read_csv(state.data_mod.vintage_path(_vs_all[-1]),
-                              dtype={"location": str})
-            ldf["location"] = ldf["location"].str.zfill(2)
-            for loc in spec.locations:
-                g = ldf[(ldf.location == n2f.get(loc, "")) &
-                        (ldf.date > spec.forecast_date) &
-                        (ldf.date <= _lim)].sort_values("date")
-                pts = [(str(r.date)[:10], float(r.value))
-                       for r in g.itertuples()
-                       if pd.notna(r.value)]
-                if pts:
-                    settled_by_loc[loc] = pts
-    except Exception:
-        settled_by_loc = {}
-    # state pages as DATA; render_bundle draws the figures
-    details = {}
-    for loc, s in pf_samples.items():
-        fips_l = n2f.get(loc, "")
-        obs_pairs = (obs.get(loc) or [])[-12:]
-        o_t = [d for d, _ in obs_pairs]
-        o_v = [v for _, v in obs_pairs]
-        _base = (_dd.fromisoformat(o_t[-1]) if o_t
-                 else _dd.fromisoformat(spec.forecast_date))
-        # canonical horizons: hub label h is h+1 weeks past the anchor
-        f_t = [(_base + _tdd(days=7 * (h + 1))).isoformat()
-               for h in (0, 1, 2, 3)]
-        samples_h = {f_t[h]: s[str(h)] for h in (0, 1, 2, 3)}
-        try:
-            q_by_t = report_v2.fan_quantiles(f_t, samples_h)
-            lo_l = o_v[-1] if o_v else 0.0
-            # one week ahead = canonical "0", matching the fan above
-            probs_l = categorical_probs(
-                _np.asarray(s["0"], float), lo_l,
-                int(n2p.get(loc, 1e6)), 1)
-            key = "US" if fips_l == "US" else n2a.get(loc, loc)
-            meds = [q_by_t[t]["0.5"] for t in f_t]
-            note = ("Off-season: the model finds no sustained "
-                    "transmission. This forecast reflects the recent "
-                    "reporting background, not epidemic growth."
-                    if max(meds) <= 2 else "")
-            details[key] = {
-                "name": "United States" if fips_l == "US" else loc,
-                "note": note,
-                "fan": {"observed_times": o_t, "observed": o_v,
-                        "forecast_times": f_t, "quantiles": q_by_t,
-                        "title": f"{loc}: weekly admissions",
-                        "settled": settled_by_loc.get(loc)},
-                "cat_probs": probs_l,
-                "table_rows": [(d, v) for d, v in obs_pairs[-6:]]}
-        except Exception:
-            continue
-    # national card from the same model as the rendered state cards
-    nat_card = nat_cards.get(cards_model)
-    bundle = {"version": report_v2.BUNDLE_VERSION,
-              "reference_date": spec.forecast_date,
-              # v2: which model computed the map cards
-              "cards_model": cards_model,
-              "cards": cards, "details": details,
-              # v4: states this run covered (reporting gap vs never fitted)
-              "fitted_fips": sorted({n2f.get(l) for l in spec.locations
-                                     if n2f.get(l) and n2f.get(l) != "US"}),
-              # v3: every model's cards (the outlook toggle's data)
-              "cards_by_model": cards_by_model,
-              "national_map_cards": nat_cards,
-              "national": {"summary_html": wis_html},
-              "national_map_card": nat_card,
-              "elapsed_s": elapsed_s,
-              # run settings, app build and engine versions
-              "settings_html": settings_html(
-                  spec_settings(spec)
-                  + version_pairs(RUNNING_SHA, VERSIONS))}
-    try:
-        bp = report_v2.save_bundle(bundle, workroot)
-        outcome["report_inputs_bytes"] = bp.stat().st_size
-    except Exception as e:    # the report is never hostage to its bundle
-        outcome["report_inputs_error"] = str(e)[:200]
-    report_v2.render_bundle(bundle, workroot / "report.html")
-    outcome["report"] = str(workroot / "report.html")
-
-
-def _pf_engine_state() -> str:
-    """This machine's PF engine in one word:
-
-      absent   no engine venv/fork: analogue-only Tier A, the run proceeds
-      broken   venv + fork path but no pybnf/pf.py: every fit would fail
-      ready    the fork provides fit_type = pf
-
-    Installed-ness is defined once, in app.core.engines.pf.engine_available.
-    """
-    from flubnf.settings import PY_ENGINE, PYBNF
-    from app.core.engines import pf as pf_engine
-    if not (PY_ENGINE.exists() and PYBNF.exists()):
-        return "absent"
-    return "ready" if pf_engine.engine_available() else "broken"
-
-
-def _run_all(spec: RunSpec) -> None:
-    """The competition path: engines in ascending cost, then the two
-    standalone submissions (no blend; each under its own hub identity,
-    submit.MODEL_ABBR), scoring and the weekly report. One workroot, one
-    ledger row."""
-    import pandas as pd
-    from app.core import scoring
-    from app.core.engines import analogue as an_engine
-    from app.core.engines import pf as pf_engine
-    from app.core.submit import (hub_model_id, quantile_rows,
-                                 rows_from_quantiles, write_submission)
-
-    import time as _time
-    ledger = Ledger()
-    run_id = None
-    outcome = {}
-    guard = _sleep_guard()          # macOS: no idle sleep mid-run
-    # the route starts the clock on click; direct calls (scripts, tests) here
-    if not _status.get("started_utc"):
-        _status["started_utc"] = _time.time()
-    t_start = float(_status["started_utc"])
-    n_states = sum(1 for l in spec.locations
-                   if str(l).upper() not in ("US", "US (NATIONAL)"))
-    _status["run_label"] = (
-        f"{spec.forecast_date} · {n_states} state(s) + US"
-        if n_states < len(spec.locations)
-        else f"{spec.forecast_date} · {len(spec.locations)} location(s)")
-    # also set by the route; here so direct calls are described too
-    _status["settings"] = spec_settings(spec)
-    try:
-        # setup INSIDE the try so a failed insert/lease releases the claim;
-        # the row's engine_versions (not this process's) is "Produced by"
-        run_id = ledger.open_run(
-            spec, Path("pending"),
-            versions._engine_versions_for_ledger("pf,analogue"))
-        workroot = lease_workroot(run_id)
-        ledger.set_workroot(run_id, workroot)   # the row must name the real one
-        _status["running"] = f"all:{run_id}"
-        _status["workroot"] = str(workroot)
-        # a run with modified model settings records them beside its files
-        # (knobs.json; none for a shipped run, whose files are unchanged)
-        _knobs_mod = _knobs.modified(spec)
-        if _knobs_mod:
-            _knobs.write_record(workroot / "knobs.json", spec)
-            outcome["knobs"] = _knobs.summary(_knobs.record_of(spec),
-                                              _knobs.override_reason(spec))
-        # the output-floor knob: passed only when set (shipped calls unchanged)
-        _lam = _knobs.value_of(spec.extra, "output.floor_lam")
-        _fkw = {} if _lam is None else {"lam": float(_lam)}
-        # 1. PF (primary); absent on Tier-A machines, where the run proceeds
-        # with the analogue (see _pf_engine_state)
-        fails = {}
-        # observed admissions per location (vintage-true): floor, report, run page
-        obs = {}
-        try:
-            from flubnf.settings import LOCATIONS as _LOCCSV
-            from app.core.data import vintage_path as _vpo
-            _lo = pd.read_csv(_LOCCSV, dtype=str)
-            _n2fo = dict(zip(_lo.location_name, _lo.location.str.zfill(2)))
-            tdf = pd.read_csv(_vpo(spec.forecast_date),
-                              dtype={"location": str})
-            tdf["location"] = tdf["location"].str.zfill(2)
-            # nowcast rule: the engines treat the same-day row as unreported,
-            # so obs must not see it (else cards announce a spurious surge)
-            if getattr(spec, "drop_same_day", False):
-                tdf = tdf[tdf["date"].astype(str).str[:10]
-                          != str(spec.forecast_date)]
-            import numpy as _npo
-            for loc in spec.locations:
-                g = tdf[tdf.location == _n2fo.get(loc, "")].sort_values("date").tail(15)
-                obs[loc] = [[str(r.date)[:10], float(r.value)]
-                            for r in g.itertuples()
-                            if _npo.isfinite(r.value)]
-        except Exception:
-            pass
-        pf_samples = {}
-        params: dict = {}     # fitted-parameter medians per member/location
-        pf_wanted = spec.engine in ("all", "pf")
-        pf_state = _pf_engine_state()
-        # A broken install is refused, not skipped: an analogue-only ship
-        # would hide the fault. The reason is recorded so the run page names
-        # the path and the fix.
-        if pf_wanted and pf_state == "broken":
-            msg = pf_engine.engine_missing_message()
-            outcome["pf_engine_broken"] = msg
-            raise RuntimeError(msg)
-        if pf_wanted and pf_state == "ready":
-            _phase("materializing models (BNG network generation)")
-            pf_engine.prepare(spec, workroot)
-            _phase(f"filtering {len(spec.locations)} location(s) × "
-                   f"{spec.replicates} replicate(s)")
-            status = pf_engine.execute(workroot)
-            fails = {k: v for k, v in status.items() if v != "ok"}
-            outcome["pf_cells"] = len(status)
-            outcome["pf_failures"] = fails
-            pf_samples = pf_engine.collect(workroot)
-            # the Oracle step (app/core/oracle.py), before anything downstream
-            # and before the floor. oracle = none is research: file withheld
-            # in step 4, oracle.json records the step did not run.
-            from app.core import oracle as oracle_mod
-            if oracle_mod.wanted(spec.extra):
-                _phase("the Oracle step: the donor bank from the vintage")
-                pf_raw = pf_samples
-                pf_samples, oprov = oracle_mod.apply_week(
-                    pf_raw, spec.forecast_date, workroot, extra=spec.extra,
-                    weeks_to_drop=int(spec.weeks_to_drop or 0),
-                    drop_same_day=bool(getattr(spec, "drop_same_day", False)))
-                outcome["oracle"] = oprov["bank"]["label"]
-                try:
-                    oracle_mod.write_filter_record(workroot, spec.forecast_date,
-                                                   pf_raw)
-                except Exception:
-                    pass      # the kept copy is a courtesy; the member stands
-            else:
-                oracle_mod.write_not_applied(
-                    workroot, spec.forecast_date,
-                    "the run asked for the plain filter (oracle = none)")
-                outcome["oracle"] = "none"
-            try:
-                params["pf"] = _harvest_params(workroot)
-            except Exception:
-                pass
-            # output floor: no cell leaves as a point mass (see app/core/floor.py)
-            from app.core.floor import floor_samples
-            pf_samples = {loc: floor_samples(
-                              s, loc, spec.forecast_date,
-                              recent=[v for _, v in obs.get(loc, [])],
-                              **_fkw)
-                          for loc, s in pf_samples.items()}
-        else:
-            outcome["pf_skipped"] = ("analogue-only run"
-                                     if spec.engine == "analogue"
-                                     else "engine venv not installed (Tier A)")
-            (workroot / "cells.json").write_text("[]")
-        # 1b. RESEARCH third member: the two-strain SIHRS (members=3, no UI
-        # control), in a pf2s subdir of the same workroot (one row, one archive)
-        pf2s_samples = {}
-        if ((spec.extra or {}).get("members") == 3
-                and pf_wanted and pf_state == "ready"):
-            from dataclasses import replace as _dc_replace
-            spec2s = _dc_replace(spec, extra={**(spec.extra or {}),
-                                              "variant": "2strain"})
-            w2 = workroot / "pf2s"
-            w2.mkdir()
-            _phase("materializing the two-strain member (BNG network generation)")
-            pf_engine.prepare(spec2s, w2)
-            _phase(f"fitting the two-strain member: {len(spec.locations)} "
-                   f"location(s) × {spec.replicates} replicate(s)")
-            status2s = pf_engine.execute(w2)
-            fails2s = {k: v for k, v in status2s.items() if v != "ok"}
-            outcome["pf2s_cells"] = len(status2s)
-            outcome["pf2s_failures"] = fails2s
-            fails.update({f"pf2s:{k}": v for k, v in fails2s.items()})
-            pf2s_samples = pf_engine.collect(w2)
-            try:
-                params["pf2s"] = _harvest_params(w2)
-            except Exception:
-                pass
-            from app.core.floor import floor_samples as _floor2s
-            pf2s_samples = {loc: _floor2s(
-                                s, loc, spec.forecast_date,
-                                recent=[v for _, v in obs.get(loc, [])],
-                                **_fkw)
-                            for loc, s in pf2s_samples.items()}
-        # 2. the Groundhog: calendar analogue + the aux donors _run_extra put
-        # in spec.extra (none = research bare analogue). Always runs (instant);
-        # its FILE is written only when the run asked for it.
-        _phase("consulting the Groundhog")
-        from app.core.floor import floor_quantiles
-        an_q = {loc: floor_quantiles(q, **_fkw)
-                for loc, q in an_engine.run(spec).items()}
-        outcome["analogue_aux"] = str(
-            (spec.extra or {}).get("analogue_aux") or "")
-        # 3. no blend: each member is its own submission; PF failures are just
-        # absent from its file (the row's failure count names them)
-        _phase("writing submissions")
-        # 4. submissions (identity in the path)
-        locs = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
-        n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
-        subs = {}
-        # model keys are submit.MODEL_ABBR's (model-output/<team>-<model>/);
-        # the writer refuses a file date its rows do not carry
-        from app.core.runs import is_research as _is_research
-        _research = _is_research(spec)
-        # modified model settings without the override: every file carries
-        # the non-hub name (<hub id>-modified), so it can never pass for the
-        # registered model; the app exports, the operator submits
-        _suffix = "" if _knobs.hub_names(spec) else _knobs.MODIFIED_SUFFIX
-
-        def _withhold(reason: str) -> None:
-            # one outcome key, every withheld file named in it
-            prior = outcome.get("submission_withheld")
-            outcome["submission_withheld"] = (f"{prior}; {reason}" if prior
-                                              else reason)
-        for model, rows in (
-            ("pf", [r for loc, s in pf_samples.items()
-                    for r in quantile_rows(s, n2f[loc], spec.forecast_date)]),
-            ("analogue", [r for loc, q in an_q.items()
-                          for r in rows_from_quantiles(q, n2f[loc],
-                                                       spec.forecast_date)]),
-        ):
-            if not rows:
-                continue
-            if model == "analogue" and spec.engine == "pf":
-                # Oracle SIHRS-only run: Groundhog consulted for pages only
-                continue
-            if model == "analogue" and not (spec.extra or {}).get("aux_pools"):
-                # bare analogue is research: no hub-named file (audit rr-1)
-                _withhold(
-                    "Groundhog: the run carried no auxiliary donors, so "
-                    "this is the bare calendar analogue and does not ship "
-                    "under the Groundhog's hub name")
-                continue
-            if model == "pf" and outcome.get("oracle") == "none":
-                # plain filter is research too: no hub-named file
-                _withhold(
-                    "Oracle SIHRS: the run asked for the plain filter "
-                    "(oracle = none), a research configuration that does "
-                    "not ship under the Oracle SIHRS hub name")
-                continue
-            # contained per model: a writer refusal (rows the hub would
-            # bounce) costs that file, never the run; recorded for the run page
-            try:
-                subs[hub_model_id(model) + _suffix] = str(write_submission(
-                    rows, model, spec.forecast_date,
-                    workroot / "submission",
-                    **({"suffix": _suffix} if _suffix else {})))
-            except Exception as e:
-                outcome.setdefault("submission_errors", {})[
-                    hub_model_id(model) + _suffix] = str(e)[:400]
-        outcome["submissions"] = subs
-        # 5. retrospective scoring (once truth exists); contained, like 5b
-        df = pd.DataFrame()
-        try:
-            truth, name2fips = scoring.load_truth()
-            df = scoring.score_samples(pf_samples, spec.forecast_date,
-                                       name2fips, truth)
-            # stamp the truth source now: a later load_truth elsewhere could
-            # swap the module global before the WIS card renders
-            df.attrs["truth_source"] = scoring.TRUTH_SOURCE
-            if not df.empty:
-                # POOLED_INCLUDES_US gate (us_national.pooled_frame): the fitted
-                # US cell is the sum of the others and would dominate
-                from app.core.us_national import pooled_frame
-                pdf = pooled_frame(df)
-                if not pdf.empty:
-                    outcome["pf_relwis"] = round(
-                        float(pdf["wis"].sum() / pdf["base_wis"].sum()), 3)
-                    outcome["pf_relwis_cells"] = int(len(pdf))
-            df.to_json(workroot / "scores_pf.json")
-            # the Groundhog, same formula and gate
-            from app.core.us_national import pooled_frame as _pooled
-            for mname, qs in (("analogue", an_q),):
-                try:
-                    mdf = scoring.score_quantiles(qs or {}, spec.forecast_date,
-                                                  name2fips, truth)
-                    if not mdf.empty:
-                        mp = _pooled(mdf)
-                        if not mp.empty:
-                            outcome[f"{mname}_relwis"] = round(
-                                float(mp["wis"].sum() / mp["base_wis"].sum()), 3)
-                            outcome[f"{mname}_relwis_cells"] = int(len(mp))
-                        mdf.to_json(workroot / f"scores_{mname}.json")
-                except Exception as e:
-                    outcome[f"{mname}_score_error"] = str(e)[:200]
-        except Exception as e:
-            outcome["score_error"] = str(e)[:200]
-        # 5b. weekly report from its inputs bundle; contained
-        try:
-            _write_weekly_report(spec, workroot, pf_samples, obs, df, locs,
-                                 n2f, _time.time() - t_start, outcome,
-                                 an_q=an_q)
-        except Exception as e:
-            outcome["report_error"] = str(e)[:200]
-        # 6. results index for the run page
-        import json as _json
-        import numpy as _np
-        from app.core import horizons as _hz
-        def _qs_from_samples(s):
-            out = {}
-            for h in _hz.HORIZONS:
-                a = _np.asarray(s.get(h, []), float); a = a[_np.isfinite(a)]
-                if a.size:
-                    out[h] = {q: float(_np.quantile(a, float(q)))
-                              for q in ("0.1", "0.25", "0.5", "0.75", "0.9")}
-            return out
-        def _qs_from_q(qd):
-            return {h: {q: qd[h][float(q)]
-                        for q in ("0.1", "0.25", "0.5", "0.75", "0.9")}
-                    for h in qd}
-        from app.core.horizons import models_to_stored as _hz_stored
-        import os as _os
-        _tmp = workroot / "results.json.tmp"
-        _tmp.write_text(_json.dumps({
-            "spec": spec.to_json(), "forecast_date": spec.forecast_date,
-            "research": _research,
-            # bank as stream@digest8, or "none"; full record in oracle.json
-            "oracle": outcome.get("oracle"),
-            # modified model settings only (a shipped results.json is unchanged)
-            **({"knobs": outcome["knobs"]} if "knobs" in outcome else {}),
-            "observed": obs,
-            "params": params,
-            # STORED horizon convention (old workroots use it too); readers
-            # go through horizons.models_to_canonical
-            "models": _hz_stored({
-                "pf": {loc: _qs_from_samples(s) for loc, s in pf_samples.items()},
-                "analogue": {loc: _qs_from_q(q) for loc, q in an_q.items()},
-                **({"pf2s": {loc: _qs_from_samples(s)
-                             for loc, s in pf2s_samples.items()}}
-                   if pf2s_samples else {}),
-            })}))
-        _os.replace(_tmp, workroot / "results.json")   # readers never see a half-write
-        # 7. forecast archive: one folder per date, latest run wins; only the
-        # shipped product's full run archives (audit rr-1)
-        if _research:
-            outcome["archived"] = "skipped: research run"
-        elif _suffix:
-            outcome["archived"] = ("skipped: modified model settings (files "
-                                   "carry the non-hub name)")
-        elif spec.engine in ("analogue", "pf"):
-            outcome["archived"] = (f"skipped: {'analogue' if spec.engine == 'analogue' else 'Oracle SIHRS'}"
-                                   "-only run is not the date's forecast")
-        else:
-            try:
-                outcome["archived"] = _archive_run(workroot, spec.forecast_date)
-            except Exception as e:
-                outcome["archive_error"] = str(e)[:200]
-        # the pipeline completed: fit failures make it "partial" (the chips
-        # count them); "failed"/"error" are reserved for runs that died
-        ledger.close_run(run_id, "partial" if fails else "ok", outcome)
-        # prune per-cell fit trees once the record is on disk; a run with
-        # failures keeps them as evidence. Never fatal.
-        if not fails:
-            try:
-                from app.core import reclaim
-                reclaim.prune_workroot(workroot)
-            except Exception:
-                pass
-        _status["log"].append(
-            f"{run_id}: pf {len(pf_samples)} loc, groundhog {len(an_q)}"
-            + (f", pf2s {len(pf2s_samples)}" if pf2s_samples else "")
-            + "".join(f", {m} relWIS {outcome[k]}" for m, k in
-                      (("pf", "pf_relwis"), ("groundhog", "analogue_relwis"))
-                      if k in outcome))
-    except Exception as e:
-        from app.core.engines.pf import RunStopped
-        if run_id is None:
-            _status["log"].append(f"run setup failed: {str(e)[:200]}")
-        elif isinstance(e, RunStopped):
-            ledger.close_run(run_id, "stopped", outcome)
-            _status["log"].append("run stopped by user")
-        else:
-            ledger.close_run(run_id, "error", {"error": str(e)[:300], **outcome})
-            _status["log"].append(f"{run_id}: ERROR {e}")
-    finally:
-        if guard is not None:
-            try:
-                guard.terminate()
-            except Exception:
-                pass
-        _invalidate_scans()
-        _status["running"] = None
-        _status["phase"] = ""
-        _status["settings"] = []
-        _status["workroot"] = None
-        _status["run_label"] = ""
-        _status["expected_total"] = None
-        _status["started_utc"] = None
-
-
-# === Forecast archive and submission files ===
-def _archive_run(workroot: Path, forecast_date: str) -> str:
-    """Copy the run's deliverables to app/state/archive/<forecast_date>/,
-    replacing any earlier archive for the date. Built beside, then swapped:
-    a crash mid-copy costs this attempt, never the existing record."""
-    import os
-    import shutil
-    from app.core.report_v2 import BUNDLE_NAME
-    from app.core.runs import APP_STATE
-    arch = APP_STATE / "archive" / forecast_date
-    build = arch.with_name(arch.name + ".building")
-    old = arch.with_name(arch.name + ".old")
-    arch.parent.mkdir(parents=True, exist_ok=True)
-    if build.exists():          # an interrupted attempt's half-built tree
-        shutil.rmtree(build)
-    if old.exists():
-        if arch.exists():       # both present: the old copy is surplus
-            shutil.rmtree(old)
-        else:                   # crashed between the two renames below:
-            os.replace(old, arch)   # the parked previous archive comes back
-    build.mkdir(parents=True)
-    try:
-        # the report travels with its inputs bundle (rebuildable)
-        # knobs.json exists only for a modified run (by override)
-        for name in ("results.json", "report.html", BUNDLE_NAME, "knobs.json"):
-            if (workroot / name).is_file():
-                shutil.copy2(workroot / name, build / name)
-        if (workroot / "submission").is_dir():
-            shutil.copytree(workroot / "submission", build / "submission")
-    except BaseException:
-        shutil.rmtree(build, ignore_errors=True)
-        raise
-    if arch.exists():
-        os.replace(arch, old)   # park the previous archive
-    os.replace(build, arch)
-    if old.exists():
-        shutil.rmtree(old, ignore_errors=True)
-    return str(arch)
-
-
+# === Submission files (the forecast archive: pipeline.py) ===
 def _registered_model_ids() -> set:
     """Hub model identities this project may write (directory names), from
     submit.MODEL_ABBR (checked against model-metadata/ by the suite)."""
@@ -2544,7 +1828,8 @@ def _sandbox_busy_reason() -> str:
     """Why a sandbox fit may not start now ("" when the engine is free)."""
     if _status.get("running"):
         return "a console run is fitting"
-    live = [x for x in _known_seasons() if _season_status(x) in _RETRO_ACTIVE]
+    live = [x for x in retro_seasons._known_seasons()
+            if _season_status(x) in _RETRO_ACTIVE]
     if live:
         return "a retrospective replay is running (" + ", ".join(live) + ")"
     return _sandbox_live_reason()
@@ -3011,7 +2296,7 @@ def _sandbox_start(name: str, *, particles: int, jitter: float,
         return _sandbox_redirect(name, run_id)
 
     def _go():
-        guard = _sleep_guard()          # a full fit must outlive the lid
+        guard = pipeline._sleep_guard()  # a full fit must outlive the lid
         try:
             sandbox_mod.run(workroot)
         finally:
@@ -3333,428 +2618,9 @@ def model_page(request: Request, name: str):
         "form": form, "status": _status})
 
 
-
-
-# === Retrospective core: roots, claims, season status ===
-RETRO_ROOT = Path(__file__).resolve().parents[1] / "state" / "retro"
-# The sealed full-grid records, read only: the reseal (production engine,
-# the Home/Methods figures) first, then v1.0.0's seal (history).
-RETRO_RESEAL = Path(__file__).resolve().parents[1] / "state" / "retro_reseal"
-RETRO_SEAL = Path(__file__).resolve().parents[1] / "state" / "retro_seal"
-
-
-def _sealed_roots() -> tuple:
-    """((root, label), ...) in preference order, read at call time (tests
-    repoint the roots)."""
-    return ((RETRO_RESEAL, "the production engine's record (reseal of "
-                           "2026-09-07), the figures on Home and Methods"),
-            (RETRO_SEAL, "sealed v1.0.0 engine record (retired raw-space "
-                         "kernel); the production engine scores 0.723 "
-                         "pooled, see Methods"))
-
-
-def _sealed_label(root: Path) -> str:
-    """The label of the sealed record `root` lies in, or an empty string."""
-    for base, label in _sealed_roots():
-        try:
-            if Path(root).resolve().is_relative_to(Path(base).resolve()):
-                return label
-        except OSError:
-            continue
-    return ""
-
-
-def _season_root(season: str, archive: str = "") -> tuple:
-    """(root, is_seal): whichever of the app's retro root and the sealed
-    records has the most completed weeks (ties: app, reseal, seal). With an
-    archive id, exactly that archived tree."""
-    if archive:
-        from app.core import retro
-        return retro.archive_dir(RETRO_ROOT, season, archive), False
-    best, is_seal = RETRO_ROOT / season, False
-    n = _weeks_done(best)
-    for base, _label in _sealed_roots():
-        m = _weeks_done(base / season)
-        if m > n:
-            best, is_seal, n = base / season, True, m
-    return best, is_seal
-_retro_status: dict = {}
-_retro_stop: set = set()
-_retro_claim_at: dict = {}   # season -> when its in-memory claim was made
-
-#: statuses that mean a season worker is alive and holding the engine
-_RETRO_ACTIVE = ("running", "stopping", "paused")
-
-
+# === Retrospective (season registry and progress: retro_seasons.py) ===
 class _RetroStopRequested(Exception):
     """Raised inside the season worker between weeks when a stop was asked."""
-
-
-def _valid_season(season: str) -> bool:
-    """YYYY-YY only (season names become directory names)."""
-    import re
-    return bool(re.fullmatch(r"\d{4}-\d{2}", season or ""))
-
-
-def _valid_archive(stamp: str) -> bool:
-    """Archive stamp format only (it becomes a directory name)."""
-    from app.core import retro
-    return retro.valid_stamp(stamp or "")
-
-
-def _live_root(season: str) -> Path:
-    """Where this app's season worker runs (control flags, run record): the
-    only tree a Run can resume, archive or discard. Sealed trees are never
-    written."""
-    return RETRO_ROOT / season
-
-
-@ttlcache.ttl_cache()
-def _seasons_on_disk(retro_root: Path) -> tuple:
-    """Seasons under a retro root carrying a run record (cached per root)."""
-    from app.core import retro
-    names = set()
-    try:
-        for p in Path(retro_root).iterdir():
-            if (_valid_season(p.name) and p.is_dir()
-                    and retro.meta_path(p).is_file()):
-                names.add(p.name)
-    except OSError:
-        pass                          # no retro root yet
-    return tuple(sorted(names))
-
-
-def _known_seasons() -> list:
-    """In-memory claims (read live, never cached) plus every season with a
-    run record on disk (records outlive claims across restarts)."""
-    return sorted(set(_retro_status) | set(_seasons_on_disk(RETRO_ROOT)))
-
-
-@ttlcache.ttl_cache()
-def _scan_archive_entries(retro_root: Path, season: str) -> list:
-    from app.core import retro
-    out = []
-    for p in retro.list_archive_dirs(retro_root, season):
-        stamp = retro.archive_stamp_of(p.name, season)
-        s = retro.run_summary(p)
-        size = retro.dir_size(p)
-        out.append({"id": stamp, "when": retro.stamp_human(stamp),
-                    "weeks": s["weeks"], "elapsed_s": s["elapsed_s"],
-                    "rel": s["headline_rel"], "rels": s.get("headline_rels"),
-                    # each archive is its own tree, named for what it holds
-                    "pf_name": _pf_name(p),
-                    "scored": s["scored"],
-                    "size": size, "size_h": retro.human_bytes(size)})
-    return out
-
-
-def _archive_entries(season: str) -> list:
-    """Archived runs of one season, newest first, as the retro index lists
-    them (cached per root + season: sizing every tree is the index's most
-    expensive scan)."""
-    return _scan_archive_entries(RETRO_ROOT, season)
-
-
-def _archive_progress(root: Path, season: str) -> dict:
-    """An archived run's timing block, shaped like _retro_progress; never
-    active."""
-    from app.core import retro
-    meta = retro.read_meta(root)
-    t = retro.timing(meta) if meta else {}
-    done = _weeks_done(root)
-    return {"season": season, "status": "archived", "done": done,
-            # the archive's own settings, not the live season's
-            "settings": retro.settings_summary(meta),
-            "total": int(t.get("total_weeks") or done),
-            "elapsed_s": t.get("elapsed_s"),
-            "weeks_measured": t.get("weeks_measured") or 0,
-            "mean_s": t.get("mean_s"), "eta_s": None,
-            "eta_lo_s": None, "eta_hi_s": None, "eta_basis": None,
-            "slowest_week": t.get("slowest_week"),
-            "slowest_s": t.get("slowest_s"),
-            "started_utc": t.get("started_utc"),
-            "finished_utc": t.get("finished_utc"),
-            "active": False}
-
-
-def _season_meta(season: str) -> dict:
-    """The season's run record: the live retro root first, then whichever
-    root the season page shows (a sealed full-grid run keeps its own)."""
-    from app.core import retro
-    m = retro.read_meta(_live_root(season))
-    if m:
-        return m
-    root, _is_seal = _season_root(season)
-    return retro.read_meta(root)
-
-
-def _season_status(season: str) -> str:
-    """One status per season: running, paused, stopping, stopped, done,
-    interrupted, error: …, or "". Across restarts the record's heartbeat
-    decides, not the in-memory claim."""
-    from app.core import retro
-    mem = _retro_status.get(season, "")
-    meta = _season_meta(season)
-    disk = retro.effective_status(meta) if meta else ""
-    if mem not in _RETRO_ACTIVE:
-        _retro_claim_at.pop(season, None)   # stamp never outlives its claim
-    if mem in _RETRO_ACTIVE:
-        if disk == "interrupted":
-            # the worker died without releasing the in-memory claim
-            _retro_status[season] = "interrupted"
-            return "interrupted"
-        claimed_at = _retro_claim_at.get(season)
-        finished = float((meta or {}).get("finished_utc") or 0)
-        if (disk and (disk in ("stopped", "done") or disk.startswith("error"))
-                and claimed_at and finished >= claimed_at):
-            # the claimed worker finished after the claim was made: the claim
-            # is dead (else "stopping" wedges Run). A fresh claim over an
-            # older record still reads as live.
-            _retro_status[season] = disk
-            _retro_stop.discard(season)
-            _retro_claim_at.pop(season, None)
-            return disk
-        if not meta and claimed_at and time.time() - claimed_at > 120:
-            # no record two minutes after the claim: the worker never started
-            _retro_status[season] = ""
-            _retro_stop.discard(season)
-            _retro_claim_at.pop(season, None)
-            return ""
-        if mem == "stopping":
-            return "stopping"
-        # the record refines running into paused as the worker holds
-        return disk if disk in ("running", "paused") else mem
-    return mem or disk
-
-
-# === Retrospective: remaining-time estimate for a live replay ===
-# Week cost climbs ~3x through a season, so a global mean freezes. Level =
-# recency-weighted measured weeks (half-life 3); shape = a completed
-# same-scope run's per-week profile; time spent in the in-flight week is
-# credited. Reported as a range with its basis.
-
-def _scope_key(meta: dict):
-    """Hashable location-scope identity of a run record (None without
-    settings): panel6/all plus '+us' when the national row was fitted
-    (heavier weeks); a custom selection by its exact location list."""
-    s = (meta or {}).get("settings")
-    if not isinstance(s, dict) or not s:
-        return None
-    scope = str(s.get("scope") or "")
-    if scope in ("panel6", "all"):
-        from app.core import us_national as usn
-        locs = [str(l) for l in (s.get("locations") or [])]
-        nat = (any(usn.is_us(l) for l in locs) if locs
-               else bool(s.get("national")))
-        return scope + ("+us" if nat else "")
-    locs = tuple(sorted(str(l) for l in (s.get("locations") or [])))
-    return locs or None
-
-
-#: fewest measured weeks a completed run needs before its per-week seconds
-#: can serve as a season shape for another run's estimate
-_PROFILE_MIN_WEEKS = 8
-
-
-@ttlcache.ttl_cache()
-def _profile_scan(retro_root: Path, seal_root: Path, season: str,
-                  scope_key) -> tuple | None:
-    """The same-scope completed run (most measured weeks) whose per-week
-    seconds shape the estimate: other seasons' live and sealed trees and
-    every archived run, including this season's. Cached by both roots.
-
-    Returns (season_label, ((position 0..1, relative_cost), ...)) or None
-    (the estimate then uses its default shape)."""
-    if not scope_key:
-        return None
-    from app.core import retro
-    best = None
-    for s in retro.available_seasons():
-        roots = []
-        if s != season:
-            roots.append(Path(retro_root) / s)
-            roots.append(Path(seal_root) / s)
-        roots.extend(retro.list_archive_dirs(retro_root, s))
-        for r in roots:
-            m = retro.read_meta(r)
-            if not m or _scope_key(m) != scope_key:
-                continue
-            ws = {k: float(v)
-                  for k, v in (m.get("week_seconds") or {}).items()
-                  if isinstance(v, (int, float)) and float(v) > 0}
-            if len(ws) < _PROFILE_MIN_WEEKS:
-                continue          # too few weeks to carry a season's shape
-            if best is None or len(ws) > best[2]:
-                vals = [ws[k] for k in sorted(ws)]
-                mean = sum(vals) / len(vals)
-                n = len(vals)
-                pts = tuple((i / (n - 1) if n > 1 else 0.0, v / mean)
-                            for i, v in enumerate(vals))
-                best = (s, pts, n)
-    return (best[0], best[1]) if best else None
-
-
-def _eta_estimate(measured, remaining, profile=None, spent_s=0.0,
-                  overhead_s=0.0):
-    """The remaining-time estimate itself; pure, so tests can replay
-    recorded seasons week by week.
-
-    measured    [(position, seconds)] for this run's completed weeks,
-                ascending by week; position is the week's fractional place
-                in its season, 0..1.
-    remaining   [position] for the weeks still to run, the week in flight
-                first.
-    profile     ((position, relative_cost), ...) from a completed
-                same-scope run, or None for a flat profile.
-    spent_s     seconds already inside the week in flight.
-    overhead_s  per-week seconds this run spends between weeks, measured
-                from its own record.
-
-    Returns (lo_s, mid_s, hi_s) or None when nothing is measured. The band
-    is the larger of the weighted spread and a schedule calibrated on the
-    recorded seasons (test_retro_eta.py), widened with no profile or few
-    weeks, and treated as correlated across weeks (never shrunk by count)."""
-    if not measured or not remaining:
-        return None
-    if not profile:
-        # No same-scope profile: assume a linear 0.55x -> 1.40x ramp (each
-        # week refits from season start, so cost grows). Chosen as the
-        # smallest worst-season error among linear ramps replayed against the
-        # recorded full-grid seasons (data: app/tests/test_retro_eta.py); a
-        # flat default biased the estimate ~40 min low.
-        profile = ((0.0, 0.55), (1.0, 1.40))
-        default_shape = True
-    else:
-        default_shape = False
-
-    def cost(p):
-        if not profile:
-            return 1.0
-        if p <= profile[0][0]:
-            return profile[0][1]
-        for (p0, c0), (p1, c1) in zip(profile, profile[1:]):
-            if p <= p1:
-                return c0 + ((c1 - c0) * (p - p0) / (p1 - p0)
-                             if p1 > p0 else 0.0)
-        return profile[-1][1]
-
-    n = len(measured)
-    half_life = 3.0               # weeks: the recent past predicts the next
-    wts = [0.5 ** ((n - 1 - j) / half_life) for j in range(n)]
-    ratios = [s / max(cost(p), 1e-9) for p, s in measured]
-    wsum = sum(wts)
-    level = sum(w * r for w, r in zip(wts, ratios)) / wsum
-    if level <= 0:
-        return None
-    var = sum(w * (r - level) ** 2 for w, r in zip(wts, ratios)) / wsum
-    rel = (var ** 0.5) / level
-    preds = [level * cost(q) + max(0.0, float(overhead_s))
-             for q in remaining]
-    left = max(0.0, sum(preds) - min(max(0.0, float(spent_s)), preds[0]))
-    frac_rem = len(remaining) / (n + len(remaining))
-    u = max(rel, 0.10 + 0.20 * frac_rem + (0.15 if default_shape else 0.0))
-    if n < 3:
-        u = max(u, 0.50)          # one or two weeks cannot claim precision
-    elif n < 6:
-        u = max(u, 0.25)
-    return (left * (1.0 - u), left, left * (1.0 + u))
-
-
-def _inflight_spent(root: Path, remaining: list, now: float) -> float:
-    """Seconds already inside the in-flight week (the most recently started
-    remaining week directory); zero between weeks."""
-    weeks = Path(root) / "weeks"
-    best = None
-    for asof in remaining:
-        wd = weeks / asof
-        if not wd.is_dir():
-            continue
-        try:
-            t0 = min((f.stat().st_mtime for f in wd.iterdir()), default=None)
-        except OSError:
-            continue
-        if t0 is not None and (best is None or t0 > best):
-            best = t0
-    return max(0.0, now - best) if best is not None else 0.0
-
-
-def _season_eta(meta: dict, season: str, root: Path, t: dict) -> tuple | None:
-    """_eta_estimate for a live season: positions from the vintage calendar
-    (index fallback), same-scope profile, in-flight seconds, measured
-    between-week overhead. Returns (lo_s, mid_s, hi_s, basis) or None."""
-    from app.core import retro
-    ws = {k: float(v) for k, v in ((meta or {}).get("week_seconds") or {}).items()
-          if isinstance(v, (int, float)) and float(v) > 0}
-    if not ws:
-        return None
-    completed = {p.parent.name for p in retro.season_sample_files(root)}
-    done = len(completed)
-    vintages = list(retro.season_vintages(season))
-    if vintages and completed <= set(vintages) and len(vintages) > done:
-        posmap = {v: (i / (len(vintages) - 1) if len(vintages) > 1 else 0.0)
-                  for i, v in enumerate(vintages)}
-        measured = [(posmap.get(k, 1.0), ws[k]) for k in sorted(ws)]
-        remaining_names = [v for v in vintages if v not in completed]
-        remaining = [posmap[v] for v in remaining_names]
-    else:
-        # no calendar: place weeks by index; no in-flight credit
-        total = max(int(t.get("total_weeks") or 0), done + 1)
-        denom = max(total - 1, 1)
-        keys = sorted(ws)
-        measured = [(j / denom, ws[k]) for j, k in enumerate(keys)]
-        remaining_names = []
-        remaining = [(done + i) / denom for i in range(total - done)]
-    if not remaining:
-        return None
-    now = time.time()
-    spent = (_inflight_spent(root, remaining_names, now)
-             if remaining_names else 0.0)
-    elapsed = float(t.get("elapsed_s") or 0.0)
-    overhead = min(120.0, max(0.0, elapsed - sum(ws.values()) - spent)
-                   / max(1, len(ws)))
-    prof = _profile_scan(RETRO_ROOT, RETRO_SEAL, season, _scope_key(meta))
-    est = _eta_estimate(measured, remaining,
-                        profile=(prof[1] if prof else None),
-                        spent_s=spent, overhead_s=overhead)
-    if est is None:
-        return None
-    basis = "estimate from %d completed week%s" % (
-        len(ws), "" if len(ws) == 1 else "s")
-    if prof:
-        basis += ", weighted by the %s week profile" % prof[0]
-    else:
-        basis += ", shaped by the recorded full-grid week profile"
-    return est[0], est[1], est[2], basis
-
-
-def _retro_progress(season: str) -> dict:
-    """Live progress and timing for one season, as the retro pages poll it.
-    The ETA range (_season_eta) is null unless running and computable."""
-    from app.core import retro
-    status = _season_status(season)
-    meta = _season_meta(season)
-    t = retro.timing(meta) if meta else {}
-    root, _is_seal = _season_root(season)
-    done = _weeks_done(root)
-    total = t.get("total_weeks") or len(retro.season_vintages(season))
-    mean_s = t.get("mean_s")
-    eta_lo = eta_s = eta_hi = eta_basis = None
-    if status == "running" and total and done < total:
-        est = _season_eta(meta, season, root, t)
-        if est:
-            eta_lo, eta_s, eta_hi, eta_basis = est
-    return {"season": season, "status": status, "done": done,
-            "total": int(total or 0),
-            "settings": retro.settings_summary(meta),
-            "elapsed_s": t.get("elapsed_s"),
-            "weeks_measured": t.get("weeks_measured") or 0,
-            "mean_s": mean_s, "eta_s": eta_s,
-            "eta_lo_s": eta_lo, "eta_hi_s": eta_hi, "eta_basis": eta_basis,
-            "slowest_week": t.get("slowest_week"),
-            "slowest_s": t.get("slowest_s"),
-            "started_utc": t.get("started_utc"),
-            "finished_utc": t.get("finished_utc"),
-            "active": status in _RETRO_ACTIVE}
 
 
 # === Retrospective index (/retro) and its APIs -> retro.html ===
@@ -3801,9 +2667,9 @@ def retro_index(request: Request, dataset: str = ""):
     seasons = []
     for s in available_seasons():
         total = len(season_vintages(s))
-        root, is_seal = _season_root(s)
-        done = _weeks_done(root)
-        prog = _retro_progress(s)
+        root, is_seal = retro_seasons._season_root(s)
+        done = retro_seasons._weeks_done(root)
+        prog = retro_seasons._retro_progress(s)
         status = prog["status"]
         # head scores: one relWIS per scored model
         _summ = _retro.run_summary(root)
@@ -3823,7 +2689,7 @@ def retro_index(request: Request, dataset: str = ""):
                         "pf_name": _pf_name(root),
                         "resume_fields": resume_fields,
                         "settings": prog["settings"],
-                        "archives": _archive_entries(s),
+                        "archives": retro_seasons._archive_entries(s),
                         "status": status,
                         "running": status in ("running", "stopping"),
                         "paused": status == "paused",
@@ -3857,10 +2723,10 @@ def api_retro_progress(season: str = ""):
     if season:
         if not _valid_season(season):
             return {}
-        return {season: _retro_progress(season)}
+        return {season: retro_seasons._retro_progress(season)}
     out = {}
     for s in available_seasons():
-        p = _retro_progress(s)
+        p = retro_seasons._retro_progress(s)
         if p["status"] or p["done"]:
             out[s] = p
     return out
@@ -3886,8 +2752,8 @@ def api_retro_startover(season: str = ""):
     status = _season_status(season)
     sealed = False
     if not s["weeks"]:
-        shown_root, is_seal = _season_root(season)
-        if is_seal and _weeks_done(shown_root):
+        shown_root, is_seal = retro_seasons._season_root(season)
+        if is_seal and retro_seasons._weeks_done(shown_root):
             sealed = True
             s = retro.run_summary(shown_root)
     return {"season": season,
@@ -3904,7 +2770,7 @@ def api_retro_startover(season: str = ""):
                                         or s["started_utc"]),
             "status": status,
             "active": status in _RETRO_ACTIVE,
-            "archives": len(_archive_entries(season))}
+            "archives": len(retro_seasons._archive_entries(season))}
 
 
 @app.post("/retro/{season}/archive/{stamp}/delete")
@@ -3925,7 +2791,7 @@ def retro_archive_delete(request: Request, season: str, stamp: str,
     if confirm != season:
         _flash("The deletion was not confirmed, so nothing was deleted.")
         return _back(request, "/retro")
-    p = retro.archive_dir(RETRO_ROOT, season, stamp)
+    p = retro.archive_dir(retro_seasons.RETRO_ROOT, season, stamp)
     if not (p.is_dir() or p.is_symlink()):
         _flash(f"No archived {season} run from {retro.stamp_human(stamp)}. "
                "Nothing was deleted.")
@@ -3945,329 +2811,10 @@ def retro_archive_delete(request: Request, season: str, stamp: str,
     return _back(request, "/retro")
 
 
-# === Retrospective: results preparation (season finalize, off request paths) ===
-# Scoring a season takes minutes, so finalize runs as one background job per
-# season root, shared by the worker (before marking done) and page visits
-# that find stale caches (they poll /api/retro/{season}/results_status).
-
+# === Retrospective: results status (preparation: retro_prep.py) ===
 #: grace wait before the results route renders the preparing state (small
 #: seasons and test trees finish inside it)
 _RESULTS_GRACE_S = 1.5
-
-_results_jobs: dict = {}          # str(root) -> job record
-_results_lock = __import__("threading").Lock()
-
-
-def _scoring_failed_hint(score_error: str) -> str:
-    """The season map panel's scoring-failed fragment; score_error is
-    escaped HERE (the template injects map_html with | safe)."""
-    return ("<p class='hint'>Scoring failed: <code>"
-            + _htmlmod.escape(score_error) + "</code>. The fitted forecasts "
-            "below are intact; fix the scoring input (usually the FluSight "
-            "hub clone, via the Data tab) and reload this page.</p>")
-
-
-def _week_map_cards_by_model(root: Path, wk: str) -> dict:
-    """{model: {fips: card}} for one stored retro week, every model it
-    stored: each member's 23-level quantile sidecar
-    (retro.week_member_quantiles) through the categorical CDF, anchor-week
-    median as baseline.
-
-    Disk-cached in playback_cache/map_cards/<wk>.json keyed by samples
-    mtime. A SUBDIRECTORY because report_season._newest_input globs
-    playback_cache/*.json as report inputs: cache warming must not look
-    like new data."""
-    import json as _json
-    import numpy as np
-    from app.core import retro
-    from app.core.categorical import CATS, probs_from_quantiles
-    root = Path(root)
-    sp = retro.week_samples_path(root, wk)
-    if sp is None:
-        return {}
-    try:
-        mtime = int(sp.stat().st_mtime)
-    except OSError:
-        return {}
-    cf = root / "playback_cache" / "map_cards" / f"{wk}.json"
-    try:
-        cached = _json.loads(cf.read_text())
-        if cached.get("mtime") == mtime and cached.get("v") == 2:
-            return cached["cards"]
-    except Exception:
-        pass
-    locs = __import__("flubnf.settings",
-                      fromlist=["load_locations"]).load_locations()
-    n2a = dict(zip(locs.location_name, locs.abbreviation))
-    n2p = dict(zip(locs.location_name, locs.population.astype(float)))
-    n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
-    # baseline: the PF's origin draws (the reported value replicated); an
-    # analogue-only week has none, so read the week's vintage instead
-    mq = retro.week_member_quantiles(root, wk)
-    base = {}
-    try:
-        d = retro.read_samples(sp)
-        for loc, sm in (d.get("pf") or {}).items():
-            o = np.asarray(sm.get(_hzmod.ORIGIN, []), float)
-            o = o[np.isfinite(o)]
-            if o.size:
-                base[loc] = float(np.median(o))
-    except Exception:
-        pass
-    if not base:
-        try:
-            base = _last_reported_before(wk, n2f)
-        except Exception:
-            base = {}
-    by_model = {}
-    for model, by_loc in mq.items():
-        cards = {}
-        for loc, qs in by_loc.items():
-            q1 = qs.get("0")                      # one week ahead, canonical
-            lo = base.get(loc)
-            if not q1 or lo is None or loc not in n2f:
-                continue
-            probs = probs_from_quantiles(q1, lo, int(n2p.get(loc, 0)), 0)
-            if not probs:
-                continue
-            med = float(q1.get(0.5, 0.0))
-            # hover_html reaches innerHTML: escape the name
-            hover = (f"<b>{_htmlmod.escape(loc)}</b><br>1-wk median: "
-                     f"{med:.0f}<br>" +
-                     "<br>".join(f"{c.replace('_',' ')}: {probs.get(c,0):.0%}"
-                                 for c in CATS))
-            cards[n2f[loc]] = {"probs": probs, "name": loc,
-                               "abbr": n2a.get(loc, ""), "fips": n2f[loc],
-                               "hover_html": hover}
-        if cards:
-            by_model[model] = cards
-    try:
-        # write beside, then replace
-        import os as _os
-        cf.parent.mkdir(parents=True, exist_ok=True)
-        tmp = cf.with_name(cf.name + ".tmp")
-        tmp.write_text(_json.dumps({"mtime": mtime, "v": 2, "cards": by_model}))
-        _os.replace(tmp, cf)
-    except Exception:
-        pass                      # an unwritable cache costs speed, not truth
-    return by_model
-
-
-def _last_reported_before(wk: str, n2f: dict) -> dict:
-    """{location: last reported value} from the vintage dated `wk`, the
-    baseline a week stores no anchor draws for."""
-    import pandas as pd
-    df = pd.read_csv(state.data_mod.vintage_path(wk), dtype={"location": str})
-    df["location"] = df["location"].str.zfill(2)
-    df = df[df.date <= wk].dropna(subset=["value"]).sort_values("date")
-    last = df.groupby("location")["value"].last()
-    return {loc: float(last[f]) for loc, f in n2f.items() if f in last.index}
-
-
-def _retro_map_models(by_model: dict) -> list:
-    """Models a week's map can show, in display order (a stored blend only
-    when the week holds nothing else)."""
-    from app.core import report_v2
-    order = report_v2.toggle_models(by_model)
-    return order or [m for m in report_v2.MODEL_ORDER if m in by_model]
-
-
-def _week_map_cards(root: Path, wk: str) -> dict:
-    """The first display-order model's cards for the week (the default
-    view before the toggle)."""
-    by_model = _week_map_cards_by_model(root, wk)
-    order = _retro_map_models(by_model)
-    return dict(by_model[order[0]]) if order else {}
-
-
-def _ensure_results_job(root: Path, season: str,
-                        force: bool = False) -> dict:
-    """Start or join THE finalize job for this root (one per root; racing
-    callers share the record, whose 'done' event fires when caches are
-    ready). `force` rescores; ignored when joining a running job."""
-    import threading
-    from app.core import retro
-    key = str(root)
-    with _results_lock:
-        job = _results_jobs.get(key)
-        if job and not job["done"].is_set():
-            return job
-        if _is_sealed_root(root):
-            # the sealed record is read only: nothing is scored into it
-            job = {"phase": "sealed", "t0": time.time(),
-                   "done": threading.Event(), "seconds": 0.0,
-                   "season": season, "inputs": None,
-                   "error": "the sealed validation record is read only; "
-                            "its scores stand and are never recomputed"}
-            job["done"].set()
-            _results_jobs[key] = job
-            return job
-        job = {"phase": "preparing", "t0": time.time(),
-               "done": threading.Event(), "error": "", "seconds": None,
-               "season": season,
-               "inputs": retro.newest_samples_mtime(root)}
-        _results_jobs[key] = job
-
-    def _run():
-        try:
-            job["seconds"] = retro.finalize_season(
-                root, season,
-                phase_cb=lambda p: job.__setitem__("phase", p),
-                force=force)
-            # warm the default view's (last week's) map cards
-            wks = [p.parent.name for p in retro.season_sample_files(root)]
-            if wks:
-                _week_map_cards(root, wks[-1])
-        except Exception as e:
-            job["error"] = f"{type(e).__name__}: {str(e)[:220]}"
-        finally:
-            job["done"].set()
-            _invalidate_scans()
-
-    threading.Thread(target=_run, daemon=True,
-                     name=f"flubnf-results-{season}").start()
-    return job
-
-
-def _job_covered(root: Path) -> dict | None:
-    """The completed job that ran on this root's CURRENT inputs, or None.
-    Empty scores plus a covering job means truth has not settled (or
-    job['error']): render that state, do not recompute every visit."""
-    from app.core import retro
-    job = _results_jobs.get(str(root))
-    if (job and job["done"].is_set()
-            and job["inputs"] >= retro.newest_samples_mtime(root)):
-        return job
-    return None
-
-
-#: LRU of parsed scores.json frames keyed by (path, mtime_ns, size), so a
-#: rescore invalidates by construction. ~50 MB per frame; cap 3 holds the
-#: three sealed seasons without eviction while bounding archive sweeps.
-_SCORES_FRAMES_MAX = 3
-_SCORES_FRAMES: "OrderedDict" = OrderedDict()
-
-
-def _scores_df(root: Path):
-    """Parsed scores.json for this root (None if missing/unparseable), one
-    parse per file content. Callers must not mutate the frame."""
-    import pandas as pd
-    sf = Path(root) / "scores.json"
-    try:
-        st = sf.stat()
-    except OSError:
-        return None
-    key = (str(sf), st.st_mtime_ns, st.st_size)
-    hit = _SCORES_FRAMES.get(key)
-    if hit is not None:
-        _SCORES_FRAMES.move_to_end(key)      # least-recently-used ordering
-        return hit
-    try:
-        df = pd.read_json(sf)
-    except Exception:
-        return None
-    _SCORES_FRAMES[key] = df
-    while len(_SCORES_FRAMES) > _SCORES_FRAMES_MAX:
-        _SCORES_FRAMES.popitem(last=False)   # evict one, never flush the lot
-    return df
-
-
-#: LRU of season relWIS figures keyed by scores identity, convention and (for
-#: pairwise, ~3 s per season) the field data's identity. Entries are small.
-_RELWIS_FIGS_MAX = 12
-_RELWIS_FIGS: "OrderedDict" = OrderedDict()
-
-
-def _relwis_conventions() -> list:
-    """The convention switch's options; the project's own (the default,
-    and every sealed number's) first."""
-    from app.core import relwis
-    return [relwis.CONVENTION_INFO[k] for k in relwis.CONVENTIONS]
-
-
-def _relwis_figures(root: Path, convention: str):
-    """This root's relWIS figures under ONE convention, cached on identity.
-    Without the FluSight field data, pairwise figures carry the reason and
-    NO numbers; never substitute the other convention (app/core/relwis).
-    """
-    from app.core import relwis
-    from app.core import us_national as usn
-    conv = relwis.convention_of(convention)
-    # the field (600k+ cells) only when the convention needs it
-    field = relwis.load_field_cells() if conv == relwis.PAIRWISE else None
-    sf = Path(root) / "scores.json"
-    try:
-        st = sf.stat()
-        ident = (st.st_mtime_ns, st.st_size)
-    except OSError:
-        ident = (0, 0)
-    key = (str(sf), ident, conv,
-           (field.stamp, field.reason) if field is not None else ())
-    hit = _RELWIS_FIGS.get(key)
-    if hit is not None:
-        _RELWIS_FIGS.move_to_end(key)
-        return hit
-    figs = relwis.season_figures(usn.pooled_frame(_scores_df(root)), conv,
-                                 field=field)
-    _RELWIS_FIGS[key] = figs
-    while len(_RELWIS_FIGS) > _RELWIS_FIGS_MAX:
-        _RELWIS_FIGS.popitem(last=False)
-    return figs
-
-
-def _is_sealed_root(root: Path) -> bool:
-    """Whether root lies under a sealed record: read only, never stale and
-    never rescored, even when the hub's truth moves on."""
-    try:
-        parents = Path(root).resolve().parents
-        return any(Path(base).resolve() in parents
-                   for base, _ in _sealed_roots())
-    except OSError:
-        return False
-
-
-def _scores_current_fast(root: Path) -> bool:
-    """retro.scores_current's rule (exists, parses, newer than every week
-    and the hub's truth) from stats and the cached parse. Sealed roots are
-    current whenever their scores parse."""
-    from app.core import retro
-    root = Path(root)
-    weeks = retro.season_sample_files(root)
-    if not weeks:
-        return True
-    sf = root / "scores.json"
-    if not sf.is_file():
-        return False
-    if _is_sealed_root(root):
-        return _scores_df(root) is not None
-    try:
-        from app.core.data import truth_mtime
-        if sf.stat().st_mtime < max([p.stat().st_mtime for p in weeks]
-                                    + [truth_mtime()]):
-            return False           # older than a sample, or than the truth
-    except OSError:
-        return False
-    return _scores_df(root) is not None
-
-
-def _scores_scoreable_fast(root: Path) -> bool:
-    """retro.scores_scoreable's exact rule (a model column and at least one
-    cell), from the shared cached parse."""
-    df = _scores_df(root)
-    return df is not None and (not df.empty) and ("model" in df.columns)
-
-
-def _results_pending(root: Path) -> str:
-    """'' when the results page can render from caches alone, else why not
-    (stats and cached reads only, never computation)."""
-    from app.core import retro
-    if not _scores_current_fast(root):
-        return "scores stale"
-    if not _scores_scoreable_fast(root):
-        return "" if _job_covered(root) else "scores empty"
-    if not retro.national_aggregate_fresh(root):
-        return "national aggregate stale"
-    return ""
 
 
 @app.get("/api/retro/{season}/results_status")
@@ -4278,7 +2825,7 @@ def api_retro_results_status(season: str, archive: str = ""):
         return {"pending": False, "error": "unrecognized archive"}
     if not _valid_season(season):
         return {"pending": False, "error": "unrecognized season"}
-    root, _is_seal = _season_root(season, archive)
+    root, _is_seal = retro_seasons._season_root(season, archive)
     job = _results_jobs.get(str(root))
     if job and not job["done"].is_set():
         return {"pending": True, "phase": job["phase"],
@@ -4295,11 +2842,11 @@ def _retro_bg(season: str, locations: list, width: int,
     engine preset); run_season records them with the rest in run_meta.json
     before the first week."""
     from app.core import retro
-    root = RETRO_ROOT / season
+    root = retro_seasons.RETRO_ROOT / season
     _retro_status[season] = "running"
     _retro_stop.discard(season)     # no stale stop flag from a past run
     retro.clear_flags(root)         # nor a stale STOP/PAUSE file from one
-    guard = _sleep_guard()          # overnight replays must outlive the lid
+    guard = pipeline._sleep_guard()  # overnight replays must outlive the lid
     try:
         def _tick(_asof):
             # called after every week: the clean stop point
@@ -4317,7 +2864,7 @@ def _retro_bg(season: str, locations: list, width: int,
                          settings=settings, engine=engine, **kx)
         # finalize (score, national aggregate, playback caches) BEFORE the
         # season reads done, via the shared job registry
-        job = _ensure_results_job(root, season)
+        job = retro_prep._ensure_results_job(root, season)
         job["done"].wait()
         if job.get("seconds"):
             retro.record_finalize(root, job["seconds"])
@@ -4475,7 +3022,7 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
         if sb:
             _flash(f"Not started: {sb}. Stop it from the Sandbox first.")
             return RedirectResponse("/retro", status_code=303)
-        other = sorted(x for x in _known_seasons()
+        other = sorted(x for x in retro_seasons._known_seasons()
                        if x != season and _season_status(x) in _RETRO_ACTIVE)
         if other:
             _flash("Another season is already replaying ("
@@ -4538,7 +3085,7 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
         width = max(1, min(int(width), 16))
         # start-over handling only AFTER all validation
         live = _live_root(season)
-        existing = _weeks_done(live)
+        existing = retro_seasons._weeks_done(live)
         legacy_resume = False
         if mode == "resume" and existing:
             # one configuration per tree: completed weeks were built with
@@ -4587,7 +3134,7 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                        "a fresh replay.")
         elif mode == "archive" and existing:
             try:
-                dst = retro.archive_run(RETRO_ROOT, season)
+                dst = retro.archive_run(retro_seasons.RETRO_ROOT, season)
             except Exception as e:
                 # the move is atomic: a failure leaves the original whole
                 _flash(f"Could not archive {season}: {type(e).__name__}: "
@@ -4650,7 +3197,7 @@ def retro_results(request: Request, season: str, week: str = "",
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         _flash("Unrecognized archived run identifier.")
         return RedirectResponse("/retro", status_code=303)
-    root, _is_seal = _season_root(season, archive)
+    root, _is_seal = retro_seasons._season_root(season, archive)
     # this tree's names, passed as model_name (shadows the global)
     names = _names_for_root(root)
     # a replay with modified model settings wears its label on the page
@@ -4672,7 +3219,7 @@ def retro_results(request: Request, season: str, week: str = "",
     # believed, so an unsettled-truth season never loops.
     if ((request.query_params.get("rescore") and not _is_sealed_root(root))
             or _results_pending(root)):
-        job = _ensure_results_job(
+        job = retro_prep._ensure_results_job(
             root, season, force=bool(request.query_params.get("rescore")))
         job["done"].wait(_RESULTS_GRACE_S)
         if not job["done"].is_set():
@@ -4859,7 +3406,7 @@ def retro_results(request: Request, season: str, week: str = "",
         "weeks": weeks, "week": wk, "map_html": map_html,
         "official_catalog": official_catalog,
         "prog": (_archive_progress(root, season) if archive
-                 else _retro_progress(season)),
+                 else retro_seasons._retro_progress(season)),
         "archive": archive,
         "archive_when": retro.stamp_human(archive) if archive else "",
         "n_weeks": len(weeks) if scoreable else 0})
@@ -4875,7 +3422,7 @@ def api_retro_playback(season: str, asof: str, archive: str = ""):
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         return PlainTextResponse("unrecognized archived run identifier",
                                  status_code=404)
-    root, _is_seal = _season_root(season, archive)
+    root, _is_seal = retro_seasons._season_root(season, archive)
     try:
         return playback.build_week(root, season, asof)
     except playback.UnknownWeek as e:
@@ -4896,7 +3443,7 @@ def api_retro_mapswap(season: str, asof: str, archive: str = ""):
     import re as _re
     if not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", asof):
         return PlainTextResponse(f"no stored week {asof}", status_code=404)
-    root, _is_seal = _season_root(season, archive)
+    root, _is_seal = retro_seasons._season_root(season, archive)
     from app.core import retro as _retro
     if _retro.week_samples_path(root, asof) is None:
         return PlainTextResponse(f"no stored week {asof}", status_code=404)
@@ -4919,7 +3466,7 @@ def retro_season_report(season: str, archive: str = ""):
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         return PlainTextResponse("unrecognized archived run identifier",
                                  status_code=404)
-    root, _is_seal = _season_root(season, archive)
+    root, _is_seal = retro_seasons._season_root(season, archive)
     try:
         p = report_season.build_season_report(
             root, season, archive=archive,
@@ -4939,7 +3486,7 @@ def api_retro_report_path(season: str, archive: str = ""):
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         return PlainTextResponse("unrecognized archived run identifier",
                                  status_code=404)
-    root, _is_seal = _season_root(season, archive)
+    root, _is_seal = retro_seasons._season_root(season, archive)
     try:
         p = report_season.build_season_report(
             root, season, archive=archive,
@@ -5059,7 +3606,7 @@ def run_models(request: Request,
         if _status.get("running"):
             _status["log"].append("A run is already in progress; not starting another.")
             return RedirectResponse("/forecast#results", status_code=303)
-        live_retro = sorted(x for x in _known_seasons()
+        live_retro = sorted(x for x in retro_seasons._known_seasons()
                             if _season_status(x) in _RETRO_ACTIVE)
         if live_retro:
             _flash("A retrospective replay holds the engine ("
@@ -5122,7 +3669,7 @@ def run_models(request: Request,
 
     if engine in ("all", "pf", "analogue"):
         # 'analogue' = the same pipeline with the PF block skipped
-        background.add_task(_run_all, spec)
+        background.add_task(pipeline._run_all, spec)
     else:
         # unknown engine: release the claim rather than wedge the console
         _status["running"] = None

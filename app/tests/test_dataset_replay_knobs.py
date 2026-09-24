@@ -24,7 +24,7 @@ from app.core import datasets as D
 from app.core import knobs as K
 from app.core.runs import RunSpec, default_season_start
 from app.ui import datasets_ui as DU
-from app.ui import server as srv
+from app.ui import pipeline as ui_pipeline
 from app.ui import state as ui_state
 
 from test_dataset_engines import grouped_bytes              # noqa: E402
@@ -174,7 +174,7 @@ def test_the_filter_knobs_ride_to_the_worker_when_it_runs(monkeypatch):
     fixed season start must precede every replayed week."""
     ds = stored(TEMPLATE.read_bytes(), "Template")
     assert ds.pf_eligible
-    monkeypatch.setattr(srv, "_pf_engine_state", lambda: "ready")
+    monkeypatch.setattr(ui_pipeline, "_pf_engine_state", lambda: "ready")
     calls = []
     monkeypatch.setattr(DU, "replay_worker",
                         lambda *a, **k: calls.append((a, k)))

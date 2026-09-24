@@ -31,6 +31,8 @@ from app.core import horizons as hz                          # noqa: E402
 from app.core import playback, reclaim, retro, scoring       # noqa: E402
 from app.core.runs import run_display, run_id_time           # noqa: E402
 from app.ui import server as srv                             # noqa: E402
+from app.ui import retro_prep as ui_retro_prep               # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons         # noqa: E402
 from app.ui import shared as ui_shared                       # noqa: E402
 from app.ui import state as ui_state                         # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL        # noqa: E402
@@ -477,19 +479,19 @@ def test_finalize_season_sweeps_leftover_intermediates(tmp_path, _stubbed,
 def routed(world, monkeypatch):
     """Point the app at the fixture world."""
     monkeypatch.setattr(runs_mod, "APP_STATE", world["tmp"])
-    monkeypatch.setattr(srv, "RETRO_ROOT", world["retro_root"])
-    monkeypatch.setattr(srv, "RETRO_SEAL", world["seal"])
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", world["retro_root"])
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", world["seal"])
     monkeypatch.setattr(reclaim, "RESEARCH_ROOTS", (world["research"],))
     status_before = dict(ui_state._status)
-    retro_before = dict(srv._retro_status)
+    retro_before = dict(ui_retro_seasons._retro_status)
     ui_state._status.update({"running": None, "workroot": None, "flash": ""})
-    srv._retro_status.clear()
-    srv._results_jobs.clear()
+    ui_retro_seasons._retro_status.clear()
+    ui_retro_prep._results_jobs.clear()
     ui_shared._invalidate_scans()
     yield world
     ui_state._status.clear(); ui_state._status.update(status_before)
-    srv._retro_status.clear(); srv._retro_status.update(retro_before)
-    srv._results_jobs.clear()
+    ui_retro_seasons._retro_status.clear(); ui_retro_seasons._retro_status.update(retro_before)
+    ui_retro_prep._results_jobs.clear()
     ui_shared._invalidate_scans()
 
 
@@ -535,7 +537,7 @@ def test_reclaim_post_performs_and_names_what_it_freed(routed):
 
 
 def test_reclaim_skips_busy_seasons_and_the_live_workroot(routed):
-    srv._retro_status[SEASON] = "running"
+    ui_retro_seasons._retro_status[SEASON] = "running"
     live = routed["live"]
     ui_state._status["running"] = f"all:{live}"
     ui_state._status["workroot"] = str(routed["workroots"] / live)

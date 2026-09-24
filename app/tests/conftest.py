@@ -42,8 +42,10 @@ def _engine_in_tmp(_engine_root, monkeypatch):
 def _sealed_records_in_tmp(tmp_path, monkeypatch):
     """The production record (app/state/retro_reseal) must never be served by
     accident; RETRO_SEAL tests already point at their own trees."""
-    from app.ui import server as srv
-    monkeypatch.setattr(srv, "RETRO_RESEAL", tmp_path / "retro_reseal")
+    from app.ui import server  # noqa: F401  (the app assembled for every test)
+    from app.ui import retro_seasons as ui_retro_seasons
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_RESEAL",
+                        tmp_path / "retro_reseal")
 
 
 @pytest.fixture(autouse=True)

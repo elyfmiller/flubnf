@@ -23,6 +23,8 @@ from fastapi.testclient import TestClient                  # noqa: E402
 from app.core import playback, report_season, retro, scoring  # noqa: E402
 from app.core import site_build                            # noqa: E402
 from app.ui import server as srv                           # noqa: E402
+from app.ui import retro_prep as ui_retro_prep             # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons       # noqa: E402
 from app.ui import shared as ui_shared                     # noqa: E402
 from app.ui import templating as ui_templating             # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL      # noqa: E402
@@ -98,20 +100,20 @@ def world(monkeypatch, tmp_path):
                           tmp_path / "retro_reseal")
     for d in (live, seal, reseal):
         d.mkdir()
-    monkeypatch.setattr(srv, "RETRO_ROOT", live)
-    monkeypatch.setattr(srv, "RETRO_SEAL", seal)
-    monkeypatch.setattr(srv, "RETRO_RESEAL", reseal)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", live)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", seal)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_RESEAL", reseal)
     monkeypatch.setattr(retro, "available_seasons", lambda: [SEASON, OTHER])
     monkeypatch.setattr(retro, "season_vintages", lambda s: [W1, W2])
     monkeypatch.setattr(srv, "_retro_bg", lambda *a, **k: None)
-    status_before = dict(srv._retro_status)
-    srv._retro_status.clear()
-    srv._results_jobs.clear()
+    status_before = dict(ui_retro_seasons._retro_status)
+    ui_retro_seasons._retro_status.clear()
+    ui_retro_prep._results_jobs.clear()
     ui_shared._invalidate_scans()
     yield {"live": live, "seal": seal, "reseal": reseal}
-    srv._results_jobs.clear()
-    srv._retro_status.clear()
-    srv._retro_status.update(status_before)
+    ui_retro_prep._results_jobs.clear()
+    ui_retro_seasons._retro_status.clear()
+    ui_retro_seasons._retro_status.update(status_before)
     ui_shared._invalidate_scans()
 
 

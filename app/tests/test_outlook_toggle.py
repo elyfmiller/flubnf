@@ -26,6 +26,7 @@ from fastapi.testclient import TestClient           # noqa: E402
 
 import app.core.runs as runs_mod                    # noqa: E402
 import app.ui.server as srv                         # noqa: E402
+from app.ui import pipeline as ui_pipeline          # noqa: E402
 from app.ui import shared as ui_shared              # noqa: E402
 from app.core import horizons as hz                 # noqa: E402
 from app.core import report_v2                      # noqa: E402
@@ -69,9 +70,9 @@ def _synth_run_all_models(workroot: Path):
         [{"location": "Ohio", "last_observed": 127.0},
          {"location": "US", "last_observed": 127.0}]))
     outcome = {}
-    srv._write_weekly_report(spec, workroot, pf_samples, obs,
-                             pd.DataFrame(), locs, n2f, 42.0, outcome,
-                             an_q=an_q)
+    ui_pipeline._write_weekly_report(spec, workroot, pf_samples, obs,
+                                     pd.DataFrame(), locs, n2f, 42.0, outcome,
+                                     an_q=an_q)
     def cut(qd):
         return {loc: {h: {str(l): v for l, v in q.items()
                           if str(l) in ("0.1", "0.25", "0.5", "0.75", "0.9")}
@@ -161,8 +162,8 @@ def test_pf_only_run_gets_no_toggle_and_an_honest_label(tmp_path):
     (tmp_path / "cells.json").write_text(json.dumps(
         [{"location": "Ohio", "last_observed": 127.0},
          {"location": "US", "last_observed": 127.0}]))
-    srv._write_weekly_report(spec, tmp_path, pf_samples, obs,
-                             pd.DataFrame(), locs, n2f, 42.0, {})
+    ui_pipeline._write_weekly_report(spec, tmp_path, pf_samples, obs,
+                                     pd.DataFrame(), locs, n2f, 42.0, {})
     bundle = json.loads((tmp_path / report_v2.BUNDLE_NAME).read_text())
     assert bundle["cards_model"] == "pf"
     assert set(bundle["cards_by_model"]) == {"pf"}
