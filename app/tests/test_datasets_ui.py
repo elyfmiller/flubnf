@@ -321,8 +321,11 @@ def test_a_real_run_shows_fans_and_exports_and_stays_off_the_hub(monkeypatch):
         'id="fc-source"')[0]
     ds_page = client.get(f"/forecast?source={ds.id}").text
     assert row["run_id"] in ds_page and "Fans and export files" in ds_page
-    assert json.loads(re.search(r"const FANQ = (\{.*?\});",
-                                ds_page).group(1))["analogue"]
+    fanq = json.loads(re.search(r"const FANQ = (\{.*?\});",
+                                ds_page).group(1))
+    # the stored convention the fan script expects (as on the hub view):
+    # stored "4" is four weeks ahead, never the canonical "0".."3"
+    assert sorted(fanq["analogue"]["Adult"]) == ["1", "2", "3", "4"]
     # the Output tab and Home read shipped runs only
     assert srv._latest_results() == (None, None)
 

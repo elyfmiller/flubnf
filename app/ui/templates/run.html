@@ -88,7 +88,7 @@
 
 {% for model, locs in models.items() %}
 <div class="card"><h2>{{ (dataset_members or {}).get(model) or model_name(model) }}: median {{ "values" if dataset else "admissions" }}, 1-4 weeks ahead</h2>
-<table><tr><th>location</th><th>1 wk</th><th>2 wk</th><th>3 wk</th><th>4 wk</th></tr>
+<table><tr><th>{{ "group" if dataset else "location" }}</th><th>1 wk</th><th>2 wk</th><th>3 wk</th><th>4 wk</th></tr>
 {% for loc, m in locs.items() %}
 <tr><td>{{ loc }}</td>{% for h in ["1","2","3","4"] %}
   {% set v = m.get(h) %}

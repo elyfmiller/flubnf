@@ -379,7 +379,6 @@ def forecast_page(request: Request, ds):
     """The Forecast tab with a dataset as the data source: forecast.html
     with the dataset's groups, weeks, fans and runs."""
     S = _S()
-    from app.core.horizons import models_to_canonical
     from app.core.runs import spec_settings
     view = _dataset_view(ds)
     dates = ds.forecast_dates()
@@ -392,7 +391,9 @@ def forecast_page(request: Request, ds):
     rid, res = latest_results_for(ds.id)
     fanq = {}
     if res:
-        for m, md in models_to_canonical(res.get("models") or {}).items():
+        # the stored convention, as the hub's forecast_page passes it: the
+        # fan script places stored horizon h at the as-of + 7h
+        for m, md in (res.get("models") or {}).items():
             good = {n: qs for n, qs in md.items()
                     if isinstance(qs, dict)
                     and all(isinstance(v, dict) for v in qs.values())}
@@ -897,13 +898,24 @@ def replay_page(request: Request, ds_id: str, stamp: str, h: str = "0"):
         fans[g] = {"series": s, "fc": per}
     summ = meta.get("summary") or {}
     abst = meta.get("abstained") or {}
+    pf = meta.get("pf") or ("not run: " + meta["pf_skipped"]
+                            if meta.get("pf_skipped") else "not run")
+    settings = [
+        ("data", f"{ds.name} ({meta.get('replay_kind', '')})"),
+        ("weeks", f"{meta.get('total_weeks', 0)} ({meta.get('first')} to "
+                  f"{meta.get('last')})"),
+        ("groups", ", ".join(meta.get("groups") or [])),
+        ("Groundhog", meta.get("analogue") or ""),
+        ("particle filter", pf),
+        ("weeks dropped", str(meta.get("weeks_to_drop", 0))),
+        ("baseline", meta.get("baseline") or "")]
     return S.templates.TemplateResponse(request, "retro_dataset.html", {
         "active": "Retrospective", "ds": ds, "stamp": stamp, "meta": meta,
         "status": status, "live": live, "h": h,
         "horizons": list(hz.HORIZONS), "summary": summ,
         "abstained": {m: sum(len(v) for v in d.values())
                       for m, d in abst.items()},
-        "member_names": MEMBER_NAMES,
+        "member_names": MEMBER_NAMES, "settings": settings,
         "fans_json": S._script_json(fans),
         "names_json": S._script_json(MEMBER_NAMES),
         "member_colors_json": S._script_json(S._member_colors())})

@@ -64,22 +64,14 @@
  <div class="carousel">
   <select id="rd-group" aria-label="group" style="width:auto;min-width:200px"></select>
   <span class="hint">horizon:</span>
-  {% for hh in horizons %}<a href="?h={{ hh }}" class="pill{{ ' gold' if hh == h else '' }}" aria-current="{{ 'true' if hh == h else 'false' }}">{{ hh }}</a>{% endfor %}
+  {% for hh in horizons %}{% if hh == h %}<span class="pill ok" aria-current="true"><b>{{ hh }}</b></span>{% else %}<a href="?h={{ hh }}" class="pill">{{ hh }}</a>{% endif %}{% endfor %}
   {{ tips.tip("rd-h", "the horizon", "Horizon 0 is the week after the forecast date (the hub's convention); each point is that week's forecast, drawn at the week it forecast.") }}
  </div>
  <div id="rd-plot" style="min-height:400px"></div>
 </div>
 
 <div class="card"><h2>Settings</h2>
- <dl class="kv hint">
-  <dt>data</dt><dd>{{ ds.name }} ({{ meta.replay_kind }})</dd>
-  <dt>weeks</dt><dd>{{ meta.total_weeks }} ({{ meta.first }} to {{ meta.last }})</dd>
-  <dt>groups</dt><dd>{{ (meta.groups or []) | join(", ") }}</dd>
-  <dt>Groundhog</dt><dd>{{ meta.analogue }}</dd>
-  <dt>particle filter</dt><dd>{{ meta.pf or ("not run: " ~ meta.pf_skipped if meta.pf_skipped else "not run") }}</dd>
-  <dt>weeks dropped</dt><dd>{{ meta.weeks_to_drop }}</dd>
-  <dt>baseline</dt><dd>{{ meta.baseline }}</dd>
- </dl>
+ {{ settings_html(settings, title="Replay settings") | safe }}
 </div>
 <script>
  (function(){
@@ -121,10 +113,15 @@
       paper_bgcolor:surf, plot_bgcolor:surf,
       font:{color:css('--ink'), family:'"DM Sans",system-ui,sans-serif', size:Math.round(fs*.85)},
       legend:{orientation:'h', x:0, xanchor:'left', y:-0.22, yanchor:'top'},
-      xaxis:{gridcolor:css('--line'), automargin:true},
+      xaxis:{gridcolor:css('--line'), automargin:true, range:WIN},
       yaxis:{gridcolor:css('--line'), rangemode:'tozero', automargin:true}},
       {responsive:true, displaylogo:false});
   }
+  // the replayed weeks, framed: 12 weeks before the first, 6 after the last
+  function shift(ds, days){const p=ds.split('-');
+    return new Date(Date.UTC(+p[0],+p[1]-1,+p[2]+days)).toISOString().slice(0,10);}
+  const RANGE = {{ [meta.first or "", meta.last or ""] | tojson }};
+  const WIN = RANGE[0] ? [shift(RANGE[0], -84), shift(RANGE[1], 42)] : undefined;
   const mb = document.getElementById('rd-models');
   models.forEach(m=>{const b=document.createElement('button'); b.type='button';
     b.className='quiet'+(m===M?' gold':''); b.textContent=NAMES[m]||m;
