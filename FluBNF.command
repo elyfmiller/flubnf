@@ -88,8 +88,8 @@ if [ ! -x "${FLUBNF_PY_ENGINE:-/nonexistent}" ]; then
   # launch (analogue only). A checkout OR an unpacked archive (no .git) counts,
   # the same test as setup_engine.sh.
   CHECKOUT=""
-  for c in "${FLUBNF_PYBNF:-}" "$HOME/Documents/GitHub/PyBNF-Private" \
-           "$HOME/Documents/GitHub/PyBNF-pf" "$HOME/Documents/PyBNF-Private" \
+  for c in "${FLUBNF_PYBNF:-}" "$HOME/Documents/GitHub/PyBNF-pf" \
+           "$HOME/Documents/GitHub/PyBNF-Private" "$HOME/Documents/PyBNF-Private" \
            "$HOME/PyBNF-Private"; do
     [ -n "$c" ] || continue
     if [ -d "$c/.git" ] || { [ -f "$c/pybnf/pf.py" ] && [ -f "$c/setup.py" ]; }; then

@@ -4,8 +4,8 @@
 cd "$(dirname "$0")"
 # A checkout OR an unpacked archive (no .git), same test as setup_engine.sh.
 FOUND=""
-for c in "${FLUBNF_PYBNF:-}" "$HOME/Documents/GitHub/PyBNF-Private" \
-         "$HOME/Documents/GitHub/PyBNF-pf" "$HOME/Documents/PyBNF-Private" \
+for c in "${FLUBNF_PYBNF:-}" "$HOME/Documents/GitHub/PyBNF-pf" \
+         "$HOME/Documents/GitHub/PyBNF-Private" "$HOME/Documents/PyBNF-Private" \
          "$HOME/PyBNF-Private"; do
   [ -n "$c" ] || continue
   if [ -d "$c/.git" ] || { [ -f "$c/pybnf/pf.py" ] && [ -f "$c/setup.py" ]; }; then

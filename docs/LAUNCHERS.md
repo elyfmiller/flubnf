@@ -27,7 +27,7 @@ Files they leave behind (all gitignored or inside `.venv`):
 | `.venv/.pyproject.stamp` | `FluBNF.command` | `FluBNF.command` (refresh deps when `pyproject.toml` changes) |
 | `.venv/.engine-attempt` (`.venv\engine-attempt.txt` on Windows) | `FluBNF.command`, `FluBNF.bat` | the same launcher: skips a retry that cannot succeed |
 
-PyBNF checkout search order: `flubnf/settings.py`, `setup_engine.sh`, `setup.ps1` and `FluBNF.bat` try `PyBNF-pf` before `PyBNF-Private`; `FluBNF.command` and `SetupEngine.command` try `PyBNF-Private` first.
+PyBNF checkout search order (every script and `flubnf/settings.py`): `FLUBNF_PYBNF`, then `PyBNF-pf`, then `PyBNF-Private`.
 
 Tests that pin these scripts: `tests/test_engine_bundle.py`, `tests/test_launcher_update.py`, `tests/test_reinstall_script.py`, `tests/test_first_run_sparse_hub.py`, `tests/test_windows_controlled_folder_access.py` ([tests/README.md](../tests/README.md)).
 
