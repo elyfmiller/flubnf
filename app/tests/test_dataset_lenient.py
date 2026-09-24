@@ -219,6 +219,21 @@ def test_an_as_of_whose_day_is_its_month_proves_no_order():
     assert rep.summary["as_of"] == ["2024-05-05"]
 
 
+def test_an_as_of_proof_in_another_format_is_not_borrowed():
+    """11/18/2023 proves month-first for M/D/YYYY only: 11/12/23 (M/D/YY)
+    in the same column stays ambiguous, and the mix is noted."""
+    raw = (b"target_end_date,location,observation,as_of\n"
+           b"2023-11-11,A,5,11/18/2023\n"
+           b"2023-11-11,A,5,11/12/23\n")
+    rep = D.validate(raw)
+    assert rep.codes == ["as_of_ambiguous"]
+    assert any("mix formats" in w for w in rep.warnings)
+    # the same proof in the same format still settles it
+    ok(D.validate(b"target_end_date,location,observation,as_of\n"
+                  b"2023-11-11,A,5,11/18/2023\n"
+                  b"2023-11-11,A,5,11/12/2023\n"))
+
+
 def test_dates_written_m_d_prove_month_first_only_with_a_day_over_12():
     rep = D.validate(ASOF_PAL_DATE)
     assert rep.codes == ["as_of_ambiguous"]

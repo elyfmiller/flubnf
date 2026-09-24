@@ -1399,6 +1399,9 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
     # as_of that reads month-first only (1/13/2024; never 05/05/2024, which
     # reads the same both ways)
     asof_both, asof_alt, asof_md = _Tally(), {}, None
+    # as_of formats, and the first month-first proof seen in each (a proof
+    # in M/D/YYYY says nothing about an M/D/YY value in the same column)
+    asof_formats, asof_amb_fmts, asof_md_by_fmt = set(), set(), {}
     bad_vals, neg, na, nonint = [], [], [], []
     # values written with a mark that could separate thousands (see mark)
     either = []
@@ -1421,14 +1424,17 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
         a = None
         if has_asof:
             ta = r["as_of"].strip()
-            a, _ = parse_date(ta)
+            a, af = parse_date(ta)
             if a is None:
                 bad_asof.append((ln, ta or "(blank)"))
-            elif _swapped(ta) not in (None, a):
-                asof_both.add(ln, (ta, a))
-                asof_alt.setdefault(a, (ta, _swapped(ta)))
-            elif _month_first_only(ta):
-                asof_md = asof_md or ta
+            else:
+                asof_formats.add(af)
+                if _swapped(ta) not in (None, a):
+                    asof_both.add(ln, (ta, a))
+                    asof_alt.setdefault(a, (ta, _swapped(ta)))
+                    asof_amb_fmts.add(af)
+                elif _month_first_only(ta):
+                    asof_md_by_fmt.setdefault(af, ta)
         raw_v = r["value"].strip()
         v = None
         if vstyle is not None:
@@ -1620,6 +1626,10 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
     # number is a day over 12 (1/13/2024): 02/02/2024 or 03/04/2024 read
     # either way, whatever the weekdays say
     dates_md = next((t for _, t, _ in parsed if _month_first_only(t)), None)
+    # an as_of proves month-first for the ambiguous ones only in their own
+    # format(s); a proof written another way is not borrowed
+    if asof_md_by_fmt and asof_amb_fmts <= set(asof_md_by_fmt):
+        asof_md = next(iter(asof_md_by_fmt.values()))
     if asof_both.n and rows:
         # an as_of that reads both ways is read month-first only when the
         # file proves that order (an as_of or a date written with a day
@@ -1768,6 +1778,10 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
     if len(formats) > 1:
         rep.warnings.append(f"Dates mix formats ({', '.join(sorted(formats))}); "
                             "each was read by its own pattern.")
+    if len(asof_formats) > 1:
+        rep.warnings.append(f"The '{cols['as_of']}' dates mix formats "
+                            f"({', '.join(sorted(asof_formats))}); each was "
+                            "read by its own pattern.")
 
     national = _check_groups(rep, raw_rows, cols)
     _check_structure(rep, rows, cols, shift=shift, raw_rows=raw_rows)
