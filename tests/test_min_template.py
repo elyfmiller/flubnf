@@ -112,20 +112,11 @@ class TestConf:
         assert "impr__FREE" in txt
 
 
-class TestImprIsSafeToDropForOneSeason:
+class TestImprIsKeptForMultiSeason:
     """impr exists to keep I off the numerical floor across MULTI-season runs,
     where dropping it once broke 100% of 230-week fits with CVODE stiffness.
-    Over a single season it must be inert -- that is the whole justification."""
-
-    def test_single_season_trajectory_is_unchanged_without_impr(self):
-        from flubnf.simulate_sihrs import simulate_sihrs
-        p = dict(N=5e6, s0=0.85, i0=2e-4, gamma=2.188, rho=0.02, gammaH=1.17,
-                 omega=0.019, R0=1.10 / 0.85, eps1=0.05, phi1=22.0,
-                 eps2=0.0, phi2=0.0, mult=0.05)
-        a = np.asarray(simulate_sihrs(dict(p, impr=1e-7), n_weeks=48).H_weekly)
-        b = np.asarray(simulate_sihrs(dict(p, impr=0.0), n_weeks=48).H_weekly)
-        assert np.all(np.isfinite(a)) and np.all(np.isfinite(b))
-        assert a.max() == pytest.approx(b.max(), rel=0.02)
+    Its single-season inertness was checked on the in-Python mirror, now
+    removed (git history; docs/MODEL-PROVENANCE.md section 3.3)."""
 
     def test_the_full_template_still_has_impr(self):
         """Multi-season work must not lose it."""

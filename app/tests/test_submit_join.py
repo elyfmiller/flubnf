@@ -1,6 +1,7 @@
 """The FluSight CSV writers carry the frozen join: reference = as-of + 7,
 hub horizon 0..3 = canonical samples "0".."3", and the anchor (hz.ORIGIN)
-never reaches a row. Same formula scripts/anchor_analysis.py validated."""
+never reaches a row. Same formula the held-out anchor validation checked
+(formerly scripts/anchor_analysis.py; git history)."""
 import sys
 from datetime import timedelta
 from pathlib import Path
