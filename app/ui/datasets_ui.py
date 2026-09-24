@@ -45,6 +45,9 @@ router = APIRouter()
 _LAST: dict = {}
 #: the replay a worker is running now: {"id", "stamp"} or {}
 _REPLAY: dict = {}
+#: what "Replay this" just stored, for the replay card it opens (one slot,
+#: taken by the card's next render): {dataset id: {"text", "warnings"}}
+_STORED: dict = {}
 
 #: the Groundhog wherever it runs on a dataset (exported as FluBNF-Groundhog)
 GROUNDHOG = GROUNDHOG_OWN_DATA
@@ -515,14 +518,18 @@ async def upload(request: Request):
             pass
     S._invalidate_scans()
     warn = ds.meta.get("warnings") or []
-    S._flash(f"Stored the dataset {ds.name}: {len(ds.groups)} group(s), "
-             f"{len(ds.weeks())} week(s)."
-             + (" " + " ".join(warn) if warn else ""))
-    if nxt == "forecast":
-        return RedirectResponse(f"/forecast?source={ds.id}", status_code=303)
+    done = (f"Stored the dataset {ds.name}: {len(ds.groups)} group(s), "
+            f"{len(ds.weeks())} week(s).")
     if nxt == "replay":
+        # said in the replay card the page scrolls to, not at its top
+        _STORED.clear()
+        _STORED[ds.id] = {"text": done, "warnings": list(warn)}
+        S._status["log"].append(" ".join([done] + warn))
         return RedirectResponse(f"/retro?dataset={ds.id}#dataset-replay",
                                 status_code=303)
+    S._flash(done + (" " + " ".join(warn) if warn else ""))
+    if nxt == "forecast":
+        return RedirectResponse(f"/forecast?source={ds.id}", status_code=303)
     return RedirectResponse(f"/data?source={ds.id}#datasets", status_code=303)
 
 
@@ -1160,7 +1167,8 @@ def replay_window(dates: list) -> tuple:
 def retro_context(selected: str = "") -> dict:
     """The Retrospective tab's own-data card: datasets and their replays
     (kept in their own card, never beside the hub seasons); ``selected``
-    names the dataset the card opens on (an upload's "Replay this")."""
+    names the dataset the card opens on (an upload's "Replay this"), whose
+    store confirmation and notices the card shows once ("stored")."""
     from app.core import custom_retro as CX
     out = []
     try:
@@ -1196,6 +1204,11 @@ def retro_context(selected: str = "") -> dict:
     # the Model settings panel of the card's form: a second panel on the
     # page (ids prefixed), following the card's own model select; the
     # counts-only rows hide for a rate dataset (the card sets its kind)
+    sel = selected if any(d["id"] == selected for d in out) else ""
+    stored = _STORED.pop(sel, None) if sel else None
+    if stored:
+        stored = {"text": stored["text"],
+                  "warnings": [_whole_dates(w) for w in stored["warnings"]]}
     panel = (dataset_panel(_S()._knob_panel("forecast",
                                             names=PANEL_MEMBERS),
                            where="replay", prefix="dsr-",
@@ -1206,9 +1219,8 @@ def retro_context(selected: str = "") -> dict:
                                "names": MEMBER_NAMES,
                                "engine_names": REPLAY_ENGINE_NAMES,
                                "knob_panel": panel,
-                               "selected": (selected if any(
-                                   d["id"] == selected for d in out)
-                                   else "")}}
+                               "selected": sel,
+                               "stored": stored}}
 
 
 @router.post("/retro/dataset/run")

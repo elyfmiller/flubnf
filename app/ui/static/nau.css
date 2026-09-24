@@ -645,6 +645,9 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
   gap:0 .8rem}
 .dsnotes{margin:.4rem 0;padding-left:1.1rem;color:var(--mut);font-size:var(--fs-hint)}
 .dsnotes li{overflow-wrap:break-word}
+/* "Replay this" stored it: the note in the replay card it lands on */
+.dsr-stored p{margin:0}
+.dsr-stored .dsnotes{margin:.3rem 0 0}
 .dspreview{margin:.5rem 0}
 .dspreview .kv.dsfacts{display:grid;grid-template-columns:max-content minmax(0,1fr);
   gap:.1rem 1rem;margin:.3rem 0;font-size:var(--fs-label)}

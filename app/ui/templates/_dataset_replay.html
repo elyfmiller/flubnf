@@ -7,6 +7,10 @@
 <div class="card" id="dataset-replay"><h2>Replay your own data
  {{ tips.tip("rt-ds-about", "replaying your own data", "Each week of the range is forecast with only the data before it and scored against the dataset's later weeks, relative to an in-house persistence baseline (not FluSight-baseline). Replays are kept with the dataset, apart from the FluSight seasons, and never published.") }}</h2>
  <p class="hint">A week range of one of your datasets, kept apart from the FluSight seasons.</p>
+ {% if dr.stored %}{# "Replay this" just stored it: said here, where the page lands #}
+ <div class="banner dsr-stored" role="status"><p>{{ dr.stored.text }}</p>
+  {% if dr.stored.warnings %}<ul class="dsnotes">{% for w in dr.stored.warnings %}<li>{{ w }}</li>{% endfor %}</ul>{% endif %}</div>
+ {% endif %}
  {% if not dr.datasets %}
  <p class="hint">No datasets yet: drop a CSV below.</p>
  {{ dsup.box("replay") }}

@@ -39,12 +39,14 @@ def isolated(tmp_path, monkeypatch):
     srv._status.pop("flash", None)
     DU._LAST.clear()
     DU._REPLAY.clear()
+    DU._STORED.clear()
     srv._invalidate_scans()
     yield
     srv._status.clear()
     srv._status.update(status)
     DU._LAST.clear()
     DU._REPLAY.clear()
+    DU._STORED.clear()
     srv._invalidate_scans()
 
 
@@ -475,6 +477,30 @@ def test_replay_this_opens_the_replay_card_on_its_newest_season():
     # an unknown id selects nothing
     page = client.get("/retro?dataset=nope-000000000000").text
     assert " selected>Kids</option>" not in page
+
+
+def test_replay_this_says_what_it_stored_in_the_card_it_opens():
+    """The confirmation and its notices (a Windows-1252 file's) were
+    flashed at the top of the page, out of sight of the replay card the
+    page scrolls to."""
+    raw = grouped_bytes().replace(b"Adult", "Adúlt".encode("cp1252"))
+    r = store(raw, name="Kids", next="replay")
+    assert r.status_code == 303
+    (ds,) = D.list_datasets()
+    page = client.get(r.headers["location"]).text
+    top, card = page.split('id="dataset-replay"')
+    note = card.split('<div class="banner dsr-stored" role="status">')[1]
+    note = note.split("</div>")[0]
+    assert f"Stored the dataset Kids: 3 group(s), {len(ds.weeks())} week(s)." \
+        in note
+    assert "Not UTF-8 text: read as Windows-1252" in note
+    assert "Check these names: Adúlt" in note
+    assert "Stored the dataset" not in top            # not at the page top
+    assert card.index("dsr-stored") < card.index('id="dsr-form"')
+    # said once; the other buttons still flash it at the top
+    assert "dsr-stored" not in client.get(r.headers["location"]).text
+    store(grouped_bytes(), name="Other", next="forecast")
+    assert "Stored the dataset Other" in client.get("/forecast").text
 
 
 def test_the_data_list_replay_link_preselects():
