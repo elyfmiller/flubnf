@@ -28,7 +28,9 @@
     </select>
     {% set _first = (templates or examples or [""])[0] %}
     <p class="hint" id="sbnew-about">{{ example_notes.get(_first, "") }}</p>
-    <fieldset class="sbshipped" id="sbnew-shipped" hidden>
+    {# shown in the markup, so a page without scripts can set its fields;
+       sandbox.js hides it unless an Oracle start is picked #}
+    <fieldset class="sbshipped" id="sbnew-shipped">
      <legend>Oracle SIHRS filter</legend>
      <div class="row">
       {% if vintages and locations %}
@@ -124,17 +126,17 @@
      </span>
     </div>
     <section class="sbfile" id="sbf-bngl" data-file="bngl">
-     {{ tips.label("Model (model.bngl)", "sb-bngl", "The model, in BNGL. A parameter whose name ends in __FREE is fitted: the filter draws it from its line in priors.conf, so the value written here is only what Check and Simulate data use; every other value stays fixed. Time is in weeks, and the simulate action must name a suffix.") }}
-     <textarea name="model_bngl" rows="18" spellcheck="false" aria-label="model.bngl" style="width:100%;font-family:monospace" class="code-editor" data-lang="bngl">{{ editing["model.bngl"] }}</textarea>
+     {{ tips.label("Model (model.bngl)", "sb-bngl", "The model, in BNGL. A parameter whose name ends in __FREE is fitted: the filter draws it from its line in priors.conf, so the value written here is only what Check and Simulate data use; every other value stays fixed. Time is in weeks, and the simulate action must name a suffix.", for_="sb-bngl-in") }}
+     <textarea name="model_bngl" id="sb-bngl-in" rows="18" spellcheck="false" aria-label="model.bngl" style="width:100%;font-family:monospace" class="code-editor" data-lang="bngl">{{ editing["model.bngl"] }}</textarea>
     </section>
     <section class="sbfile" id="sbf-exp" data-file="exp">
-     {{ tips.label("Observed data (data.exp)", "sb-exp", "The observed counts: a header line, then one row per week, the time in weeks and the count for the week ending then. The model starts one week before the first row. A missing week is a gap in time, never a renumbered row.") }}
-     <textarea name="data_exp" rows="8" spellcheck="false" aria-label="data.exp" style="width:100%;font-family:monospace" class="code-editor" data-lang="exp">{{ editing["data.exp"] }}</textarea>
+     {{ tips.label("Observed data (data.exp)", "sb-exp", "The observed counts: a header line, then one row per week, the time in weeks and the count for the week ending then. The model starts one week before the first row. A missing week is a gap in time, never a renumbered row.", for_="sb-exp-in") }}
+     <textarea name="data_exp" id="sb-exp-in" rows="8" spellcheck="false" aria-label="data.exp" style="width:100%;font-family:monospace" class="code-editor" data-lang="exp">{{ editing["data.exp"] }}</textarea>
      {% include "sandbox_data.html" %}
     </section>
     <section class="sbfile" id="sbf-conf" data-file="conf">
-     {{ tips.label("Priors and engine settings (priors.conf)", "sb-priors", "One line per fitted parameter: uniform_var name low high draws it evenly between the two numbers, loguniform_var evenly on a log scale. pf_ lines set engine keys, such as pf_cumulative_observable, the model output whose weekly increment is the count.") }}
-     <textarea name="priors_conf" rows="8" spellcheck="false" aria-label="priors.conf" style="width:100%;font-family:monospace" class="code-editor" data-lang="conf">{{ editing["priors.conf"] }}</textarea>
+     {{ tips.label("Priors and engine settings (priors.conf)", "sb-priors", "One line per fitted parameter: uniform_var name low high draws it evenly between the two numbers, loguniform_var evenly on a log scale. pf_ lines set engine keys, such as pf_cumulative_observable, the model output whose weekly increment is the count.", for_="sb-conf-in") }}
+     <textarea name="priors_conf" id="sb-conf-in" rows="8" spellcheck="false" aria-label="priors.conf" style="width:100%;font-family:monospace" class="code-editor" data-lang="conf">{{ editing["priors.conf"] }}</textarea>
      {% set keys = settings | rejectattr(2, "equalto", "run settings") | list %}
      <details class="adv"><summary>Engine keys the sandbox writes for you</summary>
       <div class="sbscroll"><table class="kv sbkeys"><thead><tr><th>key</th><th>value</th><th>from</th></tr></thead><tbody>

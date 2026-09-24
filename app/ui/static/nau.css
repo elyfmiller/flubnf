@@ -1225,3 +1225,15 @@ header.nav .navtabs.more-l{-webkit-mask-image:linear-gradient(to left,#000 calc(
 header.nav .navtabs.more-l.more-r{
   -webkit-mask-image:linear-gradient(to right,transparent,#000 2.5rem,#000 calc(100% - 2.5rem),transparent);
   mask-image:linear-gradient(to right,transparent,#000 2.5rem,#000 calc(100% - 2.5rem),transparent)}
+
+/* round6: ui */
+/* Sandbox Load data: Set N is a .ck checkbox (the global input width:100%
+   stretched it and squeezed its label under the button); it takes a line
+   of its own and the Load button follows it */
+details.sbfill .row > span.sbsetpop{flex:1 0 100%;flex-direction:row;align-items:center}
+.sbfill .row .sbsetpop .lblrow{margin:.3rem 0 0;min-height:0}
+.sbsetpop .ck{margin:0}
+details.sbfill .row > .sbsetpop + button{align-self:flex-start}
+/* run settings: a long value (a location list) wraps inside the card
+   instead of widening the page at 700px or larger text */
+.runsettings .kv{grid-template-columns:max-content minmax(0,max-content)}
