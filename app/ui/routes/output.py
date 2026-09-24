@@ -308,6 +308,8 @@ def _archive_view(rid, date: str, outcome: dict) -> dict | None:
     return {"date": date, "run_id": st["run_id"],
             "this_run": bool(rid) and st["run_id"] == rid,
             "kept": archived.startswith("kept:"),
+            # why this run was kept out: the mark, or its own incompleteness
+            "kept_submitted": "marked submitted" in archived,
             "submitted": sub is not None,
             "submitted_at": (sub or {}).get("submitted_at", ""),
             "busy": bool(shared._status.get("running"))}

@@ -232,3 +232,22 @@ def test_marking_is_refused_from_a_foreign_host_or_mid_run(root):
     client.post("/output/submitted", data={"date": "../x", "mark": "1"},
                 follow_redirects=False)
     assert not (root / "x").exists()
+
+
+def test_the_output_line_says_why_a_run_was_kept_out(root):
+    """Kept out by the mark reads as the mark, even once unmarked; kept
+    out as incomplete reads as incomplete."""
+    from app.ui.routes import output as O
+    a = _run(root, "A")
+    P._archive_run(a, DATE)
+    AR.mark(DATE)
+    b = _run(root, "B")
+    why = P._archive_run(b, DATE)
+    AR.unmark(DATE)
+    v = O._archive_view(b.name, DATE, {"archived": why})
+    assert v["kept"] and v["kept_submitted"] and not v["submitted"]
+    c = _run(root, "C", status="partial")
+    why = P._archive_run(c, DATE, complete=False)
+    v = O._archive_view(c.name, DATE, {"archived": why})
+    assert v["kept"] and not v["kept_submitted"]
+    assert v["run_id"] == a.name and not v["this_run"]

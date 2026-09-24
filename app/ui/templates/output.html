@@ -52,7 +52,7 @@
      {% if arch.submitted %}<span class="pill ok subbadge">Submitted</span> {{ arch.submitted_at }}.
      {% endif %}
      {% if arch.this_run %}Archived as the forecast for {{ arch.date }}.
-     {% elif arch.kept %}{% if arch.submitted %}The archive keeps the submitted run{% else %}This run is not complete, so the archive kept the earlier complete run{% endif %}{% if arch.run_id %} <a href="/runs/{{ arch.run_id }}">{{ arch.run_id }}</a>{% endif %}; this run's files stay in its own folder.
+     {% elif arch.kept %}{% if arch.kept_submitted %}The archive was marked submitted, so it kept run{% else %}This run is not complete, so the archive kept the earlier complete run{% endif %}{% if arch.run_id %} <a href="/runs/{{ arch.run_id }}">{{ arch.run_id }}</a>{% endif %}; this run's files stay in its own folder.
      {% else %}The archive for {{ arch.date }} holds {% if arch.run_id %}run <a href="/runs/{{ arch.run_id }}">{{ arch.run_id }}</a>{% else %}an earlier run{% endif %}.
      {% endif %}
      {{ tips.tip("out-mark", "marking as submitted", "Mark the archive once you have uploaded its files to the FluSight hub yourself; FluBNF only writes them. A marked archive is never replaced by a later run and cannot be deleted from Storage until you unmark it. Without a mark, a later run replaces the archive only when it finished ok with every file written in full.") }}

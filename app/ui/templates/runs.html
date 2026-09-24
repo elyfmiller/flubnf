@@ -173,7 +173,7 @@
    <span class="hint">· {{ f.size_h }}{% if f.busy %} · <span class="warn">a console run is in progress</span>{% endif %}</span>
    {% if f.is_submitted %}<span class="pill ok subbadge">Submitted</span>{% endif %}</span>
   {% if f.is_submitted %}
-  <span class="hint">Kept: marked submitted{% if f.submitted %} {{ f.submitted }}{% endif %}</span>
+  <span class="hint"{% if f.submitted %} title="Marked {{ f.submitted }}"{% endif %}>Kept until unmarked on Output</span>
   {% elif not f.busy %}
   <form method="post" action="/storage/delete">
    <input type="hidden" name="kind" value="report-archive">

@@ -1254,3 +1254,5 @@ p.cov{margin:.1rem 0 .3rem}
 .archmark > p.hint{margin:0;flex:1 1 20rem}
 .archmark .archform{margin:0}
 .pill.subbadge{font-weight:650;font-size:var(--fs-label);border:1px solid currentColor;margin-right:.2rem}
+/* the last file's rule already separates the archive line */
+.subfile + .archmark{border-top:0;padding-top:.1rem}
