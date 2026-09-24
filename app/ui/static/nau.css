@@ -287,7 +287,10 @@ main{max-width:1500px;margin:0 auto;
      padding:1.1rem clamp(1rem,2.5vw,2.5rem) 3rem}
 .cols{display:grid;grid-template-columns:minmax(260px,360px) minmax(0,1fr);gap:.75rem;
       align-items:start}
-@media(max-width:900px){.cols{grid-template-columns:1fr}}
+/* one column below 900px: minmax(0,1fr), never a bare 1fr (whose auto
+   minimum is the widest item's min-content: a results table or a fan's
+   nav row then widened the page past a phone's screen) */
+@media(max-width:900px){.cols{grid-template-columns:minmax(0,1fr)}}
 /* surfaces: ground -> raised card -> sunken wells (ground tone) */
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;
       padding:.85rem 1rem;margin-bottom:.75rem;box-shadow:var(--shadow);
@@ -447,7 +450,7 @@ tr.usagg td{font-weight:650;border-bottom:2px solid var(--line)}
 
 .runlabel{font-size:1.05rem;font-weight:750;margin:.2rem 0}
 
-.carousel{display:flex;gap:.6rem;align-items:center;margin:.25rem 0}
+.carousel{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin:.25rem 0}
 .cnav{padding:.2rem .6rem;margin-top:0}
 .quip{text-align:center;margin:.7rem 0 .1rem;
  font-size:.98rem;font-style:italic;color:var(--gold)}
