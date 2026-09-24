@@ -269,3 +269,20 @@ def test_a_rate_run_never_records_the_floor(monkeypatch):
         "knob.output.floor_lam": "0.5"}, follow_redirects=False)
     (spec,) = got
     assert "knobs" not in spec.extra
+
+
+def test_a_repeated_knob_field_is_refused_on_a_dataset_run(monkeypatch):
+    rate = stored(grouped_bytes(rate=True), "Rates", kind="rate")
+    got = []
+    monkeypatch.setattr(DU, "run_worker", lambda spec: got.append(spec))
+    ui_state._status["running"] = None
+    ui_state._status.pop("flash", None)
+    r = client.post("/run/dataset", data={
+        "dataset": rate.id, "forecast_date": rate.forecast_dates()[-1],
+        "locations": "all", "engine": "analogue",
+        "knob.groundhog.bandwidth": ["3", "4"]}, follow_redirects=False)
+    assert r.status_code == 303 and got == []
+    flash = ui_state._status.get("flash", "")
+    assert "knob.groundhog.bandwidth more than once" in flash
+    assert "Nothing was run" in flash
+    assert not ui_state._status.get("running")

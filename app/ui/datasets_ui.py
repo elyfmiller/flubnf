@@ -787,8 +787,8 @@ def knob_values(ds, knob_fields, knobs_json) -> dict:
     """The knob channel's raw values as a dataset form posts them, less
     what a dataset never records: the auxiliary-bank knobs, and the
     counts-only knobs on a rate dataset, and the optional hub rows."""
-    return {k: v for k, v in forms._knob_raw(knob_fields or {},
-                                             knobs_json).items()
+    fields = {} if knob_fields is None else knob_fields  # keeps .repeated
+    return {k: v for k, v in forms._knob_raw(fields, knobs_json).items()
             if k not in AUX_KEYS and k not in forms._knobs.OPTIONAL_KEYS
             and not (k in COUNT_ONLY and ds.kind != "count")}
 
@@ -968,8 +968,12 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
         return RedirectResponse(here, status_code=303)
     want_fs = forms._str_field(flusurv).lower() in ("1", "on", "true", "yes")
     season_start = forms._str_field(season_start).strip()
-    kraw = knob_values(ds, knob_fields, knobs_json)
-    _LAST[ds.id] = {"forecast_date": fd, "locations": groups
+    try:
+        kraw = knob_values(ds, knob_fields, knobs_json)
+    except ValueError as e:                  # KnobError is a ValueError
+        shared._flash(f"Model settings: {e}. Nothing was run.")
+        return RedirectResponse(here, status_code=303)
+    _LAST[ds.id] ={"forecast_date": fd, "locations": groups
                     if len(groups) < len(ds.groups) else ["all"],
                     "engine": engine, "weeks_to_drop": weeks_to_drop,
                     "replicates": replicates, "particles": particles,

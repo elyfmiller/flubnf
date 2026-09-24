@@ -74,8 +74,28 @@ async def _knob_form(request: Request) -> dict:
         form = await request.form()
     except Exception:
         return {}
-    return {k[len(_knobs.FORM_PREFIX):]: v for k, v in form.multi_items()
-            if k.startswith(_knobs.FORM_PREFIX) and isinstance(v, str)}
+    out = _KnobFields()
+    for k, v in form.multi_items():
+        if not k.startswith(_knobs.FORM_PREFIX):
+            continue
+        key = k[len(_knobs.FORM_PREFIX):]
+        if key in out or not isinstance(v, str):
+            # sent twice (or as a file): _knob_raw refuses it in words
+            # rather than silently taking the last value
+            if k not in out.repeated:
+                out.repeated.append(k)
+            continue
+        out[key] = v
+    return out
+
+
+class _KnobFields(dict):
+    """_knob_form's result: {key: raw}, plus the field names the form sent
+    more than once (refused by _knob_raw)."""
+
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self.repeated: list = []
 
 
 def _str_field(v) -> str:
@@ -115,7 +135,13 @@ def _knob_panel(scope: str, form: dict | None = None,
 def _knob_raw(fields, knobs_json) -> dict:
     """The knob channel's raw values: the JSON field (one-click resume,
     re-run) under the panel's own fields. A malformed JSON field raises
-    KnobError, so the route refuses rather than guessing."""
+    KnobError, so the route refuses rather than guessing; so does a knob
+    field the form sent more than once."""
+    repeated = getattr(fields, "repeated", None)
+    if repeated:
+        raise _knobs.KnobError(
+            "the form sent " + ", ".join(repeated) + " more than once, so "
+            "which value to use is not clear")
     raw: dict = {}
     text = _str_field(knobs_json).strip()
     if text:

@@ -186,6 +186,10 @@ def test_older_field_names_are_the_same_knobs(tmp_path, monkeypatch):
     ({"replicates": "0"}, "pf.replicates"),
     ({"knob.oracle.w": "0.25", "submit_modified": "1"}, "needs a reason"),
     ({"members": "3", "knob.pf.prior.r": "0.1,80"}, "two-strain"),
+    # a knob field repeated in one form: refused, never the last value
+    ({"knob.oracle.w": ["0.25", "0.5"]}, "more than once"),
+    ({"knob.oracle.w": ["0.25", "0.25"]}, "knob.oracle.w"),
+    ({"knobs": "{not json"}, "not readable JSON"),
 ])
 def test_a_refused_knob_starts_nothing(tmp_path, monkeypatch, data, msg):
     started = _capture_run(monkeypatch, tmp_path)
@@ -483,8 +487,10 @@ def test_the_retro_route_refuses_a_resume_with_other_knobs(tmp_path, monkeypatch
                 follow_redirects=False)
     assert launched == []
     assert "mix two configurations" in ui_state._status.get("flash", "")
-    # out of the retro scope, or out of range: refused before anything moves
-    for bad in ({"knob.run.weeks_to_drop": "1"}, {"particles": "500"}):
+    # out of the retro scope, out of range, or one knob sent twice: refused
+    # before anything moves
+    for bad in ({"knob.run.weeks_to_drop": "1"}, {"particles": "500"},
+                {"knob.oracle.w": ["0.25", "0.3"]}):
         ui_retro_seasons._retro_status.pop(SEASON, None)
         client.post("/retro/run", data={**base, **bad}, follow_redirects=False)
         assert launched == [] and "Nothing was started" in ui_state._status["flash"]

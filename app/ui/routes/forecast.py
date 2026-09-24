@@ -720,8 +720,12 @@ def run_models(request: Request,
             and season_start == _dss(typed_day)
             and season_start != _dss(forecast_date)):
         season_start = ""
-    kraw = _knob_raw(knob_fields, knobs)
-    override = _str_field(submit_modified).lower() in ("1", "on", "true", "yes")
+    try:
+        kraw = _knob_raw(knob_fields, knobs)
+    except ValueError as e:                  # KnobError is a ValueError
+        _flash(f"Model settings: {e}. Nothing was run.")
+        return _back(request, "/forecast")
+    override =_str_field(submit_modified).lower() in ("1", "on", "true", "yes")
     reason = _str_field(modified_reason).strip()
     _last_form.update({"forecast_date": forecast_date, "locations": locations,
                        "engine": engine, "weeks_to_drop": weeks_to_drop,
