@@ -234,8 +234,9 @@ def engine_current() -> bool:
 CONFIG_MODULE = "pybnf/config.py"
 
 #: `pf_sampling_interval = 1` lets an engine fit a ONE-ROW .exp (a season's
-#: first week). Engines before a827e2f8 refuse the key, so it is written only
-#: when the installed source accepts it; the cell records whether it was.
+#: first week). Only the upstream PR trees (a827e2f8 on) know the key; the
+#: production engine (feature/particle-filter, 2fdadee0) refuses it, so it is
+#: written only when the installed source accepts it; the cell records whether.
 SAMPLING_INTERVAL_KEY = "pf_sampling_interval"
 
 
