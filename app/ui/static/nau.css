@@ -809,34 +809,41 @@ table.results{border-collapse:collapse;margin:.3rem 0;font-size:.92em;width:100%
 table.results caption{caption-side:bottom;text-align:left;padding-top:.3rem}
 table.results th{text-align:left;font-weight:600;padding:.18rem .6rem .18rem 0;color:var(--mut);white-space:nowrap}
 table.results td{padding:.18rem 0}
-/* the sandbox's from-scratch form: one name field beside its button */
-form.sbnew{margin-top:.6rem}
-form.sbnew label{display:block;margin-bottom:.25rem}
-form.sbnew input{width:14rem;max-width:100%;margin-right:.4rem}
+/* the sandbox's New model form: labels above full-width fields, Create below */
+form.sbnew .lblrow{margin:.5rem 0 .2rem}
+form.sbnew > .lblrow:first-child{margin-top:0}
 form.sbnew .hint{margin-top:.3rem}
-form.sbnew select{width:14rem;max-width:100%;margin-right:.4rem}
-/* the sandbox workbench: the editor beside its results and diagram */
-.sbwork{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);
-  gap:.75rem;align-items:start}
-@media(max-width:1100px){.sbwork{grid-template-columns:minmax(0,1fr)}}
+form.sbnew > .row{margin-top:.9rem}
+/* the sandbox workbench: the model (files, then diagram) on the left, its
+   runs on the right; one column: files, runs, diagram. The runs column
+   spans both rows, so the diagram sits straight under the files. */
+.sbwork{display:grid;gap:0 .75rem;align-items:start;
+  grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);
+  grid-template-rows:auto 1fr;
+  grid-template-areas:"edit runs" "diag runs"}
+.sbedit{grid-area:edit}.sbruns{grid-area:runs}.sbdiag{grid-area:diag}
+/* no runs yet: the diagram fills the empty column under the placeholder */
+.sbwork.sbwork-new{grid-template-rows:auto 1fr;grid-template-areas:"edit runs" "edit diag"}
+@media(max-width:1100px){.sbwork,.sbwork.sbwork-new{grid-template-columns:minmax(0,1fr);
+  grid-template-rows:auto;grid-template-areas:"edit" "runs" "diag"}}
 .sbcrumb{margin:0}
 /* the form's default (Enter) button: present, never seen */
 .sb-default{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
 /* sub-groups inside a card are a heading, not another box */
 fieldset.sbrun{border:0;padding:0;margin:1rem 0 .4rem;min-width:0}
 fieldset.sbrun legend{font-weight:650;font-size:.92rem;padding:0}
-.sbrun .row{align-items:flex-end}
-.sbrun .row > span{display:flex;flex-direction:column}
-.sbrun input[type=number]{width:5.5rem}
-.sbrun input[name=seed]{width:6.5rem}
-.sbpair{display:flex;gap:.4rem}
-.sbpair select{width:auto}
+/* run settings: one grid, every field its column's width */
+.sbrun-grid{display:grid;gap:0 .7rem;align-items:end;
+  grid-template-columns:minmax(15.5rem,2.4fr) minmax(0,.9fr) minmax(0,1fr) minmax(7rem,1.2fr)}
+.sbrun-grid > span{display:flex;flex-direction:column;min-width:0}
+@media(max-width:560px){.sbrun-grid{grid-template-columns:minmax(0,1fr)}}
+.sbpair{display:grid;grid-template-columns:minmax(0,1fr) 5.5rem;gap:.4rem}
 details.sbfill .row{align-items:flex-end}
 details.sbfill .row > span{display:flex;flex-direction:column}
 details.sbfill .row > span[hidden]{display:none}
 /* a label with its tip and one without sit on one baseline */
-.sbfill .row > span > label,.sbrun .row > span > label,
-.sbfill .row .lblrow,.sbrun .row .lblrow{min-height:1.5rem;display:flex;
+.sbfill .row > span > label,.sbrun-grid > span > label,
+.sbfill .row .lblrow,.sbrun-grid .lblrow{min-height:1.5rem;display:flex;white-space:nowrap;
   align-items:center;margin:.5rem 0 .2rem}
 details.sbfill input[type=file]{padding:.3rem}
 .sbupload{margin-top:.5rem}
@@ -997,8 +1004,6 @@ table.sbkeys code{white-space:nowrap}
   table.sbkeys td:first-child{flex:0 0 100%;padding-top:.4rem;padding-bottom:.15rem}
   table.sbkeys td:nth-child(2){flex:1 1 auto;min-width:0}
   table.sbkeys td:last-child{color:var(--mut)}}
-.sbmanage .row{margin-top:.5rem}
-.sbmanage form.row input{width:14rem;max-width:100%}
 .sbupload > button,.sbfill .row > button{align-self:flex-end}
 
 /* the Forecast data source: two tabs under the page title (FluSight hub,
@@ -1048,3 +1053,77 @@ a.btn.gold:hover,[data-theme="dark"] a.btn.gold:hover,
 table.results caption.reshead{caption-side:top;padding:0 0 .15rem;
   color:var(--mut);font-size:var(--fs-hint)}
 table.results caption.reshead strong{color:var(--mut)}
+
+/* round2: sandbox */
+/* the workbench title row: the name and its note, Manage at the right */
+.sbhead{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem}
+.sbhead-main{min-width:0}
+details.sbmanage{position:relative;flex:none;margin-top:.35rem}
+details.sbmanage > summary{list-style:none;cursor:pointer;padding:.4rem .9rem;
+  border:1px solid var(--line);border-radius:8px;color:var(--mut);font-weight:650}
+details.sbmanage > summary::-webkit-details-marker{display:none}
+details.sbmanage > summary::after{content:" \25BE"}
+details.sbmanage > summary:hover,details.sbmanage[open] > summary{color:var(--ink);background:var(--bg)}
+.sbmenu{position:absolute;right:0;top:calc(100% + .35rem);z-index:20;width:max-content;
+  max-width:min(24rem,calc(100vw - 2rem));background:var(--card);border:1px solid var(--line);
+  border-radius:10px;box-shadow:var(--shadow);padding:.75rem .9rem}
+.sbmenu label{margin-top:0}
+.sbmenu .row{flex-wrap:nowrap}
+.sbmenu > .row{margin-top:.6rem;padding-top:.6rem;border-top:1px solid var(--line)}
+.sbmenu input{width:13rem}
+.sbmenu form{margin:0}
+/* the three files as tabs (sandbox.js); stacked without it */
+.sbtabs{display:flex;gap:.2rem;border-bottom:1px solid var(--line);margin:0 0 .6rem}
+.sbtabs[hidden]{display:none}
+.sbtablist{display:flex;gap:.2rem;min-width:0}
+.sbtablist button,[data-theme="dark"] .sbtablist button,[data-theme="dim"] .sbtablist button{
+  margin:0 0 -1px;padding:.4rem .8rem;border:0;border-bottom:3px solid transparent;
+  border-radius:0;background:transparent;color:var(--mut);font-weight:600;
+  font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.88rem}
+.sbtablist button:hover,[data-theme="dark"] .sbtablist button:hover,
+[data-theme="dim"] .sbtablist button:hover{color:var(--ink);background:transparent}
+.sbtablist button[aria-selected="true"],[data-theme="dark"] .sbtablist button[aria-selected="true"],
+[data-theme="dim"] .sbtablist button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent-ink)}
+.sbtabtips{display:flex;align-items:center;padding:0 .3rem}
+.sbtabtips > [hidden]{display:none}
+.sbfile[hidden]{display:none}
+.sbfile + .sbfile{margin-top:.6rem}
+.sb-tabbed .sbfile + .sbfile{margin-top:0}
+.sb-tabbed .sbfile > .lblrow{display:none}
+.sbfile > .lblrow{margin-top:0}
+.sbfile details.adv{margin:.5rem 0 .2rem}
+/* run settings under a rule: the files above, what a run uses below */
+fieldset.sbrun{border-top:1px solid var(--line);padding-top:.7rem;margin-top:.9rem}
+#sb-eta{margin:.45rem 0 0}
+#sb-eta:empty{display:none}
+.sbactions{margin-top:.8rem}
+.sbdirty{color:var(--warn);border-color:currentColor}
+#sb-checked:empty{display:none}
+#sb-checked{margin-top:.6rem;padding-top:.5rem;border-top:1px solid var(--line)}
+#sb-checked.sb-stale{opacity:.55}
+/* results: the status first, then the plot, the parameters, compare, files */
+.sbrunline{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin:.1rem 0 .2rem}
+.sbrunline + .hint{margin-top:0}
+.pill.sbst{font-weight:650;font-size:var(--fs-label)}
+.sbst-ok{color:var(--ok)}.sbst-failed{color:var(--bad)}
+.sbst-interrupted,.sbst-stopped{color:var(--warn)}
+.sbst-running,.sbst-prepared{color:var(--accent-ink)}
+.pill.sbst{border-color:currentColor}
+.sblive{justify-content:space-between;margin:.4rem 0}
+.sblive p{margin:0}
+pre.sberr{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);
+  border-radius:8px;padding:.5rem .7rem;margin:.5rem 0}
+#results .sbcompare{margin-top:.7rem}
+.sbcompare label{margin:0}
+.sbrunfoot{margin-top:.7rem;padding-top:.7rem;border-top:1px solid var(--line)}
+.sbrunfoot form{margin:0}
+.sboracle form.row{align-items:flex-end}
+.sboracle form.row > span{display:flex;flex-direction:column}
+.sboracle form.row input{width:7rem}
+/* the gallery: each model's note on one line under its name */
+.sbmodels .sbnote{margin:.1rem 0 0;width:0;min-width:100%;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.sbmodels td:first-child{width:55%}
+@media(max-width:900px){.sbmodels th:nth-child(2),.sbmodels td:nth-child(2){display:none}}
+.sbmodels td{vertical-align:top}
+.sbmodels td:nth-child(3),.sbmodels td:nth-child(4){white-space:nowrap}

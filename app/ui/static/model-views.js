@@ -14,7 +14,9 @@
    drags any node or molecule (edges, labels and bonds follow), hovers a
    node to see its own edges alone, clicks it to keep that, clicks the
    background to let it go. A status line under the drawing names what
-   the pointer is on.
+   the pointer is on. A rate label sits at its arrow's middle unless that
+   spot is taken (a box, another label, a dotted arc), then at the first
+   clear spot beside or along the arrow.
 
    The network's layout is a seeded force layout: the nodes start on a
    ring in their own order, then repulsion between nodes, springs along
@@ -481,9 +483,65 @@
       cy = (pa.y + pb.y) / 2 + ny * (e.bend || 0);
       a = rim(pa, cx - pa.x, cy - pa.y, sa.w, sa.h);
       b = rim(pb, cx - pb.x, cy - pb.y, sb.w, sb.h);
-      if (!e.bend) return {d: 'M' + a.x + ',' + a.y + ' L' + b.x + ',' + b.y, x: (a.x + b.x) / 2, y: (a.y + b.y) / 2};
+      if (!e.bend) return {d: 'M' + a.x + ',' + a.y + ' L' + b.x + ',' + b.y, x: (a.x + b.x) / 2, y: (a.y + b.y) / 2,
+                           a: a, b: b};
       return {d: 'M' + a.x + ',' + a.y + ' Q' + cx + ',' + cy + ' ' + b.x + ',' + b.y,
-              x: 0.25 * a.x + 0.5 * cx + 0.25 * b.x, y: 0.25 * a.y + 0.5 * cy + 0.25 * b.y};
+              x: 0.25 * a.x + 0.5 * cx + 0.25 * b.x, y: 0.25 * a.y + 0.5 * cy + 0.25 * b.y,
+              a: a, b: b, c: {x: cx, y: cy}};
+    }
+    // a point t of the way along an arrow (a line or a quadratic curve)
+    function along(g, t) {
+      var u = 1 - t;
+      if (g.c) return {x: u * u * g.a.x + 2 * u * t * g.c.x + t * t * g.b.x,
+                       y: u * u * g.a.y + 2 * u * t * g.c.y + t * t * g.b.y};
+      return {x: u * g.a.x + t * g.b.x, y: u * g.a.y + t * g.b.y};
+    }
+    function box(x, y, w, h) { return {x0: x - w / 2, y0: y - h / 2, x1: x + w / 2, y1: y + h / 2}; }
+    function clash(b, list) {
+      for (var i = 0; i < list.length; i++) {
+        if (b.x0 < list[i].x1 && b.x1 > list[i].x0 && b.y0 < list[i].y1 && b.y1 > list[i].y0) return true;
+      }
+      return false;
+    }
+    // the rate labels: each at its arrow's middle unless that lands on a
+    // box, another label or a dotted arc; then beside the middle, then a
+    // third of the way from either end, the first spot that is clear
+    var TRIES = [[0.5, 0], [0.5, 1], [0.5, -1], [0.35, 0], [0.65, 0], [0.35, 1], [0.65, 1],
+                 [0.35, -1], [0.65, -1], [0.5, 2], [0.5, -2]];
+    function labels() {
+      var taken = [];
+      Object.keys(N).forEach(function (id) {
+        taken.push(box(pos[id].x, pos[id].y, size[id].w + 4, size[id].h + 4));
+      });
+      I.forEach(function (rec) {
+        var m = E[rec.inf.edge].mid, p = rec.curve, k, t, u;
+        taken.push(box(m.x, m.y, 10, 10));
+        for (k = 1; k < 8; k++) {
+          t = k / 8; u = 1 - t;
+          taken.push(box(u * u * p[0] + 2 * u * t * p[2] + t * t * p[4],
+                         u * u * p[1] + 2 * u * t * p[3] + t * t * p[5], 6, 6));
+        }
+      });
+      Object.keys(E).forEach(function (id) {
+        var r = E[id], g = r.mid, s = String(r.edge.label || ''), w = 6.2 * s.length + 6, h = 14;
+        var dx, dy, d, nx, ny, off, i, p, q, b, best = null;
+        if (!s) return;
+        if (!g.a) { r.label.setAttribute('x', g.x); r.label.setAttribute('y', g.y + 4); taken.push(box(g.x, g.y, w, h)); return; }
+        dx = g.b.x - g.a.x; dy = g.b.y - g.a.y;
+        d = Math.sqrt(dx * dx + dy * dy) || 1;
+        nx = -dy / d; ny = dx / d;
+        off = Math.abs(nx) * w / 2 + Math.abs(ny) * h / 2 + 3;     // clear of the line, sideways
+        for (i = 0; i < TRIES.length && !best; i++) {
+          p = along(g, TRIES[i][0]);
+          q = {x: p.x + nx * off * TRIES[i][1], y: p.y + ny * off * TRIES[i][1]};
+          b = box(q.x, q.y, w, h);
+          if (!clash(b, taken)) best = q;
+        }
+        if (!best) { best = {x: g.x, y: g.y}; b = box(g.x, g.y, w, h); }
+        taken.push(b);
+        r.label.setAttribute('x', Math.round(best.x));
+        r.label.setAttribute('y', Math.round(best.y) + 4);
+      });
     }
     // an influence: a dashed arc from the species to the arrow's middle,
     // bowing out further when the species is one of the arrow's own ends
@@ -494,6 +552,7 @@
       var dx = m.x - p.x, dy = m.y - p.y, d = Math.sqrt(dx * dx + dy * dy) || 1;
       var bow = d * (own ? 0.5 : 0.25), cx = (p.x + m.x) / 2 - dy / d * bow, cy = (p.y + m.y) / 2 + dx / d * bow;
       var a = rim(p, cx - p.x, cy - p.y, s.w, s.h);
+      rec.curve = [a.x, a.y, cx, cy, m.x, m.y];
       rec.path.setAttribute('d', 'M' + a.x + ',' + a.y + ' Q' + cx + ',' + cy + ' ' + m.x + ',' + m.y);
       rec.dot.setAttribute('cx', m.x);
       rec.dot.setAttribute('cy', m.y);
@@ -506,11 +565,10 @@
         var r = E[id], g = geometry(r.edge);
         r.path.setAttribute('d', g.d);
         r.hit.setAttribute('d', g.d);
-        r.label.setAttribute('x', g.x);
-        r.label.setAttribute('y', g.y + 4);
         r.mid = g;
       });
       I.forEach(influence);
+      labels();
     }
     // the highlight: a node keeps its arrows, their far ends and its
     // influences; an arrow keeps its ends and its influences; the rest dims
