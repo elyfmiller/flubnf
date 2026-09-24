@@ -504,21 +504,17 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
         if no_card:
             legend_bits.append(f"<span>{_sw}no data in this view</span>")
             caption_bits.append(
-                " States in the no-data shade have no data in this "
-                "report's stored inputs; whether they were fitted was not "
-                "recorded, so nothing more is claimed.")
+                " No-data states have no data in this report's inputs.")
     else:
         if gap_states:
             legend_bits.append(f"<span>{_sw}no data (reporting gap)</span>")
             caption_bits.append(
-                " States in the no-data shade were fitted in this run but "
-                "reported nothing this week: shown as gaps, never "
-                "interpolated.")
+                " No-data states were fitted but reported nothing this "
+                "week: shown as gaps, never interpolated.")
         if unfitted_states:
             legend_bits.append(f"<span>{_sw}not fitted in this run</span>")
             caption_bits.append(
-                " States marked not fitted were outside this run's "
-                "scope; nothing is claimed about their reporting.")
+                " Not-fitted states were outside this run's scope.")
     no_data_legend = "".join(legend_bits)
     no_data_caption = "".join(caption_bits)
     model_label = model_label or MODEL_LABEL["pf"]

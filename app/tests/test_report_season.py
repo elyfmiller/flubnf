@@ -135,7 +135,7 @@ def test_report_self_contained_with_player_and_data(tmp_path, monkeypatch):
     assert "never joins the pooled average" in html
 
     # the header says the maps stayed behind, and no size warning fired
-    assert "interactive maps live in the console" in html
+    assert "maps stay in the console" in html
     assert "Size notice" not in html
 
 
