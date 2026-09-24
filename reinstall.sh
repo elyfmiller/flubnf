@@ -369,6 +369,12 @@ if [ ${#SET_ASIDE[@]} -gt 0 ]; then
   for d in "${SET_ASIDE[@]}"; do ok "old copy kept at $d"; done
   OLD_STATE="$DEST-old-$STAMP/app/state"
   [ -d "$OLD_STATE" ] && ok "your previous runs are in $OLD_STATE; the new console starts without them"
+  # uploaded datasets are the user's own data, not run records: carried over
+  if [ -d "$OLD_STATE/datasets" ] && [ ! -e "$DEST/app/state/datasets" ]; then
+    mkdir -p "$DEST/app/state" \
+      && cp -R "$OLD_STATE/datasets" "$DEST/app/state/datasets" \
+      && ok "your uploaded datasets were copied into the new console"
+  fi
 fi
 INSTALLED_STAMP="$(
   [ -f "$DEST/.flubnf.env" ] || exit 0
