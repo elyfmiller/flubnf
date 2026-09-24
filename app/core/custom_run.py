@@ -34,6 +34,7 @@ import numpy as np
 import pandas as pd
 
 from app.core import horizons as hz
+from app.core import missing as MS
 from app.core import submit as SB
 from app.core.runs import GROUNDHOG_OWN_DATA
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL
@@ -325,6 +326,11 @@ def run(spec, ds, workroot: Path, *, phase=lambda msg: None,
             fails = {k: v for k, v in status.items() if v != "ok"}
             outcome["pf_cells"] = len(status)
             outcome["pf_failures"] = fails
+            # fit origins moved back by unreported newest weeks, or
+            # abstentions (prepare's notes; absent when none moved)
+            notes = pf_engine.read_anchor_notes(workroot)
+            if notes:
+                outcome["pf_anchor_notes"] = notes
             samples = pf_engine.collect(workroot)
             samples = {n: floor_samples(s, n, spec.forecast_date,
                                         recent=[v for _, v in obs.get(n, [])],
@@ -335,11 +341,28 @@ def run(spec, ds, workroot: Path, *, phase=lambda msg: None,
     _check_stop(workroot)
     # 2. the Groundhog (instant)
     an_q: dict = {}
+    # the missing-data rules (app/core/missing.py): the flagged weeks are
+    # recorded only when a rule is on, as the console's run records them
+    rules = MS.rules_of(extra)
+    gh_flags: list = []
     if spec.engine in ("all", "analogue"):
         phase("consulting the Groundhog")
-        an_q = an_engine.run(spec)
+        an_notes: dict = {}
+        an_kw = {"notes": an_notes}
+        if rules:
+            an_kw["flags"] = gh_flags
+        an_q = an_engine.run(spec, **an_kw)
+        if an_notes:
+            outcome["analogue_anchor_notes"] = an_notes
         if count:
             an_q = {n: floor_quantiles(q, **fkw) for n, q in an_q.items()}
+    if rules:
+        try:
+            pf_cells = json.loads((workroot / "cells.json").read_text())
+        except Exception:
+            pf_cells = []
+        outcome["data_flags"] = {"analogue": gh_flags,
+                                 "pf": MS.cell_flags(pf_cells)}
     outcome["analogue_label"] = analogue_label(extra)
     members = {m: q for m, q in (("pf", pf_q), ("analogue", an_q))
                if spec.engine in ("all", m)}

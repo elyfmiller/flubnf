@@ -90,3 +90,15 @@ def line(flags) -> str:
     bits = [f"{loc} {c}" for loc, c in per.items()]
     return (f"{n} week{'s' if n != 1 else ''} to {newest} treated as "
             f"unreported ({', '.join(rules)}): " + ", ".join(bits))
+
+
+def cell_flags(cells) -> list:
+    """The particle filter's flagged weeks from prepare()'s cells (the
+    per-cell `data_flags`; replicate 0 only, as every replicate holds the
+    same rows): one {location, week, value, rule} row each."""
+    out = []
+    for c in cells or ():
+        if isinstance(c, dict) and c.get("replicate", 0) == 0:
+            out += [{"location": c.get("location"), **r}
+                    for r in c.get("data_flags") or ()]
+    return out

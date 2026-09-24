@@ -333,6 +333,46 @@ def _tip(tid: str, label: str, text: str) -> str:
             f'><span class="tipbox" role="tooltip" id="tip-{tid}">{t}</span></span>')
 
 
+#: the run record's per-member anchor notes (engine notes: a location whose
+#: anchor or fit origin unreported newest weeks moved back, or that abstained)
+ANCHOR_NOTE_KEYS = (("pf", "pf_anchor_notes"),
+                    ("analogue", "analogue_anchor_notes"))
+#: the members as the hub run page names them
+HUB_MEMBER_NAMES = {"pf": "Oracle SIHRS", "analogue": "Groundhog"}
+
+
+def anchor_notes_row(o: dict, names: dict):
+    """The Results table's one row for both members' anchor notes, or None
+    when neither recorded any (a shipped run on complete data): a count per
+    member in the cell, every location's note in the "?" tip."""
+    import html as _html
+    parts, lines = [], []
+    for m, key in ANCHOR_NOTE_KEYS:
+        notes = o.get(key)
+        if not isinstance(notes, dict) or not notes:
+            continue
+        name = names.get(m, m)
+        ab = sum(str(v).startswith("abstained") for v in notes.values())
+        moved = len(notes) - ab
+        bits = []
+        if moved:
+            bits.append(f"{moved} location{'s' if moved != 1 else ''} "
+                        "anchored earlier")
+        if ab:
+            bits.append(f"{ab} abstained")
+        parts.append(f"{name}: {', '.join(bits)}")
+        lines += [f"{name}, {loc}: {v}." for loc, v in sorted(notes.items())]
+    if not parts:
+        return None
+    tip = _tip("anchor-notes", "unreported newest weeks",
+               "The newest week or two was not reported, so the forecast "
+               "starts from the last reported week and every horizon is "
+               "still counted from the forecast date. More than two such "
+               "weeks and the location abstains. " + " ".join(lines))
+    return ("Unreported newest weeks",
+            _html.escape("; ".join(parts)) + tip)
+
+
 def _results_note(d: dict) -> str:
     extra = d.get("extra") if isinstance(d.get("extra"), dict) else {}
     if extra.get("dataset"):
@@ -416,6 +456,9 @@ def results_html(outcome, spec, heading: bool = True) -> str:
                                 'incomplete)</span> <span class="hint">'
                                 f'{_html.escape(str(o["pf_engine_broken"]))}'
                                 '</span>'))
+    arow = anchor_notes_row(o, HUB_MEMBER_NAMES)
+    if arow:
+        rows.append(arow)
     if "data_flags" in o:
         # only a run with a missing-data rule on carries the key
         import html as _html_fl
@@ -473,6 +516,14 @@ def dataset_results_html(o: dict, d: dict, heading: bool = True) -> str:
         rows.append((f"{MEMBER_LABELS.get(m, m)} abstained",
                      _html.escape(", ".join(names[:8]))
                      + (" …" if len(names) > 8 else "")))
+    arow = anchor_notes_row(o, MEMBER_LABELS)
+    if arow:
+        rows.append(arow)
+    if "data_flags" in o:
+        # only a run with a missing-data rule on carries the key
+        from app.core import missing as _missing
+        rows.append(("Missing-data rules", _html.escape(
+            _missing.line(o["data_flags"]) or "on; no week flagged")))
     ex = o.get("exports") or {}
     rows.append(("Export files", f"{len(ex)} file{'s' if len(ex) != 1 else ''}"
                  if ex else "none"))
