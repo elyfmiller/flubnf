@@ -34,6 +34,11 @@ posix_only = pytest.mark.skipif(
     sys.platform.startswith("win"),
     reason="reinstall.sh is the macOS and Linux route; Windows has its own steps")
 
+# reinstall.sh refuses to run as root (it stops before any check under test)
+not_root = pytest.mark.skipif(
+    hasattr(os, "geteuid") and os.geteuid() == 0,
+    reason="reinstall.sh refuses to run as root")
+
 GIT_ENV = {"GIT_AUTHOR_NAME": "T", "GIT_AUTHOR_EMAIL": "t@example.invalid",
            "GIT_COMMITTER_NAME": "T", "GIT_COMMITTER_EMAIL": "t@example.invalid"}
 
@@ -141,6 +146,7 @@ def test_the_whole_file_is_parsed_before_any_of_it_runs():
 
 
 @posix_only
+@not_root
 def test_no_engine_file_means_nothing_is_touched(tmp_path):
     """The archive is checked before anything is renamed."""
     origin, _ = _bare_origin(tmp_path)
@@ -154,6 +160,7 @@ def test_no_engine_file_means_nothing_is_touched(tmp_path):
 
 
 @posix_only
+@not_root
 def test_sets_the_old_install_aside_and_keeps_only_the_real_archive(tmp_path):
     origin, _ = _bare_origin(tmp_path)
     home = _home_with_old_install(tmp_path)
@@ -206,6 +213,7 @@ def test_sets_the_old_install_aside_and_keeps_only_the_real_archive(tmp_path):
 
 
 @posix_only
+@not_root
 def test_a_name_already_swept_is_kept_under_a_distinct_name(tmp_path):
     """macOS mv -n exits 0 when it skips, so a repeat download must be kept
     under a distinct name, or it stays and wins setup's search."""
@@ -223,6 +231,7 @@ def test_a_name_already_swept_is_kept_under_a_distinct_name(tmp_path):
 
 
 @posix_only
+@not_root
 def test_the_newest_valid_archive_wins_not_the_newest_file(tmp_path):
     """Two real archives: the newer one is installed even when a review
     package is newer still."""
@@ -242,6 +251,7 @@ def test_the_newest_valid_archive_wins_not_the_newest_file(tmp_path):
 
 
 @posix_only
+@not_root
 def test_an_archive_under_the_flubnf_parent_is_not_its_own_competitor(tmp_path):
     """FLUBNF_DIR under ~/Documents lists that folder twice in the search;
     the chosen archive must not be swept aside on the second pass."""
@@ -278,6 +288,7 @@ def _current_install(tmp_path: Path, origin: Path, stamp: str = "feature/particl
 
 
 @posix_only
+@not_root
 def test_a_machine_that_is_already_current_is_left_alone(tmp_path):
     """Pasting the line twice must not set a good install aside."""
     origin, _ = _bare_origin(tmp_path)
@@ -299,6 +310,7 @@ def test_a_machine_that_is_already_current_is_left_alone(tmp_path):
 
 
 @posix_only
+@not_root
 def test_a_current_console_with_a_stale_engine_is_reinstalled(tmp_path):
     """A fast-forwarded console whose engine venv already existed (so the new
     archive was never installed) is reinstalled."""
@@ -313,6 +325,7 @@ def test_a_current_console_with_a_stale_engine_is_reinstalled(tmp_path):
 
 
 @posix_only
+@not_root
 def test_a_console_behind_origin_is_reinstalled(tmp_path):
     origin, src = _bare_origin(tmp_path)
     home = _current_install(tmp_path, origin)
@@ -327,6 +340,7 @@ def test_a_console_behind_origin_is_reinstalled(tmp_path):
 
 
 @posix_only
+@not_root
 def test_an_older_archive_does_not_silently_downgrade(tmp_path):
     origin, _ = _bare_origin(tmp_path)
     home = _current_install(tmp_path, origin)
@@ -341,6 +355,7 @@ def test_an_older_archive_does_not_silently_downgrade(tmp_path):
 
 
 @posix_only
+@not_root
 def test_a_developer_shell_or_checkout_is_refused(tmp_path):
     """Exported FLUBNF_* settings or an engine checkout with uncommitted work
     are refused."""
@@ -369,6 +384,7 @@ def test_a_developer_shell_or_checkout_is_refused(tmp_path):
 
 
 @posix_only
+@not_root
 def test_a_failed_clone_puts_the_old_install_back(tmp_path):
     """A failed clone after the rename: the exit trap moves the old copies
     back and re-enables their launcher."""
