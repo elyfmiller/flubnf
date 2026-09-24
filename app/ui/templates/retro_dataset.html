@@ -34,10 +34,10 @@
    {% if ds.national_group %}<th class="num">{{ ds.national_group }} (beside)</th>{% endif %}</tr></thead>
   <tbody>{% for m, s in summary.items() %}{% set p = s.pooled %}
    <tr><td>{{ member_names.get(m, m) }}</td>
-    <td class="num {{ 'ok' if p.relwis is not none and p.relwis < 1 else 'bad' }}">{{ "%.3f"|format(p.relwis) if p.relwis is not none else "–" }}</td>
+    <td class="num {{ 'ok' if p.relwis is not none and p.relwis < 1 else 'bad' }}">{{ "%.3f"|format(p.relwis) if p.relwis is not none else "n/a" }}</td>
     <td class="num">{{ p.cells }}</td>
-    {% for b in ("50", "80", "95") %}<td class="num">{{ "%.0f%%"|format(100 * p["cov" ~ b]) if p["cov" ~ b] is defined else "–" }}</td>{% endfor %}
-    {% if ds.national_group %}<td class="num">{{ "%.3f"|format(s.national.relwis) if s.national and s.national.relwis is not none else "–" }}</td>{% endif %}
+    {% for b in ("50", "80", "95") %}<td class="num">{{ "%.0f%%"|format(100 * p["cov" ~ b]) if p["cov" ~ b] is defined else "n/a" }}</td>{% endfor %}
+    {% if ds.national_group %}<td class="num">{{ "%.3f"|format(s.national.relwis) if s.national and s.national.relwis is not none else "n/a" }}</td>{% endif %}
    </tr>{% endfor %}</tbody>
  </table></div>
  <p class="hint">relWIS vs the in-house persistence baseline, pooled over the groups{{ " (national group excluded)" if ds.national_group else "" }}.</p>
@@ -62,16 +62,17 @@
 
 <div class="card"><h2>Forecasts against the data</h2>
  <div class="carousel" id="rd-models"></div>
- <div class="carousel">
-  <select id="rd-group" aria-label="group" style="width:auto;min-width:200px"></select>
-  <span class="hint">horizon:</span>
+ <div class="rd-pick">
+  <select id="rd-group" aria-label="group"></select>
+  <span class="rd-hz"><span class="hint">Horizon</span>
   {% for hh in horizons %}{% if hh == h %}<span class="pill ok" aria-current="true"><b>{{ hh }}</b></span>{% else %}<a href="?h={{ hh }}" class="pill">{{ hh }}</a>{% endif %}{% endfor %}
-  {{ tips.tip("rd-h", "the horizon", "Horizon 0 is the week after the forecast date (the hub's convention); each point is that week's forecast, drawn at the week it forecast.") }}
+  {{ tips.tip("rd-h", "the horizon", "Horizon 0 is the week after the forecast date (the hub's convention); each point is that week's forecast, drawn at the week it forecast.") }}</span>
  </div>
  <div id="rd-plot" style="min-height:400px"></div>
 </div>
 
-<div class="card"><h2>Settings</h2>
+{# the card heading names the block; its own title would repeat it #}
+<div class="card rd-settings"><h2>Settings</h2>
  {{ settings_html(settings, title="Replay settings") | safe }}
 </div>
 <script>
@@ -124,6 +125,8 @@
   const RANGE = {{ [meta.first or "", meta.last or ""] | tojson }};
   const WIN = RANGE[0] ? [shift(RANGE[0], -84), shift(RANGE[1], 42)] : undefined;
   const mb = document.getElementById('rd-models');
+  // one model: the chart title names it, so no one-button toggle
+  if(models.length < 2) mb.hidden = true;
   models.forEach(m=>{const b=document.createElement('button'); b.type='button';
     b.className='quiet'+(m===M?' gold':''); b.textContent=NAMES[m]||m;
     b.setAttribute('aria-pressed', String(m===M));

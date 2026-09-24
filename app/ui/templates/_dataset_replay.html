@@ -20,8 +20,10 @@
   {{ dsup.box("replay") }}
  </details>
  <form method="post" action="/retro/dataset/run" id="dsr-form">
-  <div class="row" style="align-items:flex-end">
-   <span><label for="dsr-ds">Dataset</label>
+  {# dataset full width (names can be long), the week range beside it on
+     one grid that holds at phone width #}
+  <div class="dsr-range">
+   <span class="dsr-dsf"><label for="dsr-ds">Dataset</label>
     <select name="dataset" id="dsr-ds">{% for d in dr.datasets %}
      <option value="{{ d.id }}"{% if d.id == dr.selected %} selected{% endif %}>{{ d.name }}</option>{% endfor %}</select></span>
    <span><label for="dsr-first">From</label><select name="first" id="dsr-first"></select></span>
@@ -71,6 +73,8 @@
      const g=$('dsr-groups'); g.innerHTML='';
      d.groups.forEach(n=>{const o=document.createElement('option'); o.value=n;
        o.textContent=n; o.selected=true; g.appendChild(o);});
+     // as tall as its groups (2 to 6 rows): no empty box below the list
+     g.size = Math.max(2, Math.min(6, d.groups.length));
      $('dsr-kind').textContent = d.vintage_true
        ? 'Vintage-true: each week sees its as_of snapshot.'
        : 'Final data, not vintage-true: each week is cut from the final series, so it reads better than real time did.';
