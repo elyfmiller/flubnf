@@ -263,12 +263,17 @@ def _vintage_for(asof: str, tmp: Path) -> Path:
 
 
 @needs_hub
+@pytest.mark.parametrize("optional", [False, True],
+                         ids=["default", "optional-rows"])
 def test_a_real_console_run_writes_files_the_hub_accepts(tmp_path,
-                                                         monkeypatch):
+                                                         monkeypatch,
+                                                         optional):
     """pipeline._run_all for as-of 2026-10-03 on every location: the
     Groundhog (with its shipped donors) and the output floor run for real
     on the clone's data; the PF cells are faked; both files pass every
-    check against the clone's tasks.json and locations."""
+    check against the clone's tasks.json and locations. `optional`: with
+    both optional-output knobs on (horizon -1, the rate-change pmf); the
+    files keep the hub names."""
     import app.core.data as core_data
     import app.core.engines.analogue as an_engine
     import app.core.engines.pf as pf_engine
@@ -317,8 +322,13 @@ def test_a_real_console_run_writes_files_the_hub_accepts(tmp_path,
     monkeypatch.setattr(P, "_write_weekly_report", lambda *a, **k: None)
     monkeypatch.setattr(V, "_engine_versions_for_ledger", lambda e: {})
 
+    extra = F._run_extra(2, "realtime", None)
+    if optional:
+        from app.core import knobs as K
+        K.write_extra({"output.horizon_minus1": True,
+                       "output.rate_change_pmf": True}, extra)
     P._run_all(RunSpec(engine="all", forecast_date=ASOF, locations=names,
-                       replicates=1, extra=F._run_extra(2, "realtime", None)))
+                       replicates=1, extra=extra))
     row = next(iter(Ledger().rows(1)))
     outcome = json.loads(row.get("outcome") or "{}")
     assert not outcome.get("submission_errors"), outcome
@@ -337,3 +347,170 @@ def test_a_real_console_run_writes_files_the_hub_accepts(tmp_path,
         want = 53 if model_id == SB.hub_model_id("pf") else \
             sum(1 for v in last.values() if v > 0)
         assert d.location.nunique() == want
+        pmf = d[d.target == "wk flu hosp rate change"]
+        m1 = d[d.horizon.astype(str) == "-1"]
+        if not optional:
+            assert pmf.empty and m1.empty
+            continue
+        assert pmf.location.nunique() == want
+        if model_id == SB.hub_model_id("pf"):
+            assert m1.location.nunique() == 53
+            assert set(m1.target_end_date) == {ASOF}
+        else:
+            assert m1.empty          # its anchor is the as-of week
+
+
+# ------------------------------------------------ the optional rows
+
+def _build_optional(tmp_path):
+    """The Oracle SIHRS file for REF with both optional outputs: horizon
+    -1 from the anchor draws, and the rate-change pmf at horizons 0..3."""
+    from app.core import optional_outputs as OPT
+    from app.core.floor import floor_samples
+    rng = np.random.default_rng(5)
+    locs = _locations()
+    sizes = [0, 0, 1, 3, 12, 40, 150, 900]
+    rows = []
+    for i, (fips, pop) in enumerate(zip(locs.location,
+                                        locs.population.astype(float))):
+        y = 9000.0 if fips == "US" else float(sizes[i % len(sizes)])
+        s = floor_samples(_samples(y, rng), fips, ASOF)
+        rows += SB.quantile_rows(s, fips, ASOF,
+                                 horizons=SB.HORIZONS_WITH_MINUS1)
+        rows += SB.rate_change_rows(OPT.pf_rate_change(s, y, pop, 0),
+                                    fips, ASOF)
+    return SB.write_submission(rows, "pf", ASOF, tmp_path)
+
+
+def test_the_optional_rows_pass_every_hub_check(tmp_path):
+    p = _build_optional(tmp_path)
+    _assert_all_pass(p)
+    d = HC.read_text_frame(p)
+    q = d[d.target == "wk inc flu hosp"]
+    assert sorted(set(q.horizon)) == ["-1", "0", "1", "2", "3"]
+    assert set(q[q.horizon == "-1"].target_end_date) == {ASOF}
+    pmf = d[d.target == "wk flu hosp rate change"]
+    assert set(pmf.output_type) == {"pmf"}
+    assert sorted(set(pmf.horizon)) == ["0", "1", "2", "3"]
+    assert len(pmf) == 53 * 4 * 5
+    assert len(d) == 53 * 5 * 23 + 53 * 4 * 5
+
+
+@pytest.fixture(scope="module")
+def good_optional(tmp_path_factory):
+    p = _build_optional(tmp_path_factory.mktemp("optional"))
+    return p, HC.read_text_frame(p)
+
+
+def _first_pmf_task(d):
+    """Row positions of the first rate-change task (five categories)."""
+    pmf = d.index[d.output_type == "pmf"]
+    return list(pmf[:5])
+
+
+def _set_values(d, vals):
+    d = d.copy()
+    d.loc[_first_pmf_task(d), "value"] = [str(v) for v in vals]
+    return d
+
+
+@pytest.mark.parametrize("check, mutate", [
+    # a category the hub does not define
+    ("values_valid", lambda d: d.assign(output_type_id=d.output_type_id
+                                        .replace("stable", "flat"))),
+    # a pmf task summing to 0.9
+    ("sum1", lambda d: _set_values(d, [0.1, 0.2, 0.3, 0.2, 0.1])),
+    # and one a hair past R's all.equal tolerance
+    ("sum1", lambda d: _set_values(d, [0.2, 0.2, 0.2, 0.2, 0.2000001])),
+    # a negative probability (the task still sums to 1)
+    ("value_col_valid", lambda d: _set_values(d, [-0.1, 0.3, 0.3, 0.3, 0.2])),
+    # a probability above 1
+    ("value_col_valid", lambda d: _set_values(d, [1.2, -0.05, -0.05, -0.05,
+                                                  -0.05])),
+    # a horizon -1 row ending on the reference date, not the week before
+    ("horizon_timediff", lambda d: d.assign(target_end_date=d.target_end_date
+                                            .where(d.horizon != "-1", REF))),
+    # a task missing a category
+    ("values_required", lambda d: d.drop(index=_first_pmf_task(d)[2])),
+    # a rate-change horizon the hub does not take
+    ("values_valid", lambda d: d.assign(horizon=d.horizon.where(
+        d.output_type != "pmf", d.horizon.replace("3", "4")))),
+])
+def test_the_checker_catches_bad_optional_rows(good_optional, check, mutate):
+    p, d = good_optional
+    assert not HC.failures(_run(p, d), allow_round=False)
+    res = _run(p, mutate(d.copy()).reset_index(drop=True))
+    assert res[check], f"{check} missed: {res}"
+
+
+def test_the_sum_tolerance_is_rs_all_equal_default():
+    assert HC.PMF_SUM_TOL == 1.5e-8
+
+
+# ------------------------------------------------ the hub's own files
+
+def _clone_rules_and_pops():
+    rules = HC.rules_from_tasks(HC.load_tasks(
+        HUB / "hub-config" / "tasks.json"))
+    locs = pd.read_csv(HUB / "auxiliary-data" / "locations.csv", dtype=str)
+    return rules, {l: float(p) for l, p in zip(locs.location,
+                                               locs.population)}
+
+
+@needs_hub
+def test_real_ensemble_files_with_these_rows_pass_the_checker():
+    """FluSight-ensemble files that carry the optional rows pass: a 2023-24
+    file (horizon -1 quantiles, rate-change pmf at -1..3) on every check
+    but the 2026-27 whole-number rule, which it predates; a 2025-26 file
+    (rate-change pmf at 0..3, whole numbers) on every check once its
+    peak-week rows, whose ids name the 2025-26 weeks, are set aside."""
+    rules, pops = _clone_rules_and_pops()
+    ens = HUB / "model-output" / "FluSight-ensemble"
+    old = ens / "2024-01-06-FluSight-ensemble.csv"
+    new = ens / "2026-01-24-FluSight-ensemble.csv"
+    if not (old.is_file() and new.is_file()):
+        pytest.skip("the clone lacks the two ensemble files")
+    d = HC.read_text_frame(old)
+    assert (d.horizon == "-1").any() and (d.output_type == "pmf").any()
+    assert set(d[d.output_type == "pmf"].horizon) == {"-1", "0", "1", "2",
+                                                      "3"}
+    res = HC.check_frame(d, old.name, old.parent.name, rules=rules,
+                         populations=pops)
+    assert {k for k, v in res.items() if v} <= {"value_integer"}, res
+    d = HC.read_text_frame(new)
+    d = d[d.target != "peak week inc flu hosp"].reset_index(drop=True)
+    assert (d.target == "wk flu hosp rate change").any()
+    res = HC.check_frame(d, new.name, new.parent.name, rules=rules,
+                         populations=pops)
+    assert not {k: v for k, v in res.items() if v}, res
+    # and the same file with one task's pmf off by 0.1 does not
+    i = d.index[d.output_type == "pmf"][0]
+    bad = d.copy()
+    bad.loc[i, "value"] = str(float(bad.loc[i, "value"]) + 0.1)
+    assert HC.check_frame(bad, rules=rules, populations=pops)["sum1"]
+
+
+@needs_hub
+def test_the_categories_are_the_hubs_oracle_output():
+    """Every observed category in the hub's target-data/oracle-output.csv
+    (its scoring truth) is what app.core.categorical.category gives for
+    the finalized counts in target-hospital-admissions.csv."""
+    from app.core import categorical as cat
+    o = pd.read_csv(HUB / "target-data" / "oracle-output.csv", dtype=str)
+    o = o[(o.target == "wk flu hosp rate change")
+          & (o.oracle_value.astype(float) == 1)]
+    t = pd.read_csv(HUB / "target-data" / "target-hospital-admissions.csv",
+                    dtype={"location": str})
+    y = {(l, d): v for l, d, v in zip(t.location, t.date, t.value)}
+    _, pops = _clone_rules_and_pops()
+    n = bad = 0
+    for r in o.itertuples():
+        base = (pd.Timestamp(r.target_end_date)
+                - pd.Timedelta(weeks=int(r.horizon) + 1)).strftime("%Y-%m-%d")
+        a, b = y.get((r.location, r.target_end_date)), y.get((r.location, base))
+        if a is None or b is None:
+            continue
+        n += 1
+        bad += cat.category(a - b, pops[r.location], int(r.horizon)) != \
+            r.output_type_id
+    assert n > 1000 and bad == 0, (n, bad)

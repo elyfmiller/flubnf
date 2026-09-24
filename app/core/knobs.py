@@ -18,6 +18,10 @@ when the step is off, is ignored by parse() and never recorded.
 Classes: "run" knobs change how much is computed or which rows are fitted;
 "method" knobs change what the model is. Any value that differs from the
 shipped one marks a run as modified; LOCKED lists what is not settable.
+"optional" knobs (OPTIONAL_KEYS) add rows the hub accepts but never
+requires, and leave every required row as it was: they are recorded in
+the spec like any knob but do not mark a run modified, so its files keep
+the hub names.
 """
 from __future__ import annotations
 
@@ -83,7 +87,7 @@ class Knob:
     label: str
     affects: frozenset          # subset of MEMBERS
     stage: str                  # fit | step | groundhog | output
-    klass: str                  # run | method
+    klass: str                  # run | method | optional
     kind: str                   # one of KINDS
     default: Any                # the source constant's value; a callable of
                                 # the forecast date for a date-dependent one
@@ -97,6 +101,8 @@ class Knob:
     card: Optional[tuple] = None
     #: an engine validator: raises ValueError on a value the engine refuses
     check: Optional[Callable[[Any], None]] = field(default=None, repr=False)
+    #: more for the "?" tip than the one-line help holds
+    note: str = ""
 
     @property
     def overridable(self) -> bool:
@@ -256,9 +262,33 @@ REGISTRY: tuple = (
          "float", FL.LAM, "app.core.floor:LAM",
          "Poisson noise floor so no cell is a point mass; console runs only.",
          lo=0.0, hi=5.0),
+    # -- Optional hub outputs (extra rows; the required rows are unchanged) --
+    Knob("output.horizon_minus1", "Horizon -1 rows", BOTH, "output",
+         "optional", "bool", SB.HORIZON_MINUS1, "app.core.submit:HORIZON_MINUS1",
+         "Optional; the hub never scores it. Adds the week before the "
+         "reference date.",
+         note=("Oracle SIHRS: its own draws for that week. Groundhog: only "
+               "where it did not see that week (weeks to drop, or the "
+               "same-day week treated as unreported); its forecast starts "
+               "from that week's count, so otherwise it has no spread to "
+               "give and writes none. Adds rows only: the files keep the "
+               "hub names.")),
+    Knob("output.rate_change_pmf", "Rate-change rows", BOTH, "output",
+         "optional", "bool", SB.RATE_CHANGE_PMF,
+         "app.core.submit:RATE_CHANGE_PMF",
+         "Optional; not in the hub's WIS ranking. Adds the five trend "
+         "probabilities.",
+         note=("The hub's 'wk flu hosp rate change' target, horizons 0 to 3: "
+               "large decrease to large increase from the week before the "
+               "reference date, by the hub's rate and 10-admission rules. "
+               "From each model's own draws or quantiles; the Groundhog "
+               "writes none for a state whose starting week it did not "
+               "see. Adds rows only: the files keep the hub names.")),
 )
 
 BY_KEY: dict = {k.key: k for k in REGISTRY}
+#: knobs that add optional hub rows and never mark a run modified
+OPTIONAL_KEYS = frozenset(k.key for k in REGISTRY if k.klass == "optional")
 
 
 @dataclass(frozen=True)
@@ -607,8 +637,10 @@ LATER = frozenset({"oracle.bandwidth", "oracle.count_floor",
                    "groundhog.min_donors"})
 
 #: knobs the retrospective cannot carry: retro.run_week drops no weeks and
-#: stores unfloored samples (the floor is a console output rule)
-NOT_IN_RETRO = frozenset({"run.weeks_to_drop", "output.floor_lam"})
+#: stores unfloored samples (the floor is a console output rule), and it
+#: writes no submission files (the optional hub rows)
+NOT_IN_RETRO = frozenset({"run.weeks_to_drop", "output.floor_lam",
+                          *OPTIONAL_KEYS})
 
 #: form fields that predate the registry -> the knob they now set
 LEGACY_FIELDS = {"particles": "pf.particles", "replicates": "pf.replicates",
@@ -760,9 +792,34 @@ def record_of(spec) -> dict:
     return dict(rec) if isinstance(rec, Mapping) else {}
 
 
+def model_record(spec) -> dict:
+    """record_of without the optional-output knobs: what changes the
+    models."""
+    return {k: v for k, v in record_of(spec).items()
+            if k not in OPTIONAL_KEYS}
+
+
 def modified(spec) -> bool:
-    """True only for a spec carrying a non-empty knobs record."""
-    return bool(record_of(spec))
+    """True only for a spec whose knobs record changes a model (an
+    optional-output knob alone adds rows and leaves the model as shipped)."""
+    return bool(model_record(spec))
+
+
+def optional_output(spec, key: str) -> bool:
+    """An optional-output knob's value for a run: the recorded one, else
+    its default (the source constant)."""
+    if key not in OPTIONAL_KEYS:
+        raise KnobError(f"{key} is not an optional-output knob")
+    return bool(record_of(spec).get(key, BY_KEY[key].default))
+
+
+def optional_label(spec) -> str:
+    """'' when no optional output is on; else their labels, e.g.
+    'Horizon -1 rows, Rate-change rows'."""
+    rec = record_of(spec)
+    on = [k.label for k in REGISTRY
+          if k.key in OPTIONAL_KEYS and rec.get(k.key, k.default)]
+    return ", ".join(on)
 
 
 def override_reason(spec) -> str:
@@ -909,6 +966,8 @@ def _tip(knob: Knob, scope: str, names: Optional[Mapping] = None) -> str:
     unit = f" {knob.unit}" if knob.unit and knob.kind in ("int", "float") else ""
     bits = [knob.help, f"Range: {knob.range_text()}{unit}.",
             f"Default: {dflt}.", f"Affects: {who}."]
+    if knob.note:
+        bits.append(knob.note)
     if knob.card:
         bits.append("The model card states the default.")
     if knob.key in LATER:
@@ -955,6 +1014,7 @@ def panel(scope: str, values: Optional[Mapping] = None,
                 "choices": [(str(c), f"{c}" + (" (default)" if c == k.default
                                                else "")) for c in k.choices],
                 "later": k.key in LATER,
+                "optional": k.key in OPTIONAL_KEYS,
                 "affects": " ".join(sorted(k.affects)),
                 "unit": k.unit, "tip": _tip(k, scope, names)})
         if rows:
@@ -963,7 +1023,8 @@ def panel(scope: str, values: Optional[Mapping] = None,
                                {m for r in rows for m in r["affects"].split()})),
                            "rows": rows})
     modified = any(r["value"].strip() not in ("", r["default"])
-                   for g in groups for r in g["rows"] if not r["later"])
+                   for g in groups for r in g["rows"]
+                   if not r["later"] and not r["optional"])
     return {"scope": scope, "groups": groups, "modified": modified,
             "locked": [{"key": l.key, "value": _fmt(l.value)
                         if not isinstance(l.value, tuple)

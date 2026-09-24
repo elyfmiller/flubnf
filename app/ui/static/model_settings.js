@@ -51,6 +51,7 @@
     }
     function isModified(el) {
       if (el.disabled) return false;
+      if (el.dataset.optional) return false;           // adds hub rows only
       var v = String(el.value || '').trim(), d = el.dataset.default || '';
       if (el.dataset.knob === 'run.season_start') return v !== '' && v !== seasonDefault();
       if (v === '') return false;                      // blank means the default

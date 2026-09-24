@@ -4,7 +4,9 @@
    {% include "_model_settings.html" %} inside a form, with `knob_panel` in
    the context (forms._knob_panel). Knobs with an older field name keep it
    (season_start, weeks_to_drop, drop_same_day, replicates, particles); the
-   rest post as knob.<key>. The value shown first is the shipped one; a
+   rest post as knob.<key>. A row marked data-optional (an optional hub
+   output, knobs.OPTIONAL_KEYS) adds rows only and never makes the panel
+   "modified". The value shown first is the shipped one; a
    blank field also means shipped. Live badge, engine filter, reset and the
    override's required reason: static/model_settings.js.
 
@@ -31,7 +33,7 @@
    {{ tips.label(r.label, rid ~ "-tip", r.tip, for_=rid) }}
    {% if r.kind in ("choice", "bool") %}
    <select name="{{ r.name }}" id="{{ rid }}" data-default="{{ r.default }}"
-     data-knob="{{ r.key }}"{% if r.later %} disabled{% endif %}>
+     data-knob="{{ r.key }}"{% if r.optional %} data-optional="1"{% endif %}{% if r.later %} disabled{% endif %}>
     {% if r.kind == "bool" %}
     <option value="0"{% if r.value != "1" %} selected{% endif %}>off{{ " (default)" if r.default == "0" }}</option>
     <option value="1"{% if r.value == "1" %} selected{% endif %}>on{{ " (default)" if r.default == "1" }}</option>
