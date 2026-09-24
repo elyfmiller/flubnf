@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from app.core import horizons as hz                        # noqa: E402
 from app.core import playback, report_season, retro        # noqa: E402
 from app.ui import server as srv                           # noqa: E402
+from app.ui.routes import retro as ui_retro                # noqa: E402
 from app.ui import retro_seasons as ui_retro_seasons       # noqa: E402
 from app.ui import state as ui_state                       # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL      # noqa: E402
@@ -115,7 +116,7 @@ def _roots(tmp_path, monkeypatch):
     monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     monkeypatch.setattr(retro, "available_seasons", lambda: [SEASON, OTHER])
     monkeypatch.setattr(retro, "season_vintages", lambda s: list(VINTAGES))
-    monkeypatch.setattr(srv, "_retro_bg", lambda *a, **k: None)
+    monkeypatch.setattr(ui_retro, "_retro_bg", lambda *a, **k: None)
     ui_retro_seasons._retro_status.clear()
     ui_retro_seasons._retro_stop.clear()
     return rr
@@ -362,7 +363,7 @@ def test_archive_and_start_fresh_moves_the_tree_and_starts_clean(tmp_path,
     root = _season_tree(rr, SEASON)
     before = _tree_snapshot(root)
     started = []
-    monkeypatch.setattr(srv, "_retro_bg",
+    monkeypatch.setattr(ui_retro, "_retro_bg",
                         lambda *a, **k: started.append(a[0]))
 
     r = client.post("/retro/run", data={"season": SEASON, "mode": "archive"},
@@ -382,7 +383,7 @@ def test_discard_without_the_second_confirmation_changes_nothing(tmp_path,
     root = _season_tree(rr, SEASON)
     before = _tree_snapshot(root)
     started = []
-    monkeypatch.setattr(srv, "_retro_bg",
+    monkeypatch.setattr(ui_retro, "_retro_bg",
                         lambda *a, **k: started.append(a[0]))
 
     r = client.post("/retro/run", data={"season": SEASON, "mode": "discard"},
@@ -425,7 +426,7 @@ def test_an_unknown_mode_starts_nothing_and_destroys_nothing(tmp_path,
     root = _season_tree(rr, SEASON)
     before = _tree_snapshot(root)
     started = []
-    monkeypatch.setattr(srv, "_retro_bg",
+    monkeypatch.setattr(ui_retro, "_retro_bg",
                         lambda *a, **k: started.append(a[0]))
     r = client.post("/retro/run", data={"season": SEASON, "mode": "nuke"},
                     follow_redirects=False)

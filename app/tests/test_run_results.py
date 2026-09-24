@@ -14,6 +14,7 @@ import app.core.scoring as scoring                       # noqa: E402
 from app.core import horizons as hz                      # noqa: E402
 from app.core.runs import RunSpec, results_html          # noqa: E402
 from app.ui import server as srv                         # noqa: E402
+from app.ui.routes import forecast as ui_forecast        # noqa: E402
 
 client = TestClient(srv.app)
 
@@ -86,21 +87,21 @@ def test_the_form_records_the_mode_and_reruns_carry_it():
     assert "mf.value = mode" in html
     # the shipped donors ride on every console spec; "" is the bare analogue
     # (research, no Groundhog file); a named preset resolves like the shipped
-    x = srv._run_extra(2, "vintage")
+    x = ui_forecast._run_extra(2, "vintage")
     assert x["mode"] == "vintage" and "members" not in x
     assert x["aux_pools"] == [{"stream": "flusurv", "weight": 0.5,
                                "committed": True}]
     assert x["analogue_aux"].startswith("flusurv+flusurv@")
-    assert srv._run_extra(2, "vintage", "") == {"mode": "vintage"}
-    y = srv._run_extra(3, "nonsense")
+    assert ui_forecast._run_extra(2, "vintage", "") == {"mode": "vintage"}
+    y = ui_forecast._run_extra(3, "nonsense")
     assert y["mode"] == "realtime" and y["members"] == 3
-    assert srv._run_extra(2, "realtime", "iliplus")["aux_pools"] == [
+    assert ui_forecast._run_extra(2, "realtime", "iliplus")["aux_pools"] == [
         {"stream": "iliplus", "weight": 0.5, "committed": True}]
     import pytest
     with pytest.raises(ValueError, match="unknown auxiliary preset"):
-        srv._run_extra(2, "realtime", "nope")
-    assert srv._spec_mode({"extra": {"mode": "vintage"}}) == "vintage"
-    assert srv._spec_mode({}) == "realtime" and srv._spec_mode({"extra": "x"}) == "realtime"
+        ui_forecast._run_extra(2, "realtime", "nope")
+    assert ui_forecast._spec_mode({"extra": {"mode": "vintage"}}) == "vintage"
+    assert ui_forecast._spec_mode({}) == "realtime" and ui_forecast._spec_mode({"extra": "x"}) == "realtime"
 
 
 def test_the_fan_card_keeps_the_location_across_model_buttons():

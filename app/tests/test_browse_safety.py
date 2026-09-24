@@ -33,6 +33,7 @@ from app.core import report_v2                      # noqa: E402
 from app.core import retro                          # noqa: E402
 from app.core import ttlcache                       # noqa: E402
 from app.ui import server as srv                    # noqa: E402
+from app.ui.routes import retro as ui_retro         # noqa: E402
 from app.ui.routes import output as ui_output       # noqa: E402
 from app.ui import pipeline as ui_pipeline          # noqa: E402
 from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
@@ -360,7 +361,7 @@ def test_retro_worker_writes_scores_atomically(tmp_path, monkeypatch):
         return real_replace(src, dst)
 
     monkeypatch.setattr(os, "replace", spy)
-    srv._retro_bg(RUNNING_SEASON, ["Ohio"], width=1)
+    ui_retro._retro_bg(RUNNING_SEASON, ["Ohio"], width=1)
     assert ui_retro_seasons._retro_status[RUNNING_SEASON] == "done"
     assert json.loads((root / "scores.json").read_text())
     assert not (root / "scores.json.tmp").exists()

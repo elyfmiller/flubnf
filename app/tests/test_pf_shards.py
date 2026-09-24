@@ -564,7 +564,7 @@ def test_collect_reads_the_unpartitioned_cells_json(engine, tmp_path):
 def test_api_progress_sums_the_per_shard_progress_files(tmp_path, monkeypatch):
     """api_progress finds per-shard .prog files and the pre-sharding name."""
     from app.core import ttlcache
-    from app.ui import server as srv
+    from app.ui.routes import forecast as ui_forecast
     from app.ui import state as ui_state
     w = tmp_path / "wr"
     w.mkdir()
@@ -577,7 +577,7 @@ def test_api_progress_sums_the_per_shard_progress_files(tmp_path, monkeypatch):
     monkeypatch.setitem(ui_state._status, "expected_total", 8)
     monkeypatch.setitem(ui_state._status, "started_utc", now - 60)
     ttlcache.clear_all()
-    out = srv.api_progress()
+    out = ui_forecast.api_progress()
     assert (out["done"], out["total"]) == (5, 8)
 
 

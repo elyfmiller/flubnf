@@ -23,6 +23,7 @@ from app.core import data as core_data               # noqa: E402
 from app.core.runs import Ledger, RunSpec            # noqa: E402
 from app.core.submit import hub_model_id             # noqa: E402
 from app.ui import server as srv                     # noqa: E402
+from app.ui.routes import forecast as ui_forecast    # noqa: E402
 from app.ui import pipeline as ui_pipeline           # noqa: E402
 from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
 from app.ui import shared as ui_shared               # noqa: E402
@@ -94,7 +95,7 @@ def _fake_run(monkeypatch, tmp_path, status_by_cell, collected, aux=None):
                         lambda *a, **k: None)
     spec = RunSpec(engine="all", forecast_date="2098-01-04",
                    locations=["Ohio", "Texas"], replicates=1,
-                   extra=srv._run_extra(2, "realtime", aux))
+                   extra=ui_forecast._run_extra(2, "realtime", aux))
     ui_pipeline._run_all(spec)
     row = next(iter(Ledger().rows(5)))
     outcome = json.loads(row.get("outcome") or "{}")

@@ -26,6 +26,7 @@ from fastapi.testclient import TestClient                  # noqa: E402
 
 from app.core import playback, retro, scoring              # noqa: E402
 from app.ui import server as srv                           # noqa: E402
+from app.ui.routes import retro as ui_retro                # noqa: E402
 from app.ui import retro_prep as ui_retro_prep             # noqa: E402
 from app.ui import retro_seasons as ui_retro_seasons       # noqa: E402
 from app.ui import shared as ui_shared                     # noqa: E402
@@ -175,7 +176,7 @@ def test_season_worker_finalizes_and_records_before_done(tmp_path, _stubbed,
     root = _routed / SEASON
     _mk_tree(_routed)
     monkeypatch.setattr(retro, "run_season", lambda *a, **k: [])
-    srv._retro_bg(SEASON, ["Ohio"], width=1)
+    ui_retro._retro_bg(SEASON, ["Ohio"], width=1)
     assert ui_retro_seasons._retro_status[SEASON] == "done"
     assert retro.scores_scoreable(root)
     assert retro.national_aggregate_fresh(root)
@@ -207,7 +208,7 @@ def test_slow_job_shows_the_preparing_state_and_status_endpoint(
         return {"total": 0.0}
 
     monkeypatch.setattr(retro, "finalize_season", _slow)
-    monkeypatch.setattr(srv, "_RESULTS_GRACE_S", 0.05)
+    monkeypatch.setattr(ui_retro, "_RESULTS_GRACE_S", 0.05)
     try:
         html = client.get(f"/retro/{SEASON}").text
         # the preparing card, its live phase, and the poll wiring
@@ -241,7 +242,7 @@ def test_one_job_per_root_even_under_concurrent_visits(tmp_path, _stubbed,
         return {"total": 0.0}
 
     monkeypatch.setattr(retro, "finalize_season", _slow)
-    monkeypatch.setattr(srv, "_RESULTS_GRACE_S", 0.05)
+    monkeypatch.setattr(ui_retro, "_RESULTS_GRACE_S", 0.05)
     try:
         client.get(f"/retro/{SEASON}")
         client.get(f"/retro/{SEASON}")

@@ -18,9 +18,10 @@ Host header too, since an upload may be private data):
   POST /retro/dataset/run              replay a week range on a dataset
   GET  /retro/dataset/{id}/{stamp}     one replay's results
 
-and the context builders server.py calls when a page is opened with
-`?source=<dataset id>` (Data, Forecast, /api/series). A dataset is never the
-default source: every page and run opts in by naming it.
+and the context builders the tab routers (app/ui/routes) call when a page
+is opened with `?source=<dataset id>` (Data, Forecast, /api/series). A
+dataset is never the default source: every page and run opts in by naming
+it.
 """
 from __future__ import annotations
 
@@ -36,7 +37,8 @@ from fastapi.responses import (HTMLResponse, JSONResponse, PlainTextResponse,
 from markupsafe import Markup, escape
 from starlette.concurrency import run_in_threadpool
 
-from app.core.runs import GROUNDHOG_OWN_DATA
+from app.core import runs as _runs
+from app.core.runs import GROUNDHOG_OWN_DATA, Ledger
 from app.ui import forms, pipeline, retro_seasons, shared, templating, versions
 from app.ui import state as ui_state
 from app.ui.routes import data as data_routes
@@ -71,11 +73,6 @@ NEXT_PAGES = ("data", "forecast", "replay")
 PREVIEW_GROUPS = 12
 #: a preview sparkline's viewBox
 SPARK_W, SPARK_H = 160, 40
-
-
-def _S():
-    from app.ui import server
-    return server
 
 
 def _D():
@@ -580,9 +577,8 @@ def _dataset_view(ds) -> dict:
 
 def _ledger_for(ds_id: str, n: int = 5) -> list:
     """The newest ledger rows of runs on this dataset."""
-    S = _S()
     out = []
-    for r in S.Ledger().rows(200):
+    for r in Ledger().rows(200):
         try:
             x = (json.loads(r.get("spec") or "{}").get("extra") or {})
         except Exception:
@@ -691,7 +687,6 @@ def knob_values(ds, knob_fields, knobs_json) -> dict:
 def forecast_page(request: Request, ds):
     """The Forecast tab with a dataset as the data source: forecast.html
     with the dataset's groups, weeks, fans and runs."""
-    S = _S()
     from app.core.runs import spec_settings
     view = _dataset_view(ds)
     dates = ds.forecast_dates()
@@ -717,7 +712,7 @@ def forecast_page(request: Request, ds):
     rows = _ledger_for(ds.id)
     for r in rows:
         r["label"] = shared._run_label(r["run_id"], r.get("spec", ""))
-        r["modified"] = S._runs.is_modified(r.get("spec", ""))
+        r["modified"] = _runs.is_modified(r.get("spec", ""))
         r["chips"] = outcome_chips(r.get("outcome", ""))
         r["settings"] = spec_settings(r.get("spec", ""))
         r["has_report"] = False

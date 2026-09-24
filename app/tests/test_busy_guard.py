@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient           # noqa: E402
 
 from app.core import data as core_data              # noqa: E402
 from app.ui import server as srv                    # noqa: E402
+from app.ui.routes import retro as ui_retro         # noqa: E402
 from app.ui import pipeline as ui_pipeline          # noqa: E402
 from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
 from app.ui import state as ui_state                # noqa: E402
@@ -118,7 +119,7 @@ def test_retro_bg_stops_between_weeks_and_keeps_weeks(monkeypatch, tmp_path):
 
     monkeypatch.setattr(retro, "run_season", fake_run_season)
     monkeypatch.setattr(retro, "score_season", no_score)
-    srv._retro_bg(SEASON, ["Ohio"], width=1)
+    ui_retro._retro_bg(SEASON, ["Ohio"], width=1)
     assert seen == ["week1"]
     assert ui_retro_seasons._retro_status[SEASON] == "stopped"
     assert SEASON not in ui_retro_seasons._retro_stop     # flag consumed, replay resumable

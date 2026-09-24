@@ -21,6 +21,7 @@ import pytest                                       # noqa: E402
 from fastapi.testclient import TestClient           # noqa: E402
 
 from app.ui import server as srv                    # noqa: E402
+from app.ui.routes import retro as ui_retro         # noqa: E402
 from app.ui import pipeline as ui_pipeline          # noqa: E402
 from app.ui import retro_prep as ui_retro_prep      # noqa: E402
 from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
@@ -108,7 +109,7 @@ def test_concurrent_retro_run_posts_claim_exactly_one_worker(tmp_path,
     monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     monkeypatch.setattr(retro, "available_seasons", lambda: [SEASON])
     workers = []
-    monkeypatch.setattr(srv, "_retro_bg", lambda *a, **k: workers.append(a))
+    monkeypatch.setattr(ui_retro, "_retro_bg", lambda *a, **k: workers.append(a))
 
     def slow_known():
         time.sleep(0.25)      # inside the locked window, before the claim

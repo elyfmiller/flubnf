@@ -23,6 +23,7 @@ from fastapi.testclient import TestClient                  # noqa: E402
 from app.core import playback, report_season, retro, scoring  # noqa: E402
 from app.core import site_build                            # noqa: E402
 from app.ui import server as srv                           # noqa: E402
+from app.ui.routes import retro as ui_retro                # noqa: E402
 from app.ui import retro_prep as ui_retro_prep             # noqa: E402
 from app.ui import retro_seasons as ui_retro_seasons       # noqa: E402
 from app.ui import shared as ui_shared                     # noqa: E402
@@ -105,7 +106,7 @@ def world(monkeypatch, tmp_path):
     monkeypatch.setattr(ui_retro_seasons, "RETRO_RESEAL", reseal)
     monkeypatch.setattr(retro, "available_seasons", lambda: [SEASON, OTHER])
     monkeypatch.setattr(retro, "season_vintages", lambda s: [W1, W2])
-    monkeypatch.setattr(srv, "_retro_bg", lambda *a, **k: None)
+    monkeypatch.setattr(ui_retro, "_retro_bg", lambda *a, **k: None)
     status_before = dict(ui_retro_seasons._retro_status)
     ui_retro_seasons._retro_status.clear()
     ui_retro_prep._results_jobs.clear()
@@ -184,7 +185,7 @@ def test_the_replay_form_names_the_oracle_sihrs(world):
     assert '<option value="pf">Oracle SIHRS and the Groundhog (hours)</option>' in t
     assert "Particle filter with the Groundhog" not in t
     assert "Each week fits the Oracle SIHRS from the season start" in t
-    assert srv.retro_engine_label("pf") == "Oracle SIHRS and the Groundhog"
+    assert ui_retro.retro_engine_label("pf") == "Oracle SIHRS and the Groundhog"
 
 
 # ------------------------------------------------------- the season page

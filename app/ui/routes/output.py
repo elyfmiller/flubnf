@@ -2,9 +2,9 @@
 download rules, reveal in the file manager, and the weekly report, served
 as stored or rebuilt from its bundle when the report builder is newer.
 
-The run pages (server.py) list a run's files through _submission_files and
-serve its report through _report_for_serving and _weekly_report_file here.
-An APIRouter server.py includes.
+The run pages (routes/forecast.py) list a run's files through
+_submission_files and serve its report through _report_for_serving and
+_weekly_report_file here. An APIRouter server.py includes.
 """
 from __future__ import annotations
 

@@ -32,6 +32,8 @@ from app.core import retro                                   # noqa: E402
 from app.core.engines import analogue as EA                  # noqa: E402
 from app.core.runs import Ledger, RunSpec, spec_settings     # noqa: E402
 from app.ui import server as srv                             # noqa: E402
+from app.ui.routes import forecast as ui_forecast            # noqa: E402
+from app.ui.routes import retro as ui_retro                  # noqa: E402
 from app.ui import pipeline as ui_pipeline                   # noqa: E402
 from app.ui import retro_seasons as ui_retro_seasons         # noqa: E402
 from app.ui import shared as ui_shared                       # noqa: E402
@@ -112,7 +114,7 @@ def test_the_untouched_form_runs_the_golden_shipped_spec(tmp_path, monkeypatch):
 def test_a_shipped_console_run_writes_what_it_always_wrote(console):
     srv_, raw = console
     spec = RunSpec(engine="all", forecast_date=ASOF, locations=["Ohio", "Utah"],
-                   extra=srv_._run_extra(2, "vintage"))
+                   extra=ui_forecast._run_extra(2, "vintage"))
     ui_pipeline._run_all(spec)
     row = Ledger().rows(1)[0]
     out = json.loads(row["outcome"])
@@ -223,7 +225,7 @@ def test_the_override_is_recorded_with_its_reason(tmp_path, monkeypatch):
 
 def _knob_run(srv_, nd, override=""):
     spec = RunSpec(engine="all", forecast_date=ASOF, locations=["Ohio", "Utah"],
-                   extra=K.write_extra(nd, srv_._run_extra(2, "vintage"),
+                   extra=K.write_extra(nd, ui_forecast._run_extra(2, "vintage"),
                                        override=override))
     ui_pipeline._run_all(spec)
     row = Ledger().rows(1)[0]
@@ -381,7 +383,7 @@ def test_rerun_carries_the_knobs_but_never_the_override(tmp_path, monkeypatch):
     spec = RunSpec(engine="all", forecast_date=FD, locations=locs,
                    jitter=0.3,
                    extra=K.write_extra({"pf.jitter": 0.3, "oracle.w": 0.25},
-                                       srv._run_extra(2, "realtime"),
+                                       ui_forecast._run_extra(2, "realtime"),
                                        override="why"))
     rid = led.open_run(spec, Path("pending"), {})
     led.close_run(rid, "stopped", {})
@@ -468,7 +470,7 @@ def test_the_retro_route_refuses_a_resume_with_other_knobs(tmp_path, monkeypatch
     monkeypatch.setattr(retro, "available_seasons", lambda: [SEASON])
     monkeypatch.setattr(retro, "season_vintages", lambda s: [W1, W2])
     launched = []
-    monkeypatch.setattr(srv, "_retro_bg", lambda *a, **k: launched.append((a, k)))
+    monkeypatch.setattr(ui_retro, "_retro_bg", lambda *a, **k: launched.append((a, k)))
     root = tmp_path / SEASON
     (root / "weeks" / W1).mkdir(parents=True)
     retro.write_meta(root, {"season": SEASON, "status": "stopped",

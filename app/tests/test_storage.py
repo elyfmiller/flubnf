@@ -489,7 +489,7 @@ def test_storage_fold_state_persists_per_local_storage(state):
 
 
 def test_empty_ledger_keeps_the_plain_hint_no_fold(state, monkeypatch):
-    monkeypatch.setattr(srv.Ledger, "rows", lambda self, n=50: [])
+    monkeypatch.setattr(runs_mod.Ledger, "rows", lambda self, n=50: [])
     html = client.get("/runs").text
     # no ledger fold with nothing to fold (the storage panel keeps its own)
     assert 'id="ledgerfold"' not in html

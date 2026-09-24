@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient             # noqa: E402
 from app.core import playback, report_season, retro   # noqa: E402
 from app.core.runs import Ledger, RunSpec, fmt_hms    # noqa: E402
 from app.ui import server as srv                      # noqa: E402
+from app.ui.routes import retro as ui_retro           # noqa: E402
 from app.ui import pipeline as ui_pipeline            # noqa: E402
 from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
 from app.ui import state as ui_state                  # noqa: E402
@@ -446,7 +447,7 @@ def test_stop_endpoint_stops_the_season_worker_end_to_end(tmp_path,
 
     monkeypatch.setattr(retro, "run_week", stop_via_endpoint)
     monkeypatch.setattr(retro, "score_season", no_score)
-    srv._retro_bg(SEASON, ["Ohio"], width=1)
+    ui_retro._retro_bg(SEASON, ["Ohio"], width=1)
     assert ui_retro_seasons._retro_status[SEASON] == "stopped"
     assert retro.week_done(root, W1)              # the completed week is kept
     assert not retro.week_done(root, W2)          # no half-week was started
@@ -479,7 +480,7 @@ def test_pause_endpoint_holds_the_season_worker_end_to_end(tmp_path,
     monkeypatch.setattr(retro, "run_week", pause_via_endpoint)
     monkeypatch.setattr(retro, "_sleep", fake_sleep)
     monkeypatch.setattr(retro, "score_season", lambda *a, **k: pd.DataFrame())
-    srv._retro_bg(SEASON, ["Ohio"], width=1)
+    ui_retro._retro_bg(SEASON, ["Ohio"], width=1)
     assert seen == ["paused"]
     assert retro.week_done(root, W2)              # Resume carried it on
     assert ui_retro_seasons._retro_status[SEASON] == "done"

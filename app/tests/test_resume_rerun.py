@@ -24,6 +24,7 @@ from app.core import data as core_data              # noqa: E402
 from app.core import retro                          # noqa: E402
 from app.core import ttlcache                       # noqa: E402
 from app.ui import server as srv                    # noqa: E402
+from app.ui.routes import retro as ui_retro         # noqa: E402
 from app.ui import pipeline as ui_pipeline          # noqa: E402
 from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
 from app.ui import state as ui_state                # noqa: E402
@@ -200,7 +201,7 @@ def test_retro_resume_post_launches_with_the_recorded_settings(tmp_path,
     wk.mkdir(parents=True)
     (wk / "samples.json").write_text("{}")
     launched = []
-    monkeypatch.setattr(srv, "_retro_bg",
+    monkeypatch.setattr(ui_retro, "_retro_bg",
                         lambda *a: launched.append(a))
     fields = retro.resume_form_fields(retro.read_meta(root))
     r = client.post("/retro/run", data=fields, follow_redirects=False)
@@ -222,7 +223,7 @@ def test_retro_resume_post_refused_over_a_console_run(tmp_path, monkeypatch):
     retro.write_meta(root, {"season": SEASON, "status": "stopped",
                             "settings": dict(SETTINGS), "total_weeks": 30})
     launched = []
-    monkeypatch.setattr(srv, "_retro_bg", lambda *a: launched.append(a))
+    monkeypatch.setattr(ui_retro, "_retro_bg", lambda *a: launched.append(a))
     ui_retro_seasons._retro_status.clear()
     ui_state._status.update({"running": "all:20990101T000000-abc",
                         "run_label": "2099-01-02 · 3 state(s) + US"})

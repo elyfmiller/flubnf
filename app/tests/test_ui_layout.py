@@ -32,7 +32,13 @@ modules split out of it) honest with each other and with the tests:
  10. the tests reach a moved private name through its owner, never through
      app.ui.server, and patch app.ui modules with raising left on; no
      app.ui module imports server or datasets_ui at import (datasets_ui
-     is included by server, last).
+     is included by server, last);
+ 11. server only assembles: it defines app and the warm start, re-exports
+     templates, VERSIONS and RUNNING_SHA, and includes the tab routers in
+     their order, datasets_ui's last; no tab module computes a path from
+     its own __file__ (app/ui/routes sits one directory deeper), and the
+     Retrospective form's state list still falls back to the packaged
+     locations table.
 
 golden/ui_routes.json was captured at 029c028. Regenerate it only for a
 deliberate change, and review its diff:
@@ -747,6 +753,71 @@ def test_no_app_ui_module_imports_the_assembly_at_import():
             if got & banned:
                 problems.append(f"{mod}:{node.lineno}: {sorted(got & banned)}")
     assert not problems, "\n".join(problems)
+
+
+# ---------------------------------------------------- 11. the assembly
+
+#: the tab routers server includes, in order (datasets_ui's comes last)
+TAB_ORDER = ["shell", "home", "data", "storage", "forecast", "output",
+             "sandbox", "models", "methods", "retro"]
+
+
+def test_the_server_only_assembles():
+    """server's own names are app, the warm start and its three public
+    re-exports; the rest are the modules it assembles and the classes it
+    builds the app with. The routes arrive router by router, in order."""
+    import __future__
+
+    def foreign(v) -> bool:
+        return (isinstance(v, (types.ModuleType, __future__._Feature))
+                or (isinstance(v, type)
+                    and not v.__module__.startswith("app.")))
+    own = {n for n, v in vars(srv).items()
+           if not n.startswith("__") and not foreign(v)}
+    assert own == {"app", "_start_background_warm", "templates", "VERSIONS",
+                   "RUNNING_SHA"}
+    assert srv.__all__ == ["app", "templates", "VERSIONS", "RUNNING_SHA"]
+    held = {v.__name__ for v in vars(srv).values()
+            if isinstance(v, types.ModuleType)
+            and v.__name__.startswith("app.")}
+    assert held == ({"app.ui.state", "app.ui.versions", "app.ui.templating",
+                     "app.ui.shared", "app.ui.datasets_ui"}
+                    | {f"app.ui.routes.{m}" for m in TAB_ORDER})
+    order = []
+    for rc in route_contexts(srv.app):
+        mod = getattr(getattr(rc, "endpoint", None), "__module__", "") or ""
+        if mod.startswith("app.ui.") and (not order or order[-1] != mod):
+            order.append(mod)
+    assert order == [f"app.ui.routes.{m}" for m in TAB_ORDER] + [
+        "app.ui.datasets_ui"]
+
+
+def test_no_tab_module_reads_its_own_file_path():
+    """app/ui/routes sits one level below app/ui, so __file__ arithmetic
+    copied from server.py would point one directory off (a favicon 404, a
+    silent fallback): the tabs anchor on state.UI_DIR and state.REPO."""
+    hits = [f"{p.relative_to(REPO)}:{n.lineno}"
+            for p in sorted((UI_DIR / "routes").glob("*.py"))
+            for n in ast.walk(_parse(p))
+            if isinstance(n, ast.Name) and n.id == "__file__"]
+    assert not hits, hits
+
+
+def test_the_retro_state_list_falls_back_to_the_packaged_table(
+        tmp_path, monkeypatch):
+    """No hub clone yet: the Retrospective form still lists the 52
+    jurisdictions (the states, DC and Puerto Rico) from the locations table
+    shipped in flubnf/data."""
+    import pandas as pd
+    import flubnf.settings
+    from app.ui.routes import retro as ui_retro
+    monkeypatch.setattr(flubnf.settings, "LOCATIONS",
+                        tmp_path / "no-hub" / "locations.csv")
+    locs = pd.read_csv(REPO / "flubnf" / "data" / "locations.csv", dtype=str)
+    want = list(locs.location_name[(locs.location.str.len() == 2)
+                                   & (locs.abbreviation != "US")])
+    assert len(want) == 52
+    assert ui_retro._retro_state_names() == want
 
 
 if __name__ == "__main__":

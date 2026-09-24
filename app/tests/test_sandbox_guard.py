@@ -303,11 +303,12 @@ def test_run_and_retro_refuse_a_sandbox_claim_under_the_engine_lock(monkeypatch)
     """The in-handler check (under _engine_lock) refuses even when the
     middleware's lock-free read raced past a claim."""
     import inspect
-    from app.ui import server
+    from app.ui.routes import forecast as ui_forecast
+    from app.ui.routes import retro as ui_retro
     from app.ui import shared as ui_shared
     from app.ui import state as ui_state
-    src_run = inspect.getsource(server.run_models)
-    src_retro = inspect.getsource(server.retro_run)
+    src_run = inspect.getsource(ui_forecast.run_models)
+    src_retro = inspect.getsource(ui_retro.retro_run)
     for src in (src_run, src_retro):
         lock = src.index("with _engine_lock:")
         assert src.index("_sandbox_live_reason()", lock) > lock

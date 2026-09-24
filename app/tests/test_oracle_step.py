@@ -24,6 +24,7 @@ from flubnf import oracle_bank as OB                     # noqa: E402
 from flubnf import oracle_mix as MX                      # noqa: E402
 from app.ui import shared as ui_shared                   # noqa: E402
 from app.ui import pipeline as ui_pipeline               # noqa: E402
+from app.ui.routes import forecast as ui_forecast        # noqa: E402
 
 ASOF = "2098-01-04"                                       # a Saturday
 FIPS = {"Ohio": "39", "Utah": "49", "California": "06", "Texas": "48"}
@@ -362,6 +363,7 @@ def test_a_console_replay_is_the_oracle_sihrs_from_the_season_start(hubfiles, tm
     stores no filter samples, and names the tree the Oracle SIHRS."""
     from fastapi.testclient import TestClient
     from app.ui import server as srv
+    from app.ui.routes import retro as ui_retro
     from app.ui import pipeline as ui_pipeline
     from app.ui import retro_prep as ui_retro_prep
     from app.ui import retro_seasons as ui_retro_seasons
@@ -391,8 +393,8 @@ def test_a_console_replay_is_the_oracle_sihrs_from_the_season_start(hubfiles, tm
             return True
     monkeypatch.setattr(ui_retro_prep, "_ensure_results_job",
                         lambda root, s, **k: {"done": _Done(), "error": ""})
-    real_bg, calls = srv._retro_bg, []
-    monkeypatch.setattr(srv, "_retro_bg", lambda *a: calls.append(a))
+    real_bg, calls = ui_retro._retro_bg, []
+    monkeypatch.setattr(ui_retro, "_retro_bg", lambda *a: calls.append(a))
     status_before = dict(ui_retro_seasons._retro_status)
     try:
         r = TestClient(srv.app).post("/retro/run", data={
@@ -489,7 +491,7 @@ def console(hubfiles, tmp_path, monkeypatch):
 def _run(srv, oracle=None):
     from app.core.runs import Ledger
     spec = RunSpec(engine="all", forecast_date=ASOF, locations=["Ohio", "Utah"],
-                   replicates=1, extra=srv._run_extra(2, "vintage", None, oracle))
+                   replicates=1, extra=ui_forecast._run_extra(2, "vintage", None, oracle))
     ui_pipeline._run_all(spec)
     row = next(iter(Ledger().rows(5)))
     outcome = json.loads(row.get("outcome") or "{}")
@@ -541,12 +543,12 @@ def test_oracle_none_is_a_research_run_with_its_file_withheld(console):
 
 
 def test_run_extra_carries_the_switch_and_refuses_anything_else():
-    from app.ui import server as srv
-    assert "oracle" not in srv._run_extra(2, "realtime", "")
-    assert srv._run_extra(2, "realtime", "", "none")["oracle"] == "none"
-    assert "oracle" not in srv._run_extra(2, "realtime", "", "")
+    from app.ui.routes import forecast as ui_forecast
+    assert "oracle" not in ui_forecast._run_extra(2, "realtime", "")
+    assert ui_forecast._run_extra(2, "realtime", "", "none")["oracle"] == "none"
+    assert "oracle" not in ui_forecast._run_extra(2, "realtime", "", "")
     with pytest.raises(ValueError, match="oracle must be"):
-        srv._run_extra(2, "realtime", "", "half")
+        ui_forecast._run_extra(2, "realtime", "", "half")
 
 
 def test_the_run_route_accepts_the_field_and_the_rerun_passes_it(tmp_path, monkeypatch):
