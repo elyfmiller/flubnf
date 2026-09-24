@@ -52,6 +52,8 @@
    {# any day is accepted; this line names the archived week it resolves to
       (server-side resolve_anchor, the run's own function; updated live) #}
    <p class="hint" id="anchor-line">{{ anchor_note }}</p>
+   {# the newest week's reporting, shown while the anchor is that week #}
+   {% if newest_report and not dataset %}{% import "_newest.html" as newest %}{{ newest.check(newest_report, short=True, hidden=(anchor_week != newest_report.week)) }}{% endif %}
    {% if vintage_dates %}
    <select id="vintage-pick" aria-label="{{ "Pick a week" if dataset else "Pick an archived week" }}">
     <option value="">{{ "or pick a week" if dataset else "or pick an archived week" }} ({{ vintage_dates|length }})</option>
@@ -89,6 +91,8 @@
         line.textContent = a
           ? 'Anchor week: ' + a + (a === LIVE ? LIVE_NOTE : '.')
           : 'No archived week on or before ' + box.value + '.';
+        var nc = document.getElementById('newest-check');
+        if (nc) nc.hidden = a !== nc.dataset.week;
       }
       // the settings panel follows the date (its Season start default is
       // August 1 of the forecast's season); a scripted date change fires

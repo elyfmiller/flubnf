@@ -23,6 +23,9 @@
   {% endif %}
   <p class="hint">{{ n_vintages }} archived truth vintages</p>
   {% elif not live_week %}<p class="hint">No data yet: Update data downloads it.</p>{% endif %}
+  {# did every jurisdiction report the newest week? (the file a real-time
+     run reads; app/core/reported.py) #}
+  {% if newest_report %}{% import "_newest.html" as newest %}{{ newest.check(newest_report) }}{% endif %}
   {# one row: the primary pull and the quiet check. No confirmation: pulling
      is safe and resumable (the flash banner reports it); the data-pull guard
      still intercepts a pull during run preparation #}
