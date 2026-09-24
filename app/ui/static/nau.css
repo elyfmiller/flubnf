@@ -719,6 +719,7 @@ fieldset.sbrun legend{color:var(--mut);font-size:var(--fs-label);padding:0 .3rem
 .sbrun .row{align-items:flex-end}
 .sbrun .row > span{display:flex;flex-direction:column}
 .sbrun input[type=number]{width:6.5rem}
+.sbrun input[name=seed]{width:9rem}
 .sbpair{display:flex;gap:.4rem}
 .sbpair select{width:auto}
 details.sbfill .row{align-items:flex-end}
@@ -733,6 +734,16 @@ details.sbfill input[type=file]{padding:.3rem}
 .sbreport ul{margin:.2rem 0 .4rem 1.1rem;padding:0}
 .sbreport p{margin:.4rem 0 .1rem}
 .sbactions{margin-top:.5rem}
+/* the New model form's Oracle SIHRS start */
+fieldset.sbshipped{border:1px solid var(--line);border-radius:8px;
+  padding:.35rem .8rem .5rem;margin:.6rem 0}
+fieldset.sbshipped legend{color:var(--mut);font-size:var(--fs-label);padding:0 .3rem}
+.sbshipped .row{align-items:flex-end}
+.sbshipped .row > span{display:flex;flex-direction:column}
+.sbshipped .row > span[hidden]{display:none}
+.sbshipped .lblrow{margin:0 0 .25rem}
+.sbsetpop{align-self:flex-end}
+.sbsetpop label{display:inline-flex;align-items:center;gap:.3rem}
 #sb-checked ul{margin:.2rem 0 .4rem 1.1rem;padding:0}
 #sb-checked p{margin:.4rem 0 .1rem}
 .sb-bad{color:var(--bad);font-weight:600}

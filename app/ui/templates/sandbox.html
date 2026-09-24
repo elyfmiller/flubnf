@@ -11,12 +11,36 @@
    <form method="post" action="/sandbox/new" class="sbnew">
     {{ tips.label("Name", "sb-name", "Letters, digits, _ and -, up to 64 characters.", for_="sbnew-name") }}
     <input id="sbnew-name" name="name" placeholder="model name" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,63}" required>
-    {{ tips.label("Start from", "sb-start", "The skeleton is a runnable one-step model with placeholder counts; an example or a copy brings its data and priors along.", for_="sbnew-start") }}
+    {{ tips.label("Start from", "sb-start", "The skeleton is a runnable one-step model with placeholder counts; an example or a copy brings its data and priors along. The Oracle SIHRS filter is the production model, priors and data for one location and week, built as the console builds it.", for_="sbnew-start") }}
+    {% set pf_sets = datasets | selectattr("pf") | list %}
     <select id="sbnew-start" name="start">
      <option value="skeleton">Blank skeleton</option>
      {% if examples %}<optgroup label="Examples">{% for e in examples %}<option value="example:{{ e }}">{{ e }}</option>{% endfor %}</optgroup>{% endif %}
      {% if models %}<optgroup label="Copy of">{% for m in models if m.complete %}<option value="copy:{{ m.name }}">{{ m.name }}</option>{% endfor %}</optgroup>{% endif %}
+     <optgroup label="Oracle SIHRS filter">
+      <option value="shipped:sihrs"{% if not (vintages and locations) %} disabled{% endif %}>Oracle SIHRS filter, hub location{% if not (vintages and locations) %} (no hub archive here){% endif %}</option>
+      {% for d in pf_sets %}<option value="shipped:dataset:{{ d.id }}">Oracle SIHRS filter, dataset {{ d.name }}</option>{% endfor %}
+     </optgroup>
     </select>
+    <fieldset class="sbshipped" id="sbnew-shipped" hidden>
+     <legend>Oracle SIHRS filter</legend>
+     <div class="row">
+      {% if vintages and locations %}
+      <span class="sbnew-hub"><label for="sbnew-loc">Location</label>
+       <select id="sbnew-loc" name="location">{% for l in locations %}<option value="{{ l.name }}">{{ l.name }}</option>{% endfor %}</select></span>
+      <span class="sbnew-hub">{{ tips.label("Forecast date", "sb-fdate", "The hub vintage archived that day: the data exactly as the forecaster saw it then.", for_="sbnew-date") }}
+       <select id="sbnew-date" name="forecast_date">{% for v in vintages %}<option value="{{ v }}">{{ v }}</option>{% endfor %}</select></span>
+      {% endif %}
+      {% if pf_sets %}
+      <span class="sbnew-ds"><label for="sbnew-group">Group</label>
+       <select id="sbnew-group" name="group">{% for d in pf_sets %}{% for g in d.groups %}<option value="{{ g.name }}" data-ds="{{ d.id }}" data-last="{{ g.last }}">{{ g.name }}</option>{% endfor %}{% endfor %}</select></span>
+      <span class="sbnew-ds">{{ tips.label("As of", "sb-asof", "A week the dataset holds; the fit sees the data up to it.", for_="sbnew-asof") }}
+       <input id="sbnew-asof" name="as_of" type="date" step="7" min="2020-01-04"></span>
+      {% endif %}
+      <span>{{ tips.label("Season start", "sb-season", "Optional. t = 0 and the seasonal phase count from it; blank takes August 1, as production does.", for_="sbnew-season") }}
+       <input id="sbnew-season" name="season_start" type="date"></span>
+     </div>
+    </fieldset>
     <button class="gold">Create</button>
    </form>
   </div>
@@ -40,7 +64,7 @@
 {% set name = editing.name %}
 <p class="hint sbcrumb"><a href="/sandbox">Sandbox</a> /</p>
 <h1>{{ name }}</h1>
-{% if note or origin %}<p class="sub">{{ note }}{% if origin %}<span class="hint"> · from {{ origin }}</span>{% endif %}</p>{% endif %}
+{% if note or origin %}<p class="sub">{{ note }}{% if origin %}<span class="hint"> · from {{ origin }}</span>{% endif %}{% if shipped and shipped.shipped and not shipped.intact %} {{ tips.tip("sb-modified", "modified", "Changed since creation: " ~ (shipped.changed | join(", ")) ~ ". Runs of it are your model, not the shipped filter.") }}{% endif %}</p>{% endif %}
 <div class="sbwork">
  <div>
   <div class="card">

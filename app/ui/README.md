@@ -67,7 +67,7 @@ Every route lives in `server.py`, grouped under `# === <Tab> ===` banners, excep
 | GET | `/methods` | `methods_page` | `methods.html` | nav |
 | **Sandbox** | | | | |
 | GET | `/sandbox` (`?model=`, `?run=`, `?dataset=`) | `sandbox_page` | `sandbox.html` (gallery, or one model's workbench) | nav |
-| POST | `/sandbox/new` (`start=skeleton\|example:<n>\|copy:<m>`), `/sandbox/add-example` (alias) | `sandbox_new`, `sandbox_add_example` | redirect | `sandbox.html` forms |
+| POST | `/sandbox/new` (`start=skeleton\|example:<n>\|copy:<m>\|shipped:sihrs\|shipped:dataset:<id>`), `/sandbox/add-example` (alias) | `sandbox_new`, `sandbox_add_example` | redirect | `sandbox.html` forms |
 | POST | `/sandbox/models/{name}/save`, `/run` (save, then run), `/delete` | `sandbox_save`, `sandbox_model_run`, `sandbox_delete_model` | redirect | `sandbox.html` workbench form |
 | POST | `/sandbox/models/{name}/fill-data`, `/upload-data` (multipart, size-capped) | `sandbox_fill_data`, `sandbox_upload_data` | redirect | `sandbox_data.html` (`formaction`) |
 | POST | `/sandbox/run` (alias) | `sandbox_run` | redirect | scripts |

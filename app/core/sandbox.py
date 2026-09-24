@@ -20,9 +20,12 @@ and the production templates are never read from here. Four examples ship
 with FluBNF (flubnf/sandbox_examples) and can be copied in under any name,
 new_model writes a runnable skeleton of the three files to edit, and
 copy_model duplicates a model; model.json records where each came from.
-check() reads a model without the engine; prepare() runs the production
-preflight first. data.exp can be filled from the hub archive or from a
-stored custom dataset (app/core/datasets.py), always in calendar weeks.
+from_shipped starts a model from the Oracle SIHRS filter exactly as the
+console's particle filter builds it for one jurisdiction and week, with
+creation digests so an edited copy never passes for it. check() reads a
+model without the engine; prepare() runs the production preflight first.
+data.exp can be filled from the hub archive or from a stored custom
+dataset (app/core/datasets.py), always in calendar weeks.
 """
 from __future__ import annotations
 
@@ -121,7 +124,7 @@ def list_models() -> list:
                     "missing": [f for f in REQUIRED if f not in present],
                     "complete": len(present) == len(REQUIRED),
                     "note": _first_comment(d / "model.bngl"),
-                    "origin": origin_label(read_info(d.name).get("origin", "")),
+                    "origin": model_origin(d.name),
                     "modified": max((int((d / f).stat().st_mtime)
                                      for f in present), default=0)})
     return out
@@ -129,9 +132,24 @@ def list_models() -> list:
 
 def origin_label(origin: str) -> str:
     """model.json's origin in words for the gallery."""
+    if origin in (SHIPPED, SHIPPED_DATASET):
+        return "the Oracle SIHRS start"
     kind, _, what = str(origin or "").partition(":")
     return {"skeleton": "skeleton", "example": f"example {what}",
             "copy": f"copy of {what}"}.get(kind, "")
+
+
+def model_origin(name: str) -> str:
+    """A model's origin in words; a shipped start says where and when, and
+    says 'modified' once any of its three files changed since creation."""
+    st = shipped_state(name)
+    if not st["shipped"]:
+        return origin_label(st["info"].get("origin", ""))
+    i = st["info"]
+    where = f"{i.get('location', '')}, {i.get('forecast_date', '')}"
+    if st["intact"]:
+        return f"the Oracle SIHRS start ({where})"
+    return f"the Oracle SIHRS start ({where}), modified"
 
 
 def list_examples() -> list:
@@ -334,6 +352,198 @@ def new_model(name: str) -> Path:
     d = save_model(name, skeleton(name))
     _write_info(name, {"origin": "skeleton", "created_utc": _stamp()})
     return d
+
+
+# ------------------------------------------------------ the shipped start
+# The Oracle SIHRS filter as the console's particle filter materializes it
+# for one jurisdiction and forecast date (app/core/engines/pf.py prepare):
+# the same resolve_state, template, parameter defaults, priors, suffix and
+# seed rule, composed here without the engine. model.json records where it
+# came from and the creation digests of the three files, so an edited or
+# copied model never passes for the shipped one.
+
+SHIPPED = "shipped:sihrs"
+SHIPPED_DATASET = "shipped:sihrs-dataset"
+SHIPPED_ORIGINS = (SHIPPED, SHIPPED_DATASET)
+SEED_RULE = "runs.derive_seed(location, forecast_date, 0), as the console's replicate 0"
+
+
+def digests(files: dict) -> dict:
+    """The three files' digests (newlines and outer whitespace ignored)."""
+    return {f: _digest(str(files.get(f, ""))) for f in REQUIRED}
+
+
+def from_shipped(name: str, location: str, forecast_date: str, *,
+                 season_start: str = "", dataset: str | None = None) -> Path:
+    """A new model: the production Oracle SIHRS filter cell for one
+    jurisdiction as of forecast_date (the hub vintage of that date), or
+    for one group of a stored dataset that has a population. N, rhomult
+    and i0 are resolved together from the data (sihrs_fit.resolve_state);
+    data.exp keeps the calendar week offsets from season_start. Refused in
+    words, leaving nothing behind, when the vintage, location or data are
+    missing."""
+    import datetime as dt
+    import tempfile
+    from flubnf.sihrs_fit import materialize_model, resolve_state, write_exp
+    from app.core.runs import RunSpec, derive_seed, default_season_start
+    check_name(name)
+    if (MODELS / name).exists():
+        raise SandboxError(f"a sandbox model named {name!r} already exists")
+    loc = str(location or "").strip()
+    if not loc:
+        raise SandboxError("choose a location for the Oracle SIHRS start")
+    fd = _iso_date(forecast_date, "the forecast date").isoformat()
+    ss = (_iso_date(season_start, "the season start").isoformat()
+          if str(season_start or "").strip() else default_season_start(fd))
+    if ss >= fd:
+        raise SandboxError(f"the season start {ss} is not before the "
+                           f"forecast date {fd}")
+    extra, ref = {}, None
+    if dataset:
+        from app.core import datasets
+        try:
+            ds = datasets.get(dataset)
+        except datasets.DatasetError as e:
+            raise SandboxError(str(e)) from None
+        if not ds.pf_eligible:
+            raise SandboxError(
+                f"dataset {ds.name!r} holds {'rates' if ds.kind == 'rate' else 'counts'}"
+                f"{'' if ds.has_population else ' with no population'}: the "
+                "Oracle SIHRS filter needs counts and a population")
+        if loc not in ds.groups:
+            raise SandboxError(f"dataset {ds.name!r} has no group {loc!r}")
+        try:
+            truth = ds.truth_path(fd)
+        except FileNotFoundError as e:
+            raise SandboxError(str(e)) from None
+        loc_csv, tag, ref = ds.locations_csv, pf_engine.dataset_tag(loc), ds.ref()
+        extra["dataset"] = ref
+        origin, source_asof = SHIPPED_DATASET, "dataset"
+    else:
+        from app.core import data as data_mod
+        try:
+            truth = data_mod.vintage_path(fd)
+        except FileNotFoundError as e:
+            raise SandboxError(f"no hub vintage for {fd} here ({e}); pick one "
+                               "of the archived dates") from None
+        loc_csv, tag = data_mod.LOCATIONS, pf_engine._hub_tag(loc)
+        origin, source_asof = SHIPPED, fd
+    try:
+        s = resolve_state(loc, truth_csv=truth, locations_csv=loc_csv,
+                          season_start=ss, as_of=fd)
+    except KeyError:
+        raise SandboxError(f"unknown location {loc!r}: the locations table "
+                           "does not name it") from None
+    except (ValueError, OSError) as e:
+        raise SandboxError(str(e)) from None
+    sfx = f"{tag}_flu"                           # production's suffix
+    spec = RunSpec(engine="pf", forecast_date=fd, locations=[loc],
+                   season_start=ss, extra=extra)
+    with tempfile.TemporaryDirectory() as tmp:
+        m = materialize_model(s, pf_engine.TEMPLATE, Path(tmp) / "m.bngl", sfx)
+        cell_bngl = m.read_text().replace("begin parameters\n",
+                                          pf_engine.DEFAULTS_BLOCK, 1)
+        exp = write_exp(s, Path(tmp) / "data.exp").read_text()
+    where = f"dataset {ref['name']}, group {loc}" if ref else loc
+    files = {
+        "model.bngl": (f"# The Oracle SIHRS filter for {where} as of {fd}.\n"
+                       "# The production template with this week's data, as "
+                       "the console's filter\n# writes it (season from "
+                       f"{ss}; suffix {sfx}).\n" + cell_bngl),
+        "data.exp": exp,
+        "priors.conf": ("# The production priors of the Oracle SIHRS filter "
+                        "(app/core/engines/pf.py).\n"
+                        + pf_engine.priors_for(spec)
+                        + "pf_cumulative_observable = Hobs\n")}
+    seed = derive_seed(loc, pf_engine.seed_date_for(spec), 0)
+    # each row's week: the one Saturday in its week after season_start
+    ss_d = _iso_date(ss, "the season start")
+    dates = [_first_saturday((ss_d + dt.timedelta(days=7 * int(t))).isoformat())
+             for t in s.times]
+    d = save_model(name, files)
+    info = {"origin": origin, "created_utc": _stamp(), "location": loc,
+            "forecast_date": fd, "season_start": ss, "suffix": sfx,
+            "seed": int(seed), "seed_rule": SEED_RULE,
+            "population": int(s.population), "digests": digests(files)}
+    if ref:
+        info["dataset"] = ref
+    _write_info(name, info)
+    times = [int(t) for t in s.times]
+    src = {"location": loc, "start": dates[0], "end": dates[-1],
+           "asof": source_asof, "rows": len(times),
+           "dropped": int(times[-1] - times[0] + 1 - len(times)),
+           "origin": ss, "dates": dates, "population": int(s.population),
+           "written_utc": _stamp(), "digest": _digest(files["data.exp"])}
+    if ref:
+        src.update(dataset=ref, kind="count")
+    (d / SOURCE_FILE).write_text(json.dumps(src, indent=1) + "\n",
+                                 encoding="utf-8", newline="\n")
+    return d
+
+
+def shipped_state(name: str, files: dict | None = None) -> dict:
+    """Whether a model is an Oracle SIHRS start and still as created:
+    {"shipped", "intact", "changed": [files edited since], "info"}. A
+    model without creation digests is never intact."""
+    info = read_info(name)
+    out = {"shipped": info.get("origin") in SHIPPED_ORIGINS, "intact": False,
+           "changed": [], "info": info}
+    if not out["shipped"]:
+        return out
+    dig = info.get("digests")
+    if not isinstance(dig, dict):
+        out["changed"] = list(REQUIRED)
+        return out
+    try:
+        files = files or read_model(name)
+    except SandboxError:
+        out["changed"] = list(REQUIRED)
+        return out
+    now = digests(files)
+    out["changed"] = [f for f in REQUIRED if dig.get(f) != now[f]]
+    out["intact"] = not out["changed"]
+    return out
+
+
+def sihrs_shaped(bngl: str) -> bool:
+    """A model whose initial state is derived from N and the data (the
+    Oracle SIHRS filter's i0), where N cannot be changed on its own."""
+    params = set(bngl_parameters(bngl))
+    return "N" in params and "i0" in params
+
+
+def set_population(name: str, population: int) -> None:
+    """Rewrite the parameters-block line named N to a population. Refused
+    for a model without such a line, and for an SIHRS-shaped model, whose
+    i0 and ascertainment are derived from N and the data together: start
+    that from the Oracle SIHRS filter instead."""
+    d = model_dir(name)
+    bngl = (d / "model.bngl").read_text(encoding="utf-8", errors="replace")
+    if sihrs_shaped(bngl):
+        raise SandboxError(
+            "N not changed: this model derives i0 from N and the data, so N "
+            "alone would rescale every count. Start from the Oracle SIHRS "
+            "filter for the location instead.")
+    pop = int(population)
+    if pop <= 0:
+        raise SandboxError(f"population {population!r} is not positive")
+    out, inside, done = [], False, 0
+    for line in bngl.splitlines(keepends=True):
+        low = " ".join(line.split("#", 1)[0].lower().split())
+        if low == "begin parameters":
+            inside = True
+        elif low == "end parameters":
+            inside = False
+        elif inside and not done:
+            m = re.match(r"^(\s*(?:\d+\s+)?N)(\s*=?\s*)(\S+)(.*)$", line,
+                         flags=re.S)
+            if m:
+                line = f"{m.group(1)}{m.group(2)}{pop}{m.group(4)}"
+                done = 1
+        out.append(line)
+    if not done:
+        raise SandboxError("the parameters block has no line named N to set")
+    (d / "model.bngl").write_text("".join(out), encoding="utf-8", newline="\n")
 
 
 def model_dir(name: str) -> Path:
@@ -728,7 +938,13 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
                                   + "\n", encoding="utf-8", newline="\n")
     obs_col = exp["columns"][1]
     observed = [row[1] for row in exp["rows"]]
-    cells = [{"key": f"{name}_r0", "dir": str(cell), "location": name,
+    shipped = shipped_state(name, files)
+    info = shipped["info"]
+    # a shipped start's cell names its jurisdiction, as production's does,
+    # so collect() and the Oracle step key it by location
+    location = (str(info.get("location")) if shipped["shipped"]
+                and info.get("location") else name)
+    cells = [{"key": f"{name}_r0", "dir": str(cell), "location": location,
               "replicate": 0, "seed": int(seed), "n_obs": len(observed),
               "particles": particles, "last_observed": float(observed[-1]),
               "weeks_dropped": 0, "last_week_offset": int(times[-1]),
@@ -741,8 +957,15 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
             "forecast_weeks": forecast_weeks,
             "seed": int(seed), "suffix": sfx, "obs_col": obs_col,
             "time": times, "observed": observed, "n_obs": len(observed),
-            "digests": {f: _digest(files[f]) for f in REQUIRED},
+            "digests": digests(files),
+            "origin": str(info.get("origin", "")),
             "status": "prepared"}
+    if shipped["shipped"]:
+        meta["shipped"] = {k: info.get(k) for k in
+                           ("location", "forecast_date", "season_start",
+                            "seed", "dataset")}
+        meta["shipped"]["intact"] = shipped["intact"]
+        meta["shipped"]["changed"] = shipped["changed"]
     src = read_data_source(name)
     if src:
         meta["source"] = src
@@ -1023,6 +1246,7 @@ def dataset_choices() -> list:
     try:
         from app.core import datasets
         return [{"id": d.id, "name": d.name, "kind": d.kind,
+                 "pf": d.pf_eligible,
                  "groups": [{k: g.get(k) for k in ("name", "first", "last",
                                                    "population")}
                             for g in d.meta.get("groups", [])]}
@@ -1142,7 +1366,8 @@ def calendar_offsets(dates: list, origin: str) -> list:
 
 
 def fill_data(name: str, location_name: str, start: str, end: str,
-              asof: str | None = None, *, dataset: str | None = None) -> dict:
+              asof: str | None = None, *, dataset: str | None = None,
+              set_pop: bool = False) -> dict:
     """Rewrite a model's data.exp from the hub archive, or with dataset=
     from one group (location_name) of a stored dataset: the file's own
     header line if it has one (else '# time H_weekly'), then one 't value'
@@ -1151,8 +1376,13 @@ def fill_data(name: str, location_name: str, start: str, end: str,
     beside it (with the origin and each row's date) and returns its
     contents. Refuses an unknown location or group, a range with no
     reported week, and start after end; a dataset's range defaults to the
-    group's own weeks."""
+    group's own weeks. With set_pop, the model's N line becomes the
+    location's (or group's) population (set_population's refusals hold,
+    checked before anything is written)."""
     d = model_dir(name)
+    if set_pop and sihrs_shaped((d / "model.bngl").read_text(
+            encoding="utf-8", errors="replace")):
+        set_population(name, 1)                  # raises its refusal
     extra = {}
     if dataset:
         s = dataset_series(dataset, str(location_name), start, end)
@@ -1172,6 +1402,13 @@ def fill_data(name: str, location_name: str, start: str, end: str,
     if not s["values"]:
         raise SandboxError(f"no reported week for {location_name} between "
                            f"{start} and {end}{where}")
+    pop = None
+    if set_pop:
+        pop = (extra.get("population") if dataset
+               else hub_population(str(location_name)))
+        if not pop:
+            raise SandboxError(f"no population is known for {location_name}; "
+                               "N was not changed and nothing was loaded")
     origin = week_origin(name, start)
     ts = calendar_offsets(s["dates"], origin)
     header = DEFAULT_HEADER
@@ -1194,7 +1431,22 @@ def fill_data(name: str, location_name: str, start: str, end: str,
             "digest": _digest(text)}
     (d / SOURCE_FILE).write_text(json.dumps(info, indent=1) + "\n",
                                  encoding="utf-8", newline="\n")
+    if pop:
+        set_population(name, int(pop))
+        info["population_set"] = int(pop)
     return info
+
+
+def hub_population(location_name: str) -> int | None:
+    """A hub location's population from the locations table, or None."""
+    try:
+        import pandas as pd
+        from app.core import data as data_mod
+        locs = pd.read_csv(data_mod.LOCATIONS, dtype=str)
+        row = locs[locs.location_name == str(location_name)]
+        return int(float(row.iloc[0]["population"])) if not row.empty else None
+    except Exception:
+        return None
 
 
 def read_data_source(name: str) -> dict | None:

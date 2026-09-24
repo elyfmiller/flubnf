@@ -38,12 +38,67 @@
     return 'about ' + (Math.round(s / 360) / 10) + ' h';
   }
 
-  root.SandboxPage = {xsFor: xsFor, fmtEta: fmtEta};
+  root.SandboxPage = {xsFor: xsFor, fmtEta: fmtEta, suggestName: suggestName};
   if (typeof document === 'undefined') return;
 
   function $(id) { return document.getElementById(id); }
 
+  // a model name from a location and a date: oracle_new_york_2024-11-09
+  function suggestName(loc, date) {
+    var s = ('oracle_' + (loc || '') + '_' + (date || '')).toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '_').replace(/_+/g, '_').replace(/_$/, '');
+    return s.slice(0, 64);
+  }
+
+  // ---- the gallery's New model form: the Oracle SIHRS start asks for a
+  // hub location and vintage, or a dataset group and week
+  function setupNew() {
+    var start = $('sbnew-start'), box = $('sbnew-shipped'), nm = $('sbnew-name');
+    if (!start || !box) return;
+    var loc = $('sbnew-loc'), date = $('sbnew-date'), grp = $('sbnew-group'), asof = $('sbnew-asof');
+    var suggested = '';
+    function each(sel, fn) { Array.prototype.forEach.call(box.querySelectorAll(sel), fn); }
+    function name() {
+      if (!nm || (nm.value && nm.value !== suggested)) return;
+      var v = start.value, s = '';
+      if (v === 'shipped:sihrs' && loc && date) s = suggestName(loc.value, date.value);
+      else if (v.indexOf('shipped:dataset:') === 0 && grp) s = suggestName(grp.value, asof ? asof.value : '');
+      nm.value = suggested = s;
+    }
+    function show() {
+      var v = start.value, hub = v === 'shipped:sihrs', ds = v.indexOf('shipped:dataset:') === 0 ? v.slice(16) : '';
+      box.hidden = !(hub || ds);
+      each('.sbnew-hub', function (e) { e.hidden = !hub; });
+      each('.sbnew-ds', function (e) { e.hidden = !ds; });
+      each('select, input', function (e) {
+        var inHub = e.closest('.sbnew-hub'), inDs = e.closest('.sbnew-ds');
+        e.disabled = box.hidden || (inHub && !hub) || (inDs && !ds);
+      });
+      if (grp && ds) {
+        var first = null;
+        Array.prototype.forEach.call(grp.options, function (o) {
+          var mine = o.getAttribute('data-ds') === ds;
+          o.hidden = !mine; o.disabled = !mine;
+          if (mine && !first) first = o;
+        });
+        var cur = grp.selectedIndex >= 0 ? grp.options[grp.selectedIndex] : null;
+        if (first && (!cur || cur.disabled)) first.selected = true;
+        lastWeek();
+      }
+      name();
+    }
+    function lastWeek() {
+      var o = grp && grp.selectedIndex >= 0 ? grp.options[grp.selectedIndex] : null;
+      if (o && asof) asof.value = o.getAttribute('data-last') || asof.value;
+    }
+    start.addEventListener('change', show);
+    [loc, date, asof].forEach(function (e) { if (e) e.addEventListener('change', name); });
+    if (grp) grp.addEventListener('change', function () { lastWeek(); name(); });
+    show();
+  }
+
   function setup() {
+    setupNew();
     var form = $('sbform');
     // ---- run settings: the preset sets the particles; typing a count
     // other than a preset's reads as custom; the estimate follows
@@ -225,9 +280,10 @@
     var med = {x: xs, y: t.q50, mode: 'lines', name: 'median', line: {color: accInk, width: 2}};
     var pts = {x: xs.slice(0, times.length), y: RES.meta.observed || [], mode: 'markers',
                name: RES.meta.obs_col || 'observed', marker: {color: ink, size: 6}};
+    var traces = [band, med, pts];
     var shapes = n < t.columns ? [{type: 'line', x0: xs[n - 1], x1: xs[n - 1], y0: 0, y1: 1, yref: 'paper',
                                    line: {dash: 'dot', color: mut}}] : [];
-    root.Plotly.newPlot(el, [band, med, pts], {margin: {t: 30, r: 10, l: 64, b: 48}, shapes: shapes,
+    root.Plotly.newPlot(el, traces, {margin: {t: 30, r: 10, l: 64, b: 48}, shapes: shapes,
       paper_bgcolor: surf, plot_bgcolor: surf,
       font: {color: ink, family: '"DM Sans",system-ui,sans-serif', size: Math.round(fs * 0.85)},
       xaxis: {automargin: true, title: {text: calendar ? 'week ending' : 'time'}, gridcolor: line, zerolinecolor: line, linecolor: line, tickfont: {color: ink}},
