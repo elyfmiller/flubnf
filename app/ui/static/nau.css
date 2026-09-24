@@ -252,6 +252,15 @@ header.nav a.tab.active{border-bottom-color:var(--accent-ink);font-weight:700}
   header.nav a.tab{font-size:.95rem;padding:.8rem .4rem}
 }
 header.nav .spacer{flex:1}
+header.nav .navtabs{display:flex;align-items:center;gap:.15rem;min-width:0}
+header.nav .navtabs a.tab{white-space:nowrap;flex:none}
+/* a narrow window: brand and one sideways-scrolling tab row, the text
+   size, theme and a11y controls on the row below */
+@media(max-width:900px){
+  header.nav .navtabs{flex:1 1 0;overflow-x:auto;scrollbar-width:thin;
+    scrollbar-color:color-mix(in srgb,var(--nav-ink) 35%,transparent) transparent}
+  header.nav .spacer{flex-basis:100%;height:0}
+}
 /* theme picker and a11y pair (Contrast / CV safe): segmented groups with
    aria-pressed, persisted; the a11y buttons are independent toggles */
 .themepick,.a11ypick{display:inline-flex;
@@ -494,10 +503,10 @@ svg .svgt-sub{font-size:.68em}
    card-wide chart (rem labels ballooned relative to the plot) */
 svg.cumchart .svgt-sm{font-size:9px}
 svg.cumchart .svgt-md{font-size:11px}
-/* defining equations under a diagram (styled text, no math library): the
-   panel spans the card, lines center, math never wraps (panel scrolls) */
-.eqpanel{margin:.45rem 0 .25rem;padding:.5rem .85rem;
-  background:var(--bg);border:1px solid var(--line);border-radius:9px;
+/* defining equations under a diagram (styled text, no math library): flat
+   in the card (no well of its own), lines center; math stays on one line
+   except at phone width, where it wraps rather than clip */
+.eqpanel{margin:.45rem 0 .25rem;padding:.25rem 0;
   overflow-x:auto;text-align:center}
 .eqpanel p{margin:.24rem 0}
 .eqpanel .math{font-size:.98rem;font-weight:600;white-space:nowrap}
@@ -587,6 +596,8 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
 .modal .row button{margin-top:0}
 /* .row's display:flex outranks the UA [hidden] rule */
 .row[hidden]{display:none}
+/* any element's own display rule would outrank the UA [hidden] rule */
+[hidden]{display:none !important}
 /* dialog titles: undo the .card h2 kicker style; wins by coming later */
 .modal h2{font-size:var(--fs-lead);font-weight:700;text-transform:none;
   letter-spacing:0;color:var(--ink);margin:0 0 .35rem}
@@ -600,29 +611,28 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
    Data tab list; the own-data replay card). Every track may shrink to the
    card (min(100%,...)), so the box never widens a narrow page. */
 .dsup{margin:.2rem 0 .4rem;min-width:0}
-.dsdrop{display:flex;flex-direction:column;gap:.4rem;align-items:stretch;
-  border:1.5px dashed var(--mut);border-radius:10px;padding:.75rem .85rem;
-  margin:.3rem 0;background:var(--bg);color:var(--ink);cursor:pointer}
+.dsdrop{position:relative;display:flex;flex-direction:column;align-items:center;
+  gap:.25rem;border:1.5px dashed var(--mut);border-radius:10px;padding:1.1rem .85rem;
+  margin:.3rem 0;color:var(--ink);text-align:center;cursor:pointer}
+.dsdrop:hover{border-color:var(--accent-ink)}
 .dsdrop:focus-within{border-color:var(--accent-ink);
-  background:color-mix(in srgb,var(--accent) 12%,var(--bg))}
+  background:color-mix(in srgb,var(--accent) 12%,transparent)}
 /* a file dragged over: a solid, doubled edge, a stronger tint and "Drop to
    check", unlike the keyboard focus above (visible in every theme) */
 .dsdrop.over{border-style:solid;border-color:var(--accent-ink);
   box-shadow:inset 0 0 0 2px var(--accent-ink);
-  background:color-mix(in srgb,var(--accent) 26%,var(--bg))}
-.dsdrop-t,.dsdrop-on{font-weight:650;font-size:var(--fs-label)}
+  background:color-mix(in srgb,var(--accent) 26%,transparent)}
+.dsdrop-t,.dsdrop-on{font-weight:600}
+.dslink{color:var(--gold);text-decoration:underline;text-underline-offset:2px}
 .dsdrop-on,.dsdrop.over .dsdrop-t{display:none}
 .dsdrop.over .dsdrop-on{display:block}
-.dsdrop input[type=file]{width:100%;max-width:100%;min-width:0;padding:.3rem;
-  background:var(--card)}
-/* the native "Choose File" button takes the theme (it stayed light grey
-   on the dark grounds) */
-.dsdrop input[type=file]::file-selector-button{margin-right:.7rem;
-  padding:.3rem .8rem;border:1px solid var(--field-line);border-radius:6px;
-  background:var(--bg);color:var(--ink);font:inherit;font-weight:600;
-  cursor:pointer}
-.dsdrop input[type=file]::file-selector-button:hover{
-  background:color-mix(in srgb,var(--accent) 14%,var(--bg))}
+.dsdrop-f{font-size:var(--fs-label);color:var(--mut);overflow-wrap:anywhere}
+.dsdrop-f:empty{display:none}
+/* the native input stays in the page (keyboard, screen readers, no-script
+   submit) but out of sight: the zone is the control */
+.dsdrop input[type=file]{position:absolute;inset:0;width:100%;height:100%;
+  opacity:0;cursor:pointer}
+.dsup.js:not(.has-file) .dsup-fields{display:none}
 .dsup-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr));
   gap:0 .9rem}
 .dsup.js .dsup-go{display:none}
@@ -638,9 +648,8 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
 .dsproblems ul{margin:.2rem 0 .3rem;padding-left:1.2rem}
 .dsproblems li{overflow-wrap:break-word}
 .dsproblems .nw,.dsnotes .nw{white-space:nowrap}
-.dsmap{border:1px solid var(--line);border-radius:10px;padding:.2rem .8rem .6rem;
-  margin:.6rem 0;min-width:0}
-.dsmap legend{font-weight:650;font-size:.92rem;padding:0 .3rem}
+.dsmap{border:0;padding:0;margin:.8rem 0;min-width:0}
+.dsmap legend{font-weight:650;font-size:.92rem;padding:0}
 .dsmap-roles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,9rem),1fr));
   gap:0 .8rem}
 .dsnotes{margin:.4rem 0;padding-left:1.1rem;color:var(--mut);font-size:var(--fs-hint)}
@@ -795,13 +804,13 @@ form.sbnew select{width:14rem;max-width:100%;margin-right:.4rem}
 .sbcrumb{margin:0}
 /* the form's default (Enter) button: present, never seen */
 .sb-default{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
-fieldset.sbrun{border:1px solid var(--line);border-radius:8px;
-  padding:.35rem .8rem .5rem;margin:.8rem 0 .4rem}
-fieldset.sbrun legend{color:var(--mut);font-size:var(--fs-label);padding:0 .3rem}
+/* sub-groups inside a card are a heading, not another box */
+fieldset.sbrun{border:0;padding:0;margin:1rem 0 .4rem;min-width:0}
+fieldset.sbrun legend{font-weight:650;font-size:.92rem;padding:0}
 .sbrun .row{align-items:flex-end}
 .sbrun .row > span{display:flex;flex-direction:column}
-.sbrun input[type=number]{width:6.5rem}
-.sbrun input[name=seed]{width:9rem}
+.sbrun input[type=number]{width:5.5rem}
+.sbrun input[name=seed]{width:6.5rem}
 .sbpair{display:flex;gap:.4rem}
 .sbpair select{width:auto}
 details.sbfill .row{align-items:flex-end}
@@ -817,9 +826,8 @@ details.sbfill input[type=file]{padding:.3rem}
 .sbreport p{margin:.4rem 0 .1rem}
 .sbactions{margin-top:.5rem}
 /* the New model form's Oracle SIHRS start; compare, diff, the Oracle step */
-fieldset.sbshipped{border:1px solid var(--line);border-radius:8px;
-  padding:.35rem .8rem .5rem;margin:.6rem 0}
-fieldset.sbshipped legend{color:var(--mut);font-size:var(--fs-label);padding:0 .3rem}
+fieldset.sbshipped{border:0;padding:0;margin:.8rem 0;min-width:0}
+fieldset.sbshipped legend{font-weight:650;font-size:.92rem;padding:0}
 .sbshipped .row{align-items:flex-end}
 .sbshipped .row > span{display:flex;flex-direction:column}
 .sbshipped .row > span[hidden]{display:none}
@@ -827,7 +835,7 @@ fieldset.sbshipped legend{color:var(--mut);font-size:var(--fs-label);padding:0 .
 .sbsetpop{align-self:flex-end}
 .sbsetpop label{display:inline-flex;align-items:center;gap:.3rem}
 .sbcompare{margin:0}
-.sbcompare select{width:auto;max-width:16rem}
+.sbcompare select{width:auto;max-width:100%}
 pre.sbdiffpre{max-height:22rem;overflow:auto;font-size:var(--fs-label);
   white-space:pre;margin:.3rem 0}
 table.sboracle-t td,table.sbparams2 td{font-variant-numeric:tabular-nums}
@@ -848,3 +856,143 @@ tr[aria-current="true"] td{font-weight:600}
 .mview-draw svg{display:block;max-width:none}
 .mview-draw pre.hint{white-space:pre-wrap;margin:.3rem 0}
 .mview-hint{margin:.4rem 0 0}
+
+/* polish: home-models-methods */
+/* home: a small heading over each performance table; the setup list */
+h3.perfhead{margin:.9rem 0 .15rem;font-weight:650;display:flex;
+  align-items:center;gap:.1rem}
+.card h2 + p.hint + h3.perfhead{margin-top:.35rem}
+ul.setupmiss{margin:.2rem 0 .5rem;padding-left:1.2rem}
+/* model pages: the intro's full description; a second heading in the
+   mechanism card sits apart from the figure above it */
+p.introbody{margin:.55rem 0 .1rem}
+.mech h2:not(:first-child){margin-top:1.4rem}
+/* model switcher: the research tag stays readable on the pressed button */
+.viewtabs button.gold[data-model] .hint{color:inherit;opacity:.75}
+/* methods: the in-page contents row */
+nav.toc{display:flex;flex-wrap:wrap;gap:.2rem 1rem;margin:0 0 .9rem;
+  font-size:var(--fs-hint)}
+/* phone width: equations wrap instead of clipping, wide figures scroll
+   with a visible bar (their right side is off-card), tables tighten so they
+   fit the card, and the header's tab rows stay compact */
+@media(max-width:640px){
+  .eqpanel .math{white-space:normal}
+  .pipe,.figscroll{overflow-x:auto;scrollbar-width:thin;
+    scrollbar-color:var(--mut) transparent}
+  .pipe svg,.figscroll > svg{min-width:620px}
+  .perf td,.perf th{padding:.28rem .3rem}
+  header.nav{padding:.2rem .6rem}
+  header.nav .brand{padding:.35rem .6rem .35rem 0}
+  header.nav a.tab{padding:.45rem .4rem}
+  header.nav .fontsize{margin:.25rem .4rem .25rem auto}
+  header.nav .themepick,header.nav .a11ypick{margin-top:.25rem;margin-bottom:.35rem}
+}
+
+/* polish: forecast-output-runs */
+/* view toggles (data view, fan model): small pills like the Real-time /
+   Vintage modes, so a selected view never reads as the primary action */
+.seg{display:flex;flex-wrap:wrap;gap:.4rem;margin:.45rem 0}
+.seg button{margin:0;padding:.15rem .7rem;border-radius:99px;
+  font-size:.85rem;font-weight:600}
+/* unselected: outlined; selected keeps the global .gold fill */
+.seg button:not(.gold),[data-theme="dark"] .seg button:not(.gold),
+[data-theme="dim"] .seg button:not(.gold){background:transparent;
+  color:var(--ink);border:1px solid var(--gold)}
+/* Forecast pager rows: every control on one line (a stray button
+   margin-top dropped "expand" below the arrows); scoped to this page's
+   pagers so other tabs' carousels keep their look */
+#fancard .carousel button,.fanx .carousel button,
+.dataloc button{margin-top:0;padding:.2rem .6rem}
+.dataloc{margin:.6rem 0 .2rem}
+/* a setting with one possible value, stated as text */
+.fixedval{margin:.1rem 0 .2rem;font-weight:600}
+/* forms whose only control is a button and its tip */
+form.rerun-run{margin:.6rem 0 .2rem;gap:.2rem}
+/* Output: the earlier-weeks picker sits under its own label */
+.archlbl{margin-top:.9rem}
+/* run page settings: values wrap in their own track at phone width
+   instead of running past the card edge */
+.runrec .runsettings .kv{grid-template-columns:max-content minmax(0,1fr)}
+
+/* polish: retro */
+.rt-arch-h{margin:.9rem 0 .2rem;font-size:var(--fs-label);font-weight:650;
+  color:var(--mut)}
+/* dataset and week range on one line, wrapping to dataset over From/To */
+.dsr-range{display:flex;flex-wrap:wrap;gap:0 .8rem;align-items:flex-end}
+.dsr-range>span{flex:1 1 8.5rem;min-width:0}
+.dsr-range>.dsr-dsf{flex:2 1 16rem}
+.rs-h{display:flex;align-items:baseline;gap:.4rem;margin-bottom:.35rem}
+.rs-h h2{margin-bottom:0}
+@media (max-width:640px){
+  /* the card-wide cumulative chart shrinks to a phone: its viewBox-px
+     labels grow so they stay legible */
+  svg.cumchart .svgt-sm{font-size:26px}
+  svg.cumchart .svgt-md{font-size:30px}
+}
+#dsr-groups option:checked{color:var(--ink);background:linear-gradient(
+  color-mix(in srgb,var(--gold-bright) 30%,var(--card)),
+  color-mix(in srgb,var(--gold-bright) 30%,var(--card)))}
+.rd-pick{display:flex;flex-wrap:wrap;gap:.5rem 1rem;align-items:center;
+  margin:.2rem 0 .4rem}
+.rd-pick select{width:auto;min-width:12rem;max-width:100%;margin:0}
+.rd-hz{display:inline-flex;flex-wrap:wrap;gap:.35rem;align-items:center}
+.rd-settings .runsettings>strong{display:none}
+.rd-settings .runsettings .kv{width:auto;
+  grid-template-columns:max-content minmax(0,1fr)}
+.rd-nw{white-space:nowrap}
+@media (max-width:640px){
+  /* six columns fit a phone without the last one at the edge */
+  table.rd-scores td,table.rd-scores th{padding-left:.3rem;padding-right:.3rem}
+}
+
+/* polish: data-storage-datasets */
+/* hub card: the pull and the check side by side, forms flush */
+.hubacts{margin-top:.6rem}
+.hubacts form{margin:0}
+.hubacts button{margin-top:0}
+/* archive strip: labels stay legible; a phone scrolls the strip itself,
+   never the page; a wide card does not blow the labels up */
+.archive-wrap{overflow-x:auto;max-width:100%}
+.archive-strip{display:block;width:100%;min-width:420px;max-width:680px}
+/* your datasets: the stored list under a small heading */
+.dslist-h{margin:1rem 0 .2rem;font-size:var(--fs-label);color:var(--mut)}
+.dslist-none{margin-top:.8rem}
+/* under 600px each dataset row stacks: name, facts, then its actions */
+@media(max-width:600px){
+  .dstable thead{display:none}
+  .dstable,.dstable tbody{display:block;width:100%}
+  .dstable tr{display:flex;flex-wrap:wrap;gap:.15rem .9rem;padding:.5rem 0;
+    border-bottom:1px solid var(--line)}
+  .dstable td{border:0;padding:0;text-align:left}
+  .dstable td.dsname,.dstable td.dsactions{flex-basis:100%}
+  .dstable td[data-label]::before{content:attr(data-label) ": ";color:var(--mut)}
+  .dstable td.dsactions button{margin-left:.5rem}
+}
+/* storage fold header: "On disk  29.3 KB in use" on one baseline */
+.stfold-h{display:inline;margin:0 .6rem 0 0}
+#storagefold > summary .stotal{display:inline-flex;gap:.35rem;margin:0}
+#storagefold > summary .big{font-size:var(--fs-lead)}
+
+/* polish: sandbox */
+.sbscroll{overflow-x:auto;max-width:100%}
+table.sbkeys code{white-space:nowrap}
+/* at phone width each key sits over its value and source, no sideways scroll */
+@media(max-width:640px){
+  table.sbkeys thead{display:none}
+  table.sbkeys tr{display:flex;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+  table.sbkeys td{border:0;padding:.15rem .3rem .4rem}
+  table.sbkeys td:first-child{flex:0 0 100%;padding-top:.4rem;padding-bottom:.15rem}
+  table.sbkeys td:nth-child(2){flex:1 1 auto;min-width:0}
+  table.sbkeys td:last-child{color:var(--mut)}}
+.sbmanage .row{margin-top:.5rem}
+.sbmanage form.row input{width:14rem;max-width:100%}
+.sbupload > button,.sbfill .row > button{align-self:flex-end}
+
+/* the Forecast data source: two tabs under the page title (FluSight hub,
+   Your data), underlined like the header's tabs, not pills */
+.srctabs{display:flex;gap:.2rem;border-bottom:1px solid var(--line);margin:-.2rem 0 .9rem}
+.srctabs a{padding:.45rem .8rem;color:var(--mut);text-decoration:none;font-weight:600;
+  border-bottom:3px solid transparent;margin-bottom:-1px}
+.srctabs a:hover{color:var(--ink)}
+.srctabs a[aria-current="page"]{color:var(--ink);border-bottom-color:var(--accent-ink)}
+.srctabs a:focus-visible{outline:2px solid var(--accent-ink);outline-offset:2px}

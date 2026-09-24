@@ -270,14 +270,16 @@ def test_network_route_draws_a_saved_model_and_reports_bngs_words(box):
     assert "error" in client.get("/api/sandbox/models/nope/network").json()
 
 
-def test_editor_page_carries_the_two_view_pills(box):
+def test_editor_page_carries_the_view_pills(box):
     sb.new_model("mine")
     html = client.get("/sandbox?model=mine").text
     assert 'id="cmap"' in html and 'id="cmap-svg"' in html and "<h2>Diagram " in html
-    assert 'class="pill mode" data-view="contactmap" role="tab" aria-selected="true">Contact map<' in html
-    assert 'class="pill mode" data-view="network" role="tab" aria-selected="false">Reaction network<' in html
-    assert "/network'" in html                                  # the card's own script fetches it
-    assert "as BNG2.pl reads the saved model." in html and "with its rate law." in html
+    # the rules' flow first; the other two only for a model with sites
+    assert 'data-view="flow" role="tab" aria-selected="true">Model<' in html
+    assert 'data-view="contactmap" role="tab" aria-selected="false" hidden>Binding sites<' in html
+    assert 'data-view="network" role="tab" aria-selected="false" hidden>Reaction network<' in html
+    assert '<div class="mviews" role="tablist" aria-label="model view" hidden>' in html
+    assert "url('network')" in html                             # the card's own script fetches it
 
 
 # ------------------------------------------- the graphs the page draws
@@ -381,7 +383,7 @@ def test_editor_page_loads_the_renderer_and_the_page_script_no_longer_writes_the
     # the old fetch in the page's own script, which wrote the server SVG into #cmap-svg
     assert "var cm = document.getElementById('cmap');" not in html
     assert "box.innerHTML = d.svg" not in html
-    assert html.count("/contactmap'") == 1                       # the views card alone fetches it
+    assert html.count("url('contactmap')") == 1                  # the views card alone fetches it
     for name in ("model-views.js", "model-views.css"):
         assert (STATIC / name).is_file(), name
     for name in ("model-views.js", "model-views.css"):
@@ -404,3 +406,50 @@ def test_model_views_js_parses_under_javascriptcore():
     r = subprocess.run(["osascript", "-l", "JavaScript", "-e", script], capture_output=True, text=True,
                        timeout=60)
     assert r.returncode == 0 and "syntax ok" in r.stdout, r.stdout + r.stderr
+
+
+# ------------------------------------------- the rules as arrows
+
+SIHRS_RULES = HERE.parents[1] / "flubnf" / "templates" / "SIHRS_pop_min.bngl"
+
+
+def _arrows(g):
+    lab = {n["id"]: n["label"] or n["kind"] for n in g["nodes"]}
+    return {(lab[e["from"]], lab[e["to"]], e["kind"]) for e in g["edges"]}
+
+
+def test_rule_flow_draws_the_sihrs_compartments_with_arrows():
+    g = cm.rule_flow(SIHRS_RULES.read_text())
+    assert _arrows(g) == {
+        ("source", "counter", "source"), ("S", "I", "transfer"),
+        ("I", "H", "transfer"), ("I", "R", "transfer"), ("H", "R", "transfer"),
+        ("R", "S", "transfer"), ("I", "Hadm", "catalytic")}
+    # I drives S -> I (S + I -> I + I)
+    s_i = next(e["id"] for e in g["edges"] if e["kind"] == "transfer"
+               and e["rule"] == "2")
+    assert g["influences"] == [{"from": "s2", "edge": s_i}]
+
+
+def test_rule_flow_draws_a_tally_dashed_and_reads_bngl_forms():
+    g = cm.rule_flow("begin molecule types\nS()\nI()\nR()\nCinf()\nend molecule types\n"
+                     "begin reaction rules\n"
+                     "# a comment\n"
+                     "inf: S() + I() -> I() + I() + Cinf()   beta/N\n"
+                     "I -> R gamma\n"
+                     "end reaction rules\n")
+    assert _arrows(g) == {("S", "I", "transfer"), ("S", "Cinf", "catalytic"),
+                          ("I", "R", "transfer")}
+    assert {e["rule"] for e in g["edges"]} == {"inf", "2"}
+    # a binding rule moves no molecule type: nothing to draw
+    g = cm.rule_flow("begin reaction rules\nbind: A(b) + B(a) <-> A(b!1).B(a!1) kf, kr\n"
+                     "end reaction rules\n")
+    assert g["edges"] == []
+    assert cm.rule_flow("begin model\nend model\n") is None
+
+
+def test_route_returns_the_flow_even_when_bng_fails(box):
+    sb.new_model("mine")
+    sb.save_model("mine", {"model.bngl": "# broken\n" + sb.read_model("mine")["model.bngl"]})
+    d = client.get("/api/sandbox/models/mine/contactmap").json()
+    assert "ABORT: no such molecule" in d["error"]
+    assert d["flow"] is not None and d["flow"]["edges"]

@@ -476,10 +476,10 @@ def _fmt(v) -> str:
 
 
 def label(values: Mapping) -> str:
-    """'shipped', or 'modified: oracle.w=0.25, pf.particles=2,000 (a1b2c3d4)'
+    """'default', or 'modified: oracle.w=0.25, pf.particles=2,000 (a1b2c3d4)'
     for a non_default(...) set."""
     if not values:
-        return "shipped"
+        return "default"
     body = ", ".join(f"{k}={_fmt(values[k])}" for k in sorted(values))
     return f"modified: {body} ({digest(values)})"
 
@@ -908,12 +908,12 @@ def _tip(knob: Knob, scope: str, names: Optional[Mapping] = None) -> str:
             else _fmt(knob.default))
     unit = f" {knob.unit}" if knob.unit and knob.kind in ("int", "float") else ""
     bits = [knob.help, f"Range: {knob.range_text()}{unit}.",
-            f"Shipped: {dflt}.", f"Affects: {who}."]
+            f"Default: {dflt}.", f"Affects: {who}."]
     if knob.card:
-        bits.append("The model card states the shipped value.")
+        bits.append("The model card states the default.")
     if knob.key in LATER:
         bits.append("Coming later: not wired to its engine yet, so every "
-                    "run uses the shipped value.")
+                    "run uses the default.")
     return " ".join(bits)
 
 
@@ -949,10 +949,10 @@ def panel(scope: str, values: Optional[Mapping] = None,
                 "id": "ks-" + k.key.replace(".", "-"),
                 "value": val, "default": dflt,
                 "placeholder": ("" if callable(k.default)
-                                else f"shipped: {_fmt(k.default)}"),
+                                else f"default: {_fmt(k.default)}"),
                 "min": k.lo, "max": k.hi,
                 "step": "any" if k.kind == "float" else "1",
-                "choices": [(str(c), f"{c}" + (" (shipped)" if c == k.default
+                "choices": [(str(c), f"{c}" + (" (default)" if c == k.default
                                                else "")) for c in k.choices],
                 "later": k.key in LATER,
                 "affects": " ".join(sorted(k.affects)),

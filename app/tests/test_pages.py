@@ -89,7 +89,7 @@ import re                                           # noqa: E402
 
 
 def _nav_tabs(html):
-    return re.findall(r'<a class="tab[^"]*" href="([^"]+)">([^<]+)</a>',
+    return re.findall(r'<a class="tab[^"]*" href="([^"]+)"(?: aria-current="page")?>([^<]+)</a>',
                       html)
 
 
@@ -118,7 +118,7 @@ def test_storage_page_serves_on_both_routes_with_the_ledger_inside():
         assert r.status_code == 200, path
         assert "<h1>Storage</h1>" in r.text, path
         assert "Run ledger" in r.text, path
-        assert re.search(r'<a class="tab active" href="/storage">Storage</a>',
+        assert re.search(r'<a class="tab active" href="/storage" aria-current="page">Storage</a>',
                          r.text), path
 
 
@@ -127,7 +127,7 @@ def test_models_route_defaults_to_pf_and_owns_the_active_tab():
     assert r.status_code == 200
     assert "Oracle SIHRS" in r.text
     assert _pressed_model(r.text) == "pf"
-    assert re.search(r'<a class="tab active" href="/models">Models</a>',
+    assert re.search(r'<a class="tab active" href="/models" aria-current="page">Models</a>',
                      r.text)
 
 
@@ -138,7 +138,7 @@ def test_old_model_routes_stay_live_with_the_right_switcher_state():
         t = client.get(f"/model/{name}").text
         assert _pressed_model(t) == name, name
         assert t.count('aria-pressed="true"') == 1, name
-        assert re.search(r'<a class="tab active" href="/models">Models</a>',
+        assert re.search(r'<a class="tab active" href="/models" aria-current="page">Models</a>',
                          t), name
     # the blend's page went with the blend
     assert client.get("/model/ensemble").status_code == 404
@@ -392,6 +392,6 @@ def test_data_page_draws_the_archive_timeline():
     assert ui_data._vintage_rows([]) == []
     r = client.get("/data")
     assert r.status_code == 200
-    assert "Policies" not in r.text and ">Archive<" in r.text
+    assert "Policies" not in r.text and "<h2>Archive" in r.text
     # hub-free environments have no vintages and say so instead of drawing
     assert ('class="archive-strip"' in r.text) == bool(ui_state.data_mod.vintages())

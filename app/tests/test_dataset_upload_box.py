@@ -71,7 +71,7 @@ def boxes(page):
 # -------------------------------------------------------- one shared box
 
 def test_the_box_is_on_data_forecast_and_retrospective():
-    for url, where in (("/data", "data"), ("/forecast", "forecast"),
+    for url, where in (("/data", "data"), ("/forecast?tab=own", "forecast"),
                        ("/retro", "replay")):
         page = client.get(url).text
         assert boxes(page) == [where], url
@@ -85,7 +85,7 @@ def test_the_box_is_on_data_forecast_and_retrospective():
                 'required') in page
         assert 'accept=".csv,.tsv,.txt,' in page
         assert "dataset-template.csv" in page
-        assert '<option value="" selected>from the values</option>' in page
+        assert '<option value="" selected>detect</option>' in page
     # the old manual weekday option is gone from every page
     assert "week-start Sundays" not in client.get("/data").text
 
@@ -96,9 +96,11 @@ def test_the_box_stays_on_a_dataset_forecast_and_the_hub_is_unchanged():
     ds_id = loc.split("source=")[1].split("#")[0]
     page = client.get(f"/forecast?source={ds_id}").text
     assert boxes(page) == ["forecast"]
+    assert page.index('id="fc-upload"') < page.index('id="fcform"')
+    # the hub tab carries no upload box: that is the Your data tab's
     hub = client.get("/forecast").text
     assert 'action="/run"' in hub and "all 52 jurisdictions" in hub
-    assert hub.index('id="fc-upload"') < hub.index('id="fcform"')
+    assert boxes(hub) == []
 
 
 def test_the_script_is_served_and_parses():
@@ -245,7 +247,7 @@ def test_a_valid_file_previews_and_stores_nothing():
     assert "Ready to use." in html and "Nothing was stored" not in html
     assert "<dt>Groups</dt><dd>3: Adult, Overall, Pediatric</dd>" in html
     assert "2019-08-03 to 2024-02-24" in html
-    assert "<dt>Values</dt><dd>counts (from the values)</dd>" in html
+    assert "<dt>Values</dt><dd>counts (detected)</dd>" in html
     assert "<dt>Population</dt><dd>yes</dd>" in html
     assert "comma-separated, UTF-8" in html
     assert html.count("<polyline") == 3                 # one per group
@@ -295,7 +297,7 @@ def test_problems_come_grouped_by_kind_with_rows():
 def test_a_refused_store_without_script_lands_on_its_problems():
     """Without script a refused store reloaded the Data tab at its top,
     the problems far below and not announced."""
-    page = client.get("/forecast").text
+    page = client.get("/forecast?tab=own").text
     assert ('<form method="post" action="/data/datasets#datasets" '
             'enctype="multipart/form-data"') in page
     r = store(b"date,target_group,value\n2024-08-03,A,-1\n")
@@ -415,7 +417,7 @@ def test_a_status_line_is_read_out_not_the_whole_result():
     a short status line says what the check found instead. The script
     keeps a focused column or target select focused across its re-check
     (it once replaced the result and dropped the focus to the page)."""
-    page = client.get("/forecast").text
+    page = client.get("/forecast?tab=own").text
     assert '<p class="dsup-status" data-dsup-status role="status"></p>' in page
     assert "<div class=\"dsup-result\" data-result>" in page
     assert check(grouped_bytes()).json()["status"].startswith(
@@ -436,10 +438,10 @@ def test_a_status_line_is_read_out_not_the_whole_result():
 def test_a_kind_filled_in_from_the_values_stays_from_the_values():
     """The box shows the inferred kind in its select (kind_auto=1 while
     it is not picked by hand); posting it must not turn it into a declared
-    kind: the preview keeps '(from the values)' and the store records
+    kind: the preview keeps '(detected)' and the store records
     kind_from 'values', as the CLI does."""
     j = check(grouped_bytes(), kind="count", kind_auto="1").json()
-    assert "<dt>Values</dt><dd>counts (from the values)</dd>" in j["html"]
+    assert "<dt>Values</dt><dd>counts (detected)</dd>" in j["html"]
     j = check(grouped_bytes(), kind="count").json()
     assert "<dt>Values</dt><dd>counts</dd>" in j["html"]
     assert store(grouped_bytes(), kind="count",

@@ -43,9 +43,17 @@ RERUN_STATUSES = ("stopped", "error", "failed", "interrupted", "partial")
 
 # === Forecast (/forecast) -> forecast.html ===
 @router.get("/forecast", response_class=HTMLResponse)
-def forecast_page(request: Request, source: str = ""):
-    # a custom dataset as the data source: opt-in per page (app/ui/datasets_ui.py)
+def forecast_page(request: Request, source: str = "", tab: str = ""):
+    # a custom dataset as the data source: opt-in per page (app/ui/datasets_ui.py).
+    # tab=own is the "Your data" tab: the first stored dataset, or with none
+    # the upload box alone
     from app.ui import datasets_ui as _dsu
+    own_tab = tab == "own" and not source
+    if own_tab:
+        first = _dsu.choices()
+        if first:
+            return RedirectResponse(f"/forecast?source={first[0][0]}",
+                                    status_code=303)
     if source:
         refused = _dsu.local_only(request)
         if refused:
@@ -141,7 +149,7 @@ def forecast_page(request: Request, source: str = ""):
         "season_colors_json": _script_json(_season_colors()),
         "run_obs_json": _script_json((res or {}).get("observed", {})),
         "fc_date": (res or {}).get("forecast_date", ""),
-        "dataset": None, "source_choices": _dsu.choices()})
+        "dataset": None, "source_choices": _dsu.choices(), "own_tab": own_tab})
 
 
 # === Console controls: /run/stop (the rest: routes/shell.py, data.py) ===

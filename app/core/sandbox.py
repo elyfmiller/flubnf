@@ -62,6 +62,10 @@ ENGINE_KEYS = ("objfunc", "pf_cumulative_observable",
 RESERVED_KEYS = ("fit_type", "model", "output_dir", "bng_command",
                  "pf_particles", "pf_seed", "population_size",
                  "max_iterations")
+#: Keys an older priors.conf may carry that no engine reads any more: the
+#: check names them, a run drops them (the filter always fits the weekly
+#: increment, what pf_observable_mode = integrated used to ask for).
+RETIRED_KEYS = ("pf_observable_mode",)
 DRY_RUN_PARTICLES = 200
 FULL_FIT_PARTICLES = 10_000
 #: A run's status while its fit may still be live; with no live fit behind
@@ -632,7 +636,7 @@ def split_priors(priors_text: str) -> tuple:
             continue
         if "=" in s:
             k, v = (x.strip() for x in s.split("=", 1))
-            if k in ENGINE_KEYS:
+            if k in ENGINE_KEYS or k in RETIRED_KEYS:
                 keys[k] = v
                 continue
             if k in RESERVED_KEYS:
@@ -787,11 +791,17 @@ def check(files: dict, *, work: Path | None = None) -> dict:
     elif cum not in outputs:
         problems.append(f"pf_cumulative_observable names {cum}, which is "
                         "neither an observable nor a function of the model")
+    if "pf_observable_mode" in keys:
+        warnings.append("pf_observable_mode is retired: the filter always "
+                        "fits the weekly increment, and runs drop this line, "
+                        "so it can be deleted")
     if pf_engine.engine_available():
         for line in priors:
             k = line.split("=", 1)[0].strip()
             if k.startswith("pf_") and not pf_engine.engine_accepts_pf_key(k):
-                warnings.append(f"the installed engine does not accept {k}")
+                warnings.append(f"{k} is not a setting the installed engine "
+                                "knows (check the spelling), so a run would "
+                                "stop on it")
     if (times is not None and len(times) == 1
             and "pf_sampling_interval" not in keys
             and not pf_engine.sampling_interval_line()):
@@ -849,7 +859,8 @@ def engine_settings(priors_text: str, *, particles: int = DRY_RUN_PARTICLES,
     engine accepts). prepare writes exactly these and the workbench shows
     them. A malformed priors.conf raises SandboxError."""
     _, keys = split_priors(priors_text)
-    keys.pop("pf_observable_mode", None)      # a retired key: ignored
+    for k in RETIRED_KEYS:                    # named by check, never written
+        keys.pop(k, None)
     rows = [("fit_type", "pf", "default")]
 
     def pick(key, default, src="default"):

@@ -254,7 +254,7 @@ def test_digest_is_stable_order_independent_and_value_sensitive():
 
 
 def test_label():
-    assert K.label({}) == "shipped"
+    assert K.label({}) == "default"
     nd = {"pf.particles": 2000, "oracle.w": 0.25}
     assert K.label(nd) == f"modified: oracle.w=0.25, pf.particles=2,000 ({K.digest(nd)})"
 

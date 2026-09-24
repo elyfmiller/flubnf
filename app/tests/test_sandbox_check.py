@@ -123,7 +123,7 @@ def test_warnings(box, tmp_path, monkeypatch):
     text = " ".join(r["warnings"])
     assert "extra__FREE ends in __FREE but has no prior" in text
     assert "no pf_cumulative_observable" in text
-    assert "does not accept pf_shrink" in text           # the fake engine lists it not
+    assert "pf_shrink is not a setting the installed engine knows" in text   # the fake engine lists it not
     assert "one data row" in text
 
 
@@ -146,3 +146,11 @@ def test_the_route_checks_the_posted_text_not_the_saved_file(box):
     assert not r["ok"] and r["problems"]
     # the check works in its own scratch folder, never the diagram's
     assert not (box / "contactmap").exists()
+
+
+def test_a_retired_key_says_so(box):
+    files = _files()
+    files["priors.conf"] += "pf_observable_mode = integrated\n"
+    text = " ".join(sb.check(files)["warnings"])
+    assert "pf_observable_mode is retired" in text
+    assert "not a setting the installed engine knows" not in text

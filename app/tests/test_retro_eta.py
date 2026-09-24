@@ -313,7 +313,7 @@ def test_ticker_no_longer_smooths_or_resists_the_server():
 
 def test_ticker_updates_every_element_that_states_progress():
     """Every element stating progress is driven by the ticker (every .rcount),
-    so a card never shows two counts."""
+    so a card never shows two counts; a live card shows only the run bar's."""
     assert ".rcount" in TICKER_SRC
     retro_html = (Path(__file__).resolve().parents[1] / "ui" / "templates"
                   / "retro.html").read_text(encoding="utf-8")
@@ -324,7 +324,8 @@ def test_ticker_updates_every_element_that_states_progress():
                   "running": True, "paused": False, "active": True,
                   "status": "running", "elapsed_s": 5945.0, "mean_s": 594.0,
                   "weeks_measured": 10, "eta_s": 9000.0, "scored": False}])
-    assert '<span class="rcount">10/32 weeks</span>' in html
+    assert '<span class="rcount" hidden>10/32 weeks</span>' in html
+    assert html.count("10/32 weeks") == 2              # .rstat shown, .rcount hidden
 
 
 def test_ticker_freezes_honestly_when_polls_stop_arriving():

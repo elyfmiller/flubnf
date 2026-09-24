@@ -214,4 +214,4 @@ def test_the_upload_reads_leniently_and_infers_the_kind(box):
     assert ds.kind == "rate" and ds.weeks()[0] == "2024-10-12"
     html = client.get(r.headers["location"]).text
     assert "Dates moved to week-ending Saturdays: +6 days" in html
-    assert '<option value="">from the values</option>' in html
+    assert '<option value="">detect</option>' in html

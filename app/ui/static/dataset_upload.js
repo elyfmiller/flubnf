@@ -56,8 +56,11 @@
       return n.replace(/^.*[\\/]/, '').replace(/\.[^.]*$/, '').slice(0, 80);
     }
 
+    var shown = form.querySelector('[data-file]');
     function picked(f) {
       if (!f) return;
+      form.classList.add('has-file');
+      if (shown) shown.textContent = f.name;
       if (name && (!name.value || name.value === autoName)) {
         autoName = stem(f.name);
         name.value = autoName;

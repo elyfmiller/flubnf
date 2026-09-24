@@ -3,27 +3,35 @@
 <script src="/static/quips.js"></script>{% endblock %}
 {% block content %}{% import "_tips.html" as tips %}
 <h1>Forecast</h1>
+{% import "_dataset_upload.html" as dsup %}
+{# the data source as two tabs: the FluSight hub, or your own datasets
+   (app/ui/datasets_ui.py); plain links, so Back, bookmarks and no-script work #}
+<nav class="srctabs" aria-label="data source">
+ <a href="/forecast"{% if not (dataset or own_tab) %} aria-current="page"{% endif %}>FluSight hub</a>
+ <a href="/forecast?tab=own"{% if dataset or own_tab %} aria-current="page"{% endif %}>Your data</a>
+</nav>
+{% if own_tab and not dataset %}
+<div class="card"><h2>Your data</h2>
+ <p class="hint">A weekly CSV of your own, forecast with both models and exported under non-hub names; never submitted.</p>
+ {{ dsup.box("forecast") }}
+</div>
+{% else %}
 <div class="cols">
  <div><div class="card"><h2>Settings</h2>
-  {% if source_choices or dataset %}
-  {# the data source: the hub by default, a stored dataset by choice
-     (app/ui/datasets_ui.py); a plain GET form, like the Data tab's #}
+  {% if dataset %}
+  {# which of your datasets; a plain GET form, like the Data tab's #}
   <form method="get" action="/forecast" class="row srcpick">
-   <span>{{ tips.label("Data source", "fc-src", "The FluSight hub is the default. A dataset from the Data tab runs on its own groups and weeks; its forecasts are exported as CSV files under non-hub names and never submitted.", for_="fc-source") }}
+   <span>{{ tips.label("Dataset", "fc-src", "A dataset runs on its own groups and weeks; its forecasts are exported as CSV files under non-hub names and never submitted.", for_="fc-source") }}
    <select name="source" id="fc-source">
-    <option value="">FluSight hub</option>
-    {% for sid, sname in source_choices %}<option value="{{ sid }}" {% if dataset and dataset.id == sid %}selected{% endif %}>{{ sname }}</option>{% endfor %}
+    {% for sid, sname in source_choices %}<option value="{{ sid }}" {% if dataset.id == sid %}selected{% endif %}>{{ sname }}</option>{% endfor %}
    </select></span>
    <button class="quiet">Use</button>
   </form>
-  {% endif %}
-  {# your own data, uploaded here: the shared upload box; "Forecast this"
-     stores it and reopens this tab on it #}
-  {% import "_dataset_upload.html" as dsup %}
   <details class="dsup-fold" id="fc-upload">
-   <summary>Upload your own data</summary>
+   <summary>Upload another</summary>
    {{ dsup.box("forecast") }}
   </details>
+  {% endif %}
   <form method="post" action="{{ '/run/dataset' if dataset else '/run' }}" id="fcform">
    {% if dataset %}<input type="hidden" name="dataset" value="{{ dataset.id }}">
    <p class="hint">{{ dataset.name }}: {{ "vintage-true" if dataset.vintage_true else "final data, not vintage-true" }}.
@@ -73,19 +81,13 @@
           ? 'Anchor week: ' + a + '.'
           : 'No archived week on or before ' + box.value + '.';
       }
-      // blank Season start = August 1 of the forecast's season; the line is
-      // looked up when painted (it sits further down the form)
-      function seasonDefault(day) {
-        var m = day.match(/^(\d{4})-(\d{2})/);
-        if (!m) return '';
-        var y = +m[1], mo = +m[2];
-        return (mo >= 8 ? y : y - 1) + '-08-01';
-      }
+      // the settings panel follows the date (its Season start default is
+      // August 1 of the forecast's season); a scripted date change fires
+      // no change event, so tell it
       function paintSeason() {
-        var sline = document.getElementById('season-line');
-        if (!sline || !box) return;
-        var d = seasonDefault(box.value);
-        sline.textContent = d ? 'Blank: ' + d + '.' : '';
+        document.querySelectorAll('details[data-scope]').forEach(function (d) {
+          d.dispatchEvent(new CustomEvent('ms-refilter'));
+        });
       }
       // the two modes share every control; Real-time also resets the date
       // to the latest week the calendar allows and hides the picker
@@ -153,7 +155,8 @@
    {% endif %}
    <div id="engine-row"{% if dataset %} hidden data-dataset="1"{% endif %}>
     {{ tips.label("Engine", "fc-engine", "The particle filter fits each state; the Oracle step then blends its forecast growth with past seasons' growth at the same calendar week.") }}
-    <select aria-label="Oracle SIHRS engine"><option>Particle filter</option></select>
+    {# one engine today: stated as text, not a select with nothing to pick #}
+    <p class="fixedval">Particle filter</p>
    </div>
    <script>
     (function(){
@@ -319,11 +322,10 @@
    {% if r.spec and r.status in ("stopped", "error", "failed", "interrupted", "partial") and not dataset %}
    {# fresh re-run from the recorded spec (console fits hold no checkpoint,
       so never a resume); same guard and server-side checks as /run #}
-   <form method="post" action="/runs/{{ r.run_id }}/rerun" class="rerun-run">
+   <form method="post" action="/runs/{{ r.run_id }}/rerun" class="rerun-run row">
     <button class="gold" data-guard="console-run">Run again with these settings</button>
+    {{ tips.tip("fc-rerun", "running again", "Console runs hold no checkpoint: this starts fresh and does not resume the earlier one.") }}
    </form>
-   <p class="hint">Console runs hold no checkpoint: this starts fresh and
-    does not resume the earlier one.</p>
    {% endif %}
   </div>
   {% endif %}
@@ -332,11 +334,17 @@
      forecasts exist, so the first-launch hint shows only with an empty FANQ #}
   <div id="fanwrap">{% if fanq_json == '{}' %}<p class="hint">Forecasts appear here once the models run.</p>{% endif %}</div>
 
+  {# no hub data yet (and no dataset): one line, no controls, no blank
+     chart area; the controls stay in the page (hidden) for the script #}
+  {% set nodata = not dataset and series_json == '{}' %}
   <details class="card" open><summary><h2 style="display:inline">Data</h2>
-   <span class="hint">{{ (": " ~ dataset.name ~ ", any group (newest data)") if dataset else ": raw admissions, any location (latest vintage)" }}</span></summary>
-   <div style="margin:.6rem 0 .2rem">
+   <span class="hint">· {{ (dataset.name ~ ", any group, newest data") if dataset else "raw admissions, any location, latest vintage" }}</span></summary>
+   <div id="data-ctl"{% if nodata %} hidden{% endif %}>
+   {# one pager row: the arrows step the select itself #}
+   <div class="carousel dataloc">
+    <button type="button" class="quiet cnav" id="data-prev" aria-label="previous location">◀</button>
     <select id="data-loc" aria-label="data panel location"
-      style="width:auto;min-width:230px;max-width:100%">
+      style="width:auto;min-width:min(230px,45vw);max-width:100%">
      {% if dataset %}
      {% for l in all_locs %}<option {% if loop.first %}selected{% endif %}>{{ l }}</option>{% endfor %}
      {% else %}
@@ -344,20 +352,18 @@
      {% for l in all_locs | sort %}<option>{{ l }}</option>{% endfor %}
      {% endif %}
     </select>
+    <button type="button" class="quiet cnav" id="data-next" aria-label="next location">▶</button>
+    <span class="hint" id="data-pos"></span>
    </div>
-   {# the selected mode wears gold + aria-pressed (drawData keeps both) #}
-   <div class="row" style="margin:.4rem 0">
+   {# the selected view wears the filled pill + aria-pressed (drawData keeps both) #}
+   <div class="seg" role="group" aria-label="data view">
     <button type="button" class="quiet" id="mode-raw" aria-pressed="false">full series</button>
     <button type="button" class="quiet" id="mode-season" aria-pressed="false">season over season</button>
     <button type="button" class="quiet" id="mode-pts" aria-pressed="false">● points</button>
    </div>
-   <div class="carousel">
-    <button type="button" class="quiet cnav" id="data-prev">◀</button>
-    <span class="hint" id="data-pos"></span>
-    <button type="button" class="quiet cnav" id="data-next">▶</button>
    </div>
    {# reserved height (chart draws at 380): a fetch never collapses the page #}
-   <div id="dataplots" style="min-height:380px"></div>
+   <div id="dataplots"{% if not nodata %} style="min-height:380px"{% endif %}>{% if nodata %}<p class="hint">No data yet. Pull the FluSight hub on the Data tab.</p>{% endif %}</div>
   </details>
  </div>
 </div>
@@ -374,7 +380,7 @@
   <div class="carousel">
    <button type="button" class="quiet cnav" id="fanx-prev">◀</button>
    <select id="fanx-loc" aria-label="forecast location, expanded view"
-     style="width:auto;min-width:230px;max-width:100%"></select>
+     style="width:auto;min-width:min(230px,45vw);max-width:100%"></select>
    <button type="button" class="quiet cnav" id="fanx-next">▶</button>
    <span class="hint" id="fanx-pos"></span>
   </div>
@@ -461,12 +467,12 @@
        .then(d=>{if(!d[loc]) d[loc]={dates:[],values:[]};  // sentinel: never re-fetch a miss
          Object.assign(SERIES,d); drawData(CURMODE);})
        .catch(()=>{el.innerHTML=NODATA;
-         document.getElementById('data-pos').textContent=loc;});
-     document.getElementById('data-pos').textContent=loc+' · loading…';
+         document.getElementById('data-pos').textContent='';});
+     document.getElementById('data-pos').textContent='loading…';
      return;
    }
    const s=SERIES[loc];
-   document.getElementById('data-pos').textContent=loc;
+   document.getElementById('data-pos').textContent='';
    if(!s.dates.length){el.innerHTML=NODATA; return;}
    // react repaints one persistent div in place, so the height never
    // collapses (recreated only after a NODATA hint)
@@ -603,10 +609,10 @@
    // the title says latest STORED forecasts (honest across a restart)
    const mbtns=MODELS.map(m=>'<button type="button" class="quiet mbtn" data-m="'+m+'">'+(MNAMES[m]||m)+'</button>').join('');
    wrap.innerHTML='<div class="card" id="fancard"><h2>Forecasts: latest stored run, '+FCDATE+'</h2>'
-     +'<div class="carousel">'+mbtns+'</div>'
+     +'<div class="seg" role="group" aria-label="model">'+mbtns+'</div>'
      +'<div class="carousel"><button type="button" class="quiet cnav" id="fan-prev">◀</button>'
      +'<select id="fan-loc" aria-label="forecast location"'
-     +' style="width:auto;min-width:230px;max-width:100%"></select>'
+     +' style="width:auto;min-width:min(230px,45vw);max-width:100%"></select>'
      +'<button type="button" class="quiet cnav" id="fan-next">▶</button>'
      +'<span class="hint" id="fan-pos"></span>'
      +'<button type="button" class="quiet" id="fan-expand"'
@@ -614,12 +620,14 @@
      +'<div id="fanplot" style="min-height:400px"></div></div>';
    document.querySelectorAll('.mbtn').forEach(b=>{
      if(b.dataset.m===FMODEL) b.classList.add('gold');
+     b.setAttribute('aria-pressed', String(b.dataset.m===FMODEL));
      b.onclick=()=>{
        // the current location follows across model buttons
        const cur=FLOCS[FIDX];
        FMODEL=b.dataset.m;
-       document.querySelectorAll('.mbtn').forEach(x=>x.classList.remove('gold'));
-       b.classList.add('gold');
+       document.querySelectorAll('.mbtn').forEach(x=>{x.classList.remove('gold');
+         x.setAttribute('aria-pressed','false');});
+       b.classList.add('gold'); b.setAttribute('aria-pressed','true');
        const nl=Object.keys(FANQ[FMODEL]||{});
        FIDX=Math.max(0, nl.indexOf(cur));
        drawFan();};});
@@ -669,4 +677,5 @@
  addEventListener('themechange',()=>{drawData(CURMODE); drawFan();});
  addEventListener('fontsizechange',()=>{drawData(CURMODE); drawFan();});
 </script>
+{% endif %}
 {% endblock %}

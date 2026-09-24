@@ -177,7 +177,7 @@ def test_workroot_rows_read_as_human_labels_with_the_id_secondary(state):
 
 def test_protected_trees_render_no_delete_controls(state):
     html = client.get("/runs").text
-    protected = html.split("Protected</h3>", 1)[1].split("</div>\n<script>", 1)[0]
+    protected = html.split(">Protected ", 1)[1].split("</div>\n<script>", 1)[0]
     assert "<form" not in protected
     assert "data-del-storage" not in protected
     assert 'class="pill">protected' in protected
@@ -438,7 +438,7 @@ def test_ledger_collapses_behind_a_summary_by_default(state):
     assert "<details class=\"ledgerfold\" id=\"ledgerfold\" open" not in html
     assert "4 runs recorded" in joined
     # the ledger keeps its own clear heading on the Storage page
-    assert "<h2>Run ledger</h2>" in html
+    assert "<h2>Run ledger " in html
     # the newest entry (the live run) is named in the summary line
     summary = html.split('id="ledgerfold">', 1)[1].split("</summary>", 1)[0]
     assert "newest" in summary

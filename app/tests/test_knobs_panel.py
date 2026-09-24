@@ -112,7 +112,7 @@ def test_forecast_panel_renders_every_forecast_knob_with_a_tip():
     assert html.count("coming later") >= len(K.LATER)
     # the override and its reason, and the reset control
     assert 'name="submit_modified"' in html and 'name="modified_reason"' in html
-    assert 'id="ms-reset"' in html and "Reset to shipped" in html
+    assert 'id="ms-reset"' in html and "Reset to defaults" in html
     assert "/static/model_settings.js" in html
     # the fixed list, with its tip
     assert "Fixed by the model definition" in html
@@ -192,7 +192,7 @@ def test_a_refused_submission_keeps_the_typed_values_and_reads_modified(
 def test_the_shipped_page_reads_shipped():
     ui_state._last_form.clear()
     html = client.get("/forecast").text
-    assert ">shipped</span>" in html
+    assert ">default</span>" in html
     assert 'id="ms-override" hidden' in html
 
 

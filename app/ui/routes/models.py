@@ -65,16 +65,14 @@ def model_page(request: Request, name: str):
                  "research runs only."),
     }
     # no page for the retired blend (LosAlamos_NAU-CModel_Flu, see ENGINES)
-    # one-line summaries: the collapsed <details> summary on each model tab
+    # short phrases: the collapsed <details> summary on each model tab (the
+    # full description, the blurb, opens beneath it)
     onelines = {
-        "pf": ("The mechanistic model: the SIHRS compartment model fitted "
-               "weekly by a particle filter, its forecast growth blended with "
-               "donor growth from past seasons at the same calendar week."),
-        "analogue": ("The empirical model: it scales the latest observation "
-                     "by historical growth ratios from matching calendar "
-                     "weeks, with banked FluSurv-NET donors."),
-        "pf2s": ("A research variant, not shipped: influenza A and B as "
-                 "parallel SIHRS circuits fitted to two data channels."),
+        "pf": ("Mechanistic: a compartment model fitted weekly, blended "
+               "with past seasons' growth"),
+        "analogue": ("Empirical: the latest count scaled by past seasons' "
+                     "growth at this calendar week"),
+        "pf2s": "Research only: influenza A and B as two SIHRS circuits",
     }
     # where each model tab points into the Methods page
     manchor = {"pf": "oracle", "analogue": "analogue",
