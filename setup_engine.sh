@@ -8,24 +8,10 @@ warn() { printf "  \033[33m!\033[0m %s\n" "$*"; }
 # HTTPS by default so a credential helper can answer; set FLUBNF_PYBNF_REMOTE
 # to the git@ form if you have an SSH key and prefer it.
 PYBNF_REMOTE="${FLUBNF_PYBNF_REMOTE:-https://github.com/elyfmiller/PyBNF-Private.git}"
-# PyBNF-pf is the DEVELOPMENT HOST's name for the fork and nothing else's. On
-# every other machine the fork arrives as PyBNF-Private: that is the
-# repository's real name, it is what GitHub Desktop and a plain `git clone`
-# produce, and it is the prefix the lab's engine archive unpacks under
-# (scripts/cut_engine_archive.sh writes --prefix=PyBNF-Private/). Both of the
-# other two files that resolve this path already know that -- flubnf/settings.py
-# does it in _first_checkout(), setup.ps1 in the PyBNF-Private fallback beside
-# Resolve-Checkout -- and this line did not, so `./setup_engine.sh` run by hand
-# walked past a perfectly good ~/Documents/GitHub/PyBNF-Private and demanded
-# GitHub credentials. MEASURED 2026-08-31: with a real checkout sitting there
-# and no FLUBNF_PYBNF set, the script reached the access wall and exited 1,
-# while its own diagnostic block below correctly reported the checkout and then
-# blamed FLUBNF_PYBNF, which was not set. Same order as settings.py: an
-# existing PyBNF-pf first (the dev host keeps working untouched), then an
-# existing PyBNF-Private, then PyBNF-pf as the name to clone into.
-#
-# "Exists" is the directory, not .git: an unpacked archive is a supported way
-# to get the engine (see the plain-copy branch below) and has no .git at all.
+# Fork location, same order as flubnf/settings.py (_first_checkout) and
+# setup.ps1: an existing PyBNF-pf (the dev host's name only), then an existing
+# PyBNF-Private (the repo's real name and the archive's prefix), else create
+# PyBNF-Private. Test the directory, not .git: an unpacked archive has none.
 if [ -n "${FLUBNF_PYBNF:-}" ]; then
   PYBNF="$FLUBNF_PYBNF"
 elif [ -d "$HOME/Documents/GitHub/PyBNF-pf" ]; then
@@ -33,19 +19,12 @@ elif [ -d "$HOME/Documents/GitHub/PyBNF-pf" ]; then
 elif [ -d "$HOME/Documents/GitHub/PyBNF-Private" ]; then
   PYBNF="$HOME/Documents/GitHub/PyBNF-Private"
 else
-  # nothing exists yet: create under the repository's REAL name, which is
-  # also the archive's prefix and what every doc shows. PyBNF-pf remains the
-  # dev host's name only (the elif above keeps that machine untouched).
   PYBNF="$HOME/Documents/GitHub/PyBNF-Private"
 fi
 BNGSIM_REMOTE="${FLUBNF_BNGSIM_REMOTE:-https://github.com/elyfmiller/bngsim}"
 ENGINE_VENV="${FLUBNF_ENGINE_VENV:-$HOME/.venvs/flubnf-engine}"
-# THE ENGINE needs Python 3.11 or 3.12, nothing newer: the fork pins
-# numpy<2, whose wheels stop at cp312, and on newer interpreters pip
-# builds numpy from source and fails (measured on Windows Sandbox
-# 2026-09-01 with Anaconda's 3.14 base; the same trap exists on a
-# conda-only Mac). Bare python3 is accepted only if it IS 3.11/3.12;
-# otherwise, if conda exists, it makes us a 3.12.
+# The engine needs Python 3.11/3.12: the fork pins numpy<2, whose wheels stop
+# at cp312 (newer Pythons build numpy from source and fail). Else conda makes a 3.12.
 PY=""
 for c in python3.12 python3.11 python3; do
   cand=$(command -v "$c" 2>/dev/null) || continue
@@ -80,44 +59,19 @@ if [ -z "$PY" ]; then
 fi
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
-# ---------------------------------------------------------------------------
-# THE OFFLINE ENGINE BUNDLE
-#
-# Cloning the fork is the ONE step of a FluBNF install that needs a GitHub
-# account, because that repository is private. Everything else -- this repo,
-# the FluSight hub, BioNetGen, both venvs -- is public and already automatic,
-# which is why so much of the text below this point is about credentials for
-# a single clone.
-#
-# `git bundle` removes that step entirely. On a machine that already has the
-# fork:
-#
-#   git bundle create pybnf.bundle feature/particle-filter
-#
-# produces one ordinary file (about 140 MB), and git clones from that file
-# with no network, no account, no invitation to accept and nothing to
-# install:
-#
-#   git clone -b feature/particle-filter pybnf.bundle <destination>
-#
-# The result is a normal checkout, which is what the branch above already
-# knows how to use. So a student handed one file on a shared drive or a USB
-# stick gets the engine with no authentication story at all.
-#
-# The search therefore runs BEFORE the authentication attempt: a file sitting
-# beside you always beats a network round trip that may end at a password
-# prompt no student can answer. The folders searched are the ones a student
-# actually drops a downloaded file into, not the ones a developer would pick.
+# Offline engine files. The fork is private, so cloning it is the one install
+# step that needs a GitHub account; a file needs none. Either a git bundle
+# (`git bundle create pybnf.bundle feature/particle-filter`, ~140 MB) or the
+# pybnf-pf-<sha>.tar.gz from scripts/cut_engine_archive.sh. Searched BEFORE
+# any GitHub auth, in the folders a student saves downloads to.
 engine_bundle_dirs() {
   printf '%s\n' "$HERE" "$(dirname "$HERE")" \
                 "$HOME/Downloads" "$HOME/Desktop" "$HOME/Documents"
 }
 
 find_engine_bundle() {
-  # Prints the path of the bundle this machine would use, or nothing at all.
-  # Nothing else may reach stdout: `--print-bundle` hands this straight to
-  # the launchers, so a stray diagnostic would become a filename. Complaints
-  # go to stderr.
+  # Prints the chosen path or nothing. `--print-bundle` hands stdout to the
+  # launchers, so every diagnostic goes to stderr.
   if [ -n "${FLUBNF_PYBNF_BUNDLE:-}" ]; then
     if [ -f "$FLUBNF_PYBNF_BUNDLE" ]; then
       printf '%s\n' "$FLUBNF_PYBNF_BUNDLE"
@@ -127,41 +81,23 @@ find_engine_bundle() {
     warn "  $FLUBNF_PYBNF_BUNDLE" >&2
     warn "looking in the usual places instead" >&2
   fi
-  # Split the list on newlines only, not on spaces. A home directory with a
-  # space in it is not this project's problem to create, but it is this
-  # loop's problem to survive, and "/Users/Jane Doe/Downloads" would
-  # otherwise arrive here as two directories that both do not exist.
+  # Split on newlines only: a home directory may contain spaces.
   _oifs=$IFS
   IFS='
 '
   # shellcheck disable=SC2046
   set -- $(engine_bundle_dirs)
   IFS=$_oifs
-  # Both artifact shapes, one search. The lab hands out either a git bundle
-  # or the small pybnf-pf-<sha>.tar.gz that scripts/cut_engine_archive.sh
-  # cuts, and a student should not have to know which one they were given,
-  # or where it belongs: whatever landed in Downloads is the engine. The
-  # extract branch below tells them apart by suffix.
-  #
-  # THE NEWEST WINS, not whatever the glob happens to sort first. The sha in
-  # the name is hex, so alphabetical order chooses between two archives at
-  # random, and a student handed a new one usually still has the old one in
-  # Downloads. Measured on a PI's laptop (lab report, 2026-09-09): with
-  # pybnf-pf-3320d1f0.tar.gz from 2026-08-31 beside pybnf-pf-8b28edf4.tar.gz
-  # from 2026-09-09, "3" sorts before "8", the three week old engine was
-  # installed under a current console, and every fit failed because the
-  # console names a model FUNCTION as the fit target while that engine knew
-  # only observables. Nothing said the engine was stale; it was a real
-  # engine, just the wrong one.
+  # Both shapes (bundle or tarball; told apart by suffix later). The NEWEST by
+  # mtime wins: the sha in the name is hex, so glob order is arbitrary and
+  # once installed a weeks-old archive left in Downloads (2026-09-09).
   _best=""
   _seen=0
   for d in "$@"; do
     [ -d "$d" ] || continue
     for f in "$d"/pybnf*.bundle "$d"/PyBNF*.bundle \
              "$d"/pybnf*.tar.gz "$d"/PyBNF*.tar.gz; do
-      # -f, not -e. On macOS ".bundle" is also a DIRECTORY type (plug-ins and
-      # frameworks are shipped that way) and ~/Downloads is exactly where one
-      # turns up. A directory named *.bundle is not a git bundle.
+      # -f: on macOS a *.bundle can be a directory (plug-ins, frameworks).
       [ -f "$f" ] || continue
       _seen=$((_seen + 1))
       if [ -z "$_best" ] || [ "$f" -nt "$_best" ]; then
@@ -180,40 +116,24 @@ find_engine_bundle() {
 }
 
 archive_version_stamp() {
-  # The VERSION line inside an engine archive, without unpacking it.
-  #
-  # The member is LOOKED UP and then named literally, because
-  # `tar -xzOf a.tar.gz '*/VERSION'` is a bsdtar habit that does not travel.
-  # GNU tar, which is every Linux box and this project's CI, does not glob
-  # member names on extraction unless it is handed --wildcards, and bsdtar
-  # does not accept that flag, so there is no one spelling of the glob form
-  # that works on both. It matched on macOS and found nothing on Linux, so
-  # the stale-copy replacement below simply never fired there and CI failed
-  # on the test written for it (2026-09-09). A literal member name is read
-  # the same way by both.
+  # The VERSION line inside an engine archive, without unpacking it. Find the
+  # member, then extract it by literal name: GNU tar does not glob member
+  # names without --wildcards, and bsdtar rejects that flag.
   _av_member="$(tar -tzf "$1" 2>/dev/null | grep -m1 -E '(^|/)VERSION$')" || return 0
   [ -n "$_av_member" ] || return 0
   tar -xzOf "$1" "$_av_member" 2>/dev/null | head -1
 }
 
 install_engine_archive() {
-  # Unpack a pybnf-pf tarball into $PYBNF, from wherever the student saved
-  # it. THE STUDENT NEVER PLACES THIS BY HAND: the earlier design had the
-  # install doc walking students to ~/Documents/GitHub (macOS) or the
-  # Windows launcher's app-data folder, locations they had no reason to
-  # know, to do a move this function does in three lines. The internal
-  # location still matters (on Windows, Documents is Defender-protected,
-  # which is why FluBNF.bat extracts under app data), but that is the
-  # installer's concern, not the reader's.
+  # Unpack a pybnf-pf tarball into $PYBNF from wherever the student saved it;
+  # nobody places it by hand.
   _arc="$1"
   _tmp="$(mktemp -d)" || return 1
   if ! tar -xzf "$_arc" -C "$_tmp" 2>/dev/null; then
     warn "could not unpack $_arc (a copy that did not finish?)"
     rm -rf "$_tmp"; return 1
   fi
-  # The archive unpacks under one top-level folder (PyBNF-Private/). Find it
-  # by content, not by name, so a re-rolled archive with a different prefix
-  # still installs.
+  # Find the top-level folder by content, not name (the prefix may change).
   _src=""
   for c in "$_tmp"/*/; do
     [ -f "${c}pybnf/pf.py" ] && [ -f "${c}setup.py" ] && { _src="${c%/}"; break; }
@@ -223,14 +143,8 @@ install_engine_archive() {
     rm -rf "$_tmp"; return 1
   fi
   mkdir -p "$(dirname "$PYBNF")"
-  # mv into an EXISTING directory does not replace it, it NESTS the source
-  # inside it, so a leftover folder at $PYBNF (a half-finished unpack, or an
-  # empty folder someone made by hand; anything with pf.py was caught by the
-  # gates above) would swallow the engine one level too deep while this
-  # function reported success. Measured, not assumed. An empty leftover is
-  # removed (rmdir refuses anything non-empty, so this cannot destroy data);
-  # a non-empty one is refused out loud, because a folder this script did
-  # not create is not this script's to delete.
+  # mv into an existing dir NESTS the source. Remove only an EMPTY leftover
+  # (rmdir); refuse anything else rather than delete what we did not create.
   if [ -e "$PYBNF" ] && ! rmdir "$PYBNF" 2>/dev/null; then
     warn "$PYBNF already exists and is not an engine (no pybnf/pf.py),"
     warn "so nothing was touched. Move that folder aside and run this again."
@@ -247,12 +161,7 @@ install_engine_archive() {
 
 case "${1:-}" in
   --print-bundle)
-    # The launchers call this so the search lives in exactly one file.
-    # FluBNF.command needs to know whether a bundle has appeared since the
-    # last failed attempt (otherwise its "do not retry a broken setup on
-    # every open" stamp would suppress the retry that would now succeed),
-    # and a second copy of the search would be a second thing to keep in
-    # step with this one.
+    # The launchers call this (retry fingerprint) so the search lives only here.
     find_engine_bundle
     exit 0 ;;
 esac
@@ -274,24 +183,9 @@ if [ -d "$PYBNF/.git" ]; then
     ok "on feature/particle-filter"
   fi
 elif [ -f "$PYBNF/pybnf/pf.py" ] && [ -f "$PYBNF/setup.py" ]; then
-  # A PLAIN UNZIPPED COPY, no .git at all.
-  #
-  # The engine does not need git. It needs an importable package, and the
-  # install below is `pip install -e "$PYBNF" --no-deps`, which is perfectly
-  # happy with an ordinary directory. Git was only ever used to confirm the
-  # branch. So the whole particle filter travels as a 129 KB archive cut with
-  #   git archive feature/particle-filter pybnf setup.py README.md
-  # which is small enough to email, and that is the route students actually
-  # get. Rejecting it for lacking a .git directory would be refusing to
-  # install over a detail the installer does not use.
-  #
-  # The cost is real and is stated out loud rather than hidden: an unzipped
-  # copy has no version identity and cannot be updated in place. `git archive`
-  # writes the commit into .git_archival.txt when the repository is configured
-  # for it, and whoever cuts the archive can drop a VERSION file in beside the
-  # package; either is printed here if present, because the first question
-  # when one student's forecast differs from another's is which copy they are
-  # running, and an unversioned directory cannot answer it.
+  # Plain unpacked copy (no .git): fine, the install is `pip install -e
+  # --no-deps` and needs only an importable package. It has no git identity,
+  # so print its stamp: 'which build' is the first question when forecasts differ.
   ok "unpacked copy present (no git): $PYBNF"
   PFVER=""
   for v in "$PYBNF/VERSION" "$PYBNF/.git_archival.txt" "$PYBNF/PF_VERSION"; do
@@ -304,20 +198,10 @@ elif [ -f "$PYBNF/pybnf/pf.py" ] && [ -f "$PYBNF/setup.py" ]; then
     warn "answer. Whoever cut the archive should include one. Harmless for a"
     warn "single machine, awkward the moment two people compare forecasts."
   fi
-  # An unpacked copy is NOT the end of the search. A newer archive saved
-  # since this copy was installed should win, because the whole handout
-  # route is "save the file, open the app". A PI's laptop kept an engine cut
-  # 2026-08-31 through a clean re-run of this script with the current
-  # archive sitting in Downloads, because this branch accepted what was
-  # already on disk and never looked (lab report, 2026-09-09); every fit
-  # then failed against a current console. The advice below used to be the
-  # whole remedy, and it asked the reader to do by hand what this can do.
-  #
-  # Two guards. The stamps must DIFFER, and the archive file must be NEWER
-  # than the installed copy, so an old archive left in Downloads can never
-  # downgrade a current engine. The previous copy is moved aside, never
-  # deleted: it is not this script's to destroy, and if the install fails
-  # it goes straight back.
+  # A newer archive saved since replaces this copy ("save the file, open the
+  # app"), but only if its stamp DIFFERS and the file is newer than the
+  # installed VERSION: an old download must never downgrade. The old copy is
+  # moved aside, never deleted, and put back if the install fails.
   _arc="$(find_engine_bundle 2>/dev/null)"
   _newver=""
   case "$_arc" in
@@ -342,15 +226,13 @@ elif [ -f "$PYBNF/pybnf/pf.py" ] && [ -f "$PYBNF/setup.py" ]; then
     warn "installed over this copy the next time this script runs."
   fi
 else
-  # --- the offline bundle, tried before anything that needs an account -----
+  # The offline file, tried before anything that needs an account.
   say "offline engine bundle"
   BUNDLE="$(find_engine_bundle)"
   ARCHIVE_DONE=""
   case "$BUNDLE" in
     *.tar.gz)
-      # The archive shape: unpack it ourselves, wherever the student saved
-      # it. If the unpack fails the file stays where it is and the GitHub
-      # route below still runs, so a bad download never strands anyone.
+      # Tarball: unpack it; on failure the GitHub route below still runs.
       ok "found: $BUNDLE"
       install_engine_archive "$BUNDLE" && ARCHIVE_DONE=1
       BUNDLE="" ;;
@@ -359,25 +241,15 @@ else
     : # engine is on disk now; the have_pybnf gate below sees it and skips auth
   elif [ -n "$BUNDLE" ]; then
     ok "found: $BUNDLE"
-    # Verify first, but do not expect much of it. MEASURED on git 2.39.5:
-    # `git bundle verify` accepts a bundle truncated to HALF its bytes -- it
-    # reads the header and the prerequisites, not the pack -- and the clone
-    # then dies with "fatal: early EOF / error: index-pack died". So verify
-    # catches only the file that is not a bundle at all (a browser that saved
-    # an error page under the name pybnf.bundle is the realistic one), and
-    # the CLONE failure has to carry the truncation message itself. Both
-    # branches say which of the two happened, because the remedy differs:
-    # one needs a different file, the other needs the same file copied again.
+    # `git bundle verify` reads only the header, so it accepts a half-truncated
+    # file (git 2.39.5); truncation surfaces at clone as 'early EOF'. Report
+    # which failure it was: a new file vs the same file copied again.
     if git bundle verify "$BUNDLE" >/dev/null 2>&1; then
       if git clone -b feature/particle-filter "$BUNDLE" "$PYBNF"; then
         ok "cloned from the bundle into $PYBNF"
         ok "no GitHub account, invitation or network was needed"
-        # `git clone` records the bundle FILE as origin, and that file is
-        # often on a stick that is about to be unplugged. Point origin at the
-        # real remote so a later `git pull` fails with something a person can
-        # act on instead of "repository not found:
-        # /Volumes/LAB/pybnf.bundle". Nothing in FluBNF ever pulls this
-        # checkout, so this is for the human, not for the code.
+        # origin = the bundle file (often removable media): name the fork
+        # instead, for a human's later `git pull` (FluBNF never pulls it).
         git -C "$PYBNF" remote set-url origin "$PYBNF_REMOTE" 2>/dev/null \
           && ok "origin now names the fork itself (updates need access; the bundle does not)"
       else
@@ -388,10 +260,7 @@ else
         warn "the copy you were given and fetch it again. The other cause is a"
         warn "bundle made from the wrong branch ('Remote branch"
         warn "feature/particle-filter not found'), which needs a new bundle."
-        # Deliberately NOT cleaned up here. git removes its own half-made
-        # clone, and the one case where something is left behind is a
-        # destination that already existed with other things in it -- which
-        # is a directory this script did not create and must not delete.
+        # No cleanup: git removes its own half clone; a pre-existing dir is not ours.
         if [ -d "$PYBNF" ] && [ ! -d "$PYBNF/.git" ]; then
           warn "note: $PYBNF exists and is not a checkout. git will not clone"
           warn "into it. Move it aside, or point FLUBNF_PYBNF somewhere else."
@@ -415,43 +284,23 @@ else
   fi
 fi
 
-# The bundle above may have produced the checkout. Test the disk rather than
-# a flag: the ground truth for "do we still need GitHub" is whether a
-# checkout exists, and a flag can only ever disagree with it.
-#
-# "Exists" means THE CODE IS THERE, not ".git is there". Those came apart the
-# moment an unzipped archive became a supported way to get the engine: a plain
-# copy was accepted at the top of this script and then sent to authenticate
-# anyway by this line, so a student with a perfectly good engine on disk was
-# still asked for GitHub credentials. The install below only ever needs an
-# importable package, so that is what both gates now ask for.
+# Still need GitHub? Test the disk, not a flag. The code being there counts,
+# .git or not: an unpacked copy must never be sent to authenticate.
 have_pybnf() {
   [ -d "$PYBNF/.git" ] || { [ -f "$PYBNF/pybnf/pf.py" ] && [ -f "$PYBNF/setup.py" ]; }
 }
 if ! have_pybnf; then
   say "fork access (needed to clone)"
-  # GIT_TERMINAL_PROMPT=0 is load-bearing, not tidiness. Without it this probe
-  # asks for a GitHub Username and Password ON THE TERMINAL, and a
-  # double-clicked .command opens a real one, so git gets a TTY and prompts.
-  # The `2>&1` below hides git's error text but CANNOT hide that prompt: it is
-  # written straight to the terminal. A PI hit exactly this -- typed the
-  # account password, which GitHub has rejected since 2021, and never reached
-  # the four options spelled out under `warn` -- so the failure has to be
-  # immediate and silent for that advice to be the thing the reader sees.
-  # A prompt here can never succeed anyway: passwords are dead, and every
-  # route that does work (Desktop, gh, a token, SSH) is set up elsewhere.
+  # GIT_TERMINAL_PROMPT=0 is load-bearing: a double-clicked .command has a TTY,
+  # so git would prompt for a password (dead since 2021; 2>&1 cannot hide the
+  # prompt) and bury the advice below. Fail fast and silent instead.
   if GIT_TERMINAL_PROMPT=0 git ls-remote "$PYBNF_REMOTE" HEAD >/dev/null 2>&1; then
     git clone -b feature/particle-filter "$PYBNF_REMOTE" "$PYBNF" && ok "cloned"
   else
     warn "cannot authenticate to $PYBNF_REMOTE and no local checkout exists"
-    # WHY THIS BLOCK EXISTS. Twice now this failure has been debugged by
-    # guessing from a menu of causes, and twice the guess was wrong: a PI had
-    # accepted the invite and was a confirmed collaborator, and had GitHub
-    # Desktop installed and signed in to the right account, and it still did
-    # not work. A menu cannot distinguish "wrong identity cached", "cloned to
-    # a path we do not search", "no network" and "genuinely no access". So
-    # report what this machine can actually see BEFORE offering advice, and
-    # keep every probe non-interactive so none of them can hang.
+    # Report what this machine can see before advising (wrong cached identity,
+    # unsearched path, no network, no access look alike); every probe is
+    # non-interactive so none can hang.
     say "what this machine can see (paste this if you need help)"
     if GIT_TERMINAL_PROMPT=0 git ls-remote https://github.com/cdcepi/FluSight-forecast-hub HEAD >/dev/null 2>&1; then
       ok "github.com reachable (a public repo responds), so this is not the network"
@@ -489,9 +338,7 @@ if ! have_pybnf; then
       warn "its login with terminal git; that is the usual surprise here."
     fi
     say "is the fork already on this machine somewhere we do not look?"
-    # Report only checkouts the automatic search would MISS. Listing one that
-    # is already probed reads as "we found it and ignored it", which sends the
-    # reader off to fix the wrong thing.
+    # List as strays only checkouts the automatic search would MISS.
     SEARCHED="$HOME/Documents/GitHub/PyBNF-Private $HOME/Documents/GitHub/PyBNF-pf $HOME/Documents/PyBNF-Private $HOME/PyBNF-Private"
     STRAY=""; INPATH=""
     for g in $(find "$HOME" -maxdepth 5 -type d -name '.git' -path '*PyBNF*' 2>/dev/null | head -8); do
@@ -505,14 +352,8 @@ if ! have_pybnf; then
       ok "a checkout already sits where setup looks:"
       printf '     %s\n' $INPATH
       warn "so nothing needs cloning."
-      # Only blame FLUBNF_PYBNF when FLUBNF_PYBNF is actually set. It was an
-      # unconditional line, and the first thing it did was give a reader with
-      # a good checkout at ~/Documents/GitHub/PyBNF-Private a dead end: the
-      # variable was not set, so "re-run without it" changed nothing and the
-      # advice below it was never reached. SEARCHED above is the LAUNCHERS'
-      # list, which is wider than the two names this script resolves on its
-      # own, so the two can still legitimately disagree -- but only the
-      # remaining locations, and only with the remedy that fits each.
+      # Blame FLUBNF_PYBNF only when it is set. SEARCHED is the launchers'
+      # list, wider than the two names this script resolves itself.
       if [ -n "${FLUBNF_PYBNF:-}" ]; then
         warn "You reached this message because FLUBNF_PYBNF points somewhere"
         warn "else ($PYBNF). Re-run without it:"
@@ -544,11 +385,7 @@ if ! have_pybnf; then
     warn "with an 'Invited' badge; the invitee accepts from their email or"
     warn "from github.com/notifications. Signing in with the right account is"
     warn "NOT the same as having accepted."
-    # The bundle goes FIRST because it is the only option on this list that
-    # needs nothing from the reader's machine: no account, no invitation, no
-    # network, no software to install, and no administrator rights on a
-    # managed laptop. Every option below it has cost someone a debugging
-    # session.
+    # The bundle goes first: it needs no account, network, install or admin.
     warn "EASIEST OF ALL, AND NEEDS NO GITHUB ACCOUNT AT ALL: ask anyone who"
     warn "already has the fork for an engine bundle. On their machine, once:"
     warn "  git bundle create pybnf.bundle feature/particle-filter"
@@ -569,9 +406,7 @@ if ! have_pybnf; then
     warn "   which is where this setup looks, then reopen FluBNF.command."
     warn "   (Signing in to Desktop WITHOUT cloning does not help: Desktop"
     warn "   does not share its login with terminal git.)"
-    # Option (b) used to say "run gh auth login" flatly, which is useless
-    # advice on a machine without the GitHub CLI: a PI ran it and got
-    # "command not found". Check before recommending, and say how to get it.
+    # Recommend `gh auth login` only when gh exists; else say how to get it.
     if command -v gh >/dev/null 2>&1; then
       warn "b) run 'gh auth login' (you have the GitHub CLI), then re-run this."
     else
@@ -605,24 +440,16 @@ if ! have_pybnf; then
 fi
 
 if [ "${FLUBNF_ENGINE_CHECKOUT_ONLY:-0}" = "1" ]; then
-  # Stop once the checkout exists. tests/test_engine_bundle.py runs the real
-  # script against a real bundle and needs to see the clone happen; building
-  # the venv after it would cost minutes and a network it does not have, and
-  # is not what that test is about. Useful by hand too, when all you want is
-  # the fork on disk.
+  # Test hook (tests/test_engine_bundle.py) and manual use: stop after the checkout.
   ok "stopping after the checkout (FLUBNF_ENGINE_CHECKOUT_ONLY=1)"
   exit 0
 fi
 
 say "engine venv"
 [ -d "$ENGINE_VENV" ] || $PY -m venv "$ENGINE_VENV"
-# numpy<2: the fork predates NumPy 2 and the historical fixes were venv-local
-# patches, not commits. Pinning is the reproducible answer.
-# The runtime set, installed explicitly so the fork can go in with
-# --no-deps below. PyBNF pins msgpack==0.6.2 (2019), which has no wheel
-# for a modern Python on any platform and must otherwise be compiled.
-# This list is what the PF path actually imports, traced 2026-08-25;
-# PyBNF also declares nose and paramiko, which it never imports.
+# The runtime set the PF path imports, installed explicitly so the fork can go
+# in with --no-deps (its msgpack==0.6.2 pin has no modern wheels; its nose and
+# paramiko are never imported). numpy<2: the fork predates NumPy 2.
 "$ENGINE_VENV/bin/pip" install -q "numpy<2" scipy pandas "dask==2022.12.1" \
   "distributed==2022.12.1" msgpack pyparsing tornado libroadrunner \
   python-libsbml && ok "runtime dependencies installed" \
@@ -632,14 +459,9 @@ say "bngsim"
 if "$ENGINE_VENV/bin/python" -c "import bngsim" 2>/dev/null; then
   ok "bngsim already importable"
 else
-  # wheels from the lab fork's releases first; source build as fallback
-  # PINNED. Every published FluBNF number was produced by a bngsim built
-  # from a local checkout whose pyproject reported "0.13.0" while sitting 50
-  # commits past that tag, on a branch present in no upstream. So
-  # `bngsim==0.13.0` would NOT reproduce the seal. 0.15.1 was measured on
-  # 2026-08-25 to be BIT-IDENTICAL to that build across three cells, at the
-  # ODE, the filter and the WIS: max abs and max rel difference exactly 0.
-  # It is a real published version anyone can install, so it is the pin.
+  # Wheel first, source build as fallback. Pinned to 0.15.1: measured
+  # bit-identical (ODE, filter, WIS) to the unreleased build behind every
+  # published number; 0.13.0, the version that build reported, is not.
   if ! "$ENGINE_VENV/bin/pip" install -q "bngsim==0.15.1" 2>/dev/null; then
     warn "no PyPI/wheel match -- building from source (needs a C++ toolchain;"
     warn "on macOS: xcode-select --install). This takes ~10 minutes."
@@ -649,20 +471,16 @@ else
 fi
 
 say "PyBNF install"
-# --no-deps: the runtime set is installed above, and resolving the fork's
-# own install_requires would drag in the unbuildable msgpack pin. A failed
-# editable install is a warning, not an error: every generated runner (and
-# the app's version probe) loads pybnf from the checkout via sys.path, so
-# the verify below is the real gate. (The editable install is known to
-# fail on Windows and to work on macOS.)
+# --no-deps: see the runtime set above. A failed editable install is only a
+# warning (known on Windows): runners load pybnf from the checkout via
+# sys.path, so the verify below is the real gate.
 "$ENGINE_VENV/bin/pip" install -q -e "$PYBNF" --no-deps \
   && ok "pybnf (fork) installed editable" \
   || warn "editable install failed -- harmless if the verify below passes"
 
 say "verify"
-# Mirrors exactly what every generated runner does: the checkout first on
-# sys.path, then import. A verify failure aborts BEFORE the environment is
-# recorded, so a broken setup can never present itself as a finished one.
+# Import as every generated runner does (checkout first on sys.path). Failure
+# aborts BEFORE the environment is recorded.
 if ! "$ENGINE_VENV/bin/python" - "$PYBNF" <<'PYEOF'
 import sys
 sys.path.insert(0, sys.argv[1])
@@ -675,8 +493,7 @@ then
   exit 1
 fi
 ENVF="$HERE/.flubnf.env"
-# rewrite, don't skip: a stale entry from an earlier layout must not
-# outlive the setup that just verified the real one
+# Rewrite, don't skip: a stale entry must not outlive a verified setup.
 TMPF="$ENVF.tmp.$$"
 grep -v -e FLUBNF_PY_ENGINE -e FLUBNF_PYBNF "$ENVF" 2>/dev/null > "$TMPF" || true
 {

@@ -1,37 +1,15 @@
-# flubnf one-command setup (Windows). Idempotent: re-running fixes what is
-# missing. PowerShell twin of setup.sh. Run with:
-#   powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1
-#
-# -NoProfile matters: a user profile that sets $ErrorActionPreference = "Stop"
-# would otherwise turn every line git writes to stderr into a script-ending
-# error (see the comment on $ErrorActionPreference below).
-#
-# -NoPrompt makes this script ask nothing at all, for unattended runs and CI.
-# Without it the only question ever asked is whether to let winget install
-# Strawberry Perl, and even that is skipped in a non-interactive session.
-#
-# -ShowDefenderExclusion prints the antivirus-exclusion instructions in full,
-# including the exact command, and changes nothing. It is a SWITCH rather
-# than a question on purpose: FluBNF.bat runs this script with -NoPrompt on
-# the double-click path, so anything driven by a prompt would be invisible
-# there, and anything driven by a default would be an antivirus change nobody
-# asked for. Somebody has to type this for the subject to come up at all.
-# See the "defender real-time scanning" section below.
+# flubnf one-command setup (Windows), twin of setup.sh. Idempotent.
+#   powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 [-NoPrompt] [-ShowDefenderExclusion]
+# -NoProfile: a profile's $ErrorActionPreference = "Stop" makes git's stderr fatal.
+# -NoPrompt: ask nothing (FluBNF.bat, CI); otherwise the only question is the
+#   winget Strawberry Perl offer, and only in an interactive session.
+# -ShowDefenderExclusion: print the scanning-exclusion detail; changes nothing.
+#   A switch, never a prompt or default: someone has to ask for it.
 param([switch]$NoPrompt, [switch]$ShowDefenderExclusion)
 
-# "Continue" is deliberate. In Windows PowerShell every line a native command
-# writes to stderr comes back as an ErrorRecord, so under "Stop" an entirely
-# healthy `git clone` would end this script the moment git printed its first
-# status line. The price of Continue is that a failing command does not stop
-# the script by itself, so EVERY native call below reads its own exit code on
-# the very next statement and decides what to do with it.
-#
-# Never test $LASTEXITCODE two statements later. It is global, so the next
-# native call overwrites it, and -- the defect that produced the misleading
-# "data fetch failed (offline? git missing?)" report from the field -- it is
-# left completely untouched when a command could not be found at all, so it
-# still holds the exit code of whatever ran before. Invoke-Captured below
-# reports "did it even run" separately from "what did it exit with".
+# "Continue" on purpose: under "Stop" any native stderr line (git progress) is
+# terminating. So every native call reads its exit code on the NEXT statement;
+# Invoke-Captured also reports "never ran" ($LASTEXITCODE is stale then).
 $ErrorActionPreference = "Continue"
 
 function Say($m)  { Write-Host "`n== $m ==" }
@@ -40,12 +18,8 @@ function Warn($m) { Write-Host "  ! $m" -ForegroundColor Yellow }
 function Info($m) { Write-Host "  $m" }
 
 function Invoke-Captured {
-    <#
-      Run a native command with stdout and stderr captured, and return
-      @{ Ran; Code; Output }. Output is held rather than printed so a normal
-      run stays quiet, and is printed by the caller when something failed --
-      the diagnostic that `2>$null` used to throw away.
-    #>
+    <# Run a native command, capturing stdout+stderr: @{ Ran; Code; Output }.
+       The caller prints Output only on failure. #>
     param([string]$Exe, [string[]]$Arguments = @())
     if (-not (Get-Command $Exe -ErrorAction SilentlyContinue)) {
         return @{ Ran = $false; Code = $null
@@ -72,73 +46,25 @@ $Interactive = ((-not $NoPrompt) -and (-not $env:CI) -and
 
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-# WHERE THE CHECKOUTS GO, AND WHY IT IS NO LONGER Documents.
-#
-# Controlled Folder Access, the ransomware protection built into Microsoft
-# Defender, protects Documents, Pictures, Videos, Music and Favorites (and
-# their C:\Users\Public counterparts) whenever it is switched on. A
-# protected folder can be read by anything and written only by programs
-# Defender trusts, and neither git.exe nor python.exe is trusted out of the
-# box. Recorded on the corresponding author's Windows 11 machine on
-# 2026-08-25, in the Defender operational log, verbatim:
-#
-#   Id 1123  git.exe has been blocked from modifying
-#            %userprofile%\Documents\GitHub\FluSight-forecast-hub
-#   Id 1123  python.exe has been blocked from modifying
-#            %userprofile%\Documents\GitHub\PyBNF-pf\pybnf\__pycache__
-#
-# The message the USER sees in each case is an ordinary permission error
-# that never mentions Defender, so the old defaults produced two failures
-# that cannot be diagnosed from the failure.
-#
-# IT IS NOT ON BY DEFAULT, and an earlier draft of this file said it was.
-# Microsoft documents the shipped state as Disabled: "CFA is turned off by
-# default", with mode 0 marked "(default)". Get-MpPreference on the author's
-# machine nonetheless reports EnableControlledFolderAccess = 1, so something
-# turned it on there -- the author, the manufacturer's image, or IT policy
-# on a managed machine. That is the point: it is ON for at least one real
-# user of this project and may be ON for any student, so the defaults must
-# not depend on it being off. Nothing in this script assumes either way; it
-# asks the machine and reports what it is told.
-#
-# %LOCALAPPDATA% is the documented per-user location for application data
-# (FOLDERID_LocalAppData). It is not in the protected set; it is per-user,
-# so nothing here needs an administrator; and unlike %APPDATA% it does not
-# roam and is not swept into OneDrive by Known Folder Move, which matters
-# for a 150 MB clone made of tens of thousands of small files. C:\FluBNF was
-# considered and rejected: creating a directory at the root of the system
-# drive needs elevation on a default install.
-#
-# The engine venv default (~\.venvs) is deliberately unchanged. Controlled
-# Folder Access protects named folders inside the profile, not the profile
-# root, so ~\.venvs was never at risk.
-#
-# macOS and Linux are untouched by all of this; setup.sh keeps its
-# ~/Documents/GitHub defaults, because those systems have no equivalent.
-#
-# ONE PROFILE ROOT, RESOLVED ONCE. FluBNF.bat reads %USERPROFILE% and
-# flubnf/settings.py calls Path("~").expanduser(), which prefers
-# %USERPROFILE% too. $HOME is a THIRD answer: the PowerShell 7 documentation
-# says it takes %USERPROFILE% and warns that it "may not have the same value
-# as $Env:HOMEDRIVE$Env:HOMEPATH", while the 5.1 documentation described it
-# as the equivalent of %homedrive%%homepath%. We cannot run either from
-# macOS to settle it, and on a university-managed machine with an Active
-# Directory home directory the two are genuinely different (H:\, or a UNC
-# path). So this script stops depending on the answer: it prefers
-# %USERPROFILE%, exactly as the launcher and the Python side do, and where a
-# LOOKUP rather than a default is at stake it probes $HOME as well, so a
-# checkout made by an earlier release under either root is still found.
+# Checkouts default under %LOCALAPPDATA%\FluBNF, not Documents. Controlled
+# Folder Access, when switched on, lets only trusted programs write to
+# Documents (and Pictures, Videos, Music, Favorites), and git.exe/python.exe
+# are not trusted: the user sees a plain permission error that never names
+# Defender (event 1123; docs\WINDOWS.md has the log). Microsoft ships it off,
+# but it is on for at least one machine here, so the defaults must not rely
+# on it; this script asks the machine rather than assuming either way.
+# %LOCALAPPDATA%: per-user, no admin, not roamed or synced by OneDrive. ~\.venvs
+# is safe (CFA guards named folders, not the profile root). macOS/Linux keep
+# ~/Documents/GitHub.
+# Profile root: prefer %USERPROFILE%, as FluBNF.bat and settings.py do; $HOME
+# can differ (AD home directories), so LOOKUPS of earlier installs probe both.
 $ProfileRoot = if ($env:USERPROFILE) { $env:USERPROFILE } else { $HOME }
 $LocalAppData = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA }
                 else { Join-Path $ProfileRoot "AppData\Local" }
 $FluBnfRoot = Join-Path $LocalAppData "FluBNF"
 
 function Get-ProfileRoots {
-    <#
-      Every plausible spelling of the user profile, most authoritative
-      first, de-duplicated. One entry on an ordinary machine; two where
-      $HOME and %USERPROFILE% disagree.
-    #>
+    <# Every spelling of the profile root, most authoritative first, deduplicated. #>
     $out = @()
     foreach ($r in @($ProfileRoot, $HOME, $env:USERPROFILE)) {
         if ($r -and ($out -notcontains $r)) { $out += $r }
@@ -150,17 +76,9 @@ $LegacyRoots = @(Get-ProfileRoots | ForEach-Object {
 
 $script:ReusedLegacy = @()
 function Resolve-Checkout {
-    <#
-      FLUBNF_* wins; then an EXISTING checkout at the old Documents default,
-      used exactly where it stands; then the new default under %LOCALAPPDATA%.
-
-      NOTHING IS EVER MOVED OR COPIED. The author has 143 MB of PyBNF
-      checkout and 150 MB of hub under Documents, and relocating a working
-      tree is not a decision a setup script may take on a user's behalf. A
-      machine that already works keeps working with no action at all; the
-      reuse is announced in the plan block, and named again in the
-      Controlled Folder Access warning below when that protection is on.
-    #>
+    <# FLUBNF_* wins; then an EXISTING checkout at the old Documents default,
+       used where it stands (never moved or copied; announced in the plan);
+       then the default under %LOCALAPPDATA%. #>
     param([string]$FromEnv, [string]$Name)
     if ($FromEnv) { return $FromEnv }
     foreach ($root in $LegacyRoots) {
@@ -174,14 +92,8 @@ function Resolve-Checkout {
 }
 
 function Resolve-ProfilePath {
-    <#
-      A path under the user profile, for something this script did not
-      necessarily create. Prefers %USERPROFILE%, but if an earlier release
-      built it under a DIFFERENT profile root ($HOME on a machine where the
-      two disagree) and that one exists while the preferred one does not,
-      the existing one wins. Stranding a working install is the one outcome
-      this whole file is written to avoid.
-    #>
+    <# A profile-relative path: %USERPROFILE%'s, unless only another root's
+       copy exists (an earlier install must not be stranded). #>
     param([string]$Relative)
     $preferred = Join-Path $ProfileRoot $Relative
     if (Test-Path -LiteralPath $preferred) { return $preferred }
@@ -193,11 +105,7 @@ function Resolve-ProfilePath {
 }
 
 function Test-PathInside {
-    <#
-      Is $Child the same directory as $Parent, or somewhere beneath it?
-      Purely lexical (GetFullPath does not touch the disk), which is what is
-      wanted: the paths being tested may not exist yet.
-    #>
+    <# Is $Child $Parent or beneath it? Lexical only: paths may not exist yet. #>
     param([string]$Child, [string]$Parent)
     if (-not $Child -or -not $Parent) { return $false }
     try {
@@ -210,31 +118,11 @@ function Test-PathInside {
 }
 
 function Get-ProtectedFolders {
-    <#
-      The folders Controlled Folder Access protects by default.
-
-      Microsoft's documented default set is Documents, Favorites, Music,
-      Pictures and Videos under each user profile, plus the C:\Users\Public
-      counterparts of Documents, Music, Pictures and Videos, "for user
-      accounts and system accounts". Desktop is NOT in that list, but the
-      same page names Desktop when it describes OneDrive Known Folder Move
-      redirection, other Microsoft pages have listed it, and the Windows
-      Security app shows the live list. Desktop stays in here deliberately:
-      this list only decides whether a WARNING is printed, so an entry too
-      many costs a sentence and an entry too few costs the whole point.
-
-      Read through GetFolderPath rather than assembled from a profile root,
-      so that a Documents folder redirected into OneDrive by Known Folder
-      Move is the one tested. The literal profile paths are added as well,
-      because a redirected known folder leaves the plain one in place on
-      some machines and both can hold a checkout, and every spelling of the
-      profile root is used because $HOME and %USERPROFILE% can differ.
-
-      The machine's OWN list, when Defender will tell us, is unioned in by
-      the caller; see Get-CfaState. This function is the fallback for when
-      it will not, which includes the documented case of CFA being off and
-      the likely case of not running elevated.
-    #>
+    <# CFA's documented default folders (plus Public and Desktop: this only
+       decides whether to WARN, so erring wide is cheap). GetFolderPath follows
+       OneDrive KFM; literal paths under every profile root are added too. The
+       caller unions in the machine's own list; this is the fallback when
+       Defender will not say (CFA off, or not elevated). #>
     $out = @()
     foreach ($n in @("MyDocuments", "Desktop", "DesktopDirectory",
                      "MyPictures", "MyVideos", "MyMusic", "Favorites",
@@ -253,36 +141,11 @@ function Get-ProtectedFolders {
 }
 
 function Get-CfaState {
-    <#
-      Controlled Folder Access state as @{ State; Why; Folders }, where
-      State is "on", "audit", "off" or "unknown" and Folders is whatever
-      list of protected folders the machine was willing to hand over.
-
-      Get-MpPreference is the documented way to read it. It is NOT assumed to
-      work: the Defender PowerShell module is absent on some images, a
-      third-party antivirus can leave it present but non-functional, and an
-      older build may not carry the property at all. Every one of those is
-      "unknown" plus the reason, never a crash and never a guess.
-
-      Documented mode values, all five of them:
-        0 Disabled (the shipped default)
-        1 Enabled -- untrusted apps blocked from protected folders
-        2 AuditMode -- the same, logged instead of blocked
-        3 BlockDiskModificationOnly
-        4 AuditDiskModificationOnly
-      3 and 4 act ONLY on writes to the disk sectors holding the boot
-      record; Microsoft is explicit that they "don't affect files in
-      protected folders". For this script's one question -- can git and
-      python write into a checkout -- they are indistinguishable from off,
-      and reporting them as "unknown" would have printed a page of alarming
-      and irrelevant advice on a machine that was never going to block us.
-
-      Both the number and the enumeration NAME are accepted, because
-      Get-MpPreference returns a typed value whose rendering we cannot check
-      from macOS, and a cast that guessed wrong would report "unknown" on a
-      machine that answered perfectly well. Anything else is reported as the
-      literal text it was, not folded into a verdict this cannot justify.
-    #>
+    <# @{ State; Why; Folders }, State "on"/"audit"/"off"/"unknown". Never
+       assumes Get-MpPreference works (module missing, third-party AV, old
+       build): "unknown" plus the reason. Modes: 0 off, 1 on, 2 audit, 3/4
+       boot sectors only (= off for folders). The number or the enum name is
+       accepted; anything else is reported verbatim. #>
     if (-not (Get-Command Get-MpPreference -ErrorAction SilentlyContinue)) {
         return @{ State = "unknown"; Folders = @()
                   Why = "Get-MpPreference is not available on this machine" }
@@ -296,15 +159,8 @@ function Get-CfaState {
         return @{ State = "unknown"; Folders = @()
                   Why = "Get-MpPreference returned nothing" }
     }
-    # THE MACHINE'S OWN ANSWER, PREFERRED OVER OUR LIST OF DEFAULTS.
-    # ControlledFolderAccessProtectedFolders holds folders an administrator
-    # or the user ADDED; ...DefaultProtectedFolders holds the built-in set,
-    # and Microsoft documents it as populated only when CFA is turned on and
-    # read from an elevated session. Either may therefore be empty, which is
-    # why Get-ProtectedFolders stays as the fallback rather than being
-    # replaced. Anything we do get is strictly better than a guess: on a
-    # managed image where IT protected an extra folder, this is the only way
-    # to know.
+    # The machine's own lists (added folders; the built-in set, populated only
+    # when CFA is on and elevated) beat our defaults; either may be empty.
     $folders = @()
     foreach ($p in @("ControlledFolderAccessProtectedFolders",
                      "ControlledFolderAccessDefaultProtectedFolders")) {
@@ -341,29 +197,11 @@ function Get-CfaState {
 }
 
 function Get-RealtimeState {
-    <#
-      Defender REAL-TIME PROTECTION, which is a different setting from
-      Controlled Folder Access and has a different consequence. Controlled
-      Folder Access BLOCKS a write and the run stops. Real-time protection
-      allows every write and inspects it, and the run merely takes longer --
-      which is why it is diagnosed late, if at all: nothing fails, so nothing
-      points at it.
-
-      Returned as @{ State; Why; Paths; Processes }, State being "on", "off"
-      or "unknown", and the two lists being whatever exclusions the machine
-      already has. Read-only, like Get-CfaState, and guarded the same way:
-      the Defender module is missing on some images, a third-party antivirus
-      can leave the cmdlets present but useless, and an unprivileged session
-      can be refused. Every one of those is "unknown" plus the reason.
-
-      Two cmdlets, because they answer different questions and either can be
-      unavailable on its own. Get-MpComputerStatus reports what protection is
-      RUNNING (RealTimeProtectionEnabled), which is the authoritative answer
-      and is also the one that goes false when a third-party antivirus takes
-      over. Get-MpPreference reports what is CONFIGURED
-      (DisableRealtimeMonitoring, inverted) and carries the exclusion lists.
-      Status wins when both answer; preference is the fallback.
-    #>
+    <# Defender real-time scanning (slows writes, never blocks them):
+       @{ State; Why; Paths; Processes }, State "on"/"off"/"unknown", lists =
+       existing exclusions. Guarded like Get-CfaState. Get-MpComputerStatus
+       (what RUNS) wins over Get-MpPreference (what is configured, plus the
+       exclusion lists). #>
     $paths = @()
     $procs = @()
     $pref = $null
@@ -413,27 +251,18 @@ function Get-RealtimeState {
 
 $Hub = Resolve-Checkout $env:FLUBNF_HUB "FluSight-forecast-hub"
 $PyBnf = Resolve-Checkout $env:FLUBNF_PYBNF "PyBNF-pf"
-# The fork clones as PyBNF-Private (the repository's real name, and what
-# GitHub Desktop or an unzipped lab bundle names it) on every machine but
-# the development host, so when no PyBNF-pf exists, an existing
-# PyBNF-Private wins over cloning fresh. Mirrors flubnf/settings.py.
+# No PyBNF-pf (the dev host's name): an existing PyBNF-Private (the repo's
+# real name) wins over cloning fresh. Mirrors flubnf/settings.py.
 if (-not $env:FLUBNF_PYBNF -and -not (Test-Path -LiteralPath $PyBnf)) {
     $alt = Resolve-Checkout $null "PyBNF-Private"
     if (Test-Path -LiteralPath $alt) { $PyBnf = $alt }
 }
 $EngineVenv = if ($env:FLUBNF_ENGINE_VENV) { $env:FLUBNF_ENGINE_VENV }
-              # Resolve-ProfilePath, not a bare join: flubnf/settings.py
-              # expands ~/.venvs/flubnf-engine through %USERPROFILE%, so
-              # that is the spelling to prefer, and an engine venv an
-              # earlier release built under the other profile root is still
-              # found rather than silently rebuilt beside it.
+              # Resolve-ProfilePath: settings.py uses %USERPROFILE%, and a
+              # venv built under the other root is still found.
               else { Resolve-ProfilePath ".venvs\flubnf-engine" }
 $PyBnfRemote = if ($env:FLUBNF_PYBNF_REMOTE) { $env:FLUBNF_PYBNF_REMOTE }
-               # HTTPS by default, not SSH. Students are onboarded through
-               # GitHub Desktop, which installs Git Credential Manager and
-               # caches an HTTPS credential, so a private clone just works
-               # with no key to generate. Override with FLUBNF_PYBNF_REMOTE
-               # if you prefer SSH.
+               # HTTPS: GitHub Desktop's Git Credential Manager caches it.
                else { "https://github.com/elyfmiller/PyBNF-Private.git" }
 $EnginePy = Join-Path $EngineVenv "Scripts\python.exe"
 $VenvDir = Join-Path $Here ".venv"
@@ -473,46 +302,29 @@ if ($Hub -like "*OneDrive*") {
 }
 
 Say "controlled folder access (Defender ransomware protection)"
-# READ-ONLY, ALWAYS. This section asks Defender one question and prints
-# advice. It never changes a Defender setting, never elevates, and never
-# suggests switching Controlled Folder Access off: the protection is worth
-# having, and a setup script is not the thing that gets to weaken it.
-#
-# It runs BEFORE anything is installed, because the failures it predicts are
-# the ones that cannot be read off their own error messages, and a user who
-# has been told what is coming can stop and fix it first.
+# Read-only: never changes Defender, never elevates, never suggests turning
+# CFA off. Runs before any install: these failures cannot be read off their errors.
 $Cfa = Get-CfaState
 $GitCmd = Get-Command git -ErrorAction SilentlyContinue
 $GitExe = if ($GitCmd) { $GitCmd.Source }
           else { "C:\Program Files\Git\cmd\git.exe   (usual location; git is not on PATH here)" }
-# Perl and run_network.exe are resolved HERE, before the perl section far
-# below, because remedy 2 has to be able to name them. They are the writers
-# behind the failure mode the other two miss: a fit materialises its BNGL
-# model into app\state\workroots\<tag> INSIDE this repository and runs
-# BNG2.pl there under perl, which writes m.net next to the model, and BNG's
-# run_network.exe writes beside it. So a repository that sits in Documents
-# breaks mid-fit even when the hub and the checkout are somewhere safe.
+# perl.exe and run_network.exe are resolved here so remedy 2 can name them:
+# a fit writes inside the repo (BNG2.pl in app\state\workroots), so a repo in
+# Documents breaks mid-fit even with the hub and checkout elsewhere.
 $PerlCmd = Get-Command perl -ErrorAction SilentlyContinue
 $PerlExe = if ($PerlCmd) { $PerlCmd.Source }
            else { "C:\Strawberry\perl\bin\perl.exe   (usual location; perl is not on PATH here)" }
-# bionetgen is a dependency of the CONSOLE venv, not the engine venv: see
-# flubnf/settings.py::_bng_candidates, which looks under <repo>\.venv only.
-# The wheel's layout moved: current bionetgen wheels put run_network.exe
-# under bng-win\bin\, older ones directly under bng-win\. Probe both and
-# prefer whichever exists, so the printed Controlled Folder Access
-# allow-list names the real binary; a hard-coded wrong path had users
-# allow a nonexistent file while Defender kept blocking the real one
-# (audit W-10, observed as 'setup looks perfect and the first fit fails').
+# bionetgen lives in the CONSOLE venv (settings.py::_bng_candidates). Newer
+# wheels moved run_network.exe from bng-win\ to bng-win\bin\: probe both so
+# the allow-list names the real binary.
 $RunNetCandidates = @(
     (Join-Path $VenvDir "Lib\site-packages\bionetgen\bng-win\bin\run_network.exe"),
     (Join-Path $VenvDir "Lib\site-packages\bionetgen\bng-win\run_network.exe"))
 $RunNetExe = $RunNetCandidates | Where-Object { Test-Path -LiteralPath $_ } |
              Select-Object -First 1
 if (-not $RunNetExe) { $RunNetExe = $RunNetCandidates[0] }
-# FromEnv records where the path CAME FROM, not just what it is. A recorded
-# variable that names a protected folder which does not exist is a different
-# problem from a default that happens to land in one, and it gets its own
-# remedy below: it is a leftover from an earlier release rather than a choice.
+# FromEnv: a recorded variable naming a missing protected path is a leftover
+# from an earlier release, not a choice; it gets its own remedy below.
 $Resolved = @(
     @{ Label = "repository";     Path = $Here;       Var = $null; FromEnv = $false },
     @{ Label = "console venv";   Path = $VenvDir;    Var = $null; FromEnv = $false },
@@ -523,12 +335,8 @@ $Resolved = @(
     @{ Label = "PyBNF checkout"; Path = $PyBnf;      Var = "FLUBNF_PYBNF"
        FromEnv = [bool]$env:FLUBNF_PYBNF }
 )
-# The documented defaults, plus whatever list this particular machine was
-# willing to report. The union can only make the warning fire more often,
-# never less, which is the right direction for a check whose false negative
-# costs a day of misdiagnosis and whose false positive costs a paragraph.
-# The inner parentheses are not decoration: they put the concatenation
-# beyond any question about how much of the expression the pipeline claims.
+# Defaults UNION the machine's list: a false warning costs a paragraph, a
+# missed one a day. The inner parentheses bound what the pipeline claims.
 $Protected = @((@(Get-ProtectedFolders) + @($Cfa.Folders)) |
                Where-Object { $_ } | Select-Object -Unique)
 $AtRisk = @()
@@ -542,18 +350,14 @@ foreach ($e in $Resolved) {
                       FromEnv = $e.FromEnv; Folder = $hit }
     }
 }
-# The console venv lives inside the repository, so listing both says the same
-# thing twice; keep the repository line, which is the one a user can act on.
-# @() around the pipeline: PowerShell unrolls a one-element result to a bare
-# object, and .Count on that would be 1 for a string as readily as for a list.
+# The console venv is inside the repository: keep only the repository line.
+# @(): PowerShell unrolls a one-element result, so .Count needs the wrapper.
 if ((@($AtRisk | Where-Object { $_.Label -eq "repository" })).Count -gt 0) {
     $AtRisk = @($AtRisk | Where-Object { $_.Label -ne "console venv" })
 }
 
 if ($Cfa.State -eq "off") {
-    # "will not block", not "is off": modes 3 and 4 also land here, and they
-    # are switched ON -- they simply guard the boot sectors rather than any
-    # folder, so for everything below they are indistinguishable from off.
+    # "will not block", not "is off": modes 3/4 land here too.
     Ok "Controlled Folder Access will not block anything here"
     Ok "  ($($Cfa.Why))"
 } elseif ($AtRisk.Count -eq 0) {
@@ -608,8 +412,7 @@ if ($Cfa.State -eq "off") {
         if ($e.Var) {
             $hasVar = $true
             $leaf = Split-Path -Leaf $e.Path
-            # quoted: setx takes the value as one argument, and a profile
-            # directory with a space in it is common enough to plan for
+            # quoted: the profile path may contain spaces
             Info "       setx $($e.Var) `"$(Join-Path $FluBnfRoot $leaf)`""
         }
     }
@@ -660,14 +463,9 @@ if ($Cfa.State -eq "off") {
     Info "     not been able to confirm that it exempts Controlled Folder"
     Info "     Access at all."
     Info "     Prefer 1 or 2. Do not switch Controlled Folder Access off."
-    # THE STRANDED MACHINE. An earlier release of this script recorded the
-    # Documents location in the User environment on every run, including
-    # runs whose clone had just been blocked. That recorded value wins over
-    # everything below it in Resolve-Checkout, so such a machine keeps
-    # aiming at the folder it cannot write to and never reaches the new
-    # default. It is not a user's choice and it should not be treated as
-    # one, but it is also not this script's to silently overrule: naming it
-    # and handing over the one-line fix is where the line is.
+    # An earlier release recorded the Documents location even after a blocked
+    # clone, and a recorded value wins in Resolve-Checkout. Name it and give
+    # the one-line fix; do not silently overrule it.
     $Stale = @($AtRisk | Where-Object {
         $_.FromEnv -and $_.Var -and -not (Test-Path -LiteralPath $_.Path) })
     if ($Stale.Count -gt 0) {
@@ -698,38 +496,13 @@ if ($Cfa.State -eq "off") {
 }
 
 Say "defender real-time scanning (speed, not failure)"
-# READ-ONLY, LIKE THE SECTION ABOVE, AND FOR THE SAME REASON. This section
-# asks Defender two questions and prints what it was told. It never adds an
-# exclusion, never changes a Defender setting, and never elevates. An
-# exclusion is a real reduction in protection for a real folder on a real
-# machine, it needs an administrator, and on a university-managed laptop it
-# is often forbidden outright. None of that is a setup script's call to make,
-# so the most this file ever does is explain the trade and print the details
-# WHEN ASKED, with -ShowDefenderExclusion.
-#
-# WHY THE SUBJECT COMES UP AT ALL. This is a different setting from
-# Controlled Folder Access and it has a different symptom. Controlled Folder
-# Access blocks a write and the run stops with a permission error. Real-time
-# protection allows every write and inspects it, and the run just takes
-# longer, so there is no error to search for and nothing to diagnose from.
-#
-# THE EVIDENCE, such as it is, and it is not conclusive. The lab's CI runs
-# the identical test suite on ubuntu and on windows. Ubuntu finishes in about
-# 5 minutes. Windows took 62 minutes on python 3.11 and 71 on 3.12 in run
-# 33200477476. Only 6 tests failed there, so the failures are not the hour.
-# A third job on the SAME windows runner image finishes in about 3 minutes,
-# so the hardware is not the hour either. The suite creates many temporary
-# directories and spawns many subprocesses, which is the workload real-time
-# scanning is worst at, and the corresponding author sees live Defender
-# notifications while running this project on his own Windows machine. That
-# is a strong hypothesis and it is written down as a hypothesis: the CI job
-# now excludes its own throwaway workspace on one leg of the matrix and
-# prints a per-test duration table, which is what will actually settle it.
+# Read-only like the section above: never adds an exclusion (it reduces
+# protection, needs an admin, is often forbidden on managed laptops); the
+# detail prints only with -ShowDefenderExclusion. Scanning slows writes
+# without failing them, so nothing points at it. That it explains the slow
+# Windows CI is a hypothesis, not a measurement (docs\WINDOWS.md).
 $Rt = Get-RealtimeState
-# The paths whose contents this project reads and writes constantly. The
-# repository is first because it holds the console venv, every __pycache__,
-# and app\state\workroots, where a fit materialises its model and BioNetGen
-# writes the generated network.
+# Paths this project writes constantly (the repo: venv, __pycache__, workroots).
 $ScanPaths = @($Here, $Hub, $PyBnf, $EngineVenv) |
              Where-Object { $_ } | Select-Object -Unique
 $AlreadyExcluded = @()
@@ -745,20 +518,13 @@ foreach ($p in $ScanPaths) {
 if ($Rt.State -eq "off") {
     Ok "Defender real-time scanning is off here ($($Rt.Why)), so it is not"
     Ok "  what is slowing anything down. Nothing to consider."
-    # -ShowDefenderExclusion has to answer even when the answer is "there is
-    # nothing to exclude". A switch that prints nothing reads as a switch
-    # that did not work.
+    # The switch must answer even here, or it reads as broken.
     if ($ShowDefenderExclusion) {
         Info "  You asked for the exclusion detail: there is nothing to"
         Info "  exclude from, so an exclusion would buy you nothing here."
     }
-# $Rt.State -eq "on" and not merely "not off": with State "unknown" this
-# branch printed "Defender real-time scanning is on (neither
-# Get-MpComputerStatus nor Get-MpPreference would say)", which contradicts
-# itself in one line. Get-MpPreference can answer with exclusion lists while
-# neither property that reports the running state is readable, so the two
-# facts really are independent. Unknown now falls through to the branch
-# below, which already has wording for it.
+# "on", not "not off": "unknown" (exclusions readable, state not) falls
+# through to the generic branch below.
 } elseif ($Rt.State -eq "on" -and $AlreadyExcluded.Count -gt 0 -and $NotExcluded.Count -eq 0) {
     Ok "Defender real-time scanning is on ($($Rt.Why)), and every path this"
     Ok "  project works in is already covered by an exclusion on this machine."
@@ -775,10 +541,7 @@ if ($Rt.State -eq "off") {
         Info "Defender real-time scanning could not be read: $($Rt.Why)"
         Info "Microsoft ships it switched on, so assume it is on here."
     }
-    # THE DEFAULT IS FOUR LINES. A note that a fit may run slower does not
-    # deserve a page on every setup run, and a wall of antivirus text in the
-    # middle of an install reads as an instruction whether or not it says it
-    # is one. The detail is one switch away and nothing needs it.
+    # Four lines by default; a wall of antivirus text reads as an instruction.
     Info "Nothing is wrong and nothing needs doing: every part of FluBNF works"
     Info "with scanning on. It can just be slower, and a long fit is where you"
     Info "would notice, because this project writes constantly into folders"
@@ -792,10 +555,7 @@ if ($Rt.State -eq "off") {
         Info "folders that resolved on THIS machine, and change nothing:"
         Info "  powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -ShowDefenderExclusion"
     } else {
-        # THE OPT-IN BRANCH. Reached only because somebody typed the switch.
-        # It still changes nothing: it prints the trade and the route, and a
-        # human decides. Nothing else in this file reaches it, and no default,
-        # environment variable or prompt turns it on.
+        # Opt-in only (the switch): prints the trade and the route, changes nothing.
         Info ""
         Info "You asked for the detail. This script is still not going to do"
         Info "any of it; what follows is for you or your IT department."
@@ -808,13 +568,8 @@ if ($Rt.State -eq "off") {
         Info "  Scanned, and written into constantly by this project:"
         foreach ($p in $NotExcluded) { Info "      $p" }
         Info ""
-        # Get-RealtimeState fetches ExclusionProcess and, before this, nothing
-        # read it. That is the same fetched-and-discarded shape a review
-        # already caught once in the Controlled Folder Access section, and it
-        # misleads here in a specific way: docs\WINDOWS.md offers
-        # -ExclusionProcess "python.exe" as the narrower alternative to a
-        # folder exclusion, so a reader who took that advice would be shown
-        # the list above with no hint that anything already covers part of it.
+        # Existing process exclusions (docs\WINDOWS.md suggests one) may
+        # already cover the folders above.
         if (@($Rt.Processes).Count -gt 0) {
             Info "  Process exclusions this machine already has. These cover"
             Info "  what the named program reads and writes ANYWHERE, so one"
@@ -854,13 +609,8 @@ if ($Rt.State -eq "off") {
 }
 
 function Show-CfaHint {
-    <#
-      One line, at the moment a write actually fails, naming the protection
-      that is the likely cause. The warning above is printed before the work
-      and is therefore easy to scroll past; this fires next to the error the
-      user is looking at, which is where it does the most good. Silent when
-      the protection is off or the path is not protected.
-    #>
+    <# At a failed write, name CFA next to the error (the early warning is easy
+       to scroll past). Silent when CFA is off or the path is unprotected. #>
     param([string]$Path)
     if ($Cfa.State -eq "off") { return }
     foreach ($pf in $Protected) {
@@ -877,11 +627,8 @@ function Show-CfaHint {
 Say "python"
 $PyExe = $null
 $PyArgs = @()
-# PATH launchers first (python.org installs keep working unchanged), then
-# the folders Anaconda and Miniconda install into with untouched defaults:
-# the Anaconda installer has no add-to-PATH checkbox and leaves PATH alone,
-# so on the lab's standard machines py and python both miss while Python
-# sits in one of these four places. Mirrors FluBNF.bat's CONDAPY probe.
+# PATH launchers first, then Anaconda/Miniconda's default folders (their
+# installer leaves PATH alone). Mirrors FluBNF.bat's CONDAPY probe.
 $Cands = @(
     @{ exe = "py"; args = @("-3.12") },
     @{ exe = "py"; args = @("-3.11") },
@@ -895,13 +642,8 @@ foreach ($condaPy in @("$env:USERPROFILE\anaconda3\python.exe",
     if (Test-Path $condaPy) { $Cands += @{ exe = $condaPy; args = @() } }
 }
 foreach ($c in $Cands) {
-    # 2>$null here is the acceptable case: absence IS the thing being tested,
-    # and each candidate is expected to fail until one does not.
-    # $probe is built first and splatted with @probe (a variable, so real
-    # splatting). Passing @($c.args) inline is an array-valued ARGUMENT, and
-    # an empty one reaches a native command as a stray empty string, which
-    # would have broken the bare-"python" candidate on a machine without the
-    # py launcher.
+    # 2>$null is fine: absence is what is tested. Splat through a variable
+    # (@probe): an inline empty array reaches a native command as a stray "".
     $probe = @($c.args) + @("-c", "import sys; print('%d.%d' % sys.version_info[:2])")
     try { $v = & $c.exe @probe 2>$null }
     catch { $v = $null }
@@ -922,8 +664,7 @@ if (-not $PyExe) {
 Ok "Python $v via $(@($PyExe) + $PyArgs -join ' ')"
 
 Say "analysis venv (.venv) + package"
-# $VenvPy was resolved with the other paths at the top, so the Controlled
-# Folder Access section could name it among the executables to allow.
+# $VenvPy was resolved at the top so the CFA section could name it.
 if (-not (Test-Path $VenvPy)) {
     Info "creating $VenvDir"
     $mk = Invoke-Captured $PyExe (@($PyArgs) + @("-m", "venv", $VenvDir))
@@ -959,10 +700,8 @@ if ($bng.Code -eq 0) {
     Show-Output $bng 10
 }
 
-# The directories the app actually reads, named once and used by both the
-# fresh clone below and the repair of an existing one. Forward slashes are
-# git's own path separator on every platform, Windows included, so this is
-# the form handed to git; Test-Path is given the native form instead.
+# The directories the app reads, for both the fresh clone and the repair.
+# Forward slashes for git; Test-Path gets the native form.
 $HubDirs = @("auxiliary-data", "target-data",
              "model-output/FluSight-baseline",
              "model-output/FluSight-ensemble")
@@ -970,42 +709,18 @@ $HubDirs = @("auxiliary-data", "target-data",
 function Get-MissingHubDirs {
     param([string]$Hub, [string[]]$Dirs)
     @($Dirs | Where-Object {
-        # $Dirs holds git's separator; Test-Path is given the native one.
-        # (Windows accepts either, but mixing them in a printed path is the
-        # kind of detail that makes a report harder to read than it need be.)
+        # native separator, so printed paths do not mix them
         $native = $_.Replace('/', '\')
         -not (Test-Path -LiteralPath (Join-Path $Hub $native))
     })
 }
 
 function Repair-HubCone {
-    <#
-      Widen an existing sparse clone's cone to the directories the app reads.
-
-      WHY THIS EXISTS. `git clone --sparse` is documented to check out only
-      the files in the repository ROOT. A hub cloned by hand with the command
-      in the field report is therefore a perfectly healthy clone that holds
-      none of the app's data, and the console opens on "Latest vintage: none"
-      exactly as if nothing had been cloned at all. `sparse-checkout reapply`,
-      which this script used to be alone in running here, cannot repair that:
-      reapply re-applies the cone already recorded, and that cone is empty.
-
-      Measured on git 2.39.5 against a local fixture shaped like the hub
-      (macOS; sparse-checkout is git behaviour, not platform behaviour):
-        * after clone --filter=blob:none --sparse --depth 1, the working tree
-          holds the root file only and `sparse-checkout list` prints nothing
-        * `reapply` on that clone exits 0 and adds nothing
-        * `sparse-checkout add <the four dirs>` brings them all in, exit 0,
-          and repeating it is a no-op
-
-      ADD, NEVER SET. Both were measured on the same fixture. Against a full
-      non-sparse clone, `set` exits 0 and DELETES every directory not named
-      (it pruned model-output/OtherTeam), which would silently gut the
-      checkout of anyone who deliberately cloned the whole hub. `add` against
-      a full clone fails with "no sparse-checkout to add to", exit 128, and
-      changes nothing on disk. This function is only called for a clone that
-      reports core.sparseCheckout=true, so that is a backstop, not the path.
-    #>
+    <# Widen an existing sparse clone's cone to $Dirs. A by-hand
+       `clone --sparse` holds only the root, and reapply cannot add what the
+       cone never held; `add` does, idempotently. ADD, NEVER SET: on a full
+       clone `set` deletes every unnamed dir, while `add` fails harmlessly
+       (exit 128). Measured on git 2.39.5. #>
     param([string]$Hub, [string[]]$Dirs)
     $absent = @(Get-MissingHubDirs $Hub $Dirs)
     if ($absent.Count -eq 0) { return }
@@ -1030,13 +745,8 @@ function Repair-HubCone {
 
 Say "FluSight hub data"
 Info "target: $Hub"
-# Set only where a clone was ATTEMPTED and did not produce a checkout. It
-# gates the PERSISTENT record of FLUBNF_HUB at the end of this script: a
-# location setup could not create is not a location to pin into the User
-# environment for every future run, and pinning it is what stranded the
-# machines this release exists to unstrand. Deliberately NOT set when the
-# data fetch was merely skipped (FLUBNF_NO_DATA=1), where $Hub is still the
-# right answer and simply has not been filled in yet.
+# Set only when a clone was ATTEMPTED and failed (not for FLUBNF_NO_DATA=1):
+# it withholds the persistent FLUBNF_HUB record at the end.
 $HubCloneFailed = $false
 $HubGit = Join-Path $Hub ".git"
 $GitPresent = [bool](Get-Command git -ErrorAction SilentlyContinue)
@@ -1046,10 +756,7 @@ if ($env:FLUBNF_NO_DATA -eq "1") {
     Ok "hub present: $Hub"
     if (-not $GitPresent) {
         Warn "git is not on PATH, so the hub was left exactly as it is on disk"
-        # @() around every call: PowerShell unrolls a returned array, so an
-        # empty result comes back as $null and a one-element result as a bare
-        # string. Wrapping makes .Count mean what it reads as in all three
-        # cases, without depending on the scalar .Count that 5.1 also has.
+        # @(): PowerShell unrolls 0/1-element results; .Count needs the wrapper.
         if ((@(Get-MissingHubDirs $Hub $HubDirs)).Count -gt 0) {
             Warn "and it holds none of the data directories the app reads, so"
             Warn "the console will open on 'Latest vintage: none'. Install Git"
@@ -1057,10 +764,8 @@ if ($env:FLUBNF_NO_DATA -eq "1") {
             Warn "re-run this script; it will widen the checkout for you."
         }
     } else {
-        # A shallow clone stays shallow across a fetch, so this is a small
-        # update, and --ff-only correctly refuses if the tree has local edits.
-        # Verified against a shallow blobless sparse clone on git 2.39.5: it
-        # fast-forwards cleanly. (That was previously an untested claim.)
+        # Small (shallow stays shallow); --ff-only refuses over local edits.
+        # Verified on a shallow blobless sparse clone, git 2.39.5.
         $pull = Invoke-Captured "git" @("-C", $Hub, "pull", "--ff-only", "--quiet")
         if ($pull.Code -eq 0) {
             Ok "hub updated (git pull --ff-only)"
@@ -1070,10 +775,8 @@ if ($env:FLUBNF_NO_DATA -eq "1") {
             Show-Output $pull 10
             Show-CfaHint $Hub
         }
-        # The cone repair runs whether or not the pull worked, and BEFORE
-        # reapply, because reapply cannot add what the cone never held. The
-        # config read tells the two kinds of clone apart: `git config --get`
-        # exits 1 when the key is unset, which is what a full clone gives.
+        # Repair runs even if the pull failed, and BEFORE reapply (which cannot
+        # add). A full clone leaves core.sparseCheckout unset (exit 1).
         $cfg = Invoke-Captured "git" @("-C", $Hub, "config", "--get",
                                        "core.sparseCheckout")
         $IsSparse = ($cfg.Code -eq 0 -and
@@ -1088,10 +791,7 @@ if ($env:FLUBNF_NO_DATA -eq "1") {
                 Show-Output $re 10
             }
         } else {
-            # A full clone already holds everything, and reapply FAILS on one
-            # ("must be in a sparse-checkout to reapply sparsity patterns",
-            # exit 128, measured), so the old unconditional call reported a
-            # problem on a checkout that was entirely correct.
+            # Full clone: reapply would fail (exit 128), so skip it.
             Info "full (non-sparse) clone: nothing to widen"
             $absent = @(Get-MissingHubDirs $Hub $HubDirs)
             if ($absent.Count -gt 0) {
@@ -1108,14 +808,11 @@ if ($env:FLUBNF_NO_DATA -eq "1") {
     Warn "Install Git from https://git-scm.com/download/win, open a NEW window"
     Warn "so PATH is picked up, and re-run this script."
 } else {
-    # Sparse checkout pulls ONLY the data directories the app reads (about
-    # 10x smaller than the full hub, which is mostly other teams' forecasts).
+    # Sparse: only the directories the app reads (~10x smaller than the hub).
     $ParentOk = $true
     $HubParent = Split-Path -Parent $Hub
     if ($HubParent -and -not (Test-Path $HubParent)) {
-        # git clone creates missing parents itself; doing it here first turns
-        # an unwritable or unreachable parent (a redirected Documents folder,
-        # a D: drive that is not there) into an early, named failure.
+        # Create the parent first: an unwritable or missing one fails early, by name.
         try {
             New-Item -ItemType Directory -Force -Path $HubParent -ErrorAction Stop | Out-Null
             Ok "created $HubParent"
@@ -1131,13 +828,10 @@ if ($env:FLUBNF_NO_DATA -eq "1") {
         Info "fetching FluSight data (sparse, about 150 MB); a few minutes..."
         $clone = Invoke-Captured "git" @("clone", "--filter=blob:none", "--sparse",
             "--depth", "1", "https://github.com/cdcepi/FluSight-forecast-hub", $Hub)
-        # Belt and braces: the exit code AND the result on disk, because a
-        # stale $LASTEXITCODE is exactly the trap this rewrite exists to close.
+        # Check the exit code AND the result on disk.
         if ($clone.Code -eq 0 -and (Test-Path $HubGit)) {
-            # `set` is right HERE and only here: this clone was made one
-            # statement ago with --sparse, so its cone is empty and there is
-            # nothing of the user's for `set` to prune. Everywhere else the
-            # cone is widened with `add`; see Repair-HubCone.
+            # `set` only here: this clone was made a statement ago, so its cone
+            # is empty and nothing can be pruned. Elsewhere, `add`.
             $sp = Invoke-Captured "git" (@("-C", $Hub, "sparse-checkout", "set") +
                                          $HubDirs)
             if ($sp.Code -eq 0) {
@@ -1161,11 +855,8 @@ Say "perl (engine network generation)"
 $Perl = Get-Command perl -ErrorAction SilentlyContinue
 $PerlOffPath = $false
 if (-not $Perl) {
-    # A winget install in THIS window updates the machine PATH but not the
-    # PATH of an already-running process, so a perl installed a minute ago is
-    # invisible to Get-Command until a new window opens. Look where Strawberry
-    # actually puts it before declaring it missing, otherwise the script offers
-    # to install something that is already there.
+    # A fresh winget install is not on this process's PATH: look in
+    # Strawberry's folders before offering to install it again.
     foreach ($cand in @("$env:SystemDrive\Strawberry\perl\bin\perl.exe",
                         "$env:ProgramFiles\Strawberry\perl\bin\perl.exe",
                         "C:\Strawberry\perl\bin\perl.exe")) {
@@ -1188,11 +879,8 @@ if ($Perl) {
     Warn "(https://strawberryperl.com) is the standard choice on Windows."
     Warn "The console, analogue engine, and reports do not need it."
     $winget = Get-Command winget -ErrorAction SilentlyContinue
-    # NOTE (unverified from macOS): the package id below is the one commonly
-    # documented for Strawberry Perl. Confirm with `winget search perl` before
-    # relying on it; if it is wrong, winget simply exits non-zero and the
-    # manual link above still stands. winget itself ships in App Installer,
-    # which is absent on some Enterprise and LTSC images.
+    # Package id unverified on Windows (a wrong one just exits non-zero; the
+    # link stands). winget is absent on some Enterprise/LTSC images.
     if (-not $winget) {
         Info "winget is not available here, so install it from the link above."
     } elseif (-not $Interactive) {
@@ -1209,11 +897,8 @@ if ($Perl) {
         if ($ans -match '^\s*(y|yes)\s*$') {
             & winget install --id StrawberryPerl.StrawberryPerl -e --source winget --accept-source-agreements --accept-package-agreements
             $wcode = $LASTEXITCODE
-            # -1978335189 is APPINSTALLER_CLI_ERROR_UPDATE_NOT_APPLICABLE:
-            # the package is already installed and no newer version exists.
-            # winget reports that as a non-zero exit, but for our purposes it
-            # is success, and reporting it as "declined UAC, no network" was
-            # actively misleading on a machine where Perl was already present.
+            # -1978335189 = APPINSTALLER_CLI_ERROR_UPDATE_NOT_APPLICABLE:
+            # already installed, which is success here.
             if ($wcode -eq 0 -or $wcode -eq -1978335189) {
                 if ($wcode -eq 0) { Ok "Strawberry Perl installed." }
                 else { Ok "Strawberry Perl was already installed." }
@@ -1230,28 +915,12 @@ if ($Perl) {
 }
 
 function Test-RemoteAccess {
-    <#
-      Can this machine read $Remote right now? Returns "yes", "no" or
-      "unknown". It never clones, never writes, and must never hang:
-
-        * GIT_TERMINAL_PROMPT=0 stops git's own username/password prompt, but
-          NOT a credential helper. Git for Windows installs Git Credential
-          Manager as the default helper, and GCM opens a GUI window -- the
-          hang we must avoid -- so the helper list is cleared for this one
-          call and GCM's interactive mode is turned off by name as well.
-        * GIT_ASKPASS=echo makes any remaining password request return empty
-          instead of waiting.
-        * ssh -o BatchMode=yes fails instead of asking for a passphrase, and
-          ConnectTimeout bounds a black-holed TCP connect.
-        * GIT_CONFIG_NOSYSTEM=1 stops a system gitconfig re-adding a helper.
-        * and a hard wall-clock timeout backs all of that up.
-
-      UNVERIFIED FROM macOS: $p.Kill() ends git but not necessarily a child
-      ssh.exe, because Windows has no POSIX process groups, and Kill($true)
-      (kill the tree) is .NET 5+, which Windows PowerShell 5.1 does not have.
-      taskkill /T /F is the documented stand-in and is used here; it has not
-      been exercised on a Windows box.
-    #>
+    <# Can this machine read $Remote now? "yes", "no" or "unknown". Never
+       clones, writes, prompts or hangs: GIT_TERMINAL_PROMPT=0, GIT_ASKPASS=echo
+       and credential.interactive=false forbid prompts while GCM can still
+       answer from its cache; ssh BatchMode + ConnectTimeout bound ssh; a
+       wall-clock timeout kills the tree with taskkill /T (PS 5.1 has no
+       Kill($true); untested on Windows). #>
     param([string]$Remote, [int]$TimeoutMs = 15000)
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return "unknown" }
     $o = Join-Path ([IO.Path]::GetTempPath()) "flubnf-lsremote.out"
@@ -1265,25 +934,12 @@ function Test-RemoteAccess {
         $env:GIT_TERMINAL_PROMPT = "0"
         $env:GIT_ASKPASS = "echo"
         $env:GIT_SSH_COMMAND = "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10"
-        # GIT_CONFIG_NOSYSTEM is deliberately NOT set. Git for Windows
-        # configures Git Credential Manager in the SYSTEM gitconfig, so
-        # hiding that file hides the helper, and the probe then reports "no
-        # access" on every machine regardless of whether it has access. That
-        # is what it did on 2026-08-25 to a machine signed in to GitHub
-        # Desktop. credential.interactive=false plus the wall-clock timeout
-        # below are what keep this from hanging, not the absence of a helper.
-        # The helper list is deliberately NOT cleared. Clearing it stopped GCM
-        # opening a GUI, but it also stopped GCM answering from its CACHE, so a
-        # machine signed in to GitHub Desktop -- which is how this lab onboards
-        # people -- was reported as having no access when it had access.
-        # `credential.interactive=false` is the setting that forbids the
-        # prompt while still allowing a stored credential to be returned, and
-        # the hard wall-clock timeout below remains the backstop if some older
-        # helper ignores it.
+        # Keep the system gitconfig (GIT_CONFIG_NOSYSTEM unset) and the
+        # credential helpers: GCM's cache is how Desktop-onboarded machines
+        # authenticate, and hiding it reported false "no access" (2026-08-25).
         $gitArgs = @("-c", "credential.interactive=false",
                      "ls-remote", "--heads", $Remote, "feature/particle-filter")
-        # splatted rather than continued with backticks: one less thing that a
-        # CRLF checkout or a stray trailing space could break
+        # splatted, not backtick-continued (fragile under CRLF/trailing space)
         $spArgs = @{
             FilePath = "git"; ArgumentList = $gitArgs; NoNewWindow = $true
             PassThru = $true; RedirectStandardOutput = $o
@@ -1298,10 +954,7 @@ function Test-RemoteAccess {
             return "unknown"
         }
         if ($p.ExitCode -eq 0) { return "yes" }
-        # Keep git's own words. Deleting this unread was the same mistake this
-        # script was rewritten to stop making everywhere else: "cannot read"
-        # with no reason sends the reader guessing at credentials when the
-        # answer may be a plain 404, a proxy, or a declined invitation.
+        # Keep git's stderr: it tells auth failure from 404, proxy or no invitation.
         try {
             $script:LastRemoteError = (Get-Content $e -Raw -ErrorAction SilentlyContinue)
         } catch { $script:LastRemoteError = $null }
@@ -1319,15 +972,9 @@ function Test-RemoteAccess {
 Say "engine venv (pybnf + bngsim)"
 $EngineReady = $false
 if (Test-Path $EnginePy) {
-    # Test the engine the way the ENGINE actually loads, not the way pip
-    # would. app/core/engines/pf.py writes sys.path.insert(0, <checkout>) into
-    # every generated runner, so the fork is imported from the checkout and a
-    # pip install of it is not required to run a fit. Measured on Windows,
-    # 2026-08-25: the editable install failed, this check reported "imports
-    # fail", and fits ran perfectly anyway. A readiness check that disagrees
-    # with the thing it is checking is worse than no check. Import
-    # pybnf.pf.ParticleFilter specifically, since that class is the whole
-    # reason the fork exists and a stock PyPI pybnf does not have it.
+    # Probe as runners load the fork (checkout on sys.path, see
+    # app/core/engines/pf.py), not pip's view: the editable install can fail
+    # on Windows while fits work. ParticleFilter is what stock pybnf lacks.
     $probe = "import sys; sys.path.insert(0, r'$PyBnf'); import bngsim; " +
              "from pybnf.pf import ParticleFilter; " +
              "print('pf ok, bngsim ' + bngsim.__version__)"
@@ -1335,9 +982,7 @@ if (Test-Path $EnginePy) {
     if ($imp.Code -eq 0) {
         $EngineReady = $true
     } else {
-        # Not the same thing as "you have no access": an engine venv that
-        # exists but imports badly (NumPy 2 against a fork that predates it is
-        # the one seen in the lab) used to be reported as a missing fork.
+        # A venv that imports badly (e.g. NumPy 2) is not "no access".
         Warn "engine venv exists at $EngineVenv but its imports fail. Python said:"
         Show-Output $imp 10
     }
@@ -1373,12 +1018,9 @@ if ($EngineReady) {
         } else {
             Info "    (git produced no error text)"
         }
-        # Two very different problems produce "cannot read", and the advice
-        # for each is the opposite of the other, so read git's own words
-        # rather than guessing. Measured on Windows 11, 2026-08-25: being
-        # signed in to GitHub Desktop does NOT populate the Windows Credential
-        # Manager store that command-line git reads, so "just use GitHub
-        # Desktop" was wrong advice and is not given any more.
+        # Read git's words: "no credential cached" and "no access" need
+        # opposite advice. (Desktop sign-in does not give command-line git a
+        # credential, so "use GitHub Desktop" is not offered.)
         $errText = [string]$script:LastRemoteError
         if ($errText -match "Authentication failed|Invalid username or token|could not read Username|Cannot prompt") {
             Warn "  DIAGNOSIS: no credential for github.com is cached on this"
@@ -1406,15 +1048,8 @@ if ($EngineReady) {
         Info "If you do have access:"
         Info "  git clone -b feature/particle-filter $PyBnfRemote $PyBnf"
     }
-    # numpy<2: the fork predates NumPy 2 and its historical fixes were
-    # venv-local patches rather than commits, so the pin is the reproducible
-    # answer. Same pin as setup_engine.sh on macOS and Linux.
-    # THE ENGINE VENV must be Python 3.11 or 3.12: the fork pins numpy<2,
-    # whose wheels stop at cp312, so a newer interpreter (Anaconda's base is
-    # 3.14 now) sends pip into a source build that dies on Windows MAX_PATH.
-    # Measured on the first real Windows run, Sandbox 2026-09-01. Name an
-    # engine-suitable interpreter in the printed command, never the console
-    # one, and fall back to conda manufacturing a 3.12.
+    # Engine venv needs Python 3.11/3.12 (numpy<2 wheels stop at cp312; a
+    # source build dies on MAX_PATH): print a suitable interpreter, else conda.
     $EngineBootCmd = $null
     foreach ($c in @(@{exe="py"; args=@("-3.12")}, @{exe="py"; args=@("-3.11")})) {
         try { $vv = & $c.exe @($c.args + @("-c", "import sys; print(sys.version_info[1])")) 2>$null }
@@ -1431,15 +1066,9 @@ if ($EngineReady) {
         Info "  conda create -y -p $env:USERPROFILE\.venvs\flubnf-engine-py312 python=3.12"
         Info "  $env:USERPROFILE\.venvs\flubnf-engine-py312\python.exe -m venv $EngineVenv"
     }
-    # Install the runtime set EXPLICITLY, then the fork with --no-deps.
-    # PyBNF's setup.py pins msgpack==0.6.2, a 2019 release with no Windows
-    # wheel for any modern Python, so letting pip resolve the fork's declared
-    # dependencies makes it try to compile msgpack from source and fail on any
-    # machine without MSVC build tools. Measured 2026-08-25: every package
-    # below has a prebuilt win_amd64 wheel for Python 3.11, so no compiler is
-    # needed. The list is what the PF path actually imports, traced rather
-    # than guessed; PyBNF also declares nose and paramiko, which it never
-    # imports.
+    # Same pins as setup_engine.sh: the runtime set explicitly (all have
+    # win_amd64 wheels), then the fork --no-deps (its msgpack==0.6.2 pin has
+    # no Windows wheel and needs MSVC).
     Info "  $EngineVenv\Scripts\pip install `"numpy<2`" scipy pandas `"bngsim==0.15.1`" `"dask==2022.12.1`" `"distributed==2022.12.1`" msgpack pyparsing tornado libroadrunner python-libsbml"
     Info "  $EngineVenv\Scripts\pip install -e $PyBnf --no-deps"
     Info "  then re-run this script"
@@ -1447,33 +1076,17 @@ if ($EngineReady) {
 }
 
 Say "environment"
-# The Windows analogue of setup.sh's .flubnf.env, in two halves. User-level
-# environment variables are read by every future process on this account, and
-# .flubnf.env.cmd is read by FluBNF.bat on every launch -- which is what makes
-# this configuration visible to the very next double-click. User-scope
-# variables reach only processes started AFTER this moment, so without the
-# file a console launched from a window that was already open would still see
-# nothing at all.
-# UTF-8 mode: Windows defaults text I/O to cp1252, which breaks reads of the
-# app's UTF-8 assets. This makes every Python launch behave like macOS/Linux.
+# Twin of .flubnf.env: User env vars (future processes only) plus
+# .flubnf.env.cmd, which FluBNF.bat reads on every launch.
+# PYTHONUTF8: Windows defaults text I/O to cp1252, breaking the UTF-8 assets.
 [Environment]::SetEnvironmentVariable("PYTHONUTF8", "1", "User")
 [Environment]::SetEnvironmentVariable("FLUBNF_PY_ENGINE", $EnginePy, "User")
 [Environment]::SetEnvironmentVariable("FLUBNF_PYBNF", $PyBnf, "User")
-# FLUBNF_HUB is the one that gets withheld after a failed clone. Writing it
-# to the User environment PINS it: Resolve-Checkout returns an environment
-# value ahead of everything else, so a run that recorded a location it could
-# not create would send every later run back to the same place, past the
-# legacy probe and past the current default. Leaving it unwritten costs
-# nothing, because .flubnf.env.cmd below is rewritten on every run and
-# FluBNF.bat and flubnf/settings.py resolve the identical default on their
-# own; it simply lets the next run reconsider.
-#
-# It is SKIPPED, never cleared. Deleting the variable would also delete a
-# value the user set deliberately -- FLUBNF_HUB=D:\... on a machine whose D:
-# drive happened to be unplugged today -- and destroying a working
-# configuration to fix a broken one is not a trade this script gets to make.
-# A stale pin recorded by an earlier release is reported instead, by name
-# and with its one-line fix, in the Controlled Folder Access section above.
+# No FLUBNF_HUB after a failed clone: a User value wins every later
+# Resolve-Checkout and would pin the unwritable path (the launcher and
+# settings.py resolve the same default without it). Skipped, never cleared:
+# a deliberate value (say, an unplugged D:) must survive. Stale pins are
+# reported in the CFA section.
 if ($HubCloneFailed) {
     Warn "FLUBNF_HUB was left alone rather than set to"
     Warn "  $Hub"
@@ -1498,12 +1111,8 @@ $EnvLines = @(
     "set `"FLUBNF_PYBNF=$PyBnf`""
 )
 try {
-    # cmd.exe reads a batch file in the console code page, which is the OEM
-    # page (437 on a US install), not the ANSI page Set-Content would use.
-    # The two agree for an all-ASCII path and differ only for a profile name
-    # with accented characters -- UNVERIFIED, we cannot test it from macOS.
-    # GetEncoding(65001) carries a BOM preamble, and a BOM in front of
-    # "@echo off" is a cmd syntax error, hence the explicit no-BOM UTF-8.
+    # cmd reads batch files in the OEM code page (not Set-Content's ANSI; only
+    # accented paths differ, untested). No BOM: it breaks "@echo off".
     $cp = [int](Get-Culture).TextInfo.OEMCodePage
     $enc = if ($cp -eq 65001) { New-Object System.Text.UTF8Encoding($false) }
            else { [Text.Encoding]::GetEncoding($cp) }
@@ -1527,20 +1136,7 @@ if ($DoctorCode -eq 0) {
     Warn "some externals missing (listed above) -- console still runs: double-click FluBNF.bat"
 }
 
-# THE EXIT CODE IS A STATEMENT ABOUT SETUP, NOT ABOUT THE EXTERNALS.
-# Reaching this line means setup finished its work; every condition that
-# should stop a user has already exited 1 above (no Python >= 3.11, the venv
-# could not be created, the package would not install). The doctor's verdict
-# is reported in the text above and deliberately does NOT become this
-# script's exit code: on a machine without access to the private PyBNF fork,
-# "some externals missing" is the normal and expected end state, and a
-# caller must be able to tell that apart from "setup broke".
-#
-# Without this line the exit status was whatever the doctor happened to
-# leave in $LASTEXITCODE, so an ordinary successful run on a machine with no
-# engine would have made FluBNF.bat print "setup.ps1 reported a problem" --
-# the same family of misreport as the bug this rewrite exists to fix.
-# (Whether Windows PowerShell 5.1 propagates a trailing $LASTEXITCODE
-# through -File at all is disputed and we cannot test it from macOS; this
-# line makes the question moot in both directions.)
+# exit 0 = setup finished (fatal cases exited 1 above). "Some externals
+# missing" is a normal end state, so the doctor's $LASTEXITCODE must not
+# reach FluBNF.bat as "setup.ps1 reported a problem".
 exit 0

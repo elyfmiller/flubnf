@@ -11,12 +11,8 @@ ENGINE_VENV="${FLUBNF_ENGINE_VENV:-$HOME/.venvs/flubnf-engine}"
 PYBNF="${FLUBNF_PYBNF:-$HOME/Documents/GitHub/PyBNF-pf}"
 
 say "python"
-# PATH first, then the folders macOS Pythons actually live in when nothing
-# put them on PATH: Apple's Command Line Tools python3 is 3.9 and can never
-# satisfy the gate, and a double-clicked .command may not have the user's
-# conda PATH edits, so "found 3.9.6, exit 1" on a machine with a perfectly
-# good Anaconda was a real failure mode (measured with a stripped PATH on
-# the dev host). Same idea as the CONDAPY probe on Windows.
+# PATH first, then where macOS Pythons live off PATH: a double-clicked .command
+# may lack conda's PATH edits, and Apple's CLT python3 is 3.9.
 PY=""
 for c in python3.12 python3.11 python3; do
   cand=$(command -v "$c" 2>/dev/null) || continue
@@ -48,8 +44,7 @@ say "analysis venv (.venv) + package"
 "$HERE/.venv/bin/pip" install -q bionetgen && ok "bionetgen (BNG2.pl) installed"
 
 say "FluSight hub data"
-# The directories the app reads. Named once: the repair of an existing clone
-# and the fresh clone after it both work from this list.
+# The directories the app reads; both the repair and the fresh clone use this list.
 HUB_DIRS="auxiliary-data target-data model-output/FluSight-baseline model-output/FluSight-ensemble"
 missing_hub_dirs() {
   _m=""
@@ -58,12 +53,9 @@ missing_hub_dirs() {
 }
 if [ -d "$HUB/.git" ]; then
   ok "hub present: $HUB"
-  # `git clone --sparse` checks out the repository ROOT and nothing else, so
-  # a hub cloned by hand is a valid checkout holding no data at all, and
-  # "hub present" was the last word this script said about it. Widen the
-  # cone with `add`: it is idempotent, and on a full non-sparse clone it
-  # fails harmlessly ("no sparse-checkout to add to") instead of pruning
-  # every directory not named, which `set` does. Both measured on git 2.39.5.
+  # A by-hand `clone --sparse` holds only the root. Widen with `add`: it is
+  # idempotent and fails harmlessly on a full clone, where `set` would prune
+  # every unnamed directory (git 2.39.5).
   need="$(missing_hub_dirs)"
   if [ -n "$need" ]; then
     warn "this clone does not contain:$need"
@@ -83,9 +75,7 @@ if [ -d "$HUB/.git" ]; then
 elif [ "${FLUBNF_NO_DATA:-0}" = "1" ]; then
   warn "data skipped (FLUBNF_NO_DATA=1) -- set FLUBNF_HUB later"
 else
-  # No questions: sparse checkout pulls ONLY the data directories the app
-  # reads (~10x smaller than the full hub, which is mostly other teams'
-  # forecast files).
+  # Sparse: only the directories the app reads (~10x smaller than the full hub).
   echo "  fetching FluSight data (sparse, ~150 MB)…"
   git clone --filter=blob:none --sparse --depth 1 \
       https://github.com/cdcepi/FluSight-forecast-hub "$HUB" 2>/dev/null \
@@ -108,19 +98,15 @@ else
   warn "    git bundle create pybnf.bundle feature/particle-filter"
   warn "  you put that one file in ~/Downloads (or beside this folder), then:"
   warn "    ./setup_engine.sh"
-  # Deliberately NOT run from here. This script is the console's first-run
-  # setup and finishes in a couple of minutes; the engine adds several more
-  # and a large download, and FluBNF.command runs setup_engine.sh straight
-  # after this anyway. Printing the route beats a surprise.
+  # Not run from here (minutes more, a large download): FluBNF.command runs
+  # setup_engine.sh right after this.
   warn "With GitHub access instead, ./setup_engine.sh clones it for you and"
   warn "explains, in detail, whatever stops it."
   warn "Without the engine: the console, analogue engine, and reports still work."
 fi
 
 say "git hooks"
-# Point git at the tracked hooks directory so a contributor's push runs the
-# suite the way CI runs it (no hub clone, no engine venv) before it can turn
-# main red. Idempotent, and only inside a real checkout.
+# Tracked hooks: a push to main first runs the suite under CI conditions.
 if [ -d "$HERE/.git" ] && [ -d "$HERE/.githooks" ]; then
   git -C "$HERE" config core.hooksPath .githooks \
     && ok "pre-push runs the suite under CI conditions (bypass: --no-verify)" \

@@ -5,11 +5,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    # This job has taken about 5 minutes for as long as it has existed, so 20
-    # is roughly 4x headroom: generous enough that a slow runner or a cold pip
-    # cache never trips it, tight enough that a hang is reported in a quarter
-    # of an hour rather than burning the 6 hour GitHub default. No job in this
-    # workflow is allowed to have no budget at all.
+    # ~4x the usual 5 minutes: a fuse against hangs (every job has one).
     timeout-minutes: 20
     strategy:
       matrix: {python-version: ["3.11", "3.12"]}
@@ -18,17 +14,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: "${{ matrix.python-version }}"}
       - run: pip install -e ".[app,dev]" bionetgen
-      # No FluSight hub clone and no BNG in CI: hub-dependent and
-      # engine-dependent tests skip themselves via flubnf.settings checks.
-      #
-      # --durations is here for the same reason it is on the windows job: it
-      # is the BASELINE half of that measurement. "windows is slow" is not a
-      # finding until we can say slow COMPARED TO WHAT, per test. Without this
-      # table the windows one only tells us which tests are slowest on
-      # windows, which is very nearly the same list as "which tests do the
-      # most work" and says nothing about the platform.
-      # --durations-min=1.0 keeps the table to tests worth looking at; the
-      # pytest default of 0.005s would print 25 rows of noise.
+      # No hub, no engine: dependent tests skip; --durations is the windows baseline.
       - name: tests (failures become annotations)
         run: |
           set -o pipefail
@@ -37,8 +23,7 @@ jobs:
             grep -E "^(FAILED|ERROR)" pytest.out | head -20 | while read -r line; do
               echo "::error::${line}"
             done
-            # a collection or import crash produces no summary lines at all;
-            # surface the tail so the failure is never a bare exit code 1
+            # a collection crash prints no summary lines: surface the tail
             if ! grep -qE "^(FAILED|ERROR)" pytest.out; then
               tail -n 40 pytest.out | while read -r line; do
                 echo "::error::${line}"
@@ -49,8 +34,7 @@ jobs:
             exit 1
           }
 
-      # if: always(), because the durations table is most wanted on exactly
-      # the runs that failed, and the step above exits 1 on those.
+      # if: always(): the table matters most on red runs.
       - name: where the time went
         if: always()
         run: |
@@ -62,41 +46,20 @@ jobs:
             echo '```';
             awk '/slowest .* durations/{f=1} /short test summary/{f=0} f' pytest.out |
               head -n 40;
-            # The suite total. Printed on both jobs and for the same reason:
-            # the windows-to-linux comparison is per-test AND whole-suite, and
-            # the awk range above drops the total line on any run that failed.
+            # the total: the awk range drops it on failed runs
             tail -n 1 pytest.out;
             echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
-  # EXPERIMENTAL Windows CI: this is the lab's stand-in for a Windows box
-  # while the native Windows port is brought up. continue-on-error keeps a
-  # red run from failing the check suite; the ::error:: annotations still
-  # surface every failure for diagnosis. Promote to required (delete
-  # continue-on-error and the "experimental" name suffix) once it has been
-  # green for a few consecutive weeks.
+  # EXPERIMENTAL (continue-on-error): make required once green for a few weeks.
   test-windows:
     name: "test-windows (experimental)"
     runs-on: windows-latest
     continue-on-error: true
     env: {PYTHONUTF8: "1"}
-    # WHY 90 AND NOT 6 HOURS. Run 33200477476 took 62 minutes on 3.11 and 71
-    # on 3.12 for a suite ubuntu finishes in 5, and then failed 6 tests. With
-    # no timeout-minutes at all, a job that HANGS rather than merely crawls
-    # sits on a runner for the GitHub default of 6 hours, and because both
-    # windows jobs carry continue-on-error nobody is even paged about it.
-    # 90 is the smallest round number safely above the worst run we have
-    # measured (71) with room for runner variance, and it is the reason a
-    # future hang costs 90 minutes instead of a working day of runner time.
-    #
-    # IT IS NOT A TARGET AND IT IS NOT A FIX. It is a fuse. Once the
-    # --durations tables below say where the 60-odd minutes actually go and
-    # that is dealt with, this number should come down to something near the
-    # real runtime, because a fuse sized far above the load never blows.
+    # A fuse above the worst run (71 min); lower it once the hour is explained.
     timeout-minutes: 90
     strategy:
-      # Both legs must run to completion, because the Defender measurement
-      # below is a COMPARISON between them and fail-fast cancelling the
-      # survivor when the first leg goes red would throw the control away.
+      # both legs run to completion: they are compared
       fail-fast: false
       matrix: {python-version: ["3.11", "3.12"]}
     steps:
@@ -256,18 +219,7 @@ jobs:
       # ------------------------------------------------------------------
 
       - run: pip install -e ".[app,dev]" bionetgen
-      # Same skip story as the ubuntu job: no FluSight hub clone and no BNG
-      # engine venv, so hub- and engine-dependent tests skip themselves via
-      # flubnf.settings checks. shell: bash (Git Bash ships on the runner)
-      # keeps the annotation pipeline identical to the ubuntu job.
-      #
-      # --durations IS THE POINT OF THIS PASS. Six tests fail here and the
-      # job takes an hour, so the failures are not where the time goes and
-      # nobody knows where it does go. The table this prints, read against
-      # the identical table from the ubuntu job, turns that from a guess into
-      # a per-test ratio: a flat 12x across everything reads as an
-      # environment cost (scanning, process creation), while a handful of
-      # tests carrying the whole hour reads as a specific defect to fix.
+      # As ubuntu (Git Bash keeps the pipeline identical); --durations vs ubuntu's locates the hour.
       - name: tests (failures become annotations)
         shell: bash
         run: |
@@ -277,8 +229,7 @@ jobs:
             grep -E "^(FAILED|ERROR)" pytest.out | head -20 | while read -r line; do
               echo "::error::${line}"
             done
-            # a collection or import crash produces no summary lines at all;
-            # surface the tail so the failure is never a bare exit code 1
+            # a collection crash prints no summary lines: surface the tail
             if ! grep -qE "^(FAILED|ERROR)" pytest.out; then
               tail -n 40 pytest.out | while read -r line; do
                 echo "::error::${line}"
@@ -289,11 +240,7 @@ jobs:
             exit 1
           }
 
-      # if: always(), because this job currently fails, and a durations table
-      # that only appears on green runs would never have appeared at all.
-      # The Defender state is reprinted here so the table and the treatment
-      # it was measured under are read off one screen and cannot be paired up
-      # wrongly weeks later.
+      # if: always(): the table matters most on red runs; reprints the Defender treatment.
       - name: where the time went
         if: always()
         shell: bash
@@ -319,80 +266,26 @@ jobs:
             echo '```';
             awk '/slowest .* durations/{f=1} /short test summary/{f=0} f' pytest.out |
               head -n 40;
-            # The suite total, which the awk range above stops short of on
-            # exactly the runs that matter: the range ends at "short test
-            # summary info", and pytest prints the total AFTER that block on
-            # any run with a failure -- which is every windows run today. The
-            # 25 rows mean nothing without a wall clock to check them
-            # against, since a table summing to four minutes inside a
-            # sixty-minute job says the time is not in the tests at all.
+            # the total: the awk range drops it on failed runs
             tail -n 1 pytest.out;
             echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
-  # EXPERIMENTAL: the only automated exercise of the Windows FIRST-RUN path,
-  # which is the path that reached a user broken. The lab develops on macOS
-  # and has no PowerShell interpreter at all, so this job is the entire
-  # verification story for setup.ps1: everything it runs was written from
-  # language rules and is being executed here for the first time.
-  #
-  # It walks the five states a real machine walks, in order:
-  #   1. a run with the data fetch and the private-fork probe switched off.
-  #      Fast, and it proves the script parses, installs, and writes the
-  #      launcher configuration.
-  #   2. a run that performs the REAL sparse clone of the public FluSight
-  #      hub. The clone is the thing that broke in the field, so no amount of
-  #      FLUBNF_NO_DATA=1 covers it -- one run has to actually fetch.
-  #   3. a re-run against the hub step 2 created. This is the only exercise
-  #      of the "already cloned, update it" branch and of the script's own
-  #      claim, in its first line, to be idempotent.
-  #   4. a run against a hub cloned BY HAND with --sparse. Runs 2 and 3 both
-  #      reach the hub through setup.ps1's own clone, which sets a cone
-  #      holding the four data directories, so neither can see the state the
-  #      corresponding author was actually in: --sparse checks out the
-  #      repository ROOT and nothing else, and his path was setup.ps1's own
-  #      default, so every later run took the "hub present" branch and
-  #      re-applied an empty cone forever. Run 4 makes that state and
-  #      requires setup.ps1 to repair it.
-  #   5. a machine that was set up BEFORE the default moved out of
-  #      Documents. The default is now under %LOCALAPPDATA%, because
-  #      Controlled Folder Access protects Documents and blocks git.exe from
-  #      writing there, but an existing checkout at the old location must
-  #      keep being used exactly where it stands: the author has 143 MB of
-  #      PyBNF checkout and 150 MB of hub under Documents and neither may be
-  #      silently relocated. Run 5 creates the old directory and requires
-  #      setup.ps1 to find it, say so, and record it.
-  #
-  # The engine can never be installed here: it needs the PyBNF fork, which is
-  # private, and this job deliberately holds NO credentials and reads no
-  # secrets. That is not a gap in the coverage, it IS the coverage -- an
-  # undergraduate with no repository access gets exactly this state, and the
-  # assertions below require setup to finish it cleanly, say in plain words
-  # that the engine is missing, and exit 0.
-  #
-  # Every "shell: powershell" step here is Windows PowerShell 5.1 and
-  # deliberately not pwsh: 5.1 is what a stock Windows 11 box runs, so its
-  # parser and its host are the ones that matter. Each of the five runs is
-  # launched from a cmd step through a command line FluBNF.bat uses, so the
-  # exit code asserted here is the one FluBNF.bat reads.
-  #
-  # STILL NOT COVERED, and not pretended otherwise: FluBNF.bat itself (cmd
-  # has no parse-only mode, and its first-run offer needs an interactive
-  # console), the winget/Perl branch, the probe's 15 s timeout path (the
-  # probe is expected to answer, not to hang), and any non-ASCII profile
-  # path. The runner is also an English-locale image with git already on
-  # PATH, so the "git is not installed" branch never runs.
+  # EXPERIMENTAL: the only automated run of setup.ps1, under Windows
+  # PowerShell 5.1 launched from cmd as FluBNF.bat does. One run per machine
+  # state: 1 no fetch/probe; 2 real sparse clone + real fork probe (no
+  # credentials by design, so the engine is always missing and setup must
+  # still exit 0); 3 idempotent re-run; 4 a by-hand --sparse clone must be
+  # widened; 5 a legacy Documents checkout is reused in place.
+  # Not covered: FluBNF.bat itself, winget/Perl, the probe timeout, non-ASCII
+  # paths, the no-git branch.
   windows-setup-script:
     name: "windows-setup-script (experimental)"
     runs-on: windows-latest
     continue-on-error: true
-    # The per-step budgets below sum to less than this, so a hang is always
-    # reported against the step that hung rather than as an opaque job kill.
+    # above the per-step budgets' sum, so a hang is blamed on its step
     timeout-minutes: 60
     steps:
-      # .gitattributes marks *.ps1 and *.bat eol=crlf, so the runner checks
-      # out the same bytes the corresponding author's machine does. That is
-      # what makes the parse check below meaningful rather than a check of a
-      # macOS-normalised file that no Windows user ever receives.
+      # .gitattributes checks out *.ps1/*.bat as CRLF, the bytes users get.
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
@@ -446,54 +339,30 @@ jobs:
         shell: powershell
         run: |
           $path = Join-Path $env:RUNNER_TEMP "setup-run1.log"
-          # Windows PowerShell wraps host output at the console width, and
-          # when stdout is a pipe that width is a default we cannot observe
-          # from macOS. A wrap breaks mid-WORD, so matching the raw text
-          # would make every assertion below depend on a number nobody here
-          # can verify. Both sides therefore have all whitespace removed
-          # before comparison, which no wrap can survive. The unmodified
-          # transcript was printed by the previous step for a human to read.
+          # Whitespace stripped both sides: PS 5.1 wraps host output mid-word.
           $raw = Get-Content $path -Raw
           if (-not $raw) { Write-Host "::error::run 1: the transcript at $path is empty, so setup.ps1 printed nothing at all"; exit 1 }
           $flat = $raw -replace '\s', ''
           function Has($needle) { $flat.Contains(($needle -replace '\s', '')) }
           $must = @(
-            # the two switches have to be reported, never silently obeyed
             "data skipped (FLUBNF_NO_DATA=1)",
             "access probe skipped (FLUBNF_NO_PROBE=1)",
-            # the plan block must name the default data location, which is
-            # under %LOCALAPPDATA% and NOT under Documents: Controlled Folder
-            # Access protects Documents and blocks git.exe from writing there
+            # the default data location is under %LOCALAPPDATA%, not Documents
             "AppData\Local\FluBNF\FluSight-forecast-hub",
-            # and the Controlled Folder Access section must run on every
-            # machine, including one where the setting cannot be read
             "controlled folder access",
-            # the one thing setup must always achieve
             "flubnf installed editable",
-            # .flubnf.env.cmd is what makes the settings visible to the very
-            # next double-click; FluBNF.bat calls it on every launch
             "(read by FluBNF.bat on every launch)",
-            # the degraded engine path, in plain words, staying honest that
-            # the fork is private rather than implying it can be installed
             "engine venv not ready",
             "PRIVATE repository",
             "Without the engine: the console, analogue engine, and reports all work.",
-            # and the doctor's verdict for a machine with no hub, no engine
             "some externals missing"
           )
           $mustNot = @(
-            # nothing here can be complete: no hub clone, no engine
             "all externals present",
-            # no clone was attempted, so no clone may be reported either way
             "git clone failed",
             "hub data ready",
-            # THE CFA DEFAULT, AS AN ASSERTION. The runner has no checkout at
-            # the old location, so nothing may resolve to one: a Documents
-            # path here means the default regressed into the folder
-            # Controlled Folder Access blocks git.exe from writing.
+            # nothing at the old location, so no Documents path may appear
             "Documents\GitHub\FluSight-forecast-hub",
-            # and the legacy-reuse branch must not fire when there is nothing
-            # to reuse
             "Reusing folders that are already on this machine"
           )
           $bad = @()
@@ -530,18 +399,8 @@ jobs:
         shell: cmd
         timeout-minutes: 20
         env:
-          # A path this job owns, so the assertions can name it. The default
-          # profile location is covered by run 1's plan block instead.
           FLUBNF_HUB: ${{ runner.temp }}\flusight-hub
-          # FLUBNF_NO_DATA is NOT set. This is the run that actually fetches,
-          # about 150 MB sparse, and it is the whole reason this job exists:
-          # the field failure was a clone that SUCCEEDED being reported as a
-          # failure, which no skipped-fetch run can ever detect.
-          #
-          # FLUBNF_NO_PROBE is NOT set either, so the private-fork probe runs
-          # for real. It must answer "no" -- this job holds no credentials --
-          # and it must answer inside its own 15 s budget. This is the only
-          # automated exercise the probe's anti-hang guards will ever get.
+          # no FLUBNF_NO_DATA / FLUBNF_NO_PROBE: the real fetch and the real probe
         run: |
           rem -NoPrompt is deliberately omitted: this is the command line
           rem FluBNF.bat runs verbatim, so the run also proves the script
@@ -563,18 +422,12 @@ jobs:
           $path = Join-Path $env:RUNNER_TEMP "setup-run2.log"
           $raw = Get-Content $path -Raw
           if (-not $raw) { Write-Host "::error::run 2: the transcript at $path is empty, so setup.ps1 printed nothing at all"; exit 1 }
-          # whitespace is stripped from both sides before matching; see the
-          # comment on the same line in the run 1 assertions for why
           $flat = $raw -replace '\s', ''
           function Has($needle) { $flat.Contains(($needle -replace '\s', '')) }
           $hub = $env:FLUBNF_HUB
           $onDisk = Test-Path (Join-Path $hub ".git")
           $claimed = Has "hub data ready (sparse)"
-          # THE REPORTED BUG, AS AN ASSERTION. On the author's machine the
-          # clone succeeded and setup.ps1 announced a failure anyway, because
-          # the redirect threw git's output away and the exit code it tested
-          # was stale. Either half disagreeing with the other is the defect,
-          # so both directions are checked.
+          # the field bug: disk and transcript must agree, both directions
           if ($onDisk -and -not $claimed) {
             Write-Host "::error::run 2: the clone SUCCEEDED on disk but setup.ps1 did not report success. This is the field bug reproduced: a fetch that worked, reported as a failure."
             exit 1
@@ -588,8 +441,7 @@ jobs:
             exit 1
           }
           $bad = @()
-          # the sparse cone: exactly the four directories the app reads. A
-          # clone that lands without these is a clone the console cannot use.
+          # the sparse cone: the four directories the app reads
           foreach ($d in @("auxiliary-data", "target-data",
                            "model-output\FluSight-baseline",
                            "model-output\FluSight-ensemble")) {
@@ -599,7 +451,6 @@ jobs:
           }
           $must = @(
             "hub data ready (sparse)",
-            # the engine is still missing and must still say so
             "engine venv not ready",
             "PRIVATE repository",
             "some externals missing"
@@ -607,17 +458,13 @@ jobs:
           $mustNot = @(
             "git clone failed",
             "all externals present",
-            # the probe was NOT skipped this time
             "access probe skipped",
-            # the "yes" branch. This job holds no credentials, so reaching a
-            # private repository would mean it had acquired some.
+            # the "yes" branch: this job holds no credentials
             "no invitation needed"
           )
           foreach ($n in $must)    { if (-not (Has $n)) { $bad += "MISSING from the transcript: $n" } }
           foreach ($n in $mustNot) { if (Has $n)        { $bad += "PRESENT but must not be: $n" } }
-          # The probe has two honest answers here and no third: it reached
-          # GitHub and was refused, or it could not tell. Either is fine and
-          # both are reported to the user in words; silence is not.
+          # the probe must say "refused" or "undetermined", never nothing
           if (-not ((Has "this machine cannot read") -or
                     (Has "access to the fork was not checked"))) {
             $bad += "the fork probe reported neither a refusal nor an undetermined result"
@@ -650,7 +497,6 @@ jobs:
         timeout-minutes: 10
         env:
           FLUBNF_HUB: ${{ runner.temp }}\flusight-hub
-          # the probe already answered in run 2; no need to pay for it twice
           FLUBNF_NO_PROBE: "1"
         run: |
           set "LOG=%RUNNER_TEMP%\setup-run3.log"
@@ -668,37 +514,22 @@ jobs:
           $path = Join-Path $env:RUNNER_TEMP "setup-run3.log"
           $raw = Get-Content $path -Raw
           if (-not $raw) { Write-Host "::error::run 3: the transcript at $path is empty, so setup.ps1 printed nothing at all"; exit 1 }
-          # whitespace is stripped from both sides before matching; see the
-          # comment on the same line in the run 1 assertions for why
           $flat = $raw -replace '\s', ''
           function Has($needle) { $flat.Contains(($needle -replace '\s', '')) }
           $bad = @()
           $must = @(
             "hub present:",
-            # still degraded, still saying so
             "engine venv not ready",
             "some externals missing"
           )
           $mustNot = @(
             "git clone failed",
-            # the "path exists but is not a git clone" branch would mean the
-            # previous run left something the script can no longer recognise
             "exists but is not a git clone",
             "all externals present"
           )
           foreach ($n in $must)    { if (-not (Has $n)) { $bad += "MISSING from the transcript: $n" } }
           foreach ($n in $mustNot) { if (Has $n)        { $bad += "PRESENT but must not be: $n" } }
-          # FIRST TEST OF AN UNVERIFIED CLAIM: that a fast-forward-only git
-          # pull works against a clone made with --depth 1, blobless and
-          # sparse. That was reasoned from git's documentation on a Mac and
-          # has never been executed. If it fails, setup.ps1 says so and keeps
-          # the data it already has, which is the correct degraded
-          # behaviour, so it is reported as a warning here and the job is not
-          # failed on it. What is required is that one of the two messages
-          # appears at all.
-          # (No backticks in these comments on purpose: a comment ending in
-          # one sits exactly where a line-continuation would, and we cannot
-          # test the tokenizer's treatment of that from macOS.)
+          # pull --ff-only on a shallow blobless sparse clone: a failure is only a warning.
           if (Has "hub updated (git pull --ff-only)") {
             Write-Host "run 3: the shallow blobless sparse clone updates cleanly"
           } elseif (Has "hub update skipped") {
@@ -731,15 +562,12 @@ jobs:
           if not "%FOUND%"=="0" exit /b 1
           exit /b 0
 
-      # THE FIELD MACHINE, REPRODUCED. This is the only step that starts from
-      # the state the bug report describes, so it is the only one that can
-      # tell whether the fix fixes anything for the person who reported it.
+      # the field machine: a root-only sparse clone must be repaired
       - name: "run 4 of 5: a hub cloned BY HAND with --sparse"
         shell: cmd
         timeout-minutes: 15
         env:
           FLUBNF_HUB: ${{ runner.temp }}\byhand-hub
-          # the probe answered for real in run 2; this run is about the cone
           FLUBNF_NO_PROBE: "1"
         run: |
           rem The command from the bug report, verbatim except for the path.
@@ -780,21 +608,15 @@ jobs:
           }
           $raw = Get-Content (Join-Path $env:RUNNER_TEMP "setup-run4.log") -Raw
           if (-not $raw) { Write-Host "::error::run 4: the transcript is empty"; exit 1 }
-          # whitespace is stripped from both sides before matching; see the
-          # comment on the same line in the run 1 assertions for why
           $flat = $raw -replace '\s', ''
           function Has($needle) { $flat.Contains(($needle -replace '\s', '')) }
           $must = @(
             "hub present:",
-            # the repair has to be reported, not done silently: a user who
-            # waits through a 150 MB download deserves to know what for
             "this clone does not contain",
             "sparse checkout widened"
           )
           $mustNot = @(
-            # the engine is still unreachable here and must still say so
             "all externals present",
-            # nothing may re-clone over a hub the user already made
             "git clone failed",
             "hub data ready (sparse)"
           )
@@ -823,13 +645,7 @@ jobs:
           if errorlevel 1 exit /b 1
           exit /b 0
 
-      # THE MACHINE THAT WAS SET UP BEFORE THE DEFAULT MOVED. Every run above
-      # either sets FLUBNF_HUB or has nothing at the old location, so none of
-      # them can show what happens to somebody who already has a checkout
-      # under Documents. That person must be left completely alone, and this
-      # is the only automated check of it. FLUBNF_HUB is deliberately NOT set
-      # and the data fetch is off, so the directory below is never written
-      # to: what is under test is the resolution, not the clone.
+      # a pre-existing Documents checkout (no FLUBNF_HUB, no fetch): resolution only
       - name: "run 5 of 5: an existing checkout at the old Documents path"
         shell: cmd
         timeout-minutes: 10
@@ -855,21 +671,16 @@ jobs:
           $path = Join-Path $env:RUNNER_TEMP "setup-run5.log"
           $raw = Get-Content $path -Raw
           if (-not $raw) { Write-Host "::error::run 5: the transcript at $path is empty"; exit 1 }
-          # whitespace is stripped from both sides before matching; see the
-          # comment on the same line in the run 1 assertions for why
           $flat = $raw -replace '\s', ''
           function Has($needle) { $flat.Contains(($needle -replace '\s', '')) }
           $bad = @()
           $must = @(
-            # the reuse itself, and the plan block naming the old path
             "Reusing folders that are already on this machine",
             "Documents\GitHub\FluSight-forecast-hub",
-            # never silently: a folder inside a protected location is
-            # something the reader has to be told about
             "Controlled Folder"
           )
           foreach ($n in $must) { if (-not (Has $n)) { $bad += "MISSING from the transcript: $n" } }
-          # and the decisive one: what the next launch will actually read
+          # what the next launch will read
           $envCmd = Get-Content ".flubnf.env.cmd" -Raw
           if ($envCmd -notmatch [regex]::Escape("Documents\GitHub\FluSight-forecast-hub")) {
             $bad += ".flubnf.env.cmd does not point at the existing checkout, so a machine that worked before this change would stop finding its data"
