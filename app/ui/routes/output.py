@@ -148,13 +148,13 @@ def _run_data_source(rid) -> str:
     import json as _json
     from app.core.data import source_phrase
     from app.core.runs import Ledger
-    for r in Ledger().rows(200):
-        if r.get("run_id") == rid:
-            try:
-                return source_phrase(
-                    _json.loads(r.get("outcome") or "{}").get("data_source"))
-            except (ValueError, TypeError, AttributeError):
-                return ""
+    r = Ledger().row(rid)
+    if r:
+        try:
+            return source_phrase(
+                _json.loads(r.get("outcome") or "{}").get("data_source"))
+        except (ValueError, TypeError, AttributeError):
+            return ""
     return ""
 
 

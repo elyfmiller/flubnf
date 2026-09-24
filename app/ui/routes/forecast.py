@@ -261,29 +261,29 @@ def run_page(request: Request, run_id: str):
     ens_analogue_only: list = []
     ens_withheld = ""
     row_sha, row_engine_versions = "", {}
-    for r in Ledger().rows(200):
-        if r.get("run_id") == run_id:
-            status = r.get("status", "")
-            spec_json = r.get("spec", "") or ""
-            row_sha = r.get("flubnf_sha", "") or ""
-            try:
-                ev = _json.loads(r.get("engine_versions") or "{}")
-                row_engine_versions = ev if isinstance(ev, dict) else {}
-            except Exception:
-                row_engine_versions = {}
-            try:
-                o = _json.loads(r.get("outcome") or "{}")
-                err = o.get("error", "")
-                sub_errors = o.get("submission_errors", {}) or {}
-                # failures and step errors in full (the chips only count them)
-                pf_failures = o.get("pf_failures", {}) or {}
-                step_errors = {k: str(o[k]) for k in
-                               ("score_error", "archive_error",
-                                "report_inputs_error", "report_error")
-                               if o.get(k)}
-            except Exception:
-                err = ""
-            break
+    # the run's own row, however many runs came after it
+    r = Ledger().row(run_id)
+    if r:
+        status = r.get("status", "")
+        spec_json = r.get("spec", "") or ""
+        row_sha = r.get("flubnf_sha", "") or ""
+        try:
+            ev = _json.loads(r.get("engine_versions") or "{}")
+            row_engine_versions = ev if isinstance(ev, dict) else {}
+        except Exception:
+            row_engine_versions = {}
+        try:
+            o = _json.loads(r.get("outcome") or "{}")
+            err = o.get("error", "")
+            sub_errors = o.get("submission_errors", {}) or {}
+            # failures and step errors in full (the chips only count them)
+            pf_failures = o.get("pf_failures", {}) or {}
+            step_errors = {k: str(o[k]) for k in
+                           ("score_error", "archive_error",
+                            "report_inputs_error", "report_error")
+                           if o.get(k)}
+        except Exception:
+            err = ""
     # a 'running' row with no live worker = the app was closed mid-run
     if status == "running" and not (_status.get("running") or "").endswith(run_id):
         status = "interrupted"
@@ -360,8 +360,7 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
     import json as _json
     from dataclasses import asdict as _asdict
     from datetime import date as _date
-    row = next((r for r in Ledger().rows(500)
-                if r.get("run_id") == run_id), None)
+    row = Ledger().row(run_id)
     try:
         d = _json.loads((row or {}).get("spec") or "")
     except (ValueError, TypeError):
