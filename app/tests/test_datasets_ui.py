@@ -20,12 +20,12 @@ from app.core import datasets as D
 from app.ui import datasets_ui as DU
 from app.ui import server as srv
 
-from test_dataset_engines import mh_bytes              # noqa: E402
+from test_dataset_engines import grouped_bytes         # noqa: E402
 
 client = TestClient(srv.app)
 FIX = Path(__file__).resolve().parent / "fixtures"
 TEMPLATE = Path(__file__).resolve().parents[1] / "ui" / "static" / \
-    "microhub-template.csv"
+    "dataset-template.csv"
 
 
 @pytest.fixture(autouse=True)
@@ -55,7 +55,7 @@ def upload(raw, name="Kids", kind="count", **data):
 
 
 def stored(raw=None, name="Kids", kind="count"):
-    r = upload(raw if raw is not None else mh_bytes(), name, kind)
+    r = upload(raw if raw is not None else grouped_bytes(), name, kind)
     assert r.status_code == 303, r.text[:500]
     return D.get(r.headers["location"].split("source=")[1].split("#")[0])
 
@@ -63,7 +63,7 @@ def stored(raw=None, name="Kids", kind="count"):
 # ---------------------------------------------------------------- Data tab
 
 def test_upload_stores_and_lists_the_dataset():
-    r = upload(FIX.joinpath("microhub-template-population-head.csv").read_bytes())
+    r = upload(FIX.joinpath("grouped-template-population-head.csv").read_bytes())
     assert r.status_code == 303
     assert r.headers["location"].startswith("/data?source=kids-")
     (ds,) = D.list_datasets()
@@ -71,7 +71,7 @@ def test_upload_stores_and_lists_the_dataset():
     page = client.get("/data").text
     assert "Your datasets" in page and ">Kids</a>" in page
     assert 'href="/forecast?source=' + ds.id in page
-    assert "microhub-template.csv" in page
+    assert "dataset-template.csv" in page
 
 
 def test_a_bad_upload_shows_every_problem_inline_and_stores_nothing():
@@ -98,7 +98,7 @@ def test_a_multi_target_file_offers_its_targets():
 
 
 def test_the_kind_must_be_declared():
-    r = upload(mh_bytes(), kind="")
+    r = upload(grouped_bytes(), kind="")
     assert r.status_code == 400 and "counts or rates" in r.text
 
 
@@ -135,7 +135,8 @@ def test_oversize_is_cut_off_while_streaming_without_a_length():
 
 
 def test_cross_origin_upload_is_refused():
-    r = client.post("/data/datasets", files={"file": ("a.csv", mh_bytes())},
+    r = client.post("/data/datasets",
+                    files={"file": ("a.csv", grouped_bytes())},
                     data={"kind": "count"}, headers={"origin": "http://evil.example"})
     assert r.status_code == 403
     assert D.list_datasets() == []

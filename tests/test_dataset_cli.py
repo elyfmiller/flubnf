@@ -14,9 +14,9 @@ FIX = Path(__file__).resolve().parents[1] / "app" / "tests" / "fixtures"
 runner = CliRunner()
 
 
-def test_valid_microhub_template_prints_a_summary():
+def test_valid_grouped_template_prints_a_summary():
     r = runner.invoke(app, ["dataset", "validate",
-                            str(FIX / "microhub-template-population-head.csv"),
+                            str(FIX / "grouped-template-population-head.csv"),
                             "--kind", "count"])
     assert r.exit_code == 0, r.output
     assert "valid" in r.output
@@ -26,7 +26,7 @@ def test_valid_microhub_template_prints_a_summary():
 
 def test_undeclared_kind_is_reported_as_inferred():
     r = runner.invoke(app, ["dataset", "validate",
-                            str(FIX / "microhub-template-head.csv")])
+                            str(FIX / "grouped-template-head.csv")])
     assert r.exit_code == 0, r.output
     assert "count (inferred; declare it)" in r.output
 
@@ -65,7 +65,7 @@ def store(tmp_path, monkeypatch):
 
 
 def test_import_list_delete(store):
-    src = FIX / "microhub-template-population-head.csv"
+    src = FIX / "grouped-template-population-head.csv"
     r = runner.invoke(app, ["dataset", "import", str(src), "--kind", "count",
                             "--name", "Kids"])
     assert r.exit_code == 0, r.output

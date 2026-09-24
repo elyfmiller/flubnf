@@ -25,7 +25,7 @@ from app.core import runs as R
 from app.core import submit as SB
 from app.core.runs import RunSpec
 
-from test_dataset_engines import _saturdays, mh_bytes   # noqa: E402
+from test_dataset_engines import _saturdays, grouped_bytes  # noqa: E402
 
 FD = "2023-12-02"
 
@@ -56,8 +56,8 @@ def hub_ts(groups=("01", "US"), names=("Alabama", "US"), rate=False) -> bytes:
 
 # ------------------------------------------------------------------ export
 
-def test_microhub_export_is_keyed_by_target_group_and_valid(tmp_path):
-    ds = D.ingest(mh_bytes(), "wave", kind="count")
+def test_grouped_export_is_keyed_by_target_group_and_valid(tmp_path):
+    ds = D.ingest(grouped_bytes(), "wave", kind="count")
     q = {"0": {float(L): 10.0 + i for i, L in enumerate(SB.QUANTILES)}}
     rows = CR.export_rows({"Adult": q}, ds, FD, integer=True)
     df = pd.DataFrame(rows)
@@ -108,7 +108,7 @@ def test_rates_keep_decimals_counts_are_whole():
 # ----------------------------------------------------------------- scoring
 
 def test_score_uses_the_persistence_baseline_and_the_cell_rule():
-    ds = D.ingest(mh_bytes(), "wave", kind="count")
+    ds = D.ingest(grouped_bytes(), "wave", kind="count")
     truth = ds.truth()
     s = ds.series("Adult", FD)
     last = s["values"][-1]
@@ -153,7 +153,7 @@ def test_the_national_group_is_scored_beside_never_inside():
 # --------------------------------------------------------------------- run
 
 def test_groundhog_run_writes_results_exports_and_scores(tmp_path):
-    ds = D.ingest(mh_bytes(), "wave", kind="count")
+    ds = D.ingest(grouped_bytes(), "wave", kind="count")
     w = tmp_path / "w"
     w.mkdir()
     outcome, fails = CR.run(spec_for(ds), ds, w)
@@ -173,7 +173,7 @@ def test_groundhog_run_writes_results_exports_and_scores(tmp_path):
 
 
 def test_thin_donor_pool_abstains_and_is_recorded(tmp_path):
-    raw = mh_bytes(start=date(2023, 8, 5), end=date(2024, 2, 24))
+    raw = grouped_bytes(start=date(2023, 8, 5), end=date(2024, 2, 24))
     ds = D.ingest(raw, "one season", kind="count")
     outcome, _ = CR.run(spec_for(ds), ds, tmp_path)
     assert outcome["abstained"]["analogue"] == sorted(ds.groups)
@@ -182,7 +182,7 @@ def test_thin_donor_pool_abstains_and_is_recorded(tmp_path):
 
 def test_rate_dataset_skips_the_count_floor(tmp_path, monkeypatch):
     import app.core.floor as floor_mod
-    ds = D.ingest(mh_bytes(rate=True), "rates", kind="rate")
+    ds = D.ingest(grouped_bytes(rate=True), "rates", kind="rate")
     monkeypatch.setattr(floor_mod, "floor_quantiles", lambda *a, **k: (
         _ for _ in ()).throw(AssertionError("floored a rate")))
     outcome, _ = CR.run(spec_for(ds), ds, tmp_path)
@@ -208,7 +208,7 @@ def _fake_pf(monkeypatch, names, seen=None):
 
 
 def test_pf_runs_plain_on_an_eligible_dataset(tmp_path, monkeypatch):
-    ds = D.ingest(mh_bytes(), "wave", kind="count")
+    ds = D.ingest(grouped_bytes(), "wave", kind="count")
     seen = []
     _fake_pf(monkeypatch, ds.groups, seen)
     outcome, fails = CR.run(spec_for(ds, engine="all"), ds, tmp_path,
@@ -224,20 +224,20 @@ def test_pf_runs_plain_on_an_eligible_dataset(tmp_path, monkeypatch):
 
 
 def test_pf_is_skipped_without_a_population_or_engine(tmp_path, monkeypatch):
-    ds = D.ingest(mh_bytes(pop=False), "nopop", kind="count")
+    ds = D.ingest(grouped_bytes(pop=False), "nopop", kind="count")
     _fake_pf(monkeypatch, ds.groups)
     o, _ = CR.run(spec_for(ds, engine="all"), ds, tmp_path / "a",
                   pf_state="ready")
     assert "population" in o["pf_skipped"]
     assert list(o["exports"]) == ["FluBNF-Groundhog"]
-    ds2 = D.ingest(mh_bytes(), "pop", kind="count")
+    ds2 = D.ingest(grouped_bytes(), "pop", kind="count")
     o2, _ = CR.run(spec_for(ds2, engine="all"), ds2, tmp_path / "b",
                    pf_state="absent")
     assert "not installed" in o2["pf_skipped"]
 
 
 def test_modified_settings_export_under_a_suffixed_non_hub_name(tmp_path):
-    ds = D.ingest(mh_bytes(), "wave", kind="count")
+    ds = D.ingest(grouped_bytes(), "wave", kind="count")
     spec = spec_for(ds, extra={"knobs": {"groundhog.bandwidth": 3}})
     o, _ = CR.run(spec, ds, tmp_path)
     assert list(o["exports"]) == ["FluBNF-Groundhog-modified"]

@@ -12,7 +12,7 @@
  {% endif %}
  <form method="post" action="/data/datasets" enctype="multipart/form-data"
    class="dsupload">
-  <div>{{ tips.label("CSV file", "ds-file", "MicroHub columns: date, target_group, value, and optionally population. Or a hubverse time series: target_end_date (or date), location, observation (or value), optionally as_of, target, location_name and population. Dates are Saturdays (week ending) as YYYY-MM-DD, M/D/YYYY or M/D/YY; limit " ~ max_mb ~ " MB.", for_="ds-file") }}
+  <div>{{ tips.label("CSV file", "ds-file", "A grouped CSV: date, target_group, value, and optionally population. Or a hubverse time series: target_end_date (or date), location, observation (or value), optionally as_of, target, location_name and population. Dates are Saturdays (week ending) as YYYY-MM-DD, M/D/YYYY or M/D/YY; limit " ~ max_mb ~ " MB.", for_="ds-file") }}
    <input type="file" name="file" id="ds-file" accept=".csv,text/csv" required></div>
   <div>{{ tips.label("Name", "ds-name", "Shown on every page that uses the dataset; blank uses the file name.", for_="ds-name") }}
    <input type="text" name="name" id="ds-name" maxlength="80"
@@ -35,8 +35,8 @@
    {{ tips.tip("ds-sunday", "week-start Sundays", "Tick when each date is the Sunday that starts its week; every date moves +6 days to the Saturday that ends it. Other weekdays are refused.") }}</div>
   <div><button class="gold">Upload and check</button></div>
  </form>
- <p class="hint"><a href="/static/microhub-template.csv" download="microhub-template.csv">MicroHub template CSV</a>
-  {{ tips.tip("ds-template", "the template", "MicroHub's own template (three groups, 143 weeks from January 2022, with populations): the columns and date style an upload can use.") }}</p>
+ <p class="hint"><a href="/static/dataset-template.csv" download="dataset-template.csv">Template CSV</a>
+  {{ tips.tip("ds-template", "the template", "Made-up example data (three groups, Overall the sum of the other two, 143 weeks from January 2022, with populations): the columns and date style an upload can use.") }}</p>
  {% if datasets %}
  <div class="tablewrap"><table class="compact dstable">
   <thead><tr><th>Name</th><th class="num">Groups</th><th class="num">Weeks</th>

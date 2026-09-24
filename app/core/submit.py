@@ -125,7 +125,7 @@ def validate(df: pd.DataFrame, key_col: str = "location") -> list:
     non-negative, and not zero-width (such cells once carried 49% of WIS).
     Horizons are optional in the hub schema, so a missing one is fine.
     `key_col` names the unit column: 'location' for the hub, or a custom
-    dataset's own ('target_group' for a MicroHub-shaped export).
+    dataset's own ('target_group' for a grouped-CSV export).
     """
     problems = []
     if df.empty:

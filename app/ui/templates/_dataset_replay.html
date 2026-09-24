@@ -24,7 +24,7 @@
   <select name="engine" id="dsr-engine">
    <option value="analogue">Groundhog only</option>
    <option value="all">Groundhog and plain SIHRS particle filter</option></select>
-  {{ tips.label("Weeks to drop", "dsr-drop", "Ignore each week's newest 0 to 4 weeks, as MicroHub's data to drop does; horizons keep their labels.", for_="dsr-drop") }}
+  {{ tips.label("Weeks to drop", "dsr-drop", "Ignore each week's newest 0 to 4 weeks (the latest reports, often still incomplete); horizons keep their labels.", for_="dsr-drop") }}
   <input type="number" name="weeks_to_drop" id="dsr-drop" value="0" min="0" max="4">
   <div class="lblrow"><label class="ck" for="dsr-fs"><input type="checkbox" name="flusurv" value="1" id="dsr-fs"> Add FluSurv-NET donors</label>
    {{ tips.tip("dsr-fs", "FluSurv-NET donors", "Off by default. Tick only for US influenza hospitalization-like data.") }}</div>

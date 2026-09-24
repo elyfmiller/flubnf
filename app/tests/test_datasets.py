@@ -1,14 +1,16 @@
 """Custom datasets (app/core/datasets.py): parse, validate, store, adapt.
 
-Fixtures: slices of MicroHub's own templates (elyfmiller/microhub @ 2589553,
-data/microhub-template*.csv, byte-exact with BOM and CRLF) in
-app/tests/fixtures, and hubverse-shaped CSVs built inline. No hub, no
-engine, no network: runs with FLUBNF_HUB=/nonexistent.
+Fixtures: the first ten weeks of FluBNF's synthetic template
+(app/ui/static/dataset-template.csv) in app/tests/fixtures, one in the
+bytes a spreadsheet's "CSV UTF-8" export writes (BOM, CRLF, M/D/YY dates)
+and one with populations; hubverse-shaped CSVs are built inline. No hub,
+no engine, no network: runs with FLUBNF_HUB=/nonexistent.
 """
 from __future__ import annotations
 
 import csv
 import io
+import json
 import os
 from datetime import date, timedelta
 from pathlib import Path
@@ -18,8 +20,8 @@ import pytest
 from app.core import datasets as D
 
 FIX = Path(__file__).resolve().parent / "fixtures"
-MH = FIX / "microhub-template-head.csv"
-MHP = FIX / "microhub-template-population-head.csv"
+TPL = FIX / "grouped-template-head.csv"
+TPL_POP = FIX / "grouped-template-population-head.csv"
 REPO = Path(__file__).resolve().parents[2]
 
 
@@ -33,11 +35,11 @@ def sats(start="2024-08-03", n=10, step=7):
     return [d0 + timedelta(days=step * i) for i in range(n)]
 
 
-def mh_csv(rows, header="date,target_group,value") -> bytes:
+def grouped_csv(rows, header="date,target_group,value") -> bytes:
     return (header + "\n" + "\n".join(rows) + "\n").encode()
 
 
-def mh_series(groups=("A", "B"), n=6, start="2024-08-03", pop=False):
+def grouped_series(groups=("A", "B"), n=6, start="2024-08-03", pop=False):
     out = []
     for i, d in enumerate(sats(start, n)):
         for j, g in enumerate(groups):
@@ -61,18 +63,41 @@ def only(rep, code):
     return next(p for p in rep.problems if p.code == code)
 
 
-# ----------------------------------------------------------- MicroHub files
+# ------------------------------------------------------------ grouped files
 
-def test_fixture_is_microhubs_byte_shape():
-    raw = MH.read_bytes()
+def test_fixture_keeps_a_spreadsheets_byte_shape():
+    raw = TPL.read_bytes()
     assert raw.startswith(b"\xef\xbb\xbfdate,target_group,value\r\n")
-    assert b"1/1/22,Pediatric,87" in raw
+    assert b"1/1/22,Pediatric,57\r\n" in raw
 
 
-def test_microhub_template_validates_bom_crlf_mdyy():
-    rep = ok(D.validate(MH, kind="count"))
+def test_fixtures_are_the_synthetic_templates_first_ten_weeks():
+    tpl = (REPO / "app" / "ui" / "static" / "dataset-template.csv"
+           ).read_text().splitlines()
+    assert TPL_POP.read_text().splitlines() == tpl[:31]
+    assert TPL.read_bytes().decode("utf-8-sig").splitlines() == [
+        ",".join(r.split(",")[:3]) for r in tpl[:31]]
+    weeks = {}
+    for r in csv.DictReader(io.StringIO("\n".join(tpl))):
+        weeks.setdefault(r["date"], {})[r["target_group"]] = int(r["value"])
+    assert len(weeks) == 143
+    assert all(w["Overall"] == w["Pediatric"] + w["Adult"]
+               for w in weeks.values())
+
+
+def test_the_template_and_slices_are_what_the_generator_writes():
+    from scripts import make_dataset_template as M
+    built = M.build()
+    assert sorted(built) == sorted([M.TEMPLATE, M.SLICE, M.SLICE_POP])
+    for rel, data in built.items():
+        assert (REPO / rel).read_bytes() == data, rel
+    assert (REPO / M.SLICE) == TPL and (REPO / M.SLICE_POP) == TPL_POP
+
+
+def test_grouped_template_validates_bom_crlf_mdyy():
+    rep = ok(D.validate(TPL, kind="count"))
     s = rep.summary
-    assert s["format"] == "microhub"
+    assert s["format"] == "grouped"
     assert s["groups"] == ["Adult", "Overall", "Pediatric"]
     assert s["first"] == "2022-01-01" and s["weeks"] == 10
     assert s["has_population"] is False and s["has_as_of"] is False
@@ -80,12 +105,12 @@ def test_microhub_template_validates_bom_crlf_mdyy():
     assert rep.columns["date"] == "date"          # BOM stripped from header
 
 
-def test_microhub_population_template_ingests():
-    ds = D.ingest(MHP, "MicroHub template", kind="count")
+def test_grouped_population_template_ingests():
+    ds = D.ingest(TPL_POP, "Grouped template", kind="count")
     assert ds.has_population and ds.pf_eligible and not ds.has_as_of
-    assert ds.populations == {"Adult": 4292870, "Overall": 6861528,
-                              "Pediatric": 2568658}
-    assert ds.source_path.read_bytes() == MHP.read_bytes()
+    assert ds.populations == {"Adult": 5236907, "Overall": 6989325,
+                              "Pediatric": 1752418}
+    assert ds.source_path.read_bytes() == TPL_POP.read_bytes()
     assert ds.vintages() == ["2022-03-05"]
 
 
@@ -107,36 +132,39 @@ def test_each_format_validates_as_a_column():
     for fmt in ("{d:%Y-%m-%d}", "{d.month}/{d.day}/{d:%Y}",
                 "{d.month}/{d.day}/{d:%y}", "{d:%m-%d-%Y}"):
         rows = [f"{fmt.format(d=d)},A,{i}" for i, d in enumerate(sats())]
-        rep = ok(D.validate(mh_csv(rows), kind="count"))
+        rep = ok(D.validate(grouped_csv(rows), kind="count"))
         assert rep.summary["first"] == "2024-08-03"
 
 
 def test_bom_is_tolerated_on_any_file():
-    ok(D.validate(b"\xef\xbb\xbf" + mh_csv(mh_series()), kind="count"))
+    ok(D.validate(b"\xef\xbb\xbf" + grouped_csv(grouped_series()),
+                  kind="count"))
 
 
 def test_non_saturday_is_refused_with_the_sunday_hint():
     rows = [f"{(d + timedelta(days=1)).isoformat()},A,1" for d in sats()]
-    p = only(D.validate(mh_csv(rows), kind="count"), "weekday")
+    p = only(D.validate(grouped_csv(rows), kind="count"), "weekday")
     assert "Sunday" in p.message and "e.g." in p.message
 
 
 def test_sunday_shift_moves_week_start_to_saturday():
     rows = [f"{(d - timedelta(days=6)).isoformat()},A,{i}"
             for i, d in enumerate(sats())]
-    rep = ok(D.validate(mh_csv(rows), kind="count", week_start_sunday=True))
+    rep = ok(D.validate(grouped_csv(rows), kind="count",
+                        week_start_sunday=True))
     assert rep.summary["first"] == "2024-08-03"
-    ds = D.ingest(mh_csv(rows), "sun", kind="count", week_start_sunday=True)
+    ds = D.ingest(grouped_csv(rows), "sun", kind="count",
+                  week_start_sunday=True)
     assert ds.vintages() == [sats()[-1].isoformat()]
 
 
 def test_sunday_option_refuses_saturdays():
-    rep = D.validate(mh_csv(mh_series()), kind="count",
+    rep = D.validate(grouped_csv(grouped_series()), kind="count",
                      week_start_sunday=True)
     assert "weekday" in rep.codes
 
 
-# ------------------------------------------------------- MicroHub's checks
+# --------------------------------------------------------- the base checks
 
 def test_missing_columns_stops_early_and_names_them():
     rep = D.validate(b"day,target_group,count\n2024-08-03,A,1\n")
@@ -146,44 +174,44 @@ def test_missing_columns_stops_early_and_names_them():
 
 
 def test_unparseable_dates():
-    rows = mh_series() + ["yesterday,A,3", "2024-13-01,A,3"]
-    p = only(D.validate(mh_csv(rows), kind="count"), "date_parse")
+    rows = grouped_series() + ["yesterday,A,3", "2024-13-01,A,3"]
+    p = only(D.validate(grouped_csv(rows), kind="count"), "date_parse")
     assert "yesterday" in p.message and "2 value(s)" in p.message
 
 
 def test_value_non_numeric_negative_and_na():
-    rows = mh_series(n=6)
+    rows = grouped_series(n=6)
     rows[0] = rows[0].rsplit(",", 1)[0] + ",lots"
     rows[1] = rows[1].rsplit(",", 1)[0] + ",-4"
     rows[2] = rows[2].rsplit(",", 1)[0] + ",NA"
     rows[3] = rows[3].rsplit(",", 1)[0] + ","
-    rep = D.validate(mh_csv(rows), kind="count")
+    rep = D.validate(grouped_csv(rows), kind="count")
     assert "lots" in only(rep, "value_numeric").message
     assert "-4" in only(rep, "value_negative").message
     assert "2 missing" in only(rep, "value_na").message
 
 
 def test_duplicate_date_group():
-    rows = mh_series() + [mh_series()[0]]
-    p = only(D.validate(mh_csv(rows), kind="count"), "duplicate")
+    rows = grouped_series() + [grouped_series()[0]]
+    p = only(D.validate(grouped_csv(rows), kind="count"), "duplicate")
     assert "2024-08-03 + A" in p.message
 
 
 def test_gap_over_eight_days_within_a_group():
-    rows = [r for r in mh_series() if not r.startswith("2024-08-17,A")]
-    p = only(D.validate(mh_csv(rows), kind="count"), "gap")
+    rows = [r for r in grouped_series() if not r.startswith("2024-08-17,A")]
+    p = only(D.validate(grouped_csv(rows), kind="count"), "gap")
     assert "2024-08-10 and 2024-08-24" in p.message and "'A'" in p.message
 
 
 def test_every_problem_is_reported_at_once_and_nothing_is_written():
-    rows = mh_series() + ["2024-08-05,A,1", "2024-08-03,A,-1",
-                          "bad,B,2", "2024-09-07,Bad/Name,3"]
-    rep = D.validate(mh_csv(rows), kind="count")
+    rows = grouped_series() + ["2024-08-05,A,1", "2024-08-03,A,-1",
+                               "bad,B,2", "2024-09-07,Bad/Name,3"]
+    rep = D.validate(grouped_csv(rows), kind="count")
     assert {"weekday", "value_negative", "date_parse", "group_name",
             "duplicate"} <= set(rep.codes)
     assert all("e.g." in p.message for p in rep.problems)
     with pytest.raises(D.DatasetError) as e:
-        D.ingest(mh_csv(rows), "bad", kind="count")
+        D.ingest(grouped_csv(rows), "bad", kind="count")
     assert e.value.problems
     assert D.list_datasets() == []
     assert [p.name for p in D.ROOT.iterdir()] == []   # temp folder removed
@@ -193,19 +221,19 @@ def test_every_problem_is_reported_at_once_and_nothing_is_written():
 
 def test_kind_must_be_declared_for_ingest_and_counts_must_be_whole():
     with pytest.raises(D.DatasetError):
-        D.ingest(mh_csv(mh_series()), "x", kind="percent")
-    assert "kind_invalid" in D.validate(mh_csv(mh_series()),
+        D.ingest(grouped_csv(grouped_series()), "x", kind="percent")
+    assert "kind_invalid" in D.validate(grouped_csv(grouped_series()),
                                         kind="percent").codes
     rows = [f"{d.isoformat()},A,{i + 0.5}" for i, d in enumerate(sats())]
-    only(D.validate(mh_csv(rows), kind="count"), "value_not_integer")
-    rep = ok(D.validate(mh_csv(rows), kind="rate"))
+    only(D.validate(grouped_csv(rows), kind="count"), "value_not_integer")
+    rep = ok(D.validate(grouped_csv(rows), kind="rate"))
     assert rep.summary["inferred_kind"] == "rate"
 
 
 def test_rate_datasets_carry_no_weekly_rate():
     rows = [f"{d.isoformat()},A,{i + 0.5},100" for i, d in enumerate(sats())]
-    ds = D.ingest(mh_csv(rows, "date,target_group,value,population"), "r",
-                  kind="rate")
+    ds = D.ingest(grouped_csv(rows, "date,target_group,value,population"),
+                  "r", kind="rate")
     got = list(csv.DictReader(open(ds.final_path)))
     assert got[0]["value"] == "0.5" and got[0]["weekly_rate"] == ""
     assert not ds.pf_eligible
@@ -215,23 +243,23 @@ def test_rate_datasets_carry_no_weekly_rate():
                                   "Niños", "a-b", "a.b"])
 def test_group_name_charset(name):
     rows = [f"{d.isoformat()},{name},1" for d in sats()]
-    p = only(D.validate(mh_csv(rows), kind="count"), "group_name")
+    p = only(D.validate(grouped_csv(rows), kind="count"), "group_name")
     assert "->" in p.message                           # a suggested rename
 
 
 @pytest.mark.parametrize("name", ["All", "all", "ALL"])
 def test_reserved_group_names(name):
     rows = [f"{d.isoformat()},{name},1" for d in sats()]
-    only(D.validate(mh_csv(rows), kind="count"), "group_reserved")
+    only(D.validate(grouped_csv(rows), kind="count"), "group_reserved")
 
 
 @pytest.mark.parametrize("name", ["US", "usa", "United States",
                                   "US (national)", "National", "national"])
 def test_a_national_group_is_accepted_and_flagged(name):
-    rows = mh_series(groups=("Adult", name))
-    rep = ok(D.validate(mh_csv(rows), kind="count"))
+    rows = grouped_series(groups=("Adult", name))
+    rep = ok(D.validate(grouped_csv(rows), kind="count"))
     assert rep.summary["national_group"] == name
-    ds = D.ingest(mh_csv(rows), "nat", kind="count")
+    ds = D.ingest(grouped_csv(rows), "nat", kind="count")
     assert ds.national_group == name and ds.meta["national_group"] == name
     g = {x["name"]: x for x in ds.meta["groups"]}
     assert g[name]["national"] is True and g["Adult"]["national"] is False
@@ -242,13 +270,13 @@ def test_a_national_group_is_accepted_and_flagged(name):
 
 
 def test_two_national_spellings_are_refused():
-    rows = mh_series(groups=("US", "National"))
-    p = only(D.validate(mh_csv(rows), kind="count"), "national_multiple")
+    rows = grouped_series(groups=("US", "National"))
+    p = only(D.validate(grouped_csv(rows), kind="count"), "national_multiple")
     assert "'National'" in p.message and "'US'" in p.message
 
 
 def test_no_national_group_is_recorded_as_none():
-    ds = D.ingest(MH, "mh", kind="count")
+    ds = D.ingest(TPL, "tpl", kind="count")
     assert ds.national_group is None
     assert all(g["national"] is False for g in ds.meta["groups"])
 
@@ -256,18 +284,18 @@ def test_no_national_group_is_recorded_as_none():
 @pytest.mark.parametrize("a,b", [("Age 0", "Age_0"), ("Adult", "adult"),
                                  ("Age 0", "age_0")])
 def test_group_names_colliding_after_underscore_or_casefold(a, b):
-    rows = mh_series(groups=(a, b))
-    p = only(D.validate(mh_csv(rows), kind="count"), "group_collision")
+    rows = grouped_series(groups=(a, b))
+    p = only(D.validate(grouped_csv(rows), kind="count"), "group_collision")
     assert a in p.message and b in p.message
 
 
 def test_population_rules():
     h = "date,target_group,value,population"
-    rows = mh_series(pop=True)
+    rows = grouped_series(pop=True)
     rows[0] = rows[0].rsplit(",", 1)[0] + ",0"
     rows[1] = rows[1].rsplit(",", 1)[0] + ","
     rows[2] = rows[2].rsplit(",", 1)[0] + ",many"
-    rep = D.validate(mh_csv(rows, h), kind="count")
+    rep = D.validate(grouped_csv(rows, h), kind="count")
     assert "2 value(s)" in only(rep, "population_invalid").message
     only(rep, "population_missing")
 
@@ -275,9 +303,9 @@ def test_population_rules():
 def test_population_varying_by_date_keeps_the_latest_and_the_series():
     h = "date,target_group,value,population"
     rows = [f"{d.isoformat()},A,5,{1000 + i}" for i, d in enumerate(sats())]
-    rep = ok(D.validate(mh_csv(rows, h), kind="count"))
+    rep = ok(D.validate(grouped_csv(rows, h), kind="count"))
     assert any("varies" in w for w in rep.warnings)
-    ds = D.ingest(mh_csv(rows, h), "pop", kind="count")
+    ds = D.ingest(grouped_csv(rows, h), "pop", kind="count")
     assert ds.populations == {"A": 1009}
     assert ds.meta["groups"][0]["population_varies"] is True
     ser = ds.population_series("A")
@@ -308,8 +336,8 @@ def test_empty_and_non_utf8_files():
 
 
 def test_ragged_rows_are_reported():
-    rows = mh_series() + ["2024-10-12,A"]
-    only(D.validate(mh_csv(rows), kind="count"), "ragged")
+    rows = grouped_series() + ["2024-10-12,A"]
+    only(D.validate(grouped_csv(rows), kind="count"), "ragged")
 
 
 # ---------------------------------------------------------------- limits
@@ -355,7 +383,7 @@ def test_group_limit():
 
 def test_limits_refuse_ingest_and_write_nothing():
     with pytest.raises(D.DatasetError) as e:
-        D.ingest(MH, "big", kind="count", limits=D.Limits(max_bytes=100))
+        D.ingest(TPL, "big", kind="count", limits=D.Limits(max_bytes=100))
     assert [p.code for p in e.value.problems] == ["limit_bytes"]
     assert D.list_datasets() == []
 
@@ -423,7 +451,7 @@ def test_multi_target_needs_a_choice():
     assert rep.summary["rows"] == 8
     only(D.validate(hub_csv(rows), kind="count", target="nope"),
          "target_unknown")
-    only(D.validate(mh_csv(mh_series()), kind="count", target="x"),
+    only(D.validate(grouped_csv(grouped_series()), kind="count", target="x"),
          "target_unknown")
 
 
@@ -476,10 +504,10 @@ def test_hubverse_na_rows_do_not_count_as_gaps():
     assert rep.summary["na_dropped"] == 1
 
 
-def test_microhub_na_stays_an_error():
-    rows = mh_series()
+def test_grouped_na_stays_an_error():
+    rows = grouped_series()
     rows[0] = rows[0].rsplit(",", 1)[0] + ",NA"
-    rep = D.validate(mh_csv(rows), kind="count")
+    rep = D.validate(grouped_csv(rows), kind="count")
     only(rep, "value_na")
     assert not any("dropped" in w for w in rep.warnings)
 
@@ -495,8 +523,8 @@ def test_headers_are_case_and_space_insensitive():
 
 def test_locations_table_has_the_hub_shape_and_safe_keys():
     names = [f"G{i}" for i in range(12)]
-    ds = D.ingest(mh_csv(mh_series(groups=names, pop=True),
-                         "date,target_group,value,population"),
+    ds = D.ingest(grouped_csv(grouped_series(groups=names, pop=True),
+                              "date,target_group,value,population"),
                   "many", kind="count")
     hub_cols = open(REPO / "flubnf" / "data" / "locations.csv"
                     ).readline().strip().replace('"', "").split(",")
@@ -514,13 +542,13 @@ def test_locations_table_has_the_hub_shape_and_safe_keys():
 
 def test_minted_keys_stay_unique_past_99_groups():
     rows = [f"2024-08-03,G{i},1" for i in range(150)]
-    ds = D.ingest(mh_csv(rows), "wide", kind="count")
+    ds = D.ingest(grouped_csv(rows), "wide", kind="count")
     keys = list(ds.name2key.values())
     assert len(set(keys)) == 150 and all(len(k) == 4 for k in keys)
 
 
 def test_vintage_file_has_the_archive_shape_and_reads_like_one():
-    ds = D.ingest(MHP, "mh", kind="count")
+    ds = D.ingest(TPL_POP, "tpl", kind="count")
     p = ds.final_path
     assert p.name == "target-hospital-admissions_2022-03-05.csv"
     assert open(p).readline().strip() == \
@@ -540,16 +568,16 @@ def test_vintage_file_has_the_archive_shape_and_reads_like_one():
 
 def test_sihrs_resolve_state_reads_the_dataset_with_no_hub():
     from flubnf.sihrs_fit import resolve_state
-    ds = D.ingest(MHP, "mh", kind="count")
+    ds = D.ingest(TPL_POP, "tpl", kind="count")
     st = resolve_state("Pediatric", truth_csv=ds.final_path,
                        locations_csv=ds.locations_csv,
                        season_start="2022-01-01", as_of="2022-01-29")
-    assert st.population == 2568658 and st.fips == "c03"
-    assert list(st.observed) == [87.0, 122.0, 150.0, 147.0, 66.0]
+    assert st.population == 1752418 and st.fips == "c03"
+    assert list(st.observed) == [57.0, 65.0, 68.0, 71.0, 62.0]
 
 
 def test_unversioned_dataset_has_one_final_vintage():
-    ds = D.ingest(MH, "mh", kind="count")
+    ds = D.ingest(TPL, "tpl", kind="count")
     assert ds.vintages() == ["2022-03-05"]
     with pytest.raises(FileNotFoundError) as e:
         ds.vintage_path("2022-02-26")
@@ -561,7 +589,7 @@ def test_unversioned_dataset_has_one_final_vintage():
 
 
 def test_series_csv_keeps_every_row():
-    ds = D.ingest(MHP, "mh", kind="count")
+    ds = D.ingest(TPL_POP, "tpl", kind="count")
     rows = list(csv.DictReader(open(ds.series_path)))
     assert len(rows) == 30
     assert list(rows[0]) == ["as_of", "date", "location", "location_name",
@@ -569,7 +597,7 @@ def test_series_csv_keeps_every_row():
 
 
 def test_meta_records_the_ingest():
-    ds = D.ingest(MHP, "My Data!", kind="count", filename="x.csv")
+    ds = D.ingest(TPL_POP, "My Data!", kind="count", filename="x.csv")
     m = ds.meta
     for k in ("name", "id", "digest", "columns", "groups", "date_range",
               "kind", "has_population", "has_as_of", "created"):
@@ -577,7 +605,7 @@ def test_meta_records_the_ingest():
     assert m["date_range"] == ["2022-01-01", "2022-03-05"]
     assert m["columns"]["group"] == "target_group"
     assert m["groups"][0] == {"name": "Adult", "key": "c01",
-                              "source_key": "Adult", "population": 4292870,
+                              "source_key": "Adult", "population": 5236907,
                               "population_varies": False, "rows": 10,
                               "first": "2022-01-01", "last": "2022-03-05",
                               "national": False}
@@ -589,18 +617,18 @@ def test_meta_records_the_ingest():
 # ---------------------------------------------------- identity and store
 
 def test_id_is_stable_and_idempotent():
-    a = D.ingest(MH, "MicroHub Template", kind="count")
-    b = D.ingest(MH.read_bytes(), "MicroHub Template", kind="count")
-    assert a.id == b.id and a.id.startswith("microhub-template-")
+    a = D.ingest(TPL, "Grouped Template", kind="count")
+    b = D.ingest(TPL.read_bytes(), "Grouped Template", kind="count")
+    assert a.id == b.id and a.id.startswith("grouped-template-")
     assert D.ID_RE.fullmatch(a.id)
     assert len(D.list_datasets()) == 1
     assert a.meta["created"] == b.meta["created"]
 
 
 def test_id_covers_ingest_options_and_name():
-    a = D.ingest(MH, "t", kind="count")
-    b = D.ingest(MH, "t", kind="rate")
-    c = D.ingest(MH, "u", kind="count")
+    a = D.ingest(TPL, "t", kind="count")
+    b = D.ingest(TPL, "t", kind="rate")
+    c = D.ingest(TPL, "u", kind="count")
     assert len({a.id, b.id, c.id}) == 3
     assert a.meta["digest"] != b.meta["digest"]
     assert a.meta["digest"] == c.meta["digest"]
@@ -608,14 +636,14 @@ def test_id_covers_ingest_options_and_name():
 
 
 def test_id_slug_is_path_safe():
-    ds = D.ingest(MH, "../../etc/passwd", kind="count")
+    ds = D.ingest(TPL, "../../etc/passwd", kind="count")
     assert ds.id.startswith("etc-passwd-") and ds.path.parent == D.ROOT.resolve()
-    ds2 = D.ingest(MH, "!!!", kind="count")
+    ds2 = D.ingest(TPL, "!!!", kind="count")
     assert ds2.id.startswith("dataset-")
 
 
 def test_list_get_delete():
-    ds = D.ingest(MH, "one", kind="count")
+    ds = D.ingest(TPL, "one", kind="count")
     (D.ROOT / ".tmp-stale").mkdir()
     (D.ROOT / "not-a-dataset").mkdir()
     assert [d.id for d in D.list_datasets()] == [ds.id]
@@ -654,7 +682,7 @@ def test_delete_refuses_a_symlink_out_of_the_store(tmp_path):
 
 
 def test_resolve_pins_the_digest():
-    ds = D.ingest(MH, "one", kind="count")
+    ds = D.ingest(TPL, "one", kind="count")
     assert D.resolve(None) is None
     assert D.resolve(ds.ref()).id == ds.id
     with pytest.raises(D.DatasetError):

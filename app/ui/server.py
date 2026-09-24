@@ -3664,7 +3664,7 @@ async def _sandbox_capped_form(request: Request, cap: int):
 
 @app.post("/sandbox/models/{name}/upload-data")
 async def sandbox_upload_data(request: Request, name: str):
-    """A CSV of your own (MicroHub date,target_group,value[,population] or
+    """A CSV of your own (grouped date,target_group,value[,population] or
     hubverse), validated and stored through the dataset store, then loaded
     into data.exp when it holds one group (else the Load data box offers
     it to pick a group). The size cap holds before and while reading; the

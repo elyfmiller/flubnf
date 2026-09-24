@@ -17,5 +17,7 @@
 site/plotly.min.js -diff linguist-vendored
 app/ui/static/plotly.min.js -diff linguist-vendored
 
-# MicroHub template slices: byte-exact (UTF-8 BOM, CRLF) as MicroHub ships them
-app/tests/fixtures/microhub-*.csv -text
+# Grouped-CSV template slices, kept byte-exact: grouped-template-head.csv as
+# a spreadsheet's "CSV UTF-8" export saves it (UTF-8 BOM, CRLF), the
+# population slice plain LF, so the upload's tolerance of both stays tested
+app/tests/fixtures/grouped-template-*.csv -text

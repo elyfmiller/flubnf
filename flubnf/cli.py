@@ -2933,12 +2933,12 @@ def site_build_cmd(
 
 
 # ---------------------------------------------------------------------------
-# dataset: custom target data (MicroHub or hubverse CSV), checked offline.
+# dataset: custom target data (grouped or hubverse CSV), checked offline.
 # ---------------------------------------------------------------------------
 dataset_app = typer.Typer(
     add_completion=False, no_args_is_help=True,
-    help="Check, import, list and delete custom target data (MicroHub or "
-         "hubverse time-series CSV).")
+    help="Check, import, list and delete custom target data (a grouped "
+         "CSV or a hubverse time series).")
 app.add_typer(dataset_app, name="dataset")
 
 

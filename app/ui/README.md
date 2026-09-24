@@ -104,7 +104,7 @@ Template names that differ from their tab: `runs.html` is Storage, `run.html` is
 | `retro_progress.js` | `retro.html`, `retro_season.html` |
 | `quips.js` | `forecast.html`, `retro.html`, `retro_season.html` |
 | `plotly.min.js` | `data.html`, `forecast.html`, `model.html`, `retro_season.html`, `retro_dataset.html`, `run.html` (dataset runs), `sandbox.html` |
-| `microhub-template.csv` | `_datasets_card.html` download link (MicroHub's own template, with populations) |
+| `dataset-template.csv` | `_datasets_card.html` download link (FluBNF's synthetic grouped-CSV template: three groups, Overall the sum, with populations) |
 | `bngl-editor.js`, `bngl-editor.css`, `sandbox.js` | `sandbox.html` |
 | `model-views.js`, `model-views.css` | `sandbox_views.html` |
 | `brand/`, `fonts/` | `base.html`, `home.html`, `/favicon.ico` (icons); `base.html` (DM Sans) |

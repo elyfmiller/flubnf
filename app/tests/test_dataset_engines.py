@@ -159,9 +159,10 @@ def store(tmp_path, monkeypatch):
     return tmp_path / "datasets"
 
 
-def mh_bytes(groups=("Pediatric", "Adult", "Overall"), start=date(2019, 8, 3),
-             end=date(2024, 2, 24), pop=True, rate=False) -> bytes:
-    """A MicroHub file: groups x weeks of the seasonal wave, Overall the sum."""
+def grouped_bytes(groups=("Pediatric", "Adult", "Overall"),
+                  start=date(2019, 8, 3), end=date(2024, 2, 24), pop=True,
+                  rate=False) -> bytes:
+    """A grouped CSV: groups x weeks of the seasonal wave, Overall the sum."""
     head = "date,target_group,value" + (",population" if pop else "")
     lines = [head]
     for i, d in enumerate(_saturdays(start, end)):
@@ -194,7 +195,7 @@ def ds_spec(ds, fd, **kw):
 
 
 def test_groundhog_forecasts_a_custom_dataset_without_the_hub(store, monkeypatch):
-    ds = D.ingest(mh_bytes(), "wave", kind="count")
+    ds = D.ingest(grouped_bytes(), "wave", kind="count")
     _no_hub(monkeypatch)
     q = EA.run(ds_spec(ds, "2023-12-02"))
     assert set(q) == {"Pediatric", "Adult", "Overall"}
@@ -208,8 +209,8 @@ def test_groundhog_forecasts_a_custom_dataset_without_the_hub(store, monkeypatch
 
 def test_groundhog_on_unversioned_data_never_sees_later_weeks(store, monkeypatch):
     """Final data read at an early as-of equals the same data cut there."""
-    full = D.ingest(mh_bytes(), "full", kind="count")
-    cut = D.ingest(mh_bytes(end=date(2023, 12, 2)), "cut", kind="count")
+    full = D.ingest(grouped_bytes(), "full", kind="count")
+    cut = D.ingest(grouped_bytes(end=date(2023, 12, 2)), "cut", kind="count")
     _no_hub(monkeypatch)
     a = EA.run(ds_spec(full, "2023-12-02"))
     b = EA.run(ds_spec(cut, "2023-12-02"))
@@ -217,7 +218,7 @@ def test_groundhog_on_unversioned_data_never_sees_later_weeks(store, monkeypatch
 
 
 def test_groundhog_refuses_a_week_the_dataset_lacks(store, monkeypatch):
-    ds = D.ingest(mh_bytes(), "wave", kind="count")
+    ds = D.ingest(grouped_bytes(), "wave", kind="count")
     _no_hub(monkeypatch)
     with pytest.raises(FileNotFoundError, match="No week 2023-12-03"):
         EA.run(ds_spec(ds, "2023-12-03"))
@@ -226,7 +227,7 @@ def test_groundhog_refuses_a_week_the_dataset_lacks(store, monkeypatch):
 def test_custom_default_uses_no_flu_donor_exclusions(store, monkeypatch):
     """Donors from season 2021 (registered as excluded for US flu) serve a
     custom dataset by default; asking for the exclusion removes them."""
-    raw = mh_bytes(start=date(2020, 8, 1), end=date(2022, 12, 3))
+    raw = grouped_bytes(start=date(2020, 8, 1), end=date(2022, 12, 3))
     ds = D.ingest(raw, "short", kind="count")
     _no_hub(monkeypatch)
     fd = "2022-11-26"                          # season 2022: donors 2020, 2021
@@ -237,7 +238,7 @@ def test_custom_default_uses_no_flu_donor_exclusions(store, monkeypatch):
 
 
 def test_hub_only_research_keys_are_refused_on_a_dataset(store, monkeypatch):
-    ds = D.ingest(mh_bytes(), "wave", kind="count")
+    ds = D.ingest(grouped_bytes(), "wave", kind="count")
     _no_hub(monkeypatch)
     for key, val in (("reporting", {"mode": "both"}),
                      ("analogue_completeness", {"c01": 0.9})):
@@ -246,7 +247,7 @@ def test_hub_only_research_keys_are_refused_on_a_dataset(store, monkeypatch):
 
 
 def test_a_changed_or_deleted_dataset_is_refused_loudly(store, monkeypatch):
-    ds = D.ingest(mh_bytes(), "wave", kind="count")
+    ds = D.ingest(grouped_bytes(), "wave", kind="count")
     spec = ds_spec(ds, "2023-12-02")
     spec.extra["dataset"] = {**ds.ref(), "digest": "0" * 16}
     with pytest.raises(D.DatasetError, match="no longer matches"):
@@ -257,7 +258,7 @@ def test_a_changed_or_deleted_dataset_is_refused_loudly(store, monkeypatch):
 
 
 def test_dataset_adapters(store):
-    ds = D.ingest(mh_bytes(end=date(2020, 9, 26)), "small", kind="count")
+    ds = D.ingest(grouped_bytes(end=date(2020, 9, 26)), "small", kind="count")
     assert ds.weeks()[0] == "2019-08-03" and ds.weeks()[-1] == "2020-09-26"
     assert ds.forecast_dates() == ds.weeks()[1:]
     assert not ds.vintage_true
@@ -291,7 +292,7 @@ def _pf_ready(monkeypatch, seen):
 
 def test_pf_prepare_reads_the_dataset_truth_and_locations(store, tmp_path,
                                                           monkeypatch):
-    ds = D.ingest(mh_bytes(), "wave", kind="count")
+    ds = D.ingest(grouped_bytes(), "wave", kind="count")
     seen = []
     _pf_ready(monkeypatch, seen)
     import app.core.data as data
@@ -324,7 +325,7 @@ def test_pf_prepare_default_uses_the_hub_paths(tmp_path, monkeypatch):
 
 def test_pf_refuses_hub_only_variants_on_a_dataset(store, tmp_path,
                                                    monkeypatch):
-    ds = D.ingest(mh_bytes(), "wave", kind="count")
+    ds = D.ingest(grouped_bytes(), "wave", kind="count")
     _pf_ready(monkeypatch, [])
     for key, val in (("variant", "natg"), ("variant", "2strain"),
                      ("anchor_asof", "2023-11-25"),

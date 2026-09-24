@@ -20,11 +20,11 @@ from app.core import datasets as D
 from app.core import horizons as hz
 
 from test_custom_run import _fake_pf, hub_ts           # noqa: E402
-from test_dataset_engines import mh_bytes              # noqa: E402
+from test_dataset_engines import grouped_bytes         # noqa: E402
 
 from pathlib import Path
 TEMPLATE = (Path(__file__).resolve().parents[1] / "ui" / "static"
-            / "microhub-template.csv")
+            / "dataset-template.csv")
 
 
 @pytest.fixture(autouse=True)
@@ -39,7 +39,7 @@ def _replay(ds, weeks, **kw):
 
 
 def test_a_replay_stores_its_record_under_the_dataset():
-    ds = D.ingest(mh_bytes(), "wave", kind="count")
+    ds = D.ingest(grouped_bytes(), "wave", kind="count")
     weeks = CX.weeks_between(ds, "2023-10-07", "2023-12-30")
     assert weeks[0] == "2023-10-07" and len(weeks) == 13
     out, meta = _replay(ds, weeks)
@@ -62,7 +62,7 @@ def test_a_replay_stores_its_record_under_the_dataset():
 
 def test_the_replay_scores_with_the_console_runs_scorer():
     from app.core import custom_run as CR
-    ds = D.ingest(mh_bytes(), "wave", kind="count")
+    ds = D.ingest(grouped_bytes(), "wave", kind="count")
     out, meta = _replay(ds, ["2023-12-02"])
     cells = pd.read_csv(out / "cells.csv.gz")
     with gzip.open(out / "forecasts.json.gz", "rt") as f:
@@ -104,7 +104,7 @@ def test_the_national_group_is_summarised_beside():
 
 
 def test_weeks_to_drop_is_recorded_and_moves_the_anchor():
-    # MicroHub's own template (real, not periodic, data)
+    # the template's irregular (noisy, not periodic) weeks
     ds = D.ingest(TEMPLATE, "template", kind="count")
     wk = "2024-03-02"
     _a, m0 = _replay(ds, [wk])
@@ -118,7 +118,7 @@ def test_weeks_to_drop_is_recorded_and_moves_the_anchor():
 
 
 def test_a_stop_file_ends_the_replay_between_weeks():
-    ds = D.ingest(mh_bytes(), "wave", kind="count")
+    ds = D.ingest(grouped_bytes(), "wave", kind="count")
     out = CX.replay_dir(ds, CX.new_stamp())
     out.mkdir(parents=True)
     (out / "STOP").touch()
@@ -128,7 +128,7 @@ def test_a_stop_file_ends_the_replay_between_weeks():
 
 
 def test_pf_replay_runs_plain_and_cleans_its_workroots(monkeypatch):
-    ds = D.ingest(mh_bytes(), "wave", kind="count")
+    ds = D.ingest(grouped_bytes(), "wave", kind="count")
     seen = []
     _fake_pf(monkeypatch, ds.groups, seen)
     out, meta = _replay(ds, ["2023-12-02", "2023-12-09"], engine="all",
@@ -140,14 +140,14 @@ def test_pf_replay_runs_plain_and_cleans_its_workroots(monkeypatch):
 
 
 def test_pf_replay_is_skipped_when_ineligible():
-    ds = D.ingest(mh_bytes(pop=False), "nopop", kind="count")
+    ds = D.ingest(grouped_bytes(pop=False), "nopop", kind="count")
     _out, meta = _replay(ds, ["2023-12-02"], engine="all", pf_state="ready")
     assert meta["pf"] is None and "population" in meta["pf_skipped"]
     assert set(meta["summary"]) == {"analogue"}
 
 
 def test_stamps_are_path_safe():
-    ds = D.ingest(mh_bytes(), "wave", kind="count")
+    ds = D.ingest(grouped_bytes(), "wave", kind="count")
     for bad in ("../x", "2024", "20240101T000000Z/../../y", ""):
         with pytest.raises(ValueError):
             CX.replay_dir(ds, bad)

@@ -2,16 +2,17 @@
 
 A dataset is one uploaded CSV of weekly target data in either shape:
 
-  * MicroHub (github.com/sjfox/microhub; the owner's fork elyfmiller/microhub):
-    ``date, target_group, value[, population]``.
+  * grouped CSV: ``date, target_group, value[, population]``.
   * hubverse time series: ``target_end_date | date, location,
     observation | value[, target][, as_of][, location_name][, population]``.
 
 Headers are case- and space-insensitive; other columns are ignored and named
-in the warnings. This module parses and validates an upload (the MicroHub
-``validate_data`` checks plus FluBNF's own), stores it under
-``app/state/datasets/<id>/`` and materializes the SAME file shapes the hub path
-reads, so the engines can consume a dataset unchanged in later stages:
+in the warnings. meta.json records the shape as ``format``: 'grouped' or
+'hubverse'. This module parses and validates an upload (the base checks
+on columns, dates, values, duplicates and gaps, plus FluBNF's own),
+stores it under ``app/state/datasets/<id>/`` and materializes the SAME
+file shapes the hub path reads, so the engines can consume a dataset
+unchanged in later stages:
 
   * ``locations.csv``: the flubnf/data/locations.csv shape (abbreviation,
     location, location_name, population) plus ``source_key``. ``location`` is
@@ -65,8 +66,8 @@ META_FILE = "meta.json"
 VINTAGE_DIR = "vintages"
 VINTAGE_PREFIX = "target-hospital-admissions_"
 
-#: MicroHub's gap rule: consecutive dates within a group may differ by at most
-#: 8 days ("allow up to 8 days to handle rounding", R/data_utils.R)
+#: the gap rule: consecutive dates within a group may differ by at most 8
+#: days (one week plus a day's slack for rounding), so no week is missing
 MAX_GAP_DAYS = 8
 
 #: group names: they become PF directory names, BNGL suffixes (spaces -> '_'),
@@ -83,7 +84,7 @@ RESERVED_NAMES = ("ALL",)
 #: is reported beside pooled scores, never inside them. One per dataset.
 NATIONAL_NAMES = ("US", "USA", "UNITED STATES", "US (NATIONAL)", "NATIONAL")
 
-#: tokens read as a missing value (MicroHub/readr's NA set, plus common ones)
+#: tokens read as a missing value (R readr's NA set, plus common ones)
 NA_TOKENS = {"", "na", "n/a", "nan", "null", "none", "-"}
 
 #: dataset ids: slug + '-' + 12 hex of the identity digest
@@ -209,10 +210,10 @@ _DATE_FORMATS = (
 def parse_date(text: str):
     """(date, format label) for the accepted formats, else (None, None).
 
-    Accepted: YYYY-MM-DD, M/D/YYYY, M/D/YY (MicroHub's template) and
-    MM-DD-YYYY. Day-first (D/M/Y), which MicroHub also tries, is not
-    accepted: it is ambiguous for every day <= 12 and a silent misparse
-    would shift weeks. Two-digit years follow POSIX %y: 00-68 -> 20xx."""
+    Accepted: YYYY-MM-DD, M/D/YYYY, M/D/YY (the template's style) and
+    MM-DD-YYYY. Day-first (D/M/Y) is not accepted: it is ambiguous for
+    every day <= 12 and a silent misparse would shift weeks. Two-digit
+    years follow POSIX %y: 00-68 -> 20xx."""
     s = (text or "").strip()
     for label, rx, order in _DATE_FORMATS:
         m = rx.fullmatch(s)
@@ -285,12 +286,13 @@ def validate(source, *, kind: Optional[str] = None,
     that dates are week-START Sundays, shifted +6 to the MMWR Saturday.
     ``target`` picks one target when the file carries several.
 
-    MicroHub's validate_data checks: required columns; dates parseable;
-    value numeric, >= 0, never NA; no duplicate (date, group); no gap over
-    8 days within a group. FluBNF adds: Saturday week-ending dates; safe,
-    unique group names; a declared kind; one target; population > 0 on
-    every row when the column exists; one name per location; no snapshot
-    week after its as_of; and the size limits, enforced while streaming.
+    The base checks: required columns; dates parseable; value numeric,
+    >= 0, never NA in a grouped CSV; no duplicate (date, group); no gap
+    over 8 days within a group. FluBNF adds: Saturday week-ending dates;
+    safe, unique group names; a declared kind; one target; population > 0
+    on every row when the column exists; one name per location; no
+    snapshot week after its as_of; and the size limits, enforced while
+    streaming.
     """
     rep = Report()
     stream, close = _open_source(source)
@@ -394,7 +396,7 @@ def _map_columns(header, rep: Report):
                 "'location'; keep exactly one of them as the group column.")
         return None
     g = present_groups[0]
-    cols = {"format": "microhub" if g == "target_group" else "hubverse",
+    cols = {"format": "grouped" if g == "target_group" else "hubverse",
             "date": header[pos[d]].strip(), "group": header[pos[g]].strip(),
             "value": header[pos[v]].strip()}
     idx = {"date": pos[d], "group": pos[g], "value": pos[v]}
@@ -500,7 +502,7 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
         if has_lname and r["location_name"].strip():
             name = r["location_name"].strip()
         # every row with a usable date (and as_of) joins the structural
-        # checks (duplicates, gaps), as in MicroHub, whatever its value
+        # checks (duplicates, gaps), whatever its value
         if d is not None and (a is not None or not has_asof):
             recs.append((a, name, key, d, v, p))
 
@@ -531,8 +533,8 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
         rep.add("value_negative", f"The '{vcol}' column contains {len(neg)} "
                 f"negative value(s) (e.g., {_examples(neg)}). Values must be "
                 "zero or positive.")
-    if na and fmt == "microhub":
-        # MicroHub's own rule: NA is an error
+    if na and fmt == "grouped":
+        # a grouped CSV lists only reported weeks: NA is an error
         rep.add("value_na", f"The '{vcol}' column contains {len(na)} missing "
                 f"(NA) value(s) (e.g., line(s) {_examples(na)}). All rows "
                 "must have a value; delete rows for weeks not reported.")
@@ -562,7 +564,7 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
     _check_structure(rep, recs, cols)
 
     n_na = 0
-    if na and fmt != "microhub":
+    if na and fmt != "grouped":
         kept = [r for r in recs if r[4] is not None]
         n_na = len(recs) - len(kept)
         recs = kept
@@ -1008,8 +1010,9 @@ class Dataset:
         return self.vintage_path(self.meta["vintages"][-1])
 
     def reference_dates(self) -> list:
-        """MicroHub's retrospective dates: every distinct week except the
-        first, from the final data."""
+        """The retrospective reference dates: every distinct week except
+        the first (a forecast needs one observed week), from the final
+        data."""
         return self.weeks()[1:]
 
     # ---- the engines' view (later stages): one path per as-of -------------
@@ -1037,8 +1040,8 @@ class Dataset:
 
     def forecast_dates(self) -> list:
         """The as-of weeks a forecast may anchor on: every vintage key when
-        versioned; otherwise every week but the first (MicroHub's
-        reference dates: a forecast needs one observed week)."""
+        versioned; otherwise every week but the first (the reference
+        dates: a forecast needs one observed week)."""
         return self.vintages() if self.vintage_true else self.reference_dates()
 
     def truth_path(self, as_of: str) -> Path:
@@ -1111,7 +1114,8 @@ def get(dataset_id: str) -> Dataset:
     mp = d / META_FILE
     if not mp.is_file():
         raise DatasetError(f"No dataset {dataset_id!r}.")
-    return Dataset(d, json.loads(mp.read_text(encoding="utf-8")))
+    meta = json.loads(mp.read_text(encoding="utf-8"))
+    return Dataset(d, meta)
 
 
 def resolve(ref: Optional[dict]) -> Optional[Dataset]:

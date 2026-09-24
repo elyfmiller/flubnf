@@ -70,8 +70,9 @@ def analogue_label(extra) -> str:
 
 
 def key_col(ds) -> str:
-    """The export's unit column: MicroHub's target_group, else location."""
-    return "target_group" if ds.meta.get("format") == "microhub" else "location"
+    """The export's unit column: target_group for a grouped CSV, else
+    location."""
+    return "target_group" if ds.meta.get("format") == "grouped" else "location"
 
 
 def target_name(ds) -> str:
