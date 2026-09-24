@@ -99,8 +99,11 @@ def keep_reason(d: Path, complete: bool) -> str:
 
 
 def _stamp(now: float) -> str:
-    """Local date and time, minute precision, with the UTC offset."""
-    return time.strftime("%Y-%m-%d %H:%M %z", time.localtime(now))
+    """Local date and time, minute precision, with the zone's name (EDT,
+    MST; the long name on Windows), else the UTC offset."""
+    t = time.localtime(now)
+    zone = getattr(t, "tm_zone", "") or time.strftime("%z", t)
+    return f"{time.strftime('%Y-%m-%d %H:%M', t)} {zone}".strip()
 
 
 def mark(date: str, now: float | None = None) -> dict:

@@ -255,3 +255,22 @@ def test_the_output_line_says_why_a_run_was_kept_out(root):
     v = O._archive_view(c.name, DATE, {"archived": why})
     assert v["kept"] and not v["kept_submitted"]
     assert v["run_id"] == a.name and not v["this_run"]
+
+
+def test_the_submitted_stamp_names_the_local_zone(monkeypatch):
+    """The mark reads in the operator's own time and zone name, not a raw
+    UTC offset such as +0000."""
+    import os
+    import time
+    from app.core import archive_record as AR
+    if not hasattr(time, "tzset"):
+        import pytest
+        pytest.skip("time.tzset is POSIX only")
+    monkeypatch.setenv("TZ", "America/New_York")
+    time.tzset()
+    try:
+        # 2026-10-07 22:05 UTC is 18:05 EDT
+        assert AR._stamp(1791410700) == "2026-10-07 18:05 EDT"
+    finally:
+        monkeypatch.delenv("TZ")
+        time.tzset()
