@@ -1138,3 +1138,11 @@ pre.sberr{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);
 .dsfolder label{display:inline;margin:0;font-size:inherit}
 /* a date in the preview's facts or the stored note stays on one line */
 .dsfacts .nw,.dsr-stored .nw{white-space:nowrap}
+
+/* round3: submission files and model identities */
+.subrow{justify-content:space-between;margin:.45rem 0}
+.subacts{display:flex;align-items:center;gap:.9rem;white-space:nowrap}
+.subfile > p.hint{margin:.1rem 0 .3rem}
+details.archived{margin-top:.6rem;padding-top:.4rem;border-top:1px solid var(--line)}
+details.archived > p.hint{margin:.3rem 0}
+details.archived .subrow{margin:.3rem 0}

@@ -237,15 +237,20 @@ def run_page(request: Request, run_id: str):
         "research": is_research(spec_json),
         "modified": _runs.is_modified(spec_json),
         "override": _knobs.override_reason(spec_json),
-        # a legacy run's retired blend is not shown
+        # a legacy run's retired blend and a member with no cells (no PF
+        # engine on this machine) are not shown
         "models": {m: v for m, v in (res.get("models") or {}).items()
-                   if m not in _report_v2_retired()},
+                   if m not in _report_v2_retired() and v},
         "settings": spec_settings(spec_json),
         "versions": version_pairs(row_sha, row_engine_versions),
         "can_rerun": (bool(spec_json) and status in RERUN_STATUSES
                       and not dsx),
         "pf_failures": pf_failures, "step_errors": step_errors,
-        "subs": subs, "sub_errors": sub_errors, "report": report})
+        # a refusal recorded under a retired hub name reads as its model
+        "subs": subs,
+        "sub_errors": {output_routes.model_display(m, w): why
+                       for m, why in sub_errors.items()},
+        "report": report})
 
 
 @router.get("/runs/{run_id}/report", response_class=HTMLResponse)

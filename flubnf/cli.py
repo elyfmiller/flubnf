@@ -1251,7 +1251,7 @@ def retro_cmd(
 # ---------------------------------------------------------------------------
 groundhog_app = typer.Typer(
     add_completion=False, no_args_is_help=True,
-    help="GroundhogCGR, the calendar member, replayed and scored on its own.")
+    help="GroundHogCGR, the calendar member, replayed and scored on its own.")
 app.add_typer(groundhog_app, name="groundhog")
 
 GROUNDHOG_SEASONS = ("2023-24", "2024-25", "2025-26")

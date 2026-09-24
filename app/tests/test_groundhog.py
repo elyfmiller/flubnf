@@ -1,4 +1,4 @@
-"""GroundhogCGR replayed on its own: the scoring arithmetic, offline (hub
+"""GroundHogCGR replayed on its own: the scoring arithmetic, offline (hub
 pieces are synthetic): which week a horizon lands on, which cells a figure
 covers, and whether two arms are compared on the same cells.
 """

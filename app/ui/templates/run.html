@@ -102,20 +102,27 @@
 
 {% if not dataset %}
 <div class="card"><h2>Submission files</h2>
-{% for s in subs %}
+{% set archived = subs | selectattr("archived") | list %}
+{% for s in subs | rejectattr("archived") %}
  {% if s.submittable %}
  <p>{{ s.model }}: <a href="/output/download?path={{ s.path | urlencode }}">{{ s.name }}</a></p>
  {% elif s.modified %}
  <p>{{ s.model }}: <a href="/output/download?path={{ s.path | urlencode }}">{{ s.name }}</a><br>
   <span class="hint">Non-hub name: this run's model settings differ from
   the defaults.</span></p>
- {% else %}
- <p>{{ s.model }}: <code>{{ s.name }}</code><br>
-  <span class="hint">Not submittable: written under a retired model name
-  the hub rejects; a current run writes the registered identity.</span></p>
  {% endif %}
-{% else %}<p class="hint">None yet. Submissions appear when a run
- completes.</p>{% endfor %}
+{% else %}{% if not archived %}<p class="hint">None yet. Submissions appear when a run
+ completes.</p>{% endif %}{% endfor %}
+{% if archived %}
+<details class="preview archived">
+ <summary class="hint">Archived files ({{ archived | length }})</summary>
+ <p class="hint">Written by an earlier version under a retired hub name;
+ kept as a record, not for submission.</p>
+ {% for s in archived %}
+ <p>{{ s.model }} <span class="hint">(archived)</span><br><code>{{ s.name }}</code></p>
+ {% endfor %}
+</details>
+{% endif %}
 {% for model, why in (sub_errors or {}).items() %}
  <p><b>{{ model }}</b>: <span class="bad">no file written</span><br>
   <span class="hint">Refused before anything reached disk: {{ why }}</span></p>
