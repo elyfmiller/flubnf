@@ -612,6 +612,11 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
   gap:0 .9rem}
 .dsup.js .dsup-go{display:none}
 .dsup-result:empty{display:none}
+/* the check's status line is read out, not shown (the result shows it);
+   a result kept up while it is checked again is dimmed */
+.dsup-status{position:absolute;width:1px;height:1px;margin:-1px;padding:0;
+  overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.dsup[aria-busy="true"] .dsup-result{opacity:.6}
 .dsp-kind{margin:.5rem 0 0;font-size:var(--fs-micro);font-weight:650;
   text-transform:uppercase;letter-spacing:.04em;color:var(--mut)}
 .dsproblems{border-left:3px solid var(--bad,#b3261e);padding:.2rem .8rem;margin:.6rem 0}

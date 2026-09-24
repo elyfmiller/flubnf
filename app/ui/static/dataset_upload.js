@@ -4,7 +4,12 @@
    every problem, a column mapping, or a preview; changing the kind, the
    target or a column checks again. The name follows the file's name until
    typed; the kind shows what the values say until picked by hand (and is
-   posted as "from the values", kind_auto=1, until then). The preview's buttons submit the form itself (POST /data/datasets),
+   posted as "from the values", kind_auto=1, until then). A column or
+   target select inside the result keeps the focus across its re-check:
+   the result stays up (dimmed) and the same select is focused in the new
+   one. A short status line (role=status) says what the check found; the
+   result itself is not a live region, so it is not read out each time.
+   The preview's buttons submit the form itself (POST /data/datasets),
    which stores the file and opens it where it is needed. A closed <details>
    around the box opens when a file is dragged over it. Files dropped
    elsewhere on the page are ignored instead of replacing the page. */
@@ -28,6 +33,7 @@
     var kind = form.querySelector('[data-kind]');
     var auto = form.querySelector('[data-kind-auto]');
     var out = form.querySelector('[data-result]');
+    var status = form.querySelector('[data-dsup-status]');
     var go = form.querySelector('.dsup-go button');
     var fold = form.closest('details');
     var dropped = null;          // a dropped file the input could not take
@@ -61,6 +67,24 @@
       check();
     }
 
+    function say(text) {
+      if (status) status.textContent = text;
+    }
+
+    // the control inside the result that had the focus, found again in
+    // the new result by its id; else its first select or action button
+    function refocus(id) {
+      var el = id ? document.getElementById(id) : null;
+      if (!el || !out.contains(el)) {
+        el = out.querySelector('select, .dsup-actions button');
+      }
+      if (!el) {
+        out.setAttribute('tabindex', '-1');
+        el = out;
+      }
+      el.focus();
+    }
+
     function check() {
       var f = current();
       if (!f) return;
@@ -69,8 +93,13 @@
       if (!cur || !cur.name) fd.set('file', f, f.name);
       fd.delete('next');
       var my = ++seq;
+      var act = document.activeElement;
+      var keep = act && act !== out && out.contains(act) ? act.id : null;
       form.setAttribute('aria-busy', 'true');
-      out.innerHTML = '<p class="hint">Checking ' + esc(f.name) + '…</p>';
+      say('Checking ' + f.name + '…');
+      if (keep === null) {
+        out.innerHTML = '<p class="hint">Checking ' + esc(f.name) + '…</p>';
+      }
       fetch('/data/datasets/check?where=' + encodeURIComponent(
         form.dataset.where || 'data'), {method: 'POST', body: fd,
         headers: {'Accept': 'application/json'}})
@@ -78,15 +107,19 @@
         .then(function (j) {
           if (my !== seq) return;          // a newer check superseded this
           out.innerHTML = j.html || '';
+          if (keep !== null) refocus(keep);
           if (kind && !kindChosen && j.inferred_kind) {
             kind.value = j.inferred_kind;
             if (auto) auto.value = '1';
           }
+          say(j.status || '');
         })
         .catch(function () {
           if (my !== seq) return;
-          out.innerHTML = '<p class="bad">The file could not be checked; '
-            + 'choose it again.</p>';
+          var msg = 'The file could not be checked; choose it again.';
+          out.innerHTML = '<p class="bad">' + msg + '</p>';
+          if (keep !== null) refocus(null);
+          say(msg);
         })
         .then(function () {
           if (my === seq) form.removeAttribute('aria-busy');

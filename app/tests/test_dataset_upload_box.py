@@ -230,6 +230,30 @@ def test_two_candidate_date_columns_say_why_they_ask():
     assert j["ok"] and "Ignored column(s): date." in j["html"]
 
 
+def test_a_status_line_is_read_out_not_the_whole_result():
+    """The result box was a live region, so every check (each column
+    picked) read out the facts, the sparklines and the first rows again;
+    a short status line says what the check found instead. The script
+    keeps a focused column or target select focused across its re-check
+    (it once replaced the result and dropped the focus to the page)."""
+    page = client.get("/forecast").text
+    assert '<p class="dsup-status" data-dsup-status role="status"></p>' in page
+    assert "<div class=\"dsup-result\" data-result>" in page
+    assert check(grouped_bytes()).json()["status"].startswith(
+        "Ready to use: 3 groups, ")
+    assert check(b"day,area,amount\n2024-08-03,A,1\n").json()["status"] == \
+        "Choose which column is which."
+    two = (b"target_end_date,target,location,observation\n"
+           b"2024-08-03,a,01,1\n2024-08-03,b,01,3\n")
+    assert check(two).json()["status"] == "Choose the target."
+    j = check(b"date,target_group,value\n2024-08-03,A,-1\nsoon,A,2\n").json()
+    assert j["status"] == "Nothing was stored: 2 problems to fix."
+    assert 'role="alert"' not in j["html"]
+    js = (STATIC / "dataset_upload.js").read_text()
+    assert "if (keep !== null) refocus(keep);" in js
+    assert "if (keep === null) {" in js       # a kept result is not blanked
+
+
 def test_a_kind_filled_in_from_the_values_stays_from_the_values():
     """The box shows the inferred kind in its select (kind_auto=1 while
     it is not picked by hand); posting it must not turn it into a declared

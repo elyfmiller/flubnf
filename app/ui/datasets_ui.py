@@ -337,6 +337,23 @@ def check_view(rep, *, kind: str = "", columns=None) -> dict:
             "preview": _preview(rep, kind) if rep.ok and rep.summary else None}
 
 
+def check_status(chk: dict) -> str:
+    """The upload box's status line (role=status): what a check found, in
+    a few words, read out instead of the whole result."""
+    if chk.get("preview"):
+        pv = chk["preview"]
+        return (f"Ready to use: {pv['n_groups']} group"
+                f"{'' if pv['n_groups'] == 1 else 's'}, {pv['weeks']} week"
+                f"{'' if pv['weeks'] == 1 else 's'}.")
+    if chk.get("mapping") and not chk.get("problems"):
+        return "Choose which column is which."
+    if chk.get("targets") and not chk.get("target") and not chk["n"]:
+        return "Choose the target."
+    n = chk.get("n") or 0
+    return (f"Nothing was stored: {n} problem{'' if n == 1 else 's'} to "
+            "fix.")
+
+
 def _message_view(message: str) -> dict:
     """The result box for a refusal that is not about the file's content."""
     return {"ok": False, "problems": [("File", [{"message": message,
@@ -376,7 +393,8 @@ async def check(request: Request):
 
     def answer(chk, code=200, **extra):
         return JSONResponse({"ok": chk["ok"], "html": render_check(chk, where),
-                             **extra}, status_code=code)
+                             "status": check_status(chk), **extra},
+                            status_code=code)
     if not request.headers.get("content-type", "").startswith(
             "multipart/form-data"):
         return answer(_message_view("Expected a multipart/form-data upload."),

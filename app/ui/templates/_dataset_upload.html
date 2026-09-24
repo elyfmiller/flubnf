@@ -7,7 +7,8 @@
    native input: keyboard and screen readers reach it as usual). With
    script (static/dataset_upload.js) the file is checked at once and the
    result box (_dataset_check.html) shows every problem, a column mapping,
-   or a preview whose buttons store it and open it where it is needed.
+   or a preview whose buttons store it and open it where it is needed; a
+   status line (role=status) says in a few words what the check found.
    Without script the form stores it (POST /data/datasets) and a refusal
    comes back on the Data tab. `upload` is a refused store's report. #}
 {% import "_tips.html" as tips %}
@@ -37,7 +38,8 @@
     <option value="rate" {% if upload and upload.kind == "rate" %}selected{% endif %}>rates or proportions</option>
    </select></div>
  </div>
- <div class="dsup-result" data-result aria-live="polite">{% if upload and upload.chk %}{{ dscheck.result(upload.chk, where) }}{% endif %}</div>
+ <p class="dsup-status" data-dsup-status role="status"></p>
+ <div class="dsup-result" data-result>{% if upload and upload.chk %}{{ dscheck.result(upload.chk, where) }}{% endif %}</div>
  <div class="dsup-go"><button class="gold" name="next"
    value="{{ where }}">Upload and check</button></div>
 </form>

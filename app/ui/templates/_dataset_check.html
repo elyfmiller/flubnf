@@ -9,7 +9,7 @@
 {% macro result(chk, where) -%}
 {% set fid = "dsup-" ~ where %}
 {% if chk.problems %}
-<div class="dsproblems" role="alert">
+<div class="dsproblems">
  <p class="bad"><strong>Nothing was stored.</strong> {{ chk.n }} problem{{ "" if chk.n == 1 else "s" }} to fix:</p>
  {% for kind, probs in chk.problems %}
  <p class="dsp-kind">{{ kind }}</p>
