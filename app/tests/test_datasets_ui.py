@@ -309,6 +309,18 @@ def test_run_refuses_a_week_the_dataset_lacks(monkeypatch):
     assert not ui_state._status.get("running")
 
 
+def test_run_refuses_a_blank_date_in_plain_words(monkeypatch):
+    ds = stored()
+    got = _capture(monkeypatch)
+    r = client.post("/run/dataset", data={"dataset": ds.id, "forecast_date": "",
+                                          "locations": "all",
+                                          "engine": "analogue"},
+                    follow_redirects=False)
+    assert r.status_code == 303 and not got
+    assert r.headers["location"] == f"/forecast?source={ds.id}"
+    assert "Give a forecast date" in ui_state._status.get("flash", "")
+
+
 def test_run_refuses_the_pf_without_the_engine(monkeypatch):
     ds = stored()
     got = _capture(monkeypatch)
