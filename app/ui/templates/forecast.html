@@ -47,13 +47,13 @@
     {% if dataset %}{{ tips.tip("fc-mode", "the forecast modes", "Real-time: the dataset's newest week. Vintage: any earlier week of the dataset.") }}{% else %}{{ tips.tip("fc-mode", "the forecast modes", "Real-time: the newest week of the hub's data, read from target-data when the archive has not caught up. Vintage: any archived week, with the data as it stood then.") }}{% endif %}
    </div>
    <input type="hidden" name="mode" id="mode-field" value="realtime">
-   {% if dataset %}{{ tips.label("Forecast date", "fc-date", "A week of the dataset; any other day anchors on the latest week on or before it.") }}{% else %}{{ tips.label("Forecast date", "fc-date", "Any day; the run anchors on the latest archived week on or before it.") }}{% endif %}
-   <input type="date" name="forecast_date" value="{{ form.forecast_date }}" data-default="{{ default_date }}">
+   {% if dataset %}{{ tips.label("Forecast date", "fc-date", "A week of the dataset; any other day anchors on the latest week on or before it.", for_="fc-date-in") }}{% else %}{{ tips.label("Forecast date", "fc-date", "Any day; the run anchors on the latest archived week on or before it.", for_="fc-date-in") }}{% endif %}
+   <input type="date" name="forecast_date" value="{{ form.forecast_date }}" id="fc-date-in" data-default="{{ default_date }}">
    {# any day is accepted; this line names the archived week it resolves to
       (server-side resolve_anchor, the run's own function; updated live) #}
    <p class="hint" id="anchor-line">{{ anchor_note }}</p>
    {% if vintage_dates %}
-   <select id="vintage-pick">
+   <select id="vintage-pick" aria-label="{{ "Pick a week" if dataset else "Pick an archived week" }}">
     <option value="">{{ "or pick a week" if dataset else "or pick an archived week" }} ({{ vintage_dates|length }})</option>
     {% for v in vintage_dates %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
    </select>
@@ -123,11 +123,11 @@
     })();
    </script>
    {% if dataset %}
-   <div class="lblrow"><label>Groups <span id="lcount" class="hint"></span></label>{{ tips.tip("fc-locs", "groups", "The dataset's groups; each is forecast on its own." ~ (" " ~ dataset.national ~ " is the national group: scored beside the others, never pooled with them." if dataset.national else "")) }}</div>
+   <div class="lblrow"><label id="fc-locs-lbl">Groups <span id="lcount" class="hint"></span></label>{{ tips.tip("fc-locs", "groups", "The dataset's groups; each is forecast on its own." ~ (" " ~ dataset.national ~ " is the national group: scored beside the others, never pooled with them." if dataset.national else "")) }}</div>
    {% else %}
-   <div class="lblrow"><label>Locations <span id="lcount" class="hint"></span></label>{{ tips.tip("fc-locs", "locations", "The 52 are the 50 states, DC and Puerto Rico. US (national), last in the list, is a location of its own: off by default, fitted only when ticked, and scored apart from the 52. A full hub submission holds all 53, so tick it for a submission run.") }}</div>
+   <div class="lblrow"><label id="fc-locs-lbl">Locations <span id="lcount" class="hint"></span></label>{{ tips.tip("fc-locs", "locations", "The 52 are the 50 states, DC and Puerto Rico. US (national), last in the list, is a location of its own: off by default, fitted only when ticked, and scored apart from the 52. A full hub submission holds all 53, so tick it for a submission run.") }}</div>
    {% endif %}
-   <div class="checklist">
+   <div class="checklist" role="group" aria-labelledby="fc-locs-lbl">
      <label class="ck"><input type="checkbox" id="ck-all" value="all" name="locations"
        {% if "all" in form.locations %}checked{% endif %}> <b>{{ ("all " ~ all_locs | length ~ " groups") if dataset else "all 52 jurisdictions" }}</b></label>
      {% if locations_error %}<p class="warn">{{ locations_error }}</p>{% endif %}
@@ -143,7 +143,7 @@
      {% endif %}
    </div>
    {% if dataset %}
-   {{ tips.label("Model", "fc-model", "Each model writes its own export file (FluBNF-Groundhog, FluBNF-SIHRS-PF); nothing is blended or submitted. The plain SIHRS particle filter needs counts with a population and runs without the Oracle step, whose donor bank is FluSight's.") }}
+   {{ tips.label("Model", "fc-model", "Each model writes its own export file (FluBNF-Groundhog, FluBNF-SIHRS-PF); nothing is blended or submitted. The plain SIHRS particle filter needs counts with a population and runs without the Oracle step, whose donor bank is FluSight's.", for_="model-pick") }}
    <select name="engine" id="model-pick">{% for e in engines %}
      <option value="{{ e }}" {% if e == form.engine %}selected{% endif %}
        {% if e != "analogue" and not dataset.pf_ok %}disabled{% endif %}>{{ engine_names.get(e, e) }}</option>{% endfor %}</select>
@@ -152,7 +152,7 @@
      {% if form.flusurv %}checked{% endif %}> Add FluSurv-NET donors</label>
     {{ tips.tip("fc-flusurv", "FluSurv-NET donors", "Off by default: the Groundhog draws growth only from your data's earlier seasons. Tick only for US influenza hospitalization-like data, where the FluSurv-NET bank's seasons are relevant.") }}</div>
    {% else %}
-   {{ tips.label("Model", "fc-model", "Each model writes its own FluSight submission file; nothing is blended.") }}
+   {{ tips.label("Model", "fc-model", "Each model writes its own FluSight submission file; nothing is blended.", for_="model-pick") }}
    {# posts `engine` (the run path's names); the engine row appears only
       when the Oracle SIHRS runs; "all" writes both submission files #}
    {% set engine_names = {"all": "Both (Oracle SIHRS + Groundhog)",
