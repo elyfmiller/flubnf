@@ -159,7 +159,7 @@ def test_a_day_first_as_of_says_so():
     assert "13/01/2024 is day-first" in p.message
 
 
-def test_an_as_of_that_reads_both_ways_is_settled_by_its_snapshots():
+def test_an_as_of_that_reads_both_ways_needs_the_file_to_say_which():
     """ISO weeks, as_of written 03/01/2024 and 10/01/2024 (3 and 10
     January): read month-first they were stored silently as snapshots of
     March and October over data that ends 2024-01-06."""
@@ -171,16 +171,24 @@ def test_an_as_of_that_reads_both_ways_is_settled_by_its_snapshots():
     p = rep.problems[0]
     assert p.rows == (2, 3, 4) and p.kind == "Dates"
     assert "03/01/2024 is 2024-03-01 or 2024-01-03" in p.message
+    assert ("nothing in the file says which: no as_of or date is written "
+            "M/D with a day over 12 (as 1/13/2024)") in p.message
     with pytest.raises(D.DatasetError):
         D.ingest(raw, "asof")
     assert D.list_datasets() == []
-    # month-first that fits (1/8/24 just after the week of 2024-01-06)
-    rep = ok(D.validate(b"target_end_date,location,observation,as_of\n"
-                        b"2024-01-06,A,5,1/8/24\n2023-12-30,A,4,1/8/24\n"))
-    assert rep.summary["as_of"] == ["2024-01-08"]
+    # month-first would fit (1/8/24 two days after the week of 2024-01-06),
+    # but a fit proves no order: refused, saying how each reading falls
+    p = only(D.validate(b"target_end_date,location,observation,as_of\n"
+                        b"2024-01-06,A,5,1/8/24\n2023-12-30,A,4,1/8/24\n"),
+             "as_of_ambiguous")
+    assert ("Read month-first, 1/8/24 comes 2 days after its snapshot's "
+            "newest week, ending 2024-01-06; read day-first, 208 days "
+            "after.") in p.message
     # 1/13/2024 reads one way, and so does the column it is in
-    ok(D.validate(b"target_end_date,location,observation,as_of\n"
-                  b"2023-12-30,A,5,1/3/2024\n2024-01-06,A,6,1/13/2024\n"))
+    rep = ok(D.validate(b"target_end_date,location,observation,as_of\n"
+                        b"2023-12-30,A,5,1/3/2024\n2024-01-06,A,6,1/13/2024\n"))
+    assert rep.summary["as_of"] == ["2024-01-03", "2024-01-13"]
+    assert rep.warnings == []
 
 
 #: an as_of whose day equals its month (05/05/2024) once counted as proof
@@ -229,36 +237,121 @@ def test_dates_written_m_d_prove_month_first_only_with_a_day_over_12():
     assert rep.summary["as_of"] == ["2024-02-05", "2024-02-13"]
 
 
-def test_the_closer_fit_decides_past_the_longest_lag():
-    """A long-lagged ISO snapshot beside an as_of that reads both ways:
-    1/2/2024 is 3 days after its week month-first, 33 day-first."""
-    raw = (b"target_end_date,location,observation,as_of\n"
-           b"2024-03-02,A,5,2024-06-29\n2023-12-30,A,4,1/2/2024\n")
-    assert ok(D.validate(raw)).summary["as_of"] == ["2024-01-02",
-                                                    "2024-06-29"]
-    raw = raw.replace(b"1/2/2024", b"2/1/2024")      # the other way round
-    assert D.validate(raw).codes == ["as_of_ambiguous"]
+@pytest.mark.parametrize("raw,mf,df", [
+    # ISO weeks to 2023-12-30, as_of 1 February 2024 written day-first
+    (b"target_end_date,location,value,as_of\n2023-12-23,US,5,01/02/2024\n"
+     b"2023-12-30,US,6,01/02/2024\n", "3 days after", "33 days after"),
+    # five weeks to 2024-06-01, as_of 6 July 2024 written day-first
+    (b"target_end_date,location,value,as_of\n" + b"".join(
+        b"%s,US,%d,06/07/2024\n" % (d.isoformat().encode(), i)
+        for i, d in enumerate(sats("2024-05-04", 5))),
+     "6 days after", "35 days after"),
+    # beside a long-lagged ISO snapshot
+    (b"target_end_date,location,observation,as_of\n"
+     b"2024-03-02,A,5,2024-06-29\n2023-12-30,A,4,1/2/2024\n",
+     "3 days after", "33 days after"),
+    (b"target_end_date,location,observation,as_of\n"
+     b"2024-03-02,A,5,2024-06-29\n2023-12-30,A,4,2/1/2024\n",
+     "33 days after", "3 days after"),
+], ids=["3-vs-33", "6-vs-35", "iso-beside", "iso-beside-swapped"])
+def test_how_closely_a_reading_fits_proves_no_order(raw, mf, df):
+    """The closer fit once decided: an as_of taken weeks after its newest
+    week, written day-first, fit closer read month-first and was stored so
+    (01/02/2024 as January 2, not February 1), with no word."""
+    rep = D.validate(raw)
+    assert rep.codes == ["as_of_ambiguous"]
+    p = rep.problems[0]
+    assert "nothing in the file says which" in p.message
+    assert f"comes {mf} its snapshot's newest week" in p.message
+    assert f"read day-first, {df}." in p.message
+    with pytest.raises(D.DatasetError):
+        D.ingest(raw, "fit")
 
 
-def test_month_first_dates_do_not_carry_an_as_of_that_does_not_fit():
-    """1/13/2024 proves the dates month-first, but as_of dates with both
-    numbers <= 12 must still fit their snapshots read so."""
+@pytest.mark.parametrize("raw,t,newest,df", [
+    # Saturday weeks to 2024-02-10, a snapshot of Friday 9 February
+    (b"target_end_date,location,value,as_of\n2024-02-03,US,5,09/02/2024\n"
+     b"2024-02-10,US,6,09/02/2024\n", "09/02/2024", "2024-02-10",
+     "1 day before"),
+    # weeks to 2024-01-06, a snapshot of Friday 5 January
+    (b"target_end_date,location,value,as_of\n" + b"".join(
+        b"%s,US,%d,05/01/2024\n" % (d.isoformat().encode(), i)
+        for i, d in enumerate(sats("2023-12-09", 5))),
+     "05/01/2024", "2024-01-06", "1 day before"),
+    # Sunday week starts (moved +6), a snapshot of Wednesday 7 February
+    (b"date,location,value,as_of\n2024-01-28,US,5,07/02/2024\n"
+     b"2024-02-04,US,6,07/02/2024\n", "07/02/2024", "2024-02-10",
+     "3 days before"),
+], ids=["saturdays", "friday-snapshot", "sunday-starts"])
+def test_an_as_of_taken_before_its_week_ends_is_not_read_month_first(
+        raw, t, newest, df):
+    """Read day-first, each as_of falls a day or so before its newest week
+    ends, so that reading fails; month-first was then taken however far
+    away it landed (09/02/2024 as September 2, 205 days on), unasked."""
+    p = only(D.validate(raw), "as_of_ambiguous")
+    assert "nothing in the file says which" in p.message
+    assert (f"its snapshot's newest week, ending {newest}; read day-first, "
+            f"{df}.") in p.message
+    assert f"e.g., {t} is " in p.message
+    with pytest.raises(D.DatasetError):
+        D.ingest(raw, "early")
+
+
+def test_month_first_dates_settle_only_an_as_of_that_fits_so():
+    """1/13/2024 proves the dates month-first, and with them as_of dates
+    with both numbers <= 12, named in a notice; but only when each such
+    snapshot then ends 0 to MAX_ASOF_LAG days before its as_of."""
     # month-first would put the weeks after their as_of (Jan 12)
     raw = (b"target_end_date,location,observation,as_of\n"
            b"1/6/2024,A,5,1/12/2024\n1/13/2024,A,6,1/12/2024\n")
     p = only(D.validate(raw), "as_of_ambiguous")
     assert "a snapshot would hold weeks after its as_of" in p.message
     assert ("The 'target_end_date' dates are month-first (e.g., 1/13/2024)"
-            in p.message)
+            ", but each as_of must also fit its snapshot read so.") \
+        in p.message
     # months after their newest week, where day-first is days after
     raw = (b"target_end_date,location,observation,as_of\n"
            b"12/30/2023,A,5,03/01/2024\n1/6/2024,A,6,10/01/2024\n")
     p = only(D.validate(raw), "as_of_ambiguous")
-    assert "day-first fits the snapshots better" in p.message
-    # month-first that fits stands
+    assert ("read month-first, 10/01/2024 comes 269 days after its "
+            "snapshot's newest week, ending 2024-01-06, but an as_of that "
+            f"reads both ways is read month-first only up to "
+            f"{D.MAX_ASOF_LAG} days after it (read day-first, 4 days "
+            "after)") in p.message
+    # the dates prove month-first, but 09/02/2024 would be 205 days after
+    # weeks that end 2024-02-10 (and day-first, a day before)
+    raw = (b"target_end_date,location,value,as_of\n"
+           b"1/27/2024,US,4,09/02/2024\n2/3/2024,US,5,09/02/2024\n"
+           b"2/10/2024,US,6,09/02/2024\n")
+    p = only(D.validate(raw), "as_of_ambiguous")
+    assert "09/02/2024 comes 205 days after" in p.message
+    assert "(read day-first, 1 day before)" in p.message
+    with pytest.raises(D.DatasetError):
+        D.ingest(raw, "far")
+    # so would an as_of whose column proves month-first itself
+    raw = (b"target_end_date,location,observation,as_of\n"
+           b"2024-01-06,A,5,1/13/2024\n2024-01-27,A,5,09/02/2024\n"
+           b"2024-02-03,A,6,09/02/2024\n")
+    p = only(D.validate(raw), "as_of_ambiguous")
+    assert "09/02/2024 comes 212 days after" in p.message
+    assert "Other as_of dates are month-first (e.g., 1/13/2024)" in p.message
+    # month-first that fits stands, and says how it was read
     rep = ok(D.validate(b"target_end_date,location,observation,as_of\n"
                         b"12/30/2023,A,5,1/8/2024\n1/6/2024,A,6,1/8/2024\n"))
     assert rep.summary["as_of"] == ["2024-01-08"]
+    assert rep.warnings == [
+        "Read the 'as_of' column's dates month-first, as the "
+        "'target_end_date' dates are (e.g., 12/30/2023): 1/8/2024 is "
+        "2024-01-08, not 2024-08-01."]
+    # up to MAX_ASOF_LAG days on, not a day more
+    weeks = "3/9/2024,A,5,{a}\n3/16/2024,A,6,{a}\n"
+    last = date(2024, 3, 16)
+    for lag, fine in ((D.MAX_ASOF_LAG, True), (D.MAX_ASOF_LAG + 1, False)):
+        a = last + timedelta(days=lag)
+        assert a.day <= 12 and a.month <= 12 and a.day != a.month
+        raw = ("target_end_date,location,observation,as_of\n"
+               + weeks.format(a=f"{a.month}/{a.day}/{a.year}")).encode()
+        assert D.validate(raw).ok == fine
 
 
 def test_an_as_of_passed_only_by_the_move_to_saturday_says_so():
@@ -288,6 +381,38 @@ def test_a_single_week_written_month_or_day_first_is_refused():
         in p.message
     for one in (b"1/13/2024", b"2024-06-01", b"1/1/2024"):
         ok(D.validate(b"date,target_group,value\n" + one + b",A,5\n"))
+
+
+@pytest.mark.parametrize("raw,eg,rows", [
+    # Saturdays either way: 2024-01-06 and 2024-02-03, or June 1 and March 2
+    (b"date,group,value\n01/06/2024,A,5\n02/03/2024,B,6\n",
+     "01/06/2024 (A) is 2024-01-06 or 2024-06-01", (2, 3)),
+    # Tuesdays month-first (moved +4 days), Saturdays day-first
+    (b"date,group,value\n09/03/2024,A,5\n06/04/2024,B,6\n08/06/2024,C,7\n",
+     "09/03/2024 (A) is 2024-09-03 or 2024-03-09", (2, 3, 4)),
+], ids=["saturdays", "tuesdays"])
+def test_one_week_per_group_written_month_or_day_first_is_refused(raw, eg,
+                                                                   rows):
+    """With one week per group no weekday or gap tells a day-first file,
+    as with one week in all: 01/06/2024 was read as January 6 unasked."""
+    rep = D.validate(raw)
+    assert rep.codes == ["date_ambiguous"]
+    p = rep.problems[0]
+    assert p.rows == rows
+    assert f"e.g., {eg}), and either reading puts every date on one " \
+        "weekday with no week missing" in p.message
+    assert rep.warnings == []            # no week was moved
+    with pytest.raises(D.DatasetError):
+        D.ingest(raw, "one")
+    # weeks in a row settle it (read day-first, 03/09 is September 3)
+    rep = ok(D.validate(b"date,group,value\n03/02/2024,A,5\n"
+                        b"03/09/2024,A,6\n02/03/2024,B,6\n"))
+    assert rep.summary["first"] == "2024-02-03"
+    # and so does a date with a day over 12
+    ok(D.validate(b"date,group,value\n01/06/2024,A,5\n01/13/2024,B,6\n"))
+    # or a snapshot that day-first would hold after its as_of
+    ok(D.validate(b"date,location,value,as_of\n01/06/2024,A,5,2024-01-10\n"
+                  b"02/03/2024,B,6,2024-02-07\n"))
 
 
 @pytest.mark.parametrize("header", ["week_ending", "Week End", "end_date",
@@ -473,7 +598,11 @@ def test_decimal_commas_in_a_semicolon_file_are_rates():
 @pytest.mark.parametrize("values,sep,why", [
     (["1.000", "1.200"], ";", "1.000 could be 1000 or 1.000"),
     (["1,5", "2.5"], ";", "mixed with decimal points"),
-    (['"1,5"', '"2,5"'], ",", "semicolon- or tab-separated"),
+    (['"1,5"', '"2,5"'], ",", "a decimal comma like 1,5, read only in "
+     "semicolon- or tab-separated files"),
+    # dots can separate thousands in a comma file only as decimals would
+    (["1.234.567", "2.345.678"], ",", "dots separating thousands like "
+     "1.234.567, read only in semicolon- or tab-separated files"),
 ])
 def test_ambiguous_numbers_are_refused_with_their_rows(values, sep, why):
     rows = [sep.join((d.isoformat(), "A", v))
@@ -593,6 +722,44 @@ def test_dot_thousands_are_named_as_such():
     rep = ok(D.validate(csv_text("date;target_group;value;Pop",
                                  rows).encode()))
     assert rep.warnings[0] == "Read the 'value' column's decimal commas (1,5 = 1.5)."
+
+
+@pytest.mark.parametrize("pop,why", [
+    ("123.456", "(123.456 as 123456)"),            # dots as thousands
+    ("8.336", "(8.336 as 8336)"),
+    ("1.000", "(1.000 as 1000)"),                  # whole, as 1 person
+    ("1234567.8", "Write each as a whole number."),
+])
+def test_a_population_is_a_whole_number_of_people(pop, why):
+    """In a comma file, a population of 123.456 (a dot separating
+    thousands) was read as 123.456 people, unasked; the particle filter
+    runs on int(population)."""
+    rows = [f"{d.isoformat()},Berlin,{5 + i},{pop}"
+            for i, d in enumerate(sats(n=3))]
+    raw = csv_text("date,group,value,population", rows).encode()
+    rep = D.validate(raw)
+    assert rep.codes == ["population_not_integer"]
+    p = rep.problems[0]
+    assert p.rows == (2, 3, 4) and p.kind == "Population"
+    assert (f"The 'population' column must hold whole numbers of people, "
+            f"but 3 are not (rows 2, 3, 4; e.g., {pop} (2024-08-03, "
+            "Berlin)") in p.message
+    assert why in p.message
+    with pytest.raises(D.DatasetError):
+        D.ingest(raw, "pop")
+    # where dots separate thousands, 1,000 is one person as well
+    rows = [f"{d.isoformat()};A;{i},5;{'1.234.567' if i else '1,000'}"
+            for i, d in enumerate(sats())]
+    p = only(D.validate(csv_text("date;group;value;population",
+                                 rows).encode()), "population_not_integer")
+    assert p.rows == (2,)
+    assert "If the commas separate thousands, write the numbers without " \
+        "them (1,000 as 1000)." in p.message
+    # a whole number written with a zero decimal is whole
+    rows = [f"{d.isoformat()},A,{i},1234567.0" for i, d in enumerate(sats())]
+    rep = ok(D.validate(csv_text("date,group,value,population",
+                                 rows).encode()))
+    assert rep.records[0][5] == 1234567
 
 
 @pytest.mark.parametrize("text", ["1_000", "５", "٣", "infinity", "0x10"])

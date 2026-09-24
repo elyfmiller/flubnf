@@ -109,8 +109,9 @@ def test_the_script_is_served_and_parses():
 
 
 #: a DOM just big enough for static/dataset_upload.js: one upload box
-#: whose checks answer with ANSWER (inferred kind 'count'); DRIVE runs the
-#: steps given, then prints what each check posted and the kind select
+#: whose checks answer inferred kind 'count' (or the next of `kinds`, when
+#: a step queues some); _drive runs the steps given, then prints what each
+#: check posted and the kind select
 DOM_STUB = r"""
 function El(extra) {
   this.value = ''; this.dataset = {}; this.innerHTML = ''; this.files = null;
@@ -148,12 +149,13 @@ function FormData(f) {
 FormData.prototype.get = function (k) { return this.d[k]; };
 FormData.prototype.set = function (k, v) { this.d[k] = v; };
 FormData.prototype.delete = function (k) { delete this.d[k]; };
-var posted = [];
+var posted = [], kinds = [];
 function fetch(url, opts) {
   posted.push({file: opts.body.d.file && opts.body.d.file.name,
                kind: opts.body.d.kind, kind_auto: opts.body.d.kind_auto});
+  var k = kinds.length ? kinds.shift() : 'count';
   return Promise.resolve({json: function () {
-    return Promise.resolve({html: '', status: '', inferred_kind: 'count'});
+    return Promise.resolve({html: '', status: '', inferred_kind: k});
   }});
 }
 var window = {addEventListener: function () {}};
@@ -198,6 +200,34 @@ def test_a_new_file_forgets_the_kind_picked_for_the_last():
     for p in (posted[2], posted[4]):
         assert p["kind"] == "" and p["kind_auto"] == ""
     assert got["kind"] == "count" and got["auto"] == "1"
+
+
+@pytest.mark.skipif(not Path(NODE).exists(), reason="node not available")
+def test_a_kind_the_values_no_longer_say_is_cleared():
+    """A kind filled in from the values (counts) stayed in the select when
+    a re-check (a target or column chosen) found the values say nothing
+    (kind_ambiguous): the problem asked to choose counts or rates while
+    counts already showed, and picking it again fired no change."""
+    recheck = """
+      input.files = [{name: 'a.csv'}]; input.fire('change'); await settle();
+      kinds.push(null);
+      out.fire('change', {target: {hasAttribute: function () {
+        return true; }}});
+      await settle();
+    """
+    got = _drive(recheck)
+    assert [p["kind"] for p in got["posted"]] == ["", "count"]
+    assert got["posted"][1]["kind_auto"] == "1"
+    assert got["kind"] == "" and got["auto"] == ""
+    # a kind picked by hand stays, whatever the values say
+    got = _drive("""
+      input.files = [{name: 'a.csv'}]; input.fire('change'); await settle();
+      kind.value = 'rate'; kind.fire('change'); await settle();
+      kinds.push(null);
+      out.fire('change', {target: {hasAttribute: function () {
+        return true; }}});
+    """)
+    assert got["kind"] == "rate" and got["auto"] == ""
 
 
 # ------------------------------------------------------------ the check

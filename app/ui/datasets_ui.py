@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import json
 import re
-import threading
 import time
 from datetime import date as _date
 from pathlib import Path

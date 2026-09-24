@@ -5,8 +5,9 @@
    target or a column checks again. The name follows the file's name (with
    the chosen target of a file that holds several) until typed; the kind
    shows what the values say until picked by hand (and is posted as "from
-   the values", kind_auto=1, until then), and a new file forgets a kind
-   picked for the last one. A column or
+   the values", kind_auto=1, until then), back to "from the values" when a
+   re-check finds they say nothing, and a new file forgets a kind picked
+   for the last one. A column or
    target select inside the result keeps the focus across its re-check:
    the result stays up (dimmed) and the same select is focused in the new
    one. A short status line (role=status) says what the check found; the
@@ -115,9 +116,9 @@
             autoName = j.name;     // the file's name, with its target
             name.value = autoName;
           }
-          if (kind && !kindChosen && j.inferred_kind) {
-            kind.value = j.inferred_kind;
-            if (auto) auto.value = '1';
+          if (kind && !kindChosen) {   // what these values say, or nothing
+            kind.value = j.inferred_kind || '';
+            if (auto) auto.value = j.inferred_kind ? '1' : '';
           }
           say(j.status || '');
         })

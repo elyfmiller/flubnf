@@ -26,6 +26,8 @@ dataset`` all read through it):
     a comma file; 1,234 in a semicolon or tab file) is read by the
     declared kind: rates as decimals, counts refused (written without
     separators); undeclared, the kind is asked for, never inferred. A
+    population is a whole number of people: 123.456, 1.000 or 8.5 is
+    refused (with dots that may separate thousands, 123456). A
     value or name that an unquoted separator split (1,234 or Bern, Stadt
     without quotes) is refused, whether its second half lands past the
     header or in an ignored column.
@@ -38,11 +40,14 @@ dataset`` all read through it):
     without a time ("2024-01-06 00:00:00"). Every date of a file must fall
     on one weekday; it is moved to the MMWR week-ending Saturday of its
     Sunday-to-Saturday week, with a notice. Mixed weekdays and day-first
-    dates are refused, and so is a single week written M/D that reads both
-    ways, an as_of written M/D that reads both ways unless its snapshots
-    settle it (day-first would put a week after its as_of, or fits them
-    less closely; a tie stands only when the dates prove month-first by a
-    day over 12, as in 1/13/2024: 05/05/2024 proves neither order), a
+    dates are refused, and so are dates written M/D that read both ways
+    when either reading puts them on one weekday with no week missing (a
+    single week, or one week per group), an as_of written M/D that reads
+    both ways unless the file proves month-first by an as_of or a date
+    with a day over 12 (1/13/2024; 05/05/2024 proves neither order) and
+    each such snapshot's newest week then ends 0 to MAX_ASOF_LAG days
+    before it (read month-first on the dates' word alone, with a notice;
+    which reading fits the snapshots more closely proves nothing), a
     column whose header names week ENDS ('week ending (Sunday)',
     'period_end') whose dates are Sundays, Mondays or Tuesdays, and one
     naming week STARTS whose dates are Thursdays, Fridays or Saturdays
@@ -118,6 +123,12 @@ VINTAGE_PREFIX = "target-hospital-admissions_"
 #: the gap rule: consecutive dates within a group may differ by at most 8
 #: days (one week plus a day's slack for rounding), so no week is missing
 MAX_GAP_DAYS = 8
+
+#: an as_of written M/D that reads both ways (03/01/2024) is read
+#: month-first only when the file proves that order, and then only when
+#: each such snapshot's newest week ends 0 to this many days before it:
+#: read the other way round, a snapshot's as_of is at least 27 days off
+MAX_ASOF_LAG = 21
 
 #: group names: they become PF directory names and BNGL suffixes (through
 #: pf_stem), ledger keys and HTML text. Letters of any script are kept, with
@@ -249,7 +260,7 @@ PROBLEM_KINDS = (
     ("Values", ("value_numeric", "value_format", "kind_ambiguous",
                 "value_negative", "value_na", "value_not_integer")),
     ("Population", ("population_invalid", "population_missing",
-                    "population_format")),
+                    "population_format", "population_not_integer")),
     ("Groups", ("group_blank", "group_name", "group_reserved",
                 "national_multiple", "group_collision",
                 "location_name_conflict")),
@@ -622,8 +633,11 @@ def number_style(texts, delimiter: str = ","):
                       f"decimal points like {dec_point[0]}")
     if dec_comma:
         if delimiter == ",":
-            return None, (f"a decimal comma like {dec_comma[0]}, read only in "
-                          "semicolon- or tab-separated files")
+            t = dec_comma[0]
+            what = ("a decimal comma" if "," in t
+                    else "dots separating thousands")
+            return None, (f"{what} like {t}, read only in semicolon- or "
+                          "tab-separated files")
         return "decimal_comma", ""
     if dec_point or delimiter == ",":
         return ("thousands" if any("," in t for t in texts) else "plain"), ""
@@ -1381,14 +1395,17 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
 
     bad_dates, day_first, bad_asof = [], [], []
     # as_of dates that read both month-first and day-first (03/01/2024),
-    # each month-first reading's day-first twin, and whether any as_of
-    # reads month-first only (1/13/2024; never 05/05/2024, which reads the
-    # same both ways)
-    asof_both, asof_alt, asof_md = _Tally(), {}, False
+    # each month-first reading's text and day-first twin, and the first
+    # as_of that reads month-first only (1/13/2024; never 05/05/2024, which
+    # reads the same both ways)
+    asof_both, asof_alt, asof_md = _Tally(), {}, None
     bad_vals, neg, na, nonint = [], [], [], []
     # values written with a mark that could separate thousands (see mark)
     either = []
-    bad_pop, miss_pop = [], []
+    # populations that are no whole number as written (123.456 in a comma
+    # file: 123456 people with dots separating thousands, or none)
+    bad_pop, miss_pop, frac_pop = [], [], []
+    pmark = "," if pstyle == "decimal_comma" else "."
     formats = set()
     parsed = []                                   # (line, raw date, date)
     rows = []                                     # (line, a, name, key, d, v, p)
@@ -1409,9 +1426,9 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
                 bad_asof.append((ln, ta or "(blank)"))
             elif _swapped(ta) not in (None, a):
                 asof_both.add(ln, (ta, a))
-                asof_alt[a] = _swapped(ta)
+                asof_alt.setdefault(a, (ta, _swapped(ta)))
             elif _month_first_only(ta):
-                asof_md = True
+                asof_md = asof_md or ta
         raw_v = r["value"].strip()
         v = None
         if vstyle is not None:
@@ -1443,6 +1460,11 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
                     miss_pop.append((ln, raw_p or "(blank)"))
                 elif p <= 0:
                     bad_pop.append((ln, raw_p))
+                    p = None
+                elif not p.is_integer() or (pmark in raw_p
+                                            and _EITHER.fullmatch(raw_p)):
+                    # a count of people: 1.000 is 1 or 1000, never 1.0
+                    frac_pop.append((ln, raw_p))
                     p = None
         key = _text(r["group"])
         name = key
@@ -1496,6 +1518,26 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
         # a day-first file: its other dates were read month-first
         # (07/01/2024 as July 1), so their weekdays and weeks mean nothing
         parsed, rows = [], []
+    # dates written M/D with both numbers <= 12 (02/03/2024) read either
+    # way. Over weeks in a row the wrong reading scatters (its weekdays
+    # differ, its weeks leave gaps), but with one week per group both can
+    # fall on one weekday with no week missing, and then, as with one week,
+    # nothing in the file says which
+    twin = {ln: _swapped(t) for ln, t, d in parsed
+            if _swapped(t) not in (None, d)}
+    if twin and not any(_month_first_only(t) for _, t, _ in parsed):
+        if _weekly(rows) and _weekly(rows, twin):
+            lines = sorted(twin)
+            ln, t, d = next(x for x in parsed if x[0] in twin)
+            (r0,) = _rows_of(raw_rows, [ln])
+            rep.add("date_ambiguous", f"The '{col}' column's dates read "
+                    f"both month-first and day-first ({_rows(lines)}; "
+                    f"e.g., {t} ({_place(r0, date=False)}) is "
+                    f"{d.isoformat()} or {twin[ln].isoformat()}), and either "
+                    "reading puts every date on one weekday with no week "
+                    "missing, so nothing in the file says which. Write "
+                    "dates as YYYY-MM-DD.", lines)
+            parsed, rows = [], []
     shift = 0
     weekday = None
     wds = Counter(d.weekday() for _, _, d in parsed)
@@ -1578,45 +1620,67 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
     # number is a day over 12 (1/13/2024): 02/02/2024 or 03/04/2024 read
     # either way, whatever the weekdays say
     dates_md = next((t for _, t, _ in parsed if _month_first_only(t)), None)
-    if asof_both.n and rows and not asof_md:
-        # every M/D as_of reads both ways and none says which. A snapshot's
-        # as_of follows its newest week by days, so the snapshots decide:
-        # month-first stands when day-first would put a week after its
-        # as_of, or fits them less closely (or as closely, when the dates
-        # prove month-first); else the file is refused (a silent pick moves
-        # the snapshots by months). The fit: each snapshot's days from its
-        # newest week to its as_of, the longest first
-        def lags(reading):
-            newest = {}
-            for _, a, _, _, d, _, _ in rows:
-                k = reading(a)
-                newest[k] = max(newest.get(k, d), d)
-            return sorted(((k - d).days for k, d in newest.items()),
-                          reverse=True)
-        mf, df = lags(lambda a: a), lags(lambda a: asof_alt.get(a, a))
-        why = ""
-        if min(df) < 0:
-            pass                    # day-first puts a week after its as_of
-        elif min(mf) < 0:
-            why = ("read month-first, a snapshot would hold weeks after its "
-                   "as_of, while read day-first each as_of follows its "
-                   "newest week")
-        elif df < mf:
-            why = ("day-first fits the snapshots better (each as_of just "
-                   "after its newest week)")
-        elif df == mf and not dates_md:
-            why = ("both readings fit the snapshots, and no as_of or date "
-                   "is written with a day over 12 to say which")
+    if asof_both.n and rows:
+        # an as_of that reads both ways is read month-first only when the
+        # file proves that order (an as_of or a date written with a day
+        # over 12) and each such snapshot's newest week then ends 0 to
+        # MAX_ASOF_LAG days before it; else the file is refused. Which
+        # reading fits the snapshots more closely proves nothing: a
+        # snapshot taken weeks after its newest week, or the day before
+        # that week ends, can read days after it the other way round
+        newest = {}                         # as_of -> (newest week, row)
+        for ln, a, _, _, d, _, _ in rows:
+            if a in asof_alt and (a not in newest or d > newest[a][0]):
+                newest[a] = (d, ln)
+
+        def after(a, w):
+            """'3 days after' / '1 day before'"""
+            n = (a - w).days
+            return (f"{abs(n)} day{'s' if abs(n) != 1 else ''} "
+                    + ("after" if n >= 0 else "before"))
+
+        def lags(a):
+            """How far each reading of ``a`` falls from its newest week."""
+            t, twin = asof_alt[a]
+            w = newest[a][0]
+            return (f"{t} comes {after(a, w)} its snapshot's newest week, "
+                    f"ending {w.isoformat()}",
+                    f"read day-first, {after(twin, w)}")
+        far = sorted(((a - w).days, a) for a, (w, _) in newest.items()
+                     if not 0 <= (a - w).days <= MAX_ASOF_LAG)
+        why, proven = "", ""
+        ln, (t, a) = asof_both.eg[0]
+        if not (asof_md or dates_md):
+            why = ("nothing in the file says which: no as_of or date is "
+                   "written M/D with a day over 12 (as 1/13/2024)")
+            if a in newest:
+                mf, df = lags(a)
+                why += f". Read month-first, {mf}; {df}"
+        elif far:
+            n, a = far[0] if far[0][0] < 0 else far[-1]
+            t, ln = asof_alt[a][0], newest[a][1]
+            mf, df = lags(a)
+            why = ((f"read month-first, a snapshot would hold weeks after "
+                    f"its as_of ({mf}; {df})") if n < 0 else
+                   (f"read month-first, {mf}, but an as_of that reads both "
+                    f"ways is read month-first only up to {MAX_ASOF_LAG} "
+                    f"days after it ({df})"))
+            proven = (f" Other as_of dates are month-first (e.g., {asof_md})"
+                      if asof_md else f" The '{col}' dates are month-first "
+                      f"(e.g., {dates_md})") + (", but each as_of must "
+                                                "also fit its snapshot read "
+                                                "so.")
+        elif not asof_md:
+            rep.warnings.append(
+                f"Read the '{cols['as_of']}' column's dates month-first, as "
+                f"the '{col}' dates are (e.g., {dates_md}): {t} is "
+                f"{a.isoformat()}, not {asof_alt[a][1].isoformat()}.")
         if why:
-            ln, (t, a) = asof_both.eg[0]
             (r0,) = _rows_of(raw_rows, [ln])
-            proven = (f" The '{col}' dates are month-first (e.g., "
-                      f"{dates_md}), but the as_of dates must say so "
-                      "themselves." if dates_md else "")
             rep.add("as_of_ambiguous", f"The '{cols['as_of']}' column's "
                     "dates read both month-first and day-first "
                     f"({_rows(asof_both.lines, asof_both.n)}; e.g., {t} is "
-                    f"{a.isoformat()} or {_swapped(t).isoformat()}, row "
+                    f"{a.isoformat()} or {asof_alt[a][1].isoformat()}, row "
                     f"{ln}: {_place(r0)}), and "
                     f"{why}.{proven} Write as_of dates as YYYY-MM-DD.",
                     asof_both.lines)
@@ -1683,6 +1747,18 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
         rep.add("population_invalid", f"The '{cols['population']}' column "
                 f"has {len(bad_pop)} value(s) that are not positive numbers "
                 f"({_rows(lines)}; e.g., {cells(bad_pop)}).", lines)
+    if frac_pop:
+        lines = [ln for ln, _ in frac_pop]
+        eg = next((t for _, t in frac_pop if _EITHER.fullmatch(t)), None)
+        hint = (f"If the {'dots' if pmark == '.' else 'commas'} separate "
+                "thousands, write the numbers without them "
+                f"({eg} as {eg.replace(pmark, '')})." if eg else
+                "Write each as a whole number.")
+        rep.add("population_not_integer", f"The '{cols['population']}' "
+                "column must hold whole numbers of people, but "
+                f"{len(frac_pop)} {'is' if len(frac_pop) == 1 else 'are'} "
+                f"not ({_rows(lines)}; e.g., {cells(frac_pop)}). " + hint,
+                lines)
     if miss_pop:
         lines = [ln for ln, _ in miss_pop]
         rep.add("population_missing", f"The '{cols['population']}' column "
@@ -1731,7 +1807,8 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
             "inferred_kind": (None if either else
                               "count" if integral else "rate"),
             "target": tgt_used,
-            "has_population": has_pop and not (bad_pop or miss_pop),
+            "has_population": has_pop and not (bad_pop or miss_pop
+                                               or frac_pop),
             "has_as_of": has_asof,
             "as_of": [a.isoformat() for a in asofs],
             "week_start_sunday": shift == 6,
@@ -1883,6 +1960,28 @@ def _suggest(name: str) -> str:
     while s and not GROUP_RE.fullmatch(s[0]):   # a mark cannot lead
         s = s[1:].lstrip(" _")
     return s[:40] or "group1"
+
+
+def _weekly(rows: list, twin=None) -> bool:
+    """Whether ``rows`` (as _check_structure takes them, not yet moved)
+    read as weekly series, each date replaced by its ``twin`` (by row
+    number) where it has one: every date on one weekday, none twice in a
+    group's snapshot, no week missing and none ending after its as_of."""
+    twin = twin or {}
+    wds, seen, series = set(), set(), {}
+    for ln, a, name, _, d, _, _ in rows:
+        d = twin.get(ln, d)
+        wds.add(d.weekday())
+        if (len(wds) > 1 or (a, name, d) in seen
+                or (a is not None and week_ending(d) > a)):
+            return False
+        seen.add((a, name, d))
+        series.setdefault((a, name), []).append(d)
+    for ds in series.values():
+        ds.sort()
+        if any((q - p).days > MAX_GAP_DAYS for p, q in zip(ds, ds[1:])):
+            return False
+    return bool(rows)
 
 
 def _check_structure(rep: Report, rows: list, cols: dict, *, shift: int = 0,
