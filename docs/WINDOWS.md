@@ -505,11 +505,11 @@ standard `setup.sh` instructions inside the Linux environment.
   The PF engine has not yet been validated end to end on native Windows;
   until it is, machines without the engine automatically run the analogue
   engine only, exactly as on a Tier-A Mac.
-- **Windows CI is experimental.** Two jobs in
-  `.github/workflows/tests.yml` run on `windows-latest`, both with
-  `continue-on-error`, so a red Windows run does not fail the checks while
-  the port stabilizes. `test-windows (experimental)` runs the test suite.
-  `windows-setup-script (experimental)` is the only automated exercise of
+- **Windows CI is required.** Two jobs in
+  `.github/workflows/tests.yml` run on `windows-latest`, and a red Windows
+  run fails the checks as a red Ubuntu one does. `test-windows` runs the
+  test suite.
+  `windows-setup-script` is the only automated exercise of
   the first-run path: it parses `setup.ps1` under Windows PowerShell 5.1,
   then runs it five times through the command line `FluBNF.bat` uses --
   once with the data fetch skipped, once performing the real sparse

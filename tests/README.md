@@ -10,7 +10,7 @@ Two pytest suites: `tests/` covers the `flubnf` package and the root scripts, `a
 | Both suites, this machine's hub and engine | `.venv/bin/python -m pytest` (`testpaths` in `pyproject.toml`) |
 | One file | `.venv/bin/python -m pytest app/tests/test_oracle_step.py` |
 
-CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetgen ruff` and runs the first line on Ubuntu and, as experimental jobs, Windows (Python 3.11 and 3.12); a third job runs `setup.ps1` five ways. `.githooks/pre-push` runs the same command before a push to main.
+CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetgen ruff` and runs the first line on Ubuntu and Windows (Python 3.11 and 3.12); a third job runs `setup.ps1` five ways. All of them are required. `.githooks/pre-push` runs the same command before a push to main.
 
 ## What skips, and why
 

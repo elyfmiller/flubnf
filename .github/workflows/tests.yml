@@ -51,11 +51,10 @@ jobs:
             tail -n 1 pytest.out;
             echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
-  # EXPERIMENTAL (continue-on-error): make required once green for a few weeks.
+  # Required, like the ubuntu job: a red Windows leg fails the run.
   test-windows:
-    name: "test-windows (experimental)"
+    name: "test-windows"
     runs-on: windows-latest
-    continue-on-error: true
     env: {PYTHONUTF8: "1"}
     # A fuse above the worst run (71 min); lower it once the hour is explained.
     timeout-minutes: 90
@@ -107,7 +106,7 @@ jobs:
             tail -n 1 pytest.out;
             echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
-  # EXPERIMENTAL: the only automated run of setup.ps1, under Windows
+  # The only automated run of setup.ps1, under Windows
   # PowerShell 5.1 launched from cmd as FluBNF.bat does. One run per machine
   # state: 1 no fetch/probe; 2 real sparse clone + real fork probe (no
   # credentials by design, so the engine is always missing and setup must
@@ -116,9 +115,8 @@ jobs:
   # Not covered: FluBNF.bat itself, winget/Perl, the probe timeout, non-ASCII
   # paths, the no-git branch.
   windows-setup-script:
-    name: "windows-setup-script (experimental)"
+    name: "windows-setup-script"
     runs-on: windows-latest
-    continue-on-error: true
     # above the per-step budgets' sum, so a hang is blamed on its step
     timeout-minutes: 60
     steps:
