@@ -413,10 +413,13 @@ def _hub_tag(loc: str) -> str:
 
 
 def dataset_tag(loc: str) -> str:
-    """A dataset group's stem: letters, digits and '_' only (a national
-    group may be spelled 'US (national)'). Group names are unique after
-    casefold and space-to-underscore (datasets._norm_name), so stems are."""
-    return re.sub(r"[^A-Za-z0-9_]", "_", loc)
+    """A dataset group's stem (datasets.pf_stem): letters, digits and '_'
+    only (a national group may be spelled 'US (national)'), plus a short
+    digest for a name with non-ASCII letters. A dataset's group names are
+    unique after that stem and casefold (datasets._norm_name), so stems
+    are."""
+    from app.core.datasets import pf_stem
+    return pf_stem(loc)
 
 
 def prepare(spec, workroot: Path) -> list:

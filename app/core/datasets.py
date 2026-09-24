@@ -103,8 +103,7 @@ VINTAGE_PREFIX = "target-hospital-admissions_"
 MAX_GAP_DAYS = 8
 
 #: group names: they become PF directory names and BNGL suffixes (through
-#: engines.pf.dataset_tag, which keeps ASCII letters, digits and '_'),
-#: ledger keys and HTML text. Letters of any script are kept.
+#: pf_stem), ledger keys and HTML text. Letters of any script are kept.
 GROUP_RE = re.compile(r"[^\W_][\w ]{0,39}")
 
 #: 'all' means every location to the console, so no group may be called it
@@ -645,11 +644,22 @@ def _norm_header(h: str) -> str:
     return re.sub(r"[\s_\-.]+", "", (h or "").strip().strip('"').lower())
 
 
+def pf_stem(name: str) -> str:
+    """A group's particle-filter cell-directory and BNGL-suffix stem
+    (engines.pf.dataset_tag): ASCII letters, digits and '_', anything else
+    '_'. A name with non-ASCII letters also gets a short digest of itself
+    case-folded, so '東京' and '大阪' (both '__') or 'Zürich' and 'Zérich'
+    stay apart; an ASCII name's stem is unchanged."""
+    stem = re.sub(r"[^A-Za-z0-9_]", "_", name)
+    if not name.isascii():
+        stem += "_" + hashlib.sha1(name.casefold().encode()).hexdigest()[:6]
+    return stem
+
+
 def _norm_name(name: str) -> str:
-    """The form two group names must not share: the PF cell directory stem
-    (engines.pf.dataset_tag: anything but ASCII letters, digits and '_'
-    becomes '_'), folded, as macOS/Windows filesystems fold case."""
-    return re.sub(r"[^A-Za-z0-9_]", "_", name).casefold()
+    """The form two group names must not share: the PF stem, folded, as
+    macOS/Windows filesystems fold case."""
+    return pf_stem(name).casefold()
 
 
 def _text(cell: str) -> str:
@@ -1353,8 +1363,10 @@ def _check_groups(rep: Report, raw_rows: list, cols: dict):
     if reserved:
         rep.add("group_reserved", f"Group name(s) {_examples(reserved)} are "
                 "reserved (the console reads 'all' as every location; "
-                f"{_rows(first[n] for n in reserved)}); rename them, e.g. "
-                "'Overall'.", [first[n] for n in reserved])
+                f"{_rows(first[n] for n in reserved)}). Rename it National "
+                "if it is the total of the other groups (then it is kept "
+                "out of their pooled scores), else, e.g., 'All ages'.",
+                [first[n] for n in reserved])
     national = sorted({n for n, keys in name2keys.items()
                        if is_national_name(n)
                        or any(is_national_name(k) for k in keys)})
@@ -1371,8 +1383,8 @@ def _check_groups(rep: Report, raw_rows: list, cols: dict):
     if clash:
         lines = [first[n] for c in clash for n in c]
         rep.add("group_collision", f"{len(clash)} set(s) of group names "
-                "differ only by case, space vs underscore or non-ASCII "
-                "letters, and would collide in folder names "
+                "differ only by case, spaces, underscores or punctuation, "
+                "and would collide in folder names "
                 f"({_rows(lines)}; e.g., "
                 f"{_examples(' / '.join(repr(x) for x in c) for c in clash)}).",
                 lines)
@@ -1389,6 +1401,9 @@ def _check_groups(rep: Report, raw_rows: list, cols: dict):
 
 
 def _suggest(name: str) -> str:
+    bare = re.sub(r"[^\w ]+", "", name).strip()
+    if is_national_name(bare):                 # 'U.S.' -> 'US', not 'U_S'
+        return bare
     s = re.sub(r"[^\w ]+", "_", name).strip(" _")[:40]
     return s or "group1"
 

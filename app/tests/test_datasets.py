@@ -11,6 +11,7 @@ from __future__ import annotations
 import csv
 import io
 import os
+import re
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -278,7 +279,35 @@ def test_letters_of_any_script_are_group_names(name):
 @pytest.mark.parametrize("name", ["All", "all", "ALL"])
 def test_reserved_group_names(name):
     rows = [f"{d.isoformat()},{name},1" for d in sats()]
-    only(D.validate(grouped_csv(rows), kind="count"), "group_reserved")
+    p = only(D.validate(grouped_csv(rows), kind="count"), "group_reserved")
+    # 'Overall' was once suggested: it is not national, so it would pool
+    assert "Overall" not in p.message and "Rename it National" in p.message
+
+
+@pytest.mark.parametrize("a,b", [("東京", "大阪"), ("Zürich", "Zérich"),
+                                 ("Zürich", "Z_rich"), ("Niños", "Ninos")])
+def test_non_ascii_names_of_one_shape_are_distinct_groups(a, b):
+    """The PF stem once kept only ASCII: '東京' and '大阪' were both '__',
+    so a CJK dataset could hold one group per name length."""
+    rows = grouped_series(groups=(a, b))
+    ds = D.ingest(grouped_csv(rows), "intl", kind="count")
+    assert sorted(ds.groups) == sorted([a, b])
+    assert D.pf_stem(a).casefold() != D.pf_stem(b).casefold()
+
+
+def test_the_pf_stem_of_an_ascii_name_is_unchanged():
+    from app.core.engines import pf as PF
+    assert D.pf_stem("US (national)") == "US__national_"
+    assert PF.dataset_tag("Age 0") == "Age_0"
+    t = PF.dataset_tag("Zürich")
+    assert re.fullmatch(r"Z_rich_[0-9a-f]{6}", t)
+    assert t == PF.dataset_tag("Zürich") != PF.dataset_tag("Zérich")
+
+
+def test_a_dotted_national_name_is_suggested_bare():
+    rows = grouped_series(groups=("Adult", "U.S."))
+    p = only(D.validate(grouped_csv(rows), kind="count"), "group_name")
+    assert "'U.S.' -> 'US'" in p.message
 
 
 @pytest.mark.parametrize("name", ["US", "usa", "United States",
@@ -310,7 +339,7 @@ def test_no_national_group_is_recorded_as_none():
 
 
 @pytest.mark.parametrize("a,b", [("Age 0", "Age_0"), ("Adult", "adult"),
-                                 ("Age 0", "age_0")])
+                                 ("Age 0", "age_0"), ("Zürich", "zürich")])
 def test_group_names_colliding_after_underscore_or_casefold(a, b):
     rows = grouped_series(groups=(a, b))
     p = only(D.validate(grouped_csv(rows), kind="count"), "group_collision")
