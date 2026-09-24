@@ -520,6 +520,10 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
 .perf{width:100%}
 .perf td,.perf th{padding:.28rem .6rem}
 .perf td.rel{font-weight:650}
+/* season labels never break mid-label ("2025-" / "26") */
+.perf td:first-child{white-space:nowrap}
+/* home: the performance tables take the wider track beside Start here */
+@media(min-width:901px){.grid2.homeperf{grid-template-columns:minmax(0,3fr) minmax(15rem,2fr)}}
 .perf tr.total td{font-weight:750;border-top:2px solid var(--line);
   border-bottom:0}
 /* component-card lead visual: fixed-height stage so the three cards align */
@@ -607,6 +611,7 @@ a.skip:focus{left:0}
 /* Forecast form modes (Real-time / Vintage) and the advanced group */
 .modes{display:flex;gap:.4rem;margin:.1rem 0 .5rem;align-items:center}
 .modes > [role=tablist]{display:flex;gap:.4rem}
+.modes .pill.mode{margin-top:0}
 .pill.mode{cursor:pointer;background:transparent;color:var(--ink);border:1px solid var(--gold);font:inherit;font-size:.85rem}
 .pill.mode[aria-selected="true"]{background:var(--gold-bright);color:#111;border-color:var(--gold-bright)}
 .pill.mode:focus-visible{outline:2px solid var(--gold-bright);outline-offset:2px}
