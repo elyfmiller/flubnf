@@ -126,11 +126,14 @@ def spec_settings(spec) -> list:
     return [(k, v) for k, v in pairs if v not in ("", None)]
 
 
+#: the Groundhog wherever it runs on a custom dataset (its export file
+#: keeps the model name FluBNF-Groundhog)
+GROUNDHOG_OWN_DATA = "Groundhog (own data)"
 #: a dataset run's members, as its settings name them
 DATASET_ENGINE_LABELS = {
-    "all": "Groundhog and plain SIHRS particle filter",
+    "all": f"{GROUNDHOG_OWN_DATA} and plain SIHRS particle filter",
     "pf": "plain SIHRS particle filter only",
-    "analogue": "Groundhog only"}
+    "analogue": f"{GROUNDHOG_OWN_DATA} only"}
 
 
 def groups_phrase(locations) -> str:
@@ -168,8 +171,8 @@ def dataset_settings(d: dict) -> list:
         pairs.append(("same-day week", "treated as unreported"
                       if d.get("drop_same_day") else "kept"))
     if engine in ("all", "analogue"):
-        from app.core.custom_run import analogue_label
-        pairs.append(("Groundhog donors", analogue_label(extra)))
+        from app.core.custom_run import analogue_donors
+        pairs.append((GROUNDHOG_OWN_DATA, analogue_donors(extra)))
     mk = model_settings_label(d)
     if mk:
         pairs.append(("model settings", mk.split(";", 1)[0]))

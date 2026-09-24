@@ -33,6 +33,8 @@ from fastapi.responses import (HTMLResponse, JSONResponse, PlainTextResponse,
                                RedirectResponse)
 from starlette.concurrency import run_in_threadpool
 
+from app.core.runs import GROUNDHOG_OWN_DATA
+
 router = APIRouter()
 
 #: what the forecast form last held, per dataset (never the hub's _last_form)
@@ -40,12 +42,17 @@ _LAST: dict = {}
 #: the replay a worker is running now: {"id", "stamp"} or {}
 _REPLAY: dict = {}
 
+#: the Groundhog wherever it runs on a dataset (exported as FluBNF-Groundhog)
+GROUNDHOG = GROUNDHOG_OWN_DATA
 #: the dataset members as the Forecast form names them
-ENGINE_NAMES = {"all": "Both (plain SIHRS particle filter + Groundhog)",
+ENGINE_NAMES = {"all": f"Both: plain SIHRS particle filter + {GROUNDHOG}",
                 "pf": "plain SIHRS particle filter only",
-                "analogue": "Groundhog only"}
+                "analogue": f"{GROUNDHOG} only"}
+#: the members as the Retrospective card's replay form names them
+REPLAY_ENGINE_NAMES = {"analogue": f"{GROUNDHOG} only",
+                       "all": f"{GROUNDHOG} and plain SIHRS particle filter"}
 #: fan and table names on dataset pages
-MEMBER_NAMES = {"pf": "plain SIHRS PF", "analogue": "Groundhog"}
+MEMBER_NAMES = {"pf": "plain SIHRS PF", "analogue": GROUNDHOG}
 #: the upload body may exceed the file by the multipart framing and fields
 FORM_SLACK = 64 * 1024
 #: where a stored upload opens (the upload box's buttons post `next`)
@@ -708,7 +715,8 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
     view = _dataset_view(ds)
     if engine in ("all", "pf") and not view["pf_ok"]:
         S._flash(f"The plain SIHRS particle filter cannot run on {ds.name}: "
-                 f"{view['pf_why']}. Choose the Groundhog. Nothing was run.")
+                 f"{view['pf_why']}. Choose {GROUNDHOG} only. Nothing was "
+                 "run.")
         return RedirectResponse(here, status_code=303)
     groups = [x.strip() for l in locations for x in str(l).split("|")
               if x.strip()]
@@ -944,6 +952,8 @@ def retro_context(selected: str = "") -> dict:
     return {"dataset_replay": {"datasets": out,
                                "pf_state": _S()._pf_engine_state(),
                                "running": dict(_REPLAY),
+                               "names": MEMBER_NAMES,
+                               "engine_names": REPLAY_ENGINE_NAMES,
                                "selected": (selected if any(
                                    d["id"] == selected for d in out)
                                    else "")}}
@@ -962,8 +972,8 @@ def replay_start(background: BackgroundTasks, dataset: str = Form(...),
         S._flash("That dataset no longer exists. Nothing was started.")
         return RedirectResponse("/retro#dataset-replay", status_code=303)
     if engine not in CX.ENGINES:
-        S._flash("Choose the Groundhog, or the Groundhog with the plain SIHRS "
-                 "particle filter (plain). Nothing was started.")
+        S._flash(f"Choose {GROUNDHOG} only, or {GROUNDHOG} and the plain "
+                 "SIHRS particle filter. Nothing was started.")
         return RedirectResponse("/retro#dataset-replay", status_code=303)
     if engine == "all" and not (ds.pf_eligible
                                 and S._pf_engine_state() == "ready"):
@@ -1116,7 +1126,10 @@ def replay_page(request: Request, ds_id: str, stamp: str, h: str = "0"):
         ("weeks", f"{meta.get('total_weeks', 0)} ({meta.get('first')} to "
                   f"{meta.get('last')})"),
         ("groups", ", ".join(meta.get("groups") or [])),
-        ("Groundhog", meta.get("analogue") or ""),
+        # the donors (a replay recorded before the own-data label
+        # carries only the full label)
+        (GROUNDHOG, meta.get("analogue_donors") or meta.get("analogue")
+         or ""),
         ("particle filter", pf),
         ("weeks dropped", str(meta.get("weeks_to_drop", 0))),
         ("baseline", meta.get("baseline") or "")]

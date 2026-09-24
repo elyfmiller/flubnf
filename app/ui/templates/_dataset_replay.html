@@ -27,10 +27,9 @@
    {{ tips.tip("dsr-kind-tip", "vintage-true and final data", "With an as_of column, each replayed week sees the snapshot that held it, as it stood then. Without one, each week is cut from the final series: later revisions leak in, so the scores are optimistic and are labelled so wherever they appear.") }}</p>
   {{ tips.label("Groups", "dsr-groups", "Every group by default; a national group is scored beside the others, never pooled.", for_="dsr-groups") }}
   <select name="groups" id="dsr-groups" multiple size="4"></select>
-  {{ tips.label("Models", "dsr-engine", "The Groundhog is instant. The plain SIHRS particle filter (no Oracle step) needs counts with a population and the engine, and takes minutes per week.", for_="dsr-engine") }}
-  <select name="engine" id="dsr-engine">
-   <option value="analogue">Groundhog only</option>
-   <option value="all">Groundhog and plain SIHRS particle filter</option></select>
+  {{ tips.label("Models", "dsr-engine", dr.names.analogue ~ " is instant. The plain SIHRS particle filter (no Oracle step) needs counts with a population and the engine, and takes minutes per week.", for_="dsr-engine") }}
+  <select name="engine" id="dsr-engine">{% for e, text in dr.engine_names.items() %}
+   <option value="{{ e }}">{{ text }}</option>{% endfor %}</select>
   {{ tips.label("Weeks to drop", "dsr-drop", "Ignore each week's newest 0 to 4 weeks (the latest reports, often still incomplete); horizons keep their labels.", for_="dsr-drop") }}
   <input type="number" name="weeks_to_drop" id="dsr-drop" value="0" min="0" max="4">
   <div class="lblrow"><label class="ck" for="dsr-fs"><input type="checkbox" name="flusurv" value="1" id="dsr-fs"> Add FluSurv-NET donors</label>
@@ -43,7 +42,7 @@
  <div class="archrow">
   <span class="grow"><strong>{{ r.first }} to {{ r.last }}</strong>
    <span class="hint">· {{ r.kind }} · {{ r.done }}/{{ r.total }} weeks · {{ r.status }}{% for m, v in r.rels.items() %}
-    · {{ "Groundhog" if m == "analogue" else "plain SIHRS PF" }} relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{% endfor %}{% if r.rels %} vs in-house persistence baseline{% endif %}</span></span>
+    · {{ dr.names.get(m, m) }} relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{% endfor %}{% if r.rels %} vs in-house persistence baseline{% endif %}</span></span>
   <a href="/retro/dataset/{{ d.id }}/{{ r.stamp }}"><button class="quiet" type="button">Results →</button></a>
  </div>
  {% endfor %}

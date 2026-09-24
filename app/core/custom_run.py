@@ -35,12 +35,14 @@ import pandas as pd
 
 from app.core import horizons as hz
 from app.core import submit as SB
+from app.core.runs import GROUNDHOG_OWN_DATA
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL
 
 #: member key -> exported model id (never a registered NAU_PyBNF identity)
 EXPORT_IDS = {"analogue": "FluBNF-Groundhog", "pf": "FluBNF-SIHRS-PF"}
-#: member key -> what pages call it on custom data
-MEMBER_LABELS = {"analogue": "Groundhog",
+#: member key -> what pages call it on custom data ("Groundhog (own data)":
+#: the export keeps FluBNF-Groundhog)
+MEMBER_LABELS = {"analogue": GROUNDHOG_OWN_DATA,
                  "pf": "plain SIHRS particle filter"}
 #: the baseline every custom relWIS is measured against, by name
 BASELINE = "in-house persistence baseline"
@@ -59,14 +61,20 @@ class Stopped(Exception):
     pass
 
 
-def analogue_label(extra) -> str:
-    """Which Groundhog a dataset run ran: the calendar analogue on the
-    dataset's own donors, or with the FluSurv-NET bank opted in."""
+def analogue_donors(extra) -> str:
+    """Where a dataset run's Groundhog drew its donors: the dataset's own
+    weeks, or those plus the FluSurv-NET bank when the run opted in."""
     extra = extra if isinstance(extra, dict) else {}
     if extra.get("aux_pools"):
-        return ("Groundhog with FluSurv-NET donors ("
+        return ("calendar analogue with FluSurv-NET donors ("
                 + str(extra.get("analogue_aux") or "auxiliary bank") + ")")
-    return "Groundhog: calendar analogue on the dataset's own weeks"
+    return "calendar analogue on the dataset's own weeks"
+
+
+def analogue_label(extra) -> str:
+    """Which Groundhog a dataset run ran, named as the console names it on
+    custom data: 'Groundhog (own data): <its donors>'."""
+    return f"{GROUNDHOG_OWN_DATA}: {analogue_donors(extra)}"
 
 
 def key_col(ds) -> str:
