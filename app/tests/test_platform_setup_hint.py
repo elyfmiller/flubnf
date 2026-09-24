@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from fastapi.testclient import TestClient           # noqa: E402
 
-from app.ui import server                           # noqa: E402
+from app.ui import templating as ui_templating      # noqa: E402
 from app.ui.server import app as srv                # noqa: E402
 
 client = TestClient(srv)
@@ -25,20 +25,20 @@ def test_engine_setup_hint_names_a_script_this_platform_can_run(monkeypatch):
         ("win32", WINDOWS_SCRIPT, MAC_ONLY),
         ("linux", "setup_engine.sh", MAC_ONLY),
     ):
-        monkeypatch.setattr(server, "_platform", lambda p=platform: p)
-        hint = str(server._engine_setup_hint())
+        monkeypatch.setattr(ui_templating, "_platform", lambda p=platform: p)
+        hint = str(ui_templating._engine_setup_hint())
         assert wanted in hint, (platform, hint)
         assert unwanted not in hint, (platform, hint)
     # and it is markup, not escaped text: the <code> must survive rendering
-    monkeypatch.setattr(server, "_platform", lambda: "darwin")
-    assert "<code>" in str(server._engine_setup_hint())
+    monkeypatch.setattr(ui_templating, "_platform", lambda: "darwin")
+    assert "<code>" in str(ui_templating._engine_setup_hint())
 
 
 def test_no_console_page_names_a_mac_only_script_by_itself_on_windows(
         monkeypatch):
     """A page may name SetupEngine.command only beside the Windows equivalent
     (methods.html lists all three for the platform-neutral public site)."""
-    monkeypatch.setattr(server, "_platform", lambda: "win32")
+    monkeypatch.setattr(ui_templating, "_platform", lambda: "win32")
     for path in ("/", "/methods", "/retro"):
         r = client.get(path)
         assert r.status_code == 200, (path, r.status_code)

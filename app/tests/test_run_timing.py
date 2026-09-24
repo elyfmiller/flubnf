@@ -21,6 +21,10 @@ from fastapi.testclient import TestClient             # noqa: E402
 from app.core import playback, report_season, retro   # noqa: E402
 from app.core.runs import Ledger, RunSpec, fmt_hms    # noqa: E402
 from app.ui import server as srv                      # noqa: E402
+from app.ui.routes import retro as ui_retro           # noqa: E402
+from app.ui import pipeline as ui_pipeline            # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
+from app.ui import state as ui_state                  # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL  # noqa: E402
 
 client = TestClient(srv.app)
@@ -32,13 +36,13 @@ W1, W2, W3 = "2098-11-07", "2098-11-14", "2098-11-21"
 @pytest.fixture(autouse=True)
 def _isolated_status():
     """Snapshot and restore the module-level status stores."""
-    status_before = dict(srv._status)
-    retro_before = dict(srv._retro_status)
-    stop_before = set(srv._retro_stop)
+    status_before = dict(ui_state._status)
+    retro_before = dict(ui_retro_seasons._retro_status)
+    stop_before = set(ui_retro_seasons._retro_stop)
     yield
-    srv._status.clear(); srv._status.update(status_before)
-    srv._retro_status.clear(); srv._retro_status.update(retro_before)
-    srv._retro_stop.clear(); srv._retro_stop.update(stop_before)
+    ui_state._status.clear(); ui_state._status.update(status_before)
+    ui_retro_seasons._retro_status.clear(); ui_retro_seasons._retro_status.update(retro_before)
+    ui_retro_seasons._retro_stop.clear(); ui_retro_seasons._retro_stop.update(stop_before)
 
 
 def _fake_season(monkeypatch, root, weeks, seconds_per_week=60.0):
@@ -256,31 +260,31 @@ def test_stale_heartbeat_unmasks_a_dead_worker():
 
 
 def test_season_status_stops_claiming_a_dead_run(tmp_path, monkeypatch):
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     root = tmp_path / SEASON
     root.mkdir(parents=True)
-    srv._retro_status[SEASON] = "running"      # the claim the dead worker left
+    ui_retro_seasons._retro_status[SEASON] = "running"      # the claim the dead worker left
     retro.write_meta(root, {"status": "running", "elapsed_s": 12.0,
                             "heartbeat_utc": time.time() - 10})
-    assert srv._season_status(SEASON) == "running"
+    assert ui_retro_seasons._season_status(SEASON) == "running"
     retro.write_meta(root, {"status": "running", "elapsed_s": 12.0,
                             "heartbeat_utc": time.time()
                             - retro.HEARTBEAT_STALE_S - 60})
-    assert srv._season_status(SEASON) == "interrupted"
-    assert srv._retro_status[SEASON] == "interrupted"   # the claim is released
+    assert ui_retro_seasons._season_status(SEASON) == "interrupted"
+    assert ui_retro_seasons._retro_status[SEASON] == "interrupted"   # the claim is released
     assert client.get("/api/busy").json()["retro"] == {}
 
 
 def test_season_status_reads_pause_from_the_record(tmp_path, monkeypatch):
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     root = tmp_path / SEASON
     root.mkdir(parents=True)
-    srv._retro_status[SEASON] = "running"      # the worker is alive, holding
+    ui_retro_seasons._retro_status[SEASON] = "running"      # the worker is alive, holding
     retro.write_meta(root, {"status": "paused", "elapsed_s": 30.0,
                             "heartbeat_utc": time.time()})
-    assert srv._season_status(SEASON) == "paused"
+    assert ui_retro_seasons._season_status(SEASON) == "paused"
     # a paused season still holds the engine: the guard must warn over it
     assert client.get("/api/busy").json()["retro"] == {SEASON: "paused"}
 
@@ -288,12 +292,12 @@ def test_season_status_reads_pause_from_the_record(tmp_path, monkeypatch):
 # --------------------------------------------------------------- API shapes
 
 def test_api_progress_carries_the_console_wall_clock():
-    srv._status.update({"running": None, "started_utc": None,
+    ui_state._status.update({"running": None, "started_utc": None,
                         "phase": "", "run_label": "", "workroot": None})
     idle = client.get("/api/progress").json()
     assert idle["started_utc"] is None and idle["elapsed_s"] is None
     t0 = time.time() - 125.0
-    srv._status.update({"running": "all:x", "started_utc": t0,
+    ui_state._status.update({"running": "all:x", "started_utc": t0,
                         "run_label": "2099-01-02 · 3 state(s) + US"})
     live = client.get("/api/progress").json()
     assert live["started_utc"] == t0
@@ -301,13 +305,13 @@ def test_api_progress_carries_the_console_wall_clock():
 
 
 def test_api_retro_progress_shape_and_eta(tmp_path, monkeypatch):
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     root = tmp_path / SEASON
     for w in (W1, W2):
         (root / "weeks" / w).mkdir(parents=True)
         (root / "weeks" / w / "samples.json").write_text("{}")
-    srv._retro_status[SEASON] = "running"
+    ui_retro_seasons._retro_status[SEASON] = "running"
     retro.write_meta(root, {"status": "running", "total_weeks": 10,
                             "weeks_completed": 2, "elapsed_s": 240.0,
                             "segment_start_utc": None,
@@ -327,7 +331,7 @@ def test_api_retro_progress_shape_and_eta(tmp_path, monkeypatch):
     level = (100.0 * w + 140.0) / (w + 1.0)
     measured = [(0 / 9, 100.0), (1 / 9, 140.0)]
     remaining = [j / 9 for j in range(2, 10)]
-    _, mid, _ = srv._eta_estimate(measured, remaining)
+    _, mid, _ = ui_retro_seasons._eta_estimate(measured, remaining)
     assert p["eta_s"] == pytest.approx(mid)
     assert p["eta_s"] > level * 8 > 120.0 * 8
     # a RANGE: two measured weeks give the widest band (0.5x to 1.5x)
@@ -341,11 +345,11 @@ def test_api_retro_progress_shape_and_eta(tmp_path, monkeypatch):
 
 
 def test_api_retro_progress_withholds_eta_when_paused(tmp_path, monkeypatch):
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     root = tmp_path / SEASON
     root.mkdir(parents=True)
-    srv._retro_status[SEASON] = "running"
+    ui_retro_seasons._retro_status[SEASON] = "running"
     retro.write_meta(root, {"status": "paused", "total_weeks": 10,
                             "elapsed_s": 240.0, "week_seconds": {W1: 100.0},
                             "heartbeat_utc": time.time()})
@@ -360,11 +364,11 @@ def test_api_retro_progress_withholds_eta_when_paused(tmp_path, monkeypatch):
 # -------------------------------------------------------- control endpoints
 
 def _running_root(tmp_path, monkeypatch):
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     root = tmp_path / SEASON
     root.mkdir(parents=True)
-    srv._retro_status[SEASON] = "running"
+    ui_retro_seasons._retro_status[SEASON] = "running"
     retro.write_meta(root, {"status": "running", "total_weeks": 3,
                             "elapsed_s": 10.0, "heartbeat_utc": time.time()})
     return root
@@ -375,8 +379,8 @@ def test_season_stop_endpoint_sets_the_flag(tmp_path, monkeypatch):
     r = client.post(f"/retro/{SEASON}/stop", follow_redirects=False)
     assert r.status_code == 303
     assert retro.stop_path(root).exists()
-    assert srv._retro_status[SEASON] == "stopping"
-    assert SEASON in srv._retro_stop
+    assert ui_retro_seasons._retro_status[SEASON] == "stopping"
+    assert SEASON in ui_retro_seasons._retro_stop
 
 
 def test_season_pause_and_resume_endpoints(tmp_path, monkeypatch):
@@ -390,9 +394,9 @@ def test_season_pause_and_resume_endpoints(tmp_path, monkeypatch):
 
 
 def test_season_controls_are_harmless_when_idle(tmp_path, monkeypatch):
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
-    srv._retro_status.pop(SEASON, None)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
+    ui_retro_seasons._retro_status.pop(SEASON, None)
     for verb in ("stop", "pause"):
         r = client.post(f"/retro/{SEASON}/{verb}", follow_redirects=False)
         assert r.status_code == 303
@@ -400,8 +404,8 @@ def test_season_controls_are_harmless_when_idle(tmp_path, monkeypatch):
 
 
 def test_season_controls_refuse_an_unrecognized_name(tmp_path, monkeypatch):
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     for verb in ("stop", "pause", "resume"):
         r = client.post(f"/retro/not-a-season/{verb}", follow_redirects=False)
         assert r.status_code == 303
@@ -417,16 +421,16 @@ def test_global_stop_also_releases_a_paused_season(tmp_path, monkeypatch):
     assert r.status_code == 303
     assert retro.stop_path(root).exists()
     assert not retro.pause_path(root).exists()   # so the worker can wake
-    assert srv._retro_status[SEASON] == "stopping"
+    assert ui_retro_seasons._retro_status[SEASON] == "stopping"
 
 
 def test_stop_endpoint_stops_the_season_worker_end_to_end(tmp_path,
                                                           monkeypatch):
     """Stop click -> flag -> current week finishes -> status ledgered -> tree
     ready to resume."""
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
-    monkeypatch.setattr(srv, "_sleep_guard", lambda: None)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_pipeline, "_sleep_guard", lambda: None)
     root = tmp_path / SEASON
     _fake_season(monkeypatch, root, [W1, W2, W3])
     real_week = retro.run_week
@@ -443,20 +447,20 @@ def test_stop_endpoint_stops_the_season_worker_end_to_end(tmp_path,
 
     monkeypatch.setattr(retro, "run_week", stop_via_endpoint)
     monkeypatch.setattr(retro, "score_season", no_score)
-    srv._retro_bg(SEASON, ["Ohio"], width=1)
-    assert srv._retro_status[SEASON] == "stopped"
+    ui_retro._retro_bg(SEASON, ["Ohio"], width=1)
+    assert ui_retro_seasons._retro_status[SEASON] == "stopped"
     assert retro.week_done(root, W1)              # the completed week is kept
     assert not retro.week_done(root, W2)          # no half-week was started
     assert not retro.stop_path(root).exists()     # the flag is consumed
-    assert SEASON not in srv._retro_stop
+    assert SEASON not in ui_retro_seasons._retro_stop
     assert retro.read_meta(root)["status"] == "stopped"
 
 
 def test_pause_endpoint_holds_the_season_worker_end_to_end(tmp_path,
                                                            monkeypatch):
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
-    monkeypatch.setattr(srv, "_sleep_guard", lambda: None)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_pipeline, "_sleep_guard", lambda: None)
     root = tmp_path / SEASON
     _fake_season(monkeypatch, root, [W1, W2])
     real_week = retro.run_week
@@ -476,10 +480,10 @@ def test_pause_endpoint_holds_the_season_worker_end_to_end(tmp_path,
     monkeypatch.setattr(retro, "run_week", pause_via_endpoint)
     monkeypatch.setattr(retro, "_sleep", fake_sleep)
     monkeypatch.setattr(retro, "score_season", lambda *a, **k: pd.DataFrame())
-    srv._retro_bg(SEASON, ["Ohio"], width=1)
+    ui_retro._retro_bg(SEASON, ["Ohio"], width=1)
     assert seen == ["paused"]
     assert retro.week_done(root, W2)              # Resume carried it on
-    assert srv._retro_status[SEASON] == "done"
+    assert ui_retro_seasons._retro_status[SEASON] == "done"
 
 
 # ------------------------------------------------------------ ledger elapsed
@@ -530,11 +534,11 @@ def test_run_all_closes_its_ledger_row_end_to_end(tmp_path, monkeypatch):
     from app.core.engines import analogue as an_engine
     from app.core.runs import RunSpec
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
-    monkeypatch.setattr(srv, "_sleep_guard", lambda: None)
+    monkeypatch.setattr(ui_pipeline, "_sleep_guard", lambda: None)
     monkeypatch.setattr(an_engine, "run", lambda spec: {})
     spec = RunSpec(engine="analogue", forecast_date="2098-01-03",
                    locations=["Ohio"])
-    srv._run_all(spec)
+    ui_pipeline._run_all(spec)
     row = sqlite3.connect(tmp_path / "ledger.sqlite").execute(
         "SELECT run_id, status, created_utc, finished_utc, elapsed_s, "
         "workroot FROM runs").fetchall()
@@ -607,7 +611,7 @@ def test_forecast_running_card_shows_a_live_elapsed_clock():
     r = client.get("/forecast")
     assert r.status_code == 200
     assert '<script src="/static/quips.js">' in r.text
-    srv._status.update({"running": "all:x", "run_label": "x",
+    ui_state._status.update({"running": "all:x", "run_label": "x",
                         "started_utc": time.time() - 30})
     html = client.get("/forecast").text
     assert 'id="elapsed"' in html

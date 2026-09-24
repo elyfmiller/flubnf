@@ -1,4 +1,4 @@
-"""Your datasets on the Storage tab (server._storage_inventory,
+"""Your datasets on the Storage tab (routes/storage._storage_inventory,
 datasets_ui.storage_rows, POST /storage/datasets/{id}/delete).
 
 Each dataset is listed with its size holding everything it owns: the
@@ -23,6 +23,10 @@ from app.core import retro
 from app.core.runs import Ledger, RunSpec
 from app.ui import datasets_ui as DU
 from app.ui import server as srv
+from app.ui.routes import storage as ui_storage
+from app.ui import retro_seasons as ui_retro_seasons
+from app.ui import shared as ui_shared
+from app.ui import state as ui_state
 
 from test_datasets_ui import TEMPLATE                   # noqa: E402
 
@@ -34,14 +38,14 @@ def state(tmp_path, monkeypatch):
     """A dataset with one run and one replay, plus one hub run."""
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path / "state")
     monkeypatch.setattr(D, "ROOT", tmp_path / "datasets")
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path / "retro")
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path / "retro")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     import flubnf.settings as settings_mod
     monkeypatch.setattr(settings_mod, "HUB", tmp_path / "hub")
-    before = dict(srv._status)
-    srv._status["running"] = None
+    before = dict(ui_state._status)
+    ui_state._status["running"] = None
     DU._REPLAY.clear()
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     r = client.post("/data/datasets",
                     files={"file": ("t.csv", TEMPLATE.read_bytes(),
                                     "text/csv")},
@@ -63,18 +67,18 @@ def state(tmp_path, monkeypatch):
     hub_wr = tmp_path / "state" / "workroots" / hub_run
     hub_wr.mkdir(parents=True)
     (hub_wr / "results.json").write_text("{}" * 500)
-    srv._status.pop("flash", None)
-    srv._invalidate_scans()
+    ui_state._status.pop("flash", None)
+    ui_shared._invalidate_scans()
     yield {"ds": ds, "ds_run": ds_run, "hub_run": hub_run,
            "wr": tmp_path / "state" / "workroots"}
-    srv._status.clear(); srv._status.update(before)
+    ui_state._status.clear(); ui_state._status.update(before)
     DU._REPLAY.clear()
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
 
 
 def test_a_dataset_row_holds_its_upload_replays_and_runs(state):
     ds, wr = state["ds"], state["wr"]
-    inv = srv._storage_inventory()
+    inv = ui_storage._storage_inventory()
     (row,) = inv["datasets"]
     own = retro.dir_size(ds.path)
     rep = retro.dir_size(CX.replay_root(ds))
@@ -92,7 +96,7 @@ def test_a_dataset_row_holds_its_upload_replays_and_runs(state):
 
 def test_the_total_counts_every_byte_once(state):
     ds, wr = state["ds"], state["wr"]
-    inv = srv._storage_inventory()
+    inv = ui_storage._storage_inventory()
     want = (retro.dir_size(wr / state["ds_run"])
             + retro.dir_size(wr / state["hub_run"])
             + retro.dir_size(ds.path))
@@ -107,7 +111,7 @@ def test_the_total_counts_every_byte_once(state):
 def test_the_page_lists_it_with_a_name_confirmed_delete(state):
     ds = state["ds"]
     html = " ".join(client.get("/storage").text.split())
-    (row,) = srv._storage_inventory()["datasets"]
+    (row,) = ui_storage._storage_inventory()["datasets"]
     assert "Your datasets" in html
     assert (f'<a href="/data?source={ds.id}#browser">Template</a></strong> '
             f'<span class="hint">· {row["size_h"]} · data') in html
@@ -130,8 +134,8 @@ def test_a_dataset_alone_lists_no_empty_parts(state):
                     data={"name": "Alone", "kind": "count"},
                     follow_redirects=False)
     assert r.status_code == 303
-    srv._invalidate_scans()
-    rows = {d["name"]: d for d in srv._storage_inventory()["datasets"]}
+    ui_shared._invalidate_scans()
+    rows = {d["name"]: d for d in ui_storage._storage_inventory()["datasets"]}
     alone, tpl = rows["Alone"], rows["Template"]
     assert alone["parts"] == [] and alone["goes"] == ""
     assert tpl["parts"][1:] == [f"1 replay {tpl['replays_h']}",
@@ -151,9 +155,9 @@ def test_delete_needs_the_name_and_takes_everything_it_counts(state):
     url = f"/storage/datasets/{ds.id}/delete"
     for wrong in ("", ds.id, "template"):
         client.post(url, data={"confirm": wrong}, follow_redirects=False)
-        assert "not confirmed" in srv._status.get("flash", "")
+        assert "not confirmed" in ui_state._status.get("flash", "")
         assert ds.path.is_dir() and (wr / state["ds_run"]).is_dir()
-    size = srv._storage_inventory()["datasets"][0]["size_h"]
+    size = ui_storage._storage_inventory()["datasets"][0]["size_h"]
     r = client.post(url, data={"confirm": "Template"},
                     headers={"referer": "http://testserver/storage"},
                     follow_redirects=False)
@@ -162,11 +166,11 @@ def test_delete_needs_the_name_and_takes_everything_it_counts(state):
     assert (wr / state["hub_run"]).is_dir()             # a hub run stays
     assert ("Deleted the dataset Template, its replays and 1 run "
             f"workroot: {size} freed. The runs' ledger rows are kept.") \
-        in srv._status["flash"]
+        in ui_state._status["flash"]
     # the ledger rows stand, the run's with a dash for disk use
     ids = {r["run_id"] for r in Ledger().rows(10)}
     assert {state["ds_run"], state["hub_run"]} <= ids
-    inv = srv._storage_inventory()
+    inv = ui_storage._storage_inventory()
     assert inv["datasets"] == []
     assert inv["total_bytes"] == retro.dir_size(wr / state["hub_run"])
 
@@ -180,21 +184,21 @@ def test_the_data_tab_delete_frees_what_storage_counts(state):
     assert r.status_code == 303
     assert not ds.path.exists() and not (wr / state["ds_run"]).exists()
     assert (wr / state["hub_run"]).is_dir()
-    assert "its replays and 1 run workroot" in srv._status["flash"]
+    assert "its replays and 1 run workroot" in ui_state._status["flash"]
     assert state["ds_run"] in {r["run_id"] for r in Ledger().rows(10)}
 
 
 def test_a_busy_dataset_has_no_delete_and_is_refused(state):
     ds = state["ds"]
     DU._REPLAY.update({"id": ds.id, "stamp": "20260101T000000Z"})
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     html = client.get("/storage").text
     assert f'action="/storage/datasets/{ds.id}/delete"' not in html
     assert "a replay on it is in progress" in html
     client.post(f"/storage/datasets/{ds.id}/delete",
                 data={"confirm": "Template"}, follow_redirects=False)
     assert "was not deleted: a replay on it is in progress" in \
-        srv._status["flash"]
+        ui_state._status["flash"]
     assert ds.path.is_dir()
 
 

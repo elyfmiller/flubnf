@@ -1,11 +1,11 @@
 """PRODUCTION: the Oracle step applied after the filter (retro.run_week,
-server._run_all).
+app/ui/pipeline._run_all).
 
 The Oracle step: the mechanistic member's stored samples, after collect()
 and before the storage boundary.
 
 WHERE IT RUNS. Once per week on the filter's collected samples, in the two
-places that collect them (retro.run_week for a replay, server._run_all for
+places that collect them (retro.run_week for a replay, pipeline._run_all for
 a console run), right after pf_engine.collect(). Never inside the engine:
 the filter is fitted unchanged and the step reads its output
 (pre-registration 10.3 (1)).

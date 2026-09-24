@@ -24,7 +24,8 @@ from app.core import datasets as D
 from app.core import knobs as K
 from app.core.runs import RunSpec, default_season_start
 from app.ui import datasets_ui as DU
-from app.ui import server as srv
+from app.ui import pipeline as ui_pipeline
+from app.ui import state as ui_state
 
 from test_dataset_engines import grouped_bytes              # noqa: E402
 from test_datasets_ui import TEMPLATE, client, isolated, stored  # noqa: F401
@@ -115,7 +116,7 @@ def test_posting_the_rendered_card_untouched_replays_shipped(monkeypatch):
     ds_id, stamp, weeks, groups, engine, k, extra = args
     assert (engine, k, extra) == ("analogue", 0, {})
     DU._REPLAY.clear()
-    srv._status["running"] = None
+    ui_state._status["running"] = None
 
 
 def test_a_modified_replay_records_its_knobs_and_says_so():
@@ -153,7 +154,7 @@ def test_knobs_that_do_not_apply_are_never_recorded():
     # a rate dataset is never floored, so its floor is never recorded
     rate = stored(grouped_bytes(rate=True), "Rates", kind="rate")
     DU._REPLAY.clear()
-    srv._status["running"] = None
+    ui_state._status["running"] = None
     _, meta = _replay(rate, **{"knob.output.floor_lam": "0.5"})
     assert meta["status"] == "done" and "knobs" not in meta
 
@@ -163,8 +164,8 @@ def test_a_refused_value_starts_nothing():
     r, meta = _replay(ds, weeks_to_drop="9")
     assert meta is None and r.headers["location"] == "/retro#dataset-replay"
     assert ("Model settings: run.weeks_to_drop: 9 is outside 0 to 4. "
-            "Nothing was started.") in srv._status.get("flash", "")
-    assert not DU._REPLAY and not srv._status.get("running")
+            "Nothing was started.") in ui_state._status.get("flash", "")
+    assert not DU._REPLAY and not ui_state._status.get("running")
 
 
 def test_the_filter_knobs_ride_to_the_worker_when_it_runs(monkeypatch):
@@ -173,12 +174,12 @@ def test_the_filter_knobs_ride_to_the_worker_when_it_runs(monkeypatch):
     fixed season start must precede every replayed week."""
     ds = stored(TEMPLATE.read_bytes(), "Template")
     assert ds.pf_eligible
-    monkeypatch.setattr(srv, "_pf_engine_state", lambda: "ready")
+    monkeypatch.setattr(ui_pipeline, "_pf_engine_state", lambda: "ready")
     calls = []
     monkeypatch.setattr(DU, "replay_worker",
                         lambda *a, **k: calls.append((a, k)))
     r, _ = _replay(ds, engine="all", season_start=LAST)
-    assert calls == [] and "run.season_start" in srv._status["flash"]
+    assert calls == [] and "run.season_start" in ui_state._status["flash"]
     _replay(ds, engine="all", particles="2000", season_start="2023-09-02",
             **{"knob.pf.jitter": "0.3", "knob.pf.initialization": "lh"})
     ((args, kw),) = calls
@@ -190,7 +191,7 @@ def test_the_filter_knobs_ride_to_the_worker_when_it_runs(monkeypatch):
                               "pf.particles": 2000,
                               "run.season_start": "2023-09-02"}
     DU._REPLAY.clear()
-    srv._status["running"] = None
+    ui_state._status["running"] = None
 
 
 def test_week_spec_is_the_shipped_one_without_knobs():

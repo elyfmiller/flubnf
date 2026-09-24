@@ -15,20 +15,25 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import app.core.runs as runs_mod                     # noqa: E402
+from app.core import data as core_data               # noqa: E402
 from app.core.runs import Ledger, RunSpec, is_research  # noqa: E402
 from app.ui import server as srv                     # noqa: E402
+from app.ui import pipeline as ui_pipeline           # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
+from app.ui import shared as ui_shared               # noqa: E402
+from app.ui import state as ui_state                 # noqa: E402
 
 client = TestClient(srv.app)
 
 
 @pytest.fixture(autouse=True)
 def _isolated_status():
-    status_before = dict(srv._status)
-    form_before = dict(srv._last_form)
+    status_before = dict(ui_state._status)
+    form_before = dict(ui_state._last_form)
     yield
-    srv._status.clear(); srv._status.update(status_before)
-    srv._last_form.clear(); srv._last_form.update(form_before)
-    srv._invalidate_scans()
+    ui_state._status.clear(); ui_state._status.update(status_before)
+    ui_state._last_form.clear(); ui_state._last_form.update(form_before)
+    ui_shared._invalidate_scans()
 
 
 # ------------------------------------------------------------- the control
@@ -69,11 +74,11 @@ def test_flagship_forecast_page_offers_no_third_member():
 # ------------------------------------------------------------ the run path
 
 def _capture_run(monkeypatch, tmp_path):
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path / "retro")
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
-    monkeypatch.setattr(srv.data_mod, "vintage_path", lambda d: tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path / "retro")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(core_data, "vintage_path", lambda d: tmp_path)
     started = []
-    monkeypatch.setattr(srv, "_run_all", lambda spec: started.append(spec))
+    monkeypatch.setattr(ui_pipeline, "_run_all", lambda spec: started.append(spec))
     return started
 
 
@@ -107,7 +112,7 @@ def test_particles_defaults_and_refuses_out_of_range(tmp_path, monkeypatch):
     client.post("/run", data={"forecast_date": "2098-01-04",
                               "locations": ["Ohio"]},
                 follow_redirects=False)
-    srv._status["running"] = None                    # release for the next
+    ui_state._status["running"] = None                    # release for the next
     client.post("/run", data={"forecast_date": "2098-01-04",
                               "locations": ["Ohio"],
                               "particles": "999999"},
@@ -118,8 +123,8 @@ def test_particles_defaults_and_refuses_out_of_range(tmp_path, monkeypatch):
     # the particles field sets the pf.particles knob: out of range is
     # refused before the engine is claimed, never clamped
     assert len(started) == 1
-    assert srv._status.get("running") is None
-    assert "pf.particles" in srv._status.get("flash", "")
+    assert ui_state._status.get("running") is None
+    assert "pf.particles" in ui_state._status.get("flash", "")
 
 
 # ----------------------------------------------------------------- the tag
@@ -138,12 +143,12 @@ def test_is_research_reads_any_spec_shape():
 def test_label_carries_the_tag_and_badge_pages_can_drop_it():
     spec = RunSpec(engine="all", forecast_date="2098-01-04",
                    extra={"members": 3}).to_json()
-    tagged = srv._run_label("20980104T120000-abcdef", spec)
+    tagged = ui_shared._run_label("20980104T120000-abcdef", spec)
     assert tagged.endswith("· research")
-    plain = srv._run_label("20980104T120000-abcdef", spec, tag=False)
+    plain = ui_shared._run_label("20980104T120000-abcdef", spec, tag=False)
     assert "research" not in plain
     normal = RunSpec(engine="all", forecast_date="2098-01-04").to_json()
-    assert "research" not in srv._run_label("20980104T120000-abcdef", normal)
+    assert "research" not in ui_shared._run_label("20980104T120000-abcdef", normal)
 
 
 def test_ledger_and_run_page_wear_the_research_badge(tmp_path, monkeypatch):
@@ -155,7 +160,7 @@ def test_ledger_and_run_page_wear_the_research_badge(tmp_path, monkeypatch):
     nrid = led.open_run(RunSpec(engine="all", forecast_date="2098-01-10"),
                         Path("pending"), {})
     led.close_run(nrid, "ok", {})
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     html = client.get("/runs").text
     rrow = html.split(f'href="/runs/{rrid}"', 1)[1].split("</tr>", 1)[0]
     nrow = html.split(f'href="/runs/{nrid}"', 1)[1].split("</tr>", 1)[0]

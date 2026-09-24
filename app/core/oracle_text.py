@@ -3,7 +3,7 @@
 
 The Oracle SIHRS in words: the reader-facing text every surface shares
 (Home, Methods, the model tab, the site, the hub card), via the Jinja global
-`oracle_text` in app/ui/server.py. No numpy or pandas: the page shell
+`oracle_text` in app/ui/templating.py. No numpy or pandas: the page shell
 imports this at startup.
 
 THE DONOR BANK. BANK_STREAM and BANK_TEXT name the donor pool's data

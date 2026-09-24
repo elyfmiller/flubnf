@@ -15,13 +15,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from fastapi.testclient import TestClient           # noqa: E402
 
 from app.ui import server as srv                    # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
+from app.ui import shared as ui_shared              # noqa: E402
+from app.ui import state as ui_state                # noqa: E402
+from app.ui import templating as ui_templating      # noqa: E402
 
 client = TestClient(srv.app)
 
 UI = Path(__file__).resolve().parents[1] / "ui"
 NAU = (UI / "static" / "nau.css").read_text()
 PLAYER = (UI / "static" / "player.js").read_text(encoding="utf-8")
-SERVER_SRC = (UI / "server.py").read_text()
+#: every console module's source, by path under app/ui
+UI_PY = {p.relative_to(UI).as_posix(): p.read_text(encoding="utf-8")
+         for p in sorted(UI.rglob("*.py"))}
 RETRO_T = (UI / "templates" / "retro.html").read_text()
 SEASON_T = (UI / "templates" / "retro_season.html").read_text()
 FORECAST_T = (UI / "templates" / "forecast.html").read_text()
@@ -99,11 +105,11 @@ def test_index_route_passes_the_head_score(tmp_path, monkeypatch):
         "weeks": 2, "elapsed_s": None, "started_utc": None,
         "finished_utc": None, "status": "done", "scored": True,
         "headline_rel": 0.877})
-    monkeypatch.setattr(srv, "_season_root",
+    monkeypatch.setattr(ui_retro_seasons, "_season_root",
                         lambda s, archive="": (tmp_path / s, False))
-    monkeypatch.setattr(srv, "_weeks_done", lambda root: 2)
-    monkeypatch.setattr(srv, "_archive_entries", lambda s: [])
-    monkeypatch.setattr(srv, "_retro_progress", lambda s: {
+    monkeypatch.setattr(ui_retro_seasons, "_weeks_done", lambda root: 2)
+    monkeypatch.setattr(ui_retro_seasons, "_archive_entries", lambda s: [])
+    monkeypatch.setattr(ui_retro_seasons, "_retro_progress", lambda s: {
         "season": s, "status": "done", "done": 2, "total": 2,
         "settings": [], "elapsed_s": None, "weeks_measured": 0,
         "mean_s": None, "eta_s": None, "slowest_week": None,
@@ -189,7 +195,7 @@ def test_member_colors_match_the_player_palette():
     assert "#6E8FD0" not in SEASON_T and "#2BB5A0" not in SEASON_T
     # the injected copy IS the player's map
     from app.core.report_v2 import model_colors
-    assert srv._member_colors() == model_colors()
+    assert ui_templating._member_colors() == model_colors()
     r = client.get("/forecast")
     assert json.dumps(model_colors()["pf"])[1:-1] in r.text
 
@@ -228,7 +234,7 @@ def test_player_carries_the_map_and_python_reads_the_same_one():
         assert mid in names, mid
     from app.core import report_season
     assert report_season.MODEL_NAMES == names       # one source, no drift
-    assert srv._model_names() == names
+    assert ui_templating._model_names() == names
     # the player's own display-name lookup reads the shared map
     assert "return MODEL_NAMES[m] || m" in PLAYER
 
@@ -296,15 +302,15 @@ def test_stored_forecasts_render_without_a_session_gate(monkeypatch):
            "models": {"pf": {"Ohio": {"1": {"0.1": 1.0, "0.5": 2.0,
                                                   "0.9": 3.0}}}},
            "observed": {}}
-    monkeypatch.setattr(srv, "_latest_results", lambda: ("r1", res))
-    monkeypatch.setitem(srv._status, "running", None)
-    srv._status.pop("session_ran", None)            # a fresh process has none
+    monkeypatch.setattr(ui_shared, "_latest_results", lambda: ("r1", res))
+    monkeypatch.setitem(ui_state._status, "running", None)
+    ui_state._status.pop("session_ran", None)            # a fresh process has none
     r = client.get("/forecast")
     assert r.status_code == 200
     assert '"pf": {"Ohio"' in r.text          # the stored fans ship
     assert "latest stored run" in r.text            # and the title says so
     # the gate is gone from the codebase, not merely bypassed
-    assert "session_ran" not in SERVER_SRC
+    assert [f for f, src in UI_PY.items() if "session_ran" in src] == []
 
 
 def test_latest_run_card_links_report_and_files():

@@ -263,7 +263,7 @@
  {% if missing %}
   <p class="hint">Not installed on this machine:</p>
   {% for m in missing %}<p class="warn">• {{ m[2] }}</p>{% endfor %}
-  {# platform-aware (server.py _engine_setup_hint): never a macOS-only filename #}
+  {# platform-aware (templating.py _engine_setup_hint): never a macOS-only filename #}
   <p class="hint">To add the particle-filter engine,
   {{ engine_setup_hint() }}.</p>
  {% else %}<p class="ok">All components installed.</p>{% endif %}

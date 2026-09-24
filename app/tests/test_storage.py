@@ -24,6 +24,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import app.core.runs as runs_mod                     # noqa: E402
 from app.core.runs import Ledger, RunSpec            # noqa: E402
 from app.ui import server as srv                     # noqa: E402
+from app.ui.routes import storage as ui_storage      # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
+from app.ui import shared as ui_shared               # noqa: E402
+from app.ui import state as ui_state                 # noqa: E402
 
 client = TestClient(srv.app)
 
@@ -33,14 +37,14 @@ ARCH_STAMP = "20980204T101500Z"
 
 @pytest.fixture(autouse=True)
 def _isolated_status():
-    status_before = dict(srv._status)
-    retro_before = dict(srv._retro_status)
-    stop_before = set(srv._retro_stop)
+    status_before = dict(ui_state._status)
+    retro_before = dict(ui_retro_seasons._retro_status)
+    stop_before = set(ui_retro_seasons._retro_stop)
     yield
-    srv._status.clear(); srv._status.update(status_before)
-    srv._retro_status.clear(); srv._retro_status.update(retro_before)
-    srv._retro_stop.clear(); srv._retro_stop.update(stop_before)
-    srv._invalidate_scans()
+    ui_state._status.clear(); ui_state._status.update(status_before)
+    ui_retro_seasons._retro_status.clear(); ui_retro_seasons._retro_status.update(retro_before)
+    ui_retro_seasons._retro_stop.clear(); ui_retro_seasons._retro_stop.update(stop_before)
+    ui_shared._invalidate_scans()
 
 
 @pytest.fixture()
@@ -54,8 +58,8 @@ def state(tmp_path, monkeypatch):
     monkeypatch.setattr(datasets_mod, "ROOT", tmp_path / "datasets")
     retro_root = tmp_path / "retro"
     seal_root = tmp_path / "retro_seal"
-    monkeypatch.setattr(srv, "RETRO_ROOT", retro_root)
-    monkeypatch.setattr(srv, "RETRO_SEAL", seal_root)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", retro_root)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", seal_root)
     hub = tmp_path / "hub"
     import flubnf.settings as settings_mod
     monkeypatch.setattr(settings_mod, "HUB", hub)
@@ -74,8 +78,8 @@ def state(tmp_path, monkeypatch):
                         Path("pending"), {})
     (tmp_path / "workroots" / live).mkdir(parents=True)
     rids["running"] = live
-    srv._status["running"] = f"all:{live}"
-    srv._status["workroot"] = str(tmp_path / "workroots" / live)
+    ui_state._status["running"] = f"all:{live}"
+    ui_state._status["workroot"] = str(tmp_path / "workroots" / live)
     (retro_root / SEASON / "weeks").mkdir(parents=True)
     (retro_root / SEASON / "weeks" / "x.json").write_text("{}")
     arch = retro_root / f"{SEASON}__archived_{ARCH_STAMP}"
@@ -87,20 +91,20 @@ def state(tmp_path, monkeypatch):
     (seal_root / SEASON / "weeks" / "sealed.json").write_text("{}")
     (hub / "auxiliary-data").mkdir(parents=True)
     (hub / "auxiliary-data" / "truth.csv").write_text("d")
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     return {"root": tmp_path, "rids": rids, "ledger": led,
             "retro_root": retro_root, "seal": seal_root, "hub": hub}
 
 
 def _flash():
-    return srv._status.get("flash", "")
+    return ui_state._status.get("flash", "")
 
 
 # ------------------------------------------------------------- ledger clear
 
 def test_clear_removes_completed_rows_never_the_active_one(state):
     led = state["ledger"]
-    assert len(srv._clearable_run_ids(led)) == 3
+    assert len(ui_storage._clearable_run_ids(led)) == 3
     r = client.post("/runs/clear", data={"confirm": "3"},
                     follow_redirects=False)
     assert r.status_code == 303
@@ -133,9 +137,9 @@ def test_clear_control_names_the_count_and_the_no_disk_promise(state):
 def test_interrupted_rows_are_clearable(state):
     """A 'running' row with no live worker (the app closed mid-run) is a
     completed row for clearing purposes."""
-    srv._status["running"] = None
-    srv._status["workroot"] = None
-    assert len(srv._clearable_run_ids(state["ledger"])) == 4
+    ui_state._status["running"] = None
+    ui_state._status["workroot"] = None
+    assert len(ui_storage._clearable_run_ids(state["ledger"])) == 4
 
 
 # ------------------------------------------------------------ storage panel
@@ -164,7 +168,7 @@ def test_workroot_rows_read_as_human_labels_with_the_id_secondary(state):
     # an unrecorded workroot (no ledger row) says so instead of guessing
     orphan = "20980118T093000-0aacd0"
     (state["root"] / "workroots" / orphan).mkdir()
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     html = client.get("/storage").text
     row = html.split(f'data-wid="{orphan}"', 1)[1].split("</div>", 1)[0]
     assert "Unrecorded run" in row
@@ -180,7 +184,7 @@ def test_protected_trees_render_no_delete_controls(state):
 
 
 def test_busy_rows_render_no_delete_controls(state):
-    srv._retro_status[SEASON] = "running"
+    ui_retro_seasons._retro_status[SEASON] = "running"
     html = client.get("/runs").text
     live = state["rids"]["running"]
     # workroot rows are found by their data-wid attribute
@@ -230,14 +234,14 @@ def test_delete_needs_the_confirmation_naming_the_entry(state):
 
 
 def test_delete_retro_season_refused_while_replaying(state):
-    srv._retro_status[SEASON] = "running"
+    ui_retro_seasons._retro_status[SEASON] = "running"
     r = client.post("/storage/delete",
                     data={"kind": "retro-season", "ident": SEASON,
                           "confirm": SEASON}, follow_redirects=False)
     assert r.status_code == 303
     assert (state["retro_root"] / SEASON).is_dir()
     assert "replaying" in _flash()
-    srv._retro_status.pop(SEASON, None)
+    ui_retro_seasons._retro_status.pop(SEASON, None)
     client.post("/storage/delete",
                 data={"kind": "retro-season", "ident": SEASON,
                       "confirm": SEASON}, follow_redirects=False)
@@ -248,12 +252,12 @@ def test_delete_retro_season_refused_while_replaying(state):
 
 def test_delete_retro_archive_and_report_archive(state):
     name = f"{SEASON}__archived_{ARCH_STAMP}"
-    srv._retro_status[SEASON] = "paused"             # paused blocks too
+    ui_retro_seasons._retro_status[SEASON] = "paused"             # paused blocks too
     client.post("/storage/delete", data={"kind": "retro-archive",
                                          "ident": name, "confirm": name},
                 follow_redirects=False)
     assert (state["retro_root"] / name).is_dir()
-    srv._retro_status.pop(SEASON, None)
+    ui_retro_seasons._retro_status.pop(SEASON, None)
     client.post("/storage/delete", data={"kind": "retro-archive",
                                          "ident": name, "confirm": name},
                 follow_redirects=False)
@@ -264,8 +268,8 @@ def test_delete_retro_archive_and_report_archive(state):
                                          "confirm": "2098-01-03"},
                 follow_redirects=False)
     assert (state["root"] / "archive" / "2098-01-03").is_dir()
-    srv._status["running"] = None
-    srv._status["workroot"] = None
+    ui_state._status["running"] = None
+    ui_state._status["workroot"] = None
     client.post("/storage/delete", data={"kind": "report-archive",
                                          "ident": "2098-01-03",
                                          "confirm": "2098-01-03"},
@@ -280,7 +284,7 @@ def test_total_disk_metric_sums_the_managed_categories_only(state):
     retro runs + report archives, with the protected trees (seal, hub)
     deliberately outside the total."""
     from app.core import retro
-    inv = srv._storage_inventory()
+    inv = ui_storage._storage_inventory()
     expect = 0
     for rid in state["rids"].values():
         expect += retro.dir_size(state["root"] / "workroots" / rid)
@@ -301,7 +305,7 @@ def test_total_disk_metric_sums_the_managed_categories_only(state):
 
 def test_clear_all_control_names_count_and_total_size(state):
     from app.core import retro
-    cw = srv._clearable_workroots()
+    cw = ui_storage._clearable_workroots()
     assert len(cw) == 3                    # the live run's is excluded
     assert state["rids"]["running"] not in [w["id"] for w in cw]
     html = client.get("/runs").text
@@ -354,8 +358,8 @@ def test_clear_all_never_reaches_protected_trees(state):
     (and from its count), and the seal survives a confirmed clear-all."""
     link = state["root"] / "workroots" / "sneaky"
     link.symlink_to(state["seal"] / SEASON)
-    srv._invalidate_scans()
-    cw = srv._clearable_workroots()
+    ui_shared._invalidate_scans()
+    cw = ui_storage._clearable_workroots()
     assert "sneaky" not in [w["id"] for w in cw]
     assert len(cw) == 3
     r = client.post("/storage/clear-workroots", data={"confirm": "3"},
@@ -369,7 +373,7 @@ def test_clear_all_with_nothing_to_do_says_so(state):
     for status in ("ok", "stopped", "error"):
         import shutil
         shutil.rmtree(state["root"] / "workroots" / state["rids"][status])
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     r = client.post("/storage/clear-workroots", data={"confirm": "0"},
                     follow_redirects=False)
     assert r.status_code == 303
@@ -382,9 +386,9 @@ def test_clear_all_with_nothing_to_do_says_so(state):
 # ------------------------------------------------------------ hard barriers
 
 def test_seal_and_hub_are_refused_on_any_crafted_request(state):
-    assert srv._storage_protected(state["seal"] / SEASON)
-    assert srv._storage_protected(state["hub"])
-    assert srv._storage_protected(state["hub"] / "auxiliary-data")
+    assert ui_storage._storage_protected(state["seal"] / SEASON)
+    assert ui_storage._storage_protected(state["hub"])
+    assert ui_storage._storage_protected(state["hub"] / "auxiliary-data")
     # traversal-shaped identifiers never pass validation
     for kind, ident in (("workroot", "../retro_seal"),
                         ("workroot", "/etc"),
@@ -404,7 +408,7 @@ def test_a_symlink_into_a_protected_tree_is_refused(state):
     protection resolves the target before comparing."""
     link = state["root"] / "workroots" / "sneaky"
     link.symlink_to(state["seal"] / SEASON)
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     r = client.post("/storage/delete",
                     data={"kind": "workroot", "ident": "sneaky",
                           "confirm": "sneaky"}, follow_redirects=False)
@@ -465,7 +469,7 @@ def test_storage_panel_folds_and_defaults_folded(state):
                   .split("</summary>", 1)[0]
     assert "On disk</h2>" in summary
     assert 'class="big"' in summary
-    inv = srv._storage_inventory()
+    inv = ui_storage._storage_inventory()
     assert inv["total_h"] in summary
     # the panel body (workroots, deletes) lives INSIDE the fold
     fold = html.split('id="storagefold">', 1)[1] \
@@ -485,7 +489,7 @@ def test_storage_fold_state_persists_per_local_storage(state):
 
 
 def test_empty_ledger_keeps_the_plain_hint_no_fold(state, monkeypatch):
-    monkeypatch.setattr(srv.Ledger, "rows", lambda self, n=50: [])
+    monkeypatch.setattr(runs_mod.Ledger, "rows", lambda self, n=50: [])
     html = client.get("/runs").text
     # no ledger fold with nothing to fold (the storage panel keeps its own)
     assert 'id="ledgerfold"' not in html

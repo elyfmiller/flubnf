@@ -1,6 +1,6 @@
 # app/core/: the console's back end
 
-One line per module, with the role tag its docstring opens with and its main callers (`server` is `app/ui/server.py`).
+One line per module, with the role tag its docstring opens with and its main callers (`server` is the console, `app/ui/`: its modules are listed in [app/ui/README.md](../ui/README.md)).
 
 ## Engines (`engines/`)
 
@@ -35,23 +35,23 @@ One line per module, with the role tag its docstring opens with and its main cal
 | `relwis.py` | PRODUCTION | the two relWIS conventions and the convention note | server retro pages, `site_page`, `report_season` |
 | `us_national.py` | PRODUCTION | US national resolution, labels, pooled-scope policy | every scoring surface |
 | `categorical.py` | PRODUCTION | FluSight rate-change categories | `report`, server |
-| `floor.py` | PRODUCTION | output floor on console-run PF samples | server `_run_all` |
+| `floor.py` | PRODUCTION | output floor on console-run PF samples | server `pipeline._run_all` |
 | `completeness.py` | RESEARCH | reporting-completeness factors, reached only by research `spec.extra` keys | `engines/pf.py`, `engines/analogue.py` |
 
 ## Oracle step
 
 | Module | Tag | Role | Main callers |
 |---|---|---|---|
-| `oracle.py` | PRODUCTION | the Oracle step on the filter's samples (science in `flubnf/oracle*.py`) | `retro.run_week`, server `_run_all` |
+| `oracle.py` | PRODUCTION | the Oracle step on the filter's samples (science in `flubnf/oracle*.py`) | `retro.run_week`, server `pipeline._run_all` |
 | `oracle_text.py` | PAGE COPY | Oracle SIHRS sentences and record figures (Jinja global `oracle_text`) | server |
 | `oracle_backfill.py` | VERIFICATION CLI ONLY | backfill a stored season into a new root, reproduce the screen | `flubnf oracle backfill` / `reproduce` |
-| `submit.py` | PRODUCTION | hub submission CSVs and their validation | server `_run_all`, `oracle` |
+| `submit.py` | PRODUCTION | hub submission CSVs and their validation | server `pipeline._run_all`, `oracle` |
 
 ## Reports
 
 | Module | Tag | Role | Main callers |
 |---|---|---|---|
-| `report_v2.py` | PRODUCTION | the weekly run report | server `_write_weekly_report`, `/output/report` |
+| `report_v2.py` | PRODUCTION | the weekly run report | server `pipeline._write_weekly_report`, `/output/report` |
 | `report_season.py` | PRODUCTION | self-contained season HTML export | server `/retro/{season}/report` |
 | `usmap.py` | PRODUCTION | build-time US map | `report_v2`, server home outlook, `site_build` |
 | `report.py` | LEGACY | v1 tile-grid report; kept for the categorical shims | server, `site_build` |

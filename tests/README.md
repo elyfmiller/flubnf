@@ -10,7 +10,7 @@ Two pytest suites: `tests/` covers the `flubnf` package and the root scripts, `a
 | Both suites, this machine's hub and engine | `.venv/bin/python -m pytest` (`testpaths` in `pyproject.toml`) |
 | One file | `.venv/bin/python -m pytest app/tests/test_oracle_step.py` |
 
-CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetgen` and runs the first line on Ubuntu and, as experimental jobs, Windows (Python 3.11 and 3.12); a third job runs `setup.ps1` five ways. `.githooks/pre-push` runs the same command before a push to main.
+CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetgen ruff` and runs the first line on Ubuntu and, as experimental jobs, Windows (Python 3.11 and 3.12); a third job runs `setup.ps1` five ways. `.githooks/pre-push` runs the same command before a push to main.
 
 ## What skips, and why
 
@@ -21,6 +21,7 @@ CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetg
 | JavaScriptCore (macOS only) | JS cases in `app/tests/test_player_js.py`, `test_retro_eta.py`, `test_retro_pf_name.py`, `test_sandbox_editor.py`, `test_forecast_retired_tab.py`, `test_template_date_helpers.py`, `test_contactmap.py` |
 | POSIX (on Windows) | `tests/test_engine_bundle.py`, `test_reinstall_script.py`, `test_launcher_update.py` script runs; `app/tests/test_takeover_sweep.py`, parts of `test_pf_hardening.py`, `test_pf_shards.py` |
 | Lab-only records (`research/`, `FLUBNF_ORACLE_RECORD`) | `tests/test_oracle*.py` record cases; `app/tests/test_oracle_text.py` B2 case |
+| `ruff` | the app/ui lint case in `app/tests/test_ui_layout.py` |
 
 `tests/test_reinstall_script.py` fails when run as root (`reinstall.sh` refuses root).
 
@@ -50,8 +51,12 @@ CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetg
 | Submission and hub cards | `submit_join`, `submission_identity`, `model_metadata` |
 | Reports and site | `report_bundle`, `report_parity`, `report_season`, `report_weekly`, `settings_block`, `outlook_toggle`, `site_build` |
 | Storage | `storage`, `reclaim`, `browse_safety` |
-| Server and launch | `app_launch`, `server_hardening`, `platform_setup_hint`, `audit_fixes`, `core`, `data_view` |
+| Server and launch | `app_launch`, `server_hardening`, `platform_setup_hint`, `audit_fixes`, `core`, `data_view`, `ui_layout` |
 | Pages, design, accessibility | `pages`, `a11y_basics`, `a11y_modes`, `type_system`, `theme_and_harmonic`, `season_palette`, `reading_column`, `month_axes`, `design_batch3`, `template_date_helpers` |
 | Sandbox | `sandbox`, `sandbox_data`, `sandbox_editor`, `contactmap` |
 
 Fixtures in `app/tests/`: `flusurv_fixture.json`, `iliplus_fixture.json`, `nrevss_fixture.json`, `contactmap_bind.graphml`, `hub_model_metadata_schema.json` (sha-pinned).
+
+`app/tests/golden/ui_routes.json` is the console's route table, middleware, Jinja additions and import profile, captured at 029c028 for `test_ui_layout.py` (and the GET count `test_browse_safety.py` walks); regenerate it only for a deliberate change: `python app/tests/test_ui_layout.py --write-golden`.
+
+`test_ui_layout.py` also keeps app/ui's modules honest with each other and with the tests: a name a test patches is defined by exactly the module it patches and bound by no other at import (a from-import copy would miss the patch); a name imported from another app/ui module is its owner's object; no module alias (`state`, `shared`, ...) is rebound in its file; tests reach a moved private name through its owner, never through `app.ui.server`, and never patch an app/ui module with `raising=False`; `server.py` only assembles (its own names are `app`, the warm start and the public `templates`, `VERSIONS` and `RUNNING_SHA`; it includes the tab routers in a fixed order, datasets_ui's last), and no module in `app/ui/routes` computes a path from its own `__file__`.

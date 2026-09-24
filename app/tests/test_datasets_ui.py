@@ -1,5 +1,5 @@
 """Custom datasets in the console (app/ui/datasets_ui.py and its seams in
-server.py): the Data tab's upload, list and browser; the Forecast tab's
+the tab routers): the Data tab's upload, list and browser; the Forecast tab's
 data source; the run page; the Retrospective tab's own-data replay.
 
 No hub and no engine: FLUBNF_HUB=/nonexistent; the dataset store, the
@@ -19,6 +19,10 @@ import app.core.runs as runs_mod
 from app.core import datasets as D
 from app.ui import datasets_ui as DU
 from app.ui import server as srv
+from app.ui import pipeline as ui_pipeline
+from app.ui import retro_seasons as ui_retro_seasons
+from app.ui import shared as ui_shared
+from app.ui import state as ui_state
 
 from test_dataset_engines import grouped_bytes         # noqa: E402
 
@@ -32,19 +36,19 @@ TEMPLATE = Path(__file__).resolve().parents[1] / "ui" / "static" / \
 def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(D, "ROOT", tmp_path / "datasets")
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path / "state")
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path / "retro")
-    status, form = dict(srv._status), dict(srv._last_form)
-    srv._status["running"] = None
-    srv._status.pop("flash", None)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path / "retro")
+    status, form = dict(ui_state._status), dict(ui_state._last_form)
+    ui_state._status["running"] = None
+    ui_state._status.pop("flash", None)
     DU._LAST.clear()
     DU._REPLAY.clear()
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     yield
-    srv._status.clear(); srv._status.update(status)
-    srv._last_form.clear(); srv._last_form.update(form)
+    ui_state._status.clear(); ui_state._status.update(status)
+    ui_state._last_form.clear(); ui_state._last_form.update(form)
     DU._LAST.clear()
     DU._REPLAY.clear()
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
 
 
 def upload(raw, name="Kids", kind="count", **data):
@@ -83,7 +87,7 @@ def test_a_bad_upload_shows_every_problem_inline_and_stores_nothing():
     assert "negative" in r.text and "could not be parsed" in r.text
     assert "different weekdays" in r.text
     assert D.list_datasets() == []
-    assert not srv._status.get("flash")          # inline, not the flash slot
+    assert not ui_state._status.get("flash")          # inline, not the flash slot
 
 
 def test_a_multi_target_file_offers_its_targets():
@@ -177,10 +181,10 @@ def test_delete_needs_the_name_and_is_refused_while_busy():
     ds = stored()
     client.post(f"/data/datasets/{ds.id}/delete", data={"confirm": "wrong"})
     assert D.list_datasets()
-    srv._status.update({"running": "dataset:x", "dataset_id": ds.id})
+    ui_state._status.update({"running": "dataset:x", "dataset_id": ds.id})
     client.post(f"/data/datasets/{ds.id}/delete", data={"confirm": ds.name})
     assert D.list_datasets()
-    srv._status.update({"running": None, "dataset_id": None})
+    ui_state._status.update({"running": None, "dataset_id": None})
     r = client.post(f"/data/datasets/{ds.id}/delete",
                     data={"confirm": ds.name}, follow_redirects=False)
     assert r.status_code == 303 and D.list_datasets() == []
@@ -239,7 +243,7 @@ def test_api_series_with_a_source_returns_the_dataset():
 def _capture(monkeypatch):
     got = []
     monkeypatch.setattr(DU, "run_worker", lambda spec: got.append(spec))
-    monkeypatch.setattr(srv, "_run_all", lambda spec: (_ for _ in ()).throw(
+    monkeypatch.setattr(ui_pipeline, "_run_all", lambda spec: (_ for _ in ()).throw(
         AssertionError("the hub pipeline ran")))
     return got
 
@@ -247,7 +251,7 @@ def _capture(monkeypatch):
 def test_run_builds_a_dataset_spec_and_never_the_hub_pipeline(monkeypatch):
     ds = stored()
     got = _capture(monkeypatch)
-    before = dict(srv._last_form)
+    before = dict(ui_state._last_form)
     fd = "2023-12-02"
     r = client.post("/run/dataset", data={
         "dataset": ds.id, "forecast_date": fd, "locations": ["Adult", "Pediatric"],
@@ -259,7 +263,7 @@ def test_run_builds_a_dataset_spec_and_never_the_hub_pipeline(monkeypatch):
     x = spec.extra
     assert x["dataset"] == ds.ref() and x["oracle"] == "none"
     assert "aux_pools" not in x and x["mode"] == "vintage"
-    assert srv._last_form == before                # the hub form is untouched
+    assert ui_state._last_form == before                # the hub form is untouched
     assert DU._LAST[ds.id]["forecast_date"] == fd
 
 
@@ -286,8 +290,8 @@ def test_run_refuses_a_week_the_dataset_lacks(monkeypatch):
                 follow_redirects=False)
     assert got == []
     assert f"Nearest earlier week: {ds.forecast_dates()[-1]}" in \
-        srv._status.get("flash", "")
-    assert not srv._status.get("running")
+        ui_state._status.get("flash", "")
+    assert not ui_state._status.get("running")
 
 
 def test_run_refuses_the_pf_without_the_engine(monkeypatch):
@@ -297,7 +301,7 @@ def test_run_refuses_the_pf_without_the_engine(monkeypatch):
                                       "forecast_date": "2023-12-02",
                                       "locations": "all", "engine": "all"},
                 follow_redirects=False)
-    assert got == [] and "cannot run" in srv._status.get("flash", "")
+    assert got == [] and "cannot run" in ui_state._status.get("flash", "")
 
 
 def test_a_real_run_shows_fans_and_exports_and_stays_off_the_hub(monkeypatch):
@@ -305,7 +309,7 @@ def test_a_real_run_shows_fans_and_exports_and_stays_off_the_hub(monkeypatch):
     client.post("/run/dataset", data={"dataset": ds.id,
                                       "forecast_date": "2024-03-02",
                                       "locations": "all", "engine": "analogue"})
-    assert not srv._status.get("running")         # released by the worker
+    assert not ui_state._status.get("running")         # released by the worker
     (row,) = runs_mod.Ledger().rows(5)
     assert row["status"] == "ok"
     o = json.loads(row["outcome"])
@@ -331,7 +335,7 @@ def test_a_real_run_shows_fans_and_exports_and_stays_off_the_hub(monkeypatch):
     # stored "4" is four weeks ahead, never the canonical "0".."3"
     assert sorted(fanq["analogue"]["Adult"]) == ["1", "2", "3", "4"]
     # the Output tab and Home read shipped runs only
-    assert srv._latest_results() == (None, None)
+    assert ui_shared._latest_results() == (None, None)
 
 
 # ----------------------------------------------------------- Retrospective
@@ -358,7 +362,7 @@ def test_a_replay_runs_and_its_page_names_the_baseline_and_the_label():
     # listed in its own card, not among the season cards
     idx = client.get("/retro").text
     assert idx.index(loc) > idx.index('id="dataset-replay"')
-    assert not srv._status.get("running")
+    assert not ui_state._status.get("running")
 
 
 def test_a_second_replay_is_refused_while_one_runs():
@@ -366,7 +370,7 @@ def test_a_second_replay_is_refused_while_one_runs():
     DU._REPLAY.update({"id": ds.id, "stamp": "20260101T000000Z"})
     r = client.post("/retro/dataset/run", data={"dataset": ds.id},
                     follow_redirects=False)
-    assert "holds the engine" in srv._status.get("flash", "")
+    assert "holds the engine" in ui_state._status.get("flash", "")
     assert r.headers["location"] == "/retro#dataset-replay"
 
 

@@ -18,6 +18,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.core import knobs as K                              # noqa: E402
 from app.ui import server as srv                             # noqa: E402
+from app.ui import pipeline as ui_pipeline                   # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons         # noqa: E402
+from app.ui import forms as ui_forms                         # noqa: E402
+from app.ui import shared as ui_shared                       # noqa: E402
+from app.ui import state as ui_state                         # noqa: E402
 
 client = TestClient(srv.app)
 FD = "2098-01-04"
@@ -25,11 +30,11 @@ FD = "2098-01-04"
 
 @pytest.fixture(autouse=True)
 def _isolated():
-    status_before, form_before = dict(srv._status), dict(srv._last_form)
+    status_before, form_before = dict(ui_state._status), dict(ui_state._last_form)
     yield
-    srv._status.clear(); srv._status.update(status_before)
-    srv._last_form.clear(); srv._last_form.update(form_before)
-    srv._invalidate_scans()
+    ui_state._status.clear(); ui_state._status.update(status_before)
+    ui_state._last_form.clear(); ui_state._last_form.update(form_before)
+    ui_shared._invalidate_scans()
 
 
 class _Form(HTMLParser):
@@ -138,26 +143,26 @@ def test_retro_panel_leaves_out_what_a_replay_cannot_carry():
 def test_posting_the_rendered_form_untouched_runs_the_shipped_spec(
         tmp_path, monkeypatch):
     import app.core.data as data
-    monkeypatch.setattr(srv, "data_mod", data)
+    monkeypatch.setattr(ui_state, "data_mod", data)
     monkeypatch.setattr(data, "vintage_path", lambda d: tmp_path)
     monkeypatch.setattr(data, "vintages", lambda: [FD])
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path / "retro")
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path / "retro")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     started = []
-    monkeypatch.setattr(srv, "_run_all", lambda s: started.append(s))
-    srv._last_form.clear()                   # the page a fresh app shows
+    monkeypatch.setattr(ui_pipeline, "_run_all", lambda s: started.append(s))
+    ui_state._last_form.clear()                   # the page a fresh app shows
     f = _panel_form(client.get("/forecast").text, root="fcform")
     posted = [(n, v) for n, v in f.fields if n not in ("forecast_date",
                                                      "locations")]
     body = {}
     for n, v in posted + [("forecast_date", FD), ("locations", "Ohio")]:
         body.setdefault(n, v)
-    srv._status["running"] = None
+    ui_state._status["running"] = None
     client.post("/run", data=body, follow_redirects=False)
-    srv._status["running"] = None
+    ui_state._status["running"] = None
     client.post("/run", data={"forecast_date": FD, "locations": "Ohio"},
                 follow_redirects=False)
-    assert len(started) == 2, srv._status.get("flash")
+    assert len(started) == 2, ui_state._status.get("flash")
     assert "knobs" not in started[0].extra
     assert started[0].to_json() == started[1].to_json()
 
@@ -165,15 +170,15 @@ def test_posting_the_rendered_form_untouched_runs_the_shipped_spec(
 def test_a_refused_submission_keeps_the_typed_values_and_reads_modified(
         tmp_path, monkeypatch):
     import app.core.data as data
-    monkeypatch.setattr(srv, "data_mod", data)
+    monkeypatch.setattr(ui_state, "data_mod", data)
     monkeypatch.setattr(data, "vintage_path", lambda d: tmp_path)
-    monkeypatch.setattr(srv, "_run_all", lambda s: None)
-    srv._status["running"] = None
+    monkeypatch.setattr(ui_pipeline, "_run_all", lambda s: None)
+    ui_state._status["running"] = None
     client.post("/run", data={"forecast_date": FD, "locations": "Ohio",
                               "knob.oracle.w": "0.25", "replicates": "4",
                               "submit_modified": "1"},      # no reason
                 follow_redirects=False)
-    assert "needs a reason" in srv._status.get("flash", "")
+    assert "needs a reason" in ui_state._status.get("flash", "")
     html = client.get("/forecast").text
     f = _panel_form(html)
     got = dict(f.fields)
@@ -185,7 +190,7 @@ def test_a_refused_submission_keeps_the_typed_values_and_reads_modified(
 
 
 def test_the_shipped_page_reads_shipped():
-    srv._last_form.clear()
+    ui_state._last_form.clear()
     html = client.get("/forecast").text
     assert ">shipped</span>" in html
     assert 'id="ms-override" hidden' in html
@@ -202,5 +207,5 @@ def test_panel_data_is_the_registry():
     assert K.panel("forecast", {"oracle.w": "0.25"})["modified"]
     # a coming-later knob never reads modified, whatever was posted
     assert not K.panel("forecast", {"oracle.count_floor": "5"})["modified"]
-    assert srv._knobs.FORM_PREFIX == K.FORM_PREFIX
+    assert ui_forms._knobs.FORM_PREFIX == K.FORM_PREFIX
     json.dumps(p)                                       # template-safe

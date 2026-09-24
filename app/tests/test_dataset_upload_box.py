@@ -21,6 +21,9 @@ import app.core.runs as runs_mod
 from app.core import datasets as D
 from app.ui import datasets_ui as DU
 from app.ui import server as srv
+from app.ui import retro_seasons as ui_retro_seasons
+from app.ui import shared as ui_shared
+from app.ui import state as ui_state
 
 from test_dataset_engines import grouped_bytes         # noqa: E402
 
@@ -33,21 +36,21 @@ NODE = shutil.which("node") or "/opt/node22/bin/node"
 def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(D, "ROOT", tmp_path / "datasets")
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path / "state")
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path / "retro")
-    status = dict(srv._status)
-    srv._status["running"] = None
-    srv._status.pop("flash", None)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path / "retro")
+    status = dict(ui_state._status)
+    ui_state._status["running"] = None
+    ui_state._status.pop("flash", None)
     DU._LAST.clear()
     DU._REPLAY.clear()
     DU._STORED.clear()
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     yield
-    srv._status.clear()
-    srv._status.update(status)
+    ui_state._status.clear()
+    ui_state._status.update(status)
     DU._LAST.clear()
     DU._REPLAY.clear()
     DU._STORED.clear()
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
 
 
 def check(raw, name="kids.csv", where="data", **data):

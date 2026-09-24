@@ -19,7 +19,7 @@ def _write_params_cell(root, loc, rep, names, rows):
 
 
 def test_params_harvest_pools_reps_and_strips_suffix(tmp_path):
-    from app.ui.server import _harvest_params
+    from app.ui.pipeline import _harvest_params
     names = ["Reff__FREE", "mult__FREE"]
     cells = [
         _write_params_cell(tmp_path, "Ohio", 0, names,
@@ -39,7 +39,7 @@ def test_params_harvest_pools_reps_and_strips_suffix(tmp_path):
 
 
 def test_params_harvest_without_cells_is_empty(tmp_path):
-    from app.ui.server import _harvest_params
+    from app.ui.pipeline import _harvest_params
     assert _harvest_params(tmp_path) == {}
 
 

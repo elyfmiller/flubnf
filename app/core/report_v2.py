@@ -1,4 +1,4 @@
-"""PRODUCTION: the weekly run report (server._write_weekly_report,
+"""PRODUCTION: the weekly run report (app/ui/pipeline._write_weekly_report,
 /output/report refresh via render_bundle).
 
 The weekly run report (the "v2" is historical): one self-contained,

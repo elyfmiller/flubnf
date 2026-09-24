@@ -52,8 +52,8 @@ KINDS = ("int", "float", "bool", "choice", "date", "range")
 STAGES = ("fit", "step", "groundhog", "output")
 ORACLE_CARD = "NAU_PyBNF-OracleSIHRS.yml"
 GROUNDHOG_CARD = "NAU_PyBNF-GroundHogCGR.yml"
-#: The console's fit-start rule (server.run_forecast): before the forecast
-#: week and within this many days of it.
+#: The console's fit-start rule (app/ui/routes/forecast.py): before the
+#: forecast week and within this many days of it.
 SEASON_START_WINDOW_DAYS = 400
 
 

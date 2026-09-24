@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from fastapi.testclient import TestClient              # noqa: E402
 
 import app.ui.server as srv                            # noqa: E402
+from app.ui import shared as ui_shared                 # noqa: E402
 from app.core import report_v2                         # noqa: E402
 
 client = TestClient(srv.app)
@@ -36,7 +37,7 @@ def _res(*models):
 
 
 def _fanq(monkeypatch, *models):
-    monkeypatch.setattr(srv, "_latest_results", lambda: ("r1", _res(*models)))
+    monkeypatch.setattr(ui_shared, "_latest_results", lambda: ("r1", _res(*models)))
     r = client.get("/forecast")
     assert r.status_code == 200
     m = re.search(r"const FANQ = (\{.*?\});", r.text)

@@ -23,6 +23,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from app.core import horizons as hz                        # noqa: E402
 from app.core import playback, report_season, retro        # noqa: E402
 from app.ui import server as srv                           # noqa: E402
+from app.ui.routes import retro as ui_retro                # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons       # noqa: E402
+from app.ui import state as ui_state                       # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL      # noqa: E402
 
 client = TestClient(srv.app)
@@ -38,13 +41,13 @@ STAMP = "20980204T101500Z"
 @pytest.fixture(autouse=True)
 def _isolated_status():
     """Snapshot and restore the module-level status stores."""
-    status_before = dict(srv._status)
-    retro_before = dict(srv._retro_status)
-    stop_before = set(srv._retro_stop)
+    status_before = dict(ui_state._status)
+    retro_before = dict(ui_retro_seasons._retro_status)
+    stop_before = set(ui_retro_seasons._retro_stop)
     yield
-    srv._status.clear(); srv._status.update(status_before)
-    srv._retro_status.clear(); srv._retro_status.update(retro_before)
-    srv._retro_stop.clear(); srv._retro_stop.update(stop_before)
+    ui_state._status.clear(); ui_state._status.update(status_before)
+    ui_retro_seasons._retro_status.clear(); ui_retro_seasons._retro_status.update(retro_before)
+    ui_retro_seasons._retro_stop.clear(); ui_retro_seasons._retro_stop.update(stop_before)
 
 
 # ------------------------------------------------------------------ fixtures
@@ -109,13 +112,13 @@ def _roots(tmp_path, monkeypatch):
     """Point the app at an empty retro root and a season list it controls."""
     rr = tmp_path / "retro"
     rr.mkdir()
-    monkeypatch.setattr(srv, "RETRO_ROOT", rr)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", rr)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     monkeypatch.setattr(retro, "available_seasons", lambda: [SEASON, OTHER])
     monkeypatch.setattr(retro, "season_vintages", lambda s: list(VINTAGES))
-    monkeypatch.setattr(srv, "_retro_bg", lambda *a, **k: None)
-    srv._retro_status.clear()
-    srv._retro_stop.clear()
+    monkeypatch.setattr(ui_retro, "_retro_bg", lambda *a, **k: None)
+    ui_retro_seasons._retro_status.clear()
+    ui_retro_seasons._retro_stop.clear()
     return rr
 
 
@@ -211,7 +214,7 @@ def test_archive_identifiers_that_could_escape_the_root_are_refused():
     for bad in ("", "..", "../../etc", "2098", "latest", STAMP + "/x",
                 STAMP + "-", "20980204T101500"):
         assert not retro.valid_stamp(bad), bad
-        assert not srv._valid_archive(bad), bad
+        assert not ui_retro_seasons._valid_archive(bad), bad
 
 
 def test_run_summary_reports_weeks_wall_time_and_headline(tmp_path):
@@ -265,7 +268,7 @@ def test_startover_prompts_for_a_sealed_season(tmp_path, monkeypatch):
     replay. The seal itself is never a start-over target."""
     _roots(tmp_path, monkeypatch)
     seal = tmp_path / "seal"
-    monkeypatch.setattr(srv, "RETRO_SEAL", seal)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", seal)
     for w in (W1, W2):
         _write_week(seal / SEASON, w)
     b = client.get(f"/api/retro/startover?season={SEASON}").json()
@@ -279,7 +282,7 @@ def test_startover_prefers_the_live_tree_over_the_seal(tmp_path,
     """With live weeks present, the ordinary choices apply to the live tree."""
     rr = _roots(tmp_path, monkeypatch)
     seal = tmp_path / "seal"
-    monkeypatch.setattr(srv, "RETRO_SEAL", seal)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", seal)
     for w in VINTAGES:
         _write_week(seal / SEASON, w)
     _season_tree(rr, SEASON)                      # two live weeks
@@ -360,7 +363,7 @@ def test_archive_and_start_fresh_moves_the_tree_and_starts_clean(tmp_path,
     root = _season_tree(rr, SEASON)
     before = _tree_snapshot(root)
     started = []
-    monkeypatch.setattr(srv, "_retro_bg",
+    monkeypatch.setattr(ui_retro, "_retro_bg",
                         lambda *a, **k: started.append(a[0]))
 
     r = client.post("/retro/run", data={"season": SEASON, "mode": "archive"},
@@ -371,7 +374,7 @@ def test_archive_and_start_fresh_moves_the_tree_and_starts_clean(tmp_path,
     assert _tree_snapshot(archives[0]) == before      # nothing lost
     assert not (root / "weeks").exists()              # the replay starts clean
     assert started == [SEASON]                        # and it does start
-    assert "Archived" in srv._status.get("flash", "")
+    assert "Archived" in ui_state._status.get("flash", "")
 
 
 def test_discard_without_the_second_confirmation_changes_nothing(tmp_path,
@@ -380,7 +383,7 @@ def test_discard_without_the_second_confirmation_changes_nothing(tmp_path,
     root = _season_tree(rr, SEASON)
     before = _tree_snapshot(root)
     started = []
-    monkeypatch.setattr(srv, "_retro_bg",
+    monkeypatch.setattr(ui_retro, "_retro_bg",
                         lambda *a, **k: started.append(a[0]))
 
     r = client.post("/retro/run", data={"season": SEASON, "mode": "discard"},
@@ -388,7 +391,7 @@ def test_discard_without_the_second_confirmation_changes_nothing(tmp_path,
     assert r.status_code == 303
     assert _tree_snapshot(root) == before
     assert started == []                              # nor was a run started
-    assert "not confirmed" in srv._status.get("flash", "")
+    assert "not confirmed" in ui_state._status.get("flash", "")
 
     # a confirmation naming a DIFFERENT season is no confirmation at all
     client.post("/retro/run", data={"season": SEASON, "mode": "discard",
@@ -423,7 +426,7 @@ def test_an_unknown_mode_starts_nothing_and_destroys_nothing(tmp_path,
     root = _season_tree(rr, SEASON)
     before = _tree_snapshot(root)
     started = []
-    monkeypatch.setattr(srv, "_retro_bg",
+    monkeypatch.setattr(ui_retro, "_retro_bg",
                         lambda *a, **k: started.append(a[0]))
     r = client.post("/retro/run", data={"season": SEASON, "mode": "nuke"},
                     follow_redirects=False)
@@ -443,7 +446,7 @@ def test_nothing_destructive_is_permitted_while_a_season_lives(status,
     _season_tree(rr, SEASON)
     arch = rr / f"{SEASON}__archived_{STAMP}"
     live_before, arch_before = _tree_snapshot(root), _tree_snapshot(arch)
-    srv._retro_status[SEASON] = status
+    ui_retro_seasons._retro_status[SEASON] = status
 
     for data in ({"season": SEASON, "mode": "archive"},
                  {"season": SEASON, "mode": "discard", "confirm": SEASON}):
@@ -467,7 +470,7 @@ def test_busy_sees_a_worker_whose_only_trace_is_its_run_record(tmp_path,
                             "heartbeat_utc": time.time(),
                             "segment_start_utc": time.time(),
                             "elapsed_s": 0.0})
-    assert srv._retro_status == {}
+    assert ui_retro_seasons._retro_status == {}
     assert client.get("/api/busy").json()["retro"] == {SEASON: "running"}
 
 
@@ -485,7 +488,7 @@ def test_deleting_an_archive_needs_confirmation_and_spares_the_live_season(
     client.post(f"/retro/{SEASON}/archive/{STAMP}/delete",
                 follow_redirects=False)
     assert _tree_snapshot(arch) == arch_before
-    assert "not confirmed" in srv._status.get("flash", "")
+    assert "not confirmed" in ui_state._status.get("flash", "")
 
     # confirmed: the archive goes, the live season stays whole
     r = client.post(f"/retro/{SEASON}/archive/{STAMP}/delete",
@@ -493,7 +496,7 @@ def test_deleting_an_archive_needs_confirmation_and_spares_the_live_season(
     assert r.status_code == 303
     assert not arch.exists()
     assert _tree_snapshot(live) == live_before
-    flash = srv._status.get("flash", "")
+    flash = ui_state._status.get("flash", "")
     assert "2 completed weeks" in flash and "was not touched" in flash
 
 

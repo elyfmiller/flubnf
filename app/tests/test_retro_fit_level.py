@@ -18,6 +18,7 @@ import pytest                                         # noqa: E402
 
 from app.core import report_season, retro             # noqa: E402
 from app.ui import server as srv                      # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
 
 SEASON = "2098-99"
 W1 = "2098-11-07"
@@ -399,8 +400,8 @@ def test_season_report_header_refuses_a_sub_second_record(tmp_path):
 def test_startover_api_withholds_a_sub_second_wall_time(tmp_path,
                                                         monkeypatch):
     from fastapi.testclient import TestClient
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     root = tmp_path / SEASON
     root.mkdir(parents=True)
     retro.write_meta(root, {"status": "stopped", "elapsed_s": 0.4})

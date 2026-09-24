@@ -257,15 +257,16 @@ def _console_season(tmp_path, monkeypatch):
 
 def test_the_console_season_page_never_pools_a_fitted_us_cell(tmp_path,
                                                               monkeypatch):
-    """server.retro_results (the console's verdict tiles, curve and table),
-    driven through the real route."""
+    """routes/retro.retro_results (the console's verdict tiles, curve and
+    table), driven through the real route."""
     from fastapi.testclient import TestClient
 
     from app.ui import server as srv
+    from app.ui import retro_seasons as ui_retro_seasons
 
     _root, season = _console_season(tmp_path, monkeypatch)
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     html = TestClient(srv.app).get(f"/retro/{season}").text
     assert "preparing results" not in html       # a complete page, not a stub
     # the pooled ensemble verdict is the two-state figure

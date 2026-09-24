@@ -23,6 +23,11 @@ from fastapi.testclient import TestClient                  # noqa: E402
 from app.core import playback, report_season, retro, scoring  # noqa: E402
 from app.core import site_build                            # noqa: E402
 from app.ui import server as srv                           # noqa: E402
+from app.ui.routes import retro as ui_retro                # noqa: E402
+from app.ui import retro_prep as ui_retro_prep             # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons       # noqa: E402
+from app.ui import shared as ui_shared                     # noqa: E402
+from app.ui import templating as ui_templating             # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL      # noqa: E402
 
 client = TestClient(srv.app)
@@ -96,21 +101,21 @@ def world(monkeypatch, tmp_path):
                           tmp_path / "retro_reseal")
     for d in (live, seal, reseal):
         d.mkdir()
-    monkeypatch.setattr(srv, "RETRO_ROOT", live)
-    monkeypatch.setattr(srv, "RETRO_SEAL", seal)
-    monkeypatch.setattr(srv, "RETRO_RESEAL", reseal)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", live)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", seal)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_RESEAL", reseal)
     monkeypatch.setattr(retro, "available_seasons", lambda: [SEASON, OTHER])
     monkeypatch.setattr(retro, "season_vintages", lambda s: [W1, W2])
-    monkeypatch.setattr(srv, "_retro_bg", lambda *a, **k: None)
-    status_before = dict(srv._retro_status)
-    srv._retro_status.clear()
-    srv._results_jobs.clear()
-    srv._invalidate_scans()
+    monkeypatch.setattr(ui_retro, "_retro_bg", lambda *a, **k: None)
+    status_before = dict(ui_retro_seasons._retro_status)
+    ui_retro_seasons._retro_status.clear()
+    ui_retro_prep._results_jobs.clear()
+    ui_shared._invalidate_scans()
     yield {"live": live, "seal": seal, "reseal": reseal}
-    srv._results_jobs.clear()
-    srv._retro_status.clear()
-    srv._retro_status.update(status_before)
-    srv._invalidate_scans()
+    ui_retro_prep._results_jobs.clear()
+    ui_retro_seasons._retro_status.clear()
+    ui_retro_seasons._retro_status.update(status_before)
+    ui_shared._invalidate_scans()
 
 
 def _text(html: str) -> str:
@@ -161,7 +166,7 @@ def test_each_archived_run_is_named_for_its_own_tree(world):
     retro.archive_run(rr, SEASON, stamp=STAMP_PLAIN)
     _tree(rr / SEASON, oracle="weeks")
     retro.archive_run(rr, SEASON, stamp=STAMP_ORACLE)
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     html = client.get("/retro").text
     assert "2 archived runs kept" in html
     rows = html.split('<div class="archrow">')[1:]
@@ -180,7 +185,7 @@ def test_the_replay_form_names_the_oracle_sihrs(world):
     assert '<option value="pf">Oracle SIHRS and the Groundhog (hours)</option>' in t
     assert "Particle filter with the Groundhog" not in t
     assert "Each week fits the Oracle SIHRS from the season start" in t
-    assert srv.retro_engine_label("pf") == "Oracle SIHRS and the Groundhog"
+    assert ui_retro.retro_engine_label("pf") == "Oracle SIHRS and the Groundhog"
 
 
 # ------------------------------------------------------- the season page
@@ -221,7 +226,7 @@ def test_a_page_model_name_shadows_the_template_global():
     env = srv.templates.env
     assert env.globals["model_name"]("pf") == ORACLE
     tpl = env.from_string("{{ model_name('pf') }}|{{ model_name('analogue') }}")
-    got = tpl.render(model_name=srv._name_fn(dict(srv._model_names(),
+    got = tpl.render(model_name=ui_templating._name_fn(dict(ui_templating._model_names(),
                                                   pf=FILTER)))
     assert got == f"{FILTER}|Groundhog"
     assert tpl.render() == f"{ORACLE}|Groundhog"      # the global, untouched
@@ -295,18 +300,18 @@ def test_an_export_built_before_names_were_per_tree_is_rebuilt(world):
 
 def test_the_names_helper_fails_closed(world, monkeypatch, tmp_path):
     plain = _tree(world["live"] / SEASON)
-    assert srv._names_for_root(plain)["pf"] == FILTER
-    assert srv._names_for_root(tmp_path / "no" / "such" / "tree")["pf"] \
+    assert ui_templating._names_for_root(plain)["pf"] == FILTER
+    assert ui_templating._names_for_root(tmp_path / "no" / "such" / "tree")["pf"] \
         == FILTER
     oracle = _tree(tmp_path / "o" / SEASON, oracle="weeks")
-    assert srv._names_for_root(oracle)["pf"] == ORACLE
+    assert ui_templating._names_for_root(oracle)["pf"] == ORACLE
 
     def boom(root):
         raise RuntimeError("unreadable")
     monkeypatch.setattr(site_build, "tree_carries_oracle", boom)
-    assert srv._names_for_root(oracle)["pf"] == FILTER
+    assert ui_templating._names_for_root(oracle)["pf"] == FILTER
     # every other name is the shared map's, and the map itself is a copy
-    names = srv._names_for_root(oracle)
+    names = ui_templating._names_for_root(oracle)
     assert {k: v for k, v in names.items() if k != "pf"} == \
-        {k: v for k, v in srv._model_names().items() if k != "pf"}
-    assert srv._model_names()["pf"] == ORACLE
+        {k: v for k, v in ui_templating._model_names().items() if k != "pf"}
+    assert ui_templating._model_names()["pf"] == ORACLE

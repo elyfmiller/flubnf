@@ -22,6 +22,7 @@ from app.core import horizons as hz                      # noqa: E402
 from app.core import oracle as oracle_mod                # noqa: E402
 from app.core import sandbox as sb                       # noqa: E402
 from app.ui import server as srv                         # noqa: E402
+from app.ui import state as ui_state                     # noqa: E402
 from flubnf import oracle as OR                          # noqa: E402
 
 client = TestClient(srv.app)
@@ -153,14 +154,14 @@ def test_the_route_and_the_card(finished):
     r = client.post(f"/sandbox/runs/{run}/oracle", data={"w": "0.3"},
                     follow_redirects=False)
     assert r.headers["location"] == f"/sandbox?run={run}&model=ohio"
-    assert "w = 0.3" in srv._status.get("flash", "")
+    assert "w = 0.3" in ui_state._status.get("flash", "")
     html = client.get(f"/sandbox?model=ohio&run={run}").text
     assert "Oracle SIHRS: median (50%, 95%)" in html and "2098-01-11" in html
     assert "(production 0.5)" in html
-    srv._status.pop("flash", None)
+    ui_state._status.pop("flash", None)
     client.post(f"/sandbox/runs/{run}/oracle", data={"w": "x"},
                 follow_redirects=False)
-    assert "w must be a number" in srv._status.get("flash", "")
+    assert "w must be a number" in ui_state._status.get("flash", "")
 
 
 def test_step_refused_for_an_edited_model_with_the_reason_in_a_tip(finished):

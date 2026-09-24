@@ -31,6 +31,10 @@ from app.core import horizons as hz                          # noqa: E402
 from app.core import playback, reclaim, retro, scoring       # noqa: E402
 from app.core.runs import run_display, run_id_time           # noqa: E402
 from app.ui import server as srv                             # noqa: E402
+from app.ui import retro_prep as ui_retro_prep               # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons         # noqa: E402
+from app.ui import shared as ui_shared                       # noqa: E402
+from app.ui import state as ui_state                         # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL        # noqa: E402
 
 client = TestClient(srv.app)
@@ -475,20 +479,20 @@ def test_finalize_season_sweeps_leftover_intermediates(tmp_path, _stubbed,
 def routed(world, monkeypatch):
     """Point the app at the fixture world."""
     monkeypatch.setattr(runs_mod, "APP_STATE", world["tmp"])
-    monkeypatch.setattr(srv, "RETRO_ROOT", world["retro_root"])
-    monkeypatch.setattr(srv, "RETRO_SEAL", world["seal"])
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", world["retro_root"])
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", world["seal"])
     monkeypatch.setattr(reclaim, "RESEARCH_ROOTS", (world["research"],))
-    status_before = dict(srv._status)
-    retro_before = dict(srv._retro_status)
-    srv._status.update({"running": None, "workroot": None, "flash": ""})
-    srv._retro_status.clear()
-    srv._results_jobs.clear()
-    srv._invalidate_scans()
+    status_before = dict(ui_state._status)
+    retro_before = dict(ui_retro_seasons._retro_status)
+    ui_state._status.update({"running": None, "workroot": None, "flash": ""})
+    ui_retro_seasons._retro_status.clear()
+    ui_retro_prep._results_jobs.clear()
+    ui_shared._invalidate_scans()
     yield world
-    srv._status.clear(); srv._status.update(status_before)
-    srv._retro_status.clear(); srv._retro_status.update(retro_before)
-    srv._results_jobs.clear()
-    srv._invalidate_scans()
+    ui_state._status.clear(); ui_state._status.update(status_before)
+    ui_retro_seasons._retro_status.clear(); ui_retro_seasons._retro_status.update(retro_before)
+    ui_retro_prep._results_jobs.clear()
+    ui_shared._invalidate_scans()
 
 
 def test_reclaim_api_reports_categories_without_side_effects(routed):
@@ -509,7 +513,7 @@ def test_reclaim_post_refuses_a_stale_confirmation(routed):
                     follow_redirects=False)
     assert r.status_code == 303
     assert _snapshot(routed["tmp"]) == before
-    assert "Nothing was deleted" in srv._status.get("flash", "")
+    assert "Nothing was deleted" in ui_state._status.get("flash", "")
 
 
 def test_reclaim_post_performs_and_names_what_it_freed(routed):
@@ -518,7 +522,7 @@ def test_reclaim_post_performs_and_names_what_it_freed(routed):
     r = client.post("/storage/reclaim", data={"confirm": d["confirm"]},
                     follow_redirects=False)
     assert r.status_code == 303
-    flash = srv._status.get("flash", "")
+    flash = ui_state._status.get("flash", "")
     assert "Reclaimed" in flash
     assert "sealed validation record and the hub clone were not touched" \
         in flash
@@ -533,10 +537,10 @@ def test_reclaim_post_performs_and_names_what_it_freed(routed):
 
 
 def test_reclaim_skips_busy_seasons_and_the_live_workroot(routed):
-    srv._retro_status[SEASON] = "running"
+    ui_retro_seasons._retro_status[SEASON] = "running"
     live = routed["live"]
-    srv._status["running"] = f"all:{live}"
-    srv._status["workroot"] = str(routed["workroots"] / live)
+    ui_state._status["running"] = f"all:{live}"
+    ui_state._status["workroot"] = str(routed["workroots"] / live)
     d = client.get("/api/storage/reclaim").json()
     client.post("/storage/reclaim", data={"confirm": d["confirm"]},
                 follow_redirects=False)

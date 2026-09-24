@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient                # noqa: E402
 
 from app.core import sandbox as sb                       # noqa: E402
 from app.ui import server as srv                         # noqa: E402
+from app.ui import state as ui_state                     # noqa: E402
 
 client = TestClient(srv.app)
 
@@ -216,16 +217,16 @@ def test_sandbox_run_is_refused_while_the_engine_is_busy(box, monkeypatch):
     sb.add_example("kinetics_example")
     started = []
     monkeypatch.setattr(sb, "prepare", lambda *a, **k: started.append(a) or box / "runs" / "x")
-    srv._status["running"] = "console"
+    ui_state._status["running"] = "console"
     r = client.post("/sandbox/run", data={"model": "kinetics_example"},
                     follow_redirects=False)
     assert r.status_code == 303 and started == []
-    srv._status["running"] = None
-    srv._sandbox_status["running"] = "earlier"
+    ui_state._status["running"] = None
+    ui_state._sandbox_status["running"] = "earlier"
     client.post("/sandbox/run", data={"model": "kinetics_example"},
                 follow_redirects=False)
     assert started == []
-    srv._sandbox_status["running"] = None
+    ui_state._sandbox_status["running"] = None
 
 
 def test_sandbox_run_prepares_and_starts_in_the_background(box, monkeypatch):
@@ -244,7 +245,7 @@ def test_sandbox_run_prepares_and_starts_in_the_background(box, monkeypatch):
     assert len(ran) == 1 and ran[0].parent == sb.RUNS
     conf = (ran[0] / "kinetics_example_r0" / "pf.conf").read_text()
     assert "pf_particles = 120" in conf and "pf_seed = 3" in conf
-    assert srv._sandbox_status["running"] is None            # released
+    assert ui_state._sandbox_status["running"] is None            # released
     r = client.post("/sandbox/run", data={"model": "nope"}, follow_redirects=False)
     assert r.status_code == 303 and len(ran) == 1            # refused, not started
     assert client.get("/api/sandbox/runs/../etc").status_code in (404, 422)

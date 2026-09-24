@@ -99,9 +99,9 @@ def _root(tmp_path):
 
 
 def test_every_stored_model_gets_map_cards_from_the_one_rule(tmp_path):
-    import app.ui.server as srv
+    from app.ui import retro_prep as ui_retro_prep
     root = _root(tmp_path)
-    by_model = srv._week_map_cards_by_model(root, W1)
+    by_model = ui_retro_prep._week_map_cards_by_model(root, W1)
     assert set(by_model) == {"pf", "analogue"}
     # Ohio, 11.8 million people: one week ahead the PF says +40 (stable
     # cut 35, large 201: increase), the Groundhog says -30 (stable)
@@ -118,7 +118,7 @@ def test_every_stored_model_gets_map_cards_from_the_one_rule(tmp_path):
     assert "1-wk median: 140" in by_model["pf"]["39"]["hover_html"]
     assert "1-wk median: 70" in by_model["analogue"]["39"]["hover_html"]
     # the one-model reader is the PF's, display order
-    assert srv._week_map_cards(root, W1) == by_model["pf"]
+    assert ui_retro_prep._week_map_cards(root, W1) == by_model["pf"]
     # cached per week, version 2 (the per-model shape)
     cf = root / "playback_cache" / "map_cards" / f"{W1}.json"
     assert json.loads(cf.read_text())["v"] == 2
@@ -128,16 +128,16 @@ def test_an_analogue_only_week_takes_its_baseline_from_the_vintage(
         tmp_path, monkeypatch):
     """A Groundhog-only replay stores no anchor draws; the baseline is the
     vintage's last reported value, and the map still renders."""
-    import app.ui.server as srv
+    from app.ui import retro_prep as ui_retro_prep
     root = tmp_path / SEASON
     wd = root / "weeks" / W1
     wd.mkdir(parents=True)
     (wd / "samples.json").write_text(json.dumps(
         {"asof": W1, "analogue": {"Ohio": {str(h): _q23(130.0)
                                            for h in range(1, 5)}}}))
-    monkeypatch.setattr(srv, "_last_reported_before",
+    monkeypatch.setattr(ui_retro_prep, "_last_reported_before",
                         lambda wk, n2f: {"Ohio": 100.0})
-    by_model = srv._week_map_cards_by_model(root, W1)
+    by_model = ui_retro_prep._week_map_cards_by_model(root, W1)
     assert set(by_model) == {"analogue"}
     assert by_model["analogue"]["39"]["probs"]["stable"] > 0.9   # +30 < 35
 
@@ -146,9 +146,10 @@ def test_the_mapswap_route_serves_every_model_and_keeps_the_old_shape(
         tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     import app.ui.server as srv
+    from app.ui import retro_seasons as ui_retro_seasons
     from app.core.usmap import state_paths
     root = _root(tmp_path)
-    monkeypatch.setattr(srv, "_season_root", lambda s, a="": (root, False))
+    monkeypatch.setattr(ui_retro_seasons, "_season_root", lambda s, a="": (root, False))
     r = TestClient(srv.app).get(f"/api/retro/{SEASON}/mapswap/{W1}")
     assert r.status_code == 200
     d = r.json()
@@ -168,13 +169,15 @@ def test_the_season_page_offers_the_model_toggle_above_the_map(
     group id, sits above the retrospective map; the page script follows
     it across weeks."""
     import app.ui.server as srv
+    from app.ui import retro_seasons as ui_retro_seasons
+    from app.ui import shared as ui_shared
     from app.core import retro
     from fastapi.testclient import TestClient
     rr = tmp_path / "retro"
     _root(rr)
-    monkeypatch.setattr(srv, "RETRO_ROOT", rr)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
-    monkeypatch.setattr(srv, "RETRO_RESEAL", tmp_path / "noreseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", rr)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_RESEAL", tmp_path / "noreseal")
     monkeypatch.setattr(retro, "available_seasons", lambda: [SEASON])
     monkeypatch.setattr(retro, "season_vintages", lambda s: [W1])
     # synthetic truth and baselines for both scoring surfaces, so the
@@ -192,7 +195,7 @@ def test_the_season_page_offers_the_model_toggle_above_the_map(
                                                         for f in fips_set
                                                         for h in range(4)})
     monkeypatch.setattr(playback, "HUB", tmp_path / "hub")
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     html = TestClient(srv.app).get(f"/retro/{SEASON}").text
     assert 'data-fips="39"' in html                          # the map
     assert 'id="retro-model"' in html

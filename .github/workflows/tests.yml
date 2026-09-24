@@ -13,7 +13,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: "${{ matrix.python-version }}"}
-      - run: pip install -e ".[app,dev]" bionetgen
+      # ruff: test_ui_layout.py lints app/ui with it (the case skips without it)
+      - run: pip install -e ".[app,dev]" bionetgen ruff
       # No hub, no engine: dependent tests skip; --durations is the windows baseline.
       - name: tests (failures become annotations)
         run: |
@@ -67,7 +68,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: "${{ matrix.python-version }}"}
 
-      - run: pip install -e ".[app,dev]" bionetgen
+      - run: pip install -e ".[app,dev]" bionetgen ruff
       # As ubuntu (Git Bash keeps the pipeline identical); --durations vs ubuntu's locates the hour.
       - name: tests (failures become annotations)
         shell: bash

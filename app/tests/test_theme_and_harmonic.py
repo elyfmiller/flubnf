@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from fastapi.testclient import TestClient           # noqa: E402
 
 from app.ui import server as srv                    # noqa: E402
+from app.ui import templating as ui_templating      # noqa: E402
 
 client = TestClient(srv.app)
 
@@ -93,7 +94,7 @@ def test_two_strain_variant_shares_amplitude_with_per_strain_peaks():
     # two curves in the member colors, sharing one amplitude band
     assert html.count('stroke="var(--gold)"') >= 2      # curve + peak marks
     assert html.count('stroke="var(--slate)"') >= 2
-    g = srv._harmonic_fig(0.35, [20, 30])
+    g = ui_templating._harmonic_fig(0.35, [20, 30])
     # both peak markers sit on the shared upper amplitude edge
     assert html.count(f'cy="{g["y_hi"]}" r="4"') == 2
     assert f'fill="var(--gold)"/>' in html
@@ -104,7 +105,7 @@ def test_two_strain_variant_shares_amplitude_with_per_strain_peaks():
 
 
 def test_harmonic_curve_is_computed_from_the_stated_equation():
-    g = srv._harmonic_fig(0.35, [22.0])
+    g = ui_templating._harmonic_fig(0.35, [22.0])
     pts = [tuple(map(float, p[1:].split(",")))
            for p in g["paths"][0].split(" ")]
     ys = [y for _, y in pts]

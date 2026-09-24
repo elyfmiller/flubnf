@@ -378,7 +378,7 @@ def test_the_vision_block_remaps_every_category():
 
 def test_no_ok_bad_surface_relies_on_hue_alone():
     # every surface that colors ok/bad also prints the number or word
-    from app.ui.server import relwis_chip
+    from app.ui.shared import relwis_chip
     retro_t = (UI / "templates" / "retro.html").read_text()
     # the one relWIS chip outside a table prints the score beside the class
     assert "1.234" in relwis_chip(1.234)

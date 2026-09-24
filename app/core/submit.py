@@ -1,5 +1,5 @@
-"""PRODUCTION: hub submission CSVs and their validation (server._run_all,
-oracle provenance).
+"""PRODUCTION: hub submission CSVs and their validation
+(app/ui/pipeline._run_all, oracle provenance).
 
 FluSight submission formatting + validation.
 

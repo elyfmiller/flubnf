@@ -19,7 +19,7 @@ def test_forecast_form_drops_member_select_but_server_accepts_three():
     import inspect
 
     from fastapi.testclient import TestClient
-    from app.ui import server as srv_mod
+    from app.ui.routes import forecast as ui_forecast
     from app.ui.server import app as srv
     r = TestClient(srv).get("/forecast")
     assert r.status_code == 200
@@ -28,7 +28,7 @@ def test_forecast_form_drops_member_select_but_server_accepts_three():
     assert 'name="members"' not in r.text
     # the endpoint still takes a members parameter, defaulting to the two
     # shipped members
-    sig = inspect.signature(srv_mod.run_models)
+    sig = inspect.signature(ui_forecast.run_models)
     assert "members" in sig.parameters
     assert sig.parameters["members"].default.default == 2
 

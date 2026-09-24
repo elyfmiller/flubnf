@@ -22,6 +22,9 @@ from app.core.runs import RunSpec, is_research, spec_settings   # noqa: E402
 from flubnf import oracle as OR                          # noqa: E402
 from flubnf import oracle_bank as OB                     # noqa: E402
 from flubnf import oracle_mix as MX                      # noqa: E402
+from app.ui import shared as ui_shared                   # noqa: E402
+from app.ui import pipeline as ui_pipeline               # noqa: E402
+from app.ui.routes import forecast as ui_forecast        # noqa: E402
 
 ASOF = "2098-01-04"                                       # a Saturday
 FIPS = {"Ohio": "39", "Utah": "49", "California": "06", "Texas": "48"}
@@ -360,6 +363,12 @@ def test_a_console_replay_is_the_oracle_sihrs_from_the_season_start(hubfiles, tm
     stores no filter samples, and names the tree the Oracle SIHRS."""
     from fastapi.testclient import TestClient
     from app.ui import server as srv
+    from app.ui.routes import retro as ui_retro
+    from app.ui import pipeline as ui_pipeline
+    from app.ui import retro_prep as ui_retro_prep
+    from app.ui import retro_seasons as ui_retro_seasons
+    from app.ui import shared as ui_shared
+    from app.ui import templating as ui_templating
     season = "2097-98"
     raw = _samples(("Ohio", "Utah"))
     _stub_retro(monkeypatch, raw)
@@ -373,8 +382,8 @@ def test_a_console_replay_is_the_oracle_sihrs_from_the_season_start(hubfiles, tm
     monkeypatch.setattr(retro, "season_vintages", lambda s: [ASOF])
     live = tmp_path / "retro"
     live.mkdir()
-    monkeypatch.setattr(srv, "RETRO_ROOT", live)
-    monkeypatch.setattr(srv, "_sleep_guard", lambda: None)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", live)
+    monkeypatch.setattr(ui_pipeline, "_sleep_guard", lambda: None)
 
     class _Done:
         def is_set(self):
@@ -382,11 +391,11 @@ def test_a_console_replay_is_the_oracle_sihrs_from_the_season_start(hubfiles, tm
 
         def wait(self, *a):
             return True
-    monkeypatch.setattr(srv, "_ensure_results_job",
+    monkeypatch.setattr(ui_retro_prep, "_ensure_results_job",
                         lambda root, s, **k: {"done": _Done(), "error": ""})
-    real_bg, calls = srv._retro_bg, []
-    monkeypatch.setattr(srv, "_retro_bg", lambda *a: calls.append(a))
-    status_before = dict(srv._retro_status)
+    real_bg, calls = ui_retro._retro_bg, []
+    monkeypatch.setattr(ui_retro, "_retro_bg", lambda *a: calls.append(a))
+    status_before = dict(ui_retro_seasons._retro_status)
     try:
         r = TestClient(srv.app).post("/retro/run", data={
             "season": season, "locations": "custom",
@@ -397,11 +406,11 @@ def test_a_console_replay_is_the_oracle_sihrs_from_the_season_start(hubfiles, tm
         # the form's arguments, run by the real season worker
         assert calls[0][-1] == "pf" and calls[0][1] == ["Ohio", "Utah"]
         real_bg(*calls[0])
-        assert srv._retro_status[season] == "done", srv._retro_status[season]
+        assert ui_retro_seasons._retro_status[season] == "done", ui_retro_seasons._retro_status[season]
     finally:
-        srv._retro_status.clear()
-        srv._retro_status.update(status_before)
-        srv._invalidate_scans()
+        ui_retro_seasons._retro_status.clear()
+        ui_retro_seasons._retro_status.update(status_before)
+        ui_shared._invalidate_scans()
     root = live / season
     # the fit runs from the season start through the as-of week
     assert [(sp.forecast_date, sp.season_start) for sp in specs] == \
@@ -424,14 +433,14 @@ def test_a_console_replay_is_the_oracle_sihrs_from_the_season_start(hubfiles, tm
     # and the tree is titled the Oracle SIHRS wherever pf is named
     # 1,000 particles and 1 replicate are off the shipped values: the tree
     # records them as model knobs and never wears the bare shipped name
-    assert srv._names_for_root(root)["pf"] == "Oracle SIHRS (modified settings)"
+    assert ui_templating._names_for_root(root)["pf"] == "Oracle SIHRS (modified settings)"
 
 
 # ------------------------------------------------------------ the console
 
 @pytest.fixture
 def console(hubfiles, tmp_path, monkeypatch):
-    """srv._run_all with fake engines and the real step."""
+    """pipeline._run_all with fake engines and the real step."""
     import app.core.engines.analogue as an_engine
     import app.core.engines.pf as pf_engine
     import app.core.floor as floor_mod
@@ -439,6 +448,10 @@ def console(hubfiles, tmp_path, monkeypatch):
     import app.core.scoring as scoring_mod
     import flubnf.settings as fs
     from app.ui import server as srv
+    from app.ui import pipeline as ui_pipeline
+    from app.ui import shared as ui_shared
+    from app.ui import state as ui_state
+    from app.ui import versions as ui_versions
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path / "state")
     exe = tmp_path / "exe"
     exe.write_text("")
@@ -449,8 +462,6 @@ def console(hubfiles, tmp_path, monkeypatch):
     monkeypatch.setattr(pf_engine, "execute", lambda w: {"Ohio_r0": "ok", "Utah_r0": "ok"})
     monkeypatch.setattr(pf_engine, "collect", lambda w: {loc: {h: list(v) for h, v in s.items()}
                                                          for loc, s in raw.items()})
-    an_q = {h: {float(L): 10.0 + 3 * i + int(h) for i, L in enumerate(srv.QUANTILES)}
-            for h in hz.HORIZONS} if hasattr(srv, "QUANTILES") else None
     from app.core.submit import QUANTILES
     an_q = {h: {float(L): 10.0 + 3 * i + int(h) for i, L in enumerate(QUANTILES)}
             for h in hz.HORIZONS}
@@ -463,23 +474,23 @@ def console(hubfiles, tmp_path, monkeypatch):
     def _no_truth():
         raise RuntimeError("no truth in this test")
     monkeypatch.setattr(scoring_mod, "load_truth", _no_truth)
-    monkeypatch.setattr(srv, "_sleep_guard", lambda: None)
-    monkeypatch.setattr(srv, "_engine_versions_for_ledger", lambda e: {})
-    monkeypatch.setattr(srv, "_harvest_params", lambda w: {})
-    monkeypatch.setattr(srv, "_write_weekly_report", lambda *a, **k: None)
-    monkeypatch.setattr(srv, "_archive_run", lambda w, d: "archived")
-    status_before = dict(srv._status)
+    monkeypatch.setattr(ui_pipeline, "_sleep_guard", lambda: None)
+    monkeypatch.setattr(ui_versions, "_engine_versions_for_ledger", lambda e: {})
+    monkeypatch.setattr(ui_pipeline, "_harvest_params", lambda w: {})
+    monkeypatch.setattr(ui_pipeline, "_write_weekly_report", lambda *a, **k: None)
+    monkeypatch.setattr(ui_pipeline, "_archive_run", lambda w, d: "archived")
+    status_before = dict(ui_state._status)
     yield srv, raw
-    srv._status.clear()
-    srv._status.update(status_before)
-    srv._invalidate_scans()
+    ui_state._status.clear()
+    ui_state._status.update(status_before)
+    ui_shared._invalidate_scans()
 
 
 def _run(srv, oracle=None):
     from app.core.runs import Ledger
     spec = RunSpec(engine="all", forecast_date=ASOF, locations=["Ohio", "Utah"],
-                   replicates=1, extra=srv._run_extra(2, "vintage", None, oracle))
-    srv._run_all(spec)
+                   replicates=1, extra=ui_forecast._run_extra(2, "vintage", None, oracle))
+    ui_pipeline._run_all(spec)
     row = next(iter(Ledger().rows(5)))
     outcome = json.loads(row.get("outcome") or "{}")
     from app.core.runs import APP_STATE
@@ -526,34 +537,39 @@ def test_oracle_none_is_a_research_run_with_its_file_withheld(console):
     prov = oracle_mod.read_provenance(w)
     assert prov["applied"] is False
     assert not (w / oracle_mod.FILTER_RECORD_NAME).exists()
-    assert "submission withheld" in srv._outcome_chips(json.dumps(outcome))
+    assert "submission withheld" in ui_shared._outcome_chips(json.dumps(outcome))
 
 
 def test_run_extra_carries_the_switch_and_refuses_anything_else():
-    from app.ui import server as srv
-    assert "oracle" not in srv._run_extra(2, "realtime", "")
-    assert srv._run_extra(2, "realtime", "", "none")["oracle"] == "none"
-    assert "oracle" not in srv._run_extra(2, "realtime", "", "")
+    from app.ui.routes import forecast as ui_forecast
+    assert "oracle" not in ui_forecast._run_extra(2, "realtime", "")
+    assert ui_forecast._run_extra(2, "realtime", "", "none")["oracle"] == "none"
+    assert "oracle" not in ui_forecast._run_extra(2, "realtime", "", "")
     with pytest.raises(ValueError, match="oracle must be"):
-        srv._run_extra(2, "realtime", "", "half")
+        ui_forecast._run_extra(2, "realtime", "", "half")
 
 
 def test_the_run_route_accepts_the_field_and_the_rerun_passes_it(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     from app.ui import server as srv
+    from app.ui import pipeline as ui_pipeline
+    from app.ui import retro_seasons as ui_retro_seasons
+    from app.ui import shared as ui_shared
+    from app.ui import state as ui_state
     import app.core.runs as runs_mod
+    from app.core import data as core_data
     from app.core.runs import Ledger
     client = TestClient(srv.app)
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path / "retro")
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
-    monkeypatch.setattr(srv.data_mod, "vintage_path", lambda d: tmp_path)
-    monkeypatch.setattr(srv.data_mod, "vintages", lambda: [ASOF])
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path / "retro")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(core_data, "vintage_path", lambda d: tmp_path)
+    monkeypatch.setattr(core_data, "vintages", lambda: [ASOF])
     started = []
-    monkeypatch.setattr(srv, "_run_all", lambda spec: started.append(spec))
-    status_before = dict(srv._status)
+    monkeypatch.setattr(ui_pipeline, "_run_all", lambda spec: started.append(spec))
+    status_before = dict(ui_state._status)
     try:
-        srv._status["running"] = None
+        ui_state._status["running"] = None
         r = client.post("/run", data={"forecast_date": ASOF, "locations": "custom",
                                       "custom_locations": ["Ohio"], "engine": "all",
                                       "replicates": "1", "oracle": "none"},
@@ -565,17 +581,17 @@ def test_the_run_route_accepts_the_field_and_the_rerun_passes_it(tmp_path, monke
         led = Ledger()
         rid = led.open_run(started[-1], Path("pending"), {})
         led.close_run(rid, "ok", {})
-        srv._status["running"] = None
+        ui_state._status["running"] = None
         r = client.post(f"/runs/{rid}/rerun", follow_redirects=False)
         assert r.status_code == 303
         assert started[-1].extra.get("oracle") == "none"
         # and a row without it re-runs the member
-        srv._status["running"] = None
+        ui_state._status["running"] = None
         client.post("/run", data={"forecast_date": ASOF, "locations": "custom",
                                   "custom_locations": ["Ohio"], "engine": "all",
                                   "replicates": "1"}, follow_redirects=False)
         assert "oracle" not in started[-1].extra
     finally:
-        srv._status.clear()
-        srv._status.update(status_before)
-        srv._invalidate_scans()
+        ui_state._status.clear()
+        ui_state._status.update(status_before)
+        ui_shared._invalidate_scans()
