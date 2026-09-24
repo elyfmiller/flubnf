@@ -68,7 +68,12 @@ def _outlook_cards(res: dict | None, rid: str | None = None) -> tuple:
                                            model, report_v2.MODEL_LABEL["pf"]),
                                        # bundle v4 coverage; None -> 'no data'
                                        "fitted_fips": bundle.get(
-                                           "fitted_fips")}
+                                           "fitted_fips"),
+                                       # bundle v6: the real gaps, and why
+                                       # a state has no forecast
+                                       "gap_fips": bundle.get("gap_fips"),
+                                       "no_forecast": bundle.get(
+                                           "no_forecast") or {}}
                         # >= 2 per-model card sets: exact cards and toggle
                         cbm = bundle.get("cards_by_model") or {}
                         if sum(1 for cs in cbm.values()
@@ -246,9 +251,14 @@ def _outlook_block_cached(rid: str | None, mtime: float) -> dict:
         # fitted'; absent -> hovers claim only 'no data'
         scope = outlook_src.get("fitted_fips") if outlook_src else None
         scope = set(scope) if scope is not None else None
+        gaps = outlook_src.get("gap_fips") if outlook_src else None
+        gaps = set(gaps) if gaps is not None else None
+        why = (outlook_src.get("no_forecast") or {}) if outlook_src else {}
         map_svg = ("<div style='max-width:880px;margin:0 auto'>"
                    "<script>window.MAP_LINK='/output/report';</script>"
-                   + svg_map(cards, clickable=with_data, scope_fips=scope)
+                   + svg_map(cards, clickable=with_data, scope_fips=scope,
+                             gap_fips=gaps,
+                             reasons=why.get(outlook_src.get("model")))
                    + map_legend() + "</div>")
         # toggle from the v3 bundle's per-model cards, else the approximate
         # sets; fewer than two models -> label only, never a dead control
@@ -262,7 +272,8 @@ def _outlook_block_cached(rid: str | None, mtime: float) -> dict:
                            if outlook_src.get("model") in order
                            else order[0])
                 payload = {m: {"states": usmap.state_swap_payload(
-                                   by_model[m], scope_fips=scope),
+                                   by_model[m], scope_fips=scope,
+                                   gap_fips=gaps, reasons=why.get(m)),
                                "us": {}}
                            for m in order}
                 outlook_toggle = usmap.model_toggle(

@@ -10,8 +10,10 @@ theme-aware HTML file per week (plotly.js embedded once, no network).
   * click a state -> its section (fan vs observed, categorical bar, recent
     data), each with a back-to-map button; a National section likewise
   * no-data states are explicit and claim only what was checked: in the
-    run's recorded scope = reporting gap, outside = 'not fitted in this
-    run', no scope record = 'no data'; fan gaps annotated, never smoothed
+    run's recorded scope with no reported data = reporting gap, in scope
+    with data = 'no forecast' (and why), outside = 'not fitted in this
+    run', no scope record = 'no data'; legend and hover say the same; fan
+    gaps annotated, never smoothed
   * nau.css token blocks embedded verbatim; a boot script resolves the
     theme at open (console localStorage same-origin, else OS preferences);
     print is always light
@@ -138,12 +140,14 @@ PLOTLY_CONFIG = {"scrollZoom": True, "doubleClick": "reset+autosize",
 # saved beside it. Fans are reduced to the 23-level grid (FAN_LEVELS), never
 # raw samples, keeping it ~100 KB.
 BUNDLE_NAME = "report_inputs.json"
-BUNDLE_VERSION = 5
+BUNDLE_VERSION = 6
 #: renderable bundle versions; each bump was ADDITIVE and older bundles
 #: render without it: v2 cards_model (else PF), v3 cards_by_model +
 #: national_map_cards (model toggle), v4 fitted_fips (gap vs not-fitted
-#: wording), v5 national_in_run (the national detail says US was not run)
-SUPPORTED_BUNDLE_VERSIONS = (1, 2, 3, 4, 5)
+#: wording), v5 national_in_run (the national detail says US was not run),
+#: v6 gap_fips + no_forecast (a reporting gap only where no data was
+#: reported; elsewhere "no forecast" with its reason)
+SUPPORTED_BUNDLE_VERSIONS = (1, 2, 3, 4, 5, 6)
 FAN_LEVELS = (0.01, 0.025, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35,
               0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80,
               0.85, 0.90, 0.95, 0.975, 0.99)
@@ -496,7 +500,8 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
                  cards_by_model: dict | None = None,
                  national_map_cards: dict | None = None,
                  cards_model: str = "",
-                 fitted_fips=None, national_in_run=None) -> Path:
+                 fitted_fips=None, national_in_run=None,
+                 gap_fips=None, no_forecast=None) -> Path:
     """state_cards: abbr -> hover-card data (choropleth).
     state_details: abbr -> dict(name, fan=…, cat=…, acc=…, table_rows=[…]).
     national: dict(fan=…, acc=…, summary_html=str).
@@ -510,7 +515,11 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
     (in scope = reporting gap, outside = not fitted, None = only 'no data').
     national_in_run: False when US was not among the run's locations (the
     national detail then says so instead of waiting on scores or a fan);
-    None = unknown (older bundles), the wording claims nothing."""
+    None = unknown (older bundles), the wording claims nothing.
+    gap_fips: in-scope fips with no reported data (the only reporting
+    gaps); None (older bundles): a card-less state in scope is the gap and
+    a bare card is "no forecast". no_forecast: model -> {fips: reason} for
+    in-scope states that have data but no forecast from that model."""
     # build-time SVG map: plotly geo fetches its geometry from a CDN
     from app.core import usmap
     from app.core.usmap import cat_fill, svg_map
@@ -523,12 +532,21 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
     # state was never run (the pipeline gives every state a bare card), so
     # it is 'not fitted', as its hover already says
     blank = {f for f, c in cards_by_fips.items() if not c.get("probs")}
-    gap_states = (no_card & scope) if scope is not None else set()
+    gaps = set(gap_fips) if gap_fips is not None else None
+    no_forecast = no_forecast or {}
+    if scope is None:
+        gap_states = set()
+    elif gaps is None:
+        gap_states = no_card & scope
+    else:
+        gap_states = (no_card | blank) & scope & gaps
     unfitted_states = ((no_card | blank) - scope) if scope is not None \
         else set()
-    # only states that actually have a detail section invite a click
+    # only states that actually have a detail section invite a click; the
+    # hovers read the same gap / no-forecast split as the legend below
     map_html = svg_map(cards_by_fips, clickable=set(state_details),
-                       scope_fips=scope)
+                       scope_fips=scope, gap_fips=gaps,
+                       reasons=no_forecast.get(cards_model or "pf"))
     # legend/caption: each no-data flavour only when some state wears it
     _sw = f'<i class="sw" style="background:{NO_DATA}"></i>'
     legend_bits, caption_bits = [], []
@@ -547,8 +565,13 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
             legend_bits.append(f"<span>{_sw}not fitted in this run</span>")
             caption_bits.append(
                 " Not-fitted states were outside this run's scope.")
-    # in-scope cards with no probabilities, filled like no data
-    unforecast = blank if scope is None else (blank & scope)
+    # in-scope states with data but no forecast, filled like no data
+    if scope is None:
+        unforecast = blank
+    elif gaps is None:
+        unforecast = blank & scope
+    else:
+        unforecast = ((no_card | blank) & scope) - gaps
     if unforecast:
         legend_bits.append(f"<span>{_sw}no forecast</span>")
         caption_bits.append(
@@ -572,7 +595,9 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
                    if isinstance(c, dict) and c.get("fips")}
             payload[m] = {
                 # scope rides along so swapped hovers match the rendered map
-                "states": usmap.state_swap_payload(byf, scope_fips=scope),
+                "states": usmap.state_swap_payload(
+                    byf, scope_fips=scope, gap_fips=gaps,
+                    reasons=no_forecast.get(m)),
                 "us": usmap.nat_swap_payload(
                     (national_map_cards or {}).get(m) or {})}
         model_toggle_html = usmap.model_toggle(
@@ -807,7 +832,10 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
         # v4 field (absent: None, the map claims only 'no data')
         fitted_fips=bundle.get("fitted_fips"),
         # v5 field (absent: None, the national detail claims nothing)
-        national_in_run=bundle.get("national_in_run"))
+        national_in_run=bundle.get("national_in_run"),
+        # v6 fields (absent: None, a card-less state in scope is the gap)
+        gap_fips=bundle.get("gap_fips"),
+        no_forecast=bundle.get("no_forecast"))
 
 
 def builder_sources_mtime() -> float:

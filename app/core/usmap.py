@@ -221,13 +221,32 @@ def _shell(dom_id: str, inner: str, ink: str, paper: str, interactive=True) -> s
 </div>""" + (_JS.replace("__ID__", dom_id) if interactive else "")
 
 
-def _no_card_hover(name: str, fips: str, scope_fips) -> str:
-    """Hover for a card-less state, claiming only what is known: in scope =
-    reporting gap, outside = not fitted in this run, scope unknown = no data
-    in this view."""
+def no_forecast_line(reason: str = "") -> str:
+    """One state's "no forecast" hover line, with the recorded reason when
+    there is one (app/core/coverage.missing_reason words)."""
+    r = " ".join(str(reason or "").split())
+    if not r or r == "no forecast was recorded for it":
+        return "no forecast from this model this week"
+    return r if r.startswith("no forecast") else "no forecast: " + r
+
+
+def _no_card_hover(name: str, fips: str, scope_fips, card=None,
+                   gap_fips=None, reasons=None) -> str:
+    """Hover for a state without a forecast card, claiming only what is
+    known. Outside the run's scope: not fitted in this run; scope unknown:
+    no data in this view. Inside it: a reporting gap only when the state
+    has no reported data (`gap_fips`), otherwise "no forecast" with the
+    model's recorded reason (`reasons`, fips -> words). Without `gap_fips`
+    (older bundles) a bare card means the state was run with no forecast
+    and no card at all reads as the gap, as the legend there says."""
+    import html as _h
     if scope_fips is not None:
         if fips in scope_fips:
-            return f"<b>{name}</b><br>no reported data (reporting gap)"
+            gap = (fips in gap_fips) if gap_fips is not None else not card
+            if gap:
+                return f"<b>{name}</b><br>no reported data (reporting gap)"
+            line = no_forecast_line((reasons or {}).get(fips, ""))
+            return f"<b>{name}</b><br>{_h.escape(line, quote=False)}"
         return f"<b>{name}</b><br>not fitted in this run"
     return f"<b>{name}</b><br>no data in this view"
 
@@ -235,20 +254,21 @@ def _no_card_hover(name: str, fips: str, scope_fips) -> str:
 def svg_map(cards_by_fips: dict, ink="#e9ecf2",
             paper="var(--card, #0C0D17)",
             dom_id: str = "usmap", interactive=True, clickable=None,
-            scope_fips=None) -> str:
+            scope_fips=None, gap_fips=None, reasons=None) -> str:
     """cards_by_fips: fips -> {probs, name, abbr, hover_html} ({} = no data).
 
     Emits the SVG, tooltip div and interaction script. `dom_id` must be
     unique per page. `clickable` (abbrs; None = all) limits drill-down to
     states with a section. `scope_fips` (None = unknown): the run's
-    coverage, for _no_card_hover.
+    coverage; `gap_fips` and `reasons`: see _no_card_hover.
     """
     paths = []
     for fips, (topo_name, d) in state_paths().items():
         card = cards_by_fips.get(fips, {})
         fill, op = _card_fill(card)
         hover = card.get("hover_html") or _no_card_hover(
-            card.get("name", topo_name), fips, scope_fips)
+            card.get("name", topo_name), fips, scope_fips, card,
+            gap_fips, reasons)
         abbr = card.get("abbr", "")
         can_click = bool(abbr) and (clickable is None or abbr in clickable)
         if can_click:
@@ -291,16 +311,19 @@ def national_svg(us_card: dict, ink="#e9ecf2",
 # by the same _card_fill. Shared by the home outlook and the weekly report.
 # ---------------------------------------------------------------------------
 
-def state_swap_payload(cards_by_fips: dict, scope_fips=None) -> dict:
+def state_swap_payload(cards_by_fips: dict, scope_fips=None,
+                       gap_fips=None, reasons=None) -> dict:
     """fips -> {f: fill, o: opacity, h: hover_html} for every state on the
     map, from one model's cards (svg_map's computation as data). Pass the
-    same `scope_fips` as svg_map, or swapped hovers tell a different story."""
+    same `scope_fips` and `gap_fips` as svg_map (and this model's
+    `reasons`), or swapped hovers tell a different story."""
     out = {}
     for fips, (topo_name, _d) in state_paths().items():
         card = cards_by_fips.get(fips, {})
         fill, op = _card_fill(card)
         hover = card.get("hover_html") or _no_card_hover(
-            card.get("name", topo_name), fips, scope_fips)
+            card.get("name", topo_name), fips, scope_fips, card,
+            gap_fips, reasons)
         out[fips] = {"f": fill, "o": round(op, 2), "h": hover}
     return out
 

@@ -153,7 +153,7 @@ def test_groundhog_only_pipeline_run_records_scope_and_says_so(tmp_path):
     ui_pipeline._write_weekly_report(spec, tmp_path, {}, obs, pd.DataFrame(),
                                      locs, n2f, 1.0, outcome, an_q=an_q)
     bundle = json.loads((tmp_path / report_v2.BUNDLE_NAME).read_text())
-    assert bundle["version"] == report_v2.BUNDLE_VERSION == 5
+    assert bundle["version"] == report_v2.BUNDLE_VERSION >= 5
     assert bundle["national_in_run"] is False
     html = (tmp_path / "report.html").read_text()
     assert "click it" not in html

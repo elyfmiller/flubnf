@@ -230,6 +230,23 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
     for name, abbr in n2a.items():
         cards.setdefault(abbr, {"name": name, "abbr": abbr,
                                 "fips": n2f.get(name, "")})
+    # in-scope states without a card: a reporting gap only when the state
+    # has no reported data; otherwise the model made no forecast, and the
+    # run's own record says why (the Output page's words)
+    from app.core.coverage import missing_reason
+    _in_scope = [l for l in spec.locations
+                 if n2f.get(l) and n2f.get(l) != "US"]
+    gap_fips = sorted({n2f[l] for l in _in_scope if _last_obs(l) is None})
+    no_forecast = {}
+    for model in ("pf", "analogue"):
+        if model != cards_model and model not in cards_by_model:
+            continue
+        have = cards_by_model.get(model, {})
+        why = {n2f[l]: missing_reason(outcome, model, "", l)
+               for l in _in_scope
+               if n2f[l] not in gap_fips and n2a.get(l) not in have}
+        if why:
+            no_forecast[model] = why
     wis_html = ("<div class='card'><h2>forecast accuracy "
                 "(retrospective)</h2>" + summary_table_html(df)
                 + "</div>")
@@ -306,6 +323,9 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
               # v5: whether US was among the run's locations
               "national_in_run": any(n2f.get(l) == "US"
                                      for l in spec.locations),
+              # v6: the only reporting gaps (in scope, no reported data),
+              # and each model's reason for an in-scope state it left blank
+              "gap_fips": gap_fips, "no_forecast": no_forecast,
               # v3: every model's cards (the outlook toggle's data)
               "cards_by_model": cards_by_model,
               "national_map_cards": nat_cards,

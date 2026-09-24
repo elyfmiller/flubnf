@@ -315,7 +315,9 @@ def test_home_map_renders_the_reports_exact_cards(tmp_path, monkeypatch):
     assert meta == {"model": "pf", "approx": False,
                     "label": "Oracle SIHRS categorical forecast",
                     # the v4 scope record: which card-less states were unfitted
-                    "fitted_fips": ["39"]}
+                    "fitted_fips": ["39"],
+                    # v6: no in-scope gap, every in-scope state forecast
+                    "gap_fips": [], "no_forecast": {}}
     # the model label lands on BOTH surfaces
     assert "Oracle SIHRS categorical forecast" in (w / "report.html").read_text()
     home = client.get("/")
