@@ -515,6 +515,14 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
             legend_bits.append(f"<span>{_sw}not fitted in this run</span>")
             caption_bits.append(
                 " Not-fitted states were outside this run's scope.")
+    # a card with no probabilities: the member made no forecast there
+    # (the Groundhog from a last count of 0), filled like no data
+    unforecast = {f for f, c in cards_by_fips.items() if not c.get("probs")}
+    if unforecast:
+        legend_bits.append(f"<span>{_sw}no forecast</span>")
+        caption_bits.append(
+            " No-forecast states have data but no forecast from this model "
+            "this week.")
     no_data_legend = "".join(legend_bits)
     no_data_caption = "".join(caption_bits)
     model_label = model_label or MODEL_LABEL["pf"]

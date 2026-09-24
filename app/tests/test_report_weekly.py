@@ -176,3 +176,17 @@ def test_summary_table_applies_the_relwis_rule():
     # empty frame: honest placeholder, no invented numbers
     empty = summary_table_html(pd.DataFrame())
     assert "hint" in empty and "relWIS" in empty and "<table" not in empty
+
+
+def test_a_state_with_data_but_no_forecast_is_named_in_the_legend(tmp_path):
+    """A card without probabilities (the Groundhog skips a last count of
+    0) is filled like no data; the legend says what that fill means."""
+    card = {"fips": "50", "name": "Vermont", "abbr": "VT", "probs": None,
+            "hover_html": ""}
+    html = build_report("2098-01-03", {"VT": card}, {}, {},
+                        tmp_path / "r.html", fitted_fips=["50"]).read_text()
+    assert "no forecast</span>" in html
+    assert "No-forecast states have data but no forecast" in html
+    html2 = build_report("2098-01-03", {}, {}, {}, tmp_path / "r2.html",
+                         fitted_fips=["50"]).read_text()
+    assert "no forecast</span>" not in html2
