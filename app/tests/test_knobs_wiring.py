@@ -507,6 +507,41 @@ def test_fit_manifest_leaves_post_fit_knobs_out():
     assert "knobs" not in K.fit_extra(K.write_extra({"oracle.w": 0.25}, {}))
 
 
+def test_the_retro_route_refuses_a_resume_over_other_locations(
+        tmp_path, monkeypatch):
+    """Completed weeks are skipped on resume, so another location scope (or
+    the national row switched) would pool weeks fitted over different
+    lists; the recorded list resumes."""
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(retro, "available_seasons", lambda: [SEASON])
+    monkeypatch.setattr(retro, "season_vintages", lambda s: [W1, W2])
+    launched = []
+    monkeypatch.setattr(ui_retro, "_retro_bg",
+                        lambda *a, **k: launched.append((a, k)))
+    root = tmp_path / SEASON
+    (root / "weeks" / W1).mkdir(parents=True)
+    six = ["Alaska", "New York", "Wyoming", "Pennsylvania", "Vermont",
+           "California"]
+    retro.write_meta(root, {"season": SEASON, "status": "stopped",
+                            "settings": {"season": SEASON, "engine": "pf",
+                                         "scope": "panel6",
+                                         "locations": six}})
+    monkeypatch.setattr(ui_retro_seasons, "_weeks_done", lambda p: 1)
+    base = {"season": SEASON, "engine": "pf", "mode": "resume"}
+    for other in ({"locations": "all", "national": "0"},
+                  {"locations": "panel6", "national": "1"}):
+        ui_retro_seasons._retro_status.pop(SEASON, None)
+        client.post("/retro/run", data={**base, **other},
+                    follow_redirects=False)
+        assert launched == [], other
+        assert "mix two location scopes" in ui_state._status.get("flash", "")
+    ui_retro_seasons._retro_status.pop(SEASON, None)
+    client.post("/retro/run", data={**base, "locations": "panel6",
+                                    "national": "0"}, follow_redirects=False)
+    assert len(launched) == 1
+
+
 def _cli_locations(monkeypatch, tmp_path):
     import flubnf.settings as fs
     loc = tmp_path / "locations.csv"
@@ -568,6 +603,33 @@ def test_cli_retro_reports_a_digest_refusal(monkeypatch, tmp_path):
                                  "--root", str(tmp_path / SEASON),
                                  "--knob", "oracle.w=0.25"])
     assert r.exit_code == 2 and "refused" in r.output
+
+
+def test_cli_retro_refuses_a_bad_or_empty_season_and_roots_in_app_state(
+        monkeypatch, tmp_path):
+    """A malformed season is a usage error (never a traceback); a season
+    the archive holds no vintage for is refused (never a '0 weeks complete'
+    record); the default root is the console's, whatever the shell's cwd."""
+    from flubnf.cli import app
+    from app.core import runs as runs_mod
+    _cli_locations(monkeypatch, tmp_path)
+    got = []
+    monkeypatch.setattr(retro, "run_season",
+                        lambda *a, **k: got.append((a, k)) or [])
+    for bad in ("not-a-season", "2024-26", "2024"):
+        r = CliRunner().invoke(app, ["retro", bad, "--locations", "Ohio"])
+        assert r.exit_code == 2, (bad, r.output)
+        assert "is not a season" in r.output, bad
+    monkeypatch.setattr(retro, "season_vintages", lambda s: [])
+    r = CliRunner().invoke(app, ["retro", "1999-00", "--locations", "Ohio"])
+    assert r.exit_code == 2 and "no archived vintages" in r.output
+    assert not got
+    monkeypatch.setattr(retro, "season_vintages", lambda s: [W1, W2])
+    monkeypatch.chdir(tmp_path)
+    r = CliRunner().invoke(app, ["retro", SEASON, "--locations", "Ohio",
+                                 "--width", "1"])
+    assert r.exit_code == 0, r.output
+    assert got[0][0][0] == (runs_mod.APP_STATE / "retro" / SEASON).resolve()
 
 
 def test_a_missing_data_rule_records_every_flagged_week(console, monkeypatch):

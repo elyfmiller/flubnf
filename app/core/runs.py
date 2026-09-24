@@ -740,6 +740,17 @@ class Ledger:
                           "engine_versions"), r))
                 for r in cur.fetchall()]
 
+    def row(self, run_id: str) -> Optional[dict]:
+        """One run's row, rows()'s shape, however old; None when unknown."""
+        cur = self._db.execute(
+            "SELECT run_id, created_utc, spec_json, status, outcome_json, "
+            "finished_utc, elapsed_s, flubnf_sha, engine_versions "
+            "FROM runs WHERE run_id=?", (str(run_id),))
+        r = cur.fetchone()
+        return (dict(zip(("run_id", "created_utc", "spec", "status", "outcome",
+                          "finished_utc", "elapsed_s", "flubnf_sha",
+                          "engine_versions"), r)) if r else None)
+
     def delete_runs(self, run_ids) -> int:
         """Permanently remove the named rows; returns the count. Callers must
         never pass an active run, and must tell the user only the ledger

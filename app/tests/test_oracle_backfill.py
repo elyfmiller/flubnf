@@ -280,3 +280,12 @@ def test_the_cli_reproduce_refuses_a_source_with_a_stale_sidecar(source, tmp_pat
     r = runner.invoke(cli_app, ["oracle", "reproduce", str(out), "--source", str(source)])
     assert r.exit_code == 2 and "refused" in r.output
     assert not (source / "weeks" / WEEKS[0] / retro.QUANTILES_NAME).exists()
+
+
+def test_the_cli_reproduce_names_a_root_that_is_not_one(tmp_path):
+    from typer.testing import CliRunner
+    from flubnf.cli import app as cli_app
+    r = CliRunner().invoke(cli_app, ["oracle", "reproduce", str(tmp_path / "nope")])
+    said = " ".join(r.output.split())          # rich wraps long lines
+    assert r.exit_code == 2 and "not a season root" in said
+    assert "No objects to concatenate" not in r.output

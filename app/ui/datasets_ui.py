@@ -900,7 +900,7 @@ async def _knob_fields(request: Request) -> dict:
 @router.post("/run/dataset")
 def run_dataset(request: Request, background: BackgroundTasks,
                 dataset: str = Form(...),
-                forecast_date: str = Form(...),
+                forecast_date: str = Form(""),
                 locations: list = Form([]),
                 engine: str = Form("analogue"),
                 mode: str = Form("realtime"),
@@ -930,6 +930,10 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
     here = f"/forecast?source={ds.id}"
     dates = ds.forecast_dates()
     fd = forms._str_field(forecast_date).strip()
+    if not fd:
+        # a cleared date field: said as such (FastAPI's raw 422 page before)
+        shared._flash("Give a forecast date. Nothing was run.")
+        return RedirectResponse(here, status_code=303)
     pick, _ = forms.resolve_anchor(fd, dates)
     fd = pick or fd
     if fd not in dates:
@@ -1010,6 +1014,12 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
             shared._flash("A retrospective replay holds the engine ("
                           + ", ".join(live) + "). Stop or pause it from the "
                           "Retrospective tab first; nothing was run.")
+            return RedirectResponse(here, status_code=303)
+        # the sandbox's claim, as /run reads it (its middleware guard
+        # covers /run and /retro/run only)
+        sb = shared._sandbox_live_reason()
+        if sb:
+            shared._flash(f"Not run: {sb}. Stop it from the Sandbox first.")
             return RedirectResponse(here, status_code=303)
         ui_state._status["running"] = "starting"
         ui_state._status["dataset_id"] = ds.id
@@ -1428,6 +1438,11 @@ def replay_start(background: BackgroundTasks, dataset: str = Form(...),
             shared._flash("A season replay holds the engine ("
                           + ", ".join(live) + "); stop or pause it first. "
                           "Nothing was started.")
+            return back
+        sb = shared._sandbox_live_reason()
+        if sb:
+            shared._flash(f"Not started: {sb}. Stop it from the Sandbox "
+                          "first.")
             return back
         stamp = CX.new_stamp(ds)
         _REPLAY.update({"id": ds.id, "stamp": stamp})

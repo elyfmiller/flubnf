@@ -181,13 +181,13 @@ def _run_data_source(rid) -> str:
     import json as _json
     from app.core.data import source_phrase
     from app.core.runs import Ledger
-    for r in Ledger().rows(200):
-        if r.get("run_id") == rid:
-            try:
-                return source_phrase(
-                    _json.loads(r.get("outcome") or "{}").get("data_source"))
-            except (ValueError, TypeError, AttributeError):
-                return ""
+    r = Ledger().row(rid)
+    if r:
+        try:
+            return source_phrase(
+                _json.loads(r.get("outcome") or "{}").get("data_source"))
+        except (ValueError, TypeError, AttributeError):
+            return ""
     return ""
 
 
@@ -228,20 +228,48 @@ def output_page(request: Request):
         "has_report": bool(rid and (APP_STATE / "workroots" / rid / "report.html").is_file())})
 
 
+def _dataset_workroot(p: Path, app_state: Path) -> bool:
+    """Whether `p` lies in the workroot of a run on a custom dataset (its
+    results.json names one): such files carry the uploaded data."""
+    import json as _json
+    try:
+        rel = p.relative_to((app_state / "workroots").resolve())
+    except ValueError:
+        return False
+    if len(rel.parts) < 2:
+        return False
+    try:
+        res = _json.loads((app_state / "workroots" / rel.parts[0]
+                           / "results.json").read_text())
+    except Exception:
+        return False
+    return isinstance(res, dict) and bool(res.get("dataset"))
+
+
 @router.get("/output/download")
-def output_download(path: str):
+def output_download(request: Request, path: str):
     """Download a submission CSV. The file must be inside app state, and a
     submission/ file must sit under a registered hub model's directory (the
     listings' rule, enforced here for hand-edited URLs)."""
     from fastapi.responses import FileResponse
     from app.core.runs import APP_STATE
     from app.core import datasets as _datasets
-    p = Path(path).resolve()
+    try:
+        p = Path(path).resolve()
+    except (OSError, ValueError):       # a NUL byte or an unusable name
+        return HTMLResponse("<p>file not found in app state</p>", status_code=404)
     if not (p.is_relative_to(APP_STATE.resolve()) and p.is_file()):
         return HTMLResponse("<p>file not found in app state</p>", status_code=404)
     if p.is_relative_to(Path(_datasets.ROOT).resolve()):
         # uploaded data is not served here (it may be private)
         return HTMLResponse("<p>file not found in app state</p>", status_code=404)
+    if _dataset_workroot(p, APP_STATE):
+        # a dataset run's exports carry the upload: localhost only, as the
+        # dataset's own pages (datasets_ui.local_only)
+        from app.ui import datasets_ui as _dsu
+        refused = _dsu.local_only(request)
+        if refused:
+            return refused
     if p.parent.parent.name == "submission" \
             and p.parent.name not in _registered_model_ids() \
             and p.parent.name not in _modified_model_ids():
@@ -259,7 +287,10 @@ def output_reveal(path: str = Form(...)):
     """Show the file in Finder / Explorer (a local desktop app)."""
     import subprocess
     from app.core.runs import APP_STATE
-    p = Path(path).resolve()
+    try:
+        p = Path(path).resolve()
+    except (OSError, ValueError):       # a NUL byte or an unusable name
+        return RedirectResponse("/output", status_code=303)
     # containment via is_relative_to, as in /output/download: a string-prefix
     # test would admit siblings such as app/state_defaults
     if p.is_relative_to(APP_STATE.resolve()) and p.exists():

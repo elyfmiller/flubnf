@@ -27,6 +27,9 @@ from app.ui import state as ui_state                         # noqa: E402
 
 from test_oracle_step import ASOF, console, hubfiles          # noqa: E402,F401
 
+#: the real report writer (the console fixture stubs it)
+_REAL_REPORT = ui_pipeline._write_weekly_report
+
 client = TestClient(srv.app)
 
 W1, W2, W3 = "2098-10-04", "2098-10-11", "2098-10-18"     # Saturdays
@@ -168,6 +171,70 @@ def test_a_real_time_run_records_the_live_file(console, hubfiles, tmp_path, monk
     assert f"Data: live target-data through {ASOF}" in html
 
 
+def test_optional_rows_on_a_week_only_the_live_file_holds(console, hubfiles, tmp_path, monkeypatch):
+    """The optional hub rows read the reported counts from the file the run
+    resolved: a real-time week the archive does not hold yet (the live file
+    only) must not fail the whole run with 'No vintage for ...'."""
+    from app.core.engines import analogue as an_engine
+    from app.ui.routes import forecast as ui_forecast
+    hub = tmp_path / "hub"
+    (hub / "target-data").mkdir(parents=True)
+    (hub / data.LIVE_TARGET).write_bytes(Path(hubfiles["vintage"]).read_bytes())
+    monkeypatch.setattr(data, "HUB", hub)
+    monkeypatch.setattr(data, "ARCHIVE", tmp_path / "no-archive")
+    monkeypatch.setattr(an_engine, "nowcast", lambda spec: {})
+    _nd, extra = ui_forecast._knob_run_parts(
+        {"output.horizon_minus1": "1", "output.rate_change_pmf": "1"}, "all",
+        ASOF, 2, "realtime", None, None, legacy={})
+    spec = RunSpec(engine="all", forecast_date=ASOF, locations=["Ohio", "Utah"],
+                   replicates=1, extra=extra)
+    ui_pipeline._run_all(spec)
+    row = Ledger().rows(1)[0]
+    out = json.loads(row["outcome"])
+    assert row["status"] == "ok", out.get("error")
+    assert out["data_source"]["kind"] == "live"
+    assert "optional_rows" in out and out["submissions"]
+
+
+def test_the_reports_state_fans_sit_on_the_as_of_horizons(console, hubfiles, tmp_path, monkeypatch):
+    """Hub horizon h is h+1 weeks past the AS-OF week. With the same-day
+    week dropped the observed trace ends a week earlier; the report's state
+    fans must not move back with it (they were drawn one week early)."""
+    from datetime import date, timedelta
+    from app.core import runs as runs_mod
+    monkeypatch.setattr(ui_pipeline, "_write_weekly_report", _REAL_REPORT)
+    hub = tmp_path / "hub"
+    (hub / "target-data").mkdir(parents=True)
+    (hub / data.LIVE_TARGET).write_bytes(Path(hubfiles["vintage"]).read_bytes())
+    monkeypatch.setattr(data, "HUB", hub)
+    monkeypatch.setattr(data, "ARCHIVE", tmp_path / "no-archive")
+    from app.core.engines import pf as pf_engine
+
+    def prepare(spec, w):                # the report reads cells.json
+        Path(w).mkdir(parents=True, exist_ok=True)
+        (Path(w) / "cells.json").write_text(json.dumps(
+            [{"key": "Ohio_r0", "location": "Ohio", "replicate": 0,
+              "dir": str(w)}]))
+        return []
+    monkeypatch.setattr(pf_engine, "prepare", prepare)
+    import flubnf.settings as fs                  # the observed trace's table
+    monkeypatch.setattr(fs, "LOCATIONS", hubfiles["locations"])
+    want = [(date.fromisoformat(ASOF) + timedelta(days=7 * (h + 1))).isoformat()
+            for h in range(4)]
+    for drop in (False, True):
+        spec = RunSpec(engine="all", forecast_date=ASOF, locations=["Ohio"],
+                       replicates=1, drop_same_day=drop,
+                       extra={"mode": "realtime"})
+        ui_pipeline._run_all(spec)
+        row = Ledger().rows(1)[0]
+        w = runs_mod.APP_STATE / "workroots" / row["run_id"]
+        assert "report_error" not in row["outcome"], row["outcome"]
+        fan = json.loads((w / "report_inputs.json").read_text())[
+            "details"]["OH"]["fan"]
+        assert fan["forecast_times"] == want, (drop, fan["forecast_times"])
+        assert (fan["observed_times"][-1] < ASOF) == drop
+
+
 # --- the console routes -------------------------------------------------------
 
 def _capture(monkeypatch, tmp_path):
@@ -208,6 +275,76 @@ def test_the_run_route_refuses_a_week_past_the_live_file(tmp_path, monkeypatch):
     assert r.status_code == 303 and not started
     flash = str(ui_state._status.get("flash") or "")
     assert f"No data for {W2} yet" in flash and f"ends at {W1}" in flash
+
+
+def test_the_run_route_refuses_bad_fields_in_their_own_words(tmp_path, monkeypatch):
+    """A blank or non-date forecast date, or an unknown engine, is refused
+    before anything else is said; an unknown mode is the default pill, so
+    an archived week is still recorded as a vintage run."""
+    started = _capture(monkeypatch, tmp_path)
+    _hub(tmp_path / "hub", [W1, W2], [W1], monkeypatch)
+    for fd, want in (("", "Give a forecast date"),
+                     ("7/4/2098", "'7/4/2098' is not a date")):
+        ui_state._status.pop("flash", None)
+        r = _post(fd)
+        assert r.status_code == 303 and not started
+        flash = str(ui_state._status.get("flash") or "")
+        assert want in flash and "No data" not in flash, flash
+    ui_state._status.pop("flash", None)
+    ui_state._status["running"] = None
+    r = client.post("/run", data={"forecast_date": W1, "locations": ["Ohio"],
+                                  "engine": "bogus"}, follow_redirects=False)
+    flash = str(ui_state._status.get("flash") or "")
+    assert not started and not ui_state._status.get("running")
+    assert flash == "'bogus' is not one of the available engines. Nothing was run."
+    ui_state._status.pop("flash", None)
+    _post(W1, mode="weird")
+    assert started[0].extra["mode"] == "vintage"
+
+
+def test_a_day_that_snaps_back_across_august_first_keeps_the_anchors_season(
+        tmp_path, monkeypatch):
+    """The page fills Season start with August 1 of the TYPED day's season.
+    A September day whose data ends in July anchors on July: that fill must
+    not refuse the run as 'not before the forecast date'; the anchor's own
+    default season start applies. A season start typed for the anchor's
+    season is still honoured."""
+    started = _capture(monkeypatch, tmp_path)
+    jul = "2098-07-26"                                   # a Saturday
+    _hub(tmp_path / "hub", [W1, jul], [W1, jul], monkeypatch)
+    ui_state._status["running"] = None
+    ui_state._status.pop("flash", None)
+    client.post("/run", data={"forecast_date": "2098-09-24",
+                              "season_start": "2098-08-01",
+                              "locations": ["Ohio"], "engine": "all"},
+                follow_redirects=False)
+    assert len(started) == 1, ui_state._status.get("flash")
+    assert started[0].forecast_date == jul
+    assert started[0].season_start == "2097-08-01"
+    assert "knobs" not in started[0].extra               # a shipped run
+    ui_state._status["running"] = None
+    client.post("/run", data={"forecast_date": "2098-09-24",
+                              "season_start": "2097-10-01",
+                              "locations": ["Ohio"], "engine": "all"},
+                follow_redirects=False)
+    assert started[1].season_start == "2097-10-01"
+
+
+def test_the_anchor_line_names_the_latest_week_on_or_before_the_day(
+        tmp_path, monkeypatch):
+    """The page lists weeks newest first; the anchor is the LAST archived
+    week on or before a typed day (resolve_anchor reads them ascending),
+    in the server's line and in the page's own script."""
+    _capture(monkeypatch, tmp_path)
+    _hub(tmp_path / "hub", [W1, W2, W3], [W1, W2, W3], monkeypatch)
+    ui_state._last_form.clear()
+    ui_state._last_form.update({"forecast_date": "2098-10-20",   # a Monday
+                                "locations": ["all"], "engine": "all"})
+    page = client.get("/forecast").text
+    assert f"Anchor week: {W3}" in page, page[page.find("anchor-line"):][:120]
+    assert ".slice().sort()" in page                      # the script's copy
+    assert "toISOString()" not in page.split('id="anchor-line"')[1].split(
+        "</script>")[0]                                   # local dates only
 
 
 def test_update_data_moves_the_forecast_date_to_the_new_week(tmp_path, monkeypatch):

@@ -150,7 +150,9 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         live_only = next((v for v in vintage_dates[:1] if v not in _vs), "")
     except Exception:
         live_only = ""
-    _anchor, _ = resolve_anchor(form.get("forecast_date", ""), vintage_dates)
+    # ascending, as resolve_anchor reads it (the picker lists newest first)
+    _anchor, _ = resolve_anchor(form.get("forecast_date", ""),
+                                sorted(vintage_dates))
     anchor_note = ((f"Anchor week: {_anchor}"
                     + (LIVE_ONLY_NOTE if _anchor == live_only else ".")
                     ) if _anchor else "No archived week on or before that date.")
@@ -259,29 +261,29 @@ def run_page(request: Request, run_id: str):
     ens_analogue_only: list = []
     ens_withheld = ""
     row_sha, row_engine_versions = "", {}
-    for r in Ledger().rows(200):
-        if r.get("run_id") == run_id:
-            status = r.get("status", "")
-            spec_json = r.get("spec", "") or ""
-            row_sha = r.get("flubnf_sha", "") or ""
-            try:
-                ev = _json.loads(r.get("engine_versions") or "{}")
-                row_engine_versions = ev if isinstance(ev, dict) else {}
-            except Exception:
-                row_engine_versions = {}
-            try:
-                o = _json.loads(r.get("outcome") or "{}")
-                err = o.get("error", "")
-                sub_errors = o.get("submission_errors", {}) or {}
-                # failures and step errors in full (the chips only count them)
-                pf_failures = o.get("pf_failures", {}) or {}
-                step_errors = {k: str(o[k]) for k in
-                               ("score_error", "archive_error",
-                                "report_inputs_error", "report_error")
-                               if o.get(k)}
-            except Exception:
-                err = ""
-            break
+    # the run's own row, however many runs came after it
+    r = Ledger().row(run_id)
+    if r:
+        status = r.get("status", "")
+        spec_json = r.get("spec", "") or ""
+        row_sha = r.get("flubnf_sha", "") or ""
+        try:
+            ev = _json.loads(r.get("engine_versions") or "{}")
+            row_engine_versions = ev if isinstance(ev, dict) else {}
+        except Exception:
+            row_engine_versions = {}
+        try:
+            o = _json.loads(r.get("outcome") or "{}")
+            err = o.get("error", "")
+            sub_errors = o.get("submission_errors", {}) or {}
+            # failures and step errors in full (the chips only count them)
+            pf_failures = o.get("pf_failures", {}) or {}
+            step_errors = {k: str(o[k]) for k in
+                           ("score_error", "archive_error",
+                            "report_inputs_error", "report_error")
+                           if o.get(k)}
+        except Exception:
+            err = ""
     # a 'running' row with no live worker = the app was closed mid-run
     if status == "running" and not (_status.get("running") or "").endswith(run_id):
         status = "interrupted"
@@ -291,8 +293,12 @@ def run_page(request: Request, run_id: str):
     from app.core.runs import is_research
     dsx = {}
     if res.get("dataset"):
-        # a run on a custom dataset: exports (never submissions) and fans
+        # a run on a custom dataset: exports (never submissions) and fans;
+        # its data is the upload's, so localhost only (datasets_ui.local_only)
         from app.ui import datasets_ui as _dsu
+        refused = _dsu.local_only(request)
+        if refused:
+            return refused
         dsx = _dsu.run_page_extra(w, res)
     return templates.TemplateResponse(request, "run.html", {
         **dsx,
@@ -354,8 +360,7 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
     import json as _json
     from dataclasses import asdict as _asdict
     from datetime import date as _date
-    row = next((r for r in Ledger().rows(500)
-                if r.get("run_id") == run_id), None)
+    row = Ledger().row(run_id)
     try:
         d = _json.loads((row or {}).get("spec") or "")
     except (ValueError, TypeError):
@@ -600,7 +605,7 @@ def _report_v2_retired() -> tuple:
 @router.post("/run")
 def run_models(request: Request,
                background: BackgroundTasks,
-               forecast_date: str = Form(...),
+               forecast_date: str = Form(""),
                locations: list = Form([]),
                weeks_to_drop: int = Form(0),
                weeks_to_nowcast: int = Form(0),
@@ -625,14 +630,29 @@ def run_models(request: Request,
     # non-Saturdays snap via resolve_anchor; a typed Saturday is honoured or
     # refused below (never re-aimed)
     from datetime import date as _date
+    forecast_date = _str_field(forecast_date).strip()
     try:
         _d = _date.fromisoformat(forecast_date)
-        if _d.weekday() != 5:
-            # the form already shows this anchor; no banner
-            _pick, _ = resolve_anchor(forecast_date)
-            forecast_date = _pick or forecast_date
     except ValueError:
-        pass
+        # a blank or typed non-date (the model page's text field) is said
+        # as such, never "no data for <text> yet"
+        _flash(f"'{forecast_date}' is not a date; give one as YYYY-MM-DD. "
+               "Nothing was run." if forecast_date else
+               "Give a forecast date. Nothing was run.")
+        return _back(request, "/forecast")
+    typed_day = forecast_date
+    if _d.weekday() != 5:
+        # the form already shows this anchor; no banner
+        _pick, _ = resolve_anchor(forecast_date)
+        forecast_date = _pick or forecast_date
+    # refused before any notice about the anchor or the settings
+    if engine not in ENGINES:
+        _flash(f"'{engine}' is not one of the available engines. "
+               "Nothing was run.")
+        return _back(request, "/forecast")
+    # an unknown mode reads as the pill's default, so the anchor rule below
+    # records what the run reads (never "realtime" on an archived week)
+    mode = mode if mode in ("realtime", "vintage") else "realtime"
     # the newest week any hub file holds: a run anchored there is real-time
     # and may read the live target file (app.core.data.observed_source)
     try:
@@ -681,6 +701,14 @@ def run_models(request: Request,
         return _back(request, "/forecast")
     # A direct call (rerun) may pass Form default objects: read them as blank
     season_start = _str_field(season_start).strip()
+    # the page fills Season start with August 1 of the TYPED day's season;
+    # when the day snapped back across August 1 (a September day anchors on
+    # July's data) that fill is not a choice: the anchor's default applies
+    from app.core.runs import default_season_start as _dss
+    if (season_start and typed_day != forecast_date
+            and season_start == _dss(typed_day)
+            and season_start != _dss(forecast_date)):
+        season_start = ""
     kraw = _knob_raw(knob_fields, knobs)
     override = _str_field(submit_modified).lower() in ("1", "on", "true", "yes")
     reason = _str_field(modified_reason).strip()

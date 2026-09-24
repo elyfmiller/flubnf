@@ -29,7 +29,10 @@
     function seasonDefault() {
       var d = form && form.querySelector('input[name=forecast_date]');
       var s = form && form.querySelector('select[name=season]');
-      var m = d ? (d.value || '').match(/^(\d{4})-(\d{2})/) : null;
+      // the week the run anchors on (the Forecast page sets data-anchor),
+      // not the typed day: a September day anchors on July's data
+      var day = d ? (d.dataset.anchor || d.value || '') : '';
+      var m = day.match(/^(\d{4})-(\d{2})/);
       if (m) return ((+m[2] >= 8) ? +m[1] : +m[1] - 1) + '-08-01';
       m = s ? (s.value || '').match(/^(\d{4})-/) : null;
       return m ? m[1] + '-08-01' : '';

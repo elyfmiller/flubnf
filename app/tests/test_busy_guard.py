@@ -325,6 +325,12 @@ def test_reveal_spawns_open_for_app_state_paths_only(tmp_path, monkeypatch):
                     follow_redirects=False)
     assert r.status_code == 303
     assert spawned == []
+    # a NUL byte (a hand-edited URL) is not found, never a server error
+    r = client.post("/output/reveal", data={"path": "a\x00b"},
+                    follow_redirects=False)
+    assert r.status_code == 303 and spawned == []
+    assert client.get("/output/download",
+                      params={"path": "a\x00b"}).status_code == 404
 
 
 def test_cli_enables_pywebview_downloads_before_window_creation():
