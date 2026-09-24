@@ -3,6 +3,7 @@
 {% block content %}{% import "_tips.html" as tips %}
 <h1>Replay: {{ ds.name }}
  <span class="pill">your data</span>
+ {% if meta.knobs %}<span class="pill warn">modified settings</span>{% endif %}
  <span class="pill {{ 'ok' if status == 'done' else ('bad' if status == 'error' else 'warn') }}">{{ status }}</span></h1>
 <p class="{{ 'hint' if meta.dataset and meta.dataset.vintage_true else 'warn' }}">{{ meta.replay_kind | capitalize }}{% if meta.first %}: {{ meta.first }} to {{ meta.last }}{% endif %}.
  {{ tips.tip("rd-kind", "how the weeks saw the data", ("Each week was forecast from the as_of snapshot that held it, as it stood then." if meta.dataset and meta.dataset.vintage_true else "The dataset has no as_of column, so each week was cut from the final series. Later revisions leak into every week, so these scores are optimistic: better than a real-time forecaster would have scored.") ~ " Scores are relative to an in-house persistence baseline, not FluSight-baseline, and are not comparable with FluSight scores. This replay is kept with the dataset and never published.") }}</p>

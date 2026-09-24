@@ -110,16 +110,23 @@ def weeks_between(ds, first: str = "", last: str = "") -> list:
 
 def week_spec(ds, asof: str, groups: list, engine: str, *,
               weeks_to_drop: int = 0, extra: dict | None = None,
-              particles: int = 10_000, replicates: int = 3) -> RunSpec:
-    """The spec retro.run_week builds for one week, on the dataset."""
+              particles: int = 10_000, replicates: int = 3,
+              jitter: float | None = None, season_start: str = "",
+              drop_same_day: bool = False) -> RunSpec:
+    """The spec retro.run_week builds for one week, on the dataset. The
+    model-settings knobs a replay was given (app/core/knobs.py) ride in
+    `extra` (their record, priors, initialization) and in the RunSpec
+    fields (jitter, a fixed season start, the same-day week); none given,
+    the spec is the shipped one."""
     x = {"dataset": ds.ref(), "oracle": "none",
          "dataset_final": not ds.vintage_true, **(extra or {})}
     return RunSpec(engine=engine if engine == "analogue" else "all",
                    forecast_date=asof, locations=list(groups),
-                   season_start=default_season_start(asof),
+                   season_start=season_start or default_season_start(asof),
                    weeks_to_drop=int(weeks_to_drop or 0),
                    replicates=int(replicates), particles=int(particles),
-                   drop_same_day=False, extra=x)
+                   drop_same_day=bool(drop_same_day), extra=x,
+                   **({} if jitter is None else {"jitter": float(jitter)}))
 
 
 def coverage(q_by_name: dict, ds, asof: str, cells: pd.DataFrame,
@@ -191,13 +198,21 @@ def run(ds, weeks: list, groups: list, *, engine: str = "analogue",
         weeks_to_drop: int = 0, extra: dict | None = None,
         out_dir: Path, pf_state: str = "absent", progress=None,
         stop_file: Path | None = None, particles: int = 10_000,
-        replicates: int = 3, on_workroot=None) -> dict:
+        replicates: int = 3, on_workroot=None, jitter: float | None = None,
+        season_start: str = "", drop_same_day: bool = False) -> dict:
     """Replay `weeks` on `ds` into `out_dir`; returns the record.
 
     `engine`: 'analogue' (the Groundhog alone) or 'all' (plus the plain
     SIHRS filter when the dataset is eligible and the engine is ready).
     `progress(asof, i, n)` is called after each week; `stop_file`, when it
-    appears, stops the replay between steps (the record says so)."""
+    appears, stops the replay between steps (the record says so).
+
+    Model settings (app/core/knobs.py), as a dataset run takes them: the
+    knobs record in `extra` (knobs.write_extra; the output floor's rate is
+    read from it) and the RunSpec fields as arguments. A record off the
+    shipped values is kept in run_meta.json as "knobs" (with its digest),
+    as a hub replay's run record keeps it."""
+    from app.core import knobs as K
     from app.core.engines import analogue as an_engine
     from app.core.engines import pf as pf_engine
     from app.core.floor import floor_quantiles, floor_samples
@@ -212,6 +227,9 @@ def run(ds, weeks: list, groups: list, *, engine: str = "analogue",
     if want_pf and pf_state == "broken":
         raise RuntimeError(pf_engine.engine_missing_message())
     x0 = dict(extra or {})
+    record = K.record_of({"extra": x0})
+    lam = K.value_of(x0, "output.floor_lam")
+    fkw = {} if lam is None else {"lam": float(lam)}
     meta = {
         "status": "running", "dataset": {**ds.ref(),
                                          "vintage_true": ds.vintage_true,
@@ -238,6 +256,9 @@ def run(ds, weeks: list, groups: list, *, engine: str = "analogue",
     if pf_ok:
         meta.update({"particles": int(particles),
                      "replicates": int(replicates)})
+    if record:
+        meta["knobs"] = K.jsonable(record)
+        meta["knobs_digest"] = K.digest(record)
     write_meta(out_dir, meta)
     truth = ds.truth()
     forecasts, cells, covs = {}, [], []
@@ -247,11 +268,14 @@ def run(ds, weeks: list, groups: list, *, engine: str = "analogue",
                 raise Stopped("stopped by user")
             spec = week_spec(ds, asof, groups, engine,
                              weeks_to_drop=weeks_to_drop, extra=x0,
-                             particles=particles, replicates=replicates)
+                             particles=particles, replicates=replicates,
+                             jitter=jitter, season_start=season_start,
+                             drop_same_day=drop_same_day)
             members = {}
             an_q = an_engine.run(spec)
             if count:
-                an_q = {n: floor_quantiles(q) for n, q in an_q.items()}
+                an_q = {n: floor_quantiles(q, **fkw)
+                        for n, q in an_q.items()}
             members["analogue"] = an_q
             if pf_ok:
                 wr = out_dir / "work" / asof
@@ -264,8 +288,8 @@ def run(ds, weeks: list, groups: list, *, engine: str = "analogue",
                 fails = {k: v for k, v in status.items() if v != "ok"}
                 samples = pf_engine.collect(wr)
                 if count:
-                    samples = {n: floor_samples(s, n, asof) for n, s in
-                               samples.items()}
+                    samples = {n: floor_samples(s, n, asof, **fkw)
+                               for n, s in samples.items()}
                 pq = {n: CR.quantiles_from_samples(s)
                       for n, s in samples.items()}
                 members["pf"] = {n: q for n, q in pq.items() if q}

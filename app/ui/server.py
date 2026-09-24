@@ -2902,10 +2902,12 @@ def _int_field(v, default: int = 0) -> int:
         return default
 
 
-def _knob_panel(scope: str, form: dict | None = None) -> dict | None:
+def _knob_panel(scope: str, form: dict | None = None,
+                **panel_kw) -> dict | None:
     """The Model settings panel's context (knobs.panel) with the values a
     form last held: the knob fields, then the older field names. None
-    (no panel) if the registry cannot be read, so a page still renders."""
+    (no panel) if the registry cannot be read, so a page still renders.
+    `panel_kw` passes through to knobs.panel (a dataset's member names)."""
     form = form or {}
     vals = {k: str(v) for k, v in (form.get("knobs") or {}).items()}
     for fld, key in _knobs.LEGACY_FIELDS.items():
@@ -2916,7 +2918,7 @@ def _knob_panel(scope: str, form: dict | None = None) -> dict | None:
             v = "1" if _int_field(v) else "0"
         vals.setdefault(key, str(v))
     try:
-        return _knobs.panel(scope, vals)
+        return _knobs.panel(scope, vals, **panel_kw)
     except Exception:
         return None
 

@@ -95,6 +95,7 @@ Every route lives in `server.py`, grouped under `# === <Tab> ===` banners, excep
 | `_dataset_check.html` | the upload box's result (problems, column mapping, preview): `_dataset_upload.html`, and `datasets_ui.render_check` for `/data/datasets/check` |
 | `_dataset_run.html` | `run.html`, for a run on a custom dataset (fans, export files) |
 | `_dataset_replay.html` | `retro.html` (Replay your own data) |
+| `_model_settings.html` | the Model settings panel: `forecast.html`, `retro.html`, and `_dataset_replay.html` (a second panel on that page: `datasets_ui.dataset_panel`, ids prefixed `dsr-`); loads `static/model_settings.js` |
 
 Template names that differ from their tab: `runs.html` is Storage, `run.html` is one run's page, `model.html` is Models.
 
@@ -109,6 +110,7 @@ Template names that differ from their tab: `runs.html` is Storage, `run.html` is
 | `plotly.min.js` | `data.html`, `forecast.html`, `model.html`, `retro_season.html`, `retro_dataset.html`, `run.html` (dataset runs), `sandbox.html` |
 | `dataset-template.csv` | `_dataset_upload.html` download link (FluBNF's synthetic grouped-CSV template: three groups, Overall the sum, with populations) |
 | `dataset_upload.js` | `_dataset_upload.html` (drop or choose, check at once, recheck on kind/target/column changes) |
+| `model_settings.js` | `_model_settings.html` (every panel on the page, each set up once: badge, engine and kind filters, reset, the override's reason) |
 | `bngl-editor.js`, `bngl-editor.css`, `sandbox.js` | `sandbox.html` |
 | `model-views.js`, `model-views.css` | `sandbox_views.html` |
 | `brand/`, `fonts/` | `base.html`, `home.html`, `/favicon.ico` (icons); `base.html` (DM Sans) |

@@ -547,24 +547,86 @@ def latest_results_for(ds_id: str):
     return None, None
 
 
-def panel_for_dataset(panel):
-    """The Model settings panel as a dataset run reads it: no Oracle step
-    (it does not run on custom data), no auxiliary-bank rows (the form's
-    FluSurv-NET box decides), no hub-name override (there is none)."""
+#: knobs a dataset form never shows or records: its FluSurv-NET box
+#: decides the Groundhog's auxiliary bank
+AUX_KEYS = ("groundhog.aux", "groundhog.aux_weight")
+#: knobs that apply to counts alone (a rate dataset is never floored), with
+#: the help their tip carries on a dataset
+COUNT_ONLY = {"output.floor_lam": "Poisson noise floor so no cell is a "
+                                  "point mass; applied to counts only."}
+#: the members as a dataset panel's tips name them
+PANEL_MEMBERS = {"pf": "plain SIHRS particle filter", "analogue": GROUNDHOG}
+#: (title, tip) of a dataset panel's groups
+PANEL_GROUPS = {
+    "data": ("Fit window", "Which of the dataset's weeks the models see."),
+    "fit": ("Particle filter (plain SIHRS)",
+            "Settings of the fit itself; a change refits every group."),
+    "groundhog": (GROUNDHOG, "The calendar analogue on your data's earlier "
+                             "seasons; instant."),
+    "output": ("Output", "Applied to the finished forecasts of counts."),
+}
+#: what the panel's "?" says a change does, on a run and on a replay
+PANEL_ABOUT = {
+    "forecast": ("Every value starts at the shipped model's. Changing any of "
+                 "them marks the run modified wherever it appears, and its "
+                 "export files are named <model>-modified."),
+    "replay": ("Every value starts at the shipped model's. Changing any of "
+               "them marks the replay modified wherever it is listed, and "
+               "the values are recorded with it."),
+}
+
+
+def dataset_panel(panel, *, kind: str = "", where: str = "forecast",
+                  prefix: str = "", engine: str = ""):
+    """The Model settings panel (server._knob_panel with PANEL_MEMBERS) as
+    a dataset run or replay reads it: no Oracle step (it does not run on
+    custom data), no auxiliary-bank rows, no hub-name override (there is
+    none), the groups named as the members run on the data.
+
+    `kind`: the dataset's kind; a rate dataset has no floor row, and ''
+    (a form that picks among datasets) keeps it marked counts-only for the
+    page to hide. `where`: "forecast" or "replay". `prefix` and `engine`:
+    a second panel's id prefix and the id of its model select."""
     if not panel:
         return panel
-    p = dict(panel)
+    by_key = _S()._knobs.BY_KEY
     groups = []
-    for g in p["groups"]:
+    for g in panel["groups"]:
         if g["id"] == "step":
             continue
-        rows = [r for r in g["rows"]
-                if r["key"] not in ("groundhog.aux", "groundhog.aux_weight")]
-        if rows:
-            groups.append({**g, "rows": rows})
-    p["groups"] = groups
-    p["override"] = False
-    return p
+        rows = []
+        for r in g["rows"]:
+            if r["key"] in AUX_KEYS:
+                continue
+            if r["key"] in COUNT_ONLY:
+                if kind and kind != "count":
+                    continue
+                r = {**r, "only": "count", "tip": r["tip"].replace(
+                    by_key[r["key"]].help, COUNT_ONLY[r["key"]])}
+            rows.append(r)
+        if not rows:
+            continue
+        title, tip = PANEL_GROUPS.get(g["id"], (g["title"], g["tip"]))
+        groups.append({**g, "title": title, "tip": tip, "rows": rows,
+                       "affects": " ".join(sorted(
+                           {m for r in rows for m in r["affects"].split()}))})
+    modified = any(r["value"].strip() not in ("", r["default"])
+                   for g in groups for r in g["rows"] if not r["later"])
+    return {**panel, "groups": groups, "modified": modified,
+            "override": False, "about": PANEL_ABOUT[where],
+            "scope": panel["scope"] if where == "forecast"
+            else "dataset-replay",
+            "prefix": prefix, "engine": engine}
+
+
+def knob_values(ds, knob_fields, knobs_json) -> dict:
+    """The knob channel's raw values as a dataset form posts them, less
+    what a dataset never records: the auxiliary-bank knobs, and the
+    counts-only knobs on a rate dataset."""
+    return {k: v for k, v in _S()._knob_raw(knob_fields or {},
+                                            knobs_json).items()
+            if k not in AUX_KEYS
+            and not (k in COUNT_ONLY and ds.kind != "count")}
 
 
 def forecast_page(request: Request, ds):
@@ -612,7 +674,9 @@ def forecast_page(request: Request, ds):
         "ledger": rows, "all_locs": ds.groups,
         "vintage_dates": list(reversed(dates)), "anchor_note": note,
         "default_date": newest, "locations_error": "", "form": form,
-        "knob_panel": panel_for_dataset(S._knob_panel("forecast", form)),
+        "knob_panel": dataset_panel(
+            S._knob_panel("forecast", form, names=PANEL_MEMBERS),
+            kind=ds.kind),
         "elapsed0": S._console_elapsed(),
         "series_json": S._script_json(series),
         "fanq_json": S._script_json(fanq),
@@ -733,9 +797,7 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
         return RedirectResponse(here, status_code=303)
     want_fs = S._str_field(flusurv).lower() in ("1", "on", "true", "yes")
     season_start = S._str_field(season_start).strip()
-    kraw = {k: v for k, v in S._knob_raw(knob_fields or {},
-                                         knobs_json).items()
-            if k not in ("groundhog.aux", "groundhog.aux_weight")}
+    kraw = knob_values(ds, knob_fields, knobs_json)
     _LAST[ds.id] = {"forecast_date": fd, "locations": groups
                     if len(groups) < len(ds.groups) else ["all"],
                     "engine": engine, "weeks_to_drop": weeks_to_drop,
@@ -936,6 +998,7 @@ def retro_context(selected: str = "") -> dict:
                     for m, s in summ.items()}
             reps.append({"stamp": stamp, "status": st,
                          "kind": meta.get("replay_kind", ""),
+                         "modified": bool(meta.get("knobs")),
                          "first": meta.get("first"), "last": meta.get("last"),
                          "done": meta.get("weeks_completed", 0),
                          "total": meta.get("total_weeks", 0),
@@ -945,15 +1008,24 @@ def retro_context(selected: str = "") -> dict:
         w0, w1 = replay_window(dates)
         out.append({"id": ds.id, "name": ds.name, "groups": ds.groups,
                     "vintage_true": ds.vintage_true, "pf": ds.pf_eligible,
+                    "kind": ds.kind,
                     "first": dates[0] if dates else "",
                     "last": dates[-1] if dates else "",
                     "default_first": w0, "default_last": w1,
                     "dates": dates, "replays": reps})
+    # the Model settings panel of the card's form: a second panel on the
+    # page (ids prefixed), following the card's own model select; the
+    # counts-only rows hide for a rate dataset (the card sets its kind)
+    panel = (dataset_panel(_S()._knob_panel("forecast",
+                                            names=PANEL_MEMBERS),
+                           where="replay", prefix="dsr-",
+                           engine="dsr-engine") if out else None)
     return {"dataset_replay": {"datasets": out,
                                "pf_state": _S()._pf_engine_state(),
                                "running": dict(_REPLAY),
                                "names": MEMBER_NAMES,
                                "engine_names": REPLAY_ENGINE_NAMES,
+                               "knob_panel": panel,
                                "selected": (selected if any(
                                    d["id"] == selected for d in out)
                                    else "")}}
@@ -963,53 +1035,74 @@ def retro_context(selected: str = "") -> dict:
 def replay_start(background: BackgroundTasks, dataset: str = Form(...),
                  first: str = Form(""), last: str = Form(""),
                  groups: list = Form([]), engine: str = Form("analogue"),
-                 weeks_to_drop: int = Form(0), flusurv: str = Form("")):
-    """Replay a week range of a dataset (the Retrospective tab's card)."""
+                 weeks_to_drop: str = Form(""), flusurv: str = Form(""),
+                 particles: str = Form(""), replicates: str = Form(""),
+                 season_start: str = Form(""), drop_same_day: str = Form(""),
+                 knob_fields: dict = Depends(_knob_fields),
+                 knobs: str = Form("")):
+    """Replay a week range of a dataset (the Retrospective tab's card),
+    with the Model settings panel's values (dataset_panel): resolved as a
+    dataset run resolves them, recorded with the replay when any is off
+    the shipped value, and none that does not apply."""
     S = _S()
     from app.core import custom_retro as CX
+    back = RedirectResponse("/retro#dataset-replay", status_code=303)
     ds = get_dataset(dataset)
     if ds is None:
         S._flash("That dataset no longer exists. Nothing was started.")
-        return RedirectResponse("/retro#dataset-replay", status_code=303)
+        return back
     if engine not in CX.ENGINES:
         S._flash(f"Choose {GROUNDHOG} only, or {GROUNDHOG} and the plain "
                  "SIHRS particle filter. Nothing was started.")
-        return RedirectResponse("/retro#dataset-replay", status_code=303)
+        return back
     if engine == "all" and not (ds.pf_eligible
                                 and S._pf_engine_state() == "ready"):
         S._flash(f"The plain SIHRS particle filter cannot replay {ds.name}: "
                  f"{_dataset_view(ds)['pf_why']}. Nothing was started.")
-        return RedirectResponse("/retro#dataset-replay", status_code=303)
+        return back
     weeks = CX.weeks_between(ds, S._str_field(first).strip(),
                              S._str_field(last).strip())
     if not weeks:
         S._flash(f"No weeks of {ds.name} fall in that range. Nothing was "
                  "started.")
-        return RedirectResponse("/retro#dataset-replay", status_code=303)
+        return back
     pick = [g for g in groups if g in ds.groups]
     if not pick or "all" in groups:
         pick = list(ds.groups)
-    k = S._int_field(weeks_to_drop)
-    if not 0 <= k <= 4:
-        S._flash("Weeks to drop must be 0 to 4. Nothing was started.")
-        return RedirectResponse("/retro#dataset-replay", status_code=303)
-    extra = {}
-    if S._str_field(flusurv).lower() in ("1", "on", "true", "yes"):
-        from app.core.engines import analogue as _an
-        fn = _an.aux_preset("flusurv")
-        extra = {"aux_pools": fn(None, 0, None)["aux_pools"],
-                 "analogue_aux": fn.__name__.split(":", 1)[1]}
+    # the panel's values: the older field names ride as legacy fields; a
+    # fixed season start must precede every replayed week (check_dates)
+    legacy = {f: S._str_field(v).strip() for f, v in (
+        ("particles", particles), ("replicates", replicates),
+        ("season_start", season_start), ("weeks_to_drop", weeks_to_drop),
+        ("drop_same_day", drop_same_day)) if S._str_field(v).strip()}
+    try:
+        nd = S._knobs.resolve(
+            knob_values(ds, knob_fields, knobs), engine, scope="forecast",
+            forecast_date=weeks[0], oracle_step=False, legacy=legacy,
+            check_dates=tuple(weeks[-1:]))
+        extra = {}
+        if S._str_field(flusurv).lower() in ("1", "on", "true", "yes"):
+            from app.core.engines import analogue as _an
+            fn = _an.aux_preset("flusurv")
+            extra = {"aux_pools": fn(None, 0, None)["aux_pools"],
+                     "analogue_aux": fn.__name__.split(":", 1)[1]}
+        S._knobs.write_extra(nd, extra)
+    except ValueError as e:                  # KnobError is a ValueError
+        S._flash(f"Model settings: {e}. Nothing was started.")
+        return back
+    kspec = S._knobs.spec_fields(nd)
+    k = int(kspec.pop("weeks_to_drop", 0))
     with S._engine_lock:
         if S._status.get("running") or _REPLAY:
             S._flash("A run or replay holds the engine; wait for it or stop "
                      "it first. Nothing was started.")
-            return RedirectResponse("/retro#dataset-replay", status_code=303)
+            return back
         live = sorted(x for x in S._known_seasons()
                       if S._season_status(x) in S._RETRO_ACTIVE)
         if live:
             S._flash("A season replay holds the engine (" + ", ".join(live)
                      + "); stop or pause it first. Nothing was started.")
-            return RedirectResponse("/retro#dataset-replay", status_code=303)
+            return back
         stamp = CX.new_stamp(ds)
         _REPLAY.update({"id": ds.id, "stamp": stamp})
         S._status["running"] = f"dataset-replay:{stamp}"
@@ -1020,13 +1113,18 @@ def replay_start(background: BackgroundTasks, dataset: str = Form(...),
         S._status["settings"] = []
         S._status["workroot"] = None
         S._status["expected_total"] = None
+    # knob keywords only when set: a shipped replay's call is as before
     background.add_task(replay_worker, ds.id, stamp, weeks, pick, engine, k,
-                        extra)
+                        extra, **kspec)
     return RedirectResponse(f"/retro/dataset/{ds.id}/{stamp}",
                             status_code=303)
 
 
-def replay_worker(ds_id, stamp, weeks, groups, engine, k, extra) -> None:
+def replay_worker(ds_id, stamp, weeks, groups, engine, k, extra,
+                  **kspec) -> None:
+    """One dataset replay (custom_retro.run) holding the engine claim;
+    `kspec`: the knobs' RunSpec fields (particles, replicates, jitter,
+    season_start, drop_same_day), only those set."""
     S = _S()
     from app.core import custom_retro as CX
     guard = S._sleep_guard()
@@ -1044,7 +1142,7 @@ def replay_worker(ds_id, stamp, weeks, groups, engine, k, extra) -> None:
         stop = out / "STOP"
         CX.run(ds, weeks, groups, engine=engine, weeks_to_drop=k,
                extra=extra, out_dir=out, pf_state=state, progress=progress,
-               stop_file=stop, on_workroot=on_wr)
+               stop_file=stop, on_workroot=on_wr, **kspec)
     except Exception as e:
         S._status["log"].append(f"dataset replay {stamp}: ERROR {e}")
     finally:
@@ -1133,6 +1231,15 @@ def replay_page(request: Request, ds_id: str, stamp: str, h: str = "0"):
         ("particle filter", pf),
         ("weeks dropped", str(meta.get("weeks_to_drop", 0))),
         ("baseline", meta.get("baseline") or "")]
+    if meta.get("knobs"):
+        # recorded only off the shipped values, as a hub replay's is
+        try:
+            K = S._knobs
+            settings.append(("model settings",
+                             K.label(K.from_record(meta["knobs"]))))
+        except Exception:
+            settings.append(("model settings",
+                             "modified (unreadable record)"))
     return S.templates.TemplateResponse(request, "retro_dataset.html", {
         "active": "Retrospective", "ds": ds, "stamp": stamp, "meta": meta,
         "status": status, "live": live, "h": h,

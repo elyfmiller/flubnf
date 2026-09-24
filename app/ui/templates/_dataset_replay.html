@@ -30,10 +30,11 @@
   {{ tips.label("Models", "dsr-engine", dr.names.analogue ~ " is instant. The plain SIHRS particle filter (no Oracle step) needs counts with a population and the engine, and takes minutes per week.", for_="dsr-engine") }}
   <select name="engine" id="dsr-engine">{% for e, text in dr.engine_names.items() %}
    <option value="{{ e }}">{{ text }}</option>{% endfor %}</select>
-  {{ tips.label("Weeks to drop", "dsr-drop", "Ignore each week's newest 0 to 4 weeks (the latest reports, often still incomplete); horizons keep their labels.", for_="dsr-drop") }}
-  <input type="number" name="weeks_to_drop" id="dsr-drop" value="0" min="0" max="4">
   <div class="lblrow"><label class="ck" for="dsr-fs"><input type="checkbox" name="flusurv" value="1" id="dsr-fs"> Add FluSurv-NET donors</label>
    {{ tips.tip("dsr-fs", "FluSurv-NET donors", "Off by default. Tick only for US influenza hospitalization-like data.") }}</div>
+  {# the shared Model settings panel (weeks to drop is in its fit window),
+     ids prefixed dsr-: the FluSight replay's panel is on this page too #}
+  {% with knob_panel = dr.knob_panel %}{% include "_model_settings.html" %}{% endwith %}
   <button class="gold" data-guard="console-run">Replay</button>
  </form>
  {% for d in dr.datasets if d.replays %}
@@ -41,6 +42,7 @@
  {% for r in d.replays %}
  <div class="archrow">
   <span class="grow"><strong>{{ r.first }} to {{ r.last }}</strong>
+   {% if r.modified %}<span class="pill warn">modified settings</span>{% endif %}
    <span class="hint">· {{ r.kind }} · {{ r.done }}/{{ r.total }} weeks · {{ r.status }}{% for m, v in r.rels.items() %}
     · {{ dr.names.get(m, m) }} relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{% endfor %}{% if r.rels %} vs in-house persistence baseline{% endif %}</span></span>
   <a href="/retro/dataset/{{ d.id }}/{{ r.stamp }}"><button class="quiet" type="button">Results →</button></a>
@@ -71,6 +73,10 @@
      const pf=$('dsr-engine').querySelector('option[value=all]');
      pf.disabled = !(d.pf && PF);
      if(pf.disabled) $('dsr-engine').value='analogue';
+     // the panel's counts-only rows (the output floor) follow the data
+     const ms=$('dsr-model-settings');
+     if(ms){ ms.dataset.kind = d.kind || '';
+       ms.dispatchEvent(new Event('ms-refilter')); }
    }
    $('dsr-ds').addEventListener('change', sync);
    sync();
