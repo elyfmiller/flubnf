@@ -75,6 +75,21 @@ def test_grouped_export_is_keyed_by_target_group_and_valid(tmp_path):
     assert open(p).readline().strip().split(",")[4] == "target_group"
 
 
+def test_exports_are_lf_on_every_platform(tmp_path, monkeypatch):
+    """pandas writes os.linesep: a Windows machine wrote CRLF exports while
+    the submission writer writes LF (the hub's files are LF)."""
+    import os
+    monkeypatch.setattr(os, "linesep", "\r\n")          # as on Windows
+    ds = D.ingest(grouped_bytes(), "wave", kind="count")
+    q = {"0": {float(L): 10.0 + i for i, L in enumerate(SB.QUANTILES)}}
+    rows = CR.export_rows({"Adult": q}, ds, FD, integer=True)
+    p = CR.write_export(rows, "FluBNF-Groundhog", FD, tmp_path, "target_group")
+    assert b"\r" not in p.read_bytes()
+    hub = SB.write_submission(SB.rows_from_quantiles(q, "01", FD), "analogue",
+                              FD, tmp_path / "hub")
+    assert b"\r" not in hub.read_bytes()
+
+
 def test_hubverse_export_keeps_the_uploaded_location_keys():
     ds = D.ingest(hub_ts(), "hub", kind="count")
     q = {h: {float(L): 5.0 + i for i, L in enumerate(SB.QUANTILES)}
