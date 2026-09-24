@@ -86,6 +86,14 @@
  (function () {
    var s = document.querySelector('.navtabs'), a = s && s.querySelector('.tab.active');
    if (a && s.scrollWidth > s.clientWidth) s.scrollLeft = a.offsetLeft - (s.clientWidth - a.offsetWidth) / 2;
+   // fade the edge that has more tabs past it, so a clipped tab reads as
+   // "scroll for more" rather than a cut-off word
+   function edges() {
+     if (!s) return;
+     s.classList.toggle('more-l', s.scrollLeft > 2);
+     s.classList.toggle('more-r', s.scrollLeft + s.clientWidth < s.scrollWidth - 2);
+   }
+   if (s) { s.addEventListener('scroll', edges, {passive: true}); window.addEventListener('resize', edges); edges(); }
  })();
  // the Display menu: Escape or a click outside closes it; Escape hands
  // focus back to its button

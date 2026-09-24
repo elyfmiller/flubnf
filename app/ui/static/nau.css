@@ -1216,3 +1216,12 @@ details.archived .subrow{margin:.3rem 0}
 /* a week date never breaks across lines (Data tab: the live-file line) */
 #live-newer .wk{white-space:nowrap}
 .datasrc{white-space:nowrap}
+
+/* round4: navbar edges: a scrolled tab strip fades at the side with more */
+header.nav .navtabs.more-r{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 2.5rem),transparent);
+  mask-image:linear-gradient(to right,#000 calc(100% - 2.5rem),transparent)}
+header.nav .navtabs.more-l{-webkit-mask-image:linear-gradient(to left,#000 calc(100% - 2.5rem),transparent);
+  mask-image:linear-gradient(to left,#000 calc(100% - 2.5rem),transparent)}
+header.nav .navtabs.more-l.more-r{
+  -webkit-mask-image:linear-gradient(to right,transparent,#000 2.5rem,#000 calc(100% - 2.5rem),transparent);
+  mask-image:linear-gradient(to right,transparent,#000 2.5rem,#000 calc(100% - 2.5rem),transparent)}
