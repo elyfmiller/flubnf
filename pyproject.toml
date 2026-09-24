@@ -24,11 +24,9 @@ dependencies = [
     "numpy",
     "pandas",
     "scipy",
-    "pydantic",
     "rich",
     "pyyaml",
     "typer",
-    "pymmwr",
     "requests",
 ]
 

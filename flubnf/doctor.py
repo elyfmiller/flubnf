@@ -89,11 +89,9 @@ _REQUIRED_PACKAGES: tuple[tuple[str, str], ...] = (
     ("pandas", "pandas"),
     ("scipy", "scipy"),
     ("yaml", "pyyaml"),
-    ("pydantic", "pydantic"),
     ("typer", "typer"),
     ("rich", "rich"),
     ("requests", "requests"),
-    ("pymmwr", "pymmwr"),
 )
 
 # pybnf/bngsim live in the ENGINE venv (two-venv architecture), so they are
