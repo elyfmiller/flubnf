@@ -1027,11 +1027,13 @@ def spec_dataset(spec) -> str:
 def storage_rows(workroots: list) -> list:
     """The Storage tab's rows for the stored datasets, newest first: each
     one's size with everything it holds (the upload, its replays, its runs'
-    workroots) and the parts. `workroots`: the panel's workroot rows, each
-    with "bytes" and the "dataset" its spec names; a row on a stored
-    dataset gets "dataset_name". "own_bytes" (the upload and replays) is
-    what the panel's total adds: the runs are counted there as
-    workroots."""
+    workroots) and the parts ("parts": the upload's data, replays and runs,
+    each only when there are replays or runs to set it apart from; "goes":
+    what a delete takes with it, '' for the upload alone). `workroots`: the
+    panel's workroot rows, each with "bytes" and the "dataset" its spec
+    names; a row on a stored dataset gets "dataset_name". "own_bytes" (the
+    upload and replays) is what the panel's total adds: the runs are
+    counted there as workroots."""
     from app.core import custom_retro as CX
     from app.core import retro
     S = _S()
@@ -1048,12 +1050,30 @@ def storage_rows(workroots: list) -> list:
             w["dataset_name"] = ds.name
         run_b = sum(int(w.get("bytes") or 0) for w in runs)
         n_rep = len(CX.list_replays(ds))
+        n_run = len(runs)
+        # no "0 replays 0 B": a part shows only when it holds something
+        parts, goes = [], []
+        if n_rep or n_run:
+            parts.append(f"data {retro.human_bytes(own - rep)}")
+        if n_rep:
+            parts.append(f"{n_rep} replay{'' if n_rep == 1 else 's'} "
+                         f"{retro.human_bytes(rep)}")
+            goes.append(f"its {n_rep} replay{'' if n_rep == 1 else 's'}")
+        if n_run:
+            parts.append(f"{n_run} run{'' if n_run == 1 else 's'} "
+                         f"{retro.human_bytes(run_b)}")
+            goes.append(f"its {n_run} run workroot"
+                        f"{'' if n_run == 1 else 's'}")
         out.append({"id": ds.id, "name": ds.name, "own_bytes": own,
                     "bytes": own + run_b,
                     "size_h": retro.human_bytes(own + run_b),
                     "data_h": retro.human_bytes(own - rep),
                     "replays": n_rep, "replays_h": retro.human_bytes(rep),
-                    "runs": len(runs), "runs_h": retro.human_bytes(run_b),
+                    "runs": n_run, "runs_h": retro.human_bytes(run_b),
+                    "parts": parts,
+                    "goes": ("With it go " + " and ".join(goes)
+                             + ("; the runs' ledger rows are kept."
+                                if n_run else ".")) if goes else "",
                     "busy": busy_with(ds.id)})
     return out
 

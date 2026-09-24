@@ -185,14 +185,14 @@
  {% for d in storage.datasets %}
  <div class="archrow">
   <span class="grow"><strong><a href="/data?source={{ d.id }}#browser">{{ d.name }}</a></strong>
-   <span class="hint">· {{ d.size_h }} · data {{ d.data_h }} · {{ d.replays }} replay{{ "" if d.replays == 1 else "s" }} {{ d.replays_h }} · {{ d.runs }} run{{ "" if d.runs == 1 else "s" }} {{ d.runs_h }}{% if d.busy %} · <span class="warn">{{ d.busy }}</span>{% endif %}</span></span>
+   <span class="hint">· {{ d.size_h }}{% for p in d.parts %} · {{ p }}{% endfor %}{% if d.busy %} · <span class="warn">{{ d.busy }}</span>{% endif %}</span></span>
   {% if not d.busy %}
   <form method="post" action="/storage/datasets/{{ d.id }}/delete">
    <input type="hidden" name="ident" value="{{ d.id }}">
    <input type="hidden" name="confirm" value="">
    <button type="button" class="quiet" data-del-storage data-confirm="{{ d.name }}"
      data-what="the dataset {{ d.name }}" data-size="{{ d.size_h }}"
-     data-hint="With it go its {{ d.replays }} replay{{ '' if d.replays == 1 else 's' }} and {{ d.runs }} run workroot{{ '' if d.runs == 1 else 's' }}; the runs' ledger rows are kept.">Delete</button>
+     data-hint="{{ d.goes }}">Delete</button>
   </form>
   {% endif %}
  </div>

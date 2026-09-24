@@ -120,6 +120,32 @@ def test_the_page_lists_it_with_a_name_confirmed_delete(state):
     assert "· on Template · 3 groups: Adult, Overall, Pediatric ·" in html
 
 
+def test_a_dataset_alone_lists_no_empty_parts(state):
+    """A dataset with no replay and no run read '· 0 replays 0 B · 0 runs
+    0 B' (and its delete 'With it go its 0 replays and 0 run
+    workroots')."""
+    r = client.post("/data/datasets",
+                    files={"file": ("t.csv", TEMPLATE.read_bytes(),
+                                    "text/csv")},
+                    data={"name": "Alone", "kind": "count"},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    srv._invalidate_scans()
+    rows = {d["name"]: d for d in srv._storage_inventory()["datasets"]}
+    alone, tpl = rows["Alone"], rows["Template"]
+    assert alone["parts"] == [] and alone["goes"] == ""
+    assert tpl["parts"][1:] == [f"1 replay {tpl['replays_h']}",
+                                f"1 run {tpl['runs_h']}"]
+    assert tpl["goes"] == ("With it go its 1 replay and its 1 run "
+                           "workroot; the runs' ledger rows are kept.")
+    html = " ".join(client.get("/storage").text.split())
+    row = html.split(">Alone</a></strong>")[1].split("</span></span>")[0]
+    assert row == f' <span class="hint">· {alone["size_h"]}'
+    assert "0 replays" not in html and "0 runs" not in html
+    assert 'data-confirm="Alone" data-what="the dataset Alone" ' in html
+    assert 'data-hint="">Delete' in html
+
+
 def test_delete_needs_the_name_and_takes_everything_it_counts(state):
     ds, wr = state["ds"], state["wr"]
     url = f"/storage/datasets/{ds.id}/delete"
