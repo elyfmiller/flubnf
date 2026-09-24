@@ -70,7 +70,9 @@ def test_build_path_writes_bundle_and_report(tmp_path):
     assert b.is_file()
     bundle = json.loads(b.read_text())
     assert bundle["version"] == report_v2.BUNDLE_VERSION
-    assert bundle["reference_date"] == "2098-01-03"
+    # v7: the as-of under its own name; reference_date is the hub's (+7)
+    assert bundle["asof"] == "2098-01-03"
+    assert bundle["reference_date"] == "2098-01-10"
     # fans travel as quantiles, never as raw samples: the bundle stays small
     fan = bundle["details"]["OH"]["fan"]
     assert set(fan) >= {"observed_times", "observed", "forecast_times",

@@ -140,18 +140,26 @@ PLOTLY_CONFIG = {"scrollZoom": True, "doubleClick": "reset+autosize",
 # saved beside it. Fans are reduced to the 23-level grid (FAN_LEVELS), never
 # raw samples, keeping it ~100 KB.
 BUNDLE_NAME = "report_inputs.json"
-BUNDLE_VERSION = 6
+BUNDLE_VERSION = 7
 #: renderable bundle versions; each bump was ADDITIVE and older bundles
 #: render without it: v2 cards_model (else PF), v3 cards_by_model +
 #: national_map_cards (model toggle), v4 fitted_fips (gap vs not-fitted
 #: wording), v5 national_in_run (the national detail says US was not run),
 #: v6 gap_fips + no_forecast (a reporting gap only where no data was
 #: reported; elsewhere "no forecast" with its reason) and a detail's
-#: "model" (a Groundhog fan where the state has no PF samples)
-SUPPORTED_BUNDLE_VERSIONS = (1, 2, 3, 4, 5, 6)
+#: "model" (a Groundhog fan where the state has no PF samples), v7 asof
+#: (before it, "reference_date" held the as-of; it now holds the hub's
+#: reference date, as-of + 7; read the as-of through bundle_asof)
+SUPPORTED_BUNDLE_VERSIONS = (1, 2, 3, 4, 5, 6, 7)
 FAN_LEVELS = (0.01, 0.025, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35,
               0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80,
               0.85, 0.90, 0.95, 0.975, 0.99)
+
+
+def bundle_asof(bundle: dict) -> str:
+    """A bundle's as-of date: v7 "asof"; older bundles stored the as-of
+    under "reference_date"."""
+    return str(bundle.get("asof") or bundle.get("reference_date") or "")
 
 
 def _fig_layout(fig, height=340, title="", legend=False):
@@ -522,7 +530,7 @@ def page_style() -> str:
 </style>"""
 
 
-def build_report(reference_date: str, state_cards: dict, state_details: dict,
+def build_report(asof: str, state_cards: dict, state_details: dict,
                  national: dict, out_path: Path,
                  national_map_html: str = "", elapsed_s=None,
                  settings_html: str = "", model_label: str = "",
@@ -531,7 +539,8 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
                  cards_model: str = "",
                  fitted_fips=None, national_in_run=None,
                  gap_fips=None, no_forecast=None) -> Path:
-    """state_cards: abbr -> hover-card data (choropleth).
+    """asof: the run's as-of date (the page's "week of").
+    state_cards: abbr -> hover-card data (choropleth).
     state_details: abbr -> dict(name, fan=…, cat=…, acc=…, table_rows=[…]).
     national: dict(fan=…, acc=…, summary_html=str).
     national_map_html: usmap.national_svg output; adds the state/national view toggle.
@@ -724,13 +733,13 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
 
     html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FluBNF weekly report · {reference_date}</title>
+<title>FluBNF weekly report · {asof}</title>
 {theme_boot_script()}
 {plotly_js}
 {page_style()}</head><body><main>
 {page_header()}
 <h1>US influenza forecast</h1>
-<p class="sub">week of {reference_date} ·
+<p class="sub">week of {asof} ·
  <button id="natbtn">national detail</button></p>
 {model_toggle_html}
 {view_toggle}
@@ -852,7 +861,7 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
     # v2 field; v1 bundles were PF
     cards_model = bundle.get("cards_model") or "pf"
     return build_report(
-        bundle["reference_date"], bundle.get("cards") or {}, details,
+        bundle_asof(bundle), bundle.get("cards") or {}, details,
         {"fan": us_d.get("fan"),
          "note": us_d.get("note", ""),
          "summary_html": national.get("summary_html", "")},

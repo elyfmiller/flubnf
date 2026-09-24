@@ -143,6 +143,7 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
                                  categorical_probs_from_quantiles)
     from app.core.report_v2 import CATS
     from app.core.scoring import summary_table_html
+    from app.core.submit import hub_reference_date
     n2a = dict(zip(locs.location_name, locs.abbreviation))
     n2p = dict(zip(locs.location_name, locs.population.astype(float)))
     # the national population from the same table (the hub's "US" row)
@@ -343,7 +344,11 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
     # national card from the same model as the rendered state cards
     nat_card = nat_cards.get(cards_model)
     bundle = {"version": report_v2.BUNDLE_VERSION,
-              "reference_date": spec.forecast_date,
+              # v7: the as-of, and the hub reference date under its own
+              # name (older bundles held the as-of in reference_date)
+              "asof": spec.forecast_date,
+              "reference_date": str(
+                  hub_reference_date(spec.forecast_date).date()),
               # v2: which model computed the map cards
               "cards_model": cards_model,
               "cards": cards, "details": details,

@@ -181,3 +181,27 @@ def test_pf_samples_still_draw_the_pf_fan_where_they_exist(tmp_path):
     assert d["OH"]["model"] == "pf" and "Groundhog" not in d["OH"]["fan"][
         "title"]
     assert d["UT"]["model"] == "analogue"
+
+
+# ------------------------------------- the bundle's dates, named right (7)
+
+def test_bundle_stores_the_asof_and_the_true_reference_date(tmp_path):
+    """reference_date held the as-of; the bundle now stores both, each
+    under its own name (hub reference_date = as-of + 7, the frozen join),
+    and the report still reads the as-of."""
+    from app.core.submit import hub_reference_date
+    _gh_run(tmp_path)
+    b = json.loads((tmp_path / report_v2.BUNDLE_NAME).read_text())
+    assert b["asof"] == "2098-01-03"
+    assert b["reference_date"] == str(hub_reference_date("2098-01-03").date())
+    assert report_v2.bundle_asof(b) == "2098-01-03"
+    report_v2.render_bundle(b, tmp_path / "again.html")
+    assert "week of 2098-01-03" in (tmp_path / "again.html").read_text()
+
+
+def test_an_older_bundles_reference_date_still_reads_as_its_asof(tmp_path):
+    old = {"version": 5, "reference_date": "2098-01-03", "cards": {},
+           "details": {}, "national": {"summary_html": ""}}
+    assert report_v2.bundle_asof(old) == "2098-01-03"
+    html = report_v2.render_bundle(old, tmp_path / "r.html").read_text()
+    assert "week of 2098-01-03" in html
