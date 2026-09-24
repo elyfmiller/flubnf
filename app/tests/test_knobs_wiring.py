@@ -538,6 +538,16 @@ def test_cli_retro_takes_knobs(monkeypatch, tmp_path):
     assert "settings" not in got[0][1]
 
 
+def test_the_season_page_wears_the_modified_badge():
+    t = srv.templates.env.get_template("retro_season.html")
+    ctx = {"active": "Retrospective", "season": SEASON,
+           "model_name": lambda m: m, "archive": "",
+           "preparing": {"phase": "scoring", "elapsed_s": 1.0}}
+    html = t.render(**ctx, knobs_label=K.label({"oracle.w": 0.25}))
+    assert '<span class="pill warn" title="modified: oracle.w=0.25' in html
+    assert "modified settings</span>" not in t.render(**ctx, knobs_label="")
+
+
 def test_cli_retro_reports_a_digest_refusal(monkeypatch, tmp_path):
     from flubnf.cli import app
 

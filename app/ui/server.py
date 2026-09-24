@@ -4818,6 +4818,10 @@ def retro_results(request: Request, season: str, week: str = "",
     root, _is_seal = _season_root(season, archive)
     # this tree's names, passed as model_name (shadows the global)
     names = _names_for_root(root)
+    # a replay with modified model settings wears its label on the page
+    from app.core import site_build as _sb
+    _kn = _sb.tree_knobs(root)
+    knobs_label = (_knobs.label(_knobs.from_record(_kn)) if _kn else "")
     weeks = [p.parent.name for p in retro.season_sample_files(root)]
     if not weeks:
         # back to the season list, which shows a 0-weeks season
@@ -4839,7 +4843,7 @@ def retro_results(request: Request, season: str, week: str = "",
         if not job["done"].is_set():
             return templates.TemplateResponse(request, "retro_season.html", {
                 "active": "Retrospective", "season": season,
-                "model_name": _name_fn(names),
+                "model_name": _name_fn(names), "knobs_label": knobs_label,
                 "preparing": {"phase": job["phase"],
                               "elapsed_s": round(time.time() - job["t0"], 1)},
                 "archive": archive,
@@ -5001,7 +5005,7 @@ def retro_results(request: Request, season: str, week: str = "",
         official_catalog = []
     return templates.TemplateResponse(request, "retro_season.html", {
         "active": "Retrospective", "season": season, "heads": heads,
-        "model_name": _name_fn(names),
+        "model_name": _name_fn(names), "knobs_label": knobs_label,
         "curve": curve, "curves": curves, "states": states,
         "member_colors": _member_colors(),
         # the shipped models this season scored, in table order
