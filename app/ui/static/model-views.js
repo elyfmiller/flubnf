@@ -19,7 +19,9 @@
    The network's layout is a seeded force layout: the nodes start on a
    ring in their own order, then repulsion between nodes, springs along
    the edges and a gentle pull to the centre settle them over ITER
-   rounds. The seed is fixed, so the same model draws the same way on
+   rounds; a part no arrow joins to the rest (a clock fed from a source)
+   is laid out on its own in a strip beside the main part. The seed is
+   fixed, so the same model draws the same way on
    every load. Colours are the page's tokens through model-views.css, so
    the drawing follows the theme with no redraw. Plain ES5, no
    dependencies. ModelViews.network(box, graph) and
@@ -34,6 +36,7 @@
   var MARGIN = 36;               // kept clear inside the drawing's edge
   var ITER = 300, SEED = 20240907;
   var BEND = 30;                 // between parallel arrows on one pair of species
+  var CELL = 200;                // the most a small unjoined part gets along the side strip
   // the contact map's panels, the same measures as the server's drawing
   var HEAD = 26, COMP_H = 22, STATE_H = 18, GAP = 22, PPAD = 10;
   var BOND_RISE = 64, BOND_ROOM = 26;
@@ -326,13 +329,70 @@
     }
   }
 
+  // The parts of a graph no arrow or influence joins, largest first (the
+  // order of their first node breaks a tie), each a list of node ids.
+  function parts(graph) {
+    var nodes = graph.nodes || [], head = {}, order = {}, groups = {}, out = [], i, e, f, j;
+    function find(a) { while (head[a] !== a) { head[a] = head[head[a]]; a = head[a]; } return a; }
+    function join2(a, b) { if (head[a] !== undefined && head[b] !== undefined) head[find(a)] = find(b); }
+    for (i = 0; i < nodes.length; i++) { head[nodes[i].id] = nodes[i].id; order[nodes[i].id] = i; }
+    for (i = 0; i < (graph.edges || []).length; i++) { e = graph.edges[i]; join2(e.from, e.to); }
+    for (i = 0; i < (graph.influences || []).length; i++) {
+      f = graph.influences[i];
+      for (j = 0; j < (graph.edges || []).length; j++) {
+        e = graph.edges[j];
+        if (e.id === f.edge) { join2(f.from, e.from); join2(f.from, e.to); }
+      }
+    }
+    for (i = 0; i < nodes.length; i++) (groups[find(nodes[i].id)] = groups[find(nodes[i].id)] || []).push(nodes[i].id);
+    for (i in groups) if (groups.hasOwnProperty(i)) out.push(groups[i]);
+    out.sort(function (a, b) { return (b.length - a.length) || (order[a[0]] - order[b[0]]); });
+    return out;
+  }
+  // The layout of a graph in parts: the largest part fills the drawing
+  // and the small ones (a clock such as counter, fed from a source) sit in
+  // a strip at the side, or at the foot of a narrow drawing, instead of
+  // the force layout pushing them apart and shrinking everything.
+  function arrange(graph, W, H) {
+    var groups = parts(graph), pos = {}, narrow = W < 520, i, k, at, rest, sub, p, area, strip;
+    if (groups.length < 2) return layout(graph, W, H);
+    rest = groups.slice(1);
+    strip = narrow ? Math.round(H * 0.28) : Math.round(W * 0.24);
+    function place(ids, x0, y0, w, h) {
+      var set = {};
+      ids.forEach(function (id) { set[id] = 1; });
+      sub = {
+        nodes: (graph.nodes || []).filter(function (n) { return set[n.id]; }),
+        edges: (graph.edges || []).filter(function (e) { return set[e.from] && set[e.to]; }),
+        influences: (graph.influences || []).filter(function (f) { return set[f.from]; })
+      };
+      p = layout(sub, w, h);
+      for (k in p) if (p.hasOwnProperty(k)) pos[k] = {x: p[k].x + x0, y: p[k].y + y0};
+    }
+    if (narrow) place(groups[0], 0, 0, W, H - strip);
+    else place(groups[0], 0, 0, W - strip, H);
+    // each small part gets a cell of at most CELL px along the strip, the
+    // cells centred, so a two-node clock does not stretch to the full height
+    for (i = 0; i < rest.length; i++) {
+      area = Math.min(CELL, (narrow ? W : H) / rest.length);
+      at = ((narrow ? W : H) - area * rest.length) / 2 + i * area;
+      if (narrow) place(rest[i], Math.round(at), H - strip, Math.round(area), strip);
+      else place(rest[i], W - strip, Math.round(at), strip, Math.round(area));
+    }
+    return pos;
+  }
+
   // ------------------------------------------------ the reaction network
   function network(box, graph) {
-    var W = Math.max(320, box.clientWidth || 640), H = HEIGHT;
+    var W = Math.max(320, box.clientWidth || 640), n0 = 0;
+    (graph.nodes || []).forEach(function (nd) { if (nd.kind === 'species') n0 += 1; });
+    // a small model gets a shorter drawing; a narrow one a taller drawing
+    var H = n0 <= 3 ? 280 : (W < 520 ? HEIGHT + 60 : HEIGHT);
     var v = new View(box, W, H), svg = v.svg;
+    svg.style.height = H + 'px';
     var nodes = graph.nodes || [], edges = graph.edges || [], infs = graph.influences || [];
     var defs = el('defs', {}, svg), gInf, gEdges, gHits, gLabels, gNodes;
-    var pos = layout(graph, W, H), home = {}, size = {}, N = {}, E = {}, I = [], pairs = {};
+    var pos = arrange(graph, W, H), home = {}, size = {}, N = {}, E = {}, I = [], pairs = {};
     var species = 0, reactions = {}, i, key, list, o;
     ['mv-arrow', 'mv-arrow-mut'].forEach(function (id) {
       var m = el('marker', {id: id, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7,
@@ -650,5 +710,5 @@
     return v;
   }
 
-  root.ModelViews = {network: network, contactmap: contactmap, layout: layout};
+  root.ModelViews = {network: network, contactmap: contactmap, layout: layout, arrange: arrange};
 })(typeof window !== 'undefined' ? window : this);
