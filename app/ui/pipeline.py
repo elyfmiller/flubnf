@@ -261,9 +261,10 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
         obs_pairs = (obs.get(loc) or [])[-12:]
         o_t = [d for d, _ in obs_pairs]
         o_v = [v for _, v in obs_pairs]
-        _base = (_dd.fromisoformat(o_t[-1]) if o_t
-                 else _dd.fromisoformat(spec.forecast_date))
-        # canonical horizons: hub label h is h+1 weeks past the anchor
+        # canonical horizons are AS-OF relative: hub label h is h+1 weeks
+        # past the as-of week (the files' target_end_date), whatever the
+        # newest observed week (an unreported or trimmed week moves it back)
+        _base = _dd.fromisoformat(spec.forecast_date)
         f_t = [(_base + _tdd(days=7 * (h + 1))).isoformat()
                for h in (0, 1, 2, 3)]
         samples_h = {f_t[h]: s[str(h)] for h in (0, 1, 2, 3)}
@@ -338,11 +339,13 @@ def _pf_engine_state() -> str:
 
 def _optional_rows(spec, workroot: Path, pf_samples: dict, an_q: dict,
                    locs, n2f: dict, minus1: bool, pmf: bool,
-                   floor_kw: dict) -> tuple:
+                   floor_kw: dict, vintage=None) -> tuple:
     """(pf rows, Groundhog rows, {model: counts}) for a run with an
     optional-output knob on: each location's quantile rows (horizon -1
     included when `minus1`), then its rate-change pmf rows when `pmf`.
-    The rules per model are app/core/optional_outputs.py's."""
+    The rules per model are app/core/optional_outputs.py's. `vintage` is
+    the observed file the run read (the live target file on submission
+    day, before the dated archive copy exists); None = the dated one."""
     from app.core import optional_outputs as OPT
     from app.core.data import vintage_path
     from app.core.engines import analogue as an_engine
@@ -354,7 +357,8 @@ def _optional_rows(spec, workroot: Path, pf_samples: dict, an_q: dict,
     asof = spec.forecast_date
     hzs = HORIZONS_WITH_MINUS1 if minus1 else HORIZONS
     pops = dict(zip(locs.location_name, locs.population.astype(float)))
-    reported = OPT.reported_counts(vintage_path(asof), asof)
+    reported = OPT.reported_counts(
+        vintage if vintage is not None else vintage_path(asof), asof)
     pf_k = OPT.pf_weeks_dropped(workroot, spec, reported,
                                 {l: n2f[l] for l in pf_samples})
     counts = {"pf": {"m1": 0, "pmf": 0},
@@ -636,7 +640,8 @@ def _run_all(spec: RunSpec) -> None:
         _pmf = _knobs.optional_output(spec, "output.rate_change_pmf")
         if _m1 or _pmf:
             pf_rows, an_rows, _opt_counts = _optional_rows(
-                spec, workroot, pf_samples, an_q, locs, n2f, _m1, _pmf, _fkw)
+                spec, workroot, pf_samples, an_q, locs, n2f, _m1, _pmf, _fkw,
+                vintage=src_path)
             from app.core.optional_outputs import notes as _opt_notes
             outcome["optional_rows"] = _opt_notes(
                 {hub_model_id(m) + _suffix: c

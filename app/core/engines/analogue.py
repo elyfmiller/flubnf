@@ -445,7 +445,7 @@ def run(spec, notes: dict | None = None, flags: list | None = None) -> dict:
     """location -> {horizon(str): {level(float): value}} quantiles; `notes`
     and `flags` as in _walk."""
     out = {}
-    for loc, _anchor, _date, _lag, forecast in _walk(spec, notes, flags):
+    for loc, anchor, _date, _lag, forecast in _walk(spec, notes, flags):
         qs = {}
         for h in (1, 2, 3, 4):     # PHYSICAL weeks ahead, the library's unit
             q = forecast(h)
@@ -454,6 +454,13 @@ def run(spec, notes: dict | None = None, flags: list | None = None) -> dict:
                 qs[str(h - 1)] = {float(L): float(x) for L, x in q.items()}
         if qs:
             out[loc] = qs
+        elif notes is not None and loc in notes:
+            # the moved-back anchor gave no forecast (a count of 0 is a
+            # ratio of nothing): the location abstained, and says so
+            unrep = str(notes[loc]).split(": ", 1)[-1]
+            notes[loc] = (f"abstained: newest reported week "
+                          f"{pd.Timestamp(_date).date()} reads {anchor:g} "
+                          f"({unrep})")
     return out
 
 

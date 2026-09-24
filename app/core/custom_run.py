@@ -177,7 +177,7 @@ def write_export(rows: list, model_id: str, as_of: str, workroot: Path,
     p = d / f"{ref}-{model_id}.csv"
     tmp = p.with_name(p.name + ".tmp")
     try:
-        df.to_csv(tmp, index=False)
+        df.to_csv(tmp, index=False, lineterminator="\n")   # LF, as submit
         os.replace(tmp, p)
     finally:
         tmp.unlink(missing_ok=True)
