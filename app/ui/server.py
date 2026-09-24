@@ -443,7 +443,7 @@ def _component_versions() -> dict:
             out[pkg] = "not installed"
     out["bionetgen"] = "not installed"
     try:
-        from flubnf.settings import load_locations, BNG
+        from flubnf.settings import BNG
         vf = Path(BNG).parent / "VERSION"
         if vf.is_file():
             out["bionetgen"] = vf.read_text().strip()
@@ -685,7 +685,6 @@ def _outlook_cards(res: dict | None, rid: str | None = None) -> tuple:
     states get empty cards so the full silhouette renders."""
     import json as _json
 
-    import pandas as pd
     from app.core import report_v2
     from app.core.report import categorical_probs_from_quantiles
     from app.core.report_v2 import CATS
@@ -1061,8 +1060,6 @@ def forecast_page(request: Request):
         "active": "Forecast", "engines": ENGINES, "status": _status,
         "ledger": ledger_rows, "all_locs": all_locs,
         "vintage_dates": vintage_dates, "anchor_note": anchor_note,
-        "season_default": _runs.default_season_start(
-            _anchor or str(form.get("forecast_date", ""))),
         "default_date": _default_forecast_date(),
         "locations_error": locations_error, "form": form,
         "elapsed0": _console_elapsed(),
@@ -1401,11 +1398,6 @@ def runs_clear(request: Request, confirm: str = Form("")):
     return _back(request, "/storage")
 
 
-#: storage kinds (the identifier is a directory name inside the kind's parent)
-_STORAGE_KINDS = ("workroot", "retro-season", "retro-archive",
-                  "report-archive")
-
-
 def _storage_target(kind: str, ident: str):
     """(path, busy_reason) for one storage delete request, after all
     validation EXCEPT the confirmation; (None, message) when refused."""
@@ -1645,12 +1637,7 @@ def run_stop():
     _invalidate_scans()
     w = _status.get("workroot")
     running = _status.get("running") or ""
-    if w and running.startswith("amcmc"):
-        # the adaptive-MCMC engine runs as one subprocess and ignores STOP
-        # files -- say so instead of letting the button silently no-op
-        _status["phase"] = ("Adaptive MCMC cannot be stopped mid-run. "
-                            "It finishes on its own and records its result.")
-    elif w and running:
+    if w and running:
         (Path(w) / "STOP").touch()
         if (Path(w) / "pf2s").is_dir():        # the two-strain pass polls its
             (Path(w) / "pf2s" / "STOP").touch()  # own subdir for the flag
@@ -2461,11 +2448,6 @@ def _archive_dates() -> list:
     return _scan_archive_dates(APP_STATE / "archive")
 
 
-@app.get("/api/archive/dates")
-def api_archive_dates():
-    return _archive_dates()
-
-
 def _registered_model_ids() -> set:
     """Hub model identities this project may write (directory names), from
     submit.MODEL_ABBR (checked against model-metadata/ by the suite)."""
@@ -2657,7 +2639,6 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
 @app.get("/api/series")
 def api_series(locs: str = ""):
     """Data-panel series for the checked locations (live, before any run)."""
-    import json as _json
     import pandas as pd
     sel = [l for l in locs.split("|") if l][:8] or ["Ohio"]
     out = {}
@@ -2706,8 +2687,7 @@ def api_progress():
         done = total = 0
         t0 = None
         # pf_status*.json.prog: the pre-shard merged name and per-shard files
-        for f in (glob.glob(w + "/status_*.json.prog")
-                  + glob.glob(w + "/pf_status*.json.prog")
+        for f in (glob.glob(w + "/pf_status*.json.prog")
                   + glob.glob(w + "/pf2s/pf_status*.json.prog")):
             try:
                 d = _json.loads(open(f).read())
@@ -2876,35 +2856,6 @@ def _latest_results():
             continue
         return f.parent.name, res
     return None, None
-
-
-def _fan_svg(observed, qs):
-    """Tiny inline SVG: observed tail + forecast fan (10-90, 25-75, median)."""
-    # tolerate the pre-quantile results schema (medians-only floats)
-    if not qs or not all(isinstance(v, dict) and "0.9" in v for v in qs.values()):
-        return ""
-    obs_v = [v for _, v in observed][-10:] if observed else []
-    hs = sorted(qs, key=int)
-    hi = max([qs[h]["0.9"] for h in hs] + obs_v + [1.0])
-    W, H, n_obs = 320, 90, len(obs_v)
-    n = n_obs + len(hs)
-    def x(i): return 10 + i * (W - 20) / max(n - 1, 1)
-    def y(v): return H - 10 - (v / hi) * (H - 22)
-    def pts(seq): return " ".join(f"{x(i):.1f},{y(v):.1f}" for i, v in seq)
-    band = lambda lo_k, hi_k, op: (
-        f'<polygon fill="var(--gold-bright)" fill-opacity="{op}" points="'
-        + pts([(n_obs - 1 + k + 1, qs[h][hi_k]) for k, h in enumerate(hs)])
-        + " " + pts(reversed([(n_obs - 1 + k + 1, qs[h][lo_k])
-                              for k, h in enumerate(hs)])) + '"/>')
-    parts = [f'<svg viewBox="0 0 {W} {H}" style="width:100%;max-width:{W}px">']
-    if obs_v:
-        parts.append(f'<polyline fill="none" stroke="var(--ink)" stroke-width="1.6" '
-                     f'points="{pts(list(enumerate(obs_v)))}"/>')
-    parts += [band("0.1", "0.9", 0.18), band("0.25", "0.75", 0.35)]
-    parts.append('<polyline fill="none" stroke="var(--gold)" stroke-width="2" points="'
-                 + pts([(n_obs - 1 + k + 1, qs[h]["0.5"]) for k, h in enumerate(hs)]) + '"/>')
-    parts.append('</svg>')
-    return "".join(parts)
 
 
 # === Output (/output): submissions, downloads, weekly report -> output.html ===
@@ -3395,10 +3346,6 @@ def model_page(request: Request, name: str):
     if name not in blurbs:
         return HTMLResponse("unknown model", status_code=404)
     rid, res = _latest_results()
-    fans = {}
-    if res and name in res.get("models", {}):
-        for loc, qs in res["models"][name].items():
-            fans[loc] = _fan_svg(res.get("observed", {}).get(loc, []), qs)
     fanq = {}
     if res and name in res.get("models", {}):
         fanq = {loc: qs for loc, qs in res["models"][name].items()
@@ -3485,7 +3432,6 @@ def _season_root(season: str, archive: str = "") -> tuple:
     return best, is_seal
 _retro_status: dict = {}
 _retro_stop: set = set()
-_retro_claim_at: dict = {}   # season -> when its in-memory claim was made
 _retro_claim_at: dict = {}   # season -> when its in-memory claim was made
 
 #: statuses that mean a season worker is alive and holding the engine
@@ -4695,7 +4641,6 @@ def retro_results(request: Request, season: str, week: str = "",
                f"{season}: that archived run has no completed weeks, or it "
                "has been deleted.")
         return RedirectResponse("/retro", status_code=303)
-    sf = root / "scores.json"
     score_error = ""
     # Heavy scoring never runs in-request: stale caches or ?rescore=1 start
     # the background finalize job and the page shows a polled preparing
@@ -4719,10 +4664,8 @@ def retro_results(request: Request, season: str, week: str = "",
                 "us_row": None,
                 "us": None, "pooled_note": "",
                 "conv": relwis.DEFAULT_CONVENTION, "figs": None,
-                "conventions": _relwis_conventions(),
                 "weeks": weeks, "week": weeks[-1], "map_html": "",
-                "official_catalog": [], "prog": None, "n_weeks": 0,
-                "score_error": ""})
+                "official_catalog": [], "prog": None, "n_weeks": 0})
         if job["error"]:
             # show the failure, never pass it off as "truth not settled"
             score_error = job["error"]
@@ -4804,25 +4747,18 @@ def retro_results(request: Request, season: str, week: str = "",
     if not scoreable and not score_error:
         # scored zero cells with no exception: diagnose WHICH input is empty
         try:
-            import json as _dj
-            from datetime import date as _dd, timedelta as _dt
             from app.core.scoring import load_truth as _lt
             truth_d, n2f_d = _lt()
-            season_dates = {w for w in weeks}
-            t_rows = sum(1 for (f, d) in truth_d
-                         if any(str(d.date()) > w for w in list(season_dates)[:1]))
             d0 = retro.read_week_samples(root, weeks[len(weeks)//2])
             import numpy as _dn
             pos_med = sum(1 for loc, sm in d0.get("pf", {}).items()
                           for h in ("1",)
                           if _dn.median(_dn.asarray(sm[h], float)) > 0)
             # walk ONE cell through every scoring step and name its killer
-            import traceback as _tb
             import pandas as _dp
             from app.core import ensemble as _de
             from app.core.scoring import _baseline_cells as _dbc
             from flubnf.wis import wis as _dwis
-            wk_mid = weeks[len(weeks)//2]
             loc0 = sorted(d0.get("pf", {}))[0]
             fips0 = n2f_d.get(loc0)
             T0 = _dp.Timestamp(d0["asof"])
@@ -4886,14 +4822,13 @@ def retro_results(request: Request, season: str, week: str = "",
                else usn.UsNational(usn.OFFICIALS_ONLY).as_dict()),
         "pooled_note": usn.POOLED_SCOPE_NOTE,
         "conv": convention, "figs": figs,
-        "conventions": _relwis_conventions(),
         "weeks": weeks, "week": wk, "map_html": map_html,
         "official_catalog": official_catalog,
         "prog": (_archive_progress(root, season) if archive
                  else _retro_progress(season)),
         "archive": archive,
         "archive_when": retro.stamp_human(archive) if archive else "",
-        "n_weeks": len(weeks) if scoreable else 0, "score_error": score_error})
+        "n_weeks": len(weeks) if scoreable else 0})
 
 
 @app.get("/api/retro/{season}/playback/{asof}")
@@ -5001,7 +4936,7 @@ def run_models(request: Request,
                oracle: str | None = Form(None)):  # "none" = plain filter
     # non-Saturdays snap via resolve_anchor; a typed Saturday is honoured or
     # refused below (never re-aimed)
-    from datetime import date as _date, timedelta as _td
+    from datetime import date as _date
     try:
         _d = _date.fromisoformat(forecast_date)
         if _d.weekday() != 5:
@@ -5082,7 +5017,6 @@ def run_models(request: Request,
         _status["run_label"] = f"{forecast_date} · queued"
     from app.core import us_national as _usn
     if "all" in [l.lower() for l in locations]:
-        import pandas as _pd
         _l = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
         locs_list = list(_l.location_name[(_l.location.str.len() == 2)
                                           & (_l.abbreviation != "US")])
