@@ -7,6 +7,7 @@ is faked. Everything it writes stays in the run folder.
 """
 import csv
 import json
+import os
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -133,7 +134,7 @@ def test_oracle_step_on_a_sandbox_run(finished, hub):
     # written only inside the run folder
     rel = str(finished["dir"].relative_to(hub))
     added = _tree(hub) - before
-    assert added and all(p.startswith(rel + "/") for p in added)
+    assert added and all(p.startswith(rel + os.sep) for p in added)
     assert (finished["dir"] / sb.ORACLE_FILE).is_file()
     prov = json.loads((finished["dir"] / sb.ORACLE_DIR / "oracle.json").read_text())
     assert prov["w"] == OR.W_PRODUCTION and prov["asof"] == ASOF

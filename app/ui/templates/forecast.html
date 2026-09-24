@@ -344,7 +344,7 @@
    <div class="carousel dataloc">
     <button type="button" class="quiet cnav" id="data-prev" aria-label="previous location">◀</button>
     <select id="data-loc" aria-label="data panel location"
-      style="width:auto;min-width:230px;max-width:100%">
+      style="width:auto;min-width:min(230px,45vw);max-width:100%">
      {% if dataset %}
      {% for l in all_locs %}<option {% if loop.first %}selected{% endif %}>{{ l }}</option>{% endfor %}
      {% else %}
@@ -380,7 +380,7 @@
   <div class="carousel">
    <button type="button" class="quiet cnav" id="fanx-prev">◀</button>
    <select id="fanx-loc" aria-label="forecast location, expanded view"
-     style="width:auto;min-width:230px;max-width:100%"></select>
+     style="width:auto;min-width:min(230px,45vw);max-width:100%"></select>
    <button type="button" class="quiet cnav" id="fanx-next">▶</button>
    <span class="hint" id="fanx-pos"></span>
   </div>
@@ -612,7 +612,7 @@
      +'<div class="seg" role="group" aria-label="model">'+mbtns+'</div>'
      +'<div class="carousel"><button type="button" class="quiet cnav" id="fan-prev">◀</button>'
      +'<select id="fan-loc" aria-label="forecast location"'
-     +' style="width:auto;min-width:230px;max-width:100%"></select>'
+     +' style="width:auto;min-width:min(230px,45vw);max-width:100%"></select>'
      +'<button type="button" class="quiet cnav" id="fan-next">▶</button>'
      +'<span class="hint" id="fan-pos"></span>'
      +'<button type="button" class="quiet" id="fan-expand"'

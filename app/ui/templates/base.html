@@ -41,9 +41,12 @@
                  ("/output","Output"),("/retro","Retrospective"),
                  ("/storage","Storage"),("/models","Models"),
                  ("/methods","Methods"),("/sandbox","Sandbox")] %}
+  {# one row that scrolls sideways in a narrow window, never three rows #}
+  <nav class="navtabs" aria-label="Main">
   {% for href, name in tabs %}
-    <a class="tab {% if active == name %}active{% endif %}" href="{{ href }}">{{ name }}</a>
+    <a class="tab {% if active == name %}active{% endif %}" href="{{ href }}"{% if active == name %} aria-current="page"{% endif %}>{{ name }}</a>
   {% endfor %}
+  </nav>
   <span class="spacer"></span>
   <div class="fontsize" role="group" aria-label="Text size">
     <button type="button" data-fs="s" title="Smaller text">A-</button>
@@ -66,6 +69,13 @@
       title="Color-vision mode: blue and orange replace green and red">CV safe</button>
   </div>
 </header>
+<script>
+ // a scrolled tab strip opens with the current tab in view
+ (function () {
+   var s = document.querySelector('.navtabs'), a = s && s.querySelector('.tab.active');
+   if (a && s.scrollWidth > s.clientWidth) s.scrollLeft = a.offsetLeft - (s.clientWidth - a.offsetWidth) / 2;
+ })();
+</script>
 {# one shell for every page. No page sets main_class, but tests pin the
    rendered empty class="" #}
 <main id="main" class="{% block main_class %}{% endblock %}">{% if restart_needed() %}

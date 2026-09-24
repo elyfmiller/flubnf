@@ -71,7 +71,8 @@ def test_fan_card_offers_direct_location_selection():
     assert r.status_code == 200
     # the select sits in the pager row, styled like the data panel's
     assert 'id="fan-loc" aria-label="forecast location"' in r.text
-    assert "min-width:230px" in r.text
+    # wide enough for the longest name, narrower in a narrow window
+    assert "min-width:min(230px,45vw)" in r.text
     # arrows and select drive the one selection state
     assert "getElementById('fan-loc').onchange" in r.text
     assert "FIDX=this.selectedIndex" in r.text

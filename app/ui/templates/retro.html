@@ -94,8 +94,9 @@ had, then scores against settled truth.</p>
    <progress value="{{ s.done }}" max="{{ s.total }}"></progress>
    {% endif %}
    <div class="row" style="justify-content:space-between">
-    {# .rcount is repainted by the ticker with .rstat, so they never disagree #}
-    <span class="hint"><span class="rcount">{{ "%d/%d weeks"|format(s.done, s.total) if (s.total and (s.done > 0 or s.status)) or s.active else ("Not replayed yet" if s.total else "no hub weeks yet") }}</span>{% if s.seal %} · {{ s.seal_label }}{% endif %}
+    {# .rcount is repainted by the ticker with .rstat, so they never disagree;
+       on a live card the run bar's .rstat states it, so this copy is hidden #}
+    <span class="hint"><span class="rcount"{% if s.active %} hidden{% endif %}>{{ "%d/%d weeks"|format(s.done, s.total) if (s.total and (s.done > 0 or s.status)) or s.active else ("Not replayed yet" if s.total else "no hub weeks yet") }}</span>{% if s.seal %} · {{ s.seal_label }}{% endif %}
      {# the convention travels with the score: every relWIS on this page is
         the ratio of sums (the sealed numbers' convention). One headline per
         shipped model (PF first); a card with only `rel` prints it unnamed #}

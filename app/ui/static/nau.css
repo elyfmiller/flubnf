@@ -252,6 +252,15 @@ header.nav a.tab.active{border-bottom-color:var(--accent-ink);font-weight:700}
   header.nav a.tab{font-size:.95rem;padding:.8rem .4rem}
 }
 header.nav .spacer{flex:1}
+header.nav .navtabs{display:flex;align-items:center;gap:.15rem;min-width:0}
+header.nav .navtabs a.tab{white-space:nowrap;flex:none}
+/* a narrow window: brand and one sideways-scrolling tab row, the text
+   size, theme and a11y controls on the row below */
+@media(max-width:900px){
+  header.nav .navtabs{flex:1 1 0;overflow-x:auto;scrollbar-width:thin;
+    scrollbar-color:color-mix(in srgb,var(--nav-ink) 35%,transparent) transparent}
+  header.nav .spacer{flex-basis:100%;height:0}
+}
 /* theme picker and a11y pair (Contrast / CV safe): segmented groups with
    aria-pressed, persisted; the a11y buttons are independent toggles */
 .themepick,.a11ypick{display:inline-flex;
