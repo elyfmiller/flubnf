@@ -78,7 +78,7 @@ def test_default_preview_is_the_latest_vintage(archive):
     assert '<div id="vintageplot" style="min-height:380px"></div>' in html
     assert "const VSERIES = {" in html
     assert '"dates":' in html and '"values":' in html
-    assert "Plotly.react(el,traces," in html
+    assert "FluCharts.react(el,traces," in html   # Plotly.react + week ticks
     assert "css('--gold')" in html and "css('--card')" in html
     assert "addEventListener('themechange',()=>drawVintage())" in html
     assert "addEventListener('fontsizechange',()=>drawVintage())" in html

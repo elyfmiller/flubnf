@@ -158,6 +158,11 @@ def score_quantiles(q_by_loc: Mapping, forecast_date: str,
     return df
 
 
+#: the empty-table placeholder (the weekly report recognises it)
+NO_SCORES_HTML = ("<p class='hint'>No scored weeks yet. relWIS appears once "
+                  "truth for forecast weeks is published.</p>")
+
+
 def summary_table_html(df: pd.DataFrame) -> str:
     """The report's WIS-breakdown card: the member named in the header,
     ok/bad classes, each score with its cell count; a placeholder when empty.
@@ -165,8 +170,7 @@ def summary_table_html(df: pd.DataFrame) -> str:
     (us_national.POOLED_INCLUDES_US)."""
     from app.core import us_national as usn
     if df.empty:
-        return ("<p class='hint'>No scored weeks yet. relWIS appears once "
-                "truth for forecast weeks is published.</p>")
+        return NO_SCORES_HTML
     try:                       # the shared name map, one source (no drift)
         from app.core.report_season import MODEL_NAMES
         member = MODEL_NAMES.get("pf", "Oracle SIHRS")

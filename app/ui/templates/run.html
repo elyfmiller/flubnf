@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% block title %}FluBNF · Run{% endblock %}
-{% block head %}{% if dataset %}<script src="/static/plotly.min.js"></script>{% endif %}{% endblock %}
+{% block head %}{% if dataset %}<script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>{% endif %}{% endblock %}
 {% block content %}{% import "_tips.html" as tips %}{% import "_coverage.html" as covm %}
 
 <h1>Run: {{ label or "details" }}

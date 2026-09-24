@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% block title %}FluBNF · Forecast{% endblock %}
-{% block head %}<script src="/static/plotly.min.js"></script>
+{% block head %}<script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>
 <script src="/static/quips.js"></script>{% endblock %}
 {% block content %}{% import "_tips.html" as tips %}
 <h1>Forecast</h1>
@@ -509,7 +509,7 @@
    if(!div||!div.classList.contains('js-plotly-plot')){
      el.innerHTML=''; div=document.createElement('div'); el.appendChild(div);}
    if(mode==='raw'){
-     Plotly.react(div,[{x:s.dates,y:s.values,mode:lm,
+     FluCharts.react(div,[{x:s.dates,y:s.values,mode:lm,
        line:{color:css('--gold'),width:2},marker:{size:5},name:loc}],lay(loc,380),
        pconf('data_'+loc));
    }else{
@@ -533,7 +533,7 @@
      L.xaxis.ticktext=SEASON_MONTHS.map(m=>m[0]);
      // a little air left of week 0, so "Aug" never sits on the y axis's "0"
      L.xaxis.range=[-1.5,53];
-     Plotly.react(div,traces,L,pconf('data_seasons_'+loc));
+     FluCharts.react(div,traces,L,pconf('data_seasons_'+loc));
    }
  }
  function setDataLoc(i){
@@ -642,14 +642,14 @@
      marker:{size:6,symbol:'circle-open'}});
    // react repaints in place: a page flip never collapses the card or
    // moves the scroll
-   Plotly.react(document.getElementById('fanplot'),traces,lay(loc,400),
+   FluCharts.react(document.getElementById('fanplot'),traces,lay(loc,400),
      pconf('forecast_'+FMODEL+'_'+loc+'_'+FCDATE));
    // the expanded view mirrors the card (traces deep-copied: no shared state)
    const xb=document.getElementById('fanx-modal');
    if(xb&&!xb.hidden){
      document.getElementById('fanx-pos').textContent=(FIDX+1)+'/'+FLOCS.length;
      syncLocSel(document.getElementById('fanx-loc'));
-     Plotly.react(document.getElementById('fanxplot'),
+     FluCharts.react(document.getElementById('fanxplot'),
        JSON.parse(JSON.stringify(traces)),
        lay(loc,Math.max(420,Math.round(innerHeight*.68))),
        pconf('forecast_'+FMODEL+'_'+loc+'_'+FCDATE));

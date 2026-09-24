@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% import "diagrams.html" as dg %}{% import "_tips.html" as tips %}
 {% block title %}FluBNF · {{ title }}{% endblock %}
-{% block head %}<script src="/static/plotly.min.js"></script>{% endblock %}
+{% block head %}<script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>{% endblock %}
 {% block content %}
 {# the switcher below names the model; the heading names the tab #}
 <h1>Models</h1>
@@ -184,7 +184,7 @@
       name:(MNAMES[m]||m)+' median',visible:'legendonly',
       line:{color:memberColor(m),width:1.4,dash:MDASH[m]||'dot'}});
    }
-   Plotly.react(document.getElementById('plot'),traces,lay(loc,420),
+   FluCharts.react(document.getElementById('plot'),traces,lay(loc,420),
     {responsive:true,displaylogo:false,
      // save-PNG: 2x for crisp figures, a meaningful filename
      toImageButtonOptions:{format:'png',scale:2,

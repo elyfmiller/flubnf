@@ -621,13 +621,11 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
     return RedirectResponse("/retro", status_code=303)
 
 
-#: the retrospective engine presets as the form and the record name them
-RETRO_ENGINE_LABELS = {"pf": "Oracle SIHRS and the Groundhog",
-                       "analogue": "Groundhog only"}
-
-
 def retro_engine_label(engine: str) -> str:
-    return RETRO_ENGINE_LABELS.get(str(engine), str(engine))
+    """The preset's plain name: app.core.retro.ENGINE_LABELS, the one map
+    (the Run settings blocks read it too)."""
+    from app.core import retro
+    return retro.engine_label(engine)
 
 
 # === Retrospective season page (/retro/{season}) and its APIs -> retro_season.html ===

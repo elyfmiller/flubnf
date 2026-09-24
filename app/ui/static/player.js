@@ -165,8 +165,10 @@ var DEFAULT_PALETTE = {ink: '#E9EAF4', mut: '#9AA1C4', line: '#262A45',
   models: MODEL_COLORS,
   flusightEnsemble: '#C7CCDD'};
 
+// showTips off: Plotly's legend hint sat over nearby controls (charts.js
+// carries the same shared config)
 var PCONF = {responsive: true, displaylogo: false, scrollZoom: true,
-             doubleClick: 'reset'};
+             doubleClick: 'reset', showTips: false};
 
 // PCONF plus save-PNG options: 2x scale, filename naming location and week
 function frameConf(loc, week){
@@ -600,7 +602,10 @@ function createPlayer(cfg){
       P.applying = true;
       var done = function(){ P.applying = false; bindPlot(); };
       // the saved PNG's filename carries the same (provenance) label
-      var pr = Plotly.react(el.plot, traces, L, frameConf(title, w));
+      // FluCharts (charts.js, loaded beside this file and inlined with it
+      // in the season report): Saturday week ticks, refit after zoom/pan
+      var PL = (typeof FluCharts !== 'undefined') ? FluCharts : Plotly;
+      var pr = PL.react(el.plot, traces, L, frameConf(title, w));
       if(pr && pr.then) pr.then(done, done); else done();
     });
   }

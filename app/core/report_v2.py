@@ -44,6 +44,15 @@ NAU_CSS = Path(__file__).resolve().parents[1] / "ui" / "static" / "nau.css"
 #: the shared player core carries the one member-color map (marked JSON)
 PLAYER_SRC = Path(__file__).resolve().parents[1] / "ui" / "static" \
     / "player.js"
+#: the one date-axis tick policy and chart config (FluCharts), inlined into
+#: both reports so their charts tick on the data's Saturdays like the console
+CHARTS_SRC = Path(__file__).resolve().parents[1] / "ui" / "static" \
+    / "charts.js"
+
+
+def charts_js() -> str:
+    """charts.js verbatim (FluCharts), for inlining into a report."""
+    return CHARTS_SRC.read_text(encoding="utf-8")
 
 #: equal to the player's map; used only if its marked JSON cannot be read
 _MEMBER_COLOR_FALLBACK = {"ensemble": "#34C0F0", "pf": "#1979FF",
@@ -119,6 +128,8 @@ def toggle_models(available) -> list:
 PLOTLY_CONFIG = {"scrollZoom": True, "doubleClick": "reset+autosize",
                  "responsive": True,
                  "displayModeBar": "hover", "displaylogo": False,
+                 # Plotly's legend hint covered nearby controls
+                 "showTips": False,
                  "modeBarButtonsToRemove": ["lasso2d", "select2d",
                                             "autoScale2d"]}
 
@@ -127,11 +138,12 @@ PLOTLY_CONFIG = {"scrollZoom": True, "doubleClick": "reset+autosize",
 # saved beside it. Fans are reduced to the 23-level grid (FAN_LEVELS), never
 # raw samples, keeping it ~100 KB.
 BUNDLE_NAME = "report_inputs.json"
-BUNDLE_VERSION = 4
+BUNDLE_VERSION = 5
 #: renderable bundle versions; each bump was ADDITIVE and older bundles
 #: render without it: v2 cards_model (else PF), v3 cards_by_model +
-#: national_map_cards (model toggle), v4 fitted_fips (gap vs not-fitted wording)
-SUPPORTED_BUNDLE_VERSIONS = (1, 2, 3, 4)
+#: national_map_cards (model toggle), v4 fitted_fips (gap vs not-fitted
+#: wording), v5 national_in_run (the national detail says US was not run)
+SUPPORTED_BUNDLE_VERSIONS = (1, 2, 3, 4, 5)
 FAN_LEVELS = (0.01, 0.025, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35,
               0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80,
               0.85, 0.90, 0.95, 0.975, 0.99)
@@ -209,6 +221,9 @@ def fan_figure_from_quantiles(observed_times, observed, forecast_times,
                  for t in forecast_times]
         fig.add_scatter(x=list(forecast_times) + list(forecast_times)[::-1],
                         y=upper + lower[::-1], fill="toself", fillcolor=color,
+                        # a band is its fill: Plotly's default for a short
+                        # trace adds markers in its own palette at the edges
+                        mode="lines",
                         line=dict(width=0), hoverinfo="skip",
                         name=band_name, showlegend=True)
     med = [_q_at(quantiles_by_time[str(t)], 0.5) for t in forecast_times]
@@ -358,6 +373,14 @@ def _retint_js() -> str:
 </script>"""
 
 
+def _week_ticks_js() -> str:
+    """FluCharts inlined, then every baked figure adopted: Saturday week
+    ticks, refit after zoom, pan, resize and each retint redraw."""
+    return ("<script>" + charts_js() + "</script>\n"
+            "<script>if(window.FluCharts&&window.Plotly)"
+            "FluCharts.adoptAll();</script>")
+
+
 def page_header() -> str:
     """The report's header lockup, one source: build_report embeds it, and
     legacy_theme_carry inserts it into stored reports that predate it."""
@@ -473,7 +496,7 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
                  cards_by_model: dict | None = None,
                  national_map_cards: dict | None = None,
                  cards_model: str = "",
-                 fitted_fips=None) -> Path:
+                 fitted_fips=None, national_in_run=None) -> Path:
     """state_cards: abbr -> hover-card data (choropleth).
     state_details: abbr -> dict(name, fan=…, cat=…, acc=…, table_rows=[…]).
     national: dict(fan=…, acc=…, summary_html=str).
@@ -484,7 +507,10 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
     models a model toggle swaps fills, hovers and label client-side.
     cards_model: the model the map is rendered with (the toggle's default).
     fitted_fips: fips the run fitted, or None; gates every no-data claim
-    (in scope = reporting gap, outside = not fitted, None = only 'no data')."""
+    (in scope = reporting gap, outside = not fitted, None = only 'no data').
+    national_in_run: False when US was not among the run's locations (the
+    national detail then says so instead of waiting on scores or a fan);
+    None = unknown (older bundles), the wording claims nothing."""
     # build-time SVG map: plotly geo fetches its geometry from a CDN
     from app.core import usmap
     from app.core.usmap import cat_fill, svg_map
@@ -492,8 +518,14 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
     # card-less states: gaps (in scope) vs not fitted (out); no record: 'no data'
     scope = set(fitted_fips) if fitted_fips is not None else None
     no_card = set(usmap.state_paths()) - set(cards_by_fips)
+    # a card with no probabilities: inside the scope the member made no
+    # forecast there (the Groundhog from a last count of 0); outside it the
+    # state was never run (the pipeline gives every state a bare card), so
+    # it is 'not fitted', as its hover already says
+    blank = {f for f, c in cards_by_fips.items() if not c.get("probs")}
     gap_states = (no_card & scope) if scope is not None else set()
-    unfitted_states = (no_card - scope) if scope is not None else set()
+    unfitted_states = ((no_card | blank) - scope) if scope is not None \
+        else set()
     # only states that actually have a detail section invite a click
     map_html = svg_map(cards_by_fips, clickable=set(state_details),
                        scope_fips=scope)
@@ -515,9 +547,8 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
             legend_bits.append(f"<span>{_sw}not fitted in this run</span>")
             caption_bits.append(
                 " Not-fitted states were outside this run's scope.")
-    # a card with no probabilities: the member made no forecast there
-    # (the Groundhog from a last count of 0), filled like no data
-    unforecast = {f for f, c in cards_by_fips.items() if not c.get("probs")}
+    # in-scope cards with no probabilities, filled like no data
+    unforecast = blank if scope is None else (blank & scope)
     if unforecast:
         legend_bits.append(f"<span>{_sw}no forecast</span>")
         caption_bits.append(
@@ -549,6 +580,10 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
             group_id="outlook-model", btn_class="", active_class="on",
             wrap_class="viewtoggle", short_labels=MODEL_SHORT)
 
+    # the click invitation only when some state has a section to open (a
+    # Groundhog-only run has none: its drill-down fans are PF's)
+    click_hint = (", click it for detail"
+                  if any(a != "US" for a in state_details) else "")
     sections = []
     back_btn = ('<button class="backbtn" onclick="backToMap()">'
                 '&larr; back to map</button>')
@@ -584,13 +619,23 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
     has_national = bool(nat_cards)
     nat_prov = (f'<p class="hint">{_usn.LABELS[_usn.FITTED]}. '
                 f'{_usn.NOTES[_usn.FITTED]}</p>') if has_national else ""
+    nat_summary = national.get('summary_html', '')
+    if national_in_run is False and not has_national:
+        # the real reason, not "once truth is published" or "once the
+        # national model run lands": US was never asked for
+        nat_prov = ('<p class="hint">US (national) was not part of this '
+                    'run.</p>')
+        nat_body = ""
+        from app.core.scoring import NO_SCORES_HTML
+        if NO_SCORES_HTML in nat_summary:
+            nat_summary = ""
     nat = f"""
 <section class="state" id="st-US" hidden>
   {back_btn}
   <h2>United States</h2>
   {nat_prov}
   {('<p class="offseason">' + national['note'] + '</p>') if national.get('note') else ''}
-  {national.get('summary_html', '')}
+  {nat_summary}
   {nat_body}
 </section>"""
 
@@ -647,8 +692,8 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
   <span><i class="sw" style="background:{cat_fill('increase')};opacity:1"></i>confident</span>
  </div>
 </div>
-<p class="hint">Hover a state for its category probabilities, click it
- for detail; Ctrl+scroll zooms (⌘ on Mac).{no_data_caption}</p>
+<p class="hint">Hover a state for its category probabilities{click_hint};
+ Ctrl+scroll zooms (⌘ on Mac).{no_data_caption}</p>
 {"".join(sections)}
 {nat}
 <script>
@@ -691,6 +736,7 @@ document.getElementById('natbtn').addEventListener('click', () => show('st-US'))
 }})();
 </script>
 {_retint_js() if plotly_js else ""}
+{_week_ticks_js() if plotly_js else ""}
 {footer}
 </main></body></html>"""
     out_path = Path(out_path)
@@ -759,17 +805,22 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
         national_map_cards=bundle.get("national_map_cards") or {},
         cards_model=cards_model,
         # v4 field (absent: None, the map claims only 'no data')
-        fitted_fips=bundle.get("fitted_fips"))
+        fitted_fips=bundle.get("fitted_fips"),
+        # v5 field (absent: None, the national detail claims nothing)
+        national_in_run=bundle.get("national_in_run"))
 
 
 def builder_sources_mtime() -> float:
     """Newest mtime of the weekly report's builder sources (this module,
-    scoring, usmap, nau.css): a stored report.html older than this is stale."""
+    scoring, usmap, nau.css,
+    charts.js): a stored report.html older than this is stale."""
     times = [0.0]
     for mod in ("report_v2", "scoring", "usmap"):
         p = Path(__file__).with_name(mod + ".py")
         if p.is_file():
             times.append(p.stat().st_mtime)
+    if CHARTS_SRC.is_file():
+        times.append(CHARTS_SRC.stat().st_mtime)
     if NAU_CSS.is_file():
         times.append(NAU_CSS.stat().st_mtime)
     return max(times)

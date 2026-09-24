@@ -379,7 +379,8 @@
     }
     var shapes = n < t.columns ? [{type: 'line', x0: xs[n - 1], x1: xs[n - 1], y0: 0, y1: 1, yref: 'paper',
                                    line: {dash: 'dot', color: mut}}] : [];
-    root.Plotly.newPlot(el, traces, {margin: {t: 30, r: 10, l: 64, b: 48}, shapes: shapes,
+    // FluCharts (charts.js): Saturday week ticks on a dated axis, shared config
+    (root.FluCharts || root.Plotly).newPlot(el, traces, {margin: {t: 30, r: 10, l: 64, b: 48}, shapes: shapes,
       paper_bgcolor: surf, plot_bgcolor: surf,
       font: {color: ink, family: '"DM Sans",system-ui,sans-serif', size: Math.round(fs * 0.85)},
       xaxis: {automargin: true, title: {text: calendar ? 'week ending' : 'time'}, gridcolor: line, zerolinecolor: line, linecolor: line, tickfont: {color: ink}},

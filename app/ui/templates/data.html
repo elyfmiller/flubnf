@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% block title %}FluBNF · Data{% endblock %}
-{% block head %}<script src="/static/plotly.min.js"></script>{% endblock %}
+{% block head %}<script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>{% endblock %}
 {% block content %}{% import "_tips.html" as tips %}
 <h1>Data</h1>
 <div class="cols">
@@ -196,7 +196,7 @@
        {x:[VSERIES.dates[n-1]],y:[VSERIES.values[n-1]],mode:'markers',
         name:'newest week',marker:{size:9,color:css('--gold-bright')||css('--gold')},
         hovertemplate:'newest: %{x} · %{y:'+VFMT+'}<extra></extra>'}];
-     Plotly.react(el,traces,
+     FluCharts.react(el,traces,
        vlay(VDS ? VLOC+' · '+VDS : VLOC+': admissions as archived '+VVINTAGE,380),
        vconf('flubnf_vintage_'+VVINTAGE+'_'+VLOC));
      return;
@@ -217,7 +217,7 @@
                 : VLOC+': season over season, as archived '+VVINTAGE,380);
    L.xaxis.tickvals=SEASON_MONTHS.map(m=>m[1]);
    L.xaxis.ticktext=SEASON_MONTHS.map(m=>m[0]);
-   Plotly.react(el,traces,L,vconf('flubnf_vintage_seasons_'+VVINTAGE+'_'+VLOC));
+   FluCharts.react(el,traces,L,vconf('flubnf_vintage_seasons_'+VVINTAGE+'_'+VLOC));
  }
  document.getElementById('vb-mode-raw').onclick=()=>drawVintage('raw');
  document.getElementById('vb-mode-season').onclick=()=>drawVintage('season');
