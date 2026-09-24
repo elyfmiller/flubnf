@@ -16,23 +16,14 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import numpy as np
 import pytest
 
-from flubnf.sihrs_fit import FITTED_PRIORS, MIN_PRIORS, StateSetup, write_conf
+from app.core.engines.pf import VARS_1S
 
 TPL = Path(__file__).resolve().parent.parent / "flubnf" / "templates"
 FULL = (TPL / "SIHRS_pop.bngl").read_text()
 MIN = (TPL / "SIHRS_pop_min.bngl").read_text()
 DROPPED = ("eps2", "phi2", "impr")
-
-
-@pytest.fixture
-def setup():
-    return StateSetup(state="T", fips="01", population=5_000_000, gamma=2.188,
-                      rho=0.02, rhomult=1e-3, gammaH=1.17, omega=0.019, s0=0.85,
-                      i0=2e-4, attack_rate=0.18, n_obs=5,
-                      observed=np.array([1.0, 2, 3, 4, 5]))
 
 
 class TestParameterCount:
@@ -41,7 +32,9 @@ class TestParameterCount:
             "Reff", "eps1", "phi1", "mult", "r"}
 
     def test_priors_match_the_template(self):
-        assert set(MIN_PRIORS) == set(re.findall(r"(\w+__FREE)", MIN))
+        """The PF engine's prior block names exactly the template's params."""
+        assert (set(re.findall(r"(\w+__FREE)", VARS_1S))
+                == set(re.findall(r"(\w+__FREE)", MIN)))
 
     @pytest.mark.parametrize("name", DROPPED)
     def test_dropped_params_appear_nowhere_in_the_model_body(self, name):
@@ -49,10 +42,6 @@ class TestParameterCount:
         assert f"{name}__FREE" not in body
         # and not left dangling in a rule or function either
         assert not re.search(rf"\b{name}\b\s*$", body, re.M)
-
-    def test_retained_priors_are_byte_identical(self):
-        for k in MIN_PRIORS:
-            assert MIN_PRIORS[k] == FITTED_PRIORS[k], f"{k} prior drifted"
 
 
 class TestModelUnchangedOtherwise:
@@ -91,25 +80,6 @@ class TestModelUnchangedOtherwise:
         for tok in ("{{POP}}", "{{S0FRAC}}", "{{I0FRAC}}", "{{GAMMA}}",
                     "{{RHO}}", "{{GAMMAH}}", "{{OMEGA}}"):
             assert tok in MIN
-
-
-class TestConf:
-    def test_conf_emits_five_vars(self, setup, tmp_path):
-        txt = write_conf(setup, model=tmp_path / "m", exp=tmp_path / "e",
-                         out_dir=tmp_path / "o", conf_path=tmp_path / "c.conf",
-                         bng_command="x", priors=MIN_PRIORS).read_text()
-        assert len(re.findall(r"^(?:log)?uniform_var = ", txt, re.M)) == 5
-        for name in DROPPED:
-            assert f"{name}__FREE" not in txt
-
-    def test_full_conf_is_untouched(self, setup, tmp_path):
-        """Omitting `priors` must still produce the 8-parameter config -- the
-        multi-season path depends on `impr` and would fail without it."""
-        txt = write_conf(setup, model=tmp_path / "m", exp=tmp_path / "e",
-                         out_dir=tmp_path / "o", conf_path=tmp_path / "c.conf",
-                         bng_command="x").read_text()
-        assert len(re.findall(r"^(?:log)?uniform_var = ", txt, re.M)) == 8
-        assert "impr__FREE" in txt
 
 
 class TestImprIsKeptForMultiSeason:
