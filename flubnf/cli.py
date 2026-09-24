@@ -1121,7 +1121,8 @@ def retro_cmd(
     replicates: Annotated[int, typer.Option(
         help="Particle-filter replicates (seeds) per location-week.")] = 3,
     root: Annotated[str, typer.Option(
-        help="Season root to write (default app/state/retro/<season>).")] = "",
+        help="Season root to write (default: the console's "
+             "app/state/retro/<season>, wherever the command runs).")] = "",
     aux: Annotated[str, typer.Option(
         help="Analogue donor preset; empty = the shipped Groundhog, "
              "'none' = the bare analogue (research).")] = "",
@@ -1166,7 +1167,19 @@ def retro_cmd(
         if k.strip() in pairs:
             raise typer.BadParameter(f"--knob {k.strip()} given twice")
         pairs[k.strip()] = v.strip()
+    # a season name becomes a directory: YYYY-YY with consecutive years
+    import re as _re
+    m = _re.fullmatch(r"(\d{4})-(\d{2})", season)
+    if not m or (int(m.group(1)) + 1) % 100 != int(m.group(2)):
+        raise typer.BadParameter(
+            f"{season!r} is not a season; give one such as 2024-25")
     vints = retro.season_vintages(season)
+    if not vints:
+        from flubnf.settings import ARCHIVE as _ARCHIVE
+        typer.echo(f"refused: no archived vintages for {season} in "
+                   f"{_ARCHIVE}; nothing was run. Update the hub clone, or "
+                   "pick a season it holds.", err=True)
+        raise typer.Exit(2)
     try:
         nd = _K.resolve(pairs, "all", scope="retro",
                         forecast_date=(vints[0] if vints else None),
@@ -1186,7 +1199,10 @@ def retro_cmd(
              [x.strip() for x in locations.split(",")])
     # ABSOLUTE: runner subprocesses resolve conf/shard paths against their
     # own cwd, so a relative --root fails every fit.
-    r = (_P(root) if root else _P("app/state/retro") / season).resolve()
+    # the default is the console's own retro root (app/state/retro, beside
+    # this package), never one under the shell's current directory
+    from app.core.runs import APP_STATE as _APP_STATE
+    r = (_P(root) if root else _APP_STATE / "retro" / season).resolve()
     from app.core.engines import analogue as _an
     if aux == "none":
         week_extra = _an.bare_analogue

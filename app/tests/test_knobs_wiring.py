@@ -570,6 +570,33 @@ def test_cli_retro_reports_a_digest_refusal(monkeypatch, tmp_path):
     assert r.exit_code == 2 and "refused" in r.output
 
 
+def test_cli_retro_refuses_a_bad_or_empty_season_and_roots_in_app_state(
+        monkeypatch, tmp_path):
+    """A malformed season is a usage error (never a traceback); a season
+    the archive holds no vintage for is refused (never a '0 weeks complete'
+    record); the default root is the console's, whatever the shell's cwd."""
+    from flubnf.cli import app
+    from app.core import runs as runs_mod
+    _cli_locations(monkeypatch, tmp_path)
+    got = []
+    monkeypatch.setattr(retro, "run_season",
+                        lambda *a, **k: got.append((a, k)) or [])
+    for bad in ("not-a-season", "2024-26", "2024"):
+        r = CliRunner().invoke(app, ["retro", bad, "--locations", "Ohio"])
+        assert r.exit_code == 2, (bad, r.output)
+        assert "is not a season" in r.output, bad
+    monkeypatch.setattr(retro, "season_vintages", lambda s: [])
+    r = CliRunner().invoke(app, ["retro", "1999-00", "--locations", "Ohio"])
+    assert r.exit_code == 2 and "no archived vintages" in r.output
+    assert not got
+    monkeypatch.setattr(retro, "season_vintages", lambda s: [W1, W2])
+    monkeypatch.chdir(tmp_path)
+    r = CliRunner().invoke(app, ["retro", SEASON, "--locations", "Ohio",
+                                 "--width", "1"])
+    assert r.exit_code == 0, r.output
+    assert got[0][0][0] == (runs_mod.APP_STATE / "retro" / SEASON).resolve()
+
+
 def test_a_missing_data_rule_records_every_flagged_week(console, monkeypatch):
     """data.trailing_zero / data.partial_week (app/core/missing.py): each
     member's flagged weeks go into the run's outcome and its results line;
