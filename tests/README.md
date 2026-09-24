@@ -20,7 +20,7 @@ CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetg
 | `app/state` (sealed retrospectives) | `app/tests/test_site_build.py`, parts of `test_core.py`, `test_playback.py` |
 | JavaScriptCore (macOS only) | JS cases in `app/tests/test_player_js.py`, `test_retro_eta.py`, `test_retro_pf_name.py`, `test_sandbox_editor.py`, `test_forecast_retired_tab.py`, `test_template_date_helpers.py`, `test_contactmap.py` |
 | POSIX (on Windows) | `tests/test_engine_bundle.py`, `test_reinstall_script.py`, `test_launcher_update.py` script runs; `app/tests/test_takeover_sweep.py`, parts of `test_pf_hardening.py`, `test_pf_shards.py` |
-| Lab-only records (`research/`, `FLUBNF_ORACLE_RECORD`) | `tests/test_oracle*.py` record cases, `test_wis_matches_team_scoring.py`; `app/tests/test_oracle_text.py` B2 case |
+| Lab-only records (`research/`, `FLUBNF_ORACLE_RECORD`) | `tests/test_oracle*.py` record cases; `app/tests/test_oracle_text.py` B2 case |
 
 `tests/test_reinstall_script.py` fails when run as root (`reinstall.sh` refuses root).
 
@@ -32,7 +32,7 @@ CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetg
 | SIHRS templates and fit inputs | `min_template`, `sihrs_fit` |
 | Analogue and donor paths | `analogue`, `donor_paths`, `epiweek53` |
 | Oracle SIHRS | `oracle`, `oracle_bank`, `oracle_mix` |
-| Quantiles and WIS | `quantiles`, `baseline_forecast`, `wis`, `wis_matches_team_scoring` |
+| Quantiles and WIS | `quantiles`, `baseline_forecast`, `wis` |
 | Console CLI | `doctor`, `doctor_engine_hub`, `dataset_cli`, `cli_panels` |
 
 ## Subject map: `app/tests/`
