@@ -37,6 +37,7 @@
   var ITER = 300, SEED = 20240907;
   var BEND = 30;                 // between parallel arrows on one pair of species
   var CELL = 200;                // the most a small unjoined part gets along the side strip
+  var TOOLS = 32;                // the zoom buttons' band at the top of the drawing
   // the contact map's panels, the same measures as the server's drawing
   var HEAD = 26, COMP_H = 22, STATE_H = 18, GAP = 22, PPAD = 10;
   var BOND_RISE = 64, BOND_ROOM = 26;
@@ -354,7 +355,8 @@
   // a strip at the side, or at the foot of a narrow drawing, instead of
   // the force layout pushing them apart and shrinking everything.
   function arrange(graph, W, H) {
-    var groups = parts(graph), pos = {}, narrow = W < 520, i, k, at, rest, sub, p, area, strip;
+    var groups = parts(graph), pos = {}, narrow = W < 520, i, k, at, rest, sub, p, area, strip,
+      lead, span, total = 0, used = 0, cells = [];
     if (groups.length < 2) return layout(graph, W, H);
     rest = groups.slice(1);
     strip = narrow ? Math.round(H * 0.28) : Math.round(W * 0.24);
@@ -371,13 +373,19 @@
     }
     if (narrow) place(groups[0], 0, 0, W, H - strip);
     else place(groups[0], 0, 0, W - strip, H);
-    // each small part gets a cell of at most CELL px along the strip, the
-    // cells centred, so a two-node clock does not stretch to the full height
+    // each small part gets a share of the strip by its node count, at
+    // most CELL px, the cells centred, so a two-node clock does not stretch
+    // to the full height; a side strip starts below the zoom buttons
+    lead = narrow ? 0 : TOOLS;
+    span = (narrow ? W : H) - lead;
+    for (i = 0; i < rest.length; i++) total += rest[i].length;
+    for (i = 0; i < rest.length; i++) { cells.push(Math.min(CELL, span * rest[i].length / total)); used += cells[i]; }
+    at = lead + (span - used) / 2;
     for (i = 0; i < rest.length; i++) {
-      area = Math.min(CELL, (narrow ? W : H) / rest.length);
-      at = ((narrow ? W : H) - area * rest.length) / 2 + i * area;
+      area = cells[i];
       if (narrow) place(rest[i], Math.round(at), H - strip, Math.round(area), strip);
       else place(rest[i], W - strip, Math.round(at), strip, Math.round(area));
+      at += area;
     }
     return pos;
   }
