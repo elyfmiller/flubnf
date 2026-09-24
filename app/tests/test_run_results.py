@@ -66,7 +66,7 @@ def test_results_table_states_type_members_fits_files_and_report():
                    extra={"mode": "vintage"})
     html = results_html(outcome, spec)
     assert 'class="results"' in html
-    assert "vintage run" in html and "real-time" not in html.split("vintage run")[0]
+    assert "vintage (archived week)" in html and "real-time" not in html.split("vintage")[0]
     assert '<span class="relwis bad">1.774</span>' in html
     assert '<span class="relwis ok">0.913</span>' in html
     assert '<span class="relwis ok">0.842</span>' in html and "(4 cells)" in html
@@ -77,7 +77,7 @@ def test_results_table_states_type_members_fits_files_and_report():
     assert html.index("Oracle SIHRS") < html.index("Groundhog") < html.index("FluBNF ensemble (retired)")
     # a JSON spec and outcome, as the ledger row carries them
     again = results_html(json.dumps(outcome), json.dumps({"extra": {"mode": "realtime"}}))
-    assert "real-time run" in again
+    assert "real-time (newest week)" in again
     # no members scored yet (truth not settled): the rows are simply absent
     early = results_html({"pf_cells": 2, "submissions": {"a": "x"}}, "{}")
     assert "relwis" not in early and "2 fits" in early and "none" in early

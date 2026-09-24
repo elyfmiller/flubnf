@@ -285,7 +285,7 @@ header.nav .spacer{flex:1}
    blocks scroll inside the card, never the page. */
 main{max-width:1500px;margin:0 auto;
      padding:1.1rem clamp(1rem,2.5vw,2.5rem) 3rem}
-.cols{display:grid;grid-template-columns:minmax(260px,360px) 1fr;gap:.75rem;
+.cols{display:grid;grid-template-columns:minmax(260px,360px) minmax(0,1fr);gap:.75rem;
       align-items:start}
 @media(max-width:900px){.cols{grid-template-columns:1fr}}
 /* surfaces: ground -> raised card -> sunken wells (ground tone) */
@@ -624,10 +624,15 @@ details.adv[open]>summary::before{content:"\25BE ";}
 /* the scoring-convention tip on the home table: the shared wording on hover and focus */
 .convtip{cursor:help;color:var(--accent-ink);font-weight:700;margin-left:.2rem}
 
-/* the latest-run card: settings left, results right */
-.runsplit{display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:start}
-@media (max-width:760px){.runsplit{grid-template-columns:1fr}}
-table.results{border-collapse:collapse;margin:.3rem 0;font-size:.92em}
+/* the latest-run card: settings left, results right. Tracks auto-fit at a
+   18rem floor and children may shrink (min-width:0), so the settings grid's
+   max-content width can never starve the results column; values wrap in
+   their own track instead of one word per line. */
+.runsplit{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr));
+  gap:.5rem 1.5rem;align-items:start}
+.runsplit > *{min-width:0}
+.runsplit .runsettings .kv{width:auto;grid-template-columns:max-content minmax(0,1fr)}
+table.results{border-collapse:collapse;margin:.3rem 0;font-size:.92em;width:100%}
 table.results caption{caption-side:bottom;text-align:left;padding-top:.3rem}
 table.results th{text-align:left;font-weight:600;padding:.18rem .6rem .18rem 0;color:var(--mut);white-space:nowrap}
 table.results td{padding:.18rem 0}

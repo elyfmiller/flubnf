@@ -128,7 +128,7 @@ def oracle_label(extra: dict | None) -> str:
     extra = extra if isinstance(extra, dict) else {}
     if str(extra.get("oracle") or "") == "none":
         return "none (the plain filter, a research run)"
-    return "the console's default (the Oracle SIHRS since 2026-09-22; the outcome names the bank)"
+    return "on (console default)"
 
 
 def analogue_donors_label(extra: dict | None) -> str:
@@ -139,7 +139,7 @@ def analogue_donors_label(extra: dict | None) -> str:
     extra = extra if isinstance(extra, dict) else {}
     if extra.get("aux_pools"):
         return str(extra.get("analogue_aux") or "auxiliary bank (unnamed)")
-    return "none (bare calendar analogue)"
+    return "none (bare analogue)"
 
 
 def is_research(spec) -> bool:
@@ -180,8 +180,8 @@ def version_pairs(build: str = "", versions: dict | None = None) -> list:
 
 
 #: what the form's two modes are called on a ledger row
-MODE_LABELS = {"realtime": "real-time run (the newest vintage)",
-               "vintage": "vintage run (an archived week, not real-time)"}
+MODE_LABELS = {"realtime": "real-time (newest week)",
+               "vintage": "vintage (archived week)"}
 
 #: (label, relWIS key, cells key) per scored model, in table order; the
 #: retired blend's row renders only for older ledger rows
@@ -267,10 +267,9 @@ def results_html(outcome, spec) -> str:
         rows.append(("Submission files", f"{n} file{'s' if n != 1 else ''}"))
     rows.append(("Weekly report", "written" if o.get("report") else "none"))
     body = "".join(f"<tr><th scope=\"row\">{k}</th><td>{v}</td></tr>" for k, v in rows)
-    return (f'<table class="results"><caption class="hint">Pooled over every '
-            f'fitted jurisdiction in this run, US national excluded; not the '
-            f'location shown below. relWIS is against the FluSight baseline, '
-            f'ratio of sums; below 1.000 beats it</caption>'
+    return (f'<table class="results"><caption class="hint">relWIS vs the '
+            f'FluSight baseline, pooled over fitted states (US excluded); '
+            f'below 1.000 beats it.</caption>'
             f"{body}</table>")
 
 
