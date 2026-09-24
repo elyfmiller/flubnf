@@ -290,6 +290,19 @@ def test_the_check_reports_notices_and_the_declared_kind():
     assert not j["ok"] and "not whole numbers" in j["html"]
 
 
+def test_numbers_that_read_two_ways_leave_the_kind_to_the_user():
+    """987, 1.234, 12.345 in a comma file were read as decimals and the
+    kind filled in as rates; the check now asks, and fills in nothing."""
+    raw = (b"date,group,value\n2024-01-06,Berlin,987\n"
+           b"2024-01-13,Berlin,1.234\n2024-01-20,Berlin,12.345\n")
+    j = check(raw).json()
+    assert not j["ok"] and j["inferred_kind"] is None
+    assert "Choose whether the values are counts or rates" in j["html"]
+    assert "Ready to use." not in j["html"]
+    j = check(raw, kind="rate").json()
+    assert j["ok"] and "<dt>Values</dt><dd>rates</dd>" in j["html"]
+
+
 def test_the_check_refuses_what_is_not_a_file(monkeypatch):
     r = client.post("/data/datasets/check", data={"kind": "count"},
                     files={"x": ("a", b"", "text/plain")})

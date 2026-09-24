@@ -150,6 +150,9 @@ def test_column_mapping_on_the_command_line(store, tmp_path):
      "read both month-first and day-first"),
     ("date,target_group,value\n2024-01-06,Zürich,1\n".encode()
      + b"2024-01-13,Z\xfcrich,2\n", "The file mixes encodings"),
+    # dots that may separate thousands: the kind is asked for, not guessed
+    (b"date,group,value\n2024-01-06,A,987\n2024-01-13,A,1.234\n",
+     "Say which with --kind count or --kind rate."),
 ])
 def test_what_would_read_wrong_is_refused_on_the_command_line(store, tmp_path,
                                                               raw, says):

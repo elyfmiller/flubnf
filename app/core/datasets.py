@@ -21,7 +21,11 @@ dataset`` all read through it):
     (to the end of the file), is refused; a note over two lines is kept.
   * numbers: "1,234" in a comma file is 1234; decimal commas ("1,5") are
     read in a semicolon or tab file when the column shows it unambiguously;
-    anything that could go either way is refused. A value or name that an
+    anything that could go either way is refused. A column whose every
+    decimal could as well be a thousands separator (987, 1.234, 12.345 in
+    a comma file; 1,234 in a semicolon or tab file) is read by the
+    declared kind: rates as decimals, counts refused (written without
+    separators); undeclared, the kind is asked for, never inferred. A value or name that an
     unquoted separator split (1,234 or Bern, Stadt without quotes) is
     refused, whether its second half lands past the header or in an
     ignored column.
@@ -96,7 +100,8 @@ SCHEMA = 1
 
 #: the value kinds: counts (PF-eligible, Poisson floor, integer export) or
 #: rates/proportions (neither). Undeclared, the values decide: whole numbers
-#: are counts.
+#: are counts (unless their decimals could be thousands separators, see
+#: grouping_or_decimal: then the kind is asked for).
 KINDS = ("count", "rate")
 
 #: file names inside a dataset folder
@@ -233,8 +238,8 @@ PROBLEM_KINDS = (
     ("Dates", ("date_parse", "date_day_first", "date_ambiguous", "weekday",
                "weekday_end", "weekday_start", "as_of_parse",
                "as_of_ambiguous", "as_of_before_date")),
-    ("Values", ("value_numeric", "value_format", "value_negative",
-                "value_na", "value_not_integer")),
+    ("Values", ("value_numeric", "value_format", "kind_ambiguous",
+                "value_negative", "value_na", "value_not_integer")),
     ("Population", ("population_invalid", "population_missing",
                     "population_format")),
     ("Groups", ("group_blank", "group_name", "group_reserved",
@@ -608,6 +613,31 @@ def number_style(texts, delimiter: str = ","):
         return None, (f"{t} could be {t.replace(',', '').replace('.', '')} "
                       f"or {t.replace(',', '.')}")
     return "plain", ""
+
+
+def grouping_or_decimal(texts, style, delimiter: str = ",") -> str:
+    """The decimal mark ('.' or ',') a column's numbers are read with when
+    every number written with it has 1 to 3 digits, the mark and exactly 3
+    more, so it could as well separate thousands ("1.234" in a comma file:
+    1.234 or 1234; "1,234" in a semicolon or tab file: 1.234 or 1234);
+    else ''. Only the value kind can tell: counts are whole, so for them
+    the mark would separate thousands (refused: they are written without),
+    while rates read it as decimals. ``style`` is number_style's for the
+    column: a comma file reads '.' as its decimal mark, a decimal-comma
+    column ',', and a semicolon or tab column whose only separators are
+    such commas (number_style's None) ',' as well."""
+    seps = [t for t in texts if t and ("," in t or "." in t)]
+    comma_only = (style is None and delimiter != "," and bool(seps)
+                  and all("," in t and _EITHER.fullmatch(t) for t in seps))
+    if style in ("plain", "thousands"):
+        mark = "."
+    elif style == "decimal_comma" or comma_only:
+        mark = ","
+    else:
+        return ""
+    marked = [t for t in seps if mark in t]
+    return mark if marked and all(_EITHER.fullmatch(t) for t in marked) \
+        else ""
 
 
 def _num(text: str, style: str = "plain"):
@@ -1282,8 +1312,14 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
     has_pop, has_asof = "population" in cols, "as_of" in cols
     has_lname = "location_name" in cols
     vcol = cols["value"]
-    vstyle, vwhy = number_style([r["value"].strip() for _, r in raw_rows],
-                                delim)
+    vtexts = [r["value"].strip() for _, r in raw_rows]
+    vstyle, vwhy = number_style(vtexts, delim)
+    # every number written with the column's decimal mark could as well
+    # carry a thousands separator (987, 1.234, 12.345 in a comma file): the
+    # declared kind decides, and undeclared nothing is inferred
+    mark = grouping_or_decimal(vtexts, vstyle, delim)
+    if mark == "," and vstyle is None:
+        vstyle, vwhy = "decimal_comma", ""
     pstyle, pwhy = (number_style([r["population"].strip()
                                   for _, r in raw_rows], delim)
                     if has_pop else ("plain", ""))
@@ -1291,6 +1327,8 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
             (vcol, vstyle, vwhy, "value_format", "value"),
             (cols.get("population"), pstyle, pwhy, "population_format",
              "population")):
+        if key == "value" and mark:
+            continue                    # said below, with the kind
         if style is None or style == "decimal_comma":
             texts = [r[key].strip() for _, r in raw_rows]
         if style is None:
@@ -1317,6 +1355,8 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
     # reads month-first only (1/13/2024)
     asof_both, asof_alt, asof_md = _Tally(), {}, False
     bad_vals, neg, na, nonint = [], [], [], []
+    # values written with a mark that could separate thousands (see mark)
+    either = []
     bad_pop, miss_pop = [], []
     formats = set()
     parsed = []                                   # (line, raw date, date)
@@ -1353,8 +1393,13 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
                     na.append((ln, raw_v or "(blank)"))
                 elif v < 0:
                     neg.append((ln, raw_v))
-                elif kind == "count" and not v.is_integer():
-                    nonint.append((ln, raw_v))
+                else:
+                    grouped = bool(mark) and mark in raw_v
+                    if grouped:
+                        either.append((ln, raw_v))
+                    if kind == "count" and (grouped or not v.is_integer()):
+                        # 1.000 is no whole number as written: 1 or 1000
+                        nonint.append((ln, raw_v))
         p = None
         if has_pop and pstyle is not None:
             raw_p = r["population"].strip()
@@ -1546,11 +1591,41 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
         # own file has thousands): dropped after the structural checks,
         # counted, never imputed (rule 10)
         rep.warnings.append(f"{len(na)} row(s) with no value were dropped.")
+    sep_name = {".": "dot", ",": "comma"}.get(mark, "")
+    if either and kind is None:
+        # 1.234 is 1.234 or 1234: never guessed, the kind is asked for
+        lines = [ln for ln, _ in either]
+        t = either[0][1]
+        rep.add("kind_ambiguous", f"The '{vcol}' column's numbers could be "
+                f"decimals or have a {sep_name} separating thousands "
+                f"({_rows(lines)}; e.g., {cells(either)}): {t} is "
+                f"{t.replace(',', '.')} as a rate or {t.replace(mark, '')} "
+                "as a count. Choose whether the values are counts or rates; "
+                f"counts are written without thousands separators "
+                f"({t.replace(mark, '')}).", lines)
+    elif either and kind == "rate":
+        t = either[0][1]
+        rep.warnings.append(
+            f"Read numbers like {t} in the '{vcol}' column as decimals"
+            + (f" ({t} = {t.replace(',', '.')})" if mark == "," else "")
+            + f", as the values are rates; if the {sep_name}s separate "
+            f"thousands ({t} = {t.replace(mark, '')}), write the numbers "
+            "without them."
+            + (" Dots were read as thousands separators (1.234 = 1234)."
+               if mark == "," and any("." in x for x in vtexts) else ""))
     if nonint:
         lines = [ln for ln, _ in nonint]
+        grouped = [t for _, t in nonint if mark and mark in t]
+        hint = ("Choose rates instead." if not grouped else
+                f"If the {sep_name}s separate thousands, write the numbers "
+                f"without them ({grouped[0]} as "
+                f"{grouped[0].replace(mark, '')}); if they are decimals, "
+                "choose rates instead.")
         rep.add("value_not_integer", f"The values were declared counts but "
-                f"{len(nonint)} are not whole numbers ({_rows(lines)}; e.g., "
-                f"{eg(nonint)}). Choose rates instead.", lines)
+                f"{len(nonint)} {'is' if len(nonint) == 1 else 'are'} not "
+                + ("written as " if grouped else "")
+                + f"whole numbers ({_rows(lines)}; e.g., {cells(nonint)}). "
+                + hint, lines)
     if bad_pop:
         lines = [ln for ln, _ in bad_pop]
         rep.add("population_invalid", f"The '{cols['population']}' column "
@@ -1600,7 +1675,9 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
             "last": dates[-1].isoformat(),
             "weeks": len(dates),
             "kind": kind if kind in KINDS else None,
-            "inferred_kind": "count" if integral else "rate",
+            # None: the values do not say (numbers like 1.234, see mark)
+            "inferred_kind": (None if either else
+                              "count" if integral else "rate"),
             "target": tgt_used,
             "has_population": has_pop and not (bad_pop or miss_pop),
             "has_as_of": has_asof,
@@ -2313,6 +2390,8 @@ def problem_lines(rep: Report) -> list:
     for kind, probs in problem_groups(rep.problems):
         out.append(f"{kind}:")
         out += [f"  - {p}" for p in probs]
+    if "kind_ambiguous" in rep.codes:
+        out.append("Say which with --kind count or --kind rate.")
     if rep.needs_mapping:
         out.append("Columns in the file: " + ", ".join(
             f"#{i + 1} {h}" for i, h in enumerate(rep.headers) if h))

@@ -396,7 +396,7 @@ def test_decimal_commas_in_a_semicolon_file_are_rates():
 
 
 @pytest.mark.parametrize("values,sep,why", [
-    (["1,000", "1,200"], ";", "1,000 could be 1000 or 1.000"),
+    (["1.000", "1.200"], ";", "1.000 could be 1000 or 1.000"),
     (["1,5", "2.5"], ";", "mixed with decimal points"),
     (['"1,5"', '"2,5"'], ",", "semicolon- or tab-separated"),
 ])
@@ -408,6 +408,92 @@ def test_ambiguous_numbers_are_refused_with_their_rows(values, sep, why):
     p = only(rep, "value_format")
     assert why in p.message and "rows 2, 3" in p.message
     assert "value_numeric" not in rep.codes
+
+
+#: a comma file whose dots may separate thousands (987, 1.234, 12.345):
+#: once read as decimals and stored as rates without a word
+DOT_THOUSANDS = (b"date,group,value\n2024-01-06,Berlin,987\n"
+                 b"2024-01-13,Berlin,1.234\n2024-01-20,Berlin,2.345\n"
+                 b"2024-01-27,Berlin,12.345\n2024-02-03,Berlin,999\n"
+                 b"2024-02-10,Berlin,850\n")
+
+
+def test_dots_that_may_separate_thousands_ask_for_the_kind():
+    rep = D.validate(DOT_THOUSANDS)
+    assert rep.codes == ["kind_ambiguous"]
+    p = rep.problems[0]
+    assert p.rows == (3, 4, 5) and p.kind == "Values"
+    assert ("e.g., 1.234 (2024-01-13, Berlin), 2.345 (2024-01-20, Berlin), "
+            "12.345 (2024-01-27, Berlin)") in p.message
+    assert "1.234 is 1.234 as a rate or 1234 as a count" in p.message
+    assert "Choose whether the values are counts or rates" in p.message
+    assert rep.summary["inferred_kind"] is None       # nothing inferred
+    with pytest.raises(D.DatasetError):
+        D.ingest(DOT_THOUSANDS, "berlin")
+    assert D.list_datasets() == []
+    # declared counts: refused, with the separator named
+    p = only(D.validate(DOT_THOUSANDS, kind="count"), "value_not_integer")
+    assert p.rows == (3, 4, 5)
+    assert "3 are not written as whole numbers" in p.message
+    assert "write the numbers without them (1.234 as 1234)" in p.message
+    # declared rates: decimals, and a notice says how they were read
+    rep = ok(D.validate(DOT_THOUSANDS, kind="rate"))
+    assert [r[4] for r in rep.records][1:4] == [1.234, 2.345, 12.345]
+    assert any("as decimals, as the values are rates" in w
+               for w in rep.warnings)
+    assert D.ingest(DOT_THOUSANDS, "berlin", kind="rate").kind == "rate"
+
+
+@pytest.mark.parametrize("values,kind", [
+    (["987", "1.000", "2.000"], None),      # whole as decimals: 1 or 1000?
+    (["987", "1.000", "2.000"], "count"),
+    (["1,234", "5.678"], None),             # a quoted comma says nothing
+])
+def test_whole_looking_dot_values_are_not_counts_by_default(values, kind):
+    rows = [f'{d.isoformat()},A,"{v}"' for d, v in zip(sats(), values)]
+    rep = D.validate(csv_text("date,target_group,value", rows).encode(),
+                     kind=kind)
+    assert rep.codes == ["kind_ambiguous" if kind is None
+                         else "value_not_integer"]
+
+
+@pytest.mark.parametrize("values", [
+    ["0.5", "1.234"],                       # 0.5: the dot is a decimal
+    ["1.25", "2.345"],
+    ["1234.567", "2"],                      # four digits: no grouping
+    ["987", "1234", "12"],
+])
+def test_a_column_that_shows_its_decimals_is_still_inferred(values):
+    rows = [f"{d.isoformat()},A,{v}" for d, v in zip(sats(), values)]
+    rep = ok(D.validate(csv_text("date,target_group,value", rows).encode()))
+    assert rep.summary["inferred_kind"] == (
+        "count" if values[0] == "987" else "rate")
+
+
+@pytest.mark.parametrize("sep", [";", "\t"])
+def test_decimal_commas_that_may_separate_thousands_ask_for_the_kind(sep):
+    """The mirror in a semicolon or tab file: 1,234 is 1.234 or 1234."""
+    rows = [sep.join((d.isoformat(), "A", v))
+            for d, v in zip(sats(), ["987", "1,234", "2,500"])]
+    raw = csv_text(sep.join(("date", "target_group", "value")),
+                   rows).encode()
+    p = only(D.validate(raw), "kind_ambiguous")
+    assert p.rows == (3, 4) and "comma separating thousands" in p.message
+    assert "1,234 is 1.234 as a rate or 1234 as a count" in p.message
+    p = only(D.validate(raw, kind="count"), "value_not_integer")
+    assert "(1,234 as 1234)" in p.message
+    rep = ok(D.validate(raw, kind="rate"))
+    assert [r[4] for r in rep.records] == [987, 1.234, 2.5]
+    # a decimal comma that cannot be grouping settles it (rates)
+    rows[0] = sep.join(("2024-08-03", "A", "1,5"))
+    rep = ok(D.validate(csv_text(sep.join(("date", "target_group",
+                                           "value")), rows).encode()))
+    assert rep.summary["inferred_kind"] == "rate"
+
+
+def test_the_command_line_names_the_kind_option():
+    lines = D.problem_lines(D.validate(DOT_THOUSANDS))
+    assert lines[-1] == "Say which with --kind count or --kind rate."
 
 
 def test_a_population_column_is_read_on_its_own_style():
