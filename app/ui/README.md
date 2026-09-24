@@ -79,7 +79,7 @@ One line per module. "Imports" names the app/ui modules a module imports at top 
 | GET | `/output/report` | `routes/output.py` | `output_report` | weekly report | `output.html` link and date picker |
 | GET | `/output/report/download` | `routes/output.py` | `output_report_download` | | `output.html` |
 | **Retrospective** | | | | | |
-| GET | `/retro` | `routes/retro.py` | `retro_index` (`?dataset=<id>`: the replay card opens on it) | `retro.html` | nav; the upload box's "Replay this" |
+| GET | `/retro` | `routes/retro.py` | `retro_index` (two tabs: the FluSight hub, or Your data: `?tab=own` opens the first dataset, `?dataset=<id>` that one) | `retro.html` | nav; the upload box's "Replay this" |
 | POST | `/retro/run` | `routes/retro.py` | `retro_run` | redirect | `retro.html` start and resume forms |
 | POST | `/retro/stop` | `routes/retro.py` | `retro_stop` | redirect | `base.html` guard modal |
 | POST | `/retro/{season}/stop`, `/pause`, `/resume` | `routes/retro.py` | `retro_season_stop`, `_pause`, `_resume` | | `retro.html`, `retro_season.html` forms |
@@ -138,8 +138,8 @@ One line per module. "Imports" names the app/ui modules a module imports at top 
 | `_dataset_upload.html` | the upload box: `_datasets_card.html`, `forecast.html`, `_dataset_replay.html`; loads `static/dataset_upload.js` |
 | `_dataset_check.html` | the upload box's result (problems, column mapping, preview): `_dataset_upload.html`, and `datasets_ui.render_check` for `/data/datasets/check` |
 | `_dataset_run.html` | `run.html`, for a run on a custom dataset (fans, export files) |
-| `_dataset_replay.html` | `retro.html` (Replay your own data) |
-| `_model_settings.html` | the Model settings panel: `forecast.html`, `retro.html`, and `_dataset_replay.html` (a second panel on that page: `datasets_ui.dataset_panel`, ids prefixed `dsr-`); loads `static/model_settings.js` |
+| `_dataset_replay.html` | `retro.html` (the Your data tab: the upload box, or a dataset's replay settings and its replays) |
+| `_model_settings.html` | the Model settings panel: `forecast.html`, `retro.html`, and `_dataset_replay.html` (on the Your data tab: `datasets_ui.dataset_panel`, ids prefixed `dsr-`); loads `static/model_settings.js` |
 | `_tips.html` | macros for the "?" tips, imported by most pages (`base.html` loads `static/tips.js`) |
 
 Template names that differ from their tab: `runs.html` is Storage, `run.html` is one run's page, `model.html` is Models.

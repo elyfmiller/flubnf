@@ -473,7 +473,7 @@ async def check(request: Request):
 @router.post("/data/datasets")
 async def upload(request: Request):
     """Validate and store one CSV, then open it where `next` says (the
-    Data tab, the Forecast tab, or the Retrospective tab's replay card).
+    Data tab, the Forecast tab, or the Retrospective tab's Your data).
     Problems are shown inline on the Data tab (every one at once) and
     nothing is stored."""
     D = _D()
@@ -524,11 +524,12 @@ async def upload(request: Request):
     done = (f"Stored the dataset {ds.name}: {len(ds.groups)} group(s), "
             f"{len(ds.weeks())} week(s).")
     if nxt == "replay":
-        # said in the replay card the page scrolls to, not at its top
+        # said in the Your data tab's settings card, not at the page top;
+        # #main replaces the form's #datasets, which a redirect keeps
         _STORED.clear()
         _STORED[ds.id] = {"text": done, "warnings": list(warn)}
         ui_state._status["log"].append(" ".join([done] + warn))
-        return RedirectResponse(f"/retro?dataset={ds.id}#dataset-replay",
+        return RedirectResponse(f"/retro?dataset={ds.id}#main",
                                 status_code=303)
     shared._flash(done + (" " + " ".join(warn) if warn else ""))
     if nxt == "forecast":
@@ -1179,17 +1180,21 @@ def replay_window(dates: list) -> tuple:
 
 
 def retro_context(selected: str = "") -> dict:
-    """The Retrospective tab's own-data card: datasets and their replays
-    (kept in their own card, never beside the hub seasons); ``selected``
-    names the dataset the card opens on (an upload's "Replay this"), whose
-    store confirmation and notices the card shows once ("stored")."""
+    """The Retrospective tab's "Your data" tab: the stored datasets (for
+    its picker) and the one it shows (``selected``, else the first), with
+    that dataset's weeks, groups and replays, all rendered by the server
+    so the form works without script; an upload's "Replay this" names the
+    dataset, whose store confirmation and notices the tab shows once
+    ("stored")."""
     from app.core import custom_retro as CX
-    out = []
     try:
         items = _D().list_datasets()
     except Exception:
         items = []
-    for ds in items:
+    ds = next((d for d in items if d.id == selected), None) or (
+        items[0] if items else None)
+    view = None
+    if ds is not None:
         reps = []
         for stamp, meta in CX.list_replays(ds)[:6]:
             st = meta.get("status") or "unknown"
@@ -1208,32 +1213,34 @@ def retro_context(selected: str = "") -> dict:
                                   if v is not None}})
         dates = ds.forecast_dates()
         w0, w1 = replay_window(dates)
-        out.append({"id": ds.id, "name": ds.name, "groups": ds.groups,
-                    "vintage_true": ds.vintage_true, "pf": ds.pf_eligible,
-                    "kind": ds.kind,
-                    "first": dates[0] if dates else "",
-                    "last": dates[-1] if dates else "",
-                    "default_first": w0, "default_last": w1,
-                    "dates": dates, "replays": reps})
-    # the Model settings panel of the card's form: a second panel on the
-    # page (ids prefixed), following the card's own model select; the
-    # counts-only rows hide for a rate dataset (the card sets its kind)
-    sel = selected if any(d["id"] == selected for d in out) else ""
+        view = {"id": ds.id, "name": ds.name, "groups": ds.groups,
+                "vintage_true": ds.vintage_true, "pf": ds.pf_eligible,
+                "kind": ds.kind, "snapshots": len(ds.vintages())
+                if ds.vintage_true else 0,
+                "first": dates[0] if dates else "",
+                "last": dates[-1] if dates else "",
+                "default_first": w0, "default_last": w1,
+                "dates": dates, "replays": reps}
+    # the Model settings panel of the tab's form (ids prefixed dsr-),
+    # following the form's own model select; the counts-only rows hide
+    # for a rate dataset (the page sets its kind)
+    sel = view["id"] if view and view["id"] == selected else ""
     stored = _STORED.pop(sel, None) if sel else None
     if stored:
-        stored = {"text": stored["text"],
+        stored = {"text": _whole_dates(stored["text"]),
                   "warnings": [_whole_dates(w) for w in stored["warnings"]]}
     panel = (dataset_panel(forms._knob_panel("forecast",
                                              names=PANEL_MEMBERS),
                            where="replay", prefix="dsr-",
-                           engine="dsr-engine") if out else None)
-    return {"dataset_replay": {"datasets": out,
+                           engine="dsr-engine") if view else None)
+    return {"dataset_replay": {"datasets": [(d.id, d.name) for d in items],
+                               "ds": view,
                                "pf_state": pipeline._pf_engine_state(),
                                "running": dict(_REPLAY),
                                "names": MEMBER_NAMES,
                                "engine_names": REPLAY_ENGINE_NAMES,
                                "knob_panel": panel,
-                               "selected": sel,
+                               "selected": view["id"] if view else "",
                                "stored": stored}}
 
 
@@ -1251,8 +1258,10 @@ def replay_start(background: BackgroundTasks, dataset: str = Form(...),
     dataset run resolves them, recorded with the replay when any is off
     the shipped value, and none that does not apply."""
     from app.core import custom_retro as CX
-    back = RedirectResponse("/retro#dataset-replay", status_code=303)
     ds = get_dataset(dataset)
+    # back to the Your data tab, on this dataset while it exists
+    back = RedirectResponse(f"/retro?dataset={ds.id}" if ds is not None
+                            else "/retro?tab=own", status_code=303)
     if ds is None:
         shared._flash("That dataset no longer exists. Nothing was started.")
         return back

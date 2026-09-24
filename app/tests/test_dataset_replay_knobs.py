@@ -2,7 +2,7 @@
 "Replay your own data" card).
 
 The card carries the same panel partial as the FluSight replay form on
-the same page (templates/_model_settings.html, ids prefixed dsr-), built
+the hub tab (templates/_model_settings.html, ids prefixed dsr-), built
 by datasets_ui.dataset_panel: no Oracle step, no auxiliary-bank rows, no
 hub-name override; weeks to drop and the output floor are in it (a
 dataset replay drops weeks and floors counts), the floor for counts only.
@@ -45,7 +45,7 @@ def _replay(ds, **data):
 
 class _CardForm(_Form):
     """The card's form as a browser posts it; its week and group selects
-    are filled by the page's script, so an empty one posts nothing."""
+    are rendered by the server; an empty one would post nothing."""
 
     def handle_endtag(self, tag):
         if tag == "select" and self._select is not None and not self._opts:
@@ -62,11 +62,12 @@ def _card_form(html):
 
 def test_the_card_carries_the_shared_panel_with_what_applies():
     stored()
-    html = client.get("/retro").text
-    # two panels on one page, no id twice
+    html = client.get("/retro?tab=own").text
+    # the Your data tab's panel alone, no id twice
     ids = Counter(re.findall(r'\bid="([^"]+)"', html))
     assert [i for i, n in ids.items() if n > 1] == []
-    assert 'id="model-settings"' in html and 'id="dsr-model-settings"' in html
+    assert 'id="model-settings"' not in html
+    assert 'id="dsr-model-settings"' in html
     f = _panel_form(html, root="dsr-model-settings")
     names = {n for n, _ in f.fields} | f.disabled
     # a dataset replay drops weeks and floors counts: both are in it
@@ -105,7 +106,7 @@ def test_posting_the_rendered_card_untouched_replays_shipped(monkeypatch):
     calls = []
     monkeypatch.setattr(DU, "replay_worker",
                         lambda *a, **k: calls.append((a, k)))
-    card = _card_form(client.get("/retro").text)
+    card = _card_form(client.get("/retro?tab=own").text)
     body = {}
     for n, v in card.fields:
         body.setdefault(n, v)
@@ -133,7 +134,7 @@ def test_a_modified_replay_records_its_knobs_and_says_so():
     page = " ".join(client.get(r.headers["location"]).text.split())
     assert "<dt>model settings</dt><dd>modified: groundhog.bandwidth=3" in page
     assert '<span class="pill warn">modified settings</span>' in page
-    card = client.get("/retro").text.split('id="dataset-replay"')[1]
+    card = client.get(f"/retro?dataset={ds.id}").text.split('id="dataset-replay"')[1]
     assert "modified settings" in card
 
 
@@ -162,7 +163,7 @@ def test_knobs_that_do_not_apply_are_never_recorded():
 def test_a_refused_value_starts_nothing():
     ds = stored(TEMPLATE.read_bytes(), "Template")
     r, meta = _replay(ds, weeks_to_drop="9")
-    assert meta is None and r.headers["location"] == "/retro#dataset-replay"
+    assert meta is None and r.headers["location"] == f"/retro?dataset={ds.id}"
     assert ("Model settings: run.weeks_to_drop: 9 is outside 0 to 4. "
             "Nothing was started.") in ui_state._status.get("flash", "")
     assert not DU._REPLAY and not ui_state._status.get("running")

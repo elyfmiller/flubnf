@@ -79,9 +79,27 @@ def _retro_national_name() -> str:
 
 
 @router.get("/retro", response_class=HTMLResponse)
-def retro_index(request: Request, dataset: str = ""):
+def retro_index(request: Request, dataset: str = "", tab: str = ""):
+    """Two tabs (retro.html): the FluSight hub's seasons, or "Your data"
+    (tab=own, or dataset=<id>): the replay of a stored dataset. tab=own
+    opens the first stored dataset, or with none the upload box alone."""
     from app.core import retro as _retro
     from app.core.retro import available_seasons, season_vintages
+    # the own-data replays: their own tab, never beside the hub seasons
+    from app.ui import datasets_ui as _dsu
+    own_tab = bool(dataset) or tab == "own"
+    if own_tab:
+        ids = [i for i, _ in _dsu.choices()]
+        # tab=own, or a dataset since deleted: the first stored one
+        if ids and dataset not in ids:
+            return RedirectResponse(f"/retro?dataset={ids[0]}",
+                                    status_code=303)
+        if dataset and not ids:
+            return RedirectResponse("/retro?tab=own", status_code=303)
+    if own_tab:
+        return templates.TemplateResponse(request, "retro.html", {
+            **_dsu.retro_context(dataset), "active": "Retrospective",
+            "own_tab": True, "seasons": []})
     seasons = []
     for s in available_seasons():
         total = len(season_vintages(s))
@@ -120,11 +138,9 @@ def retro_index(request: Request, dataset: str = ""):
                         "scored": (root / "scores.json").exists()})
     from flubnf.settings import PY_ENGINE, PYBNF
     from app.core.engines.pf import DEFAULT_SHARD_WIDTH, SHARD_WIDTH_CAP
-    # the own-data replays: their own card, never beside the hub seasons
-    from app.ui import datasets_ui as _dsu
     return templates.TemplateResponse(request, "retro.html",
-                                      {**_dsu.retro_context(dataset),
-                                       "active": "Retrospective", "seasons": seasons,
+                                      {"active": "Retrospective",
+                                       "own_tab": False, "seasons": seasons,
                                        "state_names": _retro_state_names(),
                                        "default_width": DEFAULT_SHARD_WIDTH,
                                        "width_cap": SHARD_WIDTH_CAP,

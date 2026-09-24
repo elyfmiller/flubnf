@@ -72,7 +72,7 @@ def boxes(page):
 
 def test_the_box_is_on_data_forecast_and_retrospective():
     for url, where in (("/data", "data"), ("/forecast?tab=own", "forecast"),
-                       ("/retro", "replay")):
+                       ("/retro?tab=own", "replay")):
         page = client.get(url).text
         assert boxes(page) == [where], url
         assert page.count('src="/static/dataset_upload.js"') == 1, url
@@ -520,15 +520,21 @@ def test_replay_this_opens_the_replay_card_on_its_newest_season():
     assert other.status_code == 303
     r = store(grouped_bytes(), name="Kids", next="replay")
     ds = next(d for d in D.list_datasets() if d.name == "Kids")
-    assert r.headers["location"] == f"/retro?dataset={ds.id}#dataset-replay"
+    # the Your data tab on it (#main: not the form's #datasets)
+    assert r.headers["location"] == f"/retro?dataset={ds.id}#main"
     page = client.get(f"/retro?dataset={ds.id}").text
     assert f'<option value="{ds.id}" selected>Kids</option>' in page
     card = page[page.index('id="dataset-replay"'):]
-    assert '"default_first": "2023-10-07"' in card
-    assert '"default_last": "2024-02-24"' in card
-    # an unknown id selects nothing
-    page = client.get("/retro?dataset=nope-000000000000").text
-    assert " selected>Kids</option>" not in page
+    # its newest flu season's weeks, rendered without script
+    first = card.split('id="dsr-first"')[1].split("</select>")[0]
+    last = card.split('id="dsr-last"')[1].split("</select>")[0]
+    assert "<option selected>2023-10-07</option>" in first
+    assert "<option selected>2024-02-24</option>" in last
+    # an unknown id (a dataset since deleted) opens the first one
+    r = client.get("/retro?dataset=nope-000000000000",
+                   follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == f"/retro?dataset={D.list_datasets()[0].id}"
 
 
 def test_replay_this_says_what_it_stored_in_the_card_it_opens():
@@ -559,7 +565,7 @@ def test_the_data_list_replay_link_preselects():
     loc = store(grouped_bytes()).headers["location"]
     ds_id = loc.split("source=")[1].split("#")[0]
     page = client.get("/data").text
-    assert f'href="/retro?dataset={ds_id}#dataset-replay">Replay</a>' in page
+    assert f'href="/retro?dataset={ds_id}">Replay</a>' in page
 
 
 def _weeks(first, last):
