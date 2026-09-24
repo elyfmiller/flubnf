@@ -645,6 +645,44 @@ def test_short_rows_padding_and_numeric_columns_are_not_splits():
                and 'write them as "5,120" or 5120' in w for w in rep.warnings)
 
 
+#: a stray opening quote in an ignored column: Python's csv reader runs it
+#: to the end of the file, and 6 of 8 rows (all of group B) were lost with
+#: only the ignored-column notice
+STRAY_QUOTE = (b'date,target_group,value,note\n2024-01-06,A,5,\n'
+               b'2024-01-13,A,6,"approx\n2024-01-20,A,7,\n2024-01-27,A,8,\n'
+               b'2024-01-06,B,1,\n2024-01-13,B,2,\n2024-01-20,B,3,\n'
+               b'2024-01-27,B,4,\n')
+
+
+def test_a_stray_quote_that_swallows_the_rows_below_is_refused():
+    rep = D.validate(STRAY_QUOTE)
+    assert rep.codes == ["quote"] and rep.problems[0].rows == (3,)
+    assert ("row 3's 'note' cell takes in rows 4 to 9, such as "
+            "2024-01-20,A,7,") in rep.problems[0].message
+    with pytest.raises(D.DatasetError):
+        D.ingest(STRAY_QUOTE, "quote")
+    assert D.list_datasets() == []
+    # closed further down, the rows between are still lost: named too
+    p = only(D.validate(b'date,target_group,value,note\n2024-01-06,A,5,\n'
+                        b'2024-01-13,A,6,"approx\n2024-01-20,A,7,\n'
+                        b'2024-01-27,A,8,x"\n2024-02-03,A,9,\n'), "quote")
+    assert "takes in rows 4 to 5" in p.message
+    # in a used column, the row itself goes too
+    rep = D.validate(b'date,target_group,value\n2024-01-06,A,5\n'
+                     b'2024-01-13,"A,6\n2024-01-20,A,7\n2024-01-27,A,8\n')
+    assert rep.codes == ["quote"]
+
+
+def test_a_note_over_two_lines_is_a_note_numbered_by_its_first():
+    rep = ok(D.validate(b'date,target_group,value,note\n'
+                        b'2024-01-06,A,5,"line1\r\nline2"\n2024-01-13,A,6,\n'))
+    assert rep.summary["rows"] == 2
+    p = only(D.validate(b'date,target_group,value,note\n'
+                        b'2024-01-06,A,x,"line1\nline2"\n2024-01-13,A,6,\n'),
+             "value_numeric")
+    assert p.rows == (2,)
+
+
 # ----------------------------------------------------- mixed encodings
 
 def test_utf8_text_with_a_stray_windows_1252_row_is_refused():

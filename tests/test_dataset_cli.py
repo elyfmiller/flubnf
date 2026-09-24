@@ -140,6 +140,10 @@ def test_column_mapping_on_the_command_line(store, tmp_path):
     # the second half in an ignored column, from a lazy writer
     (b"date,target_group,value,comment\n2024-01-06,A,1,234\n"
      b"2024-01-13,A,987\n", "look like a number split in two"),
+    # a stray quote that took in every row below it
+    (b'date,target_group,value,note\n2024-01-06,A,5,\n2024-01-13,A,6,"x\n'
+     b'2024-01-20,A,7,\n2024-01-06,B,1,\n2024-01-13,B,2,\n',
+     "open a quote"),
     ("date,target_group,value\n2024-01-06,Zürich,1\n".encode()
      + b"2024-01-13,Z\xfcrich,2\n", "The file mixes encodings"),
 ])

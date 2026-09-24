@@ -16,7 +16,9 @@ dataset`` all read through it):
     A file that holds UTF-8 characters AND bytes that are not UTF-8 mixes
     encodings: it is refused, naming the rows, since either reading
     garbles one of the two.
-  * separators: comma, semicolon or tab, sniffed from the header.
+  * separators: comma, semicolon or tab, sniffed from the header. A quote
+    opened and not closed on its row, which takes in the rows below it
+    (to the end of the file), is refused; a note over two lines is kept.
   * numbers: "1,234" in a comma file is 1234; decimal commas ("1,5") are
     read in a semicolon or tab file when the column shows it unambiguously;
     anything that could go either way is refused. A value or name that an
@@ -218,8 +220,8 @@ class Problem:
 
 #: problem kinds, in the order a report lists them
 PROBLEM_KINDS = (
-    ("File", ("empty", "encoding", "encoding_mixed", "csv", "limit_bytes",
-              "limit_rows", "limit_groups", "kind_invalid",
+    ("File", ("empty", "encoding", "encoding_mixed", "csv", "quote",
+              "limit_bytes", "limit_rows", "limit_groups", "kind_invalid",
               "target_required", "target_unknown", "target_blank")),
     ("Columns", ("missing_columns", "ambiguous_columns", "column_unknown",
                  "duplicate_columns", "ragged", "extra_fields", "split")),
@@ -917,12 +919,26 @@ def _read(src: _Replayable, enc: str, limits: Limits, columns,
         elif role in ("group", "location_name") and delim in ",;":
             txt_cut[role] = [i, _Tally()]
     gcol = idx["group"]
+    # rows whose quote, opened and not closed, took in the rows below
+    quoted = []
+    prev = reader.line_num
     for row in reader:
+        # a row is numbered by the line it starts on
+        line, prev = prev + 1, reader.line_num
         if not row or all(not c.strip() for c in row):
             continue
         if len(raw_rows) >= limits.max_rows:
             raise _LimitExceeded("rows")
-        line, n = reader.line_num, len(row)
+        if prev > line:
+            # a cell over several lines: a note that runs on is kept, but
+            # one holding what reads as rows of the file lost them
+            hit = _swallowed(row, delim, idx["date"])
+            if hit is not None:
+                quoted.append((line, prev) + hit)
+                if any("\n" in row[i] or "\r" in row[i]
+                       for i in used if i < len(row)):
+                    continue
+        n = len(row)
         cut = False
         for c in num_cut.values():
             i = c[0]
@@ -957,6 +973,16 @@ def _read(src: _Replayable, enc: str, limits: Limits, columns,
             if len(groups_seen) > limits.max_groups:
                 raise _LimitExceeded("groups")
         raw_rows.append((line, {k: row[i] for k, i in idx.items()}))
+    if quoted:
+        starts = [q[0] for q in quoted]
+        ln, end, i, text = quoted[0]
+        col = header[i] if i < width and header[i] else f"#{i + 1}"
+        rep.add("quote", f"{len(quoted)} row(s) open a quote (\") that is "
+                "not closed on that row, so the rows below were read as part "
+                f"of one cell ({_rows(starts)}; e.g., row {ln}'s '{col}' "
+                f"cell takes in rows {ln + 1} to {end}, such as "
+                f"{_shown(text)}). Delete the stray quote, or close it on "
+                "its own row.", starts)
     if ragged:
         rep.add("ragged", f"{len(ragged)} row(s) have fewer fields than the "
                 f"columns they need ({_rows(ragged)}; e.g., row {ragged[0]}).",
@@ -1008,6 +1034,24 @@ def _read(src: _Replayable, enc: str, limits: Limits, columns,
                 f'("Bern{delim} Stadt"), or remove the space that starts '
                 f"those '{header[i + 1]}' cells.", t.lines)
     return rep, cols, raw_rows
+
+
+def _swallowed(row, delim: str, date_at: int):
+    """(cell index, line) for the first line inside a multi-line cell that
+    reads as a row of the file (a date where the date column is): a quote
+    opened and never closed on its row took in the rows below, which
+    Python's csv reader does to the end of the file. None for a note that
+    merely runs over two lines."""
+    for i, c in enumerate(row):
+        if "\n" not in c and "\r" not in c:
+            continue
+        for text in c.splitlines()[1:]:
+            cells = next(csv.reader([text], delimiter=delim), [])
+            if len(cells) > max(date_at, 1):
+                t = cells[date_at].strip()
+                if parse_date(t)[0] is not None or _day_first(t):
+                    return i, text
+    return None
 
 
 def _column_ref(header, want: str):
