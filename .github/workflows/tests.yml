@@ -67,157 +67,6 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: "${{ matrix.python-version }}"}
 
-      # ------------------------------------------------------------------
-      # A MEASUREMENT OF THE DEFENDER HYPOTHESIS. NOT A FIX, AND SAFE TO
-      # DELETE -- this whole step and nothing else.
-      #
-      # The hypothesis: this job is 12x slower than the identical ubuntu job
-      # because Microsoft Defender real-time protection scans every one of
-      # the many temporary directories the suite creates and inspects every
-      # one of the many subprocesses it spawns. The evidence for it so far is
-      # circumstantial: the windows-setup-script job on the SAME runner image
-      # finishes in about 3 minutes, so the runner hardware is not the
-      # problem, and the corresponding author reports live Defender
-      # notifications while running this project on his own Windows machine.
-      # Circumstantial is not measured, which is what this step is for.
-      #
-      # THE DESIGN. The exclusion is applied on the 3.12 leg ONLY, so a
-      # single run carries its own control: 3.11 scanned, 3.12 not. The two
-      # legs differ in python version as well as in treatment, which is a
-      # confound and is named rather than hidden -- but it is a confound
-      # that works AGAINST the hypothesis, because 3.12 is the slower of the
-      # two legs today (71 min vs 62). So a 3.12 leg that comes in under the
-      # 3.11 leg cannot be explained by the version, and a 3.12 leg that does
-      # not move is evidence against Defender being the cause.
-      #
-      # WHY THIS IS AN EASY CALL HERE AND NOT ON A STUDENT'S LAPTOP. A
-      # GitHub-hosted windows runner is an ephemeral VM that exists for the
-      # length of this job, holds no credentials (see the setup-script job
-      # below), and is destroyed afterwards. Nothing persists, so nothing is
-      # left less protected than it was. setup.ps1 deliberately does NOT do
-      # this to a real machine: it detects, explains, and waits to be asked.
-      #
-      # It never fails the job. If Defender is absent, unmanageable, or the
-      # runner user cannot change it, the step says so and the leg becomes an
-      # ordinary unexcluded run -- which is a null result, not a broken job.
-      - name: "MEASUREMENT: exclude the workspace from Defender scanning (3.12 leg only)"
-        if: matrix.python-version == '3.12'
-        shell: powershell
-        run: |
-          function Report($m) { Write-Host "  $m" }
-          # THE VERDICT FILE. The durations step below has to say which
-          # treatment its table was measured under, and the matrix value
-          # cannot tell it: every branch of this step that returns early
-          # leaves the leg UNEXCLUDED while the matrix still says 3.12. A
-          # summary line derived from the matrix would therefore label an
-          # ordinary run as an excluded one, which is the same mistake this
-          # step refuses to make about Add-MpPreference not throwing. So the
-          # verdict is written down here, by the code that knows it, and read
-          # back there. -Encoding ascii on purpose: Windows PowerShell 5.1
-          # writes a BOM for -Encoding utf8, and the reader is Git Bash.
-          # Same guard as below, same reason: never let this step be the
-          # thing that fails the job. The bash step reads the file from the
-          # workspace, which is where both steps start.
-          $VerdictRoot = if ($env:GITHUB_WORKSPACE) { $env:GITHUB_WORKSPACE } else { $PWD.Path }
-          $VerdictFile = Join-Path $VerdictRoot "defender-verdict.txt"
-          function Verdict($v) {
-            Set-Content -LiteralPath $VerdictFile -Value $v -Encoding ascii
-            Report "verdict: $v"
-          }
-          Verdict "no: the step did not reach a decision"
-          if (-not (Get-Command Get-MpComputerStatus -ErrorAction SilentlyContinue)) {
-            Report "the Defender module is not on this runner; nothing excluded, this leg is an ordinary run"
-            Verdict "no: the Defender module is not on this runner"
-            exit 0
-          }
-          try { $st = Get-MpComputerStatus -ErrorAction Stop } catch { $st = $null }
-          if ($null -eq $st) {
-            Report "Get-MpComputerStatus answered nothing; nothing excluded"
-            Verdict "no: Get-MpComputerStatus answered nothing"
-            exit 0
-          }
-          Report "before: RealTimeProtectionEnabled = $($st.RealTimeProtectionEnabled)"
-          Report "before: AntivirusEnabled          = $($st.AntivirusEnabled)"
-          if (-not $st.RealTimeProtectionEnabled) {
-            Report "real-time protection is already off on this image, so this leg CANNOT test the hypothesis"
-            Report "and the comparison against the 3.11 leg means nothing this run. Read the durations instead."
-            Verdict "no: real-time protection was already off, so both legs are unscanned"
-            exit 0
-          }
-          # Paths: the checkout, the runner scratch area, and %TEMP%. All
-          # three, because pytest's tmp_path fixtures land under %TEMP% and
-          # not under RUNNER_TEMP, and the throwaway directories are the
-          # half of the workload the hypothesis is actually about.
-          # Processes: python.exe is the one that matters. A path exclusion
-          # covers files; a process exclusion covers what that process reads
-          # and writes anywhere, which is what a suite spawning subprocesses
-          # in throwaway directories needs.
-          # %LOCALAPPDATA%\Temp is here as well as %TEMP%, and it is not a
-          # duplicate. On a GitHub windows runner %TEMP% is handed out in the
-          # 8.3 short form (C:\Users\RUNNER~1\AppData\Local\Temp) while the
-          # files pytest creates under it have the long path, and Microsoft
-          # does not document that an exclusion written with a short name
-          # matches the long one. If it does, this line is a harmless
-          # duplicate that Select-Object drops or Defender ignores. If it
-          # does not, this line is the difference between excluding the
-          # throwaway directories -- the half of the workload the hypothesis
-          # is actually about -- and silently excluding nothing there and
-          # reading the resulting null as evidence. UNVERIFIED either way:
-          # the step reports every path it excluded, so the log settles it.
-          # The if-guard is not decoration: GitHub prepends
-          # $ErrorActionPreference = 'stop' to every powershell step, and
-          # Join-Path with a null -Path is a terminating error there. This
-          # step promises never to fail the job, and an unset variable is
-          # exactly the "unmanageable" case that promise is about.
-          $localTemp = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "Temp" } else { $null }
-          $paths = @($env:GITHUB_WORKSPACE, $env:RUNNER_TEMP, $env:TEMP, $localTemp) |
-                   Where-Object { $_ } | Select-Object -Unique
-          foreach ($p in $paths) {
-            try {
-              Add-MpPreference -ExclusionPath $p -ErrorAction Stop
-              Report "excluded path: $p"
-            } catch {
-              Report "could not exclude ${p}: $($_.Exception.Message)"
-            }
-          }
-          foreach ($proc in @("python.exe", "pytest.exe", "git.exe")) {
-            try {
-              Add-MpPreference -ExclusionProcess $proc -ErrorAction Stop
-              Report "excluded process: $proc"
-            } catch {
-              Report "could not exclude ${proc}: $($_.Exception.Message)"
-            }
-          }
-          # Read the settings back. "the command did not throw" is not the
-          # same claim as "the exclusion is in effect", and only the second
-          # one licenses reading the timing below as a Defender result.
-          try {
-            $pref = Get-MpPreference -ErrorAction Stop
-            Report "after: ExclusionPath    = $(@($pref.ExclusionPath) -join '; ')"
-            Report "after: ExclusionProcess = $(@($pref.ExclusionProcess) -join '; ')"
-            # The read-back decides the verdict, not the fact that the calls
-            # above returned. The workspace is the path the hypothesis is
-            # about, so it is the one that has to be there.
-            # Trailing backslashes are trimmed on both sides before the
-            # comparison: it is not documented whether Defender stores the
-            # path exactly as handed to it, and a false "not excluded" here
-            # would throw away a measurement that actually worked. -contains
-            # is already case-insensitive for strings, which is what a
-            # Windows path comparison wants.
-            $ws = "$env:GITHUB_WORKSPACE".TrimEnd('\')
-            $have = @(@($pref.ExclusionPath) | ForEach-Object { "$_".TrimEnd('\') })
-            if ($have -contains $ws) {
-              Verdict "yes: the workspace is in ExclusionPath after the change"
-            } else {
-              Verdict "no: the calls ran but the workspace is not in ExclusionPath"
-            }
-          } catch {
-            Report "could not read the exclusions back: $($_.Exception.Message)"
-            Verdict "unknown: the exclusions could not be read back to confirm"
-          }
-          exit 0
-      # ------------------------------------------------------------------
-
       - run: pip install -e ".[app,dev]" bionetgen
       # As ubuntu (Git Bash keeps the pipeline identical); --durations vs ubuntu's locates the hour.
       - name: tests (failures become annotations)
@@ -240,7 +89,7 @@ jobs:
             exit 1
           }
 
-      # if: always(): the table matters most on red runs; reprints the Defender treatment.
+      # if: always(): the table matters most on red runs.
       - name: where the time went
         if: always()
         shell: bash
@@ -249,20 +98,7 @@ jobs:
             echo "no pytest.out: the suite produced no transcript to read"
             exit 0
           fi
-          # The treatment comes from the file the MEASUREMENT step wrote, not
-          # from the matrix. Every early return in that step leaves the leg
-          # unexcluded, and a label taken from the matrix would call those
-          # runs excluded ones.
-          # tr -d '\r' because Set-Content wrote that file on Windows and
-          # this step reads it in Git Bash. $() strips the trailing newline
-          # and leaves the carriage return, which would land in the summary.
-          if [ -f defender-verdict.txt ]; then
-            treatment="$(head -n 1 defender-verdict.txt | tr -d '\r')"
-          else
-            treatment="none attempted: no exclusion step ran on this leg (control)"
-          fi
           { echo "## slowest tests (${{ runner.os }}, py${{ matrix.python-version }})";
-            echo "Defender workspace exclusion on this leg: ${treatment}";
             echo '```';
             awk '/slowest .* durations/{f=1} /short test summary/{f=0} f' pytest.out |
               head -n 40;
