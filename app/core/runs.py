@@ -729,12 +729,21 @@ class Ledger:
             (status, json.dumps(outcome), now, now, run_id))
         self._db.commit()
 
-    def rows(self, limit: int = 50) -> list:
+    #: how a dataset run's spec_json marks it (RunSpec.extra["dataset"])
+    DATASET_MARK = '"dataset": {'
+
+    def rows(self, limit: int = 50, hub_only: bool = False) -> list:
+        """The newest `limit` rows; hub_only leaves out runs on a custom
+        dataset IN the query, so any number of dataset runs cannot push
+        the newest hub run out of the window."""
         # sha and engine versions: the run page names what produced the run
+        where = ("WHERE instr(COALESCE(spec_json, ''), ?) = 0 "
+                 if hub_only else "")
+        args = ((self.DATASET_MARK,) if hub_only else ()) + (limit,)
         cur = self._db.execute(
             "SELECT run_id, created_utc, spec_json, status, outcome_json, "
             "finished_utc, elapsed_s, flubnf_sha, engine_versions "
-            "FROM runs ORDER BY created_utc DESC LIMIT ?", (limit,))
+            f"FROM runs {where}ORDER BY created_utc DESC LIMIT ?", args)
         return [dict(zip(("run_id", "created_utc", "spec", "status", "outcome",
                           "finished_utc", "elapsed_s", "flubnf_sha",
                           "engine_versions"), r))

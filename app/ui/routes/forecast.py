@@ -120,8 +120,8 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         (res or {}).get("forecast_date", ""),
         sorted({l for qs in fanq.values() for l in qs}))
     # the hub view's latest-run card never shows a run on a custom dataset
-    ledger_rows = [r for r in Ledger().rows(25)
-                   if '"dataset": {' not in (r.get("spec") or "")][:5]
+    # (filtered in the query: many dataset runs never hide the hub's)
+    ledger_rows = Ledger().rows(5, hub_only=True)
     for r in ledger_rows:
         r["label"] = _run_label(r["run_id"], r.get("spec", ""))
         r["modified"] = _runs.is_modified(r.get("spec", ""))

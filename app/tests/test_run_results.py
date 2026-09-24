@@ -118,3 +118,33 @@ def test_the_run_page_carries_the_results_table():
         results=results_html({"pf_relwis": 0.7, "pf_cells": 1}, "{}"),
         pf_failures={}, step_errors={}, ensemble_analogue_only=[], ensemble_withheld="")
     assert "<h2>Results</h2>" in html and '<span class="relwis ok">0.700</span>' in html
+
+
+
+def test_latest_run_card_finds_the_hub_run_behind_many_dataset_runs(
+        tmp_path, monkeypatch):
+    """The hub card used to read the newest 25 ledger rows and then drop
+    dataset runs, so 25 dataset runs hid every hub run."""
+    import app.core.runs as runs_mod
+    from app.core.runs import Ledger
+    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
+    led = Ledger()
+    hub_id = led.open_run(RunSpec(engine="analogue",
+                                  forecast_date="2098-01-03",
+                                  locations=["Ohio"]), Path("pending"), {})
+    led.close_run(hub_id, "ok", {})
+    ds_ids = []
+    for i in range(30):
+        rid = led.open_run(RunSpec(engine="analogue",
+                                   forecast_date="2098-01-10",
+                                   locations=["g1"],
+                                   extra={"dataset": {"id": f"d{i}",
+                                                      "name": "Template"}}),
+                           Path("pending"), {})
+        led.close_run(rid, "ok", {})
+        ds_ids.append(rid)
+    assert [r["run_id"] for r in led.rows(5, hub_only=True)] == [hub_id]
+    assert len(led.rows(50)) == 31               # the plain listing is whole
+    page = client.get("/forecast").text
+    assert f'href="/runs/{hub_id}"' in page
+    assert not any(d in page for d in ds_ids)
