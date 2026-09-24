@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% block title %}FluBNF · Storage{% endblock %}{% block content %}
+{% extends "base.html" %}{% block title %}FluBNF · Storage{% endblock %}{% block content %}{% import "_tips.html" as tips %}
 <h1>Storage</h1>
 
 {% if storage %}
@@ -7,12 +7,7 @@
 <details class="ledgerfold" id="storagefold">
  <summary><h2 style="display:inline">On disk</h2>
   <span class="stotal" style="display:inline;margin-left:.45rem"><span class="big">{{ storage.total_h }}</span></span>
-  <span class="hint"> total</span></summary>
- {# the total covers everything deletable here; protected trees are listed
-    but not counted #}
- <p class="hint">Across run workroots, retrospective seasons, archived
- runs, and report archives; the protected trees below are listed but not
- counted here.</p>
+  <span class="hint"> total</span>{{ tips.tip("st-total", "the total", "Run workroots, retrospective seasons, archived runs and report archives; protected trees are listed but not counted.") }}</summary>
 
  {# reclaim: dry-run report first, then the shared confirmation. Deletes only
     fit intermediates of COMPLETED weeks/runs and compresses samples
@@ -20,6 +15,7 @@
  <form method="post" action="/storage/reclaim" id="reclaim-form">
   <input type="hidden" name="confirm" value="">
   <button type="button" class="quiet" id="reclaim-btn">Reclaim space…</button>
+  {{ tips.tip("st-reclaim", "reclaiming space", "Deletes fit intermediates of completed weeks and runs and compresses samples losslessly; every score, report and submission is kept.") }}
   <span class="hint" id="reclaim-note"></span>
  </form>
  <script>
@@ -189,9 +185,8 @@
    <span class="hint">· {{ p.size_h }} · <span class="pill">protected</span></span></span>
  </div>
  {% endfor %}
- <p class="hint">The sealed validation record is the three-season evidence
-  the shipped configuration rests on; the hub clone is shared source
-  data.</p>
+ <p class="hint">The sealed record backs the shipped configuration; the hub
+  clone is shared source data.</p>
  {% endif %}
 </details>
 </div>
@@ -251,10 +246,9 @@
  <td>{{ r.chips | safe }}</td></tr>
 {% else %}<tr><td colspan="5" class="hint">No runs yet.</td></tr>{% endfor %}
 </table>
-<p class="hint">Elapsed is wall time from the run claiming its slot to the
- ledger closing its row. Runs recorded before this measurement
- existed show a dash. A dash under "on disk" means the run's workroot was
- deleted; the ledger row remains as the run's record.</p>
+<p class="hint">Elapsed is wall time (a dash: recorded before timing
+ existed); a dash under "on disk": the workroot was deleted, the ledger row
+ remains.</p>
 {% if clear_count %}
 {# clear via the shared confirmation (names the count); the server refuses a
    stale count, skips the active run, and never deletes workroot data #}

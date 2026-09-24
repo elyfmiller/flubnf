@@ -297,7 +297,7 @@ def test_total_disk_metric_sums_the_managed_categories_only(state):
     html = client.get("/runs").text
     joined = " ".join(html.split())
     assert f'<span class="big">{inv["total_h"]}</span>' in html
-    assert "not counted here" in joined                # the copy says so
+    assert "listed but not counted" in joined               # the copy says so
 
 
 def test_clear_all_control_names_count_and_total_size(state):

@@ -1051,7 +1051,7 @@ def forecast_page(request: Request):
     except Exception:
         vintage_dates = []
     _anchor, _ = resolve_anchor(form.get("forecast_date", ""), vintage_dates)
-    anchor_note = (f"Anchored on the archived week ending {_anchor}."
+    anchor_note = (f"Anchor week: {_anchor}."
                    if _anchor else "No archived week on or before that date.")
     return templates.TemplateResponse(request, "forecast.html", {
         "active": "Forecast", "engines": ENGINES, "status": _status,

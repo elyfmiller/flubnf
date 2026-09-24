@@ -1,10 +1,10 @@
 {% extends "base.html" %}{% block title %}FluBNF · Retrospective{% endblock %}
 {% block head %}<script src="/static/quips.js"></script>
 <script src="/static/retro_progress.js"></script>{% endblock %}
-{% block content %}
+{% block content %}{% import "_tips.html" as tips %}
 <h1>Retrospective</h1>
-<p class="sub">Each week the models see only that Saturday's data, submit,
-and move on; scoring waits for settled truth.</p>
+<p class="sub">Replays a past season week by week on the data each Saturday
+had, then scores against settled truth.</p>
 <div class="cols">
  <div><div class="card"><h2>Settings</h2>
   {# platform-aware (server.py _engine_setup_hint): never a macOS-only filename #}
@@ -14,7 +14,7 @@ and move on; scoring waits for settled truth.</p>
   <form method="post" action="/retro/run">
    <label>Season</label>
    <select name="season">{% for s in seasons %}<option>{{ s.name }}</option>{% endfor %}</select>
-   <label>Location scope</label>
+   {{ tips.label("Location scope", "rt-scope", "The 6-state panel replays in a fraction of the time of all 52 jurisdictions.") }}
    <select name="locations" id="retro-scope">
      <option value="panel6">6-state panel (fast)</option>
      <option value="all">all 52 jurisdictions</option>
@@ -28,26 +28,23 @@ and move on; scoring waits for settled truth.</p>
    {# US national fitted by default, as on Forecast ("all" = 53 locations).
       A select, not a checkbox: a cleared checkbox posts nothing, so the
       server could not tell "states only" from an old client #}
-   <label>US national</label>
+   {{ tips.label("US national", "rt-us", "US national is fitted and scored apart from the pooled state figures.") }}
    <select name="national">
      <option value="1">fit US national too (default)</option>
      <option value="0">states only</option></select>
-   <label>Particles</label>
+   {{ tips.label("Particles", "rt-particles", "Particles per filter fit; more is smoother and slower (10,000 is the shipped setting).") }}
    <input type="number" name="particles" value="10000" min="1000" max="100000" step="1000">
-   <label>Replicates</label>
+   {{ tips.label("Replicates", "rt-reps", "Independent particle-filter fits per state and week, pooled into one forecast.") }}
    <input type="number" name="replicates" value="3" min="1" max="10">
-   <label>Shard width (parallel runners; auto for this machine)</label>
+   {{ tips.label("Shard width", "rt-width", "Parallel runners; the default suits this machine.") }}
    <input type="number" name="width" value="{{ default_width }}" min="1" max="{{ width_cap }}">
-   <label>Engine preset</label>
+   {{ tips.label("Engine preset", "rt-engine", "Each week fits the Oracle SIHRS from the season start with that week's data and donor pool, as a live run does. Groundhog only needs no engine.") }}
    {# "pf" (internal key) = Oracle SIHRS + Groundhog: hours, needs the engine
       venv. "analogue" = Groundhog alone: minutes, no engine, reproduces its
       published numbers anywhere #}
    <select name="engine" id="retro-engine">
      <option value="pf">Oracle SIHRS and the Groundhog (hours)</option>
      <option value="analogue">Groundhog only (minutes, no engine needed)</option></select>
-   <p class="hint">A replay is how a season's Oracle SIHRS numbers are made:
-   each week the filter is fitted from the season start and the Oracle step
-   applied with that week's data and donor pool, as a live run does.</p>
    {# set by the start-over prompt; defaults to 'resume', so a keyboard submit
       without the prompt is safe #}
    <input type="hidden" name="mode" value="resume">

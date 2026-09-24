@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% import "diagrams.html" as dg %}{% block content %}
+{% extends "base.html" %}{% import "diagrams.html" as dg %}{% import "_tips.html" as tips %}{% block content %}
 <div class="hero">
  <h1>Forecast the flu season, <span class="gold">mechanistically</span>.</h1>
  <p>FluBNF produces weekly probabilistic forecasts of influenza hospital
@@ -115,8 +115,7 @@
   directly comparable with the dashboard: likely close, not the same
   method. Placement among teams is withdrawn, see
   <a href="/methods">Methods</a>.
-  <span class="convtip" tabindex="0" title="{{ relwis_convention_note }}"
-   aria-label="scoring convention: {{ relwis_convention_note }}">ⓘ</span></p></div>
+  {% call tips.tip("home-conv", "the scoring convention") %}{{ relwis_convention_note }}{% endcall %}</p></div>
  <div class="card"><h2>Start here</h2>
   <ol class="steps">
    <li class="step"><span class="stepnum">1</span>

@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% block title %}FluBNF · Sandbox{% endblock %}
 {% block head %}<script src="/static/plotly.min.js"></script><link rel="stylesheet" href="/static/bngl-editor.css"><script defer src="/static/bngl-editor.js"></script>{% endblock %}
-{% block content %}
+{% block content %}{% import "_tips.html" as tips %}
 <h1>Sandbox</h1>
 <div class="cols">
  <div>
@@ -20,10 +20,9 @@
    <p class="hint">Examples: {% for e in examples %}<form method="post" action="/sandbox/add-example" style="display:inline"><input type="hidden" name="name" value="{{ e }}"><button class="pill">add {{ e }}</button></form> {% endfor %}</p>
    {% endif %}
    <form method="post" action="/sandbox/new" class="sbnew">
-    <label for="sbnew-name">New model from scratch</label>
+    <div class="lblrow"><label for="sbnew-name">New model from scratch</label>{{ tips.tip("sb-new", "new models", "Creates a runnable skeleton (every BNGL block, a simulate action, placeholder counts and priors) and opens it in the editor.") }}</div>
     <input id="sbnew-name" name="name" placeholder="model name" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,63}" required>
     <button class="pill">Create</button>
-    <p class="hint">A runnable skeleton: every BNGL block, the simulate action, placeholder counts and priors, opened in the editor.</p>
    </form>
   </div>
 
@@ -32,14 +31,13 @@
    <form method="post" action="/sandbox/run">
     <label>Model</label>
     <select name="model">{% for m in models if m.complete %}<option value="{{ m.name }}" {% if editing and editing.name == m.name %}selected{% endif %}>{{ m.name }}</option>{% endfor %}</select>
-    <label>Particles</label>
+    {{ tips.label("Particles", "sb-particles", dry_particles ~ " checks that the model generates and fits; 10,000 is a real fit.") }}
     <input name="particles" type="number" value="{{ dry_particles }}" min="50" max="100000">
-    <p class="hint">{{ dry_particles }} checks that the model generates and fits; 10,000 is a real fit.</p>
-    <label>Jitter</label>
+    {{ tips.label("Jitter", "sb-jitter", "Liu-West kernel scale for parameter jitter between weeks; 0.15 is the production setting.") }}
     <input name="jitter" type="number" step="0.01" value="0.15" min="0.01" max="0.99">
-    <label>Forecast weeks</label>
+    {{ tips.label("Forecast weeks", "sb-weeks", "Weeks projected past the last observation.") }}
     <input name="forecast_weeks" type="number" value="4" min="0" max="12">
-    <label>Seed</label>
+    {{ tips.label("Seed", "sb-seed", "Random seed; the same seed and inputs reproduce the fit.") }}
     <input name="seed" type="number" value="0" min="0">
     <button class="gold" data-guard="console-run" {% if busy or not models %}disabled{% endif %}>Run in the sandbox</button>
    </form>
@@ -95,11 +93,11 @@
       <tr><td><code>initialization</code></td><td>rand</td><td>default</td></tr>
       <tr><td><code>pf_resample_threshold</code>, <code>pf_binom_neff_cap</code>, other <code>pf_*</code></td><td>the engine's own defaults</td><td>engine</td></tr>
      </tbody></table>
-     <p class="hint">A priors.conf line naming one of these overrides it. These defaults are the production configuration; changing one changes how the filter behaves, not just what it fits.</p>
+     <p class="hint">A priors.conf line naming one of these overrides it; these defaults are the production configuration.</p>
     </details>
     <button class="gold">Save</button>
    </form>
-   <p class="hint">Checked when it runs: the network must generate and every free parameter must be in it. Sandbox outputs are fits, not submissions.</p>
+   <p class="hint">Checked at run time: the network must generate and use every free parameter. Sandbox fits are never submitted.</p>
   </div>
   {% endif %}
  </div>

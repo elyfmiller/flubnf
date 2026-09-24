@@ -526,7 +526,7 @@ def test_runs_page_shows_elapsed_per_completed_run():
     # never the flat contradiction of an all-n/a column under the footnote
     assert '<td class="elapsed">--</td>' in html
     assert "n/a" not in html
-    assert ("recorded before this measurement existed show a dash"
+    assert ("a dash: recorded before timing existed"
             in " ".join(html.split()))
 
 

@@ -1,20 +1,22 @@
 {% extends "base.html" %}{% block title %}FluBNF · Forecast{% endblock %}
 {% block head %}<script src="/static/plotly.min.js"></script>
 <script src="/static/quips.js"></script>{% endblock %}
-{% block content %}
+{% block content %}{% import "_tips.html" as tips %}
 <h1>Forecast</h1>
 <div class="cols">
  <div><div class="card"><h2>Settings</h2>
   <form method="post" action="/run" id="fcform">
    {# two modes, one form (same controls, same run record): Real-time takes
       the latest archived week the calendar allows; Vintage names one #}
-   <div class="modes" role="tablist" aria-label="forecast mode">
+   <div class="modes">
+    <div role="tablist" aria-label="forecast mode">
     <button type="button" class="pill mode" data-mode="realtime" role="tab">Real-time</button>
     <button type="button" class="pill mode" data-mode="vintage" role="tab">Vintage</button>
+    </div>
+    {{ tips.tip("fc-mode", "the forecast modes", "Real-time: the newest archived week. Vintage: any archived week, with the data as it stood then.") }}
    </div>
-   <p class="hint" id="mode-line"></p>
    <input type="hidden" name="mode" id="mode-field" value="realtime">
-   <label>Forecast date</label>
+   {{ tips.label("Forecast date", "fc-date", "Any day; the run anchors on the latest archived week on or before it.") }}
    <input type="date" name="forecast_date" value="{{ form.forecast_date }}" data-default="{{ default_date }}">
    {# any day is accepted; this line names the archived week it resolves to
       (server-side resolve_anchor, the run's own function; updated live) #}
@@ -45,7 +47,7 @@
         if (!line || !box) return;
         var a = anchorFor(box.value);
         line.textContent = a
-          ? 'Anchored on the archived week ending ' + a + '.'
+          ? 'Anchor week: ' + a + '.'
           : 'No archived week on or before ' + box.value + '.';
       }
       // blank Season start = August 1 of the forecast's season; the line is
@@ -60,14 +62,11 @@
         var sline = document.getElementById('season-line');
         if (!sline || !box) return;
         var d = seasonDefault(box.value);
-        sline.textContent = d ? 'Blank: ' + d + ', August 1 of the season.' : '';
+        sline.textContent = d ? 'Blank: ' + d + '.' : '';
       }
       // the two modes share every control; Real-time also resets the date
       // to the latest week the calendar allows and hides the picker
       var form = document.getElementById('fcform');
-      var mline = document.getElementById('mode-line');
-      var TEXT = {realtime: 'The latest archived week the calendar allows; the run records the week it anchored on.',
-                  vintage: 'Any archived week, as the season looked then.'};
       function setMode(mode, resetDate) {
         if (!form) return;
         form.classList.toggle('mode-realtime', mode === 'realtime');
@@ -76,7 +75,6 @@
         document.querySelectorAll('.pill.mode').forEach(function (b) {
           b.setAttribute('aria-selected', b.dataset.mode === mode ? 'true' : 'false');
         });
-        if (mline) mline.textContent = TEXT[mode] || '';
         if (mode === 'realtime' && resetDate && box && box.dataset.default) {
           box.value = box.dataset.default; paint(); paintSeason();
         }
@@ -97,7 +95,7 @@
       setMode(initial, false);
     })();
    </script>
-   <label>Locations <span id="lcount" class="hint"></span></label>
+   <div class="lblrow"><label>Locations <span id="lcount" class="hint"></span></label>{{ tips.tip("fc-locs", "locations", "US national is always fitted too, and scored separately.") }}</div>
    <div class="checklist">
      <label class="ck"><input type="checkbox" id="ck-all" value="all" name="locations"
        {% if "all" in form.locations %}checked{% endif %}> <b>all 52 jurisdictions</b></label>
@@ -107,23 +105,17 @@
        {% if l in form.locations %}checked{% endif %}> {{ l }}</label>
      {% endfor %}
    </div>
-   {# US is always fitted and reported apart from the pooled score #}
-   <p class="hint">US national is always fitted too, and scored
-    separately.</p>
-   <label>Model</label>
+   {{ tips.label("Model", "fc-model", "Each model writes its own FluSight submission file; nothing is blended.") }}
    {# posts `engine` (the run path's names); the engine row appears only
       when the Oracle SIHRS runs; "all" writes both submission files #}
-   {% set engine_names = {"all": "Both models: Oracle SIHRS and Groundhog",
+   {% set engine_names = {"all": "Both (Oracle SIHRS + Groundhog)",
                           "pf": "Oracle SIHRS only",
                           "analogue": "Groundhog only"} %}
    <select name="engine" id="model-pick">{% for e in engines %}
      <option value="{{ e }}" {% if e == form.engine %}selected{% endif %}>{{ engine_names.get(e, e) }}</option>{% endfor %}</select>
    <div id="engine-row">
-    <label>Engine</label>
+    {{ tips.label("Engine", "fc-engine", "The particle filter fits each state; the Oracle step then blends its forecast growth with past seasons' growth at the same calendar week.") }}
     <select aria-label="Oracle SIHRS engine"><option>Particle filter</option></select>
-    <p class="hint">After the fit, the Oracle step blends the filter's
-     forecast growth with donor growth from past seasons at the same
-     calendar week (<a href="/methods#oracle">Methods</a>).</p>
    </div>
    <script>
     (function(){
@@ -135,14 +127,13 @@
    {# no control for the research-only member (failed its full-grid gate);
       /run still accepts members=3 for research use #}
    <details class="adv"><summary class="advbtn">Advanced settings</summary>
-    <label>Season start</label>
+    {{ tips.label("Season start", "fc-season", "The first week the fit sees. Blank means August 1 of the forecast's season.") }}
     <input type="date" name="season_start" value="{{ form.season_start }}">
     <p class="hint" id="season-line"></p>
-    <label title="trim the newest N weeks before fitting (vintage-edge guard)">Weeks to drop</label>
+    {{ tips.label("Weeks to drop", "fc-drop", "Trims the newest N reported weeks before the fit, a guard against incomplete recent data; 0 keeps every week.") }}
     <input name="weeks_to_drop" type="number" value="{{ form.weeks_to_drop }}" min="0" max="4">
     <input type="hidden" name="weeks_to_nowcast" value="0">
-    <p class="hint">Trims the newest N reported weeks before the fit; 0 keeps every week.</p>
-    <label>Replicates</label>
+    {{ tips.label("Replicates", "fc-reps", "Independent particle-filter fits per state, pooled into one forecast; more is steadier but slower.") }}
     <input name="replicates" type="number" value="{{ form.replicates }}" min="1" max="9">
    </details>
    <button class="gold" data-guard="console-run">Run models</button>
@@ -295,8 +286,8 @@
    <form method="post" action="/runs/{{ r.run_id }}/rerun" class="rerun-run">
     <button class="gold" data-guard="console-run">Run again with these settings</button>
    </form>
-   <p class="hint">Console runs hold no checkpoint: this starts a fresh run
-    with the recorded settings and does not resume the earlier one.</p>
+   <p class="hint">Console runs hold no checkpoint: this starts fresh and
+    does not resume the earlier one.</p>
    {% endif %}
   </div>
   {% endif %}
