@@ -67,14 +67,17 @@
       var line = document.getElementById('anchor-line');
       var pick = document.getElementById('vintage-pick');
       function anchorFor(day) {
-        var d = new Date(day + 'T00:00:00');
+        // calendar days in UTC: local midnight shifts the ISO date in
+        // any zone east of UTC
+        var d = new Date(day + 'T00:00:00Z');
         if (isNaN(d)) return null;
-        if (d.getDay() === 6) return VS.indexOf(day) >= 0 ? day : null;
-        var back = (d.getDay() + 1) % 7;          // Sunday=0 -> 1 back
-        d.setDate(d.getDate() - back);
+        if (d.getUTCDay() === 6) return VS.indexOf(day) >= 0 ? day : null;
+        var back = (d.getUTCDay() + 1) % 7;       // Sunday=0 -> 1 back
+        d.setUTCDate(d.getUTCDate() - back);
         var sat = d.toISOString().slice(0, 10);
-        var earlier = VS.filter(function (v) { return v <= sat; });
-        return earlier.length ? earlier[earlier.length - 1] : null;
+        // the newest archived week on or before it (VS runs newest first)
+        return VS.reduce(function (a, v) {
+          return v <= sat && (!a || v > a) ? v : a; }, null);
       }
       function paint() {
         if (!line || !box) return;
@@ -605,11 +608,12 @@
    if(ro.length){obsX=ro.map(p=>p[0]); obsY=ro.map(p=>p[1]);}
    else if(s){s.dates.forEach((d,i)=>{if(d<=FCDATE){obsX.push(d);obsY.push(s.values[i]);}});}
    obsX=obsX.slice(-12); obsY=obsY.slice(-12);
-   const base=new Date(FCDATE);
-   const xs=hs.map(h=>{const d=new Date(base); d.setDate(d.getDate()+7*parseInt(h));
+   // whole weeks in UTC: local-time days shift a day across a DST change
+   const base=new Date(FCDATE+'T00:00:00Z');
+   const xs=hs.map(h=>{const d=new Date(base); d.setUTCDate(d.getUTCDate()+7*parseInt(h));
      return d.toISOString().slice(0,10);});
    // what happened after the origin (settled data), framed to the horizon
-   const lim=new Date(base); lim.setDate(lim.getDate()+35);
+   const lim=new Date(base); lim.setUTCDate(lim.getUTCDate()+35);
    const limIso=lim.toISOString().slice(0,10);
    const aftX=[],aftY=[];
    if(s){s.dates.forEach((d,i)=>{if(d>FCDATE&&d<=limIso){aftX.push(d);aftY.push(s.values[i]);}});}
