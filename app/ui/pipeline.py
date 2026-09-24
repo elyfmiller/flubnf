@@ -845,8 +845,9 @@ def _run_all(spec: RunSpec) -> None:
             **({"knobs": outcome["knobs"]} if "knobs" in outcome else {}),
             "observed": obs,
             "params": params,
-            # STORED horizon convention (old workroots use it too); readers
-            # go through horizons.models_to_canonical
+            # STORED horizon convention (old workroots use it too), recorded
+            # so readers (horizons.models_to_canonical) never guess it
+            _hz.CONVENTION_KEY: _hz.STORED,
             "models": _hz_stored({
                 "pf": {loc: _qs_from_samples(s) for loc, s in pf_samples.items()},
                 "analogue": {loc: _qs_from_q(q) for loc, q in an_q.items()},

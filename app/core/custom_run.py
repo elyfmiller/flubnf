@@ -418,6 +418,7 @@ def run(spec, ds, workroot: Path, *, phase=lambda msg: None,
         **({"knobs": outcome["knobs"]} if "knobs" in outcome else {}),
         "observed": obs, "params": {},
         "scores": scores,
+        hz.CONVENTION_KEY: hz.STORED,
         "models": hz.models_to_stored({m: {n: five(q) for n, q in qd.items()}
                                        for m, qd in members.items()
                                        if m in ran}),

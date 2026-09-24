@@ -628,7 +628,8 @@ def _fans_from_results(results: dict, bundle: dict) -> dict:
     stored horizons ("1".."4") in every existing workroot, so its models are
     canonicalised before `_fan_entry` reads "0".."3".
     """
-    models = hz.models_to_canonical(results.get("models") or {})
+    models = hz.models_to_canonical(results.get("models") or {},
+                                    results.get(hz.CONVENTION_KEY))
     pf, an = models.get("pf") or {}, models.get("analogue") or {}
     observed = results.get("observed") or {}
     settled = {}

@@ -91,7 +91,8 @@ def _outlook_cards(res: dict | None, rid: str | None = None) -> tuple:
     model = next((m for m in ("pf", "analogue") if models.get(m)), "pf")
     observed = (res or {}).get("observed", {})
     by_model: dict = {}
-    models = _hzmod.models_to_canonical(models)
+    models = _hzmod.models_to_canonical(
+        models, (res or {}).get(_hzmod.CONVENTION_KEY))
     for mname, md in models.items():
         cards = {}
         for loc, qd in (md or {}).items():
@@ -177,7 +178,8 @@ def _diagram_data(res: dict | None) -> dict:
         params = res.get("params") or {}
         pf_p = params.get("pf") or {}
         p2_p = params.get("pf2s") or {}
-        models = _hzmod.models_to_canonical(res.get("models") or {})
+        models = _hzmod.models_to_canonical(
+            res.get("models") or {}, res.get(_hzmod.CONVENTION_KEY))
         out["has_pf2s"] = bool(p2_p) or bool(models.get("pf2s"))
         observed = res.get("observed") or {}
         picked = (models.get("pf") or models.get("analogue")

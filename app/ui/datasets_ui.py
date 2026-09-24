@@ -1143,7 +1143,8 @@ def run_page_extra(workroot: Path, res: dict) -> dict:
             "dataset_members": MEMBER_NAMES,
             "exports": custom_run.export_files(workroot),
             "fans_json": templating._script_json({
-                "models": models_to_canonical(res.get("models") or {}),
+                "models": models_to_canonical(
+                    res.get("models") or {}, res.get("horizon_convention")),
                 "observed": res.get("observed") or {},
                 "after": after, "date": fd, "names": MEMBER_NAMES,
                 "colors": templating._member_colors()})}
