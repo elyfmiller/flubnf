@@ -74,15 +74,22 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         all_locs = []
         locations_error = (f"State list unavailable ({type(e).__name__}); "
                            "runs will cover all 52 jurisdictions.")
+    # the default run is the full hub submission: the 52 jurisdictions AND
+    # US national, both ticked (US is a location of its own, never added
+    # behind the user's back)
     form = dict(_last_form) or {"forecast_date": _default_forecast_date(),
-                                "locations": ["all"], "engine": "all",
+                                "locations": ["all", US_CHOICE],
+                                "engine": "all",
                                 "weeks_to_drop": 0, "weeks_to_nowcast": 0,
                                 "replicates": 3, "members": 2, "season_start": ""}
     rid, res = shared._latest_results()
     # data panel: latest-vintage series for the selected locations (visible
     # before any run); seeded with US national, the panel's default
     import json as _json
-    sel = ["US (national)"] + [l for l in form["locations"] if l != "all"]
+    from app.core import us_national as _usn
+    sel = [US_CHOICE] + [l for l in form["locations"]
+                         if l != "all" and not _usn.is_us(l)]
+    us_checked = any(_usn.is_us(l) for l in form["locations"] or [])
     series = {}
     try:
         vs = state.data_mod.vintages()
@@ -109,6 +116,11 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         # the shipped models only: a legacy run's retired blend is not drawn
         from app.core.report_v2 import toggle_models
         fanq = {m: fanq[m] for m in toggle_models(fanq)}
+    # the FluSight hub's own forecasts for the same week (a vintage run's
+    # comparison; none recorded = no toggle)
+    official = _official_overlay(
+        (res or {}).get("forecast_date", ""),
+        sorted({l for qs in fanq.values() for l in qs}))
     # the hub view's latest-run card never shows a run on a custom dataset
     ledger_rows = [r for r in Ledger().rows(25)
                    if '"dataset": {' not in (r.get("spec") or "")][:5]
@@ -141,6 +153,8 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         "vintage_dates": vintage_dates, "anchor_note": anchor_note,
         "default_date": _default_forecast_date(),
         "locations_error": locations_error, "form": form,
+        "us_choice": US_CHOICE, "us_checked": us_checked,
+        "official_json": _script_json(official),
         "knob_panel": _knob_panel("forecast", form),
         "elapsed0": _console_elapsed(),
         "series_json": _script_json(series), "fanq_json": _script_json(fanq),
@@ -150,6 +164,48 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         "run_obs_json": _script_json((res or {}).get("observed", {})),
         "fc_date": (res or {}).get("forecast_date", ""),
         "dataset": None, "source_choices": _dsu.choices(), "own_tab": own_tab})
+
+
+#: the national checkbox's value (the data panel's name for the series)
+US_CHOICE = "US (national)"
+
+
+def _official_overlay(fc_date: str, locs: list) -> dict:
+    """{model: {loc: {h: {level: value}}}}: FluSight-ensemble's and
+    FluSight-baseline's recorded forecasts for a run's forecast date, keyed
+    like the run's own fans (physical horizons "1".."4", string levels).
+
+    The Retrospective's reader (playback._official_quantiles, the frozen
+    join reference_date = forecast date + 7); {} when the date has no hub
+    file, the clone lacks model-output, or anything fails to parse."""
+    if not fc_date or not locs:
+        return {}
+    try:
+        from app.core import playback
+        from app.core import us_national as _usn
+        from flubnf.settings import load_locations
+        present = playback._official_files_present(fc_date)
+        if not present:
+            return {}
+        _l = load_locations()
+        n2f = dict(zip(_l.location_name, _l.location.str.zfill(2)))
+        f2n = {}
+        for name in locs:
+            fips = "US" if _usn.is_us(name) else n2f.get(name)
+            if fips:
+                f2n[fips] = name
+        out = {}
+        for model in present:
+            q = playback._official_quantiles(model, fc_date, f2n) or {}
+            got = {loc: {str(int(h) + 1): {str(lv): float(v)
+                                          for lv, v in lvls.items()}
+                         for h, lvls in hs.items()}
+                   for loc, hs in q.items() if hs}
+            if got:
+                out[model] = got
+        return out
+    except Exception:
+        return {}
 
 
 # === Console controls: /run/stop (the rest: routes/shell.py, data.py) ===
@@ -238,8 +294,10 @@ def run_page(request: Request, run_id: str):
         "modified": _runs.is_modified(spec_json),
         "override": _knobs.override_reason(spec_json),
         # a legacy run's retired blend is not shown
+        # a model that fitted no location (the PF in a Groundhog-only run)
+        # gets no empty table
         "models": {m: v for m, v in (res.get("models") or {}).items()
-                   if m not in _report_v2_retired()},
+                   if v and m not in _report_v2_retired()},
         "settings": spec_settings(spec_json),
         "versions": version_pairs(row_sha, row_engine_versions),
         "can_rerun": (bool(spec_json) and status in RERUN_STATUSES
@@ -322,8 +380,7 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
         engine=str(d.get("engine") or ""),
         forecast_date=str(d.get("forecast_date") or ""),
         season_start=str(d.get("season_start") or ""),
-        locations=(locs if any(l.upper() in ("US", "US (NATIONAL)")
-                               for l in locs) else locs + ["US"]),
+        locations=locs,
         weeks_to_drop=int(d.get("weeks_to_drop") or 0),
         weeks_to_nowcast=int(d.get("weeks_to_nowcast") or 0),
         # pre-nowcast-rule rows kept the same-day week: reproduce, not default
@@ -446,6 +503,17 @@ def api_progress():
         # run claimed but workroot not created yet: report 0/N, not silence
         out["done"], out["total"] = 0, int(_status["expected_total"])
     return out
+
+
+def _scope_label(locs) -> str:
+    """The progress label's scope: '3 state(s)', '52 state(s) + US' or
+    'US only' (pipeline._run_all words it the same way)."""
+    from app.core import us_national as _usn
+    n = len(_usn.state_names(locs))
+    us = len(locs) > n
+    if not n:
+        return "US only" if us else "0 state(s)"
+    return f"{n} state(s)" + (" + US" if us else "")
 
 
 def _run_extra(members: int, mode: str, aux: str | None = None,
@@ -616,8 +684,8 @@ def run_models(request: Request,
     locations = [x.strip() for l in locations
                  for x in str(l).split(",") if x.strip()]
     if not locations:
-        _flash("Select at least one location, or all 52 jurisdictions. "
-               "Nothing was run.")
+        _flash("Select at least one location, all 52 jurisdictions or US "
+               "(national). Nothing was run.")
         return _back(request, "/forecast")
     # busy check + claim under _engine_lock (see its comment)
     with _engine_lock:
@@ -642,19 +710,21 @@ def run_models(request: Request,
         _status["started_utc"] = __import__("time").time()
         _status["run_label"] = f"{forecast_date} · queued"
     from app.core import us_national as _usn
-    if "all" in [l.lower() for l in locations]:
+    # "all" is the 52 jurisdictions; US national is its own choice (the
+    # form ticks both for a full hub submission) and is fitted directly
+    want_us = any(_usn.is_us(l) for l in locations)
+    picked = _usn.state_names(locations)
+    if "all" in [l.lower() for l in picked]:
         _l = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
         locs_list = list(_l.location_name[(_l.location.str.len() == 2)
                                           & (_l.abbreviation != "US")])
-        us = _l.location_name[_l.abbreviation == "US"]
-        if len(us):
-            locs_list.append(str(us.iloc[0]))   # national, fitted directly
     else:
-        locs_list = list(locations)
-    # national always fitted (as on the Retrospective tab)
-    locs_list = _usn.with_us(locs_list)
-    n_states = len(_usn.state_names(locs_list))
-    _status["run_label"] = f"{forecast_date} · {n_states} state(s) + US · queued"
+        locs_list = list(picked)
+    if want_us:
+        # a re-run keeps its recorded spelling; the form's box becomes "US"
+        spelled = [l for l in locations if _usn.is_us(l)][0]
+        locs_list.append("US" if spelled == US_CHOICE else spelled)
+    _status["run_label"] = f"{forecast_date} · {_scope_label(locs_list)} · queued"
     # progress denominator known now (shards grow toward it); clear the old
     # workroot so its .prog files never show. The analogue alone gets none.
     _status["workroot"] = None
