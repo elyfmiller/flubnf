@@ -279,43 +279,22 @@ takes ten.
 ### The evidence, and what is still a guess
 
 `.github/workflows/tests.yml` runs one test suite on `ubuntu-latest` and the
-same suite on `windows-latest`. In run 33200477476:
+same suite on `windows-latest`. On CI the ubuntu legs take about 5 minutes,
+the windows legs 60 to 70, and the `windows-setup-script` job on the same
+runner image about 3. The few Windows failures are nowhere near an hour of
+work, and the setup-script job rules out the runner hardware. What is left is
+the shape of the workload: this suite creates many temporary directories and
+spawns many subprocesses, which is exactly what real-time scanning is most
+expensive against. The corresponding author also sees live Defender
+notifications while running this project on his own Windows machine.
 
-| job | time |
-|---|---|
-| ubuntu, python 3.11 and 3.12 | about 5 minutes |
-| windows, python 3.11 | 62 minutes |
-| windows, python 3.12 | 71 minutes |
-| `windows-setup-script`, same runner image | about 3 minutes |
-
-Six tests failed on Windows, which is nowhere near an hour of work, so the
-failures are not where the time goes. The setup-script job runs on the same
-image and finishes in three minutes, so the runner hardware is not where it
-goes either. What is left is the shape of the workload: this suite creates
-many temporary directories and spawns many subprocesses, which is exactly
-what real-time scanning is most expensive against. The corresponding author
-also sees live Defender notifications while running this project on his own
-Windows machine.
-
-That is a strong hypothesis and it is deliberately still labelled one. Two
-things were added so the next CI run answers it with numbers instead:
-
-- both the ubuntu and the windows jobs now run pytest with
-  `--durations=25 --durations-min=1.0`, and each writes its table into the
-  job summary. Read side by side, a flat ratio across every test reads as an
-  environment cost, and a handful of tests carrying the whole hour reads as
-  a specific defect;
-- the windows job excludes its own workspace from Defender on the **3.12 leg
-  only**, so one run carries its own control. The legs differ in Python
-  version as well, which is a confound, but it runs against the hypothesis:
-  3.12 is currently the slower leg, so a 3.12 run that lands below 3.11
-  cannot be explained by the version.
-
-Doing that to a GitHub-hosted runner is a much smaller thing than doing it
-to a laptop. The runner is an ephemeral virtual machine that exists for the
-length of the job, holds no credentials, and is destroyed afterwards, so
-nothing is left less protected than it was. That is why the CI job may do it
-and `setup.ps1` may not.
+That is a strong hypothesis and it is still labelled one. Both the ubuntu and
+the windows jobs run pytest with `--durations=25 --durations-min=1.0` and
+write the table into the job summary: a flat ratio across every test reads as
+an environment cost, a handful of tests carrying the whole hour as a specific
+defect. An earlier CI step that excluded the windows workspace from Defender
+on one leg, as a control, has since been removed; CI no longer changes
+Defender at all.
 
 ### What setup.ps1 does about it
 
@@ -420,17 +399,13 @@ and that the `Add-MpPreference` and `Remove-MpPreference` lines above run as
 written in an elevated Windows PowerShell 5.1 window.
 
 `setup.ps1` takes the read path only, and the `windows-setup-script` job is
-therefore the only CI exercise of it. The test job is the exception and is
-worth being plain about: its `MEASUREMENT` step really does call
-`Add-MpPreference -ExclusionPath` and `-ExclusionProcess`, so a CI run does
-exercise the write path, on a throwaway runner and nowhere else. If those
-lines turn out to be wrong they will be wrong there first, which is the
-point of putting them there and not on a laptop. `Remove-MpPreference` is
-run nowhere: the runner is discarded instead.
+the only CI exercise of it. Nothing runs the write path
+(`Add-MpPreference`, `Remove-MpPreference`): the CI measurement step that
+once called `Add-MpPreference` on a throwaway runner was removed.
 
-And the causal claim itself is unmeasured until a CI run comes back with the
-duration tables. Until then this section says that Defender real-time
-scanning is the leading explanation for a 12x gap, not that it is the cause.
+The causal claim itself is unmeasured. This section says that Defender
+real-time scanning is the leading explanation for the gap, not that it is
+the cause.
 
 ## A hub cloned by hand
 

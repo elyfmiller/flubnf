@@ -1,30 +1,20 @@
 """The horizon convention, pinned before anyone reindexes it.
 
-THE TRAP THIS EXISTS TO CATCH. The repository carries two different
-zero-horizons and they are not the same week:
+Two zero-horizons, ONE WEEK APART:
 
-  stored "0"     the ORIGIN: the anchor week itself, the last observed
-                 point, as every samples.json.gz on disk keys it. The
-                 sealed record carries this and can never be migrated.
-  canonical "0"  the FIRST FORECAST week, the hub's own label, whose
-                 target_end_date equals the submission's reference_date.
+  stored "0"     the ORIGIN: the anchor week (last observed point), as every
+                 samples.json.gz on disk keys it; the sealed record is frozen.
+  canonical "0"  the FIRST FORECAST week (the hub's label; its
+                 target_end_date equals the reference_date).
 
-The two are ONE WEEK APART. That is why the reindex was not done as a
-rename: renaming would not drop a key, it would OVERWRITE the anchor with
-a forecast and move every submitted row a week early, silently, with the
-right row count and the wrong dates. This repository has shipped one
-off-by-one of exactly that shape already (see
-`app/core/submit.py:hub_reference_date`, the 2026-08-26 run whose file
-name and rows disagreed by a week).
-
-So the stored form is frozen and `app.core.horizons` translates at the
-storage boundary. In memory, above `read_week_samples`, horizons are
-"0".."3" and the anchor is ORIGIN. These tests hold that line.
+A rename would overwrite the anchor with a forecast and shift every
+submitted row a week early with the right row count. So the stored form is
+frozen and app.core.horizons translates at the storage boundary: in memory
+horizons are "0".."3" and the anchor is ORIGIN.
 """
 import sys
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -56,8 +46,7 @@ def test_the_boundary_round_trips_a_whole_week():
 
 
 def test_an_unknown_key_is_carried_through_not_guessed_at():
-    """A record carrying something this module was not taught about must
-    reach a reader intact and be refused there, not be silently renamed."""
+    """An unknown key is carried through intact, never renamed."""
     assert HZ.to_canonical({"9": "?"}) == {"9": "?"}
 
 
@@ -77,8 +66,8 @@ def test_floor_excludes_the_origin_from_the_collapse_test():
 
 
 def test_submission_horizon_zero_carries_canonical_zero_not_the_anchor():
-    """The frozen join. FluSight horizon 0's target_end_date IS the
-    reference date, and it is fed by canonical "0", never by ORIGIN."""
+    """FluSight horizon 0 (target_end_date == reference date) is fed by
+    canonical "0", never ORIGIN."""
     rows = SUB.quantile_rows(FIVE, "01", "2026-01-03")
     ref = SUB.hub_reference_date("2026-01-03")
     h0 = [r for r in rows if r["horizon"] == 0]
@@ -100,16 +89,15 @@ def test_the_four_submitted_horizons_are_canonical_zero_through_three():
 
 
 def test_a_member_carrying_only_the_anchor_submits_nothing():
-    """The failure mode the convention exists to prevent: if the anchor
-    were treated as a forecast, this would emit a row. It must not."""
+    """An anchor-only member submits nothing."""
     rows = SUB.quantile_rows({HZ.ORIGIN: FIVE[HZ.ORIGIN]}, "01", "2026-01-03")
     assert rows == []
 
 
 def test_a_stored_shaped_member_does_not_sneak_the_anchor_in():
-    """Feeding submit a STORED-shaped dict (anchor under "0") must not
-    submit the anchor as horizon 0. Nothing should do this, and if
-    something does it must be wrong loudly rather than by a week."""
+    """submit trusts its input to be canonical: a STORED-shaped dict would
+    submit the anchor as horizon 0 (documented here; the storage boundary
+    prevents it)."""
     stored = {"0": [999.0, 999.0, 999.0], "1": [1.0, 1.0, 1.0]}
     rows = SUB.quantile_rows(stored, "01", "2026-01-03")
     h0 = [r["value"] for r in rows if r["horizon"] == 0
@@ -120,8 +108,7 @@ def test_a_stored_shaped_member_does_not_sneak_the_anchor_in():
 
 
 def test_member_quantiles_never_consume_the_origin():
-    """member_quantiles_from_samples summarises forecast horizons only.
-    Feeding it an origin key must not produce a fifth horizon."""
+    """member_quantiles_from_samples ignores the origin key."""
     s = {h: [1.0, 10.0, 99.0] for h in HZ.HORIZONS}
     s[HZ.ORIGIN] = [1.0, 10.0, 99.0]
     out = ENS.member_quantiles_from_samples(s)
@@ -136,10 +123,8 @@ def test_scoring_never_consumes_the_origin():
 
 
 # ---------------------------------------------------------------------------
-# Run artefacts: results.json under a workroot. These have NO anchor, so the
-# two conventions are told apart by the presence of "4" and never guessed at.
-# A workroot written before the reindex is the user's record of what was
-# forecast, so the console must keep rendering it.
+# Run artefacts (results.json) carry NO anchor: conventions are told apart
+# by the presence of "4". Pre-reindex workroots must keep rendering.
 # ---------------------------------------------------------------------------
 
 def test_a_legacy_run_artefact_still_reads():
@@ -158,8 +143,7 @@ def test_a_canonical_run_artefact_is_left_alone():
 
 
 def test_detection_is_per_location_not_per_file():
-    """A half-rewritten artefact must not be converted by a whole-file
-    guess: each location map decides for itself."""
+    """Each location map decides its own convention (no whole-file guess)."""
     mixed = {"ensemble": {"Old": {"1": 1, "2": 2, "3": 3, "4": 4},
                           "New": {"0": 1, "1": 2, "2": 3, "3": 4}}}
     out = HZ.models_to_canonical(mixed)
@@ -173,11 +157,47 @@ def test_run_artefacts_round_trip():
 
 
 def test_read_samples_is_the_boundary_not_read_week_samples():
-    """read_samples is public and had other callers. Converting one level
-    up left the national aggregate reading a STORED record with a
-    CANONICAL loop, which scored the anchor as horizon 0 and dropped the
-    four-week horizon (test_retro_national caught it: 3 scored, 4
-    expected). The conversion belongs at the file parser."""
+    """The conversion lives in read_samples (the file parser), so every
+    caller, e.g. the national aggregate, sees canonical keys."""
     import inspect
     from app.core import retro
     assert "hz.record_to_canonical" in inspect.getsource(retro.read_samples)
+
+
+# ---------------------------------------------------------------------------
+# The public site: site_build emits canonical fan keys; the page's JS reads
+# exactly those, and a live run's stored results.json is canonicalised first.
+# ---------------------------------------------------------------------------
+
+def test_site_page_js_iterates_the_canonical_horizons():
+    """draw() iterates the canonical horizons (stored keys dropped week one)."""
+    import json
+    import re
+    from app.core import site_page
+    js = re.sub(r"\s+", "", site_page.JS)
+    stored = "['1','2','3','4']"
+    assert stored not in js and stored.replace("'", '"') not in js
+    canon = json.dumps(list(HZ.HORIZONS)).replace(" ", "")
+    assert "hs=" + canon in js, (
+        "draw() must iterate the canonical horizons from app.core.horizons")
+
+
+def _levels(v):
+    return {str(L): v + L for L in (0.1, 0.25, 0.5, 0.75, 0.9)}
+
+
+def test_live_run_fans_keep_all_four_weeks_from_a_legacy_results_json():
+    from app.core import site_build as sb
+    legacy = {h: _levels(10.0 * int(h)) for h in HZ.STORED_HORIZONS}
+    results = {"forecast_date": "2026-01-03",
+               "observed": {"Ohio": [["2025-12-27", 5.0],
+                                     ["2026-01-03", 6.0]]},
+               "models": {"pf": {"Ohio": legacy},
+                          "analogue": {"Ohio": legacy}}}
+    fans = sb._fans_from_results(results, {})
+    q = fans["Ohio"]["q"]
+    assert sorted(q) == list(HZ.HORIZONS)
+    # one week ahead (stored "1") is canonical "0"; four weeks ahead kept
+    assert q["0"]["0.5"] == pytest.approx(10.5)
+    assert q["3"]["0.5"] == pytest.approx(40.5)
+    assert fans["Ohio"]["an"] == {"0": 10.5, "1": 20.5, "2": 30.5, "3": 40.5}

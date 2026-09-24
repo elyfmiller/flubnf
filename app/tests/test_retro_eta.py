@@ -1,21 +1,12 @@
-"""The retrospective's remaining-time estimate, rebuilt after a field
-failure: on a live 52-state replay the displayed ETA rose to ~3.3 h and then
-did not move for over ninety minutes.
+"""The retrospective's remaining-time estimate.
 
-Three defects compounded. The server's estimate (global mean seconds per
-week times weeks remaining) only changed when a week completed, so it held a
-plateau for the whole of every ten-minute week; week cost climbs roughly
-threefold through a season, so as slower weeks raised the mean, the falling
-remaining count cancelled it and the plateau barely moved between weeks
-either; and the client smoothed that flat value with an EMA that resisted
-upward corrections, re-pinning the display to it every few polls.
-
-The estimator here is recency-weighted, shaped by a completed same-scope
-season's per-week cost profile, credited with the seconds already inside the
-week in flight, and honest: a range instead of a point, withdrawn entirely
-when it cannot be computed. The replay regression at the bottom drives the
-REAL recorded full-grid seasons through both estimators and pins the
-improvement, so the fix can never quietly regress to the frozen one.
+The old ETA (global mean per week x weeks left, EMA-smoothed client-side)
+froze for whole weeks: it only moved on week completion, rising week costs
+cancelled the falling count, and the EMA resisted upward corrections. The
+estimator is recency-weighted, shaped by a same-scope season's per-week
+cost profile, credited with time already spent in the week in flight, and
+reported as a range (withdrawn when it cannot be computed). The replay
+tests drive the REAL recorded full-grid seasons through both estimators.
 """
 import json
 import subprocess
@@ -32,6 +23,7 @@ FLAT = ((0.0, 1.0), (1.0, 1.0))   # an explicit flat profile: the old default
 
 from app.core import retro                            # noqa: E402
 from app.ui import server as srv                      # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
 
 client = TestClient(srv.app)
 
@@ -51,61 +43,59 @@ needs_jsc = pytest.mark.skipif(not JSC.is_file(),
 
 @pytest.fixture(autouse=True)
 def _isolated_status():
-    before = dict(srv._retro_status)
+    before = dict(ui_retro_seasons._retro_status)
     yield
-    srv._retro_status.clear()
-    srv._retro_status.update(before)
+    ui_retro_seasons._retro_status.clear()
+    ui_retro_seasons._retro_status.update(before)
 
 
 # ------------------------------------------------------- the pure estimator
 
 def test_estimate_needs_a_measured_week_and_a_remaining_one():
-    assert srv._eta_estimate([], [0.5]) is None
-    assert srv._eta_estimate([(0.0, 100.0)], []) is None
+    assert ui_retro_seasons._eta_estimate([], [0.5]) is None
+    assert ui_retro_seasons._eta_estimate([(0.0, 100.0)], []) is None
 
 
 def test_estimate_is_recency_weighted_not_a_global_mean():
-    # ten fast weeks then three slow ones: the machine is slow NOW, and the
-    # estimate must say so instead of averaging the past away
+    # ten fast weeks then three slow ones: the machine is slow NOW
     measured = ([(i / 19, 100.0) for i in range(10)]
                 + [(i / 19, 300.0) for i in range(10, 13)])
     remaining = [i / 19 for i in range(13, 20)]
-    _, mid, _ = srv._eta_estimate(measured, remaining)
+    _, mid, _ = ui_retro_seasons._eta_estimate(measured, remaining)
     global_mean = (10 * 100.0 + 3 * 300.0) / 13
     assert mid > global_mean * 7          # above what the old estimator said
     assert mid > 200.0 * 7                # the recent slow weeks dominate
 
 
 def test_profile_prices_the_remaining_weeks_not_the_average_week():
-    # a season whose late weeks cost twice its early ones: with only early
-    # weeks measured, the flat estimate under-prices what is left
+    # late weeks cost twice the early ones: flat under-prices what is left
     profile = tuple((i / 9, 0.5 + i / 9) for i in range(10))   # 0.5x -> 1.5x
     measured = [(i / 9, 100.0 * (0.5 + i / 9)) for i in range(3)]
     remaining = [i / 9 for i in range(3, 10)]
-    _, flat, _ = srv._eta_estimate(measured, remaining, profile=FLAT)
-    _, shaped, _ = srv._eta_estimate(measured, remaining, profile=profile)
+    _, flat, _ = ui_retro_seasons._eta_estimate(measured, remaining, profile=FLAT)
+    _, shaped, _ = ui_retro_seasons._eta_estimate(measured, remaining, profile=profile)
     assert shaped > flat * 1.3            # the late-season climb is priced in
 
 
 def test_spent_seconds_inside_the_week_in_flight_are_credited():
     measured = [(0.0, 600.0), (0.1, 600.0), (0.2, 600.0)]
     remaining = [0.3, 0.4, 0.5]
-    _, fresh, _ = srv._eta_estimate(measured, remaining, spent_s=0.0,
-                                    profile=FLAT)
-    _, part, _ = srv._eta_estimate(measured, remaining, spent_s=200.0,
-                                   profile=FLAT)
+    _, fresh, _ = ui_retro_seasons._eta_estimate(measured, remaining, spent_s=0.0,
+                                                 profile=FLAT)
+    _, part, _ = ui_retro_seasons._eta_estimate(measured, remaining, spent_s=200.0,
+                                                profile=FLAT)
     assert part == pytest.approx(fresh - 200.0)
-    # the credit never exceeds the week in flight: a week running long
-    # cannot drive the estimate below the untouched weeks' cost
-    _, over, _ = srv._eta_estimate(measured, remaining, spent_s=5000.0,
-                                   profile=FLAT)
+    # the credit never exceeds one week, so a week running long cannot push
+    # the estimate below the untouched weeks' cost
+    _, over, _ = ui_retro_seasons._eta_estimate(measured, remaining, spent_s=5000.0,
+                                                profile=FLAT)
     assert over == pytest.approx(fresh - 600.0)
 
 
 def test_range_is_ordered_and_widens_when_little_is_measured():
     remaining = [0.5, 0.6, 0.7]
-    lo1, mid1, hi1 = srv._eta_estimate([(0.0, 600.0)], remaining)
-    lo9, mid9, hi9 = srv._eta_estimate(
+    lo1, mid1, hi1 = ui_retro_seasons._eta_estimate([(0.0, 600.0)], remaining)
+    lo9, mid9, hi9 = ui_retro_seasons._eta_estimate(
         [(i / 20, 600.0) for i in range(9)], remaining)
     assert lo1 < mid1 < hi1 and lo9 < mid9 < hi9
     assert (hi1 - lo1) / mid1 > (hi9 - lo9) / mid9
@@ -119,8 +109,8 @@ def test_range_is_ordered_and_widens_when_little_is_measured():
 def _running_season(tmp_path, monkeypatch, scope="all", spent_age=None):
     """A live season two weeks in, week three in flight, over a monkeypatched
     vintage calendar so positions and the in-flight scan are exercised."""
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     monkeypatch.setattr(retro, "available_seasons", lambda: [OTHER, SEASON])
     monkeypatch.setattr(retro, "season_vintages",
                         lambda s: list(VINTAGES) if s == SEASON else [])
@@ -136,7 +126,7 @@ def _running_season(tmp_path, monkeypatch, scope="all", spent_age=None):
         t0 = time.time() - spent_age
         import os
         os.utime(f, (t0, t0))
-    srv._retro_status[SEASON] = "running"
+    ui_retro_seasons._retro_status[SEASON] = "running"
     retro.write_meta(root, {"status": "running", "total_weeks": len(VINTAGES),
                             "weeks_completed": 2, "elapsed_s": 240.0,
                             "segment_start_utc": None,
@@ -151,9 +141,8 @@ def _get(season=SEASON):
 
 
 def test_estimate_moves_between_week_completions(tmp_path, monkeypatch):
-    """The frozen-ETA regression itself: with NO new week completing, time
-    passing inside the week in flight must lower the estimate. The old
-    estimator held a plateau here for the whole of every week."""
+    """The frozen-ETA regression: with no week completing, time spent in the
+    week in flight lowers the estimate."""
     root = _running_season(tmp_path, monkeypatch, spent_age=10.0)
     p1 = _get()
     assert p1["eta_s"] is not None
@@ -174,7 +163,7 @@ def test_basis_names_the_weeks_and_the_profile(tmp_path, monkeypatch):
         "status": "done", "settings": {"scope": "all", "season": OTHER},
         "week_seconds": {f"2096-11-{d:02d}": 100.0 + 20.0 * d
                          for d in range(1, 11)}})
-    srv._profile_scan.cache_clear()
+    ui_retro_seasons._profile_scan.cache_clear()
     p = _get()
     assert p["eta_basis"] == ("estimate from 2 completed weeks, weighted "
                               f"by the {OTHER} week profile")
@@ -189,7 +178,7 @@ def test_profile_must_match_the_location_scope(tmp_path, monkeypatch):
         "status": "done", "settings": {"scope": "all", "season": OTHER},
         "week_seconds": {f"2096-11-{d:02d}": 100.0 + 20.0 * d
                          for d in range(1, 11)}})
-    srv._profile_scan.cache_clear()
+    ui_retro_seasons._profile_scan.cache_clear()
     p = _get()
     assert p["eta_basis"] == "estimate from 2 completed weeks, shaped by the recorded full-grid week profile"
 
@@ -201,17 +190,15 @@ def test_a_thin_record_cannot_serve_as_a_profile(tmp_path, monkeypatch):
     retro.write_meta(other, {           # three weeks carry no season shape
         "status": "done", "settings": {"scope": "all", "season": OTHER},
         "week_seconds": {f"2096-11-{d:02d}": 300.0 for d in range(1, 4)}})
-    srv._profile_scan.cache_clear()
+    ui_retro_seasons._profile_scan.cache_clear()
     p = _get()
     assert "weighted by" not in p["eta_basis"]
 
 
 # ------------------------------------------- the replay, on the real seasons
-#
-# Per-week durations reconstructed from the sealed full-grid runs on the
-# development machine (each week directory's earliest file mtime to its
-# samples.json mtime), frozen here so the regression runs anywhere. The
-# between-week overhead measured there was ~23.5 s.
+# Per-week durations reconstructed from the sealed full-grid runs (earliest
+# file mtime to samples.json mtime per week), frozen so this runs anywhere.
+# Between-week overhead there was ~23.5 s.
 
 REAL_2324 = [199.9, 204.3, 218.6, 218.0, 234.8, 253.7, 257.5, 274.8, 285.0,
              297.9, 307.8, 322.0, 337.9, 349.8, 374.4, 377.0, 396.6, 414.3,
@@ -237,7 +224,7 @@ def _replay(durs, profile):
     for k in range(1, n):
         actual = sum(durs[k:]) + GAP * (n - k)
         old = (sum(durs[:k]) / k) * (n - k)
-        lo, mid, hi = srv._eta_estimate(
+        lo, mid, hi = ui_retro_seasons._eta_estimate(
             [(i / (n - 1), durs[i]) for i in range(k)],
             [i / (n - 1) for i in range(k, n)],
             profile=profile, overhead_s=GAP)
@@ -249,9 +236,9 @@ def _replay(durs, profile):
 
 
 def test_replay_of_the_real_seasons_beats_the_frozen_estimator():
-    """The proof the rebuild is better, not an assertion: the real 2024-25
-    full-grid run replayed week by week, with the real 2023-24 run as its
-    same-scope profile, exactly as the server would use them."""
+    """The real 2024-25 run replayed week by week with 2023-24 as its
+    same-scope profile, exactly as the server would use them (and the
+    reverse)."""
     mae_old, mae_new, coverage = _replay(REAL_2425, _profile_points(REAL_2324))
     assert mae_old > 45 * 60              # the old estimator was ~50 min off
     assert mae_new < 0.55 * mae_old       # the rebuild at least halves that
@@ -265,11 +252,9 @@ def test_replay_of_the_real_seasons_beats_the_frozen_estimator():
 
 
 def test_the_default_shape_beats_flat_on_both_recorded_seasons():
-    """The no-profile default is not flat: measured on the two recorded
-    full-grid replays, a flat shape is biased 38 to 47 minutes low with a
-    band that almost never holds the truth (the timer that rose for half a
-    season before it fell, 2026-09-03). The shipped linear default must beat
-    flat on BOTH seasons and keep an honest band."""
+    """The no-profile default is not flat: on both recorded seasons a flat
+    shape runs 38-47 min low with a band that rarely holds the truth. The
+    shipped linear default must beat it and keep an honest band."""
     for durs in (REAL_2425, REAL_2324):
         mae_flat, _, cov_flat = _replay_with(durs, FLAT)
         mae_def, _, cov_def = _replay_with(durs, None)
@@ -284,7 +269,7 @@ def _replay_with(durs, profile):
     for k in range(1, n):
         actual = sum(durs[k:]) + GAP * (n - k)
         old = (sum(durs[:k]) / k) * (n - k)
-        lo, mid, hi = srv._eta_estimate(
+        lo, mid, hi = ui_retro_seasons._eta_estimate(
             [(i / (n - 1), durs[i]) for i in range(k)],
             [i / (n - 1) for i in range(k, n)],
             profile=profile, overhead_s=GAP)
@@ -296,46 +281,39 @@ def _replay_with(durs, profile):
 
 
 def test_the_profile_is_what_moves_the_estimate_on_the_real_data():
-    """Ten weeks into the real 2024-25 replay (the position the field report
-    was filed from), the season profile shifts the estimate by over an hour
-    toward the truth: the whole reason remaining weeks are priced by shape
-    rather than by the current average."""
+    """Ten weeks into the real 2024-25 replay the season profile moves the
+    estimate over an hour toward the truth."""
     n = len(REAL_2425)
     measured = [(i / (n - 1), REAL_2425[i]) for i in range(10)]
     remaining = [i / (n - 1) for i in range(10, n)]
     actual = sum(REAL_2425[10:]) + GAP * (n - 10)
-    _, flat, _ = srv._eta_estimate(measured, remaining, overhead_s=GAP,
-                                   profile=FLAT)
-    _, shaped, _ = srv._eta_estimate(measured, remaining,
-                                     profile=_profile_points(REAL_2324),
-                                     overhead_s=GAP)
+    _, flat, _ = ui_retro_seasons._eta_estimate(measured, remaining, overhead_s=GAP,
+                                                profile=FLAT)
+    _, shaped, _ = ui_retro_seasons._eta_estimate(measured, remaining,
+                                                  profile=_profile_points(REAL_2324),
+                                                  overhead_s=GAP)
     assert shaped - flat > 3600.0
     assert abs(shaped - actual) < abs(flat - actual)
-    # and the no-profile DEFAULT, shaped by the engine's cost model, sits
-    # between them: closer to the truth than flat (the running mean that
-    # rose through half a season before it fell, measured 2026-09-03)
-    _, default, _ = srv._eta_estimate(measured, remaining, overhead_s=GAP)
+    # the no-profile default (the engine's cost-model shape) also beats flat
+    _, default, _ = ui_retro_seasons._eta_estimate(measured, remaining, overhead_s=GAP)
     assert abs(default - actual) < abs(flat - actual)
 
 
 # ------------------------------------------------------- the client ticker
 
 def test_ticker_no_longer_smooths_or_resists_the_server():
-    """The EMA and its upward-correction counter are what pinned the display
-    to a frozen server value; the ticker must take the range as sent."""
+    """No EMA or upward-correction counter: the ticker shows the range sent."""
     assert "st.ema" not in TICKER_SRC and "0.3 *" not in TICKER_SRC
     assert "st.up" not in TICKER_SRC and "st.shown" not in TICKER_SRC
     assert "eta_lo_s" in TICKER_SRC and "eta_hi_s" in TICKER_SRC
-    # the basis line prefers the server's own statement of what the
-    # estimate rests on, and still says plainly when there is none yet
+    # the basis line prefers the server's statement, or says there is none
     assert "eta_basis" in TICKER_SRC
     assert "estimate arrives once the first week completes" in TICKER_SRC
 
 
 def test_ticker_updates_every_element_that_states_progress():
-    """One source of truth (field-found: a card whose headline read 10/32
-    while the line under it still said 1/32): the ticker must drive every
-    .rcount, and the index template must mark its secondary counter so."""
+    """Every element stating progress is driven by the ticker (every .rcount),
+    so a card never shows two counts."""
     assert ".rcount" in TICKER_SRC
     retro_html = (Path(__file__).resolve().parents[1] / "ui" / "templates"
                   / "retro.html").read_text(encoding="utf-8")
@@ -350,11 +328,8 @@ def test_ticker_updates_every_element_that_states_progress():
 
 
 def test_ticker_freezes_honestly_when_polls_stop_arriving():
-    """A quit or crashed app must not leave the open tab counting a dead
-    replay down to '~1 min left' overnight: after 3 consecutive failed
-    polls the elapsed clock and the ETA decay freeze at their last-good
-    values and the basis line says the connection is lost; any successful
-    poll clears the freeze and the note."""
+    """After 3 failed polls the clock and ETA freeze at their last-good values
+    and say the connection is lost; a successful poll clears it."""
     assert "Connection lost. Numbers paused." in TICKER_SRC
     assert "fails = 0; stalled = false" in TICKER_SRC
     assert "stalled = true; stallAt = Date.now()" in TICKER_SRC
@@ -366,10 +341,8 @@ def test_ticker_freezes_honestly_when_polls_stop_arriving():
 
 
 def test_reload_yields_to_the_guard_modal_and_a_focused_form():
-    """The busy predicate the retro index hands the ticker defers reloads
-    while the guard modal is open AND while focus sits inside a form (a
-    half-marked custom-locations checklist must not be wiped by a replay
-    finishing); the ticker keeps polling and painting either way."""
+    """Reloads wait while the guard modal is open or focus is in a form (so a
+    half-marked checklist survives); the ticker keeps polling either way."""
     retro_html = (Path(__file__).resolve().parents[1] / "ui" / "templates"
                   / "retro.html").read_text(encoding="utf-8")
     assert "GUARD_BUSY" in retro_html

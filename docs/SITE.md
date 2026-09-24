@@ -3,8 +3,8 @@
 STATUS, read this first: the site generator ships and the loop below is the
 designed publishing path, but nothing in this document is live yet. `site/`
 and `.github/workflows/pages.yml` are deliberately gitignored until the lab
-decides to publish (see `.gitignore` lines 19-26, "stay local until the lab
-decides to publish"); git tracks zero files under `site/`, the only tracked
+decides to publish (see the `.gitignore` entry "stay local until the lab
+publishes"); git tracks zero files under `site/`, the only tracked
 workflow is `tests.yml`, and `git add site/` is silently ignored. Everything
 below that speaks of committing, pushing, or deploying describes what the
 path WOULD do once those ignore rules are lifted.

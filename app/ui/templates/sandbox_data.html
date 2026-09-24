@@ -1,33 +1,60 @@
-{# Fill data.exp from the hub archive. This partial sits INSIDE the editor's
-   save form, and a form inside a form is dropped by the HTML parser, so the
-   button names its own action with formaction instead of a nested form.
-   Extra fields of the outer form ride along; the fill route ignores them.
-   The date inputs step 7 days from 2020-01-04, a Saturday, so they land
-   on the hub's week-ending days. #}
-<fieldset class="sbfill">
- <legend>Fill from the archive</legend>
- {% if locations %}
- {% set _src = data_source or {} %}
+{# Load data.exp from the FluSight hub, a stored dataset, or a CSV upload.
+   This partial sits INSIDE the editor's form, and a form inside a form is
+   dropped by the HTML parser, so each button names its own action with
+   formaction (the upload also its enctype) instead of a nested form; the
+   editor's text rides along and is saved first. The date inputs step 7
+   days from 2020-01-04, a Saturday, so they land on week-ending days.
+   sandbox.js shows the location or the group that fits the source. #}
+{% import "_tips.html" as tips %}{% set _src = data_source or {} %}
+{% set _ds = pick_dataset or ((_src.dataset or {}).id if _src.dataset else "") %}
+<details class="adv sbfill"{% if upload_report or pick_dataset %} open{% endif %}>
+ <summary>Load data</summary>
+ {% if locations or datasets %}
  <div class="row">
-  <span><label for="sbfill-loc">Location</label>
+  <span>{{ tips.label("Source", "sb-source", "The hub's latest settled counts, the counts as the hub held them on a past date (what a forecaster saw then), or a dataset you uploaded.", for_="sbfill-source") }}
+   <select id="sbfill-source" name="source">
+    {% if locations %}<optgroup label="FluSight hub">
+     <option value="settled" {% if _src.asof == "settled" and not _ds %}selected{% endif %}>latest (settled)</option>
+     {% for v in vintages %}<option value="{{ v }}" {% if _src.asof == v and not _ds %}selected{% endif %}>as of {{ v }}</option>{% endfor %}
+    </optgroup>{% endif %}
+    {% if datasets %}<optgroup label="Your datasets">
+     {% for d in datasets %}<option value="dataset:{{ d.id }}" {% if _ds == d.id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}
+    </optgroup>{% endif %}
+   </select></span>
+  {% if locations %}<span id="sbfill-locwrap"><label for="sbfill-loc">Location</label>
    <select id="sbfill-loc" name="location">
     {% for l in locations %}<option value="{{ l.name }}" {% if _src.location == l.name %}selected{% endif %}>{{ l.name }}</option>{% endfor %}
-   </select></span>
+   </select></span>{% endif %}
+  {% if datasets %}<span id="sbfill-groupwrap"><label for="sbfill-group">Group</label>
+   <select id="sbfill-group" name="group">
+    {% for d in datasets %}{% for g in d.groups %}<option value="{{ g.name }}" data-ds="{{ d.id }}" data-first="{{ g.first }}" data-last="{{ g.last }}" {% if _ds == d.id and _src.location == g.name %}selected{% endif %}>{{ g.name }}</option>{% endfor %}{% endfor %}
+   </select></span>{% endif %}
   <span><label for="sbfill-start">Start</label>
    <input id="sbfill-start" name="start" type="date" step="7" min="2020-01-04" value="{{ _src.start or data_range.start }}"></span>
   <span><label for="sbfill-end">End</label>
    <input id="sbfill-end" name="end" type="date" step="7" min="2020-01-04" value="{{ _src.end or data_range.end }}"></span>
-  <span><label for="sbfill-source">Source</label>
-   <select id="sbfill-source" name="source">
-    <option value="settled" {% if _src.asof == "settled" %}selected{% endif %}>settled truth</option>
-    {% for v in vintages %}<option value="{{ v }}" {% if _src.asof == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
-   </select></span>
-  <button class="pill" formaction="/sandbox/models/{{ editing.name }}/fill-data" formmethod="post">Fill data.exp</button>
+  <span class="sbsetpop"><span class="lblrow"><label><input type="checkbox" name="set_pop" value="1"> Set N</label>{{ tips.tip("sb-setpop", "set N", "Also sets the model's N line to this location's or group's population. Refused for a model that derives i0 from N; start from the Oracle SIHRS filter for that.") }}</span></span>
+  <button class="pill" formaction="/sandbox/models/{{ editing.name }}/fill-data" formmethod="post">Load into data.exp</button>
  </div>
- {% if data_source %}
- <p class="hint">data.exp holds {{ data_source.location }}, {{ data_source.start }} to {{ data_source.end }}, {% if data_source.asof == "settled" %}settled truth{% else %}vintage of {{ data_source.asof }}{% endif %} ({{ data_source.rows }} weeks{% if data_source.dropped %}, {{ data_source.dropped }} dropped missing{% endif %})</p>
- {% endif %}
  {% else %}
- <p class="hint">No hub archive here: type the rows or copy an example.</p>
+ <p class="hint">No hub archive here: upload a CSV, type the rows or copy an example.</p>
  {% endif %}
-</fieldset>
+ <div class="row sbupload">
+  <span>{{ tips.label("Upload a CSV", "sb-upload", "A grouped CSV (date, target_group, value, optional population) or a hubverse time series (target_end_date, location, observation); weekly, comma, semicolon or tab separated, up to " ~ upload_mb ~ " MB. It is checked as the Data tab checks it, then kept as one of your datasets.", for_="sbfill-csv") }}
+   <input id="sbfill-csv" name="csv" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain"></span>
+  <span><label for="sbfill-kind">Values</label>
+   <select id="sbfill-kind" name="kind"><option value="">from the values</option><option value="count">counts</option><option value="rate">rates</option></select></span>
+  <button class="pill" formaction="/sandbox/models/{{ editing.name }}/upload-data" formmethod="post" formenctype="multipart/form-data">Upload and load</button>
+ </div>
+ {% if upload_report %}
+ <div class="sbreport" role="status">
+  {% if upload_report.problems %}<p class="sb-bad">Not loaded: {{ upload_report.problems | length }} problem{{ "" if upload_report.problems | length == 1 else "s" }} in the file.</p>
+  <ul>{% for p in upload_report.problems %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}
+  {% if upload_report.warnings %}<p class="sb-warn">Worth a look:</p>
+  <ul>{% for w in upload_report.warnings %}<li>{{ w }}</li>{% endfor %}</ul>{% endif %}
+ </div>
+ {% endif %}
+</details>
+{% if data_source %}
+<p class="hint">data.exp holds {{ data_source.location }}, {{ data_source.start }} to {{ data_source.end }}, {% if data_source.asof == "settled" %}settled truth{% elif data_source.asof == "dataset" %}dataset {{ data_source.dataset.name }}{% else %}vintage of {{ data_source.asof }}{% endif %} ({{ data_source.rows }} weeks{% if data_source.dropped %}, {{ data_source.dropped }} dropped missing{% endif %}){% if data_source.population %}; population {{ "{:,}".format(data_source.population | int) }}{% endif %}</p>
+{% endif %}

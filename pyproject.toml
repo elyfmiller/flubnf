@@ -1,12 +1,12 @@
 [project]
 name = "flubnf"
 version = "1.1.0"
-description = "Mechanistic influenza forecasting for CDC FluSight: SIHRS in BNGL, fitted with PyBNF (particle filter + adaptive MCMC) on the bngsim engine"
+description = "Influenza forecasting console for CDC FluSight: the Oracle SIHRS (a BNGL model fitted by a PyBNF particle filter on bngsim) and the empirical Groundhog"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.11"
-# Kept identical to CITATION.cff, which is the citable record of the same
-# release: one author, one repository, one version.
+# Keep in step with CITATION.cff (and the version with flubnf/__init__.py and
+# FluBNF.app/Contents/Info.plist).
 authors = [
     { name = "Ely F. Miller", email = "efinn2019@gmail.com" },
 ]
@@ -23,19 +23,12 @@ classifiers = [
 dependencies = [
     "numpy",
     "pandas",
-    "scipy",
-    "pydantic",
     "rich",
-    "pyyaml",
     "typer",
-    "pymmwr",
-    "requests",
 ]
 
-# Every sub-table of [project] must follow the last plain key above, or TOML
-# reads that key as part of the sub-table: [project.urls] placed before
-# `dependencies` silently made the dependency list a URL entry, and the wheel
-# would have declared no dependencies at all.
+# [project.*] sub-tables must follow the last plain [project] key, or TOML
+# reads later keys into them (dependencies once became a URL entry).
 [project.urls]
 Homepage = "https://github.com/elyfmiller/flubnf"
 Repository = "https://github.com/elyfmiller/flubnf"
@@ -44,27 +37,18 @@ Release-notes = "https://github.com/elyfmiller/flubnf/blob/main/docs/archive/REL
 
 [project.optional-dependencies]
 app = ["fastapi", "uvicorn", "jinja2", "python-multipart", "plotly", "pywebview"]
-dev = ["pytest", "httpx2"]
-# The CovidHub ships its truth as a versioned parquet rather than one dated CSV
-# per week, so the COVID vintage adapter needs a parquet engine. Kept out of the
-# base dependencies: the influenza path reads CSV and must not grow a 36 MB
-# wheel it never opens.
-covid = ["pyarrow"]
+# pyyaml: the hub metadata tests parse YAML; nothing at runtime does.
+dev = ["pytest", "httpx2", "pyyaml"]
 
 [project.scripts]
 flubnf = "flubnf.cli:app"
 
 [tool.setuptools.packages.find]
-# `scripts/` is deliberately absent. It holds long-running operational entry
-# points (pre-season seeding, the weekly loop, vintage replays) that need the
-# whole clone -- the hub, an engine venv, BNG2.pl -- and `scripts` is far too
-# generic a top-level name to put in site-packages. Nothing INSIDE the wheel
-# may depend on it: the validated baseline construction used to be loaded out
-# of scripts/anchor_analysis.py by path and so raised FileNotFoundError on
-# every installed copy; it now lives in flubnf/baseline.py. The one remaining
-# consumer, the adaptive-MCMC engine, checks for its runner and says plainly
-# that it needs a clone. README's Install section states what is supported.
+# scripts/ is not packaged: operational runners that need a full clone (hub,
+# engine venv, BNG2.pl), and too generic a top-level name. Nothing in the
+# wheel may import it.
 include = ["flubnf*", "app*"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
+testpaths = ["tests", "app/tests"]

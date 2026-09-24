@@ -1,45 +1,20 @@
-"""GroundhogCGR on its own: a season replay of the calendar member alone.
+"""RESEARCH CLI ONLY (`flubnf groundhog retro`): analogue-alone season replays
+with coverage and bootstrap comparisons.
 
-WHY THIS IS A SEPARATE PATH FROM `app.core.retro`
--------------------------------------------------
-`retro.run_season` replays the whole product: it fits the particle filter
-for every location and week, then runs the calendar member beside it. The
-filter is where the time goes (about four to thirteen minutes a week, three
-seasons in roughly fifteen hours) and it needs the PyBNF fork and its
-engine environment.
+GroundhogCGR on its own: a season replay of the calendar member alone.
 
-Groundhog needs none of that. It is a closed-form empirical forecast:
-anchor on the last observed value, pool growth ratios from calendar-matched
-prior seasons, take quantiles. A whole season replays in about two minutes
-with nothing but this repository and a hub clone. So when the question is
-"what does the calendar member score on its own", which is the question a
-standalone submission has to answer, paying for the filter is pure waste,
-and being blocked on the filter's toolchain is worse.
+Separate from `retro.run_season` because the question "what does the
+calendar member score alone" should not pay for (or wait on the toolchain
+of) the particle filter: this replays a season in ~2 minutes from the repo
+and a hub clone. It calls the same engine (`app.core.engines.analogue.run`)
+with retro.run_week's spec shape; the quantiles were verified identical to
+the console's stored ones. retro.run_season(engine="analogue") is the console
+path; this one adds research arms, coverage and a bootstrap comparison.
 
-This module is that replay. It calls the SAME engine the console calls
-(`app.core.engines.analogue.run`) with the SAME spec shape
-`retro.run_week` builds, so a number produced here is the number the
-product produces, not a harness's approximation of it. That equivalence is
-not asserted, it was measured: on the two weeks the console fitted end to
-end on 2026-09-21, this path's quantiles match the console's stored ones
-to 0.0 across 8,740 values.
-
-WHAT IS SCORED
---------------
-The console's own universe: the 52 jurisdictions with a two-character FIPS,
-US national excluded (`flubnf/cli.py:retro_cmd`), which is the convention
-`docs/archive/RELEASE-1.0.md` publishes on. The national row can be added with
-`with_us=True` and is then reported SEPARATELY, never pooled in: pooling
-it is what made an earlier set of member figures read 0.7613 where the
-published convention gives 0.7714.
-
-Vintage discipline is the engine's: the anchor and the admissions donors
-come from the hub vintage dated the as-of, never a later file.
-
-Horizons in everything this module writes are the hub's own 0..3
-(`app.core.horizons`). These artefacts are new, carry no anchor week, and
-have no legacy form to stay compatible with, so they are born canonical
-and say so in their header.
+Scores the 52 two-character-FIPS jurisdictions (the published convention);
+US, with `with_us=True`, is reported separately, never pooled. Vintage
+discipline is the engine's. Artefacts are born canonical (hub horizons 0..3,
+no anchor week) and say so in their header.
 """
 from __future__ import annotations
 
@@ -65,10 +40,8 @@ STATE = REPO / "app" / "state" / "groundhog"
 BANDS = (("50", 0.25, 0.75, 0.50), ("80", 0.10, 0.90, 0.80),
          ("95", 0.025, 0.975, 0.95))
 
-#: the arm with no auxiliary pool: the bare calendar analogue. The
-#: directory keeps the name it had when the bare analogue was what
-#: shipped; since 2026-09-22 the shipped member is the Groundhog, which
-#: this module runs as the `flusurv` arm (`--aux flusurv`).
+#: the bare calendar analogue's arm (historical dir name: the shipped
+#: Groundhog is the `flusurv` arm, `--aux flusurv`)
 SHIPPED = "shipped"
 
 
@@ -114,15 +87,8 @@ def score_week(q_by_loc: dict, asof: str, n2f: dict, truth: dict) -> tuple:
     frame, the project's frozen cell rule: truth above zero, median above
     zero, cell present in the validated FluSight baseline. `coverage` holds
     one row per (cell, band) with a hit flag, and a `scored` flag saying
-    whether that cell is in `cells`.
-
-    ONE UNIVERSE FOR BOTH HEADLINE NUMBERS. Coverage needs no baseline, so
-    it could be computed on every cell with truth above zero, and an
-    earlier analysis of this member did exactly that while computing relWIS
-    on the scored cells only. The two figures then sat side by side in one
-    table describing two different sets of cells. `summarise` uses the
-    scored rows only; the unscored ones stay in the file, flagged, so the
-    wider figure can still be recomputed by anyone who wants it."""
+    whether that cell is in `cells`: `summarise` reports coverage on the
+    scored cells only, so relWIS and coverage describe the same cells."""
     cells = scoring.score_quantiles(q_by_loc, asof, n2f, truth)
     scored = (set(zip(cells.fips.astype(str), cells.horizon.astype(int)))
               if not cells.empty else set())
@@ -227,9 +193,7 @@ def _states(df: pd.DataFrame) -> pd.DataFrame:
     return df[df.fips.astype(str) != "US"]
 
 
-# NOTE for anyone editing below: DataFrame.asof is a pandas METHOD, so the
-# column has to be reached as df["asof"], never df.asof. The attribute form
-# returns a bound method and fails far from the cause.
+# DataFrame.asof is a pandas method: always write df["asof"], never df.asof
 def summarise(cells: pd.DataFrame, cov: pd.DataFrame) -> dict:
     """relWIS as a ratio of sums, and coverage, over the STATES. The
     national row, when present, is summarised beside it and never inside."""
@@ -259,11 +223,8 @@ def compare(a_cells: pd.DataFrame, a_cov: pd.DataFrame,
             b_cells: pd.DataFrame, b_cov: pd.DataFrame,
             reps: int = 4000, seed: int = 7) -> dict:
     """Two arms on IDENTICAL cells, states only, with a clustered bootstrap
-    over as-of dates for the difference in relWIS (b minus a).
-
-    Identical cells is not a nicety. An arm can decline to forecast a cell
-    the other forecasts, and a difference in relWIS that is really a
-    difference in which cells were attempted is not a result."""
+    over as-of dates for the difference in relWIS (b minus a). Identical
+    cells, because an arm may abstain where the other forecasts."""
     key = ["fips", "asof", "horizon"]
     a, b = _states(a_cells), _states(b_cells)
     common = a[key].merge(b[key], on=key)

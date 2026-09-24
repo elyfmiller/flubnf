@@ -6,9 +6,10 @@ app/state/
 *.log
 .DS_Store
 model-output/
-data/humidity/
-data/covgates/
+# former cache of the removed COVID research code; kept so old local folders stay ignored
 data/covidhub/
+# former root of the removed legacy workspace CLI; kept so old local folders stay ignored
+workspaces/
 .flubnf.env
 # the Windows twin of .flubnf.env, written by setup.ps1: machine-specific paths
 .flubnf.env.cmd

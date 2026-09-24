@@ -1,38 +1,23 @@
-"""How this application starts the processes that do the fitting.
+"""PRODUCTION: reduced-priority subprocess helpers (engines/pf.py, retro
+runners).
 
-One rule, and the reason for it: a fit subprocess starts at a LOWER
-scheduling priority than the interactive server.
+How this application starts fit subprocesses: below the interactive
+server's scheduling priority.
 
-The trade is deliberate. During a multi-hour run the fitting processes will
-take every core they are given, and the server answering the user's clicks
-is then just another runnable process competing with them. Measured on the
-development machine with the cores saturated, page latency rose from about
-25 ms to about 260 ms, and the retrospective index from 68 ms to 383 ms.
-Niceness 5 costs the fits a few percent of throughput only while the user is
-actually clicking (an idle machine gives the niced processes everything
-anyway), and it buys back an application that stays usable for the whole run.
-For an application whose runs last all night, that is the correct trade.
-
-Mechanism: the command is prefixed with the platform's `nice`, which execs
-the target, so the returned Popen still refers to the real process and stop
-and terminate behave exactly as before. `nice` is preferred over os.nice(5)
-in a preexec_fn because both call sites spawn from a background thread while
-the heartbeat and server threads run, and preexec_fn is documented as unsafe
-in the presence of threads. Both forms ask the kernel for the same thing.
-
-Guarded throughout: on a platform without `nice`, or if the lookup fails,
-the prefix is empty and the process starts exactly as it did before. Lower
-priority is an optimization, never a precondition, and no run may fail
-because it was unavailable.
+With the cores saturated, page latency rose ~25 -> ~260 ms; niceness 5 costs
+the fits a few percent only while the user is clicking. The command is
+prefixed with `nice` (which execs the target, so Popen still refers to the real
+process) rather than os.nice in preexec_fn, because callers spawn from threads
+and preexec_fn is unsafe with threads. Windows uses BELOW_NORMAL_PRIORITY_CLASS.
+Best effort: on any failure the process starts unmodified; no run may fail
+for want of lower priority.
 """
 from __future__ import annotations
 
 import os
 import shutil
 
-#: How much to yield. 5 is a light touch: enough that an interactive request
-#: preempts a fit promptly, far short of the 10-plus that would visibly
-#: lengthen an overnight run on an otherwise idle machine.
+#: a light touch: interactive requests preempt promptly; 10+ would lengthen overnight runs
 NICENESS = 5
 
 
@@ -59,19 +44,12 @@ def low_priority_cmd(cmd: list, niceness: int = NICENESS) -> list:
 
 
 def low_priority_popen_kwargs(niceness: int = NICENESS) -> dict:
-    """Extra Popen keyword arguments that start a child at reduced priority
-    on platforms where a command prefix cannot, or {}.
-
-    Windows has no `nice`: priority there is a creation flag on the process
-    itself (BELOW_NORMAL_PRIORITY_CLASS, the closest analogue of a small
-    positive niceness). A call site combines both forms and each platform
-    activates exactly one of them:
+    """Popen kwargs for reduced priority where a prefix cannot (Windows:
+    BELOW_NORMAL_PRIORITY_CLASS), else {}. Call sites combine both forms and
+    each platform activates exactly one:
 
         Popen(low_priority_cmd(cmd), **low_priority_popen_kwargs())
-
-    On POSIX this returns {} (the nice prefix already did the work), and on
-    any failure it returns {} so the process starts unmodified -- same rule
-    as low_priority_prefix: an optimization, never a precondition."""
+    """
     if os.name != "nt" or not niceness:
         return {}
     try:

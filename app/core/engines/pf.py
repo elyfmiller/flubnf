@@ -1,13 +1,13 @@
-"""The PF-SIHRS engine: conf generation + execution of PyBNF `fit_type=pf`.
+"""SHIPPED: the PF-SIHRS engine; writes pf.conf and runs PyBNF `fit_type=pf`.
 
-Two-venv dispatch (constitutional rule 8): materialization and scoring run in
-the analysis venv (this process); the filter itself runs in the
-pybnf/bngsim venv (Python 3.11 or 3.12, the engine's numpy ceiling) via
-runner scripts written to the workroot --
-FILES, never stdin, because macOS spawn kills stdin-launched pools
-(rule 4, measured 2026-08-17). The prepared cells are dealt across several
-such runners, the way the retrospective path has always done it; see the
-sharding block above execute().
+Two-venv dispatch (rule 8): materialization and scoring run here, in the
+analysis venv; the filter runs in the pybnf/bngsim venv (Python 3.11/3.12,
+the engine's numpy ceiling) via runner script FILES in the workroot, never
+stdin (macOS spawn kills stdin-launched pools, rule 4). The prepared cells
+are sharded across several runners, as the retrospective path does.
+
+Sections: constants | runner | preflight | research knobs | prepare |
+execution | collect.
 """
 from __future__ import annotations
 
@@ -21,6 +21,8 @@ import sys
 import time
 from pathlib import Path
 
+# --- constants: templates, defaults, fitted-variable boxes ------------------
+
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
 
@@ -29,13 +31,12 @@ from flubnf.settings import PY_ENGINE as PY310, PYBNF as PYBNF_PF
 TEMPLATE = REPO / "flubnf/templates/SIHRS_pop_min.bngl"   # H stays: verdict 2026-08-17
 DEFAULTS_BLOCK = ("begin parameters\nReff__FREE 1.20\neps1__FREE 0.15\n"
                   "phi1__FREE 22.0\nmult__FREE 0.05\nr__FREE 8.0\n")
-# Two-strain candidate (spec.extra["variant"] == "2strain"): A/B circuits +
-# the NREVSS typed-positives binomial channel. Same trim as min.
+# RESEARCH spec.extra["variant"] == "2strain": A/B circuits + the NREVSS
+# typed-positives binomial channel.
 TEMPLATE_2S = REPO / "flubnf/templates/SIHRS_pop_2strain_min.bngl"
-# National-growth candidate (spec.extra["variant"] == "natg"): production `min`
-# plus exp(iota*(g_nat^-s - g_s)) on beta(t), iota FROZEN a priori. Same 5
-# fitted parameters, same defaults, same vars -- the arm adds no dimension, so
-# DEFAULTS_BLOCK and VARS_1S are reused verbatim. See flubnf/natgrowth.py.
+# RESEARCH spec.extra["variant"] == "natg": `min` plus exp(iota*(g_nat^-s - g_s))
+# on beta(t), iota frozen a priori; no new dimension, so DEFAULTS_BLOCK and
+# VARS_1S are reused verbatim. See flubnf/natgrowth.py.
 TEMPLATE_NATG = REPO / "flubnf/templates/SIHRS_pop_natg.bngl"
 DEFAULTS_2S = ("begin parameters\nReffA__FREE 1.20\nReffB__FREE 0.95\n"
                "eps1__FREE 0.15\nphi1A__FREE 22.0\nphi1B__FREE 30.0\n"
@@ -55,12 +56,11 @@ loguniform_var = mult__FREE 0.002 1.0
 loguniform_var = r__FREE 0.1 40.0
 """
 
-#: One shard's runner: the same idea as the retrospective path's
-#: (app/core/retro.py::_RETRO_RUNNER), and for the same reason an entry-point
-#: FILE rather than stdin (rule 4). Two properties the plural case needs:
-#: it checks the halt flag BETWEEN cells, so a stop dispatches nothing more,
-#: and it rewrites its status after EVERY cell, so a shard that dies still
-#: reports what it finished instead of losing the whole shard.
+# --- runner -----------------------------------------------------------------
+
+#: One shard's runner (cf. retro.py::_RETRO_RUNNER), a FILE not stdin (rule 4).
+#: It checks the halt flag BETWEEN cells and rewrites its status after EVERY
+#: cell, so a shard that dies still reports what it finished.
 _RUNNER = '''"""Auto-generated PF runner. Executes one shard's cells sequentially."""
 import json, os, shutil, sys
 import time as _t
@@ -106,28 +106,15 @@ for _i, c in enumerate(cells, 1):
 '''
 
 
-# --------------------------------------------------------------------------
-# conf-safe paths
-#
-# PyBNF reads pf.conf with a pyparsing grammar whose bng_command and
-# output_dir rules stop at whitespace (only the model line rides on
-# pp.Regex), so a path containing a space cannot be expressed in the file
-# at all: "C:\\Users\\John Smith\\..." raises ParseException "Expected end
-# of text, found Smith" from deep inside the engine venv. On Windows the
-# default workroot lives under C:\\Users\\<name>\\AppData\\..., so any
-# student with a space in the username would fail every fit. The 8.3 short
-# form of the same path is space-free wherever the volume keeps short
-# names; where it does not (8.3 creation disabled), and on POSIX always,
-# the only honest move is a legible refusal at prepare() time naming the
-# path and the remedy.
-# --------------------------------------------------------------------------
+# --- preflight: conf-safe paths, Perl, engine checks -------------------------
+# PyBNF's conf grammar stops bng_command/output_dir at whitespace, so a path
+# with a space (e.g. a Windows username) cannot be written at all: use the
+# Windows 8.3 short form, or refuse legibly at prepare().
 
 def _short_path_win(path: str, _api=None):
-    """The 8.3 short form of an EXISTING path via kernel32
-    GetShortPathNameW (the wide API; a first call with no buffer reports
-    the size the second call needs), or None when the API is unavailable
-    or either call fails. `_api` is injectable so the sizing dance is
-    testable off Windows."""
+    """The 8.3 short form of an EXISTING path via GetShortPathNameW (first
+    call sizes the buffer), or None on any failure. `_api` is injectable so
+    this is testable off Windows."""
     try:
         import ctypes
         if _api is None:
@@ -136,9 +123,7 @@ def _short_path_win(path: str, _api=None):
         if not n:
             return None
         buf = ctypes.create_unicode_buffer(int(n))
-        # per the API contract a return >= the buffer size means the path
-        # changed between the two calls and the buffer contents are
-        # undefined, so only 0 < ret < n is a completed copy
+        # ret >= n means the path changed between calls: buffer undefined
         ret = _api(path, buf, int(n))
         if not (0 < ret < int(n)):
             return None
@@ -148,11 +133,9 @@ def _short_path_win(path: str, _api=None):
 
 
 def conf_safe_path(p, _platform: str | None = None) -> str:
-    """`p` as pf.conf may carry it: unchanged when space-free, the 8.3
-    short form on Windows when the path contains a space, and otherwise a
-    legible refusal, because the grammar limit is platform-independent and
-    the alternative is a ParseException from inside the engine venv
-    mid-run. `_platform` is injectable for tests."""
+    """`p` as pf.conf may carry it: unchanged when space-free, else the
+    Windows 8.3 short form, else a RuntimeError (instead of a ParseException
+    inside the engine venv mid-run). `_platform` is injectable for tests."""
     s = str(p)
     if " " not in s:
         return s
@@ -168,12 +151,8 @@ def conf_safe_path(p, _platform: str | None = None) -> str:
 
 
 def perl_missing_message() -> str:
-    """What to tell an operator whose machine has no Perl on PATH. BNG2.pl
-    is a Perl program and runs once per cell at run preparation; without
-    an interpreter every location fails before a single fit starts. On a
-    lab member's Windows desktop (2026-09-02) that surfaced as
-    '[WinError 2] The system cannot find the file specified' for all
-    locations, which names neither the program nor the fix."""
+    """Operator message for a machine with no Perl on PATH: BNG2.pl runs once
+    per cell at prepare, and without Perl Windows only says '[WinError 2]'."""
     if sys.platform == 'win32':
         how = ("install Strawberry Perl (https://strawberryperl.com, or let "
                "FluBNF.bat offer it during engine install) and start the "
@@ -190,35 +169,20 @@ def perl_available() -> bool:
     return shutil.which("perl") is not None
 
 
-#: The one file that makes a checkout an engine. Stock PyBNF from PyPI has
-#: no pf.py, so this file is what provides fit_type = pf.
+#: The file that provides fit_type = pf (stock PyBNF from PyPI lacks it).
 PF_MODULE = "pybnf/pf.py"
 
-#: The remedy, written once so the console's message and the doctor's hint
-#: cannot drift apart.
+#: The remedy, shared by the console message and the doctor's hint.
 ENGINE_FIX = ("Put the engine archive in Downloads and run "
               "./setup_engine.sh, or point FLUBNF_PYBNF at the unpacked "
               "engine.")
 
 
 def engine_missing_message() -> str:
-    """What to tell an operator whose fork path is not an engine.
-
-    The runner inserts this path at the FRONT of sys.path and the engine
-    venv also holds a stock PyBNF from PyPI, so a path without pybnf/pf.py
-    does not fail an import: the runner picks up the stock package, which
-    has no particle filter, and every cell dies with an opaque
-    configuration error while everything before the fit -- Perl, BNG2.pl,
-    network generation, the .exp -- works perfectly. On a PI's laptop
-    installed from the small archive (lab report, 2026-09-08) that was six
-    failed cells and nothing on the page saying why.
-
-    The fix comes before the reason because the remedy is what the reader
-    needs first; the reason is there for whoever asks why. The whole
-    message reaches the run page and the outcome's pf_engine_broken field,
-    while the ledger's error field keeps a prefix, so a very long fork path
-    can truncate the tail of the reason there but not the remedy.
-    """
+    """Operator message for a fork path without pybnf/pf.py. The runner would
+    silently import the engine venv's stock PyBNF (no filter) and every cell
+    would fail late with an opaque config error. The remedy comes before the
+    reason because the ledger's error field keeps only a prefix."""
     p = Path(PYBNF_PF)
     if not p.is_dir():
         found = ("there is no such directory" if not p.exists()
@@ -234,19 +198,13 @@ def engine_missing_message() -> str:
 
 
 def engine_available() -> bool:
-    """Whether the fork path really provides the particle filter. The
-    DIRECTORY existing is not the question (a half-unpacked archive, a
-    wrong FLUBNF_PYBNF, and a folder of the right name holding something
-    else all pass that test); the file that carries fit_type = pf is."""
+    """Whether the fork path holds PF_MODULE (the directory merely existing
+    proves nothing: half-unpacked archive, wrong FLUBNF_PYBNF, ...)."""
     return (Path(PYBNF_PF) / PF_MODULE).is_file()
 
 
-#: The configuration keys this console writes that older engines do not
-#: know. The engine's parser refuses an unknown key, so an engine that
-#: lacks one of these fails every cell of a run, after Perl, BNG2.pl and
-#: the network generation have all succeeded (a PI's laptop, 2026-09-09:
-#: a three week old engine under a current console). The engine's own
-#: key lists are the contract, read from its parser module.
+#: Keys this console writes that older engines' parsers refuse (an unknown
+#: key fails every cell late). The engine's parser source is the contract.
 CONF_KEYS_REQUIRED = ("pf_particles", "pf_forecast_intervals", "pf_start_time",
                       "pf_bounds", "pf_seed")
 PARSE_MODULE = "pybnf/parse.py"
@@ -275,22 +233,15 @@ def engine_current() -> bool:
 #: what the filter READS, where the parser's lists say what it accepts.
 CONFIG_MODULE = "pybnf/config.py"
 
-#: The sampling interval of the fitted .exp, written as 1 (one row per
-#: week) so an engine that reads it can fit a ONE-ROW .exp, the first
-#: fitted week of a season. The upstream tree a827e2f8 lists the key in
-#: its parser and in its pf key set; the engine before it lists it in
-#: neither and refuses an unknown key, so the line is written only when
-#: the installed engine's own source accepts it (engine_accepts_pf_key),
-#: never assumed, and the cell records whether it was.
+#: `pf_sampling_interval = 1` lets an engine fit a ONE-ROW .exp (a season's
+#: first week). Engines before a827e2f8 refuse the key, so it is written only
+#: when the installed source accepts it; the cell records whether it was.
 SAMPLING_INTERVAL_KEY = "pf_sampling_interval"
 
 
 def engine_accepts_pf_key(key: str) -> bool:
-    """Whether the installed fork both parses `key` (pybnf/parse.py, the
-    grammar that refuses an unknown key) and lists it among the pf keys
-    (pybnf/config.py). Both files are read; a tree that lacks either says
-    no. Distinct from engine_accepts, which asks the grammar alone for the
-    keys every console conf requires."""
+    """Whether the fork both parses `key` (pybnf/parse.py) and lists it among
+    the pf keys (pybnf/config.py); engine_accepts asks the grammar alone."""
     if not engine_accepts(key):
         return False
     try:
@@ -308,8 +259,8 @@ def sampling_interval_line() -> str:
 
 
 def engine_stale_message() -> str:
-    """What to tell an operator whose engine predates the console: named
-    once at prepare, not 159 times at the end of the run."""
+    """Operator message for an engine older than the console, named once at
+    prepare instead of once per cell."""
     p = Path(PYBNF_PF)
     missing = ", ".join(engine_missing_keys())
     stamp = ""
@@ -326,18 +277,14 @@ def engine_stale_message() -> str:
             "a newer archive replaces the older copy.")
 
 
-#: Prepare-stage failures, keyed by location tag (no _r suffix, so a key
-#: can never collide with a cell's). execute() folds the file into the
-#: merged pf_status.json and the retrospective run_week folds it into the
-#: week's failure record, so a state the vintage cannot resolve costs
-#: that state, not the run.
+#: Prepare-stage failures keyed by location tag (no _r suffix, so never a
+#: cell key). execute() and retro.run_week fold them in, so a state the
+#: vintage cannot resolve costs that state, not the run.
 PREPARE_FAILURES_NAME = "pf_prepare_failures.json"
 
 
 def read_prepare_failures(workroot: Path) -> dict:
-    """The prepare-stage failures recorded for a workroot; {} when the
-    file is absent (an older workroot, or a stubbed prepare) or
-    unreadable."""
+    """The prepare-stage failures for a workroot; {} if absent/unreadable."""
     try:
         d = json.loads((Path(workroot) / PREPARE_FAILURES_NAME).read_text())
     except Exception:
@@ -345,30 +292,28 @@ def read_prepare_failures(workroot: Path) -> dict:
     return d if isinstance(d, dict) else {}
 
 
-#: The cloud file of a cell that saves or continues its particle cloud.
-#: Outside out/, which the runners clear before every fit.
+# --- research knobs (spec.extra; none set on the shipped path) ---------------
+# variant (2strain|natg), iota, fit_i0, anchor_asof, reporting, neff_cap,
+# pf_keys, prior_ranges, initialization, seed_anchor, seed_salt,
+# continue_states, save_states. All are read by prepare() or the helpers below.
+
+#: A cell's saved/continued particle cloud; outside out/, which runners clear.
 CLOUD_NAME = "cloud.npz"
-#: Where collect() records a cell that was asked to save its cloud and
-#: had none to save (an engine that wrote no state file).
+#: collect() records here a cell asked to save a cloud that had none.
 STATE_MISSING_NAME = "pf_state_missing.json"
 
 
 def continuation_for(spec, cell_dir: Path, key: str) -> dict | None:
-    """The cell's cloud file, and where it comes from and goes to, under
-    the two spec.extra keys of the swarm-carry design; None when neither
-    is set, so an ordinary forecast's pf.conf is unchanged.
+    """The cell's cloud paths under the swarm-carry keys; None when neither
+    is set (an ordinary pf.conf is unchanged).
 
-      continue_states  directory of <key>.npz clouds to continue from. A
-                       cell whose file is there continues (pf_continue =
-                       1); one whose file is absent starts fresh from the
-                       prior and RECORDS continued_from None. Never a
-                       silent fallback: the record is in cells.json.
-      save_states      directory collect() copies the ending cloud into
-                       as <key>.npz, before the week's tree is pruned.
+      continue_states  dir of <key>.npz clouds. Present: pf_continue = 1;
+                       absent: fresh start, recorded as continued_from None
+                       in cells.json (never a silent fallback).
+      save_states      dir collect() copies the ending cloud into.
 
-    The engine reads and writes ONE path, pf_state_file, and overwrites it
-    with the cloud it ends on, so a cloud to continue from is copied into
-    the cell first and the source in the ledger is never touched.
+    The engine overwrites its one pf_state_file, so the source cloud is
+    copied into the cell first and the ledger's copy is never touched.
     """
     ex = spec.extra or {}
     if not ex.get("continue_states") and not ex.get("save_states"):
@@ -387,18 +332,13 @@ def continuation_for(spec, cell_dir: Path, key: str) -> dict | None:
 
 
 def seed_date_for(spec) -> str:
-    """The date the cell seed is keyed on. forecast_date is the sealed
-    convention: every as-of week is its own draw. season_start keys every
-    week of a season on the same date, and under the engine's per-week
-    streams (PyBNF-pf f09eeb9b) two as-of weeks then share the draws of
-    the weeks they have in common: they differ by their data alone, and a
-    run continued from a saved cloud is bit-identical to the refit. The
-    swarm-carry pre-registration is what the option exists for; the
-    console keeps the default."""
+    """The date the cell seed is keyed on. forecast_date (the sealed default)
+    makes every as-of week its own draw. season_start (swarm-carry research)
+    shares draws across a season's weeks under the engine's per-week streams
+    (PyBNF-pf f09eeb9b), so a continued run is bit-identical to the refit."""
     anchor = str((spec.extra or {}).get("seed_anchor", "forecast_date"))
-    # seed_salt: a second, third... draw of the same cells for a seed-spread
-    # measurement. Folded into the seed's date key so nothing else changes;
-    # recorded in cells.json through seed_date.
+    # seed_salt: extra draws for a seed-spread measurement, folded into the
+    # date key (recorded in cells.json via seed_date).
     salt = str((spec.extra or {}).get("seed_salt", "") or "")
     if anchor == "forecast_date":
         return spec.forecast_date + (f"#{salt}" if salt else "")
@@ -408,18 +348,15 @@ def seed_date_for(spec) -> str:
                      f"not {anchor!r}")
 
 
-#: Engine keys a research dictionary may set verbatim (spec.extra["pf_keys"]),
-#: each with the range the engine itself enforces; anything else is refused
-#: here so a typo cannot reach the conf as a silently ignored line.
+#: Engine keys spec.extra["pf_keys"] may set, with the engine's own ranges;
+#: anything else is refused so a typo cannot become an ignored conf line.
 PF_KEYS_ALLOWED = {"pf_shrink": lambda v: float(v) in (0.0, 1.0),
                    "pf_forecast_jitter": lambda v: 0.0 <= float(v) < 1.0,
                    "pf_resample_threshold": lambda v: 0.0 < float(v) <= 1.0}
 
 
 def pf_key_lines(spec) -> str:
-    """Extra engine keys from spec.extra["pf_keys"], validated, one conf
-    line each; empty for an ordinary run. The regularizer pre-registration
-    is what this exists for (pf_shrink = 0, pf_forecast_jitter)."""
+    """Validated conf lines from spec.extra["pf_keys"]; empty normally."""
     keys = (spec.extra or {}).get("pf_keys") or {}
     out = []
     for k, v in keys.items():
@@ -455,65 +392,88 @@ def priors_for(spec, two_strain: bool = False) -> str:
 
 
 def initialization_for(spec) -> str:
-    """The engine's initialization key: rand, the independent draw every
-    recorded number was produced under, unless spec.extra names lh (PyBNF's
-    Latin hypercube, the key's own default). The initial-draw
-    pre-registration is what the option exists for."""
+    """The engine's initialization key: rand (every recorded number) unless
+    spec.extra names lh (PyBNF's own default, Latin hypercube)."""
     init = str((spec.extra or {}).get("initialization", "rand") or "rand")
     if init not in ("rand", "lh"):
         raise ValueError(f"initialization must be rand or lh, not {init!r}")
     return init
 
 
+# --- prepare ------------------------------------------------------------------
+
+#: spec.extra keys refused on a custom dataset: each reads hub-only data
+#: (national growth, NREVSS typing, FluSight completeness, a hub vintage)
+DATASET_REFUSED = ("variant", "reporting", "anchor_asof")
+
+
+def _hub_tag(loc: str) -> str:
+    """A hub location's cell-directory and BNGL-suffix stem (unchanged)."""
+    return loc.replace(' ', '_')
+
+
+def dataset_tag(loc: str) -> str:
+    """A dataset group's stem (datasets.pf_stem): letters, digits and '_'
+    only (a national group may be spelled 'US (national)'), plus a short
+    digest for a name with non-ASCII letters. A dataset's group names are
+    unique after that stem and casefold (datasets._norm_name), so stems
+    are."""
+    from app.core.datasets import pf_stem
+    return pf_stem(loc)
+
+
 def prepare(spec, workroot: Path) -> list:
     """Materialize model+net+exp+conf for every (location, replicate) cell.
 
-    Failures are contained PER LOCATION: resolve_state refuses an empty
-    window or an all-NaN tail (the documented MA/MN/WV reporting-pause
-    pattern, present in 55 of 87 vintages), and one such state must cost
-    itself, not the other 52 jurisdictions. Each contained failure is
-    recorded in pf_prepare_failures.json under the location's tag, in the
-    same FAIL-string shape execute() records fit failures, so it reaches
-    pf_failures downstream. A run where every location fails still raises;
-    a single-location run re-raises its one error verbatim."""
+    Failures are contained PER LOCATION (e.g. resolve_state refusing an
+    all-NaN tail during a reporting pause) and recorded in
+    pf_prepare_failures.json in execute()'s FAIL-string shape. A run where
+    every location fails still raises; a single-location run re-raises its
+    one error verbatim."""
     from flubnf.sihrs_fit import materialize_model, resolve_state, write_exp
     from flubnf.settings import BNG
     from app.core.data import LOCATIONS, vintage_path
     from app.core.runs import derive_seed
 
-    # The space guard runs first, before any location is touched: the
-    # grammar limit is the same for every cell, and failing here names the
-    # offending path instead of raising a ParseException from the engine
-    # venv mid-run. The workroot is created up front so the Windows 8.3
-    # lookup, which needs an existing path, can resolve it.
-    # resolved: pf.conf carries this path for the engine subprocess, whose
-    # working directory is not the caller's
+    # Run-level preflight, once, before any location. The workroot is
+    # resolved (the engine subprocess has another cwd) and created first
+    # because the Windows 8.3 lookup needs an existing path.
     workroot = Path(workroot).resolve()
     workroot.mkdir(parents=True, exist_ok=True)
     conf_safe_path(workroot)
     bng_conf = conf_safe_path(BNG)
-    # Perl, once, before any location: its absence is a run-level fact and
-    # must be named as one, not 52 times as a per-location subprocess error
     if not perl_available():
         raise RuntimeError(perl_missing_message())
-    # The fork, on the same terms and for the same reason: every conf
-    # written below says fit_type = pf, which only the fork understands, so
-    # a path without pybnf/pf.py is a run-level fact and must be named once
-    # here rather than 159 times as an opaque configuration error at the
-    # end of the run. Here, not only in the console, so the retrospective
-    # replay, the CLI and a research run are covered too.
+    # Here, not only in the console, so retro, the CLI and research runs
+    # are covered too.
     if not engine_available():
         raise RuntimeError(engine_missing_message())
     if not engine_current():
         raise RuntimeError(engine_stale_message())
-    # read once per prepare, off the installed engine's own source: the
-    # line is written into every cell's conf or into none
+    # read once: the line goes into every cell's conf or into none
     si_line = sampling_interval_line()
 
-    vintage = vintage_path(spec.forecast_date)
+    # the data source: the hub's vintage and locations table, or a custom
+    # dataset's (extra["dataset"]); the hub branch is today's expression
+    from app.core import datasets as _ds
+    ds = _ds.from_spec(spec)
+    if ds is None:
+        vintage = vintage_path(spec.forecast_date)
+        loc_csv = LOCATIONS
+        tag_of = _hub_tag
+    else:
+        bad = [k for k in DATASET_REFUSED
+               if (spec.extra or {}).get(k)]
+        if bad:
+            raise ValueError(
+                f"{', '.join(bad)}: these read FluSight, NREVSS or hub "
+                f"completeness data and cannot run on the custom dataset "
+                f"{ds.name!r}; the plain SIHRS filter can")
+        vintage = ds.truth_path(spec.forecast_date)
+        loc_csv = ds.locations_csv
+        tag_of = dataset_tag
     variant = (spec.extra or {}).get("variant")
-    # spec.extra["fit_i0"] = [lo, hi]: fit the initial infected fraction
-    # under a loguniform prior instead of deriving it from the data.
+    # fit_i0 = [lo, hi]: fit i0 (loguniform) instead of deriving it.
     fit_i0 = (spec.extra or {}).get("fit_i0")
     if fit_i0 is not None:
         fit_i0 = (float(fit_i0[0]), float(fit_i0[1]))
@@ -524,9 +484,8 @@ def prepare(spec, workroot: Path) -> list:
     natg = variant == "natg"
     if natg:
         from flubnf.natgrowth import IOTA_FROZEN, growth_gap_series, natg_tokens
-        # The ledger's copy of the spec is the record of record, so the frozen
-        # value travels in spec.extra. Absent, it falls back to the constant --
-        # it is never derived here and never fitted.
+        # The frozen value travels in spec.extra (the ledger's record); never
+        # derived or fitted here.
         iota = float((spec.extra or {}).get("iota", IOTA_FROZEN))
     if two_strain:
         from datetime import date as _d, timedelta as _td
@@ -534,43 +493,28 @@ def prepare(spec, workroot: Path) -> list:
         import pandas as _pd
 
         from flubnf import nrevss
-        # NREVSS release cadence: week ending Saturday D publishes the
-        # following Friday, i.e. AFTER the FluSight deadline for reference
-        # date D. Honest as-of uses typed data through D-7.
+        # NREVSS week D publishes the following Friday, after the FluSight
+        # deadline, so honest as-of uses typed data through D-7.
         nrevss_asof = (_d.fromisoformat(spec.forecast_date)
                        - _td(days=7)).isoformat()
 
     def _one_location(loc: str) -> list:
-        """Every prepared cell for one location; raises are the caller's
-        to contain. A closure so the season context above (vintage,
-        variant switches, the frozen iota) needs no plumbing."""
-        s = resolve_state(loc, truth_csv=vintage, locations_csv=LOCATIONS,
+        """Every prepared cell for one location; the caller contains raises."""
+        s = resolve_state(loc, truth_csv=vintage, locations_csv=loc_csv,
                           season_start=spec.season_start,
                           as_of=spec.forecast_date)
-        # The model's initial infected fraction i0 is derived from the
-        # season-to-date cumulative count (resolve_state: rhomult from
-        # obs.sum(), i0 from obs[0] and rhomult), so every as-of week
-        # refits a slightly different model even when no past row was
-        # revised. MEASURED 2026-09-04 (swarm-carry control): Alaska i0
-        # 9.14e-3 at 2023-09-23 and 6.86e-3 one week later, same rows.
-        # A cloud carried across weeks keeps the anchor it started from,
-        # so a fair comparison, and a console that carries, pins the
-        # anchor to one as-of week: spec.extra["anchor_asof"] takes i0
-        # (and the rhomult it came from) from that week's vintage and
-        # leaves everything else as this week's vintage says.
+        # i0/rhomult derive from the season-to-date count, so they drift
+        # weekly even with no revision; spec.extra["anchor_asof"] pins them
+        # to one as-of week's vintage (needed when a cloud is carried).
         anchor = (spec.extra or {}).get("anchor_asof")
         if anchor:
             sa = resolve_state(loc, truth_csv=vintage_path(anchor),
-                               locations_csv=LOCATIONS,
+                               locations_csv=loc_csv,
                                season_start=spec.season_start, as_of=anchor)
             s.i0, s.rhomult = sa.i0, sa.rhomult   # a fresh object per call
-        # The nowcast rule (drop_same_day, OFF by default since the
-        # 2026-08-27 v1.1 measurement: dropping the same-day row cost
-        # 2023-24 +0.24 pooled relWIS because that row carries the turn
-        # signal; see RunSpec.drop_same_day). When enabled it trims the
-        # vintage's same-day row per state, on top of any user-requested
-        # weeks_to_drop; the weeks_dropped/pf_forecast_weeks machinery
-        # keeps every horizon label as-of-relative either way.
+        # Optional nowcast rule (RunSpec.drop_same_day, off by default): trim
+        # the same-day row on top of weeks_to_drop; weeks_dropped and
+        # pf_forecast_intervals keep horizon labels as-of-relative.
         auto_drop = 0
         if getattr(spec, "drop_same_day", False) and len(s.times):
             from datetime import date as _date
@@ -593,12 +537,8 @@ def prepare(spec, workroot: Path) -> list:
             s.observed = s.observed[:-k_total]
             s.times = s.times[:-k_total]
             s.n_obs = len(s.observed)
-            # the horizon-label arithmetic (as-of-relative shift by
-            # k_total) is only valid when the fit origin lands exactly
-            # k_total calendar weeks before the as-of date. A NaN gap at
-            # the series tail (the documented NHSN-pause pattern) breaks
-            # that; refuse loudly rather than mislabel every horizon
-            # (review finding).
+            # Labels shift by k_total: valid only on a calendar-consecutive
+            # tail (a NaN reporting gap breaks it), so refuse otherwise.
             if _off - int(s.times[-1]) != k_total:
                 raise ValueError(
                     f"{loc}: after trimming {k_total} week(s) the fit "
@@ -607,12 +547,8 @@ def prepare(spec, workroot: Path) -> list:
                     "is not calendar-consecutive (a reporting gap), so "
                     "horizon labels cannot be kept as-of-relative. "
                     "Refusing rather than mislabelling.")
-            # The model's anchor sees the trimmed series too: rhomult comes
-            # from the season-to-date count and i0 from the first week, and
-            # resolve_state derived both from the untrimmed series, so the
-            # materialised model was byte-identical with and without the
-            # drop (review APP1-1, 2026-09-07; Arizona's i0 off by 18
-            # percent). A pinned anchor (anchor_asof) is left as pinned.
+            # Re-derive rhomult/i0 from the trimmed series (resolve_state
+            # used the untrimmed one) unless anchor_asof pins them.
             if not (spec.extra or {}).get("anchor_asof"):
                 from flubnf.sihrs_priors import (initial_infected_fraction
                                                  as _iif, pin_rho_mult as _prm)
@@ -621,16 +557,11 @@ def prepare(spec, workroot: Path) -> list:
                 s.rhomult = _prm(float(_obs.sum()) / s.population, s.attack_rate)
                 s.i0 = _iif(max(float(_obs[0]), 1.0), s.population,
                             s.rhomult, s.gamma)
-        # The declared reporting model (research/reporting-model):
-        # spec.extra["reporting"] = {"mode": anchor | lik | both}. The rows at
-        # the vintage's edge are read as incomplete by the real-time pooled
-        # per-lag factor (app.core.completeness). anchor: only the
-        # season-to-date count that derives rhomult and i0 sees the
-        # corrected rows. lik: the likelihood also weighs each row against
-        # the model's count times that row's factor (the engine key
-        # pf_mean_scale_column, PyBNF-pf dbb33f6b). both: the analogue's
-        # anchor is divided by the lag-0 factor as well (its engine). The
-        # forecast is never scaled. Single-strain route only.
+        # RESEARCH reporting model, spec.extra["reporting"]["mode"]: edge rows
+        # are corrected by app.core.completeness' per-lag factors. anchor:
+        # only rhomult/i0 see the corrected rows; lik: also
+        # pf_mean_scale_column in the likelihood; both: the analogue divides
+        # its anchor too. The forecast is never scaled. Single-strain only.
         rep = (spec.extra or {}).get("reporting")
         rep_rec = None
         if rep:
@@ -665,12 +596,10 @@ def prepare(spec, workroot: Path) -> list:
                        "row_scales": [float(x) for x in scales]}
         gg = None
         if natg:
-            # Vintage-true on BOTH sides: the same file the state's own
-            # likelihood reads. Truncated to the filter's real last week so the
-            # "hold the last gap over h=1..4" branch begins exactly where the
-            # forecast does, even when weeks_to_drop trimmed the tail.
+            # Same vintage as the likelihood; truncated to the filter's last
+            # week so "hold the last gap" starts where the forecast does.
             gg = growth_gap_series(
-                loc, truth_csv=vintage, locations_csv=LOCATIONS,
+                loc, truth_csv=vintage, locations_csv=loc_csv,
                 season_start=spec.season_start, as_of=spec.forecast_date
             ).truncate(int(s.last_week_offset))
         typed_by_t, a0 = {}, 0.85
@@ -688,10 +617,10 @@ def prepare(spec, workroot: Path) -> list:
                                             # has no rows; the fit still runs
         loc_cells = []
         for rep in range(spec.replicates):
-            tag = f"{loc.replace(' ', '_')}_r{rep}"
+            tag = f"{tag_of(loc)}_r{rep}"
             d = workroot / tag
             d.mkdir(parents=True)
-            sfx = f"{loc.replace(' ', '_')}_flu"
+            sfx = f"{tag_of(loc)}_flu"
             if two_strain:
                 tmpl, tok = TEMPLATE_2S, {"{{A0SHARE}}": f"{a0:.4f}"}
             elif natg:
@@ -699,32 +628,16 @@ def prepare(spec, workroot: Path) -> list:
             else:
                 tmpl, tok = TEMPLATE, None
             m = materialize_model(s, tmpl, d / "m.bngl", sfx, extra_tokens=tok)
-            # newline pinned, for the same reason materialize_model pins it:
-            # this rewrite is the LAST hand on the model file, and a plain
-            # write_text takes newline=None, which on Windows translates
-            # every \n to \r\n on the way to disk. That silently undid the
-            # pinning one line above and handed BNG2.pl and bngsim a CRLF
-            # model. The Windows CI job caught it as a byte-identity
-            # failure (test_natgrowth: b'...end actions\r\n' against
-            # b'...end actions\n'); the engine bytes were the real casualty.
-            # read_text needs no such care: universal-newline READ is
-            # platform independent, so the \n in "begin parameters\n" below
-            # matches whatever is on disk.
+            # newline="\n" on the write below: it is the last write of the
+            # model, and Windows text mode would hand BNG2.pl a CRLF file.
+            # (Universal-newline read_text needs no such care.)
             txt = m.read_text().replace("begin parameters\n",
                                         DEFAULTS_2S if two_strain
                                         else DEFAULTS_BLOCK, 1)
             if fit_i0:
-                # The initial infected fraction becomes the sixth fitted
-                # parameter: the template's fixed i0 line now names
-                # i0__FREE, whose default is this week's data-derived
-                # anchor so the model reads the same with the prior
-                # absent. The engine (PyBNF-pf, per-particle initial
-                # state since 2026-09-04) starts every particle from its
-                # own draw. Measured reason: the data-derived anchor is
-                # 20x to 700x too large at the first as-of week of a
-                # season and shrinks every week, which is most of what
-                # the weekly refilter's skill rests on and what no
-                # carried cloud can follow (swarm-carry, FIXED arm).
+                # i0 becomes a sixth fitted parameter (per-particle initial
+                # state), defaulting to this week's data-derived value. The
+                # derived anchor is 20-700x too large early in a season.
                 txt = txt.replace("begin parameters\n",
                                   f"begin parameters\ni0__FREE {s.i0:.8e}\n", 1)
                 txt, n_sub = re.subn(r"(?m)^i0\s+\S+", "i0      i0__FREE", txt)
@@ -737,9 +650,7 @@ def prepare(spec, workroot: Path) -> list:
                 for t_off, v in zip(s.times, s.observed):
                     a_k, n_k = typed_by_t.get(int(t_off), (-1, -1))
                     lines.append(f"{int(t_off)} {v:.6f} {a_k} {n_k}")
-                # newline pinned: PyBNF splits the .exp line-wise, so a
-                # trailing \r would ride along on the last column of every
-                # row. Same treatment as the model file above.
+                # newline pinned: PyBNF splits the .exp line-wise.
                 (d / f"{sfx}.exp").write_text("\n".join(lines) + "\n",
                                               newline="\n")
             elif rep_rec and rep_rec["mode"] in ("lik", "both"):
@@ -754,29 +665,19 @@ def prepare(spec, workroot: Path) -> list:
                 r = subprocess.run(["perl", BNG, "m.bngl"], capture_output=True,
                                    text=True, cwd=str(d), timeout=300)
             except FileNotFoundError:
-                # the preflight passed and the interpreter vanished since,
-                # or which() and the process loader disagree: same remedy
+                # perl vanished since preflight, or which() disagreed
                 raise RuntimeError(perl_missing_message())
             if not (d / "m.net").is_file():
                 raise RuntimeError(f"netgen failed for {loc}: {r.stdout[-300:]}")
             seed = derive_seed(loc, seed_date_for(spec), rep)
             cont = continuation_for(spec, d, tag)
-            # newline pinned: PyBNF's conf reader is line-based, so on
-            # Windows every value would arrive with a trailing \r attached.
-            # Every path goes through conf_safe_path: the bng_command and
-            # output_dir grammar rules stop at whitespace, so a spaced
-            # path here is a ParseException inside the engine venv.
+            # conf: newline="\n" (line-based reader); every path via
+            # conf_safe_path.
             d_conf = conf_safe_path(d)
-            # Two engine conventions are pinned by name rather than left to
-            # the engine's defaults, because the sealed and production
-            # records were made under them: the kernel reflects a bounded
-            # parameter at its box (pf_bounds = reflect; the engine's
-            # default moves it on the logit scale, which keeps a flat prior
-            # flat and is the pre-registered comparison to run before it is
-            # adopted here), and the model's initial state sits one week
-            # before the first row, which this .exp writes at t = 0
-            # (pf_start_time = -1; the engine's default is the model's own
-            # t = 0 with a row at 0 taken as the starting value).
+            # Pinned to the records' conventions, not engine defaults:
+            # pf_bounds = reflect (engine default: logit-scale moves, a
+            # pre-registered comparison not yet run) and pf_start_time = -1
+            # (initial state one week before the .exp's t = 0 row).
             (d / "pf.conf").write_text(f"""bng_command = {bng_conf}
 model = {d_conf}/m.bngl : {d_conf}/{sfx}.exp
 output_dir = {d_conf}/out
@@ -798,22 +699,16 @@ initialization = {initialization_for(spec)}
    if two_strain else "")
 + (f"pf_mean_scale_column = {_comp.COLUMN}\n"
    if rep_rec and rep_rec["mode"] in ("lik", "both") else "")
-# initialization is written explicitly, rand unless the spec asks for lh:
-# PyBNF's default for the key is lh, and the engine honours it since
-# PyBNF-pf f09eeb9b, so without the line the initial cloud would silently
-# become a Latin hypercube. Every recorded number was produced under
-# independent draws; a change of draw is a pre-registered experiment.
+# initialization is always written: PyBNF's default is lh (honoured since
+# PyBNF-pf f09eeb9b), but every recorded number used rand.
 + (f"pf_state_file = {conf_safe_path(cont['state_file'])}\n"
    f"pf_continue = {1 if cont['continued_from'] else 0}\n"
    if cont else ""), newline="\n")
             loc_cells.append({
                 "key": tag, "dir": str(d), "location": loc,
                 "replicate": rep, "seed": seed,
-                # collect() shifts its forecast columns by this,
-                # so horizon labels stay AS-OF-relative when the
-                # newest weeks were trimmed (audit: with drop > 0
-                # every horizon rode one week off its label).
-                # Includes the nowcast rule's same-day trim.
+                # collect() shifts forecast columns by this (incl. the
+                # same-day trim) so horizon labels stay as-of-relative.
                 "weeks_dropped": k_total,
                 "variant": ("2strain" if two_strain
                             else "natg" if natg else "1strain"),
@@ -827,8 +722,7 @@ initialization = {initialization_for(spec)}
                 "last_week_offset": int(s.last_week_offset),
                 "seed_date": seed_date_for(spec),
                 "initialization": initialization_for(spec),
-                # 1 when the installed engine accepted the key and the
-                # conf carries the line, None when it did not
+                # 1 if the conf carries the line, else None
                 SAMPLING_INTERVAL_KEY: (1 if si_line else None),
                 "pf_keys": dict((spec.extra or {}).get("pf_keys") or {}),
                 "prior_ranges": {k: list(v) for k, v in
@@ -839,8 +733,7 @@ initialization = {initialization_for(spec)}
                 "reporting": rep_rec,
                 **(cont or {"state_file": None, "continued_from": None,
                             "save_state_to": None}),
-                # the two quantities the cost model reads back at
-                # execution time to size the run's time budget
+                # read back by the cost model to size the time budget
                 "particles": int(spec.particles),
                 "last_observed": float(s.observed[-1])})
         return loc_cells
@@ -850,14 +743,13 @@ initialization = {initialization_for(spec)}
         try:
             cells.extend(_one_location(loc))
         except Exception as e:
-            failures[loc.replace(" ", "_")] = f"FAIL: prepare: {e}"[:200]
+            failures[tag_of(loc)] = f"FAIL: prepare: {e}"[:200]
             errors.append(e)
     (workroot / PREPARE_FAILURES_NAME).write_text(json.dumps(failures))
     (workroot / "cells.json").write_text(json.dumps(cells))
     if failures and not cells:
         if len(errors) == 1:
-            # a single-location run has nothing to continue with, and its
-            # one error is more legible verbatim than wrapped
+            # a single location's error is clearer verbatim
             raise errors[0]
         raise RuntimeError(
             f"prepare failed for all {len(failures)} location(s) "
@@ -865,169 +757,91 @@ initialization = {initialization_for(spec)}
     return cells
 
 
+# --- execution: sharded runners, time budget, stop/reap ----------------------
+# Cells (location x replicate, each with its own model, conf and seed) are
+# independent, so they are dealt across runner subprocesses as
+# retro._run_round does: wall clock changes, no number does.
+
 class RunStopped(Exception):
     pass
 
 
-# --------------------------------------------------------------------------
-# parallel execution of a prepared grid
-#
-# The retrospective path has sharded since it was written (retro.py's
-# _run_round: a stride partition of the week's cells, one runner subprocess
-# per shard, all polled together). The forecast path did not, and because the
-# entire sealed record was produced through the retrospective path, the
-# sequential forecast path was never exercised at full grid. It cannot
-# finish one: 53 jurisdictions x 3 replicates is 159 cells, and at the
-# season's most expensive as-of (48 observed weeks) the measured cost of a
-# cell is 34.3 s, so one process needs 91 minutes against a fixed 60-minute
-# timeout. This is the same sharding, so that the two paths are one idea:
-# cells are independent (one location by one replicate, its own model, conf
-# and seed), so partitioning them changes no number, only the wall clock.
-# --------------------------------------------------------------------------
-
-#: Cores to leave for the console and the operating system. The fits are
-#: also nice-d (app/core/proc.py), but a reserve keeps the machine usable
-#: even when the scheduler is generous to the runners.
+#: Cores left for the console and OS (fits are also nice-d, app/core/proc.py).
 SHARD_CORES_RESERVED = 2
 
-#: Upper bound. Past roughly this many runners the measured curve is flat,
-#: and every extra process still costs memory and a startup.
+#: Upper bound: the measured speed-up is flat past this; each runner costs memory.
 SHARD_WIDTH_CAP = 16
 
 
 def default_shard_width(cpus: int | None = None) -> int:
-    """Runner subprocesses to deal the prepared cells across.
-
-    Sized to the MACHINE rather than fixed, measured 2026-08-28 on a
-    12-core M2 Max over a 24-cell grid: 1 runner 384s, 2 runners 200s,
-    4 runners 103s, 8 runners 56s, 16 runners 53s. The old fixed default
-    of 4 therefore left most of a workstation idle -- about 2x on this
-    box, confirmed on a 48-cell grid (4 runners 206s, 16 runners 100s) --
-    while the same fixed 4 would oversubscribe a 2-core laptop. Scaling
-    with the core count is right on both, which is why this is a function
-    of the machine and not a different constant.
-
-    Sharding partitions independent cells (each carries its own model,
-    config and seed), so this changes wall clock and no number.
-    """
+    """Runners for this machine: cores minus SHARD_CORES_RESERVED, clamped to
+    [2, SHARD_WIDTH_CAP]. Measured near-linear to ~8 runners, flat by 16; a
+    fixed width would idle a workstation or oversubscribe a laptop."""
     n = cpus if cpus is not None else (os.cpu_count() or 4)
     return max(2, min(SHARD_WIDTH_CAP, n - SHARD_CORES_RESERVED))
 
 
-#: Resolved once at import. retro.py takes its own default from this, so a
-#: forecast and a replay of the same grid cannot drift apart in cost.
+#: Resolved once at import; retro.py's default width is this too.
 DEFAULT_SHARD_WIDTH = default_shard_width()
 
-#: Per-machine override, never a scientific one: FLUBNF_PF_WIDTH=8 on a
-#: wider box, =1 to reproduce the old single-process behaviour.
+#: Per-machine override (never scientific); =1 runs a single process.
 WIDTH_ENV = "FLUBNF_PF_WIDTH"
 
 
 def resolve_width(width) -> int:
-    """A requested shard width, where 0, None, or garbage means auto: this
-    machine's default_shard_width(). The one resolution rule for every
-    entry point (UI form, CLI, run_season), so none of them can pin the
-    old fixed 4 again and quietly idle most of a workstation."""
+    """A requested shard width; 0, None or garbage means DEFAULT_SHARD_WIDTH.
+    Used by the CLI; execute() resolves its own via shard_width()."""
     try:
         w = int(width)
     except (TypeError, ValueError):
         w = 0
     return w if w > 0 else DEFAULT_SHARD_WIDTH
 
-#: Measured seconds for one cell, fitted on 680 shard-weeks of the sealed
-#: record (R^2 = 0.988):
-#:
-#:     seconds = 1.194 + 0.6365 * (n_obs + 4)
-#:
-#: The (n_obs + 4) is the filter's real length: the observed weeks plus the
-#: four forecast weeks every pf.conf asks for. Cost is linear in the particle
-#: count and the record was measured at 10,000, so a heavier run scales in
-#: proportion. Prediction only: nothing here reaches a published number.
+#: Seconds per cell, fitted on 680 shard-weeks of the sealed record (R^2 0.988):
+#:     seconds = 1.194 + 0.6365 * (n_obs + 4)      (+4 = the forecast weeks)
+#: at 10,000 particles; linear in particles. Prediction only.
 COST_INTERCEPT_S = 1.194
 COST_PER_WEEK_S = 0.6365
 COST_FORECAST_WEEKS = 4
 COST_REFERENCE_PARTICLES = 10_000
 
-#: The budget is this multiple of the predicted duration of the SLOWEST
-#: shard. Three, and the reason is what the cost model cannot see: it
-#: describes the throughput of one machine, and the machine running now may
-#: be slower, or sharing its cores with the browser, the server, and a
-#: retrospective replay. 3x covers a box three times slower than the one that
-#: produced the sealed record while still failing a genuinely hung run in a
-#: small multiple of its own estimate. The fixed 3600 s was too SHORT: it
-#: killed the legitimate 91-minute full grid. It was never too long, because
-#: a run whose runners have died does not wait out its budget -- they exit,
-#: the poll loop below ends on the same tick, and the "produced no status"
-#: error is raised at once. The budget only ever governs a run still alive.
+#: Budget = this multiple of the predicted SLOWEST shard: covers a box up to
+#: 3x slower (or shared with the browser/server/replay). Dead runners end the
+#: poll at once, so the budget only governs a run still alive.
 TIMEOUT_SAFETY = 3.0
 
-#: Floor under the budget, and the guarantee that this change only ever
-#: EXTENDS the old behaviour.
-#:
-#: The multiple alone is not that guarantee. It is taken over the slowest
-#: SHARD, so it silently assumes the machine really delivers the concurrency
-#: the width asks for. Where it does not -- few free cores, thermal
-#: throttling, a retrospective replay at width 4 on the same box (/api/busy
-#: warns but permits) -- each runner's per-cell time inflates by the
-#: oversubscription factor, and at width 4 a fully serialised machine needs
-#: 4x the slowest shard against a 3x budget. Sizing on the shard would then
-#: KILL runs the old fixed hour completed: the mid-January full grid this
-#: change exists to protect is 159 cells at n_obs 23, 2922 s of honest
-#: sequential work, and 3 x the slowest shard is only 2206 s.
-#:
-#: So the floor is the hour itself. The budget is by construction never
-#: shorter than the constant it replaces and only ever longer, which is the
-#: single property that makes this change safe to ship into a live season;
-#: the multiple takes over above the crossover, where it is the old constant
-#: that was too short. It also covers the small-grid case it was first
-#: written for: three replicates at one location predict under two minutes,
-#: which a cold interpreter, a cold network file and a busy disk can eat on
-#: their own, and the multiple has nothing to work with at that size.
-#:
-#: The cost of a floor this high is bounded and small: a genuinely HUNG run
-#: is declared dead after an hour rather than fifteen minutes, and the user
-#: can press STOP at any point. Killing a legitimate weekly submission is
-#: not comparably cheap.
+#: Floor under the budget: the old fixed hour, so a budget is never shorter
+#: than before. The multiple assumes the width's concurrency is real; on an
+#: oversubscribed box it is not (full grid at n_obs 23: 2922 s serial vs
+#: 2206 s = 3x slowest shard), and tiny grids need slack for cold starts.
+#: Cost: a hung run lives up to an hour; STOP works at any time.
 TIMEOUT_FLOOR_S = 3600.0
 
 #: How often the supervisor looks at its runners and at the STOP flag.
 POLL_S = 1.0
 
-#: The two signals a cancel uses. SIGKILL is POSIX-only; on Windows both
-#: names resolve to the terminate path in _signal_tree, which is what that
-#: platform did before.
+#: Cancel signals; SIGKILL is POSIX-only (Windows: both mean terminate).
 _SIGTERM = signal.SIGTERM
 _SIGKILL = getattr(signal, "SIGKILL", signal.SIGTERM)
 
 _sleep = time.sleep          # indirection so tests can drive the poll loop
 
-#: subprocess.CREATE_NEW_PROCESS_GROUP, spelled as its value because the
-#: constant exists only in Windows builds of Python and this module must
-#: import everywhere.
+#: subprocess.CREATE_NEW_PROCESS_GROUP by value (the name is Windows-only).
 _CREATE_NEW_PROCESS_GROUP = 0x00000200
 
-#: Where launched runners are recorded so a console takeover can sweep the
-#: fits a dead predecessor left behind. The runners are plain Popen
-#: children supervised from daemon threads: a takeover or window close
-#: kills the server without running any supervisor's finally block, the
-#: runners keep fitting, and a heartbeat-stale resume would then fit the
-#: same cells concurrently. The relaunch path (flubnf/cli.py::
-#: _sweep_runner_groups, which mirrors this path and must agree with it)
-#: reads and clears the file. It lives beside app.pid: same lifecycle,
-#: same owner.
+#: Launched-runner registry ({pid: {pgid, runner}}), beside app.pid. A
+#: takeover kills the server without the supervisors' finally blocks, so the
+#: next launch sweeps orphaned runners from here (flubnf/cli.py::
+#: _sweep_runner_groups reads this format and must agree with it).
 RUNNER_PIDS_FILE = REPO / "app" / "state" / "pf_runners.json"
 
 
 def runner_popen_kwargs(base: dict | None = None,
                         _os_name: str | None = None) -> dict:
     """`base` plus the keywords that put a runner in its own process group
-    (its own session on POSIX). The group is the one address a console
-    takeover can still signal after the supervising thread died with the
-    server, and on POSIX killpg reaches the engine pool the runner spawned
-    even though the parent link is gone. The supervisor's own cancel path
-    does not lean on the group (_signal_tree sweeps the tree read from
-    `ps`); the group exists for the runner that has no supervisor left.
-    `_os_name` is injectable so both branches are testable anywhere."""
+    (session on POSIX): the address a takeover sweep can still signal once
+    the supervisor died. The live cancel path uses _signal_tree instead.
+    `_os_name` is injectable for tests."""
     kw = dict(base or {})
     if (_os_name or os.name) == "posix":
         kw["start_new_session"] = True
@@ -1038,14 +852,10 @@ def runner_popen_kwargs(base: dict | None = None,
 
 
 def record_runner_pids(procs, path: Path | None = None) -> None:
-    """Add the launched runners to the takeover registry: pid, group id
-    (POSIX sessions make pgid == pid; Windows taskkill /T needs only the
-    pid), and the runner script, which the sweep checks against the live
-    command line so a recycled pid is never signalled. Merged into any
-    entries already present, because concurrent runs (a forecast beside a
-    replay) each record their own runners. Never fatal: the registry is a
-    courtesy to the NEXT launch, and no fit may die because it could not
-    be written."""
+    """Add runners to the takeover registry: pid, pgid (== pid on POSIX,
+    None on Windows) and the runner script, which the sweep matches against
+    the live command line so a recycled pid is never signalled. Merged with
+    concurrent runs' entries. Never fatal."""
     try:
         path = Path(path) if path else RUNNER_PIDS_FILE
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -1077,10 +887,8 @@ def record_runner_pids(procs, path: Path | None = None) -> None:
 
 
 def unrecord_runner_pids(procs, path: Path | None = None) -> None:
-    """Drop finished runners from the takeover registry: the supervisor's
-    own finally already stopped them, and a later sweep must not chase
-    their recycled pids. Entries recorded by other live runs are left in
-    place. Never fatal."""
+    """Drop finished runners from the registry (their pids may be recycled);
+    other runs' entries stay. Never fatal."""
     try:
         path = Path(path) if path else RUNNER_PIDS_FILE
         reg = json.loads(path.read_text())
@@ -1115,9 +923,7 @@ def shard_cells(cells: list, width: int | None = None) -> list:
 
 
 def cell_seconds(cell: dict) -> float:
-    """Predicted seconds for one prepared cell. Cells written before the
-    cost model existed carry no particle count and are read at the
-    reference 10,000."""
+    """Predicted seconds for one cell (no particle count: the reference 10,000)."""
     n_obs = int(cell.get("n_obs") or 0)
     particles = float(cell.get("particles") or COST_REFERENCE_PARTICLES)
     return ((COST_INTERCEPT_S + COST_PER_WEEK_S * (n_obs + COST_FORECAST_WEEKS))
@@ -1125,8 +931,7 @@ def cell_seconds(cell: dict) -> float:
 
 
 def expected_seconds(shards: list) -> float:
-    """Predicted wall clock for the whole run: the slowest shard, since the
-    shards run concurrently and the run ends with the last of them."""
+    """Predicted wall clock: the slowest shard (shards run concurrently)."""
     return max((sum(cell_seconds(c) for c in s) for s in shards), default=0.0)
 
 
@@ -1162,9 +967,8 @@ def _finished(status_files: list) -> int:
 
 
 def _descendants(pid: int) -> list:
-    """Every process below `pid`, deepest last. [] on any platform or
-    failure where the tree cannot be read, which leaves the caller doing
-    exactly what it did before."""
+    """Every process below `pid`, deepest last; [] where the tree cannot be
+    read (non-POSIX, ps failure)."""
     if os.name != "posix":
         return []
     try:
@@ -1192,30 +996,15 @@ def _descendants(pid: int) -> list:
 
 
 def _signal_tree(p, sig) -> None:
-    """Signal a runner AND the engine processes it spawned.
+    """Signal a runner AND its engine processes (PyBNF's pool would
+    otherwise keep its cores).
 
-    Signalling the runner alone is not enough: PyBNF's filter runs a pool, so
-    the runner is a parent, and terminating it leaves its workers alive and
-    holding cores. Measured 2026-08-26 against the pre-sharding code as well,
-    so this is an old defect -- but one the sharding multiplies by the width,
-    because a cancel now abandons the pool of every shard rather than of one
-    process. A cancel that leaves engine processes chewing CPU is worse than
-    no cancel.
-
-    Order matters twice. The tree is READ before anything is signalled,
-    because once the runner dies its children are reparented to init and the
-    link that identifies them as ours is gone. The runner is then signalled
-    before its descendants, so a pool it was about to grow cannot outlive the
-    sweep.
-
-    The tree is still read from `ps` even though each runner now leads its
-    own session (the console takeover sweep in flubnf/cli.py is what the
-    session exists for): Windows has no killpg, and a pool member that
-    moved itself to a new group would escape a group signal, so the cancel
-    path keeps the explicit sweep. The session does mean the terminal's
-    Ctrl-C no longer reaches the runners through the console's process
-    group; what reaps them is this supervisor's finally block (_stop_all)
-    while it lives, and the next launch's takeover sweep when it does not.
+    The tree is READ before signalling (a dead runner's children are
+    reparented and unidentifiable) and the runner goes first, so a pool it
+    was growing cannot outlive the sweep. `ps` rather than the runner's
+    session: Windows has no killpg and a pool member may change group.
+    Terminal Ctrl-C no longer reaches runners (own session): _stop_all reaps
+    them, or the next launch's takeover sweep.
     """
     kids = _descendants(p.pid)
     try:
@@ -1230,8 +1019,8 @@ def _signal_tree(p, sig) -> None:
 
 
 def _stop_all(procs: list) -> None:
-    """Stop every runner still alive, with its engine processes, and WAIT
-    for each one. This is the one step no exception may skip."""
+    """Stop every live runner with its engine processes and WAIT for each;
+    no exception may skip this."""
     for p in procs:
         try:
             if p.poll() is None:
@@ -1253,13 +1042,8 @@ def _stop_all(procs: list) -> None:
 
 def _over_budget(status_files: list, n_cells: int, shards: list,
                  budget: float, sized: bool) -> str:
-    """What a run that ran out of time should say: how far it got, out of
-    how many, and where its budget came from.
-
-    Which of the two terms in budget_seconds actually bound is named, not
-    assumed. Since the floor is the old fixed hour it binds for most grids,
-    and a message reading "60 min = 3 x the 12 min predicted" would be
-    arithmetic the reader can see is false."""
+    """The over-budget message: progress, and which term of budget_seconds
+    bound (the floor usually does; "60 min = 3 x 12 min" would be false)."""
     done = _finished(status_files)
     predicted = expected_seconds(shards)
     model = (f"the {predicted / 60:.0f} min the cost model "
@@ -1273,8 +1057,7 @@ def _over_budget(status_files: list, n_cells: int, shards: list,
                f"{TIMEOUT_SAFETY:g} x {model}")
     else:
         how = f"{budget / 60:.0f} min = {TIMEOUT_SAFETY:g} x {model}"
-    # the counts and the budget lead, because a ledger row keeps only the
-    # first 300 characters of an error
+    # counts and budget lead: the ledger keeps only 300 chars of an error
     return (f"PF fitting exceeded its time budget: {done} of {n_cells} cells "
             f"finished. Budget was {how}. On a slower machine widen the "
             f"sharding ({WIDTH_ENV}); otherwise suspect the engine venv.")
@@ -1282,39 +1065,23 @@ def _over_budget(status_files: list, n_cells: int, shards: list,
 
 def execute(workroot: Path, timeout: float | None = None,
             width: int | None = None) -> dict:
-    """Run every prepared cell in the engine venv, sharded across parallel
-    runners, and return the merged {cell key: "ok" | "FAIL: ..."} status.
+    """Run the prepared cells sharded across low-priority runner
+    subprocesses; return (and write to pf_status.json) the merged
+    {cell key: "ok" | "FAIL: ..."}.
 
-    Three properties of the single-runner version are kept, each of which
-    needed something once the runners became plural:
-
-      * Cancellation. <workroot>/STOP is both the supervisor's flag and the
-        runners' own: every runner checks it between cells and dispatches
-        nothing more, and the supervisor terminates all of them and waits
-        for each before raising RunStopped, so none is left behind.
-      * The status file. Each shard rewrites its own after every cell. This
-        merges them into pf_status.json, and records any cell no shard ever
-        reported as a failure naming that shard and its stderr, so a shard
-        that died is visible in the result rather than averaged away. When
-        no shard produced a status at all, the specific error is raised as
-        before, quoting the runner stderr.
-      * Reduced priority. Every runner is wrapped in low_priority_cmd and
-        low_priority_popen_kwargs, on every platform.
-
-    `timeout` defaults to a budget sized to the work (budget_seconds); an
-    explicit value overrides it. `width` defaults to DEFAULT_SHARD_WIDTH,
-    which is also the retrospective path's default.
+    <workroot>/STOP halts runners between cells; every runner is reaped
+    before RunStopped is raised. A cell no shard reported becomes a FAIL
+    quoting that shard's stderr; no status at all raises with the stderr.
+    `timeout` defaults to budget_seconds(); `width` to shard_width() (env
+    override, else DEFAULT_SHARD_WIDTH).
     """
     workroot = Path(workroot)
     out_json = workroot / "pf_status.json"
     cells = json.loads((workroot / "cells.json").read_text())
-    # prepare-stage failures (a state the vintage could not resolve) are
-    # part of this run's status: folding them here is what carries them
-    # into pf_failures downstream
+    # prepare-stage failures belong to this run's status (-> pf_failures)
     prep_failures = read_prepare_failures(workroot)
     if not cells:
-        # nothing to fit is not a failure; prepare's own refusals, if any,
-        # still surface in the record
+        # nothing to fit is not a failure; prepare's refusals still surface
         out_json.write_text(json.dumps(prep_failures))
         return dict(prep_failures)
     shards = shard_cells(cells, width)
@@ -1322,10 +1089,8 @@ def execute(workroot: Path, timeout: float | None = None,
     budget = budget_seconds(shards) if sized else float(timeout)
     stop = workroot / "STOP"            # the user's flag AND the runners' halt
 
-    # reduced scheduling priority: the fits yield to the interactive server
-    # so the application stays usable during a multi-hour run. `nice` execs
-    # the interpreter, so each Popen still refers to the real runner process
-    # and the stop handling below is unchanged. See app/core/proc.py.
+    # Fits yield to the interactive server; `nice` execs the interpreter, so
+    # each Popen is still the real runner. See app/core/proc.py.
     from app.core.proc import low_priority_cmd, low_priority_popen_kwargs
     procs, status_files, err_files, handles = [], [], [], []
     try:
@@ -1339,18 +1104,10 @@ def execute(workroot: Path, timeout: float | None = None,
                                              cells_json=str(sj),
                                              out_json=str(sf),
                                              halt_path=str(stop)))
-            # stderr to a FILE, not a pipe: with several runners and nobody
-            # draining them, a chatty one would fill its pipe buffer and
-            # block forever, which is the very hang the budget exists for.
+            # stderr to a FILE: an undrained pipe would fill and hang the runner
             fh = open(ef, "w")
             handles.append(fh)
-            # Each runner leads its own session (its own process group on
-            # Windows): the supervisor is a daemon thread of the server, so
-            # a takeover or window close kills it without running this
-            # function's finally, and the group id is then the only address
-            # the relaunch can still signal (the takeover sweep in
-            # flubnf/cli.py). This supervisor's own cancel path does not
-            # depend on the group: _signal_tree sweeps the tree from `ps`.
+            # own session/process group: see runner_popen_kwargs
             procs.append(subprocess.Popen(
                 low_priority_cmd([str(PY310), str(runner)]),
                 stdout=subprocess.DEVNULL, stderr=fh,
@@ -1375,9 +1132,8 @@ def execute(workroot: Path, timeout: float | None = None,
             except Exception:
                 pass
     if stop.exists():
-        # the flag can also land before the first poll, or between the last
-        # runner exiting and this line. Either way the run was stopped, and
-        # it must not return a status that reads like a finished grid.
+        # STOP landed before the first poll or after the last runner exited:
+        # still a stop, never a status that reads like a finished grid
         raise RunStopped("stopped by user")
     if not any(sf.is_file() for sf in status_files):
         raise RuntimeError(f"PF runner produced no status: "
@@ -1401,13 +1157,12 @@ def execute(workroot: Path, timeout: float | None = None,
     return merged
 
 
+# --- collect ------------------------------------------------------------------
+
 def _cell_statuses(workroot: Path) -> dict:
-    """Per-cell fit statuses, whichever path recorded them: the forecast
-    supervisor's merged pf_status.json, overlaid on the retrospective
-    runner's per-cell markers in cells_done/ (retro.py's CELL_DONE_DIRNAME,
-    mirrored here because retro imports this module, never the reverse).
-    {} for an older workroot with neither, which leaves collect() reading
-    every cell exactly as it always did."""
+    """Per-cell fit statuses: pf_status.json (forecast path) over cells_done/
+    markers (retro.py's CELL_DONE_DIRNAME, mirrored: retro imports this
+    module, not the reverse). {} when neither exists (read every cell)."""
     workroot = Path(workroot)
     out: dict = {}
     done = workroot / "cells_done"
@@ -1427,10 +1182,7 @@ def _cell_statuses(workroot: Path) -> dict:
 
 
 def _record_collect_failure(workroot: Path, key: str, msg: str) -> None:
-    """Fold one assembly-time failure into the merged status file, so a
-    torn cell is a recorded failure with a reason rather than a silent
-    absence. Never fatal: the healthy cells' samples matter more than the
-    record of the torn one."""
+    """Record an assembly-time failure in pf_status.json. Never fatal."""
     try:
         out = Path(workroot) / "pf_status.json"
         try:
@@ -1448,11 +1200,9 @@ def _record_collect_failure(workroot: Path, key: str, msg: str) -> None:
 
 
 def _save_cloud(workroot: Path, c: dict) -> None:
-    """Copy the cell's ending cloud to where the spec asked, so it outlives
-    the week's prune. A fitted cell with no cloud file is recorded in
-    STATE_MISSING_NAME and still pooled: its forecast is good, only the
-    carry into the next week is lost, and the next week's cells.json says
-    so through continued_from."""
+    """Copy the cell's ending cloud to save_state_to (it outlives the prune).
+    A missing cloud is recorded in STATE_MISSING_NAME; the cell is still
+    pooled, only the carry is lost."""
     src = Path(c.get("state_file") or "")
     dest = Path(c["save_state_to"])
     if src.is_file():
@@ -1471,12 +1221,9 @@ def _save_cloud(workroot: Path, c: dict) -> None:
 def collect(workroot: Path) -> dict:
     """Forecast samples per location: replicate-pooled, anchored at origin.
 
-    Only cells whose recorded status is ok (or unrecorded, for an older
-    workroot) are read. A failed fit can leave a torn trajectory behind --
-    an empty file, or a single flushed row -- and parsing it used to kill
-    the WHOLE assembly with an IndexError, so one dead cell cost the other
-    158 their samples. A torn file under an ok status is downgraded to a
-    recorded failure and skipped for the same reason."""
+    Only cells whose status is ok (or unrecorded) are read. A torn
+    trajectory (empty, one row, ragged) is recorded as a failure and
+    skipped, so one dead cell cannot cost the others their samples."""
     import numpy as np
     cells = json.loads((workroot / "cells.json").read_text())
     status = _cell_statuses(workroot)
@@ -1492,17 +1239,13 @@ def collect(workroot: Path) -> dict:
         try:
             tr = np.genfromtxt(tr_files[0])
         except Exception as e:
-            # a row torn mid-write leaves a ragged file genfromtxt refuses
             _record_collect_failure(
                 workroot, c["key"],
                 f"FAIL: trajectory {tr_files[0].name} unreadable ({e}); "
                 "the cell is excluded from assembly")
             continue
         if tr.ndim < 2:
-            # an empty or single-row file: a fit torn mid-write. The real
-            # trajectory is a matrix (particles by weeks), so anything
-            # 1-D is unreadable, and np.genfromtxt gives shape (0,) for
-            # an empty file and a 1-D vector for one row.
+            # empty -> shape (0,), one row -> 1-D; a real one is particles x weeks
             _record_collect_failure(
                 workroot, c["key"],
                 f"FAIL: trajectory {tr_files[0].name} is torn "
@@ -1515,37 +1258,22 @@ def collect(workroot: Path) -> dict:
         origin = tr[:, n - 1]
         med = float(np.median(origin[np.isfinite(origin)]))
         scale = c["last_observed"] / med if med > 0 else 1.0
-        # Horizons are AS-OF-relative, always. When weeks_to_drop trimmed
-        # k rows, the fit origin sits k weeks before the as-of date and the
-        # conf extended pf_forecast_weeks by k, so the as-of-relative
-        # horizon h lives at column (n-1) + k + h. Before this shift every
-        # consumer (quantile_rows, retro scoring, the fan) read the
-        # origin-relative columns and labelled them one week late per
-        # dropped week (audit finding). "0" is the as-of week itself: the
-        # model's nowcast of the trimmed weeks when k > 0, the anchored
-        # origin when k = 0, so the fan connects to the same calendar spot
-        # either way. The anchor pair is unchanged: last_observed is the
-        # trimmed series' final value, med the fit origin's median.
+        # Horizons are AS-OF-relative: with k trimmed weeks the conf asked for
+        # pf_forecast_intervals = 4 + k, so horizon h is column n-1+k+h and
+        # the as-of week is n-1+k. The anchor pair (last_observed, med) is
+        # still the fit origin's.
         k = int(c.get("weeks_dropped", 0) or 0)
         need = n + k + 4
         if tr.shape[1] < need:
-            # reachable only when a cell RECORDS a trim but its trajectory
-            # was not extended -- an engine build that ignored
-            # pf_forecast_weeks, or a workroot mixing fix generations. (A
-            # genuinely pre-fix workroot has no weeks_dropped key at all
-            # and reads k=0 here, exactly as it always did.)
+            # a recorded trim the engine did not extend the forecast for
             raise RuntimeError(
                 f"{c['key']}: trajectory has {tr.shape[1]} columns, "
                 f"{need} needed for weeks_dropped={k}; the engine did not "
                 "extend the forecast for the recorded trim -- rerun the "
                 "forecast on a current engine")
-        # Canonical horizons (app.core.horizons): the anchor week under
-        # ORIGIN, the four forecasts under the hub's own labels 0..3. The
-        # trajectory index still counts PHYSICAL weeks ahead, which is why
-        # the loop runs 1..4 and the key is h-1. Writing the anchor as "0"
-        # here, as this did before, is the collision the convention exists
-        # to prevent: it would make the last observed week look like the
-        # first forecast and move every submitted row a week early.
+        # Canonical keys (app.core.horizons): anchor under hz.ORIGIN, physical
+        # week h under hub label h-1 (an anchor keyed "0" would shift every
+        # submitted row a week early).
         d = by_loc.setdefault(c["location"],
                               {hz.ORIGIN: [], **{h: [] for h in hz.HORIZONS}})
         d[hz.ORIGIN].extend((tr[:, n - 1 + k] * scale).tolist())

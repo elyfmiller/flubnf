@@ -1,13 +1,7 @@
-"""The run-settings block: one shared renderer, a compact two-column table.
-
-User report 2026-08-21: the 'Run settings: forecast date ... particles ...'
-prose lines read as small print with a page-wide dead band. The one shared
-renderer (app.core.runs.settings_html) now emits a tight two-column
-label/value grid (dl.kv, the definition-grid style: natural width, values
-in tabular figures) at the standard body size, and every surface renders
-through it -- the forecast running card, the run page, the retro index's
-season cards, the retro season page, and both report exports -- so all
-surfaces render identically by construction.
+"""The run-settings block: one shared renderer (app.core.runs.settings_html)
+emits a compact two-column dl.kv grid at body size, and every surface (the
+forecast card, run page, retro index and season page, both exports)
+renders through it.
 """
 import re
 import sys

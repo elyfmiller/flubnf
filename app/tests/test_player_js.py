@@ -1,10 +1,7 @@
-"""The shared season player (app/ui/static/player.js).
-
-Two layers: the pure view-state and availability logic runs for real under
-JavaScriptCore (jsc ships with macOS; the tests skip cleanly where it is
-absent), and source-level checks pin the properties both hosts depend on
-(Safari safety, no network calls of its own, the availability rendering,
-and the view-state clear sites)."""
+"""The shared season player (app/ui/static/player.js): pure view-state and
+availability logic runs under JavaScriptCore (skips where jsc is absent);
+source checks pin Safari safety, no network calls, availability rendering
+and the view-state clear sites."""
 import json
 import re
 import subprocess
@@ -144,12 +141,9 @@ def test_week_cell_cataloged_official_without_a_file_reads_no_submission(
 
 @needs_jsc
 def test_week_cell_pending_cases(tmp_path):
-    # every remaining blank is a genuinely uncomputed score:
-    #   our own member with no score yet;
-    #   an official present this week but unscored;
-    #   an official absent all season (the disabled-toggle case);
-    #   a week whose payload never arrived, where nothing is known about
-    #   who submitted, so no no-submission claim may be made
+    # every remaining blank is genuinely uncomputed: our member unscored; an
+    # official present but unscored; an official absent all season; or a
+    # payload that never arrived (so no no-submission claim)
     got = _js(tmp_path, "[I.weekCellState(null, false, true, false, false),"
                         " I.weekCellState(null, true, true, true, true),"
                         " I.weekCellState(null, true, true, false, false),"
@@ -166,9 +160,8 @@ def test_add_days_utc(tmp_path):
 
 @needs_jsc
 def test_no_forecast_note_states_the_empty_us_frame(tmp_path):
-    # a US frame outside the officials' competition window has nothing to
-    # draw; the caption states the structural reason instead of standing
-    # as bare axes (field-found on the 2025-26 season player)
+    # a US frame outside the officials' window states why it is empty
+    # instead of showing bare axes
     got = _js(tmp_path, "I.noForecastNote('US', 0, 0)")
     assert "no official US submission" in got
     assert "per state" in got
@@ -201,9 +194,8 @@ def test_safari_safe_and_host_agnostic():
     # Safari-safe: no lookbehind regexes, nothing async at the top level
     assert "(?<=" not in SRC and "(?<!" not in SRC
     assert not re.search(r"\basync\b|\bawait\b", SRC)
-    # host-agnostic: the player never touches the network itself, and it
-    # embeds cleanly in the self-contained report (whose test forbids
-    # these substrings anywhere in the built file)
+    # host-agnostic: no network of its own, so it embeds in the
+    # self-contained report (which bans these substrings)
     assert "fetch(" not in SRC
     assert "/static/" not in SRC
     assert "</script" not in SRC.lower()
@@ -217,10 +209,9 @@ def test_marker_and_exports():
 
 
 def test_availability_rendering_wired():
-    # every model toggle carries an availability note span, refreshed on
-    # every payload through the two-tier verdict: week-absent but
-    # season-present stays enabled with the transient note, whole-season
-    # absent keeps the disabled + Update-data state
+    # each toggle has an availability note refreshed per payload: absent this
+    # week but present in the season stays enabled with a note; absent all
+    # season is disabled with the Update-data state
     assert "data-avail" in SRC
     assert "(fetch via Update data on the Data tab)" in SRC
     assert "(no official submission this week)" in SRC
@@ -238,9 +229,8 @@ def test_availability_rendering_wired():
 
 
 def test_stats_table_distinguishes_no_submission_from_pending():
-    # the week cell carries both readings, muted; the cumulative cell is
-    # rendered by fmt alone, so a cataloged official keeps its real running
-    # number through a week it skipped
+    # the week cell shows both readings; the cumulative cell keeps an
+    # official's running number through a week it skipped
     assert '<td class="num hint">no submission</td>' in SRC
     assert '<td class="num hint">pending</td>' in SRC
     assert "weekCell(st ? st.week_rel : null, m)" in SRC
@@ -253,9 +243,8 @@ def test_stats_table_distinguishes_no_submission_from_pending():
 
 
 def test_no_forecast_note_is_wired_into_the_frame_draw():
-    # drawFC computes availability across ALL models (toggled or not) and
-    # sets the caption from the shared helper on every frame, so an empty
-    # frame can never again render as silent bare axes
+    # drawFC computes availability across ALL models each frame, so an empty
+    # frame never renders as silent bare axes
     assert ("el.msg.textContent = noForecastNote(loc, avail, drawn, cfg.us)"
             in SRC)
     assert "noForecastNote: noForecastNote" in SRC

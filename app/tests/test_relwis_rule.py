@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from fastapi.testclient import TestClient           # noqa: E402
 
 from app.ui import server as srv                    # noqa: E402
+from app.ui import shared as ui_shared              # noqa: E402
 
 client = TestClient(srv.app)
 
@@ -23,23 +24,23 @@ NAU = Path(__file__).resolve().parents[1] / "ui" / "static" / "nau.css"
 
 
 def test_relwis_chip_formats_member_coverage_and_classes():
-    assert srv.relwis_chip(4.067, cells=2) == \
+    assert ui_shared.relwis_chip(4.067, cells=2) == \
         ('PF relWIS <span class="relwis bad">4.067</span>'
          ' vs FluSight baseline, ratio of sums (2 cells)')
-    assert srv.relwis_chip(0.987, cells=1) == \
+    assert ui_shared.relwis_chip(0.987, cells=1) == \
         ('PF relWIS <span class="relwis ok">0.987</span>'
          ' vs FluSight baseline, ratio of sums (1 cell)')
     # coverage unknown: the parenthetical is omitted, never invented
-    assert srv.relwis_chip(0.5) == \
+    assert ui_shared.relwis_chip(0.5) == \
         ('PF relWIS <span class="relwis ok">0.500</span>'
          ' vs FluSight baseline, ratio of sums')
     # an unreadable value yields nothing rather than a broken chip
-    assert srv.relwis_chip("nonsense") == ""
-    assert srv.relwis_chip(None) == ""
+    assert ui_shared.relwis_chip("nonsense") == ""
+    assert ui_shared.relwis_chip(None) == ""
 
 
 def test_outcome_chips_apply_the_rule():
-    chips = srv._outcome_chips(json.dumps(
+    chips = ui_shared._outcome_chips(json.dumps(
         {"pf_cells": 2, "pf_failures": {"a": "boom"},
          "submissions": {"PF-SIHRS": "p", "Ensemble": "q"},
          "report": "r.html", "pf_relwis": 4.067}))
@@ -48,33 +49,31 @@ def test_outcome_chips_apply_the_rule():
     assert "2 submissions" in chips
     assert ('PF relWIS <span class="relwis bad">4.067</span>'
             ' vs FluSight baseline, ratio of sums (2 cells)') in chips
-    good = srv._outcome_chips(json.dumps({"pf_cells": 1,
+    good = ui_shared._outcome_chips(json.dumps({"pf_cells": 1,
                                           "pf_relwis": 0.702}))
     assert ('PF relWIS <span class="relwis ok">0.702</span>'
             ' vs FluSight baseline, ratio of sums (1 cell)') in good
 
 
 def test_outcome_chips_name_the_mechanistic_member_by_what_the_row_ran():
-    """A row that recorded the Oracle step's bank label scored the
-    Oracle SIHRS; a row that asked for oracle = none scored the plain filter; a
-    row from before the step existed keeps the name it was recorded under
-    (it scored the plain filter too, and relabelling it would rewrite the
-    ledger's history)."""
-    member = srv._outcome_chips(json.dumps(
+    """The chip names the member by what the row ran: the Oracle step's bank
+    label -> Oracle SIHRS; oracle = none -> the plain filter; pre-step rows
+    keep their recorded name (relabelling would rewrite the ledger)."""
+    member = ui_shared._outcome_chips(json.dumps(
         {"pf_relwis": 0.741, "pf_relwis_cells": 9,
          "oracle": "admissions-fbase@288b139f"}))
     assert ('Oracle SIHRS relWIS <span class="relwis ok">0.741</span>'
             ' vs FluSight baseline, ratio of sums (9 cells)') in member
-    plain = srv._outcome_chips(json.dumps(
+    plain = ui_shared._outcome_chips(json.dumps(
         {"pf_relwis": 0.813, "oracle": "none"}))
     assert plain.startswith('plain filter relWIS')
-    old = srv._outcome_chips(json.dumps({"pf_relwis": 0.813}))
+    old = ui_shared._outcome_chips(json.dumps({"pf_relwis": 0.813}))
     assert old.startswith('PF relWIS')
 
 
 def test_error_chips_speak_plain_language_never_tracebacks():
     raw = "module 'pandas.io.json' has no attribute 'dumps'"
-    chips = srv._outcome_chips(json.dumps({"error": raw}))
+    chips = ui_shared._outcome_chips(json.dumps({"error": raw}))
     assert "pandas" not in chips                  # the raw string never leaks
     assert '<span class="bad">failed</span>' in chips
     assert "run page" in chips                    # and says where the raw is
@@ -85,7 +84,7 @@ def test_runs_page_renders_chips_as_markup():
         active="Runs", ledger=[
             {"run_id": "r1", "label": "2098-01-03 · Jan 03 09:31",
              "status": "ok", "elapsed_s": 60.0,
-             "chips": srv._outcome_chips(json.dumps(
+             "chips": ui_shared._outcome_chips(json.dumps(
                  {"pf_cells": 2, "pf_relwis": 4.067}))}])
     # the span survives unescaped, so the color classes actually apply
     assert '<span class="relwis bad">4.067</span>' in html

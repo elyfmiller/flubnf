@@ -1,24 +1,16 @@
 """The outlook model toggle: one map, every available model.
 
-The v3 inputs bundle carries hover cards for EACH available model (pf and
-analogue since the blend was retired on 2026-09-22; a bundle from before
-also carries "ensemble"), all computed by the same quantile-CDF path
-(categorical_probs_from_quantiles over the 23-level grid; the PF's samples
-are reduced to that grid first). Home and the weekly report render the map
-for the default model (the PF when present) and, when the bundle carries
-two or more models, add a compact aria-pressed toggle that swaps the fills,
-hover cards, and the surface's model label client-side.
+The v3 bundle carries hover cards for EACH model (pf and analogue; older
+bundles also "ensemble"), all from the one quantile-CDF path
+(categorical_probs_from_quantiles; PF samples reduced to the grid first).
+Home and the weekly report render the default (PF) map plus, with two or
+more models, an aria-pressed toggle that swaps fills, hovers and label
+client-side.
 
-THE LEGACY PATH (user request 2026-08-21): a stored run from before
-per-model cards -- no bundle, or a pre-v3 bundle -- gets the SAME toggle
-approximately, whenever its results.json stores quantile grids for two or
-more models: _outlook_cards computes every model's card set from those
-grids through the one quantile-CDF path (categorical_probs_from_quantiles,
-the exact CDF reading of the coarse stored grid), the map and the swap
-payload come from that one computation, and the caption carries the
-"approximate, from stored quantiles" honesty marker. A pre-v3 bundle whose
-results.json cannot fund a toggle (one usable model) keeps its exact
-single-model bundle cards, label honest, no dead control.
+Legacy runs (no bundle, or pre-v3) get the same toggle approximately when
+results.json stores grids for two or more models, captioned "approximate,
+from stored quantiles"; with one usable model they keep their exact
+single-model cards and no control.
 """
 import json
 import os
@@ -34,6 +26,10 @@ from fastapi.testclient import TestClient           # noqa: E402
 
 import app.core.runs as runs_mod                    # noqa: E402
 import app.ui.server as srv                         # noqa: E402
+from app.ui.routes import home as ui_home           # noqa: E402
+from app.ui.routes import output as ui_output       # noqa: E402
+from app.ui import pipeline as ui_pipeline          # noqa: E402
+from app.ui import shared as ui_shared              # noqa: E402
 from app.core import horizons as hz                 # noqa: E402
 from app.core import report_v2                      # noqa: E402
 
@@ -44,10 +40,8 @@ OLD_MTIME = (1_000_000_000, 1_000_000_000)          # 2001: always stale
 
 def _synth_run_all_models(workroot: Path):
     """Drive the real build path with synthetic PF samples and analogue
-    quantiles for Ohio and the national row, the two models a run writes.
-    `ens_q`, a plain quantile mean of the two, is returned for the legacy
-    cases below (a stored run from before the blend was retired) and is
-    never handed to the build path."""
+    quantiles for Ohio and US. `ens_q` (a quantile mean of the two) is for
+    the legacy cases only and never reaches the build path."""
     from app.core import ensemble as ens
     from flubnf.settings import load_locations
     locs = load_locations()
@@ -55,10 +49,8 @@ def _synth_run_all_models(workroot: Path):
     spec = runs_mod.RunSpec(engine="all", forecast_date="2098-01-03",
                             locations=["Ohio", "US"])
     rng = np.random.default_rng(7)
-    # canonical horizons (app.core.horizons): "0" is the FIRST forecast
-    # week, not the anchor. The shift still grows with weeks ahead, and
-    # h+1 weeks past the anchor keeps the four distributions exactly the
-    # ones this fixture always fed the build path.
+    # canonical horizons: "0" is the FIRST forecast week; the shift grows
+    # with weeks ahead (h+1 weeks past the anchor)
     pf_samples = {loc: {h: (rng.gamma(5.0, 20.0, 400)
                             + 10 * (int(h) + 1)).tolist()
                         for h in hz.HORIZONS}
@@ -80,9 +72,9 @@ def _synth_run_all_models(workroot: Path):
         [{"location": "Ohio", "last_observed": 127.0},
          {"location": "US", "last_observed": 127.0}]))
     outcome = {}
-    srv._write_weekly_report(spec, workroot, pf_samples, obs,
-                             pd.DataFrame(), locs, n2f, 42.0, outcome,
-                             an_q=an_q)
+    ui_pipeline._write_weekly_report(spec, workroot, pf_samples, obs,
+                                     pd.DataFrame(), locs, n2f, 42.0, outcome,
+                                     an_q=an_q)
     def cut(qd):
         return {loc: {h: {str(l): v for l, v in q.items()
                           if str(l) in ("0.1", "0.25", "0.5", "0.75", "0.9")}
@@ -107,17 +99,15 @@ def test_bundle_v3_carries_every_model_via_the_one_quantile_cdf_path(
     assert bundle["cards_model"] == "pf"            # the PF colours the map
     cbm = bundle["cards_by_model"]
     assert set(cbm) == {"pf", "analogue"}
-    # every model's Ohio card equals the SAME quantile-CDF computation on
-    # that model's own grid -- the pf card included (samples reduced to
-    # the grid first, never the few-values-as-samples stand-in)
+    # every model's Ohio card equals the quantile-CDF computation on its own
+    # grid (the pf card included)
     lo = parts["obs"]["Ohio"][-1][1]
     from flubnf.settings import load_locations
     locs = load_locations()
     pop = int(dict(zip(locs.location_name,
                        locs.population.astype(float)))["Ohio"])
     for model, q in (("pf", parts["pf_q"]), ("analogue", parts["an_q"])):
-        # the card is the 1-week-ahead outlook, so the grid it reads is
-        # the FIRST canonical forecast horizon
+        # the card is the 1-week-ahead outlook: the first canonical horizon
         expect = categorical_probs_from_quantiles(
             q["Ohio"][hz.HORIZONS[0]], lo, pop, 0)
         got = cbm[model]["OH"]["probs"]
@@ -145,7 +135,7 @@ def test_report_renders_the_toggle_with_every_bundled_model(tmp_path):
     assert ('data-mmodel="pf" aria-pressed="true"') in html
     assert ('data-mmodel="analogue" aria-pressed="false"') in html
     assert 'data-mmodel="ensemble"' not in html
-    for label in ("Oracle SIHRS outlook", "Groundhog outlook"):
+    for label in ("Oracle SIHRS categorical forecast", "Groundhog categorical forecast"):
         assert label in html, label
     # the label element the swap script retargets (one remains, above the map)
     assert html.count("data-mapmodel-label") >= 1
@@ -157,8 +147,7 @@ def test_report_renders_the_toggle_with_every_bundled_model(tmp_path):
 
 
 def test_pf_only_run_gets_no_toggle_and_an_honest_label(tmp_path):
-    """One available model = nothing to toggle: the map renders PF with
-    the PF label, exactly as before."""
+    """One available model: no toggle, PF label."""
     from flubnf.settings import load_locations
     locs = load_locations()
     n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
@@ -175,21 +164,20 @@ def test_pf_only_run_gets_no_toggle_and_an_honest_label(tmp_path):
     (tmp_path / "cells.json").write_text(json.dumps(
         [{"location": "Ohio", "last_observed": 127.0},
          {"location": "US", "last_observed": 127.0}]))
-    srv._write_weekly_report(spec, tmp_path, pf_samples, obs,
-                             pd.DataFrame(), locs, n2f, 42.0, {})
+    ui_pipeline._write_weekly_report(spec, tmp_path, pf_samples, obs,
+                                     pd.DataFrame(), locs, n2f, 42.0, {})
     bundle = json.loads((tmp_path / report_v2.BUNDLE_NAME).read_text())
     assert bundle["cards_model"] == "pf"
     assert set(bundle["cards_by_model"]) == {"pf"}
     html = (tmp_path / "report.html").read_text()
     assert 'id="outlook-model"' not in html
     assert "data-mmodel=" not in html
-    assert "Oracle SIHRS outlook" in html
+    assert "Oracle SIHRS categorical forecast" in html
 
 
 def test_v2_bundle_rebuilds_with_no_toggle_and_the_stored_label(
         tmp_path, monkeypatch):
-    """The user's stored run predates per-model cards: additive
-    versioning means it rebuilds exactly as before -- one model, no
+    """A pre-per-model-cards (v2) bundle rebuilds as before: one model, no
     toggle, honest label."""
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
     d = tmp_path / "archive" / "2098-01-03"
@@ -202,12 +190,12 @@ def test_v2_bundle_rebuilds_with_no_toggle_and_the_stored_label(
     b.write_text(json.dumps(bundle))
     (d / "report.html").write_text("<html><body>OLD FACE</body></html>")
     os.utime(d / "report.html", OLD_MTIME)
-    srv._REPORT_REBUILD_FAILED.clear()
+    ui_output._REPORT_REBUILD_FAILED.clear()
     r = client.get("/output/report?date=2098-01-03")
     assert r.status_code == 200 and "OLD FACE" not in r.text
     assert 'id="outlook-model"' not in r.text
     assert "data-mmodel=" not in r.text
-    assert "Oracle SIHRS outlook" in r.text                 # the label stays honest
+    assert "Oracle SIHRS categorical forecast" in r.text                 # the label stays honest
 
 
 # ------------------------------------------------------------- the home map
@@ -216,13 +204,13 @@ def _latest(tmp_path, monkeypatch):
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
     w = tmp_path / "workroots" / "20980103T000000-abcdef"
     parts = _synth_run_all_models(w)
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     return w, parts
 
 
 def test_home_outlook_gets_the_same_toggle(tmp_path, monkeypatch):
     w, _ = _latest(tmp_path, monkeypatch)
-    by_model = srv._outlook_models(w.name)
+    by_model = ui_home._outlook_models(w.name)
     assert set(by_model) == {"pf", "analogue"}
     assert "39" in by_model["analogue"]              # fips-keyed, with data
     home = client.get("/").text
@@ -232,17 +220,15 @@ def test_home_outlook_gets_the_same_toggle(tmp_path, monkeypatch):
     # the toggle sits above the rendered map
     assert home.index('id="outlook-model"') < home.index('id="usmap"')
     # the label span is the relabel target and defaults to the PF
-    assert 'data-mapmodel-label>Oracle SIHRS outlook' in home
-    assert "Groundhog outlook" in home
+    assert 'data-mapmodel-label>Oracle SIHRS categorical forecast' in home
+    assert "Groundhog categorical forecast" in home
 
 
 def test_home_shows_no_toggle_for_a_single_model_pre_v3_bundle(
         tmp_path, monkeypatch):
-    """A pre-v3 bundle whose results.json stores only ONE model (here the
-    blend alone, the shape of a run from before per-model results) cannot
-    fund the approximate toggle: the exact single-model bundle cards render
-    exactly as before, label honest, no dead control, no approximation
-    marker."""
+    """A pre-v3 bundle whose results.json stores ONE model (the blend alone)
+    cannot fund the toggle: exact single-model cards, no control, no
+    approximation marker."""
     w, parts = _latest(tmp_path, monkeypatch)
     (w / "results.json").write_text(json.dumps({
         "forecast_date": "2098-01-03", "observed": parts["obs"],
@@ -256,14 +242,14 @@ def test_home_shows_no_toggle_for_a_single_model_pre_v3_bundle(
     bundle.pop("cards_by_model", None)
     bundle.pop("national_map_cards", None)
     b.write_text(json.dumps(bundle))
-    srv._invalidate_scans()
-    assert srv._outlook_models(w.name) == {}
+    ui_shared._invalidate_scans()
+    assert ui_home._outlook_models(w.name) == {}
     home = client.get("/").text
     assert 'id="outlook-model"' not in home
     assert "data-mmodel=" not in home
     # the map and its honest one-model label render exactly as before
     assert 'id="usmap"' in home
-    assert "Oracle SIHRS outlook" in home
+    assert "Oracle SIHRS categorical forecast" in home
     assert "approximate, from stored quantiles" not in home
 
 
@@ -273,9 +259,8 @@ LV = ("0.1", "0.25", "0.5", "0.75", "0.9")
 
 
 def _results_with_all_models(workroot: Path, parts: dict) -> None:
-    """Rewrite the synth workroot's results.json the way a real legacy run
-    stored it: pf, analogue, AND ensemble quantiles at the five coarse
-    levels (the schema of the user's stored pre-bundle runs)."""
+    """Rewrite results.json as a legacy run stored it: pf, analogue AND
+    ensemble at the five coarse levels."""
     def cut(qd):
         return {loc: {h: {str(l): v for l, v in q.items() if str(l) in LV}
                       for h, q in qs.items()} for loc, qs in qd.items()}
@@ -288,12 +273,9 @@ def _results_with_all_models(workroot: Path, parts: dict) -> None:
 
 def test_stored_pre_bundle_run_gets_the_approximate_toggle(
         tmp_path, monkeypatch):
-    """The user's stored legacy run (results.json only, no bundle): home
-    computes all three models' card sets from the stored quantile grids
-    via the one quantile-CDF path, renders the working toggle, and the
-    caption carries the approximation marker. The rendered map and the
-    swap payload come from the one computation, so swapping models and
-    swapping back restores exactly the server-rendered fills."""
+    """A legacy run (results.json only): all card sets come from the stored
+    grids via the quantile-CDF path, the toggle works and is captioned
+    approximate, and the swap payload equals the server-rendered fills."""
     import re
 
     from app.core import usmap
@@ -304,19 +286,16 @@ def test_stored_pre_bundle_run_gets_the_approximate_toggle(
     parts = _synth_run_all_models(w)
     (w / report_v2.BUNDLE_NAME).unlink()            # a pre-bundle run
     _results_with_all_models(w, parts)
-    srv._invalidate_scans()
-    rid, res = srv._latest_results()
-    cards, meta = srv._outlook_cards(res, rid)
-    # a legacy run stores all three; the PF is the default and the two
-    # models that ship are offered. The stored blend is not a choice
-    # beside them (2026-09-23); it renders only where a run stored nothing
-    # else, and test_home_shows_no_toggle_for_a_single_model_pre_v3_bundle
-    # covers that case
+    ui_shared._invalidate_scans()
+    rid, res = ui_shared._latest_results()
+    cards, meta = ui_home._outlook_cards(res, rid)
+    # the PF is the default and the two shipped models are offered; the
+    # stored blend is never a choice beside them (it renders only when a run
+    # stored nothing else, see the single-model test above)
     assert meta["approx"] is True and meta["model"] == "pf"
     bm = meta["by_model"]
     assert set(bm) == {"pf", "analogue"}
-    # every model's Ohio card equals the exact CDF reading of ITS OWN
-    # stored five-level grid -- never the few-values-as-samples stand-in
+    # each card is the exact CDF reading of its own five-level grid
     locs = load_locations()
     pop = int(dict(zip(locs.location_name,
                        locs.population.astype(float)))["Ohio"])
@@ -329,16 +308,14 @@ def test_stored_pre_bundle_run_gets_the_approximate_toggle(
         for c in expect:
             assert abs(got[c] - expect[c]) < 1e-9, (model, c)
     home = client.get("/").text
-    # the working toggle, default PF, the two models that ship; the stored
-    # blend is never offered as a choice beside them (2026-09-23)
+    # the working toggle, default PF, no blend button
     assert 'id="outlook-model"' in home
     assert 'data-mmodel="pf" aria-pressed="true"' in home
     assert 'data-mmodel="analogue" aria-pressed="false"' in home
     assert 'data-mmodel="ensemble"' not in home
-    # the honesty marker rides the caption, and the label span is the
-    # relabel target
+    # the approximation marker rides the caption
     assert "approximate, from stored quantiles" in home
-    assert 'data-mapmodel-label>Oracle SIHRS outlook' in home
+    assert 'data-mapmodel-label>Oracle SIHRS categorical forecast' in home
     # the payload for the default model equals the rendered map exactly
     pay = usmap.state_swap_payload(bm["pf"])
     m = re.search(r'<path d="[^"]*" fill="([^"]+)" fill-opacity="([^"]+)"'
@@ -350,9 +327,7 @@ def test_stored_pre_bundle_run_gets_the_approximate_toggle(
 
 def test_pre_v3_bundle_with_multi_model_results_gets_the_toggle(
         tmp_path, monkeypatch):
-    """A v2 bundle 'predates per-model cards' just like no bundle: with
-    results.json storing all three models, home renders the approximate
-    toggle and marks the approximation."""
+    """A v2 bundle with multi-model results.json gets the approximate toggle."""
     w, parts = _latest(tmp_path, monkeypatch)
     b = w / report_v2.BUNDLE_NAME
     bundle = json.loads(b.read_text())
@@ -361,7 +336,7 @@ def test_pre_v3_bundle_with_multi_model_results_gets_the_toggle(
     bundle.pop("national_map_cards", None)
     b.write_text(json.dumps(bundle))
     _results_with_all_models(w, parts)
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     home = client.get("/").text
     assert 'id="outlook-model"' in home
     assert 'data-mmodel="analogue"' in home
@@ -369,16 +344,14 @@ def test_pre_v3_bundle_with_multi_model_results_gets_the_toggle(
 
 
 def test_swap_payload_matches_the_server_render(tmp_path, monkeypatch):
-    """The client-side swap must recolor with exactly the computation the
-    server render used: payload fill/opacity for the default model equal
-    the fills svg_map rendered."""
+    """The swap payload for the default model equals the server-rendered
+    fills."""
     import re
     from app.core import usmap
     w, _ = _latest(tmp_path, monkeypatch)
-    by_model = srv._outlook_models(w.name)
-    # the run fitted Ohio (39) only; the payload must carry the same scope
-    # the server render used, or the toggle would rewrite the hovers with
-    # a different story about card-less states
+    by_model = ui_home._outlook_models(w.name)
+    # same scope as the server render (Ohio only), or the toggle would tell a
+    # different story about card-less states
     pay = usmap.state_swap_payload(by_model["pf"], scope_fips={"39"})
     home = client.get("/").text
     m = re.search(r'<path d="[^"]*" fill="([^"]+)" fill-opacity="([^"]+)"'
@@ -386,8 +359,7 @@ def test_swap_payload_matches_the_server_render(tmp_path, monkeypatch):
     assert m, "Ohio path missing from the home map"
     assert m.group(1) == pay["39"]["f"]
     assert float(m.group(2)) == pay["39"]["o"]
-    # a no-data state carries the explicit no-data tone in the payload too,
-    # and one outside the run's scope says so instead of claiming a gap
+    # a no-data state has the no-data tone; one outside the scope says so
     assert pay["04"]["f"].startswith("var(--map-nodata")
     assert "not fitted in this run" in pay["04"]["h"]
 
@@ -395,14 +367,10 @@ def test_swap_payload_matches_the_server_render(tmp_path, monkeypatch):
 # ---------------------------------------- the emitter's own inert guard
 
 def test_model_toggle_emitter_refuses_fewer_than_two_swappable_models():
-    """User report 2026-08-21 (a toggle-like control above the outlook map
-    that did nothing): the emitter now enforces the two-swappable-models
-    contract itself. A model whose payload carries no per-state fills is
-    dropped -- its button could only sit inert -- and with fewer than two
-    left, nothing is emitted at all: a pre-v3 or partial bundle renders
-    label only, never a dead control."""
+    """The emitter drops models with no per-state fills and emits nothing
+    with fewer than two left: never an inert control."""
     from app.core import usmap
-    labels = {"ensemble": "FluBNF Ensemble outlook", "pf": "Oracle SIHRS outlook"}
+    labels = {"ensemble": "FluBNF Ensemble categorical forecast", "pf": "Oracle SIHRS categorical forecast"}
     states = {"39": {"f": "#111111", "o": 0.8, "h": "x"}}
     # both models swappable: the toggle renders
     ok = usmap.model_toggle(
@@ -426,9 +394,8 @@ def test_model_toggle_emitter_refuses_fewer_than_two_swappable_models():
 
 
 def test_report_drops_models_whose_cards_carry_no_data(tmp_path):
-    """The report-side twin of the server's _outlook_models bar: a v3-shaped
-    bundle whose extra model carries only prob-less cards renders no
-    toggle (the one real model, label only), never an inert button."""
+    """Report twin of _outlook_models: a model with prob-less cards is
+    dropped, leaving no toggle."""
     _synth_run_all_models(tmp_path)
     bundle = json.loads((tmp_path / report_v2.BUNDLE_NAME).read_text())
     # strip every prob from the second model's cards
@@ -438,4 +405,4 @@ def test_report_drops_models_whose_cards_carry_no_data(tmp_path):
     html = (tmp_path / "report2.html").read_text()
     assert 'id="outlook-model"' not in html
     assert "data-mmodel=" not in html
-    assert "Oracle SIHRS outlook" in html                   # label stays honest
+    assert "Oracle SIHRS categorical forecast" in html                   # label stays honest

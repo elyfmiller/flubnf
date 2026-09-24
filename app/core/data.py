@@ -1,4 +1,7 @@
-"""Vintage registry and data-freshness checks.
+"""PRODUCTION: vintage registry and hub freshness (server Data tab, retro,
+scoring, engines).
+
+Vintage registry and data-freshness checks.
 
 Constitutional rules enforced here (the lab archive's docs/APP_DESIGN.md):
   rule 5   a nonexistent vintage fails LOUDLY with nearby alternatives
@@ -22,9 +25,8 @@ from flubnf.settings import ARCHIVE, HUB, LOCATIONS  # noqa: F401
 def truth_mtime() -> float:
     """mtime of the hub's current target file, the settled truth every
     retrospective score, playback payload and season report is computed
-    against; 0 when the file is absent. Folded into those caches' keys so
-    an Update data that pulls newer truth invalidates them (review APP3-4,
-    2026-09-07: nothing did, and no rescore control existed)."""
+    against; 0 when absent. Folded into those caches' keys so newer truth
+    invalidates them."""
     p = HUB / "target-data" / "target-hospital-admissions.csv"
     try:
         return p.stat().st_mtime if p.is_file() else 0.0
@@ -39,8 +41,7 @@ def vintages() -> list:
 
 
 def vintage_path(date: str) -> Path:
-    """Exact vintage or a LOUD error naming the alternatives -- the silent
-    per-record 'no vintage' skip cost an overnight queue slot (2026-08-16)."""
+    """Exact vintage or a LOUD error naming nearby ones (never a silent skip)."""
     p = ARCHIVE / f"target-hospital-admissions_{date}.csv"
     if not p.is_file():
         vs = vintages()
@@ -117,14 +118,10 @@ def check_freshness(fetch: bool = True) -> Freshness:
             f = subprocess.run(["git", "fetch", "origin"], cwd=HUB,
                                capture_output=True, text=True, timeout=60)
             if f.returncode != 0:
-                # A plain network failure exits nonzero WITHOUT raising.
-                # Reading origin/main after a failed fetch compares against
-                # the STALE local ref and reports "up to date" while a new
-                # vintage sits upstream -- offline must never read as fresh.
+                # a network failure exits nonzero without raising; reading the
+                # stale origin/main would then say "up to date". Offline is never fresh.
                 err = (f.stderr or "").strip().splitlines()
-                # prefer git's own fatal line: the LAST line of a
-                # multi-line message can be a meaningless fragment
-                # ("and the repository exists.")
+                # prefer git's fatal line: the last line can be a fragment
                 fatal = next((l for l in err if l.startswith("fatal:")),
                              err[-1] if err else f"git exited {f.returncode}")
                 detail = f"fetch failed: {fatal}"
@@ -157,15 +154,10 @@ def check_freshness(fetch: bool = True) -> Freshness:
 def pull_hub() -> tuple:
     """Explicit update of the hub checkout (the button's second step).
 
-    Returns (ok, message): ok is git's own verdict, the exit code. The
-    text alone cannot carry it, because a fatal error and a fast-forward
-    summary are both one line of output, and a failed pull once read as a
-    status line on the Data page (2026-09-01 final pass)."""
-    # Self-heal sparse clones that predate the baseline requirement: the
-    # validated relWIS baseline scores the CDC's own submitted files, so a
-    # clone without model-output/FluSight-baseline cannot score anything.
-    # FluSight-ensemble joined the set for the playback comparison feature
-    # (same pattern: the hub's own submitted files, parsed per week).
+    Returns (ok, message); ok is git's exit code, because the text alone
+    cannot say (a fatal error and a fast-forward summary are both one line)."""
+    # self-heal older sparse clones: relWIS needs FluSight-baseline's
+    # submitted files, and the player's comparison needs FluSight-ensemble's
     for sub in ("model-output/FluSight-baseline",
                 "model-output/FluSight-ensemble"):
         try:

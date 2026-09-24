@@ -1,40 +1,44 @@
-/* FluBNF console theme: PyBNF brand kit (LANL Mesa-aligned).
-   Four user-selectable themes, brightest to darkest:
-     light -- Light on Light #F1EFF7 (the default light look);
-     paper -- warm off-white ground, LANL Blue ink, the accent-ink cyan;
-     dim   -- softened dark on slate-gray grounds, reduced overall contrast
-              with every measured pair still at or above WCAG AA (4.5:1
-              text, 3:1 boundaries and fills);
-     dark  -- dark on Near-Black #0C0D17.
-   LANL Blue #000F7E carries structure and primary text; Cyan #34C0F0 is THE
-   accent (primary action, active tab, links, focus, progress); Blue Slate
-   #6E8FD0 is the secondary/data accent; Inhibition Red #FB4653 is strictly
-   semantic (errors, failed status).
-   Legacy token names (--gold, --gold-bright, --navy) are kept as live hooks
-   because templates and plot code read them via getComputedStyle; they now
-   hold the cyan accent (readable and pure variants) and LANL Blue. Every
-   token is defined LITERALLY in every theme block, --map-nodata included:
-   plot code resolves raw values, so no var() aliases and no token may fall
-   through to another theme's value (a parity test compares the four
-   blocks). Map data colors stay categorical; only --map-nodata follows the
-   ground so a data gap reads as explicit on every surface.
+/* FluBNF console theme (PyBNF brand kit, LANL Mesa-aligned).
+   Themes, brightest to darkest: light (default), paper, dim, dark.
+   LANL Blue carries structure and primary text; Cyan is THE accent (primary
+   action, active tab, links, focus, progress); Blue Slate is the data accent;
+   Inhibition Red (--bad) is semantic only. Legacy names --gold/--gold-bright
+   (the cyan accent) and --navy (LANL Blue) are live hooks: plot code reads
+   them via getComputedStyle. .gold on a button means "primary".
+   Every token is a LITERAL in every theme block, -hc/-cvd variants and
+   --map-nodata included (plot code resolves raw values; no var() aliases; a
+   parity test compares the four blocks). The two a11y modifiers
+   (data-contrast="high", data-vision="cvd") only remap consumer tokens onto
+   those literals, so contrast x vision x theme resolves through the cascade.
 
-   Two accessibility MODIFIERS compose with every theme (see the mode
-   blocks after the type scale):
-     data-contrast="high"  -- high contrast: ink to the theme's polarity
-       extreme, muted text at 7:1 or better, boundaries at 3:1 or better,
-       the progress fill pushed further from its track, semantic colors
-       lifted to 7:1, focus rings thickened.
-     data-vision="cvd"     -- red-green safe: the ok/bad green/red pair and
-       the outlook map's category scale swap to a blue/orange language.
-   The theme blocks carry the LITERAL per-theme values for both modifiers
-   (-hc and -cvd variants, still one literal per theme, so the parity test
-   extends to them); the modifier blocks only remap consumer tokens onto
-   those literals through var(). The two modifiers therefore multiply with
-   the themes without any per-combination block: high contrast retargets
-   the -cvd tokens too, so contrast x vision x theme resolves through the
-   cascade. getComputedStyle still returns the substituted literal, so
-   plot code keeps resolving raw values. */
+   CONTENTS (file order)
+     1. theme tokens: light at the first root block, then dark, paper, dim
+     2. type scale, focus width, spacing/radius (the second root block)
+     3. a11y modifiers: contrast, then vision
+     4. body, navbar, theme/a11y/text-size pickers
+     5. layout shell, cards, controls, buttons, links
+     6. tables, status colors, pills, progress
+     7. home hero, grid2/grid3, rows
+     8. checklist, runbar, folds (card/ledger), per-state sort, run settings,
+        carousel, quip
+     9. output tab (linkish, previews), banner
+    10. model pages: intro, diagram text (svgt), cumchart, eqpanel, BNGL,
+        map legend
+    11. home: pipeline, perf table, card glyphs, start-here stepper
+    12. season player
+    13. modals, archive rows, storage total
+    14. skip link, reduced motion
+    15. forecast modes and Advanced fold, ? tips, runsplit/results, sandbox
+   ORDER DEPENDENCIES
+     - modifier blocks after all theme blocks (equal specificity, later
+       wins); vision after contrast so --ok/--bad take the cvd pair while
+       contrast retargets that pair's -hc variants
+     - dark/dim button overrides after the base button rules; .gold after
+       .quiet (selected toggles carry both); button.danger's dark/dim text
+       color after its base rule
+     - .modal h2 after .card h2; .row[hidden] after .row
+     - token blocks may not contain a closing brace in a comment: tests and
+       report_v2 parse each block up to its first closing brace */
 :root{
   --bg:#F1EFF7; --card:#FFFFFF; --ink:#000F7E; --mut:#565E96;
   --line:#DCD8E9; --track:#DBD7E8; --field-line:#DCD8E9;
@@ -43,9 +47,8 @@
   --gold:#0173A9; --gold-bright:#34C0F0;
   --nav-bg:#FFFFFF; --nav-ink:#000F7E;
   --ok:#177245; --warn:#8A5A14; --bad:#C42840;
-  /* official comparator lines (the FluSight ensemble): a neutral grey,
-     clearly not a member color, 3:1 or better on the card (measured
-     4.6:1 here); charts resolve it per draw like every chart token */
+  /* official comparator lines (FluSight ensemble): neutral grey, never a
+     member color, 3:1+ on the card */
   --official:#6E7590;
   --map-nodata:#C9C5D8;
   --shadow:0 1px 2px rgba(12,13,23,.06),0 2px 8px rgba(12,13,23,.05);
@@ -57,22 +60,18 @@
   /* red-green-safe variants (data-vision="cvd" remaps onto these) */
   --ok-cvd:#1256C0; --bad-cvd:#A34A00;
   --ok-cvd-hc:#0A3E8F; --bad-cvd-hc:#7A3600;
-  /* outlook-map category scale (categorical, deliberately identical in
-     every theme) and its red-green-safe counterpart */
+  /* outlook-map category scale (identical in every theme) + cvd twin */
   --cat-large-decrease:#2e7d4f; --cat-decrease:#7fc97f;
   --cat-stable:#b9b09b; --cat-increase:#e8a33d;
   --cat-large-increase:#c0392b;
   --cat-cvd-large-decrease:#2C7BB6; --cat-cvd-decrease:#ABD9E9;
   --cat-cvd-stable:#B9B09B; --cat-cvd-increase:#FDAE61;
   --cat-cvd-large-increase:#D7191C;
-  /* season-line palette (the season-over-season charts), categorical and
-     deliberately identical in every theme like --cat-*: a normal-vision
-     default (tab10-adjacent hues fitted to 3:1 on all eight theme
-     grounds) plus the dichromat-spaced red-green-safe set (the audited
-     SEASON_COLORS literals) that data-vision="cvd" remaps onto.
-     Charts resolve --season-N per draw via getComputedStyle, so the
-     CV-safe toggle visibly recolors the season lines. Audited in
-     test_season_palette.py; any value change must re-clear that audit. */
+  /* season-line palette, identical in every theme: normal-vision default
+     (3:1 on all eight theme grounds) + the red-green-safe set (= player.js
+     SEASON_COLORS) that data-vision="cvd" remaps onto. Charts resolve
+     --season-N per draw. Any value change must re-clear
+     test_season_palette.py. */
   --season-1:#DC6700; --season-2:#217FC1; --season-3:#2B9D2B;
   --season-4:#DC4142; --season-5:#9467BD; --season-6:#A86A5D;
   --season-cvd-1:#A87300; --season-cvd-2:#3375FB; --season-cvd-3:#C9568C;
@@ -106,11 +105,8 @@
   --season-cvd-1:#A87300; --season-cvd-2:#3375FB; --season-cvd-3:#C9568C;
   --season-cvd-4:#0087AF; --season-cvd-5:#B96D36; --season-cvd-6:#8568E3;
 }
-/* paper: warm off-white ground with a brighter warm card, LANL Blue ink,
-   links and structural cyan through the same readable accent-ink the light
-   theme carries. Measured on both surfaces: ink 13.7/14.7:1, mut 5.9/6.3:1,
-   accent-ink 4.7/5.0:1 text and 4.0:1 as the progress fill on the track;
-   the warm field boundary holds 3.3:1 against the well. */
+/* paper: warm off-white ground, LANL Blue ink, light's accent-ink; every
+   text/boundary pair measured at AA or better */
 [data-theme="paper"]{
   --bg:#F7F2E5; --card:#FDFAF1; --ink:#000F7E; --mut:#555A88;
   --line:#DFD7C2; --track:#E7E0CD; --field-line:#8E8468;
@@ -139,11 +135,8 @@
   --season-cvd-1:#A87300; --season-cvd-2:#3375FB; --season-cvd-3:#C9568C;
   --season-cvd-4:#0087AF; --season-cvd-5:#B96D36; --season-cvd-6:#8568E3;
 }
-/* dim: the softened dark. Slate-gray grounds lifted well off the near-black,
-   ink pulled down from #E9EAF4 so the page glows less, every measured pair
-   still at or above AA: ink 10.2/8.8:1 and mut 6.1/5.3:1 on bg/card, the
-   semantic trio 4.8:1 or better on both surfaces, field boundary 4.2:1
-   against the well, accent fill 6.6:1 on the track. */
+/* dim: softened dark on slate grounds, ink pulled down so the page glows
+   less; every measured pair still at AA or better */
 [data-theme="dim"]{
   --bg:#212536; --card:#2A2F45; --ink:#CDD3E6; --mut:#9BA3C4;
   --line:#3C4263; --track:#262B3F; --field-line:#7A84B8;
@@ -172,27 +165,11 @@
   --season-cvd-1:#A87300; --season-cvd-2:#3375FB; --season-cvd-3:#C9568C;
   --season-cvd-4:#0087AF; --season-cvd-5:#B96D36; --season-cvd-6:#8568E3;
 }
-/* ---- fluid type scale ----------------------------------------------------
-   Every step is clamp(floor, rem-anchor + vw, ceiling). The rem terms are
-   relative to the root font size, which is exactly what the navbar's
-   A- / A / A+ control sets (87.5% / 100% / 115%), so that control keeps
-   multiplying the whole scale; the vw term adds the viewport response on
-   top of it.
-   The split matters: the rem anchor deliberately carries the MAJORITY of
-   every step (at least ~2/3 at a 1280px viewport, and all of it once the
-   ceiling is reached), because the vw term does not answer to the root
-   font size. A steeper vw slope reads better on a wide monitor but leaves
-   the accessibility control moving the text by a percent or two, which is
-   the same as breaking it.
-   The floors match the previous fixed sizes, so a narrow window never
-   renders smaller than it did before; at 900px every step still resolves
-   to exactly what it did under the old ceilings. The ceilings themselves
-   were raised 2026-08-22 (field finding: at wide windows the cards grew
-   but the type froze at the old ~1700-1800px caps, so big windows read as
-   small text in big boxes); the same vw slopes now run on until roughly
-   2100-2600px, where the new caps land.
-   These are size tokens only. The color tokens above stay literal in both
-   theme blocks because plot code resolves them through getComputedStyle. */
+/* ---- fluid type scale: clamp(floor, rem + vw, ceiling) ----
+   The rem term must carry most of each step (~2/3+ at 1280px): the A-/A/A+
+   control scales the root size only, so a steep vw slope would neutralise
+   it. Floors are the old fixed sizes; ceilings land around 2100-2600px.
+   Size tokens only. */
 :root{
   --fs-body:clamp(.875rem,.83rem + .15vw,1.05rem);    /* 14   -> 16.8px */
   --fs-h1:clamp(1.25rem,1.1rem + .6vw,1.9rem);        /* 20   -> 30.4px */
@@ -203,23 +180,14 @@
   --fs-hint:clamp(.82rem,.785rem + .12vw,.98rem);     /* 13.1 -> 15.7px */
   --fs-table:clamp(.84rem,.805rem + .12vw,1rem);      /* 13.4 -> 16px   */
   --fs-big:clamp(1.7rem,1.475rem + .6vw,2.35rem);     /* 27.2 -> 37.6px */
-  /* sub-floor tail, joined to the fluid scale 2026-09-01: table headers,
-     pills and dense previews (--fs-micro), form labels and link-styled
-     buttons (--fs-label). Floors sit at or a hair above the old fixed
-     sizes so nothing shrinks; the vw term gives the tier the same
-     wide-window growth as everything else; the rem anchor keeps the
-     A-/A/A+ root-size control authoritative. */
+  /* sub-floor tail: table heads, pills, previews (--fs-micro); form labels,
+     link buttons (--fs-label) */
   --fs-micro:clamp(.75rem,.72rem + .1vw,.85rem);      /* 12   -> 13.6px */
   --fs-label:clamp(.78rem,.75rem + .1vw,.9rem);       /* 12.5 -> 14.4px */
-  /* focus-ring thickness: a size, so it lives with the size tokens; the
-     high-contrast modifier thickens it below */
+  /* focus-ring width; the high-contrast modifier thickens it */
   --focus-w:2px;
-  /* spacing and radius scale, declared 2026-09-01: the named contract for
-     NEW rules. These freeze the de facto ~.75rem rhythm and the 8/10/99
-     radius family already in use; existing declarations stay literal
-     (several are string-pinned by tests) and migrate opportunistically
-     as rules are touched. New code consumes these instead of sampling
-     the continuum (.6/.65/.7/.9rem drift, one-pixel radius siblings). */
+  /* spacing/radius scale for NEW rules; existing literals stay (several are
+     string-pinned by tests) */
   --sp-1:.35rem;
   --sp-2:.6rem;
   --sp-3:.75rem;
@@ -228,31 +196,16 @@
   --r-md:10px;
   --r-pill:99px;
 }
-/* ---- accessibility modifiers ---------------------------------------------
-   Two independent modifiers on the root element, composing with any theme.
-   These blocks never state a color of their own: they remap the consumer
-   tokens onto the per-theme -hc / -cvd literals defined in the theme
-   blocks above, so 4 themes x 2 contrast x 2 vision resolves through the
-   cascade instead of sixteen hand-written blocks. Order matters twice:
-   both blocks sit after the theme blocks so they win the cascade at equal
-   specificity, and the vision block sits after the contrast block so that
-   with both modifiers on, --ok/--bad follow the cvd pair while the
-   contrast block retargets that pair's own -hc variants.
-
-   WHAT THE CV-SAFE TOGGLE DOES AND DOES NOT MOVE: it remaps the semantic
-   ok/bad pair, the outlook map's --cat-* scale, and the season-line
-   --season-* palette (normal-vision tab10-adjacent by default, the
-   dichromat-spaced --season-cvd-* set under the toggle; charts resolve
-   the tokens per draw and redraw on themechange, so the swap is visible;
-   audited in test_season_palette.py). ONE chart palette is STATIC-SAFE
-   BY CONSTRUCTION and is deliberately NOT remapped here -- do not expect
-   the toggle to move it: the member-line map (player.js MODEL_COLORS,
-   dichromat-spaced 2026-08-21, audited in test_a11y_modes.py). It holds
-   60+ simulated distance under the Vienot deuteranopia and protanopia
-   matrices for every pair that can share a chart, in every vision mode,
-   so a member line keeps its one identity whether or not the toggle is
-   on. SEASON_COLORS in player.js carries the cvd-set literals as the
-   fallback for surfaces without the tokens (the fixed-dark report). */
+/* ---- accessibility modifiers: remap consumer tokens onto the per-theme
+   -hc / -cvd literals (never a color of their own). Both follow the theme
+   blocks; vision follows contrast so --ok/--bad take the cvd pair while
+   contrast retargets that pair's -hc variants.
+   WHAT THE CV-SAFE TOGGLE DOES AND DOES NOT MOVE: it moves ok/bad, the map's
+   --cat-* scale and --season-* onto --season-cvd-* (charts redraw on
+   themechange; audited in test_season_palette.py). It does NOT move member
+   lines (player.js MODEL_COLORS, dichromat-safe by construction; audited in
+   test_a11y_modes.py). SEASON_COLORS in player.js is the token-less
+   fallback (the fixed-dark report). */
 [data-contrast="high"]{
   --ink:var(--ink-hc); --mut:var(--mut-hc); --nav-ink:var(--nav-ink-hc);
   --line:var(--line-hc); --field-line:var(--field-line-hc);
@@ -274,8 +227,7 @@
   --season-5:var(--season-cvd-5); --season-6:var(--season-cvd-6);
 }
 *{box-sizing:border-box}
-/* body text on the fluid scale; every card, table cell, and paragraph that
-   does not name its own size inherits from here */
+/* body text on the fluid scale; anything without its own size inherits it */
 body{margin:0;background:var(--bg);color:var(--ink);
      font:400 var(--fs-body)/1.5 "DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif}
 /* ---- top navbar: surface strip, brand lockup, roomy 1rem tabs ---- */
@@ -286,8 +238,7 @@ header.nav .brand{display:flex;align-items:center;gap:.55rem;
   font-size:1.45rem;font-weight:700;letter-spacing:.01em;
   color:var(--nav-ink);text-decoration:none;padding:.5rem .8rem .5rem 0}
 header.nav .brand:hover{text-decoration:none}
-/* structural cyan reads through --accent-ink: #0173A9 in light (raw cyan
-   fails 3:1 against the light surfaces), pure cyan in dark */
+/* structural cyan uses --accent-ink: raw cyan fails 3:1 on light surfaces */
 header.nav .brand em{color:var(--accent-ink);font-style:normal}
 /* ONE mark: the blue-tile icon reads on both the light and dark strip */
 header.nav .brand img.mark{height:32px;width:32px;display:block}
@@ -295,18 +246,14 @@ header.nav a.tab{color:var(--nav-ink);text-decoration:none;padding:.8rem .5rem;
   font-weight:500;font-size:1.05rem;border-bottom:3px solid transparent}
 header.nav a.tab:hover{background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
 header.nav a.tab.active{border-bottom-color:var(--accent-ink);font-weight:700}
-/* below 1100px the tab row runs out of room before the layout does: step the
-   tab type to .95rem so the row holds one line at 900, and still at 1280
-   with the A+ text size (which multiplies the rem step to ~1.09rem) */
+/* below 1100px: smaller tabs so the row holds one line at 900 (and at 1280
+   under A+) */
 @media(max-width:1100px){
   header.nav a.tab{font-size:.95rem;padding:.8rem .4rem}
 }
 header.nav .spacer{flex:1}
-/* theme picker (Light / Paper / Dim / Dark) and the accessibility-mode
-   pair (Contrast / CV safe) beside it: the same compact segmented group
-   as the text-size control, honest aria-pressed states, persistent via
-   localStorage like the text size. The a11ypick buttons are independent
-   toggles (either, both, or neither pressed), not a radio row. */
+/* theme picker and a11y pair (Contrast / CV safe): segmented groups with
+   aria-pressed, persisted; the a11y buttons are independent toggles */
 .themepick,.a11ypick{display:inline-flex;
   border:1px solid color-mix(in srgb,var(--nav-ink) 35%,transparent);
   border-radius:7px;overflow:hidden}
@@ -331,45 +278,27 @@ header.nav .spacer{flex:1}
 .fontsize button:hover{background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
 .fontsize button[aria-pressed="true"]{
   background:color-mix(in srgb,var(--accent) 25%,transparent)}
-/* ---- layout: fluid to a wide cap; padding grows with the window ----
-   ONE SHELL FOR EVERY PAGE (rebuild, 2026-08-22, fifth report on the
-   reading surfaces). The previous reading-page system -- a 92%-wide
-   override on the reading pages' main, a three-column grid inside every
-   reading card, prose pinned to a fluid measure in its middle column, and
-   measure/centering exceptions -- is DELETED, not patched. The grid was
-   the squeeze bug: Chrome renders a <details> body inside an internal
-   ::details-content box, so a details card's paragraphs were never the
-   grid items the h2/p placement rules addressed; the anonymous body box
-   auto-placed into a gutter column and the description rendered as a
-   ~200px strip. The replacement is the shell every operational page
-   already uses, with nothing layered on top:
-     - cards span the full width of the main column, symmetric padding;
-     - text inside a card is normal block flow at the card's content
-       width -- no measure cap, no grid columns for prose, so a
-       details/summary body inherits exactly the same width as every
-       other line in the card;
-     - figures and equation panels center (the diagram macros' inline
-       margin:auto, and the centered text in .eqpanel below);
-     - tables and wide blocks scroll inside the card (overflow-x:auto),
-       never the page. */
+/* ---- layout: ONE SHELL for every page. Cards span the main column; card
+   text is plain block flow at the card's width (no measure cap, no grid
+   for prose: Chrome's ::details-content box breaks grid placement inside
+   a details element). Figures and equation panels center; tables and wide
+   blocks scroll inside the card, never the page. */
 main{max-width:1500px;margin:0 auto;
      padding:1.1rem clamp(1rem,2.5vw,2.5rem) 3rem}
-.cols{display:grid;grid-template-columns:minmax(260px,360px) 1fr;gap:.75rem;
+.cols{display:grid;grid-template-columns:minmax(260px,360px) minmax(0,1fr);gap:.75rem;
       align-items:start}
-@media(max-width:900px){.cols{grid-template-columns:1fr}}
-/* surfaces are stepped shades of the ground hue: ground -> raised card ->
-   sunken wells (inputs, code, tracks use the ground tone inside a card) */
+/* one column below 900px: minmax(0,1fr), never a bare 1fr (whose auto
+   minimum is the widest item's min-content: a results table or a fan's
+   nav row then widened the page past a phone's screen) */
+@media(max-width:900px){.cols{grid-template-columns:minmax(0,1fr)}}
+/* surfaces: ground -> raised card -> sunken wells (ground tone) */
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;
       padding:.85rem 1rem;margin-bottom:.75rem;box-shadow:var(--shadow);
       overflow-x:auto}
 .card h2{font-size:var(--fs-h2);margin:0 0 .55rem;text-transform:uppercase;
          letter-spacing:.05em;color:var(--mut)}
-/* card body text: no explicit size, so it inherits the fluid body step and
-   never overrides the smaller .hint / .sub steps nested inside a card.
-   NO MEASURE CAP (rebuild 2026-08-22): every paragraph -- prose, hints,
-   subs, details bodies -- runs the card's full content width, exactly like
-   the hero lead, the headings, and the tables. One width for all text in a
-   card, by construction. */
+/* card text: no size (inherits body, never overrides .hint/.sub) and no
+   measure cap: every paragraph runs the card's full width */
 .card p{margin:.45rem 0}
 h1{font-size:var(--fs-h1);font-weight:700;margin:.1rem 0 .6rem;
    text-wrap:balance}
@@ -377,23 +306,19 @@ h1 .accent{color:var(--gold)}
 .sub{color:var(--mut);margin:.1rem 0 .8rem;font-size:var(--fs-sub)}
 /* ---- controls ---- */
 label{display:block;font-size:var(--fs-label);color:var(--mut);margin:.5rem 0 .2rem}
-/* form fields keep the sunken-well fill but carry their own boundary token:
-   in dark mode --line vanishes against the well (measured 1.38:1), so
-   --field-line holds #5B639E there (3.43:1, passing the 3:1 control
-   boundary); the light theme keeps its measured-adequate --line value */
+/* fields carry --field-line: in dark, --line vanishes against the well
+   (1.38:1) */
 input,select{width:100%;padding:.42rem .6rem;border:1px solid var(--field-line);
   border-radius:8px;font:inherit;background:var(--bg);color:var(--ink)}
 input:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible,
 summary:focus-visible{
   outline:var(--focus-w,2px) solid var(--gold);outline-offset:2px}
-/* button system: default = secondary outline, .gold = primary (legacy class
-   name; now the cyan accent), .quiet = quiet */
+/* buttons: default = secondary outline, .gold = primary (cyan), .quiet */
 button{padding:.45rem .95rem;border:1px solid var(--navy);border-radius:8px;
   background:transparent;color:var(--navy);font:inherit;font-weight:650;
   cursor:pointer;margin-top:.7rem}
 button:hover{background:color-mix(in srgb,var(--navy) 9%,transparent)}
-/* the two dark-ground themes swap the LANL Blue outline for the accent:
-   #000F7E vanishes against the slate and near-black grounds */
+/* dark grounds swap the LANL Blue outline (invisible there) for the accent */
 [data-theme="dark"] button,[data-theme="dim"] button{
   border-color:var(--gold);color:var(--gold)}
 [data-theme="dark"] button:hover,[data-theme="dim"] button:hover{
@@ -409,11 +334,8 @@ button.gold,[data-theme="dark"] button.gold,[data-theme="dim"] button.gold{
 button.gold:hover,[data-theme="dark"] button.gold:hover,
 [data-theme="dim"] button.gold:hover{
   background:color-mix(in srgb,#000 12%,var(--gold-bright))}
-/* destructive tier: the semantic red, reserved for the stop-and-think
-   confirms (delete permanently, stop run and proceed). Text color follows
-   the theme's --bad lightness: white on the deep light-mode reds,
-   near-black on the bright dark- and dim-mode reds, all measured above
-   4.5:1. */
+/* destructive tier (--bad) for stop-and-think confirms; text flips with the
+   theme's red lightness, all >= 4.5:1 */
 button.danger,[data-theme="dark"] button.danger,
 [data-theme="dim"] button.danger{
   background:var(--bad);border-color:var(--bad);color:#fff}
@@ -425,35 +347,29 @@ button.danger:hover,[data-theme="dark"] button.danger:hover,
   border-color:color-mix(in srgb,#000 12%,var(--bad))}
 button[disabled]{opacity:.45;cursor:not-allowed}
 a{color:var(--gold);font-weight:600;text-decoration:none}
-[data-theme="dark"] a{color:var(--gold)}
 a:hover{text-decoration:underline}
 /* ---- data ---- */
 table{border-collapse:collapse;width:100%;font-size:var(--fs-table);
       font-variant-numeric:tabular-nums}
 td,th{padding:.38rem .6rem;border-bottom:1px solid var(--line);text-align:left}
-/* numeric columns right-align wherever they appear (.perf and .playstats
-   restate this for their own scopes; this is the general rule) */
+/* numeric columns right-align everywhere */
 td.num,th.num{text-align:right}
-/* a compact table: natural width instead of the page-wide default, so a
-   two-column week/value listing reads as a tight instrument (its numbers
-   sit right beside their weeks) rather than a card-wide ledger with a
-   dead band between the columns */
+/* a number and its unit never split across lines ("5.4" / "MB") */
+td.num,td.nowrap{white-space:nowrap}
+/* compact table: natural width, numbers beside their labels */
 table.compact{width:auto}
-/* the Data page's vintage browser: sparkline and recent-weeks table share
-   the card side by side at desktop widths, stacking on narrow screens */
+/* Data page vintage browser: chart and table side by side, stacked narrow */
 .vintagecols{display:grid;grid-template-columns:minmax(0,1fr) auto;
   gap:.4rem 2.2rem;align-items:start}
 @media(max-width:900px){.vintagecols{grid-template-columns:1fr}}
-/* the table column sizes to its table, not to an unwrapped caption: the
-   caption wraps at the instrument's own width */
+/* the caption wraps at the table's width instead of widening the column */
 .vintagetable p.hint{max-width:24ch}
 th{color:var(--mut);font-weight:600;font-size:var(--fs-micro);
    text-transform:uppercase;letter-spacing:.04em}
 code{background:var(--bg);padding:.12rem .35rem;border-radius:5px;font-size:.85em;
      overflow-wrap:anywhere}
 .ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
-/* the one relWIS rendering outside tables: tabular numerals so scores align
-   in running chips; pair with .ok/.bad for the below-1-beats-baseline rule */
+/* relWIS outside tables (pair with .ok/.bad: below 1 beats baseline) */
 .relwis{font-variant-numeric:tabular-nums;font-weight:650}
 .hint{color:var(--mut);font-size:var(--fs-hint)}
 .big{font-size:var(--fs-big);font-weight:750;font-variant-numeric:tabular-nums}
@@ -466,20 +382,16 @@ progress::-webkit-progress-bar{background:var(--track);border-radius:99px}
 progress::-webkit-progress-value{background:var(--accent-ink);border-radius:99px}
 progress::-moz-progress-bar{background:var(--accent-ink);border-radius:99px}
 /* ---- home hero: LANL Blue tile, cyan emphasis ---- */
-/* the tile sizes itself to the window: padding is a clamp, so the inner
-   width grows with the viewport instead of stepping at a breakpoint */
+/* clamp padding: the tile grows with the window, no breakpoint steps */
 .hero{background:linear-gradient(135deg,var(--navy) 0%,var(--navy-deep) 100%);
   color:#fff;border-radius:10px;
   padding:clamp(1.1rem,1.9vw,2.1rem) clamp(1.2rem,2.4vw,2.6rem);
   margin-bottom:.75rem}
 .hero h1{color:#fff;font-size:var(--fs-hero-h1);margin:0 0 .4rem}
-/* the lead reflows to the full inner width of the tile at every window
-   size, like every other text block since the 2026-08-22 rebuild */
 .hero p{color:#C6CFEE;margin:0;font-size:var(--fs-lead)}
 .hero .gold{color:var(--gold-bright)}
 .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:.75rem}
-/* grid2 cards keep their content height: the default stretch left the short
-   card (Start here beside the performance table) with a dead bottom band */
+/* grid2 cards keep their content height (no dead band under a short one) */
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
   gap:.75rem;align-items:start}
 @media(max-width:900px){.grid3,.grid2{grid-template-columns:1fr}}
@@ -491,16 +403,11 @@ progress::-moz-progress-bar{background:var(--accent-ink);border-radius:99px}
 .ck{display:flex;gap:.5rem;align-items:center;font-size:.85rem;color:var(--ink);
   margin:.12rem 0;cursor:pointer}
 .ck input{width:auto;accent-color:var(--gold-bright)}
-/* run progress: one solid accent fill on a clearly visible track (the fill
-   follows --accent-ink so it passes 3:1 against the track in light mode) */
+/* run progress: --accent-ink fill (3:1 against the track in light) */
 .runbar{height:14px;border-radius:99px;background:var(--track);
   border:1px solid var(--line);overflow:hidden;margin:.45rem 0}
-/* the fill glides between poll landings: the 400ms scripted steps become
-   continuous motion carrying real information (work advancing) at zero JS
-   cost. Width, not transform, keeps the pill's rounded end true; the bar
-   is 14px inside overflow:hidden, so layout cost is negligible. The
-   reduced-motion block below collapses transition-duration, so this
-   degrades to exactly the stepped behavior. */
+/* the fill glides between polls (width keeps the rounded end true);
+   reduced motion collapses it to stepped */
 .runbar div{height:100%;width:0;border-radius:99px;
   transition:width .45s linear;background:var(--accent-ink)}
 /* percent + ETA readout: prominent, tabular */
@@ -512,10 +419,7 @@ details.card > summary::-webkit-details-marker{display:none}
 details.card > summary::before{content:"▸ ";color:var(--gold)}
 details.card[open] > summary::before{content:"▾ "}
 
-/* the run ledger's fold (Runs page): the full table collapses behind a
-   one-line summary (row count + newest entry) so the storage panel below
-   leads; the open state persists per localStorage. Same disclosure
-   language as details.card / details.preview. */
+/* run ledger fold (Storage page); open state persists in localStorage */
 details.ledgerfold > summary{cursor:pointer;list-style:none;
   user-select:none;font-weight:600}
 details.ledgerfold > summary::-webkit-details-marker{display:none}
@@ -523,12 +427,8 @@ details.ledgerfold > summary::before{content:"▸ ";color:var(--gold)}
 details.ledgerfold[open] > summary::before{content:"▾ "}
 details.ledgerfold > summary .hint{font-weight:400}
 
-/* per-state score table (retro season page): sortable column headers as
-   plain buttons in the th's own type, honest aria-pressed on the active
-   sort (the app's pressed-state idiom), the direction arrow riding inside
-   the button. The US aggregate leads the table as a distinct row: a
-   heavier rule beneath it and emphasis on its cells, because it is a
-   constructed aggregate, not a fitted state. */
+/* per-state score table (season page): sort headers are plain buttons with
+   aria-pressed; the US aggregate row is set apart (constructed, not fitted) */
 th button.thsort,[data-theme="dark"] th button.thsort,
 [data-theme="dim"] th button.thsort{margin:0;padding:0;border:0;
   background:none;color:var(--mut);font:inherit;font-weight:600;
@@ -538,12 +438,8 @@ th button.thsort:hover,[data-theme="dark"] th button.thsort:hover,
 th button.thsort[aria-pressed="true"]{color:var(--gold)}
 tr.usagg td{font-weight:650;border-bottom:2px solid var(--line)}
 
-/* run-settings block: a tight two-column label/value grid (the valpanel's
-   definition-grid language) at the standard body size, natural width --
-   the old one-line prose rendering read as small print and the page-wide
-   dead band is gone. The wrapper keeps the legacy hint/runsettings class
-   pair; the grid states its own size, so the hint class no longer
-   shrinks the values. */
+/* run-settings block: two-column label/value grid at body size, natural
+   width (its own size, so the legacy hint class does not shrink it) */
 .runsettings{margin:.45rem 0}
 .runsettings .kv{display:grid;grid-template-columns:max-content max-content;
   gap:.14rem 1.1rem;align-items:baseline;width:max-content;max-width:100%;
@@ -554,11 +450,10 @@ tr.usagg td{font-weight:650;border-bottom:2px solid var(--line)}
 
 .runlabel{font-size:1.05rem;font-weight:750;margin:.2rem 0}
 
-.carousel{display:flex;gap:.6rem;align-items:center;margin:.25rem 0}
+.carousel{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin:.25rem 0}
 .cnav{padding:.2rem .6rem;margin-top:0}
 .quip{text-align:center;margin:.7rem 0 .1rem;
  font-size:.98rem;font-style:italic;color:var(--gold)}
-[data-theme="dark"] .quip{color:var(--gold)}
 /* ---- output tab: downloads + csv previews ---- */
 button.linkish,[data-theme="dark"] button.linkish,
 [data-theme="dim"] button.linkish{background:none;border:0;
@@ -587,35 +482,20 @@ details.intro > summary{color:var(--ink);font-size:var(--fs-sub);
 details.intro[open] > summary{margin-bottom:.15rem}
 /* mechanism diagrams inherit the page ink for currentColor strokes */
 .mech svg{color:var(--ink)}
-/* SVG labels join the type system: rem classes replace the old fixed
-   viewBox-unit font-size attributes, so the A-/A/A+ control reaches the
-   smallest text in the diagrams. The small step is sized so its effective
-   render (after the artwork's viewBox scale, 840 units drawn at up to
-   800px) stays at or above the app's 13.1px hint floor; svgt-sub is the
-   subscript step, relative to its parent text. */
+/* SVG labels on the type scale via rem classes, so A-/A/A+ reaches them;
+   svgt-sm renders at or above the 13.1px hint floor in the 840-unit
+   diagrams; svgt-sub is relative to its parent text */
 svg .svgt-xl{font-size:1.3rem}
 svg .svgt-lg{font-size:1rem}
 svg .svgt-md{font-size:.92rem}
 svg .svgt-sm{font-size:.875rem}
 svg .svgt-sub{font-size:.68em}
-/* EXCEPTION, scoped: the cumulative relWIS chart (retro season page,
-   svg.cumchart) states its label sizes in viewBox units, not rem. The rem
-   classes above are tuned for the diagrams (840-unit viewBox drawn at up
-   to 800px, near 1:1); this chart's 720-unit viewBox renders card-wide
-   (roughly 1.2x at a 900px window to 1.9x at 1800px), so rem labels
-   ballooned relative to the plot. In SVG a CSS px is one user unit, so
-   these sizes scale WITH the chart: label height stays a constant
-   fraction of chart height at every window width (the hint scale at the
-   1280px reference, 9/180 = 5% for the small step), and nothing can clip
-   under A+ because the whole drawing scales as one. */
+/* EXCEPTION: svg.cumchart labels in viewBox px, which scale WITH the
+   card-wide chart (rem labels ballooned relative to the plot) */
 svg.cumchart .svgt-sm{font-size:9px}
 svg.cumchart .svgt-md{font-size:11px}
-/* defining equations under a mechanism diagram: one or two lines of styled
-   text (no math library; italic variables, Unicode operators) plus a muted
-   tie-in note. The panel spans the card like the BNGL source well; the
-   equation lines and their note center inside it (figures and equations
-   center; text blocks span). The math never wraps mid-formula; a narrow
-   window scrolls the panel instead, like every other wide block */
+/* defining equations under a diagram (styled text, no math library): the
+   panel spans the card, lines center, math never wraps (panel scrolls) */
 .eqpanel{margin:.45rem 0 .25rem;padding:.5rem .85rem;
   background:var(--bg);border:1px solid var(--line);border-radius:9px;
   overflow-x:auto;text-align:center}
@@ -623,8 +503,7 @@ svg.cumchart .svgt-md{font-size:11px}
 .eqpanel .math{font-size:.98rem;font-weight:600;white-space:nowrap}
 .eqpanel .math sub{font-size:.68em}
 .eqpanel .eqnote{color:var(--mut);font-size:var(--fs-hint);font-weight:400}
-/* read-only BNGL source on the BNGL-backed model pages: collapsed by
-   default, monospace, scrolling in both directions inside its own well */
+/* read-only BNGL source: collapsed, scrolls inside its own well */
 details.bngl > summary{cursor:pointer;list-style:none;font-weight:600}
 details.bngl > summary::-webkit-details-marker{display:none}
 details.bngl > summary::before{content:"▸ ";color:var(--gold)}
@@ -632,41 +511,24 @@ details.bngl[open] > summary::before{content:"▾ "}
 details.bngl pre{background:var(--bg);border:1px solid var(--line);
   border-radius:8px;padding:.6rem .8rem;margin:.4rem 0 .1rem;
   overflow:auto;max-height:28rem;font-size:.78rem;line-height:1.45}
-/* fitted/observed values panel beneath the mechanism diagram: a two-column
-   definition list in the sunken well tone, spanning the card like a table
-   (label column sizes to its labels, values take the rest), so numbers of
-   any length flow in the page instead of floating over the SVG */
-.valpanel{display:grid;grid-template-columns:max-content 1fr;
-  gap:.18rem 1.1rem;align-items:baseline;
-  margin:.35rem 0 .2rem;padding:.55rem .85rem;
-  background:var(--bg);border:1px solid var(--line);border-radius:9px;
-  font-size:.85rem}
-.valpanel:empty{display:none}
-.valpanel dt{color:var(--mut)}
-.valpanel dd{margin:0;font-weight:650;font-variant-numeric:tabular-nums;
-  overflow-wrap:anywhere}
-.valpanel dd.allmissing{grid-column:1 / -1;color:var(--mut);font-weight:400}
 
-/* --map-nodata lives in the theme token blocks at the top of this file,
-   one literal value per theme like every other token */
-/* outlook-map legend: one line of category swatches plus the no-data tone,
-   emitted by app/core/usmap.py under the map it explains */
+/* outlook-map legend, emitted by app/core/usmap.py (--map-nodata is a
+   theme token) */
 .maplegend{display:flex;flex-wrap:wrap;gap:.15rem 1rem;
   justify-content:center;margin:.5rem 0 .1rem}
 .maplegend span{white-space:nowrap}
 
-/* ---- home rework (additive): workflow pipeline, performance table,
-   component-card glyphs, numbered start flow ---- */
-/* the weekly pipeline SVG rides the page ink for currentColor strokes */
+/* ---- home: workflow pipeline, performance table, card glyphs, stepper ---- */
 .pipe svg{color:var(--ink);width:100%;max-width:940px;display:block;
   margin:.4rem auto .1rem}
-/* seal-results table: tight rows, right-aligned tabular numerals. No width
-   cap, so the columns spread across the whole card instead of leaving a dead
-   column beside them. */
+/* seal-results table: tight rows, full card width */
 .perf{width:100%}
 .perf td,.perf th{padding:.28rem .6rem}
-.perf td.num,.perf th.num{text-align:right}
 .perf td.rel{font-weight:650}
+/* season labels never break mid-label ("2025-" / "26") */
+.perf td:first-child{white-space:nowrap}
+/* home: the performance tables take the wider track beside Start here */
+@media(min-width:901px){.grid2.homeperf{grid-template-columns:minmax(0,3fr) minmax(15rem,2fr)}}
 .perf tr.total td{font-weight:750;border-top:2px solid var(--line);
   border-bottom:0}
 /* component-card lead visual: fixed-height stage so the three cards align */
@@ -674,18 +536,12 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
   margin:.15rem 0 .5rem}
 .cardviz svg{color:var(--ink);height:56px;width:auto;max-width:100%}
 .cardviz img{height:50px;width:50px;border-radius:11px}
-/* start-here flow: numbered badges joined by the pipeline's arrow language */
-.stepflow{display:flex;align-items:center;gap:.6rem .8rem;flex-wrap:wrap;
-  margin:.5rem 0 .2rem}
-.stepflow .step{display:flex;align-items:center;gap:.55rem;min-width:0}
-.stepflow .step .hint{display:block}
+/* start-here numbered badge */
 .stepnum{flex:none;width:1.6rem;height:1.6rem;border-radius:50%;
   display:inline-flex;align-items:center;justify-content:center;
   font-weight:750;font-size:.85rem;color:var(--gold);
   border:2px solid var(--gold)}
-.stepsep{flex:none;width:28px;height:12px;color:var(--mut)}
-/* start-here vertical stepper: badge + title + one-line hint per row, a
-   connecting line between badges; stacks cleanly at every width */
+/* start-here vertical stepper: badge, title, hint; a line joins the badges */
 .steps{list-style:none;margin:.5rem 0 .2rem;padding:0}
 .steps .step{position:relative;display:flex;align-items:flex-start;
   gap:.65rem;padding:0 0 .95rem}
@@ -708,9 +564,7 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
 .playgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(230px,300px);
   gap:.9rem;align-items:start}
 @media(max-width:1000px){.playgrid{grid-template-columns:1fr}}
-/* the playback map stays compact: cap the svg height; the svg letterboxes
-   its content (preserveAspectRatio), so the geography keeps its shape.
-   !important is required to beat the map's inline width/height style */
+/* compact playback map (letterboxed); !important beats the inline style */
 .playmap svg{max-height:40vh!important}
 .playstats .num{text-align:right}
 .playstats table{font-variant-numeric:tabular-nums}
@@ -719,27 +573,21 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
 .fdmodels{display:flex;gap:.3rem 1rem;flex-wrap:wrap;margin:0 0 .4rem}
 .fdmodels .ck input{width:auto}
 
-/* ---- run-interference guard modal (additive) ---- */
+/* ---- modals (guard, start-over, confirm, expanded fan) ---- */
 .modal-back{position:fixed;inset:0;z-index:60;padding:1rem;
   background:rgba(12,13,23,.45);
   display:flex;align-items:center;justify-content:center}
 .modal-back[hidden]{display:none}
 .modal{max-width:440px;width:100%;margin:0}
-/* the start-over prompt carries four choices; give them room to sit on one
-   line and let them wrap rather than overflow when they cannot */
+/* start-over prompt: room for four choices on one line, else wrap */
 .modal.wide{max-width:620px}
 /* the expanded forecast view fills the viewport: same shell, full panel */
 .modal.fanx{max-width:min(1500px,96vw);max-height:94vh;overflow:auto}
 .modal .row{justify-content:flex-end;margin-top:.6rem;flex-wrap:wrap}
 .modal .row button{margin-top:0}
-/* .row sets display:flex, which outranks the user agent's [hidden] rule:
-   without this the hidden second row would show alongside the first */
+/* .row's display:flex outranks the UA [hidden] rule */
 .row[hidden]{display:none}
-/* dialog titles: the modal shells are .modal.card, so their h2 would
-   otherwise inherit the .card h2 section-kicker style (uppercase,
-   letter-spaced, muted) and render the app's highest-stakes question
-   quieter than its body line. Equal specificity to .card h2 but later
-   in the file, so it wins on the modal shells only. */
+/* dialog titles: undo the .card h2 kicker style; wins by coming later */
 .modal h2{font-size:var(--fs-lead);font-weight:700;text-transform:none;
   letter-spacing:0;color:var(--ink);margin:0 0 .35rem}
 /* archived runs on the retro index: secondary entries under their season */
@@ -748,8 +596,95 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
 .archrow .grow{flex:1;min-width:12rem}
 .archrow form{display:inline;margin:0}
 .archrow button{margin-top:0;padding:.22rem .6rem;font-size:var(--fs-label)}
-/* the storage panel's headline: total disk use in the .big figure with its
-   scope note beside it */
+/* custom datasets (the upload box on Data, Forecast and Retrospective; the
+   Data tab list; the own-data replay card). Every track may shrink to the
+   card (min(100%,...)), so the box never widens a narrow page. */
+.dsup{margin:.2rem 0 .4rem;min-width:0}
+.dsdrop{display:flex;flex-direction:column;gap:.4rem;align-items:stretch;
+  border:1.5px dashed var(--mut);border-radius:10px;padding:.75rem .85rem;
+  margin:.3rem 0;background:var(--bg);color:var(--ink);cursor:pointer}
+.dsdrop:focus-within{border-color:var(--accent-ink);
+  background:color-mix(in srgb,var(--accent) 12%,var(--bg))}
+/* a file dragged over: a solid, doubled edge, a stronger tint and "Drop to
+   check", unlike the keyboard focus above (visible in every theme) */
+.dsdrop.over{border-style:solid;border-color:var(--accent-ink);
+  box-shadow:inset 0 0 0 2px var(--accent-ink);
+  background:color-mix(in srgb,var(--accent) 26%,var(--bg))}
+.dsdrop-t,.dsdrop-on{font-weight:650;font-size:var(--fs-label)}
+.dsdrop-on,.dsdrop.over .dsdrop-t{display:none}
+.dsdrop.over .dsdrop-on{display:block}
+.dsdrop input[type=file]{width:100%;max-width:100%;min-width:0;padding:.3rem;
+  background:var(--card)}
+/* the native "Choose File" button takes the theme (it stayed light grey
+   on the dark grounds) */
+.dsdrop input[type=file]::file-selector-button{margin-right:.7rem;
+  padding:.3rem .8rem;border:1px solid var(--field-line);border-radius:6px;
+  background:var(--bg);color:var(--ink);font:inherit;font-weight:600;
+  cursor:pointer}
+.dsdrop input[type=file]::file-selector-button:hover{
+  background:color-mix(in srgb,var(--accent) 14%,var(--bg))}
+.dsup-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr));
+  gap:0 .9rem}
+.dsup.js .dsup-go{display:none}
+.dsup-result:empty{display:none}
+/* the check's status line is read out, not shown (the result shows it);
+   a result kept up while it is checked again is dimmed */
+.dsup-status{position:absolute;width:1px;height:1px;margin:-1px;padding:0;
+  overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.dsup[aria-busy="true"] .dsup-result{opacity:.6}
+.dsp-kind{margin:.5rem 0 0;font-size:var(--fs-micro);font-weight:650;
+  text-transform:uppercase;letter-spacing:.04em;color:var(--mut)}
+.dsproblems{border-left:3px solid var(--bad,#b3261e);padding:.2rem .8rem;margin:.6rem 0}
+.dsproblems ul{margin:.2rem 0 .3rem;padding-left:1.2rem}
+.dsproblems li{overflow-wrap:break-word}
+.dsproblems .nw,.dsnotes .nw{white-space:nowrap}
+.dsmap{border:1px solid var(--line);border-radius:10px;padding:.2rem .8rem .6rem;
+  margin:.6rem 0;min-width:0}
+.dsmap legend{font-weight:650;font-size:.92rem;padding:0 .3rem}
+.dsmap-roles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,9rem),1fr));
+  gap:0 .8rem}
+.dsnotes{margin:.4rem 0;padding-left:1.1rem;color:var(--mut);font-size:var(--fs-hint)}
+.dsnotes li{overflow-wrap:break-word}
+/* "Replay this" stored it: the note in the replay card it lands on */
+.dsr-stored p{margin:0}
+.dsr-stored .dsnotes{margin:.3rem 0 0}
+.dspreview{margin:.5rem 0}
+.dspreview .kv.dsfacts{display:grid;grid-template-columns:max-content minmax(0,1fr);
+  gap:.1rem 1rem;margin:.3rem 0;font-size:var(--fs-label)}
+.dsfacts dt{color:var(--mut)}
+.dsfacts dd{margin:0;font-weight:600;overflow-wrap:anywhere}
+.dssparks{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,8.5rem),1fr));
+  gap:.5rem .9rem;margin:.6rem 0 .2rem}
+.dsspark{margin:0;min-width:0}
+.dsspark svg{display:block;width:100%;height:2.5rem;color:var(--gold);
+  border-bottom:1px solid var(--line)}
+.dsspark figcaption{font-size:var(--fs-micro);color:var(--mut);
+  overflow-wrap:anywhere}
+.dsup .tablewrap{max-width:100%;overflow-x:auto}
+.dsfirst caption{caption-side:top;text-align:left}
+/* the first rows fit a 360px column: tight cells, the date as written
+   under its week, names wrap at their spaces, numbers and weeks never */
+.dsfirst{font-size:var(--fs-micro)}
+.dsfirst th,.dsfirst td{padding:.25rem .4rem}
+.dsfirst td.num,.dsfirst td.wk{white-space:nowrap}
+.dsfirst .dsasw{display:block;white-space:normal;color:var(--mut);
+  font-size:var(--fs-micro);font-weight:400;text-transform:none;letter-spacing:0}
+.dsfirst abbr{text-decoration:none}
+.dsup-actions{margin-top:.4rem}
+.dsup-actions button{margin-top:.3rem}
+details.dsup-fold{margin:.2rem 0 .5rem}
+details.dsup-fold>summary{cursor:pointer;color:var(--gold);font-size:.9rem;
+  font-weight:600;list-style:none}
+details.dsup-fold>summary::-webkit-details-marker{display:none}
+details.dsup-fold>summary::before{content:"\25B8\00a0"}
+details.dsup-fold[open]>summary::before{content:"\25BE\00a0"}
+.dstable td.dsactions{white-space:nowrap}
+.dstable td.dsactions form{display:inline;margin:0}
+.dstable td.dsactions button{margin:0 0 0 .3rem;padding:.15rem .5rem;font-size:var(--fs-label)}
+.srcpick{align-items:flex-end;margin-bottom:.4rem}
+.srcpick select{width:auto;min-width:12rem;max-width:100%}
+.dsr-h{margin:1rem 0 .2rem;font-size:var(--fs-label)}
+/* storage panel headline: total disk use beside its scope note */
 .stotal{display:flex;gap:.6rem;align-items:baseline;flex-wrap:wrap;
   margin:.1rem 0 .5rem;max-width:none}
 
@@ -759,8 +694,7 @@ a.skip{position:absolute;left:-9999px;top:0;z-index:100;
   border-radius:0 0 8px 0;padding:.5rem .9rem;font-weight:650}
 a.skip:focus{left:0}
 
-/* reduced motion: transitions and animated fills settle instantly, and the
-   scripted quip rotation holds one line (see static/quips.js) */
+/* reduced motion: transitions settle instantly (quips.js holds one line) */
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{transition-duration:.01ms!important;
     animation-duration:.01ms!important;animation-iteration-count:1!important;
@@ -768,7 +702,9 @@ a.skip:focus{left:0}
 }
 
 /* Forecast form modes (Real-time / Vintage) and the advanced group */
-.modes{display:flex;gap:.4rem;margin:.1rem 0 .5rem}
+.modes{display:flex;gap:.4rem;margin:.1rem 0 .5rem;align-items:center}
+.modes > [role=tablist]{display:flex;gap:.4rem}
+.modes .pill.mode{margin-top:0}
 .pill.mode{cursor:pointer;background:transparent;color:var(--ink);border:1px solid var(--gold);font:inherit;font-size:.85rem}
 .pill.mode[aria-selected="true"]{background:var(--gold-bright);color:#111;border-color:var(--gold-bright)}
 .pill.mode:focus-visible{outline:2px solid var(--gold-bright);outline-offset:2px}
@@ -783,14 +719,66 @@ details.adv[open]>summary::before{content:"\25BE ";}
 .adv > summary.advbtn{display:inline-block;padding:.38rem .9rem;border:1.5px solid var(--accent);
  border-radius:999px;color:var(--accent-ink);font-weight:600;cursor:pointer;list-style:none;margin-top:.6rem}
 .adv > summary.advbtn::-webkit-details-marker{display:none}
-.adv[open] > summary.advbtn{background:var(--accent);color:#fff}
-/* the scoring-convention tip on the home table: the shared wording on hover and focus */
-.convtip{cursor:help;color:var(--accent-ink);font-weight:700;margin-left:.2rem}
+/* open: the card's color on --accent-ink, 5:1+ in every theme and mode
+   (white on raw cyan was 2.1:1) */
+.adv[open] > summary.advbtn{background:var(--accent-ink);
+ border-color:var(--accent-ink);color:var(--card)}
+/* the Model settings panel (templates/_model_settings.html): one fieldset
+   per stage, a live shipped/modified badge in the fold's button */
+.ms-badge{display:inline-block;margin-left:.45rem;padding:0 .45rem;
+  border-radius:99px;border:1px solid currentColor;font-size:var(--fs-micro);
+  font-weight:650;background:var(--card)}
+.ms-badge.ok{color:var(--ok)}
+.ms-badge.warn{color:var(--warn)}
+.ms-head{display:flex;align-items:center;gap:.3rem;margin:.6rem 0 .2rem}
+.ms-head button{margin-top:0}
+.ms-group{border:1px solid var(--line);border-radius:10px;
+  padding:.2rem .8rem .7rem;margin:.7rem 0 0;min-width:0}
+.ms-group legend{font-weight:650;font-size:.92rem;padding:0 .3rem}
+.ms-row input,.ms-row select{max-width:100%}
+.ms-later{opacity:.62}
+.ms-soon{margin-left:.3rem}
+.ms-override{margin-top:.8rem;padding:.5rem .8rem;border-left:3px solid var(--warn)}
+.ms-override .ck{font-weight:600}
+.ms-locked{margin-top:.8rem}
+.ms-locked>summary{cursor:pointer;display:inline;color:var(--mut);font-size:var(--fs-hint)}
+.ms-locked dl.kv{margin-top:.4rem}
+/* the "?" explainer (templates/_tips.html, static/tips.js): a small round
+   button; its tooltip shows on hover, keyboard focus, or click/tap. Inverted
+   surface (ink on card) so it reads in every theme and a11y mode. */
+.lblrow{display:flex;align-items:center;gap:.1rem;margin:.5rem 0 .2rem}
+.lblrow label{margin:0}
+.tip{position:relative;display:inline-block;vertical-align:middle;
+  margin-left:.3rem;line-height:1}
+button.tipbtn,[data-theme="dark"] button.tipbtn,[data-theme="dim"] button.tipbtn{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:1.1rem;height:1.1rem;padding:0;margin:0;border-radius:50%;
+  border:1.5px solid var(--accent-ink);background:transparent;
+  color:var(--accent-ink);font-size:.7rem;font-weight:800;line-height:1;
+  cursor:help}
+button.tipbtn:hover,[data-theme="dark"] button.tipbtn:hover,
+[data-theme="dim"] button.tipbtn:hover{background:var(--accent-ink);color:var(--card)}
+.tipbox{position:fixed;left:0;top:0;
+  z-index:60;width:max-content;max-width:min(20rem,85vw);padding:.45rem .6rem;
+  border-radius:8px;border:1px solid var(--line);background:var(--ink);
+  color:var(--card);font-size:var(--fs-label);font-weight:500;line-height:1.4;
+  text-align:left;text-transform:none;letter-spacing:normal;white-space:normal;
+  box-shadow:0 4px 14px rgba(0,0,0,.22);visibility:hidden;opacity:0;
+  transition:opacity .12s;pointer-events:none}
+.tipbox a{color:inherit;text-decoration:underline}
+.tip:hover .tipbox,.tip:focus-within .tipbox,.tip.open .tipbox{visibility:visible;opacity:1}
+.tip.dismissed .tipbox{visibility:hidden;opacity:0}
+@media (prefers-reduced-motion:reduce){.tipbox{transition:none}}
 
-/* the latest-run card: settings left, results right */
-.runsplit{display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:start}
-@media (max-width:760px){.runsplit{grid-template-columns:1fr}}
-table.results{border-collapse:collapse;margin:.3rem 0;font-size:.92em}
+/* the latest-run card: settings left, results right. Tracks auto-fit at a
+   18rem floor and children may shrink (min-width:0), so the settings grid's
+   max-content width can never starve the results column; values wrap in
+   their own track instead of one word per line. */
+.runsplit{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr));
+  gap:.5rem 1.5rem;align-items:start}
+.runsplit > *{min-width:0}
+.runsplit .runsettings .kv{width:auto;grid-template-columns:max-content minmax(0,1fr)}
+table.results{border-collapse:collapse;margin:.3rem 0;font-size:.92em;width:100%}
 table.results caption{caption-side:bottom;text-align:left;padding-top:.3rem}
 table.results th{text-align:left;font-weight:600;padding:.18rem .6rem .18rem 0;color:var(--mut);white-space:nowrap}
 table.results td{padding:.18rem 0}
@@ -799,10 +787,62 @@ form.sbnew{margin-top:.6rem}
 form.sbnew label{display:block;margin-bottom:.25rem}
 form.sbnew input{width:14rem;max-width:100%;margin-right:.4rem}
 form.sbnew .hint{margin-top:.3rem}
+form.sbnew select{width:14rem;max-width:100%;margin-right:.4rem}
+/* the sandbox workbench: the editor beside its results and diagram */
+.sbwork{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);
+  gap:.75rem;align-items:start}
+@media(max-width:1100px){.sbwork{grid-template-columns:minmax(0,1fr)}}
+.sbcrumb{margin:0}
+/* the form's default (Enter) button: present, never seen */
+.sb-default{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+fieldset.sbrun{border:1px solid var(--line);border-radius:8px;
+  padding:.35rem .8rem .5rem;margin:.8rem 0 .4rem}
+fieldset.sbrun legend{color:var(--mut);font-size:var(--fs-label);padding:0 .3rem}
+.sbrun .row{align-items:flex-end}
+.sbrun .row > span{display:flex;flex-direction:column}
+.sbrun input[type=number]{width:6.5rem}
+.sbrun input[name=seed]{width:9rem}
+.sbpair{display:flex;gap:.4rem}
+.sbpair select{width:auto}
+details.sbfill .row{align-items:flex-end}
+details.sbfill .row > span{display:flex;flex-direction:column}
+details.sbfill .row > span[hidden]{display:none}
+/* a label with its tip and one without sit on one baseline */
+.sbfill .row > span > label,.sbrun .row > span > label,
+.sbfill .row .lblrow,.sbrun .row .lblrow{min-height:1.5rem;display:flex;
+  align-items:center;margin:.5rem 0 .2rem}
+details.sbfill input[type=file]{padding:.3rem}
+.sbupload{margin-top:.5rem}
+.sbreport ul{margin:.2rem 0 .4rem 1.1rem;padding:0}
+.sbreport p{margin:.4rem 0 .1rem}
+.sbactions{margin-top:.5rem}
+/* the New model form's Oracle SIHRS start; compare, diff, the Oracle step */
+fieldset.sbshipped{border:1px solid var(--line);border-radius:8px;
+  padding:.35rem .8rem .5rem;margin:.6rem 0}
+fieldset.sbshipped legend{color:var(--mut);font-size:var(--fs-label);padding:0 .3rem}
+.sbshipped .row{align-items:flex-end}
+.sbshipped .row > span{display:flex;flex-direction:column}
+.sbshipped .row > span[hidden]{display:none}
+.sbshipped .lblrow{margin:0 0 .25rem}
+.sbsetpop{align-self:flex-end}
+.sbsetpop label{display:inline-flex;align-items:center;gap:.3rem}
+.sbcompare{margin:0}
+.sbcompare select{width:auto;max-width:16rem}
+pre.sbdiffpre{max-height:22rem;overflow:auto;font-size:var(--fs-label);
+  white-space:pre;margin:.3rem 0}
+table.sboracle-t td,table.sbparams2 td{font-variant-numeric:tabular-nums}
+#sb-checked ul{margin:.2rem 0 .4rem 1.1rem;padding:0}
+#sb-checked p{margin:.4rem 0 .1rem}
+.sb-bad{color:var(--bad);font-weight:600}
+.sb-ok{color:var(--ok);font-weight:600}
+.sb-warn{color:var(--ink);font-weight:600}
+tr[aria-current="true"] td{font-weight:600}
+#sb-dirty[hidden]{display:none}
+@media(max-width:640px){.sbmodels th:nth-child(2),.sbmodels td:nth-child(2),
+  .sbmodels th:nth-child(4),.sbmodels td:nth-child(4){display:none}}
 
 /* sandbox model views */
-/* the model views card: the pills pick a view; the drawing scrolls sideways
-   when a network is wider than the card, and BNG's words wrap in place */
+/* pills pick a view; wide networks scroll sideways, BNG text wraps */
 .mviews{display:flex;flex-wrap:wrap;gap:.4rem;margin:.2rem 0 .6rem}
 .mview-draw{overflow-x:auto;min-height:2.5rem;padding:.2rem 0}
 .mview-draw svg{display:block;max-width:none}

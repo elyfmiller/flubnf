@@ -1,4 +1,4 @@
-"""Thin wrapper around scripts/validate_submission.R.
+"""OPS: thin wrapper around scripts/validate_submission.R.
 
 Runs a FluSight submission CSV through the hub's own acceptance code
 (the hubValidations R package) in a throwaway git worktree of a hub clone,

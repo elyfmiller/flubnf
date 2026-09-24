@@ -1,0 +1,54 @@
+{# "Your datasets" on the Data tab (app/ui/datasets_ui.py): the upload box
+   (_dataset_upload.html, shared with the Forecast and Retrospective tabs)
+   and the stored datasets. One sentence of prose; the rest behind "?"
+   tips. Included by data.html (tips imported there). #}
+{% import "_dataset_upload.html" as dsup %}
+<div class="card" id="datasets"><h2>Your datasets
+ {{ tips.tip("ds-about", "your datasets", "Upload weekly data as a CSV to browse it here, forecast it on the Forecast tab and replay it on the Retrospective tab. The FluSight hub stays the default everywhere; a dataset is used only where you pick it. Forecasts on it are exported as CSV files and never submitted.") }}</h2>
+ <p class="hint">Your own weekly data, used only where you pick it.</p>
+ {{ dsup.box("data", upload) }}
+ {% if datasets %}
+ <div class="tablewrap"><table class="compact dstable">
+  <thead><tr><th>Name</th><th class="num">Groups</th><th class="num">Weeks</th>
+   <th>Kind</th><th>Population</th><th>Vintages</th><th>Use</th></tr></thead>
+  <tbody>{% for d in datasets %}
+  <tr>
+   <td><a href="/data?source={{ d.id }}#browser">{{ d.name }}</a>{% if d.warnings %}
+    {{ tips.tip("ds-w-" ~ loop.index, "warnings for " ~ d.name, d.warnings | join(" ")) }}{% endif %}</td>
+   <td class="num">{{ d.groups }}</td><td class="num">{{ d.weeks }}</td>
+   <td>{{ "counts" if d.kind == "count" else "rates" }}</td>
+   <td>{{ "yes" if d.population else "no" }}</td>
+   <td>{{ ("yes (" ~ d.n_vintages ~ ")") if d.vintages else "no" }}</td>
+   <td class="dsactions"><a href="/forecast?source={{ d.id }}">Forecast</a>
+    · <a href="/retro?dataset={{ d.id }}#dataset-replay">Replay</a>
+    <form method="post" action="/data/datasets/{{ d.id }}/delete" class="inline">
+     <input type="hidden" name="confirm" value="">
+     <button type="button" class="quiet" data-del-dataset data-name="{{ d.name }}"
+       {% if d.busy %}disabled title="{{ d.busy }}"{% endif %}>Delete</button>
+    </form></td>
+  </tr>{% endfor %}</tbody>
+ </table></div>
+ {% else %}
+ <p class="hint">No datasets yet.</p>
+ {% endif %}
+</div>
+<script>
+ // dataset delete: the shared confirmation shell; the server refuses the
+ // POST unless confirm names the dataset
+ (function(){
+  document.querySelectorAll('[data-del-dataset]').forEach(function(b){
+   b.addEventListener('click',function(){
+    var f=b.form,n=b.dataset.name;
+    if(!f||!window.FluBNFConfirm)return;
+    window.FluBNFConfirm({
+     title:'Delete '+n+'?',
+     msg:'This permanently deletes the dataset '+n+', its replays and its '
+       +'runs\' workroots. It cannot be undone.',
+     hint:'The runs stay in the ledger (Storage).',
+     okLabel:'Delete permanently',
+     onOk:function(){f.confirm.value=n;f.submit();}
+    });
+   });
+  });
+ })();
+</script>

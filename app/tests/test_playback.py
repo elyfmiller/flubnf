@@ -55,16 +55,12 @@ def _write_official(hub, om, asof=ASOF):
 
 def _mk_root(tmp_path, monkeypatch, with_pf2s=True, official_models=("FluSight-baseline",)):
     """A one-week synthetic season root plus a synthetic hub; truth and the
-    baseline denominator are monkeypatched so no real data is touched.
-
-    The samples.json written here is a FILE, so it is written in the STORED
-    convention: "0" is the anchor week (the as-of itself) and "1".."4" are
-    the four forecasts. retro.read_week_samples translates it on the way
-    up, which is exactly the boundary these assertions exercise."""
+    baseline denominator are monkeypatched. samples.json is a FILE, so it
+    uses the STORED convention ("0" is the anchor, "1".."4" the forecasts);
+    retro.read_week_samples translates it at the boundary under test."""
     truth, n2f = _truth()
     monkeypatch.setattr(playback, "load_truth", lambda: (truth, n2f))
-    # the baseline is keyed on the hub's horizons, which is what the
-    # scored rows now carry, so the join is straight through
+    # the baseline is keyed on the hub's horizons, as the scored rows are
     monkeypatch.setattr(playback, "_baseline_cells",
                         lambda asof, fips_set, tr: {(f, asof, int(h)): 2.0
                                                     for f in fips_set
@@ -103,13 +99,11 @@ def test_payload_structure_members_official_truth_stats(tmp_path, monkeypatch):
     assert p["asof"] == ASOF
     assert p["locations"] == ["Ohio", "Utah"]
 
-    # members: sample-shaped converted, analogue as-is, pf2s included
-    # no blend since 2026-09-22: the stored members and nothing computed
+    # the stored members and nothing computed (no blend)
     assert set(p["models"]) == {"pf", "pf2s", "analogue"}
     oh = p["models"]["pf"]["Ohio"]
-    # the four canonical forecast horizons and nothing else: the anchor
-    # week sits in the stored file under "0", becomes hz.ORIGIN at the
-    # boundary, and is never served as a fan
+    # the four canonical forecast horizons only: the anchor becomes
+    # hz.ORIGIN at the boundary and is never served as a fan
     assert set(oh) == set(hz.HORIZONS)
     assert set(oh["0"]) == {str(float(L)) for L in QL}
     assert oh["0"]["0.5"] == pytest.approx(101.0)   # truth base 100, k=1
@@ -117,16 +111,14 @@ def test_payload_structure_members_official_truth_stats(tmp_path, monkeypatch):
     assert p["models"]["pf2s"]["Ohio"]["0"]["0.5"] == pytest.approx(103.0)
     assert p["models"]["analogue"]["Ohio"]["0"]["0.5"] == pytest.approx(105.0)
 
-    # truth: full-season settled series, US always included (the player
-    # offers a US view in every week)
+    # truth: full-season settled series, US always included
     assert set(p["truth"]) == {"Ohio", "Utah", "US"}
     dates = [d for d, _ in p["truth"]["Ohio"]]
     assert dates == sorted(dates) and len(dates) == 14
     assert p["truth"]["Ohio"][-1][1] == pytest.approx(105.0)
 
-    # official: our horizons ARE the hub's now, so the join is the
-    # identity and hub 0 stays "0"; US labeled, missing FluSight-ensemble
-    # file omitted entirely
+    # official: our horizons are the hub's (identity join); US labelled; a
+    # missing FluSight-ensemble file is omitted
     assert set(p["official"]) == {"FluSight-baseline"}
     ob = p["official"]["FluSight-baseline"]
     assert set(ob) == {"Ohio", "US"}
@@ -142,9 +134,8 @@ def test_payload_structure_members_official_truth_stats(tmp_path, monkeypatch):
 
 
 def test_vectorized_member_quantiles_match_reference():
-    """playback._member_q is a speed rewrite of ens.member_quantiles_from_
-    samples (one np.quantile call per horizon, not 23); the two must stay
-    bit-identical or the served fans drift from the scored ones."""
+    """playback._member_q (one np.quantile per horizon) stays bit-identical to
+    ens.member_quantiles_from_samples, or served fans drift from scored ones."""
     import numpy as np
     from app.core import ensemble as ens
     rng = np.random.default_rng(7)
@@ -168,8 +159,8 @@ def test_cache_written_served_and_invalidated(tmp_path, monkeypatch):
     playback.build_week(root, SEASON, ASOF)
     cf = root / "playback_cache" / f"{ASOF}.json"
     assert cf.is_file()
-    # fresh cache is served verbatim (the sentinel carries the full validity
-    # shape: both officials present and the always-present US truth key)
+    # a fresh cache is served verbatim (the sentinel has the full validity
+    # shape)
     cf.write_text(json.dumps({"_v": playback.CACHE_V, "asof": "sentinel",
                               "models": {}, "truth": {"US": []},
                               "official": {"FluSight-baseline": {},
@@ -205,9 +196,8 @@ def test_stats_prefer_scores_json_for_covered_models(tmp_path, monkeypatch):
 # ---------------------------------------------------- stats cache staleness
 
 def test_stats_cache_refreshes_when_scores_json_arrives(tmp_path, monkeypatch):
-    """The field case: scoring succeeded AFTER the caches were built. The
-    stats cache checked sample mtimes only, so the late scores.json never
-    propagated and relWIS stayed pending forever."""
+    """A scores.json arriving after the caches were built refreshes the stats
+    (the cache once checked sample mtimes only)."""
     root = _mk_root(tmp_path, monkeypatch)
     p1 = playback.build_week(root, SEASON, ASOF)     # no scores.json yet
     assert p1["stats"]["pf"]["week_rel"] is not None  # on-the-fly, cached
@@ -227,9 +217,8 @@ def test_stats_cache_refreshes_when_scores_json_arrives(tmp_path, monkeypatch):
 
 
 def test_stats_cache_gains_late_official_files(tmp_path, monkeypatch):
-    """Update data healing the sparse hub clone changes no samples mtime;
-    the official-file existence set must be part of the cache validity or
-    the comparators never join the stats."""
+    """Official files arriving later (no samples mtime change) join the stats:
+    the official-file set is part of cache validity."""
     root = _mk_root(tmp_path, monkeypatch, official_models=())
     p1 = playback.build_week(root, SEASON, ASOF)
     assert "FluSight-baseline" not in p1["stats"]
@@ -241,11 +230,8 @@ def test_stats_cache_gains_late_official_files(tmp_path, monkeypatch):
 
 
 def test_us_truth_present_without_officials(tmp_path, monkeypatch):
-    """A week with no official submission still carries the US truth
-    series: the player's location list offers US in every week, and gating
-    the national truth on official presence made those frames render as
-    bare empty axes (field-found on the 2025-26 season player, weeks
-    outside the officials' competition window)."""
+    """US truth is served even with no official submission (the player
+    offers US every week)."""
     root = _mk_root(tmp_path, monkeypatch, official_models=())
     p = playback.build_week(root, SEASON, ASOF)
     assert p["official"] == {}
@@ -255,8 +241,7 @@ def test_us_truth_present_without_officials(tmp_path, monkeypatch):
 
 
 def test_cached_payload_without_us_truth_upgrades(tmp_path, monkeypatch):
-    """A payload cached before US truth rode along unconditionally rebuilds
-    on first serve, the same lazy-heal rule as late official files."""
+    """A cached payload without US truth rebuilds on first serve."""
     root = _mk_root(tmp_path, monkeypatch, official_models=())
     playback.build_week(root, SEASON, ASOF)
     cf = root / "playback_cache" / f"{ASOF}.json"
@@ -290,9 +275,8 @@ def test_route_unknown_week_is_plain_404():
 
 
 def test_mapswap_route_refuses_unknown_and_unsafe_weeks():
-    """The map swap payload endpoint (the per-frame map path since
-    2026-08-22): an unknown week is a plain 404, and a week that is not
-    date-shaped never reaches the filesystem as a path segment."""
+    """/mapswap: an unknown week is a 404, and a non-date week never reaches
+    the filesystem."""
     from fastapi.testclient import TestClient
     from app.ui.server import app as srv
     c = TestClient(srv)
@@ -325,10 +309,8 @@ def test_real_first_seal_week_spot():
 
 @pytest.mark.skipif(not _real_ok, reason="seal root or hub files absent")
 def test_real_mapswap_covers_every_state_shape():
-    """The swap payload the player mutates fills from must state an entry
-    for EVERY state path on the map (states without samples wear the
-    no-data tone), each with fill, opacity, and hover, so a frame can
-    never leave a stale fill from the previous week behind."""
+    """The swap payload states fill, opacity and hover for EVERY map state, so
+    no stale fill survives a frame."""
     from fastapi.testclient import TestClient
     from app.core.usmap import state_paths
     from app.ui.server import app as srv

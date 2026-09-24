@@ -1,12 +1,7 @@
 """Playback cache files land atomically: write beside, then os.replace.
 
-The playback caches (the per-asof payloads and stats_cells.json) are read
-by presence: any file in playback_cache/ is served as a complete payload,
-and the payloads run to megabytes. A bare write_text torn by a concurrent
-writer or a kill mid-write therefore becomes truth on the next request
-(2026-09-01 final pass). server.py's cards cache already states the rule,
-write beside then replace; these tests pin that every playback cache write
-follows it.
+Any file in playback_cache/ is served as a complete payload (megabytes), so
+a torn bare write_text would become truth on the next request.
 """
 import inspect
 import json
@@ -41,9 +36,8 @@ def test_write_cache_replaces_an_existing_payload_whole(tmp_path):
 
 def test_a_failed_replace_never_touches_the_served_payload(tmp_path,
                                                            monkeypatch):
-    """The property the tmp-beside pattern buys: a writer that dies before
-    the replace leaves the reader exactly the complete payload it had, not
-    a prefix of the new one."""
+    """A writer dying before the replace leaves the previous complete payload,
+    not a prefix of the new one."""
     cf = tmp_path / "playback_cache" / "2026-01-03.json"
     playback._write_cache(cf, {"_v": 2, "n": 1})
 
@@ -56,9 +50,8 @@ def test_a_failed_replace_never_touches_the_served_payload(tmp_path,
 
 
 def test_no_playback_cache_write_bypasses_the_helper():
-    """Both cache sites (the per-asof payload in build_week and the
-    stats_cells aggregate in _stats) must go through _write_cache; a bare
-    json.dumps into write_text is the torn-write pattern coming back."""
+    """Both cache sites (build_week's payload and _stats' stats_cells) go
+    through _write_cache; never a bare json.dumps into write_text."""
     src = inspect.getsource(playback)
     assert ".write_text(json.dumps" not in src.replace(
         "tmp.write_text(json.dumps", ""), (

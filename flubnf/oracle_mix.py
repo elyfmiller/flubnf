@@ -1,62 +1,27 @@
-"""The shipped donor bank of the Oracle SIHRS: past-season NHSN admissions
-growth mixed half and half with FluSurv-NET hospitalization-rate growth,
-the Groundhog's own donor bank (bank change B2).
+"""SHIPPED: the Oracle SIHRS donor bank (bank change B2): past-season NHSN
+admissions growth (flubnf.oracle_bank, unchanged) mixed half and half with
+FluSurv-NET rate growth from the Groundhog's committed bank
+(flubnf.bank.read("flusurv"), digest verified). Spec: b2/PREREG_b2_FROZEN.md
+(flubnf.oracle.B2_SHA256), shipped by addendum A2.
 
-WHAT THIS MODULE ADDS
----------------------
-The admissions half is flubnf.oracle_bank, unchanged: the FBASE pool built
-each week from the hub vintage the forecast date saw. This module adds the
-FluSurv-NET half, built from the committed bank the Groundhog splices
-(flubnf.bank.read("flusurv"), digest verified), and the rules that join
-the two halves into one donor bank for flubnf.oracle.member_for_cell. The
-specification is b2/PREREG_b2_FROZEN.md of the Oracle SIHRS record (sha256
-flubnf.oracle.B2_SHA256), every choice set to its printed recommendation;
-the lead chose to ship it in addendum A2 (flubnf.oracle.ADDENDUM_A2_SHA256).
+FLUSURV-NET HALF (S-B2-1, S-B2-4..6). Donor CELLS are the Groundhog's own
+(flubnf.analogue.donor_paths(..., length=6, with_keys=True)); a path also
+needs its W-1 cell, all eight weeks W-1 .. W+6 in strictly earlier
+non-excluded seasons, G_inst(W) > 0 and finite midpoints. No count floor (a
+rate has none); network aggregates and the NY sites are donors, as in the
+Groundhog. Admissible with >= flubnf.analogue.MIN_DONORS paths. Stamps use
+oracle_bank.estimate_G on each location's RATE series over the bank's
+Saturday grid (a per-location constant cancels in log differences), held
+at five decimals like the admissions pool.
 
-THE FLUSURV-NET HALF (S-B2-1, S-B2-4 to S-B2-6)
------------------------------------------------
-The Oracle needs an eight-week growth PATH per donor (W-1 .. W+6: the
-origin stamp G_inst(W) and the four midpoint stamps G_week(W+k)), not the
-Groundhog's horizon ratios. The donor CELLS are the Groundhog's own:
-flubnf.analogue.donor_paths(..., length=6, with_keys=True) runs the shared
-selection rule (_donor_cells: strictly earlier season, the registered
-exclusions, within DEFAULT_BANDWIDTH epiweeks with week 53 at 52.5, a
-finite positive value) and keeps a cell whose six forward cells are
-present by date arithmetic. A path then also needs its W-1 cell (the
-smoother reads it), every one of its eight weeks in a strictly earlier,
-non-excluded season (the season-crossing rule), and the bank's guards
-(G_inst(W) > 0, every midpoint finite). No count floor: a rate per 100k
-has none. The network aggregates and the two New York sites are donors,
-as the Groundhog treats them. A half is admissible with at least
-flubnf.analogue.MIN_DONORS paths.
+SHRINK (S-B2-7, S-B2-8). The Groundhog's fit_log_ratio_shrink for the same
+target season and vintage, applied as G' = gamma + shrink * (G - gamma).
+An unfittable shrink raises.
 
-The stamps are the admissions half's: flubnf.oracle_bank.estimate_G, the
-c3log smoother, on each location's contiguous weekly RATE series over the
-whole bank's Saturday grid. A rate and a count differ by a constant per
-location, which the log differences remove, so both halves hand the
-closed form the same object. The stamps are held at the path table's
-precision (five decimals), exactly as the admissions pool is.
-
-THE SHRINK (S-B2-7, S-B2-8)
----------------------------
-The Groundhog rescales FluSurv-NET log growth by
-flubnf.analogue.fit_log_ratio_shrink, fitted for the run's target season
-from the admissions bank of THAT run's vintage. The Oracle uses the same
-number on the same date, applied to the path as
-G' = gamma + shrink * (G - gamma). An unfittable shrink raises.
-
-THE MIXTURE (S-B2-2, S-B2-3)
-----------------------------
-Identity rule R_EITHER: a week is active when either half is admissible;
-the FluSurv-NET probability w_aux is W_AUX = 0.5 when both are, 1 when only
-the FluSurv-NET half is, 0 when only the admissions half is. The draw
-(flubnf.oracle.member_for_cell) is a second uniform stream on the frozen
-generator, so the admissions-only member is recovered bitwise at w_aux = 0
-and half of every cell's samples keep that member's own donor.
-
-The week's bank label is "admissions-fbase@<pool digest8>+flusurv@<bank
-digest8>": the admissions half's pool content digest, as before, and the
-committed FluSurv-NET bank's content digest.
+MIXTURE (S-B2-2, S-B2-3), identity rule R_EITHER: w_aux = W_AUX when both
+halves are admissible, 1 or 0 when only one is, identity when neither. See
+flubnf.oracle.member_for_cell for the draw. Week label:
+"admissions-fbase@<pool digest8>+flusurv@<bank digest8>".
 """
 from __future__ import annotations
 
@@ -147,12 +112,6 @@ def grid_for(bank, digest: str | None = None) -> Grid:
 def ring_position(e: int) -> float:
     """An epiweek's place on the ring: week 53 at 52.5."""
     return 52.5 if e == 53 else float(e)
-
-
-def shifted_position(e: int, s: int) -> float:
-    """((p(e) - 1 + s) mod 52) + 1: the calendar placebo's target position
-    (the frozen document's 4.3 ring rule), for research controls."""
-    return ((ring_position(e) - 1.0 + s) % 52.0) + 1.0
 
 
 # ---------------------------------------------------------------------------

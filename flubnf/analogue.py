@@ -1,142 +1,35 @@
-"""Calendar-conditioned empirical analogue forecaster.
+"""SHIPPED: calendar-conditioned empirical analogue forecaster (the core of
+the Groundhog and the Oracle's donor paths).
 
-Pilot verification 2026-08-09, real-time relWIS 0.665 on the 2025-26 season
-(2,179 cells, 26 states, vintage anchors, scored against settled truth and the
-official FluSight-baseline; SIHRS on the identical cells scored 0.918, the
-hub's multi-team ensemble ~0.682). That pilot figure was later understood to
-be flattered by the bandwidth choice; the validation of record is the sealed
-full-grid figure below (0.7723 pooled on the shipped donor pool).
-
-THE METHOD
-----------
 For a target (state, as-of week T, horizon h):
-    anchor   = the last OBSERVED value at T (vintage -- what was knowable)
+    anchor   = the last OBSERVED value at T (vintage: what was knowable)
     donors   = every (state', week W) from STRICTLY PRIOR seasons whose epiweek
                is within `bandwidth` weeks of T's epiweek
     ratios   = truth[state', W + 7h] / truth[state', W]
     forecast = anchor * quantiles(ratios)
 
-Donors are pooled ACROSS states on purpose: per-state donors number about
-five per prior season under the two-week calendar window, which cannot
-support a 23-quantile predictive distribution.
+Donors are pooled ACROSS states: per-state pools (~5 per prior season) cannot
+support 23 quantiles. The pool also keeps the US national row, which is the
+sum of the 52 jurisdictions (15 of 793 donors on a representative date).
+Removing it tied inside the pre-registered 0.001 band (analogue relWIS 0.7714
+with vs 0.7717 without; shipped ensemble 0.7233 vs 0.7234); record in the
+lab archive (research/us-donor).
 
-That pool also carries the US national row, which the vintage files hold as
-one more location. The US national row is the sum of the 52 jurisdictions, so
-it is not independent of them; on a representative date it supplied 15 of 793
-donors. Keeping it was measured against removing it over all 85 archived
-as-of weeks of the three resealed seasons, on identical cells: pooled
-analogue relWIS 0.7714 with the row against 0.7717 without it, and 0.7233
-against 0.7234 for the shipped ensemble. That is a tie inside the
-pre-registered 0.001 band, so the shipped pool keeps the row and this
-paragraph is where it says so. The pre-registration and the results are in
-the lab archive (research/us-donor, 2026-09-08), not in this repository.
+Against SIHRS over the sealed archive the two members tie on total WIS
+(ratio 0.998) and alternate by season, which is why the blend pays; the
+analogue loses less to dispersion and overprediction and 1.8x more to
+underprediction. Skill depends on donor COMPOSITION, not depth.
 
-HOW IT COMPARES TO THE COMPARTMENTAL MODEL (measured, WIS decomposition)
-------------------------------------------------------------------------
-Alpha-weighted additive components, summed over the sealed archive: three
-seasons, 52 jurisdictions, 16,775 filter cells and 16,978 analogue cells, on
-the SHIPPED donor pool. The four rows sum to each column's total WIS.
+Seasons leave the donor pool only through a registered DonorSeasonExclusion
+(DONOR_SEASON_EXCLUSIONS; the records below carry the evidence). A season
+label is relative to the influenza 1 August boundary and is not portable to
+another disease (resolve_donor_exclusions).
 
-    component        SIHRS      analogue   ratio
-    median error      71,766      73,660   1.026
-    dispersion       563,049     373,570   0.663
-    overprediction   182,914     122,990   0.672
-    underprediction  309,739     555,283   1.793
-    TOTAL          1,127,467   1,125,503   0.998
-
-Read this carefully, because it does NOT say what an earlier version of this
-docstring said. Pooled over the whole archive the two members are very nearly
-TIED, 0.998 on raw WIS and 0.7723 against 0.7746 on relWIS. Neither "beats"
-the other in any general sense; they alternate by season, which is the actual
-reason the blend is worth having.
-
-Where they differ is in the shape of the loss, and the direction is the
-opposite of what was previously recorded. The analogue is BETTER on dispersion
-and BETTER on overprediction, and it is WORSE on underprediction by a factor
-of 1.8. It is not the case that the analogue wins by escaping a SIHRS
-low-forecasting bias.
-
-RETRACTION, 2026-08-24. This table previously read 266,232 / 546,044 / 11,966
-/ 1,492,128 against 201,864 / 672,640 / 52,576 / 251,288, and concluded that
-underprediction was "the entire advantage". Those figures came from a
-2,179-cell, 26-state, single-season pilot dated 2026-08-09 and were presented
-as a general result. Recomputed over the full sealed archive every ratio moves
-and three of the four reverse direction, so the conclusion drawn from them
-does not hold. Do not carry the old table or its explanation into any
-write-up.
-
-What DOES survive is the directional observation, which is real but smaller
-than the retracted claim implied: the filter's median sits below truth in
-60.5 percent of cells against the analogue's 54.3, with median log bias -0.155
-against -0.066. The filter does forecast low. That is simply not what drives
-the difference in WIS.
-
-DEPENDS ON DONOR COMPOSITION, NOT DONOR DEPTH
-----------------------------------------------
-An earlier version of this section read "DEPENDS ON DONOR DEPTH" and cited
-0.993 / 0.813 / 0.630 by target season as evidence that the member needs many
-prior seasons. The depth control run for the 2021-22 exclusion disproves that
-reading: randomly subsampling the full pool to a smaller pool of the same size
-moves the score by 0.199 percent, while changing WHICH seasons are in the pool
-moves it by 17.64 percent. Donor count is close to free at these pool sizes.
-The by-season series above is real, but it reflects which seasons were
-available to donate, not how many donors there were.
-
-The 0.665 anchor-alignment figure elsewhere in this module was also measured
-on the UNRESTRICTED pool, before the 2021-22 exclusion adopted on 2026-08-24,
-and is a historical record of that configuration.
-
-THE REGISTERED DONOR EXCLUSIONS (2021-22 adopted 2026-08-24, 2020-21 adopted
-2026-09-19)
------------------------------------------------------------------------------
-Two seasons are excluded from the donor pool. `DONOR_SEASON_EXCLUSIONS` is
-the registry, `EXCLUDED_DONOR_SEASONS` is the default `donor_ratios` applies
-({2020, 2021}), and `SEASON_2021_22_CALENDAR_INVERSION` and
-`SEASON_2020_21_SUPPRESSED` carry the full provenance. The 2020-21 record is
-inert for the admissions bank (no data before 2022-02-05) and applies to
-every auxiliary pool. The 2021-22 short version, because a donor pool that
-quietly differs from the published one is
-the worst failure available here:
-
-  MECHANISM. 2021-22 peaked at epiweek 16 (2022-04-23); the other four donor
-  seasons peaked between epiweek 48 and epiweek 6. The archived NHSN series
-  begins 2022-02-05, so the archive holds only that season's Feb-Jul tail. A
-  calendar-matched pool asks "what happened in March" and 2021-22 answers
-  "the epidemic was still growing": it is the only donor season whose March
-  ratios have a median above one (1.27 in the 2026-08-26 settled-truth
-  recomputation, every other season at or below 1.00), with an upper tail
-  more than twice as heavy as any other season's (q97.5 7.0 vs 3.0
-  next-highest). Exact ranges depend on how the March pool is defined, so
-  the claim is stated at the strength at which it reproduces. The season is
-  calendar-INVERTED, not merely unusual.
-
-  EFFECT. Pre-registered, hash 8f3c7a45a989e905, full grid, 15,460 cells.
-  Shipped 50/50 ensemble 0.7039 -> 0.6781 pooled, +3.66 percent, positive in
-  4000 of 4000 clustered bootstrap replicates. Analogue member 0.8290 ->
-  0.7723 pooled. No cell is gained or lost: the restricted pool's smallest
-  donor count is 223 against MIN_DONORS = 30, so the analogue is never
-  silenced by the exclusion.
-
-  COMPOSITION, NOT COUNT. The control that makes the claim answerable.
-  On the 9,363 cells where the exclusion actually removes donors, randomly
-  subsampling the FULL pool to the restricted pool's size moves the score
-  +0.199 percent, while removing 2021-22 moves it +17.64 percent. The gain
-  is which donors are dropped, not how many.
-
-  SCOPE. The exclusion is an influenza season LABEL under the 1 August
-  boundary, not a date range. It is not portable to another disease's
-  calendar; see `resolve_donor_exclusions` and `flubnf.profiles`.
-
-TWO TRAPS, BOTH PAID FOR
-------------------------
-1. ANCHOR ALIGNMENT. Taking the anchor one week later than allowed improves the
-   score from 0.665 to 0.488. A one-week look-ahead is worth 0.177 relWIS here,
-   which is larger than most real effects in this project. `season_start` and
-   the vintage file must correspond to the same as-of date.
-2. NaN CONTAMINATION. `value <= 0` is False for NaN, so NaNs pass every naive
-   filter, and `np.quantile` returns NaN for ALL levels if the array contains a
-   single one. That silently produced a 100%-NaN control arm during
-   verification. Every filter here is explicitly `np.isfinite`.
+Two traps, both paid for:
+1. ANCHOR ALIGNMENT. A one-week look-ahead on the anchor is worth ~0.18
+   relWIS, so `season_start` and the vintage file must share the as-of date.
+2. NaN. `v <= 0` is False for NaN and one NaN makes np.quantile all-NaN, so
+   every filter here is np.isfinite.
 """
 from __future__ import annotations
 
@@ -148,28 +41,14 @@ from typing import Iterable, Mapping, Optional
 
 import numpy as np
 
-# PROVENANCE OF THE BANDWIDTH, stated because every sealed analogue and
-# ensemble number was computed at this value and the record on it is mixed.
-#   (a) 2 is the value the seal ran at. On the sealed shipped-pool record
-#       (ratio of sums vs FluSight-baseline, US excluded) the analogue member
-#       scores 1.045 / 0.756 / 0.621 by season at this bandwidth.
-#   (b) The pre-seal sweep on the superseded pipeline (lab archive, not
-#       in this repository; "Corrections worth remembering" item 1)
-#       found the per-season optimum reverses season to season; the honest
-#       out-of-season selection there picked +/-8, which scored 0.806 held
-#       out on 2025-26, versus 0.665 at +/-2 and 0.547 at the in-season
-#       oracle +/-1. The +0.259 gap recorded there is honest-vs-oracle, not
-#       the cost of choosing 2.
-#   (c) The bandwidth has NOT been re-selected on the current pipeline and
-#       shipped donor pool. Changing it invalidates the sealed record, so the
-#       re-selection decision belongs to the lead, not to a quiet edit here.
+# Bandwidth 2 is what the sealed record ran at. It was never re-selected on
+# the current pipeline (the per-season optimum reverses season to season;
+# pre-seal sweep in the lab archive); changing it invalidates the seal and
+# is the lead's decision.
 DEFAULT_BANDWIDTH = 2
 MIN_DONORS = 30
 
-#: Month whose first day opens a new influenza season label. This module's
-#: `season_of` IS this boundary; `flubnf.profiles.INFLUENZA` mirrors it and
-#: tests/test_profiles.py asserts the two agree on every day of twelve years.
-#: A donor-season exclusion is a label under THIS boundary and no other.
+#: First month of an influenza season label (season_of).
 SEASON_BOUNDARY_MONTH = 8
 
 _STD_NORMAL = NormalDist()
@@ -195,17 +74,11 @@ def season_of(d: date) -> int:
 
 
 def calendar_distance(a: int, b: int, period: int = 52) -> int:
-    """Circular distance between epiweeks -- weeks 52 and 1 are adjacent.
+    """Circular distance between epiweeks (52 and 1 are adjacent).
 
-    Week 53, the extra MMWR week some years carry, sits BETWEEN weeks 52
-    and 1 on the ring: it maps to position 52.5, so distance(53, 1) == 1,
-    distance(53, 52) == 1, and distance(53, 3) == 3. The plain period-52
-    arithmetic mapped week 53 ONTO week 1 (distance 0), which admitted
-    donors one week beyond the stated bandwidth on one side of an
-    epiweek-53 target and starved the other side (audit finding; the
-    2025-26 season peaked on an epiweek-53 Saturday, so the case is not
-    hypothetical). All pairs within 1..52 are untouched: their arithmetic
-    stays integer and identical to the historical path.
+    Week 53 sits at 52.5, BETWEEN 52 and 1 (distance(53, 1) == 1), never on
+    top of week 1, which would skew the bandwidth around an epiweek-53
+    target. Pairs within 1..52 keep plain integer arithmetic.
     """
     aa = 52.5 if a == 53 else float(a)
     bb = 52.5 if b == 53 else float(b)
@@ -216,25 +89,19 @@ def calendar_distance(a: int, b: int, period: int = 52) -> int:
 # ---------------------------------------------------------------------------
 # Donor-season exclusions
 # ---------------------------------------------------------------------------
-# A season may leave the donor pool ONLY through a registered record. The
-# pattern is deliberately the one `flubnf.profiles.ExcludedWindow` already
-# uses for scoring exclusions, and for the same reason: an exclusion that
-# leaves no trace is indistinguishable from a bug.
+# A season leaves the donor pool ONLY through a registered record: an
+# untraced exclusion looks like a bug.
 
 @dataclass(frozen=True)
 class DonorSeasonExclusion:
     """One season removed from the analogue's donor pool, with its evidence.
 
-    `profile_key` and `season_boundary_month` are not decoration. A season
-    LABEL only means a stretch of calendar relative to some boundary, and the
-    boundary differs by disease (influenza 1 August, COVID 1 June). Applying
-    an influenza label under COVID's boundary would silently remove the wrong
-    weeks rather than none, so `resolve_donor_exclusions` refuses to apply a
-    record whose boundary is not this module's.
+    A season LABEL depends on the season boundary (influenza's is 1 August),
+    so resolve_donor_exclusions refuses a record whose
+    `season_boundary_month` is not this module's.
     """
     season: int
     label: str
-    profile_key: str
     season_boundary_month: int
     #: The calendar stretch the label covers under that boundary, inclusive.
     covers: tuple
@@ -250,7 +117,6 @@ class DonorSeasonExclusion:
 SEASON_2021_22_CALENDAR_INVERSION = DonorSeasonExclusion(
     season=2021,
     label="2021-22",
-    profile_key="influenza",
     season_boundary_month=SEASON_BOUNDARY_MONTH,
     covers=(date(2021, 8, 1), date(2022, 7, 31)),
     prereg_hash="8f3c7a45a989e905",
@@ -296,7 +162,6 @@ SEASON_2021_22_CALENDAR_INVERSION = DonorSeasonExclusion(
 SEASON_2020_21_SUPPRESSED = DonorSeasonExclusion(
     season=2020,
     label="2020-21",
-    profile_key="influenza",
     season_boundary_month=SEASON_BOUNDARY_MONTH,
     covers=(date(2020, 8, 1), date(2021, 7, 31)),
     prereg_hash="086bda9a0736e983",
@@ -356,35 +221,24 @@ SEASON_2020_21_SUPPRESSED = DonorSeasonExclusion(
 )
 
 
-#: The ONLY seasons that may be dropped, keyed by season label. Adding a key
-#: here is the whole cost of excluding another season, and it is meant to be
-#: expensive: the record must carry a pre-registration hash, a mechanism, a
-#: measured effect and a depth control before anything can use it.
+#: The ONLY seasons that may be dropped, by label. Adding one requires a full
+#: record (prereg hash, mechanism, measured effect, depth control).
 DONOR_SEASON_EXCLUSIONS: dict = {
     SEASON_2021_22_CALENDAR_INVERSION.season: SEASON_2021_22_CALENDAR_INVERSION,
     SEASON_2020_21_SUPPRESSED.season: SEASON_2020_21_SUPPRESSED,
 }
 
-#: What `donor_ratios` applies when the caller says nothing. The default is the
-#: exclusion rather than the empty set on purpose: forgetting the argument must
-#: not silently restore the donor pool that every published figure moved away
-#: from. Reintroducing 2021-22 requires writing `exclude_seasons=()`.
+#: donor_ratios' default: forgetting the argument must not restore the pool
+#: published figures moved away from; `exclude_seasons=()` does that explicitly.
 EXCLUDED_DONOR_SEASONS = frozenset(DONOR_SEASON_EXCLUSIONS)
 
 
 def resolve_donor_exclusions(exclude_seasons: Iterable[int]) -> frozenset:
-    """Validate a donor-season exclusion set, LOUDLY. Returns season labels.
+    """Validate a donor-season exclusion set, LOUDLY; returns season labels.
 
-    Closes two failure modes, in both directions:
-
-    * Excluding a season with no registered record. A donor pool that quietly
-      differs from the published one produces numbers nobody can reproduce, so
-      an unregistered season raises rather than silently narrowing the pool.
-    * Applying an exclusion minted under another disease's calendar. Season
-      labels are boundary-relative: under influenza's 1 August rule label 2021
-      is 2021-08-01 to 2022-07-31, while under COVID's 1 June rule the same
-      label is 2021-06-01 to 2022-05-31. This function owns the influenza
-      boundary (`season_of`), so it refuses any record minted under another.
+    Raises for a season with no registered record (an unreproducible pool)
+    and for a record minted under another disease's season boundary (the
+    same label names different calendar weeks).
     """
     seasons = frozenset(int(s) for s in exclude_seasons)
     unknown = sorted(seasons - frozenset(DONOR_SEASON_EXCLUSIONS))
@@ -417,19 +271,12 @@ def donor_ratios(bank: Mapping[tuple, float], target_epiweek: int,
                  ) -> np.ndarray:
     """Growth ratios at `horizon` weeks, from calendar-matched prior seasons.
 
-    `allow_same_season` exists ONLY so tests can demonstrate that leaking the
-    target season improves the score. It must never be True in production.
+    `allow_same_season` exists ONLY so tests can show that leaking the
+    target season improves the score; never True in production.
 
-    `exclude_seasons` defaults to `EXCLUDED_DONOR_SEASONS`, which is the
-    shipped donor pool: every strictly prior season except the registered
-    exclusions, 2020-21 and 2021-22 (the first is inert for the admissions
-    bank, which starts 2022-02-05, and applies to the auxiliary pools). Pass `()`
-    to restore the unrestricted pool that figures published before 2026-08-24
-    were measured on, and pass another profile's set (see `flubnf.profiles`)
-    when forecasting a disease whose seasons this module does not label. Every
-    value is checked against the registry by `resolve_donor_exclusions`, so an
-    unregistered or foreign-calendar season raises instead of quietly changing
-    which donors survive.
+    `exclude_seasons` defaults to the shipped pool (EXCLUDED_DONOR_SEASONS);
+    `()` restores the unrestricted pre-2026-08-24 pool. Every value passes
+    resolve_donor_exclusions.
     """
     drop = resolve_donor_exclusions(exclude_seasons)
     out = []
@@ -451,29 +298,14 @@ def donor_paths(bank: Mapping[tuple, float], target_epiweek: int,
                 with_keys: bool = False):
     """Growth PATHS, one row per donor: `v(d + 7k) / v(d)` for k = 1..length.
 
-    The donors are the ones `donor_ratios` selects (the selection rule is
-    shared, `_donor_cells`, so the two cannot disagree about the pool), but
-    a donor is kept only when every one of its `length` future cells is
-    present, finite and positive. Each row is therefore a complete
-    trajectory, and column k-1 holds that donor's `horizon = k` ratio; the
-    column is a subset of `donor_ratios(..., k)`, which only needs the one
-    future cell. Built for a consumer that wants a trajectory rather than
-    one horizon's marginal, such as a mechanistic model taking a prior on
-    the next `length` weeks' growth.
+    Same donors as donor_ratios (shared _donor_cells), kept only when all
+    `length` future cells are finite and positive, so column k-1 is a subset
+    of donor_ratios(..., k). Shape `(n, length)`, `(0, length)` when none.
+    `with_keys=True` also returns each row's `(loc, d)` in bank order.
 
-    Returns an array of shape `(n, length)`, and `(0, length)` when no donor
-    qualifies, so a column can be indexed without a special case. With
-    `with_keys=True` returns `(paths, keys)`, `keys[i]` being the `(loc, d)`
-    of row i in the bank's own iteration order, for a caller that weights
-    or groups donors by `season_of(d)`.
-
-    Like `donor_ratios` this applies NO donor floor: `MIN_DONORS` is the
-    caller's to enforce, and a thin pool is an abstention to make loudly,
-    not a thin forecast. Future values are read by date arithmetic, never
-    by week label, so the week-53 seam is handled by construction. The
-    ratios are on the bank's own scale; a caller putting them on another
-    stream's scale applies `fit_log_ratio_shrink` in log space, per target
-    season.
+    No donor floor (MIN_DONORS is the caller's). Future values are read by
+    date arithmetic, so the week-53 seam is handled by construction. Ratios
+    are on the bank's own scale (see fit_log_ratio_shrink).
     """
     length = int(length)
     if length < 1:
@@ -500,17 +332,12 @@ def donor_paths(bank: Mapping[tuple, float], target_epiweek: int,
 def _donor_cells(bank: Mapping[tuple, float], target_epiweek: int,
                  target_season: int, bandwidth: int,
                  allow_same_season: bool, drop):
-    """The donor SELECTION rule, in one place.
+    """The donor SELECTION rule, in one place (donor_ratios, donor_paths).
 
-    Yields `((loc, d), v0)` in the bank's own iteration order for every cell
-    that is finite and positive, in a strictly prior season (unless
-    `allow_same_season`), not in `drop` (an already-resolved exclusion set),
-    and within `bandwidth` epiweeks of the target by `calendar_distance`.
-    It reads no future value and applies no floor: what is done with a
-    selected donor is the caller's business. `donor_ratios` and
-    `donor_paths` both consume it, so a change here moves both, and
-    `tests/test_donor_paths.py` pins `donor_ratios` byte for byte on the
-    committed banks.
+    Yields `((loc, d), v0)` in bank order for finite positive cells in a
+    strictly prior season (unless `allow_same_season`), not in `drop` (an
+    already-resolved set), within `bandwidth` epiweeks. No future values, no
+    floor. tests/test_donor_paths.py pins donor_ratios on the committed banks.
     """
     for (loc, d), v0 in bank.items():
         if not np.isfinite(v0) or v0 <= 0:
@@ -531,21 +358,12 @@ def analogue_quantiles(anchor: float, ratios: np.ndarray,
                        widen_log_sd: Optional[float] = None) -> Optional[dict]:
     """Scale the anchor by the empirical ratio distribution.
 
-    Returns None rather than a degenerate dict when the inputs cannot support a
-    forecast -- callers must treat None as "no forecast", not as zero.
+    Returns None ("no forecast", never zero) when inputs cannot support one.
 
-    `completeness` (Build 2, 2026-08-21 handoff section 4): the state's frozen
-    first-issue/final ratio at lag 0. The anchor is divided by it, so a state
-    whose newest point typically arrives at 93% of its settled value forecasts
-    from anchor/0.93. None (the default) is byte-identical to the historical
-    behavior. A non-finite or non-positive value raises: a broken correction
-    table must fail loudly, not pass as a silent un-correction.
-
-    `widen_log_sd`: residual uncertainty of the completeness correction, as a
-    log-scale sd. Applied as q'(L) = q(L) * exp(z_L * widen_log_sd) with z_L
-    the standard normal quantile of L -- the median is unchanged (z = 0),
-    tails widen multiplicatively, monotonicity is preserved. None or 0.0 is
-    byte-identical to the historical behavior.
+    RESEARCH, dormant: `completeness` (lag-0 first-issue/final ratio) divides
+    the anchor; non-finite or non-positive raises. `widen_log_sd` applies
+    q'(L) = q(L) * exp(z_L * widen_log_sd) (median unchanged). None keeps
+    the historical arithmetic.
     """
     if anchor is None or not np.isfinite(anchor) or anchor <= 0:
         return None
@@ -565,13 +383,8 @@ def analogue_quantiles(anchor: float, ratios: np.ndarray,
 
 def _scale_ratio_quantiles(anchor: float, ratio_q: dict,
                            widen_log_sd: Optional[float]) -> Optional[dict]:
-    """Shared tail: scale a ratio quantile function by the anchor, widen it,
-    and validate. `ratio_q` maps level -> the RATIO distribution's quantile.
-
-    Both the single-pool path (`analogue_quantiles`) and the spliced path
-    (`spliced_quantiles`) end here on purpose, so the two cannot disagree
-    about widening, the median check or monotonicity.
-    """
+    """Shared tail of the single-pool and spliced paths: scale the RATIO
+    quantiles (`ratio_q`, level -> quantile) by the anchor, widen, validate."""
     q = {float(L): float(anchor * v) for L, v in ratio_q.items()}
     if widen_log_sd is not None:
         s = float(widen_log_sd)
@@ -582,10 +395,8 @@ def _scale_ratio_quantiles(anchor: float, ratio_q: dict,
                  for L, v in q.items()}
     if not np.isfinite(q.get(0.5, np.nan)) or q[0.5] <= 0:
         return None
-    # np.quantile is monotone in L, and anchor > 0, so the result is already
-    # sorted (the widening factor is itself increasing in L, and a convex
-    # combination of two monotone quantile functions is monotone); assert
-    # rather than sort, because a violation means a real bug.
+    # Already monotone by construction; check rather than sort (a violation
+    # is a real bug).
     vals = [q[float(L)] for L in sorted(q)]
     if any(b < a - 1e-9 for a, b in zip(vals, vals[1:])):
         return None
@@ -595,44 +406,21 @@ def _scale_ratio_quantiles(anchor: float, ratio_q: dict,
 # ---------------------------------------------------------------------------
 # Auxiliary donor pools (the ILI+ splice)
 # ---------------------------------------------------------------------------
-# A second donor pool drawn from a DIFFERENT surveillance stream, combined with
-# the admissions pool by averaging the two RATIO quantile functions level by
-# level (vincentization). Averaging quantile functions rather than pooling the
-# donors is deliberate: concatenating two pools is a linear pool weighted by
-# donor COUNT, which hands the larger stream most of the say for a reason that
-# has nothing to do with how informative it is.
-#
-# DORMANT BY DEFAULT. `forecast(..., splice=None)` is byte-identical to the
-# historical single-pool path; nothing below runs unless a caller passes a
-# DonorSplice.
+# Donor pools from OTHER surveillance streams, vincentized (RATIO quantile
+# functions averaged level by level) with the admissions pool. Nothing here
+# runs unless a caller passes a DonorSplice (the Groundhog does).
 
 
 @dataclass(frozen=True, eq=False)
 class AuxPool:
     """One auxiliary donor pool and the weight it carries in the blend.
 
-    `bank` has the same (location, date) -> value shape as the admissions
-    bank and is read only by `donor_ratios`, which pools across locations,
-    so an auxiliary stream's location keys need not match the admissions
-    bank's. They only need to be self-consistent, because a location key is
-    used solely to find a week's own future value. That is why a 20-site
-    FluSurv-NET catchment and a 48-state ILI+ bank can sit in the same blend
-    without either being a coverage map.
-
-    `weight` is this pool's share of the blended quantile function. The
-    admissions pool takes whatever is left, so a single pool at 0.5 is the
-    equal-weight case and two pools at 0.25 split the auxiliary half.
-
-    `shrink` rescales this pool's log-ratios by `r -> exp(shrink * log r)`
-    before its quantiles are taken, putting a stream of different volatility
-    on the admissions pool's scale. Fit it with `fit_log_ratio_shrink` on
-    strictly prior seasons, never on the target.
-
-    `exclude_seasons` goes through `resolve_donor_exclusions` exactly as the
-    admissions pool's does, so an auxiliary pool cannot drop a season the
-    registry has not accepted.
-
-    `label` names the stream in errors and in run records; no behaviour.
+    `bank`: (location, date) -> value; locations need only be
+    self-consistent (the pool is cross-location). `weight`: this pool's
+    share; the admissions pool keeps the rest. `shrink`: log-ratios scaled
+    `r -> exp(shrink * log r)`, fit with fit_log_ratio_shrink on strictly
+    prior seasons. `exclude_seasons` goes through resolve_donor_exclusions.
+    `label` names the stream in errors and records only.
     """
     bank: Mapping[tuple, float]
     weight: float
@@ -646,23 +434,13 @@ class AuxPool:
 class DonorSplice:
     """One or more auxiliary pools to vincentize into the admissions pool.
 
-    The blend is a weighted average of RATIO quantile functions, level by
-    level. Averaging quantile functions rather than pooling the donors is
-    deliberate: concatenating pools is a linear pool weighted by donor
-    COUNT, which hands the largest stream most of the say for a reason that
-    has nothing to do with how informative it is.
-
-    The admissions pool's weight is 1 minus the auxiliary weights, so those
-    must sum to at most 1.
+    A weighted average of RATIO quantile functions, not concatenated donors
+    (which would weight streams by donor COUNT). Auxiliary weights sum to at
+    most 1; the admissions pool keeps the rest.
     """
     pools: tuple
-    #: Per-instance memo of auxiliary donor ratios, keyed by the arguments
-    #: that determine them. `donor_ratios` does not depend on the location
-    #: being forecast -- the pool is cross-location -- so without this each
-    #: auxiliary bank is rescanned once per location per horizon, which on a
-    #: 52-jurisdiction run is 208 identical scans per pool. The memo is
-    #: scoped to one DonorSplice, so it is built and dropped with the run
-    #: and cannot leak between forecast dates.
+    #: Per-run memo of auxiliary donor ratios (they do not depend on the
+    #: location), so a bank is not rescanned per location and horizon.
     _ratio_memo: dict = field(default_factory=dict, repr=False, compare=False)
 
     @property
@@ -678,9 +456,8 @@ def in_season_log_ratios(bank: Mapping[tuple, float], horizon: int,
     """Log growth ratios at `horizon`, restricted to the named seasons and to
     the in-season window that wraps the new year (epiweek >= 47 or <= 20).
 
-    Used to compare two surveillance streams' volatility on the stretch of
-    calendar where both actually carry epidemic signal; the off-season weeks
-    are dominated by near-zero denominators in both streams.
+    Compares stream volatility where both carry signal (off-season weeks
+    are dominated by near-zero denominators).
     """
     seas = frozenset(int(x) for x in seasons)
     out = []
@@ -706,16 +483,10 @@ def fit_log_ratio_shrink(bank: Mapping[tuple, float],
     """sd(admissions log-ratio) / sd(auxiliary log-ratio), on seasons STRICTLY
     PRIOR to `target_season` that both banks carry.
 
-    This is a distribution-matching factor, not a regression slope. The
-    regression slope of one stream on the other is the right coefficient for
-    PREDICTING admissions from ILI+, but it is attenuated by the correlation
-    between them and would under-disperse a pool that is being used as a
-    donor distribution rather than as a predictor.
-
-    Returns None when no prior season is shared, or when either side has
-    fewer than MIN_DONORS ratios, or the auxiliary spread is not positive.
-    A None shrink means "do not rescale", which is the caller's decision to
-    make loudly rather than a silent 1.0.
+    A distribution-matching factor, not a regression slope (which is
+    attenuated by the correlation and would under-disperse the pool).
+    Returns None (the caller decides, loudly) when no prior season is
+    shared, either side has < MIN_DONORS ratios, or the aux spread is 0.
     """
     drop = resolve_donor_exclusions(exclude_seasons)
     shared = ({season_of(d) for _, d in bank}
@@ -748,13 +519,9 @@ def spliced_quantiles(anchor: float, ratios: np.ndarray,
 
         q(L) = w0 * Q_primary(L) + sum_i w_i * Q_i(L),   w0 = 1 - sum w_i
 
-    EVERY pool must independently clear MIN_DONORS. That is stricter than
-    requiring it of the blend, and deliberately so: a blend whose auxiliary
-    half rests on a handful of donors is not a blend, it is the primary pool
-    with noise added at a fixed weight.
-
-    Returns None on the same terms as `analogue_quantiles`, which callers
-    must read as "no forecast" rather than as zero.
+    EVERY pool must clear MIN_DONORS on its own (a thin aux pool is just
+    noise at a fixed weight). None means "no forecast", as in
+    analogue_quantiles.
     """
     if anchor is None or not np.isfinite(anchor) or anchor <= 0:
         return None
@@ -792,8 +559,7 @@ def spliced_quantiles(anchor: float, ratios: np.ndarray,
             a = a[a > 0]
             if a.size < MIN_DONORS:
                 return None
-            # exp(s * log r) rather than r ** s: the two agree to within an
-            # ulp, and this is the form the pre-registered harness measured.
+            # exp(s * log r), not r ** s: the pre-registered harness's form
             a = np.exp(sh * np.log(a))
         prepared.append((a, float(w)))
     rq = {}
@@ -814,16 +580,9 @@ def forecast(anchor: float, as_of: date, horizon: int,
              splice: Optional["DonorSplice"] = None) -> Optional[dict]:
     """One analogue predictive distribution. `bank` maps (location, date)->value.
 
-    `completeness` / `widen_log_sd` pass through to `analogue_quantiles`;
-    their None defaults keep this byte-identical to the historical path.
-
-    `exclude_seasons` passes through to `donor_ratios` and defaults to the
-    shipped pool, which excludes the registered seasons 2020-21 and 2021-22.
-
-    `splice`, when given, adds a second donor pool from another surveillance
-    stream and vincentizes the two ratio quantile functions (see
-    `DonorSplice`). None, the default, does not touch the single-pool
-    arithmetic above and is byte-identical to the historical path.
+    `completeness` / `widen_log_sd` pass to analogue_quantiles;
+    `exclude_seasons` to donor_ratios (default: the shipped pool). `splice`
+    adds auxiliary pools (DonorSplice); None is the single-pool path.
     """
     r = donor_ratios(bank, epiweek(as_of), season_of(as_of), horizon,
                      bandwidth=bandwidth, exclude_seasons=exclude_seasons)
@@ -849,8 +608,7 @@ def forecast(anchor: float, as_of: date, horizon: int,
 def build_bank(truth_rows: Iterable) -> dict:
     """(location, date) -> value, with non-finite and non-positive dropped.
 
-    Dropping here rather than at use is deliberate: a single NaN reaching
-    np.quantile poisons every quantile it produces.
+    Dropped here because one NaN reaching np.quantile poisons every level.
     """
     bank = {}
     for r in truth_rows:

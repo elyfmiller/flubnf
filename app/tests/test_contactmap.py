@@ -273,7 +273,7 @@ def test_network_route_draws_a_saved_model_and_reports_bngs_words(box):
 def test_editor_page_carries_the_two_view_pills(box):
     sb.new_model("mine")
     html = client.get("/sandbox?model=mine").text
-    assert 'id="cmap"' in html and 'id="cmap-svg"' in html and "Model views" in html
+    assert 'id="cmap"' in html and 'id="cmap-svg"' in html and "<h2>Diagram " in html
     assert 'class="pill mode" data-view="contactmap" role="tab" aria-selected="true">Contact map<' in html
     assert 'class="pill mode" data-view="network" role="tab" aria-selected="false">Reaction network<' in html
     assert "/network'" in html                                  # the card's own script fetches it

@@ -1,44 +1,18 @@
-"""Committed donor banks: the auxiliary streams as a repository artefact.
+"""SHIPPED (used by the FluBNF console, app/).
 
-WHY THIS EXISTS
----------------
-The auxiliary donor pools (:mod:`flubnf.flusurv`, :mod:`flubnf.iliplus`)
-were built live from Delphi and cached under ``app/state/``, which is
-gitignored. Three consequences, all of them bad for something that has to
-run on a Sunday:
+Committed donor banks (data/banks/): the auxiliary streams as repo artefacts.
 
-* a fresh clone could not produce a spliced forecast at all, because the
-  bank it needs is not in the repository and has to be fetched first;
-* on submission day a Delphi outage, or a rate limit, is an unhandled
-  failure in the middle of a forecast run;
-* nothing recorded WHICH bank a forecast used, so two runs a month apart
-  could differ because the upstream data moved and neither would say so.
+Committed so a fresh clone forecasts offline, a Delphi outage on submission
+day is not a failure, and every run records which bank it used.
 
-The flusurv bank is 8,020 cells and about 198 KB. It is small enough to
-commit, and committing it turns all three problems into non-problems: the
-bank is versioned with the code that reads it, a run is reproducible from
-a clone, and the manifest beside it says exactly where it came from.
+Each bank has a sibling manifest (source, build time, epiweek span,
+locations, cell count, content digest); :func:`read` verifies the digest on
+every load. The digest covers content, not bytes, so `flubnf bank verify`
+compares a fresh build directly.
 
-THE MANIFEST IS THE POINT
--------------------------
-A bank without provenance is a pile of numbers. Every bank written here
-carries a sibling manifest recording the source, the build time, the
-epiweek span, the contributing locations, the cell count and a content
-digest. :func:`read` verifies the digest on every load, so a bank edited
-by hand, truncated by a failed copy, or regenerated from a different
-source cannot be used while still claiming to be the committed one.
-
-The digest is over the bank's CONTENT, not the file's bytes, so
-reformatting the JSON does not change it and a fresh build can be
-compared to the committed one directly. That is what ``flubnf bank
-verify`` does.
-
-NO SILENT FALLBACK, EVER
-------------------------
-A missing or mismatched bank RAISES. It never degrades to the single-pool
-forecast, because a run labelled spliced that quietly was not is the
-failure this whole line of work exists to prevent, and it is the same
-rule :func:`flubnf.flusurv.build_bank` already applies to an empty bank.
+No silent fallback: a missing or mismatched bank RAISES, never degrades to
+the single-pool forecast (the rule flusurv.build_bank applies to an empty
+bank).
 """
 from __future__ import annotations
 
@@ -50,7 +24,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 
 #: Committed banks live in the repository, beside the code that reads them.
-#: `data/` is not gitignored (only three of its subdirectories are).
+#: `data/` is tracked (.gitignore excludes only data/covidhub/).
 BANKS_DIR = REPO / "data" / "banks"
 
 #: Bumped when the on-disk layout changes in a way a reader must notice.
@@ -70,9 +44,7 @@ def manifest_path(stream: str, banks_dir=None) -> Path:
 def digest(bank) -> str:
     """A stable content hash of ``{(location, date): value}``.
 
-    Over the CONTENT and not the file bytes, so JSON formatting, key order
-    and whitespace cannot change it, and a bank rebuilt from source can be
-    compared with the committed one without writing a file first. Floats go
+    Content, not bytes: formatting and key order cannot change it. Floats go
     through ``repr`` so the hash round-trips exactly through JSON.
     """
     h = hashlib.sha256()
@@ -95,8 +67,7 @@ def write(stream: str, bank, *, source_url: str, built_utc: str,
           builder: str = "", banks_dir=None) -> dict:
     """Write a bank and its manifest, atomically, and return the manifest.
 
-    `built_utc` is passed in rather than read from the clock so that a
-    caller which needs a reproducible artefact can supply one.
+    `built_utc` is a parameter so a caller can build reproducibly.
     """
     if stream not in STREAMS:
         raise ValueError(f"unknown stream {stream!r}; known: {STREAMS}")
@@ -117,9 +88,8 @@ def write(stream: str, bank, *, source_url: str, built_utc: str,
 def read(stream: str, banks_dir=None) -> tuple:
     """``(bank, manifest)`` for a committed stream, digest verified.
 
-    Raises rather than returning a partial or unverifiable bank. A caller
-    that catches this and carries on unspliced is the bug; see the module
-    docstring.
+    Raises rather than returning a partial or unverifiable bank; a caller
+    that catches this and carries on unspliced is the bug.
     """
     bp, mp = bank_path(stream, banks_dir), manifest_path(stream, banks_dir)
     if not bp.is_file():

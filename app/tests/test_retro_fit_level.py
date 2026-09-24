@@ -1,18 +1,11 @@
-"""Fit-level stop, pause, and resume inside a retrospective week.
+"""Fit-level stop, pause and resume inside a retrospective week.
 
-The controls used to land only at week boundaries: a full-grid week is
-roughly 150 fits and ten minutes of work, which made Pause useless for
-getting the machine back. run_week now polls the STOP and PAUSE flags
-between individual fits, drains only the fits in flight, checkpoints every
-finished fit in the week's cells_done/, and a resumed week refits only the
-cells that never ran. samples.json still appears only when the week is
-fully done, so week atomicity downstream is unchanged.
-
-These tests drive run_week with stubbed engines and fake runner processes
-whose fits take two polls each and whose drain matches the real runner: the
-fit in flight always finishes and leaves its marker, nothing after it is
-started. One test runs the real runner script in a subprocess against a
-fake pybnf, so the generated code itself is executed, not just formatted.
+run_week polls STOP/PAUSE between individual fits, drains only the fits in
+flight, checkpoints each finished fit in cells_done/, and a resumed week
+refits only cells that never ran; samples.json still appears only when the
+week is complete. Engines are stubbed with fake runners that mimic the real
+drain (the fit in flight finishes and leaves its marker); one test runs the
+real generated runner against a fake pybnf.
 """
 import json
 import sys
@@ -25,6 +18,7 @@ import pytest                                         # noqa: E402
 
 from app.core import report_season, retro             # noqa: E402
 from app.ui import server as srv                      # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
 
 SEASON = "2098-99"
 W1 = "2098-11-07"
@@ -46,8 +40,7 @@ def _stub_engines(monkeypatch, log, ticks_per_fit=2):
     monkeypatch.setattr(retro.pf_engine, "prepare", fake_prepare)
     monkeypatch.setattr(retro.pf_engine, "collect",
                         lambda wd: {"Ohio": {"0": [1.0]}})
-    # the Oracle step reads the week's vintage, which this hub-free test
-    # has none of: the engines are stubbed and so is the step
+    # the Oracle step needs a vintage this hub-free test lacks: stub it
     monkeypatch.setattr(retro.oracle_mod, "apply_week",
                         lambda s, asof, wd, **kw: (s, {"applied": True,
                                                        "bank": {"label": "stub"}}))
@@ -55,9 +48,8 @@ def _stub_engines(monkeypatch, log, ticks_per_fit=2):
                         lambda spec: {"Ohio": {"1": {0.5: 2.0}}})
 
     class FakeRunner:
-        """One runner subprocess: a fit takes ticks_per_fit polls, HALT is
-        checked only BETWEEN fits, and the fit in flight always finishes
-        and leaves its marker -- the real runner's drain semantics."""
+        """A fit takes ticks_per_fit polls; HALT is checked only between fits
+        and the fit in flight always finishes (the real drain semantics)."""
 
         def __init__(self, wd, shard, halt):
             self.wd, self.shard, self.halt = Path(wd), list(shard), halt
@@ -111,17 +103,15 @@ def test_stop_drains_in_flight_fits_and_resume_refits_only_the_rest(
     with pytest.raises(retro.SeasonStopped):
         _run(root, width=2)
 
-    # only the fits in flight finished; nothing after them was started, and
-    # the week's samples.json was NOT written (the week stays incomplete)
+    # only in-flight fits finished; nothing later started; no samples.json
     finished = retro.cells_done(wd)
     assert finished == set(log)
     assert 2 <= len(finished) < N_CELLS
     assert not (wd / "samples.json").exists()
     assert not retro.week_done(root, W1)
 
-    # resume: the same week refits EXACTLY the cells that never ran; the
-    # preparation is reused, no finished fit is redone, and samples.json
-    # appears only now, at completion
+    # resume refits EXACTLY the unrun cells with the preparation reused;
+    # samples.json appears only at completion
     retro.clear_flags(root)
     log2 = []
     _stub_engines(monkeypatch, log2)
@@ -161,8 +151,8 @@ def test_pause_drains_in_flight_fits_then_holds_then_finishes(
     def fake_sleep(_s):
         m = retro.read_meta(root)
         if m.get("status") == "paused":
-            # the hold is real and observable; the drained fits are already
-            # checkpointed. Then the Resume click releases it.
+            # the hold is observable and the drained fits are checkpointed;
+            # then Resume releases it
             held.append(frozenset(retro.cells_done(wd)))
             retro.clear_pause(root)
             return
@@ -206,11 +196,9 @@ def test_stop_while_paused_mid_week_exits_without_samples(tmp_path,
 # ------------------------------------------------------- mid-week resume
 
 def test_resume_with_all_cells_done_just_assembles(tmp_path, monkeypatch):
-    """A stop that lands after the last fit drains leaves every marker and
-    no samples.json; the resumed week dispatches nothing and assembles.
-    The state is built with completion hygiene disabled (a completed week
-    prunes its markers), because the real scenario -- every fit drained,
-    assembly never reached -- is exactly a week that never completed."""
+    """Every fit drained but assembly never reached: the resumed week
+    dispatches nothing and assembles. (Completion hygiene is disabled to
+    build that state, since a completed week prunes its markers.)"""
     from app.core import reclaim
     root = tmp_path / SEASON
     wd = root / "weeks" / W1
@@ -252,8 +240,8 @@ def test_changed_settings_rebuild_the_week_from_scratch(tmp_path,
     retro._record_partial(root, W1, 40.0)      # the stopped segment's bank
     retro.clear_flags(root)
 
-    # a resume under DIFFERENT settings must not mix in the old fits: the
-    # week rebuilds clean, refits everything, and the banked seconds retire
+    # a resume under DIFFERENT settings rebuilds clean, refits everything,
+    # and retires the banked seconds
     log2 = []
     calls2 = _stub_engines(monkeypatch, log2)
     monkeypatch.setattr(retro, "_sleep", lambda _s: None)
@@ -286,9 +274,8 @@ def test_broken_runners_raise_instead_of_spinning(tmp_path, monkeypatch):
 # --------------------------------------------------- the real runner script
 
 def test_real_runner_script_marks_ok_and_fail_cells(tmp_path, monkeypatch):
-    """_run_round end to end with real subprocesses: the generated runner
-    executes against a fake pybnf, marks a good cell ok and a raising cell
-    FAIL, and the round completes without flags."""
+    """_run_round with real subprocesses: the generated runner marks a good
+    cell ok and a raising cell FAIL."""
     pkg = tmp_path / "fake_pybnf" / "pybnf"
     pkg.mkdir(parents=True)
     (pkg / "__init__.py").write_text("")
@@ -369,8 +356,8 @@ def _index_card(elapsed_s):
 
 
 def test_retro_index_never_fabricates_a_zero_wall_time():
-    # the base template's startover modal script carries the phrase itself,
-    # so the assertion targets the card's rendered timing line
+    # base.html's startover script carries the phrase, so target the card's
+    # timing line
     tpl = srv.templates.env.get_template("retro.html")
     for bad in (None, 0, 0.4):
         html = tpl.render(active="Retrospective", state_names=["Ohio"],
@@ -413,8 +400,8 @@ def test_season_report_header_refuses_a_sub_second_record(tmp_path):
 def test_startover_api_withholds_a_sub_second_wall_time(tmp_path,
                                                         monkeypatch):
     from fastapi.testclient import TestClient
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     root = tmp_path / SEASON
     root.mkdir(parents=True)
     retro.write_meta(root, {"status": "stopped", "elapsed_s": 0.4})

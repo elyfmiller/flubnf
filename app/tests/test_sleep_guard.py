@@ -12,8 +12,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from app.ui.server import (_ES_CONTINUOUS, _ES_SYSTEM_REQUIRED,   # noqa: E402
-                           _sleep_guard, _windows_sleep_guard)
+from app.ui.pipeline import (_ES_CONTINUOUS, _ES_SYSTEM_REQUIRED,  # noqa: E402
+                             _sleep_guard, _windows_sleep_guard)
 
 
 class _StubProc:
@@ -101,9 +101,9 @@ def test_windows_guard_swallows_exceptions():
 
 
 def test_guard_dispatches_to_the_windows_impl(monkeypatch):
-    import app.ui.server as server
+    from app.ui import pipeline as ui_pipeline
 
     sentinel = object()
     monkeypatch.setattr(sys, "platform", "win32")
-    monkeypatch.setattr(server, "_windows_sleep_guard", lambda: sentinel)
+    monkeypatch.setattr(ui_pipeline, "_windows_sleep_guard", lambda: sentinel)
     assert _sleep_guard() is sentinel

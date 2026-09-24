@@ -1,31 +1,21 @@
-{% extends "base.html" %}{% block title %}FluBNF · Storage{% endblock %}{% block content %}
+{% extends "base.html" %}{% block title %}FluBNF · Storage{% endblock %}{% block content %}{% import "_tips.html" as tips %}
 <h1>Storage</h1>
 
 {% if storage %}
 <div class="card">
-{# the storage panel folds like the ledger below and ships FOLDED: the
-   summary carries the headline disk figure, so the page opens on the
-   number and nothing else; the open state persists per localStorage
-   exactly as the ledger fold's does. #}
+{# ships FOLDED: the summary carries the total; open state persists #}
 <details class="ledgerfold" id="storagefold">
  <summary><h2 style="display:inline">On disk</h2>
   <span class="stotal" style="display:inline;margin-left:.45rem"><span class="big">{{ storage.total_h }}</span></span>
-  <span class="hint"> total</span></summary>
- {# the total spans everything the panel manages (run workroots,
-    retrospective seasons, archived retro runs, report archives); the
-    protected trees are listed below with their own sizes but stay
-    outside the total, and the copy says so. #}
- <p class="hint">Across run workroots, retrospective seasons, archived
- runs, and report archives; the protected trees below are listed but not
- counted here.</p>
+  <span class="hint"> total</span>{{ tips.tip("st-total", "the total", "Run workroots, retrospective seasons, archived runs, report archives and your datasets, each counted once (a dataset's runs as workroots); protected trees are listed but not counted.") }}</summary>
 
- {# reclaim: a dry-run report first (categories and totals, no side
-    effects), then the shared confirmation naming the total. Only fit
-    intermediates of COMPLETED weeks and runs are deleted, and stored
-    samples are compressed losslessly; the seal and hub are never touched. #}
+ {# reclaim: dry-run report first, then the shared confirmation. Deletes only
+    fit intermediates of COMPLETED weeks/runs and compresses samples
+    losslessly; never touches the seal or hub. #}
  <form method="post" action="/storage/reclaim" id="reclaim-form">
   <input type="hidden" name="confirm" value="">
   <button type="button" class="quiet" id="reclaim-btn">Reclaim space…</button>
+  {{ tips.tip("st-reclaim", "reclaiming space", "Deletes fit intermediates of completed weeks and runs and compresses samples losslessly; every score, report and submission is kept.") }}
   <span class="hint" id="reclaim-note"></span>
  </form>
  <script>
@@ -69,14 +59,13 @@
 
  <h3 class="hint" style="margin:.8rem 0 .2rem">Run workroots</h3>
  {% for w in storage.workroots %}
- {# humans read what ran and when, not hashes: the label comes from the
-    run's own ledger row; the id stays visible but secondary, because it
-    is the directory's on-disk name. A workroot with no ledger row reads
-    honestly as an unrecorded run, its time parsed from the id itself. #}
+ {# label from the run's ledger row (the id is secondary); no row = an
+    unrecorded run, time parsed from the id #}
  <div class="archrow" data-wid="{{ w.id }}">
   <span class="grow"><strong>{{ w.label }}</strong>
    {% if w.research %} <span class="pill">research</span>{% endif %}
-   <span class="hint">{% if w.when %}· run {{ w.when }} {% endif %}{% if w.scope %}· {{ w.scope }} {% endif %}· {{ w.size_h }}{% if w.busy %} · <span class="warn">running now</span>{% endif %}
+   {% if w.modified %} <span class="pill warn">modified settings</span>{% endif %}
+   <span class="hint">{% if w.when %}· run {{ w.when }} {% endif %}{% if w.dataset_name %}· on {{ w.dataset_name }} {% endif %}{% if w.scope %}· {{ w.scope }} {% endif %}· {{ w.size_h }}{% if w.busy %} · <span class="warn">running now</span>{% endif %}
    · <code style="font-size:.78em">{{ w.id }}</code></span></span>
   {% if not w.busy %}
   <form method="post" action="/storage/delete">
@@ -91,11 +80,9 @@
  </div>
  {% else %}<p class="hint">No workroots on disk.</p>{% endfor %}
  {% if clear_workroots.count %}
- {# the clear-all sweep beside the per-item deletes: the confirmation names
-    the count AND the total size it removes; the active run is excluded
-    server-side (and re-checked at delete time), ledger rows are kept with
-    their dash, and the seal and hub are refused by the protection barrier
-    as ever. The stale-count contract matches the ledger clear below. #}
+ {# clear-all: the confirmation names count and size; the server excludes
+    the active run, keeps ledger rows, refuses a stale count, and the
+    protection barrier still guards the seal and hub #}
  <form method="post" action="/storage/clear-workroots" id="clear-workroots">
   <input type="hidden" name="confirm" value="">
   <button type="button" class="quiet" id="clear-workroots-btn"
@@ -190,25 +177,53 @@
  {% endfor %}
  {% endif %}
 
+ {% if storage.datasets %}
+ {# your datasets (app/ui/datasets_ui.storage_rows): each one's size holds
+    its upload, replays and runs; the delete takes all three, confirmed by
+    the dataset's name, and keeps the runs' ledger rows #}
+ <h3 class="hint" style="margin:.8rem 0 .2rem">Your datasets {{ tips.tip("st-datasets", "your datasets", "A dataset's size holds its upload, its replays and its runs; the runs are also listed under Run workroots and counted once in the total. Deleting it here deletes all three and keeps the runs' ledger rows.") }}</h3>
+ {% for d in storage.datasets %}
+ <div class="archrow">
+  <span class="grow"><strong><a href="/data?source={{ d.id }}#browser">{{ d.name }}</a></strong>
+   <span class="hint">· {{ d.size_h }}{% for p in d.parts %} · {{ p }}{% endfor %}{% if d.busy %} · <span class="warn">{{ d.busy }}</span>{% endif %}</span></span>
+  {% if not d.busy %}
+  <form method="post" action="/storage/datasets/{{ d.id }}/delete">
+   <input type="hidden" name="ident" value="{{ d.id }}">
+   <input type="hidden" name="confirm" value="">
+   <button type="button" class="quiet" data-del-storage data-confirm="{{ d.name }}"
+     data-what="the dataset {{ d.name }}" data-size="{{ d.size_h }}"
+     data-hint="{{ d.goes }}">Delete</button>
+  </form>
+  {% endif %}
+ </div>
+ {% endfor %}
+ {% endif %}
+
  {% if storage.protected %}
  <h3 class="hint" style="margin:.8rem 0 .2rem">Protected</h3>
  {% for p in storage.protected %}
- {# no form, no button, by design: these trees are never deletable from the
-    interface, and the server refuses them again on any crafted request #}
+ {# never deletable here; the server refuses crafted requests too #}
  <div class="archrow">
   <span class="grow"><strong>{{ p.label }}</strong>
    <span class="hint">· {{ p.size_h }} · <span class="pill">protected</span></span></span>
  </div>
  {% endfor %}
- <p class="hint">The sealed validation record is the three-season evidence
-  the shipped configuration rests on; the hub clone is shared source
-  data.</p>
+ <p class="hint">The sealed record backs the shipped configuration; the hub
+  clone is shared source data.</p>
+ {% endif %}
+ {% set sbx = sandbox_storage() %}
+ {% if sbx %}
+ <h3 class="hint" style="margin:.8rem 0 .2rem">Sandbox</h3>
+ <div class="archrow">
+  <span class="grow"><strong><a href="/sandbox">Sandbox models and runs</a></strong>
+   <span class="hint">· {{ sbx.size_h }} · {{ sbx.models }} model{{ "" if sbx.models == 1 else "s" }}, {{ sbx.runs }} run{{ "" if sbx.runs == 1 else "s" }}; delete them in the Sandbox</span></span>
+ </div>
  {% endif %}
 </details>
 </div>
 <script>
- // the storage fold remembers its state like the ledger fold below, with
- // the opposite default: OPEN unless the reader closed it last time
+ // folded by default; a stored '1' reopens it (a fresh -v2 key, so browsers
+ // that met the old open default do not keep it)
  (function(){
   var d=document.getElementById('storagefold');
   if(!d)return;
@@ -218,9 +233,8 @@
  })();
 </script>
 <script>
- // every storage delete borrows the shared confirmation shell: the name and
- // size of exactly what goes, and the confirm field filled in only on the
- // second confirmation (the server refuses the POST without it)
+ // deletes use the shared confirmation shell; confirm is filled only on
+ // confirmation (the server refuses the POST without it)
  (function(){
   document.querySelectorAll('[data-del-storage]').forEach(function(b){
    b.addEventListener('click',function(){
@@ -232,7 +246,8 @@
        +'It cannot be undone.',
      hint:d.hint||'',
      okLabel:'Delete permanently',
-     onOk:function(){f.confirm.value=f.ident.value;f.submit();}
+     // a dataset is confirmed by its name, every other entry by its id
+     onOk:function(){f.confirm.value=d.confirm||f.ident.value;f.submit();}
     });
    });
   });
@@ -242,44 +257,35 @@
 
 <div class="card">
 <h2>Run ledger</h2>
-{# the full ledger collapses behind a one-line summary (row count and the
-   newest entry) so the storage panel above leads the page; the open state
-   persists per localStorage. An empty ledger keeps the plain hint line
-   with nothing to fold. #}
+{# ledger fold: one-line summary (count, newest); open state persists #}
 {% if ledger %}
 <details class="ledgerfold" id="ledgerfold">
  <summary>{{ ledger | length }} run{{ "" if ledger | length == 1 else "s" }}
   recorded<span class="hint"> · newest {{ ledger[0].label }}
   ({{ ledger[0].status }})</span></summary>
 {% endif %}
-{# elapsed is recorded when a run closes; rows written before the ledger
-   carried a finish time hold no measurement and show a dash, never a
-   fabricated duration (the hms filter renders None as the dash) #}
+{# rows from before elapsed was recorded show a dash (hms renders None) #}
 <table><tr><th>run</th><th>status</th><th>elapsed</th><th>on disk</th><th>summary</th></tr>
 {% for r in ledger %}
- <tr><td><a href="/runs/{{ r.run_id }}">{{ r.label }}</a>
- {# the research badge: a run whose recorded spec asked for the two-strain
-    third member is tagged wherever it appears; here it rides the row #}
- {% if r.research %} <span class="pill">research</span>{% endif %}</td>
+ <tr><td class="nowrap"><a href="/runs/{{ r.run_id }}">{{ r.label }}</a>
+ {# research badge (the spec asked for the third member) #}
+ {% if r.research %} <span class="pill">research</span>{% endif %}
+ {# model settings off the shipped ones (a knobs record in the spec) #}
+ {% if r.modified %} <span class="pill warn">modified settings</span>{% endif %}</td>
  <td><span class="pill {% if r.status == 'ok' %}ok{% elif r.status == 'running' %}warn{% else %}bad{% endif %}">{{ r.status }}</span></td>
  <td class="elapsed">{{ r.elapsed_s | hms }}</td>
- {# a dash here is a DANGLING ROW read honestly: the ledger record stands
-    while its workroot was deleted in the storage panel above #}
+ {# a dash = the workroot was deleted; the ledger row stands #}
  <td class="num">{{ r.disk_h or "--" }}</td>
- {# chips are markup built by the server from fixed phrases and numbers
-    only; the raw error text never travels through them #}
+ {# chips: server markup from fixed phrases and numbers, never raw errors #}
  <td>{{ r.chips | safe }}</td></tr>
 {% else %}<tr><td colspan="5" class="hint">No runs yet.</td></tr>{% endfor %}
 </table>
-<p class="hint">Elapsed is wall time from the run claiming its slot to the
- ledger closing its row. Runs recorded before this measurement
- existed show a dash. A dash under "on disk" means the run's workroot was
- deleted; the ledger row remains as the run's record.</p>
+<p class="hint">Elapsed is wall time (a dash: recorded before timing
+ existed); a dash under "on disk": the workroot was deleted, the ledger row
+ remains.</p>
 {% if clear_count %}
-{# clearing goes through the shared confirmation shell, naming the count it
-   removes; the server refuses a stale count, never touches the active
-   run's row, and never deletes workroot data (the storage panel above is
-   where disk space is reclaimed) #}
+{# clear via the shared confirmation (names the count); the server refuses a
+   stale count, skips the active run, and never deletes workroot data #}
 <form method="post" action="/runs/clear" id="clear-ledger">
  <input type="hidden" name="confirm" value="">
  <button type="button" class="quiet" id="clear-ledger-btn"
@@ -311,9 +317,7 @@
 {% if ledger %}
 </details>
 <script>
- // the fold remembers its state: closed by default, and a reader who
- // opens it keeps it open on the next visit (localStorage, like the
- // theme and text-size controls)
+ // closed by default; a reader who opens it keeps it open (localStorage)
  (function(){
   var d=document.getElementById('ledgerfold');
   if(!d)return;

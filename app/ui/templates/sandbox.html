@@ -1,153 +1,206 @@
 {% extends "base.html" %}{% block title %}FluBNF · Sandbox{% endblock %}
-{% block head %}<script src="/static/plotly.min.js"></script><link rel="stylesheet" href="/static/bngl-editor.css"><script defer src="/static/bngl-editor.js"></script>{% endblock %}
-{% block content %}
+{% block head %}<script src="/static/plotly.min.js"></script><link rel="stylesheet" href="/static/bngl-editor.css"><script defer src="/static/bngl-editor.js"></script><script defer src="/static/sandbox.js"></script>{% endblock %}
+{% block content %}{% import "_tips.html" as tips %}
+{% if not editing %}
+{# ---------------------------------------------------------- the gallery #}
 <h1>Sandbox</h1>
+<p class="sub">Fit a model of your own with the particle filter; nothing here is ever submitted.</p>
 <div class="cols">
  <div>
-  <div class="card"><h2>Models</h2>
-   {% if models %}
-   <table class="kv"><thead><tr><th>model</th><th>files</th><th></th></tr></thead><tbody>
-   {% for m in models %}<tr>
-    <td><a href="/sandbox?model={{ m.name }}">{{ m.name }}</a></td>
-    <td>{% if m.complete %}complete{% else %}missing {{ m.missing | join(", ") }}{% endif %}</td>
-    <td>{% if m.complete %}<form method="post" action="/sandbox/run" style="display:inline">
-      <input type="hidden" name="model" value="{{ m.name }}">
-      <input type="hidden" name="particles" value="{{ dry_particles }}">
-      <button class="pill" data-guard="console-run" {% if busy %}disabled title="{{ busy }}"{% endif %}>Dry run</button></form>{% endif %}</td>
-   </tr>{% endfor %}</tbody></table>
-   {% else %}<p class="hint">No models yet. Start from an example or from scratch.</p>{% endif %}
-   {% if examples %}
-   <p class="hint">Examples: {% for e in examples %}<form method="post" action="/sandbox/add-example" style="display:inline"><input type="hidden" name="name" value="{{ e }}"><button class="pill">add {{ e }}</button></form> {% endfor %}</p>
-   {% endif %}
+  <div class="card"><h2>New model</h2>
    <form method="post" action="/sandbox/new" class="sbnew">
-    <label for="sbnew-name">New model from scratch</label>
+    {{ tips.label("Name", "sb-name", "Letters, digits, _ and -, up to 64 characters.", for_="sbnew-name") }}
     <input id="sbnew-name" name="name" placeholder="model name" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,63}" required>
-    <button class="pill">Create</button>
-    <p class="hint">A runnable skeleton: every BNGL block, the simulate action, placeholder counts and priors, opened in the editor.</p>
+    {{ tips.label("Start from", "sb-start", "The skeleton is a runnable one-step model with placeholder counts; an example or a copy brings its data and priors along. The Oracle SIHRS filter is the production model, priors and data for one location and week, built as the console builds it.", for_="sbnew-start") }}
+    {% set pf_sets = datasets | selectattr("pf") | list %}
+    <select id="sbnew-start" name="start">
+     <option value="skeleton">Blank skeleton</option>
+     {% if examples %}<optgroup label="Examples">{% for e in examples %}<option value="example:{{ e }}">{{ e }}</option>{% endfor %}</optgroup>{% endif %}
+     {% if models %}<optgroup label="Copy of">{% for m in models if m.complete %}<option value="copy:{{ m.name }}">{{ m.name }}</option>{% endfor %}</optgroup>{% endif %}
+     <optgroup label="Oracle SIHRS filter">
+      <option value="shipped:sihrs"{% if not (vintages and locations) %} disabled{% endif %}>Oracle SIHRS filter, hub location{% if not (vintages and locations) %} (no hub archive here){% endif %}</option>
+      {% for d in pf_sets %}<option value="shipped:dataset:{{ d.id }}">Oracle SIHRS filter, dataset {{ d.name }}</option>{% endfor %}
+     </optgroup>
+    </select>
+    <fieldset class="sbshipped" id="sbnew-shipped" hidden>
+     <legend>Oracle SIHRS filter</legend>
+     <div class="row">
+      {% if vintages and locations %}
+      <span class="sbnew-hub"><label for="sbnew-loc">Location</label>
+       <select id="sbnew-loc" name="location">{% for l in locations %}<option value="{{ l.name }}">{{ l.name }}</option>{% endfor %}</select></span>
+      <span class="sbnew-hub">{{ tips.label("Forecast date", "sb-fdate", "The hub vintage archived that day: the data exactly as the forecaster saw it then.", for_="sbnew-date") }}
+       <select id="sbnew-date" name="forecast_date">{% for v in vintages %}<option value="{{ v }}">{{ v }}</option>{% endfor %}</select></span>
+      {% endif %}
+      {% if pf_sets %}
+      <span class="sbnew-ds"><label for="sbnew-group">Group</label>
+       <select id="sbnew-group" name="group">{% for d in pf_sets %}{% for g in d.groups %}<option value="{{ g.name }}" data-ds="{{ d.id }}" data-last="{{ g.last }}">{{ g.name }}</option>{% endfor %}{% endfor %}</select></span>
+      <span class="sbnew-ds">{{ tips.label("As of", "sb-asof", "A week the dataset holds; the fit sees the data up to it.", for_="sbnew-asof") }}
+       <input id="sbnew-asof" name="as_of" type="date" step="7" min="2020-01-04"></span>
+      {% endif %}
+      <span>{{ tips.label("Season start", "sb-season", "Optional. t = 0 and the seasonal phase count from it; blank takes August 1, as production does.", for_="sbnew-season") }}
+       <input id="sbnew-season" name="season_start" type="date"></span>
+     </div>
+    </fieldset>
+    <button class="gold">Create</button>
    </form>
   </div>
-
-  <div class="card"><h2>Run</h2>
-   {% if busy %}<p class="hint">Waiting: {{ busy }}.</p>{% endif %}
-   <form method="post" action="/sandbox/run">
-    <label>Model</label>
-    <select name="model">{% for m in models if m.complete %}<option value="{{ m.name }}" {% if editing and editing.name == m.name %}selected{% endif %}>{{ m.name }}</option>{% endfor %}</select>
-    <label>Particles</label>
-    <input name="particles" type="number" value="{{ dry_particles }}" min="50" max="100000">
-    <p class="hint">{{ dry_particles }} checks that the model generates and fits; 10,000 is a real fit.</p>
-    <label>Jitter</label>
-    <input name="jitter" type="number" step="0.01" value="0.15" min="0.01" max="0.99">
-    <label>Forecast weeks</label>
-    <input name="forecast_weeks" type="number" value="4" min="0" max="12">
-    <label>Seed</label>
-    <input name="seed" type="number" value="0" min="0">
-    <button class="gold" data-guard="console-run" {% if busy or not models %}disabled{% endif %}>Run in the sandbox</button>
+ </div>
+ <div>
+  <div class="card"><h2>Your models</h2>
+   {% if models %}
+   <table class="kv sbmodels"><thead><tr><th>model</th><th>from</th><th>last run</th><th>changed</th></tr></thead><tbody>
+   {% for m in models %}<tr>
+    <td><a href="/sandbox?model={{ m.name }}">{{ m.name }}</a>{% if m.note %}<div class="hint">{{ m.note }}</div>{% endif %}{% if not m.complete %}<div class="hint">missing {{ m.missing | join(", ") }}</div>{% endif %}</td>
+    <td>{{ m.origin }}</td>
+    <td>{% set r = last.get(m.name) %}{% if r %}<a href="/sandbox?run={{ r.run_id }}&amp;model={{ m.name }}">{{ r.status }}</a>{% endif %}</td>
+    <td>{{ m.modified_h }}</td>
+   </tr>{% endfor %}</tbody></table>
+   {% else %}<p class="hint">No models yet: create one from the skeleton or an example.</p>{% endif %}
+  </div>
+ </div>
+</div>
+{% else %}
+{# -------------------------------------------------------- the workbench #}
+{% set name = editing.name %}
+<p class="hint sbcrumb"><a href="/sandbox">Sandbox</a> /</p>
+<h1>{{ name }}</h1>
+{% if note or origin %}<p class="sub">{{ note }}{% if origin %}<span class="hint"> · from {{ origin }}</span>{% endif %}{% if shipped and shipped.shipped and not shipped.intact %} {{ tips.tip("sb-modified", "modified", "Changed since creation: " ~ (shipped.changed | join(", ")) ~ ". Runs of it are your model, not the shipped filter, and cannot take the Oracle step.") }}{% endif %}</p>{% endif %}
+<div class="sbwork">
+ <div>
+  <div class="card">
+   <form method="post" action="/sandbox/models/{{ name }}/save" id="sbform" data-model="{{ name }}">
+    {# the first submit button is the form's default: Enter in a field saves, never loads data #}
+    <button type="submit" class="sb-default" tabindex="-1" aria-hidden="true">Save</button>
+    {{ tips.label("Model (model.bngl)", "sb-bngl", "Any BNGL model whose simulate action names a suffix; a fitted parameter ends in __FREE.") }}
+    <textarea name="model_bngl" rows="18" spellcheck="false" style="width:100%;font-family:monospace" class="code-editor" data-lang="bngl">{{ editing["model.bngl"] }}</textarea>
+    {{ tips.label("Observed data (data.exp)", "sb-exp", "A header line, then one row per week: the time in weeks and the count. A missing week is a gap in time, never a renumbered row.") }}
+    <textarea name="data_exp" rows="8" spellcheck="false" style="width:100%;font-family:monospace" class="code-editor" data-lang="exp">{{ editing["data.exp"] }}</textarea>
+    {% include "sandbox_data.html" %}
+    {{ tips.label("Priors and engine settings (priors.conf)", "sb-priors", "One *_var line per fitted parameter; pf_ lines set engine keys, such as pf_cumulative_observable, the output whose weekly increment is the count.") }}
+    <textarea name="priors_conf" rows="8" spellcheck="false" style="width:100%;font-family:monospace" class="code-editor" data-lang="conf">{{ editing["priors.conf"] }}</textarea>
+    <details class="adv"><summary>Engine keys the sandbox writes for you</summary>
+     <table class="kv"><thead><tr><th>key</th><th>value</th><th>from</th></tr></thead><tbody>
+      {% for k, v, src in settings %}<tr><td><code>{{ k }}</code></td><td>{{ v }}</td><td>{{ src }}</td></tr>{% endfor %}
+     </tbody></table>
+     <p class="hint">A priors.conf line overrides a default; the run settings below set the rest.</p>
+    </details>
+    <fieldset class="sbrun"><legend>Run settings</legend>
+     <div class="row">
+      <span>{{ tips.label("Particles", "sb-particles", "A quick check shows the model generates and fits; a full fit uses the production 10,000.", for_="sb-preset") }}
+       <span class="sbpair"><select id="sb-preset" data-quick="{{ presets.quick }}" data-full="{{ presets.full }}">
+        <option value="quick" {% if form.particles == presets.quick %}selected{% endif %}>Quick check ({{ presets.quick }})</option>
+        <option value="full" {% if form.particles == presets.full %}selected{% endif %}>Full fit ({{ "{:,}".format(presets.full) }})</option>
+        <option value="custom" {% if form.particles not in (presets.quick, presets.full) %}selected{% endif %}>Custom</option>
+       </select>
+       <input name="particles" id="sb-particles" type="number" value="{{ form.particles }}" min="50" max="100000" aria-label="particles"></span></span>
+      <span>{{ tips.label("Jitter", "sb-jitter", "Liu-West kernel scale between weeks; 0.15 is the production setting.", for_="sb-jitter-in") }}
+       <input id="sb-jitter-in" name="jitter" type="number" step="0.01" value="{{ form.jitter }}" min="0.01" max="0.99"></span>
+      <span>{{ tips.label("Forecast weeks", "sb-weeks", "Weeks projected past the last observation.", for_="sb-weeks-in") }}
+       <input id="sb-weeks-in" name="forecast_weeks" type="number" value="{{ form.forecast_weeks }}" min="0" max="12"></span>
+      <span>{{ tips.label("Seed", "sb-seed", "The same seed and inputs reproduce the fit.", for_="sb-seed-in") }}
+       <input id="sb-seed-in" name="seed" type="number" value="{{ form.seed }}" min="0"></span>
+     </div>
+     <p class="hint" id="sb-eta" data-full="{{ eta_full }}"></p>
+    </fieldset>
+    <div class="row sbactions">
+     <button class="gold" formaction="/sandbox/models/{{ name }}/save">Save</button>
+     <button type="button" id="sb-check">Check</button>
+     <button class="gold" formaction="/sandbox/models/{{ name }}/run" data-guard="sandbox-run">Save and run</button>
+     <span class="pill" id="sb-dirty" hidden>unsaved changes</span>
+     {{ tips.tip("sb-actions", "the buttons", "Check reads the editor text without the engine; Save and run saves it, then fits it. Each run keeps its own copy of the three files.") }}
+    </div>
+    {% if busy %}<p class="hint">Engine busy: {{ busy }}.</p>{% endif %}
+    <div id="sb-checked" aria-live="polite"></div>
    </form>
   </div>
-
+ </div>
+ <div>
+  {% if res %}
+  <div class="card" id="results" data-run="{{ res.run_id }}" data-status="{{ res.meta.status }}">
+   <h2>Run {{ res.run_id }}</h2>
+   <p class="hint">{{ res.meta.particles | int }} particles · jitter {{ res.meta.jitter }}{% if res.meta.cumulative %} · on {{ res.meta.cumulative }}{% endif %} · seed {{ res.meta.seed }} · {{ res.meta.forecast_weeks }} forecast weeks
+    · <strong>{{ res.meta.status }}</strong>{% if res.meta.seconds is defined %} in {{ res.meta.seconds }} s{% endif %}</p>
+   <div class="row">
+    {% if res.run_id == running_id %}<form method="post" action="/sandbox/runs/{{ res.run_id }}/stop"><button class="quiet">Stop</button></form>
+    {% else %}<form method="post" action="/sandbox/runs/{{ res.run_id }}/delete"><input type="hidden" name="ident" value="{{ res.run_id }}"><input type="hidden" name="confirm" value=""><button type="button" class="quiet" data-sb-delete="run {{ res.run_id }}">Delete run</button></form>
+    <a href="/sandbox/runs/{{ res.run_id }}/download" download><button type="button" class="quiet">Download run (.zip)</button></a>{% endif %}
+    {% set others = runs | rejectattr("run_id", "equalto", res.run_id) | list %}
+    {% if others %}<form method="get" action="/sandbox" class="row sbcompare">
+     <input type="hidden" name="model" value="{{ name }}"><input type="hidden" name="run" value="{{ res.run_id }}">
+     <label for="sb-compare">Compare with</label>
+     <select id="sb-compare" name="compare"><option value="">none</option>{% for r in others %}<option value="{{ r.run_id }}"{% if cmp and cmp.run_id == r.run_id %} selected{% endif %}>{{ r.run_id }} ({{ r.status }})</option>{% endfor %}</select>
+     <button class="quiet">Compare</button>
+     {{ tips.tip("sb-compare", "compare", "The other run's median and band are drawn dashed over this one; the parameter tables sit side by side, and What changed lists every edit between the two.") }}
+    </form>{% endif %}
+   </div>
+   {% if res.meta.error %}<pre class="hint">{{ res.meta.error }}</pre>{% endif %}
+   {% if res.stderr %}<pre class="hint">{{ res.stderr }}</pre>{% endif %}
+   {% if res.params and cmp and cmp.params %}
+   {% set cp = {} %}{% for p in cmp.params %}{% set _ = cp.update({p.name: p}) %}{% endfor %}
+   <table class="kv sbparams2"><thead><tr><th>parameter</th><th>this run: median (5 to 95%)</th><th>compared run</th></tr></thead><tbody>
+   {% for p in res.params %}{% set q = cp.get(p.name) %}<tr><td>{{ p.name }}</td><td>{{ "%.4g" | format(p.p50) }} ({{ "%.4g" | format(p.p5) }} to {{ "%.4g" | format(p.p95) }})</td><td>{% if q %}{{ "%.4g" | format(q.p50) }} ({{ "%.4g" | format(q.p5) }} to {{ "%.4g" | format(q.p95) }}){% else %}absent{% endif %}</td></tr>{% endfor %}
+   {% for q in cmp.params if q.name not in (res.params | map(attribute="name") | list) %}<tr><td>{{ q.name }}</td><td>absent</td><td>{{ "%.4g" | format(q.p50) }} ({{ "%.4g" | format(q.p5) }} to {{ "%.4g" | format(q.p95) }})</td></tr>{% endfor %}
+   </tbody></table>
+   {% elif res.params %}
+   <table class="kv"><thead><tr><th>parameter</th><th>5%</th><th>median</th><th>95%</th></tr></thead><tbody>
+   {% for p in res.params %}<tr><td>{{ p.name }}</td><td>{{ "%.4g" | format(p.p5) }}</td><td>{{ "%.4g" | format(p.p50) }}</td><td>{{ "%.4g" | format(p.p95) }}</td></tr>{% endfor %}
+   </tbody></table>
+   {% endif %}
+   {% if res.params %}<p class="hint">{{ res.distinct }} distinct parameter vectors of {{ res.sample }}{% if res.ess %}; ESS at the last week {{ "%.0f" | format(res.ess[-1].ess) }}, minimum {{ "%.0f" | format(res.ess | map(attribute="ess") | min) }}{% endif %}.</p>{% endif %}
+   <div id="sbplot" style="min-height:320px"></div>
+  </div>
+  {% if diff %}
+  <div class="card sbdiff"><h2>What changed</h2>
+   <p class="hint">From the compared run {{ diff.a }} to this one.</p>
+   {% if diff.settings %}<table class="kv"><thead><tr><th>run setting</th><th>compared run</th><th>this run</th></tr></thead><tbody>
+    {% for s in diff.settings %}<tr><td>{{ s.key }}</td><td>{{ s.a }}</td><td>{{ s.b }}</td></tr>{% endfor %}</tbody></table>{% endif %}
+   {% if diff.data_source %}<p class="hint">Data: {{ diff.data_source.a.location or "typed" }} {{ diff.data_source.a.asof or "" }} to {{ diff.data_source.b.location or "typed" }} {{ diff.data_source.b.asof or "" }}.</p>{% endif %}
+   {% for f in diff.files %}{% if f.same %}<p class="hint">{{ f.name }}: unchanged.</p>{% else %}<details class="adv" open><summary>{{ f.name }}</summary><pre class="sbdiffpre">{{ f.diff }}</pre></details>{% endif %}{% endfor %}
+  </div>
+  {% endif %}
+  {% if oracle or (shipped and shipped.shipped) %}
+  <div class="card sboracle"><h2>Oracle step <span class="pill">sandbox, not a submission</span></h2>
+   <form method="post" action="/sandbox/runs/{{ res.run_id }}/oracle" class="row">
+    <span>{{ tips.label("Blend weight w", "sb-w", "The Oracle step's weight on the donor bank; " ~ oracle_w_production ~ " is the production value. The result stays in this run's folder: never the ledger, the site, the archive or model-output.", for_="sb-w-in") }}
+     <input id="sb-w-in" name="w" type="number" step="0.05" min="0" max="1" value="{{ oracle_w }}"{% if not oracle_gate.ok %} disabled{% endif %}></span>
+    <button class="gold"{% if not oracle_gate.ok %} disabled aria-describedby="tip-sb-oracle-why"{% endif %}>Apply the Oracle step</button>
+    {% if not oracle_gate.ok %}{{ tips.tip("sb-oracle-why", "why the Oracle step is off", oracle_gate.reason) }}{% endif %}
+   </form>
+   {% if oracle %}
+   <p class="hint">{{ oracle.location }} as of {{ oracle.forecast_date }}, w = {{ oracle.w }}{% if oracle.w != oracle.w_production %} (production {{ oracle.w_production }}){% endif %}{% if oracle.state %}; {{ oracle.state }}{% endif %}{% if oracle.reason %}: {{ oracle.reason }}{% endif %}.</p>
+   <table class="kv sboracle-t"><thead><tr><th>week ending</th><th>plain filter: median (50%, 95%)</th><th>Oracle SIHRS: median (50%, 95%)</th></tr></thead><tbody>
+    {% macro qcell(q) %}{% if q %}{{ "%.1f" | format(q[2]) }} ({{ "%.1f" | format(q[1]) }} to {{ "%.1f" | format(q[3]) }}; {{ "%.1f" | format(q[0]) }} to {{ "%.1f" | format(q[4]) }}){% else %}no finite sample{% endif %}{% endmacro %}
+    {% for r in oracle.rows %}<tr><td>{{ r.target_end_date }}</td><td>{{ qcell(r.filter) }}</td><td>{{ qcell(r.oracle) }}</td></tr>{% endfor %}
+   </tbody></table>
+   {% endif %}
+  </div>
+  {% endif %}
+  {% endif %}
   {% if runs %}
-  <div class="card"><h2>Runs</h2>
-   <table class="kv"><thead><tr><th>run</th><th>model</th><th>status</th><th>time</th></tr></thead><tbody>
-   {% for r in runs %}<tr>
-    <td><a href="/sandbox?run={{ r.run_id }}">{{ r.run_id }}</a></td><td>{{ r.model }}</td>
-    <td>{{ r.status }}{% if r.run_id == running_id %} (fitting){% endif %}</td>
+  <div class="card"><h2>Runs of {{ name }}</h2>
+   <table class="kv"><thead><tr><th>run</th><th>status</th><th>particles</th><th>time</th></tr></thead><tbody>
+   {% for r in runs %}<tr{% if res and r.run_id == res.run_id %} aria-current="true"{% endif %}>
+    <td><a href="/sandbox?run={{ r.run_id }}&amp;model={{ name }}">{{ r.run_id }}</a></td>
+    <td>{{ r.status }}</td><td>{{ r.particles }}</td>
     <td>{% if r.seconds is defined %}{{ r.seconds }} s{% endif %}</td>
    </tr>{% endfor %}</tbody></table>
   </div>
   {% endif %}
- </div>
-
- <div>
-  {% if res %}
-  <div class="card" id="results" data-run="{{ res.run_id }}" data-status="{{ res.meta.status }}">
-   <h2>{{ res.run_id }}</h2>
-   <p class="hint">{{ res.meta.model }} · {{ res.meta.particles | int }} particles · jitter {{ res.meta.jitter }} · {{ res.meta.mode }}{% if res.meta.cumulative %} on {{ res.meta.cumulative }}{% endif %} · seed {{ res.meta.seed }}
-    · <strong>{{ res.meta.status }}</strong>{% if res.meta.seconds is defined %} in {{ res.meta.seconds }} s{% endif %}</p>
-   {% if res.meta.error %}<pre class="hint">{{ res.meta.error }}</pre>{% endif %}
-   {% if res.stderr %}<pre class="hint">{{ res.stderr }}</pre>{% endif %}
-   {% if res.params %}
-   <table class="kv"><thead><tr><th>parameter</th><th>5%</th><th>median</th><th>95%</th></tr></thead><tbody>
-   {% for p in res.params %}<tr><td>{{ p.name }}</td><td>{{ "%.4g" | format(p.p5) }}</td><td>{{ "%.4g" | format(p.p50) }}</td><td>{{ "%.4g" | format(p.p95) }}</td></tr>{% endfor %}
-   </tbody></table>
-   <p class="hint">{{ res.distinct }} distinct parameter vectors of {{ res.sample }} in the posterior sample{% if res.ess %}; ESS at the last week {{ "%.0f" | format(res.ess[-1].ess) }}, minimum {{ "%.0f" | format(res.ess | map(attribute="ess") | min) }}{% endif %}.</p>
-   {% endif %}
-   <div id="sbplot" style="min-height:320px"></div>
-  </div>
-  {% elif runs %}<div class="card"><p class="hint">Pick a run on the left to see its outputs.</p></div>{% endif %}
-
-  {% if editing %}
   {% include "sandbox_views.html" %}
-  <div class="card"><h2>Edit {{ editing.name }}</h2>
-   <form method="post" action="/sandbox/models/{{ editing.name }}/save">
-    <label>model.bngl</label>
-    <textarea name="model_bngl" rows="18" spellcheck="false" style="width:100%;font-family:monospace" class="code-editor" data-lang="bngl">{{ editing["model.bngl"] }}</textarea>
-    {% include "sandbox_data.html" %}
-    <label>data.exp</label>
-    <textarea name="data_exp" rows="8" spellcheck="false" style="width:100%;font-family:monospace" class="code-editor" data-lang="exp">{{ editing["data.exp"] }}</textarea>
-    <label>priors.conf</label>
-    <textarea name="priors_conf" rows="8" spellcheck="false" style="width:100%;font-family:monospace" class="code-editor" data-lang="conf">{{ editing["priors.conf"] }}</textarea>
-    <details class="storagefold"><summary class="hint">Engine keys the sandbox writes for you</summary>
-     <table class="kv"><thead><tr><th>key</th><th>value</th><th>from</th></tr></thead><tbody>
-      <tr><td><code>fit_type</code></td><td>pf</td><td>fixed</td></tr>
-      <tr><td><code>objfunc</code></td><td>neg_bin_dynamic</td><td>default</td></tr>
-      <tr><td><code>pf_cumulative_observable</code></td><td>the model output named in priors.conf</td><td>required</td></tr>
-      <tr><td><code>pf_particles</code>, <code>pf_jitter</code>, <code>pf_forecast_intervals</code>, <code>seed</code></td><td>the run form</td><td>form</td></tr>
-      <tr><td><code>initialization</code></td><td>rand</td><td>default</td></tr>
-      <tr><td><code>pf_resample_threshold</code>, <code>pf_binom_neff_cap</code>, other <code>pf_*</code></td><td>the engine's own defaults</td><td>engine</td></tr>
-     </tbody></table>
-     <p class="hint">A priors.conf line naming one of these overrides it. These defaults are the production configuration; changing one changes how the filter behaves, not just what it fits.</p>
-    </details>
-    <button class="gold">Save</button>
+  <div class="card"><h2>Manage</h2>
+   <form method="post" action="/sandbox/new" class="row">
+    <input type="hidden" name="start" value="copy:{{ name }}">
+    <input name="name" aria-label="name of the copy" placeholder="name of the copy" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,63}" required style="width:14rem">
+    <button class="quiet">Duplicate</button>
    </form>
-   <p class="hint">Checked when it runs: the network must generate and every free parameter must be in it. Sandbox outputs are fits, not submissions.</p>
+   <a href="/sandbox/models/{{ name }}/download" download><button type="button" class="quiet">Download model (.zip)</button></a>
+   <form method="post" action="/sandbox/models/{{ name }}/delete">
+    <input type="hidden" name="ident" value="{{ name }}"><input type="hidden" name="confirm" value="">
+    <button type="button" class="quiet" data-sb-delete="{{ name }} and its {{ runs | length }} run{{ '' if runs | length == 1 else 's' }}">Delete model</button>
+   </form>
   </div>
-  {% endif %}
  </div>
 </div>
-<script>
-(function () {
-  var RES = {{ res_json | safe }};
-  var box = document.getElementById('results');
-  if (box && box.dataset.status === 'running') {
-    // poll until the fit ends, then reload to show it
-    var id = box.dataset.run;
-    var timer = setInterval(function () {
-      fetch('/api/sandbox/runs/' + encodeURIComponent(id)).then(function (r) { return r.json(); })
-        .then(function (d) {
-          if (d && d.meta && d.meta.status !== 'running' && d.meta.status !== 'prepared') {
-            clearInterval(timer); location.reload();
-          }
-        }).catch(function () {});
-    }, 5000);
-  }
-  if (!RES || !RES.traj || !window.Plotly) return;
-  // colours resolve from the page's tokens per draw, and the plot redraws
-  // on themechange, so the axes, labels and legend read in every theme
-  var css = function (v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); };
-  var rootPx = function () { return parseFloat(getComputedStyle(document.documentElement).fontSize) || 16; };
-  function hexa(h, a) { h = (h || '#34C0F0').replace('#', ''); if (h.length === 3) h = h.replace(/(.)/g, '$1$1');
-    return 'rgba(' + parseInt(h.slice(0, 2), 16) + ',' + parseInt(h.slice(2, 4), 16) + ',' + parseInt(h.slice(4, 6), 16) + ',' + a + ')'; }
-  function draw() {
-    var t = RES.traj, obs = RES.meta.observed || [], times = RES.meta.time || [];
-    var n = t.n_obs, xs = [], fs = rootPx();
-    var dt = times.length > 1 ? (times[times.length - 1] - times[0]) / (times.length - 1) : 1;
-    for (var i = 0; i < t.columns; i++) xs.push(i < times.length ? times[i] : times[times.length - 1] + dt * (i - times.length + 1));
-    var ink = css('--ink'), mut = css('--mut'), line = css('--line'), acc = css('--accent'), accInk = css('--accent-ink'), surf = css('--card');
-    var band = {x: xs.concat(xs.slice().reverse()), y: t.q90.concat(t.q10.slice().reverse()),
-                fill: 'toself', fillcolor: hexa(acc, 0.22), line: {width: 0}, name: '10 to 90%', hoverinfo: 'skip'};
-    var med = {x: xs, y: t.q50, mode: 'lines', name: 'median', line: {color: accInk, width: 2}};
-    var pts = {x: times, y: obs, mode: 'markers', name: RES.meta.obs_col || 'observed', marker: {color: ink, size: 6}};
-    var shapes = n < t.columns ? [{type: 'line', x0: xs[n - 1], x1: xs[n - 1], y0: 0, y1: 1, yref: 'paper', line: {dash: 'dot', color: mut}}] : [];
-    Plotly.newPlot('sbplot', [band, med, pts], {margin: {t: 20, r: 10, l: 50, b: 40}, shapes: shapes,
-      paper_bgcolor: surf, plot_bgcolor: surf,
-      font: {color: ink, family: '"DM Sans",system-ui,sans-serif', size: Math.round(fs * .85)},
-      xaxis: {title: {text: 'time'}, gridcolor: line, zerolinecolor: line, linecolor: line, tickfont: {color: ink}},
-      yaxis: {title: {text: RES.meta.obs_col || 'count'}, rangemode: 'tozero', gridcolor: line, zerolinecolor: line, linecolor: line, tickfont: {color: ink}},
-      legend: {orientation: 'h', font: {color: ink}}}, {displayModeBar: false, responsive: true});
-  }
-  draw();
-  addEventListener('themechange', draw);
-  addEventListener('fontsizechange', draw);
-})();
-</script>
+{% endif %}
+<script>window.SANDBOX_RES = {{ res_json | safe }}; window.SANDBOX_CMP = {{ cmp_json | safe }};</script>
 {% endblock %}

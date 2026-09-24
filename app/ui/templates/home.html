@@ -1,53 +1,38 @@
-{% extends "base.html" %}{% import "diagrams.html" as dg %}{% block content %}
+{% extends "base.html" %}{% import "diagrams.html" as dg %}{% import "_tips.html" as tips %}{% block content %}
 <div class="hero">
  <h1>Forecast the flu season, <span class="gold">mechanistically</span>.</h1>
- <p>FluBNF produces weekly probabilistic forecasts of influenza hospital
- admissions for all 52 US jurisdictions, in the CDC FluSight submission
- format and with a shareable weekly report. Two models are submitted each
- week: the Oracle SIHRS, a mechanistic transmission model fitted to each
- week's data whose forecast growth is then blended with past seasons' growth
- at the same calendar week, and the Groundhog, an empirical calendar model
- with banked donors.</p>
+ <p>Weekly probabilistic forecasts of influenza hospital admissions for all
+ 52 US jurisdictions in the CDC FluSight format, from two models: the Oracle
+ SIHRS, a mechanistic model fitted each week, and the Groundhog, an
+ empirical calendar model.</p>
 </div>
 
 <div class="card">
- {# the h2 names the payload and dates it, like every other card; the run
-    date is a heading fact, not a footnote afterthought #}
- <h2>US outlook{% if outlook_date %} · {{ outlook_date }}{% endif %}</h2>
- {# the model that computed the map, so home and the weekly report -- which
-    share one computation through the report inputs bundle -- are labeled
-    surfaces of the same forecast; the approximate note appears only for
-    pre-bundle runs, where the exact cards no longer exist. The label span
-    is the model toggle's target (data-mapmodel-label), so switching
-    models relabels the surface it recolors. #}
+ {# the h2 names the payload and its date, like every other card #}
+ <h2>US categorical forecast{% if outlook_date %} · {{ outlook_date }}{% endif %}</h2>
+ {# model label (same computation as the weekly report, via the inputs
+    bundle); the span is the toggle's data-mapmodel-label target;
+    'approximate' only for pre-bundle runs #}
  {% if outlook_model_label %}<p class="sub mapmodel"><span
    data-mapmodel-label>{{ outlook_model_label }}</span
   >{% if outlook_approx %} · approximate, from stored quantiles{% endif %}</p>
  {% endif %}
- {# the outlook model toggle (aria-pressed buttons + client-side fill
-    swap): rendered by the server when two or more per-model card sets
-    exist -- exact ones from a v3 bundle, or, for a stored run from
-    before per-model cards, the approximate sets computed from
-    results.json's stored quantiles (the caption above then carries the
-    approximation marker). Fewer than two renders label only. #}
+ {# model toggle, rendered server-side only when >= 2 per-model card sets
+    exist (exact from a v3 bundle, else approximate from stored quantiles) #}
  {{ outlook_toggle | safe }}
  {{ map_svg | safe }}
- <p class="hint">Most likely direction of admissions.
- {% if outlook_pending %}Preparing the outlook; this page updates by
- itself in a few seconds.
- {% elif outlook_date %}Fitted results cover {{ outlook_n }} of 52
- jurisdictions in the latest run; the rest show as no data. Hover a state
- for its category probabilities.
- {% else %}Fills in when you run a forecast.{% endif %}</p>
+ <p class="hint">{% if outlook_pending %}Preparing the map; this page
+ updates by itself in a few seconds.
+ {% elif outlook_date %}Most likely direction of admissions next week;
+ the latest run's fits cover {{ outlook_n }} of 52 jurisdictions and
+ the rest show as no data.
+ {% else %}Most likely direction of admissions next week.
+ Fills in when you run a forecast.{% endif %}</p>
  {% if outlook_pending %}
- {# cold first paint: the warm pass is still importing the science stack.
-    Poll the light readiness endpoint and reload ONCE when inline render
-    is guaranteed cheap; the reload lands on the ready branch, so this
-    script can never render twice. Cadence: 600ms while the warm pass is
-    plausibly seconds away, then 2.5s forever; the poll never stops,
-    because the endpoint answering again is the recovery signal after a
-    server restart, and a dead server must not be hammered at 600ms all
-    night with the catch swallowing every failure. #}
+ {# cold first paint: poll /api/outlook-ready and reload ONCE (lands on the
+    ready branch). 600 ms, then 2.5 s forever: the endpoint answering again
+    is the recovery signal after a restart, and a dead server must not be
+    hammered at 600 ms all night. #}
  <script>
  (function () {
    var tries = 0;
@@ -68,18 +53,13 @@
  {% endif %}
 </div>
 
-{# reading order after the status hero and map: the actionable weekly loop
-   and the number the lab compares land in the first viewport; the pipeline
-   diagram and equations, read-once reference material, sit one scroll
-   below. #}
-<div class="grid2">
+{# the weekly loop and the record land in the first viewport; the pipeline
+   diagram (read-once reference) sits one scroll below #}
+<div class="grid2 homeperf">
  <div class="card"><h2>Measured performance</h2>
-  {# the submitted mechanistic member's own record first: the Oracle SIHRS
-     against the plain filter on the same cells (app/core/oracle_text
-     .RECORD, docs/ORACLE-SIHRS.md). Its class list is not the bare "perf"
-     on purpose: app/core/site_build.harvest_placement reads the FIRST
-     table whose class is exactly "perf" as the console's published
-     three-season figures, which is the table below. #}
+  {# Oracle record (oracle_text.RECORD). Class must NOT be bare "perf":
+     site_build.harvest_placement reads the FIRST class="perf" table (the
+     one below) from this source #}
   <table class="perf oraclerec">
    <thead><tr><th>Season</th><th class="num">Oracle SIHRS</th>
     <th class="num">Plain filter</th><th class="num">Cells</th></tr></thead>
@@ -94,16 +74,11 @@
     {% endfor %}
    </tbody>
   </table>
-  <p class="hint">The Oracle SIHRS against the plain particle filter on the
-  same cells: the stored forecasts of the three record seasons with the
-  Oracle step and its donor bank (NHSN admissions and FluSurv-NET growth,
-  the Groundhog's own, half and half) applied.
-  {{ oracle_text.BANK_TEXT.coverage }} {{ oracle_text.caveat() }}
-  (docs/ORACLE-SIHRS.md)</p>
+  <p class="hint">relWIS vs the FluSight baseline (below 1.000 beats it):
+  the Oracle SIHRS against the plain particle filter on the same cells, a
+  frozen-specification replication (<a href="/methods#oracle">Methods</a>).</p>
   <table class="perf">
-   {# every score column is named for whose forecast it scores, so no
-      column reads as the FluSight ensemble's. The relWIS unit for all of
-      them is stated once in the hint below. #}
+   {# columns named for whose forecast they score; the unit is in the hint #}
    <thead><tr><th>Season</th><th class="num">Filter alone</th>
     <th class="num">Groundhog</th><th class="num">FluSight Ensemble</th>
     </tr></thead>
@@ -118,28 +93,14 @@
      <td class="num rel">0.666</td><td class="num">0.685</td></tr>
    </tbody>
   </table>
-  {# Filter alone and FluSight Ensemble are the production engine's record
-     (the reseal of 2026-09-07, app/state/retro_reseal, 15,460 cells; the
-     reseal predates the Oracle step, so its mechanistic column is the
-     particle filter alone); the
-     Groundhog column is its own replay (flubnf groundhog retro, 15,340
-     cells over the 52 jurisdictions, 2026-09-21). The two universes are
-     named in the hint. The sealed engine's table and the disclosure
-     between the two stay on Methods and in docs/archive/RELEASE-1.0.md. #}
-  <p class="hint">Three seasons replayed on vintage data only, each scored
-  against the CDC FluSight baseline. The first column is the particle filter
-  alone, the Oracle SIHRS before its step (these replays predate it); it
-  and the FluSight Ensemble column score the same 15,460 cells, which differ
-  from the cells and runs of the table above, so the two plain-filter
-  figures of a season are not read across;
-  the Groundhog column is its own replay over 15,340 cells of the 52
-  jurisdictions. The FluSight Ensemble column is this app's own scoring of
-  the official ensemble, not FluSight's pairwise relative WIS, so it is not
-  directly comparable with the dashboard: likely close, not the same
-  method. Placement among teams is withdrawn, see
-  <a href="/methods">Methods</a>.
-  <span class="convtip" tabindex="0" title="{{ relwis_convention_note }}"
-   aria-label="scoring convention: {{ relwis_convention_note }}">ⓘ</span></p></div>
+  {# provenance: Filter alone + FluSight Ensemble = reseal 2026-09-07
+     (app/state/retro_reseal, 15,460 cells, pre-Oracle); Groundhog = its own
+     replay (flubnf groundhog retro, 15,340 cells, 2026-09-21). The sealed
+     engine's table stays on Methods and docs/archive/RELEASE-1.0.md. #}
+  <p class="hint">Full-season replays on vintage data: the filter alone and
+  the FluSight Ensemble on 15,460 cells, the Groundhog on 15,340 (other cells
+  than the table above; placement among teams withdrawn).
+  {% call tips.tip("home-conv", "the scoring convention") %}{{ relwis_convention_note }}{% endcall %}</p></div>
  <div class="card"><h2>Start here</h2>
   <ol class="steps">
    <li class="step"><span class="stepnum">1</span>
@@ -152,16 +113,13 @@
     <span class="steptext"><a href="/output">Output</a>
      <span class="hint">submission files and the report</span></span></li>
   </ol>
-  <p class="hint">Replay a past season on the
-  <a href="/retro">Retrospective</a> tab.</p></div>
+  <p class="hint">Replay a past season on
+  <a href="/retro">Retrospective</a>.</p></div>
 </div>
 
 <div class="card"><h2>How it works</h2>
- {# label boxes are audited at the A+ text step (the rem classes resolve in
-    viewBox units): every line fits its box at 115%, and each arrow label
-    sits centered in its own gap, clear of the boxes beside it. The svg
-    carries aria-label, not <title>: the title tooltip pops over the
-    drawing on hover. #}
+ {# labels audited to fit their boxes at A+ (115%); aria-label, not a
+    title element (its tooltip pops over the drawing) #}
  <div class="pipe">
  <svg viewBox="0 0 990 264" role="img" aria-label="Weekly forecasting workflow">
   <desc>One weekly data pull feeds the Oracle SIHRS (the particle-filter
@@ -222,28 +180,26 @@
   </g>
  </svg>
  </div>
- {# the two defining equations behind the pipeline: the seasonal forcing
-    the particle-filter fits bend, the Oracle SIHRS's growth blend, and the
-   Groundhog's scaled growth-ratio quantile #}
+ {# the three equations behind the pipeline: seasonal forcing, the Oracle
+    growth blend, the Groundhog quantile #}
  <div class="eqpanel">
   <p><span class="math"><i>&#946;</i>(<i>t</i>) = <i>&#946;</i><sub>0</sub>
    exp(&#8239;<i>&#949;</i><sub>1</sub> cos(&#8239;2&#960;(<i>t</i> &#8722;
    <i>&#966;</i><sub>1</sub>)&#8202;/&#8202;52&#8239;)&#8239;)</span>
-   <span class="eqnote">the seasonal forcing inside the particle-filter fits:
+   <span class="eqnote">seasonal forcing:
    the curve the filter bends each week</span></p>
   {{ dg.harmonic() }}
   <p><span class="math">ln <i>G</i><sub><i>k</i></sub> =
    &#189; ln <i>G</i><sub><i>T</i></sub> +
    &#189; ln <i>G</i><sub><i>d</i></sub></span>
-   <span class="eqnote">the Oracle SIHRS's growth blend: each of the
-   filter's forecast sample paths grows at the geometric mean of the
-   filter's growth G<sub><i>T</i></sub> and one donor's, from an earlier
-   season at the same calendar week (<a href="/methods#oracle">Methods</a>)</span></p>
+   <span class="eqnote">the Oracle step: each forecast path grows at the
+   geometric mean of the filter's growth and one past season's at the same
+   calendar week</span></p>
   <p><span class="math"><i>q</i><sub>h</sub>(<i>&#964;</i>) =
    <i>y</i><sub>last</sub> &#183; <i>Q</i><sub><i>&#964;</i></sub>(&#8239;growth
    ratios at matched calendar weeks&#8239;)</span>
-   <span class="eqnote">the Groundhog's quantile: the last observed value
-   scaled by calendar-matched historical growth ratios</span></p>
+   <span class="eqnote">the Groundhog: the last value scaled by past
+   seasons' growth at the same calendar week</span></p>
  </div>
 </div>
 
@@ -251,10 +207,8 @@
  <div class="card"><h2>PyBNF</h2>
   <div class="cardviz">
    <img src="/static/brand/pybnf_icon.svg" alt="PyBNF brand mark"></div>
-  <p>Los Alamos National Laboratory's parameter-fitting and
-  uncertainty-quantification suite for rule-based models, and the fitting
-  framework behind the mechanistic member. FluBNF runs a fork that adds the
-  sequential particle filter (<code>fit_type=pf</code>).</p>
+  <p>Los Alamos's fitting suite for rule-based models; FluBNF runs a fork
+  that adds the particle filter (<code>fit_type=pf</code>).</p>
   <p class="hint"><a href="https://github.com/lanl/PyBNF" target="_blank" rel="noopener">github.com/lanl/PyBNF</a></p></div>
  <div class="card"><h2>bngsim</h2>
   <div class="cardviz">
@@ -268,10 +222,8 @@
           fill="none" stroke="var(--gold)" stroke-width="2.4"/>
     <path d="M10,58 H242" stroke="currentColor" stroke-width="1.3" fill="none"/>
    </svg></div>
-  <p>An embeddable, in-process simulation engine for BioNetGen reaction
-  networks, and the engine the particle filter runs on. It integrates the
-  model's ODEs inside the fitting process, with no per-simulation BNG2.pl
-  subprocess, so a full state-season fit completes in seconds.</p>
+  <p>The in-process BioNetGen simulator the particle filter runs on, so a
+  state-season fit takes seconds.</p>
   <p class="hint"><a href="https://github.com/lanl/bngsim" target="_blank" rel="noopener">github.com/lanl/bngsim</a></p></div>
  <div class="card"><h2>BNGL and BioNetGen</h2>
   <div class="cardviz">
@@ -301,13 +253,9 @@
      <text x="223" y="36">C</text>
     </g>
    </svg></div>
-  <p>The BioNetGen model specification language, in which the
-  <a href="/methods#sihrs">SIHRS compartment model</a> that the
-  Oracle SIHRS is built on is written. At run
-  preparation BNG2.pl expands the rule-based definition into a reaction
-  network, once per state cell, which bngsim then integrates throughout the
-  fit. Keeping the model in BNGL makes its structure explicit and
-  independently checkable.</p>
+  <p>The language the <a href="/methods#sihrs">SIHRS compartment model</a>
+  is written in; BNG2.pl expands it into the reaction network bngsim
+  integrates.</p>
   <p class="hint"><a href="https://bionetgen.org" target="_blank" rel="noopener">bionetgen.org</a></p></div>
 </div>
 
@@ -315,8 +263,7 @@
  {% if missing %}
   <p class="hint">Not installed on this machine:</p>
   {% for m in missing %}<p class="warn">• {{ m[2] }}</p>{% endfor %}
-  {# platform-aware: app/ui/server.py:_engine_setup_hint. Never hardcode a
-     macOS-only filename here; a Windows reader cannot open one. #}
+  {# platform-aware (templating.py _engine_setup_hint): never a macOS-only filename #}
   <p class="hint">To add the particle-filter engine,
   {{ engine_setup_hint() }}.</p>
  {% else %}<p class="ok">All components installed.</p>{% endif %}
@@ -326,11 +273,9 @@
  Perl <span data-vkey="perl">{{ versions.perl }}</span> ·
  FastAPI <span data-vkey="fastapi">{{ versions.fastapi }}</span> ·
  Plotly <span data-vkey="plotly">{{ versions.plotly }}</span></p>
- {# self-reported bngsim strings can lie about reproducibility; the pin of
-    record is stated beside the number (see setup_engine.sh and the same
-    note on Methods) #}
- <p class="hint">The sealed record's engine pin is bngsim 0.15.1 (see
- setup_engine.sh); reproducing sealed numbers requires that pin, whatever
- version an installed build reports.</p>
+ {# self-reported bngsim strings can mislead; the pin of record is stated
+    (same note on Methods) #}
+ <p class="hint">Reproducing the sealed numbers needs bngsim 0.15.1
+ (setup_engine.sh), whatever version a build reports.</p>
 </div>
 {% endblock %}

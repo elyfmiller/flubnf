@@ -1,66 +1,26 @@
-"""The public site generator: the lab's real retrospectives as a static page.
+"""PUBLIC SITE: what the site says (`flubnf site build`).
 
-`flubnf site build` reads the app's own state -- the retrospective season
-roots under app/state, the newest run's report bundle, the FluSight hub
-clone -- and writes a self-contained static site to site/. Nothing on the
-page is typed by hand: every score is computed here from stored forecasts
-against settled truth, and every word of Methods is rendered from the
-console's own templates through the console's own Jinja environment, so the
-site and the app cannot drift apart.
+The public site generator (`flubnf site build` -> site/).
 
-WHY THIS EXISTS AS A BUILD RATHER THAN A SERVER
------------------------------------------------
-app/state is gitignored. The retrospectives are hundreds of megabytes of
-samples on the lab's laptop and will never be in the repository, so the
-generated page IS the published evidence: it is reviewed as a diff and
-committed. That makes two properties load-bearing, and both are tested:
+Reads app/state (season roots, the newest run bundle) and the hub clone and
+writes a static, offline-openable page. Nothing is typed by hand. app/state
+is gitignored, so the generated page IS the published evidence, reviewed as
+a diff and committed: site.json is data-only and pretty-printed so a
+rebuild's diff shows which numbers moved.
 
-  * the payload is data-only and pretty-printed, so a rebuild's diff shows
-    which numbers moved rather than a reflowed wall of markup; and
-  * the page works offline from disk, because a reviewer opens the built
-    file before deciding to commit it.
+SCORES. Each shipped model's own relWIS (the PF and the Groundhog; an older
+payload's stored "ensemble" is printed as stored). No stored scores.json is
+read (a test pins this): every season is rescored from each week's playback
+payload under the frozen cell rule and the validated baseline. A tree
+replayed by the bare analogue (the seal) prints under the Groundhog's name
+with nothing here to say so: publish from a Groundhog replay.
 
-THE SCORES
-----------
-relWIS here is each shipped model's own: the particle filter and the
-Groundhog (the calendar analogue with its banked auxiliary donors), each
-a standalone submission. A payload from before 2026-09-22 may carry a
-stored "ensemble" model; the site prints what a payload carries and
-computes nothing beyond it.
-
-The build does not read a stored scores.json at all: discover_seasons
-accepts ANY season root under app/state, and a file records nothing about
-how it was scored. Instead
-every season is rescored from each week's playback payload, the stored
-members as stored, through the validated baseline construction and the
-frozen cell rule: settled truth above zero, a positive median, and a cell
-the FluSight baseline also covers. A tree replayed by the bare analogue
-(the seal) prints the bare analogue's figure under the Groundhog's name
-with nothing on this page to say so; the console's season page reads the
-tree's own record and does. Publish from a Groundhog replay.
-
-WHAT IS HARVESTED RATHER THAN RESTATED
---------------------------------------
-  * Methods prose and diagrams: app/ui/templates/methods.html rendered
-    through app.ui.server.templates.env, so the site shows the console's
-    text and the console's SVGs, versions included.
-  * The FluSight field placements, when the perf table in home.html carries
-    them: rank, field size and percentile are read as data, not retyped. As
-    of 2026-08-24 that table carries none, because the standings were
-    withdrawn (docs/archive/RELEASE-1.0.md), so every season renders without a
-    placement rather than with an invented one. The same table's relWIS
-    column is still read, because it is what the drift alarm below compares
-    against.
-  * The model source: flubnf/templates/SIHRS_pop_min.bngl, verbatim.
-  * The parameter bibliography: the DOIs recorded in flubnf/sihrs_priors.py
-    beside the derivations that use them.
-
-Because the app states its own performance numbers in prose, the build
-CROSS-CHECKS its computed scores against the app's published table and
-records every comparison in the payload's `consistency` block. A mismatch
-is reported loudly and does not silently reshape either surface: it means
-the app's text or the retrospective on disk has moved, and a human decides
-which.
+HARVESTED, NOT RESTATED: Methods (methods.html through the console's own
+Jinja env, diagrams included); the home.html perf table's relWIS (the drift
+alarm, cross_check) and any placement columns (none since the 2026-08-24
+withdrawal, docs/archive/RELEASE-1.0.md); the BNGL source verbatim; the DOIs
+in flubnf/sihrs_priors.py. A cross-check mismatch is reported loudly in the
+payload's `consistency` block, never silently reconciled.
 """
 from __future__ import annotations
 
@@ -81,11 +41,8 @@ TEMPLATES = APP / "ui" / "templates"
 STATIC = APP / "ui" / "static"
 BNGL = REPO / "flubnf" / "templates" / "SIHRS_pop_min.bngl"
 
-#: default output tree. site/ rather than docs/: docs/ holds hand-written
-#: markdown for the lab (WINDOWS.md, SITE.md) that must not be published,
-#: and mixing generated output with hand-written docs makes the diff review
-#: this loop depends on much harder to read. Pages is deployed from an
-#: Actions artifact, so the directory name is free.
+#: site/, not docs/: docs/ holds hand-written, unpublished markdown (Pages
+#: deploys from an Actions artifact, so the name is free)
 OUT_DIR = REPO / "site"
 
 PAYLOAD_NAME = "site.json"
@@ -97,27 +54,20 @@ PAYLOAD_VERSION = 1
 
 #: canonical hub horizons; app.core.horizons owns the convention
 HORIZONS = hz.HORIZONS
-#: the levels the fan draws: median, 50% interval, 80% interval. Chosen as
-#: the intersection of what both forecast sources store -- a retrospective
-#: week carries all 23 FluSight levels, a live run's results.json carries
-#: the five display levels -- so one fan shape serves both and the site
-#: never claims an interval one of its sources cannot supply.
+#: median, 50% and 80% intervals: the levels both sources store (a live
+#: run's results.json keeps only the five display levels)
 FAN_LEVELS = (0.1, 0.25, 0.5, 0.75, 0.9)
 #: observed weeks shown behind the forecast
 OBS_WEEKS = 14
-#: a run bundle must cover at least this many jurisdictions before it
-#: outranks a retrospective week as the outlook source; a one-state smoke
-#: run must never become the national map
+#: a run must cover this many jurisdictions to become the outlook (never a smoke run)
 MIN_OUTLOOK_LOCATIONS = 40
 
-#: the two shipped models first; "ensemble" stays for a payload that still
-#: carries a stored blend (none does since 2026-09-22)
+#: the two shipped models; "ensemble" only for older payloads with a stored blend
 MODEL_ORDER = ("pf", "analogue", "ensemble")
 OFFICIAL_ORDER = ("FluSight-baseline", "FluSight-ensemble")
 
-#: season-root search order. The lab's own laptop runs land in retro/ and
-#: outrank the sealed record for the same season when they are at least as
-#: complete; retro_seal/ is the three-season validation archive.
+#: search order, also the tiebreak: the lab's own runs (retro/) beat the
+#: sealed three-season record when at least as complete
 ROOT_ORDER = (("lab run", APP_STATE / "retro"),
               ("sealed record", APP_STATE / "retro_seal"))
 
@@ -128,10 +78,8 @@ class BuildError(RuntimeError):
 
 # ---------------------------------------------------------------- discovery
 
-#: the mechanistic column's two names. A season tree replayed before the
-#: console applied the Oracle step (every sealed record) stores the particle
-#: filter alone under pf, and publishing it as the Oracle SIHRS would name a
-#: forecast the member never made; the label follows what the tree holds.
+#: the mechanistic column's two names: trees replayed before the Oracle step
+#: (every sealed record) store the plain filter under pf
 PF_LABEL_ORACLE = "Oracle SIHRS"
 PF_LABEL_FILTER = "Particle filter alone"
 
@@ -147,9 +95,7 @@ def tree_carries_oracle(root: Path) -> bool:
         return True
     if str(s.get("oracle") or "").startswith("none"):
         return False
-    # the provenance file itself says whether the step ran: a plain-filter
-    # research run writes oracle.json too, with "applied": false
-    import json
+    # a plain-filter run writes oracle.json too, with "applied": false
     try:
         for w in sorted((root / "weeks").iterdir())[:3]:
             f = w / "oracle.json"
@@ -164,10 +110,8 @@ def tree_carries_oracle(root: Path) -> bool:
 
 
 def _week_applied(week_dir: Path) -> bool:
-    """Whether one stored week's pf is the Oracle SIHRS: its oracle.json
-    says the step was applied. A plain-filter research week writes the file
-    too, with "applied": false, so presence alone is not the answer."""
-    import json
+    """Whether one stored week's oracle.json says the step was applied
+    (presence alone is not enough)."""
     try:
         return json.loads((Path(week_dir) / "oracle.json").read_text()
                           ).get("applied") is True
@@ -184,15 +128,22 @@ def pf_label(seasons: dict) -> str:
     return PF_LABEL_FILTER
 
 
+def tree_knobs(root) -> dict:
+    """The model-knobs record of a season tree's run record ({} for a
+    shipped tree or one from before the registry)."""
+    from app.core import retro
+    try:
+        return retro.season_knobs(retro.read_meta(Path(root)))
+    except Exception:
+        return {}
+
+
 def discover_seasons(roots=ROOT_ORDER) -> dict:
     """{season: {"root", "origin", "weeks"}} for every season with stored
     weeks, across every known root.
 
-    Nothing is hardcoded: a season is whatever directory holds completed
-    weeks, so a season the lab replays next winter appears with no code
-    change. When two roots hold the same season the more complete one wins,
-    and the lab's own run wins a tie -- ROOT_ORDER is the tiebreak, which is
-    why it is ordered rather than a set.
+    A season is any YYYY-YY directory with completed weeks. The more
+    complete root wins; ROOT_ORDER breaks ties.
     """
     from app.core import playback
 
@@ -203,6 +154,8 @@ def discover_seasons(roots=ROOT_ORDER) -> dict:
         for d in sorted(Path(root).iterdir()):
             if not d.is_dir() or not re.fullmatch(r"\d{4}-\d{2}", d.name):
                 continue
+            if tree_knobs(d):
+                continue    # a modified-settings replay never publishes
             try:
                 weeks = playback.season_weeks(d)
             except Exception:
@@ -220,26 +173,12 @@ def discover_seasons(roots=ROOT_ORDER) -> dict:
 def _score_payload(payload: dict, truth, n2f, bases_cache: dict) -> dict:
     """{model: [wis_sum, base_sum, cells]} for one stored week.
 
-    THE frozen cell rule for every model: settled truth above zero, a
-    positive forecast median, and a cell the validated baseline covers. The
-    US national row is excluded from OURS AND THEIRS ALIKE, under the named
-    policy in app/core/us_national (POOLED_INCLUDES_US): it is the sum of
-    the 52 jurisdictions, so it would count them twice and swamp any
-    sum-based aggregate. The published pooled figure this builder prints is
-    a 52-jurisdiction number, and fitting the national series must not
-    change it.
+    THE frozen cell rule for every model; US excluded for ours and theirs
+    alike (us_national.POOLED_INCLUDES_US).
 
-    ONE ASYMMETRY, ON PURPOSE. Our own models are scored on their own
-    cells, which is how the lab's published record was computed and what
-    the cross-check pins. The OFFICIAL comparators are then scored on the
-    cells our first model scored (the PF, MODEL_ORDER's head; the next
-    model present when a tree carries no PF), and only those. Without that
-    restriction the site would print our relWIS beside FluSight-ensemble's
-    in the same row while the two rested on different cell sets -- the
-    official covers weeks and locations where our median was zero, and is
-    missing from weeks it did not submit -- and a reader would compare them
-    anyway. The restricted column answers the question the row actually
-    poses: on the cells we scored, what did the official model get?
+    One asymmetry, on purpose: our models are scored on their own cells (as
+    the published record was), and the officials only on the cells our first
+    model (MODEL_ORDER) scored, so a row compares like with like.
     """
     import pandas as pd
     from app.core.scoring import _baseline_cells
@@ -263,19 +202,12 @@ def _score_payload(payload: dict, truth, n2f, bases_cache: dict) -> dict:
     fips_set = {n2f[l] for l in locs if l in n2f}
     key = (asof, frozenset(fips_set))
     if key not in bases_cache:
-        # A baseline that cannot be built must FAIL the build, never quietly
-        # zero a week: with an empty dict every cell of the week skips, the
-        # week still counts as scored, the published relWIS silently pools
-        # fewer weeks under the same label, and cross_check compares nothing
-        # (audit finding). _baseline_cells raises a deliberately loud
-        # FileNotFoundError for a sparse clone; keep it loud here, with the
-        # week named so the operator knows which file to fix.
+        # a baseline that cannot be built fails the build (an empty dict would
+        # silently drop the week from the published relWIS)
         try:
             bases_cache[key] = _baseline_cells(asof, fips_set, truth)
         except Exception as e:
-            # BuildError, not bare RuntimeError: the CLI's curated error
-            # path catches BuildError and prints the one-line message
-            # instead of a traceback (review finding)
+            # BuildError: the CLI prints it as one line, not a traceback
             raise BuildError(
                 f"baseline for week {asof} could not be built: {e}. "
                 "The site build stops rather than publish a season that "
@@ -343,11 +275,9 @@ def score_season(season: str, info: dict, truth, n2f,
                  bases_cache: dict | None = None) -> dict:
     """One season, week by week, from its stored playback payloads.
 
-    Returns the per-model totals plus the per-week cumulative relWIS series
-    the season chart draws. Every payload is fetched through
-    playback.build_week, which serves the week's cache when it is fresh and
-    rebuilds it when it is not -- so a season the lab just finished on the
-    laptop is scored on this pass without a separate cache-warming step.
+    Returns per-model totals and the per-week cumulative relWIS series.
+    Payloads come through playback.build_week (cached or rebuilt), so no
+    separate warming step is needed.
     """
     from app.core import playback
 
@@ -399,16 +329,9 @@ def _vintage_observed(asof: str) -> dict | None:
     """{location_name: [[date, value], ...]} as the archive held it ON the
     forecast date, or None when no vintage was archived for that date.
 
-    This matters more than it looks. A replayed week's payload carries
-    SETTLED truth, because the playback viewer's job is to show what
-    happened. But the page's observed line and the map's "current" anchor
-    describe what the forecast SAW, and NHSN revises the freshest week
-    upward by a median 4-5% (10th percentile near 0.83). Anchoring the
-    change categories on settled truth would quietly move borderline states
-    across a cutpoint and contradict the claim this whole project rests on:
-    scored only on the data that existed on each forecast date. The settled
-    values still appear -- as the settled overlay, which is exactly where
-    hindsight belongs.
+    The observed line and the map's "current" anchor are what the forecast
+    SAW (NHSN revises the newest week ~4-5% up); a payload carries settled
+    truth, which appears only in the settled overlay.
     """
     from app.core import data as data_mod
 
@@ -431,10 +354,8 @@ def _vintage_observed(asof: str) -> dict | None:
 def _cards_from_quantiles(models: dict, truth_by_loc: dict, asof: str) -> dict:
     """{model: {fips: hover card}} through the app's ONE categorical path.
 
-    Every surface that colors a map -- the console's home outlook, the
-    weekly report, this site -- reads its probabilities from
-    report.categorical_probs_from_quantiles, so a category here is the same
-    category the console would show for the same forecast.
+    Every map surface uses report.categorical_probs_from_quantiles, so a
+    category here matches the console's.
     """
     from app.core.report import categorical_probs_from_quantiles
     from app.core.report_v2 import CATS
@@ -483,16 +404,9 @@ def _newest_run_source() -> tuple:
     """(run_id, bundle, results) for the newest run that can serve as a
     national outlook, or (None, None, None).
 
-    A run qualifies only when its report bundle carries per-model outlook
-    cards for enough jurisdictions AND its results.json carries the matching
-    quantile grids: the bundle's own per-location fans are the particle
-    filter's alone (server.py builds `details` from pf_samples), so the
-    fans this site publishes come from results.json, where both models
-    are stored. A run missing either half is skipped rather than
-    half-published.
-
-    The coverage floor matters: a one-state smoke run is not a national map,
-    and publishing it as one would be a lie of framing.
+    A run qualifies only with per-model outlook cards for at least
+    MIN_OUTLOOK_LOCATIONS jurisdictions AND quantile grids in results.json
+    (the fans come from there: the bundle's fans are the PF's alone).
     """
     from app.core import report_v2
 
@@ -509,10 +423,7 @@ def _newest_run_source() -> tuple:
             results = json.loads(r.read_text())
         except Exception:
             continue
-        # research runs never reach the PUBLIC site: their 'ensemble' is
-        # the three-member research blend, and this scan was the one
-        # shipped-product surface without the filter (review finding).
-        # Pre-flag results are recognised by their stored spec.
+        # research runs never reach the public site (older ones: by their spec)
         from app.core.runs import is_research
         if results.get("research") or is_research(results.get("spec", "")):
             continue
@@ -536,18 +447,10 @@ def _newest_run_source() -> tuple:
 def build_outlook(seasons: dict, pin: tuple | None = None) -> dict:
     """The home map and its per-model fills, plus the week's fans.
 
-    Source order: the newest run bundle that covers the country (the live
-    weekly forecast), otherwise the newest retrospective week on disk. The
-    chosen source is named in the payload and printed on the page, because
-    "this week's forecast" and "the last week we replayed" are different
-    claims and the page must make the difference visible.
-
-    `pin` is an explicit (season, asof) override for the retrospective path.
-    The default deliberately does NOT pick a photogenic week: an off-season
-    map is the honest answer when the newest week is in June, and choosing a
-    January peak because it looks better would be cherry-picking. The
-    override exists so that choice, when it is made, is made on purpose and
-    recorded in the payload rather than baked into the generator.
+    Source: the newest run bundle covering the country, else the newest
+    retrospective week; the source is named on the page. `pin` (season,
+    asof) overrides the retrospective week explicitly and is recorded; the
+    default never picks a photogenic week.
     """
     from app.core import playback, usmap
     from app.core.report_v2 import MODEL_LABEL
@@ -615,7 +518,7 @@ def build_outlook(seasons: dict, pin: tuple | None = None) -> dict:
     models += [m for m in sorted(cards_by_model) if m not in models]
     if not models:
         raise BuildError("the forecast source carries no model with "
-                         "categorical outlook cards")
+                         "categorical forecast cards")
     default = models[0]
 
     fills = {m: usmap.state_swap_payload(cards_by_model[m]) for m in models}
@@ -625,10 +528,7 @@ def build_outlook(seasons: dict, pin: tuple | None = None) -> dict:
                            for k, v in (c.get("probs") or {}).items()}}
              for f, c in cards_by_model[default].items()}
 
-    # what the map actually says, counted rather than eyeballed. Off-season
-    # weeks are legitimately a wall of "stable", and a reader who cannot
-    # tell that from a broken map will assume the second; the count settles
-    # it without a threshold or an adjective.
+    # modal-category counts, so an off-season wall of "stable" reads as data
     tally: dict = {}
     for c in cards_by_model[default].values():
         probs = c.get("probs") or {}
@@ -636,12 +536,7 @@ def build_outlook(seasons: dict, pin: tuple | None = None) -> dict:
             tally[max(probs, key=probs.get)] = 1 + tally.get(
                 max(probs, key=probs.get), 0)
 
-    # The forecast covers more jurisdictions than the map can draw: Puerto
-    # Rico is a FluSight location with no shape in the Albers topology the
-    # console's map is built from. Both counts are carried so the page can
-    # state the difference instead of quietly showing 51 shapes under a
-    # caption that claims 52. PR keeps its hover card, its fan, and its
-    # entry in the location picker; it simply has nowhere to be clicked.
+    # PR is forecast but has no Albers shape: carry both counts
     drawn = set(fills[default])
     return {
         "source": source,
@@ -679,8 +574,7 @@ def _q_at(raw: dict, level: float):
 
 def _fan_entry(obs, settled, hq_pf, hq_an) -> dict | None:
     """One location's fan: the PF's intervals and median, the Groundhog's
-    median as the overlay (`an`). Until 2026-09-22 the fan was the
-    blend's, with both members as overlays."""
+    median as the overlay (`an`)."""
     if not obs or not hq_pf:
         return None
     q = {}
@@ -702,18 +596,9 @@ def _fan_entry(obs, settled, hq_pf, hq_an) -> dict | None:
 def _fans_from_payload(payload: dict, observed: dict | None = None) -> dict:
     """All-location fans from a retrospective week.
 
-    Two different series, from two different sources, on purpose:
-
-      * the OBSERVED line is the vintage as of the forecast date (passed in
-        by build_outlook), because that is what the forecast saw; and
-      * the SETTLED overlay is the truth the payload carries for the four
-        target weeks AFTER the forecast date, which is hindsight and is
-        drawn as such.
-
-    The overlay is conditional by construction: it is emitted only for the
-    weeks whose truth has actually arrived, so a live week produces an
-    empty list and the page draws no overlay and no legend entry for one --
-    absent rather than empty.
+    OBSERVED = the vintage as of the forecast date (what it saw); SETTLED =
+    the payload's truth for the four target weeks, only those that have
+    arrived (none for a live week: no overlay, no legend entry).
     """
     asof = payload["asof"]
     truth = payload.get("truth") or {}
@@ -738,14 +623,12 @@ def _fans_from_payload(payload: dict, observed: dict | None = None) -> dict:
 def _fans_from_results(results: dict, bundle: dict) -> dict:
     """All-location fans from a live run.
 
-    Quantiles and observations come from results.json, which stores both
-    models per location on the display level grid. The settled
-    overlay, when there is one, comes from the bundle's per-location fan --
-    server.py fills it from the newest vintage only for a BACKDATED run, so
-    a genuine current-week forecast produces no overlay at all, which is
-    exactly right: nothing has settled yet.
+    Quantiles and observations from results.json; the settled overlay from
+    the bundle's fans (filled only for a backdated run). results.json keeps
+    stored horizons ("1".."4") in every existing workroot, so its models are
+    canonicalised before `_fan_entry` reads "0".."3".
     """
-    models = results.get("models") or {}
+    models = hz.models_to_canonical(results.get("models") or {})
     pf, an = models.get("pf") or {}, models.get("analogue") or {}
     observed = results.get("observed") or {}
     settled = {}
@@ -757,8 +640,7 @@ def _fans_from_results(results: dict, bundle: dict) -> dict:
         if det.get("name") and pts:
             settled[det["name"]] = [[str(d), float(v)] for d, v in pts
                                     if v is not None]
-    # framed to the four target weeks: a bundle written before 2026-09-22
-    # carried a fifth settled week past the last horizon
+    # framed to the four target weeks (older bundles carried a fifth)
     asof = str(results.get("forecast_date") or "")
     if asof:
         last = (datetime.fromisoformat(asof)
@@ -794,20 +676,10 @@ def harvest_placement() -> dict:
     """{season: {rank, field, text, percentile, app_rel}} from the console's
     own performance table.
 
-    Two things are read from one place. `app_rel` is the relWIS the console
-    publishes for the season, and it is what cross_check() compares the
-    computed score against; it is always present.
-
-    The FluSight standings are optional, and are absent as of 2026-08-24.
-    They were withdrawn because the scorer that produced them does not
-    survive and this project's own entries in the archived field were not
-    computed on one convention (see docs/archive/RELEASE-1.0.md). A season with no
-    standing simply has no placement on the site, and site_page renders that
-    cell as "placement withdrawn" rather than as work still to do: the
-    measurement happened and its result was retracted, so "not yet scored"
-    would be the wrong half of the story and would contradict Methods on the
-    same page. If the perf table ever carries the field and percentile
-    columns again, they are picked up here without further change.
+    `app_rel` (always present) feeds cross_check. The standings columns are
+    optional and absent since the 2026-08-24 withdrawal
+    (docs/archive/RELEASE-1.0.md); site_page then prints "placement
+    withdrawn". Restored columns would be picked up unchanged.
     """
     src = (TEMPLATES / "home.html").read_text(encoding="utf-8")
     block = src.split('<table class="perf">', 1)
@@ -815,8 +687,7 @@ def harvest_placement() -> dict:
         return {}
     body = block[1].split("</table>", 1)[0]
     out = {}
-    # one row at a time, so an optional column can never be read out of the
-    # NEXT row's cells
+    # row by row, so an optional column is never read from the next row
     for row in re.split(r"(?=<tr\b)", body):
         m = _PERF_ROW.match(row.strip())
         if not m:
@@ -840,9 +711,8 @@ def harvest_placement() -> dict:
     return out
 
 
-#: the app's Measured-performance card duplicates what the site computes on
-#: the Retrospectives tab; it is dropped from the harvested Methods content
-#: and used instead as the cross-check the consistency block records.
+#: the Measured-performance card duplicates the site's own scores: dropped
+#: from the harvested Methods
 _PERF_CARD = re.compile(
     r'<div class="card"><h2>Measured performance</h2>.*?</div>\s*(?=<div class="card")',
     re.S)
@@ -851,11 +721,8 @@ _PERF_CARD = re.compile(
 def harvest_methods(versions: dict) -> str:
     """The console's Methods page as standalone markup.
 
-    Rendered through app.ui.server.templates.env -- the console's OWN Jinja
-    environment, with the globals its diagram macros need -- so the SVGs on
-    this site are the SVGs in the app, produced by the same code from the
-    same source, and a change to either lands in both at the next build.
-    Only the shell (base.html's nav and chrome) is left behind.
+    Rendered through the console's own Jinja env (app.ui.server.templates),
+    so the site's SVGs are the app's; only base.html's chrome is left behind.
     """
     from app.ui.server import templates
 
@@ -876,12 +743,8 @@ def harvest_methods(versions: dict) -> str:
 
 
 def harvest_bibliography() -> list:
-    """The fixed parameters' sources, read from the module that defines them.
-
-    flubnf/sihrs_priors.py records each DOI next to the derivation that uses
-    it. Harvesting from there means a re-sourced parameter updates the site
-    at the next build instead of leaving a stale citation behind.
-    """
+    """The fixed parameters' sources, read from flubnf/sihrs_priors.py (the
+    DOIs beside their derivations), so a re-sourced parameter updates the site."""
     from flubnf import sihrs_priors as P
 
     def doi(x):
@@ -965,16 +828,12 @@ def cross_check(scored: list, placement: dict,
     """Compare every computed season score against the number the console
     publishes for the same season, and record the comparison.
 
-    This is the drift alarm. The app states its performance in prose on
-    three surfaces; the site computes it from the forecasts on disk. They
-    agree today. If they ever stop agreeing, one of them has moved and the
-    build says so instead of quietly publishing a different figure under
-    the same name.
+    The drift alarm: a mismatch means the app's text or the data moved, and
+    the build says so rather than publish a different figure silently.
     """
     out = []
     for s in scored:
-        # the console's table leads with the PF (home.html's first score
-        # column), which is what harvest_placement reads as app_rel
+        # home.html's first score column (app_rel) is the PF
         rel = (s["models"].get("pf") or {}).get("rel")
         app = (placement.get(s["season"]) or {}).get("app_rel")
         if rel is None or app is None:
@@ -1012,20 +871,13 @@ def build_payload(seasons: dict | None = None,
     for s in scored:
         stand = {k: v for k, v in placement.get(s["season"], {}).items()
                  if k != "app_rel"}
-        # app_rel alone is the drift-alarm figure, not a standing; a season
-        # with no standing carries no `placement` key at all, so the page
-        # renders "placement withdrawn, see Methods" rather than an empty
-        # cell (site_page._season_table). Dropping the key is also what
-        # keeps the percentile bars off the page: _percentile_bars draws
-        # only from `placement`, and a percentile IS a placement, so it has
-        # to go silent for the same reason the rank does.
+        # no standing -> no `placement` key: the page prints "placement
+        # withdrawn" and draws no percentile bars
         if stand:
             s["placement"] = stand
 
-    # ONE outlook computation. The map SVG the page renders and the fills
-    # the toggle swaps in must come from the same cards, or clicking a model
-    # button could disagree with the map that was rendered; build() pops
-    # _cards off this dict and hands them straight to usmap.svg_map.
+    # one outlook computation: build() renders the map from the same _cards
+    # the toggle's fills came from
     outlook = build_outlook(seasons, pin)
     fans = outlook.pop("fans")
 
@@ -1080,9 +932,7 @@ def build(out_dir: Path | None = None, seasons: dict | None = None,
     text = json.dumps(payload, indent=1, sort_keys=True, ensure_ascii=False)
     (out / PAYLOAD_NAME).write_text(text + "\n", encoding="utf-8", newline="\n")
     (out / PAGE_NAME).write_text(page, encoding="utf-8", newline="\n")
-    # Pages must not run Jekyll over generated output (it would eat the
-    # underscore-prefixed nothing here today, but it also adds a build step
-    # that can fail on markup it dislikes)
+    # no Jekyll pass over generated output
     (out / ".nojekyll").write_text("", encoding="utf-8", newline="\n")
 
     plotly_src = STATIC / PLOTLY_NAME

@@ -1,4 +1,6 @@
-"""Vintage-true NREVSS typed-influenza (A vs B) data layer.
+"""SHIPPED (used by the FluBNF console, app/).
+
+Vintage-true NREVSS typed-influenza (A vs B) data layer.
 
 Source: Delphi Epidata's ``fluview_clinical`` endpoint,
 
@@ -6,25 +8,15 @@ Source: Delphi Epidata's ``fluview_clinical`` endpoint,
         ?regions=<r>&epiweeks=<a>-<b>[&issues=<i>]
 
 Rows carry ``epiweek, issue, lag, total_specimens, total_a, total_b,
-release_date``.  Regions are lowercase two-letter state abbreviations
-('pa'), 'hhs1'..'hhs10', or 'nat'.  Passing ``issues=<i>`` returns the
-data **as published at issue i** — the same vintage discipline the rest
-of this project applies to hospitalization truth: data as-of the
-forecast date, weeks the snapshot lacks are simply absent (never
-imputed), and every raw response is cached on disk so a retrospective
-harness replaying thousands of identical queries never re-hits the
-network.
+release_date``. Regions: lowercase state abbreviations ('pa'),
+'hhs1'..'hhs10', or 'nat'. ``issues=<i>`` returns the data as published at
+issue i; weeks a snapshot lacks are absent (never imputed), and every raw
+response is cached on disk so replays never re-hit the network.
 
-Release cadence (verified live 2026-08-19): issue ``<ew>`` is published
-the Friday after epiweek ``<ew>``'s Saturday end — e.g. epiweek 202351
-(ending Sat 2023-12-23) has its lag-0 row released 2023-12-29.  Callers
-that need strictly-before-a-midweek-deadline data should pass an
-``asof`` one week earlier; this module fetches exactly the issue of the
-asof's epiweek (with a two-step earlier-issue fallback for holiday
-publishing gaps).
-
-No new dependencies: HTTP via urllib, MMWR week arithmetic implemented
-inline (see :func:`mmwr_week`).
+Issue ``<ew>`` is published the Friday after epiweek ``<ew>`` ends; for
+data strictly before a midweek deadline pass an ``asof`` a week earlier.
+This module fetches the asof epiweek's issue, falling back two issues for
+holiday publishing gaps. HTTP via urllib, MMWR arithmetic inline.
 """
 
 from __future__ import annotations
@@ -52,9 +44,8 @@ DEFAULT_A_SHARE = 0.85
 #: Minimum typed specimens (A+B) for a week to anchor the a0 share.
 MIN_TYPED = 20
 
-#: Standard HHS region membership, by postal abbreviation.  Used when a
-#: state withholds clinical data (no rows / all-zero specimens): we fall
-#: back to its HHS region's series.
+#: HHS region membership by postal abbreviation: the fallback series when a
+#: state withholds clinical data (no rows / all-zero specimens).
 STATE_TO_HHS = {
     "ct": 1, "me": 1, "ma": 1, "nh": 1, "ri": 1, "vt": 1,
     "nj": 2, "ny": 2, "pr": 2, "vi": 2,
@@ -89,20 +80,11 @@ def _week1_sunday(year: int) -> date:
 def mmwr_week(d) -> tuple:
     """MMWR (epi) year and week of a date -> (year, week).
 
-    Convention (verified): MMWR weeks run Sunday through Saturday; week 1
-    of a year is the first week containing at least four days of that
-    calendar year — equivalently the Sunday-start week containing
-    January 4.  Relation to ``datetime.isocalendar`` (verified by test
-    over 2013-2026): mmwr_week(d) equals isocalendar(d + 1 day)[:2]
-    (Sunday-start vs ISO's Monday-start) EXCEPT throughout years whose
-    January 4 falls on a Sunday (2015, 2026, ...), where the schemes'
-    week-1 anchors differ by a week: there MMWR week = ISO week - 1,
-    with ISO week 1 belonging to the old MMWR year as week 53 (so 2014
-    and 2025 are 53-week MMWR years; 2020 is one too, but ISO agrees
-    there).  Verified against the Delphi API itself on 2026-08-19:
-    epiweek 202553 exists in fluview_clinical (so 2025 has 53 MMWR
-    weeks), and epiweek 202351's lag-0 row was released Friday
-    2023-12-29, six days after its Saturday 2023-12-23 week end.
+    MMWR weeks run Sunday-Saturday; week 1 is the Sunday-start week
+    containing January 4. Equals isocalendar(d + 1 day)[:2] EXCEPT in years
+    whose January 4 is a Sunday (2015, 2026, ...), where MMWR week = ISO
+    week - 1 and ISO week 1 is the old year's week 53 (2014 and 2025 have
+    53 MMWR weeks; Delphi has epiweek 202553).
     """
     d = _as_date(d)
     for year in (d.year + 1, d.year, d.year - 1):
@@ -158,13 +140,10 @@ def _snapshot(region: str, issue: int, ew_start: int, ew_end: int,
               cache_dir=None) -> list:
     """Rows of the (region, issue) snapshot covering [ew_start, ew_end].
 
-    The raw response is cached at ``<cache_dir>/<region>_<issue>.json``
-    BEFORE any fallback logic runs — empty responses included — so a
-    replayed query (holiday-gap fallbacks and all) is served entirely
-    from disk.  The cached file records the epiweek range it was fetched
-    with; a request outside that range is a cache miss and refetches
-    (overwriting with the wider range never happens implicitly — the
-    new request's own range is what gets stored).
+    The raw response (empty ones included) is cached at
+    ``<cache_dir>/<region>_<issue>.json`` BEFORE any fallback, so a replay
+    is served from disk. The file records its epiweek range; a request
+    outside it misses and refetches, storing the new request's range.
     """
     cache_dir = Path(cache_dir) if cache_dir is not None else CACHE_DIR
     path = cache_dir / f"{region}_{issue}.json"
@@ -198,23 +177,19 @@ def fetch_typed(region: str, season_start_iso, asof_iso,
                 cache_dir=None) -> pd.DataFrame:
     """Typed-influenza counts for `region`, AS KNOWN at `asof_iso`.
 
-    Requests ``epiweeks=<season_start_ew>-<asof_ew>`` with
-    ``issues=<asof_ew>``; if that issue returns nothing (holiday
-    publishing gaps), retries the two preceding issues before giving up.
-    Returns a DataFrame with columns [date, total_a, total_b,
-    total_specimens], date being each epiweek's Saturday end, sorted.
-    Weeks the snapshot lacks are simply absent rows — never imputed.
-    ``total_specimens`` rides along for withheld-state detection; the
-    typed contract is the first three columns.
+    Requests ``epiweeks=<season_start_ew>-<asof_ew>`` at
+    ``issues=<asof_ew>``, falling back to the two preceding issues if empty
+    (holiday gaps). Returns [date, total_a, total_b, total_specimens], date
+    the epiweek's Saturday, sorted; missing weeks are absent, never imputed.
+    ``total_specimens`` is for withheld-state detection.
     """
     ew_start = _ew(season_start_iso)
     ew_end = _ew(asof_iso)
     rows: list = []
     for back in range(3):
         issue = _ew_shift(ew_end, -back)
-        # An issue cannot contain epiweeks after itself (lag >= 0), so a
-        # fallback query clamps its range at the issue — which also lets
-        # a replay hit the cached primary-issue file.
+        # an issue holds no later epiweeks (lag >= 0); clamping also lets a
+        # replay hit the cached primary-issue file
         rows = _snapshot(region, issue, ew_start, min(ew_end, issue),
                          cache_dir=cache_dir)
         if rows:
@@ -262,13 +237,10 @@ def a_share_series(state_name: str, season_start, asof,
                    locations_csv=None, cache_dir=None) -> pd.DataFrame:
     """As-of typed series for a full state name, with HHS fallback.
 
-    Maps the full state name to its lowercase abbreviation via the
-    locations csv ('US' maps to region 'nat') and calls
-    :func:`fetch_typed`.  If the state returns no rows or all-zero
-    specimens (some states withhold clinical data), falls back to the
-    state's HHS region series.  The region actually used is recorded in
-    the 'source' column (and ``df.attrs['source']``): e.g. 'pa' or
-    'hhs3'.
+    Full name -> abbreviation via the locations csv ('US' -> 'nat'). No
+    rows or all-zero specimens (withheld data) falls back to the HHS
+    region; the region used is in the 'source' column and
+    ``df.attrs['source']`` (e.g. 'pa', 'hhs3').
     """
     abbr = _abbr_for(state_name, locations_csv)
     region = "nat" if abbr == "us" else abbr
@@ -288,11 +260,8 @@ def a0_share(state_name: str, season_start, asof,
              locations_csv=None, cache_dir=None) -> float:
     """A/(A+B) of the FIRST as-of week with >= MIN_TYPED typed specimens.
 
-    Falls back to DEFAULT_A_SHARE (0.85, typical early-season A
-    dominance) when no week reaches the threshold — or on ANY failure,
-    network included: this function never raises.  The returned value is
-    clipped into (0, 1) as [0.01, 0.99] so a perfectly one-typed early
-    week can't hand downstream code a degenerate 0 or 1.
+    DEFAULT_A_SHARE (0.85) when no week qualifies or on ANY failure: never
+    raises. Clipped to [0.01, 0.99] so a one-typed week is not degenerate.
     """
     try:
         df = a_share_series(state_name, season_start, asof,

@@ -1,9 +1,6 @@
-"""The Groundhog-only retrospective: retro.run_week / run_season with
-engine="analogue" replay the analogue member alone, prepare no cell, need
-no engine venv, and store a week every reader takes as one member. This is
-the path that reproduces the Groundhog's published numbers from inside
-the console in minutes (measured 2026-09-22: 2025-26 through this path
-scores 0.6509 on 4,475 cells, cell for cell the standalone module's own).
+"""The Groundhog-only retrospective: engine="analogue" replays the analogue
+member alone (no cells, no engine venv) and stores a week every reader takes
+as one member; it reproduces the Groundhog's published numbers in minutes.
 """
 import json
 import sys

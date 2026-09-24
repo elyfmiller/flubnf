@@ -1,8 +1,5 @@
-"""The Data page's read-only views: the freshness panel (latest vintage
-stats), the interactive latest-vintage preview (location selector, recent
-weeks table, a full Plotly series chart), and the vintage browser (pick an
-archived vintage, see exactly what that week knew). All read-only, all
-served from cached scans of the immutable vintage files."""
+"""The Data page's read-only views (freshness panel, latest-vintage preview,
+vintage browser), served from cached scans of immutable vintage files."""
 import sys
 from pathlib import Path
 
@@ -13,6 +10,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.core import data as data_mod                # noqa: E402
 from app.ui import server as srv                     # noqa: E402
+from app.ui.routes import data as ui_data            # noqa: E402
+from app.ui import shared as ui_shared               # noqa: E402
 
 client = TestClient(srv.app)
 
@@ -48,9 +47,9 @@ def archive(tmp_path, monkeypatch):
         ("2098-01-03", "US", "US", 1600),
     ])
     monkeypatch.setattr(data_mod, "ARCHIVE", tmp_path)
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     yield tmp_path
-    srv._invalidate_scans()      # answers for this root must not outlive it
+    ui_shared._invalidate_scans()      # answers for this root must not outlive it
 
 
 def test_freshness_panel_states_the_latest_vintages_own_numbers(archive):
@@ -72,11 +71,9 @@ def test_default_preview_is_the_latest_vintage(archive):
     # US leads the location order
     joined = " ".join(html.split())
     assert joined.index(">US</option>") < joined.index(">Ohio</option>")
-    # the vintage chart is the forecast tab's charting framework (user
-    # report 2026-08-21 replaced the too-small sparkline): plotly loads,
-    # the plot div is sized like the forecast data panel, the series
-    # arrives as data, and the layout resolves theme tokens per draw and
-    # redraws on themechange
+    # the vintage chart uses the forecast tab's plotly framework: sized like
+    # its data panel, series as data, theme tokens resolved per draw and
+    # redrawn on themechange
     assert '<script src="/static/plotly.min.js"></script>' in html
     assert '<div id="vintageplot" style="min-height:380px"></div>' in html
     assert "const VSERIES = {" in html
@@ -90,12 +87,10 @@ def test_default_preview_is_the_latest_vintage(archive):
 
 
 def test_vintage_chart_carries_the_season_mode_pair(archive):
-    """The vintage browser gets the forecast data panel's view pair: a
-    full-series / season-over-season toggle in its conventions -- quiet
-    buttons stating aria-pressed (gold when active), the shared season
-    palette tokens resolved per draw, month ticks from the one server-side
-    offset list, and per-season hover carrying each season's real dates.
-    Full series stays the default (the newest-week marker lives there)."""
+    """The vintage browser's full-series / season-over-season toggle follows
+    the forecast panel's conventions (aria-pressed quiet buttons, shared
+    season palette, server month ticks, real per-season dates); full series
+    is the default."""
     html = client.get("/data?loc=Ohio").text
     # the mode pair, above the chart, full series pressed by default
     assert 'id="vb-mode-raw" aria-pressed="false"' in html
@@ -143,10 +138,8 @@ def test_vintage_browser_shows_what_that_week_knew(archive):
 
 
 def test_recent_weeks_reads_as_a_compact_instrument(archive):
-    """The vintage browser's density fix: the recent-weeks table keeps a
-    compact natural width with its numbers right-set directly beside their
-    weeks, and it sits beside the vintage chart at desktop widths instead
-    of spanning the card as a page-wide ledger."""
+    """The recent-weeks table keeps a compact width with right-set numbers
+    and sits beside the chart at desktop widths."""
     html = client.get("/data?loc=Ohio").text
     # chart and table share the two-column layout
     assert 'class="vintagecols"' in html
@@ -167,9 +160,8 @@ def test_recent_weeks_reads_as_a_compact_instrument(archive):
 
 
 def test_no_series_still_says_so_in_words(archive):
-    # Wyoming's one row was unreported, so V1 dropped the location: the
-    # fallback note appears and the layout renders the fallback location's
-    # real series rather than an empty two-column shell
+    # Wyoming's only row was unreported: the fallback note shows and the
+    # fallback location's real series renders
     html = client.get(f"/data?vintage={V1}&loc=Wyoming").text
     joined = " ".join(html.split())
     assert "not in the" in joined and "showing US" in joined
@@ -186,18 +178,19 @@ def test_bad_selections_fall_back_with_a_note_never_an_error(archive):
 
 
 def test_data_page_stays_read_only(archive):
-    """The only POST forms on the page are the two hub controls; the
-    browser and preview are pure GET."""
+    """The only POST forms on the page are the two hub controls and the
+    dataset upload (Your datasets); the browser and preview are pure GET."""
     html = client.get("/data").text
-    assert html.count('method="post"') == 2
+    assert html.count('method="post"') == 3
     assert 'action="/freshness"' in html and 'action="/data/pull"' in html
+    assert 'action="/data/datasets#datasets"' in html
     assert 'method="get" action="/data"' in html
 
 
 def test_vintage_scans_are_ttl_cached():
     """The heavy per-vintage scans carry a long TTL (the files are
     immutable) and register with the shared invalidation."""
-    for fn in (srv._vintage_summary, srv._vintage_locations,
-               srv._vintage_series):
+    for fn in (ui_data._vintage_summary, ui_data._vintage_locations,
+               ui_data._vintage_series):
         assert hasattr(fn, "cache_clear")
         assert fn.ttl_s >= 60

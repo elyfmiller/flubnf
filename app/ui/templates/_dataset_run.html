@@ -1,0 +1,93 @@
+{# A run on a custom dataset (run.html, app/ui/datasets_ui.run_page_extra):
+   the fans per group and model, and the export files. Tips imported by
+   run.html. #}
+<div class="card" id="ds-fans"><h2>Forecasts on {{ dataset.name }}
+ {{ tips.tip("run-ds-fans", "these forecasts", ("Vintage-true: each group was forecast from the as_of snapshot of its week." if dataset.vintage_true else "Final data, not vintage-true: the week was cut from the final series, so later revisions leak in.") ~ " The band is the 10-90% interval; the dotted line is what the dataset holds after the forecast date.") }}</h2>
+ <div class="carousel" id="dsf-models"></div>
+ <div class="carousel">
+  <button type="button" class="quiet cnav" id="dsf-prev">◀</button>
+  <select id="dsf-loc" aria-label="group" style="width:auto;min-width:200px;max-width:100%"></select>
+  <button type="button" class="quiet cnav" id="dsf-next">▶</button>
+  <span class="hint" id="dsf-pos"></span>
+ </div>
+ <div id="dsf-plot" style="min-height:380px"></div>
+</div>
+
+<div class="card" id="ds-exports"><h2>Export files
+ {{ tips.tip("run-ds-exports", "the export files", "Hubverse model-output CSVs (23 quantiles, horizons 0 to 3, reference date = forecast date + 7 days) keyed by your data's own " ~ (dataset.key_col or "location") ~ " column and target '" ~ (dataset.target or "custom") ~ "'. Named FluBNF-Groundhog and FluBNF-SIHRS-PF, never a registered hub identity; nothing is submitted.") }}</h2>
+ {% for e in exports %}
+ <p>{{ e.model }}: <a href="/output/download?path={{ e.path | urlencode }}">{{ e.name }}</a></p>
+ {% else %}<p class="hint">No export files for this run.</p>{% endfor %}
+</div>
+<script>
+ (function(){
+  const F = {{ fans_json | safe }};
+  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  const COLS = F.colors || {};
+  const models = ['pf','analogue'].filter(m => F.models[m] && Object.keys(F.models[m]).length);
+  if(!models.length){document.getElementById('ds-fans').hidden=true; return;}
+  let M = models[0], I = 0;
+  const sel = document.getElementById('dsf-loc');
+  const rootPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  function rgba(c,a){
+    if(c&&c[0]==='#'&&c.length===7){const n=parseInt(c.slice(1),16);
+      return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';}
+    return c;
+  }
+  function addDays(ds, n){const p=ds.split('-');
+    const d=new Date(Date.UTC(+p[0],+p[1]-1,+p[2]+n)); return d.toISOString().slice(0,10);}
+  function locs(){return Object.keys(F.models[M]||{});}
+  function draw(){
+    const L = locs(); if(!L.length) return;
+    I = ((I % L.length) + L.length) % L.length;
+    const loc = L[I], qs = F.models[M][loc];
+    if(sel.dataset.m !== M){sel.innerHTML='';
+      L.forEach(l=>{const o=document.createElement('option'); o.textContent=l; sel.appendChild(o);});
+      sel.dataset.m = M;}
+    sel.selectedIndex = I;
+    document.getElementById('dsf-pos').textContent = (I+1)+'/'+L.length;
+    const ob = (F.observed[loc]||[]).slice(-12);
+    const hs = Object.keys(qs).sort();
+    const xs = hs.map(h => addDays(F.date, 7*(parseInt(h)+1)));
+    const last = ob.length ? [ob[ob.length-1]] : [];
+    const fx = [...last.map(p=>p[0]), ...xs];
+    const pick = q => [...last.map(p=>p[1]), ...hs.map(h => qs[h][q])];
+    const mc = COLS[M] || css('--gold');
+    const fs = rootPx(), surf = css('--card');
+    const traces = [
+      {x: ob.map(p=>p[0]), y: ob.map(p=>p[1]), mode:'lines+markers',
+       name:'observed (as of '+F.date+')', line:{color:css('--ink')}},
+      {x: fx, y: pick('0.9'), mode:'lines', line:{width:0}, showlegend:false, hoverinfo:'skip'},
+      {x: fx, y: pick('0.1'), mode:'lines', fill:'tonexty', fillcolor: rgba(mc,.2),
+       line:{width:0}, name:'10-90% interval'},
+      {x: fx, y: pick('0.5'), mode:'lines+markers', name:'median', line:{color:mc, width:2.5}}];
+    const af = (F.after||{})[loc] || [];
+    if(af.length) traces.push({x: af.map(p=>p[0]), y: af.map(p=>p[1]),
+      mode:'lines+markers', name:'later data', line:{color:css('--ink'), dash:'dot', width:1.4},
+      marker:{size:4}});
+    Plotly.react('dsf-plot', traces, {
+      title:{text: loc+' · '+(F.names[M]||M), font:{size:Math.round(fs*.95)}},
+      height:380, margin:{l:8,r:8,t:Math.round(fs*2.2),b:8},
+      paper_bgcolor:surf, plot_bgcolor:surf,
+      font:{color:css('--ink'), family:'"DM Sans",system-ui,sans-serif', size:Math.round(fs*.85)},
+      legend:{orientation:'h', x:0, xanchor:'left', y:-0.22, yanchor:'top'},
+      xaxis:{gridcolor:css('--line'), automargin:true},
+      yaxis:{gridcolor:css('--line'), rangemode:'tozero', automargin:true}},
+      {responsive:true, displaylogo:false});
+  }
+  const mb = document.getElementById('dsf-models');
+  models.forEach(m => {const b=document.createElement('button');
+    b.type='button'; b.className='quiet'+(m===M?' gold':''); b.textContent=F.names[m]||m;
+    b.setAttribute('aria-pressed', String(m===M));
+    b.onclick=()=>{const cur=locs()[I]; M=m; I=Math.max(0, locs().indexOf(cur));
+      mb.querySelectorAll('button').forEach(x=>{x.classList.toggle('gold', x===b);
+        x.setAttribute('aria-pressed', String(x===b));}); draw();};
+    mb.appendChild(b);});
+  document.getElementById('dsf-prev').onclick=()=>{I--; draw();};
+  document.getElementById('dsf-next').onclick=()=>{I++; draw();};
+  sel.onchange=function(){I=this.selectedIndex; draw();};
+  draw();
+  addEventListener('themechange', draw);
+  addEventListener('fontsizechange', draw);
+ })();
+</script>

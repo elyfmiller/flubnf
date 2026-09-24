@@ -1,10 +1,7 @@
-"""The retired blend is never a choice beside the models that ship.
-
-A run or a retrospective season from before 2026-09-22 stored the blend's
-forecasts under "ensemble". The home outlook stopped offering it in PR #6
-(report_v2.toggle_models); the Forecast page's model buttons and the
-season player's model checkboxes follow the same rule here. The blend is
-drawn only when a legacy record stored nothing else.
+"""The retired blend is never a choice beside the models that ship: records
+from before its retirement store it under "ensemble", but the Forecast
+page's model buttons and the season player's checkboxes never offer or draw
+it, even when a legacy record stored nothing else (as the home outlook).
 """
 import json
 import re
@@ -19,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from fastapi.testclient import TestClient              # noqa: E402
 
 import app.ui.server as srv                            # noqa: E402
+from app.ui import shared as ui_shared                 # noqa: E402
 from app.core import report_v2                         # noqa: E402
 
 client = TestClient(srv.app)
@@ -39,7 +37,7 @@ def _res(*models):
 
 
 def _fanq(monkeypatch, *models):
-    monkeypatch.setattr(srv, "_latest_results", lambda: ("r1", _res(*models)))
+    monkeypatch.setattr(ui_shared, "_latest_results", lambda: ("r1", _res(*models)))
     r = client.get("/forecast")
     assert r.status_code == 200
     m = re.search(r"const FANQ = (\{.*?\});", r.text)
@@ -60,8 +58,8 @@ def test_a_groundhog_only_legacy_run_offers_the_groundhog(monkeypatch):
     assert _fanq(monkeypatch, "analogue", "ensemble") == ["analogue"]
 
 
-def test_a_legacy_run_with_nothing_else_still_draws_the_blend(monkeypatch):
-    assert _fanq(monkeypatch, "ensemble") == ["ensemble"]
+def test_a_legacy_run_with_nothing_else_draws_no_blend(monkeypatch):
+    assert _fanq(monkeypatch, "ensemble") == []
 
 
 def test_a_current_run_is_unchanged(monkeypatch):
@@ -85,7 +83,7 @@ def _offered(tmp_path, have):
     ({"pf": 1, "analogue": 1, "ensemble": 1}, ["pf", "analogue"]),
     ({"ensemble": 1, "analogue": 1}, ["analogue"]),
     ({"pf": 1, "pf2s": 1, "ensemble": 1}, ["pf", "pf2s"]),
-    ({"ensemble": 1}, ["ensemble"]),
+    ({"ensemble": 1}, []),
     ({"pf": 1, "analogue": 1}, ["pf", "analogue"]),
     ({}, []),
 ])

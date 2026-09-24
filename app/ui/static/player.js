@@ -1,11 +1,8 @@
 /* FluBNF shared season player core (flubnf-player-v1)
 
-   One player, two hosts. The console's retrospective season page loads this
-   file with a script tag and feeds it a network-backed payload getter;
-   app/core/report_season.py reads this same file at build time and inlines
-   it verbatim into the standalone season report, feeding a payload getter
-   backed by the report's embedded JSON block. Every player feature lands in
-   both hosts automatically.
+   One player, two hosts: the console's season page loads it with a script
+   tag (network-backed payloads); app/core/report_season.py inlines it
+   verbatim into the standalone season report (embedded-JSON payloads).
 
    Host contract, FluBNFPlayer.init(cfg):
      weeks         required: ordered list of ISO asof dates
@@ -15,22 +12,12 @@
                    controls immediately from this union; omitted, they
                    build lazily from the first payload that arrives
      us            optional {provenance, label, short_label, note,
-                   fitted, fallback, fallback_note}: what the US national
-                   series IS for this season, resolved host-side by
-                   app/core/us_national. Its three provenance states are
-                   "fitted" (the run fitted the national series as its own
-                   location), "aggregated" (no fit; the figure is summed
-                   from the state forecasts) and "officials_only" (neither;
-                   the CDC comparators alone). The player never guesses
-                   between them: omitted, it says officials only, which is
-                   what a host that cannot answer actually knows
-     seasonOfficials optional list of official models that submitted in at
-                   least one week of the season; drives the two-tier
-                   availability of the official toggles, and with the
-                   week's own official dict it separates "no submission"
-                   from "pending" in the stats table. Omitted, it falls
-                   back to catalog.officials (the static host's union) and
-                   then to client-side accumulation as payloads load
+                   fitted, fallback, fallback_note} from app/core/us_national;
+                   provenance is fitted | aggregated (sum of states) |
+                   officials_only. Omitted: officials only (never guessed)
+     seasonOfficials optional list of officials that submitted in some week;
+                   separates "no submission" from "pending". Omitted: falls
+                   back to catalog.officials, then accumulates from payloads
      palette       optional function() -> theme colors, re-read per redraw
      payloadError  optional function(week) -> message for a failed week
      isCached      optional function(week) -> true when getPayload(week)
@@ -43,29 +30,23 @@
      plotHeight    optional plot height in px (default 400)
      ids           optional DOM id overrides, see DEFAULT_IDS
 
-   Kept Safari-safe on purpose: no lookbehind regexes and nothing
-   asynchronous at the top level. The payload variable is ALWAYS named
-   `pl` so the contract test can verify the JS reads only fields the
-   playback API defines. */
+   Safari-safe: no lookbehind regexes, nothing asynchronous at top level.
+   The payload variable is ALWAYS `pl` (a contract test checks the fields
+   read against the playback API). */
 (function(root){
 'use strict';
 
 var MARKER = 'FluBNF shared season player core (flubnf-player-v1)';
 
-// the two CDC comparators are a fixed part of the UI: their toggles exist
-// even when a week's payload carries no official submissions yet
+// the two CDC comparators always get toggles, even before any submission
 var OFFICIALS = ['FluSight-baseline', 'FluSight-ensemble'];
 
 // ------------------------------------------------------ US national
 
-// THE three provenance states of the US national series, and the fallback
-// labels for each. The host resolves which one applies (app/core/
-// us_national, the single resolution order) and passes cfg.us; these
-// literals are the last resort for a host that passes nothing, and they
-// deliberately claim the LEAST: officials only is what a player that was
-// told nothing actually knows. A fitted national forecast and a
-// sum-of-states aggregate are different model outputs, so the location
-// entry, the chart title, and the empty-frame caption all name which.
+// THE three provenance states of the US national series. The host resolves
+// which applies (app/core/us_national) and passes cfg.us; these labels are
+// the fallback and claim the LEAST (officials only). Fitted and
+// sum-of-states are different outputs, so every US label names which.
 var US_PROVENANCE = {FITTED: 'fitted', AGGREGATED: 'aggregated',
                      OFFICIALS: 'officials_only'};
 var US_LABELS = /*US_LABELS_JSON*/{
@@ -74,24 +55,20 @@ var US_LABELS = /*US_LABELS_JSON*/{
   "officials_only": "US (official models only)"
 }/*END_US_LABELS_JSON*/;
 
-// which provenance a host config asserts; anything unrecognised, absent,
-// or malformed reads as officials only
+// anything unrecognised, absent or malformed reads as officials only
 function usProvenance(us){
   var p = us && us.provenance;
   return (p === US_PROVENANCE.FITTED || p === US_PROVENANCE.AGGREGATED)
     ? p : US_PROVENANCE.OFFICIALS;
 }
 
-// the location entry's text: the host's own resolved label when it sent
-// one (it can name the state count, "sum of 52 states"), else the literal
-// for the provenance it asserted
+// the host's resolved label when sent, else the provenance literal
 function usLabel(us){
   if(us && us.label) return String(us.label);
   return US_LABELS[usProvenance(us)];
 }
 
-// whether a location string names the national row. One spelling test,
-// mirroring app/core/us_national.is_us
+// mirrors app/core/us_national.is_us
 function isUS(loc){
   var s = String(loc == null ? '' : loc).replace(/^\s+|\s+$/g, '')
             .toUpperCase();
@@ -99,17 +76,13 @@ function isUS(loc){
       || s === 'USA';
 }
 
-// how a location reads in a chart title, a legend, and a saved image's
-// filename: a state by its own name, the national row by its provenance
-// label, so a downloaded figure states which US series it holds
+// title/legend/filename text: the US row by its provenance label
 function locLabel(loc, us){
   return isUS(loc) ? usLabel(us) : String(loc);
 }
 
-// one location's entry in a payload map (truth, a model's fans). The
-// selected US value is the plain code 'US'; a payload may key the same
-// series under any national spelling, so the national row is matched by
-// the spelling test rather than by string equality
+// one location's entry in a payload map; the national row matches any US
+// spelling, not just 'US'
 function pickLoc(map, loc){
   if(!map) return null;
   if(map[loc] !== undefined) return map[loc];
@@ -120,19 +93,10 @@ function pickLoc(map, loc){
   return null;
 }
 
-// THE one model-name map: every surface that prints a model name reads
-// this, so pf/analogue/ensemble never appear under different names on
-// different surfaces. The player's legend, toggles, and stats table use it
-// directly; the console templates and the season report builder read the
-// SAME literal through Python (app/core/report_season.py, model_names),
-// which parses the marked JSON below. Keep it a pure JSON object between
-// the markers for that reason.
-//
-// "analogue" is the Groundhog: the calendar analogue engine with its
-// shipped auxiliary donor bank. "ensemble" names a model a stored run or
-// season from before 2026-09-22 may carry; nothing computes it now. The
-// hub submission identity is a SEPARATE thing: forecasts go out under the
-// registered model_id built in app/core/submit.py, not a display name.
+// THE one model-name map for every surface. Python parses the marked JSON
+// (app/core/report_season.py model_names), so keep it pure JSON between the
+// markers. "analogue" is the Groundhog; "ensemble" is retired (stored runs
+// before 2026-09-22). Hub model_ids are built in app/core/submit.py.
 var MODEL_NAMES = /*MODEL_NAMES_JSON*/{
   "ensemble": "FluBNF Ensemble (retired)",
   "pf": "Oracle SIHRS",
@@ -142,22 +106,12 @@ var MODEL_NAMES = /*MODEL_NAMES_JSON*/{
   "FluSight-baseline": "FluSight baseline (official)"
 }/*END_MODEL_NAMES_JSON*/;
 
-// THE one member-color map, same contract as MODEL_NAMES above: every
-// surface that draws a member series reads this literal (the player
-// directly, the console templates and both report builders through
-// Python's model_colors parse), so a member wears one color everywhere.
-// Spacing re-measured 2026-08-21 for dichromat separability (Vienot
-// deuteranopia and protanopia): every pair that can share a chart now
-// sits at 60+ simulated-distance under both matrices (the old slate/teal
-// pair measured 27), and pf/pf2s hold 3:1 or better against all eight
-// theme grounds. The gold and cyan identities are the anchors; on light
-// grounds the console draws the ensemble through --gold (the readable
-// accent-ink variant), which the audit also covers. Because the palette
-// is dichromat-safe by construction, the CV-safe mode deliberately does
-// NOT swap these member colors: only the semantic ok/bad pair and the
-// outlook category scale change under data-vision="cvd", and a member
-// line keeps its one identity in every mode. Keep it a pure JSON
-// object between the markers.
+// THE one member-color map (same marked-JSON contract; Python's
+// model_colors parses it), so a member wears one color everywhere. Every
+// pair that can share a chart is 60+ apart under Vienot deuteranopia and
+// protanopia, and pf/pf2s hold 3:1 on all eight theme grounds (audited in
+// test_a11y_modes.py), so the CV-safe mode deliberately does
+// NOT swap these member colors. Keep it pure JSON between the markers.
 var MODEL_COLORS = /*MODEL_COLORS_JSON*/{
   "ensemble": "#34C0F0",
   "pf": "#1979FF",
@@ -165,35 +119,22 @@ var MODEL_COLORS = /*MODEL_COLORS_JSON*/{
   "pf2s": "#A66395"
 }/*END_MODEL_COLORS_JSON*/;
 
-// THE season-line palette's RED-GREEN-SAFE set (the season-over-season
-// data charts), same marked-JSON contract as MODEL_COLORS above: the
-// console reads it through Python (report_v2.season_colors). Since
-// 2026-08-21 the season lines carry TWO palettes at the token layer in
-// nau.css: --season-1..6 holds a normal-vision tab10-adjacent default,
-// and data-vision="cvd" remaps it onto --season-cvd-1..6, whose literals
-// are EXACTLY this list -- so the CV-safe toggle now visibly moves the
-// season lines. Console charts resolve the tokens per draw
-// (getComputedStyle) and fall back to this list where the tokens do not
-// exist (the fixed-dark standalone report), which keeps the fallback the
-// audited safe set. The six colors were spaced 2026-08-21 so every
-// cyclically adjacent pair, and the FIRST color against both --gold
-// variants (#34C0F0 on dark grounds, #0173A9 on light) that the newest
-// season's line wears, measures 60+ apart under the Vienot deuteranopia
-// and protanopia matrices AND in normal vision, and each color holds
-// 3:1+ against all eight theme grounds. Seasons are colored newest-first
-// (the newest non-gold season takes index 0, cycling when seasons
-// outnumber colors), so the pair drawn beside the gold line is always
-// the audited one. Any value change here or in the nau.css token blocks
-// must re-clear the palette audit (app/tests/test_season_palette.py).
-// Keep it a pure JSON array between the markers.
+// THE season-line palette's RED-GREEN-SAFE set (marked JSON, parsed by
+// report_v2.season_colors). nau.css --season-1..6 is the normal-vision
+// default; data-vision="cvd" remaps it onto --season-cvd-1..6, which equal
+// this list. Charts resolve the tokens per draw and fall back here (the
+// fixed-dark report). Every adjacent pair, and index 0 against both --gold
+// variants, is 60+ apart under Vienot deuteranopia/protanopia and in normal
+// vision; seasons color newest-first so the pair beside the gold newest
+// line is the audited one. Any change here or in the nau.css tokens must
+// re-clear app/tests/test_season_palette.py. Keep it pure JSON between the
+// markers.
 var SEASON_COLORS = /*SEASON_COLORS_JSON*/[
   "#A87300", "#3375FB", "#C9568C", "#0087AF", "#B96D36", "#8568E3"
 ]/*END_SEASON_COLORS_JSON*/;
 
-// resolve one season-line color: the --season-N token where the host page
-// carries the console stylesheet (normal palette by default, the cvd set
-// under data-vision="cvd"), else the SEASON_COLORS literal. i counts
-// newest-first from 0 and cycles.
+// --season-N token where the page has the console stylesheet, else the
+// SEASON_COLORS literal; i counts newest-first from 0 and cycles
 function seasonColor(i){
   var n = SEASON_COLORS.length, k = ((i % n) + n) % n;
   try{
@@ -208,10 +149,8 @@ function seasonColor(i){
 // carrying this note instead of silently drawing nothing
 var UNAVAIL_NOTE = ' (fetch via Update data on the Data tab)';
 
-// an official model that submitted somewhere in the season but not this
-// week (the competition window: mid-September and June weeks legitimately
-// lack files) keeps a live toggle with this transient annotation; there is
-// simply nothing to draw for it this frame
+// an official that submitted somewhere in the season but not this week
+// (outside the competition window) keeps a live toggle with this note
 var WEEK_NOTE = ' (no official submission this week)';
 
 var DEFAULT_IDS = {prev: 'pb-prev', play: 'pb-play', next: 'pb-next',
@@ -219,11 +158,8 @@ var DEFAULT_IDS = {prev: 'pb-prev', play: 'pb-play', next: 'pb-next',
   lock: 'fd-lock', models: 'fd-models', plot: 'fd-plot', msg: 'fd-msg',
   stats: 'pb-stats', status: 'pb-status', offhint: 'pb-offhint'};
 
-// the report's fixed dark kit; the console overrides with its CSS
-// variables. `card` is the surface the plot sits on: it is stated
-// explicitly as the chart background (identical on screen to the old
-// transparency) so the modebar's save-PNG export carries an opaque
-// ground inside the file and stays readable on its own.
+// the report's fixed dark kit (the console passes its CSS variables).
+// `card` is the explicit chart background so a saved PNG has an opaque ground.
 var DEFAULT_PALETTE = {ink: '#E9EAF4', mut: '#9AA1C4', line: '#262A45',
   card: '#151729',
   models: MODEL_COLORS,
@@ -232,8 +168,7 @@ var DEFAULT_PALETTE = {ink: '#E9EAF4', mut: '#9AA1C4', line: '#262A45',
 var PCONF = {responsive: true, displaylogo: false, scrollZoom: true,
              doubleClick: 'reset'};
 
-// per-frame embed config: PCONF plus the save-PNG options (2x scale for a
-// crisp figure, a meaningful filename naming the location and week)
+// PCONF plus save-PNG options: 2x scale, filename naming location and week
 function frameConf(loc, week){
   var c = {}, k;
   for(k in PCONF) c[k] = PCONF[k];
@@ -244,10 +179,7 @@ function frameConf(loc, week){
 
 // ---------------------------------------------------------- pure helpers
 
-// chart text rides the host's type system: the root font size in px, so
-// plotly sizes (which are px, never rem) track the console's A-/A/A+
-// control. The static report has no such control; there this simply reads
-// the report's own fixed root size once per redraw.
+// root font size in px, so plotly text (px only) tracks the A-/A/A+ control
 function rootFont(){
   try{
     return parseFloat(
@@ -275,14 +207,12 @@ function dashOf(m){
        : m === 'FluSight-ensemble' ? 'dash' : 'solid';
 }
 
-// display names come from the shared map above, keeping the two ensembles
-// unmistakable in the legend, the model toggles, and the stats table
 function nameOf(m){
   return MODEL_NAMES[m] || m;
 }
 
-// a user-set range from a plotly relayout event, in either of the two
-// shapes plotly emits: 'xaxis.range[0]'/'[1]' pairs, or 'xaxis.range'
+// a user-set range from a plotly relayout event, in either shape plotly
+// emits: 'xaxis.range[0]'/'[1]' pairs, or 'xaxis.range'
 function relayoutRange(ev, axis){
   var a = ev[axis + '.range[0]'], b = ev[axis + '.range[1]'];
   if(a !== undefined && b !== undefined) return [a, b];
@@ -291,9 +221,8 @@ function relayoutRange(ev, axis){
   return null;
 }
 
-// the view-state reducer: fold one relayout event into the stored user
-// view {x, y}. A user zoom or pan (range keys) becomes the ACTIVE view;
-// an autorange reset clears it; anything else leaves it untouched
+// fold one relayout event into the stored user view {x, y}: zoom/pan sets
+// it, an autorange reset clears it, anything else leaves it
 function viewStateUpdate(cur, ev){
   cur = cur || {x: null, y: null};
   if(!ev) return cur;
@@ -304,8 +233,7 @@ function viewStateUpdate(cur, ev){
   return {x: x || cur.x, y: y || cur.y};
 }
 
-// per-model availability against the current payload: an official model is
-// available only when this week's official dict actually carries it
+// an official is available only when this week's official dict carries it
 function officialAvailability(pl, officials){
   var off = (pl && pl.official) || {}, out = {};
   officials.forEach(function(m){ out[m] = !!off[m]; });
@@ -325,54 +253,39 @@ function availabilityTier(weekHas, seasonHas){
   return {disabled: true, note: UNAVAIL_NOTE};
 }
 
-// what one WEEK cell of the stats table reads. A real score always wins.
-// Otherwise the two blank cases are distinguished: a season-cataloged
-// official that filed nothing this week did not compete ("no submission"),
-// while anything else is a score that has not been computed ("pending").
-// weekKnown is false when the week's payload never arrived, in which case
-// nothing can be concluded about who submitted and "pending" stands.
+// one WEEK cell of the stats table: a real score wins; a season-cataloged
+// official that filed nothing this week reads "no submission"; anything
+// else (including a week whose payload never arrived) reads "pending"
 function weekCellState(v, isOfficial, weekKnown, weekHas, seasonHas){
   if(typeof v === 'number' && isFinite(v)) return 'score';
   if(isOfficial && weekKnown && !weekHas && seasonHas) return 'nosub';
   return 'pending';
 }
 
-// what the forecast-detail caption states when a frame draws no forecast
-// fan for the selected location. `available` counts the models whose
-// payload covers this location this week; `enabled` counts those of them
-// the viewer has toggled on. Data present with everything toggled off is
-// the viewer's own state and says so. A location no model covers this
-// week is stated plainly instead of leaving a bare empty chart -- and for
-// US the reason is structural: the fitted members are per-state, so the
-// officials are the US view's only source, and a week they did not submit
-// (outside the competition window) has nothing to draw.
-// The models the player offers, in display order: the models that ship,
-// never the retired blend beside them (a season played back before
-// 2026-09-22 stored its forecasts and scores). The blend is offered only
-// when a stored season has nothing else, so such a season still plays.
-// app/core/report_v2.py RETIRED_MODELS names the same set for the pages.
+// models offered, in display order: the ones that ship. A stored season's
+// retired blend is never offered (report_v2.RETIRED_MODELS is the same set)
 var RETIRED_MODELS = ['ensemble'];
 function offeredModels(have){
-  var live = ['pf', 'analogue', 'pf2s'].filter(function(m){ return have[m]; });
-  if(live.length) return live;
-  return RETIRED_MODELS.filter(function(m){ return have[m]; });
+  return ['pf', 'analogue', 'pf2s'].filter(function(m){
+    return have[m] && RETIRED_MODELS.indexOf(m) < 0;
+  });
 }
 
+// caption when a frame draws no fan: `available` models cover the location
+// this week, `enabled` of them are toggled on. For US the reason depends on
+// provenance (officials are the only source when nothing was fitted).
 function noForecastNote(loc, available, enabled, us){
   if(available > 0 && enabled > 0) return '';
   if(available > 0) return 'no models enabled';
   if(isUS(loc)){
     var p = usProvenance(us);
     if(p === US_PROVENANCE.FITTED)
-      return 'no US national forecast stored for this week; the fitted '
-        + 'national series covers the weeks the replay reached';
+      return 'no US national forecast stored for this week';
     if(p === US_PROVENANCE.AGGREGATED)
-      return 'no US fan is drawn for this week: the scores for this season '
-        + 'hold no scored US fit, and the fallback sum-of-states aggregate '
-        + 'is a season score rather than a weekly forecast (choose a state '
-        + 'above)';
-    return 'no official US submission for this week; the fitted forecasts '
-      + 'are per state (choose a state above)';
+      return 'no US fan: the sum-of-states aggregate is a season score, '
+        + 'not a weekly forecast (choose a state)';
+    return 'no official US submission this week; our forecasts are per '
+      + 'state (choose a state)';
   }
   return 'no forecast for ' + loc + ' this week';
 }
@@ -399,10 +312,8 @@ function createPlayer(cfg){
            suppress: false};
   var ALLM = [], OFFS = OFFICIALS.slice();
 
-  // season-level official availability: seeded once from the host (the
-  // live host passes the server catalog, the static host's catalog union
-  // covers it), then grown by every payload seen, so a hostless setup
-  // still converges as weeks load
+  // season-level official availability: seeded from the host, then grown
+  // by every payload seen
   var seasonOffs = {};
   ((cfg.seasonOfficials || (cfg.catalog && cfg.catalog.officials)) || [])
     .forEach(function(m){ seasonOffs[m] = 1; });
@@ -435,8 +346,7 @@ function createPlayer(cfg){
     var have = {};
     ((cat && cat.models) || (pl ? Object.keys(pl.models || {}) : []))
       .forEach(function(m){ have[m] = 1; });
-    // the models that ship, never the retired blend beside them
-    // (offeredModels); the season's headline keeps the blend's score
+    // the models that ship, never the retired blend (offeredModels)
     var ours = offeredModels(have);
     ALLM = ours.concat(OFFS);
     var dflt = {ensemble: true, pf: true, analogue: true};
@@ -453,11 +363,8 @@ function createPlayer(cfg){
         if(detailVisible()) drawFC(); else renderStats(P.pl);
       });
     });
-    // the US entry leads the list and SAYS WHAT IT IS: fitted at the
-    // national level, the sum-of-states fallback, or the official models
-    // alone. Any US spelling in the payload's own location list is folded
-    // into that single entry so a fitted season cannot offer two US rows
-    // whose difference is invisible.
+    // the US entry leads and names its provenance; every US spelling in
+    // the payload folds into it (never two US rows)
     var locs = ((cat && cat.locations) || (pl ? (pl.locations || []) : []))
       .filter(function(l){ return !isUS(l); });
     el.loc.innerHTML =
@@ -473,12 +380,8 @@ function createPlayer(cfg){
     });
   }
 
-  // ---- per-model availability, refreshed on every payload, two tiers:
-  // absent this week but submitted somewhere in the season keeps a LIVE
-  // toggle (with the transient no-submission note; the official simply
-  // did not submit outside its competition window), while absent for the
-  // whole season disables it with the Update-data fix. The user's checked
-  // state is never touched either way ----
+  // ---- per-model availability, refreshed on every payload (tiers: see
+  // availabilityTier); the checked state is never touched ----
   function updateAvailability(pl){
     if(!pl) return;
     Object.keys(pl.official || {}).forEach(function(m){
@@ -502,18 +405,15 @@ function createPlayer(cfg){
     if(pl) buildControls(pl);
     updateAvailability(pl);
     var tb = el.stats.querySelector('tbody');
-    // a missing score is quiet, never NaN or a crashed panel: "pending" for
-    // a score not yet computed, "no submission" for a cataloged official
-    // that simply filed nothing this week
+    // a missing score reads "pending", never NaN
     var fmt = function(v){
       return (typeof v === 'number' && isFinite(v))
         ? '<td class="num ' + (v < 1 ? 'ok' : 'bad') + '">'
           + v.toFixed(3) + '</td>'
         : '<td class="num hint">pending</td>';
     };
-    // the week cell alone distinguishes the two blanks; the cumulative cell
-    // keeps showing the real running number across the weeks that did have
-    // a submission, so a gap week never blanks the season total
+    // only the week cell distinguishes the blanks; the cumulative cell keeps
+    // its running number through gap weeks
     var av = pl ? officialAvailability(pl, OFFS) : null;
     var weekCell = function(v, m){
       var s = weekCellState(v, OFFS.indexOf(m) >= 0, !!av,
@@ -538,9 +438,8 @@ function createPlayer(cfg){
       || '<tr><td colspan="3" class="hint">no models enabled</td></tr>';
     el.status.textContent =
       pl ? '' : failMsg(weeks[P.idx], 'stats unavailable for this week');
-    // the whole-panel Update-data hint belongs only to a season with NO
-    // official submissions at all; a mere in-season gap week is already
-    // explained by the per-toggle notes and must not read as breakage
+    // the panel-wide Update-data hint only for a season with NO official
+    // submissions at all (gap weeks have per-toggle notes)
     if(el.offhint)
       el.offhint.hidden = !pl || Object.keys(pl.official || {}).length > 0
         || Object.keys(seasonOffs).length > 0;
@@ -587,10 +486,8 @@ function createPlayer(cfg){
   }
 
   // ---- axis lock: fixed ranges per location so playback never jumps.
-  // x spans the season window (first truth date to last asof + 28 days);
-  // y spans [0, 1.15 x the season's truth peak for the location].
-  // Computed once from the payload's full-season truth series and reused
-  // until the location changes ----
+  // x: first truth date to last asof + 28 days; y: [0, 1.15 x truth peak].
+  // Computed once per location ----
   var AXR = {loc: null, x: null, y: null};
   function lockRanges(pl, loc){
     if(AXR.loc === loc && AXR.x) return AXR;
@@ -605,10 +502,9 @@ function createPlayer(cfg){
     return AXR;
   }
 
-  // ---- user view state: a hand zoom or pan is the ACTIVE view. It is
-  // stored from plotly_relayout and reasserted on every subsequent frame,
-  // overriding the lock (or auto) ranges, until it is cleared by a double
-  // click, a location change, or the Lock axes toggle ----
+  // ---- user view state: a hand zoom/pan overrides the lock (or auto)
+  // ranges on every frame until a double click, a location change, or the
+  // Lock axes toggle clears it ----
   function bindPlot(){
     if(P.bound || !el.plot.on) return;
     P.bound = true;
@@ -617,9 +513,8 @@ function createPlayer(cfg){
       P.user = viewStateUpdate(P.user, ev);
     });
     el.plot.on('plotly_doubleclick', function(){
-      // plotly's own reset restores the ranges of the CURRENT frame,
-      // which may be the stored user view; drop the stored view and
-      // redraw so the lock (or auto) ranges reassert immediately
+      // plotly's reset would restore the stored user view; drop it and
+      // redraw so the lock (or auto) ranges reassert
       P.suppress = true;
       P.user = {x: null, y: null};
       setTimeout(function(){ P.suppress = false; drawFC(); }, 0);
@@ -660,30 +555,20 @@ function createPlayer(cfg){
         drawn++;
         fan(m, byH, w, ax, ay).forEach(function(t){ traces.push(t); });
       });
-      // a frame with nothing to draw for this location says WHY instead
-      // of standing as bare axes (the US view outside the officials'
-      // competition window, or every model toggled off)
+      // an empty frame says WHY instead of standing as bare axes
       el.msg.textContent = noForecastNote(loc, avail, drawn, cfg.us);
-      // truth drawn last so it sits on top; the tail beyond the now
-      // marker stays visible so forecast accuracy is legible at a glance
+      // truth drawn last (on top); the tail beyond now stays visible
       var p = pal();
       if(pastX.length) traces.push({x: pastX, y: pastY, mode: 'lines',
         name: 'truth (settled)', line: {color: p.ink, width: 2}});
       if(futX.length) traces.push({x: futX, y: futY, mode: 'lines',
         name: 'truth beyond now', opacity: .65,
         line: {color: p.ink, width: 1.3, dash: 'dot'}});
-      // locked: explicit ranges on every redraw, so nothing jumps between
-      // weeks. Unlocked: autoscale per frame. A stored user view beats
-      // both until it is cleared
-      // the chart title names the location the way the picker does, so a
-      // US frame states its provenance on the figure itself and not only
-      // in the dropdown the reader has already left behind
+      // locked ranges, else autoscale; a stored user view beats both. The
+      // title names US provenance on the figure itself.
       var title = locLabel(loc, cfg.us);
       var lock = (el.lock && el.lock.checked) ? lockRanges(pl, loc) : null;
-      // automargin: tick labels size the margins, so the tightened base
-      // margins below leave no dead band and nothing clips at the A+
-      // text step (locked ranges keep the ticks, and so the margins,
-      // stable across playback frames)
+      // automargin: tick labels size the margins (nothing clips at A+)
       var xa = {gridcolor: p.line, automargin: true};
       var ya = {gridcolor: p.line, rangemode: 'tozero', automargin: true};
       if(lock && lock.x){ xa.range = lock.x.slice(); xa.autorange = false; }
@@ -692,12 +577,9 @@ function createPlayer(cfg){
       if(P.user.y){ ya.range = P.user.y.slice(); ya.autorange = false; }
       var fs = rootFont();
       var surf = p.card || '#151729';
-      // chart text on the app's type scale, in root-proportional px so the
-      // A-/A/A+ control multiplies it: ticks and legend at .85rem (above
-      // the .82rem hint floor), the title one step up, the now marker at
-      // the hint floor itself. Base margins are tight (automargin above
-      // owns the tick sides); the top band is proportional so the title
-      // and the now label never collide or clip at A+.
+      // text in root-proportional px (ticks/legend .85, title .95, now
+      // marker .82); the top band scales so title and now label never
+      // collide at A+
       var L = {title: {text: title + ' · forecasts as of ' + w,
                        font: {size: Math.round(fs * .95)}},
         height: cfg.plotHeight || 400,
@@ -705,9 +587,7 @@ function createPlayer(cfg){
         paper_bgcolor: surf, plot_bgcolor: surf,
         font: {color: p.ink, family: '"DM Sans",system-ui,sans-serif',
                size: Math.round(fs * .85)},
-        // horizontal legend under the plot (it pushes the bottom margin
-        // out for itself): a right-hand legend of long model names was
-        // eating a third of the panel width as a dead band
+        // legend under the plot (a right-hand one ate a third of the width)
         legend: {orientation: 'h', x: 0, xanchor: 'left',
                  y: -0.22, yanchor: 'top'},
         xaxis: xa,
@@ -719,9 +599,7 @@ function createPlayer(cfg){
                   font: {size: Math.round(fs * .82), color: p.mut}}]};
       P.applying = true;
       var done = function(){ P.applying = false; bindPlot(); };
-      // the saved PNG is named from the SAME label, so a downloaded US
-      // figure carries its provenance in the filename rather than being
-      // an anonymous "flubnf_US_2098-12-05" that could be either kind
+      // the saved PNG's filename carries the same (provenance) label
       var pr = Plotly.react(el.plot, traces, L, frameConf(title, w));
       if(pr && pr.then) pr.then(done, done); else done();
     });
@@ -752,8 +630,7 @@ function createPlayer(cfg){
       if(cfg.preload) cfg.preload(nw);
     }
   }
-  // the accessible name must track the state: a static "Play or pause"
-  // label would misreport the control on every other press (WCAG 4.1.2)
+  // the accessible name tracks the state (WCAG 4.1.2)
   function labelPlay(on){
     el.play.setAttribute('aria-label', on ? 'Pause' : 'Play');
   }
@@ -774,13 +651,8 @@ function createPlayer(cfg){
     setPlay(!P.playing);
   };
   el.speed.onchange = function(){ if(P.playing) setPlay(true); };
-  // Scrub draws coalesce to one per animation frame (the map view's proven
-  // rAF pattern): every input event otherwise runs a full Plotly.react as
-  // an immediate microtask, so a fast drag across a cached season queues
-  // seconds of main-thread jank. Only the latest wanted index is drawn;
-  // prev/next/play/keyboard seeks stay immediate, and fcSeq remains the
-  // guard against late-arriving payloads. No visible change under reduced
-  // motion: this only drops frames a human could not see.
+  // scrub draws coalesce to one per animation frame (a fast drag otherwise
+  // queues seconds of Plotly.react); other seeks stay immediate
   var wantIdx = null, rafP = false;
   el.scrub.addEventListener('input', function(){
     wantIdx = +el.scrub.value;
@@ -791,10 +663,8 @@ function createPlayer(cfg){
       seek(wantIdx, true);
     });
   });
-  // axis lock defaults ON and persists across visits; localStorage can be
-  // unavailable (file: contexts, private windows), so every touch is
-  // guarded. Toggling the lock clears any stored user view, so the lock
-  // semantics are unchanged when no hand zoom is active
+  // axis lock defaults ON and persists (localStorage guarded: file: and
+  // private windows); toggling it clears the stored user view
   if(el.lock){
     try{ el.lock.checked = localStorage.getItem('flubnf-axis-lock') !== '0'; }
     catch(e){}
@@ -818,18 +688,14 @@ function createPlayer(cfg){
     renderStats(P.pl);
     if(detailVisible()) drawFC();
   });
-  // the console's A-/A/A+ control dispatches this after moving the root
-  // font size; the redraw picks the new size up through rootFont(). The
-  // static report host has no fontsize control, so the event never fires
-  // there and this listener is a graceful no-op.
+  // fired by the console's A-/A/A+ control (never in the static report)
   addEventListener('fontsizechange', function(){
     if(detailVisible()) drawFC();
   });
 
   labelPlay(false);      // the initial, paused state names itself correctly
 
-  // the static host passes the full-season catalog, so its controls exist
-  // before the first frame; the live host builds from the first payload
+  // the static host passes the catalog; the live host builds on first payload
   if(cfg.catalog) buildControls(null);
 
   return {

@@ -2,15 +2,11 @@
 palette.
 
 Both are MODIFIERS on the root element (data-contrast="high",
-data-vision="cvd"), composing with any of the four themes rather than
-adding themes of their own. The theme blocks carry one literal per theme
-for every modifier variant (-hc, -cvd, and the map's category scale), and
-two mode blocks remap the consumer tokens onto those literals through
-var(), so 4 themes x 2 contrast x 2 vision resolves through the cascade
-instead of sixteen hand-written blocks. These tests emulate that cascade
-in Python and spot-check combinations across the full grid, hold the
-measured contrast bars with the modifier on, and verify blue/orange
-separability under deuteranopia and protanopia simulation.
+data-vision="cvd") that compose with the four themes: each theme block
+carries literal -hc/-cvd variants, and two mode blocks remap consumer
+tokens onto them via var(). These tests emulate that cascade in Python,
+spot-check the 4 x 2 x 2 grid, hold the contrast bars with the modifier on,
+and check blue/orange separability under deutan/protan simulation.
 """
 import re
 import sys
@@ -90,9 +86,8 @@ def _cr(a: str, b: str) -> float:
 # ------------------------------------------------ the token architecture
 
 def test_theme_blocks_carry_the_modifier_variants_literally():
-    # every theme block defines every -hc and -cvd variant and the two map
-    # scales as literal colors: the parity test already pins equal token
-    # sets, this pins the modifier variants' presence and literalness
+    # every theme block defines every -hc/-cvd variant and both map scales
+    # as literal colors
     need = {"ink-hc", "mut-hc", "nav-ink-hc", "line-hc", "field-line-hc",
             "accent-ink-hc", "ok-hc", "warn-hc", "bad-hc",
             "ok-cvd", "bad-cvd", "ok-cvd-hc", "bad-cvd-hc",
@@ -110,16 +105,16 @@ def test_theme_blocks_carry_the_modifier_variants_literally():
 
 
 def test_mode_blocks_only_remap_and_never_state_colors():
-    # the modifier blocks contain var() references and the focus width
-    # only: a literal color there would break the per-theme composition
+    # the modifier blocks hold only var() references (and the focus width):
+    # a literal color would break per-theme composition
     for block in (HC, CVD):
         for tok, val in block.items():
             if tok == "focus-w":
                 continue
             assert re.fullmatch(r"var\(--[\w-]+\)", val.strip()), (tok, val)
-    # exactly one block each, contrast before vision, both after the theme
-    # blocks, so cvd wins --ok/--bad when both modifiers are on while the
-    # contrast block retargets the cvd pair's own -hc variants
+    # one block each, contrast before vision, both after the themes, so cvd
+    # wins --ok/--bad when both are on while contrast retargets the cvd
+    # pair's own -hc variants
     assert NAU.count('[data-contrast="high"]{') == 1
     assert NAU.count('[data-vision="cvd"]{') == 1
     assert (NAU.index('[data-theme="dim"]{')
@@ -131,8 +126,7 @@ def test_mode_blocks_only_remap_and_never_state_colors():
 
 
 def test_token_overrides_compose_across_the_grid():
-    # spot-checks across the 4 x 2 x 2 grid, resolved by cascade emulation
-    # rather than sixteen enumerated expectations
+    # spot-checks across the 4 x 2 x 2 grid via cascade emulation
     # normal contrast and vision: the classic palette, untouched
     assert resolve("light")["ok"] == "#177245"
     assert resolve("dark")["bad"] == "#FB4653"
@@ -168,9 +162,8 @@ def test_token_overrides_compose_across_the_grid():
 # --------------------------------------- the bars with the modifier on
 
 def test_high_contrast_holds_well_above_the_review_bars():
-    # the review's bars are the floor (4.5 text, 3 boundaries and fills);
-    # the modifier aims well above: 7:1 for every text token, 3:1+ for
-    # boundaries, 4.5:1+ for the progress fill on its track
+    # the review bars (4.5 text, 3 boundaries) are the floor; the modifier
+    # aims for 7:1 text, 3:1+ boundaries, 4.5:1+ progress fill on its track
     danger_ink = {"light": "#FFFFFF", "paper": "#FFFFFF",
                   "dim": "#0C0D17", "dark": "#0C0D17"}
     for th in ("light", "paper", "dim", "dark"):
@@ -187,9 +180,37 @@ def test_high_contrast_holds_well_above_the_review_bars():
             assert _cr(danger_ink[th], r["bad"]) >= 4.5, (th, vision)
 
 
+def _rule(selector: str) -> dict:
+    """One plain rule's declarations (not a token block)."""
+    m = re.search(re.escape(selector) + r"\{([^}]*)\}", NAU)
+    assert m, f"missing rule {selector}"
+    return {k.strip(): v.strip() for k, v in re.findall(
+        r"([\w-]+)\s*:\s*([^;]+);?", m.group(1))}
+
+
+def _color(value: str, toks: dict) -> str:
+    m = re.fullmatch(r"var\(--([\w-]+)\)", value.strip())
+    return toks[m.group(1)] if m else value.strip()
+
+
+def test_the_open_model_settings_button_reads_at_aa_everywhere():
+    """.adv[open] > summary.advbtn was white on raw cyan, 2.11:1."""
+    closed = _rule(".adv > summary.advbtn")
+    assert closed["color"] == "var(--accent-ink)"          # unchanged
+    assert closed["border"] == "1.5px solid var(--accent)"
+    opened = _rule(".adv[open] > summary.advbtn")
+    for th in ("light", "paper", "dim", "dark"):
+        for contrast in (False, True):
+            for vision in (False, True):
+                r = resolve(th, contrast=contrast, vision=vision)
+                fg = _color(opened["color"], r)
+                bg = _color(opened["background"], r)
+                assert _cr(fg, bg) >= 4.5, (th, contrast, vision, fg, bg)
+
+
 def test_cvd_pair_holds_the_ratios_of_the_pair_it_replaces():
-    # in every theme, at both contrast strengths, the blue/orange pair
-    # meets or beats the worst-surface ratio of the green/red it replaces
+    # in every theme and contrast strength, the blue/orange pair meets the
+    # worst-surface ratio of the green/red it replaces
     for th in ("light", "paper", "dim", "dark"):
         base = resolve(th)
         cvd = resolve(th, vision=True)
@@ -239,25 +260,17 @@ def test_swapped_pair_stays_separable_under_deutan_and_protan():
                 d = _simdist(r["ok"], r["bad"], M)
                 assert d >= 80, (th, contrast, d)
                 if not contrast:
-                    # at normal strength the blue/orange pair is MORE
-                    # separable than the green/red it replaces
+                    # at normal strength blue/orange beats green/red
                     assert d >= rg, (th, d, rg)
 
 
 def test_member_palette_audit_and_its_non_color_redundancy():
-    """The member palette holds the dichromat separability bar.
-
-    Re-spaced 2026-08-21 (the audit had found pf/pf2s at 27 and
-    ensemble/pf at 36 under the Vienot deuteranopia matrix): every member
-    pair that can co-occur on one chart now sits at 60 or better under
-    BOTH dichromacy matrices and in normal vision, in both theme
-    polarities (on light grounds the consoles draw the ensemble through
-    --gold, the readable accent-ink variant of the same cyan identity, so
-    that variant is audited too). The map is read from the ONE shared
-    source, the marked JSON in player.js, so this pins what actually
-    ships. Color still never carries member identity alone: every trace
-    keeps its display name in the legend and the stats table repeats it
-    beside the swatch.
+    """The member palette holds the dichromat separability bar: every pair
+    that can share a chart is 60+ under both Vienot matrices and normal
+    vision, in both polarities (on light grounds the ensemble draws through
+    --gold, so that variant is audited too). Read from the one shared
+    source (player.js marked JSON). Color never carries identity alone: the
+    legend and stats table repeat the name.
     """
     import itertools
 
@@ -276,8 +289,7 @@ def test_member_palette_audit_and_its_non_color_redundancy():
                     zip(*(tuple(int(pol[m].lstrip("#")[i:i + 2], 16)
                                 for i in (0, 2, 4)) for m in (a, b)))) ** 0.5
             assert d >= 60, (a, b, ens)
-    # the movable members hold the graphical-object bar (3:1) against all
-    # eight theme grounds, which the colors they replaced never did
+    # the movable members hold 3:1 against all eight theme grounds
     grounds = {"light": ("#F1EFF7", "#FFFFFF"),
                "paper": ("#F7F2E5", "#FDFAF1"),
                "dim": ("#212536", "#2A2F45"),
@@ -312,8 +324,7 @@ def test_a11y_controls_sit_with_the_theme_picker_and_state_pressed():
     assert 'class="a11ypick" role="group" aria-label="Accessibility modes"' \
         in html
     assert 'data-ax="contrast"' in html and 'data-ax="vision"' in html
-    # both are labeled toggles carrying aria-pressed, beside the existing
-    # theme picker and text-size group in the one navbar
+    # labeled aria-pressed toggles beside the theme picker and text size
     assert html.index('class="fontsize"') < html.index('class="themepick"') \
         < html.index('class="a11ypick"')
     assert 'aria-label="High contrast"' in html
@@ -324,8 +335,8 @@ def test_a11y_controls_sit_with_the_theme_picker_and_state_pressed():
 
 
 def test_modes_persist_and_dispatch_themechange():
-    # persistence rides localStorage like the theme; an explicit 'normal'
-    # stops the OS preference from re-enabling contrast
+    # persisted like the theme; an explicit 'normal' stops the OS preference
+    # re-enabling contrast
     assert "localStorage.setItem('contrast',on?'normal':'high')" in BASE_T
     assert "localStorage.setItem('vision',v?'normal':'cvd')" in BASE_T
     # each press dispatches themechange so Plotly and the player recolor
@@ -335,8 +346,7 @@ def test_modes_persist_and_dispatch_themechange():
 
 
 def test_first_paint_honors_the_os_contrast_preference():
-    # no stored choice: prefers-contrast: more turns the modifier on
-    # before first paint, exactly like the theme's dark fallback
+    # no stored choice: prefers-contrast: more enables it before first paint
     assert "matchMedia('(prefers-contrast: more)').matches" in BASE_T
     assert "setAttribute('data-contrast','high')" in BASE_T
     assert "localStorage.getItem('vision')==='cvd'" in BASE_T
@@ -346,8 +356,7 @@ def test_first_paint_honors_the_os_contrast_preference():
 
 def test_map_fills_and_legend_ride_the_category_tokens():
     from app.core.usmap import CAT_COLOR, cat_fill, map_legend, svg_map
-    # each category resolves through its token with the classic literal as
-    # the fallback for standalone exports
+    # each category resolves through its token, classic literal as fallback
     for c, hexs in CAT_COLOR.items():
         assert cat_fill(c) == f"var(--cat-{c.replace('_', '-')}, {hexs})"
     cards = {"04": {"probs": {"increase": 0.8}, "name": "Arizona",
@@ -368,9 +377,8 @@ def test_the_vision_block_remaps_every_category():
 # ------------------------------------- no information by hue alone
 
 def test_no_ok_bad_surface_relies_on_hue_alone():
-    # swapping the hue must never lose information: every surface that
-    # colors ok/bad also prints the number or the word it means
-    from app.ui.server import relwis_chip
+    # every surface that colors ok/bad also prints the number or word
+    from app.ui.shared import relwis_chip
     retro_t = (UI / "templates" / "retro.html").read_text()
     # the one relWIS chip outside a table prints the score beside the class
     assert "1.234" in relwis_chip(1.234)
@@ -378,8 +386,7 @@ def test_no_ok_bad_surface_relies_on_hue_alone():
     # the player's stats cells print the value, never a bare colored cell
     assert "'<td class=\"num ' + (v < 1 ? 'ok' : 'bad') + '\">'" in PLAYER
     assert "+ v.toFixed(3) + '</td>'" in PLAYER
-    # the season page: head cards print the number and name the scale, and
-    # the per-state table prints every score it colors
+    # the season page prints every score it colors and names the scale
     assert '{{ "%.3f"|format(v) }}' in SEASON_T
     assert "relWIS vs the FluSight baseline" in SEASON_T
     assert "relWIS below 1 beats the CDC FluSight baseline" in SEASON_T
@@ -393,17 +400,16 @@ def test_no_ok_bad_surface_relies_on_hue_alone():
 # ------------------------------- charts export readable, themed PNGs
 
 def test_chart_layouts_state_an_explicit_opaque_surface():
-    # transparent chart grounds exported unreadable PNGs (theme ink over a
-    # transparent file); every layout now states the card surface it sits
-    # on, which composites identically on screen
+    # layouts state an opaque card surface: transparent grounds exported
+    # unreadable PNGs
     assert "rgba(0,0,0,0)" not in PLAYER
     assert "rgba(0,0,0,0)" not in FORECAST_T
     assert "rgba(0,0,0,0)" not in MODEL_T
     assert "paper_bgcolor: surf, plot_bgcolor: surf" in PLAYER
     assert "paper_bgcolor:surf, plot_bgcolor:surf" in FORECAST_T
     assert "paper_bgcolor:surf" in MODEL_T
-    # the console hosts read the surface from the card token per draw; the
-    # static season report host falls back to its fixed dark card
+    # console hosts read the card token per draw; the static report falls
+    # back to its fixed dark card
     assert "card: css('--card')" in SEASON_T
     assert "card: '#151729'" in PLAYER
     assert "p.card || '#151729'" in PLAYER

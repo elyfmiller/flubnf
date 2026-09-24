@@ -1,25 +1,14 @@
-"""Report-vs-app parity: the exported season report must carry the same
-substantive content as the in-app season page, for the same season.
+"""Report-vs-app parity: the exported season report carries the same
+substance as the in-app season page for the same season.
 
-THE recurring failure class this guards: the artifact silently lacking what
-the console shows. Official stats pending in the report but fine in-app,
-chart themes not carrying, reports serving stale faces, and the US national
-aggregate missing from a downloaded report each shipped as its own fix;
-this test is the permanent guard that makes the NEXT divergence fail the
-suite instead of reaching a user.
-
-Mechanics: one synthetic season renders through the REAL season page route
-and the REAL report builder, and the comparison is data-driven on the app
-page itself. Every section heading the season page renders must either map
-to a report counterpart in APP_TO_REPORT below or be declared app-only
-with a reason, so adding a season-page section without teaching the report
-about it breaks this test. The substance inside the shared sections is
-compared value by value: verdict tiles (the US aggregate included),
-per-state table rows (the US row included), the cumulative curve, the
-recorded wall time, the run settings, and the player's week list.
+Guards the recurring failure class of an artifact silently lacking what the
+console shows. One synthetic season renders through the REAL season route
+and the REAL report builder. Every h2 on the page must map to a report
+marker in APP_TO_REPORT or be declared app-only with a reason; shared
+sections are compared value by value (tiles incl. US aggregate, per-state
+rows incl. US, wall time, settings, the player's week list).
 """
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -45,16 +34,12 @@ APP_ONLY_HEADINGS = {
     # base-template dialogs, baked into every console page's chrome
     "A run is in progress",
     "This season already has results",
-    # the scoring-convention switch (app/core/relwis). It is a CONTROL, and
-    # the thing it controls cannot exist in the export: the pairwise
-    # convention is computed against every other FluSight team's per-cell
-    # scores, hundreds of thousands of rows that a self-contained offline
-    # report cannot carry. The report is therefore a ratio-of-sums artifact
-    # by construction, and a switch there would have one position.
+    # the scoring-convention switch: a control whose pairwise side needs
+    # every team's per-cell scores, which an offline report cannot carry,
+    # so the export is ratio-of-sums by construction
     "Scoring convention",
-    # the cumulative chart stays on the season page and left the export
-    # (lead, 2026-09-07); test_cumulative_curve_stays_on_the_page checks
-    # both halves of that
+    # the cumulative chart stays on the page (see
+    # test_cumulative_curve_stays_on_the_page)
     "Cumulative relWIS through the season",
 }
 
@@ -62,9 +47,7 @@ APP_ONLY_HEADINGS = {
 #: verdict tiles are handled dynamically (any heading that is a model
 #: display name, or the US aggregate, must appear as a report tile).
 APP_TO_REPORT = {
-    # the cumulative chart is the season page's own; the export dropped
-    # it (lead, 2026-09-07), so it has no counterpart and is checked
-    # for absence in test_cumulative_curve_stays_on_the_page
+    # (the cumulative chart has no export counterpart)
     "Season player": 'id="pb-scrub"',
     "Live relWIS": "Live relWIS",
     "Per-state scores": "Per-state final scores",
@@ -92,8 +75,8 @@ def _mk_root(tmp_path, monkeypatch):
     monkeypatch.setattr(playback, "load_truth", lambda: (truth, n2f))
     monkeypatch.setattr(playback, "_baseline_cells", _bases)
     monkeypatch.setattr(playback, "HUB", tmp_path / "hub")   # no officials
-    # retro.national_aggregate and retro.score_season import these at call
-    # time from the scoring module, so the patch must land there too
+    # retro.national_aggregate/score_season import these from scoring at
+    # call time, so patch there too
     monkeypatch.setattr(scoring, "load_truth", lambda: (truth, n2f))
     monkeypatch.setattr(scoring, "_baseline_cells", _bases)
     monkeypatch.setattr(report_season, "_plotlyjs", lambda: "/* stub */")
@@ -143,13 +126,13 @@ def _warm(root):
 def _app_page(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     from app.ui import server as srv
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    from app.ui import retro_seasons as ui_retro_seasons
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     r = TestClient(srv.app).get(f"/retro/{SEASON}")
     assert r.status_code == 200
     html = r.text
-    # the fixture must have produced the COMPLETE page: a preparing state
-    # here means the parity below would compare against a placeholder
+    # a preparing state would make the parity compare against a placeholder
     assert "preparing results" not in html
     assert "Season player" in html
     return html
@@ -185,8 +168,8 @@ def test_every_app_section_has_a_report_counterpart(built):
     """The data-driven guard: a NEW season-page section must be mapped to a
     report counterpart or declared app-only, or this fails."""
     app_html, report_html = built
-    # pf's tile is named for what the tree stores (names_for_root): this
-    # fixture's weeks carry no oracle.json, so the particle filter alone
+    # pf's tile is named for what the tree stores (no oracle.json here:
+    # the particle filter alone)
     names = (set(report_season.MODEL_NAMES.values())
              | {site_build.PF_LABEL_FILTER})
     tile_names = names | {f"US (aggregated): {n}" for n in names}
@@ -214,8 +197,7 @@ def test_verdict_tiles_match_including_us_aggregate(built):
     app_tiles = set(re.findall(
         r'<div class="card"><h2>([^<]+)</h2><div class="big', app_html))
     rep_tiles = set(re.findall(r'class="tilename">([^<]+)<', report_html))
-    # one national tile per model, named for both (2026-09-22); pf's name
-    # is the tree's own, and this fixture stores the particle filter alone
+    # one national tile per model; pf is named for the stored tree
     assert "US (aggregated): Particle filter alone" in app_tiles
     assert "US (aggregated): Groundhog" in app_tiles
     assert app_tiles == rep_tiles
@@ -251,14 +233,11 @@ def test_player_week_lists_match(built):
 
 
 def test_cumulative_curve_stays_on_the_page(built):
-    """The season page draws the cumulative chart; the export does not
-    carry it (lead, 2026-09-07: the numbers speak for themselves and the
-    player shows the scores week by week)."""
+    """The season page draws the cumulative chart; the export does not."""
     app_html, report_html = built
     app_svg = re.search(r'<svg class="cumchart".*?</svg>', app_html, re.S)
     assert app_svg, "season page must draw the cumulative chart"
-    # one line per model the season scored (two weeks each): the two that
-    # ship and, in this fixture, the retired blend's stored rows
+    # one line per scored model (here including the retired blend's rows)
     n_models = app_svg.group(0).count("<polyline")
     assert n_models >= 2
     assert app_svg.group(0).count("<circle") == 2 * n_models
@@ -270,7 +249,7 @@ def test_timing_and_settings_match(built):
     app_html, report_html = built
     t = re.search(r"Replay wall time ([\d:]+)", app_html)
     assert t, "the fixture's run record must put the wall time on the page"
-    assert f"total wall time {t.group(1)} (h:mm:ss)" in report_html
+    assert f"Total wall time {t.group(1)} (h:mm:ss)" in report_html
     pair_re = re.compile(r"<dt>(.*?)</dt><dd>(.*?)</dd>")
     app_pairs = set(pair_re.findall(app_html))
     rep_pairs = set(pair_re.findall(report_html))
@@ -281,9 +260,8 @@ def test_timing_and_settings_match(built):
 # ------------------------------------- absence is stated, never a silent hole
 
 def test_cold_aggregate_cache_is_computed_not_omitted(tmp_path, monkeypatch):
-    """The exact field failure: a report downloaded before the season page
-    was ever visited. The builder must COMPUTE the aggregate, not read a
-    cold cache and drop the section."""
+    """A report downloaded before the page was visited COMPUTES the US
+    aggregate rather than dropping it on a cold cache."""
     root = _mk_root(tmp_path, monkeypatch)
     cache = root / "playback_cache" / "us_aggregate.json"
     assert not cache.is_file()

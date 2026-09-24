@@ -1,0 +1,78 @@
+{# The upload box's result (datasets_ui.check_view; rendered in the page on
+   a refused store, and returned as HTML by POST /data/datasets/check):
+   every problem grouped by kind, or a column mapping when that is what is
+   missing, the target picker for a file with several, the notices, and a
+   preview of a valid file with its "Forecast this" / "Replay this" buttons
+   (they submit the upload box's form). Selects marked data-recheck make
+   static/dataset_upload.js check again. Only a refused store
+   (chk.refused) says nothing was stored: a check never stores. #}
+{% import "_tips.html" as tips %}
+{% macro result(chk, where) -%}
+{% set fid = "dsup-" ~ where %}
+{% if chk.problems %}
+<div class="dsproblems"{% if chk.refused %} role="alert"{% endif %}>
+ {% set many = "" if chk.n == 1 else "s" %}
+ {% if chk.refused %}<p class="bad"><strong>Nothing was stored.</strong> {{ chk.n }} problem{{ many }} to fix:</p>
+ {% else %}<p class="bad"><strong>{{ chk.n }} problem{{ many }} to fix</strong> before this file can be stored:</p>{% endif %}
+ {% for kind, probs in chk.problems %}
+ <p class="dsp-kind">{{ kind }}</p>
+ <ul>{% for p in probs %}<li>{{ p.message }}</li>{% endfor %}</ul>
+ {% endfor %}
+</div>
+{% endif %}
+{% if chk.mapping %}
+<fieldset class="dsmap"><legend>Which column is which?</legend>
+ {% for w in chk.mapping.why %}<p class="hint">{{ w }}</p>{% endfor %}
+ <div class="dsmap-roles">
+ {% for r in chk.mapping.roles %}
+ <span><label for="{{ fid }}-col-{{ r.role }}">{{ r.label }}{{ "" if r.required else " (optional)" }}</label>
+  <select name="col_{{ r.role }}" id="{{ fid }}-col-{{ r.role }}" data-recheck>
+   <option value="">{{ "choose…" if r.required else "none" }}</option>
+   {% for v, h in chk.mapping.headers %}<option value="{{ v }}"{% if v == r.value %} selected{% endif %}>{{ h }}</option>{% endfor %}
+  </select></span>
+ {% endfor %}
+ </div>
+</fieldset>
+{% endif %}
+{% if chk.targets %}
+<div class="dstarget">{{ tips.label("Target", fid ~ "-target", "This file holds several targets; a dataset holds one.", for_=fid ~ "-target") }}
+ <select name="target" id="{{ fid }}-target" data-recheck>
+  <option value=""{% if not chk.target %} selected{% endif %}>choose…</option>{% for t in chk.targets %}
+  <option{% if t == chk.target %} selected{% endif %}>{{ t }}</option>{% endfor %}</select>
+ {% if not chk.target %}<p class="hint">Choose the target to check and store.</p>{% endif %}</div>
+{% endif %}
+{% if chk.notices %}
+<ul class="dsnotes">{% for n in chk.notices %}<li>{{ n }}</li>{% endfor %}</ul>
+{% endif %}
+{% if chk.preview %}{% set pv = chk.preview %}
+<div class="dspreview">
+ <p class="ok"><strong>Ready to use.</strong></p>
+ <dl class="kv dsfacts">
+  <dt>Groups</dt><dd>{{ pv.n_groups }}{% if pv.n_groups <= 6 %}: {{ pv.groups | join(", ") }}{% endif %}{% if pv.national %} (national: {{ pv.national }}){% endif %}</dd>
+  <dt>Weeks</dt><dd>{{ pv.weeks }}, {{ pv.first }} to {{ pv.last }}</dd>
+  <dt>Rows</dt><dd>{{ "{:,}".format(pv.rows) }}</dd>
+  <dt>Values</dt><dd>{{ "counts" if pv.kind == "count" else "rates" }}{{ " (from the values)" if pv.inferred else "" }}</dd>
+  <dt>Population</dt><dd>{{ "yes" if pv.population else "no" }}</dd>
+  {% if pv.snapshots %}<dt>Snapshots</dt><dd>{{ pv.snapshots }} (as_of)</dd>{% endif %}
+  {% if pv.target %}<dt>Target</dt><dd>{{ pv.target }}</dd>{% endif %}
+  <dt>Read as</dt><dd>{{ pv.read_as }}</dd>
+ </dl>
+ <div class="dssparks">{% for sp in pv.sparks %}
+  <figure class="dsspark"><svg viewBox="0 0 {{ pv.w }} {{ pv.h }}" preserveAspectRatio="none" role="img" aria-label="{{ sp.label }}"><title>{{ sp.label }}</title><polyline points="{{ sp.points }}" fill="none" stroke="currentColor" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>
+   <figcaption>{{ sp.name }}</figcaption></figure>{% endfor %}
+ </div>
+ {% if pv.more %}<p class="hint">and {{ pv.more }} more group{{ "" if pv.more == 1 else "s" }}</p>{% endif %}
+ <div class="tablewrap"><table class="compact dsfirst">
+  <caption class="hint">First rows as read</caption>
+  <thead><tr><th class="num">Row</th><th>Week{% if pv.dates_differ %} <span class="dsasw">as written</span>{% endif %}</th><th>Group</th><th class="num">Value</th>{% if pv.population %}<th class="num"><abbr title="Population">Pop.</abbr></th>{% endif %}</tr></thead>
+  <tbody>{% for r in pv.first_rows %}<tr><td class="num">{{ r.row }}</td><td class="wk">{{ r.week }}{% if pv.dates_differ %}<span class="dsasw">{{ r.date }}</span>{% endif %}</td><td>{{ r.group }}</td><td class="num">{{ r.value }}</td>{% if pv.population %}<td class="num">{{ r.population }}</td>{% endif %}</tr>{% endfor %}</tbody>
+ </table></div>
+ <div class="row dsup-actions">
+  <button class="{{ 'quiet' if where == 'replay' else 'gold' }}" name="next" value="forecast">Forecast this</button>
+  <button class="{{ 'gold' if where == 'replay' else 'quiet' }}" name="next" value="replay">Replay this</button>
+  {% if where == "data" %}<button class="quiet" name="next" value="data">Save only</button>{% endif %}
+  {{ tips.tip(fid ~ "-go", "these buttons", "Each stores the dataset, then opens the Forecast tab (its newest week, every group) or the Retrospective tab's replay card (its newest flu season, October to June). Nothing runs until you start it there.") }}
+ </div>
+</div>
+{% endif %}
+{%- endmacro %}

@@ -1,17 +1,10 @@
 """A file written under a retired model name is never handed over as a
 submission.
 
-The hub's model identity is the DIRECTORY: model-output/<team>-<model>/,
-with <team>-<model> registered in model-metadata/. Runs made before that
-identity was corrected left submission trees called NAU-Ensemble and
-NAU-PF-SIHRS. Twenty such files were still on disk in app state on
-2026-08-26, and every listing offered them for download with nothing to
-distinguish them from a genuine submission: same page, same button, a file
-name the hub would reject.
-
-They stay visible, because a run page is a record of what a run did. They
-are not downloadable, and the route enforces that as well as the template,
-so a bookmarked URL cannot get around it.
+The hub identity is the DIRECTORY model-output/<team>-<model>/, registered
+in model-metadata/. Old runs left trees called NAU-Ensemble and NAU-PF-SIHRS;
+they stay visible on run pages (a record of what ran) but are not
+downloadable, enforced by the route as well as the template.
 """
 import json
 import sys
@@ -25,6 +18,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import app.core.runs as runs_mod                     # noqa: E402
 from app.core.submit import hub_model_id             # noqa: E402
 from app.ui import server as srv                     # noqa: E402
+from app.ui.routes import output as ui_output        # noqa: E402
+from app.ui import shared as ui_shared               # noqa: E402
 
 client = TestClient(srv.app)
 
@@ -55,9 +50,9 @@ def run(tmp_path, monkeypatch):
         {"models": {}, "forecast_date": "2098-01-10", "spec": ""}))
     good = _sub(w, GOOD, "2098-01-10")
     retired = _sub(w, RETIRED, "2098-01-03")
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     yield w, good, retired
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
 
 
 def _download_targets(html: str) -> list:
@@ -111,18 +106,16 @@ def test_every_registered_id_is_a_metadata_file_name():
     retired = {f"{TEAM_ABBR}-{a}" for a in RETIRED_ABBR}
     # a retired card stays registered on the hub but is not an identity
     # this project may write, so the listings do not offer its files
-    assert srv._registered_model_ids() == registered - retired
+    assert ui_output._registered_model_ids() == registered - retired
     assert RETIRED not in registered
 
 
 # ------------------ a refused file costs the file, never the run's record
 
 def test_a_refused_submission_is_named_on_the_run_page(tmp_path, monkeypatch):
-    """The writer now refuses rows the hub would bounce, and that refusal is
-    contained per model the way scoring and the report already are: the run
-    keeps its results, its report and its archive, and the page says which
-    model has no file and why. A run costs hours; one bad row set must not
-    erase it, and must not quietly write a file either."""
+    """A submission the writer refuses is contained per model: the run keeps
+    its results, report and archive, and the page names the model with no
+    file and why."""
     from app.core.runs import Ledger, RunSpec
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
     led = Ledger()
@@ -138,14 +131,14 @@ def test_a_refused_submission_is_named_on_the_run_page(tmp_path, monkeypatch):
             hub_model_id("analogue"):
                 "submission failed validation:\n  06 h=0: incomplete "
                 "quantile set, 5 of 23 levels"}})
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     html = client.get(f"/runs/{rid}").text
     assert "no file written" in html
     assert "incomplete quantile set, 5 of 23 levels" in html
     assert hub_model_id("analogue") in html
     # and the run itself still reads as a completed run with its PF file
     assert hub_model_id("pf") in html
-    chips = srv._outcome_chips(json.dumps({
+    chips = ui_shared._outcome_chips(json.dumps({
         "submissions": {"a": "x"},
         "submission_errors": {"b": "y"}}))
     assert "1 submissions" in chips and "1 submission refused" in chips

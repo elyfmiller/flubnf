@@ -113,11 +113,8 @@ def test_report_self_contained_with_player_and_data(tmp_path, monkeypatch):
                    "Plotly.react", "beats the CDC FluSight baseline"):
         assert marker in html, marker
 
-    # The US location entry is no longer a hardcoded "official models
-    # only": the export carries the RESOLVED provenance, frozen in at
-    # build time, and the player labels the entry from it. All three
-    # states are spelled out in the inlined player so the exported file
-    # can label whichever one it holds.
+    # the US entry carries the RESOLVED provenance frozen in at build time;
+    # the inlined player spells out all three states
     for marker in ("US national (fitted)", "US national (sum of states)",
                    "US (official models only)", "usLabel(cfg.us)"):
         assert marker in html, marker
@@ -125,9 +122,7 @@ def test_report_self_contained_with_player_and_data(tmp_path, monkeypatch):
     assert m, "the exported player config must carry the resolved us block"
     us = json.loads(m.group(1))
     assert us["provenance"] in ("fitted", "aggregated", "officials_only")
-    # this synthetic season fits states only and has no aggregate, so the
-    # export must land on the officials-only end of the resolution order
-    # and say so rather than implying a national forecast exists
+    # states only, no aggregate: officials-only, stated as such
     assert us["provenance"] == "officials_only"
     assert us["fallback"] is True and us["fitted"] is False
     assert us["label"] == "US (official models only)"
@@ -135,15 +130,15 @@ def test_report_self_contained_with_player_and_data(tmp_path, monkeypatch):
     assert "never joins the pooled average" in html
 
     # the header says the maps stayed behind, and no size warning fired
-    assert "interactive maps live in the console" in html
+    assert "maps stay in the console" in html
     assert "Size notice" not in html
 
 
 def test_report_js_reads_only_contract_fields(tmp_path, monkeypatch):
     root = _mk_root(tmp_path, monkeypatch)
     html = report_season.build_season_report(root, SEASON).read_text()
-    # the report's player JS is the inlined shared player plus the export
-    # host block (real builds prepend minified plotly, so slice past it)
+    # the player JS is the inlined shared player plus the host block (real
+    # builds prepend minified plotly, so slice past it)
     player = report_season.PLAYER_SRC.read_text()
     host = html.split("// FluBNF season player", 1)[1]
     js = player + host
@@ -163,8 +158,7 @@ def test_report_inlines_shared_player_verbatim(tmp_path, monkeypatch):
     html = report_season.build_season_report(root, SEASON).read_text()
     # the unique marker from player.js appears in the built report ...
     assert "flubnf-player-v1" in html
-    # ... because the whole shared file is inlined verbatim, so every
-    # future player feature lands in the export automatically
+    # ... because the whole shared file is inlined verbatim
     assert report_season.PLAYER_SRC.read_text() in html
     # the export host wires the player to the embedded JSON block
     assert "FluBNFPlayer.init" in html
@@ -191,9 +185,8 @@ def test_report_rebuilds_when_player_source_changes(tmp_path, monkeypatch):
 
 
 def test_builder_source_is_a_report_input(tmp_path, monkeypatch):
-    # the builder is an input to its own output: a restyle here must
-    # refresh every cached export, exactly as a player fix does; otherwise
-    # a season whose data never changes serves the old face forever
+    # the builder is an input to its own output: a restyle refreshes every
+    # cached export, as a player fix does
     root = _mk_root(tmp_path, monkeypatch)
     src_mtime = Path(report_season.__file__).stat().st_mtime
     assert report_season._newest_input(root) >= src_mtime
@@ -238,35 +231,31 @@ def test_report_carries_the_season_verdict_before_the_player(tmp_path,
     # the static verdict block precedes the player card
     assert html.index('id="season-summary"') < html.index('id="pb-play"')
     assert "Season verdict" in html
-    # final relWIS tiles for each member and the ensemble, colored by the
-    # below-1 rule; the values are the final week's cumulative stats
-    for name, val, cls in (("FluBNF Ensemble (retired)", "0.900", "ok"),
-                           ("Oracle SIHRS", "0.500", "ok"),
+    # final relWIS tiles per shipped member, colored by the below-1 rule;
+    # the retired blend's stored rows get no tile
+    assert 'class="tileval ok">0.900' not in html
+    for name, val, cls in (("Oracle SIHRS", "0.500", "ok"),
                            ("Groundhog", "1.500", "bad")):
         assert name in html, name
         assert f'class="tileval {cls}">{val}' in html, (name, val)
     # weeks covered and the recorded wall time
-    assert f"2 weeks covered, {W1} to {W2}" in html
-    assert "total wall time 1:02:03 (h:mm:ss)" in html
+    assert f"2 stored weeks, {W1} to {W2}" in html
+    assert "Total wall time 1:02:03 (h:mm:ss)" in html
+    assert "weeks covered" not in html            # said once, in the header
     # the per-state final table, one row per state, same coloring rule
     assert "Per-state final scores" in html
     for loc in N2F:
         assert f"<td>{loc}</td>" in html, loc
     assert '<td class="num ok">0.500</td>' in html
     assert '<td class="num bad">1.500</td>' in html
-    assert '<td class="num ok">0.900</td>' in html
+    assert '<td class="num ok">0.900</td>' not in html
 
 
 def test_the_export_names_the_scoring_convention_on_its_own(tmp_path,
                                                             monkeypatch):
-    """THIS FILE LEAVES THE MACHINE.
-
-    It is read months later with no console around it, and the neighbour it
-    is likeliest to be read beside is the CDC FluSight dashboard, which
-    publishes a different quantity under the same name. Both conventions
-    are ratios scaled to put the baseline at 1.0, so "against the CDC
-    FluSight baseline" does not distinguish them: the export has to say
-    which ratio, in the same words the console and the public site use.
+    """The exported file names its scoring convention in the console's own
+    words: it is read beside the CDC dashboard, which publishes a different
+    ratio under the same name.
     """
     from app.core import relwis
     root = _mk_root(tmp_path, monkeypatch)
@@ -286,8 +275,8 @@ def test_report_verdict_degrades_without_scores_or_meta(tmp_path,
     # tiles still come from the embedded final-week stats
     assert 'id="season-summary"' in html
     assert "Season verdict" in html
-    # no run record: no invented wall time; no scores.json: the per-state
-    # table is replaced by a plain statement, never fabricated
+    # no run record: no invented wall time; no scores.json: a plain
+    # statement instead of the per-state table
     assert "total wall time" not in html
     assert "Per-state final scores" not in html
     assert "once the season has been scored" in html
@@ -296,8 +285,7 @@ def test_report_verdict_degrades_without_scores_or_meta(tmp_path,
 def test_report_player_initializes_at_the_final_week(tmp_path, monkeypatch):
     root = _mk_root(tmp_path, monkeypatch)
     html = report_season.build_season_report(root, SEASON).read_text()
-    # a skimmer must meet the season's verdict, not week one: the scrubber
-    # starts at the last index and the host seeks there
+    # a skimmer meets the season's verdict: the player starts at the last week
     assert "player.seek(1);" in html
     assert 'value="1" aria-label="Week scrubber"' in html
     assert "player.seek(0);" not in html
@@ -306,15 +294,12 @@ def test_report_player_initializes_at_the_final_week(tmp_path, monkeypatch):
 def test_report_wears_the_console_identity(tmp_path, monkeypatch):
     root = _mk_root(tmp_path, monkeypatch)
     html = report_season.build_season_report(root, SEASON).read_text()
-    # the brand face with a system fallback, and no webfont fetch (the
-    # self-containment test already forbids any network reference)
+    # brand face with a system fallback, no webfont fetch
     assert '"DM Sans",system-ui' in html
-    # ok/bad ride the console's tokens, so a number wears the same alert
-    # color as the app in every theme the reader resolves
+    # ok/bad ride the console's tokens in every theme
     assert ".ok{color:var(--ok)}.bad{color:var(--bad)}" in html
     assert "#7FC97F" not in html and "#E8A33D" not in html
-    # the nau.css dark tokens, verbatim inside the embedded theme blocks,
-    # and the wordmark exactly as the console's navbar writes it
+    # nau.css dark tokens verbatim, and the navbar wordmark
     for token in ("--bg:#0C0D17", "--card:#151729", "--ink:#E9EAF4",
                   "--mut:#9AA1C4", "--line:#262A45", "--accent:#34C0F0"):
         assert token in html, token
@@ -323,13 +308,10 @@ def test_report_wears_the_console_identity(tmp_path, monkeypatch):
 
 
 def test_report_is_theme_aware(tmp_path, monkeypatch):
-    """The export embeds the console's full theme system and resolves it
-    at open: all four theme token blocks plus both accessibility modifier
-    blocks, verbatim from nau.css; the boot script reads the console's
-    localStorage keys same-origin and falls back to the OS preferences
-    standalone; the player's palette hook re-reads the resolved tokens per
-    redraw; and the print block sits after every theme block so print
-    stays light in all of them."""
+    """The export embeds the console's full theme system (four theme blocks
+    plus both accessibility modifiers, verbatim from nau.css), boots from
+    the console's localStorage keys with OS fallbacks, re-reads tokens per
+    redraw, and keeps print light by placing @media print last."""
     from app.core import report_v2
     root = _mk_root(tmp_path, monkeypatch)
     html = report_season.build_season_report(root, SEASON).read_text()
@@ -360,8 +342,7 @@ def test_report_carries_a_print_stylesheet(tmp_path, monkeypatch):
     html = report_season.build_season_report(root, SEASON).read_text()
     assert "@media print" in html
     pr = html.split("@media print", 1)[1].split("</style>", 1)[0]
-    # on paper the console's light theme takes over: light surface, the
-    # LANL Blue ink, and the light-theme ok/bad pair
+    # on paper the light theme takes over (LANL Blue ink, light ok/bad)
     for v in ("#FFFFFF", "#000F7E",
               ".ok{color:#177245}", ".bad{color:#C42840}"):
         assert v in pr, v
@@ -374,9 +355,8 @@ def test_report_verdict_states_cell_coverage_when_scored(tmp_path,
     root = _mk_root(tmp_path, monkeypatch)
     _write_scores(root)
     html = report_season.build_season_report(root, SEASON).read_text()
-    # 2 weeks x 2 states of synthetic rows, counted on the first model,
-    # named for what this tree stores: no oracle.json and no run record
-    # naming the step, so the particle filter alone
+    # 2 weeks x 2 states, counted on the first model and named for what the
+    # tree stores (no oracle record: the particle filter alone)
     assert "the season's 4 scored Particle filter alone cells" in html
     # unscored: the generic phrase stands, never an invented count
     root2 = _mk_root(tmp_path / "b", monkeypatch)
@@ -417,9 +397,10 @@ def test_size_guard_warns_in_header(tmp_path, monkeypatch):
 def test_route_downloads_report(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     from app.ui import server as srv
+    from app.ui import retro_seasons as ui_retro_seasons
     root = _mk_root(tmp_path, monkeypatch)
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     root.rename(tmp_path / SEASON)
     r = TestClient(srv.app).get(f"/retro/{SEASON}/report")
     assert r.status_code == 200
@@ -432,8 +413,9 @@ def test_route_downloads_report(tmp_path, monkeypatch):
 def test_route_unknown_season_is_plain_404(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     from app.ui import server as srv
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    from app.ui import retro_seasons as ui_retro_seasons
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     r = TestClient(srv.app).get("/retro/2097-98/report")
     assert r.status_code == 404
     assert "2097-98" in r.text

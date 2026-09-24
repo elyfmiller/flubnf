@@ -3,24 +3,10 @@
 cd "$(dirname "$0")"
 
 # Stay current (lab-share mode). Fast-forward only, so a real edit is never
-# silently overwritten.
-#
-# What this used to say was "offline or local changes, running as-is", which
-# names two causes with opposite remedies and tells the reader which of them
-# it is not. On a lab machine one of the two is almost always an accident: a
-# stray save, a line ending, a file left open in an editor. That machine then
-# runs a month old console against a current engine and nobody knows why. So:
-# say which cause it is, name the files, and repair the accidental one by
-# STASHING those edits (git stash list has them afterwards, nothing is
-# destroyed) and fast-forwarding over them.
-#
-# Local COMMITS are a different matter and are never touched here: a clone
-# with real work on it is not this script to reset. It prints the command
-# instead and runs what is on disk.
-#
-# FLUBNF_UPDATE=off skips the whole block. FLUBNF_UPDATE=force resets to
-# origin, discarding local edits AND local commits, for the case where the
-# only thing that matters is that this machine matches the lab.
+# silently overwritten. Say which cause blocks an update: stray tracked edits
+# (usually accidents) are stashed (git stash list) and fast-forwarded over;
+# local commits are never touched (the reset command is printed instead).
+# FLUBNF_UPDATE=off skips; FLUBNF_UPDATE=force resets to origin, discarding both.
 if [ -d .git ] && [ "${FLUBNF_UPDATE:-}" != "off" ]; then
   BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
   UP="$(git rev-parse --abbrev-ref '@{u}' 2>/dev/null)"
@@ -69,17 +55,10 @@ if [ -d .git ] && [ "${FLUBNF_UPDATE:-}" != "off" ]; then
   fi
 fi
 
-# Dependency refresh policy (regression fix, 2026-08-22): the package is
-# installed EDITABLE, so pulled code changes are live without any reinstall;
-# pip is needed only when the project metadata (pyproject.toml) changes.
-# The old unconditional quiet reinstall here (a) uninstalled and reinstalled
-# the package on EVERY open, adding half a minute to each launch, and
-# (b) had a window between uninstall and reinstall in which .venv/bin/flubnf
-# did not exist, with all errors hidden: an interrupted or failed open left
-# the app unlaunchable until the NEXT open fell into full setup. That is the
-# "open, close, open again" failure. Now: install only when pyproject.toml
-# differs from the stamp of the last successful install, say so out loud,
-# never hide the errors, and verify the launcher exists before using it.
+# Dependency refresh policy: the package is editable, so pip runs only when
+# pyproject.toml differs from the last good install's stamp. Never reinstall
+# on every open (slow, and an interrupted reinstall left no .venv/bin/flubnf);
+# keep errors visible and check the launcher exists before using it.
 STAMP=".venv/.pyproject.stamp"
 if [ ! -x .venv/bin/flubnf ]; then
   echo "First run, setting up (a few minutes)..."
@@ -105,64 +84,32 @@ fi
 
 [ -f .flubnf.env ] && . ./.flubnf.env
 if [ ! -x "${FLUBNF_PY_ENGINE:-/nonexistent}" ]; then
-  # PF engine missing: install it automatically, right here (one time).
-  # The app runs without it (analogue only), so a setup failure never
-  # blocks the launch. A failed attempt is stamped so a broken setup does
-  # not re-run on every open; the stamp keys on the script, the checkout path
-  # and the offline bundle, so cloning the fork, being handed a bundle, or a
-  # setup_engine.sh update all earn a retry.
-  # A checkout OR a plain unpacked copy. Those came apart the moment the lab
-  # started handing students a `git archive` tarball instead of a clone
-  # (scripts/cut_engine_archive.sh, docs/INSTALL-STUDENTS.md): that folder has
-  # no .git in it, so a test for ".git is there" answered "no engine" about a
-  # perfectly good engine, this loop passed FLUBNF_PYBNF="" to setup_engine.sh,
-  # and the student who had done exactly what the install page told them to do
-  # got the GitHub credentials wall instead. setup_engine.sh accepts the plain
-  # copy (it only ever needs an importable package, never git), so the gate
-  # here has to ask the same question it does.
+  # PF engine missing: install it now (one time). Failure never blocks the
+  # launch (analogue only). A checkout OR an unpacked archive (no .git) counts,
+  # the same test as setup_engine.sh.
   CHECKOUT=""
-  for c in "${FLUBNF_PYBNF:-}" "$HOME/Documents/GitHub/PyBNF-Private" \
-           "$HOME/Documents/GitHub/PyBNF-pf" "$HOME/Documents/PyBNF-Private" \
+  for c in "${FLUBNF_PYBNF:-}" "$HOME/Documents/GitHub/PyBNF-pf" \
+           "$HOME/Documents/GitHub/PyBNF-Private" "$HOME/Documents/PyBNF-Private" \
            "$HOME/PyBNF-Private"; do
     [ -n "$c" ] || continue
     if [ -d "$c/.git" ] || { [ -f "$c/pybnf/pf.py" ] && [ -f "$c/setup.py" ]; }; then
       CHECKOUT="$c"; break
     fi
   done
-  # The offline engine bundle counts as a change of circumstances, and the
-  # search for it lives in setup_engine.sh so there is only ever one copy of
-  # it. This is the sequence it has to survive: a first run fails for want of
-  # GitHub access and stamps itself, someone hands the student pybnf.bundle,
-  # they drop it in Downloads and open the app again. Without the bundle in
-  # the fingerprint the stamp would suppress exactly the run that would now
-  # succeed, and the student would be told to fix an access problem they no
-  # longer have.
+  # A failed attempt is stamped with a fingerprint so a doomed setup does not
+  # re-run on every open. It keys on the setup_engine.sh hash, the checkout
+  # and the offline bundle (searched by setup_engine.sh, the only copy), so a
+  # new checkout, bundle or script earns a retry.
   BUNDLE="$(./setup_engine.sh --print-bundle 2>/dev/null)"
-  # The bundle's SIZE, not just its path. The failure setup_engine.sh says is
-  # the realistic one -- "a copy that did not finish ... compare its size with
-  # the copy you were given and fetch it again" -- is repaired by writing a
-  # good file over the bad one, under the same name, in the same folder. A
-  # fingerprint made of the path alone does not move when that happens, so the
-  # stamp suppressed the retry the message had just asked for, and the student
-  # was told to fix a failure they had already fixed. MEASURED 2026-08-31: a
-  # 300-byte truncated pybnf.bundle replaced by the whole file in ~/Downloads
-  # produced a byte-identical fingerprint. `wc -c` rather than `stat`, whose
-  # flags differ between macOS and Linux; empty when there is no bundle.
+  # The bundle's SIZE too: a truncated copy replaced under the same name must
+  # retry. `wc -c`, not stat (flags differ between macOS and Linux).
   BUNDLESZ=""
   [ -n "$BUNDLE" ] && BUNDLESZ="$(wc -c < "$BUNDLE" 2>/dev/null | tr -d ' ')"
   ATTEMPT=".venv/.engine-attempt"
   FP="$(shasum setup_engine.sh 2>/dev/null | cut -c1-16):${CHECKOUT:-none}:${BUNDLE:-none}:${BUNDLESZ:-0}"
-  # The stamp exists only to stop re-running a DOOMED attempt on every open,
-  # and the only doomed attempt is the one with nothing local to install from:
-  # no bundle, no checkout, so it walks into the GitHub credentials wall every
-  # time. When a bundle or a checkout IS present the attempt is not doomed, it
-  # is a local install that a transient first failure (a network blip, a conda
-  # hiccup during the heavier first run) should not suppress. MEASURED
-  # 2026-09-02 on a lab machine: the engine file sat in Downloads the whole
-  # time, so its fingerprint never changed, and a single transient failure
-  # stamped the machine into analogue-only until SetupEngine.command was
-  # double-clicked. So: honor the stamp ONLY when there is nothing local to
-  # try; otherwise always retry.
+  # Honor the stamp only when nothing local exists (the doomed GitHub-wall
+  # case); with a bundle or checkout present, always retry (a transient
+  # failure must not stamp a machine into analogue-only).
   if [ -z "$BUNDLE$CHECKOUT" ] && [ "$(cat "$ATTEMPT" 2>/dev/null)" = "$FP" ]; then
     echo "· PF engine still not installed: the last attempt found no engine to"
     echo "  install from, so it is not retried on every open. The one-file fix,"
@@ -192,11 +139,8 @@ echo "FluBNF console starting. A window (or browser tab) will open. Ctrl-C here 
 .venv/bin/flubnf app
 STATUS=$?
 
-# On a clean exit (including Ctrl-C), close this Terminal window rather than
-# leaving a dead one behind. On a real error, hold the window open so the
-# message can be read. The osascript targets only the window whose tab owns
-# this tty, and the shell exits before it fires, so Terminal closes without
-# a "process still running" prompt.
+# Clean exit (incl. Ctrl-C): close only this tty's Terminal window, after the
+# shell exits (no "process still running" prompt). On error, keep it open.
 case "$STATUS" in
   0|130|143)
     if [ "${TERM_PROGRAM:-}" = "Apple_Terminal" ]; then

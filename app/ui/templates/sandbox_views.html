@@ -1,17 +1,17 @@
-{# the model views card: the contact map and the reaction network, both
+{% import "_tips.html" as tips %}{# the diagram card: the contact map and the reaction network, both
    read by BNG2.pl from the saved model and drawn here by model-views.js
    from the graph each route returns (pan, zoom, drag, hover, click; view
    only). The contact map loads with the page, the network on its first
    click; each view is built once and kept. #}
 <link rel="stylesheet" href="/static/model-views.css"><script defer src="/static/model-views.js"></script>
-<div class="card" id="cmap" data-model="{{ editing.name }}"><h2>Model views</h2>
+<div class="card" id="cmap" data-model="{{ editing.name }}"><h2>Diagram {{ tips.tip("sb-diagram", "the diagram", "Drag a node, hover or click one for its links, scroll to zoom. Save to redraw after an edit.") }}</h2>
  <div class="mviews" role="tablist" aria-label="model view">
   <button type="button" class="pill mode" data-view="contactmap" role="tab" aria-selected="true">Contact map</button>
   <button type="button" class="pill mode" data-view="network" role="tab" aria-selected="false">Reaction network</button>
  </div>
  <div id="cmap-svg" class="mview-draw"><p class="hint">Drawing with BNG2.pl.</p></div>
- <p class="hint mview-hint" data-view="contactmap">Molecule types, components, states and the bonds the rules can form, as BNG2.pl reads the saved model. Drag a molecule, hover a component for its bonds, scroll to zoom.</p>
- <p class="hint mview-hint" data-view="network" hidden>Every species and reaction BNG2.pl generates from the rules, with its rate law. The rate is written on the arrow between the species it moves; drag a species, hover one for its reactions, click to keep that, scroll to zoom.</p>
+ <p class="hint mview-hint" data-view="contactmap">Molecule types, components, states and the bonds the rules can form, as BNG2.pl reads the saved model.</p>
+ <p class="hint mview-hint" data-view="network" hidden>Every species and reaction BNG2.pl generates from the rules, with its rate law.</p>
 </div>
 <script>
 (function () {

@@ -1,30 +1,52 @@
 {% extends "base.html" %}{% block title %}FluBNF · Forecast{% endblock %}
 {% block head %}<script src="/static/plotly.min.js"></script>
 <script src="/static/quips.js"></script>{% endblock %}
-{% block content %}
+{% block content %}{% import "_tips.html" as tips %}
 <h1>Forecast</h1>
 <div class="cols">
  <div><div class="card"><h2>Settings</h2>
-  <form method="post" action="/run" id="fcform">
-   {# Two ways in, one form. Real-time takes the latest archived week the
-      calendar allows; Vintage names an archived week. Same controls, same
-      run record, so the two can never disagree about what runs. #}
-   <div class="modes" role="tablist" aria-label="forecast mode">
+  {% if source_choices or dataset %}
+  {# the data source: the hub by default, a stored dataset by choice
+     (app/ui/datasets_ui.py); a plain GET form, like the Data tab's #}
+  <form method="get" action="/forecast" class="row srcpick">
+   <span>{{ tips.label("Data source", "fc-src", "The FluSight hub is the default. A dataset from the Data tab runs on its own groups and weeks; its forecasts are exported as CSV files under non-hub names and never submitted.", for_="fc-source") }}
+   <select name="source" id="fc-source">
+    <option value="">FluSight hub</option>
+    {% for sid, sname in source_choices %}<option value="{{ sid }}" {% if dataset and dataset.id == sid %}selected{% endif %}>{{ sname }}</option>{% endfor %}
+   </select></span>
+   <button class="quiet">Use</button>
+  </form>
+  {% endif %}
+  {# your own data, uploaded here: the shared upload box; "Forecast this"
+     stores it and reopens this tab on it #}
+  {% import "_dataset_upload.html" as dsup %}
+  <details class="dsup-fold" id="fc-upload">
+   <summary>Upload your own data</summary>
+   {{ dsup.box("forecast") }}
+  </details>
+  <form method="post" action="{{ '/run/dataset' if dataset else '/run' }}" id="fcform">
+   {% if dataset %}<input type="hidden" name="dataset" value="{{ dataset.id }}">
+   <p class="hint">{{ dataset.name }}: {{ "vintage-true" if dataset.vintage_true else "final data, not vintage-true" }}.
+    {{ tips.tip("fc-ds-truth", "the data behind these forecasts", ("Each week is forecast from the as_of snapshot that held it, as it stood then." if dataset.vintage_true else "The upload has no as_of column, so a past week is forecast from the final data cut at that week; later revisions leak in, so it reads better than real time would have.") ~ " Scores are against an in-house persistence baseline, not FluSight-baseline.") }}</p>
+   {% endif %}
+   {# two modes, one form (same controls, same run record): Real-time takes
+      the latest archived week the calendar allows; Vintage names one #}
+   <div class="modes">
+    <div role="tablist" aria-label="forecast mode">
     <button type="button" class="pill mode" data-mode="realtime" role="tab">Real-time</button>
     <button type="button" class="pill mode" data-mode="vintage" role="tab">Vintage</button>
+    </div>
+    {% if dataset %}{{ tips.tip("fc-mode", "the forecast modes", "Real-time: the dataset's newest week. Vintage: any earlier week of the dataset.") }}{% else %}{{ tips.tip("fc-mode", "the forecast modes", "Real-time: the newest archived week. Vintage: any archived week, with the data as it stood then.") }}{% endif %}
    </div>
-   <p class="hint" id="mode-line"></p>
    <input type="hidden" name="mode" id="mode-field" value="realtime">
-   <label>Forecast date</label>
+   {% if dataset %}{{ tips.label("Forecast date", "fc-date", "A week of the dataset; any other day anchors on the latest week on or before it.") }}{% else %}{{ tips.label("Forecast date", "fc-date", "Any day; the run anchors on the latest archived week on or before it.") }}{% endif %}
    <input type="date" name="forecast_date" value="{{ form.forecast_date }}" data-default="{{ default_date }}">
-   {# The anchor line replaces a paragraph of explanation: any day is
-      accepted, and this says which archived week it actually resolves to.
-      Rendered server-side from resolve_anchor (the same function the run
-      uses, so they cannot disagree) and updated live below. #}
+   {# any day is accepted; this line names the archived week it resolves to
+      (server-side resolve_anchor, the run's own function; updated live) #}
    <p class="hint" id="anchor-line">{{ anchor_note }}</p>
    {% if vintage_dates %}
    <select id="vintage-pick">
-    <option value="">or pick an archived week ({{ vintage_dates|length }})</option>
+    <option value="">{{ "or pick a week" if dataset else "or pick an archived week" }} ({{ vintage_dates|length }})</option>
     {% for v in vintage_dates %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
    </select>
    {% endif %}
@@ -48,13 +70,11 @@
         if (!line || !box) return;
         var a = anchorFor(box.value);
         line.textContent = a
-          ? 'Anchored on the archived week ending ' + a + '.'
+          ? 'Anchor week: ' + a + '.'
           : 'No archived week on or before ' + box.value + '.';
       }
-      // the advanced Season start: a blank field derives August 1 of the
-      // forecast's season, and the hint says which date that is
-      // looked up when painted, not when this script runs: the Advanced
-      // group, and the line inside it, sit further down the form
+      // blank Season start = August 1 of the forecast's season; the line is
+      // looked up when painted (it sits further down the form)
       function seasonDefault(day) {
         var m = day.match(/^(\d{4})-(\d{2})/);
         if (!m) return '';
@@ -65,14 +85,11 @@
         var sline = document.getElementById('season-line');
         if (!sline || !box) return;
         var d = seasonDefault(box.value);
-        sline.textContent = d ? 'Blank: ' + d + ', August 1 of the season.' : '';
+        sline.textContent = d ? 'Blank: ' + d + '.' : '';
       }
       // the two modes share every control; Real-time also resets the date
       // to the latest week the calendar allows and hides the picker
       var form = document.getElementById('fcform');
-      var mline = document.getElementById('mode-line');
-      var TEXT = {realtime: 'The latest archived week the calendar allows; the run records the week it anchored on.',
-                  vintage: 'Any archived week, as the season looked then.'};
       function setMode(mode, resetDate) {
         if (!form) return;
         form.classList.toggle('mode-realtime', mode === 'realtime');
@@ -81,7 +98,6 @@
         document.querySelectorAll('.pill.mode').forEach(function (b) {
           b.setAttribute('aria-selected', b.dataset.mode === mode ? 'true' : 'false');
         });
-        if (mline) mline.textContent = TEXT[mode] || '';
         if (mode === 'realtime' && resetDate && box && box.dataset.default) {
           box.value = box.dataset.default; paint(); paintSeason();
         }
@@ -102,58 +118,56 @@
       setMode(initial, false);
     })();
    </script>
-   <label>Locations <span id="lcount" class="hint"></span></label>
+   {% if dataset %}
+   <div class="lblrow"><label>Groups <span id="lcount" class="hint"></span></label>{{ tips.tip("fc-locs", "groups", "The dataset's groups; each is forecast on its own." ~ (" " ~ dataset.national ~ " is the national group: scored beside the others, never pooled with them." if dataset.national else "")) }}</div>
+   {% else %}
+   <div class="lblrow"><label>Locations <span id="lcount" class="hint"></span></label>{{ tips.tip("fc-locs", "locations", "US national is always fitted too, and scored separately.") }}</div>
+   {% endif %}
    <div class="checklist">
      <label class="ck"><input type="checkbox" id="ck-all" value="all" name="locations"
-       {% if "all" in form.locations %}checked{% endif %}> <b>all 52 jurisdictions</b></label>
+       {% if "all" in form.locations %}checked{% endif %}> <b>{{ ("all " ~ all_locs | length ~ " groups") if dataset else "all 52 jurisdictions" }}</b></label>
      {% if locations_error %}<p class="warn">{{ locations_error }}</p>{% endif %}
      {% for l in all_locs %}
      <label class="ck"><input type="checkbox" class="ck-one" name="locations" value="{{ l }}"
        {% if l in form.locations %}checked{% endif %}> {{ l }}</label>
      {% endfor %}
    </div>
-   {# US is fitted on every run whatever is checked, and reported apart
-      from the pooled score. The long form lives on the Methods page. #}
-   <p class="hint">US national is always fitted too, and scored
-    separately.</p>
-   <label>Model</label>
-   {# the form still posts `engine`: the run path's names for the three
-      configurations. The reader picks what to run; the engine row below
-      appears only when the Oracle SIHRS is part of the run. Both models are
-      submitted on their own; "all" writes both files. #}
-   {% set engine_names = {"all": "Both models: Oracle SIHRS and Groundhog",
+   {% if dataset %}
+   {{ tips.label("Model", "fc-model", "Each model writes its own export file (FluBNF-Groundhog, FluBNF-SIHRS-PF); nothing is blended or submitted. The plain SIHRS particle filter needs counts with a population and runs without the Oracle step, whose donor bank is FluSight's.") }}
+   <select name="engine" id="model-pick">{% for e in engines %}
+     <option value="{{ e }}" {% if e == form.engine %}selected{% endif %}
+       {% if e != "analogue" and not dataset.pf_ok %}disabled{% endif %}>{{ engine_names.get(e, e) }}</option>{% endfor %}</select>
+   {% if not dataset.pf_ok %}<p class="hint">{{ engine_names.analogue }}: {{ dataset.pf_why }}.</p>{% endif %}
+   <div class="lblrow"><label class="ck" for="fc-flusurv"><input type="checkbox" name="flusurv" value="1" id="fc-flusurv"
+     {% if form.flusurv %}checked{% endif %}> Add FluSurv-NET donors</label>
+    {{ tips.tip("fc-flusurv", "FluSurv-NET donors", "Off by default: the Groundhog draws growth only from your data's earlier seasons. Tick only for US influenza hospitalization-like data, where the FluSurv-NET bank's seasons are relevant.") }}</div>
+   {% else %}
+   {{ tips.label("Model", "fc-model", "Each model writes its own FluSight submission file; nothing is blended.") }}
+   {# posts `engine` (the run path's names); the engine row appears only
+      when the Oracle SIHRS runs; "all" writes both submission files #}
+   {% set engine_names = {"all": "Both (Oracle SIHRS + Groundhog)",
                           "pf": "Oracle SIHRS only",
                           "analogue": "Groundhog only"} %}
    <select name="engine" id="model-pick">{% for e in engines %}
      <option value="{{ e }}" {% if e == form.engine %}selected{% endif %}>{{ engine_names.get(e, e) }}</option>{% endfor %}</select>
-   <div id="engine-row">
-    <label>Engine</label>
+   {% endif %}
+   <div id="engine-row"{% if dataset %} hidden data-dataset="1"{% endif %}>
+    {{ tips.label("Engine", "fc-engine", "The particle filter fits each state; the Oracle step then blends its forecast growth with past seasons' growth at the same calendar week.") }}
     <select aria-label="Oracle SIHRS engine"><option>Particle filter</option></select>
-    <p class="hint">After the fit, the Oracle step blends the filter's
-     forecast growth with donor growth from past seasons at the same
-     calendar week (<a href="/methods#oracle">Methods</a>).</p>
    </div>
    <script>
     (function(){
       var m=document.getElementById('model-pick'), r=document.getElementById('engine-row');
-      function sync(){ r.hidden = (m.value === 'analogue'); }
+      function sync(){ r.hidden = (m.value === 'analogue') || !!r.dataset.dataset; }
       m.addEventListener('change', sync); sync();
     })();
    </script>
-   {# The two-strain member has no control here: it failed its full-grid
-      gate while the blend shipped and does not ship. The /run endpoint
-      still accepts members=3 for research use. #}
-   <details class="adv"><summary class="advbtn">Advanced settings</summary>
-    <label>Season start</label>
-    <input type="date" name="season_start" value="{{ form.season_start }}">
-    <p class="hint" id="season-line"></p>
-    <label title="trim the newest N weeks before fitting (vintage-edge guard)">Weeks to drop</label>
-    <input name="weeks_to_drop" type="number" value="{{ form.weeks_to_drop }}" min="0" max="4">
-    <input type="hidden" name="weeks_to_nowcast" value="0">
-    <p class="hint">Trims the newest N reported weeks before the fit; 0 keeps every week.</p>
-    <label>Replicates</label>
-    <input name="replicates" type="number" value="{{ form.replicates }}" min="1" max="9">
-   </details>
+   {# no control for the research-only member (failed its full-grid gate);
+      /run still accepts members=3 for research use #}
+   {# the Model settings panel (absorbs the old Advanced block; season
+      start, weeks to drop and replicates keep their field names) #}
+   <input type="hidden" name="weeks_to_nowcast" value="0">
+   {% include "_model_settings.html" %}
    <button class="gold" data-guard="console-run">Run models</button>
   </form>
   <script>
@@ -161,16 +175,14 @@
      const all=document.getElementById('ck-all').checked;
      const n=document.querySelectorAll('.ck-one:checked').length;
      document.getElementById('lcount').textContent =
-       all? '(all 52)' : n? '('+n+' selected)' : '';
+       all? '(all '+{{ (all_locs | length if dataset else 52) | tojson }}+')' : n? '('+n+' selected)' : '';
    }
-   // 'all' and specific states are mutually exclusive, both directions,
-   // with nothing ever disabled (you can always click your intent)
+   // 'all' and specific states are mutually exclusive; nothing is disabled
    document.getElementById('ck-all').addEventListener('change', function(){
      if(this.checked) document.querySelectorAll('.ck-one').forEach(c => c.checked=false);
      updCount();
    });
-   // the checklist decides what RUNS (and what the fans show) -- the data
-   // panel below has its own dropdown and no longer follows these boxes
+   // the checklist decides what RUNS; the data panel has its own dropdown
    document.querySelectorAll('.ck-one').forEach(c=>c.addEventListener('change',()=>{
      if(c.checked) document.getElementById('ck-all').checked=false;
      updCount();}));
@@ -183,35 +195,23 @@
    <p id="runlabel" class="runlabel">{{ status.run_label or "" }}</p>
    <div class="runbar"><div id="runfill" style="width:3%"></div></div>
    <p class="runstat" id="prog"></p>
-   {# wall time, ticked client-side from the server's start timestamp: the
-      poll re-anchors it every two seconds, so it cannot drift, and a page
-      reloaded an hour in shows the true total rather than starting over #}
+   {# elapsed ticks client-side from the server's elapsed_s, re-anchored
+      each poll (no drift; survives reload) #}
    <p class="runstat" id="elapsed"></p>
-   {# what produced this run, under the readouts and secondary to them: the
-      same settings the run page and the weekly report state, from the live
-      spec. A run watched for an hour must never leave the watcher guessing
-      which settings it is watching. #}
+   {# the live spec's settings, as the run page and weekly report state them #}
    <div id="runsettings">{{ settings_html(status.settings) | safe }}</div>
    <form method="post" action="/run/stop"
      onsubmit="this.querySelector('button').disabled=true"><button class="quiet">Stop run</button></form>
    <p class="quip" id="quip"></p>
   </div>
   <script>
-   // quips come from the shared list (static/quips.js), the same one the
-   // retrospective page rotates, so neither page's humour drifts from the
-   // other's
    flubnfQuips('quip');
-   // honest progress: the displayed % is monotone non-decreasing, and the ETA
-   // is EMA-smoothed (alpha .3) so it ticks down instead of oscillating; a
-   // genuine upward correction is accepted only after 3 consecutive polls
-   // above the displayed value. All state resets when a new run takes over.
+   // progress: % never regresses; the ETA is EMA-smoothed (alpha .3) and an
+   // upward correction needs 3 consecutive polls; a new run resets it all
    let D={done:0,total:0,eta_s:null,t:Date.now()};
    let STOPPING=false;
    let PS;
    let FAILS=0;   // consecutive failed polls; 3 freeze the elapsed clock
-   // wall clock: the server owns the truth (elapsed_s), the browser only
-   // interpolates between polls, so the reading can never drift and a reload
-   // mid-run picks up the real total instead of restarting at zero
    let EL={s:{{ (elapsed0 if elapsed0 is not none else 0) | tojson }},at:Date.now()};
    function hms(t){t=Math.max(0,Math.round(t));
      return Math.floor(t/3600)+':'+String(Math.floor(t/60)%60).padStart(2,'0')
@@ -220,18 +220,13 @@
      if(document.hidden) return;          // nothing to see: do no work
      const el=document.getElementById('elapsed');
      if(!el||EL.s==null) return;
-     // EL.at of null means the poll went quiet (see the catch below): the
-     // clock holds its last-good reading instead of ticking on a dead run
+     // EL.at null = polls went quiet (see catch): hold the last-good reading
      el.textContent='elapsed '+hms(EL.s+(EL.at!=null?(Date.now()-EL.at)/1000:0));
    },500);
    function resetProg(){PS={label:null,disp:0,ema:null,shown:null,shownT:0,up:0};}
    resetProg();
-   // Polling discipline, which matters most exactly when the server is
-   // slowest (a fitting run has the cores): a HIDDEN tab drops to a slow
-   // heartbeat instead of asking every two seconds for readouts nobody can
-   // see, and a request still in flight suppresses the next tick rather
-   // than stacking a second one behind a slow reply. Returning to the tab
-   // polls immediately, so the readouts are current the moment they matter.
+   // polling: hidden tab -> 20 s heartbeat; never stack requests; poll at
+   // once on return to the tab
    const POLL_MS=2000, POLL_HIDDEN_MS=20000;
    let INFLIGHT=false, PTIMER=null;
    function schedule(ms){clearTimeout(PTIMER); PTIMER=setTimeout(poll,ms);}
@@ -241,12 +236,8 @@
      INFLIGHT=true;
      try{const r=await fetch('/api/progress'); const d=await r.json();
        FAILS=0;   // a live server: the elapsed clock re-anchors below
-       // reload discipline (the retro ticker's yield): a run completing in
-       // the background must never wipe an open guard modal or a form the
-       // user is filling (a changed forecast date, a half-marked location
-       // checklist), so while GUARD_BUSY is set or focus sits inside a form
-       // the reload waits for the first poll after the modal closes or
-       // focus leaves; the readouts keep polling meanwhile
+       // on completion, defer the reload while GUARD_BUSY or a form has
+       // focus (never wipe an open modal or a half-filled form)
        if(!d.running){
          if(window.GUARD_BUSY
             || (document.activeElement && document.activeElement.form)){
@@ -260,12 +251,10 @@
        if(d.elapsed_s!=null) EL={s:d.elapsed_s,at:Date.now()};   // re-anchor
        STOPPING=(d.phase||'').startsWith('stopping');
        D={...d, t: d.done===D.done ? D.t : Date.now()};  // glide anchors to the last done-change
-       // settings arrive with the poll too, so a card rendered before the
-       // spec existed fills itself in rather than staying blank
+       // settings arrive with the poll too (fills a card rendered early)
        const sb=document.getElementById('runsettings');
        if(sb && !sb.textContent.trim() && d.settings && d.settings.length){
-         // same markup as app.core.runs.settings_html: the compact
-         // two-column grid, values escaped (they include location names)
+         // same markup as app.core.runs.settings_html, values escaped
          const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
            .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
          sb.innerHTML='<div class="hint runsettings"><strong>Run settings</strong>'
@@ -283,10 +272,8 @@
        if(STOPPING) document.getElementById('prog').textContent='Stopping; finishing the current fit…';
        else if(!d.total) document.getElementById('prog').textContent=d.phase||'starting';
      }catch(e){
-       // failure-aware clock (the retro ticker's rule): after 3 consecutive
-       // failed polls the elapsed readout freezes at its last-good value
-       // instead of ticking up on a dead server; the next successful poll
-       // re-anchors it through d.elapsed_s
+       // 3 consecutive failed polls freeze the elapsed clock at its
+       // last-good value; the next success re-anchors it
        if(++FAILS===3 && EL.at!=null) EL={s:EL.s+(Date.now()-EL.at)/1000,at:null};
      }
      finally{INFLIGHT=false;}
@@ -318,48 +305,47 @@
    {% set r = ledger[0] %}
    <p><a href="/runs/{{ r.run_id }}">{{ r.label }}</a>
    <span class="pill {% if r.status == 'ok' %}ok{% elif r.status in ('interrupted', 'partial') %}warn{% else %}bad{% endif %}">{{ r.status }}</span></p>
-   {# the run's settings on the left and its results on the right: the
-      run type, each member's relWIS with its cells, fits, files, report.
-      The chip line is gone from this card; the run page keeps the full
-      record, and the status pill above says failed when a run failed. #}
+   {# settings left, results right; the run page keeps the full record #}
    <div class="runsplit">
     <div>{{ settings_html(r.settings) | safe }}</div>
     <div>{{ results_html(r.outcome, r.spec) | safe }}</div>
    </div>
    {# straight to the run's outputs, so the tab never dead-ends here #}
+   {% if dataset %}
+   <p class="hint"><a href="/runs/{{ r.run_id }}">Fans and export files</a></p>
+   {% else %}
    <p class="hint">{% if r.has_report %}<a href="/runs/{{ r.run_id }}/report" target="_blank">Weekly report</a> · {% endif %}<a href="/output">Submission files</a></p>
-   {% if r.spec and r.status in ("stopped", "error", "failed", "interrupted", "partial") %}
-   {# one-click re-run from the ledger row's recorded spec: no re-filling
-      the form. Worded honestly: console fits hold no checkpoint, so this
-      is a fresh run, never a resume. Same guard as the Run models button;
-      /run applies the same server-side busy cross-checks. #}
+   {% endif %}
+   {% if r.spec and r.status in ("stopped", "error", "failed", "interrupted", "partial") and not dataset %}
+   {# fresh re-run from the recorded spec (console fits hold no checkpoint,
+      so never a resume); same guard and server-side checks as /run #}
    <form method="post" action="/runs/{{ r.run_id }}/rerun" class="rerun-run">
     <button class="gold" data-guard="console-run">Run again with these settings</button>
    </form>
-   <p class="hint">Console runs hold no checkpoint: this starts a fresh run
-    with the recorded settings and does not resume the earlier one.</p>
+   <p class="hint">Console runs hold no checkpoint: this starts fresh and
+    does not resume the earlier one.</p>
    {% endif %}
   </div>
   {% endif %}
 
-  {# the deliverable leads the column: run status, forecast, raw data. The
-     fan build path overwrites this wrapper's innerHTML wholesale whenever
-     stored forecasts exist (MODELS.length below), so the first-launch hint
-     can never coexist with a real fan card; it renders only when the
-     server had no stored run to serialize into FANQ. #}
+  {# the fan build replaces this wrapper's innerHTML whenever stored
+     forecasts exist, so the first-launch hint shows only with an empty FANQ #}
   <div id="fanwrap">{% if fanq_json == '{}' %}<p class="hint">Forecasts appear here once the models run.</p>{% endif %}</div>
 
   <details class="card" open><summary><h2 style="display:inline">Data</h2>
-   <span class="hint">: raw admissions, any location (latest vintage)</span></summary>
+   <span class="hint">{{ (": " ~ dataset.name ~ ", any group (newest data)") if dataset else ": raw admissions, any location (latest vintage)" }}</span></summary>
    <div style="margin:.6rem 0 .2rem">
     <select id="data-loc" aria-label="data panel location"
       style="width:auto;min-width:230px;max-width:100%">
+     {% if dataset %}
+     {% for l in all_locs %}<option {% if loop.first %}selected{% endif %}>{{ l }}</option>{% endfor %}
+     {% else %}
      <option selected>US (national)</option>
      {% for l in all_locs | sort %}<option>{{ l }}</option>{% endfor %}
+     {% endif %}
     </select>
    </div>
-   {# the selected mode wears gold and states aria-pressed, exactly as the
-      season player's view tabs do; drawData() keeps both in step #}
+   {# the selected mode wears gold + aria-pressed (drawData keeps both) #}
    <div class="row" style="margin:.4rem 0">
     <button type="button" class="quiet" id="mode-raw" aria-pressed="false">full series</button>
     <button type="button" class="quiet" id="mode-season" aria-pressed="false">season over season</button>
@@ -370,17 +356,14 @@
     <span class="hint" id="data-pos"></span>
     <button type="button" class="quiet cnav" id="data-next">▶</button>
    </div>
-   {# reserved height (the fan card's rule): the chart draws at 380, so an
-      in-flight fetch can never collapse the page under the reader #}
+   {# reserved height (chart draws at 380): a fetch never collapses the page #}
    <div id="dataplots" style="min-height:380px"></div>
   </details>
  </div>
 </div>
-{# The expanded forecast view: the same modal shell as the run-interference
-   guard (base.html), sized to the viewport by .modal.fanx. The pager row
-   mirrors the fan card's and both drive the one selection state, so
-   closing returns to the Forecast tab exactly as it was: same location,
-   same scroll position, focus back on the opener. #}
+{# expanded forecast view: base.html's modal shell sized by .modal.fanx; its
+   pager shares the card's selection, so closing restores location, scroll
+   and focus #}
 <div id="fanx-modal" class="modal-back" hidden>
  <div class="modal fanx card" role="dialog" aria-modal="true"
       aria-labelledby="fanx-title">
@@ -403,26 +386,17 @@
  const FANQ = {{ fanq_json | safe }};   // {model: {loc: {h: {q: v}}}}
  const ROBS = {{ run_obs_json | safe }};  // loc -> [[date, value]...] AS OF the run's vintage
  const FCDATE = {{ fc_date | tojson }};
- // the one model-name map (the shared player's, via the server), so the
- // fan selector buttons say what every other surface says
+ // the data source for /api/series: '' = the FluSight hub
+ const SRCQ = {{ ("&source=" ~ dataset.id if dataset else "") | tojson }};
+ // shared maps from player.js's marked JSON, injected by the server
  const MNAMES = {{ model_names_json | safe }};
- // [month label, week offset from August 1] from the one server-side
- // offset list, so the season-over-season axis reads as calendar months
+ // [month label, week offset from August 1] (server-side list)
  const SEASON_MONTHS = {{ season_months | tojson }};
  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
- // the one member-color map (the shared player's marked JSON, via the
- // server), dichromat-spaced 2026-08-21. Ensemble alone stays
- // theme-resolved through the accent token: on light grounds --gold is
- // the readable accent-ink variant of the same cyan identity. Re-read
- // per draw so a theme change repaints correctly.
+ // ensemble alone resolves through --gold (re-read per draw)
  const MCOLORS = {{ member_colors_json | safe }};
- // the season-line palette's red-green-safe set (the shared player's
- // marked JSON, via the server). The colors actually drawn resolve from
- // the --season-N tokens per draw: the normal-vision tab10-adjacent
- // default, remapped to the cvd-safe set (these SCOLORS literals) under
- // data-vision="cvd" -- so the CV-safe toggle visibly recolors the
- // season lines on the themechange redraw. SCOLORS stays the fallback
- // where the tokens are absent (see SEASON_COLORS in player.js).
+ // season lines resolve --season-N per draw (the cvd set under
+ // data-vision="cvd"); SCOLORS is the fallback (SEASON_COLORS in player.js)
  const SCOLORS = {{ season_colors_json | safe }};
  const seasonColor = i => css('--season-' + ((i % SCOLORS.length) + 1))
                           || SCOLORS[i % SCOLORS.length];
@@ -435,46 +409,34 @@
      return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';}
    return c;
  }
- // chart text rides the type system: the brand face with a system fallback,
- // sized from the root font size so the A-/A/A+ control reaches it. Ticks
- // and legend sit at .85rem (above the .82rem hint floor), the title one
- // step up; automargin lets the tick labels own their margins, so the
- // tight base margins leave no dead band and nothing clips at A+.
+ // chart text in root px so A-/A/A+ reaches it (ticks/legend .85, title .95)
  const rootPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
- // the chart background is the card surface it sits on, stated EXPLICITLY
- // (not transparent): on screen it composites identically, and the
- // modebar's save-PNG export then carries an opaque theme ground inside
- // the file, so the exported image stays readable on its own
+ // explicit card-surface background so a saved PNG stays readable
  function lay(title, h){ const fs=rootPx(), surf=css('--card');
    return {title:{text:title,font:{size:Math.round(fs*.95)}},
    height:h||340, margin:{l:8,r:8,t:Math.round(fs*2.2),b:8},
    paper_bgcolor:surf, plot_bgcolor:surf,
    font:{color:css('--ink'),family:'"DM Sans",system-ui,sans-serif',
          size:Math.round(fs*.85)},
-   // the legend runs horizontally UNDER the plot (it pushes the bottom
-   // margin out for itself): a right-hand legend of long entries was
-   // eating up to a third of the card width as a dead band
+   // legend under the plot (a right-hand one ate up to a third of the width)
    legend:{orientation:'h',x:0,xanchor:'left',y:-0.22,yanchor:'top'},
    xaxis:{gridcolor:css('--line'), automargin:true},
    yaxis:{gridcolor:css('--line'), rangemode:'tozero', automargin:true}};}
- // season grouping parses the Y-M-D components itself: a bare new Date(ds)
- // on a date-only string is a UTC parse, one day back in every zone west
- // of Greenwich, which walks Saturdays across month and season lines
+ // parse Y-M-D components: new Date on a date-only string is UTC and shifts
+ // Saturdays a day back west of Greenwich
  function localDate(ds){const p=ds.slice(0,10).split('-');
    return new Date(+p[0],+p[1]-1,+p[2]);}
  function seasonOf(ds){const d=localDate(ds); const y=d.getMonth()>=7?d.getFullYear():d.getFullYear()-1;
    return y+'-'+String((y+1)%100).padStart(2,'0');}
  function weekOfSeason(ds){const d=localDate(ds); const y=d.getMonth()>=7?d.getFullYear():d.getFullYear()-1;
    return Math.round((d-new Date(y,7,1))/(7*864e5));}
- // hover dates format from the ISO string, never through Date: a UTC parse
- // shifted one day behind in western timezones would misdate every Saturday
+ // hover dates format from the ISO string, never through Date (same reason)
  const MONNAMES=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
  function fmtDate(ds){const p=ds.slice(0,10).split('-');
    return MONNAMES[+p[1]-1]+' '+(+p[2])+', '+p[0];}
- let SHOWPTS=false, CURMODE='season', DIDX=0;
+ let SHOWPTS=false, CURMODE='season';
  const PCONF={responsive:true, displaylogo:false};
- // per-chart embed config: the save-PNG button exports at 2x for crisp
- // figures under a meaningful filename instead of "newplot"
+ // save-PNG at 2x under a meaningful filename
  function pconf(name){return Object.assign({},PCONF,
    {toImageButtonOptions:{format:'png',scale:2,
      filename:('flubnf_'+name).replace(/[^\w-]+/g,'_')}});}
@@ -482,8 +444,7 @@
  const LOCS=[DATA_SEL.value];   // data panel follows its own dropdown only
  function drawData(mode){
    CURMODE=mode;
-   // the switcher exposes its state: gold marks the active mode (the same
-   // treatment the season player's view tabs carry) and aria-pressed says so
+   // gold + aria-pressed mark the active mode
    ['raw','season'].forEach(m=>{
      const b=document.getElementById('mode-'+m);
      b.classList.toggle('gold', mode===m);
@@ -491,15 +452,12 @@
    });
    const lm=SHOWPTS?'lines+markers':'lines';
    const el=document.getElementById('dataplots');
-   if(!LOCS.length){el.innerHTML='<p class="hint">select locations to see their data</p>';return;}
-   DIDX=((DIDX%LOCS.length)+LOCS.length)%LOCS.length;
-   const loc=LOCS[DIDX];
-   const NODATA='<p class="hint">No data yet. Pull the FluSight hub on the Data tab.</p>';
+   const loc=LOCS[0];
+   const NODATA=SRCQ?'<p class="hint">No weeks for this group.</p>'
+     :'<p class="hint">No data yet. Pull the FluSight hub on the Data tab.</p>';
    if(!SERIES[loc]){
-     // the current chart stays in place while the fetch runs: emptying the
-     // panel here collapsed the page height mid-fetch, and the browser
-     // clamped the scroll position upward (a visible jump on slow fetches)
-     fetch('/api/series?locs='+encodeURIComponent(loc)).then(r=>r.json())
+     // keep the current chart during the fetch (emptying it jumped the scroll)
+     fetch('/api/series?locs='+encodeURIComponent(loc)+SRCQ).then(r=>r.json())
        .then(d=>{if(!d[loc]) d[loc]={dates:[],values:[]};  // sentinel: never re-fetch a miss
          Object.assign(SERIES,d); drawData(CURMODE);})
        .catch(()=>{el.innerHTML=NODATA;
@@ -510,9 +468,8 @@
    const s=SERIES[loc];
    document.getElementById('data-pos').textContent=loc;
    if(!s.dates.length){el.innerHTML=NODATA; return;}
-   // react repaints one persistent div in place (recreated only after a
-   // NODATA hint replaced it), so switching location or mode never
-   // collapses the panel's height or moves the page scroll
+   // react repaints one persistent div in place, so the height never
+   // collapses (recreated only after a NODATA hint)
    let div=el.firstElementChild;
    if(!div||!div.classList.contains('js-plotly-plot')){
      el.innerHTML=''; div=document.createElement('div'); el.appendChild(div);}
@@ -526,15 +483,9 @@
        by[k].x.push(weekOfSeason(d)); by[k].y.push(s.values[i]);
        by[k].d.push(fmtDate(d));});
      const seasons=Object.keys(by).sort();
-     // seasons share the week alignment but not the calendar, so each
-     // trace's hover carries its own season's actual Saturday date.
-     // Colors: the newest season wears the gold accent (thicker line);
-     // earlier seasons resolve --season-N newest-first (the season just
-     // before the gold one is always index 0, cycling when seasons
-     // outnumber colors), so every drawn-adjacent pair is one the
-     // palette audit measured -- never the plotly default colorway. The
-     // tokens resolve per draw, so the CV-safe toggle's themechange
-     // redraw swaps the whole set between the normal and cvd palettes.
+     // each hover carries its own season's Saturday date. Newest season:
+     // gold and thick; earlier ones take --season-N newest-first, so every
+     // adjacent pair is one the palette audit measured
      const traces=seasons.map((k,i)=>({x:by[k].x,y:by[k].y,mode:lm,marker:{size:4},name:k,
        customdata:by[k].d,
        hovertemplate:k+' · %{customdata} · %{y:,.0f}<extra></extra>',
@@ -542,8 +493,7 @@
              color:i===seasons.length-1?(css('--gold')||MCOLORS.analogue)
                   :seasonColor(seasons.length-2-i)}}));
      const L=lay(loc+': season over season',380);
-     // month names at the month-boundary week offsets; the exact date per
-     // point lives in the hover, so nobody does calendar arithmetic
+     // month ticks at the month-boundary week offsets
      L.xaxis.tickvals=SEASON_MONTHS.map(m=>m[1]);
      L.xaxis.ticktext=SEASON_MONTHS.map(m=>m[0]);
      Plotly.react(div,traces,L,pconf('data_seasons_'+loc));
@@ -552,7 +502,7 @@
  function setDataLoc(i){
    const n=DATA_SEL.options.length;
    DATA_SEL.selectedIndex=((i%n)+n)%n;
-   LOCS.length=0; LOCS.push(DATA_SEL.value); DIDX=0; drawData(CURMODE);
+   LOCS[0]=DATA_SEL.value; drawData(CURMODE);
  }
  DATA_SEL.addEventListener('change',()=>setDataLoc(DATA_SEL.selectedIndex));
  document.getElementById('data-prev').onclick=()=>setDataLoc(DATA_SEL.selectedIndex-1);
@@ -567,14 +517,13 @@
  drawData('season');
  // forecast fans (interactive, full width)
  const MODELS=Object.keys(FANQ);
- // PF first, then the Groundhog; "ensemble" only on a run stored before
- // the blend was retired (2026-09-22), where it is still the record
- let FMODEL=['pf','analogue','ensemble'].find(m=>MODELS.includes(m))||MODELS[0];
+ // PF first, then the Groundhog
+ let FMODEL=['pf','analogue'].find(m=>MODELS.includes(m))||MODELS[0];
  let FLOCS=FMODEL?Object.keys(FANQ[FMODEL]):[];
  let FIDX=0;
  async function ensureSeries(loc){
    if(SERIES[loc]) return;
-   try{const r=await fetch('/api/series?locs='+encodeURIComponent(loc));
+   try{const r=await fetch('/api/series?locs='+encodeURIComponent(loc)+SRCQ);
      Object.assign(SERIES, await r.json());}catch(e){}
  }
  let fanSeq=0;
@@ -591,9 +540,8 @@
    document.getElementById('fan-pos').textContent=(FIDX+1)+'/'+FLOCS.length;
    syncLocSel(document.getElementById('fan-loc'));
    const hs=Object.keys(qs).sort();
-   // observed must be AS OF the run's vintage -- a backdated run once mixed
-   // February forecasts with July's observed tail and drew month-spanning
-   // triangles. Fall back to the latest series clipped at the run date.
+   // observed is AS OF the run's vintage (a latest tail misdraws backdated
+   // runs); fallback: the latest series clipped at the run date
    let obsX=[], obsY=[];
    const ro=ROBS[loc]||[];
    if(ro.length){obsX=ro.map(p=>p[0]); obsY=ro.map(p=>p[1]);}
@@ -602,8 +550,7 @@
    const base=new Date(FCDATE);
    const xs=hs.map(h=>{const d=new Date(base); d.setDate(d.getDate()+7*parseInt(h));
      return d.toISOString().slice(0,10);});
-   // what actually happened after the origin (settled, latest data), framed
-   // to the forecast horizon so backdated runs can be eyeballed vs outcome
+   // what happened after the origin (settled data), framed to the horizon
    const lim=new Date(base); lim.setDate(lim.getDate()+35);
    const limIso=lim.toISOString().slice(0,10);
    const aftX=[],aftY=[];
@@ -612,8 +559,7 @@
    const med=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.5'])];
    const lo9=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.1'])];
    const hi9=[...(obsY.slice(-1)),...hs.map(h=>qs[h]['0.9'])];
-   // the fan wears the DISPLAYED member's color: band at .2 alpha, median
-   // full strength, so a PF fan never wears the analogue's color
+   // the fan wears the DISPLAYED member's color
    const mc=memberColor(FMODEL);
    const traces=[
      {x:obsX,y:obsY,mode:'lines+markers',name:'observed (as of '+FCDATE+')',line:{color:css('--ink')}},
@@ -625,27 +571,11 @@
    if(aftX.length) traces.push({x:aftX,y:aftY,mode:'lines+markers',
      name:'settled outcome',line:{color:css('--ink'),dash:'dot',width:1.4},
      marker:{size:4}});
-   // a stored blend selected (a run from before it was retired): raw
-   // member medians as thin distinct lines, hidden until toggled on via
-   // their legend items, each in its member's own color and display name
-   if(FMODEL==='ensemble'){
-     const MDASH={pf:'solid',analogue:'dash',pf2s:'dot'};
-     for(const m of MODELS){
-       if(m==='ensemble') continue;
-       const mq=(FANQ[m]||{})[loc]; if(!mq) continue;
-       traces.push({x:xs,y:hs.map(h=>mq[h]?mq[h]['0.5']:null),mode:'lines',
-         name:(MNAMES[m]||m)+' median',visible:'legendonly',
-         line:{color:memberColor(m),width:1.4,dash:MDASH[m]||'dot'}});
-     }
-   }
-   // react repaints the persistent fanplot div in place: the old chart
-   // stands until the new one is ready, so a page flip never collapses
-   // the card's height and never moves the page scroll
+   // react repaints in place: a page flip never collapses the card or
+   // moves the scroll
    Plotly.react(document.getElementById('fanplot'),traces,lay(loc,400),
      pconf('forecast_'+FMODEL+'_'+loc+'_'+FCDATE));
-   // the expanded view mirrors the card: same traces (copied, so the two
-   // plots never share mutable state), viewport-sized height, its own
-   // pager row kept in step with the card's
+   // the expanded view mirrors the card (traces deep-copied: no shared state)
    const xb=document.getElementById('fanx-modal');
    if(xb&&!xb.hidden){
      document.getElementById('fanx-pos').textContent=(FIDX+1)+'/'+FLOCS.length;
@@ -656,9 +586,7 @@
        pconf('forecast_'+FMODEL+'_'+loc+'_'+FCDATE));
    }
  }
- // both location selects (the card's and the expanded view's) list the
- // run's locations for the displayed model and follow the arrows; the
- // arrows keep stepping, the select jumps straight to any state
+ // both location selects (card and expanded view) follow the arrows
  function syncLocSel(sel){
    if(!sel) return;
    const key=FLOCS.join('|');
@@ -672,8 +600,7 @@
  }
  if(MODELS.length){
    const wrap=document.getElementById('fanwrap');
-   // buttons wear the shared display names; the title says these are the
-   // latest STORED forecasts, which stays honest across an app restart
+   // the title says latest STORED forecasts (honest across a restart)
    const mbtns=MODELS.map(m=>'<button type="button" class="quiet mbtn" data-m="'+m+'">'+(MNAMES[m]||m)+'</button>').join('');
    wrap.innerHTML='<div class="card" id="fancard"><h2>Forecasts: latest stored run, '+FCDATE+'</h2>'
      +'<div class="carousel">'+mbtns+'</div>'
@@ -688,8 +615,7 @@
    document.querySelectorAll('.mbtn').forEach(b=>{
      if(b.dataset.m===FMODEL) b.classList.add('gold');
      b.onclick=()=>{
-       // the location the reader is looking at follows them across the
-       // model buttons: Alaska on the filter stays Alaska on the analogue
+       // the current location follows across model buttons
        const cur=FLOCS[FIDX];
        FMODEL=b.dataset.m;
        document.querySelectorAll('.mbtn').forEach(x=>x.classList.remove('gold'));
@@ -700,11 +626,9 @@
    document.getElementById('fan-prev').onclick=()=>{FIDX--;drawFan();};
    document.getElementById('fan-next').onclick=()=>{FIDX++;drawFan();};
    document.getElementById('fan-loc').onchange=function(){FIDX=this.selectedIndex;drawFan();};
-   // ---- expanded view: the same fan in the app's modal shell, with the
-   // guard modal's focus contract (WCAG 2.4.3): opening moves focus onto
-   // Close, Tab cycles inside the dialog (buttons and the select), Escape
-   // closes, and closing returns focus to the opener without scrolling,
-   // so the page is exactly where the reader left it
+   // ---- expanded view: modal focus contract (WCAG 2.4.3): focus Close,
+   // Tab cycles buttons and the select, Escape closes, focus returns to the
+   // opener without scrolling
    const xb=document.getElementById('fanx-modal');
    let xRet=null;
    function fanxOpen(){

@@ -1,21 +1,9 @@
-"""Suite-wide guards for the app tests.
+"""Suite-wide isolation: no test may touch or depend on the real install.
 
-Two rules, both of the same kind: no test may touch, or depend on, the
-developer's real install.
-
-  * The PF engine's takeover registry (the record of live runner process
-    groups that a console relaunch may sweep) lives beside the app's real
-    state, app/state/pf_runners.json. No test may write there -- the file
-    is read by a REAL relaunch, and a test's fake runner pids landing in it
-    could aim a sweep at recycled pids on the developer's machine -- so
-    every test records into its own temporary file instead.
-
-  * prepare() refuses to write a fit_type = pf configuration when the fork
-    path holds no pybnf/pf.py (app/core/engines/pf.py::engine_available).
-    Every test that calls it would otherwise pass on the development host,
-    which has the fork, and fail in CI, which does not. So the fork is
-    faked here for the whole suite; a test about the preflight itself
-    points PYBNF_PF at its own directory and wins, being later.
+  * pf.RUNNER_PIDS_FILE -> tmp: a real relaunch sweeps the pids recorded in
+    app/state/pf_runners.json, so test pids must never land there.
+  * pf.PYBNF_PF -> a stub fork: prepare() refuses fit_type = pf without
+    pybnf/pf.py (CI has no fork); preflight tests override PYBNF_PF.
 """
 import sys
 from pathlib import Path
@@ -52,9 +40,45 @@ def _engine_in_tmp(_engine_root, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _sealed_records_in_tmp(tmp_path, monkeypatch):
-    """The production record (app/state/retro_reseal) is a real tree on the
-    lab machine, preferred by _season_root whenever it has the most weeks;
-    no test may serve it by accident. RETRO_SEAL is left as it is because
-    every test that needs a seal already points it at its own tree."""
-    from app.ui import server as srv
-    monkeypatch.setattr(srv, "RETRO_RESEAL", tmp_path / "retro_reseal")
+    """The production record (app/state/retro_reseal) must never be served by
+    accident; RETRO_SEAL tests already point at their own trees."""
+    from app.ui import server  # noqa: F401  (the app assembled for every test)
+    from app.ui import retro_seasons as ui_retro_seasons
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_RESEAL",
+                        tmp_path / "retro_reseal")
+
+
+@pytest.fixture(autouse=True)
+def _sandbox_released():
+    """The sandbox's engine claim is module state that /run and /retro/run
+    refuse on; no test may leak a live sandbox fit into another."""
+    from app.ui import state as ui_state
+    ui_state._sandbox_status.update(running=None, claim=None, cancel=False)
+    yield
+    ui_state._sandbox_status.update(running=None, claim=None, cancel=False)
+
+
+@pytest.fixture
+def sandbox_root(tmp_path, monkeypatch):
+    """A sandbox rooted in tmp_path with the preflight's Perl present and
+    BNG2.pl faked to write m.net (a model containing 'broken' fails with
+    'ABORT: bad rule'). The per-file `box` fixtures layer on this."""
+    import types
+    from app.core import sandbox as sb
+    from app.ui import state as ui_state
+    root = tmp_path / "sandbox"
+    monkeypatch.setattr(sb, "SANDBOX", root)
+    monkeypatch.setattr(sb, "MODELS", root / "models")
+    monkeypatch.setattr(sb, "RUNS", root / "runs")
+    monkeypatch.setattr(pf, "perl_available", lambda: True)
+
+    def fake_netgen(cmd, **kw):
+        cwd = Path(kw.get("cwd", "."))
+        if "broken" not in (cwd / "m.bngl").read_text():
+            (cwd / "m.net").write_text("# net\n")
+        return types.SimpleNamespace(stdout="ABORT: bad rule\n", stderr="",
+                                     returncode=0)
+    monkeypatch.setattr(sb.subprocess, "run", fake_netgen)
+    ui_state._status["running"] = None
+    ui_state._status.pop("flash", None)
+    return root

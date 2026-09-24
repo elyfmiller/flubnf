@@ -1,15 +1,9 @@
-"""Design batch three.
-
-A completed season states its verdict on the retro index instead of a
-ceremonial full bar; the cumulative relWIS chart carries its own scale
-(terminal value, corner dates, a 0.5 gridline with the 1.0 one); the
-per-state table colors only the exceptions and right-aligns its numbers;
-every fan chart's interval band derives from the DISPLAYED member's color;
-one shared model-name map feeds the player, the fan selectors, the model
-switcher, and the season head cards; the season report download wears the
-primary button tier; the Forecast tab shows the latest stored forecasts
-after an app restart; the data page keeps no native confirm(); and the
-Hospitalized compartment no longer wears Inhibition Red.
+"""Design batch three: the retro index states a completed season's verdict;
+the cumulative relWIS chart carries its own scale; the per-state table
+colors only exceptions; fan bands derive from the displayed member's color;
+one shared model-name map; the report download is a primary button; the
+Forecast tab survives a restart; no native confirm() on /data; the
+Hospitalized compartment is not Inhibition Red.
 """
 import json
 import re
@@ -21,13 +15,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from fastapi.testclient import TestClient           # noqa: E402
 
 from app.ui import server as srv                    # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
+from app.ui import shared as ui_shared              # noqa: E402
+from app.ui import state as ui_state                # noqa: E402
+from app.ui import templating as ui_templating      # noqa: E402
 
 client = TestClient(srv.app)
 
 UI = Path(__file__).resolve().parents[1] / "ui"
 NAU = (UI / "static" / "nau.css").read_text()
 PLAYER = (UI / "static" / "player.js").read_text(encoding="utf-8")
-SERVER_SRC = (UI / "server.py").read_text()
+#: every console module's source, by path under app/ui
+UI_PY = {p.relative_to(UI).as_posix(): p.read_text(encoding="utf-8")
+         for p in sorted(UI.rglob("*.py"))}
 RETRO_T = (UI / "templates" / "retro.html").read_text()
 SEASON_T = (UI / "templates" / "retro_season.html").read_text()
 FORECAST_T = (UI / "templates" / "forecast.html").read_text()
@@ -105,11 +105,11 @@ def test_index_route_passes_the_head_score(tmp_path, monkeypatch):
         "weeks": 2, "elapsed_s": None, "started_utc": None,
         "finished_utc": None, "status": "done", "scored": True,
         "headline_rel": 0.877})
-    monkeypatch.setattr(srv, "_season_root",
+    monkeypatch.setattr(ui_retro_seasons, "_season_root",
                         lambda s, archive="": (tmp_path / s, False))
-    monkeypatch.setattr(srv, "_weeks_done", lambda root: 2)
-    monkeypatch.setattr(srv, "_archive_entries", lambda s: [])
-    monkeypatch.setattr(srv, "_retro_progress", lambda s: {
+    monkeypatch.setattr(ui_retro_seasons, "_weeks_done", lambda root: 2)
+    monkeypatch.setattr(ui_retro_seasons, "_archive_entries", lambda s: [])
+    monkeypatch.setattr(ui_retro_seasons, "_retro_progress", lambda s: {
         "season": s, "status": "done", "done": 2, "total": 2,
         "settings": [], "elapsed_s": None, "weeks_measured": 0,
         "mean_s": None, "eta_s": None, "slowest_week": None,
@@ -134,9 +134,7 @@ def test_cumulative_chart_prints_terminal_value_dates_and_both_gridlines():
 
 
 def test_cumulative_chart_y_range_hugs_the_data():
-    # both scores sit near 0.9: with the range tightened to the data (plus
-    # the two gridlines) the two points land at DIFFERENT heights instead
-    # of huddling on a 0-to-2 scale two pixels apart
+    # scores near 0.9 land at DIFFERENT heights: the range hugs the data
     html = _season(curve=[("2098-11-07", 0.95), ("2098-11-14", 0.90)])
     ys = re.findall(r'<circle cx="[\d.]+" cy="([\d.]+)"', html)
     assert len(ys) == 2
@@ -151,18 +149,17 @@ def test_cumulative_chart_absent_curve_says_so():
 # ------------------------- finding 20: exceptions only, numerals aligned
 
 def test_per_state_table_colors_only_scores_at_or_above_one():
-    html = _season()
+    html = _season(states=[{"name": "Ohio", "pf": 0.9, "analogue": 1.1},
+                           {"name": "Utah", "pf": 0.8, "analogue": None}])
     body = html.split("Per-state scores")[1].split("</table>")[0]
     assert re.search(r'<td class="num bad">\s*1\.100</td>', body)
     assert re.search(r'<td class="num">\s*0\.900</td>', body)   # quiet win
     assert 'class="num ok"' not in body
     assert re.search(r'<td class="num">\s*n/a</td>', body)
-    # the headers are the sort controls now: aria-pressed buttons in the
-    # th's own type, still under the shared .num right alignment
-    # the column labels are the shared model names; the retired blend's
-    # column renders here because this render's context still lists it
-    for key, label in (("pf", "Oracle SIHRS"), ("analogue", "Groundhog"),
-                       ("ensemble", "FluBNF Ensemble \(retired\)")):
+    # the headers are aria-pressed sort buttons with the shared model names;
+    # the retired blend has no column
+    assert 'data-key="ensemble"' not in body
+    for key, label in (("pf", "Oracle SIHRS"), ("analogue", "Groundhog")):
         assert re.search(r'<th class="num"><button type="button" '
                          r'class="thsort" data-key="' + key + r'"\s+'
                          r'aria-pressed="false">' + label, body), key
@@ -185,10 +182,9 @@ def test_fan_bands_derive_from_the_displayed_member():
 
 
 def test_member_colors_match_the_player_palette():
-    # ONE member-color source: the marked JSON in player.js. The console
-    # templates consume the server-injected copy of it (never their own
-    # literals), the season page reads it off FluBNFPlayer directly, and
-    # ensemble alone stays theme-resolved through the accent token.
+    # ONE member-color source (player.js marked JSON): templates use the
+    # server-injected copy, the season page reads FluBNFPlayer; ensemble
+    # alone resolves through the accent token
     for src in (FORECAST_T, MODEL_T):
         assert "css('--gold')||MCOLORS.ensemble" in src
         assert "const MCOLORS = {{ member_colors_json | safe }}" in src
@@ -199,7 +195,7 @@ def test_member_colors_match_the_player_palette():
     assert "#6E8FD0" not in SEASON_T and "#2BB5A0" not in SEASON_T
     # the injected copy IS the player's map
     from app.core.report_v2 import model_colors
-    assert srv._member_colors() == model_colors()
+    assert ui_templating._member_colors() == model_colors()
     r = client.get("/forecast")
     assert json.dumps(model_colors()["pf"])[1:-1] in r.text
 
@@ -238,38 +234,29 @@ def test_player_carries_the_map_and_python_reads_the_same_one():
         assert mid in names, mid
     from app.core import report_season
     assert report_season.MODEL_NAMES == names       # one source, no drift
-    assert srv._model_names() == names
+    assert ui_templating._model_names() == names
     # the player's own display-name lookup reads the shared map
     assert "return MODEL_NAMES[m] || m" in PLAYER
 
 
 def test_one_name_for_the_ensemble_on_every_human_facing_surface():
-    """The blend is "FluBNF Ensemble (retired)" wherever a person reads it:
-    it shipped until 2026-09-22 and stored runs and seasons still carry
-    its rows under that one name.
-
-    It used to be "NAU ensemble" in the shared map and on the outlook
-    labels while the season tables were headed "FluBNF Ensemble", so one
-    published page printed two names for one model. The hub identity is a
-    different thing: the blend's identity is retired from the writer, and
-    the two models that ship go out under their own registered ids.
+    """The blend is "FluBNF Ensemble (retired)" on every human-facing surface
+    (stored runs still carry its rows); display names never change the hub
+    ids.
     """
     from app.core import report_v2, site_page
     assert _player_map()["ensemble"] == "FluBNF Ensemble (retired)"
-    # the outlook maps append "outlook" to the same names; the map is typed
-    # in report_v2 (report_season holds the parse and imports it), so this
-    # is where the drift would happen
+    # map labels append "categorical forecast"; typed in report_v2, where
+    # drift would happen
     names = _player_map()
-    assert report_v2.MODEL_LABEL == {m: names[m] + " outlook"
+    assert report_v2.MODEL_LABEL == {m: names[m] + " categorical forecast"
                                      for m in report_v2.MODEL_LABEL}
-    # no surface still carries the old name: the shared map, the published
-    # site's member table, and the console templates
+    # no surface carries the old name
     site_src = Path(site_page.__file__).read_text()
     assert '"ensemble": "FluBNF Ensemble (retired)"' in site_src
     for src in (PLAYER, site_src, SEASON_T, RETRO_T, MODEL_T, FORECAST_T):
         assert "NAU ensemble" not in src
-    # the submission identities are display-independent: a display rename
-    # must never rename the models the hub knows us by
+    # submission identities are display-independent
     from app.core import submit
     assert submit.hub_model_id("pf") == "NAU_PyBNF-OracleSIHRS"
     assert submit.hub_model_id("analogue") == "NAU_PyBNF-GroundHogCGR"
@@ -303,8 +290,7 @@ def test_model_switcher_reads_the_shared_map():
     t = client.get("/models").text
     for label in ("Oracle SIHRS", "Groundhog", "Two-strain SIHRS"):
         assert label in t, label
-    # no tab for the retired blend (the shared map still ships to the
-    # page's script, entry and all, so look at the switcher itself)
+    # no switcher tab for the retired blend (the shared map still ships it)
     assert 'data-model="ensemble"' not in t
     assert "model_name(mn)" in MODEL_T              # not a fourth hardcoding
 
@@ -313,18 +299,18 @@ def test_model_switcher_reads_the_shared_map():
 
 def test_stored_forecasts_render_without_a_session_gate(monkeypatch):
     res = {"forecast_date": "2098-11-14",
-           "models": {"ensemble": {"Ohio": {"1": {"0.1": 1.0, "0.5": 2.0,
+           "models": {"pf": {"Ohio": {"1": {"0.1": 1.0, "0.5": 2.0,
                                                   "0.9": 3.0}}}},
            "observed": {}}
-    monkeypatch.setattr(srv, "_latest_results", lambda: ("r1", res))
-    monkeypatch.setitem(srv._status, "running", None)
-    srv._status.pop("session_ran", None)            # a fresh process has none
+    monkeypatch.setattr(ui_shared, "_latest_results", lambda: ("r1", res))
+    monkeypatch.setitem(ui_state._status, "running", None)
+    ui_state._status.pop("session_ran", None)            # a fresh process has none
     r = client.get("/forecast")
     assert r.status_code == 200
-    assert '"ensemble": {"Ohio"' in r.text          # the stored fans ship
+    assert '"pf": {"Ohio"' in r.text          # the stored fans ship
     assert "latest stored run" in r.text            # and the title says so
     # the gate is gone from the codebase, not merely bypassed
-    assert "session_ran" not in SERVER_SRC
+    assert [f for f, src in UI_PY.items() if "session_ran" in src] == []
 
 
 def test_latest_run_card_links_report_and_files():

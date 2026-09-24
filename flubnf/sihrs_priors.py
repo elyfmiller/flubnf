@@ -1,37 +1,21 @@
-"""Sourced, citable parameter provenance for the population-parameterized SIHRS.
+"""SHIPPED: sourced, citable provenance for the population-parameterized
+SIHRS. Each fixed/pinned value carries its number, its kind (DATA on disk,
+LITERATURE, or neither) and an auditable source (DOI, or file + derivation);
+`provenance_table()` renders the set for a methods section.
 
-Every fixed/pinned value carries (a) its numeric value, (b) whether it came from
-DATA on disk, from the LITERATURE, or from neither, and (c) an auditable source:
-a DOI for literature, a file path plus derivation for data.
-`provenance_table()` renders the whole set for a methods section.
+`rho`, `gammaH` and `omega` (sihrs_fit.RHO_IHR, GAMMAH_PER_WEEK,
+OMEGA_PER_WEEK) are unsourced ASSUMPTIONS; the table lists them with
+kind="assumption" and an empty source rather than omitting them.
 
-NOT EVERYTHING IS SOURCED, and the table says so rather than implying otherwise.
-`rho`, `gammaH` and `omega` are working ASSUMPTIONS set as plain constants in
-`sihrs_fit.py` (RHO_IHR, GAMMAH_PER_WEEK, OMEGA_PER_WEEK). No DOI and no data
-derivation stands behind those three numbers. They appear in the table with
-kind="assumption" and an empty source so that a reviewer following a pointer
-here finds a stated gap instead of a missing row.
+Design rule: population and product-identified parameters are FIXED, never
+fitted (a product-identified pair is a ridge).
 
-Design rule: population and any parameter that is only product-identified are
-FIXED, never fitted. Fitting a product-identified pair yields a ridge-shaped
-posterior and per-parameter values that cannot be interpreted (a caveat the
-project's own docs already carry for `rho*mult` and `R0*gamma`).
-
---------------------------------------------------------------------------------
-IMPORTANT DEFINITION MISMATCH (do not paper over this)
---------------------------------------------------------------------------------
-The FluSight target is NHSN "total influenza admissions" — a near-census of
-hospital-reported admissions. Published influenza hospitalization *rates* (e.g.
-FluSurv-NET) are laboratory-confirmed influenza-associated hospitalizations in
-selected surveillance catchments covering ~9% of the US population. These are
-NOT the same quantity, and on 2024/25 the NHSN-derived median (153.0 per 100k)
-EXCEEDS the FluSurv-NET rate (127.1 per 100k), giving a nonsensical
-"ascertainment" of 1.20.
-
-Consequence: do NOT calibrate `mult` as "reported / true" against a published
-surveillance rate. The FluSight target IS the quantity to predict, so `rho*mult`
-is calibrated against that state's own observed cumulative reported admissions,
-with the literature supplying only the cumulative INFECTION denominator.
+DEFINITION MISMATCH: the FluSight target (NHSN total admissions, a
+near-census) is not FluSurv-NET's lab-confirmed catchment rate; on 2024/25
+NHSN (153.0/100k) exceeds FluSurv-NET (127.1/100k), an "ascertainment" of
+1.20. So `rho*mult` is calibrated against the state's own cumulative
+reported admissions, with literature supplying only the INFECTION
+denominator, never against a surveillance rate.
 """
 
 from __future__ import annotations
@@ -64,9 +48,8 @@ class Param:
 # the tool responses, not recalled from memory.
 # ---------------------------------------------------------------------------
 
-# Generation time -> gamma. Chan et al. 2024 is the best available anchor: US,
-# post-COVID, 7-site household study, and it is a CDC analysis feeding CDC's own
-# real-time Rt work. Mean intrinsic generation time 3.2 d (95% CrI 2.9-3.6).
+# Generation time -> gamma: Chan et al. 2024 (US, post-COVID, 7-site household
+# study; CDC's own Rt input). Mean intrinsic 3.2 d (95% CrI 2.9-3.6).
 GENERATION_TIME_DAYS = 3.2
 GENERATION_TIME_CRI = (2.9, 3.6)
 GT_SOURCE = "10.1101/2024.08.17.24312064"          # Chan et al. 2024, medRxiv
@@ -81,18 +64,10 @@ GT_CORROBORATION = (
 R0_RANGE = (1.1, 2.3)
 R0_SOURCE = "10.1111/j.1750-2659.2011.00234.x"
 
-# Cumulative seasonal INFECTION fraction (attack rate). Used only as the
-# denominator when pinning the rho*mult product. Kept as a range because this is
-# the weakest link in the chain.
-#
-# Serology anchor: Vinh et al. 2021 decomposed age-seroprevalence curves from
-# 24,402 general-population sera to annual attack rates of 25.6% (95% CI
-# 24.1-27.1) for subtype H3 and 16.0% (14.7-17.3) for H1.
-# CAVEAT, load-bearing: that cohort is VIETNAM (2009-2015), not the US. Vietnam
-# has markedly weaker influenza seasonality, so these are a methodological
-# proxy, not a US point estimate. The range below is therefore kept wide and
-# `rho*mult` scales inversely with it, so any headline result must be reported
-# with an attack-rate sensitivity arm.
+# Seasonal INFECTION attack rate, only the denominator when pinning rho*mult;
+# the weakest link. Vinh et al. 2021 serology: H3 25.6%, H1 16.0%, but from
+# VIETNAM (weaker seasonality), a proxy not a US estimate. Kept wide;
+# rho*mult scales inversely, so headline results need a sensitivity arm.
 ATTACK_RATE_RANGE = (0.10, 0.26)
 ATTACK_RATE_SEROLOGY = {"H3_vietnam": 0.256, "H1_vietnam": 0.160}
 ATTACK_RATE_SOURCE = "10.1038/s41467-021-26948-8"      # Vinh et al. 2021
@@ -104,36 +79,14 @@ ATTACK_RATE_NOTE = (
 # ---------------------------------------------------------------------------
 # s0 — initial susceptible fraction. NO source gives a per-state US value.
 # ---------------------------------------------------------------------------
-# What the serology literature does supply:
-#  * The right ESTIMATOR. Xiong et al. 2025 build population-immunity estimators
-#    from individual HAI titers, one of which is the "relative reduction in the
-#    reproductive number". That is exactly `s0` in this model, because
-#    R_eff = R0 * s0 -- so titer data maps onto s0 without inventing a new
-#    quantity. Validated on 36,150 sera across 19 epidemics.
-#  * The protection correlate. HAI >= 1:40 is the conventional ~50%-protection
-#    threshold (Memoli et al. 2016), but it misses cellular/mucosal immunity, so
-#    it UNDERSTATES protection (i.e. overstates s0).
-#  * A US-specific level shift. Wang et al. 2023 estimate US population
-#    susceptibility rose 45.1% during COVID-19 restrictions -- so any
-#    pre-pandemic baseline is stale for 2021+ seasons.
-#  * A threshold-sensitivity warning. Wu et al. 2014: infection-seropositivity
-#    probability ranges 34%-72% by age at MN 1:40, so attack rates (and hence
-#    immunity) inferred from seroconversion are threshold-sensitive; assuming
-#    100% seroconversion biases them.
-#  * The most current US-representative panel: the CDC multi-season longitudinal
-#    study, 723 participants across all 10 HHS regions and 9 age groups, 1,794
-#    sera 2021-2024, 12-plex MIADA (Li et al. 2025).
-#
-# Conclusion: treat s0 as a BOUNDED SENSITIVITY AXIS, not a known constant.
-# Fitting it is not an option -- R0*s0 is product-identified.
-# CIRCULATING-STRAIN susceptibility, not all-strain seroprevalence. Antigenic
-# drift means antibodies to earlier strains do not protect against this season's
-# drifted strain, so the fraction effectively susceptible TO THE CIRCULATING
-# STRAIN is much higher than "has influenza antibodies". Empirically forced:
-# fitting Alabama gave Reff=2.11, which with a literature-plausible R0<=2.3
-# (Boelle 2011) requires s0 >= 0.92 -- all-strain seroprevalence (0.35-0.70)
-# implied R0 of 3-6 and is the wrong quantity. Xiong et al. 2025's estimators are
-# strain-specific for exactly this reason.
+# A BOUNDED SENSITIVITY AXIS, not a known constant (R0*s0 is
+# product-identified, so it cannot be fitted). It is CIRCULATING-STRAIN
+# susceptibility, far above "has no antibodies" because of drift (all-strain
+# seroprevalence implied R0 of 3-6). Literature (S0_SOURCES): the estimator
+# (Xiong 2025: relative reduction in R is exactly s0), HAI 1:40 understates
+# protection (Memoli 2016), US susceptibility rose 45% under COVID
+# restrictions (Wang 2023), seroconversion threshold bias (Wu 2014), the
+# current US panel (Li 2025).
 S0_RANGE = (0.70, 0.95)
 S0_DEFAULT = 0.85
 S0_SOURCES = {
@@ -153,10 +106,8 @@ S0_NOTE = (
     "axis over S0_RANGE and report the arm."
 )
 
-# Under-detection of influenza hospitalizations, by age (Reed et al. 2015):
-# 2.1x (<18), 3.1x (18-64), 5.2x (65+) => detection fraction 0.19-0.48.
-# RECORDED FOR CONTEXT ONLY -- see the definition-mismatch note in the module
-# docstring. Do not use it to calibrate `mult` against the NHSN target.
+# Hospitalization under-detection by age (Reed 2015). CONTEXT ONLY: never
+# calibrate `mult` with it (module docstring, definition mismatch).
 HOSP_UNDERDETECTION_BY_AGE = {"<18": 2.1, "18-64": 3.1, "65+": 5.2}
 UNDERDETECTION_SOURCE = "10.1371/journal.pone.0118369"   # Reed et al. 2015
 

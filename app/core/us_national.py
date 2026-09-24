@@ -1,154 +1,104 @@
-"""The US national series: one resolution order, one provenance vocabulary,
-one named scoring policy.
+"""PRODUCTION: US national resolution, labels and the pooled-scope policy
+(every scoring surface).
 
-Three surfaces used to answer "what is the US number here" in three
-different ways, and none of them said which answer the reader was looking
-at. This module is the single place that answers both halves of the
-question at once: the data, and where the data came from.
+The US national series: one resolution order, one provenance vocabulary,
+one named scoring policy. Every surface asks here what the US number is and
+where it came from.
 
 PROVENANCE, three states and no others:
 
-  fitted          the replay (or the console run) fitted the US series as
-                  its own location, exactly as it fits a state. The number
-                  is a model output at the national level.
-  aggregated      no national fit exists, so the national figure is
-                  CONSTRUCTED by summing the fitted state forecasts
-                  (retro.national_aggregate). It is a derived quantity, not
-                  a model output, and states are treated as independent.
-  officials_only  neither exists. The US view carries the CDC comparators
-                  alone, which is what the hub archive supplies.
+  fitted          the run fitted US as its own location: a model output.
+  aggregated      CONSTRUCTED by summing the state forecasts
+                  (retro.national_aggregate), states independent: derived,
+                  not a model output.
+  officials_only  neither exists; only the CDC comparators.
 
-Resolution order is fitted, then aggregated, then officials_only; `resolve`
-is the only implementation of it. A fitted number and an aggregated number
-are DIFFERENT MODEL OUTPUTS and must never be interchangeable without the
-reader noticing, so every result carries the label and the note that say
-which one it is, and every surface prints one of them.
+`resolve` is the only implementation of the order fitted > aggregated >
+officials_only. Fitted and aggregated are DIFFERENT model outputs, so every
+result carries the label and note saying which, and surfaces print them.
 
-SCORING POLICY (see POOLED_INCLUDES_US below): the pooled relWIS headline
-covers the fitted jurisdictions only. US never joins it. That is a named
-decision here rather than an accident of which locations a given run
-happened to cover, so fitting US changes no published headline.
+SCORING POLICY (POOLED_INCLUDES_US): the pooled headline covers the
+jurisdictions only; US never joins it, so fitting US changes no headline.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
 
-#: The hub's FIPS code for the national row, and every spelling of the
-#: national location name this application has ever written into a run
-#: record, a samples file, or a form post.
+#: the hub's national FIPS, and every spelling of it ever written by the app
 US_FIPS = "US"
 US_SPELLINGS = ("US", "US (NATIONAL)", "UNITED STATES", "USA")
 
-#: The three provenance states. Nothing outside this tuple is a valid
-#: answer, and a surface that cannot say which one it has must say that
-#: rather than guess.
+#: the only valid provenance states
 FITTED = "fitted"
 AGGREGATED = "aggregated"
 OFFICIALS_ONLY = "officials_only"
 PROVENANCES = (FITTED, AGGREGATED, OFFICIALS_ONLY)
 
-#: The models a season scores, in the order every table prints them, and
-#: the retired blend last: a scores frame written before 2026-09-22 still
-#: carries its rows, and a US view of that season prints them as its record.
+#: print order; the retired blend last (older scores frames carry its rows)
 MODELS = ("pf", "analogue", "ensemble")
 
-#: THE long label for each provenance: what a location picker, a chart
-#: title, or a legend calls the national series. `label()` is the accessor;
-#: the aggregated form names the state count when the caller knows it, so a
-#: six-state panel can never read as though it had summed the country.
+#: THE long label (pickers, titles, legends); `label()` adds the state count
 LABELS = {
     FITTED: "US national (fitted)",
     AGGREGATED: "US national (sum of states)",
     OFFICIALS_ONLY: "US (official models only)",
 }
 
-#: THE short label, for a table row or a verdict tile where the column
-#: header already supplies the context. "US (aggregated)" is the wording
-#: the season page and both report exports have always used for the
-#: constructed figure; it is kept exactly so no published artifact is
-#: silently reworded.
+#: THE short label (table rows, tiles). "US (aggregated)" is kept verbatim
+#: for published artifacts; must equal player.js US_LABELS_JSON
 SHORT_LABELS = {
     FITTED: "US (fitted)",
     AGGREGATED: "US (aggregated)",
     OFFICIALS_ONLY: "US (officials only)",
 }
 
-#: THE one-sentence provenance note. Every surface that prints a US number
-#: prints the matching note beside it, so a reader comparing two seasons
-#: cannot mistake a fitted national forecast for a constructed one.
+#: THE provenance note printed beside every US number
 NOTES = {
     FITTED: (
-        "US (fitted) is a national forecast in its own right: the run fitted "
-        "the US series as its own location, with the same members, the same "
-        "particles, and the same replicates as every state, and scored it "
-        "against the US truth row."),
+        "US (fitted) is a national forecast in its own right, fitted as its "
+        "own location with the same settings as every state."),
     AGGREGATED: (
-        "US (aggregated) is not a fitted national forecast: the scores for "
-        "this season carry no fitted national cell, so each member is "
-        "aggregated from its state forecasts "
-        "with states treated as independent (PF by summing its per-state "
-        "sample draws, aligned by draw index; the analogue by drawing from "
-        "each state's quantile curve independently and summing). Scored "
-        "against the US truth row with the same relWIS machinery as every "
-        "state."),
+        "US (aggregated) is not a fitted national forecast: each member's "
+        "state forecasts are summed (PF sample draws aligned by draw index, "
+        "the Groundhog's quantile curves sampled independently), states "
+        "treated as independent."),
     OFFICIALS_ONLY: (
-        "No national forecast of ours exists for this season: the run fitted "
-        "states only and the sum-of-states aggregate could not be "
-        "constructed, so the US view carries the CDC comparators alone."),
+        "No national forecast of ours exists for this season, so the US "
+        "view carries the CDC comparators alone."),
 }
 
-#: The plain word for the fallback, used where a surface needs to flag that
-#: it is NOT showing the preferred answer.
+#: the word flagging a non-preferred answer
 FALLBACK_WORD = "fallback"
 
-#: How the aggregated and officials-only states read when a surface has to
-#: name them as fallbacks in one clause.
+#: the fallback states in one clause
 FALLBACK_NOTES = {
     AGGREGATED: ("fallback: the scores for this season hold no scored US "
-                 "fit, so the figure shown is aggregated from state "
-                 "forecasts"),
-    OFFICIALS_ONLY: ("fallback: no scored US fit and no sum-of-states "
-                     "aggregate exist for this season, so only the CDC "
-                     "comparators are shown"),
+                 "fit, so it is aggregated from state forecasts"),
+    OFFICIALS_ONLY: ("fallback: no US fit or aggregate this season, so only "
+                     "the CDC comparators are shown"),
 }
 
 
 # ------------------------------------------------------- scoring policy
 
-#: THE named scoring decision (2026-08-26), NOT an emergent property of
-#: which locations a run happened to cover.
-#:
-#: The pooled relWIS headline (0.8131 / 0.6179 / 0.6827, pooled 0.6781 over
-#: 15,460 cells) is a 52-JURISDICTION average: 50 states, DC, and Puerto
-#: Rico. The US national series is the sum of those same 52 constituents,
-#: so adding it to the pooled average is a change of convention rather than
-#: a new measurement, and it would move a number printed in a public
-#: release, in CITATION.cff, and in a manuscript.
-#:
-#: Fitting US must therefore change no headline. `pooled_frame` is the one
-#: gate; flipping this flag is the only way US would ever join the pooled
-#: figure, and doing so would require re-publishing every one of those
-#: numbers. app/tests/test_us_national.py fails if a US cell ever reaches
-#: the pooled sums.
+#: Named policy (2026-08-26): pooled relWIS is a 52-jurisdiction figure and
+#: US (their sum) never joins it; flipping this restates every published
+#: number. pooled_frame is the one gate; app/tests/test_us_national.py enforces it.
 POOLED_INCLUDES_US = False
 
-#: The sentence every surface prints when it states what the pooled figure
-#: covers.
+#: what every surface prints about the pooled figure's scope
 POOLED_SCOPE_NOTE = (
-    "Pooled relWIS covers the fitted jurisdictions only (50 states, DC, and "
-    "Puerto Rico). The US national cell is reported separately and never "
-    "joins the pooled average: the national series is the sum of those same "
-    "jurisdictions, so pooling it in would count them twice.")
+    "Pooled relWIS covers the fitted states, DC and Puerto Rico; the US "
+    "national cell, their sum, is scored apart and never joins the pooled "
+    "average.")
 
 
 # ---------------------------------------------------------- identification
 
 def is_us(loc) -> bool:
-    """Whether a location name or FIPS code names the national series.
-
-    One spelling test for the whole application. `US`, `US (national)`, and
-    the FIPS code `US` are all the national row; nothing else is."""
+    """Whether a location name or FIPS code names the national series: the
+    one spelling test for the whole application."""
     return str(loc).strip().upper() in US_SPELLINGS
 
 
@@ -158,9 +108,8 @@ def state_names(locations) -> list:
 
 
 def with_us(locations, us_name: str = US_FIPS) -> list:
-    """A location list with the national row present exactly once, appended
-    last. Idempotent: a list that already names US is returned unchanged, in
-    its own spelling, so an existing run's list is never rewritten."""
+    """The list with US appended once; a list already naming US is returned
+    unchanged (its own spelling kept)."""
     locs = list(locations or [])
     if any(is_us(l) for l in locs):
         return locs
@@ -170,11 +119,8 @@ def with_us(locations, us_name: str = US_FIPS) -> list:
 # -------------------------------------------------------- frame splitting
 
 def pooled_frame(df):
-    """The scored frame the POOLED headline is computed from.
-
-    Every pooled sum in the application goes through this function, so the
-    52-jurisdiction convention is enforced in one place instead of relying
-    on US never having been fitted. See POOLED_INCLUDES_US."""
+    """The scored frame the POOLED headline is computed from: every pooled
+    sum goes through here (POOLED_INCLUDES_US)."""
     if df is None or "location" not in getattr(df, "columns", ()):
         return df
     if POOLED_INCLUDES_US:
@@ -201,9 +147,8 @@ def pooled_locations(names) -> list:
 # ------------------------------------------------------------- the answer
 
 def label(provenance: str, n_states: int | None = None) -> str:
-    """The long label for a provenance. The aggregated form names its state
-    count when the caller knows it, so `US national (sum of 52 states)`
-    reads on a full grid and `US national (sum of 6 states)` on a panel."""
+    """The long label; the aggregated form names its state count when known
+    (so a 6-state panel never reads as the whole country)."""
     if provenance == AGGREGATED and n_states:
         return f"US national (sum of {int(n_states)} states)"
     return LABELS.get(provenance, LABELS[OFFICIALS_ONLY])
@@ -222,9 +167,8 @@ class UsNational:
     """What the US series is for one season, and where it came from.
 
     `scores` maps member name to relWIS, or to None where that member has
-    no scoreable national cell. `cells` maps member name to the cell count
-    behind its score. Both are empty under `officials_only`, which is the
-    honest answer when we have no national forecast at all."""
+    no scoreable national cell; `cells` to the cell counts. Both are empty
+    under `officials_only`."""
 
     provenance: str
     scores: dict = field(default_factory=dict)
@@ -238,8 +182,7 @@ class UsNational:
 
     @property
     def is_fallback(self) -> bool:
-        """Whether this is the fallback rather than the preferred answer.
-        Every surface that shows a fallback says that it is one."""
+        """Whether this is a fallback (surfaces must say so)."""
         return self.provenance != FITTED
 
     @property
@@ -271,10 +214,7 @@ class UsNational:
         return self.scores.get(model)
 
     def as_dict(self) -> dict:
-        """The JSON-safe form the templates, the player config, and the
-        exported artifacts carry. The provenance and its wording travel
-        WITH the numbers: nothing downstream may print a US score without
-        also holding the label that says which kind of score it is."""
+        """The JSON-safe form; provenance and wording travel with the numbers."""
         d = {"provenance": self.provenance, "label": self.label,
              "short_label": self.short_label, "note": self.note,
              "fitted": self.is_fitted, "fallback": self.is_fallback,
@@ -309,17 +249,9 @@ def resolve(root, scores_df=None, allow_aggregate: bool = True) -> UsNational:
     """THE resolution order for one season root: a fitted US cell, else the
     sum-of-states aggregate, else officials only.
 
-    This is the only implementation. Every consumer (the season page, the
-    playback stats, the season report, the exported files) calls it and
-    prints the label it returns; none of them re-derives the order.
-
-    `scores_df` is the season's scores frame when the caller already holds
-    it (the season page does), and is loaded here otherwise.
-
-    `allow_aggregate=False` skips the constructed fallback for callers that
-    must not pay its compute cost (it is minutes on a cold cache). Such a
-    caller gets `officials_only` and must say so, never an aggregate it did
-    not actually compute."""
+    The only implementation; every consumer prints the label it returns.
+    `scores_df` is loaded here when not given. `allow_aggregate=False` skips
+    the (minutes-long, cold) aggregate and returns `officials_only`."""
     root = Path(root)
     if scores_df is None:
         try:
@@ -351,9 +283,8 @@ def resolve(root, scores_df=None, allow_aggregate: bool = True) -> UsNational:
 
 
 def aggregate_row(root) -> tuple:
-    """(row, reason): the constructed sum-of-states aggregate for a season
-    root, or (None, why it could not be delivered) in words an artifact can
-    print. Silent omission is the failure class this replaced."""
+    """(row, reason): the sum-of-states aggregate, or (None, a printable
+    reason). Never a silent omission."""
     from app.core import retro as _retro
     try:
         row = _retro.national_aggregate(Path(root))

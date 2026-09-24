@@ -1,27 +1,15 @@
-"""Epiweek 53: the seam, pinned.
+"""Epiweek 53: the seam, pinned (MMWR 2014, 2020 and 2025 have one; the
+2025-26 season peaked on an epiweek-53 Saturday).
 
-MMWR years 2014, 2020 and 2025 carry a 53rd week. The 2025-26 season peaked
-on an epiweek-53 Saturday (2026-01-03), so this is the live case and not a
-curiosity. Two separate things have to be right and they are easy to
-conflate:
-
-1. WHICH donor weeks count as "the same calendar position" as the target.
-   That is a comparison of epiweek LABELS and goes through
-   `calendar_distance`, which seats week 53 between 52 and 1.
-
-2. WHERE a donor's future value is read from. That is DATE arithmetic
-   (`d + 7 * horizon days`) and never touches a label, so a 53-week year
-   cannot break a growth ratio: a donor anchored at week 52 reads week 53
-   at horizon 1 and week 1 at horizon 2, because those are simply the next
-   two Saturdays.
-
-If (2) ever became label arithmetic (epiweek + horizon), a donor at week
-52 of a 53-week year would read week 1 at horizon 1 and skip a week, and
-nothing downstream would notice.
+1. WHICH donor weeks match the target's calendar position compares epiweek
+   LABELS via `calendar_distance`, which seats week 53 between 52 and 1.
+2. WHERE a donor's future value is read from is DATE arithmetic
+   (`d + 7 * horizon days`), never labels, so a week-52 donor reads week 53
+   at horizon 1 and week 1 at horizon 2. Label arithmetic would silently
+   skip a week.
 """
 from datetime import date, timedelta
 
-import numpy as np
 
 from flubnf import analogue as AN
 
@@ -104,10 +92,8 @@ def test_a_week_53_anchor_can_itself_be_a_donor():
 
 
 def test_the_committed_banks_carry_their_week_53_saturdays():
-    """flusurv.build_bank drops a cell whose date disagrees with the
-    analogue's own epiweek, under a no-cover pragma. If the two MMWR
-    implementations ever disagreed about week 53, those cells would vanish
-    silently; this is the check that they did not."""
+    """The committed banks keep their week-53 Saturdays (flusurv.build_bank
+    silently drops cells whose date disagrees with the analogue's epiweek)."""
     from flubnf import bank as B
     fs, _ = B.read("flusurv")
     il, _ = B.read("iliplus")

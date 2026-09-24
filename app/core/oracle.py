@@ -1,58 +1,35 @@
-"""The Oracle step: the mechanistic member's stored samples, after collect()
+"""PRODUCTION: the Oracle step applied after the filter (retro.run_week,
+app/ui/pipeline._run_all).
+
+The Oracle step: the mechanistic member's stored samples, after collect()
 and before the storage boundary.
 
-WHERE IT RUNS
--------------
-Once per week, on the particle filter's collected samples, in the two
-places that collect them: app.core.retro.run_week (a replay, the stored
-week) and app.ui.server._run_all (a console run), right after
-pf_engine.collect() and before anything downstream sees the member. It
-never runs inside the engine: the filter is fitted exactly as before and
-the step reads its stored output (pre-registration 10.3 (1): "from that
-week's production filter samples").
+WHERE IT RUNS. Once per week on the filter's collected samples, in the two
+places that collect them (retro.run_week for a replay, pipeline._run_all for
+a console run), right after pf_engine.collect(). Never inside the engine:
+the filter is fitted unchanged and the step reads its output
+(pre-registration 10.3 (1)).
 
-WHAT IT DOES
-------------
-Builds the week's donor bank, the Groundhog's own (bank change B2, shipped
-by addendum A2): the admissions half from the week's own hub vintage
-through flubnf.oracle_bank (the FBASE rule; vintage true) and the
-FluSurv-NET half from the committed bank by digest through
-flubnf.oracle_mix (the eight-week rate paths, the per-date shrink fitted
-on the week's vintage), both written beside the week with their manifests
-and digests. Applies flubnf.oracle.member_for_cell on the mixture to every
-jurisdiction (w = 0.5, w_aux = 0.5 under R_EITHER, the five seeds of S14,
-the submitted seed's transformed samples kept), and returns the member in
-the record's shape (stored under the key `pf`) and a provenance record
-that oracle.json beside the week carries: the frozen pre-registration's, the B2 document's and addendum
-A2's sha256, the bank label "admissions-fbase@<8>+flusurv@<8>", each
-half's pool size and digest, the shrink, the mixture state and every
-location's identity state, the vintage's sha256, the rules, w, the seeds
-and which one the submitted quantiles used, k trimmed weeks, m_0 and y_T
-per location, abstentions, and the quantiles of every seed of the primary,
-of the registered secondary weight on the same bank and of the
-admissions-only member (logged beside the primary, addendum A2 (2)).
+WHAT IT DOES. Builds the week's B2 donor bank (admissions half via
+flubnf.oracle_bank from the week's own vintage; FluSurv-NET half via
+flubnf.oracle_mix from the committed bank by digest, shrink fitted on the
+vintage), applies flubnf.oracle.member_for_cell per jurisdiction, and
+returns the member (stored under `pf`) plus the provenance written to
+oracle.json (see the prov dict in apply_week for its fields).
 
-HORIZONS. The record above the storage boundary is canonical (app.core
-.horizons: the anchor under ORIGIN, the forecasts under "0".."3"); the
-library counts physical weeks 1..4. The two meet HERE and nowhere else:
-canonical "0".."3" ARE physical 1..4 in order, so the translation is the
-order of the four blocks. Every hub-facing row still goes through
-app.core.submit.quantile_rows on the canonical dict, unchanged.
+HORIZONS. Canonical "0".."3" are the library's physical weeks 1..4 in
+order, so the translation is the order of the four blocks, here and
+nowhere else. Hub rows still go through submit.quantile_rows.
 
-THE PLAIN FILTER (the Groundhog precedent: `aux = none`). A spec whose
-research dictionary carries `oracle = "none"` skips the step: the filter's
-own samples are stored under `pf`, the mechanistic member's submission is
-withheld, the run is a research run in the ledger and oracle.json says
-the step was not applied. Not a model tile, not a toggle, not on the site.
+THE PLAIN FILTER. A spec with `oracle = "none"` skips the step: the
+filter's own samples are stored under `pf`, the member's submission is
+withheld, the run is a research run and oracle.json says not applied.
 
-NO SILENT IDENTITY. A vintage that cannot be read, a pool that cannot be
-built, a FluSurv-NET bank that is missing or fails its digest, or a shrink
-that cannot be fitted RAISES, as a missing auxiliary bank does for the
-Groundhog: a week
-shipped under the Oracle SIHRS's name that quietly was the plain filter is
-the failure this whole line of work exists to prevent. The identity rule
-of the pool (fewer than two donor seasons) is not that case: it is the
-registered behaviour, applied and recorded, active = 0 on every cell.
+NO SILENT IDENTITY. An unreadable vintage, an unbuildable pool, a missing
+or digest-failing FluSurv-NET bank, or an unfittable shrink RAISES: a week
+shipped as Oracle SIHRS that was quietly the plain filter is the failure
+this exists to prevent. The pool's identity rule (< 2 donor seasons) is
+registered behaviour, applied and recorded (active = 0).
 """
 from __future__ import annotations
 
@@ -72,13 +49,9 @@ from flubnf import oracle_bank as OB
 from flubnf import oracle_mix as MX
 from flubnf.settings import LOCATIONS
 
-#: the research member key: the filter's own samples, before the step.
-#: A console run keeps them in its workroot (FILTER_RECORD_NAME, which the
-#: 2026-27 shadow run reads) and `flubnf oracle backfill` beside `pf` in
-#: its research root; a replay's stored week does not carry them, since
-#: oracle.json's quantiles.null holds the filter's 23 quantiles per
-#: location and horizon. Never in the quantile sidecar (the playback shows
-#: every sidecar member), never scored, never shown.
+#: the filter's own samples, before the step: kept by a console run
+#: (FILTER_RECORD_NAME) and by `oracle backfill`, not by a replay (oracle.json's
+#: quantiles.null has them). Never in the quantile sidecar, scored or shown.
 FILTER_KEY = "pf_filter"
 
 #: the spec.extra key; "none" asks for the plain filter (a research run)
@@ -168,17 +141,21 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
                aux=None, shrink: float | None = None) -> tuple:
     """The member for one week. Returns (member, provenance).
 
-    `pf_samples` is collect()'s output in canonical horizons: location ->
-    {ORIGIN: [...], "0": [...], ..., "3": [...]}. `out_dir` is where the
-    week's provenance lands (oracle.json and oracle_bank/ beside the week
-    or in the workroot); its cells.json, when present, supplies k. The
-    vintage defaults to app.core.data.vintage_path(asof) and populations
-    to the hub's locations.csv. `aux` ((bank, manifest)) defaults to the
-    committed FluSurv-NET bank read by digest and `shrink` to the value
-    fitted on the week's vintage; both are for tests and research only.
+    `pf_samples`: collect()'s canonical output, location -> {ORIGIN, "0".."3"}.
+    `out_dir` receives oracle.json and oracle_bank/; its cells.json, when
+    present, supplies k. `aux` ((bank, manifest)) and `shrink` override the
+    committed bank and the fitted shrink (tests and research only).
     """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    # model knobs (app/core/knobs.py) recorded in the spec: absent on a
+    # shipped run, which then takes exactly the calls below as before
+    from app.core import knobs as _knobs
+    kn = _knobs.step_values(extra)
+    if "oracle.w" in kn:
+        w = float(kn["oracle.w"])
+    if "oracle.submitted_seed" in kn:
+        submitted_seed = int(kn["oracle.submitted_seed"])
     T = date.fromisoformat(asof)
     vf = Path(vintage) if vintage is not None else vintage_path(asof)
     pops = populations if populations is not None else OB.load_populations(locations_csv or LOCATIONS)
@@ -191,6 +168,13 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
     adm_ok = pool["rule"] == 1 and pool["n"] > 0
     state = MX.mixture_state(adm_ok, mix["admissible"])
     w_aux = MX.resolve_w_aux(adm_ok, mix["admissible"])
+    # the FluSurv-NET share knob, resolved per state like the shipped one
+    # (R_EITHER: only the "both" state reads it); passed only when set
+    primary_kw = {}
+    if "oracle.w_aux" in kn:
+        w_aux = MX.resolve_w_aux(adm_ok, mix["admissible"],
+                                 w_aux=float(kn["oracle.w_aux"]))
+        primary_kw["w_aux"] = w_aux
     bank_label = MX.label(man["digest"], mix["bank_digest"])
     yT = vb.y_T()
     k_cells = weeks_dropped(out_dir)
@@ -219,8 +203,7 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
         y = float(y) if (y is not None and np.isfinite(y)) else None
         k = k_cells.get(loc, int(weeks_to_drop or 0))
         if fips is None or not fips.isdigit():
-            # the US row (or a location the hub does not know): outside the
-            # registered member, the filter's own samples untouched
+            # US (or unknown): outside the registered member, samples untouched
             member[loc] = {h: list(v) for h, v in blocks.items()}
             entry.update({"eligible": None, "active": 0, "k": k, "state": "outside",
                           "reason": "outside the registered member (no integer FIPS key)",
@@ -230,7 +213,8 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
             continue
         xh = [blocks.get(h, []) for h in hz.HORIZONS]      # physical 1..4, in order
         r = OR.member_for_cell(origin, xh, pool, T, fips, w=w, seeds=seeds,
-                               submitted_seed=submitted_seed, aux_pool=auxp)
+                               submitted_seed=submitted_seed, aux_pool=auxp,
+                               **primary_kw)
         r2 = OR.member_for_cell(origin, xh, pool, T, fips, w=OR.W_SECONDARY,
                                 seeds=seeds, submitted_seed=submitted_seed, aux_pool=auxp)
         r0 = OR.member_for_cell(origin, xh, pool, T, fips, w=w, seeds=seeds,
@@ -301,7 +285,9 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
                              "shrink": mix["shrink"],
                              "shrink_prior_seasons": mix["shrink_prior_seasons"]},
                  "mixture": {"identity_rule": MX.IDENTITY_RULE, "state": state,
-                             "w_aux": w_aux, "w_aux_nominal": MX.W_AUX}},
+                             "w_aux": w_aux,
+                             "w_aux_nominal": float(kn.get("oracle.w_aux",
+                                                           MX.W_AUX))}},
         "vintage": {"file": str(vf), "sha256": man["source_sha256"],
                     "newest_row_date": vb.newest_row_date().isoformat()},
         "rule": man["rule"], "rule_flusurv": MX.rule_block(mix["bank_digest"]),
@@ -336,6 +322,10 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
                                                    "admissions half alone (LB), logged beside "
                                                    "the primary (addendum A2 (2)); ships nothing")}},
     }
+    if kn:
+        # a modified step is never mistaken for the registered member
+        prov["specification"] = "modified"
+        prov["knobs"] = dict(sorted(kn.items()))
     write_provenance(out_dir, prov)
     return member, prov
 
@@ -371,10 +361,8 @@ def read_provenance(out_dir) -> dict | None:
 
 
 def write_filter_record(workroot, asof: str, raw: dict) -> Path:
-    """A console run keeps the filter's own samples beside its provenance,
-    in the stored convention and gzipped like a week record, under the
-    research key. The 2026-27 shadow run reads it; nothing in the console
-    does."""
+    """A console run's copy of the filter's own samples (stored convention,
+    gzipped, under FILTER_KEY). Read by the 2026-27 shadow run, not the console."""
     fp = Path(workroot) / FILTER_RECORD_NAME
     tmp = fp.with_name(fp.name + ".tmp")
     with gzip.open(tmp, "wt", encoding="utf-8", compresslevel=6) as fh:

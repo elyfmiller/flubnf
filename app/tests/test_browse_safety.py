@@ -1,41 +1,13 @@
-"""Browsing never touches a run: the GET-route audit, encoded as tests.
+"""GET routes never touch a run (the GET-route audit, as tests).
 
-The audit (2026-08-21), for the record:
-
-  * No GET route writes a STOP, PAUSE, or HALT flag, touches run_meta.json,
-    or mutates the ledger. The stop and pause flags are written only by the
-    POST endpoints (/run/stop, /retro/stop, /retro/{season}/stop, /pause)
-    and cleared only by POST /retro/{season}/resume and the worker itself.
-  * /api/busy and every page that derives a season status may reconcile the
-    IN-MEMORY claim of a DEAD worker (stale heartbeat, or a record closed
-    after the claim); they never write files and never touch a live claim,
-    because a live worker's heartbeat is fresh by definition.
-  * Four GET paths write, and each write is confined to a derived artifact
-    a running worker never reads:
-      - /output/report and /runs/{id}/report may rebuild a STALE report.html
-        -- as may their /download twins, added 2026-08-26, which run the
-        same refresh so the file saved and the page read are one file --
-        in place from its inputs bundle, via write-beside-then-os.replace
-        (report_v2.build_report), touching nothing else. It cannot contend
-        with a run's own report write: a running run's workroot is invisible
-        to /output/report until results.json lands, which the run writes
-        AFTER report.html, and a just-written report is fresher than the
-        builder sources, so it serves verbatim. The rebuild runs at most
-        once per builder change (failures are memoized), on the request
-        thread, while fits run in separate low-priority OS processes, so it
-        cannot starve a fit.
-      - /retro/{season} may rescore scores.json (write-beside-then-replace,
-        made atomic in this change) so a mid-replay page view and the
-        worker's own final write can never hand anyone a half-written file.
-      - /api/retro/{season}/playback/{asof} caches its payload under
-        playback_cache/ only; a corrupt cache is detected and rebuilt.
-      - /retro/{season}/report builds the season report file inside the
-        season tree; the worker never reads it. (Its write is not atomic;
-        that lives in report_season.py, outside this change, and a garbled
-        file can only affect a concurrent download, never a run.)
-  * The TTL caches (app/core/ttlcache.py) memoize read-only scans in
-    process memory, keyed by the root they describe; they create nothing on
-    disk (asserted below).
+No GET writes STOP/PAUSE/HALT flags, run_meta.json or the ledger; status
+pages may reconcile only a DEAD worker's in-memory claim. The only GET
+writes are derived artifacts no running worker reads, each written
+beside-then-os.replace: stale report.html rebuilds (/output/report,
+/runs/{id}/report and their /download twins; a running workroot is
+invisible until results.json lands, which follows report.html),
+/retro/{season} rescoring of scores.json, playback_cache/ payloads, and the
+season report file. TTL caches memoize read-only scans and create nothing.
 """
 import json
 import os
@@ -54,12 +26,19 @@ from fastapi.testclient import TestClient           # noqa: E402
 from fastapi.routing import APIRoute                # noqa: E402
 
 import app.core.runs as runs_mod                    # noqa: E402
+from app.core import datasets                       # noqa: E402
 from app.core import horizons as hz                 # noqa: E402
 from app.core import playback                       # noqa: E402
 from app.core import report_v2                      # noqa: E402
 from app.core import retro                          # noqa: E402
 from app.core import ttlcache                       # noqa: E402
 from app.ui import server as srv                    # noqa: E402
+from app.ui.routes import retro as ui_retro         # noqa: E402
+from app.ui.routes import output as ui_output       # noqa: E402
+from app.ui import pipeline as ui_pipeline          # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
+from app.ui import shared as ui_shared              # noqa: E402
+from app.ui import state as ui_state                # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL   # noqa: E402
 
 client = TestClient(srv.app)
@@ -70,25 +49,29 @@ FUTURE_MTIME = (4_000_000_000, 4_000_000_000)       # 2096: always fresh
 RUNNING_SEASON = "2098-99"
 PAUSED_SEASON = "2097-98"
 
-#: how to fill each path parameter a GET route declares. A NEW parameter
-#: name fails the walk on purpose: whoever adds the route must add it here
-#: so the route stays covered.
+#: how to fill each GET route's path parameters; a NEW parameter name fails
+#: the walk on purpose, so the new route gets covered (ds_id and stamp are
+#: well-formed but name no stored dataset replay)
 PATH_PARAMS = {"run_id": "20981231T000000-abc123", "name": "pf",
-               "season": RUNNING_SEASON, "asof": "2098-11-07"}
+               "season": RUNNING_SEASON, "asof": "2098-11-07",
+               "ds_id": "walk-000000000000", "stamp": "20981231T000000Z"}
+
+#: the console's route table (captured at 029c028, see test_ui_layout.py)
+GOLDEN_ROUTES = Path(__file__).resolve().parent / "golden" / "ui_routes.json"
 
 
 @pytest.fixture(autouse=True)
 def _isolated_state():
-    status_before = dict(srv._status)
-    retro_before = dict(srv._retro_status)
-    stop_before = set(srv._retro_stop)
-    claim_before = dict(srv._retro_claim_at)
+    status_before = dict(ui_state._status)
+    retro_before = dict(ui_retro_seasons._retro_status)
+    stop_before = set(ui_retro_seasons._retro_stop)
+    claim_before = dict(ui_retro_seasons._retro_claim_at)
     ttlcache.clear_all()
     yield
-    srv._status.clear(); srv._status.update(status_before)
-    srv._retro_status.clear(); srv._retro_status.update(retro_before)
-    srv._retro_stop.clear(); srv._retro_stop.update(stop_before)
-    srv._retro_claim_at.clear(); srv._retro_claim_at.update(claim_before)
+    ui_state._status.clear(); ui_state._status.update(status_before)
+    ui_retro_seasons._retro_status.clear(); ui_retro_seasons._retro_status.update(retro_before)
+    ui_retro_seasons._retro_stop.clear(); ui_retro_seasons._retro_stop.update(stop_before)
+    ui_retro_seasons._retro_claim_at.clear(); ui_retro_seasons._retro_claim_at.update(claim_before)
     ttlcache.clear_all()
 
 
@@ -98,9 +81,11 @@ def _live_world(tmp_path, monkeypatch):
     """A simulated live application: one console run fitting (in-memory
     claim plus a workroot with a progress shard), one retrospective running
     (fresh-heartbeat record), one paused (record plus its PAUSE flag)."""
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path / "retro")
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "seal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path / "retro")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "seal")
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path / "state")
+    # datasets.ROOT was fixed from APP_STATE at import
+    monkeypatch.setattr(datasets, "ROOT", tmp_path / "state" / "datasets")
     now = time.time()
     run_root = tmp_path / "retro" / RUNNING_SEASON
     retro.write_meta(run_root, {
@@ -116,13 +101,13 @@ def _live_world(tmp_path, monkeypatch):
         "segment_start_utc": None, "started_utc": now, "elapsed_s": 9.0,
         "total_weeks": 30, "weeks_completed": 1, "week_seconds": {}})
     retro.pause_path(pause_root).touch()
-    srv._retro_status.update({RUNNING_SEASON: "running",
-                              PAUSED_SEASON: "paused"})
+    ui_retro_seasons._retro_status.update({RUNNING_SEASON: "running",
+                                           PAUSED_SEASON: "paused"})
     workroot = tmp_path / "console_workroot"
     workroot.mkdir()
     (workroot / "pf_status.json.prog").write_text(
         json.dumps({"done": 3, "total": 12, "t0": now}))
-    srv._status.update({"running": "all:20981231T000000-abc123",
+    ui_state._status.update({"running": "all:20981231T000000-abc123",
                         "workroot": str(workroot),
                         "run_label": "2098-12-26 · 1 state(s) + US",
                         "phase": "filtering 2 location(s) × 3 replicate(s)",
@@ -143,26 +128,40 @@ def _control_state(run_root, pause_root, workroot):
         "paused_season": flags(pause_root),
         "console_stop": (workroot / "STOP").exists(),
         "console_files": sorted(p.name for p in workroot.iterdir()),
-        "status": {k: srv._status.get(k)
+        "status": {k: ui_state._status.get(k)
                    for k in ("running", "workroot", "phase", "run_label",
                              "expected_total", "started_utc", "settings")},
-        "retro_status": dict(srv._retro_status),
-        "retro_stop": set(srv._retro_stop),
+        "retro_status": dict(ui_retro_seasons._retro_status),
+        "retro_stop": set(ui_retro_seasons._retro_stop),
     }
 
 
 def _get_routes():
+    """Every GET route the app serves, flattened: FastAPI >= 0.141 keeps an
+    included router (datasets_ui's, the tabs') as ONE entry in
+    app.router.routes, so a plain walk of it misses their routes."""
+    try:
+        from fastapi.routing import iter_route_contexts
+        routes = list(iter_route_contexts(srv.app.router.routes))
+    except ImportError:            # older FastAPI copies them in flat
+        routes = list(srv.app.router.routes)
     out = []
-    for r in srv.app.router.routes:
-        if isinstance(r, APIRoute) and "GET" in r.methods:
+    for r in routes:
+        if (isinstance(getattr(r, "original_route", r), APIRoute)
+                and "GET" in r.methods):
             out.append(r.path)
     return sorted(out)
 
 
+def _golden_get_count():
+    rows = json.loads(GOLDEN_ROUTES.read_text(encoding="utf-8"))["routes"]
+    return sum(1 for methods, _path, _name, kind, _group in rows
+               if kind == "APIRoute" and "GET" in methods.split(","))
+
+
 def test_every_get_route_leaves_the_live_runs_alone(tmp_path, monkeypatch):
     run_root, pause_root, workroot = _live_world(tmp_path, monkeypatch)
-    # fixture sanity: the simulated runs really read as live, so the null
-    # result below means something
+    # fixture sanity: the simulated runs really read as live
     b = client.get("/api/busy").json()
     assert b["console_run"] == "2098-12-26 · 1 state(s) + US"
     assert b["retro"] == {RUNNING_SEASON: "running",
@@ -179,13 +178,16 @@ def test_every_get_route_leaves_the_live_runs_alone(tmp_path, monkeypatch):
         r = client.get(url)
         assert r.status_code < 500, (url, r.status_code)
         walked.append(path)
-        # the walk must never trip a flag mid-way either, not just at the end
+        # no flag may trip mid-walk either
         assert not retro.stop_path(run_root).exists(), url
         assert retro.pause_path(pause_root).exists(), url
-    # the routes the audit cares most about were actually walked
+    # every GET route was walked (the golden's count), the ones the audit
+    # cares most about among them
+    assert len(walked) == _golden_get_count()
     assert {"/", "/forecast", "/retro", "/api/busy", "/api/progress",
             "/output/report", "/retro/{season}",
-            "/api/retro/{season}/playback/{asof}"} <= set(walked)
+            "/api/retro/{season}/playback/{asof}",
+            "/retro/dataset/{ds_id}/{stamp}"} <= set(walked)
     after = _control_state(run_root, pause_root, workroot)
     assert after == before, "a GET route changed run control state"
 
@@ -194,31 +196,26 @@ def test_every_get_route_leaves_the_live_runs_alone(tmp_path, monkeypatch):
 
 def test_cached_scans_never_create_state(tmp_path):
     ghost = tmp_path / "ghost"
-    assert srv._weeks_done(ghost / RUNNING_SEASON) == 0
-    assert srv._scan_results(ghost / "workroots") == []
-    assert srv._scan_archive_dates(ghost / "archive") == []
-    assert srv._scan_archive_entries(ghost, RUNNING_SEASON) == []
-    assert srv._seasons_on_disk(ghost) == ()
+    assert ui_retro_seasons._weeks_done(ghost / RUNNING_SEASON) == 0
+    assert ui_shared._scan_results(ghost / "workroots") == []
+    assert ui_shared._scan_archive_dates(ghost / "archive") == []
+    assert ui_retro_seasons._scan_archive_entries(ghost, RUNNING_SEASON) == []
+    assert ui_retro_seasons._seasons_on_disk(ghost) == ()
     assert not ghost.exists()
 
 
 # -------------------------------------- weekly report rebuild confinement
 
 def _synth_run(workroot: Path):
-    """Drive the real report build path with synthetic samples (the same
-    construction test_report_bundle uses), so the confinement assertions
-    run against a genuine bundle and report."""
+    """Drive the real report build path with synthetic samples."""
     from flubnf.settings import load_locations
     locs = load_locations()
     n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
     spec = runs_mod.RunSpec(engine="pf", forecast_date="2098-01-03",
                             locations=["Ohio", "US"])
     rng = np.random.default_rng(7)
-    # _write_weekly_report sits above the storage boundary, so the member
-    # arrives in canonical horizons: the hub's own labels "0".."3", and no
-    # anchor key (the report's fans are forecasts only). The offsets keep
-    # the physical weeks these draws stood for, so the bundle is the same
-    # shape it was before the labels moved.
+    # canonical horizons "0".."3" and no anchor (the report's fans are
+    # forecasts only); offsets keep the physical weeks
     pf_samples = {loc: {h: (rng.gamma(5.0, 20.0, 400)
                             + 10 * (int(h) + 1)).tolist()
                         for h in hz.HORIZONS}
@@ -229,18 +226,18 @@ def _synth_run(workroot: Path):
     (workroot / "cells.json").write_text(json.dumps(
         [{"location": "Ohio", "last_observed": 127.0},
          {"location": "US", "last_observed": 127.0}]))
-    srv._write_weekly_report(spec, workroot, pf_samples, obs,
-                             pd.DataFrame(), locs, n2f, 42.0, {})
+    ui_pipeline._write_weekly_report(spec, workroot, pf_samples, obs,
+                                     pd.DataFrame(), locs, n2f, 42.0, {})
 
 
 def test_stale_report_rebuild_writes_only_report_html(tmp_path, monkeypatch):
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
     d = tmp_path / "archive" / "2098-01-03"
     _synth_run(d)
-    srv._REPORT_REBUILD_FAILED.clear()
+    ui_output._REPORT_REBUILD_FAILED.clear()
     os.utime(d / "report.html", OLD_MTIME)
     before = {p.name: p.read_bytes() for p in d.iterdir()}
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     r = client.get("/output/report?date=2098-01-03")
     assert r.status_code == 200
     # the rebuild happened: the stored file is fresh again
@@ -257,10 +254,8 @@ def test_stale_report_rebuild_writes_only_report_html(tmp_path, monkeypatch):
 
 def test_output_report_never_serves_an_unfinished_workroot(tmp_path,
                                                            monkeypatch):
-    """The ordering that makes serve-time rebuilds unable to contend with a
-    run's own report write: a workroot without results.json (the run is
-    still inside step 5b/6) is invisible to /output/report, so its
-    report.html is never read, rebuilt, or touched."""
+    """A workroot without results.json (run still in progress) is invisible
+    to /output/report, so its report.html is never read or rebuilt."""
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
     done = tmp_path / "workroots" / "20980101T000000-aaaaaa"
     done.mkdir(parents=True)
@@ -274,7 +269,7 @@ def test_output_report_never_serves_an_unfinished_workroot(tmp_path,
     os.utime(live / "report.html", OLD_MTIME)        # stale on purpose
     before = ((live / "report.html").read_bytes(),
               (live / "report.html").stat().st_mtime)
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     r = client.get("/output/report")
     assert r.status_code == 200
     assert "DONE REPORT" in r.text
@@ -308,8 +303,8 @@ def test_playback_endpoint_writes_only_its_cache(tmp_path, monkeypatch):
                                                     for f in fips_set
                                                     for h in range(4)})
     monkeypatch.setattr(playback, "HUB", tmp_path / "hub")
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     root = tmp_path / PB_SEASON
     wd = root / "weeks" / ASOF
     wd.mkdir(parents=True)
@@ -336,9 +331,8 @@ def test_playback_endpoint_writes_only_its_cache(tmp_path, monkeypatch):
     new = {p for p in root.rglob("*") if p.is_file()} - files_before
     assert new, "the payload cache should have been written"
     cache_dir = root / "playback_cache"
-    # the payload cache, and the week's quantile sidecar when the week was
-    # stored before sidecars existed: both are caches, recomputable from
-    # the samples, and nothing else may be written by a browse
+    # only caches (the payload cache and, for pre-sidecar weeks, the quantile
+    # sidecar) may be written by a browse
     assert all(cache_dir in p.parents or p.name == retro.QUANTILES_NAME
                for p in new), sorted(map(str, new))
     assert retro.meta_path(root).read_bytes() == meta_before
@@ -349,12 +343,10 @@ def test_playback_endpoint_writes_only_its_cache(tmp_path, monkeypatch):
 # ----------------------------------------------- scores.json atomic write
 
 def test_retro_worker_writes_scores_atomically(tmp_path, monkeypatch):
-    """The season worker's final scores.json lands by write-beside-then-
-    replace, so a page rescoring or reading mid-write can never see a
-    half-written file (the results page's own rescore uses the same
-    pattern)."""
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "_sleep_guard", lambda: None)
+    """The worker's final scores.json lands beside-then-replace, so a page
+    reading mid-write never sees a half-written file."""
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_pipeline, "_sleep_guard", lambda: None)
     root = tmp_path / RUNNING_SEASON
     root.mkdir(parents=True)
     monkeypatch.setattr(retro, "run_season", lambda *a, **k: [])
@@ -369,8 +361,8 @@ def test_retro_worker_writes_scores_atomically(tmp_path, monkeypatch):
         return real_replace(src, dst)
 
     monkeypatch.setattr(os, "replace", spy)
-    srv._retro_bg(RUNNING_SEASON, ["Ohio"], width=1)
-    assert srv._retro_status[RUNNING_SEASON] == "done"
+    ui_retro._retro_bg(RUNNING_SEASON, ["Ohio"], width=1)
+    assert ui_retro_seasons._retro_status[RUNNING_SEASON] == "done"
     assert json.loads((root / "scores.json").read_text())
     assert not (root / "scores.json.tmp").exists()
     assert any(d.endswith("scores.json") for d in replaced)

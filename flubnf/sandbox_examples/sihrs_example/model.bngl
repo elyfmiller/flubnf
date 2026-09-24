@@ -1,15 +1,14 @@
-# SIHRS influenza model for the particle-filter tests (fit_type = pf).
+# Influenza on the SIHRS compartment model, one state, as the production
+# single-strain seasonal model writes it.
 #
-# The single-strain seasonal model the filter was built against, with its
-# per-state data filled in for a synthetic state of five million people.
-# Five fitted parameters (Reff, eps1, phi1, mult, r); everything else is
-# fixed. Time is in weeks and every rate is per week. The clock species
+# The per-state data are filled in for a synthetic state of five million
+# people. Five fitted parameters (Reff, eps1, phi1, mult, r); everything else
+# is fixed. Time is in weeks and every rate is per week. The clock species
 # counter() is the model's own time, which the filter carries as state.
 #
-# The weekly hospital admissions the tests observe are the increment of
+# The weekly hospital admissions observed are the increment of
 # Hobs = mult*H_Cum across a week: the model owns the ascertainment scale,
-# and mult never enters a reaction rule. i0 is overwritten per truth by tests/pf_cells.py
-# so that the first week's expected count is the same for every truth.
+# and mult never enters a reaction rule.
 begin model
 begin parameters
 Reff__FREE 1.20

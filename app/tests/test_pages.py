@@ -17,43 +17,36 @@ def test_home_renders_workflow_performance_and_component_cards():
     r = client.get("/")
     assert r.status_code == 200
     assert "mechanistically" in r.text              # tagline kept
-    # the interactive mechanism panel is gone from home; it stays on the
-    # model pages and under Methods
+    # the mechanism panel lives on the model pages and Methods, not home
     assert "SIHRS compartment diagram" not in r.text
     assert 'id="diag-loc"' not in r.text            # no region select
     assert 'id="vals-1"' not in r.text              # no values panel
     assert "const DIAG" not in r.text               # no diagram feed script
-    # weekly workflow pipeline diagram: the mechanistic box is the
-    # Oracle SIHRS, the filter's fit with donor growth blended in
-    # (2026-09-23)
+    # workflow diagram: the mechanistic box is the Oracle SIHRS (filter fit
+    # with donor growth blended in)
     assert "Weekly forecasting workflow" in r.text
     assert "particle-filter fit, then" in r.text
     assert "donor growth blended in" in r.text
-    # two submissions, nothing blended (2026-09-22)
+    # two submissions, nothing blended
     assert "Two submissions" in r.text and "Equal-weight blend" not in r.text
     assert "Groundhog" in r.text
-    # measured performance: the production engine's three-season record
-    # for the PF (the reseal of 2026-09-07) and the Groundhog's own replay,
-    # each column named for whose forecast it scores, both universes named.
-    # The FluSight field placements were withdrawn on 2026-08-24
-    # (docs/archive/RELEASE-1.0.md), so the table must NOT carry them and must say
-    # so rather than leaving a reader to assume they still hold.
+    # measured performance: the PF reseal's three-season record and the
+    # Groundhog's replay, both universes named. FluSight field placements
+    # were withdrawn, so the table must not carry them and must say so.
     assert 'class="perf"' in r.text
     for cell in ("0.840", "0.797", "0.846", "0.821",
                  "0.722", "0.653", "0.651", "0.666",
                  "0.741", "0.663", "0.684", "0.685",
                  "15,460", "15,340", "Oracle SIHRS", "Groundhog",
-                 # the Oracle SIHRS (on the Groundhog's donor bank) against
-                 # the plain filter, same cells, the three seasons and the
-                 # caveat, and the three-season column named for what it scores
+                 # Oracle SIHRS vs the plain filter on the same cells, the
+                 # caveat, and the three-season column
                  "0.697", "0.794", "0.781", "0.843", "0.731", "0.813", "9,279",
                  "0.767", "0.840", "0.738", "0.819", "6,021", "15,300",
-                 "FluSurv-NET", "includes zero",
+                 "FluSurv-NET", "below 1.000 beats it",
                  "Filter alone", "frozen-specification replication"):
         assert cell in r.text, cell
-    # the performance card names no blend; the outlook label above it is
-    # whatever the latest STORED run on this machine was and may still
-    # say so, since a run from before 2026-09-22 is its own record
+    # the performance card names no blend (the outlook label above it
+    # reflects the latest stored run and may predate the retirement)
     perf = r.text[r.text.index('class="perf"'):]
     perf = perf[:perf.index("</table>")]
     assert "Ensemble" not in perf.replace("FluSight Ensemble", "")
@@ -72,13 +65,11 @@ def test_home_renders_workflow_performance_and_component_cards():
     assert "bionetgen.org" in r.text
     assert 'target="_blank"' in r.text
     assert "/methods#sihrs" in r.text               # anchor into methods
-    # start-here numbered flow: vertical stepper; the workflow copy is
-    # honest about what is combined (nothing, since 2026-09-22)
+    # start-here numbered flow; the workflow says nothing is combined
     assert 'class="steps"' in r.text
     assert 'class="stepnum"' in r.text
     assert "nothing blended" in r.text
-    # no frozen blend weights (the retired blend); the Oracle SIHRS's
-    # record names its own caveat, a frozen-specification replication
+    # no frozen blend weights; the Oracle SIHRS names its own caveat
     assert "frozen" not in r.text.replace("frozen-specification replication",
                                           "")
 
@@ -108,9 +99,8 @@ def _pressed_model(html):
 
 
 def test_nav_is_the_operational_loop():
-    """The tab set walks the workflow the home page teaches, and the three
-    model reference pages collapse behind the one Models tab. The storage
-    tab (nee Runs) keeps its position in the loop."""
+    """The tab set walks the workflow the home page teaches; the model pages
+    collapse behind one Models tab."""
     tabs = _nav_tabs(client.get("/").text)
     assert [h for h, _ in tabs] == ["/", "/data", "/forecast", "/output",
                                     "/retro", "/storage", "/models",
@@ -150,8 +140,7 @@ def test_old_model_routes_stay_live_with_the_right_switcher_state():
         assert t.count('aria-pressed="true"') == 1, name
         assert re.search(r'<a class="tab active" href="/models">Models</a>',
                          t), name
-    # the blend's page went with the blend (2026-09-22): nothing computes
-    # it, so there is no reference view to serve
+    # the blend's page went with the blend
     assert client.get("/model/ensemble").status_code == 404
 
 
@@ -177,10 +166,10 @@ def test_model_pages_render_mechanism_and_collapsed_intro():
         assert 'href="/methods#' in r.text, name
 
 
-def test_forecast_page_renders_with_ensemble_overlay_js():
+def test_forecast_page_renders_without_the_retired_blend_overlay():
     r = client.get("/forecast")
     assert r.status_code == 200
-    assert "legendonly" in r.text
+    assert "legendonly" not in r.text and "FMODEL==='ensemble'" not in r.text
 
 
 def test_methods_anchors_and_backlinks():
@@ -192,9 +181,7 @@ def test_methods_anchors_and_backlinks():
     for back in ('href="/model/pf"', 'href="/model/pf2s"',
                  'href="/model/analogue"'):
         assert back in r.text, back
-    # nothing on the page documents the retired blend ("nothing is
-    # blended" describes the product; the blend's own card, identity and
-    # figures are gone)
+    # nothing documents the retired blend
     assert 'href="/model/ensemble"' not in r.text
     assert 'id="ensemble"' not in r.text
     for gone in ("Retired: the blend", "CModel_Flu", "0.723", "0.678"):
@@ -217,18 +204,15 @@ def test_map_legend_carries_all_categories_and_the_no_data_swatch():
 
 
 def test_card_text_spans_the_card_width_app_wide():
-    """Rebuild 2026-08-22: ALL card text -- kickers, prose, hints, subs,
-    the hero lead, top-level page intros -- spans the full card width.
-    No rule narrows a text block to a measure, so a heading, a hint, and
-    a paragraph share one width everywhere by construction."""
+    """All card text spans the full card width: no rule narrows a text block
+    to a measure."""
     nau = (Path(__file__).resolve().parents[1]
            / "ui" / "static" / "nau.css").read_text()
     joined = " ".join(nau.split())
     # card prose: margins only, no measure
     assert ".card p{margin:.45rem 0}" in joined
     assert "max-width:72ch" not in joined
-    # the top-level intro blocks state no measure of their own: no
-    # max-width inside the page h1 or .sub rules
+    # top-level intro blocks state no max-width of their own
     for start in ("h1{font-size:var(--fs-h1)", ".sub{color:var(--mut)",
                   ".hero p{color:#C6CFEE"):
         i = joined.index(start)
@@ -240,7 +224,7 @@ def test_home_outlook_card_has_heading_and_legend():
     r = client.get("/")
     assert r.status_code == 200
     # the card names its payload like every other card in the app
-    assert "US outlook" in r.text
+    assert "US categorical forecast" in r.text
     # and the legend rides with the map, so the encoding is readable
     # without hovering
     assert 'class="hint maplegend"' in r.text
@@ -254,7 +238,7 @@ def test_home_outlook_caption_states_coverage_when_a_run_exists():
         outlook_n=1, missing=[],
         versions={"pybnf": "x", "bngsim": "x", "bionetgen": "x",
                   "fastapi": "x", "plotly": "x"})
-    assert "US outlook · 2026-01-24" in html      # dated in the heading
+    assert "US categorical forecast · 2026-01-24" in html      # dated in the heading
     assert "cover 1 of 52" in html                # one green state is not a
     assert "the rest show as no data" in html     # national outlook
     # without a run, the card stays honest about being empty
@@ -311,8 +295,7 @@ def test_home_workflow_carries_the_forcing_and_groundhog_equations():
     t = client.get("/").text
     assert 'class="eqpanel"' in t
     assert "the curve the filter bends each week" in t
-    # the Groundhog's scaled growth-ratio quantile replaced the blend's
-    # quantile mean when the blend was retired (2026-09-22)
+    # the Groundhog's growth-ratio quantile replaced the blend's mean
     assert "growth\n   ratios at matched calendar weeks" in t
     assert "mean<sub>m</sub>" not in t
 
@@ -368,15 +351,14 @@ def test_analogue_legend_wraps_inside_the_viewbox():
 
 def test_two_strain_ascertainment_qualifier_stands_on_pf2s():
     t = client.get("/model/pf2s").text
-    # "ascertained": the observed total is not the raw sum of the two fluxes.
-    # The figure's caption is gone; the qualifier lives in the equation panel
-    # rendered directly under the diagram.
+    # "ascertained": the observed total is not the raw sum of the fluxes
+    # (the qualifier lives in the equation panel under the diagram)
     assert "ascertained total" in t
     assert "typed specimens fit the A/B" in t
 
 
 def test_diagram_data_shapes():
-    from app.ui.server import _diagram_data
+    from app.ui.routes.home import _diagram_data
     assert _diagram_data(None) == {"date": "", "has_pf2s": False,
                                    "locations": {}, "order": []}
     res = {"forecast_date": "2026-08-15",
@@ -384,8 +366,7 @@ def test_diagram_data_shapes():
                       "pf2s": {"Ohio": {"ReffA": 1.0, "ReffB": 1.04}}},
            "observed": {"Ohio": [["2026-08-08", 12.0]],
                         "US": [["2026-08-08", 300.0]]},
-           # a LEGACY results.json (stored horizons "1".."4"): the console
-           # must still render workroots written before the reindex
+           # a LEGACY results.json (stored horizons "1".."4") still renders
            "models": {"ensemble": {"Ohio": {"1": {"0.5": 14.0},
                                             "2": {"0.5": 15.0},
                                             "3": {"0.5": 16.0},
@@ -400,18 +381,17 @@ def test_diagram_data_shapes():
 
 
 def test_data_page_draws_the_archive_timeline():
-    """The policies paragraph left the Data page (lead, 2026-09-07); in its
-    place the archive itself: one row per season, one dot per vintage at
-    its week of the season, so what the replay can see is visible."""
-    from app.ui import server as srv
-    rows = srv._vintage_rows(["2023-09-23", "2024-01-06", "2024-11-16", "2025-08-30"])
+    """The Data page draws the vintage archive: one row per season, one dot
+    per vintage at its week of the season."""
+    from app.ui.routes import data as ui_data
+    from app.ui import state as ui_state
+    rows = ui_data._vintage_rows(["2023-09-23", "2024-01-06", "2024-11-16", "2025-08-30"])
     assert [r["season"] for r in rows] == ["2025-26", "2024-25", "2023-24"]
     assert rows[-1]["points"] == [(7, "2023-09-23"), (22, "2024-01-06")]
     assert all(r["color"] for r in rows)
-    assert srv._vintage_rows([]) == []
+    assert ui_data._vintage_rows([]) == []
     r = client.get("/data")
     assert r.status_code == 200
     assert "Policies" not in r.text and ">Archive<" in r.text
-    # the strip draws when the archive has vintages; the hub-free test
-    # environment has none and states that instead of drawing an empty axis
-    assert ('class="archive-strip"' in r.text) == bool(srv.data_mod.vintages())
+    # hub-free environments have no vintages and say so instead of drawing
+    assert ('class="archive-strip"' in r.text) == bool(ui_state.data_mod.vintages())

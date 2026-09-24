@@ -86,7 +86,7 @@ Where the code lives:
 | the bank: estimators, the FBASE rule, the collector, the written pool and its manifest and digest | `flubnf/oracle_bank.py` |
 | the member: cell quantities, the closed form, the draw, the transform, the quantiles | `flubnf/oracle.py` |
 | the step at the storage boundary, the provenance, the plain-filter switch | `app/core/oracle.py` |
-| the two call sites, right after `pf_engine.collect()` | `app/core/retro.run_week`, `app/ui/server._run_all` |
+| the two call sites, right after `pf_engine.collect()` | `app/core/retro.run_week`, `app/ui/pipeline._run_all` |
 | the backfill and the reproduce | `app/core/oracle_backfill.py`, `flubnf oracle backfill`, `flubnf oracle reproduce` |
 
 The step runs on the STORED filter samples after `collect()` and never

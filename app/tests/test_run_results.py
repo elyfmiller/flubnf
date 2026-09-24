@@ -1,8 +1,6 @@
-"""The latest-run results table (lead, 2026-09-07): the run type, each
-member's relWIS against the FluSight baseline with its cells, the fits,
-the files, the report, in a table instead of one chip line; the quantile
-members scored at run end with the sample scorer's own cell rule; the
-mode recorded on the spec."""
+"""The latest-run results table: run type, each member's relWIS against the
+FluSight baseline with its cells, fits, files and report; quantile members
+scored at run end with the sample scorer's cell rule; the mode on the spec."""
 import json
 import sys
 from pathlib import Path
@@ -16,15 +14,14 @@ import app.core.scoring as scoring                       # noqa: E402
 from app.core import horizons as hz                      # noqa: E402
 from app.core.runs import RunSpec, results_html          # noqa: E402
 from app.ui import server as srv                         # noqa: E402
+from app.ui.routes import forecast as ui_forecast        # noqa: E402
 
 client = TestClient(srv.app)
 
 
 def _q(med):
-    """A full 23-level quantile set around `med`, monotone, in the canonical
-    horizons the members carry in memory (the WIS needs every hub level).
-    No anchor key: hz.ORIGIN is not a forecast and score_quantiles must
-    never find one to score."""
+    """A full monotone 23-level set around `med` in canonical horizons, with
+    no anchor key (hz.ORIGIN is never scored)."""
     from flubnf.quantiles import FLUSIGHT_QUANTILES as QL
     return {h: {float(L): med * (0.5 + float(L)) for L in QL}
             for h in hz.HORIZONS}
@@ -32,9 +29,8 @@ def _q(med):
 
 def test_score_quantiles_applies_the_sample_scorers_cell_rule(monkeypatch):
     T = pd.Timestamp("2098-01-03")
-    # truth is keyed by week-ending date, which is PHYSICAL weeks past the
-    # as-of and knows nothing of horizon labels: canonical horizon h lands
-    # on T + 7*(h+1), so these four weeks cover horizons "0".."3"
+    # truth is keyed by week-ending date (PHYSICAL weeks): canonical horizon
+    # h lands on T + 7*(h+1), so these four weeks cover "0".."3"
     truth = {("39", T + pd.Timedelta(days=7 * h)): 100.0 for h in (1, 2, 3, 4)}
     truth[("49", T + pd.Timedelta(days=7))] = 50.0          # Utah: one week only
     truth[("49", T + pd.Timedelta(days=14))] = 0.0          # zero truth: no cell
@@ -66,18 +62,19 @@ def test_results_table_states_type_members_fits_files_and_report():
                    extra={"mode": "vintage"})
     html = results_html(outcome, spec)
     assert 'class="results"' in html
-    assert "vintage run" in html and "real-time" not in html.split("vintage run")[0]
+    assert "vintage (archived week)" in html and "real-time" not in html.split("vintage")[0]
     assert '<span class="relwis bad">1.774</span>' in html
     assert '<span class="relwis ok">0.913</span>' in html
-    assert '<span class="relwis ok">0.842</span>' in html and "(4 cells)" in html
+    assert "(4 cells)" in html
     assert "3 fits" in html and '<span class="bad">1 failure</span>' in html
     assert "2 files" in html and "written" in html
-    # the blend's row still renders for a ledger row that carries its
-    # score (a run from before 2026-09-22), after the two models that ship
-    assert html.index("Oracle SIHRS") < html.index("Groundhog") < html.index("FluBNF ensemble (retired)")
+    # a ledger row from before 2026-09-22 still carries the retired blend's
+    # score: read without error, not shown; the two shipped models in order
+    assert html.index("Oracle SIHRS") < html.index("Groundhog")
+    assert "0.842" not in html and "ensemble" not in html.lower()
     # a JSON spec and outcome, as the ledger row carries them
     again = results_html(json.dumps(outcome), json.dumps({"extra": {"mode": "realtime"}}))
-    assert "real-time run" in again
+    assert "real-time (newest week)" in again
     # no members scored yet (truth not settled): the rows are simply absent
     early = results_html({"pf_cells": 2, "submissions": {"a": "x"}}, "{}")
     assert "relwis" not in early and "2 fits" in early and "none" in early
@@ -88,24 +85,23 @@ def test_the_form_records_the_mode_and_reruns_carry_it():
     html = client.get("/forecast").text
     assert 'name="mode" id="mode-field" value="realtime"' in html
     assert "mf.value = mode" in html
-    # the shipped donors ride on every console spec; "" asks for the bare
-    # analogue (a research configuration, no Groundhog file), and a named
-    # preset resolves like the shipped one
-    x = srv._run_extra(2, "vintage")
+    # the shipped donors ride on every console spec; "" is the bare analogue
+    # (research, no Groundhog file); a named preset resolves like the shipped
+    x = ui_forecast._run_extra(2, "vintage")
     assert x["mode"] == "vintage" and "members" not in x
     assert x["aux_pools"] == [{"stream": "flusurv", "weight": 0.5,
                                "committed": True}]
     assert x["analogue_aux"].startswith("flusurv+flusurv@")
-    assert srv._run_extra(2, "vintage", "") == {"mode": "vintage"}
-    y = srv._run_extra(3, "nonsense")
+    assert ui_forecast._run_extra(2, "vintage", "") == {"mode": "vintage"}
+    y = ui_forecast._run_extra(3, "nonsense")
     assert y["mode"] == "realtime" and y["members"] == 3
-    assert srv._run_extra(2, "realtime", "iliplus")["aux_pools"] == [
+    assert ui_forecast._run_extra(2, "realtime", "iliplus")["aux_pools"] == [
         {"stream": "iliplus", "weight": 0.5, "committed": True}]
     import pytest
     with pytest.raises(ValueError, match="unknown auxiliary preset"):
-        srv._run_extra(2, "realtime", "nope")
-    assert srv._spec_mode({"extra": {"mode": "vintage"}}) == "vintage"
-    assert srv._spec_mode({}) == "realtime" and srv._spec_mode({"extra": "x"}) == "realtime"
+        ui_forecast._run_extra(2, "realtime", "nope")
+    assert ui_forecast._spec_mode({"extra": {"mode": "vintage"}}) == "vintage"
+    assert ui_forecast._spec_mode({}) == "realtime" and ui_forecast._spec_mode({"extra": "x"}) == "realtime"
 
 
 def test_the_fan_card_keeps_the_location_across_model_buttons():

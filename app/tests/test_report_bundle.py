@@ -19,6 +19,10 @@ from fastapi.testclient import TestClient           # noqa: E402
 
 import app.core.runs as runs_mod                    # noqa: E402
 import app.ui.server as srv                         # noqa: E402
+from app.ui.routes import home as ui_home           # noqa: E402
+from app.ui.routes import output as ui_output       # noqa: E402
+from app.ui import pipeline as ui_pipeline          # noqa: E402
+from app.ui import shared as ui_shared              # noqa: E402
 from app.core import horizons as hz                 # noqa: E402
 from app.core import report_v2                      # noqa: E402
 
@@ -29,30 +33,10 @@ FUTURE_MTIME = (4_000_000_000, 4_000_000_000)       # 2096: always fresh
 
 
 def _canonical_samples(rng):
-    """One location's samples in the shape pf.collect() now hands the
-    report: the anchor week under hz.ORIGIN, then the four forecasts under
-    the hub's own labels "0".."3". The anchor is carried, never plotted
-    and never scored, so a report that mistook it for a forecast week
-    would be drawing a week that has already happened.
-
-    Each forecast week is shifted 10 admissions further out than the one
-    before it, so the four weeks stay distinguishable: a fan built from
-    the wrong key comes out as a visibly wrong curve rather than as the
-    same numbers in a different order.
-
-    TWO THINGS ARE DELIBERATE ABOUT THE ORDER AND THE OFFSETS.
-
-    The forecasts are drawn FIRST and the anchor LAST. Drawing the anchor
-    first would consume the leading 400 values of the seeded stream and
-    move every forecast week's numbers, which would make this fixture's
-    output incomparable with the one it replaced. The reindex changed
-    labels; it must not change a single value.
-
-    The anchor sits near `last_observed` (127.0 in the callers below)
-    rather than below the forecasts. A real pf.collect() anchor IS the
-    filtered estimate of the last observed week, so an anchor that came
-    out 35 admissions under the observed tail would teach the wrong shape
-    to whoever copies this next."""
+    """One location's samples as pf.collect() returns them: horizons "0".."3"
+    (each shifted +10 so a wrong key shows) plus the unplotted anchor under
+    hz.ORIGIN near last_observed (127). Forecasts are drawn BEFORE the anchor
+    so the seeded stream matches the pre-reindex fixture value for value."""
     fc = {h: (rng.gamma(5.0, 20.0, 400) + 10 * (i + 1)).tolist()
           for i, h in enumerate(hz.HORIZONS)}
     return {**fc, hz.ORIGIN: (rng.gamma(5.0, 20.0, 400) * 0.1 + 117.0).tolist()}
@@ -75,8 +59,8 @@ def _synth_run(workroot: Path):
         [{"location": "Ohio", "last_observed": 127.0},
          {"location": "US", "last_observed": 127.0}]))
     outcome = {}
-    srv._write_weekly_report(spec, workroot, pf_samples, obs,
-                             pd.DataFrame(), locs, n2f, 42.0, outcome)
+    ui_pipeline._write_weekly_report(spec, workroot, pf_samples, obs,
+                                     pd.DataFrame(), locs, n2f, 42.0, outcome)
     return outcome, spec
 
 
@@ -127,7 +111,7 @@ def _archived(tmp_path, monkeypatch, date="2098-01-03"):
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
     d = tmp_path / "archive" / date
     _synth_run(d)
-    srv._REPORT_REBUILD_FAILED.clear()
+    ui_output._REPORT_REBUILD_FAILED.clear()
     return d
 
 
@@ -144,8 +128,7 @@ def test_stale_report_with_bundle_rebuilds_on_serve(tmp_path, monkeypatch):
     assert "OLD FACE" not in r.text
     assert "<em>Flu</em>BNF" in r.text and 'id="st-OH"' in r.text
     assert calls == [1]
-    # rebuilt IN PLACE: the stored file is now fresh, so the next serve
-    # neither rebuilds nor transforms
+    # rebuilt IN PLACE: the next serve neither rebuilds nor transforms
     disk = (d / "report.html").read_text()
     assert "OLD FACE" not in disk
     assert (d / "report.html").stat().st_mtime >= \
@@ -175,7 +158,7 @@ def test_rebuild_failure_serves_stored_file(tmp_path, monkeypatch):
         assert r.status_code == 200 and "OLD FACE" in r.text
     assert "OLD FACE" in (d / "report.html").read_text()
     # an unknown future bundle version degrades the same way
-    srv._REPORT_REBUILD_FAILED.clear()
+    ui_output._REPORT_REBUILD_FAILED.clear()
     (d / report_v2.BUNDLE_NAME).write_text(json.dumps({"version": 99}))
     r = client.get("/output/report?date=2098-01-03")
     assert r.status_code == 200 and "OLD FACE" in r.text
@@ -220,11 +203,8 @@ def test_legacy_report_gets_theme_carry_and_disk_untouched(tmp_path,
 
 
 def test_legacy_carry_injects_the_retint_pass_for_charted_pages():
-    # a carried page with embedded charts gains the retint pass, so its
-    # baked category bars follow the reader's theme and color-vision mode
-    # (the field-found gap: pre-bundle reports served green-to-red bars
-    # that ignored the CV-safe toggle); the carried tokens it resolves
-    # arrive with the swapped stylesheet
+    # a carried page with charts gains the retint pass, so baked category
+    # bars follow the reader's theme and CV-safe mode
     charted = LEGACY.replace(
         "<p class=\"hint\">map here</p>",
         "<p class=\"hint\">map here</p>\n<div id=\"fig1\"></div>"
@@ -246,8 +226,8 @@ def test_legacy_carry_declines_incompatible_markup():
     html = LEGACY.replace(" .hint{", " .gone{color:red}\n .hint{") \
                  .replace('class="hint"', 'class="hint gone"')
     out = report_v2.legacy_theme_carry(html)
-    # the swap is refused (a styled-and-used class has no current styling);
-    # only the quiet line lands
+    # the swap is refused (a used class has no current styling); only the
+    # quiet line lands
     assert "#0a1626" in out and 'class="brandrow"' not in out
     assert report_v2.STALE_NOTE_ID in out
     assert "generated with an earlier design" in out
@@ -261,7 +241,7 @@ def test_archive_carries_the_bundle(tmp_path, monkeypatch):
     w.mkdir(parents=True)
     for name in ("results.json", "report.html", report_v2.BUNDLE_NAME):
         (w / name).write_text("{}")
-    srv._archive_run(w, "2098-01-03")
+    ui_pipeline._archive_run(w, "2098-01-03")
     assert (tmp_path / "archive" / "2098-01-03"
             / report_v2.BUNDLE_NAME).is_file()
 
@@ -270,9 +250,8 @@ def test_archive_carries_the_bundle(tmp_path, monkeypatch):
 
 
 def _synth_run_with_ensemble(workroot: Path):
-    """The bundle-test synthetic run (PF samples only) plus a results.json
-    in the shape a run from before 2026-09-22 stored, the blend alone, laid
-    out as a real latest workroot. The build path ignores `ens_q` now."""
+    """The synthetic run plus a results.json holding the blend alone (a run
+    from before its retirement); the build path ignores `ens_q`."""
     import numpy as np
     from app.core import ensemble as ens
     from flubnf.settings import load_locations
@@ -291,9 +270,9 @@ def _synth_run_with_ensemble(workroot: Path):
         [{"location": "Ohio", "last_observed": 127.0},
          {"location": "US", "last_observed": 127.0}]))
     outcome = {}
-    srv._write_weekly_report(spec, workroot, pf_samples, obs,
-                             pd.DataFrame(), locs, n2f, 42.0, outcome,
-                             ens_q=ens_q)
+    ui_pipeline._write_weekly_report(spec, workroot, pf_samples, obs,
+                                     pd.DataFrame(), locs, n2f, 42.0, outcome,
+                                     ens_q=ens_q)
     (workroot / "results.json").write_text(json.dumps({
         "forecast_date": "2098-01-03", "observed": obs,
         "models": {"ensemble": {loc: {h: {str(l): v for l, v in q.items()
@@ -305,30 +284,28 @@ def _synth_run_with_ensemble(workroot: Path):
 
 
 def test_home_map_renders_the_reports_exact_cards(tmp_path, monkeypatch):
-    """The two-maps bug, resolved: home reads the bundle's cards, so the
-    home map and the weekly report's map show the SAME categories from the
-    SAME model, and both surfaces are labeled with that model."""
+    """Home reads the bundle's cards, so home and the weekly report show the
+    same categories from the same model, both labelled with it."""
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
     w = tmp_path / "workroots" / "20980103T000000-abcdef"
     _synth_run_with_ensemble(w)
-    srv._invalidate_scans()
-    rid, res = srv._latest_results()
+    ui_shared._invalidate_scans()
+    rid, res = ui_shared._latest_results()
     assert rid == w.name
-    cards, meta = srv._outlook_cards(res, rid)
+    cards, meta = ui_home._outlook_cards(res, rid)
     bundle = json.loads((w / report_v2.BUNDLE_NAME).read_text())
     assert bundle["cards_model"] == "pf"            # the PF colours the map
     expect = {c["fips"]: c for c in bundle["cards"].values() if c.get("fips")}
     assert cards == expect                          # exact, not recomputed
     assert meta == {"model": "pf", "approx": False,
-                    "label": "Oracle SIHRS outlook",
-                    # the v4 scope record rides with the cards so the home
-                    # map can say which card-less states were unfitted
+                    "label": "Oracle SIHRS categorical forecast",
+                    # the v4 scope record: which card-less states were unfitted
                     "fitted_fips": ["39"]}
     # the model label lands on BOTH surfaces
-    assert "Oracle SIHRS outlook" in (w / "report.html").read_text()
+    assert "Oracle SIHRS categorical forecast" in (w / "report.html").read_text()
     home = client.get("/")
     assert home.status_code == 200
-    assert "Oracle SIHRS outlook" in home.text
+    assert "Oracle SIHRS categorical forecast" in home.text
     assert "approximate, from stored quantiles" not in home.text
 
 
@@ -336,7 +313,7 @@ def test_pf_only_run_records_and_labels_pf(tmp_path):
     _synth_run(tmp_path)
     bundle = json.loads((tmp_path / report_v2.BUNDLE_NAME).read_text())
     assert bundle["cards_model"] == "pf"
-    assert "Oracle SIHRS outlook" in (tmp_path / "report.html").read_text()
+    assert "Oracle SIHRS categorical forecast" in (tmp_path / "report.html").read_text()
 
 
 def test_pre_bundle_run_falls_back_and_labels_the_approximation(
@@ -345,23 +322,20 @@ def test_pre_bundle_run_falls_back_and_labels_the_approximation(
     w = tmp_path / "workroots" / "20980103T000000-abcdef"
     _synth_run_with_ensemble(w)
     (w / report_v2.BUNDLE_NAME).unlink()            # a pre-bundle run
-    srv._invalidate_scans()
-    rid, res = srv._latest_results()
-    cards, meta = srv._outlook_cards(res, rid)
-    # the stored results carry the blend alone (a run from before it was
-    # retired), so that is the one model the fallback can offer
-    assert meta["approx"] is True and meta["model"] == "ensemble"
-    assert any(c.get("probs") for c in cards.values())
+    ui_shared._invalidate_scans()
+    rid, res = ui_shared._latest_results()
+    cards, meta = ui_home._outlook_cards(res, rid)
+    # the stored blend (pre-retirement) is read without error but never
+    # colors the map
+    assert meta["approx"] is True and meta["by_model"] == {}
+    assert not any(c.get("probs") for c in cards.values())
     home = client.get("/")
-    # the label span is the model toggle's relabel target, so the phrase
-    # spans a data-mapmodel-label element
-    assert "FluBNF Ensemble (retired) outlook" in home.text
-    assert "approximate, from stored quantiles" in home.text
+    assert home.status_code == 200
+    assert "Ensemble (retired)" not in home.text
 
 
 def test_v1_bundle_still_loads_and_renders_as_pf(tmp_path, monkeypatch):
-    """Additive versioning: a v1 bundle (no cards_model) rebuilds fine and
-    wears the PF label its cards were computed with."""
+    """A v1 bundle (no cards_model) rebuilds and wears the PF label."""
     d = _archived(tmp_path, monkeypatch)
     b = d / report_v2.BUNDLE_NAME
     bundle = json.loads(b.read_text())
@@ -372,14 +346,12 @@ def test_v1_bundle_still_loads_and_renders_as_pf(tmp_path, monkeypatch):
     os.utime(d / "report.html", OLD_MTIME)
     r = client.get("/output/report?date=2098-01-03")
     assert r.status_code == 200 and "OLD FACE" not in r.text
-    assert "Oracle SIHRS outlook" in r.text
+    assert "Oracle SIHRS categorical forecast" in r.text
 
 
 def test_categorical_probs_from_quantiles_matches_the_sample_computation():
-    """The ensemble's quantile-space categorical computation agrees with
-    the sample computation on the same distribution, within the grid's
-    resolution -- the exactness the old few-values-as-samples stand-in
-    lacked (it flipped borderline states)."""
+    """Quantile-space categorical probabilities agree with the sample
+    computation within the grid's resolution."""
     import numpy as np
     from app.core.report import (categorical_probs,
                                  categorical_probs_from_quantiles)
@@ -406,15 +378,9 @@ def test_categorical_probs_from_quantiles_matches_the_sample_computation():
 def _delivery_mismatch(a: str, b: str) -> str:
     """Empty when the two deliveries are identical, else a SHORT locator.
 
-    Compared by digest on purpose, not with a bare ==. report.html is about
-    5 MB over 4500 lines because the Plotly bundle is inlined, and the one
-    regression this assertion exists to catch -- a line ending creeping into
-    one delivery and not the other -- makes EVERY line differ. Handed that,
-    pytest's difflib explanation goes quadratic over the whole page: on
-    Windows CI run 33200477476 it sat in difflib.find_longest_match long
-    enough to be a large share of a 62 minute job, and then printed a
-    truncated diff that read as two identical strings. A digest plus the
-    first differing offset fails in microseconds and names the cause.
+    Compared by digest, not ==: report.html is ~5 MB, and a line-ending
+    difference makes every line differ, sending pytest's difflib quadratic
+    (a large share of a CI job) before printing a useless diff.
     """
     if hashlib.sha256(a.encode("utf-8")).digest() \
             == hashlib.sha256(b.encode("utf-8")).digest():
@@ -427,10 +393,8 @@ def _delivery_mismatch(a: str, b: str) -> str:
 
 
 def test_weekly_report_downloads_with_a_dated_name(tmp_path, monkeypatch):
-    """The season report has been downloadable all along; the weekly one
-    was inline-only, so a reader could not keep or send one. Same treatment
-    now: an attachment, named for its forecast date rather than the
-    report.html every run writes, so several saved weeks do not collide."""
+    """The weekly report downloads as an attachment named for its forecast
+    date (not report.html), so saved weeks do not collide."""
     d = _archived(tmp_path, monkeypatch)
     r = client.get("/output/report/download?date=2098-01-03")
     assert r.status_code == 200
@@ -445,8 +409,7 @@ def test_weekly_report_downloads_with_a_dated_name(tmp_path, monkeypatch):
 
 
 def test_download_refreshes_a_stale_report_first(tmp_path, monkeypatch):
-    """A saved report must never be the stale one while the browser shows
-    the fresh one: the download runs the same freshness pass."""
+    """The download runs the same freshness pass as the inline view."""
     d = _archived(tmp_path, monkeypatch)
     (d / "report.html").write_text("<html><body>OLD FACE</body></html>")
     os.utime(d / "report.html", OLD_MTIME)
@@ -459,7 +422,7 @@ def test_download_refreshes_a_stale_report_first(tmp_path, monkeypatch):
 def test_download_of_a_missing_report_is_a_404_not_a_500(tmp_path,
                                                          monkeypatch):
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     assert client.get("/output/report/download").status_code == 404
     assert client.get(
         "/output/report/download?date=2098-01-03").status_code == 404
@@ -477,13 +440,12 @@ def test_run_report_download_names_the_file_for_the_forecast_date(
     _synth_run(w)
     (w / "results.json").write_text(json.dumps(
         {"forecast_date": "2098-01-03", "models": {}, "observed": {}}))
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     r = client.get(f"/runs/{rid}/report/download")
     assert r.status_code == 200
     assert r.headers["content-disposition"] == (
         'attachment; filename="FluBNF-weekly-report-2098-01-03.html"')
-    # a run with no results.json yet falls back to the run id, never to a
-    # bare report.html
+    # no results.json yet: fall back to the run id, never bare report.html
     bare = "20980108T000000-bbbbbb"
     b = tmp_path / "workroots" / bare
     b.mkdir(parents=True)
@@ -495,9 +457,8 @@ def test_run_report_download_names_the_file_for_the_forecast_date(
 
 
 def test_both_report_surfaces_offer_the_download(tmp_path, monkeypatch):
-    """A download nobody can find is the bug being fixed, so the link is
-    pinned where the weekly report is already linked: the Output page (for
-    the latest run and for each archived one) and the run page."""
+    """The download link appears wherever the weekly report is linked: the
+    Output page (latest and archived) and the run page."""
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
     rid = "20980101T000000-aaaaaa"
     w = tmp_path / "workroots" / rid
@@ -509,7 +470,7 @@ def test_both_report_surfaces_offer_the_download(tmp_path, monkeypatch):
     a = tmp_path / "archive" / "2098-01-03"
     a.mkdir(parents=True)
     (a / "report.html").write_text("<html>A</html>")
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     out = client.get("/output")
     assert out.status_code == 200
     assert 'href="/output/report"' in out.text          # inline view kept

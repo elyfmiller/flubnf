@@ -1,27 +1,15 @@
-"""The model views of the sandbox, drawn from BNG2.pl's own reading of a
-model: the contact map and the reaction network.
+"""SANDBOX: model views for the /api/sandbox/models routes (server).
 
-BioNetGen's visualize action (type contactmap) writes a yEd GraphML file:
-every molecule type is a node (a group node when it has components), each
-component a child node, a component's states a nested group of state
-nodes, and every bond the rules can form an edge between two component
-nodes. parse() reduces that file to molecules, components, states and
-bonds; svg() lays them out in RuleBender's style, one panel per molecule
-type with a header strip, component boxes inside it, state ellipses under
-each component and bonds as arcs between components.
+Sandbox model views drawn from BNG2.pl's own reading of a model: the
+contact map and the reaction network.
 
-generate_network writes a .net file: the species, the reactions between
-them and each reaction's rate law. parse_net() reduces that text to
-species and reactions with the _rateLawN names resolved to their
-expressions; svg_network() draws the species on one line with the
-reaction circles on rows above and below it.
-
-Both drawings are inline SVG whose colours are the page's own tokens, so
-they read in every theme. Beside each, contact_graph() and network_graph()
-reduce the same parse to the graph JSON model-views.js draws in the
-browser, where the drawing pans, zooms, drags and highlights. Nothing here
-runs the engine: BNG2.pl is asked for the one file alone, on a copy of the
-model whose actions block is replaced by the one call.
+parse() reduces BNG's visualize(contactmap) yEd GraphML to molecules,
+components, states and bonds; svg() draws them RuleBender-style. parse_net()
+reduces a generate_network .net file to species and reactions (rate laws
+resolved); svg_network() draws it. contact_graph()/network_graph() give the
+same parses as graph JSON for model-views.js (pan, zoom, drag, highlight).
+SVG colours are page tokens, so every theme works. The engine never runs:
+BNG2.pl is asked for the one file, on a copy whose actions block is replaced.
 """
 from __future__ import annotations
 
@@ -32,8 +20,7 @@ import threading
 from collections import Counter
 from pathlib import Path
 
-# BNG2.pl's own output, written to a folder the app made from the user's
-# own model: the stdlib parser (no external entities by default) is enough.
+# input is BNG2.pl's own output: the stdlib parser (no external entities) suffices
 from xml.etree import ElementTree as ET
 
 from flubnf.settings import BNG
@@ -107,11 +94,6 @@ def _label(node) -> str:
     return (lab.text or "").strip() if lab is not None else ""
 
 
-def _is_group(node) -> bool:
-    return node.get("{http://www.yworks.com/xml/yfiles-common/1.0/java}foldertype") == "group" \
-        or node.get("yfiles.foldertype") == "group"
-
-
 def parse(xml_text: str) -> dict:
     """Molecules with their components and states, and the bonds.
 
@@ -172,16 +154,9 @@ def _empty(label: str, note: str) -> str:
 
 
 def svg(cm: dict) -> str:
-    """An inline SVG of the map in RuleBender's style. Colours are CSS
-    tokens of the page (--card, --bg, --ink, --mut, --accent, --accent-ink).
-
-    Each molecule type is a rounded panel (fill --bg, stroke --ink) with a
-    header strip (--accent at a quarter) carrying its name; its components
-    are boxes (--card) in the panel body, each component's states small
-    ellipses attached under it, and every bond an arc (--accent-ink)
-    between the two component boxes. A molecule without components is a
-    header-only panel. Panels fill rows up to WRAP px, GAP px apart.
-    """
+    """Inline SVG of the map, RuleBender-style, in page CSS tokens: one panel
+    per molecule type (header strip, component boxes, state ellipses), bonds
+    as arcs between components. Panels wrap into rows at WRAP px."""
     mols = cm.get("molecules") or []
     bonds = cm.get("bonds") or []
     if not mols:
@@ -213,8 +188,7 @@ def svg(cm: dict) -> str:
     body = []
     for mi, (bx, by, bw, bh, cell) in enumerate(boxes):
         mol = mols[mi]
-        # the panel: its ground, the header strip rounded at the top only
-        # (a body-coloured cover squares the strip's bottom), the outline
+        # header strip rounded at the top only: a body-coloured cover squares its bottom
         body.append(f'<rect x="{bx:.1f}" y="{by:.1f}" width="{bw:.1f}" height="{bh:.1f}" rx="8" '
                     'fill="var(--bg)"/>')
         if mol["components"]:
@@ -352,17 +326,11 @@ def parse_net(text: str) -> dict:
 
 
 def svg_network(net: dict) -> str:
-    """An inline SVG of the network, or a one-line note with the counts
-    when it is too large to draw (past MAX_SPECIES or MAX_REACTIONS).
-
-    Species are rounded boxes on one line, in the order they appear;
-    reactions are small circles (fill --card, stroke --mut) on rows above
-    and below the line, alternating, each at the middle of its species and
-    on the first row of its side with room for it and its rate label.
-    Solid edges run from a reactant to the circle and from the circle to a
-    product (arrowhead at the product); a species on both sides of one
-    reaction, a catalyst, gets one dashed edge; a zero-order source draws
-    only its product edge.
+    """Inline SVG of the network, or a one-line note with the counts past
+    MAX_SPECIES / MAX_REACTIONS. Species boxes sit on one line; reaction
+    circles alternate on rows above and below, each on the first row with
+    room for it and its rate label. A catalyst (both sides of a reaction)
+    gets one dashed edge; a zero-order source draws only its product edge.
     """
     sp = net.get("species") or []
     rx = net.get("reactions") or []
@@ -451,10 +419,7 @@ def svg_network(net: dict) -> str:
 
 
 # ------------------------------------------------- the graphs the page draws
-#
-# The routes hand the page these graphs beside the server SVG, and
-# model-views.js draws them in the browser, where the drawing can pan,
-# zoom, drag and highlight. Nothing here is a picture: ids and labels.
+# (ids and labels only; model-views.js draws them)
 
 def _species_label(pattern: str) -> str:
     """A species for a label: "S()" reads S; "A(b!1).B(a!1)" stays."""
@@ -472,22 +437,13 @@ def _unique(indices: list) -> list:
 def network_graph(net: dict) -> dict:
     """The reaction network as a species graph for the page to draw.
 
-    Nodes are the species (kind "species", id "s<index>", the label its
-    pattern without empty parentheses) and, where a reaction needs one,
-    a source or sink dot (kind "source" or "sink"). For each reaction the
-    net change per species is its count among the products minus its
-    count among the reactants: every species consumed on net gets a
-    "transfer" edge to every species produced on net, labelled with the
-    rate (S -> I, beta()/N). A reactant that is not consumed on net (a
-    catalyst, or one the reaction also makes: I in S + I -> I + I) is an
-    influence on those edges, drawn as a dashed line to the arrow's
-    middle. A reaction that produces without consuming draws a dashed
-    "catalytic" edge from each such reactant to each product (I -> Hadm
-    for I -> I + Hadm) or, with no reactant at all, a "source" edge from
-    a source dot (0 -> counter). One that consumes without producing
-    draws a "sink" edge to a sink dot. One that changes nothing draws
-    nothing. Every edge carries its reaction's rule name and a one-line
-    text for the status line: "S + I -> I + I, rate beta()/N, rule _R2".
+    Per reaction, by net change (products minus reactants): each species
+    consumed on net gets a "transfer" edge to each produced on net; a
+    reactant not consumed on net (catalyst, or I in S + I -> I + I) is an
+    "influence" on those edges. Producing without consuming: "catalytic"
+    edges from the reactants, or a "source" dot when there are none.
+    Consuming without producing: a "sink" dot. No net change: nothing. Each
+    edge carries the rule name and a status-line text.
 
     Returns {"nodes": [{"id", "label", "kind", "text"}], "edges": [{"id",
     "from", "to", "label", "kind", "rule", "text"}], "influences":

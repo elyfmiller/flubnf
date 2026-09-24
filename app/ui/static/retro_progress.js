@@ -1,42 +1,14 @@
-// Live retrospective ticker, shared by the retro index and the season page.
-//
-// It drives every element on `.season-card[data-active="1"]` that states
-// progress: the solid fill on its .runbar track, the prominent .rstat
-// readout, every secondary .rcount week counter (so no line on the card can
-// disagree with the headline), the .rbasis hint that says what the estimate
-// rests on, and the rotating .rquip line.
-//
-// A script poll, never a meta refresh and never a blanket reload: the caller
-// supplies a busy() predicate (the console's guard modal), and while it is
-// true no reload happens, so a pending stop-and-proceed is never wiped
-// mid-wait.
-//
-// Honesty rules, inherited from the console's run progress and paid for in
-// the field:
-//   * the displayed percentage is monotone non-decreasing;
-//   * the remaining time is a RANGE, not a point: the server recomputes it
-//     on every poll from measured per-week seconds (recency-weighted, and
-//     shaped by a completed season's week profile when one exists), and
-//     between polls the shown range ticks down with the wall clock, so the
-//     number always moves while work is happening;
-//   * when the estimate cannot be computed yet the basis line says so
-//     plainly; a stale number is never left standing in its place;
-//   * when polls stop arriving (a quit or crashed app, a sleeping server)
-//     the ticker stops extrapolating: after 3 consecutive failed polls the
-//     elapsed clock and the ETA decay freeze at their last-good values and
-//     the basis line says the connection is lost, instead of counting a
-//     dead run down to "~1 min left" overnight. The next successful poll
-//     clears the freeze and the note.
-// The previous ticker smoothed the server's point estimate with an EMA and
-// resisted upward corrections; against a server value that barely moved
-// (the global-mean estimate cancelled its own inputs), that pinned the
-// display to one number for hours. Nothing here smooths any more: the
-// server's range is shown as sent and decays in real time.
-//
-// A paused season is visually distinct: the bar holds, the readouts freeze
-// (the server holds elapsed_s while paused), the estimate is withdrawn, and
-// the quips stop rotating. A moving line beside a frozen bar would read as
-// progress that is not happening.
+// Live retrospective ticker (retro index + season page). Drives every
+// progress element on .season-card[data-active="1"]: the .rfill bar, the
+// .rstat readout, every .rcount counter (one source, so no line disagrees),
+// the .rbasis hint and the .rquip line. A script poll, never a meta refresh;
+// no reload while the caller's busy() is true (the guard modal).
+// Rules: the percentage never regresses; the ETA is the server's RANGE,
+// shown as sent and decayed by the wall clock (no client smoothing: it once
+// pinned the display for hours); an unestimable ETA says so rather than
+// leaving a stale number; after 3 failed polls the clocks freeze and the
+// basis says the connection is lost (the next success clears it); paused
+// freezes the readouts, withdraws the ETA and stops the quips.
 (function (root) {
   "use strict";
 
@@ -47,9 +19,8 @@
       String(t % 60).padStart(2, "0");
   }
 
-  // "3.1 to 4.0 h" / "12 to 16 min" / "~3.3 h" when both ends agree. The
-  // unit follows the high end, so a range never mixes units, and hours get
-  // one decimal: honest movement stays visible without false precision.
+  // "3.1 to 4.0 h" / "12 to 16 min" / "~3.3 h" when both ends agree; the
+  // unit follows the high end, hours get one decimal
   function etaText(loS, hiS) {
     var hours = hiS >= 5400;
     function fmt(s) {
@@ -81,17 +52,12 @@
       };
     });
 
-    // Polling discipline, which matters most exactly when the server is
-    // slowest (a replay has the cores): a HIDDEN tab drops to a slow
-    // heartbeat rather than asking every three seconds for readouts nobody
-    // can see, and a request still in flight suppresses the next tick
-    // instead of stacking a second one behind a slow reply. Returning to
-    // the tab polls at once, so the bar is current when it is looked at.
+    // polling: hidden tab -> slow heartbeat; never stack requests; poll at
+    // once on return to the tab
     var hiddenMs = opts.pollHiddenMs || 20000;
     var inflight = false, timer = null;
-    // failure awareness: consecutive failed polls, and the wall-clock
-    // moment the freeze began (paint() reads time through it, so every
-    // extrapolation stops at the same instant)
+    // consecutive failed polls, and when the freeze began (paint() reads
+    // time through it)
     var fails = 0, stalled = false, stallAt = 0;
     function schedule(ms) {
       clearTimeout(timer);
@@ -113,18 +79,15 @@
           for (var i = 0; i < names.length; i++) {
             var n = names[i], st = S[n], p = all[n];
             if (!p) continue;
-            // the controls and the card's shape are the server's to render:
-            // a status change (or the first stored week, which earns the
-            // results link) needs a reload rather than a repaint
+            // a status change or the first stored week (results link)
+            // changes the server-rendered card: reload, not repaint
             if ((p.status !== st.card.dataset.status ||
                  (p.done > 0 && st.card.dataset.results !== "1")) && !busy()) {
               location.reload();
               return;
             }
-            // the server recomputed the whole range this poll: take it as
-            // sent, both directions, and let paint() decay it until the
-            // next poll lands. Absent means paused or not yet estimable,
-            // and the display withdraws rather than holding a stale value.
+            // take the server's range as sent; absent (paused or not yet
+            // estimable) withdraws it
             if (p.eta_lo_s != null && p.eta_hi_s != null) {
               st.lo = p.eta_lo_s; st.hi = p.eta_hi_s; st.etaAt = Date.now();
             } else {
@@ -135,8 +98,7 @@
           }
         })
         .catch(function () {
-          // ~9 s of silence at the 3 s cadence: freeze rather than keep
-          // extrapolating numbers no server is standing behind
+          // ~9 s of silence at the 3 s cadence: freeze
           if (++fails >= 3 && !stalled) { stalled = true; stallAt = Date.now(); }
         })
         .then(function () {
@@ -147,14 +109,12 @@
 
     function paint() {
       if (document.hidden) return;          // nothing to see: do no work
-      // while stalled, time stands at the moment the freeze began: the
-      // elapsed clock and the ETA decay hold their last-good values
+      // while stalled, time stands at the moment the freeze began
       var now = stalled ? stallAt : Date.now();
       Object.keys(S).forEach(function (n) {
         var st = S[n], d = st.d, c = st.card;
         var paused = (d.status === "paused");
-        // quips hold while stalled too: a rotating line beside frozen
-        // readouts would read as live work
+        // quips hold while stalled too
         if (paused || stalled) st.quips.pause(); else st.quips.resume();
         var pct = d.total ? 100 * d.done / d.total : 0;
         pct = Math.max(st.disp, Math.min(100, pct));
@@ -174,8 +134,7 @@
         if (paused) line += " · paused";
         var stat = c.querySelector(".rstat");
         if (stat) stat.textContent = line;
-        // every secondary week counter on the card follows the headline:
-        // one source of truth, so no line can go stale beside a live one
+        // every secondary week counter follows the headline
         Array.prototype.forEach.call(c.querySelectorAll(".rcount"),
           function (el) { el.textContent = count; });
         var basis = c.querySelector(".rbasis");
@@ -197,7 +156,7 @@
     return {paint: paint};
   }
 
-  root.FluBNFRetroTicker = {init: init, hms: hms,
+  root.FluBNFRetroTicker = {init: init,
                             _internals: {etaText: etaText}};
 })(typeof window !== "undefined" ? window
    : typeof globalThis !== "undefined" ? globalThis : this);

@@ -1,15 +1,10 @@
 """The fork path is tested by its pf.py, never by the directory.
 
-A PI's laptop installed the engine from the small archive, the console
-reported itself healthy, and the forecast then failed all six particle
-filter cells while the analogue worked (lab report, 2026-09-08). The cause
-is that the fit runner inserts the fork path at the front of sys.path and
-the engine venv also holds a stock PyBNF from PyPI, which has no pf.py and
-therefore no fit_type = pf: with a fork path that provides no pf.py the
-runner imports the stock package instead and every cell dies with an
-opaque configuration error, while Perl, BNG2.pl, network generation and
-the .exp all work perfectly. Now the absence is named once, before any
-fitting, everywhere the console reports its components.
+The fit runner puts the fork path first on sys.path, and the engine venv
+also holds a stock PyBNF (no pf.py, no fit_type = pf). A fork path without
+pf.py silently imports the stock package and every PF cell dies with an
+opaque configuration error while the rest of the engine looks healthy. The
+absence is named once, before fitting, everywhere components are reported.
 """
 import sys
 import types
@@ -145,7 +140,7 @@ def test_prepare_runs_when_the_fork_provides_pf_py(monkeypatch, tmp_path):
 
 def test_the_gate_tells_an_absent_engine_from_a_broken_one(monkeypatch,
                                                            tmp_path):
-    from app.ui import server
+    from app.ui import pipeline as ui_pipeline
     from flubnf import settings
     py = tmp_path / "python"
     py.write_text("")
@@ -154,19 +149,19 @@ def test_the_gate_tells_an_absent_engine_from_a_broken_one(monkeypatch,
     # run must still take the skip path it always did
     monkeypatch.setattr(settings, "PY_ENGINE", tmp_path / "no-venv")
     monkeypatch.setattr(settings, "PYBNF", tmp_path / "no-fork")
-    assert server._pf_engine_state() == "absent"
+    assert ui_pipeline._pf_engine_state() == "absent"
 
     # installed, and it can filter
     monkeypatch.setattr(settings, "PY_ENGINE", py)
     monkeypatch.setattr(settings, "PYBNF", _fork(tmp_path / "real"))
     monkeypatch.setattr(pf, "PYBNF_PF", tmp_path / "real")
-    assert server._pf_engine_state() == "ready"
+    assert ui_pipeline._pf_engine_state() == "ready"
 
     # installed, and it cannot: a broken install, not a configuration
     monkeypatch.setattr(settings, "PYBNF", _fork(tmp_path / "half",
                                                  with_pf=False))
     monkeypatch.setattr(pf, "PYBNF_PF", tmp_path / "half")
-    assert server._pf_engine_state() == "broken"
+    assert ui_pipeline._pf_engine_state() == "broken"
 
 
 def test_the_run_surfaces_name_the_broken_install_in_words(monkeypatch,
@@ -175,7 +170,7 @@ def test_the_run_surfaces_name_the_broken_install_in_words(monkeypatch,
     latest-run table and the run chips. Neither may report a broken
     install as "no engine" -- the remedies differ."""
     from app.core.runs import results_html
-    from app.ui import server
+    from app.ui import shared as ui_shared
     monkeypatch.setattr(pf, "PYBNF_PF", _fork(tmp_path / "half",
                                               with_pf=False))
     msg = pf.engine_missing_message()
@@ -184,7 +179,7 @@ def test_the_run_surfaces_name_the_broken_install_in_words(monkeypatch,
     assert "engine install incomplete" in table
     assert str(tmp_path / "half") in table and "setup_engine.sh" in table
 
-    chips = server._outcome_chips({"pf_engine_broken": msg, "error": msg})
+    chips = ui_shared._outcome_chips({"pf_engine_broken": msg, "error": msg})
     assert "PF engine install incomplete" in chips
 
     # an absent engine keeps its own wording

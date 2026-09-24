@@ -1,20 +1,11 @@
-{# Mechanism diagrams, shared across Home, Methods, and the model tabs.
-   All inline SVG on theme tokens: structure strokes ride currentColor (the
-   page ink), compartment fills use accent and neutral tokens, never --bad
-   (red is semantic; a compartment is not a failure state). Layouts are spread
-   so no label touches an arrow. Each macro takes a uid so marker ids stay
-   unique per page. The SVGs carry ONLY structural labels (rates on arrows);
-   fitted and observed values live in the values panel the host page renders
-   beside the diagram, so numbers never overlap the artwork.
-   Text is sized through the svgt-* rem classes in nau.css, never through
-   fixed viewBox-unit font-size attributes, so the A-/A/A+ control reaches
-   every label and the smallest step holds the app's hint floor.
-   Because the rem classes resolve in viewBox units, label boxes are audited
-   at the LARGEST text step (A+, 115%): every line must fit its box and the
-   viewBox at that size, so nothing ever clips at any text setting.
-   Accessible names ride aria-label, never a nested svg title element: that
-   element doubles as a hover tooltip popping over the artwork, while the
-   label reads the same to assistive tech without covering the drawing. #}
+{# Mechanism diagram macros (Home, Methods, model pages; site_build renders
+   Methods too). Inline SVG on theme tokens: structure on currentColor, never
+   --bad (red is semantic, a compartment is not a failure). Macros with
+   arrow markers take a uid so marker ids stay unique per page. Only
+   structural labels (rates on arrows), no fitted values. Text uses the
+   svgt-* rem classes (never size attributes) so A-/A/A+ reaches it; label
+   boxes are audited to fit at A+ (115%). Accessible names ride aria-label,
+   not a nested title element (it pops a hover tooltip over the drawing). #}
 
 {% macro sihrs(uid='s') -%}
 <svg viewBox="0 0 840 348" role="img" aria-label="SIHRS compartment diagram"
@@ -46,8 +37,7 @@
         fill="var(--mut)"  fill-opacity=".14" stroke="var(--mut)"/>
   <rect x="255" y="120" width="115" height="60" rx="10"
         fill="var(--gold)" fill-opacity=".14" stroke="var(--gold)"/>
-  {# Hospitalized rides the slate data accent, not Inhibition Red: red is
-     semantic (errors, failures) and the model's centerpiece is neither #}
+  {# Hospitalized in slate: red is semantic, never a compartment #}
   <rect x="480" y="120" width="115" height="60" rx="10"
         fill="var(--slate)" fill-opacity=".14" stroke="var(--slate)"/>
   <rect x="705" y="120" width="115" height="60" rx="10"
@@ -94,15 +84,13 @@
    <path d="M250,66 C250,24 596,24 596,66" marker-end="url(#arr-{{ uid }})"/>
    <path d="M610,114 C610,178 70,178 70,114" marker-end="url(#arr-{{ uid }})"/>
   </g>
-  {# compartment boxes hold their widest sublabel at the A+ text step; the
-     strain lives in the subscripted symbol, not repeated in the sublabel #}
+  {# boxes fit the widest sublabel at A+; the strain is in the subscript #}
   <g stroke-width="1.8">
    <rect x="15"  y="68" width="110" height="44" rx="8"
          fill="var(--mut)"  fill-opacity=".14" stroke="var(--mut)"/>
    <rect x="195" y="68" width="110" height="44" rx="8"
          fill="var(--gold)" fill-opacity=".14" stroke="var(--gold)"/>
-   {# Hospitalized in slate, as in the single-strain diagram: red stays
-      reserved for genuine failure states #}
+   {# Hospitalized in slate, as in the single-strain diagram #}
    <rect x="375" y="68" width="110" height="44" rx="8"
          fill="var(--slate)" fill-opacity=".14" stroke="var(--slate)"/>
    <rect x="555" y="68" width="110" height="44" rx="8"
@@ -172,9 +160,8 @@
   <path d="M50,255 H800" marker-end="url(#arr-{{ uid }})"/>
   <path d="M50,255 V45"  marker-end="url(#arr-{{ uid }})"/>
  </g>
- {# month ticks from the shared season_months offsets: week 0 (August 1)
-    sits at x=50 and week 52 at x=795, the span the curves draw over, so
-    the axis reads as calendar months with no caption needed #}
+ {# month ticks from season_months: week 0 (August 1) at x=50, week 52 at
+    x=795 #}
  <g stroke="currentColor" stroke-width="1.2" fill="none">
   {% for lab, wk in season_months %}<path d="M{{ (50 + wk * 745 / 52) | round(1) }},255 v5"/>
   {% endfor %}
@@ -210,9 +197,7 @@
           fill-opacity=".22"/>
  <path d="M430,140 C470,132 510,140 545,150" fill="none"
        stroke="var(--gold)" stroke-width="2.4"/>
- {# key, in the clear zone away from every curve. Long entries wrap onto
-    continuation lines: at the A+ text step a single-line entry ran past the
-    right viewBox edge and clipped mid-word #}
+ {# key in the clear zone; long entries wrap (one line clipped at A+) #}
  <g class="svgt-sm">
   <path d="M560,54 H592" stroke="currentColor" stroke-width="2.6" fill="none"/>
   <text x="600" y="58" fill="currentColor">this season so far</text>
@@ -230,17 +215,11 @@
 </svg>
 {%- endmacro %}
 
-{# ---- the Oracle SIHRS pipeline ------------------------------------------
-   What the submitted mechanistic member IS, in one picture: the weekly
-   particle-filter fit of the SIHRS compartment model from the season start,
-   the filter's own forecast sample paths, the donor pool of earlier seasons
-   at this calendar week, the per-sample geometric growth blend, and the
-   Oracle SIHRS forecast. The donor pool wears the Groundhog's warm accent
-   (--warn, as on Home's workflow): the same calendar-donor principle feeds
-   both models. The pool's data stream is named from the one marked place
-   (app/core/oracle_text.BANK_TEXT), never typed here. Label boxes are
-   audited at the A+ text step: every line is at most 22 characters, which
-   fits a 210-unit box at 115%. No title element (see the header note). #}
+{# ---- the Oracle SIHRS pipeline: weekly filter fit -> forecast paths ->
+   per-sample growth blend with the donor pool (the Groundhog's --warn
+   accent, as on Home) -> Oracle forecast. The pool's data stream comes from
+   oracle_text.BANK_TEXT only, never typed here. Lines <= 22 characters to
+   fit a 210-unit box at A+. #}
 
 {% macro oracle_pipeline(uid='o') -%}
 <svg viewBox="0 28 1000 302" role="img"
@@ -319,43 +298,27 @@
   &#189; ln <i>G</i><sub><i>T</i></sub> +
   &#189; ln <i>G</i><sub><i>d</i></sub>(<i>W</i> + <i>k</i> &#8722; &#189;),
   &#8195;<i>k</i> = 1..4</span>
-  <span class="eqnote">the growth blend: over forecast week <i>k</i>, each
-  sample path's growth rate is the geometric mean of the filter's own rate
-  <i>G</i><sub><i>T</i></sub> at the forecast origin <i>T</i> and the rate
-  <i>G</i><sub><i>d</i></sub> of its donor path <i>d</i>, read at the
-  matching week of an earlier season (<i>W</i> is the donor week, within
-  two epiweeks of <i>T</i>'s)</span></p>
+  <span class="eqnote">the growth blend: each path's growth over forecast
+  week <i>k</i> is the geometric mean of the filter's rate at the origin
+  <i>T</i> and its donor's at the matching earlier-season week <i>W</i></span></p>
  <p><span class="math"><i>G</i> = <i>&#947;</i> + <i>&#955;</i>,&#8195;
   <i>&#955;</i><sub><i>T</i></sub> = ln(&#8202;<i>m</i><sub>1</sub>&#8202;/&#8202;<i>m</i><sub>0</sub>&#8202;)</span>
-  <span class="eqnote"><i>G</i> is the rate at which the infected
-  generate new infections, per week: the weekly log growth <i>&#955;</i>
-  plus the removal rate <i>&#947;</i> = 7/3.2 per week the compartment
-  model fixes; <i>m</i><sub>0</sub> and <i>m</i><sub>1</sub> are the
-  filter's own medians at the origin and one week ahead</span></p>
+  <span class="eqnote">new infections per infected per week: the log
+  growth plus the fixed removal rate 7/3.2, from the filter's medians
+  <i>m</i><sub>0</sub>, <i>m</i><sub>1</sub></span></p>
  <p><span class="math"><i>x</i>&#8242;<sub><i>i,h</i></sub> =
   <i>x</i><sub><i>i,h</i></sub> &#183; <i>F</i><sub><i>h</i></sub>(<i>d</i><sub><i>i</i></sub>)</span>
-  <span class="eqnote">each of the filter's samples <i>x</i><sub><i>i,h</i></sub>
-  is rescaled so its path follows the blended growth, propagated in closed
-  form from the filter's own state at <i>T</i>: the filter's spread rides
-  on the new path and the donors add theirs</span></p>
- <p class="eqnote">Frozen before the step was scored (docs/ORACLE-SIHRS.md):
- the weight &#189;, one donor per sample path, five seeds logged and the
- first submitted, the pool rule. A week where neither donor stream
- qualifies (admissions needs two donor seasons and 30 paths, FluSurv-NET
- 30 paths) is the filter unchanged.</p>
+  <span class="eqnote">each sample is rescaled to follow the blended
+  growth, keeping the filter's spread and adding the donors'</span></p>
+ <p class="eqnote">A week with too few donors (30 paths per stream) leaves
+ the filter unchanged.</p>
 </div>
 {%- endmacro %}
 
-{# ---- what the analogue actually MEASURES ---------------------------------
-   analogue_mech shows the shape of the method; this shows the arithmetic.
-   Each donor season contributes one number per horizon: the ratio of its
-   admissions h weeks after the matched calendar week to its admissions in
-   that week. Those ratios are the model. Drawing them as slopes on the
-   donor curves, then as ticks on a ratio axis whose quantiles become the
-   fan, is the whole mechanism in one picture -- and it is the picture that
-   answers "why is a purely empirical member worth having". Illustrative
-   values, chosen to span the range real donors show; no marker defs, so
-   the macro needs no uid, but one is accepted for consistency. #}
+{# ---- what the analogue MEASURES: one growth ratio per donor season and
+   horizon (admissions h weeks after the matched week over admissions at
+   it), pooled on a ratio axis whose quantiles scale the fan. Illustrative
+   values. Defines an arrow marker, so the uid matters. #}
 
 {% macro analogue_ratios(uid='r') -%}
 <svg viewBox="0 0 560 252" role="img"
@@ -383,12 +346,8 @@
  <text x="22" y="140" text-anchor="middle" class="svgt-sm" fill="currentColor"
        transform="rotate(-90 22 140)">admissions</text>
 
- {# Three donor seasons at genuinely DIFFERENT magnitudes, which is the
-    honest picture and also the point: a ratio is scale-free, so the small
-    season that grew contributes 1.6 and the big season that turned
-    contributes 0.7. Values map linearly as y = 224 - v/2, so the drawn
-    slopes and the printed ratios agree. The vertical separation is what
-    keeps the three labels from colliding at the A+ text step. #}
+ {# donors at different magnitudes (ratios are scale-free); y = 224 - v/2
+    so the slopes match the printed ratios; spaced so labels clear at A+ #}
  <g fill="none" stroke="var(--mut)" stroke-opacity=".45" stroke-width="1.6">
   <path d="M46,214 C90,210 116,207 140,204 C186,199 220,194 250,192 C280,190 302,192 322,196"/>
   <path d="M46,196 C92,184 118,174 140,169 C186,161 220,166 250,169 C282,173 302,182 322,190"/>
@@ -450,22 +409,11 @@
 </svg>
 {%- endmacro %}
 
-{# ---- the seasonal-harmonic figure ----------------------------------------
-   beta(t) relative to beta0 over one season (August to August, the axis
-   ticked in month names from the shared season month offsets), drawn
-   from the same cosine-exponential the equation states: the geometry comes
-   from the harmonic_fig template global (app/ui/server.py), so the curve is
-   computed, never traced by hand. One parameterized macro serves every
-   surface: the single-strain form under eq_pf and the home workflow card,
-   and the two-strain form (two phase-shifted curves sharing the amplitude)
-   under eq_pf2s. Parameter values are illustrative and the caption says so;
-   the fit produces its own values per state and week.
-   Label boxes are audited at the A+ text step like every other diagram:
-   the amplitude labels sit in the top-left and bottom-left pockets both
-   variants keep clear of the curves, the peak labels ride above the band
-   where no curve ever reaches, and the two-strain legend occupies the
-   top-right pocket above the band's upper edge. No marker defs, so the
-   macro needs no uid. #}
+{# ---- seasonal harmonic: beta(t)/beta0 over one season, geometry computed
+   by the harmonic_fig global (app/ui/templating.py). Single-strain under eq_pf
+   and on Home; two phase-shifted curves under eq_pf2s. Illustrative
+   parameters. Labels sit in pockets clear of the curves at A+. No marker
+   defs, so no uid. #}
 
 {% macro harmonic(two=false, eps=0.35, phi=22, phi_a=20, phi_b=30) -%}
 {% set g = harmonic_fig(eps, [phi_a, phi_b] if two else [phi]) %}
@@ -571,11 +519,8 @@
 {% endif %}
 {%- endmacro %}
 
-{# ---- defining equations ---------------------------------------------------
-   One compact panel per model: the equation that defines it, as styled text
-   (no math library; italic variables, Unicode operators), with a one-line
-   tie-in to the mechanism the host page draws. Host pages place these
-   directly under the diagram they annotate. #}
+{# ---- defining equations: one styled-text panel per model (no math
+   library), placed under the diagram it annotates #}
 
 {% macro eq_pf() -%}
 <div class="eqpanel">
@@ -595,10 +540,8 @@
  <i>&#949;</i><sub>1</sub>, <i>&#966;</i><sub>1</sub>, <i>mult</i>, <i>r</i>.
  Fixed, not fitted: <i>&#947;</i> (sourced), and <i>&#961;</i>,
  <i>&#947;</i><sub>H</sub>, <i>&#969;</i> (recorded working assumptions).
- <i>&#961;</i> does not disappear
- from the observation: it enters through the accumulator rule that fills
- <i>H</i><sub>Cum</sub>, so it sits inside the weekly increment rather than
- beside it.</p>
+ <i>&#961;</i> enters through the accumulator that fills
+ <i>H</i><sub>Cum</sub>.</p>
 </div>
 {%- endmacro %}
 

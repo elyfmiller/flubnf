@@ -1,11 +1,7 @@
-// Shared run quips: one list, two hosts. The forecast page and the
-// retrospective page both draw from this file, so a quip added here appears
-// in both places and neither list can drift from the other.
-//
+// Shared run quips (forecast and retrospective pages).
 // House voice: lowercase, no exclamation marks, no emoji; flu, Bayesian
 // inference, particle filtering, epidemiology; dry and playful. The last
-// block speaks to the retrospective specifically -- a season replayed a week
-// at a time, scored later against settled truth.
+// block is retrospective-specific.
 window.FLUBNF_QUIPS = [
   "teaching 10,000 particles to sneeze responsibly",
   "resampling the unlucky",
@@ -77,15 +73,9 @@ window.FLUBNF_QUIPS = [
   "scoring nothing yet, on principle"
 ];
 
-// Rotate quips into an element. Returns a small controller so a paused run
-// can hold its quip still: a rotating line beside a frozen bar would read as
-// progress that is not happening.
-//
-// Motion accommodation (WCAG 2.2.2): under prefers-reduced-motion the line
-// holds one static quip and never rotates, and in every mode a click on the
-// quip pauses the rotation (click again to resume). A multi-hour run parked
-// on a second monitor must not blink every 2.6 seconds at someone who asked
-// it not to.
+// Rotate quips into an element; returns {pause, resume} so a paused run
+// holds still. WCAG 2.2.2: prefers-reduced-motion shows one static quip,
+// and a click toggles rotation in every mode.
 window.flubnfQuips = function (target, ms) {
   var el = (typeof target === "string")
     ? document.getElementById(target) : target;

@@ -1,14 +1,10 @@
 """The seasonal-harmonic figure and the four-theme system.
 
-One parameterized macro draws beta(t)/beta0 over a season from the same
-cosine-exponential the equation states, computed by a template global rather
-than traced by hand, and appears on every surface that shows the equation:
-the Models PF view, Methods (both the SIHRS compartment card and the
-two-strain section), the home workflow card, and the two-strain model page. The theme
-system grows two intermediate themes, paper and dim, selected by a compact
-navbar picker; every theme block defines the same token set (no color may
-fall through to another theme's value), and both new themes hold the
-review's measured bars: 4.5:1 for text pairs, 3:1 for boundaries and fills.
+One parameterized macro draws beta(t)/beta0 from the stated
+cosine-exponential (computed by a template global) on every surface that
+shows the equation. Four themes (light, paper, dim, dark) via a navbar
+picker; every theme block defines the same token set, and paper/dim hold
+4.5:1 for text pairs and 3:1 for boundaries and fills.
 """
 import re
 import sys
@@ -19,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from fastapi.testclient import TestClient           # noqa: E402
 
 from app.ui import server as srv                    # noqa: E402
+from app.ui import templating as ui_templating      # noqa: E402
 
 client = TestClient(srv.app)
 
@@ -54,8 +51,7 @@ def test_harmonic_figure_renders_on_every_surface():
 
 
 def test_every_surface_calls_the_one_macro():
-    # a single parameterized macro, not per-page copies: eq_pf and eq_pf2s
-    # embed it, and home imports the same macro directly
+    # one parameterized macro: eq_pf/eq_pf2s embed it, home imports it
     assert "{{ harmonic() }}" in DIAGRAMS_T
     assert "{{ harmonic(two=true) }}" in DIAGRAMS_T
     home_t = (UI / "templates" / "home.html").read_text()
@@ -77,8 +73,7 @@ def test_harmonic_figure_carries_the_design_conventions():
     # accessible name and long description
     assert 'role="img"' in html and ARIA_ONE in html
     assert "<desc>" in html
-    # the stated axes and annotations: the axis reads as calendar months
-    # (from the shared season month offsets), never as week indices
+    # axes read as calendar months, never week indices
     assert "month of season" in html
     for m in ("Aug", "Nov", "Feb", "May"):
         assert f">{m}</text>" in html, m
@@ -99,7 +94,7 @@ def test_two_strain_variant_shares_amplitude_with_per_strain_peaks():
     # two curves in the member colors, sharing one amplitude band
     assert html.count('stroke="var(--gold)"') >= 2      # curve + peak marks
     assert html.count('stroke="var(--slate)"') >= 2
-    g = srv._harmonic_fig(0.35, [20, 30])
+    g = ui_templating._harmonic_fig(0.35, [20, 30])
     # both peak markers sit on the shared upper amplitude edge
     assert html.count(f'cy="{g["y_hi"]}" r="4"') == 2
     assert f'fill="var(--gold)"/>' in html
@@ -110,7 +105,7 @@ def test_two_strain_variant_shares_amplitude_with_per_strain_peaks():
 
 
 def test_harmonic_curve_is_computed_from_the_stated_equation():
-    g = srv._harmonic_fig(0.35, [22.0])
+    g = ui_templating._harmonic_fig(0.35, [22.0])
     pts = [tuple(map(float, p[1:].split(",")))
            for p in g["paths"][0].split(" ")]
     ys = [y for _, y in pts]
@@ -214,8 +209,8 @@ def test_navbar_theme_picker_replaces_the_toggle():
 
 
 def test_dim_receives_the_dark_control_treatment():
-    # the slate ground is dark: the LANL Blue button outline would vanish,
-    # so dim joins every dark-only control rule
+    # dim's slate ground would hide the LANL Blue outline: it takes the
+    # dark control rules
     for rule in ('[data-theme="dim"] button',
                  '[data-theme="dim"] button.quiet',
                  '[data-theme="dim"] button.gold',

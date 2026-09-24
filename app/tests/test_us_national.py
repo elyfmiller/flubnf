@@ -1,13 +1,9 @@
-"""The US national series: the single resolution order, the provenance
-wording, and the scoring policy that keeps US out of the pooled headline.
+"""The US national series: resolution order, provenance wording, and the
+scoring policy that keeps US out of every pooled figure.
 
-The published pooled record is a 52-JURISDICTION figure (0.8131 / 0.6179 /
-0.6827, pooled 0.6781 over 15,460 cells). US is the sum of those same 52
-constituents, so adding it would be a change of convention rather than a
-measurement, and it would move a number printed in a public release, in
-CITATION.cff, and in a manuscript. Fitting the national series must
-therefore leave every pooled figure exactly where it was. These tests fail
-if a US cell ever reaches one.
+The published pooled record is a 52-JURISDICTION figure; US is the sum of
+those same constituents, so pooling it would change the convention of a
+published number. These tests fail if a US cell ever reaches one.
 """
 import json
 import sys
@@ -35,21 +31,16 @@ def test_every_national_spelling_is_recognised():
 
 def test_with_us_is_idempotent_and_keeps_an_existing_spelling():
     assert usn.with_us(["Ohio"]) == ["Ohio", "US"]
-    # a list that already names the national row is returned untouched, in
-    # its OWN spelling: a recorded run's list is never rewritten
+    # an existing national entry keeps its OWN spelling (never rewritten)
     assert usn.with_us(["Ohio", "US (national)"]) == ["Ohio", "US (national)"]
     assert usn.state_names(["Ohio", "US"]) == ["Ohio"]
 
 
 # ----------------------------------------------------------- scoring policy
 
-#: What the two-state pooled figure is, and what ANY figure reads instead
-#: the moment the national cell joins it. Every published number is a RATIO,
-#: so a synthetic US cell that merely scaled the states' magnitudes would
-#: leave every ratio assertion in this file invariant to the leak it is
-#: meant to catch: 50x of 1.0/2.0 is still 0.500. The national cell here is
-#: therefore ~50x a state's in MAGNITUDE, as the real sum-of-states row is,
-#: AND a different ratio, so a leak moves the number as well as the count.
+#: Every published number is a RATIO, so the synthetic US cell is ~50x a
+#: state's in magnitude (like the real sum-of-states row) AND a different
+#: ratio: a leak then moves the value, not only the count.
 POOLED_REL = 0.5                       # 8 state cells: 8.0 / 16.0
 US_REL = 1.5                           # 4 national cells: 600.0 / 400.0
 LEAKED_REL = 608.0 / 416.0             # 1.4615...: the 53-location figure
@@ -60,7 +51,7 @@ def _frame(with_us=True):
     for loc in (["Ohio", "Utah"] + (["US"] if with_us else [])):
         us = usn.is_us(loc)
         for h in range(4):
-            rows.append({"model": "ensemble", "location": loc, "fips": loc,
+            rows.append({"model": "pf", "location": loc, "fips": loc,
                          "asof": "2098-01-03", "horizon": h,
                          "wis": 150.0 if us else 1.0,
                          "base_wis": 100.0 if us else 2.0})
@@ -72,18 +63,13 @@ def _rel_of(df):
 
 
 def test_the_policy_is_named_and_off():
-    # the decision lives in code, not in which locations a run happened to
-    # cover. Flipping this flag is the ONLY way US joins a pooled figure,
-    # and doing so would require republishing every headline.
+    # the only way US joins a pooled figure (would republish every headline)
     assert usn.POOLED_INCLUDES_US is False
     assert "never joins the pooled average" in usn.POOLED_SCOPE_NOTE
 
 
 def test_the_synthetic_national_cell_can_actually_move_a_ratio():
-    """The guard's own guard. Every figure this file pins is a RATIO, so
-    the fixture is only able to witness a leak if the national cell scores
-    a DIFFERENT relWIS from the states. Pin the three numbers here, once,
-    so the assertions below can be read as the values they are."""
+    """The fixture can witness a leak: US scores a different relWIS."""
     df = _frame()
     assert _rel_of(df[~df.location.map(usn.is_us)]) == POOLED_REL
     assert _rel_of(df[df.location.map(usn.is_us)]) == US_REL
@@ -96,8 +82,7 @@ def test_pooled_frame_drops_the_national_cell():
     pooled = usn.pooled_frame(df)
     assert len(pooled) == 8                      # two states, four horizons
     assert not pooled.location.map(usn.is_us).any()
-    # the pooled VALUE, not only the cell count: the national row's presence
-    # must leave the number itself exactly where it was
+    # the VALUE, not only the cell count
     a = _rel_of(pooled)
     b = _rel_of(usn.pooled_frame(_frame(with_us=False)))
     assert a == b == POOLED_REL
@@ -109,10 +94,8 @@ def test_pooled_locations_drops_the_national_name():
 
 
 def test_a_fitted_us_row_moves_no_pooled_figure():
-    """THE headline guard. The same season, scored twice: once with a
-    fitted US row in scores.json and once without. Every pooled figure the
-    application computes must be bit-identical -- and must equal the
-    52-jurisdiction VALUE, not merely agree with itself."""
+    """THE headline guard: scored with and without a fitted US row, every
+    pooled figure is identical AND equals the state-only value."""
     def _figures(with_us):
         df = _frame(with_us=with_us)
         pooled = usn.pooled_frame(df)
@@ -122,20 +105,16 @@ def test_a_fitted_us_row_moves_no_pooled_figure():
 
     a, b = _figures(True), _figures(False)
     assert a == b
-    # and the shared value is the state-only one. Without this the pair
-    # could agree on a leaked number and the guard would still pass.
+    # the shared value is the state-only one (not an agreed leaked number)
     assert a["pooled"] == POOLED_REL
     assert a["cells"] == 8
     assert [round(v, 6) for _w, v in a["curve"]] == [POOLED_REL]
-    # 1.462 is what the curve endpoint and the tile read if the national
-    # cell is pooled in
+    # 1.462 is the leaked figure
     assert a["curve"][-1][1] != pytest.approx(LEAKED_REL)
 
 
 def test_season_scores_hands_back_the_full_frame(tmp_path):
-    """The loader itself drops nothing: the same file feeds the pooled
-    answer and the national one, so gating belongs at the reader, not
-    here."""
+    """The loader drops nothing: gating belongs at each reader."""
     root = tmp_path / "season"
     root.mkdir()
     (root / "scores.json").write_text(_frame().to_json(orient="records"))
@@ -144,26 +123,21 @@ def test_season_scores_hands_back_the_full_frame(tmp_path):
 
 
 # ------------------------------------------- the gate at every call site
-#
-# The gate itself is pinned above. These five hold the PRODUCTION CALL
-# SITES that invoke it: each one drives the real function end to end and
-# asserts the published VALUE, so deleting `usn.pooled_frame(...)` from any
-# of them fails here rather than silently moving a figure. A source grep
-# cannot do this -- it survives a gutted function body.
+# Each test drives a production call site end to end and asserts the VALUE,
+# so deleting its `usn.pooled_frame(...)` fails here (a source grep would
+# survive a gutted function body).
 
 def test_playback_stats_never_pool_a_fitted_us_cell(tmp_path):
-    """The player's live relWIS table (app/core/playback._stats) reads
-    scores.json directly, and its week and cumulative columns are the
-    numbers the season verdict tiles copy."""
+    """playback._stats: the player's relWIS table (copied by verdict tiles)."""
     root = tmp_path / "season"
     root.mkdir()
     (root / "scores.json").write_text(_frame().to_json(orient="records"))
     stats = playback._stats(root, "2098-99", "2098-01-03", {}, {},
-                            {"ensemble": {}}, {})
-    assert stats["ensemble"]["week_rel"] == pytest.approx(POOLED_REL)
-    assert stats["ensemble"]["cum_rel"] == pytest.approx(POOLED_REL)
-    # 1.462 is the figure both columns read with the national cell pooled in
-    assert stats["ensemble"]["cum_rel"] != pytest.approx(LEAKED_REL)
+                            {"pf": {}}, {})
+    assert stats["pf"]["week_rel"] == pytest.approx(POOLED_REL)
+    assert stats["pf"]["cum_rel"] == pytest.approx(POOLED_REL)
+    # 1.462 would be the figure with US pooled in
+    assert stats["pf"]["cum_rel"] != pytest.approx(LEAKED_REL)
 
 
 def test_the_season_report_curve_never_pools_a_fitted_us_cell():
@@ -175,37 +149,30 @@ def test_the_season_report_curve_never_pools_a_fitted_us_cell():
 
 def test_the_season_report_table_reports_us_apart_from_its_pooled_figures(
         tmp_path, monkeypatch):
-    """report_season._summary_block builds the exported season verdict: the
-    tiles, the cumulative chart, the cell-count line, and the per-state
-    table. The national row appears there LABELLED and on its own line; not
-    one of the pooled figures beside it may contain it."""
+    """report_season._summary_block (exported verdict): US appears on its own
+    labelled row; no pooled figure beside it contains it."""
     root = tmp_path / "season"
     root.mkdir()
     (root / "scores.json").write_text(_frame().to_json(orient="records"))
     html = report_season._summary_block(root, ["2098-01-03"], {})
-    # the pooled scope: eight state cells, never the twelve a leak gives
-    # (this frame carries the retired blend's rows alone, a season scored
-    # before 2026-09-22, and the count names that model)
-    assert "the season's 8 scored FluBNF Ensemble (retired) cells" in html
+    # the pooled scope: 8 state cells, never the 12 a leak gives
+    pf = report_season.names_for_root(root)["pf"]
+    assert f"the season's 8 scored {pf} cells" in html
     assert "12 scored" not in html
     # the cumulative curve endpoint is the state-only value
     assert ">0.500<" in html
     # the national figure IS reported, on its own labelled row and tile
     assert "US (fitted)" in html
     assert "1.500" in html
-    # but 1.462, the figure any pooled surface reads once it joins them,
-    # appears nowhere
+    # 1.462 (US pooled in) appears nowhere
     assert "1.462" not in html
     assert usn.POOLED_SCOPE_NOTE in html
 
 
 def test_site_builder_excludes_the_national_row_from_ours_and_theirs(
         monkeypatch):
-    """The public site does not read scores.json: per docs/SITE.md it
-    RESCORES from the stored playback payloads, so site_build._score_payload
-    is the code path that produces the published 0.678. Drive it with a
-    payload carrying two states and a national row, and hold both the cell
-    count and the value."""
+    """The public site RESCORES from playback payloads (docs/SITE.md), so
+    site_build._score_payload is the path to hold: count and value."""
     from app.core import horizons as hz
     from app.core import scoring as _scoring
     from app.core import site_build
@@ -215,16 +182,15 @@ def test_site_builder_excludes_the_national_row_from_ours_and_theirs(
     asof = "2098-01-03"
     n2f = {"Ohio": "39", "Utah": "49", "US": "US"}
     T = pd.Timestamp(asof) + pd.Timedelta(days=7)
-    # the national truth row is the sum of the states', as it really is
+    # the national truth row is the sum of the states'
     truth = {("39", T): 40.0, ("49", T): 60.0, ("US", T): 100.0}
     med = {"Ohio": 50.0, "Utah": 50.0, "US": 250.0}
 
     def _degenerate(v):
         return {str(L): v for L in QL}           # a point mass: WIS = |v - y|
 
-    # a playback payload lives in memory, so its horizons are canonical:
-    # hz.HORIZONS[0] is the FIRST forecast week, the one whose target lands
-    # on T, which is the only week the truth and baseline stubs cover
+    # payload horizons are canonical: HORIZONS[0] is the first forecast week,
+    # the only one the truth and baseline stubs cover
     h0 = hz.HORIZONS[0]
     payload = {"asof": asof, "official": {},
                "models": {"ensemble": {loc: {h0: _degenerate(med[loc])}
@@ -250,8 +216,8 @@ def test_site_builder_excludes_the_national_row_from_ours_and_theirs(
 
 
 def _console_season(tmp_path, monkeypatch):
-    """One scored week, two states AND a fitted national row, laid out so
-    the real season-page route renders complete in one request."""
+    """One scored week, two states and a fitted US row, laid out so the real
+    season-page route renders complete in one request."""
     import json
 
     from app.core import playback as _pb
@@ -291,17 +257,16 @@ def _console_season(tmp_path, monkeypatch):
 
 def test_the_console_season_page_never_pools_a_fitted_us_cell(tmp_path,
                                                               monkeypatch):
-    """app/ui/server.retro_results is the sixth pooled call site: it builds
-    the console's own verdict tiles, cumulative curve, and per-state table
-    from the season frame. The author reads the headline off THIS page, so
-    it is driven end to end through the real route."""
+    """routes/retro.retro_results (the console's verdict tiles, curve and
+    table), driven through the real route."""
     from fastapi.testclient import TestClient
 
     from app.ui import server as srv
+    from app.ui import retro_seasons as ui_retro_seasons
 
     _root, season = _console_season(tmp_path, monkeypatch)
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     html = TestClient(srv.app).get(f"/retro/{season}").text
     assert "preparing results" not in html       # a complete page, not a stub
     # the pooled ensemble verdict is the two-state figure
@@ -309,14 +274,12 @@ def test_the_console_season_page_never_pools_a_fitted_us_cell(tmp_path,
     # the national figure is present, on its own row, labelled as fitted
     assert "1.500" in html
     assert "US (fitted)" in html
-    # 1.462 is the pooled figure the moment the national cell joins it
+    # 1.462 would be the pooled figure with US in
     assert "1.462" not in html
 
 
 def test_weekly_report_table_reports_us_apart_from_the_pooled_row():
-    """The console run fits US on every run, so this table always carries a
-    national row. It keeps its own line, labelled, and the total row names
-    the scope it actually covers."""
+    """Weekly table: US on its own labelled line; the total names its scope."""
     df = pd.DataFrame([
         {"location": "Ohio", "fips": "39", "horizon": 1,
          "wis": 1.0, "base_wis": 2.0},
@@ -328,7 +291,7 @@ def test_weekly_report_table_reports_us_apart_from_the_pooled_row():
     assert "All jurisdictions (US excluded)" in html
     assert '<td class="num ok">0.500</td>' in html   # Ohio alone, not 0.892
     assert "never joins the pooled average" in html
-    # 0.892 would be the number if the national cell had been pooled in
+    # 0.892 would be the figure with US pooled in
     assert "0.892" not in html
 
 
@@ -336,11 +299,8 @@ def test_weekly_report_table_reports_us_apart_from_the_pooled_row():
 
 def test_the_weekly_report_claims_a_fitted_national_only_when_it_has_one(
         tmp_path):
-    """A provenance line in an exported artifact must be DERIVED from the
-    run. The weekly report's national section printed "US (fitted)"
-    unconditionally, including directly above its own placeholder saying
-    the national run had not landed: an absent forecast reading as a fit,
-    which is the failure the second constraint names."""
+    """The weekly report says "US (fitted)" only when a national forecast
+    landed; provenance is derived from the run, never hardcoded."""
     from app.core.report_v2 import build_report
 
     empty = build_report("2098-01-03", {}, {}, {},
@@ -350,9 +310,8 @@ def test_the_weekly_report_claims_a_fitted_national_only_when_it_has_one(
     assert usn.NOTES[usn.FITTED] not in empty
     assert usn.SHORT_LABELS[usn.FITTED] not in empty
 
-    # the shape the run bundle actually passes when no national forecast
-    # exists: summary_html is filled unconditionally with the accuracy card,
-    # so it is not evidence of a national fit and must not be read as any
+    # the bundle's no-national shape: summary_html (the accuracy card) is
+    # always filled and is not evidence of a fit
     shaped = build_report("2098-01-03", {}, {},
                           {"fan": None, "acc": None, "note": "",
                            "summary_html": "<div>accuracy card</div>"},
@@ -366,7 +325,7 @@ def test_the_weekly_report_claims_a_fitted_national_only_when_it_has_one(
                           tmp_path / "some.html").read_text()
     assert usn.LABELS[usn.FITTED] in landed
     assert usn.NOTES[usn.FITTED] in landed
-    # and the placeholder is gone: the section never says both at once
+    # and the placeholder is gone
     assert "National fan and accuracy charts appear once" not in landed
 
 
@@ -388,11 +347,11 @@ def test_resolution_prefers_a_fitted_cell(tmp_path, monkeypatch):
     us = usn.resolve(root, _frame())
     assert us.provenance == usn.FITTED
     assert us.is_fitted and not us.is_fallback
-    assert us.scores["ensemble"] == pytest.approx(US_REL)
+    assert us.scores["pf"] == pytest.approx(US_REL)
     assert us.short_label == "US (fitted)"
     assert us.label == "US national (fitted)"
     assert us.n_states == 2                      # Ohio and Utah, not three
-    # a fitted cell short-circuits: the expensive construction never runs
+    # a fitted cell short-circuits the expensive construction
     assert called == []
 
 
@@ -472,17 +431,14 @@ def test_every_provenance_has_a_distinct_label_and_note():
 
 
 def test_the_player_and_python_share_one_wording():
-    """The labels are defined once. player.js carries them as a marked JSON
-    literal (the MODEL_NAMES pattern) and Python parses that same literal,
-    so a console page, an exported report, and a saved figure can never
-    disagree about what a US series is called."""
+    """Labels are defined once: player.js carries them as a marked JSON
+    literal and Python parses that same literal."""
     js = report_season.player_us_labels()
     assert js == usn.LABELS, (js, usn.LABELS)
 
 
 def test_the_serialised_form_carries_the_label_with_the_numbers():
-    """Nothing downstream may hold a US score without also holding the
-    words that say which kind of score it is."""
+    """A serialised US score always carries the words saying what kind it is."""
     d = usn.UsNational(usn.AGGREGATED, scores={"ensemble": 0.629},
                        cells={"ensemble": 96}, n_states=52).as_dict()
     assert d["ensemble"] == 0.629

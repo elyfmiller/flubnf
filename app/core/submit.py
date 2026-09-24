@@ -1,14 +1,15 @@
-"""FluSight submission formatting + validation.
+"""PRODUCTION: hub submission CSVs and their validation
+(app/ui/pipeline._run_all, oracle provenance).
 
-Hub facts (verified against model-metadata/README.md, 2026-08-17):
+FluSight submission formatting + validation.
+
+Hub facts (model-metadata/README.md):
   * model identity lives in the PATH (model-output/<team>-<model>/), never in
-    a CSV column -- one file per model_id per reference date;
-  * a team may designate up to two models for the ensemble (more via email
-    with out-of-sample evidence);
+    a CSV column: one file per model_id per reference date;
+  * a team may designate up to two models for the ensemble;
   * quantile targets: 'wk inc flu hosp' at 23 quantiles, horizons -1..3;
-  * value precision: whole admissions (integers), matching every official
-    FluSight-baseline / FluSight-ensemble 'wk inc flu hosp' value from
-    2025 on (see _hub_values; measured in the hub clone 2026-08-21).
+  * value precision: whole admissions, like every official 'wk inc flu hosp'
+    value from 2025 on (_hub_values).
 """
 from __future__ import annotations
 
@@ -22,37 +23,19 @@ import pandas as pd
 QUANTILES = (0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45,
              0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.975, 0.99)
 
-#: Hub identity, as registered in model-metadata/. ONE definition: the
-#: directory name, the file name and the metadata file name are all built
-#: from these, so a hub fork can take the tree verbatim.
-#:
-#: Held as a constant rather than read from the YAML at run time because
-#: model-metadata/ is not packaged -- pyproject's
-#: [tool.setuptools.packages.find] includes only `flubnf*` and `app*`, so an
-#: installed copy carries no YAML to read and writing a submission must not
-#: depend on a file the wheel does not ship. The drift guard is a test:
-#: app/tests/test_submit_join.py parses both YAML files and asserts these
-#: values verbatim, so changing one without the other fails the suite.
-#: NAU_PyBNF, a new team registration decided by the lead on 2026-09-22
-#: for the two standalone models. The group submitted since 2023 as
-#: LosAlamos_NAU, and its 2026-08-27 decision to keep that registration
-#: was reversed with the blend it carried: the hub keeps the LosAlamos_NAU
-#: cards and their history where they are, and nothing carries over to
-#: the new identities.
+#: Hub identity (model-metadata/<TEAM>-<abbr>.yml): directory, file and
+#: metadata names are all built from these. A constant because
+#: model-metadata/ is not packaged; app/tests/test_submit_join.py holds it
+#: equal to the YAML. NAU_PyBNF is a new registration (2026-09-22) for the
+#: two standalone models; the old LosAlamos_NAU cards stay on the hub.
 TEAM_ABBR = "NAU_PyBNF"
 
-#: internal member key -> hub model_abbr (model-metadata/<team>-<abbr>.yml).
-#: The keys are the console's own names for its engines (pf is the
-#: particle filter, analogue the calendar engine that runs as the
-#: Groundhog); the values are what the hub knows. Two standalone
-#: submissions since 2026-09-22, both designated, nothing blended.
+#: internal member key -> hub model_abbr; two standalone, designated
+#: submissions, nothing blended
 MODEL_ABBR = {"pf": "OracleSIHRS", "analogue": "GroundHogCGR"}
 
-#: Registered identities this writer no longer produces. Empty: the
-#: retired blend (LosAlamos_NAU-CModel_Flu) and the old member card
-#: (LosAlamos_NAU-SIHRS) belong to the previous team registration, whose
-#: cards live on the hub and not in this directory. hub_model_id refuses
-#: anything here like any unregistered key.
+#: identities no longer produced; empty (the retired cards belong to the old
+#: LosAlamos_NAU registration)
 RETIRED_ABBR = ()
 
 
@@ -69,38 +52,18 @@ def hub_model_id(model: str) -> str:
 
 
 def hub_reference_date(asof) -> pd.Timestamp:
-    """THE FROZEN JOIN, in one place: hub reference_date = our as-of
-    Saturday + 7 days.
+    """THE FROZEN JOIN: hub reference_date = our as-of Saturday + 7 days.
 
-    Every producer in this module calls this and nothing else -- the row
-    builders for the `reference_date` column, `write_submission` for the
-    file name -- so the name and the contents cannot be computed by two
-    different rules. They once were: the rows were built from the as-of
-    plus seven while the file was named for the bare as-of, and a real run
-    on 2026-08-26 produced `2026-01-03-...csv` in which every row said
-    2026-01-10. The hub's round-id check compares the file name against
-    `reference_date` (hub-config/validations.yml, t0_colname), so that
-    submission would have been rejected."""
+    Every producer (row builders and the file name) calls this, so the two
+    cannot disagree; the hub rejects a file whose name and `reference_date`
+    differ."""
     return pd.Timestamp(asof) + pd.Timedelta(days=7)
 
 
 def _hub_values(vals) -> list:
-    """Quantile values in the hub's precision: whole admissions.
-
-    Measured against the official FluSight-baseline and FluSight-ensemble
-    submissions in the hub clone (2026-08-21): every 'wk inc flu hosp'
-    quantile value from 2025 on is an integer count (the long float tails
-    in recent official files belong to the 'wk inc flu prop ed visits'
-    proportion target; the officials' own 2023-24 era count files carried
-    tails and were since cleaned up). Our ensemble path was emitting raw
-    numpy quantiles with 17-digit tails; this rounds to the officials'
-    precision.
-
-    The guard: rounding is monotone, but the non-decreasing order of the
-    quantile vector is a hub validation rule, so it is re-enforced after
-    rounding rather than assumed (float ties and any future rounding
-    change stay safe). Returns Python ints so the CSV writes '14', never
-    '14.0'."""
+    """Whole admissions (the officials' precision since 2025), re-made
+    monotone after rounding (a hub rule, not assumed); Python ints so the
+    CSV writes '14', never '14.0'."""
     v = np.rint(np.asarray(vals, float))
     v = np.maximum.accumulate(v)
     return [int(x) for x in v]
@@ -109,15 +72,9 @@ def _hub_values(vals) -> list:
 def quantile_rows(samples: dict, location_fips: str, asof: str) -> list:
     """FluSight rows for one location from horizon->samples arrays.
 
-    THE FROZEN JOIN (must match scripts/anchor_analysis.py, the formula the
-    seal's scoring validated): hub reference_date = our as-of Saturday + 7
-    days, and hub horizon 0..3 carries our canonical samples "0".."3" (see
-    app.core.horizons; the anchor week rides under ORIGIN, where no
-    submitted row can reach it). Callers pass
-    the AS-OF date (spec.forecast_date); the reference comes from
-    hub_reference_date, the one place that formula lives. Passing the as-of
-    straight through as the reference mislabeled every exported CSV by one
-    week (caught 2026-08-21, before any real submission)."""
+    Hub horizon 0..3 carries our canonical "0".."3" (the anchor under ORIGIN
+    is never submitted). Callers pass the AS-OF date; the reference comes
+    from hub_reference_date."""
     ref = hub_reference_date(asof)
     reference_date = str(ref.date())
     rows = []
@@ -160,25 +117,15 @@ def _level_report(levels: list) -> str:
     return "; ".join(bits) or "levels out of order"
 
 
-def validate(df: pd.DataFrame) -> list:
+def validate(df: pd.DataFrame, key_col: str = "location") -> list:
     """Gate before anything leaves the machine. Returns list of defects.
 
-    The degenerate-cell rule is measured, not theoretical: 0.23% of cells once
-    carried 49% of total WIS (zero-width quantiles at wrong levels).
-
-    The completeness rule is the structural half of a trap that was once
-    closed only by deleting a caller. hub-config/tasks.json marks the
-    quantile `output_type_id` as REQUIRED at all 23 levels, so a file
-    carrying fewer is rejected on submission; `rows_from_quantiles` emits
-    only the levels its input dict happens to hold, and a re-blend from
-    stored results held five. Removing that caller fixed the day's
-    behaviour and left nothing to stop the next one, so the requirement is
-    enforced here, on the path every written file takes.
-
-    Horizons are NOT required in the same way: the same tasks.json marks
-    horizon as optional (-1..3), and `quantile_rows` legitimately drops a
-    horizon with no finite samples. Only the level set within a horizon is
-    a completeness rule.
+    Enforces all 23 levels per (location, horizon) (hub tasks.json requires
+    them; rows_from_quantiles emits only what it is given), monotone,
+    non-negative, and not zero-width (such cells once carried 49% of WIS).
+    Horizons are optional in the hub schema, so a missing one is fine.
+    `key_col` names the unit column: 'location' for the hub, or a custom
+    dataset's own ('target_group' for a grouped-CSV export).
     """
     problems = []
     if df.empty:
@@ -187,13 +134,11 @@ def validate(df: pd.DataFrame) -> list:
     if q.empty:
         return ["submission carries no quantile rows"]
     try:
-        # numeric levels, and the sort below rides them: a string
-        # output_type_id column would otherwise order 0.1 after 0.05
-        # lexicographically and make every check read the wrong vector
+        # numeric levels: a string column would sort lexicographically
         q["_level"] = [round(float(x), 4) for x in q.output_type_id]
     except (TypeError, ValueError):
         return ["quantile rows carry a non-numeric output_type_id"]
-    for (loc, h), g in q.groupby(["location", "horizon"]):
+    for (loc, h), g in q.groupby([key_col, "horizon"]):
         g = g.sort_values("_level")
         levels = list(g["_level"])
         v = g.value.to_numpy()
@@ -211,21 +156,15 @@ def validate(df: pd.DataFrame) -> list:
 
 
 def write_submission(all_rows: Iterable[dict], model: str, asof: str,
-                     out_dir: Path) -> Path:
+                     out_dir: Path, suffix: str = "") -> Path:
     """One hub-format CSV per model (identity is the PATH, rule above).
 
-    `model` is an internal key from MODEL_ABBR, not a free-text label: the
-    team and model abbreviations come from the registered metadata, so a
-    call site cannot invent a name the hub has never seen. `asof` is the
-    forecast as-of Saturday, the same value the row builders were given;
-    the file is named for hub_reference_date(asof), so the name and the
-    `reference_date` column are computed by one formula from one input.
-
-    The divergence guard below is deliberately fatal. The hub compares the
-    file name against the `reference_date` column (hub-config/
-    validations.yml sets t0_colname: "reference_date"), so a mismatch is
-    caught on submission; catching it here means it is caught first, on the
-    machine that produced it, with the two dates named."""
+    `model` is a MODEL_ABBR key (never a free-text name); `asof` is the
+    as-of the rows were built from. A name/`reference_date` mismatch is
+    fatal here, before the hub rejects it. `suffix` (knobs.MODIFIED_SUFFIX
+    for a run with modified model settings) makes the directory and file
+    a NON-hub name, so such a file can never pass for the registered
+    model."""
     df = pd.DataFrame(list(all_rows))
     problems = validate(df)
     if problems:
@@ -234,7 +173,7 @@ def write_submission(all_rows: Iterable[dict], model: str, asof: str,
     if "reference_date" not in df.columns:
         raise ValueError("submission rows carry no reference_date column; "
                          "the file name could not be checked against them")
-    model_id = hub_model_id(model)
+    model_id = hub_model_id(model) + str(suffix or "")
     ref = str(hub_reference_date(asof).date())
     in_rows = sorted({str(v) for v in df["reference_date"]})
     if in_rows != [ref]:
@@ -246,11 +185,7 @@ def write_submission(all_rows: Iterable[dict], model: str, asof: str,
     d = Path(out_dir) / model_id
     d.mkdir(parents=True, exist_ok=True)
     p = d / f"{ref}-{model_id}.csv"
-    # Write beside, then replace (the scores.json rule the app's other
-    # writers follow): every CSV in this tree is listed as submittable by
-    # the output page, so a full disk mid-write must never leave a
-    # truncated file under the hub-named path. The temp file is removed
-    # on any failure; after a successful replace it no longer exists.
+    # atomic: every CSV here is listed as submittable, so never a truncated one
     tmp = p.with_name(p.name + ".tmp")
     try:
         df.to_csv(tmp, index=False)
@@ -264,10 +199,7 @@ def rows_from_quantiles(qs: dict, location_fips: str, asof: str) -> list:
     """FluSight rows from horizon -> {level: value} (quantile-native members).
     Same frozen join as quantile_rows, from the same hub_reference_date.
 
-    This builder emits the levels its input holds and no others: it cannot
-    invent the ones a caller did not compute. Completeness is therefore
-    checked once, at the writer, by `validate` -- a partial dict produces a
-    partial row set here and a refusal there, never a file."""
+    Emits only the levels given; `validate` refuses a partial set at the writer."""
     ref = hub_reference_date(asof)
     reference_date = str(ref.date())
     rows = []

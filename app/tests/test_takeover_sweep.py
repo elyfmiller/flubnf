@@ -1,18 +1,12 @@
 """The console takeover sweeps orphaned PF runner groups (flubnf/cli.py).
 
-The runners are plain Popen children supervised from daemon threads: a
-takeover or window close kills the server without any supervisor's finally
-block, the fits keep running unowned, and once the heartbeat goes stale a
-resumed run fits the same cells concurrently. Each runner therefore leads
-its own process group, is recorded in a registry beside app.pid, and the
-relaunch sweeps the recorded groups after signalling the server. Same
-safety rule as the pidfile takeover: a pid whose live command line no
-longer names its recorded runner script is never signalled, because a
-recycled pid must never get the treatment.
-
-Like test_app_launch.py, these tests run against real spawned processes: a
-marked fake runner leading its own group (with a child, so the GROUP
-signal is what is proven) and an unmarked bystander.
+A takeover or window close kills the server without the supervisors'
+finally blocks, leaving fits running unowned (and a stale-heartbeat resume
+could refit the same cells). Each runner leads its own process group,
+recorded beside app.pid, and the relaunch sweeps the recorded groups. A pid
+whose live command line no longer names its runner is never signalled.
+Tests use real spawned processes: a marked runner group with a child, and
+an unmarked bystander.
 """
 import json
 import os

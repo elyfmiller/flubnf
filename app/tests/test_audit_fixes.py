@@ -1,8 +1,5 @@
-"""Pins for the 2026-08-26 audit's confirmed defects.
-
-Each test here exists because the audit found the behavior either broken or
-unpinned; a regression on any of these reopens a published finding.
-"""
+"""Pins for the 2026-08-26 audit's confirmed defects (a regression here
+reopens a published finding)."""
 import json
 
 import numpy as np
@@ -10,13 +7,9 @@ import pandas as pd
 
 
 def test_floor_adaptive_branch_ignores_anchored_origin():
-    # The documented dead-week case: origin anchored at the last observed
-    # value (nonzero), every FORECAST horizon flat zero, sporadic recent
-    # background. The adaptive branch must fire; before the fix the origin's
-    # anchored mass vetoed it and the submitted medians stayed 0.
-    # In canonical keys the anchor rides under hz.ORIGIN and is not a number
-    # at all, which is exactly what lets the collapse test tell it apart from
-    # the first forecast week; the four flat-zero forecasts are hz.HORIZONS.
+    # Dead week: the origin is anchored (nonzero, under hz.ORIGIN), every
+    # FORECAST horizon is flat zero, recent background sporadic. The adaptive
+    # branch must fire; the origin's mass once vetoed it (medians stayed 0).
     from app.core import horizons as hz
     from app.core.floor import floor_samples
     samples = {hz.ORIGIN: [2.0] * 200,
@@ -32,7 +25,7 @@ def test_floor_adaptive_branch_ignores_anchored_origin():
 
 def test_floor_healthy_fit_untouched_by_adaptive_branch():
     # A healthy in-season fit must never trigger the adaptive rate.
-    from app.core.floor import LAM, floor_samples
+    from app.core.floor import floor_samples
     samples = {"0": [50.0] * 200, "1": [60.0] * 200, "2": [70.0] * 200}
     out = floor_samples(samples, "Ohio", "2026-01-03",
                         recent=[40.0, 45.0, 50.0, 55.0])
@@ -51,15 +44,15 @@ def test_cells_failed_reads_marker_status(tmp_path):
 
 
 def test_latest_results_skips_research_runs(tmp_path, monkeypatch):
-    from app.ui import server
+    from app.ui import shared as ui_shared
     new = tmp_path / "20260826T120000" / "results.json"
     old = tmp_path / "20260825T120000" / "results.json"
     new.parent.mkdir(parents=True)
     old.parent.mkdir(parents=True)
     new.write_text(json.dumps({"research": True, "forecast_date": "x"}))
     old.write_text(json.dumps({"forecast_date": "y"}))
-    monkeypatch.setattr(server, "_workroot_results", lambda: [new, old])
-    rid, res = server._latest_results()
+    monkeypatch.setattr(ui_shared, "_workroot_results", lambda: [new, old])
+    rid, res = ui_shared._latest_results()
     assert rid == "20260825T120000", (
         "a research run's results leaked onto a shipped-product surface")
     assert res["forecast_date"] == "y"
@@ -69,14 +62,14 @@ def test_latest_results_recognises_pre_flag_research_specs(tmp_path,
                                                            monkeypatch):
     # results.json files written before the research flag existed carry only
     # the spec; the skip must recognise those too
-    from app.ui import server
+    from app.ui import shared as ui_shared
     f = tmp_path / "w" / "results.json"
     f.parent.mkdir(parents=True)
     f.write_text(json.dumps({
         "forecast_date": "x",
         "spec": json.dumps({"extra": {"members": 3}})}))
-    monkeypatch.setattr(server, "_workroot_results", lambda: [f])
-    rid, res = server._latest_results()
+    monkeypatch.setattr(ui_shared, "_workroot_results", lambda: [f])
+    rid, res = ui_shared._latest_results()
     assert rid is None and res is None
 
 
@@ -141,9 +134,8 @@ def _fake_cell(tmp_path, n_obs, n_cols, k, last_observed=10.0):
 
 
 def test_collect_zero_drop_unchanged(tmp_path):
-    # n_obs=3, forecast 4: columns 0..6; origin col 2 -> scale 10/2 = 5.
-    # Canonical keys: the anchor under hz.ORIGIN, the four forecasts under
-    # the hub's own labels "0".."3". The columns read are unchanged.
+    # n_obs=3, forecast 4: columns 0..6; origin col 2 -> scale 10/2 = 5;
+    # anchor under hz.ORIGIN, forecasts under "0".."3"
     from app.core import horizons as hz
     from app.core.engines import pf as pf_engine
     wr = _fake_cell(tmp_path, n_obs=3, n_cols=7, k=0)
@@ -154,11 +146,9 @@ def test_collect_zero_drop_unchanged(tmp_path):
 
 
 def test_collect_shifts_horizons_by_weeks_dropped(tmp_path):
-    # k=1: conf extended the forecast to 5 steps -> 8 columns. The as-of
-    # week is col 3 (the model's nowcast of the dropped week) and it is the
-    # anchor, so it rides under hz.ORIGIN; the first forecast is col 4.
-    # Before the fix, that first forecast read col 3 and every label rode
-    # one week early relative to the calendar it claimed.
+    # k=1: the forecast extends to 5 steps (8 columns). The as-of week, col 3
+    # (the nowcast of the dropped week), is the anchor; the first forecast is
+    # col 4 (it once read col 3, a week early)
     from app.core import horizons as hz
     from app.core.engines import pf as pf_engine
     wr = _fake_cell(tmp_path, n_obs=3, n_cols=8, k=1)
@@ -212,14 +202,12 @@ def test_analogue_drop_moves_anchor_and_extends_span(tmp_path, monkeypatch):
     assert calls[0] == (8.0, "2025-12-27", 2)
     assert [c[2] for c in calls] == [2, 3, 4, 5]
     calls.clear()
-    # the nowcast rule: the vintage's last row is dated the forecast date
-    # itself, so drop_same_day trims it automatically -- same arithmetic
-    # as an explicit one-week drop
+    # drop_same_day: the vintage's last row is dated the forecast date, so
+    # it is trimmed like an explicit one-week drop
     eng.run(spec(0, True))
     assert calls[0] == (8.0, "2025-12-27", 2)
     calls.clear()
-    # and when the vintage has NO same-day row, the rule trims nothing:
-    # forecast a week later than the data ends
+    # no same-day row: the rule trims nothing
     spec_late = type("S", (), {"forecast_date": "2026-01-10",
                                "locations": ["Ohio"],
                                "weeks_to_drop": 0,
@@ -256,9 +244,8 @@ def test_spec_settings_omits_same_day_line_for_pre_rule_specs():
 
 
 def test_prepare_trim_refuses_a_gapped_tail(monkeypatch, tmp_path):
-    # the horizon-label arithmetic requires the trimmed rows to be
-    # calendar-consecutive with the as-of week; a NaN gap must refuse
-    # loudly, never mislabel (review finding)
+    # the trimmed rows must be calendar-consecutive with the as-of week; a
+    # NaN gap refuses loudly instead of mislabelling
     import pytest
     from app.core.engines import pf as pf_engine
 
@@ -273,14 +260,12 @@ def test_prepare_trim_refuses_a_gapped_tail(monkeypatch, tmp_path):
         "weeks_to_drop": 0, "drop_same_day": True, "locations": ["Ohio"],
         "replicates": 1, "particles": 100, "jitter": 0.3,
         "observable_mode": "integrated", "extra": {}})()
-    # (2025-12-27 - 2025-08-02) = 21 weeks exactly? Use the real offset:
     from datetime import date
     off = (date(2025, 12, 27) - date(2025, 8, 2)).days // 7
     FakeState.times = [off - 5, off - 4, off]   # tail gap of 4 weeks
     import flubnf.sihrs_fit as sf
     monkeypatch.setattr(sf, "resolve_state", lambda *a, **k: FakeState())
-    # hub-free: prepare() resolves the vintage path before the trim; a
-    # fixture file stands in so this runs in CI (FLUBNF_HUB=/nonexistent)
+    # hub-free: a fixture vintage (prepare resolves the path before the trim)
     import app.core.data as data
     vfile = tmp_path / "vintage.csv"
     vfile.write_text("date,location,location_name,value\n")
@@ -290,40 +275,38 @@ def test_prepare_trim_refuses_a_gapped_tail(monkeypatch, tmp_path):
 
 
 def test_any_weekday_resolves_to_a_published_saturday(monkeypatch):
-    """A surveillance week ends Saturday but publishes the following
-    Wednesday, so the day a person actually works is not the week they can
-    forecast. Any non-Saturday resolves to the newest week the archive
-    really holds; a typed Saturday stays precise."""
+    """Any non-Saturday resolves to the newest week the archive holds (a week
+    ends Saturday but publishes Wednesday); a typed Saturday stays exact."""
     from app.ui import server
+    from app.ui import state as ui_state
     from app.core import data as dm
     from fastapi.testclient import TestClient
 
     # archive holds up to 2026-02-14; the week ending 02-21 is not out yet
+    # (the server reads app.core.data through a lazy proxy: patch the module)
     monkeypatch.setattr(dm, "vintages",
-                        lambda: ["2026-02-07", "2026-02-14"])
-    monkeypatch.setattr(server.data_mod, "vintages",
                         lambda: ["2026-02-07", "2026-02-14"])
     c = TestClient(server.app)
     for day, why in (("2026-02-18", "Wednesday, data just landed"),
                      ("2026-02-16", "Monday, week not published yet"),
                      ("2026-02-20", "Friday")):
-        server._status["flash"] = None
-        server._status["running"] = None
+        ui_state._status["flash"] = None
+        ui_state._status["running"] = None
         c.post("/run", data={"forecast_date": day, "locations": []},
                follow_redirects=False)
-        flash = server._status.get("flash") or ""
+        flash = ui_state._status.get("flash") or ""
         assert "2026-02-14" in flash, (
             f"{why}: expected the newest published week, got {flash[:120]}")
 
 
 def test_flash_messages_do_not_delete_each_other():
-    """A request can have two things to say; the second used to silently
-    overwrite the first."""
-    from app.ui import server
-    server._status["flash"] = None
-    server._flash("first thing")
-    server._flash("second thing")
-    both = server._status["flash"]
+    """A second flash no longer overwrites the first."""
+    from app.ui import shared as ui_shared
+    from app.ui import state as ui_state
+    ui_state._status["flash"] = None
+    ui_shared._flash("first thing")
+    ui_shared._flash("second thing")
+    both = ui_state._status["flash"]
     assert "first thing" in both and "second thing" in both
-    server._flash("second thing")          # idempotent, no duplication
-    assert server._status["flash"].count("second thing") == 1
+    ui_shared._flash("second thing")          # idempotent, no duplication
+    assert ui_state._status["flash"].count("second thing") == 1

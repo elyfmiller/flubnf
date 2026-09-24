@@ -1,35 +1,34 @@
-"""The console run's honesty guards, pinned on the 2026-09-01 final pass.
+"""The console run's honesty guards.
 
-Four field facts drive these tests:
-
-  * a location whose PF replicates ALL failed used to ship an
-    analogue-only forecast under the ensemble model name, silently; the
-    retro store (app/core/retro.run_week) refuses a week with no PF at
-    all and records partial failures beside the samples, and the console
-    now mirrors both choices;
-  * the first Windows full grid (2026-09-01) finished with 4 cell
-    failures and NO page named the cells or reasons, so a student could
-    not report the partial run usefully;
-  * the forecast archive was replaced by rmtree-then-copy, so a crash or
-    full disk mid-copy destroyed the previous archive for the date;
-  * (retired 2026-09-07) one unparseable value string in one state silenced the same-day
-    under-reporting warning for every other state.
+  * a location whose PF replicates all failed is absent from the Oracle
+    SIHRS file (never shipped under another model's name), and the row is
+    partial;
+  * the run page names failed cells and step errors, escaped;
+  * the forecast archive is replaced beside-then-swap, never rmtree-then-
+    copy, so a crash keeps the previous archive;
+  * the same-day under-reporting heads-up is retired.
 """
 import json
 import sys
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import app.core.runs as runs_mod                     # noqa: E402
+from app.core import data as core_data               # noqa: E402
 from app.core.runs import Ledger, RunSpec            # noqa: E402
 from app.core.submit import hub_model_id             # noqa: E402
 from app.ui import server as srv                     # noqa: E402
+from app.ui.routes import forecast as ui_forecast    # noqa: E402
+from app.ui import pipeline as ui_pipeline           # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
+from app.ui import shared as ui_shared               # noqa: E402
+from app.ui import state as ui_state                 # noqa: E402
+from app.ui import versions as ui_versions           # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL  # noqa: E402
 
 client = TestClient(srv.app)
@@ -44,20 +43,19 @@ AN_Q = {str(h): {float(L): 10.0 * h + 40.0 * h * float(L) for L in QL}
 
 @pytest.fixture(autouse=True)
 def _isolated_status():
-    status_before = dict(srv._status)
-    form_before = dict(srv._last_form)
+    status_before = dict(ui_state._status)
+    form_before = dict(ui_state._last_form)
     yield
-    srv._status.clear(); srv._status.update(status_before)
-    srv._last_form.clear(); srv._last_form.update(form_before)
-    srv._invalidate_scans()
+    ui_state._status.clear(); ui_state._status.update(status_before)
+    ui_state._last_form.clear(); ui_state._last_form.update(form_before)
+    ui_shared._invalidate_scans()
 
 
 def _fake_run(monkeypatch, tmp_path, status_by_cell, collected, aux=None):
-    """Drive srv._run_all end to end with fake engines: PF cell statuses
-    and collected samples are injected, the analogue answers for every
-    location, scoring has no truth. `aux` is the Groundhog donor choice
-    (None: the shipped bank, "": the bare analogue). Returns (ledger row,
-    outcome dict, workroot path)."""
+    """Drive pipeline._run_all end to end with fake engines (injected PF
+    statuses and samples, an analogue for every location, no truth). `aux`
+    is the Groundhog donor choice (None: shipped bank, "": bare analogue).
+    Returns (ledger row, outcome, workroot)."""
     import app.core.engines.analogue as an_engine
     import app.core.engines.pf as pf_engine
     import app.core.floor as floor_mod
@@ -76,8 +74,7 @@ def _fake_run(monkeypatch, tmp_path, status_by_cell, collected, aux=None):
                         lambda w: {loc: {h: list(v) for h, v in s.items()}
                                    for loc, s in collected.items()})
     import app.core.oracle as oracle_mod
-    # the Oracle step reads the week's vintage, which this hub-free test
-    # has none of: the engines are stubbed and so is the step
+    # the Oracle step needs a vintage this hub-free test lacks: stub it
     monkeypatch.setattr(oracle_mod, "apply_week",
                         lambda s, asof, wd, **kw: (s, {"applied": True,
                                                        "bank": {"label": "stub"}}))
@@ -91,15 +88,15 @@ def _fake_run(monkeypatch, tmp_path, status_by_cell, collected, aux=None):
     def _no_truth():
         raise RuntimeError("no truth in this test")
     monkeypatch.setattr(scoring_mod, "load_truth", _no_truth)
-    monkeypatch.setattr(srv, "_sleep_guard", lambda: None)
-    monkeypatch.setattr(srv, "_engine_versions_for_ledger", lambda e: {})
-    monkeypatch.setattr(srv, "_harvest_params", lambda w: {})
-    monkeypatch.setattr(srv, "_write_weekly_report",
+    monkeypatch.setattr(ui_pipeline, "_sleep_guard", lambda: None)
+    monkeypatch.setattr(ui_versions, "_engine_versions_for_ledger", lambda e: {})
+    monkeypatch.setattr(ui_pipeline, "_harvest_params", lambda w: {})
+    monkeypatch.setattr(ui_pipeline, "_write_weekly_report",
                         lambda *a, **k: None)
     spec = RunSpec(engine="all", forecast_date="2098-01-04",
                    locations=["Ohio", "Texas"], replicates=1,
-                   extra=srv._run_extra(2, "realtime", aux))
-    srv._run_all(spec)
+                   extra=ui_forecast._run_extra(2, "realtime", aux))
+    ui_pipeline._run_all(spec)
     row = next(iter(Ledger().rows(5)))
     outcome = json.loads(row.get("outcome") or "{}")
     return row, outcome, tmp_path / "workroots" / row["run_id"]
@@ -109,11 +106,8 @@ def _fake_run(monkeypatch, tmp_path, status_by_cell, collected, aux=None):
 
 def test_a_location_with_no_pf_member_is_absent_from_the_sihrs_file_only(
         tmp_path, monkeypatch):
-    """Every Texas replicate fails, Ohio's succeeds. Since the blend was
-    retired (2026-09-22) nothing carries Texas under the Oracle SIHRS name:
-    the Oracle SIHRS file holds Ohio alone, the Groundhog file holds both,
-    the row is partial and its failure count names the cell. No blend
-    bookkeeping keys are written."""
+    """Every Texas replicate fails: the Oracle SIHRS file holds Ohio alone,
+    the Groundhog file holds both, the row is partial; no blend keys."""
     row, outcome, w = _fake_run(
         monkeypatch, tmp_path,
         {"Ohio_r0": "ok", "Texas_r0": "error: fit failed"},
@@ -128,15 +122,14 @@ def test_a_location_with_no_pf_member_is_absent_from_the_sihrs_file_only(
     gh_csv = Path(outcome["submissions"][gh_id]).read_text()
     assert ",39," in gh_csv and ",48," in gh_csv
     assert outcome["analogue_aux"].startswith("flusurv+flusurv@")
-    chips = srv._outcome_chips(json.dumps(outcome))
+    chips = ui_shared._outcome_chips(json.dumps(outcome))
     assert "analogue-only" not in chips and "withheld" not in chips
 
 
 def test_all_pf_fits_failed_still_ships_the_groundhog(
         tmp_path, monkeypatch):
-    """Both locations fail, nothing is collected: there is no Oracle SIHRS
-    file, and that costs the Oracle SIHRS file only. The Groundhog is a
-    standalone submission and writes under its own name."""
+    """All PF fits fail: only the Oracle SIHRS file is lost; the Groundhog
+    still writes under its own name."""
     row, outcome, w = _fake_run(
         monkeypatch, tmp_path,
         {"Ohio_r0": "error: fit failed", "Texas_r0": "error: fit failed"},
@@ -150,10 +143,9 @@ def test_all_pf_fits_failed_still_ships_the_groundhog(
 
 def test_the_bare_analogue_never_ships_under_the_groundhogs_name(
         tmp_path, monkeypatch):
-    """A run whose spec carries no auxiliary pools ran the calendar
-    analogue that shipped inside the blend, not the Groundhog. Its
-    quantiles are kept for the pages, and its file is withheld with the
-    reason on the row, the way a research run's always was."""
+    """With no auxiliary pools the analogue is the bare calendar analogue,
+    not the Groundhog: its quantiles are kept, its file withheld with the
+    reason on the row."""
     row, outcome, w = _fake_run(
         monkeypatch, tmp_path, {"Ohio_r0": "ok", "Texas_r0": "ok"},
         {"Ohio": SAMPLES, "Texas": SAMPLES}, aux="")
@@ -162,17 +154,15 @@ def test_the_bare_analogue_never_ships_under_the_groundhogs_name(
     assert outcome["analogue_aux"] == ""
     res = json.loads((w / "results.json").read_text())
     assert set(res["models"]) == {"pf", "analogue"}
-    chips = srv._outcome_chips(json.dumps(outcome))
+    chips = ui_shared._outcome_chips(json.dumps(outcome))
     assert "submission withheld" in chips
 
 
 # ----------------------------- the run page names cells and step errors
 
 def test_run_page_names_failed_cells_and_step_errors(tmp_path, monkeypatch):
-    """The chips only COUNT failures. The run page must name the cells,
-    their statuses and every per-step error, plainly and escaped, so a
-    partial run can be reported by copying the block (first Windows full
-    grid, 2026-09-01: 4 failures, nothing visible anywhere)."""
+    """The run page names each failed cell, its status and every step error,
+    escaped, so a partial run can be reported by copying the block."""
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
     led = Ledger()
     rid = led.open_run(RunSpec(engine="all", forecast_date="2098-01-03"),
@@ -188,7 +178,7 @@ def test_run_page_names_failed_cells_and_step_errors(tmp_path, monkeypatch):
         "archive_error": "disk full",
         "report_inputs_error": "bundle too large",
         "ensemble_analogue_only": ["Texas"]})
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     html = client.get(f"/runs/{rid}").text
     assert "Partial-run detail" in html
     assert "Texas_r1" in html and "pybnf exited 1" in html
@@ -196,7 +186,8 @@ def test_run_page_names_failed_cells_and_step_errors(tmp_path, monkeypatch):
     assert "score_error" in html and "truth file unreadable" in html
     assert "archive_error" in html and "disk full" in html
     assert "report_inputs_error" in html and "bundle too large" in html
-    assert "Analogue-only in the ensemble" in html
+    # an older row's retired-blend key is read without error and not shown
+    assert "Analogue-only in the ensemble" not in html
     # Jinja default escaping, no |safe: a status string cannot inject markup
     assert "<b>boom</b>" not in html
     assert "&lt;b&gt;boom&lt;/b&gt;" in html
@@ -210,7 +201,7 @@ def test_run_page_without_failures_shows_no_detail_block(tmp_path,
                        Path("pending"), {})
     (tmp_path / "workroots" / rid).mkdir(parents=True)
     led.close_run(rid, "ok", {"pf_cells": 2, "pf_failures": {}})
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     assert "Partial-run detail" not in client.get(f"/runs/{rid}").text
 
 
@@ -218,9 +209,8 @@ def test_run_page_without_failures_shows_no_detail_block(tmp_path,
 
 def test_a_failed_archive_copy_keeps_the_previous_archive(tmp_path,
                                                           monkeypatch):
-    """Beside, then swap: a copy that dies mid-way (ENOSPC here) must
-    leave the previous archive for the date exactly as it was, with no
-    half-built sibling; the next attempt then replaces it cleanly."""
+    """A copy that dies mid-way (ENOSPC) leaves the previous archive intact
+    with no half-built sibling; the next attempt replaces it cleanly."""
     import shutil as shutil_mod
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
     w = tmp_path / "w"
@@ -235,11 +225,11 @@ def test_a_failed_archive_copy_keeps_the_previous_archive(tmp_path,
         raise OSError(28, "No space left on device")
     monkeypatch.setattr(shutil_mod, "copytree", _enospc)
     with pytest.raises(OSError):
-        srv._archive_run(w, "2098-01-04")
+        ui_pipeline._archive_run(w, "2098-01-04")
     assert (arch / "results.json").read_text() == '{"old": true}'
     assert sorted(p.name for p in arch.parent.iterdir()) == ["2098-01-04"]
     monkeypatch.setattr(shutil_mod, "copytree", real_copytree)
-    out = srv._archive_run(w, "2098-01-04")
+    out = ui_pipeline._archive_run(w, "2098-01-04")
     assert Path(out) == arch
     assert (arch / "results.json").read_text() == '{"new": true}'
     assert (arch / "submission" / "f.csv").read_text() == "new-file"
@@ -248,10 +238,8 @@ def test_a_failed_archive_copy_keeps_the_previous_archive(tmp_path,
 
 def test_a_crash_between_the_two_renames_is_recovered(tmp_path,
                                                       monkeypatch):
-    """The narrow window: the previous archive was parked aside and the
-    process died before the replacement moved in. The next attempt must
-    put the parked copy back FIRST, so a failure in that attempt still
-    leaves the date with its previous record."""
+    """A crash between the two renames: the next attempt restores the parked
+    copy FIRST, so its own failure still leaves the previous record."""
     import shutil as shutil_mod
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
     w = tmp_path / "w"
@@ -265,7 +253,7 @@ def test_a_crash_between_the_two_renames_is_recovered(tmp_path,
     monkeypatch.setattr(shutil_mod, "copytree", _enospc)
     arch = tmp_path / "archive" / "2098-01-04"
     with pytest.raises(OSError):
-        srv._archive_run(w, "2098-01-04")
+        ui_pipeline._archive_run(w, "2098-01-04")
     assert (arch / "results.json").read_text() == '{"previous": true}'
     assert sorted(p.name for p in arch.parent.iterdir()) == ["2098-01-04"]
 
@@ -273,23 +261,21 @@ def test_a_crash_between_the_two_renames_is_recovered(tmp_path,
 # ------------------- the same-day under-reporting heads-up is gone
 
 def test_no_underreporting_headsup_on_run(tmp_path, monkeypatch):
-    """The lead retired the same-day heads-up (2026-09-07): the measured
-    remedy (dropping the week) cost 0.24 relWIS and was never used, so a
-    run with a badly under-reported newest week starts with no warning and
-    the vintage is never read for that check."""
-    monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path / "retro")
-    monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
+    """No same-day under-reporting warning (retired: its remedy cost 0.24
+    relWIS and was never used), and the vintage is not read for it."""
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path / "retro")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")
     vint = tmp_path / "v.csv"
     vint.write_text("date,location,location_name,value\n"
                     "2097-12-28,39,Ohio,100\n2098-01-04,39,Ohio,30\n")
     reads = []
-    monkeypatch.setattr(srv.data_mod, "vintage_path",
+    monkeypatch.setattr(core_data, "vintage_path",
                         lambda d: reads.append(d) or vint)
-    monkeypatch.setattr(srv, "_run_all", lambda spec: None)
+    monkeypatch.setattr(ui_pipeline, "_run_all", lambda spec: None)
     r = client.post("/run", data={"forecast_date": "2098-01-04",
                                   "locations": ["Ohio"]},
                     follow_redirects=False)
     assert r.status_code == 303
-    flash = srv._status.get("flash") or ""
+    flash = ui_state._status.get("flash") or ""
     assert "under-reported" not in flash and "Heads up" not in flash
-    assert not any("same-day" in m for m in srv._status["log"])
+    assert not any("same-day" in m for m in ui_state._status["log"])

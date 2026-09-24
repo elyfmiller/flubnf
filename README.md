@@ -18,9 +18,8 @@ from a clone of the public FluSight hub (cdcepi/FluSight-forecast-hub):
 `target-data/` for the current series, `auxiliary-data/target-data-archive/`
 for the dated snapshots that retrospectives replay, and
 `model-output/FluSight-baseline/` for scoring. The shipped forecast reads
-nothing else; the research two-strain member and the legacy command-line
-layer, both off the default path, can fetch NREVSS and NHSN series from the
-Delphi Epidata API and data.cdc.gov, cached under `app/state`.
+nothing else; the research two-strain member, off the default path, can
+fetch NREVSS series from the Delphi Epidata API, cached under `app/state`.
 
 ## The models
 
@@ -56,9 +55,10 @@ mechanistic fit. Model definitions and parameter sources are in
 docs/MODEL-PROVENANCE.md.
 
 The Sandbox tab runs the same particle filter on a model of your own, in
-its own folder, with a code editor, a contact map and reaction network
-drawn from the model, and data filled from the hub archive by jurisdiction
-and week range. Four example models ship with it.
+its own folder, with a code editor, a check that needs no engine, a
+contact map and reaction network drawn from the model, and data loaded
+from the hub archive (by jurisdiction and week range) or from a CSV of
+your own. Four example models ship with it.
 
 ## Install and run
 
@@ -148,16 +148,26 @@ product, is docs/archive/RELEASE-1.0.md.
 
 ## Layout
 
-    flubnf/            the science package: templates, data, fitting, quantiles, WIS
-    app/               the console: FastAPI UI, run ledger, engines, scoring, reports, sandbox
-    data/banks/        the Groundhog's committed donor banks and their manifests
-    scripts/           operational runners, not packaged
-    docs/              release record, model provenance, engine, install and platform notes
-    tests/ app/tests/  the two test suites (run with pytest)
-    model-metadata/    the hubverse model cards
+| Path | What it holds | Index |
+|---|---|---|
+| `FluBNF.command`, `FluBNF.app/`, `FluBNF.bat`, `SetupEngine.command` | double-click launchers (macOS, Windows) | [docs/LAUNCHERS.md](docs/LAUNCHERS.md) |
+| `install.sh`, `reinstall.sh`, `setup.sh`, `setup_engine.sh`, `setup.ps1` | install, reinstall and setup scripts | [docs/LAUNCHERS.md](docs/LAUNCHERS.md) |
+| `.githooks/` | pre-push hook: both suites as CI runs them, on pushes to main | [docs/LAUNCHERS.md](docs/LAUNCHERS.md) |
+| `flubnf/` | the science package and the `flubnf` CLI | [flubnf/README.md](flubnf/README.md) |
+| `flubnf/templates/` | BNGL model templates; production is `SIHRS_pop_min.bngl` | [flubnf/templates/README.md](flubnf/templates/README.md) |
+| `flubnf/sandbox_examples/` | the Sandbox tab's four example models | [app/core/README.md](app/core/README.md) (sandbox) |
+| `flubnf/data/` | `locations.csv`, used when the hub has none | |
+| `app/core/` | console back end: replay, scoring, reports, Oracle step, site | [app/core/README.md](app/core/README.md) |
+| `app/ui/` | FastAPI server, Jinja pages, static JS and CSS | [app/ui/README.md](app/ui/README.md) |
+| `data/banks/` | the Groundhog's committed donor banks and manifests | [data/README.md](data/README.md) |
+| `scripts/` | ops scripts, not packaged | [scripts/README.md](scripts/README.md) |
+| `docs/` | install, engine, Windows, models, banks, site, archive | [docs/README.md](docs/README.md) |
+| `tests/`, `app/tests/` | the two pytest suites | [tests/README.md](tests/README.md) |
+| `model-metadata/` | the hubverse model cards | [model-metadata/README.md](model-metadata/README.md) |
 
 `app/state/` (ledger and retrospectives), `sandbox/` and `site/` are
-generated locally and ignored by git.
+generated locally and ignored by git. Every `FLUBNF_*` environment
+variable is listed in [docs/LAUNCHERS.md](docs/LAUNCHERS.md).
 
 ## Citing
 

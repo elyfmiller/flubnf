@@ -1,15 +1,9 @@
-"""Month-name time axes replace week-index axes on every swept surface.
-
-An axis labeled "weeks since Aug 1" makes the reader do calendar
-arithmetic. One server-side list of month-boundary week offsets
-(SEASON_MONTHS in app/ui/server.py) now feeds every season-week axis:
-the harmonic figure's ticks, the analogue mechanism diagram, and the
-forecast data panel's season-over-season view; the retrospective's
-cumulative relWIS chart derives its ticks from the same month table
-through the date-indexed helper. The precise information moves to hover:
-each season-over-season trace carries its own season's actual Saturday
-date beside the value.
+"""Month-name time axes replace week-index axes on every season-week surface,
+all fed by one server list (SEASON_MONTHS in app/ui/templating.py); exact
+dates move to hover (each season-over-season trace carries its real
+Saturdays).
 """
+import inspect
 import sys
 from pathlib import Path
 
@@ -18,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from fastapi.testclient import TestClient           # noqa: E402
 
 from app.ui import server as srv                    # noqa: E402
+from app.ui import templating as ui_templating      # noqa: E402
 
 client = TestClient(srv.app)
 
@@ -30,8 +25,8 @@ RETRO_SEASON_T = (UI / "templates" / "retro_season.html").read_text()
 # ------------------------------------------------- the one shared offset list
 
 def test_season_month_offsets_are_the_calendar():
-    months = dict(srv.SEASON_MONTHS)
-    assert [m for m, _ in srv.SEASON_MONTHS] == [
+    months = dict(ui_templating.SEASON_MONTHS)
+    assert [m for m, _ in ui_templating.SEASON_MONTHS] == [
         "Aug", "Sep", "Oct", "Nov", "Dec", "Jan",
         "Feb", "Mar", "Apr", "May", "Jun", "Jul"]
     # spot values on the non-leap reference year, in weeks from August 1
@@ -39,34 +34,35 @@ def test_season_month_offsets_are_the_calendar():
     assert abs(months["Nov"] - 92 / 7) < 0.01
     assert abs(months["Feb"] - 184 / 7) < 0.01
     assert months["May"] == 39.0
-    offs = [w for _, w in srv.SEASON_MONTHS]
+    offs = [w for _, w in ui_templating.SEASON_MONTHS]
     assert offs == sorted(offs) and offs[-1] < 52
 
 
 def test_week_offsets_read_as_calendar_language():
-    assert srv._season_week_name(22) == "early Jan"
-    assert srv._season_week_name(20) == "mid Dec"
-    assert srv._season_week_name(30) == "late Feb"
-    assert srv._season_week_name(0) == "early Aug"
+    assert ui_templating._season_week_name(22) == "early Jan"
+    assert ui_templating._season_week_name(20) == "mid Dec"
+    assert ui_templating._season_week_name(30) == "late Feb"
+    assert ui_templating._season_week_name(0) == "early Aug"
 
 
 def test_every_consumer_reads_the_shared_list_not_a_copy():
-    # forecast passes the server list into JS once; the analogue diagram
-    # loops the template global; the harmonic ticks come from harmonic_fig,
-    # which slices SEASON_MONTHS server-side; the cumulative chart calls the
+    # forecast passes the server list into JS once; the analogue diagram and
+    # harmonic ticks use it server-side; the cumulative chart uses the
     # date-indexed helper. No surface hand-types month offsets.
     assert "{{ season_months | tojson }}" in FORECAST_T
     assert "for lab, wk in season_months" in DIAGRAMS_T
     assert "month_ticks_for_dates" in RETRO_SEASON_T
-    server_py = (UI / "server.py").read_text()
-    assert server_py.count("_MONTH_DAYS = (") == 1
-    assert "SEASON_MONTHS[::3]" in server_py       # harmonic_fig's source
+    ui_py = [p.read_text(encoding="utf-8") for p in sorted(UI.rglob("*.py"))]
+    assert sum(src.count("_MONTH_DAYS = (") for src in ui_py) == 1
+    # harmonic_fig's module
+    assert "SEASON_MONTHS[::3]" in inspect.getsource(
+        inspect.getmodule(ui_templating._harmonic_fig))
 
 
 # ------------------------------------------------------- swept surface: fig
 
 def test_harmonic_ticks_are_months_at_month_start_positions():
-    g = srv._harmonic_fig()
+    g = ui_templating._harmonic_fig()
     assert [m for m, _ in g["ticks"]] == ["Aug", "Nov", "Feb", "May", "Aug"]
     xs = [x for _, x in g["ticks"]]
     assert xs == sorted(xs)
@@ -109,10 +105,10 @@ def test_forecast_season_over_season_uses_month_ticks_and_dated_hover():
 def test_month_ticks_for_dates_marks_each_month_change():
     dates = ["2023-10-14", "2023-10-21", "2023-10-28", "2023-11-04",
              "2023-11-25", "2023-12-02", "2024-01-06"]
-    assert srv._month_ticks_for_dates(dates) == [
+    assert ui_templating._month_ticks_for_dates(dates) == [
         (3, "Nov"), (5, "Dec"), (6, "Jan")]
-    assert srv._month_ticks_for_dates([]) == []
-    assert srv._month_ticks_for_dates(["2024-05-04"]) == []
+    assert ui_templating._month_ticks_for_dates([]) == []
+    assert ui_templating._month_ticks_for_dates(["2024-05-04"]) == []
 
 
 def test_cumulative_chart_draws_the_month_ticks():

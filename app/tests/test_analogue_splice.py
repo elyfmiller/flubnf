@@ -1,11 +1,9 @@
 """The ILI+ splice: an optional second donor pool, vincentized in.
 
-The default path must remain byte-identical to the single-pool analogue,
-because that is what every published figure was measured on. These tests
-pin that identity, the algebra of the blend, the loud failures, and the
-gating of the engine helper. No vintage files and no hub are needed: the
-library tests run on synthetic banks, the helper tests on dummy specs and
-a bank written to tmp_path.
+The default path stays byte-identical to the single-pool analogue (every
+published figure was measured on it). Pinned: that identity, the blend's
+algebra, the loud failures and the engine helper's gating. Synthetic banks
+and dummy specs only.
 """
 import json
 import math

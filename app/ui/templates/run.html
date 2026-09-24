@@ -1,14 +1,30 @@
 {% extends "base.html" %}{% block title %}FluBNF · Run{% endblock %}
-{% block content %}
+{% block head %}{% if dataset %}<script src="/static/plotly.min.js"></script>{% endif %}{% endblock %}
+{% block content %}{% import "_tips.html" as tips %}
 
 <h1>Run: {{ label or "details" }}
- {# the research badge follows the run everywhere it appears; here it is
-    read from the ledger row's spec, the record of record #}
+ {# research badge from the ledger row's spec (the record of record) #}
  {% if research %}<span class="pill">research</span>{% endif %}
+ {% if modified %}<span class="pill warn">modified settings</span>{% endif %}
  {% if status and status not in ("ok", "done") %}
   <span class="pill {{ 'warn' if status in ('stopped','interrupted','partial') else 'bad' }}">{{ status }}</span>
  {% elif status %}<span class="pill ok">{{ status }}</span>{% endif %}
 </h1>
+
+{% if modified %}
+{# the knobs record from the ledger spec; "model settings" in the settings
+   block below names every value #}
+<div class="card" id="modified-note">
+ <h2>Modified model settings</h2>
+ {% if override %}
+ <p>Exported under the hub names by override. Reason recorded with the
+  run: <q>{{ override }}</q></p>
+ {% else %}
+ <p>This run's files carry the non-hub name (<code>&lt;hub id&gt;-modified</code>),
+  so they can never pass for the registered models.</p>
+ {% endif %}
+</div>
+{% endif %}
 
 {% if error %}
 <div class="card">
@@ -19,26 +35,12 @@
 </div>
 {% endif %}
 
-{% if pf_failures or step_errors or ensemble_analogue_only or ensemble_withheld %}
-{# The partial-run record, read from the ledger row's outcome. The chips
-   on the run ledger only COUNT failures; this block names the cells and
-   reasons, in plain escaped text, so a partial run can be reported by
-   copying it (first Windows full grid, 2026-09-01: 4 failures and no
-   page said which cells or why). #}
+{% if pf_failures or step_errors %}
+{# partial-run record from the ledger outcome: names each failed cell and
+   reason as copyable text (the ledger chips only count them) #}
 <div class="card"><h2>Partial-run detail</h2>
  <p class="hint">Recorded on this run's ledger row; copy this block when
   reporting a partial run.</p>
- {# the next two blocks render ledger rows from before the blend was
-    retired (2026-09-22); no current run writes these keys #}
- {% if ensemble_withheld %}
- <p><b>ensemble</b>: <span class="bad">no file written</span><br>
-  <span class="hint">{{ ensemble_withheld }}</span></p>
- {% endif %}
- {% if ensemble_analogue_only %}
- <p><span class="warn">Analogue-only in the ensemble</span>: every PF
-  replicate failed for {{ ensemble_analogue_only | join(", ") }}, so the
-  ensemble file carried the analogue member alone there.</p>
- {% endif %}
  {% if pf_failures %}
  <p>PF fit{{ 's' if pf_failures | length != 1 }} that failed
   ({{ pf_failures | length }}):</p>
@@ -53,30 +55,24 @@
 {% endif %}
 
 {% if settings %}
-{# What produced this run, read entirely from the ledger row: the stored
-   spec (the record of record) plus the row's recorded app build and any
-   engine version numbers it carries. The viewing process's own versions
-   are never printed here: they did not produce the run. settings_html
-   renders nothing for an empty list, so a row with no recorded versions
-   simply omits the block rather than guessing. #}
+{# settings and versions from the ledger row only (the viewer's own
+   versions did not produce this run); no recorded versions, no block #}
+{% if results %}<div class="card"><h2>Results</h2>{{ results | safe }}</div>{% endif %}
 <div class="card"><h2>Run settings</h2>
- {% if results %}<h2>Results</h2>{{ results | safe }}{% endif %}
  {{ settings_html(settings, title="Settings") | safe }}
  {{ settings_html(versions, title="Produced by") | safe }}
 </div>
 {% endif %}
 
 {% if can_rerun %}
-{# one-click re-run from this run's ledger row: no re-filling the Forecast
-   form. Worded honestly: console fits hold no checkpoint, so this is a
-   fresh run, never a resume. The button carries the console-run guard and
-   /run applies the same server-side busy cross-checks. #}
+{# fresh re-run from the recorded spec (console fits hold no checkpoint);
+   console-run guard plus /run's server-side checks #}
 <div class="card">
  <form method="post" action="/runs/{{ run_id }}/rerun" class="rerun-run">
   <button class="gold" data-guard="console-run">Run again with these settings</button>
  </form>
- <p class="hint">Console runs hold no checkpoint: this starts a fresh run
-  with the recorded settings and does not resume the earlier one.</p>
+ <p class="hint">Console runs hold no checkpoint: this starts fresh and
+  does not resume the earlier one.</p>
 </div>
 {% endif %}
 
@@ -88,9 +84,11 @@
   app.</p>
 </div>{% endif %}
 
+{% if dataset %}{% include "_dataset_run.html" %}{% endif %}
+
 {% for model, locs in models.items() %}
-<div class="card"><h2>{{ model }}: median admissions, 1-4 weeks ahead</h2>
-<table><tr><th>location</th><th>1 wk</th><th>2 wk</th><th>3 wk</th><th>4 wk</th></tr>
+<div class="card"><h2>{{ (dataset_members or {}).get(model) or model_name(model) }}: median {{ "values" if dataset else "admissions" }}, 1-4 weeks ahead</h2>
+<table><tr><th>{{ "group" if dataset else "location" }}</th><th>1 wk</th><th>2 wk</th><th>3 wk</th><th>4 wk</th></tr>
 {% for loc, m in locs.items() %}
 <tr><td>{{ loc }}</td>{% for h in ["1","2","3","4"] %}
   {% set v = m.get(h) %}
@@ -98,28 +96,30 @@
 {% endfor %}</table></div>
 {% else %}
 {% if not error %}
-<div class="card"><p class="hint">No results were stored for this run
-{% if status == 'running' %} yet. Still running; watch it on the
- <a href="/forecast">Forecast</a> tab{% endif %}.</p></div>
+<div class="card"><p class="hint">No results stored for this run
+{% if status == 'running' %} yet; it is still running (<a href="/forecast">Forecast</a>){% endif %}.</p></div>
 {% endif %}
 {% endfor %}
 
+{% if not dataset %}
 <div class="card"><h2>Submission files</h2>
 {% for s in subs %}
  {% if s.submittable %}
  <p>{{ s.model }}: <a href="/output/download?path={{ s.path | urlencode }}">{{ s.name }}</a></p>
+ {% elif s.modified %}
+ <p>{{ s.model }}: <a href="/output/download?path={{ s.path | urlencode }}">{{ s.name }}</a><br>
+  <span class="hint">Non-hub name: this run's model settings differ from
+  the shipped ones.</span></p>
  {% else %}
  <p>{{ s.model }}: <code>{{ s.name }}</code><br>
-  <span class="hint">Not submittable. This run wrote it under a retired
-  model name that the hub does not recognise, so no download is offered.
-  A current run writes the registered identity.</span></p>
+  <span class="hint">Not submittable: written under a retired model name
+  the hub rejects; a current run writes the registered identity.</span></p>
  {% endif %}
 {% else %}<p class="hint">None yet. Submissions appear when a run
  completes.</p>{% endfor %}
 {% for model, why in (sub_errors or {}).items() %}
  <p><b>{{ model }}</b>: <span class="bad">no file written</span><br>
-  <span class="hint">The rows were refused before anything reached disk,
-  so the hub was never offered a file it would reject. Reason:
-  {{ why }}</span></p>
+  <span class="hint">Refused before anything reached disk: {{ why }}</span></p>
 {% endfor %}</div>
+{% endif %}
 {% endblock %}

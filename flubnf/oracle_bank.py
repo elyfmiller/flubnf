@@ -1,5 +1,5 @@
-"""The admissions growth-path bank of the Oracle SIHRS: one week's donor pool
-from one hub vintage file, written with a manifest and a content digest.
+"""SHIPPED: the admissions growth-path bank of the Oracle SIHRS: one week's
+donor pool from one hub vintage file, written with a manifest and a content digest.
 
 WHAT IS BANKED
 --------------
@@ -10,18 +10,13 @@ time stamps. A donor path is one (location, week W) of a strictly earlier
 season whose eight raw weeks W-1 .. W+6 are reported and positive, with the
 origin stamp G_inst(W) and the four midpoint stamps G_week(W+k), k = 1..4.
 
-This module is the B1 collector of the registered screen
-(oracle_member/bank_fbase/oracle_bank.py, sha256 a001ec7f91e9c011, itself
-stage0/bank/oracle_bank.py c6c84cf56c95c231 with the floor_weeks parameter)
-ported as a library module: the estimators, the collector, the path-table
-writer and every constant are as that file has them, so a pool rebuilt here
-from a vintage file equals the record's paths_<T>.csv byte for byte
-(tests/test_oracle_bank.py pins it against the record where the record is
-on the machine). What is new is the edge: the vintage is a FILE the caller
-names, populations are a dict the caller passes, and the written pool
-carries a sibling manifest with a content digest that `read_pool` verifies,
-exactly as `flubnf.bank` does for the auxiliary donor banks, so a week's
-provenance can name its pool as "<stream>@<digest8>".
+Ported verbatim from the registered screen's B1 collector
+(oracle_member/bank_fbase/oracle_bank.py, sha256 a001ec7f91e9c011), so a
+pool rebuilt from a vintage equals the record's paths_<T>.csv byte for byte
+(tests/test_oracle_bank.py). New here: the caller names the vintage file and
+passes populations, and a written pool carries a digest manifest that
+read_pool verifies (as flubnf.bank does), so provenance can name it
+"<stream>@<digest8>".
 
 TIME STAMPS. Dates are week-ending Saturdays.
     ly(W)      log count of the week ENDING at W (covers the instants W-1 to W)
@@ -34,23 +29,15 @@ TIME STAMPS. Dates are week-ending Saturdays.
     G_trail(W) = GAMMA + [ly(W) - ly(W-2)] / 2   one-sided trailing estimate,
                                                  centred at W - 1.5
 
-Everything a consumer needs is a function of one as-of vintage. Nothing
-dated after the as-of date is ever read: the loader truncates exactly as the
-Groundhog engine does (app/core/engines/analogue.py), the same-day row kept.
+Nothing dated after the as-of date is read (truncated as the Groundhog
+engine does, same-day row kept).
 
-THE RULE (pre-registration section 3, S2; bank change B1): the primary
-donor pool is FBASE. Every raw count of the four weeks W-1 .. W+2, the window
-the origin stamp reads, is at or above COUNT_FLOOR, and all eight weeks
-W-1 .. W+6 are reported and positive; every week a path touches lies in a
-season strictly earlier than the target season and not in the registered
-exclusions (the season-crossing rule); G_inst(W) > 0 and every midpoint
-stamp is finite (the guards). Fewer than MIN_DONOR_SEASONS donor seasons, or
-fewer than flubnf.analogue.MIN_DONORS paths, is the identity rule: the pool
-holds one IDENTITY row and a consumer applies factor 1.
-
-Donor selection is flubnf.analogue by reference (season_of, epiweek,
-calendar_distance with week 53 at 52.5, resolve_donor_exclusions,
-DEFAULT_BANDWIDTH, MIN_DONORS); nothing is restated as a literal.
+THE RULE (S2, bank change B1), pool FBASE: every raw count of W-1 .. W+2
+(the origin stamp's window) >= COUNT_FLOOR; all of W-1 .. W+6 reported and
+positive; every touched week in a strictly earlier, non-excluded season;
+G_inst(W) > 0 and finite midpoint stamps. Fewer than MIN_DONOR_SEASONS
+seasons or flubnf.analogue.MIN_DONORS paths is the identity rule: one
+IDENTITY row, factor 1. Donor selection is flubnf.analogue by reference.
 """
 from __future__ import annotations
 
@@ -68,34 +55,27 @@ import numpy as np
 from . import analogue as AN
 
 # ---------------------------------------------------------------------------
-# CONSTANTS. Frozen by the pre-registration before the member was scored; some
-# were written after looks at the scored seasons (its sections 10.1 and 10.2).
+# CONSTANTS, frozen by the pre-registration (some after looks at the scored
+# seasons, its sections 10.1 and 10.2).
 # ---------------------------------------------------------------------------
 
-#: The stream name of the pool this module builds: the admissions half of
-#: the member's donor bank, recorded as "<STREAM>@<digest8>". The shipped
-#: bank is the mixture of this half with the FluSurv-NET half (bank change
-#: B2, flubnf.oracle_mix, stream "admissions-fbase+flusurv"; the week records
-#: both digests in its label).
+#: The admissions half of the donor bank, recorded as "<STREAM>@<digest8>"
+#: (the shipped mixture is flubnf.oracle_mix).
 STREAM = "admissions-fbase"
 
 #: Bumped when the on-disk layout of a written pool changes.
 LAYOUT_VERSION = 1
 
-#: Removal rate per week: the shipped SIHRS fixes gamma = 7 / 3.2 d mean
-#: generation time (flubnf/sihrs_priors.py gamma_per_week). G = gamma +
-#: growth is only meaningful at the model's own gamma.
+#: Must equal sihrs_priors.gamma_per_week(): G = gamma + growth only means
+#: something at the model's own gamma.
 GENERATION_TIME_DAYS = 3.2
 GAMMA = 7.0 / GENERATION_TIME_DAYS
 
-#: The one smoother: centred 3-point mean of LOG counts, the smallest
-#: symmetric window. Two-sided smoothing is vintage honest for donors
+#: Centred 3-point mean of LOG counts; two-sided smoothing is vintage honest
 #: because donor weeks lie in strictly earlier seasons.
 SMOOTHER_ID = "c3log"
-SMOOTHER_TEXT = "centred 3-point arithmetic mean of natural-log weekly counts"
 
-#: The one count floor: at a count of 10 one admission is a 10 percent step,
-#: about 0.1 per week in G; below that the integer lattice sets the tails.
+#: Below 10 the integer lattice sets the tails (one admission = ~0.1/wk in G).
 COUNT_FLOOR = 10.0
 
 #: Horizons of a donor path.
@@ -105,21 +85,16 @@ PATH_WEEKS = tuple(range(-1, 7))          # W-1 .. W+6
 #: Weeks that G_inst(W) alone reads: the FBASE floor window (S2).
 BASE_WEEKS = tuple(range(-1, 3))          # W-1 .. W+2
 
-#: Convention C for the secondary beta column (carried in the path table for
-#: the record; no arm reads it): attack rate 0.18 per state-season, s0 0.85,
-#: omega 0.019, rho*mult = season admissions per capita / attack rate.
+#: Convention C for the path table's secondary beta column (no arm reads it):
+#: rho*mult = season admissions per capita / attack rate.
 CONV_C_ATTACK_RATE = 0.18
 CONV_C_S0 = 0.85
 CONV_C_OMEGA = 0.019
-CONV_C_ID = "C:AR0.18,s0=0.85,omega=0.019,rho*mult=season_total_per_capita/AR"
 
-#: A donor season's total is known in a vintage only if the season is
-#: complete there; NA weeks are filled log-linearly for the total only and
-#: the filled share may not exceed this.
+#: Max share of a donor season's total that may come from log-linear NA fill.
 MAX_FILL_SHARE = 0.02
 
-#: With fewer than this many admissible donor SEASONS the forward rule is
-#: the identity (GAMEPLAN v2 F9, fixed a priori).
+#: Fewer admissible donor SEASONS than this: the identity (fixed a priori).
 MIN_DONOR_SEASONS = 2
 
 #: DATA CAVEAT, not a rule: NHSN reporting was voluntary from 2024-05-01 to
@@ -158,11 +133,9 @@ def load_populations(locations_csv) -> dict:
 
 
 def load_rows(path, as_of: date | None) -> list:
-    """Rows of one target-data file, the Groundhog engine's way: location
-    read as a string and zero-filled to 2 characters, date parsed, rows
-    dated after the as-of date DROPPED, the same-day row kept. value is
-    float, NaN for NA. File order is preserved (it fixes the bank's
-    iteration order)."""
+    """Rows of one target-data file, the Groundhog engine's way: 2-char
+    zero-filled location, rows after the as-of date DROPPED (same-day kept),
+    NaN for NA. File order is preserved (it fixes the bank's order)."""
     rows = []
     with open(path, newline="") as fh:
         for r in csv.DictReader(fh):
@@ -243,21 +216,6 @@ def rho_path(est: dict, i: int) -> np.ndarray:
         if i + k < n:
             out[j] = est["G_week"][i + k] / g0
     return out
-
-
-def closed_form_counts(I0: float, G_path, obs_scale: float) -> np.ndarray:
-    """Closed-form propagation of a G path from the state I0 at the origin
-    instant: lam_k = G_k - gamma; weekly count k = obs_scale * gamma *
-    I_(k-1) * (exp(lam_k) - 1) / lam_k; I_k = I_(k-1) * exp(lam_k). No S,
-    no omega. The same recursion flubnf.oracle evaluates on the median path."""
-    out = []
-    I = float(I0)
-    for G in G_path:
-        lam = float(G) - GAMMA
-        f = math.expm1(lam) / lam if abs(lam) > 1e-12 else 1.0
-        out.append(obs_scale * GAMMA * I * f)
-        I *= math.exp(lam)
-    return np.asarray(out)
 
 
 # ---------------------------------------------------------------------------

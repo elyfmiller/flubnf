@@ -1,15 +1,8 @@
-"""The forecast fan card's controls: stable scroll, direct location
-selection, and the expanded view.
-
-Paging the fan or the data panel must change only the chart: the old
-implementation emptied the plot container and then awaited the series
-fetch, so the page lost the chart's height mid-flight and the browser
-clamped the scroll position upward (a visible jump to the top on slow
-fetches). The fix renders each pager shell once, reserves the chart's
-height on the plot div, and repaints in place with Plotly.react. The
-card also gains a location select beside the arrows (both drive the one
-selection state) and an Expand control that opens the current chart in
-the app's modal shell under the guard modal's focus contract.
+"""The forecast fan card's controls: paging repaints in place with
+Plotly.react on a height-reserved div (emptying the container made the page
+jump to the top on slow fetches); a location select beside the arrows shares
+one selection state; Expand opens the chart in the modal shell under the
+guard modal's focus contract.
 """
 import sys
 from pathlib import Path

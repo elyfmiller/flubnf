@@ -1,19 +1,11 @@
 """BUILD 1: the exogenous national-growth term in the per-state PF.
 
-Everything here is synthetic and offline. The point of a synthetic grid is that
-the leave-one-out arithmetic, the vintage dependence, the week alignment and
-the missing-week policy all have exact expected answers, which real NHSN data
-cannot give you.
-
-Three properties are load-bearing and each has its own test:
-
-  * the national series LEAVES THE STATE OUT and is population-weighted,
-  * both series come from the SINGLE vintage file the caller hands over,
-  * the emitted BNGL puts gap[w] on [w, w+1) and holds gap[last] forever
-    after, which is the pre-registered forecast rule.
-
-Plus the guarantee that matters most operationally: with the variant absent,
-the production path writes a BYTE-IDENTICAL model file.
+Synthetic and offline, so leave-one-out arithmetic, vintage dependence, week
+alignment and the missing-week policy have exact answers. Pinned: the
+national series LEAVES THE STATE OUT and is population-weighted; both
+series come from the SINGLE vintage file handed over; the BNGL puts gap[w]
+on [w, w+1) and holds gap[last] after (the pre-registered forecast rule);
+and without the variant the production model file is BYTE-IDENTICAL.
 """
 import re
 import subprocess
@@ -95,9 +87,8 @@ def test_national_series_leaves_the_state_out_and_is_population_weighted(tmp_pat
     grid = _flat_grid()
     gg = _series(tmp_path, _truth(tmp_path, "v.csv", grid), loc)
 
-    # peers all grow at 0.2; the target is flat. If the target leaked into the
-    # national mean it would drag g_nat below 0.2 (it carries 5/35 of the
-    # weight), so this is a real exclusion test, not a tautology.
+    # the target (5/35 of the weight) is flat: had it leaked into the
+    # national mean, g_nat would sit below 0.2
     live = np.isfinite(gg.g_nat)
     assert live.sum() >= N_WEEKS - 2
     assert np.allclose(gg.g_nat[live], 0.2, atol=1e-9)
@@ -133,8 +124,8 @@ def test_national_series_is_silent_below_min_peers(tmp_path):
 # 2. vintage discipline
 # ---------------------------------------------------------------------------
 def test_series_follows_the_vintage_it_is_handed(tmp_path):
-    """The same week, two vintages, two answers. If this test ever passes with
-    identical numbers, something is reading the latest file."""
+    """Same week, two vintages, two answers (identical numbers would mean
+    something reads the latest file)."""
     loc = _locations(tmp_path)
     early = _flat_grid()
     late = {k: dict(v) for k, v in early.items()}
@@ -223,8 +214,8 @@ def test_expression_puts_each_gap_on_its_own_week(tmp_path):
 
 
 def test_forecast_holds_the_last_observed_gap(tmp_path):
-    """The pre-registered rule, asserted on the emitted model text: every t at
-    or beyond the last observed week evaluates to the last observed gap."""
+    """The pre-registered rule: every t at or past the last observed week
+    evaluates to the last observed gap."""
     loc = _locations(tmp_path)
     grid = _flat_grid()
     gg = _series(tmp_path, _truth(tmp_path, "v.csv", grid), loc)
@@ -325,8 +316,8 @@ def test_iota_is_a_constant_and_never_a_fitted_variable():
 
 
 def test_natg_template_is_production_min_plus_one_factor():
-    """The control must stay recognisable inside the variant: identical model
-    machinery, one extra factor on beta and one extra fixed parameter."""
+    """Identical machinery to production min: one extra factor on beta and one
+    fixed parameter."""
     a, b = TPL_MIN.read_text(), TPL_NATG.read_text()
     for block in ("molecule types", "seed species", "observables",
                   "reaction rules", "actions"):
@@ -351,9 +342,8 @@ def test_forecast_rule_is_documented_in_the_template():
 # ---------------------------------------------------------------------------
 @pytest.fixture()
 def fake_netgen(monkeypatch):
-    """BNG2.pl replaced by a stub that writes the .net prepare() checks for.
-    Network generation is BioNetGen's job and is exercised by the smoke run;
-    what this file tests is which template prepare() reaches for."""
+    """BNG2.pl stubbed to write the .net prepare() checks for (this file tests
+    which template prepare() picks, not network generation)."""
     real = subprocess.run
 
     def _run(cmd, *a, **kw):
@@ -385,8 +375,8 @@ def _prepare(tmp_path, monkeypatch, fake_netgen, extra, tag):
 
 def test_production_path_is_byte_identical_without_the_variant(
         tmp_path, monkeypatch, fake_netgen):
-    """No `variant` key, and an unrelated `extra`, must both give exactly the
-    model file the production template has always produced."""
+    """No `variant` key (or an unrelated `extra`) gives exactly the production
+    model file."""
     from flubnf.sihrs_fit import materialize_model
     from app.core.engines.pf import DEFAULTS_BLOCK
 

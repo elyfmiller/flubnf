@@ -1,7 +1,6 @@
-"""Multi-season data-processing audit: every known trap, checked empirically."""
+"""OPS: multi-season data-processing audit: every known trap, checked empirically."""
 import sys, glob, numpy as np, pandas as pd
 sys.path.insert(0,'.')
-from pathlib import Path
 from flubnf.settings import ARCHIVE, HUB
 issues, ok = [], []
 

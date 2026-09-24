@@ -1,21 +1,11 @@
 """pf is named for what a season tree stores, on every Retrospective surface.
 
-The shared model-name map (app/ui/static/player.js) calls pf the Oracle
-SIHRS. Every sealed record and every replay from before the Oracle step
-stores the particle filter alone under pf, so a Retrospective surface that
-titled its relWIS "Oracle SIHRS" named a forecast the member never made:
-the sealed 2024-25 record read "Oracle SIHRS relWIS 0.797", the filter's
-figure, where the member's own is 0.719. The console now names pf per
-tree, by the public site's own test (site_build.tree_carries_oracle):
-
-  * a tree with no oracle.json in its weeks and no run record naming the
-    step is "Particle filter alone" on the index (live or sealed season
-    cards, archived rows), on the season page (tiles, chart legend, table,
-    map toggle and the in-page player) and in the exported season report
-    (tiles, table and the embedded player);
-  * a tree whose weeks carry oracle.json, or whose run record says the
-    step was applied, keeps "Oracle SIHRS";
-  * an export built before names were per tree is rebuilt, not served.
+The shared map calls pf the Oracle SIHRS, but every sealed record and
+pre-Oracle replay stores the particle filter alone under pf. The console
+names pf per tree by site_build.tree_carries_oracle: no oracle.json and no
+run record naming the step means "Particle filter alone" on the index,
+season page and exported report; otherwise "Oracle SIHRS". An export built
+before per-tree names is rebuilt, not served.
 """
 import json
 import re
@@ -33,6 +23,11 @@ from fastapi.testclient import TestClient                  # noqa: E402
 from app.core import playback, report_season, retro, scoring  # noqa: E402
 from app.core import site_build                            # noqa: E402
 from app.ui import server as srv                           # noqa: E402
+from app.ui.routes import retro as ui_retro                # noqa: E402
+from app.ui import retro_prep as ui_retro_prep             # noqa: E402
+from app.ui import retro_seasons as ui_retro_seasons       # noqa: E402
+from app.ui import shared as ui_shared                     # noqa: E402
+from app.ui import templating as ui_templating             # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL      # noqa: E402
 
 client = TestClient(srv.app)
@@ -59,13 +54,9 @@ def _truth():
 
 
 def _tree(root: Path, oracle: str = "", season: str = SEASON) -> Path:
-    """A finished, scored two-week season tree.
-
-    oracle "" is the plain filter as every sealed record stores it: no
-    oracle.json in the weeks and a run record whose settings say nothing
-    about the step. "weeks" writes the step's oracle.json beside every
-    week (a replay run with the step) and leaves the run record silent;
-    "meta" records settings.oracle = "applied" and writes no oracle.json."""
+    """A finished, scored two-week season tree. oracle="" is the plain filter
+    (as every sealed record stores it); "weeks" writes oracle.json beside
+    each week; "meta" records settings.oracle = "applied" instead."""
     truth = _truth()
     for asof in (W1, W2):
         wd = root / "weeks" / asof
@@ -95,9 +86,8 @@ def _tree(root: Path, oracle: str = "", season: str = SEASON) -> Path:
 
 @pytest.fixture
 def world(monkeypatch, tmp_path):
-    """Truth and baselines stubbed for both scoring surfaces, every console
-    tree pointed at empty directories, and a season list the index
-    controls."""
+    """Truth and baselines stubbed for both scoring surfaces, console trees
+    pointed at empty dirs, and a controlled season list."""
     truth = _truth()
     for mod in (scoring, playback):
         monkeypatch.setattr(mod, "load_truth", lambda: (truth, dict(N2F)))
@@ -111,21 +101,21 @@ def world(monkeypatch, tmp_path):
                           tmp_path / "retro_reseal")
     for d in (live, seal, reseal):
         d.mkdir()
-    monkeypatch.setattr(srv, "RETRO_ROOT", live)
-    monkeypatch.setattr(srv, "RETRO_SEAL", seal)
-    monkeypatch.setattr(srv, "RETRO_RESEAL", reseal)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", live)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", seal)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_RESEAL", reseal)
     monkeypatch.setattr(retro, "available_seasons", lambda: [SEASON, OTHER])
     monkeypatch.setattr(retro, "season_vintages", lambda s: [W1, W2])
-    monkeypatch.setattr(srv, "_retro_bg", lambda *a, **k: None)
-    status_before = dict(srv._retro_status)
-    srv._retro_status.clear()
-    srv._results_jobs.clear()
-    srv._invalidate_scans()
+    monkeypatch.setattr(ui_retro, "_retro_bg", lambda *a, **k: None)
+    status_before = dict(ui_retro_seasons._retro_status)
+    ui_retro_seasons._retro_status.clear()
+    ui_retro_prep._results_jobs.clear()
+    ui_shared._invalidate_scans()
     yield {"live": live, "seal": seal, "reseal": reseal}
-    srv._results_jobs.clear()
-    srv._retro_status.clear()
-    srv._retro_status.update(status_before)
-    srv._invalidate_scans()
+    ui_retro_prep._results_jobs.clear()
+    ui_retro_seasons._retro_status.clear()
+    ui_retro_seasons._retro_status.update(status_before)
+    ui_shared._invalidate_scans()
 
 
 def _text(html: str) -> str:
@@ -156,9 +146,8 @@ def _report(season: str, query: str = "") -> str:
 # ------------------------------------------------------------ the index
 
 def test_each_season_card_names_pf_for_the_tree_it_reads(world):
-    # the finding's own case: a sealed record (the production reseal) that
-    # stores the filter alone under pf, the console's own tree empty; and
-    # beside it a live replay whose run record says the step was applied
+    # a sealed record storing the filter alone beside a live replay whose
+    # run record says the step was applied
     _tree(world["reseal"] / SEASON)
     _tree(world["live"] / OTHER, oracle="meta", season=OTHER)
     html = client.get("/retro").text
@@ -177,7 +166,7 @@ def test_each_archived_run_is_named_for_its_own_tree(world):
     retro.archive_run(rr, SEASON, stamp=STAMP_PLAIN)
     _tree(rr / SEASON, oracle="weeks")
     retro.archive_run(rr, SEASON, stamp=STAMP_ORACLE)
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     html = client.get("/retro").text
     assert "2 archived runs kept" in html
     rows = html.split('<div class="archrow">')[1:]
@@ -195,8 +184,8 @@ def test_the_replay_form_names_the_oracle_sihrs(world):
     t = _text(client.get("/retro").text)
     assert '<option value="pf">Oracle SIHRS and the Groundhog (hours)</option>' in t
     assert "Particle filter with the Groundhog" not in t
-    assert "how a season's Oracle SIHRS numbers are made" in t
-    assert srv.retro_engine_label("pf") == "Oracle SIHRS and the Groundhog"
+    assert "Each week fits the Oracle SIHRS from the season start" in t
+    assert ui_retro.retro_engine_label("pf") == "Oracle SIHRS and the Groundhog"
 
 
 # ------------------------------------------------------- the season page
@@ -214,7 +203,7 @@ def test_the_season_page_names_pf_for_the_tree_it_shows(world):
     assert f"aria-pressed=\"false\">{FILTER}<" in t
     # the map toggle the week's two models draw
     assert 'id="retro-model"' in html
-    assert f"{FILTER} outlook" in t and f"{ORACLE} outlook" not in t
+    assert f"{FILTER} categorical forecast" in t and f"{ORACLE} categorical forecast" not in t
     # the in-page player's shared map is set before the player is built
     line = f"FluBNFPlayer.MODEL_NAMES.pf = {json.dumps(FILTER)};"
     assert line in html
@@ -226,19 +215,18 @@ def test_the_season_page_names_pf_for_the_tree_it_shows(world):
     html = _page(OTHER)                   # a tree that carries the step
     t = _text(html)
     assert f"<h2>{ORACLE}</h2>" in t
-    assert f"{ORACLE} outlook" in t
+    assert f"{ORACLE} categorical forecast" in t
     assert f"FluBNFPlayer.MODEL_NAMES.pf = {json.dumps(ORACLE)};" in html
     assert FILTER not in t
 
 
 def test_a_page_model_name_shadows_the_template_global():
-    """The season page hands the tree's names to the template as
-    model_name; in this Jinja environment a context variable of that name
-    wins over the global of the same name, for that render only."""
+    """A context variable named model_name shadows the template global for
+    that render only."""
     env = srv.templates.env
     assert env.globals["model_name"]("pf") == ORACLE
     tpl = env.from_string("{{ model_name('pf') }}|{{ model_name('analogue') }}")
-    got = tpl.render(model_name=srv._name_fn(dict(srv._model_names(),
+    got = tpl.render(model_name=ui_templating._name_fn(dict(ui_templating._model_names(),
                                                   pf=FILTER)))
     assert got == f"{FILTER}|Groundhog"
     assert tpl.render() == f"{ORACLE}|Groundhog"      # the global, untouched
@@ -247,9 +235,8 @@ def test_a_page_model_name_shadows_the_template_global():
 @pytest.mark.skipif(not JSC.is_file(),
                     reason="JavaScriptCore jsc not available")
 def test_the_page_line_renames_pf_in_the_players_shared_map(world, tmp_path):
-    """The line the season page emits, run after player.js: the player's
-    own nameOf (legend, toggles, stats table) reads the new name, because
-    player.js keeps one MODEL_NAMES object and reads it by reference."""
+    """Run after player.js, the emitted line renames pf in the player's one
+    shared MODEL_NAMES object (read by reference)."""
     _tree(world["reseal"] / SEASON)
     html = _page(SEASON)
     m = re.search(r"FluBNFPlayer\.MODEL_NAMES\.pf = [^;\n]+;", html)
@@ -276,9 +263,8 @@ def test_the_report_names_pf_for_the_tree_it_exports(world):
     assert f'class="tilename">{ORACLE}<' not in html
     assert f'<th class="num">{FILTER}</th>' in html
     assert f'<th class="num">{ORACLE}</th>' not in html
-    # the embedded player is handed the same names before it is built (the
-    # inlined player.js still carries the shared literal, so the check is
-    # on the line that overrides it)
+    # the embedded player gets the same names via the overriding line (the
+    # inlined player.js still carries the shared literal)
     line = report_season._names_line(
         dict(report_season.MODEL_NAMES, pf=FILTER))
     assert line in html
@@ -294,9 +280,8 @@ def test_the_report_names_pf_for_the_tree_it_exports(world):
 
 
 def test_an_export_built_before_names_were_per_tree_is_rebuilt(world):
-    """A cached export fresh by every mtime input, carrying every marker
-    the old cache test read, but titled under the old names: served as is,
-    it would go on calling the sealed record's filter the Oracle SIHRS."""
+    """A cached export fresh by mtime but titled under the old names is
+    rebuilt."""
     import os
     root = _tree(world["reseal"] / SEASON)
     p = report_season.build_season_report(root, SEASON)
@@ -315,18 +300,18 @@ def test_an_export_built_before_names_were_per_tree_is_rebuilt(world):
 
 def test_the_names_helper_fails_closed(world, monkeypatch, tmp_path):
     plain = _tree(world["live"] / SEASON)
-    assert srv._names_for_root(plain)["pf"] == FILTER
-    assert srv._names_for_root(tmp_path / "no" / "such" / "tree")["pf"] \
+    assert ui_templating._names_for_root(plain)["pf"] == FILTER
+    assert ui_templating._names_for_root(tmp_path / "no" / "such" / "tree")["pf"] \
         == FILTER
     oracle = _tree(tmp_path / "o" / SEASON, oracle="weeks")
-    assert srv._names_for_root(oracle)["pf"] == ORACLE
+    assert ui_templating._names_for_root(oracle)["pf"] == ORACLE
 
     def boom(root):
         raise RuntimeError("unreadable")
     monkeypatch.setattr(site_build, "tree_carries_oracle", boom)
-    assert srv._names_for_root(oracle)["pf"] == FILTER
+    assert ui_templating._names_for_root(oracle)["pf"] == FILTER
     # every other name is the shared map's, and the map itself is a copy
-    names = srv._names_for_root(oracle)
+    names = ui_templating._names_for_root(oracle)
     assert {k: v for k, v in names.items() if k != "pf"} == \
-        {k: v for k, v in srv._model_names().items() if k != "pf"}
-    assert srv._model_names()["pf"] == ORACLE
+        {k: v for k, v in ui_templating._model_names().items() if k != "pf"}
+    assert ui_templating._model_names()["pf"] == ORACLE

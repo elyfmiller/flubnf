@@ -17,27 +17,16 @@ from fastapi.testclient import TestClient                # noqa: E402
 
 from app.core import sandbox as sb                       # noqa: E402
 from app.ui import server as srv                         # noqa: E402
+from app.ui import state as ui_state                     # noqa: E402
 
 client = TestClient(srv.app)
 
 
 @pytest.fixture
-def box(tmp_path, monkeypatch):
-    """A sandbox rooted in tmp_path, with BNG2.pl faked to write m.net."""
-    monkeypatch.setattr(sb, "SANDBOX", tmp_path / "sandbox")
-    monkeypatch.setattr(sb, "MODELS", tmp_path / "sandbox" / "models")
-    monkeypatch.setattr(sb, "RUNS", tmp_path / "sandbox" / "runs")
-
-    def fake_netgen(cmd, **kw):
-        cwd = Path(kw.get("cwd", "."))
-        if "broken" not in (cwd / "m.bngl").read_text():
-            (cwd / "m.net").write_text("# net\n")
-        return types.SimpleNamespace(stdout="ABORT: bad rule\n", stderr="",
-                                     returncode=0)
-    monkeypatch.setattr(sb.subprocess, "run", fake_netgen)
-    srv._status["running"] = None
-    srv._sandbox_status["running"] = None
-    return tmp_path / "sandbox"
+def box(sandbox_root):
+    """A sandbox rooted in tmp_path, with BNG2.pl faked to write m.net
+    (conftest.sandbox_root)."""
+    return sandbox_root
 
 
 # ------------------------------------------------------------ the folder
@@ -60,7 +49,7 @@ def test_names_are_checked_and_examples_ship_complete():
 
 def test_a_model_from_scratch_is_a_runnable_skeleton(box):
     d = sb.new_model("mine")
-    assert sorted(p.name for p in d.iterdir()) == sorted(sb.REQUIRED)
+    assert sorted(p.name for p in d.iterdir()) == sorted(sb.REQUIRED + (sb.MODEL_FILE,))
     files = sb.read_model("mine")
     bngl = files["model.bngl"]
     for block in ("begin model", "begin parameters", "begin molecule types",
@@ -92,7 +81,7 @@ def test_a_model_from_scratch_is_a_runnable_skeleton(box):
 
 def test_an_example_copies_in_once_and_lists_complete(box):
     d = sb.add_example("kinetics_example")
-    assert sorted(p.name for p in d.iterdir()) == sorted(sb.REQUIRED)
+    assert sorted(p.name for p in d.iterdir()) == sorted(sb.REQUIRED + (sb.MODEL_FILE,))
     with pytest.raises(sb.SandboxError, match="already exists"):
         sb.add_example("kinetics_example")
     with pytest.raises(sb.SandboxError, match="no shipped example"):
@@ -202,15 +191,19 @@ def test_run_records_the_outcome_and_results_read_the_outputs(box, monkeypatch):
 def test_sandbox_page_lists_examples_models_and_runs(box):
     html = client.get("/sandbox").text
     assert 'href="/sandbox"' in html and "Sandbox" in html
-    assert 'value="kinetics_example"' in html                # add-example form
+    assert 'value="example:kinetics_example"' in html        # the New model form
+    assert 'value="skeleton"' in html and 'action="/sandbox/new"' in html
     assert "No models yet" in html
     client.post("/sandbox/add-example", data={"name": "sihrs_example"},
                 follow_redirects=False)
+    html = client.get("/sandbox").text                        # the gallery lists it
+    assert 'href="/sandbox?model=sihrs_example"' in html
+    assert 'value="copy:sihrs_example"' in html
     html = client.get("/sandbox?model=sihrs_example").text
-    assert "sihrs_example" in html and "complete" in html
+    assert "<h1>sihrs_example</h1>" in html
     assert 'name="model_bngl"' in html                       # the editor
     assert "Hobs() = mult*H_Cum" in html
-    assert 'action="/sandbox/new"' in html                   # from scratch
+    assert 'action="/sandbox/new"' in html                   # Duplicate
     r = client.post("/sandbox/new", data={"name": "scratch"}, follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"].endswith("/sandbox?model=scratch")
     import html as H
@@ -224,16 +217,16 @@ def test_sandbox_run_is_refused_while_the_engine_is_busy(box, monkeypatch):
     sb.add_example("kinetics_example")
     started = []
     monkeypatch.setattr(sb, "prepare", lambda *a, **k: started.append(a) or box / "runs" / "x")
-    srv._status["running"] = "console"
+    ui_state._status["running"] = "console"
     r = client.post("/sandbox/run", data={"model": "kinetics_example"},
                     follow_redirects=False)
     assert r.status_code == 303 and started == []
-    srv._status["running"] = None
-    srv._sandbox_status["running"] = "earlier"
+    ui_state._status["running"] = None
+    ui_state._sandbox_status["running"] = "earlier"
     client.post("/sandbox/run", data={"model": "kinetics_example"},
                 follow_redirects=False)
     assert started == []
-    srv._sandbox_status["running"] = None
+    ui_state._sandbox_status["running"] = None
 
 
 def test_sandbox_run_prepares_and_starts_in_the_background(box, monkeypatch):
@@ -252,7 +245,7 @@ def test_sandbox_run_prepares_and_starts_in_the_background(box, monkeypatch):
     assert len(ran) == 1 and ran[0].parent == sb.RUNS
     conf = (ran[0] / "kinetics_example_r0" / "pf.conf").read_text()
     assert "pf_particles = 120" in conf and "pf_seed = 3" in conf
-    assert srv._sandbox_status["running"] is None            # released
+    assert ui_state._sandbox_status["running"] is None            # released
     r = client.post("/sandbox/run", data={"model": "nope"}, follow_redirects=False)
     assert r.status_code == 303 and len(ran) == 1            # refused, not started
     assert client.get("/api/sandbox/runs/../etc").status_code in (404, 422)

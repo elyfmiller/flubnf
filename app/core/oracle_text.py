@@ -1,39 +1,27 @@
-"""The Oracle SIHRS in words: the reader-facing text every surface shares.
+"""PAGE COPY: the Oracle SIHRS sentences and record figures (Jinja global
+`oracle_text`, server).
 
-Home, Methods, the model tab, the public site and the hub card all describe
-the same member, so the sentences that can go stale live HERE, once, and
-the pages read them (a Jinja global, `oracle_text`, in app/ui/server.py).
-No numpy and no pandas: the page shell imports this at startup.
+The Oracle SIHRS in words: the reader-facing text every surface shares
+(Home, Methods, the model tab, the site, the hub card), via the Jinja global
+`oracle_text` in app/ui/templating.py. No numpy or pandas: the page shell
+imports this at startup.
 
-THE DONOR BANK (the one marked place). BANK_STREAM and BANK_TEXT say which
-data streams form the Oracle step's donor pool. Since addendum A2 (the
-lead's decision of 2026-09-23) that is bank change B2, the Groundhog's own
-donor bank: past-season NHSN admissions growth, rebuilt each week from the
-hub's dated archive exactly as the forecast date saw it
-(flubnf.oracle_bank, stream "admissions-fbase"), mixed half and half per
-sample path with past-season FluSurv-NET hospitalization-rate growth from
-the committed, digest-checked bank the Groundhog splices
-(flubnf.oracle_mix, stream "admissions-fbase+flusurv"). If the bank changes
-again, BANK_STREAM and every sentence of BANK_TEXT change together here,
-and nowhere else in the app; app/tests/test_oracle_text.py fails until
-they do, because it holds BANK_STREAM equal to flubnf.oracle_mix.STREAM
-and the hub card's methods_long to BANK_TEXT["card"].
+THE DONOR BANK. BANK_STREAM and BANK_TEXT name the donor pool's data
+streams: bank change B2 (addendum A2), NHSN admissions growth from the dated
+archive (flubnf.oracle_bank) mixed half and half with FluSurv-NET rate growth
+from the committed bank (flubnf.oracle_mix). If the bank changes, change
+BANK_STREAM and every BANK_TEXT sentence together, here only;
+app/tests/test_oracle_text.py holds BANK_STREAM == oracle_mix.STREAM and the
+hub card's methods_long == BANK_TEXT["card"].
 
-THE RECORD. RECORD carries the figures every surface prints, unrounded as
-the B2 screen wrote them (oracle_member/b2/results/screen_b2_scores.json,
-relwis_tables, the common cell set, the seed mean over the five seeds;
-read from that file, never typed, and held equal to it by the test where
-the file is on the machine): the shipped member (LBGH) against the plain
-filter on the same cells of the stored kernel-regularizer J15 grid,
-relWIS against the FluSight baseline as a ratio of WIS sums, US excluded.
-docs/ORACLE-SIHRS.md prints each one, and the test holds every four-place
-figure to that document, so a number without a source cannot ship. The
-choice of this bank over the admissions-only one was the lead's decision
-on a screen that did not resolve it (RECORD_B2_1: LBGH minus the
-admissions-only member, an interval including zero), and the screen is a
-FROZEN-SPECIFICATION REPLICATION on seasons the family had been looked at
-on, so the confirmatory test is the prospective 2026-27 season. CAVEAT
-says that once for every surface.
+THE RECORD. RECORD holds the figures every surface prints, unrounded, copied
+from the B2 screen (screen_b2_scores.json relwis_tables, common cells, seed
+mean): the shipped member (LBGH) vs the plain filter, relWIS as a ratio of
+sums, US excluded. The test holds each four-place figure to
+docs/ORACLE-SIHRS.md (and to the screen file where present). The bank choice
+was the lead's call on an unresolved screen (RECORD_B2_1), and the record is
+a frozen-specification replication; 2026-27 is the prospective test. caveat()
+says so once for every surface.
 """
 from __future__ import annotations
 

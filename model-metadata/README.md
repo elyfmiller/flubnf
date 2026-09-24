@@ -49,3 +49,9 @@ Validate against the hub's own schema before opening a pull request:
 both cards against `app/tests/hub_model_metadata_schema.json`, a byte copy
 of that schema (sha256 7fb27f66e7e2a573, checked against the hub clone
 whenever one is present), including the 200-character limit on `methods`.
+
+A submission CSV is checked the way the hub's CI checks it, with the hub's
+own hubValidations R package, by `scripts/validate_submission.R` (or its
+Python wrapper `scripts/validate_submission.py`). It copies the matching
+card from this directory into a throwaway worktree of the hub clone when
+the hub does not carry it yet.

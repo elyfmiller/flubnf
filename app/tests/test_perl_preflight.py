@@ -1,7 +1,5 @@
-"""Perl is what runs BNG2.pl at run preparation. A Windows desktop without
-it (lab report, 2026-09-02) failed every location with
-'[WinError 2] The system cannot find the file specified', which names
-neither the program nor the fix. Now the absence is named once, before any
+"""Perl runs BNG2.pl at run preparation; without it every location failed
+with an opaque '[WinError 2]'. The absence is named once, before any
 location, everywhere the console reports its components."""
 import sys
 import types
@@ -85,11 +83,11 @@ def test_the_message_names_the_platform_remedy(monkeypatch):
 
 
 def test_components_and_the_setup_check_report_perl(monkeypatch):
-    from app.ui import server
+    from app.ui import versions as ui_versions
     from flubnf import settings
-    assert "perl" in server._VERSION_KEYS
-    monkeypatch.setattr(server, "_VERSION_PROBE", "print('{}')")
-    v = server._component_versions()
+    assert "perl" in ui_versions._VERSION_KEYS
+    monkeypatch.setattr(ui_versions, "_VERSION_PROBE", "print('{}')")
+    v = ui_versions._component_versions()
     assert "perl" in v
     # the setup table names a missing interpreter beside the other paths
     monkeypatch.setattr(settings.shutil, "which", lambda name: None)
