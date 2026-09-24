@@ -56,9 +56,10 @@ mechanistic fit. Model definitions and parameter sources are in
 docs/MODEL-PROVENANCE.md.
 
 The Sandbox tab runs the same particle filter on a model of your own, in
-its own folder, with a code editor, a contact map and reaction network
-drawn from the model, and data filled from the hub archive by jurisdiction
-and week range. Four example models ship with it.
+its own folder, with a code editor, a check that needs no engine, a
+contact map and reaction network drawn from the model, and data loaded
+from the hub archive (by jurisdiction and week range) or from a CSV of
+your own. Four example models ship with it.
 
 ## Install and run
 

@@ -17,8 +17,12 @@ the engine configuration, runs the engine exactly as a console run does
 The sandbox never touches the runs ledger, the retrospectives or the
 seal: its workroots are its own, the folder is not under version control,
 and the production templates are never read from here. Four examples ship
-with FluBNF (flubnf/sandbox_examples) and can be copied in to start from,
-and new_model writes a runnable skeleton of the three files to edit.
+with FluBNF (flubnf/sandbox_examples) and can be copied in under any name,
+new_model writes a runnable skeleton of the three files to edit, and
+copy_model duplicates a model; model.json records where each came from.
+check() reads a model without the engine; prepare() runs the production
+preflight first. data.exp can be filled from the hub archive or from a
+stored custom dataset (app/core/datasets.py), always in calendar weeks.
 """
 from __future__ import annotations
 
