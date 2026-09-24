@@ -33,7 +33,7 @@
    <input id="sbfill-start" name="start" type="date" step="7" min="2020-01-04" value="{{ _src.start or data_range.start }}"></span>
   <span><label for="sbfill-end">End</label>
    <input id="sbfill-end" name="end" type="date" step="7" min="2020-01-04" value="{{ _src.end or data_range.end }}"></span>
-  <span class="sbsetpop"><span class="lblrow"><label><input type="checkbox" name="set_pop" value="1"> Set N</label>{{ tips.tip("sb-setpop", "set N", "Also sets the model's N line to this location's or group's population. Refused for a model that derives i0 from N; start from the Oracle SIHRS filter for that.") }}</span></span>
+  <span class="sbsetpop"><span class="lblrow"><label class="ck"><input type="checkbox" name="set_pop" value="1"> Set N</label>{{ tips.tip("sb-setpop", "set N", "Also sets the model's N line to this location's or group's population. Refused for a model that derives i0 from N; start from the Oracle SIHRS filter for that.") }}</span></span>
   <button class="quiet" formaction="/sandbox/models/{{ editing.name }}/fill-data" formmethod="post">Load into data.exp</button>
  </div>
  {% else %}
