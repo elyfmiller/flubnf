@@ -60,7 +60,9 @@
    {% endif %}
    <script>
     (function () {
-      var VS = {{ vintage_dates | default([], true) | tojson }};
+      // ascending (the page lists them newest first): the anchor is the
+      // LAST week on or before the day, as resolve_anchor picks it
+      var VS = {{ vintage_dates | default([], true) | tojson }}.slice().sort();
       var LIVE = {{ (live_only or "") | tojson }};
       var LIVE_NOTE = {{ (live_only_note or ".") | tojson }};
       var box = document.querySelector('input[name=forecast_date]');
@@ -72,13 +74,17 @@
         if (d.getDay() === 6) return VS.indexOf(day) >= 0 ? day : null;
         var back = (d.getDay() + 1) % 7;          // Sunday=0 -> 1 back
         d.setDate(d.getDate() - back);
-        var sat = d.toISOString().slice(0, 10);
+        // the local calendar date (toISOString is UTC: a day early east of it)
+        var sat = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2)
+          + '-' + ('0' + d.getDate()).slice(-2);
         var earlier = VS.filter(function (v) { return v <= sat; });
         return earlier.length ? earlier[earlier.length - 1] : null;
       }
       function paint() {
         if (!line || !box) return;
         var a = anchorFor(box.value);
+        // the panel's Season start default follows the week that runs
+        box.dataset.anchor = a || '';
         line.textContent = a
           ? 'Anchor week: ' + a + (a === LIVE ? LIVE_NOTE : '.')
           : 'No archived week on or before ' + box.value + '.';

@@ -260,6 +260,51 @@ def test_the_run_route_refuses_bad_fields_in_their_own_words(tmp_path, monkeypat
     assert started[0].extra["mode"] == "vintage"
 
 
+def test_a_day_that_snaps_back_across_august_first_keeps_the_anchors_season(
+        tmp_path, monkeypatch):
+    """The page fills Season start with August 1 of the TYPED day's season.
+    A September day whose data ends in July anchors on July: that fill must
+    not refuse the run as 'not before the forecast date'; the anchor's own
+    default season start applies. A season start typed for the anchor's
+    season is still honoured."""
+    started = _capture(monkeypatch, tmp_path)
+    jul = "2098-07-26"                                   # a Saturday
+    _hub(tmp_path / "hub", [W1, jul], [W1, jul], monkeypatch)
+    ui_state._status["running"] = None
+    ui_state._status.pop("flash", None)
+    client.post("/run", data={"forecast_date": "2098-09-24",
+                              "season_start": "2098-08-01",
+                              "locations": ["Ohio"], "engine": "all"},
+                follow_redirects=False)
+    assert len(started) == 1, ui_state._status.get("flash")
+    assert started[0].forecast_date == jul
+    assert started[0].season_start == "2097-08-01"
+    assert "knobs" not in started[0].extra               # a shipped run
+    ui_state._status["running"] = None
+    client.post("/run", data={"forecast_date": "2098-09-24",
+                              "season_start": "2097-10-01",
+                              "locations": ["Ohio"], "engine": "all"},
+                follow_redirects=False)
+    assert started[1].season_start == "2097-10-01"
+
+
+def test_the_anchor_line_names_the_latest_week_on_or_before_the_day(
+        tmp_path, monkeypatch):
+    """The page lists weeks newest first; the anchor is the LAST archived
+    week on or before a typed day (resolve_anchor reads them ascending),
+    in the server's line and in the page's own script."""
+    _capture(monkeypatch, tmp_path)
+    _hub(tmp_path / "hub", [W1, W2, W3], [W1, W2, W3], monkeypatch)
+    ui_state._last_form.clear()
+    ui_state._last_form.update({"forecast_date": "2098-10-20",   # a Monday
+                                "locations": ["all"], "engine": "all"})
+    page = client.get("/forecast").text
+    assert f"Anchor week: {W3}" in page, page[page.find("anchor-line"):][:120]
+    assert ".slice().sort()" in page                      # the script's copy
+    assert "toISOString()" not in page.split('id="anchor-line"')[1].split(
+        "</script>")[0]                                   # local dates only
+
+
 def test_update_data_moves_the_forecast_date_to_the_new_week(tmp_path, monkeypatch):
     _capture(monkeypatch, tmp_path)
     hub = _hub(tmp_path / "hub", [W1, W2], [W1, W2], monkeypatch)

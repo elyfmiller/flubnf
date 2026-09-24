@@ -150,7 +150,9 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         live_only = next((v for v in vintage_dates[:1] if v not in _vs), "")
     except Exception:
         live_only = ""
-    _anchor, _ = resolve_anchor(form.get("forecast_date", ""), vintage_dates)
+    # ascending, as resolve_anchor reads it (the picker lists newest first)
+    _anchor, _ = resolve_anchor(form.get("forecast_date", ""),
+                                sorted(vintage_dates))
     anchor_note = ((f"Anchor week: {_anchor}"
                     + (LIVE_ONLY_NOTE if _anchor == live_only else ".")
                     ) if _anchor else "No archived week on or before that date.")
@@ -639,6 +641,7 @@ def run_models(request: Request,
                "Nothing was run." if forecast_date else
                "Give a forecast date. Nothing was run.")
         return _back(request, "/forecast")
+    typed_day = forecast_date
     if _d.weekday() != 5:
         # the form already shows this anchor; no banner
         _pick, _ = resolve_anchor(forecast_date)
@@ -699,6 +702,14 @@ def run_models(request: Request,
         return _back(request, "/forecast")
     # A direct call (rerun) may pass Form default objects: read them as blank
     season_start = _str_field(season_start).strip()
+    # the page fills Season start with August 1 of the TYPED day's season;
+    # when the day snapped back across August 1 (a September day anchors on
+    # July's data) that fill is not a choice: the anchor's default applies
+    from app.core.runs import default_season_start as _dss
+    if (season_start and typed_day != forecast_date
+            and season_start == _dss(typed_day)
+            and season_start != _dss(forecast_date)):
+        season_start = ""
     kraw = _knob_raw(knob_fields, knobs)
     override = _str_field(submit_modified).lower() in ("1", "on", "true", "yes")
     reason = _str_field(modified_reason).strip()
