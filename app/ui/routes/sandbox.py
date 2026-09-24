@@ -371,6 +371,31 @@ def sandbox_fill_data(request: Request, name: str, location: str = Form(""),
     return _sandbox_redirect(name)
 
 
+@router.post("/sandbox/models/{name}/simulate-data")
+def sandbox_simulate_data(name: str, model_bngl: str = Form(""),
+                          data_exp: str = Form(""), priors_conf: str = Form(""),
+                          seed: str = Form("")):
+    """data.exp from the model itself: counts drawn around what the model
+    gives at the values model.bngl writes, over data.exp's own weeks, so a
+    fit can be seen to recover values that are known. The editor's text
+    is saved first."""
+    try:
+        saved = _sandbox_save_posted(name, model_bngl, data_exp, priors_conf)
+        if saved:
+            _flash(f"Saved {', '.join(saved)} first.")
+        s = int(seed) if str(seed).strip().isdigit() else 1
+        f = sandbox_mod.simulate_data(name, seed=s)
+        noise = (f"negative-binomial noise at r = {f['r']:g}" if f["r"]
+                 else "Poisson noise")
+        _flash(f"data.exp filled with {f['rows']} weeks of {f['column']} "
+               "simulated from the model at the values written in "
+               f"model.bngl, with {noise}: a fit should find values near "
+               "them.")
+    except Exception as e:
+        _flash(f"Not simulated: {e}")
+    return _sandbox_redirect(name)
+
+
 #: an upload's refusal, shown inline in the Load data box on the next view
 #: of that model (popped once shown)
 _sandbox_upload_report: dict = {}

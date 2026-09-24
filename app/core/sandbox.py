@@ -338,15 +338,16 @@ SKELETON_WEEKS = 12
 def skeleton(name: str) -> dict:
     """The three files of a new model: the skeleton BNGL, placeholder
     counts simulated from it at its starting values (weekly increments of
-    Tobs, the first row the first week's; the engine's data reader takes
-    one header line and no other comment), and the priors that name its
-    free parameters."""
+    Tobs; the engine starts the model one week before the first row, at
+    pf_start_time = -1, so row t is the increment from t-1 to t, which is
+    model time t to t+1 from the seed; the engine's data reader takes one
+    header line and no other comment), and the priors that name its free
+    parameters."""
     import math
     k, scale, n = 0.5, 0.5, 100000
     rows = []
     for t in range(SKELETON_WEEKS):
-        a, b = max(t - 1, 0), max(t, 1)
-        rows.append(f"{t} {scale * n * (math.exp(-k * a) - math.exp(-k * b)):.0f}")
+        rows.append(f"{t} {scale * n * (math.exp(-k * t) - math.exp(-k * (t + 1))):.0f}")
     data = "# time T_weekly\n" + "\n".join(rows) + "\n"
     return {"model.bngl": SKELETON_BNGL.format(name=name, t_end=SKELETON_WEEKS),
             "data.exp": data, "priors.conf": SKELETON_PRIORS}
@@ -682,6 +683,26 @@ def bngl_parameters(bngl: str) -> list:
     return names
 
 
+def bngl_parameter_values(bngl: str) -> dict:
+    """{name: its value as written} for each parameters-block line (the
+    first token after the name: a number or an expression)."""
+    out = {}
+    for s in _block(bngl, "parameters"):
+        toks = s.replace("=", " ").split()
+        if toks and toks[0].isdigit():
+            toks = toks[1:]
+        if len(toks) >= 2:
+            out.setdefault(toks[0], toks[1])
+    return out
+
+
+def _number(v) -> float | None:
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
 def bngl_outputs(bngl: str) -> list:
     """The observable and function names: what pf_cumulative_observable
     may name."""
@@ -743,7 +764,7 @@ def check(files: dict, *, work: Path | None = None) -> dict:
     problems, warnings = [], []
     facts = {"suffix": "", "free": [], "priors": [], "rows": 0,
              "columns": [], "cumulative": "", "species": None,
-             "reactions": None, "network": "not checked"}
+             "reactions": None, "network": "not checked", "at_start": ""}
     bngl = str(files.get("model.bngl", ""))
     try:
         facts["suffix"] = simulate_suffix(bngl)
@@ -782,6 +803,7 @@ def check(files: dict, *, work: Path | None = None) -> dict:
     for p in facts["free"]:
         if p not in named:
             warnings.append(f"{p} ends in __FREE but has no prior line")
+    warnings += _prior_start_warnings(bngl, priors)
     cum = keys.get("pf_cumulative_observable", "")
     facts["cumulative"] = cum
     if not cum:
@@ -824,8 +846,169 @@ def check(files: dict, *, work: Path | None = None) -> dict:
                     subprocess.SubprocessError) as e:
                 facts["network"] = "fails"
                 problems.append(str(e).strip())
+        # the model at its written values beside the data: a scale that
+        # is off tenfold is the commonest reason a first fit collapses
+        if facts["network"] == "generates" and cum in outputs and times:
+            try:
+                ex = expected_counts(files, times=times, work=work)
+                observed = [r[1] for r in read_exp(str(files["data.exp"]))["rows"]]
+                fact, warn = _scale_note(ex["expected"], observed)
+                facts["at_start"] = fact
+                if warn:
+                    warnings.append(warn)
+            except (SandboxError, ValueError, KeyError):
+                pass                       # nothing to compare: no warning
     return {"ok": not problems, "problems": problems, "warnings": warnings,
             "facts": facts}
+
+
+# ------------------------------------------- the model at its written values
+# BNG2.pl's own ODE run of the model as written (no engine, no fit): what
+# the counts would be if every parameter were the value model.bngl writes.
+# Check compares it with data.exp, and "Simulate data" writes counts drawn
+# from it, so a student can see whether a fit recovers values they know.
+
+#: rows simulate_data writes when data.exp has no readable time column
+SIMULATE_WEEKS = 20
+#: the noise simulate_data draws when the model has no r__FREE
+DISPERSION_PARAM = "r__FREE"
+
+
+def expected_counts(files: dict, times: list | None = None,
+                    work: Path | None = None) -> dict:
+    """The weekly counts the model gives at its written values, read as
+    the engine reads them: the increment of pf_cumulative_observable over
+    each data row's week, the model starting at pf_start_time (-1 unless
+    priors.conf sets it). times defaults to data.exp's time column.
+    {"times", "expected", "column"}; SandboxError in words otherwise
+    (BNG2.pl's own words when it cannot simulate)."""
+    import tempfile
+    from app.core import contactmap
+    bngl = str(files.get("model.bngl", ""))
+    _, keys = split_priors(str(files.get("priors.conf", "")))
+    cum = keys.get("pf_cumulative_observable", "")
+    if not cum:
+        raise SandboxError("priors.conf names no pf_cumulative_observable, "
+                           "so there is no count to simulate")
+    if times is None:
+        try:
+            times = [r[0] for r in read_exp(str(files.get("data.exp", "")))["rows"]]
+        except (SandboxError, ValueError):
+            times = list(range(SIMULATE_WEEKS))
+    t0 = _number(keys.get("pf_start_time", "-1"))
+    times = [float(t) for t in times]
+    if (t0 is None or not float(t0).is_integer()
+            or any(not t.is_integer() for t in times)):
+        raise SandboxError("simulating needs whole-number times (weeks) in "
+                           "data.exp and pf_start_time")
+    if not times or min(times) <= t0:
+        raise SandboxError(f"every data row must come after the start time "
+                           f"{t0:g}")
+    t_end = int(max(times) - t0)
+    if work:
+        Path(work).mkdir(parents=True, exist_ok=True)
+    try:
+        with tempfile.TemporaryDirectory(dir=str(work) if work else None) as tmp:
+            traj = contactmap.trajectory_from_bngl(bngl, Path(tmp), t_end)
+    except (contactmap.ContactMapError, OSError,
+            subprocess.SubprocessError) as e:
+        raise SandboxError(str(e).strip()) from None
+    col = traj.get(cum)
+    if not col or len(col) < t_end + 1:
+        raise SandboxError(f"the simulation printed no column {cum}: is it "
+                           "an observable or a function of the model?")
+    expected = [col[int(t - t0)] - col[int(t - t0) - 1] for t in times]
+    return {"times": times, "expected": expected, "column": cum}
+
+
+def synthetic_exp(files: dict, *, seed: int = 1, times: list | None = None,
+                  work: Path | None = None) -> tuple:
+    """(data.exp text, facts): counts drawn around expected_counts, with
+    negative-binomial noise at the model's written r__FREE (Poisson when
+    it has none), one row per time, under data.exp's own header line."""
+    ex = expected_counts(files, times=times, work=work)
+    r = _number(bngl_parameter_values(str(files.get("model.bngl", "")))
+                .get(DISPERSION_PARAM))
+    r = r if r and r > 0 else None
+    rng = np.random.default_rng(int(seed))
+    counts = []
+    for mu in ex["expected"]:
+        mu = max(float(mu), 0.0)
+        if mu == 0:
+            counts.append(0)
+        elif r:
+            counts.append(int(rng.negative_binomial(r, r / (r + mu))))
+        else:
+            counts.append(int(rng.poisson(mu)))
+    header = DEFAULT_HEADER
+    for line in str(files.get("data.exp", "")).splitlines():
+        if line.strip():
+            if line.lstrip().startswith("#"):
+                header = line.rstrip()
+            break
+    text = header + "\n" + "\n".join(
+        f"{_fmt(t)} {c}" for t, c in zip(ex["times"], counts)) + "\n"
+    return text, {"rows": len(counts), "r": r, "seed": int(seed),
+                  "column": ex["column"]}
+
+
+def simulate_data(name: str, *, seed: int = 1) -> dict:
+    """Rewrite a model's data.exp with counts simulated from the model at
+    its written values (synthetic_exp), keeping its time rows; the data
+    sidecar goes, since the rows are no longer the archive's."""
+    files = read_model(name)
+    text, facts = synthetic_exp(files, seed=seed, work=SANDBOX / "check")
+    d = model_dir(name)
+    (d / "data.exp").write_text(text, encoding="utf-8", newline="\n")
+    (d / SOURCE_FILE).unlink(missing_ok=True)
+    return facts
+
+
+def _scale_note(expected: list, observed: list) -> tuple:
+    """(fact, warning or '') comparing the model at its written values
+    with the data: their ranges, and a warning when their totals differ
+    tenfold or more (N, the starting state or the scale is off)."""
+    obs = [float(v) for v in observed if float(v) >= 0]
+    exp_ = [max(float(v), 0.0) for v in expected]
+    if not obs or not exp_:
+        return "", ""
+    f = lambda v: f"{v:,.0f}" if abs(v) >= 10 else f"{v:.2g}"
+    fact = (f"at its written values the model gives {f(min(exp_))} to "
+            f"{f(max(exp_))} a week; data.exp holds {f(min(obs))} to "
+            f"{f(max(obs))}")
+    so, se = sum(obs), sum(exp_)
+    if so <= 0 or se <= 0:
+        return fact, ""
+    ratio = se / so
+    if ratio >= 10 or ratio <= 0.1:
+        how = (f"{ratio:,.0f} times" if ratio >= 10
+               else f"1/{1 / ratio:,.0f} of")
+        return fact, (f"at the values written in model.bngl the model's "
+                      f"counts total {how} the data's: check N, the "
+                      "starting state and the reporting scale, or the fit "
+                      "starts far from the data")
+    return fact, ""
+
+
+def _prior_start_warnings(bngl: str, priors: list) -> list:
+    """A fitted parameter whose written value lies outside its range
+    prior: harmless to the filter (it draws from the prior) but a sign
+    the two files disagree."""
+    vals = bngl_parameter_values(bngl)
+    out = []
+    for line in priors:
+        kind, _, rest = (x.strip() for x in line.partition("="))
+        toks = rest.split()
+        if kind not in RANGE_PRIORS or len(toks) < 3:
+            continue
+        v, lo, hi = _number(vals.get(toks[0])), _number(toks[1]), _number(toks[2])
+        if None in (v, lo, hi) or lo >= hi:
+            continue
+        if not lo <= v <= hi:
+            out.append(f"{toks[0]} is written as {vals[toks[0]]} "
+                       f"in model.bngl but its prior runs {toks[1]} to "
+                       f"{toks[2]}: the fit only looks inside the prior")
+    return out
 
 
 def preflight() -> None:
@@ -915,8 +1098,15 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
 
     The production preflight runs first. The network is generated here,
     by BNG2.pl, so a model that does not generate is refused before the
-    engine is asked for anything, with BNG2.pl's own words.
+    engine is asked for anything, with BNG2.pl's own words. Run settings
+    the engine would refuse late (a jitter outside 0 to 1, a negative
+    seed) are refused here, before anything is written.
     """
+    if not 0 < float(jitter) < 1:
+        raise SandboxError(f"jitter {float(jitter):g} is not between 0 and 1 "
+                           "(0.15 is the production setting)")
+    if int(seed) < 0:
+        raise SandboxError(f"seed {int(seed)} is negative: use 0 or more")
     preflight()
     files = read_model(name)
     sfx = simulate_suffix(files["model.bngl"])
@@ -1140,7 +1330,102 @@ def results(workroot: Path, live=_RAW) -> dict:
             continue
         if txt:
             out["stderr"] += txt[-1500:]
+    out["health"] = fit_health(out)
     return out
+
+
+#: fit_health's thresholds, as fractions of the particles: under COLLAPSED
+#: the cloud is a handful of copies (the engine's own collapse warning is
+#: ESS under 2%), under THIN it is thinning out
+HEALTH_COLLAPSED = 0.02
+HEALTH_THIN = 0.10
+#: fewer of the observed rows inside the 10 to 90% band: the band misses
+HEALTH_COVER = 0.5
+
+
+def fit_health(res: dict) -> dict | None:
+    """The run's outcome in plain words for the Results card, read from
+    what the engine wrote: "level" (good, rough, collapsed), a "title", a
+    "says" sentence, the week "at" it went wrong, whether the band "misses"
+    most of the data, and "tries": what to do next, most useful first.
+    None for a run that left no parameter sample and no ESS record."""
+    meta = res.get("meta") or {}
+    ess, params = res.get("ess") or [], res.get("params") or []
+    if not ess and not params:
+        return None
+    n = int(meta.get("particles") or 0) or int(res.get("sample") or 0) or 1
+    sample = int(res.get("sample") or 0)
+    distinct = int(res.get("distinct") or 0)
+    ess_min = min((e["ess"] for e in ess), default=None)
+    thin_at = next((e["t"] for e in ess
+                    if e["ess"] < HEALTH_THIN * n
+                    or e["distinct"] < HEALTH_THIN * n), None)
+    gone_at = next((e["t"] for e in ess
+                    if e["ess"] < HEALTH_COLLAPSED * n
+                    or e["distinct"] < HEALTH_COLLAPSED * n
+                    or e.get("degenerate")), None)
+    flat = bool(params) and all(p["p5"] == p["p95"] for p in params)
+    few = bool(sample) and distinct <= max(2, HEALTH_COLLAPSED * sample)
+    first_t = ess[0]["t"] if ess else None
+    # the band against the data: observed rows inside the 10 to 90% band
+    misses, inside, counted = False, 0, 0
+    tr = res.get("traj") or {}
+    obs = meta.get("observed") or []
+    if tr.get("q10") and obs:
+        for i, y in enumerate(obs[:len(tr["q10"])]):
+            if y is None or float(y) < 0:
+                continue
+            counted += 1
+            inside += tr["q10"][i] <= float(y) <= tr["q90"][i]
+        misses = counted >= 3 and inside < HEALTH_COVER * counted
+    fmt_t = lambda t: f"{t:g}"
+    h = {"level": "good", "at": None, "misses": misses, "tries": [],
+         "ess_min": ess_min, "particles": n, "inside": inside,
+         "counted": counted}
+    if flat or few or gone_at is not None:
+        # the first sign: thinning comes before (or with) the collapse
+        at = min((t for t in (thin_at, gone_at) if t is not None), default=None)
+        h.update(level="collapsed", at=at, title="The fit collapsed",
+                 says=("Nearly every particle ended as a copy of the same "
+                       "one or few parameter sets"
+                       + (f", from t = {fmt_t(at)} on" if at is not None else "")
+                       + ", so the table shows one value where a range "
+                       "should be and the band is not a real estimate."))
+    elif thin_at is not None:
+        h.update(level="rough", at=thin_at, title="The fit is rough",
+                 says=(f"The particles thinned out at t = {fmt_t(thin_at)} "
+                       f"(lowest ESS {ess_min:,.0f} of {n:,}), so the ranges "
+                       "are likely too narrow."))
+    else:
+        h.update(title="The fit looks healthy",
+                 says=("The particles stayed varied at every week"
+                       + (f" (lowest ESS {ess_min:,.0f} of {n:,})"
+                          if ess_min is not None else "") + "."))
+    if misses:
+        h["says"] += (f" Only {inside} of the {counted} data points sit "
+                      "inside the 10 to 90% band.")
+    tries = h["tries"]
+    if n < FULL_FIT_PARTICLES and h["level"] != "good":
+        tries.append(f"Run the full fit with {FULL_FIT_PARTICLES:,} "
+                     f"particles: {n:,} cover a prior too thinly.")
+    if h["level"] == "collapsed" and h["at"] is not None and h["at"] == first_t:
+        tries.append("It went wrong at the first data row: Check compares "
+                     "the model at its written values with the data. N, "
+                     "the starting state and the reporting scale set the "
+                     "first weeks' counts; the model starts one week "
+                     "before the first row.")
+    if h["level"] != "good" or misses:
+        tries.append("Narrow a prior that is much wider than the values "
+                     "you find plausible: particles drawn where the data "
+                     "rule them out are wasted.")
+    if misses:
+        tries.append("A band that misses the data is the model, not the "
+                     "filter: check the rates, the fixed values and which "
+                     "output pf_cumulative_observable names.")
+    if h["level"] != "good":
+        tries.append("Raise Jitter to 0.2 or 0.3 so a thinning cloud "
+                     "spreads out again.")
+    return h
 
 
 # ------------------------------------------------------------- the archive
