@@ -19,7 +19,10 @@ dataset`` all read through it):
   * separators: comma, semicolon or tab, sniffed from the header.
   * numbers: "1,234" in a comma file is 1234; decimal commas ("1,5") are
     read in a semicolon or tab file when the column shows it unambiguously;
-    anything that could go either way is refused.
+    anything that could go either way is refused. A value or name that an
+    unquoted separator split (1,234 or Bern, Stadt without quotes) is
+    refused, whether its second half lands past the header or in an
+    ignored column.
   * headers: case, space and underscore do not matter, and obvious aliases
     are read (``ROLE_ALIASES``). A required column that cannot be matched,
     or two columns that could both be it, asks for a column mapping
@@ -219,7 +222,7 @@ PROBLEM_KINDS = (
               "limit_rows", "limit_groups", "kind_invalid",
               "target_required", "target_unknown", "target_blank")),
     ("Columns", ("missing_columns", "ambiguous_columns", "column_unknown",
-                 "duplicate_columns", "ragged", "extra_fields")),
+                 "duplicate_columns", "ragged", "extra_fields", "split")),
     ("Dates", ("date_parse", "date_day_first", "weekday", "weekday_end",
                "as_of_parse", "as_of_before_date")),
     ("Values", ("value_numeric", "value_format", "value_negative",
@@ -553,6 +556,10 @@ _EITHER = re.compile(r"[+-]?[1-9]\d{0,2}[.,]\d{3}")
 #: and "infinity")
 _PLAIN = re.compile(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?",
                     re.ASCII)
+#: the two halves of "1,234" or "1,234.5" written without quotes in a comma
+#: file: 1 to 3 digits, then exactly 3 (and any decimals) in the next cell
+_CUT_HEAD = re.compile(r"[+-]?\d{1,3}", re.ASCII)
+_CUT_TAIL = re.compile(r"\d{3}(?:\.\d+)?", re.ASCII)
 
 
 def number_style(texts, delimiter: str = ","):
@@ -631,13 +638,37 @@ def _examples(items) -> str:
     return ", ".join(str(x) for x in list(items)[:MAX_EXAMPLES])
 
 
-def _rows(lines) -> str:
-    """'row 5' / 'rows 5, 9, 12 and 40 more'."""
+def _rows(lines, total: Optional[int] = None) -> str:
+    """'row 5' / 'rows 5, 9, 12 and 40 more' (``total`` counts rows past
+    the ones listed, when only the first few were kept)."""
     ls = sorted(set(lines))
+    total = len(ls) if total is None else total
     shown = ", ".join(str(x) for x in ls[:MAX_ROWS_SHOWN])
-    more = len(ls) - MAX_ROWS_SHOWN
-    return (f"row{'s' if len(ls) != 1 else ''} {shown}"
+    more = total - min(len(ls), MAX_ROWS_SHOWN)
+    return (f"row{'s' if total != 1 else ''} {shown}"
             + (f" and {more:,} more" if more > 0 else ""))
+
+
+class _Tally:
+    """Rows sharing one finding, bounded however long the file: how many,
+    the first MAX_ROWS_KEPT row numbers and the first MAX_EXAMPLES
+    examples."""
+
+    def __init__(self):
+        self.n, self.lines, self.eg = 0, [], []
+
+    def add(self, line: int, eg=None) -> None:
+        self.n += 1
+        if len(self.lines) < MAX_ROWS_KEPT:
+            self.lines.append(line)
+        if eg is not None and len(self.eg) < MAX_EXAMPLES:
+            self.eg.append((line, eg))
+
+    def merge(self, other: "_Tally") -> None:
+        self.n += other.n
+        self.lines = sorted(self.lines + other.lines)[:MAX_ROWS_KEPT]
+        self.eg = sorted(self.eg + other.eg,
+                         key=lambda x: x[0])[:MAX_EXAMPLES]
 
 
 def _norm_header(h: str) -> str:
@@ -860,39 +891,81 @@ def _read(src: _Replayable, enc: str, limits: Limits, columns,
         return rep, None, []
     cols["_delim"] = delim
     idx = cols["_idx"]
-    need = max(idx.values()) + 1
+    used = set(idx.values())
+    need = max(used) + 1
     width = len(header)
     groups_seen = set()
-    ragged, extra, raw_rows = [], [], []
+    ragged, raw_rows = [], []
+    # cells past the header's columns: an unquoted separator inside a value
+    # ("1,234") split it, and slicing would keep the wrong half
+    extra = _Tally()
+    # a row longer than the shortest row that fills the header, its extra
+    # cell empty but text in an ignored column: a split whose second half
+    # went into that column ('1,234,' over 'date,group,value,comment')
+    longer, complete = {}, None
+    # a value or name split so that its second half lands in the IGNORED
+    # column right after it, which a row of the same length hides (a
+    # writer that drops trailing empty cells): [index, rows, rows whose
+    # next cell is no number]
+    num_cut, txt_cut = {}, {}
+    for role in ("value", "population", "group", "location_name"):
+        i = idx.get(role)
+        if i is None or i + 1 >= width or i + 1 in used:
+            continue
+        if role in ("value", "population") and delim == ",":
+            num_cut[role] = [i, _Tally(), 0]
+        elif role in ("group", "location_name") and delim in ",;":
+            txt_cut[role] = [i, _Tally()]
     gcol = idx["group"]
     for row in reader:
         if not row or all(not c.strip() for c in row):
             continue
         if len(raw_rows) >= limits.max_rows:
             raise _LimitExceeded("rows")
-        if len(row) > width and any(c.strip() for c in row[width:]):
-            # more cells than the header names: an unquoted separator
-            # inside a value ("1,234") split it, and slicing would keep
-            # the wrong half
-            extra.append((reader.line_num,
-                          row if len(extra) < MAX_EXAMPLES else None))
-        if len(row) < need:
-            ragged.append(reader.line_num)
-            row = row + [""] * (need - len(row))
+        line, n = reader.line_num, len(row)
+        cut = False
+        for c in num_cut.values():
+            i = c[0]
+            head = row[i].strip() if i < n else ""
+            tail = row[i + 1] if i + 1 < n else ""
+            if _CUT_HEAD.fullmatch(head) and _CUT_TAIL.fullmatch(tail):
+                c[1].add(line, (head, tail))
+                cut = True
+            elif not _PLAIN.fullmatch(tail.strip()):
+                c[2] += 1
+        for c in txt_cut.values():
+            i = c[0]
+            head = row[i] if i < n else ""
+            tail = row[i + 1] if i + 1 < n else ""
+            if (tail[:1].isspace() and tail.strip() and head.strip()
+                    and not head[:1].isspace()):
+                c[1].add(line, (head, tail))
+                cut = True
+        if n > width and any(c.strip() for c in row[width:]):
+            extra.add(line, row)
+        elif n >= width:
+            complete = n if complete is None else min(complete, n)
+            if n > width and not cut and any(
+                    row[k].strip() for k in range(width) if k not in used):
+                longer.setdefault(n, _Tally()).add(line, row)
+        if n < need:
+            ragged.append(line)
+            row = row + [""] * (need - n)
         g = row[gcol].strip()
         if g not in groups_seen:
             groups_seen.add(g)
             if len(groups_seen) > limits.max_groups:
                 raise _LimitExceeded("groups")
-        raw_rows.append((reader.line_num,
-                         {k: row[i] for k, i in idx.items()}))
+        raw_rows.append((line, {k: row[i] for k, i in idx.items()}))
     if ragged:
         rep.add("ragged", f"{len(ragged)} row(s) have fewer fields than the "
                 f"columns they need ({_rows(ragged)}; e.g., row {ragged[0]}).",
                 ragged)
-    if extra:
-        lines = [ln for ln, _ in extra]
-        ln, cells = extra[0]
+    for n, t in longer.items():
+        if n > complete:
+            extra.merge(t)
+    if extra.n:
+        ln, cells = extra.eg[0]
         shown = delim.join(cells)
         shown = shown if len(shown) <= 60 else shown[:57] + "..."
         how = ("An unquoted comma splits a value in two: write 1,234 as "
@@ -900,9 +973,40 @@ def _read(src: _Replayable, enc: str, limits: Limits, columns,
                '("Bern, Stadt").' if delim == "," else
                f"An unquoted {DELIMITERS[delim]} splits a value in two: "
                "quote a value that holds one.")
-        rep.add("extra_fields", f"{len(extra)} row(s) have more fields than "
-                f"the header's {width} column(s) ({_rows(lines)}; e.g., row "
-                f"{ln}: {shown}). {how}", lines)
+        rep.add("extra_fields", f"{extra.n} row(s) have more fields than "
+                f"the header's {width} column(s) ({_rows(extra.lines, extra.n)}"
+                f"; e.g., row {ln}: {shown}). {how}", extra.lines)
+    for role, (i, t, other) in num_cut.items():
+        if not t.n:
+            continue
+        ln, (a, b) = t.eg[0]
+        what = (f"the '{cols[role]}' cell is 1 to 3 digits and the ignored "
+                f"'{header[i + 1]}' column after it holds 3 more")
+        if other:
+            # that column is blank or text elsewhere: these are halves
+            rep.add("split", f"{t.n} row(s) look like a number split in two "
+                    f"by an unquoted comma: {what} ({_rows(t.lines, t.n)}; "
+                    f"e.g., row {ln}: {a} then {b}, likely {a},{b}). Write "
+                    f'1,234 as "1,234" or 1234.', t.lines)
+        elif t.n == len(raw_rows):
+            # on every row: a 3-digit column of its own, or every number
+            # split; say so
+            rep.warnings.append(
+                f"On every row {what} (e.g., row {ln}: {a} then {b}): if "
+                f"they are numbers like {a},{b} split by an unquoted comma, "
+                f'write them as "{a},{b}" or {a}{b}.')
+    for role, (i, t) in txt_cut.items():
+        if not t.n:
+            continue
+        ln, (a, b) = t.eg[0]
+        sep = DELIMITERS[delim]
+        rep.add("split", f"{t.n} row(s) look like a name split in two by an "
+                f"unquoted {sep}: the ignored '{header[i + 1]}' column after "
+                f"'{cols[role]}' starts with a space ({_rows(t.lines, t.n)}; "
+                f"e.g., row {ln}: '{a}' then '{b}', likely "
+                f'"{a}{delim}{b}"). Quote a name that holds a {sep} '
+                f'("Bern{delim} Stadt"), or remove the space that starts '
+                f"those '{header[i + 1]}' cells.", t.lines)
     return rep, cols, raw_rows
 
 

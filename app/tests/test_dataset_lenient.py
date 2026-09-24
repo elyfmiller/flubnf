@@ -584,6 +584,67 @@ def test_extra_fields_name_the_separator_and_spare_empty_cells():
     assert [r[4] for r in rep.records] == [1234, 1500]
 
 
+@pytest.mark.parametrize("raw", [
+    # a trailing comment column the writer always writes: once read as
+    # value 1 (1234 lost), with only the ignored-column notice
+    b"date,target_group,value,comment\n2024-01-06,A,1,234,\n"
+    b"2024-01-13,A,987,\n2024-01-20,A,1,002,\n",
+    # the same from a writer that drops trailing empty cells: the base
+    # refused it as ragged, the lenient reader once accepted it
+    b"date,target_group,value,comment\n2024-01-06,A,1,234\n"
+    b"2024-01-13,A,987\n2024-01-20,A,1,002\n",
+])
+def test_a_number_split_into_an_ignored_column_is_refused(raw):
+    """An unquoted "1,234" whose second half lands in an ignored column:
+    no cell is past the header, so the field count alone missed it."""
+    rep = D.validate(raw)
+    assert rep.codes == ["split"]
+    p = rep.problems[0]
+    assert p.rows == (2, 4) and p.kind == "Columns"
+    assert "row 2: 1 then 234, likely 1,234" in p.message
+    assert "ignored 'comment' column" in p.message
+    with pytest.raises(D.DatasetError):
+        D.ingest(raw, "cut")
+    assert D.list_datasets() == []
+
+
+def test_a_name_split_into_an_ignored_column_is_refused():
+    """'Bern, Stadt' unquoted was stored as the group 'Bern'."""
+    raw = (b"date,value,target_group,notes\n2024-01-06,5,Bern, Stadt\n"
+           b"2024-01-13,6,Bern, Stadt\n")
+    p = only(D.validate(raw), "split")
+    assert p.rows == (2, 3)
+    assert "row 2: 'Bern' then ' Stadt', likely \"Bern, Stadt\"" in p.message
+    # no space after the comma, but a row longer than the others
+    raw = (b"date,value,target_group,notes\n2024-01-06,5,Bern,Stadt,\n"
+           b"2024-01-13,6,Zug,\n2024-01-20,7,Zug,\n")
+    rep = D.validate(raw)
+    assert rep.codes == ["extra_fields"] and rep.problems[0].rows == (2,)
+
+
+def test_short_rows_padding_and_numeric_columns_are_not_splits():
+    # a lazy writer: a note on the last row only
+    ok(D.validate(b"date,target_group,value,note\n2024-01-06,A,5\n"
+                  b"2024-01-13,A,6\n2024-01-20,A,7,ok\n"))
+    # every row padded alike, and a stray trailing comma
+    ok(D.validate(b"date,target_group,value,notes\n2024-01-06,A,5,x,,\n"
+                  b"2024-01-13,A,6,y,,\n2024-01-20,A,7,,,\n"))
+    ok(D.validate(b"date,target_group,value\n2024-01-06,A,5,\n"
+                  b"2024-01-13,A,6\n"))
+    # a numeric column of its own after the value; a note after a space
+    ok(D.validate(b"date,target_group,value,beds\n2024-01-06,A,5,120\n"
+                  b"2024-01-13,A,6,95\n2024-01-20,A,7,250\n"))
+    ok(D.validate(b"date,target_group,value,notes\n2024-01-06,A,5, approx\n"
+                  b"2024-01-13,A,6,\n"))
+    ok(D.validate(b"date, target_group, value, notes\n2024-01-06, A, 5, rain\n"
+                  b"2024-01-13, A, 6, snow\n"))
+    # 3 digits after the value on EVERY row: either reading, said aloud
+    rep = ok(D.validate(b"date,target_group,value,beds\n2024-01-06,A,5,120\n"
+                        b"2024-01-13,A,6,195\n2024-01-20,A,7,250\n"))
+    assert any(w.startswith("On every row the 'value' cell is 1 to 3 digits")
+               and 'write them as "5,120" or 5120' in w for w in rep.warnings)
+
+
 # ----------------------------------------------------- mixed encodings
 
 def test_utf8_text_with_a_stray_windows_1252_row_is_refused():
