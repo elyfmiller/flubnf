@@ -47,20 +47,15 @@ def fake_vintage_series(date, location_name):
 
 
 @pytest.fixture
-def box(tmp_path, monkeypatch):
-    """A sandbox rooted in tmp_path with the archive faked: three
-    locations, settled truth with one missing week, one vintage."""
-    monkeypatch.setattr(sb, "SANDBOX", tmp_path / "sandbox")
-    monkeypatch.setattr(sb, "MODELS", tmp_path / "sandbox" / "models")
-    monkeypatch.setattr(sb, "RUNS", tmp_path / "sandbox" / "runs")
+def box(sandbox_root, monkeypatch):
+    """A sandbox rooted in tmp_path (conftest.sandbox_root) with the
+    archive faked: three locations, settled truth with one missing week,
+    one vintage."""
     monkeypatch.setattr(sb, "locations", lambda: list(LOCS))
     monkeypatch.setattr(sb, "vintages", lambda: ["2024-11-09", "2024-11-02"])
     monkeypatch.setattr(scoring, "load_truth", fake_truth)
     monkeypatch.setattr(data_mod, "vintage_series", fake_vintage_series)
-    srv._status.pop("flash", None)
-    srv._status["running"] = None
-    srv._sandbox_status["running"] = None
-    return tmp_path / "sandbox"
+    return sandbox_root
 
 
 # ----------------------------------------------------------- the archive
@@ -218,3 +213,26 @@ def test_the_editor_shows_the_fieldset_or_the_no_archive_hint(box, monkeypatch):
     assert "No hub archive here: type the rows or copy an example." in r.text
     assert 'name="location"' not in r.text
     assert client.get("/sandbox").status_code == 200      # no editor, no fieldset
+
+
+def test_fill_keeps_unsaved_model_and_priors_edits(box):
+    sb.new_model("mine")
+    files = sb.read_model("mine")
+    bngl = files["model.bngl"].replace("# mine:", "# mine, edited:")
+    priors = files["priors.conf"] + "# a note\n"
+    r = client.post("/sandbox/models/mine/fill-data",
+                    data={"location": "Alabama", "start": WEEKS[0],
+                          "end": WEEKS[3], "source": "settled",
+                          "model_bngl": bngl, "priors_conf": priors,
+                          "data_exp": "# time T_weekly\n0 1\n"},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    now = sb.read_model("mine")
+    assert now["model.bngl"] == bngl and now["priors.conf"] == priors
+    assert now["data.exp"].startswith("# time T_weekly\n0 8\n")   # filled
+    # a post without the editor fields blanks nothing
+    client.post("/sandbox/models/mine/fill-data",
+                data={"location": "Alabama", "start": WEEKS[0],
+                      "end": WEEKS[3], "source": "settled"},
+                follow_redirects=False)
+    assert sb.read_model("mine")["model.bngl"] == bngl

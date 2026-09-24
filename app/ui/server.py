@@ -1668,6 +1668,7 @@ def api_busy():
                         if running else None),
         "retro": live,
         "phase": _status.get("phase", "") or "",
+        "sandbox": _sandbox_live() or None,
     }
 
 
@@ -3016,7 +3017,19 @@ def output_report_download(date: str = ""):
 # app/core/sandbox.py; nothing here touches the ledger, Output, retro or seal.
 from app.core import sandbox as sandbox_mod                      # noqa: E402
 
-_sandbox_status: dict = {"running": None}
+#: running: the live fit's run id; claim: the model whose run is being
+#: prepared (the engine is booked from the claim on); cancel: Stop pressed
+#: during preparation. Every change happens under _engine_lock.
+_sandbox_status: dict = {"running": None, "claim": None, "cancel": False}
+
+
+def _sandbox_live() -> str:
+    """The live sandbox fit, in words for /api/busy ("" when none)."""
+    if _sandbox_status.get("running"):
+        return str(_sandbox_status["running"])
+    if _sandbox_status.get("claim"):
+        return f"{_sandbox_status['claim']} (preparing)"
+    return ""
 
 
 def _sandbox_busy_reason() -> str:
@@ -3028,13 +3041,64 @@ def _sandbox_busy_reason() -> str:
         return "a retrospective replay is running (" + ", ".join(live) + ")"
     if _sandbox_status.get("running"):
         return f"sandbox run {_sandbox_status['running']} is still fitting"
+    if _sandbox_status.get("claim"):
+        return f"a sandbox run of {_sandbox_status['claim']} is being prepared"
     return ""
 
 
-def _sandbox_run_id(run_id: str) -> str:
-    if not run_id or "/" in run_id or "\\" in run_id or run_id.startswith("."):
-        raise sandbox_mod.SandboxError(f"{run_id!r} is not a sandbox run")
-    return run_id
+@app.middleware("http")
+async def _sandbox_engine_guard(request: Request, call_next):
+    """The other half of the two-way engine guard: a console run (/run) or
+    a replay (/retro/run) is refused while a sandbox fit holds the engine,
+    as those two refuse each other. Requests the same-host guard refuses
+    pass through to it untouched."""
+    path = request.url.path.rstrip("/")
+    if request.method == "POST" and path in ("/run", "/retro/run"):
+        origin = request.headers.get("origin")
+        local = (_authority_hostname(request.headers.get("host", ""))
+                 in _LOCAL_HOSTNAMES
+                 and (origin is None
+                      or _authority_hostname(origin) in _LOCAL_HOSTNAMES))
+        # a plain read: an async middleware must not wait on _engine_lock
+        live = _sandbox_live()
+        if local and live:
+            _flash(f"A sandbox fit holds the engine ({live}). Stop it from "
+                   "the Sandbox tab first; nothing was started.")
+            return RedirectResponse("/retro" if path == "/retro/run"
+                                    else "/forecast", status_code=303)
+    return await call_next(request)
+
+
+def _sandbox_url(model: str = "", run: str = "") -> str:
+    """The sandbox page with the model (and run) open."""
+    from urllib.parse import quote
+    q = []
+    if run:
+        q.append(f"run={quote(str(run))}")
+    if model:
+        q.append(f"model={quote(str(model))}")
+    return "/sandbox" + ("?" + "&".join(q) if q else "")
+
+
+def _sandbox_redirect(model: str = "", run: str = "") -> RedirectResponse:
+    return RedirectResponse(_sandbox_url(model, run), status_code=303)
+
+
+def _sandbox_run_dir(run_id: str) -> Path:
+    return sandbox_mod.run_dir(run_id)
+
+
+def _sandbox_save_posted(name: str, model_bngl: str, data_exp: str,
+                         priors_conf: str) -> list:
+    """Save the editor fields that were posted non-empty (a script or an
+    alias posting none blanks nothing); the names of the files saved."""
+    files = {f: v for f, v in (("model.bngl", model_bngl),
+                               ("data.exp", data_exp),
+                               ("priors.conf", priors_conf))
+             if (v or "").strip()}
+    if files:
+        sandbox_mod.save_model(name, files)
+    return sorted(files)
 
 
 @app.get("/sandbox", response_class=HTMLResponse)
@@ -3042,13 +3106,15 @@ def sandbox_page(request: Request, run: str = "", model: str = ""):
     models = sandbox_mod.list_models()
     have = {m["name"] for m in models}
     examples = [e for e in sandbox_mod.list_examples() if e not in have]
-    runs = sandbox_mod.list_runs()[:25]
+    live = _sandbox_status.get("running")
+    runs = sandbox_mod.list_runs(model=model or None, live=live)[:25]
     res = None
     try:
         if run:
-            res = sandbox_mod.results(sandbox_mod.RUNS / _sandbox_run_id(run))
+            res = sandbox_mod.results(_sandbox_run_dir(run), live=live)
         elif runs:
-            res = sandbox_mod.results(sandbox_mod.RUNS / runs[0]["run_id"])
+            res = sandbox_mod.results(sandbox_mod.RUNS / runs[0]["run_id"],
+                                      live=live)
     except Exception as e:
         _flash(f"That sandbox run could not be read: {e}")
         res = None
@@ -3059,11 +3125,23 @@ def sandbox_page(request: Request, run: str = "", model: str = ""):
                        **sandbox_mod.read_model(model)}
         except Exception as e:
             _flash(str(e))
+    settings = []
+    if editing:
+        try:
+            times = [r[0] for r in
+                     sandbox_mod.read_exp(editing["data.exp"])["rows"]]
+        except Exception:
+            times = None
+        try:
+            settings = sandbox_mod.engine_settings(editing["priors.conf"],
+                                                   times=times)
+        except Exception:
+            settings = []
     return templates.TemplateResponse(request, "sandbox.html", {
         "active": "Sandbox", "models": models, "examples": examples,
         "runs": runs, "res": res, "res_json": _script_json(res or {}),
         "editing": editing, "busy": _sandbox_busy_reason(),
-        "running_id": _sandbox_status.get("running"),
+        "running_id": live, "settings": settings,
         "dry_particles": sandbox_mod.DRY_RUN_PARTICLES,
         # the archive as a data source (empty lists with no hub)
         "locations": sandbox_mod.locations(),
@@ -3078,10 +3156,10 @@ def sandbox_add_example(request: Request, name: str = Form(...)):
     try:
         sandbox_mod.add_example(name)
         _flash(f"Example {name} copied into the sandbox.")
-        return RedirectResponse(f"/sandbox?model={name}", status_code=303)
+        return _sandbox_redirect(name)
     except Exception as e:
         _flash(str(e))
-        return _back(request, "/sandbox")
+        return _sandbox_redirect()
 
 
 @app.post("/sandbox/new")
@@ -3091,10 +3169,10 @@ def sandbox_new(request: Request, name: str = Form(...)):
     try:
         sandbox_mod.new_model(name)
         _flash(f"New model {name} written from the skeleton; edit it below.")
-        return RedirectResponse(f"/sandbox?model={name}", status_code=303)
+        return _sandbox_redirect(name)
     except Exception as e:
         _flash(str(e))
-        return _back(request, "/sandbox")
+        return _sandbox_redirect()
 
 
 @app.post("/sandbox/models/{name}/save")
@@ -3105,23 +3183,28 @@ def sandbox_save(request: Request, name: str,
         sandbox_mod.save_model(name, {"model.bngl": model_bngl,
                                       "data.exp": data_exp,
                                       "priors.conf": priors_conf})
-        _flash(f"Saved {name}. Run it to check that the network generates.")
+        _flash(f"Saved {name}.")
     except Exception as e:
         _flash(str(e))
-    return _back(request, f"/sandbox?model={name}")
+    return _sandbox_redirect(name)
 
 
 @app.post("/sandbox/models/{name}/fill-data")
 def sandbox_fill_data(request: Request, name: str, location: str = Form(""),
                       start: str = Form(""), end: str = Form(""),
-                      source: str = Form("settled")):
+                      source: str = Form("settled"),
+                      model_bngl: str = Form(""), data_exp: str = Form(""),
+                      priors_conf: str = Form("")):
     """data.exp from the hub archive: one location's weekly admissions over
     a range, settled truth or one vintage. Missing weeks dropped and
-    counted, never imputed."""
-    from urllib.parse import quote
+    counted, never imputed. The editor's other fields are saved first, so
+    unsaved edits survive the fill (data.exp gives its header only)."""
     src = (source or "settled").strip()
     asof = None if src == "settled" else src
     try:
+        saved = _sandbox_save_posted(name, model_bngl, data_exp, priors_conf)
+        if saved:
+            _flash(f"Saved {', '.join(saved)} first.")
         info = sandbox_mod.fill_data(name, (location or "").strip(),
                                      (start or "").strip(),
                                      (end or "").strip(), asof=asof)
@@ -3134,8 +3217,58 @@ def sandbox_fill_data(request: Request, name: str, location: str = Form(""),
         _flash(msg)
     except Exception as e:
         _flash(str(e))
-    return RedirectResponse(f"/sandbox?model={quote(str(name))}",
-                            status_code=303)
+    return _sandbox_redirect(name)
+
+
+def _sandbox_start(name: str, *, particles: int, jitter: float,
+                   forecast_weeks: int, seed: int) -> RedirectResponse:
+    """Claim the engine (under _engine_lock, before preparing), prepare the
+    run, then fit it on a background thread. Stop during preparation
+    cancels the run before the engine sees it."""
+    with _engine_lock:
+        why = _sandbox_busy_reason()
+        if why:
+            _flash(f"Not started: {why}. The sandbox waits for the engine.")
+            return _sandbox_redirect(name)
+        _sandbox_status.update(claim=name, cancel=False)
+    try:
+        workroot = sandbox_mod.prepare(name, particles=particles,
+                                       jitter=jitter,
+                                       forecast_weeks=forecast_weeks,
+                                       seed=seed)
+    except Exception as e:
+        with _engine_lock:
+            _sandbox_status.update(claim=None, cancel=False)
+        _flash(f"Not started: {e}")
+        return _sandbox_redirect(name)
+    run_id = workroot.name
+    with _engine_lock:
+        cancelled = _sandbox_status.get("cancel")
+        _sandbox_status.update(claim=None, cancel=False,
+                               running=None if cancelled else run_id)
+    if cancelled:
+        sandbox_mod.mark(workroot, "stopped")
+        _flash(f"Sandbox run {run_id} was stopped before it started.")
+        return _sandbox_redirect(name, run_id)
+
+    def _go():
+        guard = _sleep_guard()          # a full fit must outlive the lid
+        try:
+            sandbox_mod.run(workroot)
+        finally:
+            if guard is not None:
+                try:
+                    guard.terminate()
+                except Exception:
+                    pass
+            with _engine_lock:
+                if _sandbox_status.get("running") == run_id:
+                    _sandbox_status["running"] = None
+
+    threading.Thread(target=_go, daemon=True, name=f"sandbox-{run_id}").start()
+    _flash(f"Sandbox run {run_id} started with "
+           f"{max(50, min(int(particles), 100_000))} particles.")
+    return _sandbox_redirect(name, run_id)
 
 
 @app.post("/sandbox/run")
@@ -3143,31 +3276,44 @@ def sandbox_run(request: Request, model: str = Form(...),
                 particles: int = Form(sandbox_mod.DRY_RUN_PARTICLES),
                 jitter: float = Form(0.15), forecast_weeks: int = Form(4),
                 seed: int = Form(0)):
-    why = _sandbox_busy_reason()
-    if why:
-        _flash(f"Not started: {why}. The sandbox waits for the engine.")
-        return _back(request, "/sandbox")
+    return _sandbox_start(model, particles=particles, jitter=jitter,
+                          forecast_weeks=forecast_weeks, seed=seed)
+
+
+@app.post("/sandbox/runs/{run_id}/stop")
+def sandbox_run_stop(run_id: str):
+    """Stop the live fit named here (the STOP flag execute polls)."""
+    model = ""
     try:
-        workroot = sandbox_mod.prepare(model, particles=particles,
-                                       jitter=jitter,
-                                       forecast_weeks=forecast_weeks,
-                                       seed=seed)
+        d = _sandbox_run_dir(run_id)
+        model = sandbox_mod.results(d)["meta"].get("model", "")
+        with _engine_lock:
+            live = _sandbox_status.get("running") == run_id
+        if live:
+            sandbox_mod.stop(d)
+            _flash(f"Stopping sandbox run {run_id}; it ends at the next "
+                   "safe point.")
+        else:
+            _flash(f"Sandbox run {run_id} is not fitting; nothing to stop.")
     except Exception as e:
-        _flash(f"Not started: {e}")
-        return _back(request, f"/sandbox?model={model}")
-    run_id = workroot.name
-    _sandbox_status["running"] = run_id
+        _flash(str(e))
+    return _sandbox_redirect(model, run_id if model else "")
 
-    def _go():
+
+@app.post("/sandbox/stop")
+def sandbox_stop():
+    """Stop whatever the sandbox has on the engine (the guard modal's
+    Stop): the live fit, or a run still being prepared."""
+    with _engine_lock:
+        running = _sandbox_status.get("running")
+        if not running and _sandbox_status.get("claim"):
+            _sandbox_status["cancel"] = True
+    if running:
         try:
-            sandbox_mod.run(workroot)
-        finally:
-            if _sandbox_status.get("running") == run_id:
-                _sandbox_status["running"] = None
-
-    threading.Thread(target=_go, daemon=True, name=f"sandbox-{run_id}").start()
-    _flash(f"Sandbox run {run_id} started with {particles} particles.")
-    return _back(request, f"/sandbox?run={run_id}")
+            sandbox_mod.stop(_sandbox_run_dir(running))
+        except Exception:
+            pass
+    return _sandbox_redirect()
 
 
 @app.get("/api/sandbox/models/{name}/contactmap")
@@ -3208,7 +3354,8 @@ def api_sandbox_network(name: str):
 @app.get("/api/sandbox/runs/{run_id}")
 def api_sandbox_run(run_id: str):
     try:
-        return sandbox_mod.results(sandbox_mod.RUNS / _sandbox_run_id(run_id))
+        return sandbox_mod.results(_sandbox_run_dir(run_id),
+                                   live=_sandbox_status.get("running"))
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=404)
 

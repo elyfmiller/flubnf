@@ -22,22 +22,10 @@ client = TestClient(srv.app)
 
 
 @pytest.fixture
-def box(tmp_path, monkeypatch):
-    """A sandbox rooted in tmp_path, with BNG2.pl faked to write m.net."""
-    monkeypatch.setattr(sb, "SANDBOX", tmp_path / "sandbox")
-    monkeypatch.setattr(sb, "MODELS", tmp_path / "sandbox" / "models")
-    monkeypatch.setattr(sb, "RUNS", tmp_path / "sandbox" / "runs")
-
-    def fake_netgen(cmd, **kw):
-        cwd = Path(kw.get("cwd", "."))
-        if "broken" not in (cwd / "m.bngl").read_text():
-            (cwd / "m.net").write_text("# net\n")
-        return types.SimpleNamespace(stdout="ABORT: bad rule\n", stderr="",
-                                     returncode=0)
-    monkeypatch.setattr(sb.subprocess, "run", fake_netgen)
-    srv._status["running"] = None
-    srv._sandbox_status["running"] = None
-    return tmp_path / "sandbox"
+def box(sandbox_root):
+    """A sandbox rooted in tmp_path, with BNG2.pl faked to write m.net
+    (conftest.sandbox_root)."""
+    return sandbox_root
 
 
 # ------------------------------------------------------------ the folder

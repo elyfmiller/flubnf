@@ -8,12 +8,12 @@
    {% if models %}
    <table class="kv"><thead><tr><th>model</th><th>files</th><th></th></tr></thead><tbody>
    {% for m in models %}<tr>
-    <td><a href="/sandbox?model={{ m.name }}">{{ m.name }}</a></td>
+    <td><a href="/sandbox?model={{ m.name }}">{{ m.name }}</a>{% if m.note %}<br><span class="hint">{{ m.note }}</span>{% endif %}</td>
     <td>{% if m.complete %}complete{% else %}missing {{ m.missing | join(", ") }}{% endif %}</td>
     <td>{% if m.complete %}<form method="post" action="/sandbox/run" style="display:inline">
       <input type="hidden" name="model" value="{{ m.name }}">
       <input type="hidden" name="particles" value="{{ dry_particles }}">
-      <button class="pill" data-guard="console-run" {% if busy %}disabled title="{{ busy }}"{% endif %}>Dry run</button></form>{% endif %}</td>
+      <button class="pill" data-guard="sandbox-run" {% if busy %}disabled title="{{ busy }}"{% endif %}>Dry run</button></form>{% endif %}</td>
    </tr>{% endfor %}</tbody></table>
    {% else %}<p class="hint">No models yet. Start from an example or from scratch.</p>{% endif %}
    {% if examples %}
@@ -39,7 +39,7 @@
     <input name="forecast_weeks" type="number" value="4" min="0" max="12">
     {{ tips.label("Seed", "sb-seed", "Random seed; the same seed and inputs reproduce the fit.") }}
     <input name="seed" type="number" value="0" min="0">
-    <button class="gold" data-guard="console-run" {% if busy or not models %}disabled{% endif %}>Run in the sandbox</button>
+    <button class="gold" data-guard="sandbox-run" {% if busy or not models %}disabled{% endif %}>Run in the sandbox</button>
    </form>
   </div>
 
@@ -59,8 +59,9 @@
   {% if res %}
   <div class="card" id="results" data-run="{{ res.run_id }}" data-status="{{ res.meta.status }}">
    <h2>{{ res.run_id }}</h2>
-   <p class="hint">{{ res.meta.model }} · {{ res.meta.particles | int }} particles · jitter {{ res.meta.jitter }} · {{ res.meta.mode }}{% if res.meta.cumulative %} on {{ res.meta.cumulative }}{% endif %} · seed {{ res.meta.seed }}
+   <p class="hint">{{ res.meta.model }} · {{ res.meta.particles | int }} particles · jitter {{ res.meta.jitter }}{% if res.meta.cumulative %} · on {{ res.meta.cumulative }}{% endif %} · seed {{ res.meta.seed }}
     · <strong>{{ res.meta.status }}</strong>{% if res.meta.seconds is defined %} in {{ res.meta.seconds }} s{% endif %}</p>
+   {% if res.run_id == running_id %}<form method="post" action="/sandbox/runs/{{ res.run_id }}/stop"><button class="quiet">Stop</button></form>{% endif %}
    {% if res.meta.error %}<pre class="hint">{{ res.meta.error }}</pre>{% endif %}
    {% if res.stderr %}<pre class="hint">{{ res.stderr }}</pre>{% endif %}
    {% if res.params %}
@@ -86,18 +87,13 @@
     <textarea name="priors_conf" rows="8" spellcheck="false" style="width:100%;font-family:monospace" class="code-editor" data-lang="conf">{{ editing["priors.conf"] }}</textarea>
     <details class="storagefold"><summary class="hint">Engine keys the sandbox writes for you</summary>
      <table class="kv"><thead><tr><th>key</th><th>value</th><th>from</th></tr></thead><tbody>
-      <tr><td><code>fit_type</code></td><td>pf</td><td>fixed</td></tr>
-      <tr><td><code>objfunc</code></td><td>neg_bin_dynamic</td><td>default</td></tr>
-      <tr><td><code>pf_cumulative_observable</code></td><td>the model output named in priors.conf</td><td>required</td></tr>
-      <tr><td><code>pf_particles</code>, <code>pf_jitter</code>, <code>pf_forecast_intervals</code>, <code>seed</code></td><td>the run form</td><td>form</td></tr>
-      <tr><td><code>initialization</code></td><td>rand</td><td>default</td></tr>
-      <tr><td><code>pf_resample_threshold</code>, <code>pf_binom_neff_cap</code>, other <code>pf_*</code></td><td>the engine's own defaults</td><td>engine</td></tr>
+      {% for k, v, src in settings %}<tr><td><code>{{ k }}</code></td><td>{{ v }}</td><td>{{ src }}</td></tr>{% endfor %}
      </tbody></table>
-     <p class="hint">A priors.conf line naming one of these overrides it; these defaults are the production configuration.</p>
+     <p class="hint">A priors.conf line naming one of these overrides it, except the run settings.</p>
     </details>
     <button class="gold">Save</button>
    </form>
-   <p class="hint">Checked at run time: the network must generate and use every free parameter. Sandbox fits are never submitted.</p>
+   <p class="hint">Checked at run time: the network must generate. Sandbox fits are never submitted.</p>
   </div>
   {% endif %}
  </div>
@@ -106,7 +102,7 @@
 (function () {
   var RES = {{ res_json | safe }};
   var box = document.getElementById('results');
-  if (box && box.dataset.status === 'running') {
+  if (box && (box.dataset.status === 'running' || box.dataset.status === 'prepared')) {
     // poll until the fit ends, then reload to show it
     var id = box.dataset.run;
     var timer = setInterval(function () {

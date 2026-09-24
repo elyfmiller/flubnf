@@ -46,8 +46,20 @@ NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 ENGINE_KEYS = ("objfunc", "pf_cumulative_observable",
                "pf_forecast_intervals", "pf_jitter", "pf_resample_threshold",
                "pf_binom_neff_cap", "initialization", "pf_bounds",
-               "pf_start_time")
+               "pf_start_time", "pf_sampling_interval")
+#: Conf keys only the run settings and the workroot decide; a priors.conf
+#: line naming one would duplicate a key, so it is refused.
+RESERVED_KEYS = ("fit_type", "model", "output_dir", "bng_command",
+                 "pf_particles", "pf_seed", "population_size",
+                 "max_iterations")
 DRY_RUN_PARTICLES = 200
+FULL_FIT_PARTICLES = 10_000
+#: A run's status while its fit may still be live; with no live fit behind
+#: it (an app restart) it reads as INTERRUPTED, as the Storage panel does.
+LIVE_STATUSES = ("prepared", "running")
+INTERRUPTED = "interrupted"
+#: run folder names: prepare's <UTC stamp>_<model>[_<n>]
+RUN_ID_RE = re.compile(r"^\d{8}-\d{6}_[A-Za-z0-9][A-Za-z0-9_-]{0,70}$")
 
 
 class SandboxError(ValueError):
@@ -265,7 +277,8 @@ def read_exp(exp_text: str) -> dict:
 
 
 def split_priors(priors_text: str) -> tuple:
-    """(prior lines, engine key overrides) from priors.conf."""
+    """(prior lines, engine key overrides) from priors.conf. A line naming
+    a key the run settings write (RESERVED_KEYS) is refused in words."""
     priors, keys = [], {}
     for line in priors_text.splitlines():
         s = line.split("#", 1)[0].strip()
@@ -276,6 +289,10 @@ def split_priors(priors_text: str) -> tuple:
             if k in ENGINE_KEYS:
                 keys[k] = v
                 continue
+            if k in RESERVED_KEYS:
+                raise SandboxError(
+                    f"priors.conf sets {k}, which the sandbox writes from "
+                    "the run settings; remove that line")
         priors.append(s)
     if not any(p.split("=", 1)[0].strip().endswith("_var") for p in priors):
         raise SandboxError("priors.conf declares no free parameter "
@@ -284,26 +301,106 @@ def split_priors(priors_text: str) -> tuple:
     return priors, keys
 
 
+def preflight() -> None:
+    """The production preflight (app/core/engines/pf.py prepare), in the
+    same words: Perl for BNG2.pl, the fork's filter, a current parser."""
+    if not pf_engine.perl_available():
+        raise SandboxError(pf_engine.perl_missing_message())
+    if not pf_engine.engine_available():
+        raise SandboxError(pf_engine.engine_missing_message())
+    if not pf_engine.engine_current():
+        raise SandboxError(pf_engine.engine_stale_message())
+
+
+def unit_spacing(times: list) -> bool:
+    """Whole-number times one unit apart at their closest (weekly rows,
+    gaps allowed), or a single row: the data pf_sampling_interval = 1
+    describes."""
+    if len(times) < 2:
+        return True
+    if any(float(t) != int(t) for t in times):
+        return False
+    return min(b - a for a, b in zip(times, times[1:])) == 1
+
+
+def engine_settings(priors_text: str, *, particles: int = DRY_RUN_PARTICLES,
+                    jitter: float = 0.15, forecast_weeks: int = 4,
+                    seed: int = 0, times: list | None = None) -> list:
+    """The engine keys a run writes besides the paths and the priors, as
+    [(key, value, source)], source one of 'run settings', 'priors.conf',
+    'default' (the production convention) or 'engine' (what the installed
+    engine accepts). prepare writes exactly these and the workbench shows
+    them. A malformed priors.conf raises SandboxError."""
+    _, keys = split_priors(priors_text)
+    keys.pop("pf_observable_mode", None)      # a retired key: ignored
+    rows = [("fit_type", "pf", "default")]
+
+    def pick(key, default, src="default"):
+        rows.append((key, keys.pop(key), "priors.conf") if key in keys
+                    else (key, default, src))
+    pick("objfunc", "neg_bin_dynamic")
+    rows.append(("pf_particles", str(max(50, min(int(particles), 100_000))),
+                 "run settings"))
+    pick("pf_jitter", f"{float(jitter):g}", "run settings")
+    # the production conventions, see app/core/engines/pf.py
+    pick("pf_bounds", "reflect")
+    pick("pf_start_time", "-1")
+    pick("pf_forecast_intervals", str(max(0, min(int(forecast_weeks), 12))),
+         "run settings")
+    rows += [("population_size", "1", "default"),
+             ("max_iterations", "1", "default")]
+    pick("initialization", "rand")
+    rows.append(("pf_seed", str(int(seed)), "run settings"))
+    if "pf_cumulative_observable" in keys:
+        rows.append(("pf_cumulative_observable",
+                     keys.pop("pf_cumulative_observable"), "priors.conf"))
+    if "pf_sampling_interval" in keys:
+        rows.append(("pf_sampling_interval", keys.pop("pf_sampling_interval"),
+                     "priors.conf"))
+    else:
+        # production writes it whenever the engine accepts it; here only
+        # for weekly data too, so a model in other time units is unchanged
+        si = pf_engine.sampling_interval_line().strip()
+        if si and (times is None or unit_spacing(times)):
+            k, v = (x.strip() for x in si.split("=", 1))
+            rows.append((k, v, "engine"))
+    rows += [(k, v, "priors.conf") for k, v in keys.items()]
+    return rows
+
+
+def _netgen(cell: Path) -> None:
+    try:
+        r = subprocess.run(["perl", BNG, "m.bngl"], capture_output=True,
+                           text=True, cwd=str(cell), timeout=300)
+    except FileNotFoundError:
+        # perl vanished since the preflight, or which() disagreed
+        raise SandboxError(pf_engine.perl_missing_message()) from None
+    if not (cell / "m.net").is_file():
+        raise SandboxError("BNG2.pl could not generate the network:\n"
+                           + (r.stdout or "")[-600:] + (r.stderr or "")[-300:])
+
+
 def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
-            jitter: float = 0.15,
-            cumulative: str = "", forecast_weeks: int = 4, seed: int = 0,
+            jitter: float = 0.15, forecast_weeks: int = 4, seed: int = 0,
             runs_root: Path | None = None) -> Path:
     """A workroot with one prepared cell, ready for pf_engine.execute.
 
-    The network is generated here, by BNG2.pl, so a model that does not
-    generate is refused before the engine is asked for anything, with
-    BNG2.pl's own words.
+    The production preflight runs first. The network is generated here,
+    by BNG2.pl, so a model that does not generate is refused before the
+    engine is asked for anything, with BNG2.pl's own words.
     """
+    preflight()
     files = read_model(name)
     sfx = simulate_suffix(files["model.bngl"])
     exp = read_exp(files["data.exp"])
-    priors, keys = split_priors(files["priors.conf"])
-    particles = max(50, min(int(particles), 100_000))
-    forecast_weeks = max(0, min(int(forecast_weeks), 12))
-    keys.pop("pf_observable_mode", None)      # a retired key: ignored
-    cumulative = keys.pop("pf_cumulative_observable", cumulative) or ""
-    objfunc = keys.pop("objfunc", "neg_bin_dynamic")
-    jitter = float(keys.pop("pf_jitter", jitter))
+    times = [row[0] for row in exp["rows"]]
+    settings = engine_settings(files["priors.conf"], particles=particles,
+                               jitter=jitter, forecast_weeks=forecast_weeks,
+                               seed=seed, times=times)
+    priors, _ = split_priors(files["priors.conf"])
+    val = {k: v for k, v, _ in settings}
+    particles = int(val["pf_particles"])
+    forecast_weeks = int(val["pf_forecast_intervals"])
     stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
     workroot = (runs_root or RUNS) / f"{stamp}_{name}"
     n = 1
@@ -317,31 +414,12 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
                                  encoding="utf-8", newline="\n")
     (cell / f"{sfx}.exp").write_text(files["data.exp"].replace("\r\n", "\n"),
                                      encoding="utf-8", newline="\n")
-    r = subprocess.run(["perl", BNG, "m.bngl"], capture_output=True,
-                       text=True, cwd=str(cell), timeout=300)
-    if not (cell / "m.net").is_file():
-        raise SandboxError("BNG2.pl could not generate the network:\n"
-                           + (r.stdout or "")[-600:] + (r.stderr or "")[-300:])
+    _netgen(cell)
     c = pf_engine.conf_safe_path(cell)
     conf = [f"bng_command = {pf_engine.conf_safe_path(BNG)}",
             f"model = {c}/m.bngl : {c}/{sfx}.exp",
-            f"output_dir = {c}/out",
-            "fit_type = pf",
-            f"objfunc = {objfunc}",
-            f"pf_particles = {particles}",
-            f"pf_jitter = {jitter:g}",
-            # the production conventions, see app/core/engines/pf.py; a
-            # priors.conf line naming either key overrides it
-            f"pf_bounds = {keys.pop('pf_bounds', 'reflect')}",
-            f"pf_start_time = {keys.pop('pf_start_time', -1)}",
-            f"pf_forecast_intervals = {forecast_weeks}",
-            "population_size = 1",
-            "max_iterations = 1",
-            f"initialization = {keys.pop('initialization', 'rand')}",
-            f"pf_seed = {int(seed)}"]
-    if cumulative:
-        conf.append(f"pf_cumulative_observable = {cumulative}")
-    conf += [f"{k} = {v}" for k, v in keys.items()]
+            f"output_dir = {c}/out"]
+    conf += [f"{k} = {v}" for k, v, _ in settings]
     (cell / "pf.conf").write_text("\n".join(conf) + "\n" + "\n".join(priors)
                                   + "\n", encoding="utf-8", newline="\n")
     obs_col = exp["columns"][1]
@@ -349,42 +427,102 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
     cells = [{"key": f"{name}_r0", "dir": str(cell), "location": name,
               "replicate": 0, "seed": int(seed), "n_obs": len(observed),
               "particles": particles, "last_observed": float(observed[-1]),
-              "weeks_dropped": 0, "last_week_offset": len(observed) - 1,
+              "weeks_dropped": 0, "last_week_offset": int(times[-1]),
               "sandbox": True}]
     (workroot / "cells.json").write_text(json.dumps(cells))
-    meta = {"model": name, "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "particles": particles, "jitter": jitter,
-            "cumulative": cumulative, "forecast_weeks": forecast_weeks,
+    meta = {"model": name,
+            "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "particles": particles, "jitter": float(val["pf_jitter"]),
+            "cumulative": val.get("pf_cumulative_observable", ""),
+            "forecast_weeks": forecast_weeks,
             "seed": int(seed), "suffix": sfx, "obs_col": obs_col,
-            "time": [row[0] for row in exp["rows"]], "observed": observed,
+            "time": times, "observed": observed, "n_obs": len(observed),
+            "digests": {f: _digest(files[f]) for f in REQUIRED},
             "status": "prepared"}
+    src = read_data_source(name)
+    if src:
+        meta["source"] = src
     (workroot / "meta.json").write_text(json.dumps(meta))
     return workroot
 
 
+def _write_meta(workroot: Path, meta: dict) -> None:
+    tmp = Path(workroot) / "meta.json.tmp"
+    tmp.write_text(json.dumps(meta))
+    tmp.replace(Path(workroot) / "meta.json")
+
+
 def run(workroot: Path, width: int = 1) -> dict:
     """Execute the prepared cell in the engine venv; the workroot's
-    meta.json records the outcome either way."""
+    meta.json records the outcome either way: ok, failed, or stopped
+    (stop() wrote the STOP flag execute polls)."""
     workroot = Path(workroot)
     meta = json.loads((workroot / "meta.json").read_text())
     meta["status"] = "running"
-    (workroot / "meta.json").write_text(json.dumps(meta))
+    _write_meta(workroot, meta)
     t0 = time.monotonic()
     try:
         status = pf_engine.execute(workroot, width=width)
         key = next(iter(status)) if status else None
         meta["status"] = "ok" if key and status[key] == "ok" else "failed"
         meta["engine_status"] = status
+    except pf_engine.RunStopped:
+        meta["status"] = "stopped"
     except Exception as e:                       # the reason reaches the page
         meta["status"] = "failed"
         meta["error"] = str(e)[:2000]
     meta["seconds"] = round(time.monotonic() - t0, 1)
     meta["finished_utc"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    (workroot / "meta.json").write_text(json.dumps(meta))
+    _write_meta(workroot, meta)
     return meta
 
 
-def list_runs(runs_root: Path | None = None) -> list:
+def stop(workroot: Path) -> None:
+    """Ask a live fit to stop: execute() polls <workroot>/STOP."""
+    (Path(workroot) / "STOP").touch()
+
+
+def mark(workroot: Path, status: str) -> None:
+    """Record a status on a run that never reached the engine."""
+    meta = json.loads((Path(workroot) / "meta.json").read_text())
+    meta["status"] = status
+    _write_meta(workroot, meta)
+
+
+_RAW = object()
+
+
+def shown_status(meta: dict, run_id: str, live=_RAW) -> str:
+    """The status a page shows. A prepared or running run that is not the
+    live fit (live: the server's running run id, or None) was cut off by
+    an app restart and reads as interrupted. One rule for the page, the
+    run list and the poll, so they never disagree."""
+    st = str(meta.get("status", ""))
+    if live is not _RAW and st in LIVE_STATUSES and run_id != live:
+        return INTERRUPTED
+    return st
+
+
+def run_dir(run_id: str, runs_root: Path | None = None) -> Path:
+    """The folder of an existing run, refusing anything that is not a run
+    id or resolves outside the runs folder (a Windows 'C:x' too)."""
+    root = Path(runs_root or RUNS)
+    if not isinstance(run_id, str) or not RUN_ID_RE.match(run_id):
+        raise SandboxError(f"{run_id!r} is not a sandbox run")
+    d = root / run_id
+    try:
+        inside = d.resolve().parent == root.resolve()
+    except OSError:
+        inside = False
+    if not inside or not (d / "meta.json").is_file():
+        raise SandboxError(f"no sandbox run {run_id!r}")
+    return d
+
+
+def list_runs(runs_root: Path | None = None, *, model: str | None = None,
+              live=_RAW) -> list:
+    """Every run, newest first; one model's only with model=. With live=
+    (the live run id or None) statuses read as shown_status says."""
     root = runs_root or RUNS
     out = []
     if not root.is_dir():
@@ -394,18 +532,23 @@ def list_runs(runs_root: Path | None = None) -> list:
             meta = json.loads((d / "meta.json").read_text())
         except Exception:
             continue
+        if model is not None and meta.get("model") != model:
+            continue
         meta["run_id"] = d.name
+        meta["status"] = shown_status(meta, d.name, live)
         out.append(meta)
     return out
 
 
-def results(workroot: Path) -> dict:
+def results(workroot: Path, live=_RAW) -> dict:
     """What the engine wrote, read back: the outcome, a parameter table
     (5th, 50th and 95th percentiles of the posterior sample), the ESS
     record, and the trajectory summarised per week (10th, 50th, 90th
-    percentiles over particles) with the observed counts beside it."""
+    percentiles over particles) with the observed counts beside it. With
+    live=, the status reads as shown_status says."""
     workroot = Path(workroot)
     meta = json.loads((workroot / "meta.json").read_text())
+    meta["status"] = shown_status(meta, workroot.name, live)
     out = {"meta": meta, "run_id": workroot.name, "params": [], "ess": [],
            "traj": None, "stderr": ""}
     cell = workroot / f"{meta['model']}_r0"
