@@ -89,6 +89,46 @@ def test_choose_is_the_newest_complete_else_the_newest():
     assert AR.choose([]) is None
 
 
+def test_a_run_on_part_of_the_hub_set_never_replaces_a_whole_set_one():
+    """A newer finished run on a few states is not the date's file while a
+    complete run on all 53 exists; it is shown only when nothing else is."""
+    whole = {"run_id": "20980103T100000-a", "complete": True, "full": True}
+    ohio = {"run_id": "20980103T110000-b", "complete": True, "full": False}
+    assert AR.choose([whole, ohio]) is whole
+    assert AR.choose([ohio]) is ohio
+    later = {"run_id": "20980103T120000-c", "complete": True, "full": True}
+    assert AR.choose([whole, ohio, later]) is later
+    # an incomplete whole-set run does not beat a complete partial one
+    broken = {"run_id": "20980103T130000-d", "complete": False, "full": True}
+    assert AR.choose([ohio, broken]) is ohio
+
+
+def test_full_scope_is_the_52_and_us():
+    from app.core.us_national import state_names
+    from flubnf.settings import load_locations
+    names = [n for n in load_locations().location_name if n != "US"]
+    assert len(state_names(names)) == 52
+    assert AR.full_scope(names + ["US"])
+    assert AR.full_scope(names + ["US (national)"])
+    assert not AR.full_scope(names)                     # US left out
+    assert not AR.full_scope(["Ohio", "US"])
+    assert AR.scope_of(json.dumps({"locations": ["Ohio"]})) is False
+    assert AR.scope_of("") is True                      # an old record
+
+
+def test_a_partial_scope_run_keeps_the_whole_set_archive(root):
+    a = _run(root, "A")
+    P._archive_run(a, DATE)                             # full by default
+    b = _run(root, "B")
+    out = P._archive_run(b, DATE, full=False)
+    assert out.startswith("kept: this run covers part of the 53")
+    assert _held(root) == "A"
+    c = _run(root, "C")
+    P._archive_run(c, DATE)
+    assert _held(root) == "C"                           # whole set replaces
+    assert AR.read_record(root / "archive" / DATE)["full"] is True
+
+
 def test_a_complete_run_replaces_the_archive(root):
     a = _run(root, "A")
     assert Path(P._archive_run(a, DATE)) == root / "archive" / DATE

@@ -326,6 +326,7 @@ def _hub_candidates(app_state: Path, ledger) -> tuple:
             cands.append({"asof": asof, "dir": p.parent.name,
                           "run_id": wr.name, "path": str(p),
                           "complete": _file_complete(row, p.parent.name),
+                          "full": _ar.scope_of(res.get("spec", "")),
                           "row": row, "spec": res.get("spec", ""),
                           "wr": wr})
     for date in shared._archive_dates():
@@ -341,6 +342,7 @@ def _hub_candidates(app_state: Path, ledger) -> tuple:
             cands.append({"asof": date, "dir": p.parent.name,
                           "run_id": rid, "path": str(p),
                           "complete": bool(rec.get("complete", True)),
+                          "full": bool(rec.get("full", True)),
                           "row": ledger.row(rid) if (ledger and rid) else None,
                           "spec": res.get("spec", ""), "wr": d})
     return cands, own

@@ -50,33 +50,64 @@ def _write_json(p: Path, data: dict) -> None:
     os.replace(tmp, p)
 
 
-def write_record(d: Path, run_id: str, complete: bool) -> None:
+def write_record(d: Path, run_id: str, complete: bool,
+                 full: bool = True) -> None:
     _write_json(Path(d) / RECORD, {"run_id": str(run_id),
                                    "complete": bool(complete),
+                                   "full": bool(full),
                                    "archived_utc": time.time()})
 
 
+def full_scope(locations) -> bool:
+    """Whether a run asked for the whole hub set: the 52 jurisdictions and
+    US (national). A run on a few states is never the date's file while a
+    whole-set run exists."""
+    from app.core import us_national as _usn
+    locs = list(locations or [])
+    n = len(_usn.state_names(locs))
+    return n >= 52 and len(locs) > n
+
+
+def scope_of(spec) -> bool:
+    """full_scope() of a recorded spec (a RunSpec dict or its JSON); True
+    when unreadable, as for records from before the rule."""
+    try:
+        d = json.loads(spec) if isinstance(spec, str) else dict(spec or {})
+        locs = d.get("locations")
+    except (ValueError, TypeError):
+        return True
+    return True if not locs else full_scope(locs)
+
+
 def choose(candidates):
-    """The candidate a date shows: the newest complete one, else the
-    newest. Each candidate is a dict with "run_id" (run ids sort by start
-    time) and "complete"; None for none."""
+    """The candidate a date shows: the newest complete one from a run on
+    the whole hub set, then the newest complete one, then the newest.
+    Each candidate is a dict with "run_id" (run ids sort by start time),
+    "complete" and "full"; None for none."""
     cands = sorted(candidates or [], key=lambda c: str(c.get("run_id") or ""))
     if not cands:
         return None
     done = [c for c in cands if c.get("complete", True)]
-    return (done or cands)[-1]
+    whole = [c for c in done if c.get("full", True)]
+    return (whole or done or cands)[-1]
 
 
-def keep_reason(d: Path, complete: bool) -> str:
+def keep_reason(d: Path, complete: bool, full: bool = True) -> str:
     """Why a new run must NOT replace the archive in `d` ("" when it may):
-    the new run is incomplete and the archive holds a complete one (the
-    rule of choose())."""
+    the new run is incomplete and the archive holds a complete one, or the
+    new run covers part of the hub set and the archive holds a whole-set
+    complete run (the rule of choose())."""
     d = Path(d)
     if not d.is_dir():
         return ""
     rec = read_record(d) or {}
     held = rec.get("run_id") or ""
-    if not complete and rec.get("complete", True):
+    held_done = rec.get("complete", True)
+    if not complete and held_done:
         return ("this run is not complete, so the archive kept the "
                 "earlier complete run" + (f" {held}" if held else ""))
+    if not full and held_done and rec.get("full", True):
+        return ("this run covers part of the 53 jurisdictions, so the "
+                "archive kept the earlier run on all 53"
+                + (f" {held}" if held else ""))
     return ""

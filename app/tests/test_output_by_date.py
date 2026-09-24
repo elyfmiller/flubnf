@@ -43,7 +43,7 @@ def root(tmp_path, monkeypatch):
 
 
 def _run(root, asof, dirs, status="ok", outcome=None, dataset=None,
-         tag="x") -> Path:
+         tag="x", spec="") -> Path:
     """A closed ledger row and its workroot with a file per model dir."""
     import time
     time.sleep(1.05)                     # run ids sort by their start second
@@ -52,7 +52,7 @@ def _run(root, asof, dirs, status="ok", outcome=None, dataset=None,
                                locations=["Ohio"]), Path("pending"), {})
     w = root / "workroots" / rid
     ref = O._reference_date(asof)
-    res = {"forecast_date": asof, "spec": "", "tag": tag}
+    res = {"forecast_date": asof, "spec": spec, "tag": tag}
     if dataset:
         res["dataset"] = {"id": "clinics-1", "name": dataset}
         d = w / "export" / "FluBNF-Groundhog"
@@ -112,6 +112,15 @@ def test_a_rerun_shows_the_newest_complete_file_per_model(root):
     (d,) = O.forecast_dates()[0]
     by = {f["model"]: f for f in d["files"]}
     assert by[OR]["run_id"] == third.name and by[GH]["run_id"] == second.name
+
+
+def test_a_newer_run_on_a_few_states_does_not_replace_the_whole_set(root):
+    whole = _run(root, "2098-01-03", [OR, GH], tag="whole")
+    _run(root, "2098-01-03", [GH], tag="ohio",
+         spec=json.dumps({"locations": ["Ohio"]}))
+    (d,) = O.forecast_dates()[0]
+    by = {f["model"]: f for f in d["files"]}
+    assert by[GH]["run_id"] == whole.name and by[OR]["run_id"] == whole.name
 
 
 def test_with_no_complete_run_the_newest_file_shows_marked_incomplete(root):

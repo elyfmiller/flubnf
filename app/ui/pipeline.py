@@ -821,11 +821,11 @@ def _run_all(spec: RunSpec) -> None:
                          and not outcome.get("submission_dropped")
                          and {hub_model_id("pf"), hub_model_id("analogue")}
                          <= set(subs))
+            from app.core.archive_record import full_scope as _full_scope
             try:
-                outcome["archived"] = (
-                    _archive_run(workroot, spec.forecast_date) if _complete
-                    else _archive_run(workroot, spec.forecast_date,
-                                      complete=False))
+                outcome["archived"] = _archive_run(
+                    workroot, spec.forecast_date, complete=_complete,
+                    full=_full_scope(spec.locations))
             except Exception as e:
                 outcome["archive_error"] = str(e)[:200]
         # the pipeline completed: fit failures make it "partial" (the chips
@@ -879,7 +879,7 @@ def _run_all(spec: RunSpec) -> None:
 
 # === Forecast archive ===
 def _archive_run(workroot: Path, forecast_date: str,
-                 complete: bool = True) -> str:
+                 complete: bool = True, full: bool = True) -> str:
     """Copy the run's deliverables to app/state/archive/<forecast_date>/,
     replacing any earlier archive for the date. Built beside, then swapped:
     a crash mid-copy costs this attempt, never the existing record.
@@ -904,7 +904,7 @@ def _archive_run(workroot: Path, forecast_date: str,
             shutil.rmtree(old)
         else:                   # crashed between the two renames below:
             os.replace(old, arch)   # the parked previous archive comes back
-    keep = _ar.keep_reason(arch, complete)
+    keep = _ar.keep_reason(arch, complete, full)
     if keep:
         return f"kept: {keep}"
     build.mkdir(parents=True)
@@ -916,7 +916,7 @@ def _archive_run(workroot: Path, forecast_date: str,
                 shutil.copy2(workroot / name, build / name)
         if (workroot / "submission").is_dir():
             shutil.copytree(workroot / "submission", build / "submission")
-        _ar.write_record(build, Path(workroot).name, complete)
+        _ar.write_record(build, Path(workroot).name, complete, full)
     except BaseException:
         shutil.rmtree(build, ignore_errors=True)
         raise
