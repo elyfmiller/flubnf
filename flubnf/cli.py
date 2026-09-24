@@ -1264,32 +1264,28 @@ def baseline_score_cmd(
 
 @app.command()
 def doctor(
-    config: Optional[Path] = CONFIG_OPT,
-    workspace: Optional[str] = WORKSPACE_OPT,
     online: bool = typer.Option(
         False, "--online",
         help="Include network checks (CDC reachability).",
     ),
-    pre_studio: bool = typer.Option(
-        False, "--pre-studio",
-        help="Add extra readiness checks meaningful before a long Mac "
-             "Studio run: historical-priors schema, locations.csv schema, "
-             "all state templates, fringe detectors, FluSight target "
-             "archive, submission validator, BNG2.pl executable.",
-    ),
+    # Accepted and ignored: the checks read no config or workspace (the
+    # legacy workspace CLI that used them is gone), and old scripts pass them.
+    config: Optional[Path] = typer.Option(
+        None, "--config", "-c", hidden=True),
+    workspace: Optional[str] = typer.Option(
+        None, "--workspace", "-w", hidden=True),
 ):
-    """Diagnose the environment, dependencies, and workspace state.
+    """Diagnose the environment and dependencies.
 
-    Catches the common showstoppers — broken venv, missing BNG2.pl,
-    NumPy 2.0 / pybnf incompat patch missing, CDC schema drift — before
-    they bite mid-run. `--pre-studio` adds extra Mac-Studio-readiness
-    checks (cheap; failing one now beats failing 6 hours in).
+    Catches the common showstoppers (broken venv, missing engine or hub
+    clone, missing BNG2.pl, NumPy 2.0 / pybnf incompat patch missing)
+    before they bite mid-run. Exits 1 when any check fails.
     """
     from . import doctor as docmod
-    cfg = FluBNFConfig.load(config_path=config)
-    rep = docmod.run_doctor(
-        cfg, workspace=workspace, online=online, pre_studio=pre_studio,
-    )
+    if config is not None or workspace is not None:
+        console.print("[dim]--config and --workspace are ignored: the "
+                      "doctor reads no config.[/dim]")
+    rep = docmod.run_doctor(online=online)
 
     table = Table(title="FluBNF doctor")
     table.add_column("status"); table.add_column("check"); table.add_column("detail")

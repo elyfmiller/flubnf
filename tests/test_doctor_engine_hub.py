@@ -15,7 +15,6 @@ from types import SimpleNamespace
 import pytest
 
 from flubnf import doctor, settings
-from flubnf.config import FluBNFConfig
 from app.core.engines import pf as pf_engine
 
 
@@ -142,8 +141,6 @@ def test_hub_with_both_data_directories_passes(tmp_path, monkeypatch):
 def test_run_doctor_reports_the_hub(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "HUB", tmp_path / "nope")
     monkeypatch.setattr(subprocess, "run", _fake_run([]))
-    cfg = FluBNFConfig.load(workspace_root=tmp_path / "ws",
-                            data_cache=tmp_path / "data")
-    rep = doctor.run_doctor(cfg, workspace="w")
+    rep = doctor.run_doctor()
     hub = [c for c in rep.checks if c.name == "FluSight hub"]
     assert hub and hub[0].status is doctor.Status.FAIL

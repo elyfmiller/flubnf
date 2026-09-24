@@ -1,17 +1,15 @@
-"""LEGACY-leaning (`flubnf doctor`): checks mostly target the DE/AMCMC workspace.
+"""CONSOLE (`flubnf doctor`): environment diagnostics; network checks only with --online.
 
-Environment + workspace diagnostics.
-
-`flubnf doctor` runs cheap, never-destructive checks (venv, BNG2.pl,
-NumPy 2.0 / pybnf patch, CDC schema drift, templates, workspace) and prints
-a pass/warn/fail report before a long run can blow up midway. Network
-checks only with `--online`.
+`flubnf doctor` runs cheap, never-destructive checks (Python, the console's
+packages, the engine venv and PyBNF fork, the NumPy 2.0 / pybnf patch, the
+FluSight hub clone, BNG2.pl, disk space) and prints a pass/warn/fail report,
+so a broken install shows before a long run can blow up midway. It reads no
+config: every path comes from flubnf.settings (the FLUBNF_* variables).
 """
 
 from __future__ import annotations
 
 import importlib
-import os
 import platform
 import shutil
 import subprocess
@@ -19,7 +17,6 @@ import sys
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Optional
 
 
 class Status(Enum):
@@ -265,9 +262,10 @@ def _check_numpy2_pybnf() -> CheckResult:
     return CheckResult("pybnf NumPy 2.0 patch", Status.OK, "patches applied")
 
 
-def _check_bng(config) -> CheckResult:
+def _check_bng() -> CheckResult:
+    """BNG2.pl at settings.BNG (FLUBNF_BNG, else the conventional places)."""
     from flubnf.settings import BNG as _BNG
-    bng_cmd = Path(config.pybnf.bng_command or _BNG)
+    bng_cmd = Path(_BNG)
     if bng_cmd.exists():
         return CheckResult(
             "BNG2.pl", Status.OK, str(bng_cmd),
@@ -281,113 +279,15 @@ def _check_bng(config) -> CheckResult:
             return CheckResult(
                 "BNG2.pl", Status.WARN,
                 f"configured path missing; found at {candidate}",
-                f"Set pybnf.bng_command to {candidate} in config.",
+                f"Set FLUBNF_BNG to {candidate}.",
             )
     except Exception:
         pass
     return CheckResult(
         "BNG2.pl", Status.FAIL,
         f"not found at {bng_cmd}",
-        "Install bionetgen (`pip install bionetgen`) and update "
-        "pybnf.bng_command in config to point at BNG2.pl.",
-    )
-
-
-def _check_templates(config) -> list[CheckResult]:
-    out: list[CheckResult] = []
-    for label, p in [("template_bngl", config.template_bngl),
-                     ("template_conf", config.template_conf),
-                     ("locations_csv", config.locations_csv)]:
-        if Path(p).exists():
-            out.append(CheckResult(label, Status.OK, str(p)))
-        else:
-            out.append(CheckResult(
-                label, Status.FAIL, f"missing: {p}",
-                "Either restore the file or update the path in your "
-                "config YAML.",
-            ))
-    return out
-
-
-def _check_workspace(config, workspace_name: Optional[str]) -> list[CheckResult]:
-    out: list[CheckResult] = []
-    root = config.workspace(workspace_name)
-    if not root.exists():
-        out.append(CheckResult(
-            f"workspace {root.name}", Status.WARN,
-            f"does not exist yet ({root})",
-            "Run `flubnf init` to create it.",
-        ))
-        return out
-    if not os.access(root, os.W_OK):
-        out.append(CheckResult(
-            f"workspace {root.name}", Status.FAIL,
-            f"not writable: {root}",
-            "Check filesystem permissions.",
-        ))
-        return out
-    # Count submissions + sessions
-    n_sub = len(list((root / "submissions").glob("*.csv"))) if (
-        root / "submissions").exists() else 0
-    n_sess = len(list((root / "sessions").glob("*.json"))) if (
-        root / "sessions").exists() else 0
-    out.append(CheckResult(
-        f"workspace {root.name}", Status.OK,
-        f"writable; submissions={n_sub} sessions={n_sess}",
-    ))
-    return out
-
-
-def _check_data_cache(config) -> CheckResult:
-    cache = Path(config.data_cache)
-    if not cache.exists():
-        return CheckResult(
-            "data cache", Status.WARN,
-            f"missing: {cache}",
-            "Run `flubnf fetch` to populate.",
-        )
-    csvs = sorted(cache.glob("*.csv"))
-    if not csvs:
-        return CheckResult(
-            "data cache", Status.WARN,
-            f"empty: {cache}",
-            "Run `flubnf fetch` to populate.",
-        )
-    latest = csvs[-1]
-    # Verify the latest CSV still parses with expected schema.
-    try:
-        from .fetch import _check_schema, SchemaChangeError
-        _check_schema(latest)
-    except SchemaChangeError as e:
-        return CheckResult(
-            "data cache schema", Status.FAIL,
-            f"latest CSV failed schema check: {e}",
-            "CDC may have renamed columns; update FluBNFConfig.cdc.*_columns.",
-        )
-    except Exception as e:  # noqa: BLE001
-        return CheckResult(
-            "data cache schema", Status.WARN, str(e),
-        )
-    size_mb = latest.stat().st_size / (1024 * 1024)
-    return CheckResult(
-        "data cache", Status.OK,
-        f"{len(csvs)} cached CSV(s); latest={latest.name} ({size_mb:.1f} MB)",
-    )
-
-
-def _check_historical_priors(repo_root: Path) -> CheckResult:
-    hp = repo_root / "data" / "historical_priors"
-    if not hp.exists():
-        return CheckResult(
-            "historical priors", Status.WARN,
-            "no priors directory yet",
-            "Run `flubnf record-season --state ... --season-year ...` "
-            "after a season finishes to seed it.",
-        )
-    files = list(hp.glob("*.json"))
-    return CheckResult(
-        "historical priors", Status.OK,
-        f"{len(files)} state prior file(s)",
+        "Install bionetgen (`pip install bionetgen`) and set FLUBNF_BNG "
+        "to its BNG2.pl.",
     )
 
 
@@ -407,275 +307,27 @@ def _check_disk_space(path: Path) -> CheckResult:
         return CheckResult(
             "disk space", Status.WARN,
             f"{free_gb:.1f} GB free at {path}",
-            "Plenty for a single week, but consider a clean-cache pass.",
+            "Plenty for a single week; the console's Storage page "
+            "(/storage) shows what can be cleared.",
         )
     return CheckResult("disk space", Status.OK, f"{free_gb:.0f} GB free")
 
 
-# ---------------------------------------------------------------------------
-# Pre-studio checks — extra paranoia before kicking off a long Mac Studio run
-# ---------------------------------------------------------------------------
-def _check_studio_historical_priors_loadable(repo_root: Path) -> list[CheckResult]:
-    """Every JSON in data/historical_priors/ must parse and at least
-    one season's worth of best/p25/p75 params must be present."""
-    import json
-    out: list[CheckResult] = []
-    hp = repo_root / "data" / "historical_priors"
-    if not hp.exists():
-        return out   # benign: handled by the standard check
-    files = sorted(hp.glob("*.json"))
-    if not files:
-        return out
-    n_ok = 0
-    bad: list[tuple[str, str]] = []
-    for f in files:
-        try:
-            d = json.loads(f.read_text())
-            seasons = d.get("seasons", [])
-            if not seasons:
-                bad.append((f.name, "no seasons recorded"))
-                continue
-            need = {"season_year", "best_params", "p25_params", "p75_params"}
-            for s in seasons:
-                missing = need - set(s)
-                if missing:
-                    bad.append((f.name, f"missing keys: {sorted(missing)}"))
-                    break
-            else:
-                n_ok += 1
-        except Exception as e:
-            bad.append((f.name, f"parse error: {e}"))
-    if bad:
-        for name, reason in bad:
-            out.append(CheckResult(
-                f"prior {name}", Status.FAIL, reason,
-                "Re-run `flubnf record-season` for this state, or remove the "
-                "file if it's corrupted.",
-            ))
-    out.append(CheckResult(
-        "historical priors loadable", Status.OK if not bad else Status.WARN,
-        f"{n_ok}/{len(files)} files parsed cleanly",
-    ))
-    return out
-
-
-def _check_studio_locations_schema(config) -> CheckResult:
-    """The locations CSV must have the columns load_locations expects."""
-    import pandas as pd
-    p = Path(config.locations_csv)
-    if not p.exists():
-        return CheckResult(
-            "locations schema", Status.FAIL,
-            f"locations CSV missing: {p}",
-        )
-    try:
-        df = pd.read_csv(p, dtype={"location": str})
-    except Exception as e:
-        return CheckResult(
-            "locations schema", Status.FAIL, f"unreadable: {e}",
-        )
-    needed = {"abbreviation", "location", "location_name", "population"}
-    missing = needed - set(df.columns)
-    if missing:
-        return CheckResult(
-            "locations schema", Status.FAIL,
-            f"missing columns: {sorted(missing)}",
-            "Restore the canonical FluSight locations.csv (the schema "
-            "load_locations() depends on).",
-        )
-    if len(df) < 53:
-        return CheckResult(
-            "locations schema", Status.WARN,
-            f"only {len(df)} rows; expected ≥53 (50 states + DC + PR + US)",
-        )
-    return CheckResult(
-        "locations schema", Status.OK,
-        f"{len(df)} rows; columns OK",
-    )
-
-
-def _check_studio_state_templates(config, workspace_name: Optional[str]
-                                   ) -> CheckResult:
-    """Every JURISDICTION must have a .bngl + .conf in the workspace (or
-    be materializable from templates)."""
-    from .constants import JURISDICTIONS
-    root = config.workspace(workspace_name)
-    if not root.exists():
-        return CheckResult(
-            "state templates", Status.WARN,
-            f"workspace {root.name} not initialized; cannot enumerate",
-            "Run `flubnf init` first; this check is meaningful after init.",
-        )
-    bngl_dir = root / "model_files"
-    conf_dir = root / "conf_files"
-    missing: list[str] = []
-    for j in JURISDICTIONS:
-        if not (bngl_dir / f"{j}.bngl").exists():
-            missing.append(f"{j}.bngl")
-        if not (conf_dir / f"{j}.conf").exists():
-            missing.append(f"{j}.conf")
-    if missing:
-        sample = ", ".join(missing[:5]) + ("..." if len(missing) > 5 else "")
-        return CheckResult(
-            "state templates", Status.FAIL,
-            f"{len(missing)} files missing ({sample})",
-            "Run `flubnf init --force` to (re)materialize templates.",
-        )
-    return CheckResult(
-        "state templates", Status.OK,
-        f"all {len(JURISDICTIONS)} jurisdictions have .bngl + .conf",
-    )
-
-
-def _check_studio_fringe_detectors() -> CheckResult:
-    """Exercise the registered fringe detectors against known-trigger
-    fixtures via the public `evaluate_all` API — catches a regression
-    where a detector silently stops firing."""
-    import numpy as np
-    try:
-        from . import fringe_cases as fc
-        from .session import StateSession
-    except Exception as e:
-        return CheckResult(
-            "fringe detectors", Status.FAIL,
-            f"could not import fringe_cases: {e}",
-        )
-
-    # (case_name, observed, session-or-None), tuned to the current detector
-    # thresholds: update them together.
-    fixtures: list[tuple[str, np.ndarray, Optional[StateSession]]] = [
-        # Outlier week: prior window has IQR > 0 (slight variation), last
-        # value is far outside it.
-        ("outlier_week",
-         np.array([5., 6., 4., 5., 6., 5., 6., 4., 5., 100.]),
-         None),
-        # Holiday dip: epi-week 52 of 2025 → 2025-12-27. Last week dropped
-        # well below the prior 3-week median.
-        ("holiday_reporting_dip",
-         np.array([200., 220., 250., 260., 270., 280., 300., 310., 320., 200.]),
-         StateSession(state="Test", last_reference_date="2025-12-27")),
-    ]
-
-    misses: list[str] = []
-    n_ok = 0
-    for case_name, obs, sess in fixtures:
-        try:
-            matches = fc.evaluate_all(obs, sess)
-        except Exception as e:
-            misses.append(f"{case_name} (raised: {e})")
-            continue
-        fired = next((m for m in matches
-                      if m.case_name == case_name and m.triggered), None)
-        if fired is None:
-            misses.append(case_name)
-        else:
-            n_ok += 1
-    if misses:
-        return CheckResult(
-            "fringe detectors", Status.FAIL,
-            f"did not fire: {', '.join(misses)}",
-            "A detector or its trigger threshold regressed — re-run "
-            "tests/test_fringe_cases.py for details.",
-        )
-    return CheckResult(
-        "fringe detectors", Status.OK,
-        f"{n_ok}/{len(fixtures)} fixtures fired correctly",
-    )
-
-
-def _check_studio_flusight_target(repo_root: Path) -> CheckResult:
-    """The FluSight target CSV should be present and have enough rows
-    for backtest + baseline-score to be meaningful."""
-    import pandas as pd
-    p = repo_root / "data" / "flusight_target" / "target-hospital-admissions.csv"
-    if not p.exists():
-        return CheckResult(
-            "flusight target", Status.WARN,
-            f"missing: {p}",
-            "Run `flubnf fetch` to populate it.",
-        )
-    try:
-        df = pd.read_csv(p, dtype={"location": str}, nrows=1)
-        n_lines = sum(1 for _ in p.open()) - 1
-    except Exception as e:
-        return CheckResult(
-            "flusight target", Status.FAIL,
-            f"unreadable: {e}",
-        )
-    needed = {"date", "location", "value"}
-    missing = needed - set(df.columns)
-    if missing:
-        return CheckResult(
-            "flusight target", Status.FAIL,
-            f"missing columns: {sorted(missing)}",
-        )
-    if n_lines < 1000:
-        return CheckResult(
-            "flusight target", Status.WARN,
-            f"only {n_lines} rows; full archive is ~10k+",
-            "Re-fetch to get a complete archive.",
-        )
-    return CheckResult(
-        "flusight target", Status.OK,
-        f"{n_lines} rows; columns OK",
-    )
-
-
-def _check_studio_submission_validator() -> CheckResult:
-    """Confirm the schema validator imports + has the expected entry
-    points. Cheap, but catches a refactor mistake before prod."""
-    try:
-        from . import validate as _validate
-    except Exception as e:
-        return CheckResult(
-            "submission validator", Status.FAIL,
-            f"could not import: {e}",
-        )
-    missing = [n for n in ("validate_submission_df", "validate_submission_csv",
-                            "ValidationReport")
-               if not hasattr(_validate, n)]
-    if missing:
-        return CheckResult(
-            "submission validator", Status.FAIL,
-            f"missing attribute(s): {missing}",
-            "Schema gate is broken; do NOT run weekly-job until fixed.",
-        )
-    return CheckResult("submission validator", Status.OK,
-                       "validate_submission_{df,csv} callable")
-
-
-def _check_studio_bng_executable(config) -> CheckResult:
-    """Beyond existence — BNG2.pl must be executable."""
-    bng = Path(config.pybnf.bng_command)
-    if not bng.exists():
-        return CheckResult(
-            "BNG2.pl executable", Status.FAIL,
-            f"missing: {bng}",
-        )
-    if not os.access(bng, os.X_OK):
-        return CheckResult(
-            "BNG2.pl executable", Status.FAIL,
-            f"not executable: {bng}",
-            "chmod +x the file, or check the path.",
-        )
-    return CheckResult("BNG2.pl executable", Status.OK, "x bit set")
-
-
-def _check_cdc_reachable(config) -> CheckResult:
+def _check_cdc_reachable() -> CheckResult:
     """Optional network check — only runs in --online mode."""
     import requests
-    host = config.cdc.socrata_host
+    host = "data.cdc.gov"
+    dataset = "mpgq-jmmr"
     try:
         r = requests.head(
-            f"https://{host}/resource/{config.cdc.socrata_dataset}.csv",
+            f"https://{host}/resource/{dataset}.csv",
             params={"$limit": 1}, timeout=10.0,
         )
         if r.status_code >= 500:
             return CheckResult(
                 "CDC Socrata reachable", Status.WARN,
                 f"HTTP {r.status_code} from {host}",
-                "Socrata may be having issues; retry later or use "
-                "--prefer flusight.",
+                "Socrata may be having issues; retry later.",
             )
         return CheckResult(
             "CDC Socrata reachable", Status.OK,
@@ -685,27 +337,25 @@ def _check_cdc_reachable(config) -> CheckResult:
         return CheckResult(
             "CDC Socrata reachable", Status.FAIL,
             f"{type(e).__name__}: {e}",
-            "Check network; try --prefer flusight to use GitHub mirror.",
+            "Check the network connection.",
         )
 
 
 # ---------------------------------------------------------------------------
 # Top-level orchestration
 # ---------------------------------------------------------------------------
-def run_doctor(
-    config,
-    *,
-    workspace: Optional[str] = None,
-    online: bool = False,
-    pre_studio: bool = False,
-    repo_root: Optional[Path] = None,
-) -> DoctorReport:
+def _disk_path() -> Path:
+    """Where the console writes: app/state when it exists, else the repo."""
+    repo = Path(__file__).resolve().parents[1]
+    state = repo / "app" / "state"
+    return state if state.is_dir() else repo
+
+
+def run_doctor(*, online: bool = False) -> DoctorReport:
     """Run all checks and return a DoctorReport.
 
     Every check runs even after a failure, so all problems show in one pass.
-    `pre_studio=True` adds checks for a long production run: priors and
-    locations schemas, templates materialized, fringe detectors on
-    fixtures, target archive, validator callable, BNG2.pl executable.
+    `online=True` adds the network check (CDC reachability).
     """
     rep = DoctorReport()
     rep.add(_check_python())
@@ -716,25 +366,8 @@ def run_doctor(
     rep.add(_check_engine_venv())        # can the engine venv import at all
     rep.add(_check_pf_engine())          # and does the fork carry pf.py
     rep.add(_check_hub())                # truth + vintages for scoring
-    rep.add(_check_bng(config))
-    for c in _check_templates(config):
-        rep.add(c)
-    for c in _check_workspace(config, workspace):
-        rep.add(c)
-    rep.add(_check_data_cache(config))
-    if repo_root is None:
-        repo_root = Path(config.workspace_root).parent
-    rep.add(_check_historical_priors(repo_root))
-    rep.add(_check_disk_space(Path(config.workspace_root)))
-    if pre_studio:
-        for c in _check_studio_historical_priors_loadable(repo_root):
-            rep.add(c)
-        rep.add(_check_studio_locations_schema(config))
-        rep.add(_check_studio_state_templates(config, workspace))
-        rep.add(_check_studio_fringe_detectors())
-        rep.add(_check_studio_flusight_target(repo_root))
-        rep.add(_check_studio_submission_validator())
-        rep.add(_check_studio_bng_executable(config))
+    rep.add(_check_bng())
+    rep.add(_check_disk_space(_disk_path()))
     if online:
-        rep.add(_check_cdc_reachable(config))
+        rep.add(_check_cdc_reachable())
     return rep
