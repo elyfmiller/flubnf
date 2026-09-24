@@ -232,6 +232,21 @@ def read_model(name: str) -> dict:
             for f in REQUIRED}
 
 
+#: A sidecar the engine never reads: where the model came from ("origin")
+#: and, for a seasonal model, its "season_start" (week_origin).
+MODEL_FILE = "model.json"
+
+
+def read_info(name: str) -> dict:
+    """The model's model.json, or {} (none, unreadable, not an object)."""
+    try:
+        info = json.loads((MODELS / check_name(name) / MODEL_FILE)
+                          .read_text(encoding="utf-8"))
+        return info if isinstance(info, dict) else {}
+    except Exception:
+        return {}
+
+
 def save_model(name: str, files: dict) -> Path:
     """Write the three files of a model (creating the folder), keeping
     every byte as given, newlines pinned to \\n for the engine."""
@@ -442,6 +457,8 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
     src = read_data_source(name)
     if src:
         meta["source"] = src
+        if len(src.get("dates") or []) == len(times):
+            meta["dates"] = src["dates"]         # the plot's calendar axis
     (workroot / "meta.json").write_text(json.dumps(meta))
     return workroot
 
@@ -711,14 +728,46 @@ def _digest(text: str) -> str:
                         .encode("utf-8")).hexdigest()
 
 
+def _first_saturday(day: str) -> str:
+    import datetime as dt
+    d = dt.date.fromisoformat(day)
+    return (d + dt.timedelta(days=(5 - d.weekday()) % 7)).isoformat()
+
+
+def week_origin(name: str, start: str) -> str:
+    """The date t = 0 counts from: the model's season_start (model.json)
+    when it records one, since a seasonal model's phase is anchored there,
+    else the first Saturday of the range."""
+    info = read_info(name)
+    if info.get("season_start"):
+        return _iso_date(info["season_start"], "season_start").isoformat()
+    return _first_saturday(start)
+
+
+def calendar_offsets(dates: list, origin: str) -> list:
+    """Whole weeks from origin to each date: a missing week leaves a gap
+    in t (rule 10, as the console's resolve_state keeps it), never a
+    renumbered row that would integrate one week where two elapsed."""
+    import datetime as dt
+    o = dt.date.fromisoformat(origin)
+    out = []
+    for d in dates:
+        days = (dt.date.fromisoformat(d) - o).days
+        if days < 0:
+            raise SandboxError(f"week {d} is before t = 0 ({origin})")
+        out.append(int(round(days / 7)))
+    return out
+
+
 def fill_data(name: str, location_name: str, start: str, end: str,
               asof: str | None = None) -> dict:
     """Rewrite a model's data.exp from the archive: the file's own header
     line if it has one (else '# time H_weekly'), then one 't value' row
-    per reported week, t counting 0, 1, 2 ... in date order. Writes the
-    sidecar data.source.json beside it and returns its contents. Refuses
-    an unknown location, a range with no reported week, and start after
-    end."""
+    per reported week, t the whole weeks since week_origin, so a missing
+    week is a gap in t. Writes the sidecar data.source.json beside it
+    (with the origin and each row's date) and returns its contents.
+    Refuses an unknown location, a range with no reported week, and
+    start after end."""
     d = model_dir(name)
     start, end = _check_range(start, end)
     known = {l["name"] for l in locations()}
@@ -730,6 +779,8 @@ def fill_data(name: str, location_name: str, start: str, end: str,
         raise SandboxError(f"no reported week for {location_name} between "
                            f"{start} and {end}"
                            + (f" in the vintage of {asof}" if asof else ""))
+    origin = week_origin(name, start)
+    ts = calendar_offsets(s["dates"], origin)
     header = DEFAULT_HEADER
     exp = d / "data.exp"
     if exp.is_file():
@@ -739,11 +790,12 @@ def fill_data(name: str, location_name: str, start: str, end: str,
                     header = line.rstrip()
                 break
     text = header + "\n" + "\n".join(
-        f"{t} {_fmt(v)}" for t, v in enumerate(s["values"])) + "\n"
+        f"{t} {_fmt(v)}" for t, v in zip(ts, s["values"])) + "\n"
     exp.write_text(text, encoding="utf-8", newline="\n")
     info = {"location": str(location_name), "start": start, "end": end,
             "asof": str(asof) if asof else "settled",
             "rows": len(s["values"]), "dropped": int(s["dropped"]),
+            "origin": origin, "dates": list(s["dates"]),
             "written_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "digest": _digest(text)}
     (d / SOURCE_FILE).write_text(json.dumps(info, indent=1) + "\n",

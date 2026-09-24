@@ -124,18 +124,29 @@
   function draw() {
     var t = RES.traj, obs = RES.meta.observed || [], times = RES.meta.time || [];
     var n = t.n_obs, xs = [], fs = rootPx();
-    var dt = times.length > 1 ? (times[times.length - 1] - times[0]) / (times.length - 1) : 1;
+    // forecast columns sit one step apart past the last row, the step the
+    // closest two rows are apart (1 for weekly rows, gaps or not)
+    var dt = 0;
+    for (var k = 1; k < times.length; k++) { var g = times[k] - times[k - 1]; if (g > 0 && (!dt || g < dt)) dt = g; }
+    dt = dt || 1;
     for (var i = 0; i < t.columns; i++) xs.push(i < times.length ? times[i] : times[times.length - 1] + dt * (i - times.length + 1));
+    var dates = RES.meta.dates || [];
+    if (dates.length === times.length && times.length) {
+      // a filled model: the same offsets as calendar dates, 7 days a unit
+      var d0 = Date.parse(dates[0] + 'T00:00:00Z'), t0 = times[0];
+      xs = xs.map(function (x) { return new Date(d0 + (x - t0) * 7 * 864e5).toISOString().slice(0, 10); });
+    }
+    var obsX = xs.slice(0, times.length);
     var ink = css('--ink'), mut = css('--mut'), line = css('--line'), acc = css('--accent'), accInk = css('--accent-ink'), surf = css('--card');
     var band = {x: xs.concat(xs.slice().reverse()), y: t.q90.concat(t.q10.slice().reverse()),
                 fill: 'toself', fillcolor: hexa(acc, 0.22), line: {width: 0}, name: '10 to 90%', hoverinfo: 'skip'};
     var med = {x: xs, y: t.q50, mode: 'lines', name: 'median', line: {color: accInk, width: 2}};
-    var pts = {x: times, y: obs, mode: 'markers', name: RES.meta.obs_col || 'observed', marker: {color: ink, size: 6}};
+    var pts = {x: obsX, y: obs, mode: 'markers', name: RES.meta.obs_col || 'observed', marker: {color: ink, size: 6}};
     var shapes = n < t.columns ? [{type: 'line', x0: xs[n - 1], x1: xs[n - 1], y0: 0, y1: 1, yref: 'paper', line: {dash: 'dot', color: mut}}] : [];
     Plotly.newPlot('sbplot', [band, med, pts], {margin: {t: 20, r: 10, l: 50, b: 40}, shapes: shapes,
       paper_bgcolor: surf, plot_bgcolor: surf,
       font: {color: ink, family: '"DM Sans",system-ui,sans-serif', size: Math.round(fs * .85)},
-      xaxis: {title: {text: 'time'}, gridcolor: line, zerolinecolor: line, linecolor: line, tickfont: {color: ink}},
+      xaxis: {title: {text: dates.length === times.length && times.length ? 'week ending' : 'time'}, gridcolor: line, zerolinecolor: line, linecolor: line, tickfont: {color: ink}},
       yaxis: {title: {text: RES.meta.obs_col || 'count'}, rangemode: 'tozero', gridcolor: line, zerolinecolor: line, linecolor: line, tickfont: {color: ink}},
       legend: {orientation: 'h', font: {color: ink}}}, {displayModeBar: false, responsive: true});
   }
