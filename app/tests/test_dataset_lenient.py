@@ -392,6 +392,43 @@ def test_a_short_row_is_ragged_only_when_it_lacks_a_used_column():
     assert p.rows == (4,)
 
 
+@pytest.mark.parametrize("raw,example", [
+    # an unquoted thousands comma: once read as value 1, kind count
+    (b"date,target_group,value\n2024-01-06,A,1,234\n2024-01-13,A,1,500\n"
+     b"2024-01-20,A,987\n", "row 2: 2024-01-06,A,1,234"),
+    # ... and with a population after it: once value 1, population 234
+    (b"date,target_group,value,population\n2024-01-06,A,1,234,5000\n"
+     b"2024-01-13,A,1,500,5000\n", "row 2: 2024-01-06,A,1,234,5000"),
+    # an unquoted comma in the last used column: once the group 'Bern'
+    (b"date,value,target_group\n2024-01-06,5,Bern, Stadt\n"
+     b"2024-01-13,6,Bern, Stadt\n", "row 2: 2024-01-06,5,Bern, Stadt"),
+])
+def test_a_row_with_more_fields_than_the_header_is_refused(raw, example):
+    """An unquoted separator inside a value splits it; the cells past the
+    header were once dropped without a word, so the row read wrong."""
+    rep = D.validate(raw)
+    assert rep.codes == ["extra_fields"]
+    p = rep.problems[0]
+    assert p.rows == (2, 3) and p.kind == "Columns"
+    assert example in p.message and '"1,234"' in p.message
+    with pytest.raises(D.DatasetError):
+        D.ingest(raw, "cut")
+    assert D.list_datasets() == []
+
+
+def test_extra_fields_name_the_separator_and_spare_empty_cells():
+    rows = [f"{d.isoformat()};A;{i};;" for i, d in enumerate(sats())]
+    ok(D.validate(csv_text("date;target_group;value", rows).encode()))
+    rows[3] = "2024-08-24;A;1;x"
+    p = only(D.validate(csv_text("date;target_group;value", rows).encode()),
+             "extra_fields")
+    assert p.rows == (5,) and "unquoted semicolon" in p.message
+    # a quoted comma is one field, as ever
+    rep = ok(D.validate(b'date,target_group,value\n2024-01-06,A,"1,234"\n'
+                        b'2024-01-13,A,"1,500"\n'))
+    assert [r[4] for r in rep.records] == [1234, 1500]
+
+
 # --------------------------------------------------- rows, kinds, reporting
 
 def test_row_numbers_are_the_spreadsheets_rows():

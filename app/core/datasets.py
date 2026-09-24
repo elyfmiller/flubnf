@@ -207,7 +207,7 @@ PROBLEM_KINDS = (
               "limit_groups", "kind_invalid", "target_required",
               "target_unknown")),
     ("Columns", ("missing_columns", "ambiguous_columns", "column_unknown",
-                 "duplicate_columns", "ragged")),
+                 "duplicate_columns", "ragged", "extra_fields")),
     ("Dates", ("date_parse", "date_day_first", "weekday", "as_of_parse",
                "as_of_before_date")),
     ("Values", ("value_numeric", "value_format", "value_negative",
@@ -718,14 +718,21 @@ def _read(src: _Replayable, enc: str, limits: Limits, columns):
     cols["_delim"] = delim
     idx = cols["_idx"]
     need = max(idx.values()) + 1
+    width = len(header)
     groups_seen = set()
-    ragged, raw_rows = [], []
+    ragged, extra, raw_rows = [], [], []
     gcol = idx["group"]
     for row in reader:
         if not row or all(not c.strip() for c in row):
             continue
         if len(raw_rows) >= limits.max_rows:
             raise _LimitExceeded("rows")
+        if len(row) > width and any(c.strip() for c in row[width:]):
+            # more cells than the header names: an unquoted separator
+            # inside a value ("1,234") split it, and slicing would keep
+            # the wrong half
+            extra.append((reader.line_num,
+                          row if len(extra) < MAX_EXAMPLES else None))
         if len(row) < need:
             ragged.append(reader.line_num)
             row = row + [""] * (need - len(row))
@@ -740,6 +747,19 @@ def _read(src: _Replayable, enc: str, limits: Limits, columns):
         rep.add("ragged", f"{len(ragged)} row(s) have fewer fields than the "
                 f"columns they need ({_rows(ragged)}; e.g., row {ragged[0]}).",
                 ragged)
+    if extra:
+        lines = [ln for ln, _ in extra]
+        ln, cells = extra[0]
+        shown = delim.join(cells)
+        shown = shown if len(shown) <= 60 else shown[:57] + "..."
+        how = ("An unquoted comma splits a value in two: write 1,234 as "
+               '"1,234" or 1234, and quote a name that holds a comma '
+               '("Bern, Stadt").' if delim == "," else
+               f"An unquoted {DELIMITERS[delim]} splits a value in two: "
+               "quote a value that holds one.")
+        rep.add("extra_fields", f"{len(extra)} row(s) have more fields than "
+                f"the header's {width} column(s) ({_rows(lines)}; e.g., row "
+                f"{ln}: {shown}). {how}", lines)
     return rep, cols, raw_rows
 
 
