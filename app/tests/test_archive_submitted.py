@@ -133,6 +133,10 @@ def test_the_pipeline_keeps_a_complete_archive_from_a_run_with_a_dropped_locatio
                     for r in rows]
         return real(rows, model, *a, **k)
     monkeypatch.setattr(SB, "write_submission", _corrupt)
+    # run ids carry the second they start: the Output page's latest run
+    # must be this one, not a same-second sibling
+    import time
+    time.sleep(1.1)
     _spec, second = _default_run(pipeline_env["names"])
     assert second["submission_dropped"]
     assert second["archived"].startswith("kept: this run is not complete")
