@@ -6,9 +6,9 @@ app/state/
 *.log
 .DS_Store
 model-output/
-data/humidity/
-data/covgates/
 data/covidhub/
+# the legacy workspace CLI's default root (flubnf/config.py), created in the checkout
+workspaces/
 .flubnf.env
 # the Windows twin of .flubnf.env, written by setup.ps1: machine-specific paths
 .flubnf.env.cmd

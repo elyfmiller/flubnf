@@ -1,32 +1,18 @@
-# Line-ending policy: every platform checks out the same bytes.
-#
-# The fitting pipeline is byte-oriented: BNGL templates are materialized by
-# token substitution and fed to the engine, conf and exp files are parsed
-# line-wise, and the app inlines js/css assets verbatim into exported
-# reports. Windows Git's default CRLF conversion changes those bytes at
-# checkout (found by the Windows CI job as a byte-identity test failure),
-# so text checks out LF everywhere, with the two Windows launcher scripts
-# as the deliberate exceptions.
+# Same bytes on every platform: the pipeline is byte-oriented (templates,
+# conf/exp parsing, assets inlined into reports), and Windows' CRLF conversion
+# broke a byte-identity test. LF everywhere except the Windows launchers.
 * text=auto eol=lf
 *.bat text eol=crlf
 *.ps1 text eol=crlf
 
-# The engine's input formats, pinned by name rather than left to the
-# `text=auto` heuristic above. `auto` asks git to GUESS whether a blob is
-# text; a template that ever picked up a byte git read as binary would drop
-# out of the policy silently, and the way you would find that out is a fit
-# behaving differently on one platform. These are the formats BNG2.pl and
-# PyBNF parse, so they say so rather than inferring it. Only .bngl and
-# .conf are tracked today (flubnf/templates); .exp is written at run time
-# and is listed so a committed fixture would land under the same rule.
+# The engine's input formats (BNG2.pl, PyBNF), pinned by name so text=auto's
+# binary guess can never drop one out of the policy (flubnf/templates,
+# flubnf/sandbox_examples).
 *.bngl text eol=lf
 *.exp  text eol=lf
 *.conf text eol=lf
 
-# The generated site. site.json IS the review, so it stays a normal diffable
-# text file; the vendored Plotly bundle beside it is 4.9 MB of upstream
-# minified JS that would bury every one of those reviews, so it is excluded
-# from diffs and from language statistics without being excluded from the
-# repository -- the page needs it to work offline.
+# Vendored Plotly (4.9 MB, needed offline): kept, but out of diffs and
+# language stats. site/ is untracked until the lab publishes the site.
 site/plotly.min.js -diff linguist-vendored
 app/ui/static/plotly.min.js -diff linguist-vendored

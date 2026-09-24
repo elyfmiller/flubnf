@@ -3,34 +3,21 @@
 #
 #   curl -sL https://raw.githubusercontent.com/elyfmiller/flubnf/main/reinstall.sh | bash
 #
-# WHY THIS EXISTS. A stale lab machine is never one problem. The console does
-# not update because the launcher could not fast-forward; the engine venv is
-# already there, so the launcher never installs the new engine archive; an old
-# archive in Downloads is newer by mtime than the good one; an old console is
-# still serving port 8710. The reinstall guide of 2026-09-23 walked a student
-# through eight pages of this by hand. This script does the same things, in
-# the same order, and prints what it did.
+# A stale lab machine is several problems at once (launcher cannot
+# fast-forward, engine venv present so a new archive is never installed, an old
+# archive wins newest-by-mtime, an old console holds port 8710). This fixes
+# them in order and prints each step.
 #
-# WHAT IT DOES, IN ORDER. Checks first, and nothing changes until they pass:
-# git, curl, tar and pgrep are present; Python 3.11 or 3.12 (or conda) can be
-# found; no console is running and port 8710 is free; GitHub is reachable; a
-# real engine archive (pybnf-pf-<sha>.tar.gz, one top folder holding
-# pybnf/pf.py and setup.py) is saved where setup looks; nothing in the shell
-# says this is a development machine. Then the old install is SET ASIDE,
-# never deleted: the FluBNF folder, the engine venv and any unpacked engine
-# copy are renamed with -old-<stamp>, and the old launchers are made
-# non-executable so a Dock icon cannot start them. Every other engine file
-# (pybnf*.tar.gz, pybnf*.bundle) in the folders setup searches is moved into
-# Downloads/old-engine-files, so "newest wins" cannot pick a wrong one. Then:
-# clone, setup.sh, setup_engine.sh with the archive the checks chose, open
-# the console. If the install stops before a new console exists, the old
-# copies are put back.
+# Checks first, nothing changes until they pass: git/curl/tar/pgrep, Python
+# 3.11/3.12 or conda, no console running and port 8710 free, GitHub reachable,
+# a VALID engine archive where setup looks, no developer setup. Then the old
+# install is SET ASIDE, never deleted (renamed -old-<stamp>; old launchers
+# chmod -x; other engine files moved to Downloads/old-engine-files), and:
+# clone, setup.sh, setup_engine.sh with the chosen archive, open the console.
+# If no new console exists when it stops, the old copies are put back.
 #
-# WHAT IT REFUSES. A machine that already runs the current console with the
-# current engine is left alone, because pasting the line twice must not set
-# a good install aside. A git checkout with uncommitted work, or a shell that
-# exports FluBNF settings, is a developer's setup, not a lab install.
-# FLUBNF_REINSTALL_FORCE=1 overrides all three.
+# Refuses a machine already current, a checkout with uncommitted work, or a
+# shell exporting FluBNF settings; FLUBNF_REINSTALL_FORCE=1 overrides all three.
 #
 # KNOBS, all optional:
 #   FLUBNF_DIR                   where the clone goes (default ~/Documents/GitHub/flubnf)
@@ -67,11 +54,8 @@ stop() {
   exit 1
 }
 
-# Runs on every exit. Once something has been set aside and no new console
-# exists yet (a failed clone, Control-C during it, a lost connection), the
-# old copies go straight back, so the reader is never left with nothing.
-# After the clone exists, setup.sh is the thing to retry, and the launcher
-# retries it on its own; the message says so and where the old copies are.
+# Runs on every exit. Set aside but no new clone yet: put the old copies back.
+# Clone exists: say where things are (the launcher retries setup.sh itself).
 on_exit() {
   _rc=$?
   trap - EXIT
@@ -100,19 +84,14 @@ on_exit() {
   exit "$_rc"
 }
 
-# The folders setup_engine.sh searches for an engine archive: the folder
-# beside the FluBNF folder, then the three a download lands in. The sweep
-# below must cover these, or a file left in one of them still wins the
-# launcher's newest-by-mtime choice. Listed once each: with FLUBNF_DIR under
-# ~/Documents the same folder would otherwise be visited twice.
+# The folders setup_engine.sh searches (keep in step), deduplicated: the sweep
+# must cover them all or a leftover file still wins newest-by-mtime.
 engine_dirs() {
   printf '%s\n' "$PARENT" "$HOME/Downloads" "$HOME/Desktop" "$HOME/Documents" | awk '!seen[$0]++'
 }
 
-# Whether a tarball is an engine archive: ONE top-level folder holding both
-# pybnf/pf.py and setup.py, which is what scripts/cut_engine_archive.sh
-# writes and what setup_engine.sh's install_engine_archive needs. A PR
-# review package is named the same way and is not one.
+# An engine archive has one top folder holding pybnf/pf.py and setup.py
+# (as cut_engine_archive.sh writes); a same-named review package does not.
 is_engine_archive() {
   _l="$(tar -tzf "$1" 2>/dev/null)" || return 1
   _t="$(printf '%s\n' "$_l" | grep -m1 -E '^[^/]+/pybnf/pf\.py$' | cut -d/ -f1)"
@@ -140,10 +119,8 @@ for t in git curl tar pgrep; do
 done
 ok "git, curl, tar and pgrep are present"
 
-# A shell that exports FluBNF settings is a development setup: setup.sh and
-# setup_engine.sh would follow them to folders this script never set aside
-# (a developer's fork checkout, a venv elsewhere). The knobs this script and
-# the installers document are the exceptions.
+# Exported FLUBNF_* settings mean a development setup: the setup scripts would
+# follow them to folders never set aside. Documented knobs are exempt.
 STRAY="$(env | grep '^FLUBNF_' | grep -v -E '^FLUBNF_(REINSTALL_[A-Z_]*|REPO|DIR|ENGINE_VENV|HUB)=' || true)"
 if [ -n "$STRAY" ] && [ -z "${FLUBNF_REINSTALL_FORCE:-}" ]; then
   printf '%s\n' "$STRAY" | sed 's/^/      /'
@@ -151,12 +128,9 @@ if [ -n "$STRAY" ] && [ -z "${FLUBNF_REINSTALL_FORCE:-}" ]; then
        "install. Open a new Terminal window without them, or run with FLUBNF_REINSTALL_FORCE=1."
 fi
 
-# The engine needs Python 3.11 or 3.12 (its numpy pin has no wheels for
-# newer Pythons). setup_engine.sh can also make a 3.12 with conda. The same
-# candidates as that script, plus python.org's framework path, checked here
-# so the answer comes BEFORE the old install is touched. Whatever is found
-# goes to the front of PATH, so setup.sh, which probes by the names python3.12,
-# python3.11 and python3, reaches the same interpreter.
+# Engine needs 3.11/3.12 (numpy<2 wheels); same candidates as setup_engine.sh,
+# checked before anything moves, then put first on PATH so setup.sh probes the
+# same interpreter.
 PY=""
 for c in python3.12 python3.11 python3; do
   cand=$(command -v "$c" 2>/dev/null) || continue
@@ -189,9 +163,8 @@ else
   fi
 fi
 
-# A console still running keeps showing the old copy, holds port 8710, and
-# would be killed by nothing here. It is the reader's to quit. On a shared
-# Mac another account's console shows only as the port being taken.
+# A running console holds port 8710 and is the reader's to quit (another
+# account's shows only as the port being taken).
 if [ -z "${FLUBNF_REINSTALL_IGNORE_RUNNING:-}" ]; then
   if pgrep -U "$(id -u)" -f 'flubnf (app|window)' >/dev/null 2>&1; then
     stop "FluBNF is still running. Quit it (or restart the computer), then paste the line again."
@@ -203,16 +176,13 @@ if [ -z "${FLUBNF_REINSTALL_IGNORE_RUNNING:-}" ]; then
   ok "no FluBNF console is running"
 fi
 
-# GitHub must be reachable BEFORE the old install is set aside: a clone
-# that fails afterwards would leave the machine with no console at all.
+# GitHub must be reachable BEFORE anything is set aside.
 REMOTE_SHA="$(git ls-remote "$REPO" refs/heads/main 2>/dev/null | cut -c1-40)"
 [ -n "$REMOTE_SHA" ] || stop "cannot reach $REPO (no internet, or a VPN in the way). Connect and paste the line again."
 ok "GitHub is reachable; latest FluBNF is ${REMOTE_SHA:0:7}"
 
-# The engine archive, found the way setup_engine.sh will find it, but with
-# the content check that script lacks: the newest VALID archive wins, and
-# every other engine file is swept aside below. Only the names setup
-# searches are touched; a reader's own pybnf-notes.txt is not this script's.
+# As setup_engine.sh searches, plus a content check: the newest VALID archive
+# wins; every other engine file (only the names setup searches) is swept below.
 ARCHIVE=""
 OTHERS=()
 while IFS= read -r d; do
@@ -243,9 +213,8 @@ CUT_NEW="$(archive_version_line "$ARCHIVE" 2 | awk '{print $2}')"
 ok "engine file: $ARCHIVE"
 [ -n "$STAMP_NEW" ] && ok "its version stamp: $STAMP_NEW"
 
-# What is installed now, read in a subshell so .flubnf.env's paths do not
-# leak into the setup scripts run below, which honour FLUBNF_* from the
-# environment.
+# Installed stamp, read in a subshell so .flubnf.env's FLUBNF_* do not leak
+# into the setup scripts below.
 INSTALLED_STAMP="$(
   [ -f "$DEST/.flubnf.env" ] || exit 0
   # shellcheck disable=SC1091
@@ -259,9 +228,8 @@ INSTALLED_CUT="$(
   [ -f "${FLUBNF_PYBNF:-/nonexistent}/VERSION" ] && sed -n 2p "$FLUBNF_PYBNF/VERSION" | awk '{print $2}'
 )"
 
-# An engine file older than the engine already installed would be a silent
-# downgrade; setup_engine.sh guards against that, but only while the
-# installed copy is still in place, which is not after the rename below.
+# Refuse a silent downgrade here: setup_engine.sh's guard needs the installed
+# copy in place, which the rename below removes.
 if [ -z "${FLUBNF_REINSTALL_FORCE:-}" ] && [ -n "$CUT_NEW" ] && [ -n "$INSTALLED_CUT" ] \
    && [ "$STAMP_NEW" != "$INSTALLED_STAMP" ] && [ "$CUT_NEW" \< "$INSTALLED_CUT" ]; then
   stop "the engine file in Downloads ($STAMP_NEW, cut $CUT_NEW) is OLDER than the engine" \
@@ -269,10 +237,8 @@ if [ -z "${FLUBNF_REINSTALL_FORCE:-}" ] && [ -n "$CUT_NEW" ] && [ -n "$INSTALLED
        "run with FLUBNF_REINSTALL_FORCE=1 to install the older one anyway."
 fi
 
-# Already current? Pasting the line twice must not set a good install aside.
-# Current means: the clone is at the latest main with no stray edits, the
-# console's Python still runs, and the installed engine is this archive's
-# and imports.
+# Already current (latest main, clean, console imports, this archive's engine
+# imports)? Then pasting the line twice must not set it aside.
 if [ -z "${FLUBNF_REINSTALL_FORCE:-}" ] && [ -d "$DEST/.git" ] && [ -x "$DEST/.venv/bin/flubnf" ]; then
   LOCAL_SHA="$(git -C "$DEST" rev-parse HEAD 2>/dev/null)"
   CLEAN="$([ -z "$(git -C "$DEST" status --porcelain --untracked-files=no 2>/dev/null)" ] && echo 1)"
@@ -297,18 +263,13 @@ if [ -z "${FLUBNF_REINSTALL_FORCE:-}" ] && [ -d "$DEST/.git" ] && [ -x "$DEST/.v
   fi
 fi
 
-# A git checkout at any of the paths about to be renamed is set aside like
-# anything else, uncommitted work included. That is right for a lab machine
-# (the archive route leaves no checkout), and wrong for a developer, whose
-# checkout updates with git pull. Work that is not on its remote stops the
-# script; a clean checkout is named before it goes.
+# A checkout about to be renamed: unpushed or uncommitted work stops the
+# script (a developer's, updated by git pull); a clean one is named first.
 CANDIDATES=("$DEST" "$ENGINE_VENV" "$PARENT/PyBNF-Private" "$PARENT/PyBNF-pf"
             "$HOME/Documents/PyBNF-Private" "$HOME/PyBNF-Private")
 for d in "${CANDIDATES[@]}"; do
   [ -d "$d/.git" ] || continue
   # tracked changes only: a console clone always has untracked state
-  # (.venv, .flubnf.env, app/state), and the launcher's own update check
-  # ignores untracked files for the same reason
   dirty="$(git -C "$d" status --porcelain --untracked-files=no 2>/dev/null | head -1)"
   ahead="$(git -C "$d" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)"
   linked="$(git -C "$d" worktree list 2>/dev/null | sed 1d)"
@@ -324,8 +285,7 @@ echo
 echo "About to install FluBNF fresh into $DEST. Anything already there (the"
 echo "FluBNF folder, the engine, old engine files) is set aside: renamed, not deleted."
 if [ -z "${FLUBNF_REINSTALL_YES:-}" ]; then
-  # No terminal means nobody can answer; an unattended run must say so
-  # rather than proceed as if someone had.
+  # No terminal: nobody can answer, so stop rather than proceed.
   { : < /dev/tty; } 2>/dev/null \
     || stop "no terminal to ask on. Set FLUBNF_REINSTALL_YES=1 to run without the question."
   printf 'Press Return to continue, or Control-C to stop. '
@@ -348,10 +308,8 @@ for d in "${CANDIDATES[@]}"; do
     stop "could not rename $d. Close anything using it and paste the line again."
   fi
 done
-# The renamed launchers must not run: the old .venv's scripts carry absolute
-# paths to the folder the NEW venv now occupies, so opening the old copy once
-# would re-point the new install at the old folder (measured 2026-09-23).
-# Dock icons follow a renamed app, so this is what stops them.
+# Old launchers must not run: the old .venv's scripts hold absolute paths now
+# owned by the new venv (measured 2026-09-23); Dock icons follow the rename.
 for l in FluBNF.command SetupEngine.command; do
   [ -f "$DEST-old-$STAMP/$l" ] && chmod a-x "$DEST-old-$STAMP/$l"
 done
@@ -384,9 +342,8 @@ if [ -n "${FLUBNF_REINSTALL_NO_INSTALL:-}" ]; then
   echo; echo "FLUBNF_REINSTALL_NO_INSTALL is set: stopping before the install."; exit 0
 fi
 
-# Quieter child scripts: pip's upgrade notice is not this reader's problem,
-# and the fork's regexes raise SyntaxWarnings at compile that look like
-# errors on a first launch.
+# Quieter child scripts: no pip upgrade notice, no SyntaxWarnings from the
+# fork's regexes (they read as errors).
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 export PYTHONWARNINGS="${PYTHONWARNINGS:-ignore::SyntaxWarning}"
 
@@ -437,6 +394,5 @@ if [ -z "${FLUBNF_REINSTALL_NO_OPEN:-}" ]; then
 fi
 }
 
-# bash must have parsed the whole file before any of it runs: a download cut
-# short then fails with a syntax error instead of running half of this.
+# Parse the whole file before running any: a truncated download fails cleanly.
 main "$@"

@@ -2,11 +2,7 @@
 # Double-click me to install the PF engine (Tier B). Finds your PyBNF
 # checkout, or an offline engine bundle, automatically; no typing needed.
 cd "$(dirname "$0")"
-# A checkout OR a plain unpacked copy, the same question FluBNF.command and
-# setup_engine.sh ask. The lab's engine archive unpacks without a .git
-# directory, and the installer never needed one: it pip-installs the folder.
-# Testing for .git here sent a student who had followed the install page
-# exactly on to the GitHub credentials advice below.
+# A checkout OR an unpacked archive (no .git), same test as setup_engine.sh.
 FOUND=""
 for c in "${FLUBNF_PYBNF:-}" "$HOME/Documents/GitHub/PyBNF-Private" \
          "$HOME/Documents/GitHub/PyBNF-pf" "$HOME/Documents/PyBNF-Private" \
@@ -20,11 +16,8 @@ if [ -n "$FOUND" ]; then
   echo "Using PyBNF checkout: $FOUND"
   FLUBNF_PYBNF="$FOUND" ./setup_engine.sh
 else
-  # No checkout. Before saying anything about GitHub, ask setup_engine.sh
-  # whether an offline bundle is lying around: that route needs no account,
-  # no invitation and no network, so a student who has the file should never
-  # read the credentials advice at all. The search itself lives in
-  # setup_engine.sh; asking it keeps one copy of the answer.
+  # No checkout: ask setup_engine.sh (which owns the search) for an offline
+  # bundle before any GitHub advice.
   BUNDLE="$(./setup_engine.sh --print-bundle 2>/dev/null)"
   if [ -n "$BUNDLE" ]; then
     echo "No PyBNF checkout yet, but there is an offline engine bundle:"

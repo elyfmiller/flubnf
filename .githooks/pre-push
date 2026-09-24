@@ -1,15 +1,8 @@
 #!/usr/bin/env bash
-# Run the suite the way CI runs it (no hub clone, no engine) before any
-# push to main. Added 2026-08-27 after a commit turned main red: a local
-# suite that passes with the lab's hub present is NOT the CI contract.
-# Bypass deliberately with --no-verify when you mean to.
+# Run the suite as CI does (no hub, no engine) before a push to main: passing
+# with the lab's hub present is not the CI contract. Bypass: --no-verify.
 set -u
-# pipefail is THE load-bearing line. Without it `if ! pytest | tail` tests
-# tail's exit status, which is always 0, so the hook ran the whole suite and
-# then approved the push REGARDLESS of the result. Found 2026-08-31 when a
-# red suite sailed through: the hook had never refused anything since the
-# day it was added. The em-dash in the refusal message below was also ours,
-# swapped for a colon under the no-dashes rule.
+# Load-bearing: without pipefail `pytest | tail` returns tail's 0 and every push passes.
 set -o pipefail
 repo="$(git rev-parse --show-toplevel)"
 py="$repo/.venv/bin/python"
