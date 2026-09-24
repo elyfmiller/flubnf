@@ -190,3 +190,13 @@ def test_a_state_with_data_but_no_forecast_is_named_in_the_legend(tmp_path):
     html2 = build_report("2098-01-03", {}, {}, {}, tmp_path / "r2.html",
                          fitted_fips=["50"]).read_text()
     assert "no forecast</span>" not in html2
+
+
+def test_state_panel_and_national_card_use_the_hub_rate_change_rule():
+    """The one-week-ahead state panel reads hub horizon 0, the same cuts as
+    its map card, and the national card uses the hub's US population rather
+    than a rounded constant."""
+    src = (Path(__file__).resolve().parents[2] / "app/ui/pipeline.py").read_text()
+    assert 'us_pop if fips_l == "US" else int(n2p.get(loc, 1e6)), 0)' in src
+    assert "q1, lo_us, us_pop, 0)" in src
+    assert "q1, lo_us, 340_000_000, 0)" not in src

@@ -141,6 +141,10 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
     from app.core.scoring import summary_table_html
     n2a = dict(zip(locs.location_name, locs.abbreviation))
     n2p = dict(zip(locs.location_name, locs.population.astype(float)))
+    # the national population from the same table (the hub's "US" row)
+    _us_row = locs[locs.location.astype(str) == "US"]
+    us_pop = (int(float(_us_row.population.iloc[0])) if len(_us_row)
+              else 340_000_000)
     # cells.json is read only when there are fitted samples
     cells = (_json.loads((workroot / "cells.json").read_text())
              if pf_samples else [])
@@ -199,7 +203,7 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
         if q1 is None or lo_us is None:
             return None
         probs_us = categorical_probs_from_quantiles(
-            q1, lo_us, 340_000_000, 0)
+            q1, lo_us, us_pop, 0)
         if not probs_us:
             return None
         med_us = float(min(q1.items(),
@@ -269,7 +273,7 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
             # one week ahead = canonical "0", matching the fan above
             probs_l = categorical_probs(
                 _np.asarray(s["0"], float), lo_l,
-                int(n2p.get(loc, 1e6)), 1)
+                us_pop if fips_l == "US" else int(n2p.get(loc, 1e6)), 0)
             key = "US" if fips_l == "US" else n2a.get(loc, loc)
             meds = [q_by_t[t]["0.5"] for t in f_t]
             note = ("Off-season: the model finds no sustained "
