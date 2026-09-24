@@ -542,6 +542,39 @@ def test_the_retro_route_refuses_a_resume_over_other_locations(
     assert len(launched) == 1
 
 
+def test_run_season_refuses_a_resume_over_other_locations(tmp_path,
+                                                          monkeypatch):
+    """The location rule lives in retro.run_season, so the CLI (and any
+    other caller) refuses it like the console; the recorded list, with
+    the national row spelled either way, resumes."""
+    _gh_season(monkeypatch)
+    root = tmp_path / SEASON
+    retro.run_season(root, SEASON, ["Ohio", "US"], width=1,
+                     engine="analogue")
+    for other in (["Ohio"], ["Ohio", "Texas", "US"]):
+        with pytest.raises(retro.LocationsMismatch,
+                           match="mix two location scopes"):
+            retro.run_season(root, SEASON, other, width=1,
+                             engine="analogue")
+    assert retro.read_meta(root)["settings"]["locations"] == ["Ohio", "US"]
+    retro.run_season(root, SEASON, ["US", "Ohio"], width=1,
+                     engine="analogue")
+
+
+def test_cli_retro_reports_a_location_refusal(monkeypatch, tmp_path):
+    from flubnf.cli import app
+    _cli_locations(monkeypatch, tmp_path)
+
+    def refuse(*a, **k):
+        raise retro.LocationsMismatch("mix two location scopes")
+    monkeypatch.setattr(retro, "season_vintages", lambda s: [W1, W2])
+    monkeypatch.setattr(retro, "run_season", refuse)
+    r = CliRunner().invoke(app, ["retro", SEASON, "--locations", "Ohio",
+                                 "--root", str(tmp_path / SEASON)])
+    assert r.exit_code == 2 and "refused" in r.output
+    assert "location scopes" in r.output
+
+
 def _cli_locations(monkeypatch, tmp_path):
     import flubnf.settings as fs
     loc = tmp_path / "locations.csv"

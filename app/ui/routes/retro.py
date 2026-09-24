@@ -550,19 +550,15 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                        "them. Archive or discard the existing results to "
                        "run it. Nothing was started.")
                 return RedirectResponse("/retro", status_code=303)
-            # nor with another location scope: completed weeks are skipped,
-            # so the season would pool weeks fitted over different
-            # locations while the record named only the new list
-            def _scope(ls):
-                return {"US" if usn.is_us(l) else str(l) for l in ls}
-            had_locs = [str(l) for l in
-                        ((retro.read_meta(live) or {}).get("settings", {})
-                         .get("locations") or [])]
-            if had_locs and _scope(had_locs) != _scope(names):
+            # nor with another location scope (the rule lives in
+            # retro.run_season, so the CLI refuses it too; checked here
+            # first so the refusal comes before anything is claimed)
+            change = retro.location_scope_change(
+                (retro.read_meta(live) or {}).get("settings", {})
+                .get("locations"), names)
+            if change:
                 _flash(f"{season} has {existing} completed week"
-                       f"{'' if existing == 1 else 's'} replayed over "
-                       f"{len(_scope(had_locs))} location(s); this run asks "
-                       f"for {len(_scope(names))} with a different list. "
+                       f"{'' if existing == 1 else 's'} {change}. "
                        "Resuming would mix two location scopes in one "
                        "season. Archive or discard the existing results to "
                        "run it. Nothing was started.")

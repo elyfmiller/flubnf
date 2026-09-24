@@ -1255,7 +1255,7 @@ def retro_cmd(
                                 width=width, week_extra=week_extra,
                                 progress=lambda a: print(f"  {a} done",
                                                          flush=True), **kx)
-    except retro.KnobsMismatch as e:
+    except retro.ResumeMismatch as e:
         typer.echo(f"refused: {e}", err=True)
         raise typer.Exit(2)
     print(f"{season}: {len(done)} weeks complete -> {r}")
