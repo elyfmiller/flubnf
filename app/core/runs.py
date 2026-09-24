@@ -749,6 +749,20 @@ class Ledger:
                           "engine_versions"), r))
                 for r in cur.fetchall()]
 
+    def rows_mentioning(self, text: str, limit: int = 50) -> list:
+        """The newest `limit` rows whose spec contains `text` (a dataset id),
+        filtered IN the query, so any number of other runs cannot push them
+        out of the window; the caller confirms the exact field."""
+        cur = self._db.execute(
+            "SELECT run_id, created_utc, spec_json, status, outcome_json, "
+            "finished_utc, elapsed_s, flubnf_sha, engine_versions "
+            "FROM runs WHERE instr(COALESCE(spec_json, ''), ?) > 0 "
+            "ORDER BY created_utc DESC LIMIT ?", (str(text), limit))
+        return [dict(zip(("run_id", "created_utc", "spec", "status", "outcome",
+                          "finished_utc", "elapsed_s", "flubnf_sha",
+                          "engine_versions"), r))
+                for r in cur.fetchall()]
+
     def row(self, run_id: str) -> Optional[dict]:
         """One run's row, rows()'s shape, however old; None when unknown."""
         cur = self._db.execute(

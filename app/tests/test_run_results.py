@@ -165,3 +165,33 @@ def test_an_unknown_run_is_a_404_with_a_short_page(tmp_path, monkeypatch):
                                locations=["Ohio"]), Path("pending"), {})
     led.close_run(rid, "ok", {})
     assert client.get(f"/runs/{rid}").status_code == 200
+
+
+def test_a_datasets_card_finds_its_runs_behind_many_hub_runs(
+        tmp_path, monkeypatch):
+    """The dataset card read the newest 200 ledger rows and then kept its
+    own, so 200 later hub runs hid every run on the dataset."""
+    import app.core.runs as runs_mod
+    from app.core.runs import Ledger
+    from app.ui import datasets_ui
+    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
+    led = Ledger()
+    ds_id = led.open_run(RunSpec(engine="analogue", forecast_date="2098-01-10",
+                                 locations=["g1"],
+                                 extra={"dataset": {"id": "dq7",
+                                                    "name": "Template"}}),
+                         Path("pending"), {})
+    led.close_run(ds_id, "ok", {})
+    # a dataset whose id is a prefix must not be mistaken for this one
+    other = led.open_run(RunSpec(engine="analogue", forecast_date="2098-01-10",
+                                 locations=["g1"],
+                                 extra={"dataset": {"id": "dq", "name": "x"}}),
+                         Path("pending"), {})
+    led.close_run(other, "ok", {})
+    for _ in range(205):
+        rid = led.open_run(RunSpec(engine="analogue",
+                                   forecast_date="2098-01-03",
+                                   locations=["Ohio"]), Path("pending"), {})
+        led.close_run(rid, "ok", {})
+    assert [r["run_id"] for r in datasets_ui._ledger_for("dq7")] == [ds_id]
+    assert [r["run_id"] for r in datasets_ui._ledger_for("dq")] == [other]

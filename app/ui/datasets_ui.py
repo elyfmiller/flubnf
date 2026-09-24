@@ -683,7 +683,8 @@ def _dataset_view(ds) -> dict:
 def _ledger_for(ds_id: str, n: int = 5) -> list:
     """The newest ledger rows of runs on this dataset."""
     out = []
-    for r in Ledger().rows(200):
+    # filtered by the id in SQL: hub runs never push these out of the window
+    for r in Ledger().rows_mentioning(ds_id, 200):
         try:
             x = (json.loads(r.get("spec") or "{}").get("extra") or {})
         except Exception:
