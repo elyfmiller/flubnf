@@ -72,6 +72,7 @@ Every route lives in `server.py`, grouped under `# === <Tab> ===` banners, excep
 | POST | `/sandbox/models/{name}/fill-data`, `/upload-data` (multipart, size-capped) | `sandbox_fill_data`, `sandbox_upload_data` | redirect | `sandbox_data.html` (`formaction`) |
 | POST | `/sandbox/run` (alias) | `sandbox_run` | redirect | scripts |
 | POST | `/sandbox/runs/{run_id}/stop`, `/delete`; `/sandbox/stop` | `sandbox_run_stop`, `sandbox_delete_run`, `sandbox_stop` | redirect | results card; the guard modal |
+| POST | `/sandbox/runs/{run_id}/oracle` (the Oracle step on an unedited Oracle SIHRS start; sandbox only) | `sandbox_run_oracle` | redirect | results card |
 | GET | `/sandbox/models/{name}/download`, `/sandbox/runs/{run_id}/download` (localhost Host only) | `sandbox_model_download`, `sandbox_run_download` | zip | workbench |
 | POST | `/api/sandbox/models/{name}/check` | `api_sandbox_check` | JSON | `static/sandbox.js` |
 | GET | `/api/sandbox/models/{name}/contactmap`, `/network` | `api_sandbox_contactmap`, `api_sandbox_network` | | `sandbox_views.html` (drawn by `static/model-views.js`; cached by the model text) |

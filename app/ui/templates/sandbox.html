@@ -64,7 +64,7 @@
 {% set name = editing.name %}
 <p class="hint sbcrumb"><a href="/sandbox">Sandbox</a> /</p>
 <h1>{{ name }}</h1>
-{% if note or origin %}<p class="sub">{{ note }}{% if origin %}<span class="hint"> · from {{ origin }}</span>{% endif %}{% if shipped and shipped.shipped and not shipped.intact %} {{ tips.tip("sb-modified", "modified", "Changed since creation: " ~ (shipped.changed | join(", ")) ~ ". Runs of it are your model, not the shipped filter.") }}{% endif %}</p>{% endif %}
+{% if note or origin %}<p class="sub">{{ note }}{% if origin %}<span class="hint"> · from {{ origin }}</span>{% endif %}{% if shipped and shipped.shipped and not shipped.intact %} {{ tips.tip("sb-modified", "modified", "Changed since creation: " ~ (shipped.changed | join(", ")) ~ ". Runs of it are your model, not the shipped filter, and cannot take the Oracle step.") }}{% endif %}</p>{% endif %}
 <div class="sbwork">
  <div>
   <div class="card">
@@ -156,6 +156,23 @@
     {% for s in diff.settings %}<tr><td>{{ s.key }}</td><td>{{ s.a }}</td><td>{{ s.b }}</td></tr>{% endfor %}</tbody></table>{% endif %}
    {% if diff.data_source %}<p class="hint">Data: {{ diff.data_source.a.location or "typed" }} {{ diff.data_source.a.asof or "" }} to {{ diff.data_source.b.location or "typed" }} {{ diff.data_source.b.asof or "" }}.</p>{% endif %}
    {% for f in diff.files %}{% if f.same %}<p class="hint">{{ f.name }}: unchanged.</p>{% else %}<details class="adv" open><summary>{{ f.name }}</summary><pre class="sbdiffpre">{{ f.diff }}</pre></details>{% endif %}{% endfor %}
+  </div>
+  {% endif %}
+  {% if oracle or (shipped and shipped.shipped) %}
+  <div class="card sboracle"><h2>Oracle step <span class="pill">sandbox, not a submission</span></h2>
+   <form method="post" action="/sandbox/runs/{{ res.run_id }}/oracle" class="row">
+    <span>{{ tips.label("Blend weight w", "sb-w", "The Oracle step's weight on the donor bank; " ~ oracle_w_production ~ " is the production value. The result stays in this run's folder: never the ledger, the site, the archive or model-output.", for_="sb-w-in") }}
+     <input id="sb-w-in" name="w" type="number" step="0.05" min="0" max="1" value="{{ oracle_w }}"{% if not oracle_gate.ok %} disabled{% endif %}></span>
+    <button class="gold"{% if not oracle_gate.ok %} disabled aria-describedby="tip-sb-oracle-why"{% endif %}>Apply the Oracle step</button>
+    {% if not oracle_gate.ok %}{{ tips.tip("sb-oracle-why", "why the Oracle step is off", oracle_gate.reason) }}{% endif %}
+   </form>
+   {% if oracle %}
+   <p class="hint">{{ oracle.location }} as of {{ oracle.forecast_date }}, w = {{ oracle.w }}{% if oracle.w != oracle.w_production %} (production {{ oracle.w_production }}){% endif %}{% if oracle.state %}; {{ oracle.state }}{% endif %}{% if oracle.reason %}: {{ oracle.reason }}{% endif %}.</p>
+   <table class="kv sboracle-t"><thead><tr><th>week ending</th><th>plain filter: median (50%, 95%)</th><th>Oracle SIHRS: median (50%, 95%)</th></tr></thead><tbody>
+    {% macro qcell(q) %}{% if q %}{{ "%.1f" | format(q[2]) }} ({{ "%.1f" | format(q[1]) }} to {{ "%.1f" | format(q[3]) }}; {{ "%.1f" | format(q[0]) }} to {{ "%.1f" | format(q[4]) }}){% else %}no finite sample{% endif %}{% endmacro %}
+    {% for r in oracle.rows %}<tr><td>{{ r.target_end_date }}</td><td>{{ qcell(r.filter) }}</td><td>{{ qcell(r.oracle) }}</td></tr>{% endfor %}
+   </tbody></table>
+   {% endif %}
   </div>
   {% endif %}
   {% endif %}

@@ -734,7 +734,7 @@ details.sbfill input[type=file]{padding:.3rem}
 .sbreport ul{margin:.2rem 0 .4rem 1.1rem;padding:0}
 .sbreport p{margin:.4rem 0 .1rem}
 .sbactions{margin-top:.5rem}
-/* the New model form's Oracle SIHRS start; compare and diff */
+/* the New model form's Oracle SIHRS start; compare, diff, the Oracle step */
 fieldset.sbshipped{border:1px solid var(--line);border-radius:8px;
   padding:.35rem .8rem .5rem;margin:.6rem 0}
 fieldset.sbshipped legend{color:var(--mut);font-size:var(--fs-label);padding:0 .3rem}
@@ -748,7 +748,7 @@ fieldset.sbshipped legend{color:var(--mut);font-size:var(--fs-label);padding:0 .
 .sbcompare select{width:auto;max-width:16rem}
 pre.sbdiffpre{max-height:22rem;overflow:auto;font-size:var(--fs-label);
   white-space:pre;margin:.3rem 0}
-table.sbparams2 td{font-variant-numeric:tabular-nums}
+table.sboracle-t td,table.sbparams2 td{font-variant-numeric:tabular-nums}
 #sb-checked ul{margin:.2rem 0 .4rem 1.1rem;padding:0}
 #sb-checked p{margin:.4rem 0 .1rem}
 .sb-bad{color:var(--bad);font-weight:600}

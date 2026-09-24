@@ -26,7 +26,9 @@ creation digests so an edited copy never passes for it. check() reads a
 model without the engine; prepare() runs the production preflight first.
 data.exp can be filled from the hub archive or from a stored custom
 dataset (app/core/datasets.py), always in calendar weeks. Runs can be
-compared (diff_runs) and downloaded (model_zip, run_zip).
+compared (diff_runs) and downloaded (model_zip, run_zip), and a run of an
+unedited Oracle SIHRS start can take the production Oracle step inside
+its own folder (oracle_step: sandbox, never a submission).
 """
 from __future__ import annotations
 
@@ -1646,8 +1648,8 @@ def run_zip(run_id: str) -> bytes:
     """A run as a zip under <run_id>/: meta.json, pf.conf (paths made
     relative), the three files, the engine's parameter sample and ESS
     record, summary.csv (the 10/50/90% trajectory per week beside the
-    observed count), and the raw trajectory only when it is small
-    (TRAJ_ZIP_MAX)."""
+    observed count), the Oracle step's summary when one was made, and the
+    raw trajectory only when it is small (TRAJ_ZIP_MAX)."""
     import csv
     import io
     d, meta = _run_meta(run_id)
@@ -1678,4 +1680,123 @@ def run_zip(run_id: str) -> bytes:
     for p in sorted(runs.glob("*traj_noise*")) if runs.is_dir() else []:
         if p.stat().st_size <= TRAJ_ZIP_MAX:
             entries.append((f"{run_id}/{p.name}", p.read_bytes()))
+    if (d / ORACLE_FILE).is_file():
+        entries.append((f"{run_id}/{ORACLE_FILE}", (d / ORACLE_FILE).read_bytes()))
     return _zip(entries)
+
+
+# ------------------------------------------- the Oracle step (sandbox only)
+# On a finished run of an unedited Oracle SIHRS start (hub origin, four
+# forecast weeks), the production Oracle step (app/core/oracle.apply_week
+# on pf_engine.collect's samples) is applied inside the run folder and its
+# quantiles shown beside the plain filter's. It writes only under the run
+# folder: never the ledger, the site, the archive or model-output.
+
+ORACLE_FILE = "oracle_step.json"
+ORACLE_DIR = "oracle"
+#: the quantile levels the page shows (of the 23 FluSight levels)
+ORACLE_LEVELS = (0.025, 0.25, 0.5, 0.75, 0.975)
+
+
+def oracle_default_w() -> float:
+    """The production blend weight (flubnf.oracle.W_PRODUCTION)."""
+    from flubnf import oracle as OR
+    return float(OR.W_PRODUCTION)
+
+
+def oracle_gate(run_id: str) -> dict:
+    """Whether the Oracle step may run on this run: {"ok", "reason"}.
+    It may when the run finished, has four forecast weeks, is of a model
+    started from the hub's Oracle SIHRS filter, and neither the run's
+    files nor the model's differ from the creation digests."""
+    try:
+        _, meta = _run_meta(run_id)
+    except SandboxError as e:
+        return {"ok": False, "reason": str(e)}
+    name = str(meta.get("model", ""))
+    info = read_info(name) if NAME_RE.match(name) else {}
+    origin = meta.get("origin") or info.get("origin")
+    if SHIPPED_DATASET in (origin, info.get("origin")):
+        return {"ok": False, "reason": "The Oracle step reads the hub's vintage "
+                "and donor bank; this model starts from a dataset."}
+    if origin != SHIPPED or info.get("origin") != SHIPPED:
+        return {"ok": False, "reason": "Only runs of a model started from the "
+                "Oracle SIHRS filter can take the Oracle step."}
+    if meta.get("status") != "ok":
+        return {"ok": False, "reason": "The run has not finished cleanly."}
+    if int(meta.get("forecast_weeks", 0) or 0) != 4:
+        return {"ok": False, "reason": "The Oracle step needs a run with 4 "
+                "forecast weeks, as production makes."}
+    dig = info.get("digests") or {}
+    ran = meta.get("digests") or {}
+    edited = [f for f in REQUIRED if ran.get(f) != dig.get(f)]
+    if edited:
+        return {"ok": False, "reason": "This run's " + ", ".join(edited)
+                + (" differs" if len(edited) == 1 else " differ")
+                + " from the Oracle SIHRS start as created."}
+    st = shipped_state(name)
+    if not st["intact"]:
+        return {"ok": False, "reason": "The model was edited after it was "
+                "created (" + ", ".join(st["changed"]) + "), so it is no "
+                "longer the Oracle SIHRS start."}
+    if not (info.get("location") and info.get("forecast_date")):
+        return {"ok": False, "reason": "model.json does not record the "
+                "location and forecast date."}
+    return {"ok": True, "reason": ""}
+
+
+def _levels(xs) -> list | None:
+    v = np.asarray(xs, float)
+    v = v[np.isfinite(v)]
+    if not v.size:
+        return None
+    return [float(q) for q in np.quantile(v, ORACLE_LEVELS)]
+
+
+def oracle_step(run_id: str, w: float | None = None) -> dict:
+    """Apply the production Oracle step to one run's forecast samples;
+    the summary is written to <run>/oracle_step.json (apply_week's own
+    oracle.json and donor bank go to <run>/oracle/). Refused in words
+    when oracle_gate refuses or w is outside 0..1."""
+    from app.core import horizons as hz
+    from app.core import oracle as oracle_mod
+    gate = oracle_gate(run_id)
+    if not gate["ok"]:
+        raise SandboxError(gate["reason"])
+    w = oracle_default_w() if w is None else float(w)
+    if not (0.0 <= w <= 1.0):
+        raise SandboxError(f"the blend weight w must be between 0 and 1, "
+                           f"not {w:g}")
+    d, meta = _run_meta(run_id)
+    info = read_info(meta["model"])
+    loc, fd = str(info["location"]), str(info["forecast_date"])
+    samples = pf_engine.collect(d)
+    if loc not in samples:
+        raise SandboxError(f"the fit left no forecast samples for {loc}")
+    samples = {loc: samples[loc]}
+    member, prov = oracle_mod.apply_week(samples, fd, d / ORACLE_DIR, w=w)
+    table = {r["canonical"]: r["target_end_date"]
+             for r in prov["quantiles"]["horizons"]["table"]}
+    ent = prov["locations"].get(loc, {})
+    rows = [{"horizon": h, "target_end_date": table.get(h, ""),
+             "filter": _levels(samples[loc][h]),
+             "oracle": _levels(member[loc][h])} for h in hz.HORIZONS]
+    out = {"run_id": run_id, "location": loc, "forecast_date": fd,
+           "w": w, "w_production": oracle_default_w(),
+           "levels": list(ORACLE_LEVELS), "rows": rows,
+           "state": ent.get("state", ""), "active": ent.get("active"),
+           "reason": ent.get("reason", ""), "bank": prov["bank"]["label"],
+           "reference_date": prov["quantiles"]["horizons"]["reference_date"],
+           "label": "sandbox, not a submission", "utc": _stamp()}
+    tmp = d / (ORACLE_FILE + ".tmp")
+    tmp.write_text(json.dumps(out, indent=1))
+    tmp.replace(d / ORACLE_FILE)
+    return out
+
+
+def read_oracle(run_id: str) -> dict | None:
+    """The run's Oracle step summary, or None."""
+    try:
+        return json.loads((run_dir(run_id) / ORACLE_FILE).read_text())
+    except Exception:
+        return None

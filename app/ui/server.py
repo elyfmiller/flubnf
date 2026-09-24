@@ -3404,6 +3404,12 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
            "vintages": sandbox_mod.vintages(),
            "locations": sandbox_mod.locations(),
            "datasets": sandbox_mod.dataset_choices()}
+    if res:
+        ctx["oracle"] = sandbox_mod.read_oracle(res["run_id"])
+        ctx["oracle_gate"] = sandbox_mod.oracle_gate(res["run_id"])
+        ctx["oracle_w_production"] = sandbox_mod.oracle_default_w()
+        ctx["oracle_w"] = (ctx["oracle"] or {}).get(
+            "w", ctx["oracle_w_production"])
     if editing:
         name = editing["name"]
         try:
@@ -3930,6 +3936,27 @@ def sandbox_run_download(request: Request, run_id: str):
         return _sandbox_zip(sandbox_mod.run_zip(run_id), f"{run_id}.zip")
     except Exception as e:
         return PlainTextResponse(f"{e}\n", status_code=404)
+
+
+@app.post("/sandbox/runs/{run_id}/oracle")
+def sandbox_run_oracle(run_id: str, w: str = Form("")):
+    """The production Oracle step on a finished run of an unedited Oracle
+    SIHRS start, inside the run folder only (sandbox, not a submission):
+    nothing reaches the ledger, the site, the archive or model-output."""
+    model = ""
+    try:
+        model = str(sandbox_mod.results(_sandbox_run_dir(run_id))["meta"]
+                    .get("model", ""))
+        try:
+            wv = float(w) if str(w).strip() else None
+        except ValueError:
+            raise sandbox_mod.SandboxError(f"w must be a number, not {w!r}")
+        out = sandbox_mod.oracle_step(run_id, wv)
+        _flash(f"Oracle step applied to {run_id} with w = {out['w']:g} "
+               "(sandbox, not a submission).")
+    except Exception as e:
+        _flash(f"Oracle step not applied: {e}")
+    return _sandbox_redirect(model, run_id if model else "")
 
 
 def _sandbox_storage_line() -> dict:
