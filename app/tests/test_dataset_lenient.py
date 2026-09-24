@@ -225,6 +225,19 @@ def test_week_problems_quote_the_dates_as_the_file_writes_them():
 
 # --------------------------------------------------------------- separators
 
+def test_a_sep_line_names_the_separator():
+    """A spreadsheet's "sep=;" first line (it hides the line, so the header
+    is row 1) once became the header and asked for a column mapping."""
+    rows = [f"{d.isoformat()};A;{i}" for i, d in enumerate(sats())]
+    rows[2] = "2024-08-17;A;-1"
+    raw = csv_text("sep=;\r\ndate;target_group;value", rows).encode()
+    p = only(D.validate(raw), "value_negative")
+    assert p.rows == (4,)
+    rep = ok(D.validate(raw.replace(b";-1", b";1")))
+    assert rep.summary["delimiter"] == "semicolon"
+    assert rep.summary["first_rows"][0]["row"] == 2
+
+
 @pytest.mark.parametrize("sep", [",", ";", "\t"])
 def test_comma_semicolon_and_tab_files_read_alike(sep):
     rows = [sep.join((d.isoformat(), "Adult", str(10 + i), "5000"))

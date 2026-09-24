@@ -122,6 +122,7 @@ def test_column_mapping_on_the_command_line(store, tmp_path):
     assert r.exit_code == 1
     assert "Columns in the file: #1 day, #2 area, #3 amount" in r.output
     assert "--column ROLE=HEADER" in r.output
+    assert "e.g. --column date=day." in r.output
     r = runner.invoke(app, ["dataset", "import", str(p), "--column",
                             "date=day", "--column", "group=#2",
                             "--column", "value=amount"])
@@ -131,6 +132,22 @@ def test_column_mapping_on_the_command_line(store, tmp_path):
     r = runner.invoke(app, ["dataset", "validate", str(p), "--column",
                             "when=day"])
     assert r.exit_code == 2 and "ROLE=HEADER" in r.output
+
+
+@pytest.mark.parametrize("raw,says", [
+    (b"date,target_group,value\n2024-01-06,A,1,234\n2024-01-13,A,987\n",
+     "row(s) have more fields than the header"),
+    ("date,target_group,value\n2024-01-06,Zürich,1\n".encode()
+     + b"2024-01-13,Z\xfcrich,2\n", "The file mixes encodings"),
+])
+def test_what_would_read_wrong_is_refused_on_the_command_line(store, tmp_path,
+                                                              raw, says):
+    p = tmp_path / "bad.csv"
+    p.write_bytes(raw)
+    for cmd in ("validate", "import"):
+        r = runner.invoke(app, ["dataset", cmd, str(p)])
+        assert r.exit_code == 1 and says in r.output, r.output
+    assert store.list_datasets() == []
 
 
 def test_a_spreadsheet_unicode_text_file_imports(store, tmp_path):

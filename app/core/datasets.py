@@ -827,7 +827,14 @@ def _read(src: _Replayable, enc: str, limits: Limits, columns,
                 "surrogateescape" if utf8 else "strict"))
     lines = (scan or _Scan()).lines(text) if utf8 else text
     sample = list(itertools.islice(lines, SNIFF_LINES))
-    delim = sniff_delimiter(sample)
+    # a spreadsheet's "sep=;" first line names the separator; the
+    # spreadsheet hides it, so the header below it is row 1
+    sep = re.fullmatch(r'\s*"?sep=(.)"?[,;\t]*\s*', sample[0]) if sample else None
+    if sep and sep.group(1) in DELIMITERS:
+        sample = sample[1:]
+        delim = sep.group(1)
+    else:
+        delim = sniff_delimiter(sample)
     rep.delimiter = delim
     reader = csv.reader(itertools.chain(sample, lines), delimiter=delim)
     header = None
@@ -918,7 +925,8 @@ def _map_columns(header, rep: Report, columns=None):
     (with the problem recorded) when a required column is missing or two
     columns could both be it. ``columns`` (role -> header) overrides."""
     norm = [_norm_header(h) for h in header]
-    label = [h if header.count(h) == 1 else f"{h} (#{i + 1})"
+    times = Counter(header)
+    label = [h if times[h] == 1 else f"{h} (#{i + 1})"
              for i, h in enumerate(header)]
     chosen, missing, ambiguous, unknown = {}, [], {}, []
     for role, want in (columns or {}).items():
@@ -1999,7 +2007,11 @@ def problem_lines(rep: Report) -> list:
     if rep.needs_mapping:
         out.append("Columns in the file: " + ", ".join(
             f"#{i + 1} {h}" for i, h in enumerate(rep.headers) if h))
+        unset = [r for r in REQUIRED if r not in rep.guess] or ["date"]
+        used = set(rep.guess.values())
+        free = [h for i, h in enumerate(rep.headers)
+                if h and f"#{i + 1}" not in used]
         out.append("Name them with --column ROLE=HEADER (ROLE: "
-                   + ", ".join(ROLES) + "), e.g. --column date="
-                   + next((h for h in rep.headers if h), "Week") + ".")
+                   + ", ".join(ROLES) + f"), e.g. --column {unset[0]}="
+                   + (free[0] if free else "#1") + ".")
     return out
