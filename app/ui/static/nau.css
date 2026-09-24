@@ -854,11 +854,11 @@ table.sbkeys code{white-space:nowrap}
 /* at phone width each key sits over its value and source, no sideways scroll */
 @media(max-width:640px){
   table.sbkeys thead{display:none}
-  table.sbkeys tr{display:grid;grid-template-columns:minmax(0,1fr) auto;
-    border-bottom:1px solid var(--line)}
-  table.sbkeys td{border:0;padding:.15rem .3rem}
-  table.sbkeys td:first-child{grid-column:1 / -1;padding-top:.4rem}
-  table.sbkeys td:last-child{color:var(--mut);padding-bottom:.4rem}}
+  table.sbkeys tr{display:flex;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+  table.sbkeys td{border:0;padding:.15rem .3rem .4rem}
+  table.sbkeys td:first-child{flex:0 0 100%;padding-top:.4rem;padding-bottom:.15rem}
+  table.sbkeys td:nth-child(2){flex:1 1 auto;min-width:0}
+  table.sbkeys td:last-child{color:var(--mut)}}
 .sbmanage .row{margin-top:.5rem}
 .sbmanage form.row input{width:14rem;max-width:100%}
 .sbupload > button,.sbfill .row > button{align-self:flex-end}
