@@ -3696,7 +3696,7 @@ async def sandbox_upload_data(request: Request, name: str):
     if not isinstance(up, UploadFile) or not up.filename:
         _sandbox_upload_report[name] = {"problems": ["Choose a CSV file to upload."]}
         return _sandbox_redirect(name)
-    kind = str(form.get("kind") or "count")
+    kind = str(form.get("kind") or "")          # '' = from the values
     try:
         ds = await run_in_threadpool(sandbox_mod.ingest_upload, up.file,
                                      up.filename, kind, cap)

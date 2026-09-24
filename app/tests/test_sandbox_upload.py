@@ -199,3 +199,18 @@ def test_the_stored_dataset_is_offered_to_other_models(box):
     assert f'value="dataset:{ds.id}"' in html and 'name="group"' in html
     assert 'formenctype="multipart/form-data"' in html
     assert json.loads(json.dumps(sb.dataset_choices()))[0]["groups"][0]["name"] == "Springfield"
+
+
+def test_the_upload_reads_leniently_and_infers_the_kind(box):
+    """The Data tab's reading, here too: a semicolon file on Sundays with a
+    'Cases' column and decimal commas loads as rates, moved to Saturdays."""
+    text = ("Week;Region;Cases\n" + "".join(
+        f"2024-10-{d:02d};Springfield;{i},5\n"
+        for i, d in enumerate((6, 13, 20, 27))))
+    r = _upload(text, name="rates.csv", kind="")
+    assert r.status_code == 303
+    (ds,) = D.list_datasets()
+    assert ds.kind == "rate" and ds.weeks()[0] == "2024-10-12"
+    html = client.get(r.headers["location"]).text
+    assert "Dates moved to week-ending Saturdays: +6 days" in html
+    assert '<option value="">from the values</option>' in html
