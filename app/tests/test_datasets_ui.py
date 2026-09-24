@@ -213,11 +213,21 @@ def test_hub_forecast_page_is_unchanged_without_datasets():
     assert "const SRCQ = \"\";" in page
 
 
-def test_the_selector_appears_once_a_dataset_exists():
+def test_the_source_is_two_tabs_and_your_data_opens_a_dataset():
+    page = client.get("/forecast").text
+    assert '<a href="/forecast" aria-current="page">FluSight hub</a>' in page
+    assert '<a href="/forecast?tab=own">Your data</a>' in page
+    # no dataset yet: the Your data tab is the upload box alone
+    own = client.get("/forecast?tab=own").text
+    assert 'id="dsup-forecast"' in own and 'id="fcform"' not in own
+    assert '<a href="/forecast?tab=own" aria-current="page">Your data</a>' in own
     ds = stored()
     page = client.get("/forecast").text
+    assert 'id="fc-source"' not in page and 'action="/run"' in page   # the hub tab
+    r = client.get("/forecast?tab=own", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == f"/forecast?source={ds.id}"
+    page = client.get(r.headers["location"]).text
     assert 'id="fc-source"' in page and f'value="{ds.id}"' in page
-    assert 'action="/run"' in page                  # still the hub by default
 
 
 def test_forecast_with_a_dataset_lists_groups_and_its_weeks():

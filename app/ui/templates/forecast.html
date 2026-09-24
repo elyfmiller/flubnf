@@ -3,27 +3,35 @@
 <script src="/static/quips.js"></script>{% endblock %}
 {% block content %}{% import "_tips.html" as tips %}
 <h1>Forecast</h1>
+{% import "_dataset_upload.html" as dsup %}
+{# the data source as two tabs: the FluSight hub, or your own datasets
+   (app/ui/datasets_ui.py); plain links, so Back, bookmarks and no-script work #}
+<nav class="srctabs" aria-label="data source">
+ <a href="/forecast"{% if not (dataset or own_tab) %} aria-current="page"{% endif %}>FluSight hub</a>
+ <a href="/forecast?tab=own"{% if dataset or own_tab %} aria-current="page"{% endif %}>Your data</a>
+</nav>
+{% if own_tab and not dataset %}
+<div class="card"><h2>Your data</h2>
+ <p class="hint">A weekly CSV of your own, forecast with both models and exported under non-hub names; never submitted.</p>
+ {{ dsup.box("forecast") }}
+</div>
+{% else %}
 <div class="cols">
  <div><div class="card"><h2>Settings</h2>
-  {% if source_choices or dataset %}
-  {# the data source: the hub by default, a stored dataset by choice
-     (app/ui/datasets_ui.py); a plain GET form, like the Data tab's #}
+  {% if dataset %}
+  {# which of your datasets; a plain GET form, like the Data tab's #}
   <form method="get" action="/forecast" class="row srcpick">
-   <span>{{ tips.label("Data source", "fc-src", "The FluSight hub is the default. A dataset from the Data tab runs on its own groups and weeks; its forecasts are exported as CSV files under non-hub names and never submitted.", for_="fc-source") }}
+   <span>{{ tips.label("Dataset", "fc-src", "A dataset runs on its own groups and weeks; its forecasts are exported as CSV files under non-hub names and never submitted.", for_="fc-source") }}
    <select name="source" id="fc-source">
-    <option value="">FluSight hub</option>
-    {% for sid, sname in source_choices %}<option value="{{ sid }}" {% if dataset and dataset.id == sid %}selected{% endif %}>{{ sname }}</option>{% endfor %}
+    {% for sid, sname in source_choices %}<option value="{{ sid }}" {% if dataset.id == sid %}selected{% endif %}>{{ sname }}</option>{% endfor %}
    </select></span>
    <button class="quiet">Use</button>
   </form>
-  {% endif %}
-  {# your own data, uploaded here: the shared upload box; "Forecast this"
-     stores it and reopens this tab on it #}
-  {% import "_dataset_upload.html" as dsup %}
   <details class="dsup-fold" id="fc-upload">
-   <summary>Upload your own data</summary>
+   <summary>Upload another</summary>
    {{ dsup.box("forecast") }}
   </details>
+  {% endif %}
   <form method="post" action="{{ '/run/dataset' if dataset else '/run' }}" id="fcform">
    {% if dataset %}<input type="hidden" name="dataset" value="{{ dataset.id }}">
    <p class="hint">{{ dataset.name }}: {{ "vintage-true" if dataset.vintage_true else "final data, not vintage-true" }}.
@@ -669,4 +677,5 @@
  addEventListener('themechange',()=>{drawData(CURMODE); drawFan();});
  addEventListener('fontsizechange',()=>{drawData(CURMODE); drawFan();});
 </script>
+{% endif %}
 {% endblock %}

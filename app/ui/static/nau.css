@@ -978,3 +978,12 @@ table.sbkeys code{white-space:nowrap}
 .sbmanage .row{margin-top:.5rem}
 .sbmanage form.row input{width:14rem;max-width:100%}
 .sbupload > button,.sbfill .row > button{align-self:flex-end}
+
+/* the Forecast data source: two tabs under the page title (FluSight hub,
+   Your data), underlined like the header's tabs, not pills */
+.srctabs{display:flex;gap:.2rem;border-bottom:1px solid var(--line);margin:-.2rem 0 .9rem}
+.srctabs a{padding:.45rem .8rem;color:var(--mut);text-decoration:none;font-weight:600;
+  border-bottom:3px solid transparent;margin-bottom:-1px}
+.srctabs a:hover{color:var(--ink)}
+.srctabs a[aria-current="page"]{color:var(--ink);border-bottom-color:var(--accent-ink)}
+.srctabs a:focus-visible{outline:2px solid var(--accent-ink);outline-offset:2px}
