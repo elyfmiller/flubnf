@@ -372,9 +372,9 @@ def test_a_day_that_snaps_back_across_august_first_keeps_the_anchors_season(
 
 def test_the_anchor_line_names_the_latest_week_on_or_before_the_day(
         tmp_path, monkeypatch):
-    """The page lists weeks newest first; the anchor is the LAST archived
-    week on or before a typed day (resolve_anchor reads them ascending),
-    in the server's line and in the page's own script."""
+    """The page lists weeks newest first; the anchor is the newest archived
+    week on or before a typed day, in the server's line and in the page's
+    own script."""
     _capture(monkeypatch, tmp_path)
     _hub(tmp_path / "hub", [W1, W2, W3], [W1, W2, W3], monkeypatch)
     ui_state._last_form.clear()
@@ -382,9 +382,13 @@ def test_the_anchor_line_names_the_latest_week_on_or_before_the_day(
                                 "locations": ["all"], "engine": "all"})
     page = client.get("/forecast").text
     assert f"Anchor week: {W3}" in page, page[page.find("anchor-line"):][:120]
-    assert ".slice().sort()" in page                      # the script's copy
-    assert "toISOString()" not in page.split('id="anchor-line"')[1].split(
-        "</script>")[0]                                   # local dates only
+    script = page.split('id="anchor-line"')[1].split("</script>")[0]
+    # the script's copy: the NEWEST archived week on or before the day (the
+    # list runs newest first), with the day read and moved in UTC so a zone
+    # east of UTC never lands a day early
+    assert "v <= sat && (!a || v > a)" in script
+    assert "'T00:00:00Z'" in script and "getUTCDay()" in script
+    assert "getDay()" not in script
 
 
 def test_update_data_moves_the_forecast_date_to_the_new_week(tmp_path, monkeypatch):
