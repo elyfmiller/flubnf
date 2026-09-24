@@ -550,6 +550,23 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                        "them. Archive or discard the existing results to "
                        "run it. Nothing was started.")
                 return RedirectResponse("/retro", status_code=303)
+            # nor with another location scope: completed weeks are skipped,
+            # so the season would pool weeks fitted over different
+            # locations while the record named only the new list
+            def _scope(ls):
+                return {"US" if usn.is_us(l) else str(l) for l in ls}
+            had_locs = [str(l) for l in
+                        ((retro.read_meta(live) or {}).get("settings", {})
+                         .get("locations") or [])]
+            if had_locs and _scope(had_locs) != _scope(names):
+                _flash(f"{season} has {existing} completed week"
+                       f"{'' if existing == 1 else 's'} replayed over "
+                       f"{len(_scope(had_locs))} location(s); this run asks "
+                       f"for {len(_scope(names))} with a different list. "
+                       "Resuming would mix two location scopes in one "
+                       "season. Archive or discard the existing results to "
+                       "run it. Nothing was started.")
+                return RedirectResponse("/retro", status_code=303)
         if mode == "discard":
             if confirm != season:
                 _flash(f"Discarding {season} was not confirmed, so nothing "
