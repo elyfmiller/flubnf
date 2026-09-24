@@ -126,14 +126,37 @@ def test_visualize_copy_replaces_the_actions_block():
     assert "simulate(" not in out and "generate_network" not in out
     assert out.rstrip().endswith('visualize({type=>"contactmap"})\nend actions')
     assert out.startswith("begin model")
-    with pytest.raises(cm.ContactMapError, match="end model"):
-        cm.visualize_bngl("begin parameters\nk 1\nend parameters\n")
     # the network copy keeps the one generate_network call
     out = cm.network_bngl(bngl)
     assert "simulate(" not in out and "visualize(" not in out
     assert out.rstrip().endswith("generate_network({overwrite=>1})\nend actions")
-    with pytest.raises(cm.ContactMapError, match="end model"):
-        cm.network_bngl("begin parameters\nk 1\nend parameters\n")
+    # no model block at all: nothing BNG2.pl could draw
+    with pytest.raises(cm.ContactMapError, match="no model blocks"):
+        cm.network_bngl("# just a comment\ngenerate_network()\n")
+
+
+def test_views_accept_a_model_written_without_begin_model():
+    """BNG2.pl reads a model written as bare blocks, its actions outside
+    any block (with or without an actions block): the copy keeps every
+    model block, drops every action, and ends with the view's own."""
+    bare = ("# a bare model\nbegin parameters\nk 1\nend parameters\n"
+            "begin reaction rules\nA() -> B() k\nend reaction rules\n\n"
+            "generate_network({overwrite=>1})\n"
+            'simulate({method=>"ode",\\\n  suffix=>"x",t_end=>5})\n'
+            "writeSBML()\n")
+    for src in (bare, bare.replace(
+            "generate_network", "begin actions\ngenerate_network")
+            + "end actions\n"):
+        out = cm.network_bngl(src)
+        assert "begin parameters\nk 1\nend parameters" in out
+        assert "A() -> B() k" in out and out.startswith("# a bare model")
+        assert "simulate(" not in out and "writeSBML" not in out
+        assert 'suffix=>"x"' not in out and "begin actions" not in out
+        assert out.rstrip().endswith("generate_network({overwrite=>1})")
+        assert out.count("generate_network") == 1
+        vis = cm.visualize_bngl(src)
+        assert vis.rstrip().endswith('visualize({type=>"contactmap"})')
+        assert "generate_network" not in vis
 
 
 # ------------------------------------------------------ the reaction network
