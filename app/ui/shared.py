@@ -18,7 +18,7 @@ from app.core import ttlcache
 from app.ui.state import _sandbox_status, _status
 
 
-#: Hostnames a state-changing request may name. Host/Origin are what a
+#: Hostnames any request may name (POST, and since round 7 GET too). Host/Origin are what a
 #: cross-site form-POST or DNS-rebinding page cannot forge. "testserver" is
 #: Starlette's TestClient (no dot, so never a public DNS name).
 _LOCAL_HOSTNAMES = {"localhost", "127.0.0.1", "::1", "testserver"}
@@ -39,15 +39,18 @@ def _authority_hostname(authority: str) -> str:
 
 # registered first by server.py (so the sandbox engine guard wraps it)
 async def _same_host_guard(request: Request, call_next):
-    """CSRF guard for a cookie-less loopback tool: POST/PUT/DELETE must carry
-    a localhost Host and, if present, a localhost Origin. GET stays open
-    (reports, pywebview, polls); every mutating control is a POST."""
+    """DNS-rebinding and CSRF guard for a cookie-less loopback tool. Every
+    request, GET included, must carry a localhost Host (a rebinding page
+    names its own hostname, so it cannot read run pages or state files);
+    POST/PUT/DELETE must also carry a localhost Origin when one is sent.
+    The launcher, the window and the tests all address localhost or
+    127.0.0.1."""
+    if (_authority_hostname(request.headers.get("host", ""))
+            not in _LOCAL_HOSTNAMES):
+        return PlainTextResponse(
+            "Refused: the Host header does not name localhost.\n",
+            status_code=403)
     if request.method in ("POST", "PUT", "DELETE"):
-        if (_authority_hostname(request.headers.get("host", ""))
-                not in _LOCAL_HOSTNAMES):
-            return PlainTextResponse(
-                "Refused: the Host header does not name localhost.\n",
-                status_code=403)
         origin = request.headers.get("origin")
         if (origin is not None
                 and _authority_hostname(origin) not in _LOCAL_HOSTNAMES):

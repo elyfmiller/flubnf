@@ -700,7 +700,8 @@ def api_sandbox_run(run_id: str):
 
 def _sandbox_local_get(request: Request) -> bool:
     """A download is served only to a localhost Host (and Origin, when
-    sent): GET stays open elsewhere, but a model or a run is the user's
+    sent). The middleware checks Host on every request; this adds the
+    Origin check for GETs, since a model or a run is the user's
     own files, not for a DNS-rebinding page to read."""
     origin = request.headers.get("origin")
     return (_authority_hostname(request.headers.get("host", ""))

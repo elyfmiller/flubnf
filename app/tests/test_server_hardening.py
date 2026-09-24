@@ -175,10 +175,21 @@ def test_bracketed_ipv6_and_localhost_hosts_are_accepted():
         assert r.status_code == 303, host
 
 
-def test_gets_stay_open_whatever_the_headers():
-    r = client.get("/api/busy", headers={"Origin": "https://evil.example",
-                                         "Host": "evil.example"})
-    assert r.status_code == 200
+def test_gets_need_a_localhost_host():
+    """Replaces the old "GETs stay open" pin: a DNS-rebinding page names its
+    own hostname, so a GET with a foreign Host is refused (it could
+    otherwise read run pages and app/state files through downloads)."""
+    for host in ("localhost:8710", "127.0.0.1:8710", "[::1]:8710",
+                 "localhost", "127.0.0.1"):
+        r = client.get("/api/busy", headers={"Host": host})
+        assert r.status_code == 200, host
+    for path in ("/api/busy", "/", "/output/download?path=ledger.sqlite"):
+        r = client.get(path, headers={"Host": "evil.example:8710"})
+        assert r.status_code == 403, path
+        assert "Host" in r.text
+    # an unparseable or missing hostname is refused too
+    r = client.get("/api/busy", headers={"Host": ""})
+    assert r.status_code == 403
 
 
 # ------------------------------------------- 3. /data/pull hardening
