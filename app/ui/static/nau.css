@@ -863,11 +863,13 @@ p.introbody{margin:.55rem 0 .1rem}
 /* methods: the in-page contents row */
 nav.toc{display:flex;flex-wrap:wrap;gap:.2rem 1rem;margin:0 0 .9rem;
   font-size:var(--fs-hint)}
-/* phone width: equations wrap instead of clipping, tables tighten so they
+/* phone width: equations wrap instead of clipping, wide figures scroll
+   with a visible bar (their right side is off-card), tables tighten so they
    fit the card, and the header's tab rows stay compact */
 @media(max-width:640px){
   .eqpanel .math{white-space:normal}
-  .pipe,.figscroll{overflow-x:auto}
+  .pipe,.figscroll{overflow-x:auto;scrollbar-width:thin;
+    scrollbar-color:var(--mut) transparent}
   .pipe svg,.figscroll > svg{min-width:620px}
   .perf td,.perf th{padding:.28rem .3rem}
   header.nav{padding:.2rem .6rem}
