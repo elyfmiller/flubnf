@@ -270,7 +270,7 @@ def test_timing_and_settings_match(built):
     app_html, report_html = built
     t = re.search(r"Replay wall time ([\d:]+)", app_html)
     assert t, "the fixture's run record must put the wall time on the page"
-    assert f"total wall time {t.group(1)} (h:mm:ss)" in report_html
+    assert f"Total wall time {t.group(1)} (h:mm:ss)" in report_html
     pair_re = re.compile(r"<dt>(.*?)</dt><dd>(.*?)</dd>")
     app_pairs = set(pair_re.findall(app_html))
     rep_pairs = set(pair_re.findall(report_html))

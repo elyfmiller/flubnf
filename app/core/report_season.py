@@ -246,13 +246,8 @@ def _summary_block(root: Path, weeks: list, payloads: dict,
         tiles.append('<div class="tile"><div class="tilename">'
                      + names.get(m, m) + '</div>'
                      + f'<div class="tileval {cls}">{v:.3f}</div></div>')
-    line = f"{len(weeks)} weeks covered, {weeks[0]} to {weeks[-1]}"
-    meta = retro.read_meta(root)
-    if meta:
-        t = retro.timing(meta)
-        if t["elapsed_s"] and t["elapsed_s"] >= 1.0:
-            line += (", total wall time "
-                     + fmt_hms(t["elapsed_s"]) + " (h:mm:ss)")
+    # the weeks covered and the wall time are in the report header
+    # (_timing_note), so the verdict does not repeat them
     rows = []
     cover = "every scored cell of the season"
     df_all = playback._season_scores(root)
@@ -331,8 +326,7 @@ def _summary_block(root: Path, weeks: list, payloads: dict,
             '<h2>Season verdict</h2>'
             '<div class="tiles">' + "".join(tiles) + "</div>"
             + us_absent
-            + f'<p class="sub">{line}.</p>'
-            f'<p class="hint">Final relWIS pooled over {cover}, ratio of '
+            + f'<p class="hint">Final relWIS pooled over {cover}, ratio of '
             "sums; below 1 beats the CDC FluSight baseline. "
             f"{usn.POOLED_SCOPE_NOTE}</p>"
             # the file leaves the machine: it carries the convention note itself

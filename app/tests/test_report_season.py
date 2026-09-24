@@ -247,8 +247,9 @@ def test_report_carries_the_season_verdict_before_the_player(tmp_path,
         assert name in html, name
         assert f'class="tileval {cls}">{val}' in html, (name, val)
     # weeks covered and the recorded wall time
-    assert f"2 weeks covered, {W1} to {W2}" in html
-    assert "total wall time 1:02:03 (h:mm:ss)" in html
+    assert f"2 stored weeks, {W1} to {W2}" in html
+    assert "Total wall time 1:02:03 (h:mm:ss)" in html
+    assert "weeks covered" not in html            # said once, in the header
     # the per-state final table, one row per state, same coloring rule
     assert "Per-state final scores" in html
     for loc in N2F:
