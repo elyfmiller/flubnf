@@ -156,10 +156,15 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
     anchor_note = ((f"Anchor week: {_anchor}"
                     + (LIVE_ONLY_NOTE if _anchor == live_only else ".")
                     ) if _anchor else "No archived week on or before that date.")
+    # the newest week's reporting, under the anchor line while the anchor
+    # is that week (the Data tab's check, app/core/reported.py)
+    from app.ui.routes.data import _newest_report
+    newest_report = _newest_report()
     return templates.TemplateResponse(request, "forecast.html", {
         "active": "Forecast", "engines": ENGINES, "status": _status,
         "ledger": ledger_rows, "all_locs": all_locs,
         "vintage_dates": vintage_dates, "anchor_note": anchor_note,
+        "newest_report": newest_report, "anchor_week": _anchor or "",
         "live_only": live_only, "live_only_note": LIVE_ONLY_NOTE,
         "default_date": _default_forecast_date(),
         "locations_error": locations_error, "form": form,
