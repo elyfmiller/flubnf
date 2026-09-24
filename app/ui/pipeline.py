@@ -117,7 +117,8 @@ def _sleep_guard():
 def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
                          df, locs, n2f: dict, elapsed_s: float,
                          outcome: dict, an_q: dict | None = None,
-                         ens_q: dict | None = None) -> None:
+                         ens_q: dict | None = None,
+                         scores: dict | None = None) -> None:
     """Step 5b of _run_all: build the report inputs bundle, save it as
     report_inputs.json, then render report.html FROM it (one render path,
     so _report_for_serving can rebuild after a design change).
@@ -126,7 +127,9 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
     Groundhog quantiles, loc -> horizon -> {level: value}) come from the
     one quantile-CDF path; the map renders PF-first and cards_model records
     which. State drill-down fans are PF's. `ens_q` (retired blend) is
-    accepted and ignored. Mutates `outcome`; the caller contains failures."""
+    accepted and ignored. `scores`: model -> its scored frame (`df` is the
+    PF's); the accuracy card covers each model that ran. Mutates
+    `outcome`; the caller contains failures."""
     import json as _json
     from datetime import date as _dd
     from datetime import timedelta as _tdd
@@ -247,9 +250,17 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
                if n2f[l] not in gap_fips and n2a.get(l) not in have}
         if why:
             no_forecast[model] = why
+    # the accuracy card scores the model(s) that ran, each named: a
+    # Groundhog-only run is never shown the (empty) PF frame's placeholder
+    frames = {"pf": df, **(scores or {})}
+    ran = [m for m, q in (("pf", pf_samples), ("analogue", an_q)) if q]
+    if ran:
+        wis_body = "".join(summary_table_html(
+            frames.get(m, pd.DataFrame()), model=m) for m in ran)
+    else:
+        wis_body = summary_table_html(df)
     wis_html = ("<div class='card'><h2>forecast accuracy "
-                "(retrospective)</h2>" + summary_table_html(df)
-                + "</div>")
+                "(retrospective)</h2>" + wis_body + "</div>")
     # settled outcomes for backdated runs: the LATEST vintage's values
     # past the forecast origin, framed to the 4-week horizon
     settled_by_loc = {}
@@ -743,6 +754,7 @@ def _run_all(spec: RunSpec) -> None:
                                         if k in subs}
         # 5. retrospective scoring (once truth exists); contained, like 5b
         df = pd.DataFrame()
+        score_frames: dict = {}
         try:
             truth, name2fips = scoring.load_truth()
             df = scoring.score_samples(pf_samples, spec.forecast_date,
@@ -773,6 +785,8 @@ def _run_all(spec: RunSpec) -> None:
                                 float(mp["wis"].sum() / mp["base_wis"].sum()), 3)
                             outcome[f"{mname}_relwis_cells"] = int(len(mp))
                         mdf.to_json(workroot / f"scores_{mname}.json")
+                    mdf.attrs["truth_source"] = scoring.TRUTH_SOURCE
+                    score_frames[mname] = mdf
                 except Exception as e:
                     outcome[f"{mname}_score_error"] = str(e)[:200]
         except Exception as e:
@@ -781,7 +795,7 @@ def _run_all(spec: RunSpec) -> None:
         try:
             _write_weekly_report(spec, workroot, pf_samples, obs, df, locs,
                                  n2f, _time.time() - t_start, outcome,
-                                 an_q=an_q)
+                                 an_q=an_q, scores=score_frames)
         except Exception as e:
             outcome["report_error"] = str(e)[:200]
         # 6. results index for the run page

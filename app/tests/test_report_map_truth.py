@@ -86,3 +86,41 @@ def test_pipeline_report_names_the_reason_and_keeps_gap_for_real_gaps(
     assert bundle["gap_fips"] == [n2f["Vermont"]]
     assert bundle["no_forecast"]["analogue"] == {
         n2f["Utah"]: "no forecast: newest week reads 0"}
+
+
+# ------------------------------------------ the accuracy card's model (2)
+
+def _gh_run(tmp_path, scores=None):
+    from app.ui import pipeline as ui_pipeline
+    locs, n2f = _locs()
+    spec = runs_mod.RunSpec(engine="analogue", forecast_date="2098-01-03",
+                            locations=["Ohio", "US"])
+    obs = {loc: [[f"2097-12-{d:02d}", 100.0 + d] for d in (6, 13, 20, 27)]
+           for loc in ("Ohio", "US")}
+    kw = {"scores": scores} if scores is not None else {}
+    ui_pipeline._write_weekly_report(
+        spec, tmp_path, {}, obs, pd.DataFrame(), locs, n2f, 1.0, {},
+        an_q={"Ohio": _gh_q(), "US": _gh_q(1000.0)}, **kw)
+    html = (tmp_path / "report.html").read_text()
+    return html[html.index('id="st-US"'):]
+
+
+def test_groundhog_only_accuracy_card_names_the_model_it_waits_on(tmp_path):
+    """No truth yet: the placeholder names the Groundhog, the model that
+    ran, not an unnamed wait on the PF frame."""
+    sec = _gh_run(tmp_path)
+    assert "Groundhog: no scored weeks yet" in sec
+    assert "Oracle SIHRS" not in sec
+
+
+def test_groundhog_only_accuracy_card_scores_the_groundhog(tmp_path):
+    gh = pd.DataFrame([
+        {"location": "Ohio", "fips": "39", "horizon": 0,
+         "wis": 1.0, "base_wis": 2.0},
+        {"location": "US", "fips": "US", "horizon": 0,
+         "wis": 3.0, "base_wis": 2.0}])
+    sec = _gh_run(tmp_path, scores={"analogue": gh})
+    assert "Groundhog relWIS" in sec
+    assert '<td class="num ok">0.500</td>' in sec
+    assert "Oracle SIHRS relWIS" not in sec
+    assert "no scored weeks yet" not in sec.lower()

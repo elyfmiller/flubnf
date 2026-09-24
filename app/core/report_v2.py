@@ -652,7 +652,10 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
                     'run.</p>')
         nat_body = ""
         from app.core.scoring import NO_SCORES_HTML
-        if NO_SCORES_HTML in nat_summary:
+        # only placeholders (the default one, or a model's named one)
+        if NO_SCORES_HTML in nat_summary or (
+                "no scored weeks yet" in nat_summary.lower()
+                and "<table" not in nat_summary):
             nat_summary = ""
     nat = f"""
 <section class="state" id="st-US" hidden>
