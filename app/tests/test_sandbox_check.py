@@ -3,6 +3,7 @@ engine (app/core/sandbox.py check; POST /api/sandbox/models/<name>/check).
 Fatal problems are only what makes a run fail; the rest are warnings.
 BNG2.pl is faked; without Perl the network reads 'not checked'.
 """
+import re
 import sys
 import types
 from pathlib import Path
@@ -125,6 +126,30 @@ def test_warnings(box, tmp_path, monkeypatch):
     assert "no pf_cumulative_observable" in text
     assert "pf_shrink is not a setting the installed engine knows" in text   # the fake engine lists it not
     assert "one data row" in text
+
+
+def test_parameters_read_continuations_and_whole_expressions():
+    bngl = ("begin parameters\n"
+            "N_y 120000\nN_o 80000\n"
+            "N     N_y + N_o     # an expression with spaces\n"
+            "r__FREE \\\n    8.0\n"
+            "beta  Reff*gamma \\\n       / 1.2   # continued\n"
+            "end parameters\n")
+    assert sb.bngl_parameters(bngl) == ["N_y", "N_o", "N", "r__FREE", "beta"]
+    vals = sb.bngl_parameter_values(bngl)
+    assert vals["N"] == "N_y + N_o"
+    assert vals["r__FREE"] == "8.0"                 # simulate_data's dispersion
+    assert vals["beta"] == "Reff*gamma / 1.2"
+
+
+def test_a_written_expression_is_not_read_as_its_first_number(box):
+    # k__FREE 10 / 20 is 0.5, inside the prior 0.05 to 2: no warning
+    files = _files()
+    files["model.bngl"] = re.sub(r"(?m)^k__FREE\s+\S+", "k__FREE 10 / 20",
+                                 files["model.bngl"])
+    assert "k__FREE 10 / 20" in files["model.bngl"]
+    assert not any("k__FREE is written as" in w
+                   for w in sb.check(files)["warnings"])
 
 
 def test_without_perl_the_network_is_not_checked(box, monkeypatch):

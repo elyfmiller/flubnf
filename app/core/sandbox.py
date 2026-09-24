@@ -664,7 +664,20 @@ def split_priors(priors_text: str) -> tuple:
 
 
 def _strip_comments(text: str) -> list:
-    return [l.split("#", 1)[0].strip() for l in text.splitlines()]
+    """The lines without comments, a line ending in a backslash joined to
+    the next (BNGL's continuation), so a parameter or rule written over two
+    lines reads as one."""
+    out, carry = [], ""
+    for l in text.splitlines():
+        s = l.split("#", 1)[0].strip()
+        if s.endswith("\\"):
+            carry += s[:-1] + " "
+            continue
+        out.append((carry + s).strip())
+        carry = ""
+    if carry:
+        out.append(carry.strip())
+    return out
 
 
 def _block(bngl: str, name: str) -> list:
@@ -696,14 +709,15 @@ def bngl_parameters(bngl: str) -> list:
 
 def bngl_parameter_values(bngl: str) -> dict:
     """{name: its value as written} for each parameters-block line (the
-    first token after the name: a number or an expression)."""
+    rest of the line after the name: a number or a whole expression, so
+    'N N_y + N_o' reads 'N_y + N_o', never 'N_y')."""
     out = {}
     for s in _block(bngl, "parameters"):
         toks = s.replace("=", " ").split()
         if toks and toks[0].isdigit():
             toks = toks[1:]
         if len(toks) >= 2:
-            out.setdefault(toks[0], toks[1])
+            out.setdefault(toks[0], " ".join(toks[1:]))
     return out
 
 
