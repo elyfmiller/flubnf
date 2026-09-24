@@ -818,8 +818,7 @@ fieldset.sbrun legend{font-weight:650;font-size:.92rem;padding:0}
 .sbrun-grid{display:grid;gap:0 .7rem;align-items:end;
   grid-template-columns:minmax(15.5rem,2.4fr) minmax(0,.9fr) minmax(0,1fr) minmax(7rem,1.2fr)}
 .sbrun-grid > span{display:flex;flex-direction:column;min-width:0}
-@media(max-width:560px){.sbrun-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .sbrun-parts{grid-column:1 / -1}}
+@media(max-width:560px){.sbrun-grid{grid-template-columns:minmax(0,1fr)}}
 .sbpair{display:grid;grid-template-columns:minmax(0,1fr) 5.5rem;gap:.4rem}
 details.sbfill .row{align-items:flex-end}
 details.sbfill .row > span{display:flex;flex-direction:column}
