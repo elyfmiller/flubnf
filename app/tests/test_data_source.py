@@ -168,6 +168,31 @@ def test_a_real_time_run_records_the_live_file(console, hubfiles, tmp_path, monk
     assert f"Data: live target-data through {ASOF}" in html
 
 
+def test_optional_rows_on_a_week_only_the_live_file_holds(console, hubfiles, tmp_path, monkeypatch):
+    """The optional hub rows read the reported counts from the file the run
+    resolved: a real-time week the archive does not hold yet (the live file
+    only) must not fail the whole run with 'No vintage for ...'."""
+    from app.core.engines import analogue as an_engine
+    from app.ui.routes import forecast as ui_forecast
+    hub = tmp_path / "hub"
+    (hub / "target-data").mkdir(parents=True)
+    (hub / data.LIVE_TARGET).write_bytes(Path(hubfiles["vintage"]).read_bytes())
+    monkeypatch.setattr(data, "HUB", hub)
+    monkeypatch.setattr(data, "ARCHIVE", tmp_path / "no-archive")
+    monkeypatch.setattr(an_engine, "nowcast", lambda spec: {})
+    _nd, extra = ui_forecast._knob_run_parts(
+        {"output.horizon_minus1": "1", "output.rate_change_pmf": "1"}, "all",
+        ASOF, 2, "realtime", None, None, legacy={})
+    spec = RunSpec(engine="all", forecast_date=ASOF, locations=["Ohio", "Utah"],
+                   replicates=1, extra=extra)
+    ui_pipeline._run_all(spec)
+    row = Ledger().rows(1)[0]
+    out = json.loads(row["outcome"])
+    assert row["status"] == "ok", out.get("error")
+    assert out["data_source"]["kind"] == "live"
+    assert "optional_rows" in out and out["submissions"]
+
+
 # --- the console routes -------------------------------------------------------
 
 def _capture(monkeypatch, tmp_path):

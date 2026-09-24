@@ -344,7 +344,7 @@ def _optional_rows(spec, workroot: Path, pf_samples: dict, an_q: dict,
     included when `minus1`), then its rate-change pmf rows when `pmf`.
     The rules per model are app/core/optional_outputs.py's."""
     from app.core import optional_outputs as OPT
-    from app.core.data import vintage_path
+    from app.core.data import spec_source, vintage_path
     from app.core.engines import analogue as an_engine
     from app.core.floor import floor_quantiles
     from app.core.horizons import ORIGIN
@@ -354,7 +354,10 @@ def _optional_rows(spec, workroot: Path, pf_samples: dict, an_q: dict,
     asof = spec.forecast_date
     hzs = HORIZONS_WITH_MINUS1 if minus1 else HORIZONS
     pops = dict(zip(locs.location_name, locs.population.astype(float)))
-    reported = OPT.reported_counts(vintage_path(asof), asof)
+    # the file the engines read (the live target file for a real-time week
+    # the archive does not hold yet), never the dated vintage alone
+    reported = OPT.reported_counts(
+        spec_source(spec, archive=vintage_path)[0], asof)
     pf_k = OPT.pf_weeks_dropped(workroot, spec, reported,
                                 {l: n2f[l] for l in pf_samples})
     counts = {"pf": {"m1": 0, "pmf": 0},
