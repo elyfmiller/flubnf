@@ -601,7 +601,7 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
    card (min(100%,...)), so the box never widens a narrow page. */
 .dsup{margin:.2rem 0 .4rem;min-width:0}
 .dsdrop{display:flex;flex-direction:column;gap:.4rem;align-items:stretch;
-  border:1.5px dashed var(--field-line);border-radius:10px;padding:.75rem .85rem;
+  border:1.5px dashed var(--mut);border-radius:10px;padding:.75rem .85rem;
   margin:.3rem 0;background:var(--bg);color:var(--ink);cursor:pointer}
 .dsdrop.over,.dsdrop:focus-within{border-color:var(--accent-ink);
   background:color-mix(in srgb,var(--accent) 12%,var(--bg))}
@@ -638,7 +638,14 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
   overflow-wrap:anywhere}
 .dsup .tablewrap{max-width:100%;overflow-x:auto}
 .dsfirst caption{caption-side:top;text-align:left}
-.dsfirst td{white-space:nowrap}
+/* the first rows fit a 360px column: tight cells, the date as written
+   under its week, names wrap at their spaces, numbers and weeks never */
+.dsfirst{font-size:var(--fs-micro)}
+.dsfirst th,.dsfirst td{padding:.25rem .4rem}
+.dsfirst td.num,.dsfirst td.wk{white-space:nowrap}
+.dsfirst .dsasw{display:block;white-space:normal;color:var(--mut);
+  font-size:var(--fs-micro);font-weight:400;text-transform:none;letter-spacing:0}
+.dsfirst abbr{text-decoration:none}
 .dsup-actions{margin-top:.4rem}
 .dsup-actions button{margin-top:.3rem}
 details.dsup-fold{margin:.2rem 0 .5rem}

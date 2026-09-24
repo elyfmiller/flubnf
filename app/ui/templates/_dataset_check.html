@@ -61,8 +61,8 @@
  {% if pv.more %}<p class="hint">and {{ pv.more }} more group{{ "" if pv.more == 1 else "s" }}</p>{% endif %}
  <div class="tablewrap"><table class="compact dsfirst">
   <caption class="hint">First rows as read</caption>
-  <thead><tr><th class="num">Row</th>{% if pv.dates_differ %}<th>Date</th>{% endif %}<th>Week</th><th>Group</th><th class="num">Value</th>{% if pv.population %}<th class="num">Population</th>{% endif %}</tr></thead>
-  <tbody>{% for r in pv.first_rows %}<tr><td class="num">{{ r.row }}</td>{% if pv.dates_differ %}<td>{{ r.date }}</td>{% endif %}<td>{{ r.week }}</td><td>{{ r.group }}</td><td class="num">{{ r.value }}</td>{% if pv.population %}<td class="num">{{ r.population }}</td>{% endif %}</tr>{% endfor %}</tbody>
+  <thead><tr><th class="num">Row</th><th>Week{% if pv.dates_differ %} <span class="dsasw">as written</span>{% endif %}</th><th>Group</th><th class="num">Value</th>{% if pv.population %}<th class="num"><abbr title="Population">Pop.</abbr></th>{% endif %}</tr></thead>
+  <tbody>{% for r in pv.first_rows %}<tr><td class="num">{{ r.row }}</td><td class="wk">{{ r.week }}{% if pv.dates_differ %}<span class="dsasw">{{ r.date }}</span>{% endif %}</td><td>{{ r.group }}</td><td class="num">{{ r.value }}</td>{% if pv.population %}<td class="num">{{ r.population }}</td>{% endif %}</tr>{% endfor %}</tbody>
  </table></div>
  <div class="row dsup-actions">
   <button class="{{ 'quiet' if where == 'replay' else 'gold' }}" name="next" value="forecast">Forecast this</button>

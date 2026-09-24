@@ -261,6 +261,8 @@ class Report:
     n_bytes: int = 0
     headers: list = field(default_factory=list)
     guess: dict = field(default_factory=dict)
+    # role -> ['#N', ...]: the columns that could each be it
+    ambiguous: dict = field(default_factory=dict)
     targets: list = field(default_factory=list)
     encoding: str = ""
     delimiter: str = ""
@@ -938,6 +940,7 @@ def _map_columns(header, rep: Report, columns=None):
         elif role in REQUIRED:
             missing.append(role)
     rep.guess = {r: f"#{i + 1}" for r, i in chosen.items()}
+    rep.ambiguous = {r: [f"#{i + 1}" for i in c] for r, c in ambiguous.items()}
     found = ", ".join(h for h in header if h) or "(none)"
     if unknown:
         rep.add("column_unknown", "No single unused column named "

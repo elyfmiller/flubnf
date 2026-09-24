@@ -285,12 +285,16 @@ def _preview(rep, kind: str) -> dict:
 
 
 def _mapping_why(rep) -> list:
-    """One line saying which columns the headers did not settle."""
+    """Why the mapping is asked for: a mapping that named no column, two
+    columns that could each be a role (the reason, never a silent pick),
+    and one line naming the roles no header matched."""
     D = _D()
     if not rep.needs_mapping:
         return []
-    unset = [r for r in D.REQUIRED if r not in rep.guess]
-    out = [p.message for p in rep.problems if p.code == "column_unknown"]
+    unset = [r for r in D.REQUIRED
+             if r not in rep.guess and r not in rep.ambiguous]
+    out = [p.message for p in rep.problems
+           if p.code in ("column_unknown", "ambiguous_columns")]
     if unset:
         names = [f"the {r}" for r in unset]
         out.append("Choose the column that holds "
@@ -348,9 +352,13 @@ def render_check(chk: dict, where: str = "data") -> str:
 
 
 def _kind_field(form):
-    """The posted kind: '' = from the values; None = not a kind."""
+    """The posted kind: '' = from the values; None = not a kind. A kind
+    the upload box filled in from the values (kind_auto=1, never picked by
+    hand) stays "from the values", as the CLI records it."""
     k = str(form.get("kind") or "").strip()
-    return k if k in ("",) + _D().KINDS else None
+    if k not in ("",) + _D().KINDS:
+        return None
+    return "" if str(form.get("kind_auto") or "") == "1" else k
 
 
 @router.post("/data/datasets/check")

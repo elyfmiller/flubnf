@@ -3,7 +3,8 @@
    (POST /data/datasets/check, nothing stored) and the result box shows
    every problem, a column mapping, or a preview; changing the kind, the
    target or a column checks again. The name follows the file's name until
-   typed. The preview's buttons submit the form itself (POST /data/datasets),
+   typed; the kind shows what the values say until picked by hand (and is
+   posted as "from the values", kind_auto=1, until then). The preview's buttons submit the form itself (POST /data/datasets),
    which stores the file and opens it where it is needed. A closed <details>
    around the box opens when a file is dragged over it. Files dropped
    elsewhere on the page are ignored instead of replacing the page. */
@@ -25,6 +26,7 @@
     var zone = form.querySelector('[data-drop]');
     var name = form.querySelector('[data-name]');
     var kind = form.querySelector('[data-kind]');
+    var auto = form.querySelector('[data-kind-auto]');
     var out = form.querySelector('[data-result]');
     var go = form.querySelector('.dsup-go button');
     var fold = form.closest('details');
@@ -51,7 +53,10 @@
         autoName = stem(f.name);
         name.value = autoName;
       }
-      if (kind && !kindChosen) kind.value = '';
+      if (kind && !kindChosen) {
+        kind.value = '';
+        if (auto) auto.value = '';
+      }
       out.innerHTML = '';        // a new file: forget the old target/columns
       check();
     }
@@ -73,7 +78,10 @@
         .then(function (j) {
           if (my !== seq) return;          // a newer check superseded this
           out.innerHTML = j.html || '';
-          if (kind && !kindChosen && j.inferred_kind) kind.value = j.inferred_kind;
+          if (kind && !kindChosen && j.inferred_kind) {
+            kind.value = j.inferred_kind;
+            if (auto) auto.value = '1';
+          }
         })
         .catch(function () {
           if (my !== seq) return;
@@ -91,6 +99,7 @@
     });
     if (kind) kind.addEventListener('change', function () {
       kindChosen = true;
+      if (auto) auto.value = '';
       check();
     });
     if (name) name.addEventListener('keydown', function (e) {

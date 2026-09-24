@@ -119,7 +119,10 @@ def test_a_valid_file_previews_and_stores_nothing():
     assert "comma-separated, UTF-8" in html
     assert html.count("<polyline") == 3                 # one per group
     assert 'aria-label="Adult: ' in html
-    assert "First rows as read" in html and "<td>8/3/19</td>" in html
+    assert "First rows as read" in html
+    # the date as written sits under its week
+    assert ('<td class="wk">2019-08-03<span class="dsasw">8/3/19</span></td>'
+            in html)
     assert '<button class="gold" name="next" value="forecast">Forecast this' \
         in html
     assert 'name="next" value="replay">Replay this' in html
@@ -208,6 +211,41 @@ def test_blank_target_cells_are_a_problem_not_dropped_rows():
     assert 'name="target"' not in j["html"]
     rep = D.validate(raw, target="wk inc flu hosp")
     assert rep.codes == ["target_blank"]
+
+
+def test_two_candidate_date_columns_say_why_they_ask():
+    """The mapping step once said only 'Choose the column that holds the
+    date.', dropping the reason; nothing is picked for the user."""
+    rows = "\n".join(f"2024-01-{d + 2:02d},2024-01-{d:02d},Coast,{d}"
+                     for d in (6, 13, 20))
+    raw = f"date,week_ending,group,value\n{rows}\n".encode()
+    j = check(raw).json()
+    assert j["needs_mapping"] and not j["ok"]
+    html = j["html"]
+    assert ("Two columns could be the date: &#39;date&#39; and "
+            "&#39;week_ending&#39;.") in html
+    assert "Choose the column that holds the date." not in html
+    assert '<option value="">choose…</option>' in html      # Date: unset
+    j = check(raw, col_date="#2").json()
+    assert j["ok"] and "Ignored column(s): date." in j["html"]
+
+
+def test_a_kind_filled_in_from_the_values_stays_from_the_values():
+    """The box shows the inferred kind in its select (kind_auto=1 while
+    it is not picked by hand); posting it must not turn it into a declared
+    kind: the preview keeps '(from the values)' and the store records
+    kind_from 'values', as the CLI does."""
+    j = check(grouped_bytes(), kind="count", kind_auto="1").json()
+    assert "<dt>Values</dt><dd>counts (from the values)</dd>" in j["html"]
+    j = check(grouped_bytes(), kind="count").json()
+    assert "<dt>Values</dt><dd>counts</dd>" in j["html"]
+    assert store(grouped_bytes(), kind="count",
+                 kind_auto="1").status_code == 303
+    (ds,) = D.list_datasets()
+    assert ds.kind == "count" and ds.meta["options"]["kind_from"] == "values"
+    page = client.get("/data").text
+    assert '<input type="hidden" name="kind_auto" value="" data-kind-auto>' \
+        in page
 
 
 def test_the_check_reports_notices_and_the_declared_kind():
