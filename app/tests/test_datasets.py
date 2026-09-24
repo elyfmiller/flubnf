@@ -267,7 +267,9 @@ def test_group_name_charset(name):
     assert "row 2" in p.message and p.rows == (2,)
 
 
-@pytest.mark.parametrize("name", ["Niños", "Åland", "Zürich 0 4", "東京"])
+@pytest.mark.parametrize("name", ["Niños", "Åland", "Zürich 0 4", "東京",
+                                  # combining vowel signs and viramas
+                                  "दिल्ली", "กรุงเทพ", "नई दिल्ली 2"])
 def test_letters_of_any_script_are_group_names(name):
     rows = [f"{d.isoformat()},{name},1" for d in sats()]
     ds = D.ingest(grouped_csv(rows), "intl", kind="count")
@@ -282,6 +284,26 @@ def test_reserved_group_names(name):
     p = only(D.validate(grouped_csv(rows), kind="count"), "group_reserved")
     # 'Overall' was once suggested: it is not national, so it would pool
     assert "Overall" not in p.message and "Rename it National" in p.message
+
+
+@pytest.mark.parametrize("name,suggested", [
+    ("\u093fदिल्ली", "दिल्ली"),              # a mark cannot lead
+    ("दिल्ली/NCR", "दिल्ली_NCR"),            # marks are kept in the suggestion
+    ("กรุงเทพ-1", "กรุงเทพ_1"),
+])
+def test_a_mark_is_no_first_letter_and_renames_keep_marks(name, suggested):
+    rows = [f"{d.isoformat()},{name},1" for d in sats()]
+    p = only(D.validate(grouped_csv(rows), kind="count"), "group_name")
+    assert f"'{suggested}'" in p.message and p.rows == (2,)
+
+
+def test_names_with_marks_keep_the_collision_rules():
+    p = only(D.validate(grouped_csv(grouped_series(
+        groups=("दिल्ली A", "दिल्ली a"))), kind="count"), "group_collision")
+    assert "'दिल्ली A' / 'दिल्ली a'" in p.message
+    ds = D.ingest(grouped_csv(grouped_series(groups=("दिल्ली", "दिल्ली 2"))),
+                  "in", kind="count")
+    assert sorted(ds.groups) == ["दिल्ली", "दिल्ली 2"]
 
 
 @pytest.mark.parametrize("a,b", [("東京", "大阪"), ("Zürich", "Zérich"),

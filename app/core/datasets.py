@@ -120,8 +120,13 @@ VINTAGE_PREFIX = "target-hospital-admissions_"
 MAX_GAP_DAYS = 8
 
 #: group names: they become PF directory names and BNGL suffixes (through
-#: pf_stem), ledger keys and HTML text. Letters of any script are kept.
+#: pf_stem), ledger keys and HTML text. Letters of any script are kept, with
+#: the combining marks that write them (group_name_ok)
 GROUP_RE = re.compile(r"[^\W_][\w ]{0,39}")
+#: the Unicode categories of the combining marks a name may hold after its
+#: first letter: the vowel signs and viramas of Devanagari ('दिल्ली'), Thai
+#: ('กรุงเทพ') and other scripts, which \w does not match
+NAME_MARKS = ("Mn", "Mc")
 
 #: 'all' means every location to the console, so no group may be called it
 RESERVED_NAMES = ("ALL",)
@@ -1769,6 +1774,21 @@ def _cells(raw_rows, items, date: bool = True) -> str:
         items, _rows_of(raw_rows, [ln for ln, _ in items])))
 
 
+def _name_char(c: str) -> bool:
+    """A character a group name may hold after its first: a letter or
+    digit of any script, a combining mark, a space or an underscore."""
+    return (c.isalnum() or c in " _"
+            or unicodedata.category(c) in NAME_MARKS)
+
+
+def group_name_ok(name: str) -> bool:
+    """GROUP_RE, with combining marks allowed after the first character:
+    a letter or digit first, then letters, digits, marks, spaces and
+    underscores, at most 40 characters."""
+    return (0 < len(name) <= 40 and bool(GROUP_RE.fullmatch(name[0]))
+            and all(_name_char(c) for c in name[1:]))
+
+
 def is_national_name(name) -> bool:
     return str(name or "").strip().upper() in NATIONAL_NAMES
 
@@ -1799,12 +1819,13 @@ def _check_groups(rep: Report, raw_rows: list, cols: dict):
                 ", or delete those rows.", blank)
     # a national spelling is accepted as is ('US (national)' included)
     bad = [n for n in name2keys
-           if n and not GROUP_RE.fullmatch(n) and not is_national_name(n)]
+           if n and not group_name_ok(n) and not is_national_name(n)]
     if bad:
         sugg = [f"'{n}' -> '{_suggest(n)}'" for n in bad]
         rep.add("group_name", f"{len(bad)} {what} value(s) use characters "
-                "other than letters, digits, space and underscore, start "
-                "with a space or underscore, or exceed 40 characters ("
+                "other than letters (with their accents and vowel signs), "
+                "digits, space and underscore, start with a space, an "
+                "underscore or a sign, or exceed 40 characters ("
                 f"{_rows(first[n] for n in bad)}; e.g., {_examples(sugg)}).",
                 [first[n] for n in bad])
     reserved = [n for n in name2keys if n.upper() in RESERVED_NAMES]
@@ -1849,11 +1870,15 @@ def _check_groups(rep: Report, raw_rows: list, cols: dict):
 
 
 def _suggest(name: str) -> str:
-    bare = re.sub(r"[^\w ]+", "", name).strip()
+    bare = "".join(c for c in name if _name_char(c)).strip()
     if is_national_name(bare):                 # 'U.S.' -> 'US', not 'U_S'
         return bare
-    s = re.sub(r"[^\w ]+", "_", name).strip(" _")[:40]
-    return s or "group1"
+    # each run of other characters becomes one underscore; marks are kept
+    s = "".join(c if _name_char(c) else "\0" for c in name)
+    s = re.sub("\0+", "_", s).strip(" _")
+    while s and not GROUP_RE.fullmatch(s[0]):   # a mark cannot lead
+        s = s[1:].lstrip(" _")
+    return s[:40] or "group1"
 
 
 def _check_structure(rep: Report, rows: list, cols: dict, *, shift: int = 0,
