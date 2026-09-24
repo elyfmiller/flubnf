@@ -146,12 +146,12 @@ def probs_from_quantiles(qmap: dict, last_observed: float, population: float,
                          horizon: int = 0) -> dict:
     """P(category) from a stored quantile grid {level: value}: the grid read
     as the forecast CDF, level a piecewise-linear function of value between
-    the stored quantiles and clamped at the outermost levels (with the
-    23-level FluSight grid the unmodeled tails clamp at the 1 percent
-    levels). Level keys may be float or str (results.json round-trips them
-    as str). Ties in value (a partially degenerate grid) collapse to the
-    highest level, the right-continuous reading. {} rather than invented
-    numbers when the grid is unusable."""
+    the stored quantiles, and beyond the outermost ones (the FluSight
+    grid's 1 and 99 percent levels) the outermost segment carried on to
+    levels 0 and 1, never below a count of 0. Level keys may be float or
+    str (results.json round-trips them as str). Ties in value (a partially
+    degenerate grid) collapse to the highest level, the right-continuous
+    reading. {} rather than invented numbers when the grid is unusable."""
     if not qmap or population <= 0:
         return {}
     try:
@@ -170,6 +170,21 @@ def probs_from_quantiles(qmap: dict, last_observed: float, population: float,
             ls.append(l)
     if not xs:
         return {}
+    if len(xs) >= 2:
+        # the unmodeled tails: the outermost segment carried on to levels
+        # 0 and 1 (never below a count of 0), rather than the tail mass
+        # lumped at +/- infinity, where it would read as a large change
+        # no count can make
+        lo = xs[0] - (xs[1] - xs[0]) * ls[0] / max(ls[1] - ls[0], 1e-12)
+        lo = max(lo, -0.5)
+        if ls[0] > 0 and lo < xs[0]:
+            xs.insert(0, lo)
+            ls.insert(0, 0.0)
+        hi = xs[-1] + (xs[-1] - xs[-2]) * (1 - ls[-1]) / max(
+            ls[-1] - ls[-2], 1e-12)
+        if ls[-1] < 1 and hi > xs[-1]:
+            xs.append(hi)
+            ls.append(1.0)
 
     def cdf(c: float) -> float:
         if len(xs) == 1:

@@ -336,3 +336,19 @@ def test_the_groundhog_forecasts_the_as_of_week_when_it_did_not_see_it(
             assert pmf.empty
         else:
             assert pmf.location.nunique() == len(names)
+
+
+def test_a_quantile_grids_tails_never_reach_an_impossible_change():
+    """Beyond the 1 and 99 percent levels the grid's outermost segments
+    carry on to levels 0 and 1 (never below a count of 0): a summer grid
+    far from every large cut puts nothing there, where clamping the CDF
+    at the outermost levels put 1 percent in each large category."""
+    from app.core.submit import QUANTILES
+    grid = {L: 40.0 + 20.0 * (L - 0.5) for L in QUANTILES}
+    p = cat.probs_from_quantiles(grid, 40.0, 39_431_263, 0)
+    assert p["large_decrease"] == 0.0 and p["large_increase"] == 0.0
+    assert p["stable"] == pytest.approx(1.0)
+    # a grid hugging zero: its lower tail stops at a count of 0
+    low = {L: 3.0 * L for L in QUANTILES}
+    p = cat.probs_from_quantiles(low, 40.0, 300_000, 0)
+    assert p["large_decrease"] == pytest.approx(1.0)
