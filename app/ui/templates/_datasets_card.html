@@ -8,17 +8,19 @@
  <p class="hint">Your own weekly data, used only where you pick it.</p>
  {{ dsup.box("data", upload) }}
  {% if datasets %}
+ {# one line per dataset; under 600px each row stacks (nau.css .dstable),
+    the cells naming themselves by data-label #}
+ <h3 class="dslist-h">Stored</h3>
  <div class="tablewrap"><table class="compact dstable">
   <thead><tr><th>Name</th><th class="num">Groups</th><th class="num">Weeks</th>
-   <th>Kind</th><th>Population</th><th>Vintages</th><th>Use</th></tr></thead>
+   <th>Values</th><th>Snapshots</th><th>Use</th></tr></thead>
   <tbody>{% for d in datasets %}
   <tr>
-   <td><a href="/data?source={{ d.id }}#browser">{{ d.name }}</a>{% if d.warnings %}
+   <td class="dsname"><a href="/data?source={{ d.id }}#browser">{{ d.name }}</a>{% if d.warnings %}
     {{ tips.tip("ds-w-" ~ loop.index, "warnings for " ~ d.name, d.warnings | join(" ")) }}{% endif %}</td>
-   <td class="num">{{ d.groups }}</td><td class="num">{{ d.weeks }}</td>
-   <td>{{ "counts" if d.kind == "count" else "rates" }}</td>
-   <td>{{ "yes" if d.population else "no" }}</td>
-   <td>{{ ("yes (" ~ d.n_vintages ~ ")") if d.vintages else "no" }}</td>
+   <td class="num" data-label="Groups">{{ d.groups }}</td><td class="num" data-label="Weeks">{{ d.weeks }}</td>
+   <td>{{ "counts" if d.kind == "count" else "rates" }}{{ ", with population" if d.population else "" }}</td>
+   <td data-label="Snapshots">{{ d.n_vintages if d.vintages else "none" }}</td>
    <td class="dsactions"><a href="/forecast?source={{ d.id }}">Forecast</a>
     · <a href="/retro?dataset={{ d.id }}#dataset-replay">Replay</a>
     <form method="post" action="/data/datasets/{{ d.id }}/delete" class="inline">
@@ -29,7 +31,7 @@
   </tr>{% endfor %}</tbody>
  </table></div>
  {% else %}
- <p class="hint">No datasets yet.</p>
+ <p class="hint dslist-none">No datasets yet.</p>
  {% endif %}
 </div>
 <script>
