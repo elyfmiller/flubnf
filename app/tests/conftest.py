@@ -4,15 +4,69 @@
     app/state/pf_runners.json, so test pids must never land there.
   * pf.PYBNF_PF -> a stub fork: prepare() refuses fit_type = pf without
     pybnf/pf.py (CI has no fork); preflight tests override PYBNF_PF.
+  * app/state -> a temp folder for the whole session, set HERE at import,
+    before any test module imports the server: its startup thread writes
+    component_versions.json and routes open ledger.sqlite, which landed in
+    the working tree's app/state. Tests that set their own APP_STATE still
+    do; the session ends by checking app/state was left untouched.
 """
+import atexit
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import pytest                                            # noqa: E402
 
+from app.core import runs as _runs                       # noqa: E402
+
+REAL_STATE = Path(_runs.APP_STATE)
+#: the suite's own state folder (runs.APP_STATE and everything derived
+#: from it at call time: the ledger, workroots, archive)
+TEST_STATE = Path(tempfile.mkdtemp(prefix="flubnf-test-state-"))
+atexit.register(shutil.rmtree, TEST_STATE, True)
+_runs.APP_STATE = TEST_STATE
+
+from app.ui import versions as _versions                 # noqa: E402
+
+# the warm thread persists the version probe here (read at import only)
+_versions._VERSIONS_SNAPSHOT = TEST_STATE / "component_versions.json"
+
+from app.core import datasets as _datasets               # noqa: E402
+
+# a module constant computed from the real APP_STATE at its import
+if _datasets.ROOT == REAL_STATE / "datasets":
+    _datasets.ROOT = TEST_STATE / "datasets"
+
 from app.core.engines import pf                          # noqa: E402
+
+
+def _state_listing() -> dict:
+    """app/state as {relative path: (size, mtime_ns)}; {} when absent."""
+    if not REAL_STATE.exists():
+        return {}
+    out = {}
+    for p in REAL_STATE.rglob("*"):
+        try:
+            st = p.stat()
+        except OSError:
+            continue
+        out[str(p.relative_to(REAL_STATE))] = (
+            st.st_size if p.is_file() else -1, st.st_mtime_ns)
+    return out
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _app_state_untouched():
+    """The whole suite leaves the working tree's app/state as it found it."""
+    before = _state_listing()
+    yield
+    after = _state_listing()
+    changed = sorted(k for k in set(before) | set(after)
+                     if before.get(k) != after.get(k))
+    assert not changed, f"tests wrote into {REAL_STATE}: {changed[:10]}"
 
 
 @pytest.fixture(autouse=True)
