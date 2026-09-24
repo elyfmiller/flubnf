@@ -152,6 +152,8 @@ def test_an_unmatched_column_asks_for_a_mapping_instead_of_an_error():
     html = j["html"]
     assert "Nothing was stored." not in html
     assert "Which column is which?" in html
+    assert "Choose the column that holds the date, the group and the value." \
+        in html
     assert '<select name="col_date" id="dsup-data-col-date" data-recheck>' \
         in html
     assert '<option value="#1">day</option>' in html
