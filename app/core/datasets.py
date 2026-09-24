@@ -207,7 +207,7 @@ PROBLEM_KINDS = (
               "limit_groups", "kind_invalid", "target_required",
               "target_unknown")),
     ("Columns", ("missing_columns", "ambiguous_columns", "column_unknown",
-                 "ragged")),
+                 "duplicate_columns", "ragged")),
     ("Dates", ("date_parse", "date_day_first", "weekday", "as_of_parse",
                "as_of_before_date")),
     ("Values", ("value_numeric", "value_format", "value_negative",
@@ -826,7 +826,7 @@ def _map_columns(header, rep: Report, columns=None):
         if len(hits) == 1:
             cols[extra], idx[extra] = label[hits[0]], hits[0]
         elif len(hits) > 1:
-            rep.add("ambiguous_columns", f"Two columns could be the "
+            rep.add("duplicate_columns", f"Two columns could be the "
                     f"{extra}: " + " and ".join(repr(label[i]) for i in hits)
                     + f" (e.g., {label[hits[0]]}). Keep only one in the file.")
             return None

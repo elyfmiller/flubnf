@@ -449,3 +449,12 @@ def test_ids_of_files_the_earlier_reader_accepted_do_not_change():
     sun = b"date,target_group,value\n2024-07-28,A,1\n2024-08-04,A,2\n"
     assert D.ingest(sun, "sun").id == "sun-113cc4fb1cab"
     assert len(D.list_datasets()) == 4
+
+
+def test_two_as_of_columns_are_refused_not_mapped():
+    """A mapping names the four roles only, so a doubled extra column is a
+    plain problem, not a mapping step."""
+    rows = [f"{d.isoformat()},A,1,2024-10-05,2024-10-05" for d in sats()]
+    rep = D.validate(csv_text("date,group,value,as_of,As Of", rows).encode())
+    assert rep.codes == ["duplicate_columns"] and not rep.needs_mapping
+    assert "Two columns could be the as_of" in rep.problems[0].message
