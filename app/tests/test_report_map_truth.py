@@ -16,6 +16,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.core import report_v2, runs as runs_mod                  # noqa: E402
 
+# the console run on the synthetic vintage (PF faked, the rest real)
+from test_oracle_step import hubfiles                         # noqa: E402,F401
+from test_optional_outputs import _default_run, pipeline_env  # noqa: E402,F401
+
 
 def _hover(html: str, fips: str) -> str:
     m = re.search(r'data-fips="%s" [^>]*?data-hover="([^"]*)"' % fips, html)
@@ -197,6 +201,46 @@ def test_bundle_stores_the_asof_and_the_true_reference_date(tmp_path):
     assert report_v2.bundle_asof(b) == "2098-01-03"
     report_v2.render_bundle(b, tmp_path / "again.html")
     assert "week of 2098-01-03" in (tmp_path / "again.html").read_text()
+
+
+def test_report_names_the_runs_recorded_build_like_the_run_page(tmp_path,
+                                                                monkeypatch):
+    """After an update without a restart the server's RUNNING_SHA is not
+    the code the run recorded; the report's app build (and engine versions)
+    come from the run's ledger row, exactly as the run page shows them."""
+    from app.ui import pipeline as ui_pipeline
+    from app.ui.versions import RUNNING_SHA
+    locs, n2f = _locs()
+    spec = runs_mod.RunSpec(engine="analogue", forecast_date="2098-01-03",
+                            locations=["Ohio"])
+    obs = {"Ohio": [[f"2097-12-{d:02d}", 100.0 + d] for d in (6, 13, 20, 27)]}
+    row = {"flubnf_sha": "a1b2c3d",
+           "engine_versions": json.dumps({"engines": "pf,analogue",
+                                          "pybnf": "1.2.3"})}
+    ui_pipeline._write_weekly_report(
+        spec, tmp_path, {}, obs, pd.DataFrame(), locs, n2f, 1.0, {},
+        an_q={"Ohio": _gh_q()}, run_row=row)
+    b = json.loads((tmp_path / report_v2.BUNDLE_NAME).read_text())
+    assert "a1b2c3d" in b["settings_html"]
+    if RUNNING_SHA:
+        assert RUNNING_SHA not in b["settings_html"]
+    # the run page's pairs (version_pairs of the row), not this process's
+    assert "<dt>app build</dt><dd>a1b2c3d</dd>" in b["settings_html"]
+    assert "<dt>pybnf</dt><dd>1.2.3</dd>" in b["settings_html"]
+    assert "not installed" not in b["settings_html"]
+
+
+def test_the_pipeline_hands_the_report_its_ledger_row(pipeline_env,
+                                                      monkeypatch):
+    from app.core.runs import Ledger
+    from app.ui import pipeline as P
+    seen = {}
+    monkeypatch.setattr(P, "_write_weekly_report",
+                        lambda *a, **k: seen.update(k))
+    _default_run(pipeline_env["names"])
+    row = Ledger().rows(1)[0]
+    assert seen["run_row"]["run_id"] == row["run_id"]
+    assert seen["run_row"]["flubnf_sha"] == row["flubnf_sha"]
 
 
 def test_an_older_bundles_reference_date_still_reads_as_its_asof(tmp_path):

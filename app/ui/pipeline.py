@@ -118,7 +118,8 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
                          df, locs, n2f: dict, elapsed_s: float,
                          outcome: dict, an_q: dict | None = None,
                          ens_q: dict | None = None,
-                         scores: dict | None = None) -> None:
+                         scores: dict | None = None,
+                         run_row: dict | None = None) -> None:
     """Step 5b of _run_all: build the report inputs bundle, save it as
     report_inputs.json, then render report.html FROM it (one render path,
     so _report_for_serving can rebuild after a design change).
@@ -128,7 +129,9 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
     one quantile-CDF path; the map renders PF-first and cards_model records
     which. State drill-down fans are PF's, else the Groundhog's. `ens_q`
     (retired blend) is accepted and ignored. `scores`: model -> its scored frame (`df` is the
-    PF's); the accuracy card covers each model that ran. Mutates
+    PF's); the accuracy card covers each model that ran. `run_row`: the
+    run's ledger row, whose recorded build and engine versions the settings
+    block names (as the run page does); without one, this process's. Mutates
     `outcome`; the caller contains failures."""
     import json as _json
     from datetime import date as _dd
@@ -367,10 +370,10 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
               "national": {"summary_html": wis_html},
               "national_map_card": nat_card,
               "elapsed_s": elapsed_s,
-              # run settings, app build and engine versions
+              # run settings, app build and engine versions: the run's
+              # recorded ones (the run page's), never a later server's
               "settings_html": settings_html(
-                  spec_settings(spec, outcome)
-                  + version_pairs(RUNNING_SHA, VERSIONS))}
+                  spec_settings(spec, outcome) + _build_pairs(run_row))}
     try:
         bp = report_v2.save_bundle(bundle, workroot)
         outcome["report_inputs_bytes"] = bp.stat().st_size
@@ -378,6 +381,22 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
         outcome["report_inputs_error"] = str(e)[:200]
     report_v2.render_bundle(bundle, workroot / "report.html")
     outcome["report"] = str(workroot / "report.html")
+
+
+def _build_pairs(run_row: dict | None) -> list:
+    """The app build and engine versions a run recorded in its ledger row,
+    as the run page shows them (version_pairs); this process's when there
+    is no row. After an update without a restart the running server's
+    RUNNING_SHA is not the code the run recorded."""
+    if not run_row:
+        return version_pairs(RUNNING_SHA, VERSIONS)
+    import json
+    try:
+        ev = json.loads(run_row.get("engine_versions") or "{}")
+    except (TypeError, ValueError):
+        ev = {}
+    return version_pairs(run_row.get("flubnf_sha") or "",
+                         ev if isinstance(ev, dict) else {})
 
 
 def _pf_engine_state() -> str:
@@ -819,7 +838,8 @@ def _run_all(spec: RunSpec) -> None:
         try:
             _write_weekly_report(spec, workroot, pf_samples, obs, df, locs,
                                  n2f, _time.time() - t_start, outcome,
-                                 an_q=an_q, scores=score_frames)
+                                 an_q=an_q, scores=score_frames,
+                                 run_row=ledger.row(run_id))
         except Exception as e:
             outcome["report_error"] = str(e)[:200]
         # 6. results index for the run page
