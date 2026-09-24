@@ -216,6 +216,7 @@ if exist "%PYBNFDIR%\pybnf\pf.py" goto :pybnfresolved
 rem nothing on disk yet: the default is where setup.ps1 would clone
 set "PYBNFDIR=%LOCALAPPDATA%\FluBNF\PyBNF-pf"
 :pybnfresolved
+set "ENGINEOK="
 set "ENGINEVENV=%FLUBNF_ENGINE_VENV%"
 if not defined ENGINEVENV set "ENGINEVENV=%USERPROFILE%\.venvs\flubnf-engine"
 set "ENGINEPY=%ENGINEVENV%\Scripts\python.exe"
@@ -229,7 +230,7 @@ if not exist "%PYBNFDIR%\pybnf\pf.py" goto :engineabsent
 if errorlevel 1 goto :engineabsent
 set "FLUBNF_PY_ENGINE=%ENGINEPY%"
 set "FLUBNF_PYBNF=%PYBNFDIR%"
-goto :startconsole
+set "ENGINEOK=1"
 
 :engineabsent
 rem Search the FluBNF folder, beside it, Downloads, Desktop, Documents. The
@@ -254,34 +255,71 @@ for %%F in ("%USERPROFILE%\Desktop\pybnf*.bundle") do if not defined BUNDLE set 
 if defined OneDrive for %%F in ("%OneDrive%\Desktop\pybnf*.bundle") do if not defined BUNDLE set "BUNDLE=%%~fF"
 for %%F in ("%USERPROFILE%\Documents\pybnf*.bundle") do if not defined BUNDLE set "BUNDLE=%%~fF"
 if defined OneDrive for %%F in ("%OneDrive%\Documents\pybnf*.bundle") do if not defined BUNDLE set "BUNDLE=%%~fF"
-rem The other shape, pybnf-pf-<sha>.tar.gz: same folders, same rule.
+rem The other shape, pybnf-pf-<sha>.tar.gz: same folders, but the NEWEST wins
+rem (twin of setup_engine.sh; glob order is arbitrary).
 set "ARCHIVE="
-for %%F in ("%~dp0pybnf*.tar.gz") do if not defined ARCHIVE set "ARCHIVE=%%~fF"
-for %%F in ("%~dp0..\pybnf*.tar.gz") do if not defined ARCHIVE set "ARCHIVE=%%~fF"
-for %%F in ("%USERPROFILE%\Downloads\pybnf*.tar.gz") do if not defined ARCHIVE set "ARCHIVE=%%~fF"
-if defined OneDrive for %%F in ("%OneDrive%\Downloads\pybnf*.tar.gz") do if not defined ARCHIVE set "ARCHIVE=%%~fF"
-for %%F in ("%USERPROFILE%\Desktop\pybnf*.tar.gz") do if not defined ARCHIVE set "ARCHIVE=%%~fF"
-if defined OneDrive for %%F in ("%OneDrive%\Desktop\pybnf*.tar.gz") do if not defined ARCHIVE set "ARCHIVE=%%~fF"
-for %%F in ("%USERPROFILE%\Documents\pybnf*.tar.gz") do if not defined ARCHIVE set "ARCHIVE=%%~fF"
-if defined OneDrive for %%F in ("%OneDrive%\Documents\pybnf*.tar.gz") do if not defined ARCHIVE set "ARCHIVE=%%~fF"
+set "ARCHIVES=0"
+for %%F in ("%~dp0pybnf*.tar.gz") do call :newerarchive "%%~fF"
+for %%F in ("%~dp0..\pybnf*.tar.gz") do call :newerarchive "%%~fF"
+for %%F in ("%USERPROFILE%\Downloads\pybnf*.tar.gz") do call :newerarchive "%%~fF"
+if defined OneDrive for %%F in ("%OneDrive%\Downloads\pybnf*.tar.gz") do call :newerarchive "%%~fF"
+for %%F in ("%USERPROFILE%\Desktop\pybnf*.tar.gz") do call :newerarchive "%%~fF"
+if defined OneDrive for %%F in ("%OneDrive%\Desktop\pybnf*.tar.gz") do call :newerarchive "%%~fF"
+for %%F in ("%USERPROFILE%\Documents\pybnf*.tar.gz") do call :newerarchive "%%~fF"
+if defined OneDrive for %%F in ("%OneDrive%\Documents\pybnf*.tar.gz") do call :newerarchive "%%~fF"
 :bundleresolved
+if %ARCHIVES% GTR 1 echo   %ARCHIVES% engine archives found; using the newest: "%ARCHIVE%"
 
 rem Extract here with Windows' tar (since 10 1803) into LOCALAPPDATA (Controlled
 rem Folder Access protects Documents); the pf.py gates below then see a copy.
 if not defined ARCHIVE goto :archivedone
 if exist "%PYBNFDIR%\.git" goto :archivedone
-if exist "%PYBNFDIR%\pybnf\pf.py" goto :archivedone
 where tar >nul 2>&1
 if errorlevel 1 goto :archivedone
+if exist "%PYBNFDIR%\pybnf\pf.py" goto :archivestale
 if not exist "%LOCALAPPDATA%\FluBNF" mkdir "%LOCALAPPDATA%\FluBNF"
 echo   unpacking the engine from "%ARCHIVE%" - no GitHub account needed
 tar -xzf "%ARCHIVE%" -C "%LOCALAPPDATA%\FluBNF"
 if exist "%LOCALAPPDATA%\FluBNF\PyBNF-Private\pybnf\pf.py" set "PYBNFDIR=%LOCALAPPDATA%\FluBNF\PyBNF-Private"
 if not exist "%PYBNFDIR%\pybnf\pf.py" echo   unpack failed or wrong file; continuing without it
+goto :archiveunpacked
+:archivestale
+rem A newer archive replaces an unpacked copy this launcher made, only if the
+rem stamps differ and it is newer than the installed VERSION (no downgrades).
+rem The old copy is renamed, never deleted, and put back if the unpack fails.
+if /i not "%PYBNFDIR%"=="%LOCALAPPDATA%\FluBNF\PyBNF-Private" goto :archivedone
+set "VMEMBER="
+set "NEWVER="
+set "OLDVER="
+for /f "delims=" %%M in ('tar -tzf "%ARCHIVE%" 2^>nul ^| findstr /e /c:"/VERSION"') do if not defined VMEMBER set "VMEMBER=%%M"
+if not defined VMEMBER goto :archivedone
+for /f "usebackq delims=" %%V in (`tar -xzOf "%ARCHIVE%" "%VMEMBER%" 2^>nul`) do if not defined NEWVER set "NEWVER=%%V"
+if not defined NEWVER goto :archivedone
+if exist "%PYBNFDIR%\VERSION" set /p OLDVER=<"%PYBNFDIR%\VERSION"
+if "%NEWVER%"=="%OLDVER%" goto :archivedone
+if not exist "%PYBNFDIR%\VERSION" goto :archivereplace
+set "VERFILE=%PYBNFDIR%\VERSION"
+powershell -NoProfile -Command "if ((Get-Item -LiteralPath $env:ARCHIVE).LastWriteTimeUtc -gt (Get-Item -LiteralPath $env:VERFILE).LastWriteTimeUtc) { exit 0 } else { exit 1 }" >nul 2>&1
+if errorlevel 1 goto :archivedone
+:archivereplace
+for /f %%T in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMddHHmmss"') do set "TS=%%T"
+set "KEPT=PyBNF-Private.replaced-%TS%"
+echo   a different engine archive has arrived: on disk %OLDVER%, archive %NEWVER%
+ren "%PYBNFDIR%" "%KEPT%" || goto :archivedone
+tar -xzf "%ARCHIVE%" -C "%LOCALAPPDATA%\FluBNF"
+if exist "%PYBNFDIR%\pybnf\pf.py" goto :archivereplaced
+if exist "%PYBNFDIR%" rd /s /q "%PYBNFDIR%"
+ren "%LOCALAPPDATA%\FluBNF\%KEPT%" PyBNF-Private
+echo   could not install "%ARCHIVE%"; the copy already on disk is unchanged
+goto :archivedone
+:archivereplaced
+echo   the previous copy is at "%LOCALAPPDATA%\FluBNF\%KEPT%"; delete it once you are happy
+:archiveunpacked
 rem Print the stamp ("which build"), as macOS does.
 if exist "%PYBNFDIR%\VERSION" set /p FLUVER=<"%PYBNFDIR%\VERSION"
 if defined FLUVER echo   version stamp: %FLUVER%
 :archivedone
+if defined ENGINEOK goto :startconsole
 
 rem Nothing to install from: a normal state (analogue works), so no question.
 if exist "%PYBNFDIR%\.git" goto :enginestamp
@@ -490,3 +528,15 @@ echo newer from https://www.python.org/downloads/ and tick "Add to PATH".
 echo Press any key to close.
 pause >nul
 exit /b 1
+
+:newerarchive
+rem Keep the NEWEST pybnf*.tar.gz (twin of setup_engine.sh): glob order is arbitrary.
+set /a ARCHIVES+=1
+if defined ARCHIVE goto :newerarchivecmp
+set "ARCHIVE=%~f1"
+goto :eof
+:newerarchivecmp
+set "CAND=%~f1"
+powershell -NoProfile -Command "if ((Get-Item -LiteralPath $env:CAND).LastWriteTimeUtc -gt (Get-Item -LiteralPath $env:ARCHIVE).LastWriteTimeUtc) { exit 0 } else { exit 1 }" >nul 2>&1
+if not errorlevel 1 set "ARCHIVE=%CAND%"
+goto :eof

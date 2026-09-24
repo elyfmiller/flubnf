@@ -825,3 +825,22 @@ def test_a_stale_copy_is_replaced_under_gnu_tar_too(tmp_path):
     assert (dest / "VERSION").read_text().strip() == "pf/pre-pr 8b28edf4", (
         "the stale engine survived a tar that does not glob member names\n"
         + out.stdout + out.stderr)
+
+
+def test_the_windows_launcher_picks_the_newest_archive_and_replaces_a_stale_copy():
+    """FluBNF.bat mirrors setup_engine.sh: every pybnf*.tar.gz search goes
+    through :newerarchive (newest wins, not glob order), and an unpacked copy
+    that already exists is sent to the stale check instead of being kept."""
+    bat = BAT.replace("\r\n", "\n")
+    archive_loops = [ln for ln in bat.split("\n")
+                     if "pybnf*.tar.gz" in ln and ln.lstrip().startswith(("for ", "if defined OneDrive for "))]
+    assert len(archive_loops) == 8
+    assert all('do call :newerarchive "%%~fF"' in ln for ln in archive_loops)
+    assert "if not defined ARCHIVE set" not in bat
+    assert "\n:newerarchive\n" in bat and "\n:archivestale\n" in bat
+    assert 'goto :archivestale' in bat
+    # the stale check never deletes the old copy outright: it is renamed aside
+    stale = bat.split("\n:archivestale\n", 1)[1].split("\n:archivedone\n", 1)[0]
+    assert 'ren "%PYBNFDIR%" "%KEPT%"' in stale
+    # a working engine still reaches the console after the archive check
+    assert "\n:archivedone\nif defined ENGINEOK goto :startconsole\n" in bat
