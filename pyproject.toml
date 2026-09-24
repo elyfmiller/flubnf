@@ -23,11 +23,8 @@ classifiers = [
 dependencies = [
     "numpy",
     "pandas",
-    "scipy",
     "rich",
-    "pyyaml",
     "typer",
-    "requests",
 ]
 
 # [project.*] sub-tables must follow the last plain [project] key, or TOML
@@ -40,7 +37,8 @@ Release-notes = "https://github.com/elyfmiller/flubnf/blob/main/docs/archive/REL
 
 [project.optional-dependencies]
 app = ["fastapi", "uvicorn", "jinja2", "python-multipart", "plotly", "pywebview"]
-dev = ["pytest", "httpx2"]
+# pyyaml: the hub metadata tests parse YAML; nothing at runtime does.
+dev = ["pytest", "httpx2", "pyyaml"]
 
 [project.scripts]
 flubnf = "flubnf.cli:app"

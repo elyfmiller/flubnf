@@ -84,14 +84,11 @@ def _check_platform() -> CheckResult:
 
 
 _REQUIRED_PACKAGES: tuple[tuple[str, str], ...] = (
-    # (import_name, friendly_name)
+    # (import_name, friendly_name): pyproject's runtime dependencies
     ("numpy", "numpy"),
     ("pandas", "pandas"),
-    ("scipy", "scipy"),
-    ("yaml", "pyyaml"),
     ("typer", "typer"),
     ("rich", "rich"),
-    ("requests", "requests"),
 )
 
 # pybnf/bngsim live in the ENGINE venv (two-venv architecture), so they are
