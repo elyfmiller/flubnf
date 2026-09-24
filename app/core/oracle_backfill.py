@@ -225,6 +225,10 @@ def reproduce(roots: list, *, source_roots: list | None = None,
     frames = []
     for r in roots:
         r = Path(r)
+        if not (r / "weeks").is_dir():
+            # said plainly (pandas' own words were "No objects to concatenate")
+            raise FileNotFoundError(f"{r}: not a season root (no weeks/ "
+                                    "folder of stored weeks)")
         meta = retro.read_meta(r)
         season = str(meta.get("season") or r.name)
         frames.append(score_root(r, season))
