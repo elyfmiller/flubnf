@@ -93,8 +93,8 @@ def test_details_bodies_flow_at_card_width():
 
 def test_figures_and_equations_center():
     """Figures center at their natural widths (the diagram macros' inline
-    margin auto); equation panels span the card as sunken wells with the
-    equation lines centered inside."""
+    margin auto); equation panels span the card, flat (no well of their
+    own), with the equation lines centered inside."""
     html = client.get("/methods").text
     assert html.count('role="img"') >= 2             # compartment + two-strain
     assert "display:block;margin:.6rem auto" in html  # the diagram macros
