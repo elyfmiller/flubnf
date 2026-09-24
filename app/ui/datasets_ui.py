@@ -740,8 +740,8 @@ def dataset_panel(panel, *, kind: str = "", where: str = "forecast",
                   prefix: str = "", engine: str = ""):
     """The Model settings panel (forms._knob_panel with PANEL_MEMBERS) as
     a dataset run or replay reads it: no Oracle step (it does not run on
-    custom data), no auxiliary-bank rows, no hub-name override (there is
-    none), the groups named as the members run on the data.
+    custom data), no auxiliary-bank rows, no optional hub rows (no hub
+    file is written), no hub-name override (there is none), the groups named as the members run on the data.
 
     `kind`: the dataset's kind; a rate dataset has no floor row, and ''
     (a form that picks among datasets) keeps it marked counts-only for the
@@ -756,8 +756,8 @@ def dataset_panel(panel, *, kind: str = "", where: str = "forecast",
             continue
         rows = []
         for r in g["rows"]:
-            if r["key"] in AUX_KEYS:
-                continue
+            if r["key"] in AUX_KEYS or r["key"] in forms._knobs.OPTIONAL_KEYS:
+                continue            # no hub files on custom data
             if r["key"] in COUNT_ONLY:
                 if kind and kind != "count":
                     continue
@@ -782,10 +782,10 @@ def dataset_panel(panel, *, kind: str = "", where: str = "forecast",
 def knob_values(ds, knob_fields, knobs_json) -> dict:
     """The knob channel's raw values as a dataset form posts them, less
     what a dataset never records: the auxiliary-bank knobs, and the
-    counts-only knobs on a rate dataset."""
+    counts-only knobs on a rate dataset, and the optional hub rows."""
     return {k: v for k, v in forms._knob_raw(knob_fields or {},
                                              knobs_json).items()
-            if k not in AUX_KEYS
+            if k not in AUX_KEYS and k not in forms._knobs.OPTIONAL_KEYS
             and not (k in COUNT_ONLY and ds.kind != "count")}
 
 

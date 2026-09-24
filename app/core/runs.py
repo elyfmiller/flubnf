@@ -123,6 +123,9 @@ def spec_settings(spec) -> list:
     mk = model_settings_label(d)
     if mk:
         pairs.append(("model settings", mk))
+    # the optional hub rows (knobs.OPTIONAL_KEYS): only when one is on
+    from app.core import knobs as K
+    pairs.append(("optional hub rows", K.optional_label(d)))
     return [(k, v) for k, v in pairs if v not in ("", None)]
 
 
@@ -186,7 +189,8 @@ def model_settings_label(spec) -> str:
     'modified: oracle.w=0.25 (1a2b3c4d)', plus how its files were named.
     Lazy import: app.core.knobs imports this module."""
     from app.core import knobs as K
-    rec = K.record_of(spec)
+    # the optional-output knobs change no model (spec_settings names them)
+    rec = K.model_record(spec)
     if not rec:
         return ""
     why = K.override_reason(spec)

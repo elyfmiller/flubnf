@@ -340,8 +340,12 @@ def _source(spec) -> tuple:
             {"exclude_seasons": excl})
 
 
-def run(spec) -> dict:
-    """location -> {horizon(str): {level(float): value}} quantiles."""
+def _walk(spec):
+    """Per location, what the Groundhog forecasts from: yields (loc,
+    anchor, anchor_date, k, forecast), where `forecast(h)` is the quantile
+    dict h PHYSICAL weeks past the as-of week (the donor ratio spans h + k
+    weeks from the anchor), or None when the donors abstain. One walk for
+    run() and nowcast()."""
     v, loc_csv, src_kw = _source(spec)
     t = pd.read_csv(v, dtype={"location": str})
     t["location"] = t["location"].str.zfill(2)
@@ -353,7 +357,6 @@ def run(spec) -> dict:
     locs = pd.read_csv(loc_csv, dtype=str)
     name2fips = dict(zip(locs.location_name, locs.location))
 
-    out = {}
     T = pd.Timestamp(spec.forecast_date)
     # Trims (weeks_to_drop + the optional same-day rule) move the ANCHOR
     # back as they move the PF's fit origin; ratios span h + k weeks so each
@@ -385,15 +388,49 @@ def run(spec) -> dict:
         anchor_date = g.date.loc[vals.index[-1]]
         window_ref = (T - pd.Timedelta(days=7 * k)).date()
         c, sig = completeness_args(spec, fips, anchor_date, newest)
+
+        def forecast(h, anchor=anchor, window_ref=window_ref, k=k, c=c,
+                     sig=sig):
+            # default donor pool = the registered exclusions; never restated
+            return AN.forecast(anchor, window_ref, h + k, bank, QL,
+                               completeness=c, widen_log_sd=sig,
+                               splice=splice, **bw_kw)
+        yield loc, anchor, anchor_date, k, forecast
+
+
+def run(spec) -> dict:
+    """location -> {horizon(str): {level(float): value}} quantiles."""
+    out = {}
+    for loc, _anchor, _date, _k, forecast in _walk(spec):
         qs = {}
         for h in (1, 2, 3, 4):     # PHYSICAL weeks ahead, the library's unit
-            # default donor pool = the registered exclusions; never restated
-            q = AN.forecast(anchor, window_ref, h + k, bank, QL,
-                            completeness=c, widen_log_sd=sig, splice=splice,
-                            **bw_kw)
+            q = forecast(h)
             if q:
                 # canonical (hub) key: h weeks ahead is hub horizon h-1
                 qs[str(h - 1)] = {float(L): float(x) for L, x in q.items()}
         if qs:
             out[loc] = qs
+    return out
+
+
+def nowcast(spec) -> dict:
+    """The as-of week, FluSight horizon -1 (target_end_date = reference
+    date - 7), for the optional output knob output.horizon_minus1:
+    location -> {"anchor", "anchor_date" (ISO), "k", "q"}.
+
+    `q` is the Groundhog's forecast of the as-of week, {level: value},
+    only where its anchor sits k >= 1 weeks before that week
+    (weeks_to_drop or the same-day trim), so the week is k weeks ahead
+    of what it saw. With k = 0 the as-of week IS the anchor: a donor
+    ratio over zero weeks is 1, the Groundhog has no distribution for
+    it, and `q` is None (no rows, rather than a point mass at the
+    reported count)."""
+    out = {}
+    for loc, anchor, anchor_date, k, forecast in _walk(spec):
+        q = forecast(0) if k else None
+        out[loc] = {"anchor": anchor,
+                    "anchor_date": str(pd.Timestamp(anchor_date).date()),
+                    "k": int(k),
+                    "q": ({float(L): float(x) for L, x in q.items()}
+                          if q else None)}
     return out

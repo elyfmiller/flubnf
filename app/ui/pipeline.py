@@ -332,6 +332,61 @@ def _pf_engine_state() -> str:
     return "ready" if pf_engine.engine_available() else "broken"
 
 
+def _optional_rows(spec, workroot: Path, pf_samples: dict, an_q: dict,
+                   locs, n2f: dict, minus1: bool, pmf: bool,
+                   floor_kw: dict) -> tuple:
+    """(pf rows, Groundhog rows, {model: counts}) for a run with an
+    optional-output knob on: each location's quantile rows (horizon -1
+    included when `minus1`), then its rate-change pmf rows when `pmf`.
+    The rules per model are app/core/optional_outputs.py's."""
+    from app.core import optional_outputs as OPT
+    from app.core.data import vintage_path
+    from app.core.engines import analogue as an_engine
+    from app.core.floor import floor_quantiles
+    from app.core.horizons import ORIGIN
+    from app.core.submit import (HORIZONS, HORIZONS_WITH_MINUS1,
+                                 quantile_rows, rate_change_rows,
+                                 rows_from_quantiles)
+    asof = spec.forecast_date
+    hzs = HORIZONS_WITH_MINUS1 if minus1 else HORIZONS
+    pops = dict(zip(locs.location_name, locs.population.astype(float)))
+    reported = OPT.reported_counts(vintage_path(asof), asof)
+    pf_k = OPT.pf_weeks_dropped(workroot, spec, reported,
+                                {l: n2f[l] for l in pf_samples})
+    counts = {"pf": {"m1": 0, "pmf": 0},
+              "analogue": {"m1": 0, "pmf": 0, "groundhog": True}}
+    pf_rows = []
+    for loc, s in pf_samples.items():
+        fips = n2f[loc]
+        rows = quantile_rows(s, fips, asof, horizons=hzs)
+        counts["pf"]["m1"] += any(r["horizon"] == -1 for r in rows)
+        if pmf:
+            probs = OPT.pf_rate_change(s, reported.get(fips),
+                                       pops.get(loc, 0.0), pf_k.get(loc, 0))
+            rows += rate_change_rows(probs, fips, asof)
+            counts["pf"]["pmf"] += bool(probs)
+        pf_rows += rows
+    now = an_engine.nowcast(spec) if an_q else {}
+    an_rows = []
+    for loc, q in an_q.items():
+        fips = n2f[loc]
+        info = now.get(loc)
+        qs = dict(q)
+        if minus1 and info and info.get("q"):
+            # the as-of week under the anchor key, floored like the rest
+            qs[ORIGIN] = floor_quantiles({ORIGIN: info["q"]},
+                                         **floor_kw)[ORIGIN]
+        rows = rows_from_quantiles(qs, fips, asof, horizons=hzs)
+        counts["analogue"]["m1"] += any(r["horizon"] == -1 for r in rows)
+        if pmf:
+            probs = OPT.groundhog_rate_change(q, info, reported.get(fips),
+                                              asof, pops.get(loc, 0.0))
+            rows += rate_change_rows(probs, fips, asof)
+            counts["analogue"]["pmf"] += bool(probs)
+        an_rows += rows
+    return pf_rows, an_rows, counts
+
+
 def _run_all(spec: RunSpec) -> None:
     """The competition path: engines in ascending cost, then the two
     standalone submissions (no blend; each under its own hub identity,
@@ -524,13 +579,25 @@ def _run_all(spec: RunSpec) -> None:
             prior = outcome.get("submission_withheld")
             outcome["submission_withheld"] = (f"{prior}; {reason}" if prior
                                               else reason)
-        for model, rows in (
-            ("pf", [r for loc, s in pf_samples.items()
-                    for r in quantile_rows(s, n2f[loc], spec.forecast_date)]),
-            ("analogue", [r for loc, q in an_q.items()
-                          for r in rows_from_quantiles(q, n2f[loc],
-                                                       spec.forecast_date)]),
-        ):
+        # the optional hub rows (knobs output.horizon_minus1 and
+        # output.rate_change_pmf, app/core/optional_outputs.py); both off by
+        # default, and then the rows below are exactly the shipped ones
+        _m1 = _knobs.optional_output(spec, "output.horizon_minus1")
+        _pmf = _knobs.optional_output(spec, "output.rate_change_pmf")
+        if _m1 or _pmf:
+            pf_rows, an_rows, _opt_counts = _optional_rows(
+                spec, workroot, pf_samples, an_q, locs, n2f, _m1, _pmf, _fkw)
+            from app.core.optional_outputs import notes as _opt_notes
+            outcome["optional_rows"] = _opt_notes(
+                {hub_model_id(m) + _suffix: c
+                 for m, c in _opt_counts.items()}, _m1, _pmf)
+        else:
+            pf_rows = [r for loc, s in pf_samples.items()
+                       for r in quantile_rows(s, n2f[loc], spec.forecast_date)]
+            an_rows = [r for loc, q in an_q.items()
+                       for r in rows_from_quantiles(q, n2f[loc],
+                                                    spec.forecast_date)]
+        for model, rows in (("pf", pf_rows), ("analogue", an_rows)):
             if not rows:
                 continue
             if model == "analogue" and spec.engine == "pf":
@@ -561,6 +628,10 @@ def _run_all(spec: RunSpec) -> None:
                 outcome.setdefault("submission_errors", {})[
                     hub_model_id(model) + _suffix] = str(e)[:400]
         outcome["submissions"] = subs
+        if "optional_rows" in outcome:
+            outcome["optional_rows"] = {k: v for k, v in
+                                        outcome["optional_rows"].items()
+                                        if k in subs}
         # 5. retrospective scoring (once truth exists); contained, like 5b
         df = pd.DataFrame()
         try:
