@@ -4,10 +4,26 @@
 <h1>Run: {{ label or "details" }}
  {# research badge from the ledger row's spec (the record of record) #}
  {% if research %}<span class="pill">research</span>{% endif %}
+ {% if modified %}<span class="pill warn">modified settings</span>{% endif %}
  {% if status and status not in ("ok", "done") %}
   <span class="pill {{ 'warn' if status in ('stopped','interrupted','partial') else 'bad' }}">{{ status }}</span>
  {% elif status %}<span class="pill ok">{{ status }}</span>{% endif %}
 </h1>
+
+{% if modified %}
+{# the knobs record from the ledger spec; "model settings" in the settings
+   block below names every value #}
+<div class="card" id="modified-note">
+ <h2>Modified model settings</h2>
+ {% if override %}
+ <p>Exported under the hub names by override. Reason recorded with the
+  run: <q>{{ override }}</q></p>
+ {% else %}
+ <p>This run's files carry the non-hub name (<code>&lt;hub id&gt;-modified</code>),
+  so they can never pass for the registered models.</p>
+ {% endif %}
+</div>
+{% endif %}
 
 {% if error %}
 <div class="card">
@@ -86,6 +102,10 @@
 {% for s in subs %}
  {% if s.submittable %}
  <p>{{ s.model }}: <a href="/output/download?path={{ s.path | urlencode }}">{{ s.name }}</a></p>
+ {% elif s.modified %}
+ <p>{{ s.model }}: <a href="/output/download?path={{ s.path | urlencode }}">{{ s.name }}</a><br>
+  <span class="hint">Non-hub name: this run's model settings differ from
+  the shipped ones.</span></p>
  {% else %}
  <p>{{ s.model }}: <code>{{ s.name }}</code><br>
   <span class="hint">Not submittable: written under a retired model name

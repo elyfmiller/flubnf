@@ -64,6 +64,7 @@
  <div class="archrow" data-wid="{{ w.id }}">
   <span class="grow"><strong>{{ w.label }}</strong>
    {% if w.research %} <span class="pill">research</span>{% endif %}
+   {% if w.modified %} <span class="pill warn">modified settings</span>{% endif %}
    <span class="hint">{% if w.when %}· run {{ w.when }} {% endif %}{% if w.scope %}· {{ w.scope }} {% endif %}· {{ w.size_h }}{% if w.busy %} · <span class="warn">running now</span>{% endif %}
    · <code style="font-size:.78em">{{ w.id }}</code></span></span>
   {% if not w.busy %}
@@ -237,7 +238,9 @@
 {% for r in ledger %}
  <tr><td class="nowrap"><a href="/runs/{{ r.run_id }}">{{ r.label }}</a>
  {# research badge (the spec asked for the third member) #}
- {% if r.research %} <span class="pill">research</span>{% endif %}</td>
+ {% if r.research %} <span class="pill">research</span>{% endif %}
+ {# model settings off the shipped ones (a knobs record in the spec) #}
+ {% if r.modified %} <span class="pill warn">modified settings</span>{% endif %}</td>
  <td><span class="pill {% if r.status == 'ok' %}ok{% elif r.status == 'running' %}warn{% else %}bad{% endif %}">{{ r.status }}</span></td>
  <td class="elapsed">{{ r.elapsed_s | hms }}</td>
  {# a dash = the workroot was deleted; the ledger row stands #}

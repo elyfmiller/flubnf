@@ -429,7 +429,9 @@ def test_a_console_replay_is_the_oracle_sihrs_from_the_season_start(hubfiles, tm
     assert oracle_mod.FILTER_KEY not in back and "pf" in back
     assert back["pf"]["Ohio"]["3"] != raw["Ohio"]["3"]
     # and the tree is titled the Oracle SIHRS wherever pf is named
-    assert srv._names_for_root(root)["pf"] == "Oracle SIHRS"
+    # 1,000 particles and 1 replicate are off the shipped values: the tree
+    # records them as model knobs and never wears the bare shipped name
+    assert srv._names_for_root(root)["pf"] == "Oracle SIHRS (modified settings)"
 
 
 # ------------------------------------------------------------ the console

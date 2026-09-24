@@ -6,7 +6,7 @@ about what runs. The advanced group holds Season start (blank derives
 August 1 of the forecast's season, RunSpec's rule), Weeks to drop and
 Replicates. A typed season start is recorded verbatim in the spec, shown
 in the run settings, and reproduced by a rerun; an impossible one is
-refused out loud and the default used.
+refused out loud and nothing runs.
 """
 import sys
 from pathlib import Path
@@ -89,9 +89,12 @@ def test_run_refuses_a_season_start_that_is_not_before_the_week(
         client.post("/run", data={"forecast_date": "2098-01-04",
                                   "locations": ["Ohio"], "season_start": bad},
                     follow_redirects=False)
-    assert [s.season_start for s in started] == ["2097-08-01"] * 3
+    # the season start is the run.season_start knob: an impossible one is
+    # refused out loud and nothing runs (it used to fall back to the default)
+    assert started == []
+    assert srv._status.get("running") is None
     page = client.get("/forecast").text
-    assert "using 2097-08-01" in page                      # the refusal is said
+    assert "run.season_start" in page and "Nothing was run" in page
 
 
 def test_run_settings_name_the_season_start():

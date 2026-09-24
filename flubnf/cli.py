@@ -2417,6 +2417,11 @@ def retro_cmd(
     oracle: Annotated[str, typer.Option(
         help="Empty = the Oracle SIHRS; 'none' = the plain filter "
              "(research).")] = "",
+    knob: Annotated[Optional[list[str]], typer.Option(
+        "--knob", help="Model knob as key=value (repeatable; see `flubnf "
+                       "knobs`). Off-shipped values are recorded in "
+                       "run_meta.json and a tree built with other values "
+                       "is refused, not resumed.")] = None,
 ):
     """Run a season-as-competition retrospective (resumable).
 
@@ -2431,11 +2436,36 @@ def retro_cmd(
     oracle: empty stores the Oracle SIHRS under pf (app/core/oracle.py
     applied to the filter's samples; the filter's quantiles are kept in
     oracle.json); 'none' stores the plain filter (research), which the
-    week's oracle.json records."""
+    week's oracle.json records.
+
+    --knob key=value sets a model knob (app/core/knobs.py, parsed and
+    range-checked by knobs.resolve). pf.particles and pf.replicates also
+    come from here (--replicates is the older spelling of the latter; two
+    different values are refused)."""
     import pandas as pd
     from pathlib import Path as _P
+    from app.core import knobs as _K
     from app.core import retro
     from app.core.engines import pf as _pf
+    pairs = {}
+    for item in knob or []:
+        k, sep, v = str(item).partition("=")
+        if not sep or not k.strip():
+            raise typer.BadParameter(f"--knob takes key=value, got {item!r}")
+        if k.strip() in pairs:
+            raise typer.BadParameter(f"--knob {k.strip()} given twice")
+        pairs[k.strip()] = v.strip()
+    vints = retro.season_vintages(season)
+    try:
+        nd = _K.resolve(pairs, "all", scope="retro",
+                        forecast_date=(vints[0] if vints else None),
+                        check_dates=tuple(vints[-1:]),
+                        oracle_step=(oracle != "none"),
+                        legacy={"replicates": replicates})
+    except _K.KnobError as e:
+        raise typer.BadParameter(str(e)) from None
+    replicates = int(nd.get("pf.replicates", 3))
+    particles = int(nd.get("pf.particles", 10_000))
     width = _pf.resolve_width(width)
     from flubnf.settings import LOCATIONS
     locs = pd.read_csv(LOCATIONS, dtype=str)
@@ -2470,9 +2500,37 @@ def retro_cmd(
     else:
         print("  Oracle step: applied (w = 0.5; the donor bank built from "
               "each week's vintage, named in the week's oracle.json)")
-    done = retro.run_season(r, season, names, replicates=replicates,
-                            width=width, week_extra=week_extra,
-                            progress=lambda a: print(f"  {a} done", flush=True))
+    kx = {}
+    if nd:
+        if "groundhog.aux" in nd and aux:
+            if (_K.aux_choice(nd, None) or "none") != aux:
+                raise typer.BadParameter(
+                    "--aux and --knob groundhog.aux disagree; give one")
+        if "groundhog.aux" in nd:
+            pick = _K.aux_choice(nd, None)
+            week_extra = (_an.aux_preset(pick) if pick
+                          else _an.bare_analogue)
+            if oracle == "none":
+                inner2 = week_extra
+
+                def week_extra(asof, i, vintages, _inner=inner2):
+                    d = dict(_inner(asof, i, vintages))
+                    d["oracle"] = "none"
+                    return d
+                week_extra.__name__ = inner2.__name__ + "+oracle:none"
+        week_extra = _K.retro_week_extra(week_extra, nd)
+        kx = {"settings": {"knobs": _K.jsonable(nd)},
+              "drop_same_day": bool(nd.get("run.drop_same_day", False))}
+        print(f"  model settings: {_K.label(nd)}")
+    try:
+        done = retro.run_season(r, season, names, replicates=replicates,
+                                particles=particles,
+                                width=width, week_extra=week_extra,
+                                progress=lambda a: print(f"  {a} done",
+                                                         flush=True), **kx)
+    except retro.KnobsMismatch as e:
+        typer.echo(f"refused: {e}", err=True)
+        raise typer.Exit(2)
     print(f"{season}: {len(done)} weeks complete -> {r}")
 
 
