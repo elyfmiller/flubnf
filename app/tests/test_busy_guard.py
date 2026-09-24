@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient           # noqa: E402
 
 from app.core import data as core_data              # noqa: E402
 from app.ui import server as srv                    # noqa: E402
+from app.ui import state as ui_state                # noqa: E402
 
 client = TestClient(srv.app)
 
@@ -24,11 +25,11 @@ SEASON = "2098-99"
 def _isolated_status():
     """Snapshot and restore the module-level status stores around each test
     so mocked busy states never leak between tests."""
-    status_before = dict(srv._status)
+    status_before = dict(ui_state._status)
     retro_before = dict(srv._retro_status)
     stop_before = set(srv._retro_stop)
     yield
-    srv._status.clear(); srv._status.update(status_before)
+    ui_state._status.clear(); ui_state._status.update(status_before)
     srv._retro_status.clear(); srv._retro_status.update(retro_before)
     srv._retro_stop.clear(); srv._retro_stop.update(stop_before)
 
@@ -36,7 +37,7 @@ def _isolated_status():
 # ---------------------------------------------------------------- /api/busy
 
 def test_busy_idle_shape():
-    srv._status.update({"running": None, "phase": "", "run_label": ""})
+    ui_state._status.update({"running": None, "phase": "", "run_label": ""})
     srv._retro_status.clear()
     r = client.get("/api/busy")
     assert r.status_code == 200
@@ -45,7 +46,7 @@ def test_busy_idle_shape():
 
 
 def test_busy_reports_console_run_and_phase():
-    srv._status.update({"running": "all:20990101_000000",
+    ui_state._status.update({"running": "all:20990101_000000",
                         "run_label": "2099-01-02 · 3 state(s) + US",
                         "phase": "materializing models (BNG network generation)"})
     b = client.get("/api/busy").json()
@@ -54,7 +55,7 @@ def test_busy_reports_console_run_and_phase():
 
 
 def test_busy_console_label_falls_back_to_claim():
-    srv._status.update({"running": "starting", "run_label": "", "phase": ""})
+    ui_state._status.update({"running": "starting", "run_label": "", "phase": ""})
     assert client.get("/api/busy").json()["console_run"] == "starting"
 
 
@@ -181,34 +182,34 @@ def test_post_run_refused_while_a_retrospective_replays(tmp_path,
     monkeypatch.setattr(core_data, "vintage_path", lambda d: tmp_path)
     started = []
     monkeypatch.setattr(srv, "_run_all", lambda spec: started.append(spec))
-    form_before = dict(srv._last_form)
+    form_before = dict(ui_state._last_form)
     srv._retro_status[SEASON] = "running"
     try:
         r = client.post("/run", data={"forecast_date": "2098-01-04",
                                       "locations": ["Ohio"]},
                         follow_redirects=False)
         assert r.status_code == 303
-        assert srv._status.get("running") is None    # no claim was made
+        assert ui_state._status.get("running") is None    # no claim was made
         assert started == []                         # no worker was launched
-        flash = srv._status.get("flash", "")
+        flash = ui_state._status.get("flash", "")
         assert "retrospective replay holds the engine" in flash
         assert SEASON in flash
     finally:
-        srv._last_form.clear()
-        srv._last_form.update(form_before)
+        ui_state._last_form.clear()
+        ui_state._last_form.update(form_before)
 
 
 def test_post_retro_run_refused_over_a_console_run(tmp_path, monkeypatch):
     monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
     monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
     srv._retro_status.clear()
-    srv._status.update({"running": "all:20990101T000000-abc",
+    ui_state._status.update({"running": "all:20990101T000000-abc",
                         "run_label": "2099-01-02 · 3 state(s) + US"})
     r = client.post("/retro/run", data={"season": SEASON},
                     follow_redirects=False)
     assert r.status_code == 303
     assert SEASON not in srv._retro_status           # no season was claimed
-    flash = srv._status.get("flash", "")
+    flash = ui_state._status.get("flash", "")
     assert "console run holds the engine" in flash
     assert "2099-01-02" in flash                     # names what holds it
 
@@ -217,14 +218,14 @@ def test_post_retro_run_refused_over_another_season(tmp_path, monkeypatch):
     monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
     monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
     srv._retro_status.clear()
-    srv._status.update({"running": None})
+    ui_state._status.update({"running": None})
     srv._retro_status["2097-98"] = "running"
     r = client.post("/retro/run", data={"season": SEASON},
                     follow_redirects=False)
     assert r.status_code == 303
     assert SEASON not in srv._retro_status
     assert srv._retro_status["2097-98"] == "running"  # untouched
-    flash = srv._status.get("flash", "")
+    flash = ui_state._status.get("flash", "")
     assert "Another season is already replaying" in flash
     assert "2097-98" in flash
 

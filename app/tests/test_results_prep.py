@@ -26,6 +26,8 @@ from fastapi.testclient import TestClient                  # noqa: E402
 
 from app.core import playback, retro, scoring              # noqa: E402
 from app.ui import server as srv                           # noqa: E402
+from app.ui import shared as ui_shared                     # noqa: E402
+from app.ui import versions as ui_versions                 # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL      # noqa: E402
 
 client = TestClient(srv.app)
@@ -95,7 +97,7 @@ def _routed(monkeypatch, tmp_path):
     monkeypatch.setattr(srv, "RETRO_ROOT", rr)
     monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
     srv._results_jobs.clear()
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     yield rr
     srv._results_jobs.clear()
 
@@ -393,9 +395,9 @@ def test_cli_import_stays_light():
 
 def test_versions_resolve_off_the_import_path_and_fill_in():
     # the dict exists at import with every key, resolved or pending
-    assert set(srv._VERSION_KEYS) <= set(srv.VERSIONS)
+    assert set(ui_versions._VERSION_KEYS) <= set(srv.VERSIONS)
     r = client.get("/api/versions").json()
-    assert set(srv._VERSION_KEYS) <= set(r["versions"])
+    assert set(ui_versions._VERSION_KEYS) <= set(r["versions"])
     assert isinstance(r["resolved"], bool)
     # the shell carries the fill-in: spans on home, the poller in the base
     html = client.get("/").text

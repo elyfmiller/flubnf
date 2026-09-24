@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient                # noqa: E402
 from app.core import data as core_data                   # noqa: E402
 from app.core.runs import RunSpec, default_season_start, spec_settings  # noqa: E402
 from app.ui import server as srv                         # noqa: E402
+from app.ui import state as ui_state                     # noqa: E402
 
 client = TestClient(srv.app)
 
@@ -26,7 +27,7 @@ client = TestClient(srv.app)
 @pytest.fixture(autouse=True)
 def _release_engine():
     yield
-    srv._status["running"] = None
+    ui_state._status["running"] = None
 
 
 def test_default_season_start_is_august_first_of_the_season():
@@ -74,27 +75,27 @@ def test_run_records_a_typed_season_start_and_derives_a_blank_one(
                                   "season_start": "2097-10-01"},
                     follow_redirects=False)
     assert r.status_code == 303
-    srv._status["running"] = None
+    ui_state._status["running"] = None
     client.post("/run", data={"forecast_date": "2098-01-04",
                               "locations": ["Ohio"], "season_start": ""},
                 follow_redirects=False)
     assert started[0].season_start == "2097-10-01"
     assert started[1].season_start == "2097-08-01"
-    assert srv._last_form["season_start"] == ""             # the form keeps blank
+    assert ui_state._last_form["season_start"] == ""             # the form keeps blank
 
 
 def test_run_refuses_a_season_start_that_is_not_before_the_week(
         tmp_path, monkeypatch):
     started = _capture_run(monkeypatch, tmp_path)
     for bad in ("2098-02-01", "2096-01-01", "not-a-date"):
-        srv._status["running"] = None
+        ui_state._status["running"] = None
         client.post("/run", data={"forecast_date": "2098-01-04",
                                   "locations": ["Ohio"], "season_start": bad},
                     follow_redirects=False)
     # the season start is the run.season_start knob: an impossible one is
     # refused out loud and nothing runs (it used to fall back to the default)
     assert started == []
-    assert srv._status.get("running") is None
+    assert ui_state._status.get("running") is None
     page = client.get("/forecast").text
     assert "run.season_start" in page and "Nothing was run" in page
 

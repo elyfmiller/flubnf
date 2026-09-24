@@ -50,10 +50,10 @@ def _sealed_records_in_tmp(tmp_path, monkeypatch):
 def _sandbox_released():
     """The sandbox's engine claim is module state that /run and /retro/run
     refuse on; no test may leak a live sandbox fit into another."""
-    from app.ui import server as srv
-    srv._sandbox_status.update(running=None, claim=None, cancel=False)
+    from app.ui import state as ui_state
+    ui_state._sandbox_status.update(running=None, claim=None, cancel=False)
     yield
-    srv._sandbox_status.update(running=None, claim=None, cancel=False)
+    ui_state._sandbox_status.update(running=None, claim=None, cancel=False)
 
 
 @pytest.fixture
@@ -63,7 +63,7 @@ def sandbox_root(tmp_path, monkeypatch):
     'ABORT: bad rule'). The per-file `box` fixtures layer on this."""
     import types
     from app.core import sandbox as sb
-    from app.ui import server as srv
+    from app.ui import state as ui_state
     root = tmp_path / "sandbox"
     monkeypatch.setattr(sb, "SANDBOX", root)
     monkeypatch.setattr(sb, "MODELS", root / "models")
@@ -77,6 +77,6 @@ def sandbox_root(tmp_path, monkeypatch):
         return types.SimpleNamespace(stdout="ABORT: bad rule\n", stderr="",
                                      returncode=0)
     monkeypatch.setattr(sb.subprocess, "run", fake_netgen)
-    srv._status["running"] = None
-    srv._status.pop("flash", None)
+    ui_state._status["running"] = None
+    ui_state._status.pop("flash", None)
     return root

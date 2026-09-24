@@ -1,6 +1,6 @@
 # app/ui/: the console (FastAPI server, Jinja pages, static assets)
 
-Every route lives in `server.py`, grouped under `# === <Tab> ===` banners, except the custom-dataset routes, which live in `datasets_ui.py` (an APIRouter `server.py` includes); this page maps each route to its handler, template and caller.
+Every route lives in `server.py`, grouped under `# === <Tab> ===` banners, except the custom-dataset routes, which live in `datasets_ui.py` (an APIRouter `server.py` includes); this page maps each route to its handler, template and caller. What the tabs share lives beside it: `state.py` (console state, the startup trace), `versions.py` (build SHA, component versions), `templating.py` (the Jinja env and its globals), `shared.py` (the same-host guard, request helpers, cached scans, run labels) and `forms.py` (the model-settings form channel, anchor dates).
 
 ## Routes by console tab
 

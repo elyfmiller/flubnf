@@ -19,6 +19,8 @@ from fastapi.testclient import TestClient                # noqa: E402
 from app.core import sandbox as sb                       # noqa: E402
 from app.core.engines import pf as pf_engine             # noqa: E402
 from app.ui import server as srv                         # noqa: E402
+from app.ui import shared as ui_shared                   # noqa: E402
+from app.ui import state as ui_state                     # noqa: E402
 
 client = TestClient(srv.app)
 
@@ -54,12 +56,12 @@ def test_save_and_run_redirect_keep_the_model_open(box, monkeypatch):
     loc = r.headers["location"]
     assert loc.startswith("/sandbox?run=") and loc.endswith("&model=kinetics_example")
     # a refused run stays on the model too
-    srv._status["running"] = "console"
+    ui_state._status["running"] = "console"
     r = client.post("/sandbox/run", data={"model": "kinetics_example"},
                     headers={"referer": "http://testserver/sandbox"},
                     follow_redirects=False)
     assert r.headers["location"] == "/sandbox?model=kinetics_example"
-    srv._status["running"] = None
+    ui_state._status["running"] = None
 
 
 def test_page_shows_the_open_models_newest_run(box):
@@ -175,7 +177,7 @@ def test_engine_settings_are_the_conf_prepare_writes(box):
 def test_stop_writes_the_flag_and_run_records_stopped(box, monkeypatch):
     sb.add_example("kinetics_example")
     w = sb.prepare("kinetics_example")
-    srv._sandbox_status["running"] = w.name
+    ui_state._sandbox_status["running"] = w.name
     r = client.post(f"/sandbox/runs/{w.name}/stop", follow_redirects=False)
     assert r.status_code == 303 and (w / "STOP").is_file()
     assert r.headers["location"] == f"/sandbox?run={w.name}&model=kinetics_example"
@@ -209,7 +211,7 @@ def test_stop_while_preparing_cancels_before_the_engine(box, monkeypatch):
     client.post("/sandbox/stop", follow_redirects=False)
     go.set()
     t.join(5)
-    assert ran == [] and srv._sandbox_live() == ""
+    assert ran == [] and ui_shared._sandbox_live() == ""
     assert sb.list_runs()[0]["status"] == "stopped"
 
 
@@ -261,33 +263,33 @@ def test_the_sandbox_claim_is_taken_before_prepare(box, monkeypatch):
     go.set()
     t.join(5)
     assert len(calls) == 1
-    assert _wait(lambda: srv._sandbox_live() == "")
+    assert _wait(lambda: ui_shared._sandbox_live() == "")
 
 
 def test_console_run_and_replay_refuse_while_a_sandbox_fit_is_live(box):
-    srv._sandbox_status["running"] = "20990101-000000_mine"
-    srv._status.pop("flash", None)
+    ui_state._sandbox_status["running"] = "20990101-000000_mine"
+    ui_state._status.pop("flash", None)
     r = client.post("/run", data={"forecast_date": "2099-01-02",
                                   "locations": "Alabama"},
                     follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/forecast"
-    assert srv._status.get("running") is None                  # nothing claimed
-    assert "sandbox fit holds the engine (20990101-000000_mine)" in srv._status["flash"]
-    srv._status.pop("flash", None)
+    assert ui_state._status.get("running") is None                  # nothing claimed
+    assert "sandbox fit holds the engine (20990101-000000_mine)" in ui_state._status["flash"]
+    ui_state._status.pop("flash", None)
     r = client.post("/retro/run", data={"season": "2098-99"}, follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/retro"
-    assert "sandbox fit" in srv._status["flash"]
+    assert "sandbox fit" in ui_state._status["flash"]
     # a foreign Host is still the CSRF guard's to refuse
     r = client.post("/run", data={}, headers={"host": "evil.example"},
                     follow_redirects=False)
     assert r.status_code == 403
-    srv._sandbox_status["running"] = None
+    ui_state._sandbox_status["running"] = None
 
 
 def test_api_busy_reports_the_sandbox_and_the_guard_knows_it(box):
-    srv._sandbox_status["running"] = "20990101-000000_mine"
+    ui_state._sandbox_status["running"] = "20990101-000000_mine"
     assert client.get("/api/busy").json()["sandbox"] == "20990101-000000_mine"
-    srv._sandbox_status["running"] = None
+    ui_state._sandbox_status["running"] = None
     assert client.get("/api/busy").json()["sandbox"] is None
     base = (Path(srv.__file__).parent / "templates" / "base.html").read_text()
     assert "function sandboxConflict(b)" in base and "stop:'/sandbox/stop'" in base
@@ -302,12 +304,14 @@ def test_run_and_retro_refuse_a_sandbox_claim_under_the_engine_lock(monkeypatch)
     middleware's lock-free read raced past a claim."""
     import inspect
     from app.ui import server
+    from app.ui import shared as ui_shared
+    from app.ui import state as ui_state
     src_run = inspect.getsource(server.run_models)
     src_retro = inspect.getsource(server.retro_run)
     for src in (src_run, src_retro):
         lock = src.index("with _engine_lock:")
         assert src.index("_sandbox_live_reason()", lock) > lock
-    monkeypatch.setitem(server._sandbox_status, "claim", "m1")
-    assert "being prepared" in server._sandbox_live_reason()
-    monkeypatch.setitem(server._sandbox_status, "claim", None)
-    assert server._sandbox_live_reason() == ""
+    monkeypatch.setitem(ui_state._sandbox_status, "claim", "m1")
+    assert "being prepared" in ui_shared._sandbox_live_reason()
+    monkeypatch.setitem(ui_state._sandbox_status, "claim", None)
+    assert ui_shared._sandbox_live_reason() == ""

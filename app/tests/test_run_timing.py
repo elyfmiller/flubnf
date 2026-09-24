@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient             # noqa: E402
 from app.core import playback, report_season, retro   # noqa: E402
 from app.core.runs import Ledger, RunSpec, fmt_hms    # noqa: E402
 from app.ui import server as srv                      # noqa: E402
+from app.ui import state as ui_state                  # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL  # noqa: E402
 
 client = TestClient(srv.app)
@@ -32,11 +33,11 @@ W1, W2, W3 = "2098-11-07", "2098-11-14", "2098-11-21"
 @pytest.fixture(autouse=True)
 def _isolated_status():
     """Snapshot and restore the module-level status stores."""
-    status_before = dict(srv._status)
+    status_before = dict(ui_state._status)
     retro_before = dict(srv._retro_status)
     stop_before = set(srv._retro_stop)
     yield
-    srv._status.clear(); srv._status.update(status_before)
+    ui_state._status.clear(); ui_state._status.update(status_before)
     srv._retro_status.clear(); srv._retro_status.update(retro_before)
     srv._retro_stop.clear(); srv._retro_stop.update(stop_before)
 
@@ -288,12 +289,12 @@ def test_season_status_reads_pause_from_the_record(tmp_path, monkeypatch):
 # --------------------------------------------------------------- API shapes
 
 def test_api_progress_carries_the_console_wall_clock():
-    srv._status.update({"running": None, "started_utc": None,
+    ui_state._status.update({"running": None, "started_utc": None,
                         "phase": "", "run_label": "", "workroot": None})
     idle = client.get("/api/progress").json()
     assert idle["started_utc"] is None and idle["elapsed_s"] is None
     t0 = time.time() - 125.0
-    srv._status.update({"running": "all:x", "started_utc": t0,
+    ui_state._status.update({"running": "all:x", "started_utc": t0,
                         "run_label": "2099-01-02 · 3 state(s) + US"})
     live = client.get("/api/progress").json()
     assert live["started_utc"] == t0
@@ -607,7 +608,7 @@ def test_forecast_running_card_shows_a_live_elapsed_clock():
     r = client.get("/forecast")
     assert r.status_code == 200
     assert '<script src="/static/quips.js">' in r.text
-    srv._status.update({"running": "all:x", "run_label": "x",
+    ui_state._status.update({"running": "all:x", "run_label": "x",
                         "started_utc": time.time() - 30})
     html = client.get("/forecast").text
     assert 'id="elapsed"' in html

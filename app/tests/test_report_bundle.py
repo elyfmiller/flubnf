@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient           # noqa: E402
 
 import app.core.runs as runs_mod                    # noqa: E402
 import app.ui.server as srv                         # noqa: E402
+from app.ui import shared as ui_shared              # noqa: E402
 from app.core import horizons as hz                 # noqa: E402
 from app.core import report_v2                      # noqa: E402
 
@@ -285,8 +286,8 @@ def test_home_map_renders_the_reports_exact_cards(tmp_path, monkeypatch):
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
     w = tmp_path / "workroots" / "20980103T000000-abcdef"
     _synth_run_with_ensemble(w)
-    srv._invalidate_scans()
-    rid, res = srv._latest_results()
+    ui_shared._invalidate_scans()
+    rid, res = ui_shared._latest_results()
     assert rid == w.name
     cards, meta = srv._outlook_cards(res, rid)
     bundle = json.loads((w / report_v2.BUNDLE_NAME).read_text())
@@ -318,8 +319,8 @@ def test_pre_bundle_run_falls_back_and_labels_the_approximation(
     w = tmp_path / "workroots" / "20980103T000000-abcdef"
     _synth_run_with_ensemble(w)
     (w / report_v2.BUNDLE_NAME).unlink()            # a pre-bundle run
-    srv._invalidate_scans()
-    rid, res = srv._latest_results()
+    ui_shared._invalidate_scans()
+    rid, res = ui_shared._latest_results()
     cards, meta = srv._outlook_cards(res, rid)
     # the stored blend (pre-retirement) is read without error but never
     # colors the map
@@ -418,7 +419,7 @@ def test_download_refreshes_a_stale_report_first(tmp_path, monkeypatch):
 def test_download_of_a_missing_report_is_a_404_not_a_500(tmp_path,
                                                          monkeypatch):
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     assert client.get("/output/report/download").status_code == 404
     assert client.get(
         "/output/report/download?date=2098-01-03").status_code == 404
@@ -436,7 +437,7 @@ def test_run_report_download_names_the_file_for_the_forecast_date(
     _synth_run(w)
     (w / "results.json").write_text(json.dumps(
         {"forecast_date": "2098-01-03", "models": {}, "observed": {}}))
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     r = client.get(f"/runs/{rid}/report/download")
     assert r.status_code == 200
     assert r.headers["content-disposition"] == (
@@ -466,7 +467,7 @@ def test_both_report_surfaces_offer_the_download(tmp_path, monkeypatch):
     a = tmp_path / "archive" / "2098-01-03"
     a.mkdir(parents=True)
     (a / "report.html").write_text("<html>A</html>")
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     out = client.get("/output")
     assert out.status_code == 200
     assert 'href="/output/report"' in out.text          # inline view kept

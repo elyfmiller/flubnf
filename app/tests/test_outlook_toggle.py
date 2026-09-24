@@ -26,6 +26,7 @@ from fastapi.testclient import TestClient           # noqa: E402
 
 import app.core.runs as runs_mod                    # noqa: E402
 import app.ui.server as srv                         # noqa: E402
+from app.ui import shared as ui_shared              # noqa: E402
 from app.core import horizons as hz                 # noqa: E402
 from app.core import report_v2                      # noqa: E402
 
@@ -200,7 +201,7 @@ def _latest(tmp_path, monkeypatch):
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
     w = tmp_path / "workroots" / "20980103T000000-abcdef"
     parts = _synth_run_all_models(w)
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     return w, parts
 
 
@@ -238,7 +239,7 @@ def test_home_shows_no_toggle_for_a_single_model_pre_v3_bundle(
     bundle.pop("cards_by_model", None)
     bundle.pop("national_map_cards", None)
     b.write_text(json.dumps(bundle))
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     assert srv._outlook_models(w.name) == {}
     home = client.get("/").text
     assert 'id="outlook-model"' not in home
@@ -282,8 +283,8 @@ def test_stored_pre_bundle_run_gets_the_approximate_toggle(
     parts = _synth_run_all_models(w)
     (w / report_v2.BUNDLE_NAME).unlink()            # a pre-bundle run
     _results_with_all_models(w, parts)
-    srv._invalidate_scans()
-    rid, res = srv._latest_results()
+    ui_shared._invalidate_scans()
+    rid, res = ui_shared._latest_results()
     cards, meta = srv._outlook_cards(res, rid)
     # the PF is the default and the two shipped models are offered; the
     # stored blend is never a choice beside them (it renders only when a run
@@ -332,7 +333,7 @@ def test_pre_v3_bundle_with_multi_model_results_gets_the_toggle(
     bundle.pop("national_map_cards", None)
     b.write_text(json.dumps(bundle))
     _results_with_all_models(w, parts)
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     home = client.get("/").text
     assert 'id="outlook-model"' in home
     assert 'data-mmodel="analogue"' in home

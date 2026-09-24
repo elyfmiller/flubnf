@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient                # noqa: E402
 
 from app.core import sandbox as sb                       # noqa: E402
 from app.ui import server as srv                         # noqa: E402
+from app.ui import state as ui_state                     # noqa: E402
 
 client = TestClient(srv.app)
 
@@ -103,7 +104,7 @@ def test_compare_page_renders_both_runs_and_the_diff(two_runs):
         f"/sandbox?model=kinetics_example&run={b}").text
     sb.add_example("sir_example")
     other = sb.prepare("sir_example")
-    srv._status.pop("flash", None)
+    ui_state._status.pop("flash", None)
     html = client.get(f"/sandbox?model=kinetics_example&run={b}"
                       f"&compare={other.name}").text
     assert "<h2>What changed</h2>" not in html and "another model" in html

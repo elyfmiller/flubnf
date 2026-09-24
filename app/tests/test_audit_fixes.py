@@ -44,15 +44,15 @@ def test_cells_failed_reads_marker_status(tmp_path):
 
 
 def test_latest_results_skips_research_runs(tmp_path, monkeypatch):
-    from app.ui import server
+    from app.ui import shared as ui_shared
     new = tmp_path / "20260826T120000" / "results.json"
     old = tmp_path / "20260825T120000" / "results.json"
     new.parent.mkdir(parents=True)
     old.parent.mkdir(parents=True)
     new.write_text(json.dumps({"research": True, "forecast_date": "x"}))
     old.write_text(json.dumps({"forecast_date": "y"}))
-    monkeypatch.setattr(server, "_workroot_results", lambda: [new, old])
-    rid, res = server._latest_results()
+    monkeypatch.setattr(ui_shared, "_workroot_results", lambda: [new, old])
+    rid, res = ui_shared._latest_results()
     assert rid == "20260825T120000", (
         "a research run's results leaked onto a shipped-product surface")
     assert res["forecast_date"] == "y"
@@ -62,14 +62,14 @@ def test_latest_results_recognises_pre_flag_research_specs(tmp_path,
                                                            monkeypatch):
     # results.json files written before the research flag existed carry only
     # the spec; the skip must recognise those too
-    from app.ui import server
+    from app.ui import shared as ui_shared
     f = tmp_path / "w" / "results.json"
     f.parent.mkdir(parents=True)
     f.write_text(json.dumps({
         "forecast_date": "x",
         "spec": json.dumps({"extra": {"members": 3}})}))
-    monkeypatch.setattr(server, "_workroot_results", lambda: [f])
-    rid, res = server._latest_results()
+    monkeypatch.setattr(ui_shared, "_workroot_results", lambda: [f])
+    rid, res = ui_shared._latest_results()
     assert rid is None and res is None
 
 
@@ -278,6 +278,7 @@ def test_any_weekday_resolves_to_a_published_saturday(monkeypatch):
     """Any non-Saturday resolves to the newest week the archive holds (a week
     ends Saturday but publishes Wednesday); a typed Saturday stays exact."""
     from app.ui import server
+    from app.ui import state as ui_state
     from app.core import data as dm
     from fastapi.testclient import TestClient
 
@@ -289,22 +290,23 @@ def test_any_weekday_resolves_to_a_published_saturday(monkeypatch):
     for day, why in (("2026-02-18", "Wednesday, data just landed"),
                      ("2026-02-16", "Monday, week not published yet"),
                      ("2026-02-20", "Friday")):
-        server._status["flash"] = None
-        server._status["running"] = None
+        ui_state._status["flash"] = None
+        ui_state._status["running"] = None
         c.post("/run", data={"forecast_date": day, "locations": []},
                follow_redirects=False)
-        flash = server._status.get("flash") or ""
+        flash = ui_state._status.get("flash") or ""
         assert "2026-02-14" in flash, (
             f"{why}: expected the newest published week, got {flash[:120]}")
 
 
 def test_flash_messages_do_not_delete_each_other():
     """A second flash no longer overwrites the first."""
-    from app.ui import server
-    server._status["flash"] = None
-    server._flash("first thing")
-    server._flash("second thing")
-    both = server._status["flash"]
+    from app.ui import shared as ui_shared
+    from app.ui import state as ui_state
+    ui_state._status["flash"] = None
+    ui_shared._flash("first thing")
+    ui_shared._flash("second thing")
+    both = ui_state._status["flash"]
     assert "first thing" in both and "second thing" in both
-    server._flash("second thing")          # idempotent, no duplication
-    assert server._status["flash"].count("second thing") == 1
+    ui_shared._flash("second thing")          # idempotent, no duplication
+    assert ui_state._status["flash"].count("second thing") == 1

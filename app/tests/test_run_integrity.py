@@ -23,6 +23,9 @@ from app.core import data as core_data               # noqa: E402
 from app.core.runs import Ledger, RunSpec            # noqa: E402
 from app.core.submit import hub_model_id             # noqa: E402
 from app.ui import server as srv                     # noqa: E402
+from app.ui import shared as ui_shared               # noqa: E402
+from app.ui import state as ui_state                 # noqa: E402
+from app.ui import versions as ui_versions           # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL  # noqa: E402
 
 client = TestClient(srv.app)
@@ -37,12 +40,12 @@ AN_Q = {str(h): {float(L): 10.0 * h + 40.0 * h * float(L) for L in QL}
 
 @pytest.fixture(autouse=True)
 def _isolated_status():
-    status_before = dict(srv._status)
-    form_before = dict(srv._last_form)
+    status_before = dict(ui_state._status)
+    form_before = dict(ui_state._last_form)
     yield
-    srv._status.clear(); srv._status.update(status_before)
-    srv._last_form.clear(); srv._last_form.update(form_before)
-    srv._invalidate_scans()
+    ui_state._status.clear(); ui_state._status.update(status_before)
+    ui_state._last_form.clear(); ui_state._last_form.update(form_before)
+    ui_shared._invalidate_scans()
 
 
 def _fake_run(monkeypatch, tmp_path, status_by_cell, collected, aux=None):
@@ -83,7 +86,7 @@ def _fake_run(monkeypatch, tmp_path, status_by_cell, collected, aux=None):
         raise RuntimeError("no truth in this test")
     monkeypatch.setattr(scoring_mod, "load_truth", _no_truth)
     monkeypatch.setattr(srv, "_sleep_guard", lambda: None)
-    monkeypatch.setattr(srv, "_engine_versions_for_ledger", lambda e: {})
+    monkeypatch.setattr(ui_versions, "_engine_versions_for_ledger", lambda e: {})
     monkeypatch.setattr(srv, "_harvest_params", lambda w: {})
     monkeypatch.setattr(srv, "_write_weekly_report",
                         lambda *a, **k: None)
@@ -116,7 +119,7 @@ def test_a_location_with_no_pf_member_is_absent_from_the_sihrs_file_only(
     gh_csv = Path(outcome["submissions"][gh_id]).read_text()
     assert ",39," in gh_csv and ",48," in gh_csv
     assert outcome["analogue_aux"].startswith("flusurv+flusurv@")
-    chips = srv._outcome_chips(json.dumps(outcome))
+    chips = ui_shared._outcome_chips(json.dumps(outcome))
     assert "analogue-only" not in chips and "withheld" not in chips
 
 
@@ -148,7 +151,7 @@ def test_the_bare_analogue_never_ships_under_the_groundhogs_name(
     assert outcome["analogue_aux"] == ""
     res = json.loads((w / "results.json").read_text())
     assert set(res["models"]) == {"pf", "analogue"}
-    chips = srv._outcome_chips(json.dumps(outcome))
+    chips = ui_shared._outcome_chips(json.dumps(outcome))
     assert "submission withheld" in chips
 
 
@@ -172,7 +175,7 @@ def test_run_page_names_failed_cells_and_step_errors(tmp_path, monkeypatch):
         "archive_error": "disk full",
         "report_inputs_error": "bundle too large",
         "ensemble_analogue_only": ["Texas"]})
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     html = client.get(f"/runs/{rid}").text
     assert "Partial-run detail" in html
     assert "Texas_r1" in html and "pybnf exited 1" in html
@@ -195,7 +198,7 @@ def test_run_page_without_failures_shows_no_detail_block(tmp_path,
                        Path("pending"), {})
     (tmp_path / "workroots" / rid).mkdir(parents=True)
     led.close_run(rid, "ok", {"pf_cells": 2, "pf_failures": {}})
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     assert "Partial-run detail" not in client.get(f"/runs/{rid}").text
 
 
@@ -270,6 +273,6 @@ def test_no_underreporting_headsup_on_run(tmp_path, monkeypatch):
                                   "locations": ["Ohio"]},
                     follow_redirects=False)
     assert r.status_code == 303
-    flash = srv._status.get("flash") or ""
+    flash = ui_state._status.get("flash") or ""
     assert "under-reported" not in flash and "Heads up" not in flash
-    assert not any("same-day" in m for m in srv._status["log"])
+    assert not any("same-day" in m for m in ui_state._status["log"])

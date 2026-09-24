@@ -24,6 +24,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import app.core.runs as runs_mod                     # noqa: E402
 from app.core.runs import Ledger, RunSpec            # noqa: E402
 from app.ui import server as srv                     # noqa: E402
+from app.ui import shared as ui_shared               # noqa: E402
+from app.ui import state as ui_state                 # noqa: E402
 
 client = TestClient(srv.app)
 
@@ -33,14 +35,14 @@ ARCH_STAMP = "20980204T101500Z"
 
 @pytest.fixture(autouse=True)
 def _isolated_status():
-    status_before = dict(srv._status)
+    status_before = dict(ui_state._status)
     retro_before = dict(srv._retro_status)
     stop_before = set(srv._retro_stop)
     yield
-    srv._status.clear(); srv._status.update(status_before)
+    ui_state._status.clear(); ui_state._status.update(status_before)
     srv._retro_status.clear(); srv._retro_status.update(retro_before)
     srv._retro_stop.clear(); srv._retro_stop.update(stop_before)
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
 
 
 @pytest.fixture()
@@ -74,8 +76,8 @@ def state(tmp_path, monkeypatch):
                         Path("pending"), {})
     (tmp_path / "workroots" / live).mkdir(parents=True)
     rids["running"] = live
-    srv._status["running"] = f"all:{live}"
-    srv._status["workroot"] = str(tmp_path / "workroots" / live)
+    ui_state._status["running"] = f"all:{live}"
+    ui_state._status["workroot"] = str(tmp_path / "workroots" / live)
     (retro_root / SEASON / "weeks").mkdir(parents=True)
     (retro_root / SEASON / "weeks" / "x.json").write_text("{}")
     arch = retro_root / f"{SEASON}__archived_{ARCH_STAMP}"
@@ -87,13 +89,13 @@ def state(tmp_path, monkeypatch):
     (seal_root / SEASON / "weeks" / "sealed.json").write_text("{}")
     (hub / "auxiliary-data").mkdir(parents=True)
     (hub / "auxiliary-data" / "truth.csv").write_text("d")
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     return {"root": tmp_path, "rids": rids, "ledger": led,
             "retro_root": retro_root, "seal": seal_root, "hub": hub}
 
 
 def _flash():
-    return srv._status.get("flash", "")
+    return ui_state._status.get("flash", "")
 
 
 # ------------------------------------------------------------- ledger clear
@@ -133,8 +135,8 @@ def test_clear_control_names_the_count_and_the_no_disk_promise(state):
 def test_interrupted_rows_are_clearable(state):
     """A 'running' row with no live worker (the app closed mid-run) is a
     completed row for clearing purposes."""
-    srv._status["running"] = None
-    srv._status["workroot"] = None
+    ui_state._status["running"] = None
+    ui_state._status["workroot"] = None
     assert len(srv._clearable_run_ids(state["ledger"])) == 4
 
 
@@ -164,7 +166,7 @@ def test_workroot_rows_read_as_human_labels_with_the_id_secondary(state):
     # an unrecorded workroot (no ledger row) says so instead of guessing
     orphan = "20980118T093000-0aacd0"
     (state["root"] / "workroots" / orphan).mkdir()
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     html = client.get("/storage").text
     row = html.split(f'data-wid="{orphan}"', 1)[1].split("</div>", 1)[0]
     assert "Unrecorded run" in row
@@ -264,8 +266,8 @@ def test_delete_retro_archive_and_report_archive(state):
                                          "confirm": "2098-01-03"},
                 follow_redirects=False)
     assert (state["root"] / "archive" / "2098-01-03").is_dir()
-    srv._status["running"] = None
-    srv._status["workroot"] = None
+    ui_state._status["running"] = None
+    ui_state._status["workroot"] = None
     client.post("/storage/delete", data={"kind": "report-archive",
                                          "ident": "2098-01-03",
                                          "confirm": "2098-01-03"},
@@ -354,7 +356,7 @@ def test_clear_all_never_reaches_protected_trees(state):
     (and from its count), and the seal survives a confirmed clear-all."""
     link = state["root"] / "workroots" / "sneaky"
     link.symlink_to(state["seal"] / SEASON)
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     cw = srv._clearable_workroots()
     assert "sneaky" not in [w["id"] for w in cw]
     assert len(cw) == 3
@@ -369,7 +371,7 @@ def test_clear_all_with_nothing_to_do_says_so(state):
     for status in ("ok", "stopped", "error"):
         import shutil
         shutil.rmtree(state["root"] / "workroots" / state["rids"][status])
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     r = client.post("/storage/clear-workroots", data={"confirm": "0"},
                     follow_redirects=False)
     assert r.status_code == 303
@@ -404,7 +406,7 @@ def test_a_symlink_into_a_protected_tree_is_refused(state):
     protection resolves the target before comparing."""
     link = state["root"] / "workroots" / "sneaky"
     link.symlink_to(state["seal"] / SEASON)
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     r = client.post("/storage/delete",
                     data={"kind": "workroot", "ident": "sneaky",
                           "confirm": "sneaky"}, follow_redirects=False)

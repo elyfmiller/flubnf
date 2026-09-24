@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient                # noqa: E402
 from app.core import contactmap as cm                    # noqa: E402
 from app.core import sandbox as sb                       # noqa: E402
 from app.ui import server as srv                         # noqa: E402
+from app.ui import state as ui_state                     # noqa: E402
 
 client = TestClient(srv.app)
 STATIC = Path(srv.__file__).parent / "static"
@@ -62,9 +63,9 @@ def test_new_model_start_options(box):
                  {"name": "x1", "start": "example:nope"},
                  {"name": "x2", "start": "copy:nobody"},
                  {"name": "x3", "start": "shipped:everything"}):
-        srv._status.pop("flash", None)
+        ui_state._status.pop("flash", None)
         _post("/sandbox/new", data)
-        assert srv._status.get("flash"), data
+        assert ui_state._status.get("flash"), data
     assert sorted(p.name for p in sb.MODELS.iterdir()) == ["blank", "mine", "mine2"]
 
 
@@ -168,12 +169,12 @@ def test_delete_a_run_and_a_model_with_its_runs(box):
     r = _post(f"/sandbox/runs/{w1.name}/delete", {"confirm": w1.name})
     assert not w1.exists() and r.headers["location"] == "/sandbox?model=kinetics_example"
     # the live fit is never deleted
-    srv._sandbox_status["running"] = w2.name
+    ui_state._sandbox_status["running"] = w2.name
     _post(f"/sandbox/runs/{w2.name}/delete", {"confirm": w2.name})
     assert w2.is_dir()
     _post("/sandbox/models/kinetics_example/delete", {"confirm": "kinetics_example"})
     assert (sb.MODELS / "kinetics_example").is_dir()                 # its run fits
-    srv._sandbox_status["running"] = None
+    ui_state._sandbox_status["running"] = None
     (box / "contactmap" / "kinetics_example").mkdir(parents=True)
     r = _post("/sandbox/models/kinetics_example/delete", {"confirm": "kinetics_example"})
     assert r.headers["location"] == "/sandbox"

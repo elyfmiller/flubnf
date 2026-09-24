@@ -17,13 +17,30 @@ per-tab modules (a refactor that must not change behaviour):
      and flubnf load and closes the import; the same first-party modules
      load and pandas/plotly stay off the import path;
   6. `ruff check --select F821,F823,F811,F401 app/ui` is clean (skipped
-     where ruff is not installed).
+     where ruff is not installed);
+
+and the rules that keep app/ui's modules (server plus the support and tab
+modules split out of it) honest with each other and with the tests:
+
+  7. every name a test patches on an app.ui module (and data_mod, which
+     rebinds itself) is DEFINED by exactly that module and bound by no
+     other app.ui module at import, so no patch can miss a copy;
+  8. a name one app.ui module imports from another is the owner's own
+     object (one _status, one lock, one VERSIONS, one templates);
+  9. no module-level alias of an app.ui module is rebound anywhere in its
+     file (a local `state` would shadow the module `state`);
+ 10. the tests reach a moved private name through its owner, never through
+     app.ui.server, and patch app.ui modules with raising left on; no
+     app.ui module imports server or datasets_ui at import (datasets_ui
+     is included by server, last).
 
 golden/ui_routes.json was captured at 029c028. Regenerate it only for a
 deliberate change, and review its diff:
 
     python app/tests/test_ui_layout.py --write-golden
 """
+import ast
+import importlib
 import importlib.util
 import itertools
 import json
@@ -418,6 +435,318 @@ def test_app_ui_has_no_undefined_shadowed_or_unused_names():
                        cwd=str(REPO), capture_output=True, text=True,
                        timeout=180)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+# ------------------------------------------ 7. every patched name, one home
+
+UI_DIR = REPO / "app" / "ui"
+TEST_DIRS = (REPO / "app" / "tests", REPO / "tests")
+
+
+def _dotted(path: Path) -> str:
+    parts = list(path.relative_to(REPO).with_suffix("").parts)
+    if parts[-1] == "__init__":
+        parts.pop()
+    return ".".join(parts)
+
+
+def ui_modules() -> dict:
+    """Dotted name -> path of every module under app/ui."""
+    return {_dotted(p): p for p in sorted(UI_DIR.rglob("*.py"))
+            if "__pycache__" not in p.parts}
+
+
+def _parse(path: Path):
+    return ast.parse(path.read_text(encoding="utf-8"), str(path))
+
+
+def _test_files() -> list:
+    return [p for d in TEST_DIRS for p in sorted(d.rglob("*.py"))
+            if "__pycache__" not in p.parts]
+
+
+def _names(target):
+    if isinstance(target, ast.Name):
+        yield target.id
+    elif isinstance(target, (ast.Tuple, ast.List)):
+        for e in target.elts:
+            yield from _names(e)
+    elif isinstance(target, ast.Starred):
+        yield from _names(target.value)
+
+
+def _top_level(body):
+    """A module's statements, through if/try/with/for blocks, never into a
+    def or a class."""
+    for node in body:
+        yield node
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef,
+                             ast.ClassDef)):
+            continue
+        for field in ("body", "orelse", "finalbody", "handlers"):
+            sub = getattr(node, field, None)
+            if isinstance(sub, list):
+                yield from _top_level(sub)
+
+
+def module_bindings(tree) -> tuple:
+    """(defined, imported): the names a module binds at import by def,
+    class or assignment, and by import."""
+    defined, imported = set(), set()
+    for node in _top_level(tree.body):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef,
+                             ast.ClassDef)):
+            defined.add(node.name)
+        elif isinstance(node, ast.Assign):
+            for t in node.targets:
+                defined.update(_names(t))
+        elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.For,
+                               ast.AsyncFor)):
+            defined.update(_names(node.target))
+        elif isinstance(node, (ast.With, ast.AsyncWith)):
+            for item in node.items:
+                if item.optional_vars is not None:
+                    defined.update(_names(item.optional_vars))
+        elif isinstance(node, ast.Import):
+            imported.update(a.asname or a.name.split(".")[0]
+                            for a in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            imported.update(a.asname or a.name for a in node.names)
+    return defined, imported
+
+
+def _module_aliases(tree, modules: dict, anywhere: bool = True) -> dict:
+    """Name -> dotted app.ui module, for each import that binds a module
+    under app/ui: `from app.ui import x [as y]`, `from app.ui.routes import
+    x as y`, `import app.ui.x as y` (in any scope, or at top level only)."""
+    out = {}
+    nodes = ast.walk(tree) if anywhere else _top_level(tree.body)
+    for node in nodes:
+        if isinstance(node, ast.ImportFrom) and node.level == 0 \
+                and node.module:
+            for a in node.names:
+                if f"{node.module}.{a.name}" in modules:
+                    out[a.asname or a.name] = f"{node.module}.{a.name}"
+        elif isinstance(node, ast.Import):
+            for a in node.names:
+                if a.name in modules and a.asname:
+                    out[a.asname] = a.name
+    return out
+
+
+#: how the tests spell a name bound to the app.ui.server module
+SERVER_SPELLINGS = {"srv", "srv_", "server", "srv_mod"}
+
+
+def _test_aliases(tree, modules: dict) -> dict:
+    """_module_aliases for a test file, plus the server module arriving
+    through a fixture (`srv_, raw = console`) in a file that imports it:
+    its usual spellings, unless an import binds them to something else in
+    the file (`from app.ui.server import app as srv` is the FastAPI app)."""
+    alias = _module_aliases(tree, modules)
+    if "app.ui.server" not in alias.values():
+        return alias
+    other = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            other.update(a.asname or a.name.split(".")[0]
+                         for a in node.names if a.name != "app.ui.server")
+        elif isinstance(node, ast.ImportFrom):
+            other.update(a.asname or a.name for a in node.names
+                         if f"{node.module}.{a.name}" != "app.ui.server")
+    for name in SERVER_SPELLINGS - other:
+        alias.setdefault(name, "app.ui.server")
+    return alias
+
+
+def _str_arg(node):
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    return None
+
+
+def patches_in_tests(modules: dict):
+    """(file, line, module, name, call) for every patch the tests make on
+    an app.ui module: setattr/delattr (monkeypatch's or the builtin) or
+    patch.object on an alias of the module, or an "app.ui.<module>.<name>"
+    target string."""
+    for path in _test_files():
+        tree = _parse(path)
+        alias = _test_aliases(tree, modules)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not node.args:
+                continue
+            f = node.func
+            fname = f.attr if isinstance(f, ast.Attribute) else getattr(
+                f, "id", "")
+            a0 = node.args[0]
+            if fname in ("setattr", "delattr", "object") \
+                    and len(node.args) >= 2 and isinstance(a0, ast.Name) \
+                    and a0.id in alias and _str_arg(node.args[1]):
+                yield (path, node.lineno, alias[a0.id],
+                       _str_arg(node.args[1]), node)
+            elif fname in ("setattr", "delattr", "patch") \
+                    and (_str_arg(a0) or "").startswith("app.ui."):
+                mod, _, name = _str_arg(a0).rpartition(".")
+                if mod in modules:
+                    yield path, node.lineno, mod, name, node
+
+
+def test_every_patched_name_has_one_home():
+    """A test patches a name on the module that DEFINES it, and no other
+    app.ui module holds a binding of that name made at import: a
+    from-import copy would never see the patch (a silent no-op). data_mod
+    counts too, since its lazy proxy rebinds it on first use."""
+    modules = ui_modules()
+    binds = {m: module_bindings(_parse(p)) for m, p in modules.items()}
+    targets = {(mod, name) for _p, _l, mod, name, _n in
+               patches_in_tests(modules)} | {("app.ui.state", "data_mod")}
+    assert len(targets) > 20, targets            # the scan sees the tests
+    problems = []
+    for mod, name in sorted(targets):
+        homes = [m for m, (d, _i) in binds.items() if name in d]
+        others = sorted(m for m, (d, i) in binds.items()
+                        if m != mod and (name in d or name in i))
+        if homes != [mod] or others:
+            problems.append(f"{mod}.{name}: defined in {homes}, also "
+                            f"bound in {others}")
+    assert not problems, "\n".join(problems)
+
+
+# ---------------------------------------- 8. one object behind every name
+
+def test_an_imported_name_is_its_owners_object():
+    """Every name an app.ui module takes from another (from app.ui.x import
+    name) is x's own object; server's public names are their owners'."""
+    from app.ui import state, templating, versions
+    modules = ui_modules()
+    loaded = {m: importlib.import_module(m) for m in modules}
+    checked = 0
+    for mod, path in modules.items():
+        for node in _top_level(_parse(path).body):
+            if not (isinstance(node, ast.ImportFrom) and node.level == 0
+                    and node.module in modules):
+                continue
+            for a in node.names:
+                if f"{node.module}.{a.name}" in modules:
+                    continue                             # a module, not a name
+                assert getattr(loaded[mod], a.asname or a.name) is getattr(
+                    loaded[node.module], a.name), (mod, a.name)
+                checked += 1
+    assert checked > 20
+    assert srv.templates is templating.templates
+    assert srv.VERSIONS is versions.VERSIONS
+    assert srv.RUNNING_SHA is versions.RUNNING_SHA
+    # the console-wide state: one object each, wherever a module holds it
+    for name in ("_status", "_last_form", "_engine_lock", "_sandbox_status",
+                 "_WARM_DONE", "ENGINES"):
+        held = {id(getattr(m, name)) for m in loaded.values()
+                if hasattr(m, name)}
+        assert held == {id(getattr(state, name))}, name
+
+
+# ---------------------------------------- 9. no module alias is shadowed
+
+def test_no_module_alias_is_rebound_in_its_file():
+    """A module-level alias of an app.ui module (`state`, `shared`, ...)
+    must not also name a local, a parameter or a def anywhere in the file:
+    `state._status` under a local `state` reads the wrong object."""
+    modules = ui_modules()
+    problems = []
+    for mod, path in modules.items():
+        tree = _parse(path)
+        aliases = _module_aliases(tree, modules, anywhere=False)
+        for node in ast.walk(tree):
+            bound = []
+            if isinstance(node, ast.Name) and isinstance(
+                    node.ctx, (ast.Store, ast.Del)):
+                bound = [(node.id, None)]
+            elif isinstance(node, ast.arg):
+                bound = [(node.arg, None)]
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef,
+                                   ast.ClassDef)):
+                bound = [(node.name, None)]
+            elif isinstance(node, ast.ExceptHandler) and node.name:
+                bound = [(node.name, None)]
+            elif isinstance(node, (ast.Global, ast.Nonlocal)):
+                bound = [(n, None) for n in node.names]
+            elif isinstance(node, ast.Import):
+                bound = [(a.asname or a.name.split(".")[0],
+                          a.name if a.asname else None) for a in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                bound = [(a.asname or a.name, f"{node.module}.{a.name}")
+                         for a in node.names]
+            for name, target in bound:
+                if name in aliases and target != aliases[name]:
+                    problems.append(f"{path.relative_to(REPO)}:"
+                                    f"{node.lineno}: {name} rebinds the "
+                                    f"module alias {aliases[name]}")
+    assert not problems, "\n".join(problems)
+
+
+# ------------------------------------------------- 10. the import hygiene
+
+def test_tests_reach_moved_names_through_their_owners():
+    """No test reads, patches or imports a private name through
+    app.ui.server that server does not itself define (it moved: use its
+    owner), and no patch on an app.ui module passes raising=False (a patch
+    of a missing name must fail, not pass silently)."""
+    modules = ui_modules()
+    server_defined, _ = module_bindings(_parse(modules["app.ui.server"]))
+
+    def stale(name) -> bool:
+        return (name.startswith("_") and not name.startswith("__")
+                and name not in server_defined)
+    problems = []
+    for path in _test_files():
+        tree = _parse(path)
+        srv_names = {k for k, v in _test_aliases(tree, modules).items()
+                     if v == "app.ui.server"}
+        where = path.relative_to(REPO)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and isinstance(
+                    node.value, ast.Name) and node.value.id in srv_names \
+                    and stale(node.attr):
+                problems.append(f"{where}:{node.lineno}: server.{node.attr}")
+            elif isinstance(node, ast.ImportFrom) \
+                    and node.module == "app.ui.server":
+                problems += [f"{where}:{node.lineno}: from server import "
+                             f"{a.name}" for a in node.names if stale(a.name)]
+            elif isinstance(node, ast.Constant) and isinstance(
+                    node.value, str) and node.value.startswith(
+                        "app.ui.server.") and stale(node.value.split(".")[3]):
+                problems.append(f"{where}:{node.lineno}: {node.value!r}")
+    for path, line, mod, name, call in patches_in_tests(modules):
+        where = path.relative_to(REPO)
+        if mod == "app.ui.server" and stale(name):
+            problems.append(f"{where}:{line}: patches server.{name}")
+        if any(k.arg == "raising" and not (
+                isinstance(k.value, ast.Constant) and k.value.value is True)
+               for k in call.keywords):
+            problems.append(f"{where}:{line}: raising= on {mod}.{name}")
+    assert not problems, "\n".join(problems)
+
+
+def test_no_app_ui_module_imports_the_assembly_at_import():
+    """server assembles the app and includes datasets_ui last; a module
+    that imported either at import would put a cycle on the import path
+    (the existing in-function `from app.ui import datasets_ui` stay)."""
+    modules = ui_modules()
+    problems = []
+    for mod, path in modules.items():
+        for node in _top_level(_parse(path).body):
+            if isinstance(node, ast.Import):
+                got = {a.name for a in node.names}
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                got = {node.module} | {f"{node.module}.{a.name}"
+                                       for a in node.names}
+            else:
+                continue
+            banned = {"app.ui.server"} | (
+                set() if mod == "app.ui.server" else {"app.ui.datasets_ui"})
+            if got & banned:
+                problems.append(f"{mod}:{node.lineno}: {sorted(got & banned)}")
+    assert not problems, "\n".join(problems)
 
 
 if __name__ == "__main__":

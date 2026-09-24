@@ -58,3 +58,5 @@ CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetg
 Fixtures in `app/tests/`: `flusurv_fixture.json`, `iliplus_fixture.json`, `nrevss_fixture.json`, `contactmap_bind.graphml`, `hub_model_metadata_schema.json` (sha-pinned).
 
 `app/tests/golden/ui_routes.json` is the console's route table, middleware, Jinja additions and import profile, captured at 029c028 for `test_ui_layout.py` (and the GET count `test_browse_safety.py` walks); regenerate it only for a deliberate change: `python app/tests/test_ui_layout.py --write-golden`.
+
+`test_ui_layout.py` also keeps app/ui's modules honest with each other and with the tests: a name a test patches is defined by exactly the module it patches and bound by no other at import (a from-import copy would miss the patch); a name imported from another app/ui module is its owner's object; no module alias (`state`, `shared`, ...) is rebound in its file; tests reach a moved private name through its owner, never through `app.ui.server`, and never patch an app/ui module with `raising=False`.

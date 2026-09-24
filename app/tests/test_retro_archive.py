@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from app.core import horizons as hz                        # noqa: E402
 from app.core import playback, report_season, retro        # noqa: E402
 from app.ui import server as srv                           # noqa: E402
+from app.ui import state as ui_state                       # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL      # noqa: E402
 
 client = TestClient(srv.app)
@@ -38,11 +39,11 @@ STAMP = "20980204T101500Z"
 @pytest.fixture(autouse=True)
 def _isolated_status():
     """Snapshot and restore the module-level status stores."""
-    status_before = dict(srv._status)
+    status_before = dict(ui_state._status)
     retro_before = dict(srv._retro_status)
     stop_before = set(srv._retro_stop)
     yield
-    srv._status.clear(); srv._status.update(status_before)
+    ui_state._status.clear(); ui_state._status.update(status_before)
     srv._retro_status.clear(); srv._retro_status.update(retro_before)
     srv._retro_stop.clear(); srv._retro_stop.update(stop_before)
 
@@ -371,7 +372,7 @@ def test_archive_and_start_fresh_moves_the_tree_and_starts_clean(tmp_path,
     assert _tree_snapshot(archives[0]) == before      # nothing lost
     assert not (root / "weeks").exists()              # the replay starts clean
     assert started == [SEASON]                        # and it does start
-    assert "Archived" in srv._status.get("flash", "")
+    assert "Archived" in ui_state._status.get("flash", "")
 
 
 def test_discard_without_the_second_confirmation_changes_nothing(tmp_path,
@@ -388,7 +389,7 @@ def test_discard_without_the_second_confirmation_changes_nothing(tmp_path,
     assert r.status_code == 303
     assert _tree_snapshot(root) == before
     assert started == []                              # nor was a run started
-    assert "not confirmed" in srv._status.get("flash", "")
+    assert "not confirmed" in ui_state._status.get("flash", "")
 
     # a confirmation naming a DIFFERENT season is no confirmation at all
     client.post("/retro/run", data={"season": SEASON, "mode": "discard",
@@ -485,7 +486,7 @@ def test_deleting_an_archive_needs_confirmation_and_spares_the_live_season(
     client.post(f"/retro/{SEASON}/archive/{STAMP}/delete",
                 follow_redirects=False)
     assert _tree_snapshot(arch) == arch_before
-    assert "not confirmed" in srv._status.get("flash", "")
+    assert "not confirmed" in ui_state._status.get("flash", "")
 
     # confirmed: the archive goes, the live season stays whole
     r = client.post(f"/retro/{SEASON}/archive/{STAMP}/delete",
@@ -493,7 +494,7 @@ def test_deleting_an_archive_needs_confirmation_and_spares_the_live_season(
     assert r.status_code == 303
     assert not arch.exists()
     assert _tree_snapshot(live) == live_before
-    flash = srv._status.get("flash", "")
+    flash = ui_state._status.get("flash", "")
     assert "2 completed weeks" in flash and "was not touched" in flash
 
 

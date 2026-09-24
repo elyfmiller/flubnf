@@ -22,6 +22,7 @@ from app.core.runs import RunSpec, is_research, spec_settings   # noqa: E402
 from flubnf import oracle as OR                          # noqa: E402
 from flubnf import oracle_bank as OB                     # noqa: E402
 from flubnf import oracle_mix as MX                      # noqa: E402
+from app.ui import shared as ui_shared                   # noqa: E402
 
 ASOF = "2098-01-04"                                       # a Saturday
 FIPS = {"Ohio": "39", "Utah": "49", "California": "06", "Texas": "48"}
@@ -360,6 +361,8 @@ def test_a_console_replay_is_the_oracle_sihrs_from_the_season_start(hubfiles, tm
     stores no filter samples, and names the tree the Oracle SIHRS."""
     from fastapi.testclient import TestClient
     from app.ui import server as srv
+    from app.ui import shared as ui_shared
+    from app.ui import templating as ui_templating
     season = "2097-98"
     raw = _samples(("Ohio", "Utah"))
     _stub_retro(monkeypatch, raw)
@@ -401,7 +404,7 @@ def test_a_console_replay_is_the_oracle_sihrs_from_the_season_start(hubfiles, tm
     finally:
         srv._retro_status.clear()
         srv._retro_status.update(status_before)
-        srv._invalidate_scans()
+        ui_shared._invalidate_scans()
     root = live / season
     # the fit runs from the season start through the as-of week
     assert [(sp.forecast_date, sp.season_start) for sp in specs] == \
@@ -424,7 +427,7 @@ def test_a_console_replay_is_the_oracle_sihrs_from_the_season_start(hubfiles, tm
     # and the tree is titled the Oracle SIHRS wherever pf is named
     # 1,000 particles and 1 replicate are off the shipped values: the tree
     # records them as model knobs and never wears the bare shipped name
-    assert srv._names_for_root(root)["pf"] == "Oracle SIHRS (modified settings)"
+    assert ui_templating._names_for_root(root)["pf"] == "Oracle SIHRS (modified settings)"
 
 
 # ------------------------------------------------------------ the console
@@ -439,6 +442,9 @@ def console(hubfiles, tmp_path, monkeypatch):
     import app.core.scoring as scoring_mod
     import flubnf.settings as fs
     from app.ui import server as srv
+    from app.ui import shared as ui_shared
+    from app.ui import state as ui_state
+    from app.ui import versions as ui_versions
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path / "state")
     exe = tmp_path / "exe"
     exe.write_text("")
@@ -464,15 +470,15 @@ def console(hubfiles, tmp_path, monkeypatch):
         raise RuntimeError("no truth in this test")
     monkeypatch.setattr(scoring_mod, "load_truth", _no_truth)
     monkeypatch.setattr(srv, "_sleep_guard", lambda: None)
-    monkeypatch.setattr(srv, "_engine_versions_for_ledger", lambda e: {})
+    monkeypatch.setattr(ui_versions, "_engine_versions_for_ledger", lambda e: {})
     monkeypatch.setattr(srv, "_harvest_params", lambda w: {})
     monkeypatch.setattr(srv, "_write_weekly_report", lambda *a, **k: None)
     monkeypatch.setattr(srv, "_archive_run", lambda w, d: "archived")
-    status_before = dict(srv._status)
+    status_before = dict(ui_state._status)
     yield srv, raw
-    srv._status.clear()
-    srv._status.update(status_before)
-    srv._invalidate_scans()
+    ui_state._status.clear()
+    ui_state._status.update(status_before)
+    ui_shared._invalidate_scans()
 
 
 def _run(srv, oracle=None):
@@ -526,7 +532,7 @@ def test_oracle_none_is_a_research_run_with_its_file_withheld(console):
     prov = oracle_mod.read_provenance(w)
     assert prov["applied"] is False
     assert not (w / oracle_mod.FILTER_RECORD_NAME).exists()
-    assert "submission withheld" in srv._outcome_chips(json.dumps(outcome))
+    assert "submission withheld" in ui_shared._outcome_chips(json.dumps(outcome))
 
 
 def test_run_extra_carries_the_switch_and_refuses_anything_else():
@@ -541,6 +547,8 @@ def test_run_extra_carries_the_switch_and_refuses_anything_else():
 def test_the_run_route_accepts_the_field_and_the_rerun_passes_it(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     from app.ui import server as srv
+    from app.ui import shared as ui_shared
+    from app.ui import state as ui_state
     import app.core.runs as runs_mod
     from app.core import data as core_data
     from app.core.runs import Ledger
@@ -552,9 +560,9 @@ def test_the_run_route_accepts_the_field_and_the_rerun_passes_it(tmp_path, monke
     monkeypatch.setattr(core_data, "vintages", lambda: [ASOF])
     started = []
     monkeypatch.setattr(srv, "_run_all", lambda spec: started.append(spec))
-    status_before = dict(srv._status)
+    status_before = dict(ui_state._status)
     try:
-        srv._status["running"] = None
+        ui_state._status["running"] = None
         r = client.post("/run", data={"forecast_date": ASOF, "locations": "custom",
                                       "custom_locations": ["Ohio"], "engine": "all",
                                       "replicates": "1", "oracle": "none"},
@@ -566,17 +574,17 @@ def test_the_run_route_accepts_the_field_and_the_rerun_passes_it(tmp_path, monke
         led = Ledger()
         rid = led.open_run(started[-1], Path("pending"), {})
         led.close_run(rid, "ok", {})
-        srv._status["running"] = None
+        ui_state._status["running"] = None
         r = client.post(f"/runs/{rid}/rerun", follow_redirects=False)
         assert r.status_code == 303
         assert started[-1].extra.get("oracle") == "none"
         # and a row without it re-runs the member
-        srv._status["running"] = None
+        ui_state._status["running"] = None
         client.post("/run", data={"forecast_date": ASOF, "locations": "custom",
                                   "custom_locations": ["Ohio"], "engine": "all",
                                   "replicates": "1"}, follow_redirects=False)
         assert "oracle" not in started[-1].extra
     finally:
-        srv._status.clear()
-        srv._status.update(status_before)
-        srv._invalidate_scans()
+        ui_state._status.clear()
+        ui_state._status.update(status_before)
+        ui_shared._invalidate_scans()

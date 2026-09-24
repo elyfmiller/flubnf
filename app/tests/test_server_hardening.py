@@ -21,6 +21,8 @@ import pytest                                       # noqa: E402
 from fastapi.testclient import TestClient           # noqa: E402
 
 from app.ui import server as srv                    # noqa: E402
+from app.ui import state as ui_state                # noqa: E402
+from app.ui import templating as ui_templating      # noqa: E402
 
 client = TestClient(srv.app)
 #: a client whose default authority is the loopback address the console
@@ -33,17 +35,17 @@ SEASON = "2098-99"
 @pytest.fixture(autouse=True)
 def _isolated_status():
     """Snapshot and restore the module-level status stores."""
-    status_before = dict(srv._status)
+    status_before = dict(ui_state._status)
     retro_before = dict(srv._retro_status)
     stop_before = set(srv._retro_stop)
     claim_before = dict(srv._retro_claim_at)
-    form_before = dict(srv._last_form)
+    form_before = dict(ui_state._last_form)
     yield
-    srv._status.clear(); srv._status.update(status_before)
+    ui_state._status.clear(); ui_state._status.update(status_before)
     srv._retro_status.clear(); srv._retro_status.update(retro_before)
     srv._retro_stop.clear(); srv._retro_stop.update(stop_before)
     srv._retro_claim_at.clear(); srv._retro_claim_at.update(claim_before)
-    srv._last_form.clear(); srv._last_form.update(form_before)
+    ui_state._last_form.clear(); ui_state._last_form.update(form_before)
 
 
 # ------------------------------------------- 1. atomic check-and-claim
@@ -79,7 +81,7 @@ def test_concurrent_run_posts_start_exactly_one_engine_run(tmp_path,
 
     monkeypatch.setattr(srv, "_known_seasons", slow_known)
     srv._retro_status.clear()
-    srv._status.update({"running": None, "phase": "", "run_label": "",
+    ui_state._status.update({"running": None, "phase": "", "run_label": "",
                         "log": []})
 
     def post():
@@ -90,7 +92,7 @@ def test_concurrent_run_posts_start_exactly_one_engine_run(tmp_path,
     codes = _two_threads(post)
     assert codes == [303, 303]        # both answered; only one started
     assert len(started) == 1
-    refusals = [l for l in srv._status["log"]
+    refusals = [l for l in ui_state._status["log"]
                 if "already in progress" in l]
     assert len(refusals) == 1
 
@@ -111,7 +113,7 @@ def test_concurrent_retro_run_posts_claim_exactly_one_worker(tmp_path,
 
     monkeypatch.setattr(srv, "_known_seasons", slow_known)
     srv._retro_status.clear()
-    srv._status.update({"running": None, "phase": "", "run_label": ""})
+    ui_state._status.update({"running": None, "phase": "", "run_label": ""})
 
     def post():
         return client.post("/retro/run", data={"season": SEASON},
@@ -121,7 +123,7 @@ def test_concurrent_retro_run_posts_claim_exactly_one_worker(tmp_path,
     assert codes == [303, 303]
     assert len(workers) == 1
     assert srv._retro_status[SEASON] == "running"
-    assert "already replaying" in srv._status.get("flash", "")
+    assert "already replaying" in ui_state._status.get("flash", "")
 
 
 # --------------------------------- 2. localhost Host and Origin guard
@@ -184,14 +186,14 @@ def test_data_pull_refused_while_a_run_reads_hub_files(monkeypatch):
     calls = []
     monkeypatch.setattr(data_real, "pull_hub",
                         lambda: calls.append(1) or (True, "pulled"))
-    srv._status.update({"running": "all:20990101T000000-abc",
+    ui_state._status.update({"running": "all:20990101T000000-abc",
                         "run_label": "2099-01-02 · 1 state(s) + US",
                         "phase": "materializing models (BNG network "
                                  "generation)"})
     r = client.post("/data/pull", follow_redirects=False)
     assert r.status_code == 303
     assert calls == []
-    flash = srv._status.get("flash", "")
+    flash = ui_state._status.get("flash", "")
     assert "reading the hub files" in flash
     assert "2099-01-02" in flash        # names what holds the engine
 
@@ -203,11 +205,11 @@ def test_data_pull_refused_during_the_starting_claim(monkeypatch):
     monkeypatch.setattr(data_real, "pull_hub",
                         lambda: (_ for _ in ()).throw(AssertionError(
                             "pull must not run during a claim")))
-    srv._status.update({"running": "starting", "run_label": "",
+    ui_state._status.update({"running": "starting", "run_label": "",
                         "phase": ""})
     r = client.post("/data/pull", follow_redirects=False)
     assert r.status_code == 303
-    assert "reading the hub files" in srv._status.get("flash", "")
+    assert "reading the hub files" in ui_state._status.get("flash", "")
 
 
 def test_data_pull_allowed_during_pure_fitting(monkeypatch):
@@ -217,12 +219,12 @@ def test_data_pull_allowed_during_pure_fitting(monkeypatch):
     monkeypatch.setattr(data_real, "pull_hub",
                         lambda: (True, "Already up to date."))
     monkeypatch.setattr(data_real, "vintages", lambda: [])
-    srv._status.update({"running": "all:20990101T000000-abc",
+    ui_state._status.update({"running": "all:20990101T000000-abc",
                         "run_label": "2099-01-02 · 1 state(s) + US",
                         "phase": "filtering 3 location(s) x 3 replicate(s)"})
     r = client.post("/data/pull", follow_redirects=False)
     assert r.status_code == 303
-    assert "Already up to date." in srv._status.get("flash", "")
+    assert "Already up to date." in ui_state._status.get("flash", "")
 
 
 def test_data_pull_failure_is_flashed_as_a_failure(monkeypatch):
@@ -230,11 +232,11 @@ def test_data_pull_failure_is_flashed_as_a_failure(monkeypatch):
     from app.core import data as data_real
     monkeypatch.setattr(data_real, "pull_hub",
                         lambda: (False, "fatal: unable to access remote"))
-    srv._status.update({"running": None, "phase": "", "run_label": ""})
-    srv._status.pop("flash", None)
+    ui_state._status.update({"running": None, "phase": "", "run_label": ""})
+    ui_state._status.pop("flash", None)
     r = client.post("/data/pull", follow_redirects=False)
     assert r.status_code == 303
-    flash = srv._status.get("flash", "")
+    flash = ui_state._status.get("flash", "")
     assert "FAILED" in flash
     assert "fatal: unable to access remote" in flash
     assert "latest vintage" not in flash    # the success trimmings stay off
@@ -269,7 +271,7 @@ def test_pull_hub_returns_gits_own_verdict(monkeypatch):
 def test_script_json_escapes_every_angle_bracket():
     import json
     payload = {"name": "</script><svg onload=alert(1)>"}
-    blob = srv._script_json(payload)
+    blob = ui_templating._script_json(payload)
     assert "<" not in blob
     assert "\\u003c/script" in blob
     assert json.loads(blob) == payload   # still the same JSON value
@@ -286,7 +288,7 @@ def test_forecast_script_blob_cannot_close_its_script_element(monkeypatch):
     # the forecast page embeds the model-name map in an inline script the
     # template marks | safe; a name carrying markup must not escape it
     evil = "</script><script>alert(1)</script>"
-    monkeypatch.setattr(srv, "_model_names",
+    monkeypatch.setattr(ui_templating, "_model_names",
                         lambda: {"pf": evil, "ensemble": "Ensemble"})
     html_text = client.get("/forecast").text
     assert evil not in html_text

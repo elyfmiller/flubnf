@@ -565,16 +565,17 @@ def test_api_progress_sums_the_per_shard_progress_files(tmp_path, monkeypatch):
     """api_progress finds per-shard .prog files and the pre-sharding name."""
     from app.core import ttlcache
     from app.ui import server as srv
+    from app.ui import state as ui_state
     w = tmp_path / "wr"
     w.mkdir()
     now = time.time()
     for i, done in enumerate((3, 2)):
         (w / f"pf_status_{i}.json.prog").write_text(
             json.dumps({"done": done, "total": 4, "t0": now - 60}))
-    monkeypatch.setitem(srv._status, "running", "all:x")
-    monkeypatch.setitem(srv._status, "workroot", str(w))
-    monkeypatch.setitem(srv._status, "expected_total", 8)
-    monkeypatch.setitem(srv._status, "started_utc", now - 60)
+    monkeypatch.setitem(ui_state._status, "running", "all:x")
+    monkeypatch.setitem(ui_state._status, "workroot", str(w))
+    monkeypatch.setitem(ui_state._status, "expected_total", 8)
+    monkeypatch.setitem(ui_state._status, "started_utc", now - 60)
     ttlcache.clear_all()
     out = srv.api_progress()
     assert (out["done"], out["total"]) == (5, 8)

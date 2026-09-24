@@ -168,6 +168,7 @@ def test_the_season_page_offers_the_model_toggle_above_the_map(
     group id, sits above the retrospective map; the page script follows
     it across weeks."""
     import app.ui.server as srv
+    from app.ui import shared as ui_shared
     from app.core import retro
     from fastapi.testclient import TestClient
     rr = tmp_path / "retro"
@@ -192,7 +193,7 @@ def test_the_season_page_offers_the_model_toggle_above_the_map(
                                                         for f in fips_set
                                                         for h in range(4)})
     monkeypatch.setattr(playback, "HUB", tmp_path / "hub")
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     html = TestClient(srv.app).get(f"/retro/{SEASON}").text
     assert 'data-fips="39"' in html                          # the map
     assert 'id="retro-model"' in html

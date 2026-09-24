@@ -33,6 +33,8 @@ from app.core import report_v2                      # noqa: E402
 from app.core import retro                          # noqa: E402
 from app.core import ttlcache                       # noqa: E402
 from app.ui import server as srv                    # noqa: E402
+from app.ui import shared as ui_shared              # noqa: E402
+from app.ui import state as ui_state                # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL   # noqa: E402
 
 client = TestClient(srv.app)
@@ -56,13 +58,13 @@ GOLDEN_ROUTES = Path(__file__).resolve().parent / "golden" / "ui_routes.json"
 
 @pytest.fixture(autouse=True)
 def _isolated_state():
-    status_before = dict(srv._status)
+    status_before = dict(ui_state._status)
     retro_before = dict(srv._retro_status)
     stop_before = set(srv._retro_stop)
     claim_before = dict(srv._retro_claim_at)
     ttlcache.clear_all()
     yield
-    srv._status.clear(); srv._status.update(status_before)
+    ui_state._status.clear(); ui_state._status.update(status_before)
     srv._retro_status.clear(); srv._retro_status.update(retro_before)
     srv._retro_stop.clear(); srv._retro_stop.update(stop_before)
     srv._retro_claim_at.clear(); srv._retro_claim_at.update(claim_before)
@@ -101,7 +103,7 @@ def _live_world(tmp_path, monkeypatch):
     workroot.mkdir()
     (workroot / "pf_status.json.prog").write_text(
         json.dumps({"done": 3, "total": 12, "t0": now}))
-    srv._status.update({"running": "all:20981231T000000-abc123",
+    ui_state._status.update({"running": "all:20981231T000000-abc123",
                         "workroot": str(workroot),
                         "run_label": "2098-12-26 · 1 state(s) + US",
                         "phase": "filtering 2 location(s) × 3 replicate(s)",
@@ -122,7 +124,7 @@ def _control_state(run_root, pause_root, workroot):
         "paused_season": flags(pause_root),
         "console_stop": (workroot / "STOP").exists(),
         "console_files": sorted(p.name for p in workroot.iterdir()),
-        "status": {k: srv._status.get(k)
+        "status": {k: ui_state._status.get(k)
                    for k in ("running", "workroot", "phase", "run_label",
                              "expected_total", "started_utc", "settings")},
         "retro_status": dict(srv._retro_status),
@@ -191,8 +193,8 @@ def test_every_get_route_leaves_the_live_runs_alone(tmp_path, monkeypatch):
 def test_cached_scans_never_create_state(tmp_path):
     ghost = tmp_path / "ghost"
     assert srv._weeks_done(ghost / RUNNING_SEASON) == 0
-    assert srv._scan_results(ghost / "workroots") == []
-    assert srv._scan_archive_dates(ghost / "archive") == []
+    assert ui_shared._scan_results(ghost / "workroots") == []
+    assert ui_shared._scan_archive_dates(ghost / "archive") == []
     assert srv._scan_archive_entries(ghost, RUNNING_SEASON) == []
     assert srv._seasons_on_disk(ghost) == ()
     assert not ghost.exists()
@@ -231,7 +233,7 @@ def test_stale_report_rebuild_writes_only_report_html(tmp_path, monkeypatch):
     srv._REPORT_REBUILD_FAILED.clear()
     os.utime(d / "report.html", OLD_MTIME)
     before = {p.name: p.read_bytes() for p in d.iterdir()}
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     r = client.get("/output/report?date=2098-01-03")
     assert r.status_code == 200
     # the rebuild happened: the stored file is fresh again
@@ -263,7 +265,7 @@ def test_output_report_never_serves_an_unfinished_workroot(tmp_path,
     os.utime(live / "report.html", OLD_MTIME)        # stale on purpose
     before = ((live / "report.html").read_bytes(),
               (live / "report.html").stat().st_mtime)
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     r = client.get("/output/report")
     assert r.status_code == 200
     assert "DONE REPORT" in r.text

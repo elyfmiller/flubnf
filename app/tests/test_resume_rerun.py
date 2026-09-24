@@ -24,6 +24,7 @@ from app.core import data as core_data              # noqa: E402
 from app.core import retro                          # noqa: E402
 from app.core import ttlcache                       # noqa: E402
 from app.ui import server as srv                    # noqa: E402
+from app.ui import state as ui_state                # noqa: E402
 
 client = TestClient(srv.app)
 
@@ -34,18 +35,18 @@ SATURDAY = "2025-12-06"     # a real Saturday: /run must not snap it
 @pytest.fixture(autouse=True)
 def _isolated_state():
     """Snapshot and restore every module-level store a run start mutates."""
-    status_before = dict(srv._status)
+    status_before = dict(ui_state._status)
     retro_before = dict(srv._retro_status)
     stop_before = set(srv._retro_stop)
     claim_before = dict(srv._retro_claim_at)
-    form_before = dict(srv._last_form)
+    form_before = dict(ui_state._last_form)
     ttlcache.clear_all()
     yield
-    srv._status.clear(); srv._status.update(status_before)
+    ui_state._status.clear(); ui_state._status.update(status_before)
     srv._retro_status.clear(); srv._retro_status.update(retro_before)
     srv._retro_stop.clear(); srv._retro_stop.update(stop_before)
     srv._retro_claim_at.clear(); srv._retro_claim_at.update(claim_before)
-    srv._last_form.clear(); srv._last_form.update(form_before)
+    ui_state._last_form.clear(); ui_state._last_form.update(form_before)
     ttlcache.clear_all()
 
 
@@ -221,14 +222,14 @@ def test_retro_resume_post_refused_over_a_console_run(tmp_path, monkeypatch):
     launched = []
     monkeypatch.setattr(srv, "_retro_bg", lambda *a: launched.append(a))
     srv._retro_status.clear()
-    srv._status.update({"running": "all:20990101T000000-abc",
+    ui_state._status.update({"running": "all:20990101T000000-abc",
                         "run_label": "2099-01-02 · 3 state(s) + US"})
     fields = retro.resume_form_fields(retro.read_meta(root))
     r = client.post("/retro/run", data=fields, follow_redirects=False)
     assert r.status_code == 303
     assert launched == []
     assert SEASON not in srv._retro_status
-    assert "console run holds the engine" in srv._status.get("flash", "")
+    assert "console run holds the engine" in ui_state._status.get("flash", "")
 
 
 # ----------------------------------------------------- console run again
@@ -252,7 +253,7 @@ def test_rerun_reposts_the_stored_spec_verbatim(tmp_path, monkeypatch):
     monkeypatch.setattr(core_data, "vintage_path", lambda d: tmp_path)
     started = []
     monkeypatch.setattr(srv, "_run_all", lambda s: started.append(s))
-    srv._status.update({"running": None})
+    ui_state._status.update({"running": None})
     r = client.post(f"/runs/{rid}/rerun", follow_redirects=False)
     assert r.status_code == 303
     assert len(started) == 1
@@ -275,8 +276,8 @@ def test_rerun_refused_when_settings_were_not_recorded(tmp_path, monkeypatch):
                     follow_redirects=False)
     assert r.status_code == 303
     assert started == []
-    assert srv._status.get("running") is None
-    assert "were not recorded" in srv._status.get("flash", "")
+    assert ui_state._status.get("running") is None
+    assert "were not recorded" in ui_state._status.get("flash", "")
 
 
 def test_rerun_refuses_a_spec_the_form_path_cannot_reproduce(tmp_path,
@@ -291,8 +292,8 @@ def test_rerun_refuses_a_spec_the_form_path_cannot_reproduce(tmp_path,
     r = client.post(f"/runs/{rid}/rerun", follow_redirects=False)
     assert r.status_code == 303
     assert started == []
-    assert srv._status.get("running") is None
-    flash = srv._status.get("flash", "")
+    assert ui_state._status.get("running") is None
+    flash = ui_state._status.get("flash", "")
     assert "cannot be reproduced" in flash and "jitter" in flash
 
 
@@ -305,13 +306,13 @@ def test_rerun_refused_while_a_retrospective_replays(tmp_path, monkeypatch):
     monkeypatch.setattr(core_data, "vintage_path", lambda d: tmp_path)
     started = []
     monkeypatch.setattr(srv, "_run_all", lambda s: started.append(s))
-    srv._status.update({"running": None})
+    ui_state._status.update({"running": None})
     srv._retro_status["2097-98"] = "running"
     r = client.post(f"/runs/{rid}/rerun", follow_redirects=False)
     assert r.status_code == 303
     assert started == []
-    assert srv._status.get("running") is None
-    assert "retrospective replay holds the engine" in srv._status.get(
+    assert ui_state._status.get("running") is None
+    assert "retrospective replay holds the engine" in ui_state._status.get(
         "flash", "")
 
 
@@ -325,18 +326,18 @@ def test_rerun_refused_while_a_console_run_is_fitting(tmp_path, monkeypatch):
     started = []
     monkeypatch.setattr(srv, "_run_all", lambda s: started.append(s))
     srv._retro_status.clear()
-    srv._status.update({"running": "all:20990101T000000-abc"})
+    ui_state._status.update({"running": "all:20990101T000000-abc"})
     r = client.post(f"/runs/{rid}/rerun", follow_redirects=False)
     assert r.status_code == 303
     assert started == []
-    assert srv._status["running"] == "all:20990101T000000-abc"  # untouched
+    assert ui_state._status["running"] == "all:20990101T000000-abc"  # untouched
 
 
 # ------------------------------------------------ console card and run page
 
 def _render_forecast(row):
     return srv.templates.env.get_template("forecast.html").render(
-        active="Forecast", engines=srv.ENGINES, status={"running": None},
+        active="Forecast", engines=ui_state.ENGINES, status={"running": None},
         ledger=[row], all_locs=["Ohio"], locations_error="",
         form={"forecast_date": SATURDAY, "locations": ["all"],
               "engine": "all", "weeks_to_drop": 0, "weeks_to_nowcast": 0,
@@ -391,7 +392,7 @@ def test_run_page_offers_rerun_and_corrects_interrupted(tmp_path,
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
     led = runs_mod.Ledger()
     rid = led.open_run(spec, Path("pending"), {})   # stays 'running' in the DB
-    srv._status.update({"running": None})
+    ui_state._status.update({"running": None})
     html = client.get(f"/runs/{rid}").text
     # the ledger says running, no worker is alive: the page says interrupted
     assert "interrupted" in html

@@ -32,6 +32,8 @@ from app.core import retro                                   # noqa: E402
 from app.core.engines import analogue as EA                  # noqa: E402
 from app.core.runs import Ledger, RunSpec, spec_settings     # noqa: E402
 from app.ui import server as srv                             # noqa: E402
+from app.ui import shared as ui_shared                       # noqa: E402
+from app.ui import state as ui_state                         # noqa: E402
 
 from test_oracle_step import (ASOF, _samples, console,       # noqa: E402,F401
                               hubfiles)
@@ -42,13 +44,13 @@ FD = "2098-01-04"                                  # a Saturday
 
 @pytest.fixture(autouse=True)
 def _isolated():
-    status_before, form_before = dict(srv._status), dict(srv._last_form)
+    status_before, form_before = dict(ui_state._status), dict(ui_state._last_form)
     retro_before = dict(srv._retro_status)
     yield
-    srv._status.clear(); srv._status.update(status_before)
-    srv._last_form.clear(); srv._last_form.update(form_before)
+    ui_state._status.clear(); ui_state._status.update(status_before)
+    ui_state._last_form.clear(); ui_state._last_form.update(form_before)
     srv._retro_status.clear(); srv._retro_status.update(retro_before)
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
 
 
 def _capture_run(monkeypatch, tmp_path):
@@ -56,7 +58,7 @@ def _capture_run(monkeypatch, tmp_path):
     monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
     # the real module, not the lazy proxy (its first use rebinds the name)
     import app.core.data as data
-    monkeypatch.setattr(srv, "data_mod", data)
+    monkeypatch.setattr(ui_state, "data_mod", data)
     monkeypatch.setattr(data, "vintage_path", lambda d: tmp_path)
     monkeypatch.setattr(data, "vintages", lambda: [FD])
     started = []
@@ -65,7 +67,7 @@ def _capture_run(monkeypatch, tmp_path):
 
 
 def _post(data):
-    srv._status["running"] = None
+    ui_state._status["running"] = None
     return client.post("/run", data={"forecast_date": FD,
                                      "locations": ["Ohio"], **data},
                        follow_redirects=False)
@@ -87,7 +89,7 @@ def test_the_untouched_form_runs_the_golden_shipped_spec(tmp_path, monkeypatch):
     r = _post({"particles": "", "replicates": "3", "season_start": "",
                "weeks_to_drop": "0", "drop_same_day": "", **blank,
                "submit_modified": "", "modified_reason": ""})
-    assert r.status_code == 303 and len(started) == 1, srv._status.get("flash")
+    assert r.status_code == 303 and len(started) == 1, ui_state._status.get("flash")
     spec = started[0]
     golden = {"drop_same_day": False, "engine": "all",
               "extra": {**GOLDEN_EXTRA,
@@ -167,8 +169,8 @@ def test_older_field_names_are_the_same_knobs(tmp_path, monkeypatch):
                                 "run.weeks_to_drop": 1}
     # two different off-shipped values for one knob: refused, nothing runs
     _post({"particles": "2000", "knob.pf.particles": "3000"})
-    assert len(started) == 3 and srv._status.get("running") is None
-    assert "two values" in srv._status.get("flash", "")
+    assert len(started) == 3 and ui_state._status.get("running") is None
+    assert "two values" in ui_state._status.get("flash", "")
 
 
 @pytest.mark.parametrize("data,msg", [
@@ -184,9 +186,9 @@ def test_a_refused_knob_starts_nothing(tmp_path, monkeypatch, data, msg):
     started = _capture_run(monkeypatch, tmp_path)
     r = _post(data)
     assert r.status_code == 303
-    assert started == [] and srv._status.get("running") is None
-    assert msg in srv._status.get("flash", "")
-    assert "Nothing was run" in srv._status.get("flash", "")
+    assert started == [] and ui_state._status.get("running") is None
+    assert msg in ui_state._status.get("flash", "")
+    assert "Nothing was run" in ui_state._status.get("flash", "")
 
 
 def test_a_knob_that_does_not_apply_is_ignored_and_not_recorded(tmp_path,
@@ -246,12 +248,12 @@ def test_a_modified_run_exports_under_the_non_hub_names(console):
     assert prov["w"] == 0.25 and prov["specification"] == "modified"
     assert prov["knobs"] == {"oracle.w": 0.25}
     # marked on the ledger surfaces, kept off the shipped ones
-    assert "modified settings" in srv_._outcome_chips(row["outcome"])
-    assert srv_._pf_member_label(out) == "Oracle SIHRS (modified)"
-    assert srv_._latest_results() == (None, None)
+    assert "modified settings" in ui_shared._outcome_chips(row["outcome"])
+    assert ui_shared._pf_member_label(out) == "Oracle SIHRS (modified)"
+    assert ui_shared._latest_results() == (None, None)
     files = srv_._submission_files(w)
     assert all(f["modified"] and not f["submittable"] for f in files)
-    assert srv_._run_label(row["run_id"], row["spec"]).endswith(
+    assert ui_shared._run_label(row["run_id"], row["spec"]).endswith(
         "· modified settings")
 
 
@@ -269,8 +271,8 @@ def test_the_override_writes_hub_names_archives_and_records_why(console):
     assert res["knobs"]["override"]["reason"] == "the lead asked for it"
     assert json.loads(res["spec"])["extra"]["knobs_override"] == \
         "the lead asked for it"
-    assert srv_._latest_results()[0] == row["run_id"]   # back, badged
-    assert "hub names by override" in srv_._outcome_chips(row["outcome"])
+    assert ui_shared._latest_results()[0] == row["run_id"]   # back, badged
+    assert "hub names by override" in ui_shared._outcome_chips(row["outcome"])
 
 
 def test_the_floor_knob_reaches_every_floor(console, monkeypatch):
@@ -387,7 +389,7 @@ def test_rerun_carries_the_knobs_but_never_the_override(tmp_path, monkeypatch):
     assert s.jitter == 0.3
     assert s.extra["knobs"] == {"oracle.w": 0.25, "pf.jitter": 0.3}
     assert "knobs_override" not in s.extra
-    assert "never carried over" in srv._status.get("flash", "")
+    assert "never carried over" in ui_state._status.get("flash", "")
 
 
 # --- the retrospective ------------------------------------------------------------------
@@ -475,12 +477,12 @@ def test_the_retro_route_refuses_a_resume_with_other_knobs(tmp_path, monkeypatch
     client.post("/retro/run", data={**base, "knob.oracle.w": "0.3"},
                 follow_redirects=False)
     assert launched == []
-    assert "mix two configurations" in srv._status.get("flash", "")
+    assert "mix two configurations" in ui_state._status.get("flash", "")
     # out of the retro scope, or out of range: refused before anything moves
     for bad in ({"knob.run.weeks_to_drop": "1"}, {"particles": "500"}):
         srv._retro_status.pop(SEASON, None)
         client.post("/retro/run", data={**base, **bad}, follow_redirects=False)
-        assert launched == [] and "Nothing was started" in srv._status["flash"]
+        assert launched == [] and "Nothing was started" in ui_state._status["flash"]
     # the recorded knobs (the one-click resume's JSON field) launch
     srv._retro_status.pop(SEASON, None)
     client.post("/retro/run", data={**base, "knobs": '{"oracle.w": 0.25}'},

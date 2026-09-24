@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import app.core.runs as runs_mod                     # noqa: E402
 from app.core.submit import hub_model_id             # noqa: E402
 from app.ui import server as srv                     # noqa: E402
+from app.ui import shared as ui_shared               # noqa: E402
 
 client = TestClient(srv.app)
 
@@ -48,9 +49,9 @@ def run(tmp_path, monkeypatch):
         {"models": {}, "forecast_date": "2098-01-10", "spec": ""}))
     good = _sub(w, GOOD, "2098-01-10")
     retired = _sub(w, RETIRED, "2098-01-03")
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     yield w, good, retired
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
 
 
 def _download_targets(html: str) -> list:
@@ -129,14 +130,14 @@ def test_a_refused_submission_is_named_on_the_run_page(tmp_path, monkeypatch):
             hub_model_id("analogue"):
                 "submission failed validation:\n  06 h=0: incomplete "
                 "quantile set, 5 of 23 levels"}})
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     html = client.get(f"/runs/{rid}").text
     assert "no file written" in html
     assert "incomplete quantile set, 5 of 23 levels" in html
     assert hub_model_id("analogue") in html
     # and the run itself still reads as a completed run with its PF file
     assert hub_model_id("pf") in html
-    chips = srv._outcome_chips(json.dumps({
+    chips = ui_shared._outcome_chips(json.dumps({
         "submissions": {"a": "x"},
         "submission_errors": {"b": "y"}}))
     assert "1 submissions" in chips and "1 submission refused" in chips

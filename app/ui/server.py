@@ -3,14 +3,24 @@
 Server-rendered (locked decision: FastAPI + templates, no build chain).
 Run:  .venv/bin/uvicorn app.ui.server:app --port 8710
 
+Support modules beside this one (app/ui), read by the tabs below:
+
+  state.py            REPO, startup trace, ENGINES, _status, _last_form,
+                      _engine_lock, the data_mod proxy, the sandbox claim
+  versions.py         build SHA, restart banner, component versions
+  templating.py       templates (the one Jinja env) and its globals, model
+                      names and colors, season month axis
+  shared.py           CSRF guard, request helpers, cached scans, run
+                      labels, outcome chips, latest results, sandbox claim
+                      readers
+  forms.py            the model-settings (knob) form channel, anchor dates
+
 Contents, in file order (each section starts with a `# === ... ===` banner;
 templates under app/ui/templates):
 
-  Bootstrap           app, /static, CSRF guard, Jinja globals, build SHA
-  Shared              model names/colors, season month axis, cached scans
-  Forecast state      ENGINES, _status, _engine_lock, component versions,
-                      GET /api/versions, anchor dates
-  Home                GET /, GET /api/outlook-ready            home.html
+  Bootstrap           app, /static, the CSRF guard's registration,
+                      startup warm, GET /api/versions
+  Home               GET /, GET /api/outlook-ready            home.html
   Methods             GET /methods                             methods.html
   Forecast            GET /forecast                            forecast.html
   Data                GET /data                                data.html
@@ -58,493 +68,60 @@ import sys
 from collections import OrderedDict
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPO))
+from app.ui import state
 
-
-def _trace(msg: str) -> None:
-    """Startup trace: server half of flubnf/cli.py's _trace (same format and
-    FLUBNF_STARTUP_TRACE file, so the two interleave); free when unset."""
-    import os as _os
-    path = _os.environ.get("FLUBNF_STARTUP_TRACE")
-    if not path:
-        return
-    t = time.time()
-    line = (f"{t:.3f} {time.strftime('%H:%M:%S', time.localtime(t))}"
-            f".{int(t * 1000) % 1000:03d} [pid {_os.getpid()} srv] {msg}")
-    try:
-        with open(path, "a") as fh:
-            fh.write(line + "\n")
-    except Exception:
-        pass
-    print(line, file=sys.stderr, flush=True)
-
-
-_trace("import begin (fastapi + app.core next)")
+sys.path.insert(0, str(state.REPO))
+state._trace("import begin (fastapi + app.core next)")
 
 from fastapi import (BackgroundTasks, Depends, FastAPI, Form,  # noqa: E402
                      Request)
 from fastapi.responses import (HTMLResponse, JSONResponse, PlainTextResponse,  # noqa: E402
                                RedirectResponse)
-from fastapi.templating import Jinja2Templates                  # noqa: E402
 
 from app.core import horizons as _hzmod                         # noqa: E402
 from app.core import ttlcache                                   # noqa: E402
-
-
-class _LazyDataMod:
-    """app.core.data, resolved on first attribute use: importing it here
-    would put pandas on the server-import path, which delays the window
-    opening. The first use rebinds the global `data_mod` to the module."""
-
-    def __getattr__(self, name):
-        from app.core import data as real
-        globals()["data_mod"] = real
-        return getattr(real, name)
-
-
-data_mod = _LazyDataMod()
-from app.core import runs as _runs
+from app.core import runs as _runs                              # noqa: E402
 from app.core.runs import (Ledger, RunSpec, fmt_hms,            # noqa: E402
                            lease_workroot, results_html, settings_html,
                            spec_settings, version_pairs)
+from app.core import oracle_text as _oracle_text                # noqa: E402
+from app.ui import shared, templating, versions                 # noqa: E402
+from app.ui.forms import (_default_forecast_date, _int_field,   # noqa: E402
+                          _knob_form, _knob_panel, _knob_raw, _knobs,
+                          _str_field, resolve_anchor)
+from app.ui.shared import (_LOCAL_HOSTNAMES, _archive_dates,    # noqa: E402
+                           _authority_hostname, _back, _console_elapsed,
+                           _flash, _invalidate_scans, _outcome_chips,
+                           _phase, _run_label, _sandbox_live,
+                           _sandbox_live_reason, _scan_archive_dates)
+from app.ui.state import (ENGINES, REPO, _engine_lock,          # noqa: E402
+                          _last_form, _sandbox_status, _status)
+from app.ui.templating import (_member_colors, _name_fn,        # noqa: E402
+                               _names_for_root, _pf_name, _script_json,
+                               _season_colors, templates)
+from app.ui.versions import (RUNNING_SHA, VERSIONS,             # noqa: E402
+                             versions_resolved)
 
-# === Bootstrap: app, static mount, templates, CSRF guard ===
+# === Bootstrap: app, static mount, CSRF guard ===
 app = FastAPI(title="FluBNF")
 from fastapi.staticfiles import StaticFiles
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")),
           name="static")
-templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
-templates.env.globals["pop_flash"] = lambda: _status.pop("flash", None)
-# one wall-time format everywhere the console shows a duration
-templates.env.filters["hms"] = fmt_hms
+# the same-host (CSRF) guard first: the sandbox engine guard, added below,
+# wraps it (Starlette puts the last-added middleware outermost)
+app.middleware("http")(shared._same_host_guard)
 
-#: Hostnames a state-changing request may name. Host/Origin are what a
-#: cross-site form-POST or DNS-rebinding page cannot forge. "testserver" is
-#: Starlette's TestClient (no dot, so never a public DNS name).
-_LOCAL_HOSTNAMES = {"localhost", "127.0.0.1", "::1", "testserver"}
-
-
-def _authority_hostname(authority: str) -> str:
-    """Hostname of a Host header value or an Origin URL: lowercased, port
-    and IPv6 brackets stripped, "" when it cannot be parsed (and "" is
-    never a local hostname, so unparseable means refused)."""
-    from urllib.parse import urlsplit
-    try:
-        host = urlsplit(authority if "//" in authority
-                        else "//" + authority).hostname
-    except ValueError:
-        return ""
-    return host or ""
-
-
-@app.middleware("http")
-async def _same_host_guard(request: Request, call_next):
-    """CSRF guard for a cookie-less loopback tool: POST/PUT/DELETE must carry
-    a localhost Host and, if present, a localhost Origin. GET stays open
-    (reports, pywebview, polls); every mutating control is a POST."""
-    if request.method in ("POST", "PUT", "DELETE"):
-        if (_authority_hostname(request.headers.get("host", ""))
-                not in _LOCAL_HOSTNAMES):
-            return PlainTextResponse(
-                "Refused: the Host header does not name localhost.\n",
-                status_code=403)
-        origin = request.headers.get("origin")
-        if (origin is not None
-                and _authority_hostname(origin) not in _LOCAL_HOSTNAMES):
-            return PlainTextResponse(
-                "Refused: cross-origin request, the Origin header does "
-                "not name localhost.\n", status_code=403)
-    return await call_next(request)
-
-
-def _script_json(obj) -> str:
-    """JSON for an inline <script> block marked | safe: "<" becomes \\u003c
-    so no value can close the script element. Every *_json template value
-    goes through here."""
-    import json as _json
-    return _json.dumps(obj).replace("<", "\\u003c")
-
-
-def _platform() -> str:
-    """sys.platform behind a seam tests can patch (patching sys.platform
-    itself breaks shutil.which and more)."""
-    return sys.platform
-
-
-def _engine_setup_hint():
-    """HTML clause telling this machine's user how to enable the PF engine.
-
-    Windows gets setup.ps1 + docs/WINDOWS.md (no setup_engine.sh twin: the
-    PyBNF fork is private). Resolved per render via _platform() so tests can
-    vary it. Not for methods.html: site_build publishes that page, and a
-    platform-specific string would bake in the builder's platform.
-    """
-    from markupsafe import Markup
-    if _platform() == "win32":
-        return Markup(
-            "run <code>powershell -NoProfile -ExecutionPolicy Bypass -File "
-            "setup.ps1</code>, which reports what is still missing; the "
-            "engine also needs the private PyBNF fork, so read "
-            "<code>docs\\WINDOWS.md</code> first")
-    if _platform() == "darwin":
-        return Markup("double-click <code>SetupEngine.command</code> and "
-                      "relaunch the console")
-    return Markup("run <code>./setup_engine.sh</code> and relaunch the console")
-
-
-templates.env.globals["engine_setup_hint"] = _engine_setup_hint
-
-# === Bootstrap: build SHA and restart banner ===
-def _repo_sha(short: bool = True) -> str:
-    import subprocess
-    try:
-        r = subprocess.run(["git", "rev-parse", "--short" if short else "HEAD",
-                            "HEAD"], capture_output=True, text=True, timeout=5,
-                           cwd=str(Path(__file__).resolve().parents[2]))
-        return r.stdout.strip() if r.returncode == 0 else ""
-    except Exception:
-        return ""
-
-
-RUNNING_SHA = _repo_sha()   # the code THIS process actually executes
-
-
-@ttlcache.ttl_cache(ttl_s=10.0)
-def _repo_sha_on_disk() -> str:
-    """Cached HEAD (10 s): the restart banner reads it on every render, and
-    a git subprocess per page (~20 ms) was the largest fixed render cost."""
-    return _repo_sha()
-
-
-def _restart_needed() -> bool:
-    """True when a pull landed but this process still runs the old build
-    (templates and static files reload; server logic does not)."""
-    sha = _repo_sha_on_disk()
-    return bool(sha and RUNNING_SHA and sha != RUNNING_SHA)
-
-
-templates.env.globals["running_sha"] = lambda: RUNNING_SHA
-templates.env.globals["restart_needed"] = _restart_needed
-# one settings/results renderer for progress cards, run page and both report
-# exports (app/core/runs.py), so their wording cannot diverge
-templates.env.globals["settings_html"] = settings_html
-templates.env.globals["results_html"] = results_html
-
-
-# === Shared: model names, relWIS/Oracle wording, member and season colors ===
-def _model_names() -> dict:
-    """The one model-name map (player.js JSON literal, parsed by
-    report_season.py); every surface that prints a model name reads it."""
-    from app.core.report_season import MODEL_NAMES
-    return MODEL_NAMES
-
-
-templates.env.globals["model_name"] = lambda m: _model_names().get(m, m)
-
-
-def _names_for_root(root) -> dict:
-    """Model-name map for one season tree: pf is "Particle filter alone"
-    unless the tree carries the Oracle step (older records store the bare
-    filter under pf). One implementation, report_season.names_for_root, so
-    season page, index and exported report agree."""
-    from app.core import report_season
-    try:
-        return report_season.names_for_root(root, _model_names())
-    except Exception:
-        from app.core.site_build import PF_LABEL_FILTER
-        return dict(_model_names(), pf=PF_LABEL_FILTER)
-
-
-def _pf_name(root) -> str:
-    """pf's name on one season tree (see _names_for_root)."""
-    return _names_for_root(root).get("pf", "pf")
-
-
-def _name_fn(names: dict):
-    """model_name over one tree's names; passed in a page's context it
-    shadows the global for that render."""
-    return lambda m: names.get(m, m)
-
-
-# The one relWIS convention sentence (relwis.PUBLISHED_CONVENTION_NOTE) and the
-# Oracle SIHRS wording (app/core/oracle_text): globals so home, Methods, the
-# public site (rendered through this env) and reports share one copy.
-from app.core.relwis import PUBLISHED_CONVENTION_NOTE     # noqa: E402
-
-templates.env.globals["relwis_convention_note"] = PUBLISHED_CONVENTION_NOTE
-
-from app.core import oracle_text as _oracle_text              # noqa: E402
-
-templates.env.globals["oracle_text"] = _oracle_text
-
-
-def _member_colors() -> dict:
-    """The one member-color map (player.js JSON literal, parsed by
-    report_v2.py). Consumers draw the legacy ensemble with --gold on light
-    grounds."""
-    from app.core.report_v2 import model_colors
-    return model_colors()
-
-
-def _season_colors() -> list:
-    """The one season-line palette (player.js SEASON_COLORS, parsed by
-    report_v2.season_colors); already CV-safe, so never remapped."""
-    from app.core.report_v2 import season_colors
-    return season_colors()
-
-
-# === Shared: season month axis (the one source of month-boundary week offsets) ===
-#: Season month lengths from August, non-leap (invisible at week resolution).
-#: Every season-week axis derives its month ticks from this table.
-_MONTH_DAYS = (("Aug", 31), ("Sep", 30), ("Oct", 31), ("Nov", 30),
-               ("Dec", 31), ("Jan", 31), ("Feb", 28), ("Mar", 31),
-               ("Apr", 30), ("May", 31), ("Jun", 30), ("Jul", 31))
-
-#: calendar month number -> label, in the season's own order
-_MON_NAME = {i % 12 + 1: name
-             for i, (name, _) in enumerate(_MONTH_DAYS, start=7)}
-
-
-def _season_months() -> list:
-    """[(label, weeks since August 1)] for each month start of the season."""
-    out, day = [], 0
-    for name, ndays in _MONTH_DAYS:
-        out.append((name, round(day / 7.0, 2)))
-        day += ndays
-    return out
-
-
-SEASON_MONTHS = _season_months()
-templates.env.globals["season_months"] = SEASON_MONTHS
-
-
-def _season_week_name(week: float) -> str:
-    """A week offset from August 1 as calendar language ('early Jan' for
-    week 22)."""
-    day = int(round(week * 7)) % 365
-    for name, ndays in _MONTH_DAYS:
-        if day < ndays:
-            third = ("early" if day < ndays / 3
-                     else "mid" if day < 2 * ndays / 3 else "late")
-            return f"{third} {name}"
-        day -= ndays
-    return ""
-
-
-templates.env.globals["season_week_name"] = _season_week_name
-
-
-def _month_ticks_for_dates(dates) -> list:
-    """[(index, month label)] at every month change across ordered ISO dates
-    (ticks for a date-indexed axis)."""
-    out, prev = [], None
-    for i, d in enumerate(dates):
-        mm = str(d)[5:7]
-        if prev is not None and mm != prev and mm.isdigit():
-            out.append((i, _MON_NAME.get(int(mm), "")))
-        prev = mm
-    return out
-
-
-templates.env.globals["month_ticks_for_dates"] = _month_ticks_for_dates
-
-
-def _harmonic_fig(eps: float = 0.35, phis=(22.0,), x0: float = 62.0,
-                  x1: float = 540.0, y_bot: float = 170.0, y_top: float = 20.0,
-                  r_lo: float = 0.55, r_hi: float = 1.55, n: int = 104) -> dict:
-    """Geometry for the (illustrative) seasonal-harmonic figure in diagrams.html.
-
-    Curve: exp(eps * cos(2*pi*(t - phi)/52)), t in [0, 52] weeks since Aug 1,
-    weeks mapped onto [x0, x1] and the rate band [r_lo, r_hi] onto
-    [y_bot, y_top]. Returns one SVG path per phi, the pixel rows of exp(+eps),
-    exp(-eps) and 1.0, each peak's x, and quarterly month ticks from
-    SEASON_MONTHS closed by the wrap-around August at week 52.
-    """
-    import math
-
-    def y(rel: float) -> float:
-        return y_bot + (y_top - y_bot) * (rel - r_lo) / (r_hi - r_lo)
-
-    def x(t: float) -> float:
-        return x0 + (x1 - x0) * t / 52.0
-
-    paths = []
-    for phi in phis:
-        pts = []
-        for i in range(n + 1):
-            t = 52.0 * i / n
-            rel = math.exp(eps * math.cos(2.0 * math.pi * (t - phi) / 52.0))
-            pts.append(("M" if i == 0 else "L") + f"{x(t):.1f},{y(rel):.1f}")
-        paths.append(" ".join(pts))
-    return {"paths": paths,
-            "y_hi": round(y(math.exp(eps)), 1),
-            "y_lo": round(y(math.exp(-eps)), 1),
-            "y_one": round(y(1.0), 1),
-            "peaks": [round(x(p), 1) for p in phis],
-            "ticks": ([(m, round(x(wk), 1)) for m, wk in SEASON_MONTHS[::3]]
-                      + [("Aug", round(x(52.0), 1))])}
-
-
-templates.env.globals["harmonic_fig"] = _harmonic_fig
-
-# === Forecast console state ===
-# LEGACY names: "ensemble" is the blend retired 2026-09-22 and "amcmc" the
-# sampler removed 2026-09-07; readers keep old rows/results, nothing writes them.
-ENGINES = ("all", "pf", "analogue")  # "all" = pf + analogue
-_status: dict = {"running": None, "log": []}
-_last_form: dict = {}
-
-#: ONE lock around every engine busy check and the claim it protects (routes
-#: run on a threadpool; an unlocked check-then-claim let two submits both
-#: start). Held for check+claim only, never while a run executes. Server-side
-#: busy checks mirror /api/busy: the client guard is convenience only.
-_engine_lock = threading.Lock()
 
 #: Statuses offered the one-click re-run. Console fits hold no checkpoint, so
 #: it is a FRESH run with the recorded settings (never worded "resume").
 RERUN_STATUSES = ("stopped", "error", "failed", "interrupted", "partial")
 
-# === Component versions and startup warm ===
-#: pybnf/bngsim probe run by the engine venv's interpreter. Like the generated
-#: runners (pf.py _RUNNER, retro.py _RETRO_RUNNER) it puts the PyBNF checkout
-#: first on sys.path, and reads __version__ from the imported pybnf.py (the
-#: fork runs from a checkout, not pip); importlib.metadata is the fallback.
-_VERSION_PROBE = '''
-import json, os, re, sys
-sys.path.insert(0, %r)
-from importlib.metadata import version
-d = {}
-for p in ("pybnf", "bngsim"):
-    try:
-        d[p] = version(p)
-    except Exception:
-        d[p] = "not installed"
-try:
-    import pybnf
-    src = open(os.path.join(os.path.dirname(pybnf.__file__), "pybnf.py")).read()
-    m = re.search(r'^__version__\\s*=\\s*"(.*)"', src, re.M)
-    if m:
-        d["pybnf"] = m.group(1)
-except Exception:
-    pass
-print(json.dumps(d))
-'''
-
-
-def _component_versions() -> dict:
-    """Versions of the components named in user-facing copy: console
-    packages via importlib.metadata, pybnf/bngsim via _VERSION_PROBE,
-    BioNetGen from the VERSION file beside BNG2.pl; 'not installed' when
-    unresolvable.
-
-    Slow (~1 s, engine-venv subprocess): never call at import. _warm_versions
-    runs it on the warm thread; until then VERSIONS serves the persisted
-    snapshot or pending markers, and pages fill in via /api/versions."""
-    from importlib.metadata import PackageNotFoundError, version
-    out = {}
-    for pkg in ("fastapi", "jinja2", "plotly", "pandas", "numpy"):
-        try:
-            out[pkg] = version(pkg)
-        except PackageNotFoundError:
-            out[pkg] = "not installed"
-    out["bionetgen"] = "not installed"
-    try:
-        from flubnf.settings import BNG
-        vf = Path(BNG).parent / "VERSION"
-        if vf.is_file():
-            out["bionetgen"] = vf.read_text().strip()
-        elif Path(BNG).exists():
-            out["bionetgen"] = "installed"
-    except Exception:
-        pass
-    # Perl: BNG2.pl needs it (without it every location fails at preparation)
-    import shutil as _shutil
-    out["perl"] = _shutil.which("perl") or "not installed"
-    out["pybnf"] = out["bngsim"] = "not installed"
-    try:
-        import json
-        import subprocess
-        from flubnf.settings import PY_ENGINE, PYBNF
-        if Path(PY_ENGINE).exists():
-            r = subprocess.run(
-                [str(PY_ENGINE), "-c", _VERSION_PROBE % (str(PYBNF),)],
-                capture_output=True, text=True, timeout=15)
-            out.update(json.loads(r.stdout.strip() or "{}"))
-    except Exception:
-        pass
-    return out
-
-
-#: unresolved-version marker; pages poll /api/versions while any remains
-VERSION_PENDING = "resolving…"
-
-#: last launch's resolved probe, so a restart skips the pending markers
-_VERSIONS_SNAPSHOT = (Path(__file__).resolve().parents[1]
-                      / "state" / "component_versions.json")
-
-_VERSION_KEYS = ("fastapi", "jinja2", "plotly", "pandas", "numpy",
-                 "bionetgen", "perl", "pybnf", "bngsim")
-
-
-def _versions_initial() -> dict:
-    """VERSIONS at import: the persisted snapshot, else pending markers. The
-    warm probe updates this dict IN PLACE (templates hold the reference)."""
-    import json as _json
-    out = {k: VERSION_PENDING for k in _VERSION_KEYS}
-    try:
-        snap = _json.loads(_VERSIONS_SNAPSHOT.read_text())
-        if isinstance(snap, dict):
-            out.update({k: str(v) for k, v in snap.items()
-                        if k in _VERSION_KEYS})
-    except Exception:
-        pass
-    return out
-
-
-VERSIONS = _versions_initial()
-
-
-def versions_resolved() -> bool:
-    return VERSION_PENDING not in VERSIONS.values()
-
-
-def _engine_versions_for_ledger(engines: str) -> dict:
-    """engine_versions for a new ledger row: {"engines": ...} (the key
-    historical rows hold) plus each resolved engine component version.
-    Pending/'not installed' are probe states, never recorded as versions."""
-    out = {"engines": engines}
-    for key in ("pybnf", "bngsim", "bionetgen"):
-        v = VERSIONS.get(key)
-        if v and v not in (VERSION_PENDING, "not installed", "installed"):
-            out[key] = str(v)
-    return out
-
-
-def _warm_versions() -> None:
-    """The real probe, off the first-paint path: resolve, update VERSIONS in
-    place, persist the snapshot for the next launch. Never raises."""
-    import json as _json
-    try:
-        VERSIONS.update(_component_versions())
-        _VERSIONS_SNAPSHOT.parent.mkdir(parents=True, exist_ok=True)
-        tmp = _VERSIONS_SNAPSHOT.with_suffix(".json.tmp")
-        tmp.write_text(_json.dumps(VERSIONS))
-        import os as _os
-        _os.replace(tmp, _VERSIONS_SNAPSHOT)
-    except Exception:
-        pass
-
-
-#: set once the warm pass finished its outlook computation (success or not)
-_WARM_DONE = __import__("threading").Event()
-
-
+# === Startup warm (the version probe itself: app/ui/versions.py) ===
 def _outlook_ready() -> bool:
     """Whether home can render its outlook inline without paying the first
     science import: warm pass done, or pandas already loaded. False only on
     a cold first paint (home then serves the preparing silhouette)."""
-    return _WARM_DONE.is_set() or "pandas" in sys.modules
+    return state._WARM_DONE.is_set() or "pandas" in sys.modules
 
 
 def _start_background_warm() -> None:
@@ -556,33 +133,38 @@ def _start_background_warm() -> None:
 
     def _warm():
         t0 = time.perf_counter()
-        _trace("warm: thread begin (versions probe)")
-        _warm_versions()
-        _trace(f"warm: versions done at +{time.perf_counter() - t0:.2f}s")
+        state._trace("warm: thread begin (versions probe)")
+        versions._warm_versions()
+        state._trace(
+            f"warm: versions done at +{time.perf_counter() - t0:.2f}s")
         try:
-            templates.env.get_template("home.html")     # compile once, here
+            # compile once, here
+            templating.templates.env.get_template("home.html")
         except Exception:
             pass
-        _trace(f"warm: template done at +{time.perf_counter() - t0:.2f}s")
+        state._trace(
+            f"warm: template done at +{time.perf_counter() - t0:.2f}s")
         try:
-            rid, _res = _latest_results()
+            rid, _res = shared._latest_results()
             _outlook_block(rid)
         except Exception:
             pass
         finally:
-            _WARM_DONE.set()
-        _trace(f"warm: outlook done at +{time.perf_counter() - t0:.2f}s")
+            state._WARM_DONE.set()
+        state._trace(
+            f"warm: outlook done at +{time.perf_counter() - t0:.2f}s")
         # pre-fill the latest vintage frame for the Forecast tab's first click
         try:
-            vs = data_mod.vintages()
+            vs = state.data_mod.vintages()
             if vs:
-                _vintage_frame(str(data_mod.vintage_path(vs[-1])))
-            templates.env.get_template("forecast.html")
+                _vintage_frame(str(state.data_mod.vintage_path(vs[-1])))
+            templating.templates.env.get_template("forecast.html")
             # model-name/color maps ride the report modules (~0.6 s import)
             from app.core import report_season, report_v2   # noqa: F401
         except Exception:
             pass
-        _trace(f"warm: forecast done at +{time.perf_counter() - t0:.2f}s")
+        state._trace(
+            f"warm: forecast done at +{time.perf_counter() - t0:.2f}s")
 
     threading.Thread(target=_warm, daemon=True,
                      name="flubnf-startup-warm").start()
@@ -595,49 +177,7 @@ def api_versions():
     return {"versions": dict(VERSIONS), "resolved": versions_resolved()}
 
 
-# === Forecast: anchor dates ===
-def resolve_anchor(day: str, vintages=None):
-    """(anchor_vintage, why) for any typed date; ONE definition for the
-    form's anchor line and the run, so they cannot disagree.
-
-    A non-Saturday snaps back to Saturday, then to the newest archived
-    vintage. A typed Saturday is returned as-is even when its vintage is
-    missing (the caller refuses it rather than re-aiming).
-    """
-    from datetime import date as _d, timedelta as _td
-    try:
-        d = _d.fromisoformat(day)
-    except (ValueError, TypeError):
-        return None, ""
-    if vintages is None:
-        try:
-            vintages = data_mod.vintages()
-        except Exception:
-            vintages = []
-    if d.weekday() == 5:
-        return day, "typed"
-    sat = (d - _td(days=(d.weekday() - 5) % 7)).isoformat()
-    earlier = [v for v in vintages if v <= sat]
-    if earlier and earlier[-1] != sat:
-        return earlier[-1], "not-published-yet"
-    return (earlier[-1] if earlier else sat), "snapped"
-
-
-def _default_forecast_date() -> str:
-    """Latest Saturday, clamped to the latest archived vintage (the hub
-    stops publishing off-season)."""
-    import datetime as dt
-    d = dt.date.today()
-    sat = str(d - dt.timedelta(days=(d.weekday() - 5) % 7))
-    vs = data_mod.vintages()
-    return min(sat, vs[-1]) if vs else sat
-
-
-# === Shared: cached filesystem scans ===
-# Short-TTL caches (app/core/ttlcache.py) for directory scans repeated per
-# render; keyed by path so a switched state root never serves another's
-# answer. Every state-changing action calls _invalidate_scans().
-
+# === Cached scan: completed retro weeks (the other scans: shared.py) ===
 @ttlcache.ttl_cache()
 def _weeks_done(root: Path) -> int:
     """Completed weeks in a season tree (stored samples.json count): the
@@ -648,27 +188,6 @@ def _weeks_done(root: Path) -> int:
         return len(retro.season_sample_files(root))
     except OSError:
         return 0
-
-
-@ttlcache.ttl_cache()
-def _scan_results(workroots: Path) -> list:
-    """results.json paths under a workroots directory, newest run first."""
-    try:
-        return sorted(Path(workroots).glob("*/results.json"), reverse=True)
-    except OSError:
-        return []
-
-
-def _workroot_results() -> list:
-    """Workroot results.json paths, newest first (scan cached, files read
-    fresh by the caller)."""
-    from app.core.runs import APP_STATE
-    return _scan_results(APP_STATE / "workroots")
-
-
-def _invalidate_scans() -> None:
-    """Drop every cached scan; state-changing actions call this."""
-    ttlcache.clear_all()
 
 
 @app.get("/favicon.ico", include_in_schema=False)
@@ -936,15 +455,15 @@ def _outlook_block(rid: str | None) -> dict:
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     _t0 = time.perf_counter()
-    _trace("home: request begin")
+    state._trace("home: request begin")
     try:
-        rid, res = _latest_results()
+        rid, res = shared._latest_results()
     except Exception:
         rid, res = None, None
     pending = not _outlook_ready()
     if pending:
         # give the warm pass 1.5 s so a warm machine paints complete
-        _WARM_DONE.wait(1.5)
+        state._WARM_DONE.wait(1.5)
         pending = not _outlook_ready()
     if pending:
         # truly cold start: silhouette + preparing note now; the page polls
@@ -957,8 +476,8 @@ def home(request: Request):
               "label": "", "approx": False, "toggle": ""}
     else:
         ob = _outlook_block(rid)
-    _trace(f"home: outlook ready at +{time.perf_counter() - _t0:.2f}s "
-           f"(pending={pending}), rendering")
+    state._trace(f"home: outlook ready at +{time.perf_counter() - _t0:.2f}s "
+                 f"(pending={pending}), rendering")
     return templates.TemplateResponse(request, "home.html", {
         "active": "Home", "map_svg": ob["map_svg"],
         "outlook_date": ob["outlook_date"],
@@ -1017,15 +536,15 @@ def forecast_page(request: Request, source: str = ""):
                                 "locations": ["all"], "engine": "all",
                                 "weeks_to_drop": 0, "weeks_to_nowcast": 0,
                                 "replicates": 3, "members": 2, "season_start": ""}
-    rid, res = _latest_results()
+    rid, res = shared._latest_results()
     # data panel: latest-vintage series for the selected locations (visible
     # before any run); seeded with US national, the panel's default
     import json as _json
     sel = ["US (national)"] + [l for l in form["locations"] if l != "all"]
     series = {}
     try:
-        vs = data_mod.vintages()
-        tdf = _vintage_frame(str(data_mod.vintage_path(vs[-1])))
+        vs = state.data_mod.vintages()
+        tdf = _vintage_frame(str(state.data_mod.vintage_path(vs[-1])))
         n2f_ = dict(zip(_l.location_name, _l.location.str.zfill(2)))
         n2f_["US (national)"] = "US"
         for loc in sel[:8]:
@@ -1067,7 +586,7 @@ def forecast_page(request: Request, source: str = ""):
     # date popup fails in some webviews); str() because the list is
     # serialised into the page and date objects would break the render
     try:
-        vintage_dates = [str(v) for v in reversed(data_mod.vintages())]
+        vintage_dates = [str(v) for v in reversed(state.data_mod.vintages())]
     except Exception:
         vintage_dates = []
     _anchor, _ = resolve_anchor(form.get("forecast_date", ""), vintage_dates)
@@ -1082,7 +601,7 @@ def forecast_page(request: Request, source: str = ""):
         "knob_panel": _knob_panel("forecast", form),
         "elapsed0": _console_elapsed(),
         "series_json": _script_json(series), "fanq_json": _script_json(fanq),
-        "model_names_json": _script_json(_model_names()),
+        "model_names_json": _script_json(templating._model_names()),
         "member_colors_json": _script_json(_member_colors()),
         "season_colors_json": _script_json(_season_colors()),
         "run_obs_json": _script_json((res or {}).get("observed", {})),
@@ -1109,17 +628,17 @@ def _vintage_frame(path: str):
 
 @ttlcache.ttl_cache(ttl_s=VINTAGE_TTL_S)
 def _vintage_summary(path: str, date: str) -> dict:
-    return data_mod.vintage_summary(date)
+    return state.data_mod.vintage_summary(date)
 
 
 @ttlcache.ttl_cache(ttl_s=VINTAGE_TTL_S)
 def _vintage_locations(path: str, date: str) -> tuple:
-    return tuple(data_mod.vintage_location_names(date))
+    return tuple(state.data_mod.vintage_location_names(date))
 
 
 @ttlcache.ttl_cache(ttl_s=VINTAGE_TTL_S)
 def _vintage_series(path: str, date: str, loc: str) -> dict:
-    return data_mod.vintage_series(date, loc)
+    return state.data_mod.vintage_series(date, loc)
 
 
 def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
@@ -1127,7 +646,7 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
     vintage browser's selection. Read-only; bad selections fall back to the
     defaults with a note, never an error page."""
     import re as _re
-    vs = data_mod.vintages()
+    vs = state.data_mod.vintages()
     ctx = {"active": "Data", "latest_vintage": vs[-1] if vs else "none",
            "n_vintages": len(vs), "freshness": freshness,
            "latest": None, "vintages": list(reversed(vs)),
@@ -1145,7 +664,7 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
     latest = vs[-1]
     try:
         ctx["latest"] = _vintage_summary(
-            str(data_mod.vintage_path(latest)), latest)
+            str(state.data_mod.vintage_path(latest)), latest)
     except Exception as e:
         ctx["view_note"] = ("Could not read the latest vintage "
                             f"({type(e).__name__}). The archive may still "
@@ -1157,7 +676,7 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
         ctx["view_note"] = (f"No archived vintage for {vintage}; showing "
                             f"the latest, {latest}.")
     try:
-        pv = str(data_mod.vintage_path(sel_v))
+        pv = str(state.data_mod.vintage_path(sel_v))
         names = list(_vintage_locations(pv, sel_v))
         sel_loc = loc if loc in names else (names[0] if names else "")
         if loc and sel_loc != loc:
@@ -1735,7 +1254,7 @@ def data_pull():
                    "nothing was pulled. Try again once fitting starts or "
                    "the run finishes.")
             return RedirectResponse("/data", status_code=303)
-    ok, msg = data_mod.pull_hub()
+    ok, msg = state.data_mod.pull_hub()
     _invalidate_scans()
     if not ok:
         _flash("Updating the hub clone FAILED: "
@@ -1743,7 +1262,7 @@ def data_pull():
                + ". The local archive is unchanged; check the network and "
                "the hub clone, then try again.")
         return RedirectResponse("/data", status_code=303)
-    vs = data_mod.vintages()
+    vs = state.data_mod.vintages()
     from flubnf.settings import HUB as _H
     comp = (" · comparators: baseline "
             + ("ok" if (_H / "model-output/FluSight-baseline").is_dir() else "missing")
@@ -1755,30 +1274,9 @@ def data_pull():
 
 @app.post("/freshness", response_class=HTMLResponse)
 def freshness(request: Request):
-    f = data_mod.check_freshness()
+    f = state.data_mod.check_freshness()
     return templates.TemplateResponse(request, "data.html",
                                       _data_context(freshness=f))
-
-
-# === Request helpers ===
-def _phase(msg):
-    _status["phase"] = msg
-
-
-def _flash(msg: str) -> None:
-    """Notice for the next page the user sees (also appended to the log).
-    Unconsumed messages join rather than overwrite."""
-    prev = _status.get("flash")
-    _status["flash"] = f"{prev}  {msg}" if prev and msg not in prev else msg
-    _status["log"].append(msg)
-
-
-def _back(request: Request, fallback: str) -> RedirectResponse:
-    """Redirect back to the posting page (validated local path)."""
-    from urllib.parse import urlsplit
-    path = urlsplit(request.headers.get("referer", "")).path
-    ok = path.startswith("/") and not path.startswith("//")
-    return RedirectResponse(path if ok else fallback, status_code=303)
 
 
 # === Forecast pipeline: param harvest, sleep guard, weekly report, _run_all ===
@@ -1990,11 +1488,11 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
     # past the forecast origin, framed to the 4-week horizon
     settled_by_loc = {}
     try:
-        _vs_all = data_mod.vintages()
+        _vs_all = state.data_mod.vintages()
         if _vs_all and _vs_all[-1] > spec.forecast_date:
             _lim = (_dd.fromisoformat(spec.forecast_date)
                     + _tdd(days=28)).isoformat()
-            ldf = pd.read_csv(data_mod.vintage_path(_vs_all[-1]),
+            ldf = pd.read_csv(state.data_mod.vintage_path(_vs_all[-1]),
                               dtype={"location": str})
             ldf["location"] = ldf["location"].str.zfill(2)
             for loc in spec.locations:
@@ -2122,8 +1620,9 @@ def _run_all(spec: RunSpec) -> None:
     try:
         # setup INSIDE the try so a failed insert/lease releases the claim;
         # the row's engine_versions (not this process's) is "Produced by"
-        run_id = ledger.open_run(spec, Path("pending"),
-                                 _engine_versions_for_ledger("pf,analogue"))
+        run_id = ledger.open_run(
+            spec, Path("pending"),
+            versions._engine_versions_for_ledger("pf,analogue"))
         workroot = lease_workroot(run_id)
         ledger.set_workroot(run_id, workroot)   # the row must name the real one
         _status["running"] = f"all:{run_id}"
@@ -2499,22 +1998,6 @@ def _archive_run(workroot: Path, forecast_date: str) -> str:
     return str(arch)
 
 
-@ttlcache.ttl_cache()
-def _scan_archive_dates(root: Path) -> list:
-    import re
-    root = Path(root)
-    if not root.is_dir():
-        return []
-    return sorted(p.name for p in root.iterdir()
-                  if p.is_dir() and re.fullmatch(r"\d{4}-\d{2}-\d{2}", p.name))
-
-
-def _archive_dates() -> list:
-    """Forecast archive dates for the Output page, cached by directory."""
-    from app.core.runs import APP_STATE
-    return _scan_archive_dates(APP_STATE / "archive")
-
-
 def _registered_model_ids() -> set:
     """Hub model identities this project may write (directory names), from
     submit.MODEL_ABBR (checked against model-metadata/ by the suite)."""
@@ -2765,8 +2248,9 @@ def api_series(request: Request, locs: str = "", source: str = ""):
         _l = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
         n2f_ = dict(zip(_l.location_name, _l.location.str.zfill(2)))
         n2f_["US (national)"] = "US"
-        vs = data_mod.vintages()
-        tdf = pd.read_csv(data_mod.vintage_path(vs[-1]), dtype={"location": str})
+        vs = state.data_mod.vintages()
+        tdf = pd.read_csv(state.data_mod.vintage_path(vs[-1]),
+                          dtype={"location": str})
         tdf["location"] = tdf["location"].str.zfill(2)
         for loc in sel:
             g = tdf[tdf.location == n2f_.get(loc, "")].sort_values("date")
@@ -2776,16 +2260,6 @@ def api_series(request: Request, locs: str = "", source: str = ""):
     except Exception:
         pass
     return out
-
-
-def _console_elapsed(now: float | None = None) -> float | None:
-    """Seconds since the console run claimed its slot (setup counts), or
-    None when idle."""
-    import time as _time
-    t0 = _status.get("started_utc")
-    if not t0 or not _status.get("running"):
-        return None
-    return max(0.0, (now if now is not None else _time.time()) - float(t0))
 
 
 @app.get("/api/progress")
@@ -2826,23 +2300,6 @@ def api_progress():
     return out
 
 
-# === Shared: run labels, outcome chips, latest results ===
-def _run_label(run_id: str, spec_json: str = "", tag: bool = True) -> str:
-    """'2026-07-04 · 08-18 09:31' (forecast date · run time). Research runs
-    get ' · research' unless tag=False (pages with a styled badge)."""
-    import json as _json
-    from app.core.runs import is_research
-    when = f"{run_id[4:6]}-{run_id[6:8]} {run_id[9:11]}:{run_id[11:13]}"
-    suffix = " · research" if (tag and is_research(spec_json)) else ""
-    if tag and _runs.is_modified(spec_json):
-        suffix += " · modified settings"
-    try:
-        s = _json.loads(spec_json)
-        return f"{s.get('forecast_date','run')} · {when}{suffix}"
-    except Exception:
-        return when + suffix
-
-
 def _run_extra(members: int, mode: str, aux: str | None = None,
                oracle: str | None = None) -> dict:
     """spec.extra for a console run: form mode, members=3 research flag,
@@ -2868,87 +2325,6 @@ def _run_extra(members: int, mode: str, aux: str | None = None,
                              f"research run) or absent, not {oracle!r}")
         extra["oracle"] = "none"
     return extra
-
-
-# --- model knobs (app/core/knobs.py) on the run and retro forms ---
-class _LazyKnobs:
-    """app.core.knobs on first use: it imports the engines, which the app's
-    start must not wait for."""
-    FORM_PREFIX = "knob."          # held equal to knobs.FORM_PREFIX by tests
-
-    def __getattr__(self, name):
-        from app.core import knobs
-        return getattr(knobs, name)
-
-
-_knobs = _LazyKnobs()
-
-
-async def _knob_form(request: Request) -> dict:
-    """The panel's `knob.<key>` fields ({key: raw}); the parsed form is
-    cached by Starlette, so the route's own Form fields still read it."""
-    try:
-        form = await request.form()
-    except Exception:
-        return {}
-    return {k[len(_knobs.FORM_PREFIX):]: v for k, v in form.multi_items()
-            if k.startswith(_knobs.FORM_PREFIX) and isinstance(v, str)}
-
-
-def _str_field(v) -> str:
-    """A form value, or '' for a FastAPI default object (a direct call)."""
-    return v if isinstance(v, str) else ("" if v is None or not isinstance(
-        v, (int, float)) else str(v))
-
-
-def _int_field(v, default: int = 0) -> int:
-    try:
-        return int(v)
-    except (TypeError, ValueError):
-        return default
-
-
-def _knob_panel(scope: str, form: dict | None = None,
-                **panel_kw) -> dict | None:
-    """The Model settings panel's context (knobs.panel) with the values a
-    form last held: the knob fields, then the older field names. None
-    (no panel) if the registry cannot be read, so a page still renders.
-    `panel_kw` passes through to knobs.panel (a dataset's member names)."""
-    form = form or {}
-    vals = {k: str(v) for k, v in (form.get("knobs") or {}).items()}
-    for fld, key in _knobs.LEGACY_FIELDS.items():
-        v = form.get(fld)
-        if v is None or v == "":
-            continue
-        if fld == "drop_same_day":
-            v = "1" if _int_field(v) else "0"
-        vals.setdefault(key, str(v))
-    try:
-        return _knobs.panel(scope, vals, **panel_kw)
-    except Exception:
-        return None
-
-
-def _knob_raw(fields, knobs_json) -> dict:
-    """The knob channel's raw values: the JSON field (one-click resume,
-    re-run) under the panel's own fields. A malformed JSON field raises
-    KnobError, so the route refuses rather than guessing."""
-    raw: dict = {}
-    text = _str_field(knobs_json).strip()
-    if text:
-        import json as _json
-        try:
-            got = _json.loads(text)
-        except ValueError:
-            raise _knobs.KnobError("the recorded model settings are not "
-                                   "readable JSON") from None
-        if not isinstance(got, dict):
-            raise _knobs.KnobError("the recorded model settings are not a "
-                                   "dictionary")
-        raw.update(got)
-    if isinstance(fields, dict):
-        raw.update({k: v for k, v in fields.items() if str(v).strip()})
-    return raw
 
 
 def _knob_run_parts(kraw: dict, engine: str, forecast_date: str,
@@ -2984,114 +2360,10 @@ def _spec_mode(d: dict) -> str:
     return m if m in ("realtime", "vintage") else "realtime"
 
 
-def relwis_chip(value, cells=None, member: str = "PF") -> str:
-    """The one relWIS rendering outside a scores table, e.g. 'PF relWIS
-    <span class="relwis bad">4.067</span> vs FluSight baseline, ratio of
-    sums (2 cells)'. Always names convention and baseline (the CDC's
-    pairwise quantity is not comparable). Markup from fixed phrases and
-    numbers only."""
-    try:
-        v = float(value)
-    except (TypeError, ValueError):
-        return ""
-    cov = ""
-    if cells:
-        n = int(cells)
-        cov = f" ({n} cell{'s' if n != 1 else ''})"
-    return (f'{member} relWIS <span class="relwis '
-            f'{"ok" if v < 1 else "bad"}">{v:.3f}</span>'
-            f' vs FluSight baseline, ratio of sums{cov}')
-
-
-def _pf_member_label(o: dict) -> str:
-    """The mechanistic member's name on one ledger row: "Oracle SIHRS",
-    "plain filter" (oracle = none), or "PF" (rows from before the step)."""
-    ox = (o or {}).get("oracle")
-    if ox == "none":
-        return "plain filter"
-    # a modified run never claims the shipped member's name
-    tail = " (modified)" if (o or {}).get("knobs") else ""
-    return ("Oracle SIHRS" if ox else "PF") + tail
-
-
-def _outcome_chips(outcome_json: str) -> str:
-    """One run's outcome as short chips: MARKUP (|safe) of fixed phrases and
-    numbers only; raw error strings stay on the run page."""
-    import json as _json
-    try:
-        o = _json.loads(outcome_json) if isinstance(outcome_json, str) else outcome_json
-    except Exception:
-        return ""
-    bits = []
-    if "pf_cells" in o:
-        n = o["pf_cells"]
-        bits.append(f"PF {n} fit{'s' if n != 1 else ''}")
-    if o.get("pf_failures"):
-        nf = len(o["pf_failures"])
-        bits.append(f'<span class="bad">{nf} failure'
-                    f'{"s" if nf != 1 else ""}</span>')
-    if o.get("pf_skipped"): bits.append("PF skipped (no engine)")
-    # no engine is a configuration; a broken install is a fault
-    if o.get("pf_engine_broken"):
-        bits.append('<span class="bad">PF engine install incomplete</span>')
-    if o.get("submissions"): bits.append(f"{len(o['submissions'])} submissions")
-    if o.get("submission_errors"):
-        ns = len(o["submission_errors"])
-        bits.append(f'<span class="bad">{ns} submission'
-                    f'{"s" if ns != 1 else ""} refused</span>')
-    if o.get("submission_withheld"):
-        # deliberate withholding (research run); the run page names the model
-        bits.append('<span class="hint">submission withheld '
-                    '(research run)</span>')
-    if o.get("knobs"):
-        # modified model settings: the files carry the non-hub name unless
-        # the operator exported under the hub names with a reason
-        bits.append('<span class="warn">modified settings'
-                    + (', hub names by override' if (o["knobs"] or {}).get(
-                        "override") else '') + '</span>')
-    if o.get("report"): bits.append("report ✓")
-    if o.get("pf_relwis"):
-        # scored-cell count; older rows only carry the fit-cell count
-        bits.append(relwis_chip(o["pf_relwis"],
-                                cells=o.get("pf_relwis_cells",
-                                            o.get("pf_cells")),
-                                member=_pf_member_label(o)))
-    # every scored member (older rows' retired-blend keys are not shown)
-    for key, member in (("analogue_relwis", "Groundhog"),):
-        if o.get(key):
-            bits.append(relwis_chip(o[key], cells=o.get(f"{key}_cells"),
-                                    member=member + (" (modified)" if o.get(
-                                        "knobs") else "")))
-    if o.get("error"):
-        bits.append('<span class="bad">failed</span>; the full error is on '
-                    'the run page')
-    return " · ".join(bits)
-
-
 def _report_v2_retired() -> tuple:
     """report_v2.RETIRED_MODELS, imported lazily (report_v2 pulls plotly)."""
     from app.core.report_v2 import RETIRED_MODELS
     return RETIRED_MODELS
-
-
-def _latest_results():
-    """(run_id, results) of the newest non-research run, or (None, None).
-    A corrupt results.json falls through to the next run; the file is read
-    fresh (only the scan is cached). Research runs are skipped because
-    every caller is a shipped-product surface (audit rr-1)."""
-    import json as _json
-    from app.core.runs import is_contained
-    for f in _workroot_results():
-        try:
-            res = _json.loads(f.read_text())
-        except (_json.JSONDecodeError, OSError):
-            continue
-        # research, or modified model settings exported under the non-hub
-        # name (an override puts a modified run back, badged)
-        if res.get("research") or is_contained(res.get("spec", "")):
-            continue
-        return f.parent.name, res
-    return None, None
 
 
 # === Output (/output): submissions, downloads, weekly report -> output.html ===
@@ -3102,7 +2374,7 @@ PREVIEW_ROWS = 12
 def output_page(request: Request):
     import pandas as pd
     from app.core.runs import APP_STATE
-    rid, res = _latest_results()
+    rid, res = shared._latest_results()
     files = []
     if rid:
         for entry in _submission_files(APP_STATE / "workroots" / rid):
@@ -3222,7 +2494,7 @@ def output_report(date: str = ""):
         if not (d / "report.html").is_file():
             return HTMLResponse(f"<p>No archived report for {date}.</p>")
         return HTMLResponse(_report_for_serving(d))
-    rid, _ = _latest_results()
+    rid, _ = shared._latest_results()
     d = APP_STATE / "workroots" / (rid or "")
     if not (d / "report.html").is_file():
         return HTMLResponse("<p>No report yet. Run the models first.</p>")
@@ -3258,7 +2530,7 @@ def output_report_download(date: str = ""):
             return HTMLResponse("<p>Invalid date. Expected YYYY-MM-DD.</p>",
                                 status_code=400)
         return _weekly_report_file(APP_STATE / "archive" / date, date)
-    rid, res = _latest_results()
+    rid, res = shared._latest_results()
     return _weekly_report_file(APP_STATE / "workroots" / (rid or ""),
                                (res or {}).get("forecast_date", ""))
 
@@ -3266,20 +2538,6 @@ def output_report_download(date: str = ""):
 # === Sandbox (/sandbox): user models on the same engine -> sandbox.html ===
 # app/core/sandbox.py; nothing here touches the ledger, Output, retro or seal.
 from app.core import sandbox as sandbox_mod                      # noqa: E402
-
-#: running: the live fit's run id; claim: the model whose run is being
-#: prepared (the engine is booked from the claim on); cancel: Stop pressed
-#: during preparation. Every change happens under _engine_lock.
-_sandbox_status: dict = {"running": None, "claim": None, "cancel": False}
-
-
-def _sandbox_live() -> str:
-    """The live sandbox fit, in words for /api/busy ("" when none)."""
-    if _sandbox_status.get("running"):
-        return str(_sandbox_status["running"])
-    if _sandbox_status.get("claim"):
-        return f"{_sandbox_status['claim']} (preparing)"
-    return ""
 
 
 def _sandbox_busy_reason() -> str:
@@ -3290,16 +2548,6 @@ def _sandbox_busy_reason() -> str:
     if live:
         return "a retrospective replay is running (" + ", ".join(live) + ")"
     return _sandbox_live_reason()
-
-
-def _sandbox_live_reason() -> str:
-    """Why the sandbox holds the engine ("" when it does not). Read under
-    _engine_lock by /run and /retro/run as well as by the sandbox itself."""
-    if _sandbox_status.get("running"):
-        return f"sandbox run {_sandbox_status['running']} is still fitting"
-    if _sandbox_status.get("claim"):
-        return f"a sandbox run of {_sandbox_status['claim']} is being prepared"
-    return ""
 
 
 @app.middleware("http")
@@ -4045,7 +3293,7 @@ def model_page(request: Request, name: str):
                "pf2s": "two-strain"}
     if name not in blurbs:
         return HTMLResponse("unknown model", status_code=404)
-    rid, res = _latest_results()
+    rid, res = shared._latest_results()
     fanq = {}
     if res and name in res.get("models", {}):
         fanq = {loc: qs for loc, qs in res["models"][name].items()
@@ -4067,9 +3315,9 @@ def model_page(request: Request, name: str):
     return templates.TemplateResponse(request, "model.html", {
         "active": "Models", "name": name,
         # title from the shared model-name map
-        "title": _model_names().get(name, blurbs[name][0]),
+        "title": templating._model_names().get(name, blurbs[name][0]),
         "blurb": blurbs[name][1],
-        "model_names_json": _script_json(_model_names()),
+        "model_names_json": _script_json(templating._model_names()),
         "member_colors_json": _script_json(_member_colors()),
         "oneline": onelines[name], "manchor": manchor[name],
         # the research run control (research_run.html) lives ONLY on the
@@ -4809,7 +4057,7 @@ def _last_reported_before(wk: str, n2f: dict) -> dict:
     """{location: last reported value} from the vintage dated `wk`, the
     baseline a week stores no anchor draws for."""
     import pandas as pd
-    df = pd.read_csv(data_mod.vintage_path(wk), dtype={"location": str})
+    df = pd.read_csv(state.data_mod.vintage_path(wk), dtype={"location": str})
     df["location"] = df["location"].str.zfill(2)
     df = df[df.date <= wk].dropna(subset=["value"]).sort_values("date")
     last = df.groupby("location")["value"].last()
@@ -5518,7 +4766,7 @@ def retro_results(request: Request, season: str, week: str = "",
         # report_v2.MODEL_LABEL, with pf's following this tree's name
         map_labels = dict(report_v2.MODEL_LABEL)
         map_short = dict(report_v2.MODEL_SHORT)
-        if names.get("pf") != _model_names().get("pf"):
+        if names.get("pf") != templating._model_names().get("pf"):
             map_labels["pf"] = f"{names['pf']} {report_v2.CAT_FORECAST}"
             map_short["pf"] = names["pf"]
         map_toggle = _usmap.model_toggle(
@@ -5739,11 +4987,11 @@ def run_models(request: Request,
     except ValueError:
         pass
     try:
-        data_mod.vintage_path(forecast_date)
+        state.data_mod.vintage_path(forecast_date)
     except Exception:
         # archive gaps are real (holiday weeks): suggest the nearest EARLIER
         # vintage only; a later one would leak hindsight
-        vs = data_mod.vintages()
+        vs = state.data_mod.vintages()
         earlier = [v for v in vs if v <= forecast_date]
         near = max(earlier) if earlier else (min(vs) if vs else None)
         if near and _last_form:
@@ -5852,7 +5100,7 @@ def run_models(request: Request,
     # above (refused, never clamped: replicates = 0 once ran zero fits)
     # mode follows the anchor: real-time means the newest archived vintage
     try:
-        newest = data_mod.vintages()[-1]
+        newest = state.data_mod.vintages()[-1]
     except Exception:
         newest = None
     if newest and mode == "realtime" and forecast_date != newest:
@@ -5894,5 +5142,5 @@ templates.env.globals["dataset_upload_mb"] = _datasets_ui.max_mb
 
 
 # === Startup warm (LAST, so every function it reaches is defined) ===
-_trace("import complete, starting background warm")
+state._trace("import complete, starting background warm")
 _start_background_warm()

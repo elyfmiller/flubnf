@@ -25,6 +25,7 @@ from app.core import sandbox as sb                       # noqa: E402
 from app.core.engines import pf                          # noqa: E402
 from app.core.runs import RunSpec, derive_seed           # noqa: E402
 from app.ui import server as srv                         # noqa: E402
+from app.ui import state as ui_state                     # noqa: E402
 
 client = TestClient(srv.app)
 
@@ -296,12 +297,12 @@ def test_the_gallery_offers_the_start_and_the_route_creates_it(hub):
     assert 'name="forecast_weeks" type="number" value="4"' in html
     assert "the Oracle SIHRS start (Alabama" in html
     # a refusal flashes and creates nothing
-    srv._status.pop("flash", None)
+    ui_state._status.pop("flash", None)
     client.post("/sandbox/new", data={"name": "nope", "start": "shipped:sihrs",
                                       "location": "Alabama",
                                       "forecast_date": "2020-01-04"},
                 follow_redirects=False)
-    assert "no hub vintage" in (srv._status.get("flash") or "")
+    assert "no hub vintage" in (ui_state._status.get("flash") or "")
     assert not (sb.MODELS / "nope").exists()
 
 

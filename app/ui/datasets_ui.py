@@ -37,6 +37,8 @@ from markupsafe import Markup, escape
 from starlette.concurrency import run_in_threadpool
 
 from app.core.runs import GROUNDHOG_OWN_DATA
+from app.ui import forms, shared, templating, versions
+from app.ui import state as ui_state
 
 router = APIRouter()
 
@@ -82,9 +84,8 @@ def _D():
 def local_only(request: Request):
     """403 unless the Host names this machine (a DNS-rebinding page cannot
     read uploaded data through a GET); None when fine."""
-    S = _S()
-    if (S._authority_hostname(request.headers.get("host", ""))
-            not in S._LOCAL_HOSTNAMES):
+    if (shared._authority_hostname(request.headers.get("host", ""))
+            not in shared._LOCAL_HOSTNAMES):
         return PlainTextResponse("Refused: the Host header does not name "
                                  "localhost.\n", status_code=403)
     return None
@@ -142,8 +143,8 @@ def choices() -> list:
 def busy_with(ds_id: str) -> str:
     """Why a dataset cannot be deleted now ('' when it can): a console run
     or a replay is using it."""
-    S = _S()
-    if S._status.get("running") and S._status.get("dataset_id") == ds_id:
+    if (ui_state._status.get("running")
+            and ui_state._status.get("dataset_id") == ds_id):
         return "a run on it is in progress"
     if _REPLAY.get("id") == ds_id:
         return "a replay on it is in progress"
@@ -156,7 +157,6 @@ def data_context(ds, loc: str = "", vintage: str = "") -> dict:
     """The Data tab's browser for one dataset: the vintage-browser keys
     (data.html's chart and table) filled from the dataset, truncated at the
     chosen vintage so final data never shows later weeks."""
-    S = _S()
     ctx = {"ds": {"id": ds.id, "name": ds.name, "kind": ds.kind,
                   "vintage_true": ds.vintage_true,
                   "national": ds.national_group,
@@ -178,7 +178,8 @@ def data_context(ds, loc: str = "", vintage: str = "") -> dict:
         "series_table": list(zip(dates, values))[-12:][::-1],
         "peak": (max(zip(dates, values), key=lambda p: p[1])
                  if values else None),
-        "series_json": (S._script_json({"dates": dates, "values": values})
+        "series_json": (templating._script_json({"dates": dates,
+                                                 "values": values})
                         if values else "null")})
     return ctx
 
@@ -223,8 +224,8 @@ def _render_data(request, _code: int = 200, **extra):
         extra["upload"] = {**up, "chk": {**up["chk"], "refused": True}}
     ctx = S._data_context()
     ctx.update(extra)
-    return S.templates.TemplateResponse(request, "data.html", ctx,
-                                        status_code=_code)
+    return templating.templates.TemplateResponse(request, "data.html", ctx,
+                                                 status_code=_code)
 
 
 # ------------------------------------------------ the upload box (one partial)
@@ -392,7 +393,7 @@ def _message_view(message: str) -> dict:
 
 def render_check(chk: dict, where: str = "data") -> str:
     """The result box's HTML (the same macro the pages render)."""
-    tpl = _S().templates.get_template("_dataset_check.html")
+    tpl = templating.templates.get_template("_dataset_check.html")
     return str(tpl.module.result(chk, where))
 
 
@@ -472,7 +473,7 @@ async def upload(request: Request):
     Data tab, the Forecast tab, or the Retrospective tab's replay card).
     Problems are shown inline on the Data tab (every one at once) and
     nothing is stored."""
-    S, D = _S(), _D()
+    D = _D()
     cap = D.DEFAULT_LIMITS.max_bytes + FORM_SLACK
     ctype = request.headers.get("content-type", "")
     if not ctype.startswith("multipart/form-data"):
@@ -515,7 +516,7 @@ async def upload(request: Request):
             await f.close()
         except Exception:
             pass
-    S._invalidate_scans()
+    shared._invalidate_scans()
     warn = ds.meta.get("warnings") or []
     done = (f"Stored the dataset {ds.name}: {len(ds.groups)} group(s), "
             f"{len(ds.weeks())} week(s).")
@@ -523,10 +524,10 @@ async def upload(request: Request):
         # said in the replay card the page scrolls to, not at its top
         _STORED.clear()
         _STORED[ds.id] = {"text": done, "warnings": list(warn)}
-        S._status["log"].append(" ".join([done] + warn))
+        ui_state._status["log"].append(" ".join([done] + warn))
         return RedirectResponse(f"/retro?dataset={ds.id}#dataset-replay",
                                 status_code=303)
-    S._flash(done + (" " + " ".join(warn) if warn else ""))
+    shared._flash(done + (" " + " ".join(warn) if warn else ""))
     if nxt == "forecast":
         return RedirectResponse(f"/forecast?source={ds.id}", status_code=303)
     return RedirectResponse(f"/data?source={ds.id}#datasets", status_code=303)
@@ -534,19 +535,19 @@ async def upload(request: Request):
 
 @router.post("/data/datasets/{ds_id}/delete")
 def delete(request: Request, ds_id: str, confirm: str = Form("")):
-    S = _S()
     ds = get_dataset(ds_id)
     if ds is None:
-        S._flash("No such dataset; nothing was deleted.")
+        shared._flash("No such dataset; nothing was deleted.")
         return RedirectResponse("/data#datasets", status_code=303)
     why = busy_with(ds.id)
     if why:
-        S._flash(f"{ds.name} was not deleted: {why}.")
+        shared._flash(f"{ds.name} was not deleted: {why}.")
         return RedirectResponse("/data#datasets", status_code=303)
     if confirm != ds.name:
-        S._flash(f"Deleting {ds.name} was not confirmed; nothing was deleted.")
+        shared._flash(f"Deleting {ds.name} was not confirmed; "
+                      "nothing was deleted.")
         return RedirectResponse("/data#datasets", status_code=303)
-    S._flash(deleted_message(ds, *delete_everything(ds)))
+    shared._flash(deleted_message(ds, *delete_everything(ds)))
     return RedirectResponse("/data#datasets", status_code=303)
 
 
@@ -595,7 +596,7 @@ def _ledger_for(ds_id: str, n: int = 5) -> list:
 
 def latest_results_for(ds_id: str):
     """(run_id, results) of the newest stored run on this dataset."""
-    for f in _S()._workroot_results():
+    for f in shared._workroot_results():
         try:
             res = json.loads(f.read_text())
         except Exception:
@@ -636,7 +637,7 @@ PANEL_ABOUT = {
 
 def dataset_panel(panel, *, kind: str = "", where: str = "forecast",
                   prefix: str = "", engine: str = ""):
-    """The Model settings panel (server._knob_panel with PANEL_MEMBERS) as
+    """The Model settings panel (forms._knob_panel with PANEL_MEMBERS) as
     a dataset run or replay reads it: no Oracle step (it does not run on
     custom data), no auxiliary-bank rows, no hub-name override (there is
     none), the groups named as the members run on the data.
@@ -647,7 +648,7 @@ def dataset_panel(panel, *, kind: str = "", where: str = "forecast",
     a second panel's id prefix and the id of its model select."""
     if not panel:
         return panel
-    by_key = _S()._knobs.BY_KEY
+    by_key = forms._knobs.BY_KEY
     groups = []
     for g in panel["groups"]:
         if g["id"] == "step":
@@ -681,8 +682,8 @@ def knob_values(ds, knob_fields, knobs_json) -> dict:
     """The knob channel's raw values as a dataset form posts them, less
     what a dataset never records: the auxiliary-bank knobs, and the
     counts-only knobs on a rate dataset."""
-    return {k: v for k, v in _S()._knob_raw(knob_fields or {},
-                                            knobs_json).items()
+    return {k: v for k, v in forms._knob_raw(knob_fields or {},
+                                             knobs_json).items()
             if k not in AUX_KEYS
             and not (k in COUNT_ONLY and ds.kind != "count")}
 
@@ -715,34 +716,38 @@ def forecast_page(request: Request, ds):
     series = {n: ds.series(n) for n in sel}
     rows = _ledger_for(ds.id)
     for r in rows:
-        r["label"] = S._run_label(r["run_id"], r.get("spec", ""))
+        r["label"] = shared._run_label(r["run_id"], r.get("spec", ""))
         r["modified"] = S._runs.is_modified(r.get("spec", ""))
         r["chips"] = outcome_chips(r.get("outcome", ""))
         r["settings"] = spec_settings(r.get("spec", ""))
         r["has_report"] = False
         if r["status"] == "running" and not (
-                S._status.get("running") or "").endswith(r["run_id"]):
+                ui_state._status.get("running") or "").endswith(r["run_id"]):
             r["status"] = "interrupted"
-    anchor, _ = S.resolve_anchor(form.get("forecast_date", ""), dates)
+    anchor, _ = forms.resolve_anchor(form.get("forecast_date", ""), dates)
     ok = anchor in dates
     note = (f"Anchor week: {anchor}." if ok
             else "No week of this dataset on or before that date.")
-    return S.templates.TemplateResponse(request, "forecast.html", {
-        "active": "Forecast", "engines": S.ENGINES, "status": S._status,
+    return templating.templates.TemplateResponse(request, "forecast.html", {
+        "active": "Forecast", "engines": ui_state.ENGINES,
+        "status": ui_state._status,
         "ledger": rows, "all_locs": ds.groups,
         "vintage_dates": list(reversed(dates)), "anchor_note": note,
         "default_date": newest, "locations_error": "", "form": form,
         "knob_panel": dataset_panel(
-            S._knob_panel("forecast", form, names=PANEL_MEMBERS),
+            forms._knob_panel("forecast", form, names=PANEL_MEMBERS),
             kind=ds.kind),
-        "elapsed0": S._console_elapsed(),
-        "series_json": S._script_json(series),
-        "fanq_json": S._script_json(fanq),
-        "model_names_json": S._script_json(
-            {**S._model_names(), **MEMBER_NAMES}),
-        "member_colors_json": S._script_json(S._member_colors()),
-        "season_colors_json": S._script_json(S._season_colors()),
-        "run_obs_json": S._script_json((res or {}).get("observed", {})),
+        "elapsed0": shared._console_elapsed(),
+        "series_json": templating._script_json(series),
+        "fanq_json": templating._script_json(fanq),
+        "model_names_json": templating._script_json(
+            {**templating._model_names(), **MEMBER_NAMES}),
+        "member_colors_json": templating._script_json(
+            templating._member_colors()),
+        "season_colors_json": templating._script_json(
+            templating._season_colors()),
+        "run_obs_json": templating._script_json(
+            (res or {}).get("observed", {})),
         "fc_date": (res or {}).get("forecast_date", ""),
         "fc_run": rid or "",
         "dataset": view, "source_choices": choices(),
@@ -784,8 +789,8 @@ def outcome_chips(outcome_json) -> str:
 
 
 async def _knob_fields(request: Request) -> dict:
-    """The Model settings panel's knob.<key> fields (server._knob_form)."""
-    return await _S()._knob_form(request)
+    """The Model settings panel's knob.<key> fields (forms._knob_form)."""
+    return await forms._knob_form(request)
 
 
 @router.post("/run/dataset")
@@ -817,28 +822,29 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
     from app.core.runs import RunSpec, spec_settings
     ds = get_dataset(ds_id)
     if ds is None:
-        S._flash("That dataset no longer exists. Nothing was run.")
+        shared._flash("That dataset no longer exists. Nothing was run.")
         return RedirectResponse("/forecast", status_code=303)
     here = f"/forecast?source={ds.id}"
     dates = ds.forecast_dates()
-    fd = S._str_field(forecast_date).strip()
-    pick, _ = S.resolve_anchor(fd, dates)
+    fd = forms._str_field(forecast_date).strip()
+    pick, _ = forms.resolve_anchor(fd, dates)
     fd = pick or fd
     if fd not in dates:
         earlier = [d for d in dates if d <= fd]
         near = earlier[-1] if earlier else (dates[0] if dates else "")
-        S._flash(f"{ds.name} holds no week {fd} to forecast from."
-                 + (f" Nearest earlier week: {near}." if earlier else
-                    f" Its first forecastable week is {near}." if near else ""))
+        shared._flash(
+            f"{ds.name} holds no week {fd} to forecast from."
+            + (f" Nearest earlier week: {near}." if earlier else
+               f" Its first forecastable week is {near}." if near else ""))
         return RedirectResponse(here, status_code=303)
     if engine not in ENGINE_NAMES:
-        S._flash(f"'{engine}' is not a model choice. Nothing was run.")
+        shared._flash(f"'{engine}' is not a model choice. Nothing was run.")
         return RedirectResponse(here, status_code=303)
     view = _dataset_view(ds)
     if engine in ("all", "pf") and not view["pf_ok"]:
-        S._flash(f"The plain SIHRS particle filter cannot run on {ds.name}: "
-                 f"{view['pf_why']}. Choose {GROUNDHOG} only. Nothing was "
-                 "run.")
+        shared._flash(f"The plain SIHRS particle filter cannot run on "
+                      f"{ds.name}: {view['pf_why']}. Choose {GROUNDHOG} "
+                      "only. Nothing was run.")
         return RedirectResponse(here, status_code=303)
     groups = [x.strip() for l in locations for x in str(l).split("|")
               if x.strip()]
@@ -847,32 +853,32 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
     unknown = [g for g in groups if g not in ds.groups]
     groups = [g for g in ds.groups if g in groups]      # dataset order
     if unknown:
-        S._flash(f"Not groups of {ds.name}: {', '.join(unknown[:5])}. "
-                 "Nothing was run.")
+        shared._flash(f"Not groups of {ds.name}: {', '.join(unknown[:5])}. "
+                      "Nothing was run.")
         return RedirectResponse(here, status_code=303)
     if not groups:
-        S._flash("Select at least one group. Nothing was run.")
+        shared._flash("Select at least one group. Nothing was run.")
         return RedirectResponse(here, status_code=303)
-    want_fs = S._str_field(flusurv).lower() in ("1", "on", "true", "yes")
-    season_start = S._str_field(season_start).strip()
+    want_fs = forms._str_field(flusurv).lower() in ("1", "on", "true", "yes")
+    season_start = forms._str_field(season_start).strip()
     kraw = knob_values(ds, knob_fields, knobs_json)
     _LAST[ds.id] = {"forecast_date": fd, "locations": groups
                     if len(groups) < len(ds.groups) else ["all"],
                     "engine": engine, "weeks_to_drop": weeks_to_drop,
                     "replicates": replicates, "particles": particles,
                     "season_start": season_start,
-                    "drop_same_day": S._int_field(drop_same_day),
+                    "drop_same_day": forms._int_field(drop_same_day),
                     "flusurv": want_fs,
                     "knobs": {k: v for k, v in kraw.items()
                               if isinstance(v, str)}}
     try:
-        nd = S._knobs.resolve(
+        nd = forms._knobs.resolve(
             kraw, engine, scope="forecast", forecast_date=fd,
             oracle_step=False,
             legacy={"particles": particles, "replicates": replicates,
                     "season_start": season_start,
                     "weeks_to_drop": weeks_to_drop,
-                    "drop_same_day": bool(S._int_field(drop_same_day))})
+                    "drop_same_day": bool(forms._int_field(drop_same_day))})
         mode = "realtime" if fd == dates[-1] else "vintage"
         extra = {"mode": mode, "oracle": "none", "dataset": ds.ref(),
                  "dataset_final": not ds.vintage_true}
@@ -881,27 +887,28 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
             fn = _an.aux_preset("flusurv")
             extra["aux_pools"] = fn(None, 0, None)["aux_pools"]
             extra["analogue_aux"] = fn.__name__.split(":", 1)[1]
-        S._knobs.write_extra(nd, extra)
+        forms._knobs.write_extra(nd, extra)
     except ValueError as e:
-        S._flash(f"Model settings: {e}. Nothing was run.")
+        shared._flash(f"Model settings: {e}. Nothing was run.")
         return RedirectResponse(here, status_code=303)
-    kspec = S._knobs.spec_fields(nd)
-    with S._engine_lock:
-        if S._status.get("running"):
-            S._flash("A run is already in progress; not starting another.")
+    kspec = forms._knobs.spec_fields(nd)
+    with ui_state._engine_lock:
+        if ui_state._status.get("running"):
+            shared._flash("A run is already in progress; not starting "
+                          "another.")
             return RedirectResponse(here + "#results", status_code=303)
         live = sorted(x for x in S._known_seasons()
                       if S._season_status(x) in S._RETRO_ACTIVE)
         if live:
-            S._flash("A retrospective replay holds the engine ("
-                     + ", ".join(live) + "). Stop or pause it from the "
-                     "Retrospective tab first; nothing was run.")
+            shared._flash("A retrospective replay holds the engine ("
+                          + ", ".join(live) + "). Stop or pause it from the "
+                          "Retrospective tab first; nothing was run.")
             return RedirectResponse(here, status_code=303)
-        S._status["running"] = "starting"
-        S._status["dataset_id"] = ds.id
-        S._invalidate_scans()
-        S._status["started_utc"] = time.time()
-        S._status["run_label"] = f"{fd} · {ds.name} · queued"
+        ui_state._status["running"] = "starting"
+        ui_state._status["dataset_id"] = ds.id
+        shared._invalidate_scans()
+        ui_state._status["started_utc"] = time.time()
+        ui_state._status["run_label"] = f"{fd} · {ds.name} · queued"
     spec = RunSpec(engine=engine, forecast_date=fd, locations=groups,
                    season_start=kspec.get("season_start", ""),
                    weeks_to_drop=int(kspec.get("weeks_to_drop", 0)),
@@ -911,10 +918,10 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
                    **({"jitter": float(kspec["jitter"])}
                       if "jitter" in kspec else {}),
                    extra=extra)
-    S._status["workroot"] = None
-    S._status["expected_total"] = (len(groups) * spec.replicates
-                                   if engine in ("all", "pf") else None)
-    S._status["settings"] = spec_settings(spec)
+    ui_state._status["workroot"] = None
+    ui_state._status["expected_total"] = (len(groups) * spec.replicates
+                                          if engine in ("all", "pf") else None)
+    ui_state._status["settings"] = spec_settings(spec)
     background.add_task(run_worker, spec)
     return RedirectResponse(here + "#results", status_code=303)
 
@@ -929,25 +936,27 @@ def run_worker(spec) -> None:
     run_id = None
     outcome: dict = {}
     guard = S._sleep_guard()
-    if not S._status.get("started_utc"):
-        S._status["started_utc"] = time.time()
+    if not ui_state._status.get("started_utc"):
+        ui_state._status["started_utc"] = time.time()
     ref = (spec.extra or {}).get("dataset") or {}
-    S._status["run_label"] = (f"{spec.forecast_date} · {ref.get('name', '')}"
-                              f" · {len(spec.locations)} group(s)")
-    S._status["settings"] = spec_settings(spec)
-    S._status["dataset_id"] = ref.get("id")
+    ui_state._status["run_label"] = (
+        f"{spec.forecast_date} · {ref.get('name', '')}"
+        f" · {len(spec.locations)} group(s)")
+    ui_state._status["settings"] = spec_settings(spec)
+    ui_state._status["dataset_id"] = ref.get("id")
     try:
         ds = _D().from_spec(spec)
-        run_id = ledger.open_run(spec, Path("pending"),
-                                 S._engine_versions_for_ledger("pf,analogue"))
+        run_id = ledger.open_run(
+            spec, Path("pending"),
+            versions._engine_versions_for_ledger("pf,analogue"))
         workroot = lease_workroot(run_id)
         ledger.set_workroot(run_id, workroot)
-        S._status["running"] = f"dataset:{run_id}"
-        S._status["workroot"] = str(workroot)
+        ui_state._status["running"] = f"dataset:{run_id}"
+        ui_state._status["workroot"] = str(workroot)
         state = (S._pf_engine_state() if spec.engine in ("all", "pf")
                  else "absent")
-        outcome, fails = custom_run.run(spec, ds, workroot, phase=S._phase,
-                                        pf_state=state)
+        outcome, fails = custom_run.run(spec, ds, workroot,
+                                        phase=shared._phase, pf_state=state)
         ledger.close_run(run_id, "partial" if fails else "ok", outcome)
         if not fails:
             try:
@@ -955,39 +964,39 @@ def run_worker(spec) -> None:
                 reclaim.prune_workroot(workroot)
             except Exception:
                 pass
-        S._status["log"].append(f"{run_id}: dataset {ref.get('name')} done")
+        ui_state._status["log"].append(
+            f"{run_id}: dataset {ref.get('name')} done")
     except Exception as e:
         from app.core.engines.pf import RunStopped
         if run_id is None:
-            S._status["log"].append(f"run setup failed: {str(e)[:200]}")
-            S._flash(f"The run on {ref.get('name', 'the dataset')} could not "
-                     f"start: {str(e)[:200]}")
+            ui_state._status["log"].append(f"run setup failed: {str(e)[:200]}")
+            shared._flash(f"The run on {ref.get('name', 'the dataset')} "
+                          f"could not start: {str(e)[:200]}")
         elif isinstance(e, (RunStopped, custom_run.Stopped)):
             ledger.close_run(run_id, "stopped", outcome)
         else:
             ledger.close_run(run_id, "error",
                              {"error": str(e)[:300], **outcome})
-            S._status["log"].append(f"{run_id}: ERROR {e}")
+            ui_state._status["log"].append(f"{run_id}: ERROR {e}")
     finally:
         if guard is not None:
             try:
                 guard.terminate()
             except Exception:
                 pass
-        S._invalidate_scans()
+        shared._invalidate_scans()
         for k in ("running", "workroot", "expected_total", "started_utc",
                   "dataset_id"):
-            S._status[k] = None
-        S._status["phase"] = ""
-        S._status["settings"] = []
-        S._status["run_label"] = ""
+            ui_state._status[k] = None
+        ui_state._status["phase"] = ""
+        ui_state._status["settings"] = []
+        ui_state._status["run_label"] = ""
 
 
 def run_page_extra(workroot: Path, res: dict) -> dict:
     """run.html's dataset block: exports, fans and member names."""
     from app.core import custom_run
     from app.core.horizons import models_to_canonical
-    S = _S()
     fd = str(res.get("forecast_date", ""))
     after = {}
     ds = get_dataset((res.get("dataset") or {}).get("id"))
@@ -1006,11 +1015,11 @@ def run_page_extra(workroot: Path, res: dict) -> dict:
     return {"dataset": res.get("dataset"),
             "dataset_members": MEMBER_NAMES,
             "exports": custom_run.export_files(workroot),
-            "fans_json": S._script_json({
+            "fans_json": templating._script_json({
                 "models": models_to_canonical(res.get("models") or {}),
                 "observed": res.get("observed") or {},
                 "after": after, "date": fd, "names": MEMBER_NAMES,
-                "colors": S._member_colors()})}
+                "colors": templating._member_colors()})}
 
 
 # ----------------------------------------------------------- Storage tab
@@ -1105,7 +1114,7 @@ def delete_everything(ds) -> tuple:
     freed += retro.dir_size(ds.path)
     _D().delete(ds.id)
     _LAST.pop(ds.id, None)
-    S._invalidate_scans()
+    shared._invalidate_scans()
     return freed, gone, kept
 
 
@@ -1125,22 +1134,21 @@ def storage_delete(request: Request, ds_id: str, confirm: str = Form("")):
     counts: the upload, its replays and its runs' workroots (their ledger
     rows are kept, as a workroot delete keeps them). The name confirms it;
     refused while a run or replay uses it."""
-    S = _S()
-    back = S._back(request, "/storage")
-    S._invalidate_scans()
+    back = shared._back(request, "/storage")
+    shared._invalidate_scans()
     ds = get_dataset(ds_id)
     if ds is None:
-        S._flash("No such dataset; nothing was deleted.")
+        shared._flash("No such dataset; nothing was deleted.")
         return back
     why = busy_with(ds.id)
     if why:
-        S._flash(f"{ds.name} was not deleted: {why}.")
+        shared._flash(f"{ds.name} was not deleted: {why}.")
         return back
     if confirm != ds.name:
-        S._flash(f"Deleting {ds.name} was not confirmed; nothing was "
-                 "deleted.")
+        shared._flash(f"Deleting {ds.name} was not confirmed; nothing was "
+                      "deleted.")
         return back
-    S._flash(deleted_message(ds, *delete_everything(ds)))
+    shared._flash(deleted_message(ds, *delete_everything(ds)))
     return back
 
 
@@ -1218,8 +1226,8 @@ def retro_context(selected: str = "") -> dict:
     if stored:
         stored = {"text": stored["text"],
                   "warnings": [_whole_dates(w) for w in stored["warnings"]]}
-    panel = (dataset_panel(_S()._knob_panel("forecast",
-                                            names=PANEL_MEMBERS),
+    panel = (dataset_panel(forms._knob_panel("forecast",
+                                             names=PANEL_MEMBERS),
                            where="replay", prefix="dsr-",
                            engine="dsr-engine") if out else None)
     return {"dataset_replay": {"datasets": out,
@@ -1250,70 +1258,72 @@ def replay_start(background: BackgroundTasks, dataset: str = Form(...),
     back = RedirectResponse("/retro#dataset-replay", status_code=303)
     ds = get_dataset(dataset)
     if ds is None:
-        S._flash("That dataset no longer exists. Nothing was started.")
+        shared._flash("That dataset no longer exists. Nothing was started.")
         return back
     if engine not in CX.ENGINES:
-        S._flash(f"Choose {GROUNDHOG} only, or {GROUNDHOG} and the plain "
-                 "SIHRS particle filter. Nothing was started.")
+        shared._flash(f"Choose {GROUNDHOG} only, or {GROUNDHOG} and the plain "
+                      "SIHRS particle filter. Nothing was started.")
         return back
     if engine == "all" and not (ds.pf_eligible
                                 and S._pf_engine_state() == "ready"):
-        S._flash(f"The plain SIHRS particle filter cannot replay {ds.name}: "
-                 f"{_dataset_view(ds)['pf_why']}. Nothing was started.")
+        shared._flash(f"The plain SIHRS particle filter cannot replay "
+                      f"{ds.name}: {_dataset_view(ds)['pf_why']}. Nothing "
+                      "was started.")
         return back
-    weeks = CX.weeks_between(ds, S._str_field(first).strip(),
-                             S._str_field(last).strip())
+    weeks = CX.weeks_between(ds, forms._str_field(first).strip(),
+                             forms._str_field(last).strip())
     if not weeks:
-        S._flash(f"No weeks of {ds.name} fall in that range. Nothing was "
-                 "started.")
+        shared._flash(f"No weeks of {ds.name} fall in that range. Nothing was "
+                      "started.")
         return back
     pick = [g for g in groups if g in ds.groups]
     if not pick or "all" in groups:
         pick = list(ds.groups)
     # the panel's values: the older field names ride as legacy fields; a
     # fixed season start must precede every replayed week (check_dates)
-    legacy = {f: S._str_field(v).strip() for f, v in (
+    legacy = {f: forms._str_field(v).strip() for f, v in (
         ("particles", particles), ("replicates", replicates),
         ("season_start", season_start), ("weeks_to_drop", weeks_to_drop),
-        ("drop_same_day", drop_same_day)) if S._str_field(v).strip()}
+        ("drop_same_day", drop_same_day)) if forms._str_field(v).strip()}
     try:
-        nd = S._knobs.resolve(
+        nd = forms._knobs.resolve(
             knob_values(ds, knob_fields, knobs), engine, scope="forecast",
             forecast_date=weeks[0], oracle_step=False, legacy=legacy,
             check_dates=tuple(weeks[-1:]))
         extra = {}
-        if S._str_field(flusurv).lower() in ("1", "on", "true", "yes"):
+        if forms._str_field(flusurv).lower() in ("1", "on", "true", "yes"):
             from app.core.engines import analogue as _an
             fn = _an.aux_preset("flusurv")
             extra = {"aux_pools": fn(None, 0, None)["aux_pools"],
                      "analogue_aux": fn.__name__.split(":", 1)[1]}
-        S._knobs.write_extra(nd, extra)
+        forms._knobs.write_extra(nd, extra)
     except ValueError as e:                  # KnobError is a ValueError
-        S._flash(f"Model settings: {e}. Nothing was started.")
+        shared._flash(f"Model settings: {e}. Nothing was started.")
         return back
-    kspec = S._knobs.spec_fields(nd)
+    kspec = forms._knobs.spec_fields(nd)
     k = int(kspec.pop("weeks_to_drop", 0))
-    with S._engine_lock:
-        if S._status.get("running") or _REPLAY:
-            S._flash("A run or replay holds the engine; wait for it or stop "
-                     "it first. Nothing was started.")
+    with ui_state._engine_lock:
+        if ui_state._status.get("running") or _REPLAY:
+            shared._flash("A run or replay holds the engine; wait for it "
+                          "or stop it first. Nothing was started.")
             return back
         live = sorted(x for x in S._known_seasons()
                       if S._season_status(x) in S._RETRO_ACTIVE)
         if live:
-            S._flash("A season replay holds the engine (" + ", ".join(live)
-                     + "); stop or pause it first. Nothing was started.")
+            shared._flash("A season replay holds the engine ("
+                          + ", ".join(live) + "); stop or pause it first. "
+                          "Nothing was started.")
             return back
         stamp = CX.new_stamp(ds)
         _REPLAY.update({"id": ds.id, "stamp": stamp})
-        S._status["running"] = f"dataset-replay:{stamp}"
-        S._status["dataset_id"] = ds.id
-        S._status["started_utc"] = time.time()
-        S._status["run_label"] = (f"replay of {ds.name}: {weeks[0]} to "
-                                  f"{weeks[-1]} · queued")
-        S._status["settings"] = []
-        S._status["workroot"] = None
-        S._status["expected_total"] = None
+        ui_state._status["running"] = f"dataset-replay:{stamp}"
+        ui_state._status["dataset_id"] = ds.id
+        ui_state._status["started_utc"] = time.time()
+        ui_state._status["run_label"] = (f"replay of {ds.name}: {weeks[0]} to "
+                                         f"{weeks[-1]} · queued")
+        ui_state._status["settings"] = []
+        ui_state._status["workroot"] = None
+        ui_state._status["expected_total"] = None
     # knob keywords only when set: a shipped replay's call is as before
     background.add_task(replay_worker, ds.id, stamp, weeks, pick, engine, k,
                         extra, **kspec)
@@ -1335,17 +1345,18 @@ def replay_worker(ds_id, stamp, weeks, groups, engine, k, extra,
         state = S._pf_engine_state() if engine == "all" else "absent"
 
         def progress(asof, i, n):
-            S._status["phase"] = f"replayed {asof} ({i} of {n} weeks)"
-            S._status["run_label"] = (f"replay of {ds.name}: week {i} of {n}")
+            ui_state._status["phase"] = f"replayed {asof} ({i} of {n} weeks)"
+            ui_state._status["run_label"] = (
+                f"replay of {ds.name}: week {i} of {n}")
 
         def on_wr(wr):
-            S._status["workroot"] = str(wr)
+            ui_state._status["workroot"] = str(wr)
         stop = out / "STOP"
         CX.run(ds, weeks, groups, engine=engine, weeks_to_drop=k,
                extra=extra, out_dir=out, pf_state=state, progress=progress,
                stop_file=stop, on_workroot=on_wr, **kspec)
     except Exception as e:
-        S._status["log"].append(f"dataset replay {stamp}: ERROR {e}")
+        ui_state._status["log"].append(f"dataset replay {stamp}: ERROR {e}")
     finally:
         if guard is not None:
             try:
@@ -1353,12 +1364,12 @@ def replay_worker(ds_id, stamp, weeks, groups, engine, k, extra,
             except Exception:
                 pass
         _REPLAY.clear()
-        S._invalidate_scans()
+        shared._invalidate_scans()
         for key in ("running", "workroot", "expected_total", "started_utc",
                     "dataset_id"):
-            S._status[key] = None
-        S._status["phase"] = ""
-        S._status["run_label"] = ""
+            ui_state._status[key] = None
+        ui_state._status["phase"] = ""
+        ui_state._status["run_label"] = ""
 
 
 @router.post("/retro/dataset/{ds_id}/{stamp}/stop")
@@ -1368,7 +1379,7 @@ def replay_stop(ds_id: str, stamp: str):
     if ds is not None and CX.valid_stamp(stamp) and \
             _REPLAY.get("stamp") == stamp:
         (CX.replay_dir(ds, stamp) / "STOP").touch()
-        w = _S()._status.get("workroot")
+        w = ui_state._status.get("workroot")
         if w:
             (Path(w) / "STOP").touch()
     return RedirectResponse(f"/retro/dataset/{ds_id}/{stamp}",
@@ -1383,7 +1394,6 @@ def replay_page(request: Request, ds_id: str, stamp: str, h: str = "0"):
     refused = local_only(request)
     if refused:
         return refused
-    S = _S()
     from app.core import custom_retro as CX
     from app.core import horizons as hz
     ds = get_dataset(ds_id)
@@ -1435,19 +1445,20 @@ def replay_page(request: Request, ds_id: str, stamp: str, h: str = "0"):
     if meta.get("knobs"):
         # recorded only off the shipped values, as a hub replay's is
         try:
-            K = S._knobs
+            K = forms._knobs
             settings.append(("model settings",
                              K.label(K.from_record(meta["knobs"]))))
         except Exception:
             settings.append(("model settings",
                              "modified (unreadable record)"))
-    return S.templates.TemplateResponse(request, "retro_dataset.html", {
+    return templating.templates.TemplateResponse(request, "retro_dataset.html", {
         "active": "Retrospective", "ds": ds, "stamp": stamp, "meta": meta,
         "status": status, "live": live, "h": h,
         "horizons": list(hz.HORIZONS), "summary": summ,
         "abstained": {m: sum(len(v) for v in d.values())
                       for m, d in abst.items()},
         "member_names": MEMBER_NAMES, "settings": settings,
-        "fans_json": S._script_json(fans),
-        "names_json": S._script_json(MEMBER_NAMES),
-        "member_colors_json": S._script_json(S._member_colors())})
+        "fans_json": templating._script_json(fans),
+        "names_json": templating._script_json(MEMBER_NAMES),
+        "member_colors_json": templating._script_json(
+            templating._member_colors())})

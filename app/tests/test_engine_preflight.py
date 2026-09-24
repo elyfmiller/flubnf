@@ -170,7 +170,7 @@ def test_the_run_surfaces_name_the_broken_install_in_words(monkeypatch,
     latest-run table and the run chips. Neither may report a broken
     install as "no engine" -- the remedies differ."""
     from app.core.runs import results_html
-    from app.ui import server
+    from app.ui import shared as ui_shared
     monkeypatch.setattr(pf, "PYBNF_PF", _fork(tmp_path / "half",
                                               with_pf=False))
     msg = pf.engine_missing_message()
@@ -179,7 +179,7 @@ def test_the_run_surfaces_name_the_broken_install_in_words(monkeypatch,
     assert "engine install incomplete" in table
     assert str(tmp_path / "half") in table and "setup_engine.sh" in table
 
-    chips = server._outcome_chips({"pf_engine_broken": msg, "error": msg})
+    chips = ui_shared._outcome_chips({"pf_engine_broken": msg, "error": msg})
     assert "PF engine install incomplete" in chips
 
     # an absent engine keeps its own wording

@@ -15,6 +15,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from fastapi.testclient import TestClient           # noqa: E402
 
 from app.ui import server as srv                    # noqa: E402
+from app.ui import shared as ui_shared              # noqa: E402
+from app.ui import state as ui_state                # noqa: E402
+from app.ui import templating as ui_templating      # noqa: E402
 
 client = TestClient(srv.app)
 
@@ -191,7 +194,7 @@ def test_member_colors_match_the_player_palette():
     assert "#6E8FD0" not in SEASON_T and "#2BB5A0" not in SEASON_T
     # the injected copy IS the player's map
     from app.core.report_v2 import model_colors
-    assert srv._member_colors() == model_colors()
+    assert ui_templating._member_colors() == model_colors()
     r = client.get("/forecast")
     assert json.dumps(model_colors()["pf"])[1:-1] in r.text
 
@@ -230,7 +233,7 @@ def test_player_carries_the_map_and_python_reads_the_same_one():
         assert mid in names, mid
     from app.core import report_season
     assert report_season.MODEL_NAMES == names       # one source, no drift
-    assert srv._model_names() == names
+    assert ui_templating._model_names() == names
     # the player's own display-name lookup reads the shared map
     assert "return MODEL_NAMES[m] || m" in PLAYER
 
@@ -298,9 +301,9 @@ def test_stored_forecasts_render_without_a_session_gate(monkeypatch):
            "models": {"pf": {"Ohio": {"1": {"0.1": 1.0, "0.5": 2.0,
                                                   "0.9": 3.0}}}},
            "observed": {}}
-    monkeypatch.setattr(srv, "_latest_results", lambda: ("r1", res))
-    monkeypatch.setitem(srv._status, "running", None)
-    srv._status.pop("session_ran", None)            # a fresh process has none
+    monkeypatch.setattr(ui_shared, "_latest_results", lambda: ("r1", res))
+    monkeypatch.setitem(ui_state._status, "running", None)
+    ui_state._status.pop("session_ran", None)            # a fresh process has none
     r = client.get("/forecast")
     assert r.status_code == 200
     assert '"pf": {"Ohio"' in r.text          # the stored fans ship

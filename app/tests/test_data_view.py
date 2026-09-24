@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.core import data as data_mod                # noqa: E402
 from app.ui import server as srv                     # noqa: E402
+from app.ui import shared as ui_shared               # noqa: E402
 
 client = TestClient(srv.app)
 
@@ -45,9 +46,9 @@ def archive(tmp_path, monkeypatch):
         ("2098-01-03", "US", "US", 1600),
     ])
     monkeypatch.setattr(data_mod, "ARCHIVE", tmp_path)
-    srv._invalidate_scans()
+    ui_shared._invalidate_scans()
     yield tmp_path
-    srv._invalidate_scans()      # answers for this root must not outlive it
+    ui_shared._invalidate_scans()      # answers for this root must not outlive it
 
 
 def test_freshness_panel_states_the_latest_vintages_own_numbers(archive):

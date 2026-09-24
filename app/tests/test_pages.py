@@ -384,6 +384,7 @@ def test_data_page_draws_the_archive_timeline():
     """The Data page draws the vintage archive: one row per season, one dot
     per vintage at its week of the season."""
     from app.ui import server as srv
+    from app.ui import state as ui_state
     rows = srv._vintage_rows(["2023-09-23", "2024-01-06", "2024-11-16", "2025-08-30"])
     assert [r["season"] for r in rows] == ["2025-26", "2024-25", "2023-24"]
     assert rows[-1]["points"] == [(7, "2023-09-23"), (22, "2024-01-06")]
@@ -393,4 +394,4 @@ def test_data_page_draws_the_archive_timeline():
     assert r.status_code == 200
     assert "Policies" not in r.text and ">Archive<" in r.text
     # hub-free environments have no vintages and say so instead of drawing
-    assert ('class="archive-strip"' in r.text) == bool(srv.data_mod.vintages())
+    assert ('class="archive-strip"' in r.text) == bool(ui_state.data_mod.vintages())
