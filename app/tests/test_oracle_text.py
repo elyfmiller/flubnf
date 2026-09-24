@@ -176,10 +176,11 @@ def test_methods_carries_the_oracle_step_card():
 
 #: what may still say SIHRS without "Oracle " on a page a person reads: the
 #: compartment model the member is built on, the research two-strain
-#: variant of it, and file names
+#: variant of it, file names, and the plain filter a custom dataset runs
+#: (no Oracle step; always "plain SIHRS ...", exported as FluBNF-SIHRS-PF)
 _ALLOWED = re.compile(
     r"SIHRS compartment|[Tt]wo-strain SIHRS|SIHRS circuits|SIHRS_pop\w*"
-    r"|ORACLE-SIHRS\.md|OracleSIHRS")
+    r"|ORACLE-SIHRS\.md|OracleSIHRS|plain SIHRS|FluBNF-SIHRS-PF")
 
 
 def test_no_page_names_the_model_as_bare_sihrs():

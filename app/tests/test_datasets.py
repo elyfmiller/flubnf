@@ -219,10 +219,38 @@ def test_group_name_charset(name):
     assert "->" in p.message                           # a suggested rename
 
 
-@pytest.mark.parametrize("name", ["US", "usa", "United States", "All"])
+@pytest.mark.parametrize("name", ["All", "all", "ALL"])
 def test_reserved_group_names(name):
     rows = [f"{d.isoformat()},{name},1" for d in sats()]
     only(D.validate(mh_csv(rows), kind="count"), "group_reserved")
+
+
+@pytest.mark.parametrize("name", ["US", "usa", "United States",
+                                  "US (national)", "National", "national"])
+def test_a_national_group_is_accepted_and_flagged(name):
+    rows = mh_series(groups=("Adult", name))
+    rep = ok(D.validate(mh_csv(rows), kind="count"))
+    assert rep.summary["national_group"] == name
+    ds = D.ingest(mh_csv(rows), "nat", kind="count")
+    assert ds.national_group == name and ds.meta["national_group"] == name
+    g = {x["name"]: x for x in ds.meta["groups"]}
+    assert g[name]["national"] is True and g["Adult"]["national"] is False
+    # a minted key like every group: never FluSight's literal 'US'
+    assert ds.name2key[name].startswith("c")
+    assert "US" not in {r["location"] for r in csv.DictReader(
+        open(ds.locations_csv))}
+
+
+def test_two_national_spellings_are_refused():
+    rows = mh_series(groups=("US", "National"))
+    p = only(D.validate(mh_csv(rows), kind="count"), "national_multiple")
+    assert "'National'" in p.message and "'US'" in p.message
+
+
+def test_no_national_group_is_recorded_as_none():
+    ds = D.ingest(MH, "mh", kind="count")
+    assert ds.national_group is None
+    assert all(g["national"] is False for g in ds.meta["groups"])
 
 
 @pytest.mark.parametrize("a,b", [("Age 0", "Age_0"), ("Adult", "adult"),
@@ -406,11 +434,54 @@ def test_location_name_must_be_one_to_one():
                     kind="count"), "location_name_conflict")
 
 
-def test_hub_national_row_is_reserved():
-    rows = [f"{d.isoformat()},US,US,5" for d in sats()]
-    only(D.validate(hub_csv(rows, "target_end_date,location,location_name,"
-                                  "observation"), kind="count"),
-         "group_reserved")
+def test_hub_national_row_is_the_datasets_national_group():
+    rows = [f"{d.isoformat()},US,US,5" for d in sats()] + [
+        f"{d.isoformat()},01,Alabama,2" for d in sats()]
+    raw = hub_csv(rows, "target_end_date,location,location_name,observation")
+    rep = ok(D.validate(raw, kind="count"))
+    assert rep.summary["national_group"] == "US"
+    ds = D.ingest(raw, "hub", kind="count")
+    loc = {r["location_name"]: r for r in csv.DictReader(open(ds.locations_csv))}
+    assert loc["US"]["source_key"] == "US" and loc["US"]["location"] != "US"
+
+
+def test_national_key_with_another_name_is_national():
+    rows = [f"{d.isoformat()},US,Whole country,5" for d in sats()]
+    rep = ok(D.validate(hub_csv(rows, "date,location,location_name,value"),
+                        kind="count"))
+    assert rep.summary["national_group"] == "Whole country"
+
+
+def test_hubverse_na_rows_are_dropped_counted_and_recorded():
+    w = sats("2025-05-03", 6)
+    rows = _snapshot("2025-06-07", w)
+    rows[2] = rows[2].rsplit(",", 1)[0] + ",NA"
+    rows[5] = rows[5].rsplit(",", 1)[0] + ","
+    rep = ok(D.validate(hub_csv(rows), kind="count"))
+    assert "2 row(s) with no value were dropped." in rep.warnings
+    assert rep.summary["na_dropped"] == 2 and rep.summary["rows"] == 10
+    ds = D.ingest(hub_csv(rows), "na", kind="count")
+    assert ds.meta["na_dropped"] == 2
+    assert "2 row(s) with no value were dropped." in ds.meta["warnings"]
+    got = list(csv.DictReader(open(ds.final_path)))
+    assert len(got) == 10 and all(r["value"] for r in got)
+
+
+def test_hubverse_na_rows_do_not_count_as_gaps():
+    """The NA row still marks its week as present in the file."""
+    w = sats("2025-05-03", 6)
+    rows = _snapshot("2025-06-07", w)
+    rows[4] = rows[4].rsplit(",", 1)[0] + ",NA"        # a middle Alabama week
+    rep = ok(D.validate(hub_csv(rows), kind="count"))
+    assert rep.summary["na_dropped"] == 1
+
+
+def test_microhub_na_stays_an_error():
+    rows = mh_series()
+    rows[0] = rows[0].rsplit(",", 1)[0] + ",NA"
+    rep = D.validate(mh_csv(rows), kind="count")
+    only(rep, "value_na")
+    assert not any("dropped" in w for w in rep.warnings)
 
 
 def test_headers_are_case_and_space_insensitive():
@@ -508,7 +579,9 @@ def test_meta_records_the_ingest():
     assert m["groups"][0] == {"name": "Adult", "key": "c01",
                               "source_key": "Adult", "population": 4292870,
                               "population_varies": False, "rows": 10,
-                              "first": "2022-01-01", "last": "2022-03-05"}
+                              "first": "2022-01-01", "last": "2022-03-05",
+                              "national": False}
+    assert m["national_group"] is None and m["na_dropped"] == 0
     assert ds.ref() == {"id": ds.id, "digest": m["digest"][:16],
                         "name": "My Data!"}
 

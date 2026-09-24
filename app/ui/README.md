@@ -1,6 +1,6 @@
 # app/ui/: the console (FastAPI server, Jinja pages, static assets)
 
-Every route lives in `server.py`, grouped under `# === <Tab> ===` banners; this page maps each route to its handler, template and caller.
+Every route lives in `server.py`, grouped under `# === <Tab> ===` banners, except the custom-dataset routes, which live in `datasets_ui.py` (an APIRouter `server.py` includes); this page maps each route to its handler, template and caller.
 
 ## Routes by console tab
 
@@ -14,15 +14,18 @@ Every route lives in `server.py`, grouped under `# === <Tab> ===` banners; this 
 | GET | `/api/versions` | `api_versions` | | `base.html` versions poller |
 | GET | `/favicon.ico` | `favicon` | | `base.html` |
 | **Data** | | | | |
-| GET | `/data` | `data_page` | `data.html` | nav; `data.html` vintage form |
+| GET | `/data` | `data_page` (`?source=<dataset>`: `datasets_ui.data_context`) | `data.html` | nav; `data.html` vintage form |
+| POST | `/data/datasets` | `datasets_ui.upload` | `data.html` (problems) or redirect | `_datasets_card.html` form |
+| POST | `/data/datasets/{id}/delete` | `datasets_ui.delete` | redirect | `_datasets_card.html` form |
 | POST | `/data/pull` | `data_pull` | redirect | `data.html` form |
 | POST | `/freshness` | `freshness` | `data.html` | `data.html` form |
 | **Forecast** | | | | |
-| GET | `/forecast` | `forecast_page` | `forecast.html` | nav |
+| GET | `/forecast` | `forecast_page` (`?source=<dataset>`: `datasets_ui.forecast_page`) | `forecast.html` | nav |
+| POST | `/run/dataset` | `datasets_ui.run_dataset` | redirect | `forecast.html` `#fcform` with a dataset |
 | POST | `/run` | `run_models` | redirect | `forecast.html` `#fcform`, `model.html` form, `research_run.html` |
 | POST | `/run/stop` | `run_stop` | redirect | `forecast.html` form, `base.html` guard modal |
 | GET | `/api/progress` | `api_progress` | | `forecast.html` progress poll |
-| GET | `/api/series` | `api_series` | | `forecast.html`, `model.html` charts |
+| GET | `/api/series` | `api_series` (`source=<dataset>`: `datasets_ui.api_series`) | | `forecast.html`, `model.html` charts |
 | GET | `/runs/{run_id}` | `run_page` | `run.html` | links in `forecast.html`, `runs.html` |
 | GET | `/runs/{run_id}/report` | `run_report` | the run's `report.html` | `forecast.html`, `run.html` |
 | GET | `/runs/{run_id}/report/download` | `run_report_download` | | `run.html` |
@@ -47,6 +50,9 @@ Every route lives in `server.py`, grouped under `# === <Tab> ===` banners; this 
 | GET | `/api/retro/{season}/mapswap/{asof}` | `api_retro_mapswap` | | `retro_season.html` map swap |
 | GET | `/retro/{season}/report` | `retro_season_report` | file (`app/core/report_season.py`) | `retro_season.html` download link |
 | GET | `/api/retro/{season}/report_path` | `api_retro_report_path` | | `retro_season.html` reveal button |
+| POST | `/retro/dataset/run` | `datasets_ui.replay_start` | redirect | `_dataset_replay.html` form |
+| GET | `/retro/dataset/{id}/{stamp}` | `datasets_ui.replay_page` | `retro_dataset.html` | `_dataset_replay.html` links |
+| POST | `/retro/dataset/{id}/{stamp}/stop` | `datasets_ui.replay_stop` | redirect | `retro_dataset.html` form |
 | **Storage** | | | | |
 | GET | `/storage`, `/runs` | `runs_page` | `runs.html` | nav |
 | GET | `/api/storage/reclaim` | `api_storage_reclaim` | | `runs.html` fetch |
@@ -81,6 +87,9 @@ Every route lives in `server.py`, grouped under `# === <Tab> ===` banners; this 
 | `research_run.html` | `base.html`, only on `/model/pf2s` (`research_panel`) |
 | `sandbox_views.html` | `sandbox.html`; loads `static/model-views.js` and `.css` |
 | `sandbox_data.html` | `sandbox.html`, inside the editor's save form |
+| `_datasets_card.html` | `data.html` (Your datasets: upload and list) |
+| `_dataset_run.html` | `run.html`, for a run on a custom dataset (fans, export files) |
+| `_dataset_replay.html` | `retro.html` (Replay your own data) |
 
 Template names that differ from their tab: `runs.html` is Storage, `run.html` is one run's page, `model.html` is Models.
 
@@ -92,7 +101,8 @@ Template names that differ from their tab: `runs.html` is Storage, `run.html` is
 | `player.js` | `retro_season.html`; inlined by `report_season.py`; its name and color maps are parsed by server and reports |
 | `retro_progress.js` | `retro.html`, `retro_season.html` |
 | `quips.js` | `forecast.html`, `retro.html`, `retro_season.html` |
-| `plotly.min.js` | `data.html`, `forecast.html`, `model.html`, `retro_season.html`, `sandbox.html` |
+| `plotly.min.js` | `data.html`, `forecast.html`, `model.html`, `retro_season.html`, `retro_dataset.html`, `run.html` (dataset runs), `sandbox.html` |
+| `microhub-template.csv` | `_datasets_card.html` download link (MicroHub's own template, with populations) |
 | `bngl-editor.js`, `bngl-editor.css`, `sandbox.js` | `sandbox.html` |
 | `model-views.js`, `model-views.css` | `sandbox_views.html` |
 | `brand/`, `fonts/` | `base.html`, `home.html`, `/favicon.ico` (icons); `base.html` (DM Sans) |

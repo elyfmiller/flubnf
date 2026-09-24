@@ -1,0 +1,139 @@
+{% extends "base.html" %}{% block title %}FluBNF · Replay of {{ ds.name }}{% endblock %}
+{% block head %}<script src="/static/plotly.min.js"></script>{% endblock %}
+{% block content %}{% import "_tips.html" as tips %}
+<h1>Replay: {{ ds.name }}
+ <span class="pill">your data</span>
+ <span class="pill {{ 'ok' if status == 'done' else ('bad' if status == 'error' else 'warn') }}">{{ status }}</span></h1>
+<p class="{{ 'hint' if meta.dataset and meta.dataset.vintage_true else 'warn' }}">{{ meta.replay_kind | capitalize }}{% if meta.first %}: {{ meta.first }} to {{ meta.last }}{% endif %}.
+ {{ tips.tip("rd-kind", "how the weeks saw the data", ("Each week was forecast from the as_of snapshot that held it, as it stood then." if meta.dataset and meta.dataset.vintage_true else "The dataset has no as_of column, so each week was cut from the final series. Later revisions leak into every week, so these scores are optimistic: better than a real-time forecaster would have scored.") ~ " Scores are relative to an in-house persistence baseline, not FluSight-baseline, and are not comparable with FluSight scores. This replay is kept with the dataset and never published.") }}</p>
+
+{% if live %}
+<div class="card"><h2>Running</h2>
+ <p class="runstat" id="dsr-prog">{{ meta.weeks_completed or 0 }} of {{ meta.total_weeks }} weeks</p>
+ <form method="post" action="/retro/dataset/{{ ds.id }}/{{ stamp }}/stop"><button class="quiet">Stop</button></form>
+</div>
+<script>
+ (function poll(){
+   fetch('/api/progress').then(r=>r.json()).then(d=>{
+     if(!d.running){ location.reload(); return; }
+     const el=document.getElementById('dsr-prog');
+     if(el && d.phase) el.textContent=d.phase;
+     setTimeout(poll, 2000);
+   }).catch(()=>setTimeout(poll, 4000));
+ })();
+</script>
+{% endif %}
+{% if meta.error %}<div class="card"><h2>What happened</h2><p class="bad">{{ meta.error }}</p></div>{% endif %}
+
+<div class="card"><h2>Scores {{ tips.tip("rd-scores", "the scores", "relWIS is the models' summed WIS over the in-house persistence baseline's, over the same cells: a cell counts when the dataset holds a positive value for its week, the forecast median is positive and the baseline's WIS is above zero. Below 1 beats the baseline. The national group, if any, is shown beside the pooled figure, never inside it. Coverage is the share of those cells inside each central interval.") }}</h2>
+ {% if summary %}
+ <div class="tablewrap"><table class="compact">
+  <thead><tr><th>Model</th><th class="num">relWIS</th><th class="num">Cells</th>
+   <th class="num">50%</th><th class="num">80%</th><th class="num">95%</th>
+   {% if ds.national_group %}<th class="num">{{ ds.national_group }} (beside)</th>{% endif %}</tr></thead>
+  <tbody>{% for m, s in summary.items() %}{% set p = s.pooled %}
+   <tr><td>{{ member_names.get(m, m) }}</td>
+    <td class="num {{ 'ok' if p.relwis is not none and p.relwis < 1 else 'bad' }}">{{ "%.3f"|format(p.relwis) if p.relwis is not none else "–" }}</td>
+    <td class="num">{{ p.cells }}</td>
+    {% for b in ("50", "80", "95") %}<td class="num">{{ "%.0f%%"|format(100 * p["cov" ~ b]) if p["cov" ~ b] is defined else "–" }}</td>{% endfor %}
+    {% if ds.national_group %}<td class="num">{{ "%.3f"|format(s.national.relwis) if s.national and s.national.relwis is not none else "–" }}</td>{% endif %}
+   </tr>{% endfor %}</tbody>
+ </table></div>
+ <p class="hint">relWIS vs the in-house persistence baseline, pooled over the groups{{ " (national group excluded)" if ds.national_group else "" }}.</p>
+ {% for m, s in summary.items() %}
+ <details class="rd-detail"><summary>{{ member_names.get(m, m) }}: by horizon and by group</summary>
+  <div class="row" style="align-items:flex-start;gap:2rem">
+   <table class="compact"><tr><th>horizon</th><th class="num">relWIS</th></tr>
+    {% for hh, v in s.by_horizon.items() %}<tr><td>{{ hh }}</td><td class="num">{{ "%.3f"|format(v) }}</td></tr>{% endfor %}</table>
+   <table class="compact"><tr><th>group</th><th class="num">relWIS</th><th class="num">cells</th></tr>
+    {% for g, v in s.by_group.items() %}<tr><td>{{ g }}{{ " (national)" if g == ds.national_group else "" }}</td><td class="num">{{ "%.3f"|format(v.relwis) }}</td><td class="num">{{ v.cells }}</td></tr>{% endfor %}</table>
+  </div>
+ </details>
+ {% endfor %}
+ {% else %}
+ <p class="hint">No scored cells{{ " yet" if live else "" }}: a cell needs a later week in the dataset.</p>
+ {% endif %}
+ {% for m, n in abstained.items() if n %}
+ <p class="hint">{{ member_names.get(m, m) }} abstained on {{ n }} group-week{{ "" if n == 1 else "s" }}
+  {{ tips.tip("rd-abst-" ~ m, "abstentions", "The Groundhog forecasts only with at least 30 growth ratios from earlier seasons at the same calendar week, pooled over the groups; early in a short dataset it has too few and says nothing rather than guess.") }}</p>
+ {% endfor %}
+</div>
+
+<div class="card"><h2>Forecasts against the data</h2>
+ <div class="carousel" id="rd-models"></div>
+ <div class="carousel">
+  <select id="rd-group" aria-label="group" style="width:auto;min-width:200px"></select>
+  <span class="hint">horizon:</span>
+  {% for hh in horizons %}{% if hh == h %}<span class="pill ok" aria-current="true"><b>{{ hh }}</b></span>{% else %}<a href="?h={{ hh }}" class="pill">{{ hh }}</a>{% endif %}{% endfor %}
+  {{ tips.tip("rd-h", "the horizon", "Horizon 0 is the week after the forecast date (the hub's convention); each point is that week's forecast, drawn at the week it forecast.") }}
+ </div>
+ <div id="rd-plot" style="min-height:400px"></div>
+</div>
+
+<div class="card"><h2>Settings</h2>
+ {{ settings_html(settings, title="Replay settings") | safe }}
+</div>
+<script>
+ (function(){
+  const F = {{ fans_json | safe }};
+  const NAMES = {{ names_json | safe }};
+  const COLS = {{ member_colors_json | safe }};
+  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  const rootPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  function rgba(c,a){
+    if(c&&c[0]==='#'&&c.length===7){const n=parseInt(c.slice(1),16);
+      return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';}
+    return c;
+  }
+  const groups = Object.keys(F);
+  const models = ['analogue','pf'].filter(m => groups.some(g => (F[g].fc||{})[m]));
+  const gs = document.getElementById('rd-group');
+  groups.forEach(g=>{const o=document.createElement('option'); o.textContent=g; gs.appendChild(o);});
+  let M = models[0];
+  function draw(){
+    const g = gs.value, d = F[g]; if(!d) return;
+    const mc = COLS[M] || css('--gold');
+    const pts = (d.fc||{})[M] || [];
+    const x = pts.map(p=>p[0]);
+    const fs = rootPx(), surf = css('--card');
+    const traces = [
+      {x:d.series.dates, y:d.series.values, mode:'lines', name:'the dataset',
+       line:{color:css('--ink'), width:1.6}},
+      {x:x, y:pts.map(p=>p[5]), mode:'lines', line:{width:0}, showlegend:false, hoverinfo:'skip'},
+      {x:x, y:pts.map(p=>p[4]), mode:'lines', fill:'tonexty', fillcolor:rgba(mc,.12),
+       line:{width:0}, name:'95% interval'},
+      {x:x, y:pts.map(p=>p[3]), mode:'lines', line:{width:0}, showlegend:false, hoverinfo:'skip'},
+      {x:x, y:pts.map(p=>p[2]), mode:'lines', fill:'tonexty', fillcolor:rgba(mc,.28),
+       line:{width:0}, name:'50% interval'},
+      {x:x, y:pts.map(p=>p[1]), mode:'lines+markers', name:'median',
+       line:{color:mc, width:2}, marker:{size:4}}];
+    Plotly.react('rd-plot', traces, {
+      title:{text:g+' · '+(NAMES[M]||M)+' · horizon {{ h }}', font:{size:Math.round(fs*.95)}},
+      height:400, margin:{l:8,r:8,t:Math.round(fs*2.2),b:8},
+      paper_bgcolor:surf, plot_bgcolor:surf,
+      font:{color:css('--ink'), family:'"DM Sans",system-ui,sans-serif', size:Math.round(fs*.85)},
+      legend:{orientation:'h', x:0, xanchor:'left', y:-0.22, yanchor:'top'},
+      xaxis:{gridcolor:css('--line'), automargin:true, range:WIN},
+      yaxis:{gridcolor:css('--line'), rangemode:'tozero', automargin:true}},
+      {responsive:true, displaylogo:false});
+  }
+  // the replayed weeks, framed: 12 weeks before the first, 6 after the last
+  function shift(ds, days){const p=ds.split('-');
+    return new Date(Date.UTC(+p[0],+p[1]-1,+p[2]+days)).toISOString().slice(0,10);}
+  const RANGE = {{ [meta.first or "", meta.last or ""] | tojson }};
+  const WIN = RANGE[0] ? [shift(RANGE[0], -84), shift(RANGE[1], 42)] : undefined;
+  const mb = document.getElementById('rd-models');
+  models.forEach(m=>{const b=document.createElement('button'); b.type='button';
+    b.className='quiet'+(m===M?' gold':''); b.textContent=NAMES[m]||m;
+    b.setAttribute('aria-pressed', String(m===M));
+    b.onclick=()=>{M=m; mb.querySelectorAll('button').forEach(x=>{
+      x.classList.toggle('gold', x===b); x.setAttribute('aria-pressed', String(x===b));}); draw();};
+    mb.appendChild(b);});
+  gs.onchange = draw;
+  if(M) draw(); else document.getElementById('rd-plot').innerHTML =
+    '<p class="hint">No forecasts stored yet.</p>';
+  addEventListener('themechange', draw);
+  addEventListener('fontsizechange', draw);
+ })();
+</script>
+{% endblock %}

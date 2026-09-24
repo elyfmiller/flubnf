@@ -314,9 +314,35 @@ def splice_args(spec, bank):
     return AN.DonorSplice(pools=pools)
 
 
+#: research keys that read the hub's own completeness factors: refused on a
+#: custom dataset (they describe FluSight's reporting, not the upload's)
+HUB_ONLY_KEYS = ("reporting", "analogue_completeness", "analogue_widen_log_sd")
+
+
+def _source(spec) -> tuple:
+    """(truth csv, locations csv, exclude kwargs) for one run: the hub's
+    vintage and locations table, or a custom dataset's (extra["dataset"],
+    app/core/datasets.py). The hub branch is today's expressions verbatim;
+    only a dataset run passes `exclude_seasons` (default (): the flu
+    donor-season registry describes the US NHSN calendar, not the upload)."""
+    from app.core import datasets as _ds
+    ds = _ds.from_spec(spec)
+    if ds is None:
+        return vintage_path(spec.forecast_date), LOCATIONS, {}
+    extra = getattr(spec, "extra", None) or {}
+    bad = [k for k in HUB_ONLY_KEYS if extra.get(k)]
+    if bad:
+        raise ValueError(
+            f"{', '.join(bad)}: these read FluSight's own completeness "
+            f"factors and cannot run on the custom dataset {ds.name!r}")
+    excl = tuple(sorted(int(x) for x in extra.get("donor_exclusions", ())))
+    return (ds.truth_path(spec.forecast_date), ds.locations_csv,
+            {"exclude_seasons": excl})
+
+
 def run(spec) -> dict:
     """location -> {horizon(str): {level(float): value}} quantiles."""
-    v = vintage_path(spec.forecast_date)
+    v, loc_csv, src_kw = _source(spec)
     t = pd.read_csv(v, dtype={"location": str})
     t["location"] = t["location"].str.zfill(2)
     t["date"] = pd.to_datetime(t["date"])
@@ -324,7 +350,7 @@ def run(spec) -> dict:
     bank = AN.build_bank(t.itertuples())
     newest = t.date.max()                                  # current report week
 
-    locs = pd.read_csv(LOCATIONS, dtype=str)
+    locs = pd.read_csv(loc_csv, dtype=str)
     name2fips = dict(zip(locs.location_name, locs.location))
 
     out = {}
@@ -341,6 +367,7 @@ def run(spec) -> dict:
     bw = ((getattr(spec, "extra", None) or {}).get("knobs") or {}).get(
         "groundhog.bandwidth")
     bw_kw = {} if bw is None else {"bandwidth": int(bw)}
+    bw_kw.update(src_kw)                     # empty on the hub path
     for loc in spec.locations:
         fips = name2fips.get(loc)
         if fips is None:

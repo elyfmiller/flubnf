@@ -5,7 +5,23 @@
 <h1>Forecast</h1>
 <div class="cols">
  <div><div class="card"><h2>Settings</h2>
-  <form method="post" action="/run" id="fcform">
+  {% if source_choices or dataset %}
+  {# the data source: the hub by default, a stored dataset by choice
+     (app/ui/datasets_ui.py); a plain GET form, like the Data tab's #}
+  <form method="get" action="/forecast" class="row srcpick">
+   <span>{{ tips.label("Data source", "fc-src", "The FluSight hub is the default. A dataset from the Data tab runs on its own groups and weeks; its forecasts are exported as CSV files under non-hub names and never submitted.", for_="fc-source") }}
+   <select name="source" id="fc-source">
+    <option value="">FluSight hub</option>
+    {% for sid, sname in source_choices %}<option value="{{ sid }}" {% if dataset and dataset.id == sid %}selected{% endif %}>{{ sname }}</option>{% endfor %}
+   </select></span>
+   <button class="quiet">Use</button>
+  </form>
+  {% endif %}
+  <form method="post" action="{{ '/run/dataset' if dataset else '/run' }}" id="fcform">
+   {% if dataset %}<input type="hidden" name="dataset" value="{{ dataset.id }}">
+   <p class="hint">{{ dataset.name }}: {{ "vintage-true" if dataset.vintage_true else "final data, not vintage-true" }}.
+    {{ tips.tip("fc-ds-truth", "the data behind these forecasts", ("Each week is forecast from the as_of snapshot that held it, as it stood then." if dataset.vintage_true else "The upload has no as_of column, so a past week is forecast from the final data cut at that week; later revisions leak in, so it reads better than real time would have.") ~ " Scores are against an in-house persistence baseline, not FluSight-baseline.") }}</p>
+   {% endif %}
    {# two modes, one form (same controls, same run record): Real-time takes
       the latest archived week the calendar allows; Vintage names one #}
    <div class="modes">
@@ -13,17 +29,17 @@
     <button type="button" class="pill mode" data-mode="realtime" role="tab">Real-time</button>
     <button type="button" class="pill mode" data-mode="vintage" role="tab">Vintage</button>
     </div>
-    {{ tips.tip("fc-mode", "the forecast modes", "Real-time: the newest archived week. Vintage: any archived week, with the data as it stood then.") }}
+    {% if dataset %}{{ tips.tip("fc-mode", "the forecast modes", "Real-time: the dataset's newest week. Vintage: any earlier week of the dataset.") }}{% else %}{{ tips.tip("fc-mode", "the forecast modes", "Real-time: the newest archived week. Vintage: any archived week, with the data as it stood then.") }}{% endif %}
    </div>
    <input type="hidden" name="mode" id="mode-field" value="realtime">
-   {{ tips.label("Forecast date", "fc-date", "Any day; the run anchors on the latest archived week on or before it.") }}
+   {% if dataset %}{{ tips.label("Forecast date", "fc-date", "A week of the dataset; any other day anchors on the latest week on or before it.") }}{% else %}{{ tips.label("Forecast date", "fc-date", "Any day; the run anchors on the latest archived week on or before it.") }}{% endif %}
    <input type="date" name="forecast_date" value="{{ form.forecast_date }}" data-default="{{ default_date }}">
    {# any day is accepted; this line names the archived week it resolves to
       (server-side resolve_anchor, the run's own function; updated live) #}
    <p class="hint" id="anchor-line">{{ anchor_note }}</p>
    {% if vintage_dates %}
    <select id="vintage-pick">
-    <option value="">or pick an archived week ({{ vintage_dates|length }})</option>
+    <option value="">{{ "or pick a week" if dataset else "or pick an archived week" }} ({{ vintage_dates|length }})</option>
     {% for v in vintage_dates %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
    </select>
    {% endif %}
@@ -95,16 +111,30 @@
       setMode(initial, false);
     })();
    </script>
+   {% if dataset %}
+   <div class="lblrow"><label>Groups <span id="lcount" class="hint"></span></label>{{ tips.tip("fc-locs", "groups", "The dataset's groups; each is forecast on its own." ~ (" " ~ dataset.national ~ " is the national group: scored beside the others, never pooled with them." if dataset.national else "")) }}</div>
+   {% else %}
    <div class="lblrow"><label>Locations <span id="lcount" class="hint"></span></label>{{ tips.tip("fc-locs", "locations", "US national is always fitted too, and scored separately.") }}</div>
+   {% endif %}
    <div class="checklist">
      <label class="ck"><input type="checkbox" id="ck-all" value="all" name="locations"
-       {% if "all" in form.locations %}checked{% endif %}> <b>all 52 jurisdictions</b></label>
+       {% if "all" in form.locations %}checked{% endif %}> <b>{{ ("all " ~ all_locs | length ~ " groups") if dataset else "all 52 jurisdictions" }}</b></label>
      {% if locations_error %}<p class="warn">{{ locations_error }}</p>{% endif %}
      {% for l in all_locs %}
      <label class="ck"><input type="checkbox" class="ck-one" name="locations" value="{{ l }}"
        {% if l in form.locations %}checked{% endif %}> {{ l }}</label>
      {% endfor %}
    </div>
+   {% if dataset %}
+   {{ tips.label("Model", "fc-model", "Each model writes its own export file (FluBNF-Groundhog, FluBNF-SIHRS-PF); nothing is blended or submitted. The plain SIHRS particle filter needs counts with a population and runs without the Oracle step, whose donor bank is FluSight's.") }}
+   <select name="engine" id="model-pick">{% for e in engines %}
+     <option value="{{ e }}" {% if e == form.engine %}selected{% endif %}
+       {% if e != "analogue" and not dataset.pf_ok %}disabled{% endif %}>{{ engine_names.get(e, e) }}</option>{% endfor %}</select>
+   {% if not dataset.pf_ok %}<p class="hint">Groundhog only: {{ dataset.pf_why }}.</p>{% endif %}
+   <div class="lblrow"><label class="ck" for="fc-flusurv"><input type="checkbox" name="flusurv" value="1" id="fc-flusurv"
+     {% if form.flusurv %}checked{% endif %}> Add FluSurv-NET donors</label>
+    {{ tips.tip("fc-flusurv", "FluSurv-NET donors", "Off by default: the Groundhog draws growth only from your data's earlier seasons. Tick only for US influenza hospitalization-like data, where the FluSurv-NET bank's seasons are relevant.") }}</div>
+   {% else %}
    {{ tips.label("Model", "fc-model", "Each model writes its own FluSight submission file; nothing is blended.") }}
    {# posts `engine` (the run path's names); the engine row appears only
       when the Oracle SIHRS runs; "all" writes both submission files #}
@@ -113,14 +143,15 @@
                           "analogue": "Groundhog only"} %}
    <select name="engine" id="model-pick">{% for e in engines %}
      <option value="{{ e }}" {% if e == form.engine %}selected{% endif %}>{{ engine_names.get(e, e) }}</option>{% endfor %}</select>
-   <div id="engine-row">
+   {% endif %}
+   <div id="engine-row"{% if dataset %} hidden data-dataset="1"{% endif %}>
     {{ tips.label("Engine", "fc-engine", "The particle filter fits each state; the Oracle step then blends its forecast growth with past seasons' growth at the same calendar week.") }}
     <select aria-label="Oracle SIHRS engine"><option>Particle filter</option></select>
    </div>
    <script>
     (function(){
       var m=document.getElementById('model-pick'), r=document.getElementById('engine-row');
-      function sync(){ r.hidden = (m.value === 'analogue'); }
+      function sync(){ r.hidden = (m.value === 'analogue') || !!r.dataset.dataset; }
       m.addEventListener('change', sync); sync();
     })();
    </script>
@@ -137,7 +168,7 @@
      const all=document.getElementById('ck-all').checked;
      const n=document.querySelectorAll('.ck-one:checked').length;
      document.getElementById('lcount').textContent =
-       all? '(all 52)' : n? '('+n+' selected)' : '';
+       all? '(all '+{{ (all_locs | length if dataset else 52) | tojson }}+')' : n? '('+n+' selected)' : '';
    }
    // 'all' and specific states are mutually exclusive; nothing is disabled
    document.getElementById('ck-all').addEventListener('change', function(){
@@ -273,8 +304,12 @@
     <div>{{ results_html(r.outcome, r.spec) | safe }}</div>
    </div>
    {# straight to the run's outputs, so the tab never dead-ends here #}
+   {% if dataset %}
+   <p class="hint"><a href="/runs/{{ r.run_id }}">Fans and export files</a></p>
+   {% else %}
    <p class="hint">{% if r.has_report %}<a href="/runs/{{ r.run_id }}/report" target="_blank">Weekly report</a> · {% endif %}<a href="/output">Submission files</a></p>
-   {% if r.spec and r.status in ("stopped", "error", "failed", "interrupted", "partial") %}
+   {% endif %}
+   {% if r.spec and r.status in ("stopped", "error", "failed", "interrupted", "partial") and not dataset %}
    {# fresh re-run from the recorded spec (console fits hold no checkpoint,
       so never a resume); same guard and server-side checks as /run #}
    <form method="post" action="/runs/{{ r.run_id }}/rerun" class="rerun-run">
@@ -291,12 +326,16 @@
   <div id="fanwrap">{% if fanq_json == '{}' %}<p class="hint">Forecasts appear here once the models run.</p>{% endif %}</div>
 
   <details class="card" open><summary><h2 style="display:inline">Data</h2>
-   <span class="hint">: raw admissions, any location (latest vintage)</span></summary>
+   <span class="hint">{{ (": " ~ dataset.name ~ ", any group (newest data)") if dataset else ": raw admissions, any location (latest vintage)" }}</span></summary>
    <div style="margin:.6rem 0 .2rem">
     <select id="data-loc" aria-label="data panel location"
       style="width:auto;min-width:230px;max-width:100%">
+     {% if dataset %}
+     {% for l in all_locs %}<option {% if loop.first %}selected{% endif %}>{{ l }}</option>{% endfor %}
+     {% else %}
      <option selected>US (national)</option>
      {% for l in all_locs | sort %}<option>{{ l }}</option>{% endfor %}
+     {% endif %}
     </select>
    </div>
    {# the selected mode wears gold + aria-pressed (drawData keeps both) #}
@@ -340,6 +379,8 @@
  const FANQ = {{ fanq_json | safe }};   // {model: {loc: {h: {q: v}}}}
  const ROBS = {{ run_obs_json | safe }};  // loc -> [[date, value]...] AS OF the run's vintage
  const FCDATE = {{ fc_date | tojson }};
+ // the data source for /api/series: '' = the FluSight hub
+ const SRCQ = {{ ("&source=" ~ dataset.id if dataset else "") | tojson }};
  // shared maps from player.js's marked JSON, injected by the server
  const MNAMES = {{ model_names_json | safe }};
  // [month label, week offset from August 1] (server-side list)
@@ -405,10 +446,11 @@
    const lm=SHOWPTS?'lines+markers':'lines';
    const el=document.getElementById('dataplots');
    const loc=LOCS[0];
-   const NODATA='<p class="hint">No data yet. Pull the FluSight hub on the Data tab.</p>';
+   const NODATA=SRCQ?'<p class="hint">No weeks for this group.</p>'
+     :'<p class="hint">No data yet. Pull the FluSight hub on the Data tab.</p>';
    if(!SERIES[loc]){
      // keep the current chart during the fetch (emptying it jumped the scroll)
-     fetch('/api/series?locs='+encodeURIComponent(loc)).then(r=>r.json())
+     fetch('/api/series?locs='+encodeURIComponent(loc)+SRCQ).then(r=>r.json())
        .then(d=>{if(!d[loc]) d[loc]={dates:[],values:[]};  // sentinel: never re-fetch a miss
          Object.assign(SERIES,d); drawData(CURMODE);})
        .catch(()=>{el.innerHTML=NODATA;
@@ -474,7 +516,7 @@
  let FIDX=0;
  async function ensureSeries(loc){
    if(SERIES[loc]) return;
-   try{const r=await fetch('/api/series?locs='+encodeURIComponent(loc));
+   try{const r=await fetch('/api/series?locs='+encodeURIComponent(loc)+SRCQ);
      Object.assign(SERIES, await r.json());}catch(e){}
  }
  let fanSeq=0;

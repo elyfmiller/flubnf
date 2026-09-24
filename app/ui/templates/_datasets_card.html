@@ -1,0 +1,84 @@
+{# "Your datasets" on the Data tab (app/ui/datasets_ui.py): upload, the
+   upload's problems inline, and the stored datasets. One sentence of prose;
+   the rest behind "?" tips. Included by data.html (tips imported there). #}
+<div class="card" id="datasets"><h2>Your datasets
+ {{ tips.tip("ds-about", "your datasets", "Upload weekly data as a CSV to browse it here, forecast it on the Forecast tab and replay it on the Retrospective tab. The FluSight hub stays the default everywhere; a dataset is used only where you pick it. Forecasts on it are exported as CSV files and never submitted.") }}</h2>
+ <p class="hint">Your own weekly data, used only where you pick it.</p>
+ {% if upload and upload.problems %}
+ <div class="dsproblems" role="alert">
+  <p class="bad"><strong>Nothing was stored.</strong> {{ upload.problems | length }} problem{{ "" if upload.problems | length == 1 else "s" }} to fix:</p>
+  <ul>{% for p in upload.problems %}<li>{{ p }}</li>{% endfor %}</ul>
+ </div>
+ {% endif %}
+ <form method="post" action="/data/datasets" enctype="multipart/form-data"
+   class="dsupload">
+  <div>{{ tips.label("CSV file", "ds-file", "MicroHub columns: date, target_group, value, and optionally population. Or a hubverse time series: target_end_date (or date), location, observation (or value), optionally as_of, target, location_name and population. Dates are Saturdays (week ending) as YYYY-MM-DD, M/D/YYYY or M/D/YY; limit " ~ max_mb ~ " MB.", for_="ds-file") }}
+   <input type="file" name="file" id="ds-file" accept=".csv,text/csv" required></div>
+  <div>{{ tips.label("Name", "ds-name", "Shown on every page that uses the dataset; blank uses the file name.", for_="ds-name") }}
+   <input type="text" name="name" id="ds-name" maxlength="80"
+     value="{{ upload.name if upload else '' }}" placeholder="e.g. County admissions"></div>
+  <div>{{ tips.label("Values are", "ds-kind", "Counts (whole numbers) can also run the particle filter when a population is given, and are exported as whole numbers. Rates or proportions run the Groundhog only and keep their decimals.", for_="ds-kind") }}
+   <select name="kind" id="ds-kind" required>
+    <option value="" {% if not upload or not upload.kind %}selected{% endif %} disabled>choose…</option>
+    <option value="count" {% if upload and upload.kind == "count" %}selected{% endif %}>counts</option>
+    <option value="rate" {% if upload and upload.kind == "rate" %}selected{% endif %}>rates or proportions</option>
+   </select></div>
+  {% if upload and upload.targets %}
+  <div>{{ tips.label("Target", "ds-target", "This file holds several targets; a dataset holds one.", for_="ds-target") }}
+   <select name="target" id="ds-target">{% for t in upload.targets %}
+    <option {% if t == upload.target %}selected{% endif %}>{{ t }}</option>{% endfor %}</select></div>
+  {% elif upload and upload.target %}
+  <input type="hidden" name="target" value="{{ upload.target }}">
+  {% endif %}
+  <div class="lblrow"><label class="ck" for="ds-sunday"><input type="checkbox" name="sunday" value="1" id="ds-sunday"
+    {% if upload and upload.sunday %}checked{% endif %}> Dates are week-start Sundays</label>
+   {{ tips.tip("ds-sunday", "week-start Sundays", "Tick when each date is the Sunday that starts its week; every date moves +6 days to the Saturday that ends it. Other weekdays are refused.") }}</div>
+  <div><button class="gold">Upload and check</button></div>
+ </form>
+ <p class="hint"><a href="/static/microhub-template.csv" download="microhub-template.csv">MicroHub template CSV</a>
+  {{ tips.tip("ds-template", "the template", "MicroHub's own template (three groups, 143 weeks from January 2022, with populations): the columns and date style an upload can use.") }}</p>
+ {% if datasets %}
+ <div class="tablewrap"><table class="compact dstable">
+  <thead><tr><th>Name</th><th class="num">Groups</th><th class="num">Weeks</th>
+   <th>Kind</th><th>Population</th><th>Vintages</th><th>Use</th></tr></thead>
+  <tbody>{% for d in datasets %}
+  <tr>
+   <td><a href="/data?source={{ d.id }}#browser">{{ d.name }}</a>{% if d.warnings %}
+    {{ tips.tip("ds-w-" ~ loop.index, "warnings for " ~ d.name, d.warnings | join(" ")) }}{% endif %}</td>
+   <td class="num">{{ d.groups }}</td><td class="num">{{ d.weeks }}</td>
+   <td>{{ "counts" if d.kind == "count" else "rates" }}</td>
+   <td>{{ "yes" if d.population else "no" }}</td>
+   <td>{{ ("yes (" ~ d.n_vintages ~ ")") if d.vintages else "no" }}</td>
+   <td class="dsactions"><a href="/forecast?source={{ d.id }}">Forecast</a>
+    · <a href="/retro#dataset-replay">Replay</a>
+    <form method="post" action="/data/datasets/{{ d.id }}/delete" class="inline">
+     <input type="hidden" name="confirm" value="">
+     <button type="button" class="quiet" data-del-dataset data-name="{{ d.name }}"
+       {% if d.busy %}disabled title="{{ d.busy }}"{% endif %}>Delete</button>
+    </form></td>
+  </tr>{% endfor %}</tbody>
+ </table></div>
+ {% else %}
+ <p class="hint">No datasets yet.</p>
+ {% endif %}
+</div>
+<script>
+ // dataset delete: the shared confirmation shell; the server refuses the
+ // POST unless confirm names the dataset
+ (function(){
+  document.querySelectorAll('[data-del-dataset]').forEach(function(b){
+   b.addEventListener('click',function(){
+    var f=b.form,n=b.dataset.name;
+    if(!f||!window.FluBNFConfirm)return;
+    window.FluBNFConfirm({
+     title:'Delete '+n+'?',
+     msg:'This permanently deletes the dataset '+n+' and its replays. '
+       +'It cannot be undone.',
+     hint:'Runs made from it keep their results.',
+     okLabel:'Delete permanently',
+     onOk:function(){f.confirm.value=n;f.submit();}
+    });
+   });
+  });
+ })();
+</script>

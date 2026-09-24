@@ -2937,7 +2937,8 @@ def site_build_cmd(
 # ---------------------------------------------------------------------------
 dataset_app = typer.Typer(
     add_completion=False, no_args_is_help=True,
-    help="Check custom target data (MicroHub or hubverse time-series CSV).")
+    help="Check, import, list and delete custom target data (MicroHub or "
+         "hubverse time-series CSV).")
 app.add_typer(dataset_app, name="dataset")
 
 
@@ -2971,6 +2972,84 @@ def dataset_validate_cmd(
         print(f"  warning: {w}")
     if not rep.ok:
         raise typer.Exit(1)
+
+
+@dataset_app.command("import")
+def dataset_import_cmd(
+    csv_path: Path = typer.Argument(..., exists=True, dir_okay=False,
+                                    help="The CSV to store."),
+    kind: str = typer.Option(..., "--kind",
+                             help="Declare the values: 'count' or 'rate'."),
+    name: Optional[str] = typer.Option(
+        None, "--name", help="The dataset's name (default: the file name)."),
+    sunday: bool = typer.Option(
+        False, "--sunday", help="Dates are week-start Sundays (shift +6)."),
+    target: Optional[str] = typer.Option(
+        None, "--target", help="The target to keep when the file has several."),
+):
+    """Validate and store a dataset CSV, as the Data tab's upload does.
+
+    Prints the dataset's id and summary (exit 0), or every problem (exit 1,
+    nothing stored). Importing the same file with the same options again
+    returns the stored dataset."""
+    from app.core import datasets as ds
+    try:
+        d = ds.ingest(csv_path, (name or csv_path.stem)[:80], kind=kind,
+                      week_start_sunday=sunday, target=target,
+                      filename=csv_path.name)
+    except ds.DatasetError as e:
+        print(f"{csv_path.name}: {e}")
+        for p in e.problems:
+            print(f"  - {p}")
+        raise typer.Exit(1)
+    print(f"stored {d.name!r} as {d.id}")
+    print(f"  groups      {len(d.groups)}: {', '.join(d.groups[:8])}"
+          + (" ..." if len(d.groups) > 8 else ""))
+    print(f"  weeks       {len(d.weeks())} ({d.meta['date_range'][0]} to "
+          f"{d.meta['date_range'][1]})")
+    print(f"  kind        {d.kind}")
+    print(f"  population  {'yes' if d.has_population else 'no'}")
+    print(f"  vintages    " + (f"{len(d.vintages())} (vintage-true)"
+                               if d.vintage_true else "none (final data)"))
+    if d.national_group:
+        print(f"  national    {d.national_group}")
+    for w in d.meta.get("warnings") or []:
+        print(f"  warning: {w}")
+
+
+@dataset_app.command("list")
+def dataset_list_cmd():
+    """List the stored datasets, newest first."""
+    from app.core import datasets as ds
+    items = ds.list_datasets()
+    if not items:
+        print("no datasets stored")
+        return
+    for d in items:
+        print(f"{d.id}  {d.name!r}  {len(d.groups)} group(s), "
+              f"{len(d.weeks())} week(s), {d.kind}, population "
+              f"{'yes' if d.has_population else 'no'}, vintages "
+              f"{'yes' if d.vintage_true else 'no'}")
+
+
+@dataset_app.command("delete")
+def dataset_delete_cmd(
+    dataset_id: str = typer.Argument(..., help="The id `dataset list` prints."),
+    yes: bool = typer.Option(False, "--yes", help="Delete without asking."),
+):
+    """Delete a stored dataset and its replays (runs keep their results)."""
+    from app.core import datasets as ds
+    try:
+        d = ds.get(dataset_id)
+    except ds.DatasetError as e:
+        print(str(e))
+        raise typer.Exit(1)
+    if not yes and not typer.confirm(f"Delete {d.name!r} ({d.id}) and its "
+                                     "replays?"):
+        print("nothing deleted")
+        raise typer.Exit(1)
+    ds.delete(d.id)
+    print(f"deleted {d.name!r} ({d.id})")
 
 
 if __name__ == "__main__":

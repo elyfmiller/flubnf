@@ -97,6 +97,8 @@ def spec_settings(spec) -> list:
     if not isinstance(d, dict) or not d:
         return []
     extra = d.get("extra") if isinstance(d.get("extra"), dict) else {}
+    if extra.get("dataset"):
+        return dataset_settings(d)
     engine = str(d.get("engine", "") or "")
     pairs = [("forecast date", str(d.get("forecast_date", "") or "unknown")),
              ("locations", locations_phrase(d.get("locations"))),
@@ -121,6 +123,58 @@ def spec_settings(spec) -> list:
     mk = model_settings_label(d)
     if mk:
         pairs.append(("model settings", mk))
+    return [(k, v) for k, v in pairs if v not in ("", None)]
+
+
+#: a dataset run's members, as its settings name them
+DATASET_ENGINE_LABELS = {
+    "all": "Groundhog and plain SIHRS particle filter",
+    "pf": "plain SIHRS particle filter only",
+    "analogue": "Groundhog only"}
+
+
+def groups_phrase(locations) -> str:
+    """A dataset run's scope: the group count, names when short."""
+    locs = [str(l) for l in (locations or [])]
+    if not locs:
+        return "none"
+    noun = "group" if len(locs) == 1 else "groups"
+    if len(locs) <= LOCATION_LIST_LIMIT:
+        return f"{len(locs)} {noun}: " + ", ".join(locs)
+    return f"{len(locs)} {noun}"
+
+
+def dataset_settings(d: dict) -> list:
+    """spec_settings for a run on a custom dataset (extra['dataset']): the
+    data source and groups, the members as they ran on it (no Oracle step,
+    the Groundhog's donors), and the PF's size only when the PF ran."""
+    extra = d.get("extra") if isinstance(d.get("extra"), dict) else {}
+    ref = extra.get("dataset") or {}
+    engine = str(d.get("engine", "") or "")
+    truth = ("final data, not vintage-true"
+             if extra.get("dataset_final") else "vintage-true (as_of snapshots)")
+    pairs = [("forecast date", str(d.get("forecast_date", "") or "unknown")),
+             ("data source", f"{ref.get('name', '?')} (your dataset; {truth})"),
+             ("groups", groups_phrase(d.get("locations"))),
+             ("models", DATASET_ENGINE_LABELS.get(engine, engine or "unknown"))]
+    if engine in ("all", "pf"):
+        if d.get("season_start"):
+            pairs.append(("season start", str(d["season_start"])))
+        pairs += [("replicates", str(d.get("replicates", "") or "")),
+                  ("particles", f"{int(d.get('particles') or 0):,}"),
+                  ("Oracle step", "off (its donor bank is FluSight-specific)")]
+    pairs.append(("weeks dropped", str(int(d.get("weeks_to_drop") or 0))))
+    if "drop_same_day" in d:
+        pairs.append(("same-day week", "treated as unreported"
+                      if d.get("drop_same_day") else "kept"))
+    if engine in ("all", "analogue"):
+        from app.core.custom_run import analogue_label
+        pairs.append(("Groundhog donors", analogue_label(extra)))
+    mk = model_settings_label(d)
+    if mk:
+        pairs.append(("model settings", mk.split(";", 1)[0]))
+    pairs.append(("output", "export files under non-hub names; never "
+                            "submitted"))
     return [(k, v) for k, v in pairs if v not in ("", None)]
 
 
@@ -198,9 +252,11 @@ def is_research(spec) -> bool:
     extra = d.get("extra") if isinstance(d, dict) else None
     if not isinstance(extra, dict):
         return False
-    # the plain filter: file withheld, never the date's forecast
+    # the plain filter: file withheld, never the date's forecast; a custom
+    # dataset: never the date's forecast either
     return (extra.get("members") == 3 or extra.get("variant") == "2strain"
-            or str(extra.get("oracle") or "") == "none")
+            or str(extra.get("oracle") or "") == "none"
+            or bool(extra.get("dataset")))
 
 
 def version_pairs(build: str = "", versions: dict | None = None) -> list:
@@ -249,6 +305,8 @@ def results_html(outcome, spec) -> str:
     if not o and not d:
         return ""
     extra = d.get("extra") if isinstance(d.get("extra"), dict) else {}
+    if extra.get("dataset"):
+        return dataset_results_html(o, d)
     mode = str(extra.get("mode") or "realtime")
     rows = [("Run type", MODE_LABELS.get(mode, mode))]
     for name, key, cells_key in _RESULT_ROWS:
@@ -296,6 +354,55 @@ def results_html(outcome, spec) -> str:
             f'FluSight baseline, pooled over fitted states (US excluded); '
             f'below 1.000 beats it.</caption>'
             f"{body}</table>")
+
+
+def dataset_results_html(o: dict, d: dict) -> str:
+    """results_html for a run on a custom dataset: each member's relWIS
+    against the in-house persistence baseline (named), the national group
+    beside the pooled figure, abstentions and the export files. Fixed
+    phrases and numbers only, group names escaped."""
+    import html as _html
+    from app.core.custom_run import BASELINE, EXPORT_IDS, MEMBER_LABELS
+    rows = []
+    scores = o.get("custom_scores") or {}
+    for m in ("pf", "analogue"):
+        sc = scores.get(m)
+        if not sc or sc.get("relwis") is None:
+            continue
+        fv = float(sc["relwis"])
+        n = int(sc.get("cells") or 0)
+        cell = (f'<span class="relwis {"ok" if fv < 1 else "bad"}">{fv:.3f}'
+                f'</span> <span class="hint">({n} cell{"s" if n != 1 else ""})'
+                '</span>')
+        nat = sc.get("national") or {}
+        if nat.get("relwis") is not None:
+            cell += (f' <span class="hint">· national group '
+                     f'{float(nat["relwis"]):.3f}, beside</span>')
+        rows.append((MEMBER_LABELS[m], cell))
+    if "pf_cells" in o:
+        nf = len(o.get("pf_failures") or {})
+        fits = f"{int(o['pf_cells'])} fit{'s' if int(o['pf_cells']) != 1 else ''}"
+        if nf:
+            fits += f', <span class="bad">{nf} failure{"s" if nf != 1 else ""}</span>'
+        rows.append(("PF fits", fits))
+    elif o.get("pf_skipped"):
+        rows.append(("PF fits", "none (" + _html.escape(str(o["pf_skipped"]))
+                     + ")"))
+    for m, names in sorted((o.get("abstained") or {}).items()):
+        rows.append((f"{MEMBER_LABELS.get(m, m)} abstained",
+                     _html.escape(", ".join(names[:8]))
+                     + (" …" if len(names) > 8 else "")))
+    ex = o.get("exports") or {}
+    rows.append(("Export files", f"{len(ex)} file{'s' if len(ex) != 1 else ''}"
+                 if ex else "none"))
+    if o.get("export_errors"):
+        rows.append(("Export errors", f'<span class="bad">'
+                     f'{len(o["export_errors"])}</span>'))
+    body = "".join(f"<tr><th scope=\"row\">{k}</th><td>{v}</td></tr>"
+                   for k, v in rows)
+    return (f'<table class="results"><caption class="hint">relWIS vs the '
+            f'{BASELINE}, pooled over the groups (national group '
+            f'excluded); below 1.000 beats it.</caption>{body}</table>')
 
 
 def settings_html(pairs, title: str = "Run settings",

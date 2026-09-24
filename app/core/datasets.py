@@ -73,9 +73,15 @@ MAX_GAP_DAYS = 8
 #: ledger keys and HTML text
 GROUP_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9 _]{0,39}")
 
-#: names the console gives another meaning: us_national.US_SPELLINGS (national
-#: row) and 'all' (every location)
-RESERVED_NAMES = ("US", "US (NATIONAL)", "UNITED STATES", "USA", "ALL")
+#: 'all' means every location to the console, so no group may be called it
+RESERVED_NAMES = ("ALL",)
+
+#: spellings (case-insensitive) that make a group the dataset's NATIONAL row
+#: (owner decision 2026-09-24): us_national.US_SPELLINGS plus 'National'. It
+#: gets a minted key like every group (never the literal FIPS 'US', so it
+#: cannot pass for FluSight's series), is flagged national in meta.json and
+#: is reported beside pooled scores, never inside them. One per dataset.
+NATIONAL_NAMES = ("US", "USA", "UNITED STATES", "US (NATIONAL)", "NATIONAL")
 
 #: tokens read as a missing value (MicroHub/readr's NA set, plus common ones)
 NA_TOKENS = {"", "na", "n/a", "nan", "null", "none", "-"}
@@ -525,10 +531,16 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
         rep.add("value_negative", f"The '{vcol}' column contains {len(neg)} "
                 f"negative value(s) (e.g., {_examples(neg)}). Values must be "
                 "zero or positive.")
-    if na:
+    if na and fmt == "microhub":
+        # MicroHub's own rule: NA is an error
         rep.add("value_na", f"The '{vcol}' column contains {len(na)} missing "
                 f"(NA) value(s) (e.g., line(s) {_examples(na)}). All rows "
                 "must have a value; delete rows for weeks not reported.")
+    elif na:
+        # hubverse time series carry NA for unreported weeks (FluSight's
+        # own file has thousands): dropped after the structural checks,
+        # counted, never imputed (rule 10)
+        rep.warnings.append(f"{len(na)} row(s) with no value were dropped.")
     if nonint:
         rep.add("value_not_integer", f"The values were declared counts but "
                 f"{len(nonint)} are not whole numbers (e.g., "
@@ -546,9 +558,17 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
         rep.warnings.append(f"Dates mix formats ({', '.join(sorted(formats))}); "
                             "each was read by its own pattern.")
 
-    _check_groups(rep, raw_rows, cols)
+    national = _check_groups(rep, raw_rows, cols)
     _check_structure(rep, recs, cols)
 
+    n_na = 0
+    if na and fmt != "microhub":
+        kept = [r for r in recs if r[4] is not None]
+        n_na = len(recs) - len(kept)
+        recs = kept
+        if not recs and rep.ok:
+            rep.add("empty", "Every row's value is missing; nothing is "
+                    "left to store.")
     rep.records = recs
     if recs:
         dates = sorted({r[3] for r in recs})
@@ -570,6 +590,8 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
             "has_as_of": has_asof,
             "as_of": [a.isoformat() for a in asofs],
             "week_start_sunday": bool(week_start_sunday),
+            "na_dropped": n_na,
+            "national_group": (national if national in names else None),
         }
         if has_pop:
             pops = {}
@@ -583,9 +605,14 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
                     "the latest value is used for the particle filter.")
 
 
-def _check_groups(rep: Report, raw_rows: list, cols: dict) -> None:
+def is_national_name(name) -> bool:
+    return str(name or "").strip().upper() in NATIONAL_NAMES
+
+
+def _check_groups(rep: Report, raw_rows: list, cols: dict):
     """Names: charset, reserved spellings, collisions after space->'_' and
-    case folding, and one name per location (hubverse)."""
+    case folding, one name per location (hubverse), and at most one
+    national group. Returns the national group's name, or None."""
     has_lname = "location_name" in cols
     key2names, name2keys = {}, {}
     for _, r in raw_rows:
@@ -595,7 +622,9 @@ def _check_groups(rep: Report, raw_rows: list, cols: dict) -> None:
         key2names.setdefault(key, set()).add(name)
         name2keys.setdefault(name, set()).add(key)
     what = "location name" if cols["format"] == "hubverse" else "target_group"
-    bad = [n for n in name2keys if not GROUP_RE.fullmatch(n)]
+    # a national spelling is accepted as is ('US (national)' included)
+    bad = [n for n in name2keys
+           if not GROUP_RE.fullmatch(n) and not is_national_name(n)]
     if bad:
         sugg = [f"'{n}' -> '{_suggest(n)}'" for n in bad]
         rep.add("group_name", f"{len(bad)} {what} value(s) use characters "
@@ -605,8 +634,15 @@ def _check_groups(rep: Report, raw_rows: list, cols: dict) -> None:
     reserved = [n for n in name2keys if n.upper() in RESERVED_NAMES]
     if reserved:
         rep.add("group_reserved", f"Group name(s) {_examples(reserved)} are "
-                "reserved (the console reads them as the US national row or "
-                "as every location); rename them, e.g. 'National'.")
+                "reserved (the console reads 'all' as every location); "
+                "rename them, e.g. 'Overall'.")
+    national = sorted({n for n, keys in name2keys.items()
+                       if is_national_name(n)
+                       or any(is_national_name(k) for k in keys)})
+    if len(national) > 1:
+        rep.add("national_multiple", f"{len(national)} groups are spelled as "
+                f"a national row ({', '.join(repr(n) for n in national)}); a "
+                "dataset may hold one national group. Keep one spelling.")
     folded = {}
     for n in name2keys:
         folded.setdefault(_norm_name(n), []).append(n)
@@ -624,6 +660,7 @@ def _check_groups(rep: Report, raw_rows: list, cols: dict) -> None:
         rep.add("location_name_conflict", "Each location must have exactly "
                 "one location_name and vice versa (e.g., "
                 f"{_examples(multi)}).")
+    return national[0] if len(national) == 1 else None
 
 
 def _suggest(name: str) -> str:
@@ -844,7 +881,8 @@ def _materialize(d: Path, rep: Report, *, name, dataset_id, digest, kind,
                            if has_pop and n in pop_latest else None),
             "population_varies": bool(pop_varies.get(n)),
             "rows": sum(1 for r in recs if r[1] == n),
-            "first": ds[0].isoformat(), "last": ds[-1].isoformat()})
+            "first": ds[0].isoformat(), "last": ds[-1].isoformat(),
+            "national": n == rep.summary.get("national_group")})
     s = rep.summary
     meta = {
         "schema": SCHEMA,
@@ -870,6 +908,8 @@ def _materialize(d: Path, rep: Report, *, name, dataset_id, digest, kind,
         "as_of_map": as_of_map,
         "as_of_used": {k: (a.isoformat() if a else None)
                        for k, a in sorted(used.items())},
+        "national_group": s.get("national_group"),
+        "na_dropped": int(s.get("na_dropped") or 0),
         "warnings": list(rep.warnings),
     }
     _atomic_write_text(d / META_FILE, json.dumps(meta, indent=1) + "\n")
@@ -920,6 +960,11 @@ class Dataset:
                 if self.has_population else {})
 
     @property
+    def national_group(self) -> Optional[str]:
+        """The group read as the dataset's national row, or None."""
+        return self.meta.get("national_group") or None
+
+    @property
     def pf_eligible(self) -> bool:
         """Counts with a population: what the SIHRS filter needs."""
         return self.kind == "count" and self.has_population
@@ -965,9 +1010,78 @@ class Dataset:
     def reference_dates(self) -> list:
         """MicroHub's retrospective dates: every distinct week except the
         first, from the final data."""
-        with open(self.final_path, newline="") as fh:
-            ds = sorted({r["date"] for r in csv.DictReader(fh)})
-        return ds[1:]
+        return self.weeks()[1:]
+
+    # ---- the engines' view (later stages): one path per as-of -------------
+
+    @property
+    def vintage_true(self) -> bool:
+        """True when the upload carried as_of snapshots: a forecast at a
+        key sees the data as it stood then. Otherwise every as-of reads
+        the final series truncated at the as-of (final data, not
+        vintage-true)."""
+        return self.has_as_of
+
+    def _final_rows(self) -> list:
+        """The final snapshot's rows, read once per Dataset object."""
+        rows = self.__dict__.get("_final_cache")
+        if rows is None:
+            with open(self.final_path, newline="") as fh:
+                rows = list(csv.DictReader(fh))
+            self.__dict__["_final_cache"] = rows
+        return rows
+
+    def weeks(self) -> list:
+        """Every distinct week (Saturday, ISO) in the final data, ascending."""
+        return sorted({r["date"] for r in self._final_rows()})
+
+    def forecast_dates(self) -> list:
+        """The as-of weeks a forecast may anchor on: every vintage key when
+        versioned; otherwise every week but the first (MicroHub's
+        reference dates: a forecast needs one observed week)."""
+        return self.vintages() if self.vintage_true else self.reference_dates()
+
+    def truth_path(self, as_of: str) -> Path:
+        """The archive-shaped CSV an engine reads for one as-of. Versioned:
+        that key's snapshot (exact, rule 5). Unversioned: the final data,
+        which every engine truncates at the as-of; a week the data does
+        not hold is refused loudly, naming nearby weeks."""
+        as_of = str(as_of)
+        if self.vintage_true:
+            return self.vintage_path(as_of)
+        weeks = self.weeks()
+        if as_of not in weeks:
+            try:
+                t = date_fromiso(as_of)
+                near = [w for w in weeks
+                        if abs((date_fromiso(w) - t).days) <= 45]
+            except (TypeError, ValueError):
+                near = []
+            raise FileNotFoundError(
+                f"No week {as_of} in dataset {self.name!r}. "
+                f"Nearby: {near or weeks[-3:]}")
+        return self.final_path
+
+    def series(self, name: str, as_of: Optional[str] = None) -> dict:
+        """{"dates": [...], "values": [...]} for one group as it stood at
+        `as_of` (the newest vintage when None), truncated at the as-of so
+        final data never leaks later weeks into a view; the shape of
+        data.vintage_series."""
+        if as_of is None:
+            rows = self._final_rows()
+        else:
+            with open(self.truth_path(as_of), newline="") as fh:
+                rows = list(csv.DictReader(fh))
+        out = sorted((r["date"], float(r["value"])) for r in rows
+                     if r["location_name"] == name and r["value"] != ""
+                     and (as_of is None or r["date"] <= str(as_of)))
+        return {"dates": [d for d, _ in out], "values": [v for _, v in out]}
+
+    def truth(self) -> dict:
+        """{(group name, ISO date): value} from the final data: what a
+        dataset forecast is scored against."""
+        return {(r["location_name"], r["date"]): float(r["value"])
+                for r in self._final_rows() if r["value"] != ""}
 
     def population_series(self, name: str) -> list:
         """[(date, population)] for one group from the final snapshot,
@@ -1010,6 +1124,19 @@ def resolve(ref: Optional[dict]) -> Optional[Dataset]:
         raise DatasetError(f"Dataset {ds.id!r} no longer matches the "
                            "digest this run pinned.")
     return ds
+
+
+def from_spec(spec) -> Optional[Dataset]:
+    """The dataset a run spec (RunSpec, or its dict) names in
+    ``extra["dataset"]``, else None WITHOUT touching the store: the hub
+    path's call is a dictionary lookup and nothing more. A named dataset
+    that is gone or changed raises (never a silent substitute)."""
+    extra = (spec.get("extra") if isinstance(spec, dict)
+             else getattr(spec, "extra", None))
+    ref = extra.get("dataset") if isinstance(extra, dict) else None
+    if not ref:
+        return None
+    return resolve(ref)
 
 
 def list_datasets() -> list:
@@ -1056,4 +1183,7 @@ def summary_lines(rep: Report) -> list:
     ]
     if s["target"]:
         lines.append(f"target      {s['target']}")
+    if s.get("national_group"):
+        lines.append(f"national    {s['national_group']} (reported beside "
+                     "the pooled scores, never inside)")
     return lines

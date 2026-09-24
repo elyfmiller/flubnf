@@ -402,6 +402,23 @@ def initialization_for(spec) -> str:
 
 # --- prepare ------------------------------------------------------------------
 
+#: spec.extra keys refused on a custom dataset: each reads hub-only data
+#: (national growth, NREVSS typing, FluSight completeness, a hub vintage)
+DATASET_REFUSED = ("variant", "reporting", "anchor_asof")
+
+
+def _hub_tag(loc: str) -> str:
+    """A hub location's cell-directory and BNGL-suffix stem (unchanged)."""
+    return loc.replace(' ', '_')
+
+
+def dataset_tag(loc: str) -> str:
+    """A dataset group's stem: letters, digits and '_' only (a national
+    group may be spelled 'US (national)'). Group names are unique after
+    casefold and space-to-underscore (datasets._norm_name), so stems are."""
+    return re.sub(r"[^A-Za-z0-9_]", "_", loc)
+
+
 def prepare(spec, workroot: Path) -> list:
     """Materialize model+net+exp+conf for every (location, replicate) cell.
 
@@ -433,7 +450,25 @@ def prepare(spec, workroot: Path) -> list:
     # read once: the line goes into every cell's conf or into none
     si_line = sampling_interval_line()
 
-    vintage = vintage_path(spec.forecast_date)
+    # the data source: the hub's vintage and locations table, or a custom
+    # dataset's (extra["dataset"]); the hub branch is today's expression
+    from app.core import datasets as _ds
+    ds = _ds.from_spec(spec)
+    if ds is None:
+        vintage = vintage_path(spec.forecast_date)
+        loc_csv = LOCATIONS
+        tag_of = _hub_tag
+    else:
+        bad = [k for k in DATASET_REFUSED
+               if (spec.extra or {}).get(k)]
+        if bad:
+            raise ValueError(
+                f"{', '.join(bad)}: these read FluSight, NREVSS or hub "
+                f"completeness data and cannot run on the custom dataset "
+                f"{ds.name!r}; the plain SIHRS filter can")
+        vintage = ds.truth_path(spec.forecast_date)
+        loc_csv = ds.locations_csv
+        tag_of = dataset_tag
     variant = (spec.extra or {}).get("variant")
     # fit_i0 = [lo, hi]: fit i0 (loguniform) instead of deriving it.
     fit_i0 = (spec.extra or {}).get("fit_i0")
@@ -462,7 +497,7 @@ def prepare(spec, workroot: Path) -> list:
 
     def _one_location(loc: str) -> list:
         """Every prepared cell for one location; the caller contains raises."""
-        s = resolve_state(loc, truth_csv=vintage, locations_csv=LOCATIONS,
+        s = resolve_state(loc, truth_csv=vintage, locations_csv=loc_csv,
                           season_start=spec.season_start,
                           as_of=spec.forecast_date)
         # i0/rhomult derive from the season-to-date count, so they drift
@@ -471,7 +506,7 @@ def prepare(spec, workroot: Path) -> list:
         anchor = (spec.extra or {}).get("anchor_asof")
         if anchor:
             sa = resolve_state(loc, truth_csv=vintage_path(anchor),
-                               locations_csv=LOCATIONS,
+                               locations_csv=loc_csv,
                                season_start=spec.season_start, as_of=anchor)
             s.i0, s.rhomult = sa.i0, sa.rhomult   # a fresh object per call
         # Optional nowcast rule (RunSpec.drop_same_day, off by default): trim
@@ -561,7 +596,7 @@ def prepare(spec, workroot: Path) -> list:
             # Same vintage as the likelihood; truncated to the filter's last
             # week so "hold the last gap" starts where the forecast does.
             gg = growth_gap_series(
-                loc, truth_csv=vintage, locations_csv=LOCATIONS,
+                loc, truth_csv=vintage, locations_csv=loc_csv,
                 season_start=spec.season_start, as_of=spec.forecast_date
             ).truncate(int(s.last_week_offset))
         typed_by_t, a0 = {}, 0.85
@@ -579,10 +614,10 @@ def prepare(spec, workroot: Path) -> list:
                                             # has no rows; the fit still runs
         loc_cells = []
         for rep in range(spec.replicates):
-            tag = f"{loc.replace(' ', '_')}_r{rep}"
+            tag = f"{tag_of(loc)}_r{rep}"
             d = workroot / tag
             d.mkdir(parents=True)
-            sfx = f"{loc.replace(' ', '_')}_flu"
+            sfx = f"{tag_of(loc)}_flu"
             if two_strain:
                 tmpl, tok = TEMPLATE_2S, {"{{A0SHARE}}": f"{a0:.4f}"}
             elif natg:
@@ -705,7 +740,7 @@ initialization = {initialization_for(spec)}
         try:
             cells.extend(_one_location(loc))
         except Exception as e:
-            failures[loc.replace(" ", "_")] = f"FAIL: prepare: {e}"[:200]
+            failures[tag_of(loc)] = f"FAIL: prepare: {e}"[:200]
             errors.append(e)
     (workroot / PREPARE_FAILURES_NAME).write_text(json.dumps(failures))
     (workroot / "cells.json").write_text(json.dumps(cells))

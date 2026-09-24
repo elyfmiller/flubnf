@@ -117,13 +117,15 @@ def _level_report(levels: list) -> str:
     return "; ".join(bits) or "levels out of order"
 
 
-def validate(df: pd.DataFrame) -> list:
+def validate(df: pd.DataFrame, key_col: str = "location") -> list:
     """Gate before anything leaves the machine. Returns list of defects.
 
     Enforces all 23 levels per (location, horizon) (hub tasks.json requires
     them; rows_from_quantiles emits only what it is given), monotone,
     non-negative, and not zero-width (such cells once carried 49% of WIS).
     Horizons are optional in the hub schema, so a missing one is fine.
+    `key_col` names the unit column: 'location' for the hub, or a custom
+    dataset's own ('target_group' for a MicroHub-shaped export).
     """
     problems = []
     if df.empty:
@@ -136,7 +138,7 @@ def validate(df: pd.DataFrame) -> list:
         q["_level"] = [round(float(x), 4) for x in q.output_type_id]
     except (TypeError, ValueError):
         return ["quantile rows carry a non-numeric output_type_id"]
-    for (loc, h), g in q.groupby(["location", "horizon"]):
+    for (loc, h), g in q.groupby([key_col, "horizon"]):
         g = g.sort_values("_level")
         levels = list(g["_level"])
         v = g.value.to_numpy()
