@@ -741,7 +741,8 @@ def dataset_panel(panel, *, kind: str = "", where: str = "forecast",
     """The Model settings panel (forms._knob_panel with PANEL_MEMBERS) as
     a dataset run or replay reads it: no Oracle step (it does not run on
     custom data), no auxiliary-bank rows, no optional hub rows (no hub
-    file is written), no hub-name override (there is none), the groups named as the members run on the data.
+    file is written), no partial-week rule (missing.HUB_ONLY_KEYS: its
+    floor assumes admission counts), no hub-name override (there is none), the groups named as the members run on the data.
 
     `kind`: the dataset's kind; a rate dataset has no floor row, and ''
     (a form that picks among datasets) keeps it marked counts-only for the
@@ -749,6 +750,7 @@ def dataset_panel(panel, *, kind: str = "", where: str = "forecast",
     a second panel's id prefix and the id of its model select."""
     if not panel:
         return panel
+    from app.core import missing as _missing
     by_key = forms._knobs.BY_KEY
     groups = []
     for g in panel["groups"]:
@@ -758,6 +760,8 @@ def dataset_panel(panel, *, kind: str = "", where: str = "forecast",
         for r in g["rows"]:
             if r["key"] in AUX_KEYS or r["key"] in forms._knobs.OPTIONAL_KEYS:
                 continue            # no hub files on custom data
+            if r["key"] in _missing.HUB_ONLY_KEYS:
+                continue            # its floor assumes admission counts
             if r["key"] in COUNT_ONLY:
                 if kind and kind != "count":
                     continue
@@ -987,6 +991,9 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
             extra["aux_pools"] = fn(None, 0, None)["aux_pools"]
             extra["analogue_aux"] = fn.__name__.split(":", 1)[1]
         forms._knobs.write_extra(nd, extra)
+        # the partial-week rule assumes admission counts: refused here
+        from app.core import missing as _missing
+        _missing.refuse_on_dataset(extra, ds.name)
     except ValueError as e:
         shared._flash(f"Model settings: {e}. Nothing was run.")
         return RedirectResponse(here, status_code=303)
@@ -1401,6 +1408,9 @@ def replay_start(background: BackgroundTasks, dataset: str = Form(...),
             extra = {"aux_pools": fn(None, 0, None)["aux_pools"],
                      "analogue_aux": fn.__name__.split(":", 1)[1]}
         forms._knobs.write_extra(nd, extra)
+        # the partial-week rule assumes admission counts: refused here
+        from app.core import missing as _missing
+        _missing.refuse_on_dataset(extra, ds.name)
     except ValueError as e:                  # KnobError is a ValueError
         shared._flash(f"Model settings: {e}. Nothing was started.")
         return back

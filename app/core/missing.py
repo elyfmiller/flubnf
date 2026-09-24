@@ -35,6 +35,23 @@ PARTIAL_FLOOR = 20.0
 
 KEYS = {"data.trailing_zero": TRAILING_ZERO, "data.partial_week": PARTIAL_WEEK}
 
+#: rules a custom dataset cannot carry: the partial-week floor
+#: (PARTIAL_FLOOR admissions in the prior week) assumes hospital admission
+#: counts, which a dataset's values need not be. Hidden from its Model
+#: settings panels and refused for its runs; trailing_zero stays.
+HUB_ONLY_KEYS = ("data.partial_week",)
+
+
+def refuse_on_dataset(extra, name: str) -> None:
+    """Raise ValueError when a dataset run's extra turns on a HUB_ONLY_KEYS
+    rule (the engines call this on their dataset branch)."""
+    bad = [k for k in HUB_ONLY_KEYS if k in rules_of(extra)]
+    if bad:
+        raise ValueError(
+            f"{', '.join(bad)}: this rule's floor (a prior week of "
+            f"{PARTIAL_FLOOR:g} or more) assumes hospital admission counts "
+            f"and cannot run on the custom dataset {name!r}")
+
 
 def rules_of(extra) -> dict:
     """{key: choice} of the rules a spec's extra records as "missing"; {}

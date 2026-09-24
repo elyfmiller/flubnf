@@ -486,6 +486,8 @@ def prepare(spec, workroot: Path) -> list:
                 f"{', '.join(bad)}: these read FluSight, NREVSS or hub "
                 f"completeness data and cannot run on the custom dataset "
                 f"{ds.name!r}; the plain SIHRS filter can")
+        from app.core import missing as _ms_ds
+        _ms_ds.refuse_on_dataset(spec.extra, ds.name)
         vintage = ds.truth_path(spec.forecast_date)
         loc_csv = ds.locations_csv
         tag_of = dataset_tag

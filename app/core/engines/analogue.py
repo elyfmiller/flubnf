@@ -338,6 +338,7 @@ def _source(spec) -> tuple:
         raise ValueError(
             f"{', '.join(bad)}: these read FluSight's own completeness "
             f"factors and cannot run on the custom dataset {ds.name!r}")
+    MS.refuse_on_dataset(extra, ds.name)
     excl = tuple(sorted(int(x) for x in extra.get("donor_exclusions", ())))
     return (ds.truth_path(spec.forecast_date), ds.locations_csv,
             {"exclude_seasons": excl})
