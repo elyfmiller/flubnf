@@ -1,6 +1,6 @@
 # scripts/: ops scripts (not packaged)
 
-Run from the repository root with the checkout's `.venv` (`data_audit.py` imports `flubnf`). No script imports another; `__init__.py` only keeps the folder a package.
+Run from the repository root with the checkout's `.venv` (`data_audit.py` imports `flubnf`). No script imports another, and nothing imports these as a package.
 
 | Script | What it does | Run as |
 |---|---|---|
