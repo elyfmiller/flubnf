@@ -176,8 +176,27 @@ def spec_mode(spec) -> str:
     return "vintage" if str(extra.get("mode") or "") == "vintage" else "realtime"
 
 
+#: (forecast date, mode) -> (path, kind) a console run pinned for its whole
+#: length (one run at a time holds the engine): every step of the run reads
+#: the same bytes even if Update data rewrites the hub mid-run
+_PINNED: dict = {}
+
+
+def pin_source(spec, path, kind: str) -> None:
+    _PINNED[(str(spec.forecast_date), spec_mode(spec))] = (Path(path), kind)
+
+
+def unpin_source(spec) -> None:
+    _PINNED.pop((str(spec.forecast_date), spec_mode(spec)), None)
+
+
 def spec_source(spec, asof: Optional[str] = None, *, archive=None) -> tuple:
-    """observed_source for a run spec (its forecast date by default)."""
+    """observed_source for a run spec (its forecast date by default); the
+    run's pinned copy while one is pinned."""
+    if asof is None or str(asof) == str(spec.forecast_date):
+        hit = _PINNED.get((str(spec.forecast_date), spec_mode(spec)))
+        if hit is not None:
+            return hit
     return observed_source(asof or spec.forecast_date, spec_mode(spec),
                            archive=archive)
 

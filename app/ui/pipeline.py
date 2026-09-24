@@ -11,6 +11,7 @@ the dataset workers) and pipeline._pf_engine_state at call time.
 from __future__ import annotations
 
 import html as _htmlmod
+import shutil
 import sys
 from pathlib import Path
 
@@ -454,6 +455,15 @@ def _run_all(spec: RunSpec) -> None:
         try:
             src_path, src_kind = _data.spec_source(spec)
             outcome["data_source"] = _data.source_record(src_path, src_kind)
+            # a copy in the workroot, pinned for the run: Update data may
+            # rewrite the hub while the filter runs, and every later step
+            # (Groundhog, Oracle step, optional rows) must read what the
+            # record names
+            _snap = workroot / "observed" / Path(src_path).name
+            _snap.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src_path, _snap)
+            src_path = _snap
+            _data.pin_source(spec, src_path, src_kind)
         except OSError as e:
             src_path, src_kind = None, None
             outcome["data_source_error"] = str(e)[:300]
@@ -811,6 +821,11 @@ def _run_all(spec: RunSpec) -> None:
             ledger.close_run(run_id, "error", {"error": str(e)[:300], **outcome})
             _status["log"].append(f"{run_id}: ERROR {e}")
     finally:
+        try:
+            from app.core import data as _data_fin
+            _data_fin.unpin_source(spec)
+        except Exception:
+            pass
         if guard is not None:
             try:
                 guard.terminate()

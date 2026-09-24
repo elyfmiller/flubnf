@@ -171,6 +171,46 @@ def test_a_real_time_run_records_the_live_file(console, hubfiles, tmp_path, monk
     assert f"Data: live target-data through {ASOF}" in html
 
 
+def test_update_data_mid_run_does_not_change_what_the_run_reads(console, hubfiles, tmp_path, monkeypatch):
+    """Update data may pull while the filter runs. A pull that adds a week
+    to the live file must neither kill the run ('No vintage for ...') nor
+    let the Groundhog read other bytes than the record names: the run reads
+    its pinned copy from start to end."""
+    from app.core.engines import pf as pf_engine
+    hub = tmp_path / "hub"
+    (hub / "target-data").mkdir(parents=True)
+    live = hub / data.LIVE_TARGET
+    live.write_bytes(Path(hubfiles["vintage"]).read_bytes())
+    sha_before = data.file_sha256(live)
+    monkeypatch.setattr(data, "HUB", hub)
+    monkeypatch.setattr(data, "ARCHIVE", tmp_path / "no-archive")
+    seen = []
+    orig_collect = pf_engine.collect
+
+    def collect_then_pull(w):
+        # the pull lands while the filter is fitting: a new week in live
+        df = pd.read_csv(live, dtype={"location": str})
+        nxt = df[df.date == df.date.max()].copy()
+        nxt["date"] = (pd.Timestamp(df.date.max())
+                       + pd.Timedelta(days=7)).strftime("%Y-%m-%d")
+        pd.concat([df, nxt]).to_csv(live, index=False)
+        # every later step resolves through spec_source: it must still
+        # answer the pinned copy of the file the run started on
+        seen.append(str(data.spec_source(spec)[0]))
+        return orig_collect(w)
+    monkeypatch.setattr(pf_engine, "collect", collect_then_pull)
+    spec = RunSpec(engine="all", forecast_date=ASOF, locations=["Ohio", "Utah"],
+                   extra={"mode": "realtime"})
+    ui_pipeline._run_all(spec)
+    row = Ledger().rows(1)[0]
+    out = json.loads(row["outcome"])
+    assert row["status"] == "ok", out.get("error")
+    assert out["data_source"]["sha256"] == sha_before
+    assert seen and all(data.file_sha256(p) == sha_before for p in seen)
+    assert data.file_sha256(live) != sha_before      # the pull did land
+    assert not data._PINNED                          # released with the run
+
+
 def test_optional_rows_on_a_week_only_the_live_file_holds(console, hubfiles, tmp_path, monkeypatch):
     """The optional hub rows read the reported counts from the file the run
     resolved: a real-time week the archive does not hold yet (the live file
