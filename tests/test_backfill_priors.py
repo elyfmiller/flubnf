@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from flubnf.backfill_priors import (BackfillOutcome, backfill_all,
+from flubnf.backfill_priors import (backfill_all,
                                     backfill_state, discover_states,
                                     observed_for_state, season_window)
 from flubnf.constants import StateInfo

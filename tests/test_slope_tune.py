@@ -65,7 +65,6 @@ def test_sweep_picks_higher_blend_when_obs_outruns_model():
     """If observed has been growing FAR faster than the model, a positive
     slope_blend should outperform 0.0."""
     # Build observed history that grew at growth=1.5/week.
-    rng = np.random.default_rng(42)
     n_observed = 6
     obs_growth = 1.5
     observed = 100.0 * (obs_growth ** np.arange(n_observed))

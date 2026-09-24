@@ -7,7 +7,6 @@ a posterior missing any name raises instead of emitting a short line.
 """
 from __future__ import annotations
 
-from pathlib import Path
 
 import numpy as np
 import pytest

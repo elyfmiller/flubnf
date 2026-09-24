@@ -99,7 +99,6 @@ def test_a_fitted_national_block_is_never_summed_into_the_aggregate(
         tmp_path, _stub_scoring):
     """A fitted `US` block in the week is never summed into the aggregate
     (it would double the national scale): both member loops skip it."""
-    w = {"pf": .5, "analogue": .5}
     plain = retro.national_aggregate(_tree(tmp_path / "a"))
     root = _tree(tmp_path / "b")
     sp = root / "weeks" / W1 / "samples.json"
@@ -129,7 +128,6 @@ def test_empty_season_returns_none(tmp_path, _stub_scoring):
 def test_cached_under_the_stats_validity_key(tmp_path, _stub_scoring,
                                              monkeypatch):
     root = _tree(tmp_path)
-    w = {"pf": .5, "analogue": .5}
     r1 = retro.national_aggregate(root)
     cf = root / "playback_cache" / "us_aggregate.json"
     assert cf.is_file()
@@ -142,7 +140,6 @@ def test_cached_under_the_stats_validity_key(tmp_path, _stub_scoring,
 
 def test_new_samples_invalidate_the_cache(tmp_path, _stub_scoring):
     root = _tree(tmp_path)
-    w = {"pf": .5, "analogue": .5}
     r1 = retro.national_aggregate(root)
     sp = root / "weeks" / W1 / "samples.json"
     later = time.time() + 5

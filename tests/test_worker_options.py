@@ -9,7 +9,6 @@ unpacks; one_fit never reads OPTS/USE_MIN; the option changes the artefact.
 from __future__ import annotations
 
 import ast
-import inspect
 import multiprocessing as mp
 import re
 import sys

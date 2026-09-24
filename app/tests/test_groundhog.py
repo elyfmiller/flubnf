@@ -5,7 +5,6 @@ covers, and whether two arms are compared on the same cells.
 import sys
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import pytest
 

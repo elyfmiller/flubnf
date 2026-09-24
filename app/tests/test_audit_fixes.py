@@ -25,7 +25,7 @@ def test_floor_adaptive_branch_ignores_anchored_origin():
 
 def test_floor_healthy_fit_untouched_by_adaptive_branch():
     # A healthy in-season fit must never trigger the adaptive rate.
-    from app.core.floor import LAM, floor_samples
+    from app.core.floor import floor_samples
     samples = {"0": [50.0] * 200, "1": [60.0] * 200, "2": [70.0] * 200}
     out = floor_samples(samples, "Ohio", "2026-01-03",
                         recent=[40.0, 45.0, 50.0, 55.0])

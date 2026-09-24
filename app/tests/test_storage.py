@@ -13,7 +13,6 @@ The rules under test:
   * deleting a workroot whose ledger row remains leaves an honest dangling
     row (a dash for disk use, never an error).
 """
-import json
 import sys
 from pathlib import Path
 

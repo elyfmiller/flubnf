@@ -5,12 +5,10 @@ from __future__ import annotations
 from datetime import date
 
 import numpy as np
-import pandas as pd
 
 from flubnf.config import FluBNFConfig
 from flubnf.quantiles import FLUSIGHT_QUANTILES, QuantileForecast
-from flubnf.submit import (BACKTEST_TO_FLUSIGHT_HORIZON,
-                           StateForecast,
+from flubnf.submit import (StateForecast,
                            build_submission_dataframe)
 
 

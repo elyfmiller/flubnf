@@ -1,5 +1,5 @@
 """The schedule is pure, so it can be driven with a fake fitter."""
-import sys, numpy as np, pytest
+import sys, numpy as np
 sys.path.insert(0,'.')
 from flubnf.weekly_loop import LoopPlan, run_week
 from flubnf.warmstart import Posterior

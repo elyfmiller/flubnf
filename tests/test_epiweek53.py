@@ -10,7 +10,6 @@
 """
 from datetime import date, timedelta
 
-import numpy as np
 
 from flubnf import analogue as AN
 

@@ -33,7 +33,6 @@ client = TestClient(srv.app)
 SEASON = "2098-99"
 W1, W2 = "2098-01-03", "2098-01-10"
 N2F = {"Ohio": "39", "Utah": "49"}
-WEIGHTS = {"pf": 0.5, "analogue": 0.5}
 
 
 # ------------------------------------------------------------------ fixtures
@@ -261,7 +260,7 @@ def test_unsettled_truth_never_loops(tmp_path, _routed, monkeypatch):
     real = retro.finalize_season
     monkeypatch.setattr(retro, "finalize_season",
                         lambda *a, **k: calls.append(1) or real(*a, **k))
-    html1 = client.get(f"/retro/{SEASON}").text
+    client.get(f"/retro/{SEASON}")
     n_after_first = len(calls)
     assert n_after_first == 1
     html2 = client.get(f"/retro/{SEASON}").text

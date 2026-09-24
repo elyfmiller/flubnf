@@ -9,7 +9,6 @@ sections are compared value by value (tiles incl. US aggregate, per-state
 rows incl. US, wall time, settings, the player's week list).
 """
 import json
-import os
 import re
 import sys
 from pathlib import Path

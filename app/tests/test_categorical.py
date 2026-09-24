@@ -11,7 +11,6 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.core import categorical as cat                        # noqa: E402
-from app.core import horizons as hz                            # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL          # noqa: E402
 
 
@@ -172,7 +171,7 @@ def test_the_season_page_offers_the_model_toggle_above_the_map(
     from app.core import retro
     from fastapi.testclient import TestClient
     rr = tmp_path / "retro"
-    root = _root(rr)
+    _root(rr)
     monkeypatch.setattr(srv, "RETRO_ROOT", rr)
     monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
     monkeypatch.setattr(srv, "RETRO_RESEAL", tmp_path / "noreseal")

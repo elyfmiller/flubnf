@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
 
-from flubnf import conf_files
 from flubnf.conf_files import (
     materialize_conf_from_template, read_uniform_vars,
     set_starting_params, update_keys, update_uniform_vars,

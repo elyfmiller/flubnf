@@ -6,10 +6,9 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from flubnf.conf_files import FreeParam
-from flubnf.diagnostics import (Action, compute_diagnostics,
+from flubnf.diagnostics import (compute_diagnostics,
                                 detect_beta_waning_degeneracy,
                                 react_to_diagnostics)
 

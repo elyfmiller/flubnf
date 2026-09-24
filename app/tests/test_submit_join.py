@@ -26,7 +26,6 @@ QDICTS = {h: {0.5: 10.0 * (int(h) + 1)} for h in hz.HORIZONS}
 
 
 def test_reference_is_asof_plus_seven_matching_anchor_analysis():
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
     ref = (pd.Timestamp(ASOF) + timedelta(days=7)).date().isoformat()
     rows = quantile_rows(SAMPLES, "06", ASOF)
     assert rows and all(r["reference_date"] == ref == "2025-12-20"
@@ -79,7 +78,6 @@ def test_values_are_whole_admissions_like_the_official_files():
 
 def test_rounding_preserves_quantile_monotonicity():
     """Round, then enforce non-decreasing: near-ties stay monotone."""
-    import numpy as np
     from app.core.submit import QUANTILES, _hub_values
     raw = [10.0 + 0.04 * i for i in range(len(QUANTILES))]   # 10.0 .. 10.88
     v = _hub_values(raw)

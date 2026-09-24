@@ -11,7 +11,6 @@ from __future__ import annotations
 from datetime import date
 
 import numpy as np
-import pytest
 
 from flubnf.config import FluBNFConfig
 from flubnf.profiles import COVID, INFLUENZA

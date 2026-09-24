@@ -13,8 +13,7 @@ import numpy as np
 import pytest
 
 from flubnf import bank as bankmod
-from flubnf.analogue import (DEFAULT_BANDWIDTH, EXCLUDED_DONOR_SEASONS,
-                             MIN_DONORS, calendar_distance, donor_paths,
+from flubnf.analogue import (MIN_DONORS, calendar_distance, donor_paths,
                              donor_ratios, epiweek, season_of)
 
 

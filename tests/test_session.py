@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
-import pytest
 
 from flubnf.conf_files import FreeParam
 from flubnf.session import (StateSession, load_session, record_step,

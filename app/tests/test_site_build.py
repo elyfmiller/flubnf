@@ -436,7 +436,7 @@ def test_a_pinned_outlook_week_is_honoured_and_recorded(tmp_path):
     seasons = sb.discover_seasons()
     season = min(seasons)
     asof = seasons[season]["weeks"][len(seasons[season]["weeks"]) // 2]
-    res = sb.build(out_dir=tmp_path, pin=(season, asof))
+    sb.build(out_dir=tmp_path, pin=(season, asof))
     payload = json.loads((tmp_path / sb.PAYLOAD_NAME).read_text())
     src = payload["outlook"]["source"]
     assert src["asof"] == asof and src["season"] == season

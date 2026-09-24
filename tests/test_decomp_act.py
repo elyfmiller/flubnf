@@ -6,7 +6,7 @@ import pytest
 
 from flubnf.calibration import CalibrationTracker, CoverageRecord
 from flubnf.conf_files import FreeParam
-from flubnf.decomp_act import (DecompActions, RecentSignals,
+from flubnf.decomp_act import (RecentSignals,
                                 apply_to_session, compute_recent_signals,
                                 recommend_calibration_widen,
                                 recommend_mult_tighten)
