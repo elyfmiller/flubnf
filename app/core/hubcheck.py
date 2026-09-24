@@ -32,9 +32,11 @@ function per hubValidations check (the name in brackets):
                      hosp' values are whole numbers (model-output/README.md)
   ascending          quantile values non-decreasing with the level
                      [check_tbl_value_col_ascending]
-  sum1               pmf values sum to 1 per task [check_tbl_value_col_sum1]
-  horizon_timediff   target_end_date = reference_date + 7 * horizon
-                     (validations.yml: opt_check_tbl_horizon_timediff)
+  sum1               pmf values sum to 1 per task, to R's all.equal
+                     tolerance (1.5e-8) [check_tbl_value_col_sum1]
+  horizon_timediff   target_end_date = reference_date + 7 * horizon, so a
+                     horizon -1 row ends the week before the reference
+                     date (validations.yml: opt_check_tbl_horizon_timediff)
   counts_lt_popn     'wk inc flu hosp' below the jurisdiction's population
                      (validations.yml: opt_check_tbl_counts_lt_popn)
   plausible          the README's plausibility bounds: admissions at most 30
@@ -75,6 +77,10 @@ PLAUSIBLE_MAX = {"wk inc flu prop ed visits": 0.25}
 
 #: the check a correct file can fail (an off-season reference date)
 ROUND_CHECK = "round_id_valid"
+
+#: a pmf task's values must sum to 1 within this: hubValidations compares
+#: the sum with all.equal(), whose default tolerance this is
+PMF_SUM_TOL = 1.5e-8
 
 _ABBR = re.compile(r"^[A-Za-z0-9_+]{1,16}$")
 _FILE = re.compile(r"^(\d{4}-\d{2}-\d{2})-([^-]+)-([^-]+)\.(csv|parquet)$")
@@ -366,8 +372,8 @@ def check_frame(df: pd.DataFrame, file_name: str | None = None,
                           f"{label}: quantile values decrease with the level")
         if keyv[5] == "pmf":
             s = float(np.nansum(g.vnum.to_numpy(float)))
-            if abs(s - 1.0) > 1e-6:
-                _add_once(out["sum1"], f"{label}: pmf sums to {s:.6f}")
+            if abs(s - 1.0) > PMF_SUM_TOL:
+                _add_once(out["sum1"], f"{label}: pmf sums to {s:.10g}")
     for t in rules["tasks"]:
         for name, ot in t["output_types"].items():
             p = ot["samples"]
