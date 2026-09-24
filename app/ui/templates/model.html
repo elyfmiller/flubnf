@@ -2,7 +2,8 @@
 {% block title %}FluBNF · {{ title }}{% endblock %}
 {% block head %}<script src="/static/plotly.min.js"></script>{% endblock %}
 {% block content %}
-<h1>{{ title }}</h1>
+{# the switcher below names the model; the heading names the tab #}
+<h1>Models</h1>
 {# model switcher: aria-pressed buttons that navigate (PF -> /models, others
    -> /model/<name>); the research-only page has no nav tab #}
 <div class="row viewtabs" role="group" aria-label="Model view">
@@ -17,8 +18,9 @@
  {% endfor %}
 </div>
 <details class="card intro">
+ {# the summary is a short phrase; the full description opens below it #}
  <summary>{{ oneline }}</summary>
- <p class="sub" style="margin-top:.55rem">{{ blurb }}</p>
+ <p class="sub introbody">{{ blurb }}</p>
 </details>
 <div class="card mech">
  {# each mechanism drawing carries its defining equation beneath it; the
@@ -39,8 +41,10 @@
  season (Methods).{% endcall %}</p>
  <h2>The compartment model the filter fits</h2>
  {{ dg.sihrs(uid='m') }}{{ dg.eq_pf() }}
- {% elif name == "pf2s" %}{{ dg.sihrs2(uid='m') }}{{ dg.eq_pf2s() }}
- {% else %}{{ dg.analogue_mech(uid='m') }}{{ dg.eq_analogue() }}{% endif %}
+ {% elif name == "pf2s" %}<h2>The two circuits the filter fits</h2>
+ {{ dg.sihrs2(uid='m') }}{{ dg.eq_pf2s() }}
+ {% else %}<h2>How the forecast is made</h2>
+ {{ dg.analogue_mech(uid='m') }}{{ dg.eq_analogue() }}{% endif %}
  <p class="hint">Full methodology:
  <a href="/methods#{{ manchor }}">Methods</a>.</p>
 </div>
@@ -53,33 +57,33 @@
  <pre>{{ bngl_src }}</pre>
 </details>
 {% endif %}
-<div class="cols">
+{# the research view has no settings card: its run control is the
+   research panel below, and the intro already says it does not ship #}
+<div class="{{ 'cols' if name != 'pf2s' }}">
+ {% if name != "pf2s" %}
  <div><div class="card"><h2>Settings</h2>
-  {% if name == "pf2s" %}
-   <p class="hint">A research engine, not a shipped model
-   (<a href="/methods#two-strain">Methods</a>).</p>
-  {% else %}
-   <form method="post" action="/run">
-    <label>Forecast date</label>
-    <input name="forecast_date" value="{{ form.forecast_date }}">
-    <label>Locations</label>
-    <input name="locations" value="{{ form.locations | join(', ') if form.locations != ['all'] else 'all' }}"
-           title='state names, comma-separated, or "all"'>
-    <label>Replicates</label>
-    <input name="replicates" type="number" value="{{ form.replicates }}" min="1" max="9">
-    <input type="hidden" name="engine" value="{{ 'pf' if name == 'pf' else 'analogue' }}">
-    <input type="hidden" name="weeks_to_drop" value="0">
-    <input type="hidden" name="weeks_to_nowcast" value="0">
-    {# same /run endpoint, so the same interference guard as Forecast #}
-    <button class="gold" data-guard="console-run">Run {{ title }} only</button>
-   </form>
-  {% endif %}
+  <form method="post" action="/run">
+   <label for="mf-date">Forecast date</label>
+   <input id="mf-date" name="forecast_date" value="{{ form.forecast_date }}">
+   <label for="mf-locs">Locations</label>
+   <input id="mf-locs" name="locations" value="{{ form.locations | join(', ') if form.locations != ['all'] else 'all' }}"
+          title='state names, comma-separated, or "all"'>
+   <label for="mf-reps">Replicates</label>
+   <input id="mf-reps" name="replicates" type="number" value="{{ form.replicates }}" min="1" max="9">
+   <input type="hidden" name="engine" value="{{ 'pf' if name == 'pf' else 'analogue' }}">
+   <input type="hidden" name="weeks_to_drop" value="0">
+   <input type="hidden" name="weeks_to_nowcast" value="0">
+   {# same /run endpoint, so the same interference guard as Forecast #}
+   <button class="gold" data-guard="console-run">Run {{ title }} only</button>
+  </form>
   {% if status.running %}<p class="warn">A run is in progress. See the <a href="/forecast">Forecast</a> tab.</p>{% endif %}
  </div></div>
+ {% endif %}
  <div>
   <div class="card"><h2>Forecasts</h2>
    <div id="mfan"><p class="hint">No forecasts from this model yet.</p></div>
    {% if rid %}<p class="hint">latest run: {{ label }} · {{ date }}</p>{% endif %}
+   {% if name == "pf2s" and status.running %}<p class="warn">A run is in progress. See the <a href="/forecast">Forecast</a> tab.</p>{% endif %}
   </div>
  </div>
 </div>

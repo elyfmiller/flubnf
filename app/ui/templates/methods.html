@@ -3,6 +3,16 @@
 {# the same shell as every page: no main_class override #}
 {% block content %}
 <h1>Methods</h1>
+{# in-page contents: same-page anchors, so they survive the site harvest #}
+<nav class="toc" aria-label="On this page">
+ <a href="#purpose">Purpose</a>
+ <a href="#sihrs">Compartment model</a>
+ <a href="#fitting">Fitting</a>
+ <a href="#oracle">Oracle step</a>
+ <a href="#two-strain">Two-strain variant</a>
+ <a href="#analogue">Groundhog</a>
+ <a href="#policies">Data and verification</a>
+</nav>
 
 <div class="card" id="purpose"><h2>Purpose</h2>
  <p>FluBNF forecasts weekly influenza hospital admissions for all 52 US
@@ -201,7 +211,7 @@
  is absent.</p>
 </div>
 
-<div class="card"><h2>Data and verification policies</h2>
+<div class="card" id="policies"><h2>Data and verification policies</h2>
  <p>Every run uses the data exactly as archived on its forecast date, is
  seeded and reproducible from its ledger entry, and never imputes a missing
  week; scoring is the weighted interval score against the FluSight

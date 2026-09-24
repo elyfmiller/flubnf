@@ -494,10 +494,10 @@ svg .svgt-sub{font-size:.68em}
    card-wide chart (rem labels ballooned relative to the plot) */
 svg.cumchart .svgt-sm{font-size:9px}
 svg.cumchart .svgt-md{font-size:11px}
-/* defining equations under a diagram (styled text, no math library): the
-   panel spans the card, lines center, math never wraps (panel scrolls) */
-.eqpanel{margin:.45rem 0 .25rem;padding:.5rem .85rem;
-  background:var(--bg);border:1px solid var(--line);border-radius:9px;
+/* defining equations under a diagram (styled text, no math library): flat
+   in the card (no well of its own), lines center; math stays on one line
+   except at phone width, where it wraps rather than clip */
+.eqpanel{margin:.45rem 0 .25rem;padding:.25rem 0;
   overflow-x:auto;text-align:center}
 .eqpanel p{margin:.24rem 0}
 .eqpanel .math{font-size:.98rem;font-weight:600;white-space:nowrap}
@@ -847,3 +847,34 @@ tr[aria-current="true"] td{font-weight:600}
 .mview-draw svg{display:block;max-width:none}
 .mview-draw pre.hint{white-space:pre-wrap;margin:.3rem 0}
 .mview-hint{margin:.4rem 0 0}
+
+/* polish: home-models-methods */
+/* home: a small heading over each performance table; the setup list */
+h3.perfhead{margin:.9rem 0 .15rem;font-weight:650;display:flex;
+  align-items:center;gap:.1rem}
+.card h2 + p.hint + h3.perfhead{margin-top:.35rem}
+ul.setupmiss{margin:.2rem 0 .5rem;padding-left:1.2rem}
+/* model pages: the intro's full description; a second heading in the
+   mechanism card sits apart from the figure above it */
+p.introbody{margin:.55rem 0 .1rem}
+.mech h2:not(:first-child){margin-top:1.4rem}
+/* model switcher: the research tag stays readable on the pressed button */
+.viewtabs button.gold[data-model] .hint{color:inherit;opacity:.75}
+/* methods: the in-page contents row */
+nav.toc{display:flex;flex-wrap:wrap;gap:.2rem 1rem;margin:0 0 .9rem;
+  font-size:var(--fs-hint)}
+/* phone width: equations wrap instead of clipping, wide figures scroll
+   with a visible bar (their right side is off-card), tables tighten so they
+   fit the card, and the header's tab rows stay compact */
+@media(max-width:640px){
+  .eqpanel .math{white-space:normal}
+  .pipe,.figscroll{overflow-x:auto;scrollbar-width:thin;
+    scrollbar-color:var(--mut) transparent}
+  .pipe svg,.figscroll > svg{min-width:620px}
+  .perf td,.perf th{padding:.28rem .3rem}
+  header.nav{padding:.2rem .6rem}
+  header.nav .brand{padding:.35rem .6rem .35rem 0}
+  header.nav a.tab{padding:.45rem .4rem}
+  header.nav .fontsize{margin:.25rem .4rem .25rem auto}
+  header.nav .themepick,header.nav .a11ypick{margin-top:.25rem;margin-bottom:.35rem}
+}

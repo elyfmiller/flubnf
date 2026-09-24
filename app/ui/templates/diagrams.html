@@ -5,10 +5,12 @@
    structural labels (rates on arrows), no fitted values. Text uses the
    svgt-* rem classes (never size attributes) so A-/A/A+ reaches it; label
    boxes are audited to fit at A+ (115%). Accessible names ride aria-label,
-   not a nested title element (it pops a hover tooltip over the drawing). #}
+   not a nested title element (it pops a hover tooltip over the drawing).
+   The wide drawings sit in a .figscroll wrapper: at phone width they keep
+   a legible size and scroll sideways on their own, never the page. #}
 
 {% macro sihrs(uid='s') -%}
-<svg viewBox="0 0 840 348" role="img" aria-label="SIHRS compartment diagram"
+<div class="figscroll"><svg viewBox="0 0 840 348" role="img" aria-label="SIHRS compartment diagram"
      style="width:100%;max-width:800px;display:block;margin:.6rem auto;color:inherit">
  <desc>Susceptible to Infected via seasonal transmission; Infected splits
  along an admission arrow to Hospitalized and directly to Recovered;
@@ -70,7 +72,7 @@
   <text x="424" y="318" class="svgt-md">&#969;</text>
   <text x="424" y="336" class="svgt-sm">waning immunity</text>
  </g>
-</svg>
+</svg></div>
 {%- endmacro %}
 
 {% macro _sihrs_row(oy, strain, uid) -%}
@@ -122,7 +124,7 @@
 {%- endmacro %}
 
 {% macro sihrs2(uid='t') -%}
-<svg viewBox="0 0 840 400" role="img"
+<div class="figscroll"><svg viewBox="0 0 840 400" role="img"
      aria-label="Two-strain SIHRS compartment diagram"
      style="width:100%;max-width:800px;display:block;margin:.6rem auto;color:inherit">
  <desc>Two parallel SIHRS circuits, one for influenza A and one for influenza
@@ -139,11 +141,11 @@
  </defs>
  {{ _sihrs_row(8, 'A', uid) }}
  {{ _sihrs_row(206, 'B', uid) }}
-</svg>
+</svg></div>
 {%- endmacro %}
 
 {% macro analogue_mech(uid='a') -%}
-<svg viewBox="0 0 840 296" role="img" aria-label="Calendar analogue mechanism"
+<div class="figscroll"><svg viewBox="0 0 840 296" role="img" aria-label="Calendar analogue mechanism"
      style="width:100%;max-width:800px;display:block;margin:.6rem auto;color:inherit">
  <desc>Faint historical season curves, the current season observed so far, and
  a forecast fan formed by scaling the last observed value by quantiles of the
@@ -212,7 +214,7 @@
   <path d="M560,126 H592" stroke="var(--gold)" stroke-width="2.2" fill="none"/>
   <text x="600" y="130" fill="var(--gold)">forecast fan</text>
  </g>
-</svg>
+</svg></div>
 {%- endmacro %}
 
 {# ---- the Oracle SIHRS pipeline: weekly filter fit -> forecast paths ->
@@ -222,7 +224,7 @@
    fit a 210-unit box at A+. #}
 
 {% macro oracle_pipeline(uid='o') -%}
-<svg viewBox="0 28 1000 302" role="img"
+<div class="figscroll"><svg viewBox="0 28 1000 302" role="img"
      aria-label="Oracle SIHRS pipeline: weekly fit, filter forecast samples, donor pool from earlier seasons, per-sample growth blend, Oracle SIHRS forecast"
      style="width:100%;max-width:940px;display:block;margin:.6rem auto;color:inherit">
  <desc>Four boxes left to right. First, the weekly fit: the particle filter
@@ -289,7 +291,7 @@
   <text x="635" y="286" class="svgt-sm">half and half from</text>
   <text x="635" y="304" class="svgt-sm">{{ oracle_text.BANK_TEXT.diagram }}</text>
  </g>
-</svg>
+</svg></div>
 {%- endmacro %}
 
 {% macro eq_oracle() -%}
