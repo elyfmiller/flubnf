@@ -9,6 +9,11 @@
 # The weekly hospital admissions observed are the increment of
 # Hobs = mult*H_Cum across a week: the model owns the ascertainment scale,
 # and mult never enters a reaction rule.
+#
+# The counts in data.exp were simulated from this model at the values
+# written below, with negative-binomial noise (r = 8), so a fit should
+# find mult near 0.05 and r near 8. Over 20 weeks Reff, eps1 and phi1
+# trade off against each other, so their ranges stay wide.
 begin model
 begin parameters
 Reff__FREE 1.20

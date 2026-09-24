@@ -1,7 +1,9 @@
 # An SIR outbreak in one closed population, the smallest epidemic the
 # filter can fit: infection, recovery, and a tally of infections whose
 # weekly increment, scaled by the ascertainment, is the observed count.
-# Time is in weeks.
+# Time is in weeks. The counts in data.exp were simulated from this model
+# at the values written below, with negative-binomial noise (r = 10), so
+# a fit should find Reff near 1.6 and scale near 0.3.
 begin model
 begin parameters
 Reff__FREE  1.6      # reproduction number; fitted

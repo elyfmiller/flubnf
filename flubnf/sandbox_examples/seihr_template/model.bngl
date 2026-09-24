@@ -1,0 +1,87 @@
+# A template for a new respiratory pathogen (COVID-19, RSV, ...): an SEIR
+# model whose observed count is weekly hospital admissions.
+#
+# Start a new model here. Every line marked EDIT is a value to set for your
+# pathogen and population; the rest can stay as it is. Time is in weeks and
+# every rate is per week: a period of d days is the rate 7/d. The model
+# starts one week before the first row of data.exp, so the starting state
+# (N, E0, I0, immune) is the population as it was then.
+#
+# The counts in data.exp were simulated from this model at the values
+# written below, with negative-binomial noise (r = 10), so a fit should
+# find Reff near 1.5 and mult near 1. Put your own counts in data.exp
+# (the data.exp tab, Load data), then set N and the starting state to match.
+begin model
+begin parameters
+# fitted: each __FREE name has a prior line in priors.conf
+Reff__FREE  1.5      # reproduction number at the start; fitted
+mult__FREE  1.0      # reported admissions per true admission; fitted
+r__FREE     10.0     # negative-binomial dispersion of the counts; fitted
+
+# the pathogen's natural history
+sigma   2.33         # EDIT: E to I per week, 7 / latent period in days (3 here)
+gamma   1.4          # EDIT: recovery per week, 7 / infectious period in days (5 here)
+phosp   0.01         # EDIT: fraction of infections admitted to hospital
+gammaH  1.0          # EDIT: discharge per week, 7 / length of stay in days (7 here)
+omega   0.0          # EDIT: waning immunity per week (1/52 is about a year; 0 is none)
+
+# the population one week before the first data row
+N       1000000      # EDIT: population
+immune  0.2          # EDIT: fraction immune at the start
+E0      300          # EDIT: exposed (infected, not yet infectious) at the start
+I0      150          # EDIT: infectious at the start
+
+# derived: the infection rate that gives Reff at the starting susceptibles
+S0      N*(1-immune)-E0-I0
+beta    Reff__FREE*gamma/S0
+end parameters
+
+begin molecule types
+S()
+E()
+I()
+H()
+R()
+Hadm()
+end molecule types
+
+begin seed species
+S()    S0
+E()    E0
+I()    I0
+H()    0
+R()    N*immune
+Hadm() 0
+end seed species
+
+begin observables
+Molecules S     S()
+Molecules E     E()
+Molecules I     I()
+Molecules H     H()      # in hospital now (a census, not the admissions)
+Molecules R     R()
+Molecules H_Cum Hadm()   # admissions to date: the tally the data are read from
+end observables
+
+begin functions
+# the fit target: admissions to date at the reporting scale; the filter
+# fits its increment over each week to the weekly count in data.exp.
+# mult never enters a reaction rule: reporting does not move people.
+Hobs() = mult__FREE*H_Cum
+end functions
+
+begin reaction rules
+S() + I() -> E() + I()    beta              # infection
+E() -> I()                sigma             # end of the latent period
+I() -> H()                phosp*gamma       # admission
+I() -> R()                (1-phosp)*gamma   # recovery at home
+H() -> R()                gammaH            # discharge
+R() -> S()                omega             # waning immunity
+I() -> I() + Hadm()       phosp*gamma       # tallies each admission without consuming anyone
+end reaction rules
+end model
+
+begin actions
+generate_network({overwrite=>1})
+simulate({suffix=>"seihr",method=>"ode",t_start=>0,t_end=>20,n_steps=>20,print_functions=>1})
+end actions

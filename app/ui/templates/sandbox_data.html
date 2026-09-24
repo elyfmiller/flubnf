@@ -46,6 +46,10 @@
    <select id="sbfill-kind" name="kind"><option value="">detect</option><option value="count">counts</option><option value="rate">rates</option></select></span>
   <button class="quiet" formaction="/sandbox/models/{{ editing.name }}/upload-data" formmethod="post" formenctype="multipart/form-data">Upload and load</button>
  </div>
+ <div class="row sbsim">
+  <button class="quiet" formaction="/sandbox/models/{{ editing.name }}/simulate-data" formmethod="post">Simulate data from the model</button>
+  {{ tips.tip("sb-simulate", "simulate data", "Replaces data.exp with counts drawn from the model at the values written in model.bngl, over the same weeks, with negative-binomial noise at its r__FREE. A fit on them should find those values again: the test that a new model and its priors work, before real data.") }}
+ </div>
  {% if upload_report %}
  <div class="sbreport" role="status">
   {% if upload_report.problems %}<p class="sb-bad">Not loaded: {{ upload_report.problems | length }} problem{{ "" if upload_report.problems | length == 1 else "s" }} in the file.</p>

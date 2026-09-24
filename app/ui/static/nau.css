@@ -1170,3 +1170,36 @@ pre.sberr{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);
 @media(min-width:1080px){
   .runsplit{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)}
 }
+
+/* round3: sandbox */
+/* run settings: Particles on its own line, then Jitter, Forecast weeks
+   and Seed side by side; a field wraps before its label can run into the
+   next one (a label never shrinks below its own width) */
+.sbrun-grid{display:flex;flex-wrap:wrap;gap:0 .9rem;align-items:flex-end}
+.sbrun-grid > span{flex:1 1 6.5rem;min-width:auto}
+.sbrun-grid > .sbrun-parts{flex:1 1 100%}
+.sbrun-parts .sbpair{max-width:24rem}
+.sbrun-grid > span:nth-child(3){flex-basis:9.5rem}
+@media(max-width:560px){.sbrun-grid > span{flex-basis:100%}}
+/* the run's outcome in plain words, what to try, the full-fit offer */
+.sbhealth{margin:.6rem 0 .2rem}
+.pill.sbh{font-weight:650;font-size:var(--fs-label);border-color:currentColor;margin-right:.25rem}
+.sbh-good{color:var(--ok)}.sbh-rough{color:var(--warn)}.sbh-collapsed{color:var(--bad)}
+details.sbtries{margin:.3rem 0 .4rem}
+.sbtries ul{margin:.3rem 0 .2rem 1.1rem;padding:0}
+.sbtries li{margin:.15rem 0}
+form.sbfull{margin:.5rem 0 .6rem}
+details.sbengine{margin:.3rem 0 .5rem}
+/* How the Sandbox works: a folding card on the gallery, a menu on the
+   workbench beside Manage */
+details.sbhow > summary{list-style:none;cursor:pointer}
+details.sbhow > summary::-webkit-details-marker{display:none}
+details.sbhow > summary h2{display:inline;margin:0}
+.sbsteps{margin:.6rem 0 .5rem 1.25rem;padding:0}
+.sbsteps li{margin:.3rem 0;max-width:62rem}
+.sbhow .hint,.sbhelpmenu .hint{margin:.2rem 0 0}
+.sbhead-menus{display:flex;gap:.5rem;align-items:flex-start;flex:none}
+.sbmenu.sbhelpmenu{width:min(34rem,calc(100vw - 2rem));max-width:none}
+.sbhelpmenu .sbsteps{margin-top:0}
+#sbnew-about:empty{display:none}
+.sbsim{margin-top:.6rem}

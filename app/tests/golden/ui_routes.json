@@ -43,6 +43,7 @@
   ["POST", "/sandbox/models/{name}/save", "sandbox_save", "APIRoute", "console"],
   ["POST", "/api/sandbox/models/{name}/check", "api_sandbox_check", "APIRoute", "console"],
   ["POST", "/sandbox/models/{name}/fill-data", "sandbox_fill_data", "APIRoute", "console"],
+  ["POST", "/sandbox/models/{name}/simulate-data", "sandbox_simulate_data", "APIRoute", "console"],
   ["POST", "/sandbox/models/{name}/upload-data", "sandbox_upload_data", "APIRoute", "console"],
   ["POST", "/sandbox/run", "sandbox_run", "APIRoute", "console"],
   ["POST", "/sandbox/models/{name}/run", "sandbox_model_run", "APIRoute", "console"],
