@@ -75,7 +75,7 @@ WorkspaceState = _Lazy("flubnf.state", "WorkspaceState")
 #: `flubnf --help` panels and their top-level commands, in display order;
 #: every command not listed is legacy (registration order).
 HELP_PANELS = {
-    "Console": ("app", "window", "doctor", "knobs"),
+    "Console": ("app", "window", "doctor", "knobs", "dataset"),
     "Replay & verification": ("retro", "groundhog", "oracle", "site"),
     "Donor banks": ("bank",),
     "Legacy DE/AMCMC workspace": (),
@@ -2872,6 +2872,47 @@ def site_build_cmd(
     else:
         console.print("[green]  scores match the console's published "
                       "figures[/green]")
+
+
+# ---------------------------------------------------------------------------
+# dataset: custom target data (MicroHub or hubverse CSV), checked offline.
+# ---------------------------------------------------------------------------
+dataset_app = typer.Typer(
+    add_completion=False, no_args_is_help=True,
+    help="Check custom target data (MicroHub or hubverse time-series CSV).")
+app.add_typer(dataset_app, name="dataset")
+
+
+@dataset_app.command("validate")
+def dataset_validate_cmd(
+    csv_path: Path = typer.Argument(..., exists=True, dir_okay=False,
+                                    help="The CSV to check."),
+    kind: Optional[str] = typer.Option(
+        None, "--kind", help="Declare the values: 'count' or 'rate'."),
+    sunday: bool = typer.Option(
+        False, "--sunday", help="Dates are week-start Sundays (shift +6)."),
+    target: Optional[str] = typer.Option(
+        None, "--target", help="The target to keep when the file has several."),
+):
+    """Validate a dataset CSV and print its problems, or a summary.
+
+    Exit code 0 when the file is valid, 1 when it has problems. Nothing is
+    stored."""
+    from app.core import datasets as ds
+    rep = ds.validate(csv_path, kind=kind, week_start_sunday=sunday,
+                      target=target)
+    if not rep.ok:
+        print(f"{csv_path.name}: {len(rep.problems)} problem(s)")
+        for p in rep.problems:
+            print(f"  - {p}")
+    else:
+        print(f"{csv_path.name}: valid")
+        for line in ds.summary_lines(rep):
+            print(f"  {line}")
+    for w in rep.warnings:
+        print(f"  warning: {w}")
+    if not rep.ok:
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":

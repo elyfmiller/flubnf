@@ -18,6 +18,7 @@ One line per module, with the role tag its docstring opens with and its main cal
 | `runs.py` | PRODUCTION | run ledger, workroot leasing, seeds, run-display helpers | server, engines, `retro` |
 | `knobs.py` | REGISTRY | every model tunable: shipped value read from its constant, bounds, members affected, card phrase; parse, digest, label (not read at run time yet) | `flubnf knobs` |
 | `data.py` | PRODUCTION | vintage registry and hub freshness | server Data tab, `retro`, `scoring`, engines |
+| `datasets.py` | RESEARCH | custom target data (MicroHub or hubverse CSV): validate, store under `app/state/datasets/`, FluSight-shaped locations and vintage CSVs | `flubnf dataset validate`; later stages |
 | `horizons.py` | PRODUCTION | canonical vs stored horizon translation | `retro`, engines, `playback`, server |
 | `playback.py` | PRODUCTION | season-player payloads and their cache | server `/api/retro/...`, `report_season`, `site_build` |
 | `reclaim.py` | PRODUCTION | storage-reclaim policy | server Storage tab, `retro` |

@@ -16,3 +16,6 @@
 # language stats. site/ is untracked until the lab publishes the site.
 site/plotly.min.js -diff linguist-vendored
 app/ui/static/plotly.min.js -diff linguist-vendored
+
+# MicroHub template slices: byte-exact (UTF-8 BOM, CRLF) as MicroHub ships them
+app/tests/fixtures/microhub-*.csv -text
