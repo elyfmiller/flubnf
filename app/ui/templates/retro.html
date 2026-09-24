@@ -32,10 +32,6 @@ had, then scores against settled truth.</p>
    <select name="national">
      <option value="1">fit US national too (default)</option>
      <option value="0">states only</option></select>
-   {{ tips.label("Particles", "rt-particles", "Particles per filter fit; more is smoother and slower (10,000 is the shipped setting).") }}
-   <input type="number" name="particles" value="10000" min="1000" max="100000" step="1000">
-   {{ tips.label("Replicates", "rt-reps", "Independent particle-filter fits per state and week, pooled into one forecast.") }}
-   <input type="number" name="replicates" value="3" min="1" max="10">
    {{ tips.label("Shard width", "rt-width", "Parallel runners; the default suits this machine.") }}
    <input type="number" name="width" value="{{ default_width }}" min="1" max="{{ width_cap }}">
    {{ tips.label("Engine preset", "rt-engine", "Each week fits the Oracle SIHRS from the season start with that week's data and donor pool, as a live run does. Groundhog only needs no engine.") }}
@@ -45,6 +41,8 @@ had, then scores against settled truth.</p>
    <select name="engine" id="retro-engine">
      <option value="pf">Oracle SIHRS and the Groundhog (hours)</option>
      <option value="analogue">Groundhog only (minutes, no engine needed)</option></select>
+   {# particles and replicates live in the panel, under their field names #}
+   {% include "_model_settings.html" %}
    {# set by the start-over prompt; defaults to 'resume', so a keyboard submit
       without the prompt is safe #}
    <input type="hidden" name="mode" value="resume">

@@ -92,12 +92,16 @@ def test_run_accepts_the_research_selection(tmp_path, monkeypatch):
     assert spec.extra["aux_pools"] == [
         {"stream": "flusurv", "weight": 0.5, "committed": True}]
     assert spec.extra["analogue_aux"].startswith("flusurv+flusurv@")
-    assert set(spec.extra) == {"mode", "members", "aux_pools", "analogue_aux"}
+    # 20,000 particles is off the shipped value: the run records it as a
+    # model knob (app/core/knobs.py) and is marked modified
+    assert set(spec.extra) == {"mode", "members", "aux_pools", "analogue_aux",
+                               "knobs"}
+    assert spec.extra["knobs"] == {"pf.particles": 20_000}
     assert spec.particles == 20_000
     assert is_research(spec)
 
 
-def test_particles_defaults_and_clamps(tmp_path, monkeypatch):
+def test_particles_defaults_and_refuses_out_of_range(tmp_path, monkeypatch):
     started = _capture_run(monkeypatch, tmp_path)
     client.post("/run", data={"forecast_date": "2098-01-04",
                               "locations": ["Ohio"]},
@@ -109,7 +113,12 @@ def test_particles_defaults_and_clamps(tmp_path, monkeypatch):
                 follow_redirects=False)
     assert started[0].particles == 10_000            # flagship default
     assert not is_research(started[0])               # and NOT research
-    assert started[1].particles == 100_000           # clamped
+    assert "knobs" not in started[0].extra           # and shipped
+    # the particles field sets the pf.particles knob: out of range is
+    # refused before the engine is claimed, never clamped
+    assert len(started) == 1
+    assert srv._status.get("running") is None
+    assert "pf.particles" in srv._status.get("flash", "")
 
 
 # ----------------------------------------------------------------- the tag
@@ -172,4 +181,8 @@ def test_rerun_reproduces_a_research_runs_particles(tmp_path, monkeypatch):
     assert r.status_code == 303
     assert len(started) == 1
     assert started[0].particles == 20_000
-    assert started[0].extra == {"mode": "realtime", "members": 3}   # the run type rides on every console spec (2026-09-07)
+    # the run type rides on every console spec (2026-09-07); the particles
+    # are off the shipped value, so the NEW run records them as a knob
+    # (the old row itself is never reclassified)
+    assert started[0].extra == {"mode": "realtime", "members": 3,
+                                "knobs": {"pf.particles": 20_000}}

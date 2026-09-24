@@ -117,7 +117,44 @@ def spec_settings(spec) -> list:
     # older rows carry no aux key and ran the bare analogue, which this then says
     pairs.append(("Groundhog donors", analogue_donors_label(extra)))
     pairs.append(("Oracle step", oracle_label(extra)))
+    # only a spec with a knobs record: shipped and older rows are unchanged
+    mk = model_settings_label(d)
+    if mk:
+        pairs.append(("model settings", mk))
     return [(k, v) for k, v in pairs if v not in ("", None)]
+
+
+def model_settings_label(spec) -> str:
+    """'' for a shipped (or pre-registry) spec; else the knobs label, e.g.
+    'modified: oracle.w=0.25 (1a2b3c4d)', plus how its files were named.
+    Lazy import: app.core.knobs imports this module."""
+    from app.core import knobs as K
+    rec = K.record_of(spec)
+    if not rec:
+        return ""
+    why = K.override_reason(spec)
+    try:
+        text = K.label(K.from_record(rec))
+    except Exception:
+        text = "modified (unreadable record)"
+    return (f"{text}; exported under the hub names by override: {why}" if why
+            else f"{text}; files carry the non-hub name "
+                 f"(<hub id>{K.MODIFIED_SUFFIX})")
+
+
+def is_modified(spec) -> bool:
+    """A run built with model settings off the shipped ones (a knobs
+    record in its spec); never true for an older row."""
+    from app.core import knobs as K
+    return K.modified(spec)
+
+
+def is_contained(spec) -> bool:
+    """Kept off the shipped-product surfaces (Home, Forecast fans, Output,
+    the forecast archive, the public site): a research run, or a modified
+    run whose files carry the non-hub name. An override puts it back."""
+    from app.core import knobs as K
+    return is_research(spec) or not K.hub_names(spec)
 
 
 def oracle_label(extra: dict | None) -> str:

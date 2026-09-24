@@ -15,7 +15,7 @@
 {# preparing: scoring, the national aggregate and playback warming run as one
    background job; poll its status and reload when it lands. No bar: the job
    has no honest denominator. #}
-<h1><span class="accent">{{ season }}</span>: preparing results</h1>
+<h1><span class="accent">{{ season }}</span>: preparing results {% if knobs_label %}<span class="pill warn" title="{{ knobs_label }}">modified settings</span>{% endif %}</h1>
 <div class="card" data-season="{{ season }}">
  <h2>Preparing the season results</h2>
  <p class="runstat" id="prep-stat" aria-live="polite">{{ preparing.phase }}&hellip;</p>
@@ -60,7 +60,7 @@
  })();
 </script>
 {% else %}
-<h1><span class="accent">{{ season }}</span>: {{ n_weeks }} weeks scored</h1>
+<h1><span class="accent">{{ season }}</span>: {{ n_weeks }} weeks scored {% if knobs_label %}<span class="pill warn" title="{{ knobs_label }}">modified settings</span>{% endif %}</h1>
 {% if archive %}
 <p class="banner" role="status"><strong>Archived run{% if archive_when %} from
  {{ archive_when }}{% endif %}.</strong> Set aside when a fresh replay

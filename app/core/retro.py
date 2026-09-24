@@ -292,6 +292,10 @@ ACTIVE_STATUSES = ("running", "paused", "stopping")
 _META_LOCK = threading.RLock()
 
 
+class KnobsMismatch(ValueError):
+    """A resume asked for other model settings than the tree was built with."""
+
+
 class SeasonStopped(Exception):
     """Raised when a stop was requested. Completed weeks are kept, and a
     week interrupted mid-way keeps every finished fit's checkpoint, so a
@@ -487,7 +491,23 @@ def settings_summary(meta: dict) -> list:
              ("replicates", str(s.get("replicates") or "")),
              ("shard width", str(s.get("width") or "")),
              ("engine preset", str(s.get("engine") or ""))]
+    # only a record made through the knob channel says "model settings"
+    if isinstance(s.get("knobs"), dict) and s["knobs"]:
+        from app.core import knobs as _knobs
+        try:
+            pairs.append(("model settings",
+                          _knobs.label(_knobs.from_record(s["knobs"]))))
+        except Exception:
+            pairs.append(("model settings", "modified (unreadable record)"))
     return [(k, v) for k, v in pairs if v not in ("", None)]
+
+
+def season_knobs(meta: dict) -> dict:
+    """The knobs record of a replay's run record ({} when shipped or from
+    before the registry: an older tree is never marked modified)."""
+    s = (meta or {}).get("settings")
+    k = s.get("knobs") if isinstance(s, dict) else None
+    return dict(k) if isinstance(k, dict) else {}
 
 
 def resume_form_fields(meta: dict) -> dict | None:
@@ -527,6 +547,9 @@ def resume_form_fields(meta: dict) -> dict | None:
     engine = str(s.get("engine") or "")
     if engine:
         out["engine"] = engine
+    # the model knobs ride as one JSON field (only when recorded)
+    if isinstance(s.get("knobs"), dict) and s["knobs"]:
+        out["knobs"] = json.dumps(s["knobs"], sort_keys=True)
     return out
 
 
@@ -873,8 +896,10 @@ def run_week(root: Path, season: str, asof: str, locations: list,
     # drop_same_day defaults OFF (the seal was fitted with the same-day week).
     # extra may override the model's season start (only its first observed
     # week and clock move; the vintages stay the season's) and the jitter.
-    season_start = str((extra or {}).get("season_start") or season_bounds(season)[0])
-    jitter = float((extra or {}).get("jitter") or RunSpec.jitter)
+    _x = extra or {}
+    season_start = str(season_bounds(season)[0]
+                       if _x.get("season_start") is None else _x["season_start"])
+    jitter = float(RunSpec.jitter if _x.get("jitter") is None else _x["jitter"])
     spec = RunSpec(engine="retro", forecast_date=asof, locations=locations,
                    season_start=season_start, jitter=jitter,
                    replicates=replicates, particles=particles,
@@ -884,7 +909,10 @@ def run_week(root: Path, season: str, asof: str, locations: list,
                 "season_start": spec.season_start,
                 "drop_same_day": bool(drop_same_day)}
     if extra:
-        manifest["extra"] = dict(extra)   # absent when empty (old weeks match)
+        # absent when empty (old weeks match); post-fit knobs stay out of
+        # the fit record (knobs.fit_extra), so they never force a refit
+        from app.core import knobs as _knobs
+        manifest["extra"] = _knobs.fit_extra(extra)
     _check_stop(root)         # a standing flag must not even prepare a week
     hold_while_paused(root)
     if engine == "analogue":
@@ -997,6 +1025,32 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
     if week_extra is None:
         week_extra = an_engine.aux_preset(an_engine.SHIPPED_AUX)
     rec.setdefault("week_extra", getattr(week_extra, "__name__", "custom"))
+    # model knobs: one configuration per tree. The record (settings.knobs,
+    # or what a pre-registry record's particles/replicates imply) must
+    # match before completed weeks are resumed; start over (archive or
+    # discard) to change them. Recorded only when off the shipped set.
+    from app.core import knobs as _knobs
+    want = _knobs.legacy_settings_knobs(rec)
+    if want:
+        rec["knobs"] = want
+        rec["knobs_digest"] = _knobs.digest(want)
+    else:
+        rec.pop("knobs", None)
+        rec.pop("knobs_digest", None)
+    if _weeks_on_disk(root):
+        prior = (read_meta(root) or {}).get("settings") or {}
+        had = _knobs.legacy_settings_knobs(prior)
+        if _knobs.digest(had) != _knobs.digest(want):
+            raise KnobsMismatch(
+                f"{season} at {root} has completed weeks replayed with "
+                f"model settings {_knobs.label(_knobs.from_record(had))}; "
+                f"this run asks for {_knobs.label(_knobs.from_record(want))}."
+                " Archive or discard the existing results to change them.")
+        if prior and "knobs" not in prior:
+            # a tree from before the registry resumed as it was: never
+            # reclassified as modified by the resume
+            rec.pop("knobs", None)
+            rec.pop("knobs_digest", None)
     _start_record(root, season, len(vintages), rec)
     beat = _Heartbeat(root)
     beat.start()

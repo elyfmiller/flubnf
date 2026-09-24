@@ -76,7 +76,8 @@ def _trace(msg: str) -> None:
 
 _trace("import begin (fastapi + app.core next)")
 
-from fastapi import BackgroundTasks, FastAPI, Form, Request     # noqa: E402
+from fastapi import (BackgroundTasks, Depends, FastAPI, Form,  # noqa: E402
+                     Request)
 from fastapi.responses import (HTMLResponse, JSONResponse, PlainTextResponse,  # noqa: E402
                                RedirectResponse)
 from fastapi.templating import Jinja2Templates                  # noqa: E402
@@ -1033,6 +1034,7 @@ def forecast_page(request: Request):
     ledger_rows = Ledger().rows(5)
     for r in ledger_rows:
         r["label"] = _run_label(r["run_id"], r.get("spec", ""))
+        r["modified"] = _runs.is_modified(r.get("spec", ""))
         r["chips"] = _outcome_chips(r.get("outcome", ""))
         r["settings"] = spec_settings(r.get("spec", ""))
         # the latest-run card links the weekly report when one exists
@@ -1059,6 +1061,7 @@ def forecast_page(request: Request):
         "vintage_dates": vintage_dates, "anchor_note": anchor_note,
         "default_date": _default_forecast_date(),
         "locations_error": locations_error, "form": form,
+        "knob_panel": _knob_panel("forecast", form),
         "elapsed0": _console_elapsed(),
         "series_json": _script_json(series), "fanq_json": _script_json(fanq),
         "model_names_json": _script_json(_model_names()),
@@ -1269,6 +1272,7 @@ def _storage_inventory() -> dict:
                 "label": disp["what"], "when": disp["when"],
                 "scope": disp["scope"], "recorded": disp["recorded"],
                 "research": is_research(row.get("spec", "")),
+                "modified": _runs.is_modified(row.get("spec", "")),
                 "busy": p.name in live_ids})
     if RETRO_ROOT.is_dir():
         for p in sorted(RETRO_ROOT.iterdir()):
@@ -1353,6 +1357,7 @@ def runs_page(request: Request):
         # the research badge carries the tag, so the label stays untagged
         r["label"] = _run_label(r["run_id"], r.get("spec", ""), tag=False)
         r["research"] = is_research(r.get("spec", ""))
+        r["modified"] = _runs.is_modified(r.get("spec", ""))
         r["chips"] = _outcome_chips(r.get("outcome", ""))
         # a 'running' row with no live worker = the app was closed mid-run
         if r["status"] == "running" and not (_status.get("running") or "").endswith(r["run_id"]):
@@ -2081,6 +2086,16 @@ def _run_all(spec: RunSpec) -> None:
         ledger.set_workroot(run_id, workroot)   # the row must name the real one
         _status["running"] = f"all:{run_id}"
         _status["workroot"] = str(workroot)
+        # a run with modified model settings records them beside its files
+        # (knobs.json; none for a shipped run, whose files are unchanged)
+        _knobs_mod = _knobs.modified(spec)
+        if _knobs_mod:
+            _knobs.write_record(workroot / "knobs.json", spec)
+            outcome["knobs"] = _knobs.summary(_knobs.record_of(spec),
+                                              _knobs.override_reason(spec))
+        # the output-floor knob: passed only when set (shipped calls unchanged)
+        _lam = _knobs.value_of(spec.extra, "output.floor_lam")
+        _fkw = {} if _lam is None else {"lam": float(_lam)}
         # 1. PF (primary); absent on Tier-A machines, where the run proceeds
         # with the analogue (see _pf_engine_state)
         fails = {}
@@ -2158,7 +2173,8 @@ def _run_all(spec: RunSpec) -> None:
             from app.core.floor import floor_samples
             pf_samples = {loc: floor_samples(
                               s, loc, spec.forecast_date,
-                              recent=[v for _, v in obs.get(loc, [])])
+                              recent=[v for _, v in obs.get(loc, [])],
+                              **_fkw)
                           for loc, s in pf_samples.items()}
         else:
             outcome["pf_skipped"] = ("analogue-only run"
@@ -2192,14 +2208,15 @@ def _run_all(spec: RunSpec) -> None:
             from app.core.floor import floor_samples as _floor2s
             pf2s_samples = {loc: _floor2s(
                                 s, loc, spec.forecast_date,
-                                recent=[v for _, v in obs.get(loc, [])])
+                                recent=[v for _, v in obs.get(loc, [])],
+                                **_fkw)
                             for loc, s in pf2s_samples.items()}
         # 2. the Groundhog: calendar analogue + the aux donors _run_extra put
         # in spec.extra (none = research bare analogue). Always runs (instant);
         # its FILE is written only when the run asked for it.
         _phase("consulting the Groundhog")
         from app.core.floor import floor_quantiles
-        an_q = {loc: floor_quantiles(q)
+        an_q = {loc: floor_quantiles(q, **_fkw)
                 for loc, q in an_engine.run(spec).items()}
         outcome["analogue_aux"] = str(
             (spec.extra or {}).get("analogue_aux") or "")
@@ -2214,6 +2231,10 @@ def _run_all(spec: RunSpec) -> None:
         # the writer refuses a file date its rows do not carry
         from app.core.runs import is_research as _is_research
         _research = _is_research(spec)
+        # modified model settings without the override: every file carries
+        # the non-hub name (<hub id>-modified), so it can never pass for the
+        # registered model; the app exports, the operator submits
+        _suffix = "" if _knobs.hub_names(spec) else _knobs.MODIFIED_SUFFIX
 
         def _withhold(reason: str) -> None:
             # one outcome key, every withheld file named in it
@@ -2249,12 +2270,13 @@ def _run_all(spec: RunSpec) -> None:
             # contained per model: a writer refusal (rows the hub would
             # bounce) costs that file, never the run; recorded for the run page
             try:
-                subs[hub_model_id(model)] = str(write_submission(
+                subs[hub_model_id(model) + _suffix] = str(write_submission(
                     rows, model, spec.forecast_date,
-                    workroot / "submission"))
+                    workroot / "submission",
+                    **({"suffix": _suffix} if _suffix else {})))
             except Exception as e:
                 outcome.setdefault("submission_errors", {})[
-                    hub_model_id(model)] = str(e)[:400]
+                    hub_model_id(model) + _suffix] = str(e)[:400]
         outcome["submissions"] = subs
         # 5. retrospective scoring (once truth exists); contained, like 5b
         df = pd.DataFrame()
@@ -2323,6 +2345,8 @@ def _run_all(spec: RunSpec) -> None:
             "research": _research,
             # bank as stream@digest8, or "none"; full record in oracle.json
             "oracle": outcome.get("oracle"),
+            # modified model settings only (a shipped results.json is unchanged)
+            **({"knobs": outcome["knobs"]} if "knobs" in outcome else {}),
             "observed": obs,
             "params": params,
             # STORED horizon convention (old workroots use it too); readers
@@ -2339,6 +2363,9 @@ def _run_all(spec: RunSpec) -> None:
         # shipped product's full run archives (audit rr-1)
         if _research:
             outcome["archived"] = "skipped: research run"
+        elif _suffix:
+            outcome["archived"] = ("skipped: modified model settings (files "
+                                   "carry the non-hub name)")
         elif spec.engine in ("analogue", "pf"):
             outcome["archived"] = (f"skipped: {'analogue' if spec.engine == 'analogue' else 'Oracle SIHRS'}"
                                    "-only run is not the date's forecast")
@@ -2413,7 +2440,8 @@ def _archive_run(workroot: Path, forecast_date: str) -> str:
     build.mkdir(parents=True)
     try:
         # the report travels with its inputs bundle (rebuildable)
-        for name in ("results.json", "report.html", BUNDLE_NAME):
+        # knobs.json exists only for a modified run (by override)
+        for name in ("results.json", "report.html", BUNDLE_NAME, "knobs.json"):
             if (workroot / name).is_file():
                 shutil.copy2(workroot / name, build / name)
         if (workroot / "submission").is_dir():
@@ -2452,14 +2480,24 @@ def _registered_model_ids() -> set:
     return {hub_model_id(k) for k in MODEL_ABBR}
 
 
+def _modified_model_ids() -> set:
+    """The non-hub names a run with modified model settings exports under
+    (<hub id>-modified, app/core/knobs.py): downloadable, never submittable."""
+    return {m + _knobs.MODIFIED_SUFFIX for m in _registered_model_ids()}
+
+
 def _submission_files(d: Path) -> list:
     """Submission CSVs under a workroot/archive dir, each marked submittable
     iff its directory (the hub model id) is registered. Retired identities
     (NAU-Ensemble, NAU-PF-SIHRS) stay listed as the run's record but are not
-    downloadable: the hub would reject them under genuine-looking names."""
+    downloadable: the hub would reject them under genuine-looking names.
+    A modified run's <hub id>-modified files are downloadable exports
+    (`modified`), not submissions."""
     ok = _registered_model_ids()
+    mod = _modified_model_ids()
     return [{"model": p.parent.name, "name": p.name, "path": str(p),
-             "submittable": p.parent.name in ok}
+             "submittable": p.parent.name in ok,
+             "modified": p.parent.name in mod}
             for p in sorted(Path(d).glob("submission/*/*.csv"))]
 
 
@@ -2518,6 +2556,8 @@ def run_page(request: Request, run_id: str):
         # the page shows a research badge, so the label stays untagged
         "label": _run_label(run_id, spec_json, tag=False),
         "research": is_research(spec_json),
+        "modified": _runs.is_modified(spec_json),
+        "override": _knobs.override_reason(spec_json),
         # a legacy run's retired blend is not shown
         "models": {m: v for m, v in (res.get("models") or {}).items()
                    if m not in _report_v2_retired()},
@@ -2580,6 +2620,23 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
            if _x.get("aux_pools") else "")
     # likewise a plain-filter row re-runs the plain filter
     oracle = "none" if str(_x.get("oracle") or "") == "none" else None
+    # model knobs re-run from the row's own record; an override is never
+    # inherited (a fresh decision each time), so it is left out of the
+    # comparison and the re-run exports under the non-hub name
+    _rec = _knobs.record_of(d)
+    had_override = bool(_knobs.override_reason(d))
+    if had_override:
+        d["extra"].pop(_knobs.OVERRIDE_KEY, None)
+    try:
+        _nd = _knobs.from_record(_rec)
+        _cx = _run_extra(members, _spec_mode(d),
+                         _knobs.aux_choice(_nd, aux),
+                         oracle)
+        _knobs.write_extra(_nd, _cx)
+    except ValueError:
+        _flash("This run's recorded model settings are not readable, so it "
+               "cannot be re-run from here. Nothing was started.")
+        return _back(request, "/forecast")
     # what /run would build, compared field by field with the stored spec
     candidate = RunSpec(
         engine=str(d.get("engine") or ""),
@@ -2593,7 +2650,8 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
         drop_same_day=bool(d.get("drop_same_day", False)),
         replicates=int(d.get("replicates") or 3),
         particles=int(d.get("particles") or 10_000),
-        extra=_run_extra(members, _spec_mode(d), aux, oracle))
+        jitter=float(d.get("jitter", RunSpec.jitter)),
+        extra=_cx)
     # a row recorded before the mode existed reads as a real-time run
     if isinstance(d.get("extra"), dict):
         d["extra"].setdefault("mode", "realtime")
@@ -2607,13 +2665,20 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
     except ValueError:
         off.append("forecast_date")
     if not (1_000 <= candidate.particles <= 100_000):
-        off.append("particles")           # /run would clamp it: not verbatim
+        off.append("particles")           # /run would refuse it
+    if (candidate.jitter != RunSpec.jitter
+            and "pf.jitter" not in _rec):
+        off.append("jitter")              # only the knob channel sets it
     if off:
         _flash("This run's recorded settings cannot be reproduced from the "
                "console path (" + ", ".join(dict.fromkeys(off)) + " differ "
                "from what the form would run), so nothing was started. "
                "Re-run it from a script using its ledger row.")
         return _back(request, "/forecast")
+    if had_override:
+        _flash("The earlier run exported under the hub names by override; "
+               "an override is never carried over, so this re-run's files "
+               "carry the non-hub name.")
     return run_models(request, background,
                       forecast_date=candidate.forecast_date,
                       locations=locs,
@@ -2626,7 +2691,10 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
                       particles=candidate.particles,
                       mode=_spec_mode(d),
                       drop_same_day=1 if candidate.drop_same_day else 0,
-                      aux=aux, oracle=oracle)
+                      aux=aux, oracle=oracle,
+                      knob_fields={},
+                      knobs=(_json.dumps(_rec) if _rec else ""),
+                      submit_modified="", modified_reason="")
 
 
 # === Forecast APIs: /api/series, /api/progress ===
@@ -2709,6 +2777,8 @@ def _run_label(run_id: str, spec_json: str = "", tag: bool = True) -> str:
     from app.core.runs import is_research
     when = f"{run_id[4:6]}-{run_id[6:8]} {run_id[9:11]}:{run_id[11:13]}"
     suffix = " · research" if (tag and is_research(spec_json)) else ""
+    if tag and _runs.is_modified(spec_json):
+        suffix += " · modified settings"
     try:
         s = _json.loads(spec_json)
         return f"{s.get('forecast_date','run')} · {when}{suffix}"
@@ -2743,6 +2813,112 @@ def _run_extra(members: int, mode: str, aux: str | None = None,
     return extra
 
 
+# --- model knobs (app/core/knobs.py) on the run and retro forms ---
+class _LazyKnobs:
+    """app.core.knobs on first use: it imports the engines and scipy, which
+    the app's start must not wait for."""
+    FORM_PREFIX = "knob."          # held equal to knobs.FORM_PREFIX by tests
+
+    def __getattr__(self, name):
+        from app.core import knobs
+        return getattr(knobs, name)
+
+
+_knobs = _LazyKnobs()
+
+
+async def _knob_form(request: Request) -> dict:
+    """The panel's `knob.<key>` fields ({key: raw}); the parsed form is
+    cached by Starlette, so the route's own Form fields still read it."""
+    try:
+        form = await request.form()
+    except Exception:
+        return {}
+    return {k[len(_knobs.FORM_PREFIX):]: v for k, v in form.multi_items()
+            if k.startswith(_knobs.FORM_PREFIX) and isinstance(v, str)}
+
+
+def _str_field(v) -> str:
+    """A form value, or '' for a FastAPI default object (a direct call)."""
+    return v if isinstance(v, str) else ("" if v is None or not isinstance(
+        v, (int, float)) else str(v))
+
+
+def _int_field(v, default: int = 0) -> int:
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def _knob_panel(scope: str, form: dict | None = None) -> dict | None:
+    """The Model settings panel's context (knobs.panel) with the values a
+    form last held: the knob fields, then the older field names. None
+    (no panel) if the registry cannot be read, so a page still renders."""
+    form = form or {}
+    vals = {k: str(v) for k, v in (form.get("knobs") or {}).items()}
+    for fld, key in _knobs.LEGACY_FIELDS.items():
+        v = form.get(fld)
+        if v is None or v == "":
+            continue
+        if fld == "drop_same_day":
+            v = "1" if _int_field(v) else "0"
+        vals.setdefault(key, str(v))
+    try:
+        return _knobs.panel(scope, vals)
+    except Exception:
+        return None
+
+
+def _knob_raw(fields, knobs_json) -> dict:
+    """The knob channel's raw values: the JSON field (one-click resume,
+    re-run) under the panel's own fields. A malformed JSON field raises
+    KnobError, so the route refuses rather than guessing."""
+    raw: dict = {}
+    text = _str_field(knobs_json).strip()
+    if text:
+        import json as _json
+        try:
+            got = _json.loads(text)
+        except ValueError:
+            raise _knobs.KnobError("the recorded model settings are not "
+                                   "readable JSON") from None
+        if not isinstance(got, dict):
+            raise _knobs.KnobError("the recorded model settings are not a "
+                                   "dictionary")
+        raw.update(got)
+    if isinstance(fields, dict):
+        raw.update({k: v for k, v in fields.items() if str(v).strip()})
+    return raw
+
+
+def _knob_run_parts(kraw: dict, engine: str, forecast_date: str,
+                    members: int, mode: str, aux, oracle, *, legacy: dict,
+                    override: bool = False, reason: str = "") -> tuple:
+    """(non-default knob values, spec.extra) for a console run; raises
+    KnobError/ValueError on anything refused. Knobs that do not apply to
+    the engine (or the Oracle step when it is off) are dropped, never
+    recorded. No knob off shipped -> exactly today's extra."""
+    eng = engine if engine in _knobs.ENGINE_MEMBERS else "all"
+    step = str(oracle or "") != "none"
+    nd = _knobs.resolve(kraw, eng, scope="forecast",
+                        forecast_date=forecast_date, oracle_step=step,
+                        legacy=legacy, two_strain=(members == 3))
+    if "groundhog.aux" in nd and aux is not None:
+        want = _knobs.aux_choice(nd, None)
+        if str(aux) != want:
+            raise _knobs.KnobError(
+                f"groundhog.aux: the form gives two donor banks "
+                f"({aux or 'none'} and {want or 'none'}); give one")
+    if override and nd and not reason:
+        raise _knobs.KnobError(
+            "exporting under the hub names needs a reason; type one, or "
+            "untick the box to export under the non-hub name")
+    extra = _run_extra(members, mode, _knobs.aux_choice(nd, aux), oracle)
+    _knobs.write_extra(nd, extra, override=(reason if override else ""))
+    return nd, extra
+
+
 def _spec_mode(d: dict) -> str:
     extra = d.get("extra") if isinstance(d.get("extra"), dict) else {}
     m = str(extra.get("mode") or "realtime")
@@ -2774,7 +2950,9 @@ def _pf_member_label(o: dict) -> str:
     ox = (o or {}).get("oracle")
     if ox == "none":
         return "plain filter"
-    return "Oracle SIHRS" if ox else "PF"
+    # a modified run never claims the shipped member's name
+    tail = " (modified)" if (o or {}).get("knobs") else ""
+    return ("Oracle SIHRS" if ox else "PF") + tail
 
 
 def _outcome_chips(outcome_json: str) -> str:
@@ -2806,6 +2984,12 @@ def _outcome_chips(outcome_json: str) -> str:
         # deliberate withholding (research run); the run page names the model
         bits.append('<span class="hint">submission withheld '
                     '(research run)</span>')
+    if o.get("knobs"):
+        # modified model settings: the files carry the non-hub name unless
+        # the operator exported under the hub names with a reason
+        bits.append('<span class="warn">modified settings'
+                    + (', hub names by override' if (o["knobs"] or {}).get(
+                        "override") else '') + '</span>')
     if o.get("report"): bits.append("report ✓")
     if o.get("pf_relwis"):
         # scored-cell count; older rows only carry the fit-cell count
@@ -2817,7 +3001,8 @@ def _outcome_chips(outcome_json: str) -> str:
     for key, member in (("analogue_relwis", "Groundhog"),):
         if o.get(key):
             bits.append(relwis_chip(o[key], cells=o.get(f"{key}_cells"),
-                                    member=member))
+                                    member=member + (" (modified)" if o.get(
+                                        "knobs") else "")))
     if o.get("error"):
         bits.append('<span class="bad">failed</span>; the full error is on '
                     'the run page')
@@ -2836,13 +3021,15 @@ def _latest_results():
     fresh (only the scan is cached). Research runs are skipped because
     every caller is a shipped-product surface (audit rr-1)."""
     import json as _json
-    from app.core.runs import is_research
+    from app.core.runs import is_contained
     for f in _workroot_results():
         try:
             res = _json.loads(f.read_text())
         except (_json.JSONDecodeError, OSError):
             continue
-        if res.get("research") or is_research(res.get("spec", "")):
+        # research, or modified model settings exported under the non-hub
+        # name (an override puts a modified run back, badged)
+        if res.get("research") or is_contained(res.get("spec", "")):
             continue
         return f.parent.name, res
     return None, None
@@ -2890,7 +3077,8 @@ def output_download(path: str):
     if not (p.is_relative_to(APP_STATE.resolve()) and p.is_file()):
         return HTMLResponse("<p>file not found in app state</p>", status_code=404)
     if p.parent.parent.name == "submission" \
-            and p.parent.name not in _registered_model_ids():
+            and p.parent.name not in _registered_model_ids() \
+            and p.parent.name not in _modified_model_ids():
         return HTMLResponse(
             f"<p>{p.parent.name} is not a registered hub model. This file "
             "was written under a retired identity and the hub would reject "
@@ -3825,6 +4013,7 @@ def retro_index(request: Request):
                                        "state_names": _retro_state_names(),
                                        "default_width": DEFAULT_SHARD_WIDTH,
                                        "width_cap": SHARD_WIDTH_CAP,
+                                       "knob_panel": _knob_panel("retro"),
                                        "engine_ok": PY_ENGINE.exists()
                                        and PYBNF.exists()})
 
@@ -4269,7 +4458,8 @@ def api_retro_results_status(season: str, archive: str = ""):
 # === Retrospective: season worker and run controls ===
 def _retro_bg(season: str, locations: list, width: int,
               replicates: int = 3, particles: int = 10_000,
-              settings: dict | None = None, engine: str = "pf"):
+              settings: dict | None = None, engine: str = "pf",
+              week_extra=None, drop_same_day: bool = False):
     """The season worker. `settings` is the form's choices (scope label,
     engine preset); run_season records them with the rest in run_meta.json
     before the first week."""
@@ -4284,9 +4474,16 @@ def _retro_bg(season: str, locations: list, width: int,
             # called after every week: the clean stop point
             if season in _retro_stop:
                 raise _RetroStopRequested()
+        # model knobs ride in week_extra and settings (None/False/absent
+        # on a shipped replay: the call is as it always was)
+        kx = {}
+        if week_extra is not None:
+            kx["week_extra"] = week_extra
+        if drop_same_day:
+            kx["drop_same_day"] = True
         retro.run_season(root, season, locations, replicates=replicates,
                          particles=particles, width=width, progress=_tick,
-                         settings=settings, engine=engine)
+                         settings=settings, engine=engine, **kx)
         # finalize (score, national aggregate, playback caches) BEFORE the
         # season reads done, via the shared job registry
         job = _ensure_results_job(root, season)
@@ -4405,7 +4602,12 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
               width: int = Form(4),
               engine: str = Form("pf"),
               mode: str = Form("resume"),
-              confirm: str = Form("")):
+              confirm: str = Form(""),
+              # the Model settings panel: knob.<key> fields, or the JSON
+              # record a one-click resume posts; the same-day week's knob
+              drop_same_day: str = Form(""),
+              knobs: str = Form(""),
+              knob_fields: dict = Depends(_knob_form)):
     """Start (or resume) a season replay.
 
     `national`: fit US too (default, like the Forecast tab); "0" = states
@@ -4479,14 +4681,47 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                                                              "no", "off", "")
         if fit_national:
             names = usn.with_us(names, _retro_national_name())
-        # keep the knobs inside what the machine survives (budget: 0.45 fits/min)
-        particles = max(1_000, min(int(particles), 100_000))
-        replicates = max(1, min(int(replicates), 10))
+        # model settings (app/core/knobs.py), validated like every other
+        # field before anything is moved or claimed: particles and
+        # replicates are knobs now, refused out of range, never clamped
+        try:
+            vints = retro.season_vintages(season)
+            nd = _knobs.resolve(
+                _knob_raw(knob_fields, knobs),
+                "analogue" if engine == "analogue" else "all",
+                scope="retro",
+                forecast_date=(vints[0] if vints else None),
+                check_dates=tuple(vints[-1:]),
+                legacy={"particles": particles, "replicates": replicates,
+                        **({"drop_same_day": drop_same_day}
+                           if _str_field(drop_same_day).strip() else {})})
+        except ValueError as e:              # KnobError is a ValueError
+            _flash(f"Model settings: {e}. Nothing was started.")
+            return RedirectResponse("/retro", status_code=303)
+        particles = int(nd.get("pf.particles", RunSpec.particles))
+        replicates = int(nd.get("pf.replicates", RunSpec.replicates))
         width = max(1, min(int(width), 16))
         # start-over handling only AFTER all validation
         live = _live_root(season)
         existing = _weeks_done(live)
+        legacy_resume = False
         if mode == "resume" and existing:
+            # one configuration per tree: completed weeks were built with
+            # the recorded model settings (a pre-registry record: its
+            # particles and replicates); a different set starts over
+            prior = (retro.read_meta(live) or {}).get("settings") or {}
+            had = _knobs.legacy_settings_knobs(prior)
+            # a pre-registry tree resumes as it was, never re-recorded
+            legacy_resume = bool(prior) and "knobs" not in prior
+            if _knobs.digest(had) != _knobs.digest(_knobs.jsonable(nd)):
+                _flash(f"{season} has {existing} completed week"
+                       f"{'' if existing == 1 else 's'} replayed with model "
+                       f"settings {_knobs.label(_knobs.from_record(had))}; "
+                       f"this run asks for {_knobs.label(nd)}. Resuming "
+                       "would mix two configurations in one season. Archive "
+                       "or discard the existing results to run it. Nothing "
+                       "was started.")
+                return RedirectResponse("/retro", status_code=303)
             # never resume a tree with the other engine preset (weeks would be
             # skipped as done or mislabeled); the record says what ran
             was = str((retro.read_meta(live) or {}).get("settings", {})
@@ -4533,9 +4768,27 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
         _retro_status[season] = "running"
         _retro_claim_at[season] = time.time()
     # recorded settings the location list alone cannot say
+    rsettings = {"scope": locations, "engine": engine,
+                 "national": bool(fit_national)}
+    wx = None
+    if nd:
+        # run_season records the knobs; those that travel in each week's
+        # extra (not particles, replicates, same-day) ride in week_extra
+        if not legacy_resume:
+            rsettings["knobs"] = _knobs.jsonable(nd)
+        if set(nd) - _knobs.RETRO_ARG_KEYS:
+            from app.core.engines import analogue as _an
+            pick = _knobs.aux_choice(nd, _an.SHIPPED_AUX)
+            base = _an.aux_preset(pick) if pick else _an.bare_analogue
+            wx = _knobs.retro_week_extra(base, nd)
+    # knob keywords only when set: a shipped replay's call is as before
+    kx = {}
+    if wx is not None:
+        kx["week_extra"] = wx
+    if nd.get("run.drop_same_day"):
+        kx["drop_same_day"] = True
     background.add_task(_retro_bg, season, names, width, replicates, particles,
-                        {"scope": locations, "engine": engine,
-                         "national": bool(fit_national)}, engine)
+                        rsettings, engine, **kx)
     return RedirectResponse("/retro", status_code=303)
 
 
@@ -4565,6 +4818,10 @@ def retro_results(request: Request, season: str, week: str = "",
     root, _is_seal = _season_root(season, archive)
     # this tree's names, passed as model_name (shadows the global)
     names = _names_for_root(root)
+    # a replay with modified model settings wears its label on the page
+    from app.core import site_build as _sb
+    _kn = _sb.tree_knobs(root)
+    knobs_label = (_knobs.label(_knobs.from_record(_kn)) if _kn else "")
     weeks = [p.parent.name for p in retro.season_sample_files(root)]
     if not weeks:
         # back to the season list, which shows a 0-weeks season
@@ -4586,7 +4843,7 @@ def retro_results(request: Request, season: str, week: str = "",
         if not job["done"].is_set():
             return templates.TemplateResponse(request, "retro_season.html", {
                 "active": "Retrospective", "season": season,
-                "model_name": _name_fn(names),
+                "model_name": _name_fn(names), "knobs_label": knobs_label,
                 "preparing": {"phase": job["phase"],
                               "elapsed_s": round(time.time() - job["t0"], 1)},
                 "archive": archive,
@@ -4748,7 +5005,7 @@ def retro_results(request: Request, season: str, week: str = "",
         official_catalog = []
     return templates.TemplateResponse(request, "retro_season.html", {
         "active": "Retrospective", "season": season, "heads": heads,
-        "model_name": _name_fn(names),
+        "model_name": _name_fn(names), "knobs_label": knobs_label,
         "curve": curve, "curves": curves, "states": states,
         "member_colors": _member_colors(),
         # the shipped models this season scored, in table order
@@ -4875,7 +5132,14 @@ def run_models(request: Request,
                # shipped config; /runs/{id}/rerun passes the row's values
                drop_same_day: int = Form(0),
                aux: str | None = Form(None),    # Groundhog donors; "" = bare
-               oracle: str | None = Form(None)):  # "none" = plain filter
+               oracle: str | None = Form(None),  # "none" = plain filter
+               # the Model settings panel (app/core/knobs.py): knob.<key>
+               # fields, or one JSON dict (the re-run path); the override
+               # exports a modified run under the hub names, with a reason
+               knob_fields: dict = Depends(_knob_form),
+               knobs: str = Form(""),
+               submit_modified: str = Form(""),
+               modified_reason: str = Form("")):
     # non-Saturdays snap via resolve_anchor; a typed Saturday is honoured or
     # refused below (never re-aimed)
     from datetime import date as _date
@@ -4912,26 +5176,42 @@ def run_models(request: Request,
             _flash(f"No archived data for {forecast_date}; the archive "
                    f"starts at {near}.")
         return _back(request, "/forecast")
-    # season start: blank = RunSpec's Aug 1 rule; a typed value must precede
-    # the forecast week by < 400 days, else refused out loud and defaulted.
-    # A direct call (rerun) may pass the Form default object: treat as blank.
-    season_start = (season_start if isinstance(season_start, str) else "").strip()
-    if season_start:
-        from datetime import date as _sd, timedelta as _std
-        try:
-            _ss, _fd = _sd.fromisoformat(season_start), _sd.fromisoformat(forecast_date)
-            if not (_fd - _std(days=400) <= _ss < _fd):
-                raise ValueError("outside the allowed window")
-        except (ValueError, TypeError):
-            _flash(f"Season start {season_start} is not a date before the "
-                   f"forecast week and within 400 days of it; using "
-                   f"{_runs.default_season_start(forecast_date)}.")
-            season_start = ""
+    # A direct call (rerun) may pass Form default objects: read them as blank
+    season_start = _str_field(season_start).strip()
+    kraw = _knob_raw(knob_fields, knobs)
+    override = _str_field(submit_modified).lower() in ("1", "on", "true", "yes")
+    reason = _str_field(modified_reason).strip()
     _last_form.update({"forecast_date": forecast_date, "locations": locations,
                        "engine": engine, "weeks_to_drop": weeks_to_drop,
                        "weeks_to_nowcast": weeks_to_nowcast,
                        "replicates": replicates, "members": members,
-                       "season_start": season_start})
+                       "season_start": season_start,
+                       "particles": particles,
+                       "drop_same_day": _int_field(drop_same_day),
+                       "knobs": {k: v for k, v in kraw.items()
+                                 if isinstance(v, str)},
+                       "submit_modified": override,
+                       "modified_reason": reason})
+    # model settings, validated BEFORE the engine is claimed: a refusal
+    # starts nothing. The legacy fields (season start, weeks to drop,
+    # replicates, particles, same-day week) set their knob; a value outside
+    # a knob's range is refused, never clamped.
+    try:
+        nd, extra = _knob_run_parts(
+            kraw, engine, forecast_date, members, mode, aux, oracle,
+            legacy={"particles": particles, "replicates": replicates,
+                    "season_start": season_start,
+                    "weeks_to_drop": weeks_to_drop,
+                    "drop_same_day": bool(_int_field(drop_same_day))},
+            override=override, reason=reason)
+    except ValueError as e:                  # KnobError is a ValueError
+        _flash(f"Model settings: {e}. Nothing was run.")
+        return _back(request, "/forecast")
+    kspec = _knobs.spec_fields(nd)
+    season_start = kspec.get("season_start", "")
+    weeks_to_drop = int(kspec.get("weeks_to_drop", 0))
+    replicates = int(kspec.get("replicates", RunSpec.replicates))
+    particles = int(kspec.get("particles", RunSpec.particles))
     # checkboxes arrive as a list, text inputs as comma-separated strings
     locations = [x.strip() for l in locations
                  for x in str(l).split(",") if x.strip()]
@@ -4977,15 +5257,8 @@ def run_models(request: Request,
     _status["expected_total"] = (len(locs_list) * int(replicates)
                                  * (2 if members == 3 else 1)
                                  if engine in ("all", "pf") else None)
-    # particles: only the research form posts it; clamped like the retro form
-    asked = int(particles)
-    particles = max(1_000, min(asked, 100_000))
-    if particles != asked:
-        _flash(f"Particles clamped from {asked:,} to {particles:,}, the range "
-               "this machine survives.")
-    # clamp every form number server-side (replicates = 0 once ran zero fits)
-    replicates = max(1, min(int(replicates), 9))
-    weeks_to_drop = max(0, min(int(weeks_to_drop), 4))
+    # particles, replicates and weeks to drop were range-checked as knobs
+    # above (refused, never clamped: replicates = 0 once ran zero fits)
     # mode follows the anchor: real-time means the newest archived vintage
     try:
         newest = data_mod.vintages()[-1]
@@ -4993,6 +5266,7 @@ def run_models(request: Request,
         newest = None
     if newest and mode == "realtime" and forecast_date != newest:
         mode = "vintage"
+        extra["mode"] = mode
         _flash(f"Anchored on the archived week {forecast_date}, not the "
                f"newest vintage ({newest}): recorded as a vintage run.")
     spec = RunSpec(engine=engine, forecast_date=forecast_date,
@@ -5000,10 +5274,12 @@ def run_models(request: Request,
                    season_start=season_start,
                    weeks_to_drop=weeks_to_drop,
                    weeks_to_nowcast=weeks_to_nowcast,
-                   drop_same_day=bool(int(drop_same_day)),
+                   drop_same_day=bool(kspec.get("drop_same_day", False)),
                    replicates=replicates,
                    particles=particles,
-                   extra=_run_extra(members, mode, aux, oracle))
+                   **({"jitter": float(kspec["jitter"])}
+                      if "jitter" in kspec else {}),
+                   extra=extra)
 
     if engine in ("all", "pf", "analogue"):
         # 'analogue' = the same pipeline with the PF block skipped

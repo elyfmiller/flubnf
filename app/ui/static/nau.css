@@ -629,6 +629,26 @@ details.adv[open]>summary::before{content:"\25BE ";}
  border-radius:999px;color:var(--accent-ink);font-weight:600;cursor:pointer;list-style:none;margin-top:.6rem}
 .adv > summary.advbtn::-webkit-details-marker{display:none}
 .adv[open] > summary.advbtn{background:var(--accent);color:#fff}
+/* the Model settings panel (templates/_model_settings.html): one fieldset
+   per stage, a live shipped/modified badge in the fold's button */
+.ms-badge{display:inline-block;margin-left:.45rem;padding:0 .45rem;
+  border-radius:99px;border:1px solid currentColor;font-size:var(--fs-micro);
+  font-weight:650;background:var(--card)}
+.ms-badge.ok{color:var(--ok)}
+.ms-badge.warn{color:var(--warn)}
+.ms-head{display:flex;align-items:center;gap:.3rem;margin:.6rem 0 .2rem}
+.ms-head button{margin-top:0}
+.ms-group{border:1px solid var(--line);border-radius:10px;
+  padding:.2rem .8rem .7rem;margin:.7rem 0 0;min-width:0}
+.ms-group legend{font-weight:650;font-size:.92rem;padding:0 .3rem}
+.ms-row input,.ms-row select{max-width:100%}
+.ms-later{opacity:.62}
+.ms-soon{margin-left:.3rem}
+.ms-override{margin-top:.8rem;padding:.5rem .8rem;border-left:3px solid var(--warn)}
+.ms-override .ck{font-weight:600}
+.ms-locked{margin-top:.8rem}
+.ms-locked>summary{cursor:pointer;display:inline;color:var(--mut);font-size:var(--fs-hint)}
+.ms-locked dl.kv{margin-top:.4rem}
 /* the "?" explainer (templates/_tips.html, static/tips.js): a small round
    button; its tooltip shows on hover, keyboard focus, or click/tap. Inverted
    surface (ink on card) so it reads in every theme and a11y mode. */

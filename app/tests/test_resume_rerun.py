@@ -272,8 +272,12 @@ def test_rerun_reposts_the_stored_spec_verbatim(tmp_path, monkeypatch):
     # one addition is the run type the ledger states since 2026-09-07: a
     # row recorded before the mode existed reruns as a real-time run.
     import dataclasses
+    # Since the model knobs, a value off the shipped one (here replicates
+    # and weeks to drop) is recorded as a knob by the NEW run.
     assert started[0].to_json() == dataclasses.replace(
-        spec, extra={"mode": "realtime"}).to_json()
+        spec, extra={"mode": "realtime",
+                     "knobs": {"pf.replicates": 2,
+                               "run.weeks_to_drop": 1}}).to_json()
 
 
 def test_rerun_refused_when_settings_were_not_recorded(tmp_path, monkeypatch):
