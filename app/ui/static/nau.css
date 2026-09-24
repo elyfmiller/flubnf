@@ -28,7 +28,7 @@
     12. season player
     13. modals, archive rows, storage total
     14. skip link, reduced motion
-    15. forecast modes and Advanced fold, convtip, runsplit/results, sandbox
+    15. forecast modes and Advanced fold, ? tips, runsplit/results, sandbox
    ORDER DEPENDENCIES
      - modifier blocks after all theme blocks (equal specificity, later
        wins); vision after contrast so --ok/--bad take the cvd pair while
@@ -285,7 +285,7 @@ header.nav .spacer{flex:1}
    blocks scroll inside the card, never the page. */
 main{max-width:1500px;margin:0 auto;
      padding:1.1rem clamp(1rem,2.5vw,2.5rem) 3rem}
-.cols{display:grid;grid-template-columns:minmax(260px,360px) 1fr;gap:.75rem;
+.cols{display:grid;grid-template-columns:minmax(260px,360px) minmax(0,1fr);gap:.75rem;
       align-items:start}
 @media(max-width:900px){.cols{grid-template-columns:1fr}}
 /* surfaces: ground -> raised card -> sunken wells (ground tone) */
@@ -351,6 +351,8 @@ table{border-collapse:collapse;width:100%;font-size:var(--fs-table);
 td,th{padding:.38rem .6rem;border-bottom:1px solid var(--line);text-align:left}
 /* numeric columns right-align everywhere */
 td.num,th.num{text-align:right}
+/* a number and its unit never split across lines ("5.4" / "MB") */
+td.num,td.nowrap{white-space:nowrap}
 /* compact table: natural width, numbers beside their labels */
 table.compact{width:auto}
 /* Data page vintage browser: chart and table side by side, stacked narrow */
@@ -520,6 +522,10 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
 .perf{width:100%}
 .perf td,.perf th{padding:.28rem .6rem}
 .perf td.rel{font-weight:650}
+/* season labels never break mid-label ("2025-" / "26") */
+.perf td:first-child{white-space:nowrap}
+/* home: the performance tables take the wider track beside Start here */
+@media(min-width:901px){.grid2.homeperf{grid-template-columns:minmax(0,3fr) minmax(15rem,2fr)}}
 .perf tr.total td{font-weight:750;border-top:2px solid var(--line);
   border-bottom:0}
 /* component-card lead visual: fixed-height stage so the three cards align */
@@ -605,7 +611,9 @@ a.skip:focus{left:0}
 }
 
 /* Forecast form modes (Real-time / Vintage) and the advanced group */
-.modes{display:flex;gap:.4rem;margin:.1rem 0 .5rem}
+.modes{display:flex;gap:.4rem;margin:.1rem 0 .5rem;align-items:center}
+.modes > [role=tablist]{display:flex;gap:.4rem}
+.modes .pill.mode{margin-top:0}
 .pill.mode{cursor:pointer;background:transparent;color:var(--ink);border:1px solid var(--gold);font:inherit;font-size:.85rem}
 .pill.mode[aria-selected="true"]{background:var(--gold-bright);color:#111;border-color:var(--gold-bright)}
 .pill.mode:focus-visible{outline:2px solid var(--gold-bright);outline-offset:2px}
@@ -621,13 +629,42 @@ details.adv[open]>summary::before{content:"\25BE ";}
  border-radius:999px;color:var(--accent-ink);font-weight:600;cursor:pointer;list-style:none;margin-top:.6rem}
 .adv > summary.advbtn::-webkit-details-marker{display:none}
 .adv[open] > summary.advbtn{background:var(--accent);color:#fff}
-/* the scoring-convention tip on the home table: the shared wording on hover and focus */
-.convtip{cursor:help;color:var(--accent-ink);font-weight:700;margin-left:.2rem}
+/* the "?" explainer (templates/_tips.html, static/tips.js): a small round
+   button; its tooltip shows on hover, keyboard focus, or click/tap. Inverted
+   surface (ink on card) so it reads in every theme and a11y mode. */
+.lblrow{display:flex;align-items:center;gap:.1rem;margin:.5rem 0 .2rem}
+.lblrow label{margin:0}
+.tip{position:relative;display:inline-block;vertical-align:middle;
+  margin-left:.3rem;line-height:1}
+button.tipbtn,[data-theme="dark"] button.tipbtn,[data-theme="dim"] button.tipbtn{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:1.1rem;height:1.1rem;padding:0;margin:0;border-radius:50%;
+  border:1.5px solid var(--accent-ink);background:transparent;
+  color:var(--accent-ink);font-size:.7rem;font-weight:800;line-height:1;
+  cursor:help}
+button.tipbtn:hover,[data-theme="dark"] button.tipbtn:hover,
+[data-theme="dim"] button.tipbtn:hover{background:var(--accent-ink);color:var(--card)}
+.tipbox{position:fixed;left:0;top:0;
+  z-index:60;width:max-content;max-width:min(20rem,85vw);padding:.45rem .6rem;
+  border-radius:8px;border:1px solid var(--line);background:var(--ink);
+  color:var(--card);font-size:var(--fs-label);font-weight:500;line-height:1.4;
+  text-align:left;text-transform:none;letter-spacing:normal;white-space:normal;
+  box-shadow:0 4px 14px rgba(0,0,0,.22);visibility:hidden;opacity:0;
+  transition:opacity .12s;pointer-events:none}
+.tipbox a{color:inherit;text-decoration:underline}
+.tip:hover .tipbox,.tip:focus-within .tipbox,.tip.open .tipbox{visibility:visible;opacity:1}
+.tip.dismissed .tipbox{visibility:hidden;opacity:0}
+@media (prefers-reduced-motion:reduce){.tipbox{transition:none}}
 
-/* the latest-run card: settings left, results right */
-.runsplit{display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:start}
-@media (max-width:760px){.runsplit{grid-template-columns:1fr}}
-table.results{border-collapse:collapse;margin:.3rem 0;font-size:.92em}
+/* the latest-run card: settings left, results right. Tracks auto-fit at a
+   18rem floor and children may shrink (min-width:0), so the settings grid's
+   max-content width can never starve the results column; values wrap in
+   their own track instead of one word per line. */
+.runsplit{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr));
+  gap:.5rem 1.5rem;align-items:start}
+.runsplit > *{min-width:0}
+.runsplit .runsettings .kv{width:auto;grid-template-columns:max-content minmax(0,1fr)}
+table.results{border-collapse:collapse;margin:.3rem 0;font-size:.92em;width:100%}
 table.results caption{caption-side:bottom;text-align:left;padding-top:.3rem}
 table.results th{text-align:left;font-weight:600;padding:.18rem .6rem .18rem 0;color:var(--mut);white-space:nowrap}
 table.results td{padding:.18rem 0}

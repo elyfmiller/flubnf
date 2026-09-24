@@ -128,7 +128,7 @@ def oracle_label(extra: dict | None) -> str:
     extra = extra if isinstance(extra, dict) else {}
     if str(extra.get("oracle") or "") == "none":
         return "none (the plain filter, a research run)"
-    return "the console's default (the Oracle SIHRS since 2026-09-22; the outcome names the bank)"
+    return "on (console default)"
 
 
 def analogue_donors_label(extra: dict | None) -> str:
@@ -139,7 +139,7 @@ def analogue_donors_label(extra: dict | None) -> str:
     extra = extra if isinstance(extra, dict) else {}
     if extra.get("aux_pools"):
         return str(extra.get("analogue_aux") or "auxiliary bank (unnamed)")
-    return "none (bare calendar analogue)"
+    return "none (bare analogue)"
 
 
 def is_research(spec) -> bool:
@@ -180,15 +180,13 @@ def version_pairs(build: str = "", versions: dict | None = None) -> list:
 
 
 #: what the form's two modes are called on a ledger row
-MODE_LABELS = {"realtime": "real-time run (the newest vintage)",
-               "vintage": "vintage run (an archived week, not real-time)"}
+MODE_LABELS = {"realtime": "real-time (newest week)",
+               "vintage": "vintage (archived week)"}
 
-#: (label, relWIS key, cells key) per scored model, in table order; the
-#: retired blend's row renders only for older ledger rows
+#: (label, relWIS key, cells key) per scored model, in table order. Older
+#: ledger rows may also carry the retired blend's keys; they are not shown.
 _RESULT_ROWS = (("Oracle SIHRS", "pf_relwis", "pf_relwis_cells"),
-                ("Groundhog", "analogue_relwis", "analogue_relwis_cells"),
-                ("FluBNF ensemble (retired)", "ensemble_relwis",
-                 "ensemble_relwis_cells"))
+                ("Groundhog", "analogue_relwis", "analogue_relwis_cells"))
 
 
 def results_html(outcome, spec) -> str:
@@ -245,16 +243,6 @@ def results_html(outcome, spec) -> str:
                                 'incomplete)</span> <span class="hint">'
                                 f'{_html.escape(str(o["pf_engine_broken"]))}'
                                 '</span>'))
-    # the next two keys exist only on rows from before the blend was retired
-    if o.get("ensemble_analogue_only"):
-        names = list(o["ensemble_analogue_only"])
-        rows.append(("Analogue only", f'<span class="bad">{len(names)} location'
-                     f'{"s" if len(names) != 1 else ""}</span> '
-                     f'<span class="hint">({", ".join(map(str, names[:6]))}'
-                     f'{", ..." if len(names) > 6 else ""})</span>'))
-    if o.get("ensemble_withheld"):
-        rows.append(("Ensemble file", f'<span class="bad">withheld</span> '
-                     f'<span class="hint">{o["ensemble_withheld"]}</span>'))
     if o.get("submission_withheld"):
         rows.append(("Submission", f'<span class="bad">withheld</span> '
                      f'<span class="hint">{o["submission_withheld"]}</span>'))
@@ -267,10 +255,9 @@ def results_html(outcome, spec) -> str:
         rows.append(("Submission files", f"{n} file{'s' if n != 1 else ''}"))
     rows.append(("Weekly report", "written" if o.get("report") else "none"))
     body = "".join(f"<tr><th scope=\"row\">{k}</th><td>{v}</td></tr>" for k, v in rows)
-    return (f'<table class="results"><caption class="hint">Pooled over every '
-            f'fitted jurisdiction in this run, US national excluded; not the '
-            f'location shown below. relWIS is against the FluSight baseline, '
-            f'ratio of sums; below 1.000 beats it</caption>'
+    return (f'<table class="results"><caption class="hint">relWIS vs the '
+            f'FluSight baseline, pooled over fitted states (US excluded); '
+            f'below 1.000 beats it.</caption>'
             f"{body}</table>")
 
 

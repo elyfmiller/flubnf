@@ -49,7 +49,7 @@ def _tree(tmp_path, pf_a=(40.0, 60.0), pf_b=(60.0, 40.0)) -> Path:
         json.dumps({"asof": W1, "pf": pf, "analogue": an}))
     # scores.json present, newer than the samples: the stats validity key
     # the cache is bound to
-    pd.DataFrame([{"model": "ensemble", "location": "Ohio", "fips": "39",
+    pd.DataFrame([{"model": "pf", "location": "Ohio", "fips": "39",
                    "asof": W1, "horizon": 0, "wis": 1.0, "base_wis": 2.0,
                    "rel": 0.5}]).to_json(root / "scores.json")
     return root
@@ -233,9 +233,10 @@ def test_per_state_table_folds_open_by_default_and_persists():
 def test_sort_and_filter_controls_are_wired():
     html = _season_html()
     # aria-pressed header buttons for the state name and every member
-    for key in ("name", "pf", "analogue", "ensemble"):
+    for key in ("name", "pf", "analogue"):
         assert f'data-key="{key}"' in html, key
-    assert html.count('class="thsort"') == 4
+    assert 'data-key="ensemble"' not in html     # the retired blend: no column
+    assert html.count('class="thsort"') == 3
     assert 'aria-pressed="false"' in html
     # rows carry the data the client sorts on
     assert 'data-name="Ohio"' in html

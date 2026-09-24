@@ -737,7 +737,7 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
 
     replay_note = (
         '<div class="placecard">Each settled season is replayable in the '
-        "console's season player: the weekly outlook map and the "
+        "console's season player: the weekly categorical forecast map and the "
         "probabilistic forecast, week by week with the settled truth "
         "overlaid, and the live table of weekly and cumulative relWIS. This "
         "page publishes the finished scores; the player publishes the "
@@ -792,7 +792,7 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
   <div class="maphero">
     <div class="maptop">
       <span class="datebadge">{badge}</span>
-      <div class="mtoggle" id="mtoggle" role="group" aria-label="Outlook model">
+      <div class="mtoggle" id="mtoggle" role="group" aria-label="Categorical forecast model">
         {mbuttons}
       </div>
     </div>

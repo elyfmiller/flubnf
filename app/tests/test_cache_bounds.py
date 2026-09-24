@@ -25,7 +25,7 @@ def _root(tmp_path: Path, i: int, cells: int = 3) -> Path:
     """A season root carrying a scoreable scores.json."""
     r = tmp_path / f"root{i:02d}"
     r.mkdir()
-    df = pd.DataFrame([{"model": "ensemble", "location": "Ohio",
+    df = pd.DataFrame([{"model": "pf", "location": "Ohio",
                         "fips": "39", "asof": "2025-11-15", "horizon": h,
                         "wis": 1.0 + h + i, "base_wis": 2.0, "rel": 0.5}
                        for h in range(cells)])

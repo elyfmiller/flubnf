@@ -60,7 +60,7 @@ def _frame(with_us=True):
     for loc in (["Ohio", "Utah"] + (["US"] if with_us else [])):
         us = usn.is_us(loc)
         for h in range(4):
-            rows.append({"model": "ensemble", "location": loc, "fips": loc,
+            rows.append({"model": "pf", "location": loc, "fips": loc,
                          "asof": "2098-01-03", "horizon": h,
                          "wis": 150.0 if us else 1.0,
                          "base_wis": 100.0 if us else 2.0})
@@ -159,11 +159,11 @@ def test_playback_stats_never_pool_a_fitted_us_cell(tmp_path):
     root.mkdir()
     (root / "scores.json").write_text(_frame().to_json(orient="records"))
     stats = playback._stats(root, "2098-99", "2098-01-03", {}, {},
-                            {"ensemble": {}}, {})
-    assert stats["ensemble"]["week_rel"] == pytest.approx(POOLED_REL)
-    assert stats["ensemble"]["cum_rel"] == pytest.approx(POOLED_REL)
+                            {"pf": {}}, {})
+    assert stats["pf"]["week_rel"] == pytest.approx(POOLED_REL)
+    assert stats["pf"]["cum_rel"] == pytest.approx(POOLED_REL)
     # 1.462 is the figure both columns read with the national cell pooled in
-    assert stats["ensemble"]["cum_rel"] != pytest.approx(LEAKED_REL)
+    assert stats["pf"]["cum_rel"] != pytest.approx(LEAKED_REL)
 
 
 def test_the_season_report_curve_never_pools_a_fitted_us_cell():
@@ -184,9 +184,9 @@ def test_the_season_report_table_reports_us_apart_from_its_pooled_figures(
     (root / "scores.json").write_text(_frame().to_json(orient="records"))
     html = report_season._summary_block(root, ["2098-01-03"], {})
     # the pooled scope: eight state cells, never the twelve a leak gives
-    # (this frame carries the retired blend's rows alone, a season scored
-    # before 2026-09-22, and the count names that model)
-    assert "the season's 8 scored FluBNF Ensemble (retired) cells" in html
+    # (the count names the model it was taken from)
+    pf = report_season.names_for_root(root)["pf"]
+    assert f"the season's 8 scored {pf} cells" in html
     assert "12 scored" not in html
     # the cumulative curve endpoint is the state-only value
     assert ">0.500<" in html
@@ -388,7 +388,7 @@ def test_resolution_prefers_a_fitted_cell(tmp_path, monkeypatch):
     us = usn.resolve(root, _frame())
     assert us.provenance == usn.FITTED
     assert us.is_fitted and not us.is_fallback
-    assert us.scores["ensemble"] == pytest.approx(US_REL)
+    assert us.scores["pf"] == pytest.approx(US_REL)
     assert us.short_label == "US (fitted)"
     assert us.label == "US national (fitted)"
     assert us.n_states == 2                      # Ohio and Utah, not three

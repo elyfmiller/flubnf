@@ -1439,8 +1439,9 @@ def list_archive_dirs(retro_root: Path, season: str) -> list:
     return sorted(out, key=lambda p: p.name, reverse=True)
 
 
-#: season headline order: the shipped two, then the retired blend (older files)
-HEADLINE_MODELS = ("pf", "analogue", "ensemble")
+#: season headline order: the two shipped models (older files' retired blend
+#: rows are not headlined)
+HEADLINE_MODELS = ("pf", "analogue")
 
 
 def _headline_rels(scores_path: Path) -> dict:

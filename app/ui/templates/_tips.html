@@ -1,0 +1,21 @@
+{# The "?" explainer beside a setting: one button, one tooltip.
+
+   {% import "_tips.html" as tips %}
+   {{ tips.tip("fc-date", "the forecast date", "Any day; the run anchors on ...") }}
+   {% call tips.tip("conv", "the scoring convention") %}rich text{% endcall %}
+
+   The button names the setting (aria-label) and points at the tooltip
+   (aria-describedby), so a screen reader reads the explainer on focus. The
+   tooltip shows on hover, on keyboard focus and on click or tap (tips.js;
+   WebKit does not focus a clicked button); Escape hides it. Styles:
+   nau.css ".tip". #}
+{% macro tip(id, label, text="") -%}
+<span class="tip"><button type="button" class="tipbtn"
+ aria-label="About {{ label }}" aria-describedby="tip-{{ id }}">?</button
+><span class="tipbox" role="tooltip" id="tip-{{ id }}">{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</span></span>
+{%- endmacro %}
+
+{# a form label with its tip on the same line #}
+{% macro label(text, id, tiptext, for_="") -%}
+<div class="lblrow"><label{% if for_ %} for="{{ for_ }}"{% endif %}>{{ text }}</label>{{ tip(id, text | lower, tiptext) }}</div>
+{%- endmacro %}

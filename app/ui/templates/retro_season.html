@@ -8,7 +8,7 @@
    draws, unlabelled, in the accent colour #}
 {% if curves is not defined %}{% set curves = ({'': curve} if curve else {}) %}{% endif %}
 {% if member_colors is not defined %}{% set member_colors = {} %}{% endif %}
-{% if season_models is not defined %}{% set season_models = ['pf', 'analogue', 'ensemble'] %}{% endif %}
+{% if season_models is not defined %}{% set season_models = ['pf', 'analogue'] %}{% endif %}
 {# every link and fetch carries the archive id, so all read the same tree #}
 {% set aq = ('?archive=' ~ archive) if archive else '' %}
 {% if preparing %}
@@ -19,9 +19,8 @@
 <div class="card" data-season="{{ season }}">
  <h2>Preparing the season results</h2>
  <p class="runstat" id="prep-stat" aria-live="polite">{{ preparing.phase }}&hellip;</p>
- <p class="hint">Scoring every stored week against settled truth, building
-  the US national aggregate, and warming the playback caches. This runs
-  once and is kept.</p>
+ <p class="hint">Scoring every stored week, building the US aggregate and
+  warming the player; this runs once and is kept.</p>
  <p class="quip rquip" id="prep-quip"></p>
 </div>
 <script>
@@ -64,9 +63,8 @@
 <h1><span class="accent">{{ season }}</span>: {{ n_weeks }} weeks scored</h1>
 {% if archive %}
 <p class="banner" role="status"><strong>Archived run{% if archive_when %} from
- {{ archive_when }}{% endif %}.</strong> These results were set aside so a
- fresh replay could start; nothing here changes when the live season runs.
- <a href="/retro/{{ season }}">Open the live {{ season }} season</a>.</p>
+ {{ archive_when }}{% endif %}.</strong> Set aside when a fresh replay
+ started; <a href="/retro/{{ season }}">open the live {{ season }} season</a>.</p>
 {% endif %}
 {# ONE availability flag: with no scores under the chosen convention, every
    score-describing panel below falls silent together and the banner says
@@ -77,11 +75,9 @@
    is labeled, and convention-specific panels say so rather than revert. #}
 {% if figs and figs.convention == 'pairwise' and figs.available %}
 {# the pairwise view is reachable by URL only; placement stays withdrawn #}
-<p class="hint">Scored against the teams that submitted this season,
- jurisdictions only. The figure moves when the field changes, so the field
- is part of the number. Placement within that field, meaning a rank among
- the submitting teams, is not restated here: see
- <a href="/methods">Methods</a>.</p>
+<p class="hint">Pairwise relWIS against the teams that submitted this
+ season (jurisdictions only), so it moves with the field; placement is not
+ shown (<a href="/methods">Methods</a>).</p>
 {% endif %}
 {% if unavailable and figs.reason %}
 {# deliberately no fallback to the other convention's numbers #}
@@ -90,12 +86,8 @@
  {%- if conv != 'ratio_of_sums' %} The
  {# keeps archive and week, so the reader does not lose their place #}
  <a href="/retro/{{ season }}?conv=ratio_of_sums{% if archive %}&amp;archive={{ archive }}{% endif %}{% if week %}&amp;week={{ week }}{% endif %}">ratio
- of sums view</a> is computed from this project's own sealed scores and is
- always available, but it is a different quantity: it is not a substitute
- for the figure missing here.
- {%- else %} This is the ratio of sums view, the one computed from this
- project's own sealed scores, so there is no other convention to send you
- to: the scores themselves are missing rather than the comparison.
+ of sums view</a> is always available, but it is a different quantity.
+ {%- else %} This is the ratio of sums view; the scores themselves are missing.
  {%- endif %}</p>
 {% endif %}
 {% if prog and prog.active %}
@@ -132,10 +124,9 @@
  {{ prog.done }} weeks{% if prog.mean_s %}, mean {{ "%.0f"|format(prog.mean_s) }} s
  per week over {{ prog.weeks_measured }} timed{% endif %}{% if prog.slowest_week %};
  slowest week {{ prog.slowest_week }} at {{ "%.0f"|format(prog.slowest_s) }} s{% endif %}.
- {% if prog.status == 'stopped' %}The replay was stopped; completed weeks and
- finished fits are kept and Run resumes from there.{% elif prog.status == 'interrupted' %}The
- application closed mid-replay; completed weeks are kept and Run resumes from
- there.{% endif %}</p>
+ {% if prog.status == 'stopped' %}Stopped; Run resumes from the last
+ completed week.{% elif prog.status == 'interrupted' %}Interrupted when the
+ app closed; Run resumes from the last completed week.{% endif %}</p>
 {{ settings_html(prog.settings) | safe }}
 {% endif %}
 <p class="row" style="gap:.55rem">
@@ -184,24 +175,22 @@
  {% for m in season_models %}{% if us_row and us_row[m] %}
  <div class="card"><h2>{{ us_row.short_label }}: {{ model_name(m) }}</h2><div class="big
    {% if us_row[m] < 1 %}ok{% else %}bad{% endif %}">{{ "%.3f"|format(us_row[m]) }}</div>
-   <p class="hint">{{ model_name(m) }} relWIS, ratio of sums vs FluSight-baseline;
-   {% if us_row.fitted %}fitted at the national level, and reported apart from the season figures beside it{% else %}{{ us_row.fallback_note }}, states treated as independent{% endif %}</p></div>
+   <p class="hint">relWIS vs the FluSight baseline;
+   {% if us_row.fitted %}fitted nationally, apart from the pooled figures{% else %}{{ us_row.fallback_note }}, states treated as independent{% endif %}</p></div>
  {% endif %}{% endfor %}
 </div>
 {# no tiles under this convention -> no notes about them #}
 {% if pooled_note and not unavailable %}<p class="hint">{{ pooled_note }}</p>{% endif %}
 {% if conv == 'pairwise' and not unavailable %}
 {# the national series is ratio-of-sums only; pairwise is jurisdictions only #}
-<p class="hint">The US national row is not shown under this convention: it
- is scored as a ratio of sums, and the pairwise field here is jurisdictions
- only. It is on the ratio of sums view.</p>
+<p class="hint">The US national row is not shown under this convention;
+ it is on the ratio of sums view.</p>
 {% endif %}
 <div class="card"><h2>Cumulative relWIS through the season</h2>
 {% if conv == 'pairwise' %}
 {# a cumulative line is a ratio of sums by construction; no pairwise form #}
-<p class="hint">Not available under this convention: a cumulative line is a
- running ratio of sums by construction, and the pairwise figure has no
- cumulative form. The curve is on the ratio of sums view.</p>
+<p class="hint">Not available under this convention: the curve is a
+ running ratio of sums.</p>
 {% elif curves %}
 {# one line per scored model in its member colour; the y range hugs the data
    (always showing the 1.0 and 0.5 gridlines); corner dates and each line's
@@ -275,7 +264,7 @@
  {# aria-pressed toggles, not a tablist (no tabpanels or roving focus here);
     setView() keeps them true #}
  <div class="row viewtabs" role="group" aria-label="Playback view">
-  <button type="button" class="quiet" id="tab-map" aria-pressed="true">Outlook map</button>
+  <button type="button" class="quiet" id="tab-map" aria-pressed="true">Categorical forecast</button>
   <button type="button" class="quiet" id="tab-fc" aria-pressed="false">Forecast detail</button>
  </div>
  <div class="playgrid">
@@ -301,16 +290,14 @@
     <th class="num">Cumulative</th></tr></thead><tbody></tbody></table>
    <p class="hint" id="pb-status" aria-live="polite"></p>
    <p class="hint" id="pb-offhint" hidden>official comparators appear after
-    Update data fetches their submissions</p>
+    Update data</p>
    {# the player's figures are always ratio of sums #}
    <p class="hint">relWIS below 1 beats the CDC FluSight baseline, ratio of
-    sums. Week scores this forecast; cumulative pools every week to the
-    playback position.</p>
+    sums; cumulative pools every week so far.</p>
    {# only when there ARE pairwise scores to be confused with #}
    {% if conv == 'pairwise' and not unavailable %}
-   <p class="hint">The player stays on the ratio of sums whichever
-    convention the switch above selects, so these running figures are not
-    comparable with the pairwise scores at the top of the page.</p>
+   <p class="hint">The player always uses the ratio of sums, so these
+    figures are not comparable with the pairwise scores above.</p>
    {% endif %}
   </div>
  </div>
@@ -328,9 +315,8 @@
   <span class="hint"> {{ states|length }} state{{ '' if states|length == 1 else 's' }} scored</span></summary>
  {# the convention, named once for every cell #}
  <p class="hint">relWIS vs the FluSight baseline, {{ figs.label if figs else 'ratio of sums' }}.
- {% if conv == 'pairwise' %}Each jurisdiction is its own tournament: the
-  field is restricted to that jurisdiction's cells, which is a restriction
-  of the dashboard convention, not a figure CDC publishes.{% endif %}</p>
+ {% if conv == 'pairwise' %}Each jurisdiction is scored against its own
+  field, a figure CDC does not publish.{% endif %}</p>
  <div class="row" style="margin:.5rem 0 .3rem">
   <input type="search" id="sf-filter" placeholder="Filter by state name"
          aria-label="Filter rows by state name"
@@ -349,7 +335,7 @@
  <tbody>
  {# the national row leads as a DISTINCT row with its provenance label; it
     sorts and filters with the states but is NOT in the pooled figures #}
- {% if us_row and (us_row.pf or us_row.analogue or us_row.ensemble) %}
+ {% if us_row and (us_row.pf or us_row.analogue) %}
  <tr class="usagg" data-name="{{ us_row.short_label }}"
   {%- for m in season_models %} data-{{ m }}="{{ "%.6f"|format(us_row[m]) if us_row[m] else '' }}"{% endfor %}>
   <td>{{ us_row.short_label }}</td>
@@ -364,9 +350,8 @@
  <td class="num{% if r[m] and r[m] >= 1 %} bad{% endif %}">
   {{ "%.3f"|format(r[m]) if r[m] else "n/a" }}</td>{% endfor %}</tr>
 {% endfor %}</tbody></table>
-{% if us_row and (us_row.pf or us_row.analogue or us_row.ensemble) %}
+{% if us_row and (us_row.pf or us_row.analogue) %}
 <p class="hint">{{ us_row.note }}</p>
-{% if pooled_note %}<p class="hint">{{ pooled_note }}</p>{% endif %}
 {% endif %}
 </details>
 <script>

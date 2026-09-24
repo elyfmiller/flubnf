@@ -27,16 +27,16 @@
  {% if name == "pf" %}
  <h2>How the forecast is made</h2>
  {{ dg.oracle_pipeline(uid='mo') }}{{ dg.eq_oracle() }}
- <p class="hint">{{ oracle_text.BANK_TEXT.pool }} Record: relWIS
+ <p class="hint">relWIS vs the FluSight baseline (below 1 beats it):
  {{ oracle_text.fmt(oracle_text.RECORD.both.oracle) }} against the plain
  filter's {{ oracle_text.fmt(oracle_text.RECORD.both.filter) }} on the same
  {{ oracle_text.cells(oracle_text.RECORD.both.cells) }} cells of 2024-25 and
- 2025-26; {{ oracle_text.fmt(oracle_text.RECORD["2023-24"].oracle) }} against
- {{ oracle_text.fmt(oracle_text.RECORD["2023-24"].filter) }} in 2023-24, where
- the FluSurv-NET stream supplies the donors; and
+ 2025-26, {{ oracle_text.fmt(oracle_text.RECORD["2023-24"].oracle) }} against
+ {{ oracle_text.fmt(oracle_text.RECORD["2023-24"].filter) }} in 2023-24 and
  {{ oracle_text.fmt(oracle_text.RECORD.three.oracle) }} against
- {{ oracle_text.fmt(oracle_text.RECORD.three.filter) }} over the three
- seasons. {{ oracle_text.caveat() }} (docs/ORACLE-SIHRS.md)</p>
+ {{ oracle_text.fmt(oracle_text.RECORD.three.filter) }} over three seasons, a
+ frozen-specification replication whose prospective test is the 2026-27
+ season (<a href="/methods#oracle">Methods</a>).</p>
  <h2>The compartment model the filter fits</h2>
  {{ dg.sihrs(uid='m') }}{{ dg.eq_pf() }}
  {% elif name == "pf2s" %}{{ dg.sihrs2(uid='m') }}{{ dg.eq_pf2s() }}
@@ -48,18 +48,16 @@
 {# the BNGL template file as stored, read at render time (read-only) #}
 <details class="card bngl">
  <summary>View model source (BNGL)</summary>
- <p class="hint">flubnf/templates/{{ bngl_file }}, shown exactly as stored;
- double-brace tokens such as <code>{{ '{{POP}}' }}</code> are
- filled in per state and week at run time.</p>
+ <p class="hint">flubnf/templates/{{ bngl_file }} as stored; tokens such as
+ <code>{{ '{{POP}}' }}</code> are filled in per state and week.</p>
  <pre>{{ bngl_src }}</pre>
 </details>
 {% endif %}
 <div class="cols">
  <div><div class="card"><h2>Settings</h2>
   {% if name == "pf2s" %}
-   <p class="hint">A research engine, not a shipped model; the
-   run endpoint still accepts a three-member request. Background:
-   <a href="/methods#two-strain">Methods</a>.</p>
+   <p class="hint">A research engine, not a shipped model
+   (<a href="/methods#two-strain">Methods</a>).</p>
   {% else %}
    <form method="post" action="/run">
     <label>Forecast date</label>

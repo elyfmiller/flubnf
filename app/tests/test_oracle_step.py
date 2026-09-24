@@ -237,7 +237,7 @@ def test_the_option_and_the_research_tag():
     pairs = dict(spec_settings(spec))
     assert pairs["Oracle step"] == "none (the plain filter, a research run)"
     pairs = dict(spec_settings(RunSpec(engine="all", forecast_date=ASOF)))
-    assert pairs["Oracle step"].startswith("the console's default")
+    assert pairs["Oracle step"] == "on (console default)"
 
 
 def test_the_storage_boundary_converts_the_research_key():

@@ -700,8 +700,9 @@ def _outlook_cards(res: dict | None, rid: str | None = None) -> tuple:
                     cards = {c["fips"]: c
                              for c in (bundle.get("cards") or {}).values()
                              if isinstance(c, dict) and c.get("fips")}
-                    if any(c.get("probs") for c in cards.values()):
-                        model = bundle.get("cards_model") or "pf"
+                    model = bundle.get("cards_model") or "pf"
+                    if (model not in report_v2.RETIRED_MODELS
+                            and any(c.get("probs") for c in cards.values())):
                         bundle_cards = cards
                         bundle_meta = {"model": model, "approx": False,
                                        "label": report_v2.MODEL_LABEL.get(
@@ -722,9 +723,8 @@ def _outlook_cards(res: dict | None, rid: str | None = None) -> tuple:
     n2a = dict(zip(_l.location_name, _l.abbreviation))
     n2p = dict(zip(_l.location_name, _l.population.astype(float)))
     models = (res or {}).get("models", {})
-    # PF first, then the Groundhog; "ensemble" only on legacy runs
-    model = next((m for m in ("pf", "analogue", "ensemble")
-                  if models.get(m)), "pf")
+    # PF first, then the Groundhog (a legacy run's blend is not shown)
+    model = next((m for m in ("pf", "analogue") if models.get(m)), "pf")
     observed = (res or {}).get("observed", {})
     by_model: dict = {}
     models = _hzmod.models_to_canonical(models)
@@ -753,10 +753,9 @@ def _outlook_cards(res: dict | None, rid: str | None = None) -> tuple:
                            "fips": fips, "hover_html": hover}
         if cards:
             by_model[mname] = cards
-    # the retired blend is the map only when a legacy run stored nothing else
+    # the retired blend is never the map, even on a legacy run
     from app.core.report_v2 import RETIRED_MODELS
-    live = {m: c for m, c in by_model.items() if m not in RETIRED_MODELS}
-    by_model = live or by_model
+    by_model = {m: c for m, c in by_model.items() if m not in RETIRED_MODELS}
     if model not in by_model and by_model:
         model = next(iter(by_model))
     # no toggle possible: an exact single-model bundle beats the approximation
@@ -910,7 +909,8 @@ def _outlook_block_cached(rid: str | None, mtime: float) -> dict:
                 outlook_toggle = usmap.model_toggle(
                     order, report_v2.MODEL_LABEL, default, payload,
                     group_id="outlook-model", btn_class="quiet",
-                    active_class="gold", wrap_class="row viewtabs")
+                    active_class="gold", wrap_class="row viewtabs",
+                    short_labels=report_v2.MODEL_SHORT)
         except Exception:
             outlook_toggle = ""
     except Exception:
@@ -1027,12 +1027,9 @@ def forecast_page(request: Request):
                     if all(isinstance(v, dict) for v in qs.values())}
             if good:
                 fanq[mname] = good
-        # retired blend only when a legacy run stored nothing else
-        # (report_v2.toggle_models, the home outlook's rule)
+        # the shipped models only: a legacy run's retired blend is not drawn
         from app.core.report_v2 import toggle_models
-        live = toggle_models(fanq)
-        if live:
-            fanq = {m: fanq[m] for m in live}
+        fanq = {m: fanq[m] for m in toggle_models(fanq)}
     ledger_rows = Ledger().rows(5)
     for r in ledger_rows:
         r["label"] = _run_label(r["run_id"], r.get("spec", ""))
@@ -1054,7 +1051,7 @@ def forecast_page(request: Request):
     except Exception:
         vintage_dates = []
     _anchor, _ = resolve_anchor(form.get("forecast_date", ""), vintage_dates)
-    anchor_note = (f"Anchored on the archived week ending {_anchor}."
+    anchor_note = (f"Anchor week: {_anchor}."
                    if _anchor else "No archived week on or before that date.")
     return templates.TemplateResponse(request, "forecast.html", {
         "active": "Forecast", "engines": ENGINES, "status": _status,
@@ -2505,9 +2502,6 @@ def run_page(request: Request, run_id: str):
                                ("score_error", "archive_error",
                                 "report_inputs_error", "report_error")
                                if o.get(k)}
-                ens_analogue_only = list(
-                    o.get("ensemble_analogue_only") or [])
-                ens_withheld = str(o.get("ensemble_withheld") or "")
             except Exception:
                 err = ""
             break
@@ -2524,13 +2518,13 @@ def run_page(request: Request, run_id: str):
         # the page shows a research badge, so the label stays untagged
         "label": _run_label(run_id, spec_json, tag=False),
         "research": is_research(spec_json),
-        "models": res.get("models", {}),
+        # a legacy run's retired blend is not shown
+        "models": {m: v for m, v in (res.get("models") or {}).items()
+                   if m not in _report_v2_retired()},
         "settings": spec_settings(spec_json),
         "versions": version_pairs(row_sha, row_engine_versions),
         "can_rerun": bool(spec_json) and status in RERUN_STATUSES,
         "pf_failures": pf_failures, "step_errors": step_errors,
-        "ensemble_analogue_only": ens_analogue_only,
-        "ensemble_withheld": ens_withheld,
         "subs": subs, "sub_errors": sub_errors, "report": report})
 
 
@@ -2812,15 +2806,6 @@ def _outcome_chips(outcome_json: str) -> str:
         # deliberate withholding (research run); the run page names the model
         bits.append('<span class="hint">submission withheld '
                     '(research run)</span>')
-    # LEGACY ensemble keys (see ENGINES note): old rows only
-    if o.get("ensemble_withheld"):
-        bits.append('<span class="bad">ensemble withheld: '
-                    'no PF member</span>')
-    if o.get("ensemble_analogue_only"):
-        n = len(o["ensemble_analogue_only"])
-        bits.append(f'<span class="bad">{n} location'
-                    f'{"s" if n != 1 else ""} analogue-only in the '
-                    'ensemble</span>')
     if o.get("report"): bits.append("report ✓")
     if o.get("pf_relwis"):
         # scored-cell count; older rows only carry the fit-cell count
@@ -2828,9 +2813,8 @@ def _outcome_chips(outcome_json: str) -> str:
                                 cells=o.get("pf_relwis_cells",
                                             o.get("pf_cells")),
                                 member=_pf_member_label(o)))
-    # every scored member; "ensemble" only on legacy rows
-    for key, member in (("analogue_relwis", "Groundhog"),
-                        ("ensemble_relwis", "ensemble")):
+    # every scored member (older rows' retired-blend keys are not shown)
+    for key, member in (("analogue_relwis", "Groundhog"),):
         if o.get(key):
             bits.append(relwis_chip(o[key], cells=o.get(f"{key}_cells"),
                                     member=member))
@@ -2838,6 +2822,12 @@ def _outcome_chips(outcome_json: str) -> str:
         bits.append('<span class="bad">failed</span>; the full error is on '
                     'the run page')
     return " · ".join(bits)
+
+
+def _report_v2_retired() -> tuple:
+    """report_v2.RETIRED_MODELS, imported lazily (report_v2 pulls plotly)."""
+    from app.core.report_v2 import RETIRED_MODELS
+    return RETIRED_MODELS
 
 
 def _latest_results():
@@ -3237,96 +3227,38 @@ def model_page(request: Request, name: str):
     rec = ot.RECORD
     blurbs = {
         "pf": ("Oracle SIHRS",
-               "The mechanistic model, submitted on its own: a mechanistic "
-               "forecast whose growth is blended with donor growth from past "
-               "seasons. It is built on the SIHRS compartment model: "
-               "influenza moves people through Susceptible, Infected, "
-               "Hospitalized and Recovered compartments, with seasonally "
-               "varying transmission and immunity that wanes back to "
-               "susceptibility, written in BNGL. Each week PyBNF's "
-               "sequential particle filter, on the bngsim engine, fits that "
-               "model from the season's start on August 1 through the newest "
-               "week of NHSN admissions exactly as archived on the forecast "
-               "date: 10,000 candidate epidemics per state are reweighted by "
-               "how well they explain the data, and their spread is the "
-               "filter's own uncertainty. On its own a filter carries the "
-               "growth it sees today forward; it cannot know how a season "
-               "usually turns. Past seasons can, so after the fit the "
-               "Oracle step blends them in, on the same calendar-donor principle "
-               "the Groundhog uses: each of the filter's forecast sample "
-               "paths draws one donor growth path from an earlier season at "
-               "the same calendar week (within two epiweeks, any "
-               "jurisdiction), and its growth over the next four weeks "
-               "becomes the geometric mean, half and half, of the filter's "
-               "own growth at the forecast origin and the donor's. The "
-               "blended growth is propagated in closed form from the "
-               "filter's own current state, so the filter's uncertainty and "
-               "the donors' spread both survive. " + ot.BANK_TEXT["pool"] +
-               " Every rule of the step and of its donor bank was frozen by "
-               "a pre-registration before either was scored "
-               "(docs/ORACLE-SIHRS.md). On the stored 2024-25 and 2025-26 "
-               "forecasts it scores relWIS " + ot.fmt(rec["both"]["oracle"])
-               + " against the plain filter's " + ot.fmt(rec["both"]["filter"])
-               + " on the same " + ot.cells(rec["both"]["cells"]) + " cells ("
-               + ot.fmt(rec["2024-25"]["oracle"]) + " and "
-               + ot.fmt(rec["2025-26"]["oracle"]) + " by season; FluSight "
-               "baseline, ratio of sums, values below 1 beat it), "
-               + ot.fmt(rec["2023-24"]["oracle"]) + " against "
-               + ot.fmt(rec["2023-24"]["filter"]) + " in 2023-24 and "
-               + ot.fmt(rec["three"]["oracle"]) + " against "
-               + ot.fmt(rec["three"]["filter"]) + " over the three seasons. "
-               + ot.BANK_TEXT["coverage"] + " " + ot.caveat() +
-               " The Groundhog applies donor "
-               "growth ratios to the last observed count; the Oracle SIHRS "
-               "applies donor growth to the mechanistic state. The two are "
+               "The SIHRS compartment model (Susceptible, Infected, "
+               "Hospitalized, Recovered, with seasonal transmission and "
+               "waning immunity, written in BNGL) is fitted each week by "
+               "PyBNF's particle filter from August 1 through the newest week "
+               "of NHSN admissions as archived on the forecast date. The "
+               "Oracle step then gives each forecast sample path one donor "
+               "growth path from an earlier season at the same calendar week, "
+               "the calendar-donor principle the Groundhog uses, and grows it "
+               "at the geometric mean of the two, propagated from the "
+               "filter's own current state. The Groundhog applies donor "
+               "growth ratios to the last observed count instead; the two are "
                "submitted as separate models and nothing is blended between "
-               "them. The filter alone, three seasons replayed with the "
-               "production engine: 0.840 in 2023-24, 0.797 in 2024-25, 0.846 "
-               "in 2025-26."),
+               "them."),
         "analogue": ("Groundhog",
-                     "The empirical model, submitted on its own. It assumes "
-                     "the current season will resemble past seasons at the "
-                     "same point in the calendar: for each forecast it "
-                     "pools, across all states, the weeks from strictly "
-                     "earlier seasons that fall within two MMWR epiweeks "
-                     "of the forecast date, measures the growth from each "
-                     "of those weeks to the target horizon, and scales the "
-                     "latest observed value by the quantiles of those "
-                     "growth ratios. No epidemiological mechanism is "
-                     "involved. Two donor histories feed it: the archive of "
-                     "weekly NHSN admissions, and a committed bank of "
-                     "FluSurv-NET hospitalization rates read the same way, "
-                     "its growth ratios shrunk toward the admissions scale "
-                     "by a factor fitted on strictly earlier seasons and "
-                     "averaged in at a fixed equal weight. One prior "
-                     "season, 2021-22, is excluded from the admissions "
-                     "pool: it peaked in April 2022 and survives in the "
-                     "archive only as its growth phase, so a "
-                     "calendar-matched pool reads it with the wrong sign. "
-                     "Measured three-season retrospective relWIS vs the "
-                     "FluSight baseline, ratio of sums, on 15,340 cells: "
-                     "0.722 in 2023-24, 0.653 in 2024-25, 0.651 in "
-                     "2025-26, pooled 0.666; the same engine without the "
-                     "FluSurv-NET donors, the calendar analogue that "
-                     "shipped inside the blend until 2026-09-22, scores "
-                     "0.771 on the same cells."),
+                     "The empirical model: it pools, across all states, the "
+                     "weeks of earlier seasons within two epiweeks of the "
+                     "forecast date and scales the latest value by the "
+                     "quantiles of their growth to each horizon, with no "
+                     "epidemic mechanism. Donors are NHSN admissions (2021-22 "
+                     "excluded: the archive holds only its growth phase) and "
+                     "a committed FluSurv-NET bank shrunk to the admissions "
+                     "scale, at equal weight. Three-season relWIS vs the "
+                     "FluSight baseline on 15,340 cells: 0.722, 0.653 and "
+                     "0.651, pooled 0.666 (0.771 without the FluSurv-NET "
+                     "donors)."),
         "pf2s": ("Two-strain SIHRS",
-                 "A research variant, not a shipped model. It "
-                 "models influenza A and influenza B as independent SIHRS "
-                 "circuits, each with its own seasonally varying "
-                 "transmission, and reports admissions as the sum of the "
-                 "two. Fitting uses two data channels, both vintage-true: "
-                 "weekly NHSN hospital admissions, and NREVSS typed "
-                 "positives entering the likelihood as binomial counts of "
-                 "influenza A among typed specimens. The initial A/B mix at "
-                 "the season start comes from the same typed surveillance "
-                 "series. It is stronger than the single-strain filter at "
-                 "turning points, but when the blend still shipped, adding "
-                 "it scored worse on the full grid: relWIS 0.719 against "
-                 "0.704 for the two-member blend (vs the FluSight "
-                 "baseline, ratio of sums, measured before the 2021-22 "
-                 "donor exclusion). This engine is kept for research runs "
-                 "only."),
+                 "A research variant, not a shipped model: influenza A and B "
+                 "as independent SIHRS circuits whose admissions sum, fitted "
+                 "to NHSN admissions and NREVSS typed positives. It scored "
+                 "worse on the full grid (relWIS 0.719 against 0.704 for the "
+                 "two-member blend it was tested in), so it is kept for "
+                 "research runs only."),
     }
     # no page for the retired blend (LosAlamos_NAU-CModel_Flu, see ENGINES)
     # one-line summaries: the collapsed <details> summary on each model tab
@@ -4687,14 +4619,20 @@ def retro_results(request: Request, season: str, week: str = "",
     # numbers (pairwise without field data) the page says why, never falls back
     convention = relwis.convention_of(conv)
     figs = _relwis_figures(root, convention) if scoreable else None
+    # a season scored before 2026-09-22 also carries the retired blend's
+    # rows; they are read (scoring stays whole) but never shown
+    from app.core.report_v2 import RETIRED_MODELS
     if figs is not None and figs.available:
-        heads = figs.values
+        heads = {m: v for m, v in figs.values.items()
+                 if m not in RETIRED_MODELS}
         states = list(figs.states)
     if scoreable and convention == relwis.RATIO_OF_SUMS:
         # the cumulative curve is a running ratio of sums: this convention only
         asofs = sorted(df["asof"].unique())
-        # one line per model in the frame (relwis.MODELS order; legacy blend too)
+        # one line per shipped model in the frame (relwis.MODELS order)
         for m in relwis.MODELS:
+            if m in RETIRED_MODELS:
+                continue
             g = df[df.model == m]
             if not len(g):
                 continue
@@ -4735,14 +4673,17 @@ def retro_results(request: Request, season: str, week: str = "",
         from app.core import usmap as _usmap
         # report_v2.MODEL_LABEL, with pf's following this tree's name
         map_labels = dict(report_v2.MODEL_LABEL)
+        map_short = dict(report_v2.MODEL_SHORT)
         if names.get("pf") != _model_names().get("pf"):
-            map_labels["pf"] = f"{names['pf']} outlook"
+            map_labels["pf"] = f"{names['pf']} {report_v2.CAT_FORECAST}"
+            map_short["pf"] = names["pf"]
         map_toggle = _usmap.model_toggle(
             map_models, map_labels, map_models[0],
             {m: {"states": _usmap.state_swap_payload(by_model[m]), "us": {}}
              for m in map_models},
             group_id="retro-model", btn_class="quiet",
-            active_class="gold", wrap_class="row viewtabs")
+            active_class="gold", wrap_class="row viewtabs",
+            short_labels=map_short)
     map_html = map_toggle + svg_map(cards)
     if not scoreable and not score_error:
         # scored zero cells with no exception: diagnose WHICH input is empty
@@ -4810,12 +4751,13 @@ def retro_results(request: Request, season: str, week: str = "",
         "model_name": _name_fn(names),
         "curve": curve, "curves": curves, "states": states,
         "member_colors": _member_colors(),
-        # the models this season scored, in table order (legacy blend too)
+        # the shipped models this season scored, in table order
         "season_models": [m for m in relwis.MODELS
-                          if m in heads or m in curves
+                          if m not in RETIRED_MODELS
+                          and (m in heads or m in curves
                           or any((r.get(m) if isinstance(r, dict)
                                   else getattr(r, m, None))
-                                 for r in states)],
+                                 for r in states))],
         "us_row": us_row,
         # provenance travels WITH the numbers (fitted vs constructed)
         "us": (us.as_dict() if us is not None

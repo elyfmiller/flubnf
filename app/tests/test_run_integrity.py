@@ -196,7 +196,8 @@ def test_run_page_names_failed_cells_and_step_errors(tmp_path, monkeypatch):
     assert "score_error" in html and "truth file unreadable" in html
     assert "archive_error" in html and "disk full" in html
     assert "report_inputs_error" in html and "bundle too large" in html
-    assert "Analogue-only in the ensemble" in html
+    # an older row's retired-blend key is read without error and not shown
+    assert "Analogue-only in the ensemble" not in html
     # Jinja default escaping, no |safe: a status string cannot inject markup
     assert "<b>boom</b>" not in html
     assert "&lt;b&gt;boom&lt;/b&gt;" in html

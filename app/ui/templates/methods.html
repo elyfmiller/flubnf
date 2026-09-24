@@ -5,124 +5,79 @@
 <h1>Methods</h1>
 
 <div class="card" id="purpose"><h2>Purpose</h2>
- <p>FluBNF generates real-time probabilistic forecasts of weekly influenza
- hospital admissions for all 52 US jurisdictions, in the quantile format
- required by the CDC <a href="https://github.com/cdcepi/FluSight-forecast-hub" target="_blank" rel="noopener">FluSight
- forecast hub</a>. Two models run each week and each is submitted on its
- own. The <b>Oracle SIHRS</b> is a mechanistic forecast: the
- SIHRS compartment model, fitted each week by a sequential particle filter,
- whose forecast growth is then blended with donor growth from past seasons at the
- same calendar week. The <b>Groundhog</b> is a calendar analogue built from
- historical seasons with an auxiliary donor bank. Both draw on past seasons
- at the same point in the calendar, in different ways; the two are submitted
- separately and nothing is blended between them.</p>
+ <p>FluBNF forecasts weekly influenza hospital admissions for all 52 US
+ jurisdictions in the quantile format of the CDC
+ <a href="https://github.com/cdcepi/FluSight-forecast-hub" target="_blank" rel="noopener">FluSight
+ forecast hub</a>, from two models submitted separately: the
+ <b>Oracle SIHRS</b>, the SIHRS compartment model fitted each week by a
+ particle filter with its forecast growth blended with past seasons' at the
+ same calendar week, and the <b>Groundhog</b>, a calendar analogue with an
+ auxiliary donor bank. Nothing is blended between the two.</p>
 </div>
 
 <div class="card" id="sihrs"><h2>The SIHRS compartment model</h2>
- <p>The <b>SIHRS compartment model</b> is the model of influenza
- transmission the Oracle SIHRS is built on.
- Individuals move from <b>Susceptible</b> to <b>Infected</b>; most infections
- recover directly, while a small severe fraction is admitted to
- <b>Hospitalized</b> before reaching <b>Recovered</b>. Immunity wanes, so
- recovered individuals eventually return to the susceptible pool. The model
- is written in <a href="https://bionetgen.org" target="_blank" rel="noopener">BNGL</a>, the BioNetGen
- model-specification language.</p>
+ <p>The <b>SIHRS compartment model</b>, written in
+ <a href="https://bionetgen.org" target="_blank" rel="noopener">BNGL</a>:
+ people move from <b>Susceptible</b> to <b>Infected</b>; most recover
+ directly, a small severe fraction is <b>Hospitalized</b> first, and
+ <b>Recovered</b> immunity wanes back to susceptible.</p>
 
  {{ dg.sihrs(uid='mm') }}
 
- <p><b>Rates.</b> Transmission &#946;(t) varies over the season as a smooth
- annual harmonic, so the model can produce the winter wave without hand-set
- breakpoints. Infections resolve at rate &#947; (fixed from the measured
- influenza generation time); a fixed severe fraction &#961; (the
- infection-hospitalization ratio) is admitted, and the remaining
- (1-&#961;) recover directly. Hospitalized individuals discharge at
- &#947;&#8341;, and immunity wanes at &#969;, returning people to the
- susceptible pool.</p>
+ <p><b>Rates.</b> Transmission &#946;(t) follows a smooth annual harmonic;
+ infections resolve at &#947; (from the measured generation time), a fixed
+ fraction &#961; is hospitalized, discharge is &#947;&#8341; and immunity
+ wanes at &#969;.</p>
  {{ dg.eq_pf() }}
- <p><b>Why this structure.</b> Three reasons, each tied to the forecasting
- target. First, hospital admissions are the FluSight target, so H is an
- explicit compartment: the model fits the actual I to H admission flux,
- scaled by a fitted reporting ascertainment, rather than a scaled proxy of
- infections. Second, waning immunity (R back to S) permits repeat seasonal
- waves, which single-pass SIR-type structures cannot produce. Third,
- seasonal transmission lets the data determine when transmissibility peaks
- in each state. Five parameters are fitted per state. Of the fixed values,
- the recovery rate traces to a cited generation-time study, while
- &#961;, &#947;<sub>H</sub> and &#969; are working assumptions with no source
- behind them; the provenance module
- (<code>flubnf/sihrs_priors.py</code>) records each value's status,
- including which ones are assumptions.</p>
+ <p><b>Why this structure.</b> H is explicit because admissions are the
+ target (the model fits the I to H flux with a fitted ascertainment),
+ waning immunity allows repeat seasonal waves, and seasonal transmission
+ lets each state's data place its peak. Five parameters are fitted per
+ state; &#961;, &#947;<sub>H</sub> and &#969; are working assumptions,
+ recorded as such in <code>flubnf/sihrs_priors.py</code>.</p>
  <p class="hint">Model tab: <a href="/model/pf">Oracle SIHRS</a>.</p>
 </div>
 
 <div class="card" id="fitting"><h2>Fitting: a sequential particle filter</h2>
- <p>FluBNF fits the SIHRS compartment model with a particle filter,
- implemented as
- <code>fit_type=pf</code> in a fork of
- <a href="https://github.com/lanl/PyBNF" target="_blank" rel="noopener">PyBNF</a>, Los Alamos National
- Laboratory's parameter-fitting suite for BioNetGen models. The filter
- maintains 10,000 candidate epidemics per state, each a complete
- trajectory of the compartment model with its own parameters. Every week the newest admissions
- reweight the candidates by how well they explain the data; a Liu-West
- kernel then jitters the surviving parameters at scale 0.15 (chosen by a
- pre-registered sweep), the log-uniform ascertainment and dispersion on the
- log scale and the transmission parameters on their own scale, and
- systematic resampling keeps the
- population diverse. The spread of surviving trajectories is the forecast
- uncertainty. Each week's forecast is a fresh filter run from the season's
- August 1 anchor through that week's data vintage, never a cloud carried
- over from the week before: a refit sees every revision to earlier weeks,
- and the carried-cloud alternative was measured and declined. The filter's
- forecast is not submitted as it stands: the Oracle step below blends its
- growth with past seasons' before anything is submitted.</p>
- <p>BioNetGen's BNG2.pl is invoked once per state cell when a run is
- prepared, expanding the BNGL model into its reaction network. During
- fitting, the particle filter integrates that network's differential
- equations with <a href="https://pypi.org/project/bngsim/" target="_blank" rel="noopener">bngsim</a>,
- an in-process BioNetGen simulation engine: no per-simulation BNG2.pl
- subprocess is launched, so a full state-season fit completes in
- seconds.</p>
+ <p>A particle filter (<code>fit_type=pf</code> in a fork of
+ <a href="https://github.com/lanl/PyBNF" target="_blank" rel="noopener">PyBNF</a>)
+ keeps 10,000 candidate epidemics per state, each a full trajectory with
+ its own parameters. Each week the newest admissions reweight them, a
+ Liu-West kernel jitters the survivors' parameters (scale 0.15), and
+ systematic resampling keeps them diverse; their spread is the forecast
+ uncertainty. Every forecast is a fresh run from August 1 through that
+ week's vintage, so it sees every revision to earlier weeks.</p>
+ <p>BNG2.pl expands the BNGL model into a reaction network once per state
+ when a run is prepared; the filter then integrates it in process with
+ <a href="https://pypi.org/project/bngsim/" target="_blank" rel="noopener">bngsim</a>,
+ so a state-season fit takes seconds.</p>
 </div>
 
 <div class="card" id="oracle"><h2>The Oracle step: past seasons' growth, blended in</h2>
  {{ dg.oracle_pipeline(uid='mp') }}
- <p><b>What it does.</b> After the weekly fit, the filter's forecast is a
- set of sample paths for the next four weeks (30,000 per state at the
- default three replicates), with one growth rate for the filter at the forecast origin. The Oracle step
- gives every sample path one donor: a growth path drawn at random from an
- earlier season at the same calendar week (within two MMWR epiweeks of the
- forecast week, from any jurisdiction), the same calendar-donor principle
- the Groundhog uses for its donor ratios. The path's growth over each of
- the four forecast weeks becomes the geometric mean, half and half, of the
- filter's own growth and its donor's. The blended growth is propagated in
- closed form from the filter's own current state, so each sample is
- rescaled rather than refitted: the filter's uncertainty rides on the new
- path and the donors add the spread of how past seasons moved. One donor
- per sample, not one donor per forecast, is what keeps both.</p>
+ <p><b>What it does.</b> Each of the filter's forecast sample paths
+ (30,000 per state at three replicates) gets one donor: a growth path from
+ an earlier season within two epiweeks of the forecast week, any
+ jurisdiction, the calendar-donor principle the Groundhog uses. Its growth
+ over each forecast week becomes the geometric mean, half and half, of the
+ filter's and the donor's, propagated in closed form from the filter's own
+ state. One donor per sample, not per forecast, keeps both the filter's
+ uncertainty and the donors' spread.</p>
  {{ dg.eq_oracle() }}
  <p><b>Donors.</b> {{ oracle_text.BANK_TEXT.pool }}</p>
- <p><b>Why.</b> A particle filter tracks the season it has seen so far, and
- its forecast carries the growth it sees today forward. That is right while
- a season keeps its course and wrong at the turns, which the season so far
- cannot show. Past seasons at the same calendar week show how seasons have
- moved on from this point of the year. The blend keeps the filter's reading
- of the current state and borrows the calendar's knowledge of what usually
- comes next.</p>
- <p><b>How it relates to the Groundhog.</b> Both models read past seasons at
- the same calendar week. The Groundhog applies donor growth <em>ratios</em>
- to the last observed count and has no mechanism at all; the Oracle SIHRS
- applies donor <em>growth</em> to the mechanistic model's own fitted
- state, at half weight beside the filter's own. The two are submitted as separate models, each
- under its own hub identity, and nothing is blended between them.</p>
- <p><b>The record.</b> Every rule of the step (the weight, one donor per
- sample path, the pool rule, five seeds logged with the first submitted)
- was frozen by a pre-registration before the step itself was ever scored (sha256
- <code>{{ oracle_text.PREREG_SHA256[:16] }}</code>), and the shipped donor
- bank (its two streams, the half-and-half draw, the shrink) by a second one
- before that bank was scored (sha256
- <code>{{ oracle_text.B2_SHA256[:16] }}</code>; docs/ORACLE-SIHRS.md).
- On the stored forecasts of the three record seasons, scored against the
- FluSight baseline as a ratio of sums on the cells where both scored:</p>
+ <p><b>Why.</b> A filter carries today's growth forward, which is right
+ while a season keeps its course and wrong at the turns; past seasons at
+ the same calendar week show how seasons usually move on.</p>
+ <p><b>How it relates to the Groundhog.</b> The Groundhog applies donor
+ growth <em>ratios</em> to the last observed count, with no mechanism; the
+ Oracle SIHRS applies donor <em>growth</em> to the fitted state, at half
+ weight. The two are submitted as separate models.</p>
+ <p><b>The record.</b> The step's rules were frozen by a pre-registration
+ before it was scored (sha256
+ <code>{{ oracle_text.PREREG_SHA256[:16] }}</code>), and the donor bank by a
+ second (<code>{{ oracle_text.B2_SHA256[:16] }}</code>; docs/ORACLE-SIHRS.md).
+ relWIS vs the FluSight baseline, ratio of sums, on the stored forecasts'
+ shared cells (below 1 beats it):</p>
  <div style="overflow-x:auto"><table>
   <tr><th>Season</th><th class="num">Oracle SIHRS</th><th class="num">Plain filter</th><th class="num">Cells</th></tr>
   {% for key, label in [("2023-24", "2023-24"), ("2024-25", "2024-25"), ("2025-26", "2025-26"),
@@ -135,110 +90,63 @@
   {% endfor %}
  </table></div>
  <p class="hint">Not an independent confirmation: this family of blends
- had been looked at on the same stored forecasts before the primary arm was
- fixed. {{ oracle_text.BANK_TEXT.coverage }} {{ oracle_text.caveat() }}
- A season's Oracle SIHRS in the Retrospective tab is a console replay of
- it: every week fitted from the season start and the step applied with
- that week's data and donor pool, as a live run does. The plain filter remains
- reachable as a research run (<code>flubnf retro --oracle none</code>),
- never as a submission. Source: {{ oracle_text.RECORD_SOURCE }}.</p>
+ was examined on the same forecasts first. {{ oracle_text.BANK_TEXT.coverage }}
+ {{ oracle_text.caveat() }} The plain filter remains a research run
+ (<code>flubnf retro --oracle none</code>). Source:
+ {{ oracle_text.RECORD_SOURCE }}.</p>
  <p class="hint">Model tab: <a href="/model/pf">Oracle SIHRS</a>.</p>
 </div>
 
 <div class="card" id="two-strain">
  <h2>Research: the two-strain variant
   <span class="pill">not a shipped model</span></h2>
- <p><b>What it does.</b> The two-strain SIHRS variant models influenza A and
- influenza B as independent transmission circuits, each with its own
- seasonally varying transmission rate and its own peak timing. Each circuit
- carries its own susceptible, hospitalized, and recovered pools spanning the
- whole population, so infection with one strain confers no protection
- against the other. Observed admissions are the ascertained sum of the two
- circuits' admission fluxes, which lets the model represent seasons in which
- an early A wave is followed by a late B wave.</p>
+ <p><b>What it does.</b> Influenza A and B as independent SIHRS circuits,
+ each with its own seasonal transmission and its own susceptible,
+ hospitalized and recovered pools; observed admissions are the ascertained
+ sum, so an early A wave can be followed by a late B wave.</p>
 
  {{ dg.sihrs2(uid='m2') }}
 
- <p><b>A second observation channel.</b> Fitting adds a second likelihood
- channel to the particle filter. In addition to weekly NHSN admissions, each
- candidate epidemic is weighed by weekly typed positives from NREVSS
- clinical laboratories, treated as binomial counts of influenza A among
- typed specimens, so the filter learns the A/B mix as well as the admissions
- level. The initial A/B mix at the season start is also set from this typed
- surveillance series rather than fitted. Both channels use vintage data;
- typed counts enter only through the week preceding the forecast date,
- matching the NREVSS release cadence.</p>
+ <p><b>A second observation channel.</b> Besides NHSN admissions, each
+ candidate is weighed by NREVSS typed positives (binomial counts of
+ influenza A among typed specimens), which also set the season-start A/B
+ mix; both channels are vintage data.</p>
  {{ dg.eq_pf2s() }}
 
- <p><b>Why it does not ship.</b> The two-strain member is stronger than the
- single-strain filter at turning points and weaker on the full grid: when
- it was evaluated (August 2026, three replayed seasons) it scored worse
- than the single-strain model overall, and the turning-point gain did not
- pay for that. It remains a research run.</p>
-
- <p>The engine remains available for research runs. The
- <a href="/model/pf2s">two-strain model page</a> stays reachable by direct
- URL, and the run endpoint still accepts a three-member request, so the
- variant can be scored and developed further without appearing in the
- operational path.</p>
+ <p><b>Why it does not ship.</b> Stronger at turning points but worse on
+ the full grid in the August 2026 evaluation; it stays a research run (the
+ <a href="/model/pf2s">two-strain model page</a> is reachable by URL).</p>
 </div>
 
 <div class="card" id="analogue"><h2>The Groundhog</h2>
  {{ dg.analogue_ratios(uid='ma') }}
- <p>The Groundhog is a purely empirical model with no epidemiological
- mechanism, submitted on its own. For a forecast at horizon h it collects
- donor weeks: every week from strictly earlier seasons, in any state, whose
- MMWR epiweek falls within two weeks of the forecast date's. For each donor
- it records the growth ratio between admissions h weeks after the donor
- week and admissions in the donor week itself. The forecast distribution is
- the last observed value scaled by the empirical quantiles of those growth
- ratios; a cell with fewer than 30 usable donors produces no forecast.
- Donors are pooled across states because a single state supplies only about
- five donors per prior season inside the calendar window, far short of the
- 30-donor minimum, and they never come from the season being forecast. The
- pool also holds the US national row, about 2 percent of donors, measured
- 2026-09-08 and kept; the release record has the numbers. Epiweek 53, which
- MMWR years such as 2014, 2020 and 2025 carry, is seated between weeks 52
- and 1 for the calendar match, and a donor's future value is always read by
- date arithmetic, never by week label.</p>
- <p><b>The auxiliary donor bank.</b> A second pool is built by the same
- construction on FluSurv-NET weekly hospitalization rates, banked in the
- repository as a content-addressed file whose digest every run records (the
- stream has no revision history, so a snapshot is the only thing there is).
- Its growth ratios are shrunk toward the admissions scale by a factor fitted
- only on strictly earlier overlap seasons, and the two ratio quantile
- functions are averaged at a fixed equal weight that is not fitted. This is
- what separates the Groundhog from the bare calendar analogue: the same
- engine, the same admissions pool, plus these donors.
- The arm was pre-registered and selected against an ILI+ bank on the same
- cells; both banks are committed and either can be run.</p>
- <p><b>Coverage.</b> The construction is split-conformal in form only. The
- calendar windows overlap and the donors are neither exchangeable with the
- target nor independent of one another (weekly values are serially
- dependent, one donor week serves five windows, jurisdictions move
- together within a season), so no finite-sample coverage guarantee is
- claimed. Band-conditional empirical coverage is measured from the replays
- instead: over three seasons the central 50, 80 and 90 percent bands
- covered 0.51, 0.80 and 0.95, with the worst band deviation 0.012.</p>
- <p>One prior season is excluded from the donor pool: 2021-22. It peaked at
- epiweek 16, in April 2022, while every other donor season peaked between
- epiweek 48 and epiweek 6, and the archived surveillance series begins
- 2022-02-05, so that season survives only as its growth phase. A
- calendar-matched pool asks what happened in March and 2021-22 answers that
- the epidemic was still growing: it is the only donor season whose March
- ratios have a median above one, with a far heavier upper tail than any
- other season's. Excluding it was pre-registered and measured before it
- shipped (August 2026): the improvement held in all three replayed seasons
- and in 50 of 52 jurisdictions.</p>
+ <p>A purely empirical model. For horizon h it pools donor weeks from
+ strictly earlier seasons, any state, within two MMWR epiweeks of the
+ forecast date, and scales the last observed value by the empirical
+ quantiles of their h-week growth ratios; fewer than 30 donors means no
+ forecast. States are pooled because one state gives about five donors per
+ season; the US row is about 2 percent of donors, epiweek 53 sits between
+ 52 and 1, and future values are read by date, never by week label.</p>
+ <p><b>The auxiliary donor bank.</b> A second pool built the same way on
+ FluSurv-NET hospitalization rates, a committed, digest-checked file; its
+ ratios are shrunk to the admissions scale (fitted on earlier seasons only)
+ and averaged in at a fixed equal weight. This bank is what separates the
+ Groundhog from the bare calendar analogue; it was pre-registered and chosen
+ over an ILI+ bank.</p>
+ <p><b>Coverage.</b> Donors are neither exchangeable nor independent, so
+ no coverage guarantee is claimed; over three replayed seasons the central
+ 50, 80 and 90 percent bands covered 0.51, 0.80 and 0.95.</p>
+ <p><b>2021-22 is excluded</b> from the donors: it peaked in April 2022
+ and the archive starts 2022-02-05, so it survives only as its growth phase
+ and a calendar-matched pool would read March as still growing. The
+ pre-registered exclusion improved all three replayed seasons and 50 of 52
+ jurisdictions.</p>
  <p class="hint">Model tab: <a href="/model/analogue">Groundhog</a>.</p>
 </div>
 
 <div class="card"><h2>Measured performance</h2>
- <p>Three seasons replayed in real-time conditions: each week the models saw
- only that week's archived data vintage, submitted, and moved on. Scores are
- relative weighted interval scores (relWIS) against the official FluSight
- baseline, ratio of sums; values below 1 beat the baseline. The convention
- is stated in full under Data and verification policies below.</p>
+ <p>Three seasons replayed on the data each week had; relWIS vs the
+ FluSight baseline, ratio of sums, below 1 beats it.</p>
  {# the one relWIS rule: every score wears ok/bad (below 1 beats the
     baseline), members included #}
  <div style="overflow-x:auto"><table>
@@ -247,16 +155,10 @@
   <tr><td>Groundhog</td><td class="ok">0.722</td><td class="ok">0.653</td><td class="ok">0.651</td></tr>
   <tr><td>Calendar analogue without auxiliary donors (retired)</td><td class="bad">1.045</td><td class="ok">0.756</td><td class="ok">0.618</td></tr>
  </table></div>
- <p class="hint">Particle filter alone: measured 2026-09-07 with the
- production engine through the console's own replay command. The
- Oracle SIHRS's own record, on the stored 2024-25 and 2025-26 forecasts, is in
- the Oracle step card above; its cells and runs differ from these, so the
- two tables are not read across. Groundhog and the bare analogue:
- measured 2026-09-21 on the same 15,340 cells over the 52 jurisdictions
- (<code>flubnf groundhog retro all --aux flusurv</code>), pooled 0.666
- against 0.771; the paired difference over the 76 forecast dates is below
- zero in every one of 4,000 bootstrap replicates. On placement against the
- real FluSight fields, see the verification policies below.</p>
+ <p class="hint">Filter alone: the production engine's replay; its cells
+ differ from the Oracle record above. Groundhog and bare analogue: the same
+ 15,340 cells (pooled 0.666 against 0.771; the paired difference is below
+ zero in all 4,000 bootstrap replicates).</p>
 </div>
 
 <div class="card"><h2>Under the hood</h2>
@@ -264,82 +166,58 @@
   <tr><th>Component</th><th>Version</th><th>Role</th></tr>
   <tr><td><a href="https://github.com/lanl/PyBNF" target="_blank" rel="noopener">PyBNF</a></td>
       <td><span data-vkey="pybnf">{{ versions.pybnf }}</span></td>
-      <td>Parameter-fitting suite for BioNetGen models. FluBNF runs a fork
-      that adds <code>fit_type=pf</code>, the sequential particle filter
-      described above.</td></tr>
+      <td>Fitting suite for BioNetGen models; FluBNF runs a fork with the
+      particle filter (<code>fit_type=pf</code>).</td></tr>
   <tr><td><a href="https://pypi.org/project/bngsim/" target="_blank" rel="noopener">bngsim</a></td>
       <td><span data-vkey="bngsim">{{ versions.bngsim }}</span></td>
-      <td>In-process BioNetGen simulation engine. The particle filter
-      integrates the model's differential equations on it during fitting,
-      with no per-simulation BNG2.pl subprocess.</td></tr>
+      <td>In-process BioNetGen simulator the filter integrates on.</td></tr>
   <tr><td><a href="https://bionetgen.org" target="_blank" rel="noopener">BioNetGen</a></td>
       <td><span data-vkey="bionetgen">{{ versions.bionetgen }}</span></td>
-      <td>The BNGL model language and its toolchain. BNG2.pl runs once per
-      state cell at run preparation to generate the reaction network the
-      filter then simulates.</td></tr>
+      <td>BNGL and BNG2.pl, which generates each state's reaction network.</td></tr>
   <tr><td>Perl</td>
       <td><span data-vkey="perl">{{ versions.perl }}</span></td>
-      <td>The interpreter BNG2.pl runs under. Present on macOS and Linux;
-      a Windows install needs Strawberry Perl, which the installer offers.
-      Without it every location fails at run preparation.</td></tr>
+      <td>Runs BNG2.pl; Windows needs Strawberry Perl (the installer
+      offers it).</td></tr>
   <tr><td><a href="https://fastapi.tiangolo.com" target="_blank" rel="noopener">FastAPI</a> +
       Jinja2</td>
       <td><span data-vkey="fastapi">{{ versions.fastapi }}</span> / <span data-vkey="jinja2">{{ versions.jinja2 }}</span></td>
       <td>This console: server-rendered pages, no build chain.</td></tr>
   <tr><td><a href="https://plotly.com/javascript/" target="_blank" rel="noopener">Plotly</a></td>
       <td><span data-vkey="plotly">{{ versions.plotly }}</span></td>
-      <td>Interactive charts, self-hosted; this console loads no external
-      assets (the public site page additionally loads its fonts from
-      Google Fonts).</td></tr>
+      <td>Interactive charts, self-hosted (the console loads nothing
+      external).</td></tr>
   <tr><td>pandas / numpy</td>
       <td><span data-vkey="pandas">{{ versions.pandas }}</span> / <span data-vkey="numpy">{{ versions.numpy }}</span></td>
       <td>Data handling and scoring.</td></tr>
  </table></div>
  {# the self-reported bngsim string can mislead (the seal-era build said
     0.13.0 while 50 commits past it; setup_engine.sh), so the pin is stated #}
- <p class="hint">Version note: the sealed three-season record's engine pin
- is bngsim 0.15.1, per <code>setup_engine.sh</code>. A locally built engine
- can self-report an older version string, so reproducing the sealed record
- requires the pinned install, not whatever version a build reports.</p>
+ <p class="hint">Reproducing the sealed record needs bngsim 0.15.1
+ (<code>setup_engine.sh</code>), whatever version a build reports.</p>
  {# platform-NEUTRAL: site_build publishes this page, so name all three #}
- <p class="hint">Two venvs: the console venv runs everything except the
- particle filter, which needs the engine venv (PyBNF and bngsim, installed
- by the engine setup step for the platform in use:
- <code>SetupEngine.command</code> on macOS, <code>setup_engine.sh</code> on
- Linux, and <code>setup.ps1</code> on Windows). A component reported as
- "not installed" above means that engine venv is absent.</p>
+ <p class="hint">The particle filter runs in a separate engine venv
+ (<code>SetupEngine.command</code> on macOS, <code>setup_engine.sh</code> on
+ Linux, <code>setup.ps1</code> on Windows); "not installed" above means it
+ is absent.</p>
 </div>
 
 <div class="card"><h2>Data and verification policies</h2>
- <p>Every run uses vintage data: the data exactly as archived on its
- forecast date, never revised history. Every run is seeded and reproducible
- from its ledger entry. Missing weeks are never imputed; they are dropped as
- rows with calendar-true offsets. All scoring uses the weighted interval
- score against the official FluSight baseline, the competition's own
- yardstick, and evaluation touches only data that was available at forecast
- time.</p>
- <p class="hint">Two measured qualifications, itemized in the release
- record's seal caveats (docs/archive/RELEASE-1.0.md): for seven of the 76 sealed
- as-of weeks the archived vintage differs from what was public by that
- week's submission deadline, and the sealed scores are computed on the
- members' internal forecasts at float precision rather than on the rounded
- submission files, a measured difference at the third decimal.</p>
+ <p>Every run uses the data exactly as archived on its forecast date, is
+ seeded and reproducible from its ledger entry, and never imputes a missing
+ week; scoring is the weighted interval score against the FluSight
+ baseline.</p>
+ <p class="hint">Two measured caveats (docs/archive/RELEASE-1.0.md): seven
+ of 76 sealed weeks' vintages differ from what was public at the deadline,
+ and sealed scores use unrounded forecasts (a third-decimal difference).</p>
  {# the scored-cell rule lives here: this card survives the site harvest #}
- <p>A scored cell is one location, one forecast week, one horizon. A cell
- counts only where settled truth exists and is positive, the forecast median
- is positive, and the FluSight baseline also covers that cell. Official
- FluSight scoring keeps cells this rule drops, so a count here can differ
- from a count published there.</p>
+ <p>A scored cell is one location, week and horizon with positive settled
+ truth, a positive forecast median and a baseline forecast; FluSight keeps
+ cells this drops, so counts can differ.</p>
  {# here, not in Measured performance: the site harvest drops that card, and
     a withdrawn claim must stay withdrawn in both places #}
- <p>Placement against the full FluSight field, meaning a rank among all
- submitting teams, was withdrawn on 2026-08-24 and is not restated: a rank
- would assert that every submitting team was scored end to end on one
- stated convention, and the field's scores come from a builder that lives
- outside this repository and cannot be rerun from it. Until the field and
- this project's entry are scored that way, no placement is claimed
- anywhere in this application; the full account is in the release record
- (docs/archive/RELEASE-1.0.md).</p>
+ <p>Placement among FluSight teams was withdrawn on 2026-08-24 and is not
+ restated: the field's scores come from a builder outside this repository
+ that cannot be rerun from it (docs/archive/RELEASE-1.0.md).</p>
  {# the shared note names WHICH ratio: both conventions put the baseline at
     1.0, so "a ratio against the baseline" identifies nothing #}
  <p>{{ relwis_convention_note }}</p>

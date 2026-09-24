@@ -44,11 +44,12 @@ def test_home_renders_workflow_performance_and_component_cards():
                  "0.741", "0.663", "0.684", "0.685",
                  "15,460", "15,340", "Oracle SIHRS", "Groundhog",
                  # the Oracle SIHRS (on the Groundhog's donor bank) against
-                 # the plain filter, same cells, the three seasons and the
-                 # caveat, and the three-season column named for what it scores
+                 # the plain filter, same cells, the three seasons, the
+                 # one-line caveat (in full on Methods), and the three-season
+                 # column named for what it scores
                  "0.697", "0.794", "0.781", "0.843", "0.731", "0.813", "9,279",
                  "0.767", "0.840", "0.738", "0.819", "6,021", "15,300",
-                 "FluSurv-NET", "includes zero",
+                 "FluSurv-NET", "below 1.000 beats it",
                  "Filter alone", "frozen-specification replication"):
         assert cell in r.text, cell
     # the performance card names no blend; the outlook label above it is
@@ -177,10 +178,10 @@ def test_model_pages_render_mechanism_and_collapsed_intro():
         assert 'href="/methods#' in r.text, name
 
 
-def test_forecast_page_renders_with_ensemble_overlay_js():
+def test_forecast_page_renders_without_the_retired_blend_overlay():
     r = client.get("/forecast")
     assert r.status_code == 200
-    assert "legendonly" in r.text
+    assert "legendonly" not in r.text and "FMODEL==='ensemble'" not in r.text
 
 
 def test_methods_anchors_and_backlinks():
@@ -240,7 +241,7 @@ def test_home_outlook_card_has_heading_and_legend():
     r = client.get("/")
     assert r.status_code == 200
     # the card names its payload like every other card in the app
-    assert "US outlook" in r.text
+    assert "US categorical forecast" in r.text
     # and the legend rides with the map, so the encoding is readable
     # without hovering
     assert 'class="hint maplegend"' in r.text
@@ -254,7 +255,7 @@ def test_home_outlook_caption_states_coverage_when_a_run_exists():
         outlook_n=1, missing=[],
         versions={"pybnf": "x", "bngsim": "x", "bionetgen": "x",
                   "fastapi": "x", "plotly": "x"})
-    assert "US outlook · 2026-01-24" in html      # dated in the heading
+    assert "US categorical forecast · 2026-01-24" in html      # dated in the heading
     assert "cover 1 of 52" in html                # one green state is not a
     assert "the rest show as no data" in html     # national outlook
     # without a run, the card stays honest about being empty

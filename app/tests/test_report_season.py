@@ -135,7 +135,7 @@ def test_report_self_contained_with_player_and_data(tmp_path, monkeypatch):
     assert "never joins the pooled average" in html
 
     # the header says the maps stayed behind, and no size warning fired
-    assert "interactive maps live in the console" in html
+    assert "maps stay in the console" in html
     assert "Size notice" not in html
 
 
@@ -238,23 +238,25 @@ def test_report_carries_the_season_verdict_before_the_player(tmp_path,
     # the static verdict block precedes the player card
     assert html.index('id="season-summary"') < html.index('id="pb-play"')
     assert "Season verdict" in html
-    # final relWIS tiles for each member and the ensemble, colored by the
-    # below-1 rule; the values are the final week's cumulative stats
-    for name, val, cls in (("FluBNF Ensemble (retired)", "0.900", "ok"),
-                           ("Oracle SIHRS", "0.500", "ok"),
+    # final relWIS tiles for each shipped member, colored by the below-1
+    # rule; the values are the final week's cumulative stats. The retired
+    # blend's stored rows get no tile.
+    assert 'class="tileval ok">0.900' not in html
+    for name, val, cls in (("Oracle SIHRS", "0.500", "ok"),
                            ("Groundhog", "1.500", "bad")):
         assert name in html, name
         assert f'class="tileval {cls}">{val}' in html, (name, val)
     # weeks covered and the recorded wall time
-    assert f"2 weeks covered, {W1} to {W2}" in html
-    assert "total wall time 1:02:03 (h:mm:ss)" in html
+    assert f"2 stored weeks, {W1} to {W2}" in html
+    assert "Total wall time 1:02:03 (h:mm:ss)" in html
+    assert "weeks covered" not in html            # said once, in the header
     # the per-state final table, one row per state, same coloring rule
     assert "Per-state final scores" in html
     for loc in N2F:
         assert f"<td>{loc}</td>" in html, loc
     assert '<td class="num ok">0.500</td>' in html
     assert '<td class="num bad">1.500</td>' in html
-    assert '<td class="num ok">0.900</td>' in html
+    assert '<td class="num ok">0.900</td>' not in html
 
 
 def test_the_export_names_the_scoring_convention_on_its_own(tmp_path,

@@ -141,7 +141,8 @@ def test_pipeline_and_blend_equation_reach_the_model_tab_and_methods():
         t = client.get(page).text
         assert t.count('aria-label="Oracle SIHRS pipeline') == 1, page
         assert "the growth blend" in t, page
-        assert str(escape(ot.BANK_TEXT["pool"])) in t, page
+    # the donor pool's full description lives on Methods
+    assert str(escape(ot.BANK_TEXT["pool"])) in client.get("/methods").text
 
 
 # ------------------------------------------------ what the pages now say
@@ -154,10 +155,9 @@ def test_model_tab_describes_the_member_as_it_is():
                    "calendar-donor principle the Groundhog uses",
                    "donor growth ratios to the last observed count",
                    "separate models", "frozen-specification replication",
-                   "2026-27 season is its prospective test",
-                   "relWIS 0.731 against the plain filter's 0.813",
+                   "prospective test is the 2026-27 season",
+                   "0.731 against the plain filter's 0.813",
                    "0.767 against 0.840 in 2023-24", "0.738 against 0.819",
-                   "0.731 against 0.741", "includes zero",
                    "9,279 cells", "How the forecast is made",
                    "The compartment model the filter fits"):
         assert needle in t, needle

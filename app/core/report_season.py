@@ -193,9 +193,9 @@ def _us_national(root: Path, df) -> tuple:
 #: the season page's cumulative chart heading, verbatim (the parity test matches it)
 CURVE_HEADING = "Cumulative relWIS through the season"
 
-#: in order: the two shipped members, the research member, the retired blend
-#: (present only in older scores.json files)
-SEASON_MODELS = ("pf", "analogue", "pf2s", "ensemble")
+#: in order: the two shipped members, the research member. Older
+#: scores.json files also carry the retired blend's rows; they are not shown.
+SEASON_MODELS = ("pf", "analogue", "pf2s")
 
 
 def _cumulative_curves(df) -> dict:
@@ -246,13 +246,8 @@ def _summary_block(root: Path, weeks: list, payloads: dict,
         tiles.append('<div class="tile"><div class="tilename">'
                      + names.get(m, m) + '</div>'
                      + f'<div class="tileval {cls}">{v:.3f}</div></div>')
-    line = f"{len(weeks)} weeks covered, {weeks[0]} to {weeks[-1]}"
-    meta = retro.read_meta(root)
-    if meta:
-        t = retro.timing(meta)
-        if t["elapsed_s"] and t["elapsed_s"] >= 1.0:
-            line += (", total wall time "
-                     + fmt_hms(t["elapsed_s"]) + " (h:mm:ss)")
+    # the weeks covered and the wall time are in the report header
+    # (_timing_note), so the verdict does not repeat them
     rows = []
     cover = "every scored cell of the season"
     df_all = playback._season_scores(root)
@@ -316,9 +311,7 @@ def _summary_block(root: Path, weeks: list, payloads: dict,
                             for m in have)
                   + '</tr></thead><tbody>'
                   + "".join(rows) + "</tbody></table>"
-                  + (f'<p class="hint">{us.note}</p>'
-                     f'<p class="hint">{usn.POOLED_SCOPE_NOTE}</p>'
-                     if us else ""))
+                  + (f'<p class="hint">{us.note}</p>' if us else ""))
     else:
         states = ('<p class="hint">Per-state scores appear here once the '
                   "season has been scored in the console.</p>")
@@ -327,15 +320,13 @@ def _summary_block(root: Path, weeks: list, payloads: dict,
     if not us:
         reason = (us_reason.replace("&", "&amp;").replace("<", "&lt;")
                   or "its construction was unavailable")
-        us_absent = ('<p class="hint">The US national figure the '
-                     "console's season page shows is not in this export: "
-                     f"{reason}.</p>")
+        us_absent = ('<p class="hint">The US national figure is not in '
+                     f"this export: {reason}.</p>")
     return ('<div class="card" id="season-summary">'
             '<h2>Season verdict</h2>'
             '<div class="tiles">' + "".join(tiles) + "</div>"
             + us_absent
-            + f'<p class="sub">{line}.</p>'
-            f'<p class="hint">Final relWIS pooled over {cover}, ratio of '
+            + f'<p class="hint">Final relWIS pooled over {cover}, ratio of '
             "sums; below 1 beats the CDC FluSight baseline. "
             f"{usn.POOLED_SCOPE_NOTE}</p>"
             # the file leaves the machine: it carries the convention note itself
@@ -555,9 +546,8 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <header class="brandrow"><span class="brand"><em>Flu</em>BNF</span>
  <span class="brandsub">season report export</span></header>
 <h1>Season report <span class="accent">@@SEASON@@</span></h1>
-<p class="sub">@@NWEEKS@@ stored weeks, @@FIRST@@ to @@LAST@@.
- Self-contained: no server or network is needed. The weekly categorical
- maps are omitted; interactive maps live in the console.</p>
+<p class="sub">@@NWEEKS@@ stored weeks, @@FIRST@@ to @@LAST@@; a
+ self-contained file (the categorical forecast maps stay in the console).</p>
 @@TIMING@@
 @@SIZENOTE@@
 @@SUMMARY@@
@@ -596,10 +586,9 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
     <th class="num">Cumulative</th></tr></thead><tbody></tbody></table>
    <p class="hint" id="pb-status" aria-live="polite"></p>
    <p class="hint" id="pb-offhint" hidden>official comparators appear after
-    Update data fetches their submissions</p>
+    Update data</p>
    <p class="hint">relWIS below 1 beats the CDC FluSight baseline, ratio of
-    sums. Week scores the current forecast's cells; cumulative pools every
-    week through the playback position.</p>
+    sums; cumulative pools every week so far.</p>
   </div>
  </div>
 </div>
