@@ -1,4 +1,6 @@
-"""Empirical interval-coverage calibration.
+"""LEGACY (DE/AMCMC workspace loop; reached only from the legacy CLI commands).
+
+Empirical interval-coverage calibration.
 
 Forecasts come with quantile bands. The 50% prediction interval (PI)
 is bounded by the 0.25 and 0.75 quantiles; *if calibrated*, 50% of
@@ -9,9 +11,8 @@ This module tracks coverage on a rolling window of past forecasts vs
 their realized actuals, and emits a multiplicative rescale factor we
 can apply to widen / narrow future quantile bands.
 
-The corrections are deliberately conservative — they kick in only after
-enough observations to be meaningful (default ≥ 8 weeks) and never
-flip the direction of the median (which we trust the fit on).
+Corrections are conservative: only after enough weeks (default ≥ 8), and
+never moving the median.
 
 Data flow:
   1. Each weekly job writes its quantile forecast to disk (already done
@@ -29,11 +30,10 @@ import json
 import logging
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 
-from .quantiles import FLUSIGHT_QUANTILES, QuantileForecast
+from .quantiles import QuantileForecast
 
 log = logging.getLogger(__name__)
 
@@ -45,15 +45,9 @@ PI_LEVELS: list[tuple[float, float, float]] = [
     (0.025, 0.975, 0.95),    # 95% PI
 ]
 
-#: Which stored quantile answers for each level in PI_LEVELS. The table is
-#: the point: the declared interval and the measured interval come from the
-#: same two numbers, so they cannot drift apart. They previously did — the
-#: 80% row declared (0.10, 0.90) but was measured from q05/q95, the 90%
-#: band, and filed under nominal 0.80. A perfectly calibrated forecaster
-#: therefore measured ~0.90 against a 0.80 target and rescale_factor
-#: narrowed its intervals by 20% for no reason. Adding a PI level now means
-#: adding a row here, and a missing row is an immediate KeyError rather than
-#: a silent substitution.
+#: The stored quantile each PI_LEVELS bound reads: one table, so declared and
+#: measured intervals cannot drift (they once did, narrowing calibrated
+#: intervals by 20%). A missing row is a KeyError, not a substitution.
 _Q_ATTR: dict[float, str] = {
     0.025: "q025", 0.05: "q05", 0.10: "q10", 0.25: "q25", 0.50: "q50",
     0.75: "q75", 0.90: "q90", 0.95: "q95", 0.975: "q975",
@@ -64,10 +58,8 @@ _Q_ATTR: dict[float, str] = {
 class CoverageRecord:
     """One forecast-vs-actual observation used to update calibration.
 
-    q10 and q90 carry the 80% interval that PI_LEVELS declares. They trail
-    the required fields with a NaN default so a calibration.json written
-    before v1.0 still loads; a record without them is simply excluded from
-    the 80% coverage estimate rather than measured against the wrong band.
+    q10/q90 (the 80% interval) default to NaN so a pre-v1.0
+    calibration.json loads; such records are left out of the 80% estimate.
     """
     state: str
     horizon: int

@@ -1,22 +1,13 @@
-"""Data-driven placement of the SIRS smooth-beta transition centers.
+"""LEGACY (DE/AMCMC workspace loop: config, backtest; also the COVID research seam).
 
-The `sirs_logistic` model's transition centers `tc_k` are FIXED at fit time
-(only the amplitudes `db_k` are fitted — the identifiability win). The original
-design pinned them to tier-constant weeks [8, 18, 28]. The 6-state bake-off
-revealed a systematic upswing under-prediction: those constant centers saturate
-*before* a state's actual surge inflection, so the smooth beta has no headroom
-left to climb through the rise and the median lags (California worst, +37% of
-peak; positive rising-phase bias in all 6 pilot states).
+Data-driven placement of the SIRS smooth-beta transition centers.
 
-`place_centers` fixes the *values* (not the fitting) of the centers: it places
-each `tc_k` at an inflection point of the observed series available at the
-current forecast week, so the ramps sit on the surge. It is a pure,
-deterministic function — same `(y, K, sw)` → same centers, no RNG, no fit
-dependence, and it only ever reads `y` (the observations up to "now"), so it
-cannot peek at the future.
-
-Early season, before any surge is visible, it falls back to the tier-constant
-centers — you cannot time an unseen surge.
+The `sirs_logistic` centers `tc_k` are FIXED at fit time (only the `db_k`
+are fitted). Tier-constant centers [8, 18, 28] saturated before a state's
+surge, so the median lagged the rise (all 6 pilot states). `place_centers`
+puts each `tc_k` at an inflection of the series observed so far: pure and
+deterministic, reads only `y` (no look-ahead). Early season, before any
+surge is visible, it falls back to the tier-constant centers.
 """
 
 from __future__ import annotations

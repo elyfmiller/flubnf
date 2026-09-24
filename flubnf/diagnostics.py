@@ -1,4 +1,6 @@
-"""AMCMC chain diagnostics + automated reaction to poor fits.
+"""LEGACY (DE/AMCMC workspace loop; reached only from the legacy CLI commands).
+
+AMCMC chain diagnostics + automated reaction to poor fits.
 
 The PyBNF AMCMC run writes per-iteration scores (`scores_N.txt`) and
 parameter samples (`params_N.txt`) per chain. This module reads those

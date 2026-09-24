@@ -1,33 +1,27 @@
-"""FluBNF command-line interface.
+"""FluBNF command-line interface (`flubnf`).
 
-Each subcommand is a thin wrapper around a module function so that:
-  - the console (app/, FastAPI) calls the same module functions directly
-  - everything is scriptable / testable
-  - no business logic lives in this file
+Three parts, in file order: the legacy DE/AMCMC workspace commands, the
+console launch plumbing (takeover, ports, window watchdog), and the current
+commands (app, window, retro, and the groundhog/bank/oracle/site sub-apps).
+Most commands wrap a module function; the legacy backtest/tune-slope/
+clean-cache commands still carry their own logic.
 """
 
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import Annotated, List, Optional
 
 import typer
 from rich.console import Console
 from rich.table import Table
+from typer.core import TyperGroup
 
-# ---------------------------------------------------------------------------
-# Deferred imports (startup-freeze fix, measured 2026-08-22)
-#
-# The science modules below pull pandas and scipy, and importing them here
-# cost the console launch 10.5 s cold (1.0 s warm) BEFORE `flubnf app`
-# could even begin opening its window -- the single largest stage of the
-# measured startup profile. None of them is needed by the app/window
-# commands, so each resolves on first real use instead. A module-level
-# __getattr__ (PEP 562) cannot serve name lookups inside function bodies,
-# so the deferral is a small proxy that resolves once and then replaces
-# its own global binding, making every later reference direct.
-# ---------------------------------------------------------------------------
+# Deferred imports: the science modules pull pandas/scipy (~10 s cold) and
+# `flubnf app` must open its window without them (test_cli_import_stays_light).
+# PEP 562 __getattr__ cannot serve lookups inside function bodies, so _Lazy
+# resolves on first use, then rebinds its global so later lookups are direct.
 class _Lazy:
     __slots__ = ("_mod", "_attr", "_name")
 
@@ -78,21 +72,54 @@ STATE_TO_ABBREV = _Lazy("flubnf.constants", "STATE_TO_ABBREV")
 WorkspacePaths = _Lazy("flubnf.paths", "WorkspacePaths")
 WorkspaceState = _Lazy("flubnf.state", "WorkspaceState")
 
+#: `flubnf --help` panels and their top-level commands, in display order;
+#: every command not listed is legacy (registration order).
+HELP_PANELS = {
+    "Console": ("app", "window", "doctor"),
+    "Replay & verification": ("retro", "groundhog", "oracle", "site"),
+    "Donor banks": ("bank",),
+    "Legacy DE/AMCMC workspace": (),
+}
+LEGACY_PANEL = "Legacy DE/AMCMC workspace"
+
+
+class _PanelledGroup(TyperGroup):
+    """The root group: files each command under its HELP_PANELS panel and
+    lists them panel by panel (help order only; dispatch is by name)."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for name, cmd in self.commands.items():
+            cmd.rich_help_panel = next(
+                (p for p, names in HELP_PANELS.items() if name in names),
+                LEGACY_PANEL)
+
+    def list_commands(self, ctx):
+        panels = list(HELP_PANELS)
+
+        def rank(name):
+            panel = self.commands[name].rich_help_panel
+            listed = HELP_PANELS[panel]
+            return panels.index(panel), (listed.index(name) if name in listed else 0)
+        return sorted(super().list_commands(ctx), key=rank)
+
+
 app = typer.Typer(
+    cls=_PanelledGroup,
     add_completion=False,
-    help="FluBNF — automated weekly PyBNF workflow for CDC FluSight.",
+    help="FluBNF: open the forecasting console, replay and verify seasons, "
+         "and manage the committed donor banks. The legacy DE/AMCMC "
+         "workspace commands are listed last.",
     no_args_is_help=True,
 )
 console = Console()
 
 
 def _trace(msg: str) -> None:
-    """Startup-sequence trace: a timestamped line to stderr and, when
-    FLUBNF_STARTUP_TRACE names a file, appended there. Free when the
-    variable is unset. The windowed launch involves four actors (this
-    process, the uvicorn thread, the warm thread, WKWebView) whose
-    ORDERING is the whole diagnosis, so the trace is permanent and
-    env-gated rather than something re-invented at each regression."""
+    """Startup trace: a timestamped line to stderr and to the file named by
+    FLUBNF_STARTUP_TRACE; a no-op when that is unset. The launch has four
+    actors (this process, uvicorn, the warm thread, WKWebView) and their
+    ordering is the diagnosis, so the trace stays in, env-gated."""
     import os
     import sys as _sys
     import time as _time
@@ -110,9 +137,6 @@ def _trace(msg: str) -> None:
     print(line, file=_sys.stderr, flush=True)
 
 
-# ---------------------------------------------------------------------------
-# Globals (resolved once per invocation)
-# ---------------------------------------------------------------------------
 def _load(config_path: Optional[Path], workspace: Optional[str]) -> tuple[
     FluBNFConfig, WorkspacePaths, WorkspaceState
 ]:
@@ -134,7 +158,7 @@ WORKSPACE_OPT = typer.Option(
 
 
 # ---------------------------------------------------------------------------
-# init
+# Legacy DE/AMCMC workspace commands (off the shipped console path)
 # ---------------------------------------------------------------------------
 @app.command()
 def init(
@@ -155,9 +179,6 @@ def init(
     )
 
 
-# ---------------------------------------------------------------------------
-# fetch
-# ---------------------------------------------------------------------------
 @app.command(name="fetch")
 def fetch_cmd(
     config: Optional[Path] = CONFIG_OPT,
@@ -182,9 +203,6 @@ def fetch_cmd(
     )
 
 
-# ---------------------------------------------------------------------------
-# update-exp
-# ---------------------------------------------------------------------------
 @app.command("update-exp")
 def update_exp(
     config: Optional[Path] = CONFIG_OPT,
@@ -212,9 +230,6 @@ def update_exp(
     console.print(table)
 
 
-# ---------------------------------------------------------------------------
-# update-files (placeholder for future bounds/beta updates)
-# ---------------------------------------------------------------------------
 @app.command("update-files")
 def update_files(
     config: Optional[Path] = CONFIG_OPT,
@@ -231,9 +246,6 @@ def update_files(
     console.print(f"[green]ensured[/] {len(JURISDICTIONS)} bngl + conf files.")
 
 
-# ---------------------------------------------------------------------------
-# analyze
-# ---------------------------------------------------------------------------
 @app.command()
 def analyze(
     config: Optional[Path] = CONFIG_OPT,
@@ -288,9 +300,6 @@ def analyze(
         state.save(paths.state_file)
 
 
-# ---------------------------------------------------------------------------
-# backtest
-# ---------------------------------------------------------------------------
 @app.command()
 def backtest(
     config: Optional[Path] = CONFIG_OPT,
@@ -403,8 +412,7 @@ def backtest(
     df_raw = pd.read_csv(csv_path)
     geo_col, date_col, val_col = bt._resolve_columns_quick(df_raw, cfg)  # type: ignore[attr-defined]
 
-    # Resolve every state up front so the parallel pool has no shared
-    # pandas/df work in flight per worker.
+    # resolve every state up front: no shared pandas work inside the pool
     state_obs: list[tuple[str, "np.ndarray"]] = []  # noqa: F821
     for s in state_list:
         abbrev = STATE_TO_ABBREV.get(s)
@@ -425,9 +433,8 @@ def backtest(
     _locs = load_locations(cfg.locations_csv)
     model_type = cfg.model.model_type
 
-    # Resume-from-disk: one checkpoint part-file per state, written
-    # incrementally by that state's worker. On startup we read any existing
-    # part-file and skip weeks already completed (per adaptive mode).
+    # Resume: one checkpoint part-file per state; weeks already in it are
+    # skipped (per adaptive mode).
     parts_dir = (out.parent / f"{out.stem}_parts") if out else None
     if parts_dir is not None:
         parts_dir.mkdir(parents=True, exist_ok=True)
@@ -489,9 +496,8 @@ def backtest(
                 except Exception as e:
                     console.print(f"[red]{s} failed:[/] {e}")
 
-    # Build the consolidated frame from the per-state checkpoint part-files
-    # (the durable source of truth — includes weeks completed on prior,
-    # since-killed runs). Fall back to in-memory records if no parts exist.
+    # The part-files are the source of truth (they include weeks from
+    # killed runs); fall back to in-memory records without them.
     df_out = bt.records_to_dataframe(all_records)
     if parts_dir is not None:
         part_frames = []
@@ -509,9 +515,8 @@ def backtest(
                 subset=["state", "week", "adaptive"], keep="last"
             ).reset_index(drop=True)
             df_out = merged
-    # Write the per-week records CSV FIRST so that a downstream summary
-    # crash (e.g. empty groupby when every fit timed out) does not wipe
-    # the data the user just spent hours computing.
+    # Write the records FIRST so a summary crash (e.g. every fit timed
+    # out) cannot lose hours of fits.
     if out:
         out.parent.mkdir(parents=True, exist_ok=True)
         df_out.to_csv(out, index=False)
@@ -539,9 +544,8 @@ def backtest(
                  modes=mode, weeks=f"{start_week}..{end_week or 'auto'}")
     state.save(paths.state_file)
 
-    # Auto-record season summaries to the historical priors ledger when
-    # requested. We only auto-record from the *adaptive* run (true=, the
-    # one we'd actually submit) and use the most-recent fit per state.
+    # --record-season: the most recent fit per state into the historical
+    # priors ledger.
     if record_season and engine in {"amcmc", "pybnf"}:
         from .historical_priors import record_season as _rs
         from .results import read_de_results, read_amcmc_chain
@@ -595,9 +599,6 @@ def _observed_for_state(df, abbrev, cfg, geo_col, date_col, val_col):
     return y
 
 
-# ---------------------------------------------------------------------------
-# weekly-job — the one-click "do everything for this week" command
-# ---------------------------------------------------------------------------
 @app.command("weekly-job")
 def weekly_job(
     config: Optional[Path] = CONFIG_OPT,
@@ -665,9 +666,6 @@ def weekly_job(
     state_obj.save(paths.state_file)
 
 
-# ---------------------------------------------------------------------------
-# score-team
-# ---------------------------------------------------------------------------
 @app.command("score-team")
 def score_team(
     config: Optional[Path] = CONFIG_OPT,
@@ -684,7 +682,7 @@ def score_team(
     ),
 ):
     """Score team FluSight submissions against ground truth (WIS)."""
-    cfg = FluBNFConfig.load(config_path=config)
+    FluBNFConfig.load(config_path=config)     # validates --config / FLUBNF_*
     paths_in = sorted(submission_dir.glob("*.csv"))
     if not paths_in:
         raise typer.BadParameter(f"no CSVs found in {submission_dir}")
@@ -698,9 +696,6 @@ def score_team(
     console.print(by_horizon.to_string())
 
 
-# ---------------------------------------------------------------------------
-# validate-submission
-# ---------------------------------------------------------------------------
 @app.command("validate-submission")
 def validate_submission_cmd(
     csv_path: Path = typer.Argument(
@@ -730,9 +725,6 @@ def validate_submission_cmd(
         raise typer.Exit(code=1)
 
 
-# ---------------------------------------------------------------------------
-# clean-cache
-# ---------------------------------------------------------------------------
 @app.command("clean-cache")
 def clean_cache_cmd(
     config: Optional[Path] = CONFIG_OPT,
@@ -787,9 +779,6 @@ def clean_cache_cmd(
         console.print("[green]nothing to clean[/]")
 
 
-# ---------------------------------------------------------------------------
-# record-season
-# ---------------------------------------------------------------------------
 @app.command("record-season")
 def record_season_cmd(
     config: Optional[Path] = CONFIG_OPT,
@@ -840,9 +829,6 @@ def record_season_cmd(
     )
 
 
-# ---------------------------------------------------------------------------
-# backfill-priors — bulk-record legacy PyBNF runs into historical_priors/
-# ---------------------------------------------------------------------------
 @app.command("backfill-priors")
 def backfill_priors_cmd(
     config: Optional[Path] = CONFIG_OPT,
@@ -958,9 +944,6 @@ def backfill_priors_cmd(
     console.print(f"\n[bold]done[/]  {summary}")
 
 
-# ---------------------------------------------------------------------------
-# tune-slope
-# ---------------------------------------------------------------------------
 def _tune_slope_for_state(
     state: str,
     *,
@@ -980,7 +963,6 @@ def _tune_slope_for_state(
     is non-ok. recommendation is the picked blend or None.
     """
     import numpy as _np
-    import pandas as _pd  # noqa: F401  (kept for parity with caller imports)
     from datetime import timedelta as _td
     import pymmwr as pm
     from .amcmc import read_traj_noise
@@ -1192,9 +1174,6 @@ def tune_slope_cmd(
     )
 
 
-# ---------------------------------------------------------------------------
-# baseline-score — score persistence/rolling baselines alongside our model
-# ---------------------------------------------------------------------------
 @app.command("baseline-score")
 def baseline_score_cmd(
     config: Optional[Path] = CONFIG_OPT,
@@ -1279,9 +1258,6 @@ def baseline_score_cmd(
     )
 
 
-# ---------------------------------------------------------------------------
-# doctor
-# ---------------------------------------------------------------------------
 @app.command()
 def doctor(
     config: Optional[Path] = CONFIG_OPT,
@@ -1342,9 +1318,6 @@ def doctor(
         raise typer.Exit(code=1)
 
 
-# ---------------------------------------------------------------------------
-# compare
-# ---------------------------------------------------------------------------
 @app.command()
 def compare(
     config: Optional[Path] = CONFIG_OPT,
@@ -1384,9 +1357,6 @@ def compare(
         console.print(f"[green]wrote[/] {out}")
 
 
-# ---------------------------------------------------------------------------
-# run
-# ---------------------------------------------------------------------------
 @app.command()
 def run(
     config: Optional[Path] = CONFIG_OPT,
@@ -1434,9 +1404,6 @@ def run(
     state.save(paths.state_file)
 
 
-# ---------------------------------------------------------------------------
-# status
-# ---------------------------------------------------------------------------
 @app.command()
 def status(
     config: Optional[Path] = CONFIG_OPT,
@@ -1459,9 +1426,6 @@ def status(
         console.print(table)
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 def _latest_cached_csv(cache_dir: Path) -> Optional[Path]:
     if not cache_dir.exists():
         return None
@@ -1477,35 +1441,21 @@ def _root(verbose: bool = typer.Option(False, "--verbose", "-v")):
     )
 
 
-if __name__ == "__main__":
-    app()
-
 
 # ---------------------------------------------------------------------------
-# Console launch survival: single instance, free-port fallback, load watchdog
+# Console launch
 # ---------------------------------------------------------------------------
-# A relaunched console could bind its window to a dying predecessor's server
-# (the port probe passes, then the old process exits) or lose the port to it
-# outright, leaving a randomly dead window. Three guards, all field-driven:
-# take over from the predecessor via a pidfile, fall back to a nearby free
-# port when the preferred one stays bound, and watch the window's loaded
-# event so a page that never arrived is reloaded instead of shown dead.
+# Survival guards, so a relaunch never binds its window to a dying
+# predecessor's server: pidfile takeover of the predecessor, a nearby free
+# port when the preferred one stays bound, and a load watchdog that reloads a
+# page that never arrived instead of showing it dead.
 
-# the pidfile lives with the app's other state, next to retro/ and ledger
 APP_PID_FILE = (Path(__file__).resolve().parents[1]
                 / "app" / "state" / "app.pid")
-# the predecessor check requires one of these entry shapes in the process
-# command line before anything is signalled (matched on words, see
-# _cmdline_has_marker). They are command-shaped on purpose: a bare "flubnf"
-# would match ANY process started from this venv (the interpreter path
-# contains it), so a recycled pid landing on, say, a multi-hour PyBNF fit
-# could be killed. "flubnf app" and "flubnf window" cover every launch path
-# (FluBNF.command's `.venv/bin/flubnf app`, a manual `flubnf window`, extra
-# flags after the command, `flubnf -v app`). The .exe forms are the same
-# entry points as Windows spells them: FluBNF.bat runs
-# `".venv\Scripts\flubnf" app`, and pip's console-script launcher starts
-# the server with a command line of the form
-# `"...\python.exe"  "...\Scripts\flubnf.exe" app`.
+# Entry shapes a takeover target's command line must contain (word match, see
+# _cmdline_has_marker). Command-shaped on purpose: a bare "flubnf" matches any
+# venv process, e.g. a recycled pid now running a PyBNF fit. The .exe forms are
+# the Windows spellings (FluBNF.bat, pip's console-script launcher).
 APP_ENTRY_MARKERS = ("flubnf app", "flubnf window",
                      "flubnf.exe app", "flubnf.exe window")
 
@@ -1518,23 +1468,11 @@ _ROOT_SWITCHES = frozenset({"-v", "--verbose"})
 def _cmdline_has_marker(cmd: str, markers) -> bool:
     """Whether a process command line is one of our entry points.
 
-    Matched on WORDS, not as a substring. The command line has its double
-    quotes removed and is split on whitespace; a marker of n words matches
-    n consecutive words, the first compared by its file name (the part
-    after the last / or \\) and the rest exactly.
-
-    Why not a substring: on Windows the console server is started through
-    pip's console-script launcher, whose child command line is built from
-    the format '"%ls" %ls "%ls" %ls' (read out of pip's vendored t64.exe),
-    so the server's own command line reads
-    '"C:\\...\\python.exe"  "C:\\...\\Scripts\\flubnf.exe" app', with a quote
-    between the executable and 'app'. 'flubnf.exe app' was never a
-    substring of that, so the takeover never recognised its predecessor on
-    Windows and always fell back to a free port. The word match reads that
-    line correctly and is also stricter than a substring: 'grep flubnf
-    app.log' and 'notflubnf app' are not the console. POSIX command lines
-    (/proc, ps) carry no quotes, and '/x/.venv/bin/flubnf app' matches as
-    before."""
+    Word match, not substring: quotes stripped, split on whitespace; a
+    marker's first word is compared by file name (after the last / or \\),
+    the rest exactly. pip's Windows launcher puts a quote between exe and
+    subcommand ('"...\\flubnf.exe" app'), which a substring test never
+    matched; words also reject 'grep flubnf app.log' and 'notflubnf app'."""
     if not cmd:
         return False
     import os
@@ -1551,11 +1489,9 @@ def _cmdline_has_marker(cmd: str, markers) -> bool:
                 continue
             j = i + 1
             if len(want) > 1:
-                # the root command's switches may sit between the program
-                # and its subcommand (`flubnf -v app`). Only those: its
-                # only option is --verbose / -v, which takes no value, and
-                # skipping any '-' word would let `grep flubnf -r app`
-                # pass for the console
+                # only the root's value-less switches may sit between program
+                # and subcommand; skipping any '-' word would let
+                # `grep flubnf -r app` pass for the console
                 while j < len(words) and words[j] in _ROOT_SWITCHES:
                     j += 1
             if words[j:j + len(want) - 1] == want[1:]:
@@ -1569,8 +1505,7 @@ def _posix_parent_pid(pid: int):
     try:
         stat = Path(f"/proc/{int(pid)}/stat")
         if stat.exists():
-            # the command name is parenthesised and may hold spaces; the
-            # fields after it are: state, ppid, ...
+            # comm is parenthesised and may hold spaces; then state, ppid
             return int(stat.read_text().rsplit(")", 1)[1].split()[1])
     except Exception:
         pass
@@ -1634,18 +1569,14 @@ def _windows_parent_map(kernel32=None) -> dict:
 
 
 def _ancestor_pids(start=None, parent_of=None, limit: int = 32) -> set:
-    """The pids of `start`'s ancestors (default: this process's), nearest
-    first until the chain ends, loops, or `limit` is reached.
+    """Ancestor pids of `start` (default: this process), nearest first,
+    until the chain ends, loops, or `limit` is reached.
 
-    The takeover must never signal one of these. On Windows the console
-    runs at the end of a launcher chain (cmd, pip's flubnf.exe launcher,
-    a venv redirector when there is one, then the interpreter), and the
-    launcher's and redirector's command lines carry the same entry shape
-    as the server's. If a stale app.pid names a pid Windows has since
-    reused for one of them, signalling it would take the new console down
-    with it: both put their child in a kill-on-close job object. Never
-    raises; a parent that cannot be read ends the walk, which only ever
-    shrinks the set (os.getppid() is always included for this process)."""
+    The takeover never signals these: on Windows the launcher and redirector
+    in the chain carry the server's entry shape, and a stale app.pid reused
+    for one of them would take the new console down (kill-on-close job).
+    Never raises; an unreadable parent ends the walk (os.getppid() is always
+    included for this process)."""
     import os
     me = os.getpid()
     start = me if start is None else int(start)
@@ -1671,19 +1602,13 @@ def _ancestor_pids(start=None, parent_of=None, limit: int = 32) -> set:
             pass
     return out
 
-# The PF runners a server launches are plain Popen children supervised
-# from daemon threads, each in its own process group: a takeover or a
-# closed window kills the server without running any supervisor's finally
-# block, the runners keep fitting, and a heartbeat-stale resume would then
-# fit the same cells concurrently. The engine records every launched
-# runner here (app/core/engines/pf.py::record_runner_pids names the same
-# file; the two paths must agree), and the takeover sweeps the recorded
-# groups after signalling the server.
+# Orphaned PF runner groups to sweep on takeover: runners are Popen children
+# in their own process groups, so killing the server leaves them fitting.
+# MUST match app/core/engines/pf.py RUNNER_PIDS_FILE.
 PF_RUNNER_PIDS_FILE = APP_PID_FILE.parent / "pf_runners.json"
 
-# shown by the load watchdog when every reload attempt fails; loaded with
-# window.load_html because pywebview 6.2.1 misroutes data: URLs (its
-# is_local_url treats them as file paths and spins up an internal server)
+# Shown by the load watchdog when every reload fails. Loaded via load_html:
+# pywebview 6.2.1 misroutes data: URLs as file paths.
 _SERVER_FAIL_PAGE = """<!doctype html><html><head><title>FluBNF</title></head>
 <body style="font-family:-apple-system,Helvetica,sans-serif;background:#101223;
 color:#E9EAF4;padding:2.5rem;max-width:34rem">
@@ -1696,30 +1621,13 @@ Terminal (<code>.venv/bin/flubnf app</code>) to see the error output.</p>
 
 def _pid_cmdline_windows_native(pid: int, ntdll=None,
                                 kernel32=None) -> str:
-    """Windows: the command line read in process, from the kernel, with no
-    subprocess. NtQueryInformationProcess with ProcessCommandLineInformation
-    (class 60, Windows 8.1 and later) needs only
-    PROCESS_QUERY_LIMITED_INFORMATION, the access psutil uses for the same
-    query, and answers in milliseconds.
-
-    Why it exists: the WMI route below spawns wmic or PowerShell, and on
-    Windows Server 2025 (the GitHub windows-latest image, which no longer
-    ships wmic) a cold PowerShell start sometimes exceeds the 10 second
-    query timeout. The read then came back empty, the takeover failed safe
-    and did not signal the predecessor, and
-    test_takeover_terminates_marked_predecessor failed at 10.2 seconds
-    where a passing run takes well under one. A user relaunching on a slow
-    machine hit the same path.
-
-    The result is decoded as UTF-16-LE from the UNICODE_STRING's byte
-    length rather than with ctypes.wstring_at, whose unit is the platform
-    wchar_t (4 bytes off Windows), so the stubbed tests read what Windows
-    would. Like psutil, it answers only for a process that is still
-    running (GetExitCodeProcess == STILL_ACTIVE): an exited process whose
-    handle someone still holds stays openable, and the kernel's answer for
-    it is not documented. Never raises; '' means "could not inspect" and
-    the caller falls back. `ntdll` and `kernel32` are injectable for tests
-    on other platforms."""
+    """Windows: command line via NtQueryInformationProcess (class 60), in
+    process, needing only PROCESS_QUERY_LIMITED_INFORMATION. Preferred over
+    WMI, whose cold PowerShell can exceed the 10 s timeout (no wmic on Server
+    2025). Decoded as UTF-16-LE by byte length (not wstring_at, whose wchar_t
+    is 4 bytes off Windows) so stubbed tests read what Windows would. Answers
+    only for a STILL_ACTIVE process. Never raises; '' means "could not
+    inspect". `ntdll`/`kernel32` injectable for tests."""
     try:
         import ctypes
         from ctypes import wintypes
@@ -1758,8 +1666,7 @@ def _pid_cmdline_windows_native(pid: int, ntdll=None,
                     and code.value == STILL_ACTIVE):
                 return ""                    # exited, or cannot tell
             need = wintypes.ULONG(0)
-            # sizing call: fails with STATUS_INFO_LENGTH_MISMATCH and says
-            # how large the buffer must be
+            # sizing call: fails with STATUS_INFO_LENGTH_MISMATCH, sets need
             ntdll.NtQueryInformationProcess(
                 handle, PROCESS_COMMAND_LINE_INFORMATION, None, 0,
                 ctypes.byref(need))
@@ -1788,18 +1695,10 @@ def _pid_cmdline_windows_native(pid: int, ntdll=None,
 
 
 def _pid_cmdline_windows(pid: int) -> str:
-    """Windows: the command line, read natively first
-    (_pid_cmdline_windows_native), then via WMI -- wmic where present,
-    PowerShell CIM otherwise (wmic is removed from newer Windows 11 builds
-    and from Windows Server 2025). An empty result fails safe: the takeover
-    only ever signals a process whose command line matched an entry marker,
-    so "could not inspect" means "do not touch", and the relaunch falls
-    back to a nearby free port instead of killing a possibly-recycled
-    pid. A pid that is not alive skips the WMI queries: there is nothing
-    to identify, and on a machine without wmic each query is a PowerShell
-    start that can take seconds (a stale app.pid after a crash, or stale
-    runner-registry entries, would otherwise pay that on every
-    relaunch)."""
+    """Windows: the command line, natively first, then via WMI (wmic where
+    present, else PowerShell CIM). '' fails safe: the takeover signals only
+    a marker match, so the relaunch falls back to a free port. A dead pid
+    skips WMI (each PowerShell start can take seconds)."""
     import subprocess
     native = _pid_cmdline_windows_native(pid)
     if native:
@@ -1831,13 +1730,9 @@ def _pid_cmdline_windows(pid: int) -> str:
 
 
 def _pid_cmdline(pid: int) -> str:
-    """The command line of a live process, or '' when it does not exist
-    (or cannot be inspected). Linux reads the kernel's own record
-    (/proc/<pid>/cmdline, exact and immune to ps formatting or zombie
-    <defunct> rewriting, which broke the takeover on CI); Windows reads the
-    kernel record natively and falls back to WMI (see
-    _pid_cmdline_windows); everywhere else falls back to ps, which
-    ships with macOS. No psutil dependency."""
+    """The command line of a live process, or '' if absent/uninspectable.
+    Linux: /proc/<pid>/cmdline (immune to ps formatting and <defunct>
+    rewriting); Windows: _pid_cmdline_windows; else ps. No psutil."""
     import os
     import subprocess
     if os.name == "nt":
@@ -1858,10 +1753,9 @@ def _pid_cmdline(pid: int) -> str:
 
 
 def _pid_alive_windows(pid: int, kernel32=None) -> bool:
-    """Windows liveness via OpenProcess + GetExitCodeProcess. Signal 0 is
-    not an option there: os.kill(pid, 0) on Windows calls TerminateProcess
-    unconditionally, so the POSIX probe would KILL the probed process.
-    `kernel32` is injectable for tests on other platforms."""
+    """Windows liveness via OpenProcess + GetExitCodeProcess: os.kill(pid, 0)
+    on Windows calls TerminateProcess, so the POSIX probe would KILL it.
+    `kernel32` injectable for tests."""
     try:
         import ctypes
         import ctypes.wintypes as wintypes
@@ -1873,9 +1767,8 @@ def _pid_alive_windows(pid: int, kernel32=None) -> bool:
         handle = kernel32.OpenProcess(
             PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
         if not handle:
-            # access denied: the pid exists but belongs to someone else --
-            # alive, though never ours to signal (its cmdline comes back
-            # empty, so the takeover leaves it alone)
+            # access denied: alive but someone else's (empty cmdline, so
+            # the takeover leaves it alone)
             return kernel32.GetLastError() == ERROR_ACCESS_DENIED
         try:
             code = wintypes.DWORD()
@@ -1889,11 +1782,8 @@ def _pid_alive_windows(pid: int, kernel32=None) -> bool:
 
 
 def _pid_alive(pid: int) -> bool:
-    """Signal-0 liveness: true for running OR zombie; the takeover's wait
-    loop pairs it with the cmdline check so an unreaped zombie (Linux:
-    the parent has not called wait) does not stall the full timeout.
-    Windows dispatches to _pid_alive_windows -- signal 0 does not exist
-    there and os.kill would terminate the probed process."""
+    """Signal-0 liveness: true for running OR zombie, so callers pair it with
+    the cmdline check. Windows uses _pid_alive_windows (see there)."""
     import os
     if os.name == "nt":
         return _pid_alive_windows(pid)
@@ -1910,19 +1800,11 @@ def _pid_alive(pid: int) -> bool:
 
 def _sweep_runner_groups(registry: Optional[Path] = None,
                          wait: float = 5.0) -> int:
-    """Terminate every PF runner process GROUP the registry records, then
-    clear the registry. The predecessor's runners are its orphans: their
-    supervising threads died with the server, so nothing else will ever
-    stop them, and a resumed run would fit the same cells concurrently.
-
-    Same safety rule as the pidfile takeover above: a pid whose live
-    command line no longer names its recorded runner script is left alone,
-    because a recycled pid must never get the treatment. POSIX signals the
-    group (SIGTERM; a survivor gets SIGKILL after `wait` seconds), which
-    reaches the engine pool each runner spawned; Windows uses
-    taskkill /T /F, which walks the tree, and degrades to nothing where
-    taskkill is unavailable. Never raises; returns how many groups were
-    signalled."""
+    """Terminate every PF runner process GROUP in the registry (the
+    predecessor's orphans), then clear it. A pid whose live command line no
+    longer names its recorded runner script is left alone (recycled pid).
+    POSIX: SIGTERM the group, SIGKILL survivors after `wait`; Windows:
+    taskkill /T /F. Never raises; returns how many groups were signalled."""
     import json
     import os
     import signal
@@ -1987,21 +1869,15 @@ def _terminate_predecessor(pidfile: Optional[Path] = None,
                            markers: tuple = APP_ENTRY_MARKERS,
                            wait: float = 5.0,
                            runner_pids: Optional[Path] = None) -> bool:
-    """Single-instance takeover: if the pidfile names a live process whose
-    command line contains our entry point, terminate it (SIGTERM, up to
-    `wait` seconds, then SIGKILL) so the relaunch owns the port outright.
-    The stale pidfile is removed either way, and the recorded PF runner
-    groups are swept AFTER the server is signalled -- the server dies
-    first so it cannot dispatch replacements for the fits being reclaimed.
-    The sweep runs even when no pidfile exists: a clean server exit
-    removes app.pid, but a window close kills the supervising daemon
-    threads without their finally blocks, so orphaned runners outlive the
-    pidfile. Never raises; returns True when a predecessor was actually
-    signalled.
+    """Single-instance takeover: if the pidfile names a live process with our
+    entry point, SIGTERM it (SIGKILL after `wait`) so the relaunch owns the
+    port. The stale pidfile is removed either way. PF runner groups are
+    swept AFTER the server dies (so it cannot dispatch replacements), and
+    even with no pidfile (a window close skips the finally blocks). Never
+    raises; True when a predecessor was signalled.
 
-    An explicit `pidfile` with no `runner_pids` sweeps nothing: the
-    default registry names live processes, and a caller (or test) probing
-    a private pidfile must not reclaim the real console's fits."""
+    An explicit `pidfile` with no `runner_pids` sweeps nothing, so a test
+    probing a private pidfile never reclaims the real console's fits."""
     import os
     import signal
     import time
@@ -2025,10 +1901,8 @@ def _terminate_predecessor(pidfile: Optional[Path] = None,
                                and _pid_cmdline(pid)):
                             time.sleep(0.1)
                         if _pid_alive(pid) and _pid_cmdline(pid):
-                            # SIGKILL does not exist on Windows; there the
-                            # SIGTERM above was already TerminateProcess
-                            # (hard), so re-sending it is the same
-                            # escalation
+                            # no SIGKILL on Windows, where SIGTERM is
+                            # already TerminateProcess
                             os.kill(pid, getattr(signal, "SIGKILL",
                                                  signal.SIGTERM))
                     except (ProcessLookupError, PermissionError):
@@ -2045,10 +1919,9 @@ def _terminate_predecessor(pidfile: Optional[Path] = None,
 
 
 def _write_pidfile(pidfile: Optional[Path] = None):
-    """Record this process for the next launch's takeover check, and remove
-    the record at clean exit (atexit). Returns the cleanup function so the
-    logic is unit-testable; the cleanup only removes a pidfile this process
-    still owns. Never raises."""
+    """Record this process for the next launch's takeover; atexit removes
+    the pidfile if this process still owns it. Returns that cleanup (for
+    tests). Never raises."""
     import atexit
     import os
     pidfile = pidfile if pidfile is not None else APP_PID_FILE
@@ -2074,41 +1947,20 @@ _MAX_PORT = 65535
 
 
 def _port_candidates(preferred: int, tries: int) -> range:
-    """The ports a fallback search may probe, CLAMPED at 65535.
-
-    Clamping rather than catching: a TCP port above 65535 does not exist,
-    so a probe up there is not a busy port to skip past, it is a nonsense
-    request. socket.bind refuses it with OverflowError ("port must be
-    0-65535"), which is a ValueError and NOT an OSError, so it sails
-    straight through the `except OSError` that both searches use to mean
-    "try the next port". A caller who seeds `preferred` from an OS
-    ephemeral port (macOS hands those out in 49152-65535, and the launch
-    tests do exactly that) then gets a crash instead of a fallback
-    whenever the kernel picks something above 65525. Ending the walk at
-    the real ceiling keeps the search honest: it probes every port that
-    can exist, and if they are all busy the caller's all-busy branch runs
-    and uvicorn reports the conflict loudly, which is the documented
-    behaviour for that case anyway.
-
-    An out-of-range `preferred` yields an EMPTY range for the same reason:
-    there is nothing legal to probe, so the search declines rather than
-    inventing a port, and the all-busy branch hands the bad value to
-    uvicorn to complain about. Note that a negative `preferred` is not
-    slid up to 0, because 0 means "any ephemeral port" to the kernel and
-    silently serving on a random port would hide the caller's mistake."""
+    """Ports preferred..preferred+tries-1, CLAMPED at 65535; empty if
+    `preferred` is out of range. bind() raises OverflowError (not OSError)
+    above 65535, which would escape the callers' `except OSError` fallback
+    (macOS ephemeral ports, as the tests use, reach 65535). A negative
+    preferred is not slid to 0: 0 means a random ephemeral port."""
     if not 0 <= preferred <= _MAX_PORT:
         return range(0)
     return range(preferred, min(preferred + max(1, tries), _MAX_PORT + 1))
 
 
 def _set_port_reuse(s) -> None:
-    """The socket option that makes a probe or a bind mean 'a TIME_WAIT
-    ghost passes, a live listener fails'. That is SO_REUSEADDR on POSIX,
-    exactly as uvicorn binds. On Windows SO_REUSEADDR means something
-    else: it lets a second socket take a port another process is
-    LISTENING on, so a probe said free for a port that was not, and the
-    window path could bind on top of a live server. SO_EXCLUSIVEADDRUSE is
-    the Windows spelling of the intent."""
+    """Make a probe/bind mean 'a TIME_WAIT ghost passes, a live listener
+    fails': SO_REUSEADDR on POSIX (as uvicorn binds); SO_EXCLUSIVEADDRUSE on
+    Windows, where SO_REUSEADDR lets a socket steal a LISTENING port."""
     import socket
     import sys
     if sys.platform == "win32" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
@@ -2118,12 +1970,9 @@ def _set_port_reuse(s) -> None:
 
 
 def _pick_port(preferred: int = 8710, tries: int = 10) -> int:
-    """The first bindable port in preferred..preferred+tries-1. Probing
-    binds with the reuse option _set_port_reuse chooses, exactly as
-    uvicorn will: a TIME_WAIT ghost passes, a live listener fails. When
-    every probe fails the preferred port is returned so uvicorn reports
-    the real conflict loudly. The search is clamped at 65535, see
-    _port_candidates for why."""
+    """The first bindable port in _port_candidates, probed as uvicorn will
+    bind (_set_port_reuse). If all are busy, `preferred`, so uvicorn
+    reports the real conflict."""
     import socket
     for port in _port_candidates(preferred, tries):
         try:
@@ -2137,22 +1986,11 @@ def _pick_port(preferred: int = 8710, tries: int = 10) -> int:
 
 
 def _bind_app_socket(preferred: int = 8710, tries: int = 10):
-    """(listening socket, port) for the window path: the first bindable
-    port in preferred..preferred+tries-1, bound and LISTENING before the
-    window ever opens, then handed to uvicorn (Server.run(sockets=...)).
-
-    Holding the socket -- instead of probing, closing, and letting uvicorn
-    rebind -- closes both launch races at the root: the port cannot be
-    lost between probe and bind (the zombie-of-the-first-attempt case),
-    and WKWebView's first connection can never be REFUSED, because the OS
-    queues it in this socket's backlog until the server thread finishes
-    importing and starts accepting. The connection-refused cache was the
-    original dead-first-window failure; with the backlog it is structurally
-    impossible while this process lives.
-
-    (None, preferred) when every port is busy, so uvicorn binds for itself
-    and reports the real conflict loudly. The search is clamped at 65535,
-    see _port_candidates for why that matters here."""
+    """(listening socket, port) for the window path, bound and LISTENING
+    before the window opens, then handed to uvicorn (sockets=...). Holding
+    it removes the probe-then-bind race, and WKWebView's first request waits
+    in the backlog instead of being refused (the dead-first-window bug).
+    (None, preferred) when all are busy so uvicorn reports the conflict."""
     import socket
     for port in _port_candidates(preferred, tries):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -2160,8 +1998,7 @@ def _bind_app_socket(preferred: int = 8710, tries: int = 10):
             _set_port_reuse(s)
             s.bind(("127.0.0.1", port))
             s.listen(128)
-            # the KERNEL's port, so a preferred of 0 (tests) reports the
-            # ephemeral port actually bound rather than the request
+            # the kernel's port: preferred=0 (tests) reports what was bound
             return s, s.getsockname()[1]
         except OSError:
             s.close()
@@ -2170,10 +2007,8 @@ def _bind_app_socket(preferred: int = 8710, tries: int = 10):
 
 
 def _server_answering(url: str, timeout: float = 1.0) -> bool:
-    """True when the console server behind `url` answers HTTP at all (any
-    status: an error page is still an answering server). The watchdog's
-    reload decision hangs on this: reloading helps only when the server is
-    up but the window shows a dead page."""
+    """True when the server behind `url` answers HTTP with any status. The
+    watchdog reloads only then (server up, window showing a dead page)."""
     import urllib.error
     import urllib.request
     try:
@@ -2186,33 +2021,21 @@ def _server_answering(url: str, timeout: float = 1.0) -> bool:
         return False
 
 
-#: When to ask macOS to bring the console window forward, in seconds after
-#: the window is shown. The first request usually lands. The later ones
-#: exist because macOS 14 and later decide activation cooperatively: a
-#: request from a process that Terminal launched can be declined while
-#: Terminal is the active app, and the window then ignores clicks until the
-#: user switches away and back (measured on the lead's MacBook Air,
-#: 2026-09-23: about a minute of dead clicks through FluBNF.command while
-#: the server had answered in under half a second). Retrying stops as soon
-#: as the app is active with a key window.
+#: Seconds after show to ask macOS to activate the window. macOS 14+ may
+#: decline a Terminal-launched process (clicks then ignored until the user
+#: switches apps), so retry until active with a key window.
 ACTIVATE_DELAYS = (0.0, 0.3, 1.0, 2.0, 4.0, 8.0)
 
-#: After the requests, how long to keep watching (seconds, and how often)
-#: so the startup trace records when the app did become active, if macOS
-#: declined every request. Watching only: nothing is requested.
+#: Then watch (total, step) seconds, trace-only, for when activation lands.
 ACTIVATE_WATCH = (120.0, 2.0)
 
 
 def _activate_once(appkit) -> tuple:
-    """One request, run on the Cocoa main thread, to make this process the
-    active app with its window key and in front. Returns (active, key).
-
-    Every call is tried on its own: the macOS 14 cooperative request
-    (NSApplication.activate), the older activateIgnoringOtherApps_, which
-    macOS 14 deprecated and often ignores when another app is active, the
-    running-application form, and ordering the visible windows front and
-    key, which the window library does only once, before its run loop
-    starts."""
+    """One activation attempt on the Cocoa main thread. Returns (active,
+    key). Each call is tried on its own: activate (macOS 14),
+    activateIgnoringOtherApps_ (deprecated, often ignored), the
+    running-application form, and ordering visible windows front and key
+    (pywebview does that only once, before its run loop)."""
     app = appkit.NSApplication.sharedApplication()
     try:
         app.setActivationPolicy_(appkit.NSApplicationActivationPolicyRegular)
@@ -2232,9 +2055,8 @@ def _activate_once(appkit) -> tuple:
             appkit.NSApplicationActivateAllWindows)
     except Exception:
         pass
-    # macOS 14 and later: ask on behalf of the app that has focus now (the
-    # Terminal that ran the launcher), the form cooperative activation is
-    # designed around
+    # macOS 14+: ask on behalf of the focused app (the launching Terminal),
+    # the form cooperative activation is designed around
     try:
         me = appkit.NSRunningApplication.currentApplication()
         front = appkit.NSWorkspace.sharedWorkspace().frontmostApplication()
@@ -2257,12 +2079,9 @@ def _activate_once(appkit) -> tuple:
 def _bring_window_forward(appkit, call_after, delays=ACTIVATE_DELAYS,
                           watch=ACTIVATE_WATCH, sleep=None,
                           clock=None) -> bool:
-    """Ask macOS, at each of `delays`, to activate this app, until it is
-    active with a key window; each request runs on the Cocoa main thread
-    through `call_after`. Every outcome goes to the startup trace, so a
-    trace from a machine where the window ignored clicks says whether
-    macOS declined the requests and when the app did become active.
-    Returns whether a request succeeded."""
+    """Ask macOS at each of `delays` (on the main thread via `call_after`)
+    to activate this app until it is active with a key window. Every
+    outcome goes to the startup trace. Returns whether a request succeeded."""
     import platform
     import threading as _th
     import time as _t
@@ -2312,29 +2131,16 @@ def _bring_window_forward(appkit, call_after, delays=ACTIVATE_DELAYS,
 def _window_watchdog(window, url: str, wait: float = 4.0, retries: int = 3,
                      fail_page: str = _SERVER_FAIL_PAGE,
                      probe=None) -> str:
-    """Run on a small thread after webview.start's callback fires: wait for
-    the window's loaded event; when the page never arrived, decide WHY
-    before touching anything. A reload helps in exactly one case: the
-    server answers HTTP but the window shows a dead page (WKWebView cached
-    a refused connection from a dying predecessor). When the server is not
-    answering at all, load_url would only cache ANOTHER refused page and
-    cancel whatever navigation is in flight -- the reload storm that turned
-    a slow cold start into a dead first window (diagnosed 2026-08-22) --
-    so the watchdog then just keeps waiting out its budget. Only when every
-    window of the budget passes without a load is the inline failure page
-    shown; nothing is surfaced before that.
+    """Wait for the window's `loaded` event (run on a thread from the start
+    callback). If it never fires: reload only when the server answers HTTP
+    (WKWebView cached a refused page); otherwise keep waiting, because
+    load_url would cache another refused page and cancel the in-flight
+    navigation (the reload storm). Show `fail_page` only after the whole
+    budget. `probe` (injectable) defaults to a 1 s /api/versions request.
 
-    `probe` answers "is the server answering HTTP?" and defaults to a real
-    1-second request against the light /api/versions endpoint (injectable
-    for tests).
-
-    Verified against the installed pywebview 6.2.1 source: events.loaded is
-    a webview.event.Event whose += appends a handler invoked from set(), and
-    set() fires only after a successful navigation (cocoa
-    webView_didFinishNavigation_ -> inject_pywebview -> events.loaded.set),
-    so a refused connection leaves it unset; load_url is @_shown_call, clears
-    events.loaded first, and dispatches to the Cocoa main run loop via
-    AppHelper.callAfter, so calling it from this thread is safe.
+    Relies on pywebview 6.2.1: events.loaded fires only after a successful
+    navigation; load_url clears it and dispatches to the Cocoa main loop, so
+    calling it from this thread is safe.
 
     Returns 'loaded', 'recovered', or 'failed' (for tests)."""
     import threading
@@ -2381,20 +2187,12 @@ def _window_watchdog(window, url: str, wait: float = 4.0, retries: int = 3,
 
 
 def _windows_mshtml_only() -> bool:
-    """True when this is Windows and pywebview's only rendering engine
-    would be MSHTML (Internet Explorer 11), because the WebView2 runtime
-    is not installed.
-
-    MEASURED 2026-09-01, Windows Sandbox: the MSHTML window rendered the
-    home page but not the console's JavaScript, so the forecast form's
-    location picker was silently dead: a click on one state did not
-    untick "all 52 jurisdictions" and the submit launched a full-grid,
-    3-replicate run the user never asked for. A window that half-renders
-    is worse than no window. The probe is Microsoft's documented WebView2
-    runtime detection: the EdgeUpdate client key's pv value, checked
-    per-machine (both hives) and per-user. Anything unreadable counts as
-    missing; on that path the console opens in the default browser, which
-    is fully capable, instead.
+    """True on Windows without the WebView2 runtime, where pywebview falls
+    back to MSHTML (IE11): it renders pages but not the console JS, so forms
+    silently misfire (a location pick ignored, a full-grid run launched).
+    Probes Microsoft's documented EdgeUpdate client key `pv` (HKLM both
+    views, HKCU); unreadable counts as missing, and the caller then opens
+    the default browser instead.
     """
     import sys
     if sys.platform != "win32":
@@ -2423,6 +2221,9 @@ def _windows_mshtml_only() -> bool:
     return True
 
 
+# ---------------------------------------------------------------------------
+# Console, replay, verification and bank commands
+# ---------------------------------------------------------------------------
 @app.command("app")
 def app_serve(port: int = 8710):
     """Launch the operations console. Prefers a native desktop window
@@ -2445,8 +2246,7 @@ def app_serve(port: int = 8710):
 
     import uvicorn
 
-    # take over from a dying predecessor, then bind a port that is really
-    # free (the same guards the native window path applies)
+    # the same takeover and free-port guards as the window path
     _terminate_predecessor()
     _write_pidfile()
     port = _pick_port(port)
@@ -2467,11 +2267,8 @@ def app_serve(port: int = 8710):
             webbrowser.open(url)
 
     threading.Thread(target=_open, daemon=True).start()
-    # No ANSI colors and no per-request access log: the browser path is
-    # what a student watches (MEASURED 2026-09-01, Windows Sandbox: cmd
-    # rendered uvicorn's color escapes as a wall of <-[32m garbage, and the
-    # progress poll printed a line per second). The native-window path has
-    # run at warning level all along; the two paths now match.
+    # warning level, no colors: cmd shows ANSI escapes as garbage and the
+    # progress poll would log a line a second; matches the window path
     uvicorn.run("app.ui.server:app", port=port, host="127.0.0.1",
                 log_level="warning", use_colors=False)
 
@@ -2488,13 +2285,8 @@ def app_window(port: int = 8710):
     except ImportError:
         print("pywebview not installed: .venv/bin/pip install pywebview")
         raise SystemExit(1)
-    # pywebview refuses downloads unless this is set (verified against the
-    # installed pywebview 6.2.1: webview.settings['ALLOW_DOWNLOADS'] defaults
-    # to False in webview/__init__.py; platforms/cocoa.py honors it both for
-    # anchors carrying the download attribute, which become a WKDownload with
-    # a save panel, and for attachment responses WKWebView cannot display).
-    # Without it the "Download season report" link is a dead end in the
-    # native window.
+    # pywebview refuses downloads unless ALLOW_DOWNLOADS is set (6.2.1
+    # default False); without it "Download season report" is a dead end.
     if _windows_mshtml_only():
         print("WebView2 runtime not found: this window would render on "
               "MSHTML (IE11), which cannot run the console's pages. "
@@ -2504,10 +2296,8 @@ def app_window(port: int = 8710):
         return app_serve(port=port)
     webview.settings['ALLOW_DOWNLOADS'] = True
     _trace("window: webview imported, settings applied")
-    # single instance: a dying predecessor could otherwise keep the port,
-    # leaving this window bound to nothing (the random dead window on
-    # reopen). Take its place explicitly, then BIND AND HOLD a port that
-    # is really free.
+    # single instance: take over from a predecessor, then bind AND HOLD a
+    # free port (otherwise the window can end up bound to nothing)
     signalled = _terminate_predecessor()
     _trace(f"window: predecessor takeover done (signalled={signalled})")
     _write_pidfile()
@@ -2522,25 +2312,17 @@ def app_window(port: int = 8710):
         uvicorn.Server(config).run(sockets=[sock] if sock else None)
 
     threading.Thread(target=_serve, daemon=True).start()
-    # The window opens IMMEDIATELY: the socket above is already listening,
-    # so WKWebView's first request queues in its backlog until the server
-    # thread finishes importing and starts accepting -- it can never be
-    # refused (the refused-page cache was the original dead-first-window
-    # bug), and the old wait-for-the-server loop that held the window
-    # closed for the whole server import is gone.
+    # Open the window now: the held socket queues WKWebView's first request
+    # until the server finishes importing, so it is never refused.
     _trace("window: creating window (server import in flight)")
     window = webview.create_window("FluBNF", url,
                                    width=1120, height=800,
                                    min_size=(760, 520))
     def _activate():
-        # Launched from a .command script the process is not a bundled app,
-        # so macOS may leave the window deactivated (clicks ignored until
-        # the user switches away and back). The start callback runs on a
-        # SECONDARY thread; Cocoa activation must happen on the main run
-        # loop or it works only intermittently -- hence callAfter.
-        # Load watchdog: if the page never arrives (server import crashed,
-        # or activation raced the first navigation), recover it rather
-        # than sit dead -- see _window_watchdog for the reload rule.
+        # Runs on a secondary thread: Cocoa calls go through callAfter to
+        # the main loop. A non-bundled process may start deactivated, hence
+        # _bring_window_forward; the watchdog recovers a page that never
+        # loaded.
         _trace("window: start callback fired (window shown)")
         threading.Thread(target=_window_watchdog, args=(window, url),
                          daemon=True).start()
@@ -2550,10 +2332,8 @@ def app_window(port: int = 8710):
             from AppKit import NSApplication, NSImage
             from PyObjCTools import AppHelper
 
-            # Runtime dock icon: launched through a plain interpreter the
-            # process inherits the generic Python icon, so hand Cocoa the
-            # brand icon explicitly. NSImage cannot load the SVG mark;
-            # a 512px PNG from the brand kit lives next to it.
+            # Dock icon: a plain interpreter shows the Python icon; NSImage
+            # cannot load the SVG, so use the 512px PNG.
             icon_png = (Path(__file__).resolve().parents[1]
                         / "app" / "ui" / "static" / "brand"
                         / "pybnf_icon_512.png")
@@ -2569,7 +2349,6 @@ def app_window(port: int = 8710):
                 except Exception:
                     pass
             AppHelper.callAfter(_icon)
-            # activation, retried until macOS grants it (_bring_window_forward)
             _bring_window_forward(AppKit, AppHelper.callAfter)
         except Exception:
             pass
@@ -2578,28 +2357,37 @@ def app_window(port: int = 8710):
 
 
 @app.command("retro")
-def retro_cmd(season: str, locations: str = "all", width: int = 0,
-              replicates: int = 3, root: str = "", aux: str = "",
-              oracle: str = ""):
+def retro_cmd(
+    season: Annotated[str, typer.Argument(
+        help="Season to replay, e.g. 2024-25.")],
+    locations: Annotated[str, typer.Option(
+        help="Comma-separated location names, or 'all' (52 jurisdictions).")] = "all",
+    width: int = 0,
+    replicates: Annotated[int, typer.Option(
+        help="Particle-filter replicates (seeds) per location-week.")] = 3,
+    root: Annotated[str, typer.Option(
+        help="Season root to write (default app/state/retro/<season>).")] = "",
+    aux: Annotated[str, typer.Option(
+        help="Analogue donor preset; empty = the shipped Groundhog, "
+             "'none' = the bare analogue (research).")] = "",
+    oracle: Annotated[str, typer.Option(
+        help="Empty = the Oracle SIHRS; 'none' = the plain filter "
+             "(research).")] = "",
+):
     """Run a season-as-competition retrospective (resumable).
 
-    width 0 means auto: sized to this machine's cores by the engine's
-    default_shard_width(), the same default the console form offers.
+    --width (shard width) 0 means auto: the engine's default_shard_width()
+    for this machine, the same default the console form offers.
 
-    aux names the analogue member's donor configuration
-    (app.core.engines.analogue.AUX_PRESETS, e.g. 'flusurv'). Empty, the
-    default, runs the shipped Groundhog (analogue.SHIPPED_AUX); 'none'
-    runs the bare calendar analogue that shipped inside the blend until
-    2026-09-22, a research configuration now. The configuration's name is
-    written into run_meta.json with its bank digests, so a replay says on
-    its face which donors it ran.
+    aux names the analogue donor preset (analogue.AUX_PRESETS, e.g.
+    'flusurv'). Empty runs the shipped Groundhog (analogue.SHIPPED_AUX);
+    'none' the bare calendar analogue (research). The name and its bank
+    digests go into run_meta.json.
 
-    oracle is the mechanistic member's switch, the same shape. Empty, the
-    default, stores the Oracle SIHRS under pf (the step of app/core/
-    oracle.py on the filter's collected samples; the filter's own
-    quantiles are in the week's oracle.json, its samples are not stored);
-    'none' stores the plain filter, a research configuration whose week
-    says so in oracle.json."""
+    oracle: empty stores the Oracle SIHRS under pf (app/core/oracle.py
+    applied to the filter's samples; the filter's quantiles are kept in
+    oracle.json); 'none' stores the plain filter (research), which the
+    week's oracle.json records."""
     import pandas as pd
     from pathlib import Path as _P
     from app.core import retro
@@ -2611,11 +2399,8 @@ def retro_cmd(season: str, locations: str = "all", width: int = 0,
                   [locs.abbreviation != "US"])
              if locations == "all" else
              [x.strip() for x in locations.split(",")])
-    # ABSOLUTE, always: the runner subprocesses resolve the paths the conf
-    # and the shard files carry against their own working directory, so a
-    # relative --root made every fit fail before it started (the reseal of
-    # 2026-09-07: 'Configuration file app/state/.../pf.conf not found' for
-    # all 156 cells of every week, and the season 'completed' empty).
+    # ABSOLUTE: runner subprocesses resolve conf/shard paths against their
+    # own cwd, so a relative --root fails every fit.
     r = (_P(root) if root else _P("app/state/retro") / season).resolve()
     from app.core.engines import analogue as _an
     if aux == "none":
@@ -2648,19 +2433,8 @@ def retro_cmd(season: str, locations: str = "all", width: int = 0,
 
 
 # ---------------------------------------------------------------------------
-# site — build the public static site from the lab's own state
-#
-# A sub-app rather than a flat command, because the site has a lifecycle
-# (build now; check, and later publish/preview) and "flubnf site build"
-# keeps that room without crowding the top-level command list.
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-# groundhog -- the calendar member on its own
-#
-# A sub-app because the member has its own lifecycle apart from the product:
-# replay it, compare it, and in time file it. `flubnf retro` replays the
-# whole product and needs the particle filter and its toolchain; this needs
-# neither, and a season takes about two minutes.
+# groundhog: the calendar member alone. No particle filter or toolchain,
+# about two minutes a season.
 # ---------------------------------------------------------------------------
 groundhog_app = typer.Typer(
     add_completion=False, no_args_is_help=True,
@@ -2774,12 +2548,8 @@ def groundhog_retro_cmd(
 
 
 # ---------------------------------------------------------------------------
-# bank -- the committed auxiliary donor banks
-#
-# A sub-app because a bank has a lifecycle: build it once with network
-# access, commit it, and from then on every run reads it from the
-# repository. `verify` is what keeps that honest, by rebuilding from source
-# and saying what moved.
+# bank: build once with network, commit, then `verify` rebuilds from source
+# and reports drift.
 # ---------------------------------------------------------------------------
 bank_app = typer.Typer(
     add_completion=False, no_args_is_help=True,
@@ -2900,16 +2670,9 @@ def bank_show_cmd(
 
 
 # ---------------------------------------------------------------------------
-# oracle -- the Oracle SIHRS member on a stored season, without a refit
-#
-# A sub-app for the same reason the Groundhog has one: the member has a
-# lifecycle apart from the product. `flubnf retro` fits and stores a season
-# with the step applied; these two commands take a season that is already
-# stored, compute the member from its samples into a NEW root, and score
-# that root with the app's own scorer beside the registered screen's tables
-# (docs/ORACLE-SIHRS.md). Neither needs the engine. They verify that the
-# app's code reproduces the registered screens; a season is run and viewed
-# by a console replay, never by backfilling.
+# oracle: verification only. Backfill a stored season's Oracle SIHRS into a
+# NEW root from its samples (no refit, no engine) and score it beside the
+# registered screen (docs/ORACLE-SIHRS.md). Seasons are run by a replay.
 # ---------------------------------------------------------------------------
 oracle_app = typer.Typer(
     add_completion=False, no_args_is_help=True,
@@ -3000,6 +2763,9 @@ def oracle_reproduce_cmd(
                          if res['screen'].get('b2_frozen_sha256') else ""))
 
 
+# ---------------------------------------------------------------------------
+# site: build the public static site from the lab's own state.
+# ---------------------------------------------------------------------------
 site_app = typer.Typer(
     add_completion=False, no_args_is_help=True,
     help="Build the public static site from the lab's retrospectives.")
@@ -3062,3 +2828,7 @@ def site_build_cmd(
     else:
         console.print("[green]  scores match the console's published "
                       "figures[/green]")
+
+
+if __name__ == "__main__":
+    app()

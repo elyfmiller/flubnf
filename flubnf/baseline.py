@@ -1,19 +1,11 @@
-"""The validated FluSight-baseline construction.
+"""SHIPPED (used by the FluBNF console, app/).
 
-Every relWIS in this repository is a ratio whose denominator comes from
-here, so this is load-bearing code, not analysis. It scores the hub's OWN
-archived `FluSight-baseline` submissions with this package's WIS, rather
-than rebuilding the baseline from truth: a hand-rolled reconstruction
-scored about 40 percent easier than the real thing and was retired the day
-it was calibrated (2026-08-17).
+The validated FluSight-baseline construction: every relWIS denominator.
 
-The function lived in `scripts/anchor_analysis.py`, the analysis that
-validated it, and `app.core.scoring` reached it by loading that 217-line
-script from a path at every call. That worked only from a source clone: a
-pip install packages `flubnf*` and `app*` and no `scripts/`, so scoring
-raised FileNotFoundError on any installed copy. Library code now lives in
-the library; the analysis script imports it back, so the validated formula
-still has exactly one definition.
+Scores the hub's OWN archived `FluSight-baseline` submissions with this
+package's WIS (a reconstruction from truth scored ~40 percent easier and was
+retired). Library code so installed copies work; scripts/anchor_analysis.py
+imports it back, keeping one definition.
 """
 from __future__ import annotations
 

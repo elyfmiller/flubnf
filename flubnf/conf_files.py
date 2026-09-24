@@ -1,6 +1,8 @@
-"""Read, write, and edit per-state PyBNF .conf files.
+"""LEGACY (DE/AMCMC workspace loop; also loaded, unused, via quantiles -> fitting).
 
-Replaces the relevant pieces of `NAU_Influenza/scripts/110624_everything.py`:
+Read, write, and edit per-state PyBNF .conf files.
+
+Replaces pieces of the lab's legacy `110624_everything.py` (not in this repo):
 
   - `check_and_create_files`        -> `materialize_conf_from_template`
   - `update_conf_file_keys`         -> `update_keys`
@@ -10,11 +12,8 @@ Replaces the relevant pieces of `NAU_Influenza/scripts/110624_everything.py`:
 These operate on a single conf path at a time. The CLI iterates over states.
 """
 
-# Every write in this module is a PyBNF or BNG2.pl input, parsed line-wise.
-# newline="\n" is pinned on each: a bare write_text takes newline=None, which
-# on Windows turns every \n into \r\n on the way to disk and hands the engine
-# CRLF input. The same defect was measured doing exactly that in
-# app/core/engines/pf.py (Windows CI, test_natgrowth byte-identity failure).
+# Every write here is PyBNF/BNG2.pl input: newline="\n" is pinned, since a
+# bare write_text on Windows would hand the engine CRLF.
 
 
 from __future__ import annotations

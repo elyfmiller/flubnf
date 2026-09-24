@@ -1,4 +1,6 @@
-"""Per-workspace state ledger.
+"""LEGACY (DE/AMCMC workspace loop; reached only from the legacy CLI commands).
+
+Per-workspace state ledger.
 
 Tracks what the pipeline has done for this workspace, so the UI and CLI can
 show status and so stages can detect "nothing to do". Plain JSON; no

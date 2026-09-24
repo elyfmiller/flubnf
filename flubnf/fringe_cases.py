@@ -1,8 +1,9 @@
-"""Fringe-case ledger — codified failure modes and their automated handling.
+"""LEGACY (DE/AMCMC workspace loop; reached only from the legacy CLI commands).
 
-The long-game vision (per MIGRATION.md): accumulate a system that handles
-every flu-season fringe case better than any human reviewer would. Each
-case is encoded here as a `FringeCase` with:
+Fringe-case ledger — codified failure modes and their automated handling.
+
+Each failure mode a season surfaces is encoded as a `FringeCase`, so it
+keeps being handled:
 
   - `detect(observed, session, results_dir)` — returns True iff the
     case's trigger condition matches the current state.
@@ -11,20 +12,13 @@ case is encoded here as a `FringeCase` with:
     for. The orchestrator (weekly_job) uses these as advisories or
     automatically applies them.
 
-Adding a new fringe case is just a class. Tests in
-`tests/test_fringe_cases.py` enforce each one continues to fire on its
-fixture.
-
-This is the spine of the project's accumulating-coverage strategy:
-each new season surfaces new failure modes; encode them here so they
-keep being handled next year.
+tests/test_fringe_cases.py checks each still fires on its fixture.
 """
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Callable, Optional
 
 import numpy as np

@@ -1,4 +1,6 @@
-"""Per-state, per-horizon error decomposition.
+"""RESEARCH (only tests import this; not on the shipped console path).
+
+Per-state, per-horizon error decomposition.
 
 WIS lumps three orthogonal failure modes into one scalar:
   * Sharpness — how wide our prediction intervals are. (Smaller is better
@@ -40,14 +42,10 @@ _KEY_COVERAGE_LEVELS: tuple[float, ...] = (0.50, 0.80, 0.95)
 class RowMetrics:
     """One (reference_date, location, horizon) row's decomposition.
 
-    THESE FIELDS DO NOT SUM TO WIS. They are diagnostics on their own scales:
-    `sharpness`, `overpred` and `underpred` come from `wis()`, which returns
-    them divided by K (a mean across the 11 central intervals), while WIS
-    itself weights each interval by alpha/2 and divides by K + 0.5. Adding
-    them to `abs_err` produces a number that is not a WIS and whose component
-    ratios do not match the true decomposition. A published table built that
-    way was retracted on 2026-08-24; see `flubnf.analogue`. For an additive
-    decomposition, weight each interval by alpha/2 and divide by K + 0.5.
+    THESE FIELDS DO NOT SUM TO WIS: `sharpness`, `overpred`, `underpred`
+    come from `wis()` divided by K, while WIS weights each interval by
+    alpha/2 and divides by K + 0.5. For an additive decomposition use those
+    weights (a table built by summing was retracted; see `flubnf.analogue`).
     """
     sharpness: float       # mean interval width across all 11 central PIs
     overpred: float        # weighted overprediction penalty

@@ -1,11 +1,11 @@
-"""Configuration schema for FluBNF.
+"""LEGACY (DE/AMCMC workspace loop; also loaded, unused, via quantiles -> fitting).
 
-All paths and tunables live here. No hardcoded `/Users/...` paths anywhere
-else in the codebase — that was the bug we are fixing relative to the legacy
-scripts.
+Configuration schema for FluBNF (the legacy workspace CLI).
+
+All paths and tunables live here; no hardcoded machine paths elsewhere.
 
 Config resolution order (later wins):
-1. `config/default.yaml` shipped with the package
+1. `config/default.yaml` at the repo root, if present (none ships)
 2. `~/.config/flubnf/config.yaml` (optional user override)
 3. `--config <path>` on the CLI
 4. Environment variables prefixed `FLUBNF_` (e.g. `FLUBNF_WORKSPACE_ROOT`)
@@ -52,7 +52,7 @@ class SeasonConfig(BaseModel):
 
 class PyBNFConfig(BaseModel):
     """Per-run PyBNF settings. Mirrors the keys in the legacy `config_updates`
-    dict from `NAU_Influenza/scripts/110624_everything.py` so we can drop in."""
+    dict from the lab's legacy `110624_everything.py` (not in this repo)."""
 
     # resolved via flubnf.settings (FLUBNF_BNG env var overrides)
     bng_command: str = ""
@@ -75,14 +75,10 @@ class ModelConfig(BaseModel):
     """Which compartmental model + time-varying beta form to fit.
 
     `sir_piecewise` (default) is the legacy SIR with a piecewise-constant
-    nested-if beta and S0 normalized to 1. `sirs_logistic` is the migration
-    target: SIRS (waning R->S at a fixed rate) with a smooth sum-of-logistics
-    beta whose transition centers/width are FIXED (only signed amplitudes
-    `db_k` are fitted), and S0 = the state's absolute population so `mult`
-    becomes an interpretable ascertainment x IHR fraction.
-
-    See docs/SIRS_MIGRATION_PLAN.md. The default keeps every existing run
-    byte-identical; `sirs_logistic` is opt-in via this flag.
+    nested-if beta and S0 normalized to 1. `sirs_logistic` (opt-in): SIRS
+    with fixed-rate waning and a smooth sum-of-logistics beta whose centers
+    and width are FIXED (only signed amplitudes `db_k` are fitted), and S0 =
+    the state's population, so `mult` is an ascertainment x IHR fraction.
     """
 
     model_type: str = "sir_piecewise"
@@ -95,13 +91,9 @@ class ModelConfig(BaseModel):
     # number actually used per state is the transition count (n_steps).
     transition_centers: list[float] = [8.0, 18.0, 28.0]
     transition_width: float = 2.5
-    # How the transition centers are chosen:
-    #   "fixed"       — tier-constant `transition_centers` (original behavior).
-    #   "data_driven" — place each center at an observed inflection of the
-    #                   series up to the forecast week (flubnf.centers), to
-    #                   stop the smooth beta lagging the surge. Centers are
-    #                   still FIXED at fit time (param count unchanged); only
-    #                   their *values* become per-state, per-week.
+    # "fixed": tier-constant `transition_centers`. "data_driven": centers
+    # at observed inflections up to the forecast week (flubnf.centers), so
+    # beta does not lag the surge; still FIXED at fit time.
     center_mode: str = "fixed"
 
     @field_validator("model_type")
@@ -176,16 +168,10 @@ class FluBNFConfig(BaseModel):
                     loaded = yaml.safe_load(f) or {}
                 _deep_update(data, loaded)
 
-        # FLUBNF_* environment variables: only flat top-level keys, which
-        # is what this loop has always claimed. A SECTION field is skipped
-        # rather than handed a raw string. FLUBNF_PYBNF, FLUBNF_SEASON,
-        # FLUBNF_CDC and FLUBNF_MODEL each collide with a section of the
-        # same name, and the first of those is one of the four paths
-        # flubnf/settings.py documents and that .flubnf.env and
-        # setup_engine.sh both export, so exporting it made every command
-        # that loads this config die with a pydantic ValidationError:
-        # doctor, compare, score-team and clean-cache. Found on a lab
-        # machine 2026-09-08, by following our own instructions.
+        # FLUBNF_* env vars override flat keys only; section fields are
+        # skipped because FLUBNF_PYBNF (a settings.py path, exported by
+        # setup_engine.sh) would collide with the `pybnf` section and fail
+        # validation.
         for key, field in cls.model_fields.items():
             annotation = field.annotation
             if isinstance(annotation, type) and issubclass(annotation, BaseModel):

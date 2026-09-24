@@ -1,46 +1,28 @@
-"""Exogenous national-growth term for the per-state particle filter (BUILD 1).
+"""SHIPPED (loaded by the PF engine for its 'natg' research variant).
 
-WHAT THIS IS
-------------
-Leave-one-out national log-growth of admissions at week *t* predicts a state's
-own growth at *t+1* after controlling for the state's AR(1) **and** the Fourier
-seasonal the PF already carries (`eps1`/`phi1`). Partial correlation +0.469;
-LOSO turn-week RMSE reductions +8.9% / +2.4% / +14.7% across the three seasons.
-Nothing in the production system sees "the Midwest peaked last week": the PF is
-a per-state filter and the analogue pools *prior* seasons, calendar-matched.
+Exogenous national-growth term for the per-state particle filter (BUILD 1).
 
-See `research/spatial-nowcast-probe/FINDINGS.md` section 1 and the handoff
-`research/2026-08-21-HANDOFF.md` section 3.
+Leave-one-out national log-growth at week *t* predicts a state's own growth
+at *t+1* beyond its AR(1) and the PF's Fourier seasonal (partial correlation
++0.469). Nothing else in the product sees "the Midwest peaked last week":
+the PF is per-state and the analogue pools prior seasons.
 
-THE FORM, AND WHY IT IS ON GROWTH
----------------------------------
+THE FORM: specified on growth, never level (a level importation term only
+restates prevalence the filter already has):
+
     beta_s(t)  *=  exp( iota * ( g_nat^{-s}(t) - g_s^obs(t) ) )
 
-specified on **growth**, never on level. A level-form importation term
-`sum_s' w_ss' * A_s'/N_s'` restates prevalence, which the filter already has --
-the occupancy-ratio trap. The DIFFERENCE form is neutral by construction: when
-a state grows at the national rate the multiplier is exactly 1, so the term can
-only speak when this state and the country disagree.
+The difference is neutral by construction (multiplier 1 when the state
+grows at the national rate). Zero new fitted parameters: `iota` is FROZEN a
+priori; the ODEs stay uncoupled.
 
-Zero new fitted parameters. `iota` is FROZEN a priori (below). Per-state
-filters, particle count, jitter and the other five parameters are untouched;
-the ODEs are not coupled.
+VINTAGE: both series come from ONE vintage file (the caller passes
+`app.core.data.vintage_path(asof)`), incomplete last point included, the
+same point the filter's likelihood sees.
 
-VINTAGE DISCIPLINE
-------------------
-Both series are computed from ONE vintage file -- the caller passes
-`app.core.data.vintage_path(asof)`, never the latest file. Every jurisdiction's
-growth at week *w* is therefore exactly what was knowable on the as-of date,
-including the incomplete last point. That is deliberate: the production filter
-sees the same incomplete last point in its own likelihood, so the two agree.
-
-FORECAST WEEKS -- THE PRE-REGISTERED RULE
------------------------------------------
-`g_nat` at horizons 1..4 is unknown at forecast time. **The last observed
-(g_nat - g_s) gap is held constant across the 1 to 4 week horizon.** No
-extrapolation, no decay toward zero, no forecast of the national series. This
-rule is fixed before any fit and is restated in the template header and in the
-generated model file so a materialized cell states its own convention.
+FORECAST (pre-registered): **The last observed (g_nat - g_s) gap is held
+constant across the 1 to 4 week horizon.** No extrapolation or decay. The
+rule is restated in the template header and each generated model file.
 """
 from __future__ import annotations
 
@@ -51,63 +33,29 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-# =====================================================================
-# FROZEN CONSTANT -- derived once, before any PF run, never refitted.
-# =====================================================================
-#: Coupling strength on the national/own growth gap.
-#:
-#: DERIVATION (reproduce with
-#: `./.venv/bin/python research/spatial-nowcast-probe/iota_freeze.py`):
-#: OLS of next-week own log-growth on leave-one-out population-weighted
-#: national log-growth, given own lag-1 growth and a first Fourier harmonic on
-#: week-of-season -- the same design matrix `probe.py::spatial()` measured the
-#: effect with. Fitted separately on each of the two seasons the handoff names:
-#:
-#:     2023-24   n=1393   b[g_nat] = 0.7574
-#:     2024-25   n=1418   b[g_nat] = 0.4504
-#:     mean                          0.6039
-#:     x 0.5 shrink toward zero  ->  0.3020
-#:
-#: (Cross-check: pooling those two seasons into one fit gives b = 0.5528, so
-#: 0.276 -- the same number to within the season-to-season spread. 2025-26 is
-#: NOT in the average; its own coefficient, 0.8040, is recorded only so a
-#: reader can see that excluding it made the constant smaller, not larger.)
-#:
-#: HONEST NOTE ON EFFECTIVE STRENGTH. `iota` multiplies beta, not the growth
-#: rate. Near the current operating point a multiplier exp(iota*gap) changes
-#: the weekly log-growth by roughly (beta*s0)*iota*gap = gamma*Reff*iota*gap,
-#: and gamma is 2.19/week. So the implemented response is ~0.66 per unit gap,
-#: i.e. the x0.5 shrink is approximately cancelled by that amplification and
-#: the term lands near 1.0x the regression coefficient rather than 0.5x. The
-#: recipe is the handoff's, verbatim, and the number is frozen as specified;
-#: this note exists so nobody reads 0.302 as "half strength" when reporting
-#: the arm. If the arm is over-powered at the gate, that is the reason.
+#: Coupling on the national/own growth gap, FROZEN a priori, never refitted:
+#: 0.5 x the mean OLS coefficient of next-week own log-growth on LOO national
+#: log-growth (given own lag-1 growth and a first harmonic) over 2023-24
+#: (0.7574) and 2024-25 (0.4504); 2025-26 (0.8040) excluded.
+#: iota multiplies beta, so the realized log-growth response is about
+#: gamma*Reff*iota ~ 0.66 per unit gap: do not report 0.302 as "half strength".
 IOTA_FROZEN: float = 0.302
 
-#: Weekly admissions below this are not a growth signal, they are counting
-#: noise (Alaska's whole season peaks at 64). `probe.py` used the same idea
-#: with a floor of 20 on the epidemic weeks it regressed; production runs
-#: every week of every state, so the floor is lower and its only job is to
-#: keep log-ratios of 1-vs-3 admissions out of the model. A week under the
-#: floor yields NO growth value, which downstream becomes gap = 0 (neutral).
+#: Admissions below this are counting noise, not growth (keeps 1-vs-3 log
+#: ratios out). A week under it yields no growth value, i.e. gap = 0.
 MIN_LEVEL: float = 5.0
 
-#: Jurisdictions that must contribute a defined growth before a national
-#: leave-one-out value is used at all. Below this the "national wave" is a few
-#: small states and the term stays silent.
+#: Jurisdictions with a defined growth needed before a national LOO value is
+#: used; with fewer the "national wave" is a few small states.
 MIN_PEERS: int = 20
 
-#: Hard bound on |g_nat - g_s|, in log-growth units, applied BEFORE `iota`.
-#: This is a stiffness guard, not a tuning knob: beta enters the model as
-#: beta0*exp(...), the amplitude bounds on `eps1` are already documented as
-#: stiffness-critical, and one state reporting 2 admissions after 40 would
-#: otherwise hand exp() an argument no ODE solver should see. At the frozen
-#: iota a clipped gap is a beta multiplier of exp(+-0.302) = [0.74, 1.35].
-#: Weeks where it binds are counted and reported, never silently absorbed.
+#: Hard bound on |g_nat - g_s| (log-growth), applied BEFORE `iota`: an ODE
+#: stiffness guard, not a tuning knob (beta multiplier within [0.74, 1.35]
+#: at the frozen iota). Binding weeks are counted and reported.
 GAP_CLIP: float = 1.0
 
-#: Model-file tokens this module resolves. Kept here so the template and the
-#: materialize path cannot drift apart.
+#: Model-file tokens this module resolves (one definition for template and
+#: materialize path).
 TOKEN_IOTA = "{{IOTA}}"
 TOKEN_GAPEXPR = "{{GAPEXPR}}"
 TOKEN_GAPNOTE = "{{GAPNOTE}}"
@@ -151,16 +99,10 @@ class GrowthGap:
     def truncate(self, last_week: int) -> "GrowthGap":
         """Re-anchor the forecast hold at `last_week`.
 
-        `RunSpec.weeks_to_drop` and dropped NaN weeks both mean the filter's
-        real final observation can sit earlier than the last row in the
-        vintage. The hold branch must begin where the FORECAST begins, or the
-        first forecast week would silently take a gap the filter never
-        assimilated. Truncating is exact -- gap[w] depends only on weeks w-1
-        and w, so shortening the series changes no retained value.
-
-        A `last_week` beyond the series (no data to truncate) extends it by
-        repeating the final gap, which is the hold rule applied one week
-        earlier and therefore the same convention.
+        The filter's final observation can precede the vintage's last row
+        (weeks_to_drop, NaN weeks); the hold must start where the FORECAST
+        starts. Truncating is exact (gap[w] depends only on weeks w-1, w). A
+        `last_week` beyond the series repeats the final gap (the hold rule).
         """
         target = int(last_week)
         if target < 0:
@@ -196,9 +138,8 @@ def _week_offsets(dates: pd.Series, season_start: str) -> np.ndarray:
 def _log_growth(by_week: dict, min_level: float) -> dict:
     """{week: value} -> {week: log-growth vs the IMMEDIATELY preceding week}.
 
-    A week whose predecessor is absent (NHSN's 2024 reporting pause leaves real
-    holes) yields no growth value rather than a growth computed across the gap.
-    Both endpoints must clear `min_level`.
+    A week whose predecessor is absent (e.g. NHSN's 2024 pause) yields no
+    value, not a growth across the gap. Both endpoints must clear `min_level`.
     """
     out = {}
     for w, v in by_week.items():
@@ -220,11 +161,9 @@ def growth_gap_series(state: str, *, truth_csv: str | Path,
                       clip: float = GAP_CLIP) -> GrowthGap:
     """Build one state's (g_nat - g_s) gap series from a SINGLE truth vintage.
 
-    `truth_csv` must be `app.core.data.vintage_path(as_of)`. Passing the latest
-    file would make every historical week look settled, which is look-ahead.
-
-    Only weeks in [season_start, as_of] are read, for every jurisdiction, so
-    the national series is as-of-consistent with the state's own.
+    `truth_csv` must be `app.core.data.vintage_path(as_of)`; the latest file
+    would be look-ahead. Only weeks in [season_start, as_of] are read, for
+    every jurisdiction.
     """
     locs = pd.read_csv(locations_csv, dtype={"location": str})
     locs["location"] = locs["location"].str.zfill(2)
@@ -302,22 +241,12 @@ _SAFE_EXPR = re.compile(r"^[0-9eE_.+\-*/(),<t if]*$")
 def bngl_gap_expression(gg: GrowthGap, decimals: int = 6) -> str:
     """The gap as a piecewise-constant BNGL function of the model clock `t`.
 
-    Every value is known at materialize time, so this is a literal nested
-    `if()` -- BNGL's conditional, verified to survive BNG2.pl network
-    generation AND bngsim's code-generated RHS (both paths reproduce an exact
-    piecewise-exponential analytic solution).
-
-    Alignment. The filter integrates one segment per observation, [w-1, w], so
-    the value on [w-1, w) is `gap[w-1]`: the growth realised BEFORE that week
-    began. Strictly causal, no look-ahead.
-
-    Forecast. The final branch has no upper guard, so every t >= last_week
-    takes `gap[last_week]` -- the pre-registered "hold the last observed gap
-    constant across the 1 to 4 week horizon" rule, expressed as the structure
-    of the expression rather than as a separate code path.
-
-    Runs of equal values are merged, which collapses the (silent) pre-season
-    zeros and keeps the nesting depth to the number of DISTINCT weekly values.
+    A literal nested `if()` (verified through both BNG2.pl network
+    generation and bngsim's generated RHS). The value on [w-1, w) is
+    `gap[w-1]`, growth realised before that week began: strictly causal.
+    The final branch has no upper guard, so t >= last_week holds
+    `gap[last_week]` (the pre-registered hold rule). Runs of equal values are
+    merged, so nesting depth is the number of distinct values.
     """
     vals = [round(float(v), decimals) for v in gg.gap]
     if not vals:

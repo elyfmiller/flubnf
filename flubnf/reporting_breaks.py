@@ -1,35 +1,21 @@
-"""Detect and record measurement discontinuities in a truth series.
+"""RESEARCH (only tests import this; not on the shipped console path).
 
-WHAT A REPORTING BREAK IS, AND WHY IT IS NOT AN OUTLIER
--------------------------------------------------------
-An outlier is one bad number surrounded by good ones. A reporting break is a
-LEVEL SHIFT: every value after it is on a different scale from every value
-before it. The two need different treatment. An outlier can be dropped; a level
-shift cannot, because the post-shift values are perfectly good measurements of a
-newly-defined quantity. What must be dropped is the CROSSING: a forecast
-anchored on the old scale and scored on the new one is measuring the instrument,
-not the forecast.
+Detect and record measurement discontinuities in a truth series.
 
-THE SCAN
---------
-`level_break_scan` takes log week-over-week ratios and subtracts, from each, the
-median of the eight surrounding ratios. Epidemic growth is smooth on that scale,
-so the residual is small everywhere except at a step. It is reported in robust
-standard deviations (median absolute deviation x 1.4826), which no single
-excursion can inflate.
+A reporting break is a LEVEL SHIFT, not an outlier: post-shift values are
+good measurements of a newly defined quantity, so what must be dropped is
+the CROSSING (a forecast anchored on the old scale and scored on the new
+one measures the instrument, not the forecast).
 
-THE ATTRIBUTION TEST
---------------------
-A large residual says "something happened", not "the instrument moved". What
-separates the two is that NHSN measures three pathogens on one form. A step
-shared by COVID, influenza and RSV in the same week, with the hospital-reporting
-count flat, cannot be epidemiology: three independent viruses do not turn
-together. `cross_pathogen_step` runs that test.
+`level_break_scan`: log week-over-week ratios minus the median of the eight
+surrounding ratios, in robust SDs (MAD x 1.4826); small everywhere but at a
+step.
 
-THE ONE BREAK FOUND
--------------------
-See `COVID_BREAKS`. The memo flagged 2026-03-21 -> 2026-03-28 as "a 43% one-week
-fall resembling a reporting change ... until explained". It is now explained.
+`cross_pathogen_step`: NHSN measures three pathogens on one form, so a step
+shared by COVID, influenza and RSV in one week, with the reporting-hospital
+count flat, is the instrument, not epidemiology.
+
+The one break found is in `COVID_BREAKS` (2026-03-21 -> 2026-03-28).
 """
 from __future__ import annotations
 
@@ -134,8 +120,8 @@ class RecordedBreak:
 
 
 #: Measured 2026-08-22 on the CovidHub parquet (as_of 2026-08-19) and on Socrata
-#: mpgq-jmmr for the reporting counts. Reproduced by
-#: research/covid-phase0/quantify_march_break.py.
+#: mpgq-jmmr for the reporting counts (reproduction script in the lab
+#: archive, not this repo).
 COVID_BREAKS: tuple = (
     RecordedBreak(
         series="wk inc covid hosp, US national",

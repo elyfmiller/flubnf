@@ -1,14 +1,11 @@
-"""Environment + workspace diagnostics.
+"""LEGACY-leaning (`flubnf doctor`): checks mostly target the DE/AMCMC workspace.
 
-`flubnf doctor` runs a battery of cheap, non-destructive checks and prints
-a pass/warn/fail report. The goal is to catch the half-dozen common
-failure modes (stale venv, missing BNG2.pl, broken NumPy 2.0 / pybnf
-combination, CDC schema drift, missing templates, unwritable workspace)
-*before* the user kicks off a weekly job that would otherwise blow up
-midway.
+Environment + workspace diagnostics.
 
-This is run-everywhere, never-destructive code. Network calls are off by
-default and gated behind `--online`.
+`flubnf doctor` runs cheap, never-destructive checks (venv, BNG2.pl,
+NumPy 2.0 / pybnf patch, CDC schema drift, templates, workspace) and prints
+a pass/warn/fail report before a long run can blow up midway. Network
+checks only with `--online`.
 """
 
 from __future__ import annotations
@@ -21,7 +18,7 @@ import sys
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Optional
 
 
 class Status(Enum):
@@ -101,17 +98,14 @@ _REQUIRED_PACKAGES: tuple[tuple[str, str], ...] = (
     ("pymmwr", "pymmwr"),
 )
 
-# pybnf/bngsim live in the ENGINE venv, never this one (two-venv architecture:
-# the analysis and engine environments must not import each other's world).
-# The doctor probes them where they actually live.
+# pybnf/bngsim live in the ENGINE venv (two-venv architecture), so they are
+# probed there.
 
 
 def _check_engine_venv() -> "CheckResult":
-    """Whether the engine venv can import the packages a fit needs. It runs
-    the engine's own Python WITHOUT the fork on sys.path, so it answers
-    "is this venv usable", not "does it have the particle filter": a venv
-    holding only the stock PyBNF from PyPI passes here and cannot filter.
-    _check_pf_engine below is the other half."""
+    """Whether the engine venv can import what a fit needs (run WITHOUT the
+    fork on sys.path, so stock PyBNF passes; _check_pf_engine is the other
+    half)."""
     import subprocess
     from flubnf.settings import PY_ENGINE
     if not PY_ENGINE.exists():
@@ -130,11 +124,7 @@ def _check_engine_venv() -> "CheckResult":
 def _check_pf_engine() -> "CheckResult":
     """The PyBNF fork, tested by the file that carries fit_type = pf.
 
-    Importing pybnf is not the question: the stock PyBNF from PyPI imports
-    fine and has no particle filter, which is how the install on a PI's
-    laptop looked healthy on 2026-09-08 and then failed every cell of a
-    forecast. The file that carries fit_type = pf is the question, so the
-    fork gets its own row beside the venv's.
+    Not by importing pybnf: stock PyBNF imports fine and cannot filter.
     """
     from app.core.engines import pf as _pf
     from flubnf.settings import PYBNF
@@ -493,9 +483,8 @@ def _check_studio_fringe_detectors() -> CheckResult:
             f"could not import fringe_cases: {e}",
         )
 
-    # Each fixture: (case_name, observed array, session-or-None).
-    # The fixtures are tuned to the current detector heuristics; if a
-    # detector's thresholds change, the fixture should be updated alongside.
+    # (case_name, observed, session-or-None), tuned to the current detector
+    # thresholds: update them together.
     fixtures: list[tuple[str, np.ndarray, Optional[StateSession]]] = [
         # Outlier week: prior window has IQR > 0 (slight variation), last
         # value is far outside it.
@@ -655,15 +644,10 @@ def run_doctor(
 ) -> DoctorReport:
     """Run all checks and return a DoctorReport.
 
-    The reverse of "fail early": we keep going through every check even if
-    one fails so the user sees every problem in one pass instead of
-    fix-rerun-fix-rerun.
-
-    `pre_studio=True` adds extra checks meaningful before a long Mac Studio
-    production run — historical-priors schema, locations.csv schema, every
-    state template materialized, fringe detectors firing on fixtures, the
-    FluSight target archive populated, the schema validator callable, and
-    BNG2.pl marked executable.
+    Every check runs even after a failure, so all problems show in one pass.
+    `pre_studio=True` adds checks for a long production run: priors and
+    locations schemas, templates materialized, fringe detectors on
+    fixtures, target archive, validator callable, BNG2.pl executable.
     """
     rep = DoctorReport()
     rep.add(_check_python())

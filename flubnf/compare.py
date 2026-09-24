@@ -1,10 +1,11 @@
-"""Compare our walk-forward backtest WIS scores to the team's actual
+"""LEGACY (DE/AMCMC workspace loop; reached only from the legacy CLI commands).
+
+Compare our walk-forward backtest WIS scores to the team's actual
 LosAlamos_NAU-CModel_Flu submissions on the FluSight hub.
 
-Aligning the two conventions takes BOTH a horizon map and a one-week date shift.
-Getting either wrong silently compares forecasts of different target weeks, or
-hands one side extra data. This was wrong for a while (see the regression test in
-`tests/test_compare.py::TestJoinAlignment`), so the derivation is spelled out.
+Alignment needs BOTH a horizon map and a one-week date shift; either wrong
+silently compares different target weeks or hands one side extra data
+(tests/test_compare.py::TestJoinAlignment).
 
 * The team submits at `reference_date` R with CDC data settled only through
   about R-7. Their horizon h=0 targets the week ending R, h=1 targets R+7, ...
@@ -31,12 +32,10 @@ season year) is computed via pymmwr.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional
 
-import numpy as np
 import pandas as pd
 import pymmwr as pm
 
@@ -100,10 +99,8 @@ def align_backtest_with_team(
         return pd.DataFrame()
     team["location"] = team["location"].astype(str).str.zfill(2)
 
-    # Tag each backtest row with the TEAM SUBMISSION reference_date it should be
-    # compared against. This is week W's ending date PLUS ONE WEEK -- see
-    # `TEAM_REFERENCE_DATE_SHIFT_DAYS` for the derivation. Getting this wrong by
-    # one week silently compares forecasts of two different target weeks.
+    # the team reference_date to compare against: week W's end + 7 days
+    # (TEAM_REFERENCE_DATE_SHIFT_DAYS)
     backtest["reference_date"] = backtest["week"].apply(
         lambda w: (season_week_to_date(
             config.season.year, config.season.onset_week, w,

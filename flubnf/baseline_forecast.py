@@ -1,31 +1,23 @@
-"""Simple baseline forecasters as a WIS floor and signal-add sanity check.
+"""LEGACY (DE/AMCMC workspace loop; reached only from the legacy CLI commands).
 
-Two reference models — neither uses BNGL or PyBNF posteriors:
+Simple baseline forecasters as a WIS floor and signal-add sanity check.
 
-  * **Persistence (geometric random walk)** — sample h log-ratios from the
-    last few observed weeks, cumulative-sum, exponentiate. Matches the
-    spirit of the official `FluSight-baseline` reference model.
+Two reference models, neither using BNGL or PyBNF posteriors:
+
+  * **Persistence** — symmetrised ADDITIVE random walk on week-over-week
+    differences, as the official `FluSight-baseline` does.
   * **Rolling mean** — point at the mean of last N observed weeks; Gaussian
     spread from the same window, scaled by √h.
 
-Why they exist:
-
-  1. **Diagnostic floor.** When backtesting, scoring our AMCMC forecast
-     vs. these per state tells us whether the heavy machinery is actually
-     adding signal — if model WIS > baseline WIS, something's wrong.
-  2. **Safety net.** When the model degrades catastrophically (WIS ≥ k×
-     baseline for ≥N consecutive weeks), blend the next forecast toward
-     the baseline. `recommend_baseline_blend()` returns a weight in
-     [0, max_blend]; `blend_quantile_forecasts()` does the actual mixing.
-
-This module produces `QuantileForecast` objects with the same shape as
-`flubnf.quantiles.quantile_forecast`, so downstream submission CSV writers
-and WIS scoring work without changes.
+Uses: a diagnostic floor (model WIS > baseline WIS means something is
+wrong), and a safety net: after sustained losses to the baseline,
+`recommend_baseline_blend()` suggests a weight and
+`blend_quantile_forecasts()` mixes. Outputs are `QuantileForecast` objects
+shaped like `flubnf.quantiles.quantile_forecast`.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Sequence
 
@@ -48,32 +40,13 @@ def persistence_quantile_forecast(
     """Symmetrised ADDITIVE random-walk persistence baseline.
 
     Matches the FluSight-baseline's construction: sample h week-over-week
-    DIFFERENCES (not log-ratios), symmetrised so the walk has zero drift, add
-    them to the last observation, and truncate at zero.
+    DIFFERENCES (not log-ratios), symmetrised (both +d and -d, so no drift),
+    add them to the last observation, and truncate at zero. Not a log-ratio
+    walk: that extrapolated growth exponentially (relWIS 2.555 vs 1.133 on
+    2025-26), and this is the fallback for degenerate fits (backtest.py).
 
-    WHY IT IS NOT GEOMETRIC ANY MORE (fixed 2026-08-10)
-    ---------------------------------------------------
-    This function previously compounded sampled LOG-ratios. That made variance
-    grow multiplicatively with horizon and turned a few weeks of growth into
-    exponential extrapolation. Measured against the hub's own FluSight-baseline
-    on 2385 cells of the 2025-26 season:
-
-        geometric log-ratio walk (old)   relWIS 2.555
-        symmetrised additive walk (new)  relWIS 1.133
-        the hub's FluSight-baseline      relWIS 1.000 by definition
-
-    A naive reference that scores 2.5x worse than the naive reference it
-    imitates is a bug, and it mattered: this is the documented fallback used
-    when a fit produces a degenerate predictive distribution (see
-    flubnf/backtest.py), so every fallback was actively harmful.
-
-    Symmetrising (using both +d and -d) is what removes drift. Without it the
-    walk inherits whatever direction the recent window happened to move, which
-    is precisely the thing a naive baseline must not assume.
-
-    `lookback` bounds the difference window; `epsilon` is retained for API
-    compatibility and is no longer needed for finiteness, since differences are
-    defined at zero counts.
+    `lookback` bounds the difference window; `epsilon` is kept only for API
+    compatibility.
     """
     obs = np.asarray(observed, dtype=float)
     obs = obs[np.isfinite(obs)]
@@ -141,9 +114,7 @@ def rolling_mean_quantile_forecast(
         std = float(np.std(win, ddof=1))
     else:
         std = max(0.1 * abs(mean), 1.0)
-    # Never let σ collapse to 0 — a degenerate forecast can't get any
-    # signal from observation noise and tanks WIS the moment the actual
-    # moves at all.
+    # never let σ collapse to 0: a point mass tanks WIS on any movement
     std = max(std, 0.05 * max(mean, 1.0))
 
     rng = np.random.default_rng(seed)
@@ -179,8 +150,7 @@ def blend_quantile_forecasts(
     weight=0 → primary unchanged; weight=1 → secondary only. Quantile
     levels and horizons must match.
 
-    Quantiles stay monotone after blending because two monotone arrays
-    blended convexly remain monotone.
+    A convex blend of monotone arrays stays monotone.
     """
     if not (0.0 <= weight <= 1.0):
         raise ValueError(f"weight must be in [0, 1], got {weight}")
@@ -241,26 +211,6 @@ def recommend_baseline_blend(
 # ---------------------------------------------------------------------------
 # Scoring submissions against the baselines
 # ---------------------------------------------------------------------------
-@dataclass(frozen=True)
-class BaselineComparisonRow:
-    state: str
-    horizon: int
-    n_cells: int
-    model_wis: float
-    persistence_wis: float
-    rolling_wis: float
-
-    @property
-    def model_vs_persistence(self) -> float:
-        """Positive = model better than persistence (lower WIS)."""
-        return self.persistence_wis - self.model_wis
-
-    @property
-    def model_vs_rolling(self) -> float:
-        """Positive = model better than rolling-mean."""
-        return self.rolling_wis - self.model_wis
-
-
 def score_submissions_vs_baselines(
     submissions_dir: Path,
     target_csv: Path,
@@ -278,9 +228,8 @@ def score_submissions_vs_baselines(
       - rolling-mean baseline WIS (same observed cutoff).
 
     Returns a long-form DataFrame, one row per (state, horizon) aggregated
-    across reference_dates. This is the per-state diagnostic: if
-    `model_wis > persistence_wis`, the heavy machinery is *worse than
-    persistence* — strong signal something's broken for that state.
+    across reference_dates; `model_wis > persistence_wis` flags a state
+    whose model is worse than persistence.
     """
     from .wis import wis as wis_fn
     if not target_csv.exists():

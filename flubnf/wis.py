@@ -1,4 +1,6 @@
-"""Weighted Interval Score (WIS).
+"""SHIPPED (used by the FluBNF console, app/).
+
+Weighted Interval Score (WIS).
 
 WIS is the standard FluSight evaluation metric. It approximates the
 continuous ranked probability score (CRPS) for a quantile forecast.
@@ -29,9 +31,8 @@ no interval uncertainty.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Mapping, Sequence
+from typing import Mapping, Sequence
 
-import numpy as np
 
 
 # Default FluSight prediction-interval levels (alpha_k = 2 * q_k).
@@ -108,14 +109,6 @@ def wis(
         underprediction=sum_under / K,
         n_intervals=K,
     )
-
-
-def wis_many(
-    forecasts: Iterable[Mapping[float, float]],
-    actuals: Iterable[float],
-    **kwargs,
-) -> list[WISResult]:
-    return [wis(f, a, **kwargs) for f, a in zip(forecasts, actuals)]
 
 
 def _lookup(quantiles: Mapping[float, float], q: float) -> float:

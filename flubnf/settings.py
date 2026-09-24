@@ -1,4 +1,6 @@
-"""Machine-specific paths, resolved once, overridable by environment.
+"""SHIPPED (used by the FluBNF console, app/).
+
+Machine-specific paths, resolved once, overridable by environment.
 
 Everything external that flubnf needs to run lives here so a new machine
 configures the system by exporting a handful of variables (or editing a
@@ -9,9 +11,8 @@ configures the system by exporting a handful of variables (or editing a
     FLUBNF_PY_ENGINE  python of the engine venv (pybnf + bngsim installed)
     FLUBNF_PYBNF      checkout of the PyBNF fork providing fit_type=pf
 
-Defaults fall back to conventional locations under ~/Documents/GitHub so a
-machine laid out like the development host needs no configuration at all.
-On Windows the checkout defaults move out of Documents; see _checkout below.
+Defaults are conventional locations (~/Documents/GitHub on POSIX; see
+_checkout for Windows), so a conventionally laid-out machine needs none.
 """
 from __future__ import annotations
 
@@ -22,39 +23,19 @@ from pathlib import Path
 
 
 def _windows() -> bool:
-    """Is this a Windows machine?
-
-    A named function so a test can exercise the Windows branch of _checkout
-    from a Mac. Faking `os.name` instead would work and would also turn
-    every pathlib.Path created afterwards into a WindowsPath, which is not
-    something a test may do to the rest of the process.
-    """
+    """Is this Windows? A seam for tests: faking os.name would turn every
+    later pathlib.Path into a WindowsPath."""
     return sys.platform.startswith("win")
 
 
 def _home() -> Path:
-    """The profile directory the checkout defaults hang off.
+    """Profile root for checkout defaults (%USERPROFILE% / $HOME), the root
+    FluBNF.bat and setup.ps1 ($ProfileRoot) default to. setup.ps1 also
+    searches both $HOME and %USERPROFILE%; a checkout under the other one is
+    reached here only through the variable setup.ps1 records.
 
-    `Path("~").expanduser()` is %USERPROFILE% on Windows (then
-    %HOMEDRIVE%%HOMEPATH%) and $HOME on POSIX. That is the root FluBNF.bat
-    reads and the one setup.ps1 calls $ProfileRoot, so the three DEFAULT to
-    the same place. They do not agree on everything: setup.ps1 also LOOKS
-    under $HOME and %USERPROFILE% both (Get-ProfileRoots), because a
-    managed machine can have an AD home directory on a mapped drive and an
-    earlier release could have built a checkout there. This function is one
-    root, not that set, so a checkout under the other spelling is found by
-    setup.ps1 and reached here only through the variable setup.ps1 records.
-    That predates the seam and is unchanged by it.
-
-    It is a named function for the same reason as _windows(): it is the
-    seam a test points at a scratch profile. Setting $HOME cannot do that
-    job on Windows, because ntpath.expanduser -- which is what
-    pathlib.Path.expanduser calls there -- reads %USERPROFILE% and never
-    looks at $HOME. tests/test_windows_controlled_folder_access.py faked
-    $HOME and so, on the Windows runner only, tested the resolution against
-    the runner's REAL profile: run 33200477476 failed with
-    WindowsPath('C:/Users/runneradmin/Documents/GitHub/FluSight-...') where
-    a tmp_path was expected. Nothing about the resolution itself changed.
+    A seam for tests: ntpath.expanduser ignores $HOME, so faking $HOME does
+    not redirect this on Windows.
     """
     return Path("~").expanduser()
 
@@ -71,27 +52,14 @@ def _path(env: str, *fallbacks: str) -> Path:
 
 
 def _checkout(env: str, name: str) -> Path:
-    """Where a git checkout lives when the environment says nothing.
+    """Where a git checkout lives when `env` is unset.
 
-    POSIX is unchanged: ~/Documents/GitHub/<name>, the layout of the
-    development host and of every macOS and Linux setup script.
-
-    Windows moves the default to %LOCALAPPDATA%\\FluBNF\\<name>, because
-    Controlled Folder Access -- Microsoft Defender's ransomware protection
-    -- protects Documents and lets only trusted programs write there.
-    git.exe and python.exe are not trusted out of the box, so a checkout
-    under Documents is one git.exe cannot clone or pull into and one
-    python.exe cannot write __pycache__ inside. Both were recorded on the
-    corresponding author's machine on 2026-08-25, Defender event 1123.
-
-    Microsoft ships the protection OFF; that machine had it on, whether by
-    the user, the image, or IT policy. The default is chosen so the answer
-    does not matter: %LOCALAPPDATA% is the documented per-user application
-    data location, is never in the protected set, and does not roam.
-
-    An existing checkout at the old Documents path still wins, so a machine
-    configured before this change keeps working untouched. Nothing here ever
-    moves a directory; see docs/WINDOWS.md.
+    POSIX: ~/Documents/GitHub/<name>. Windows: %LOCALAPPDATA%\\FluBNF\\<name>,
+    because Controlled Folder Access (Defender), where enabled, blocks
+    git.exe and python.exe from writing under Documents. Microsoft ships it
+    off; %LOCALAPPDATA% works either way (never protected, does not roam).
+    An existing checkout at the old Documents path still wins; nothing here
+    moves a directory (docs/WINDOWS.md).
     """
     v = os.environ.get(env)
     if v:
@@ -109,11 +77,8 @@ ARCHIVE = HUB / "auxiliary-data/target-data-archive"
 LOCATIONS = HUB / "auxiliary-data/locations.csv"
 
 def _bng_candidates():
-    """BNG2.pl from `pip install bionetgen`, wherever this app's venv lives --
-    the resolution a fresh lab machine actually needs. Covers the POSIX venv
-    layout (lib/pythonX.Y/site-packages) and the Windows one
-    (Lib/site-packages); the platform order keeps bng-mac winning on macOS
-    (candidates are tried in order, first existing path wins)."""
+    """BNG2.pl from `pip install bionetgen` in this app's .venv, POSIX and
+    Windows layouts. First existing path wins, so bng-mac leads."""
     minor = __import__("sys").version_info[1]
     here = Path(__file__).resolve().parents[1]
     for venv in (here / ".venv",):
@@ -131,14 +96,9 @@ BNG = _path(
     shutil.which("BNG2.pl") or "BNG2.pl",
 )
 
-# The Scripts variants are the same venvs as Windows lays them out; on
-# POSIX they never exist, so the earlier fallbacks keep winning there.
-# ~/.venvs/flubnf is the development host's venv and stays first so the
-# sealed results keep reproducing against the exact interpreter that made
-# them; ~/.venvs/flubnf-engine is what setup_engine.sh creates on every
-# other machine (field report 2026-08-26: a laptop with a verified engine
-# reported "not installed" because this list knew only the dev host's
-# layout and left .flubnf.env as the single point of failure).
+# ~/.venvs/flubnf (the development host, where sealed results were made)
+# first, then setup_engine.sh's ~/.venvs/flubnf-engine; the Scripts forms
+# are the Windows layouts and never exist on POSIX.
 PY_ENGINE = _path("FLUBNF_PY_ENGINE", "~/.venvs/flubnf/bin/python",
                   "~/.venvs/flubnf-engine/bin/python",
                   "~/.venvs/flubnf/Scripts/python.exe",
@@ -146,11 +106,9 @@ PY_ENGINE = _path("FLUBNF_PY_ENGINE", "~/.venvs/flubnf/bin/python",
 
 
 def _first_checkout(env: str, *names: str) -> Path:
-    """The first of several checkout names that exists on disk, under the
-    same per-platform roots as _checkout; the first name's default when
-    none exists yet. PyBNF needs this because the fork lives as PyBNF-pf
-    on the development host but clones as PyBNF-Private (the repository's
-    actual name, and what GitHub Desktop names it) everywhere else."""
+    """The first of several checkout names that exists (roots as in
+    _checkout), else the first name's default. The PyBNF fork is PyBNF-pf
+    on the development host and PyBNF-Private (its repo name) elsewhere."""
     if os.environ.get(env):
         return _checkout(env, names[0])
     cands = [_checkout(env, n) for n in names]
@@ -164,28 +122,20 @@ PYBNF = _first_checkout("FLUBNF_PYBNF", "PyBNF-pf", "PyBNF-Private")
 
 
 def check(verbose: bool = True) -> list:
-    """Return missing externals; the app's doctor command and README both
-    point here. An empty list means this machine can run everything.
+    """Return missing externals (empty: this machine can run everything).
+    Called by the console and setup.sh.
 
-    The hub is tested by its DATA, not by the directory. `git clone --sparse`
-    checks out the repository root and nothing else, so a hub cloned by hand
-    is a directory that exists, is a valid git checkout, and contains no
-    truth vintages whatsoever. Testing `HUB.exists()` printed "all externals
-    present -- you are ready" over exactly that state (field report,
-    2026-08-25), which is worse than saying nothing. `auxiliary-data` is the
-    first sparse directory the app reads and holds both the vintage archive
-    and locations.csv, so its absence is the honest signal.
+    The hub is tested by its DATA: a hand-made `git clone --sparse` is a
+    valid checkout holding no vintages, and HUB.exists() then reported
+    "ready". `auxiliary-data` holds both the archive and locations.csv.
     """
     hub_why = "FluSight hub clone (truth vintages, locations)"
     if HUB.exists():
         hub_why = ("FluSight hub data (truth vintages, locations): the clone "
                    "is present but its sparse checkout does not include the "
                    "data directories")
-    # The fork is tested by its pf.py for the same reason the hub is tested
-    # by its data. Stock PyBNF from PyPI is installed in the engine venv and
-    # has no pf.py, so a fork DIRECTORY that does not provide one still
-    # passes an exists() test while the fit runner silently imports the
-    # stock package and every fit fails (lab report, 2026-09-08).
+    # The fork is tested by its pf.py: without it the runner silently
+    # imports the engine venv's stock PyBNF and every fit fails.
     pybnf_why = "PyBNF fork with fit_type=pf"
     if PYBNF.exists():
         pybnf_why = ("PyBNF fork with fit_type=pf: the checkout is present "
@@ -196,8 +146,7 @@ def check(verbose: bool = True) -> list:
     for name, p, why in (
         ("FLUBNF_HUB", HUB / "auxiliary-data", hub_why),
         ("FLUBNF_BNG", Path(BNG), "BioNetGen BNG2.pl (network generation)"),
-        # not an environment variable: Perl is found on PATH, and BNG2.pl
-        # cannot run without it (a Windows install needs Strawberry Perl)
+        # not a variable: BNG2.pl needs perl on PATH (Windows: Strawberry)
         ("perl", Path(shutil.which("perl") or "perl"),
          "Perl interpreter on PATH (runs BNG2.pl at run preparation)"),
         ("FLUBNF_PY_ENGINE", PY_ENGINE, "engine venv python (pybnf + bngsim)"),
@@ -211,11 +160,8 @@ def check(verbose: bool = True) -> list:
 
 
 def load_locations(dtype=str):
-    """The locations table, from the hub when present and from the packaged
-    copy otherwise. Every UI read goes through this: a page that only needs
-    names, abbreviations, and populations must not 500 on a machine whose
-    hub clone is missing or still fetching (CI and fresh laptops both hit
-    this, twice)."""
+    """The locations table from the hub, else the packaged copy, so UI pages
+    do not 500 while the hub clone is missing or still fetching."""
     import pandas as pd
     packaged = Path(__file__).resolve().parent / "data/locations.csv"
     last = None

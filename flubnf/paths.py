@@ -1,8 +1,9 @@
-"""Per-workspace path layout.
+"""LEGACY (DE/AMCMC workspace loop; also loaded, unused, via quantiles -> fitting).
 
-A "workspace" is one season's working directory. The layout mirrors the
-legacy `NAU_Influenza/current_job/` structure so existing tooling /
-downstream consumers don't have to change:
+Per-workspace path layout.
+
+A "workspace" is one season's working directory, laid out like the lab's
+legacy `current_job/` tree:
 
     workspace/
       conf_files/        # per-state .conf

@@ -1,4 +1,6 @@
-"""Backfill `data/historical_priors/<state>.json` from legacy PyBNF runs.
+"""LEGACY (DE/AMCMC workspace loop; reached only from the legacy CLI commands).
+
+Backfill `data/historical_priors/<state>.json` from legacy PyBNF runs.
 
 Legacy on-disk fits live as
 

@@ -1,6 +1,9 @@
-"""Read, write, and edit per-state .bngl files.
+"""LEGACY (DE/AMCMC workspace loop; reached only from the legacy CLI commands).
 
-Replaces the BNGL-side of `NAU_Influenza/scripts/110624_everything.py`:
+Read, write, and edit per-state .bngl files.
+
+Replaces the BNGL side of the lab's legacy `110624_everything.py` script
+(not in this repo):
 
   - `check_and_create_files`        -> `materialize_bngl_from_template`
   - `add_params_to_bngl`            -> `add_parameters`
@@ -17,11 +20,8 @@ expression for a K-step piecewise-constant beta:
             = 0     otherwise
 """
 
-# Every write in this module is a PyBNF or BNG2.pl input, parsed line-wise.
-# newline="\n" is pinned on each: a bare write_text takes newline=None, which
-# on Windows turns every \n into \r\n on the way to disk and hands the engine
-# CRLF input. The same defect was measured doing exactly that in
-# app/core/engines/pf.py (Windows CI, test_natgrowth byte-identity failure).
+# Every write here is PyBNF/BNG2.pl input: newline="\n" is pinned, since a
+# bare write_text on Windows would hand the engine CRLF.
 
 
 from __future__ import annotations
@@ -229,17 +229,11 @@ def build_logistic_beta(n_transitions: int) -> str:
         beta(t) = b0 + db1/(1+exp(-(t-tc1)/sw))
                      + db2/(1+exp(-(t-tc2)/sw)) + ...
 
-    This is the smooth replacement for `build_piecewise_beta`'s hard nested-if
-    step. `n_transitions` (>=1) is the transition count — the same integer the
-    decision layer carries as `n_steps`. Each transition contributes ONE free
-    amplitude `db_k`; the centers `tc_k` and shared width `sw` are FIXED
-    parameters (declared in the SIRS template), so each extra transition costs
-    one free parameter instead of three.
-
-    Returned as a single balanced line so `set_beta_function` (which detects
-    the beta block by paren-balance) replaces it cleanly, and so no helper
-    sub-functions or expression-valued derived parameters are needed — both of
-    which the materialization plumbing cannot emit.
+    The smooth replacement for `build_piecewise_beta`. `n_transitions` (>=1)
+    is the decision layer's `n_steps`; each transition adds ONE free
+    amplitude `db_k` (centers `tc_k` and width `sw` are FIXED template
+    parameters). One balanced line, so `set_beta_function` (paren-balance
+    detection) replaces it cleanly and no helper functions are needed.
 
     For n_transitions = 1:
         beta()=b0 + db1/(1+exp(-(t-tc1)/sw))

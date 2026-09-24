@@ -1,4 +1,6 @@
-"""Aggregate per-workspace season-progress report.
+"""RESEARCH (only tests import this; not on the shipped console path).
+
+Aggregate per-workspace season-progress report.
 
 Pulls together signals that already live on disk in a workspace:
   * per-state session.history (bounds_changed, bounds_added, K evolution)
@@ -12,13 +14,9 @@ Provides DataFrames suitable for plotting in the UI.
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Optional
 
-import numpy as np
 import pandas as pd
 
 from .calibration import CalibrationTracker

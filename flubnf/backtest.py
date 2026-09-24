@@ -1,4 +1,6 @@
-"""Walk-forward backtest of the auto-pipeline against held-out actuals.
+"""LEGACY (DE/AMCMC workspace loop; reached only from the legacy CLI commands).
+
+Walk-forward backtest of the auto-pipeline against held-out actuals.
 
 For each week W in a season:
 
@@ -12,29 +14,24 @@ For each week W in a season:
 Run with `adaptive=True` (treatment) and `adaptive=False` (control) to
 quantify whether the automation improves forecast skill.
 
-This is a *shadow* of the real PyBNF pipeline: same analyze/apply code path,
-but the fit is in-Python (much faster than out-of-process PyBNF DE) so the
-backtest can run on a laptop. The production path uses the in-process bngsim
-engine (pinned 0.15.1); this shadow harness deliberately keeps the fast
-in-Python fit and has not been migrated.
+A laptop-speed shadow of the PyBNF pipeline: the same analyze/apply code
+path with the in-Python fit (not migrated to bngsim).
 """
 
 from __future__ import annotations
 
 import logging
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Sequence
 
 import numpy as np
 import pandas as pd
 
-from . import bngl_files, conf_files
-from .analysis import BoundsRecommendation, StateAnalysis, recommend_bounds, recommend_piecewise_step
-from .auto import _count_beta_steps
+from .analysis import recommend_bounds, recommend_piecewise_step
 from .conf_files import FreeParam
 from .config import FluBNFConfig
-from .fitting import FitResult, fit, write_sorted_params
+from .fitting import FitResult, fit
 from .baseline_forecast import persistence_quantile_forecast
 from .paths import WorkspacePaths
 from .quantiles import clip_forecast, diagnose_forecast
@@ -52,10 +49,8 @@ def forecast(
 ) -> dict[int, float]:
     """Predict H_weekly at `n_observed + h - 1` for each h in horizons.
 
-    The convention follows FluSight: horizon h means "the value of the
-    weekly hospitalization observation that will be reported h weeks from
-    now". With our 0-indexed time grid, the prediction at horizon h
-    corresponds to t = n_observed + h - 1.
+    Horizon h is the observation reported h weeks from now; on the 0-indexed
+    grid that is t = n_observed + h - 1.
     """
     max_h = max(horizons)
     n_total = n_observed + max_h
@@ -201,8 +196,7 @@ def walk_forward(
     seed_obs = observed_full[: start_week + 1]
     if is_sirs:
         # Smooth-beta SIRS: a FIXED transition count per state (no reactive
-        # add/remove — the smooth beta makes that machinery unnecessary). The
-        # transition count is the decision layer's `n_steps`.
+        # add/remove); it is the decision layer's `n_steps`.
         n_trans = max(1, max_transitions_for_state(seed_obs))
         if initial_bounds is None:
             initial_bounds = adaptive_initial_bounds(
@@ -228,13 +222,10 @@ def walk_forward(
         n_steps=start_n_steps,
     )
 
-    # SIRS structural params (centers, width, N, omega) are NOT in the fitted
-    # population PyBNF returns — they live in config. The BNGL fit and the
-    # in-Python mirror MUST use the SAME centers each week. With
-    # center_mode=="data_driven" the centers are placed on the observed surge
-    # per week (flubnf.centers.place_centers); otherwise they are the
-    # tier-constant config values. Either way they are FIXED at fit time, so
-    # the free-parameter count is unchanged.
+    # SIRS structural params (centers, width, N, omega) live in config, not
+    # the fitted population; the BNGL fit and the in-Python mirror MUST use
+    # the SAME centers each week (data_driven: centers.place_centers on the
+    # observed surge; else tier constants). Fixed at fit time either way.
     use_data_centers = (
         is_sirs and config is not None
         and getattr(config.model, "center_mode", "fixed") == "data_driven"
@@ -274,10 +265,8 @@ def walk_forward(
                 update={"transition_centers": list(centers)})
         })
 
-    # In-memory decomp-act loop state. Mirrors what weekly_job does between
-    # Tuesdays, but scoped to this single state's walk-forward. Mutations
-    # to bounds + calibration_max_factor take effect on the NEXT week's fit
-    # / forecast — the same temporal flow that production sees.
+    # In-memory decomp-act state (as weekly_job keeps between weeks); bounds
+    # and calibration_max_factor changes take effect on the NEXT week.
     from .calibration import CalibrationTracker as _CalTracker, apply_calibration as _apply_cal
     from .session import StateSession as _StateSession
     from . import decomp_act as _da
@@ -287,11 +276,8 @@ def walk_forward(
 
     records: list[BacktestRecord] = []
 
-    # Resume-from-disk: skip weeks already checkpointed, but ONLY when each
-    # week's fit is independent of carried adaptive state. SIRS runs at a fixed
-    # transition count (stateless across weeks); static (non-adaptive) runs are
-    # also stateless. Piecewise-adaptive bounds/steps are path-dependent, so a
-    # completed week cannot be skipped without its fit — there we re-run.
+    # Resume: skip checkpointed weeks ONLY for stateless runs (SIRS, static).
+    # Piecewise-adaptive bounds/steps are path-dependent, so those re-run.
     stateless = is_sirs or (not adaptive)
     if skip_weeks and not stateless:
         log.warning("[%s] resume skip ignored: piecewise-adaptive is "
@@ -306,10 +292,8 @@ def walk_forward(
         bounds_changed: list[str] = []
         bounds_added: list[str] = []
 
-        # Always: rescan the mult bound against the latest peak. This is the
-        # "state-adaptive bounds" fix — the upper bound grows as the outbreak
-        # grows, so the DE never sits at the ceiling. SIRS `mult` is a fixed
-        # ascertainment fraction, NOT peak-scaled, so this is piecewise-only.
+        # Piecewise only: grow the mult bound with the peak so DE never sits
+        # at the ceiling (SIRS `mult` is a fixed ascertainment fraction).
         if adaptive and not is_sirs:
             new_bounds, did_rescan = _rescan_mult_bound(obs_w, state_adaptive.bounds)
             if did_rescan:
@@ -317,11 +301,9 @@ def walk_forward(
                 bounds_changed.append("mult__FREE")
                 log.info("  rescan: mult bound expanded (new peak observed)")
 
-        # Decomp-act: read accumulated tracker signals (bias + cov_95) and
-        # mutate bounds / tuning before the next fit. Only meaningful once a
-        # few weeks of forecasts have been scored. Disabled for SIRS in this
-        # first measurement cut: we are isolating the model-form change, and
-        # the decomp-act triggers' WIS effect is itself still unproven.
+        # Decomp-act: tracker signals (bias, cov_95) mutate bounds/tuning
+        # before the next fit. Disabled for SIRS, to isolate the model-form
+        # change (its WIS effect is unproven).
         decomp_notes_this_week: list[str] = []
         if adaptive and not is_sirs and tracker.history:
             synth_sess = _StateSession(
@@ -340,11 +322,8 @@ def walk_forward(
                 decomp_log.append((w, "; ".join(actions.notes)))
                 log.info("  [%s w=%d] decomp-act: %s",
                          state, w, "; ".join(actions.notes))
-        # Tiny-state guard: for jurisdictions whose peak admissions is small
-        # (max_K capped at 1), the model is already at the noise floor.
-        # Bounds expansion just introduces variance — skip it entirely.
-        # SIRS runs at a fixed transition count, so the piecewise step-add /
-        # bounds-recommendation brain is bypassed entirely.
+        # Tiny states (max_K capped at 1) are at the noise floor: skip bounds
+        # expansion. SIRS (fixed transition count) bypasses all of this.
         skip_bounds_recs = (max_K <= 1) or is_sirs
         if adaptive and records and not skip_bounds_recs:
             prev = records[-1]
@@ -356,7 +335,6 @@ def walk_forward(
                 recs_bounds = recommend_bounds(
                     prev_pop, state_adaptive.bounds,
                 )
-                # Apply bounds changes.
                 for r in recs_bounds:
                     if r.changed:
                         bounds_changed.append(r.param)
@@ -379,11 +357,8 @@ def walk_forward(
                             min_relative_error=step_min_relative_error,
                         )
                         if rec_step.needs_new_step and state_adaptive.n_steps < max_K:
-                            # Validation-based gate: hold out the last
-                            # `holdout_weeks` weeks, fit K and K+1 on the rest,
                             # commit the step only if K+1 forecasts the
-                            # holdout better. Directly aligned with the
-                            # metric we care about (WIS / MAE on near-future).
+                            # held-out last weeks better than K
                             ok_to_add = True
                             if require_aicc_improvement:
                                 ok_to_add = _validation_gate_for_step(
@@ -394,15 +369,12 @@ def walk_forward(
                             if ok_to_add:
                                 state_adaptive.n_steps += 1
                                 new_k = state_adaptive.n_steps - 1
-                                # Warm-start: initialize t_K near the recent
-                                # residual sign-change and b_K from the observed
-                                # acceleration, instead of broad uniform priors.
+                                # warm-start t_K/b_K from the residuals
                                 t_init, b_init = _warm_start_for_new_step(
                                     prev_obs, pred, state_adaptive,
                                 )
-                                # b_K bounds stay broad — the DE finds the
-                                # right transmission rate. Tightening these
-                                # was making the AICc gate reject every step.
+                                # b_K bounds stay broad: tightening them made
+                                # the gate reject every step
                                 new_b = FreeParam(f"b{new_k}__FREE", 0.05, 1.5)
                                 # t_K's range IS narrowed: residuals directly
                                 # tell us where the switch-time should be.
@@ -417,9 +389,7 @@ def walk_forward(
                         log.warning("step rec failed at week %d: %s", w, e)
 
         # --- 2. Fit on data up through week w (engine choice) ---
-        # Compute this week's transition centers ONCE and thread the SAME
-        # values into the BNGL fit (via the per-fit config) and the in-Python
-        # mirror (via week_fixed_sirs) — never recompute in two places.
+        # centers computed ONCE, shared by the BNGL fit and the mirror
         week_centers = _centers_for_week(obs_w)
         week_fixed_sirs = _fixed_sirs(week_centers) if is_sirs else {}
         week_fit_config = _fit_config_for(week_centers) if is_sirs else config
@@ -457,8 +427,7 @@ def walk_forward(
             bounds_added=bounds_added,
             forecast=fcst, actual=actual, scores=scores_obj,
         )
-        # Stash the FitResult on the record so the next iter's analyzer can
-        # see it. Not part of the public dataclass schema.
+        # for the next week's analyzer; not part of the dataclass schema
         record._fit_result = fit_result  # type: ignore[attr-defined]
 
         # Optionally compute quantile forecast + WIS scores per horizon.
@@ -487,25 +456,15 @@ def walk_forward(
                         seed=seed,
                         observed=obs_w, anchor=True,
                     )
-                # Apply the empirical-coverage rescale that decomp-act may
-                # have widened via calibration_max_factor. Mirrors the
-                # weekly_job production path.
+                # coverage rescale (decomp-act may widen calibration_max_factor)
                 if adaptive:
                     qf = _apply_cal(
                         qf, tracker, state=state,
                         max_factor=float(decomp_tuning.get("calibration_max_factor", 1.5)),
                     )
-                # Forecast-sanity clip: tame physically-impossible blowups from
-                # an occasional unstable fit (stiff ODE / neg-bin noise) before
-                # they dominate WIS or reach a submission. 20x the largest
-                # observed week is far above any real surge; floored for tiny
-                # early-season series.
-                # Do NOT clip a blown-up forecast to the cap: that pushes every
-                # quantile onto the same ceiling and yields a ZERO-WIDTH point
-                # mass, which WIS punishes about as hard as the blowup. Measured
-                # on the 2025-26 SIR backtest, 11 of 4784 cells saturated this
-                # way (NY 20x3870=77400, LA 20x433=8660) and carried 49.4% of
-                # ALL WIS. Detect instead, and substitute a real distribution.
+                # Detect blowups (cap = 20x the peak, floored for tiny series)
+                # and substitute persistence; never clip (see
+                # quantiles.clip_forecast).
                 peak_so_far = float(np.nanmax(obs_w)) if len(obs_w) else 0.0
                 cap = max(20.0 * peak_so_far, 1000.0)
                 last_obs = float(obs_w[-1]) if len(obs_w) else None
@@ -530,10 +489,8 @@ def walk_forward(
                     if not np.isnan(actual[h]):
                         wis_by_h[h] = wis_fn(qf_dict[h], actual[h]).wis
                 record.wis = wis_by_h  # type: ignore[attr-defined]
-                # Feed realized actuals back into the tracker so future
-                # weeks' decomp-act has signal to act on. We use horizon=1
-                # in calibration's sense (= h=0 FluSight horizon = the
-                # observation in week W+1 vs the h=1 forecast we made at W).
+                # feed actuals to the tracker for decomp-act: calibration's
+                # horizon=1 is FluSight h=0 (week W+1 vs the forecast at W)
                 actuals_for_tracker = {
                     int(h): float(actual[h])
                     for h in horizons if not np.isnan(actual[h])
@@ -706,7 +663,7 @@ def _validation_gate_for_step(
             pred = predict_weekly(res.best_params, n_train + holdout_weeks)
             return float(np.mean(np.abs(pred[n_train:] - holdout)))
         # WIS path — proper scoring.
-        from .quantiles import quantile_forecast, diagnose_forecast, clip_forecast
+        from .quantiles import quantile_forecast
         from .wis import wis as wis_fn
         qf = quantile_forecast(
             res, n_observed=n_train,
@@ -736,39 +693,6 @@ def _validation_gate_for_step(
     return score_kp1 < score_k
 
 
-def _aicc_gate_for_step(
-    observed: np.ndarray,
-    state_adaptive: "AdaptiveState",
-    *, popsize: int, max_iter: int, seed: int,
-) -> bool:
-    """Run a quick K vs K+1 comparison fit; return True iff (K+1) wins by AICc."""
-    from .analysis import compare_models_aicc
-    # Refit the current K-step model.
-    res_k = fit("aicc-k", observed, state_adaptive.bounds,
-                popsize=popsize, max_iter=max_iter, seed=seed)
-    pred_k = predict_weekly(res_k.best_params, len(observed))
-    # Synthesize bounds for the candidate K+1 model.
-    new_k = state_adaptive.n_steps  # 0-indexed for the new segment
-    bounds_kp1 = list(state_adaptive.bounds) + [
-        FreeParam(f"b{new_k}__FREE", 0.05, 1.5),
-        FreeParam(f"t{new_k}__FREE", 1, 12),
-    ]
-    res_kp1 = fit("aicc-kp1", observed, bounds_kp1,
-                  popsize=popsize, max_iter=max_iter, seed=seed)
-    pred_kp1 = predict_weekly(res_kp1.best_params, len(observed))
-    n_params_k = sum(1 for fp in state_adaptive.bounds if fp.name.endswith("__FREE"))
-    n_params_kp1 = n_params_k + 2
-    cmp = compare_models_aicc(
-        residuals_k=pred_k - observed,
-        residuals_kp1=pred_kp1 - observed,
-        n_params_k=n_params_k, n_params_kp1=n_params_kp1,
-        delta_threshold=0.5,
-    )
-    log.info("  AICc gate: K=%d (%.1f) vs K+1=%d (%.1f) -> %s",
-             n_params_k, cmp.aicc_k, n_params_kp1, cmp.aicc_kp1, cmp.favored)
-    return cmp.favored == "K+1"
-
-
 def _make_population_df(fit_result: Optional[FitResult]) -> Optional[pd.DataFrame]:
     """Convert a FitResult into the DataFrame shape `recommend_bounds` wants."""
     if fit_result is None:
@@ -783,9 +707,8 @@ def _make_population_df(fit_result: Optional[FitResult]) -> Optional[pd.DataFram
 # ===========================================================================
 def append_record_csv(path: "Path", record: BacktestRecord) -> None:
     """Append one backtest record to a checkpoint CSV, aligning to any
-    existing header. Enables resume-from-disk: a run killed mid-walk keeps
-    every completed week. Safe for one writer per file (we use one part-file
-    per state, written by that state's single worker thread)."""
+    existing header, so a killed run keeps every completed week. One writer
+    per file (one part-file per state)."""
     df1 = records_to_dataframe([record])
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists() and path.stat().st_size > 0:

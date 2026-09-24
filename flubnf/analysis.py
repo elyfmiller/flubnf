@@ -1,4 +1,6 @@
-"""Statistical decision rules for the FluBNF auto-pipeline.
+"""LEGACY (DE/AMCMC workspace loop; reached only from the legacy CLI commands).
+
+Statistical decision rules for the FluBNF auto-pipeline.
 
 Two questions get answered here, both via deterministic, auditable rules:
 
@@ -11,18 +13,14 @@ Two questions get answered here, both via deterministic, auditable rules:
 Both functions take parsed data in / return recommendations out. They never
 mutate files; the orchestrator in `auto.py` applies the recommendations.
 
-Justification for hard-coded rules over AI inference:
-  - Reproducibility: the same input must yield the same decision week-to-week
-    for a manuscript.
-  - Auditability: a reviewer can read these ~50 lines and replicate the rule.
-  - Cheap: runs in milliseconds across all 52 jurisdictions.
+Hard-coded rules, so decisions are reproducible and auditable.
 """
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Iterable, Optional, Sequence
+from typing import Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -162,10 +160,8 @@ def recommend_piecewise_step(
       |residual|/observed exceeds `min_relative_error`, the model is
       systematically biased on the recent window. Add a step.
 
-    This is intentionally conservative — we don't want to over-fit by
-    adding a new step every week. The AICc comparison in
-    `compare_models_aicc()` is the second gate before the decision is
-    actually committed.
+    Deliberately conservative; a second gate (backtest's validation gate)
+    decides whether the step is committed.
     """
     if len(predicted) != len(observed):
         raise ValueError(
@@ -331,10 +327,6 @@ class ModelComparison:
     favored: str             # "K", "K+1", or "tie"
     n_obs: int
 
-    @property
-    def improves(self) -> bool:
-        return self.favored == "K+1"
-
 
 def compare_models_aicc(
     residuals_k: np.ndarray,
@@ -403,11 +395,3 @@ class StateAnalysis:
     bounds_recs: list[BoundsRecommendation] = field(default_factory=list)
     step_rec: Optional[StepRecommendation] = None
     notes: list[str] = field(default_factory=list)
-
-    @property
-    def needs_intervention(self) -> bool:
-        if any(r.changed for r in self.bounds_recs):
-            return True
-        if self.step_rec and self.step_rec.needs_new_step:
-            return True
-        return False

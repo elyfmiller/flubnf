@@ -1,28 +1,21 @@
-"""Generate FluSight-style quantile forecasts from a DE fit.
+"""SHIPPED (used by the FluBNF console, app/).
 
-Each FluSight submission supplies 23 quantiles; the hub's horizons for this target are -1..3 and this
-project submits 0..3 (sample dicts here are keyed 1..4 and mapped to hub
-horizons by app/core/submit.py). The quantiles are computed from samples of the
-predictive distribution.
+Generate FluSight-style quantile forecasts from a DE fit.
 
-Our predictive distribution is the marginal of the joint over:
-  (parameter posterior approximation × negative-binomial observation noise)
+FluSight takes 23 quantiles; the hub's horizons are -1..3 and this project
+submits 0..3 (sample dicts here are keyed 1..4; app/core/submit.py maps them).
 
-The parameter posterior is approximated by the top-N members of the DE
-final population (a cheap MAP-bootstrap proxy for a real Bayesian posterior).
-On top of each member's deterministic trajectory we add negative-binomial
-observation noise with the member's own `r` parameter, parameterized to
-match PyBNF's `neg_bin_dynamic` objective:
+The predictive distribution: the top-N members of the DE final population
+(a cheap MAP-bootstrap proxy for a posterior), each trajectory with
+negative-binomial noise at the member's own `r`, as PyBNF's
+`neg_bin_dynamic` objective:
 
     mean μ = H_weekly(t)
     p     = r / (r + μ)
     sample ~ NegBinomial(n=r, p=p)
 
-This module produces both:
-  - `sample_trajectories(...)` -> raw matrix of samples (n_samples × n_weeks)
-  - `quantile_forecast(...)` -> per-horizon quantile dict matching FluSight
-
-It does NOT depend on PyBNF — the FitResult is engine-agnostic.
+`sample_trajectories(...)` gives the raw (n_samples × n_weeks) matrix and
+`quantile_forecast(...)` the per-horizon quantile dict. No PyBNF dependency.
 """
 
 from __future__ import annotations
@@ -124,20 +117,13 @@ class QuantileForecast:
 def clip_forecast(qf: "QuantileForecast", cap: float) -> "QuantileForecast":
     """Clip every quantile + the point forecast to [0, cap].
 
-    A forecast-sanity guard: an occasional numerically-unstable fit (stiff ODE
-    integration or neg-bin noise blowup) can emit physically-impossible
-    trajectories (e.g. 10^10 admissions in a 39M-person state). Left unchecked,
-    one such week dominates WIS and — worse — could reach a real submission.
-    `cap` should be a generous physical ceiling (e.g. 20x the largest observed
-    week) so legitimate surges pass untouched while absurd values are tamed.
+    A sanity guard for numerically unstable fits (e.g. 10^10 admissions);
+    `cap` should be a generous ceiling (e.g. 20x the largest observed week).
 
-    DANGER — prefer `diagnose_forecast()` + a real fallback. Clipping a blown-up
-    forecast pushes EVERY quantile onto the same ceiling, turning it into a
-    zero-width point mass. WIS punishes that about as hard as the blowup it was
-    meant to tame. Measured on the 2025-26 SIR backtest: 11 of 4784 cells
-    saturated this way (New York 20x3870 = 77400, Louisiana 20x433 = 8660) and
-    carried 49.4% of ALL WIS — mean 51,474 vs 133 for a normal cell. Guarding
-    them moved relWIS 2.291 -> 1.166. Recorded in the lab archive's July 2026 retrospective, not in this repository.
+    DANGER — prefer `diagnose_forecast()` + a persistence fallback. Clipping
+    a blowup puts every quantile on the cap, a zero-width point mass that WIS
+    punishes about as hard as the blowup (11 of 4784 backtest cells carried
+    49.4% of all WIS this way).
     """
     return QuantileForecast(
         horizons=qf.horizons,
@@ -164,20 +150,16 @@ def diagnose_forecast(qf: "QuantileForecast", *, cap: Optional[float] = None,
                       min_rel_width: float = 1e-9) -> ForecastDiagnosis:
     """Structural validity check on a quantile forecast, before it is emitted.
 
-    These are failures no epidemiological argument can excuse — a distribution
-    whose 2.5th and 97.5th percentiles coincide is not a forecast, whatever
-    produced it. Checked per horizon:
+    Checked per horizon:
 
-      * ZERO WIDTH — q_hi == q_lo. The signature of `clip_forecast` saturating,
-        and the single most expensive defect measured in this pipeline.
+      * ZERO WIDTH — q_hi == q_lo, the signature of `clip_forecast`
+        saturating (the most expensive defect measured here).
       * NON-MONOTONE quantiles — a sorting/indexing fault upstream.
       * NEGATIVE or non-finite values.
-      * ABSURD LEVEL — median more than `max_step`x the last observation. This
-        is the blowup that `clip_forecast` was built to catch; catching it HERE
-        lets the caller substitute a real distribution instead of a point mass.
+      * ABSURD LEVEL — median more than `max_step`x the last observation,
+        so the caller can substitute a real distribution.
 
-    Returns a verdict rather than mutating, so the caller decides the remedy
-    (persistence fallback is the sane one — see
+    Returns a verdict, not a mutation; the remedy is the caller's (use
     `flubnf.baseline_forecast.persistence_quantile_forecast`).
     """
     reasons: list[str] = []
@@ -240,9 +222,8 @@ def quantile_forecast(
     n_observed + h - 1 (1-indexed), matching `flubnf.backtest.forecast`.
 
     `anchor` + `observed`: when True, shift each sample trajectory so its
-    value at the last observed week matches the actual observation. This
-    is the same "posterior-predictive anchoring" used by the AMCMC path
-    and dramatically improves h=0 calibration.
+    value at the last observed week matches the observation (as the AMCMC
+    path does); greatly improves h=0 calibration.
 
     `model_type` / `fixed_params`: for `sirs_logistic`, route the DE-bootstrap
     trajectories through the SIRS mirror and merge the fixed structural params

@@ -1,9 +1,10 @@
-"""US state / territory metadata.
+"""LEGACY (DE/AMCMC workspace loop; the CLI's JURISDICTIONS and legacy modules).
+
+US state / territory metadata.
 
 Single source of truth for the state list, abbreviations, FIPS codes, and
-populations. Populations come from `NAU_Influenza/locations.csv` (the
-FluSight-style locations table used by the existing scripts) and are loaded
-lazily so this module stays import-cheap.
+populations. Populations are loaded lazily from a FluSight-style
+locations.csv, so this module stays import-cheap.
 """
 
 from __future__ import annotations
@@ -27,8 +28,8 @@ class StateInfo:
         return self.name.replace("_", " ")
 
 
-# The canonical set of jurisdictions FluSight expects (50 states + DC + PR + US).
-# Underscore-joined to match the existing BNGL/conf filename convention.
+# The 52 FluSight jurisdictions (50 states + DC + PR; no US), underscore-joined
+# as in the BNGL/conf filenames.
 JURISDICTIONS: tuple[str, ...] = (
     "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado",
     "Connecticut", "Delaware", "District_of_Columbia", "Florida", "Georgia",

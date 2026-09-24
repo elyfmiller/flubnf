@@ -1,4 +1,6 @@
-"""Parse FluSight forecast-hub submissions and compute WIS against ground truth.
+"""LEGACY (DE/AMCMC workspace loop; reached only from the legacy CLI commands).
+
+Parse FluSight forecast-hub submissions and compute WIS against ground truth.
 
 The FluSight hub publishes each team's per-week submission as a CSV with
 columns: reference_date, target, horizon, target_end_date, location,
@@ -21,10 +23,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Optional
 
-import numpy as np
 import pandas as pd
 
-from .wis import FLUSIGHT_PI_QUANTILES, wis
+from .wis import wis
 
 log = logging.getLogger(__name__)
 

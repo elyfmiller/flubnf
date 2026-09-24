@@ -1,4 +1,6 @@
-"""Launch and supervise PyBNF runs.
+"""LEGACY (DE/AMCMC workspace loop; reached only from the legacy CLI commands).
+
+Launch and supervise PyBNF runs.
 
 This module is a thin process wrapper around the PyBNF CLI:
 
@@ -13,8 +15,6 @@ There are two execution modes:
     but predictable; the right choice when each PyBNF run already uses many
     cores via `parallel_count` in the conf.
   - `local_parallel`:    fan out N states at a time as separate subprocesses.
-    Useful with the upcoming in-process BNGsim engine where individual runs
-    are short.
 
 Both modes write a per-state log to `<workspace>/run_logs/<state>.log`.
 
@@ -25,7 +25,6 @@ The actual PyBNF binary path is read from `FluBNFConfig.pybnf_command`
 from __future__ import annotations
 
 import logging
-import os
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed

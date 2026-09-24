@@ -1,4 +1,6 @@
-"""Cartesian <-> polar conversion for the seasonal beta coefficients.
+"""RESEARCH (only tests import this; not on the shipped console path).
+
+Cartesian <-> polar conversion for the seasonal beta coefficients.
 
 The model fits (a, b); humans and the literature speak in (amplitude, phase).
 These are the same harmonic in different coordinates:
@@ -84,10 +86,8 @@ def circular_rhat(chains, period: float = ANNUAL_PERIOD) -> float:
     """Gelman-Rubin for a circular parameter, via the resultant vector.
 
     Linear R-hat on a phase is inflated: chains at 1 and 51 are nearly the
-    SAME phase but score as maximally disagreeing. Measured on a real fit,
-    linear R-hat read 127.2 where the circular value was 64.3 -- so the linear
-    form overstates by ~2x. Note the circular value was still catastrophic:
-    use this to measure the disagreement honestly, not to explain it away.
+    SAME phase but score as maximally disagreeing (about 2x on a real fit).
+    Measures the disagreement honestly; it does not explain it away.
     """
     cs = [np.asarray(c, dtype=float) for c in chains]
     cs = [c[np.isfinite(c)] for c in cs]

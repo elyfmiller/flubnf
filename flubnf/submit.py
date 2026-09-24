@@ -1,4 +1,6 @@
-"""Build a FluSight-submittable CSV from a set of per-state forecasts.
+"""LEGACY (DE/AMCMC workspace loop; reached only from the legacy CLI commands).
+
+Build a FluSight-submittable CSV from a set of per-state forecasts.
 
 The submission schema (per row):
 
@@ -14,7 +16,7 @@ the same quantile level across all states. This matches the legacy
 PyBNF_to_CDC_121524.py script's behavior. The console's production US
 aggregate is built differently (draw-level summation in
 app/core/retro.national_aggregate, via app/core/us_national.py); this
-quantile-sum path survives for the CLI loop only.
+quantile-sum path is for the legacy CLI loop only.
 """
 
 from __future__ import annotations
@@ -23,9 +25,8 @@ import logging
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Iterable, Mapping, Optional
+from typing import Iterable
 
-import numpy as np
 import pandas as pd
 
 from app.core.submit import hub_model_id
@@ -35,23 +36,9 @@ from .quantiles import FLUSIGHT_QUANTILES, QuantileForecast
 
 log = logging.getLogger(__name__)
 
-#: The name the CLI weekly loop writes its submission under. It comes from
-#: app/core/submit's registered abbreviations, the same single definition
-#: the console uses, so the two producers in this repository cannot drift
-#: apart and neither can invent a name the hub has never seen.
-#:
-#: It used to be a hardcoded literal, "LosAlamos_NAU-CModel_Flu". A comment
-#: here once read that string as belonging to a different team, so that this
-#: loop was writing files under somebody else's model. That reading was
-#: wrong: LosAlamos_NAU was this group's own registration, held on the hub
-#: since 2023; since 2026-09-22 the group submits as NAU_PyBNF
-#: (model-metadata/README.md).
-#:
-#: The literal was still the wrong string here, for a reason that outlives
-#: that history. This loop forecasts the mechanistic model on its own, so
-#: its file belongs under the mechanistic member's hub identity. Deriving
-#: the name means neither producer can drift from the registration or from
-#: the other.
+#: From app/core/submit's registered abbreviations (one definition for both
+#: producers). This loop forecasts the mechanistic model alone, so it files
+#: under the mechanistic member's hub identity.
 DEFAULT_TEAM_MODEL = hub_model_id("pf")
 
 
@@ -153,23 +140,15 @@ def write_submission(
 ) -> Path:
     """Write the submission CSV to out_dir using FluSight's filename convention.
 
-    This is the CLI weekly loop's workspace artifact, not a hub tree. It
-    lands FLAT in `<workspace>/submissions/`, where five readers pick it up
-    with a non-recursive `glob("*.csv")` (weekly_job._ingest_realized_actuals,
-    baseline_forecast, error_decomp, cli's workspace scan, doctor). The
-    hub's `model-output/<team>-<model>/` layout is written by
-    app/core/submit.write_submission, which the console uses; moving this
-    one into a subdirectory would hide it from its own readers and buy
-    nothing, since nobody copies this directory into a hub fork.
+    A workspace artifact, not a hub tree: FLAT in `<workspace>/submissions/`,
+    where five readers use a non-recursive `glob("*.csv")`. The hub layout
+    is app/core/submit.write_submission's job.
 
     Args:
         validate: if True, run schema validation. Warnings always logged.
         strict:   if True (default), raise ValueError on any validation
-                  error rather than write the file. The file is named like
-                  a submission and is read back as truth by the calibration
-                  ingest, so writing one that fails the hub's own schema
-                  rules is worse than failing loudly. Pass strict=False
-                  deliberately to keep the old log-and-write behaviour.
+                  error rather than write the file (calibration reads it
+                  back as truth). strict=False logs and writes anyway.
     """
     if validate:
         from .validate import validate_submission_df

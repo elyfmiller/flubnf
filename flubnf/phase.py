@@ -1,4 +1,6 @@
-"""Outbreak phase detection.
+"""LEGACY (DE/AMCMC anchoring in amcmc; also the COVID research seam).
+
+Outbreak phase detection.
 
 Classifies a state's current outbreak phase from recent observed admissions.
 The phase informs which automation strategies to use:
@@ -23,7 +25,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 import numpy as np
 

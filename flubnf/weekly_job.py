@@ -1,11 +1,10 @@
-"""One-shot weekly competition workflow (LEGACY, DE era).
+"""LEGACY (DE/AMCMC workspace loop; reached only from the legacy CLI commands).
 
-SCOPE: this is the legacy one-shot built on PyBNF differential evolution,
-kept for the CLI loop. It is superseded for the live season: the shipped
-competition engine is the sequential particle filter, driven from the
-console (app/core/runs.py). Do not prepare a submission week from here.
+One-shot weekly competition workflow (DE era).
 
-Threads together everything needed for a single FluSight submission day:
+Built on PyBNF differential evolution for the `weekly-job` CLI command;
+superseded by the console's particle filter (app/core/runs.py). Do not
+prepare a submission week from here.
 
     1. Fetch latest CDC data (or use a provided CSV).
     2. Build / refresh per-state .exp from that CSV.
@@ -16,9 +15,8 @@ Threads together everything needed for a single FluSight submission day:
        d. Generate FluSight quantile forecasts.
     4. Aggregate into one submission CSV.
 
-The function returns a `WeeklyJobResult` capturing every step's status.
-The UI / CLI can call this end-to-end with a single click; if anything
-fails on one state, the others continue.
+Returns a `WeeklyJobResult` with every step's status; a failing state does
+not stop the others.
 """
 
 from __future__ import annotations
@@ -35,11 +33,11 @@ import numpy as np
 import pandas as pd
 import pymmwr as pm
 
-from . import analysis, bngl_files, conf_files, exp_files, fetch as fetch_mod
+from . import analysis, exp_files, fetch as fetch_mod
 from .bounds_init import adaptive_initial_bounds, max_steps_for_state
 from .config import FluBNFConfig
 from .conf_files import FreeParam
-from .constants import JURISDICTIONS, STATE_TO_ABBREV
+from .constants import JURISDICTIONS
 from .paths import WorkspacePaths
 from .pybnf_engine import PyBNFOptions, fit_with_pybnf
 from .quantiles import quantile_forecast
@@ -158,9 +156,8 @@ def run_weekly_job(
         if obs is None or len(obs) == 0:
             return state, None, None, StateResult(state=state, status="no-data")
 
-        # Resume: if this state's fit is already fresh for this
-        # reference_date, skip refit but still load fit + session so
-        # quantile gen runs.
+        # Resume: a fit already fresh for this reference_date is loaded, not
+        # refit, so quantile generation still runs.
         if _state_already_done(state):
             sess = load_session(paths.root, state)
             log.info("[%s] resume: reusing existing fit for %s", state, ref_iso)
@@ -186,10 +183,8 @@ def run_weekly_job(
                 notes="resumed (cached fit)",
             )
 
-        # Load any persisted session from prior weeks; otherwise start
-        # fresh. For a fresh start, blend the data-driven adaptive bounds
-        # with any historical priors we have for this state (typically
-        # populated by retrospective backtests of previous seasons).
+        # Load the persisted session; a fresh one blends the adaptive bounds
+        # with this state's historical priors (from past-season backtests).
         sess = load_session(paths.root, state)
         if sess is None or not sess.bounds:
             initial = adaptive_initial_bounds(obs)
@@ -247,11 +242,8 @@ def run_weekly_job(
                 bounds_changed=bounds_changed, bounds_added=bounds_added,
             )
 
-        # Post-fit diagnostics + REACTIVE RETRY:
-        # - expand_bound actions update the session for next week.
-        # - refit_new_seed / refit_more_iters trigger a single in-place
-        #   retry with adjusted settings (capped to one extra fit so
-        #   we don't loop forever).
+        # Post-fit diagnostics: expand_bound updates the session for next
+        # week; refit_new_seed / refit_more_iters retry once in place.
         if method == "am":
             from .diagnostics import compute_diagnostics, react_to_diagnostics
             try:
@@ -385,16 +377,12 @@ def run_weekly_job(
     from .calibration import CalibrationTracker, apply_calibration
     cal_path = paths.root / "calibration.json"
     tracker = CalibrationTracker.load(cal_path)
-    # Ingest realized actuals from previous submissions for which the
-    # observed series has now caught up — this is the closed-loop step
-    # that builds calibration over time.
+    # Closed loop: score past submissions whose actuals have now arrived.
     _ingest_realized_actuals(paths, tracker, obs_by_state, config)
 
-    # Act on accumulated bias / coverage signals: tighten `mult__FREE` upper
-    # on chronic over-prediction; widen the calibration max_factor cap on
-    # chronic under-coverage. These mutations persist via save_session so
-    # they take effect next week (and on the current forecast for the
-    # max_factor knob, since apply_calibration reads it below).
+    # Bias/coverage signals: chronic over-prediction tightens the
+    # `mult__FREE` upper bound (next week); chronic under-coverage raises the
+    # max_factor cap (already this week, apply_calibration reads it below).
     from . import decomp_act as _da
     for s in states:
         sess = load_session(paths.root, s)
@@ -438,9 +426,7 @@ def run_weekly_job(
                     anchor_lookback=anchor_lookback,
                     phase_aware=phase_aware,
                 )
-            # Apply empirical-coverage rescale to widen / narrow intervals.
-            # The per-state max_factor cap may have been raised by
-            # decomp_act when chronic under-coverage was detected.
+            # coverage rescale (max_factor possibly raised by decomp_act)
             qf = apply_calibration(qf, tracker, state=state,
                                     max_factor=calibration_max_factor)
         except Exception as e:
@@ -483,7 +469,6 @@ def _ingest_realized_actuals(
     if not submissions_dir.exists():
         return 0
     from .constants import load_locations
-    from datetime import datetime as _dt
     try:
         locs = load_locations(config.locations_csv)
         fips_to_state = {info.fips: name for name, info in locs.items()}
@@ -495,7 +480,6 @@ def _ingest_realized_actuals(
     # Use the season's onset/end window via the .exp file's #time index
     # mapped back to weekly dates. The simplest robust path: derive the
     # Saturday of each observed week from the season onset.
-    import pymmwr as pm
     from datetime import timedelta as _td
     onset_sat = pm.epiweek_to_date(pm.Epiweek(
         config.season.year, config.season.onset_week))
@@ -577,9 +561,7 @@ def _analyze_and_adapt(
     if de is None or de.population.empty:
         return bounds_changed, bounds_added
 
-    # Tiny-state guard: skip bounds expansion + step addition for
-    # jurisdictions whose peak admissions is small. The model is already at
-    # the noise floor; adaptation just introduces variance.
+    # Tiny states are at the noise floor: adaptation only adds variance.
     max_K = max_steps_for_state(obs)
     if max_K <= 1:
         return bounds_changed, bounds_added
@@ -635,10 +617,8 @@ def _analyze_and_adapt(
         except Exception as e:
             log.warning("step recommendation failed for %s: %s", state, e)
 
-    # 4. Bidirectional K control — if a piecewise segment is redundant
-    # (b_K posterior overlaps b_{K-1}), remove it for next week. Helps
-    # small-state and post-peak cases where the AICc gate may have
-    # added a step that didn't end up doing anything.
+    # 4. Remove a redundant segment (b_K posterior overlaps b_{K-1}) for
+    # next week.
     if session.n_steps > 1:
         try:
             rm_rec = analysis.recommend_remove_step(de.population)
@@ -672,13 +652,9 @@ def _analyze_and_adapt(
 def _today_eastern() -> date:
     """The submission calendar's "today", never the machine's.
 
-    FluSight deadlines are stated on the hub's own clock, America/New_York.
-    A machine east of that zone crosses into Saturday hours before the
-    deadline zone does, so near the Friday/Saturday midnight boundary
-    date.today() there is already Saturday while the FluSight week is still
-    Friday's, and the defaulted reference_date lands one week late
-    (2026-09-01 final pass). The wall clock enters the job only here, so
-    the deadline-zone constraint has one home.
+    FluSight deadlines use America/New_York; east of it, date.today() turns
+    Saturday early and the default reference_date lands a week late. The
+    wall clock enters the job only here.
     """
     return datetime.now(ZoneInfo("America/New_York")).date()
 

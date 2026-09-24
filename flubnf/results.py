@@ -1,4 +1,6 @@
-"""Parse PyBNF run outputs.
+"""LEGACY (DE/AMCMC workspace loop; reached only from the legacy CLI commands).
+
+Parse PyBNF run outputs.
 
 PyBNF (with `fit_type = de`) writes per-state into:
 
@@ -26,7 +28,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-import numpy as np
 import pandas as pd
 
 
@@ -69,24 +70,6 @@ def read_de_results(state_results_dir: Path, state: str) -> Optional[DEResults]:
     )
 
 
-def read_de_snapshots(state_results_dir: Path) -> list[pd.DataFrame]:
-    """Read all `sorted_params_N.txt` snapshots (excluding backup), in order.
-    Used for convergence diagnostics over generations."""
-    base = state_results_dir / "Results"
-    if not base.exists():
-        return []
-    snapshots: list[pd.DataFrame] = []
-    files = sorted(
-        base.glob("sorted_params_[0-9]*.txt"),
-        key=lambda f: _snapshot_index(f.name),
-    )
-    for f in files:
-        df = _read_pybnf_table(f)
-        if df is not None:
-            snapshots.append(df)
-    return snapshots
-
-
 def read_amcmc_chain(state_results_dir: Path, state: str) -> Optional[pd.DataFrame]:
     """Read the AMCMC chain output (`params_0.txt`).
 
@@ -101,16 +84,6 @@ def read_amcmc_chain(state_results_dir: Path, state: str) -> Optional[pd.DataFra
     except Exception:
         return None
     return df
-
-
-def read_amcmc_traj(state_results_dir: Path, state: str) -> Optional[np.ndarray]:
-    """Read the noise-augmented predictive trajectory used to build FluSight
-    quantile forecasts. Shape: (n_samples, n_weeks)."""
-    p = (state_results_dir / "Results" / "A_MCMC" / "Runs"
-         / f"traj_noise_{state}_fluH_chain_0.txt")
-    if not p.exists():
-        return None
-    return np.genfromtxt(p)
 
 
 # ---------------------------------------------------------------------------
@@ -134,12 +107,3 @@ def _read_pybnf_table(path: Path) -> Optional[pd.DataFrame]:
     if "_marker" in df.columns:
         df = df.drop(columns="_marker")
     return df
-
-
-def _snapshot_index(name: str) -> int:
-    """Extract the integer N from `sorted_params_N.txt`. Used for sort key."""
-    stem = name.removesuffix(".txt").rsplit("_", 1)[-1]
-    try:
-        return int(stem)
-    except ValueError:
-        return -1

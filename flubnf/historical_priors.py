@@ -1,4 +1,6 @@
-"""Season-over-season priors from past best-fit parameters.
+"""LEGACY (DE/AMCMC workspace loop; reached only from the legacy CLI commands).
+
+Season-over-season priors from past best-fit parameters.
 
 Each completed flu season produces per-state best-fit parameters
 (b0, t0, gamma, mult, ...). Storing those gives us informative priors
@@ -12,9 +14,8 @@ This module:
     state-adaptive bounds (based on early-season observed) with the
     historical informed prior (when sufficient prior history exists).
 
-The blend is gentle by default — the data drives the fit, history just
-gives a head start. Mac Studio sweeps can find better blend weights
-per state.
+The blend is gentle by default: the data drives the fit, history gives a
+head start.
 
 Format on disk: JSON at `<repo>/data/historical_priors/<state>.json`:
 

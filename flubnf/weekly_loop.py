@@ -1,66 +1,35 @@
-"""AMCMC warm-start fitting loop (LEGACY): probe for pins, then commit.
+"""LEGACY (AMCMC warm-start loop; used only by scripts/weekly_loop_run.py).
 
-SCOPE: this loop is built on Adaptive_MCMC warm starts and is NOT the
-shipped PF competition path (that is the sequential particle filter, driven
-from the console via app/core/runs.py). AMCMC does not pass convergence
-diagnostics on this posterior and is not part of a shipped model
-(docs/archive/RELEASE-1.0.md, Known limitations). Kept for its measured operational
-findings and for the CLI loop.
+AMCMC warm-start fitting loop: probe for pins, then commit. AMCMC
+fails convergence diagnostics on this posterior (docs/archive/RELEASE-1.0.md,
+Known limitations).
 
-THE SHAPE, AND WHY IT IS THIS SHAPE
------------------------------------
-A competition week changes almost nothing in the fitted series. Measured over the
-2025-26 vintages, 68% of all revision lands on the newest observation and 80% on
-the newest two; everything three weeks or older has a median revision of exactly
-zero. So the week's fit is a small perturbation of a converged state, not a
-rediscovery, and the loop is built around that:
+A competition week barely changes the series (68% of revision lands on the
+newest point, 80% on the newest two), so the week's fit perturbs a converged
+state: converge between weeks on data through T-1, then absorb the new point
+on competition day. PyBNF reloads `adaptive_files/` (MLE_params.txt,
+diffMatrix.txt = the learned covariance, diff.txt) under `continue_run = 1`,
+restoring the adapted proposal; a few KB per state, overwritten weekly.
 
-    between weeks   converge on data through week T-1, unhurried
-    competition day absorb one new point + one revision, against a deadline
-
-PyBNF supports this natively. `Adaptive_MCMC` persists `adaptive_files/` --
-`MLE_params.txt`, `diffMatrix.txt` (the LEARNED COVARIANCE), `diff.txt` -- and
-reloads all three under `continue_run = 1`. That restores the adapted proposal,
-not merely a starting point, which is most of what an adaptive chain has earned.
-It is also tiny: a few KB per state, ~100 KB for the whole country, so the
-warm-start state can simply be overwritten each week and everything else thrown
-away.
-
-EXPLORE, THEN COMMIT
---------------------
-Throughput is I/O-bound at ~2.1 fits/min regardless of worker count (doubling
-workers bought 6%), so a 52-state round costs ~25 min per 1000 iterations. A
-7-hour budget therefore affords roughly three 5000-iteration rounds -- too coarse
-to probe and still leave time to converge. Hence short probe rounds and one long
-commit:
+Fits are I/O-bound (~2.1 fits/min whatever the worker count), so a 7-hour
+budget allows ~3 long rounds. Hence:
 
     PROBE   ~2000 iters, check for pinned parameters, widen and repeat
-            (still ~1000 post-burn-in draws, far more than a pin test needs)
     COMMIT  once `clean_rounds_required` consecutive rounds pin nothing,
             spend the entire remaining budget in one uninterrupted run
 
-TWO RULES THAT LOOK PEDANTIC AND ARE NOT
-----------------------------------------
-* A clean round only counts toward the commit threshold if the bounds did not
-  change since the previous clean one. A round that widened a bound and a round
-  that pinned nothing are testing different models; counting them as agreeing
-  would commit on the strength of a comparison never made.
-* A refit is not automatically better. `autoparam.choose()` exists because a
-  refit whose pins did NOT clear measured 20% worse than the original, so the
-  loop keeps the better fit rather than the newest one.
-
-DEADLINES ARE HONOURED BY CONSTRUCTION
---------------------------------------
-`best_so_far` is updated only when a round COMPLETES. If the wall clock expires
-mid-round that round is discarded, because a half-finished adaptive chain has not
-finished adapting and its posterior is not a posterior. There is always a
-submittable fit, and it is always one that ran to completion.
+* A clean round counts only if the bounds did not change since the previous
+  clean one (otherwise the rounds test different models).
+* Keep the better fit, not the newest: a refit whose pins did not clear
+  measured 20% worse (`autoparam.choose()`).
+* `best_so_far` updates only when a round COMPLETES; a round cut off by the
+  deadline is discarded (a half-adapted chain is not a posterior), so there
+  is always a completed fit to submit.
 """
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Callable, Mapping, Optional
 
 from .autoparam import RoundResult, choose, diagnose, next_priors
@@ -208,12 +177,9 @@ def run_week(plan: LoopPlan, priors: Mapping[str, tuple],
     `fit(round) -> (ok, Posterior|None)` runs all states for that round and is
     the only thing that touches PyBNF; the schedule here is pure and testable.
 
-    `trusted=True` skips the probe phase entirely: the previous week ended
-    clean with unchanged bounds, so re-proving cleanliness would burn budget
-    demonstrating what last week already demonstrated. The 18-week season run
-    spent 2-3 probes/week at 0% pinning throughout -- roughly half the
-    effective iterations. Trust is one week deep: any pin or bound change
-    this week resets it at the caller.
+    `trusted=True` skips probing (last week ended clean with unchanged
+    bounds; probes at 0% pinning cost about half the iterations). Trust is
+    one week deep: the caller resets it on any pin or bound change.
     """
     st = LoopState(plan=plan, priors=dict(priors))
     cold, why = cold_start_needed(prev, priors, max_gap_weeks, gap_weeks)

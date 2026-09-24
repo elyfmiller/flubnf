@@ -1,9 +1,9 @@
-"""Per-state, week-over-week session state.
+"""LEGACY (DE/AMCMC workspace loop; reached only from the legacy CLI commands).
 
-In production, each Tuesday the team runs the weekly job. The bounds the
-analyzer expanded last week + the piecewise step count we settled on
-should carry into this week — otherwise every fit starts from a cold
-template and the cumulative learning is wasted.
+Per-state, week-over-week session state.
+
+Carries last week's expanded bounds and piecewise step count into this
+week's weekly-job fit, instead of a cold template.
 
 This module persists per-state session state as JSON under
 
@@ -15,15 +15,14 @@ Each file holds:
   - `last_reference_date`: ISO-formatted Saturday of the most recent run
   - `history`: brief log of past adaptations
 
-The walk-forward backtest already maintains this state in memory; this
-module is the *persistent* mirror for the one-shot weekly-job workflow.
+The backtest keeps the same state in memory; this is the persistent mirror.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -47,8 +46,7 @@ class StateSession:
     #   phase_aware   : bool
     #   max_K         : int (override max_steps_for_state)
     #   max_iter      : int (per-state AMCMC iters)
-    # Calibrated values from Mac Studio sweeps persist here and survive
-    # weekly job runs.
+    # Calibrated values persist here across weekly-job runs.
     tuning: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:

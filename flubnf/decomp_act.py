@@ -1,4 +1,6 @@
-"""Act on error-decomposition signals from the calibration tracker.
+"""LEGACY (DE/AMCMC workspace loop; reached only from the legacy CLI commands).
+
+Act on error-decomposition signals from the calibration tracker.
 
 `flubnf.error_decomp` *measures* per-state bias / sharpness / coverage on
 historical submissions. `flubnf.calibration` *records* the same data in a
@@ -19,9 +21,7 @@ return either a structured recommendation or `None`. The caller decides
 whether to mutate `session.bounds` / `session.tuning`. `apply_to_session`
 is a convenience that does the mutation for you.
 
-These knobs were validated by the laptop-side tests in
-`tests/test_decomp_act.py`; the actual *trigger thresholds* still want
-Mac-Studio validation against a full season before being tightened.
+The trigger thresholds are unvalidated against a full season.
 """
 
 from __future__ import annotations

@@ -1,4 +1,6 @@
-"""FluSight submission CSV schema validator.
+"""LEGACY (DE/AMCMC workspace loop; reached only from the legacy CLI commands).
+
+FluSight submission CSV schema validator.
 
 Validates a submission CSV before writing so a bad fit can't produce an
 invalid submission that gets rejected at PR review time. Rules mirror
@@ -32,7 +34,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import pandas as pd

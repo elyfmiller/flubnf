@@ -1,4 +1,6 @@
-"""Fetch weekly CDC respiratory hospitalization data.
+"""LEGACY (DE/AMCMC workspace loop; reached only from the legacy CLI commands).
+
+Fetch weekly CDC respiratory hospitalization data.
 
 Primary source: data.cdc.gov Socrata API for dataset `mpgq-jmmr`
 ("Weekly Hospital Respiratory Data (HRD) Metrics by Jurisdiction").
@@ -200,7 +202,6 @@ def _fetch_socrata(
             if not lines:
                 break
             out.write(b"".join(lines))
-            n = len(lines) - (0 if offset == 0 else 0)
             # rows added this chunk = lines written minus header (if any)
             added = len(lines) - (1 if offset == 0 else 0)
             rows += added

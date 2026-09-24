@@ -1,29 +1,22 @@
-"""Auto-pipeline orchestrator.
+"""LEGACY (DE/AMCMC workspace loop; reached only from the legacy CLI commands).
 
-Threads together: parse previous results -> recommend changes -> (optionally)
-apply them to .conf / .bngl files. This is the "step 3 + 4" of the user's
-weekly workflow:
+Auto-pipeline orchestrator.
 
-   (3) statistically analyze last week's run
-   (4) apply bounds expansion / piecewise step changes for the new run
-
-Recommendations are *not* applied unless `apply=True`. The CLI exposes a
-dry-run by default and an `--apply` flag.
+Parse last week's results, recommend bounds expansion / piecewise step
+changes, and (only with `apply=True`, the CLI's `--apply`) write them to the
+.conf / .bngl files.
 """
 
 from __future__ import annotations
 
 import logging
-from dataclasses import asdict, dataclass, field
-from pathlib import Path
+from dataclasses import dataclass, field
 from typing import Iterable
 
-import numpy as np
 import pandas as pd
 
-from . import analysis, bngl_files, conf_files, results, simulate
-from .analysis import (BoundsRecommendation, StateAnalysis,
-                       StepRecommendation, recommend_bounds,
+from . import bngl_files, conf_files, results, simulate
+from .analysis import (StateAnalysis, recommend_bounds,
                        recommend_piecewise_step)
 from .config import FluBNFConfig
 from .conf_files import FreeParam

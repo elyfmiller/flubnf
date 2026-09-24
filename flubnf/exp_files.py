@@ -1,4 +1,6 @@
-"""Generate per-state .exp files from a CDC weekly hospitalization CSV.
+"""LEGACY (DE/AMCMC workspace loop; reached only from the legacy CLI commands).
+
+Generate per-state .exp files from a CDC weekly hospitalization CSV.
 
 A `.exp` file is the tab-separated time-series PyBNF reads as observed data:
 
@@ -7,18 +9,16 @@ A `.exp` file is the tab-separated time-series PyBNF reads as observed data:
     1       15.0
     ...
 
-This is the deterministic, config-driven replacement for
-`NAU_Influenza/scripts/110624_exp_generator.py`. Differences from the legacy
-script: no hardcoded paths, no global state, handles missing weeks (NaN) by
-truncating at the first NaN (consistent with legacy behavior — PyBNF expects
-contiguous weekly observations), and is testable.
+Config-driven replacement for the lab's legacy `110624_exp_generator.py`.
+Missing weeks truncate the series at the first NaN (PyBNF expects
+contiguous weekly observations).
 """
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date
 from pathlib import Path
 from typing import Iterable
 

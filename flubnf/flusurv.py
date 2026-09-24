@@ -1,43 +1,21 @@
-"""FluSurv-NET donor bank: laboratory-confirmed influenza hospitalisation rates.
+"""SHIPPED (used by the FluBNF console, app/).
 
-Delphi's ``flusurv`` endpoint, ``rate_overall``: weekly laboratory-confirmed
-influenza hospitalisations per 100,000 in the FluSurv-NET catchment areas.
+FluSurv-NET donor bank: laboratory-confirmed influenza hospitalisation rates.
 
-WHY THIS STREAM
----------------
-It is the closest public series to the forecast target. Both count
-laboratory-confirmed influenza hospitalisations, and it shows: the shrink
-factor that puts a stream on the admissions scale is 0.979 for this one
-against 0.820 for ILI+, so its growth ratios need almost no rescaling.
+Delphi's ``flusurv`` endpoint, ``rate_overall``: weekly lab-confirmed
+influenza hospitalisations per 100,000 in the ~20-site FluSurv-NET catchment.
 
-More importantly it is DEEPER. After the registered donor-season exclusions
-it carries 15 usable seasons against ILI+'s 8, from a catchment that has been
-stable at 17 to 20 sites since 2009. Season depth is what the donor pool
-actually needs: donors cluster by season, so the effective sample size tracks
-the number of seasons rather than the number of donors, and this stream
-supplies 1,117 donors from 15 seasons where ILI+ supplies 1,683 from 8 and is
-measurably less stable for it (leave-one-season-out spread 0.0266 against
-0.0576; prereg ea72d194af8318a5, lab archive).
+The closest public stream to the target (shrink factor 0.979 vs ILI+'s
+0.820) and the deepest: 15 usable seasons vs ILI+'s 8. Donors cluster by
+season, so season depth sets the effective sample size (prereg
+ea72d194af8318a5, lab archive). Sub-state sites (``ny_albany``) are fine:
+the pool is cross-location and a location key only finds a week's own
+future value.
 
-The catchment is about 20 sites, not 50 states, and some are sub-state
-(``ny_albany``, ``ny_rochester``). That does not matter to a donor pool: the
-pool is cross-location by construction and a location key is used only to
-find a week's own future value. It is not a coverage map.
-
-NO VINTAGE, AND THIS MODULE WILL NOT PRETEND OTHERWISE
-------------------------------------------------------
-Delphi serves flusurv as a snapshot with NO revision history. An ``issues=``
-query returns nothing, and 900 of 956 sampled rows carry a single recent
-issue. So unlike :mod:`flubnf.nrevss` and :mod:`flubnf.iliplus`, there is no
-vintage-true path here and none is offered; ``build_bank`` takes no as-of.
-
-The donor pool draws only from strictly prior seasons, and calendar matching
-puts every donor at least 46 weeks old when it is used, typically 6 to 16
-years for this stream. Revision at that age is near-certainly immaterial.
-But for ILI+ that claim was MEASURED (98.0 percent of cells bit-identical at
-lag 46, prereg 08e03ca7e8ffcfce) and here it cannot be, because the data does
-not carry its own history. Any decision to ship this stream has to state that
-difference rather than inherit the ILI+ result.
+NO VINTAGE: Delphi keeps no revision history for flusurv (``issues=``
+returns nothing), so ``build_bank`` takes no as-of. Donors are at least 46
+weeks old at use, so revision is very likely immaterial, but unlike ILI+
+that cannot be measured here; a decision to ship must say so.
 """
 from __future__ import annotations
 
@@ -49,7 +27,6 @@ import urllib.request
 from datetime import date
 from pathlib import Path
 
-from . import nrevss
 from .nrevss import week_ending
 
 BASE_URL = "https://api.delphi.cmu.edu/epidata/flusurv/"
@@ -57,24 +34,22 @@ LOCATIONS_URL = ("https://raw.githubusercontent.com/cmu-delphi/delphi-epidata/"
                  "main/labels/flusurv_locations.txt")
 HTTP_TIMEOUT = 90.0
 
-#: Raw responses, beside the other stream caches. app/state is gitignored: a
-#: donor bank is a local data artefact, not repository content.
+#: Raw responses, beside the other stream caches (app/state, gitignored).
 CACHE_DIR = Path(__file__).resolve().parents[1] / "app" / "state" / "flusurv"
 
 RETRY_ON_429 = 5
 RETRY_BACKOFF_S = 3.0
 
-#: The earliest epiweek worth asking for. rate_overall begins at 200935.
+#: Query start epiweek, earlier than the data (rate_overall begins at
+#: 200935). Changing the fetch range can change the committed bank's digest.
 FIRST_EPIWEEK = 200335
 
 
 def build_url(locations, ew_start: int, ew_end: int) -> str:
     """The exact query URL (pure; unit-tested).
 
-    Note the parameter is ``locations``, not the ``regions`` that fluview and
-    fluview_clinical take. Getting that wrong returns an empty result rather
-    than an error, which is exactly the kind of silence a donor pool should
-    never absorb, so it is pinned by a test (app/tests/test_flusurv.py).
+    The parameter is ``locations``, not fluview's ``regions``: the wrong one
+    returns an empty result, not an error (pinned in test_flusurv.py).
     """
     return BASE_URL + "?" + urllib.parse.urlencode({
         "locations": ",".join(locations),
@@ -106,8 +81,7 @@ def _http_json(url: str, timeout: float = HTTP_TIMEOUT) -> dict:
 def catchment(cache_dir=None) -> list:
     """The FluSurv-NET site codes, from Delphi's own label file, cached.
 
-    Read from the label file rather than hard-coded so a site joining or
-    leaving does not need a code change to be noticed.
+    Not hard-coded, so a site joining or leaving needs no code change.
     """
     cache_dir = Path(cache_dir) if cache_dir is not None else CACHE_DIR
     path = cache_dir / "locations.json"
@@ -134,8 +108,7 @@ def catchment(cache_dir=None) -> list:
 def _snapshot(locations, ew_start: int, ew_end: int, cache_dir=None) -> list:
     """Rows covering [ew_start, ew_end], cached in one file.
 
-    One file rather than one per site, because this endpoint has no vintage
-    to key on and the whole catchment is a single modest request.
+    One file: no vintage to key on, and the catchment is one small request.
     """
     cache_dir = Path(cache_dir) if cache_dir is not None else CACHE_DIR
     path = cache_dir / "snapshot.json"
@@ -164,12 +137,9 @@ def build_bank(first_epiweek: int = FIRST_EPIWEEK, *, locations=None,
                cache_dir=None) -> dict:
     """(site, date) -> hospitalisation rate, the auxiliary donor bank.
 
-    Keys are (lowercase site code, ``datetime.date`` of the epiweek's
-    Saturday), the shape ``flubnf.analogue.donor_ratios`` reads.
-
-    There is no `asof` argument on purpose. See the module docstring: this
-    endpoint carries no revision history, so a vintage-true fetch is not
-    available and offering one would be a lie in the signature.
+    Keys are (lowercase site code, epiweek-Saturday ``datetime.date``), the
+    shape ``flubnf.analogue.donor_ratios`` reads. No `asof` on purpose: the
+    endpoint has no revision history (see the module docstring).
     """
     locations = catchment(cache_dir) if locations is None else list(locations)
     rows = _snapshot(locations, first_epiweek, 999999, cache_dir=cache_dir)
@@ -181,9 +151,8 @@ def build_bank(first_epiweek: int = FIRST_EPIWEEK, *, locations=None,
         ew = r["epiweek"]
         y, w = divmod(ew, 100)
         d = date.fromisoformat(week_ending(y, w))
-        # Cheap insurance across two MMWR implementations: the analogue keys
-        # donors by ITS epiweek, so a date whose week disagrees would land in
-        # the wrong calendar bin. Checked clean over 2010-2026.
+        # the analogue keys donors by ITS epiweek; a disagreeing date would
+        # land in the wrong calendar bin (never seen 2010-2026)
         from .analogue import epiweek as _an_epiweek
         if _an_epiweek(d) != w:                          # pragma: no cover
             continue
