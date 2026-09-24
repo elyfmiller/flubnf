@@ -291,8 +291,12 @@ def run_page(request: Request, run_id: str):
     from app.core.runs import is_research
     dsx = {}
     if res.get("dataset"):
-        # a run on a custom dataset: exports (never submissions) and fans
+        # a run on a custom dataset: exports (never submissions) and fans;
+        # its data is the upload's, so localhost only (datasets_ui.local_only)
         from app.ui import datasets_ui as _dsu
+        refused = _dsu.local_only(request)
+        if refused:
+            return refused
         dsx = _dsu.run_page_extra(w, res)
     return templates.TemplateResponse(request, "run.html", {
         **dsx,

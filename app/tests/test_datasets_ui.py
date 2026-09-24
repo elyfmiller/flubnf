@@ -338,6 +338,12 @@ def test_a_real_run_shows_fans_and_exports_and_stays_off_the_hub(monkeypatch):
     exp = o["exports"]["FluBNF-Groundhog"]
     r = client.get("/output/download", params={"path": exp})
     assert r.status_code == 200 and b"target_group" in r.content
+    # the run's page and exports carry the upload: never to a foreign Host
+    # (a DNS-rebinding page), like the dataset's own pages
+    foreign = {"host": "rebind.example"}
+    assert client.get(f"/runs/{row['run_id']}", headers=foreign).status_code == 403
+    assert client.get("/output/download", params={"path": exp},
+                      headers=foreign).status_code == 403
     # the hub Forecast page: no dataset run in its latest-run card or fans
     hub = client.get("/forecast").text
     assert row["run_id"] not in hub and "Template" not in hub.split(
