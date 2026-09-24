@@ -6,9 +6,7 @@ verify the CLI wiring with one smoke test using typer's CliRunner.
 
 from __future__ import annotations
 
-from pathlib import Path
 
-import pytest
 from typer.testing import CliRunner
 
 from flubnf import doctor

@@ -12,11 +12,8 @@ from flubnf.paths import WorkspacePaths
 
 
 def _find_legacy_dir() -> Optional[Path]:
-    """Locate the legacy fixtures dir.
-
-    Historically these lived under `<repo>/NAU_Influenza/` but the directory
-    was renamed to `NAU_Influenza_M_Model/` (the legacy assets — CSVs, exp
-    files, current_job/ — now sit next to FluBNF/ inside that). Try both."""
+    """Ancestor dir holding cleaned_csvs/ (NAU_Influenza_M_Model/, formerly
+    NAU_Influenza/)."""
     here = Path(__file__).resolve()
     for ancestor in here.parents:
         for name in ("NAU_Influenza_M_Model", "NAU_Influenza"):

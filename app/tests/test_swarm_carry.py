@@ -72,19 +72,16 @@ def _conf(cell):
 
 def test_prepare_pins_independent_draws_and_keys_the_seed_on_the_as_of_date(
         monkeypatch, tmp_path):
-    """Two pins on the ordinary forecast's conf. initialization = rand:
-    PyBNF's default for the key is lh and the engine honours it since
-    PyBNF-pf f09eeb9b, so without the line an engine update would have
-    turned every initial cloud into a Latin hypercube in silence. And the
-    seed keyed on the forecast date, the sealed convention; no state-file
-    keys at all, so the conf is what it was."""
+    """The ordinary conf pins initialization = rand (PyBNF defaults to lh,
+    which an engine update would otherwise switch on silently) and keys the
+    seed on the forecast date, with no state-file keys."""
     _prep_env(monkeypatch, tmp_path)
     cells = pf.prepare(_spec(["Ohio"]), tmp_path / "wr")
     for c in cells:
         conf = _conf(c)
         assert "initialization = rand\n" in conf
-        # the engine differences the model's own scaled accumulator and
-        # multiplies by nothing; the template declares Hobs = mult*H_Cum
+        # the engine differences the model's own scaled accumulator
+        # (Hobs = mult*H_Cum in the template)
         assert "pf_cumulative_observable = Hobs\n" in conf
         assert "pf_state_file" not in conf and "pf_continue" not in conf
         want = derive_seed("Ohio", "2098-11-07", c["replicate"])
@@ -109,9 +106,8 @@ def test_prepare_keys_the_seed_on_the_season_start_when_asked(monkeypatch,
 
 def test_prepare_salts_the_seed_and_names_the_initial_draw(monkeypatch,
                                                             tmp_path):
-    """A seed salt gives the same cells a second independent draw for a
-    spread measurement, recorded through seed_date; initialization = lh
-    asks the engine for PyBNF's Latin hypercube and is recorded too."""
+    """seed_salt gives the same cells an independent second draw (recorded in
+    seed_date); initialization = lh is honoured and recorded."""
     _prep_env(monkeypatch, tmp_path)
     cells = pf.prepare(_spec(["Ohio"], replicates=1,
                              extra={"seed_anchor": "season_start",
@@ -132,10 +128,9 @@ def test_prepare_salts_the_seed_and_names_the_initial_draw(monkeypatch,
 
 def test_prepare_writes_allowed_engine_keys_and_widened_priors(monkeypatch,
                                                                 tmp_path):
-    """The regularizer sweep's knobs: pf_keys go into the conf verbatim
-    (allowed names, engine ranges), prior_ranges rewrite a parameter's
-    prior line keeping its type. Both are recorded; anything else is
-    refused before a conf is written."""
+    """pf_keys go into the conf verbatim (allowed names and ranges);
+    prior_ranges rewrite a prior line keeping its type. Both are recorded;
+    anything else is refused before a conf is written."""
     _prep_env(monkeypatch, tmp_path)
     ex = {"pf_keys": {"pf_shrink": 0, "pf_forecast_jitter": 0.05},
           "prior_ranges": {"r__FREE": [0.1, 200], "mult__FREE": [0.0005, 1.0]}}
@@ -170,10 +165,9 @@ def test_prepare_refuses_an_unknown_seed_anchor(monkeypatch, tmp_path):
 
 def test_prepare_continues_from_a_saved_cloud_and_records_a_missing_one(
         monkeypatch, tmp_path):
-    """A cloud in the continue_states directory is copied into the cell
-    (outside out/, which the runners clear) and the conf continues from
-    the copy; the source is never the engine's write target. A cell whose
-    cloud is absent starts fresh and SAYS so in cells.json."""
+    """A saved cloud is copied into the cell (outside out/, which runners
+    clear) and continued from; the source is never written. A missing cloud
+    starts fresh and is recorded in cells.json."""
     _prep_env(monkeypatch, tmp_path)
     src_dir = tmp_path / "states" / "2098-10-31"
     src_dir.mkdir(parents=True)
@@ -200,10 +194,8 @@ def test_prepare_continues_from_a_saved_cloud_and_records_a_missing_one(
 
 def test_prepare_pins_the_initial_state_to_the_anchor_week(monkeypatch,
                                                            tmp_path):
-    """resolve_state derives i0 from the season-to-date count, so the
-    model changes every week with no revision at all (measured: Alaska i0
-    9.14e-3 then 6.86e-3 on identical rows). anchor_asof takes i0 from one
-    week's vintage; the observations stay this week's."""
+    """anchor_asof takes i0 from one week's vintage (resolve_state's i0 moves
+    week to week even on identical rows); observations stay this week's."""
     import flubnf.sihrs_fit as sf
     import app.core.data as data
     _prep_env(monkeypatch, tmp_path)
@@ -244,9 +236,8 @@ def test_prepare_pins_the_initial_state_to_the_anchor_week(monkeypatch,
 
 
 def test_prepare_can_fit_the_initial_infected_fraction(monkeypatch, tmp_path):
-    """fit_i0 = [lo, hi] makes i0 the sixth fitted parameter: the model's
-    i0 line names i0__FREE, whose default is this week's data-derived
-    anchor, and the conf carries a loguniform prior for it."""
+    """fit_i0 = [lo, hi] fits i0 as a sixth parameter (default: this week's
+    data-derived anchor) with a loguniform prior."""
     import flubnf.sihrs_fit as sf
     _prep_env(monkeypatch, tmp_path)
 
@@ -288,10 +279,8 @@ _TRAJ = "0 1 2 3 4 5 6\n0 1 2 3 4 5 6\n"
 
 
 def test_collect_copies_the_ending_cloud_and_records_a_missing_one(tmp_path):
-    """collect() runs before the week's tree is pruned, so it is where the
-    cloud is carried out. A fitted cell with no cloud file is still pooled
-    (its forecast is good) and is recorded in pf_state_missing.json: the
-    carry is lost for that cell, never the week."""
+    """collect() (before pruning) carries each ending cloud out; a fitted cell
+    without one is still pooled and recorded in pf_state_missing.json."""
     w = tmp_path / "wr"
     w.mkdir()
     dest = tmp_path / "states" / "2098-11-07"
@@ -307,9 +296,8 @@ def test_collect_copies_the_ending_cloud_and_records_a_missing_one(tmp_path):
 
     out = pf.collect(w)
     assert sorted(out) == ["Ohio", "Utah"]
-    # canonical keys: the anchor week is hz.ORIGIN, never "0", which is
-    # now the first forecast. n_obs=3 so the anchor is col 2, scaled by
-    # last_observed/median = 10/2, and both replicates pool into it.
+    # canonical keys: the anchor is hz.ORIGIN (col 2 for n_obs=3, scaled by
+    # 10/2), pooled over both replicates
     assert out["Ohio"][hz.ORIGIN] == [10.0, 10.0, 10.0, 10.0]
     assert (dest / "Ohio_r0.npz").read_bytes() == b"ending-cloud"
     assert not (dest / "Ohio_r1.npz").exists()
@@ -348,8 +336,7 @@ def test_run_week_hands_extra_to_prepare_and_records_it_in_the_manifest(
     monkeypatch.setattr(retro.pf_engine, "prepare", fake_prepare)
     monkeypatch.setattr(retro.pf_engine, "collect",
                         lambda wd: {"Ohio": {"0": [1.0]}})
-    # the Oracle step reads the week's vintage, which this hub-free test
-    # has none of: the engines are stubbed and so is the step
+    # the Oracle step needs a vintage this hub-free test lacks: stub it
     monkeypatch.setattr(retro.oracle_mod, "apply_week",
                         lambda s, asof, wd, **kw: (s, {"applied": True,
                                                        "bank": {"label": "stub"}}))
@@ -401,8 +388,7 @@ def test_run_week_takes_the_season_start_from_extra(tmp_path, monkeypatch):
     monkeypatch.setattr(retro.pf_engine, "prepare", fake_prepare)
     monkeypatch.setattr(retro.pf_engine, "collect",
                         lambda wd: {"Ohio": {"0": [1.0]}})
-    # the Oracle step reads the week's vintage, which this hub-free test
-    # has none of: the engines are stubbed and so is the step
+    # the Oracle step needs a vintage this hub-free test lacks: stub it
     monkeypatch.setattr(retro.oracle_mod, "apply_week",
                         lambda s, asof, wd, **kw: (s, {"applied": True,
                                                        "bank": {"label": "stub"}}))
@@ -423,11 +409,8 @@ def test_run_week_takes_the_season_start_from_extra(tmp_path, monkeypatch):
 
 def test_run_season_logs_a_week_whose_week_extra_raises(tmp_path,
                                                         monkeypatch):
-    """A week_extra that raises for one week is that week's failure: it
-    lands in failures.log, the next week still runs and the season ends
-    'done'. The call sits inside the per-week try for exactly this reason
-    (the Oracle wiring once moved it out, and one bad week killed the
-    season; WIRING_CHECK.md D1, 2026-09-22)."""
+    """A week_extra that raises fails only that week (logged in
+    failures.log); the call must stay inside the per-week try."""
     clock = {"t": 1_000_000.0}
     monkeypatch.setattr(retro, "_now", lambda: clock["t"])
     monkeypatch.setattr(retro, "season_vintages", lambda s: [W1, W2])
@@ -485,9 +468,8 @@ def test_run_season_asks_week_extra_for_every_week_in_order(tmp_path,
     assert got == [(W1, {"continue_states": None}),
                    (W2, {"continue_states": W1})]
     assert retro.read_meta(root)["settings"]["week_extra"] == "carry"
-    # without the callable every week carries the shipped Groundhog donors
-    # (analogue.SHIPPED_AUX, resolved against the committed bank) and the
-    # record names the preset with its bank digest (2026-09-22)
+    # without the callable every week carries the shipped Groundhog donors,
+    # recorded as the preset with its bank digest
     from app.core.engines import analogue as an
     got.clear()
     root2 = tmp_path / "plain"

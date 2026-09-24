@@ -1,17 +1,12 @@
-"""Warm-starting must be aligned, or it is worse than not warm-starting at all.
+"""Warm-starting must be aligned, or it is worse than not warm-starting.
 
-PyBNF assigns `starting_params` BY INDEX (algorithms.py:2175) and orders
-parameters by the order their `*_var` lines appear in the conf. A misaligned
-line hands Reff's chain mult's value, and the fit proceeds without complaint --
-the same silent-failure shape as the spawn bug these tests were written after.
-
-So the alignment is asserted from both ends: the emitted line must follow the
-priors dict that writes the conf, and a posterior missing any of those names
-must raise rather than emit a short line that PyBNF would happily misread.
+PyBNF assigns `starting_params` BY INDEX in the conf's `*_var` line order,
+so a misaligned line silently hands one parameter another's value. Asserted
+from both ends: the line follows the priors dict that writes the conf, and
+a posterior missing any name raises instead of emitting a short line.
 """
 from __future__ import annotations
 
-from pathlib import Path
 
 import numpy as np
 import pytest

@@ -66,7 +66,6 @@ class TestResumeCheckpoint:
     def test_walk_forward_skips_and_checkpoints(self, tmp_path):
         # Static (stateless) inproc run: skip_weeks must be honored and each
         # run week checkpointed. Uses the fast in-Python engine (no PyBNF).
-        rng = np.random.default_rng(0)
         obs = np.concatenate([np.linspace(1, 80, 16), np.linspace(80, 5, 10)])
         cp = tmp_path / "Alabama.csv"
         recs = walk_forward(

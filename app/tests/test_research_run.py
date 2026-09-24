@@ -6,7 +6,6 @@ members=3 selection the /run path already accepts (now with a particles
 knob); everything it starts is tagged research on every surface the run
 appears on; and the flagship Forecast page keeps no third-member option.
 """
-import json
 import sys
 from pathlib import Path
 
@@ -49,8 +48,10 @@ def test_pf2s_view_carries_the_badged_research_form():
     # guarded by the same busy rules as every control that books the engine
     form = html.split('id="research-run"', 1)[1]
     assert 'data-guard="console-run"' in form
-    # honest copy: the shipped forecast is not changed by this
-    assert "unchanged" in joined
+    # honest copy on the card itself (not elsewhere on the page): scored
+    # beside the shipped models, never written as a submission
+    intro = " ".join(form.split("<form", 1)[0].split())
+    assert "scored, never submitted" in intro
 
 
 def test_research_form_appears_only_on_the_pf2s_view():

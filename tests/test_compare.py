@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pandas as pd
 import pytest
@@ -97,17 +97,11 @@ class TestAlignBacktestWithTeam:
 class TestJoinAlignment:
     """Regression guard for the backtest<->team join.
 
-    This join was wrong for a while: `reference_date` was set to week W's own
-    ending date instead of W+1 week, so every comparison paired our forecast of
-    one target week against the team's forecast of a DIFFERENT target week. It
-    is invisible in the WIS numbers (both sides look plausible) and it moved
-    per-state verdicts substantially, so it needs a test that checks the
-    alignment itself rather than the scores.
-
-    The check that catches it: both datasets carry the OBSERVED TRUTH for the
-    cell they describe. If the join is aligned, the team's `actual` must equal
-    our `actual_h{k}` for every matched cell. If it is off by a week, they never
-    agree. See the module docstring in flubnf/compare.py for the derivation.
+    reference_date was once week W's own ending date instead of W+1, pairing
+    forecasts of DIFFERENT target weeks (invisible in WIS). Both datasets carry
+    the observed truth of their cell, so an aligned join has team `actual`
+    equal to our `actual_h{k}` in every matched cell (derivation in
+    flubnf/compare.py).
     """
 
     def test_shift_is_one_week(self):

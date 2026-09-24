@@ -1,23 +1,13 @@
-"""The season-line palette: two palettes at the token layer.
+"""The season-line palette: two palettes at the token layer (nau.css).
 
-User-verified report 2026-08-21: the season-over-season charts wore the
-colorblind-safe palette for everyone, so color-vision mode looked ON by
-default and the CV safe toggle visibly moved nothing. The design now is
-TWO palettes as CSS tokens (nau.css):
+  * --season-1..6: the normal-vision default (3:1+ on all eight grounds);
+  * --season-cvd-1..6: the red-green-safe set (the SEASON_COLORS literals in
+    player.js), which data-vision="cvd" remaps --season-N onto.
 
-  * --season-1..6 -- the normal-vision default, a tab10-adjacent set
-    fitted to the brand bar (3:1+ against all eight theme grounds);
-  * --season-cvd-1..6 -- the red-green-safe set (the audited SEASON_COLORS
-    literals in player.js), which data-vision="cvd" remaps --season-N onto.
-
-Charts resolve --season-N per draw via getComputedStyle and redraw on
-themechange, so the toggle visibly swaps the whole set; SEASON_COLORS
-stays the fallback where the tokens are absent (the fixed-dark report),
-keeping that fallback the safe set. Seasons are colored newest-first (the
-newest non-gold season always takes index 0), so the pair drawn beside
-the gold latest-season line is exactly the audited one. These tests pin
-the construction of both sets, the token wiring, the fresh-profile
-default (normal vision), and the documentation, and audit the other
+Charts resolve --season-N per draw and redraw on themechange, so the
+CV-safe toggle swaps the set; SEASON_COLORS is the (safe) fallback where
+tokens are absent. Seasons are colored newest-first, so the pair beside the
+gold latest-season line is the audited one. Also audits the other
 multi-series charts for red/green reliance.
 """
 import re
@@ -112,8 +102,7 @@ CVD = _tokens(_block(":root"), "season-cvd")
 # -------------------------------------------------- the two token palettes
 
 def test_both_palettes_live_in_every_theme_block():
-    """Six normal + six cvd literals, identical in all four theme blocks
-    (the --cat-* pattern: categorical tokens join the parity contract)."""
+    """Six normal + six cvd literals, identical in all four theme blocks."""
     assert len(NORMAL) == 6 and len(CVD) == 6
     assert NORMAL != CVD
     for sel in (':root', '[data-theme="dark"]', '[data-theme="paper"]',
@@ -132,9 +121,8 @@ def test_cvd_mode_remaps_the_season_tokens():
 
 
 def test_normal_palette_is_distinct_and_holds_3_to_1_on_all_grounds():
-    """The normal-vision default: every color 3:1+ on all eight theme
-    grounds, adjacent pairs (and the first color against both golds)
-    clearly separable in normal vision."""
+    """Normal set: 3:1+ on all eight grounds; adjacent pairs (and the first
+    against both golds) clearly separable."""
     for c in NORMAL:
         for g in GROUNDS:
             assert _cr(c, g) >= 3.0, (c, g, _cr(c, g))
@@ -145,11 +133,9 @@ def test_normal_palette_is_distinct_and_holds_3_to_1_on_all_grounds():
 
 
 def test_cvd_palette_keeps_60_separability_in_every_vision_mode():
-    """The red-green-safe set keeps the original construction: every pair
-    a reader can see side by side (cyclically adjacent colors, and the
-    first color against both gold variants) measures 60+ under both
-    Vienot matrices AND in normal vision, and every color holds 3:1 on
-    all eight grounds."""
+    """CVD set: every visible pair (adjacent, and first vs both golds)
+    measures 60+ under both Vienot matrices and normal vision; 3:1 on all
+    grounds."""
     pairs = [(CVD[i], CVD[(i + 1) % 6]) for i in range(6)]
     pairs += [(g, CVD[0]) for g in GOLD]
     for a, b in pairs:
@@ -163,10 +149,8 @@ def test_cvd_palette_keeps_60_separability_in_every_vision_mode():
 # ------------------------------------------------------- the one source
 
 def test_player_literals_are_the_cvd_set_and_python_reads_them():
-    """SEASON_COLORS in player.js (the fallback for token-less surfaces)
-    equals the --season-cvd-* literals, so a surface without the
-    stylesheet still wears the audited safe set; report_v2.season_colors
-    hands the same values to every Python surface."""
+    """SEASON_COLORS (player.js fallback) equals the --season-cvd-* literals,
+    and report_v2.season_colors hands the same values to Python surfaces."""
     pal = report_v2.season_colors()
     assert pal == CVD
     m = re.search(r"/\*SEASON_COLORS_JSON\*/\s*(\[.*?\])"
@@ -183,17 +167,12 @@ def test_player_literals_are_the_cvd_set_and_python_reads_them():
 # ------------------------------------------- fresh profile: normal vision
 
 def test_fresh_profile_renders_normal_palettes():
-    """No stored preferences: the served page carries no data-vision
-    attribute, the boot script enables cvd ONLY from an explicit stored
-    choice, and bare :root resolves --season-N to the normal literals
-    (the cvd literals live behind the data-vision remap). The outlook
-    map's category fills ride the same rule: --cat-* holds the normal
-    scale at :root and swaps only under the modifier."""
+    """A fresh profile gets normal palettes: cvd only from an explicit stored
+    choice; bare :root holds the normal season and map-category scales."""
     html = client.get("/").text
     assert 'data-vision="cvd"' not in html.split("<script>")[0]
     assert "localStorage.getItem('vision')==='cvd'" in BASE_T
-    # no OS media query force-enables cvd (contrast has one; vision does
-    # not -- there is no such preference signal to follow)
+    # no OS media query enables cvd (there is no such preference signal)
     boot = BASE_T.split("</script>", 1)[0]
     assert "vision" in boot
     assert "prefers-contrast" in boot          # contrast follows the OS
@@ -215,16 +194,14 @@ def test_fresh_profile_renders_normal_palettes():
 # --------------------------------------------------------------- wiring
 
 def test_forecast_season_chart_resolves_the_tokens_newest_first():
-    # the fallback list still arrives from the server (the shared player
-    # literal via report_v2.season_colors), never a template-private list
+    # the fallback list comes from the server (the shared player literal)
     assert "const SCOLORS = {{ season_colors_json | safe }}" in FORECAST_T
     # colors resolve from the tokens per draw, falling back to SCOLORS
     assert "css('--season-' + ((i % SCOLORS.length) + 1))" in FORECAST_T
     assert "|| SCOLORS[i % SCOLORS.length]" in FORECAST_T
     # newest-first assignment: the season before the gold one is index 0
     assert "seasonColor(seasons.length-2-i)" in FORECAST_T
-    # the latest season keeps the gold accent, falling back to the shared
-    # member map (no private literal)
+    # the latest season keeps the gold accent (fallback: the member map)
     assert "css('--gold')||MCOLORS.analogue" in FORECAST_T
     # the CV-safe toggle reaches the chart: themechange redraws it
     assert "addEventListener('themechange',()=>{drawData(CURMODE)" in FORECAST_T
@@ -237,9 +214,8 @@ def test_forecast_season_chart_resolves_the_tokens_newest_first():
 
 
 def test_player_exposes_the_token_resolver():
-    """The shared player core carries the one resolver (token first,
-    SEASON_COLORS fallback), so any surface drawing season lines through
-    it follows the color-vision mode for free."""
+    """The shared player carries the one resolver (token first, SEASON_COLORS
+    fallback)."""
     assert "function seasonColor(i)" in PLAYER
     assert "getPropertyValue('--season-' + (k + 1))" in PLAYER
     assert "seasonColor: seasonColor" in PLAYER
@@ -248,19 +224,16 @@ def test_player_exposes_the_token_resolver():
 # -------------------------------------------------------- documentation
 
 def test_the_palette_contract_is_documented_for_the_next_person():
-    # the player states, at the definition, that the literals are the cvd
-    # set, that the tokens carry the normal default, and where the audit
-    # lives
+    # at the definition, the player says the literals are the cvd set, the
+    # tokens carry the normal default, and where the audit lives
     block = PLAYER.split("var SEASON_COLORS")[0].rsplit("// THE", 1)[1]
     assert "RED-GREEN-SAFE set" in block
     assert "--season-1..6" in block
     assert "test_season_palette" in block
-    # the member map keeps its own static-safe note: the toggle still
-    # deliberately does not move member lines
+    # the member map keeps its note: the toggle does not move member lines
     mblock = PLAYER.split("var MODEL_COLORS")[0]
     assert "NOT swap these member colors" in mblock.replace("\n// ", " ")
-    # nau.css tells the next person, AT the cvd block, exactly which chart
-    # palettes the toggle does and does not move
+    # nau.css says at the cvd block which palettes the toggle moves
     assert "WHAT THE CV-SAFE TOGGLE DOES AND DOES NOT MOVE" in NAU
     assert "MODEL_COLORS" in NAU and "SEASON_COLORS" in NAU
     assert "test_season_palette.py" in NAU
@@ -270,11 +243,9 @@ def test_the_palette_contract_is_documented_for_the_next_person():
 # ------------------------------- audit: the other multi-series charts
 
 def test_no_other_multi_series_chart_relies_on_a_red_green_pair():
-    """The sweep the palette fix came from: member overlays ride the
-    dichromat-spaced MODEL_COLORS (audited in test_a11y_modes); observed
-    vs settled differ by dash on the same ink, never by hue; the official
-    comparators wear neutral greys or the muted token. No chart series
-    color comes from plotly's default colorway."""
+    """No multi-series chart relies on a red/green pair: members use
+    MODEL_COLORS, observed vs settled differ by dash, officials are neutral
+    greys, and nothing uses plotly's default colorway."""
     # observed vs settled: same ink, dash carries the distinction
     for src, settled in ((FORECAST_T, "settled outcome"),
                          (MODEL_T, "settled outcome")):
@@ -282,10 +253,8 @@ def test_no_other_multi_series_chart_relies_on_a_red_green_pair():
         assert "css('--ink')" in seg and "dash:'dot'" in seg, settled
     assert "name: 'truth (settled)', line: {color: p.ink" in PLAYER
     assert "line: {color: p.ink, width: 1.3, dash: 'dot'}" in PLAYER
-    # officials: neutral greys, never red/green. The report host keeps its
-    # fixed-dark literal; the console season page resolves the per-theme
-    # neutral through the token system (the Contrast modifier reaches it),
-    # with the dark-ground literal as the token-less fallback.
+    # officials: neutral greys (the console resolves a per-theme token with
+    # the dark literal as fallback)
     assert "flusightEnsemble: '#C7CCDD'" in PLAYER
     assert "flusightEnsemble: css('--official') || '#AAB1C9'" in \
         (UI / "templates" / "retro_season.html").read_text()
@@ -293,9 +262,7 @@ def test_no_other_multi_series_chart_relies_on_a_red_green_pair():
     # no default-colorway reliance anywhere a series gets its color
     for src in (PLAYER, FORECAST_T, MODEL_T):
         assert "color:undefined" not in src.replace(" ", "")
-    # no red/green literal pair in any chart source (the map's category
-    # scale lives in tokens and follows the CV-safe toggle; the ok/bad
-    # pair rides --ok/--bad)
+    # no red/green literal pair in any chart source
     for bad_hex in ("#2ca02c", "#d62728"):
         for src in (PLAYER, FORECAST_T, MODEL_T):
             assert bad_hex not in src.lower(), bad_hex

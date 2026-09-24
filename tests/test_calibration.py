@@ -188,16 +188,10 @@ class TestApplyCalibration:
 
 
 class TestDeclaredIntervalIsTheMeasuredInterval:
-    """PI_LEVELS declares the 80% interval as (0.10, 0.90). Before v1.0 the
-    record carried no q10/q90 and empirical_coverage measured q05..q95 --
-    the 90% band -- then filed the answer under nominal 0.80. rescale_factor
-    differenced a 90% measurement against a 0.80 target, so a PERFECTLY
-    calibrated forecaster was told it over-covered and had its intervals
-    narrowed by 20% for no reason.
-
-    These pin the repair: the band that is declared is the band that is
-    measured, a calibrated forecaster is left alone, and mis-scaled ones
-    move in the right direction.
+    """The declared 80% interval (0.10, 0.90) is the band measured. Before
+    v1.0 q05..q95 (the 90% band) was measured against 0.80, so a calibrated
+    forecaster had its intervals narrowed 20% for nothing. Pinned: a
+    calibrated forecaster is left alone; mis-scaled ones move the right way.
     """
 
     @staticmethod

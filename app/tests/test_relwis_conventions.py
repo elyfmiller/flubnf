@@ -1,18 +1,12 @@
 """The scoring-convention switch: two definitions of relWIS, never mixed.
 
-Two quantities are called relative WIS. The ratio of sums is this project's
-home convention and needs only its own sealed scores; the pairwise scaled
-figure is what the CDC FluSight dashboard reports and needs every other
-team's per-cell WIS, which a given machine may simply not have. They give
-different numbers for the same forecasts, so the tests below pin three
-things: the arithmetic of each, that the pairwise one obeys the rules that
-make it the CDC figure (shared cells only, baseline at exactly 1.0), and
-that its absence is stated rather than papered over with the other one.
-
-Everything here builds its own frames. No hub clone, no app/state, no
-cached field data: the last of those is explicitly pointed at an empty
-directory so a development machine that HAS the cache cannot make the
-unavailable path pass for the wrong reason.
+Ratio of sums (the home convention, needs only our sealed scores) and
+pairwise scaled (the CDC dashboard figure, needs every team's per-cell WIS)
+give different numbers. Pinned: each one's arithmetic, the pairwise rules
+(shared cells only, baseline exactly 1.0), and that a missing pairwise
+figure is stated, never replaced by the other. All frames are built here;
+the field cache is pointed at an empty dir so a dev machine's real cache
+cannot make the unavailable path pass.
 """
 import re
 import sys
@@ -31,11 +25,8 @@ C1 = ("2024-01-06", "01", 0)
 C2 = ("2024-01-06", "01", 1)
 C3 = ("2024-01-13", "01", 0)
 
-#: The hand-computable field. FluSight-baseline and TeamA submitted all
-#: three cells; OURS submitted only the first two, which is what makes the
-#: "cells both models submitted" rule visible: the baseline's third cell is
-#: enormous, so a mean taken over each model's own cells instead of the
-#: shared ones would move our figure by a factor of three.
+#: FluSight-baseline and TeamA submitted all three cells, OURS only the first
+#: two. The baseline's huge third cell makes the shared-cells rule visible.
 FIELD_WIS = {
     relwis.BASELINE: {C1: 4.0, C2: 4.0, C3: 100.0},
     "TeamA": {C1: 2.0, C2: 2.0, C3: 50.0},
@@ -65,12 +56,7 @@ def _seal_frame():
 
 @pytest.fixture()
 def no_field(tmp_path, monkeypatch):
-    """Point the field-cell loader at an empty directory.
-
-    Without this a development machine with the real cache would satisfy
-    the unavailable tests by accident, which is the one way this suite
-    could go green while the feature was broken.
-    """
+    """Point the field-cell loader at an empty directory (see module doc)."""
     d = tmp_path / "no-field-cells"
     d.mkdir()
     monkeypatch.setenv(relwis.FIELD_CELLS_ENV, str(d))
@@ -154,18 +140,9 @@ def test_insert_model_ranks_us_inside_the_real_field():
 
 
 def test_a_model_the_field_never_met_yields_no_figure_rather_than_a_crash():
-    """Our cells in a jurisdiction the cache's weeks do not reach.
-
-    The field cells are a cached artifact built out of repo at some past
-    moment, so one jurisdiction where its weeks and this run's weeks never
-    meet is an ordinary coverage gap, not a corrupt cache. The rest of the
-    field still overlaps itself there, so the baseline scaling exists and
-    the tournament runs; only OUR model has no pair. That model has no
-    figure, which is the documented empty result. It used to raise
-    ValueError out of the rank lookup instead, and nothing between here and
-    the route caught it, so one such jurisdiction turned the whole pairwise
-    season page into a 500.
-    """
+    """Our cells in a jurisdiction the field cache never reaches: that model
+    has no figure (the documented empty result), not a ValueError that took
+    the whole pairwise page down with a 500."""
     wis = {relwis.BASELINE: {C1: 4.0, C2: 4.0}, "TeamA": {C1: 2.0, C2: 2.0},
            "FluBNF-PF": {C3: 1.0}}           # a week nobody else submitted
     cells = _cells(wis)
@@ -193,8 +170,7 @@ def test_one_jurisdiction_with_no_overlap_does_not_cost_the_season(tmp_path):
     figs = relwis.season_figures(frame, relwis.PAIRWISE,
                                  field=relwis.load_field_cells(d))
     assert figs.available and figs.convention == relwis.PAIRWISE
-    # Ohio is the jurisdiction the field actually met; Alaska has no figure
-    # and is left out rather than printed as "nan"
+    # Alaska has no figure and is left out, not printed as "nan"
     assert [r["name"] for r in figs.states] == ["Ohio"]
 
 
@@ -291,9 +267,8 @@ def test_a_pairwise_view_with_no_overlapping_season_says_so(tmp_path):
 # --------------------------------------------------------- what a page gets
 
 def _multi_state_seal():
-    """A seal frame over three jurisdictions whose FIPS order and whose
-    alphabetical order disagree: Puerto Rico is FIPS 72, so a table sorted
-    on the cell key drops it past Wyoming."""
+    """Three jurisdictions whose FIPS and alphabetical orders disagree
+    (Puerto Rico is FIPS 72)."""
     rows = []
     for loc, fips in (("Ohio", 39), ("Puerto Rico", 72), ("Wyoming", 56)):
         for model, w in (("pf", 1.0), ("analogue", 2.0), ("ensemble", 1.0)):
@@ -304,9 +279,7 @@ def _multi_state_seal():
 
 
 def test_the_state_table_is_ordered_by_the_name_it_prints():
-    """Alphabetical by jurisdiction name, which the table's own script
-    documents as the order the page loads in. Sorting on the FIPS the
-    cells are keyed by agrees for the states and not for the territories."""
+    """Alphabetical by printed name, not by the FIPS the cells are keyed by."""
     figs = relwis.season_figures(_multi_state_seal(), relwis.RATIO_OF_SUMS)
     assert [r["name"] for r in figs.states] == ["Ohio", "Puerto Rico",
                                                 "Wyoming"]
@@ -322,14 +295,9 @@ def test_season_figures_carry_their_own_convention_and_per_state_rows():
 
 
 def test_pairwise_season_figures_carry_rank_and_field_size(tmp_path):
-    """Computed, and deliberately not printed.
-
-    Placement against the FluSight field is withdrawn (methods.html,
-    docs/archive/RELEASE-1.0.md) because the field's own scores come from a builder
-    outside this repository. The machinery stays covered here so that
-    lifting the withdrawal is a template change; the page tests below pin
-    that nothing renders it.
-    """
+    """Computed but deliberately not printed: placement against the field is
+    withdrawn (methods.html). Covered so lifting the withdrawal is a template
+    change; the page tests pin that nothing renders it."""
     d = tmp_path / "cells"
     d.mkdir()
     # a field on the cells the seal frame lands on: asof + 7 days
@@ -347,15 +315,8 @@ def test_pairwise_season_figures_carry_rank_and_field_size(tmp_path):
 
 
 def test_the_field_size_is_the_field_the_ranks_were_taken_in(tmp_path):
-    """`n_field` and the ranks have to describe ONE tournament.
-
-    A cache spans every season it was built from; teams that submitted only
-    in some OTHER season were never in this figure's field and must not be
-    counted into it. Neither number reaches a page today (placement is
-    withdrawn), but they are carried together and would be read together,
-    so a field size counted off the cache instead of off the tournament
-    would contradict the ranks beside it the moment either is shown.
-    """
+    """`n_field` and the ranks describe ONE tournament: teams from other
+    seasons (or national-only) in the cache are not counted."""
     d = tmp_path / "cells"
     d.mkdir()
     ref = "2024-01-13"
@@ -429,11 +390,9 @@ def _season_page(**kw):
 
 
 def test_the_page_carries_no_convention_switch():
-    """The switch left the season page (lead, 2026-09-07): the pairwise
-    convention could not be scored from this checkout, so the button only
-    ever produced 'No scores under this convention'. The page renders the
-    ratio of sums, labelled as such; the pairwise view stays reachable by
-    URL for the one figure it can state."""
+    """No convention switch on the season page (pairwise could not be scored
+    from a checkout); it renders the ratio of sums, labelled. Pairwise stays
+    reachable by URL."""
     html = _season_page(figs=relwis.season_figures(_seal_frame(),
                                                    relwis.RATIO_OF_SUMS))
     assert "Scoring convention" not in html
@@ -461,16 +420,9 @@ def test_every_head_tile_names_the_convention_that_produced_it():
 
 
 def test_the_page_shows_the_pairwise_value_and_never_the_placement():
-    """THE withdrawal, enforced on the surface that used to break it.
-
-    Methods says placement against the FluSight field is not restated. The
-    season page under the pairwise convention used to print "ranked 6 of
-    48" and "Field: 47 FluSight teams" anyway, so the application asserted
-    a rank and denied it in the same build. The VALUE stays: it is this
-    project's own score under one stated convention, reproducible from the
-    sealed cells. The rank needs the whole field scored on that convention,
-    which this repository cannot rebuild.
-    """
+    """Under pairwise the VALUE is shown (our own score, reproducible) but
+    never the rank or field size, which need a field this repo cannot
+    rebuild (methods.html withdraws placement)."""
     figs = relwis.season_figures(_seal_frame(), relwis.RATIO_OF_SUMS)
     pair = _season_page(conv=relwis.PAIRWISE, heads={"ensemble": 0.629},
                         figs=relwis.Figures(
@@ -485,21 +437,14 @@ def test_the_page_shows_the_pairwise_value_and_never_the_placement():
     # and the page says WHY, rather than leaving a silent gap
     assert "placement is not shown" in flat
 
-    # the rank is still computed: withdrawing the display must not have
-    # quietly deleted the machinery that would restore it
+    # the rank is still computed, so the display can be restored
     assert relwis.insert_model(_cells(), "FluBNF-PF",
                                [relwis.BASELINE, "TeamA"])["rank"] == 1
 
 
 def test_the_methods_withdrawal_stays_true_and_names_the_convention():
-    """The two claims Methods makes about relWIS, checked against it.
-
-    First: placement is withdrawn and not restated, with a reason that
-    survives the console now computing the pairwise VALUE. Second: the
-    page names WHICH ratio its figures are, since both conventions are
-    ratios scaled to put the baseline at 1.0 and "a ratio against the
-    FluSight baseline" therefore labels neither.
-    """
+    """Methods: placement withdrawn with its reason, and the page names WHICH
+    ratio (both conventions are ratios to the baseline)."""
     html = _flat(srv.templates.env.get_template("methods.html").render(
         active="Methods", versions={}))
     assert "was withdrawn on 2026-08-24 and is not restated" in html
@@ -544,10 +489,8 @@ def test_the_unavailable_page_states_the_reason_and_offers_no_numbers():
     assert "conv=ratio_of_sums&amp;week=2098-11-07" in html
     # nothing numeric slipped through under the pairwise heading
     assert 'class="big' not in html
-    # THE panels that used to go on describing a table that is not there:
-    # an empty per-state fold with its full caption, and a warning against
-    # comparing the player with pairwise scores the page has just said it
-    # does not have
+    # no empty per-state panel and no warning about pairwise scores the page
+    # has just said it does not have
     assert "Per-state scores" not in flat
     assert "0 states scored" not in flat
     assert "Each jurisdiction is its own tournament" not in flat
@@ -555,11 +498,8 @@ def test_the_unavailable_page_states_the_reason_and_offers_no_numbers():
 
 
 def test_the_unavailable_banner_does_not_send_a_reader_where_they_already_are():
-    """The ratio of sums can come up empty too, on an unscored season.
-
-    The banner then used to offer "the ratio of sums view, always
-    available" to a reader standing on it. It names the state instead.
-    """
+    """An empty ratio-of-sums view names its state instead of offering a link
+    to itself."""
     figs = relwis.Figures(convention=relwis.RATIO_OF_SUMS, values={},
                           detail={},
                           reason="no cells shared with the FluSight baseline")
@@ -569,21 +509,15 @@ def test_the_unavailable_banner_does_not_send_a_reader_where_they_already_are():
     assert "No scores under this convention" in flat
     assert "no cells shared with the FluSight baseline" in flat
     assert "This is the ratio of sums view" in flat
-    # the banner's own offer of that view is gone; the switch above the
-    # banner still carries its buttons, which is a different thing
+    # the banner does not link the view the reader is on
     assert "ratio of sums view</a>" not in flat
     assert "always available" not in flat
 
 
 def test_the_unavailability_message_says_what_would_populate_the_cache(
         tmp_path):
-    """A reader on a normal machine gets more than "not here".
-
-    The cache is built from a hub clone by a scorer that lives outside this
-    repository, so the message has to name both the switch that points at
-    it and where the app looks by default; otherwise a normal absence reads
-    as the application being broken.
-    """
+    """The message names the env var, the default location and the scorer
+    (score_hub, outside this repo), so absence does not read as breakage."""
     f = relwis.load_field_cells(tmp_path / "not-here")
     assert not f.available
     assert relwis.FIELD_CELLS_ENV in f.reason
@@ -593,13 +527,7 @@ def test_the_unavailability_message_says_what_would_populate_the_cache(
 
 def test_the_field_cache_is_looked_for_in_two_places_and_no_home_directory(
         monkeypatch):
-    """No fixed path under the running user's home directory.
-
-    The loader used to fall back to the analysis archive the reference
-    tournament happened to write into, which is not something a public
-    runtime should probe. The environment variable says the same thing
-    explicitly, and the unavailability message names it.
-    """
+    """No probe of a fixed path under the user's home directory."""
     monkeypatch.delenv(relwis.FIELD_CELLS_ENV, raising=False)
     assert relwis.field_cells_dir() == relwis.FIELD_CELLS_DEFAULT
     src = Path(relwis.__file__).read_text()
@@ -608,14 +536,7 @@ def test_the_field_cache_is_looked_for_in_two_places_and_no_home_directory(
 
 
 def test_every_surface_that_prints_a_relwis_names_the_convention():
-    """One wording, on every surface, from one string.
-
-    The figures a reader is likeliest to hold up against the CDC dashboard
-    were the ones with no label at all: the home page's Measured
-    performance panel, the same panel on the published site, Methods, and
-    the exported season report. Each of them now prints the shared
-    sentence, and none of them types its own version of it.
-    """
+    """One wording on every surface, from relwis.PUBLISHED_CONVENTION_NOTE."""
     ui = Path(srv.__file__).resolve().parent
     core = Path(relwis.__file__).resolve().parent
     assert (srv.templates.env.globals["relwis_convention_note"]
@@ -623,8 +544,7 @@ def test_every_surface_that_prints_a_relwis_names_the_convention():
     for t in ("home.html", "methods.html"):
         src = (ui / "templates" / t).read_text()
         assert "{{ relwis_convention_note }}" in src, t
-    # the two builders that render outside the template environment reach
-    # for the same constant rather than restating it
+    # builders outside the template environment use the same constant
     for mod in ("site_page.py", "report_season.py"):
         assert "PUBLISHED_CONVENTION_NOTE" in (core / mod).read_text(), mod
     # and the short label rides beside the figures on the retro surfaces

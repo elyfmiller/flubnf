@@ -1,12 +1,7 @@
-"""Accessibility basics across the console shell.
-
-One coherent pass: the document language and skip link (Level A), the
-modal focus contract (focus in on open, a Tab loop inside, focus returned
-on close), honest toggle states on every view switcher, playback that
-announces itself to assistive tech, motion accommodation for the quip
-rotation and animated fills, the light-theme accent-ink repointing for the
-structural cyan, the dark-theme field boundary token, the destructive
-button tier, and the prose measure cap.
+"""Accessibility basics across the console shell: lang and skip link, the
+modal focus contract, honest toggle states, announced playback, reduced
+motion, the light-theme accent-ink for structural cyan, the dark field
+boundary token, the destructive button tier, and no prose measure cap.
 """
 import sys
 from pathlib import Path
@@ -149,9 +144,8 @@ def test_destructive_confirms_wear_the_danger_tier():
 # ------------------------------------------------- one width for card text
 
 def test_card_text_carries_no_measure_cap():
-    """Rebuild 2026-08-22: all text in a card -- prose, hints, subs,
-    details bodies -- runs at the card's content width. No ch measure on
-    card paragraphs, and no per-class escape rules left to fight it."""
+    """Card text runs at the card's content width: no ch measure and no
+    per-class escape rules."""
     assert "max-width:72ch" not in NAU
     assert ".card p{margin:.45rem 0}" in " ".join(NAU.split())
     assert ".card p.hint,.card p.sub{max-width:none}" not in NAU

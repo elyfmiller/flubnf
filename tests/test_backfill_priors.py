@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from flubnf.backfill_priors import (BackfillOutcome, backfill_all,
+from flubnf.backfill_priors import (backfill_all,
                                     backfill_state, discover_states,
                                     observed_for_state, season_window)
 from flubnf.constants import StateInfo
@@ -362,7 +362,10 @@ class TestBackfillCLI:
              "--source", str(tmp_path / "results"),
              "--year", "2024",
              "--target", str(tmp_path / "nope.csv")],
-            env={"NO_COLOR": "1"},
+            # the CLI opens a workspace before checking --target; keep it in
+            # tmp_path, not the checkout's default workspaces/
+            env={"NO_COLOR": "1",
+                 "FLUBNF_WORKSPACE_ROOT": str(tmp_path / "workspaces")},
         )
         assert result.exit_code != 0
         combined = _plain((result.stdout or "") + (result.output or ""))

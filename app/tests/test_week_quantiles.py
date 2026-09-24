@@ -1,7 +1,6 @@
-"""The per-week quantile sidecar (2026-09-07): written when a week is
-stored, recomputed for a week stored before it existed or whose samples
-are newer, kept by the pruner, and read by the playback and the season
-scorer in place of the 140 MB samples parse."""
+"""The per-week quantile sidecar: written when a week is stored, recomputed
+when missing or older than the samples, kept by the pruner, and read by
+playback and the season scorer instead of the 140 MB samples parse."""
 import json
 import os
 import sys
@@ -19,11 +18,8 @@ W = "2098-01-03"
 
 
 def _payload(asof=W, seed=0):
-    """One week's record in CANONICAL horizons (app.core.horizons): the four
-    forecasts under "0".."3" and no anchor, which is what every reader above
-    the storage boundary sees. The median stays keyed on the physical week
-    the horizon stands for (51..54), so the horizons remain distinguishable
-    whichever way the record is written."""
+    """One week's record in CANONICAL horizons ("0".."3", no anchor); medians
+    encode the physical week (51..54) so horizons stay distinguishable."""
     rng = np.random.default_rng(seed)
     return {"asof": asof,
             "pf": {"Ohio": {h: rng.gamma(4.0, 25.0, 300).tolist() for h in hz.HORIZONS}},
@@ -34,9 +30,8 @@ def _payload(asof=W, seed=0):
 def _root(tmp_path, payload, plain=False):
     root = tmp_path / "2098-99"; wd = root / "weeks" / payload["asof"]; wd.mkdir(parents=True)
     if plain:
-        # a week that predates write_week_samples: the bytes on disk are in
-        # the STORED convention, so the canonical payload is translated here
-        # exactly as the storage boundary would have translated it
+        # a pre-write_week_samples week: STORED convention on disk,
+        # translated here as the storage boundary would
         (wd / retro.SAMPLES_JSON).write_text(json.dumps(hz.record_to_stored(payload)))
     else:
         retro.write_week_samples(wd, payload)

@@ -1,21 +1,15 @@
-"""The Oracle SIHRS in words: one marked place, sourced figures, the
-pipeline figure, and the member's name on every page.
+"""The Oracle SIHRS in words.
 
-  * the donor-bank sentences live in app/core/oracle_text and nowhere else:
-    its stream must be the library's (a bank change fails here until the
-    words follow), and no template types the bank's stream itself;
-  * every figure the pages print for the Oracle SIHRS appears, to four
-    places, in docs/ORACLE-SIHRS.md, where its provenance is written;
-  * the pipeline figure keeps the diagrams' house rules and reaches the
-    model tab and Methods;
-  * the model tab and Methods say what the member is: the fit, the blend,
-    one donor per sample path, why, the record with its caveat, and how it
-    differs from the Groundhog;
-  * no rendered page names the model, member, forecast or submission as
-    bare SIHRS: what remains is the compartment model, the two-strain
-    research variant, file names and the BNGL listing (the record's bytes);
-  * the public site names its mechanistic column for what the published
-    trees store.
+  * the donor-bank sentences live only in app/core/oracle_text, whose stream
+    must match the library's; no template types the stream itself;
+  * every Oracle SIHRS figure the pages print appears, to four places, in
+    docs/ORACLE-SIHRS.md with its provenance;
+  * the pipeline figure keeps the diagram rules and reaches the model tab
+    and Methods, which say what the member is and how it differs from the
+    Groundhog;
+  * no rendered page names the model as bare SIHRS (except the compartment
+    model, the two-strain variant, file names and the BNGL listing);
+  * the public site names its mechanistic column for the stored trees.
 """
 import json
 import re
@@ -89,10 +83,8 @@ _B2_SCORES = (Path("~/Documents/FluBNF-local/research/groundhog-beta/oracle_memb
 
 @pytest.mark.skipif(not _B2_SCORES.is_file(), reason="the B2 screen's scores are not on this machine")
 def test_the_record_is_the_b2_screens_own_numbers():
-    """RECORD is read from the B2 screen, never typed: the shipped member
-    (LBGH) and the plain filter (NULL) on the common set, seed mean, and
-    the screen's cell counts; the admissions-only member (LB) and claim
-    B2-1's reading beside them."""
+    """RECORD is read from the B2 screen, never typed (shipped member LBGH,
+    plain filter NULL, cell counts, member LB and claim B2-1)."""
     d = json.loads(_B2_SCORES.read_text())
     assert d["b2_frozen_sha256"] == ot.B2_SHA256
     rt, ps = d["relwis_tables"], d["per_season"]

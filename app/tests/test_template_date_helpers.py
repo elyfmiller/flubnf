@@ -1,14 +1,8 @@
 """Season helpers in the data panels parse Y-M-D components, never bare
-new Date(ds).
-
-Both forecast.html and data.html carry the same seasonOf/weekOfSeason pair,
-and both used to call new Date(ds) on a date-only string beside comments
-forbidding exactly that: a date-only string is a UTC parse, one day back in
-every zone west of Greenwich, so August 1 grouped into the PREVIOUS season
-and Saturdays walked across month lines off-Arizona (2026-09-01 final
-pass). Source checks pin the component parse in both copies; the helpers
-run for real under JavaScriptCore where it is available, in the lab's own
-zone, following test_player_js.py's pattern."""
+new Date(ds): a date-only string parses as UTC, a day early west of
+Greenwich (August 1 fell into the previous season). Source checks pin both
+copies (forecast.html, data.html); the helpers also run under
+JavaScriptCore where available, following test_player_js.py's pattern."""
 import json
 import os
 import re

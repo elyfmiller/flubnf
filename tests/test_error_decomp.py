@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 import pytest
 
-from flubnf.error_decomp import (RowMetrics, _decompose_single,
+from flubnf.error_decomp import (_decompose_single,
                                  aggregate_by_state,
                                  aggregate_by_state_horizon)
 from flubnf.quantiles import FLUSIGHT_QUANTILES

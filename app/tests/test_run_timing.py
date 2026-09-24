@@ -31,8 +31,7 @@ W1, W2, W3 = "2098-11-07", "2098-11-14", "2098-11-21"
 
 @pytest.fixture(autouse=True)
 def _isolated_status():
-    """Snapshot and restore the module-level status stores around each test
-    so mocked run states never leak between tests."""
+    """Snapshot and restore the module-level status stores."""
     status_before = dict(srv._status)
     retro_before = dict(srv._retro_status)
     stop_before = set(srv._retro_stop)
@@ -92,9 +91,8 @@ def test_run_season_records_timing_and_per_week_seconds(tmp_path, monkeypatch):
 
 
 def test_timing_accumulates_across_a_resume(tmp_path, monkeypatch):
-    """A resumed replay carries its earlier segments forward: the clock
-    accumulates, it never restarts, and weeks skipped as already complete are
-    not timed (a zero-second skip would drag the mean toward nothing)."""
+    """A resumed replay accumulates its clock; weeks skipped as complete are
+    not timed (a zero-second skip would drag the mean down)."""
     root = tmp_path / SEASON
     _fake_season(monkeypatch, root, [W1, W2])
     retro.run_season(root, SEASON, ["Ohio"], width=1)
@@ -114,8 +112,8 @@ def test_timing_accumulates_across_a_resume(tmp_path, monkeypatch):
 
 
 def test_record_survives_a_crash_mid_week(tmp_path, monkeypatch):
-    """A week that dies takes its own partial time with it, but the record on
-    disk stays readable and keeps every completed week's seconds."""
+    """A week that dies loses only its own partial time; the record stays
+    readable with every completed week's seconds."""
     root = tmp_path / SEASON
     clock = _fake_season(monkeypatch, root, [W1, W2])
     real_week = retro.run_week
@@ -321,13 +319,10 @@ def test_api_retro_progress_shape_and_eta(tmp_path, monkeypatch):
     assert p["elapsed_s"] == pytest.approx(240.0)
     assert p["mean_s"] == pytest.approx(120.0)
     assert p["weeks_measured"] == 2
-    # the estimate is recency-weighted (half-life three weeks), never the
-    # global mean: the recent 140 s week outvotes the older 100 s one, so
-    # the level sits above the mean; and with no season profile the
-    # remaining weeks are priced by the recorded full-grid shape (later
-    # weeks cost more), so the estimate sits above level x remaining. The
-    # API must agree with the pure estimator on this fixture's positions
-    # (no vintage calendar for a fake season: index over total_weeks).
+    # the ETA is recency-weighted (half-life three weeks) and, with no season
+    # profile, priced by the recorded full-grid shape (later weeks cost
+    # more), so it sits above level x remaining; the API must agree with the
+    # pure estimator (fake season: positions index over total_weeks)
     w = 0.5 ** (1 / 3)
     level = (100.0 * w + 140.0) / (w + 1.0)
     measured = [(0 / 9, 100.0), (1 / 9, 140.0)]
@@ -335,8 +330,7 @@ def test_api_retro_progress_shape_and_eta(tmp_path, monkeypatch):
     _, mid, _ = srv._eta_estimate(measured, remaining)
     assert p["eta_s"] == pytest.approx(mid)
     assert p["eta_s"] > level * 8 > 120.0 * 8
-    # and it is a RANGE: two measured weeks cannot claim precision, so the
-    # band is at its widest floor (half to one-and-a-half times the middle)
+    # a RANGE: two measured weeks give the widest band (0.5x to 1.5x)
     assert p["eta_lo_s"] == pytest.approx(0.5 * p["eta_s"])
     assert p["eta_hi_s"] == pytest.approx(1.5 * p["eta_s"])
     assert p["eta_basis"] == ("estimate from 2 completed weeks, shaped by "
@@ -357,8 +351,7 @@ def test_api_retro_progress_withholds_eta_when_paused(tmp_path, monkeypatch):
                             "heartbeat_utc": time.time()})
     p = client.get(f"/api/retro/progress?season={SEASON}").json()[SEASON]
     assert p["status"] == "paused"
-    # nothing is being worked through: the whole estimate is withdrawn, so
-    # the page can say "paused" instead of decaying a stale range
+    # paused: the whole estimate is withdrawn, not a decaying stale range
     assert p["eta_s"] is None
     assert p["eta_lo_s"] is None and p["eta_hi_s"] is None
     assert p["eta_basis"] is None
@@ -429,8 +422,8 @@ def test_global_stop_also_releases_a_paused_season(tmp_path, monkeypatch):
 
 def test_stop_endpoint_stops_the_season_worker_end_to_end(tmp_path,
                                                           monkeypatch):
-    """The whole path: a click on Stop, the flag, the worker finishing its
-    current week, the ledgered status, and a tree left ready to resume."""
+    """Stop click -> flag -> current week finishes -> status ledgered -> tree
+    ready to resume."""
     monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
     monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
     monkeypatch.setattr(srv, "_sleep_guard", lambda: None)
@@ -522,8 +515,7 @@ def test_runs_page_shows_elapsed_per_completed_run():
              "chips": "", "elapsed_s": None}])
     assert "<th>elapsed</th>" in html
     assert "1:02:05" in html
-    # a pre-timing row is dashed out, never given a fabricated duration and
-    # never the flat contradiction of an all-n/a column under the footnote
+    # a pre-timing row is dashed out, never a fabricated duration or n/a
     assert '<td class="elapsed">--</td>' in html
     assert "n/a" not in html
     assert ("a dash: recorded before timing existed"
@@ -531,11 +523,8 @@ def test_runs_page_shows_elapsed_per_completed_run():
 
 
 def test_run_all_closes_its_ledger_row_end_to_end(tmp_path, monkeypatch):
-    """The whole close-out contract, through the real pipeline: a completing
-    run must leave its ledger row closed (status settled, finished_utc and
-    elapsed_s written) and must replace the 'pending' workroot placeholder
-    with the leased workroot, so the row the footnote describes is true and
-    the row remains the record of record for reproducing the run."""
+    """A completing run closes its ledger row (status, finished_utc,
+    elapsed_s) and replaces the 'pending' workroot with the leased one."""
     import sqlite3
     import app.core.runs as runs_mod
     from app.core.engines import analogue as an_engine
@@ -639,8 +628,7 @@ def test_retro_index_offers_pause_and_stop_while_running():
     assert f'action="/retro/{SEASON}/resume"' not in html
     # stopping is safe and carries no confirmation guard
     assert html.count('data-guard="') == 1
-    # the console's run treatment: solid fill on a track, prominent readout,
-    # a basis line for the estimate, and rotating quips
+    # the console's run treatment: bar, readout, estimate basis, quips
     assert 'class="runbar"' in html and 'class="rfill"' in html
     assert 'class="runstat rstat"' in html
     assert 'class="hint rbasis"' in html

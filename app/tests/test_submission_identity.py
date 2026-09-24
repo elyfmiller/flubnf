@@ -1,17 +1,10 @@
 """A file written under a retired model name is never handed over as a
 submission.
 
-The hub's model identity is the DIRECTORY: model-output/<team>-<model>/,
-with <team>-<model> registered in model-metadata/. Runs made before that
-identity was corrected left submission trees called NAU-Ensemble and
-NAU-PF-SIHRS. Twenty such files were still on disk in app state on
-2026-08-26, and every listing offered them for download with nothing to
-distinguish them from a genuine submission: same page, same button, a file
-name the hub would reject.
-
-They stay visible, because a run page is a record of what a run did. They
-are not downloadable, and the route enforces that as well as the template,
-so a bookmarked URL cannot get around it.
+The hub identity is the DIRECTORY model-output/<team>-<model>/, registered
+in model-metadata/. Old runs left trees called NAU-Ensemble and NAU-PF-SIHRS;
+they stay visible on run pages (a record of what ran) but are not
+downloadable, enforced by the route as well as the template.
 """
 import json
 import sys
@@ -118,11 +111,9 @@ def test_every_registered_id_is_a_metadata_file_name():
 # ------------------ a refused file costs the file, never the run's record
 
 def test_a_refused_submission_is_named_on_the_run_page(tmp_path, monkeypatch):
-    """The writer now refuses rows the hub would bounce, and that refusal is
-    contained per model the way scoring and the report already are: the run
-    keeps its results, its report and its archive, and the page says which
-    model has no file and why. A run costs hours; one bad row set must not
-    erase it, and must not quietly write a file either."""
+    """A submission the writer refuses is contained per model: the run keeps
+    its results, report and archive, and the page names the model with no
+    file and why."""
     from app.core.runs import Ledger, RunSpec
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
     led = Ledger()

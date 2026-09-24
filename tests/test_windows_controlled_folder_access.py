@@ -1,40 +1,11 @@
 """Windows defaults must not land inside a Controlled Folder Access folder.
 
-Field report, Windows 11, 2026-08-25. Controlled Folder Access is Microsoft
-Defender's ransomware protection. When it is on it protects Documents (among
-others) for every account: a protected folder can be read by anything and
-written only by programs Defender trusts, and neither git.exe nor python.exe
-nor perl.exe is trusted out of the box. The Defender operational log on the
-corresponding author's machine, verbatim:
-
-    Id 1123: git.exe has been blocked from modifying
-             %userprofile%\\Documents\\GitHub\\FluSight-forecast-hub
-    Id 1123: python.exe has been blocked from modifying
-             %userprofile%\\Documents\\GitHub\\PyBNF-pf\\pybnf\\__pycache__
-
-`Get-MpPreference` on that machine reports EnableControlledFolderAccess = 1.
-Microsoft documents the shipped state as 0, Disabled -- "CFA is turned off
-by default" -- so something turned it on there: the user, the image, or IT
-policy on a managed machine. An earlier draft of this work asserted it was
-on by default and that assertion is retracted; what survives is that it is
-on for at least one real user of this project and can be on for any student,
-which is reason enough not to default a checkout into a folder it guards.
-
-The old Windows defaults put both checkouts under Documents, so on a machine
-with the protection on git cannot clone or pull the hub and Python cannot
-write __pycache__ into the checkout -- and NEITHER failure mentions Defender
-in the text the user sees, which is what made it cost several rounds of
-wrong diagnosis.
-
-Two things are tested here, one behavioural and one textual:
-
-  * `flubnf.settings._checkout`, which is the resolution the app itself uses,
-    runs on this machine with os.name faked, so the Windows branch is
-    executed rather than described;
-  * `setup.ps1` and `FluBNF.bat` are checked as TEXT, because the lab
-    develops on macOS and has no PowerShell interpreter. Windows CI executes
-    them for real, including a run against a machine that already holds a
-    checkout at the old location.
+CFA is off by default but on for real users (e.g. by IT policy); when on,
+Defender blocks git.exe/python.exe writes under Documents and neither
+failure mentions Defender (log Id 1123, quoted in docs/WINDOWS.md). Defaults
+therefore live under %LOCALAPPDATA%; an existing Documents checkout is
+reused in place. settings._checkout runs with the platform faked;
+setup.ps1 and FluBNF.bat are checked as text (Windows CI executes them).
 """
 
 from __future__ import annotations
@@ -57,20 +28,10 @@ LEGACY = "Documents/GitHub"
 def _checkout(monkeypatch, *, windows: bool, home: Path, localappdata: Path):
     """Call the real resolver with the platform and the profile faked.
 
-    settings._windows() and settings._home() are the two seams. Faking
-    os.name instead of the first would also work and would turn every
-    pathlib.Path made afterwards into a WindowsPath, which breaks
-    expanduser on this machine and would leak into the rest of the suite.
-
-    The profile goes through settings._home() and NOT through
-    monkeypatch.setenv("HOME"), which is what this helper did until run
-    33200477476. $HOME steers expanduser on POSIX and nothing at all on
-    Windows: pathlib.Path.expanduser calls ntpath.expanduser there, which
-    reads %USERPROFILE% (then %HOMEDRIVE%%HOMEPATH%) and never consults
-    $HOME. So on the Windows runner these tests resolved against the
-    runner's real profile while asserting against a tmp_path, and failed
-    with WindowsPath('C:/Users/runneradmin/Documents/GitHub/FluSight-...').
-    The resolution under test was correct; the fake was inert.
+    Seams: settings._windows() (faking os.name would turn every later Path
+    into a WindowsPath) and settings._home(). Never fake $HOME: on Windows
+    expanduser reads %USERPROFILE% and ignores $HOME, so the fake is inert
+    there (see the two tests below).
     """
     from flubnf import settings
 
@@ -96,13 +57,8 @@ def test_windows_default_is_outside_every_protected_folder(monkeypatch, tmp_path
 
 def test_an_existing_checkout_under_documents_is_reused_where_it_stands(
         monkeypatch, tmp_path):
-    """Nobody gets stranded, and nothing gets moved.
-
-    The author has 143 MB of PyBNF checkout and 150 MB of hub under
-    Documents. A machine configured before this change must keep working
-    with no action at all, so an existing directory at the old path still
-    wins over the new default.
-    """
+    """An existing checkout at the old Documents path still wins, so a
+    configured machine keeps working with no action and nothing is moved."""
     home = tmp_path / "profile"
     legacy = home / "Documents" / "GitHub" / "FluSight-forecast-hub"
     legacy.mkdir(parents=True)
@@ -114,9 +70,8 @@ def test_an_existing_checkout_under_documents_is_reused_where_it_stands(
 
 
 def test_posix_defaults_are_untouched(monkeypatch, tmp_path):
-    """macOS and Linux have no Controlled Folder Access and no reason to
-    move. setup.sh, setup_engine.sh and the .command launchers all still
-    resolve ~/Documents/GitHub, so settings.py must agree with them."""
+    """macOS/Linux have no CFA: settings.py agrees with setup.sh,
+    setup_engine.sh and the .command launchers on ~/Documents/GitHub."""
     home = tmp_path / "profile"
     got = _checkout(monkeypatch, windows=False, home=home,
                     localappdata=tmp_path / "unused")
@@ -125,24 +80,9 @@ def test_posix_defaults_are_untouched(monkeypatch, tmp_path):
 
 def test_ntpath_ignores_dollar_home_which_is_why_the_seam_exists(monkeypatch,
                                                                  tmp_path):
-    """Why _checkout above patches settings._home() and not $HOME.
-
-    ntpath is the module pathlib.Path.expanduser goes through on Windows,
-    and it is importable here, so its rule can be shown on this machine:
-    with %USERPROFILE%, %HOMEDRIVE% and %HOMEPATH% all absent it leaves the
-    tilde alone no matter what $HOME says, and %USERPROFILE% is what it
-    answers with. A test that fakes $HOME therefore fakes nothing on
-    Windows, which is what made these tests resolve against the CI runner's
-    real profile (run 33200477476) while asserting against a tmp_path.
-
-    If a future CPython starts honouring $HOME on Windows this fails, and
-    the right response is to update the note rather than the seam: routing
-    the profile through settings._home() is correct either way.
-
-    This is a NOTE, not a fence. It asserts a property of ntpath and would
-    go on passing if _checkout above went back to the inert $HOME fake; the
-    test below is the one that catches that.
-    """
+    """ntpath.expanduser ignores $HOME (it answers %USERPROFILE%), which is
+    why _checkout fakes the profile through settings._home(). A note on
+    ntpath, not a fence; the next test is the fence."""
     import ntpath
 
     for var in ("USERPROFILE", "HOMEDRIVE", "HOMEPATH"):
@@ -157,20 +97,10 @@ def test_ntpath_ignores_dollar_home_which_is_why_the_seam_exists(monkeypatch,
 
 def test_the_profile_fake_still_works_under_the_windows_tilde_rule(monkeypatch,
                                                                    tmp_path):
-    """The fence the note above only describes.
-
-    Putting the inert `monkeypatch.setenv("HOME", ...)` back into _checkout
-    is INVISIBLE on this machine: $HOME really is the home here, so the
-    whole suite stays green while the Windows job quietly goes back to
-    resolving against the runner's own profile. Reviewed on 2026-08-31 by
-    making exactly that edit; 32 of 32 passed. So this test installs the
-    Windows tilde rule for the length of one call and asserts the fake
-    still wins.
-
-    The decoy profile below stands in for C:\\Users\\runneradmin. It holds
-    a legacy checkout so that a resolver reading it lands on a path a
-    reader recognises from run 33200477476, rather than on the AppData
-    default, which the helper's LOCALAPPDATA fake would make look right.
+    """The fence: with the Windows tilde rule installed, the profile fake must
+    still win. Putting a $HOME fake back into _checkout is invisible on POSIX
+    otherwise. The decoy profile stands in for the CI runner's own profile
+    and holds a legacy checkout, so reading it shows up as a wrong path.
     """
     import ntpath
 
@@ -280,9 +210,8 @@ def test_the_remedies_are_offered_best_first():
 
 
 def test_the_launcher_resolves_the_hub_the_way_setup_does():
-    """FluBNF.bat has its own fallback for the case where setup.ps1 has not
-    run yet. If it disagreed with setup.ps1 it would offer setup forever, or
-    look for data in a folder nothing ever writes to."""
+    """FluBNF.bat's own fallback (before setup.ps1 has run) must agree with
+    setup.ps1: old Documents checkout first, then %LOCALAPPDATA%."""
     legacy = BAT.index(r"%USERPROFILE%\Documents\GitHub\FluSight-forecast-hub")
     local = BAT.index(r"%LOCALAPPDATA%\FluBNF\FluSight-forecast-hub")
     assert legacy < local, (
@@ -300,8 +229,7 @@ def test_the_launcher_resolves_the_hub_the_way_setup_does():
     "Microsoft-Windows-Windows Defender/Operational",
 ])
 def test_windows_doc_carries_the_evidence_a_student_will_search_for(needle):
-    """A student who sees the Defender pop-up searches for its words. The
-    log lines are in docs/WINDOWS.md verbatim so that search lands."""
+    """docs/WINDOWS.md quotes the Defender log lines a student will search for."""
     assert needle in DOC, f"docs/WINDOWS.md no longer contains {needle!r}"
 
 
@@ -313,9 +241,8 @@ def test_windows_doc_states_why_this_project_trips_it():
 
 
 def test_posix_setup_scripts_were_not_dragged_along():
-    """macOS has no Controlled Folder Access and its paths are fine. These
-    four are on the double-click path for the whole lab; a well-meant edit
-    here would break every Mac."""
+    """The POSIX setup scripts and launchers keep ~/Documents/GitHub and gain
+    no Windows path."""
     for name in ("setup.sh", "setup_engine.sh"):
         src = (REPO / name).read_text(encoding="utf-8")
         assert f'$HOME/{LEGACY}' in src, (
@@ -326,25 +253,15 @@ def test_posix_setup_scripts_were_not_dragged_along():
         assert "LOCALAPPDATA" not in (REPO / name).read_text(encoding="utf-8")
 
 
-# ---------------------------------------------------------------------------
-# The second pass. Everything below was added after a review found eight
-# problems in the first; each test names the one it pins down, so a later
-# edit that undoes the fix fails here rather than on a student's machine.
-# ---------------------------------------------------------------------------
+# --- review follow-ups: each test pins one fix ---
 
 
 def _workflow_steps():
     """(name, shell, body) for every step in .github/workflows/tests.yml.
 
-    A short hand parse rather than PyYAML, which is not a dependency of this
-    project and would be a strange one to add for a text check. The workflow
-    is written in a consistent style: steps begin with "- name:" at a fixed
-    indent and carry "shell:" and a "run: |" block.
-
-    Comment lines are dropped. A block comment introducing the NEXT step
-    sits between two steps and would otherwise be collected as the tail of
-    the previous one, which is exactly the kind of off-by-one that makes a
-    guard quietly test the wrong thing.
+    A hand parse (PyYAML is not a dependency) of the workflow's consistent
+    style: "- name:", "shell:", "run: |". Comment lines are dropped, so a
+    comment introducing the next step is not read as this step's tail.
     """
     steps, name, shell, body, in_run = [], None, None, [], False
     for line in WORKFLOW.splitlines():
@@ -366,8 +283,7 @@ def _workflow_steps():
 
 
 def test_the_workflow_parse_finds_the_windows_steps_it_is_meant_to_check():
-    """A guard on the guard. If the hand parse silently found nothing, every
-    assertion built on it would pass while checking nothing at all."""
+    """Guard on the guard: the parse really finds the Windows steps."""
     steps = _workflow_steps()
     shells = {s for _, s, _ in steps}
     assert "powershell" in shells, shells
@@ -378,15 +294,9 @@ def test_the_workflow_parse_finds_the_windows_steps_it_is_meant_to_check():
 
 
 def test_no_cmd_only_construct_survives_inside_a_powershell_step():
-    """`exit /b 0` left over from a cmd step is not dead code in PowerShell.
-
-    PowerShell parses a whole script before it runs any of it, and `/b` at
-    the start of a statement has no left operand for `/`. A step that fails
-    at parse time runs none of its assertions, and because the Windows jobs
-    carry continue-on-error the workflow still reports green -- so the check
-    would be gone and nothing would say so. One such line was found in the
-    run-5 assertion step; this is the fence around that hole.
-    """
+    """No cmd syntax (e.g. `exit /b`) in a PowerShell step: it fails at parse
+    time, runs none of its assertions, and continue-on-error keeps the
+    workflow green."""
     offenders = []
     for name, shell, body in _workflow_steps():
         if shell != "powershell":
@@ -404,9 +314,8 @@ def test_no_cmd_only_construct_survives_inside_a_powershell_step():
 
 
 def test_every_cmd_step_that_ends_in_a_check_still_exits_zero():
-    """The counterpart. A cmd step whose last statement is a failure test
-    must say so explicitly, otherwise the step's exit code is whatever the
-    last command happened to leave behind."""
+    """A cmd step ends with an explicit `exit /b`, or its exit code is
+    whatever the last command left."""
     missing = []
     for name, shell, body in _workflow_steps():
         if shell != "cmd":
@@ -419,16 +328,9 @@ def test_every_cmd_step_that_ends_in_a_check_still_exits_zero():
 
 
 def test_setup_ps1_anchors_on_userprofile_not_on_powershells_home():
-    """$HOME, %USERPROFILE% and Path('~').expanduser() are three answers.
-
-    about_Automatic_Variables for 7.x says $HOME takes %USERPROFILE% and
-    warns it "may not have the same value as $Env:HOMEDRIVE$Env:HOMEPATH";
-    the 5.1 page described it as the equivalent of %homedrive%%homepath%.
-    On a domain machine with an AD home directory those differ (H:\\, a UNC
-    path), and FluBNF.bat and settings.py both read %USERPROFILE%. setup.ps1
-    must not be the odd one out, or the three disagree about where the
-    legacy checkout was and the "reuse it where it stands" promise breaks.
-    """
+    """setup.ps1 anchors on %USERPROFILE% like FluBNF.bat and settings.py;
+    PowerShell's $HOME can differ (an AD home directory on a domain machine),
+    which would break reusing the legacy checkout."""
     assert '$ProfileRoot = if ($env:USERPROFILE)' in PS1, (
         "setup.ps1 no longer resolves one profile root preferring "
         "%USERPROFILE%")
@@ -442,8 +344,8 @@ def test_setup_ps1_anchors_on_userprofile_not_on_powershells_home():
 
 
 def test_setup_ps1_looks_under_every_spelling_of_the_profile_before_giving_up():
-    """Preferring %USERPROFILE% must not strand a checkout an earlier
-    release made under the other root. Lookups probe both; defaults do not."""
+    """Lookups probe both profile roots (a checkout an earlier release made
+    under the other one); defaults do not."""
     assert "$LegacyRoots" in PS1 and "foreach ($root in $LegacyRoots)" in PS1
     assert "function Get-ProfileRoots" in PS1
     assert "function Resolve-ProfilePath" in PS1
@@ -454,9 +356,8 @@ def test_setup_ps1_looks_under_every_spelling_of_the_profile_before_giving_up():
 
 
 def test_the_protected_set_includes_the_public_folders_and_the_machines_own():
-    """Microsoft's default list carries the C:\\Users\\Public variants, and a
-    managed image can protect more. Both were being thrown away: the
-    Get-MpPreference result was read for one property and discarded."""
+    """The protected set includes the C:\\Users\\Public variants and the
+    machine's own Get-MpPreference folder list."""
     for name in ("CommonDocuments", "CommonPictures", "CommonVideos",
                  "CommonMusic"):
         assert name in PS1, f"{name} is missing from the protected-folder set"
@@ -471,8 +372,7 @@ def test_the_protected_set_includes_the_public_folders_and_the_machines_own():
 
 
 def test_the_two_disk_only_modes_are_not_reported_as_a_mystery():
-    """Modes 3 and 4 guard boot sectors and leave protected folders alone.
-    Reporting them as unrecognised printed a page of irrelevant alarm."""
+    """Modes 3 and 4 guard only boot sectors: not reported as unrecognised."""
     for token in ("BlockDiskModificationOnly", "AuditDiskModificationOnly"):
         assert token in PS1, f"{token} is not handled by Get-CfaState"
     body = PS1[PS1.index("function Get-CfaState"):
@@ -484,10 +384,8 @@ def test_the_two_disk_only_modes_are_not_reported_as_a_mystery():
 
 
 def test_a_failed_clone_does_not_pin_the_location_it_failed_at():
-    """FLUBNF_HUB in the User environment wins over every later branch of
-    Resolve-Checkout. Recording it after a clone that produced nothing sent
-    every future run back to the folder it could not write to -- which is
-    how the population this change exists to help got stranded."""
+    """FLUBNF_HUB is recorded only after a successful clone: it wins over
+    every later resolution, so a failed location would be pinned forever."""
     assert "$HubCloneFailed" in PS1
     assert "if ($HubCloneFailed) {" in PS1, (
         "the FLUBNF_HUB write is unconditional again")
@@ -501,8 +399,7 @@ def test_a_failed_clone_does_not_pin_the_location_it_failed_at():
 
 
 def test_a_stale_recorded_pin_is_named_with_its_remedy():
-    """Skipping the write helps a first run. A machine the old script
-    already touched needs to be told, because nothing else will clear it."""
+    """A machine an older script already pinned is told, with the remedy."""
     assert "$Stale" in PS1
     assert "A NOTE ON WHAT IS ALREADY RECORDED ON THIS MACHINE." in PS1
     assert "FromEnv" in PS1, (
@@ -512,8 +409,8 @@ def test_a_stale_recorded_pin_is_named_with_its_remedy():
 
 
 def test_the_fit_time_writers_are_on_the_allow_list():
-    """A fit runs BNG2.pl under perl in app\\state\\workroots, inside the
-    repository. Remedy 2 without perl.exe fixes setup and not the fit."""
+    """A fit runs BNG2.pl under perl in app\\state\\workroots, so remedy 2
+    (allow programs) must list perl.exe and run_network.exe too."""
     for token in ("$PerlExe", "$RunNetExe"):
         assert token in PS1, f"{token} is not offered to remedy 2"
     allow = PS1.index("Allow the specific programs through")
@@ -525,13 +422,10 @@ def test_the_fit_time_writers_are_on_the_allow_list():
 
 
 def test_the_doc_no_longer_claims_the_protection_is_on_by_default():
-    """Microsoft: "CFA is turned off by default", mode 0 marked (default).
-    The claim was asserted unhedged in five user-visible places on the
-    strength of one machine reading 1."""
-    # A bare substring ban would also forbid saying it is NOT on by default,
-    # which is the correction itself and appears in four of these files. So
-    # each hit is judged by what comes just before it: a negation, or a
-    # retraction of the old claim, makes the sentence true rather than false.
+    """CFA is documented as off by default; no user-visible text may claim
+    otherwise."""
+    # A bare ban would also forbid the correction ("NOT on by default"), so a
+    # hit passes when a negation or retraction precedes it within 90 chars.
     ok = ("not ", "n't", "never", "no longer", "opposite", "wrong",
           "retract", "asserted", "said it was", "instead of")
     bad = []
@@ -543,9 +437,7 @@ def test_the_doc_no_longer_claims_the_protection_is_on_by_default():
                         ((REPO / "flubnf" / "settings.py").read_text(
                             encoding="utf-8"), "flubnf/settings.py")):
         low = " ".join(text.lower().replace("*", "").split())
-        # "stock" carried the same false claim in the draft without using
-        # the words "by default": "protected ... on a stock Windows 11",
-        # "which is the stock setting". Both are banned outright here.
+        # "stock ..." carried the same false claim without "by default"
         for claim in ("on by default", "enabled by default",
                       "on in windows 11 by default",
                       "stock windows 11", "stock setting"):
@@ -570,12 +462,11 @@ def test_the_doc_no_longer_claims_the_protection_is_on_by_default():
 
 
 def test_the_doc_reaches_and_reassures_the_reader_who_saw_the_popup():
-    """The entry condition named three triggers and a mid-fit Defender
-    pop-up was none of them, so the section told that reader to leave."""
+    """The section's entry condition covers the mid-fit Defender pop-up and
+    reassures before it explains."""
     section = DOC[DOC.index("## Controlled Folder Access"):]
     section = section[:section.index("### What it looks like")]
-    # collapsed, because prose is hard-wrapped at 76 columns and a phrase
-    # that happens to straddle a line break is still a phrase the reader sees
+    # collapsed: prose is hard-wrapped, and a phrase may straddle a break
     low = " ".join(section.lower().split())
     for needle in ("pop-up", "fit stopped"):
         assert needle in low, (
@@ -591,9 +482,8 @@ def test_the_doc_reaches_and_reassures_the_reader_who_saw_the_popup():
 
 
 def test_the_windows_doc_quotes_every_path_it_tells_a_user_to_type():
-    """%LOCALAPPDATA% expands to a path under the profile directory. An
-    account name with a space in it turns an unquoted clone destination into
-    two arguments, and git's "Too many arguments" says nothing about why."""
+    """Paths a user is told to type are quoted: a space in the account name
+    splits an unquoted %LOCALAPPDATA% argument in two."""
     bad = []
     for i, line in enumerate(DOC.splitlines(), 1):
         text = line.strip()

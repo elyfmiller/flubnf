@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
 
 from flubnf.conf_files import FreeParam
 from flubnf.fitting import fit, write_sorted_params

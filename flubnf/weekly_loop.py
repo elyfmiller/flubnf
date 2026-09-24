@@ -1,4 +1,4 @@
-"""LEGACY (AMCMC warm-start loop; used only by scripts/weekly_loop_run.py).
+"""LEGACY (AMCMC warm-start loop; no runtime caller, kept for tests/test_weekly_loop.py).
 
 AMCMC warm-start fitting loop: probe for pins, then commit. AMCMC
 fails convergence diagnostics on this posterior (docs/archive/RELEASE-1.0.md,

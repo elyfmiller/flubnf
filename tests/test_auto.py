@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 
 import pytest
 
 from flubnf import bngl_files, conf_files
 from flubnf.auto import analyze_state, apply_recommendations
-from flubnf.config import FluBNFConfig
 from flubnf.paths import WorkspacePaths
 
 

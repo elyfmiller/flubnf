@@ -1,6 +1,5 @@
-"""The two-strain research member's app surfaces. The N-member blend tests
-that opened this file went with the blend (2026-09-22); nothing computes
-one, and app.core.ensemble keeps only the member-quantile formula."""
+"""The two-strain research member's app surfaces (app.core.ensemble keeps
+only the member-quantile formula; the N-member blend is gone)."""
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))

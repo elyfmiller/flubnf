@@ -1,17 +1,10 @@
-"""The console forecast path shards its grid, and sizes its own timeout.
+"""The console forecast path shards its grid and sizes its own timeout.
 
-Why this file exists. The retrospective path has sharded since it was
-written; the forecast path ran every prepared cell in one process. The whole
-sealed record was produced through the retrospective path, so the sequential
-forecast path was never exercised at full grid, and it cannot finish one: 53
-jurisdictions x 3 replicates is 159 cells, and at the season's most expensive
-as-of (48 observed weeks) a cell measures 34.3 s, so one process needs 91
-minutes against a fixed 60-minute timeout. These tests hold the two halves of
-the fix: the same partition the retrospective path uses, and a budget derived
-from the measured cost model rather than a constant.
-
-The subprocess tests run the GENERATED runner for real, against a fake pybnf,
-so the emitted code is executed and not merely formatted.
+A full grid (53 jurisdictions x 3 replicates = 159 cells, 34.3 s/cell at
+n_obs 48) needs ~91 min in one process against the old fixed 60-min
+timeout. Pinned: the same partition as the retrospective path, and a budget
+from the measured cost model. Subprocess tests run the GENERATED runner
+against a fake pybnf.
 """
 import json
 import os
@@ -29,8 +22,8 @@ from app.core import proc as proc_mod                    # noqa: E402
 from app.core import reclaim, retro                      # noqa: E402
 from app.core.engines import pf                          # noqa: E402
 
-#: the run that failed on 2026-08-26: as-of 2026-07-04, every jurisdiction
-#: plus US national, 3 replicates, at the season's most expensive n_obs
+#: the grid that failed: every jurisdiction plus US, 3 replicates, at the
+#: season's most expensive n_obs
 FULL_GRID_CELLS = 53 * 3
 FULL_GRID_N_OBS = 48
 
@@ -50,15 +43,13 @@ def test_partition_covers_every_cell_exactly_once(monkeypatch):
     flat = [c for s in shards for c in s]
     assert sorted(c["key"] for c in flat) == sorted(c["key"] for c in cells)
     assert len(flat) == len(cells)
-    # balanced to within one cell: the budget below assumes the slowest
-    # shard is only marginally worse than the average one
+    # balanced to within one cell (the budget assumes it)
     assert max(map(len, shards)) - min(map(len, shards)) <= 1
 
 
 def test_forecast_and_retrospective_divide_a_grid_identically(monkeypatch):
-    """The two paths are one idea, so they must be one function: retro's
-    _run_round partitions through the engine's shard_cells, and cannot drift
-    into a second mechanism without this failing."""
+    """Retro's _run_round partitions through the engine's shard_cells, so the
+    two paths cannot drift into two mechanisms."""
     monkeypatch.delenv(pf.WIDTH_ENV, raising=False)
     assert "pf_engine.shard_cells(pending, width)" in Path(
         retro.__file__).read_text()
@@ -67,8 +58,7 @@ def test_forecast_and_retrospective_divide_a_grid_identically(monkeypatch):
 
 
 def test_the_two_paths_share_one_default_width():
-    """A forecast and a replay of the same grid must cost the same wall
-    clock, so neither may carry its own default."""
+    """Forecast and replay share one default width (same wall clock)."""
     import inspect
     for fn in (retro.run_week, retro.run_season):
         assert (inspect.signature(fn).parameters["width"].default
@@ -122,16 +112,14 @@ def test_the_grid_that_failed_would_now_fit_its_budget():
     assert predicted == pytest.approx(
         sequential / pf.DEFAULT_SHARD_WIDTH, rel=0.05)
     assert budget > predicted                    # the honest run has room
-    # floor or multiple, whichever is larger: once the default width
-    # scales with the cores, a full grid's predicted wall can fall
-    # under the floor, and the floor is then the honest answer
+    # floor or multiple, whichever is larger (with a core-scaled width the
+    # predicted wall can fall under the floor)
     assert budget == pytest.approx(
         max(pf.TIMEOUT_FLOOR_S, pf.TIMEOUT_SAFETY * predicted))
 
 
 def test_even_unsharded_the_budget_follows_the_work_not_a_constant():
-    """Whatever the width, a run is never killed for taking as long as the
-    cost model says it will take."""
+    """At every width, a run is never killed for taking the predicted time."""
     cells = _cells(FULL_GRID_CELLS, n_obs=FULL_GRID_N_OBS)
     for width in (1, 2, 4, 8, 16):
         shards = pf.shard_cells(cells, width)
@@ -139,8 +127,7 @@ def test_even_unsharded_the_budget_follows_the_work_not_a_constant():
 
 
 def test_a_mid_january_forecast_is_covered_too():
-    """n_obs 23 is 49 minutes sequential: the same failure, one slow machine
-    away, in the middle of a live season."""
+    """n_obs 23 (mid-January) is 49 min sequential: covered too."""
     cells = _cells(FULL_GRID_CELLS, n_obs=23)
     shards = pf.shard_cells(cells, pf.DEFAULT_SHARD_WIDTH)
     assert pf.budget_seconds(shards) > pf.expected_seconds(shards)
@@ -157,16 +144,9 @@ OLD_FIXED_TIMEOUT_S = 3600.0
 
 
 def test_the_budget_never_undercuts_the_hour_it_replaces():
-    """The property that makes this change safe to ship into a live season:
-    for EVERY grid the budget is at least the constant it replaces, so the
-    change can only ever extend a run's allowance, never shorten it.
-
-    It needs stating as a test because the multiple alone does not give it.
-    expected_seconds takes the slowest SHARD, which silently assumes the
-    machine really delivers the concurrency the width asks for; where it does
-    not, 3 x the slowest shard can come out below the old fixed hour and kill
-    a run the old code finished.
-    """
+    """For EVERY grid the budget is at least the old fixed hour, so the change
+    only ever extends a run's allowance. The multiple alone does not give
+    this: it assumes the machine delivers the width's concurrency."""
     for n_obs in (0, 1, 10, 23, 48):
         for n in (1, 3, 12, 53, FULL_GRID_CELLS, 400):
             for width in (1, 2, 4, 8, 16):
@@ -175,19 +155,10 @@ def test_the_budget_never_undercuts_the_hour_it_replaces():
 
 
 def test_the_mid_january_grid_keeps_the_hour_the_multiple_would_take_away():
-    """The near-miss this change exists to protect, and the case that pins
-    the floor. 159 cells at n_obs 23 is 2922 s of honest sequential work.
-    Three times the slowest of four shards is only 2206 s, so a budget sized
-    on the shard alone is SHORTER than the hour the old code gave it: on a
-    machine that does not deliver four-way concurrency that budget kills a
-    run the old code completed. The floor is what stops that.
-
-    The near-miss is pinned at the width that produced it. The resolved
-    default is now a function of the machine, and on a small runner (2
-    cores -> width 2) the multiple alone already exceeds the sequential
-    work, so the floor is simply not the binding term there -- which is
-    correct, not a regression. What must hold at EVERY width is the
-    invariant below: the budget covers the work."""
+    """159 cells at n_obs 23 is ~2922 s sequential, yet 3x the slowest of four
+    shards is ~2206 s: the floor keeps the budget above the old hour for a
+    machine without 4-way concurrency. Pinned at width 4; at every width the
+    budget must cover the work."""
     cells = _cells(FULL_GRID_CELLS, n_obs=23)
     sequential = sum(pf.cell_seconds(c) for c in cells)
     assert sequential == pytest.approx(2922, rel=0.02)     # 49 min
@@ -204,19 +175,15 @@ def test_the_mid_january_grid_keeps_the_hour_the_multiple_would_take_away():
 
 
 def test_the_peak_grid_still_gets_the_enlargement_it_needed():
-    """The floor must not have swallowed the fix: the grid that actually
-    failed is the one case where the multiple, not the floor, sets the
-    budget, and it must still exceed the work."""
+    """At the peak grid the multiple, not the floor, sets the budget, and it
+    exceeds the work."""
     cells = _cells(FULL_GRID_CELLS, n_obs=FULL_GRID_N_OBS)
     shards = pf.shard_cells(cells, pf.DEFAULT_SHARD_WIDTH)
     budget = pf.budget_seconds(shards)
     sequential = sum(pf.cell_seconds(c) for c in cells)
-    # The invariant is about the WORK, not a fixed number of seconds. The
-    # 91-minute full grid died against a fixed one-hour timeout; the budget
-    # must now exceed that grid's predicted wall time with the safety
-    # factor's margin, at whatever width this machine resolves to. (The
-    # budget legitimately fell below the old 3600 s once the default width
-    # scaled with the cores -- because the work fell with it.)
+    # The invariant is about the WORK: the budget exceeds the predicted wall
+    # time with the safety margin at this machine's width (it may fall below
+    # 3600 s once the width scales with the cores).
     assert budget == pytest.approx(max(
         pf.TIMEOUT_FLOOR_S,
         pf.TIMEOUT_SAFETY * pf.expected_seconds(shards)))
@@ -269,15 +236,10 @@ def engine(tmp_path, monkeypatch):
 
 
 def _spy_popen(monkeypatch):
-    """Every RUNNER subprocess this execute() starts, for the tests that must
-    see how it was started and whether it is still alive.
+    """Every RUNNER subprocess execute() starts (cmd, kwargs, proc).
 
-    Only the runners. execute() shells out for other reasons -- a cancel
-    reads the process tree with `ps` (pf._descendants) -- and subprocess.run
-    goes through this same patched Popen, so an unfiltered spy would count
-    those too, and count a different number of them depending on how many
-    runners were still alive when the stop landed. That is a race, and the
-    counts asserted on `made` are meant to be about runners."""
+    Filtered to runners: a cancel also runs `ps` through the same patched
+    Popen, and counting those would race with the stop."""
     made = []
     real = subprocess.Popen
 
@@ -316,8 +278,7 @@ def test_shards_run_in_parallel_and_their_statuses_merge(engine, tmp_path,
 
 
 def test_a_shard_that_dies_leaves_its_unfinished_cells_visible(engine, tmp_path):
-    """A failure in one shard must be visible, not averaged away: the cells
-    it never reported come back as failures naming the shard."""
+    """Cells a dead shard never reported come back as failures naming it."""
     engine("        if os.getcwd().endswith('cell_2'):\n"
            "            os._exit(9)\n")
     w = tmp_path / "wr"
@@ -350,8 +311,7 @@ def test_no_status_at_all_still_raises_the_specific_error_with_stderr(
 
 
 def test_stop_terminates_every_runner_and_raises(engine, tmp_path, monkeypatch):
-    """Cancellation with several runners: all of them stop, none is left
-    chewing CPU, and the caller still sees RunStopped."""
+    """Cancel with several runners: all stop promptly and RunStopped raises."""
     engine("        time.sleep(30)\n")
     w = tmp_path / "wr"
     w.mkdir()
@@ -388,11 +348,8 @@ def _alive(pid: int) -> bool:
                            "single-process terminate it always had")
 def test_a_cancel_takes_the_engine_pool_with_the_runner(engine, tmp_path,
                                                         monkeypatch):
-    """Signalling the runner alone is not a cancel. PyBNF's filter runs a
-    pool, so the runner is a parent; terminating just the runner leaves its
-    workers alive holding cores, and sharding multiplies that by the width.
-    Each runner leads its own process group and the GROUP is signalled, so
-    the engine processes go with it."""
+    """A cancel signals each runner's process GROUP, so PyBNF's worker pool
+    goes with it instead of holding cores."""
     engine("        import subprocess, sys\n"
            "        g = subprocess.Popen([sys.executable, '-c',\n"
            "                              'import time; time.sleep(45)'])\n"
@@ -405,9 +362,7 @@ def test_a_cancel_takes_the_engine_pool_with_the_runner(engine, tmp_path,
     made = _spy_popen(monkeypatch)
 
     def press(_s):
-        # stop only once both shards really have an engine process running,
-        # so the test cannot pass by cancelling before there was anything
-        # left behind to strand
+        # stop only once both shards have an engine process to strand
         if all((Path(c["dir"]) / "GPID").is_file() for c in cells):
             (w / "STOP").touch()
         time.sleep(0.1)
@@ -434,8 +389,7 @@ def test_a_cancel_takes_the_engine_pool_with_the_runner(engine, tmp_path,
 
 
 def test_a_standing_stop_flag_means_no_cell_is_dispatched(engine, tmp_path):
-    """The runners check the flag between cells as well, so a stop that
-    lands while they work stops the DISPATCH, not just the supervisor."""
+    """Runners check the flag between cells too, so a stop halts dispatch."""
     engine("        open(os.path.join(os.getcwd(), 'RAN'), 'w').close()\n")
     w = tmp_path / "wr"
     w.mkdir()
@@ -454,10 +408,8 @@ def test_every_runner_starts_at_reduced_priority(engine, tmp_path, monkeypatch):
     made = _spy_popen(monkeypatch)
     pf.execute(w, width=2)
     prefix = proc_mod.low_priority_prefix()
-    # the priority keywords as execute() actually passes them: folded
-    # together with the runner's own process group (on Windows both are
-    # bits of one creationflags integer, so equality on the bare priority
-    # flag alone was the wrong test)
+    # compare with the kwargs execute() really passes (priority folded with
+    # the process group: on Windows both are bits of one creationflags)
     kwargs = pf.runner_popen_kwargs(proc_mod.low_priority_popen_kwargs())
     assert len(made) == 2
     for m in made:
@@ -508,10 +460,8 @@ def test_a_prepared_grid_with_no_cells_is_not_a_failure(engine, tmp_path):
 
 def test_the_message_names_which_term_actually_set_the_budget(engine, tmp_path,
                                                               monkeypatch):
-    """budget_seconds is a max of two terms and the error says which one
-    bound it. The floor is the old fixed hour, so it binds for most grids,
-    and a message reading "60 min = 3 x the 12 min predicted" would be
-    arithmetic the reader can see is false."""
+    """The timeout message names the term that bound the budget (floor or
+    multiple), so its arithmetic is never visibly false."""
     engine("        time.sleep(30)\n")
     w = tmp_path / "wr"
     w.mkdir()
@@ -537,9 +487,8 @@ def test_the_message_names_which_term_actually_set_the_budget(engine, tmp_path,
 
 # ------------------------------------------------------ sharded == sequential
 
-#: A fake fit whose output is a deterministic function of the cell directory
-#: alone. Any difference between two arrangements of one grid is therefore a
-#: difference the ARRANGEMENT caused, which is exactly what must not exist.
+#: A fake fit whose output depends on the cell directory alone, so any
+#: difference between two arrangements of a grid is caused by the arrangement.
 _DETERMINISTIC_FIT = (
     "        import os, pathlib\n"
     "        d = pathlib.Path(os.getcwd())\n"
@@ -569,19 +518,11 @@ def _collectable_grid(w: Path, n_locs: int = 3, reps: int = 3,
 
 
 def test_sharding_changes_no_number(engine, tmp_path):
-    """The claim the whole change rests on: partitioning the prepared cells
-    changes the wall clock and nothing else.
+    """Width 1 and width 4 give identical statuses and collect() samples.
 
-    Run one grid twice -- at width 1, which is the pre-change single process,
-    and at width 4 -- and compare what the application actually consumes: the
-    merged status, and collect()'s pooled samples per location. Identical,
-    not merely close.
-
-    Structurally they must be, and the test is here to keep it that way: a
-    cell's seed is derive_seed(location, forecast_date, replicate), a pure
-    function of the cell; each cell fits in its own directory; and collect()
-    iterates cells.json, which execute() reads and never rewrites. So neither
-    the fits nor the order they are pooled in can observe the partition."""
+    Structural: a cell's seed is a pure function of the cell, each cell fits
+    in its own directory, and collect() iterates cells.json, which execute()
+    never rewrites."""
     engine(_DETERMINISTIC_FIT)
     out = {}
     for width in (1, 4):
@@ -605,9 +546,8 @@ def test_sharding_changes_no_number(engine, tmp_path):
 
 
 def test_collect_reads_the_unpartitioned_cells_json(engine, tmp_path):
-    """The mechanism behind the test above, asserted directly: execute()
-    writes per-shard cell lists and leaves cells.json byte-identical, so
-    collect() cannot see how the work was divided."""
+    """execute() leaves cells.json byte-identical, so collect() cannot see the
+    partition."""
     engine(_DETERMINISTIC_FIT)
     w = tmp_path / "wr"
     w.mkdir()
@@ -622,8 +562,7 @@ def test_collect_reads_the_unpartitioned_cells_json(engine, tmp_path):
 # ------------------------------------------------- what the rest of the app sees
 
 def test_api_progress_sums_the_per_shard_progress_files(tmp_path, monkeypatch):
-    """The progress card reads .prog files by glob; the per-shard names must
-    still be found, and so must the pre-sharding name in an old workroot."""
+    """api_progress finds per-shard .prog files and the pre-sharding name."""
     from app.core import ttlcache
     from app.ui import server as srv
     w = tmp_path / "wr"
@@ -662,10 +601,8 @@ def test_reclaim_prunes_shard_scaffolding_and_keeps_the_merged_record(tmp_path):
 
 
 def test_default_width_is_sized_to_the_machine():
-    """A fixed width is wrong on every machine but the one it was picked
-    on: it left a 12-core workstation ~2x idle and would oversubscribe a
-    2-core laptop. It scales with the cores, reserving a couple for the
-    console, and is capped where the measured curve goes flat."""
+    """Width scales with the cores (a couple reserved for the console),
+    capped where the measured speedup goes flat."""
     assert pf.default_shard_width(12) == 10
     assert pf.default_shard_width(8) == 6
     assert pf.default_shard_width(4) == 2
@@ -676,8 +613,8 @@ def test_default_width_is_sized_to_the_machine():
 
 
 def test_more_runners_than_cells_is_harmless():
-    """shard_cells drops the empty shards, so a wide default on a tiny
-    grid simply runs one cell per runner."""
+    """shard_cells drops empty shards: a wide default on a tiny grid runs one
+    cell per runner."""
     cells = [{"key": f"c{i}"} for i in range(3)]
     shards = pf.shard_cells(cells, 10)
     assert len(shards) == 3

@@ -1,9 +1,9 @@
 """The parsimonious template must drop exactly three parameters and nothing else.
 
-Every removal is justified by a measurement (see the template header). What
-these tests protect is that the change stays a PARAMETER-COUNT change and does
-not silently become a model change -- the dynamics, the observable and every
-retained parameter must be identical to SIHRS_pop.bngl.
+Every removal is justified by a measurement (docs/MODEL-PROVENANCE.md section
+3). These tests keep the change a PARAMETER-COUNT change, never a model change:
+the dynamics, the observable and every retained parameter must be identical to
+SIHRS_pop.bngl.
 
 Rationale for existing at all: the measured defect is predictive SPREAD, not the
 central estimate (swapping SIHRS's spread for a calibrated one gains 0.070

@@ -1,13 +1,9 @@
-"""The PyBNF recency-weighting patch must weight, and must weight correctly.
+"""The PyBNF recency-weighting patch must weight, and weight correctly (it
+targets the post-peak shoulder, where SIHRS runs 1.5-3.3x low). Unapplied or
+unnormalised weights would make a tau sweep measure nothing, or MCMC
+temperature, and still look like a finding.
 
-This targets the ONE phase where SIHRS loses to the FluSight baseline: the
-post-peak shoulder, relWIS 1.205, forecasting 1.5-3.3x too low because a
-single-wave fit held in place by months of pre-peak data extrapolates continued
-decline. If these weights are silently not applied -- or applied unnormalised --
-a tau sweep would measure nothing, or would measure MCMC temperature instead of
-data weighting, and the result would look like a finding either way.
-
-Applied by patches/pybnf_recency_weights.py. Skipped if that has not been run.
+Applied by patches/pybnf_recency_weights.py; skipped if not run.
 """
 from __future__ import annotations
 

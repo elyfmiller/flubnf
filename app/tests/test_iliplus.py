@@ -1,12 +1,8 @@
-"""The ILI+ donor bank builder: offline tests against a recorded fixture.
-
-The fixture (iliplus_fixture.json, next to this file) holds REAL Delphi
-responses for California and Arizona, epiweeks 202340-202410, in the two
-modules' own cache-file format: ILINet from ``fluview`` and clinical from
-``fluview_clinical``. Every test points both caches at a tmp dir seeded
-from the fixture and turns the HTTP layer into an error, so no test ever
-touches the network. That matters twice over here: the CI contract has no
-hub clone, and Delphi rate-limits bulk callers.
+"""The ILI+ donor bank builder, offline: iliplus_fixture.json holds REAL
+Delphi responses (California, Arizona, epiweeks 202340-202410) in the two
+modules' cache formats (ILINet from ``fluview``, clinical from
+``fluview_clinical``); tests seed tmp caches from it and make HTTP an error
+(CI has no hub, and Delphi rate-limits bulk callers).
 """
 import json
 import sys
@@ -135,10 +131,8 @@ def test_build_bank_shape_and_keys(caches):
 
 
 def test_derived_and_reported_agree_except_at_low_positivity(caches):
-    """Delphi rounds percent_positive to two decimals, which is 0.005
-    absolute and therefore large in relative terms only when positivity is
-    small. Anything else would mean the two modes disagree about the data,
-    not about precision."""
+    """The two modes differ only by Delphi's two-decimal rounding of
+    percent_positive, which matters relatively only at low positivity."""
     a = iliplus.build_bank(SEASON_START, None, regions=REGIONS, pause_s=0,
                            percent_positive="derived")
     b = iliplus.build_bank(SEASON_START, None, regions=REGIONS, pause_s=0,

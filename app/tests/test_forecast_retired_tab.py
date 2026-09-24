@@ -1,10 +1,7 @@
-"""The retired blend is never a choice beside the models that ship.
-
-A run or a retrospective season from before 2026-09-22 stored the blend's
-forecasts under "ensemble". The home outlook stopped offering it in PR #6
-(report_v2.toggle_models); the Forecast page's model buttons and the
-season player's model checkboxes follow the same rule here. The blend is
-never drawn, even when a legacy record stored nothing else.
+"""The retired blend is never a choice beside the models that ship: records
+from before its retirement store it under "ensemble", but the Forecast
+page's model buttons and the season player's checkboxes never offer or draw
+it, even when a legacy record stored nothing else (as the home outlook).
 """
 import json
 import re

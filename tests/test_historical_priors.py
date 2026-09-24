@@ -11,7 +11,7 @@ import pytest
 from flubnf.conf_files import FreeParam
 from flubnf.historical_priors import (StateHistory, SeasonSummary,
                                        informed_initial_bounds, load_history,
-                                       record_season, save_history)
+                                       record_season)
 
 
 def _fake_pop(rng_seed: int = 0) -> pd.DataFrame:

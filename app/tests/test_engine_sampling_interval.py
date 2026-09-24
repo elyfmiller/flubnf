@@ -1,14 +1,7 @@
-"""pf_sampling_interval is written into a cell's pf.conf only when the
-installed engine accepts it, read off the engine's own source.
-
-The a827e2f8 upstream tree (the expected 2026-27 engine) lists the key in
-pybnf/config.py's pf key set and in pybnf/parse.py's grammar; the engine
-before it lists it in neither and REFUSES an unknown key, so a conf that
-carried the line unconditionally would fail every cell on a current
-install. The key is what lets that tree fit a one-row .exp, the first
-fitted week of a season, which it otherwise refuses (pre-registration
-addendum A1 (5)). Two fake engine trees, one of each shape, drive the
-tests; nothing here reads a real engine.
+"""pf_sampling_interval is written into pf.conf only when the installed
+engine accepts it (read off its config.py/parse.py): older engines REFUSE
+unknown keys, while the newer tree needs it to fit a one-row .exp (the first
+fitted week; addendum A1 (5)). Two fake engine trees drive the tests.
 """
 import json
 import sys

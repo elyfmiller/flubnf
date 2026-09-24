@@ -50,12 +50,10 @@ def test_weekly_report_fetches_nothing(tmp_path):
 
 
 def test_weekly_report_is_theme_aware(tmp_path):
-    """The report embeds the console's full theme system and resolves it
-    at open: all four theme token blocks plus both accessibility modifier
-    blocks, verbatim from nau.css; a boot script that reads the console's
-    localStorage keys same-origin and falls back to the OS preferences
-    standalone; and, when charts are embedded, a retint pass that re-reads
-    the resolved tokens and re-resolves the figures' baked palette."""
+    """The report embeds the console's full theme system (four theme blocks
+    plus both modifiers, verbatim from nau.css), boots from the console's
+    localStorage keys with OS fallbacks, and with charts adds a retint pass
+    over the figures' baked palette."""
     import numpy as np
 
     from app.core import report_v2
@@ -87,11 +85,9 @@ def test_weekly_report_is_theme_aware(tmp_path):
                                   "table_rows": []}},
         {}, tmp_path / "c.html").read_text()
     assert "Plotly.react(g,g.data,g.layout)" in charted
-    # the retint map covers the figures' baked literals, resolved from the
-    # SAME tokens the chrome wears: category bars, the semantic ok/bad
-    # pair, and the accent through --gold (its readable variant on light
-    # grounds), so the color-vision modifier reaches every chart-internal
-    # category and ok/bad encoding exactly as it reaches the map
+    # the retint map resolves the figures' baked literals from the chrome's
+    # tokens (category bars, ok/bad, the accent via --gold), so the CV-safe
+    # modifier reaches every chart encoding as it reaches the map
     for pair in ('MAP["#151729"]=css("--card"', 'MAP["#E9EAF4"]=css("--ink"',
                  'MAP["#9AA1C4"]=css("--mut"', 'MAP["#262A45"]=css("--line"',
                  'MAP["#b9b09b"]=css("--cat-stable"',
@@ -100,10 +96,8 @@ def test_weekly_report_is_theme_aware(tmp_path):
                  'MAP["#4CC38A"]=css("--ok"', 'MAP["#FB4653"]=css("--bad"',
                  'MAP["#34C0F0"]=css("--gold"'):
         assert pair in charted, pair
-    # the pass re-runs from a per-plot snapshot on themechange, so a host
-    # that flips tokens live (the console toggle, or a headless audit
-    # dispatching the event) retints in BOTH directions; member colors are
-    # deliberately not in the map (the palette is dichromat-spaced)
+    # the pass re-runs from a per-plot snapshot on themechange, retinting in
+    # both directions; member colors are deliberately not in the map
     assert "addEventListener('themechange',pass)" in charted
     assert "_flubnfBaked" in charted
     from app.core.report_v2 import MEMBER_COLORS
@@ -135,11 +129,9 @@ def test_weekly_report_carries_a_print_stylesheet(tmp_path):
 
 
 def test_weekly_report_keeps_its_build_contract(tmp_path):
-    # restyle, not regress: the wall-time footer and settings block still
-    # land, and the map/legend/gap language survives WHERE IT WAS CHECKED:
-    # the gap claim renders only for card-less states inside the run's
-    # recorded scope; the rest are stated as not fitted, and a report with
-    # no recorded scope claims only 'no data' (review finding 2026-08)
+    # the footer and settings block still land; the gap claim renders only
+    # for card-less states inside the recorded scope, others read not fitted,
+    # and with no recorded scope only 'no data' is claimed
     html = build_report(
         "2098-01-03", {}, {}, {}, tmp_path / "r.html", elapsed_s=3725.0,
         settings_html='<p class="hint runsettings"><strong>Run settings:'

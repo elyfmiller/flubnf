@@ -1,13 +1,6 @@
-"""The two long-lived caches must stay bounded.
-
-Both hold one entry per season root, and season roots are not a fixed set:
-every archived replay adds one, and every rescore mints a fresh content key
-for a root already cached. A parsed scores.json frame costs about 11 MB
-resident (measured, 2.56 MB file), so an unbounded parse cache is a memory
-plateau in a process that also has to leave room for the fitting engines.
-
-These pin the policy, not the numbers: least-recently-used, capped, and
-evicting one entry at a time rather than flushing every warm entry at once.
+"""The two long-lived caches stay bounded: one entry per season root, and
+roots grow (archives, rescores); a parsed scores.json costs ~11 MB resident.
+Pinned: LRU, capped, evicting one entry at a time.
 """
 import json
 import sys

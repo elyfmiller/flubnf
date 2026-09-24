@@ -8,7 +8,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from flubnf.autoparam import (CIRCULAR, FLOOR_AT_ZERO, PHYSICAL, Diagnosis,
+from flubnf.autoparam import (PHYSICAL, Diagnosis,
                               RoundResult, choose, diagnose, is_pinned,
                               next_priors)
 from flubnf.sihrs_fit import FITTED_PRIORS

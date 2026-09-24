@@ -8,7 +8,6 @@ its fixture, this test FAILS — flagging that the coverage regressed.
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from flubnf.conf_files import FreeParam
 from flubnf.fringe_cases import (REGISTERED_CASES, CaseMatch, evaluate_all,

@@ -1,11 +1,7 @@
 """Backfill and reproduce: the member computed for every stored week of a
-season root into a NEW root, never in place; and the relWIS tables the
-reproduce command prints beside the screen's.
-
-Offline: the source root, its vintages and its locations file are built
-here; scoring against a hub is exercised only where the record is on the
-machine (tests/test_oracle.py's record) and is otherwise the scorer's own
-business (app/tests/test_retro_national.py and friends pin it).
+season root into a NEW root (never in place), and the relWIS tables the
+reproduce command prints beside the screen's. Offline; hub scoring is
+covered by tests/test_oracle.py's record and the scorer's own tests.
 """
 import csv
 import json
@@ -40,10 +36,9 @@ def _saturdays(first: date, last: date) -> list:
     return out
 
 def _synthetic_flusurv(monkeypatch, first: date, last: date) -> dict:
-    """A FluSurv-NET bank over the synthetic hub's own seasons, put where
-    flubnf.oracle_mix reads the committed one: the committed bank ends in
-    2026 and shares no season with a hub of the 2090s, so no shrink could
-    be fitted against it (the step raises then, by design)."""
+    """A synthetic FluSurv-NET bank over the synthetic hub's seasons, patched
+    where oracle_mix reads the committed one (which shares no season with a
+    2090s hub, so no shrink could be fitted)."""
     from flubnf import bank as BK
     from flubnf import oracle_mix as MX
     b = {}

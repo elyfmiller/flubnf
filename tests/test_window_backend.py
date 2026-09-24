@@ -1,10 +1,7 @@
-"""The native window must never open on MSHTML.
-
-MEASURED 2026-09-01, Windows Sandbox: pywebview fell back to MSHTML (IE11)
-for want of the WebView2 runtime, the console's JavaScript never ran, and a
-silently dead location picker launched a full-grid, 3-replicate run from a
-click meant to select one state. The guard: on Windows without WebView2,
-both console entry points serve to the default browser instead.
+"""The native window must never open on MSHTML: without WebView2 on Windows,
+pywebview falls back to IE11, the console's JavaScript never runs (a dead
+location picker once launched a full-grid run), so both console entry points
+serve to the default browser instead.
 """
 import contextlib
 import sys

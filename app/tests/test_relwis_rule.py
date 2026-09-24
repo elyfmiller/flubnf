@@ -55,11 +55,9 @@ def test_outcome_chips_apply_the_rule():
 
 
 def test_outcome_chips_name_the_mechanistic_member_by_what_the_row_ran():
-    """A row that recorded the Oracle step's bank label scored the
-    Oracle SIHRS; a row that asked for oracle = none scored the plain filter; a
-    row from before the step existed keeps the name it was recorded under
-    (it scored the plain filter too, and relabelling it would rewrite the
-    ledger's history)."""
+    """The chip names the member by what the row ran: the Oracle step's bank
+    label -> Oracle SIHRS; oracle = none -> the plain filter; pre-step rows
+    keep their recorded name (relabelling would rewrite the ledger)."""
     member = srv._outcome_chips(json.dumps(
         {"pf_relwis": 0.741, "pf_relwis_cells": 9,
          "oracle": "admissions-fbase@288b139f"}))

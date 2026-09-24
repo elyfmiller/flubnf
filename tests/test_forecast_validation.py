@@ -10,7 +10,7 @@ ceiling, producing a zero-width point mass:
 
 Guarding those cells moved relWIS 2.291 -> 1.166 and New York 10.739 -> 0.686.
 The tests below use those exact numbers as fixtures so the failure cannot
-silently return. See docs/RETROSPECTIVE_2026-07.md.
+silently return. The 2026-07 retrospective is in the lab archive.
 """
 from __future__ import annotations
 

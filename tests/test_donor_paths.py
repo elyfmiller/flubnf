@@ -1,10 +1,7 @@
-"""`donor_paths`: complete growth trajectories from the shared donor rule.
-
-The function exists for a consumer (the mechanistic model) that needs the
-next several weeks of growth as one trajectory rather than one horizon's
-marginal. It must select exactly the donors `donor_ratios` selects, and the
-refactor that made the rule shared must leave `donor_ratios` byte for byte
-where it was, because the shipped Groundhog path runs through it.
+"""`donor_paths`: complete growth trajectories from the shared donor rule,
+for a consumer needing several weeks of growth as one trajectory. It selects
+exactly the donors `donor_ratios` selects, and `donor_ratios` stays byte for
+byte where it was (the shipped Groundhog path runs through it).
 """
 from __future__ import annotations
 
@@ -16,18 +13,15 @@ import numpy as np
 import pytest
 
 from flubnf import bank as bankmod
-from flubnf.analogue import (DEFAULT_BANDWIDTH, EXCLUDED_DONOR_SEASONS,
-                             MIN_DONORS, calendar_distance, donor_paths,
+from flubnf.analogue import (MIN_DONORS, calendar_distance, donor_paths,
                              donor_ratios, epiweek, season_of)
 
 
 def _bank(seasons=(2022, 2023, 2024), states=("01", "02", "03", "04", "05"),
           weeks=20):
-    """Synthetic seasons on Saturdays, gapless, with a seeded pseudo-random
-    weekly growth per cell, so no two donors share a ratio and membership
-    can be tested by value. (A checker found an earlier fixture repeated
-    every season bit for bit, and fixed per-state and per-week increments
-    collide.) `test_no_two_donors_share_a_ratio_in_the_fixture` holds it."""
+    """Synthetic gapless Saturday seasons with seeded pseudo-random weekly
+    growth per cell, so no two donors share a ratio and membership can be
+    tested by value (held by test_no_two_donors_share_a_ratio_in_the_fixture)."""
     rng = random.Random(20260922)
     b = {}
     for s in seasons:
@@ -183,11 +177,9 @@ class TestWeek53Seam:
         assert np.allclose(row, [1.5, 1.5 ** 2, 1.5 ** 3])
 
 
-# Reference values captured from `donor_ratios` on the committed banks
-# BEFORE the selection rule was factored out (2026-09-22, main 623610b).
-# The pin is on the array bytes, so order and every value are held. A
-# rebuilt bank legitimately changes these; when the digest moves, re-capture
-# the pin in the same commit as the new bank.
+# Reference values captured from `donor_ratios` on the committed banks before
+# the selection rule was factored out, pinned on the array bytes. A rebuilt
+# bank changes them: re-capture in the same commit as the new bank.
 _BANK_DIGESTS = {"flusurv": "06eff6a7", "iliplus": "f6ee2840"}
 _RATIO_PINS = {
     ("flusurv", 2, 4, "default"): (1235, "36742c70a3332980"),

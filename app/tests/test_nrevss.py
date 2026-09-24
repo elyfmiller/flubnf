@@ -1,11 +1,7 @@
-"""Vintage-true NREVSS layer: offline tests against a recorded fixture.
-
-The fixture (nrevss_fixture.json, next to this file) holds two REAL
-Delphi fluview_clinical responses recorded 2026-08-19 — Pennsylvania and
-HHS region 3, epiweeks 202340-202401 as published at issue 202401 — in
-the module's own cache-file format.  Every test points the cache at a
-tmp dir seeded from the fixture and stubs the HTTP layer, so no test
-ever touches the network.
+"""Vintage-true NREVSS layer, offline: nrevss_fixture.json holds two REAL
+Delphi fluview_clinical responses (Pennsylvania and HHS region 3, epiweeks
+202340-202401 at issue 202401) in the module's cache format; every test
+seeds a tmp cache from it and stubs HTTP.
 """
 import json
 import sys
@@ -79,11 +75,9 @@ def test_epiweek_date_roundtrip_known_values():
 
 
 def test_epiweek_matches_two_independent_references():
-    """13 years of daily dates against (a) a brute-force majority-rule
-    reference and (b) shifted isocalendar with its documented exception:
-    in years whose Jan 4 is a Sunday (2015, 2026) the schemes' week-1
-    anchors differ by one week — MMWR week = ISO week - 1, ISO week 1
-    belonging to the old MMWR year as week 53."""
+    """13 years of dates against a brute-force majority-rule reference and
+    shifted isocalendar (where Jan 4 is a Sunday, e.g. 2015 and 2026, MMWR
+    week = ISO week - 1, and ISO week 1 is old-year MMWR week 53)."""
     from datetime import date, timedelta
 
     def ref_mmwr(d):  # Sunday-start; week owned by the year holding >=4 days

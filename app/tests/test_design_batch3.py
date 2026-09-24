@@ -1,15 +1,9 @@
-"""Design batch three.
-
-A completed season states its verdict on the retro index instead of a
-ceremonial full bar; the cumulative relWIS chart carries its own scale
-(terminal value, corner dates, a 0.5 gridline with the 1.0 one); the
-per-state table colors only the exceptions and right-aligns its numbers;
-every fan chart's interval band derives from the DISPLAYED member's color;
-one shared model-name map feeds the player, the fan selectors, the model
-switcher, and the season head cards; the season report download wears the
-primary button tier; the Forecast tab shows the latest stored forecasts
-after an app restart; the data page keeps no native confirm(); and the
-Hospitalized compartment no longer wears Inhibition Red.
+"""Design batch three: the retro index states a completed season's verdict;
+the cumulative relWIS chart carries its own scale; the per-state table
+colors only exceptions; fan bands derive from the displayed member's color;
+one shared model-name map; the report download is a primary button; the
+Forecast tab survives a restart; no native confirm() on /data; the
+Hospitalized compartment is not Inhibition Red.
 """
 import json
 import re
@@ -134,9 +128,7 @@ def test_cumulative_chart_prints_terminal_value_dates_and_both_gridlines():
 
 
 def test_cumulative_chart_y_range_hugs_the_data():
-    # both scores sit near 0.9: with the range tightened to the data (plus
-    # the two gridlines) the two points land at DIFFERENT heights instead
-    # of huddling on a 0-to-2 scale two pixels apart
+    # scores near 0.9 land at DIFFERENT heights: the range hugs the data
     html = _season(curve=[("2098-11-07", 0.95), ("2098-11-14", 0.90)])
     ys = re.findall(r'<circle cx="[\d.]+" cy="([\d.]+)"', html)
     assert len(ys) == 2
@@ -158,10 +150,8 @@ def test_per_state_table_colors_only_scores_at_or_above_one():
     assert re.search(r'<td class="num">\s*0\.900</td>', body)   # quiet win
     assert 'class="num ok"' not in body
     assert re.search(r'<td class="num">\s*n/a</td>', body)
-    # the headers are the sort controls now: aria-pressed buttons in the
-    # th's own type, still under the shared .num right alignment
-    # the column labels are the shared model names; the retired blend has
-    # no column (the default season_models are the two shipped models)
+    # the headers are aria-pressed sort buttons with the shared model names;
+    # the retired blend has no column
     assert 'data-key="ensemble"' not in body
     for key, label in (("pf", "Oracle SIHRS"), ("analogue", "Groundhog")):
         assert re.search(r'<th class="num"><button type="button" '
@@ -186,10 +176,9 @@ def test_fan_bands_derive_from_the_displayed_member():
 
 
 def test_member_colors_match_the_player_palette():
-    # ONE member-color source: the marked JSON in player.js. The console
-    # templates consume the server-injected copy of it (never their own
-    # literals), the season page reads it off FluBNFPlayer directly, and
-    # ensemble alone stays theme-resolved through the accent token.
+    # ONE member-color source (player.js marked JSON): templates use the
+    # server-injected copy, the season page reads FluBNFPlayer; ensemble
+    # alone resolves through the accent token
     for src in (FORECAST_T, MODEL_T):
         assert "css('--gold')||MCOLORS.ensemble" in src
         assert "const MCOLORS = {{ member_colors_json | safe }}" in src
@@ -245,32 +234,23 @@ def test_player_carries_the_map_and_python_reads_the_same_one():
 
 
 def test_one_name_for_the_ensemble_on_every_human_facing_surface():
-    """The blend is "FluBNF Ensemble (retired)" wherever a person reads it:
-    it shipped until 2026-09-22 and stored runs and seasons still carry
-    its rows under that one name.
-
-    It used to be "NAU ensemble" in the shared map and on the outlook
-    labels while the season tables were headed "FluBNF Ensemble", so one
-    published page printed two names for one model. The hub identity is a
-    different thing: the blend's identity is retired from the writer, and
-    the two models that ship go out under their own registered ids.
+    """The blend is "FluBNF Ensemble (retired)" on every human-facing surface
+    (stored runs still carry its rows); display names never change the hub
+    ids.
     """
     from app.core import report_v2, site_page
     assert _player_map()["ensemble"] == "FluBNF Ensemble (retired)"
-    # the map labels append "categorical forecast" to the same names; the map is typed
-    # in report_v2 (report_season holds the parse and imports it), so this
-    # is where the drift would happen
+    # map labels append "categorical forecast"; typed in report_v2, where
+    # drift would happen
     names = _player_map()
     assert report_v2.MODEL_LABEL == {m: names[m] + " categorical forecast"
                                      for m in report_v2.MODEL_LABEL}
-    # no surface still carries the old name: the shared map, the published
-    # site's member table, and the console templates
+    # no surface carries the old name
     site_src = Path(site_page.__file__).read_text()
     assert '"ensemble": "FluBNF Ensemble (retired)"' in site_src
     for src in (PLAYER, site_src, SEASON_T, RETRO_T, MODEL_T, FORECAST_T):
         assert "NAU ensemble" not in src
-    # the submission identities are display-independent: a display rename
-    # must never rename the models the hub knows us by
+    # submission identities are display-independent
     from app.core import submit
     assert submit.hub_model_id("pf") == "NAU_PyBNF-OracleSIHRS"
     assert submit.hub_model_id("analogue") == "NAU_PyBNF-GroundHogCGR"
@@ -304,8 +284,7 @@ def test_model_switcher_reads_the_shared_map():
     t = client.get("/models").text
     for label in ("Oracle SIHRS", "Groundhog", "Two-strain SIHRS"):
         assert label in t, label
-    # no tab for the retired blend (the shared map still ships to the
-    # page's script, entry and all, so look at the switcher itself)
+    # no switcher tab for the retired blend (the shared map still ships it)
     assert 'data-model="ensemble"' not in t
     assert "model_name(mn)" in MODEL_T              # not a fourth hardcoding
 

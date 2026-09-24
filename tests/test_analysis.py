@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from flubnf.analysis import (compare_models_aicc, recommend_bounds,
                              recommend_piecewise_step,

@@ -10,7 +10,7 @@ These are the same harmonic in different coordinates:
 
 Exact, not an approximation. Fitting in (a, b) removes three defects of the
 polar form that together make the posterior unsamplable -- see
-templates/SIHRS_pop_cart.bngl for the measurements. Reporting stays in
+docs/MODEL-PROVENANCE.md section 8 for the measurements. Reporting stays in
 (eps, phi), which is what these helpers are for.
 
 CONVERT SAMPLES, NOT SUMMARIES. `to_polar(median(a), median(b))` is NOT

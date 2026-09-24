@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-import numpy as np
 import pytest
 
 from flubnf import analogue, sihrs_fit, sihrs_priors

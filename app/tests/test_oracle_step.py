@@ -1,9 +1,7 @@
 """The Oracle step at the storage boundary: the member under pf, the
-filter's own samples kept under the research key, the provenance beside
-the week, the plain-filter research run, and the two call sites.
-
-Every test builds its own tiny vintage and locations file; nothing here
-reads a hub.
+filter's own samples under the research key, provenance beside the week,
+the plain-filter research run, and the two call sites. Hub-free: every test
+builds its own tiny vintage and locations file.
 """
 import csv
 import gzip
@@ -40,10 +38,9 @@ def _saturdays(first: date, last: date) -> list:
     return out
 
 def _synthetic_flusurv(monkeypatch, first: date, last: date) -> dict:
-    """A FluSurv-NET bank over the synthetic hub's own seasons, put where
-    flubnf.oracle_mix reads the committed one: the committed bank ends in
-    2026 and shares no season with a hub of the 2090s, so no shrink could
-    be fitted against it (the step raises then, by design)."""
+    """A synthetic FluSurv-NET bank over the synthetic hub's seasons, patched
+    where oracle_mix reads the committed one (which shares no season with a
+    2090s hub, so no shrink could be fitted)."""
     from flubnf import bank as BK
     from flubnf import oracle_mix as MX
     b = {}
@@ -210,8 +207,8 @@ def test_a_missing_vintage_raises_rather_than_shipping_the_identity(hubfiles, tm
 
 
 def test_a_missing_or_unfittable_flusurv_half_raises(hubfiles, tmp_path, monkeypatch):
-    """No silent fall back to the admissions-only member: a bank that cannot
-    be read, or a shrink that cannot be fitted, stops the week."""
+    """No silent fallback to the admissions-only member: an unreadable bank
+    or unfittable shrink stops the week."""
     def gone(banks_dir=None):
         raise FileNotFoundError("no committed 'flusurv' donor bank")
     monkeypatch.setattr(MX, "read_bank", gone)
@@ -357,14 +354,10 @@ def test_run_season_records_the_oracle_setting(tmp_path, monkeypatch):
 
 
 def test_a_console_replay_is_the_oracle_sihrs_from_the_season_start(hubfiles, tmp_path, monkeypatch):
-    """The path a season's Oracle SIHRS numbers come from: the
-    Retrospective tab's run form (POST /retro/run) -> server._retro_bg ->
-    retro.run_season -> run_week. The replay fits the week from the season
-    start, applies the step by default with that week's vintage and donor
-    pool, records settings.oracle = "applied" in run_meta.json, writes
-    oracle.json beside the week, stores no filter samples, and the tree is
-    named the Oracle SIHRS (the index and the season page name pf by
-    _names_for_root: test_retro_pf_name.py)."""
+    """The Retrospective run form -> _retro_bg -> run_season -> run_week path:
+    fits from the season start, applies the step with that week's vintage and
+    donor pool, records settings.oracle = "applied", writes oracle.json,
+    stores no filter samples, and names the tree the Oracle SIHRS."""
     from fastapi.testclient import TestClient
     from app.ui import server as srv
     season = "2097-98"
@@ -438,8 +431,7 @@ def test_a_console_replay_is_the_oracle_sihrs_from_the_season_start(hubfiles, tm
 
 @pytest.fixture
 def console(hubfiles, tmp_path, monkeypatch):
-    """srv._run_all with fake engines and the real step (the fixture of
-    test_run_integrity, plus the vintage the step reads)."""
+    """srv._run_all with fake engines and the real step."""
     import app.core.engines.analogue as an_engine
     import app.core.engines.pf as pf_engine
     import app.core.floor as floor_mod
