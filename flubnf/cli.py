@@ -99,7 +99,7 @@ def _trace(msg: str) -> None:
 def doctor(
     online: bool = typer.Option(
         False, "--online",
-        help="Include network checks (CDC reachability).",
+        help="Include network checks (Delphi Epidata and GitHub).",
     ),
     # Accepted and ignored: the checks read no config or workspace (the
     # legacy workspace CLI that used them is gone), and old scripts pass them.

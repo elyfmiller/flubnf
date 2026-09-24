@@ -311,32 +311,42 @@ def _check_disk_space(path: Path) -> CheckResult:
     return CheckResult("disk space", Status.OK, f"{free_gb:.0f} GB free")
 
 
-def _check_cdc_reachable() -> CheckResult:
-    """Optional network check — only runs in --online mode."""
-    import requests
-    host = "data.cdc.gov"
-    dataset = "mpgq-jmmr"
+#: The network services the product reads, probed with --online: the Delphi
+#: Epidata API (NREVSS, ILINet and FluSurv, for donor-bank builds and
+#: verification) and GitHub (where setup clones the FluSight hub and the
+#: console pulls it).
+ONLINE_ENDPOINTS: tuple[tuple[str, str], ...] = (
+    ("Delphi Epidata reachable", "https://api.delphi.cmu.edu/epidata/"),
+    ("GitHub reachable", "https://github.com/cdcepi/FluSight-forecast-hub"),
+)
+
+
+def _check_reachable(name: str, url: str) -> CheckResult:
+    """Optional network check — only runs in --online mode. Any HTTP answer
+    below 500 means the host is reachable; 5xx is a WARN (the service is
+    having trouble), no answer at all a FAIL."""
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+    host = urllib.parse.urlsplit(url).netloc
+    req = urllib.request.Request(url, method="HEAD",
+                                 headers={"User-Agent": "flubnf-doctor"})
     try:
-        r = requests.head(
-            f"https://{host}/resource/{dataset}.csv",
-            params={"$limit": 1}, timeout=10.0,
-        )
-        if r.status_code >= 500:
-            return CheckResult(
-                "CDC Socrata reachable", Status.WARN,
-                f"HTTP {r.status_code} from {host}",
-                "Socrata may be having issues; retry later.",
-            )
-        return CheckResult(
-            "CDC Socrata reachable", Status.OK,
-            f"HEAD {host}: {r.status_code}",
-        )
+        with urllib.request.urlopen(req, timeout=10.0) as r:
+            code = r.status
+    except urllib.error.HTTPError as e:
+        code = e.code
     except Exception as e:  # noqa: BLE001
         return CheckResult(
-            "CDC Socrata reachable", Status.FAIL,
-            f"{type(e).__name__}: {e}",
+            name, Status.FAIL, f"{type(e).__name__}: {e}",
             "Check the network connection.",
         )
+    if code >= 500:
+        return CheckResult(
+            name, Status.WARN, f"HTTP {code} from {host}",
+            f"{host} may be having issues; retry later.",
+        )
+    return CheckResult(name, Status.OK, f"HEAD {host}: {code}")
 
 
 # ---------------------------------------------------------------------------
@@ -353,7 +363,7 @@ def run_doctor(*, online: bool = False) -> DoctorReport:
     """Run all checks and return a DoctorReport.
 
     Every check runs even after a failure, so all problems show in one pass.
-    `online=True` adds the network check (CDC reachability).
+    `online=True` adds the network checks (ONLINE_ENDPOINTS).
     """
     rep = DoctorReport()
     rep.add(_check_python())
@@ -367,5 +377,6 @@ def run_doctor(*, online: bool = False) -> DoctorReport:
     rep.add(_check_bng())
     rep.add(_check_disk_space(_disk_path()))
     if online:
-        rep.add(_check_cdc_reachable())
+        for name, url in ONLINE_ENDPOINTS:
+            rep.add(_check_reachable(name, url))
     return rep

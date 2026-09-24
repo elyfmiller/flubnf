@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from flubnf import doctor
@@ -59,7 +60,59 @@ def test_run_doctor_returns_report():
     assert py and py[0].status is doctor.Status.OK
     names = {c.name for c in rep.checks}
     assert {"FluSight hub", "BNG2.pl", "disk space"} <= names
-    assert "CDC Socrata reachable" not in names      # offline by default
+    online = {n for n, _ in doctor.ONLINE_ENDPOINTS}
+    assert not names & online                        # offline by default
+
+
+def test_run_doctor_online_probes_every_endpoint(monkeypatch):
+    seen = []
+
+    def fake(name, url):
+        seen.append(url)
+        return doctor.CheckResult(name, doctor.Status.OK, "stub")
+    monkeypatch.setattr(doctor, "_check_reachable", fake)
+    rep = doctor.run_doctor(online=True)
+    assert seen == [u for _, u in doctor.ONLINE_ENDPOINTS]
+    names = {c.name for c in rep.checks}
+    assert {n for n, _ in doctor.ONLINE_ENDPOINTS} <= names
+
+
+def test_online_endpoints_are_what_the_product_reads():
+    """Delphi Epidata (the donor banks) and the hub's GitHub remote."""
+    from flubnf import nrevss
+    urls = [u for _, u in doctor.ONLINE_ENDPOINTS]
+    assert any(nrevss.BASE_URL.startswith(u) for u in urls)
+    assert "https://github.com/cdcepi/FluSight-forecast-hub" in urls
+
+
+@pytest.mark.parametrize("answer, status", [
+    (200, "OK"), (404, "OK"), (503, "WARN"), (OSError("no route"), "FAIL")])
+def test_reachable_check_maps_the_answer(monkeypatch, answer, status):
+    """Any HTTP answer below 500 is reachable, 5xx a WARN, no answer a FAIL
+    (the exit-code contract: only FAIL exits 1)."""
+    import urllib.error
+    import urllib.request
+
+    class _Resp:
+        def __init__(self, code):
+            self.status = code
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout=None):
+        assert req.get_method() == "HEAD"
+        if isinstance(answer, Exception):
+            raise answer
+        if answer >= 400:
+            raise urllib.error.HTTPError(req.full_url, answer, "x", {}, None)
+        return _Resp(answer)
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    res = doctor._check_reachable("probe", "https://example.org/x")
+    assert res.status is doctor.Status[status], res
 
 
 def test_cli_doctor_smoke(tmp_path):
