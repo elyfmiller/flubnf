@@ -44,7 +44,7 @@ def test_problems_are_printed_and_exit_1(tmp_path):
     # grouped by kind, each with its rows
     out = r.output
     assert out.index("Dates:") < out.index("Values:") < out.index("Weeks:")
-    assert "(row 3; e.g., 2024-08-04 (Sunday))" in out
+    assert "(row 3; e.g., 2024-08-04 (A, Sunday, row 3))" in out
 
 
 def test_sunday_file_moves_by_itself_and_the_old_option_is_ignored(tmp_path):

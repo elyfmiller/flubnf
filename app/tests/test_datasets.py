@@ -149,8 +149,8 @@ def test_mixed_weekdays_are_refused_with_rows_and_examples():
     rows = [f"{d.isoformat()},A,1" for d in sats()]
     rows[3] = f"{(sats()[3] + timedelta(days=1)).isoformat()},A,1"
     p = only(D.validate(grouped_csv(rows), kind="count"), "weekday")
-    assert "most are Saturdays, but 1 Sunday" in p.message
-    assert "row 5" in p.message and "e.g., 2024-08-25 (Sunday)" in p.message
+    assert "weekdays: 9 rows on Saturday, 1 on Sunday (row 5;" in p.message
+    assert "e.g., 2024-08-25 (A, Sunday, row 5)" in p.message
     assert p.rows == (5,)
 
 

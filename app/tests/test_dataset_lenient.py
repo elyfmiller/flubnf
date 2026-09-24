@@ -93,7 +93,9 @@ def test_mixed_weekdays_list_every_odd_row():
     assert p.rows == (4, 7)
     assert "2 different" not in p.message        # three weekdays here
     assert "3 different weekdays" in p.message
-    assert "1 Monday" in p.message and "1 Sunday" in p.message
+    assert "6 rows on Saturday, 1 on Monday, 1 on Sunday" in p.message \
+        or "6 rows on Saturday, 1 on Sunday, 1 on Monday" in p.message
+    assert "2024-08-19 (A, Monday, row 4)" in p.message
 
 
 def test_mixed_weekdays_that_read_day_first_say_so():

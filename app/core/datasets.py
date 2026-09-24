@@ -1371,11 +1371,14 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
     elif len(wds) > 1:
         top = wds.most_common(1)[0][0]
         off = [(ln, t, d) for ln, t, d in parsed if d.weekday() != top]
-        others = Counter(d.weekday() for _, _, d in off)
-        what = ", ".join(f"{n} {WEEKDAYS[w]}{'s' if n != 1 else ''}"
-                         for w, n in others.most_common())
+        what = [f"{n:,} on {WEEKDAYS[w]}" for w, n in wds.most_common()]
+        what[0] = (f"{wds[top]:,} row{'s' if wds[top] != 1 else ''} on "
+                   f"{WEEKDAYS[top]}")
         lines = [ln for ln, _, _ in off]
-        ex = _examples(f"{t} ({WEEKDAYS[d.weekday()]})" for _, t, d in off)
+        whose = dict(zip(lines, (_text(r["group"]) for r in _rows_of(
+            raw_rows, lines[:MAX_EXAMPLES]))))
+        ex = _examples(f"{t} ({whose.get(ln)}, {WEEKDAYS[d.weekday()]}, "
+                       f"row {ln})" for ln, t, d in off)
         hint = ""
         swapped = [_swapped(t) for _, t, _ in parsed]
         if all(swapped) and len({s.weekday() for s in swapped}) == 1:
@@ -1383,8 +1386,8 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
                     f"{WEEKDAYS[swapped[0].weekday()]}s, but day-first dates "
                     "are not accepted: write them as YYYY-MM-DD.")
         rep.add("weekday", f"The dates fall on {len(wds)} different weekdays: "
-                f"most are {WEEKDAYS[top]}s, but {what} ({_rows(lines)}; "
-                f"e.g., {ex}). Every date must be the same day of its week."
+                f"{', '.join(what)} ({_rows(lines)}; e.g., {ex}). Every "
+                "date must be the same day of its week."
                 + hint, lines)
     if shift:
         rep.warnings.insert(0, f"Dates moved to week-ending Saturdays: "
