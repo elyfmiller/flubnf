@@ -75,7 +75,7 @@ WorkspaceState = _Lazy("flubnf.state", "WorkspaceState")
 #: `flubnf --help` panels and their top-level commands, in display order;
 #: every command not listed is legacy (registration order).
 HELP_PANELS = {
-    "Console": ("app", "window", "doctor"),
+    "Console": ("app", "window", "doctor", "knobs"),
     "Replay & verification": ("retro", "groundhog", "oracle", "site"),
     "Donor banks": ("bank",),
     "Legacy DE/AMCMC workspace": (),
@@ -1320,6 +1320,46 @@ def doctor(
     )
     if rep.n_fail:
         raise typer.Exit(code=1)
+
+
+@app.command()
+def knobs(
+    as_json: bool = typer.Option(False, "--json",
+                                 help="Print the registry as JSON."),
+):
+    """List the model knobs: shipped value, allowed range, the models each
+    affects and its class (run or method), then the locked settings.
+
+    Any value other than the shipped one marks a run as modified."""
+    import json
+
+    from app.core import knobs as K
+    if as_json:
+        locked = [{"key": l.key, "value": l.value, "source": l.source,
+                   "why": l.why} for l in K.LOCKED]
+        typer.echo(json.dumps({"knobs": K.describe(), "locked": locked},
+                              indent=1, default=list))
+        return
+    names = {"pf": "Oracle SIHRS", "analogue": "Groundhog"}
+    table = Table(title="Model knobs")
+    table.add_column("knob", no_wrap=True)
+    for col in ("shipped", "range", "affects", "class"):
+        table.add_column(col)
+    for r in K.describe():
+        d = r["default"]
+        shown = (f"[{', '.join(f'{x:g}' for x in d)}]" if isinstance(d, list)
+                 else f"{d:,}" if r["kind"] == "int"
+                 else ("on" if d else "off") if isinstance(d, bool) else str(d))
+        table.add_row(r["key"], shown + (f" {r['unit']}" if r["unit"] else ""),
+                      r["range"], ", ".join(names[m] for m in r["affects"]),
+                      r["class"])
+    console.print(table)
+    locked = Table(title="Locked")
+    for col in ("setting", "value", "why"):
+        locked.add_column(col)
+    for l in K.LOCKED:
+        locked.add_row(l.key, str(l.value), l.why)
+    console.print(locked)
 
 
 @app.command()
