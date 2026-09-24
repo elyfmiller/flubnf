@@ -136,19 +136,19 @@
    {% if dataset %}
    <div class="lblrow"><label id="fc-locs-lbl">Groups <span id="lcount" class="hint"></span></label>{{ tips.tip("fc-locs", "groups", "The dataset's groups; each is forecast on its own." ~ (" " ~ dataset.national ~ " is the national group: scored beside the others, never pooled with them." if dataset.national else "")) }}</div>
    {% else %}
-   <div class="lblrow"><label id="fc-locs-lbl">Locations <span id="lcount" class="hint"></span></label>{{ tips.tip("fc-locs", "locations", "The 52 are the 50 states, DC and Puerto Rico. US (national), last in the list, is a location of its own: off by default, fitted only when ticked, and scored apart from the 52. A full hub submission holds all 53, so tick it for a submission run.") }}</div>
+   <div class="lblrow"><label id="fc-locs-lbl">Locations <span id="lcount" class="hint"></span></label>{{ tips.tip("fc-locs", "locations", "All 53 is what the hub takes: the 52 jurisdictions (the 50 states, DC and Puerto Rico) and US (national). Ticking one state starts a custom pick with US (national) still ticked; untick it to leave US out. US is fitted as a series of its own and scored apart from the 52.") }}</div>
    {% endif %}
    <div class="checklist" role="group" aria-labelledby="fc-locs-lbl">
      <label class="ck"><input type="checkbox" id="ck-all" value="all" name="locations"
-       {% if "all" in form.locations %}checked{% endif %}> <b>{{ ("all " ~ all_locs | length ~ " groups") if dataset else "all 52 jurisdictions" }}</b></label>
+       {% if "all" in form.locations %}checked{% endif %}> <b>{{ ("all " ~ all_locs | length ~ " groups") if dataset else "all 53 jurisdictions" }}</b></label>
      {% if locations_error %}<p class="warn">{{ locations_error }}</p>{% endif %}
      {% for l in all_locs %}
      <label class="ck"><input type="checkbox" class="ck-one" name="locations" value="{{ l }}"
        {% if l in form.locations %}checked{% endif %}> {{ l }}</label>
      {% endfor %}
      {% if not dataset %}
-     {# the 53rd location: the national series, its own choice (never
-        added behind the user's back); it combines with "all 52" #}
+     {# the national series, last: part of "all 53", and a box of its own
+        so a custom pick can include or exclude it #}
      <label class="ck ck-national"><input type="checkbox" id="ck-us" name="locations" value="{{ us_choice }}"
        {% if us_checked %}checked{% endif %}> <b>US (national)</b></label>
      {% endif %}
@@ -199,13 +199,17 @@
      const us=!!(CKUS&&CKUS.checked);
      const n=document.querySelectorAll('.ck-one:checked').length;
      document.getElementById('lcount').textContent =
-       all? '(all '+{{ (all_locs | length if dataset else 52) | tojson }}+(us?' + US':'')+')'
+       all? '(all '+{{ (all_locs | length if dataset else 53) | tojson }}+')'
        : n? '('+n+(us?' + US':'')+' selected)' : us? '(US only)' : '';
    }
    // 'all' and specific states are mutually exclusive; nothing is disabled.
-   // US (national) is its own box: neither 'all' nor a state pick touches it
+   // 'all' is the 53: ticking it ticks US (national) too; a state pick
+   // leaves US as it is (ticked, unless the user unticks it)
    document.getElementById('ck-all').addEventListener('change', function(){
-     if(this.checked) document.querySelectorAll('.ck-one').forEach(c => c.checked=false);
+     if(this.checked){
+       document.querySelectorAll('.ck-one').forEach(c => c.checked=false);
+       if(CKUS) CKUS.checked=true;
+     }
      updCount();
    });
    // the checklist decides what RUNS; the data panel has its own dropdown
@@ -213,7 +217,15 @@
      const all=document.getElementById('ck-all');
      if(c.checked && all.checked) all.checked=false;
      updCount();}));
-   if(CKUS) CKUS.addEventListener('change', updCount);
+   // unticking US while 'all' is on: the 52 without US, as a custom pick
+   if(CKUS) CKUS.addEventListener('change', function(){
+     const all=document.getElementById('ck-all');
+     if(!CKUS.checked && all.checked){
+       all.checked=false;
+       document.querySelectorAll('.ck-one').forEach(c => c.checked=true);
+     }
+     updCount();
+   });
    updCount();
   </script>
  </div></div>

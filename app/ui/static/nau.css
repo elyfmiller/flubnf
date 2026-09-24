@@ -489,8 +489,6 @@ button.linkish,[data-theme="dark"] button.linkish,
 button.linkish:hover,[data-theme="dark"] button.linkish:hover,
 [data-theme="dim"] button.linkish:hover{
   background:none;color:var(--ink)}
-.subfile{border-bottom:1px solid var(--line);padding-bottom:.3rem;margin-bottom:.3rem}
-.subfile:last-of-type{border-bottom:0;margin-bottom:0;padding-bottom:0}
 details.preview > summary{cursor:pointer;list-style:none;user-select:none}
 details.preview > summary::-webkit-details-marker{display:none}
 details.preview > summary::before{content:"\25B8";color:var(--gold)}
@@ -1207,7 +1205,6 @@ details.sbhow > summary h2{display:inline;margin:0}
 /* round3: submission files and model identities */
 .subrow{justify-content:space-between;margin:.45rem 0}
 .subacts{display:flex;align-items:center;gap:.9rem;white-space:nowrap}
-.subfile > p.hint{margin:.1rem 0 .3rem}
 details.archived{margin-top:.6rem;padding-top:.4rem;border-top:1px solid var(--line)}
 details.archived > p.hint{margin:.3rem 0}
 details.archived .subrow{margin:.3rem 0}
@@ -1248,14 +1245,22 @@ ul.covlist{margin:.1rem 0 .2rem;padding-left:1.1rem;font-size:var(--fs-label)}
 ul.covlist li{margin:.1rem 0;overflow-wrap:anywhere}
 p.cov{margin:.1rem 0 .3rem}
 .subline{margin:.45rem 0 .1rem}
-/* the forecast archive line and its submitted mark */
-.archmark{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;
-  gap:.3rem .9rem;margin-top:.6rem;padding-top:.5rem;border-top:1px solid var(--line)}
-.archmark > p.hint{margin:0;flex:1 1 20rem}
-.archmark .archform{margin:0}
-.pill.subbadge{font-weight:650;font-size:var(--fs-label);border:1px solid currentColor;margin-right:.2rem}
-/* the last file's rule already separates the archive line */
-.subfile + .archmark{border-top:0;padding-top:.1rem}
+
+/* round8: output */
+/* one card per forecast date: a meta line, then one flat row per file
+   (name and run on the left, Download and Show in folder on the right),
+   rows parted by a hairline, no box inside the card */
+.fcday > h2{margin-bottom:.15rem}
+p.fcmeta{margin:0 0 .35rem}
+.fcfile{padding:.15rem 0 .1rem}
+.fcfile + .fcfile{border-top:1px solid var(--line)}
+.fcfile .subrow{margin:.4rem 0 .15rem;flex-wrap:wrap;gap:.3rem .9rem}
+.fcfile .outname{min-width:0;overflow-wrap:anywhere}
+.fcfile .runref{margin-left:.35rem;white-space:nowrap}
+.fcfile .subacts{margin-left:auto}
+.fcfile .subacts form{margin:0}
+.pill.modtag{font-weight:650;font-size:var(--fs-label);border:1px solid currentColor;
+  color:var(--mut);margin-left:.3rem;padding:0 .45rem}
 
 /* round8: data check */
 /* the newest week's reporting: one line, a mark (ok or warn token) with

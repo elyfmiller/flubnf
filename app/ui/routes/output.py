@@ -1,4 +1,6 @@
-"""Output (GET /output): the latest run's submission files and their
+"""Output (GET /output): the forecasts run so far, one card per forecast
+date, newest first, each model's hub-format CSV from the run the date
+shows (app/core/archive_record.choose), the own-data runs' exports,
 download rules, reveal in the file manager, and the weekly report, served
 as stored or rebuilt from its bundle when the report builder is newer.
 
@@ -146,20 +148,6 @@ def _attach_coverage(files: list, outcome: dict, spec) -> None:
             hub_total=total)
 
 
-def _outcome_of(rid) -> dict:
-    """A run's ledger outcome, {} when unknown or unreadable."""
-    import json as _json
-    from app.core.runs import Ledger
-    if not rid:
-        return {}
-    r = Ledger().row(rid)
-    try:
-        o = _json.loads((r or {}).get("outcome") or "{}")
-    except (ValueError, TypeError):
-        return {}
-    return o if isinstance(o, dict) else {}
-
-
 #: the hub's clock: the window closes at this hour, Eastern, on its last day
 HUB_CLOSE_HOUR = 23
 
@@ -187,37 +175,65 @@ def _eastern(now):
         tzinfo=_dt.timezone(_dt.timedelta(hours=off)))
 
 
-def _hub_status(path: str, today=None, now=None) -> dict:
-    """One registered file's hub check for the page: {"ok", "text"}, the
-    text one short line (app/core/hubcheck.summary; the window from
-    tasks.json, the hub closing at 11 PM Eastern on its last day). The
+def _window_text(due, today=None, now=None) -> str:
+    """The hub's window for a round, one sentence: due (from/by, 11 PM
+    Eastern on the last day) or closed. `due` is (first, last) dates. The
     clock is Eastern time, not the machine's: `now` (an aware datetime,
     default the current time) or, for a whole-day answer, `today`."""
     import datetime as _dt
-    from app.core import hubcheck
-    s = hubcheck.summary(path)
-    if not s["ok"]:
-        n = len(s["problems"])
-        return {"ok": False,
-                "text": f"Fails {n} hub check{'s' if n != 1 else ''}: "
-                        f"{s['problems'][0]}"}
-    if not s["round"]:
-        return {"ok": True,
-                "text": f"Passes the hub's checks. {s['reference_date']} is "
-                        "not a FluSight round, so this file is a record."}
-    first, last = s["due"]
+    first, last = due
     if today is None:
         et = _eastern(now or _dt.datetime.now(_dt.timezone.utc))
         today = et.date()
         if today == last and et.hour >= HUB_CLOSE_HOUR:
             today = last + _dt.timedelta(days=1)     # closed at 11 PM ET
     if today > last:
-        when = f"The window closed {last:%a %Y-%m-%d}."
-    elif today < first:
-        when = f"Due {first:%a %b %d} to {last:%a %b %d}, 11 PM ET."
-    else:
-        when = f"Due {last:%a %Y-%m-%d}, 11 PM ET."
-    return {"ok": True, "text": f"Passes the hub's checks. {when}"}
+        return f"The window closed {last:%a %Y-%m-%d}."
+    if today < first:
+        return f"Due {first:%a %b %d} to {last:%a %b %d}, 11 PM ET."
+    return f"Due {last:%a %Y-%m-%d}, 11 PM ET."
+
+
+def _date_window(ref: str, today=None, now=None) -> str:
+    """A forecast date's one line: its window, or that the reference date
+    is not a FluSight round (hub-config/tasks.json, vendored)."""
+    from app.core import hubcheck
+    try:
+        rounds = hubcheck.vendored_rules()["rounds"]
+        if ref not in rounds:
+            return f"{ref} is not a FluSight round, so its files are a record."
+        return _window_text(hubcheck.submission_window(ref),
+                            today=today, now=now)
+    except Exception:
+        return ""
+
+
+#: (path, mtime_ns, size) -> hubcheck.summary; a file is checked once
+_CHECKED: dict = {}
+
+
+def _check_line(path: str) -> dict:
+    """One file's hub checks in a few words: {"ok", "text"} ("Passes the
+    hub's checks" or "Fails N hub checks: <first>"), cached per file
+    version."""
+    from app.core import hubcheck
+    try:
+        st = Path(path).stat()
+        key = (str(path), st.st_mtime_ns, st.st_size)
+    except OSError:
+        key = None
+    s = _CHECKED.get(key) if key else None
+    if s is None:
+        s = hubcheck.summary(path)
+        if key:
+            if len(_CHECKED) > 512:
+                _CHECKED.clear()
+            _CHECKED[key] = s
+    if s["ok"]:
+        return {"ok": True, "text": "Passes the hub's checks"}
+    n = len(s["problems"])
+    return {"ok": False, "text": f"Fails {n} hub check{'s' if n != 1 else ''}: "
+                                 f"{s['problems'][0]}"}
 
 
 def _reference_date(asof: str) -> str:
@@ -230,8 +246,7 @@ def _reference_date(asof: str) -> str:
         return ""
 
 
-# === Output (/output): submissions, downloads, weekly report -> output.html ===
-PREVIEW_ROWS = 12
+# === Output (/output): forecasts by date, own-data exports, report ===
 
 
 def _run_data_source(rid) -> str:
@@ -253,107 +268,171 @@ def _run_data_source(rid) -> str:
     return ""
 
 
+def _read_json(p: Path):
+    import json as _json
+    try:
+        d = _json.loads(Path(p).read_text())
+    except (OSError, ValueError):
+        return None
+    return d if isinstance(d, dict) else None
+
+
+def _file_complete(row, model_dir: str) -> bool:
+    """Whether one run's file for a model counts as complete: the run
+    finished ok and wrote the file whole (no location dropped, no error
+    for it). A workroot without a ledger row counts as complete, as an
+    archive from before its record does."""
+    import json as _json
+    if row is None:
+        return True
+    if row.get("status") != "ok":
+        return False
+    try:
+        o = _json.loads(row.get("outcome") or "{}")
+    except (ValueError, TypeError):
+        o = {}
+    o = o if isinstance(o, dict) else {}
+    return not ((o.get("submission_dropped") or {}).get(model_dir)
+                or (o.get("submission_errors") or {}).get(model_dir))
+
+
+def _hub_candidates(app_state: Path, ledger) -> tuple:
+    """(hub candidates, own-data runs). A hub candidate is one run's file
+    for one registered or -modified model: {"asof", "dir", "run_id",
+    "path", "complete", "row", "spec", "wr"}; research runs and folders
+    under retired names are left out (they stay on disk and in Storage).
+    Files an archive folder holds count too when their run's workroot is
+    gone. Own-data runs: [{"run_id", "res", "wr"}]."""
+    from app.core import archive_record as _ar
+    from app.core.runs import is_research
+    listed = _registered_model_ids() | _modified_model_ids()
+    cands, own, seen = [], [], set()
+    for f in shared._workroot_results():
+        res = _read_json(f)
+        if res is None:
+            continue
+        wr = f.parent
+        if res.get("dataset"):
+            own.append({"run_id": wr.name, "res": res, "wr": wr})
+            continue
+        if res.get("research") or is_research(res.get("spec", "")):
+            continue
+        asof = str(res.get("forecast_date") or "")
+        row = ledger.row(wr.name) if ledger else None
+        seen.add(wr.name)
+        for p in sorted(wr.glob("submission/*/*.csv")):
+            if p.parent.name not in listed or not asof:
+                continue
+            cands.append({"asof": asof, "dir": p.parent.name,
+                          "run_id": wr.name, "path": str(p),
+                          "complete": _file_complete(row, p.parent.name),
+                          "row": row, "spec": res.get("spec", ""),
+                          "wr": wr})
+    for date in shared._archive_dates():
+        d = app_state / "archive" / date
+        rec = _ar.read_record(d) or {}
+        rid = str(rec.get("run_id") or "")
+        if rid and rid in seen:
+            continue            # the run's own folder is listed above
+        res = _read_json(d / "results.json") or {}
+        for p in sorted(d.glob("submission/*/*.csv")):
+            if p.parent.name not in listed:
+                continue
+            cands.append({"asof": date, "dir": p.parent.name,
+                          "run_id": rid, "path": str(p),
+                          "complete": bool(rec.get("complete", True)),
+                          "row": ledger.row(rid) if (ledger and rid) else None,
+                          "spec": res.get("spec", ""), "wr": d})
+    return cands, own
+
+
+def _file_entry(c: dict) -> dict:
+    """A chosen candidate as the page shows it."""
+    import json as _json
+    name = c["dir"]
+    modified = name in _modified_model_ids()
+    e = {"model": name[:-len(_knobs.MODIFIED_SUFFIX)] if modified else name,
+         "dir": name, "name": Path(c["path"]).name, "path": c["path"],
+         "modified": modified, "run_id": c["run_id"],
+         "run_when": (_run_label(c["run_id"], "", tag=False).split(" · ")[-1]
+                      if c["run_id"] else ""),
+         "complete": c["complete"]}
+    if not modified:
+        e["check"] = _check_line(c["path"])
+    try:
+        o = _json.loads((c.get("row") or {}).get("outcome") or "{}")
+    except (ValueError, TypeError):
+        o = {}
+    tmp = [{"model": name, "path": c["path"]}]
+    _attach_coverage(tmp, o if isinstance(o, dict) else {}, c.get("spec"))
+    e["cov"] = tmp[0].get("cov")
+    return e
+
+
+def _member_order(dir_name: str) -> int:
+    from app.core.submit import MODEL_ABBR
+    return list(MODEL_ABBR).index(_member_of(dir_name)) \
+        if _member_of(dir_name) in MODEL_ABBR else 99
+
+
+def forecast_dates(today=None, now=None) -> tuple:
+    """(dates, own) for the Output page. dates: newest forecast date first,
+    each {"asof", "ref", "window", "files": the hub-named file per model,
+    "modified": the -modified file per model}; each file from the run
+    archive_record.choose picks among the runs that wrote one for the date.
+    own: the own-data runs, newest first, with their exports."""
+    from app.core import archive_record as _ar
+    from app.core import custom_run
+    from app.core.runs import APP_STATE, Ledger
+    try:
+        ledger = Ledger()
+    except Exception:
+        ledger = None
+    cands, own_runs = _hub_candidates(APP_STATE, ledger)
+    by = {}
+    for c in cands:
+        by.setdefault(c["asof"], {}).setdefault(c["dir"], []).append(c)
+    dates = []
+    for asof in sorted(by, reverse=True):
+        ref = _reference_date(asof)
+        files, modified = [], []
+        for d in sorted(by[asof], key=lambda d: (_member_order(d), d)):
+            e = _file_entry(_ar.choose(by[asof][d]))
+            (modified if e["modified"] else files).append(e)
+        dates.append({"asof": asof, "ref": ref or asof,
+                      "window": _date_window(ref, today=today, now=now)
+                      if ref else "",
+                      # the data the shown files' runs read, once each
+                      "data_src": list(dict.fromkeys(
+                          x for x in (_run_data_source(e["run_id"])
+                                      for e in files + modified) if x)),
+                      "files": files, "modified": modified})
+    own = []
+    for r in own_runs:
+        res = r["res"]
+        ds = res.get("dataset") or {}
+        exports = custom_run.export_files(r["wr"])
+        if not exports:
+            continue
+        own.append({"run_id": r["run_id"],
+                    "asof": str(res.get("forecast_date") or ""),
+                    "dataset": str(ds.get("name") or ds.get("id") or "dataset"),
+                    "run_when": _run_label(r["run_id"], "", tag=False
+                                           ).split(" · ")[-1],
+                    "files": exports})
+    return dates, own
+
+
 @router.get("/output", response_class=HTMLResponse)
 def output_page(request: Request):
-    import pandas as pd
     from app.core.runs import APP_STATE
     rid, res = shared._latest_results()
-    files = []
-    if rid:
-        for entry in _submission_files(APP_STATE / "workroots" / rid):
-            entry.update({"cols": [], "rows": [], "more": 0})
-            if entry["archived"]:
-                files.append(entry)          # listed, never previewed
-                continue
-            if entry["submittable"]:
-                entry["hub"] = _hub_status(entry["path"])
-            try:
-                df = pd.read_csv(entry["path"], dtype=str)
-                entry["cols"] = list(df.columns)
-                entry["rows"] = df.head(PREVIEW_ROWS).fillna("").values.tolist()
-                entry["more"] = max(len(df) - PREVIEW_ROWS, 0)
-            except Exception:
-                pass
-            files.append(entry)
-    outcome = _outcome_of(rid)
-    _attach_coverage(files, outcome, (res or {}).get("spec"))
+    dates, own = forecast_dates()
     return templates.TemplateResponse(request, "output.html", {
         "active": "Output", "rid": rid,
-        # the stored spec lets the label carry the research tag
-        "label": _run_label(rid, (res or {}).get("spec", "")) if rid else "",
-        "date": (res or {}).get("forecast_date", ""),
-        # the file the run read ("live target-data through ..." or
-        # "archived vintage ..."); "" for runs from before it was recorded
-        "data_src": _run_data_source(rid),
-        # the files are named by the reference date, a week after the data
-        "ref": _reference_date((res or {}).get("forecast_date", "")),
-        "files": files,
-        # the date's forecast archive: which run it holds, the submitted
-        # mark, and whether this run was kept out of it (no downgrade)
-        "arch": _archive_view(rid, (res or {}).get("forecast_date", ""),
-                              outcome),
+        "dates": dates, "own": own,
         "archive_dates": list(reversed(_archive_dates())),
         "has_report": bool(rid and (APP_STATE / "workroots" / rid / "report.html").is_file())})
-
-
-def _archive_view(rid, date: str, outcome: dict) -> dict | None:
-    """The Output page's archive line for the latest run's as-of date
-    (app/core/archive_record.py), None when no archive exists for it."""
-    from app.core import archive_record as _ar
-    st = _ar.status(date) if date else None
-    archived = str((outcome or {}).get("archived") or "")
-    if st is None:
-        return None
-    sub = st["submitted"]
-    return {"date": date, "run_id": st["run_id"],
-            "this_run": bool(rid) and st["run_id"] == rid,
-            "kept": archived.startswith("kept:"),
-            # why this run was kept out: the mark, or its own incompleteness
-            "kept_submitted": "marked submitted" in archived,
-            "submitted": sub is not None,
-            "submitted_at": (sub or {}).get("submitted_at", ""),
-            "busy": bool(shared._status.get("running"))}
-
-
-@router.post("/output/submitted")
-def output_submitted(request: Request, date: str = Form(""),
-                     mark: str = Form(""), run: str = Form("")):
-    """Mark (mark=1) or unmark (mark=0) the archive of an as-of date as
-    submitted to the hub. Only a record: FluBNF never uploads anything.
-    `run` is the run the page showed in the archive; a different one
-    there now refuses, as does a console run in progress (it may be
-    replacing the archive)."""
-    from app.core import archive_record as _ar
-    shared._invalidate_scans()
-    d = _ar.archive_dir(date)
-    if d is None or not d.is_dir():
-        shared._flash(f"No forecast archive for {date or 'that date'}. "
-                      "Nothing was marked.")
-        return RedirectResponse("/output", status_code=303)
-    if shared._status.get("running"):
-        shared._flash("A console run is in progress and may be writing the "
-                      "archive; mark it when the run finishes.")
-        return RedirectResponse("/output", status_code=303)
-    held = (_ar.read_record(d) or {}).get("run_id") or ""
-    if run and held and run != held:
-        shared._flash(f"The archive for {date} changed since the page was "
-                      "shown. Nothing was marked; review and try again.")
-        return RedirectResponse("/output", status_code=303)
-    if mark == "1":
-        rec = _ar.mark(date)
-        shared._flash(f"Marked the {date} archive as submitted "
-                      f"({rec['submitted_at']}). No later run replaces it, "
-                      "and Storage keeps it until you unmark it.")
-    elif mark == "0":
-        if _ar.unmark(date):
-            shared._flash(f"Unmarked the {date} archive: a later complete "
-                          "run may replace it again.")
-        else:
-            shared._flash(f"The {date} archive was not marked submitted.")
-    else:
-        shared._flash("Unrecognized request. Nothing was changed.")
-    shared._invalidate_scans()
-    return RedirectResponse("/output", status_code=303)
 
 
 def _dataset_workroot(p: Path, app_state: Path) -> bool:
@@ -404,8 +483,8 @@ def output_download(request: Request, path: str):
         return HTMLResponse(
             "<p>This folder is not a registered hub model: the file was "
             "written by an earlier version under a retired hub name and is "
-            "kept as a record, not for submission. Use Show in Finder to "
-            "open it for reference.</p>", status_code=409)
+            "kept on disk as a record, not for submission; Storage lists "
+            "its run folder.</p>", status_code=409)
     return FileResponse(p, filename=p.name, media_type="text/csv",
                         content_disposition_type="attachment")
 

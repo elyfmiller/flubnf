@@ -1,9 +1,12 @@
 """US national on the Forecast tab: a location of its own, and the FluSight
 comparators drawn over a vintage run's fans.
 
-US (national) is the 53rd checkbox, off by default. "all 52 jurisdictions"
-is the 52 alone, and a run fits exactly what was ticked: US is never added
-behind the user's back, nor removed.
+"all 53 jurisdictions" is the hub's 53: the 52 (the 50 states, DC and
+Puerto Rico) AND US (national), ticked by default, so a national fit is
+not forgotten. US (national) stays a box of its own, listed last, ticked
+with "all"; a custom pick keeps it unless the user unticks it, and fits
+exactly what was ticked. (Until round 8 "all" was the 52 alone and US an
+unticked extra; this file pinned that and now pins the new rule.)
 
 A run's Forecasts card overlays the hub's recorded FluSight-ensemble and
 FluSight-baseline forecasts for the same week, read with the
@@ -80,8 +83,9 @@ def _post(locations):
     (["Ohio"], ["Ohio"]),                               # no US added
     (["Ohio", "US (national)"], ["Ohio", "US"]),
     (["US (national)"], ["US"]),
-    (["all"], ["Ohio", "Utah"]),                        # the 52 alone
-    (["all", "US (national)"], ["Ohio", "Utah", "US"]),  # the hub's 53
+    (["all"], ["Ohio", "Utah", "US"]),                  # "all" is the 53
+    (["all", "US (national)"], ["Ohio", "Utah", "US"]),  # US never twice
+    (["all", "Ohio"], ["Ohio", "Utah", "US"]),          # no-JS: all wins
 ])
 def test_a_run_fits_exactly_the_ticked_locations(started, ticked, expected):
     r = _post(ticked)
@@ -101,28 +105,43 @@ def test_the_progress_label_names_us_only_when_it_runs(started):
 def test_the_run_scope_reads_without_us_for_a_state_run():
     assert runs_mod.locations_phrase(["California"]) == "1 state: California"
     assert fc._scope_label(["US"]) == "US only"
+    assert fc._scope_label([f"S{i}" for i in range(52)] + ["US"]) == \
+        "all 53 jurisdictions"
 
 
-def test_the_default_form_ticks_the_52_and_leaves_us_off(monkeypatch):
-    """A fresh console ticks all 52; US (national) is offered last and left
-    unticked, so a national fit is always the user's choice."""
+def test_all_queues_the_53_in_the_progress_label(started):
+    _post(["all"])
+    assert started[0].locations[-1] == "US"
+    assert ui_state._status["run_label"].endswith("2 state(s) + US · queued")
+
+
+def test_the_default_form_ticks_all_53_with_us(monkeypatch):
+    """A fresh console ticks "all 53 jurisdictions", and US (national),
+    offered last, is ticked with it."""
     ui_state._last_form.clear()
     html = client.get("/forecast").text
     assert re.search(r'id="ck-all" value="all" name="locations"\s+checked', html)
-    assert re.search(r'id="ck-us" name="locations" value="US \(national\)"\s*>',
-                     html)
+    assert "<b>all 53 jurisdictions</b>" in html
+    assert "all 52 jurisdictions" not in html
+    assert re.search(r'id="ck-us" name="locations" value="US \(national\)"'
+                     r'\s+checked\s*>', html)
     assert "<b>US (national)</b>" in html
+    # the tip names the 52 and says what a custom pick does with US
+    assert "the 50 states, DC and Puerto Rico" in html
+    assert "US (national) still ticked" in html
     # the national box comes after the jurisdictions (the template's order)
     assert TEMPLATE.index('id="ck-us"') > TEMPLATE.index('class="ck-one"')
 
 
-def test_the_form_script_keeps_us_apart_from_all():
-    """Neither ticking all nor a state pick touches US; the count names US
-    apart ("all 52 + US", "1 + US selected")."""
-    assert "CKUS.checked=" not in TEMPLATE
+def test_the_form_script_keeps_us_in_a_custom_pick():
+    """Ticking all ticks US; a state pick turns all off and leaves US as
+    it is; unticking US under all becomes the 52 without it. The count
+    reads "all 53", or "1 + US selected" for a pick."""
+    assert "if(CKUS) CKUS.checked=true;" in TEMPLATE
     assert "if(c.checked && all.checked) all.checked=false;" in TEMPLATE
+    assert "if(!CKUS.checked && all.checked){" in TEMPLATE
     assert "(us?' + US':'')" in TEMPLATE
-    assert "US national is always fitted" not in TEMPLATE
+    assert "dataset else 53) | tojson" in TEMPLATE
 
 
 def test_a_rerun_keeps_a_recorded_scope_without_us(tmp_path, monkeypatch,

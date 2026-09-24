@@ -772,29 +772,6 @@ class Ledger:
             (status, json.dumps(outcome), now, now, run_id))
         self._db.commit()
 
-    def update_outcome(self, run_id: str, patch: dict, drop=()) -> bool:
-        """Merge `patch` into one closed row's outcome and remove the keys
-        in `drop` (status and times unchanged); False for an unknown row.
-        For marks made after the run (app/core/archive_record.py)."""
-        cur = self._db.execute(
-            "SELECT outcome_json FROM runs WHERE run_id=?", (str(run_id),))
-        r = cur.fetchone()
-        if r is None:
-            return False
-        try:
-            o = json.loads(r[0] or "{}")
-        except (ValueError, TypeError):
-            o = {}
-        if not isinstance(o, dict):
-            o = {}
-        for k in drop:
-            o.pop(k, None)
-        o.update(patch)
-        self._db.execute("UPDATE runs SET outcome_json=? WHERE run_id=?",
-                         (json.dumps(o), str(run_id)))
-        self._db.commit()
-        return True
-
     #: how a dataset run's spec_json marks it (RunSpec.extra["dataset"])
     DATASET_MARK = '"dataset": {'
 

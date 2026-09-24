@@ -170,11 +170,8 @@
  {% for f in storage.report_archives %}
  <div class="archrow">
   <span class="grow"><strong>Weekly report and submissions · {{ f.id }}</strong>
-   <span class="hint">· {{ f.size_h }}{% if f.busy %} · <span class="warn">a console run is in progress</span>{% endif %}</span>
-   {% if f.is_submitted %}<span class="pill ok subbadge">Submitted</span>{% endif %}</span>
-  {% if f.is_submitted %}
-  <span class="hint"{% if f.submitted %} title="Marked {{ f.submitted }}"{% endif %}>Kept until unmarked on Output</span>
-  {% elif not f.busy %}
+   <span class="hint">· {{ f.size_h }}{% if f.busy %} · <span class="warn">a console run is in progress</span>{% endif %}</span></span>
+  {% if not f.busy %}
   <form method="post" action="/storage/delete">
    <input type="hidden" name="kind" value="report-archive">
    <input type="hidden" name="ident" value="{{ f.id }}">

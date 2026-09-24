@@ -884,11 +884,10 @@ def _archive_run(workroot: Path, forecast_date: str,
     replacing any earlier archive for the date. Built beside, then swapped:
     a crash mid-copy costs this attempt, never the existing record.
 
-    Never a downgrade (app/core/archive_record.py): an archive marked
-    submitted is never replaced, and an incomplete run (`complete` False)
-    does not replace an archive that holds a complete one. Then nothing
-    is copied, the run's files stay in its own folder, and the answer is
-    "kept: <why>". The archive records which run it holds (archive.json)."""
+    Never a downgrade (app/core/archive_record.py): an incomplete run
+    (`complete` False) does not replace an archive that holds a complete
+    one. Then nothing is copied, the run's files stay in its own folder,
+    and the answer is "kept: <why>". The archive records which run it holds (archive.json)."""
     import os
     import shutil
     from app.core import archive_record as _ar

@@ -220,21 +220,25 @@ def test_the_writer_refuses_what_the_hub_would_reject(tmp_path):
 def test_an_off_season_replay_is_written_as_a_record(tmp_path):
     """A summer as-of is a correct file whose date is not a round: written
     (the run's record), and the Output page says it is not a round."""
-    from app.ui.routes.output import _hub_status
+    from app.ui.routes.output import _check_line, _date_window
     rows = SB.quantile_rows({str(h): list(np.linspace(5, 50, 200))
                              for h in range(4)}, "06", "2026-07-04")
     p = SB.write_submission(rows, "pf", "2026-07-04", tmp_path)
-    st = _hub_status(str(p))
-    assert st["ok"] and "not a FluSight round" in st["text"]
+    st = _check_line(str(p))
+    assert st["ok"] and st["text"] == "Passes the hub's checks"
+    assert _date_window("2026-07-11") == (
+        "2026-07-11 is not a FluSight round, so its files are a record.")
 
 
 def test_the_output_page_names_the_due_date(tmp_path):
     import datetime as dt
-    from app.ui.routes.output import _hub_status
+    from app.ui.routes.output import _check_line, _date_window
     p, _ = _build(tmp_path)
-    assert _hub_status(str(p), dt.date(2026, 10, 6))["text"] == (
-        "Passes the hub's checks. Due Wed 2026-10-07, 11 PM ET.")
-    assert "closed" in _hub_status(str(p), dt.date(2026, 10, 8))["text"]
+    assert _check_line(str(p)) == {"ok": True,
+                                   "text": "Passes the hub's checks"}
+    assert _date_window(REF, dt.date(2026, 10, 6)) == (
+        "Due Wed 2026-10-07, 11 PM ET.")
+    assert "closed" in _date_window(REF, dt.date(2026, 10, 8))
 
 
 @pytest.mark.parametrize("utc, text", [
@@ -251,11 +255,9 @@ def test_the_due_line_reads_the_clock_in_eastern_time(tmp_path, utc, text):
     """The hub closes at 11 PM Eastern on the Wednesday: the line follows
     that clock, whatever the machine's own time zone."""
     import datetime as dt
-    from app.ui.routes.output import _hub_status
-    p, _ = _build(tmp_path)
+    from app.ui.routes.output import _date_window
     now = dt.datetime.fromisoformat(utc).replace(tzinfo=dt.timezone.utc)
-    assert _hub_status(str(p), now=now)["text"] == (
-        f"Passes the hub's checks. {text}")
+    assert _date_window(REF, now=now) == text
 
 
 @pytest.mark.parametrize("utc, et", [
