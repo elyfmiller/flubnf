@@ -3,15 +3,18 @@
 
 {% if storage %}
 <div class="card">
-{# ships FOLDED: the summary carries the total; open state persists #}
+{# ships FOLDED: the summary carries the total ("On disk: 29 KB in use",
+   or "nothing yet"); open state persists #}
 <details class="ledgerfold" id="storagefold">
- <summary><h2 style="display:inline">On disk</h2>
-  <span class="stotal" style="display:inline;margin-left:.45rem"><span class="big">{{ storage.total_h }}</span></span>
-  <span class="hint"> total</span>{{ tips.tip("st-total", "the total", "Run workroots, retrospective seasons, archived runs, report archives and your datasets, each counted once (a dataset's runs as workroots); protected trees are listed but not counted.") }}</summary>
+ <summary><h2 class="stfold-h">On disk</h2>
+  <span class="stotal">{% if storage.total_bytes %}<span class="big">{{ storage.total_h }}</span>
+  <span class="hint">in use</span>{% else %}<span class="hint">Nothing stored yet.</span>{% endif %}</span>
+  {{- tips.tip("st-total", "the total", "Run workroots, retrospective seasons, archived runs, report archives and your datasets, each counted once (a dataset's runs as workroots); protected trees are listed but not counted.") }}</summary>
 
  {# reclaim: dry-run report first, then the shared confirmation. Deletes only
     fit intermediates of COMPLETED weeks/runs and compresses samples
     losslessly; never touches the seal or hub. #}
+ {% if storage.total_bytes %}
  <form method="post" action="/storage/reclaim" id="reclaim-form">
   <input type="hidden" name="confirm" value="">
   <button type="button" class="quiet" id="reclaim-btn">Reclaim space…</button>
@@ -56,6 +59,7 @@
    });
   })();
  </script>
+ {% endif %}
 
  <h3 class="hint" style="margin:.8rem 0 .2rem">Run workroots</h3>
  {% for w in storage.workroots %}
@@ -200,7 +204,7 @@
  {% endif %}
 
  {% if storage.protected %}
- <h3 class="hint" style="margin:.8rem 0 .2rem">Protected</h3>
+ <h3 class="hint" style="margin:.8rem 0 .2rem">Protected {{ tips.tip("st-protected", "protected trees", "The sealed record backs the default configuration; the hub clone is shared source data. Neither can be deleted here.") }}</h3>
  {% for p in storage.protected %}
  {# never deletable here; the server refuses crafted requests too #}
  <div class="archrow">
@@ -208,8 +212,6 @@
    <span class="hint">· {{ p.size_h }} · <span class="pill">protected</span></span></span>
  </div>
  {% endfor %}
- <p class="hint">The sealed record backs the shipped configuration; the hub
-  clone is shared source data.</p>
  {% endif %}
  {% set sbx = sandbox_storage() %}
  {% if sbx %}
@@ -265,12 +267,12 @@
   ({{ ledger[0].status }})</span></summary>
 {% endif %}
 {# rows from before elapsed was recorded show a dash (hms renders None) #}
-<table><tr><th>run</th><th>status</th><th>elapsed</th><th>on disk</th><th>summary</th></tr>
+{% if ledger %}<div class="tablewrap"><table><tr><th>run</th><th>status</th><th>elapsed</th><th class="num">on disk</th><th>summary</th></tr>
 {% for r in ledger %}
  <tr><td class="nowrap"><a href="/runs/{{ r.run_id }}">{{ r.label }}</a>
  {# research badge (the spec asked for the third member) #}
  {% if r.research %} <span class="pill">research</span>{% endif %}
- {# model settings off the shipped ones (a knobs record in the spec) #}
+ {# model settings off the default ones (a knobs record in the spec) #}
  {% if r.modified %} <span class="pill warn">modified settings</span>{% endif %}</td>
  <td><span class="pill {% if r.status == 'ok' %}ok{% elif r.status == 'running' %}warn{% else %}bad{% endif %}">{{ r.status }}</span></td>
  <td class="elapsed">{{ r.elapsed_s | hms }}</td>
@@ -278,8 +280,9 @@
  <td class="num">{{ r.disk_h or "--" }}</td>
  {# chips: server markup from fixed phrases and numbers, never raw errors #}
  <td>{{ r.chips | safe }}</td></tr>
-{% else %}<tr><td colspan="5" class="hint">No runs yet.</td></tr>{% endfor %}
-</table>
+{% endfor %}
+</table></div>
+{% else %}<p class="hint">No runs yet.</p>{% endif %}
 {% if clear_count %}
 {# clear via the shared confirmation (names the count); the server refuses a
    stale count, skips the active run, and never deletes workroot data #}

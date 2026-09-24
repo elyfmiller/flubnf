@@ -847,3 +847,31 @@ tr[aria-current="true"] td{font-weight:600}
 .mview-draw svg{display:block;max-width:none}
 .mview-draw pre.hint{white-space:pre-wrap;margin:.3rem 0}
 .mview-hint{margin:.4rem 0 0}
+
+/* polish: data-storage-datasets */
+/* hub card: the pull and the check side by side, forms flush */
+.hubacts{margin-top:.6rem}
+.hubacts form{margin:0}
+.hubacts button{margin-top:0}
+/* archive strip: labels stay legible; a phone scrolls the strip itself,
+   never the page; a wide card does not blow the labels up */
+.archive-wrap{overflow-x:auto;max-width:100%}
+.archive-strip{display:block;width:100%;min-width:420px;max-width:680px}
+/* your datasets: the stored list under a small heading */
+.dslist-h{margin:1rem 0 .2rem;font-size:var(--fs-label);color:var(--mut)}
+.dslist-none{margin-top:.8rem}
+/* under 600px each dataset row stacks: name, facts, then its actions */
+@media(max-width:600px){
+  .dstable thead{display:none}
+  .dstable,.dstable tbody{display:block;width:100%}
+  .dstable tr{display:flex;flex-wrap:wrap;gap:.15rem .9rem;padding:.5rem 0;
+    border-bottom:1px solid var(--line)}
+  .dstable td{border:0;padding:0;text-align:left}
+  .dstable td.dsname,.dstable td.dsactions{flex-basis:100%}
+  .dstable td[data-label]::before{content:attr(data-label) ": ";color:var(--mut)}
+  .dstable td.dsactions button{margin-left:.5rem}
+}
+/* storage fold header: "On disk  29.3 KB in use" on one baseline */
+.stfold-h{display:inline;margin:0 .6rem 0 0}
+#storagefold > summary .stotal{display:inline-flex;gap:.35rem;margin:0}
+#storagefold > summary .big{font-size:var(--fs-lead)}
