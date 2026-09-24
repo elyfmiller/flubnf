@@ -10,7 +10,7 @@
 {% macro result(chk, where) -%}
 {% set fid = "dsup-" ~ where %}
 {% if chk.problems %}
-<div class="dsproblems">
+<div class="dsproblems"{% if chk.refused %} role="alert"{% endif %}>
  {% set many = "" if chk.n == 1 else "s" %}
  {% if chk.refused %}<p class="bad"><strong>Nothing was stored.</strong> {{ chk.n }} problem{{ many }} to fix:</p>
  {% else %}<p class="bad"><strong>{{ chk.n }} problem{{ many }} to fix</strong> before this file can be stored:</p>{% endif %}

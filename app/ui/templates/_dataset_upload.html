@@ -10,12 +10,14 @@
    or a preview whose buttons store it and open it where it is needed; a
    status line (role=status) says in a few words what the check found.
    Without script the form stores it (POST /data/datasets) and a refusal
-   comes back on the Data tab. `upload` is a refused store's report. #}
+   comes back on the Data tab, scrolled to its upload box (#datasets) with
+   the problems announced (role=alert). `upload` is a refused store's
+   report. #}
 {% import "_tips.html" as tips %}
 {% import "_dataset_check.html" as dscheck %}
 {% macro box(where, upload=none) -%}
 {% set fid = "dsup-" ~ where %}
-<form method="post" action="/data/datasets" enctype="multipart/form-data"
+<form method="post" action="/data/datasets#datasets" enctype="multipart/form-data"
   class="dsup" id="{{ fid }}" data-dsup data-where="{{ where }}">
  <label class="dsdrop" for="{{ fid }}-file" data-drop>
   <span class="dsdrop-t">Drop a CSV here, or choose a file</span>

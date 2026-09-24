@@ -244,10 +244,6 @@ def test_problems_come_grouped_by_kind_with_rows():
     assert ("<strong>6 problems to fix</strong> before this file can be "
             "stored:") in html
     assert j["status"] == "6 problems to fix."
-    # a refused store does
-    r = store(raw)
-    assert r.status_code == 422
-    assert "<strong>Nothing was stored.</strong> 6 problems to fix:" in r.text
     kinds = re.findall(r'<p class="dsp-kind">(\w+)</p>', html)
     assert kinds == ["Dates", "Values", "Groups", "Weeks"]
     # each example with its date and group
@@ -257,6 +253,27 @@ def test_problems_come_grouped_by_kind_with_rows():
     assert "Ready to use." not in html
     # a date stays on one line at phone width (it broke after a hyphen)
     assert '<span class="nw">2024-08-19</span> (A, Monday, row 4)' in html
+    # a refused store does
+    r = store(raw)
+    assert r.status_code == 422
+    assert "<strong>Nothing was stored.</strong> 6 problems to fix:" in r.text
+
+
+def test_a_refused_store_without_script_lands_on_its_problems():
+    """Without script a refused store reloaded the Data tab at its top,
+    the problems far below and not announced."""
+    page = client.get("/forecast").text
+    assert ('<form method="post" action="/data/datasets#datasets" '
+            'enctype="multipart/form-data"') in page
+    r = store(b"date,target_group,value\n2024-08-03,A,-1\n")
+    assert r.status_code == 422
+    assert '<div class="card" id="datasets">' in r.text
+    box = r.text.split('<div class="card" id="datasets">')[1]
+    assert '<div class="dsproblems" role="alert">' in box
+    # a check is no alert: its status line speaks for it
+    j = check(b"date,target_group,value\n2024-08-03,A,-1\n").json()
+    assert '<div class="dsproblems">' in j["html"]
+    assert 'role="alert"' not in j["html"]
 
 
 def test_an_unmatched_column_asks_for_a_mapping_instead_of_an_error():
