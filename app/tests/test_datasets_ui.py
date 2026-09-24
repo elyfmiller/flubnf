@@ -75,12 +75,13 @@ def test_upload_stores_and_lists_the_dataset():
 
 
 def test_a_bad_upload_shows_every_problem_inline_and_stores_nothing():
-    raw = b"date,target_group,value\n2024-08-04,A,-1\nbad,A/B,x\n"
+    raw = (b"date,target_group,value\n2024-08-04,A,-1\nbad,A/B,x\n"
+           b"2024-08-10,A,2\n")
     r = upload(raw, "bad")
     assert r.status_code == 422
     assert "Nothing was stored." in r.text
     assert "negative" in r.text and "could not be parsed" in r.text
-    assert "not Saturdays" in r.text
+    assert "different weekdays" in r.text
     assert D.list_datasets() == []
     assert not srv._status.get("flash")          # inline, not the flash slot
 

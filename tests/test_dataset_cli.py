@@ -28,7 +28,8 @@ def test_undeclared_kind_is_reported_as_inferred():
     r = runner.invoke(app, ["dataset", "validate",
                             str(FIX / "grouped-template-head.csv")])
     assert r.exit_code == 0, r.output
-    assert "count (inferred; declare it)" in r.output
+    assert "count (inferred from the values)" in r.output
+    assert "format      grouped (comma-separated, UTF-8)" in r.output
 
 
 def test_problems_are_printed_and_exit_1(tmp_path):
@@ -37,18 +38,25 @@ def test_problems_are_printed_and_exit_1(tmp_path):
                  "2024-08-03,A,1\n2024-08-04,A,-2\n2024-08-24,A,3\n")
     r = runner.invoke(app, ["dataset", "validate", str(p), "--kind", "count"])
     assert r.exit_code == 1
-    assert "problem(s)" in r.output
-    assert "not Saturdays" in r.output and "negative" in r.output
+    assert "3 problem(s), nothing stored" in r.output
+    assert "different weekdays" in r.output and "negative" in r.output
     assert "Missing weeks" in r.output
+    # grouped by kind, each with its rows
+    out = r.output
+    assert out.index("Dates:") < out.index("Values:") < out.index("Weeks:")
+    assert "(row 3; e.g., 2024-08-04 (Sunday))" in out
 
 
-def test_sunday_option_and_missing_file(tmp_path):
+def test_sunday_file_moves_by_itself_and_the_old_option_is_ignored(tmp_path):
     p = tmp_path / "sun.csv"
     p.write_text("date,target_group,value\n2024-07-28,A,1\n2024-08-04,A,2\n")
-    assert runner.invoke(app, ["dataset", "validate", str(p)]).exit_code == 1
-    r = runner.invoke(app, ["dataset", "validate", str(p), "--sunday"])
-    assert r.exit_code == 0, r.output
-    assert "2024-08-03 to 2024-08-10" in r.output
+    for extra in ([], ["--sunday"]):
+        r = runner.invoke(app, ["dataset", "validate", str(p), *extra])
+        assert r.exit_code == 0, r.output
+        assert "2024-08-03 to 2024-08-10" in r.output
+        assert "note: Dates moved to week-ending Saturdays: +6 days" in r.output
+    assert "--sunday" not in runner.invoke(app, ["dataset", "validate",
+                                                 "--help"]).output
     assert runner.invoke(app, ["dataset", "validate",
                                str(tmp_path / "nope.csv")]).exit_code == 2
 
@@ -91,5 +99,46 @@ def test_import_prints_problems_and_stores_nothing(store, tmp_path):
     r = runner.invoke(app, ["dataset", "import", str(p), "--kind", "count"])
     assert r.exit_code == 1 and "negative" in r.output
     assert store.list_datasets() == []
+    assert "Values:" in r.output and "(row 2; e.g., -1)" in r.output
+
+
+def test_import_infers_the_kind(store, tmp_path):
+    p = tmp_path / "rates.csv"
+    p.write_text("date;target_group;value\n2024-08-03;A;1,5\n"
+                 "2024-08-10;A;2,25\n")
     r = runner.invoke(app, ["dataset", "import", str(p)])
-    assert r.exit_code == 2                           # --kind is required
+    assert r.exit_code == 0, r.output
+    assert "kind        rate (inferred from the values; --kind to change)" \
+        in r.output
+    assert "decimal commas" in r.output
+    (d,) = store.list_datasets()
+    assert d.kind == "rate" and d.name == "rates"
+
+
+def test_column_mapping_on_the_command_line(store, tmp_path):
+    p = tmp_path / "odd.csv"
+    p.write_text("day,area,amount\n2024-08-03,A,1\n2024-08-10,A,2\n")
+    r = runner.invoke(app, ["dataset", "validate", str(p)])
+    assert r.exit_code == 1
+    assert "Columns in the file: #1 day, #2 area, #3 amount" in r.output
+    assert "--column ROLE=HEADER" in r.output
+    r = runner.invoke(app, ["dataset", "import", str(p), "--column",
+                            "date=day", "--column", "group=#2",
+                            "--column", "value=amount"])
+    assert r.exit_code == 0, r.output
+    (d,) = store.list_datasets()
+    assert d.meta["columns"]["value"] == "amount"
+    r = runner.invoke(app, ["dataset", "validate", str(p), "--column",
+                            "when=day"])
+    assert r.exit_code == 2 and "ROLE=HEADER" in r.output
+
+
+def test_a_spreadsheet_unicode_text_file_imports(store, tmp_path):
+    p = tmp_path / "unicode.txt"
+    p.write_bytes("Week Ending\tRegion\tCases\n2024-08-03\tÅland\t3\n"
+                  "2024-08-10\tÅland\t4\n".encode("utf-16"))
+    r = runner.invoke(app, ["dataset", "validate", str(p)])
+    assert r.exit_code == 0, r.output
+    assert "(tab-separated, UTF-16)" in r.output
+    assert runner.invoke(app, ["dataset", "import", str(p)]).exit_code == 0
+    assert store.list_datasets()[0].groups == ["Åland"]

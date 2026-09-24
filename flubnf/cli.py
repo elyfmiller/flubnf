@@ -2938,38 +2938,75 @@ def site_build_cmd(
 dataset_app = typer.Typer(
     add_completion=False, no_args_is_help=True,
     help="Check, import, list and delete custom target data (a grouped "
-         "CSV or a hubverse time series).")
+         "CSV or a hubverse time series; comma, semicolon or tab separated; "
+         "UTF-8, UTF-16 or Windows-1252).")
 app.add_typer(dataset_app, name="dataset")
+
+_KIND_HELP = ("'count' or 'rate'; default: from the values (whole numbers "
+              "are counts).")
+_COLUMN_HELP = ("ROLE=HEADER (or ROLE=#N, the Nth column) when the headers "
+                "do not say which column is which; ROLE is date, group, "
+                "value or population. Repeat for each.")
+
+
+def _dataset_columns(pairs) -> dict:
+    """--column ROLE=HEADER pairs as validate's mapping; a malformed pair
+    or an unknown role is a usage error (exit 2)."""
+    from app.core import datasets as ds
+    out = {}
+    for pair in pairs or []:
+        role, sep, header = str(pair).partition("=")
+        role = role.strip().lower()
+        if not sep or role not in ds.ROLES or not header.strip():
+            raise typer.BadParameter(
+                f"{pair!r}: expected ROLE=HEADER with ROLE one of "
+                f"{', '.join(ds.ROLES)}.", param_hint="--column")
+        out[role] = header.strip()
+    return out
+
+
+def _print_dataset_problems(name: str, rep_problems, rep=None) -> None:
+    from app.core import datasets as ds
+    print(f"{name}: {len(rep_problems)} problem(s), nothing stored")
+    if rep is not None:
+        lines = ds.problem_lines(rep)
+    else:
+        lines = []
+        for kind, probs in ds.problem_groups(rep_problems):
+            lines.append(f"{kind}:")
+            lines += [f"  - {p}" for p in probs]
+    for line in lines:
+        print(f"  {line}")
 
 
 @dataset_app.command("validate")
 def dataset_validate_cmd(
     csv_path: Path = typer.Argument(..., exists=True, dir_okay=False,
                                     help="The CSV to check."),
-    kind: Optional[str] = typer.Option(
-        None, "--kind", help="Declare the values: 'count' or 'rate'."),
-    sunday: bool = typer.Option(
-        False, "--sunday", help="Dates are week-start Sundays (shift +6)."),
+    kind: Optional[str] = typer.Option(None, "--kind", help=_KIND_HELP),
     target: Optional[str] = typer.Option(
         None, "--target", help="The target to keep when the file has several."),
+    column: Optional[List[str]] = typer.Option(
+        None, "--column", help=_COLUMN_HELP),
+    sunday: bool = typer.Option(
+        False, "--sunday", hidden=True,
+        help="Accepted and ignored: any one weekday is moved to Saturday."),
 ):
-    """Validate a dataset CSV and print its problems, or a summary.
+    """Validate a dataset CSV and print every problem, or a summary.
 
     Exit code 0 when the file is valid, 1 when it has problems. Nothing is
     stored."""
     from app.core import datasets as ds
-    rep = ds.validate(csv_path, kind=kind, week_start_sunday=sunday,
-                      target=target)
+    rep = ds.validate(csv_path, kind=kind, target=target,
+                      columns=_dataset_columns(column))
     if not rep.ok:
-        print(f"{csv_path.name}: {len(rep.problems)} problem(s)")
-        for p in rep.problems:
-            print(f"  - {p}")
+        _print_dataset_problems(csv_path.name, rep.problems, rep)
     else:
         print(f"{csv_path.name}: valid")
         for line in ds.summary_lines(rep):
             print(f"  {line}")
     for w in rep.warnings:
-        print(f"  warning: {w}")
+        print(f"  note: {w}")
     if not rep.ok:
         raise typer.Exit(1)
 
@@ -2978,43 +3015,46 @@ def dataset_validate_cmd(
 def dataset_import_cmd(
     csv_path: Path = typer.Argument(..., exists=True, dir_okay=False,
                                     help="The CSV to store."),
-    kind: str = typer.Option(..., "--kind",
-                             help="Declare the values: 'count' or 'rate'."),
+    kind: Optional[str] = typer.Option(None, "--kind", help=_KIND_HELP),
     name: Optional[str] = typer.Option(
         None, "--name", help="The dataset's name (default: the file name)."),
-    sunday: bool = typer.Option(
-        False, "--sunday", help="Dates are week-start Sundays (shift +6)."),
     target: Optional[str] = typer.Option(
         None, "--target", help="The target to keep when the file has several."),
+    column: Optional[List[str]] = typer.Option(
+        None, "--column", help=_COLUMN_HELP),
+    sunday: bool = typer.Option(
+        False, "--sunday", hidden=True,
+        help="Accepted and ignored: any one weekday is moved to Saturday."),
 ):
-    """Validate and store a dataset CSV, as the Data tab's upload does.
+    """Validate and store a dataset CSV, as the console's upload does.
 
     Prints the dataset's id and summary (exit 0), or every problem (exit 1,
     nothing stored). Importing the same file with the same options again
     returns the stored dataset."""
     from app.core import datasets as ds
+    columns = _dataset_columns(column)
     try:
         d = ds.ingest(csv_path, (name or csv_path.stem)[:80], kind=kind,
-                      week_start_sunday=sunday, target=target,
-                      filename=csv_path.name)
+                      target=target, filename=csv_path.name, columns=columns)
     except ds.DatasetError as e:
-        print(f"{csv_path.name}: {e}")
-        for p in e.problems:
-            print(f"  - {p}")
+        _print_dataset_problems(csv_path.name, e.problems, e.report)
         raise typer.Exit(1)
     print(f"stored {d.name!r} as {d.id}")
     print(f"  groups      {len(d.groups)}: {', '.join(d.groups[:8])}"
           + (" ..." if len(d.groups) > 8 else ""))
     print(f"  weeks       {len(d.weeks())} ({d.meta['date_range'][0]} to "
           f"{d.meta['date_range'][1]})")
-    print(f"  kind        {d.kind}")
+    inferred = d.meta.get("options", {}).get("kind_from") == "values"
+    print(f"  kind        {d.kind}"
+          + (" (inferred from the values; --kind to change)" if inferred
+             else ""))
     print(f"  population  {'yes' if d.has_population else 'no'}")
     print(f"  vintages    " + (f"{len(d.vintages())} (vintage-true)"
                                if d.vintage_true else "none (final data)"))
     if d.national_group:
         print(f"  national    {d.national_group}")
     for w in d.meta.get("warnings") or []:
-        print(f"  warning: {w}")
+        print(f"  note: {w}")
 
 
 @dataset_app.command("list")

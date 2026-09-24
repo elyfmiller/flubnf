@@ -116,13 +116,17 @@ def test_grouped_population_template_ingests():
 # -------------------------------------------------------------- date rules
 
 @pytest.mark.parametrize("text", ["2024-08-03", "8/3/2024", "08/03/2024",
-                                  "8/3/24", "08-03-2024", "8-3-2024"])
+                                  "8/3/24", "08-03-2024", "8-3-2024",
+                                  "2024/08/03", "2024-08-03 00:00:00",
+                                  "2024-08-03T00:00:00Z", "8/3/2024 0:00",
+                                  "8/3/2024 12:00 AM"])
 def test_accepted_date_formats(text):
     assert D.parse_date(text)[0] == date(2024, 8, 3)
 
 
-@pytest.mark.parametrize("text", ["13/01/2024", "2024/08/03", "3 Aug 2024",
-                                  "2024-02-30", "", "20240803"])
+@pytest.mark.parametrize("text", ["13/01/2024", "3 Aug 2024",
+                                  "2024-02-30", "", "20240803",
+                                  "2024-08-03 noon"])
 def test_rejected_date_formats(text):
     assert D.parse_date(text) == (None, None)
 
@@ -140,36 +144,48 @@ def test_bom_is_tolerated_on_any_file():
                   kind="count"))
 
 
-def test_non_saturday_is_refused_with_the_sunday_hint():
-    rows = [f"{(d + timedelta(days=1)).isoformat()},A,1" for d in sats()]
+def test_mixed_weekdays_are_refused_with_rows_and_examples():
+    rows = [f"{d.isoformat()},A,1" for d in sats()]
+    rows[3] = f"{(sats()[3] + timedelta(days=1)).isoformat()},A,1"
     p = only(D.validate(grouped_csv(rows), kind="count"), "weekday")
-    assert "Sunday" in p.message and "e.g." in p.message
+    assert "most are Saturdays, but 1 Sunday" in p.message
+    assert "row 5" in p.message and "e.g., 2024-08-25 (Sunday)" in p.message
+    assert p.rows == (5,)
 
 
 def test_sunday_shift_moves_week_start_to_saturday():
+    """A consistent Sunday file moves +6 days by itself; the old Sunday
+    option is still accepted and changes nothing."""
     rows = [f"{(d - timedelta(days=6)).isoformat()},A,{i}"
             for i, d in enumerate(sats())]
-    rep = ok(D.validate(grouped_csv(rows), kind="count",
-                        week_start_sunday=True))
-    assert rep.summary["first"] == "2024-08-03"
+    for sunday in (False, True):
+        rep = ok(D.validate(grouped_csv(rows), kind="count",
+                            week_start_sunday=sunday))
+        assert rep.summary["first"] == "2024-08-03"
+        assert rep.warnings[0].startswith(
+            "Dates moved to week-ending Saturdays: +6 days")
     ds = D.ingest(grouped_csv(rows), "sun", kind="count",
                   week_start_sunday=True)
     assert ds.vintages() == [sats()[-1].isoformat()]
+    assert ds.meta["options"]["date_shift_days"] == 6
 
 
-def test_sunday_option_refuses_saturdays():
-    rep = D.validate(grouped_csv(grouped_series()), kind="count",
-                     week_start_sunday=True)
-    assert "weekday" in rep.codes
+def test_the_old_sunday_option_no_longer_refuses_saturdays():
+    rep = ok(D.validate(grouped_csv(grouped_series()), kind="count",
+                        week_start_sunday=True))
+    assert rep.summary["first"] == "2024-08-03"
+    assert rep.summary["date_shift_days"] == 0 and not rep.warnings
 
 
 # --------------------------------------------------------- the base checks
 
 def test_missing_columns_stops_early_and_names_them():
-    rep = D.validate(b"day,target_group,count\n2024-08-03,A,1\n")
+    rep = D.validate(b"day,target_group,amount\n2024-08-03,A,1\n")
     p = only(rep, "missing_columns")
     assert "date" in p.message and "value" in p.message
     assert rep.codes == ["missing_columns"]
+    assert rep.needs_mapping and rep.headers == ["day", "target_group",
+                                                 "amount"]
 
 
 def test_unparseable_dates():
@@ -239,11 +255,21 @@ def test_rate_datasets_carry_no_weekly_rate():
 
 
 @pytest.mark.parametrize("name", ["Kids/Teens", "_x", "a" * 41,
-                                  "Niños", "a-b", "a.b"])
+                                  "a-b", "a.b", "Niños/Niñas"])
 def test_group_name_charset(name):
     rows = [f"{d.isoformat()},{name},1" for d in sats()]
     p = only(D.validate(grouped_csv(rows), kind="count"), "group_name")
     assert "->" in p.message                           # a suggested rename
+    assert "row 2" in p.message and p.rows == (2,)
+
+
+@pytest.mark.parametrize("name", ["Niños", "Åland", "Zürich 0 4", "東京"])
+def test_letters_of_any_script_are_group_names(name):
+    rows = [f"{d.isoformat()},{name},1" for d in sats()]
+    ds = D.ingest(grouped_csv(rows), "intl", kind="count")
+    assert ds.groups == [name]
+    assert list(csv.DictReader(open(ds.final_path, encoding="utf-8"))
+                )[0]["location_name"] == name
 
 
 @pytest.mark.parametrize("name", ["All", "all", "ALL"])
@@ -330,7 +356,13 @@ def test_both_group_columns_is_ambiguous():
 def test_empty_and_non_utf8_files():
     assert D.validate(b"").codes == ["empty"]
     assert D.validate(b"date,target_group,value\n").codes == ["empty"]
-    rep = D.validate(b"date,target_group,value\n2024-08-03,Ni\xf1os,1\n")
+    # not UTF-8: read as Windows-1252, the name kept, and said so
+    rep = ok(D.validate(b"date,target_group,value\n2024-08-03,Ni\xf1os,1\n"))
+    assert rep.summary["groups"] == ["Niños"]
+    assert rep.warnings[0].startswith("Not UTF-8 text: read as Windows-1252")
+    # a BOM declares UTF-8: bytes that are not stay an encoding problem
+    rep = D.validate(b"\xef\xbb\xbfdate,target_group,value\n"
+                     b"2024-08-03,Ni\xf1os,1\n")
     assert rep.codes == ["encoding"]
 
 

@@ -6,13 +6,34 @@ A dataset is one uploaded CSV of weekly target data in either shape:
   * hubverse time series: ``target_end_date | date, location,
     observation | value[, target][, as_of][, location_name][, population]``.
 
-Headers are case- and space-insensitive; other columns are ignored and named
-in the warnings. meta.json records the shape as ``format``: 'grouped' or
-'hubverse'. This module parses and validates an upload (the base checks
-on columns, dates, values, duplicates and gaps, plus FluBNF's own),
-stores it under ``app/state/datasets/<id>/`` and materializes the SAME
-file shapes the hub path reads, so the engines can consume a dataset
-unchanged in later stages:
+Reading is lenient but never silently wrong (``validate``; the Data,
+Forecast and Retrospective upload box, the Sandbox upload and ``flubnf
+dataset`` all read through it):
+
+  * encodings: UTF-8 with or without a BOM, UTF-16 (a spreadsheet's
+    "Unicode text"), else Windows-1252 (bytes it leaves undefined read as
+    Latin-1), named in a notice; non-ASCII group names are kept.
+  * separators: comma, semicolon or tab, sniffed from the header.
+  * numbers: "1,234" in a comma file is 1234; decimal commas ("1,5") are
+    read in a semicolon or tab file when the column shows it unambiguously;
+    anything that could go either way is refused.
+  * headers: case, space and underscore do not matter, and obvious aliases
+    are read (``ROLE_ALIASES``). A required column that cannot be matched,
+    or two columns that could both be it, asks for a column mapping
+    (``columns=``) instead of guessing. Other columns are ignored and named
+    in a notice; trailing empty columns and rows are dropped.
+  * dates: YYYY-MM-DD, YYYY/MM/DD, M/D/YYYY, M/D/YY and MM-DD-YYYY, with or
+    without a time ("2024-01-06 00:00:00"). Every date of a file must fall
+    on one weekday; it is moved to the MMWR week-ending Saturday of its
+    Sunday-to-Saturday week, with a notice. Mixed weekdays and day-first
+    dates are refused.
+
+Every problem is reported at once, each with its row numbers (the
+spreadsheet's rows: the header is row 1) and an example; ``problem_groups``
+sorts them by kind. meta.json records the shape as ``format``: 'grouped' or
+'hubverse'. This module stores a valid upload under
+``app/state/datasets/<id>/`` and materializes the SAME file shapes the hub
+path reads, so the engines consume a dataset unchanged:
 
   * ``locations.csv``: the flubnf/data/locations.csv shape (abbreviation,
     location, location_name, population) plus ``source_key``. ``location`` is
@@ -28,19 +49,24 @@ the default source (the caller opts in per page and per run).
 
 Public API: ``validate``, ``ingest``, ``list_datasets``, ``get``, ``delete``,
 ``Dataset`` (``vintages``/``vintage_path`` mirror app/core/data.py),
-``Report``/``Problem``, ``Limits``, ``DatasetError``, ``KINDS``, ``ROOT``.
+``Report``/``Problem``, ``problem_groups``, ``Limits``, ``DatasetError``,
+``KINDS``, ``ROLE_ALIASES``, ``ROOT``.
 """
 from __future__ import annotations
 
+import codecs
 import csv
 import hashlib
 import io
+import itertools
 import json
 import os
 import re
 import shutil
 import time
+import unicodedata
 import uuid
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
@@ -54,8 +80,9 @@ ROOT = APP_STATE / "datasets"
 #: manifest schema (part of the identity digest)
 SCHEMA = 1
 
-#: the value kinds an upload must declare: counts (PF-eligible, Poisson floor,
-#: integer export) or rates/proportions (neither)
+#: the value kinds: counts (PF-eligible, Poisson floor, integer export) or
+#: rates/proportions (neither). Undeclared, the values decide: whole numbers
+#: are counts.
 KINDS = ("count", "rate")
 
 #: file names inside a dataset folder
@@ -70,9 +97,10 @@ VINTAGE_PREFIX = "target-hospital-admissions_"
 #: days (one week plus a day's slack for rounding), so no week is missing
 MAX_GAP_DAYS = 8
 
-#: group names: they become PF directory names, BNGL suffixes (spaces -> '_'),
-#: ledger keys and HTML text
-GROUP_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9 _]{0,39}")
+#: group names: they become PF directory names and BNGL suffixes (through
+#: engines.pf.dataset_tag, which keeps ASCII letters, digits and '_'),
+#: ledger keys and HTML text. Letters of any script are kept.
+GROUP_RE = re.compile(r"[^\W_][\w ]{0,39}")
 
 #: 'all' means every location to the console, so no group may be called it
 RESERVED_NAMES = ("ALL",)
@@ -90,22 +118,59 @@ NA_TOKENS = {"", "na", "n/a", "nan", "null", "none", "-"}
 #: dataset ids: slug + '-' + 12 hex of the identity digest
 ID_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,31}-[0-9a-f]{12}")
 
-#: header aliases, first present wins
-DATE_ALIASES = ("target_end_date", "date")
-VALUE_ALIASES = ("observation", "value")
-GROUP_ALIASES = ("target_group", "location")
-OPTIONAL = ("population", "as_of", "target", "location_name")
+#: the columns a file can name, by role, as normalized headers (lower case,
+#: no spaces, underscores, hyphens or dots). A role takes the one column
+#: whose header is among its aliases; see _map_columns for the two
+#: canonical pairs that resolve by precedence.
+ROLE_ALIASES = {
+    "date": ("targetenddate", "date", "week", "weekend", "weekending",
+             "enddate", "weekenddate", "weekendingdate"),
+    "group": ("targetgroup", "location", "group", "locationname", "region",
+              "jurisdiction"),
+    "value": ("observation", "value", "count", "counts", "cases",
+              "admissions", "hospitalizations", "hospitalisations"),
+    "population": ("population", "pop"),
+}
+#: the hubverse extras (their own names only)
+EXTRA_ALIASES = {"as_of": ("asof",), "target": ("target",),
+                 "location_name": ("locationname",)}
+#: the roles a column mapping may name; the first three are required
+ROLES = ("date", "group", "value", "population")
+REQUIRED = ("date", "group", "value")
+#: the pairs FluBNF always read by precedence (the first wins, silently)
+PRECEDENCE = {"date": ("targetenddate", "date"),
+              "value": ("observation", "value")}
+
+#: separators tried when sniffing, with their names
+DELIMITERS = {",": "comma", ";": "semicolon", "\t": "tab"}
+#: encodings, as notices and summaries name them
+ENCODING_NAMES = {"utf-8": "UTF-8", "utf-8-sig": "UTF-8", "utf-16": "UTF-16",
+                  "utf-16-le": "UTF-16", "utf-16-be": "UTF-16",
+                  "cp1252": "Windows-1252"}
 
 MAX_EXAMPLES = 3
+#: row numbers a problem message lists before "and N more"
+MAX_ROWS_SHOWN = 6
+#: row numbers a Problem keeps for callers
+MAX_ROWS_KEPT = 200
+#: lines read to sniff the separator
+SNIFF_LINES = 50
+
+WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
+            "Saturday", "Sunday")
 
 
 class DatasetError(Exception):
     """A dataset could not be ingested or found. ``problems`` holds the
-    validation problems when the cause was the upload's content."""
+    validation problems when the cause was the upload's content, and
+    ``report`` the whole Report (headers, targets, summary) when there was
+    one."""
 
-    def __init__(self, message: str, problems: Optional[list] = None):
+    def __init__(self, message: str, problems: Optional[list] = None,
+                 report: Optional["Report"] = None):
         super().__init__(message)
         self.problems = list(problems or [])
+        self.report = report
 
 
 @dataclass(frozen=True)
@@ -121,20 +186,58 @@ DEFAULT_LIMITS = Limits()
 
 @dataclass(frozen=True)
 class Problem:
-    """One validation problem: a stable code for callers and tests, and a
-    human-readable message that carries an example."""
+    """One validation problem: a stable code for callers and tests, a
+    human-readable message that names its rows and carries an example, and
+    the row numbers themselves (the first MAX_ROWS_KEPT)."""
     code: str
     message: str
+    rows: tuple = ()
 
     def __str__(self) -> str:
         return self.message
+
+    @property
+    def kind(self) -> str:
+        return KIND_OF.get(self.code, "File")
+
+
+#: problem kinds, in the order a report lists them
+PROBLEM_KINDS = (
+    ("File", ("empty", "encoding", "csv", "limit_bytes", "limit_rows",
+              "limit_groups", "kind_invalid", "target_required",
+              "target_unknown")),
+    ("Columns", ("missing_columns", "ambiguous_columns", "column_unknown",
+                 "ragged")),
+    ("Dates", ("date_parse", "date_day_first", "weekday", "as_of_parse",
+               "as_of_before_date")),
+    ("Values", ("value_numeric", "value_format", "value_negative",
+                "value_na", "value_not_integer")),
+    ("Population", ("population_invalid", "population_missing",
+                    "population_format")),
+    ("Groups", ("group_name", "group_reserved", "national_multiple",
+                "group_collision", "location_name_conflict")),
+    ("Weeks", ("duplicate", "gap")),
+)
+KIND_OF = {c: k for k, codes in PROBLEM_KINDS for c in codes}
+
+
+def problem_groups(problems) -> list:
+    """[(kind, [Problem, ...]), ...] in PROBLEM_KINDS order, empty kinds
+    left out: how the upload box and the CLI list a report."""
+    order = {k: i for i, (k, _) in enumerate(PROBLEM_KINDS)}
+    out = {}
+    for p in problems:
+        k = p.kind if isinstance(p, Problem) else "File"
+        out.setdefault(k, []).append(p)
+    return sorted(out.items(), key=lambda kv: order.get(kv[0], 0))
 
 
 @dataclass
 class Report:
     """What validate() found. ``ok`` is True only with no problems; warnings
-    never block. ``summary`` describes the parsed data (empty when the file
-    could not be read far enough)."""
+    (notices) never block. ``summary`` describes the parsed data (empty when
+    the file could not be read far enough). ``headers`` and ``guess`` feed a
+    column mapping; ``targets`` the target picker."""
     problems: list = field(default_factory=list)
     warnings: list = field(default_factory=list)
     summary: dict = field(default_factory=dict)
@@ -143,6 +246,11 @@ class Report:
     records: list = field(default_factory=list, repr=False)
     sha256: str = ""
     n_bytes: int = 0
+    headers: list = field(default_factory=list)
+    guess: dict = field(default_factory=dict)
+    targets: list = field(default_factory=list)
+    encoding: str = ""
+    delimiter: str = ""
 
     @property
     def ok(self) -> bool:
@@ -152,8 +260,17 @@ class Report:
     def codes(self) -> list:
         return [p.code for p in self.problems]
 
-    def add(self, code: str, message: str) -> None:
-        self.problems.append(Problem(code, message))
+    @property
+    def needs_mapping(self) -> bool:
+        """True when the only problems are columns that could not be matched
+        (missing or ambiguous): a column mapping resolves them."""
+        return bool(self.problems) and bool(self.headers) and all(
+            c in ("missing_columns", "ambiguous_columns", "column_unknown")
+            for c in self.codes)
+
+    def add(self, code: str, message: str, rows=()) -> None:
+        self.problems.append(Problem(code, message,
+                                     tuple(sorted(set(rows)))[:MAX_ROWS_KEPT]))
 
 
 class _LimitExceeded(Exception):
@@ -188,6 +305,66 @@ class _CappedReader(io.RawIOBase):
         return len(chunk)
 
 
+class _Replayable(io.RawIOBase):
+    """Reads through a stream once, remembering the bytes while a second
+    reading may be needed (a UTF-8 guess that turns out wrong is decoded
+    again from the start as Windows-1252). ``forget`` stops remembering;
+    what is held is still replayed, then dropped. Closing is a no-op, so a
+    discarded text wrapper cannot close the stream under the next one."""
+
+    def __init__(self, raw):
+        self._raw = raw
+        self._buf = bytearray()
+        self._pos = 0
+        self._remember = True
+
+    def readable(self) -> bool:
+        return True
+
+    def close(self) -> None:                   # see the class docstring
+        pass
+
+    def rewind(self) -> None:
+        self._pos = 0
+
+    def forget(self) -> None:
+        self._remember = False
+
+    def head(self, n: int) -> bytes:
+        """The first n bytes (fewer at the end), then back to the start."""
+        out = bytearray()
+        chunk = bytearray(n)
+        while len(out) < n:
+            k = self.readinto(memoryview(chunk)[:n - len(out)])
+            if not k:
+                break
+            out += chunk[:k]
+        self.rewind()
+        return bytes(out)
+
+    def readinto(self, b) -> int:
+        if self._pos < len(self._buf):
+            k = min(len(b), len(self._buf) - self._pos)
+            b[:k] = self._buf[self._pos:self._pos + k]
+            self._pos += k
+            if not self._remember and self._pos >= len(self._buf):
+                self._buf, self._pos = bytearray(), 0
+            return k
+        k = self._raw.readinto(b)
+        if k and self._remember:
+            self._buf += bytes(b[:k])
+            self._pos += k
+        return k or 0
+
+
+def _latin1_rest(err):
+    """Windows-1252 leaves five bytes undefined; read them as Latin-1."""
+    return err.object[err.start:err.end].decode("latin-1"), err.end
+
+
+codecs.register_error("flubnf-latin1", _latin1_rest)
+
+
 def _open_source(source):
     """(binary stream, close?) for bytes, a path, or a binary file object."""
     if isinstance(source, (bytes, bytearray)):
@@ -197,40 +374,114 @@ def _open_source(source):
     return source, False
 
 
+def detect_encoding(head: bytes) -> str:
+    """The codec for a file's first bytes: a BOM decides; UTF-16 without
+    one shows as NUL bytes in every other position; otherwise UTF-8 (a
+    failure later falls back to Windows-1252, see validate)."""
+    if head.startswith(codecs.BOM_UTF8):
+        return "utf-8-sig"
+    if head.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        return "utf-16"
+    s = head[:2048]
+    half = len(s) // 2
+    if half >= 2:
+        even, odd = s[0::2].count(0), s[1::2].count(0)
+        if odd > 0.4 * half and even < 0.05 * half:
+            return "utf-16-le"
+        if even > 0.4 * half and odd < 0.05 * half:
+            return "utf-16-be"
+    return "utf-8"
+
+
+def sniff_delimiter(lines) -> str:
+    """',' ';' or tab: the separator that splits the header (the first
+    non-blank line) into the most named columns; ties go to the one whose
+    rows agree most with the header's width, then to the comma."""
+    best, score = ",", None
+    for d in DELIMITERS:
+        rows = [r for r in csv.reader(lines, delimiter=d)
+                if any(c.strip() for c in r)]
+        if not rows:
+            continue
+        head = sum(1 for c in rows[0] if c.strip())
+        agree = sum(1 for r in rows[1:] if len(r) >= head)
+        s = (head, agree)
+        if score is None or s > score:
+            best, score = d, s
+    return best
+
+
 # ------------------------------------------------------------------- dates
 
+_TIME = (r"(?:[ T]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:\s?[AaPp][Mm])?"
+         r"(?:Z|[+-]\d{2}:?\d{2})?)?")
 _DATE_FORMATS = (
-    ("YYYY-MM-DD", re.compile(r"(\d{4})-(\d{1,2})-(\d{1,2})"), "ymd"),
-    ("M/D/YYYY", re.compile(r"(\d{1,2})/(\d{1,2})/(\d{4})"), "mdy"),
-    ("M/D/YY", re.compile(r"(\d{1,2})/(\d{1,2})/(\d{2})"), "mdy2"),
-    ("MM-DD-YYYY", re.compile(r"(\d{1,2})-(\d{1,2})-(\d{4})"), "mdy"),
+    ("YYYY-MM-DD", re.compile(r"(\d{4})-(\d{1,2})-(\d{1,2})" + _TIME), "ymd"),
+    ("YYYY/MM/DD", re.compile(r"(\d{4})/(\d{1,2})/(\d{1,2})" + _TIME), "ymd"),
+    ("M/D/YYYY", re.compile(r"(\d{1,2})/(\d{1,2})/(\d{4})" + _TIME), "mdy"),
+    ("M/D/YY", re.compile(r"(\d{1,2})/(\d{1,2})/(\d{2})" + _TIME), "mdy2"),
+    ("MM-DD-YYYY", re.compile(r"(\d{1,2})-(\d{1,2})-(\d{4})" + _TIME), "mdy"),
 )
+
+
+def _date_parts(text: str):
+    """(format label, order, (a, b, c)) for the first matching format."""
+    s = (text or "").strip()
+    for label, rx, order in _DATE_FORMATS:
+        m = rx.fullmatch(s)
+        if m:
+            return label, order, tuple(int(x) for x in m.groups())
+    return None, None, None
+
+
+def _ymd(order, parts):
+    a, b, c = parts
+    if order == "ymd":
+        return a, b, c
+    y = c + ((2000 if c < 69 else 1900) if order == "mdy2" else 0)
+    return y, a, b
 
 
 def parse_date(text: str):
     """(date, format label) for the accepted formats, else (None, None).
 
-    Accepted: YYYY-MM-DD, M/D/YYYY, M/D/YY (the template's style) and
-    MM-DD-YYYY. Day-first (D/M/Y) is not accepted: it is ambiguous for
-    every day <= 12 and a silent misparse would shift weeks. Two-digit
-    years follow POSIX %y: 00-68 -> 20xx."""
-    s = (text or "").strip()
-    for label, rx, order in _DATE_FORMATS:
-        m = rx.fullmatch(s)
-        if not m:
-            continue
-        a, b, c = (int(x) for x in m.groups())
-        if order == "ymd":
-            y, mo, d = a, b, c
-        else:
-            mo, d, y = a, b, c
-            if order == "mdy2":
-                y += 2000 if y < 69 else 1900
-        try:
-            return date(y, mo, d), label
-        except ValueError:
-            return None, None
-    return None, None
+    Accepted: YYYY-MM-DD, YYYY/MM/DD, M/D/YYYY, M/D/YY and MM-DD-YYYY,
+    each optionally followed by a time ("2024-01-06 00:00:00"), which is
+    dropped. Day-first (D/M/Y) is not accepted: it is ambiguous for every
+    day <= 12 and a silent misparse would shift weeks. Two-digit years
+    follow POSIX %y: 00-68 -> 20xx."""
+    label, order, parts = _date_parts(text)
+    if label is None:
+        return None, None
+    try:
+        return date(*_ymd(order, parts)), label
+    except ValueError:
+        return None, None
+
+
+def _day_first(text: str):
+    """The date a month-first string would be if read day-first, when only
+    that reading is valid (the first number is over 12), else None."""
+    label, order, parts = _date_parts(text)
+    if order not in ("mdy", "mdy2") or parts[0] <= 12:
+        return None
+    y, _, _ = _ymd(order, parts)
+    try:
+        return date(y, parts[1], parts[0])
+    except ValueError:
+        return None
+
+
+def _swapped(text: str):
+    """A month-first date read day-first (both numbers <= 12), else None."""
+    label, order, parts = _date_parts(text)
+    if order not in ("mdy", "mdy2") or parts[0] > 12 or parts[1] > 12:
+        return None
+    y, _, _ = _ymd(order, parts)
+    try:
+        return date(y, parts[1], parts[0])
+    except ValueError:
+        return None
 
 
 def saturday_on_or_before(d: date) -> date:
@@ -239,11 +490,79 @@ def saturday_on_or_before(d: date) -> date:
     return d - timedelta(days=(d.weekday() - 5) % 7)
 
 
-def _num(text: str):
+def week_ending(d: date) -> date:
+    """The Saturday that ends ``d``'s MMWR week (Sunday to Saturday)."""
+    return d + timedelta(days=(5 - d.weekday()) % 7)
+
+
+# ----------------------------------------------------------------- numbers
+
+#: "1,234" / "1,234,567" / "1,234.5": comma thousands (first group 1-9)
+_TH = re.compile(r"[+-]?[1-9]\d{0,2}(?:,\d{3})+(?:\.\d+)?")
+#: "1.234" / "1.234.567" / "1.234,5": dot thousands (first group 1-9)
+_DOTG = re.compile(r"[+-]?[1-9]\d{0,2}(?:\.\d{3})+(?:,\d+)?")
+#: "1,5" / "0,25" / "1234,5": one comma between digits
+_ONE_COMMA = re.compile(r"[+-]?\d+,\d+")
+#: "1,234" or "1.234": either separator reading is possible
+_EITHER = re.compile(r"[+-]?[1-9]\d{0,2}[.,]\d{3}")
+
+
+def number_style(texts, delimiter: str = ","):
+    """How one column writes its numbers: (style, why) with style 'plain',
+    'thousands' (',' groups, '.' decimals) or 'decimal_comma' ('.' groups,
+    ',' decimals), or (None, why) when the column is ambiguous.
+
+    A comma file's commas are thousands (a quoted "1,234"); decimal commas
+    are read in a semicolon or tab file when some value can only be one
+    ("1,5", "0,25", "1.234,5"). A column that mixes a decimal comma with a
+    decimal point, or whose only separators could go either way ("1,234"
+    or "1.234" in a semicolon or tab file), is ambiguous."""
+    texts = [t for t in texts if t and ("," in t or "." in t)]
+    if not texts:
+        return "plain", ""
+    dec_comma = [t for t in texts
+                 if ("," in t and (_ONE_COMMA.fullmatch(t) or _DOTG.fullmatch(t))
+                     and not _TH.fullmatch(t))
+                 or (_DOTG.fullmatch(t) and t.count(".") > 1)]
+    dec_point = [t for t in texts
+                 if ("," in t and _TH.fullmatch(t)
+                     and (t.count(",") > 1 or "." in t))
+                 or ("." in t and "," not in t and not _DOTG.fullmatch(t))]
+    either = [t for t in texts if _EITHER.fullmatch(t)]
+    if dec_comma and dec_point:
+        return None, (f"decimal commas like {dec_comma[0]} mixed with "
+                      f"decimal points like {dec_point[0]}")
+    if dec_comma:
+        if delimiter == ",":
+            return None, (f"a decimal comma like {dec_comma[0]}, read only in "
+                          "semicolon- or tab-separated files")
+        return "decimal_comma", ""
+    if dec_point or delimiter == ",":
+        return ("thousands" if any("," in t for t in texts) else "plain"), ""
+    if either:
+        t = either[0]
+        return None, (f"{t} could be {t.replace(',', '').replace('.', '')} "
+                      f"or {t.replace(',', '.')}")
+    return "plain", ""
+
+
+def _num(text: str, style: str = "plain"):
     """float, None for an NA token, or raise ValueError."""
     s = (text or "").strip()
     if s.lower() in NA_TOKENS:
         return None
+    if style == "thousands" and "," in s:
+        if not _TH.fullmatch(s):
+            raise ValueError(s)
+        s = s.replace(",", "")
+    elif style == "decimal_comma":
+        if "." in s:
+            if not _DOTG.fullmatch(s):
+                raise ValueError(s)
+            s = s.replace(".", "")
+        s = s.replace(",", ".")
+    elif "," in s:
+        raise ValueError(s)
     v = float(s)
     if v != v or v in (float("inf"), float("-inf")):
         raise ValueError(s)
@@ -262,10 +581,30 @@ def _examples(items) -> str:
     return ", ".join(str(x) for x in list(items)[:MAX_EXAMPLES])
 
 
+def _rows(lines) -> str:
+    """'row 5' / 'rows 5, 9, 12 and 40 more'."""
+    ls = sorted(set(lines))
+    shown = ", ".join(str(x) for x in ls[:MAX_ROWS_SHOWN])
+    more = len(ls) - MAX_ROWS_SHOWN
+    return (f"row{'s' if len(ls) != 1 else ''} {shown}"
+            + (f" and {more:,} more" if more > 0 else ""))
+
+
+def _norm_header(h: str) -> str:
+    return re.sub(r"[\s_\-.]+", "", (h or "").strip().strip('"').lower())
+
+
 def _norm_name(name: str) -> str:
-    """The form two group names must not share: PF cell directories replace
-    spaces with '_', and macOS/Windows filesystems fold case."""
-    return name.replace(" ", "_").casefold()
+    """The form two group names must not share: the PF cell directory stem
+    (engines.pf.dataset_tag: anything but ASCII letters, digits and '_'
+    becomes '_'), folded, as macOS/Windows filesystems fold case."""
+    return re.sub(r"[^A-Za-z0-9_]", "_", name).casefold()
+
+
+def _text(cell: str) -> str:
+    """A name cell as stored: trimmed, Unicode NFC (a decomposed accent and
+    its composed twin are one name)."""
+    return unicodedata.normalize("NFC", (cell or "").strip())
 
 
 def slug(name: str) -> str:
@@ -277,63 +616,47 @@ def slug(name: str) -> str:
 
 def validate(source, *, kind: Optional[str] = None,
              week_start_sunday: bool = False, target: Optional[str] = None,
-             limits: Limits = DEFAULT_LIMITS, _tee=None) -> Report:
+             limits: Limits = DEFAULT_LIMITS, columns: Optional[dict] = None,
+             _tee=None) -> Report:
     """Parse and validate one upload; every problem is reported at once.
 
     ``source`` is bytes, a path, or a binary file object. ``kind`` is the
-    declared value kind ('count' or 'rate'; None skips the kind check and
-    the summary reports the inferred kind). ``week_start_sunday`` declares
-    that dates are week-START Sundays, shifted +6 to the MMWR Saturday.
-    ``target`` picks one target when the file carries several.
+    declared value kind ('count' or 'rate'; None or '' leaves it to the
+    values, and the summary reports the inferred kind). ``target`` picks
+    one target when the file carries several. ``columns`` maps roles
+    (``ROLES``) to header names (or '#N', the Nth column) where the headers
+    alone do not say. ``week_start_sunday`` is accepted and ignored: a
+    file's dates are moved to their week-ending Saturday whatever weekday
+    they share.
 
     The base checks: required columns; dates parseable; value numeric,
     >= 0, never NA in a grouped CSV; no duplicate (date, group); no gap
-    over 8 days within a group. FluBNF adds: Saturday week-ending dates;
-    safe, unique group names; a declared kind; one target; population > 0
-    on every row when the column exists; one name per location; no
-    snapshot week after its as_of; and the size limits, enforced while
-    streaming.
+    over 8 days within a group. FluBNF adds: one weekday per file; safe,
+    unique group names; one target; population > 0 on every row when the
+    column exists; one name per location; no snapshot week after its as_of;
+    and the size limits, enforced while streaming.
     """
-    rep = Report()
+    kind = kind or None
     stream, close = _open_source(source)
     capped = _CappedReader(stream, limits.max_bytes, tee=_tee)
-    raw_rows = []
+    src = _Replayable(capped)
+    rep, cols, raw_rows = Report(), None, []
     try:
         try:
-            text = io.TextIOWrapper(io.BufferedReader(capped),
-                                    encoding="utf-8-sig", newline="")
-            reader = csv.reader(text)
-            header = next(reader, None)
-            if header is None:
-                rep.add("empty", "The file is empty: expected a header row "
-                        "such as date,target_group,value.")
-                return rep
-            cols = _map_columns(header, rep)
-            if cols is None:
-                return rep
-            idx = cols["_idx"]
-            groups_seen = set()
-            ragged = []
-            gcol = idx["group"]
-            for row in reader:
-                if not row or all(not c.strip() for c in row):
-                    continue
-                if len(raw_rows) >= limits.max_rows:
-                    raise _LimitExceeded("rows")
-                if len(row) < len(header):
-                    ragged.append(reader.line_num)
-                    row = row + [""] * (len(header) - len(row))
-                g = row[gcol].strip()
-                if g not in groups_seen:
-                    groups_seen.add(g)
-                    if len(groups_seen) > limits.max_groups:
-                        raise _LimitExceeded("groups")
-                raw_rows.append((reader.line_num,
-                                 {k: row[i] for k, i in idx.items()}))
-            if ragged:
-                rep.add("ragged", f"{len(ragged)} row(s) have fewer fields "
-                        f"than the header (e.g., line(s) {_examples(ragged)}).")
+            enc = detect_encoding(src.head(4096))
+            if enc != "utf-8":
+                src.forget()
+            try:
+                rep, cols, raw_rows = _read(src, enc, limits, columns)
+            except UnicodeDecodeError:
+                if enc != "utf-8":
+                    raise
+                src.forget()
+                rep, cols, raw_rows = _read(src, "cp1252", limits, columns)
+                rep.warnings.insert(0, "Not UTF-8 text: read as Windows-1252 "
+                                    "(a spreadsheet's usual CSV).")
         except _LimitExceeded as e:
+            rep, cols = Report(), None
             what = str(e)
             if what == "bytes":
                 rep.add("limit_bytes", f"The file is larger than the "
@@ -345,68 +668,170 @@ def validate(source, *, kind: Optional[str] = None,
             else:
                 rep.add("limit_groups", f"The file has more than "
                         f"{limits.max_groups} groups (the limit).")
-            return rep
         except UnicodeDecodeError as e:
-            rep.add("encoding", "The file is not UTF-8 text (e.g., byte "
-                    f"{e.object[e.start:e.start + 1]!r} cannot be decoded). "
-                    "Save it as CSV UTF-8.")
-            return rep
+            rep, cols = Report(), None
+            rep.add("encoding", f"The file is not readable {ENCODING_NAMES.get(enc, enc)} "
+                    f"text (e.g., byte {e.object[e.start:e.start + 1]!r} "
+                    "cannot be decoded). Save it as CSV UTF-8.")
         except csv.Error as e:
+            rep, cols = Report(), None
             rep.add("csv", f"The file is not a readable CSV: {e}.")
-            return rep
     finally:
         rep.sha256, rep.n_bytes = capped.sha.hexdigest(), capped.n
         if close:
             stream.close()
-    rep.columns = {k: v for k, v in cols.items() if k != "_idx"}
-    _check_rows(rep, raw_rows, cols, kind=kind,
-                week_start_sunday=week_start_sunday, target=target)
+    if cols is None:
+        return rep
+    rep.columns = {k: v for k, v in cols.items() if not k.startswith("_")}
+    _check_rows(rep, raw_rows, cols, kind=kind, target=target)
     return rep
 
 
-def _map_columns(header, rep: Report):
+def _read(src: _Replayable, enc: str, limits: Limits, columns):
+    """One reading pass: (report, columns or None, [(row number, {role:
+    cell})]). Raises UnicodeDecodeError, csv.Error or _LimitExceeded."""
+    rep = Report(encoding=enc)
+    src.rewind()
+    text = io.TextIOWrapper(
+        io.BufferedReader(src), encoding=enc, newline="",
+        errors="flubnf-latin1" if enc == "cp1252" else "strict")
+    sample = list(itertools.islice(text, SNIFF_LINES))
+    delim = sniff_delimiter(sample)
+    rep.delimiter = delim
+    reader = csv.reader(itertools.chain(sample, text), delimiter=delim)
+    header = None
+    for row in reader:
+        if any(c.strip() for c in row):
+            header = row
+            break
+    if header is None:
+        rep.add("empty", "The file is empty: expected a header row "
+                "such as date,target_group,value.")
+        return rep, None, []
+    header = [h.replace("\ufeff", "").strip() for h in header]
+    while header and not header[-1]:              # trailing empty columns
+        header.pop()
+    rep.headers = list(header)
+    cols = _map_columns(header, rep, columns)
+    if cols is None:
+        return rep, None, []
+    cols["_delim"] = delim
+    idx = cols["_idx"]
+    need = max(idx.values()) + 1
+    groups_seen = set()
+    ragged, raw_rows = [], []
+    gcol = idx["group"]
+    for row in reader:
+        if not row or all(not c.strip() for c in row):
+            continue
+        if len(raw_rows) >= limits.max_rows:
+            raise _LimitExceeded("rows")
+        if len(row) < need:
+            ragged.append(reader.line_num)
+            row = row + [""] * (need - len(row))
+        g = row[gcol].strip()
+        if g not in groups_seen:
+            groups_seen.add(g)
+            if len(groups_seen) > limits.max_groups:
+                raise _LimitExceeded("groups")
+        raw_rows.append((reader.line_num,
+                         {k: row[i] for k, i in idx.items()}))
+    if ragged:
+        rep.add("ragged", f"{len(ragged)} row(s) have fewer fields than the "
+                f"columns they need ({_rows(ragged)}; e.g., row {ragged[0]}).",
+                ragged)
+    return rep, cols, raw_rows
+
+
+def _column_ref(header, want: str):
+    """The index a mapping names: '#N' (1-based), an exact header, or a
+    header equal after normalization; None when it names none or several."""
+    w = (want or "").strip()
+    if re.fullmatch(r"#\d+", w):
+        i = int(w[1:]) - 1
+        return i if 0 <= i < len(header) and header[i] else None
+    hits = [i for i, h in enumerate(header) if h == w]
+    if not hits:
+        n = _norm_header(w)
+        hits = [i for i, h in enumerate(header) if n and _norm_header(h) == n]
+    return hits[0] if len(hits) == 1 else None
+
+
+def _map_columns(header, rep: Report, columns=None):
     """{role: header text, '_idx': {role: index}, 'format': ...} or None
-    (with the problem recorded) when a required column is missing."""
-    norm = [h.strip().lower() for h in header]
-    dup = sorted({h for h in norm if norm.count(h) > 1 and h})
-    if dup:
-        rep.add("duplicate_columns", "Column names repeat (ignoring case and "
-                f"spaces): {_examples(dup)}. Each column must appear once.")
-        return None
-    pos = {h: i for i, h in enumerate(norm)}
-
-    def first(aliases):
-        return next((a for a in aliases if a in pos), None)
-
-    d, v = first(DATE_ALIASES), first(VALUE_ALIASES)
-    present_groups = [a for a in GROUP_ALIASES if a in pos]
-    missing = []
-    if d is None:
-        missing.append("date (or target_end_date)")
-    if not present_groups:
-        missing.append("target_group (or location)")
-    if v is None:
-        missing.append("value (or observation)")
+    (with the problem recorded) when a required column is missing or two
+    columns could both be it. ``columns`` (role -> header) overrides."""
+    norm = [_norm_header(h) for h in header]
+    label = [h if header.count(h) == 1 else f"{h} (#{i + 1})"
+             for i, h in enumerate(header)]
+    chosen, missing, ambiguous, unknown = {}, [], {}, []
+    for role, want in (columns or {}).items():
+        if role not in ROLES or not str(want or "").strip():
+            continue
+        i = _column_ref(header, str(want))
+        if i is None or i in chosen.values():
+            unknown.append((role, str(want)))
+        else:
+            chosen[role] = i
+    for role in ROLES:
+        if role in chosen or any(r == role for r, _ in unknown):
+            continue
+        taken = set(chosen.values())
+        cands = [i for i, h in enumerate(norm)
+                 if h in ROLE_ALIASES[role] and i not in taken]
+        if role == "group" and any(norm[i] == "location" for i in cands):
+            # a hubverse file: location is the key, location_name its label
+            cands = [i for i in cands if norm[i] != "locationname"]
+        pre = PRECEDENCE.get(role)
+        if pre and len(cands) > 1 and all(norm[i] in pre for i in cands):
+            first = [i for i in cands if norm[i] == pre[0]]
+            if len(first) == 1:
+                cands = first
+        if len(cands) == 1:
+            chosen[role] = cands[0]
+        elif len(cands) > 1:
+            ambiguous[role] = cands
+        elif role in REQUIRED:
+            missing.append(role)
+    rep.guess = {r: f"#{i + 1}" for r, i in chosen.items()}
+    found = ", ".join(h for h in header if h) or "(none)"
+    if unknown:
+        rep.add("column_unknown", "No single unused column named "
+                + "; ".join(f"{w!r} for the {r}" for r, w in unknown)
+                + f". Found: {found}.")
     if missing:
-        rep.add("missing_columns", "Missing columns: " + ", ".join(missing)
-                + f". Found: {', '.join(h for h in header) or '(none)'}.")
+        eg = {"date": "date, week, target_end_date",
+              "group": "target_group, group, location",
+              "value": "value, count, cases, observation"}
+        rep.add("missing_columns", "No column for the " + " or the ".join(
+            f"{r} (e.g., {eg[r]})" for r in missing)
+            + f". Found: {found}. Choose which column holds each.")
+    for role, cands in ambiguous.items():
+        names = " and ".join(repr(label[i]) for i in cands)
+        rep.add("ambiguous_columns", f"Two columns could be the {role}: "
+                f"{names}. Choose one (e.g., {label[cands[0]]}), or keep "
+                "only one in the file.")
+    if rep.problems:
         return None
-    if len(present_groups) > 1:
-        rep.add("ambiguous_columns", "The file has both 'target_group' and "
-                "'location'; keep exactly one of them as the group column.")
-        return None
-    g = present_groups[0]
-    cols = {"format": "grouped" if g == "target_group" else "hubverse",
-            "date": header[pos[d]].strip(), "group": header[pos[g]].strip(),
-            "value": header[pos[v]].strip()}
-    idx = {"date": pos[d], "group": pos[g], "value": pos[v]}
-    for o in OPTIONAL:
-        if o in pos and not (o == "location_name" and g != "location"):
-            cols[o] = header[pos[o]].strip()
-            idx[o] = pos[o]
+    g = norm[chosen["group"]]
+    cols = {"format": "hubverse" if g == "location" else "grouped"}
+    idx = dict(chosen)
+    for role, i in chosen.items():
+        cols[role] = label[i]
+    for extra, names in EXTRA_ALIASES.items():
+        if extra == "location_name" and g != "location":
+            continue
+        hits = [i for i, h in enumerate(norm)
+                if h in names and i not in idx.values()]
+        if len(hits) == 1:
+            cols[extra], idx[extra] = label[hits[0]], hits[0]
+        elif len(hits) > 1:
+            rep.add("ambiguous_columns", f"Two columns could be the "
+                    f"{extra}: " + " and ".join(repr(label[i]) for i in hits)
+                    + f" (e.g., {label[hits[0]]}). Keep only one in the file.")
+            return None
     used = set(idx.values())
-    ignored = [header[i].strip() for i in range(len(header))
-               if i not in used and header[i].strip()]
+    ignored = [h for i, h in enumerate(header) if i not in used and h]
     if ignored:
         rep.warnings.append(f"Ignored column(s): {', '.join(ignored)}.")
     cols["_idx"] = idx
@@ -414,17 +839,19 @@ def _map_columns(header, rep: Report):
 
 
 def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
-                week_start_sunday: bool, target) -> None:
+                target) -> None:
     fmt = cols["format"]
+    delim = cols.get("_delim", ",")
     if kind is not None and kind not in KINDS:
         rep.add("kind_invalid", f"Value kind {kind!r} is not one of "
-                f"{', '.join(KINDS)}: declare whether values are counts or "
-                "rates.")
+                f"{', '.join(KINDS)}: say whether values are counts or "
+                "rates (e.g., count).")
 
     # one target per dataset
     tgt_used = None
     if "target" in cols:
         targets = sorted({r["target"].strip() for _, r in raw_rows})
+        rep.targets = [t for t in targets if t]
         if target is not None:
             if target not in targets:
                 rep.add("target_unknown", f"Target {target!r} is not in the "
@@ -447,122 +874,195 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
         rep.add("empty", "The file has a header but no data rows.")
         return
 
-    bad_dates, bad_asof, bad_vals, neg, na, nonint = [], [], [], [], [], []
-    bad_pop, miss_pop = [], []
-    formats = set()
     has_pop, has_asof = "population" in cols, "as_of" in cols
     has_lname = "location_name" in cols
-    wrong_day = []
-    recs = []
+    vcol = cols["value"]
+    vstyle, vwhy = number_style([r["value"].strip() for _, r in raw_rows],
+                                delim)
+    pstyle, pwhy = (number_style([r["population"].strip()
+                                  for _, r in raw_rows], delim)
+                    if has_pop else ("plain", ""))
+    for col, style, why, code, key in (
+            (vcol, vstyle, vwhy, "value_format", "value"),
+            (cols.get("population"), pstyle, pwhy, "population_format",
+             "population")):
+        if style is None:
+            lines = [ln for ln, r in raw_rows
+                     if "," in r[key] or "." in r[key]]
+            rep.add(code, f"The '{col}' column's numbers are ambiguous "
+                    f"({_rows(lines)}; e.g., {why}). Write them without "
+                    "thousands separators, with a decimal point.", lines)
+        elif style == "thousands":
+            rep.warnings.append(f"Read the '{col}' column's commas as "
+                                "thousands separators (1,234 = 1234).")
+        elif style == "decimal_comma":
+            rep.warnings.append(f"Read the '{col}' column's decimal commas "
+                                "(1,5 = 1.5).")
+
+    bad_dates, day_first, bad_asof = [], [], []
+    bad_vals, neg, na, nonint = [], [], [], []
+    bad_pop, miss_pop = [], []
+    formats = set()
+    parsed = []                                   # (line, raw date, date)
+    rows = []                                     # (line, a, name, key, d, v, p)
     for ln, r in raw_rows:
-        d, f = parse_date(r["date"])
+        raw_d = r["date"].strip()
+        d, f = parse_date(raw_d)
         if d is None:
-            bad_dates.append(r["date"].strip() or "(blank)")
+            (day_first if _day_first(raw_d) else bad_dates).append(
+                (ln, raw_d or "(blank)"))
         else:
             formats.add(f)
-            want = 6 if week_start_sunday else 5
-            if d.weekday() != want:
-                wrong_day.append(f"{r['date'].strip()} "
-                                 f"({d.strftime('%A')}, line {ln})")
-            elif week_start_sunday:
-                d = d + timedelta(days=6)
+            parsed.append((ln, raw_d, d))
         a = None
         if has_asof:
             a, _ = parse_date(r["as_of"])
             if a is None:
-                bad_asof.append(r["as_of"].strip() or "(blank)")
+                bad_asof.append((ln, r["as_of"].strip() or "(blank)"))
         raw_v = r["value"].strip()
-        try:
-            v = _num(raw_v)
-        except ValueError:
-            bad_vals.append(raw_v)
-            v = None
-        else:
-            if v is None:
-                na.append(ln)
-            elif v < 0:
-                neg.append(f"{raw_v} (line {ln})")
-            elif kind == "count" and not v.is_integer():
-                nonint.append(f"{raw_v} (line {ln})")
+        v = None
+        if vstyle is not None:
+            try:
+                v = _num(raw_v, vstyle)
+            except ValueError:
+                bad_vals.append((ln, raw_v))
+            else:
+                if v is None:
+                    na.append(ln)
+                elif v < 0:
+                    neg.append((ln, raw_v))
+                elif kind == "count" and not v.is_integer():
+                    nonint.append((ln, raw_v))
         p = None
-        if has_pop:
+        if has_pop and pstyle is not None:
             raw_p = r["population"].strip()
             try:
-                p = _num(raw_p)
+                p = _num(raw_p, pstyle)
             except ValueError:
-                bad_pop.append(f"{raw_p} (line {ln})")
+                bad_pop.append((ln, raw_p))
             else:
                 if p is None:
                     miss_pop.append(ln)
                 elif p <= 0:
-                    bad_pop.append(f"{raw_p} (line {ln})")
+                    bad_pop.append((ln, raw_p))
                     p = None
-        key = r["group"].strip()
+        key = _text(r["group"])
         name = key
-        if has_lname and r["location_name"].strip():
-            name = r["location_name"].strip()
+        if has_lname and _text(r["location_name"]):
+            name = _text(r["location_name"])
         # every row with a usable date (and as_of) joins the structural
         # checks (duplicates, gaps), whatever its value
         if d is not None and (a is not None or not has_asof):
-            recs.append((a, name, key, d, v, p))
+            rows.append((ln, a, name, key, d, v, p))
 
     col = cols["date"]
+
+    def eg(items):
+        return _examples(t for _, t in items)
     if bad_dates:
+        lines = [ln for ln, _ in bad_dates]
+        hint = ""
+        if all(re.fullmatch(r"\d{5}(\.0+)?", t) for _, t in bad_dates):
+            hint = (" They look like spreadsheet date numbers: format the "
+                    "column as dates before saving.")
         rep.add("date_parse", f"The '{col}' column contains "
                 f"{len(bad_dates)} value(s) that could not be parsed as dates "
-                f"(e.g., {_examples(bad_dates)}). Ensure dates are in "
-                "M/D/YY, MM/DD/YYYY, MM-DD-YYYY, or YYYY-MM-DD format.")
-    if wrong_day:
-        want = ("Sundays (week-start, shifted +6 to the Saturday)"
-                if week_start_sunday else "Saturdays (the last day of the "
-                "MMWR week)")
-        hint = ("" if week_start_sunday else " If your dates are week-start "
-                "Sundays, choose the Sunday option to shift them +6 days.")
-        rep.add("weekday", f"{len(wrong_day)} date(s) are not {want} "
-                f"(e.g., {_examples(wrong_day)}).{hint}")
+                f"({_rows(lines)}; e.g., {_examples(t for _, t in bad_dates)})."
+                " Write dates as YYYY-MM-DD, M/D/YYYY or M/D/YY." + hint, lines)
+    if day_first:
+        lines = [ln for ln, _ in day_first]
+        rep.add("date_day_first", f"{len(day_first)} date(s) in '{col}' are "
+                f"day-first ({_rows(lines)}; e.g., {eg(day_first)}). "
+                "Day-first dates are ambiguous and not accepted: write them "
+                "as YYYY-MM-DD or M/D/YYYY.", lines)
+    shift = 0
+    weekday = None
+    wds = Counter(d.weekday() for _, _, d in parsed)
+    if len(wds) == 1:
+        weekday = next(iter(wds))
+        shift = (5 - weekday) % 7
+    elif len(wds) > 1:
+        top = wds.most_common(1)[0][0]
+        off = [(ln, t, d) for ln, t, d in parsed if d.weekday() != top]
+        others = Counter(d.weekday() for _, _, d in off)
+        what = ", ".join(f"{n} {WEEKDAYS[w]}{'s' if n != 1 else ''}"
+                         for w, n in others.most_common())
+        lines = [ln for ln, _, _ in off]
+        ex = _examples(f"{t} ({WEEKDAYS[d.weekday()]})" for _, t, d in off)
+        hint = ""
+        swapped = [_swapped(t) for _, t, _ in parsed]
+        if all(swapped) and len({s.weekday() for s in swapped}) == 1:
+            hint = (" Read day-first they would all be "
+                    f"{WEEKDAYS[swapped[0].weekday()]}s, but day-first dates "
+                    "are not accepted: write them as YYYY-MM-DD.")
+        rep.add("weekday", f"The dates fall on {len(wds)} different weekdays: "
+                f"most are {WEEKDAYS[top]}s, but {what} ({_rows(lines)}; "
+                f"e.g., {ex}). Every date must be the same day of its week."
+                + hint, lines)
+    if shift:
+        rep.warnings.insert(0, f"Dates moved to week-ending Saturdays: "
+                            f"+{shift} day{'s' if shift != 1 else ''} "
+                            f"(each {WEEKDAYS[weekday]} to the Saturday that "
+                            "ends its week).")
+        rows = [(ln, a, n, k, d + timedelta(days=shift), v, p)
+                for ln, a, n, k, d, v, p in rows]
     if bad_asof:
+        lines = [ln for ln, _ in bad_asof]
         rep.add("as_of_parse", f"The '{cols['as_of']}' column contains "
                 f"{len(bad_asof)} value(s) that could not be parsed as dates "
-                f"(e.g., {_examples(bad_asof)}).")
-    vcol = cols["value"]
+                f"({_rows(lines)}; e.g., {_examples(t for _, t in bad_asof)}).",
+                lines)
     if bad_vals:
+        lines = [ln for ln, _ in bad_vals]
         rep.add("value_numeric", f"The '{vcol}' column must contain numbers "
-                f"only. Non-numeric values found: "
-                f"{_examples(dict.fromkeys(bad_vals))}.")
+                f"only: {len(bad_vals)} value(s) are not ({_rows(lines)}; "
+                f"e.g., {_examples(dict.fromkeys(t for _, t in bad_vals))}).",
+                lines)
     if neg:
+        lines = [ln for ln, _ in neg]
         rep.add("value_negative", f"The '{vcol}' column contains {len(neg)} "
-                f"negative value(s) (e.g., {_examples(neg)}). Values must be "
-                "zero or positive.")
+                f"negative value(s) ({_rows(lines)}; e.g., {eg(neg)}). Values "
+                "must be zero or positive.", lines)
     if na and fmt == "grouped":
         # a grouped CSV lists only reported weeks: NA is an error
         rep.add("value_na", f"The '{vcol}' column contains {len(na)} missing "
-                f"(NA) value(s) (e.g., line(s) {_examples(na)}). All rows "
-                "must have a value; delete rows for weeks not reported.")
+                f"(NA) value(s) ({_rows(na)}; e.g., row {na[0]}). All rows "
+                "must have a value; delete rows for weeks not reported.", na)
     elif na:
         # hubverse time series carry NA for unreported weeks (FluSight's
         # own file has thousands): dropped after the structural checks,
         # counted, never imputed (rule 10)
         rep.warnings.append(f"{len(na)} row(s) with no value were dropped.")
     if nonint:
+        lines = [ln for ln, _ in nonint]
         rep.add("value_not_integer", f"The values were declared counts but "
-                f"{len(nonint)} are not whole numbers (e.g., "
-                f"{_examples(nonint)}). Declare the kind 'rate' instead.")
+                f"{len(nonint)} are not whole numbers ({_rows(lines)}; e.g., "
+                f"{eg(nonint)}). Choose rates instead.", lines)
     if bad_pop:
+        lines = [ln for ln, _ in bad_pop]
         rep.add("population_invalid", f"The '{cols['population']}' column "
                 f"has {len(bad_pop)} value(s) that are not positive numbers "
-                f"(e.g., {_examples(bad_pop)}).")
+                f"({_rows(lines)}; e.g., {eg(bad_pop)}).", lines)
     if miss_pop:
         rep.add("population_missing", f"The '{cols['population']}' column "
-                f"is blank on {len(miss_pop)} row(s) (e.g., line(s) "
-                f"{_examples(miss_pop)}). Give every row a population, or "
-                "remove the column.")
+                f"is blank on {len(miss_pop)} row(s) ({_rows(miss_pop)}; "
+                f"e.g., row {miss_pop[0]}). Give every row a population, or "
+                "remove the column.", miss_pop)
     if len(formats) > 1:
         rep.warnings.append(f"Dates mix formats ({', '.join(sorted(formats))}); "
                             "each was read by its own pattern.")
 
     national = _check_groups(rep, raw_rows, cols)
-    _check_structure(rep, recs, cols)
+    _check_structure(rep, rows, cols)
 
+    recs = [(a, n, k, d, v, p) for _, a, n, k, d, v, p in rows]
+    want = {r[0] for r in rows[:5]}
+    written = {ln: r["date"].strip() for ln, r in raw_rows if ln in want}
+    first_rows = [{"row": ln, "date": written.get(ln, ""),
+                   "week": d.isoformat(), "group": n,
+                   "value": (_fmt_num(v) if v is not None else ""),
+                   "population": (_fmt_num(p) if p is not None else "")}
+                  for ln, a, n, k, d, v, p in rows[:5]]
     n_na = 0
     if na and fmt != "grouped":
         kept = [r for r in recs if r[4] is not None]
@@ -591,9 +1091,14 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
             "has_population": has_pop and not (bad_pop or miss_pop),
             "has_as_of": has_asof,
             "as_of": [a.isoformat() for a in asofs],
-            "week_start_sunday": bool(week_start_sunday),
+            "week_start_sunday": shift == 6,
+            "date_shift_days": shift,
+            "weekday": WEEKDAYS[weekday] if weekday is not None else None,
+            "encoding": ENCODING_NAMES.get(rep.encoding, rep.encoding),
+            "delimiter": DELIMITERS.get(delim, delim),
             "na_dropped": n_na,
             "national_group": (national if national in names else None),
+            "first_rows": first_rows,
         }
         if has_pop:
             pops = {}
@@ -612,18 +1117,20 @@ def is_national_name(name) -> bool:
 
 
 def _check_groups(rep: Report, raw_rows: list, cols: dict):
-    """Names: charset, reserved spellings, collisions after space->'_' and
-    case folding, one name per location (hubverse), and at most one
+    """Names: charset, reserved spellings, collisions after the PF stem
+    and case folding, one name per location (hubverse), and at most one
     national group. Returns the national group's name, or None."""
     has_lname = "location_name" in cols
-    key2names, name2keys = {}, {}
-    for _, r in raw_rows:
-        key = r["group"].strip()
-        name = (r["location_name"].strip()
-                if has_lname and r["location_name"].strip() else key)
+    key2names, name2keys, first = {}, {}, {}
+    for ln, r in raw_rows:
+        key = _text(r["group"])
+        name = (_text(r["location_name"])
+                if has_lname and _text(r["location_name"]) else key)
         key2names.setdefault(key, set()).add(name)
         name2keys.setdefault(name, set()).add(key)
-    what = "location name" if cols["format"] == "hubverse" else "target_group"
+        first.setdefault(name, ln)
+        first.setdefault(("key", key), ln)
+    what = "location name" if cols["format"] == "hubverse" else "group"
     # a national spelling is accepted as is ('US (national)' included)
     bad = [n for n in name2keys
            if not GROUP_RE.fullmatch(n) and not is_national_name(n)]
@@ -631,82 +1138,97 @@ def _check_groups(rep: Report, raw_rows: list, cols: dict):
         sugg = [f"'{n}' -> '{_suggest(n)}'" for n in bad]
         rep.add("group_name", f"{len(bad)} {what} value(s) use characters "
                 "other than letters, digits, space and underscore, start "
-                "with a space or underscore, or exceed 40 characters (e.g., "
-                f"{_examples(sugg)}).")
+                "with a space or underscore, or exceed 40 characters ("
+                f"{_rows(first[n] for n in bad)}; e.g., {_examples(sugg)}).",
+                [first[n] for n in bad])
     reserved = [n for n in name2keys if n.upper() in RESERVED_NAMES]
     if reserved:
         rep.add("group_reserved", f"Group name(s) {_examples(reserved)} are "
-                "reserved (the console reads 'all' as every location); "
-                "rename them, e.g. 'Overall'.")
+                "reserved (the console reads 'all' as every location; "
+                f"{_rows(first[n] for n in reserved)}); rename them, e.g. "
+                "'Overall'.", [first[n] for n in reserved])
     national = sorted({n for n, keys in name2keys.items()
                        if is_national_name(n)
                        or any(is_national_name(k) for k in keys)})
     if len(national) > 1:
         rep.add("national_multiple", f"{len(national)} groups are spelled as "
-                f"a national row ({', '.join(repr(n) for n in national)}); a "
-                "dataset may hold one national group. Keep one spelling.")
+                f"a national row ({', '.join(repr(n) for n in national)}; "
+                f"{_rows(first[n] for n in national)}); a dataset may hold "
+                f"one national group (e.g., keep {national[0]!r}).",
+                [first[n] for n in national])
     folded = {}
     for n in name2keys:
         folded.setdefault(_norm_name(n), []).append(n)
     clash = [sorted(v) for v in folded.values() if len(v) > 1]
     if clash:
+        lines = [first[n] for c in clash for n in c]
         rep.add("group_collision", f"{len(clash)} set(s) of group names "
-                "differ only by case or by space vs underscore, and would "
-                "collide in folder names (e.g., "
-                f"{_examples(' / '.join(repr(x) for x in c) for c in clash)}).")
-    multi = [f"{k}: {', '.join(sorted(v))}" for k, v in key2names.items()
-             if len(v) > 1]
-    multi += [f"{n}: {', '.join(sorted(v))}" for n, v in name2keys.items()
-              if len(v) > 1 and has_lname]
+                "differ only by case, space vs underscore or non-ASCII "
+                "letters, and would collide in folder names "
+                f"({_rows(lines)}; e.g., "
+                f"{_examples(' / '.join(repr(x) for x in c) for c in clash)}).",
+                lines)
+    multi = [(f"{k}: {', '.join(sorted(v))}", first[("key", k)])
+             for k, v in key2names.items() if len(v) > 1]
+    multi += [(f"{n}: {', '.join(sorted(v))}", first[n])
+              for n, v in name2keys.items() if len(v) > 1 and has_lname]
     if multi:
+        lines = [ln for _, ln in multi]
         rep.add("location_name_conflict", "Each location must have exactly "
-                "one location_name and vice versa (e.g., "
-                f"{_examples(multi)}).")
+                f"one location_name and vice versa ({_rows(lines)}; e.g., "
+                f"{_examples(t for t, _ in multi)}).", lines)
     return national[0] if len(national) == 1 else None
 
 
 def _suggest(name: str) -> str:
-    s = re.sub(r"[^A-Za-z0-9 _]+", "_", name).strip(" _")[:40]
+    s = re.sub(r"[^\w ]+", "_", name).strip(" _")[:40]
     return s or "group1"
 
 
-def _check_structure(rep: Report, recs: list, cols: dict) -> None:
+def _check_structure(rep: Report, rows: list, cols: dict) -> None:
     """Duplicates, gaps (per snapshot and group), and snapshot weeks after
-    their as_of."""
-    seen, dups = set(), []
+    their as_of; ``rows`` are (row number, as_of, name, key, date, value,
+    population)."""
+    seen, dups, dup_lines = {}, [], []
     series = {}
-    late = []
-    for a, name, _, d, _, _ in recs:
+    late, late_lines = [], []
+    for ln, a, name, _, d, _, _ in rows:
         k = (a, name, d)
         if k in seen:
             dups.append(f"{d.isoformat()} + {name}"
                         + (f" (as_of {a.isoformat()})" if a else ""))
-        seen.add(k)
-        series.setdefault((a, name), set()).add(d)
+            dup_lines += [seen[k], ln]
+        else:
+            seen[k] = ln
+        series.setdefault((a, name), {})[d] = ln
         if a is not None and d > a:
             late.append(f"{d.isoformat()} in as_of {a.isoformat()} ({name})")
+            late_lines.append(ln)
     if dups:
         unit = ("as_of/date/group" if "as_of" in cols else "date/group")
         rep.add("duplicate", f"Duplicate rows found for {len(dups)} {unit} "
-                f"combination(s) (e.g., {_examples(dups)}). Each combination "
-                "must appear exactly once.")
-    gaps = []
+                f"combination(s) ({_rows(dup_lines)}; e.g., "
+                f"{_examples(dups)}). Each combination must appear exactly "
+                "once.", dup_lines)
+    gaps, gap_lines = [], []
     for (a, name), ds in sorted(series.items(),
                                 key=lambda kv: (kv[0][0] or date.min,
                                                 kv[0][1])):
-        ds = sorted(ds)
-        for p, q in zip(ds, ds[1:]):
+        days = sorted(ds)
+        for p, q in zip(days, days[1:]):
             if (q - p).days > MAX_GAP_DAYS:
                 gaps.append(f"gap between {p.isoformat()} and "
                             f"{q.isoformat()} in group '{name}'"
                             + (f", as_of {a.isoformat()}" if a else ""))
+                gap_lines += [ds[p], ds[q]]
     if gaps:
         rep.add("gap", f"Missing weeks detected in {len(gaps)} place(s) "
-                f"(e.g., {_examples(gaps)}). The data should have one row per "
-                "week per group.")
+                f"({_rows(gap_lines)}; e.g., {_examples(gaps)}). The data "
+                "should have one row per week per group.", gap_lines)
     if late:
         rep.add("as_of_before_date", f"{len(late)} row(s) hold a week after "
-                f"their snapshot's as_of (e.g., {_examples(late)}).")
+                f"their snapshot's as_of ({_rows(late_lines)}; e.g., "
+                f"{_examples(late)}).", late_lines)
 
 
 # ------------------------------------------------------------------ storage
@@ -738,7 +1260,9 @@ def identity_digest(sha256: str, *, kind: str, week_start_sunday: bool,
                     target: Optional[str], columns: dict) -> str:
     """sha256 over the upload's bytes digest AND every ingest option that
     changes the stored series, so the same bytes read differently get a
-    different id (and a spec pinning the digest notices)."""
+    different id (and a spec pinning the digest notices). The weekday
+    shift follows from the bytes; ``week_start_sunday`` (a Sunday file
+    moved +6 days) keeps the ids the earlier Sunday option minted."""
     opts = {"schema": SCHEMA, "sha256": sha256, "kind": kind,
             "week_start_sunday": bool(week_start_sunday), "target": target,
             "columns": {k: v for k, v in sorted(columns.items())}}
@@ -763,17 +1287,22 @@ def _dir(dataset_id) -> Path:
     return p
 
 
-def ingest(source, name: str, *, kind: str, week_start_sunday: bool = False,
-           target: Optional[str] = None, limits: Limits = DEFAULT_LIMITS,
-           filename: str = "") -> "Dataset":
+def ingest(source, name: str, *, kind: Optional[str] = None,
+           week_start_sunday: bool = False, target: Optional[str] = None,
+           limits: Limits = DEFAULT_LIMITS, filename: str = "",
+           columns: Optional[dict] = None) -> "Dataset":
     """Validate and store one upload; returns the stored Dataset.
 
-    Raises DatasetError (with ``.problems``) and writes nothing when any
-    problem is found. Re-ingesting identical bytes with identical options
-    under the same name returns the existing dataset (idempotent). The
-    folder is built beside the store and renamed into place, so a reader
-    never sees a half-written dataset."""
-    if kind not in KINDS:
+    ``kind`` None or '' takes the kind the values show (whole numbers are
+    counts); ``columns`` is validate's column mapping; ``week_start_sunday``
+    is accepted and ignored (see validate). Raises DatasetError (with
+    ``.problems``) and writes nothing when any problem is found.
+    Re-ingesting identical bytes with identical options under the same name
+    returns the existing dataset (idempotent). The folder is built beside
+    the store and renamed into place, so a reader never sees a half-written
+    dataset."""
+    kind = kind or None
+    if kind is not None and kind not in KINDS:
         raise DatasetError(f"Declare the value kind: one of {', '.join(KINDS)}.",
                            [Problem("kind_invalid", f"Value kind {kind!r} is "
                                     f"not one of {', '.join(KINDS)}.")])
@@ -783,15 +1312,17 @@ def ingest(source, name: str, *, kind: str, week_start_sunday: bool = False,
     tmp.mkdir()
     try:
         with open(tmp / SOURCE_FILE, "wb") as tee:
-            rep = validate(source, kind=kind,
-                           week_start_sunday=week_start_sunday,
-                           target=target, limits=limits, _tee=tee)
+            rep = validate(source, kind=kind, target=target, limits=limits,
+                           columns=columns, _tee=tee)
         if not rep.ok:
             raise DatasetError(
                 f"{len(rep.problems)} problem(s) in the upload; nothing was "
-                "stored.", rep.problems)
+                "stored.", rep.problems, rep)
+        declared = kind is not None
+        kind = kind or rep.summary["inferred_kind"]
+        sunday = bool(rep.summary.get("week_start_sunday"))
         digest = identity_digest(rep.sha256, kind=kind,
-                                 week_start_sunday=week_start_sunday,
+                                 week_start_sunday=sunday,
                                  target=rep.summary.get("target"),
                                  columns=rep.columns)
         dataset_id = f"{slug(name)}-{digest[:12]}"
@@ -799,8 +1330,8 @@ def ingest(source, name: str, *, kind: str, week_start_sunday: bool = False,
         if (final / META_FILE).is_file():
             return get(dataset_id)
         _materialize(tmp, rep, name=name, dataset_id=dataset_id,
-                     digest=digest, kind=kind,
-                     week_start_sunday=week_start_sunday, filename=filename)
+                     digest=digest, kind=kind, declared=declared,
+                     filename=filename)
         try:
             os.rename(tmp, final)
         except OSError:
@@ -814,7 +1345,7 @@ def ingest(source, name: str, *, kind: str, week_start_sunday: bool = False,
 
 
 def _materialize(d: Path, rep: Report, *, name, dataset_id, digest, kind,
-                 week_start_sunday, filename) -> None:
+                 declared, filename) -> None:
     recs = rep.records
     names = sorted({r[1] for r in recs}, key=str.casefold)
     width = max(2, len(str(len(names))))
@@ -897,8 +1428,11 @@ def _materialize(d: Path, rep: Report, *, name, dataset_id, digest, kind,
         "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "format": s["format"],
         "columns": rep.columns,
-        "options": {"kind": kind, "week_start_sunday": bool(week_start_sunday),
-                    "target": s["target"]},
+        "options": {"kind": kind, "week_start_sunday": s["week_start_sunday"],
+                    "target": s["target"],
+                    "date_shift_days": s["date_shift_days"],
+                    "kind_from": "declared" if declared else "values"},
+        "read_as": {"encoding": s["encoding"], "delimiter": s["delimiter"]},
         "kind": kind,
         "target": s["target"],
         "rows": s["rows"],
@@ -1029,7 +1563,7 @@ class Dataset:
         """The final snapshot's rows, read once per Dataset object."""
         rows = self.__dict__.get("_final_cache")
         if rows is None:
-            with open(self.final_path, newline="") as fh:
+            with open(self.final_path, newline="", encoding="utf-8") as fh:
                 rows = list(csv.DictReader(fh))
             self.__dict__["_final_cache"] = rows
         return rows
@@ -1073,7 +1607,8 @@ class Dataset:
         if as_of is None:
             rows = self._final_rows()
         else:
-            with open(self.truth_path(as_of), newline="") as fh:
+            with open(self.truth_path(as_of), newline="",
+                      encoding="utf-8") as fh:
                 rows = list(csv.DictReader(fh))
         out = sorted((r["date"], float(r["value"])) for r in rows
                      if r["location_name"] == name and r["value"] != ""
@@ -1091,7 +1626,7 @@ class Dataset:
         oldest first (population may vary by date); [] without one."""
         final_as_of = self.meta["as_of_used"][self.meta["vintages"][-1]] or ""
         out = []
-        with open(self.series_path, newline="") as fh:
+        with open(self.series_path, newline="", encoding="utf-8") as fh:
             for r in csv.DictReader(fh):
                 if (r["location_name"] == name and r["as_of"] == final_as_of
                         and r["population"]):
@@ -1172,9 +1707,10 @@ def delete(dataset_id: str) -> None:
 def summary_lines(rep: Report) -> list:
     """A short human summary of a valid report (the CLI's output)."""
     s = rep.summary
-    kind = s["kind"] or f"{s['inferred_kind']} (inferred; declare it)"
+    kind = s["kind"] or f"{s['inferred_kind']} (inferred from the values)"
     lines = [
-        f"format      {s['format']}",
+        f"format      {s['format']} ({s['delimiter']}-separated, "
+        f"{s['encoding']})",
         f"rows        {s['rows']:,}",
         f"groups      {len(s['groups'])}: {', '.join(s['groups'][:8])}"
         + (" ..." if len(s["groups"]) > 8 else ""),
@@ -1191,3 +1727,19 @@ def summary_lines(rep: Report) -> list:
         lines.append(f"national    {s['national_group']} (reported beside "
                      "the pooled scores, never inside)")
     return lines
+
+
+def problem_lines(rep: Report) -> list:
+    """Every problem, grouped by kind, as indented text lines (the CLI's
+    output); a column mapping's choices when that is all that is wrong."""
+    out = []
+    for kind, probs in problem_groups(rep.problems):
+        out.append(f"{kind}:")
+        out += [f"  - {p}" for p in probs]
+    if rep.needs_mapping:
+        out.append("Columns in the file: " + ", ".join(
+            f"#{i + 1} {h}" for i, h in enumerate(rep.headers) if h))
+        out.append("Name them with --column ROLE=HEADER (ROLE: "
+                   + ", ".join(ROLES) + "), e.g. --column date="
+                   + next((h for h in rep.headers if h), "Week") + ".")
+    return out
