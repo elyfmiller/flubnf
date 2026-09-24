@@ -11,8 +11,11 @@ Forecast and Retrospective upload box, the Sandbox upload and ``flubnf
 dataset`` all read through it):
 
   * encodings: UTF-8 with or without a BOM, UTF-16 (a spreadsheet's
-    "Unicode text"), else Windows-1252 (bytes it leaves undefined read as
-    Latin-1), named in a notice; non-ASCII group names are kept.
+    "Unicode text"), UTF-32, else Windows-1252 (bytes it leaves undefined
+    read as Latin-1), named in a notice; non-ASCII group names are kept.
+    A file that holds UTF-8 characters AND bytes that are not UTF-8 mixes
+    encodings: it is refused, naming the rows, since either reading
+    garbles one of the two.
   * separators: comma, semicolon or tab, sniffed from the header.
   * numbers: "1,234" in a comma file is 1234; decimal commas ("1,5") are
     read in a semicolon or tab file when the column shows it unambiguously;
@@ -146,7 +149,12 @@ DELIMITERS = {",": "comma", ";": "semicolon", "\t": "tab"}
 #: encodings, as notices and summaries name them
 ENCODING_NAMES = {"utf-8": "UTF-8", "utf-8-sig": "UTF-8", "utf-16": "UTF-16",
                   "utf-16-le": "UTF-16", "utf-16-be": "UTF-16",
-                  "cp1252": "Windows-1252"}
+                  "utf-32": "UTF-32", "utf-32-le": "UTF-32",
+                  "utf-32-be": "UTF-32", "cp1252": "Windows-1252"}
+#: a byte UTF-8 could not decode, as errors="surrogateescape" keeps it
+_ESCAPED = re.compile("[\udc80-\udcff]")
+#: a character UTF-8 did decode beyond ASCII
+_UTF8_CHAR = re.compile("[^\x00-\x7f\udc80-\udcff]")
 
 MAX_EXAMPLES = 3
 #: row numbers a problem message lists before "and N more"
@@ -203,9 +211,9 @@ class Problem:
 
 #: problem kinds, in the order a report lists them
 PROBLEM_KINDS = (
-    ("File", ("empty", "encoding", "csv", "limit_bytes", "limit_rows",
-              "limit_groups", "kind_invalid", "target_required",
-              "target_unknown")),
+    ("File", ("empty", "encoding", "encoding_mixed", "csv", "limit_bytes",
+              "limit_rows", "limit_groups", "kind_invalid",
+              "target_required", "target_unknown")),
     ("Columns", ("missing_columns", "ambiguous_columns", "column_unknown",
                  "duplicate_columns", "ragged", "extra_fields")),
     ("Dates", ("date_parse", "date_day_first", "weekday", "as_of_parse",
@@ -375,14 +383,24 @@ def _open_source(source):
 
 
 def detect_encoding(head: bytes) -> str:
-    """The codec for a file's first bytes: a BOM decides; UTF-16 without
-    one shows as NUL bytes in every other position; otherwise UTF-8 (a
-    failure later falls back to Windows-1252, see validate)."""
+    """The codec for a file's first bytes: a BOM decides; UTF-32 and UTF-16
+    without one show as NUL bytes in three of every four, or every other,
+    position; otherwise UTF-8 (a file with no UTF-8 character but bytes
+    that are not UTF-8 is read as Windows-1252, see validate)."""
     if head.startswith(codecs.BOM_UTF8):
         return "utf-8-sig"
+    if head.startswith((codecs.BOM_UTF32_LE, codecs.BOM_UTF32_BE)):
+        return "utf-32"
     if head.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
         return "utf-16"
     s = head[:2048]
+    quarter = len(s) // 4
+    if quarter >= 2:
+        z = [s[i::4].count(0) for i in range(4)]
+        if min(z[1:]) > 0.8 * quarter and z[0] < 0.05 * quarter:
+            return "utf-32-le"
+        if min(z[:3]) > 0.8 * quarter and z[3] < 0.05 * quarter:
+            return "utf-32-be"
     half = len(s) // 2
     if half >= 2:
         even, odd = s[0::2].count(0), s[1::2].count(0)
@@ -646,15 +664,20 @@ def validate(source, *, kind: Optional[str] = None,
             enc = detect_encoding(src.head(4096))
             if enc != "utf-8":
                 src.forget()
-            try:
-                rep, cols, raw_rows = _read(src, enc, limits, columns)
-            except UnicodeDecodeError:
-                if enc != "utf-8":
-                    raise
+            scan = _Scan()
+            rep, cols, raw_rows = _read(src, enc, limits, columns, scan)
+            if scan.bad and enc == "utf-8" and scan.utf8 is None:
+                # not one UTF-8 character: a Windows-1252 file, read again
                 src.forget()
                 rep, cols, raw_rows = _read(src, "cp1252", limits, columns)
                 rep.warnings.insert(0, "Not UTF-8 text: read as Windows-1252 "
                                     "(a spreadsheet's usual CSV).")
+            elif scan.bad:
+                # a BOM says UTF-8 (an encoding problem); UTF-8 text beside
+                # bytes that are not mixes encodings
+                rep, cols = Report(encoding=enc), None
+                rep.add("encoding" if enc == "utf-8-sig" else
+                        "encoding_mixed", _mixed_message(enc, scan), scan.bad)
         except _LimitExceeded as e:
             rep, cols = Report(), None
             what = str(e)
@@ -670,9 +693,10 @@ def validate(source, *, kind: Optional[str] = None,
                         f"{limits.max_groups} groups (the limit).")
         except UnicodeDecodeError as e:
             rep, cols = Report(), None
-            rep.add("encoding", f"The file is not readable {ENCODING_NAMES.get(enc, enc)} "
-                    f"text (e.g., byte {e.object[e.start:e.start + 1]!r} "
-                    "cannot be decoded). Save it as CSV UTF-8.")
+            rep.add("encoding", f"The file is not readable "
+                    f"{ENCODING_NAMES.get(enc, enc)} text (e.g., byte "
+                    f"{e.object[e.start:e.start + 1]!r} cannot be decoded). "
+                    "Save it as CSV UTF-8.")
         except csv.Error as e:
             rep, cols = Report(), None
             rep.add("csv", f"The file is not a readable CSV: {e}.")
@@ -684,21 +708,85 @@ def validate(source, *, kind: Optional[str] = None,
         return rep
     rep.columns = {k: v for k, v in cols.items() if not k.startswith("_")}
     _check_rows(rep, raw_rows, cols, kind=kind, target=target)
+    if rep.encoding == "cp1252":
+        # a Mac Roman or Cyrillic file reads as Windows-1252 without an
+        # error, its letters swapped one for one: show what was read
+        odd = [g for g in rep.summary.get("groups", []) if not g.isascii()]
+        if odd:
+            rep.warnings = [
+                w + (f" Check these names: {_examples(odd)}; if they look "
+                     "wrong, save the file as CSV UTF-8.")
+                if w.startswith("Not UTF-8 text") else w
+                for w in rep.warnings]
     return rep
 
 
-def _read(src: _Replayable, enc: str, limits: Limits, columns):
+class _Scan:
+    """What the UTF-8 reading met: rows holding bytes it could not decode
+    (``bad``, with the first few lines as ``examples``) and the first row
+    holding a character it did decode beyond ASCII (``utf8``)."""
+
+    def __init__(self):
+        self.bad, self.examples, self.utf8 = [], [], None
+
+    def lines(self, text):
+        """The text's lines, noting each as it passes (line numbers count
+        as the csv reader's do: every physical line)."""
+        for n, line in enumerate(text, 1):
+            if not line.isascii():
+                if _ESCAPED.search(line):
+                    self.bad.append(n)
+                    if len(self.examples) < MAX_EXAMPLES:
+                        self.examples.append((n, line))
+                if self.utf8 is None and _UTF8_CHAR.search(line):
+                    self.utf8 = (n, line)
+            yield line
+
+
+def _shown(line: str) -> str:
+    """A line for a message: undecodable bytes as U+FFFD, at most 60
+    characters."""
+    t = _ESCAPED.sub("\ufffd", line.strip())
+    return t if len(t) <= 60 else t[:57] + "..."
+
+
+def _mixed_message(enc: str, scan: _Scan) -> str:
+    """The refusal of a UTF-8 file holding bytes that are not UTF-8."""
+    ln, line = scan.examples[0]
+    byte = ", ".join(f"0x{ord(c) - 0xDC00:02X}"
+                     for c in dict.fromkeys(_ESCAPED.findall(line)))
+    bad = (f"{len(scan.bad)} row(s) hold bytes that are not UTF-8 "
+           f"({_rows(scan.bad)}; e.g., row {ln}: {_shown(line)}, byte "
+           f"{byte})")
+    if enc == "utf-8-sig" or scan.utf8 is None:   # a BOM says UTF-8
+        return (f"The file is marked as UTF-8, but {bad}. Retype the "
+                "characters shown as \ufffd and save the file again.")
+    uln, uline = scan.utf8
+    return (f"The file mixes encodings: it holds UTF-8 text (e.g., row "
+            f"{uln}: {_shown(uline)}), but {bad}, as a Windows-1252 "
+            "program writes them. Reading it either way would garble one "
+            "of the two: retype the characters shown as \ufffd and save "
+            "the file as CSV UTF-8.")
+
+
+def _read(src: _Replayable, enc: str, limits: Limits, columns,
+          scan: Optional[_Scan] = None):
     """One reading pass: (report, columns or None, [(row number, {role:
-    cell})]). Raises UnicodeDecodeError, csv.Error or _LimitExceeded."""
+    cell})]). UTF-8 keeps a byte it cannot decode (surrogateescape) and
+    notes it in ``scan``; the caller decides. Raises UnicodeDecodeError
+    (UTF-16/32), csv.Error or _LimitExceeded."""
     rep = Report(encoding=enc)
     src.rewind()
+    utf8 = enc in ("utf-8", "utf-8-sig")
     text = io.TextIOWrapper(
         io.BufferedReader(src), encoding=enc, newline="",
-        errors="flubnf-latin1" if enc == "cp1252" else "strict")
-    sample = list(itertools.islice(text, SNIFF_LINES))
+        errors=("flubnf-latin1" if enc == "cp1252" else
+                "surrogateescape" if utf8 else "strict"))
+    lines = (scan or _Scan()).lines(text) if utf8 else text
+    sample = list(itertools.islice(lines, SNIFF_LINES))
     delim = sniff_delimiter(sample)
     rep.delimiter = delim
-    reader = csv.reader(itertools.chain(sample, text), delimiter=delim)
+    reader = csv.reader(itertools.chain(sample, lines), delimiter=delim)
     header = None
     for row in reader:
         if any(c.strip() for c in row):
@@ -711,6 +799,11 @@ def _read(src: _Replayable, enc: str, limits: Limits, columns):
     header = [h.replace("\ufeff", "").strip() for h in header]
     while header and not header[-1]:              # trailing empty columns
         header.pop()
+    if any("\x00" in h for h in header):
+        rep.add("encoding", "The header holds NUL characters: the file is "
+                "not text in an encoding FluBNF reads. Save it as CSV "
+                "UTF-8.")
+        return rep, None, []
     rep.headers = list(header)
     cols = _map_columns(header, rep, columns)
     if cols is None:

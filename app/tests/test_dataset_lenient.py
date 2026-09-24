@@ -429,6 +429,69 @@ def test_extra_fields_name_the_separator_and_spare_empty_cells():
     assert [r[4] for r in rep.records] == [1234, 1500]
 
 
+# ----------------------------------------------------- mixed encodings
+
+def test_utf8_text_with_a_stray_windows_1252_row_is_refused():
+    """20 UTF-8 rows 'Zürich' and one appended Windows-1252 row: reading
+    the whole file as Windows-1252 once split the group in two ('ZÃ¼rich'
+    and 'Zürich') and accepted it."""
+    rows = [f"{d.isoformat()},Zürich,{i}".encode()
+            for i, d in enumerate(sats("2023-10-07", 20))]
+    rows.append(b"2024-02-24,Z\xfcrich,20")
+    raw = b"date,target_group,value\n" + b"\n".join(rows) + b"\n"
+    rep = D.validate(raw)
+    assert rep.codes == ["encoding_mixed"] and rep.problems[0].rows == (22,)
+    msg = rep.problems[0].message
+    assert "row 22: 2024-02-24,Z�rich,20, byte 0xFC" in msg
+    assert "row 2: 2023-10-07,Zürich,0" in msg
+    with pytest.raises(D.DatasetError):
+        D.ingest(raw, "mixed")
+
+
+def test_a_stray_byte_in_an_ignored_column_still_refuses_mixed_text():
+    """The stray byte sat in an ignored notes column, and every UTF-8 name
+    was renamed 'ZÃ¼rich' with only a Windows-1252 notice."""
+    rows = [f"{d.isoformat()},Zürich,{i},ok".encode()
+            for i, d in enumerate(sats("2020-01-04", 300))]
+    rows.append(b"2025-10-04,Z\xc3\xbcrich,1,caf\xe9")
+    raw = b"date,target_group,value,notes\n" + b"\n".join(rows) + b"\n"
+    rep = D.validate(raw)
+    assert rep.codes == ["encoding_mixed"] and rep.problems[0].rows == (302,)
+    assert not any("ZÃ" in w for w in rep.warnings)
+
+
+def test_a_bom_file_with_a_stray_byte_names_its_row():
+    raw = (b"\xef\xbb\xbfdate,target_group,value\n2024-01-06,Z\xc3\xbcrich,1\n"
+           b"2024-01-13,Z\xfcrich,2\n")
+    rep = D.validate(raw)
+    assert rep.codes == ["encoding"] and rep.problems[0].rows == (3,)
+    msg = rep.problems[0].message
+    assert "marked as UTF-8" in msg and "row 3: 2024-01-13,Z�rich,2" in msg
+    assert "Save it as CSV UTF-8" not in msg
+
+
+def test_a_file_with_no_utf8_character_still_reads_as_windows_1252():
+    raw = csv_text("date,target_group,value", [
+        f"{d.isoformat()},{g},{i}" for g in ("Zürich", "Genève")
+        for i, d in enumerate(sats())]).encode("cp1252")
+    rep = ok(D.validate(raw))
+    assert rep.summary["groups"] == ["Genève", "Zürich"]
+    assert rep.warnings[0].startswith("Not UTF-8 text: read as Windows-1252")
+    assert "Check these names: Genève, Zürich" in rep.warnings[0]
+
+
+def test_utf32_is_read_not_taken_for_utf16():
+    text = csv_text("date,target_group,value", [
+        f"{d.isoformat()},Zürich,{i}" for i, d in enumerate(sats())])
+    for codec, name in (("utf-32", "utf-32"), ("utf-32-le", "utf-32-le"),
+                        ("utf-32-be", "utf-32-be")):
+        raw = text.encode(codec)
+        assert D.detect_encoding(raw[:4096]) == name
+        rep = ok(D.validate(raw))
+        assert rep.summary["groups"] == ["Zürich"]
+        assert rep.summary["encoding"] == "UTF-32"
+
+
 # --------------------------------------------------- rows, kinds, reporting
 
 def test_row_numbers_are_the_spreadsheets_rows():
