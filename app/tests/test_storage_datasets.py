@@ -171,6 +171,19 @@ def test_delete_needs_the_name_and_takes_everything_it_counts(state):
     assert inv["total_bytes"] == retro.dir_size(wr / state["hub_run"])
 
 
+def test_the_data_tab_delete_frees_what_storage_counts(state):
+    """Deleting from the Data tab takes the same things as from Storage:
+    the upload, its replays and its runs' workroots; ledger rows stay."""
+    ds, wr = state["ds"], state["wr"]
+    r = client.post(f"/data/datasets/{ds.id}/delete",
+                    data={"confirm": "Template"}, follow_redirects=False)
+    assert r.status_code == 303
+    assert not ds.path.exists() and not (wr / state["ds_run"]).exists()
+    assert (wr / state["hub_run"]).is_dir()
+    assert "its replays and 1 run workroot" in srv._status["flash"]
+    assert state["ds_run"] in {r["run_id"] for r in Ledger().rows(10)}
+
+
 def test_a_busy_dataset_has_no_delete_and_is_refused(state):
     ds = state["ds"]
     DU._REPLAY.update({"id": ds.id, "stamp": "20260101T000000Z"})

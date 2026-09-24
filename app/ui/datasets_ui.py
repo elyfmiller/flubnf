@@ -534,7 +534,7 @@ async def upload(request: Request):
 
 @router.post("/data/datasets/{ds_id}/delete")
 def delete(request: Request, ds_id: str, confirm: str = Form("")):
-    S, D = _S(), _D()
+    S = _S()
     ds = get_dataset(ds_id)
     if ds is None:
         S._flash("No such dataset; nothing was deleted.")
@@ -546,11 +546,7 @@ def delete(request: Request, ds_id: str, confirm: str = Form("")):
     if confirm != ds.name:
         S._flash(f"Deleting {ds.name} was not confirmed; nothing was deleted.")
         return RedirectResponse("/data#datasets", status_code=303)
-    D.delete(ds.id)
-    _LAST.pop(ds.id, None)
-    S._invalidate_scans()
-    S._flash(f"Deleted the dataset {ds.name}, with its replays. Runs made "
-             "from it keep their results but cannot be re-run.")
+    S._flash(deleted_message(ds, *delete_everything(ds)))
     return RedirectResponse("/data#datasets", status_code=303)
 
 
@@ -1084,28 +1080,13 @@ def storage_rows(workroots: list) -> list:
     return out
 
 
-@router.post("/storage/datasets/{ds_id}/delete")
-def storage_delete(request: Request, ds_id: str, confirm: str = Form("")):
-    """Delete a dataset from the Storage tab with everything its size there
-    counts: the upload, its replays and its runs' workroots (their ledger
-    rows are kept, as a workroot delete keeps them). The name confirms it;
-    refused while a run or replay uses it."""
+def delete_everything(ds) -> tuple:
+    """Delete a dataset with everything its Storage size counts: the upload,
+    its replays and its runs' workroots (their ledger rows are kept, as a
+    workroot delete keeps them). Both delete routes use this, so the Data
+    and Storage tabs free the same bytes. Returns (freed, gone, kept)."""
     S = _S()
     from app.core import retro
-    back = S._back(request, "/storage")
-    S._invalidate_scans()
-    ds = get_dataset(ds_id)
-    if ds is None:
-        S._flash("No such dataset; nothing was deleted.")
-        return back
-    why = busy_with(ds.id)
-    if why:
-        S._flash(f"{ds.name} was not deleted: {why}.")
-        return back
-    if confirm != ds.name:
-        S._flash(f"Deleting {ds.name} was not confirmed; nothing was "
-                 "deleted.")
-        return back
     freed, gone, kept = 0, 0, 0
     for w in S._storage_inventory()["workroots"]:
         if w.get("dataset") != ds.id:
@@ -1125,12 +1106,41 @@ def storage_delete(request: Request, ds_id: str, confirm: str = Form("")):
     _D().delete(ds.id)
     _LAST.pop(ds.id, None)
     S._invalidate_scans()
-    S._flash(f"Deleted the dataset {ds.name}, its replays and {gone} run "
-             f"workroot{'' if gone == 1 else 's'}: "
-             f"{retro.human_bytes(freed)} freed. The runs' ledger rows are "
-             "kept."
-             + (f" {kept} run workroot{'' if kept == 1 else 's'} could not "
-                "be deleted and stay under Run workroots." if kept else ""))
+    return freed, gone, kept
+
+
+def deleted_message(ds, freed: int, gone: int, kept: int) -> str:
+    from app.core import retro
+    return (f"Deleted the dataset {ds.name}, its replays and {gone} run "
+            f"workroot{'' if gone == 1 else 's'}: "
+            f"{retro.human_bytes(freed)} freed. The runs' ledger rows are "
+            "kept."
+            + (f" {kept} run workroot{'' if kept == 1 else 's'} could not "
+               "be deleted and stay under Run workroots." if kept else ""))
+
+
+@router.post("/storage/datasets/{ds_id}/delete")
+def storage_delete(request: Request, ds_id: str, confirm: str = Form("")):
+    """Delete a dataset from the Storage tab with everything its size there
+    counts: the upload, its replays and its runs' workroots (their ledger
+    rows are kept, as a workroot delete keeps them). The name confirms it;
+    refused while a run or replay uses it."""
+    S = _S()
+    back = S._back(request, "/storage")
+    S._invalidate_scans()
+    ds = get_dataset(ds_id)
+    if ds is None:
+        S._flash("No such dataset; nothing was deleted.")
+        return back
+    why = busy_with(ds.id)
+    if why:
+        S._flash(f"{ds.name} was not deleted: {why}.")
+        return back
+    if confirm != ds.name:
+        S._flash(f"Deleting {ds.name} was not confirmed; nothing was "
+                 "deleted.")
+        return back
+    S._flash(deleted_message(ds, *delete_everything(ds)))
     return back
 
 
