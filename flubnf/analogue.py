@@ -96,13 +96,12 @@ def calendar_distance(a: int, b: int, period: int = 52) -> int:
 class DonorSeasonExclusion:
     """One season removed from the analogue's donor pool, with its evidence.
 
-    A season LABEL depends on the disease's boundary (influenza 1 August,
-    COVID 1 June), so resolve_donor_exclusions refuses a record whose
+    A season LABEL depends on the season boundary (influenza's is 1 August),
+    so resolve_donor_exclusions refuses a record whose
     `season_boundary_month` is not this module's.
     """
     season: int
     label: str
-    profile_key: str
     season_boundary_month: int
     #: The calendar stretch the label covers under that boundary, inclusive.
     covers: tuple
@@ -118,7 +117,6 @@ class DonorSeasonExclusion:
 SEASON_2021_22_CALENDAR_INVERSION = DonorSeasonExclusion(
     season=2021,
     label="2021-22",
-    profile_key="influenza",
     season_boundary_month=SEASON_BOUNDARY_MONTH,
     covers=(date(2021, 8, 1), date(2022, 7, 31)),
     prereg_hash="8f3c7a45a989e905",
@@ -164,7 +162,6 @@ SEASON_2021_22_CALENDAR_INVERSION = DonorSeasonExclusion(
 SEASON_2020_21_SUPPRESSED = DonorSeasonExclusion(
     season=2020,
     label="2020-21",
-    profile_key="influenza",
     season_boundary_month=SEASON_BOUNDARY_MONTH,
     covers=(date(2020, 8, 1), date(2021, 7, 31)),
     prereg_hash="086bda9a0736e983",
