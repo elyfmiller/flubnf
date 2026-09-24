@@ -485,13 +485,17 @@ def settings_summary(meta: dict) -> list:
     where = locations_phrase(locs) if locs else SCOPE_LABELS.get(scope, scope)
     if scope == "custom" and len(locs) > LOCATION_LIST_LIMIT:
         where = f"{SCOPE_LABELS['custom']}, {where}"
+    # particles, replicates and shard width describe the filter: a
+    # Groundhog-only replay records the form's defaults, but no filter ran,
+    # so they are omitted
+    pf = pf_ran(s.get("engine"))
     pairs = [("season", str(s.get("season") or (meta or {}).get("season") or "")),
              ("locations", where),
              ("particles", f"{int(s.get('particles') or 0):,}"
-              if s.get("particles") else ""),
-             ("replicates", str(s.get("replicates") or "")),
-             ("shard width", str(s.get("width") or "")),
-             ("engine preset", str(s.get("engine") or ""))]
+              if pf and s.get("particles") else ""),
+             ("replicates", str(s.get("replicates") or "") if pf else ""),
+             ("shard width", str(s.get("width") or "") if pf else ""),
+             ("engine", engine_label(s["engine"]) if s.get("engine") else "")]
     # only a record made through the knob channel says "model settings"
     if isinstance(s.get("knobs"), dict) and s["knobs"]:
         from app.core import knobs as _knobs
@@ -884,6 +888,23 @@ def _run_round(root: Path, wd: Path, pending: list, width: int) -> None:
 #: "pf": the filter beside the analogue (hours per season); "analogue": the
 #: Groundhog alone (minutes, no engine install)
 ENGINES = ("pf", "analogue")
+
+#: the presets in plain words, as the form, the flash lines and every Run
+#: settings block (console and reports) name them
+ENGINE_LABELS = {"pf": "Oracle SIHRS and the Groundhog",
+                 "analogue": "Groundhog only"}
+
+
+def engine_label(engine) -> str:
+    """A preset's plain name; an unknown key reads as itself."""
+    return ENGINE_LABELS.get(str(engine), str(engine))
+
+
+def pf_ran(engine) -> bool:
+    """False only for the Groundhog-only preset: no particle filter, so no
+    particle or replicate count describes the replay. A record without an
+    engine predates the preset and ran the filter."""
+    return str(engine or "pf") != "analogue"
 
 
 def run_week(root: Path, season: str, asof: str, locations: list,
