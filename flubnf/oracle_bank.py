@@ -360,10 +360,11 @@ def build_vintage(asof: str, source, populations: dict,
 
     `source` is the hub's target-data vintage for `asof`
     (auxiliary-data/target-data-archive/target-hospital-admissions_<asof>.csv,
-    or the live pull of a production week). Its newest row must be dated
+    or the live target-data file of a real-time week, as
+    app.core.data.observed_source picks it). Its newest row must be dated
     exactly `asof` (each archived vintage has that property); a file whose
-    newest row is another date is refused rather than silently truncated
-    to a week it does not describe. `populations` maps location to
+    newest row is another date, earlier or later, is refused rather than
+    silently truncated to a week it does not describe. `populations` maps location to
     population (load_populations). raw_override / rows_override exist for
     the canary test and synthetic checks only.
     """
@@ -382,12 +383,16 @@ def build_vintage(asof: str, source, populations: dict,
     n_dup = len(rows) - len(raw)
     dates = sorted({d for (_, d) in raw})
     assert all(d.weekday() == 5 for d in dates), "non-Saturday week ending"
+    # rows after T were dropped by load_rows (a later file is read the
+    # Groundhog's way); the live target file reaches here only when its
+    # newest week IS T (app.core.data.observed_source), so this check holds
+    # for it exactly as for an archived vintage
     if dates[-1] != T and rows_override is None:
         raise ValueError(
-            f"the vintage {src} has newest row {dates[-1]}, not the as-of "
-            f"date {asof}: each vintage has its newest row dated exactly T "
-            "(pre-registration section 2), and a pool built for T from a "
-            "file that stops earlier would not be that week's pool")
+            f"the target file {src} has newest row {dates[-1]}, not the "
+            f"as-of date {asof}: each vintage has its newest row dated "
+            "exactly T (pre-registration section 2), and a pool built for T "
+            "from a file that stops earlier would not be that week's pool")
     grid0, last = dates[0], dates[-1]
     n_grid = (last - grid0).days // 7 + 1
     locs = sorted({loc for (loc, _) in raw})

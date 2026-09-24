@@ -44,7 +44,7 @@
     <button type="button" class="pill mode" data-mode="realtime" role="tab">Real-time</button>
     <button type="button" class="pill mode" data-mode="vintage" role="tab">Vintage</button>
     </div>
-    {% if dataset %}{{ tips.tip("fc-mode", "the forecast modes", "Real-time: the dataset's newest week. Vintage: any earlier week of the dataset.") }}{% else %}{{ tips.tip("fc-mode", "the forecast modes", "Real-time: the newest archived week. Vintage: any archived week, with the data as it stood then.") }}{% endif %}
+    {% if dataset %}{{ tips.tip("fc-mode", "the forecast modes", "Real-time: the dataset's newest week. Vintage: any earlier week of the dataset.") }}{% else %}{{ tips.tip("fc-mode", "the forecast modes", "Real-time: the newest week of the hub's data, read from target-data when the archive has not caught up. Vintage: any archived week, with the data as it stood then.") }}{% endif %}
    </div>
    <input type="hidden" name="mode" id="mode-field" value="realtime">
    {% if dataset %}{{ tips.label("Forecast date", "fc-date", "A week of the dataset; any other day anchors on the latest week on or before it.") }}{% else %}{{ tips.label("Forecast date", "fc-date", "Any day; the run anchors on the latest archived week on or before it.") }}{% endif %}
@@ -61,6 +61,8 @@
    <script>
     (function () {
       var VS = {{ vintage_dates | default([], true) | tojson }};
+      var LIVE = {{ (live_only or "") | tojson }};
+      var LIVE_NOTE = {{ (live_only_note or ".") | tojson }};
       var box = document.querySelector('input[name=forecast_date]');
       var line = document.getElementById('anchor-line');
       var pick = document.getElementById('vintage-pick');
@@ -78,7 +80,7 @@
         if (!line || !box) return;
         var a = anchorFor(box.value);
         line.textContent = a
-          ? 'Anchor week: ' + a + '.'
+          ? 'Anchor week: ' + a + (a === LIVE ? LIVE_NOTE : '.')
           : 'No archived week on or before ' + box.value + '.';
       }
       // the settings panel follows the date (its Season start default is

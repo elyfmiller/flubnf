@@ -5,6 +5,15 @@
 <div class="cols">
  <div><div class="card"><h2>FluSight hub</h2>
   {# the latest vintage's own numbers, read from the archived file #}
+  {# the live target file's newest week: what a real-time run reads when
+     the hand-kept archive has not caught up (app.core.data.observed_source) #}
+  {% if live_week %}
+  <p class="datasrc" id="live-week">Target data through <code>{{ live_week }}</code>
+   {{ tips.tip("hub-live", "the target data", "The hub's target-data file, refreshed by Update data. A real-time run reads it for its newest week; a run on an earlier week reads that week's archived vintage, never today's revised values.") }}</p>
+  {% if not n_vintages or live_week > latest_vintage %}
+  <p class="warn" id="live-newer">Not archived yet: real-time runs for <span class="wk">{{ live_week }}</span> read target-data.</p>
+  {% endif %}
+  {% endif %}
   {% if n_vintages %}
   <p>Latest vintage: <code>{{ latest_vintage }}</code></p>
   {% if latest %}
@@ -13,7 +22,7 @@
    {{ latest.newest_week }}</p>
   {% endif %}
   <p class="hint">{{ n_vintages }} archived truth vintages</p>
-  {% else %}<p class="hint">No data yet: Update data downloads it.</p>{% endif %}
+  {% elif not live_week %}<p class="hint">No data yet: Update data downloads it.</p>{% endif %}
   {# one row: the primary pull and the quiet check. No confirmation: pulling
      is safe and resumable (the flash banner reports it); the data-pull guard
      still intercepts a pull during run preparation #}

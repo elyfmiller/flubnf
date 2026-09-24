@@ -24,7 +24,7 @@ sys.path.insert(0, str(REPO))
 
 from flubnf import analogue as AN                     # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL # noqa: E402
-from app.core.data import LOCATIONS, vintage_path     # noqa: E402
+from app.core.data import LOCATIONS, spec_source, vintage_path  # noqa: E402
 
 
 def completeness_args(spec, fips: str, anchor_date, newest_date) -> tuple:
@@ -328,7 +328,9 @@ def _source(spec) -> tuple:
     from app.core import datasets as _ds
     ds = _ds.from_spec(spec)
     if ds is None:
-        return vintage_path(spec.forecast_date), LOCATIONS, {}
+        # the dated vintage, or the live target file for a real-time run
+        # (app.core.data.observed_source, the one resolver)
+        return spec_source(spec, archive=vintage_path)[0], LOCATIONS, {}
     extra = getattr(spec, "extra", None) or {}
     bad = [k for k in HUB_ONLY_KEYS if extra.get(k)]
     if bad:
@@ -340,8 +342,17 @@ def _source(spec) -> tuple:
             {"exclude_seasons": excl})
 
 
-def run(spec) -> dict:
-    """location -> {horizon(str): {level(float): value}} quantiles."""
+#: the most weeks the anchor may sit before the as-of beyond the requested
+#: trims; an older anchor is stale and the location abstains
+MAX_ANCHOR_LAG = 2
+
+
+def run(spec, notes: dict | None = None) -> dict:
+    """location -> {horizon(str): {level(float): value}} quantiles.
+
+    `notes`, when given, receives location -> reason for every location
+    whose anchor is not the week the trims ask for (a trailing unreported
+    week moved it back, or it abstained)."""
     v, loc_csv, src_kw = _source(spec)
     t = pd.read_csv(v, dtype={"location": str})
     t["location"] = t["location"].str.zfill(2)
@@ -383,12 +394,28 @@ def run(spec) -> dict:
             continue                                       # gap: engine skips, report shows it
         anchor = float(vals.iloc[-1])
         anchor_date = g.date.loc[vals.index[-1]]
-        window_ref = (T - pd.Timedelta(days=7 * k)).date()
+        # the ANCHOR's own date drives the donor window and the horizons: a
+        # trailing unreported week (NaN, dropped above) moves the anchor
+        # back a week the trims did not ask for, and a window taken from
+        # T - 7k would then pair it with the wrong week (one week of
+        # look-ahead is worth ~0.18 relWIS, flubnf/analogue.py)
+        lag = int((T - anchor_date).days // 7)
+        if lag > k:
+            if lag - k > MAX_ANCHOR_LAG:
+                if notes is not None:
+                    notes[loc] = (f"abstained: newest reported week "
+                                  f"{anchor_date.date()} is {lag} weeks "
+                                  f"before the as-of")
+                continue
+            if notes is not None:
+                notes[loc] = (f"anchored on {anchor_date.date()}: "
+                              f"{lag - k} newer week(s) unreported")
+        window_ref = anchor_date.date()
         c, sig = completeness_args(spec, fips, anchor_date, newest)
         qs = {}
         for h in (1, 2, 3, 4):     # PHYSICAL weeks ahead, the library's unit
             # default donor pool = the registered exclusions; never restated
-            q = AN.forecast(anchor, window_ref, h + k, bank, QL,
+            q = AN.forecast(anchor, window_ref, h + lag, bank, QL,
                             completeness=c, widen_log_sd=sig, splice=splice,
                             **bw_kw)
             if q:

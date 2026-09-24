@@ -139,6 +139,25 @@ def _reference_date(asof: str) -> str:
 PREVIEW_ROWS = 12
 
 
+def _run_data_source(rid) -> str:
+    """The data file one run read, as the ledger outcome records it
+    ("live target-data through ..." or "archived vintage ..."); "" for a run
+    from before it was recorded, or no run."""
+    if not rid:
+        return ""
+    import json as _json
+    from app.core.data import source_phrase
+    from app.core.runs import Ledger
+    for r in Ledger().rows(200):
+        if r.get("run_id") == rid:
+            try:
+                return source_phrase(
+                    _json.loads(r.get("outcome") or "{}").get("data_source"))
+            except (ValueError, TypeError, AttributeError):
+                return ""
+    return ""
+
+
 @router.get("/output", response_class=HTMLResponse)
 def output_page(request: Request):
     import pandas as pd
@@ -166,6 +185,9 @@ def output_page(request: Request):
         # the stored spec lets the label carry the research tag
         "label": _run_label(rid, (res or {}).get("spec", "")) if rid else "",
         "date": (res or {}).get("forecast_date", ""),
+        # the file the run read ("live target-data through ..." or
+        # "archived vintage ..."); "" for runs from before it was recorded
+        "data_src": _run_data_source(rid),
         # the files are named by the reference date, a week after the data
         "ref": _reference_date((res or {}).get("forecast_date", "")),
         "files": files,

@@ -433,7 +433,7 @@ def prepare(spec, workroot: Path) -> list:
     one error verbatim."""
     from flubnf.sihrs_fit import materialize_model, resolve_state, write_exp
     from flubnf.settings import BNG
-    from app.core.data import LOCATIONS, vintage_path
+    from app.core.data import LOCATIONS, spec_source, vintage_path
     from app.core.runs import derive_seed
 
     # Run-level preflight, once, before any location. The workroot is
@@ -459,7 +459,9 @@ def prepare(spec, workroot: Path) -> list:
     from app.core import datasets as _ds
     ds = _ds.from_spec(spec)
     if ds is None:
-        vintage = vintage_path(spec.forecast_date)
+        # the dated vintage, or the live target file for a real-time run
+        # (app.core.data.observed_source, the one resolver)
+        vintage = spec_source(spec, archive=vintage_path)[0]
         loc_csv = LOCATIONS
         tag_of = _hub_tag
     else:
@@ -509,7 +511,10 @@ def prepare(spec, workroot: Path) -> list:
         # to one as-of week's vintage (needed when a cloud is carried).
         anchor = (spec.extra or {}).get("anchor_asof")
         if anchor:
-            sa = resolve_state(loc, truth_csv=vintage_path(anchor),
+            sa = resolve_state(loc, truth_csv=(
+                                   vintage if anchor == spec.forecast_date
+                                   else spec_source(spec, anchor,
+                                                    archive=vintage_path)[0]),
                                locations_csv=loc_csv,
                                season_start=spec.season_start, as_of=anchor)
             s.i0, s.rhomult = sa.i0, sa.rhomult   # a fresh object per call

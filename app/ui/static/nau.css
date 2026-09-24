@@ -1211,3 +1211,8 @@ details.sbhow > summary h2{display:inline;margin:0}
 details.archived{margin-top:.6rem;padding-top:.4rem;border-top:1px solid var(--line)}
 details.archived > p.hint{margin:.3rem 0}
 details.archived .subrow{margin:.3rem 0}
+
+/* round4: data source */
+/* a week date never breaks across lines (Data tab: the live-file line) */
+#live-newer .wk{white-space:nowrap}
+.datasrc{white-space:nowrap}

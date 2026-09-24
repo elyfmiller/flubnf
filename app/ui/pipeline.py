@@ -305,7 +305,7 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
               "elapsed_s": elapsed_s,
               # run settings, app build and engine versions
               "settings_html": settings_html(
-                  spec_settings(spec)
+                  spec_settings(spec, outcome)
                   + version_pairs(RUNNING_SHA, VERSIONS))}
     try:
         bp = report_v2.save_bundle(bundle, workroot)
@@ -382,15 +382,29 @@ def _run_all(spec: RunSpec) -> None:
         # 1. PF (primary); absent on Tier-A machines, where the run proceeds
         # with the analogue (see _pf_engine_state)
         fails = {}
+        # the observed file every step reads, resolved ONCE (the dated
+        # vintage, or the live target file for a real-time run) and recorded
+        # with its sha256 and newest week
+        # (a missing file is recorded here; each engine then refuses it
+        # loudly in its own words, as before)
+        from app.core import data as _data
+        try:
+            src_path, src_kind = _data.spec_source(spec)
+            outcome["data_source"] = _data.source_record(src_path, src_kind)
+        except OSError as e:
+            src_path, src_kind = None, None
+            outcome["data_source_error"] = str(e)[:300]
         # observed admissions per location (vintage-true): floor, report, run page
         obs = {}
         try:
             from flubnf.settings import LOCATIONS as _LOCCSV
-            from app.core.data import vintage_path as _vpo
             _lo = pd.read_csv(_LOCCSV, dtype=str)
             _n2fo = dict(zip(_lo.location_name, _lo.location.str.zfill(2)))
-            tdf = pd.read_csv(_vpo(spec.forecast_date),
+            tdf = pd.read_csv(src_path if src_path is not None
+                              else _data.vintage_path(spec.forecast_date),
                               dtype={"location": str})
+            tdf = tdf[tdf["date"].astype(str).str[:10]
+                      <= str(spec.forecast_date)].copy()
             tdf["location"] = tdf["location"].str.zfill(2)
             # nowcast rule: the engines treat the same-day row as unreported,
             # so obs must not see it (else cards announce a spurious surge)
@@ -435,6 +449,7 @@ def _run_all(spec: RunSpec) -> None:
                 pf_raw = pf_samples
                 pf_samples, oprov = oracle_mod.apply_week(
                     pf_raw, spec.forecast_date, workroot, extra=spec.extra,
+                    vintage=src_path, source_kind=src_kind,
                     weeks_to_drop=int(spec.weeks_to_drop or 0),
                     drop_same_day=bool(getattr(spec, "drop_same_day", False)))
                 outcome["oracle"] = oprov["bank"]["label"]
@@ -499,8 +514,16 @@ def _run_all(spec: RunSpec) -> None:
         # its FILE is written only when the run asked for it.
         _phase("consulting the Groundhog")
         from app.core.floor import floor_quantiles
+        # anchors moved back by an unreported newest week, or abstentions,
+        # are recorded per location (the engine's notes)
+        import inspect as _inspect
+        an_notes: dict = {}
+        _an_kw = ({"notes": an_notes} if "notes" in
+                  _inspect.signature(an_engine.run).parameters else {})
         an_q = {loc: floor_quantiles(q, **_fkw)
-                for loc, q in an_engine.run(spec).items()}
+                for loc, q in an_engine.run(spec, **_an_kw).items()}
+        if an_notes:
+            outcome["analogue_anchor_notes"] = an_notes
         outcome["analogue_aux"] = str(
             (spec.extra or {}).get("analogue_aux") or "")
         # 3. no blend: each member is its own submission; PF failures are just
