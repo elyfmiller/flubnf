@@ -158,7 +158,7 @@ class TestDonorSeasonExclusion:
         from dataclasses import replace
         import flubnf.analogue as AN
         foreign = replace(SEASON_2021_22_CALENDAR_INVERSION,
-                          profile_key="covid", season_boundary_month=6)
+                          season_boundary_month=6)
         original = dict(AN.DONOR_SEASON_EXCLUSIONS)
         AN.DONOR_SEASON_EXCLUSIONS[2021] = foreign
         try:
@@ -201,7 +201,6 @@ class TestDonorSeasonExclusion:
         """The registry holds a record with its evidence, never a bare season."""
         e = SEASON_2021_22_CALENDAR_INVERSION
         assert e.season == 2021 and e.label == "2021-22"
-        assert e.profile_key == "influenza"
         assert e.season_boundary_month == SEASON_BOUNDARY_MONTH
         assert e.prereg_hash == "8f3c7a45a989e905"
         assert e.adopted_on == "2026-08-24"

@@ -395,9 +395,8 @@
         if(p.conflict.done(b)){var el=p.el;close();
           startOverGate(el,function(){proceed(el);});return;}
         if(Date.now()-t0>15*60*1000){
-          msg.textContent='The run has not stopped yet. Adaptive MCMC '
-            +'cannot be stopped mid-run; other runs stop at the next safe '
-            +'point. Close this and try again once the run ends.';
+          msg.textContent='The run has not stopped yet; it stops at the '
+            +'next safe point. Close this and try again once the run ends.';
           stopBtn.disabled=false;stopBtn.textContent='Stop run and proceed';
           return;}
         setTimeout(poll,1500);

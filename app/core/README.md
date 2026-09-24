@@ -8,7 +8,6 @@ One line per module, with the role tag its docstring opens with and its main cal
 |---|---|---|---|
 | `engines/pf.py` | SHIPPED | the Oracle SIHRS filter: writes `pf.conf`, runs PyBNF `fit_type=pf` in the engine venv, sharded; engine preflight | `retro`, `sandbox`, server, `flubnf/cli.py`, `flubnf/doctor.py` |
 | `engines/analogue.py` | SHIPPED | the Groundhog: `flubnf.analogue` with the committed FluSurv-NET bank spliced in (`SHIPPED_AUX`) | `retro`, `groundhog`, server |
-| `engines/profiles.py` | RESEARCH | COVID seam: pf's disease constants as functions of a `DiseaseProfile` | tests only |
 
 ## Storage and replay
 

@@ -1,5 +1,6 @@
 begin model
-# FluBNF SIHRS, MULTI-SEASON template (RESEARCH: used by scripts/ only).
+# FluBNF SIHRS, MULTI-SEASON template (RESEARCH reference, no runtime path;
+# tests/test_min_template.py pins min against it).
 # Fitted (8): Reff, eps1, phi1, eps2, phi2, mult, impr, r. People, weeks,
 # per-week rates; frequency-dependent infection (flux beta*S*I/N), so priors
 # transfer from the normalized model. Single-season fits use

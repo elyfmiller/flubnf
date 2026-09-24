@@ -391,13 +391,6 @@ def test_cli_import_stays_light():
     assert r.returncode == 0, r.stderr.decode()[-400:]
 
 
-def test_cli_lazy_names_still_resolve():
-    import flubnf.cli as cli
-    assert len(cli.JURISDICTIONS) == 52
-    assert cli.STATE_TO_ABBREV["Ohio"] == "OH"
-    assert callable(cli.FluBNFConfig.load)
-
-
 def test_versions_resolve_off_the_import_path_and_fill_in():
     # the dict exists at import with every key, resolved or pending
     assert set(srv._VERSION_KEYS) <= set(srv.VERSIONS)

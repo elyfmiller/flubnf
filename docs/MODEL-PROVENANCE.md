@@ -14,15 +14,17 @@ Covered templates:
 | `SIHRS_pop_min.bngl` | Single-strain production model (5 fitted parameters); the PF engine's template, and so the Oracle SIHRS member's (the filter plus the post-fit Oracle step, docs/ORACLE-SIHRS.md; the step changes nothing in the template) |
 | `SIHRS_pop_2strain_min.bngl` | Two-strain (A/B) research variant (7 fitted parameters); failed its full-grid gate, not shipped |
 | `SIHRS_pop_natg.bngl` | `min` plus one exogenous national-growth factor, zero new fitted parameters |
-| `SIHRS_pop_covid.bngl` | COVID-19 port: `min` with `omega` fitted instead of fixed (6 parameters) |
-| `SIHRS_pop.bngl` | Multi-season 8-parameter model (keeps `impr`, `eps2`, `phi2`); not trimmed, see section 3. Used by the research scripts only |
-| `SIHRS_pop_cart.bngl` | `SIHRS_pop.bngl` with each seasonal harmonic in Cartesian coordinates; research, no runtime path (section 8) |
-| `Alabama.bngl`, `AlabamaSIRS.bngl`, `Alabama.conf` | Legacy piecewise-SIR / SIRS templates of the `flubnf init` workspace CLI; not SIHRS and not covered here |
+| `SIHRS_pop.bngl` | Multi-season 8-parameter model (keeps `impr`, `eps2`, `phi2`); not trimmed, see section 3. Reference for `tests/test_min_template.py` |
 
 Removed templates, kept in the lab archive and git history:
-`SIHRS_pop_covid_2h.bngl` (COVID Gate A round two, arm A2: `covid` plus the
-semi-annual harmonic, 8 parameters; section 5.4) and `SIHRS_pop_2strain.bngl`
-(the annotated two-strain draft with `impr` retained; section 6.2).
+`SIHRS_pop_covid.bngl` (COVID-19 port: `min` with `omega` fitted instead of
+fixed, 6 parameters; section 5), `SIHRS_pop_covid_2h.bngl` (COVID Gate A
+round two, arm A2: `covid` plus the semi-annual harmonic, 8 parameters;
+section 5.4), `SIHRS_pop_2strain.bngl` (the annotated two-strain draft with
+`impr` retained; section 6.2), `SIHRS_pop_cart.bngl` (`SIHRS_pop.bngl` with
+each seasonal harmonic in Cartesian coordinates; section 8), and the legacy
+workspace CLI's `Alabama.bngl`, `AlabamaSIRS.bngl` and `Alabama.conf`
+(piecewise SIR and SIRS, not SIHRS).
 
 Companion sources of record. The research tree behind the measurements
 below is kept in the lab's archive, not in this repository, and is available
@@ -31,8 +33,8 @@ policy). Two of the pointers below name files in that archive.
 
 * `flubnf/sihrs_priors.py` -- the DOI or data derivation behind every fixed
   influenza value (`gamma`, `rho`, `gammaH`, `omega`, `s0`, `i0`).
-* `flubnf/profiles.py` -- the COVID `DiseaseProfile`, its priors, and the
-  COVID-specific sources.
+* `flubnf/profiles.py` (removed; git history) -- the COVID `DiseaseProfile`,
+  its priors, and the COVID-specific sources.
 * the spatial nowcast probe's findings (lab archive) -- the measurements behind
   the national-growth variant.
 * the COVID phase 0 gate scripts (lab archive) -- the frozen COVID gate
@@ -84,8 +86,9 @@ model forms `mu = mult * (H_Cum[week end] - H_Cum[week start])`. The two are not
 interchangeable: at local weekly log-growth `lam` the ratio of the instant to
 the integral is `lam/(1 - exp(-lam))`, which on 2024-25 state admissions is
 +46 percent at the median jurisdiction's fastest week and reverses sign in
-decline. That derivation, and the batch-AMCMC path which still carries the
-bias and must not be published, are recorded in `flubnf/sihrs_fit.py`.
+decline. That derivation, and the batch-AMCMC path which carried the bias
+and must not be published, are recorded in git history (the removed
+`write_conf`).
 
 `rho*mult` carries biological IHR times reporting ascertainment. `rho` also
 appears in the reaction rules because it is a real branching fraction; `mult`
@@ -169,8 +172,8 @@ observable. Sources and the NHSN-versus-FluSurv-NET ascertainment trap:
 
 Ascertainment: reported / modelled admissions. Fitted log-uniform on
 `[0.002, 1.0]`, the shipped prior: `app/core/engines/pf.py` emits
-`loguniform_var = mult__FREE 0.002 1.0`, and `flubnf/sihrs_fit.py` and
-`flubnf/profiles.py` carry the same bounds. The ceiling is 1.0 because
+`loguniform_var = mult__FREE 0.002 1.0`, and `app/tests/test_knobs.py` pins
+it. The ceiling is 1.0 because
 ascertainment is a reporting fraction: reported admissions cannot exceed 100
 percent of the modelled ones. A narrower `0.10` ceiling was tried earlier and
 abandoned as defective, because an active upper bound pins `mult` and then
@@ -262,7 +265,9 @@ because no clean literature value exists for a per-state weekly reseeding
 rate; it also separates from `i0` multi-season, because `i0` affects only the
 FIRST season while importation drives every season's onset.
 
-`tests/test_min_template.py` enforces both halves of this decision.
+`tests/test_min_template.py` pins the templates' side of both halves (`min`
+has no `impr`, `SIHRS_pop.bngl` keeps it). The single-season inertness check
+ran on the removed in-Python mirror (git history).
 
 ---
 
@@ -366,9 +371,10 @@ without braces so they survive materialization.
 
 ---
 
-## 5. The COVID-19 port (`SIHRS_pop_covid.bngl`; `SIHRS_pop_covid_2h.bngl`, removed)
+## 5. The COVID-19 port (`SIHRS_pop_covid.bngl`, `SIHRS_pop_covid_2h.bngl`; removed; lab archive and git history)
 
-The only structural difference between `SIHRS_pop_covid.bngl` and
+The port's templates and code are no longer in this repository; the record
+stays here. The only structural difference between `SIHRS_pop_covid.bngl` and
 `SIHRS_pop_min.bngl` is that `omega` is FITTED instead of fixed. Everything
 else -- compartments, reaction rules, the single annual harmonic, the
 observable, the frequency-dependent infection term, the population
@@ -421,7 +427,7 @@ doi:10.1016/S1473-3099(22)00001-9 (Alpha 5.5 d, Delta 4.7 d).
 `rho` FIXED: first-pass COVID value is an order of magnitude below
 influenza's 2%, for the high-immunity Omicron era; only `rho*mult` is
 identified and `mult` is fitted, so this moves the S/I dynamics negligibly.
-See `flubnf/profiles.py` for the value and source.
+The value and source were in `flubnf/profiles.py` (removed; git history).
 
 `omega` FITTED: prior loguniform over `[0.01278, 0.12780]` per week, i.e. a
 mean protected duration of 1.8 to 18 months. Sourced: in the SIHRS
@@ -480,7 +486,7 @@ at the amplitudes the priors allow.
 Priors for the two added dimensions (frozen record: the arm's gate script, lab archive):
 
 * `eps2` uniform(0.0, 0.4). The bound is STIFFNESS-CRITICAL, carried from the
-  measured flu 8-parameter box (`sihrs_fit.FITTED_PRIORS`):
+  measured flu 8-parameter box (removed; git history):
   `beta_max = Reff*gamma*exp(eps1+eps2)`, and at this arm's prior corner
   (2.5 * 1.0234 * exp(1.4)) that is 10.4/wk, an order of magnitude below the
   roughly 77/wk corner that once made CVODE fail. Uniform because the lower
@@ -571,7 +577,7 @@ history.
 
 ---
 
-## 8. The Cartesian variant (`SIHRS_pop_cart.bngl`)
+## 8. The Cartesian variant (`SIHRS_pop_cart.bngl`; removed; lab archive and git history)
 
 Same science and fitted-parameter count as `SIHRS_pop.bngl`; only the
 seasonal term's coordinates change, polar (amplitude, phase) to Cartesian:
@@ -580,8 +586,9 @@ seasonal term's coordinates change, polar (amplitude, phase) to Cartesian:
       a = eps*cos(2*pi*phi/P),  b = eps*sin(2*pi*phi/P)
 
 Exact (verified to 2.6e-15 over 2000 random `(eps, phi)`). Recover
-`(eps, phi)` post hoc with `flubnf.seasonal.to_polar`, converting SAMPLES,
-not summaries. Prior boxes: `flubnf/sihrs_fit.py::CART_PRIORS`.
+`(eps, phi)` post hoc by converting SAMPLES, not summaries. The converter
+(`flubnf.seasonal.to_polar`) and the prior boxes (`CART_PRIORS`): removed;
+git history.
 
 ### 8.1 Why, measured (2026-08-05, 680 sweep fits plus raw chains)
 

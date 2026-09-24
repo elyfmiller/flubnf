@@ -23,7 +23,7 @@ underprediction. Skill depends on donor COMPOSITION, not depth.
 Seasons leave the donor pool only through a registered DonorSeasonExclusion
 (DONOR_SEASON_EXCLUSIONS; the records below carry the evidence). A season
 label is relative to the influenza 1 August boundary and is not portable to
-another disease (resolve_donor_exclusions, flubnf.profiles).
+another disease (resolve_donor_exclusions).
 
 Two traps, both paid for:
 1. ANCHOR ALIGNMENT. A one-week look-ahead on the anchor is worth ~0.18
@@ -48,8 +48,7 @@ import numpy as np
 DEFAULT_BANDWIDTH = 2
 MIN_DONORS = 30
 
-#: First month of an influenza season label (season_of). flubnf.profiles
-#: .INFLUENZA mirrors it (asserted in tests/test_profiles.py).
+#: First month of an influenza season label (season_of).
 SEASON_BOUNDARY_MONTH = 8
 
 _STD_NORMAL = NormalDist()
@@ -90,20 +89,19 @@ def calendar_distance(a: int, b: int, period: int = 52) -> int:
 # ---------------------------------------------------------------------------
 # Donor-season exclusions
 # ---------------------------------------------------------------------------
-# A season leaves the donor pool ONLY through a registered record (as with
-# flubnf.profiles.ExcludedWindow): an untraced exclusion looks like a bug.
+# A season leaves the donor pool ONLY through a registered record: an
+# untraced exclusion looks like a bug.
 
 @dataclass(frozen=True)
 class DonorSeasonExclusion:
     """One season removed from the analogue's donor pool, with its evidence.
 
-    A season LABEL depends on the disease's boundary (influenza 1 August,
-    COVID 1 June), so resolve_donor_exclusions refuses a record whose
+    A season LABEL depends on the season boundary (influenza's is 1 August),
+    so resolve_donor_exclusions refuses a record whose
     `season_boundary_month` is not this module's.
     """
     season: int
     label: str
-    profile_key: str
     season_boundary_month: int
     #: The calendar stretch the label covers under that boundary, inclusive.
     covers: tuple
@@ -119,7 +117,6 @@ class DonorSeasonExclusion:
 SEASON_2021_22_CALENDAR_INVERSION = DonorSeasonExclusion(
     season=2021,
     label="2021-22",
-    profile_key="influenza",
     season_boundary_month=SEASON_BOUNDARY_MONTH,
     covers=(date(2021, 8, 1), date(2022, 7, 31)),
     prereg_hash="8f3c7a45a989e905",
@@ -165,7 +162,6 @@ SEASON_2021_22_CALENDAR_INVERSION = DonorSeasonExclusion(
 SEASON_2020_21_SUPPRESSED = DonorSeasonExclusion(
     season=2020,
     label="2020-21",
-    profile_key="influenza",
     season_boundary_month=SEASON_BOUNDARY_MONTH,
     covers=(date(2020, 8, 1), date(2021, 7, 31)),
     prereg_hash="086bda9a0736e983",

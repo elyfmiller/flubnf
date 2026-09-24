@@ -6,8 +6,9 @@ app/state/
 *.log
 .DS_Store
 model-output/
+# former cache of the removed COVID research code; kept so old local folders stay ignored
 data/covidhub/
-# the legacy workspace CLI's default root (flubnf/config.py), created in the checkout
+# former root of the removed legacy workspace CLI; kept so old local folders stay ignored
 workspaces/
 .flubnf.env
 # the Windows twin of .flubnf.env, written by setup.ps1: machine-specific paths

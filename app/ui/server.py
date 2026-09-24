@@ -2866,8 +2866,8 @@ def _run_extra(members: int, mode: str, aux: str | None = None,
 
 # --- model knobs (app/core/knobs.py) on the run and retro forms ---
 class _LazyKnobs:
-    """app.core.knobs on first use: it imports the engines and scipy, which
-    the app's start must not wait for."""
+    """app.core.knobs on first use: it imports the engines, which the app's
+    start must not wait for."""
     FORM_PREFIX = "knob."          # held equal to knobs.FORM_PREFIX by tests
 
     def __getattr__(self, name):

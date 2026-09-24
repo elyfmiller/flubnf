@@ -70,6 +70,4 @@ Paths default to `~/Documents/GitHub/<name>`; on Windows, to `%LOCALAPPDATA%\Flu
 | `FLUBNF_PROTECT_ROOTS` | `app/core/reclaim.py` | unset; extra roots storage reclaim must not touch |
 | `FLUBNF_FIELD_CELLS` | `app/core/relwis.py` | `app/state/field_cells` |
 | `FLUBNF_STARTUP_TRACE` | `flubnf/cli.py`, `app/ui/server.py`, `scripts/open_cycle.py` | unset; a file path turns on the launch trace |
-| `FLUBNF_COVID_TIMESERIES`, `FLUBNF_COVID_HUB`, `FLUBNF_COVID_VINTAGE_CACHE` | `flubnf/covid_vintage.py` (research) | CovidHub clone; cache `data/covidhub/vintage-cache` |
 | `FLUBNF_ORACLE_RECORD`, `FLUBNF_ORACLE_FULL` | `tests/test_oracle*.py` | lab-only record; `FULL=1` compares every screened date |
-| `FLUBNF_WORKSPACE_ROOT` and other `FLUBNF_<field>` | `flubnf/config.py` (legacy workspace CLI, pydantic env prefix) | `workspaces/` |

@@ -18,9 +18,8 @@ from a clone of the public FluSight hub (cdcepi/FluSight-forecast-hub):
 `target-data/` for the current series, `auxiliary-data/target-data-archive/`
 for the dated snapshots that retrospectives replay, and
 `model-output/FluSight-baseline/` for scoring. The shipped forecast reads
-nothing else; the research two-strain member and the legacy command-line
-layer, both off the default path, can fetch NREVSS and NHSN series from the
-Delphi Epidata API and data.cdc.gov, cached under `app/state`.
+nothing else; the research two-strain member, off the default path, can
+fetch NREVSS series from the Delphi Epidata API, cached under `app/state`.
 
 ## The models
 
@@ -161,7 +160,7 @@ product, is docs/archive/RELEASE-1.0.md.
 | `app/core/` | console back end: replay, scoring, reports, Oracle step, site | [app/core/README.md](app/core/README.md) |
 | `app/ui/` | FastAPI server, Jinja pages, static JS and CSS | [app/ui/README.md](app/ui/README.md) |
 | `data/banks/` | the Groundhog's committed donor banks and manifests | [data/README.md](data/README.md) |
-| `scripts/` | ops and research scripts, not packaged | [scripts/README.md](scripts/README.md) |
+| `scripts/` | ops scripts, not packaged | [scripts/README.md](scripts/README.md) |
 | `docs/` | install, engine, Windows, models, banks, site, archive | [docs/README.md](docs/README.md) |
 | `tests/`, `app/tests/` | the two pytest suites | [tests/README.md](tests/README.md) |
 | `model-metadata/` | the hubverse model cards | [model-metadata/README.md](model-metadata/README.md) |

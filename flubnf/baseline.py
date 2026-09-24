@@ -4,8 +4,7 @@ The validated FluSight-baseline construction: every relWIS denominator.
 
 Scores the hub's OWN archived `FluSight-baseline` submissions with this
 package's WIS (a reconstruction from truth scored ~40 percent easier and was
-retired). Library code so installed copies work; scripts/anchor_analysis.py
-imports it back, keeping one definition.
+retired). Library code so installed copies work.
 """
 from __future__ import annotations
 
