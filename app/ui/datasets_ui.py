@@ -86,12 +86,10 @@ def _D():
 
 
 def local_only(request: Request):
-    """403 unless the Host names this machine (a DNS-rebinding page cannot
-    read uploaded data through a GET); None when fine."""
-    if (shared._authority_hostname(request.headers.get("host", ""))
-            not in shared._LOCAL_HOSTNAMES):
-        return PlainTextResponse("Refused: the Host header does not name "
-                                 "localhost.\n", status_code=403)
+    """Always None. Uploaded data is never served to a foreign Host: the
+    global middleware (shared._same_host_guard) refuses one on every
+    request, GET included, before any route runs. Kept only for a caller
+    not yet updated (routes/output.py); new code needs no call."""
     return None
 
 
@@ -486,9 +484,6 @@ async def check(request: Request):
     column mapping is asked for). A file with several targets shows the
     picker and no preview until one is chosen. Several files are checked
     together as one dataset's snapshots (datasets.validate_snapshots)."""
-    refused = local_only(request)
-    if refused:
-        return refused
     D = _D()
     where = str(request.query_params.get("where") or "data")
     where = where if where in NEXT_PAGES else "data"
@@ -1532,9 +1527,6 @@ def replay_page(request: Request, ds_id: str, stamp: str, h: str = "0"):
     """One dataset replay: pooled relWIS vs the persistence baseline (named),
     the national group beside it, WIS by horizon and group, coverage, and a
     fan-over-time per group at one horizon."""
-    refused = local_only(request)
-    if refused:
-        return refused
     from app.core import custom_retro as CX
     from app.core import horizons as hz
     ds = get_dataset(ds_id)
