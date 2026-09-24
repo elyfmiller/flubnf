@@ -1842,8 +1842,13 @@ def _view_file(name: str, kind: str) -> Path:
     return SANDBOX / "contactmap" / check_name(name) / f"{kind}.json"
 
 
+#: bumped when the views' reading of a model changes (2: rule_flow reads
+#: cBNGL compartment prefixes), so a drawing cached before is redrawn
+VIEW_VERSION = 2
+
+
 def _view_key(bngl: str) -> str:
-    return _digest(str(bngl) + "\n" + str(BNG))
+    return _digest(str(bngl) + "\n" + str(BNG) + f"\nviews {VIEW_VERSION}")
 
 
 def cached_view(name: str, kind: str, bngl: str) -> dict | None:

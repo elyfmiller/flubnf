@@ -464,6 +464,21 @@ def test_rule_flow_reads_compartment_prefixes_and_both_reversible_rates():
     assert [e["label"] for e in g["edges"]] == ["Sat(k,K)", "kr"]
 
 
+def test_a_drawing_cached_by_an_older_reading_is_redrawn(sandbox_root):
+    # the cache is keyed by the model text; a fixed reader must not be
+    # hidden behind a flow cached before the fix
+    sb.new_model("mine")
+    bngl = sb.read_model("mine")["model.bngl"]
+    f = sb._view_file("mine", "contactmap")
+    f.parent.mkdir(parents=True, exist_ok=True)
+    import json
+    old_key = sb._digest(str(bngl) + "\n" + str(sb.BNG))
+    f.write_text(json.dumps({"key": old_key, "payload": {"flow": None}}))
+    assert sb.cached_view("mine", "contactmap", bngl) is None
+    sb.store_view("mine", "contactmap", bngl, {"flow": {"edges": []}})
+    assert sb.cached_view("mine", "contactmap", bngl) == {"flow": {"edges": []}}
+
+
 def test_the_views_accept_a_comment_on_the_end_model_line():
     src = "begin model\nbegin parameters\nk 1\nend parameters\nend model  # done\n"
     assert cm.network_bngl(src).rstrip().endswith("end actions")
