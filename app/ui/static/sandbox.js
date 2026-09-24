@@ -70,6 +70,39 @@
       showEta();
     }
 
+    // ---- Load data: a hub source asks for a location, a dataset for one
+    // of its groups (the range follows the group when the source changes)
+    var src = $('sbfill-source'), locw = $('sbfill-locwrap'), grpw = $('sbfill-groupwrap'),
+        grp = $('sbfill-group'), d0 = $('sbfill-start'), d1 = $('sbfill-end');
+    function rangeFromGroup() {
+      var o = grp && grp.selectedIndex >= 0 ? grp.options[grp.selectedIndex] : null;
+      if (!o || !d0 || !d1) return;
+      d0.value = o.getAttribute('data-first') || d0.value;
+      d1.value = o.getAttribute('data-last') || d1.value;
+    }
+    function showSource(changed) {
+      if (!src) return;
+      var ds = src.value.indexOf('dataset:') === 0 ? src.value.slice(8) : '';
+      if (locw) locw.hidden = !!ds;
+      if (grpw) grpw.hidden = !ds;
+      if (!grp) return;
+      var first = null;
+      Array.prototype.forEach.call(grp.options, function (o) {
+        var mine = o.getAttribute('data-ds') === ds;
+        o.hidden = !mine;
+        o.disabled = !mine;
+        if (mine && !first) first = o;
+      });
+      var cur = grp.selectedIndex >= 0 ? grp.options[grp.selectedIndex] : null;
+      if (ds && first && (!cur || cur.disabled)) first.selected = true;
+      if (ds && changed) rangeFromGroup();
+    }
+    if (src) {
+      src.addEventListener('change', function () { showSource(true); });
+      if (grp) grp.addEventListener('change', rangeFromGroup);
+      showSource(false);
+    }
+
     // ---- unsaved changes: a chip beside Save, and a warning on leaving
     var dirty = false, chip = $('sb-dirty');
     if (form) {

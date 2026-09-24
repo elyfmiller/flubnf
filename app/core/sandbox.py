@@ -967,6 +967,22 @@ def _check_range(start: str, end: str) -> tuple:
     return a.isoformat(), b.isoformat()
 
 
+def _window(got: dict, start: str, end: str) -> dict:
+    """{"dates", "values", "dropped"} of a {date: value} map within a
+    range; dropped counts the range's Saturdays with no value."""
+    import datetime as dt
+    dates = sorted(d for d in got if start <= d <= end)
+    d = dt.date.fromisoformat(_first_saturday(start))
+    dropped = 0
+    last = dt.date.fromisoformat(end)
+    while d <= last:
+        if d.isoformat() not in got:
+            dropped += 1
+        d += dt.timedelta(days=7)
+    return {"dates": dates, "values": [float(got[d]) for d in dates],
+            "dropped": dropped}
+
+
 def series_for(location_name: str, start: str, end: str,
                asof: str | None = None) -> dict:
     """The weekly admissions of one location between two dates: the
@@ -974,7 +990,6 @@ def series_for(location_name: str, start: str, end: str,
     asof held. {"dates": [...], "values": [...], "dropped": n}, where
     dropped counts the Saturdays in the range with no reported value.
     Missing weeks are dropped, never imputed."""
-    import datetime as dt
     start, end = _check_range(start, end)
     if asof is None:
         from app.core import scoring
@@ -988,18 +1003,96 @@ def series_for(location_name: str, start: str, end: str,
         from app.core import data as data_mod
         s = data_mod.vintage_series(str(asof), str(location_name))
         got = dict(zip(s["dates"], s["values"]))
-    dates = sorted(d for d in got if start <= d <= end)
-    d = dt.date.fromisoformat(start)
-    while d.weekday() != 5:                      # forward to a Saturday
-        d += dt.timedelta(days=1)
-    dropped = 0
-    last = dt.date.fromisoformat(end)
-    while d <= last:
-        if d.isoformat() not in got:
-            dropped += 1
-        d += dt.timedelta(days=7)
-    return {"dates": dates, "values": [float(got[d]) for d in dates],
-            "dropped": dropped}
+    return _window(got, start, end)
+
+
+# ------------------------------------------------------ your own datasets
+# A stored custom dataset (app/core/datasets.py: an uploaded MicroHub or
+# hubverse CSV, validated and materialized in the FluSight archive shape)
+# is a data source like the hub: one group's weekly values from its final
+# snapshot.
+
+def dataset_choices() -> list:
+    """The stored datasets for the Load data form, newest first, as
+    [{"id", "name", "kind", "groups": [{"name", "first", "last",
+    "population"}]}]; empty when there are none or the store is unreadable."""
+    try:
+        from app.core import datasets
+        return [{"id": d.id, "name": d.name, "kind": d.kind,
+                 "groups": [{k: g.get(k) for k in ("name", "first", "last",
+                                                   "population")}
+                            for g in d.meta.get("groups", [])]}
+                for d in datasets.list_datasets()]
+    except Exception:
+        return []
+
+
+#: The largest CSV the sandbox's upload accepts (the dataset store's own
+#: limit is larger; a sandbox fit needs one series, not a hub).
+UPLOAD_MAX_BYTES = 20 * 1024 * 1024
+
+
+class UploadRefused(SandboxError):
+    """An upload the dataset store refused; problems holds each reason."""
+
+    def __init__(self, message: str, problems: list):
+        super().__init__(message)
+        self.problems = list(problems)
+
+
+def display_name(filename) -> str:
+    """A client's file name reduced to something safe to show: the last
+    path part, letters, digits and ._- and space only, at most 80
+    characters. It is never used as a path."""
+    base = re.split(r"[\\/]", str(filename or ""))[-1]
+    return re.sub(r"[^A-Za-z0-9._ -]", "", base)[:80].strip(" .")
+
+
+def ingest_upload(fileobj, filename: str, kind: str,
+                  max_bytes: int = UPLOAD_MAX_BYTES):
+    """Validate and store one uploaded CSV through the dataset store
+    (MicroHub or hubverse shape); the stored Dataset. Refusals carry the
+    validator's problems, each in words."""
+    from app.core import datasets
+    shown = display_name(filename)
+    stem = shown.rsplit(".", 1)[0] if "." in shown else shown
+    try:
+        return datasets.ingest(fileobj, stem or "upload", kind=kind,
+                               limits=datasets.Limits(max_bytes=max_bytes),
+                               filename=shown)
+    except datasets.DatasetError as e:
+        raise UploadRefused(str(e), [str(p) for p in e.problems]) from None
+
+
+def dataset_series(dataset_id: str, group: str, start: str = "",
+                   end: str = "") -> dict:
+    """One group's weekly values from a stored dataset's final snapshot,
+    within start..end (each defaulting to the group's own first or last
+    week): series_for's shape plus "start", "end", "population" and the
+    dataset's "ref" (id, digest prefix, name)."""
+    import csv
+    from app.core import datasets
+    try:
+        ds = datasets.get(dataset_id)
+    except datasets.DatasetError as e:
+        raise SandboxError(str(e)) from None
+    grp = next((g for g in ds.meta.get("groups", []) if g["name"] == group), None)
+    if grp is None:
+        raise SandboxError(f"dataset {ds.name!r} has no group {group!r}; it "
+                           f"has {', '.join(ds.groups[:6])}")
+    start, end = _check_range(start or grp["first"], end or grp["last"])
+    got = {}
+    with open(ds.final_path, newline="", encoding="utf-8") as fh:
+        for r in csv.DictReader(fh):
+            if r.get("location_name") == group:
+                try:
+                    got[r["date"]] = float(r["value"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+    out = _window(got, start, end)
+    out.update(start=start, end=end, ref=ds.ref(), kind=ds.kind,
+               population=ds.populations.get(group))
+    return out
 
 
 def _fmt(v: float) -> str:
@@ -1045,25 +1138,36 @@ def calendar_offsets(dates: list, origin: str) -> list:
 
 
 def fill_data(name: str, location_name: str, start: str, end: str,
-              asof: str | None = None) -> dict:
-    """Rewrite a model's data.exp from the archive: the file's own header
-    line if it has one (else '# time H_weekly'), then one 't value' row
-    per reported week, t the whole weeks since week_origin, so a missing
-    week is a gap in t. Writes the sidecar data.source.json beside it
-    (with the origin and each row's date) and returns its contents.
-    Refuses an unknown location, a range with no reported week, and
-    start after end."""
+              asof: str | None = None, *, dataset: str | None = None) -> dict:
+    """Rewrite a model's data.exp from the hub archive, or with dataset=
+    from one group (location_name) of a stored dataset: the file's own
+    header line if it has one (else '# time H_weekly'), then one 't value'
+    row per reported week, t the whole weeks since week_origin, so a
+    missing week is a gap in t. Writes the sidecar data.source.json
+    beside it (with the origin and each row's date) and returns its
+    contents. Refuses an unknown location or group, a range with no
+    reported week, and start after end; a dataset's range defaults to the
+    group's own weeks."""
     d = model_dir(name)
-    start, end = _check_range(start, end)
-    known = {l["name"] for l in locations()}
-    if str(location_name) not in known:
-        raise SandboxError(f"unknown location {location_name!r}: the hub's "
-                           "locations table does not name it")
-    s = series_for(location_name, start, end, asof)
+    extra = {}
+    if dataset:
+        s = dataset_series(dataset, str(location_name), start, end)
+        start, end = s["start"], s["end"]
+        extra = {"dataset": s["ref"], "kind": s["kind"]}
+        if s.get("population"):
+            extra["population"] = s["population"]
+        where = f" in dataset {s['ref']['name']}"
+    else:
+        start, end = _check_range(start, end)
+        known = {l["name"] for l in locations()}
+        if str(location_name) not in known:
+            raise SandboxError(f"unknown location {location_name!r}: the "
+                               "hub's locations table does not name it")
+        s = series_for(location_name, start, end, asof)
+        where = f" in the vintage of {asof}" if asof else ""
     if not s["values"]:
         raise SandboxError(f"no reported week for {location_name} between "
-                           f"{start} and {end}"
-                           + (f" in the vintage of {asof}" if asof else ""))
+                           f"{start} and {end}{where}")
     origin = week_origin(name, start)
     ts = calendar_offsets(s["dates"], origin)
     header = DEFAULT_HEADER
@@ -1078,9 +1182,10 @@ def fill_data(name: str, location_name: str, start: str, end: str,
         f"{t} {_fmt(v)}" for t, v in zip(ts, s["values"])) + "\n"
     exp.write_text(text, encoding="utf-8", newline="\n")
     info = {"location": str(location_name), "start": start, "end": end,
-            "asof": str(asof) if asof else "settled",
+            "asof": ("dataset" if dataset else str(asof) if asof
+                     else "settled"),
             "rows": len(s["values"]), "dropped": int(s["dropped"]),
-            "origin": origin, "dates": list(s["dates"]),
+            "origin": origin, "dates": list(s["dates"]), **extra,
             "written_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "digest": _digest(text)}
     (d / SOURCE_FILE).write_text(json.dumps(info, indent=1) + "\n",

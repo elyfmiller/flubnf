@@ -3102,7 +3102,8 @@ def _sandbox_save_posted(name: str, model_bngl: str, data_exp: str,
 
 
 @app.get("/sandbox", response_class=HTMLResponse)
-def sandbox_page(request: Request, run: str = "", model: str = ""):
+def sandbox_page(request: Request, run: str = "", model: str = "",
+                 dataset: str = ""):
     """The gallery (no model) or one model's workbench (?model=): the
     editor, its run settings, its runs and their results, its diagram."""
     live = _sandbox_status.get("running")
@@ -3170,7 +3171,12 @@ def sandbox_page(request: Request, run: str = "", model: str = ""):
             "locations": sandbox_mod.locations(),
             "vintages": sandbox_mod.vintages(),
             "data_range": sandbox_mod.default_range(sandbox_mod.vintages()),
-            "data_source": sandbox_mod.read_data_source(name)})
+            "data_source": sandbox_mod.read_data_source(name),
+            # your own data: stored datasets, and an upload's refusal
+            "datasets": sandbox_mod.dataset_choices(),
+            "pick_dataset": dataset,
+            "upload_report": _sandbox_upload_report.pop(name, None),
+            "upload_mb": sandbox_mod.UPLOAD_MAX_BYTES // (1024 * 1024)})
     return templates.TemplateResponse(request, "sandbox.html", ctx)
 
 
@@ -3273,35 +3279,149 @@ def api_sandbox_check(name: str, model_bngl: str = Form(""),
                              "warnings": [], "facts": {}}, status_code=200)
 
 
+def _sandbox_fill_flash(info: dict) -> None:
+    if info["asof"] == "dataset":
+        what = f"dataset {info['dataset']['name']}"
+    elif info["asof"] == "settled":
+        what = "settled truth"
+    else:
+        what = f"vintage of {info['asof']}"
+    msg = (f"data.exp filled: {info['location']}, {info['start']} to "
+           f"{info['end']}, {what}, {info['rows']} weeks")
+    if info["dropped"]:
+        msg += f", {info['dropped']} missing weeks dropped"
+    if info.get("kind") == "rate":
+        msg += (" (rates, not counts: the default objfunc expects counts; "
+                "set objfunc in priors.conf)")
+    _flash(msg)
+
+
 @app.post("/sandbox/models/{name}/fill-data")
 def sandbox_fill_data(request: Request, name: str, location: str = Form(""),
                       start: str = Form(""), end: str = Form(""),
-                      source: str = Form("settled"),
+                      source: str = Form("settled"), group: str = Form(""),
                       model_bngl: str = Form(""), data_exp: str = Form(""),
                       priors_conf: str = Form("")):
-    """data.exp from the hub archive: one location's weekly admissions over
-    a range, settled truth or one vintage. Missing weeks dropped and
-    counted, never imputed. The editor's other fields are saved first, so
-    unsaved edits survive the fill (data.exp gives its header only)."""
+    """data.exp from the hub archive (one location, settled truth or one
+    vintage) or from a stored dataset (source=dataset:<id>, one group).
+    Missing weeks dropped and counted, never imputed. The editor's other
+    fields are saved first, so unsaved edits survive the fill (data.exp
+    gives its header only)."""
     src = (source or "settled").strip()
-    asof = None if src == "settled" else src
     try:
         saved = _sandbox_save_posted(name, model_bngl, data_exp, priors_conf)
         if saved:
             _flash(f"Saved {', '.join(saved)} first.")
-        info = sandbox_mod.fill_data(name, (location or "").strip(),
-                                     (start or "").strip(),
-                                     (end or "").strip(), asof=asof)
-        what = ("settled truth" if info["asof"] == "settled"
-                else f"vintage of {info['asof']}")
-        msg = (f"data.exp filled: {info['location']}, {info['start']} to "
-               f"{info['end']}, {what}, {info['rows']} weeks")
-        if info["dropped"]:
-            msg += f", {info['dropped']} missing weeks dropped"
-        _flash(msg)
+        if src.startswith("dataset:"):
+            info = sandbox_mod.fill_data(name, (group or "").strip(),
+                                         (start or "").strip(),
+                                         (end or "").strip(),
+                                         dataset=src.split(":", 1)[1])
+        else:
+            info = sandbox_mod.fill_data(
+                name, (location or "").strip(), (start or "").strip(),
+                (end or "").strip(), asof=None if src == "settled" else src)
+        _sandbox_fill_flash(info)
     except Exception as e:
         _flash(str(e))
     return _sandbox_redirect(name)
+
+
+#: an upload's refusal, shown inline in the Load data box on the next view
+#: of that model (popped once shown)
+_sandbox_upload_report: dict = {}
+
+#: the request body cap: the CSV's own cap plus room for the editor text
+#: that rides along in the same form
+_SANDBOX_BODY_SLACK = 4 * 1024 * 1024
+
+
+class _SandboxTooLarge(Exception):
+    pass
+
+
+async def _sandbox_capped_form(request: Request, cap: int):
+    """The multipart form, refused before reading when Content-Length says
+    it is over the cap, and cut off while reading past it (a chunked body
+    has no length to trust)."""
+    from starlette.requests import Request as _Req
+    cl = request.headers.get("content-length", "")
+    if cl.strip().isdigit() and int(cl) > cap:
+        raise _SandboxTooLarge()
+    seen = 0
+    receive = request.receive
+
+    async def capped():
+        nonlocal seen
+        msg = await receive()
+        if msg.get("type") == "http.request":
+            seen += len(msg.get("body", b"") or b"")
+            if seen > cap:
+                raise _SandboxTooLarge()
+        return msg
+    return await _Req(request.scope, capped).form(
+        max_files=1, max_fields=40, max_part_size=_SANDBOX_BODY_SLACK)
+
+
+@app.post("/sandbox/models/{name}/upload-data")
+async def sandbox_upload_data(request: Request, name: str):
+    """A CSV of your own (MicroHub date,target_group,value[,population] or
+    hubverse), validated and stored through the dataset store, then loaded
+    into data.exp when it holds one group (else the Load data box offers
+    it to pick a group). The size cap holds before and while reading; the
+    client's file name is never used as a path."""
+    from starlette.concurrency import run_in_threadpool
+    from starlette.datastructures import UploadFile
+    cap = sandbox_mod.UPLOAD_MAX_BYTES
+    try:
+        sandbox_mod.check_name(name)
+        form = await _sandbox_capped_form(request, cap + _SANDBOX_BODY_SLACK)
+    except _SandboxTooLarge:
+        _sandbox_upload_report[name] = {"problems": [
+            f"The upload is larger than the {cap // (1024 * 1024)} MB limit; "
+            "nothing was read past it or stored."]}
+        return _sandbox_redirect(name)
+    except Exception as e:
+        _flash(f"The upload could not be read: {e}")
+        return _sandbox_redirect(name if sandbox_mod.NAME_RE.match(name) else "")
+    try:
+        saved = await run_in_threadpool(
+            _sandbox_save_posted, name, str(form.get("model_bngl") or ""),
+            str(form.get("data_exp") or ""), str(form.get("priors_conf") or ""))
+        if saved:
+            _flash(f"Saved {', '.join(saved)} first.")
+    except Exception as e:
+        _flash(str(e))
+        return _sandbox_redirect(name)
+    up = form.get("csv")
+    if not isinstance(up, UploadFile) or not up.filename:
+        _sandbox_upload_report[name] = {"problems": ["Choose a CSV file to upload."]}
+        return _sandbox_redirect(name)
+    kind = str(form.get("kind") or "count")
+    try:
+        ds = await run_in_threadpool(sandbox_mod.ingest_upload, up.file,
+                                     up.filename, kind, cap)
+    except sandbox_mod.UploadRefused as e:
+        _sandbox_upload_report[name] = {"problems": e.problems or [str(e)]}
+        return _sandbox_redirect(name)
+    finally:
+        await up.close()
+    warn = list(ds.meta.get("warnings") or [])
+    if len(ds.groups) == 1:
+        try:
+            info = await run_in_threadpool(sandbox_mod.fill_data, name,
+                                           ds.groups[0], "", "",
+                                           dataset=ds.id)
+            _sandbox_fill_flash(info)
+        except Exception as e:
+            _flash(str(e))
+    else:
+        _flash(f"Stored {ds.name} ({len(ds.groups)} groups); pick a group "
+               "under Load data.")
+    if warn:
+        _sandbox_upload_report[name] = {"problems": [], "warnings": warn}
+    return RedirectResponse(_sandbox_url(name) + f"&dataset={ds.id}",
+                            status_code=303)
 
 
 def _sandbox_start(name: str, *, particles: int, jitter: float,

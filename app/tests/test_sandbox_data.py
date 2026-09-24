@@ -213,7 +213,7 @@ def test_the_editor_shows_the_fieldset_or_the_no_archive_hint(box, monkeypatch):
     monkeypatch.setattr(sb, "vintages", lambda: [])
     r = client.get("/sandbox?model=mine")
     assert r.status_code == 200
-    assert "No hub archive here: type the rows or copy an example." in r.text
+    assert "No hub archive here: upload a CSV, type the rows or copy an example." in r.text
     assert 'name="location"' not in r.text
     assert client.get("/sandbox").status_code == 200      # no editor, no fieldset
 
