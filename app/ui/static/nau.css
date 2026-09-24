@@ -800,8 +800,8 @@ fieldset.sbrun{border:0;padding:0;margin:1rem 0 .4rem;min-width:0}
 fieldset.sbrun legend{font-weight:650;font-size:.92rem;padding:0}
 .sbrun .row{align-items:flex-end}
 .sbrun .row > span{display:flex;flex-direction:column}
-.sbrun input[type=number]{width:6.5rem}
-.sbrun input[name=seed]{width:9rem}
+.sbrun input[type=number]{width:5.5rem}
+.sbrun input[name=seed]{width:6.5rem}
 .sbpair{display:flex;gap:.4rem}
 .sbpair select{width:auto}
 details.sbfill .row{align-items:flex-end}
@@ -826,7 +826,7 @@ fieldset.sbshipped legend{font-weight:650;font-size:.92rem;padding:0}
 .sbsetpop{align-self:flex-end}
 .sbsetpop label{display:inline-flex;align-items:center;gap:.3rem}
 .sbcompare{margin:0}
-.sbcompare select{width:auto;max-width:16rem}
+.sbcompare select{width:auto;max-width:100%}
 pre.sbdiffpre{max-height:22rem;overflow:auto;font-size:var(--fs-label);
   white-space:pre;margin:.3rem 0}
 table.sboracle-t td,table.sbparams2 td{font-variant-numeric:tabular-nums}
@@ -963,3 +963,18 @@ form.rerun-run{margin:.6rem 0 .2rem;gap:.2rem}
 .stfold-h{display:inline;margin:0 .6rem 0 0}
 #storagefold > summary .stotal{display:inline-flex;gap:.35rem;margin:0}
 #storagefold > summary .big{font-size:var(--fs-lead)}
+
+/* polish: sandbox */
+.sbscroll{overflow-x:auto;max-width:100%}
+table.sbkeys code{white-space:nowrap}
+/* at phone width each key sits over its value and source, no sideways scroll */
+@media(max-width:640px){
+  table.sbkeys thead{display:none}
+  table.sbkeys tr{display:flex;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+  table.sbkeys td{border:0;padding:.15rem .3rem .4rem}
+  table.sbkeys td:first-child{flex:0 0 100%;padding-top:.4rem;padding-bottom:.15rem}
+  table.sbkeys td:nth-child(2){flex:1 1 auto;min-width:0}
+  table.sbkeys td:last-child{color:var(--mut)}}
+.sbmanage .row{margin-top:.5rem}
+.sbmanage form.row input{width:14rem;max-width:100%}
+.sbupload > button,.sbfill .row > button{align-self:flex-end}

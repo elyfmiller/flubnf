@@ -13,7 +13,7 @@
 .mv svg.mv-svg{display:block;width:100%;max-width:100%;height:420px;
   font-family:"DM Sans",system-ui,sans-serif;font-size:12px;
   cursor:grab;user-select:none;-webkit-user-select:none;touch-action:none;
-  background:var(--card);border:1px solid var(--line);border-radius:8px}
+  background:var(--card)}
 .mv svg.mv-svg.mv-panning{cursor:grabbing}
 
 /* the zoom buttons sit in the drawing's top right corner */
