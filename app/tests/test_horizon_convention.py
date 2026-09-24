@@ -181,3 +181,44 @@ def test_read_samples_is_the_boundary_not_read_week_samples():
     import inspect
     from app.core import retro
     assert "hz.record_to_canonical" in inspect.getsource(retro.read_samples)
+
+
+# ---------------------------------------------------------------------------
+# The public site. site_build emits canonical "0".."3" fan keys; the page's
+# own JavaScript must read exactly those, and a live run's results.json
+# (stored "1".."4" in every existing workroot) must be canonicalised first.
+# ---------------------------------------------------------------------------
+
+def test_site_page_js_iterates_the_canonical_horizons():
+    """draw() once iterated ['1','2','3','4'] over canonical keys, which
+    dropped the first forecast week and left the fourth undefined."""
+    import json
+    import re
+    from app.core import site_page
+    js = re.sub(r"\s+", "", site_page.JS)
+    stored = "['1','2','3','4']"
+    assert stored not in js and stored.replace("'", '"') not in js
+    canon = json.dumps(list(HZ.HORIZONS)).replace(" ", "")
+    assert "hs=" + canon in js, (
+        "draw() must iterate the canonical horizons from app.core.horizons")
+
+
+def _levels(v):
+    return {str(L): v + L for L in (0.1, 0.25, 0.5, 0.75, 0.9)}
+
+
+def test_live_run_fans_keep_all_four_weeks_from_a_legacy_results_json():
+    from app.core import site_build as sb
+    legacy = {h: _levels(10.0 * int(h)) for h in HZ.STORED_HORIZONS}
+    results = {"forecast_date": "2026-01-03",
+               "observed": {"Ohio": [["2025-12-27", 5.0],
+                                     ["2026-01-03", 6.0]]},
+               "models": {"pf": {"Ohio": legacy},
+                          "analogue": {"Ohio": legacy}}}
+    fans = sb._fans_from_results(results, {})
+    q = fans["Ohio"]["q"]
+    assert sorted(q) == list(HZ.HORIZONS)
+    # one week ahead (stored "1") is canonical "0"; four weeks ahead kept
+    assert q["0"]["0.5"] == pytest.approx(10.5)
+    assert q["3"]["0.5"] == pytest.approx(40.5)
+    assert fans["Ohio"]["an"] == {"0": 10.5, "1": 20.5, "2": 30.5, "3": 40.5}

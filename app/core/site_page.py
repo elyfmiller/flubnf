@@ -20,7 +20,7 @@ from __future__ import annotations
 import html as _html
 import json
 
-from app.core import relwis
+from app.core import horizons as hz, relwis
 
 CSS = """
 :root{
@@ -261,7 +261,7 @@ JS = r"""
            ','+parseInt(m.slice(4,6),16)+','+a+')'; }
   function draw(name){
     var d = F[name]; if(!d) return;
-    var obs = d.obs, last = obs[obs.length-1], hs = ['1','2','3','4'];
+    var obs = d.obs, last = obs[obs.length-1], hs = __HORIZONS__;
     // the forecast x-axis: the settled dates when truth has arrived,
     // otherwise the four weeks after the last observation
     var fx = [last[0]];
@@ -413,7 +413,8 @@ JS = r"""
   applyA11y();
   paint(OL.default_model);
 })();
-"""
+""".replace("__HORIZONS__", json.dumps(list(hz.HORIZONS)))
+# the fan reads site_build's canonical keys; app.core.horizons owns them
 
 CATS = ("large_decrease", "decrease", "stable", "increase", "large_increase")
 

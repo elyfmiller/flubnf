@@ -612,9 +612,11 @@ def _fans_from_results(results: dict, bundle: dict) -> dict:
     """All-location fans from a live run.
 
     Quantiles and observations from results.json; the settled overlay from
-    the bundle's fans (filled only for a backdated run).
+    the bundle's fans (filled only for a backdated run). results.json keeps
+    stored horizons ("1".."4") in every existing workroot, so its models are
+    canonicalised before `_fan_entry` reads "0".."3".
     """
-    models = results.get("models") or {}
+    models = hz.models_to_canonical(results.get("models") or {})
     pf, an = models.get("pf") or {}, models.get("analogue") or {}
     observed = results.get("observed") or {}
     settled = {}
