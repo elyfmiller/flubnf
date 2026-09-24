@@ -719,7 +719,10 @@ details.adv[open]>summary::before{content:"\25BE ";}
 .adv > summary.advbtn{display:inline-block;padding:.38rem .9rem;border:1.5px solid var(--accent);
  border-radius:999px;color:var(--accent-ink);font-weight:600;cursor:pointer;list-style:none;margin-top:.6rem}
 .adv > summary.advbtn::-webkit-details-marker{display:none}
-.adv[open] > summary.advbtn{background:var(--accent);color:#fff}
+/* open: the card's color on --accent-ink, 5:1+ in every theme and mode
+   (white on raw cyan was 2.1:1) */
+.adv[open] > summary.advbtn{background:var(--accent-ink);
+ border-color:var(--accent-ink);color:var(--card)}
 /* the Model settings panel (templates/_model_settings.html): one fieldset
    per stage, a live shipped/modified badge in the fold's button */
 .ms-badge{display:inline-block;margin-left:.45rem;padding:0 .45rem;
