@@ -147,7 +147,8 @@
    {% endif %}
    <div id="engine-row"{% if dataset %} hidden data-dataset="1"{% endif %}>
     {{ tips.label("Engine", "fc-engine", "The particle filter fits each state; the Oracle step then blends its forecast growth with past seasons' growth at the same calendar week.") }}
-    <select aria-label="Oracle SIHRS engine"><option>Particle filter</option></select>
+    {# one engine today: stated as text, not a select with nothing to pick #}
+    <p class="fixedval" aria-label="Oracle SIHRS engine">Particle filter</p>
    </div>
    <script>
     (function(){
@@ -313,11 +314,10 @@
    {% if r.spec and r.status in ("stopped", "error", "failed", "interrupted", "partial") and not dataset %}
    {# fresh re-run from the recorded spec (console fits hold no checkpoint,
       so never a resume); same guard and server-side checks as /run #}
-   <form method="post" action="/runs/{{ r.run_id }}/rerun" class="rerun-run">
+   <form method="post" action="/runs/{{ r.run_id }}/rerun" class="rerun-run row">
     <button class="gold" data-guard="console-run">Run again with these settings</button>
+    {{ tips.tip("fc-rerun", "running again", "Console runs hold no checkpoint: this starts fresh and does not resume the earlier one.") }}
    </form>
-   <p class="hint">Console runs hold no checkpoint: this starts fresh and
-    does not resume the earlier one.</p>
    {% endif %}
   </div>
   {% endif %}
@@ -326,9 +326,15 @@
      forecasts exist, so the first-launch hint shows only with an empty FANQ #}
   <div id="fanwrap">{% if fanq_json == '{}' %}<p class="hint">Forecasts appear here once the models run.</p>{% endif %}</div>
 
+  {# no hub data yet (and no dataset): one line, no controls, no blank
+     chart area; the controls stay in the page (hidden) for the script #}
+  {% set nodata = not dataset and series_json == '{}' %}
   <details class="card" open><summary><h2 style="display:inline">Data</h2>
    <span class="hint">· {{ (dataset.name ~ ", any group, newest data") if dataset else "raw admissions, any location, latest vintage" }}</span></summary>
-   <div style="margin:.6rem 0 .2rem">
+   <div id="data-ctl"{% if nodata %} hidden{% endif %}>
+   {# one pager row: the arrows step the select itself #}
+   <div class="carousel dataloc">
+    <button type="button" class="quiet cnav" id="data-prev" aria-label="previous location">◀</button>
     <select id="data-loc" aria-label="data panel location"
       style="width:auto;min-width:230px;max-width:100%">
      {% if dataset %}
@@ -338,20 +344,18 @@
      {% for l in all_locs | sort %}<option>{{ l }}</option>{% endfor %}
      {% endif %}
     </select>
+    <button type="button" class="quiet cnav" id="data-next" aria-label="next location">▶</button>
+    <span class="hint" id="data-pos"></span>
    </div>
-   {# the selected mode wears gold + aria-pressed (drawData keeps both) #}
-   <div class="row" style="margin:.4rem 0">
+   {# the selected view wears the filled pill + aria-pressed (drawData keeps both) #}
+   <div class="seg" role="group" aria-label="data view">
     <button type="button" class="quiet" id="mode-raw" aria-pressed="false">full series</button>
     <button type="button" class="quiet" id="mode-season" aria-pressed="false">season over season</button>
     <button type="button" class="quiet" id="mode-pts" aria-pressed="false">● points</button>
    </div>
-   <div class="carousel">
-    <button type="button" class="quiet cnav" id="data-prev">◀</button>
-    <span class="hint" id="data-pos"></span>
-    <button type="button" class="quiet cnav" id="data-next">▶</button>
    </div>
    {# reserved height (chart draws at 380): a fetch never collapses the page #}
-   <div id="dataplots" style="min-height:380px"></div>
+   <div id="dataplots"{% if not nodata %} style="min-height:380px"{% endif %}>{% if nodata %}<p class="hint">No data yet. Pull the FluSight hub on the Data tab.</p>{% endif %}</div>
   </details>
  </div>
 </div>
@@ -455,12 +459,12 @@
        .then(d=>{if(!d[loc]) d[loc]={dates:[],values:[]};  // sentinel: never re-fetch a miss
          Object.assign(SERIES,d); drawData(CURMODE);})
        .catch(()=>{el.innerHTML=NODATA;
-         document.getElementById('data-pos').textContent=loc;});
-     document.getElementById('data-pos').textContent=loc+' · loading…';
+         document.getElementById('data-pos').textContent='';});
+     document.getElementById('data-pos').textContent='loading…';
      return;
    }
    const s=SERIES[loc];
-   document.getElementById('data-pos').textContent=loc;
+   document.getElementById('data-pos').textContent='';
    if(!s.dates.length){el.innerHTML=NODATA; return;}
    // react repaints one persistent div in place, so the height never
    // collapses (recreated only after a NODATA hint)
@@ -597,7 +601,7 @@
    // the title says latest STORED forecasts (honest across a restart)
    const mbtns=MODELS.map(m=>'<button type="button" class="quiet mbtn" data-m="'+m+'">'+(MNAMES[m]||m)+'</button>').join('');
    wrap.innerHTML='<div class="card" id="fancard"><h2>Forecasts: latest stored run, '+FCDATE+'</h2>'
-     +'<div class="carousel">'+mbtns+'</div>'
+     +'<div class="seg" role="group" aria-label="model">'+mbtns+'</div>'
      +'<div class="carousel"><button type="button" class="quiet cnav" id="fan-prev">◀</button>'
      +'<select id="fan-loc" aria-label="forecast location"'
      +' style="width:auto;min-width:230px;max-width:100%"></select>'
@@ -608,12 +612,14 @@
      +'<div id="fanplot" style="min-height:400px"></div></div>';
    document.querySelectorAll('.mbtn').forEach(b=>{
      if(b.dataset.m===FMODEL) b.classList.add('gold');
+     b.setAttribute('aria-pressed', String(b.dataset.m===FMODEL));
      b.onclick=()=>{
        // the current location follows across model buttons
        const cur=FLOCS[FIDX];
        FMODEL=b.dataset.m;
-       document.querySelectorAll('.mbtn').forEach(x=>x.classList.remove('gold'));
-       b.classList.add('gold');
+       document.querySelectorAll('.mbtn').forEach(x=>{x.classList.remove('gold');
+         x.setAttribute('aria-pressed','false');});
+       b.classList.add('gold'); b.setAttribute('aria-pressed','true');
        const nl=Object.keys(FANQ[FMODEL]||{});
        FIDX=Math.max(0, nl.indexOf(cur));
        drawFan();};});
