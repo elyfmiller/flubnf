@@ -261,9 +261,10 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
         obs_pairs = (obs.get(loc) or [])[-12:]
         o_t = [d for d, _ in obs_pairs]
         o_v = [v for _, v in obs_pairs]
-        _base = (_dd.fromisoformat(o_t[-1]) if o_t
-                 else _dd.fromisoformat(spec.forecast_date))
-        # canonical horizons: hub label h is h+1 weeks past the anchor
+        # canonical horizons are AS-OF relative: hub label h is h+1 weeks
+        # past the as-of week (the files' target_end_date), whatever the
+        # newest observed week (an unreported or trimmed week moves it back)
+        _base = _dd.fromisoformat(spec.forecast_date)
         f_t = [(_base + _tdd(days=7 * (h + 1))).isoformat()
                for h in (0, 1, 2, 3)]
         samples_h = {f_t[h]: s[str(h)] for h in (0, 1, 2, 3)}
