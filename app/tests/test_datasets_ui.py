@@ -208,7 +208,7 @@ def test_output_download_never_serves_the_dataset_store(tmp_path, monkeypatch):
 
 def test_hub_forecast_page_is_unchanged_without_datasets():
     page = client.get("/forecast").text
-    assert "all 52 jurisdictions" in page and 'action="/run"' in page
+    assert "all 53 jurisdictions" in page and 'action="/run"' in page
     assert 'id="fc-source"' not in page             # no selector, no datasets
     assert "const SRCQ = \"\";" in page
 
@@ -235,7 +235,7 @@ def test_forecast_with_a_dataset_lists_groups_and_its_weeks():
     page = client.get(f"/forecast?source={ds.id}").text
     assert 'action="/run/dataset"' in page
     assert f"all {len(ds.groups)} groups" in page
-    assert "all 52 jurisdictions" not in page
+    assert "all 53 jurisdictions" not in page
     assert "US national is always fitted" not in page
     assert f'name="dataset" value="{ds.id}"' in page
     assert f'<option value="{ds.forecast_dates()[-1]}">' in page

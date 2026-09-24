@@ -109,7 +109,7 @@ def test_the_box_stays_on_a_dataset_forecast_and_the_hub_is_unchanged():
     assert page.index('id="fc-upload"') < page.index('id="fcform"')
     # the hub tab carries no upload box: that is the Your data tab's
     hub = client.get("/forecast").text
-    assert 'action="/run"' in hub and "all 52 jurisdictions" in hub
+    assert 'action="/run"' in hub and "all 53 jurisdictions" in hub
     assert boxes(hub) == []
 
 
