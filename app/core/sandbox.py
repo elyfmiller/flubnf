@@ -1011,10 +1011,10 @@ def series_for(location_name: str, start: str, end: str,
 
 
 # ------------------------------------------------------ your own datasets
-# A stored custom dataset (app/core/datasets.py: an uploaded MicroHub or
-# hubverse CSV, validated and materialized in the FluSight archive shape)
-# is a data source like the hub: one group's weekly values from its final
-# snapshot.
+# A stored custom dataset (app/core/datasets.py: an uploaded grouped CSV
+# or hubverse time series, validated and materialized in the FluSight
+# archive shape) is a data source like the hub: one group's weekly
+# values from its final snapshot.
 
 def dataset_choices() -> list:
     """The stored datasets for the Load data form, newest first, as
@@ -1055,8 +1055,8 @@ def display_name(filename) -> str:
 def ingest_upload(fileobj, filename: str, kind: str,
                   max_bytes: int = UPLOAD_MAX_BYTES):
     """Validate and store one uploaded CSV through the dataset store
-    (MicroHub or hubverse shape); the stored Dataset. Refusals carry the
-    validator's problems, each in words."""
+    (a grouped CSV or a hubverse time series); the stored Dataset.
+    Refusals carry the validator's problems, each in words."""
     from app.core import datasets
     shown = display_name(filename)
     stem = shown.rsplit(".", 1)[0] if "." in shown else shown
