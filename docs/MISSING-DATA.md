@@ -80,3 +80,21 @@ moved anchor, so labels stay as-of-relative), a modified run is marked and expor
 unless overridden, and every flagged week is listed in the run record (`data_flags` in the outcome, one
 line under "Missing-data rules" on the run page; the PF also records it per cell in `cells.json`). With both
 at keep, the engines take exactly their shipped path.
+
+A replay records the same rows per replayed week (`data_flags` in its `run_meta.json`, keyed by the as-of
+date; the FluSight replay and the own-data replay alike) and shows a "flagged weeks" count in its settings.
+
+`data.partial_week` is not offered on a custom dataset: its floor (a prior week of 20 or more) assumes
+hospital admission counts. The dataset panels hide it and a dataset run or replay refuses it
+(`missing.HUB_ONLY_KEYS`); `data.trailing_zero` stays available everywhere.
+
+## An unreported newest week (own data)
+
+The hub never has one (the table above: no NA and no absent row at the newest week), but a user's dataset
+can leave its newest week out. Both members then read the week like a dropped one, so every horizon still
+counts from the as-of date: the Groundhog's anchor moves back (`app/core/engines/analogue.py`, `_walk`), and
+the particle filter's fit origin moves back with its forecast extended by the same number of weeks
+(`pf_forecast_intervals = 4 + lag`, and `collect()` shifts by `weeks_dropped = lag`). Beyond 2 such weeks
+past the requested trims (`MAX_ANCHOR_LAG`) the location abstains with the reason recorded. Each location
+whose anchor moved is noted in the run record (`analogue_anchor_notes`, `pf_anchor_notes`) and summed on the
+run page in one "Unreported newest weeks" row.

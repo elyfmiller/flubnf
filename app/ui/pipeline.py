@@ -498,6 +498,11 @@ def _run_all(spec: RunSpec) -> None:
             fails = {k: v for k, v in status.items() if v != "ok"}
             outcome["pf_cells"] = len(status)
             outcome["pf_failures"] = fails
+            # fit origins moved back by an unreported newest week, or
+            # abstentions (prepare's notes; absent on a shipped run)
+            _pf_notes = pf_engine.read_anchor_notes(workroot)
+            if _pf_notes:
+                outcome["pf_anchor_notes"] = _pf_notes
             pf_samples = pf_engine.collect(workroot)
             # the Oracle step (app/core/oracle.py), before anything downstream
             # and before the floor. oracle = none is research: file withheld

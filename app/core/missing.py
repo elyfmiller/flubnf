@@ -35,6 +35,23 @@ PARTIAL_FLOOR = 20.0
 
 KEYS = {"data.trailing_zero": TRAILING_ZERO, "data.partial_week": PARTIAL_WEEK}
 
+#: rules a custom dataset cannot carry: the partial-week floor
+#: (PARTIAL_FLOOR admissions in the prior week) assumes hospital admission
+#: counts, which a dataset's values need not be. Hidden from its Model
+#: settings panels and refused for its runs; trailing_zero stays.
+HUB_ONLY_KEYS = ("data.partial_week",)
+
+
+def refuse_on_dataset(extra, name: str) -> None:
+    """Raise ValueError when a dataset run's extra turns on a HUB_ONLY_KEYS
+    rule (the engines call this on their dataset branch)."""
+    bad = [k for k in HUB_ONLY_KEYS if k in rules_of(extra)]
+    if bad:
+        raise ValueError(
+            f"{', '.join(bad)}: this rule's floor (a prior week of "
+            f"{PARTIAL_FLOOR:g} or more) assumes hospital admission counts "
+            f"and cannot run on the custom dataset {name!r}")
+
 
 def rules_of(extra) -> dict:
     """{key: choice} of the rules a spec's extra records as "missing"; {}
@@ -90,3 +107,35 @@ def line(flags) -> str:
     bits = [f"{loc} {c}" for loc, c in per.items()]
     return (f"{n} week{'s' if n != 1 else ''} to {newest} treated as "
             f"unreported ({', '.join(rules)}): " + ", ".join(bits))
+
+
+def cell_flags(cells) -> list:
+    """The particle filter's flagged weeks from prepare()'s cells (the
+    per-cell `data_flags`; replicate 0 only, as every replicate holds the
+    same rows): one {location, week, value, rule} row each."""
+    out = []
+    for c in cells or ():
+        if isinstance(c, dict) and c.get("replicate", 0) == 0:
+            out += [{"location": c.get("location"), **r}
+                    for r in c.get("data_flags") or ()]
+    return out
+
+
+def replay_count(by_week) -> str:
+    """A replay's settings value for its flagged weeks ({as-of: {member:
+    [rows]}}, recorded only with a rule on): "" when nothing is recorded;
+    else how many newest weeks were treated as unreported (once per as-of
+    week and location, members pooled) in how many forecast weeks."""
+    if not isinstance(by_week, Mapping) or not by_week:
+        return ""
+    n = weeks = 0
+    for flags in by_week.values():
+        seen = {(r.get("location"), r.get("week"))
+                for rows in (flags or {}).values() for r in rows or ()}
+        n += len(seen)
+        weeks += bool(seen)
+    if not n:
+        return "on; no week flagged"
+    total = len(by_week)
+    return (f"{n} newest week{'s' if n != 1 else ''} treated as unreported, "
+            f"in {weeks} of {total} forecast week{'s' if total != 1 else ''}")

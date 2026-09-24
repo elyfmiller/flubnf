@@ -91,10 +91,10 @@ def test_the_key_is_never_required(pr_tree):
 
 class _State:
     def __init__(self):
-        self.times = [0, 1, 2]
+        self.times = [12, 13, 14]   # true offsets: newest = the as-of week
         self.observed = [4.0, 5.0, 6.0]
         self.n_obs = 3
-        self.last_week_offset = 2
+        self.last_week_offset = 14
         self.i0 = 5e-3
         self.rhomult = 0.05
 
