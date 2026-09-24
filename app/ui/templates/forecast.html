@@ -17,6 +17,13 @@
    <button class="quiet">Use</button>
   </form>
   {% endif %}
+  {# your own data, uploaded here: the shared upload box; "Forecast this"
+     stores it and reopens this tab on it #}
+  {% import "_dataset_upload.html" as dsup %}
+  <details class="dsup-fold" id="fc-upload">
+   <summary>Upload your own data</summary>
+   {{ dsup.box("forecast") }}
+  </details>
   <form method="post" action="{{ '/run/dataset' if dataset else '/run' }}" id="fcform">
    {% if dataset %}<input type="hidden" name="dataset" value="{{ dataset.id }}">
    <p class="hint">{{ dataset.name }}: {{ "vintage-true" if dataset.vintage_true else "final data, not vintage-true" }}.

@@ -593,12 +593,57 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
 .archrow .grow{flex:1;min-width:12rem}
 .archrow form{display:inline;margin:0}
 .archrow button{margin-top:0;padding:.22rem .6rem;font-size:var(--fs-label)}
-/* custom datasets (Data tab upload and list, the own-data replay card) */
-.dsupload{display:grid;grid-template-columns:repeat(auto-fit,minmax(13rem,1fr));
-  gap:.2rem 1rem;align-items:end}
-.dsupload input[type=file]{max-width:100%}
+/* custom datasets (the upload box on Data, Forecast and Retrospective; the
+   Data tab list; the own-data replay card). Every track may shrink to the
+   card (min(100%,...)), so the box never widens a narrow page. */
+.dsup{margin:.2rem 0 .4rem;min-width:0}
+.dsdrop{display:flex;flex-direction:column;gap:.4rem;align-items:stretch;
+  border:1.5px dashed var(--field-line);border-radius:10px;padding:.75rem .85rem;
+  margin:.3rem 0;background:var(--bg);color:var(--ink);cursor:pointer}
+.dsdrop.over,.dsdrop:focus-within{border-color:var(--accent-ink);
+  background:color-mix(in srgb,var(--accent) 12%,var(--bg))}
+.dsdrop-t{font-weight:650;font-size:var(--fs-label)}
+.dsdrop input[type=file]{width:100%;max-width:100%;min-width:0;padding:.3rem;
+  background:var(--card)}
+.dsup-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr));
+  gap:0 .9rem}
+.dsup.js .dsup-go{display:none}
+.dsup-result:empty{display:none}
+.dsp-kind{margin:.5rem 0 0;font-size:var(--fs-micro);font-weight:650;
+  text-transform:uppercase;letter-spacing:.04em;color:var(--mut)}
 .dsproblems{border-left:3px solid var(--bad,#b3261e);padding:.2rem .8rem;margin:.6rem 0}
-.dsproblems ul{margin:.3rem 0;padding-left:1.2rem}
+.dsproblems ul{margin:.2rem 0 .3rem;padding-left:1.2rem}
+.dsproblems li{overflow-wrap:anywhere}
+.dsmap{border:1px solid var(--line);border-radius:10px;padding:.2rem .8rem .6rem;
+  margin:.6rem 0;min-width:0}
+.dsmap legend{font-weight:650;font-size:.92rem;padding:0 .3rem}
+.dsmap-roles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,9rem),1fr));
+  gap:0 .8rem}
+.dsnotes{margin:.4rem 0;padding-left:1.1rem;color:var(--mut);font-size:var(--fs-hint)}
+.dsnotes li{overflow-wrap:anywhere}
+.dspreview{margin:.5rem 0}
+.dspreview .kv.dsfacts{display:grid;grid-template-columns:max-content minmax(0,1fr);
+  gap:.1rem 1rem;margin:.3rem 0;font-size:var(--fs-label)}
+.dsfacts dt{color:var(--mut)}
+.dsfacts dd{margin:0;font-weight:600;overflow-wrap:anywhere}
+.dssparks{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,8.5rem),1fr));
+  gap:.5rem .9rem;margin:.6rem 0 .2rem}
+.dsspark{margin:0;min-width:0}
+.dsspark svg{display:block;width:100%;height:2.5rem;color:var(--gold);
+  border-bottom:1px solid var(--line)}
+.dsspark figcaption{font-size:var(--fs-micro);color:var(--mut);
+  overflow-wrap:anywhere}
+.dsup .tablewrap{max-width:100%;overflow-x:auto}
+.dsfirst caption{caption-side:top;text-align:left}
+.dsfirst td{white-space:nowrap}
+.dsup-actions{margin-top:.4rem}
+.dsup-actions button{margin-top:.3rem}
+details.dsup-fold{margin:.2rem 0 .5rem}
+details.dsup-fold>summary{cursor:pointer;color:var(--gold);font-size:.9rem;
+  font-weight:600;list-style:none}
+details.dsup-fold>summary::-webkit-details-marker{display:none}
+details.dsup-fold>summary::before{content:"\25B8\00a0"}
+details.dsup-fold[open]>summary::before{content:"\25BE\00a0"}
 .dstable td.dsactions{white-space:nowrap}
 .dstable td.dsactions form{display:inline;margin:0}
 .dstable td.dsactions button{margin:0 0 0 .3rem;padding:.15rem .5rem;font-size:var(--fs-label)}

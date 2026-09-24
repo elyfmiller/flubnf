@@ -98,9 +98,11 @@ def test_a_multi_target_file_offers_its_targets():
     assert r2.status_code == 303
 
 
-def test_the_kind_must_be_declared():
-    r = upload(grouped_bytes(), kind="")
+def test_an_undeclared_kind_comes_from_the_values_and_a_bad_one_is_refused():
+    r = upload(grouped_bytes(), kind="percent")
     assert r.status_code == 400 and "counts or rates" in r.text
+    ds = stored(kind="")
+    assert ds.kind == "count" and ds.meta["options"]["kind_from"] == "values"
 
 
 def test_oversize_is_refused_by_content_length(monkeypatch):

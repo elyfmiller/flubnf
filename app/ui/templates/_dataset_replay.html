@@ -1,18 +1,25 @@
 {# "Replay your own data" on the Retrospective tab (app/ui/datasets_ui.py):
-   its own card, below the FluSight seasons and never among them. Tips
-   imported by retro.html. #}
+   its own card, below the FluSight seasons and never among them, with the
+   shared upload box ("Replay this" stores a file and reopens this card on
+   it). Tips imported by retro.html. #}
+{% import "_dataset_upload.html" as dsup %}
 {% set dr = dataset_replay %}
 <div class="card" id="dataset-replay"><h2>Replay your own data
  {{ tips.tip("rt-ds-about", "replaying your own data", "Each week of the range is forecast with only the data before it and scored against the dataset's later weeks, relative to an in-house persistence baseline (not FluSight-baseline). Replays are kept with the dataset, apart from the FluSight seasons, and never published.") }}</h2>
- <p class="hint">A week range of a dataset from the Data tab, kept apart from the FluSight seasons.</p>
+ <p class="hint">A week range of one of your datasets, kept apart from the FluSight seasons.</p>
  {% if not dr.datasets %}
- <p class="hint">No datasets yet: upload one on the <a href="/data#datasets">Data tab</a>.</p>
+ <p class="hint">No datasets yet: drop a CSV below.</p>
+ {{ dsup.box("replay") }}
  {% else %}
+ <details class="dsup-fold" id="dsr-upload">
+  <summary>Upload another CSV</summary>
+  {{ dsup.box("replay") }}
+ </details>
  <form method="post" action="/retro/dataset/run" id="dsr-form">
   <div class="row" style="align-items:flex-end">
    <span><label for="dsr-ds">Dataset</label>
     <select name="dataset" id="dsr-ds">{% for d in dr.datasets %}
-     <option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select></span>
+     <option value="{{ d.id }}"{% if d.id == dr.selected %} selected{% endif %}>{{ d.name }}</option>{% endfor %}</select></span>
    <span><label for="dsr-first">From</label><select name="first" id="dsr-first"></select></span>
    <span><label for="dsr-last">To</label><select name="last" id="dsr-last"></select></span>
   </div>
@@ -53,8 +60,9 @@
    }
    function sync(){
      const d = DS.find(x=>x.id===$('dsr-ds').value) || DS[0];
-     opts($('dsr-first'), d.dates, d.dates[0]);
-     opts($('dsr-last'), d.dates, d.dates[d.dates.length-1]);
+     // the newest season's weeks by default (datasets_ui.replay_window)
+     opts($('dsr-first'), d.dates, d.default_first || d.dates[0]);
+     opts($('dsr-last'), d.dates, d.default_last || d.dates[d.dates.length-1]);
      const g=$('dsr-groups'); g.innerHTML='';
      d.groups.forEach(n=>{const o=document.createElement('option'); o.value=n;
        o.textContent=n; o.selected=true; g.appendChild(o);});

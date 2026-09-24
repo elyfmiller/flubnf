@@ -4,8 +4,13 @@ Routes (an APIRouter included by app/ui/server.py; the same-host guard
 covers every POST, and each GET that returns dataset content checks the
 Host header too, since an upload may be private data):
 
-  POST /data/datasets                  multipart upload (size capped before
-                                       and while parsing)
+  POST /data/datasets/check            check an upload without storing it:
+                                       JSON with the result box's HTML (every
+                                       problem, a column mapping, or a
+                                       preview) for static/dataset_upload.js
+  POST /data/datasets                  store an upload (size capped before
+                                       and while parsing), then open it where
+                                       `next` says: data, forecast or replay
   POST /data/datasets/{id}/delete      delete, with the name as confirmation
   POST /run/dataset                    a forecast on a dataset
   POST /retro/dataset/run              replay a week range on a dataset
@@ -20,11 +25,13 @@ from __future__ import annotations
 import json
 import threading
 import time
+from datetime import date as _date
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request
-from fastapi.responses import (HTMLResponse, PlainTextResponse,
+from fastapi.responses import (HTMLResponse, JSONResponse, PlainTextResponse,
                                RedirectResponse)
+from starlette.concurrency import run_in_threadpool
 
 router = APIRouter()
 
@@ -41,6 +48,12 @@ ENGINE_NAMES = {"all": "Both (plain SIHRS particle filter + Groundhog)",
 MEMBER_NAMES = {"pf": "plain SIHRS PF", "analogue": "Groundhog"}
 #: the upload body may exceed the file by the multipart framing and fields
 FORM_SLACK = 64 * 1024
+#: where a stored upload opens (the upload box's buttons post `next`)
+NEXT_PAGES = ("data", "forecast", "replay")
+#: groups drawn in an upload's preview (the rest are counted)
+PREVIEW_GROUPS = 12
+#: a preview sparkline's viewBox
+SPARK_W, SPARK_H = 160, 40
 
 
 def _S():
@@ -196,10 +209,202 @@ def _render_data(request, _code: int = 200, **extra):
                                         status_code=_code)
 
 
+# ------------------------------------------------ the upload box (one partial)
+
+def _form_columns(form) -> dict:
+    """The column mapping the result box posts (col_<role> = '#N')."""
+    D = _D()
+    return {r: str(form.get(f"col_{r}") or "").strip() for r in D.ROLES
+            if str(form.get(f"col_{r}") or "").strip()}
+
+
+def _sparkline(points, first: _date, last: _date, top: float) -> str:
+    """SVG polyline points for one group's weeks on the shared date axis."""
+    span = max((last - first).days, 1)
+    pad = 2.0
+    if len(points) > 400:                       # a long series, thinned
+        step = len(points) / 400.0
+        points = [points[int(i * step)] for i in range(400)] + [points[-1]]
+    out = []
+    for d, v in points:
+        x = pad + (SPARK_W - 2 * pad) * (d - first).days / span
+        y = SPARK_H - pad - ((SPARK_H - 2 * pad) * v / top if top > 0 else 0)
+        out.append(f"{x:.1f},{y:.1f}")
+    return " ".join(out)
+
+
+def _preview(rep, kind: str) -> dict:
+    """What a valid upload holds: counts and dates, the first rows as read,
+    and a sparkline per group (the newest snapshot of each week)."""
+    s = rep.summary
+    newest = {}
+    for a, name, _, d, v, _ in rep.records:
+        if v is None:
+            continue
+        k = (name, d)
+        if k not in newest or (a or _date.min) >= newest[k][0]:
+            newest[k] = (a or _date.min, v)
+    by = {}
+    for (name, d), (_, v) in newest.items():
+        by.setdefault(name, []).append((d, v))
+    first = _date.fromisoformat(s["first"])
+    last = _date.fromisoformat(s["last"])
+    sparks = []
+    for name in s["groups"][:PREVIEW_GROUPS]:
+        pts = sorted(by.get(name, []))
+        if not pts:
+            continue
+        top = max(v for _, v in pts)
+        peak = max(pts, key=lambda p: p[1])
+        sparks.append({"name": name, "points": _sparkline(pts, first, last,
+                                                          top),
+                       "label": f"{name}: {len(pts)} weeks, peak "
+                                f"{peak[1]:,.6g} ({peak[0].isoformat()})"})
+    return {"groups": s["groups"], "n_groups": len(s["groups"]),
+            "more": max(0, len(s["groups"]) - PREVIEW_GROUPS),
+            "first": s["first"], "last": s["last"], "weeks": s["weeks"],
+            "rows": s["rows"], "kind": kind or s["inferred_kind"],
+            "inferred": not kind, "population": s["has_population"],
+            "snapshots": len(s["as_of"]), "national": s.get("national_group"),
+            "target": s.get("target"),
+            "read_as": f"{s['delimiter']}-separated, {s['encoding']}",
+            "first_rows": s.get("first_rows") or [],
+            # the file's own date column only when it differs from the week
+            "dates_differ": any(r["date"] != r["week"]
+                                for r in s.get("first_rows") or []),
+            "sparks": sparks, "w": SPARK_W, "h": SPARK_H}
+
+
+def _mapping_why(rep) -> list:
+    """One line saying which columns the headers did not settle."""
+    D = _D()
+    if not rep.needs_mapping:
+        return []
+    unset = [r for r in D.REQUIRED if r not in rep.guess]
+    out = [p.message for p in rep.problems if p.code == "column_unknown"]
+    if unset:
+        names = [f"the {r}" for r in unset]
+        out.append("Choose the column that holds "
+                   + (", ".join(names[:-1]) + " and " if len(names) > 1
+                      else "") + names[-1] + ".")
+    return out
+
+
+def check_view(rep, *, kind: str = "", columns=None) -> dict:
+    """The result box's context (templates/_dataset_check.html) for one
+    report: every problem grouped by kind, a column mapping when that is
+    what is missing (instead of an error), the target picker when a file
+    holds several, the notices, and a preview when it is valid."""
+    D = _D()
+    columns = columns or {}
+    mapping = None
+    if rep.headers and (rep.needs_mapping or columns):
+        labels = {"date": "Date", "group": "Group", "value": "Value",
+                  "population": "Population"}
+        mapping = {
+            "headers": [(f"#{i + 1}", h) for i, h in enumerate(rep.headers)
+                        if h],
+            "why": _mapping_why(rep),
+            "roles": [{"role": r, "label": labels[r],
+                       "required": r in D.REQUIRED,
+                       "value": columns.get(r) or rep.guess.get(r, "")}
+                      for r in D.ROLES]}
+    problems = [] if rep.needs_mapping else [
+        (k, [{"message": str(p), "rows": list(p.rows)} for p in ps])
+        for k, ps in D.problem_groups(rep.problems)]
+    return {"ok": rep.ok, "problems": problems,
+            "n": sum(len(ps) for _, ps in problems),
+            "mapping": mapping, "notices": list(rep.warnings),
+            "targets": rep.targets if len(rep.targets) > 1 else [],
+            "target": (rep.summary or {}).get("target") or "",
+            "preview": _preview(rep, kind) if rep.ok and rep.summary else None}
+
+
+def _message_view(message: str) -> dict:
+    """The result box for a refusal that is not about the file's content."""
+    return {"ok": False, "problems": [("File", [{"message": message,
+                                                 "rows": []}])],
+            "n": 1, "mapping": None, "notices": [], "targets": [],
+            "target": "", "preview": None}
+
+
+def render_check(chk: dict, where: str = "data") -> str:
+    """The result box's HTML (the same macro the pages render)."""
+    tpl = _S().templates.get_template("_dataset_check.html")
+    return str(tpl.module.result(chk, where))
+
+
+def _kind_field(form):
+    """The posted kind: '' = from the values; None = not a kind."""
+    k = str(form.get("kind") or "").strip()
+    return k if k in ("",) + _D().KINDS else None
+
+
+@router.post("/data/datasets/check")
+async def check(request: Request):
+    """Check one upload and store nothing: JSON with the result box's HTML
+    and what the form needs (the inferred kind, the targets, whether a
+    column mapping is asked for). A file with several targets is checked
+    for its first, with the picker shown."""
+    refused = local_only(request)
+    if refused:
+        return refused
+    D = _D()
+    where = str(request.query_params.get("where") or "data")
+    where = where if where in NEXT_PAGES else "data"
+
+    def answer(chk, code=200, **extra):
+        return JSONResponse({"ok": chk["ok"], "html": render_check(chk, where),
+                             **extra}, status_code=code)
+    if not request.headers.get("content-type", "").startswith(
+            "multipart/form-data"):
+        return answer(_message_view("Expected a multipart/form-data upload."),
+                      400)
+    try:
+        form = await _capped_form(request,
+                                  D.DEFAULT_LIMITS.max_bytes + FORM_SLACK)
+    except Exception:
+        return answer(_message_view("The upload could not be read; choose "
+                                    "the file again."), 400)
+    if form is None:
+        return answer(_message_view(
+            f"The file is larger than the {max_mb()} MB limit; nothing was "
+            "read."), 413)
+    f = form.get("file")
+    if f is None or not hasattr(f, "file") or not getattr(f, "filename", ""):
+        return answer(_message_view("Choose a CSV file."), 400)
+    kind = _kind_field(form)
+    if kind is None:
+        return answer(_message_view("Say whether the values are counts or "
+                                    "rates."), 400)
+    target = str(form.get("target") or "").strip() or None
+    columns = _form_columns(form)
+    try:
+        def run(t):
+            f.file.seek(0)
+            return D.validate(f.file, kind=kind or None, target=t,
+                              columns=columns)
+        rep = await run_in_threadpool(run, target)
+        if target is None and "target_required" in rep.codes and rep.targets:
+            target = rep.targets[0]
+            rep = await run_in_threadpool(run, target)
+    finally:
+        try:
+            await f.close()
+        except Exception:
+            pass
+    chk = check_view(rep, kind=kind, columns=columns)
+    return answer(chk, inferred_kind=(rep.summary or {}).get("inferred_kind"),
+                  target=target or "", targets=rep.targets,
+                  needs_mapping=rep.needs_mapping)
+
+
 @router.post("/data/datasets")
 async def upload(request: Request):
-    """Validate and store one CSV. Problems are shown inline on the Data
-    tab (every one at once) and nothing is stored."""
+    """Validate and store one CSV, then open it where `next` says (the
+    Data tab, the Forecast tab, or the Retrospective tab's replay card).
+    Problems are shown inline on the Data tab (every one at once) and
+    nothing is stored."""
     S, D = _S(), _D()
     cap = D.DEFAULT_LIMITS.max_bytes + FORM_SLACK
     ctype = request.headers.get("content-type", "")
@@ -210,38 +415,36 @@ async def upload(request: Request):
     mb = D.DEFAULT_LIMITS.max_bytes // (1024 * 1024)
     if form is None:
         return _render_data(request, upload={
-            "name": "", "problems": [f"The upload is larger than the {mb} MB "
-                                     "limit; nothing was read or stored."],
-            "warnings": []}, _code=413)
+            "name": "", "kind": "", "chk": _message_view(
+                f"The upload is larger than the {mb} MB limit; nothing was "
+                "read or stored.")}, _code=413)
     f = form.get("file")
     name = str(form.get("name") or "").strip()
-    kind = str(form.get("kind") or "")
-    sunday = str(form.get("sunday") or "") in ("1", "on", "true")
+    kind = _kind_field(form)
     target = str(form.get("target") or "").strip() or None
-    back = {"name": name, "kind": kind, "sunday": sunday, "target": target or ""}
+    columns = _form_columns(form)
+    nxt = str(form.get("next") or "data")
+    back = {"name": name, "kind": kind or "", "target": target or ""}
     if f is None or not hasattr(f, "file") or not getattr(f, "filename", ""):
         return _render_data(request, upload={
-            **back, "problems": ["Choose a CSV file to upload."],
-            "warnings": []}, _code=400)
+            **back, "chk": _message_view("Choose a CSV file to upload.")},
+            _code=400)
     fname = Path(str(f.filename)).name
     if not name:
         name = Path(fname).stem or "dataset"
-    if kind not in D.KINDS:
+    if kind is None:
         return _render_data(request, upload={
-            **back, "problems": ["Say whether the values are counts or "
-                                 "rates."], "warnings": []}, _code=400)
+            **back, "chk": _message_view("Say whether the values are counts "
+                                         "or rates.")}, _code=400)
     try:
         f.file.seek(0)
-        ds = D.ingest(f.file, name[:80], kind=kind, week_start_sunday=sunday,
-                      target=target, filename=fname)
+        ds = await run_in_threadpool(
+            lambda: D.ingest(f.file, name[:80], kind=kind or None,
+                             target=target, filename=fname, columns=columns))
     except D.DatasetError as e:
-        f.file.seek(0)
-        targets = []
-        if any(p.code == "target_required" for p in e.problems):
-            targets = _targets_in(f.file)
-        return _render_data(request, upload={
-            **back, "problems": [str(p) for p in e.problems] or [str(e)],
-            "warnings": [], "targets": targets}, _code=422)
+        chk = (check_view(e.report, kind=kind, columns=columns)
+               if e.report is not None else _message_view(str(e)))
+        return _render_data(request, upload={**back, "chk": chk}, _code=422)
     finally:
         try:
             await f.close()
@@ -252,30 +455,12 @@ async def upload(request: Request):
     S._flash(f"Stored the dataset {ds.name}: {len(ds.groups)} group(s), "
              f"{len(ds.weeks())} week(s)."
              + (" " + " ".join(warn) if warn else ""))
+    if nxt == "forecast":
+        return RedirectResponse(f"/forecast?source={ds.id}", status_code=303)
+    if nxt == "replay":
+        return RedirectResponse(f"/retro?dataset={ds.id}#dataset-replay",
+                                status_code=303)
     return RedirectResponse(f"/data?source={ds.id}#datasets", status_code=303)
-
-
-def _targets_in(fh) -> list:
-    """The target names a multi-target file holds (for the form's picker)."""
-    import csv
-    import io
-    try:
-        text = io.TextIOWrapper(fh, encoding="utf-8-sig", newline="")
-        r = csv.reader(text)
-        head = [h.strip().lower() for h in next(r)]
-        i = head.index("target")
-        seen = []
-        for n, row in enumerate(r):
-            if n > 2_000_000:
-                break
-            if len(row) > i and row[i].strip() and row[i].strip() not in seen:
-                seen.append(row[i].strip())
-                if len(seen) > 20:
-                    break
-        text.detach()
-        return seen
-    except Exception:
-        return []
 
 
 @router.post("/data/datasets/{ds_id}/delete")
@@ -702,9 +887,30 @@ def run_page_extra(workroot: Path, res: dict) -> dict:
 
 # -------------------------------------------------------- Retrospective
 
-def retro_context() -> dict:
+def replay_window(dates: list) -> tuple:
+    """(first, last) a replay offers by default: the newest season's weeks
+    (August to July), or the season before when the newest holds under 8;
+    the whole range when the data span one season."""
+    if not dates:
+        return "", ""
+
+    def season(d):
+        y, m = int(d[:4]), int(d[5:7])
+        return y if m >= 8 else y - 1
+    by = {}
+    for d in dates:
+        by.setdefault(season(d), []).append(d)
+    if len(by) < 2:
+        return dates[0], dates[-1]
+    keys = sorted(by)
+    pick = by[keys[-1]] if len(by[keys[-1]]) >= 8 else by[keys[-2]]
+    return pick[0], pick[-1]
+
+
+def retro_context(selected: str = "") -> dict:
     """The Retrospective tab's own-data card: datasets and their replays
-    (kept in their own card, never beside the hub seasons)."""
+    (kept in their own card, never beside the hub seasons); ``selected``
+    names the dataset the card opens on (an upload's "Replay this")."""
     from app.core import custom_retro as CX
     out = []
     try:
@@ -728,14 +934,19 @@ def retro_context() -> dict:
                          "rels": {m: v for m, v in rels.items()
                                   if v is not None}})
         dates = ds.forecast_dates()
+        w0, w1 = replay_window(dates)
         out.append({"id": ds.id, "name": ds.name, "groups": ds.groups,
                     "vintage_true": ds.vintage_true, "pf": ds.pf_eligible,
                     "first": dates[0] if dates else "",
                     "last": dates[-1] if dates else "",
+                    "default_first": w0, "default_last": w1,
                     "dates": dates, "replays": reps})
     return {"dataset_replay": {"datasets": out,
                                "pf_state": _S()._pf_engine_state(),
-                               "running": dict(_REPLAY)}}
+                               "running": dict(_REPLAY),
+                               "selected": (selected if any(
+                                   d["id"] == selected for d in out)
+                                   else "")}}
 
 
 @router.post("/retro/dataset/run")

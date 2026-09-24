@@ -43,9 +43,10 @@ templates under app/ui/templates):
                       /api/retro/{s}/report_path           retro_season.html
   Forecast            POST /run (form and rerun entry to _run_all)
   Custom datasets     app/ui/datasets_ui.py's router: POST /data/datasets,
-                      /data/datasets/{id}/delete, /run/dataset,
-                      /retro/dataset/run; GET /retro/dataset/{id}/{stamp};
-                      Data, Forecast and /api/series take ?source=<id>
+                      /data/datasets/check, /data/datasets/{id}/delete,
+                      /run/dataset, /retro/dataset/run; GET
+                      /retro/dataset/{id}/{stamp}; Data, Forecast and
+                      /api/series take ?source=<id>, /retro ?dataset=<id>
   Startup warm        _start_background_warm() at import
 """
 from __future__ import annotations
@@ -1138,8 +1139,7 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
     ctx["vintage_rows"] = _vintage_rows(vs)
     # the "Your datasets" card (built here so /freshness keeps it)
     from app.ui import datasets_ui as _dsu
-    ctx.update({"datasets": _dsu.dataset_rows(), "upload": None, "ds": None,
-                "max_mb": _dsu.max_mb()})
+    ctx.update({"datasets": _dsu.dataset_rows(), "upload": None, "ds": None})
     if not vs:
         return ctx
     latest = vs[-1]
@@ -4539,7 +4539,7 @@ def _retro_national_name() -> str:
 
 
 @app.get("/retro", response_class=HTMLResponse)
-def retro_index(request: Request):
+def retro_index(request: Request, dataset: str = ""):
     from app.core import retro as _retro
     from app.core.retro import available_seasons, season_vintages
     seasons = []
@@ -4583,7 +4583,7 @@ def retro_index(request: Request):
     # the own-data replays: their own card, never beside the hub seasons
     from app.ui import datasets_ui as _dsu
     return templates.TemplateResponse(request, "retro.html",
-                                      {**_dsu.retro_context(),
+                                      {**_dsu.retro_context(dataset),
                                        "active": "Retrospective", "seasons": seasons,
                                        "state_names": _retro_state_names(),
                                        "default_width": DEFAULT_SHARD_WIDTH,
@@ -5881,6 +5881,8 @@ def run_models(request: Request,
 # === Custom datasets: upload, browse, forecast, replay (app/ui/datasets_ui.py) ===
 from app.ui import datasets_ui as _datasets_ui              # noqa: E402
 app.include_router(_datasets_ui.router)
+# the upload box's size limit, wherever the box is placed
+templates.env.globals["dataset_upload_mb"] = _datasets_ui.max_mb
 
 
 # === Startup warm (LAST, so every function it reaches is defined) ===
