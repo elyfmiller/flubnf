@@ -1234,3 +1234,6 @@ details.sbfill .row > span.sbsetpop{flex:1 0 100%;flex-direction:row;align-items
 .sbfill .row .sbsetpop .lblrow{margin:.3rem 0 0;min-height:0}
 .sbsetpop .ck{margin:0}
 details.sbfill .row > .sbsetpop + button{align-self:flex-start}
+/* run settings: a long value (a location list) wraps inside the card
+   instead of widening the page at 700px or larger text */
+.runsettings .kv{grid-template-columns:max-content minmax(0,max-content)}
