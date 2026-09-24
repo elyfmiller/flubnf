@@ -483,7 +483,7 @@ def test_the_page_shows_the_pairwise_value_and_never_the_placement():
                  "47 FluSight teams"):
         assert gone not in flat, gone
     # and the page says WHY, rather than leaving a silent gap
-    assert "is not restated here" in flat
+    assert "placement is not shown" in flat
 
     # the rank is still computed: withdrawing the display must not have
     # quietly deleted the machinery that would restore it
@@ -538,7 +538,7 @@ def test_the_unavailable_page_states_the_reason_and_offers_no_numbers():
     assert "no hub field data cached" in flat
     # the ratio-of-sums view is OFFERED, and named as a different quantity
     assert "conv=ratio_of_sums" in html
-    assert "not a substitute for the figure missing here" in flat
+    assert "but it is a different quantity" in flat
     # and it keeps the reader's place: the same week the convention switch
     # itself carries, not a silent jump back to the last week
     assert "conv=ratio_of_sums&amp;week=2098-11-07" in html

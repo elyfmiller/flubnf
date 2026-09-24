@@ -56,23 +56,16 @@ SHORT_LABELS = {
 #: THE provenance note printed beside every US number
 NOTES = {
     FITTED: (
-        "US (fitted) is a national forecast in its own right: the run fitted "
-        "the US series as its own location, with the same members, the same "
-        "particles, and the same replicates as every state, and scored it "
-        "against the US truth row."),
+        "US (fitted) is a national forecast in its own right, fitted as its "
+        "own location with the same settings as every state."),
     AGGREGATED: (
-        "US (aggregated) is not a fitted national forecast: the scores for "
-        "this season carry no fitted national cell, so each member is "
-        "aggregated from its state forecasts "
-        "with states treated as independent (PF by summing its per-state "
-        "sample draws, aligned by draw index; the analogue by drawing from "
-        "each state's quantile curve independently and summing). Scored "
-        "against the US truth row with the same relWIS machinery as every "
-        "state."),
+        "US (aggregated) is not a fitted national forecast: each member's "
+        "state forecasts are summed (PF sample draws aligned by draw index, "
+        "the Groundhog's quantile curves sampled independently), states "
+        "treated as independent."),
     OFFICIALS_ONLY: (
-        "No national forecast of ours exists for this season: the run fitted "
-        "states only and the sum-of-states aggregate could not be "
-        "constructed, so the US view carries the CDC comparators alone."),
+        "No national forecast of ours exists for this season, so the US "
+        "view carries the CDC comparators alone."),
 }
 
 #: the word flagging a non-preferred answer
@@ -81,11 +74,9 @@ FALLBACK_WORD = "fallback"
 #: the fallback states in one clause
 FALLBACK_NOTES = {
     AGGREGATED: ("fallback: the scores for this season hold no scored US "
-                 "fit, so the figure shown is aggregated from state "
-                 "forecasts"),
-    OFFICIALS_ONLY: ("fallback: no scored US fit and no sum-of-states "
-                     "aggregate exist for this season, so only the CDC "
-                     "comparators are shown"),
+                 "fit, so it is aggregated from state forecasts"),
+    OFFICIALS_ONLY: ("fallback: no US fit or aggregate this season, so only "
+                     "the CDC comparators are shown"),
 }
 
 
@@ -98,10 +89,9 @@ POOLED_INCLUDES_US = False
 
 #: what every surface prints about the pooled figure's scope
 POOLED_SCOPE_NOTE = (
-    "Pooled relWIS covers the fitted jurisdictions only (50 states, DC, and "
-    "Puerto Rico). The US national cell is reported separately and never "
-    "joins the pooled average: the national series is the sum of those same "
-    "jurisdictions, so pooling it in would count them twice.")
+    "Pooled relWIS covers the fitted states, DC and Puerto Rico; the US "
+    "national cell, their sum, is scored apart and never joins the pooled "
+    "average.")
 
 
 # ---------------------------------------------------------- identification
