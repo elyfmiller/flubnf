@@ -167,17 +167,47 @@ def test_an_unmatched_column_asks_for_a_mapping_instead_of_an_error():
     assert D.list_datasets()[0].meta["columns"]["value"] == "amount"
 
 
-def test_a_file_with_several_targets_is_checked_on_its_first():
+def test_a_file_with_several_targets_waits_for_a_choice():
+    """Nothing is picked for the user: the picker offers every target,
+    preselects none, and the preview (with its store buttons) comes only
+    once one is chosen."""
     raw = (b"target_end_date,target,location,observation\n"
-           b"2024-08-03,a,01,1\n2024-08-10,a,01,2\n2024-08-03,b,01,3\n")
+           b"2024-08-03,wk inc flu hosp,01,1\n"
+           b"2024-08-10,wk inc flu hosp,01,2\n"
+           b"2024-08-03,wk inc covid hosp,01,3\n")
     j = check(raw).json()
-    assert j["ok"] and j["target"] == "a" and j["targets"] == ["a", "b"]
-    assert '<select name="target" id="dsup-data-target" data-recheck>' \
-        in j["html"]
-    j = check(raw, target="b").json()
-    assert j["ok"] and "<option selected>b</option>" in j["html"]
+    assert not j["ok"] and j["target"] == ""
+    assert j["targets"] == ["wk inc covid hosp", "wk inc flu hosp"]
+    html = j["html"]
+    assert '<select name="target" id="dsup-data-target" data-recheck>' in html
+    assert '<option value="" selected>choose…</option>' in html
+    assert " selected>wk inc" not in html
+    assert "Nothing was stored." not in html and "Ready to use." not in html
+    assert 'value="forecast"' not in html
+    j = check(raw, target="wk inc flu hosp").json()
+    assert j["ok"] and "<option selected>wk inc flu hosp</option>" in j["html"]
+    assert "Ready to use." in j["html"]
     single = b"target_end_date,target,location,observation\n2024-08-03,a,01,1\n"
     assert 'name="target"' not in check(single).json()["html"]
+    # storing without a choice stores nothing and asks again
+    r = store(raw, next="forecast")
+    assert r.status_code == 422 and D.list_datasets() == []
+    assert '<option value="" selected>choose…</option>' in r.text
+
+
+def test_blank_target_cells_are_a_problem_not_dropped_rows():
+    """Rows with a blank target once vanished behind a lone named target
+    (no picker, 'Ready to use'), then failed to store."""
+    raw = (b"target_end_date,target,location,observation\n"
+           b"2024-01-06,,US,5\n2024-01-06,wk inc flu hosp,US,5\n"
+           b"2024-01-13,wk inc flu hosp,US,6\n")
+    j = check(raw).json()
+    assert not j["ok"] and "Ready to use." not in j["html"]
+    assert ("The &#39;target&#39; column is blank on 1 row(s) (row 2; e.g., "
+            "row 2), while the others name wk inc flu hosp.") in j["html"]
+    assert 'name="target"' not in j["html"]
+    rep = D.validate(raw, target="wk inc flu hosp")
+    assert rep.codes == ["target_blank"]
 
 
 def test_the_check_reports_notices_and_the_declared_kind():

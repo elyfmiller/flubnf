@@ -33,8 +33,10 @@
 {% endif %}
 {% if chk.targets %}
 <div class="dstarget">{{ tips.label("Target", fid ~ "-target", "This file holds several targets; a dataset holds one.", for_=fid ~ "-target") }}
- <select name="target" id="{{ fid }}-target" data-recheck>{% for t in chk.targets %}
-  <option{% if t == chk.target %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></div>
+ <select name="target" id="{{ fid }}-target" data-recheck>
+  <option value=""{% if not chk.target %} selected{% endif %}>choose…</option>{% for t in chk.targets %}
+  <option{% if t == chk.target %} selected{% endif %}>{{ t }}</option>{% endfor %}</select>
+ {% if not chk.target %}<p class="hint">Choose the target to check and store.</p>{% endif %}</div>
 {% endif %}
 {% if chk.notices %}
 <ul class="dsnotes">{% for n in chk.notices %}<li>{{ n }}</li>{% endfor %}</ul>

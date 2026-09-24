@@ -218,7 +218,7 @@ class Problem:
 PROBLEM_KINDS = (
     ("File", ("empty", "encoding", "encoding_mixed", "csv", "limit_bytes",
               "limit_rows", "limit_groups", "kind_invalid",
-              "target_required", "target_unknown")),
+              "target_required", "target_unknown", "target_blank")),
     ("Columns", ("missing_columns", "ambiguous_columns", "column_unknown",
                  "duplicate_columns", "ragged", "extra_fields")),
     ("Dates", ("date_parse", "date_day_first", "weekday", "weekday_end",
@@ -997,17 +997,27 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
     if "target" in cols:
         targets = sorted({r["target"].strip() for _, r in raw_rows})
         rep.targets = [t for t in targets if t]
+        blank = [ln for ln, r in raw_rows if not r["target"].strip()]
+        if blank and rep.targets:
+            # which target such a row belongs to, the file does not say
+            rep.add("target_blank", f"The '{cols['target']}' column is "
+                    f"blank on {len(blank)} row(s) ({_rows(blank)}; e.g., "
+                    f"row {blank[0]}), while the others name "
+                    f"{_examples(rep.targets)}. Give every row its target, "
+                    "or delete those rows.", blank)
+            raw_rows = [(ln, r) for ln, r in raw_rows if r["target"].strip()]
         if target is not None:
-            if target not in targets:
+            if target not in rep.targets:
                 rep.add("target_unknown", f"Target {target!r} is not in the "
-                        f"file. Targets found: {_examples(targets)}.")
+                        f"file. Targets found: "
+                        f"{_examples(rep.targets) or '(none)'}.")
                 return
             raw_rows = [(ln, r) for ln, r in raw_rows
                         if r["target"].strip() == target]
             tgt_used = target
-        elif len(targets) > 1:
-            rep.add("target_required", f"The file holds {len(targets)} "
-                    f"targets ({', '.join(targets)}); choose one.")
+        elif len(rep.targets) > 1:
+            rep.add("target_required", f"The file holds {len(rep.targets)} "
+                    f"targets ({', '.join(rep.targets)}); choose one.")
             return
         else:
             tgt_used = targets[0] if targets else None

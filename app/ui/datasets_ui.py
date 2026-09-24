@@ -303,9 +303,11 @@ def check_view(rep, *, kind: str = "", columns=None) -> dict:
     """The result box's context (templates/_dataset_check.html) for one
     report: every problem grouped by kind, a column mapping when that is
     what is missing (instead of an error), the target picker when a file
-    holds several, the notices, and a preview when it is valid."""
+    holds several (a choice to make, not a problem; nothing is picked for
+    the user), the notices, and a preview when it is valid."""
     D = _D()
     columns = columns or {}
+    choose = len(rep.targets) > 1 and "target_required" in rep.codes
     mapping = None
     if rep.headers and (rep.needs_mapping or columns):
         labels = {"date": "Date", "group": "Group", "value": "Value",
@@ -320,7 +322,9 @@ def check_view(rep, *, kind: str = "", columns=None) -> dict:
                       for r in D.ROLES]}
     problems = [] if rep.needs_mapping else [
         (k, [{"message": str(p), "rows": list(p.rows)} for p in ps])
-        for k, ps in D.problem_groups(rep.problems)]
+        for k, ps in D.problem_groups(
+            [p for p in rep.problems
+             if not (choose and p.code == "target_required")])]
     return {"ok": rep.ok, "problems": problems,
             "n": sum(len(ps) for _, ps in problems),
             "mapping": mapping, "notices": list(rep.warnings),
@@ -353,8 +357,8 @@ def _kind_field(form):
 async def check(request: Request):
     """Check one upload and store nothing: JSON with the result box's HTML
     and what the form needs (the inferred kind, the targets, whether a
-    column mapping is asked for). A file with several targets is checked
-    for its first, with the picker shown."""
+    column mapping is asked for). A file with several targets shows the
+    picker and no preview until one is chosen."""
     refused = local_only(request)
     if refused:
         return refused
@@ -389,14 +393,11 @@ async def check(request: Request):
     target = str(form.get("target") or "").strip() or None
     columns = _form_columns(form)
     try:
-        def run(t):
+        def run():
             f.file.seek(0)
-            return D.validate(f.file, kind=kind or None, target=t,
+            return D.validate(f.file, kind=kind or None, target=target,
                               columns=columns)
-        rep = await run_in_threadpool(run, target)
-        if target is None and "target_required" in rep.codes and rep.targets:
-            target = rep.targets[0]
-            rep = await run_in_threadpool(run, target)
+        rep = await run_in_threadpool(run)
     finally:
         try:
             await f.close()
