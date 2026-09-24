@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% block title %}FluBNF · Replay of {{ ds.name }}{% endblock %}
-{% block head %}<script src="/static/plotly.min.js"></script>{% endblock %}
+{% block head %}<script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>{% endblock %}
 {% block content %}{% import "_tips.html" as tips %}
 <h1>Replay: {{ ds.name }}
  <span class="pill">your data</span>
@@ -110,7 +110,7 @@
        line:{width:0}, name:'50% interval'},
       {x:x, y:pts.map(p=>p[1]), mode:'lines+markers', name:'median',
        line:{color:mc, width:2}, marker:{size:4}}];
-    Plotly.react('rd-plot', traces, {
+    FluCharts.react('rd-plot', traces, {
       title:{text:g+' · '+(NAMES[M]||M)+' · horizon {{ h }}', font:{size:Math.round(fs*.95)}},
       height:400, margin:{l:8,r:8,t:Math.round(fs*2.2),b:8},
       paper_bgcolor:surf, plot_bgcolor:surf,

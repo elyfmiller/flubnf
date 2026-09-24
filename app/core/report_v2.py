@@ -44,6 +44,15 @@ NAU_CSS = Path(__file__).resolve().parents[1] / "ui" / "static" / "nau.css"
 #: the shared player core carries the one member-color map (marked JSON)
 PLAYER_SRC = Path(__file__).resolve().parents[1] / "ui" / "static" \
     / "player.js"
+#: the one date-axis tick policy and chart config (FluCharts), inlined into
+#: both reports so their charts tick on the data's Saturdays like the console
+CHARTS_SRC = Path(__file__).resolve().parents[1] / "ui" / "static" \
+    / "charts.js"
+
+
+def charts_js() -> str:
+    """charts.js verbatim (FluCharts), for inlining into a report."""
+    return CHARTS_SRC.read_text(encoding="utf-8")
 
 #: equal to the player's map; used only if its marked JSON cannot be read
 _MEMBER_COLOR_FALLBACK = {"ensemble": "#34C0F0", "pf": "#1979FF",
@@ -119,6 +128,8 @@ def toggle_models(available) -> list:
 PLOTLY_CONFIG = {"scrollZoom": True, "doubleClick": "reset+autosize",
                  "responsive": True,
                  "displayModeBar": "hover", "displaylogo": False,
+                 # Plotly's legend hint covered nearby controls
+                 "showTips": False,
                  "modeBarButtonsToRemove": ["lasso2d", "select2d",
                                             "autoScale2d"]}
 
@@ -209,6 +220,9 @@ def fan_figure_from_quantiles(observed_times, observed, forecast_times,
                  for t in forecast_times]
         fig.add_scatter(x=list(forecast_times) + list(forecast_times)[::-1],
                         y=upper + lower[::-1], fill="toself", fillcolor=color,
+                        # a band is its fill: Plotly's default for a short
+                        # trace adds markers in its own palette at the edges
+                        mode="lines",
                         line=dict(width=0), hoverinfo="skip",
                         name=band_name, showlegend=True)
     med = [_q_at(quantiles_by_time[str(t)], 0.5) for t in forecast_times]
@@ -356,6 +370,14 @@ def _retint_js() -> str:
   addEventListener('themechange',pass);
 })();
 </script>"""
+
+
+def _week_ticks_js() -> str:
+    """FluCharts inlined, then every baked figure adopted: Saturday week
+    ticks, refit after zoom, pan, resize and each retint redraw."""
+    return ("<script>" + charts_js() + "</script>\n"
+            "<script>if(window.FluCharts&&window.Plotly)"
+            "FluCharts.adoptAll();</script>")
 
 
 def page_header() -> str:
@@ -691,6 +713,7 @@ document.getElementById('natbtn').addEventListener('click', () => show('st-US'))
 }})();
 </script>
 {_retint_js() if plotly_js else ""}
+{_week_ticks_js() if plotly_js else ""}
 {footer}
 </main></body></html>"""
     out_path = Path(out_path)
@@ -764,12 +787,15 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
 
 def builder_sources_mtime() -> float:
     """Newest mtime of the weekly report's builder sources (this module,
-    scoring, usmap, nau.css): a stored report.html older than this is stale."""
+    scoring, usmap, nau.css,
+    charts.js): a stored report.html older than this is stale."""
     times = [0.0]
     for mod in ("report_v2", "scoring", "usmap"):
         p = Path(__file__).with_name(mod + ".py")
         if p.is_file():
             times.append(p.stat().st_mtime)
+    if CHARTS_SRC.is_file():
+        times.append(CHARTS_SRC.stat().st_mtime)
     if NAU_CSS.is_file():
         times.append(NAU_CSS.stat().st_mtime)
     return max(times)

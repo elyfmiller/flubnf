@@ -36,12 +36,13 @@ def test_pager_controls_are_buttons_never_fragment_links():
 
 
 def test_plots_repaint_in_place_and_reserve_their_height():
-    # Plotly.react repaints the persistent div; newPlot (purge + rebuild)
+    # FluCharts.react (charts.js: Plotly.react plus the week-tick policy)
+    # repaints the persistent div; newPlot (purge + rebuild)
     # is gone from both fan surfaces, and each plot div reserves the
     # chart's height so an in-flight fetch can never collapse the page
     for t, h in ((FORECAST_T, "min-height:400px"), (MODEL_T, "min-height:420px")):
         assert "Plotly.newPlot" not in t
-        assert "Plotly.react" in t
+        assert "FluCharts.react" in t
         assert h in t
 
 

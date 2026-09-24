@@ -65,7 +65,7 @@
     if(af.length) traces.push({x: af.map(p=>p[0]), y: af.map(p=>p[1]),
       mode:'lines+markers', name:'later data', line:{color:css('--ink'), dash:'dot', width:1.4},
       marker:{size:4}});
-    Plotly.react('dsf-plot', traces, {
+    FluCharts.react('dsf-plot', traces, {
       title:{text: loc+' · '+(F.names[M]||M), font:{size:Math.round(fs*.95)}},
       height:380, margin:{l:8,r:8,t:Math.round(fs*2.2),b:8},
       paper_bgcolor:surf, plot_bgcolor:surf,
