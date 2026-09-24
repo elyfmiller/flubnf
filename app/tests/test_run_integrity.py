@@ -279,3 +279,31 @@ def test_no_underreporting_headsup_on_run(tmp_path, monkeypatch):
     flash = ui_state._status.get("flash") or ""
     assert "under-reported" not in flash and "Heads up" not in flash
     assert not any("same-day" in m for m in ui_state._status["log"])
+
+
+def test_the_run_page_finds_its_row_however_many_runs_followed(tmp_path, monkeypatch):
+    """The run page, its re-run and its data line read the run's own ledger
+    row, not a window of the newest rows (an old run lost its status,
+    settings and build once 200 runs followed it)."""
+    import json as _json
+    from app.core import runs as runs_mod
+    from app.core.runs import Ledger, RunSpec
+    from app.ui import server as srv_
+    from fastapi.testclient import TestClient
+    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path / "state")
+    led = Ledger()
+    spec = RunSpec(engine="analogue", forecast_date="2098-01-03",
+                   locations=["Ohio"])
+    old = led.open_run(spec, Path("pending"), {})
+    led.close_run(old, "error", {"error": "the old run's own error"})
+    led._db.executemany(
+        "INSERT INTO runs (run_id, created_utc, spec_json, status, "
+        "outcome_json) VALUES (?,?,?,?,?)",
+        [(f"later-{i}", 4e9 + i, spec.to_json(), "ok", "{}")
+         for i in range(250)])
+    led._db.commit()
+    assert all(r["run_id"] != old for r in led.rows(200))
+    assert led.row(old)["status"] == "error" and led.row("nope") is None
+    page = TestClient(srv_.app).get(f"/runs/{old}").text
+    assert "the old run&#39;s own error" in page or "the old run's own error" in page
+    assert _json.loads(led.row(old)["spec"])["forecast_date"] == "2098-01-03"

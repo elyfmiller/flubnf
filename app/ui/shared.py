@@ -18,7 +18,7 @@ from app.core import ttlcache
 from app.ui.state import _sandbox_status, _status
 
 
-#: Hostnames a state-changing request may name. Host/Origin are what a
+#: Hostnames any request may name (POST, and since round 7 GET too). Host/Origin are what a
 #: cross-site form-POST or DNS-rebinding page cannot forge. "testserver" is
 #: Starlette's TestClient (no dot, so never a public DNS name).
 _LOCAL_HOSTNAMES = {"localhost", "127.0.0.1", "::1", "testserver"}
@@ -39,15 +39,18 @@ def _authority_hostname(authority: str) -> str:
 
 # registered first by server.py (so the sandbox engine guard wraps it)
 async def _same_host_guard(request: Request, call_next):
-    """CSRF guard for a cookie-less loopback tool: POST/PUT/DELETE must carry
-    a localhost Host and, if present, a localhost Origin. GET stays open
-    (reports, pywebview, polls); every mutating control is a POST."""
+    """DNS-rebinding and CSRF guard for a cookie-less loopback tool. Every
+    request, GET included, must carry a localhost Host (a rebinding page
+    names its own hostname, so it cannot read run pages or state files);
+    POST/PUT/DELETE must also carry a localhost Origin when one is sent.
+    The launcher, the window and the tests all address localhost or
+    127.0.0.1."""
+    if (_authority_hostname(request.headers.get("host", ""))
+            not in _LOCAL_HOSTNAMES):
+        return PlainTextResponse(
+            "Refused: the Host header does not name localhost.\n",
+            status_code=403)
     if request.method in ("POST", "PUT", "DELETE"):
-        if (_authority_hostname(request.headers.get("host", ""))
-                not in _LOCAL_HOSTNAMES):
-            return PlainTextResponse(
-                "Refused: the Host header does not name localhost.\n",
-                status_code=403)
         origin = request.headers.get("origin")
         if (origin is not None
                 and _authority_hostname(origin) not in _LOCAL_HOSTNAMES):
@@ -104,6 +107,23 @@ def _phase(msg):
     _status["phase"] = msg
 
 
+def _name_workroot(workroot: Path, running: str) -> bool:
+    """A console run worker publishes its claim and workroot together, under
+    the engine lock, once the workroot is leased. True when Stop was pressed
+    while the run was still "starting" (no workroot to flag yet): the STOP
+    flag is written now and the worker ends the run as stopped before any
+    fit. /run/stop reads the workroot under the same lock, so a press is
+    never lost between the two."""
+    from app.ui.state import _engine_lock
+    with _engine_lock:
+        _status["running"] = running
+        _status["workroot"] = str(workroot)
+        stop = bool(_status.pop("stop_requested", False))
+    if stop:
+        (Path(workroot) / "STOP").touch()
+    return stop
+
+
 def _flash(msg: str) -> None:
     """Notice for the next page the user sees (also appended to the log).
     Unconsumed messages join rather than overwrite."""
@@ -113,10 +133,15 @@ def _flash(msg: str) -> None:
 
 
 def _back(request: Request, fallback: str) -> RedirectResponse:
-    """Redirect back to the posting page (validated local path)."""
+    """Redirect back to the posting page (validated local path), query
+    string kept so a refusal from /forecast?source=... lands on that view."""
     from urllib.parse import urlsplit
-    path = urlsplit(request.headers.get("referer", "")).path
-    ok = path.startswith("/") and not path.startswith("//")
+    parts = urlsplit(request.headers.get("referer", ""))
+    path = parts.path
+    ok = (path.startswith("/") and not path.startswith("//")
+          and "\\" not in path)
+    if ok and parts.query:
+        path += "?" + parts.query
     return RedirectResponse(path if ok else fallback, status_code=303)
 
 

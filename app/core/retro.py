@@ -293,8 +293,35 @@ ACTIVE_STATUSES = ("running", "paused", "stopping")
 _META_LOCK = threading.RLock()
 
 
-class KnobsMismatch(ValueError):
+class ResumeMismatch(ValueError):
+    """A resume asked for something other than what the tree was built
+    with; completed weeks would be pooled with differently made ones."""
+
+
+class KnobsMismatch(ResumeMismatch):
     """A resume asked for other model settings than the tree was built with."""
+
+
+class LocationsMismatch(ResumeMismatch):
+    """A resume asked for another location list than the tree was built
+    with (a scope change, or the national row switched on or off)."""
+
+
+def location_scope(locations) -> set:
+    """A location list as a comparable set, every national spelling one."""
+    from app.core.us_national import is_us
+    return {"US" if is_us(l) else str(l) for l in (locations or [])}
+
+
+def location_scope_change(prior_locations, locations) -> str | None:
+    """None when a resume over `locations` keeps the recorded list (or none
+    was recorded); otherwise the plain-words difference, for the console
+    and the CLI alike."""
+    had, want = location_scope(prior_locations), location_scope(locations)
+    if not had or had == want:
+        return None
+    return (f"replayed over {len(had)} location(s); this run asks for "
+            f"{len(want)} with a different list")
 
 
 class SeasonStopped(Exception):
@@ -485,13 +512,17 @@ def settings_summary(meta: dict) -> list:
     where = locations_phrase(locs) if locs else SCOPE_LABELS.get(scope, scope)
     if scope == "custom" and len(locs) > LOCATION_LIST_LIMIT:
         where = f"{SCOPE_LABELS['custom']}, {where}"
+    # particles, replicates and shard width describe the filter: a
+    # Groundhog-only replay records the form's defaults, but no filter ran,
+    # so they are omitted
+    pf = pf_ran(s.get("engine"))
     pairs = [("season", str(s.get("season") or (meta or {}).get("season") or "")),
              ("locations", where),
              ("particles", f"{int(s.get('particles') or 0):,}"
-              if s.get("particles") else ""),
-             ("replicates", str(s.get("replicates") or "")),
-             ("shard width", str(s.get("width") or "")),
-             ("engine preset", str(s.get("engine") or ""))]
+              if pf and s.get("particles") else ""),
+             ("replicates", str(s.get("replicates") or "") if pf else ""),
+             ("shard width", str(s.get("width") or "") if pf else ""),
+             ("engine", engine_label(s["engine"]) if s.get("engine") else "")]
     # only a record made through the knob channel says "model settings"
     if isinstance(s.get("knobs"), dict) and s["knobs"]:
         from app.core import knobs as _knobs
@@ -885,6 +916,23 @@ def _run_round(root: Path, wd: Path, pending: list, width: int) -> None:
 #: Groundhog alone (minutes, no engine install)
 ENGINES = ("pf", "analogue")
 
+#: the presets in plain words, as the form, the flash lines and every Run
+#: settings block (console and reports) name them
+ENGINE_LABELS = {"pf": "Oracle SIHRS and the Groundhog",
+                 "analogue": "Groundhog only"}
+
+
+def engine_label(engine) -> str:
+    """A preset's plain name; an unknown key reads as itself."""
+    return ENGINE_LABELS.get(str(engine), str(engine))
+
+
+def pf_ran(engine) -> bool:
+    """False only for the Groundhog-only preset: no particle filter, so no
+    particle or replicate count describes the replay. A record without an
+    engine predates the preset and ran the filter."""
+    return str(engine or "pf") != "analogue"
+
 
 def run_week(root: Path, season: str, asof: str, locations: list,
              replicates: int = 3, particles: int = 10_000,
@@ -1073,6 +1121,14 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
                 f"model settings {_knobs.label(_knobs.from_record(had))}; "
                 f"this run asks for {_knobs.label(_knobs.from_record(want))}."
                 " Archive or discard the existing results to change them.")
+        # completed weeks are skipped on resume, so another location list
+        # would pool weeks fitted over different scopes under one record
+        change = location_scope_change(prior.get("locations"), locations)
+        if change:
+            raise LocationsMismatch(
+                f"{season} at {root} has completed weeks {change}. "
+                "Resuming would mix two location scopes in one season. "
+                "Archive or discard the existing results to change it.")
         if prior and "knobs" not in prior:
             # a tree from before the registry resumed as it was: never
             # reclassified as modified by the resume

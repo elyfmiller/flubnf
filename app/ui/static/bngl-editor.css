@@ -50,7 +50,9 @@
 .ce-r{color:var(--accent-ink);font-weight:600}
 .ce-f{color:var(--ok);font-weight:600}
 .ce-fn{color:var(--ink);font-weight:600}
-.ce-n{color:var(--slate)}
+/* numbers: the slate data colour pulled toward the ink, so they keep
+   4.5:1 on the light and paper editor background (plain slate is 2.8:1) */
+.ce-n{color:color-mix(in srgb,var(--slate) 55%,var(--ink))}
 .ce-key{color:var(--accent-ink)}
 .ce-v{color:var(--accent-ink);font-weight:600}
 .ce-brk{background:color-mix(in srgb,var(--accent-ink) 25%,transparent);

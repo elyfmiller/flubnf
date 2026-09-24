@@ -176,8 +176,27 @@ def spec_mode(spec) -> str:
     return "vintage" if str(extra.get("mode") or "") == "vintage" else "realtime"
 
 
+#: (forecast date, mode) -> (path, kind) a console run pinned for its whole
+#: length (one run at a time holds the engine): every step of the run reads
+#: the same bytes even if Update data rewrites the hub mid-run
+_PINNED: dict = {}
+
+
+def pin_source(spec, path, kind: str) -> None:
+    _PINNED[(str(spec.forecast_date), spec_mode(spec))] = (Path(path), kind)
+
+
+def unpin_source(spec) -> None:
+    _PINNED.pop((str(spec.forecast_date), spec_mode(spec)), None)
+
+
 def spec_source(spec, asof: Optional[str] = None, *, archive=None) -> tuple:
-    """observed_source for a run spec (its forecast date by default)."""
+    """observed_source for a run spec (its forecast date by default); the
+    run's pinned copy while one is pinned."""
+    if asof is None or str(asof) == str(spec.forecast_date):
+        hit = _PINNED.get((str(spec.forecast_date), spec_mode(spec)))
+        if hit is not None:
+            return hit
     return observed_source(asof or spec.forecast_date, spec_mode(spec),
                            archive=archive)
 
@@ -320,11 +339,40 @@ def check_freshness(fetch: bool = True) -> Freshness:
     return Freshness(local_latest, remote_latest, behind, is_fresh, detail)
 
 
+def _hub_not_own_repo():
+    """None when HUB is the top of its own git repository; otherwise why
+    not, in plain words."""
+    what = f"Not pulled: the hub folder {HUB} "
+    try:
+        r = subprocess.run(["git", "-C", str(HUB), "rev-parse",
+                            "--show-toplevel"],
+                           capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return what + f"could not be checked with git ({type(e).__name__})."
+    top = (r.stdout or "").strip()
+    if r.returncode != 0 or not top:
+        return what + "is not a git clone of the FluSight hub."
+    try:
+        same = Path(top).resolve() == Path(HUB).resolve()
+    except OSError:
+        same = False
+    if not same:
+        return (what + f"is inside another git repository ({top}), not a "
+                "clone of its own, so pulling would update that one.")
+    return None
+
+
 def pull_hub() -> tuple:
     """Explicit update of the hub checkout (the button's second step).
 
     Returns (ok, message); ok is git's exit code, because the text alone
     cannot say (a fatal error and a fast-forward summary are both one line)."""
+    # the hub folder must be the top of its own clone: a missing or plain
+    # folder inside another repository (this app's, say) would otherwise
+    # pull THAT repository
+    refusal = _hub_not_own_repo()
+    if refusal:
+        return False, refusal
     # self-heal older sparse clones: relWIS needs FluSight-baseline's
     # submitted files, and the player's comparison needs FluSight-ensemble's
     for sub in ("model-output/FluSight-baseline",

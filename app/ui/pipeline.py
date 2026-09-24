@@ -11,6 +11,7 @@ the dataset workers) and pipeline._pf_engine_state at call time.
 from __future__ import annotations
 
 import html as _htmlmod
+import shutil
 import sys
 from pathlib import Path
 
@@ -18,7 +19,7 @@ from app.core.runs import (Ledger, RunSpec, lease_workroot, settings_html,
                            spec_settings, version_pairs)
 from app.ui import state, versions
 from app.ui.forms import _knobs
-from app.ui.shared import _invalidate_scans, _phase
+from app.ui.shared import _invalidate_scans, _name_workroot, _phase
 from app.ui.state import _status
 from app.ui.versions import RUNNING_SHA, VERSIONS
 
@@ -261,9 +262,10 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
         obs_pairs = (obs.get(loc) or [])[-12:]
         o_t = [d for d, _ in obs_pairs]
         o_v = [v for _, v in obs_pairs]
-        _base = (_dd.fromisoformat(o_t[-1]) if o_t
-                 else _dd.fromisoformat(spec.forecast_date))
-        # canonical horizons: hub label h is h+1 weeks past the anchor
+        # canonical horizons are AS-OF relative: hub label h is h+1 weeks
+        # past the as-of week (the files' target_end_date), whatever the
+        # newest observed week (an unreported or trimmed week moves it back)
+        _base = _dd.fromisoformat(spec.forecast_date)
         f_t = [(_base + _tdd(days=7 * (h + 1))).isoformat()
                for h in (0, 1, 2, 3)]
         samples_h = {f_t[h]: s[str(h)] for h in (0, 1, 2, 3)}
@@ -301,6 +303,9 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
               # v4: states this run covered (reporting gap vs never fitted)
               "fitted_fips": sorted({n2f.get(l) for l in spec.locations
                                      if n2f.get(l) and n2f.get(l) != "US"}),
+              # v5: whether US was among the run's locations
+              "national_in_run": any(n2f.get(l) == "US"
+                                     for l in spec.locations),
               # v3: every model's cards (the outlook toggle's data)
               "cards_by_model": cards_by_model,
               "national_map_cards": nat_cards,
@@ -338,11 +343,13 @@ def _pf_engine_state() -> str:
 
 def _optional_rows(spec, workroot: Path, pf_samples: dict, an_q: dict,
                    locs, n2f: dict, minus1: bool, pmf: bool,
-                   floor_kw: dict) -> tuple:
+                   floor_kw: dict, vintage=None) -> tuple:
     """(pf rows, Groundhog rows, {model: counts}) for a run with an
     optional-output knob on: each location's quantile rows (horizon -1
     included when `minus1`), then its rate-change pmf rows when `pmf`.
-    The rules per model are app/core/optional_outputs.py's."""
+    The rules per model are app/core/optional_outputs.py's. `vintage` is
+    the observed file the run read (the live target file on submission
+    day, before the dated archive copy exists); None = the dated one."""
     from app.core import optional_outputs as OPT
     from app.core.data import vintage_path
     from app.core.engines import analogue as an_engine
@@ -354,7 +361,8 @@ def _optional_rows(spec, workroot: Path, pf_samples: dict, an_q: dict,
     asof = spec.forecast_date
     hzs = HORIZONS_WITH_MINUS1 if minus1 else HORIZONS
     pops = dict(zip(locs.location_name, locs.population.astype(float)))
-    reported = OPT.reported_counts(vintage_path(asof), asof)
+    reported = OPT.reported_counts(
+        vintage if vintage is not None else vintage_path(asof), asof)
     pf_k = OPT.pf_weeks_dropped(workroot, spec, reported,
                                 {l: n2f[l] for l in pf_samples})
     counts = {"pf": {"m1": 0, "pmf": 0},
@@ -426,8 +434,9 @@ def _run_all(spec: RunSpec) -> None:
             versions._engine_versions_for_ledger("pf,analogue"))
         workroot = lease_workroot(run_id)
         ledger.set_workroot(run_id, workroot)   # the row must name the real one
-        _status["running"] = f"all:{run_id}"
-        _status["workroot"] = str(workroot)
+        if _name_workroot(workroot, f"all:{run_id}"):
+            # Stop pressed while starting: end as stopped, nothing fitted
+            raise pf_engine.RunStopped("stopped before fitting")
         # a run with modified model settings records them beside its files
         # (knobs.json; none for a shipped run, whose files are unchanged)
         _knobs_mod = _knobs.modified(spec)
@@ -450,6 +459,15 @@ def _run_all(spec: RunSpec) -> None:
         try:
             src_path, src_kind = _data.spec_source(spec)
             outcome["data_source"] = _data.source_record(src_path, src_kind)
+            # a copy in the workroot, pinned for the run: Update data may
+            # rewrite the hub while the filter runs, and every later step
+            # (Groundhog, Oracle step, optional rows) must read what the
+            # record names
+            _snap = workroot / "observed" / Path(src_path).name
+            _snap.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src_path, _snap)
+            src_path = _snap
+            _data.pin_source(spec, src_path, src_kind)
         except OSError as e:
             src_path, src_kind = None, None
             outcome["data_source_error"] = str(e)[:300]
@@ -504,6 +522,17 @@ def _run_all(spec: RunSpec) -> None:
             if _pf_notes:
                 outcome["pf_anchor_notes"] = _pf_notes
             pf_samples = pf_engine.collect(workroot)
+            # collect() records a torn trajectory in pf_status.json after
+            # execute's status was read: carry it into the run record, so
+            # a location missing from the file is named with its reason
+            try:
+                import json as _jcf
+                _st = _jcf.loads((workroot / "pf_status.json").read_text())
+                fails.update({k: str(v) for k, v in _st.items()
+                              if v != "ok" and k not in fails})
+                outcome["pf_failures"] = fails
+            except Exception:
+                pass
             # the Oracle step (app/core/oracle.py), before anything downstream
             # and before the floor. oracle = none is research: file withheld
             # in step 4, oracle.json records the step did not run.
@@ -636,7 +665,8 @@ def _run_all(spec: RunSpec) -> None:
         _pmf = _knobs.optional_output(spec, "output.rate_change_pmf")
         if _m1 or _pmf:
             pf_rows, an_rows, _opt_counts = _optional_rows(
-                spec, workroot, pf_samples, an_q, locs, n2f, _m1, _pmf, _fkw)
+                spec, workroot, pf_samples, an_q, locs, n2f, _m1, _pmf, _fkw,
+                vintage=src_path)
             from app.core.optional_outputs import notes as _opt_notes
             outcome["optional_rows"] = _opt_notes(
                 {hub_model_id(m) + _suffix: c
@@ -669,14 +699,23 @@ def _run_all(spec: RunSpec) -> None:
                 continue
             # contained per model: a writer refusal (rows the hub would
             # bounce) costs that file, never the run; recorded for the run page
+            # a location whose rows alone fail the checks is dropped and
+            # the file written with the rest (recorded by name, per file)
+            _dropped: dict = {}
             try:
                 subs[hub_model_id(model) + _suffix] = str(write_submission(
                     rows, model, spec.forecast_date,
                     workroot / "submission",
-                    **({"suffix": _suffix} if _suffix else {})))
+                    **({"suffix": _suffix} if _suffix else {}),
+                    dropped=_dropped))
             except Exception as e:
                 outcome.setdefault("submission_errors", {})[
                     hub_model_id(model) + _suffix] = str(e)[:400]
+            if _dropped:
+                _f2n = {f: n for n, f in n2f.items()}
+                outcome.setdefault("submission_dropped", {})[
+                    hub_model_id(model) + _suffix] = {
+                        _f2n.get(f, f): why for f, why in _dropped.items()}
         outcome["submissions"] = subs
         if "optional_rows" in outcome:
             outcome["optional_rows"] = {k: v for k, v in
@@ -774,8 +813,19 @@ def _run_all(spec: RunSpec) -> None:
             outcome["archived"] = (f"skipped: {'analogue' if spec.engine == 'analogue' else 'Oracle SIHRS'}"
                                    "-only run is not the date's forecast")
         else:
+            # no downgrade: only a complete run (finished ok, both files
+            # written whole, no submission error) replaces an archived one
+            _complete = (not fails
+                         and not outcome.get("submission_errors")
+                         and not outcome.get("submission_withheld")
+                         and not outcome.get("submission_dropped")
+                         and {hub_model_id("pf"), hub_model_id("analogue")}
+                         <= set(subs))
             try:
-                outcome["archived"] = _archive_run(workroot, spec.forecast_date)
+                outcome["archived"] = (
+                    _archive_run(workroot, spec.forecast_date) if _complete
+                    else _archive_run(workroot, spec.forecast_date,
+                                      complete=False))
             except Exception as e:
                 outcome["archive_error"] = str(e)[:200]
         # the pipeline completed: fit failures make it "partial" (the chips
@@ -806,6 +856,11 @@ def _run_all(spec: RunSpec) -> None:
             ledger.close_run(run_id, "error", {"error": str(e)[:300], **outcome})
             _status["log"].append(f"{run_id}: ERROR {e}")
     finally:
+        try:
+            from app.core import data as _data_fin
+            _data_fin.unpin_source(spec)
+        except Exception:
+            pass
         if guard is not None:
             try:
                 guard.terminate()
@@ -813,6 +868,7 @@ def _run_all(spec: RunSpec) -> None:
                 pass
         _invalidate_scans()
         _status["running"] = None
+        _status.pop("stop_requested", None)
         _status["phase"] = ""
         _status["settings"] = []
         _status["workroot"] = None
@@ -822,12 +878,20 @@ def _run_all(spec: RunSpec) -> None:
 
 
 # === Forecast archive ===
-def _archive_run(workroot: Path, forecast_date: str) -> str:
+def _archive_run(workroot: Path, forecast_date: str,
+                 complete: bool = True) -> str:
     """Copy the run's deliverables to app/state/archive/<forecast_date>/,
     replacing any earlier archive for the date. Built beside, then swapped:
-    a crash mid-copy costs this attempt, never the existing record."""
+    a crash mid-copy costs this attempt, never the existing record.
+
+    Never a downgrade (app/core/archive_record.py): an archive marked
+    submitted is never replaced, and an incomplete run (`complete` False)
+    does not replace an archive that holds a complete one. Then nothing
+    is copied, the run's files stay in its own folder, and the answer is
+    "kept: <why>". The archive records which run it holds (archive.json)."""
     import os
     import shutil
+    from app.core import archive_record as _ar
     from app.core.report_v2 import BUNDLE_NAME
     from app.core.runs import APP_STATE
     arch = APP_STATE / "archive" / forecast_date
@@ -841,6 +905,9 @@ def _archive_run(workroot: Path, forecast_date: str) -> str:
             shutil.rmtree(old)
         else:                   # crashed between the two renames below:
             os.replace(old, arch)   # the parked previous archive comes back
+    keep = _ar.keep_reason(arch, complete)
+    if keep:
+        return f"kept: {keep}"
     build.mkdir(parents=True)
     try:
         # the report travels with its inputs bundle (rebuildable)
@@ -850,6 +917,7 @@ def _archive_run(workroot: Path, forecast_date: str) -> str:
                 shutil.copy2(workroot / name, build / name)
         if (workroot / "submission").is_dir():
             shutil.copytree(workroot / "submission", build / "submission")
+        _ar.write_record(build, Path(workroot).name, complete)
     except BaseException:
         shutil.rmtree(build, ignore_errors=True)
         raise

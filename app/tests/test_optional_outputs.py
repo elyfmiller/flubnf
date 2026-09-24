@@ -313,6 +313,41 @@ def test_a_run_with_both_knobs_writes_what_the_hub_defines(pipeline_env):
         "horizon -1": len(names), "rate change": len(names)}
 
 
+def test_a_real_time_run_on_the_live_file_writes_the_same_rows(
+        pipeline_env, monkeypatch):
+    """Submission day: the hub's live target file holds the as-of week and
+    the dated archive copy does not exist yet (it is added by hand, days
+    later). The optional rows read the file the run read, so they are the
+    rows an archived run of the same data writes, rate change included."""
+    import app.core.data as core_data
+    import app.core.engines.analogue as an_engine
+    import app.core.oracle as oracle_mod
+    names = pipeline_env["names"]
+    _, archived = _default_run(names, knobs=ON)
+    got_archived = {m: _sha(p) for m, p in archived["submissions"].items()}
+
+    def _no_vintage(d):
+        raise FileNotFoundError(f"No vintage for {d}")
+    for mod in (core_data, an_engine, oracle_mod):
+        monkeypatch.setattr(mod, "vintage_path", _no_vintage)
+    monkeypatch.setattr(core_data, "live_path",
+                        lambda: pipeline_env["vintage"])
+    from app.core.runs import Ledger, RunSpec
+    from app.core import knobs as K
+    from app.ui import pipeline as P
+    from app.ui.routes import forecast as F
+    extra = F._run_extra(2, "realtime")
+    K.write_extra(ON, extra)
+    P._run_all(RunSpec(engine="all", forecast_date=ASOF, locations=names,
+                       replicates=1, extra=extra))
+    live = json.loads(next(iter(Ledger().rows(1))).get("outcome") or "{}")
+    assert live["data_source"]["kind"] == "live", live
+    assert not live.get("submission_errors"), live
+    assert live["optional_rows"] == archived["optional_rows"]
+    assert {m: _sha(p) for m, p in live["submissions"].items()} == \
+        got_archived
+
+
 def test_the_groundhog_forecasts_the_as_of_week_when_it_did_not_see_it(
         pipeline_env):
     """Same-day week treated as unreported: both anchors move a week back,

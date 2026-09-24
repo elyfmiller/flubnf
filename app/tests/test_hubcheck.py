@@ -237,6 +237,49 @@ def test_the_output_page_names_the_due_date(tmp_path):
     assert "closed" in _hub_status(str(p), dt.date(2026, 10, 8))["text"]
 
 
+@pytest.mark.parametrize("utc, text", [
+    # Wed 2026-10-07 22:59 EDT (UTC-4): still open
+    ("2026-10-08T02:59", "Due Wed 2026-10-07, 11 PM ET."),
+    # 23:00 EDT: closed, though it is still Wednesday in Arizona (20:00)
+    ("2026-10-08T03:00", "The window closed Wed 2026-10-07."),
+    # Wed 20:30 EDT is already Thursday in UTC: still open
+    ("2026-10-08T00:30", "Due Wed 2026-10-07, 11 PM ET."),
+    # Sat 2026-10-03 23:30 EDT is Sunday in UTC: the window opens Sunday ET
+    ("2026-10-04T03:30", "Due Sun Oct 04 to Wed Oct 07, 11 PM ET."),
+])
+def test_the_due_line_reads_the_clock_in_eastern_time(tmp_path, utc, text):
+    """The hub closes at 11 PM Eastern on the Wednesday: the line follows
+    that clock, whatever the machine's own time zone."""
+    import datetime as dt
+    from app.ui.routes.output import _hub_status
+    p, _ = _build(tmp_path)
+    now = dt.datetime.fromisoformat(utc).replace(tzinfo=dt.timezone.utc)
+    assert _hub_status(str(p), now=now)["text"] == (
+        f"Passes the hub's checks. {text}")
+
+
+@pytest.mark.parametrize("utc, et", [
+    ("2026-11-01T05:30", (2026, 11, 1, 1, 30)),    # 01:30 EDT, before the change
+    ("2026-11-01T06:30", (2026, 11, 1, 1, 30)),    # 01:30 EST, after it
+    ("2026-11-05T03:59", (2026, 11, 4, 22, 59)),   # the first EST deadline
+    ("2027-03-14T07:30", (2027, 3, 14, 3, 30)),    # spring forward
+])
+@pytest.mark.parametrize("tzdb", [True, False], ids=["zoneinfo", "us-rule"])
+def test_eastern_time_follows_daylight_saving(utc, et, tzdb, monkeypatch):
+    """Both paths: zoneinfo, and the US rule for a machine without a tz
+    database (a bare Windows Python)."""
+    import datetime as dt
+    import zoneinfo
+    from app.ui.routes.output import _eastern
+    if not tzdb:
+        def _missing(key):
+            raise zoneinfo.ZoneInfoNotFoundError(key)
+        monkeypatch.setattr(zoneinfo, "ZoneInfo", _missing)
+    now = dt.datetime.fromisoformat(utc).replace(tzinfo=dt.timezone.utc)
+    got = _eastern(now)
+    assert (got.year, got.month, got.day, got.hour, got.minute) == et
+
+
 # ------------------------------------------------ a real console run
 
 def _vintage_for(asof: str, tmp: Path) -> Path:

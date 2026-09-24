@@ -87,6 +87,21 @@ def test_build_path_writes_bundle_and_report(tmp_path):
     assert outcome["report"] == str(tmp_path / "report.html")
 
 
+def test_fans_sit_on_the_submitted_target_weeks(tmp_path):
+    """Horizons are as-of relative (the files' target_end_date is as-of +
+    7(h+1)), so a state whose newest observed week is older than the as-of
+    (an unreported week, or the same-day week trimmed) keeps its fan on
+    those weeks: here the last observation is 2097-12-27, the as-of
+    2098-01-03, and the four forecasts end 2098-01-10 to 2098-01-31."""
+    _synth_run(tmp_path)
+    bundle = json.loads((tmp_path / report_v2.BUNDLE_NAME).read_text())
+    for key in ("OH", "US"):
+        fan = bundle["details"][key]["fan"]
+        assert fan["observed_times"][-1] == "2097-12-27"
+        assert fan["forecast_times"] == ["2098-01-10", "2098-01-17",
+                                         "2098-01-24", "2098-01-31"]
+
+
 def test_render_bundle_matches_direct_build(tmp_path):
     """The quantile path draws the same fan the samples path drew."""
     rng = np.random.default_rng(3)

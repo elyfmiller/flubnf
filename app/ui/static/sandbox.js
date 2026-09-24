@@ -148,8 +148,29 @@
     pick(tabs.some(function (t) { return t.getAttribute('data-file') === first; }) ? first : 'bngl');
   }
 
+  // the page-head menus (How it works, Manage) are popovers: one open at
+  // a time, and Escape or a click outside closes them, as the Display
+  // menu does; Escape hands focus back to the menu's button
+  function setupMenus() {
+    var menus = Array.prototype.slice.call(document.querySelectorAll('details.sbmanage'));
+    if (!menus.length) return;
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      menus.forEach(function (d) {
+        if (!d.open) return;
+        d.open = false;
+        if (d.contains(document.activeElement) || document.activeElement === document.body)
+          d.querySelector('summary').focus();
+      });
+    });
+    document.addEventListener('click', function (e) {
+      menus.forEach(function (d) { if (d.open && !d.contains(e.target)) d.open = false; });
+    });
+  }
+
   function setup() {
     setupNew();
+    setupMenus();
     var form = $('sbform');
     setupTabs(form);
     // ---- run settings: the preset sets the particles; typing a count
@@ -358,7 +379,8 @@
     }
     var shapes = n < t.columns ? [{type: 'line', x0: xs[n - 1], x1: xs[n - 1], y0: 0, y1: 1, yref: 'paper',
                                    line: {dash: 'dot', color: mut}}] : [];
-    root.Plotly.newPlot(el, traces, {margin: {t: 30, r: 10, l: 64, b: 48}, shapes: shapes,
+    // FluCharts (charts.js): Saturday week ticks on a dated axis, shared config
+    (root.FluCharts || root.Plotly).newPlot(el, traces, {margin: {t: 30, r: 10, l: 64, b: 48}, shapes: shapes,
       paper_bgcolor: surf, plot_bgcolor: surf,
       font: {color: ink, family: '"DM Sans",system-ui,sans-serif', size: Math.round(fs * 0.85)},
       xaxis: {automargin: true, title: {text: calendar ? 'week ending' : 'time'}, gridcolor: line, zerolinecolor: line, linecolor: line, tickfont: {color: ink}},

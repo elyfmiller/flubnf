@@ -76,23 +76,39 @@ HUB = _checkout("FLUBNF_HUB", "FluSight-forecast-hub")
 ARCHIVE = HUB / "auxiliary-data/target-data-archive"
 LOCATIONS = HUB / "auxiliary-data/locations.csv"
 
-def _bng_candidates():
+def bng_platform_dirs(platform: str | None = None) -> tuple:
+    """bionetgen's per-platform bundle folders, this platform's first (its
+    run_network binary is the one that runs here); the others follow only
+    as a last resort."""
+    platform = sys.platform if platform is None else platform
+    own = ("bng-mac" if platform == "darwin"
+           else "bng-win" if platform.startswith(("win", "cygwin"))
+           else "bng-linux")
+    return (own,) + tuple(d for d in ("bng-mac", "bng-linux", "bng-win")
+                          if d != own)
+
+
+def _bng_candidates(platform: str | None = None):
     """BNG2.pl from `pip install bionetgen` in this app's .venv, POSIX and
-    Windows layouts. First existing path wins, so bng-mac leads."""
-    minor = __import__("sys").version_info[1]
+    Windows layouts, then the development host's anaconda. First existing
+    path wins, so this platform's bundle leads."""
+    minor = sys.version_info[1]
     here = Path(__file__).resolve().parents[1]
+    dirs = bng_platform_dirs(platform)
     for venv in (here / ".venv",):
         for sp in (venv / "lib" / f"python3.{minor}" / "site-packages",
                    venv / "Lib" / "site-packages"):
-            for plat in ("bng-mac", "bng-linux", "bng-win"):
+            for plat in dirs:
                 yield str(sp / "bionetgen" / plat / "BNG2.pl")
+    for plat in dirs:
+        if plat != "bng-win":
+            yield ("/opt/anaconda3/lib/python3.12/site-packages/bionetgen/"
+                   f"{plat}/BNG2.pl")
 
 
 BNG = _path(
     "FLUBNF_BNG",
     *_bng_candidates(),
-    "/opt/anaconda3/lib/python3.12/site-packages/bionetgen/bng-mac/BNG2.pl",
-    "/opt/anaconda3/lib/python3.12/site-packages/bionetgen/bng-linux/BNG2.pl",
     shutil.which("BNG2.pl") or "BNG2.pl",
 )
 

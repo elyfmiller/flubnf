@@ -683,7 +683,8 @@ def _dataset_view(ds) -> dict:
 def _ledger_for(ds_id: str, n: int = 5) -> list:
     """The newest ledger rows of runs on this dataset."""
     out = []
-    for r in Ledger().rows(200):
+    # filtered by the id in SQL: hub runs never push these out of the window
+    for r in Ledger().rows_mentioning(ds_id, 200):
         try:
             x = (json.loads(r.get("spec") or "{}").get("extra") or {})
         except Exception:
@@ -787,8 +788,8 @@ def knob_values(ds, knob_fields, knobs_json) -> dict:
     """The knob channel's raw values as a dataset form posts them, less
     what a dataset never records: the auxiliary-bank knobs, and the
     counts-only knobs on a rate dataset, and the optional hub rows."""
-    return {k: v for k, v in forms._knob_raw(knob_fields or {},
-                                             knobs_json).items()
+    fields = {} if knob_fields is None else knob_fields  # keeps .repeated
+    return {k: v for k, v in forms._knob_raw(fields, knobs_json).items()
             if k not in AUX_KEYS and k not in forms._knobs.OPTIONAL_KEYS
             and not (k in COUNT_ONLY and ds.kind != "count")}
 
@@ -900,7 +901,7 @@ async def _knob_fields(request: Request) -> dict:
 @router.post("/run/dataset")
 def run_dataset(request: Request, background: BackgroundTasks,
                 dataset: str = Form(...),
-                forecast_date: str = Form(...),
+                forecast_date: str = Form(""),
                 locations: list = Form([]),
                 engine: str = Form("analogue"),
                 mode: str = Form("realtime"),
@@ -930,6 +931,10 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
     here = f"/forecast?source={ds.id}"
     dates = ds.forecast_dates()
     fd = forms._str_field(forecast_date).strip()
+    if not fd:
+        # a cleared date field: said as such (FastAPI's raw 422 page before)
+        shared._flash("Give a forecast date. Nothing was run.")
+        return RedirectResponse(here, status_code=303)
     pick, _ = forms.resolve_anchor(fd, dates)
     fd = pick or fd
     if fd not in dates:
@@ -964,8 +969,12 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
         return RedirectResponse(here, status_code=303)
     want_fs = forms._str_field(flusurv).lower() in ("1", "on", "true", "yes")
     season_start = forms._str_field(season_start).strip()
-    kraw = knob_values(ds, knob_fields, knobs_json)
-    _LAST[ds.id] = {"forecast_date": fd, "locations": groups
+    try:
+        kraw = knob_values(ds, knob_fields, knobs_json)
+    except ValueError as e:                  # KnobError is a ValueError
+        shared._flash(f"Model settings: {e}. Nothing was run.")
+        return RedirectResponse(here, status_code=303)
+    _LAST[ds.id] ={"forecast_date": fd, "locations": groups
                     if len(groups) < len(ds.groups) else ["all"],
                     "engine": engine, "weeks_to_drop": weeks_to_drop,
                     "replicates": replicates, "particles": particles,
@@ -998,6 +1007,17 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
         shared._flash(f"Model settings: {e}. Nothing was run.")
         return RedirectResponse(here, status_code=303)
     kspec = forms._knobs.spec_fields(nd)
+    # built before the claim: nothing between the claim and the queued
+    # worker can fail and leave the console wedged
+    spec = RunSpec(engine=engine, forecast_date=fd, locations=groups,
+                   season_start=kspec.get("season_start", ""),
+                   weeks_to_drop=int(kspec.get("weeks_to_drop", 0)),
+                   drop_same_day=bool(kspec.get("drop_same_day", False)),
+                   replicates=int(kspec.get("replicates", RunSpec.replicates)),
+                   particles=int(kspec.get("particles", RunSpec.particles)),
+                   **({"jitter": float(kspec["jitter"])}
+                      if "jitter" in kspec else {}),
+                   extra=extra)
     with ui_state._engine_lock:
         if ui_state._status.get("running"):
             shared._flash("A run is already in progress; not starting "
@@ -1011,20 +1031,18 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
                           + ", ".join(live) + "). Stop or pause it from the "
                           "Retrospective tab first; nothing was run.")
             return RedirectResponse(here, status_code=303)
+        # the sandbox's claim, as /run reads it (its middleware guard
+        # covers /run and /retro/run only)
+        sb = shared._sandbox_live_reason()
+        if sb:
+            shared._flash(f"Not run: {sb}. Stop it from the Sandbox first.")
+            return RedirectResponse(here, status_code=303)
         ui_state._status["running"] = "starting"
+        ui_state._status.pop("stop_requested", None)
         ui_state._status["dataset_id"] = ds.id
         shared._invalidate_scans()
         ui_state._status["started_utc"] = time.time()
         ui_state._status["run_label"] = f"{fd} · {ds.name} · queued"
-    spec = RunSpec(engine=engine, forecast_date=fd, locations=groups,
-                   season_start=kspec.get("season_start", ""),
-                   weeks_to_drop=int(kspec.get("weeks_to_drop", 0)),
-                   drop_same_day=bool(kspec.get("drop_same_day", False)),
-                   replicates=int(kspec.get("replicates", RunSpec.replicates)),
-                   particles=int(kspec.get("particles", RunSpec.particles)),
-                   **({"jitter": float(kspec["jitter"])}
-                      if "jitter" in kspec else {}),
-                   extra=extra)
     ui_state._status["workroot"] = None
     ui_state._status["expected_total"] = (len(groups) * spec.replicates
                                           if engine in ("all", "pf") else None)
@@ -1057,8 +1075,10 @@ def run_worker(spec) -> None:
             versions._engine_versions_for_ledger("pf,analogue"))
         workroot = lease_workroot(run_id)
         ledger.set_workroot(run_id, workroot)
-        ui_state._status["running"] = f"dataset:{run_id}"
-        ui_state._status["workroot"] = str(workroot)
+        if shared._name_workroot(workroot, f"dataset:{run_id}"):
+            # Stop pressed while starting: end as stopped, nothing fitted
+            from app.core.engines.pf import RunStopped
+            raise RunStopped("stopped before fitting")
         state = (pipeline._pf_engine_state() if spec.engine in ("all", "pf")
                  else "absent")
         outcome, fails = custom_run.run(spec, ds, workroot,
@@ -1094,6 +1114,7 @@ def run_worker(spec) -> None:
         for k in ("running", "workroot", "expected_total", "started_utc",
                   "dataset_id"):
             ui_state._status[k] = None
+        ui_state._status.pop("stop_requested", None)
         ui_state._status["phase"] = ""
         ui_state._status["settings"] = []
         ui_state._status["run_label"] = ""
@@ -1428,6 +1449,11 @@ def replay_start(background: BackgroundTasks, dataset: str = Form(...),
             shared._flash("A season replay holds the engine ("
                           + ", ".join(live) + "); stop or pause it first. "
                           "Nothing was started.")
+            return back
+        sb = shared._sandbox_live_reason()
+        if sb:
+            shared._flash(f"Not started: {sb}. Stop it from the Sandbox "
+                          "first.")
             return back
         stamp = CX.new_stamp(ds)
         _REPLAY.update({"id": ds.id, "stamp": stamp})

@@ -170,3 +170,45 @@ def test_cli_doctor_pre_studio_is_accepted_and_ignored(monkeypatch):
                         _report(doctor.Status.OK))
     result = CliRunner().invoke(app, ["doctor", "--pre-studio"])
     assert result.exit_code == 0, result.output
+
+
+# ------------------------------------------ BNG2.pl: this platform's bundle
+
+@pytest.mark.parametrize("plat,own", [("linux", "bng-linux"),
+                                      ("darwin", "bng-mac"),
+                                      ("win32", "bng-win")])
+def test_bng_candidates_lead_with_this_platforms_bundle(plat, own):
+    from flubnf import settings
+    dirs = settings.bng_platform_dirs(plat)
+    assert dirs[0] == own
+    assert sorted(dirs) == ["bng-linux", "bng-mac", "bng-win"]
+    first = next(settings._bng_candidates(plat))
+    assert f"/{own}/BNG2.pl" in first.replace("\\", "/")
+    # the development host's anaconda paths follow the same order
+    tail = [c for c in settings._bng_candidates(plat)
+            if c.startswith("/opt/anaconda3")]
+    assert tail and all("bng-win" not in c for c in tail)
+    if own != "bng-win":
+        assert f"/{own}/" in tail[0]
+
+
+def test_doctor_suggests_this_platforms_bng_bundle(monkeypatch, tmp_path):
+    """With the configured path missing, doctor points at the bundle that
+    runs here (bng-linux on Linux), never bng-mac first everywhere."""
+    import sys
+    import types
+    from flubnf import settings
+    pkg = tmp_path / "bionetgen"
+    for d in ("bng-mac", "bng-linux", "bng-win"):
+        (pkg / d).mkdir(parents=True)
+        (pkg / d / "BNG2.pl").write_text("")
+    fake = types.ModuleType("bionetgen")
+    fake.__file__ = str(pkg / "__init__.py")
+    monkeypatch.setitem(sys.modules, "bionetgen", fake)
+    monkeypatch.setattr(settings, "BNG", tmp_path / "missing" / "BNG2.pl")
+    monkeypatch.setattr(sys, "platform", "linux")
+    res = doctor._check_bng()
+    assert res.status is doctor.Status.WARN
+    assert str(pkg / "bng-linux" / "BNG2.pl") in res.detail
+    monkeypatch.setattr(sys, "platform", "darwin")
+    assert "bng-mac" in doctor._check_bng().detail

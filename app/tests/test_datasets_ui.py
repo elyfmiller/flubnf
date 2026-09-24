@@ -309,6 +309,18 @@ def test_run_refuses_a_week_the_dataset_lacks(monkeypatch):
     assert not ui_state._status.get("running")
 
 
+def test_run_refuses_a_blank_date_in_plain_words(monkeypatch):
+    ds = stored()
+    got = _capture(monkeypatch)
+    r = client.post("/run/dataset", data={"dataset": ds.id, "forecast_date": "",
+                                          "locations": "all",
+                                          "engine": "analogue"},
+                    follow_redirects=False)
+    assert r.status_code == 303 and not got
+    assert r.headers["location"] == f"/forecast?source={ds.id}"
+    assert "Give a forecast date" in ui_state._status.get("flash", "")
+
+
 def test_run_refuses_the_pf_without_the_engine(monkeypatch):
     ds = stored()
     got = _capture(monkeypatch)
@@ -338,6 +350,12 @@ def test_a_real_run_shows_fans_and_exports_and_stays_off_the_hub(monkeypatch):
     exp = o["exports"]["FluBNF-Groundhog"]
     r = client.get("/output/download", params={"path": exp})
     assert r.status_code == 200 and b"target_group" in r.content
+    # the run's page and exports carry the upload: never to a foreign Host
+    # (a DNS-rebinding page), like the dataset's own pages
+    foreign = {"host": "rebind.example"}
+    assert client.get(f"/runs/{row['run_id']}", headers=foreign).status_code == 403
+    assert client.get("/output/download", params={"path": exp},
+                      headers=foreign).status_code == 403
     # the hub Forecast page: no dataset run in its latest-run card or fans
     hub = client.get("/forecast").text
     assert row["run_id"] not in hub and "Template" not in hub.split(
@@ -400,6 +418,26 @@ def test_a_second_replay_is_refused_while_one_runs():
                     follow_redirects=False)
     assert "holds the engine" in ui_state._status.get("flash", "")
     assert r.headers["location"] == f"/retro?dataset={ds.id}"
+
+
+def test_a_live_sandbox_fit_refuses_a_dataset_run_and_replay(monkeypatch):
+    """The sandbox's claim holds the engine for the dataset forms too (the
+    sandbox middleware guards /run and /retro/run only)."""
+    ds = stored()
+    got = _capture(monkeypatch)
+    started = []
+    monkeypatch.setattr(DU, "replay_worker", lambda *a, **k: started.append(a))
+    monkeypatch.setitem(ui_state._sandbox_status, "running", "sb-run-1")
+    client.post("/run/dataset", data={
+        "dataset": ds.id, "forecast_date": ds.forecast_dates()[-1],
+        "locations": "all", "engine": "analogue"}, follow_redirects=False)
+    assert not got and not ui_state._status.get("running")
+    assert "sandbox run sb-run-1" in ui_state._status.get("flash", "")
+    ui_state._status.pop("flash", None)
+    client.post("/retro/dataset/run", data={"dataset": ds.id},
+                follow_redirects=False)
+    assert not started and not DU._REPLAY
+    assert "sandbox run sb-run-1" in ui_state._status.get("flash", "")
 
 
 def test_replay_routes_refuse_bad_stamps_and_foreign_hosts():

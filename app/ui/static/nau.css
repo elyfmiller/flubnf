@@ -1225,3 +1225,34 @@ header.nav .navtabs.more-l{-webkit-mask-image:linear-gradient(to left,#000 calc(
 header.nav .navtabs.more-l.more-r{
   -webkit-mask-image:linear-gradient(to right,transparent,#000 2.5rem,#000 calc(100% - 2.5rem),transparent);
   mask-image:linear-gradient(to right,transparent,#000 2.5rem,#000 calc(100% - 2.5rem),transparent)}
+
+/* round6: ui */
+/* Sandbox Load data: Set N is a .ck checkbox (the global input width:100%
+   stretched it and squeezed its label under the button); it takes a line
+   of its own and the Load button follows it */
+details.sbfill .row > span.sbsetpop{flex:1 0 100%;flex-direction:row;align-items:center}
+.sbfill .row .sbsetpop .lblrow{margin:.3rem 0 0;min-height:0}
+.sbsetpop .ck{margin:0}
+details.sbfill .row > .sbsetpop + button{align-self:flex-start}
+/* run settings: a long value (a location list) wraps inside the card
+   instead of widening the page at 700px or larger text */
+.runsettings .kv{grid-template-columns:max-content minmax(0,max-content)}
+
+/* round7: output */
+/* a submission file's coverage: "N of M locations", a fold naming each
+   missing location and each one anchored on an earlier week */
+details.covfold{margin:.1rem 0 .35rem}
+details.covfold > summary{font-size:var(--fs-label)}
+details.covfold .covhead{margin:.35rem 0 .1rem}
+ul.covlist{margin:.1rem 0 .2rem;padding-left:1.1rem;font-size:var(--fs-label)}
+ul.covlist li{margin:.1rem 0;overflow-wrap:anywhere}
+p.cov{margin:.1rem 0 .3rem}
+.subline{margin:.45rem 0 .1rem}
+/* the forecast archive line and its submitted mark */
+.archmark{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;
+  gap:.3rem .9rem;margin-top:.6rem;padding-top:.5rem;border-top:1px solid var(--line)}
+.archmark > p.hint{margin:0;flex:1 1 20rem}
+.archmark .archform{margin:0}
+.pill.subbadge{font-weight:650;font-size:var(--fs-label);border:1px solid currentColor;margin-right:.2rem}
+/* the last file's rule already separates the archive line */
+.subfile + .archmark{border-top:0;padding-top:.1rem}

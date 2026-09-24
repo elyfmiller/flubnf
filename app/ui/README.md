@@ -76,6 +76,7 @@ One line per module. "Imports" names the app/ui modules a module imports at top 
 | GET | `/output` | `routes/output.py` | `output_page` | `output.html` | nav |
 | GET | `/output/download` | `routes/output.py` | `output_download` | file | `output.html`, `run.html` |
 | POST | `/output/reveal` | `routes/output.py` | `output_reveal` | redirect | `output.html` form, `retro_season.html` fetch |
+| POST | `/output/submitted` | `routes/output.py` | `output_submitted` | redirect | `output.html` form (mark or unmark the date's archive as submitted) |
 | GET | `/output/report` | `routes/output.py` | `output_report` | weekly report | `output.html` link and date picker |
 | GET | `/output/report/download` | `routes/output.py` | `output_report_download` | | `output.html` |
 | **Retrospective** | | | | | |

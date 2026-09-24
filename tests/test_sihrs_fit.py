@@ -31,6 +31,25 @@ def test_nan_weeks_dropped_with_true_offsets(tmp_path):
     assert not any("nan" in l for l in exp)
 
 
+def test_an_all_zero_season_start_says_so(tmp_path):
+    # the hub's first weeks of 2024-25 had 21 jurisdictions with no
+    # admission yet; the refusal named rho_mult, gamma and population
+    import pandas as pd, pytest
+    from flubnf.sihrs_fit import resolve_state
+    dates = pd.date_range("2024-08-03", periods=3, freq="7D")
+    truth = pd.DataFrame({"date": dates.strftime("%Y-%m-%d"),
+                          "location": "56", "value": [0.0, 0.0, 0.0]})
+    (tmp_path / "truth.csv").write_text(truth.to_csv(index=False))
+    (tmp_path / "locs.csv").write_text(
+        "location,abbreviation,location_name,population\n"
+        "56,WY,Wyoming,584057\n")
+    with pytest.raises(ValueError, match="no admissions reported in "
+                       r"2024-08-01\.\.2024-08-17 \(3 week\(s\), all zero\)"):
+        resolve_state("Wyoming", truth_csv=tmp_path / "truth.csv",
+                      locations_csv=tmp_path / "locs.csv",
+                      season_start="2024-08-01", as_of="2024-08-17")
+
+
 def test_all_nan_errors_loudly(tmp_path):
     import numpy as np, pandas as pd, pytest
     from flubnf.sihrs_fit import resolve_state

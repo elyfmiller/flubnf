@@ -132,12 +132,17 @@ def _storage_inventory() -> dict:
                     "size_h": retro.human_bytes(size),
                     "busy": _season_status(season) in _RETRO_ACTIVE})
     arch = APP_STATE / "archive"
+    from app.core import archive_record as _ar
     for d in reversed(_scan_archive_dates(arch)):
         size = _tree_size(str(arch / d))
         inv["total_bytes"] += size
+        # marked submitted on the Output page: kept, no delete control
+        sub = _ar.read_submitted(arch / d)
         inv["report_archives"].append({
             "id": d, "size_h": retro.human_bytes(size),
-            "busy": console_busy})
+            "busy": console_busy,
+            "submitted": (sub or {}).get("submitted_at", "") if sub else "",
+            "is_submitted": sub is not None})
     inv["datasets"] = _dsu.storage_rows(inv["workroots"])
     inv["total_bytes"] += sum(d["own_bytes"] for d in inv["datasets"])
     for label, p in (("Production engine record", retro_seasons.RETRO_RESEAL),
@@ -277,6 +282,10 @@ def _storage_target(kind: str, ident: str):
                           "the archive; stop it first.")
         p = APP_STATE / "archive" / ident
         base = APP_STATE / "archive"
+        from app.core import archive_record as _ar
+        if _ar.read_submitted(p) is not None:
+            return None, (f"The archive for {ident} is marked submitted, so "
+                          "it is kept. Unmark it on the Output page first.")
     else:
         return None, "Unrecognized storage kind."
     # Containment by construction (separator-free identifiers). Not resolved

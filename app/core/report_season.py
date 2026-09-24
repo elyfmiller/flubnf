@@ -97,14 +97,17 @@ def _plotlyjs() -> str:
 
 
 def _player_js() -> str:
-    return PLAYER_SRC.read_text(encoding="utf-8")
+    # FluCharts (charts.js) first: the player draws through it (Saturday
+    # week ticks, the shared chart config), as on the console page
+    return (report_v2.charts_js() + "\n"
+            + PLAYER_SRC.read_text(encoding="utf-8"))
 
 
 def _newest_input(root: Path) -> float:
     """Newest mtime among the export's inputs: stored weeks, scores.json,
-    settled truth, player.js, this builder, playback_cache/*.json, the hub's
-    official model-output dirs (new comparators land there before any cache
-    rebuild), run_meta.json (wall time) and nau.css (theme tokens).
+    settled truth, player.js, charts.js, this builder, playback_cache/*.json,
+    the hub's official model-output dirs (new comparators land there before
+    any cache rebuild), run_meta.json (wall time) and nau.css (theme tokens).
     """
     times = [p.stat().st_mtime for p in retro.season_sample_files(root)]
     sf = root / "scores.json"
@@ -114,6 +117,8 @@ def _newest_input(root: Path) -> float:
     times.append(truth_mtime())          # the report scores against it
     if PLAYER_SRC.is_file():
         times.append(PLAYER_SRC.stat().st_mtime)
+    if report_v2.CHARTS_SRC.is_file():
+        times.append(report_v2.CHARTS_SRC.stat().st_mtime)
     src = Path(__file__)
     if src.is_file():
         times.append(src.stat().st_mtime)

@@ -304,6 +304,22 @@ def test_api_progress_carries_the_console_wall_clock():
     assert 124.0 <= live["elapsed_s"] <= 135.0
 
 
+def test_api_progress_reads_a_workroot_with_glob_brackets(tmp_path):
+    """A Windows profile path may hold [ or ]: the workroot is escaped
+    before the shard pattern is added, so the counts are still read."""
+    w = tmp_path / "lab [2]" / "run"
+    (w / "pf2s").mkdir(parents=True)
+    (w / "pf_status.0.json.prog").write_text(
+        json.dumps({"done": 3, "total": 8, "t0": time.time() - 30}))
+    (w / "pf2s" / "pf_status.0.json.prog").write_text(
+        json.dumps({"done": 1, "total": 2, "t0": time.time() - 30}))
+    ui_state._status.update({"running": "all:x", "workroot": str(w),
+                             "expected_total": 0,
+                             "started_utc": time.time() - 30})
+    live = client.get("/api/progress").json()
+    assert (live["done"], live["total"]) == (4, 10)
+
+
 def test_api_retro_progress_shape_and_eta(tmp_path, monkeypatch):
     monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path)
     monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", tmp_path / "noseal")

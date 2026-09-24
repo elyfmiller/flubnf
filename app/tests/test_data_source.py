@@ -27,6 +27,9 @@ from app.ui import state as ui_state                         # noqa: E402
 
 from test_oracle_step import ASOF, console, hubfiles          # noqa: E402,F401
 
+#: the real report writer (the console fixture stubs it)
+_REAL_REPORT = ui_pipeline._write_weekly_report
+
 client = TestClient(srv.app)
 
 W1, W2, W3 = "2098-10-04", "2098-10-11", "2098-10-18"     # Saturdays
@@ -168,6 +171,110 @@ def test_a_real_time_run_records_the_live_file(console, hubfiles, tmp_path, monk
     assert f"Data: live target-data through {ASOF}" in html
 
 
+def test_update_data_mid_run_does_not_change_what_the_run_reads(console, hubfiles, tmp_path, monkeypatch):
+    """Update data may pull while the filter runs. A pull that adds a week
+    to the live file must neither kill the run ('No vintage for ...') nor
+    let the Groundhog read other bytes than the record names: the run reads
+    its pinned copy from start to end."""
+    from app.core.engines import pf as pf_engine
+    hub = tmp_path / "hub"
+    (hub / "target-data").mkdir(parents=True)
+    live = hub / data.LIVE_TARGET
+    live.write_bytes(Path(hubfiles["vintage"]).read_bytes())
+    sha_before = data.file_sha256(live)
+    monkeypatch.setattr(data, "HUB", hub)
+    monkeypatch.setattr(data, "ARCHIVE", tmp_path / "no-archive")
+    seen = []
+    orig_collect = pf_engine.collect
+
+    def collect_then_pull(w):
+        # the pull lands while the filter is fitting: a new week in live
+        df = pd.read_csv(live, dtype={"location": str})
+        nxt = df[df.date == df.date.max()].copy()
+        nxt["date"] = (pd.Timestamp(df.date.max())
+                       + pd.Timedelta(days=7)).strftime("%Y-%m-%d")
+        pd.concat([df, nxt]).to_csv(live, index=False)
+        # every later step resolves through spec_source: it must still
+        # answer the pinned copy of the file the run started on
+        seen.append(str(data.spec_source(spec)[0]))
+        return orig_collect(w)
+    monkeypatch.setattr(pf_engine, "collect", collect_then_pull)
+    spec = RunSpec(engine="all", forecast_date=ASOF, locations=["Ohio", "Utah"],
+                   extra={"mode": "realtime"})
+    ui_pipeline._run_all(spec)
+    row = Ledger().rows(1)[0]
+    out = json.loads(row["outcome"])
+    assert row["status"] == "ok", out.get("error")
+    assert out["data_source"]["sha256"] == sha_before
+    assert seen and all(data.file_sha256(p) == sha_before for p in seen)
+    assert data.file_sha256(live) != sha_before      # the pull did land
+    assert not data._PINNED                          # released with the run
+
+
+def test_optional_rows_on_a_week_only_the_live_file_holds(console, hubfiles, tmp_path, monkeypatch):
+    """The optional hub rows read the reported counts from the file the run
+    resolved: a real-time week the archive does not hold yet (the live file
+    only) must not fail the whole run with 'No vintage for ...'."""
+    from app.core.engines import analogue as an_engine
+    from app.ui.routes import forecast as ui_forecast
+    hub = tmp_path / "hub"
+    (hub / "target-data").mkdir(parents=True)
+    (hub / data.LIVE_TARGET).write_bytes(Path(hubfiles["vintage"]).read_bytes())
+    monkeypatch.setattr(data, "HUB", hub)
+    monkeypatch.setattr(data, "ARCHIVE", tmp_path / "no-archive")
+    monkeypatch.setattr(an_engine, "nowcast", lambda spec: {})
+    _nd, extra = ui_forecast._knob_run_parts(
+        {"output.horizon_minus1": "1", "output.rate_change_pmf": "1"}, "all",
+        ASOF, 2, "realtime", None, None, legacy={})
+    spec = RunSpec(engine="all", forecast_date=ASOF, locations=["Ohio", "Utah"],
+                   replicates=1, extra=extra)
+    ui_pipeline._run_all(spec)
+    row = Ledger().rows(1)[0]
+    out = json.loads(row["outcome"])
+    assert row["status"] == "ok", out.get("error")
+    assert out["data_source"]["kind"] == "live"
+    assert "optional_rows" in out and out["submissions"]
+
+
+def test_the_reports_state_fans_sit_on_the_as_of_horizons(console, hubfiles, tmp_path, monkeypatch):
+    """Hub horizon h is h+1 weeks past the AS-OF week. With the same-day
+    week dropped the observed trace ends a week earlier; the report's state
+    fans must not move back with it (they were drawn one week early)."""
+    from datetime import date, timedelta
+    from app.core import runs as runs_mod
+    monkeypatch.setattr(ui_pipeline, "_write_weekly_report", _REAL_REPORT)
+    hub = tmp_path / "hub"
+    (hub / "target-data").mkdir(parents=True)
+    (hub / data.LIVE_TARGET).write_bytes(Path(hubfiles["vintage"]).read_bytes())
+    monkeypatch.setattr(data, "HUB", hub)
+    monkeypatch.setattr(data, "ARCHIVE", tmp_path / "no-archive")
+    from app.core.engines import pf as pf_engine
+
+    def prepare(spec, w):                # the report reads cells.json
+        Path(w).mkdir(parents=True, exist_ok=True)
+        (Path(w) / "cells.json").write_text(json.dumps(
+            [{"key": "Ohio_r0", "location": "Ohio", "replicate": 0,
+              "dir": str(w)}]))
+        return []
+    monkeypatch.setattr(pf_engine, "prepare", prepare)
+    import flubnf.settings as fs                  # the observed trace's table
+    monkeypatch.setattr(fs, "LOCATIONS", hubfiles["locations"])
+    want = [(date.fromisoformat(ASOF) + timedelta(days=7 * (h + 1))).isoformat()
+            for h in range(4)]
+    for drop in (False, True):
+        spec = RunSpec(engine="all", forecast_date=ASOF, locations=["Ohio"],
+                       replicates=1, drop_same_day=drop,
+                       extra={"mode": "realtime"})
+        ui_pipeline._run_all(spec)
+        row = Ledger().rows(1)[0]
+        w = runs_mod.APP_STATE / "workroots" / row["run_id"]
+        assert "report_error" not in row["outcome"], row["outcome"]
+        fan = json.loads((w / "report_inputs.json").read_text())[
+            "details"]["OH"]["fan"]
+        assert fan["forecast_times"] == want, (drop, fan["forecast_times"])
+        assert (fan["observed_times"][-1] < ASOF) == drop
+
+
 # --- the console routes -------------------------------------------------------
 
 def _capture(monkeypatch, tmp_path):
@@ -208,6 +315,80 @@ def test_the_run_route_refuses_a_week_past_the_live_file(tmp_path, monkeypatch):
     assert r.status_code == 303 and not started
     flash = str(ui_state._status.get("flash") or "")
     assert f"No data for {W2} yet" in flash and f"ends at {W1}" in flash
+
+
+def test_the_run_route_refuses_bad_fields_in_their_own_words(tmp_path, monkeypatch):
+    """A blank or non-date forecast date, or an unknown engine, is refused
+    before anything else is said; an unknown mode is the default pill, so
+    an archived week is still recorded as a vintage run."""
+    started = _capture(monkeypatch, tmp_path)
+    _hub(tmp_path / "hub", [W1, W2], [W1], monkeypatch)
+    for fd, want in (("", "Give a forecast date"),
+                     ("7/4/2098", "'7/4/2098' is not a date")):
+        ui_state._status.pop("flash", None)
+        r = _post(fd)
+        assert r.status_code == 303 and not started
+        flash = str(ui_state._status.get("flash") or "")
+        assert want in flash and "No data" not in flash, flash
+    ui_state._status.pop("flash", None)
+    ui_state._status["running"] = None
+    r = client.post("/run", data={"forecast_date": W1, "locations": ["Ohio"],
+                                  "engine": "bogus"}, follow_redirects=False)
+    flash = str(ui_state._status.get("flash") or "")
+    assert not started and not ui_state._status.get("running")
+    assert flash == "'bogus' is not one of the available engines. Nothing was run."
+    ui_state._status.pop("flash", None)
+    _post(W1, mode="weird")
+    assert started[0].extra["mode"] == "vintage"
+
+
+def test_a_day_that_snaps_back_across_august_first_keeps_the_anchors_season(
+        tmp_path, monkeypatch):
+    """The page fills Season start with August 1 of the TYPED day's season.
+    A September day whose data ends in July anchors on July: that fill must
+    not refuse the run as 'not before the forecast date'; the anchor's own
+    default season start applies. A season start typed for the anchor's
+    season is still honoured."""
+    started = _capture(monkeypatch, tmp_path)
+    jul = "2098-07-26"                                   # a Saturday
+    _hub(tmp_path / "hub", [W1, jul], [W1, jul], monkeypatch)
+    ui_state._status["running"] = None
+    ui_state._status.pop("flash", None)
+    client.post("/run", data={"forecast_date": "2098-09-24",
+                              "season_start": "2098-08-01",
+                              "locations": ["Ohio"], "engine": "all"},
+                follow_redirects=False)
+    assert len(started) == 1, ui_state._status.get("flash")
+    assert started[0].forecast_date == jul
+    assert started[0].season_start == "2097-08-01"
+    assert "knobs" not in started[0].extra               # a shipped run
+    ui_state._status["running"] = None
+    client.post("/run", data={"forecast_date": "2098-09-24",
+                              "season_start": "2097-10-01",
+                              "locations": ["Ohio"], "engine": "all"},
+                follow_redirects=False)
+    assert started[1].season_start == "2097-10-01"
+
+
+def test_the_anchor_line_names_the_latest_week_on_or_before_the_day(
+        tmp_path, monkeypatch):
+    """The page lists weeks newest first; the anchor is the newest archived
+    week on or before a typed day, in the server's line and in the page's
+    own script."""
+    _capture(monkeypatch, tmp_path)
+    _hub(tmp_path / "hub", [W1, W2, W3], [W1, W2, W3], monkeypatch)
+    ui_state._last_form.clear()
+    ui_state._last_form.update({"forecast_date": "2098-10-20",   # a Monday
+                                "locations": ["all"], "engine": "all"})
+    page = client.get("/forecast").text
+    assert f"Anchor week: {W3}" in page, page[page.find("anchor-line"):][:120]
+    script = page.split('id="anchor-line"')[1].split("</script>")[0]
+    # the script's copy: the NEWEST archived week on or before the day (the
+    # list runs newest first), with the day read and moved in UTC so a zone
+    # east of UTC never lands a day early
+    assert "v <= sat && (!a || v > a)" in script
+    assert "'T00:00:00Z'" in script and "getUTCDay()" in script
+    assert "getDay()" not in script
 
 
 def test_update_data_moves_the_forecast_date_to_the_new_week(tmp_path, monkeypatch):
@@ -303,3 +484,48 @@ def test_a_trailing_unreported_week_moves_the_window_with_the_anchor(tmp_path, m
     # Utah: newest reported week four weeks back: abstains, reason recorded
     assert "Utah" not in out and notes["Utah"].startswith("abstained")
     assert set(out) == {"Ohio", "California"}
+
+
+def test_a_note_never_says_anchored_for_a_location_that_abstained(tmp_path, monkeypatch):
+    """Newest week unreported and the week before it reads 0: the anchor
+    moves back to that 0, and the Groundhog's ratio of nothing abstains
+    (flubnf.analogue returns no forecast). The note must say it abstained,
+    not that it forecast from that week; a location reported at the as-of
+    with 0 has no forecast either, and its note says why (the owner's
+    round-7 rule: no location leaves a file silently)."""
+    from app.core.engines import analogue as eng
+    from app.core.runs import anchor_notes_row
+    weeks = [str(d.date()) for d in pd.date_range("2025-12-06", periods=6, freq="7D")]
+    T = weeks[-1]
+    rows = ["date,location,location_name,value"]
+    for i, w in enumerate(weeks):
+        rows.append(f"{w},30,Montana,{'' if w == T else (0 if i == 4 else 3)}")
+        rows.append(f"{w},49,Utah,{0 if w == T else 2}")
+        rows.append(f"{w},06,California,{70 + i}")
+    v = tmp_path / "v.csv"
+    v.write_text("\n".join(rows) + "\n")
+    locs = tmp_path / "locations.csv"
+    locs.write_text("location,location_name,abbreviation\n30,Montana,MT\n"
+                    "49,Utah,UT\n06,California,CA\n")
+    monkeypatch.setattr(eng, "vintage_path", lambda d: str(v))
+    monkeypatch.setattr(eng, "LOCATIONS", str(locs))
+    # the library's rule: an anchor of 0 has no forecast
+    monkeypatch.setattr(eng.AN, "forecast",
+                        lambda anchor, *a, **k: {0.5: anchor} if anchor > 0 else None)
+    spec = RunSpec(engine="retro", forecast_date=T,
+                   locations=["Montana", "Utah", "California"])
+    notes = {}
+    out = eng.run(spec, notes=notes)
+    assert set(out) == {"California"}
+    assert notes["Montana"] == ("abstained: newest reported week 2026-01-03 "
+                                "reads 0 (1 newer week(s) unreported)")
+    assert notes["Utah"] == "no forecast: newest week reads 0"
+    row = anchor_notes_row({"analogue_anchor_notes": notes},
+                           {"analogue": "Groundhog"})
+    assert "1 abstained" in str(row) and "anchored earlier" not in str(row)
+    # the zero-count note has its own row, never "anchored earlier"
+    from app.core.runs import no_forecast_row
+    nrow = no_forecast_row({"analogue_anchor_notes": notes},
+                           {"analogue": "Groundhog"})
+    assert nrow[0] == "No forecast" and "Groundhog: 1 location" in nrow[1]
+    assert "Utah: no forecast: newest week reads 0." in nrow[1]

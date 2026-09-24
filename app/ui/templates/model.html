@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% import "diagrams.html" as dg %}{% import "_tips.html" as tips %}
 {% block title %}FluBNF · {{ title }}{% endblock %}
-{% block head %}<script src="/static/plotly.min.js"></script>{% endblock %}
+{% block head %}<script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>{% endblock %}
 {% block content %}
 {# the switcher below names the model; the heading names the tab #}
 <h1>Models</h1>
@@ -148,8 +148,9 @@
    const s=SERIES[loc]||{dates:[],values:[]};
    const hs=Object.keys(qs).sort();
    const FD={{ date | tojson }};
-   const base=new Date(FD);
-   const xs=hs.map(h=>{const d=new Date(base);d.setDate(d.getDate()+7*parseInt(h));
+   // whole weeks in UTC: local-time days shift a day across a DST change
+   const base=new Date(FD+'T00:00:00Z');
+   const xs=hs.map(h=>{const d=new Date(base);d.setUTCDate(d.getUTCDate()+7*parseInt(h));
      return d.toISOString().slice(0,10);});
    // observed as of the run's vintage (never the latest tail -- backdated
    // runs otherwise mix months); settled-afterwards drawn separately
@@ -158,7 +159,7 @@
    if(ro.length){obsX=ro.map(q=>q[0]);obsY=ro.map(q=>q[1]);}
    else{s.dates.forEach((d,i)=>{if(d<=FD){obsX.push(d);obsY.push(s.values[i]);}});}
    obsX=obsX.slice(-12);obsY=obsY.slice(-12);
-   const lim=new Date(base); lim.setDate(lim.getDate()+35);
+   const lim=new Date(base); lim.setUTCDate(lim.getUTCDate()+35);
    const limIso=lim.toISOString().slice(0,10);
    const aftX=[],aftY=[];
    s.dates.forEach((d,i)=>{if(d>FD&&d<=limIso){aftX.push(d);aftY.push(s.values[i]);}});
@@ -183,7 +184,7 @@
       name:(MNAMES[m]||m)+' median',visible:'legendonly',
       line:{color:memberColor(m),width:1.4,dash:MDASH[m]||'dot'}});
    }
-   Plotly.react(document.getElementById('plot'),traces,lay(loc,420),
+   FluCharts.react(document.getElementById('plot'),traces,lay(loc,420),
     {responsive:true,displaylogo:false,
      // save-PNG: 2x for crisp figures, a meaningful filename
      toImageButtonOptions:{format:'png',scale:2,

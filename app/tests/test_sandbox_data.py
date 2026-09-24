@@ -247,6 +247,27 @@ def test_fill_keeps_calendar_offsets_anchored_like_the_console(box):
     assert cells[0]["last_week_offset"] == 3
 
 
+def test_calendar_offsets_count_weeks_as_the_console_does(tmp_path):
+    # a season start that is not a Saturday: 1 August 2023 is a Tuesday,
+    # and the console's resolve_state puts its first Saturday at t = 0
+    import pandas as pd
+    from flubnf.sihrs_fit import resolve_state
+    dates = ["2023-08-05", "2023-08-12", "2023-08-26"]
+    (tmp_path / "t.csv").write_text("date,location,value\n" + "".join(
+        f"{d},01,{v}\n" for d, v in zip(dates, (3, 4, 6))))
+    (tmp_path / "l.csv").write_text("location,location_name,population\n"
+                                    "01,Alabama,5000000\n")
+    s = resolve_state("Alabama", truth_csv=tmp_path / "t.csv",
+                      locations_csv=tmp_path / "l.csv",
+                      season_start="2023-08-01", as_of="2023-08-26")
+    assert s.times.tolist() == [0, 1, 3]
+    for start in ("2023-08-01", "2022-08-01", "2027-08-01", "2025-08-01",
+                  "2026-08-01"):
+        sat = pd.Timestamp(start) + pd.Timedelta(days=(5 - pd.Timestamp(start).weekday()) % 7)
+        ds = [(sat + pd.Timedelta(weeks=k)).date().isoformat() for k in (0, 1, 3)]
+        assert sb.calendar_offsets(ds, start) == [0, 1, 3], start
+
+
 def test_the_plot_places_forecast_points_by_real_spacing():
     src = (Path(srv.__file__).parent / "templates" / "sandbox.html").read_text()
     js_dir = Path(srv.__file__).parent / "static"

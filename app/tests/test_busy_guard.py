@@ -325,6 +325,12 @@ def test_reveal_spawns_open_for_app_state_paths_only(tmp_path, monkeypatch):
                     follow_redirects=False)
     assert r.status_code == 303
     assert spawned == []
+    # a NUL byte (a hand-edited URL) is not found, never a server error
+    r = client.post("/output/reveal", data={"path": "a\x00b"},
+                    follow_redirects=False)
+    assert r.status_code == 303 and spawned == []
+    assert client.get("/output/download",
+                      params={"path": "a\x00b"}).status_code == 404
 
 
 def test_cli_enables_pywebview_downloads_before_window_creation():
@@ -332,3 +338,96 @@ def test_cli_enables_pywebview_downloads_before_window_creation():
     i = src.index("webview.settings['ALLOW_DOWNLOADS'] = True")
     j = src.index("webview.create_window")
     assert i < j
+
+
+# ------------------------------------------- Stop during the "starting" claim
+
+def _stop_while_starting():
+    """Press Stop in the claim window: the route has claimed, the worker has
+    not leased a workroot yet. The claim is kept (the worker is coming)."""
+    ui_state._status.update({"running": "starting", "workroot": None,
+                             "run_label": "2098-01-03 · queued",
+                             "phase": ""})
+    ui_state._status.pop("stop_requested", None)
+    r = client.post("/run/stop", follow_redirects=False)
+    assert r.status_code == 303
+    assert ui_state._status["running"] == "starting"     # claim kept
+    assert ui_state._status.get("stop_requested") is True
+    assert ui_state._status["phase"] == "stopping…"
+
+
+def _ledger_rows(root):
+    import sqlite3
+    return sqlite3.connect(root / "ledger.sqlite").execute(
+        "SELECT status, workroot FROM runs").fetchall()
+
+
+def test_stop_during_starting_ends_the_run_stopped_before_fitting(
+        tmp_path, monkeypatch):
+    import app.core.runs as runs_mod
+    from app.core.engines import analogue as an_engine
+    from app.core.engines import pf as pf_engine
+    from app.core.runs import RunSpec
+    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
+    monkeypatch.setattr(ui_pipeline, "_sleep_guard", lambda: None)
+    fitted = []
+    monkeypatch.setattr(an_engine, "run", lambda spec: fitted.append(1) or {})
+    monkeypatch.setattr(pf_engine, "prepare",
+                        lambda *a, **k: fitted.append(2))
+    _stop_while_starting()
+    ui_pipeline._run_all(RunSpec(engine="analogue",
+                                 forecast_date="2098-01-03",
+                                 locations=["Ohio"]))
+    assert fitted == []
+    (status, workroot), = _ledger_rows(tmp_path)
+    assert status == "stopped"
+    assert (Path(workroot) / "STOP").exists()
+    # the claim was held until the run ended, and released then
+    assert ui_state._status["running"] is None
+    assert "stop_requested" not in ui_state._status
+
+
+def test_stop_during_starting_ends_a_dataset_run_stopped(tmp_path,
+                                                         monkeypatch):
+    import app.core.runs as runs_mod
+    from app.core import custom_run
+    from app.core.runs import RunSpec
+    from app.ui import datasets_ui
+    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
+    monkeypatch.setattr(ui_pipeline, "_sleep_guard", lambda: None)
+
+    class _FakeD:
+        @staticmethod
+        def from_spec(spec):
+            return object()
+    monkeypatch.setattr(datasets_ui, "_D", lambda: _FakeD)
+    fitted = []
+    monkeypatch.setattr(custom_run, "run",
+                        lambda *a, **k: fitted.append(1) or ({}, {}))
+    _stop_while_starting()
+    datasets_ui.run_worker(RunSpec(engine="analogue",
+                                   forecast_date="2098-01-03",
+                                   locations=["g1"],
+                                   extra={"dataset": {"id": "x",
+                                                      "name": "x"}}))
+    assert fitted == []
+    (status, _w), = _ledger_rows(tmp_path)
+    assert status == "stopped"
+    assert ui_state._status["running"] is None
+
+
+def test_a_run_without_a_stop_is_not_stopped(tmp_path, monkeypatch):
+    """The flag is cleared by a fresh claim and at the end of every run: an
+    old press never stops the next run."""
+    import app.core.runs as runs_mod
+    from app.core.engines import analogue as an_engine
+    from app.core.runs import RunSpec
+    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
+    monkeypatch.setattr(ui_pipeline, "_sleep_guard", lambda: None)
+    monkeypatch.setattr(an_engine, "run", lambda spec: {})
+    ui_state._status.update({"running": "starting", "workroot": None})
+    ui_pipeline._run_all(RunSpec(engine="analogue",
+                                 forecast_date="2098-01-03",
+                                 locations=["Ohio"]))
+    (status, _w), = _ledger_rows(tmp_path)
+    assert status == "ok"

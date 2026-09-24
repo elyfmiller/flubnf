@@ -550,6 +550,19 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                        "them. Archive or discard the existing results to "
                        "run it. Nothing was started.")
                 return RedirectResponse("/retro", status_code=303)
+            # nor with another location scope (the rule lives in
+            # retro.run_season, so the CLI refuses it too; checked here
+            # first so the refusal comes before anything is claimed)
+            change = retro.location_scope_change(
+                (retro.read_meta(live) or {}).get("settings", {})
+                .get("locations"), names)
+            if change:
+                _flash(f"{season} has {existing} completed week"
+                       f"{'' if existing == 1 else 's'} {change}. "
+                       "Resuming would mix two location scopes in one "
+                       "season. Archive or discard the existing results to "
+                       "run it. Nothing was started.")
+                return RedirectResponse("/retro", status_code=303)
         if mode == "discard":
             if confirm != season:
                 _flash(f"Discarding {season} was not confirmed, so nothing "
@@ -608,13 +621,11 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
     return RedirectResponse("/retro", status_code=303)
 
 
-#: the retrospective engine presets as the form and the record name them
-RETRO_ENGINE_LABELS = {"pf": "Oracle SIHRS and the Groundhog",
-                       "analogue": "Groundhog only"}
-
-
 def retro_engine_label(engine: str) -> str:
-    return RETRO_ENGINE_LABELS.get(str(engine), str(engine))
+    """The preset's plain name: app.core.retro.ENGINE_LABELS, the one map
+    (the Run settings blocks read it too)."""
+    from app.core import retro
+    return retro.engine_label(engine)
 
 
 # === Retrospective season page (/retro/{season}) and its APIs -> retro_season.html ===

@@ -202,7 +202,8 @@ def _shell(dom_id: str, inner: str, ink: str, paper: str, interactive=True) -> s
 <style>
  #{dom_id} .st{{cursor:pointer;transition:fill-opacity .12s}}
  #{dom_id} .st.noclick{{cursor:default}}
- #{dom_id} .st:hover{{stroke:var(--accent,{ink});stroke-width:1.6}}
+ /* only a state with a detail section wears the hover ring */
+ #{dom_id} .st:not(.noclick):hover{{stroke:var(--accent,{ink});stroke-width:1.6}}
  #{dom_id} .nat{{cursor:pointer}}
  #{dom_id} .nat:hover path{{stroke:var(--accent,{ink});stroke-width:1.2}}
  /* selection = cyan brand-accent RING (stroke, never fill), so the

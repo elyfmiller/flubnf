@@ -20,9 +20,9 @@ had, then scores against settled truth.</p>
   particle-filter engine: {{ engine_setup_hint() }}. Groundhog only works
   without it.</p>{% endif %}
   <form method="post" action="/retro/run">
-   <label>Season</label>
-   <select name="season">{% for s in seasons %}<option>{{ s.name }}</option>{% endfor %}</select>
-   {{ tips.label("Location scope", "rt-scope", "The 6-state panel replays in a fraction of the time of all 52 jurisdictions.") }}
+   <label for="rt-season">Season</label>
+   <select name="season" id="rt-season">{% for s in seasons %}<option>{{ s.name }}</option>{% endfor %}</select>
+   {{ tips.label("Location scope", "rt-scope", "The 6-state panel replays in a fraction of the time of all 52 jurisdictions.", for_="retro-scope") }}
    <select name="locations" id="retro-scope">
      <option value="panel6">6-state panel (fast)</option>
      <option value="all">all 52 jurisdictions</option>
@@ -37,13 +37,13 @@ had, then scores against settled truth.</p>
       ticks it beside all 52.
       A select, not a checkbox: a cleared checkbox posts nothing, so the
       server could not tell "states only" from an old client #}
-   {{ tips.label("US national", "rt-us", "US national is fitted and scored apart from the pooled state figures.") }}
-   <select name="national">
+   {{ tips.label("US national", "rt-us", "US national is fitted and scored apart from the pooled state figures.", for_="rt-national") }}
+   <select name="national" id="rt-national">
      <option value="1">fit US national too (default)</option>
      <option value="0">states only</option></select>
-   {{ tips.label("Shard width", "rt-width", "Parallel runners; the default suits this machine.") }}
-   <input type="number" name="width" value="{{ default_width }}" min="1" max="{{ width_cap }}">
-   {{ tips.label("Engine preset", "rt-engine", "Each week fits the Oracle SIHRS from the season start with that week's data and donor pool, as a live run does. Groundhog only needs no engine.") }}
+   {{ tips.label("Shard width", "rt-width", "Parallel runners; the default suits this machine.", for_="rt-width-in") }}
+   <input type="number" name="width" value="{{ default_width }}" id="rt-width-in" min="1" max="{{ width_cap }}">
+   {{ tips.label("Engine preset", "rt-engine", "Each week fits the Oracle SIHRS from the season start with that week's data and donor pool, as a live run does. Groundhog only needs no engine.", for_="retro-engine") }}
    {# "pf" (internal key) = Oracle SIHRS + Groundhog: hours, needs the engine
       venv. "analogue" = Groundhog alone: minutes, no engine, reproduces its
       published numbers anywhere #}
