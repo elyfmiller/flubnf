@@ -186,11 +186,12 @@ def test_bad_selections_fall_back_with_a_note_never_an_error(archive):
 
 
 def test_data_page_stays_read_only(archive):
-    """The only POST forms on the page are the two hub controls; the
-    browser and preview are pure GET."""
+    """The only POST forms on the page are the two hub controls and the
+    dataset upload (Your datasets); the browser and preview are pure GET."""
     html = client.get("/data").text
-    assert html.count('method="post"') == 2
+    assert html.count('method="post"') == 3
     assert 'action="/freshness"' in html and 'action="/data/pull"' in html
+    assert 'action="/data/datasets"' in html
     assert 'method="get" action="/data"' in html
 
 

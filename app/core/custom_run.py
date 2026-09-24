@@ -41,7 +41,7 @@ from flubnf.quantiles import FLUSIGHT_QUANTILES as QL
 EXPORT_IDS = {"analogue": "FluBNF-Groundhog", "pf": "FluBNF-SIHRS-PF"}
 #: member key -> what pages call it on custom data
 MEMBER_LABELS = {"analogue": "Groundhog",
-                 "pf": "SIHRS particle filter (plain)"}
+                 "pf": "plain SIHRS particle filter"}
 #: the baseline every custom relWIS is measured against, by name
 BASELINE = "in-house persistence baseline"
 BASELINE_NOTE = ("relWIS against the in-house persistence baseline "

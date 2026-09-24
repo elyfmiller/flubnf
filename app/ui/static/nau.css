@@ -593,6 +593,18 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
 .archrow .grow{flex:1;min-width:12rem}
 .archrow form{display:inline;margin:0}
 .archrow button{margin-top:0;padding:.22rem .6rem;font-size:var(--fs-label)}
+/* custom datasets (Data tab upload and list, the own-data replay card) */
+.dsupload{display:grid;grid-template-columns:repeat(auto-fit,minmax(13rem,1fr));
+  gap:.2rem 1rem;align-items:end}
+.dsupload input[type=file]{max-width:100%}
+.dsproblems{border-left:3px solid var(--bad,#b3261e);padding:.2rem .8rem;margin:.6rem 0}
+.dsproblems ul{margin:.3rem 0;padding-left:1.2rem}
+.dstable td.dsactions{white-space:nowrap}
+.dstable td.dsactions form{display:inline;margin:0}
+.dstable td.dsactions button{margin:0 0 0 .3rem;padding:.15rem .5rem;font-size:var(--fs-label)}
+.srcpick{align-items:flex-end;margin-bottom:.4rem}
+.srcpick select{width:auto;min-width:12rem;max-width:100%}
+.dsr-h{margin:1rem 0 .2rem;font-size:var(--fs-label)}
 /* storage panel headline: total disk use beside its scope note */
 .stotal{display:flex;gap:.6rem;align-items:baseline;flex-wrap:wrap;
   margin:.1rem 0 .5rem;max-width:none}

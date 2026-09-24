@@ -128,8 +128,8 @@ def spec_settings(spec) -> list:
 
 #: a dataset run's members, as its settings name them
 DATASET_ENGINE_LABELS = {
-    "all": "Groundhog and SIHRS particle filter (plain)",
-    "pf": "SIHRS particle filter (plain) only",
+    "all": "Groundhog and plain SIHRS particle filter",
+    "pf": "plain SIHRS particle filter only",
     "analogue": "Groundhog only"}
 
 

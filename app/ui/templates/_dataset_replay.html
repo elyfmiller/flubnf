@@ -1,0 +1,73 @@
+{# "Replay your own data" on the Retrospective tab (app/ui/datasets_ui.py):
+   its own card, below the FluSight seasons and never among them. Tips
+   imported by retro.html. #}
+{% set dr = dataset_replay %}
+<div class="card" id="dataset-replay"><h2>Replay your own data
+ {{ tips.tip("rt-ds-about", "replaying your own data", "Each week of the range is forecast with only the data before it and scored against the dataset's later weeks, relative to an in-house persistence baseline (not FluSight-baseline). Replays are kept with the dataset, apart from the FluSight seasons, and never published.") }}</h2>
+ <p class="hint">A week range of a dataset from the Data tab, kept apart from the FluSight seasons.</p>
+ {% if not dr.datasets %}
+ <p class="hint">No datasets yet: upload one on the <a href="/data#datasets">Data tab</a>.</p>
+ {% else %}
+ <form method="post" action="/retro/dataset/run" id="dsr-form">
+  <div class="row" style="align-items:flex-end">
+   <span><label for="dsr-ds">Dataset</label>
+    <select name="dataset" id="dsr-ds">{% for d in dr.datasets %}
+     <option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select></span>
+   <span><label for="dsr-first">From</label><select name="first" id="dsr-first"></select></span>
+   <span><label for="dsr-last">To</label><select name="last" id="dsr-last"></select></span>
+  </div>
+  <p class="hint"><span id="dsr-kind"></span>
+   {{ tips.tip("dsr-kind-tip", "vintage-true and final data", "With an as_of column, each replayed week sees the snapshot that held it, as it stood then. Without one, each week is cut from the final series: later revisions leak in, so the scores are optimistic and are labelled so wherever they appear.") }}</p>
+  {{ tips.label("Groups", "dsr-groups", "Every group by default; a national group is scored beside the others, never pooled.", for_="dsr-groups") }}
+  <select name="groups" id="dsr-groups" multiple size="4"></select>
+  {{ tips.label("Models", "dsr-engine", "The Groundhog is instant. The plain SIHRS particle filter (no Oracle step) needs counts with a population and the engine, and takes minutes per week.", for_="dsr-engine") }}
+  <select name="engine" id="dsr-engine">
+   <option value="analogue">Groundhog only</option>
+   <option value="all">Groundhog and plain SIHRS particle filter</option></select>
+  {{ tips.label("Weeks to drop", "dsr-drop", "Ignore each week's newest 0 to 4 weeks, as MicroHub's data to drop does; horizons keep their labels.", for_="dsr-drop") }}
+  <input type="number" name="weeks_to_drop" id="dsr-drop" value="0" min="0" max="4">
+  <div class="lblrow"><label class="ck" for="dsr-fs"><input type="checkbox" name="flusurv" value="1" id="dsr-fs"> Add FluSurv-NET donors</label>
+   {{ tips.tip("dsr-fs", "FluSurv-NET donors", "Off by default. Tick only for US influenza hospitalization-like data.") }}</div>
+  <button class="gold" data-guard="console-run">Replay</button>
+ </form>
+ {% for d in dr.datasets if d.replays %}
+ <h3 class="dsr-h">{{ d.name }}</h3>
+ {% for r in d.replays %}
+ <div class="archrow">
+  <span class="grow"><strong>{{ r.first }} to {{ r.last }}</strong>
+   <span class="hint">· {{ r.kind }} · {{ r.done }}/{{ r.total }} weeks · {{ r.status }}{% for m, v in r.rels.items() %}
+    · {{ "Groundhog" if m == "analogue" else "plain SIHRS PF" }} relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{% endfor %}{% if r.rels %} vs in-house persistence baseline{% endif %}</span></span>
+  <a href="/retro/dataset/{{ d.id }}/{{ r.stamp }}"><button class="quiet" type="button">Results →</button></a>
+ </div>
+ {% endfor %}
+ {% endfor %}
+ <script>
+  (function(){
+   const DS = {{ dr.datasets | tojson }};
+   const PF = {{ (dr.pf_state == "ready") | tojson }};
+   const $ = id => document.getElementById(id);
+   function opts(sel, items, pick){
+     sel.innerHTML='';
+     items.forEach(v=>{const o=document.createElement('option'); o.value=v; o.textContent=v;
+       if(v===pick) o.selected=true; sel.appendChild(o);});
+   }
+   function sync(){
+     const d = DS.find(x=>x.id===$('dsr-ds').value) || DS[0];
+     opts($('dsr-first'), d.dates, d.dates[0]);
+     opts($('dsr-last'), d.dates, d.dates[d.dates.length-1]);
+     const g=$('dsr-groups'); g.innerHTML='';
+     d.groups.forEach(n=>{const o=document.createElement('option'); o.value=n;
+       o.textContent=n; o.selected=true; g.appendChild(o);});
+     $('dsr-kind').textContent = d.vintage_true
+       ? 'Vintage-true: each week sees its as_of snapshot.'
+       : 'Final data, not vintage-true: each week is cut from the final series, so it reads better than real time did.';
+     const pf=$('dsr-engine').querySelector('option[value=all]');
+     pf.disabled = !(d.pf && PF);
+     if(pf.disabled) $('dsr-engine').value='analogue';
+   }
+   $('dsr-ds').addEventListener('change', sync);
+   sync();
+  })();
+ </script>
+ {% endif %}
+</div>

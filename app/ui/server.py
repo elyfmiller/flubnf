@@ -41,6 +41,10 @@ templates under app/ui/templates):
                       /mapswap/{asof}, /retro/{s}/report,
                       /api/retro/{s}/report_path           retro_season.html
   Forecast            POST /run (form and rerun entry to _run_all)
+  Custom datasets     app/ui/datasets_ui.py's router: POST /data/datasets,
+                      /data/datasets/{id}/delete, /run/dataset,
+                      /retro/dataset/run; GET /retro/dataset/{id}/{stamp};
+                      Data, Forecast and /api/series take ?source=<id>
   Startup warm        _start_background_warm() at import
 """
 from __future__ import annotations
@@ -984,7 +988,17 @@ def methods_page(request: Request):
 
 # === Forecast (/forecast) -> forecast.html ===
 @app.get("/forecast", response_class=HTMLResponse)
-def forecast_page(request: Request):
+def forecast_page(request: Request, source: str = ""):
+    # a custom dataset as the data source: opt-in per page (app/ui/datasets_ui.py)
+    from app.ui import datasets_ui as _dsu
+    if source:
+        refused = _dsu.local_only(request)
+        if refused:
+            return refused
+        ds = _dsu.get_dataset(source)
+        if ds is not None:
+            return _dsu.forecast_page(request, ds)
+        _flash("That dataset is not stored; showing the FluSight hub.")
     import pandas as pd
     from flubnf.settings import load_locations
     # a missing state list must be visible: without it runs cover all 52
@@ -1031,7 +1045,9 @@ def forecast_page(request: Request):
         # the shipped models only: a legacy run's retired blend is not drawn
         from app.core.report_v2 import toggle_models
         fanq = {m: fanq[m] for m in toggle_models(fanq)}
-    ledger_rows = Ledger().rows(5)
+    # the hub view's latest-run card never shows a run on a custom dataset
+    ledger_rows = [r for r in Ledger().rows(25)
+                   if '"dataset": {' not in (r.get("spec") or "")][:5]
     for r in ledger_rows:
         r["label"] = _run_label(r["run_id"], r.get("spec", ""))
         r["modified"] = _runs.is_modified(r.get("spec", ""))
@@ -1068,7 +1084,8 @@ def forecast_page(request: Request):
         "member_colors_json": _script_json(_member_colors()),
         "season_colors_json": _script_json(_season_colors()),
         "run_obs_json": _script_json((res or {}).get("observed", {})),
-        "fc_date": (res or {}).get("forecast_date", "")})
+        "fc_date": (res or {}).get("forecast_date", ""),
+        "dataset": None, "source_choices": _dsu.choices()})
 
 
 # === Data (/data): read-only vintage views -> data.html ===
@@ -1118,6 +1135,10 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
            # season-over-season chart palette (fallback for --season-N)
            "season_colors_json": _script_json(_season_colors())}
     ctx["vintage_rows"] = _vintage_rows(vs)
+    # the "Your datasets" card (built here so /freshness keeps it)
+    from app.ui import datasets_ui as _dsu
+    ctx.update({"datasets": _dsu.dataset_rows(), "upload": None, "ds": None,
+                "max_mb": _dsu.max_mb()})
     if not vs:
         return ctx
     latest = vs[-1]
@@ -1193,7 +1214,20 @@ def _vintage_rows(vs) -> list:
 
 
 @app.get("/data", response_class=HTMLResponse)
-def data_page(request: Request, loc: str = "", vintage: str = ""):
+def data_page(request: Request, loc: str = "", vintage: str = "",
+              source: str = ""):
+    if source:
+        # browse one custom dataset in the vintage browser's place
+        from app.ui import datasets_ui as _dsu
+        refused = _dsu.local_only(request)
+        if refused:
+            return refused
+        ds = _dsu.get_dataset(source)
+        if ds is not None:
+            ctx = _data_context()
+            ctx.update(_dsu.data_context(ds, loc, vintage))
+            return templates.TemplateResponse(request, "data.html", ctx)
+        _flash("That dataset is not stored; showing the FluSight hub.")
     return templates.TemplateResponse(request, "data.html",
                                       _data_context(loc, vintage))
 
@@ -2550,7 +2584,13 @@ def run_page(request: Request, run_id: str):
     # by" must never print this process's build. Names-only engine_versions
     # rows yield an app-build-only block (version_pairs omits unknowns).
     from app.core.runs import is_research
+    dsx = {}
+    if res.get("dataset"):
+        # a run on a custom dataset: exports (never submissions) and fans
+        from app.ui import datasets_ui as _dsu
+        dsx = _dsu.run_page_extra(w, res)
     return templates.TemplateResponse(request, "run.html", {
+        **dsx,
         "active": "Storage", "run_id": run_id, "status": status, "error": err,
         "results": results_html(o, spec_json),
         # the page shows a research badge, so the label stays untagged
@@ -2563,7 +2603,8 @@ def run_page(request: Request, run_id: str):
                    if m not in _report_v2_retired()},
         "settings": spec_settings(spec_json),
         "versions": version_pairs(row_sha, row_engine_versions),
-        "can_rerun": bool(spec_json) and status in RERUN_STATUSES,
+        "can_rerun": (bool(spec_json) and status in RERUN_STATUSES
+                      and not dsx),
         "pf_failures": pf_failures, "step_errors": step_errors,
         "subs": subs, "sub_errors": sub_errors, "report": report})
 
@@ -2699,8 +2740,16 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
 
 # === Forecast APIs: /api/series, /api/progress ===
 @app.get("/api/series")
-def api_series(locs: str = ""):
-    """Data-panel series for the checked locations (live, before any run)."""
+def api_series(request: Request, locs: str = "", source: str = ""):
+    """Data-panel series for the checked locations (live, before any run);
+    `source` = a custom dataset's id (its groups' newest data)."""
+    if source:
+        from app.ui import datasets_ui as _dsu
+        refused = _dsu.local_only(request)
+        if refused:
+            return refused
+        ds = _dsu.get_dataset(source)
+        return _dsu.api_series(ds, locs) if ds is not None else {}
     import pandas as pd
     sel = [l for l in locs.split("|") if l][:8] or ["Ohio"]
     out = {}
@@ -3073,8 +3122,12 @@ def output_download(path: str):
     listings' rule, enforced here for hand-edited URLs)."""
     from fastapi.responses import FileResponse
     from app.core.runs import APP_STATE
+    from app.core import datasets as _datasets
     p = Path(path).resolve()
     if not (p.is_relative_to(APP_STATE.resolve()) and p.is_file()):
+        return HTMLResponse("<p>file not found in app state</p>", status_code=404)
+    if p.is_relative_to(Path(_datasets.ROOT).resolve()):
+        # uploaded data is not served here (it may be private)
         return HTMLResponse("<p>file not found in app state</p>", status_code=404)
     if p.parent.parent.name == "submission" \
             and p.parent.name not in _registered_model_ids() \
@@ -4008,8 +4061,11 @@ def retro_index(request: Request):
                         "scored": (root / "scores.json").exists()})
     from flubnf.settings import PY_ENGINE, PYBNF
     from app.core.engines.pf import DEFAULT_SHARD_WIDTH, SHARD_WIDTH_CAP
+    # the own-data replays: their own card, never beside the hub seasons
+    from app.ui import datasets_ui as _dsu
     return templates.TemplateResponse(request, "retro.html",
-                                      {"active": "Retrospective", "seasons": seasons,
+                                      {**_dsu.retro_context(),
+                                       "active": "Retrospective", "seasons": seasons,
                                        "state_names": _retro_state_names(),
                                        "default_width": DEFAULT_SHARD_WIDTH,
                                        "width_cap": SHARD_WIDTH_CAP,
@@ -5293,6 +5349,11 @@ def run_models(request: Request,
         _flash(f"'{engine}' is not one of the available engines. "
                "Nothing was run.")
     return RedirectResponse("/forecast#results", status_code=303)
+
+
+# === Custom datasets: upload, browse, forecast, replay (app/ui/datasets_ui.py) ===
+from app.ui import datasets_ui as _datasets_ui              # noqa: E402
+app.include_router(_datasets_ui.router)
 
 
 # === Startup warm (LAST, so every function it reaches is defined) ===

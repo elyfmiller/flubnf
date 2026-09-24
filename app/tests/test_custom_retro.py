@@ -135,7 +135,7 @@ def test_pf_replay_runs_plain_and_cleans_its_workroots(monkeypatch):
                         pf_state="ready")
     assert len(seen) == 2 and all(s.extra["oracle"] == "none" for s in seen)
     assert seen[0].season_start == "2023-08-01"
-    assert "pf" in meta["summary"] and meta["pf"].startswith("SIHRS")
+    assert "pf" in meta["summary"] and meta["pf"].startswith("plain SIHRS")
     assert not (out / "work").exists()
 
 

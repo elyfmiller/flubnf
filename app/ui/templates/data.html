@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% block title %}FluBNF · Data{% endblock %}
 {% block head %}<script src="/static/plotly.min.js"></script>{% endblock %}
-{% block content %}
+{% block content %}{% import "_tips.html" as tips %}
 <h1>Data</h1>
 <div class="cols">
  <div><div class="card"><h2>FluSight hub</h2>
@@ -41,18 +41,29 @@
  </div></div>
 </div>
 
-<div class="card"><h2>Vintage browser</h2>
+{% include "_datasets_card.html" %}
+
+<div class="card" id="browser">{% if ds %}<h2>{{ ds.name }}
+ {{ tips.tip("ds-browse", "this view", "Each group's series as stored. " ~ ("Pick a snapshot to see the data as it stood on that as_of." if ds.vintage_true else "The upload had no as_of column, so this is the final data; forecasts and replays on it are not vintage-true.")) }}</h2>
+ <p class="hint">Your dataset, {{ "vintage-true" if ds.vintage_true else "final data (not vintage-true)" }}.
+  <a href="/forecast?source={{ ds.id }}">Forecast it</a> ·
+  <a href="/retro#dataset-replay">Replay it</a> ·
+  <a href="/data">Back to the FluSight hub</a></p>
+ {% else %}<h2>Vintage browser</h2>
  <p class="hint">The archived truth vintages, exactly as runs fit them.
- Read-only.</p>
+ Read-only.</p>{% endif %}
  {# plain GET form (shareable URL), no auto-submit: a scripted submit
     reloads per ArrowDown on a closed select in Chrome/Edge on Windows
     (WCAG 3.2.2) #}
  <form method="get" action="/data" class="row" style="align-items:flex-end">
-  <span><label for="dv-vintage">Vintage</label>
+  {% if ds %}<input type="hidden" name="source" value="{{ ds.id }}">{% endif %}
+  {% if not ds or ds.vintage_true %}
+  <span><label for="dv-vintage">{{ "Snapshot" if ds else "Vintage" }}</label>
    <select id="dv-vintage" name="vintage">
     {% for v in vintages %}<option {% if v == sel_vintage %}selected{% endif %}>{{ v }}</option>{% endfor %}
    </select></span>
-  <span><label for="dv-loc">Location</label>
+  {% endif %}
+  <span><label for="dv-loc">{{ "Group" if ds else "Location" }}</label>
    <select id="dv-loc" name="loc">
     {% for n in loc_names %}<option {% if n == sel_loc %}selected{% endif %}>{{ n }}</option>{% endfor %}
    </select></span>
@@ -76,25 +87,30 @@
  <div class="vintagecols">
   <div>
    <div id="vintageplot" style="min-height:380px"></div>
+   {% if ds %}
+   <p class="hint">{{ sel_loc }}: {{ series_n }} weeks{% if peak %}
+    · peak {{ "{:,.6g}".format(peak[1]) }}, week of {{ peak[0] }}{% endif %}{%
+    if ds.national == sel_loc %} · the national group{% endif %}.</p>
+   {% else %}
    <p class="hint">{{ sel_loc }}: {{ series_n }} reported weeks{% if peak %}
     · peak {{ "{:,.0f}".format(peak[1]) }} admissions, week of
     {{ peak[0] }}{% endif %} · the marker is this vintage's newest week.</p>
+   {% endif %}
   </div>
   {% if series_table %}
   <div class="vintagetable">
    <table class="compact">
-    <tr><th>week</th><th class="num">admissions</th></tr>
+    <tr><th>week</th><th class="num">{{ ds.unit if ds else "admissions" }}</th></tr>
     {% for d, v in series_table %}
-    <tr><td>{{ d }}</td><td class="num">{{ "{:,.0f}".format(v) }}</td></tr>
+    <tr><td>{{ d }}</td><td class="num">{{ "{:,.6g}".format(v) if ds else "{:,.0f}".format(v) }}</td></tr>
     {% endfor %}
    </table>
-   <p class="hint">Newest {{ series_table | length }} weeks as archived;
-    later revisions never appear.</p>
+   <p class="hint">Newest {{ series_table | length }} weeks{{ " as stored" if ds else " as archived; later revisions never appear" }}.</p>
   </div>
   {% endif %}
  </div>
  {% elif sel_loc %}
- <p class="hint">This vintage holds no reported weeks for {{ sel_loc }}.</p>
+ <p class="hint">This {{ "dataset" if ds else "vintage" }} holds no reported weeks for {{ sel_loc }}.</p>
  {% endif %}
 </div>
 {% if series_json and series_json != 'null' %}
@@ -104,6 +120,10 @@
  const VSERIES = {{ series_json | safe }};
  const VLOC = {{ sel_loc | tojson }};
  const VVINTAGE = {{ sel_vintage | tojson }};
+ // a custom dataset's name and unit (null on the hub's vintage browser)
+ const VDS = {{ (ds.name if ds else none) | tojson }};
+ const VUNIT = {{ (ds.unit if ds else "admissions") | tojson }};
+ const VFMT = VDS ? ',.6~g' : ',.0f';
  // [month label, week offset from August 1] (server-side list)
  const SEASON_MONTHS = {{ season_months | tojson }};
  // the season palette's cvd-safe literals as the fallback; the drawn
@@ -153,13 +173,13 @@
      const traces=[
        {x:VSERIES.dates,y:VSERIES.values,mode:'lines',name:VLOC,
         line:{color:css('--gold'),width:2},
-        hovertemplate:'%{x} · %{y:,.0f} admissions<extra></extra>'},
+        hovertemplate:'%{x} · %{y:'+VFMT+'} '+VUNIT+'<extra></extra>'},
        // marker on the newest week this vintage held
        {x:[VSERIES.dates[n-1]],y:[VSERIES.values[n-1]],mode:'markers',
         name:'newest week',marker:{size:9,color:css('--gold-bright')||css('--gold')},
-        hovertemplate:'newest: %{x} · %{y:,.0f}<extra></extra>'}];
+        hovertemplate:'newest: %{x} · %{y:'+VFMT+'}<extra></extra>'}];
      Plotly.react(el,traces,
-       vlay(VLOC+': admissions as archived '+VVINTAGE,380),
+       vlay(VDS ? VLOC+' · '+VDS : VLOC+': admissions as archived '+VVINTAGE,380),
        vconf('flubnf_vintage_'+VVINTAGE+'_'+VLOC));
      return;
    }
@@ -171,11 +191,12 @@
    const seasons=Object.keys(by).sort();
    const traces=seasons.map((k,i)=>({x:by[k].x,y:by[k].y,mode:'lines',name:k,
      customdata:by[k].d,
-     hovertemplate:k+' · %{customdata} · %{y:,.0f}<extra></extra>',
+     hovertemplate:k+' · %{customdata} · %{y:'+VFMT+'}<extra></extra>',
      line:{width:i===seasons.length-1?3:1.5,
            color:i===seasons.length-1?(css('--gold')||SCOLORS[0])
                 :seasonColor(seasons.length-2-i)}}));
-   const L=vlay(VLOC+': season over season, as archived '+VVINTAGE,380);
+   const L=vlay(VDS ? VLOC+' · '+VDS+': season over season'
+                : VLOC+': season over season, as archived '+VVINTAGE,380);
    L.xaxis.tickvals=SEASON_MONTHS.map(m=>m[1]);
    L.xaxis.ticktext=SEASON_MONTHS.map(m=>m[0]);
    Plotly.react(el,traces,L,vconf('flubnf_vintage_seasons_'+VVINTAGE+'_'+VLOC));

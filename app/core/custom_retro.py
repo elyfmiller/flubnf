@@ -223,7 +223,7 @@ def run(ds, weeks: list, groups: list, *, engine: str = "analogue",
         "last": weeks[-1] if weeks else None,
         "weeks_to_drop": int(weeks_to_drop or 0),
         "analogue": CR.analogue_label(x0),
-        "pf": ("SIHRS particle filter (plain, no Oracle step)" if pf_ok
+        "pf": ("plain SIHRS particle filter (no Oracle step)" if pf_ok
                else None),
         "pf_skipped": (None if pf_ok or not want_pf else
                        "the dataset is not counts with a population"

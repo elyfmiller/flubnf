@@ -1,5 +1,6 @@
 {% extends "base.html" %}{% block title %}FluBNF · Run{% endblock %}
-{% block content %}
+{% block head %}{% if dataset %}<script src="/static/plotly.min.js"></script>{% endif %}{% endblock %}
+{% block content %}{% import "_tips.html" as tips %}
 
 <h1>Run: {{ label or "details" }}
  {# research badge from the ledger row's spec (the record of record) #}
@@ -83,8 +84,10 @@
   app.</p>
 </div>{% endif %}
 
+{% if dataset %}{% include "_dataset_run.html" %}{% endif %}
+
 {% for model, locs in models.items() %}
-<div class="card"><h2>{{ model_name(model) }}: median admissions, 1-4 weeks ahead</h2>
+<div class="card"><h2>{{ (dataset_members or {}).get(model) or model_name(model) }}: median {{ "values" if dataset else "admissions" }}, 1-4 weeks ahead</h2>
 <table><tr><th>location</th><th>1 wk</th><th>2 wk</th><th>3 wk</th><th>4 wk</th></tr>
 {% for loc, m in locs.items() %}
 <tr><td>{{ loc }}</td>{% for h in ["1","2","3","4"] %}
@@ -98,6 +101,7 @@
 {% endif %}
 {% endfor %}
 
+{% if not dataset %}
 <div class="card"><h2>Submission files</h2>
 {% for s in subs %}
  {% if s.submittable %}
@@ -117,4 +121,5 @@
  <p><b>{{ model }}</b>: <span class="bad">no file written</span><br>
   <span class="hint">Refused before anything reached disk: {{ why }}</span></p>
 {% endfor %}</div>
+{% endif %}
 {% endblock %}
