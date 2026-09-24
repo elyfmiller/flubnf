@@ -7,9 +7,13 @@ Hub facts (model-metadata/README.md):
   * model identity lives in the PATH (model-output/<team>-<model>/), never in
     a CSV column: one file per model_id per reference date;
   * a team may designate up to two models for the ensemble;
-  * quantile targets: 'wk inc flu hosp' at 23 quantiles, horizons -1..3;
-  * value precision: whole admissions, like every official 'wk inc flu hosp'
-    value from 2025 on (_hub_values).
+  * quantile targets: 'wk inc flu hosp' at 23 quantiles; the hub takes
+    horizons -1..3 and this app writes 0..3 (-1, the week already reported,
+    is optional and never scored);
+  * value precision: whole admissions, which FluSight requires from 2026-27
+    (model-output/README.md; _hub_values);
+  * every file is checked the way the hub checks it before it takes its
+    name (app/core/hubcheck.py, the vendored tasks.json).
 """
 from __future__ import annotations
 
@@ -37,6 +41,18 @@ MODEL_ABBR = {"pf": "OracleSIHRS", "analogue": "GroundHogCGR"}
 #: identities no longer produced; empty (the retired cards belong to the old
 #: LosAlamos_NAU registration)
 RETIRED_ABBR = ()
+
+#: model-output directory names earlier versions of this app wrote, under
+#: registrations since retired, -> the member that wrote them ("pf",
+#: "analogue") or "blend" (the retired blend, which has no successor).
+#: Read only, to present old run folders; nothing writes these names.
+LEGACY_DIRS = {
+    "NAU-PF-SIHRS": "pf", "NAU_FluBNF-SIHRS": "pf",
+    "LosAlamos_NAU-SIHRS": "pf",
+    "LosAlamos_NAU-GroundhogCGR": "analogue",
+    "NAU-Ensemble": "blend", "NAU_FluBNF-ensemble": "blend",
+    "LosAlamos_NAU-CModel_Flu": "blend",
+}
 
 
 def hub_model_id(model: str) -> str:
@@ -189,10 +205,29 @@ def write_submission(all_rows: Iterable[dict], model: str, asof: str,
     tmp = p.with_name(p.name + ".tmp")
     try:
         df.to_csv(tmp, index=False)
+        _hub_gate(tmp, p.name, d.name, hub_named=not suffix)
         os.replace(tmp, p)
     finally:
         tmp.unlink(missing_ok=True)
     return p
+
+
+def _hub_gate(tmp: Path, name: str, dir_name: str, hub_named: bool) -> None:
+    """The written bytes, checked the way the hub checks them
+    (app/core/hubcheck.py, rules from the vendored tasks.json). Any defect
+    is fatal before the file takes its name. An off-season reference date
+    is not a defect (replays of summer weeks are records, not
+    submissions); a <hub id>-modified file skips the name checks, since
+    its name is deliberately not a hub name."""
+    from app.core import hubcheck
+    res = hubcheck.check_frame(hubcheck.read_text_frame(tmp),
+                               name if hub_named else None,
+                               dir_name if hub_named else None)
+    bad = hubcheck.failures(res)
+    if bad:
+        raise ValueError("submission failed the hub's checks "
+                         "(app/core/hubcheck.py):\n  "
+                         + "\n  ".join(bad[:10]))
 
 
 def rows_from_quantiles(qs: dict, location_fips: str, asof: str) -> list:
