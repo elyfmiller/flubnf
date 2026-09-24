@@ -100,7 +100,7 @@ def test_the_flusight_panel_is_untouched_by_the_second_one():
 
 
 def test_posting_the_rendered_card_untouched_replays_shipped(monkeypatch):
-    ds = stored(TEMPLATE.read_bytes(), "Template")
+    stored(TEMPLATE.read_bytes(), "Template")
     calls = []
     monkeypatch.setattr(DU, "replay_worker",
                         lambda *a, **k: calls.append((a, k)))

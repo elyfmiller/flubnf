@@ -12,7 +12,6 @@ import re
 import app.core.runs as runs_mod
 from app.core import custom_run as CR
 from app.ui import datasets_ui as DU
-from app.ui import server as srv
 
 from test_datasets_ui import TEMPLATE, client, isolated, stored  # noqa: F401
 

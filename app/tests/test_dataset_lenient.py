@@ -527,8 +527,7 @@ def test_datetimes_trailing_blank_rows_and_columns_and_extra_columns():
 def test_a_short_row_is_ragged_only_when_it_lacks_a_used_column():
     rows = [f"{d.isoformat()},A,{i},x" for i, d in enumerate(sats())]
     rows[1] = rows[1].rsplit(",", 1)[0]          # lacks only 'notes'
-    rep = ok(D.validate(csv_text("date,target_group,value,notes",
-                                 rows).encode()))
+    ok(D.validate(csv_text("date,target_group,value,notes", rows).encode()))
     rows[2] = "2024-08-17,A"                     # lacks the value
     p = only(D.validate(csv_text("date,target_group,value,notes",
                                  rows).encode()), "ragged")
