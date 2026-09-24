@@ -1,8 +1,6 @@
-"""The committed donor banks: provenance, verification, and refusal.
-
-Offline. Every test builds its own tiny bank in a tmp dir; nothing here
-reads data/banks/ except the two tests that deliberately assert the
-shipped artefact is present and self-consistent.
+"""The committed donor banks: provenance, verification and refusal. Offline:
+each test builds a tiny bank, except the two that assert the shipped
+data/banks/ artefact is present and self-consistent.
 """
 import json
 import sys

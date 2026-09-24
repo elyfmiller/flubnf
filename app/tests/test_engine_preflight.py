@@ -1,15 +1,10 @@
 """The fork path is tested by its pf.py, never by the directory.
 
-A PI's laptop installed the engine from the small archive, the console
-reported itself healthy, and the forecast then failed all six particle
-filter cells while the analogue worked (lab report, 2026-09-08). The cause
-is that the fit runner inserts the fork path at the front of sys.path and
-the engine venv also holds a stock PyBNF from PyPI, which has no pf.py and
-therefore no fit_type = pf: with a fork path that provides no pf.py the
-runner imports the stock package instead and every cell dies with an
-opaque configuration error, while Perl, BNG2.pl, network generation and
-the .exp all work perfectly. Now the absence is named once, before any
-fitting, everywhere the console reports its components.
+The fit runner puts the fork path first on sys.path, and the engine venv
+also holds a stock PyBNF (no pf.py, no fit_type = pf). A fork path without
+pf.py silently imports the stock package and every PF cell dies with an
+opaque configuration error while the rest of the engine looks healthy. The
+absence is named once, before fitting, everywhere components are reported.
 """
 import sys
 import types

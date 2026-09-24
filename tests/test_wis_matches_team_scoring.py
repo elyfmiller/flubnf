@@ -1,18 +1,10 @@
 """flubnf/wis.py must reproduce the scoring used for the team baseline.
 
-Every SIHRS-vs-LosAlamos number depends on an assumption that is easy to miss:
-our WIS and the team's `wis` column must come from the SAME formula. If they
-diverge -- a different interval set, a missing 1/(K+0.5), pinball instead of the
-Bracher decomposition -- the head-to-head silently compares two different
-metrics and every reported percentage is meaningless.
-
-That is checkable rather than assumable: the hub carries the team's RAW quantile
-submissions, so recomputing their WIS with our implementation and comparing to
-the pre-scored CSV is an exact test. Measured 2026-07-30 over 636 overlapping
-cells: max relative difference 0.0000%, correlation 1.000000.
-
-Skips (rather than fails) when the hub clone or the scored CSV is absent, so the
-suite still runs on a machine without the data.
+Head-to-head numbers assume our WIS and the team's `wis` column use the SAME
+formula (interval set, 1/(K+0.5), Bracher decomposition). Recomputing the
+team's raw hub quantiles with our implementation against the pre-scored CSV
+is exact (measured: max relative difference 0.0000% over 636 cells). Skips
+when the hub clone or the scored CSV is absent.
 """
 from __future__ import annotations
 

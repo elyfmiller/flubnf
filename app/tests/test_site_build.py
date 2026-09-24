@@ -1,33 +1,10 @@
-"""The public site generator, run against the repository's REAL state.
+"""The public site generator, run against this machine's REAL state.
 
-These tests deliberately do not fabricate a season. The generator's whole
-job is to read what is actually on disk, so a fixture would test the
-fixture. Instead the suite builds the site from the lab's own retrospectives
-when they are present, and skips itself cleanly when they are not -- which
-is exactly the CI case (no hub clone, no app/state), matching how every
-other hub-dependent test in this repo behaves.
-
-What is pinned here, and why each one is worth a test:
-
-  * THE NUMBERS REACH THE PAGE. On the sealed three-season record the
-    members' figures (PF 1.023 / 0.636 / 0.825, analogue 1.045 / 0.756 /
-    0.621) must be computed from the forecasts on disk and appear in the
-    HTML -- not merely in the payload, because a payload nobody renders is
-    not a published figure. Another tree on the machine is checked for
-    shape, not for those numbers.
-  * NO BLEND IS PRINTED. The equal-weight ensemble was retired on
-    2026-09-22 and no payload carries one; a page that printed a blend
-    would be printing something nothing computes. (Until then the pin
-    here was that the blend was the shipped equal-weight one and never
-    the frozen LOSO table the lab evaluated and REJECTED; the reasoning
-    blend.
-  * NOTHING LEAVES THE MACHINE. The page must reference no remote script,
-    stylesheet, image or fetch beyond the Google Fonts stylesheet, or it is
-    not the offline artifact a reviewer opens before committing.
-  * NO UNRESOLVED PLACEHOLDERS. An unrendered Jinja tag or a literal None in
-    a cell is the failure mode of a generator that half-worked; the BNGL
-    listing's own {{TOKENS}} are the one legitimate exception and are
-    scoped to it.
+No fabricated season (a fixture would test the fixture); the module skips
+cleanly without retrospectives, as in CI. Pinned: members' figures are
+computed from on-disk forecasts and rendered into the HTML; no retired
+blend is printed; nothing loads remotely except Google Fonts; no
+unresolved placeholder outside the BNGL listing's {{TOKENS}}.
 """
 import json
 import re
@@ -44,8 +21,8 @@ REPO = Path(__file__).resolve().parents[2]
 
 
 def _have_state() -> bool:
-    """Real retrospectives AND a usable truth source. Both are needed; a
-    season with no truth to score against would build an empty table."""
+    """Real retrospectives AND a usable truth source (without truth a season
+    builds an empty table)."""
     try:
         from app.core.scoring import load_truth
         if not sb.discover_seasons():
@@ -79,8 +56,7 @@ def test_build_emits_page_payload_and_a_cached_plotly(built):
     assert (out / "site.json").is_file()
     assert (out / ".nojekyll").is_file()
 
-    # Plotly is a SIBLING, never inlined: a 4.9 MB blob inside the page
-    # would dominate every diff of the file whose diff is the review
+    # Plotly is a SIBLING, never inlined (4.9 MB would swamp every diff)
     js = out / "plotly.min.js"
     assert js.is_file() and js.stat().st_size > 1_000_000
     assert 'src="plotly.min.js"' in html
@@ -88,9 +64,8 @@ def test_build_emits_page_payload_and_a_cached_plotly(built):
 
 
 def test_payload_beside_the_page_is_the_bytes_the_page_reads(built):
-    """The page embeds its data so it works from file://, and site.json is
-    the same bytes so the diff a reviewer reads is the data the page uses.
-    If these ever diverge the review is reviewing a different artifact."""
+    """The embedded payload (for file://) and site.json are the same bytes,
+    so the reviewed diff is the data the page uses."""
     res, out, html, payload = built
     m = re.search(r'<script type="application/json" id="flubnf-payload">'
                   r"(.*?)</script>", html, re.S)
@@ -101,8 +76,7 @@ def test_payload_beside_the_page_is_the_bytes_the_page_reads(built):
 
 
 def test_payload_is_diff_reviewable(built):
-    """One field per line and stable key order, or a rebuild that moved one
-    number produces an unreadable diff and stops being reviewed."""
+    """One field per line, stable key order: a rebuild's diff stays readable."""
     res, out, _html, _payload = built
     text = (out / "site.json").read_text(encoding="utf-8")
     lines = text.splitlines()
@@ -121,8 +95,7 @@ def test_the_page_loads_nothing_remote_but_the_font_stylesheet(built):
     for m in _REMOTE_ATTR.finditer(html):
         tag_start = html.rfind("<", 0, m.start())
         tag = html[tag_start:m.start()].lower()
-        # <a href> is a link the reader may follow, not a resource the page
-        # fetches; only fetched subresources are constrained here
+        # <a href> is a link, not a fetched subresource
         if tag.startswith("<a "):
             continue
         hosts.add(m.group(2).split("/")[0].lower())
@@ -135,9 +108,8 @@ def test_the_page_loads_nothing_remote_but_the_font_stylesheet(built):
 
 
 def test_nothing_on_the_page_needs_an_origin(built):
-    """file:// has a null origin: localStorage can throw outright, and any
-    origin-derived URL resolves to nothing. The page must survive both, or
-    "open it before you commit it" is not a real instruction."""
+    """file:// has a null origin (localStorage can throw, origin URLs resolve
+    to nothing); the page must survive both."""
     res, out, html, _payload = built
     for api in ("location.origin", "document.domain", "window.open(",
                 "sessionStorage", "indexedDB", "caches.", "Worker("):
@@ -152,8 +124,7 @@ def test_nothing_on_the_page_needs_an_origin(built):
 
 
 def test_every_local_reference_resolves_on_disk(built):
-    """"Works offline" means every non-remote src/href either names a file
-    that shipped or is a same-page anchor."""
+    """Every non-remote src/href names a shipped file or a same-page anchor."""
     res, out, html, _payload = built
     for m in re.finditer(r'(?:src|href)\s*=\s*"([^"]+)"', html):
         ref = m.group(1)
@@ -170,10 +141,8 @@ def _is_seal(root) -> bool:
 
 
 def test_known_scores_reach_the_html(built):
-    """The lab's published record, computed here and printed there. The
-    numeric pins are the SEAL's; another tree on the machine (a lab run,
-    a partial replay) is checked for shape and for the absence of any
-    blend."""
+    """The sealed record's numbers are computed here and printed there; other
+    trees are checked for shape and for the absence of any blend."""
     res, out, html, payload = built
     by_season = {s["season"]: s for s in payload["seasons"]}
     seasons = sb.discover_seasons()
@@ -205,14 +174,9 @@ def test_known_scores_reach_the_html(built):
 
 
 def test_site_build_never_reads_a_stored_scores_file():
-    """The invariant, stated so it holds whatever is on disk.
-
-    Any scores.json written before v1.0 carries the FROZEN LOSO ensemble,
-    which the lab rejected; one written since carries the shipped
-    equal-weight blend, because the default was corrected. Both columns are
-    called "ensemble". The generator must not read either -- it recomputes
-    from the stored per-week payloads -- so the invariant is about the code
-    path, not about which vintage happens to be on this machine.
+    """site_build never reads a stored scores.json (older ones carry retired
+    "ensemble" blends); it recomputes from the per-week payloads. Checked on
+    the code path, whatever vintage is on disk.
     """
     import inspect
     src = inspect.getsource(sb)
@@ -225,9 +189,8 @@ def test_site_build_never_reads_a_stored_scores_file():
 
 
 def test_the_site_never_scores_a_blend_even_where_a_stored_one_exists():
-    """A tree scored before 2026-09-22 keeps the blend's rows in its own
-    scores.json; the site, which recomputes from the payloads, must still
-    print none, and its member figures must be the stored members' own."""
+    """A tree scored before the blend's retirement keeps its rows in
+    scores.json; the site still prints none, and member figures match."""
     pd = pytest.importorskip("pandas")
     seasons = sb.discover_seasons()
     if "2024-25" not in seasons:
@@ -246,23 +209,16 @@ def test_the_site_never_scores_a_blend_even_where_a_stored_one_exists():
         g = df[df.model == m] if "model" in df.columns else df[:0]
         if len(g) and m in computed:
             stored = float(g.wis.sum() / g.base_wis.sum())
-            # the same members, the same cells, the same formula; a stored
-            # file scored under an older cell rule may differ, but never
-            # by more than the rule's own margin
+            # same members, cells and formula; an older cell rule may differ
+            # only within its own margin
             assert abs(stored - computed[m]["rel"]) < 0.05, (m, stored,
                                                              computed[m])
 
 
 def test_the_baseline_scores_exactly_one_against_itself(built):
-    """A free proof that the whole scoring chain is wired correctly.
-
-    relWIS divides each cell's WIS by the FluSight baseline's WIS on the
-    same cell, and the baseline's own submitted forecast is separately
-    parsed from the hub and scored through the identical path. If the
-    baseline construction, the hub join (reference_date = asof + 7), the
-    horizon offset, or the truth lookup were wrong anywhere, this would not
-    come out at 1.000.
-    """
+    """The baseline scores 1.000 against itself: any error in the baseline,
+    the hub join (reference_date = asof + 7), the horizon offset or the truth
+    lookup would break it."""
     res, out, html, payload = built
     for s in payload["seasons"]:
         base = s["models"].get("FluSight-baseline")
@@ -271,9 +227,7 @@ def test_the_baseline_scores_exactly_one_against_itself(built):
 
 
 def test_official_comparators_are_scored_on_our_cells(built):
-    """The columns sit in one row, so they must rest on one cell set. An
-    unrestricted official column would cover weeks and locations ours does
-    not, and a reader would compare them anyway."""
+    """Official comparator columns are scored on our cell set."""
     res, out, html, payload = built
     for s in payload["seasons"]:
         ens = s["models"].get("ensemble")
@@ -281,29 +235,17 @@ def test_official_comparators_are_scored_on_our_cells(built):
         if ens and off:
             assert off["cells"] == ens["cells"], (s["season"], ens, off)
     if any("FluSight-ensemble" in s["models"] for s in payload["seasons"]):
-        # the panel has to say out loud that one cell set carries both
-        # columns; the wording moved when the copy was cut, the claim did not
+        # the note says one cell set carries both columns...
         assert "on the same cells" in html
-        # ...and it has to name the comparator, which is the half of the
-        # copy that only exists when there IS an official column. The
-        # same-cells claim above now sits in the note's UNCONDITIONAL
-        # opening sentence (site_page._season_table), so on its own it is
-        # true of every build and would pass with the has_official branch
-        # deleted outright: this second assertion is the one that proves
-        # the branch ran. Pinning only the first is the same weakening this
-        # file already took once.
+        # ...and names the comparator. The same-cells sentence is
+        # unconditional, so only this line proves the has_official branch ran.
         assert "the hub's own combination of every team's forecasts" in html
 
 
 def test_placements_are_harvested_not_invented(built):
-    """The FluSight standings come from the console's own table. A season
-    it does not cover gets no placement rather than a made-up one.
-
-    Since 2026-08-24 the console's table carries no standings at all: they
-    were withdrawn because the scorer that produced them does not survive
-    and this project's own entries in the archived field were not computed
-    on one convention (docs/archive/RELEASE-1.0.md). This test therefore normally
-    exercises the empty branch, which is the point of it."""
+    """Standings come from the console's own table, never invented. Since
+    placement was withdrawn the table carries none, so this normally tests
+    the empty branch."""
     res, out, html, payload = built
     harvested = sb.harvest_placement()
     for s in payload["seasons"]:
@@ -315,25 +257,20 @@ def test_placements_are_harvested_not_invented(built):
             assert pl["text"] in html
         else:
             assert pl is None
-            # the empty cell says WITHDRAWN, matching Methods and the note
-            # under the same table; "not yet scored" said the opposite of
-            # both, one line apart from one of them
+            # the empty cell says WITHDRAWN, matching Methods
             assert "placement withdrawn, see Methods" in html
             assert "not yet scored against the field" not in html
 
 
 def test_every_computed_score_matches_what_the_console_publishes(built):
-    """The drift alarm. The console states its performance in prose (the
-    reseal's PF figures, home.html); this build recomputes it from the
-    tree on disk. They must agree, or one of them has moved. Only the
-    reseal can agree with the reseal, so another tree skips the numeric
-    half and keeps the structural one."""
+    """The drift alarm: the console's published figures (home.html) agree
+    with this recomputation. Only the reseal tree can match the numbers;
+    others keep the structural half."""
     res, out, html, payload = built
     checks = payload["consistency"]
     assert checks, "nothing was cross-checked"
-    # the mechanistic column is named for what the published trees store:
-    # the Oracle SIHRS when every season carries the member, the particle
-    # filter alone when the trees predate the step (every sealed record)
+    # the mechanistic column is named for what the trees store (Oracle SIHRS,
+    # or the particle filter for trees that predate it)
     assert payload["pf_label"] in (sb.PF_LABEL_ORACLE, sb.PF_LABEL_FILTER)
     assert all(payload["pf_label"] in c["what"] for c in checks)
     seasons = sb.discover_seasons()
@@ -348,8 +285,7 @@ def test_every_computed_score_matches_what_the_console_publishes(built):
 # ------------------------------------------------------------- the whole page
 
 def test_no_unresolved_placeholders(built):
-    """A half-rendered generator leaves Jinja tags and literal Nones behind.
-    The BNGL listing's own {{TOKENS}} are legitimate and scoped to it."""
+    """No Jinja tags or literal Nones outside the BNGL listing's {{TOKENS}}."""
     res, out, html, _payload = built
     pre = re.search(r"<pre>(.*?)</pre>", html, re.S)
     assert pre, "the BNGL listing did not render"
@@ -366,8 +302,7 @@ def test_no_unresolved_placeholders(built):
 
 
 def test_methods_is_the_consoles_own_page_diagrams_included(built):
-    """Harvested, not restated: the same headings, the same SVGs, and the
-    version numbers the console reports for its own engines."""
+    """Methods is harvested from the console: same headings, SVGs, versions."""
     res, out, html, _payload = built
     src = (REPO / "app" / "ui" / "templates" / "methods.html").read_text()
     for heading in re.findall(r"<h2>([^<{]+)</h2>", src):
@@ -390,16 +325,15 @@ def test_bibliography_comes_from_the_priors_module(built):
 
 
 def test_outlook_is_a_real_national_map_with_a_working_toggle(built):
-    """The map, its per-model fills, and the fans must describe the same
-    forecast, and the toggle must actually change something."""
+    """Map, per-model fills and fans describe one forecast; the toggle changes
+    something."""
     res, out, html, payload = built
     ol = payload["outlook"]
     assert ol["coverage"] >= sb.MIN_OUTLOOK_LOCATIONS
     assert ol["default_model"] in ol["models"]
     assert 'id="usmap"' in html and "data-fips=" in html
 
-    # every model paints exactly the shapes the map draws, and the page
-    # states out loud any jurisdiction it forecasts but cannot draw
+    # every model paints the drawn shapes; undrawable jurisdictions are named
     drawn = set(ol["fills"][ol["default_model"]])
     for model in ol["models"]:
         assert f'data-m="{model}"' in html
@@ -426,8 +360,7 @@ def test_outlook_is_a_real_national_map_with_a_working_toggle(built):
 
 
 def test_fans_cover_every_location_and_carry_settled_only_where_true(built):
-    """The conditional overlay: a settled point may only exist where truth
-    for that target week actually arrived, and never beyond four weeks."""
+    """A settled point exists only where truth arrived, at most four weeks."""
     res, out, html, payload = built
     fans = payload["fans"]
     assert len(fans) >= sb.MIN_OUTLOOK_LOCATIONS
@@ -445,14 +378,8 @@ def test_fans_cover_every_location_and_carry_settled_only_where_true(built):
 
 
 def test_observations_are_the_vintage_the_forecast_saw(built):
-    """Vintage-true observations, settled truth only in the overlay.
-
-    A replayed week's playback payload carries SETTLED truth, because the
-    console's replay viewer shows what happened. But the observed line and
-    the map's "current" anchor describe what the forecast SAW, and NHSN
-    revises the freshest week upward by a median 4-5%. Using settled values
-    there moved a real state across a category cutpoint when this was
-    written. The two series must come from the two different sources.
+    """Observed line and map anchor use the VINTAGE the forecast saw (NHSN
+    revises the freshest week up ~4-5%); only the overlay uses settled truth.
     """
     res, out, html, payload = built
     src = payload["outlook"]["source"]
@@ -483,8 +410,7 @@ def test_observations_are_the_vintage_the_forecast_saw(built):
         checked += 1
     assert checked > 20, "too few locations checked to mean anything"
 
-    # and the settled overlay still comes from settled truth, not the
-    # vintage -- that is the whole point of drawing it separately
+    # the settled overlay comes from settled truth, not the vintage
     import pandas as pd
     for name, fan in list(payload["fans"].items())[:8]:
         for d, v in (fan.get("settled") or []):
@@ -493,8 +419,8 @@ def test_observations_are_the_vintage_the_forecast_saw(built):
 
 
 def test_discovery_finds_seasons_rather_than_naming_them():
-    """No season list is hardcoded: every discovered season is a directory
-    that actually holds completed weeks, under a known root."""
+    """No hardcoded season list: each is a directory of completed weeks under
+    a known root."""
     seasons = sb.discover_seasons()
     assert seasons
     roots = {str(p) for _o, p in sb.ROOT_ORDER}
@@ -506,8 +432,7 @@ def test_discovery_finds_seasons_rather_than_naming_them():
 
 
 def test_a_pinned_outlook_week_is_honoured_and_recorded(tmp_path):
-    """The override exists so a deliberate choice is deliberate: it must
-    take effect AND leave a mark in the payload saying it was made."""
+    """A pinned outlook week takes effect and is recorded in the payload."""
     seasons = sb.discover_seasons()
     season = min(seasons)
     asof = seasons[season]["weeks"][len(seasons[season]["weeks"]) // 2]

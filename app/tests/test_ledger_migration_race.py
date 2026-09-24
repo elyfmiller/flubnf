@@ -1,12 +1,9 @@
 """The ledger's column migration survives two concurrent constructions.
 
-Ledger.__init__ migrates by PRAGMA-check then ALTER TABLE. Two Ledgers
-constructed at once (a route and the season worker share the default path)
-both pass the check; the loser's ALTER then reports the column the winner
-just added, and before the guard that OperationalError killed the loser's
-construction outright (2026-09-01 final pass). These tests reproduce the
-interleaving deterministically: the "winner" applies the migration in the
-gap between the loser's PRAGMA check and its ALTER.
+Two Ledgers on the default path (a route and the season worker) can both
+pass the PRAGMA check; the loser's ALTER then hits the winner's column, and
+that OperationalError must not kill its construction. The interleaving is
+reproduced deterministically.
 """
 import sqlite3
 import sys
@@ -21,10 +18,8 @@ MIGRATED = ("finished_utc", "elapsed_s")
 
 
 class _RacingConn:
-    """Delegates to a real connection, except that the moment the
-    migration's PRAGMA check has produced its (now stale) answer, a second
-    connection applies the whole migration itself: the exact interleaving
-    the field only hits by timing."""
+    """A real connection, except that right after the migration's PRAGMA
+    check answers, a second connection applies the whole migration."""
 
     def __init__(self, real, path):
         self._real = real

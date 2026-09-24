@@ -1,17 +1,10 @@
 """The hub model cards against the hub's own schema.
 
-The FluSight hub validates a metadata pull request against
-hub-config/model-metadata-schema.json. A card that fails there (the
-Oracle SIHRS card's `methods` ran to 226 characters against the schema's
-200 until 2026-09-23) is caught here instead, on every run and in CI,
-which has no hub: the schema is vendored beside this file as a byte copy
-(hub_model_metadata_schema.json, sha256 below), and checked against the
-hub clone whenever one is present.
-
-The validator here covers exactly the keywords the schema uses and fails
-if the schema ever uses another, so a hub-side change cannot pass
-silently; when jsonschema is installed the cards are validated by it as
-well (Draft 2020-12).
+The hub validates metadata PRs against hub-config/model-metadata-schema.json;
+here it is vendored as a byte copy (hub_model_metadata_schema.json, sha256
+below) so CI catches a failing card, and compared with the hub clone when
+present. The validator covers exactly the schema's keywords and fails on any
+other; jsonschema (Draft 2020-12) also validates when installed.
 """
 import hashlib
 import json

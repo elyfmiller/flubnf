@@ -1,19 +1,13 @@
 """Resume and re-run without re-entering parameters.
 
-Retrospective: a season whose status is stopped or interrupted offers a
-one-click Resume that POSTs /retro/run with mode=resume and the settings
-its own run record holds (retro.resume_form_fields). Seasons that predate
-the record get no button; the form path remains.
+Retrospective: a stopped or interrupted season offers a one-click Resume
+that POSTs /retro/run with mode=resume and its run record's settings
+(retro.resume_form_fields); unrecorded seasons get no button.
 
-Console: a stopped or failed run's entry (the forecast page's latest-run
-card and the run page) offers "Run again with these settings", which
-re-submits the ledger row's stored spec through the same /run path as the
-form. Worded honestly everywhere: console fits hold no checkpoint, so it
-is a fresh run, never a resume.
-
-Both shortcuts carry the same data-guard kind as the forms they shortcut,
-and both are refused by the server-side busy cross-checks while another
-run holds the engine.
+Console: a stopped or failed run offers "Run again with these settings",
+re-submitting the ledger's stored spec through /run (a fresh run: console
+fits hold no checkpoint). Both shortcuts carry their form's data-guard and
+are refused server-side while another run holds the engine.
 """
 import json
 import sys
@@ -38,8 +32,7 @@ SATURDAY = "2025-12-06"     # a real Saturday: /run must not snap it
 
 @pytest.fixture(autouse=True)
 def _isolated_state():
-    """Snapshot and restore every module-level store a run start mutates,
-    so claims made by these tests never leak into other tests."""
+    """Snapshot and restore every module-level store a run start mutates."""
     status_before = dict(srv._status)
     retro_before = dict(srv._retro_status)
     stop_before = set(srv._retro_stop)
@@ -68,10 +61,8 @@ def test_resume_form_fields_reproduces_a_scoped_record():
                          "locations": ["Alaska", "New York"],
                          "particles": 10_000, "replicates": 3,
                          "width": 6, "engine": "pf"}}
-    # national="0": this record's locations are states only, and a resume
-    # must reproduce THAT scope. US national became a default-on scope on
-    # 2026-08-26, so without the explicit answer a stopped 52-jurisdiction
-    # replay would silently widen to 53 halfway through its season.
+    # national="0": the record is states only and a resume must keep THAT
+    # scope (US is default-on, so it would otherwise widen mid-season)
     assert retro.resume_form_fields(meta) == {
         "season": "2024-25", "mode": "resume", "locations": "panel6",
         "custom_locations": [], "particles": 10_000, "replicates": 3,
@@ -90,8 +81,7 @@ def test_resume_form_fields_custom_and_unscoped_records_name_locations():
     assert f["locations"] == "custom"
     assert f["custom_locations"] == ["Ohio", "Utah"]
     assert f["mode"] == "resume"
-    # a record with a location list but no scope (run_season's own fold-in)
-    # resubmits the list as a custom selection: verbatim reproduction
+    # a record with a list but no scope resubmits it as a custom selection
     s = dict(SETTINGS); s.pop("scope")
     f2 = retro.resume_form_fields({"settings": s})
     assert f2["locations"] == "custom"
@@ -149,8 +139,8 @@ def test_stopped_season_card_offers_resume_with_recorded_settings():
 def test_season_without_recorded_settings_gets_no_resume_button():
     html = _render_retro([_season_card(resume_fields=None)])
     assert 'class="resume-run"' not in html
-    # no guarded Resume control on the card (the base template's start-over
-    # modal carries its own Resume choice, which is not a card button)
+    # no guarded Resume on the card (the start-over modal's Resume is not a
+    # card button)
     assert 'data-guard="retro-run">Resume' not in html
     # the form path remains
     assert 'action="/retro/run"' in html
@@ -176,8 +166,7 @@ def test_retro_index_wires_resume_for_stopped_and_interrupted(tmp_path,
     assert 'class="resume-run"' in html
     assert f'name="season" value="{SEASON}"' in html
     assert 'name="particles" value="4000"' in html
-    # a dead worker's record (stale heartbeat) reads interrupted and offers
-    # the same one-click resume
+    # a stale-heartbeat record reads interrupted and offers the same resume
     retro.write_meta(root, {"season": SEASON, "status": "running",
                             "heartbeat_utc": time.time() - 10_000,
                             "settings": dict(SETTINGS), "total_weeks": 30})
@@ -212,10 +201,8 @@ def test_retro_resume_post_launches_with_the_recorded_settings(tmp_path,
     fields = retro.resume_form_fields(retro.read_meta(root))
     r = client.post("/retro/run", data=fields, follow_redirects=False)
     assert r.status_code == 303
-    # the worker receives exactly the recorded settings, and the record's
-    # scope and engine ride along for the resumed run's own record
-    # the recorded list was states only, so the resume runs states only:
-    # national="0" rides in the resume fields for exactly this reason
+    # the worker receives exactly the recorded settings (scope, engine, and
+    # national=False for a states-only record)
     assert launched == [(SEASON, ["Ohio", "Utah"], 3, 2, 4000,
                          {"scope": "custom", "engine": "pf",
                           "national": False}, "pf")]
@@ -268,9 +255,8 @@ def test_rerun_reposts_the_stored_spec_verbatim(tmp_path, monkeypatch):
     r = client.post(f"/runs/{rid}/rerun", follow_redirects=False)
     assert r.status_code == 303
     assert len(started) == 1
-    # verbatim: the run that starts carries exactly the recorded spec. The
-    # one addition is the run type the ledger states since 2026-09-07: a
-    # row recorded before the mode existed reruns as a real-time run.
+    # verbatim, plus the run type the ledger now records (older rows rerun
+    # as real-time)
     import dataclasses
     assert started[0].to_json() == dataclasses.replace(
         spec, extra={"mode": "realtime"}).to_json()
@@ -290,10 +276,8 @@ def test_rerun_refused_when_settings_were_not_recorded(tmp_path, monkeypatch):
 
 def test_rerun_refuses_a_spec_the_form_path_cannot_reproduce(tmp_path,
                                                              monkeypatch):
-    # a row with a non-default jitter must refuse rather than silently run
-    # with the console defaults. (Particles, once the example here, became
-    # reproducible when the research run control gained its particles
-    # field; test_research_run covers that path re-running verbatim.)
+    # a non-default jitter the form cannot express: refuse rather than run
+    # with the console defaults
     spec = runs_mod.RunSpec(engine="pf", forecast_date=SATURDAY,
                             locations=["Ohio", "US"], jitter=0.55)
     rid = _ledger_row(tmp_path, monkeypatch, spec)
@@ -357,12 +341,8 @@ def _render_forecast(row):
 
 
 def test_a_completed_run_with_fit_failures_is_partial_not_failed():
-    """MEASURED 2026-09-01, the first real Windows full grid: 159 fits, 4
-    failures, 2 submissions, report built -- and the run badge said
-    "failed". A run whose pipeline completed and whose record exists is
-    "partial" when some fits failed; the chips carry the count. The pill
-    warns rather than condemns, and the rerun offer stays. "failed" and
-    "error" remain reserved for runs that died."""
+    """A completed run with some fit failures is "partial" (warn pill, rerun
+    offered), not "failed"; "failed"/"error" are for runs that died."""
     server = (Path(__file__).resolve().parents[2]
               / "app" / "ui" / "server.py").read_text(encoding="utf-8")
     assert '"partial" if fails else "ok"' in server, (

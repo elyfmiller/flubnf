@@ -1,28 +1,16 @@
-"""Storage reclaim: intermediates versus load-bearing files, as enforced.
+"""Storage reclaim (app/core/reclaim.py and the /storage/reclaim routes).
 
-The rules under test (app/core/reclaim.py and the /storage/reclaim routes):
-
-  * reclaim deletes ONLY fit intermediates of COMPLETED weeks and runs --
-    per-cell trees, runner scripts, shard lists, prep manifests, done
-    markers, .prog files -- and compresses stored samples losslessly with
-    their mtimes preserved;
-  * every load-bearing file survives byte-identical: samples records,
-    scores.json, run_meta.json, playback caches, report HTML, submission
-    CSVs, a workroot's assembled results; the STRONG test builds a full
-    fixture tree, hashes every file, runs the whole reclaim, and asserts
-    survival file by file;
-  * the sealed validation record and the hub clone are untouched to the
-    byte and to the mtime, no matter how the reclaim is invoked;
-  * an INCOMPLETE week or run keeps every checkpoint (resumability is the
-    contract the checkpoints exist for), and busy seasons and the live
+  * only fit intermediates of COMPLETED weeks/runs are deleted; stored
+    samples are gzipped losslessly with mtimes preserved;
+  * every load-bearing file survives byte-identical (the strong test hashes
+    a full fixture tree before and after);
+  * the sealed record and the hub clone are untouched, bytes and mtimes;
+  * incomplete weeks/runs keep every checkpoint; busy seasons and the live
     workroot are skipped;
-  * a compressed season still scores, plays back, and exports identically
-    to the uncompressed one;
-  * automatic hygiene: run_week prunes the week it just assembled, and
-    finalize_season sweeps the season;
-  * the storage panel's reclaim control reports by category first (dry
-    run), performs only behind the count-stamped confirmation, and
-    refuses a stale one.
+  * a compressed season scores, plays back and exports identically;
+  * run_week and finalize_season prune automatically;
+  * the storage panel dry-runs by category and performs only behind a
+    count-stamped confirmation, refusing a stale one.
 """
 import gzip
 import hashlib
@@ -74,13 +62,10 @@ def _intermediates(wd: Path) -> None:
 
 
 def _payload(asof: str) -> dict:
-    """One week's record in CANONICAL horizons (app.core.horizons): the PF
-    carries the anchor under ORIGIN alongside its four forecasts "0".."3",
-    the analogue only the forecasts. The values stay keyed on the PHYSICAL
-    week each horizon stands for -- 0 for the anchor, 1..4 for the
-    forecasts -- so a record that came back one week out would be visible
-    in the numbers and not only in the key names. _mk_week is what puts it
-    on disk, and that is where the stored "0".."4" appear."""
+    """One week's record in CANONICAL horizons: PF has the anchor under ORIGIN
+    plus "0".."3", the analogue only the forecasts. Values encode the
+    PHYSICAL week (0 anchor, 1..4 forecasts) so a one-week shift shows in the
+    numbers; _mk_week writes the stored "0".."4" form."""
     week = {hz.ORIGIN: 0, **{h: int(h) + 1 for h in hz.HORIZONS}}
     pf = {loc: {h: [10.0 + w, 11.0 + w, 12.0 + w] for h, w in week.items()}
           for loc in N2F}
@@ -99,8 +84,7 @@ def _mk_week(root: Path, asof: str, complete=True, gz=False,
         if gz:
             retro.write_week_samples(wd, _payload(asof))
         else:
-            # the plain form predates write_week_samples, so the stored
-            # convention is applied here instead of by the storage boundary
+            # the plain form predates write_week_samples: store by hand
             (wd / "samples.json").write_text(
                 json.dumps(hz.record_to_stored(_payload(asof))))
     return wd
@@ -135,16 +119,8 @@ def _mk_workroot(base: Path, name: str, complete=True) -> Path:
 
 
 def _snapshot(root: Path) -> dict:
-    """{relative path: (sha256, mtime_ns)} for every file under root.
-
-    The key is as_posix(), not str(): every expectation below is written
-    with forward slashes ("retro/2098-99/scores.json"), and str() of a
-    relative WindowsPath is "retro\\2098-99\\scores.json", so on Windows
-    every lookup missed and the test died on
-    `KeyError: 'retro/2098-99/scores.json'` (run 33200477476). Nothing in
-    app/core/reclaim.py builds a key like this -- it compares Path objects
-    throughout -- so the separator only ever existed in this helper.
-    """
+    """{relative posix path: (sha256, mtime_ns)} for every file under root
+    (as_posix so the forward-slash keys below also match on Windows)."""
     out = {}
     for p in sorted(Path(root).rglob("*")):
         if p.is_file():
@@ -171,8 +147,7 @@ def world(tmp_path, monkeypatch):
     _mk_season(retro_root / SEASON)
     _mk_week(retro_root / f"{SEASON}__archived_20980204T101500Z", W1)
     _mk_week(retro_root / BUSY, W1)             # busy: must be skipped
-    # the sealed record, complete WITH intermediates and plain samples:
-    # nothing in it may move, compress, or vanish
+    # the sealed record keeps intermediates and plain samples: nothing moves
     _mk_week(seal / SEASON, W1, complete=True, gz=False)
     (seal / SEASON / "scores.json").write_text("{}")
     (hub / "model-output").mkdir(parents=True)
@@ -205,9 +180,8 @@ def test_reclaim_preserves_every_load_bearing_file_and_the_seal(world):
     out = _run_world(world)
     after = _snapshot(tmp)
 
-    # the sealed record and the hub: every file byte-identical, mtime and
-    # all -- including the seal's own intermediates and its PLAIN samples
-    # (never compressed: its bytes are its evidence)
+    # seal and hub: every file identical, mtime included (the seal's plain
+    # samples are never compressed: its bytes are its evidence)
     for rel, sig in before.items():
         if rel.startswith(("retro_seal/", "hub/")):
             assert after.get(rel) == sig, rel
@@ -313,12 +287,8 @@ def _truth():
 
 
 def _mk_scoreable_tree(tmp_path) -> Path:
-    """A season whose synthetic samples actually score (the results-prep
-    fixture pattern): truth-anchored draws for two locations, two weeks.
-
-    These weeks are written as bytes, so they are keyed in the STORED
-    convention: the PF's "0" is the anchor at `asof` and "1".."4" are the
-    forecasts at asof+7h, which read back as ORIGIN and "0".."3"."""
+    """A season whose truth-anchored synthetic samples actually score; weeks
+    are written in the STORED convention (PF "0" is the anchor)."""
     root = tmp_path / SEASON
     truth = _truth()
     for asof in (W1, W2):
@@ -381,8 +351,7 @@ def test_compressed_season_scores_plays_back_and_exports_identically(
     assert not (root / "weeks" / W1 / "samples.json").is_file()
     assert (root / "weeks" / W1 / "samples.json.gz").is_file()
 
-    # the export freshness key is unchanged (mtimes preserved): a season
-    # report built before the migration is still the current export after
+    # mtimes preserved, so the export freshness key is unchanged
     export_key2 = report_season._newest_input(root)
     assert export_key1 == export_key2
     # scores.json currency is undisturbed for the same reason
@@ -414,8 +383,7 @@ def test_week_done_and_run_week_read_the_compressed_form(tmp_path):
     retro.write_week_samples(wd, _payload(W1))
     assert retro.week_done(root, W1)
     assert retro.read_week_samples(root, W1)["asof"] == W1
-    # run_week's completed-week early return reads the stored record and
-    # dispatches nothing (no engines are stubbed: a dispatch would fail)
+    # the completed-week early return dispatches nothing (engines unstubbed)
     out = retro.run_week(root, SEASON, W1, ["Ohio"])
     assert out == _payload(W1)
 
@@ -425,8 +393,8 @@ def test_compress_is_atomic_and_prefers_the_plain_form_when_both_exist(
     wd = tmp_path / "weeks" / W1
     wd.mkdir(parents=True)
     (wd / "samples.json").write_text(json.dumps({"asof": W1, "v": 1}))
-    # an interrupted migration can leave BOTH: the plain file stays the
-    # record until it is retired
+    # an interrupted migration can leave both: the plain file wins until
+    # retired
     with gzip.open(wd / "samples.json.gz", "wt") as f:
         json.dump({"asof": W1, "v": 0}, f)
     assert retro.read_samples(retro.samples_file(wd))["v"] == 1
@@ -439,8 +407,8 @@ def test_compress_is_atomic_and_prefers_the_plain_form_when_both_exist(
 # --------------------------------------------------------- automatic hygiene
 
 def test_run_week_prunes_the_week_it_just_assembled(tmp_path, monkeypatch):
-    """End to end with stubbed engines: the moment samples land, the week
-    directory holds the samples record and nothing else."""
+    """With stubbed engines, the week directory holds only its record once
+    samples land."""
     root = tmp_path / SEASON
     wd = root / "weeks" / W1
 
@@ -452,8 +420,7 @@ def test_run_week_prunes_the_week_it_just_assembled(tmp_path, monkeypatch):
     monkeypatch.setattr(retro.pf_engine, "prepare", fake_prepare)
     monkeypatch.setattr(retro.pf_engine, "collect",
                         lambda w: {"Ohio": {"0": [1.0]}})
-    # the Oracle step reads the week's vintage, which this hub-free test
-    # has none of: the engines are stubbed and so is the step
+    # the Oracle step needs a vintage this hub-free test lacks: stub it
     monkeypatch.setattr(retro.oracle_mod, "apply_week",
                         lambda s, asof, wd, **kw: (s, {"applied": True,
                                                        "bank": {"label": "stub"}}))
@@ -619,13 +586,9 @@ def test_run_display_orphan_reads_as_unrecorded(routed):
 
 
 def test_protect_roots_env_keeps_a_research_arms_evidence(tmp_path, monkeypatch):
-    """A pre-registered arm run OUTSIDE app/state (the kernel A/B of
-    2026-09-03 lives in the lab archive) needs its per-cell evidence, the
-    ESS files, parameter samples and cells.json, for the diagnostics it
-    committed to; reclaim protects by path only, so without a way to name
-    the arm every completed week was pruned to its samples file before the
-    measurement could be made. FLUBNF_PROTECT_ROOTS names such roots, read
-    at call time; the two built-in roots are unchanged."""
+    """FLUBNF_PROTECT_ROOTS (read at call time) protects a research arm kept
+    outside app/state, whose per-cell evidence reclaim would otherwise prune
+    (reclaim protects by path only)."""
     from app.core import reclaim, retro
     arm = tmp_path / "arms" / "B" / "2023-24"
     wd = arm / "weeks" / "2023-09-23"

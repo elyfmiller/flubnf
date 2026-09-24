@@ -1,9 +1,6 @@
 """The FluSight CSV writers carry the frozen join: reference = as-of + 7,
-hub horizon 0..3 = canonical samples "0".."3", and the anchor week rides
-under hz.ORIGIN where no submitted row can reach it. This is the same
-formula scripts/anchor_analysis.py validated against three seasons of
-scoring; the writers computing anything else mislabels a real submission
-by a week."""
+hub horizon 0..3 = canonical samples "0".."3", and the anchor (hz.ORIGIN)
+never reaches a row. Same formula scripts/anchor_analysis.py validated."""
 import sys
 from datetime import timedelta
 from pathlib import Path
@@ -18,15 +15,12 @@ from app.core.submit import quantile_rows, rows_from_quantiles  # noqa: E402
 
 ASOF = "2025-12-13"          # a Saturday as-of; submission is due Wed 12-17
 
-#: A member shaped the way everything above the storage boundary now
-#: shapes one: the four forecasts under the hub's own labels "0".."3",
-#: and the anchor week alongside them under hz.ORIGIN. The numbers are
-#: still scaled by PHYSICAL weeks ahead, so canonical "0" is one week on
-#: and carries the same values this file has always pinned.
+#: Canonical shape: forecasts under "0".."3" plus the anchor under
+#: hz.ORIGIN; values scale with PHYSICAL weeks ahead ("0" is one week on).
 SAMPLES = {h: [10.0 * (int(h) + 1), 12.0 * (int(h) + 1), 14.0 * (int(h) + 1)]
            for h in hz.HORIZONS}
-#: the last observed week, carried but never submitted; deliberately far
-#: from every forecast value so a row built from it would be obvious
+#: the last observed week: carried, never submitted, and far from every
+#: forecast value so a row built from it would be obvious
 SAMPLES[hz.ORIGIN] = [98.0, 99.0, 100.0]
 QDICTS = {h: {0.5: 10.0 * (int(h) + 1)} for h in hz.HORIZONS}
 
@@ -47,10 +41,8 @@ def test_target_end_dates_walk_the_four_target_weeks():
 
 
 def test_horizon_zero_carries_the_first_forecast_not_the_anchor():
-    """Hub horizon 0 is the FIRST FORECAST week, so it is fed by canonical
-    "0" and never by the anchor riding under hz.ORIGIN. Reading the anchor
-    here would move every submitted row one week early with the right row
-    count and the wrong dates."""
+    """Hub horizon 0 is the FIRST FORECAST week (canonical "0"), never the
+    anchor, which would shift every row a week early."""
     rows = [r for r in quantile_rows(SAMPLES, "06", ASOF)
             if r["horizon"] == 0 and r["output_type_id"] == 0.5]
     assert rows[0]["value"] == 12.0          # median of canonical "0"
@@ -70,12 +62,8 @@ def test_quantile_native_writer_same_join():
 # ---------------------------------------------------- hub value precision
 
 def test_values_are_whole_admissions_like_the_official_files():
-    """Measured in the hub clone (2026-08-21): every official
-    FluSight-baseline and FluSight-ensemble 'wk inc flu hosp' quantile
-    value from 2025 on is an integer count -- the long float tails in
-    recent official files belong to the 'wk inc flu prop ed visits'
-    proportion target. Our writers match that precision; the raw numpy
-    quantiles were leaking 17-digit tails into the CSVs."""
+    """Values are whole admissions, like the official 'wk inc flu hosp'
+    files (raw numpy quantiles leaked 17-digit tails)."""
     tailed = {h: [10.1234567890123 * (int(h) + 1) + i * 0.337
                   for i in range(40)] for h in hz.HORIZONS}
     rows = quantile_rows(tailed, "06", ASOF)
@@ -90,9 +78,7 @@ def test_values_are_whole_admissions_like_the_official_files():
 
 
 def test_rounding_preserves_quantile_monotonicity():
-    """The guard: round, then enforce non-decreasing. A vector whose raw
-    values are monotone but sit within one count of each other must come
-    out monotone (never decreasing) after rounding."""
+    """Round, then enforce non-decreasing: near-ties stay monotone."""
     import numpy as np
     from app.core.submit import QUANTILES, _hub_values
     raw = [10.0 + 0.04 * i for i in range(len(QUANTILES))]   # 10.0 .. 10.88
@@ -106,8 +92,7 @@ def test_rounding_preserves_quantile_monotonicity():
 
 
 def test_csv_writes_integers_not_float_tails(tmp_path):
-    """End to end through write_submission: the file on disk carries '12',
-    never '12.0' and never a 17-digit tail."""
+    """On disk: '12', never '12.0' or a float tail."""
     from app.core.submit import write_submission
     samples = {h: [3.3 * (int(h) + 1) + i * 1.7 for i in range(50)]
                for h in hz.HORIZONS}
@@ -125,12 +110,8 @@ def test_csv_writes_integers_not_float_tails(tmp_path):
 # ------------------------------------------ the file name is the row's date
 
 def test_filename_carries_the_reference_date_not_the_asof(tmp_path):
-    """The submission-blocking bug, pinned. A real run on 2026-08-26 wrote
-    `2026-01-03-...csv` whose every row said reference_date 2026-01-10,
-    because the rows were built from the as-of plus seven while the name
-    came from the bare as-of. hub-config/validations.yml sets t0_colname:
-    "reference_date", so the hub's round-id check compares the name against
-    that column and would have rejected the file."""
+    """The file name carries the rows' reference_date, not the as-of: the
+    hub's round-id check (t0_colname: reference_date) compares them."""
     from app.core import submit
     from app.core.submit import write_submission
     rows = quantile_rows(SAMPLES, "06", ASOF)
@@ -141,8 +122,7 @@ def test_filename_carries_the_reference_date_not_the_asof(tmp_path):
 
 
 def test_a_name_that_disagrees_with_the_rows_is_refused(tmp_path):
-    """The loud check. Rows built from one as-of, file written for another:
-    the writer must refuse rather than emit a file the hub will bounce."""
+    """Rows and name disagree: refuse instead of emitting a bounced file."""
     import pytest
     from app.core.submit import write_submission
     rows = quantile_rows(SAMPLES, "06", ASOF)        # rows say 2025-12-20
@@ -153,8 +133,7 @@ def test_a_name_that_disagrees_with_the_rows_is_refused(tmp_path):
 
 
 def test_rows_from_two_asofs_in_one_file_are_refused(tmp_path):
-    """A file carries exactly one reference date. Mixed rows are a defect
-    the hub would catch; catch it here."""
+    """A file carries exactly one reference date."""
     import pytest
     from app.core.submit import write_submission
     rows = (quantile_rows(SAMPLES, "06", ASOF)
@@ -166,12 +145,8 @@ def test_rows_from_two_asofs_in_one_file_are_refused(tmp_path):
 # ------------------------------------------- hub identity, from the metadata
 
 def test_identifiers_match_the_registered_model_metadata():
-    """MODEL_ABBR and TEAM_ABBR are the only copy of the hub identity in
-    Python; model-metadata/ is the registered copy. model-metadata/ is not
-    packaged (pyproject includes only flubnf* and app*), so the constants
-    cannot read the YAML at run time -- this test is the drift guard
-    instead. The hub layout is model-output/<team>-<model>/, and the
-    directory name must equal the metadata file's own name."""
+    """MODEL_ABBR/TEAM_ABBR agree with model-metadata/ (not packaged, so
+    this test is the drift guard); file stem is <team>-<model>."""
     import yaml
     from app.core.submit import MODEL_ABBR, TEAM_ABBR, hub_model_id
     root = Path(__file__).resolve().parents[2] / "model-metadata"
@@ -193,8 +168,7 @@ def test_identifiers_match_the_registered_model_metadata():
     assert not set(MODEL_ABBR.values()) & set(RETIRED_ABBR)
     for key, abbr in MODEL_ABBR.items():
         assert hub_model_id(key) == registered[abbr].stem
-    # the blend's key is gone from the writer: no call site can produce a
-    # CModel_Flu file by accident
+    # the blend's key is gone: no call site can write a CModel_Flu file
     import pytest
     with pytest.raises(ValueError, match="unregistered model"):
         hub_model_id("ensemble")
@@ -211,18 +185,13 @@ def test_an_unregistered_model_key_is_refused(tmp_path):
 
 # ------------------------------- completeness: all 23 hub levels, or nothing
 
-#: the shape the re-blend path fed the writer: results.json's display
-#: quantiles, five of the hub's twenty-three
+#: results.json's five display quantiles (of the hub's 23)
 FIVE = (0.1, 0.25, 0.5, 0.75, 0.9)
 
 
 def test_a_partial_quantile_set_is_refused(tmp_path):
-    """hub-config/tasks.json marks the quantile `output_type_id` REQUIRED at
-    all 23 levels, so a file carrying five is rejected on submission. The
-    writer once took such rows without a murmur and produced a 20-row CSV
-    in a directory indistinguishable from a real submission. Deleting the
-    caller fixed that day's behaviour; this makes the requirement
-    structural, so the next caller cannot reopen it."""
+    """hub-config/tasks.json requires all 23 quantile levels, so a partial
+    set is refused structurally rather than written as a submittable file."""
     import pytest
     from app.core.submit import write_submission
     qs = {h: {q: 10.0 * (int(h) + 1) + 100.0 * q for q in FIVE}
@@ -247,10 +216,8 @@ def test_the_refusal_names_the_missing_levels():
 
 
 def test_a_full_set_from_samples_passes_completeness(tmp_path):
-    """The rule must not fire on the real thing. The sample path writes all
-    23 levels for every horizon it carries, and horizons themselves are
-    NOT a completeness rule (tasks.json marks horizon optional), so a run
-    that dropped one horizon still writes a valid file."""
+    """A full sample-path set passes; a dropped horizon is fine (horizon is
+    optional in tasks.json)."""
     from app.core.submit import validate, write_submission
     assert not validate(pd.DataFrame(quantile_rows(SAMPLES, "06", ASOF)))
     three = {h: v for h, v in SAMPLES.items() if h != hz.HORIZONS[-1]}
@@ -263,12 +230,8 @@ def test_a_full_set_from_samples_passes_completeness(tmp_path):
 
 def test_the_csv_lands_atomically_with_no_temp_residue(tmp_path,
                                                        monkeypatch):
-    """write_submission was the one writer among its neighbors that
-    streamed df.to_csv straight onto the hub-named path, so a full disk
-    left a truncated CSV that the output page listed as submittable
-    (2026-09-01 final pass). It now writes beside and replaces: a write
-    that dies at any stage leaves NOTHING under the hub name and no .tmp
-    residue, and a successful one is byte-complete."""
+    """write_submission writes beside and replaces: a failure at any stage
+    leaves nothing under the hub name and no .tmp residue."""
     import pytest
     from app.core.submit import write_submission
     rows = quantile_rows(SAMPLES, "06", ASOF)
@@ -277,9 +240,8 @@ def test_the_csv_lands_atomically_with_no_temp_residue(tmp_path,
     assert not list((tmp_path / "ok").rglob("*.tmp"))
     assert len(pd.read_csv(p)) == len(rows)          # every row arrived
 
-    # to_csv itself dies mid-write (the ENOSPC shape): a truncated temp
-    # file exists at that moment, and neither it nor a hub-named file may
-    # survive the failure
+    # to_csv dies mid-write (ENOSPC): neither the truncated temp nor a
+    # hub-named file survives
     def _truncating(self, path, *a, **k):
         Path(path).write_text("reference_date,target\n2025-12-20")
         raise OSError(28, "No space left on device")

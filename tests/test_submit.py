@@ -110,12 +110,8 @@ class TestSubmissionIdentity:
     identity, and refuses to write a file that fails the hub's schema."""
 
     def test_default_name_is_the_registered_identity(self):
-        """The CLI must never invent its own identity: it writes under the
-        one the console writes under, which is the team registered on the
-        hub. (The original failure was a hardcoded free-text default that
-        drifted from the registration; the registration has since moved
-        from LosAlamos_NAU to NAU_PyBNF, and the invariant is the SHARED
-        definition rather than any literal.)"""
+        """The CLI writes under the registered team the console uses (the
+        SHARED definition), never its own hardcoded default."""
         from app.core.submit import MODEL_ABBR, TEAM_ABBR, hub_model_id
         from flubnf.submit import DEFAULT_TEAM_MODEL
         assert DEFAULT_TEAM_MODEL == hub_model_id("pf")

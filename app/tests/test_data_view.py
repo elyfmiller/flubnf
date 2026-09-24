@@ -1,8 +1,5 @@
-"""The Data page's read-only views: the freshness panel (latest vintage
-stats), the interactive latest-vintage preview (location selector, recent
-weeks table, a full Plotly series chart), and the vintage browser (pick an
-archived vintage, see exactly what that week knew). All read-only, all
-served from cached scans of the immutable vintage files."""
+"""The Data page's read-only views (freshness panel, latest-vintage preview,
+vintage browser), served from cached scans of immutable vintage files."""
 import sys
 from pathlib import Path
 
@@ -72,11 +69,9 @@ def test_default_preview_is_the_latest_vintage(archive):
     # US leads the location order
     joined = " ".join(html.split())
     assert joined.index(">US</option>") < joined.index(">Ohio</option>")
-    # the vintage chart is the forecast tab's charting framework (user
-    # report 2026-08-21 replaced the too-small sparkline): plotly loads,
-    # the plot div is sized like the forecast data panel, the series
-    # arrives as data, and the layout resolves theme tokens per draw and
-    # redraws on themechange
+    # the vintage chart uses the forecast tab's plotly framework: sized like
+    # its data panel, series as data, theme tokens resolved per draw and
+    # redrawn on themechange
     assert '<script src="/static/plotly.min.js"></script>' in html
     assert '<div id="vintageplot" style="min-height:380px"></div>' in html
     assert "const VSERIES = {" in html
@@ -90,12 +85,10 @@ def test_default_preview_is_the_latest_vintage(archive):
 
 
 def test_vintage_chart_carries_the_season_mode_pair(archive):
-    """The vintage browser gets the forecast data panel's view pair: a
-    full-series / season-over-season toggle in its conventions -- quiet
-    buttons stating aria-pressed (gold when active), the shared season
-    palette tokens resolved per draw, month ticks from the one server-side
-    offset list, and per-season hover carrying each season's real dates.
-    Full series stays the default (the newest-week marker lives there)."""
+    """The vintage browser's full-series / season-over-season toggle follows
+    the forecast panel's conventions (aria-pressed quiet buttons, shared
+    season palette, server month ticks, real per-season dates); full series
+    is the default."""
     html = client.get("/data?loc=Ohio").text
     # the mode pair, above the chart, full series pressed by default
     assert 'id="vb-mode-raw" aria-pressed="false"' in html
@@ -143,10 +136,8 @@ def test_vintage_browser_shows_what_that_week_knew(archive):
 
 
 def test_recent_weeks_reads_as_a_compact_instrument(archive):
-    """The vintage browser's density fix: the recent-weeks table keeps a
-    compact natural width with its numbers right-set directly beside their
-    weeks, and it sits beside the vintage chart at desktop widths instead
-    of spanning the card as a page-wide ledger."""
+    """The recent-weeks table keeps a compact width with right-set numbers
+    and sits beside the chart at desktop widths."""
     html = client.get("/data?loc=Ohio").text
     # chart and table share the two-column layout
     assert 'class="vintagecols"' in html
@@ -167,9 +158,8 @@ def test_recent_weeks_reads_as_a_compact_instrument(archive):
 
 
 def test_no_series_still_says_so_in_words(archive):
-    # Wyoming's one row was unreported, so V1 dropped the location: the
-    # fallback note appears and the layout renders the fallback location's
-    # real series rather than an empty two-column shell
+    # Wyoming's only row was unreported: the fallback note shows and the
+    # fallback location's real series renders
     html = client.get(f"/data?vintage={V1}&loc=Wyoming").text
     joined = " ".join(html.split())
     assert "not in the" in joined and "showing US" in joined

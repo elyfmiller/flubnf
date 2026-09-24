@@ -1,20 +1,14 @@
 """The filter must integrate the SAME mechanism the BNGL model defines, and its
 posterior must be a real posterior rather than a collapsed ensemble.
 
-Two failure modes this project has already paid for, both guarded here:
-
-* **A fake posterior.** The sampler bug (ESS ~ 9 on 1 chain) invalidated two
-  published conclusions before it was caught. A particle filter fails the same
-  way through depletion, so ESS is asserted, not merely reported.
-* **A silently different mechanism.** `particle_filter.propagate` re-implements
-  the ODEs that `templates/SIHRS_pop.bngl` defines. If the two drift apart the
-  filter stops being the SIHRS model and no scoring comparison means anything.
+* **A fake posterior.** Particle depletion fails like the old sampler bug
+  (ESS ~ 9), so ESS is asserted, not merely reported.
+* **A silently different mechanism.** `particle_filter.propagate`
+  re-implements the ODEs of `templates/SIHRS_pop.bngl`;
   `TestMatchesTheBnglMechanism` pins them together.
 
-The jitter tests encode the measured U-shape: too little jitter is
-overconfident (relWIS 1.549 at 0.03), too much forgets the mechanism (1.084 at
-0.60). What is testable cheaply is the direction -- spread must increase
-monotonically with jitter -- not the optimum, which is a scoring question.
+relWIS is U-shaped in jitter (1.549 at 0.03, 1.084 at 0.60); only the cheap
+directional properties are tested here, not the optimum.
 """
 from __future__ import annotations
 
@@ -81,14 +75,9 @@ class TestMatchesTheBnglMechanism:
     the filter is a different model wearing the same name."""
 
     def test_rk4_matches_a_high_accuracy_integrator(self):
-        """Write the rate laws out independently and integrate them to 1e-10.
-
-        This checks two things at once that a finite-difference check cannot:
-        that the ODE SYSTEM is right, and that the daily fixed step is fine
-        enough. `propagate` cannot take a sub-daily interval -- nsteps rounds to
-        zero -- so the derivative is validated through the solution, not
-        through a one-substep difference.
-        """
+        """Write the rate laws out independently and integrate them to 1e-10:
+        checks both the ODE system and that the daily fixed step is fine
+        enough (propagate cannot take a sub-daily interval)."""
         from scipy.integrate import solve_ivp
 
         Reff, eps1, phi1, mult = 1.3, 0.2, 18.0, 0.05
@@ -120,17 +109,11 @@ class TestMatchesTheBnglMechanism:
         assert float(adm[0]) == pytest.approx(mult * float(ref[4]), rel=2e-3)
 
     def test_infection_is_frequency_dependent(self):
-        """beta*S*I/N, not beta*S*I -- this is what makes `Reff` comparable
-        across states of very different size, which the pooled fits rely on.
-
-        Tested through the EXACT invariant rather than a finite difference.
-        With frequency dependence every term is homogeneous of degree one, so
-        scaling (S, I, H, R, N) by c scales the whole trajectory by exactly c.
-        Density-dependent transmission (beta*S*I) is degree two and breaks it.
-
-        A naive version of this test -- double N alone and expect the force of
-        infection to halve -- is off by ~6%, because a weaker infection inflow
-        also lets I decay faster over the step. That is physics, not a defect.
+        """beta*S*I/N, not beta*S*I, which makes `Reff` comparable across
+        state sizes. Tested by the exact invariant: frequency dependence is
+        homogeneous of degree one, so scaling (S, I, H, R, N) by c scales the
+        trajectory by c. (Doubling N alone and expecting half the force of
+        infection is ~6% off: I also decays faster over the step.)
         """
         c = 3.0
         base = make(n=1, Reff=np.array([1.3]), eps1=np.array([0.2]),
@@ -199,15 +182,14 @@ class TestWeightsAndResampling:
         assert np.all(np.isin(q.Reff, p.Reff[:5]))
 
     def test_update_rejects_a_degenerate_ensemble(self):
-        """A returned forecast from a dead filter would be scored as if real;
-        `ok=False` is how the caller learns to skip the cell instead."""
+        """A dead filter returns ok=False so the caller skips the cell."""
         p = make(n=50, r=np.full(50, np.nan))
         out = update(p, 100.0, 0.0, N_POP, S0, np.random.default_rng(0),
                      jitter=0.1, bounds=BOUNDS)
         assert out["ok"] is False
 
     def test_update_keeps_ess_healthy_over_a_season(self):
-        """Depletion is the filter's version of the ESS~9 sampler bug."""
+        """Particle depletion is the filter's version of the ESS~9 bug."""
         rng = np.random.default_rng(3)
         p = make(n=800, seed=5)
         truth = 200 * np.exp(-0.5 * ((np.arange(26) - 14) / 5.0) ** 2) + 20
@@ -227,14 +209,9 @@ class TestJitter:
         assert np.average(p.Reff, weights=p.w) == pytest.approx(before, abs=0.02)
 
     def test_variance_is_not_inflated_by_shrinkage(self):
-        """Naive additive noise grows the variance every step until the
-        ensemble is a random walk; the a = sqrt(1-jitter^2) shrinkage is what
-        stops that.
-
-        NOTE the rng is created ONCE. Re-seeding inside the loop adds the same
-        noise vector every step, and perfectly correlated increments accumulate
-        -- that inflates the variance ~10x here and looks exactly like a broken
-        shrinkage. It is a property of the test harness, not of the filter.
+        """The a = sqrt(1-jitter^2) shrinkage keeps variance from growing into
+        a random walk. The rng is created ONCE: re-seeding in the loop adds
+        correlated noise that inflates the variance ~10x (a harness artefact).
         """
         p = make(n=6000, seed=8)
         v0 = np.var(p.Reff)
@@ -244,10 +221,8 @@ class TestJitter:
         assert np.var(p.Reff) < 2.0 * v0
 
     def test_jitter_alone_does_not_widen_the_ensemble(self):
-        """The variance-preserving property, stated as the thing it means:
-        jitter is NOT a way to inflate the prior. Measured spreads after five
-        applications are 0.227 / 0.225 / 0.220 for jitter 0.05 / 0.25 / 0.50 --
-        flat. Anyone reaching for `jitter` as a spread knob is misreading it."""
+        """Jitter alone does not widen the ensemble (spreads after five steps
+        are flat across jitter 0.05-0.50): it is not a spread knob."""
         spreads = []
         for j in (0.05, 0.25, 0.5):
             p = make(n=4000, seed=9)
@@ -258,19 +233,10 @@ class TestJitter:
         assert max(spreads) / min(spreads) < 1.1
 
     def test_low_jitter_collapses_the_FILTERED_posterior(self):
-        """Where the knob actually acts, and why relWIS is U-shaped in it.
-
-        Reweighting plus resampling contracts the ensemble every week; jitter
-        opposes that contraction, so its effect appears only through the full
-        loop. The relationship is NOT monotone -- averaged over six seeds the
-        filtered sd of Reff runs 0.034 / 0.120 / 0.068 at jitter 0.05 / 0.25 /
-        0.50. Past a point, extra jitter scatters particles into regions the
-        data rejects and reweighting culls them, so the SURVIVING ensemble
-        narrows again.
-
-        Only the robust half is asserted: low jitter collapses the posterior
-        relative to moderate jitter. A single seed happens to look monotone
-        (0.029 / 0.046 / 0.071 at seed 9), which is why this averages instead.
+        """Low jitter collapses the FILTERED posterior relative to moderate
+        jitter. The full relationship is not monotone (extra jitter scatters
+        particles the data then culls), and single seeds mislead, so this
+        averages four seeds and asserts only the robust half.
         """
         truth = 200 * np.exp(-0.5 * ((np.arange(26) - 14) / 5.0) ** 2) + 20
 
@@ -288,8 +254,8 @@ class TestJitter:
         assert filtered_sd(0.05) < 0.5 * filtered_sd(0.25)
 
     def test_update_reports_a_usable_pit(self):
-        """The PIT drives knob selection, so it must be a real probability from
-        the predictive formed BEFORE the observation was seen."""
+        """The PIT is a real probability from the predictive formed BEFORE the
+        observation (it drives knob selection)."""
         rng = np.random.default_rng(0)
         p = make(n=800, seed=4)
         out = update(p, 150.0, 0.0, N_POP, S0, rng, jitter=0.25, bounds=BOUNDS)
@@ -307,8 +273,7 @@ class TestJitter:
 
 class TestForecast:
     def test_forecast_does_not_advance_the_filter(self):
-        """Forecasting must be side-effect free or next week's update starts
-        from the wrong state."""
+        """Forecasting is side-effect free (next week's update starts here)."""
         p = make(n=300, seed=11)
         snap = (p.S.copy(), p.I.copy(), p.H.copy(), p.R.copy())
         forecast(p, 0.0, [1, 2, 3, 4], N_POP, S0, np.random.default_rng(0))

@@ -23,17 +23,9 @@ MAX_PORT = 65535
 
 
 def _free_port_with_headroom(headroom, listen=False):
-    """A free (or, with listen=True, a held-and-listening) port that has
-    at least `headroom` ports above it before the 65535 ceiling.
-
-    The fallback tests seed themselves from an OS-assigned ephemeral port
-    and then assert the search walks UPWARD from it. macOS hands out
-    ephemeral ports in 49152-65535, so an unfiltered seed occasionally
-    lands close enough to the top that the walk has nowhere legal to go
-    and the assertion fails for a reason that has nothing to do with the
-    behaviour under test. Re-rolling until the seed has room keeps those
-    tests about fallback instead of about luck. The ceiling itself is
-    covered deliberately by the tests further down."""
+    """A free (or held-and-listening) port with >= `headroom` ports above it:
+    macOS ephemeral ports reach 65535, so re-roll until the upward fallback
+    walk has room. The ceiling itself is tested separately."""
     for _ in range(200):
         s = socket.socket()
         s.bind(("127.0.0.1", 0))
@@ -241,9 +233,8 @@ def test_watchdog_reloads_a_dead_window_once():
 
 
 def test_watchdog_never_reloads_while_server_is_down():
-    # server NOT answering: a reload could only cache another refused page
-    # and cancel a navigation in flight (the cold-start reload storm), so
-    # the watchdog waits out its budget without touching the window
+    # server NOT answering: a reload would only cancel a navigation in flight
+    # (the cold-start reload storm), so wait out the budget untouched
     w = _FakeWindow(loads_on_call=None)
     assert cli._window_watchdog(w, "http://x", wait=0.05,
                                 probe=lambda: False) == "failed"
@@ -297,9 +288,8 @@ def test_bind_app_socket_holds_the_preferred_port():
     sock, port = cli._bind_app_socket(0)     # 0 = any free port
     try:
         assert sock is not None
-        # the socket is LISTENING: a client connect succeeds even though
-        # nothing has called accept yet (the backlog holds it, which is
-        # what lets the window open before the server finishes importing)
+        # LISTENING: connect succeeds before accept (the backlog holds it),
+        # which lets the window open before the server finishes importing
         with socket.create_connection(("127.0.0.1", port), 1.0):
             pass
     finally:
@@ -319,19 +309,14 @@ def test_bind_app_socket_falls_back_past_a_live_listener():
 
 
 # ------------------------------------------- the 65535 ceiling
-# Both searches walk upward from `preferred`, and bind() rejects a port
-# above 65535 with OverflowError, which is a ValueError and so escapes the
-# `except OSError` that means "try the next port". These pin the walk to
-# ports that can actually exist. Before the fix each one raised
-# OverflowError out of the call instead of returning.
+# Both searches walk upward from `preferred`; bind() rejects a port above
+# 65535 with OverflowError (a ValueError, not the OSError that means "try the
+# next port"), so the walk must stop at ports that exist.
 
 def _hold_the_top_port():
-    """A live listener on 65535, so the search cannot take that port and
-    must decide what to do at the ceiling. Skips rather than guesses when
-    the machine already has 65535 spoken for: without a listener of our
-    own we cannot tell a genuinely busy top port from a free one, and a
-    free one would let the search succeed on its first probe and never
-    reach the boundary this test exists to exercise."""
+    """A live listener on 65535, so the search must decide at the ceiling.
+    Skips if 65535 is already taken: a port we do not hold could be free and
+    end the search before the boundary."""
     s = socket.socket()
     try:
         cli._set_port_reuse(s)          # the app's own option, so the hold
@@ -345,8 +330,7 @@ def _hold_the_top_port():
 
 def test_pick_port_stops_at_the_top_of_the_port_range():
     with _hold_the_top_port():
-        # every legal candidate (there is exactly one, 65535) is busy, so
-        # the all-busy contract applies: hand the preferred port back and
+        # the only legal candidate is busy: hand the preferred port back and
         # let uvicorn report the conflict
         assert cli._pick_port(MAX_PORT, tries=10) == MAX_PORT
 
@@ -363,9 +347,8 @@ def test_bind_app_socket_stops_at_the_top_of_the_port_range():
 
 
 def test_port_search_declines_an_out_of_range_preferred_port():
-    # no socket needed: 70000 is not a port, so there is nothing legal to
-    # probe and both searches must fall through to their all-busy branch
-    # rather than asking the kernel to bind a number it will reject
+    # 70000 is not a port: both searches take their all-busy branch without
+    # asking the kernel
     assert cli._pick_port(70000, tries=3) == 70000
     sock, port = cli._bind_app_socket(70000, tries=3)
     try:
@@ -490,9 +473,8 @@ class _StubNtdll:
         self.size_override = size_override
         self.fill_first = fill_first            # write a valid answer, THEN fail
         self.classes = []
-        # a real, readable block OUTSIDE the returned buffer: if the bounds
-        # check were removed the reader would return this text, a clean
-        # assertion failure rather than a read of unmapped memory
+        # a readable block OUTSIDE the returned buffer, so a missing bounds
+        # check fails cleanly instead of reading unmapped memory
         self.elsewhere = ctypes.create_string_buffer(self.data, len(self.data))
 
     def NtQueryInformationProcess(self, handle, cls, buf, length, need_ref):
@@ -634,9 +616,8 @@ def test_windows_cmdline_skips_wmi_for_a_dead_pid(monkeypatch):
 
 @pytest.mark.skipif(os.name != "nt", reason="reads a real Windows process")
 def test_windows_native_cmdline_on_a_real_process_is_fast():
-    """The regression this guards: the WMI route took over 10 seconds on a
-    cold Windows Server 2025 runner, so the takeover could not identify its
-    predecessor. The native read must see the marker, quickly."""
+    """The native read sees the marker quickly (WMI took >10 s on a cold
+    Windows Server 2025 runner, defeating the takeover)."""
     import time
     proc = _spawn_sleeper(MARK)
     try:
@@ -648,19 +629,16 @@ def test_windows_native_cmdline_on_a_real_process_is_fast():
     finally:
         proc.kill()
         proc.wait()
-    # Popen still holds the process handle, so the pid cannot be reused
-    # here and the process object still exists; what the reader must do is
-    # see that it has exited (the exit-code check) and answer ''
+    # Popen still holds the handle, so the pid is not reused; the reader must
+    # see the exit code and answer ''
     assert cli._pid_alive_windows(proc.pid) is False
     assert cli._pid_cmdline_windows_native(proc.pid) == ""
 
 
 # ------------------------------------------------ entry-marker matching
 
-# What the console server's command line really looks like on each
-# platform. The Windows spelling is what pip's console-script launcher
-# builds (see test_markers_match_what_pips_windows_launcher_builds, which
-# derives it from the launcher binary itself).
+# The server's real command line per platform. The Windows spelling is what
+# pip's console-script launcher builds (derived from the binary below).
 WINDOWS_APP = r'"C:\py\python.exe"  "C:\repo\.venv\Scripts\flubnf.exe" app'
 WINDOWS_SPACE = (r'"C:\Program Files\Python312\python.exe"  '
                  r'"C:\Users\Jane Doe\flubnf\.venv\Scripts\flubnf.exe" window')
@@ -882,11 +860,8 @@ def _launcher_formats():
 
 
 def test_markers_match_what_pips_windows_launcher_builds():
-    """Build the server's command line exactly as the launcher does, from
-    the format string inside the launcher binary, and match it. Python's %
-    operator ignores the 'l' length modifier, so the C format applies
-    as is. Runs everywhere pip is installed; the Windows-only test below
-    does the same with a real launcher and a real process."""
+    """Build the server's command line from the format string inside pip's
+    launcher binary (Python's % ignores the 'l' modifier) and match it."""
     fmts = _launcher_formats()
     if not fmts:
         pytest.skip("pip's vendored distlib launcher is not available")
@@ -903,13 +878,9 @@ def test_markers_match_what_pips_windows_launcher_builds():
 @pytest.mark.parametrize("interpreter", ["base", "venv"])
 def test_takeover_recognises_a_real_windows_console_script_launch(tmp_path,
                                                                    interpreter):
-    """End to end on Windows: build a flubnf.exe launcher the way pip
-    installs one (pip's own vendored distlib ScriptMaker), start it the way
-    FluBNF.bat does (cmd resolving the extensionless "Scripts\\flubnf"),
-    and check the takeover recognises and signals the Python process
-    behind it, which is the process whose pid the real console writes to
-    app.pid. The replaced console must exit with code 15, the code
-    FluBNF.bat treats as a takeover rather than an error."""
+    """End to end on Windows: a pip-built flubnf.exe started the way
+    FluBNF.bat does; the takeover recognises and signals the Python process
+    behind it, and the launcher exits 15 (FluBNF.bat's takeover code)."""
     import time
     scripts = pytest.importorskip("pip._vendor.distlib.scripts")
     (tmp_path / "flubnf_takeover_probe.py").write_text(
@@ -923,9 +894,8 @@ def test_takeover_recognises_a_real_windows_console_script_launch(tmp_path,
     maker = scripts.ScriptMaker(None, str(bindir))
     maker.variants = {""}
     if interpreter == "venv":
-        # the production chain: FluBNF.bat's .venv\Scripts\flubnf.exe
-        # names the venv's python.exe, CPython's redirector, which starts
-        # the base interpreter; the server is that grandchild
+        # production chain: flubnf.exe -> venv python.exe redirector -> base
+        # interpreter; the server is that grandchild
         venv = tmp_path / "venv"
         subprocess.run([sys.executable, "-m", "venv", "--without-pip",
                         str(venv)], check=True, timeout=120)
@@ -967,8 +937,7 @@ def test_takeover_recognises_a_real_windows_console_script_launch(tmp_path,
             except OSError:
                 pass
         if launcher.poll() is None:
-            # launcher is cmd.exe; killing it alone would leave flubnf.exe
-            # and the probe running, so take down the whole tree
+            # launcher is cmd.exe: kill the whole tree
             subprocess.run(["taskkill", "/PID", str(launcher.pid), "/T", "/F"],
                            capture_output=True, timeout=15)
             if launcher.poll() is None:

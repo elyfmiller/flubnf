@@ -1,19 +1,14 @@
 """Tests for the SIHRS mirror and the magnitude-anchor arithmetic.
 
-The point of the anchor tests: the cold 2026-03-07 SIHRS run pinned `mult` at its
-5.0 prior ceiling in 43/52 states and under-predicted admissions by ~30x. That was
-read as "SIHRS needs more adaptive rounds". It is actually a closed-form scale
-error in the anchor, and these tests pin the arithmetic so it cannot come back.
+A cold SIHRS run once pinned `mult` at its 5.0 prior ceiling in 43/52 states
+(admissions ~30x low): a closed-form scale error in the anchor, not a
+fitting problem. With
 
     H_weekly(t) = rho*gamma*I(t) * mult * scaled          (models/SIHRS.bngl)
 
-With the shipped anchor `scaled = 5.5 * observed_peak`, matching an observed peak
-P requires
-
-    mult = P / (f * 5.5 * P) = 1 / (5.5 * f),     f = max_t[rho*gamma*I(t)]
-
-which is INDEPENDENT OF P -- so every state needs the same out-of-range `mult`,
-which is exactly why 43/52 pinned simultaneously rather than a few outliers.
+and the shipped anchor `scaled = 5.5 * observed_peak`, matching a peak P
+needs mult = 1 / (5.5 * f), f = max_t[rho*gamma*I(t)], INDEPENDENT of P,
+which is why nearly every state pinned at once.
 """
 from __future__ import annotations
 
@@ -30,11 +25,8 @@ MULT_PRIOR = (0.2, 5.0)        # priors/build_priors.py:42
 
 class TestMirrorMatchesBnglStructure:
     def test_fractions_are_conserved(self):
-        # S+I+H+R is closed; Hadm is a separate accumulator that counts I->H
-        # events without consuming I.
-        # NOTE the conserved total is 1 + I0, NOT 1: models/SIHRS.bngl seeds
-        # `S() 1` and `I() I0` additively, so compartments are fractions of the
-        # initial SUSCEPTIBLE pool and the initial infecteds sit on top of it.
+        # S+I+H+R is closed (Hadm counts I->H without consuming I). The total
+        # is 1 + I0, not 1: SIHRS.bngl seeds `S() 1` and `I() I0` additively.
         res = simulate_sihrs({})
         total = res.S + res.I + res.H + res.R
         assert np.allclose(total, 1.0 + NOMINAL["I0"], atol=1e-6)
@@ -66,9 +58,8 @@ class TestMirrorMatchesBnglStructure:
         res = simulate_sihrs({})
         expected = NOMINAL["rho"] * NOMINAL["gamma"] * res.I
         assert np.allclose(res.H_weekly, expected, rtol=1e-9)
-        # ...and it is not merely a rescaled census: no single constant maps H
-        # onto H_weekly. (Their weekly-grid argmax CAN coincide, because
-        # gammaH=1.17 is a sub-weekly discharge lag, so argmax is not the test.)
+        # ...and it is not a rescaled census (argmax may coincide: gammaH is a
+        # sub-weekly discharge lag, so argmax is not the test)
         live = res.H > 1e-12
         ratio = res.H_weekly[live] / res.H[live]
         assert ratio.std() > 1e-6 * max(abs(ratio.mean()), 1e-12)

@@ -1,10 +1,7 @@
-"""The sampler defaults are a measured result, not a preference.
-
-Guards the config that came out of the 2026-08-02 2x2. The old defaults
-(population_size=1, all uniform_var) gave median ESS 9 of 11,250 samples and
-split R-hat 1.192 -- chains that had not converged in any usable sense. The new
-defaults give ~7x the ESS in less wall time. These tests exist so a future edit
-cannot quietly revert them.
+"""The sampler defaults are a measured result (a 2x2 run): the old defaults
+(population_size=1, all uniform_var) gave median ESS 9 of 11,250 and split
+R-hat 1.192; the new ones give ~7x the ESS in less wall time. Guards against
+a quiet revert.
 """
 from __future__ import annotations
 

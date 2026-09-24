@@ -1,10 +1,6 @@
-"""GroundhogCGR replayed on its own: the scoring arithmetic, offline.
-
-Nothing here touches the hub. The pieces that need one (vintages, truth,
-the FluSight baseline) are replaced with small synthetic stand-ins, so the
-tests pin the ARITHMETIC of the replay, which is the part that can be
-wrong quietly: which week a horizon lands on, which cells a figure is
-computed over, and whether two arms are compared on the same ones.
+"""GroundhogCGR replayed on its own: the scoring arithmetic, offline (hub
+pieces are synthetic): which week a horizon lands on, which cells a figure
+covers, and whether two arms are compared on the same cells.
 """
 import sys
 from pathlib import Path
@@ -21,10 +17,9 @@ from flubnf.quantiles import FLUSIGHT_QUANTILES as QL              # noqa: E402
 
 
 def _q(center):
-    """A symmetric fan about `center` at all 23 FluSight levels, which is
-    what flubnf.wis requires: a partial set raises inside score_quantiles,
-    is swallowed there by design, and the cell silently goes unscored. The
-    95 covers center +/- 38, the 50 covers center +/- 20."""
+    """A symmetric fan about `center` at all 23 FluSight levels (a partial
+    set is silently left unscored by score_quantiles). The 95 covers
+    center +/- 38, the 50 covers center +/- 20."""
     return {float(L): float(center + 80.0 * (float(L) - 0.5)) for L in QL}
 
 

@@ -1,14 +1,6 @@
-"""Month-name time axes replace week-index axes on every swept surface.
-
-An axis labeled "weeks since Aug 1" makes the reader do calendar
-arithmetic. One server-side list of month-boundary week offsets
-(SEASON_MONTHS in app/ui/server.py) now feeds every season-week axis:
-the harmonic figure's ticks, the analogue mechanism diagram, and the
-forecast data panel's season-over-season view; the retrospective's
-cumulative relWIS chart derives its ticks from the same month table
-through the date-indexed helper. The precise information moves to hover:
-each season-over-season trace carries its own season's actual Saturday
-date beside the value.
+"""Month-name time axes replace week-index axes on every season-week surface,
+all fed by one server list (SEASON_MONTHS in app/ui/server.py); exact dates
+move to hover (each season-over-season trace carries its real Saturdays).
 """
 import sys
 from pathlib import Path
@@ -51,9 +43,8 @@ def test_week_offsets_read_as_calendar_language():
 
 
 def test_every_consumer_reads_the_shared_list_not_a_copy():
-    # forecast passes the server list into JS once; the analogue diagram
-    # loops the template global; the harmonic ticks come from harmonic_fig,
-    # which slices SEASON_MONTHS server-side; the cumulative chart calls the
+    # forecast passes the server list into JS once; the analogue diagram and
+    # harmonic ticks use it server-side; the cumulative chart uses the
     # date-indexed helper. No surface hand-types month offsets.
     assert "{{ season_months | tojson }}" in FORECAST_T
     assert "for lab, wk in season_months" in DIAGRAMS_T

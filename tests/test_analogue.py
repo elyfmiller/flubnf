@@ -1,9 +1,6 @@
-"""Invariants of the calendar analogue.
-
-Two of these encode bugs that were actually hit during verification and cost
-real time: NaN contamination of np.quantile, and the one-week anchor look-ahead
-worth 0.177 relWIS. Both are cheap to reintroduce and expensive to notice.
-"""
+"""Invariants of the calendar analogue, including two bugs hit during
+verification: NaN contamination of np.quantile, and the one-week anchor
+look-ahead (worth 0.177 relWIS)."""
 from __future__ import annotations
 
 from datetime import date, timedelta
@@ -84,13 +81,9 @@ class TestDonorSelection:
 
 
 def _marked_bank(ratio_by_season, states=("01", "02", "03", "04", "05")):
-    """A bank whose every donor ratio at horizon 1 IDENTIFIES its season.
-
-    Season s grows by exactly `ratio_by_season[s]` per week, so a ratio in the
-    returned array is a fingerprint: seeing 7.0 means a 2021-22 donor survived,
-    and not seeing it means none did. That is stronger than a size comparison,
-    which cannot tell which donors were dropped.
-    """
+    """A bank whose every horizon-1 donor ratio IDENTIFIES its season (season s
+    grows by exactly ratio_by_season[s] per week), so presence of a ratio
+    proves which donors survived, which a size comparison cannot."""
     b = {}
     for s, r in ratio_by_season.items():
         for st in states:
@@ -113,9 +106,8 @@ def _donor_used(d: date, **kw) -> bool:
 
 
 class TestDonorSeasonExclusion:
-    """The 2021-22 exclusion adopted 2026-08-24 (pre-registration
-    8f3c7a45a989e905). Two directions must both be shut: 2021-22 must not come
-    back by accident, and no other season may go out by accident."""
+    """The 2021-22 exclusion (pre-registration 8f3c7a45a989e905): it must not
+    come back by accident, and no other season may leave by accident."""
 
     def test_2021_22_donors_are_absent_by_default(self):
         """Fails if 2021-22 donors reappear in the shipped pool."""
@@ -147,16 +139,14 @@ class TestDonorSeasonExclusion:
         assert historical[0.975] > shipped[0.975]      # 7.0 lived in the tail
 
     def test_the_excluded_set_is_exactly_the_two_registered_seasons(self):
-        """Fails if the exclusion widens to another season. 2020-21 joined
-        2021-22 on 2026-09-19; it is inert for the admissions pool, whose
-        archive begins 2022-02-05, and bites only the auxiliary ILI+ pool."""
+        """The exclusion is exactly {2020, 2021}. 2020-21 is inert for the
+        admissions pool (archive starts 2022-02-05) and bites only ILI+."""
         assert EXCLUDED_DONOR_SEASONS == frozenset({2020, 2021})
         assert set(DONOR_SEASON_EXCLUSIONS) == {2020, 2021}
 
     def test_excluding_an_unregistered_season_raises(self):
-        """Fails if some other season can be dropped silently. 2022-23 is the
-        realistic mistake: it was the OTHER COVID-disrupted candidate and was
-        deliberately not excluded."""
+        """Any unregistered season raises (2022-23, the other COVID-disrupted
+        candidate, was deliberately kept)."""
         b = _marked_bank(_MARKS)
         for bad in ({2022}, {2021, 2022}, {2019}, [2025]):
             with pytest.raises(ValueError, match="not registered"):
@@ -164,9 +154,7 @@ class TestDonorSeasonExclusion:
                              bandwidth=3, exclude_seasons=bad)
 
     def test_a_foreign_calendar_exclusion_is_refused(self):
-        """A season label means a stretch of calendar only relative to a
-        boundary. A record minted under another disease's boundary must not be
-        applied by this module, which owns influenza's."""
+        """A record minted under another disease's season boundary is refused."""
         from dataclasses import replace
         import flubnf.analogue as AN
         foreign = replace(SEASON_2021_22_CALENDAR_INVERSION,
@@ -181,12 +169,10 @@ class TestDonorSeasonExclusion:
             AN.DONOR_SEASON_EXCLUSIONS.update(original)
 
     def test_the_exclusion_is_a_label_under_the_august_boundary(self):
-        """Not a date range. July 2022 belongs to 2021-22 and goes; July 2021
-        belongs to 2020-21 and stays; August 2022 opens 2022-23 and stays. Off
-        by one month at either end and the wrong weeks leave the pool."""
-        # Pinned to the 2021-22 record alone. The shipped set later gained
-        # 2020-21, which would otherwise make the "stays" side of this
-        # boundary test about a season that is also excluded.
+        """A season label under the August boundary, not a date range: July 2022
+        goes (2021-22), July 2021 and August 2022 stay."""
+        # pinned to the 2021-22 record alone, so the "stays" side is not
+        # about 2020-21 (also excluded)
         only = {"exclude_seasons": (2021,)}
         assert SEASON_BOUNDARY_MONTH == 8
         assert season_of(date(2022, 7, 30)) == 2021
@@ -212,8 +198,7 @@ class TestDonorSeasonExclusion:
         assert _donor_used(date(2021, 8, 7), **only)       # the season after
 
     def test_the_record_carries_its_provenance(self):
-        """A donor exclusion with no evidence is indistinguishable from a bug,
-        so the registry may not hold a bare season number."""
+        """The registry holds a record with its evidence, never a bare season."""
         e = SEASON_2021_22_CALENDAR_INVERSION
         assert e.season == 2021 and e.label == "2021-22"
         assert e.profile_key == "influenza"
@@ -241,9 +226,8 @@ class TestDonorSeasonExclusion:
 
 
 class TestNaNSafety:
-    """np.quantile returns NaN for EVERY level if the array holds one NaN, and
-    `v <= 0` is False for NaN so naive filters admit them. This produced a
-    100%-NaN control arm during verification."""
+    """np.quantile returns NaN at EVERY level for one NaN, and `v <= 0` is
+    False for NaN, so naive filters admit them."""
 
     def test_build_bank_drops_nan_and_nonpositive(self):
         class R:
@@ -313,11 +297,9 @@ class TestAnchorAlignment:
 
 
 class TestUSDonorDisclosure:
-    """The donor pool holds the US national row, which is the sum of the
-    jurisdictions it is pooled with. Keeping it was measured against removing
-    it and the two tie, so the shipped pool keeps it. A tie is only defensible
-    while it is written down, and a docstring is easy to tidy away, so the
-    sentences that write it down are pinned here."""
+    """The pool keeps the US national row (the sum of the jurisdictions it is
+    pooled with) because keeping and removing it measured a tie; the module
+    docstring sentences that disclose this are pinned here."""
 
     def _doc(self) -> str:
         from flubnf import analogue
@@ -331,8 +313,7 @@ class TestUSDonorDisclosure:
         assert "15 of 793" in d
 
     def test_the_docstring_carries_the_measured_tie(self):
-        """Both arms and both members. A reader who sees only the winning
-        number cannot tell a tie from an untested choice."""
+        """Both arms and both members (a tie, not an untested choice)."""
         d = self._doc()
         for figure in ("0.7714", "0.7717", "0.7233", "0.7234"):
             assert figure in d, figure

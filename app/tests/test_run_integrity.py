@@ -1,19 +1,12 @@
-"""The console run's honesty guards, pinned on the 2026-09-01 final pass.
+"""The console run's honesty guards.
 
-Four field facts drive these tests:
-
-  * a location whose PF replicates ALL failed used to ship an
-    analogue-only forecast under the ensemble model name, silently; the
-    retro store (app/core/retro.run_week) refuses a week with no PF at
-    all and records partial failures beside the samples, and the console
-    now mirrors both choices;
-  * the first Windows full grid (2026-09-01) finished with 4 cell
-    failures and NO page named the cells or reasons, so a student could
-    not report the partial run usefully;
-  * the forecast archive was replaced by rmtree-then-copy, so a crash or
-    full disk mid-copy destroyed the previous archive for the date;
-  * (retired 2026-09-07) one unparseable value string in one state silenced the same-day
-    under-reporting warning for every other state.
+  * a location whose PF replicates all failed is absent from the Oracle
+    SIHRS file (never shipped under another model's name), and the row is
+    partial;
+  * the run page names failed cells and step errors, escaped;
+  * the forecast archive is replaced beside-then-swap, never rmtree-then-
+    copy, so a crash keeps the previous archive;
+  * the same-day under-reporting heads-up is retired.
 """
 import json
 import sys
@@ -53,11 +46,10 @@ def _isolated_status():
 
 
 def _fake_run(monkeypatch, tmp_path, status_by_cell, collected, aux=None):
-    """Drive srv._run_all end to end with fake engines: PF cell statuses
-    and collected samples are injected, the analogue answers for every
-    location, scoring has no truth. `aux` is the Groundhog donor choice
-    (None: the shipped bank, "": the bare analogue). Returns (ledger row,
-    outcome dict, workroot path)."""
+    """Drive srv._run_all end to end with fake engines (injected PF statuses
+    and samples, an analogue for every location, no truth). `aux` is the
+    Groundhog donor choice (None: shipped bank, "": bare analogue). Returns
+    (ledger row, outcome, workroot)."""
     import app.core.engines.analogue as an_engine
     import app.core.engines.pf as pf_engine
     import app.core.floor as floor_mod
@@ -76,8 +68,7 @@ def _fake_run(monkeypatch, tmp_path, status_by_cell, collected, aux=None):
                         lambda w: {loc: {h: list(v) for h, v in s.items()}
                                    for loc, s in collected.items()})
     import app.core.oracle as oracle_mod
-    # the Oracle step reads the week's vintage, which this hub-free test
-    # has none of: the engines are stubbed and so is the step
+    # the Oracle step needs a vintage this hub-free test lacks: stub it
     monkeypatch.setattr(oracle_mod, "apply_week",
                         lambda s, asof, wd, **kw: (s, {"applied": True,
                                                        "bank": {"label": "stub"}}))
@@ -109,11 +100,8 @@ def _fake_run(monkeypatch, tmp_path, status_by_cell, collected, aux=None):
 
 def test_a_location_with_no_pf_member_is_absent_from_the_sihrs_file_only(
         tmp_path, monkeypatch):
-    """Every Texas replicate fails, Ohio's succeeds. Since the blend was
-    retired (2026-09-22) nothing carries Texas under the Oracle SIHRS name:
-    the Oracle SIHRS file holds Ohio alone, the Groundhog file holds both,
-    the row is partial and its failure count names the cell. No blend
-    bookkeeping keys are written."""
+    """Every Texas replicate fails: the Oracle SIHRS file holds Ohio alone,
+    the Groundhog file holds both, the row is partial; no blend keys."""
     row, outcome, w = _fake_run(
         monkeypatch, tmp_path,
         {"Ohio_r0": "ok", "Texas_r0": "error: fit failed"},
@@ -134,9 +122,8 @@ def test_a_location_with_no_pf_member_is_absent_from_the_sihrs_file_only(
 
 def test_all_pf_fits_failed_still_ships_the_groundhog(
         tmp_path, monkeypatch):
-    """Both locations fail, nothing is collected: there is no Oracle SIHRS
-    file, and that costs the Oracle SIHRS file only. The Groundhog is a
-    standalone submission and writes under its own name."""
+    """All PF fits fail: only the Oracle SIHRS file is lost; the Groundhog
+    still writes under its own name."""
     row, outcome, w = _fake_run(
         monkeypatch, tmp_path,
         {"Ohio_r0": "error: fit failed", "Texas_r0": "error: fit failed"},
@@ -150,10 +137,9 @@ def test_all_pf_fits_failed_still_ships_the_groundhog(
 
 def test_the_bare_analogue_never_ships_under_the_groundhogs_name(
         tmp_path, monkeypatch):
-    """A run whose spec carries no auxiliary pools ran the calendar
-    analogue that shipped inside the blend, not the Groundhog. Its
-    quantiles are kept for the pages, and its file is withheld with the
-    reason on the row, the way a research run's always was."""
+    """With no auxiliary pools the analogue is the bare calendar analogue,
+    not the Groundhog: its quantiles are kept, its file withheld with the
+    reason on the row."""
     row, outcome, w = _fake_run(
         monkeypatch, tmp_path, {"Ohio_r0": "ok", "Texas_r0": "ok"},
         {"Ohio": SAMPLES, "Texas": SAMPLES}, aux="")
@@ -169,10 +155,8 @@ def test_the_bare_analogue_never_ships_under_the_groundhogs_name(
 # ----------------------------- the run page names cells and step errors
 
 def test_run_page_names_failed_cells_and_step_errors(tmp_path, monkeypatch):
-    """The chips only COUNT failures. The run page must name the cells,
-    their statuses and every per-step error, plainly and escaped, so a
-    partial run can be reported by copying the block (first Windows full
-    grid, 2026-09-01: 4 failures, nothing visible anywhere)."""
+    """The run page names each failed cell, its status and every step error,
+    escaped, so a partial run can be reported by copying the block."""
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
     led = Ledger()
     rid = led.open_run(RunSpec(engine="all", forecast_date="2098-01-03"),
@@ -219,9 +203,8 @@ def test_run_page_without_failures_shows_no_detail_block(tmp_path,
 
 def test_a_failed_archive_copy_keeps_the_previous_archive(tmp_path,
                                                           monkeypatch):
-    """Beside, then swap: a copy that dies mid-way (ENOSPC here) must
-    leave the previous archive for the date exactly as it was, with no
-    half-built sibling; the next attempt then replaces it cleanly."""
+    """A copy that dies mid-way (ENOSPC) leaves the previous archive intact
+    with no half-built sibling; the next attempt replaces it cleanly."""
     import shutil as shutil_mod
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
     w = tmp_path / "w"
@@ -249,10 +232,8 @@ def test_a_failed_archive_copy_keeps_the_previous_archive(tmp_path,
 
 def test_a_crash_between_the_two_renames_is_recovered(tmp_path,
                                                       monkeypatch):
-    """The narrow window: the previous archive was parked aside and the
-    process died before the replacement moved in. The next attempt must
-    put the parked copy back FIRST, so a failure in that attempt still
-    leaves the date with its previous record."""
+    """A crash between the two renames: the next attempt restores the parked
+    copy FIRST, so its own failure still leaves the previous record."""
     import shutil as shutil_mod
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
     w = tmp_path / "w"
@@ -274,10 +255,8 @@ def test_a_crash_between_the_two_renames_is_recovered(tmp_path,
 # ------------------- the same-day under-reporting heads-up is gone
 
 def test_no_underreporting_headsup_on_run(tmp_path, monkeypatch):
-    """The lead retired the same-day heads-up (2026-09-07): the measured
-    remedy (dropping the week) cost 0.24 relWIS and was never used, so a
-    run with a badly under-reported newest week starts with no warning and
-    the vintage is never read for that check."""
+    """No same-day under-reporting warning (retired: its remedy cost 0.24
+    relWIS and was never used), and the vintage is not read for it."""
     monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path / "retro")
     monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
     vint = tmp_path / "v.csv"

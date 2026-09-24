@@ -1,21 +1,9 @@
-"""Suite-wide guards for the app tests.
+"""Suite-wide isolation: no test may touch or depend on the real install.
 
-Two rules, both of the same kind: no test may touch, or depend on, the
-developer's real install.
-
-  * The PF engine's takeover registry (the record of live runner process
-    groups that a console relaunch may sweep) lives beside the app's real
-    state, app/state/pf_runners.json. No test may write there -- the file
-    is read by a REAL relaunch, and a test's fake runner pids landing in it
-    could aim a sweep at recycled pids on the developer's machine -- so
-    every test records into its own temporary file instead.
-
-  * prepare() refuses to write a fit_type = pf configuration when the fork
-    path holds no pybnf/pf.py (app/core/engines/pf.py::engine_available).
-    Every test that calls it would otherwise pass on the development host,
-    which has the fork, and fail in CI, which does not. So the fork is
-    faked here for the whole suite; a test about the preflight itself
-    points PYBNF_PF at its own directory and wins, being later.
+  * pf.RUNNER_PIDS_FILE -> tmp: a real relaunch sweeps the pids recorded in
+    app/state/pf_runners.json, so test pids must never land there.
+  * pf.PYBNF_PF -> a stub fork: prepare() refuses fit_type = pf without
+    pybnf/pf.py (CI has no fork); preflight tests override PYBNF_PF.
 """
 import sys
 from pathlib import Path
@@ -52,9 +40,7 @@ def _engine_in_tmp(_engine_root, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _sealed_records_in_tmp(tmp_path, monkeypatch):
-    """The production record (app/state/retro_reseal) is a real tree on the
-    lab machine, preferred by _season_root whenever it has the most weeks;
-    no test may serve it by accident. RETRO_SEAL is left as it is because
-    every test that needs a seal already points it at its own tree."""
+    """The production record (app/state/retro_reseal) must never be served by
+    accident; RETRO_SEAL tests already point at their own trees."""
     from app.ui import server as srv
     monkeypatch.setattr(srv, "RETRO_RESEAL", tmp_path / "retro_reseal")

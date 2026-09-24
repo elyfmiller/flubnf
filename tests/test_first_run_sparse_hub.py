@@ -1,30 +1,10 @@
 """A hub clone that exists but holds no data must never read as ready.
 
-Field report, 2026-08-25 (Windows 11, git 2.45.2.windows.1): the corresponding
-author cloned the FluSight hub by hand with
-
-    git clone --filter=blob:none --sparse --depth 1 <hub> <path>
-
-which succeeded. `--sparse` is documented to check out only the files in the
-repository ROOT, so that clone contains no `auxiliary-data/`, no
-`target-data/` and no `model-output/`. Every gate in the project then tested
-for the clone rather than for its contents:
-
-  * `flubnf.settings.check()` tested `HUB.exists()` and printed
-    "all externals present -- you are ready" over the empty clone,
-  * `FluBNF.bat` tested `%HUBDIR%\\.git` and stopped offering setup,
-  * `setup.ps1` / `setup.sh` said "hub present" and ran `sparse-checkout
-    reapply`, which re-applies the recorded cone and so re-applies nothing.
-
-Measured on git 2.39.5 against a local fixture shaped like the hub: after a
-`--sparse` clone the working tree holds the root file only; `reapply` adds
-nothing; `sparse-checkout add` brings the directories in and is idempotent;
-`sparse-checkout set` against a FULL clone deletes every directory not named,
-which is why the repair uses `add`.
-
-The two setup scripts cannot be executed here (the lab develops on macOS and
-`setup.ps1` needs a PowerShell interpreter this machine does not have), so
-they are checked as text. Windows CI executes `setup.ps1` for real.
+`git clone --sparse` checks out only the root, so every gate tests for hub
+DATA (auxiliary-data/locations.csv), not for the clone or .git. Repair uses
+`sparse-checkout add` (idempotent); `reapply` adds nothing, and `set` on a
+full clone deletes every unnamed directory. setup.ps1/setup.sh are checked
+as text; Windows CI executes setup.ps1.
 """
 
 from __future__ import annotations
@@ -43,12 +23,8 @@ HUB_DIRS = ("auxiliary-data", "target-data",
 
 
 def _check_with_hub(hub: Path) -> list:
-    """Run flubnf.settings.check() in a fresh interpreter against `hub`.
-
-    A subprocess, not monkeypatch: settings resolves its paths at import, and
-    reloading it mid-session would leave every module that already imported
-    HUB pointing at the old object.
-    """
+    """Run flubnf.settings.check() in a fresh interpreter against `hub`
+    (settings resolves paths at import; reloading would leave stale HUBs)."""
     out = subprocess.run(
         [sys.executable, "-c",
          "import json, os, sys;"
@@ -89,10 +65,8 @@ def test_launcher_gates_the_setup_offer_on_data_not_on_dot_git():
 
 
 def test_launcher_never_leaves_a_double_click_at_an_unbounded_prompt():
-    """The .bat bounds its own question (choice /t 20 /d N); the script it
-    hands off to must not then ask one with no timeout. setup.ps1 offers a
-    winget install of Strawberry Perl via Read-Host whenever it decides the
-    session is interactive, which a double-clicked .bat is."""
+    """The .bat bounds its own question; the setup.ps1 it hands off to must
+    run with -NoPrompt (its Read-Host has no timeout)."""
     bat = (REPO / "FluBNF.bat").read_text(encoding="utf-8")
     launch = [l for l in bat.splitlines()
               if "setup.ps1" in l and l.lstrip().lower().startswith("powershell")]
@@ -104,9 +78,8 @@ def test_launcher_never_leaves_a_double_click_at_an_unbounded_prompt():
 
 
 def test_setup_scripts_widen_an_existing_cone_with_add_not_set():
-    """`add` extends a cone and fails harmlessly on a full clone; `set`
-    silently prunes every directory it is not given. Both scripts must repair
-    an existing clone, and must do it with `add`."""
+    """Both scripts repair an existing clone with `add` (`set` would prune
+    every directory it is not given)."""
     for name, needle in (("setup.ps1", '"sparse-checkout", "add"'),
                          ("setup.sh", "git sparse-checkout add")):
         src = (REPO / name).read_text(encoding="utf-8")
@@ -118,9 +91,8 @@ def test_setup_scripts_widen_an_existing_cone_with_add_not_set():
 
 
 def test_setup_ps1_only_narrows_the_cone_on_a_clone_it_just_made():
-    """`sparse-checkout set` is safe exactly once: on the clone created one
-    statement earlier, whose cone is empty and whose contents are nobody's.
-    Anywhere else it would delete a deliberate full checkout."""
+    """`sparse-checkout set` appears once: on the fresh clone, whose cone is
+    empty; anywhere else it would delete a full checkout."""
     src = (REPO / "setup.ps1").read_text(encoding="utf-8")
     sets = [l for l in src.splitlines()
             if '"sparse-checkout", "set"' in l or "sparse-checkout set" in l]
@@ -133,8 +105,7 @@ def test_setup_ps1_only_narrows_the_cone_on_a_clone_it_just_made():
 
 
 def test_setup_ps1_repairs_the_cone_before_it_reapplies_it():
-    """Ordering is the whole point: reapply re-applies the recorded cone, so
-    it can never add a directory the cone never held."""
+    """Repair before reapply (reapply only re-applies the recorded cone)."""
     src = (REPO / "setup.ps1").read_text(encoding="utf-8")
     repair = src.index("Repair-HubCone $Hub $HubDirs")
     reapply = src.index('"sparse-checkout", "reapply"')

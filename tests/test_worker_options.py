@@ -1,37 +1,10 @@
-"""Run options must reach pool workers. They did not, and nothing said so.
+"""Run options must reach ProcessPoolExecutor workers.
 
-THE BUG THIS EXISTS TO PREVENT
-------------------------------
-`vintage_run` and `rt_prior_run` set module-level globals in `main()` and read
-them inside the function submitted to `ProcessPoolExecutor`:
-
-    OPTS = {"min_model": False, "window_weeks": None}   # "so pool workers inherit"
-    ...
-    def main():
-        OPTS["window_weeks"] = a.window_weeks           # never seen by a worker
-
-That comment is true on Linux, where multiprocessing forks. **macOS spawns.** A
-spawned worker RE-IMPORTS the module, so every such global reverts to the value
-in the source file and the command-line flag is silently ignored.
-
-The cost was not theoretical. Three "rolling window" arms -- 8 weeks, 12 weeks,
-full season, 312 PyBNF fits over ~19 hours -- were three identical full-season
-runs. Their `season_start_used` fields are all `2025-08-01`. A 4.8% "window
-effect" was reported, defended, and built into a recommendation before anyone
-noticed. The same bug made `--min-model` a no-op, so a campaign labelled
-"5-parameter" fitted the 8-parameter model.
-
-Nothing failed. No exception, no warning, no log line. The only evidence was a
-field in the output that nobody read.
-
-WHAT THESE TESTS CHECK
-----------------------
-1. That spawn really does drop module state, so the premise stays documented
-   even if someone later "simplifies" the args tuple back to a global.
-2. That the args tuple each runner builds matches what its worker unpacks --
-   a length mismatch is the cheap, deterministic proxy for "an option was
-   dropped on the way to the worker".
-3. That the option actually changes the artefact it is supposed to change.
+macOS spawns workers, which re-import the module, so options kept in module
+globals (OPTS, USE_MIN) silently revert inside the worker (this once turned
+three window arms and a --min-model campaign into no-ops). Checks: spawn
+drops module state; each runner's job tuple length equals what one_fit
+unpacks; one_fit never reads OPTS/USE_MIN; the option changes the artefact.
 """
 from __future__ import annotations
 
@@ -61,9 +34,8 @@ def _worker_reads_global(_):
 
 class TestSpawnDropsModuleState:
     def test_start_method_is_spawn_on_macos(self):
-        """If this ever becomes 'fork', the original code would have worked --
-        and the args-tuple plumbing becomes belt-and-braces rather than load
-        bearing. Either way the fact should be asserted, not assumed."""
+        """Asserted, not assumed: under 'fork' the args-tuple plumbing would
+        be belt-and-braces rather than load-bearing."""
         if sys.platform == "darwin":
             assert mp.get_start_method() == "spawn"
 

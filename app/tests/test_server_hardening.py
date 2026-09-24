@@ -1,21 +1,14 @@
-"""Server-side hardening from the 2026-09-01 final pass review.
+"""Server-side hardening.
 
-Four behaviors pinned here:
-
-  1. the engine busy check and its claim are atomic under one module lock
-     (srv._engine_lock), so two overlapping submits cannot both start
-     full engine runs -- the race was reproduced with exactly the
-     threaded TestClient shape these tests use;
-  2. state-changing requests must arrive under a localhost Host header
-     and, when the browser attaches one, a localhost Origin: a foreign
-     page's form-POST and a DNS-rebound hostname get 403, while
-     curl-style no-Origin posts, same-origin posts, and every GET pass;
-  3. /data/pull refuses server-side while a run is reading hub files
-     (the client button guard alone was bypassed by a second tab), and a
-     failed git pull is reported as a failure instead of a status line;
-  4. strings that reach | safe HTML and inline scripts are hardened:
-     _script_json emits "<" as \\u003c, and the season map's
-     scoring-failed fragment escapes the raw error text.
+  1. the engine busy check and its claim are atomic under srv._engine_lock,
+     so two overlapping submits cannot both start runs;
+  2. state-changing requests need a localhost Host and, when present, a
+     localhost Origin (foreign form-POSTs and DNS-rebound hosts get 403;
+     no-Origin posts, same-origin posts and every GET pass);
+  3. /data/pull refuses server-side while a run reads hub files, and a
+     failed git pull is reported as a failure;
+  4. _script_json emits "<" as \\u003c, and the scoring-failed fragment
+     escapes the raw error text.
 """
 import threading
 import time
@@ -39,8 +32,7 @@ SEASON = "2098-99"
 
 @pytest.fixture(autouse=True)
 def _isolated_status():
-    """Snapshot and restore the module-level status stores around each test
-    so mocked busy states and claims never leak between tests."""
+    """Snapshot and restore the module-level status stores."""
     status_before = dict(srv._status)
     retro_before = dict(srv._retro_status)
     stop_before = set(srv._retro_stop)
@@ -69,18 +61,14 @@ def _two_threads(post):
 
 def test_concurrent_run_posts_start_exactly_one_engine_run(tmp_path,
                                                            monkeypatch):
-    """Two overlapping POST /run both read idle and both started full
-    engine runs before the check and the claim shared a lock. The sleep
-    below sits inside the check-to-claim window (via _known_seasons), so
-    without the lock both threads pass the busy check during the overlap
-    and started would be 2."""
+    """Two overlapping POST /run start exactly one run. The sleep sits inside
+    the check-to-claim window (via _known_seasons), so without the lock both
+    threads would pass the busy check."""
     from app.core import data as data_real
     monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
     monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
-    # patch the REAL module, not srv.data_mod: the lazy proxy swaps the
-    # server's data_mod global for app.core.data on first use, and the
-    # import-time warm thread can perform that swap mid-test, dropping an
-    # attribute patched onto the proxy instance
+    # patch the REAL module, not srv.data_mod: the lazy proxy (possibly
+    # swapped by the import-time warm thread mid-test) would drop it
     monkeypatch.setattr(data_real, "vintage_path", lambda d: tmp_path)
     started = []
     monkeypatch.setattr(srv, "_run_all", lambda spec: started.append(spec))
@@ -109,9 +97,7 @@ def test_concurrent_run_posts_start_exactly_one_engine_run(tmp_path,
 
 def test_concurrent_retro_run_posts_claim_exactly_one_worker(tmp_path,
                                                              monkeypatch):
-    """The same check-then-claim race in POST /retro/run: without the
-    shared lock, two overlapping submits both passed every busy check and
-    two season workers raced over the same tree."""
+    """The same race in POST /retro/run claims exactly one season worker."""
     from app.core import retro
     monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
     monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
@@ -192,9 +178,8 @@ def test_gets_stay_open_whatever_the_headers():
 # ------------------------------------------- 3. /data/pull hardening
 
 def test_data_pull_refused_while_a_run_reads_hub_files(monkeypatch):
-    """The server-side mirror of the client data-pull guard: a POST from
-    a second tab must not let git pull mutate the hub clone under a
-    materializing run."""
+    """Server-side mirror of the client guard: a second tab's POST cannot
+    git-pull the hub under a materializing run."""
     from app.core import data as data_real
     calls = []
     monkeypatch.setattr(data_real, "pull_hub",
@@ -241,8 +226,7 @@ def test_data_pull_allowed_during_pure_fitting(monkeypatch):
 
 
 def test_data_pull_failure_is_flashed_as_a_failure(monkeypatch):
-    """A fatal git error once returned as pull_hub's only output and the
-    page flashed it like a status line; the exit code now decides."""
+    """A fatal git error is flashed as a failure (the exit code decides)."""
     from app.core import data as data_real
     monkeypatch.setattr(data_real, "pull_hub",
                         lambda: (False, "fatal: unable to access remote"))

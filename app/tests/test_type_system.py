@@ -1,13 +1,8 @@
-"""The data layer joins the type system (design finding 1).
-
-The A-/A/A+ control dispatches fontsizechange, mirroring themechange;
-every Plotly layout names the brand face with a system fallback and sizes
-its text from the root font size, redrawing on both events; the inline SVG
-diagrams size their labels through rem classes rather than fixed
-viewBox-unit font-size attributes, so the control reaches the smallest
-text in the app; and the navigation tabs step below 1100px so the row
-survives the A+ setting. The static season report has no fontsize control,
-so the shared player's hook must be a graceful no-op there.
+"""The data layer joins the type system: the A-/A/A+ control dispatches
+fontsizechange; Plotly layouts use the brand face with a system fallback and
+root-relative text sizes, redrawing on both events; SVG labels use rem
+classes; nav tabs step below 1100px to survive A+. The static report has no
+control, so the player's hook is a no-op there.
 """
 import sys
 from pathlib import Path
@@ -55,12 +50,9 @@ def test_plotly_layouts_carry_the_brand_face_and_root_proportional_size():
 
 
 def test_chart_text_sits_on_the_type_scale_with_tight_margins():
-    # ticks and legends at .85rem (above the .82rem hint floor) and the
-    # title one step up, all root-proportional so the A-/A/A+ control
-    # multiplies them; the now marker holds the hint floor itself. The
-    # tightened base margins pair with automargin, which lets tick labels
-    # and the below-plot legend size their own bands, so nothing clips at
-    # A+ and no dead band pads the card.
+    # ticks/legends at .85rem (above the .82rem hint floor), the title one
+    # step up, all root-relative; tight margins plus automargin, so nothing
+    # clips at A+ and no dead band pads the card
     assert "Math.round(fs * .85)" in PLAYER
     assert "Math.round(fs * .95)" in PLAYER
     assert "Math.round(fs * .82)" in PLAYER          # the now marker

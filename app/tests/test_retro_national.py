@@ -1,14 +1,11 @@
 """The honest US national aggregate on the retrospective season page.
 
-The retro grid fits states only, so the national figure is CONSTRUCTED:
-each member aggregated from its state forecasts with states treated as
-independent (PF by summing sample draws aligned by draw index; the
-analogue by independent draws from each state's quantile curve, summed),
-then the two national member quantile sets vincentized 50/50, the shipped
-recipe. It is scored with the same relWIS machinery as every state, cached
-under the season's stats validity key, and labeled as an aggregate
-wherever it appears. Alongside it, the per-state table becomes a foldable,
-sortable, filterable instrument.
+The retro grid fits states only, so the national figure is CONSTRUCTED per
+member from state forecasts with states treated as independent (PF: sample
+draws summed by draw index; analogue: independent draws from each state's
+quantile curve, summed). It is scored like every state, cached under the
+season's stats validity key, and labelled as an aggregate wherever shown.
+The per-state table is foldable, sortable and filterable.
 """
 import json
 import os
@@ -33,10 +30,8 @@ N2F = {"Ohio": "39", "Utah": "49"}
 # ------------------------------------------------------------------ fixtures
 
 def _tree(tmp_path, pf_a=(40.0, 60.0), pf_b=(60.0, 40.0)) -> Path:
-    """One completed week, two states. The default PF draws are chosen so
-    that the INDEX-ALIGNED sum is degenerate at 100 while a sorted
-    (comonotone) sum would spread 80..120: the construction itself is what
-    the relWIS then witnesses."""
+    """One completed week, two states. The default PF draws index-sum to a
+    degenerate 100, while a sorted (comonotone) sum would spread 80..120."""
     root = tmp_path / SEASON
     wd = root / "weeks" / W1
     wd.mkdir(parents=True)
@@ -47,8 +42,7 @@ def _tree(tmp_path, pf_a=(40.0, 60.0), pf_b=(60.0, 40.0)) -> Path:
           for loc in N2F}
     (wd / "samples.json").write_text(
         json.dumps({"asof": W1, "pf": pf, "analogue": an}))
-    # scores.json present, newer than the samples: the stats validity key
-    # the cache is bound to
+    # scores.json newer than the samples: the stats validity key
     pd.DataFrame([{"model": "pf", "location": "Ohio", "fips": "39",
                    "asof": W1, "horizon": 0, "wis": 1.0, "base_wis": 2.0,
                    "rel": 0.5}]).to_json(root / "scores.json")
@@ -77,10 +71,8 @@ def _stub_scoring(monkeypatch):
 # ------------------------------------------------- the construction itself
 
 def test_pf_national_sums_draws_by_index_not_by_rank(tmp_path, _stub_scoring):
-    """Ohio draws (40, 60) and Utah draws (60, 40) index-sum to (100, 100):
-    a degenerate national forecast exactly on the US truth, so PF relWIS is
-    0. A rank-aligned (comonotone) sum would spread 80..120 and score a
-    strictly positive WIS; zero is the fingerprint of index alignment."""
+    """Index-aligned draws sum to (100, 100), exactly the US truth, so PF
+    relWIS is 0; a rank-aligned sum would score positive WIS."""
     r = retro.national_aggregate(_tree(tmp_path))
     assert r is not None
     assert r["pf"] == 0.0
@@ -94,11 +86,9 @@ def test_both_national_scores_arrive_scored_like_states(
         assert m in r, m
         assert r[m] >= 0.0
         assert r["cells"][m] == 4
-    # nothing is blended since 2026-09-22: no national blend row either
+    # no blend: no national blend row either
     assert "ensemble" not in r and "ensemble" not in r["cells"]
-    # the analogue national set comes from two independent draws around a
-    # symmetric curve summing to ~100: its relWIS is positive (it carries
-    # spread) and finite
+    # the analogue national set carries spread: positive, finite relWIS
     assert r["analogue"] > 0.0
     assert r["pf"] < r["analogue"]
     assert r["weeks"] == 1
@@ -107,13 +97,8 @@ def test_both_national_scores_arrive_scored_like_states(
 
 def test_a_fitted_national_block_is_never_summed_into_the_aggregate(
         tmp_path, _stub_scoring):
-    """The aggregate is the sum of the JURISDICTIONS. Since the 2026-08-26
-    backfill the sealed weeks also carry a fitted `US` block, and summing
-    that on top of the states it is already the total of would report the
-    nation at ~2x scale, silently and with no error.
-
-    Both member loops must skip it, so a week with a fitted national block
-    scores exactly as the same week without one."""
+    """A fitted `US` block in the week is never summed into the aggregate
+    (it would double the national scale): both member loops skip it."""
     w = {"pf": .5, "analogue": .5}
     plain = retro.national_aggregate(_tree(tmp_path / "a"))
     root = _tree(tmp_path / "b")
@@ -129,9 +114,8 @@ def test_a_fitted_national_block_is_never_summed_into_the_aggregate(
     for r in (plain, with_us):
         r.pop("seconds", None)          # wall clock, not a result
     assert with_us == plain
-    # the sharp edge: the index-aligned state sum is degenerate at 100 on a
-    # US truth of 100, so PF relWIS is 0. Summing the national block in too
-    # would forecast 200 against 100 and drive this far from zero.
+    # index-aligned state sum is degenerate at the US truth (PF relWIS 0);
+    # adding the national block would forecast 200 against 100
     assert with_us["pf"] == 0.0
 
 
@@ -187,10 +171,8 @@ def _season_html(**kw):
     return srv.templates.env.get_template("retro_season.html").render(**ctx)
 
 
-#: The page no longer accepts a bare mapping of numbers: since 2026-08-26
-#: a US figure travels with the provenance that says whether it was fitted
-#: or constructed (app/core/us_national), so the constructed aggregate
-#: reaches the template through the same serialisation the resolver emits.
+#: A US figure travels with its provenance (app/core/us_national), so the
+#: aggregate reaches the template through the resolver's serialisation.
 US_ROW = us_national.UsNational(
     us_national.AGGREGATED,
     scores={"pf": 0.71, "analogue": 1.02, "ensemble": 0.66},

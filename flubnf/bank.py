@@ -24,7 +24,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 
 #: Committed banks live in the repository, beside the code that reads them.
-#: `data/` is not gitignored (only three of its subdirectories are).
+#: `data/` is tracked (.gitignore excludes only data/covidhub/).
 BANKS_DIR = REPO / "data" / "banks"
 
 #: Bumped when the on-disk layout changes in a way a reader must notice.

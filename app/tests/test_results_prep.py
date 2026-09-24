@@ -1,22 +1,13 @@
-"""Results preparation off the request path, and the startup-freeze fixes.
+"""Results preparation off the request path, and startup-freeze fixes.
 
-Four behaviors, all field-driven (laptop, 2026-08-22):
-
-  * the season worker finalizes BEFORE marking done -- scores, the US
-    national aggregate, and warmed playback caches, timed into run_meta --
-    so the results page after a finished replay is a cache read;
-  * a results-page visit that still finds stale caches starts ONE shared
-    background job and shows a live preparing state polled from a status
-    endpoint, never a frozen request; small seasons finish inside the grace
-    wait and render complete in one round trip, and an unsettled-truth
-    season never loops (a completed job covering the same inputs is
-    believed);
-  * the console CLI and the server import no longer pay for pandas/scipy
-    or the engine-venv version probe before the window can open: the CLI's
-    science imports are lazy, and VERSIONS resolves on a background thread
-    (pages fill in via /api/versions);
-  * the fluid type scale keeps growing past the old ~1800px ceilings while
-    900px renders exactly as before.
+  * the season worker finalizes (scores, US aggregate, warmed playback
+    caches, timed into run_meta) BEFORE marking done;
+  * a results visit finding stale caches starts ONE shared background job
+    with a polled preparing state; small seasons finish inside the grace
+    wait, and an unsettled-truth season never loops;
+  * the CLI's science imports are lazy and VERSIONS resolves on a
+    background thread, so the window opens promptly;
+  * the fluid type scale keeps growing past ~1800px; 900px is unchanged.
 """
 import json
 import re
@@ -259,10 +250,8 @@ def test_one_job_per_root_even_under_concurrent_visits(tmp_path, _stubbed,
 
 
 def test_unsettled_truth_never_loops(tmp_path, _routed, monkeypatch):
-    """Zero scoreable cells: the first visit runs the job once; the covered
-    job is then believed and later visits render the honest empty state
-    without recomputing (the infinite preparing-reload loop this guards
-    against)."""
+    """Zero scoreable cells: the job runs once and is then believed; later
+    visits render the empty state without recomputing (no reload loop)."""
     _mk_tree(_routed)
     # truth that never overlaps the season: everything scores to nothing
     monkeypatch.setattr(scoring, "load_truth", lambda: ({}, dict(N2F)))
@@ -301,10 +290,9 @@ def test_rescore_forces_a_fresh_job_over_current_scores(tmp_path, _stubbed,
 
 def test_week_map_cards_cache_on_disk_and_are_reused(tmp_path, _stubbed,
                                                      _routed):
-    """The season page's weekly map no longer re-parses the raw samples
-    (~140 MB on a full-grid week) per view: the reduced cards cache under
-    playback_cache/map_cards/, keyed by the samples mtime, and the report
-    freshness glob (playback_cache/*.json) deliberately cannot see them."""
+    """Weekly map cards cache under playback_cache/map_cards/ keyed by the
+    samples mtime (no ~140 MB re-parse per view), invisible to the report
+    freshness glob (playback_cache/*.json)."""
     import os
     root = _mk_tree(_routed)
     cards = srv._week_map_cards(root, W1)
@@ -318,13 +306,11 @@ def test_week_map_cards_cache_on_disk_and_are_reused(tmp_path, _stubbed,
     os.utime(sp, (st.st_atime, st.st_mtime))
     again = srv._week_map_cards(root, W1)
     assert again["39"]["probs"] == cards["39"]["probs"]
-    # a changed mtime invalidates; the unparseable file then raises, which
-    # is the honest failure (the tree is corrupt)
+    # a changed mtime invalidates; the corrupt file then raises (honest)
     os.utime(sp, (st.st_atime + 60, st.st_mtime + 60))
     with pytest.raises(Exception):
         srv._week_map_cards(root, W1)
-    # warming another week's map cards is INVISIBLE to the report input
-    # scan: the 25 MB export must not rebuild because a map was viewed
+    # warming map cards must not trigger a rebuild of the 25 MB export
     from app.core import report_season
     newest0 = report_season._newest_input(root)
     srv._week_map_cards(root, W2)
@@ -356,10 +342,8 @@ def test_season_report_carries_the_us_aggregate_with_the_honest_label(
 
 def test_unscored_report_states_the_aggregate_absence_never_invents_it(
         tmp_path, _stubbed, monkeypatch):
-    """No figure is invented for an unscored season, and since 2026-08-23
-    the absence is STATED in the artifact rather than left as a silent
-    hole (the recurring exported-artifact failure class): no tile, no
-    table row, no construction note, one plain sentence saying why."""
+    """An unscored season's export invents no aggregate and states its
+    absence in one plain sentence."""
     from app.core import report_season
     monkeypatch.setattr(report_season, "_plotlyjs", lambda: "/* stub */")
     root = _mk_tree(tmp_path)                # weeks, never scored
@@ -380,8 +364,7 @@ def test_export_freshness_covers_the_aggregate_cache(tmp_path, _stubbed,
     monkeypatch.setattr(report_season, "_plotlyjs", lambda: "/* stub */")
     root = _mk_tree(tmp_path)
     p = report_season.build_season_report(root, SEASON)
-    # the stand-in carries the tree's names line, the builder's content
-    # test, so only the mtime half is exercised here
+    # the stand-in passes the builder's content test, so only mtime matters
     sentinel = "sentinel " + report_season._names_line(
         report_season.names_for_root(root))
     p.write_text(sentinel)
@@ -399,8 +382,7 @@ def test_export_freshness_covers_the_aggregate_cache(tmp_path, _stubbed,
 # --------------------------------------------------- startup: lazy and warm
 
 def test_cli_import_stays_light():
-    """`flubnf app` must not pay pandas/scipy before its window can open:
-    importing the CLI module alone loads neither."""
+    """Importing flubnf.cli loads neither pandas nor scipy."""
     code = ("import sys; import flubnf.cli; "
             "sys.exit(2 if 'pandas' in sys.modules else "
             "3 if 'scipy' in sys.modules else 0)")
@@ -430,10 +412,8 @@ def test_versions_resolve_off_the_import_path_and_fill_in():
 
 
 def test_server_import_does_not_block_on_the_engine_probe(tmp_path):
-    """The regression itself (added 2026-08-19): the engine-venv subprocess
-    ran at server import. With the engine python stubbed to hang, the import
-    must still complete promptly -- the probe now runs on a background
-    thread."""
+    """Server import completes promptly even with the engine python hanging:
+    the version probe runs on a background thread."""
     stub = tmp_path / "python"
     stub.write_text("#!/bin/sh\nsleep 30\n")
     stub.chmod(0o755)

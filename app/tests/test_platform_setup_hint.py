@@ -1,10 +1,5 @@
 """The setup instruction the console prints must be runnable on the machine
-reading it.
-
-Field report, 2026-08-25: a Windows user opened the Retrospective page and was
-told to run `SetupEngine.command`, a macOS double-click script that Windows
-cannot open at all. Three templates hardcoded that filename with no platform
-check. These tests fail if that ever comes back.
+reading it: never the macOS-only SetupEngine.command alone on Windows.
 """
 import re
 import sys
@@ -41,10 +36,8 @@ def test_engine_setup_hint_names_a_script_this_platform_can_run(monkeypatch):
 
 def test_no_console_page_names_a_mac_only_script_by_itself_on_windows(
         monkeypatch):
-    """The guard proper. A page may name SetupEngine.command only when it
-    also names the Windows equivalent (methods.html lists all three, because
-    it is harvested into the platform-neutral public site). A page that names
-    the macOS script alone, on Windows, is the reported bug."""
+    """A page may name SetupEngine.command only beside the Windows equivalent
+    (methods.html lists all three for the platform-neutral public site)."""
     monkeypatch.setattr(server, "_platform", lambda: "win32")
     for path in ("/", "/methods", "/retro"):
         r = client.get(path)
@@ -56,9 +49,8 @@ def test_no_console_page_names_a_mac_only_script_by_itself_on_windows(
 
 
 def test_home_and_retro_defer_to_the_platform_hint(monkeypatch):
-    """Rendering alone cannot prove it: the Setup card and the retro warning
-    are both conditional, so on a fully installed machine neither string is
-    emitted. Check the template sources directly."""
+    """The Setup card and retro warning are conditional (absent on a fully
+    installed machine), so check the template sources directly."""
     for name in ("home.html", "retro.html"):
         src = (TEMPLATES / name).read_text(encoding="utf-8")
         assert MAC_ONLY not in src, (

@@ -1,10 +1,7 @@
-"""Per-button run-interference guards and the working report download.
-
-Covers the /api/busy shape idle and busy, the retro stop endpoint and the
-season worker's between-weeks stop point, the base-template guard modal,
-the exact classification of guarded controls (and only those), the download
-attribute on the season-report anchor, and the Reveal-in-Finder fallback:
-the report-path endpoint and the /output/reveal spawn it feeds.
+"""Per-button run-interference guards and the report download: /api/busy,
+the retro stop endpoint and between-weeks stop, the guard modal, the exact
+set of guarded controls, the season-report download attribute, and the
+Reveal-in-Finder fallback.
 """
 import subprocess
 import sys
@@ -141,10 +138,8 @@ def test_guarded_attributes_on_exactly_the_classified_controls():
     def kinds(html):
         return set(re.findall(r'data-guard="([^"]+)"', html))
 
-    # the interfering actions carry a guard, and only their own kind; the
-    # resume and re-run shortcuts (rendered when a stopped run exists in
-    # the live state) carry the SAME kind as the form they shortcut, so the
-    # kind set stays fixed whatever the ledger holds
+    # interfering actions carry only their own guard kind; resume/re-run
+    # shortcuts carry the same kind as their form, so the set stays fixed
     fc = client.get("/forecast").text
     assert kinds(fc) == {"console-run"}
     assert 'data-guard="console-run">Run models' in fc
@@ -160,27 +155,22 @@ def test_guarded_attributes_on_exactly_the_classified_controls():
     assert 'data-guard' not in dt.split("Check for new data")[0].rsplit(
         "<form", 1)[-1]
 
-    # the model-page run buttons post to the same /run endpoint and carry
-    # the same guard; they were the unguarded back door. The canonical
-    # /models route serves the PF view, so it carries the same guard. The
-    # pf2s view's research run control books the engine through /run too,
-    # so it carries the very same guard.
+    # the model pages' run buttons (incl. the pf2s research control) post to
+    # /run and carry the same guard
     for page in ("/model/pf", "/model/analogue", "/models", "/model/pf2s"):
         mp = client.get(page).text
         assert mp.count('data-guard="') == 1, page
         assert 'data-guard="console-run"' in mp, page
 
-    # safe pages: viewing, generating from stored results, downloads. The
-    # storage panel's deletes ride the confirmation shell plus server-side
-    # busy checks, never a data-guard, so /runs stays in this set.
+    # safe pages: viewing and downloads; storage deletes use the confirm
+    # shell and server-side checks, not a data-guard
     for page in ("/", "/output", "/runs", "/model/ensemble"):
         assert 'data-guard="' not in client.get(page).text, page
 
 
 # ---------------------------------------- server-side busy cross-checks
-# The client-side guard is convenience; these prove the server refuses a
-# double-booking on its own, so a second tab, a stale page, or a script
-# cannot start a run over a fitting worker.
+# The client guard is a convenience: the server itself refuses a
+# double-booking (second tab, stale page, script).
 
 def test_post_run_refused_while_a_retrospective_replays(tmp_path,
                                                         monkeypatch):

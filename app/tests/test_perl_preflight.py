@@ -1,7 +1,5 @@
-"""Perl is what runs BNG2.pl at run preparation. A Windows desktop without
-it (lab report, 2026-09-02) failed every location with
-'[WinError 2] The system cannot find the file specified', which names
-neither the program nor the fix. Now the absence is named once, before any
+"""Perl runs BNG2.pl at run preparation; without it every location failed
+with an opaque '[WinError 2]'. The absence is named once, before any
 location, everywhere the console reports its components."""
 import sys
 import types

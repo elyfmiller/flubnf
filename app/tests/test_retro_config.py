@@ -83,11 +83,8 @@ def test_retro_form_offers_full_config():
 
 
 def test_retro_width_default_is_this_machines_auto_value():
-    """The forecast path has sized shard width to the machine since
-    2026-08-28, but the retro form still hardcoded value 4, overriding
-    run_season's own auto default and idling most of a workstation
-    (about 2x on the measured 12-core box). The form now offers the same
-    auto value the engine resolves, capped at the engine's cap."""
+    """The retro form offers the engine's auto shard width (capped), not a
+    hardcoded 4 that idled most of a workstation."""
     from fastapi.testclient import TestClient
     from app.core.engines.pf import DEFAULT_SHARD_WIDTH, SHARD_WIDTH_CAP
     from app.ui.server import app as srv

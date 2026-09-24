@@ -1,8 +1,6 @@
-"""Retrospective season player: the template renders with the playback
-controls, both views, and the live stats table. The player logic itself is
-the shared app/ui/static/player.js (one file, loaded by this page and
-inlined into the season report), and the combined page-plus-player JS reads
-only fields the playback API contract defines."""
+"""Retrospective season player: the template renders the controls, both
+views and the stats table; the shared player.js plus the page JS read only
+playback-contract fields."""
 import re
 import sys
 from pathlib import Path
@@ -15,9 +13,8 @@ from app.ui.server import templates                 # noqa: E402
 PLAYER_JS = (Path(__file__).resolve().parents[1] / "ui" / "static"
              / "player.js").read_text(encoding="utf-8")
 
-#: the resolved US national answer the server hands the page: this one is
-#: the sum-of-states FALLBACK, which the page and the player must label as
-#: a fallback rather than as a national forecast
+#: the server's resolved US answer, here the sum-of-states FALLBACK, which
+#: must be labelled as a fallback
 US_AGG = us_national.UsNational(
     us_national.AGGREGATED,
     scores={"pf": 0.9, "analogue": 1.05, "ensemble": 0.92},
@@ -63,10 +60,8 @@ def test_player_controls_present():
     # forecast detail: location select, model toggles, plot, US labeling
     for marker in ('id="fd-loc"', 'id="fd-models"', 'id="fd-plot"'):
         assert marker in html, marker
-    # US labelling: the entry text is no longer a hardcoded string but is
-    # driven by the resolved provenance, and all three states are spelled
-    # out in the player so no host can invent a fourth. The fallbacks are
-    # visibly fallbacks: neither reads as a plain fitted national forecast.
+    # the US entry text follows the resolved provenance (all three states
+    # spelled out in the player); fallbacks never read as fitted
     assert """'<option value="US">' + usLabel(cfg.us) + '</option>'""" \
         in PLAYER_JS
     assert "US (official models only)" in PLAYER_JS       # officials only
@@ -95,9 +90,8 @@ def test_js_reads_only_contract_fields():
     html = _render()
     # the playback endpoint path matches the contract exactly
     assert "/api/retro/" in html and "/playback/" in html
-    # every payload access uses the `pl` variable; its fields must all be
-    # top-level keys of the contract payload. The page and the shared
-    # player are one JS surface, so both are checked together.
+    # every `pl.` field is a top-level contract key (page and player checked
+    # together as one JS surface)
     both = html + PLAYER_JS
     contract = {"asof", "locations", "truth", "models", "official", "stats"}
     fields = set(re.findall(r"\bpl\.(\w+)", both))
@@ -128,12 +122,10 @@ def test_template_renders_shared_playback_state():
 
 
 def test_us_entry_names_its_provenance_and_flags_the_fallback():
-    """A fitted US national forecast and the sum-of-states aggregate are
-    different model outputs. Every US surface on this page says which one
-    it holds, and a fallback is visibly a fallback."""
-    # the aggregated case (CONTEXT): the tile, the table row, and the
-    # player entry all carry the fallback wording, and the pooled scope is
-    # stated so nobody reads the US figure as part of the headline
+    """Every US surface says whether it is a fitted forecast or the
+    sum-of-states aggregate; a fallback is visibly a fallback."""
+    # the aggregated case: tile, row and player entry carry the fallback
+    # wording, and the pooled scope is stated
     fallback_claim = "the scores for this season hold no scored US fit"
     html = _render()
     assert "US (aggregated)" in html                 # tile and table row

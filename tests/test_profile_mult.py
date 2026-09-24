@@ -85,10 +85,9 @@ class TestEstimate:
 
 
 class TestDropVarsIsTheOnlyDifference:
-    """The profiled arm is compared against sweep cells that were fit with the
-    stock conf. If ANY other setting differs, the measured effect is confounded.
-    A hand-copied duplicate of write_conf silently drifted on `backup_every` and
-    `max_iterations` when this was first written, which is why these exist.
+    """The profiled arm is compared with stock-conf sweep cells, so drop_vars
+    must be the only difference (a hand-copied write_conf once drifted on
+    `backup_every` and `max_iterations`).
     """
 
     def _confs(self, tmp_path, setup):

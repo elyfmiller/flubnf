@@ -1,8 +1,6 @@
-"""The latest-run results table (lead, 2026-09-07): the run type, each
-member's relWIS against the FluSight baseline with its cells, the fits,
-the files, the report, in a table instead of one chip line; the quantile
-members scored at run end with the sample scorer's own cell rule; the
-mode recorded on the spec."""
+"""The latest-run results table: run type, each member's relWIS against the
+FluSight baseline with its cells, fits, files and report; quantile members
+scored at run end with the sample scorer's cell rule; the mode on the spec."""
 import json
 import sys
 from pathlib import Path
@@ -21,10 +19,8 @@ client = TestClient(srv.app)
 
 
 def _q(med):
-    """A full 23-level quantile set around `med`, monotone, in the canonical
-    horizons the members carry in memory (the WIS needs every hub level).
-    No anchor key: hz.ORIGIN is not a forecast and score_quantiles must
-    never find one to score."""
+    """A full monotone 23-level set around `med` in canonical horizons, with
+    no anchor key (hz.ORIGIN is never scored)."""
     from flubnf.quantiles import FLUSIGHT_QUANTILES as QL
     return {h: {float(L): med * (0.5 + float(L)) for L in QL}
             for h in hz.HORIZONS}
@@ -32,9 +28,8 @@ def _q(med):
 
 def test_score_quantiles_applies_the_sample_scorers_cell_rule(monkeypatch):
     T = pd.Timestamp("2098-01-03")
-    # truth is keyed by week-ending date, which is PHYSICAL weeks past the
-    # as-of and knows nothing of horizon labels: canonical horizon h lands
-    # on T + 7*(h+1), so these four weeks cover horizons "0".."3"
+    # truth is keyed by week-ending date (PHYSICAL weeks): canonical horizon
+    # h lands on T + 7*(h+1), so these four weeks cover "0".."3"
     truth = {("39", T + pd.Timedelta(days=7 * h)): 100.0 for h in (1, 2, 3, 4)}
     truth[("49", T + pd.Timedelta(days=7))] = 50.0          # Utah: one week only
     truth[("49", T + pd.Timedelta(days=14))] = 0.0          # zero truth: no cell
@@ -89,9 +84,8 @@ def test_the_form_records_the_mode_and_reruns_carry_it():
     html = client.get("/forecast").text
     assert 'name="mode" id="mode-field" value="realtime"' in html
     assert "mf.value = mode" in html
-    # the shipped donors ride on every console spec; "" asks for the bare
-    # analogue (a research configuration, no Groundhog file), and a named
-    # preset resolves like the shipped one
+    # the shipped donors ride on every console spec; "" is the bare analogue
+    # (research, no Groundhog file); a named preset resolves like the shipped
     x = srv._run_extra(2, "vintage")
     assert x["mode"] == "vintage" and "members" not in x
     assert x["aux_pools"] == [{"stream": "flusurv", "weight": 0.5,

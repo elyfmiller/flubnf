@@ -67,8 +67,7 @@ def state(tmp_path, monkeypatch):
         (tmp_path / "workroots" / rid / "results.json").write_text("{}")
         rids[status] = rid
         import time as _t
-        _t.sleep(0.02)          # keeps created_utc ordering deterministic
-        # for the newest-first listing (run_id uniqueness rides the uuid)
+        _t.sleep(0.02)          # deterministic created_utc order
     live = led.open_run(RunSpec(engine="all", forecast_date="2098-01-10"),
                         Path("pending"), {})
     (tmp_path / "workroots" / live).mkdir(parents=True)
@@ -152,9 +151,8 @@ def test_storage_panel_lists_everything_with_sizes(state):
 
 
 def test_workroot_rows_read_as_human_labels_with_the_id_secondary(state):
-    """Task: humans read what ran and when, not hashes. A recorded run's
-    row leads with its ledger-derived label (kind, forecast date, wall
-    clock, scope); the raw id stays visible but secondary."""
+    """A recorded run's row leads with its ledger label (kind, forecast date,
+    wall clock, scope); the raw id stays visible but secondary."""
     html = client.get("/storage").text
     rid = state["rids"]["ok"]
     row = html.split(f'data-wid="{rid}"', 1)[1].split("</div>", 1)[0]
@@ -183,8 +181,7 @@ def test_busy_rows_render_no_delete_controls(state):
     srv._retro_status[SEASON] = "running"
     html = client.get("/runs").text
     live = state["rids"]["running"]
-    # workroot rows lead with the human label; the id rides the row's
-    # data-wid attribute (and the secondary code element)
+    # workroot rows are found by their data-wid attribute
     row = html.split(f'data-wid="{live}"', 1)[1].split("</div>", 1)[0]
     assert "data-del-storage" not in row             # the live workroot
     srow = html.split(f"<strong>{SEASON} retrospective</strong>",
@@ -426,10 +423,8 @@ def test_unknown_kind_is_refused(state):
 # ------------------------------------------------------------- ledger fold
 
 def test_ledger_collapses_behind_a_summary_by_default(state):
-    """User report 2026-08-21: the full ledger table dominates the page.
-    It now folds behind a details/summary stating the row count and the
-    newest entry -- closed by default (no `open` attribute server-side) --
-    while the storage panel and its totals stay visible uncollapsed."""
+    """The ledger folds behind a summary (row count, newest entry), closed by
+    default; the storage panel stays visible."""
     html = client.get("/runs").text
     joined = " ".join(html.split())
     assert '<details class="ledgerfold" id="ledgerfold">' in html
@@ -457,10 +452,8 @@ def test_ledger_fold_state_persists_per_local_storage(state):
 
 
 def test_storage_panel_folds_and_defaults_folded(state):
-    """The storage panel gets the ledger's details/summary fold and ships
-    FOLDED (lead, 2026-09-07): the summary carries the headline total-disk
-    figure, so the page opens on the number, and a reader's open state
-    persists like the ledger fold's."""
+    """The storage panel folds too and ships FOLDED, its summary carrying the
+    total-disk figure; a reader's open state persists."""
     html = client.get("/runs").text
     # the fold ships folded by default
     assert '<details class="ledgerfold" id="storagefold">' in html
@@ -481,8 +474,7 @@ def test_storage_panel_folds_and_defaults_folded(state):
 
 def test_storage_fold_state_persists_per_local_storage(state):
     html = client.get("/runs").text
-    # a fresh key: the old one held '1' in every browser that met the
-    # open default, which would have kept the panel open forever
+    # a fresh key: the old one held '1' wherever the old open default was seen
     assert "localStorage.getItem('storagefold-v2')" in html
     assert "localStorage.setItem('storagefold-v2'" in html
     assert "storagefold-open" not in html
@@ -493,7 +485,6 @@ def test_storage_fold_state_persists_per_local_storage(state):
 def test_empty_ledger_keeps_the_plain_hint_no_fold(state, monkeypatch):
     monkeypatch.setattr(srv.Ledger, "rows", lambda self, n=50: [])
     html = client.get("/runs").text
-    # no ledger fold with nothing to fold (the storage panel below keeps
-    # its own fold, which shares the ledgerfold disclosure styling)
+    # no ledger fold with nothing to fold (the storage panel keeps its own)
     assert 'id="ledgerfold"' not in html
     assert "No runs yet." in html

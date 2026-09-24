@@ -1,14 +1,10 @@
-"""The bimodality estimator must separate an annual model from a biannual one.
+"""The bimodality estimator must separate an annual model from a biannual
+one: control parameter sets on either side of the bimodal region,
+integrated on the production simulator at the production COVID gamma.
 
-A "1 wave" answer is only informative if the estimator can say 2 when 2 is true.
-These are the control cases: a parameter set the memo's repertoire sweep says
-lives in the bimodal region, and one that does not, both integrated on the
-production simulator at the production COVID gamma.
-
-They also pin the window-edge bug found on 2026-08-22: counting waves in a
-52-week slice reports one annual peak twice when the slice boundary lands near
-it, so a purely annual model reads as bimodal. `peaks_per_year` drops the
-boundary indices and divides by the number of years read.
+Also pins the window-edge fix: a 52-week slice whose boundary lands near a
+peak counts it twice, so `peaks_per_year` drops boundary indices and divides
+by the years read.
 """
 from __future__ import annotations
 

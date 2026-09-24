@@ -1,22 +1,15 @@
 """reinstall.sh: the one-line clean reinstall for a stale lab machine.
 
-The 2026-09-23 reinstall guide asked a student to do by hand what a stale
-machine needs: quit the console, rename the FluBNF folder, the engine venv
-and the unpacked engine, sweep every other engine archive out of the folders
-setup searches (newest-by-mtime would pick a PR review package over the
-good one), install fresh, open the app. reinstall.sh does that. These tests
-run the real script against a fake HOME and stop it before the clone
-(FLUBNF_REINSTALL_NO_INSTALL=1), because the install itself is setup.sh's
-and costs minutes and a network.
+It quits the console, sets aside the FluBNF folder, engine venv and unpacked
+engine, sweeps other engine archives out of setup's search folders (newest-
+by-mtime would pick a PR review package), installs fresh and opens the app.
+The real script runs against a fake HOME and stops before the clone
+(FLUBNF_REINSTALL_NO_INSTALL=1; the install is setup.sh's).
 
-What is pinned: the checks run BEFORE anything changes and refuse cleanly;
-the right archive is kept and everything else is moved, not deleted; the
-old launcher cannot be double-clicked into taking over the new install; a
-machine that is already current is left alone, and one with a stale engine
-or a stale console is not; a clone that fails puts the old install back.
-
-Lab Macs run the script under /bin/bash 3.2, so on macOS the tests do too:
-a Homebrew bash first on PATH would hide a 3.2-only regression.
+Pinned: checks run BEFORE anything changes; the right archive is kept and
+everything else moved, not deleted; the old launcher is disabled; a current
+machine is left alone, a stale one is not; a failed clone restores the old
+install. On macOS the tests use /bin/bash 3.2, as lab Macs do.
 """
 from __future__ import annotations
 
@@ -112,8 +105,8 @@ def _run(home: Path, origin: Path, *, no_install: bool = True,
         "FLUBNF_REPO": str(origin),
         "FLUBNF_REINSTALL_YES": "1",
         "FLUBNF_REINSTALL_NO_OPEN": "1",
-        # a developer's own console may be up while the suite runs; the
-        # check it skips is about the lab machine, not this one
+        # a developer's own console may be running; that check is about lab
+        # machines
         "FLUBNF_REINSTALL_IGNORE_RUNNING": "1",
         "GIT_TERMINAL_PROMPT": "0",
         **GIT_ENV,
@@ -126,8 +119,8 @@ def _run(home: Path, origin: Path, *, no_install: bool = True,
 
 
 def test_the_documented_line_is_the_same_everywhere():
-    """README, the student guide and the script's own header show one line,
-    spelled like install.sh's, because that is the one students know works."""
+    """README, the student guide and the script header show one line,
+    spelled like install.sh's."""
     assert LINE in SRC
     assert LINE in (REPO / "README.md").read_text(encoding="utf-8")
     assert LINE in (REPO / "docs" / "INSTALL-STUDENTS.md").read_text(encoding="utf-8")
@@ -136,10 +129,9 @@ def test_the_documented_line_is_the_same_everywhere():
 
 
 def test_the_whole_file_is_parsed_before_any_of_it_runs():
-    """curl | bash hands bash the file as it arrives. A connection that drops
-    after the rename block must not run half a reinstall, so the body is a
-    function called on the last line, and a truncated file is a syntax
-    error instead."""
+    """curl | bash runs the file as it arrives, so the body is a function
+    called on the last line: a truncated download is a syntax error, never
+    half a reinstall."""
     body = SRC.rstrip().splitlines()
     assert body[-1] == 'main "$@"'
     assert "\nmain() {\n" in SRC
@@ -150,8 +142,7 @@ def test_the_whole_file_is_parsed_before_any_of_it_runs():
 
 @posix_only
 def test_no_engine_file_means_nothing_is_touched(tmp_path):
-    """The archive is checked before the old install is renamed: a student
-    who forgot to save it must not end up with no console at all."""
+    """The archive is checked before anything is renamed."""
     origin, _ = _bare_origin(tmp_path)
     home = _home_with_old_install(tmp_path)
     out = _run(home, origin)
@@ -177,8 +168,8 @@ def test_sets_the_old_install_aside_and_keeps_only_the_real_archive(tmp_path):
     bundle.write_bytes(b"a git bundle, once")
     notes = home / "Documents/pybnf-notes.txt"           # the reader's own file
     notes.write_text("mine\n")
-    # the review package is the NEWEST file, which is exactly the trap; the
-    # duplicate download is an older save of the same archive
+    # the review package is the NEWEST file (the trap); the duplicate is an
+    # older save of the same archive
     now = time.time()
     os.utime(good, (now - 300, now - 300))
     os.utime(dup, (now - 400, now - 400))
@@ -216,9 +207,8 @@ def test_sets_the_old_install_aside_and_keeps_only_the_real_archive(tmp_path):
 
 @posix_only
 def test_a_name_already_swept_is_kept_under_a_distinct_name(tmp_path):
-    """macOS mv -n exits 0 when it skips, so a second download of the same
-    review package would otherwise stay in Downloads, be reported as moved,
-    and win setup's newest-by-mtime search."""
+    """macOS mv -n exits 0 when it skips, so a repeat download must be kept
+    under a distinct name, or it stays and wins setup's search."""
     origin, _ = _bare_origin(tmp_path)
     home = _home_with_old_install(tmp_path)
     _engine_archive(home / "Downloads/pybnf-pf-2fdadee0.tar.gz")
@@ -310,9 +300,8 @@ def test_a_machine_that_is_already_current_is_left_alone(tmp_path):
 
 @posix_only
 def test_a_current_console_with_a_stale_engine_is_reinstalled(tmp_path):
-    """The machine this script exists for: the launcher fast-forwarded the
-    console, but the engine venv already existed so the new archive was
-    never installed."""
+    """A fast-forwarded console whose engine venv already existed (so the new
+    archive was never installed) is reinstalled."""
     origin, _ = _bare_origin(tmp_path)
     home = _current_install(tmp_path, origin, stamp="pf/pre-pr 8b28edf4")
     (home / "Documents/GitHub/PyBNF-Private/VERSION").write_text(
@@ -353,8 +342,8 @@ def test_an_older_archive_does_not_silently_downgrade(tmp_path):
 
 @posix_only
 def test_a_developer_shell_or_checkout_is_refused(tmp_path):
-    """Exported FLUBNF_* settings mean setup would act on folders this script
-    never set aside; a checkout with uncommitted work is not a lab install."""
+    """Exported FLUBNF_* settings or an engine checkout with uncommitted work
+    are refused."""
     origin, _ = _bare_origin(tmp_path)
     home = _home_with_old_install(tmp_path)
     _engine_archive(home / "Downloads/pybnf-pf-2fdadee0.tar.gz")
@@ -381,8 +370,8 @@ def test_a_developer_shell_or_checkout_is_refused(tmp_path):
 
 @posix_only
 def test_a_failed_clone_puts_the_old_install_back(tmp_path):
-    """After the rename, a clone that fails would leave no console at all.
-    The exit trap moves the old copies back and re-enables their launcher."""
+    """A failed clone after the rename: the exit trap moves the old copies
+    back and re-enables their launcher."""
     origin, _ = _bare_origin(tmp_path)
     home = _home_with_old_install(tmp_path)
     _engine_archive(home / "Downloads/pybnf-pf-2fdadee0.tar.gz")

@@ -1,13 +1,8 @@
 """The launcher's self-update block, exercised on real clones.
 
-The block used to be two lines and one message, "offline or local changes,
-running as-is", which names two causes with opposite remedies and does not
-say which one happened. A PI's laptop can sit on a month old console that
-way while the engine beside it is current, and nothing on screen says so.
-These tests pin the four outcomes apart.
-
-The block is sliced out of FluBNF.command rather than reimplemented, so a
-test cannot pass against a launcher that no longer contains it.
+The old single message ("offline or local changes, running as-is") named
+two causes with opposite remedies; these tests pin the four outcomes apart.
+The block is sliced out of FluBNF.command, not reimplemented.
 """
 from __future__ import annotations
 

@@ -1,29 +1,15 @@
-"""Field hardening of the PF paths (2026-09-01 final pass).
+"""Field hardening of the PF paths. Four failure modes:
 
-Four failure modes, each measured or reproduced before it was fixed:
-
-  * A path containing a space cannot be expressed in pf.conf at all:
-    PyBNF's grammar splits bng_command and output_dir on whitespace
-    (reproduced: "C:\\Users\\John Smith\\..." raises ParseException
-    "Expected end of text, found Smith"), and on Windows the default
-    workroot lives under C:\\Users\\<name>\\AppData, so any student with a
-    space in the username failed every fit. prepare() now substitutes the
-    8.3 short form on Windows and refuses legibly everywhere else.
-  * collect() read every cell in cells.json regardless of its recorded
-    status, and a failed cell's leftover empty or single-row trajectory
-    file killed the WHOLE assembly with an IndexError: one dead cell cost
-    the other 158 their samples.
-  * prepare() was all-or-nothing: resolve_state refuses an empty window or
-    an all-NaN tail (the documented MA/MN/WV reporting-pause pattern, 55
-    of 87 vintages), and one such state aborted the whole 53-jurisdiction
-    run. It is now contained per location and recorded like a fit failure.
-  * The runners are plain Popen children supervised from daemon threads: a
-    console takeover or window close killed the supervisor without its
-    finally block, orphaning running fits, and a heartbeat-stale resume
-    could then fit the same cells concurrently. Runners now lead their own
-    process groups and are recorded for the relaunch sweep
-    (flubnf/cli.py::_sweep_runner_groups). run_week also keeps a failed
-    week's evidence instead of pruning the failed cells' inputs.
+  * Paths with a space cannot be written in pf.conf (PyBNF's grammar splits
+    bng_command/output_dir on whitespace); prepare() substitutes the Windows
+    8.3 short form and refuses legibly elsewhere.
+  * collect() skips cells whose status is a failure, and downgrades torn
+    trajectory files to recorded failures instead of crashing the assembly.
+  * prepare() contains failures per location (e.g. the MA/MN/WV reporting
+    pause) instead of aborting the whole grid.
+  * Runners lead their own process groups and are recorded for the relaunch
+    sweep (flubnf/cli.py::_sweep_runner_groups); a failed week keeps its
+    evidence instead of being pruned.
 """
 import json
 import os
@@ -53,9 +39,8 @@ def test_conf_safe_path_passes_space_free_paths_unchanged():
 
 def test_a_spaced_path_is_refused_legibly_where_no_short_form_exists(
         monkeypatch):
-    """The grammar limit is platform-independent, so POSIX refuses too, and
-    the refusal names the path and the remedy instead of leaving the user a
-    ParseException from inside the engine venv."""
+    """POSIX refuses too (the grammar limit is platform-independent), naming
+    the path and the remedy instead of an engine ParseException."""
     with pytest.raises(RuntimeError) as e:
         pf.conf_safe_path("/Users/John Smith/flubnf", _platform="linux")
     msg = str(e.value)
@@ -79,9 +64,8 @@ def test_windows_substitutes_the_8dot3_short_form(monkeypatch):
 
 
 def test_short_path_win_sizes_its_buffer_through_the_wide_api():
-    """GetShortPathNameW is called twice: once with no buffer to learn the
-    size (terminator included), once to fill a buffer of exactly that
-    size. Zero returns from either call mean no short form."""
+    """GetShortPathNameW: sizing call with no buffer, then a fill of exactly
+    that size; a zero from either means no short form."""
     short = "C:\\USERS\\JOHNSM~1"
     sizes = []
 
@@ -164,9 +148,8 @@ def _prep_env(monkeypatch, tmp_path, resolve, netgen_fails_for=()):
 
 def test_one_unresolvable_state_costs_itself_not_the_run(monkeypatch,
                                                          tmp_path):
-    """The 53-jurisdiction grid must survive the documented MA/MN/WV
-    pattern: resolve_state raising for one state leaves the other states'
-    cells intact and records the failure under the location's tag."""
+    """One state resolve_state refuses (the MA/MN/WV pattern) costs only its
+    own cells, and the failure is recorded under its tag."""
     def resolve(loc, **kw):
         if loc == "Bad State":
             raise ValueError(f"no observations for {loc} in window")
@@ -186,9 +169,8 @@ def test_one_unresolvable_state_costs_itself_not_the_run(monkeypatch,
 
 def test_a_location_that_fails_mid_replicate_leaves_no_partial_cells(
         monkeypatch, tmp_path):
-    """Containment is per LOCATION: a netgen failure on the second
-    replicate must not leave the first replicate's cell in the grid beside
-    a recorded failure for the same location."""
+    """Containment is per LOCATION: a netgen failure on replicate 2 leaves
+    no replicate-1 cell beside the recorded failure."""
     _prep_env(monkeypatch, tmp_path, lambda loc, **kw: _State(),
               netgen_fails_for=("Flaky_r1",))
     w = tmp_path / "wr"
@@ -214,8 +196,8 @@ def test_every_location_failing_prepare_still_raises_loudly(monkeypatch,
 
 def test_a_single_location_run_reraises_its_one_error_verbatim(monkeypatch,
                                                                tmp_path):
-    """One location has nothing to continue with, and callers (and the
-    existing gapped-tail test) pin the original exception type and text."""
+    """One location has nothing to continue with: its error is re-raised
+    verbatim (callers pin type and text)."""
     def resolve(loc, **kw):
         raise ValueError(f"no observations for {loc} in window")
 
@@ -227,8 +209,7 @@ def test_a_single_location_run_reraises_its_one_error_verbatim(monkeypatch,
 # --------------------------------------------------- the execute-level fold
 
 def _fake_pybnf(root: Path, body: str) -> Path:
-    """A pybnf whose ParticleFilter.run does whatever the test needs (same
-    scaffolding as test_pf_shards, so the generated runner really runs)."""
+    """A pybnf whose ParticleFilter.run does whatever the test needs."""
     pkg = root / "fake_pybnf" / "pybnf"
     pkg.mkdir(parents=True)
     (pkg / "__init__.py").write_text("")
@@ -267,9 +248,8 @@ def _grid(w: Path, n: int) -> list:
 
 
 def test_prepare_failures_flow_into_the_merged_status(engine, tmp_path):
-    """The forecast path computes pf_failures from execute()'s merged
-    status, so a prepare-stage failure must ride in it beside the fit
-    statuses; the keys cannot collide because cell keys carry _r<rep>."""
+    """Prepare-stage failures ride in execute()'s merged status beside the
+    fit statuses (keys cannot collide: cell keys carry _r<rep>)."""
     engine("        pass\n")
     w = tmp_path / "wr"
     w.mkdir()
@@ -309,19 +289,16 @@ def _traj_cell(w: Path, key: str, loc: str, content) -> dict:
             "particles": 100, "last_observed": 10.0}
 
 
-#: two particles over 7 columns; the fit origin is column 2 (value 2), so
-#: the anchor scale is 10/2 = 5 and the week h PHYSICAL weeks ahead pools
-#: to (2+h)*5. In canonical keys (app.core.horizons) the anchor is
-#: hz.ORIGIN and that week is str(h-1), so "0" here is the FIRST forecast
-#: (15.0) and the anchor is not a number at all.
+#: two particles over 7 columns; the fit origin is column 2 (value 2), so the
+#: anchor scale is 10/2 = 5 and h PHYSICAL weeks ahead pools to (2+h)*5. In
+#: canonical keys the anchor is hz.ORIGIN and that week is str(h-1), so "0"
+#: is the first forecast (15.0).
 _GOOD_TRAJ = "0 1 2 3 4 5 6\n0 1 2 3 4 5 6\n"
 
 
 def test_collect_skips_cells_whose_recorded_status_is_a_failure(tmp_path):
-    """The reproduced field crash: a failed cell's leftover EMPTY
-    trajectory file (genfromtxt gives shape (0,)) raised an IndexError at
-    assembly and cost every healthy cell its samples. The recorded status
-    is consulted first, so the failed cell is simply not read."""
+    """A failed cell's leftover empty trajectory crashed assembly for every
+    cell; the recorded status is consulted first, so it is not read."""
     w = tmp_path / "wr"
     w.mkdir()
     cells = [_traj_cell(w, "Ohio_r0", "Ohio", _GOOD_TRAJ),
@@ -334,14 +311,13 @@ def test_collect_skips_cells_whose_recorded_status_is_a_failure(tmp_path):
     assert sorted(out) == ["Ohio"]
     assert out["Ohio"][hz.ORIGIN] == [10.0, 10.0]   # only the ok replicate
     assert out["Ohio"]["3"] == [30.0, 30.0]         # and its last horizon
-    # the failed cell keeps its own FAIL reason: skipped, never re-recorded
+    # the failed cell keeps its own FAIL reason (not re-recorded)
     assert json.loads((w / "pf_status.json").read_text()) == status
 
 
 def test_a_torn_trajectory_downgrades_to_a_recorded_failure(tmp_path):
-    """A torn file under an ok (or unrecorded) status: empty and
-    single-row files are 1-D to genfromtxt, and a ragged file raises. All
-    three become recorded per-cell failures instead of assembly crashes."""
+    """Empty, single-row (1-D to genfromtxt) and ragged files under an ok
+    status become recorded per-cell failures, not crashes."""
     w = tmp_path / "wr"
     w.mkdir()
     cells = [_traj_cell(w, "Ohio_r0", "Ohio", _GOOD_TRAJ),
@@ -362,9 +338,8 @@ def test_a_torn_trajectory_downgrades_to_a_recorded_failure(tmp_path):
 
 
 def test_collect_reads_the_retrospective_markers_too(tmp_path):
-    """The replay path records statuses as cells_done/<key>.json markers,
-    not pf_status.json; a failed cell's torn file must be skipped there as
-    well, and the skip records nothing new (the marker already says why)."""
+    """The replay path's cells_done/<key>.json markers are honoured too, and
+    the skip records nothing new."""
     w = tmp_path / "wr"
     w.mkdir()
     cells = [_traj_cell(w, "Ohio_r0", "Ohio", _GOOD_TRAJ),
@@ -379,8 +354,7 @@ def test_collect_reads_the_retrospective_markers_too(tmp_path):
 
 
 def test_a_statusless_workroot_reads_every_cell_as_before(tmp_path):
-    """An older workroot has neither pf_status.json nor markers; every
-    cell with a healthy trajectory is still read."""
+    """An older workroot with no statuses reads every healthy cell."""
     w = tmp_path / "wr"
     w.mkdir()
     cells = [_traj_cell(w, "Ohio_r0", "Ohio", _GOOD_TRAJ),
@@ -420,8 +394,7 @@ def test_record_and_unrecord_runner_pids_round_trip(tmp_path):
 
 
 def _spy_popen(monkeypatch, needle: str):
-    """Every runner subprocess started, with the kwargs it was started
-    with (same idea as test_pf_shards, filtered to the runner scripts)."""
+    """Every runner subprocess started, with its kwargs."""
     made = []
     real = subprocess.Popen
 
@@ -442,9 +415,8 @@ def _spy_popen(monkeypatch, needle: str):
                            "above")
 def test_execute_runners_lead_their_own_sessions_and_are_registered(
         engine, tmp_path, monkeypatch):
-    """During a run the takeover registry names every runner (pid, pgid,
-    script); after the supervisor's finally the entries are gone, so a
-    later sweep can never chase recycled pids of a run that ended."""
+    """During a run the registry names every runner (pid, pgid, script);
+    afterwards it is empty, so a sweep never chases recycled pids."""
     engine("        time.sleep(30)\n")
     w = tmp_path / "wr"
     w.mkdir()
@@ -479,9 +451,8 @@ def test_execute_runners_lead_their_own_sessions_and_are_registered(
                     reason="start_new_session is the POSIX spelling")
 def test_retro_runners_lead_their_own_sessions_and_are_registered(
         tmp_path, monkeypatch):
-    """The replay path launches through its own _launch_runners; it must
-    start its runners exactly the way the forecast path does, and record
-    them in the same registry."""
+    """retro._launch_runners starts and registers runners exactly as the
+    forecast path does."""
     monkeypatch.setattr(pf, "PY310", Path(sys.executable))
     wd = tmp_path / "wk"
     wd.mkdir()
@@ -512,9 +483,8 @@ W1 = "2098-11-07"
 
 
 def _stub_week(monkeypatch, statuses, prepare_failures=None):
-    """run_week with stubbed engines: prepare writes the given grid (and,
-    when asked, a prepare-failures file), each runner marks its cells with
-    the given statuses, collect and the analogue return fixed shapes."""
+    """run_week with stubbed engines, runners that mark the given statuses,
+    and optionally a prepare-failures file."""
     def fake_prepare(spec, wd):
         wd = Path(wd)
         cells = [{"key": k, "dir": str(wd / k)} for k in statuses]
@@ -539,8 +509,7 @@ def _stub_week(monkeypatch, statuses, prepare_failures=None):
     monkeypatch.setattr(retro.pf_engine, "prepare", fake_prepare)
     monkeypatch.setattr(retro.pf_engine, "collect",
                         lambda wd: {"Ohio": {"0": [1.0]}})
-    # the Oracle step reads the week's vintage, which this hub-free test
-    # has none of: the engines are stubbed and so is the step
+    # the Oracle step needs a vintage this hub-free test lacks: stub it
     monkeypatch.setattr(retro.oracle_mod, "apply_week",
                         lambda s, asof, wd, **kw: (s, {"applied": True,
                                                        "bank": {"label": "stub"}}))
@@ -557,9 +526,8 @@ def _stub_week(monkeypatch, statuses, prepare_failures=None):
 
 
 def test_a_week_with_failed_cells_keeps_its_evidence(tmp_path, monkeypatch):
-    """The console rule: a run with failures keeps everything. Pruning a
-    partially failed week destroyed the failed cells' pf.conf, model, and
-    exp inputs, the exact material a rerun or an autopsy needs."""
+    """A week with failures keeps everything (inputs a rerun or autopsy
+    needs); nothing is pruned."""
     pruned = _stub_week(monkeypatch, {"cell_0": "ok",
                                       "cell_1": "FAIL: synthetic crash"})
     root = tmp_path / SEASON
@@ -574,8 +542,7 @@ def test_a_week_with_failed_cells_keeps_its_evidence(tmp_path, monkeypatch):
 
 
 def test_a_clean_week_is_still_pruned(tmp_path, monkeypatch):
-    """The converse pins the guard's polarity: hygiene is unchanged for
-    the weeks that earned it."""
+    """A clean week is still pruned (pins the guard's polarity)."""
     pruned = _stub_week(monkeypatch, {"cell_0": "ok", "cell_1": "ok"})
     root = tmp_path / SEASON
     out = retro.run_week(root, SEASON, W1, ["Ohio"], width=1)
@@ -585,9 +552,8 @@ def test_a_clean_week_is_still_pruned(tmp_path, monkeypatch):
 
 def test_prepare_stage_failures_reach_the_weeks_failure_record(tmp_path,
                                                                monkeypatch):
-    """A state resolve_state refused left no cell and no marker, but the
-    stored week must still say so, and the keep-evidence rule must see
-    it."""
+    """A prepare-stage failure (no cell, no marker) reaches the week's
+    failure record and blocks pruning."""
     pruned = _stub_week(monkeypatch, {"cell_0": "ok"},
                         prepare_failures={"Bad_State":
                                           "FAIL: prepare: no observations"})
@@ -599,13 +565,9 @@ def test_prepare_stage_failures_reach_the_weeks_failure_record(tmp_path,
 
 
 def test_a_week_of_only_torn_trajectories_is_refused_not_stored_empty():
-    """Reviewer note from the 2026-09-01 final pass: markers can say ok
-    while every trajectory is unreadable, in which case collect() downgrades
-    them all and the week would have stored with an empty pf and no failure
-    record, the exact hazard the all-fits-failed refusal exists for. Source
-    pin (the guard sits mid-run_week behind a full week's machinery): the
-    refusal must trigger on empty pf_samples alone, not only when failures
-    were recorded, and both branches must refuse storage."""
+    """Markers can say ok while collect() downgrades every trajectory, so the
+    storage refusal must trigger on empty pf_samples alone, with both
+    branches refusing. Source pin: the guard sits mid-run_week."""
     import inspect
     from app.core import retro
     src = inspect.getsource(retro.run_week)
