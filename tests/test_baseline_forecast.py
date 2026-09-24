@@ -316,6 +316,44 @@ class TestScoreSubmissionsVsBaselines:
         df = score_submissions_vs_baselines(sub_dir, target, locs)
         assert df.empty
 
+    def test_baselines_see_only_data_available_at_the_as_of(
+            self, tmp_path, monkeypatch):
+        """Hub convention: reference_date is the as-of Saturday + 7 and
+        horizon 0's target_end_date IS the reference date. The baselines
+        may see only weeks before it; the reference week is a target."""
+        from flubnf import baseline_forecast as bf
+        from flubnf.constants import StateInfo
+        target = self._make_target(tmp_path, [
+            ("2025-09-27", "01", 10.0),
+            ("2025-10-04", "01", 10.0),
+            ("2025-10-11", "01", 10.0),
+            ("2025-10-18", "01", 10.0),   # the as-of week: last one seen
+            ("2025-10-25", "01", 500.0),  # reference week = horizon 0
+            ("2025-11-01", "01", 600.0),  # horizon 1
+        ])
+        sub_dir = tmp_path / "submissions"; sub_dir.mkdir()
+        for h, end in ((0, "2025-10-25"), (1, "2025-11-01")):
+            # one file per horizon (the helper names files by ref date)
+            self._make_submission(
+                sub_dir, ref_date="2025-10-25", fips="01", horizon=h,
+                target_end=end, median=50.0,
+            ).rename(sub_dir / f"2025-10-25-h{h}.csv")
+        seen = []
+        real = bf.persistence_quantile_forecast
+
+        def spy(obs, horizons, **kw):
+            seen.append((list(obs), list(horizons)))
+            return real(obs, horizons, **kw)
+        monkeypatch.setattr(bf, "persistence_quantile_forecast", spy)
+
+        locs = {"Alabama": StateInfo("Alabama", "AL", "01", 5_000_000)}
+        df = bf.score_submissions_vs_baselines(sub_dir, target, locs)
+        assert sorted(df["horizon"]) == [0, 1]
+        assert seen and all(obs == [10.0] * 4 for obs, _ in seen), seen
+        # a flat history cannot forecast the jump it never saw
+        h0 = df[df["horizon"] == 0].iloc[0]
+        assert h0["persistence_wis"] > 100
+
 
 # ---------------------------------------------------------------------------
 # CLI smoke

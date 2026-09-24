@@ -224,7 +224,10 @@ def score_submissions_vs_baselines(
     For every (reference_date, state, horizon) cell where we have an
     actual on disk, compute:
       - our model's WIS (from the submission row),
-      - persistence baseline WIS (using observed values up to reference_date),
+      - persistence baseline WIS (using observed weeks BEFORE
+        reference_date: only what was available at the as-of Saturday,
+        reference_date - 7; the week ending reference_date is horizon 0,
+        a target, never an observation),
       - rolling-mean baseline WIS (same observed cutoff).
 
     Returns a long-form DataFrame, one row per (state, horizon) aggregated
@@ -252,7 +255,8 @@ def score_submissions_vs_baselines(
         dates, vals = per_state_obs[fips]
         from datetime import date as _date
         cutoff = _date.fromisoformat(ref_date_iso)
-        out = [v for d, v in zip(dates, vals) if d <= cutoff]
+        # strictly before: the reference week is horizon 0's target
+        out = [v for d, v in zip(dates, vals) if d < cutoff]
         return np.asarray(out, dtype=float)
 
     rows: list[dict] = []
