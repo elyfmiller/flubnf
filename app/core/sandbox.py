@@ -16,16 +16,21 @@ the engine configuration, runs the engine exactly as a console run does
 
 The sandbox never touches the runs ledger, the retrospectives or the
 seal: its workroots are its own, the folder is not under version control,
-and the production templates are never read from here. Four examples ship
-with FluBNF (flubnf/sandbox_examples) and can be copied in under any name,
+and the production templates are never read from here. The examples and
+a template for a new pathogen ship with FluBNF (flubnf/sandbox_examples;
+each one's data simulated from the model itself) and can be copied in
+under any name,
 new_model writes a runnable skeleton of the three files to edit, and
 copy_model duplicates a model; model.json records where each came from.
 from_shipped starts a model from the Oracle SIHRS filter exactly as the
 console's particle filter builds it for one jurisdiction and week, with
 creation digests so an edited copy never passes for it. check() reads a
-model without the engine; prepare() runs the production preflight first.
-data.exp can be filled from the hub archive or from a stored custom
-dataset (app/core/datasets.py), always in calendar weeks. Runs can be
+model without the engine (and sets the model at its written values,
+expected_counts, beside the data); prepare() runs the production
+preflight first; fit_health reads a finished run in plain words.
+data.exp can be filled from the hub archive, from a stored custom
+dataset (app/core/datasets.py), always in calendar weeks, or with counts
+simulated from the model (simulate_data). Runs can be
 compared (diff_runs) and downloaded (model_zip, run_zip), and a run of an
 unedited Oracle SIHRS start can take the production Oracle step inside
 its own folder (oracle_step: sandbox, never a submission).

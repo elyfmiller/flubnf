@@ -58,7 +58,8 @@ The Sandbox tab runs the same particle filter on a model of your own, in
 its own folder, with a code editor, a check that needs no engine, a
 contact map and reaction network drawn from the model, and data loaded
 from the hub archive (by jurisdiction and week range) or from a CSV of
-your own. Four example models ship with it.
+your own. Examples and a template for a new pathogen ship with it; a
+student guide is in docs/SANDBOX.md.
 
 The Data, Forecast and Retrospective tabs also take weekly data of your
 own (a CSV of date, group and value, population optional), kept apart
@@ -164,7 +165,7 @@ product, is docs/archive/RELEASE-1.0.md.
 | `.githooks/` | pre-push hook: both suites as CI runs them, on pushes to main | [docs/LAUNCHERS.md](docs/LAUNCHERS.md) |
 | `flubnf/` | the science package and the `flubnf` CLI | [flubnf/README.md](flubnf/README.md) |
 | `flubnf/templates/` | BNGL model templates; production is `SIHRS_pop_min.bngl` | [flubnf/templates/README.md](flubnf/templates/README.md) |
-| `flubnf/sandbox_examples/` | the Sandbox tab's four example models | [app/core/README.md](app/core/README.md) (sandbox) |
+| `flubnf/sandbox_examples/` | the Sandbox tab's examples and the template for a new pathogen | [docs/SANDBOX.md](docs/SANDBOX.md) |
 | `flubnf/data/` | `locations.csv`, used when the hub has none | |
 | `app/core/` | console back end: replay, scoring, reports, Oracle step, site | [app/core/README.md](app/core/README.md) |
 | `app/ui/` | FastAPI server, Jinja pages, static JS and CSS | [app/ui/README.md](app/ui/README.md) |

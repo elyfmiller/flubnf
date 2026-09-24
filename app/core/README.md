@@ -70,7 +70,7 @@ See [docs/SITE.md](../../docs/SITE.md).
 
 | Module | Tag | Role | Main callers |
 |---|---|---|---|
-| `sandbox.py` | SANDBOX | user models through the PF engine in `sandbox/` (the production preflight, `check` without the engine, stop, delete, compare, zip downloads); examples from `flubnf/sandbox_examples/`; the Oracle SIHRS start (`from_shipped`, composed from `engines/pf.py` and `flubnf/sihrs_fit.py`) and the Oracle step on its runs (`oracle.apply_week`, inside the run folder); data from the hub or a `datasets.py` dataset | server `/sandbox` routes |
+| `sandbox.py` | SANDBOX | user models through the PF engine in `sandbox/` (the production preflight, `check` without the engine, stop, delete, compare, zip downloads); examples from `flubnf/sandbox_examples/`; the Oracle SIHRS start (`from_shipped`, composed from `engines/pf.py` and `flubnf/sihrs_fit.py`) and the Oracle step on its runs (`oracle.apply_week`, inside the run folder); data from the hub, a `datasets.py` dataset or simulated from the model; the model at its written values in Check and a run's outcome in plain words (`fit_health`) | server `/sandbox` routes |
 | `contactmap.py` | SANDBOX | contact map and reaction network from BNG2.pl, as SVG and graph JSON | server `/api/sandbox/models/...` |
 
 `assets/states-albers-10m.json` is the US map geometry `usmap.py` draws.
