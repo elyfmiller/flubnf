@@ -996,3 +996,14 @@ table.sbkeys code{white-space:nowrap}
 .srctabs a:hover{color:var(--ink)}
 .srctabs a[aria-current="page"]{color:var(--ink);border-bottom-color:var(--accent-ink)}
 .srctabs a:focus-visible{outline:2px solid var(--accent-ink);outline-offset:2px}
+
+/* round2: retrospective and datasets */
+/* the upload box's folder link: the native folder input stays focusable but
+   out of sight; its label shows the focus */
+.dsfolder{position:relative}
+.dsfolder input[type=file]{position:absolute;left:0;top:0;width:1px;height:1px;
+  opacity:0;overflow:hidden;clip-path:inset(50%)}
+.dsfolder:focus-within label{outline:2px solid var(--accent-ink);outline-offset:2px}
+.dsfolder label{display:inline;margin:0;font-size:inherit}
+/* a date in the preview's facts or the stored note stays on one line */
+.dsfacts .nw,.dsr-stored .nw{white-space:nowrap}

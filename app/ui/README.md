@@ -154,7 +154,7 @@ Template names that differ from their tab: `runs.html` is Storage, `run.html` is
 | `quips.js` | `forecast.html`, `retro.html`, `retro_season.html` |
 | `plotly.min.js` | `data.html`, `forecast.html`, `model.html`, `retro_season.html`, `retro_dataset.html`, `run.html` (dataset runs), `sandbox.html` |
 | `dataset-template.csv` | `_dataset_upload.html` download link (FluBNF's synthetic grouped-CSV template: three groups, Overall the sum, with populations) |
-| `dataset_upload.js` | `_dataset_upload.html` (drop or choose, check at once, recheck on kind/target/column changes) |
+| `dataset_upload.js` | `_dataset_upload.html` (drop or choose one file, several or a folder of snapshots, check at once, recheck on kind/target/column changes) |
 | `model_settings.js` | `_model_settings.html` (every panel on the page, each set up once: badge, engine and kind filters, reset, the override's reason) |
 | `bngl-editor.js`, `bngl-editor.css`, `sandbox.js` | `sandbox.html` |
 | `model-views.js`, `model-views.css` | `sandbox_views.html` |

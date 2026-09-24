@@ -34,7 +34,7 @@
   <form method="post" action="/retro/dataset/run" id="dsr-form">
    <input type="hidden" name="dataset" value="{{ d.id }}">
    <p class="hint"><span id="dsr-kind">{{ "Vintage-true: each week sees its as_of snapshot." if d.vintage_true else "Final data, not vintage-true: each week is cut from the final series, so it reads better than real time did." }}</span>
-    {{ tips.tip("dsr-kind-tip", "vintage-true and final data", "With an as_of column, each replayed week sees the snapshot that held it, as it stood then. Without one, each week is cut from the final series: later revisions leak in, so the scores are optimistic and are labelled so wherever they appear.") }}</p>
+    {{ tips.tip("dsr-kind-tip", "vintage-true and final data", "With as_of snapshots (an as_of column, or one file per as_of), each replayed week sees the snapshot that held it, as it stood then. Without them, each week is cut from the final series: later revisions leak in, so the scores are optimistic and are labelled so wherever they appear.") }}</p>
    {# the week range on one grid that holds at narrow widths; the newest
       flu season's weeks by default (datasets_ui.replay_window) #}
    <div class="dsr-range">

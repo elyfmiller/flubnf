@@ -60,6 +60,15 @@ contact map and reaction network drawn from the model, and data loaded
 from the hub archive (by jurisdiction and week range) or from a CSV of
 your own. Four example models ship with it.
 
+The Data, Forecast and Retrospective tabs also take weekly data of your
+own (a CSV of date, group and value, population optional), kept apart
+from the FluSight hub and never submitted. For a true retrospective,
+give the data as each week saw it: one CSV with an as_of column, or a
+folder of snapshot files, one per as_of, each named by its date
+(2024-10-05.csv, admissions_2024-10-05.csv) or holding an as_of column.
+Each replayed week then sees the snapshot that held it. `flubnf dataset
+import` takes the same file or folder.
+
 ## Install and run
 
 Requirements: Python 3.11 or newer, git, and about 150 MB for the sparse

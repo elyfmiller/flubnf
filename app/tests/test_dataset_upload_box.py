@@ -154,9 +154,13 @@ function FormData(f) {
 FormData.prototype.get = function (k) { return this.d[k]; };
 FormData.prototype.set = function (k, v) { this.d[k] = v; };
 FormData.prototype.delete = function (k) { delete this.d[k]; };
+FormData.prototype.append = function (k, v, n) {
+  (this.d[k + '[]'] = this.d[k + '[]'] || []).push(n);
+};
 var posted = [], kinds = [];
 function fetch(url, opts) {
   posted.push({file: opts.body.d.file && opts.body.d.file.name,
+               files: opts.body.d['file[]'] || null,
                kind: opts.body.d.kind, kind_auto: opts.body.d.kind_auto});
   var k = kinds.length ? kinds.shift() : 'count';
   return Promise.resolve({json: function () {
@@ -233,6 +237,26 @@ def test_a_kind_the_values_no_longer_say_is_cleared():
         return true; }}});
     """)
     assert got["kind"] == "rate" and got["auto"] == ""
+
+
+@pytest.mark.skipif(not Path(NODE).exists(), reason="node not available")
+def test_several_files_are_checked_together_with_their_folder():
+    """Several files chosen or dropped at once are one check, each posted
+    under its folder path (the dataset takes the folder's name)."""
+    got = _drive("""
+      input.files = [{name: '2024-10-05.csv',
+                      webkitRelativePath: 'flu/2024-10-05.csv'},
+                     {name: '2024-10-12.csv',
+                      webkitRelativePath: 'flu/2024-10-12.csv'}];
+      input.fire('change'); await settle();
+      zone.fire('drop', {dataTransfer: {types: ['Files'],
+        files: [{name: 'a_2024-10-05.csv'}, {name: 'a_2024-10-12.csv'}]}});
+    """)
+    posted = got["posted"]
+    assert [p["files"] for p in posted] == [
+        ["flu/2024-10-05.csv", "flu/2024-10-12.csv"],
+        ["a_2024-10-05.csv", "a_2024-10-12.csv"]]
+    assert all(p.get("file") is None for p in posted)   # none single
 
 
 # ------------------------------------------------------------ the check
