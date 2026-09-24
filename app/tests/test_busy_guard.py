@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import pytest                                       # noqa: E402
 from fastapi.testclient import TestClient           # noqa: E402
 
+from app.core import data as core_data              # noqa: E402
 from app.ui import server as srv                    # noqa: E402
 
 client = TestClient(srv.app)
@@ -177,7 +178,7 @@ def test_post_run_refused_while_a_retrospective_replays(tmp_path,
                                                         monkeypatch):
     monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path)
     monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
-    monkeypatch.setattr(srv.data_mod, "vintage_path", lambda d: tmp_path)
+    monkeypatch.setattr(core_data, "vintage_path", lambda d: tmp_path)
     started = []
     monkeypatch.setattr(srv, "_run_all", lambda spec: started.append(spec))
     form_before = dict(srv._last_form)

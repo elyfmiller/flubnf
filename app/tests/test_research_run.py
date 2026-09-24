@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import app.core.runs as runs_mod                     # noqa: E402
+from app.core import data as core_data               # noqa: E402
 from app.core.runs import Ledger, RunSpec, is_research  # noqa: E402
 from app.ui import server as srv                     # noqa: E402
 
@@ -71,7 +72,7 @@ def test_flagship_forecast_page_offers_no_third_member():
 def _capture_run(monkeypatch, tmp_path):
     monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path / "retro")
     monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
-    monkeypatch.setattr(srv.data_mod, "vintage_path", lambda d: tmp_path)
+    monkeypatch.setattr(core_data, "vintage_path", lambda d: tmp_path)
     started = []
     monkeypatch.setattr(srv, "_run_all", lambda spec: started.append(spec))
     return started

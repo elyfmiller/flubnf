@@ -26,6 +26,7 @@ from fastapi.testclient import TestClient           # noqa: E402
 from fastapi.routing import APIRoute                # noqa: E402
 
 import app.core.runs as runs_mod                    # noqa: E402
+from app.core import datasets                       # noqa: E402
 from app.core import horizons as hz                 # noqa: E402
 from app.core import playback                       # noqa: E402
 from app.core import report_v2                      # noqa: E402
@@ -43,9 +44,14 @@ RUNNING_SEASON = "2098-99"
 PAUSED_SEASON = "2097-98"
 
 #: how to fill each GET route's path parameters; a NEW parameter name fails
-#: the walk on purpose, so the new route gets covered
+#: the walk on purpose, so the new route gets covered (ds_id and stamp are
+#: well-formed but name no stored dataset replay)
 PATH_PARAMS = {"run_id": "20981231T000000-abc123", "name": "pf",
-               "season": RUNNING_SEASON, "asof": "2098-11-07"}
+               "season": RUNNING_SEASON, "asof": "2098-11-07",
+               "ds_id": "walk-000000000000", "stamp": "20981231T000000Z"}
+
+#: the console's route table (captured at 029c028, see test_ui_layout.py)
+GOLDEN_ROUTES = Path(__file__).resolve().parent / "golden" / "ui_routes.json"
 
 
 @pytest.fixture(autouse=True)
@@ -72,6 +78,8 @@ def _live_world(tmp_path, monkeypatch):
     monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path / "retro")
     monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "seal")
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path / "state")
+    # datasets.ROOT was fixed from APP_STATE at import
+    monkeypatch.setattr(datasets, "ROOT", tmp_path / "state" / "datasets")
     now = time.time()
     run_root = tmp_path / "retro" / RUNNING_SEASON
     retro.write_meta(run_root, {
@@ -123,11 +131,26 @@ def _control_state(run_root, pause_root, workroot):
 
 
 def _get_routes():
+    """Every GET route the app serves, flattened: FastAPI >= 0.141 keeps an
+    included router (datasets_ui's, the tabs') as ONE entry in
+    app.router.routes, so a plain walk of it misses their routes."""
+    try:
+        from fastapi.routing import iter_route_contexts
+        routes = list(iter_route_contexts(srv.app.router.routes))
+    except ImportError:            # older FastAPI copies them in flat
+        routes = list(srv.app.router.routes)
     out = []
-    for r in srv.app.router.routes:
-        if isinstance(r, APIRoute) and "GET" in r.methods:
+    for r in routes:
+        if (isinstance(getattr(r, "original_route", r), APIRoute)
+                and "GET" in r.methods):
             out.append(r.path)
     return sorted(out)
+
+
+def _golden_get_count():
+    rows = json.loads(GOLDEN_ROUTES.read_text(encoding="utf-8"))["routes"]
+    return sum(1 for methods, _path, _name, kind, _group in rows
+               if kind == "APIRoute" and "GET" in methods.split(","))
 
 
 def test_every_get_route_leaves_the_live_runs_alone(tmp_path, monkeypatch):
@@ -152,10 +175,13 @@ def test_every_get_route_leaves_the_live_runs_alone(tmp_path, monkeypatch):
         # no flag may trip mid-walk either
         assert not retro.stop_path(run_root).exists(), url
         assert retro.pause_path(pause_root).exists(), url
-    # the routes the audit cares most about were walked
+    # every GET route was walked (the golden's count), the ones the audit
+    # cares most about among them
+    assert len(walked) == _golden_get_count()
     assert {"/", "/forecast", "/retro", "/api/busy", "/api/progress",
             "/output/report", "/retro/{season}",
-            "/api/retro/{season}/playback/{asof}"} <= set(walked)
+            "/api/retro/{season}/playback/{asof}",
+            "/retro/dataset/{ds_id}/{stamp}"} <= set(walked)
     after = _control_state(run_root, pause_root, workroot)
     assert after == before, "a GET route changed run control state"
 

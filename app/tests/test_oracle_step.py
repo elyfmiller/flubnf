@@ -542,13 +542,14 @@ def test_the_run_route_accepts_the_field_and_the_rerun_passes_it(tmp_path, monke
     from fastapi.testclient import TestClient
     from app.ui import server as srv
     import app.core.runs as runs_mod
+    from app.core import data as core_data
     from app.core.runs import Ledger
     client = TestClient(srv.app)
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
     monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path / "retro")
     monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
-    monkeypatch.setattr(srv.data_mod, "vintage_path", lambda d: tmp_path)
-    monkeypatch.setattr(srv.data_mod, "vintages", lambda: [ASOF])
+    monkeypatch.setattr(core_data, "vintage_path", lambda d: tmp_path)
+    monkeypatch.setattr(core_data, "vintages", lambda: [ASOF])
     started = []
     monkeypatch.setattr(srv, "_run_all", lambda spec: started.append(spec))
     status_before = dict(srv._status)

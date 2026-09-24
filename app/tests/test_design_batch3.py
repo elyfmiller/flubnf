@@ -21,7 +21,9 @@ client = TestClient(srv.app)
 UI = Path(__file__).resolve().parents[1] / "ui"
 NAU = (UI / "static" / "nau.css").read_text()
 PLAYER = (UI / "static" / "player.js").read_text(encoding="utf-8")
-SERVER_SRC = (UI / "server.py").read_text()
+#: every console module's source, by path under app/ui
+UI_PY = {p.relative_to(UI).as_posix(): p.read_text(encoding="utf-8")
+         for p in sorted(UI.rglob("*.py"))}
 RETRO_T = (UI / "templates" / "retro.html").read_text()
 SEASON_T = (UI / "templates" / "retro_season.html").read_text()
 FORECAST_T = (UI / "templates" / "forecast.html").read_text()
@@ -304,7 +306,7 @@ def test_stored_forecasts_render_without_a_session_gate(monkeypatch):
     assert '"pf": {"Ohio"' in r.text          # the stored fans ship
     assert "latest stored run" in r.text            # and the title says so
     # the gate is gone from the codebase, not merely bypassed
-    assert "session_ran" not in SERVER_SRC
+    assert [f for f, src in UI_PY.items() if "session_ran" in src] == []
 
 
 def test_latest_run_card_links_report_and_files():

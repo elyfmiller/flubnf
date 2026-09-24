@@ -282,9 +282,8 @@ def test_any_weekday_resolves_to_a_published_saturday(monkeypatch):
     from fastapi.testclient import TestClient
 
     # archive holds up to 2026-02-14; the week ending 02-21 is not out yet
+    # (the server reads app.core.data through a lazy proxy: patch the module)
     monkeypatch.setattr(dm, "vintages",
-                        lambda: ["2026-02-07", "2026-02-14"])
-    monkeypatch.setattr(server.data_mod, "vintages",
                         lambda: ["2026-02-07", "2026-02-14"])
     c = TestClient(server.app)
     for day, why in (("2026-02-18", "Wednesday, data just landed"),

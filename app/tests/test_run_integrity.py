@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import app.core.runs as runs_mod                     # noqa: E402
+from app.core import data as core_data               # noqa: E402
 from app.core.runs import Ledger, RunSpec            # noqa: E402
 from app.core.submit import hub_model_id             # noqa: E402
 from app.ui import server as srv                     # noqa: E402
@@ -262,7 +263,7 @@ def test_no_underreporting_headsup_on_run(tmp_path, monkeypatch):
     vint.write_text("date,location,location_name,value\n"
                     "2097-12-28,39,Ohio,100\n2098-01-04,39,Ohio,30\n")
     reads = []
-    monkeypatch.setattr(srv.data_mod, "vintage_path",
+    monkeypatch.setattr(core_data, "vintage_path",
                         lambda d: reads.append(d) or vint)
     monkeypatch.setattr(srv, "_run_all", lambda spec: None)
     r = client.post("/run", data={"forecast_date": "2098-01-04",

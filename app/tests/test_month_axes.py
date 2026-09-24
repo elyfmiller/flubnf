@@ -2,6 +2,7 @@
 all fed by one server list (SEASON_MONTHS in app/ui/server.py); exact dates
 move to hover (each season-over-season trace carries its real Saturdays).
 """
+import inspect
 import sys
 from pathlib import Path
 
@@ -49,9 +50,11 @@ def test_every_consumer_reads_the_shared_list_not_a_copy():
     assert "{{ season_months | tojson }}" in FORECAST_T
     assert "for lab, wk in season_months" in DIAGRAMS_T
     assert "month_ticks_for_dates" in RETRO_SEASON_T
-    server_py = (UI / "server.py").read_text()
-    assert server_py.count("_MONTH_DAYS = (") == 1
-    assert "SEASON_MONTHS[::3]" in server_py       # harmonic_fig's source
+    ui_py = [p.read_text(encoding="utf-8") for p in sorted(UI.rglob("*.py"))]
+    assert sum(src.count("_MONTH_DAYS = (") for src in ui_py) == 1
+    # harmonic_fig's module
+    assert "SEASON_MONTHS[::3]" in inspect.getsource(
+        inspect.getmodule(srv._harmonic_fig))
 
 
 # ------------------------------------------------------- swept surface: fig

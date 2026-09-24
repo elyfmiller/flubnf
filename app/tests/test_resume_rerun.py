@@ -9,6 +9,7 @@ re-submitting the ledger's stored spec through /run (a fresh run: console
 fits hold no checkpoint). Both shortcuts carry their form's data-guard and
 are refused server-side while another run holds the engine.
 """
+import inspect
 import sys
 import time
 from pathlib import Path
@@ -19,6 +20,7 @@ import pytest                                       # noqa: E402
 from fastapi.testclient import TestClient           # noqa: E402
 
 import app.core.runs as runs_mod                    # noqa: E402
+from app.core import data as core_data              # noqa: E402
 from app.core import retro                          # noqa: E402
 from app.core import ttlcache                       # noqa: E402
 from app.ui import server as srv                    # noqa: E402
@@ -247,7 +249,7 @@ def test_rerun_reposts_the_stored_spec_verbatim(tmp_path, monkeypatch):
     rid = _ledger_row(tmp_path, monkeypatch, spec)
     monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path / "retro")
     monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
-    monkeypatch.setattr(srv.data_mod, "vintage_path", lambda d: tmp_path)
+    monkeypatch.setattr(core_data, "vintage_path", lambda d: tmp_path)
     started = []
     monkeypatch.setattr(srv, "_run_all", lambda s: started.append(s))
     srv._status.update({"running": None})
@@ -300,7 +302,7 @@ def test_rerun_refused_while_a_retrospective_replays(tmp_path, monkeypatch):
     rid = _ledger_row(tmp_path, monkeypatch, spec)
     monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path / "retro")
     monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
-    monkeypatch.setattr(srv.data_mod, "vintage_path", lambda d: tmp_path)
+    monkeypatch.setattr(core_data, "vintage_path", lambda d: tmp_path)
     started = []
     monkeypatch.setattr(srv, "_run_all", lambda s: started.append(s))
     srv._status.update({"running": None})
@@ -319,7 +321,7 @@ def test_rerun_refused_while_a_console_run_is_fitting(tmp_path, monkeypatch):
     rid = _ledger_row(tmp_path, monkeypatch, spec, status="error")
     monkeypatch.setattr(srv, "RETRO_ROOT", tmp_path / "retro")
     monkeypatch.setattr(srv, "RETRO_SEAL", tmp_path / "noseal")
-    monkeypatch.setattr(srv.data_mod, "vintage_path", lambda d: tmp_path)
+    monkeypatch.setattr(core_data, "vintage_path", lambda d: tmp_path)
     started = []
     monkeypatch.setattr(srv, "_run_all", lambda s: started.append(s))
     srv._retro_status.clear()
@@ -346,12 +348,15 @@ def _render_forecast(row):
 def test_a_completed_run_with_fit_failures_is_partial_not_failed():
     """A completed run with some fit failures is "partial" (warn pill, rerun
     offered), not "failed"; "failed"/"error" are for runs that died."""
-    server = (Path(__file__).resolve().parents[2]
-              / "app" / "ui" / "server.py").read_text(encoding="utf-8")
-    assert '"partial" if fails else "ok"' in server, (
+    # the module that runs a console forecast (datasets_ui.py holds the same
+    # line for dataset runs, so a scan of the package would pass vacuously)
+    runner = inspect.getsource(inspect.getmodule(srv._run_all))
+    assert '"partial" if fails else "ok"' in runner, (
         "close_run went back to branding a completed run failed for "
         "per-cell fit failures")
-    assert '"failed" if fails' not in server
+    ui = Path(__file__).resolve().parents[1] / "ui"
+    for p in sorted(ui.rglob("*.py")):
+        assert '"failed" if fails' not in p.read_text(encoding="utf-8"), p
     row = {"run_id": "20980101T000000-abcdef", "label": "L",
            "status": "partial", "chips": "PF 159 fits", "has_report": True,
            "spec": "{}", "elapsed_s": None}
