@@ -157,6 +157,45 @@ def test_a_day_first_as_of_says_so():
     assert "13/01/2024 is day-first" in p.message
 
 
+def test_an_as_of_that_reads_both_ways_is_settled_by_its_snapshots():
+    """ISO weeks, as_of written 03/01/2024 and 10/01/2024 (3 and 10
+    January): read month-first they were stored silently as snapshots of
+    March and October over data that ends 2024-01-06."""
+    raw = (b"target_end_date,location,observation,as_of\n"
+           b"2023-12-30,A,5,03/01/2024\n2024-01-06,A,6,10/01/2024\n"
+           b"2023-12-30,A,5,10/01/2024\n")
+    rep = D.validate(raw)
+    assert rep.codes == ["as_of_ambiguous"]
+    p = rep.problems[0]
+    assert p.rows == (2, 3, 4) and p.kind == "Dates"
+    assert "03/01/2024 is 2024-03-01 or 2024-01-03" in p.message
+    with pytest.raises(D.DatasetError):
+        D.ingest(raw, "asof")
+    assert D.list_datasets() == []
+    # month-first that fits (1/8/24 just after the week of 2024-01-06)
+    rep = ok(D.validate(b"target_end_date,location,observation,as_of\n"
+                        b"2024-01-06,A,5,1/8/24\n2023-12-30,A,4,1/8/24\n"))
+    assert rep.summary["as_of"] == ["2024-01-08"]
+    # M/D weeks say how the file writes dates; 1/13/2024 reads one way
+    rep = ok(D.validate(b"target_end_date,location,observation,as_of\n"
+                        b"12/30/2023,A,5,03/01/2024\n1/6/2024,A,6,10/01/2024\n"))
+    assert rep.summary["as_of"] == ["2024-03-01", "2024-10-01"]
+    ok(D.validate(b"target_end_date,location,observation,as_of\n"
+                  b"2023-12-30,A,5,1/3/2024\n2024-01-06,A,6,1/13/2024\n"))
+
+
+def test_a_single_week_written_month_or_day_first_is_refused():
+    """Over two weeks or more the weekdays and gaps tell a day-first file;
+    over one, 06/01/2024 was read as June 1 without a word."""
+    p = only(D.validate(b"date,target_group,value\n06/01/2024,A,5\n"
+                        b"06/01/2024,B,7\n"), "date_ambiguous")
+    assert p.rows == (2, 3)
+    assert "reads as 2024-06-01 month-first or 2024-01-06 day-first" \
+        in p.message
+    for one in (b"1/13/2024", b"2024-06-01", b"1/1/2024"):
+        ok(D.validate(b"date,target_group,value\n" + one + b",A,5\n"))
+
+
 @pytest.mark.parametrize("header", ["week_ending", "Week End", "end_date",
                                     "target_end_date"])
 @pytest.mark.parametrize("back,name", [(6, "Sunday"), (5, "Monday"),
