@@ -140,6 +140,9 @@ def test_a_default_run_writes_the_same_bytes_as_before(pipeline_env):
         print("BASE_SHA", json.dumps(got))
     assert set(got) == set(BASE_SHA)
     assert got == BASE_SHA
+    # the same bytes on Windows: LF line endings, never os.linesep
+    for p in out["submissions"].values():
+        assert b"\r" not in Path(p).read_bytes(), p
 
 
 # ------------------------------------------------ the categories

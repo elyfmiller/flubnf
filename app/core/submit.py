@@ -235,7 +235,9 @@ def write_submission(all_rows: Iterable[dict], model: str, asof: str,
     # atomic: every CSV here is listed as submittable, so never a truncated one
     tmp = p.with_name(p.name + ".tmp")
     try:
-        df.to_csv(tmp, index=False)
+        # LF on every platform (pandas defaults to os.linesep): the hub's
+        # files are LF, and a Windows lab machine writes the same bytes
+        df.to_csv(tmp, index=False, lineterminator="\n")
         _hub_gate(tmp, p.name, d.name, hub_named=not suffix)
         os.replace(tmp, p)
     finally:
