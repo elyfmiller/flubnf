@@ -504,8 +504,10 @@ def api_progress():
         done = total = 0
         t0 = None
         # pf_status*.json.prog: the pre-shard merged name and per-shard files
-        for f in (glob.glob(w + "/pf_status*.json.prog")
-                  + glob.glob(w + "/pf2s/pf_status*.json.prog")):
+        # (the workroot escaped: a Windows path may hold [ or ])
+        ew = glob.escape(w)
+        for f in (glob.glob(ew + "/pf_status*.json.prog")
+                  + glob.glob(ew + "/pf2s/pf_status*.json.prog")):
             try:
                 d = _json.loads(open(f).read())
                 done += d["done"]; total += d["total"]
