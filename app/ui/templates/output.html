@@ -1,27 +1,31 @@
 {% extends "base.html" %}{% block title %}FluBNF · Output{% endblock %}
-{% block content %}
+{% block content %}{% import "_tips.html" as tips %}
 <h1>Output</h1>
 {% if not rid %}<div class="card"><p class="hint">Nothing here yet. Run a forecast first.</p></div>
 {% else %}
 <div>
-  <div class="card"><h2>Submission files: {{ date }}</h2>
+  <div class="card"><h2>Submission files{% if ref %}: {{ ref }}{% endif %}
+   {{ tips.tip("out-files", "the submission files", "One file per model, named <reference date>-<team>-<model>.csv as the FluSight hub requires; the reference date is the Saturday one week after the newest data week. Every file is checked here against the hub's own rules (hub-config/tasks.json) before it is written: columns, locations, the 23 quantile levels, whole numbers, monotone quantiles, target end dates. The hub takes files from the Sunday through the Wednesday before the reference date, until 11 PM Eastern.") }}</h2>
    <p class="hint"><a href="/runs/{{ rid }}">{{ label }}</a></p>
-   {% for f in files %}
+   {% set current = files | rejectattr("archived") | list %}
+   {% set archived = files | selectattr("archived") | list %}
+   {% for f in current %}
     <div class="subfile">
-     <div class="row" style="justify-content:space-between;margin:.45rem 0">
+     <div class="row subrow">
       <span><b>{{ f.model }}</b><br><code>{{ f.name }}</code></span>
-      <span style="display:flex;align-items:center;gap:.9rem;white-space:nowrap">
-       {% if f.submittable %}
+      <span class="subacts">
+       {% if f.submittable or f.modified %}
        <a class="btn" href="/output/download?path={{ f.path | urlencode }}" download>Download</a>
-       {% else %}<span class="hint">Not submittable</span>{% endif %}
+       {% endif %}
        <form method="post" action="/output/reveal" style="display:inline">
         <input type="hidden" name="path" value="{{ f.path }}">
         <button class="linkish" type="submit">Show in Finder</button></form>
       </span>
      </div>
-     {% if not f.submittable %}
-     <p class="hint">Written under a retired model name the hub would
-     reject; run the models again for the registered identity.</p>
+     {% if f.hub %}
+     <p class="hint">{% if not f.hub.ok %}<span class="bad">{{ f.hub.text }}</span>{% else %}{{ f.hub.text }}{% endif %}</p>
+     {% elif f.modified %}
+     <p class="hint">Non-hub name: this run's model settings differ from the defaults.</p>
      {% endif %}
      {% if f.cols %}
      <details class="preview">
@@ -38,7 +42,21 @@
      </details>
      {% endif %}
     </div>
-   {% else %}<p class="hint">No submission files in the latest run.</p>{% endfor %}
+   {% else %}<p class="hint">{% if archived %}No current submission files in this run: run the models to write them under the registered names.{% else %}No submission files in the latest run.{% endif %}</p>{% endfor %}
+   {% if archived %}
+   <details class="preview archived">
+    <summary class="hint">Archived files ({{ archived | length }})</summary>
+    <p class="hint">Written by an earlier version under a retired hub name; kept as a record, not for submission.</p>
+    {% for f in archived %}
+    <div class="row subrow">
+     <span>{{ f.model }} <span class="hint">(archived)</span><br><code>{{ f.name }}</code></span>
+     <form method="post" action="/output/reveal" style="display:inline">
+      <input type="hidden" name="path" value="{{ f.path }}">
+      <button class="linkish" type="submit">Show in Finder</button></form>
+    </div>
+    {% endfor %}
+   </details>
+   {% endif %}
   </div>
   <div class="card"><h2>Weekly report</h2>
    {% if has_report %}

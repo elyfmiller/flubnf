@@ -2,9 +2,10 @@
 submission.
 
 The hub identity is the DIRECTORY model-output/<team>-<model>/, registered
-in model-metadata/. Old runs left trees called NAU-Ensemble and NAU-PF-SIHRS;
-they stay visible on run pages (a record of what ran) but are not
-downloadable, enforced by the route as well as the template.
+in model-metadata/. Old runs left trees under retired names (submit.LEGACY_DIRS); they stay
+visible as archived files (a record of what ran), named by the model they
+are, never offered as a submission, enforced by the route as well as the
+template.
 """
 import json
 import sys
@@ -69,8 +70,8 @@ def test_output_page_offers_the_registered_file_and_withholds_the_other(run):
     html = client.get("/output").text
     assert good.name in html and retired.name in html      # both SEEN
     assert _download_targets(html) == [str(good)]
-    assert "Not submittable" in html
-    assert "retired model name" in html
+    assert "Archived files (1)" in html
+    assert "retired hub name" in html
 
 
 def test_run_page_shows_the_retired_file_without_a_link(run):
@@ -78,7 +79,7 @@ def test_run_page_shows_the_retired_file_without_a_link(run):
     html = client.get(f"/runs/{RID}").text
     assert retired.name in html                            # still recorded
     assert _download_targets(html) == [str(good)]
-    assert "Not submittable" in html
+    assert "Archived files (1)" in html
 
 
 def test_the_download_route_refuses_a_retired_identity(run):
@@ -142,3 +143,93 @@ def test_a_refused_submission_is_named_on_the_run_page(tmp_path, monkeypatch):
         "submissions": {"a": "x"},
         "submission_errors": {"b": "y"}}))
     assert "1 submissions" in chips and "1 submission refused" in chips
+
+
+# ------------------ old run folders read as the model they are, archived
+
+def _archived_block(html: str) -> tuple:
+    """(page without the archived <details>, the archived block)."""
+    i = html.find('<details class="preview archived">')
+    if i < 0:
+        return html, ""
+    j = html.index("</details>", i) + len("</details>")
+    return html[:i] + html[j:], html[i:j]
+
+
+@pytest.mark.parametrize("old, applied, label", [
+    ("LosAlamos_NAU-SIHRS", True, hub_model_id("pf")),
+    ("LosAlamos_NAU-SIHRS", False, "SIHRS filter, before the Oracle step"),
+    ("LosAlamos_NAU-CModel_Flu", None, "Retired blend of the two models"),
+    ("NAU_FluBNF-ensemble", None, "Retired blend of the two models"),
+])
+def test_an_old_folder_is_named_by_its_model_and_archived(
+        tmp_path, monkeypatch, old, applied, label):
+    """The Output page and the run page never show a retired hub name as a
+    model: the folder reads as the current model when the run is that
+    model (the Oracle step applied), else as what it was, inside the
+    closed Archived block; the file stays on disk, readable, and is not
+    offered for download."""
+    from app.core import oracle
+    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
+    w = tmp_path / "workroots" / RID
+    w.mkdir(parents=True)
+    (w / "results.json").write_text(json.dumps(
+        {"models": {}, "forecast_date": "2098-01-03", "spec": ""}))
+    if applied is not None:
+        oracle.write_provenance(w, {"applied": applied})
+    f = _sub(w, old, "2098-01-10")
+    ui_shared._invalidate_scans()
+    try:
+        for url in ("/output", f"/runs/{RID}"):
+            html = client.get(url).text
+            rest, block = _archived_block(html)
+            assert label in block and "(archived)" in block
+            assert f.name in block                     # the record, readable
+            assert old not in rest                     # never as a model
+            assert _download_targets(html) == []
+        assert f.is_file()
+    finally:
+        ui_shared._invalidate_scans()
+
+
+def test_a_groundhog_folder_with_its_donors_is_the_groundhog(tmp_path,
+                                                            monkeypatch):
+    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
+    w = tmp_path / "workroots" / RID
+    w.mkdir(parents=True)
+    spec = json.dumps({"extra": {"aux_pools": [{"label": "flusurv"}]}})
+    (w / "results.json").write_text(json.dumps(
+        {"models": {}, "forecast_date": "2098-01-03", "spec": spec}))
+    _sub(w, "LosAlamos_NAU-GroundhogCGR", "2098-01-10")
+    (entry,) = ui_output._submission_files(w)
+    assert entry["model"] == hub_model_id("analogue")
+    assert entry["archived"] and not entry["submittable"]
+
+
+def test_a_refusal_recorded_under_an_old_name_reads_as_its_model(
+        tmp_path, monkeypatch):
+    from app.core.runs import Ledger, RunSpec
+    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
+    led = Ledger()
+    rid = led.open_run(RunSpec(engine="all", forecast_date="2098-01-03"),
+                       Path("pending"), {})
+    w = tmp_path / "workroots" / rid
+    w.mkdir(parents=True)
+    (w / "results.json").write_text(json.dumps({"models": {}}))
+    led.close_run(rid, "ok", {"submission_errors": {
+        "LosAlamos_NAU-CModel_Flu": "submission failed validation"}})
+    ui_shared._invalidate_scans()
+    html = client.get(f"/runs/{rid}").text
+    assert "LosAlamos_NAU" not in html
+    assert "Retired blend of the two models" in html
+
+
+def test_every_legacy_name_is_retired_and_none_is_written():
+    """LEGACY_DIRS only reads old folders: none of its names is an
+    identity this project writes or a card in model-metadata/."""
+    from app.core.submit import LEGACY_DIRS, MODEL_ABBR
+    root = Path(__file__).resolve().parents[2] / "model-metadata"
+    registered = {f.stem for f in root.glob("*.yml")}
+    written = {hub_model_id(k) for k in MODEL_ABBR}
+    assert not set(LEGACY_DIRS) & (registered | written)
+    assert set(LEGACY_DIRS.values()) <= {"pf", "analogue", "blend"}

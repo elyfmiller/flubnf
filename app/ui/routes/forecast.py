@@ -303,7 +303,11 @@ def run_page(request: Request, run_id: str):
         "can_rerun": (bool(spec_json) and status in RERUN_STATUSES
                       and not dsx),
         "pf_failures": pf_failures, "step_errors": step_errors,
-        "subs": subs, "sub_errors": sub_errors, "report": report})
+        # a refusal recorded under a retired hub name reads as its model
+        "subs": subs,
+        "sub_errors": {output_routes.model_display(m, w): why
+                       for m, why in sub_errors.items()},
+        "report": report})
 
 
 @router.get("/runs/{run_id}/report", response_class=HTMLResponse)

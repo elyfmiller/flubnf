@@ -36,19 +36,103 @@ def _modified_model_ids() -> set:
     return {m + _knobs.MODIFIED_SUFFIX for m in _registered_model_ids()}
 
 
+def _legacy_label(dir_name: str, d: Path) -> tuple:
+    """(label, same model) for a folder written under a retired hub name
+    (submit.LEGACY_DIRS): the current model's name when the run is that
+    model (the Oracle step applied; the Groundhog with its donors), else
+    what it was. Never the old name itself."""
+    import json as _json
+    from app.core.submit import LEGACY_DIRS, hub_model_id
+    member = LEGACY_DIRS.get(dir_name)
+    if member == "pf":
+        from app.core import oracle as _oracle
+        prov = _oracle.read_provenance(d) or {}
+        if prov.get("applied"):
+            return hub_model_id("pf"), True
+        return "SIHRS filter, before the Oracle step", False
+    if member == "analogue":
+        try:
+            spec = _json.loads((Path(d) / "results.json").read_text()
+                               ).get("spec") or "{}"
+            spec = _json.loads(spec) if isinstance(spec, str) else spec
+            pools = ((spec or {}).get("extra") or {}).get("aux_pools")
+        except Exception:
+            pools = None
+        if pools:
+            return hub_model_id("analogue"), True
+        return "Calendar analogue without donors", False
+    if member == "blend":
+        return "Retired blend of the two models", False
+    return "Unregistered model name", False
+
+
+def model_display(dir_name: str, d: Path) -> str:
+    """How a submission folder's model is named on a page: registered and
+    modified names as they are, a retired one through _legacy_label."""
+    if dir_name in _registered_model_ids() or \
+            dir_name in _modified_model_ids():
+        return dir_name
+    return _legacy_label(dir_name, d)[0]
+
+
 def _submission_files(d: Path) -> list:
     """Submission CSVs under a workroot/archive dir, each marked submittable
-    iff its directory (the hub model id) is registered. Retired identities
-    (NAU-Ensemble, NAU-PF-SIHRS) stay listed as the run's record but are not
-    downloadable: the hub would reject them under genuine-looking names.
+    iff its directory (the hub model id) is registered. A folder an earlier
+    version wrote under a retired hub name (submit.LEGACY_DIRS) is
+    `archived`: kept as the run's record, named by the model it is
+    (_legacy_label), never downloadable (the hub would reject the old name).
     A modified run's <hub id>-modified files are downloadable exports
     (`modified`), not submissions."""
     ok = _registered_model_ids()
     mod = _modified_model_ids()
-    return [{"model": p.parent.name, "name": p.name, "path": str(p),
-             "submittable": p.parent.name in ok,
-             "modified": p.parent.name in mod}
-            for p in sorted(Path(d).glob("submission/*/*.csv"))]
+    out = []
+    for p in sorted(Path(d).glob("submission/*/*.csv")):
+        name = p.parent.name
+        entry = {"model": name, "name": p.name, "path": str(p),
+                 "submittable": name in ok, "modified": name in mod,
+                 "archived": False}
+        if name not in ok and name not in mod:
+            entry["model"], _same = _legacy_label(name, Path(d))
+            entry["archived"] = True
+        out.append(entry)
+    return out
+
+
+def _hub_status(path: str, today=None) -> dict:
+    """One registered file's hub check for the page: {"ok", "text"}, the
+    text one short line (app/core/hubcheck.summary; the window from
+    tasks.json, the hub closing at 11 PM Eastern on its last day)."""
+    import datetime as _dt
+    from app.core import hubcheck
+    s = hubcheck.summary(path)
+    if not s["ok"]:
+        n = len(s["problems"])
+        return {"ok": False,
+                "text": f"Fails {n} hub check{'s' if n != 1 else ''}: "
+                        f"{s['problems'][0]}"}
+    if not s["round"]:
+        return {"ok": True,
+                "text": f"Passes the hub's checks. {s['reference_date']} is "
+                        "not a FluSight round, so this file is a record."}
+    first, last = s["due"]
+    today = today or _dt.date.today()
+    if today > last:
+        when = f"The window closed {last:%a %Y-%m-%d}."
+    elif today < first:
+        when = f"Due {first:%a %b %d} to {last:%a %b %d}, 11 PM ET."
+    else:
+        when = f"Due {last:%a %Y-%m-%d}, 11 PM ET."
+    return {"ok": True, "text": f"Passes the hub's checks. {when}"}
+
+
+def _reference_date(asof: str) -> str:
+    """The hub reference date of a run's as-of (submit.hub_reference_date),
+    "" when the as-of is unreadable."""
+    from app.core.submit import hub_reference_date
+    try:
+        return str(hub_reference_date(asof).date()) if asof else ""
+    except Exception:
+        return ""
 
 
 # === Output (/output): submissions, downloads, weekly report -> output.html ===
@@ -64,6 +148,11 @@ def output_page(request: Request):
     if rid:
         for entry in _submission_files(APP_STATE / "workroots" / rid):
             entry.update({"cols": [], "rows": [], "more": 0})
+            if entry["archived"]:
+                files.append(entry)          # listed, never previewed
+                continue
+            if entry["submittable"]:
+                entry["hub"] = _hub_status(entry["path"])
             try:
                 df = pd.read_csv(entry["path"], dtype=str)
                 entry["cols"] = list(df.columns)
@@ -77,6 +166,8 @@ def output_page(request: Request):
         # the stored spec lets the label carry the research tag
         "label": _run_label(rid, (res or {}).get("spec", "")) if rid else "",
         "date": (res or {}).get("forecast_date", ""),
+        # the files are named by the reference date, a week after the data
+        "ref": _reference_date((res or {}).get("forecast_date", "")),
         "files": files,
         "archive_dates": list(reversed(_archive_dates())),
         "has_report": bool(rid and (APP_STATE / "workroots" / rid / "report.html").is_file())})
@@ -100,10 +191,10 @@ def output_download(path: str):
             and p.parent.name not in _registered_model_ids() \
             and p.parent.name not in _modified_model_ids():
         return HTMLResponse(
-            f"<p>{p.parent.name} is not a registered hub model. This file "
-            "was written under a retired identity and the hub would reject "
-            "it, so it is not offered as a submission. Use Show in Finder "
-            "to open it for reference.</p>", status_code=409)
+            "<p>This folder is not a registered hub model: the file was "
+            "written by an earlier version under a retired hub name and is "
+            "kept as a record, not for submission. Use Show in Finder to "
+            "open it for reference.</p>", status_code=409)
     return FileResponse(p, filename=p.name, media_type="text/csv",
                         content_disposition_type="attachment")
 

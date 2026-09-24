@@ -1,7 +1,7 @@
 """RESEARCH CLI ONLY (`flubnf groundhog retro`): analogue-alone season replays
 with coverage and bootstrap comparisons.
 
-GroundhogCGR on its own: a season replay of the calendar member alone.
+GroundHogCGR on its own: a season replay of the calendar member alone.
 
 Separate from `retro.run_season` because the question "what does the
 calendar member score alone" should not pay for (or wait on the toolchain
@@ -166,7 +166,7 @@ def run_season(season: str, aux: str = "", *, with_us: bool = False,
         df["arm"] = arm
 
     meta = {
-        "model": "GroundhogCGR", "season": season, "arm": arm,
+        "model": "GroundHogCGR", "season": season, "arm": arm,
         # the preset's name carries the committed bank's digest, so this
         # says WHICH DONORS, not only which configuration
         "aux": (week_extra.__name__ if week_extra else None),
