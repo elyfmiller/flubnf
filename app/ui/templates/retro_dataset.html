@@ -28,7 +28,7 @@
 
 <div class="card"><h2>Scores {{ tips.tip("rd-scores", "the scores", "relWIS is the models' summed WIS over the in-house persistence baseline's, over the same cells: a cell counts when the dataset holds a positive value for its week, the forecast median is positive and the baseline's WIS is above zero. Below 1 beats the baseline. The national group, if any, is shown beside the pooled figure, never inside it. Coverage is the share of those cells inside each central interval.") }}</h2>
  {% if summary %}
- <div class="tablewrap"><table class="compact">
+ <div class="tablewrap"><table class="compact rd-scores">
   <thead><tr><th>Model</th><th class="num">relWIS</th><th class="num">Cells</th>
    <th class="num">50%</th><th class="num">80%</th><th class="num">95%</th>
    {% if ds.national_group %}<th class="num">{{ ds.national_group }} (beside)</th>{% endif %}</tr></thead>
@@ -55,8 +55,9 @@
  <p class="hint">No scored cells{{ " yet" if live else "" }}: a cell needs a later week in the dataset.</p>
  {% endif %}
  {% for m, n in abstained.items() if n %}
- <p class="hint">{{ member_names.get(m, m) }} abstained on {{ n }} group-week{{ "" if n == 1 else "s" }}
-  {{ tips.tip("rd-abst-" ~ m, "abstentions", "The Groundhog forecasts only with at least 30 growth ratios from earlier seasons at the same calendar week, pooled over the groups; early in a short dataset it has too few and says nothing rather than guess.") }}</p>
+ {# the tip stays on the last word's line at phone width #}
+ <p class="hint">{{ member_names.get(m, m) }} abstained on <span class="rd-nw">{{ n }} group-week{{ "" if n == 1 else "s" }}
+  {{ tips.tip("rd-abst-" ~ m, "abstentions", "The Groundhog forecasts only with at least 30 growth ratios from earlier seasons at the same calendar week, pooled over the groups; early in a short dataset it has too few and says nothing rather than guess.") }}</span></p>
  {% endfor %}
 </div>
 

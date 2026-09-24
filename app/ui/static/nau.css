@@ -872,3 +872,8 @@ tr[aria-current="true"] td{font-weight:600}
 .rd-settings .runsettings>strong{display:none}
 .rd-settings .runsettings .kv{width:auto;
   grid-template-columns:max-content minmax(0,1fr)}
+.rd-nw{white-space:nowrap}
+@media (max-width:640px){
+  /* six columns fit a phone without the last one at the edge */
+  table.rd-scores td,table.rd-scores th{padding-left:.3rem;padding-right:.3rem}
+}
