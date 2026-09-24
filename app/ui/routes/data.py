@@ -229,8 +229,15 @@ def data_pull():
             + ", official ensemble "
             + ("ok" if (_H / "model-output/FluSight-ensemble").is_dir() else "missing"))
     rep = _newest_report()
-    _flash(f"{msg[:140]}"
-           + (f" · data through {after}" if after else "")
+    # a plain lead, never git's own transcript (fast-forward listings, file
+    # counts): whether the data moved is what the user needs
+    if after and before and after != before:
+        lead = f"New data: through {after} (was {before})"
+    elif after:
+        lead = f"Already up to date: data through {after}"
+    else:
+        lead = "Updated"
+    _flash(lead
            + (f" · {rep.line()}" if rep else "")
            + (f" · latest vintage {vs[-1]}" if vs else "") + comp)
     return RedirectResponse("/data", status_code=303)
