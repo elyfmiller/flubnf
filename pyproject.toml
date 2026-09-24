@@ -1,7 +1,7 @@
 [project]
 name = "flubnf"
 version = "1.1.0"
-description = "Mechanistic influenza forecasting for CDC FluSight: SIHRS in BNGL, fitted with PyBNF (particle filter + adaptive MCMC) on the bngsim engine"
+description = "Influenza forecasting console for CDC FluSight: the Oracle SIHRS (a BNGL model fitted by a PyBNF particle filter on bngsim) and the empirical Groundhog"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.11"
