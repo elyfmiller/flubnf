@@ -1799,7 +1799,13 @@ def _check_structure(rep: Report, rows: list, cols: dict, *, shift: int = 0,
                 f"their snapshot's as_of ({_rows(lines)}; e.g., "
                 + _examples(f"{week(d, ln)} in as_of {a.isoformat()} ({name})"
                             for ln, a, name, d in late)
-                + ").", lines)
+                + ")."
+                # on or before the as_of as written, after it once moved
+                + (" Each date was moved to the Saturday that ends its "
+                   "week, which falls after the as_of: a snapshot holds "
+                   "only weeks that ended by its as_of."
+                   if shift and all(d - timedelta(days=shift) <= a
+                                    for _, a, _, d in late) else ""), lines)
 
 
 # ------------------------------------------------------------------ storage

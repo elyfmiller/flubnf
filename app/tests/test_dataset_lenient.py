@@ -186,6 +186,23 @@ def test_an_as_of_that_reads_both_ways_is_settled_by_its_snapshots():
                   b"2023-12-30,A,5,1/3/2024\n2024-01-06,A,6,1/13/2024\n"))
 
 
+def test_an_as_of_passed_only_by_the_move_to_saturday_says_so():
+    """A same-day as_of on Wednesday dates is refused (the week ends on
+    the Saturday after it), which surprised: the message says why."""
+    raw = (b"target_end_date,location,observation,as_of\n"
+           b"2024-01-03,A,5,2024-01-10\n2024-01-10,A,6,2024-01-10\n")
+    p = only(D.validate(raw), "as_of_before_date")
+    assert "2024-01-10 (week ending 2024-01-13) in as_of 2024-01-10" \
+        in p.message
+    assert "Each date was moved to the Saturday that ends its week" \
+        in p.message
+    # a week after its as_of as written needs no such note
+    p = only(D.validate(b"target_end_date,location,observation,as_of\n"
+                        b"2024-01-06,A,5,2024-01-06\n"
+                        b"2024-01-13,A,6,2024-01-06\n"), "as_of_before_date")
+    assert "moved to the Saturday" not in p.message
+
+
 def test_a_single_week_written_month_or_day_first_is_refused():
     """Over two weeks or more the weekdays and gaps tell a day-first file;
     over one, 06/01/2024 was read as June 1 without a word."""
