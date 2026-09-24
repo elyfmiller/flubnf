@@ -199,5 +199,5 @@ def test_the_season_page_offers_the_model_toggle_above_the_map(
     assert 'id="retro-model"' in html
     assert 'data-mmodel="pf" aria-pressed="true"' in html
     assert 'data-mmodel="analogue" aria-pressed="false"' in html
-    assert "Groundhog outlook" in html
+    assert "Groundhog categorical forecast" in html
     assert "#retro-model button[data-mmodel]" in html      # the follower

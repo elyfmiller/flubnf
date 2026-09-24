@@ -58,7 +58,7 @@ def test_player_controls_present():
     assert "ArrowLeft" in PLAYER_JS and "ArrowRight" in PLAYER_JS
     # view tabs and both views
     for marker in ('id="tab-map"', 'id="tab-fc"', 'id="view-map"',
-                   'id="view-fc"', "Outlook map", "Forecast detail"):
+                   'id="view-fc"', "Categorical forecast", "Forecast detail"):
         assert marker in html, marker
     # forecast detail: location select, model toggles, plot, US labeling
     for marker in ('id="fd-loc"', 'id="fd-models"', 'id="fd-plot"'):

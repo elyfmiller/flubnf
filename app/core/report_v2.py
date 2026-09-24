@@ -92,12 +92,15 @@ QBANDS = ((0.025, 0.975, _rgba(_PF_COLOR, 0.13), "95% interval"),
           (0.10, 0.90, _rgba(_PF_COLOR, 0.20), "80% interval"),
           (0.25, 0.75, _rgba(_PF_COLOR, 0.30), "50% interval"))
 
-#: map labels: player.js display names + " outlook". Typed, not derived
-#: (report_season, which parses the names, imports this module): keep in step.
-#: The retired blend's entry serves only older bundles.
-MODEL_LABEL = {"ensemble": "FluBNF Ensemble (retired) outlook",
-               "pf": "Oracle SIHRS outlook",
-               "analogue": "Groundhog outlook"}
+#: the map's target: FluSight's "wk flu hosp rate change" categorical target
+CAT_FORECAST = "categorical forecast"
+#: player.js display names, typed here (report_season, which parses the
+#: names, imports this module): keep in step. The retired blend's entry
+#: serves only older bundles.
+MODEL_SHORT = {"ensemble": "FluBNF Ensemble (retired)",
+               "pf": "Oracle SIHRS", "analogue": "Groundhog"}
+#: map labels: the display name + " categorical forecast"
+MODEL_LABEL = {m: f"{n} {CAT_FORECAST}" for m, n in MODEL_SHORT.items()}
 #: outlook toggle order: the shipped models, PF first; a stored blend last
 MODEL_ORDER = ("pf", "analogue", "ensemble")
 
@@ -246,7 +249,7 @@ def cat_bar(probs):
         x=[CAT_LABEL[c] for c in CATS], y=[probs.get(c, 0) for c in CATS],
         marker_color=[CAT_COLOR[c] for c in CATS],
         hovertemplate="%{x}: %{y:.0%}<extra></extra>"))
-    f = _fig_layout(fig, height=230, title="rate-change outlook (1 wk)")
+    f = _fig_layout(fig, height=230, title="categorical forecast (1 wk)")
     f.update_yaxes(tickformat=".0%", range=[0, 1])
     return f
 
@@ -540,7 +543,7 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
         model_toggle_html = usmap.model_toggle(
             order, MODEL_LABEL, default, payload,
             group_id="outlook-model", btn_class="", active_class="on",
-            wrap_class="viewtoggle")
+            wrap_class="viewtoggle", short_labels=MODEL_SHORT)
 
     sections = []
     back_btn = ('<button class="backbtn" onclick="backToMap()">'
@@ -640,8 +643,8 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
   <span><i class="sw" style="background:{cat_fill('increase')};opacity:1"></i>confident</span>
  </div>
 </div>
-<p class="hint">Hover a state for its outlook, click it for detail;
- Ctrl+scroll zooms the map (⌘ on Mac).{no_data_caption}</p>
+<p class="hint">Hover a state for its category probabilities, click it
+ for detail; Ctrl+scroll zooms (⌘ on Mac).{no_data_caption}</p>
 {"".join(sections)}
 {nat}
 <script>

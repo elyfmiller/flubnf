@@ -214,7 +214,7 @@ def test_the_season_page_names_pf_for_the_tree_it_shows(world):
     assert f"aria-pressed=\"false\">{FILTER}<" in t
     # the map toggle the week's two models draw
     assert 'id="retro-model"' in html
-    assert f"{FILTER} outlook" in t and f"{ORACLE} outlook" not in t
+    assert f"{FILTER} categorical forecast" in t and f"{ORACLE} categorical forecast" not in t
     # the in-page player's shared map is set before the player is built
     line = f"FluBNFPlayer.MODEL_NAMES.pf = {json.dumps(FILTER)};"
     assert line in html
@@ -226,7 +226,7 @@ def test_the_season_page_names_pf_for_the_tree_it_shows(world):
     html = _page(OTHER)                   # a tree that carries the step
     t = _text(html)
     assert f"<h2>{ORACLE}</h2>" in t
-    assert f"{ORACLE} outlook" in t
+    assert f"{ORACLE} categorical forecast" in t
     assert f"FluBNFPlayer.MODEL_NAMES.pf = {json.dumps(ORACLE)};" in html
     assert FILTER not in t
 

@@ -240,7 +240,7 @@ def test_home_outlook_card_has_heading_and_legend():
     r = client.get("/")
     assert r.status_code == 200
     # the card names its payload like every other card in the app
-    assert "US outlook" in r.text
+    assert "US categorical forecast" in r.text
     # and the legend rides with the map, so the encoding is readable
     # without hovering
     assert 'class="hint maplegend"' in r.text
@@ -254,7 +254,7 @@ def test_home_outlook_caption_states_coverage_when_a_run_exists():
         outlook_n=1, missing=[],
         versions={"pybnf": "x", "bngsim": "x", "bionetgen": "x",
                   "fastapi": "x", "plotly": "x"})
-    assert "US outlook · 2026-01-24" in html      # dated in the heading
+    assert "US categorical forecast · 2026-01-24" in html      # dated in the heading
     assert "cover 1 of 52" in html                # one green state is not a
     assert "the rest show as no data" in html     # national outlook
     # without a run, the card stays honest about being empty

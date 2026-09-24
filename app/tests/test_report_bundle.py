@@ -320,15 +320,15 @@ def test_home_map_renders_the_reports_exact_cards(tmp_path, monkeypatch):
     expect = {c["fips"]: c for c in bundle["cards"].values() if c.get("fips")}
     assert cards == expect                          # exact, not recomputed
     assert meta == {"model": "pf", "approx": False,
-                    "label": "Oracle SIHRS outlook",
+                    "label": "Oracle SIHRS categorical forecast",
                     # the v4 scope record rides with the cards so the home
                     # map can say which card-less states were unfitted
                     "fitted_fips": ["39"]}
     # the model label lands on BOTH surfaces
-    assert "Oracle SIHRS outlook" in (w / "report.html").read_text()
+    assert "Oracle SIHRS categorical forecast" in (w / "report.html").read_text()
     home = client.get("/")
     assert home.status_code == 200
-    assert "Oracle SIHRS outlook" in home.text
+    assert "Oracle SIHRS categorical forecast" in home.text
     assert "approximate, from stored quantiles" not in home.text
 
 
@@ -336,7 +336,7 @@ def test_pf_only_run_records_and_labels_pf(tmp_path):
     _synth_run(tmp_path)
     bundle = json.loads((tmp_path / report_v2.BUNDLE_NAME).read_text())
     assert bundle["cards_model"] == "pf"
-    assert "Oracle SIHRS outlook" in (tmp_path / "report.html").read_text()
+    assert "Oracle SIHRS categorical forecast" in (tmp_path / "report.html").read_text()
 
 
 def test_pre_bundle_run_falls_back_and_labels_the_approximation(
@@ -370,7 +370,7 @@ def test_v1_bundle_still_loads_and_renders_as_pf(tmp_path, monkeypatch):
     os.utime(d / "report.html", OLD_MTIME)
     r = client.get("/output/report?date=2098-01-03")
     assert r.status_code == 200 and "OLD FACE" not in r.text
-    assert "Oracle SIHRS outlook" in r.text
+    assert "Oracle SIHRS categorical forecast" in r.text
 
 
 def test_categorical_probs_from_quantiles_matches_the_sample_computation():

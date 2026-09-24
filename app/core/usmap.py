@@ -319,12 +319,14 @@ def model_toggle(models: list, labels: dict, default: str, payload: dict,
                  group_id: str = "outlook-model", dom_id: str = "usmap",
                  nat_dom_id: str = "usmap-nat", btn_class: str = "",
                  active_class: str = "on",
-                 wrap_class: str = "viewtoggle") -> str:
+                 wrap_class: str = "viewtoggle",
+                 short_labels: dict | None = None) -> str:
     """The compact model switch above an outlook map: aria-pressed buttons
     plus the swap script.
 
     models: the models the payload actually carries, in display order.
     labels: model -> surface label (report_v2.MODEL_LABEL).
+    short_labels: model -> button text (default: the surface label).
     payload: model -> {"states": state_swap_payload(...),
                        "us": nat_swap_payload(...)}.
     Buttons swap `active_class` ('gold' in the console, 'on' in the report);
@@ -345,13 +347,14 @@ def model_toggle(models: list, labels: dict, default: str, payload: dict,
         btns.append(
             f'<button type="button"{cls_attr} '
             f'data-mmodel="{m}" aria-pressed="{str(on).lower()}">'
-            f'{_esc(labels.get(m, m))}</button>')
+            f'{_esc((short_labels or {}).get(m) or labels.get(m, m))}'
+            '</button>')
     pj = json.dumps(payload).replace("</", "<\\/")
     lj = json.dumps({m: labels.get(m, m) for m in models}).replace("</",
                                                                    "<\\/")
     return f"""
 <div class="{wrap_class}" id="{group_id}" role="group"
-     aria-label="Outlook model">{''.join(btns)}</div>
+     aria-label="Categorical forecast model">{''.join(btns)}</div>
 <script>
 (function() {{
   var P = {pj}, LB = {lj};

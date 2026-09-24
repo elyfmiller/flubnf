@@ -506,7 +506,7 @@ def build_outlook(seasons: dict, pin: tuple | None = None) -> dict:
     models += [m for m in sorted(cards_by_model) if m not in models]
     if not models:
         raise BuildError("the forecast source carries no model with "
-                         "categorical outlook cards")
+                         "categorical forecast cards")
     default = models[0]
 
     fills = {m: usmap.state_swap_payload(cards_by_model[m]) for m in models}

@@ -909,7 +909,8 @@ def _outlook_block_cached(rid: str | None, mtime: float) -> dict:
                 outlook_toggle = usmap.model_toggle(
                     order, report_v2.MODEL_LABEL, default, payload,
                     group_id="outlook-model", btn_class="quiet",
-                    active_class="gold", wrap_class="row viewtabs")
+                    active_class="gold", wrap_class="row viewtabs",
+                    short_labels=report_v2.MODEL_SHORT)
         except Exception:
             outlook_toggle = ""
     except Exception:
@@ -4722,14 +4723,17 @@ def retro_results(request: Request, season: str, week: str = "",
         from app.core import usmap as _usmap
         # report_v2.MODEL_LABEL, with pf's following this tree's name
         map_labels = dict(report_v2.MODEL_LABEL)
+        map_short = dict(report_v2.MODEL_SHORT)
         if names.get("pf") != _model_names().get("pf"):
-            map_labels["pf"] = f"{names['pf']} outlook"
+            map_labels["pf"] = f"{names['pf']} {report_v2.CAT_FORECAST}"
+            map_short["pf"] = names["pf"]
         map_toggle = _usmap.model_toggle(
             map_models, map_labels, map_models[0],
             {m: {"states": _usmap.state_swap_payload(by_model[m]), "us": {}}
              for m in map_models},
             group_id="retro-model", btn_class="quiet",
-            active_class="gold", wrap_class="row viewtabs")
+            active_class="gold", wrap_class="row viewtabs",
+            short_labels=map_short)
     map_html = map_toggle + svg_map(cards)
     if not scoreable and not score_error:
         # scored zero cells with no exception: diagnose WHICH input is empty

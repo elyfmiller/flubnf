@@ -257,11 +257,11 @@ def test_one_name_for_the_ensemble_on_every_human_facing_surface():
     """
     from app.core import report_v2, site_page
     assert _player_map()["ensemble"] == "FluBNF Ensemble (retired)"
-    # the outlook maps append "outlook" to the same names; the map is typed
+    # the map labels append "categorical forecast" to the same names; the map is typed
     # in report_v2 (report_season holds the parse and imports it), so this
     # is where the drift would happen
     names = _player_map()
-    assert report_v2.MODEL_LABEL == {m: names[m] + " outlook"
+    assert report_v2.MODEL_LABEL == {m: names[m] + " categorical forecast"
                                      for m in report_v2.MODEL_LABEL}
     # no surface still carries the old name: the shared map, the published
     # site's member table, and the console templates
