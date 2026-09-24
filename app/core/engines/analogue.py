@@ -461,6 +461,13 @@ def run(spec, notes: dict | None = None, flags: list | None = None) -> dict:
             notes[loc] = (f"abstained: newest reported week "
                           f"{pd.Timestamp(_date).date()} reads {anchor:g} "
                           f"({unrep})")
+        elif notes is not None:
+            # no forecast from the newest week itself: a count of 0 is a
+            # ratio of nothing (flubnf/analogue.py returns None for an
+            # anchor <= 0); recorded so the location's absence is named
+            notes[loc] = (f"no forecast: newest week reads {anchor:g}"
+                          if not anchor > 0 else
+                          "no forecast: the donors gave no distribution")
     return out
 
 

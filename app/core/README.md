@@ -45,7 +45,9 @@ One line per module, with the role tag its docstring opens with and its main cal
 | `oracle.py` | PRODUCTION | the Oracle step on the filter's samples (science in `flubnf/oracle*.py`) | `retro.run_week`, server `pipeline._run_all` |
 | `oracle_text.py` | PAGE COPY | Oracle SIHRS sentences and record figures (Jinja global `oracle_text`) | server |
 | `oracle_backfill.py` | VERIFICATION CLI ONLY | backfill a stored season into a new root, reproduce the screen | `flubnf oracle backfill` / `reproduce` |
-| `submit.py` | PRODUCTION | hub submission CSVs and their validation | server `pipeline._run_all`, `oracle` |
+| `submit.py` | PRODUCTION | hub submission CSVs and their validation; an invalid location is dropped, a file-level defect refuses the file | server `pipeline._run_all`, `oracle` |
+| `coverage.py` | PRODUCTION | which locations a submission file covers and why the others are missing, from the run record | server Output and run pages |
+| `archive_record.py` | PRODUCTION | the forecast archive's record: which run it holds, never a downgrade, the "submitted" mark | server `pipeline._archive_run`, Output page, Storage |
 
 ## Reports
 

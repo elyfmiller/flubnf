@@ -293,6 +293,9 @@ def run_page(request: Request, run_id: str):
                            if o.get(k)}
         except Exception:
             err = ""
+    # each file's location coverage and why any location is missing
+    if not res.get("dataset"):
+        output_routes._attach_coverage(subs, o, spec_json or res.get("spec"))
     # a 'running' row with no live worker = the app was closed mid-run
     if status == "running" and not (_status.get("running") or "").endswith(run_id):
         status = "interrupted"

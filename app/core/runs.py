@@ -351,6 +351,11 @@ def anchor_notes_row(o: dict, names: dict):
         notes = o.get(key)
         if not isinstance(notes, dict) or not notes:
             continue
+        # a newest week that reads 0 is not an unreported week: its own row
+        notes = {k: v for k, v in notes.items()
+                 if not str(v).startswith(NO_FORECAST)}
+        if not notes:
+            continue
         name = names.get(m, m)
         ab = sum(str(v).startswith("abstained") for v in notes.values())
         moved = len(notes) - ab
@@ -371,6 +376,38 @@ def anchor_notes_row(o: dict, names: dict):
                "weeks and the location abstains. " + " ".join(lines))
     return ("Unreported newest weeks",
             _html.escape("; ".join(parts)) + tip)
+
+
+#: the engine note of a location with no forecast from its newest week
+#: (the Groundhog: a newest count of 0 is a ratio of nothing)
+NO_FORECAST = "no forecast"
+
+
+def no_forecast_row(o: dict, names: dict):
+    """The Results table's row for locations an engine gave no forecast
+    from their newest week (engine notes starting NO_FORECAST), or None:
+    a count per member, each location's note in the "?" tip."""
+    import html as _html
+    parts, lines = [], []
+    for m, key in ANCHOR_NOTE_KEYS:
+        notes = o.get(key)
+        if not isinstance(notes, dict):
+            continue
+        hit = {k: v for k, v in notes.items()
+               if str(v).startswith(NO_FORECAST)}
+        if not hit:
+            continue
+        name = names.get(m, m)
+        parts.append(f"{name}: {len(hit)} location"
+                     f"{'s' if len(hit) != 1 else ''}")
+        lines += [f"{name}, {loc}: {v}." for loc, v in sorted(hit.items())]
+    if not parts:
+        return None
+    tip = _tip("no-forecast", "locations with no forecast",
+               "The Groundhog forecasts a ratio of the newest count, so a "
+               "newest week that reads 0 gives it nothing to scale and the "
+               "location is left out of its file. " + " ".join(lines))
+    return ("No forecast", _html.escape("; ".join(parts)) + tip)
 
 
 def _results_note(d: dict) -> str:
@@ -459,6 +496,9 @@ def results_html(outcome, spec, heading: bool = True) -> str:
     arow = anchor_notes_row(o, HUB_MEMBER_NAMES)
     if arow:
         rows.append(arow)
+    nrow = no_forecast_row(o, HUB_MEMBER_NAMES)
+    if nrow:
+        rows.append(nrow)
     if "data_flags" in o:
         # only a run with a missing-data rule on carries the key
         import html as _html_fl
@@ -519,6 +559,9 @@ def dataset_results_html(o: dict, d: dict, heading: bool = True) -> str:
     arow = anchor_notes_row(o, MEMBER_LABELS)
     if arow:
         rows.append(arow)
+    nrow = no_forecast_row(o, MEMBER_LABELS)
+    if nrow:
+        rows.append(nrow)
     if "data_flags" in o:
         # only a run with a missing-data rule on carries the key
         from app.core import missing as _missing
@@ -728,6 +771,29 @@ class Ledger:
             "elapsed_s=MAX(0, ? - created_utc) WHERE run_id=?",
             (status, json.dumps(outcome), now, now, run_id))
         self._db.commit()
+
+    def update_outcome(self, run_id: str, patch: dict, drop=()) -> bool:
+        """Merge `patch` into one closed row's outcome and remove the keys
+        in `drop` (status and times unchanged); False for an unknown row.
+        For marks made after the run (app/core/archive_record.py)."""
+        cur = self._db.execute(
+            "SELECT outcome_json FROM runs WHERE run_id=?", (str(run_id),))
+        r = cur.fetchone()
+        if r is None:
+            return False
+        try:
+            o = json.loads(r[0] or "{}")
+        except (ValueError, TypeError):
+            o = {}
+        if not isinstance(o, dict):
+            o = {}
+        for k in drop:
+            o.pop(k, None)
+        o.update(patch)
+        self._db.execute("UPDATE runs SET outcome_json=? WHERE run_id=?",
+                         (json.dumps(o), str(run_id)))
+        self._db.commit()
+        return True
 
     #: how a dataset run's spec_json marks it (RunSpec.extra["dataset"])
     DATASET_MARK = '"dataset": {'

@@ -98,6 +98,68 @@ def _submission_files(d: Path) -> list:
     return out
 
 
+def _member_of(dir_name: str) -> str:
+    """The member key ("pf", "analogue") of a registered or modified
+    submission folder; "" for anything else."""
+    from app.core.submit import MODEL_ABBR, hub_model_id
+    for k in MODEL_ABBR:
+        if dir_name in (hub_model_id(k),
+                        hub_model_id(k) + _knobs.MODIFIED_SUFFIX):
+            return k
+    return ""
+
+
+def _attach_coverage(files: list, outcome: dict, spec) -> None:
+    """Each registered or modified file's `cov` (app/core/coverage.py):
+    how many of the run's requested locations it holds, and why the
+    others are missing. Left out when the run's record cannot say."""
+    import json as _json
+    import pandas as pd
+    from app.core import coverage
+    try:
+        sp = _json.loads(spec) if isinstance(spec, str) else (spec or {})
+        requested = list((sp or {}).get("locations") or [])
+    except (ValueError, TypeError):
+        requested = []
+    if not requested:
+        return
+    try:
+        from flubnf.settings import load_locations
+        locs = load_locations()
+        f2n = dict(zip(locs.location.astype(str).str.zfill(2),
+                       locs.location_name))
+        total = len(locs)
+    except Exception:
+        return
+    for entry in files:
+        member = _member_of(entry.get("model", ""))
+        if entry.get("archived") or not member:
+            continue
+        try:
+            codes = pd.read_csv(entry["path"], dtype=str,
+                                usecols=["location"]).location
+        except Exception:
+            continue
+        present = {f2n.get(str(c).zfill(2), str(c)) for c in set(codes)}
+        entry["cov"] = coverage.file_coverage(
+            outcome or {}, member, entry["model"], requested, present,
+            hub_total=total)
+
+
+def _outcome_of(rid) -> dict:
+    """A run's ledger outcome, {} when unknown or unreadable."""
+    import json as _json
+    from app.core.runs import Ledger
+    if not rid:
+        return {}
+    r = Ledger().row(rid)
+    try:
+        o = _json.loads((r or {}).get("outcome") or "{}")
+    except (ValueError, TypeError):
+        return {}
+    return o if isinstance(o, dict) else {}
+
+
 #: the hub's clock: the window closes at this hour, Eastern, on its last day
 HUB_CLOSE_HOUR = 23
 
@@ -213,6 +275,8 @@ def output_page(request: Request):
             except Exception:
                 pass
             files.append(entry)
+    outcome = _outcome_of(rid)
+    _attach_coverage(files, outcome, (res or {}).get("spec"))
     return templates.TemplateResponse(request, "output.html", {
         "active": "Output", "rid": rid,
         # the stored spec lets the label carry the research tag
@@ -224,8 +288,72 @@ def output_page(request: Request):
         # the files are named by the reference date, a week after the data
         "ref": _reference_date((res or {}).get("forecast_date", "")),
         "files": files,
+        # the date's forecast archive: which run it holds, the submitted
+        # mark, and whether this run was kept out of it (no downgrade)
+        "arch": _archive_view(rid, (res or {}).get("forecast_date", ""),
+                              outcome),
         "archive_dates": list(reversed(_archive_dates())),
         "has_report": bool(rid and (APP_STATE / "workroots" / rid / "report.html").is_file())})
+
+
+def _archive_view(rid, date: str, outcome: dict) -> dict | None:
+    """The Output page's archive line for the latest run's as-of date
+    (app/core/archive_record.py), None when no archive exists for it."""
+    from app.core import archive_record as _ar
+    st = _ar.status(date) if date else None
+    archived = str((outcome or {}).get("archived") or "")
+    if st is None:
+        return None
+    sub = st["submitted"]
+    return {"date": date, "run_id": st["run_id"],
+            "this_run": bool(rid) and st["run_id"] == rid,
+            "kept": archived.startswith("kept:"),
+            # why this run was kept out: the mark, or its own incompleteness
+            "kept_submitted": "marked submitted" in archived,
+            "submitted": sub is not None,
+            "submitted_at": (sub or {}).get("submitted_at", ""),
+            "busy": bool(shared._status.get("running"))}
+
+
+@router.post("/output/submitted")
+def output_submitted(request: Request, date: str = Form(""),
+                     mark: str = Form(""), run: str = Form("")):
+    """Mark (mark=1) or unmark (mark=0) the archive of an as-of date as
+    submitted to the hub. Only a record: FluBNF never uploads anything.
+    `run` is the run the page showed in the archive; a different one
+    there now refuses, as does a console run in progress (it may be
+    replacing the archive)."""
+    from app.core import archive_record as _ar
+    shared._invalidate_scans()
+    d = _ar.archive_dir(date)
+    if d is None or not d.is_dir():
+        shared._flash(f"No forecast archive for {date or 'that date'}. "
+                      "Nothing was marked.")
+        return RedirectResponse("/output", status_code=303)
+    if shared._status.get("running"):
+        shared._flash("A console run is in progress and may be writing the "
+                      "archive; mark it when the run finishes.")
+        return RedirectResponse("/output", status_code=303)
+    held = (_ar.read_record(d) or {}).get("run_id") or ""
+    if run and held and run != held:
+        shared._flash(f"The archive for {date} changed since the page was "
+                      "shown. Nothing was marked; review and try again.")
+        return RedirectResponse("/output", status_code=303)
+    if mark == "1":
+        rec = _ar.mark(date)
+        shared._flash(f"Marked the {date} archive as submitted "
+                      f"({rec['submitted_at']}). No later run replaces it, "
+                      "and Storage keeps it until you unmark it.")
+    elif mark == "0":
+        if _ar.unmark(date):
+            shared._flash(f"Unmarked the {date} archive: a later complete "
+                          "run may replace it again.")
+        else:
+            shared._flash(f"The {date} archive was not marked submitted.")
+    else:
+        shared._flash("Unrecognized request. Nothing was changed.")
+    shared._invalidate_scans()
+    return RedirectResponse("/output", status_code=303)
 
 
 def _dataset_workroot(p: Path, app_state: Path) -> bool:

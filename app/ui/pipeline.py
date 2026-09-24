@@ -519,6 +519,17 @@ def _run_all(spec: RunSpec) -> None:
             if _pf_notes:
                 outcome["pf_anchor_notes"] = _pf_notes
             pf_samples = pf_engine.collect(workroot)
+            # collect() records a torn trajectory in pf_status.json after
+            # execute's status was read: carry it into the run record, so
+            # a location missing from the file is named with its reason
+            try:
+                import json as _jcf
+                _st = _jcf.loads((workroot / "pf_status.json").read_text())
+                fails.update({k: str(v) for k, v in _st.items()
+                              if v != "ok" and k not in fails})
+                outcome["pf_failures"] = fails
+            except Exception:
+                pass
             # the Oracle step (app/core/oracle.py), before anything downstream
             # and before the floor. oracle = none is research: file withheld
             # in step 4, oracle.json records the step did not run.
@@ -685,14 +696,23 @@ def _run_all(spec: RunSpec) -> None:
                 continue
             # contained per model: a writer refusal (rows the hub would
             # bounce) costs that file, never the run; recorded for the run page
+            # a location whose rows alone fail the checks is dropped and
+            # the file written with the rest (recorded by name, per file)
+            _dropped: dict = {}
             try:
                 subs[hub_model_id(model) + _suffix] = str(write_submission(
                     rows, model, spec.forecast_date,
                     workroot / "submission",
-                    **({"suffix": _suffix} if _suffix else {})))
+                    **({"suffix": _suffix} if _suffix else {}),
+                    dropped=_dropped))
             except Exception as e:
                 outcome.setdefault("submission_errors", {})[
                     hub_model_id(model) + _suffix] = str(e)[:400]
+            if _dropped:
+                _f2n = {f: n for n, f in n2f.items()}
+                outcome.setdefault("submission_dropped", {})[
+                    hub_model_id(model) + _suffix] = {
+                        _f2n.get(f, f): why for f, why in _dropped.items()}
         outcome["submissions"] = subs
         if "optional_rows" in outcome:
             outcome["optional_rows"] = {k: v for k, v in
@@ -790,8 +810,19 @@ def _run_all(spec: RunSpec) -> None:
             outcome["archived"] = (f"skipped: {'analogue' if spec.engine == 'analogue' else 'Oracle SIHRS'}"
                                    "-only run is not the date's forecast")
         else:
+            # no downgrade: only a complete run (finished ok, both files
+            # written whole, no submission error) replaces an archived one
+            _complete = (not fails
+                         and not outcome.get("submission_errors")
+                         and not outcome.get("submission_withheld")
+                         and not outcome.get("submission_dropped")
+                         and {hub_model_id("pf"), hub_model_id("analogue")}
+                         <= set(subs))
             try:
-                outcome["archived"] = _archive_run(workroot, spec.forecast_date)
+                outcome["archived"] = (
+                    _archive_run(workroot, spec.forecast_date) if _complete
+                    else _archive_run(workroot, spec.forecast_date,
+                                      complete=False))
             except Exception as e:
                 outcome["archive_error"] = str(e)[:200]
         # the pipeline completed: fit failures make it "partial" (the chips
@@ -844,12 +875,20 @@ def _run_all(spec: RunSpec) -> None:
 
 
 # === Forecast archive ===
-def _archive_run(workroot: Path, forecast_date: str) -> str:
+def _archive_run(workroot: Path, forecast_date: str,
+                 complete: bool = True) -> str:
     """Copy the run's deliverables to app/state/archive/<forecast_date>/,
     replacing any earlier archive for the date. Built beside, then swapped:
-    a crash mid-copy costs this attempt, never the existing record."""
+    a crash mid-copy costs this attempt, never the existing record.
+
+    Never a downgrade (app/core/archive_record.py): an archive marked
+    submitted is never replaced, and an incomplete run (`complete` False)
+    does not replace an archive that holds a complete one. Then nothing
+    is copied, the run's files stay in its own folder, and the answer is
+    "kept: <why>". The archive records which run it holds (archive.json)."""
     import os
     import shutil
+    from app.core import archive_record as _ar
     from app.core.report_v2 import BUNDLE_NAME
     from app.core.runs import APP_STATE
     arch = APP_STATE / "archive" / forecast_date
@@ -863,6 +902,9 @@ def _archive_run(workroot: Path, forecast_date: str) -> str:
             shutil.rmtree(old)
         else:                   # crashed between the two renames below:
             os.replace(old, arch)   # the parked previous archive comes back
+    keep = _ar.keep_reason(arch, complete)
+    if keep:
+        return f"kept: {keep}"
     build.mkdir(parents=True)
     try:
         # the report travels with its inputs bundle (rebuildable)
@@ -872,6 +914,7 @@ def _archive_run(workroot: Path, forecast_date: str) -> str:
                 shutil.copy2(workroot / name, build / name)
         if (workroot / "submission").is_dir():
             shutil.copytree(workroot / "submission", build / "submission")
+        _ar.write_record(build, Path(workroot).name, complete)
     except BaseException:
         shutil.rmtree(build, ignore_errors=True)
         raise

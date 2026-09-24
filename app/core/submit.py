@@ -174,18 +174,27 @@ def validate(df: pd.DataFrame, key_col: str = "location") -> list:
     `key_col` names the unit column: 'location' for the hub, or a custom
     dataset's own ('target_group' for a grouped-CSV export).
     """
-    problems = []
+    file_level, by_unit = validate_split(df, key_col)
+    return file_level + [m for ms in by_unit.values() for m in ms]
+
+
+def validate_split(df: pd.DataFrame, key_col: str = "location") -> tuple:
+    """validate's defects split by where they sit: (file-level defects,
+    {unit: [defects confined to that unit's rows]}), both in validate's
+    order and words."""
     if df.empty:
-        return ["submission is empty"]
+        return ["submission is empty"], {}
     q = df[df.output_type == "quantile"].copy()
     if q.empty:
-        return ["submission carries no quantile rows"]
+        return ["submission carries no quantile rows"], {}
     try:
         # numeric levels: a string column would sort lexicographically
         q["_level"] = [round(float(x), 4) for x in q.output_type_id]
     except (TypeError, ValueError):
-        return ["quantile rows carry a non-numeric output_type_id"]
+        return ["quantile rows carry a non-numeric output_type_id"], {}
+    by_unit: dict = {}
     for (loc, h), g in q.groupby([key_col, "horizon"]):
+        problems = by_unit.setdefault(loc, [])
         g = g.sort_values("_level")
         levels = list(g["_level"])
         v = g.value.to_numpy()
@@ -199,11 +208,24 @@ def validate(df: pd.DataFrame, key_col: str = "location") -> list:
             problems.append(f"{loc} h={h}: negative quantile value")
         if v[0] == v[-1] and v[0] > 0:
             problems.append(f"{loc} h={h}: degenerate (zero-width) distribution")
-    return problems
+    return [], {k: v for k, v in by_unit.items() if v}
+
+
+def _reason(problems: list, strip: str = "") -> str:
+    """One location's defects as a short reason for the run record."""
+    out = []
+    for m in problems[:3]:
+        m = str(m)
+        if strip and m.startswith(strip + " "):
+            m = m[len(strip) + 1:]
+        out.append(m)
+    more = len(problems) - len(out)
+    return "; ".join(out) + (f"; and {more} more" if more > 0 else "")
 
 
 def write_submission(all_rows: Iterable[dict], model: str, asof: str,
-                     out_dir: Path, suffix: str = "") -> Path:
+                     out_dir: Path, suffix: str = "",
+                     dropped: dict | None = None) -> Path:
     """One hub-format CSV per model (identity is the PATH, rule above).
 
     `model` is a MODEL_ABBR key (never a free-text name); `asof` is the
@@ -211,10 +233,20 @@ def write_submission(all_rows: Iterable[dict], model: str, asof: str,
     fatal here, before the hub rejects it. `suffix` (knobs.MODIFIED_SUFFIX
     for a run with modified model settings) makes the directory and file
     a NON-hub name, so such a file can never pass for the registered
-    model."""
+    model.
+
+    Partial files: a defect confined to one location's rows (validate's
+    per-location defects, or a hub check that fails on that location's
+    rows alone) drops that location; the file is written with the rest
+    and checked again. `dropped`, when given, receives location code ->
+    reason for each one. A file-level defect (name, folder, columns,
+    reference date, mixed dates, a non-Saturday date) or no valid location
+    left still refuses the whole file. A file with no defect is written
+    exactly as before."""
     df = pd.DataFrame(list(all_rows))
-    problems = validate(df)
-    if problems:
+    file_level, by_loc = validate_split(df)
+    if file_level or (by_loc and set(by_loc) >= set(df["location"])):
+        problems = file_level + [m for ms in by_loc.values() for m in ms]
         raise ValueError("submission failed validation:\n  " +
                          "\n  ".join(problems[:10]))
     if "reference_date" not in df.columns:
@@ -229,6 +261,11 @@ def write_submission(all_rows: Iterable[dict], model: str, asof: str,
             f"file would be named for {ref} (as-of {asof} + 7 days) while "
             f"the rows carry {', '.join(in_rows)}. Both must come from one "
             "as-of; build the rows and write the file with the same value.")
+    gone: dict = {}
+    if by_loc:
+        gone.update({str(loc): _reason(ms, str(loc))
+                     for loc, ms in by_loc.items()})
+        df = df[~df["location"].isin(list(by_loc))]
     d = Path(out_dir) / model_id
     d.mkdir(parents=True, exist_ok=True)
     p = d / f"{ref}-{model_id}.csv"
@@ -238,29 +275,73 @@ def write_submission(all_rows: Iterable[dict], model: str, asof: str,
         # LF on every platform (pandas defaults to os.linesep): the hub's
         # files are LF, and a Windows lab machine writes the same bytes
         df.to_csv(tmp, index=False, lineterminator="\n")
-        _hub_gate(tmp, p.name, d.name, hub_named=not suffix)
+        bad_locs = _hub_gate(tmp, p.name, d.name, hub_named=not suffix)
+        if bad_locs:
+            # drop the locations the hub's checks fault on their own, then
+            # write the rest and check the whole file again
+            gone.update(bad_locs)
+            df = df[~df["location"].astype(str).isin(list(bad_locs))]
+            if df.empty:
+                raise ValueError(
+                    "submission failed the hub's checks "
+                    "(app/core/hubcheck.py): no valid location left:\n  "
+                    + "\n  ".join(f"{k}: {v}" for k, v in
+                                   list(bad_locs.items())[:10]))
+            df.to_csv(tmp, index=False, lineterminator="\n")
+            _hub_gate(tmp, p.name, d.name, hub_named=not suffix,
+                      split=False)
         os.replace(tmp, p)
     finally:
         tmp.unlink(missing_ok=True)
+    if dropped is not None:
+        dropped.update(gone)
     return p
 
 
-def _hub_gate(tmp: Path, name: str, dir_name: str, hub_named: bool) -> None:
+#: hub checks whose failure is the whole file's (its name, its folder, its
+#: columns, its reference date): never cured by dropping a location
+FILE_CHECKS = ("file_name", "file_location", "colnames", "match_round_id")
+
+
+def _hub_gate(tmp: Path, name: str, dir_name: str, hub_named: bool,
+              split: bool = True) -> dict:
     """The written bytes, checked the way the hub checks them
-    (app/core/hubcheck.py, rules from the vendored tasks.json). Any defect
-    is fatal before the file takes its name. An off-season reference date
-    is not a defect (replays of summer weeks are records, not
-    submissions); a <hub id>-modified file skips the name checks, since
-    its name is deliberately not a hub name."""
+    (app/core/hubcheck.py, rules from the vendored tasks.json). A
+    file-level defect (FILE_CHECKS) is fatal before the file takes its
+    name. An off-season reference date is not a defect (replays of summer
+    weeks are records, not submissions); a <hub id>-modified file skips
+    the name checks, since its name is deliberately not a hub name.
+
+    Any other defect is traced to the locations whose rows fail on their
+    own; with `split` those are returned as {location: reason} for the
+    writer to drop. A defect no single location carries is fatal."""
     from app.core import hubcheck
-    res = hubcheck.check_frame(hubcheck.read_text_frame(tmp),
-                               name if hub_named else None,
+    frame = hubcheck.read_text_frame(tmp)
+    res = hubcheck.check_frame(frame, name if hub_named else None,
                                dir_name if hub_named else None)
     bad = hubcheck.failures(res)
-    if bad:
+    if not bad:
+        return {}
+
+    def _refuse(lines):
         raise ValueError("submission failed the hub's checks "
                          "(app/core/hubcheck.py):\n  "
-                         + "\n  ".join(bad[:10]))
+                         + "\n  ".join(lines[:10]))
+    if not split or any(res[c] for c in FILE_CHECKS) \
+            or "location" not in frame.columns:
+        _refuse(bad)
+    per_loc: dict = {}
+    pops = hubcheck._safe_populations()
+    for loc, g in frame.groupby("location", sort=False):
+        lb = hubcheck.failures(hubcheck.check_frame(
+            g.reset_index(drop=True), None, None, populations=pops))
+        if lb:
+            per_loc[str(loc)] = _reason(lb)
+    if not per_loc:
+        _refuse(bad)            # no single location carries the defect
+    if set(per_loc) >= set(frame["location"].astype(str)):
+        _refuse(bad)            # zero valid locations
+    return per_loc
 
 
 def rows_from_quantiles(qs: dict, location_fips: str, asof: str,
