@@ -124,3 +124,60 @@ def test_groundhog_only_accuracy_card_scores_the_groundhog(tmp_path):
     assert '<td class="num ok">0.500</td>' in sec
     assert "Oracle SIHRS relWIS" not in sec
     assert "no scored weeks yet" not in sec.lower()
+
+
+# ------------------------------------ Groundhog state detail sections (3)
+
+def test_groundhog_only_run_has_state_sections_from_its_quantiles(tmp_path):
+    """No PF samples: each state's fan comes from the Groundhog's
+    quantiles on the same as-of-relative weeks (as-of + 7, 14, 21, 28),
+    named as the Groundhog's, and the map links to it."""
+    from app.ui import pipeline as ui_pipeline
+    locs, n2f = _locs()
+    spec = runs_mod.RunSpec(engine="analogue", forecast_date="2098-01-03",
+                            locations=["Ohio", "US"])
+    obs = {loc: [[f"2097-12-{d:02d}", 100.0 + d] for d in (6, 13, 20, 27)]
+           for loc in ("Ohio", "US")}
+    ui_pipeline._write_weekly_report(
+        spec, tmp_path, {}, obs, pd.DataFrame(), locs, n2f, 1.0, {},
+        an_q={"Ohio": _gh_q(), "US": _gh_q(1000.0)})
+    bundle = json.loads((tmp_path / report_v2.BUNDLE_NAME).read_text())
+    oh = bundle["details"]["OH"]
+    assert oh["model"] == "analogue"
+    fan = oh["fan"]
+    assert fan["forecast_times"] == ["2098-01-10", "2098-01-17",
+                                     "2098-01-24", "2098-01-31"]
+    q = fan["quantiles"]["2098-01-10"]
+    assert q["0.5"] == 125.0 and q["0.025"] == 101.25
+    assert "Groundhog" in fan["title"]
+    assert sum(oh["cat_probs"].values()) > 0.99
+    assert bundle["details"]["US"]["model"] == "analogue"
+    html = (tmp_path / "report.html").read_text()
+    assert 'id="st-OH"' in html and "click it for detail" in html
+    assert re.search(r'data-fips="39" [^>]*data-abbr="OH"', html)
+    # the national section draws its (Groundhog) fan
+    sec = html[html.index('id="st-US"'):]
+    assert "national model run lands" not in sec
+
+
+def test_pf_samples_still_draw_the_pf_fan_where_they_exist(tmp_path):
+    """A state with PF samples keeps the PF's fan; only the states the PF
+    left out fall back to the Groundhog's."""
+    import numpy as np
+    from app.ui import pipeline as ui_pipeline
+    locs, n2f = _locs()
+    spec = runs_mod.RunSpec(engine="pf", forecast_date="2098-01-03",
+                            locations=["Ohio", "Utah"])
+    rng = np.random.default_rng(3)
+    pf = {"Ohio": {h: rng.gamma(5.0, 20.0, 300).tolist()
+                   for h in ("0", "1", "2", "3")}}
+    obs = {loc: [[f"2097-12-{d:02d}", 100.0 + d] for d in (6, 13, 20, 27)]
+           for loc in ("Ohio", "Utah")}
+    (tmp_path / "cells.json").write_text("[]")
+    ui_pipeline._write_weekly_report(
+        spec, tmp_path, pf, obs, pd.DataFrame(), locs, n2f, 1.0, {},
+        an_q={"Ohio": _gh_q(), "Utah": _gh_q()})
+    d = json.loads((tmp_path / report_v2.BUNDLE_NAME).read_text())["details"]
+    assert d["OH"]["model"] == "pf" and "Groundhog" not in d["OH"]["fan"][
+        "title"]
+    assert d["UT"]["model"] == "analogue"

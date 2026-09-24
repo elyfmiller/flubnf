@@ -146,7 +146,8 @@ BUNDLE_VERSION = 6
 #: national_map_cards (model toggle), v4 fitted_fips (gap vs not-fitted
 #: wording), v5 national_in_run (the national detail says US was not run),
 #: v6 gap_fips + no_forecast (a reporting gap only where no data was
-#: reported; elsewhere "no forecast" with its reason)
+#: reported; elsewhere "no forecast" with its reason) and a detail's
+#: "model" (a Groundhog fan where the state has no PF samples)
 SUPPORTED_BUNDLE_VERSIONS = (1, 2, 3, 4, 5, 6)
 FAN_LEVELS = (0.01, 0.025, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35,
               0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80,
@@ -189,6 +190,33 @@ def fan_quantiles(forecast_times, samples_by_h, levels=FAN_LEVELS) -> dict:
     return out
 
 
+def fan_quantiles_from_grid(forecast_times, grid_by_time,
+                            levels=FAN_LEVELS) -> dict:
+    """fan_quantiles for a member that arrives as quantiles (the
+    Groundhog): each time's {level: value} grid read on the bundle's
+    levels, linear between the stored ones (the FluSight grid IS
+    FAN_LEVELS, so normally a straight copy). Same return shape."""
+    out = {}
+    for t in forecast_times:
+        pairs = sorted((float(l), float(v))
+                       for l, v in grid_by_time[str(t)].items())
+        ls = [l for l, v in pairs if np.isfinite(v)]
+        vs = [v for l, v in pairs if np.isfinite(v)]
+        if not ls:
+            raise ValueError(f"no finite quantiles for {t}")
+        out[str(t)] = {str(lv): round(float(np.interp(lv, ls, vs)), 4)
+                       for lv in levels}
+    return out
+
+
+def _bands(color: str | None):
+    """QBANDS in another member's colour (None: the PF's)."""
+    if not color:
+        return QBANDS
+    return tuple((lo, hi, _rgba(color, a), name) for (lo, hi, _c, name), a
+                 in zip(QBANDS, (0.13, 0.20, 0.30)))
+
+
 def _q_at(qmap: dict, level: float) -> float:
     """One stored quantile, tolerating float-format drift in the keys."""
     key = str(level)
@@ -212,13 +240,14 @@ def fan_figure(observed_times, observed, forecast_times, samples_by_h,
 
 def fan_figure_from_quantiles(observed_times, observed, forecast_times,
                               quantiles_by_time, gaps=(), title="",
-                              settled=None):
+                              settled=None, band_color=None):
     """The same fan, drawn from a stored quantile grid (see fan_quantiles).
     This is the path render_bundle takes, so a rebuilt report draws its
-    fans with the current design code rather than replaying baked figures."""
+    fans with the current design code rather than replaying baked figures.
+    `band_color`: the member's colour for the bands (None: the PF's)."""
     import plotly.graph_objects as go
     fig = go.Figure()
-    for lo, hi, color, band_name in QBANDS:
+    for lo, hi, color, band_name in _bands(band_color):
         upper = [_q_at(quantiles_by_time[str(t)], hi)
                  for t in forecast_times]
         lower = [_q_at(quantiles_by_time[str(t)], lo)
@@ -605,8 +634,7 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
             group_id="outlook-model", btn_class="", active_class="on",
             wrap_class="viewtoggle", short_labels=MODEL_SHORT)
 
-    # the click invitation only when some state has a section to open (a
-    # Groundhog-only run has none: its drill-down fans are PF's)
+    # the click invitation only when some state has a section to open
     click_hint = (", click it for detail"
                   if any(a != "US" for a in state_details) else "")
     sections = []
@@ -796,11 +824,15 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
         fan_in = d.get("fan") or {}
         try:
             settled = [tuple(p) for p in (fan_in.get("settled") or [])]
+            # v6 "model": a Groundhog fan wears the Groundhog's colour
+            model = d.get("model") or "pf"
             fan = fan_figure_from_quantiles(
                 fan_in.get("observed_times") or [],
                 fan_in.get("observed") or [],
                 fan_in["forecast_times"], fan_in["quantiles"],
-                title=fan_in.get("title", ""), settled=settled or None)
+                title=fan_in.get("title", ""), settled=settled or None,
+                band_color=(MEMBER_COLORS.get(model)
+                            if model != "pf" else None))
             details[key] = {
                 "name": d.get("name", key), "note": d.get("note", ""),
                 "fan": fan, "cat": cat_bar(d.get("cat_probs") or {}),

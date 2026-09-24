@@ -126,8 +126,8 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
     Map cards for every model (pf reduced to the 23-level grid; an_q =
     Groundhog quantiles, loc -> horizon -> {level: value}) come from the
     one quantile-CDF path; the map renders PF-first and cards_model records
-    which. State drill-down fans are PF's. `ens_q` (retired blend) is
-    accepted and ignored. `scores`: model -> its scored frame (`df` is the
+    which. State drill-down fans are PF's, else the Groundhog's. `ens_q`
+    (retired blend) is accepted and ignored. `scores`: model -> its scored frame (`df` is the
     PF's); the accuracy card covers each model that ran. Mutates
     `outcome`; the caller contains failures."""
     import json as _json
@@ -283,41 +283,60 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
                     settled_by_loc[loc] = pts
     except Exception:
         settled_by_loc = {}
-    # state pages as DATA; render_bundle draws the figures
+    # state pages as DATA; render_bundle draws the figures. The fan is the
+    # PF's where it has samples, else the Groundhog's quantiles (a
+    # Groundhog-only run, or a state the PF left out), labelled as such
     details = {}
-    for loc, s in pf_samples.items():
+    # canonical horizons are AS-OF relative: hub label h is h+1 weeks past
+    # the as-of week (the files' target_end_date), whatever the newest
+    # observed week (an unreported or trimmed week moves it back)
+    _base = _dd.fromisoformat(spec.forecast_date)
+    f_t = [(_base + _tdd(days=7 * (h + 1))).isoformat()
+           for h in (0, 1, 2, 3)]
+    fan_src = [(loc, "pf", s) for loc, s in pf_samples.items()]
+    fan_src += [(loc, "analogue", q) for loc, q in an_q.items()
+                if loc not in pf_samples]
+    for loc, model, src in fan_src:
         fips_l = n2f.get(loc, "")
         obs_pairs = (obs.get(loc) or [])[-12:]
         o_t = [d for d, _ in obs_pairs]
         o_v = [v for _, v in obs_pairs]
-        # canonical horizons are AS-OF relative: hub label h is h+1 weeks
-        # past the as-of week (the files' target_end_date), whatever the
-        # newest observed week (an unreported or trimmed week moves it back)
-        _base = _dd.fromisoformat(spec.forecast_date)
-        f_t = [(_base + _tdd(days=7 * (h + 1))).isoformat()
-               for h in (0, 1, 2, 3)]
-        samples_h = {f_t[h]: s[str(h)] for h in (0, 1, 2, 3)}
         try:
-            q_by_t = report_v2.fan_quantiles(f_t, samples_h)
             lo_l = o_v[-1] if o_v else 0.0
-            # one week ahead = canonical "0", matching the fan above
-            probs_l = categorical_probs(
-                _np.asarray(s["0"], float), lo_l,
-                us_pop if fips_l == "US" else int(n2p.get(loc, 1e6)), 0)
+            pop_l = us_pop if fips_l == "US" else int(n2p.get(loc, 1e6))
+            if model == "pf":
+                q_by_t = report_v2.fan_quantiles(
+                    f_t, {f_t[h]: src[str(h)] for h in (0, 1, 2, 3)})
+                # one week ahead = canonical "0", matching the fan above
+                probs_l = categorical_probs(
+                    _np.asarray(src["0"], float), lo_l, pop_l, 0)
+            else:
+                grid = {h: (src.get(str(h)) or src.get(h))
+                        for h in (0, 1, 2, 3)}
+                q_by_t = report_v2.fan_quantiles_from_grid(
+                    f_t, {f_t[h]: grid[h] for h in (0, 1, 2, 3)})
+                probs_l = categorical_probs_from_quantiles(
+                    grid[0], lo_l, pop_l, 0)
             key = "US" if fips_l == "US" else n2a.get(loc, loc)
             meds = [q_by_t[t]["0.5"] for t in f_t]
+            # the off-season reading is the mechanistic model's
             note = ("Off-season: the model finds no sustained "
                     "transmission. This forecast reflects the recent "
                     "reporting background, not epidemic growth."
-                    if max(meds) <= 2 else "")
+                    if model == "pf" and max(meds) <= 2 else "")
+            title = f"{loc}: weekly admissions"
+            if model != "pf":
+                title += f" ({report_v2.MODEL_SHORT.get(model, model)})"
             details[key] = {
                 "name": "United States" if fips_l == "US" else loc,
                 "note": note,
+                # v6: whose fan this is (absent: the PF's)
+                "model": model,
                 "fan": {"observed_times": o_t, "observed": o_v,
                         "forecast_times": f_t, "quantiles": q_by_t,
-                        "title": f"{loc}: weekly admissions",
+                        "title": title,
                         "settled": settled_by_loc.get(loc)},
-                "cat_probs": probs_l,
+                "cat_probs": probs_l or {},
                 "table_rows": [(d, v) for d, v in obs_pairs[-6:]]}
         except Exception:
             continue
