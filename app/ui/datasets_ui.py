@@ -234,10 +234,49 @@ def _too_many_message() -> str:
             "read.")
 
 
-def _files_of(form) -> list:
-    """The chosen files of an upload form (one, or several snapshots)."""
-    return [f for f in form.getlist("file")
+#: the tables a snapshot folder gives (its other files are skipped)
+_TABLE_SUFFIXES = (".csv", ".tsv", ".txt")
+
+
+def _chosen(form, field: str) -> list:
+    return [f for f in form.getlist(field)
             if hasattr(f, "file") and getattr(f, "filename", "")]
+
+
+def _files_of(form) -> tuple:
+    """The chosen files of an upload form, and what to say instead when
+    they cannot be read together: ``(files, message, snapshots)``.
+
+    The box's first zone posts one CSV as ``file``; its second posts
+    snapshot files (chosen, dropped, or a whole folder, whose files other
+    than tables are skipped) as ``snapshots``. Several ``file`` entries
+    are snapshots too (the script's older posts, scripts, tests). Both
+    zones at once are refused: which one was meant is not clear."""
+    one = _chosen(form, "file")
+    posted = _chosen(form, "snapshots")
+    snaps = [f for f in posted if Path(str(f.filename)).suffix.lower()
+             in _TABLE_SUFFIXES]
+    if one and posted:
+        return [], "Choose one CSV or snapshot files, not both.", False
+    if posted and not snaps:
+        return [], "That folder holds no CSV, TSV or TXT files.", True
+    if snaps:
+        return snaps, "", True
+    if not one:
+        return [], "Choose a CSV file, or snapshot files.", False
+    return one, "", len(one) > 1
+
+
+#: one file given as snapshots that holds no as_of: final data
+_LONE = ("One snapshot file without an as_of column is read as final data, "
+         "not vintage-true; add the other snapshot files, one per as_of.")
+
+
+def _lone_snapshot(rep, snapshots: bool, n: int) -> str:
+    """_LONE when one file was given as snapshots and holds no as_of."""
+    s = getattr(rep, "summary", None) or {}
+    return _LONE if snapshots and n == 1 and s and not s.get(
+        "has_as_of") else ""
 
 
 def _render_data(request, _code: int = 200, **extra):
@@ -474,9 +513,9 @@ async def check(request: Request):
             "read."), 413)
     if form is TOO_MANY_FILES:
         return answer(_message_view(_too_many_message()), 413)
-    fs = _files_of(form)
+    fs, why, as_snaps = _files_of(form)
     if not fs:
-        return answer(_message_view("Choose a CSV file."), 400)
+        return answer(_message_view(why), 400)
     kind = _kind_field(form)
     if kind is None:
         return answer(_message_view("Say whether the values are counts or "
@@ -498,6 +537,9 @@ async def check(request: Request):
             except Exception:
                 pass
     chk = check_view(rep, kind=kind, columns=columns, files=len(fs))
+    lone = _lone_snapshot(rep, as_snaps, len(fs))
+    if lone:
+        chk["notices"] = [lone] + chk["notices"]
     # the name a store takes when none is typed
     name = (D.default_name(Path(str(fs[0].filename)).name, rep.targets,
                            target) if len(fs) == 1 else
@@ -530,7 +572,7 @@ async def upload(request: Request):
         return _render_data(request, upload={
             "name": "", "kind": "", "chk": _message_view(
                 _too_many_message())}, _code=413)
-    fs = _files_of(form)
+    fs, why, as_snaps = _files_of(form)
     name = str(form.get("name") or "").strip()
     kind = _kind_field(form)
     target = str(form.get("target") or "").strip() or None
@@ -539,8 +581,7 @@ async def upload(request: Request):
     back = {"name": name, "kind": kind or "", "target": target or ""}
     if not fs:
         return _render_data(request, upload={
-            **back, "chk": _message_view("Choose a CSV file to upload.")},
-            _code=400)
+            **back, "chk": _message_view(why)}, _code=400)
     if kind is None:
         return _render_data(request, upload={
             **back, "chk": _message_view("Say whether the values are counts "
@@ -573,8 +614,10 @@ async def upload(request: Request):
             except Exception:
                 pass
     shared._invalidate_scans()
-    warn = ds.meta.get("warnings") or []
-    done = (f"Stored the dataset {ds.name}: {len(ds.groups)} group(s), "
+    warn = list(ds.meta.get("warnings") or [])
+    if as_snaps and len(fs) == 1 and not ds.vintage_true:
+        warn.insert(0, _LONE)
+    done =(f"Stored the dataset {ds.name}: {len(ds.groups)} group(s), "
             f"{len(ds.weeks())} week(s).")
     if ds.meta.get("snapshot_files"):
         vs = ds.vintages()

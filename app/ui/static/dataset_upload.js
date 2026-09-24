@@ -1,20 +1,21 @@
-/* The upload box (templates/_dataset_upload.html), wherever it is placed.
-   A file dropped on the zone or chosen in its input is checked at once
-   (POST /data/datasets/check, nothing stored) and the result box shows
-   every problem, a column mapping, or a preview; changing the kind, the
-   target or a column checks again. Several files (chosen together, dropped
-   together, or a folder, chosen by the box's folder link where the
-   browser offers one, or dropped) are checked together as one dataset's
-   snapshots, one file per as_of; a folder gives its CSV, TSV and TXT
-   files, each posted with its folder path so the name can be the
-   folder's. The name follows the file's name (with
-   the chosen target of a file that holds several) until typed; the kind
-   shows what the values say until picked by hand (and is posted as "from
-   the values", kind_auto=1, until then), back to "from the values" when a
-   re-check finds they say nothing, and new files forget a kind picked
-   for the last ones. A column or
-   target select inside the result keeps the focus across its re-check:
-   the result stays up (dimmed) and the same select is focused in the new
+/* The upload box (templates/_dataset_upload.html), wherever it is placed:
+   two drop zones in one form. The first takes one weekly CSV (posted as
+   "file"); the second several dated snapshot files, chosen, dropped, or a
+   folder (chosen by its folder link, or dropped), posted as "snapshots",
+   each under its folder path so the name can be the folder's; a folder
+   gives its CSV, TSV and TXT files. Several files or a folder dropped on
+   the first zone go to the second (the status line says so), and files
+   chosen in one zone clear the other. Whatever was chosen is checked at
+   once (POST /data/datasets/check, nothing stored) and the result box
+   shows every problem, a column mapping, or a preview; changing the
+   kind, the target or a column checks again. The name follows the file's
+   name (with the chosen target of a file that holds several) until
+   typed; the kind shows what the values say until picked by hand (and
+   is posted as "from the values", kind_auto=1, until then), back to
+   "from the values" when a re-check finds they say nothing, and new
+   files forget a kind picked for the last ones. A column or target
+   select inside the result keeps the focus across its re-check: the
+   result stays up (dimmed) and the same select is focused in the new
    one. A short status line (role=status) says what the check found; the
    result itself is not a live region, so it is not read out each time.
    The preview's buttons submit the form itself (POST /data/datasets),
@@ -26,6 +27,7 @@
   'use strict';
 
   var TABLES = /\.(csv|tsv|txt)$/i;
+  var NO_TABLES = 'That folder holds no CSV, TSV or TXT files.';
 
   function esc(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -44,6 +46,10 @@
   // a file's name with its folder, when it came from one
   function pathOf(f) {
     return f.flubnfPath || f.webkitRelativePath || f.name;
+  }
+
+  function tables(fs) {
+    return fs.filter(function (f) { return TABLES.test(f.name); });
   }
 
   // a dropped folder's files (walked to any depth), or null when nothing
@@ -79,18 +85,21 @@
       });
     }
     return Promise.all(entries.map(walk)).then(function (xs) {
-      return [].concat.apply([], xs).filter(function (f) {
-        return TABLES.test(f.name);
-      }).sort(function (a, b) {
+      return tables([].concat.apply([], xs)).sort(function (a, b) {
         return pathOf(a) < pathOf(b) ? -1 : pathOf(a) > pathOf(b) ? 1 : 0;
       });
     });
   }
 
   function init(form) {
-    var input = form.querySelector('input[type=file]');
+    // the two zones: 'one' (one CSV) and 'snap' (snapshot files)
+    var boxes = {
+      one: {input: form.querySelector('[data-one]'),
+            zone: form.querySelector('[data-drop="one"]')},
+      snap: {input: form.querySelector('[data-snap]'),
+             zone: form.querySelector('[data-drop="snap"]')}
+    };
     var folder = form.querySelector('[data-folder]');
-    var zone = form.querySelector('[data-drop]');
     var name = form.querySelector('[data-name]');
     var kind = form.querySelector('[data-kind]');
     var auto = form.querySelector('[data-kind-auto]');
@@ -98,44 +107,60 @@
     var status = form.querySelector('[data-dsup-status]');
     var go = form.querySelector('.dsup-go button');
     var fold = form.closest('details');
-    var dropped = null;          // files the input could not take
+    var which = 'one';           // the zone whose files are checked
+    var dropped = null;          // files its input could not take
     var autoName = '';           // the name last filled in from a file name
     var kindChosen = false;      // the kind was picked by hand (this file)
+    var lead = '';               // said before the next check's status
     var seq = 0;
-    if (!input || !zone || !out || form.dataset.dsupReady) return;
+    if (!boxes.one.input || !boxes.one.zone || !boxes.snap.input
+        || !boxes.snap.zone || !out || form.dataset.dsupReady) return;
     form.dataset.dsupReady = '1';
     form.classList.add('js');
     if (go) go.disabled = true;  // the preview's buttons submit instead
-    // a folder of snapshots, where the browser can pick one
-    if (folder && 'webkitdirectory' in folder) {
-      var wrap = form.querySelector('[data-folder-wrap]');
-      if (wrap) wrap.hidden = false;
-    }
+    ['one', 'snap'].forEach(function (k) {
+      boxes[k].shown = boxes[k].zone.querySelector('[data-file]');
+    });
 
     function current() {
       if (dropped && dropped.length) return dropped;
-      return list(input.files);
+      return list(boxes[which].input.files);
     }
 
     function stem(n) {
       return n.replace(/^.*[\\/]/, '').replace(/\.[^.]*$/, '').slice(0, 80);
     }
 
-    // what the zone says was chosen: a file's name, or how many
+    // what a zone says was chosen: a file's name, or how many
     function said(fs) {
       if (fs.length === 1) return fs[0].name;
       var p = pathOf(fs[0]), dir = p.indexOf('/') > 0 ? p.split('/')[0] : '';
       return fs.length + ' files' + (dir ? ' from ' + dir : '');
     }
 
-    var shown = form.querySelector('[data-file]');
-    function picked(fs) {
+    function say(text) {
+      if (status) status.textContent = text;
+    }
+
+    // the other zone forgets what it held
+    function clear(k) {
+      var b = boxes[k];
+      try { b.input.value = ''; } catch (err) { /* older engines */ }
+      if (b.shown) b.shown.textContent = '';
+      b.zone.classList.remove('picked');
+    }
+
+    function picked(k, fs, note) {
       if (!fs || !fs.length) return;
+      which = k;
+      lead = note ? note + ' ' : '';
+      clear(k === 'one' ? 'snap' : 'one');
       form.classList.add('has-file');
-      if (shown) shown.textContent = said(fs);
+      boxes[k].zone.classList.add('picked');
+      if (boxes[k].shown) boxes[k].shown.textContent = said(fs);
       if (name && (!name.value || name.value === autoName)) {
-        // several files: the check answers with the folder's name
-        autoName = fs.length === 1 ? stem(fs[0].name) : '';
+        // snapshots: the check answers with the folder's name
+        autoName = k === 'one' ? stem(fs[0].name) : '';
         name.value = autoName;
       }
       if (kind) {                // new files: their own values decide
@@ -147,9 +172,10 @@
       check();
     }
 
-    // put files in the input when it can hold them (a native submit then
-    // posts them), else keep them for the submit below
-    function hold(fs) {
+    // put files in zone k's input when it can hold them (a native submit
+    // then posts them), else keep them for the submit below
+    function hold(k, fs) {
+      var input = boxes[k].input;
       dropped = null;
       try {
         if (typeof DataTransfer !== 'undefined') {
@@ -160,14 +186,7 @@
           input.files = fs;
         }
       } catch (err) { /* older engines */ }
-      if (!input.files || input.files.length !== fs.length) {
-        dropped = fs;
-        input.required = false;  // or validation would stop the submit
-      }
-    }
-
-    function say(text) {
-      if (status) status.textContent = text;
+      if (!input.files || input.files.length !== fs.length) dropped = fs;
     }
 
     // the control inside the result that had the focus, found again in
@@ -184,16 +203,16 @@
       el.focus();
     }
 
-    // the form's fields with the chosen files (several: each under its
-    // folder path)
+    // the form's fields with the chosen files: one CSV as "file",
+    // snapshots as "snapshots", each under its folder path
     function body(fs) {
       var fd = new FormData(form);
-      if (fs.length === 1) {
-        var cur = fd.get('file');
-        if (!cur || !cur.name) fd.set('file', fs[0], fs[0].name);
+      fd.delete('file');
+      fd.delete('snapshots');
+      if (which === 'one') {
+        fd.set('file', fs[0], fs[0].name);
       } else {
-        fd.delete('file');
-        fs.forEach(function (f) { fd.append('file', f, pathOf(f)); });
+        fs.forEach(function (f) { fd.append('snapshots', f, pathOf(f)); });
       }
       return fd;
     }
@@ -208,7 +227,7 @@
       var keep = act && act !== out && out.contains(act) ? act.id : null;
       var what = said(fs);
       form.setAttribute('aria-busy', 'true');
-      say('Checking ' + what + '…');
+      say(lead + 'Checking ' + what + '…');
       if (keep === null) {
         out.innerHTML = '<p class="hint">Checking ' + esc(what) + '…</p>';
       }
@@ -228,7 +247,8 @@
             kind.value = j.inferred_kind || '';
             if (auto) auto.value = j.inferred_kind ? '1' : '';
           }
-          say(j.status || '');
+          say(lead + (j.status || ''));
+          lead = '';
         })
         .catch(function () {
           if (my !== seq) return;
@@ -245,23 +265,32 @@
         });
     }
 
-    input.addEventListener('change', function () {
+    function none() {
+      say(NO_TABLES);
+      out.innerHTML = '<p class="bad">' + NO_TABLES + '</p>';
+    }
+
+    // snapshot files, from anywhere: held by the snapshot zone and checked
+    function snapshots(fs, moved) {
+      fs = tables(fs);
+      if (!fs.length) { none(); return; }
+      hold('snap', fs);
+      picked('snap', fs, moved ? fs.length + ' files: checked together as '
+        + 'snapshots, in the snapshot box.' : '');
+    }
+
+    boxes.one.input.addEventListener('change', function () {
       dropped = null;
-      picked(list(input.files));
+      picked('one', list(boxes.one.input.files));
+    });
+    boxes.snap.input.addEventListener('change', function () {
+      dropped = null;
+      picked('snap', list(boxes.snap.input.files));
     });
     if (folder) folder.addEventListener('change', function () {
-      var fs = list(folder.files).filter(function (f) {
-        return TABLES.test(f.name);
-      });
+      var fs = list(folder.files);
       folder.value = '';
-      if (!fs.length) {
-        say('That folder holds no CSV, TSV or TXT files.');
-        out.innerHTML = '<p class="bad">That folder holds no CSV, TSV or '
-          + 'TXT files.</p>';
-        return;
-      }
-      hold(fs);
-      picked(fs);
+      snapshots(fs, false);
     });
     if (kind) kind.addEventListener('change', function () {
       kindChosen = true;
@@ -275,50 +304,62 @@
       if (e.target && e.target.hasAttribute('data-recheck')) check();
     });
 
-    // drag and drop: the zone, and a closed fold around the box
-    function over(e) {
+    // drag and drop: each zone, and a closed fold around the box (which
+    // opens; files dropped on it go where their count says)
+    function dropOn(k, e) {
       if (!hasFiles(e)) return;
       e.preventDefault();
-      if (fold && !fold.open) fold.open = true;
-      zone.classList.add('over');
+      e.stopPropagation();
+      leave();
+      var walked = folderFiles(e.dataTransfer);
+      if (walked) {                  // a folder (or several): its tables
+        say('Reading the folder…');
+        walked.then(function (fs) {
+          if (!fs.length) { none(); return; }
+          snapshots(fs, k === 'one');
+        });
+        return;
+      }
+      var fs = list(e.dataTransfer.files);
+      if (!fs.length) return;
+      if (k === 'snap' || fs.length > 1) {
+        snapshots(fs, k !== 'snap');
+        return;
+      }
+      hold('one', fs);
+      picked('one', fs);
     }
-    function leave() { zone.classList.remove('over'); }
-    [zone, fold].forEach(function (el) {
-      if (!el) return;
-      el.addEventListener('dragenter', over);
-      el.addEventListener('dragover', over);
-      el.addEventListener('dragleave', leave);
-      el.addEventListener('drop', function (e) {
+    function leave() {
+      boxes.one.zone.classList.remove('over');
+      boxes.snap.zone.classList.remove('over');
+    }
+    ['one', 'snap'].forEach(function (k) {
+      var zone = boxes[k].zone;
+      function over(e) {
         if (!hasFiles(e)) return;
         e.preventDefault();
         e.stopPropagation();
         leave();
-        var walked = folderFiles(e.dataTransfer);
-        if (walked) {                // a folder (or several): its tables
-          say('Reading the folder…');
-          walked.then(function (fs) {
-            if (!fs.length) {
-              say('That folder holds no CSV, TSV or TXT files.');
-              return;
-            }
-            hold(fs);
-            picked(fs);
-          });
-          return;
-        }
-        var fs = e.dataTransfer.files;
-        if (!fs || !fs.length) return;
-        dropped = null;
-        try { input.files = fs; } catch (err) { /* older engines */ }
-        if (!input.files || !input.files.length) {
-          dropped = list(fs);
-          input.required = false;  // or validation would stop the submit
-        }
-        picked(list(fs));
-      });
+        zone.classList.add('over');
+      }
+      zone.addEventListener('dragenter', over);
+      zone.addEventListener('dragover', over);
+      zone.addEventListener('dragleave', leave);
+      zone.addEventListener('drop', function (e) { dropOn(k, e); });
     });
+    if (fold) {
+      var foldOver = function (e) {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        if (!fold.open) fold.open = true;
+      };
+      fold.addEventListener('dragenter', foldOver);
+      fold.addEventListener('dragover', foldOver);
+      fold.addEventListener('dragleave', leave);
+      fold.addEventListener('drop', function (e) { dropOn('one', e); });
+    }
 
-    // files the input could not hold are posted by hand
+    // files an input could not hold are posted by hand
     form.addEventListener('submit', function (e) {
       if (!dropped || !dropped.length) return;
       e.preventDefault();

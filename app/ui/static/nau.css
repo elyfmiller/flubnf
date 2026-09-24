@@ -1138,3 +1138,19 @@ pre.sberr{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);
 .dsfolder label{display:inline;margin:0;font-size:inherit}
 /* a date in the preview's facts or the stored note stays on one line */
 .dsfacts .nw,.dsr-stored .nw{white-space:nowrap}
+
+/* round3: dataset upload */
+/* two drop zones side by side, one form: one weekly CSV, and the optional
+   snapshot files; stacked once the card is narrower than two 17rem boxes.
+   Each box spans two rows of the grid (subgrid): the zones share one
+   height and their lines start level. The zone holding the chosen files
+   keeps a solid edge. */
+.dsboxes{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),1fr));
+  gap:0 1rem}
+.dsbox{min-width:0;display:grid;grid-row:span 2;grid-template-rows:subgrid}
+.dsbox .dsdrop{justify-content:center;margin:.3rem 0 .35rem}
+.dsbox>.hint{margin:0 0 .5rem}
+.dsdrop.picked{border-style:solid;border-color:var(--accent-ink)}
+/* a link and its "?" stay together on one line; the tip's own text wraps */
+.dskeep{white-space:nowrap}
+.dskeep .tipbox{white-space:normal}
