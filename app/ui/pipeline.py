@@ -353,12 +353,10 @@ def _run_all(spec: RunSpec) -> None:
     if not _status.get("started_utc"):
         _status["started_utc"] = _time.time()
     t_start = float(_status["started_utc"])
-    n_states = sum(1 for l in spec.locations
-                   if str(l).upper() not in ("US", "US (NATIONAL)"))
+    # the same scope wording as the route's queued label
+    from app.ui.routes.forecast import _scope_label
     _status["run_label"] = (
-        f"{spec.forecast_date} · {n_states} state(s) + US"
-        if n_states < len(spec.locations)
-        else f"{spec.forecast_date} · {len(spec.locations)} location(s)")
+        f"{spec.forecast_date} · {_scope_label(spec.locations)}")
     # also set by the route; here so direct calls are described too
     _status["settings"] = spec_settings(spec)
     try:

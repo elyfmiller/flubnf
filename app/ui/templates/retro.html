@@ -33,7 +33,8 @@ had, then scores against settled truth.</p>
        value="{{ l }}"> {{ l }}</label>
      {% endfor %}
    </div>
-   {# US national fitted by default, as on Forecast ("all" = 53 locations).
+   {# US national fitted by default, as the Forecast form's default run
+      ticks it beside all 52.
       A select, not a checkbox: a cleared checkbox posts nothing, so the
       server could not tell "states only" from an old client #}
    {{ tips.label("US national", "rt-us", "US national is fitted and scored apart from the pooled state figures.") }}

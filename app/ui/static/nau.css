@@ -798,10 +798,11 @@ button.tipbtn:hover,[data-theme="dark"] button.tipbtn:hover,
 @media (prefers-reduced-motion:reduce){.tipbox{transition:none}}
 
 /* the latest-run card: settings left, results right. Tracks auto-fit at a
-   18rem floor and children may shrink (min-width:0), so the settings grid's
-   max-content width can never starve the results column; values wrap in
-   their own track instead of one word per line. */
-.runsplit{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr));
+   20rem floor (so they stack in a 700px window) and children may shrink
+   (min-width:0), so the settings grid's max-content width can never starve
+   the results column; values wrap in their own track instead of one word
+   per line. */
+.runsplit{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr));
   gap:.5rem 1.5rem;align-items:start}
 .runsplit > *{min-width:0}
 .runsplit .runsettings .kv{width:auto;grid-template-columns:max-content minmax(0,1fr)}
@@ -1154,3 +1155,18 @@ pre.sberr{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);
 /* a link and its "?" stay together on one line; the tip's own text wraps */
 .dskeep{white-space:nowrap}
 .dskeep .tipbox{white-space:normal}
+
+/* round3: forecast tab and run pages */
+/* US (national), the 53rd location, set apart at the end of the list */
+.ck.ck-national{border-top:1px solid var(--line);padding-top:.3rem;margin-top:.3rem}
+/* the fan card's model buttons, and the FluSight comparator switch beside them */
+.fanbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;
+  gap:.2rem 1rem}
+.fanbar .seg{margin:.45rem 0}
+.fanoff{display:inline-flex;align-items:center;gap:.35rem}
+.fanoff .ck{margin:0}
+/* beside the settings form the latest-run card is narrow: the settings get
+   the wider column, so a donor-bank digest keeps to one line */
+@media(min-width:1080px){
+  .runsplit{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)}
+}
