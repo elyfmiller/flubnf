@@ -26,12 +26,21 @@
 </div>
 {% endif %}
 
+{# fresh re-run from the recorded spec (console fits hold no checkpoint);
+   console-run guard plus /run's server-side checks #}
+{% set rerun %}
+ <form method="post" action="/runs/{{ run_id }}/rerun" class="rerun-run row">
+  <button class="gold" data-guard="console-run">Run again with these settings</button>
+  {{ tips.tip("run-rerun", "running again", "Console runs hold no checkpoint: this starts fresh and does not resume the earlier one.") }}
+ </form>
+{% endset %}
 {% if error %}
 <div class="card">
  <h2>What happened</h2>
  <p>{{ error }}</p>
  <p class="hint">Nothing from this run was submitted; every run receives a
  fresh workspace.</p>
+ {% if can_rerun %}{{ rerun }}{% endif %}
 </div>
 {% endif %}
 
@@ -58,30 +67,20 @@
 {# settings and versions from the ledger row only (the viewer's own
    versions did not produce this run); no recorded versions, no block #}
 {% if results %}<div class="card"><h2>Results</h2>{{ results | safe }}</div>{% endif %}
-<div class="card"><h2>Run settings</h2>
+<div class="card runrec"><h2>Run settings</h2>
  {{ settings_html(settings, title="Settings") | safe }}
  {{ settings_html(versions, title="Produced by") | safe }}
 </div>
 {% endif %}
 
-{% if can_rerun %}
-{# fresh re-run from the recorded spec (console fits hold no checkpoint);
-   console-run guard plus /run's server-side checks #}
-<div class="card">
- <form method="post" action="/runs/{{ run_id }}/rerun" class="rerun-run">
-  <button class="gold" data-guard="console-run">Run again with these settings</button>
- </form>
- <p class="hint">Console runs hold no checkpoint: this starts fresh and
-  does not resume the earlier one.</p>
-</div>
-{% endif %}
+{% if can_rerun and not error %}<div class="card">{{ rerun }}</div>{% endif %}
 
+{# the weekly report: one line, its note in the tip #}
 {% if report %}<div class="card">
- <a href="/runs/{{ run_id }}/report">Open the weekly report</a>
- <span class="hint"> · </span>
- <a href="/runs/{{ run_id }}/report/download" download>Download it</a>
- <p class="hint">One self-contained HTML file; it opens without the
-  app.</p>
+ <p>Weekly report: <a href="/runs/{{ run_id }}/report">open</a>
+  <span class="hint">·</span>
+  <a href="/runs/{{ run_id }}/report/download" download>download</a>
+  {{ tips.tip("run-report", "the weekly report", "One self-contained HTML file; it opens without the app.") }}</p>
 </div>{% endif %}
 
 {% if dataset %}{% include "_dataset_run.html" %}{% endif %}
@@ -109,7 +108,7 @@
  {% elif s.modified %}
  <p>{{ s.model }}: <a href="/output/download?path={{ s.path | urlencode }}">{{ s.name }}</a><br>
   <span class="hint">Non-hub name: this run's model settings differ from
-  the shipped ones.</span></p>
+  the defaults.</span></p>
  {% else %}
  <p>{{ s.model }}: <code>{{ s.name }}</code><br>
   <span class="hint">Not submittable: written under a retired model name

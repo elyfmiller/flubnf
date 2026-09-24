@@ -878,3 +878,29 @@ nav.toc{display:flex;flex-wrap:wrap;gap:.2rem 1rem;margin:0 0 .9rem;
   header.nav .fontsize{margin:.25rem .4rem .25rem auto}
   header.nav .themepick,header.nav .a11ypick{margin-top:.25rem;margin-bottom:.35rem}
 }
+
+/* polish: forecast-output-runs */
+/* view toggles (data view, fan model): small pills like the Real-time /
+   Vintage modes, so a selected view never reads as the primary action */
+.seg{display:flex;flex-wrap:wrap;gap:.4rem;margin:.45rem 0}
+.seg button{margin:0;padding:.15rem .7rem;border-radius:99px;
+  font-size:.85rem;font-weight:600}
+/* unselected: outlined; selected keeps the global .gold fill */
+.seg button:not(.gold),[data-theme="dark"] .seg button:not(.gold),
+[data-theme="dim"] .seg button:not(.gold){background:transparent;
+  color:var(--ink);border:1px solid var(--gold)}
+/* Forecast pager rows: every control on one line (a stray button
+   margin-top dropped "expand" below the arrows); scoped to this page's
+   pagers so other tabs' carousels keep their look */
+#fancard .carousel button,.fanx .carousel button,
+.dataloc button{margin-top:0;padding:.2rem .6rem}
+.dataloc{margin:.6rem 0 .2rem}
+/* a setting with one possible value, stated as text */
+.fixedval{margin:.1rem 0 .2rem;font-weight:600}
+/* forms whose only control is a button and its tip */
+form.rerun-run{margin:.6rem 0 .2rem;gap:.2rem}
+/* Output: the earlier-weeks picker sits under its own label */
+.archlbl{margin-top:.9rem}
+/* run page settings: values wrap in their own track at phone width
+   instead of running past the card edge */
+.runrec .runsettings .kv{grid-template-columns:max-content minmax(0,1fr)}
