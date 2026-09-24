@@ -72,6 +72,9 @@ def test_the_box_is_on_data_forecast_and_retrospective():
         assert page.count('src="/static/dataset_upload.js"') == 1, url
         assert f'<label class="dsdrop" for="dsup-{where}-file" data-drop>' \
             in page
+        # shown (instead of the title) while a file is dragged over
+        assert '<span class="dsdrop-on" aria-hidden="true">Drop to check' \
+            in page
         assert (f'<input type="file" name="file" id="dsup-{where}-file" '
                 'required') in page
         assert 'accept=".csv,.tsv,.txt,' in page
@@ -146,6 +149,8 @@ def test_problems_come_grouped_by_kind_with_rows():
     assert kinds == ["Dates", "Values", "Groups", "Weeks"]
     assert "(row 3; e.g., -2)" in html and "(row 4;" in html
     assert "Ready to use." not in html
+    # a date stays on one line at phone width (it broke after a hyphen)
+    assert '<span class="nw">2024-08-19</span> (A, Monday, row 4)' in html
 
 
 def test_an_unmatched_column_asks_for_a_mapping_instead_of_an_error():

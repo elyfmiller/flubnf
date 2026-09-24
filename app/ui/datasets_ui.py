@@ -25,6 +25,7 @@ default source: every page and run opts in by naming it.
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 from datetime import date as _date
@@ -33,6 +34,7 @@ from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request
 from fastapi.responses import (HTMLResponse, JSONResponse, PlainTextResponse,
                                RedirectResponse)
+from markupsafe import Markup, escape
 from starlette.concurrency import run_in_threadpool
 
 from app.core.runs import GROUNDHOG_OWN_DATA
@@ -303,6 +305,17 @@ def _mapping_why(rep) -> list:
     return out
 
 
+#: a date in a problem or a notice (2024-03-16, or 2024-03-32 as written)
+_DATE_TOKEN = re.compile(r"\d{4}-\d{1,2}-\d{1,2}")
+
+
+def _whole_dates(text) -> Markup:
+    """Problem or notice text, escaped, with each date kept on one line: at
+    phone width a browser breaks it after a hyphen ('2024-03-' / '16')."""
+    return Markup(_DATE_TOKEN.sub(lambda m: f'<span class="nw">{m[0]}</span>',
+                                  str(escape(text))))
+
+
 def check_view(rep, *, kind: str = "", columns=None) -> dict:
     """The result box's context (templates/_dataset_check.html) for one
     report: every problem grouped by kind, a column mapping when that is
@@ -325,13 +338,15 @@ def check_view(rep, *, kind: str = "", columns=None) -> dict:
                        "value": columns.get(r) or rep.guess.get(r, "")}
                       for r in D.ROLES]}
     problems = [] if rep.needs_mapping else [
-        (k, [{"message": str(p), "rows": list(p.rows)} for p in ps])
+        (k, [{"message": _whole_dates(p), "rows": list(p.rows)}
+             for p in ps])
         for k, ps in D.problem_groups(
             [p for p in rep.problems
              if not (choose and p.code == "target_required")])]
     return {"ok": rep.ok, "problems": problems,
             "n": sum(len(ps) for _, ps in problems),
-            "mapping": mapping, "notices": list(rep.warnings),
+            "mapping": mapping,
+            "notices": [_whole_dates(w) for w in rep.warnings],
             "targets": rep.targets if len(rep.targets) > 1 else [],
             "target": (rep.summary or {}).get("target") or "",
             "preview": _preview(rep, kind) if rep.ok and rep.summary else None}

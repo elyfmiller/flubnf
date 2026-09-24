@@ -603,11 +603,26 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
 .dsdrop{display:flex;flex-direction:column;gap:.4rem;align-items:stretch;
   border:1.5px dashed var(--mut);border-radius:10px;padding:.75rem .85rem;
   margin:.3rem 0;background:var(--bg);color:var(--ink);cursor:pointer}
-.dsdrop.over,.dsdrop:focus-within{border-color:var(--accent-ink);
+.dsdrop:focus-within{border-color:var(--accent-ink);
   background:color-mix(in srgb,var(--accent) 12%,var(--bg))}
-.dsdrop-t{font-weight:650;font-size:var(--fs-label)}
+/* a file dragged over: a solid, doubled edge, a stronger tint and "Drop to
+   check", unlike the keyboard focus above (visible in every theme) */
+.dsdrop.over{border-style:solid;border-color:var(--accent-ink);
+  box-shadow:inset 0 0 0 2px var(--accent-ink);
+  background:color-mix(in srgb,var(--accent) 26%,var(--bg))}
+.dsdrop-t,.dsdrop-on{font-weight:650;font-size:var(--fs-label)}
+.dsdrop-on,.dsdrop.over .dsdrop-t{display:none}
+.dsdrop.over .dsdrop-on{display:block}
 .dsdrop input[type=file]{width:100%;max-width:100%;min-width:0;padding:.3rem;
   background:var(--card)}
+/* the native "Choose File" button takes the theme (it stayed light grey
+   on the dark grounds) */
+.dsdrop input[type=file]::file-selector-button{margin-right:.7rem;
+  padding:.3rem .8rem;border:1px solid var(--field-line);border-radius:6px;
+  background:var(--bg);color:var(--ink);font:inherit;font-weight:600;
+  cursor:pointer}
+.dsdrop input[type=file]::file-selector-button:hover{
+  background:color-mix(in srgb,var(--accent) 14%,var(--bg))}
 .dsup-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr));
   gap:0 .9rem}
 .dsup.js .dsup-go{display:none}
@@ -621,14 +636,15 @@ details.bngl pre{background:var(--bg);border:1px solid var(--line);
   text-transform:uppercase;letter-spacing:.04em;color:var(--mut)}
 .dsproblems{border-left:3px solid var(--bad,#b3261e);padding:.2rem .8rem;margin:.6rem 0}
 .dsproblems ul{margin:.2rem 0 .3rem;padding-left:1.2rem}
-.dsproblems li{overflow-wrap:anywhere}
+.dsproblems li{overflow-wrap:break-word}
+.dsproblems .nw,.dsnotes .nw{white-space:nowrap}
 .dsmap{border:1px solid var(--line);border-radius:10px;padding:.2rem .8rem .6rem;
   margin:.6rem 0;min-width:0}
 .dsmap legend{font-weight:650;font-size:.92rem;padding:0 .3rem}
 .dsmap-roles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,9rem),1fr));
   gap:0 .8rem}
 .dsnotes{margin:.4rem 0;padding-left:1.1rem;color:var(--mut);font-size:var(--fs-hint)}
-.dsnotes li{overflow-wrap:anywhere}
+.dsnotes li{overflow-wrap:break-word}
 .dspreview{margin:.5rem 0}
 .dspreview .kv.dsfacts{display:grid;grid-template-columns:max-content minmax(0,1fr);
   gap:.1rem 1rem;margin:.3rem 0;font-size:var(--fs-label)}
