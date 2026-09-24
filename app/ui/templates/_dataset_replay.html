@@ -1,94 +1,80 @@
-{# "Replay your own data" on the Retrospective tab (app/ui/datasets_ui.py):
-   its own card, below the FluSight seasons and never among them, with the
-   shared upload box ("Replay this" stores a file and reopens this card on
-   it). Tips imported by retro.html. #}
+{# The Retrospective tab's "Your data" tab (app/ui/datasets_ui.py
+   retro_context): with no dataset the shared upload box alone ("Replay
+   this" stores a file and reopens this tab on it); else the settings of a
+   replay of one dataset (picked by a plain GET form, like the Forecast
+   tab's, so the weeks and groups are rendered without script) beside its
+   replays. Never among the FluSight seasons. Tips imported by retro.html. #}
 {% import "_dataset_upload.html" as dsup %}
-{% set dr = dataset_replay %}
-<div class="card" id="dataset-replay"><h2>Replay your own data
- {{ tips.tip("rt-ds-about", "replaying your own data", "Each week of the range is forecast with only the data before it and scored against the dataset's later weeks, relative to an in-house persistence baseline (not FluSight-baseline). Replays are kept with the dataset, apart from the FluSight seasons, and never published.") }}</h2>
- <p class="hint">A week range of one of your datasets, kept apart from the FluSight seasons.</p>
- {% if dr.stored %}{# "Replay this" just stored it: said here, where the page lands #}
- <div class="banner dsr-stored" role="status"><p>{{ dr.stored.text }}</p>
-  {% if dr.stored.warnings %}<ul class="dsnotes">{% for w in dr.stored.warnings %}<li>{{ w }}</li>{% endfor %}</ul>{% endif %}</div>
- {% endif %}
- {% if not dr.datasets %}
- <p class="hint">No datasets yet: drop a CSV below.</p>
+{% set dr = dataset_replay %}{% set d = dr.ds %}
+{% set about = "Each week of the range is forecast with only the data before it and scored against the dataset's later weeks, relative to an in-house persistence baseline (not FluSight-baseline). Replays are kept with the dataset, apart from the FluSight seasons, and never published." %}
+{% if not d %}
+<div class="card" id="dataset-replay"><h2>Your data
+ {{ tips.tip("rt-ds-about", "replaying your own data", about) }}</h2>
+ <p class="hint">A weekly CSV of your own, replayed week by week and kept apart from the FluSight seasons.</p>
  {{ dsup.box("replay") }}
- {% else %}
- <details class="dsup-fold" id="dsr-upload">
-  <summary>Upload another CSV</summary>
-  {{ dsup.box("replay") }}
- </details>
- <form method="post" action="/retro/dataset/run" id="dsr-form">
-  {# dataset full width (names can be long), the week range beside it on
-     one grid that holds at phone width #}
-  <div class="dsr-range">
-   <span class="dsr-dsf"><label for="dsr-ds">Dataset</label>
-    <select name="dataset" id="dsr-ds">{% for d in dr.datasets %}
-     <option value="{{ d.id }}"{% if d.id == dr.selected %} selected{% endif %}>{{ d.name }}</option>{% endfor %}</select></span>
-   <span><label for="dsr-first">From</label><select name="first" id="dsr-first"></select></span>
-   <span><label for="dsr-last">To</label><select name="last" id="dsr-last"></select></span>
-  </div>
-  <p class="hint"><span id="dsr-kind"></span>
-   {{ tips.tip("dsr-kind-tip", "vintage-true and final data", "With an as_of column, each replayed week sees the snapshot that held it, as it stood then. Without one, each week is cut from the final series: later revisions leak in, so the scores are optimistic and are labelled so wherever they appear.") }}</p>
-  {{ tips.label("Groups", "dsr-groups", "Every group by default; a national group is scored beside the others, never pooled.", for_="dsr-groups") }}
-  <select name="groups" id="dsr-groups" multiple size="4"></select>
-  {{ tips.label("Models", "dsr-engine", dr.names.analogue ~ " is instant. The plain SIHRS particle filter (no Oracle step) needs counts with a population and the engine, and takes minutes per week.", for_="dsr-engine") }}
-  <select name="engine" id="dsr-engine">{% for e, text in dr.engine_names.items() %}
-   <option value="{{ e }}">{{ text }}</option>{% endfor %}</select>
-  <div class="lblrow"><label class="ck" for="dsr-fs"><input type="checkbox" name="flusurv" value="1" id="dsr-fs"> Add FluSurv-NET donors</label>
-   {{ tips.tip("dsr-fs", "FluSurv-NET donors", "Off by default. Tick only for US influenza hospitalization-like data.") }}</div>
-  {# the shared Model settings panel (weeks to drop is in its fit window),
-     ids prefixed dsr-: the FluSight replay's panel is on this page too #}
-  {% with knob_panel = dr.knob_panel %}{% include "_model_settings.html" %}{% endwith %}
-  <button class="gold" data-guard="console-run">Replay</button>
- </form>
- {% for d in dr.datasets if d.replays %}
- <h3 class="dsr-h">{{ d.name }}</h3>
- {% for r in d.replays %}
- <div class="archrow">
-  <span class="grow"><strong>{{ r.first }} to {{ r.last }}</strong>
-   {% if r.modified %}<span class="pill warn">modified settings</span>{% endif %}
-   <span class="hint">· {{ r.kind }} · {{ r.done }}/{{ r.total }} weeks · {{ r.status }}{% for m, v in r.rels.items() %}
-    · {{ dr.names.get(m, m) }} relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{% endfor %}{% if r.rels %} vs in-house persistence baseline{% endif %}</span></span>
-  <a href="/retro/dataset/{{ d.id }}/{{ r.stamp }}"><button class="quiet" type="button">Results →</button></a>
- </div>
- {% endfor %}
- {% endfor %}
- <script>
-  (function(){
-   const DS = {{ dr.datasets | tojson }};
-   const PF = {{ (dr.pf_state == "ready") | tojson }};
-   const $ = id => document.getElementById(id);
-   function opts(sel, items, pick){
-     sel.innerHTML='';
-     items.forEach(v=>{const o=document.createElement('option'); o.value=v; o.textContent=v;
-       if(v===pick) o.selected=true; sel.appendChild(o);});
-   }
-   function sync(){
-     const d = DS.find(x=>x.id===$('dsr-ds').value) || DS[0];
-     // the newest flu season's weeks by default (datasets_ui.replay_window)
-     opts($('dsr-first'), d.dates, d.default_first || d.dates[0]);
-     opts($('dsr-last'), d.dates, d.default_last || d.dates[d.dates.length-1]);
-     const g=$('dsr-groups'); g.innerHTML='';
-     d.groups.forEach(n=>{const o=document.createElement('option'); o.value=n;
-       o.textContent=n; o.selected=true; g.appendChild(o);});
-     // as tall as its groups (2 to 6 rows): no empty box below the list
-     g.size = Math.max(2, Math.min(6, d.groups.length));
-     $('dsr-kind').textContent = d.vintage_true
-       ? 'Vintage-true: each week sees its as_of snapshot.'
-       : 'Final data, not vintage-true: each week is cut from the final series, so it reads better than real time did.';
-     const pf=$('dsr-engine').querySelector('option[value=all]');
-     pf.disabled = !(d.pf && PF);
-     if(pf.disabled) $('dsr-engine').value='analogue';
-     // the panel's counts-only rows (the output floor) follow the data
-     const ms=$('dsr-model-settings');
-     if(ms){ ms.dataset.kind = d.kind || '';
-       ms.dispatchEvent(new Event('ms-refilter')); }
-   }
-   $('dsr-ds').addEventListener('change', sync);
-   sync();
-  })();
- </script>
- {% endif %}
 </div>
+{% else %}
+<div class="cols" id="dataset-replay">
+ <div><div class="card"><h2>Settings</h2>
+  {% if dr.stored %}{# "Replay this" just stored it: said here, where the page lands #}
+  <div class="banner dsr-stored" role="status"><p>{{ dr.stored.text }}</p>
+   {% if dr.stored.warnings %}<ul class="dsnotes">{% for w in dr.stored.warnings %}<li>{{ w }}</li>{% endfor %}</ul>{% endif %}</div>
+  {% endif %}
+  {# which of your datasets; a plain GET form, like the Forecast tab's #}
+  <form method="get" action="/retro" class="row srcpick">
+   <span>{{ tips.label("Dataset", "dsr-src", "A dataset replays on its own groups and weeks. Upload one here or on the Data tab.", for_="dsr-ds") }}
+   <select name="dataset" id="dsr-ds">{% for sid, sname in dr.datasets %}
+    <option value="{{ sid }}"{% if sid == d.id %} selected{% endif %}>{{ sname }}</option>{% endfor %}</select></span>
+   <button class="quiet">Use</button>
+  </form>
+  <details class="dsup-fold" id="dsr-upload">
+   <summary>Upload another</summary>
+   {{ dsup.box("replay") }}
+  </details>
+  <form method="post" action="/retro/dataset/run" id="dsr-form">
+   <input type="hidden" name="dataset" value="{{ d.id }}">
+   <p class="hint"><span id="dsr-kind">{{ "Vintage-true: each week sees its as_of snapshot." if d.vintage_true else "Final data, not vintage-true: each week is cut from the final series, so it reads better than real time did." }}</span>
+    {{ tips.tip("dsr-kind-tip", "vintage-true and final data", "With as_of snapshots (an as_of column, or one file per as_of), each replayed week sees the snapshot that held it, as it stood then. Without them, each week is cut from the final series: later revisions leak in, so the scores are optimistic and are labelled so wherever they appear.") }}</p>
+   {# the week range on one grid that holds at narrow widths; the newest
+      flu season's weeks by default (datasets_ui.replay_window) #}
+   <div class="dsr-range">
+    <span><label for="dsr-first">From</label><select name="first" id="dsr-first">{% for w in d.dates %}
+     <option{% if w == d.default_first %} selected{% endif %}>{{ w }}</option>{% endfor %}</select></span>
+    <span><label for="dsr-last">To</label><select name="last" id="dsr-last">{% for w in d.dates %}
+     <option{% if w == d.default_last %} selected{% endif %}>{{ w }}</option>{% endfor %}</select></span>
+   </div>
+   {{ tips.label("Groups", "dsr-groups", "Every group by default; a national group is scored beside the others, never pooled.", for_="dsr-groups") }}
+   {# as tall as its groups (2 to 6 rows): no empty box below the list #}
+   <select name="groups" id="dsr-groups" multiple size="{{ [2, [6, d.groups | length] | min] | max }}">{% for g in d.groups %}
+    <option selected>{{ g }}</option>{% endfor %}</select>
+   {{ tips.label("Models", "dsr-engine", dr.names.analogue ~ " is instant. The plain SIHRS particle filter (no Oracle step) needs counts with a population and the engine, and takes minutes per week.", for_="dsr-engine") }}
+   <select name="engine" id="dsr-engine">{% for e, text in dr.engine_names.items() %}
+    <option value="{{ e }}"{% if e == "all" and not (d.pf and dr.pf_state == "ready") %} disabled{% endif %}>{{ text }}</option>{% endfor %}</select>
+   <div class="lblrow"><label class="ck" for="dsr-fs"><input type="checkbox" name="flusurv" value="1" id="dsr-fs"> Add FluSurv-NET donors</label>
+    {{ tips.tip("dsr-fs", "FluSurv-NET donors", "Off by default. Tick only for US influenza hospitalization-like data.") }}</div>
+   {# the shared Model settings panel (weeks to drop is in its fit window),
+      ids prefixed dsr-; its counts-only rows follow the data's kind #}
+   {% with knob_panel = dr.knob_panel %}{% include "_model_settings.html" %}{% endwith %}
+   <script>
+    (function(){ var ms=document.getElementById('dsr-model-settings');
+      if(ms) ms.dataset.kind = {{ d.kind | tojson }}; })();
+   </script>
+   <button class="gold" data-guard="console-run">Replay</button>
+  </form>
+ </div></div>
+ <div><div class="card dsr-replays"><h2>Replays of {{ d.name }}
+  {{ tips.tip("rt-ds-about", "replaying your own data", about) }}</h2>
+  {% for r in d.replays %}
+  <div class="archrow">
+   <span class="grow"><strong>{{ r.first }} to {{ r.last }}</strong>
+    {% if r.modified %}<span class="pill warn">modified settings</span>{% endif %}
+    <span class="hint">· {{ r.kind }} · {{ r.done }}/{{ r.total }} weeks · {{ r.status }}{% for m, v in r.rels.items() %}
+     · {{ dr.names.get(m, m) }} relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{% endfor %}{% if r.rels %} vs in-house persistence baseline{% endif %}</span></span>
+   <a href="/retro/dataset/{{ d.id }}/{{ r.stamp }}"><button class="quiet" type="button">Results →</button></a>
+  </div>
+  {% else %}
+  <p class="hint">Not replayed yet.</p>
+  {% endfor %}
+ </div></div>
+</div>
+{% endif %}

@@ -12,8 +12,7 @@
       <span><b>{{ f.model }}</b><br><code>{{ f.name }}</code></span>
       <span style="display:flex;align-items:center;gap:.9rem;white-space:nowrap">
        {% if f.submittable %}
-       <a href="/output/download?path={{ f.path | urlencode }}" download><button
-        type="button" style="margin-top:0">Download</button></a>
+       <a class="btn" href="/output/download?path={{ f.path | urlencode }}" download>Download</a>
        {% else %}<span class="hint">Not submittable</span>{% endif %}
        <form method="post" action="/output/reveal" style="display:inline">
         <input type="hidden" name="path" value="{{ f.path }}">
@@ -44,8 +43,8 @@
   <div class="card"><h2>Weekly report</h2>
    {% if has_report %}
    <div class="row">
-    <a href="/output/report/download" download><button class="gold" type="button">Download report</button></a>
-    <a href="/output/report" target="_blank"><button class="quiet" type="button">Open report</button></a>
+    <a class="btn gold" href="/output/report/download" download>Download report</a>
+    <a class="btn quiet" href="/output/report" target="_blank">Open report</a>
    </div>
    {% else %}<p class="hint">Generated automatically with each full run.</p>{% endif %}
    {% if archive_dates %}

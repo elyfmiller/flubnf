@@ -48,32 +48,57 @@
   {% endfor %}
   </nav>
   <span class="spacer"></span>
-  <div class="fontsize" role="group" aria-label="Text size">
-    <button type="button" data-fs="s" title="Smaller text">A-</button>
-    <button type="button" data-fs="m" title="Standard text">A</button>
-    <button type="button" data-fs="l" title="Larger text">A+</button>
-  </div>
-  <div class="themepick" role="group" aria-label="Color theme">
-    <button type="button" data-th="light" title="Light theme">Light</button>
-    <button type="button" data-th="paper" title="Paper theme: warm off-white">Paper</button>
-    <button type="button" data-th="dim" title="Dim theme: softened dark">Dim</button>
-    <button type="button" data-th="dark" title="Dark theme">Dark</button>
-  </div>
-  {# two independent a11y modifiers, composing with every theme #}
-  <div class="a11ypick" role="group" aria-label="Accessibility modes">
-    <button type="button" data-ax="contrast" aria-pressed="false"
-      aria-label="High contrast"
-      title="High contrast: stronger text, boundaries, and fills on the current theme">Contrast</button>
-    <button type="button" data-ax="vision" aria-pressed="false"
-      aria-label="Red-green safe colors"
-      title="Color-vision mode: blue and orange replace green and red">CV safe</button>
-  </div>
+  {# text size, theme and a11y modes behind one Display button, so the
+     header stays one row at every desktop width. A plain <details>: it
+     opens and closes without JS; the script below adds Escape and
+     click-outside closing #}
+  <details class="display" id="displaymenu">
+   <summary title="Text size, color theme and accessibility modes">Display</summary>
+   <div class="displaypop">
+    <span class="dlabel" aria-hidden="true">Text size</span>
+    <div class="fontsize" role="group" aria-label="Text size">
+      <button type="button" data-fs="s" title="Smaller text">A-</button>
+      <button type="button" data-fs="m" title="Standard text">A</button>
+      <button type="button" data-fs="l" title="Larger text">A+</button>
+    </div>
+    <span class="dlabel" aria-hidden="true">Theme</span>
+    <div class="themepick" role="group" aria-label="Color theme">
+      <button type="button" data-th="light" title="Light theme">Light</button>
+      <button type="button" data-th="paper" title="Paper theme: warm off-white">Paper</button>
+      <button type="button" data-th="dim" title="Dim theme: softened dark">Dim</button>
+      <button type="button" data-th="dark" title="Dark theme">Dark</button>
+    </div>
+    {# two independent a11y modifiers, composing with every theme #}
+    <span class="dlabel" aria-hidden="true">Accessibility</span>
+    <div class="a11ypick" role="group" aria-label="Accessibility modes">
+      <button type="button" data-ax="contrast" aria-pressed="false"
+        aria-label="High contrast"
+        title="High contrast: stronger text, boundaries, and fills on the current theme">Contrast</button>
+      <button type="button" data-ax="vision" aria-pressed="false"
+        aria-label="Red-green safe colors"
+        title="Color-vision mode: blue and orange replace green and red">CV safe</button>
+    </div>
+   </div>
+  </details>
 </header>
 <script>
  // a scrolled tab strip opens with the current tab in view
  (function () {
    var s = document.querySelector('.navtabs'), a = s && s.querySelector('.tab.active');
    if (a && s.scrollWidth > s.clientWidth) s.scrollLeft = a.offsetLeft - (s.clientWidth - a.offsetWidth) / 2;
+ })();
+ // the Display menu: Escape or a click outside closes it; Escape hands
+ // focus back to its button
+ (function () {
+   var d = document.getElementById('displaymenu');
+   if (!d) return;
+   var s = d.querySelector('summary');
+   addEventListener('keydown', function (e) {
+     if (e.key === 'Escape' && d.open) { d.open = false; s.focus(); }
+   });
+   addEventListener('click', function (e) {
+     if (d.open && !d.contains(e.target)) d.open = false;
+   });
  })();
 </script>
 {# one shell for every page. No page sets main_class, but tests pin the

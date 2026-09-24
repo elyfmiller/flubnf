@@ -221,3 +221,31 @@ def test_a_spreadsheet_unicode_text_file_imports(store, tmp_path):
     assert "(tab-separated, UTF-16)" in r.output
     assert runner.invoke(app, ["dataset", "import", str(p)]).exit_code == 0
     assert store.list_datasets()[0].groups == ["Åland"]
+
+
+def test_a_folder_of_snapshots_is_one_vintage_true_dataset(store, tmp_path):
+    """validate and import take a folder (or several files): one snapshot
+    per as_of, stored as one dataset under the folder's name."""
+    snaps = FIX / "snapshots"
+    r = runner.invoke(app, ["dataset", "validate", str(snaps)])
+    assert r.exit_code == 0, r.output
+    assert "snapshots: valid" in r.output
+    assert "as_of       8 snapshot(s), 2023-11-04 to 2023-12-23" in r.output
+    assert "files       8 snapshot files, one per as_of" in r.output
+    r = runner.invoke(app, ["dataset", "import", str(snaps)])
+    assert r.exit_code == 0, r.output
+    (d,) = store.list_datasets()
+    assert d.name == "snapshots" and d.vintage_true
+    assert "vintages    8 (vintage-true), from 8 files" in r.output
+    # a file each, named for no date: refused, nothing stored
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert runner.invoke(app, ["dataset", "validate", str(empty)]
+                         ).exit_code == 2
+    one, two = sorted(snaps.iterdir())[:2]
+    a, b = tmp_path / "a.csv", tmp_path / "b.csv"
+    a.write_bytes(one.read_bytes())
+    b.write_bytes(two.read_bytes())
+    r = runner.invoke(app, ["dataset", "import", str(a), str(b)])
+    assert r.exit_code == 1 and "2 files: 1 problem(s)" in r.output
+    assert "carry no as_of" in r.output and len(store.list_datasets()) == 1

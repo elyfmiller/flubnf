@@ -53,7 +53,7 @@
  {{ tips.tip("ds-browse", "this view", "Each group's series as stored. " ~ ("Pick a snapshot to see the data as it stood on that as_of." if ds.vintage_true else "The upload had no as_of column, so this is the final data; forecasts and replays on it are not vintage-true.")) }}</h2>
  <p class="hint">Your dataset, {{ "vintage-true" if ds.vintage_true else "final data (not vintage-true)" }}.
   <a href="/forecast?source={{ ds.id }}">Forecast it</a> ·
-  <a href="/retro#dataset-replay">Replay it</a> ·
+  <a href="/retro?dataset={{ ds.id }}">Replay it</a> ·
   <a href="/data">Back to the FluSight hub</a></p>
  {% else %}<h2>Vintage browser</h2>
  {% if vintages %}<p class="hint">The archived truth vintages, exactly as runs fit them.

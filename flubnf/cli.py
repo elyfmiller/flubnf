@@ -1650,7 +1650,8 @@ dataset_app = typer.Typer(
     add_completion=False, no_args_is_help=True,
     help="Check, import, list and delete custom target data (a grouped "
          "CSV or a hubverse time series; comma, semicolon or tab separated; "
-         "UTF-8, UTF-16 or Windows-1252).")
+         "UTF-8, UTF-16 or Windows-1252; or a folder of snapshot files, one "
+         "per as_of).")
 app.add_typer(dataset_app, name="dataset")
 
 _KIND_HELP = ("'count' or 'rate'; default: from the values (whole numbers "
@@ -1677,6 +1678,32 @@ def _dataset_columns(pairs) -> dict:
     return out
 
 
+_PATHS_HELP = ("A CSV, or a folder of snapshot files (or several files): "
+               "one per as_of, each named by its as_of date "
+               "(2024-10-05.csv) or holding an as_of column, read as one "
+               "vintage-true dataset.")
+
+
+def _dataset_sources(paths) -> tuple:
+    """(label, [(filename, path), ...]) for the paths given: a file as
+    itself, a folder as its CSV, TSV and TXT files (named with the folder,
+    so the dataset takes the folder's name). Exit 2 on an empty folder."""
+    out = []
+    for p in paths:
+        if p.is_dir():
+            got = sorted(q for q in p.iterdir() if q.is_file()
+                         and q.suffix.lower() in (".csv", ".tsv", ".txt"))
+            if not got:
+                raise typer.BadParameter(f"{p} holds no CSV, TSV or TXT "
+                                         "files.", param_hint="PATHS")
+            out += [(f"{p.name}/{q.name}", q) for q in got]
+        else:
+            out.append((p.name, p))
+    label = (paths[0].name if len(paths) == 1
+             else f"{len(out)} files")
+    return label, out
+
+
 def _print_dataset_problems(name: str, rep_problems, rep=None) -> None:
     from app.core import datasets as ds
     print(f"{name}: {len(rep_problems)} problem(s), nothing stored")
@@ -1693,8 +1720,8 @@ def _print_dataset_problems(name: str, rep_problems, rep=None) -> None:
 
 @dataset_app.command("validate")
 def dataset_validate_cmd(
-    csv_path: Path = typer.Argument(..., exists=True, dir_okay=False,
-                                    help="The CSV to check."),
+    paths: List[Path] = typer.Argument(..., exists=True,
+                                       help="The CSV to check. " + _PATHS_HELP),
     kind: Optional[str] = typer.Option(None, "--kind", help=_KIND_HELP),
     target: Optional[str] = typer.Option(
         None, "--target", help="The target to keep when the file has several."),
@@ -1704,17 +1731,19 @@ def dataset_validate_cmd(
         False, "--sunday", hidden=True,
         help="Accepted and ignored: any one weekday is moved to Saturday."),
 ):
-    """Validate a dataset CSV and print every problem, or a summary.
+    """Validate a dataset CSV (or a folder of snapshot files) and print
+    every problem, or a summary.
 
-    Exit code 0 when the file is valid, 1 when it has problems. Nothing is
+    Exit code 0 when the data is valid, 1 when it has problems. Nothing is
     stored."""
     from app.core import datasets as ds
-    rep = ds.validate(csv_path, kind=kind, target=target,
-                      columns=_dataset_columns(column))
+    label, sources = _dataset_sources(paths)
+    rep = ds.validate_snapshots(sources, kind=kind, target=target,
+                                columns=_dataset_columns(column))
     if not rep.ok:
-        _print_dataset_problems(csv_path.name, rep.problems, rep)
+        _print_dataset_problems(label, rep.problems, rep)
     else:
-        print(f"{csv_path.name}: valid")
+        print(f"{label}: valid")
         for line in ds.summary_lines(rep):
             print(f"  {line}")
     for w in rep.warnings:
@@ -1725,12 +1754,13 @@ def dataset_validate_cmd(
 
 @dataset_app.command("import")
 def dataset_import_cmd(
-    csv_path: Path = typer.Argument(..., exists=True, dir_okay=False,
-                                    help="The CSV to store."),
+    paths: List[Path] = typer.Argument(..., exists=True,
+                                       help="The CSV to store. " + _PATHS_HELP),
     kind: Optional[str] = typer.Option(None, "--kind", help=_KIND_HELP),
     name: Optional[str] = typer.Option(
         None, "--name", help="The dataset's name (default: the file name, "
-                             "with the target when the file holds several)."),
+                             "with the target when the file holds several; "
+                             "a folder's name for its snapshots)."),
     target: Optional[str] = typer.Option(
         None, "--target", help="The target to keep when the file has several."),
     column: Optional[List[str]] = typer.Option(
@@ -1739,18 +1769,20 @@ def dataset_import_cmd(
         False, "--sunday", hidden=True,
         help="Accepted and ignored: any one weekday is moved to Saturday."),
 ):
-    """Validate and store a dataset CSV, as the console's upload does.
+    """Validate and store a dataset CSV (or a folder of snapshot files),
+    as the console's upload does.
 
     Prints the dataset's id and summary (exit 0), or every problem (exit 1,
-    nothing stored). Importing the same file with the same options again
+    nothing stored). Importing the same data with the same options again
     returns the stored dataset."""
     from app.core import datasets as ds
     columns = _dataset_columns(column)
+    label, sources = _dataset_sources(paths)
     try:
-        d = ds.ingest(csv_path, (name or "")[:80] or None, kind=kind,
-                      target=target, filename=csv_path.name, columns=columns)
+        d = ds.ingest_snapshots(sources, (name or "")[:80] or None,
+                                kind=kind, target=target, columns=columns)
     except ds.DatasetError as e:
-        _print_dataset_problems(csv_path.name, e.problems, e.report)
+        _print_dataset_problems(label, e.problems, e.report)
         raise typer.Exit(1)
     print(f"stored {d.name!r} as {d.id}")
     print(f"  groups      {len(d.groups)}: {', '.join(d.groups[:8])}"
@@ -1763,7 +1795,9 @@ def dataset_import_cmd(
              else ""))
     print(f"  population  {'yes' if d.has_population else 'no'}")
     print(f"  vintages    " + (f"{len(d.vintages())} (vintage-true)"
-                               if d.vintage_true else "none (final data)"))
+                               if d.vintage_true else "none (final data)")
+          + (f", from {len(d.meta['snapshot_files'])} files"
+             if d.meta.get("snapshot_files") else ""))
     if d.meta.get("target"):
         print(f"  target      {d.meta['target']}")
     if d.national_group:

@@ -285,10 +285,60 @@ _RESULT_ROWS = (("Oracle SIHRS", "pf_relwis", "pf_relwis_cells"),
                 ("Groundhog", "analogue_relwis", "analogue_relwis_cells"))
 
 
-def results_html(outcome, spec) -> str:
+#: the relWIS convention, shown in a "?" tip beside the results heading
+HUB_RESULTS_NOTE = ("relWIS vs the FluSight baseline, pooled over fitted "
+                    "states (US excluded); below 1.000 beats it.")
+
+
+def _tip(tid: str, label: str, text: str) -> str:
+    """The "?" explainer markup of templates/_tips.html (tip macro), for
+    HTML built here; text is a fixed phrase, escaped anyway."""
+    import html as _html
+    t = _html.escape(text)
+    return (f'<span class="tip"><button type="button" class="tipbtn" '
+            f'aria-label="About {label}" aria-describedby="tip-{tid}">?</button'
+            f'><span class="tipbox" role="tooltip" id="tip-{tid}">{t}</span></span>')
+
+
+def _results_note(d: dict) -> str:
+    extra = d.get("extra") if isinstance(d.get("extra"), dict) else {}
+    if extra.get("dataset"):
+        from app.core.custom_run import BASELINE
+        return (f"relWIS vs the {BASELINE}, pooled over the groups (national "
+                f"group excluded); below 1.000 beats it.")
+    return HUB_RESULTS_NOTE
+
+
+def _spec_dict(spec) -> dict:
+    if isinstance(spec, RunSpec):
+        return asdict(spec)
+    if isinstance(spec, str):
+        try:
+            d = json.loads(spec or "{}")
+        except (ValueError, TypeError):
+            return {}
+        return d if isinstance(d, dict) else {}
+    return spec if isinstance(spec, dict) else {}
+
+
+def results_tip(spec) -> str:
+    """The "?" tip holding the relWIS convention, for a page that heads the
+    results table itself (the run page's Results card)."""
+    return _tip("res-note", "the results", _results_note(_spec_dict(spec)))
+
+
+def _results_table(body: str, d: dict, heading: bool) -> str:
+    cap = (f'<caption class="reshead"><strong>Results</strong>'
+           f'{results_tip(d)}</caption>' if heading else "")
+    return f'<table class="results">{cap}{body}</table>'
+
+
+def results_html(outcome, spec, heading: bool = True) -> str:
     """One run's results as a small table: run type, each member's relWIS
     with its cells, PF fits and failures, submissions, report. Markup from
-    fixed phrases and numbers only; unreadable input yields ""."""
+    fixed phrases and numbers only; unreadable input yields "". The table
+    carries its own "Results" heading with the relWIS convention in a "?"
+    tip; heading=False leaves both to the page (results_tip)."""
     if isinstance(outcome, str):
         try:
             o = json.loads(outcome or "{}")
@@ -296,20 +346,12 @@ def results_html(outcome, spec) -> str:
             o = {}
     else:
         o = outcome if isinstance(outcome, dict) else {}
-    if isinstance(spec, RunSpec):
-        d = asdict(spec)
-    elif isinstance(spec, str):
-        try:
-            d = json.loads(spec or "{}")
-        except (ValueError, TypeError):
-            d = {}
-    else:
-        d = spec if isinstance(spec, dict) else {}
+    d = _spec_dict(spec)
     if not o and not d:
         return ""
     extra = d.get("extra") if isinstance(d.get("extra"), dict) else {}
     if extra.get("dataset"):
-        return dataset_results_html(o, d)
+        return dataset_results_html(o, d, heading)
     mode = str(extra.get("mode") or "realtime")
     rows = [("Run type", MODE_LABELS.get(mode, mode))]
     for name, key, cells_key in _RESULT_ROWS:
@@ -353,19 +395,16 @@ def results_html(outcome, spec) -> str:
         rows.append(("Submission files", f"{n} file{'s' if n != 1 else ''}"))
     rows.append(("Weekly report", "written" if o.get("report") else "none"))
     body = "".join(f"<tr><th scope=\"row\">{k}</th><td>{v}</td></tr>" for k, v in rows)
-    return (f'<table class="results"><caption class="hint">relWIS vs the '
-            f'FluSight baseline, pooled over fitted states (US excluded); '
-            f'below 1.000 beats it.</caption>'
-            f"{body}</table>")
+    return _results_table(body, d, heading)
 
 
-def dataset_results_html(o: dict, d: dict) -> str:
+def dataset_results_html(o: dict, d: dict, heading: bool = True) -> str:
     """results_html for a run on a custom dataset: each member's relWIS
     against the in-house persistence baseline (named), the national group
     beside the pooled figure, abstentions and the export files. Fixed
     phrases and numbers only, group names escaped."""
     import html as _html
-    from app.core.custom_run import BASELINE, EXPORT_IDS, MEMBER_LABELS
+    from app.core.custom_run import EXPORT_IDS, MEMBER_LABELS
     rows = []
     scores = o.get("custom_scores") or {}
     for m in ("pf", "analogue"):
@@ -403,9 +442,7 @@ def dataset_results_html(o: dict, d: dict) -> str:
                      f'{len(o["export_errors"])}</span>'))
     body = "".join(f"<tr><th scope=\"row\">{k}</th><td>{v}</td></tr>"
                    for k, v in rows)
-    return (f'<table class="results"><caption class="hint">relWIS vs the '
-            f'{BASELINE}, pooled over the groups (national group '
-            f'excluded); below 1.000 beats it.</caption>{body}</table>')
+    return _results_table(body, d, heading)
 
 
 def settings_html(pairs, title: str = "Run settings",

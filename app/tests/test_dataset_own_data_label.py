@@ -60,17 +60,18 @@ def test_forecast_run_and_replay_pages_say_own_data():
     assert f"<dt>{OWN}</dt><dd>calendar analogue on the dataset" in run
     assert "FluBNF-Groundhog" in run                  # the export's own name
     # the Retrospective card and a replay's page
-    card = _text(client.get("/retro").text)
+    card = _text(client.get("/retro?tab=own").text)
     assert f'<option value="analogue">{OWN} only</option>' in card
-    assert f'<option value="all">{OWN} and plain SIHRS particle filter' \
-        in card
+    # disabled until the engine is ready (this page, without script)
+    assert re.search('<option value="all"( disabled)?>' + re.escape(
+        f"{OWN} and plain SIHRS particle filter"), card)
     r = client.post("/retro/dataset/run", data={
         "dataset": ds.id, "first": "2024-01-06", "last": "2024-02-24",
         "engine": "analogue"}, follow_redirects=False)
     rp = _text(client.get(r.headers["location"]).text)
     assert f"<dt>{OWN}</dt><dd>calendar analogue on the dataset" in rp
     assert f"<td>{OWN}</td>" in rp                       # the scores table
-    assert f"{OWN} relWIS" in _text(client.get("/retro").text)
+    assert f"{OWN} relWIS" in _text(client.get("/retro?tab=own").text)
 
 
 def test_the_hub_forecast_keeps_its_own_names():

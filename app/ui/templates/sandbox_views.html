@@ -5,7 +5,7 @@
    the Model view, so their tabs stay hidden. model-views.js draws each
    graph (pan, zoom, drag, hover, click; view only), built once and kept. #}
 <link rel="stylesheet" href="/static/model-views.css"><script defer src="/static/model-views.js"></script>
-<div class="card" id="cmap" data-model="{{ editing.name }}"><h2>Diagram {{ tips.tip("sb-diagram", "the diagram", "Solid arrows move people between compartments; a dashed arrow counts a flow; a dashed arc marks who drives an arrow. Drag a node, hover or click for its rule, scroll to zoom. Save to redraw after an edit.") }}</h2>
+<div class="card" id="cmap" data-model="{{ editing.name }}"><h2>Diagram {{ tips.tip("sb-diagram", "the diagram", "The model's rules as arrows between its molecule types: a solid arrow moves them, a dashed arrow counts a flow into a tally, a dotted arc marks who drives a rate. Drag a node, hover or click for its rule, scroll to zoom. Save to redraw after an edit.") }}</h2>
  <div class="mviews" role="tablist" aria-label="model view" hidden>
   <button type="button" class="pill mode" data-view="flow" role="tab" aria-selected="true">Model</button>
   <button type="button" class="pill mode" data-view="contactmap" role="tab" aria-selected="false" hidden>Binding sites</button>
@@ -27,6 +27,48 @@
     p.textContent = text;
     return p;
   }
+  // A clock (counter in SIHRS: 0 -> counter() at rate 1) is fed from
+  // nothing and feeds nothing: it keeps time, it is not a relationship
+  // between compartments, so the Model view leaves it and its source
+  // dot out and names it under the drawing instead.
+  function unclocked(g) {
+    var only = {}, drop = {}, clocks = [];
+    g.nodes.forEach(function (nd) { if (nd.kind === 'species') only[nd.id] = true; });
+    g.edges.forEach(function (e) {
+      if (e.kind !== 'source') { only[e.from] = false; only[e.to] = false; }
+    });
+    (g.influences || []).forEach(function (f) { only[f.from] = false; });
+    g.edges.forEach(function (e) { if (e.kind === 'source' && only[e.to] !== false) only[e.to] = 'fed'; });
+    g.nodes.forEach(function (nd) {
+      if (nd.kind === 'species' && only[nd.id] === 'fed') { drop[nd.id] = 1; clocks.push(nd.label); }
+    });
+    g.edges.forEach(function (e) { if (drop[e.to] && e.kind === 'source') drop[e.from] = 1; });
+    var edges = g.edges.filter(function (e) { return !drop[e.from] && !drop[e.to]; });
+    if (!clocks.length || !edges.length) return {graph: g, clocks: []};
+    return {clocks: clocks, graph: {
+      nodes: g.nodes.filter(function (nd) { return !drop[nd.id]; }), edges: edges,
+      influences: (g.influences || []).filter(function (f) { return !drop[f.from]; })}};
+  }
+  // the key: one entry per kind of mark the drawing uses
+  function key(g) {
+    var NS = 'http://www.w3.org/2000/svg', ul = document.createElement('ul'), kinds = {};
+    ul.className = 'mv-key';
+    g.edges.forEach(function (e) { kinds[e.kind] = 1; });
+    if ((g.influences || []).length) kinds.drive = 1;
+    [['transfer', 'k-move', 'moves from one to the other'],
+     ['catalytic', 'k-count', 'counts a flow (a tally)'],
+     ['drive', 'k-drive', 'drives the rate']].forEach(function (k) {
+      if (!kinds[k[0]]) return;
+      var li = document.createElement('li'), s = document.createElementNS(NS, 'svg'), l = document.createElementNS(NS, 'line');
+      s.setAttribute('width', '28'); s.setAttribute('height', '8'); s.setAttribute('aria-hidden', 'true');
+      l.setAttribute('x1', '1'); l.setAttribute('y1', '4'); l.setAttribute('x2', '27'); l.setAttribute('y2', '4');
+      l.setAttribute('class', k[1]);
+      s.appendChild(l); li.appendChild(s);
+      li.appendChild(document.createTextNode(k[2]));
+      ul.appendChild(li);
+    });
+    return ul;
+  }
   function markup(svg) { var d = document.createElement('div'); d.innerHTML = svg; return d; }
   function url(which) { return '/api/sandbox/models/' + encodeURIComponent(model) + '/' + which; }
   function build(which, d) {
@@ -35,13 +77,17 @@
     if (which === 'flow') {
       g = d.flow;
       if (MV && g && g.edges.length) {
-        var v = MV.network(box, g), rules = {}, n = 0;
+        var c = unclocked(g), v = MV.network(box, c.graph), rules = {}, n = 0;
         g.nodes.forEach(function (nd) { if (nd.kind === 'species') n++; });
         g.edges.forEach(function (e) { rules[e.rule] = 1; });
         var m = Object.keys(rules).length;
-        v.idle = n + (n === 1 ? ' molecule type, ' : ' molecule types, ') + m + (m === 1 ? ' rule' : ' rules');
+        v.idle = n + (n === 1 ? ' molecule type, ' : ' molecule types, ') + m + (m === 1 ? ' rule' : ' rules')
+          + (c.clocks.length ? '; ' + c.clocks.join(', ') + (c.clocks.length === 1 ? ' is a clock' : ' are clocks') + ', not drawn' : '');
         v.say();
-        return v.el;
+        var wrap = document.createElement('div');
+        wrap.appendChild(v.el);
+        wrap.appendChild(key(c.graph));
+        return wrap;
       }
       return d.error ? note(d.error, true) : note('No rules to draw.');
     }

@@ -43,7 +43,7 @@ def test_pf2s_view_carries_the_badged_research_form():
     assert 'id="research-run"' in html
     joined = " ".join(html.split())
     assert "Research run" in joined
-    assert "research · not the shipped forecast" in joined
+    assert "research · not the submitted forecast" in joined
     # its own form: date, locations, particles, posting the accepted path
     assert 'action="/run"' in html
     assert 'name="forecast_date"' in html

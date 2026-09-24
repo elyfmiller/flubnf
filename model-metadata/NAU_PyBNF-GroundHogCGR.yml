@@ -24,6 +24,21 @@ model_contributors: [
             "affiliation": "Los Alamos National Lab",
             "email": "yentingl@lanl.gov",
         },
+        {
+            "name": "Ye Chen",
+            "affiliation": "Northern Arizona University",
+            "email": "Ye.Chen@nau.edu",
+        },
+        {
+            "name": "Amir Aman Gill",
+            "affiliation": "Northern Arizona University",
+            "email": "aag674@nau.edu",
+        },
+        {
+            "name": "Adam Smart",
+            "affiliation": "Northern Arizona University",
+            "email": "acs849@nau.edu",
+        },
     ]
 website_url: "https://github.com/elyfmiller/flubnf"
 repo_url: "https://github.com/elyfmiller/flubnf"
@@ -31,6 +46,6 @@ license: "CC-BY-4.0"
 designated_model: true
 methods: "Last observed admissions scaled by empirical quantiles of growth ratios seen at the same epiweek in strictly earlier seasons, pooled across jurisdictions and with FluSurv-NET donors."
 data_inputs: "Weekly state-level laboratory-confirmed influenza hospital admissions from NHSN, read from the hub's dated vintage archive, and weekly FluSurv-NET hospitalization rates from CDC via the Delphi Epidata API as an auxiliary donor stream."
-methods_long: "The Groundhog is the empirical member that this team submitted inside LosAlamos_NAU-CModel_Flu through 2026-09, now submitted on its own under NAU_PyBNF beside NAU_PyBNF-OracleSIHRS; the blend is retired. For each jurisdiction and horizon the forecast is the most recent reported admissions count multiplied by the empirical quantiles of growth ratios y[t+h]/y[t] observed at calendar weeks within two MMWR epiweeks of the forecast origin, in strictly earlier seasons, pooled across all jurisdictions and computed independently at each horizon. Epiweek 53 is seated between weeks 52 and 1 for the calendar match, and donor futures are read by date arithmetic, never by week label. A second donor pool is built from the same construction on FluSurv-NET weekly hospitalization rates, its log ratios shrunk toward the admissions scale by a factor fitted only on strictly earlier overlap seasons, and the two ratio quantile functions are averaged at fixed equal weight; the weight is not fitted. Both donor histories are committed to the repository as content-addressed banks whose digests every run records. The 2021-22 season is excluded from the admissions pool because it peaked in April 2022 and survives in the vintage archive only as a partial tail; the exclusion was pre-registered before it was scored. The construction is split-conformal in form only: the calendar windows overlap and the donors are neither exchangeable with the target nor independent of one another, so no finite-sample coverage guarantee is claimed, and band-conditional empirical coverage is reported from retrospective replays instead. Replayed on vintage data over the 2023-24, 2024-25 and 2025-26 seasons, the member scores a pooled relative WIS of 0.666 against the CDC FluSight-baseline (a ratio of WIS sums on 15,340 shared cells over 52 jurisdictions, self-scored with this project's frozen cell rule, not the dashboard's pairwise scaled relative WIS), against 0.771 for the bare calendar analogue on the same cells, with central 50 and 90 percent coverage of 0.51 and 0.95. It is one of the team's two designated models."
+methods_long: "The most recent reported admissions count for each jurisdiction, multiplied by empirical quantiles of the growth ratios y[t+h]/y[t] seen at calendar weeks within two MMWR epiweeks of the forecast origin in strictly earlier seasons, pooled across jurisdictions, per horizon. A second donor pool built the same way from FluSurv-NET hospitalization rates, shrunk to the admissions scale by a factor fitted on earlier seasons, is averaged in at fixed equal weight. Both donor banks are committed and digest-checked; the partial 2021-22 season is excluded (pre-registered). Uncertainty: the spread of the donor ratios; no coverage guarantee is claimed. Spatial correlation: none beyond the shared donor pool. On vintage replays of 2023-24 to 2025-26 the pooled relative WIS against the FluSight baseline is 0.666 (15,340 cells, a ratio of WIS sums, self-scored), with 50 and 90 percent coverage of 0.51 and 0.95. Replaces the empirical half of this team's earlier LosAlamos_NAU-CModel_Flu entry."
 ensemble_of_models: false
 ensemble_of_hub_models: false

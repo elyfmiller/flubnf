@@ -28,6 +28,16 @@
 .mv-status{margin:.35rem 0 0;min-height:1.25em;color:var(--mut);font-size:.85rem;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
+/* the key under the Model view: one short entry per mark the drawing uses */
+.mv-key{display:flex;flex-wrap:wrap;gap:.2rem 1.1rem;margin:.3rem 0 0;padding:0;
+  list-style:none;color:var(--mut);font-size:.85rem}
+.mv-key li{display:flex;align-items:center;gap:.4rem}
+.mv-key svg{flex:none;overflow:visible}
+.mv-key line{fill:none}
+.mv-key .k-move{stroke:var(--accent-ink);stroke-width:1.6}
+.mv-key .k-count{stroke:var(--accent-ink);stroke-width:1.6;stroke-dasharray:5 4}
+.mv-key .k-drive{stroke:var(--slate);stroke-width:1.1;stroke-dasharray:3 3}
+
 /* the reaction network: species boxes, arrows between them with the
    rate written on the arrow, dashed influence lines to an arrow's middle,
    source and sink dots */
