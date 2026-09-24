@@ -627,10 +627,10 @@ PANEL_GROUPS = {
 }
 #: what the panel's "?" says a change does, on a run and on a replay
 PANEL_ABOUT = {
-    "forecast": ("Every value starts at the shipped model's. Changing any of "
+    "forecast": ("Every value starts at its default. Changing any of "
                  "them marks the run modified wherever it appears, and its "
                  "export files are named <model>-modified."),
-    "replay": ("Every value starts at the shipped model's. Changing any of "
+    "replay": ("Every value starts at its default. Changing any of "
                "them marks the replay modified wherever it is listed, and "
                "the values are recorded with it."),
 }

@@ -392,6 +392,6 @@ def test_data_page_draws_the_archive_timeline():
     assert ui_data._vintage_rows([]) == []
     r = client.get("/data")
     assert r.status_code == 200
-    assert "Policies" not in r.text and ">Archive<" in r.text
+    assert "Policies" not in r.text and "<h2>Archive" in r.text
     # hub-free environments have no vintages and say so instead of drawing
     assert ('class="archive-strip"' in r.text) == bool(ui_state.data_mod.vintages())

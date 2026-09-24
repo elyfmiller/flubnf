@@ -174,7 +174,12 @@ def test_browse_view_plots_a_group_with_group_wording():
 
 def test_unknown_source_falls_back_to_the_hub():
     page = client.get("/data?source=nope-000000000000").text
-    assert "Vintage browser" in page
+    # the hub view, not a dataset view: no dataset links in the browser card
+    assert "<h2>FluSight hub</h2>" in page
+    assert "Back to the FluSight hub" not in page
+    # the browser card shows only when there is something to browse
+    from app.ui import state as ui_state
+    assert ("Vintage browser" in page) == bool(ui_state.data_mod.vintages())
 
 
 def test_delete_needs_the_name_and_is_refused_while_busy():

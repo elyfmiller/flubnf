@@ -245,7 +245,7 @@ def test_a_valid_file_previews_and_stores_nothing():
     assert "Ready to use." in html and "Nothing was stored" not in html
     assert "<dt>Groups</dt><dd>3: Adult, Overall, Pediatric</dd>" in html
     assert "2019-08-03 to 2024-02-24" in html
-    assert "<dt>Values</dt><dd>counts (from the values)</dd>" in html
+    assert "<dt>Values</dt><dd>counts (detected)</dd>" in html
     assert "<dt>Population</dt><dd>yes</dd>" in html
     assert "comma-separated, UTF-8" in html
     assert html.count("<polyline") == 3                 # one per group
@@ -436,10 +436,10 @@ def test_a_status_line_is_read_out_not_the_whole_result():
 def test_a_kind_filled_in_from_the_values_stays_from_the_values():
     """The box shows the inferred kind in its select (kind_auto=1 while
     it is not picked by hand); posting it must not turn it into a declared
-    kind: the preview keeps '(from the values)' and the store records
+    kind: the preview keeps '(detected)' and the store records
     kind_from 'values', as the CLI does."""
     j = check(grouped_bytes(), kind="count", kind_auto="1").json()
-    assert "<dt>Values</dt><dd>counts (from the values)</dd>" in j["html"]
+    assert "<dt>Values</dt><dd>counts (detected)</dd>" in j["html"]
     j = check(grouped_bytes(), kind="count").json()
     assert "<dt>Values</dt><dd>counts</dd>" in j["html"]
     assert store(grouped_bytes(), kind="count",

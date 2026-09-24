@@ -5,6 +5,7 @@
 <div class="cols">
  <div><div class="card"><h2>FluSight hub</h2>
   {# the latest vintage's own numbers, read from the archived file #}
+  {% if n_vintages %}
   <p>Latest vintage: <code>{{ latest_vintage }}</code></p>
   {% if latest %}
   <p class="hint">{{ "{:,}".format(latest.rows) }} reported rows ·
@@ -12,18 +13,23 @@
    {{ latest.newest_week }}</p>
   {% endif %}
   <p class="hint">{{ n_vintages }} archived truth vintages</p>
-  <form method="post" action="/freshness"><button class="quiet">Check for new data</button></form>
-  {# no confirmation: pulling is safe and resumable (the flash banner reports
-     it); the data-pull guard still intercepts a pull during run preparation #}
+  {% else %}<p class="hint">No data yet: Update data downloads it.</p>{% endif %}
+  {# one row: the primary pull and the quiet check. No confirmation: pulling
+     is safe and resumable (the flash banner reports it); the data-pull guard
+     still intercepts a pull during run preparation #}
+  <div class="row hubacts">
   <form method="post" action="/data/pull">
    <button class="gold" data-guard="data-pull">Update data</button></form>
+  <form method="post" action="/freshness"><button class="quiet">Check for new data</button></form>
+  </div>
   {% if freshness %}<p class="{% if freshness.is_fresh %}ok{% else %}warn{% endif %}">
    {{ freshness.detail }}</p>{% endif %}
  </div></div>
- <div><div class="card"><h2>Archive</h2>
+ <div><div class="card"><h2>Archive
+  {{ tips.tip("archive", "the archive", "Each dot is one week's snapshot as the runs fit it, on its flu season's row, August 1 at left.") }}</h2>
   {# one dot per archived vintage on its season's row (August 1 at left) #}
   {% if vintage_rows %}
-  <svg class="archive-strip" viewBox="0 0 560 {{ 20 + 22 * vintage_rows | length }}" role="img"
+  <div class="archive-wrap"><svg class="archive-strip" viewBox="0 0 560 {{ 20 + 22 * vintage_rows | length }}" role="img"
    aria-label="archived vintages by season">
    {% for row in vintage_rows %}{% set y = 14 + 22 * loop.index0 %}
    <text x="0" y="{{ y + 4 }}" font-size="11" fill="currentColor">{{ row.season }}</text>
@@ -32,17 +38,17 @@
    {% endfor %}
    {% set yb = 14 + 22 * vintage_rows | length %}
    {% for m, lab in ((0, "Aug"), (13, "Nov"), (26, "Feb"), (39, "May"), (52, "Aug")) %}
-   <text x="{{ 64 + m * 9.4 }}" y="{{ yb + 2 }}" font-size="11" fill="currentColor" fill-opacity=".75" text-anchor="middle">{{ lab }}</text>
+   <text x="{{ 64 + m * 9.4 }}" y="{{ yb + 2 }}" font-size="11" fill="currentColor" fill-opacity=".75" text-anchor="{{ 'end' if loop.last else 'middle' }}">{{ lab }}</text>
    {% endfor %}
-  </svg>
-  <p class="hint">{{ n_vintages }} archived vintages; each dot is one week's
-  snapshot as the runs fit it.</p>
+  </svg></div>
   {% else %}<p class="hint">No archived vintages yet.</p>{% endif %}
  </div></div>
 </div>
 
 {% include "_datasets_card.html" %}
 
+{# an empty hub: the Archive card already says so; no second empty card #}
+{% if ds or vintages or view_note %}
 <div class="card" id="browser">{% if ds %}<h2>{{ ds.name }}
  {{ tips.tip("ds-browse", "this view", "Each group's series as stored. " ~ ("Pick a snapshot to see the data as it stood on that as_of." if ds.vintage_true else "The upload had no as_of column, so this is the final data; forecasts and replays on it are not vintage-true.")) }}</h2>
  <p class="hint">Your dataset, {{ "vintage-true" if ds.vintage_true else "final data (not vintage-true)" }}.
@@ -50,8 +56,8 @@
   <a href="/retro#dataset-replay">Replay it</a> ·
   <a href="/data">Back to the FluSight hub</a></p>
  {% else %}<h2>Vintage browser</h2>
- <p class="hint">The archived truth vintages, exactly as runs fit them.
- Read-only.</p>{% endif %}
+ {% if vintages %}<p class="hint">The archived truth vintages, exactly as runs fit them.
+ Read-only.</p>{% endif %}{% endif %}
  {# plain GET form (shareable URL), no auto-submit: a scripted submit
     reloads per ArrowDown on a closed select in Chrome/Edge on Windows
     (WCAG 3.2.2) #}
@@ -115,6 +121,7 @@
  <p class="hint">This {{ "dataset" if ds else "vintage" }} holds no reported weeks for {{ sel_loc }}.</p>
  {% endif %}
 </div>
+{% endif %}
 {% if series_json and series_json != 'null' %}
 <script>
  // vintage chart: the forecast data panel's conventions (tokens per draw,

@@ -51,7 +51,7 @@
   <dt>Groups</dt><dd>{{ pv.n_groups }}{% if pv.n_groups <= 6 %}: {{ pv.groups | join(", ") }}{% endif %}{% if pv.national %} (national: {{ pv.national }}){% endif %}</dd>
   <dt>Weeks</dt><dd>{{ pv.weeks }}, {{ pv.first }} to {{ pv.last }}</dd>
   <dt>Rows</dt><dd>{{ "{:,}".format(pv.rows) }}</dd>
-  <dt>Values</dt><dd>{{ "counts" if pv.kind == "count" else "rates" }}{{ " (from the values)" if pv.inferred else "" }}</dd>
+  <dt>Values</dt><dd>{{ "counts" if pv.kind == "count" else "rates" }}{{ " (detected)" if pv.inferred else "" }}</dd>
   <dt>Population</dt><dd>{{ "yes" if pv.population else "no" }}</dd>
   {% if pv.snapshots %}<dt>Snapshots</dt><dd>{{ pv.snapshots }} (as_of)</dd>{% endif %}
   {% if pv.target %}<dt>Target</dt><dd>{{ pv.target }}</dd>{% endif %}
