@@ -295,8 +295,8 @@ def test_the_workflow_parse_finds_the_windows_steps_it_is_meant_to_check():
 
 def test_no_cmd_only_construct_survives_inside_a_powershell_step():
     """No cmd syntax (e.g. `exit /b`) in a PowerShell step: it fails at parse
-    time, runs none of its assertions, and continue-on-error keeps the
-    workflow green."""
+    time and runs none of its assertions, so the step fails for a reason
+    unrelated to what it checks."""
     offenders = []
     for name, shell, body in _workflow_steps():
         if shell != "powershell":
