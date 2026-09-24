@@ -1065,24 +1065,31 @@ def storage_delete(request: Request, ds_id: str, confirm: str = Form("")):
 
 # -------------------------------------------------------- Retrospective
 
+#: a replay's default weeks: the flu-season months (October to June)
+REPLAY_MONTHS = (10, 11, 12, 1, 2, 3, 4, 5, 6)
+
+
 def replay_window(dates: list) -> tuple:
-    """(first, last) a replay offers by default: the newest season's weeks
-    (August to July), or the season before when the newest holds under 8;
-    the whole range when the data span one season."""
+    """(first, last) a replay offers by default: the flu-season weeks
+    (October to June) of the newest season (August to July) holding 8 or
+    more of them, so a summer tail is never the default; the whole range
+    when the data span one season or no season holds 8 such weeks."""
     if not dates:
         return "", ""
 
     def season(d):
         y, m = int(d[:4]), int(d[5:7])
         return y if m >= 8 else y - 1
+    if len({season(d) for d in dates}) < 2:
+        return dates[0], dates[-1]
     by = {}
     for d in dates:
-        by.setdefault(season(d), []).append(d)
-    if len(by) < 2:
-        return dates[0], dates[-1]
-    keys = sorted(by)
-    pick = by[keys[-1]] if len(by[keys[-1]]) >= 8 else by[keys[-2]]
-    return pick[0], pick[-1]
+        if int(d[5:7]) in REPLAY_MONTHS:
+            by.setdefault(season(d), []).append(d)
+    for k in sorted(by, reverse=True):
+        if len(by[k]) >= 8:
+            return by[k][0], by[k][-1]
+    return dates[0], dates[-1]
 
 
 def retro_context(selected: str = "") -> dict:

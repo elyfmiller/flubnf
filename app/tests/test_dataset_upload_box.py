@@ -306,7 +306,7 @@ def test_replay_this_opens_the_replay_card_on_its_newest_season():
     page = client.get(f"/retro?dataset={ds.id}").text
     assert f'<option value="{ds.id}" selected>Kids</option>' in page
     card = page[page.index('id="dataset-replay"'):]
-    assert '"default_first": "2023-08-05"' in card
+    assert '"default_first": "2023-10-07"' in card
     assert '"default_last": "2024-02-24"' in card
     # an unknown id selects nothing
     page = client.get("/retro?dataset=nope-000000000000").text
@@ -320,17 +320,30 @@ def test_the_data_list_replay_link_preselects():
     assert f'href="/retro?dataset={ds_id}#dataset-replay">Replay</a>' in page
 
 
+def _weeks(first, last):
+    from datetime import date, timedelta
+    d, out = date.fromisoformat(first), []
+    while d <= date.fromisoformat(last):
+        out.append(d.isoformat())
+        d += timedelta(days=7)
+    return out
+
+
 @pytest.mark.parametrize("dates,want", [
     ([], ("", "")),
     (["2024-01-06", "2024-01-13"], ("2024-01-06", "2024-01-13")),
-    # two seasons, the newest with 8+ weeks: the newest
-    ([f"2023-{m:02d}-01" for m in (3, 4)]
-     + [f"2023-{m:02d}-15" for m in range(8, 13)]
-     + [f"2024-0{m}-15" for m in range(1, 4)],
-     ("2023-08-15", "2024-03-15")),
-    # the newest holds under 8 weeks: the season before
+    # one season: all of it, summer weeks too
+    (_weeks("2023-08-05", "2024-07-27"), ("2023-08-05", "2024-07-27")),
+    # two seasons, the newest with 8+ flu-season weeks: its Oct..Jun weeks
+    (_weeks("2022-08-06", "2024-02-24"), ("2023-10-07", "2024-02-24")),
+    # the shipped template: its newest season is 8 summer weeks, so the
+    # last full flu season, not the trough (once 2024-08-03..09-21)
+    (_weeks("2022-01-01", "2024-09-21"), ("2023-10-07", "2024-06-29")),
+    # the newest holds under 8 flu-season weeks: the season before
+    (_weeks("2022-10-01", "2023-10-28"), ("2022-10-01", "2023-06-24")),
+    # no season holds 8: the whole range
     (["2023-01-07", "2023-05-06", "2023-07-29", "2023-08-05", "2023-08-12"],
-     ("2023-01-07", "2023-07-29")),
+     ("2023-01-07", "2023-08-12")),
 ])
 def test_replay_window(dates, want):
     assert DU.replay_window(dates) == want

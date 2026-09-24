@@ -68,7 +68,7 @@
   <button class="{{ 'quiet' if where == 'replay' else 'gold' }}" name="next" value="forecast">Forecast this</button>
   <button class="{{ 'gold' if where == 'replay' else 'quiet' }}" name="next" value="replay">Replay this</button>
   {% if where == "data" %}<button class="quiet" name="next" value="data">Save only</button>{% endif %}
-  {{ tips.tip(fid ~ "-go", "these buttons", "Each stores the dataset, then opens the Forecast tab (its newest week, every group) or the Retrospective tab's replay card (its newest season). Nothing runs until you start it there.") }}
+  {{ tips.tip(fid ~ "-go", "these buttons", "Each stores the dataset, then opens the Forecast tab (its newest week, every group) or the Retrospective tab's replay card (its newest flu season, October to June). Nothing runs until you start it there.") }}
  </div>
 </div>
 {% endif %}

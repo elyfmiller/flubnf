@@ -61,7 +61,7 @@
    }
    function sync(){
      const d = DS.find(x=>x.id===$('dsr-ds').value) || DS[0];
-     // the newest season's weeks by default (datasets_ui.replay_window)
+     // the newest flu season's weeks by default (datasets_ui.replay_window)
      opts($('dsr-first'), d.dates, d.default_first || d.dates[0]);
      opts($('dsr-last'), d.dates, d.default_last || d.dates[d.dates.length-1]);
      const g=$('dsr-groups'); g.innerHTML='';
