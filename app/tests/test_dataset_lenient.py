@@ -822,6 +822,47 @@ def test_utf32_is_read_not_taken_for_utf16():
 
 # --------------------------------------------------- rows, kinds, reporting
 
+def test_rows_with_another_separator_are_named_as_such():
+    """A semicolon header over comma rows gave four stacked problems (a
+    ragged row, a bad date, a missing value and a group '' -> 'group1')."""
+    rep = D.validate(b"date;target_group;value\n2024-01-06,A,5\n"
+                     b"2024-01-13,A,6\n")
+    assert rep.codes == ["separator_mixed"] and rep.problems[0].rows == (2, 3)
+    assert ("The header is separated by semicolons but the rows by commas "
+            "(rows 2, 3; e.g., row 2: 2024-01-06,A,5).") \
+        in rep.problems[0].message
+    rep = D.validate(b"date,target_group,value\n2024-01-06;A;5\n")
+    assert "separated by commas but the rows by semicolons" \
+        in rep.problems[0].message
+    rep = D.validate(b"date;target_group;value\n2024-01-06;A;5\n"
+                     b"2024-01-13;A;6\n2024-01-20,A,7\n")
+    assert rep.codes == ["separator_mixed"]
+    assert "1 row(s) are separated by commas, not semicolons like the rest" \
+        in rep.problems[0].message
+
+
+def test_separator_only_rows_and_a_dos_end_mark_are_blank():
+    """',,,' was taken for a header ('Found: ,,,'), and a trailing Ctrl-Z
+    for a row with four problems."""
+    assert D.validate(b"\n\n,,,\n").codes == ["empty"]
+    ok(D.validate(b"date,target_group,value\r\n2024-01-06,A,5\r\n"
+                  b"2024-01-13,A,6\r\n\x1a"))
+
+
+def test_a_blank_group_says_blank_and_control_characters_show():
+    p = only(D.validate(b"date,target_group,value\n2024-01-06,A,5\n"
+                        b"2024-01-13,,6\n2024-01-20,A,7\n"), "group_blank")
+    assert ("The 'target_group' column is blank on 1 row(s) (row 3; e.g., "
+            "row 3: 2024-01-13, value 6).") in p.message
+    rep = D.validate(b"date,target_group,value\n2024-01-06,A,5\n"
+                     b"2024-01-13,,6\n")
+    assert not any("group1" in str(x) for x in rep.problems)
+    # a NUL is shown, not an invisible character
+    p = only(D.validate(b"date,target_group,value\n2024-01-06,A,5\x00\n"),
+             "value_numeric")
+    assert "e.g., 5␀)" in p.message
+
+
 def test_row_numbers_are_the_spreadsheets_rows():
     """Header = row 1; a blank row still counts, as in a spreadsheet."""
     rows = [f"{d.isoformat()},A,{i}" for i, d in enumerate(sats())]

@@ -225,8 +225,9 @@ class Problem:
 #: problem kinds, in the order a report lists them
 PROBLEM_KINDS = (
     ("File", ("empty", "encoding", "encoding_mixed", "csv", "quote",
-              "limit_bytes", "limit_rows", "limit_groups", "kind_invalid",
-              "target_required", "target_unknown", "target_blank")),
+              "separator_mixed", "limit_bytes", "limit_rows", "limit_groups",
+              "kind_invalid", "target_required", "target_unknown",
+              "target_blank")),
     ("Columns", ("missing_columns", "ambiguous_columns", "column_unknown",
                  "duplicate_columns", "ragged", "extra_fields", "split")),
     ("Dates", ("date_parse", "date_day_first", "date_ambiguous", "weekday",
@@ -236,8 +237,9 @@ PROBLEM_KINDS = (
                 "value_na", "value_not_integer")),
     ("Population", ("population_invalid", "population_missing",
                     "population_format")),
-    ("Groups", ("group_name", "group_reserved", "national_multiple",
-                "group_collision", "location_name_conflict")),
+    ("Groups", ("group_blank", "group_name", "group_reserved",
+                "national_multiple", "group_collision",
+                "location_name_conflict")),
     ("Weeks", ("duplicate", "gap")),
 )
 KIND_OF = {c: k for k, codes in PROBLEM_KINDS for c in codes}
@@ -642,7 +644,7 @@ def _int_or_float(v: float):
 
 
 def _examples(items) -> str:
-    return ", ".join(str(x) for x in list(items)[:MAX_EXAMPLES])
+    return ", ".join(_vis(x) for x in list(items)[:MAX_EXAMPLES])
 
 
 def _rows(lines, total: Optional[int] = None) -> str:
@@ -703,6 +705,24 @@ def _week_side(header: str):
     if end == start:
         return None
     return "end" if end else "start"
+
+
+
+#: control characters, shown in messages as their Unicode pictures (a NUL
+#: as U+2400) instead of invisibly
+_CTRL = re.compile("[\x00-\x08\x0a-\x1f]")
+
+
+def _vis(text) -> str:
+    return _CTRL.sub(lambda m: chr(0x2400 + ord(m.group())), str(text))
+
+
+def _blank_row(row) -> bool:
+    """A row with nothing in it: empty cells, or only separators of another
+    kind (',,,' in a semicolon file) and a DOS end-of-file mark (Ctrl-Z)."""
+    return all(not c.replace("\x1a", "").strip().strip(",;\t").strip()
+               for c in row)
+
 
 
 
@@ -901,7 +921,7 @@ def _read(src: _Replayable, enc: str, limits: Limits, columns,
     reader = csv.reader(itertools.chain(sample, lines), delimiter=delim)
     header = None
     for row in reader:
-        if any(c.strip() for c in row):
+        if not _blank_row(row):
             header = row
             break
     if header is None:
@@ -950,11 +970,13 @@ def _read(src: _Replayable, enc: str, limits: Limits, columns,
     gcol = idx["group"]
     # rows whose quote, opened and not closed, took in the rows below
     quoted = []
+    # rows written with another separator, by that separator
+    resep = {}
     prev = reader.line_num
     for row in reader:
         # a row is numbered by the line it starts on
         line, prev = prev + 1, reader.line_num
-        if not row or all(not c.strip() for c in row):
+        if _blank_row(row):
             continue
         if len(raw_rows) >= limits.max_rows:
             raise _LimitExceeded("rows")
@@ -968,6 +990,15 @@ def _read(src: _Replayable, enc: str, limits: Limits, columns,
                        for i in used if i < len(row)):
                     continue
         n = len(row)
+        if n == 1:
+            # one cell that another separator splits into the columns: a
+            # row written with a different separator, reported as such
+            # (not as a blank group, a bad date and a missing value)
+            d2 = next((d for d in DELIMITERS if d != delim and len(next(
+                csv.reader([row[0]], delimiter=d), [])) >= need), None)
+            if d2 is not None:
+                resep.setdefault(d2, _Tally()).add(line, row[0])
+                continue
         cut = False
         for c in num_cut.values():
             i = c[0]
@@ -1012,6 +1043,22 @@ def _read(src: _Replayable, enc: str, limits: Limits, columns,
                 f"cell takes in rows {ln + 1} to {end}, such as "
                 f"{_shown(text)}). Delete the stray quote, or close it on "
                 "its own row.", starts)
+    for d2, t in resep.items():
+        ln, text = t.eg[0]
+        if t.n >= len(raw_rows):
+            # most rows: the header and the rows use different separators
+            rep.problems, rep.warnings = [], []
+            rep.add("separator_mixed", f"The header is separated by "
+                    f"{DELIMITERS[delim]}s but the rows by {DELIMITERS[d2]}s "
+                    f"({_rows(t.lines, t.n)}; e.g., row {ln}: {_shown(text)}"
+                    "). Save the file again with one separator throughout.",
+                    t.lines)
+            return rep, None, []
+        rep.add("separator_mixed", f"{t.n} row(s) are separated by "
+                f"{DELIMITERS[d2]}s, not {DELIMITERS[delim]}s like the rest "
+                f"of the file ({_rows(t.lines, t.n)}; e.g., row {ln}: "
+                f"{_shown(text)}). Save the file again with one separator "
+                "throughout.", t.lines)
     if ragged:
         rep.add("ragged", f"{len(ragged)} row(s) have fewer fields than the "
                 f"columns they need ({_rows(ragged)}; e.g., row {ragged[0]}).",
@@ -1021,7 +1068,7 @@ def _read(src: _Replayable, enc: str, limits: Limits, columns,
             extra.merge(t)
     if extra.n:
         ln, cells = extra.eg[0]
-        shown = delim.join(cells)
+        shown = _vis(delim.join(cells))
         shown = shown if len(shown) <= 60 else shown[:57] + "..."
         how = ("An unquoted comma splits a value in two: write 1,234 as "
                '"1,234" or 1234, and quote a name that holds a comma '
@@ -1605,9 +1652,17 @@ def _check_groups(rep: Report, raw_rows: list, cols: dict):
         first.setdefault(name, ln)
         first.setdefault(("key", key), ln)
     what = "location name" if cols["format"] == "hubverse" else "group"
+    blank = [ln for ln, r in raw_rows if not _text(r["group"])]
+    if blank:
+        r = _rows_of(raw_rows, blank[:1])[0]
+        rep.add("group_blank", f"The '{cols['group']}' column is blank on "
+                f"{len(blank)} row(s) ({_rows(blank)}; e.g., row {blank[0]}: "
+                f"{_vis(r['date'].strip())}, value {_vis(r['value'].strip())}"
+                f"). Give every row its {'location' if has_lname else what}"
+                ", or delete those rows.", blank)
     # a national spelling is accepted as is ('US (national)' included)
     bad = [n for n in name2keys
-           if not GROUP_RE.fullmatch(n) and not is_national_name(n)]
+           if n and not GROUP_RE.fullmatch(n) and not is_national_name(n)]
     if bad:
         sugg = [f"'{n}' -> '{_suggest(n)}'" for n in bad]
         rep.add("group_name", f"{len(bad)} {what} value(s) use characters "
