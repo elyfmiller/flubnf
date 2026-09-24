@@ -336,6 +336,11 @@ def run(spec) -> dict:
     drop_same = bool(getattr(spec, "drop_same_day", False))
     # built once per run (independent of location); None = single pool
     splice = splice_args(spec, bank)
+    # the donor-window knob (app/core/knobs.py), passed only when a run
+    # records one: the shipped call is unchanged
+    bw = ((getattr(spec, "extra", None) or {}).get("knobs") or {}).get(
+        "groundhog.bandwidth")
+    bw_kw = {} if bw is None else {"bandwidth": int(bw)}
     for loc in spec.locations:
         fips = name2fips.get(loc)
         if fips is None:
@@ -357,7 +362,8 @@ def run(spec) -> dict:
         for h in (1, 2, 3, 4):     # PHYSICAL weeks ahead, the library's unit
             # default donor pool = the registered exclusions; never restated
             q = AN.forecast(anchor, window_ref, h + k, bank, QL,
-                            completeness=c, widen_log_sd=sig, splice=splice)
+                            completeness=c, widen_log_sd=sig, splice=splice,
+                            **bw_kw)
             if q:
                 # canonical (hub) key: h weeks ahead is hub horizon h-1
                 qs[str(h - 1)] = {float(L): float(x) for L, x in q.items()}

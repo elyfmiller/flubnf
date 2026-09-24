@@ -148,6 +148,14 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
     """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    # model knobs (app/core/knobs.py) recorded in the spec: absent on a
+    # shipped run, which then takes exactly the calls below as before
+    from app.core import knobs as _knobs
+    kn = _knobs.step_values(extra)
+    if "oracle.w" in kn:
+        w = float(kn["oracle.w"])
+    if "oracle.submitted_seed" in kn:
+        submitted_seed = int(kn["oracle.submitted_seed"])
     T = date.fromisoformat(asof)
     vf = Path(vintage) if vintage is not None else vintage_path(asof)
     pops = populations if populations is not None else OB.load_populations(locations_csv or LOCATIONS)
@@ -160,6 +168,13 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
     adm_ok = pool["rule"] == 1 and pool["n"] > 0
     state = MX.mixture_state(adm_ok, mix["admissible"])
     w_aux = MX.resolve_w_aux(adm_ok, mix["admissible"])
+    # the FluSurv-NET share knob, resolved per state like the shipped one
+    # (R_EITHER: only the "both" state reads it); passed only when set
+    primary_kw = {}
+    if "oracle.w_aux" in kn:
+        w_aux = MX.resolve_w_aux(adm_ok, mix["admissible"],
+                                 w_aux=float(kn["oracle.w_aux"]))
+        primary_kw["w_aux"] = w_aux
     bank_label = MX.label(man["digest"], mix["bank_digest"])
     yT = vb.y_T()
     k_cells = weeks_dropped(out_dir)
@@ -198,7 +213,8 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
             continue
         xh = [blocks.get(h, []) for h in hz.HORIZONS]      # physical 1..4, in order
         r = OR.member_for_cell(origin, xh, pool, T, fips, w=w, seeds=seeds,
-                               submitted_seed=submitted_seed, aux_pool=auxp)
+                               submitted_seed=submitted_seed, aux_pool=auxp,
+                               **primary_kw)
         r2 = OR.member_for_cell(origin, xh, pool, T, fips, w=OR.W_SECONDARY,
                                 seeds=seeds, submitted_seed=submitted_seed, aux_pool=auxp)
         r0 = OR.member_for_cell(origin, xh, pool, T, fips, w=w, seeds=seeds,
@@ -269,7 +285,9 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
                              "shrink": mix["shrink"],
                              "shrink_prior_seasons": mix["shrink_prior_seasons"]},
                  "mixture": {"identity_rule": MX.IDENTITY_RULE, "state": state,
-                             "w_aux": w_aux, "w_aux_nominal": MX.W_AUX}},
+                             "w_aux": w_aux,
+                             "w_aux_nominal": float(kn.get("oracle.w_aux",
+                                                           MX.W_AUX))}},
         "vintage": {"file": str(vf), "sha256": man["source_sha256"],
                     "newest_row_date": vb.newest_row_date().isoformat()},
         "rule": man["rule"], "rule_flusurv": MX.rule_block(mix["bank_digest"]),
@@ -304,6 +322,10 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
                                                    "admissions half alone (LB), logged beside "
                                                    "the primary (addendum A2 (2)); ships nothing")}},
     }
+    if kn:
+        # a modified step is never mistaken for the registered member
+        prov["specification"] = "modified"
+        prov["knobs"] = dict(sorted(kn.items()))
     write_provenance(out_dir, prov)
     return member, prov
 

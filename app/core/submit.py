@@ -154,12 +154,15 @@ def validate(df: pd.DataFrame) -> list:
 
 
 def write_submission(all_rows: Iterable[dict], model: str, asof: str,
-                     out_dir: Path) -> Path:
+                     out_dir: Path, suffix: str = "") -> Path:
     """One hub-format CSV per model (identity is the PATH, rule above).
 
     `model` is a MODEL_ABBR key (never a free-text name); `asof` is the
     as-of the rows were built from. A name/`reference_date` mismatch is
-    fatal here, before the hub rejects it."""
+    fatal here, before the hub rejects it. `suffix` (knobs.MODIFIED_SUFFIX
+    for a run with modified model settings) makes the directory and file
+    a NON-hub name, so such a file can never pass for the registered
+    model."""
     df = pd.DataFrame(list(all_rows))
     problems = validate(df)
     if problems:
@@ -168,7 +171,7 @@ def write_submission(all_rows: Iterable[dict], model: str, asof: str,
     if "reference_date" not in df.columns:
         raise ValueError("submission rows carry no reference_date column; "
                          "the file name could not be checked against them")
-    model_id = hub_model_id(model)
+    model_id = hub_model_id(model) + str(suffix or "")
     ref = str(hub_reference_date(asof).date())
     in_rows = sorted({str(v) for v in df["reference_date"]})
     if in_rows != [ref]:

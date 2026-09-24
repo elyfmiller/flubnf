@@ -2,10 +2,12 @@
 with its shipped value, bounds, the members it affects and whether the
 model card states it.
 
-Stage 1 of the model-knobs feature: nothing reads this at run time yet.
 Each default is READ from the constant the engine uses (never restated),
 and app/tests/test_knobs.py holds the defaults, the source labels and the
-card phrases in step with the code and model-metadata/*.yml.
+card phrases in step with the code and model-metadata/*.yml. The console
+(/run), the retrospective (/retro/run, `flubnf retro --knob`) and the
+Model settings panel go through resolve() and write_extra() below; see
+"Stage 2" for the record a modified run carries and what reads it.
 
 Members use the submit.MODEL_ABBR keys: "pf" is the Oracle SIHRS (the
 particle filter plus the Oracle step), "analogue" the Groundhog. A knob
@@ -578,3 +580,300 @@ def _card_key(knob: Knob):
     if callable(knob.default):
         return knob.default("2000-10-07")[5:]
     return knob.default
+
+
+# --- Stage 2: knobs reach the models ------------------------------------------------
+#
+# THE RECORD. A run built through the knob channel with any value off the
+# shipped one carries spec.extra["knobs"] = its non-default values (JSON
+# form) and, when the operator exported under the hub names anyway,
+# spec.extra["knobs_override"] = the typed reason. A spec without the key is
+# shipped whatever its legacy fields say: old ledger rows (replicates=1 test
+# runs, 20,000-particle research runs, bare-analogue rows) are never
+# reclassified. Each value is ALSO written where its engine reads it
+# (RunSpec fields, extra["prior_ranges"], extra["initialization"], the
+# resolved aux pools); knobs with no engine key are read from the record.
+
+RECORD_KEY = "knobs"
+OVERRIDE_KEY = "knobs_override"
+#: appended to the hub model id of a modified run's files
+MODIFIED_SUFFIX = "-modified"
+
+#: knobs with no engine parameter yet: shown disabled ("coming later") and
+#: refused when set off their default; every run uses the shipped value
+LATER = frozenset({"oracle.bandwidth", "oracle.count_floor",
+                   "oracle.min_donor_seasons", "oracle.min_paths",
+                   "groundhog.min_donors"})
+
+#: knobs the retrospective cannot carry: retro.run_week drops no weeks and
+#: stores unfloored samples (the floor is a console output rule)
+NOT_IN_RETRO = frozenset({"run.weeks_to_drop", "output.floor_lam"})
+
+#: form fields that predate the registry -> the knob they now set
+LEGACY_FIELDS = {"particles": "pf.particles", "replicates": "pf.replicates",
+                 "season_start": "run.season_start",
+                 "weeks_to_drop": "run.weeks_to_drop",
+                 "drop_same_day": "run.drop_same_day"}
+FIELD_OF = {v: k for k, v in LEGACY_FIELDS.items()}
+
+#: knob -> RunSpec field on a console run
+_SPEC_FIELDS = {"pf.particles": "particles", "pf.replicates": "replicates",
+                "pf.jitter": "jitter", "run.season_start": "season_start",
+                "run.weeks_to_drop": "weeks_to_drop",
+                "run.drop_same_day": "drop_same_day"}
+
+
+def wired(key: str) -> bool:
+    return key in BY_KEY and key not in LATER
+
+
+def in_scope(key: str, scope: str) -> bool:
+    """scope: "forecast" (the console) or "retro"."""
+    return not (scope == "retro" and key in NOT_IN_RETRO)
+
+
+def jsonable(values: Mapping) -> dict:
+    """The record form: tuples become lists, keys sorted."""
+    return {k: (list(v) if isinstance(v, tuple) else v)
+            for k, v in sorted(values.items())}
+
+
+def resolve(form: Mapping, engine="all", *, scope: str = "forecast",
+            forecast_date: Optional[str] = None, oracle_step: bool = True,
+            legacy: Optional[Mapping] = None, two_strain: bool = False,
+            check_dates: tuple = ()) -> dict:
+    """A run's non-default knob values from the panel's `knob.<key>` fields
+    (or a CLI/JSON dict) plus the legacy form fields (`legacy`: {field:
+    raw}, LEGACY_FIELDS). One source of truth: a legacy field left at the
+    shipped value yields to its knob; two different off-shipped values are
+    refused. Also refuses (KnobError) what parse refuses, a coming-later
+    knob set off its default, a knob the scope cannot carry, and a prior
+    knob with the two-strain member (its parameters differ).
+    `check_dates`: further dates a date knob must also precede (a
+    season's later weeks)."""
+    typed = parse(form, engine, forecast_date=forecast_date,
+                  oracle_step=oracle_step)
+    for field_name, raw in (legacy or {}).items():
+        key = LEGACY_FIELDS.get(field_name)
+        if key is None:
+            raise KnobError(f"unknown legacy field {field_name!r}")
+        got = parse({key: raw}, engine, forecast_date=forecast_date,
+                    oracle_step=oracle_step)
+        if key not in got:
+            continue
+        v, shipped = got[key], BY_KEY[key].default_for(forecast_date)
+        if v == shipped:
+            continue                    # the untouched legacy field yields
+        if key in typed and typed[key] not in (shipped, v):
+            raise KnobError(f"{key}: the form gives two values ({_fmt(v)} "
+                            f"and {_fmt(typed[key])}); give one")
+        typed[key] = v
+    nd = non_default(typed, forecast_date)
+    for key, v in nd.items():
+        if key in LATER:
+            raise KnobError(f"{key} is not wired to its engine yet (coming "
+                            f"later); every run uses "
+                            f"{_fmt(BY_KEY[key].default)}")
+        if not in_scope(key, scope):
+            raise KnobError(f"{key} cannot be set for a retrospective")
+        if two_strain and key.startswith("pf.prior."):
+            raise KnobError(f"{key}: the two-strain research member has "
+                            f"other parameters; prior knobs are refused "
+                            f"with it")
+        if BY_KEY[key].kind == "date":
+            for d in check_dates:
+                _coerce(BY_KEY[key], v, d)
+    return nd
+
+
+def from_record(record: Mapping) -> dict:
+    """Typed values from a recorded knobs dict (lists back to tuples)."""
+    out = {}
+    for key, v in (record or {}).items():
+        knob = BY_KEY.get(key)
+        if knob is None:
+            raise KnobError(f"unknown knob {key!r} in the record")
+        out[key] = tuple(float(x) for x in v) if knob.kind == "range" else v
+    return out
+
+
+def aux_choice(nd: Mapping, fallback):
+    """The Groundhog preset a run asks for: nd's groundhog.aux ("none" ->
+    "", the bare analogue), else `fallback` (None = the shipped preset)."""
+    if "groundhog.aux" in nd:
+        return "" if nd["groundhog.aux"] == "none" else nd["groundhog.aux"]
+    return fallback
+
+
+def write_extra(nd: Mapping, extra: dict, *, retro: bool = False,
+                override: str = "") -> dict:
+    """Write non-default values where the engines read them, plus the
+    record. `extra` must already hold the resolved aux pools (the weight
+    knob rescales them). A retrospective has no RunSpec-field channel, so
+    its jitter and season start go through extra (retro.run_week reads
+    both). An empty nd writes nothing: a shipped spec is unchanged."""
+    if not nd:
+        return extra
+    for key, v in nd.items():
+        if key.startswith("pf.prior."):
+            name = f"{key.rsplit('.', 1)[1]}__FREE"
+            extra.setdefault("prior_ranges", {})[name] = [float(x) for x in v]
+        elif key == "pf.initialization":
+            extra["initialization"] = v
+        elif retro and key == "pf.jitter":
+            extra["jitter"] = float(v)
+        elif retro and key == "run.season_start":
+            extra["season_start"] = v
+        elif key == "groundhog.aux_weight":
+            pools = extra.get("aux_pools") or []
+            total = sum(float(p.get("weight", 0)) for p in pools)
+            if pools and total > 0:
+                extra["aux_pools"] = [
+                    {**p, "weight": float(p["weight"]) * float(v) / total}
+                    for p in pools]
+    extra[RECORD_KEY] = jsonable(nd)
+    if override:
+        extra[OVERRIDE_KEY] = str(override)
+    return extra
+
+
+def spec_fields(nd: Mapping) -> dict:
+    """RunSpec keyword arguments a console run's knobs set."""
+    return {_SPEC_FIELDS[k]: v for k, v in nd.items() if k in _SPEC_FIELDS}
+
+
+def _extra_of(spec) -> Mapping:
+    if isinstance(spec, str):
+        try:
+            spec = json.loads(spec or "{}")
+        except (TypeError, ValueError):
+            return {}
+    extra = _get(spec, "extra") if spec is not None else None
+    return extra if isinstance(extra, Mapping) else {}
+
+
+def record_of(spec) -> dict:
+    """The knobs record a spec (RunSpec, dict or JSON) carries; {} for a
+    shipped or legacy spec."""
+    rec = _extra_of(spec).get(RECORD_KEY)
+    return dict(rec) if isinstance(rec, Mapping) else {}
+
+
+def modified(spec) -> bool:
+    """True only for a spec carrying a non-empty knobs record."""
+    return bool(record_of(spec))
+
+
+def override_reason(spec) -> str:
+    return str(_extra_of(spec).get(OVERRIDE_KEY) or "")
+
+
+def hub_names(spec) -> bool:
+    """Whether a run's files go out under the hub model names: shipped, or
+    modified with an override and its reason."""
+    return not modified(spec) or bool(override_reason(spec))
+
+
+def step_values(extra) -> dict:
+    """The Oracle-step knob values a spec's extra records (apply_week)."""
+    rec = extra.get(RECORD_KEY) if isinstance(extra, Mapping) else None
+    return {k: v for k, v in (rec or {}).items()
+            if k in BY_KEY and BY_KEY[k].stage == "step"}
+
+
+def value_of(extra, key: str):
+    """A recorded knob value from a spec's extra; None when shipped."""
+    rec = extra.get(RECORD_KEY) if isinstance(extra, Mapping) else None
+    return (rec or {}).get(key)
+
+
+def fit_extra(extra: Mapping) -> dict:
+    """extra as a retro week's FIT manifest records it: post-fit knobs
+    (Oracle step, Groundhog) are left out of the record copy, so a change
+    to them alone never invalidates fitted cells."""
+    out = dict(extra)
+    rec = out.get(RECORD_KEY)
+    if isinstance(rec, Mapping):
+        fit = {k: v for k, v in rec.items()
+               if k in BY_KEY and BY_KEY[k].stage == "fit"}
+        if fit:
+            out[RECORD_KEY] = fit
+        else:
+            out.pop(RECORD_KEY)
+    return out
+
+
+def summary(record: Mapping, override: str = "") -> dict:
+    """What a modified run's records carry (results.json, knobs.json)."""
+    return {"values": jsonable(record), "digest": digest(record),
+            "label": label(from_record(record)),
+            "override": ({"reason": override} if override else None),
+            "files": ("hub names, by override" if override
+                      else f"non-hub names (<hub id>{MODIFIED_SUFFIX})")}
+
+
+def _json_value(v):
+    return list(v) if isinstance(v, tuple) else v
+
+
+def write_record(path, spec) -> bool:
+    """knobs.json for a modified run: values, digest, override and the full
+    effective table. Nothing for a shipped run (its files are unchanged)."""
+    rec = record_of(spec)
+    if not rec:
+        return False
+    import os
+    from pathlib import Path
+    body = {**summary(rec, override_reason(spec)),
+            "effective": [{**r, "value": _json_value(r["value"]),
+                           "default": _json_value(r["default"])}
+                          for r in effective(spec)]}
+    p = Path(path)
+    tmp = p.with_name(p.name + ".tmp")
+    tmp.write_text(json.dumps(body, indent=1, sort_keys=True))
+    os.replace(tmp, p)
+    return True
+
+
+def legacy_settings_knobs(settings: Mapping) -> dict:
+    """The non-default knob set a retrospective's run record implies: its
+    recorded knobs, or, for a record from before the registry, what its
+    particles, replicates and same-day choice state."""
+    s = settings if isinstance(settings, Mapping) else {}
+    if isinstance(s.get(RECORD_KEY), Mapping):
+        return jsonable(s[RECORD_KEY])
+    out = {}
+    for field_name, key in (("particles", "pf.particles"),
+                            ("replicates", "pf.replicates")):
+        try:
+            v = int(s.get(field_name) or 0)
+        except (TypeError, ValueError):
+            v = 0
+        if v and v != BY_KEY[key].default:
+            out[key] = v
+    if bool(s.get("drop_same_day")) != BY_KEY["run.drop_same_day"].default:
+        out["run.drop_same_day"] = bool(s.get("drop_same_day"))
+    return out
+
+
+#: knobs a retrospective takes as run_season ARGUMENTS, not week extra
+RETRO_ARG_KEYS = frozenset({"pf.particles", "pf.replicates",
+                            "run.drop_same_day"})
+
+
+def retro_week_extra(base, nd: Mapping):
+    """Wrap a retro week_extra callable so each week's extra carries the
+    knobs that travel in extra (not RETRO_ARG_KEYS, which are run_season
+    arguments), renamed '<base>+knobs@<digest>'; `base` itself when none
+    is set, so a shipped replay's recorded name is unchanged."""
+    snap = {k: v for k, v in nd.items() if k not in RETRO_ARG_KEYS}
+    if not snap:
+        return base
+
+    def _extra(asof, i, vintages):
+        d = dict(base(asof, i, vintages) or {}) if base else {}
+        return write_extra(snap, d, retro=True)
+
+    _extra.__name__ = (f"{getattr(base, '__name__', 'custom')}"
+                       f"+knobs@{digest(jsonable(snap))}")
+    return _extra

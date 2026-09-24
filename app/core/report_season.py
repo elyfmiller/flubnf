@@ -73,6 +73,17 @@ def names_for_root(root: Path, base: dict | None = None) -> dict:
         carries = False
     if not carries:
         names["pf"] = site_build.PF_LABEL_FILTER
+    # a replay with modified model settings never wears the shipped names
+    rec = site_build.tree_knobs(Path(root))
+    if rec:
+        from app.core import knobs as _knobs
+        hit = set()
+        for key in rec:
+            k = _knobs.BY_KEY.get(key)
+            hit |= set(k.affects) if k else set(_knobs.MEMBERS)
+        for m in sorted(hit):
+            if m in names:
+                names[m] = f"{names[m]} (modified settings)"
     return names
 
 

@@ -128,6 +128,16 @@ def pf_label(seasons: dict) -> str:
     return PF_LABEL_FILTER
 
 
+def tree_knobs(root) -> dict:
+    """The model-knobs record of a season tree's run record ({} for a
+    shipped tree or one from before the registry)."""
+    from app.core import retro
+    try:
+        return retro.season_knobs(retro.read_meta(Path(root)))
+    except Exception:
+        return {}
+
+
 def discover_seasons(roots=ROOT_ORDER) -> dict:
     """{season: {"root", "origin", "weeks"}} for every season with stored
     weeks, across every known root.
@@ -144,6 +154,8 @@ def discover_seasons(roots=ROOT_ORDER) -> dict:
         for d in sorted(Path(root).iterdir()):
             if not d.is_dir() or not re.fullmatch(r"\d{4}-\d{2}", d.name):
                 continue
+            if tree_knobs(d):
+                continue    # a modified-settings replay never publishes
             try:
                 weeks = playback.season_weeks(d)
             except Exception:
