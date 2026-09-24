@@ -211,7 +211,7 @@ SEASON_MODELS = ("pf", "analogue", "pf2s")
 
 def _cumulative_curves(df) -> dict:
     """{model: [(iso week, cumulative relWIS)]} per SEASON_MODELS entry,
-    the season page's series (mirrors server.retro_results)."""
+    the season page's series (mirrors app/ui/routes/retro.retro_results)."""
     if df is None or "model" not in getattr(df, "columns", ()):
         return {}
     # the pooled gate: a fitted US row never bends the line

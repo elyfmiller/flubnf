@@ -1,5 +1,5 @@
 """PRODUCTION: the output floor applied to console-run PF samples
-(server._run_all).
+(app/ui/pipeline._run_all).
 
 Predictive-output floor: no forecast cell may be a point mass.
 

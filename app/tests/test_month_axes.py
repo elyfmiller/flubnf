@@ -1,6 +1,7 @@
 """Month-name time axes replace week-index axes on every season-week surface,
-all fed by one server list (SEASON_MONTHS in app/ui/server.py); exact dates
-move to hover (each season-over-season trace carries its real Saturdays).
+all fed by one server list (SEASON_MONTHS in app/ui/templating.py); exact
+dates move to hover (each season-over-season trace carries its real
+Saturdays).
 """
 import inspect
 import sys

@@ -1,4 +1,4 @@
-"""Your datasets on the Storage tab (server._storage_inventory,
+"""Your datasets on the Storage tab (routes/storage._storage_inventory,
 datasets_ui.storage_rows, POST /storage/datasets/{id}/delete).
 
 Each dataset is listed with its size holding everything it owns: the

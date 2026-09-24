@@ -3,7 +3,7 @@
 One console run on a custom dataset: the Groundhog and, for counts with a
 population, the plain SIHRS particle filter, both through the SAME engines
 as the hub path (they read the dataset because the spec names it in
-extra["dataset"]). What differs from server._run_all, and why:
+extra["dataset"]). What differs from app/ui/pipeline._run_all, and why:
 
   * no Oracle step: its donor bank is FluSight's admissions plus
     FluSurv-NET, keyed by FIPS; on other data it would be a silent identity
@@ -281,7 +281,7 @@ def run(spec, ds, workroot: Path, *, phase=lambda msg: None,
     """Run one dataset forecast into `workroot`: (outcome, pf failures).
 
     Writes results.json (the console's stored shape plus the dataset's
-    record) and the export CSVs. `pf_state` is server._pf_engine_state():
+    record) and the export CSVs. `pf_state` is pipeline._pf_engine_state():
     the filter runs only when it is 'ready' and the dataset is eligible."""
     from app.core import knobs as K
     from app.core.engines import analogue as an_engine

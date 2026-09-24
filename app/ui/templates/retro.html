@@ -7,7 +7,7 @@
 had, then scores against settled truth.</p>
 <div class="cols">
  <div><div class="card"><h2>Settings</h2>
-  {# platform-aware (server.py _engine_setup_hint): never a macOS-only filename #}
+  {# platform-aware (templating.py _engine_setup_hint): never a macOS-only filename #}
   {% if not engine_ok %}<p class="warn">The full replay requires the
   particle-filter engine: {{ engine_setup_hint() }}. The Groundhog-only
   preset and everything else work without it.</p>{% endif %}
@@ -99,7 +99,7 @@ had, then scores against settled truth.</p>
         the ratio of sums (the sealed numbers' convention). One headline per
         shipped model (PF first); a card with only `rel` prints it unnamed #}
      {% set s_rels = s.rels if (s.rels is defined and s.rels) else ({'': s.rel} if s_complete else {}) %}
-     {# pf is named for THIS card's tree (s.pf_name, server._names_for_root):
+     {# pf is named for THIS card's tree (s.pf_name, templating._names_for_root):
         sealed or pre-Oracle trees hold the particle filter alone #}
      {% if s_complete %}{% for m, v in s_rels.items() %} &middot; {{ ((s.pf_name if (m == 'pf' and s.pf_name) else model_name(m)) ~ ' ') if m }}relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{% endfor %} vs FluSight baseline, ratio of sums{% endif %}
      {% if s.status == 'running' %}<span class="warn">· running</span>

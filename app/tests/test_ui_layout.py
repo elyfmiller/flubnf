@@ -1,4 +1,4 @@
-"""The console's outward shape, pinned while app/ui/server.py is split into
+"""The console's outward shape, pinned when app/ui/server.py was split into
 per-tab modules (a refactor that must not change behaviour):
 
   1. the route table, flattened (FastAPI >= 0.141 keeps an included router

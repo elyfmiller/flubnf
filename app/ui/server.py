@@ -11,60 +11,7 @@ startup warm pass, started last. Its public names are app, templates,
 VERSIONS and RUNNING_SHA (app/core/site_build.py reads the last three
 here); every other name lives in the module that defines it.
 
-Support modules beside this one (app/ui), read by the tabs:
-
-  state.py            REPO, startup trace, ENGINES, _status, _last_form,
-                      _engine_lock, the data_mod proxy, the sandbox claim
-  versions.py         build SHA, restart banner, component versions
-  templating.py       templates (the one Jinja env) and its globals, model
-                      names and colors, season month axis
-  shared.py           CSRF guard, request helpers, cached scans, run
-                      labels, outcome chips, latest results, sandbox claim
-                      readers
-  forms.py            the model-settings (knob) form channel, anchor dates
-  retro_seasons.py    retro roots and claims, the season registry and
-                      status, completed weeks, live progress and ETA
-  retro_prep.py       season results preparation (finalize jobs), scores
-                      and relWIS caches, week map cards
-  pipeline.py         the forecast pipeline _run_all, sleep guard, weekly
-                      report, forecast archive
-
-Tab modules (app/ui/routes), each an APIRouter included in this order
-(templates under app/ui/templates):
-
-  shell.py            GET /api/versions, /favicon.ico, /api/busy
-  home.py             GET /, GET /api/outlook-ready            home.html
-  data.py             GET /data, POST /data/pull, POST /freshness
-                                                               data.html
-  storage.py          GET /storage (= /runs), POST /runs/clear,
-                      /storage/delete, /storage/clear-workroots,
-                      GET /api/storage/reclaim, POST /storage/reclaim
-                                                               runs.html
-  forecast.py         GET /forecast, POST /run, POST /run/stop,
-                      GET /api/series, GET /api/progress   forecast.html
-                      GET /runs/{id}, /report, /report/download,
-                      POST /runs/{id}/rerun                    run.html
-  output.py           submission files; GET /output, /output/download,
-                      POST /output/reveal, GET /output/report,
-                      /output/report/download                  output.html
-  sandbox.py          GET /sandbox, POST /sandbox/*, GET /api/sandbox/*,
-                      GET /sandbox/models|runs/{id}/download; the sandbox
-                      engine guard (middleware)                sandbox.html
-  models.py           GET /models, /model/{name}               model.html
-  methods.py          GET /methods                             methods.html
-  retro.py            GET /retro, /api/retro/progress, /api/retro/startover,
-                      POST /retro/{s}/archive/{stamp}/delete   retro.html
-                      GET /api/retro/{s}/results_status
-                      worker _retro_bg, POST /retro/stop, /retro/{s}/stop,
-                      /pause, /resume, POST /retro/run
-                      GET /retro/{s}, /api/retro/{s}/playback/{asof},
-                      /mapswap/{asof}, /retro/{s}/report,
-                      /api/retro/{s}/report_path           retro_season.html
-
-Custom datasets: app/ui/datasets_ui.py's router, included last: POST
-/data/datasets, /data/datasets/check, /data/datasets/{id}/delete,
-/run/dataset, /retro/dataset/run; GET /retro/dataset/{id}/{stamp}; Data,
-Forecast and /api/series take ?source=<id>, /retro ?dataset=<id>.
+The modules, the rules between them and the route map: app/ui/README.md.
 """
 from __future__ import annotations
 

@@ -1,6 +1,6 @@
 """Server-side hardening.
 
-  1. the engine busy check and its claim are atomic under srv._engine_lock,
+  1. the engine busy check and its claim are atomic under state._engine_lock,
      so two overlapping submits cannot both start runs;
   2. state-changing requests need a localhost Host and, when present, a
      localhost Origin (foreign form-POSTs and DNS-rebound hosts get 403;

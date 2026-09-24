@@ -52,10 +52,10 @@ def _isolated_status():
 
 
 def _fake_run(monkeypatch, tmp_path, status_by_cell, collected, aux=None):
-    """Drive srv._run_all end to end with fake engines (injected PF statuses
-    and samples, an analogue for every location, no truth). `aux` is the
-    Groundhog donor choice (None: shipped bank, "": bare analogue). Returns
-    (ledger row, outcome, workroot)."""
+    """Drive pipeline._run_all end to end with fake engines (injected PF
+    statuses and samples, an analogue for every location, no truth). `aux`
+    is the Groundhog donor choice (None: shipped bank, "": bare analogue).
+    Returns (ledger row, outcome, workroot)."""
     import app.core.engines.analogue as an_engine
     import app.core.engines.pf as pf_engine
     import app.core.floor as floor_mod

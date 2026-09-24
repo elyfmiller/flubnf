@@ -69,5 +69,5 @@ Paths default to `~/Documents/GitHub/<name>`; on Windows, to `%LOCALAPPDATA%\Flu
 | `FLUBNF_PF_WIDTH` | `app/core/engines/pf.py` | unset = automatic shard width; `1` = one process |
 | `FLUBNF_PROTECT_ROOTS` | `app/core/reclaim.py` | unset; extra roots storage reclaim must not touch |
 | `FLUBNF_FIELD_CELLS` | `app/core/relwis.py` | `app/state/field_cells` |
-| `FLUBNF_STARTUP_TRACE` | `flubnf/cli.py`, `app/ui/server.py`, `scripts/open_cycle.py` | unset; a file path turns on the launch trace |
+| `FLUBNF_STARTUP_TRACE` | `flubnf/cli.py`, `app/ui/state.py`, `scripts/open_cycle.py` | unset; a file path turns on the launch trace |
 | `FLUBNF_ORACLE_RECORD`, `FLUBNF_ORACLE_FULL` | `tests/test_oracle*.py` | lab-only record; `FULL=1` compares every screened date |

@@ -257,8 +257,8 @@ def _console_season(tmp_path, monkeypatch):
 
 def test_the_console_season_page_never_pools_a_fitted_us_cell(tmp_path,
                                                               monkeypatch):
-    """server.retro_results (the console's verdict tiles, curve and table),
-    driven through the real route."""
+    """routes/retro.retro_results (the console's verdict tiles, curve and
+    table), driven through the real route."""
     from fastapi.testclient import TestClient
 
     from app.ui import server as srv

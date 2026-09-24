@@ -440,7 +440,7 @@ def test_a_console_replay_is_the_oracle_sihrs_from_the_season_start(hubfiles, tm
 
 @pytest.fixture
 def console(hubfiles, tmp_path, monkeypatch):
-    """srv._run_all with fake engines and the real step."""
+    """pipeline._run_all with fake engines and the real step."""
     import app.core.engines.analogue as an_engine
     import app.core.engines.pf as pf_engine
     import app.core.floor as floor_mod
