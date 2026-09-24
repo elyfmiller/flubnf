@@ -674,13 +674,28 @@ def api_sandbox_network(name: str):
         return JSONResponse({"error": str(e)[:1500]}, status_code=200)
 
 
+def _json_finite(obj):
+    """obj with every NaN or infinite float as None: JSON has no NaN, and
+    a data.exp row written NaN (a missing week) or an all-NaN trajectory
+    column would otherwise fail the response."""
+    import math
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: _json_finite(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_finite(v) for v in obj]
+    return obj
+
+
 @router.get("/api/sandbox/runs/{run_id}")
 def api_sandbox_run(run_id: str):
     try:
-        return sandbox_mod.results(_sandbox_run_dir(run_id),
-                                   live=_sandbox_status.get("running"))
+        res = sandbox_mod.results(_sandbox_run_dir(run_id),
+                                  live=_sandbox_status.get("running"))
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=404)
+    return _json_finite(res)
 
 
 def _sandbox_local_get(request: Request) -> bool:
