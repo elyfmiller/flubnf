@@ -39,6 +39,8 @@ from starlette.concurrency import run_in_threadpool
 from app.core.runs import GROUNDHOG_OWN_DATA
 from app.ui import forms, pipeline, retro_seasons, shared, templating, versions
 from app.ui import state as ui_state
+from app.ui.routes import data as data_routes
+from app.ui.routes import storage as storage_routes
 
 router = APIRouter()
 
@@ -218,11 +220,10 @@ def _render_data(request, _code: int = 200, **extra):
     """data.html with a refused store's report inline (not the one-slot
     flash); its result box says nothing was stored ("refused"), which a
     check, storing nothing by design, never says."""
-    S = _S()
     up = extra.get("upload")
     if up and up.get("chk"):
         extra["upload"] = {**up, "chk": {**up["chk"], "refused": True}}
-    ctx = S._data_context()
+    ctx = data_routes._data_context()
     ctx.update(extra)
     return templating.templates.TemplateResponse(request, "data.html", ctx,
                                                  status_code=_code)
@@ -1045,15 +1046,14 @@ def storage_rows(workroots: list) -> list:
     counted there as workroots."""
     from app.core import custom_retro as CX
     from app.core import retro
-    S = _S()
     try:
         items = _D().list_datasets()
     except Exception:
         return []
     out = []
     for ds in items:
-        own = S._tree_size(str(ds.path))
-        rep = S._tree_size(str(CX.replay_root(ds)))
+        own = storage_routes._tree_size(str(ds.path))
+        rep = storage_routes._tree_size(str(CX.replay_root(ds)))
         runs = [w for w in workroots if w.get("dataset") == ds.id]
         for w in runs:
             w["dataset_name"] = ds.name
@@ -1092,14 +1092,13 @@ def delete_everything(ds) -> tuple:
     its replays and its runs' workroots (their ledger rows are kept, as a
     workroot delete keeps them). Both delete routes use this, so the Data
     and Storage tabs free the same bytes. Returns (freed, gone, kept)."""
-    S = _S()
     from app.core import retro
     freed, gone, kept = 0, 0, 0
-    for w in S._storage_inventory()["workroots"]:
+    for w in storage_routes._storage_inventory()["workroots"]:
         if w.get("dataset") != ds.id:
             continue
         # the workroot delete's own checks: never a live or protected tree
-        p, _why = S._storage_target("workroot", w["id"])
+        p, _why = storage_routes._storage_target("workroot", w["id"])
         if p is None:
             kept += 1
             continue

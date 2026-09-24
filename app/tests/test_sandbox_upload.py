@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient                # noqa: E402
 from app.core import datasets as D                       # noqa: E402
 from app.core import sandbox as sb                       # noqa: E402
 from app.ui import server as srv                         # noqa: E402
+from app.ui.routes import sandbox as ui_sandbox          # noqa: E402
 
 client = TestClient(srv.app)
 
@@ -46,7 +47,7 @@ def box(sandbox_root, tmp_path, monkeypatch):
     monkeypatch.setattr(D, "ROOT", tmp_path / "datasets")
     monkeypatch.setattr(sb, "locations", lambda: [])       # no hub here
     monkeypatch.setattr(sb, "vintages", lambda: [])
-    srv._sandbox_upload_report.clear()
+    ui_sandbox._sandbox_upload_report.clear()
     sb.new_model("mine")
     return sandbox_root
 
@@ -134,7 +135,7 @@ def test_the_upload_saves_the_editor_first(box):
 
 def test_the_size_cap_holds_and_nothing_is_stored(box, monkeypatch):
     monkeypatch.setattr(sb, "UPLOAD_MAX_BYTES", 400)
-    monkeypatch.setattr(srv, "_SANDBOX_BODY_SLACK", 200)
+    monkeypatch.setattr(ui_sandbox, "_SANDBOX_BODY_SLACK", 200)
     big = "target_end_date,location,observation\n" + "".join(
         f"2024-10-05,Loc{i},1\n" for i in range(100))
     _upload(big)
@@ -159,8 +160,8 @@ def _request(headers, chunks):
 def test_the_cap_refuses_by_content_length_before_reading():
     req, sent = _request({"content-length": str(10 ** 12),
                           "content-type": "multipart/form-data; boundary=x"}, [b"x"])
-    with pytest.raises(srv._SandboxTooLarge):
-        asyncio.run(srv._sandbox_capped_form(req, 1000))
+    with pytest.raises(ui_sandbox._SandboxTooLarge):
+        asyncio.run(ui_sandbox._sandbox_capped_form(req, 1000))
     assert sent == []                                       # not one byte read
 
 
@@ -168,8 +169,8 @@ def test_the_cap_cuts_a_chunked_body_off_while_reading():
     chunk = b"--x\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\n" + b"y" * 500
     req, sent = _request({"content-type": "multipart/form-data; boundary=x"},
                          [chunk] * 50)
-    with pytest.raises(srv._SandboxTooLarge):
-        asyncio.run(srv._sandbox_capped_form(req, 2000))
+    with pytest.raises(ui_sandbox._SandboxTooLarge):
+        asyncio.run(ui_sandbox._sandbox_capped_form(req, 2000))
     assert len(sent) <= 5                                   # stopped early
 
 

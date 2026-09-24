@@ -33,6 +33,7 @@ from app.core import report_v2                      # noqa: E402
 from app.core import retro                          # noqa: E402
 from app.core import ttlcache                       # noqa: E402
 from app.ui import server as srv                    # noqa: E402
+from app.ui.routes import output as ui_output       # noqa: E402
 from app.ui import pipeline as ui_pipeline          # noqa: E402
 from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
 from app.ui import shared as ui_shared              # noqa: E402
@@ -232,7 +233,7 @@ def test_stale_report_rebuild_writes_only_report_html(tmp_path, monkeypatch):
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
     d = tmp_path / "archive" / "2098-01-03"
     _synth_run(d)
-    srv._REPORT_REBUILD_FAILED.clear()
+    ui_output._REPORT_REBUILD_FAILED.clear()
     os.utime(d / "report.html", OLD_MTIME)
     before = {p.name: p.read_bytes() for p in d.iterdir()}
     ui_shared._invalidate_scans()

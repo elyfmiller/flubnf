@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.core import data as data_mod                # noqa: E402
 from app.ui import server as srv                     # noqa: E402
+from app.ui.routes import data as ui_data            # noqa: E402
 from app.ui import shared as ui_shared               # noqa: E402
 
 client = TestClient(srv.app)
@@ -189,7 +190,7 @@ def test_data_page_stays_read_only(archive):
 def test_vintage_scans_are_ttl_cached():
     """The heavy per-vintage scans carry a long TTL (the files are
     immutable) and register with the shared invalidation."""
-    for fn in (srv._vintage_summary, srv._vintage_locations,
-               srv._vintage_series):
+    for fn in (ui_data._vintage_summary, ui_data._vintage_locations,
+               ui_data._vintage_series):
         assert hasattr(fn, "cache_clear")
         assert fn.ttl_s >= 60

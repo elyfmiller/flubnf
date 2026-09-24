@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import app.core.runs as runs_mod                     # noqa: E402
 from app.core.runs import Ledger, RunSpec            # noqa: E402
 from app.ui import server as srv                     # noqa: E402
+from app.ui.routes import storage as ui_storage      # noqa: E402
 from app.ui import retro_seasons as ui_retro_seasons  # noqa: E402
 from app.ui import shared as ui_shared               # noqa: E402
 from app.ui import state as ui_state                 # noqa: E402
@@ -103,7 +104,7 @@ def _flash():
 
 def test_clear_removes_completed_rows_never_the_active_one(state):
     led = state["ledger"]
-    assert len(srv._clearable_run_ids(led)) == 3
+    assert len(ui_storage._clearable_run_ids(led)) == 3
     r = client.post("/runs/clear", data={"confirm": "3"},
                     follow_redirects=False)
     assert r.status_code == 303
@@ -138,7 +139,7 @@ def test_interrupted_rows_are_clearable(state):
     completed row for clearing purposes."""
     ui_state._status["running"] = None
     ui_state._status["workroot"] = None
-    assert len(srv._clearable_run_ids(state["ledger"])) == 4
+    assert len(ui_storage._clearable_run_ids(state["ledger"])) == 4
 
 
 # ------------------------------------------------------------ storage panel
@@ -283,7 +284,7 @@ def test_total_disk_metric_sums_the_managed_categories_only(state):
     retro runs + report archives, with the protected trees (seal, hub)
     deliberately outside the total."""
     from app.core import retro
-    inv = srv._storage_inventory()
+    inv = ui_storage._storage_inventory()
     expect = 0
     for rid in state["rids"].values():
         expect += retro.dir_size(state["root"] / "workroots" / rid)
@@ -304,7 +305,7 @@ def test_total_disk_metric_sums_the_managed_categories_only(state):
 
 def test_clear_all_control_names_count_and_total_size(state):
     from app.core import retro
-    cw = srv._clearable_workroots()
+    cw = ui_storage._clearable_workroots()
     assert len(cw) == 3                    # the live run's is excluded
     assert state["rids"]["running"] not in [w["id"] for w in cw]
     html = client.get("/runs").text
@@ -358,7 +359,7 @@ def test_clear_all_never_reaches_protected_trees(state):
     link = state["root"] / "workroots" / "sneaky"
     link.symlink_to(state["seal"] / SEASON)
     ui_shared._invalidate_scans()
-    cw = srv._clearable_workroots()
+    cw = ui_storage._clearable_workroots()
     assert "sneaky" not in [w["id"] for w in cw]
     assert len(cw) == 3
     r = client.post("/storage/clear-workroots", data={"confirm": "3"},
@@ -385,9 +386,9 @@ def test_clear_all_with_nothing_to_do_says_so(state):
 # ------------------------------------------------------------ hard barriers
 
 def test_seal_and_hub_are_refused_on_any_crafted_request(state):
-    assert srv._storage_protected(state["seal"] / SEASON)
-    assert srv._storage_protected(state["hub"])
-    assert srv._storage_protected(state["hub"] / "auxiliary-data")
+    assert ui_storage._storage_protected(state["seal"] / SEASON)
+    assert ui_storage._storage_protected(state["hub"])
+    assert ui_storage._storage_protected(state["hub"] / "auxiliary-data")
     # traversal-shaped identifiers never pass validation
     for kind, ident in (("workroot", "../retro_seal"),
                         ("workroot", "/etc"),
@@ -468,7 +469,7 @@ def test_storage_panel_folds_and_defaults_folded(state):
                   .split("</summary>", 1)[0]
     assert "On disk</h2>" in summary
     assert 'class="big"' in summary
-    inv = srv._storage_inventory()
+    inv = ui_storage._storage_inventory()
     assert inv["total_h"] in summary
     # the panel body (workroots, deletes) lives INSIDE the fold
     fold = html.split('id="storagefold">', 1)[1] \

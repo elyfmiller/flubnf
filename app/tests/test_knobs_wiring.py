@@ -36,6 +36,7 @@ from app.ui import pipeline as ui_pipeline                   # noqa: E402
 from app.ui import retro_seasons as ui_retro_seasons         # noqa: E402
 from app.ui import shared as ui_shared                       # noqa: E402
 from app.ui import state as ui_state                         # noqa: E402
+from app.ui.routes import output as ui_output                # noqa: E402
 
 from test_oracle_step import (ASOF, _samples, console,       # noqa: E402,F401
                               hubfiles)
@@ -253,7 +254,7 @@ def test_a_modified_run_exports_under_the_non_hub_names(console):
     assert "modified settings" in ui_shared._outcome_chips(row["outcome"])
     assert ui_shared._pf_member_label(out) == "Oracle SIHRS (modified)"
     assert ui_shared._latest_results() == (None, None)
-    files = srv_._submission_files(w)
+    files = ui_output._submission_files(w)
     assert all(f["modified"] and not f["submittable"] for f in files)
     assert ui_shared._run_label(row["run_id"], row["spec"]).endswith(
         "· modified settings")

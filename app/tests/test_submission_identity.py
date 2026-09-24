@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import app.core.runs as runs_mod                     # noqa: E402
 from app.core.submit import hub_model_id             # noqa: E402
 from app.ui import server as srv                     # noqa: E402
+from app.ui.routes import output as ui_output        # noqa: E402
 from app.ui import shared as ui_shared               # noqa: E402
 
 client = TestClient(srv.app)
@@ -105,7 +106,7 @@ def test_every_registered_id_is_a_metadata_file_name():
     retired = {f"{TEAM_ABBR}-{a}" for a in RETIRED_ABBR}
     # a retired card stays registered on the hub but is not an identity
     # this project may write, so the listings do not offer its files
-    assert srv._registered_model_ids() == registered - retired
+    assert ui_output._registered_model_ids() == registered - retired
     assert RETIRED not in registered
 
 

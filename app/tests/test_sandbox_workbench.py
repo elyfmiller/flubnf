@@ -21,6 +21,8 @@ from fastapi.testclient import TestClient                # noqa: E402
 from app.core import contactmap as cm                    # noqa: E402
 from app.core import sandbox as sb                       # noqa: E402
 from app.ui import server as srv                         # noqa: E402
+from app.ui.routes import sandbox as ui_sandbox          # noqa: E402
+from app.ui.routes import storage as ui_storage          # noqa: E402
 from app.ui import state as ui_state                     # noqa: E402
 
 client = TestClient(srv.app)
@@ -221,16 +223,16 @@ def test_views_are_cached_by_the_model_text(box, monkeypatch):
 # ------------------------------------------------------------- storage
 
 def test_storage_shows_the_sandbox_size_outside_its_total(box):
-    before = srv._storage_inventory()["total_bytes"]
+    before = ui_storage._storage_inventory()["total_bytes"]
     sb.add_example("kinetics_example")
     sb.prepare("kinetics_example")
-    line = srv._sandbox_storage_line()
+    line = ui_sandbox._sandbox_storage_line()
     assert line["models"] == 1 and line["runs"] == 1 and line["bytes"] > 0
-    assert srv._storage_inventory()["total_bytes"] == before
+    assert ui_storage._storage_inventory()["total_bytes"] == before
     html = client.get("/storage").text
     assert "Sandbox models and runs" in html and line["size_h"] in html
     shutil.rmtree(box)
-    assert srv._sandbox_storage_line() == {}
+    assert ui_sandbox._sandbox_storage_line() == {}
 
 
 # ---------------------------------------------------------- the script

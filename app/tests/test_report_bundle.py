@@ -19,6 +19,8 @@ from fastapi.testclient import TestClient           # noqa: E402
 
 import app.core.runs as runs_mod                    # noqa: E402
 import app.ui.server as srv                         # noqa: E402
+from app.ui.routes import home as ui_home           # noqa: E402
+from app.ui.routes import output as ui_output       # noqa: E402
 from app.ui import pipeline as ui_pipeline          # noqa: E402
 from app.ui import shared as ui_shared              # noqa: E402
 from app.core import horizons as hz                 # noqa: E402
@@ -109,7 +111,7 @@ def _archived(tmp_path, monkeypatch, date="2098-01-03"):
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
     d = tmp_path / "archive" / date
     _synth_run(d)
-    srv._REPORT_REBUILD_FAILED.clear()
+    ui_output._REPORT_REBUILD_FAILED.clear()
     return d
 
 
@@ -156,7 +158,7 @@ def test_rebuild_failure_serves_stored_file(tmp_path, monkeypatch):
         assert r.status_code == 200 and "OLD FACE" in r.text
     assert "OLD FACE" in (d / "report.html").read_text()
     # an unknown future bundle version degrades the same way
-    srv._REPORT_REBUILD_FAILED.clear()
+    ui_output._REPORT_REBUILD_FAILED.clear()
     (d / report_v2.BUNDLE_NAME).write_text(json.dumps({"version": 99}))
     r = client.get("/output/report?date=2098-01-03")
     assert r.status_code == 200 and "OLD FACE" in r.text
@@ -290,7 +292,7 @@ def test_home_map_renders_the_reports_exact_cards(tmp_path, monkeypatch):
     ui_shared._invalidate_scans()
     rid, res = ui_shared._latest_results()
     assert rid == w.name
-    cards, meta = srv._outlook_cards(res, rid)
+    cards, meta = ui_home._outlook_cards(res, rid)
     bundle = json.loads((w / report_v2.BUNDLE_NAME).read_text())
     assert bundle["cards_model"] == "pf"            # the PF colours the map
     expect = {c["fips"]: c for c in bundle["cards"].values() if c.get("fips")}
@@ -322,7 +324,7 @@ def test_pre_bundle_run_falls_back_and_labels_the_approximation(
     (w / report_v2.BUNDLE_NAME).unlink()            # a pre-bundle run
     ui_shared._invalidate_scans()
     rid, res = ui_shared._latest_results()
-    cards, meta = srv._outlook_cards(res, rid)
+    cards, meta = ui_home._outlook_cards(res, rid)
     # the stored blend (pre-retirement) is read without error but never
     # colors the map
     assert meta["approx"] is True and meta["by_model"] == {}

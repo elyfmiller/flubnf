@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from app.ui import server as srv
+from app.ui.routes import storage as ui_storage
 from app.ui import retro_seasons as ui_retro_seasons
 
 
@@ -66,5 +66,5 @@ def test_both_sealed_trees_are_read_only_and_protected(roots):
     for base in (reseal, seal):
         season = _season_tree(base, "2025-26", 1)
         assert ui_retro_seasons._is_sealed_root(season)
-        assert srv._storage_protected(season / "weeks")
+        assert ui_storage._storage_protected(season / "weeks")
     assert not ui_retro_seasons._is_sealed_root(_season_tree(live, "2025-26", 1))

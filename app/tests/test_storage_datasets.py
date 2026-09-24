@@ -23,6 +23,7 @@ from app.core import retro
 from app.core.runs import Ledger, RunSpec
 from app.ui import datasets_ui as DU
 from app.ui import server as srv
+from app.ui.routes import storage as ui_storage
 from app.ui import retro_seasons as ui_retro_seasons
 from app.ui import shared as ui_shared
 from app.ui import state as ui_state
@@ -77,7 +78,7 @@ def state(tmp_path, monkeypatch):
 
 def test_a_dataset_row_holds_its_upload_replays_and_runs(state):
     ds, wr = state["ds"], state["wr"]
-    inv = srv._storage_inventory()
+    inv = ui_storage._storage_inventory()
     (row,) = inv["datasets"]
     own = retro.dir_size(ds.path)
     rep = retro.dir_size(CX.replay_root(ds))
@@ -95,7 +96,7 @@ def test_a_dataset_row_holds_its_upload_replays_and_runs(state):
 
 def test_the_total_counts_every_byte_once(state):
     ds, wr = state["ds"], state["wr"]
-    inv = srv._storage_inventory()
+    inv = ui_storage._storage_inventory()
     want = (retro.dir_size(wr / state["ds_run"])
             + retro.dir_size(wr / state["hub_run"])
             + retro.dir_size(ds.path))
@@ -110,7 +111,7 @@ def test_the_total_counts_every_byte_once(state):
 def test_the_page_lists_it_with_a_name_confirmed_delete(state):
     ds = state["ds"]
     html = " ".join(client.get("/storage").text.split())
-    (row,) = srv._storage_inventory()["datasets"]
+    (row,) = ui_storage._storage_inventory()["datasets"]
     assert "Your datasets" in html
     assert (f'<a href="/data?source={ds.id}#browser">Template</a></strong> '
             f'<span class="hint">· {row["size_h"]} · data') in html
@@ -134,7 +135,7 @@ def test_a_dataset_alone_lists_no_empty_parts(state):
                     follow_redirects=False)
     assert r.status_code == 303
     ui_shared._invalidate_scans()
-    rows = {d["name"]: d for d in srv._storage_inventory()["datasets"]}
+    rows = {d["name"]: d for d in ui_storage._storage_inventory()["datasets"]}
     alone, tpl = rows["Alone"], rows["Template"]
     assert alone["parts"] == [] and alone["goes"] == ""
     assert tpl["parts"][1:] == [f"1 replay {tpl['replays_h']}",
@@ -156,7 +157,7 @@ def test_delete_needs_the_name_and_takes_everything_it_counts(state):
         client.post(url, data={"confirm": wrong}, follow_redirects=False)
         assert "not confirmed" in ui_state._status.get("flash", "")
         assert ds.path.is_dir() and (wr / state["ds_run"]).is_dir()
-    size = srv._storage_inventory()["datasets"][0]["size_h"]
+    size = ui_storage._storage_inventory()["datasets"][0]["size_h"]
     r = client.post(url, data={"confirm": "Template"},
                     headers={"referer": "http://testserver/storage"},
                     follow_redirects=False)
@@ -169,7 +170,7 @@ def test_delete_needs_the_name_and_takes_everything_it_counts(state):
     # the ledger rows stand, the run's with a dash for disk use
     ids = {r["run_id"] for r in Ledger().rows(10)}
     assert {state["ds_run"], state["hub_run"]} <= ids
-    inv = srv._storage_inventory()
+    inv = ui_storage._storage_inventory()
     assert inv["datasets"] == []
     assert inv["total_bytes"] == retro.dir_size(wr / state["hub_run"])
 

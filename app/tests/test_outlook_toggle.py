@@ -26,6 +26,8 @@ from fastapi.testclient import TestClient           # noqa: E402
 
 import app.core.runs as runs_mod                    # noqa: E402
 import app.ui.server as srv                         # noqa: E402
+from app.ui.routes import home as ui_home           # noqa: E402
+from app.ui.routes import output as ui_output       # noqa: E402
 from app.ui import pipeline as ui_pipeline          # noqa: E402
 from app.ui import shared as ui_shared              # noqa: E402
 from app.core import horizons as hz                 # noqa: E402
@@ -188,7 +190,7 @@ def test_v2_bundle_rebuilds_with_no_toggle_and_the_stored_label(
     b.write_text(json.dumps(bundle))
     (d / "report.html").write_text("<html><body>OLD FACE</body></html>")
     os.utime(d / "report.html", OLD_MTIME)
-    srv._REPORT_REBUILD_FAILED.clear()
+    ui_output._REPORT_REBUILD_FAILED.clear()
     r = client.get("/output/report?date=2098-01-03")
     assert r.status_code == 200 and "OLD FACE" not in r.text
     assert 'id="outlook-model"' not in r.text
@@ -208,7 +210,7 @@ def _latest(tmp_path, monkeypatch):
 
 def test_home_outlook_gets_the_same_toggle(tmp_path, monkeypatch):
     w, _ = _latest(tmp_path, monkeypatch)
-    by_model = srv._outlook_models(w.name)
+    by_model = ui_home._outlook_models(w.name)
     assert set(by_model) == {"pf", "analogue"}
     assert "39" in by_model["analogue"]              # fips-keyed, with data
     home = client.get("/").text
@@ -241,7 +243,7 @@ def test_home_shows_no_toggle_for_a_single_model_pre_v3_bundle(
     bundle.pop("national_map_cards", None)
     b.write_text(json.dumps(bundle))
     ui_shared._invalidate_scans()
-    assert srv._outlook_models(w.name) == {}
+    assert ui_home._outlook_models(w.name) == {}
     home = client.get("/").text
     assert 'id="outlook-model"' not in home
     assert "data-mmodel=" not in home
@@ -286,7 +288,7 @@ def test_stored_pre_bundle_run_gets_the_approximate_toggle(
     _results_with_all_models(w, parts)
     ui_shared._invalidate_scans()
     rid, res = ui_shared._latest_results()
-    cards, meta = srv._outlook_cards(res, rid)
+    cards, meta = ui_home._outlook_cards(res, rid)
     # the PF is the default and the two shipped models are offered; the
     # stored blend is never a choice beside them (it renders only when a run
     # stored nothing else, see the single-model test above)
@@ -347,7 +349,7 @@ def test_swap_payload_matches_the_server_render(tmp_path, monkeypatch):
     import re
     from app.core import usmap
     w, _ = _latest(tmp_path, monkeypatch)
-    by_model = srv._outlook_models(w.name)
+    by_model = ui_home._outlook_models(w.name)
     # same scope as the server render (Ohio only), or the toggle would tell a
     # different story about card-less states
     pay = usmap.state_swap_payload(by_model["pf"], scope_fips={"39"})
