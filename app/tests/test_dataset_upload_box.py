@@ -237,6 +237,13 @@ def test_two_candidate_date_columns_say_why_they_ask():
     assert "Choose one (e.g., week_ending, the end of each week)" in html
     assert "Choose the column that holds the date." not in html
     assert '<option value="">choose…</option>' in html      # Date: unset
+    # nothing is preselected for the date, and the reason is a problem
+    date_sel = html.split('id="dsup-data-col-date"')[1].split("</select>")[0]
+    assert " selected" not in date_sel
+    assert '<div class="dsproblems"' in html
+    assert html.index('class="dsproblems"') < html.index('class="dsmap"')
+    assert html.count("Two columns could be the date") == 1
+    assert j["status"] == "Choose which column is which. 1 problem to fix."
     j = check(raw, col_date="#2").json()
     assert j["ok"] and "Ignored column(s): date." in j["html"]
 

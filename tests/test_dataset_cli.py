@@ -135,6 +135,25 @@ def test_column_mapping_on_the_command_line(store, tmp_path):
     assert r.exit_code == 2 and "ROLE=HEADER" in r.output
 
 
+def test_two_date_columns_suggest_the_week_ends(tmp_path):
+    """The hint once named the first free column (--column date=date),
+    not the one the problem recommends."""
+    p = tmp_path / "two.csv"
+    p.write_text("date,week_ending,target_group,value\n"
+                 "2024-01-01,2024-01-06,A,1\n2024-01-08,2024-01-13,A,2\n")
+    r = runner.invoke(app, ["dataset", "validate", str(p)])
+    assert r.exit_code == 1
+    assert "Choose one (e.g., week_ending, the end of each week)" in r.output
+    assert "e.g. --column date=week_ending." in r.output
+    p.write_text("date,Week Ending,target_group,value\n"
+                 "2024-01-01,2024-01-06,A,1\n2024-01-08,2024-01-13,A,2\n")
+    r = runner.invoke(app, ["dataset", "validate", str(p)])
+    assert 'e.g. --column date="Week Ending".' in r.output
+    r = runner.invoke(app, ["dataset", "validate", str(p), "--column",
+                            "date=Week Ending"])
+    assert r.exit_code == 0, r.output
+
+
 @pytest.mark.parametrize("raw,says", [
     (b"date,target_group,value\n2024-01-06,A,1,234\n2024-01-13,A,987\n",
      "row(s) have more fields than the header"),

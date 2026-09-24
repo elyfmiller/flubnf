@@ -286,17 +286,21 @@ def _preview(rep, kind: str) -> dict:
             "sparks": sparks, "w": SPARK_W, "h": SPARK_H}
 
 
+#: mapping-step problems shown in the problem box: a reason to choose (two
+#: columns that could each be a role, a mapping that named nothing), never
+#: a silent pick; a role no header matched is only asked for
+MAPPING_PROBLEMS = ("ambiguous_columns", "column_unknown")
+
+
 def _mapping_why(rep) -> list:
-    """Why the mapping is asked for: a mapping that named no column, two
-    columns that could each be a role (the reason, never a silent pick),
-    and one line naming the roles no header matched."""
+    """The mapping's own hint: one line naming the roles no header matched
+    (the reasons to choose are problems, MAPPING_PROBLEMS)."""
     D = _D()
     if not rep.needs_mapping:
         return []
     unset = [r for r in D.REQUIRED
              if r not in rep.guess and r not in rep.ambiguous]
-    out = [p.message for p in rep.problems
-           if p.code in ("column_unknown", "ambiguous_columns")]
+    out = []
     if unset:
         names = [f"the {r}" for r in unset]
         out.append("Choose the column that holds "
@@ -319,9 +323,11 @@ def _whole_dates(text) -> Markup:
 def check_view(rep, *, kind: str = "", columns=None) -> dict:
     """The result box's context (templates/_dataset_check.html) for one
     report: every problem grouped by kind, a column mapping when that is
-    what is missing (instead of an error), the target picker when a file
-    holds several (a choice to make, not a problem; nothing is picked for
-    the user), the notices, and a preview when it is valid."""
+    what is missing (instead of an error; two columns that could each be
+    a role are also a problem, with its reason, and neither is picked),
+    the target picker when a file holds several (a choice to make, not a
+    problem; nothing is picked for the user), the notices, and a preview
+    when it is valid."""
     D = _D()
     columns = columns or {}
     choose = len(rep.targets) > 1 and "target_required" in rep.codes
@@ -337,15 +343,15 @@ def check_view(rep, *, kind: str = "", columns=None) -> dict:
                        "required": r in D.REQUIRED,
                        "value": columns.get(r) or rep.guess.get(r, "")}
                       for r in D.ROLES]}
-    problems = [] if rep.needs_mapping else [
-        (k, [{"message": _whole_dates(p), "rows": list(p.rows)}
-             for p in ps])
-        for k, ps in D.problem_groups(
-            [p for p in rep.problems
-             if not (choose and p.code == "target_required")])]
+    shown = [p for p in rep.problems
+             if not (choose and p.code == "target_required")
+             and (p.code in MAPPING_PROBLEMS or not rep.needs_mapping)]
+    problems = [(k, [{"message": _whole_dates(p), "rows": list(p.rows)}
+                     for p in ps])
+                for k, ps in D.problem_groups(shown)]
     return {"ok": rep.ok, "problems": problems,
             "n": sum(len(ps) for _, ps in problems),
-            "mapping": mapping,
+            "mapping": mapping, "needs_mapping": rep.needs_mapping,
             "notices": [_whole_dates(w) for w in rep.warnings],
             "targets": rep.targets if len(rep.targets) > 1 else [],
             "target": (rep.summary or {}).get("target") or "",
@@ -360,11 +366,12 @@ def check_status(chk: dict) -> str:
         return (f"Ready to use: {pv['n_groups']} group"
                 f"{'' if pv['n_groups'] == 1 else 's'}, {pv['weeks']} week"
                 f"{'' if pv['weeks'] == 1 else 's'}.")
-    if chk.get("mapping") and not chk.get("problems"):
-        return "Choose which column is which."
-    if chk.get("targets") and not chk.get("target") and not chk["n"]:
-        return "Choose the target."
     n = chk.get("n") or 0
+    if chk.get("needs_mapping"):
+        return "Choose which column is which." + (
+            f" {n} problem{'' if n == 1 else 's'} to fix." if n else "")
+    if chk.get("targets") and not chk.get("target") and not n:
+        return "Choose the target."
     return (f"Nothing was stored: {n} problem{'' if n == 1 else 's'} to "
             "fix.")
 

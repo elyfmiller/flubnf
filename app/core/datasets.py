@@ -287,6 +287,8 @@ class Report:
     guess: dict = field(default_factory=dict)
     # role -> ['#N', ...]: the columns that could each be it
     ambiguous: dict = field(default_factory=dict)
+    # role -> header: the column an ambiguous role's problem suggests
+    suggest: dict = field(default_factory=dict)
     targets: list = field(default_factory=list)
     encoding: str = ""
     delimiter: str = ""
@@ -1249,8 +1251,11 @@ def _map_columns(header, rep: Report, columns=None):
         # for the date, the column of week ends (FluSight keys a week by
         # its end), never a report date that happens to come first
         ends = [i for i in cands if _week_side(header[i]) == "end"]
-        eg = label[ends[0]] + ", the end of each week" if (
-            role == "date" and len(ends) == 1) else label[cands[0]]
+        pick = ends[0] if role == "date" and len(ends) == 1 else cands[0]
+        rep.suggest[role] = (header[pick] if times[header[pick]] == 1
+                             else f"#{pick + 1}")
+        eg = label[pick] + (", the end of each week" if pick in ends
+                            and role == "date" else "")
         rep.add("ambiguous_columns", f"Two columns could be the {role}: "
                 f"{names}. Choose one (e.g., {eg}), or keep only one in the "
                 "file.")
@@ -2489,7 +2494,10 @@ def problem_lines(rep: Report) -> list:
         used = set(rep.guess.values())
         free = [h for i, h in enumerate(rep.headers)
                 if h and f"#{i + 1}" not in used]
+        # the column an ambiguity's problem suggests, else the first free
+        eg = rep.suggest.get(unset[0]) or (free[0] if free else "#1")
         out.append("Name them with --column ROLE=HEADER (ROLE: "
                    + ", ".join(ROLES) + f"), e.g. --column {unset[0]}="
-                   + (free[0] if free else "#1") + ".")
+                   + (f'"{eg}"' if re.search(r"[\s\"']", eg) else eg)
+                   + ".")
     return out
