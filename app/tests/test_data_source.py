@@ -303,3 +303,41 @@ def test_a_trailing_unreported_week_moves_the_window_with_the_anchor(tmp_path, m
     # Utah: newest reported week four weeks back: abstains, reason recorded
     assert "Utah" not in out and notes["Utah"].startswith("abstained")
     assert set(out) == {"Ohio", "California"}
+
+
+def test_a_note_never_says_anchored_for_a_location_that_abstained(tmp_path, monkeypatch):
+    """Newest week unreported and the week before it reads 0: the anchor
+    moves back to that 0, and the Groundhog's ratio of nothing abstains
+    (flubnf.analogue returns no forecast). The note must say it abstained,
+    not that it forecast from that week; a location reported at the as-of
+    with 0 abstains as before, with no note (nothing was unreported)."""
+    from app.core.engines import analogue as eng
+    from app.core.runs import anchor_notes_row
+    weeks = [str(d.date()) for d in pd.date_range("2025-12-06", periods=6, freq="7D")]
+    T = weeks[-1]
+    rows = ["date,location,location_name,value"]
+    for i, w in enumerate(weeks):
+        rows.append(f"{w},30,Montana,{'' if w == T else (0 if i == 4 else 3)}")
+        rows.append(f"{w},49,Utah,{0 if w == T else 2}")
+        rows.append(f"{w},06,California,{70 + i}")
+    v = tmp_path / "v.csv"
+    v.write_text("\n".join(rows) + "\n")
+    locs = tmp_path / "locations.csv"
+    locs.write_text("location,location_name,abbreviation\n30,Montana,MT\n"
+                    "49,Utah,UT\n06,California,CA\n")
+    monkeypatch.setattr(eng, "vintage_path", lambda d: str(v))
+    monkeypatch.setattr(eng, "LOCATIONS", str(locs))
+    # the library's rule: an anchor of 0 has no forecast
+    monkeypatch.setattr(eng.AN, "forecast",
+                        lambda anchor, *a, **k: {0.5: anchor} if anchor > 0 else None)
+    spec = RunSpec(engine="retro", forecast_date=T,
+                   locations=["Montana", "Utah", "California"])
+    notes = {}
+    out = eng.run(spec, notes=notes)
+    assert set(out) == {"California"}
+    assert notes["Montana"] == ("abstained: newest reported week 2026-01-03 "
+                                "reads 0 (1 newer week(s) unreported)")
+    assert "Utah" not in notes
+    row = anchor_notes_row({"analogue_anchor_notes": notes},
+                           {"analogue": "Groundhog"})
+    assert "1 abstained" in str(row) and "anchored earlier" not in str(row)
