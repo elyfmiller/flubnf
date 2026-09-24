@@ -224,6 +224,8 @@ def test_two_candidate_date_columns_say_why_they_ask():
     html = j["html"]
     assert ("Two columns could be the date: &#39;date&#39; and "
             "&#39;week_ending&#39;.") in html
+    # the example is the column of week ends, not the Monday report date
+    assert "Choose one (e.g., week_ending, the end of each week)" in html
     assert "Choose the column that holds the date." not in html
     assert '<option value="">choose…</option>' in html      # Date: unset
     j = check(raw, col_date="#2").json()

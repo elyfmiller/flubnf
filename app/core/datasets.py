@@ -36,9 +36,11 @@ dataset`` all read through it):
     Sunday-to-Saturday week, with a notice. Mixed weekdays and day-first
     dates are refused, and so is a single week written M/D that reads both
     ways, an as_of written M/D that reads both ways when day-first fits
-    its snapshots better, and a column named for week ENDS whose dates
-    are Sundays, Mondays or Tuesdays (most of such a week lies in the MMWR
-    week before, so moving it forward would label it a week late).
+    its snapshots better, a column whose header names week ENDS ('week
+    ending (Sunday)', 'period_end') whose dates are Sundays, Mondays or
+    Tuesdays, and one naming week STARTS whose dates are Thursdays,
+    Fridays or Saturdays (most of such a week lies in the MMWR week
+    before, or after, so moving it would label it a week late, or early).
 
 Every problem is reported at once, each with its row numbers (the
 spreadsheet's rows: the header is row 1) and an example; ``problem_groups``
@@ -151,7 +153,7 @@ REQUIRED = ("date", "group", "value")
 #: the pairs FluBNF always read by precedence (the first wins, silently)
 PRECEDENCE = {"date": ("targetenddate", "date"),
               "value": ("observation", "value")}
-#: date headers that name the END of each week (see weekday_end)
+#: date headers that name the END of each week (see _week_side)
 END_HEADERS = ("targetenddate", "weekend", "weekending", "enddate",
                "weekenddate", "weekendingdate")
 
@@ -228,8 +230,8 @@ PROBLEM_KINDS = (
     ("Columns", ("missing_columns", "ambiguous_columns", "column_unknown",
                  "duplicate_columns", "ragged", "extra_fields", "split")),
     ("Dates", ("date_parse", "date_day_first", "date_ambiguous", "weekday",
-               "weekday_end", "as_of_parse", "as_of_ambiguous",
-               "as_of_before_date")),
+               "weekday_end", "weekday_start", "as_of_parse",
+               "as_of_ambiguous", "as_of_before_date")),
     ("Values", ("value_numeric", "value_format", "value_negative",
                 "value_na", "value_not_integer")),
     ("Population", ("population_invalid", "population_missing",
@@ -680,6 +682,30 @@ def _norm_header(h: str) -> str:
     return re.sub(r"[\s_\-.]+", "", (h or "").strip().strip('"').lower())
 
 
+#: a header word naming the END or the START of each week ('ending',
+#: 'weekEnd', 'period_end', 'week_start', 'Week beginning')
+_END_WORD = re.compile(r"(?:week|wk|period|epiweek)?(?:end|ending|ended|ends)"
+                       r"(?:date|day)?")
+_START_WORD = re.compile(r"(?:week|wk|period|epiweek)?(?:start|starting|"
+                         r"started|starts|begin|begins|beginning|commencing)"
+                         r"(?:date|day)?")
+
+
+def _week_side(header: str):
+    """'end' when a date header names the end of each week ('week_ending',
+    'Week ending (Sunday)', 'period_end', 'PeriodEnd'), 'start' when it
+    names the start ('week_start', 'Week beginning'), else None."""
+    words = re.findall(r"[a-z]+", re.sub(r"([a-z])([A-Z])", r"\1 \2",
+                                         header or "").lower())
+    end = (_norm_header(header) in END_HEADERS
+           or any(_END_WORD.fullmatch(w) for w in words))
+    start = any(_START_WORD.fullmatch(w) for w in words)
+    if end == start:
+        return None
+    return "end" if end else "start"
+
+
+
 def pf_stem(name: str) -> str:
     """A group's particle-filter cell-directory and BNGL-suffix stem
     (engines.pf.dataset_tag): ASCII letters, digits and '_', anything else
@@ -1124,14 +1150,19 @@ def _map_columns(header, rep: Report, columns=None):
             + f". Found: {found}. Choose which column holds each.")
     for role, cands in ambiguous.items():
         names = " and ".join(repr(label[i]) for i in cands)
+        # for the date, the column of week ends (FluSight keys a week by
+        # its end), never a report date that happens to come first
+        ends = [i for i in cands if _week_side(header[i]) == "end"]
+        eg = label[ends[0]] + ", the end of each week" if (
+            role == "date" and len(ends) == 1) else label[cands[0]]
         rep.add("ambiguous_columns", f"Two columns could be the {role}: "
-                f"{names}. Choose one (e.g., {label[cands[0]]}), or keep "
-                "only one in the file.")
+                f"{names}. Choose one (e.g., {eg}), or keep only one in the "
+                "file.")
     if rep.problems:
         return None
     g = norm[chosen["group"]]
     cols = {"format": "hubverse" if g == "location" else "grouped",
-            "_date_header": norm[chosen["date"]]}
+            "_date_side": _week_side(header[chosen["date"]])}
     idx = dict(chosen)
     for role, i in chosen.items():
         cols[role] = label[i]
@@ -1352,7 +1383,8 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
     if len(wds) == 1:
         weekday = next(iter(wds))
         shift = (5 - weekday) % 7
-        if shift >= 4 and cols.get("_date_header") in END_HEADERS:
+        side = cols.get("_date_side")
+        if side == "end" and shift >= 4:
             # a week ENDING on a Sunday, Monday or Tuesday lies mostly in
             # the MMWR week before: moving it forward labels it a week late
             lines = [ln for ln, _, _ in parsed]
@@ -1367,6 +1399,22 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
                     "late. Write each week's MMWR week-ending Saturday, or "
                     "name the column date if its dates start their weeks.",
                     lines)
+            shift = 0
+        elif side == "start" and shift <= 2:
+            # a week STARTING on a Thursday, Friday or Saturday lies mostly
+            # in the MMWR week after: keeping it labels it a week early
+            lines = [ln for ln, _, _ in parsed]
+            ln, t, d = parsed[0]
+            rep.add("weekday_start", f"The '{col}' column names the start "
+                    f"of each week, but its dates are {WEEKDAYS[weekday]}s "
+                    f"({_rows(lines)}; e.g., {t}). A week starting on a "
+                    f"{WEEKDAYS[weekday]} lies mostly in the MMWR week that "
+                    f"ends the Saturday after ({t} -> "
+                    f"{(week_ending(d) + timedelta(days=7)).isoformat()}); "
+                    "keeping it in the week of its first day would label "
+                    "every week a week early. Write each week's MMWR "
+                    "week-ending Saturday, or name the column date if its "
+                    "dates end their weeks.", lines)
             shift = 0
     elif len(wds) > 1:
         top = wds.most_common(1)[0][0]

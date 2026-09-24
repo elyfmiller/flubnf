@@ -229,6 +229,38 @@ def test_week_ends_on_a_wednesday_or_friday_move_forward():
         assert rep.summary["date_shift_days"] == back
 
 
+@pytest.mark.parametrize("header", ["Week ending (Sunday)", "period_end",
+                                    "PeriodEnd"])
+def test_a_mapped_column_named_for_week_ends_is_guarded_too(header):
+    """Only the alias headers were guarded: a mapped 'Week ending
+    (Sunday)' column of Sundays moved +6, a week late."""
+    rows = [f"{(d - timedelta(days=6)).isoformat()},A,{i}"
+            for i, d in enumerate(sats("2024-01-13"))]
+    rep = D.validate(csv_text(f"{header},target_group,value", rows).encode(),
+                     columns={"date": header})
+    p = only(rep, "weekday_end")
+    assert "2024-01-07 -> 2024-01-06" in p.message
+
+
+@pytest.mark.parametrize("back,name", [(0, "Saturday"), (1, "Friday"),
+                                       (2, "Thursday"), (3, "Wednesday"),
+                                       (6, "Sunday")])
+def test_week_starts_on_a_thursday_friday_or_saturday_are_refused(back, name):
+    """Most of a week starting on these days lies in the MMWR week after:
+    keeping each in the week of its first day labels it a week early."""
+    rows = [f"{(d - timedelta(days=back)).isoformat()},A,{i}"
+            for i, d in enumerate(sats("2024-01-13"))]
+    rep = D.validate(csv_text("week_start,target_group,value", rows).encode(),
+                     columns={"date": "week_start"})
+    if back >= 3:                    # Sunday to Wednesday: its own week
+        assert ok(rep).summary["first"] == "2024-01-13"
+        return
+    p = only(rep, "weekday_start")
+    first = date(2024, 1, 13) - timedelta(days=back)
+    assert f"its dates are {name}s" in p.message
+    assert f"{first.isoformat()} -> 2024-01-20" in p.message
+
+
 def test_a_gap_names_the_weeks_it_leaves_out():
     rows = [f"{d.isoformat()},A,{i}" for i, d in enumerate(sats(n=8))]
     del rows[2]                                  # 2024-08-17
@@ -521,6 +553,7 @@ def test_two_candidate_date_columns_ask_for_a_choice():
     rep = D.validate(raw)
     p = only(rep, "ambiguous_columns")
     assert "'date' and 'week'" in p.message
+    assert "Choose one (e.g., date)" in p.message
     assert rep.needs_mapping and rep.codes == ["ambiguous_columns"]
     rep = ok(D.validate(raw, columns={"date": "week"}))
     assert rep.columns["date"] == "week"
