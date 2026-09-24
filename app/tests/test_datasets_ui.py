@@ -355,12 +355,24 @@ def test_a_real_run_shows_fans_and_exports_and_stays_off_the_hub(monkeypatch):
 
 # ----------------------------------------------------------- Retrospective
 
-def test_retro_has_its_own_card_for_datasets():
+def test_retro_has_its_own_tab_for_datasets():
     page = client.get("/retro").text
-    assert 'id="dataset-replay"' in page and "No datasets yet" in page
+    assert '<a href="/retro" aria-current="page">FluSight hub</a>' in page
+    assert '<a href="/retro?tab=own">Your data</a>' in page
+    assert 'id="dataset-replay"' not in page and 'action="/retro/run"' in page
+    # no dataset yet: the Your data tab is the upload box alone
+    own = client.get("/retro?tab=own").text
+    assert 'id="dataset-replay"' in own and 'id="dsup-replay"' in own
+    assert 'id="dsr-form"' not in own and 'action="/retro/run"' not in own
+    assert '<a href="/retro?tab=own" aria-current="page">Your data</a>' in own
     ds = stored()
-    page = client.get("/retro").text
-    assert f'<option value="{ds.id}">' in page
+    r = client.get("/retro?tab=own", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == \
+        f"/retro?dataset={ds.id}"
+    page = client.get(r.headers["location"]).text
+    assert f'<option value="{ds.id}" selected>' in page
+    assert 'id="dsr-form"' in page and 'season-card' not in page
+    assert 'id="dataset-replay"' not in client.get("/retro").text
 
 
 def test_a_replay_runs_and_its_page_names_the_baseline_and_the_label():
@@ -375,8 +387,9 @@ def test_a_replay_runs_and_its_page_names_the_baseline_and_the_label():
     assert "in-house persistence baseline" in page and ">done<" in page
     assert "FluSight baseline" not in page
     # listed in its own card, not among the season cards
-    idx = client.get("/retro").text
+    idx = client.get(f"/retro?dataset={ds.id}").text
     assert idx.index(loc) > idx.index('id="dataset-replay"')
+    assert loc not in client.get("/retro").text      # never on the hub tab
     assert not ui_state._status.get("running")
 
 
@@ -386,7 +399,7 @@ def test_a_second_replay_is_refused_while_one_runs():
     r = client.post("/retro/dataset/run", data={"dataset": ds.id},
                     follow_redirects=False)
     assert "holds the engine" in ui_state._status.get("flash", "")
-    assert r.headers["location"] == "/retro#dataset-replay"
+    assert r.headers["location"] == f"/retro?dataset={ds.id}"
 
 
 def test_replay_routes_refuse_bad_stamps_and_foreign_hosts():
@@ -401,7 +414,8 @@ def test_dataset_pages_never_call_the_plain_filter_the_oracle_member():
     SIHRS without 'Oracle ' only as the labelled plain filter."""
     from test_oracle_text import _ALLOWED
     ds = stored()
-    for url in (f"/forecast?source={ds.id}", f"/data?source={ds.id}", "/retro"):
+    for url in (f"/forecast?source={ds.id}", f"/data?source={ds.id}",
+                "/retro", f"/retro?dataset={ds.id}"):
         html = re.sub(r"<pre>.*?</pre>", "", client.get(url).text, flags=re.S)
         text = " ".join(html.split())
         for m in re.finditer(r"(?<!Oracle )SIHRS", text):

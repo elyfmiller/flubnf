@@ -22,7 +22,7 @@
    <td data-label="Values">{{ "counts" if d.kind == "count" else "rates" }}{{ ", with population" if d.population else "" }}</td>
    <td data-label="Snapshots">{{ d.n_vintages if d.vintages else "none" }}</td>
    <td class="dsactions"><a href="/forecast?source={{ d.id }}">Forecast</a>
-    · <a href="/retro?dataset={{ d.id }}#dataset-replay">Replay</a>
+    · <a href="/retro?dataset={{ d.id }}">Replay</a>
     <form method="post" action="/data/datasets/{{ d.id }}/delete" class="inline">
      <input type="hidden" name="confirm" value="">
      <button type="button" class="quiet" data-del-dataset data-name="{{ d.name }}"

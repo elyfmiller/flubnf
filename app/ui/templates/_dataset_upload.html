@@ -1,5 +1,5 @@
 {# The one upload box, on the Data tab, the Forecast tab and the
-   Retrospective tab's replay card (app/ui/datasets_ui.py):
+   Retrospective tab's Your data (app/ui/datasets_ui.py):
 
    {% import "_dataset_upload.html" as dsup %}{{ dsup.box("forecast") }}
 
@@ -22,7 +22,7 @@
 <form method="post" action="/data/datasets#datasets" enctype="multipart/form-data"
   class="dsup{% if upload %} has-file{% endif %}" id="{{ fid }}" data-dsup data-where="{{ where }}">
  <label class="dsdrop" for="{{ fid }}-file" data-drop>
-  <input type="file" name="file" id="{{ fid }}-file" required
+  <input type="file" name="file" id="{{ fid }}-file" required multiple
     accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain">
   <span class="dsdrop-t">Drop a CSV here or <span class="dslink">choose a file</span></span>
   <span class="dsdrop-on" aria-hidden="true">Drop to check</span>
@@ -30,7 +30,12 @@
  </label>
  <p class="hint">Weekly rows of date, group and value; population optional.
   <a href="/static/dataset-template.csv" download="dataset-template.csv">Template CSV</a>
-  {{ tips.tip(fid ~ "-about", "the file", "Columns may be named date (or week, week_ending, target_end_date), group (or target_group, location, region, jurisdiction) and value (or count, cases, admissions, observation), with an optional population; other columns are ignored. Comma, semicolon or tab separated; UTF-8, UTF-16 or Windows-1252. Dates as YYYY-MM-DD or M/D/YYYY on one weekday, moved to the Saturday that ends each week. Up to " ~ dataset_upload_mb() ~ " MB. The template is made-up data in that shape: three groups, Overall the sum of the other two, with populations.") }}</p>
+  {# a folder of snapshot files: shown by the script where the browser
+     can pick a folder (webkitdirectory); the input has no name, the
+     script posts the folder's tables #}
+  <span class="dsfolder" data-folder-wrap hidden>&middot; <label class="dslink" for="{{ fid }}-folder">Snapshot folder</label>
+   <input type="file" id="{{ fid }}-folder" data-folder webkitdirectory multiple></span>
+  {{ tips.tip(fid ~ "-about", "the file", "Columns may be named date (or week, week_ending, target_end_date), group (or target_group, location, region, jurisdiction) and value (or count, cases, admissions, observation), with an optional population; other columns are ignored. Comma, semicolon or tab separated; UTF-8, UTF-16 or Windows-1252. Dates as YYYY-MM-DD or M/D/YYYY on one weekday, moved to the Saturday that ends each week. Up to " ~ dataset_upload_mb() ~ " MB. The template is made-up data in that shape: three groups, Overall the sum of the other two, with populations. For a true retrospective, give the data as each week saw it: an as_of column, or several files at once (or a folder), one snapshot per as_of, each a table like the above named by its as_of date (2024-10-05.csv, admissions_2024-10-05.csv) or holding an as_of column. The files must share their columns and groups; each replayed week then sees the snapshot that held it.") }}</p>
  <div class="dsup-fields">
   <div>{{ tips.label("Name", fid ~ "-name", "Shown wherever the dataset is used.", for_=fid ~ "-name") }}
    <input type="text" name="name" id="{{ fid }}-name" maxlength="80" data-name

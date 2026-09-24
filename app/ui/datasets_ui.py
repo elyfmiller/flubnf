@@ -210,12 +210,34 @@ async def _capped_form(request: Request, cap: int):
             if n > cap:
                 raise TooBig()
             yield chunk
+    from starlette.formparsers import MultiPartException
     try:
-        parser = MultiPartParser(request.headers, stream(), max_files=1,
+        # several files are one dataset's snapshots (validate_snapshots)
+        parser = MultiPartParser(request.headers, stream(),
+                                 max_files=_D().MAX_SNAPSHOT_FILES,
                                  max_fields=20)
         return await parser.parse()
     except TooBig:
         return None
+    except MultiPartException as e:
+        if "files" in str(e).lower():
+            return TOO_MANY_FILES
+        raise
+
+
+#: _capped_form's answer to more files than one upload holds
+TOO_MANY_FILES = object()
+
+
+def _too_many_message() -> str:
+    return (f"Choose at most {_D().MAX_SNAPSHOT_FILES} files; nothing was "
+            "read.")
+
+
+def _files_of(form) -> list:
+    """The chosen files of an upload form (one, or several snapshots)."""
+    return [f for f in form.getlist("file")
+            if hasattr(f, "file") and getattr(f, "filename", "")]
 
 
 def _render_data(request, _code: int = 200, **extra):
@@ -288,6 +310,11 @@ def _preview(rep, kind: str) -> dict:
             "rows": s["rows"], "kind": kind or s["inferred_kind"],
             "inferred": not kind, "population": s["has_population"],
             "snapshots": len(s["as_of"]), "national": s.get("national_group"),
+            # several snapshot files: how many, and the as_of they span
+            "files": len(s.get("snapshot_files") or []),
+            "as_of_first": (s["as_of"] or [""])[0],
+            "as_of_last": (s["as_of"] or [""])[-1],
+            "rows_file": s.get("first_rows_file") or "",
             "target": s.get("target"),
             "read_as": f"{s['delimiter']}-separated, {s['encoding']}",
             "first_rows": s.get("first_rows") or [],
@@ -331,7 +358,7 @@ def _whole_dates(text) -> Markup:
                                   str(escape(text))))
 
 
-def check_view(rep, *, kind: str = "", columns=None) -> dict:
+def check_view(rep, *, kind: str = "", columns=None, files: int = 1) -> dict:
     """The result box's context (templates/_dataset_check.html) for one
     report: every problem grouped by kind, a column mapping when that is
     what is missing (instead of an error; two columns that could each be
@@ -366,6 +393,7 @@ def check_view(rep, *, kind: str = "", columns=None) -> dict:
             "notices": [_whole_dates(w) for w in rep.warnings],
             "targets": rep.targets if len(rep.targets) > 1 else [],
             "target": (rep.summary or {}).get("target") or "",
+            "files": files,
             "preview": _preview(rep, kind) if rep.ok and rep.summary else None}
 
 
@@ -376,7 +404,9 @@ def check_status(chk: dict) -> str:
         pv = chk["preview"]
         return (f"Ready to use: {pv['n_groups']} group"
                 f"{'' if pv['n_groups'] == 1 else 's'}, {pv['weeks']} week"
-                f"{'' if pv['weeks'] == 1 else 's'}.")
+                f"{'' if pv['weeks'] == 1 else 's'}"
+                + (f", {pv['files']} snapshot files." if pv["files"]
+                   else "."))
     n = chk.get("n") or 0
     if chk.get("needs_mapping"):
         return "Choose which column is which." + (
@@ -415,7 +445,8 @@ async def check(request: Request):
     """Check one upload and store nothing: JSON with the result box's HTML
     and what the form needs (the inferred kind, the targets, whether a
     column mapping is asked for). A file with several targets shows the
-    picker and no preview until one is chosen."""
+    picker and no preview until one is chosen. Several files are checked
+    together as one dataset's snapshots (datasets.validate_snapshots)."""
     refused = local_only(request)
     if refused:
         return refused
@@ -441,8 +472,10 @@ async def check(request: Request):
         return answer(_message_view(
             f"The file is larger than the {max_mb()} MB limit; nothing was "
             "read."), 413)
-    f = form.get("file")
-    if f is None or not hasattr(f, "file") or not getattr(f, "filename", ""):
+    if form is TOO_MANY_FILES:
+        return answer(_message_view(_too_many_message()), 413)
+    fs = _files_of(form)
+    if not fs:
         return answer(_message_view("Choose a CSV file."), 400)
     kind = _kind_field(form)
     if kind is None:
@@ -452,30 +485,34 @@ async def check(request: Request):
     columns = _form_columns(form)
     try:
         def run():
-            f.file.seek(0)
-            return D.validate(f.file, kind=kind or None, target=target,
-                              columns=columns)
+            for f in fs:
+                f.file.seek(0)
+            return D.validate_snapshots(
+                [(str(f.filename), f.file) for f in fs], kind=kind or None,
+                target=target, columns=columns)
         rep = await run_in_threadpool(run)
     finally:
-        try:
-            await f.close()
-        except Exception:
-            pass
-    chk = check_view(rep, kind=kind, columns=columns)
+        for f in fs:
+            try:
+                await f.close()
+            except Exception:
+                pass
+    chk = check_view(rep, kind=kind, columns=columns, files=len(fs))
+    # the name a store takes when none is typed
+    name = (D.default_name(Path(str(fs[0].filename)).name, rep.targets,
+                           target) if len(fs) == 1 else
+            D.default_snapshot_name([str(f.filename) for f in fs]))
     return answer(chk, inferred_kind=(rep.summary or {}).get("inferred_kind"),
                   target=target or "", targets=rep.targets,
-                  needs_mapping=rep.needs_mapping,
-                  # the name a store takes when none is typed
-                  name=D.default_name(Path(str(f.filename)).name,
-                                      rep.targets, target))
+                  needs_mapping=rep.needs_mapping, name=name)
 
 
 @router.post("/data/datasets")
 async def upload(request: Request):
-    """Validate and store one CSV, then open it where `next` says (the
-    Data tab, the Forecast tab, or the Retrospective tab's replay card).
-    Problems are shown inline on the Data tab (every one at once) and
-    nothing is stored."""
+    """Validate and store one CSV (or several, one dataset's snapshots),
+    then open it where `next` says (the Data tab, the Forecast tab, or the
+    Retrospective tab's Your data). Problems are shown inline on the Data
+    tab (every one at once) and nothing is stored."""
     D = _D()
     cap = D.DEFAULT_LIMITS.max_bytes + FORM_SLACK
     ctype = request.headers.get("content-type", "")
@@ -489,46 +526,66 @@ async def upload(request: Request):
             "name": "", "kind": "", "chk": _message_view(
                 f"The upload is larger than the {mb} MB limit; nothing was "
                 "read or stored.")}, _code=413)
-    f = form.get("file")
+    if form is TOO_MANY_FILES:
+        return _render_data(request, upload={
+            "name": "", "kind": "", "chk": _message_view(
+                _too_many_message())}, _code=413)
+    fs = _files_of(form)
     name = str(form.get("name") or "").strip()
     kind = _kind_field(form)
     target = str(form.get("target") or "").strip() or None
     columns = _form_columns(form)
     nxt = str(form.get("next") or "data")
     back = {"name": name, "kind": kind or "", "target": target or ""}
-    if f is None or not hasattr(f, "file") or not getattr(f, "filename", ""):
+    if not fs:
         return _render_data(request, upload={
             **back, "chk": _message_view("Choose a CSV file to upload.")},
             _code=400)
-    fname = Path(str(f.filename)).name
     if kind is None:
         return _render_data(request, upload={
             **back, "chk": _message_view("Say whether the values are counts "
                                          "or rates.")}, _code=400)
     try:
-        f.file.seek(0)
-        ds = await run_in_threadpool(
-            lambda: D.ingest(f.file, name[:80] or None, kind=kind or None,
-                             target=target, filename=fname, columns=columns))
+        for f in fs:
+            f.file.seek(0)
+        if len(fs) == 1:
+            f = fs[0]
+            fname = Path(str(f.filename)).name
+            ds = await run_in_threadpool(
+                lambda: D.ingest(f.file, name[:80] or None,
+                                 kind=kind or None, target=target,
+                                 filename=fname, columns=columns))
+        else:
+            ds = await run_in_threadpool(
+                lambda: D.ingest_snapshots(
+                    [(str(f.filename), f.file) for f in fs],
+                    name[:80] or None, kind=kind or None, target=target,
+                    columns=columns))
     except D.DatasetError as e:
-        chk = (check_view(e.report, kind=kind, columns=columns)
+        chk = (check_view(e.report, kind=kind, columns=columns,
+                          files=len(fs))
                if e.report is not None else _message_view(str(e)))
         return _render_data(request, upload={**back, "chk": chk}, _code=422)
     finally:
-        try:
-            await f.close()
-        except Exception:
-            pass
+        for f in fs:
+            try:
+                await f.close()
+            except Exception:
+                pass
     shared._invalidate_scans()
     warn = ds.meta.get("warnings") or []
     done = (f"Stored the dataset {ds.name}: {len(ds.groups)} group(s), "
             f"{len(ds.weeks())} week(s).")
+    if ds.meta.get("snapshot_files"):
+        vs = ds.vintages()
+        done += (f" {len(vs)} snapshots, as_of {vs[0]} to {vs[-1]}.")
     if nxt == "replay":
-        # said in the replay card the page scrolls to, not at its top
+        # said in the Your data tab's settings card, not at the page top;
+        # #main replaces the form's #datasets, which a redirect keeps
         _STORED.clear()
         _STORED[ds.id] = {"text": done, "warnings": list(warn)}
         ui_state._status["log"].append(" ".join([done] + warn))
-        return RedirectResponse(f"/retro?dataset={ds.id}#dataset-replay",
+        return RedirectResponse(f"/retro?dataset={ds.id}#main",
                                 status_code=303)
     shared._flash(done + (" " + " ".join(warn) if warn else ""))
     if nxt == "forecast":
@@ -1179,17 +1236,21 @@ def replay_window(dates: list) -> tuple:
 
 
 def retro_context(selected: str = "") -> dict:
-    """The Retrospective tab's own-data card: datasets and their replays
-    (kept in their own card, never beside the hub seasons); ``selected``
-    names the dataset the card opens on (an upload's "Replay this"), whose
-    store confirmation and notices the card shows once ("stored")."""
+    """The Retrospective tab's "Your data" tab: the stored datasets (for
+    its picker) and the one it shows (``selected``, else the first), with
+    that dataset's weeks, groups and replays, all rendered by the server
+    so the form works without script; an upload's "Replay this" names the
+    dataset, whose store confirmation and notices the tab shows once
+    ("stored")."""
     from app.core import custom_retro as CX
-    out = []
     try:
         items = _D().list_datasets()
     except Exception:
         items = []
-    for ds in items:
+    ds = next((d for d in items if d.id == selected), None) or (
+        items[0] if items else None)
+    view = None
+    if ds is not None:
         reps = []
         for stamp, meta in CX.list_replays(ds)[:6]:
             st = meta.get("status") or "unknown"
@@ -1208,32 +1269,34 @@ def retro_context(selected: str = "") -> dict:
                                   if v is not None}})
         dates = ds.forecast_dates()
         w0, w1 = replay_window(dates)
-        out.append({"id": ds.id, "name": ds.name, "groups": ds.groups,
-                    "vintage_true": ds.vintage_true, "pf": ds.pf_eligible,
-                    "kind": ds.kind,
-                    "first": dates[0] if dates else "",
-                    "last": dates[-1] if dates else "",
-                    "default_first": w0, "default_last": w1,
-                    "dates": dates, "replays": reps})
-    # the Model settings panel of the card's form: a second panel on the
-    # page (ids prefixed), following the card's own model select; the
-    # counts-only rows hide for a rate dataset (the card sets its kind)
-    sel = selected if any(d["id"] == selected for d in out) else ""
+        view = {"id": ds.id, "name": ds.name, "groups": ds.groups,
+                "vintage_true": ds.vintage_true, "pf": ds.pf_eligible,
+                "kind": ds.kind, "snapshots": len(ds.vintages())
+                if ds.vintage_true else 0,
+                "first": dates[0] if dates else "",
+                "last": dates[-1] if dates else "",
+                "default_first": w0, "default_last": w1,
+                "dates": dates, "replays": reps}
+    # the Model settings panel of the tab's form (ids prefixed dsr-),
+    # following the form's own model select; the counts-only rows hide
+    # for a rate dataset (the page sets its kind)
+    sel = view["id"] if view and view["id"] == selected else ""
     stored = _STORED.pop(sel, None) if sel else None
     if stored:
-        stored = {"text": stored["text"],
+        stored = {"text": _whole_dates(stored["text"]),
                   "warnings": [_whole_dates(w) for w in stored["warnings"]]}
     panel = (dataset_panel(forms._knob_panel("forecast",
                                              names=PANEL_MEMBERS),
                            where="replay", prefix="dsr-",
-                           engine="dsr-engine") if out else None)
-    return {"dataset_replay": {"datasets": out,
+                           engine="dsr-engine") if view else None)
+    return {"dataset_replay": {"datasets": [(d.id, d.name) for d in items],
+                               "ds": view,
                                "pf_state": pipeline._pf_engine_state(),
                                "running": dict(_REPLAY),
                                "names": MEMBER_NAMES,
                                "engine_names": REPLAY_ENGINE_NAMES,
                                "knob_panel": panel,
-                               "selected": sel,
+                               "selected": view["id"] if view else "",
                                "stored": stored}}
 
 
@@ -1251,8 +1314,10 @@ def replay_start(background: BackgroundTasks, dataset: str = Form(...),
     dataset run resolves them, recorded with the replay when any is off
     the shipped value, and none that does not apply."""
     from app.core import custom_retro as CX
-    back = RedirectResponse("/retro#dataset-replay", status_code=303)
     ds = get_dataset(dataset)
+    # back to the Your data tab, on this dataset while it exists
+    back = RedirectResponse(f"/retro?dataset={ds.id}" if ds is not None
+                            else "/retro?tab=own", status_code=303)
     if ds is None:
         shared._flash("That dataset no longer exists. Nothing was started.")
         return back

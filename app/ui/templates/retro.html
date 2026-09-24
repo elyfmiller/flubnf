@@ -3,6 +3,14 @@
 <script src="/static/retro_progress.js"></script>{% endblock %}
 {% block content %}{% import "_tips.html" as tips %}
 <h1>Retrospective</h1>
+{# the data source as two tabs, as on Forecast: the FluSight hub's
+   seasons, or your own datasets (_dataset_replay.html); plain links, so
+   Back, bookmarks and no-script work #}
+<nav class="srctabs" aria-label="data source">
+ <a href="/retro"{% if not own_tab %} aria-current="page"{% endif %}>FluSight hub</a>
+ <a href="/retro?tab=own"{% if own_tab %} aria-current="page"{% endif %}>Your data</a>
+</nav>
+{% if own_tab %}{% include "_dataset_replay.html" %}{% else %}
 <p class="sub">Replays a past season week by week on the data each Saturday
 had, then scores against settled truth.</p>
 <div class="cols">
@@ -210,5 +218,5 @@ had, then scores against settled truth.</p>
  }});
 </script>
 {% endif %}
-{% if dataset_replay %}{% include "_dataset_replay.html" %}{% endif %}
+{% endif %}
 {% endblock %}

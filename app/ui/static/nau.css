@@ -1127,3 +1127,14 @@ pre.sberr{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);
 @media(max-width:900px){.sbmodels th:nth-child(2),.sbmodels td:nth-child(2){display:none}}
 .sbmodels td{vertical-align:top}
 .sbmodels td:nth-child(3),.sbmodels td:nth-child(4){white-space:nowrap}
+
+/* round2: retrospective and datasets */
+/* the upload box's folder link: the native folder input stays focusable but
+   out of sight; its label shows the focus */
+.dsfolder{position:relative}
+.dsfolder input[type=file]{position:absolute;left:0;top:0;width:1px;height:1px;
+  opacity:0;overflow:hidden;clip-path:inset(50%)}
+.dsfolder:focus-within label{outline:2px solid var(--accent-ink);outline-offset:2px}
+.dsfolder label{display:inline;margin:0;font-size:inherit}
+/* a date in the preview's facts or the stored note stays on one line */
+.dsfacts .nw,.dsr-stored .nw{white-space:nowrap}
