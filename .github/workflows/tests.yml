@@ -150,16 +150,7 @@ jobs:
           FLUBNF_NO_DATA: "1"
           FLUBNF_NO_PROBE: "1"
         run: |
-          rem FLUBNF_HUB is deliberately NOT set: this run exercises the
-          rem default location under %LOCALAPPDATA%, which is what every
-          rem undergraduate gets and what the plan block has to print. The
-          rem default moved out of Documents because Controlled Folder Access
-          rem protects Documents and blocks git.exe from writing there; see
-          rem docs\WINDOWS.md. The runner has no Documents\GitHub checkout, so
-          rem this run also covers the branch where no legacy folder is found.
-          rem -NoPrompt is passed here and deliberately omitted in run 2, so
-          rem both the explicit switch and the script's own non-interactive
-          rem detection get exercised.
+          rem FLUBNF_HUB unset: the %LOCALAPPDATA% default, no legacy folder. -NoPrompt here, omitted in run 2.
           set "LOG=%RUNNER_TEMP%\setup-run1.log"
           powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -NoPrompt > "%LOG%" 2>&1
           set CODE=%ERRORLEVEL%
@@ -221,10 +212,7 @@ jobs:
           if not defined FLUBNF_HUB echo ::error::.flubnf.env.cmd did not set FLUBNF_HUB
           if not defined FLUBNF_HUB exit /b 1
           echo FLUBNF_HUB=%FLUBNF_HUB%
-          rem no space before the pipe: a trailing space would defeat /e, the
-          rem end-of-line anchor. This checks the tail of the path only, so a
-          rem runner whose profile directory is not literally %USERPROFILE%
-          rem does not produce a false alarm.
+          rem no space before the pipe (it would defeat /e); tail of the path only
           echo %FLUBNF_HUB%|findstr /e /i /c:"\AppData\Local\FluBNF\FluSight-forecast-hub" >nul
           set FOUND=%ERRORLEVEL%
           if not "%FOUND%"=="0" echo ::error::.flubnf.env.cmd points somewhere unexpected. With no FLUBNF_HUB set and no checkout at the old Documents location it must record the default under %%LOCALAPPDATA%%, which Controlled Folder Access does not protect.
@@ -238,9 +226,7 @@ jobs:
           FLUBNF_HUB: ${{ runner.temp }}\flusight-hub
           # no FLUBNF_NO_DATA / FLUBNF_NO_PROBE: the real fetch and the real probe
         run: |
-          rem -NoPrompt is deliberately omitted: this is the command line
-          rem FluBNF.bat runs verbatim, so the run also proves the script
-          rem asks nothing when it detects a non-interactive session itself.
+          rem no -NoPrompt: the script must detect the non-interactive session itself
           set "LOG=%RUNNER_TEMP%\setup-run2.log"
           powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 > "%LOG%" 2>&1
           set CODE=%ERRORLEVEL%
@@ -317,11 +303,7 @@ jobs:
         env:
           FLUBNF_HUB: ${{ runner.temp }}\flusight-hub
         run: |
-          rem The field report opened with "Latest vintage: none" and "0
-          rem archived truth vintages". Both numbers come from
-          rem app.core.data.vintages, so read them the same way the Data page
-          rem does, out of the venv setup.ps1 just built. This is the step
-          rem that ties "the clone worked" to "the console is no longer empty".
+          rem read vintages as the Data page does: the reported "Latest vintage: none" must be gone
           ".venv\Scripts\python" -c "from app.core.data import vintages; v = vintages(); print('archived truth vintages:', len(v)); print('latest vintage:', v[-1] if v else 'none'); raise SystemExit(0 if v else 1)"
           set CODE=%ERRORLEVEL%
           if not "%CODE%"=="0" echo ::error::the fetched hub yields no archived truth vintages, so the console would still open on "Latest vintage: none" - the exact symptom that was reported
@@ -383,9 +365,7 @@ jobs:
       - name: "run 3: the launcher configuration now points at the fetched data"
         shell: cmd
         run: |
-          rem This is the mechanism by which the next double-click stops
-          rem saying "Latest vintage: none": setup.ps1 rewrites the file, and
-          rem FluBNF.bat calls it on every launch.
+          rem FluBNF.bat calls this file on every launch
           if not exist ".flubnf.env.cmd" echo ::error::.flubnf.env.cmd is gone after the later runs; FluBNF.bat would launch with no settings
           if not exist ".flubnf.env.cmd" exit /b 1
           call ".flubnf.env.cmd"
@@ -410,11 +390,7 @@ jobs:
           git clone --filter=blob:none --sparse --depth 1 https://github.com/cdcepi/FluSight-forecast-hub "%RUNNER_TEMP%\byhand-hub"
           if errorlevel 1 echo ::error::run 4: the by-hand clone itself failed, so nothing below was actually tested
           if errorlevel 1 exit /b 1
-          rem The premise, asserted rather than assumed: --sparse is
-          rem documented to check out the repository root only, so this clone
-          rem must hold no auxiliary-data. If it does, the reasoning behind
-          rem Repair-HubCone is wrong on this git build and should be reread
-          rem before anything else in this job is believed.
+          rem the premise: --sparse checks out the root only (else Repair-HubCone's reasoning is wrong)
           if exist "%RUNNER_TEMP%\byhand-hub\auxiliary-data" echo ::error::run 4: git clone --sparse produced auxiliary-data on this git version, so the premise of the whole repair is wrong. See the Repair-HubCone comment in setup.ps1.
           if exist "%RUNNER_TEMP%\byhand-hub\auxiliary-data" exit /b 1
           echo the by-hand clone holds only:
@@ -470,12 +446,10 @@ jobs:
         env:
           FLUBNF_HUB: ${{ runner.temp }}\byhand-hub
         run: |
-          rem The end of the chain: the state the author reported, through
-          rem setup.ps1, to the numbers the Data page prints.
           ".venv\Scripts\python" -c "from app.core.data import vintages; v = vintages(); print('archived truth vintages:', len(v)); print('latest vintage:', v[-1] if v else 'none'); raise SystemExit(0 if v else 1)"
           if errorlevel 1 echo ::error::run 4: the repaired hub still yields no archived truth vintages, so the reported symptom survives the fix
           if errorlevel 1 exit /b 1
-          rem and the doctor must agree, since it is what prints the verdict
+          rem and the doctor must agree
           ".venv\Scripts\python" -c "from flubnf.settings import check; m=[x[0] for x in check(verbose=True)]; print('missing:', m); raise SystemExit(1 if 'FLUBNF_HUB' in m else 0)"
           if errorlevel 1 echo ::error::run 4: the doctor still reports FLUBNF_HUB missing after the repair
           if errorlevel 1 exit /b 1
