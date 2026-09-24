@@ -462,8 +462,6 @@ def console(hubfiles, tmp_path, monkeypatch):
     monkeypatch.setattr(pf_engine, "execute", lambda w: {"Ohio_r0": "ok", "Utah_r0": "ok"})
     monkeypatch.setattr(pf_engine, "collect", lambda w: {loc: {h: list(v) for h, v in s.items()}
                                                          for loc, s in raw.items()})
-    an_q = {h: {float(L): 10.0 + 3 * i + int(h) for i, L in enumerate(srv.QUANTILES)}
-            for h in hz.HORIZONS} if hasattr(srv, "QUANTILES") else None
     from app.core.submit import QUANTILES
     an_q = {h: {float(L): 10.0 + 3 * i + int(h) for i, L in enumerate(QUANTILES)}
             for h in hz.HORIZONS}

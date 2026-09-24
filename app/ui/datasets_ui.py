@@ -22,6 +22,11 @@ and the context builders the tab routers (app/ui/routes) call when a page
 is opened with `?source=<dataset id>` (Data, Forecast, /api/series). A
 dataset is never the default source: every page and run opts in by naming
 it.
+
+Load it through app.ui.server (as uvicorn and site_build do): server
+registers the sandbox_storage and dataset_upload_mb Jinja globals the
+dataset pages render with and starts the startup warm pass; importing this
+module on its own does neither.
 """
 from __future__ import annotations
 
