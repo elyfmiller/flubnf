@@ -102,6 +102,13 @@ def resolve_state(state: str, *, truth_csv: str | Path, locations_csv: str | Pat
             "%s: dropping %d NaN week(s) at offsets %s (reporting gap)",
             state, n_drop, week_off[~finite].tolist())
     obs, week_off = obs[finite], week_off[finite]
+    if not obs.sum() > 0:
+        # early in a season a small state can have reported none yet;
+        # rho*mult and i0 are ratios of this count (pin_rho_mult)
+        raise ValueError(f"{state}: no admissions reported in "
+                         f"{season_start}..{as_of} ({obs.size} week(s), all "
+                         "zero), so the starting state cannot be derived "
+                         "from the data yet")
 
     rhomult = pin_rho_mult(float(obs.sum()) / pop, ar)
     g = gamma_per_week()

@@ -38,6 +38,7 @@ its own folder (oracle_step: sandbox, never a submission).
 from __future__ import annotations
 
 import json
+import math
 import re
 import shutil
 import subprocess
@@ -553,8 +554,9 @@ def set_population(name: str, population: int) -> None:
         elif low == "end parameters":
             inside = False
         elif inside and not done:
-            m = re.match(r"^(\s*(?:\d+\s+)?N)(\s*=?\s*)(\S+)(.*)$", line,
-                         flags=re.S)
+            # N itself, not N_y or No: the name ends at a space or '='
+            m = re.match(r"^(\s*(?:\d+\s+)?N)(?=[\s=])(\s*=?\s*)(\S+)(.*)$",
+                         line, flags=re.S)
             if m:
                 line = f"{m.group(1)}{m.group(2)}{pop}{m.group(4)}"
                 done = 1
@@ -663,7 +665,20 @@ def split_priors(priors_text: str) -> tuple:
 
 
 def _strip_comments(text: str) -> list:
-    return [l.split("#", 1)[0].strip() for l in text.splitlines()]
+    """The lines without comments, a line ending in a backslash joined to
+    the next (BNGL's continuation), so a parameter or rule written over two
+    lines reads as one."""
+    out, carry = [], ""
+    for l in text.splitlines():
+        s = l.split("#", 1)[0].strip()
+        if s.endswith("\\"):
+            carry += s[:-1] + " "
+            continue
+        out.append((carry + s).strip())
+        carry = ""
+    if carry:
+        out.append(carry.strip())
+    return out
 
 
 def _block(bngl: str, name: str) -> list:
@@ -695,14 +710,15 @@ def bngl_parameters(bngl: str) -> list:
 
 def bngl_parameter_values(bngl: str) -> dict:
     """{name: its value as written} for each parameters-block line (the
-    first token after the name: a number or an expression)."""
+    rest of the line after the name: a number or a whole expression, so
+    'N N_y + N_o' reads 'N_y + N_o', never 'N_y')."""
     out = {}
     for s in _block(bngl, "parameters"):
         toks = s.replace("=", " ").split()
         if toks and toks[0].isdigit():
             toks = toks[1:]
         if len(toks) >= 2:
-            out.setdefault(toks[0], toks[1])
+            out.setdefault(toks[0], " ".join(toks[1:]))
     return out
 
 
@@ -813,6 +829,11 @@ def check(files: dict, *, work: Path | None = None) -> dict:
     for p in facts["free"]:
         if p not in named:
             warnings.append(f"{p} ends in __FREE but has no prior line")
+    for p in sorted(n for n in named if n in params
+                    and not n.endswith("__FREE")):
+        warnings.append(f"{p} has a prior line but its name does not end in "
+                        "__FREE: only a __FREE parameter is fitted, so "
+                        f"rename it {p}__FREE in both files")
     warnings += _prior_start_warnings(bngl, priors)
     cum = keys.get("pf_cumulative_observable", "")
     facts["cumulative"] = cum
@@ -823,6 +844,15 @@ def check(files: dict, *, work: Path | None = None) -> dict:
     elif cum not in outputs:
         problems.append(f"pf_cumulative_observable names {cum}, which is "
                         "neither an observable nor a function of the model")
+    # the model starts at pf_start_time and each row is the increment over
+    # the week before it: a row at or before the start has no week
+    t_start = _number(keys.get("pf_start_time", "-1"))
+    if times and t_start is not None and min(times) <= t_start:
+        warnings.append(f"data.exp has a row at t = {min(times):g}, at or "
+                        f"before the model's start time {t_start:g} "
+                        "(pf_start_time): every row must come after it, as "
+                        "the first week's count is the increment from the "
+                        "start")
     if "pf_observable_mode" in keys:
         warnings.append("pf_observable_mode is retired: the filter always "
                         "fits the weekly increment, and runs drop this line, "
@@ -1128,7 +1158,26 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
     priors, _ = split_priors(files["priors.conf"])
     val = {k: v for k, v, _ in settings}
     particles = int(val["pf_particles"])
-    forecast_weeks = int(val["pf_forecast_intervals"])
+    # a priors.conf line overrides the form's jitter and forecast weeks:
+    # the same refusals, in words and before anything is written
+    try:
+        eff_jitter = float(val["pf_jitter"])
+    except ValueError:
+        raise SandboxError(f"priors.conf sets pf_jitter = {val['pf_jitter']}, "
+                           "which is not a number") from None
+    if not 0 < eff_jitter < 1:
+        raise SandboxError(f"priors.conf sets pf_jitter = {val['pf_jitter']}, "
+                           "which is not between 0 and 1 (0.15 is the "
+                           "production setting)")
+    try:
+        forecast_weeks = int(val["pf_forecast_intervals"])
+    except ValueError:
+        raise SandboxError("priors.conf sets pf_forecast_intervals = "
+                           f"{val['pf_forecast_intervals']}, which is not a "
+                           "whole number of weeks") from None
+    if forecast_weeks < 0:
+        raise SandboxError(f"priors.conf sets pf_forecast_intervals = "
+                           f"{forecast_weeks}, which is negative")
     stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
     workroot = (runs_root or RUNS) / f"{stamp}_{name}"
     n = 1
@@ -1676,7 +1725,10 @@ def calendar_offsets(dates: list, origin: str) -> list:
         days = (dt.date.fromisoformat(d) - o).days
         if days < 0:
             raise SandboxError(f"week {d} is before t = 0 ({origin})")
-        out.append(int(round(days / 7)))
+        # whole weeks, floored as resolve_state counts them: a season
+        # start on a Sunday to Tuesday (1 August 2023) must not put its
+        # first Saturday at t = 1
+        out.append(days // 7)
     return out
 
 
@@ -1791,8 +1843,13 @@ def _view_file(name: str, kind: str) -> Path:
     return SANDBOX / "contactmap" / check_name(name) / f"{kind}.json"
 
 
+#: bumped when the views' reading of a model changes (2: rule_flow reads
+#: cBNGL compartment prefixes), so a drawing cached before is redrawn
+VIEW_VERSION = 2
+
+
 def _view_key(bngl: str) -> str:
-    return _digest(str(bngl) + "\n" + str(BNG))
+    return _digest(str(bngl) + "\n" + str(BNG) + f"\nviews {VIEW_VERSION}")
 
 
 def cached_view(name: str, kind: str, bngl: str) -> dict | None:
@@ -1946,9 +2003,14 @@ def summary_rows(res: dict) -> list:
         if dates and len(dates) == len(times) and times:
             day = (dt.date.fromisoformat(dates[0])
                    + dt.timedelta(days=round(7 * (t - times[0])))).isoformat()
+        # a missing week (written negative or NaN, read_exp) is blank,
+        # never a count of -1
+        y = obs[i] if i < len(obs) else None
+        seen = (y is not None and math.isfinite(float(y))
+                and float(y) >= 0)
         rows.append([i, _fmt(t), day] + [f"{float(traj[q][i]):.6g}"
                                          for q in ("q10", "q50", "q90")]
-                    + [_fmt(obs[i]) if i < len(obs) else ""])
+                    + [_fmt(y) if seen else ""])
     return rows
 
 

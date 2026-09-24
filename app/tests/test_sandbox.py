@@ -141,6 +141,23 @@ def test_prepare_writes_the_engine_configuration_from_the_three_files(box):
     assert w2 != w and w2.is_dir()
 
 
+@pytest.mark.parametrize("line, words", [
+    ("pf_jitter = 1.5", "not between 0 and 1"),
+    ("pf_jitter = abc", "not a number"),
+    ("pf_forecast_intervals = 4.0", "not a whole number"),
+    ("pf_forecast_intervals = -2", "negative")])
+def test_a_priors_conf_override_is_refused_like_the_form(box, line, words):
+    # the form's jitter was checked but priors.conf's replaced it unchecked,
+    # and a malformed value failed in Python's words after the run folder
+    # was made
+    sb.add_example("kinetics_example")
+    f = sb.read_model("kinetics_example")
+    sb.save_model("kinetics_example", {"priors.conf": f["priors.conf"] + line + "\n"})
+    with pytest.raises(sb.SandboxError, match=words):
+        sb.prepare("kinetics_example", particles=100)
+    assert not sb.RUNS.exists() or not any(sb.RUNS.iterdir())
+
+
 def test_a_model_that_does_not_generate_is_refused_with_bngs_words(box):
     sb.add_example("kinetics_example")
     sb.save_model("kinetics_example", {"model.bngl": "# broken\n" + (
@@ -184,6 +201,34 @@ def test_run_records_the_outcome_and_results_read_the_outputs(box, monkeypatch):
     w2 = sb.prepare("kinetics_example")
     assert sb.run(w2)["status"] == "failed"
     assert "engine venv missing" in sb.results(w2)["meta"]["error"]
+
+
+def test_the_run_api_answers_for_a_data_row_written_nan(box, monkeypatch):
+    # a missing week written NaN reaches meta.observed; JSON has no NaN, so
+    # the page's poll got a 500 and never saw the run end
+    sb.add_example("kinetics_example")
+    lines = sb.read_model("kinetics_example")["data.exp"].splitlines()
+    t = lines[3].split()[0]
+    lines[3] = f"{t} NaN"
+    sb.save_model("kinetics_example", {"data.exp": "\n".join(lines) + "\n"})
+    w = sb.prepare("kinetics_example", particles=100)
+    cell = w / "kinetics_example_r0"
+
+    def fake_execute(workroot, width=None, timeout=None):
+        runs = cell / "out" / "Results" / "PF" / "Runs"
+        runs.mkdir(parents=True)
+        tr = np.tile(np.arange(1.0, 17.0), (100, 1))
+        tr[:, 5] = np.nan                      # a column the engine left NaN
+        np.savetxt(runs / "traj_noise_kinB_weekly_chain_0.txt", tr)
+        return {"kinetics_example_r0": "ok"}
+    monkeypatch.setattr(sb.pf_engine, "execute", fake_execute)
+    sb.run(w)
+    r = client.get(f"/api/sandbox/runs/{w.name}")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["meta"]["status"] == "ok"
+    assert d["meta"]["observed"][2] is None
+    assert d["traj"]["q50"][5] is None and d["traj"]["q50"][0] == 1.0
 
 
 # --------------------------------------------------------------- the page

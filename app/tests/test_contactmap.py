@@ -447,6 +447,43 @@ def test_rule_flow_draws_a_tally_dashed_and_reads_bngl_forms():
     assert cm.rule_flow("begin model\nend model\n") is None
 
 
+def test_rule_flow_reads_compartment_prefixes_and_both_reversible_rates():
+    # cBNGL writes a species' compartment before it: @C:S(); the rule was
+    # read as having no molecules at all and vanished from the flow
+    g = cm.rule_flow("begin molecule types\nS()\nI()\nR()\nend molecule types\n"
+                     "begin  reaction   rules\n"
+                     "inf: @C:S() + @C::I() -> @C:I() + @C:I()  beta/N\n"
+                     "rec: I()@C <-> R()@C  gamma,omega\n"
+                     "end reaction rules\n")
+    assert _arrows(g) == {("S", "I", "transfer"), ("I", "R", "transfer"),
+                          ("R", "I", "transfer")}
+    labels = {e["rule"]: e["label"] for e in g["edges"]}
+    assert labels == {"inf": "beta/N", "rec": "gamma", "rec (reverse)": "omega"}
+    g = cm.rule_flow("begin reaction rules\nr: A() <-> B()  Sat(k,K), kr\n"
+                     "end reaction rules\n")
+    assert [e["label"] for e in g["edges"]] == ["Sat(k,K)", "kr"]
+
+
+def test_a_drawing_cached_by_an_older_reading_is_redrawn(sandbox_root):
+    # the cache is keyed by the model text; a fixed reader must not be
+    # hidden behind a flow cached before the fix
+    sb.new_model("mine")
+    bngl = sb.read_model("mine")["model.bngl"]
+    f = sb._view_file("mine", "contactmap")
+    f.parent.mkdir(parents=True, exist_ok=True)
+    import json
+    old_key = sb._digest(str(bngl) + "\n" + str(sb.BNG))
+    f.write_text(json.dumps({"key": old_key, "payload": {"flow": None}}))
+    assert sb.cached_view("mine", "contactmap", bngl) is None
+    sb.store_view("mine", "contactmap", bngl, {"flow": {"edges": []}})
+    assert sb.cached_view("mine", "contactmap", bngl) == {"flow": {"edges": []}}
+
+
+def test_the_views_accept_a_comment_on_the_end_model_line():
+    src = "begin model\nbegin parameters\nk 1\nend parameters\nend model  # done\n"
+    assert cm.network_bngl(src).rstrip().endswith("end actions")
+
+
 def test_route_returns_the_flow_even_when_bng_fails(box):
     sb.new_model("mine")
     sb.save_model("mine", {"model.bngl": "# broken\n" + sb.read_model("mine")["model.bngl"]})

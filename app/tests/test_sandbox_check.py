@@ -3,6 +3,7 @@ engine (app/core/sandbox.py check; POST /api/sandbox/models/<name>/check).
 Fatal problems are only what makes a run fail; the rest are warnings.
 BNG2.pl is faked; without Perl the network reads 'not checked'.
 """
+import re
 import sys
 import types
 from pathlib import Path
@@ -125,6 +126,51 @@ def test_warnings(box, tmp_path, monkeypatch):
     assert "no pf_cumulative_observable" in text
     assert "pf_shrink is not a setting the installed engine knows" in text   # the fake engine lists it not
     assert "one data row" in text
+
+
+def test_a_row_at_or_before_the_start_time_is_named(box):
+    files = _files()
+    files["data.exp"] = "# time T_weekly\n-1 3\n0 5\n1 8\n"
+    assert any("a row at t = -1, at or before the model's start time -1"
+               in w for w in sb.check(files)["warnings"])
+    files["data.exp"] = "# time T_weekly\n0 3\n1 5\n2 8\n"
+    assert not any("start time" in w for w in sb.check(files)["warnings"])
+    files["priors.conf"] += "pf_start_time = 0\n"
+    assert any("a row at t = 0, at or before the model's start time 0"
+               in w for w in sb.check(files)["warnings"])
+
+
+def test_a_prior_on_a_fixed_parameter_is_named(box):
+    # N is defined, so no problem was raised, yet only __FREE is fitted
+    files = _files()
+    files["priors.conf"] += "uniform_var = N 1000 200000\n"
+    r = sb.check(files)
+    assert any(w.startswith("N has a prior line but its name does not end "
+                            "in __FREE") for w in r["warnings"]), r["warnings"]
+
+
+def test_parameters_read_continuations_and_whole_expressions():
+    bngl = ("begin parameters\n"
+            "N_y 120000\nN_o 80000\n"
+            "N     N_y + N_o     # an expression with spaces\n"
+            "r__FREE \\\n    8.0\n"
+            "beta  Reff*gamma \\\n       / 1.2   # continued\n"
+            "end parameters\n")
+    assert sb.bngl_parameters(bngl) == ["N_y", "N_o", "N", "r__FREE", "beta"]
+    vals = sb.bngl_parameter_values(bngl)
+    assert vals["N"] == "N_y + N_o"
+    assert vals["r__FREE"] == "8.0"                 # simulate_data's dispersion
+    assert vals["beta"] == "Reff*gamma / 1.2"
+
+
+def test_a_written_expression_is_not_read_as_its_first_number(box):
+    # k__FREE 10 / 20 is 0.5, inside the prior 0.05 to 2: no warning
+    files = _files()
+    files["model.bngl"] = re.sub(r"(?m)^k__FREE\s+\S+", "k__FREE 10 / 20",
+                                 files["model.bngl"])
+    assert "k__FREE 10 / 20" in files["model.bngl"]
+    assert not any("k__FREE is written as" in w
+                   for w in sb.check(files)["warnings"])
 
 
 def test_without_perl_the_network_is_not_checked(box, monkeypatch):

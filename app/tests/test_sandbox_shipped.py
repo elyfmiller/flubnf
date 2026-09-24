@@ -259,6 +259,19 @@ def test_set_population_rewrites_n_and_refuses_an_sihrs_shaped_model(sandbox_roo
         sb.set_population("kinetics_example", 5)
 
 
+def test_set_population_leaves_names_that_only_start_with_n(sandbox_root):
+    # an age-structured model defines N_y and No before N: only N changes
+    sb.add_example("sir_example")
+    bngl = sb.read_model("sir_example")["model.bngl"]
+    at = re.search(r"(?m)^N\s", bngl).start()
+    sb.save_model("sir_example", {"model.bngl": bngl[:at] + "N_y 120000\n"
+                                  "No = 80000\n" + bngl[at:]})
+    sb.set_population("sir_example", 123456)
+    after = sb.read_model("sir_example")["model.bngl"]
+    assert "N_y 120000\nNo = 80000\n" in after
+    assert re.search(r"(?m)^N\s+123456\s+# population", after)
+
+
 def test_fill_with_set_population_uses_the_hub_population(hub, monkeypatch):
     monkeypatch.setattr(data_mod, "vintage_series", lambda d, loc: {
         "dates": ["2024-09-07", "2024-09-14"], "values": [5.0, 7.0]})
