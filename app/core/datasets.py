@@ -2036,14 +2036,30 @@ def _dir(dataset_id) -> Path:
     return p
 
 
-def ingest(source, name: str, *, kind: Optional[str] = None,
+def default_name(filename: str, targets=(), target: Optional[str] = None
+                 ) -> str:
+    """A dataset's name when none is given: the file's name without its
+    extension, and the target when the file holds several ('flu.csv' with
+    'wk inc flu hosp' chosen -> 'flu (wk inc flu hosp)'), so datasets
+    stored from one file's targets are told apart. At most 80
+    characters, the target kept whole when it fits."""
+    stem = Path(str(filename or "")).stem or "dataset"
+    if target and len(targets) > 1:
+        tail = f" ({target})"
+        return (stem[:max(1, 80 - len(tail))] + tail)[:80]
+    return stem[:80]
+
+
+def ingest(source, name: Optional[str], *, kind: Optional[str] = None,
            week_start_sunday: bool = False, target: Optional[str] = None,
            limits: Limits = DEFAULT_LIMITS, filename: str = "",
            columns: Optional[dict] = None) -> "Dataset":
     """Validate and store one upload; returns the stored Dataset.
 
-    ``kind`` None or '' takes the kind the values show (whole numbers are
-    counts); ``columns`` is validate's column mapping; ``week_start_sunday``
+    ``name`` None or '' takes default_name (the file name, with the target
+    of a file that holds several). ``kind`` None or '' takes the kind the
+    values show (whole numbers are counts); ``columns`` is validate's
+    column mapping; ``week_start_sunday``
     is accepted and ignored (see validate). Raises DatasetError (with
     ``.problems``) and writes nothing when any problem is found.
     Re-ingesting identical bytes with identical options under the same name
@@ -2069,6 +2085,8 @@ def ingest(source, name: str, *, kind: Optional[str] = None,
                 "stored.", rep.problems, rep)
         declared = kind is not None
         kind = kind or rep.summary["inferred_kind"]
+        name = name or default_name(filename, rep.targets,
+                                    rep.summary.get("target"))
         sunday = bool(rep.summary.get("week_start_sunday"))
         digest = identity_digest(rep.sha256, kind=kind,
                                  week_start_sunday=sunday,

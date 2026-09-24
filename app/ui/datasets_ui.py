@@ -454,7 +454,10 @@ async def check(request: Request):
     chk = check_view(rep, kind=kind, columns=columns)
     return answer(chk, inferred_kind=(rep.summary or {}).get("inferred_kind"),
                   target=target or "", targets=rep.targets,
-                  needs_mapping=rep.needs_mapping)
+                  needs_mapping=rep.needs_mapping,
+                  # the name a store takes when none is typed
+                  name=D.default_name(Path(str(f.filename)).name,
+                                      rep.targets, target))
 
 
 @router.post("/data/datasets")
@@ -488,8 +491,6 @@ async def upload(request: Request):
             **back, "chk": _message_view("Choose a CSV file to upload.")},
             _code=400)
     fname = Path(str(f.filename)).name
-    if not name:
-        name = Path(fname).stem or "dataset"
     if kind is None:
         return _render_data(request, upload={
             **back, "chk": _message_view("Say whether the values are counts "
@@ -497,7 +498,7 @@ async def upload(request: Request):
     try:
         f.file.seek(0)
         ds = await run_in_threadpool(
-            lambda: D.ingest(f.file, name[:80], kind=kind or None,
+            lambda: D.ingest(f.file, name[:80] or None, kind=kind or None,
                              target=target, filename=fname, columns=columns))
     except D.DatasetError as e:
         chk = (check_view(e.report, kind=kind, columns=columns)

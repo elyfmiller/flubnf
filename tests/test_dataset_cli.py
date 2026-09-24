@@ -93,6 +93,34 @@ def test_import_list_delete(store):
     assert runner.invoke(app, ["dataset", "delete", d.id, "--yes"]).exit_code == 1
 
 
+def test_import_of_one_target_names_it(store, tmp_path):
+    """import --target printed no target line, and two targets of one
+    file were stored under one name."""
+    p = tmp_path / "hosp.csv"
+    p.write_text("target_end_date,target,location,observation\n"
+                 "2024-08-03,wk inc flu hosp,01,1\n"
+                 "2024-08-10,wk inc flu hosp,01,2\n"
+                 "2024-08-03,wk inc covid hosp,01,3\n"
+                 "2024-08-10,wk inc covid hosp,01,4\n")
+    r = runner.invoke(app, ["dataset", "validate", str(p), "--target",
+                            "wk inc flu hosp"])
+    assert "target      wk inc flu hosp" in r.output
+    for t in ("wk inc flu hosp", "wk inc covid hosp"):
+        r = runner.invoke(app, ["dataset", "import", str(p), "--target", t])
+        assert r.exit_code == 0, r.output
+        assert f"stored 'hosp ({t})' as " in r.output
+        assert f"  target      {t}\n" in r.output
+    assert sorted(d.name for d in store.list_datasets()) == [
+        "hosp (wk inc covid hosp)", "hosp (wk inc flu hosp)"]
+    # a name given, or a file of one target, is kept as it is
+    r = runner.invoke(app, ["dataset", "import", str(p), "--target",
+                            "wk inc flu hosp", "--name", "Flu"])
+    assert "stored 'Flu' as " in r.output
+    assert store.default_name("hosp.csv", ["a"], "a") == "hosp"
+    assert store.default_name("x" * 90 + ".csv", ["a", "b"], "b") == \
+        "x" * 76 + " (b)"
+
+
 def test_import_prints_problems_and_stores_nothing(store, tmp_path):
     p = tmp_path / "bad.csv"
     p.write_text("date,target_group,value\n2024-08-03,A,-1\n")

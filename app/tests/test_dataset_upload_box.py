@@ -204,6 +204,14 @@ def test_a_file_with_several_targets_waits_for_a_choice():
     r = store(raw, next="forecast")
     assert r.status_code == 422 and D.list_datasets() == []
     assert '<option value="" selected>choose…</option>' in r.text
+    # the name a store takes by default carries the chosen target
+    assert check(raw, name="hosp.csv").json()["name"] == "hosp"
+    assert check(raw, name="hosp.csv", target="wk inc flu hosp").json()[
+        "name"] == "hosp (wk inc flu hosp)"
+    assert store(raw, name="", target="wk inc flu hosp").status_code == 303
+    assert [d.name for d in D.list_datasets()] == ["kids (wk inc flu hosp)"]
+    js = (STATIC / "dataset_upload.js").read_text()
+    assert "name.value === autoName)) {\n            autoName = j.name;" in js
 
 
 def test_blank_target_cells_are_a_problem_not_dropped_rows():

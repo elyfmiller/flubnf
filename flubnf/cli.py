@@ -3017,7 +3017,8 @@ def dataset_import_cmd(
                                     help="The CSV to store."),
     kind: Optional[str] = typer.Option(None, "--kind", help=_KIND_HELP),
     name: Optional[str] = typer.Option(
-        None, "--name", help="The dataset's name (default: the file name)."),
+        None, "--name", help="The dataset's name (default: the file name, "
+                             "with the target when the file holds several)."),
     target: Optional[str] = typer.Option(
         None, "--target", help="The target to keep when the file has several."),
     column: Optional[List[str]] = typer.Option(
@@ -3034,7 +3035,7 @@ def dataset_import_cmd(
     from app.core import datasets as ds
     columns = _dataset_columns(column)
     try:
-        d = ds.ingest(csv_path, (name or csv_path.stem)[:80], kind=kind,
+        d = ds.ingest(csv_path, (name or "")[:80] or None, kind=kind,
                       target=target, filename=csv_path.name, columns=columns)
     except ds.DatasetError as e:
         _print_dataset_problems(csv_path.name, e.problems, e.report)
@@ -3051,6 +3052,8 @@ def dataset_import_cmd(
     print(f"  population  {'yes' if d.has_population else 'no'}")
     print(f"  vintages    " + (f"{len(d.vintages())} (vintage-true)"
                                if d.vintage_true else "none (final data)"))
+    if d.meta.get("target"):
+        print(f"  target      {d.meta['target']}")
     if d.national_group:
         print(f"  national    {d.national_group}")
     for w in d.meta.get("warnings") or []:

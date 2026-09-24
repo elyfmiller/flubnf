@@ -2,9 +2,10 @@
    A file dropped on the zone or chosen in its input is checked at once
    (POST /data/datasets/check, nothing stored) and the result box shows
    every problem, a column mapping, or a preview; changing the kind, the
-   target or a column checks again. The name follows the file's name until
-   typed; the kind shows what the values say until picked by hand (and is
-   posted as "from the values", kind_auto=1, until then). A column or
+   target or a column checks again. The name follows the file's name (with
+   the chosen target of a file that holds several) until typed; the kind
+   shows what the values say until picked by hand (and is posted as "from
+   the values", kind_auto=1, until then). A column or
    target select inside the result keeps the focus across its re-check:
    the result stays up (dimmed) and the same select is focused in the new
    one. A short status line (role=status) says what the check found; the
@@ -108,6 +109,10 @@
           if (my !== seq) return;          // a newer check superseded this
           out.innerHTML = j.html || '';
           if (keep !== null) refocus(keep);
+          if (name && j.name && (!name.value || name.value === autoName)) {
+            autoName = j.name;     // the file's name, with its target
+            name.value = autoName;
+          }
           if (kind && !kindChosen && j.inferred_kind) {
             kind.value = j.inferred_kind;
             if (auto) auto.value = '1';
