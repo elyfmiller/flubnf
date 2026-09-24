@@ -8,6 +8,7 @@ No hub and no engine: FLUBNF_HUB=/nonexistent; the store lives in tmp_path.
 """
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
@@ -103,6 +104,98 @@ def test_the_script_is_served_and_parses():
                                                    "dataset_upload.js")],
                              capture_output=True, text=True, timeout=60)
         assert out.returncode == 0, out.stderr
+
+
+#: a DOM just big enough for static/dataset_upload.js: one upload box
+#: whose checks answer with ANSWER (inferred kind 'count'); DRIVE runs the
+#: steps given, then prints what each check posted and the kind select
+DOM_STUB = r"""
+function El(extra) {
+  this.value = ''; this.dataset = {}; this.innerHTML = ''; this.files = null;
+  this.on = {}; this.attrs = {};
+  this.classList = {add: function () {}, remove: function () {}};
+  Object.assign(this, extra || {});
+}
+El.prototype.addEventListener = function (t, f) {
+  (this.on[t] = this.on[t] || []).push(f);
+};
+El.prototype.fire = function (t, e) {
+  var self = this;
+  (this.on[t] || []).forEach(function (f) {
+    f(Object.assign({target: self, preventDefault: function () {},
+                     stopPropagation: function () {}}, e || {}));
+  });
+};
+El.prototype.setAttribute = function (k, v) { this.attrs[k] = v; };
+El.prototype.removeAttribute = function (k) { delete this.attrs[k]; };
+El.prototype.hasAttribute = function (k) { return k in this.attrs; };
+El.prototype.contains = function () { return false; };
+El.prototype.focus = function () {};
+El.prototype.querySelector = function (q) { return (this.q || {})[q] || null; };
+El.prototype.closest = function () { return null; };
+var input = new El(), zone = new El(), name = new El(), kind = new El(),
+    auto = new El(), out = new El(), status = new El(), go = new El();
+var form = new El({q: {'input[type=file]': input, '[data-drop]': zone,
+  '[data-name]': name, '[data-kind]': kind, '[data-kind-auto]': auto,
+  '[data-result]': out, '[data-dsup-status]': status,
+  '.dsup-go button': go}});
+function FormData(f) {
+  this.d = f ? {file: input.files && input.files[0], name: name.value,
+                kind: kind.value, kind_auto: auto.value} : {};
+}
+FormData.prototype.get = function (k) { return this.d[k]; };
+FormData.prototype.set = function (k, v) { this.d[k] = v; };
+FormData.prototype.delete = function (k) { delete this.d[k]; };
+var posted = [];
+function fetch(url, opts) {
+  posted.push({file: opts.body.d.file && opts.body.d.file.name,
+               kind: opts.body.d.kind, kind_auto: opts.body.d.kind_auto});
+  return Promise.resolve({json: function () {
+    return Promise.resolve({html: '', status: '', inferred_kind: 'count'});
+  }});
+}
+var window = {addEventListener: function () {}};
+var document = {readyState: 'complete', activeElement: null,
+  getElementById: function () { return null; },
+  querySelectorAll: function () { return [form]; }};
+var settle = function () { return new Promise(function (r) { setTimeout(r, 0); }); };
+"""
+
+
+def _drive(steps: str) -> dict:
+    """Run the upload box's script on DOM_STUB, then `steps` (an async
+    body using input, zone, kind and settle()); what the checks posted
+    and where the kind select ended."""
+    src = (STATIC / "dataset_upload.js").read_text()
+    prog = (DOM_STUB + src + "\n(async function () {\n" + steps
+            + "\nawait settle();\nconsole.log(JSON.stringify({posted: "
+            "posted, kind: kind.value, auto: auto.value}));\n})();\n")
+    out = subprocess.run([NODE, "-e", prog], capture_output=True, text=True,
+                         timeout=60, check=False)
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout.strip().splitlines()[-1])
+
+
+@pytest.mark.skipif(not Path(NODE).exists(), reason="node not available")
+def test_a_new_file_forgets_the_kind_picked_for_the_last():
+    """'Values are: rates' picked by hand for one file stayed picked (and
+    was posted as declared) for the next file chosen or dropped."""
+    got = _drive("""
+      input.files = [{name: 'a.csv'}]; input.fire('change'); await settle();
+      kind.value = 'rate'; kind.fire('change'); await settle();
+      input.files = [{name: 'b.csv'}]; input.fire('change'); await settle();
+      kind.value = 'rate'; kind.fire('change'); await settle();
+      zone.fire('drop', {dataTransfer: {types: ['Files'],
+                                        files: [{name: 'c.csv'}]}});
+    """)
+    posted = got["posted"]
+    assert [p["file"] for p in posted] == ["a.csv", "a.csv", "b.csv",
+                                           "b.csv", "c.csv"]
+    assert posted[1]["kind"] == "rate" and posted[1]["kind_auto"] == ""
+    # each new file is checked "from the values", then shows their kind
+    for p in (posted[2], posted[4]):
+        assert p["kind"] == "" and p["kind_auto"] == ""
+    assert got["kind"] == "count" and got["auto"] == "1"
 
 
 # ------------------------------------------------------------ the check

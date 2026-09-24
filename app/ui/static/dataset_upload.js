@@ -5,7 +5,8 @@
    target or a column checks again. The name follows the file's name (with
    the chosen target of a file that holds several) until typed; the kind
    shows what the values say until picked by hand (and is posted as "from
-   the values", kind_auto=1, until then). A column or
+   the values", kind_auto=1, until then), and a new file forgets a kind
+   picked for the last one. A column or
    target select inside the result keeps the focus across its re-check:
    the result stays up (dimmed) and the same select is focused in the new
    one. A short status line (role=status) says what the check found; the
@@ -39,7 +40,7 @@
     var fold = form.closest('details');
     var dropped = null;          // a dropped file the input could not take
     var autoName = '';           // the name last filled in from a file name
-    var kindChosen = false;      // the kind was picked by hand
+    var kindChosen = false;      // the kind was picked by hand (this file)
     var seq = 0;
     if (!input || !zone || !out || form.dataset.dsupReady) return;
     form.dataset.dsupReady = '1';
@@ -60,7 +61,8 @@
         autoName = stem(f.name);
         name.value = autoName;
       }
-      if (kind && !kindChosen) {
+      if (kind) {                // a new file: its own values decide
+        kindChosen = false;
         kind.value = '';
         if (auto) auto.value = '';
       }
