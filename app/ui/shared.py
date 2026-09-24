@@ -133,10 +133,15 @@ def _flash(msg: str) -> None:
 
 
 def _back(request: Request, fallback: str) -> RedirectResponse:
-    """Redirect back to the posting page (validated local path)."""
+    """Redirect back to the posting page (validated local path), query
+    string kept so a refusal from /forecast?source=... lands on that view."""
     from urllib.parse import urlsplit
-    path = urlsplit(request.headers.get("referer", "")).path
-    ok = path.startswith("/") and not path.startswith("//")
+    parts = urlsplit(request.headers.get("referer", ""))
+    path = parts.path
+    ok = (path.startswith("/") and not path.startswith("//")
+          and "\\" not in path)
+    if ok and parts.query:
+        path += "?" + parts.query
     return RedirectResponse(path if ok else fallback, status_code=303)
 
 

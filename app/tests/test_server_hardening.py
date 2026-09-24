@@ -314,6 +314,34 @@ def test_pull_hub_refuses_a_folder_that_is_not_its_own_clone(
     assert data._hub_not_own_repo() is None   # its own clone passes
 
 
+def test_back_keeps_the_query_string_and_stays_local():
+    """A refusal from /forecast?source=... returns to the same view; the
+    Referer's host is never followed."""
+    from starlette.requests import Request
+    from app.ui.shared import _back
+
+    def back(ref):
+        req = Request({"type": "http", "method": "POST", "path": "/run",
+                       "headers": [(b"referer", ref.encode())]})
+        return _back(req, "/forecast").headers["location"]
+    assert (back("http://127.0.0.1:8710/forecast?source=dataset-ab12")
+            == "/forecast?source=dataset-ab12")
+    assert back("http://127.0.0.1:8710/forecast") == "/forecast"
+    assert back("http://evil.example/storage?x=1") == "/storage?x=1"
+    for bad in ("", "http://h//evil.example/x?y=1", "http://h/\\evil.example"):
+        assert back(bad) == "/forecast", bad
+
+
+def test_a_refused_run_returns_to_the_same_forecast_view():
+    r = client.post("/run", data={"forecast_date": "not-a-date"},
+                    headers={"referer": "http://testserver/forecast"
+                                        "?source=dataset-ab12"},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/forecast?source=dataset-ab12"
+    ui_state._status.pop("flash", None)
+
+
 # ------------------------------------- 4. script and HTML hardening
 
 def test_script_json_escapes_every_angle_bracket():
