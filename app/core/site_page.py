@@ -329,7 +329,10 @@ JS = r"""
                     font:{size:fs*.8,color:mut}}]
     };
     if (lock.checked && lockRange) lay.yaxis.range = lockRange;
-    Plotly.react('fan', T, lay, {displaylogo:false, responsive:true,
+    // FluCharts (charts.js, inlined below plotly): Saturday week ticks,
+    // refit after zoom, pan and resize, like the console and the reports
+    var PL = window.FluCharts || Plotly;
+    PL.react('fan', T, lay, {displaylogo:false, responsive:true,
       modeBarButtonsToRemove:['select2d','lasso2d'],
       toImageButtonOptions:{scale:2,
         filename:'flubnf_'+name.replace(/[^A-Za-z0-9]+/g,'_')+'_'+
@@ -439,6 +442,15 @@ _MARK = (
     'stroke-width="2.4"/>'
     '<circle cx="80" cy="24" r="5.5" fill="#FFFFFF" stroke="#000F7E" '
     'stroke-width="2.4"/></g></svg>')
+
+
+def page_scripts() -> str:
+    """The page's scripts: plotly.js (the file beside the page), then the
+    shared date-axis helper (charts.js, inlined as the reports inline it,
+    so the fan ticks on the data's Saturdays), then the page's own."""
+    from app.core.report_v2 import charts_js
+    return ('<script src="plotly.min.js"></script>\n'
+            f'<script>{charts_js()}</script>\n<script>{JS}</script>')
 
 
 def _e(s) -> str:
@@ -979,7 +991,6 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
 </main>
 
 <script type="application/json" id="flubnf-payload">{data_json}</script>
-<script src="plotly.min.js"></script>
-<script>{JS}</script>
+{page_scripts()}
 </body></html>
 """
