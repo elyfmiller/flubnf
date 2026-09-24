@@ -61,6 +61,8 @@
  </script>
  {% endif %}
 
+ {# nothing stored: the header already says so, no empty sections #}
+ {% if storage.workroots or storage.total_bytes %}
  <h3 class="hint" style="margin:.8rem 0 .2rem">Run workroots</h3>
  {% for w in storage.workroots %}
  {# label from the run's ledger row (the id is secondary); no row = an
@@ -120,6 +122,8 @@
  </script>
  {% endif %}
 
+ {% endif %}
+ {% if storage.retro or storage.total_bytes %}
  <h3 class="hint" style="margin:.8rem 0 .2rem">Retrospective seasons</h3>
  {% for s in storage.retro %}
  <div class="archrow">
@@ -137,6 +141,7 @@
   {% endif %}
  </div>
  {% else %}<p class="hint">No live season trees on disk.</p>{% endfor %}
+ {% endif %}
 
  {% if storage.retro_archives %}
  <h3 class="hint" style="margin:.8rem 0 .2rem">Archived retrospective runs</h3>

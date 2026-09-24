@@ -19,7 +19,7 @@
    <td class="dsname"><a href="/data?source={{ d.id }}#browser">{{ d.name }}</a>{% if d.warnings %}
     {{ tips.tip("ds-w-" ~ loop.index, "warnings for " ~ d.name, d.warnings | join(" ")) }}{% endif %}</td>
    <td class="num" data-label="Groups">{{ d.groups }}</td><td class="num" data-label="Weeks">{{ d.weeks }}</td>
-   <td>{{ "counts" if d.kind == "count" else "rates" }}{{ ", with population" if d.population else "" }}</td>
+   <td data-label="Values">{{ "counts" if d.kind == "count" else "rates" }}{{ ", with population" if d.population else "" }}</td>
    <td data-label="Snapshots">{{ d.n_vintages if d.vintages else "none" }}</td>
    <td class="dsactions"><a href="/forecast?source={{ d.id }}">Forecast</a>
     · <a href="/retro?dataset={{ d.id }}#dataset-replay">Replay</a>

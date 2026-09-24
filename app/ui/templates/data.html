@@ -47,6 +47,8 @@
 
 {% include "_datasets_card.html" %}
 
+{# an empty hub: the Archive card already says so; no second empty card #}
+{% if ds or vintages or view_note %}
 <div class="card" id="browser">{% if ds %}<h2>{{ ds.name }}
  {{ tips.tip("ds-browse", "this view", "Each group's series as stored. " ~ ("Pick a snapshot to see the data as it stood on that as_of." if ds.vintage_true else "The upload had no as_of column, so this is the final data; forecasts and replays on it are not vintage-true.")) }}</h2>
  <p class="hint">Your dataset, {{ "vintage-true" if ds.vintage_true else "final data (not vintage-true)" }}.
@@ -119,6 +121,7 @@
  <p class="hint">This {{ "dataset" if ds else "vintage" }} holds no reported weeks for {{ sel_loc }}.</p>
  {% endif %}
 </div>
+{% endif %}
 {% if series_json and series_json != 'null' %}
 <script>
  // vintage chart: the forecast data panel's conventions (tokens per draw,
