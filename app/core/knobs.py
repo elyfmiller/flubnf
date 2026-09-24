@@ -35,6 +35,7 @@ from flubnf import oracle_bank as OB
 from flubnf import oracle_mix as MX
 from app.core import floor as FL
 from app.core import horizons as HZ
+from app.core import missing as MS
 from app.core import submit as SB
 from app.core.engines import analogue as EA
 from app.core.engines import pf as PF
@@ -190,6 +191,14 @@ REGISTRY: tuple = (
     Knob("run.drop_same_day", "Drop the same-day week", BOTH, "fit", "run",
          "bool", RunSpec.drop_same_day, "app.core.runs:RunSpec.drop_same_day",
          "Treat the vintage's partly reported same-day week as unreported."),
+    Knob("data.trailing_zero", "Newest weeks reading 0", BOTH, "fit", "run",
+         "choice", MS.TRAILING_ZERO, "app.core.missing:TRAILING_ZERO",
+         "missing: 1 or 2 newest weeks of 0, after a positive week, count as unreported.",
+         choices=MS.CHOICES),
+    Knob("data.partial_week", "Collapsed newest week", BOTH, "fit", "run",
+         "choice", MS.PARTIAL_WEEK, "app.core.missing:PARTIAL_WEEK",
+         "missing: a newest week under a fifth of a prior week of 20 or more counts as unreported.",
+         choices=MS.CHOICES),
     # -- Oracle SIHRS: the Oracle step (post-fit) --
     Knob("oracle.w", "Oracle blend weight", PF_ONLY, "step", "method", "float",
          OR.W_PRODUCTION, "flubnf.oracle:W_PRODUCTION",
@@ -885,7 +894,8 @@ MEMBER_NAMES = {"pf": "Oracle SIHRS", "analogue": "Groundhog"}
 
 
 def _group_of(knob: Knob) -> str:
-    return "data" if knob.key.startswith("run.") else knob.stage
+    return ("data" if knob.key.startswith(("run.", "data."))
+            else knob.stage)
 
 
 def _raw(knob: Knob, v) -> str:

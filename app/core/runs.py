@@ -383,8 +383,14 @@ def results_html(outcome, spec, heading: bool = True) -> str:
                                 'incomplete)</span> <span class="hint">'
                                 f'{_html.escape(str(o["pf_engine_broken"]))}'
                                 '</span>'))
+    if "data_flags" in o:
+        # only a run with a missing-data rule on carries the key
+        import html as _html_fl
+        from app.core import missing as _missing
+        rows.append(("Missing-data rules", _html_fl.escape(
+            _missing.line(o["data_flags"]) or "on; no week flagged")))
     if o.get("submission_withheld"):
-        rows.append(("Submission", f'<span class="bad">withheld</span> '
+        rows.append(("Submission",f'<span class="bad">withheld</span> '
                      f'<span class="hint">{o["submission_withheld"]}</span>'))
     if o.get("submission_errors"):
         n = len(o["submission_errors"])

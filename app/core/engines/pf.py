@@ -499,6 +499,10 @@ def prepare(spec, workroot: Path) -> list:
         nrevss_asof = (_d.fromisoformat(spec.forecast_date)
                        - _td(days=7)).isoformat()
 
+    from app.core import missing as _missing
+    from datetime import date as _date_fl, timedelta as _td_fl
+    rules = _missing.rules_of(spec.extra)          # {} on a shipped run
+
     def _one_location(loc: str) -> list:
         """Every prepared cell for one location; the caller contains raises."""
         s = resolve_state(loc, truth_csv=vintage, locations_csv=loc_csv,
@@ -524,6 +528,14 @@ def prepare(spec, workroot: Path) -> list:
             if int(s.times[-1]) == int(asof_off):
                 auto_drop = 1
         k_total = int(spec.weeks_to_drop or 0) + auto_drop
+        # optional missing-data rules (app/core/missing.py, off by default):
+        # flagged newest weeks are trimmed with the rest, labels as-of-relative
+        fl = []
+        if rules:
+            kept = len(s.observed) - k_total
+            fl = [(int(s.times[i]), why, float(s.observed[i])) for i, why in
+                  _missing.tail_flags(s.observed[:max(kept, 0)], rules)]
+            k_total += len(fl)
         if k_total:
             from datetime import date as _date2
             _off = (_date2.fromisoformat(spec.forecast_date)
@@ -711,6 +723,12 @@ initialization = {initialization_for(spec)}
                 # collect() shifts forecast columns by this (incl. the
                 # same-day trim) so horizon labels stay as-of-relative.
                 "weeks_dropped": k_total,
+                # only when a missing-data rule fired: shipped cells unchanged
+                **({"data_flags": [
+                    {"week": str((_date_fl.fromisoformat(spec.season_start)
+                                  + _td_fl(weeks=t)).isoformat()),
+                     "rule": why, "value": val} for t, why, val in fl]}
+                   if fl else {}),
                 "variant": ("2strain" if two_strain
                             else "natg" if natg else "1strain"),
                 "a0": a0 if two_strain else None,

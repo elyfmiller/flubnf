@@ -499,8 +499,25 @@ def _run_all(spec: RunSpec) -> None:
         # its FILE is written only when the run asked for it.
         _phase("consulting the Groundhog")
         from app.core.floor import floor_quantiles
+        # the missing-data rules (app/core/missing.py): recorded only when
+        # one is set, so a shipped run's outcome is unchanged
+        from app.core import missing as _missing
+        _rules = _missing.rules_of(spec.extra)
+        _gh_flags: list = []
         an_q = {loc: floor_quantiles(q, **_fkw)
-                for loc, q in an_engine.run(spec).items()}
+                for loc, q in (an_engine.run(spec, flags=_gh_flags) if _rules
+                               else an_engine.run(spec)).items()}
+        if _rules:
+            _pf_flags = []
+            try:
+                import json as _jfl
+                for c in _jfl.loads((workroot / "cells.json").read_text()):
+                    if c.get("replicate") == 0:
+                        _pf_flags += [{"location": c["location"], **r}
+                                      for r in c.get("data_flags") or ()]
+            except Exception:
+                pass
+            outcome["data_flags"] = {"analogue": _gh_flags, "pf": _pf_flags}
         outcome["analogue_aux"] = str(
             (spec.extra or {}).get("analogue_aux") or "")
         # 3. no blend: each member is its own submission; PF failures are just
