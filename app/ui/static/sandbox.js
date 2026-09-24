@@ -1,4 +1,5 @@
-/* The sandbox workbench (app/ui/templates/sandbox.html): the run
+/* The sandbox workbench (app/ui/templates/sandbox.html): the three
+   files as tabs, the run
    settings presets and their time estimate, Check, the unsaved-changes
    chip, delete confirmations, the poll while a fit runs, and the results
    plot. Plain ES5, no build step; colours come from the page's tokens.
@@ -97,9 +98,57 @@
     show();
   }
 
+  // ---- the three files as tabs: without this script they stack, each
+  // under its own label. The open tab is remembered per model for the
+  // visit (a Save reloads the page); an upload's report opens data.exp.
+  function setupTabs(form) {
+    var bar = form && form.querySelector('.sbtabs');
+    if (!bar) return;
+    var tabs = Array.prototype.slice.call(bar.querySelectorAll('[role=tab]'));
+    var key = 'sb-tab:' + form.getAttribute('data-model');
+    function pick(file, focus) {
+      tabs.forEach(function (t) {
+        var on = t.getAttribute('data-file') === file, panel = $(t.getAttribute('aria-controls'));
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        t.tabIndex = on ? 0 : -1;
+        if (panel) panel.hidden = !on;
+        if (on && focus) t.focus();
+      });
+      Array.prototype.forEach.call(bar.querySelectorAll('.sbtabtips > [data-file]'), function (s) {
+        s.hidden = s.getAttribute('data-file') !== file;
+      });
+      try { sessionStorage.setItem(key, file); } catch (e) { /* storage off: no memory */ }
+      // the editor sizes its gutter from the textarea: measure the shown one
+      try { root.dispatchEvent(new Event('resize')); } catch (e) { /* old browser */ }
+    }
+    var first = 'bngl';
+    try { first = sessionStorage.getItem(key) || first; } catch (e) { /* storage off */ }
+    var fill = form.querySelector('details.sbfill[open]');
+    if (fill) first = 'exp';
+    form.classList.add('sb-tabbed');
+    tabs.forEach(function (t) {
+      var panel = $(t.getAttribute('aria-controls'));
+      if (panel) { panel.setAttribute('role', 'tabpanel'); panel.setAttribute('aria-labelledby', t.id); }
+      t.addEventListener('click', function () { pick(t.getAttribute('data-file')); });
+      t.addEventListener('keydown', function (e) {
+        var i = tabs.indexOf(t), n = tabs.length, j = -1;
+        if (e.key === 'ArrowRight') j = (i + 1) % n;
+        else if (e.key === 'ArrowLeft') j = (i + n - 1) % n;
+        else if (e.key === 'Home') j = 0;
+        else if (e.key === 'End') j = n - 1;
+        if (j < 0) return;
+        e.preventDefault();
+        pick(tabs[j].getAttribute('data-file'), true);
+      });
+    });
+    bar.hidden = false;
+    pick(tabs.some(function (t) { return t.getAttribute('data-file') === first; }) ? first : 'bngl');
+  }
+
   function setup() {
     setupNew();
     var form = $('sbform');
+    setupTabs(form);
     // ---- run settings: the preset sets the particles; typing a count
     // other than a preset's reads as custom; the estimate follows
     var preset = $('sb-preset'), parts = $('sb-particles'), eta = $('sb-eta');
@@ -165,6 +214,9 @@
         if (!e.target || e.target.tagName !== 'TEXTAREA') return;
         dirty = true;
         if (chip) chip.hidden = false;
+        // a check report is of the text as it was: mark it as older
+        var rep = $('sb-checked');
+        if (rep && rep.firstChild) rep.classList.add('sb-stale');
       });
       form.addEventListener('submit', function () { dirty = false; });
       addEventListener('beforeunload', function (e) {
@@ -196,6 +248,7 @@
     if (check && out && form) {
       check.addEventListener('click', function () {
         check.disabled = true;
+        out.classList.remove('sb-stale');
         out.textContent = 'Checking.';
         fetch('/api/sandbox/models/' + encodeURIComponent(form.getAttribute('data-model')) + '/check',
               {method: 'POST', body: new FormData(form)})
