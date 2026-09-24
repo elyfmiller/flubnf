@@ -235,6 +235,31 @@ def test_the_run_route_refuses_a_week_past_the_live_file(tmp_path, monkeypatch):
     assert f"No data for {W2} yet" in flash and f"ends at {W1}" in flash
 
 
+def test_the_run_route_refuses_bad_fields_in_their_own_words(tmp_path, monkeypatch):
+    """A blank or non-date forecast date, or an unknown engine, is refused
+    before anything else is said; an unknown mode is the default pill, so
+    an archived week is still recorded as a vintage run."""
+    started = _capture(monkeypatch, tmp_path)
+    _hub(tmp_path / "hub", [W1, W2], [W1], monkeypatch)
+    for fd, want in (("", "Give a forecast date"),
+                     ("7/4/2098", "'7/4/2098' is not a date")):
+        ui_state._status.pop("flash", None)
+        r = _post(fd)
+        assert r.status_code == 303 and not started
+        flash = str(ui_state._status.get("flash") or "")
+        assert want in flash and "No data" not in flash, flash
+    ui_state._status.pop("flash", None)
+    ui_state._status["running"] = None
+    r = client.post("/run", data={"forecast_date": W1, "locations": ["Ohio"],
+                                  "engine": "bogus"}, follow_redirects=False)
+    flash = str(ui_state._status.get("flash") or "")
+    assert not started and not ui_state._status.get("running")
+    assert flash == "'bogus' is not one of the available engines. Nothing was run."
+    ui_state._status.pop("flash", None)
+    _post(W1, mode="weird")
+    assert started[0].extra["mode"] == "vintage"
+
+
 def test_update_data_moves_the_forecast_date_to_the_new_week(tmp_path, monkeypatch):
     _capture(monkeypatch, tmp_path)
     hub = _hub(tmp_path / "hub", [W1, W2], [W1, W2], monkeypatch)

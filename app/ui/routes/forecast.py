@@ -600,7 +600,7 @@ def _report_v2_retired() -> tuple:
 @router.post("/run")
 def run_models(request: Request,
                background: BackgroundTasks,
-               forecast_date: str = Form(...),
+               forecast_date: str = Form(""),
                locations: list = Form([]),
                weeks_to_drop: int = Form(0),
                weeks_to_nowcast: int = Form(0),
@@ -625,14 +625,28 @@ def run_models(request: Request,
     # non-Saturdays snap via resolve_anchor; a typed Saturday is honoured or
     # refused below (never re-aimed)
     from datetime import date as _date
+    forecast_date = _str_field(forecast_date).strip()
     try:
         _d = _date.fromisoformat(forecast_date)
-        if _d.weekday() != 5:
-            # the form already shows this anchor; no banner
-            _pick, _ = resolve_anchor(forecast_date)
-            forecast_date = _pick or forecast_date
     except ValueError:
-        pass
+        # a blank or typed non-date (the model page's text field) is said
+        # as such, never "no data for <text> yet"
+        _flash(f"'{forecast_date}' is not a date; give one as YYYY-MM-DD. "
+               "Nothing was run." if forecast_date else
+               "Give a forecast date. Nothing was run.")
+        return _back(request, "/forecast")
+    if _d.weekday() != 5:
+        # the form already shows this anchor; no banner
+        _pick, _ = resolve_anchor(forecast_date)
+        forecast_date = _pick or forecast_date
+    # refused before any notice about the anchor or the settings
+    if engine not in ENGINES:
+        _flash(f"'{engine}' is not one of the available engines. "
+               "Nothing was run.")
+        return _back(request, "/forecast")
+    # an unknown mode reads as the pill's default, so the anchor rule below
+    # records what the run reads (never "realtime" on an archived week)
+    mode = mode if mode in ("realtime", "vintage") else "realtime"
     # the newest week any hub file holds: a run anchored there is real-time
     # and may read the live target file (app.core.data.observed_source)
     try:
