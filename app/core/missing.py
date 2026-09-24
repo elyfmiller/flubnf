@@ -33,6 +33,12 @@ MAX_CARRY = 2
 PARTIAL_SHARE = 0.2
 PARTIAL_FLOOR = 20.0
 
+#: a newest week of 0 after a week of ZERO_FLOOR or more is shown as a
+#: likely non-report (app/core/reported.py); the hub's 119 newest-week
+#: zeros all followed a week of 7 or fewer (docs/MISSING-DATA.md, "large
+#: neighbour"). Display only: no run rule reads it.
+ZERO_FLOOR = 10.0
+
 KEYS = {"data.trailing_zero": TRAILING_ZERO, "data.partial_week": PARTIAL_WEEK}
 
 #: rules a custom dataset cannot carry: the partial-week floor
