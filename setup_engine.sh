@@ -188,7 +188,7 @@ elif [ -f "$PYBNF/pybnf/pf.py" ] && [ -f "$PYBNF/setup.py" ]; then
   # so print its stamp: 'which build' is the first question when forecasts differ.
   ok "unpacked copy present (no git): $PYBNF"
   PFVER=""
-  for v in "$PYBNF/VERSION" "$PYBNF/.git_archival.txt" "$PYBNF/PF_VERSION"; do
+  for v in "$PYBNF/VERSION" "$PYBNF/.git_archival.txt"; do
     [ -f "$v" ] && { PFVER="$(head -1 "$v" 2>/dev/null)"; break; }
   done
   if [ -n "$PFVER" ]; then

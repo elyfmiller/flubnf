@@ -926,8 +926,7 @@ function Test-RemoteAccess {
     $o = Join-Path ([IO.Path]::GetTempPath()) "flubnf-lsremote.out"
     $e = Join-Path ([IO.Path]::GetTempPath()) "flubnf-lsremote.err"
     $saved = @{}
-    foreach ($k in @("GIT_TERMINAL_PROMPT", "GIT_ASKPASS", "GIT_SSH_COMMAND",
-                     "GIT_CONFIG_NOSYSTEM")) {
+    foreach ($k in @("GIT_TERMINAL_PROMPT", "GIT_ASKPASS", "GIT_SSH_COMMAND")) {
         $saved[$k] = [Environment]::GetEnvironmentVariable($k, "Process")
     }
     try {
