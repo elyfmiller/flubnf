@@ -235,3 +235,103 @@ def test_the_template_marks_what_to_edit_and_fits_as_shipped(box):
     note = sb._first_comment(sb.EXAMPLES / "seihr_template" / "model.bngl")
     assert note.startswith("A template for a new respiratory pathogen")
     assert note.endswith("weekly hospital admissions.")
+
+
+# ------------------------------------------------------------- the pages
+
+def _client():
+    from fastapi.testclient import TestClient
+    from app.ui import server as srv
+    return TestClient(srv.app)
+
+
+def _finish(w, collapsed=False):
+    """What the engine writes for a finished run (as test_sandbox_export
+    fakes it); collapsed: one parameter vector, ESS 2, and the engine's
+    own warnings on its stderr."""
+    import numpy as np
+    meta = json.loads((w / "meta.json").read_text())
+    cell = w / f"{meta['model']}_r0"
+    runs = cell / "out" / "Results" / "PF" / "Runs"
+    runs.mkdir(parents=True)
+    n = meta["particles"]
+    (runs / "params_0.txt").write_text(
+        "k__FREE\tscale__FREE\tr__FREE\n" + "\n".join(
+            ("0.3 0.5 8.0" if collapsed else f"{0.2 + 0.001 * i} 0.5 8.0")
+            for i in range(n)) + "\n")
+    cols = meta["n_obs"] + meta["forecast_weeks"]
+    np.savetxt(runs / "traj_noise_kinB_weekly_chain_0.txt",
+               np.tile(np.array(meta["observed"] + [1.0] * meta["forecast_weeks"]),
+                       (n, 1)))
+    ess = (f"0\t11\t{n}\t8\t0\n1\t2\t{n}\t1\t1\n" if collapsed
+           else f"0\t{0.8 * n}\t{n}\t{n}\t0\n")
+    (cell / "out" / "Results" / "PF" / "ess_0.txt").write_text(
+        "# t\tess\tparticles\tdistinct\tdegenerate\n" + ess)
+    if collapsed:
+        (w / "pf_runner_0.err").write_text(
+            "WARNING: min ESS 2 is under 2% of 200 particles: the cloud collapsed\n")
+    meta["status"] = "ok"
+    (w / "meta.json").write_text(json.dumps(meta))
+
+
+def test_a_collapsed_quick_check_explains_itself_and_offers_the_full_fit(box):
+    sb.add_example("kinetics_example")
+    w = sb.prepare("kinetics_example", particles=200, jitter=0.2, seed=3)
+    _finish(w, collapsed=True)
+    html = _client().get(f"/sandbox?model=kinetics_example&run={w.name}").text
+    assert '<span class="pill sbh sbh-collapsed">The fit collapsed</span>' in html
+    assert "What to try" in html
+    # the engine's words stay, folded under their own summary
+    assert "<summary>Engine messages</summary>" in html
+    assert "the cloud collapsed" in html
+    # one click to the full fit, with this run's other settings
+    form = html[html.index('class="row sbfull"') - 80:]
+    form = form[:form.index("</form>")]
+    assert 'action="/sandbox/models/kinetics_example/run"' in form
+    for field, value in (("particles", "10000"), ("jitter", "0.2"),
+                         ("forecast_weeks", "4"), ("seed", "3")):
+        assert f'name="{field}" value="{value}"' in form, field
+    assert ">Run the full fit (10,000 particles)<" in form
+
+
+def test_a_healthy_full_fit_says_so_and_offers_nothing_more(box):
+    sb.add_example("kinetics_example")
+    w = sb.prepare("kinetics_example", particles=10_000)
+    _finish(w)
+    html = _client().get(f"/sandbox?model=kinetics_example&run={w.name}").text
+    assert '<span class="pill sbh sbh-good">The fit looks healthy</span>' in html
+    assert "sbfull" not in html and "What to try" not in html
+
+
+def test_a_first_run_defaults_to_the_full_fit(box):
+    sb.add_example("kinetics_example")
+    html = _client().get("/sandbox?model=kinetics_example").text
+    assert '<option value="full" selected>Full fit (10,000)</option>' in html
+    assert 'id="sb-particles" type="number" value="10000"' in html
+
+
+def test_the_gallery_guides_a_first_visit(box):
+    html = _client().get("/sandbox").text
+    # no models yet: How the Sandbox works is open
+    assert '<details class="card sbhow" open>' in html
+    assert "<strong>Start a model.</strong>" in html
+    # the template comes first and is the default start, with its note
+    start = html[html.index('id="sbnew-start"'):]
+    start = start[:start.index("</select>")]
+    assert start.index('label="Templates"') < start.index('label="Examples"')
+    assert '<option value="example:seihr_template" data-note="A template' in start
+    assert 'selected>seihr_template</option>' in start
+    assert 'value="skeleton"' in start
+    about = html[html.index('id="sbnew-about"'):]
+    assert about.split(">", 1)[1].startswith("A template for a new respiratory")
+    # with a model the card starts folded
+    sb.add_example("sir_example")
+    assert '<details class="card sbhow">' in _client().get("/sandbox").text
+
+
+def test_the_workbench_carries_the_help_menu_and_simulate(box):
+    sb.add_example("sir_example")
+    html = _client().get("/sandbox?model=sir_example").text
+    assert "<summary>How it works</summary>" in html
+    assert html.index("<summary>How it works</summary>") < html.index("<summary>Manage</summary>")
+    assert 'formaction="/sandbox/models/sir_example/simulate-data"' in html

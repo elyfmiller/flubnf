@@ -288,11 +288,11 @@ def test_the_gallery_offers_the_start_and_the_route_creates_it(hub):
     assert r.headers["location"] == "/sandbox?model=oracle_alabama"
     info = sb.read_info("oracle_alabama")
     assert info["origin"] == sb.SHIPPED and info["seed"] == derive_seed("Alabama", FD, 0)
-    # the run settings: a quick check, Full fit one click away, the
-    # production seed and 4 forecast weeks
+    # the run settings: the full fit (production's 10,000), a quick check
+    # one click away, the production seed and 4 forecast weeks
     html = client.get("/sandbox?model=oracle_alabama").text
-    assert re.search(r'<option value="quick" selected>Quick check \(200\)', html)
-    assert "Full fit (10,000)" in html
+    assert re.search(r'<option value="full" selected>Full fit \(10,000\)', html)
+    assert "Quick check (200)" in html
     assert f'name="seed" type="number" value="{info["seed"]}"' in html
     assert 'name="forecast_weeks" type="number" value="4"' in html
     assert "the Oracle SIHRS start (Alabama" in html
@@ -319,6 +319,9 @@ def test_no_bare_model_name_in_the_sandbox_pages(hub):
         html = re.sub(r"<textarea.*?</textarea>", "", html, flags=re.S)
         html = re.sub(r"<script.*?</script>", "", html, flags=re.S)
         text = " ".join(html.split())
+        # the compartment model the member is built on keeps its own name,
+        # as on every other page (test_oracle_text._ALLOWED): an example's
+        # note says "the SIHRS compartment model"
         bare = [text[max(0, m.start() - 20):m.end() + 10]
-                for m in re.finditer(r"(?<!Oracle )SIHRS", text)]
+                for m in re.finditer(r"(?<!Oracle )SIHRS(?! compartment)", text)]
         assert not bare, (page, bare)

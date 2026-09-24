@@ -5,23 +5,29 @@
 {# ---------------------------------------------------------- the gallery #}
 <h1>Sandbox</h1>
 <p class="sub">Fit a model of your own with the particle filter; nothing here is ever submitted.</p>
+<details class="card sbhow"{% if not models %} open{% endif %}><summary><h2>How the Sandbox works</h2></summary>
+ {% include "sandbox_help.html" %}
+</details>
 <div class="cols">
  <div>
   <div class="card"><h2>New model</h2>
    <form method="post" action="/sandbox/new" class="sbnew">
     {{ tips.label("Name", "sb-name", "Letters, digits, _ and -, up to 64 characters.", for_="sbnew-name") }}
     <input id="sbnew-name" name="name" placeholder="model name" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,63}" required>
-    {{ tips.label("Start from", "sb-start", "The skeleton is a runnable one-step model with placeholder counts; an example or a copy brings its data and priors along. The Oracle SIHRS filter is the production model, priors and data for one location and week, built as the console builds it.", for_="sbnew-start") }}
+    {{ tips.label("Start from", "sb-start", "A template is a model to adapt: its lines marked EDIT are the values to set for your pathogen. An example is a worked model, and a copy duplicates one of yours; each brings its data and priors along and fits as it is. The skeleton is the smallest runnable model. The Oracle SIHRS filter is the production model, priors and data for one location and week, built as the console builds it.", for_="sbnew-start") }}
     {% set pf_sets = datasets | selectattr("pf") | list %}
     <select id="sbnew-start" name="start">
-     <option value="skeleton">Blank skeleton</option>
-     {% if examples %}<optgroup label="Examples">{% for e in examples %}<option value="example:{{ e }}">{{ e }}</option>{% endfor %}</optgroup>{% endif %}
+     {% if templates %}<optgroup label="Templates">{% for e in templates %}<option value="example:{{ e }}" data-note="{{ example_notes[e] }}"{% if loop.first %} selected{% endif %}>{{ e }}</option>{% endfor %}</optgroup>{% endif %}
+     {% if examples %}<optgroup label="Examples">{% for e in examples %}<option value="example:{{ e }}" data-note="{{ example_notes[e] }}">{{ e }}</option>{% endfor %}</optgroup>{% endif %}
+     <option value="skeleton" data-note="The smallest runnable model: one conversion with placeholder counts.">Blank skeleton</option>
      {% if models %}<optgroup label="Copy of">{% for m in models if m.complete %}<option value="copy:{{ m.name }}">{{ m.name }}</option>{% endfor %}</optgroup>{% endif %}
      <optgroup label="Oracle SIHRS filter">
       <option value="shipped:sihrs"{% if not (vintages and locations) %} disabled{% endif %}>Oracle SIHRS filter, hub location{% if not (vintages and locations) %} (no hub archive here){% endif %}</option>
       {% for d in pf_sets %}<option value="shipped:dataset:{{ d.id }}">Oracle SIHRS filter, dataset {{ d.name }}</option>{% endfor %}
      </optgroup>
     </select>
+    {% set _first = (templates or examples or [""])[0] %}
+    <p class="hint" id="sbnew-about">{{ example_notes.get(_first, "") }}</p>
     <fieldset class="sbshipped" id="sbnew-shipped" hidden>
      <legend>Oracle SIHRS filter</legend>
      <div class="row">
@@ -55,7 +61,7 @@
     <td>{% set r = last.get(m.name) %}{% if r %}<a class="sbst-{{ r.status }}" href="/sandbox?run={{ r.run_id }}&amp;model={{ m.name }}">{{ r.status }}</a>{% endif %}</td>
     <td>{{ m.modified_h }}</td>
    </tr>{% endfor %}</tbody></table>
-   {% else %}<p class="hint">No models yet: create one from the skeleton or an example.</p>{% endif %}
+   {% else %}<p class="hint">No models yet: start one under New model, from the template or an example.</p>{% endif %}
   </div>
  </div>
 </div>
@@ -71,6 +77,11 @@
   <h1>{{ name }}</h1>
   {% if note or origin %}<p class="sub">{{ note }}{% if origin %}<span class="hint"> · from {{ origin }}</span>{% endif %}{% if shipped and shipped.shipped and not shipped.intact %} {{ tips.tip("sb-modified", "modified", "Changed since creation: " ~ (shipped.changed | join(", ")) ~ ". Runs of it are your model, not the shipped filter, and cannot take the Oracle step.") }}{% endif %}</p>{% endif %}
  </div>
+ <div class="sbhead-menus">
+ <details class="sbmanage sbhelp">
+  <summary>How it works</summary>
+  <div class="sbmenu sbhelpmenu">{% include "sandbox_help.html" %}</div>
+ </details>
  <details class="sbmanage">
   <summary>Manage</summary>
   <div class="sbmenu">
@@ -91,6 +102,7 @@
    </div>
   </div>
  </details>
+ </div>
 </div>
 <div class="sbwork{% if not res %} sbwork-new{% endif %}">
  <div class="sbedit">
@@ -106,22 +118,22 @@
       <button type="button" role="tab" id="sbtab-conf" aria-controls="sbf-conf" data-file="conf">priors.conf</button>
      </div>
      <span class="sbtabtips">
-      <span data-file="bngl">{{ tips.tip("sb-bngl-t", "model.bngl", "The model: any BNGL model whose simulate action names a suffix; a fitted parameter ends in __FREE.") }}</span>
-      <span data-file="exp" hidden>{{ tips.tip("sb-exp-t", "data.exp", "The observed data: a header line, then one row per week, the time in weeks and the count. A missing week is a gap in time, never a renumbered row. Load data fills it from the hub, a dataset or a CSV.") }}</span>
-      <span data-file="conf" hidden>{{ tips.tip("sb-priors-t", "priors.conf", "The priors and engine settings: one *_var line per fitted parameter; pf_ lines set engine keys, such as pf_cumulative_observable, the output whose weekly increment is the count.") }}</span>
+      <span data-file="bngl">{{ tips.tip("sb-bngl-t", "model.bngl", "The model, in BNGL. A parameter whose name ends in __FREE is fitted: the filter draws it from its line in priors.conf, so the value written here is only what Check and Simulate data use; every other value stays fixed. Time is in weeks, and the simulate action must name a suffix.") }}</span>
+      <span data-file="exp" hidden>{{ tips.tip("sb-exp-t", "data.exp", "The observed counts: a header line, then one row per week, the time in weeks and the count for the week ending then. The model starts one week before the first row. A missing week is a gap in time, never a renumbered row. Load data fills it from the hub, a dataset or a CSV; Simulate data draws it from the model.") }}</span>
+      <span data-file="conf" hidden>{{ tips.tip("sb-priors-t", "priors.conf", "One line per fitted parameter: uniform_var name low high draws it evenly between the two numbers, loguniform_var evenly on a log scale. pf_ lines set engine keys, such as pf_cumulative_observable, the model output whose weekly increment is the count.") }}</span>
      </span>
     </div>
     <section class="sbfile" id="sbf-bngl" data-file="bngl">
-     {{ tips.label("Model (model.bngl)", "sb-bngl", "Any BNGL model whose simulate action names a suffix; a fitted parameter ends in __FREE.") }}
+     {{ tips.label("Model (model.bngl)", "sb-bngl", "The model, in BNGL. A parameter whose name ends in __FREE is fitted: the filter draws it from its line in priors.conf, so the value written here is only what Check and Simulate data use; every other value stays fixed. Time is in weeks, and the simulate action must name a suffix.") }}
      <textarea name="model_bngl" rows="18" spellcheck="false" aria-label="model.bngl" style="width:100%;font-family:monospace" class="code-editor" data-lang="bngl">{{ editing["model.bngl"] }}</textarea>
     </section>
     <section class="sbfile" id="sbf-exp" data-file="exp">
-     {{ tips.label("Observed data (data.exp)", "sb-exp", "A header line, then one row per week: the time in weeks and the count. A missing week is a gap in time, never a renumbered row.") }}
+     {{ tips.label("Observed data (data.exp)", "sb-exp", "The observed counts: a header line, then one row per week, the time in weeks and the count for the week ending then. The model starts one week before the first row. A missing week is a gap in time, never a renumbered row.") }}
      <textarea name="data_exp" rows="8" spellcheck="false" aria-label="data.exp" style="width:100%;font-family:monospace" class="code-editor" data-lang="exp">{{ editing["data.exp"] }}</textarea>
      {% include "sandbox_data.html" %}
     </section>
     <section class="sbfile" id="sbf-conf" data-file="conf">
-     {{ tips.label("Priors and engine settings (priors.conf)", "sb-priors", "One *_var line per fitted parameter; pf_ lines set engine keys, such as pf_cumulative_observable, the output whose weekly increment is the count.") }}
+     {{ tips.label("Priors and engine settings (priors.conf)", "sb-priors", "One line per fitted parameter: uniform_var name low high draws it evenly between the two numbers, loguniform_var evenly on a log scale. pf_ lines set engine keys, such as pf_cumulative_observable, the model output whose weekly increment is the count.") }}
      <textarea name="priors_conf" rows="8" spellcheck="false" aria-label="priors.conf" style="width:100%;font-family:monospace" class="code-editor" data-lang="conf">{{ editing["priors.conf"] }}</textarea>
      {% set keys = settings | rejectattr(2, "equalto", "run settings") | list %}
      <details class="adv"><summary>Engine keys the sandbox writes for you</summary>
@@ -133,18 +145,18 @@
     </section>
     <fieldset class="sbrun"><legend>Run settings</legend>
      <div class="sbrun-grid">
-      <span class="sbrun-parts">{{ tips.label("Particles", "sb-particles", "A quick check shows the model generates and fits; a full fit uses the production 10,000.", for_="sb-preset") }}
+      <span class="sbrun-parts">{{ tips.label("Particles", "sb-particles", "The full fit uses the production 10,000 particles and gives the estimates. A quick check (200) only shows that the model runs: its numbers are rough, and it often collapses onto a few parameter sets.", for_="sb-preset") }}
        <span class="sbpair"><select id="sb-preset" data-quick="{{ presets.quick }}" data-full="{{ presets.full }}">
         <option value="quick" {% if form.particles == presets.quick %}selected{% endif %}>Quick check ({{ presets.quick }})</option>
         <option value="full" {% if form.particles == presets.full %}selected{% endif %}>Full fit ({{ "{:,}".format(presets.full) }})</option>
         <option value="custom" {% if form.particles not in (presets.quick, presets.full) %}selected{% endif %}>Custom</option>
        </select>
        <input name="particles" id="sb-particles" type="number" value="{{ form.particles }}" min="50" max="100000" aria-label="particles"></span></span>
-      <span>{{ tips.label("Jitter", "sb-jitter", "Liu-West kernel scale between weeks; 0.15 is the production setting.", for_="sb-jitter-in") }}
+      <span>{{ tips.label("Jitter", "sb-jitter", "How far each fitted value is nudged between weeks (the Liu-West kernel scale), so the particles stay varied; 0.15 is the production setting, and 0.2 to 0.3 helps a fit that collapses.", for_="sb-jitter-in") }}
        <input id="sb-jitter-in" name="jitter" type="number" step="0.01" value="{{ form.jitter }}" min="0.01" max="0.99"></span>
       <span>{{ tips.label("Forecast weeks", "sb-weeks", "Weeks projected past the last observation.", for_="sb-weeks-in") }}
        <input id="sb-weeks-in" name="forecast_weeks" type="number" value="{{ form.forecast_weeks }}" min="0" max="12"></span>
-      <span>{{ tips.label("Seed", "sb-seed", "The same seed and inputs reproduce the fit.", for_="sb-seed-in") }}
+      <span>{{ tips.label("Seed", "sb-seed", "The same seed and inputs reproduce the fit exactly; another seed shows how much a fit varies by chance.", for_="sb-seed-in") }}
        <input id="sb-seed-in" name="seed" type="number" value="{{ form.seed }}" min="0"></span>
      </div>
      <p class="hint" id="sb-eta" data-full="{{ eta_full }}"></p>
@@ -153,7 +165,7 @@
      <button type="button" id="sb-check">Check</button>
      <button formaction="/sandbox/models/{{ name }}/save">Save</button>
      <button class="gold" formaction="/sandbox/models/{{ name }}/run" data-guard="sandbox-run">Save and run</button>
-     {{ tips.tip("sb-actions", "the buttons", "Check reads the editor text without the engine; Save and run saves it, then fits it. Each run keeps its own copy of the three files.") }}
+     {{ tips.tip("sb-actions", "the buttons", "Check reads the editor text without fitting: what would stop a run, and the model at its written values beside the data. Save and run saves it, then fits it. Each run keeps its own copy of the three files.") }}
      <span class="pill sbdirty" id="sb-dirty" hidden>unsaved changes</span>
     </div>
     {% if busy %}<p class="hint">Engine busy: {{ busy }}.</p>{% endif %}
@@ -173,8 +185,25 @@
    <div class="row sblive"><p class="hint">Fitting now; this page updates when the run ends.</p>
     <form method="post" action="/sandbox/runs/{{ res.run_id }}/stop"><button>Stop</button></form></div>
    {% endif %}
+   {% set h = res.health %}
+   {% set quick = (res.meta.particles | int) < presets.full %}
+   {% if h and not live_run %}
+   {# the outcome in plain words: one sentence, what to try behind a fold #}
+   <p class="sbhealth"><span class="pill sbh sbh-{{ h.level }}">{{ h.title }}</span> {{ h.says }}{% if quick and h.level == "good" %} A quick check: the full fit gives the estimates.{% endif %}</p>
+   {% if h.tries %}<details class="adv sbtries"><summary>What to try</summary>
+    <ul>{% for t in h.tries %}<li>{{ t }}</li>{% endfor %}</ul>
+   </details>{% endif %}
+   {% endif %}
+   {% if quick and not live_run and st in ("ok", "failed", "stopped", "interrupted") %}
+   <form method="post" action="/sandbox/models/{{ name }}/run" class="row sbfull">
+    <input type="hidden" name="particles" value="{{ presets.full }}"><input type="hidden" name="jitter" value="{{ res.meta.jitter }}">
+    <input type="hidden" name="forecast_weeks" value="{{ res.meta.forecast_weeks }}"><input type="hidden" name="seed" value="{{ res.meta.seed }}">
+    <button class="gold" data-guard="sandbox-run">Run the full fit ({{ "{:,}".format(presets.full) }} particles)</button>
+    {{ tips.tip("sb-full", "the full fit", "Runs the saved model again with the production 10,000 particles and this run's other settings. Unsaved edits in the editor are not included: Save first.") }}
+   </form>
+   {% endif %}
    {% if res.meta.error %}<pre class="hint sberr">{{ res.meta.error }}</pre>{% endif %}
-   {% if res.stderr %}<pre class="hint sberr">{{ res.stderr }}</pre>{% endif %}
+   {% if res.stderr %}<details class="adv sbengine"{% if st != "ok" %} open{% endif %}><summary>Engine messages</summary><pre class="hint sberr">{{ res.stderr }}</pre></details>{% endif %}
    {% if res.traj %}<div id="sbplot" style="min-height:320px"></div>{% endif %}
    {% if res.params and cmp and cmp.params %}
    {% set cp = {} %}{% for p in cmp.params %}{% set _ = cp.update({p.name: p}) %}{% endfor %}
@@ -193,7 +222,7 @@
    {% if others %}<form method="get" action="/sandbox" class="row sbcompare">
     <input type="hidden" name="model" value="{{ name }}"><input type="hidden" name="run" value="{{ res.run_id }}">
     <label for="sb-compare">Compare with</label>
-    <select id="sb-compare" name="compare"><option value="">none</option>{% for r in others %}<option value="{{ r.run_id }}"{% if cmp and cmp.run_id == r.run_id %} selected{% endif %}>{{ r.run_id }} ({{ r.status }})</option>{% endfor %}</select>
+    <select id="sb-compare" name="compare"><option value="">none</option>{% for r in others %}<option value="{{ r.run_id }}"{% if cmp and cmp.run_id == r.run_id %} selected{% endif %}>{{ r.run_id }} ({{ r.status }}, {{ r.particles }} particles)</option>{% endfor %}</select>
     <button class="quiet">Compare</button>
     {{ tips.tip("sb-compare", "compare", "The other run's median and band are drawn dashed over this one; the parameter tables sit side by side, and What changed lists every edit between the two.") }}
    </form>{% endif %}

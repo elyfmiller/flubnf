@@ -166,6 +166,11 @@ def list_examples() -> list:
                   if p.is_dir() and all((p / f).is_file() for f in REQUIRED))
 
 
+def example_note(name: str) -> str:
+    """A shipped example's note: the first sentence of its model.bngl."""
+    return _first_comment(EXAMPLES / check_name(name) / "model.bngl")
+
+
 def _write_info(name: str, info: dict) -> None:
     (MODELS / check_name(name) / MODEL_FILE).write_text(
         json.dumps(info, indent=1) + "\n", encoding="utf-8", newline="\n")
