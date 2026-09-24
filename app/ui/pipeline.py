@@ -261,9 +261,10 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
         obs_pairs = (obs.get(loc) or [])[-12:]
         o_t = [d for d, _ in obs_pairs]
         o_v = [v for _, v in obs_pairs]
-        _base = (_dd.fromisoformat(o_t[-1]) if o_t
-                 else _dd.fromisoformat(spec.forecast_date))
-        # canonical horizons: hub label h is h+1 weeks past the anchor
+        # canonical horizons: hub label h is h+1 weeks past the AS-OF week,
+        # whatever the last observed week (a dropped same-day week, or a
+        # newest week the location did not report, ends the trace earlier)
+        _base = _dd.fromisoformat(spec.forecast_date)
         f_t = [(_base + _tdd(days=7 * (h + 1))).isoformat()
                for h in (0, 1, 2, 3)]
         samples_h = {f_t[h]: s[str(h)] for h in (0, 1, 2, 3)}
