@@ -92,9 +92,7 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
     us_checked = any(_usn.is_us(l) for l in form["locations"] or [])
     series = {}
     try:
-        vs = state.data_mod.vintages()
-        tdf = data_routes._vintage_frame(
-            str(state.data_mod.vintage_path(vs[-1])))
+        tdf = data_routes._vintage_frame(str(state.data_mod.newest_path()))
         n2f_ = dict(zip(_l.location_name, _l.location.str.zfill(2)))
         n2f_["US (national)"] = "US"
         for loc in sel[:8]:
@@ -128,7 +126,7 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         r["label"] = _run_label(r["run_id"], r.get("spec", ""))
         r["modified"] = _runs.is_modified(r.get("spec", ""))
         r["chips"] = _outcome_chips(r.get("outcome", ""))
-        r["settings"] = spec_settings(r.get("spec", ""))
+        r["settings"] = spec_settings(r.get("spec", ""), r.get("outcome", ""))
         # the latest-run card links the weekly report when one exists
         try:
             r["has_report"] = bool(_json.loads(r.get("outcome")
@@ -141,16 +139,26 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
     # date popup fails in some webviews); str() because the list is
     # serialised into the page and date objects would break the render
     try:
-        vintage_dates = [str(v) for v in reversed(state.data_mod.vintages())]
+        vintage_dates = [str(v) for v in
+                         reversed(state.data_mod.available_weeks())]
     except Exception:
         vintage_dates = []
+    # the live file's newest week when the archive does not hold it yet: a
+    # real-time run reads target-data directly (the anchor line says so)
+    try:
+        _vs = set(state.data_mod.vintages())
+        live_only = next((v for v in vintage_dates[:1] if v not in _vs), "")
+    except Exception:
+        live_only = ""
     _anchor, _ = resolve_anchor(form.get("forecast_date", ""), vintage_dates)
-    anchor_note = (f"Anchor week: {_anchor}."
-                   if _anchor else "No archived week on or before that date.")
+    anchor_note = ((f"Anchor week: {_anchor}"
+                    + (LIVE_ONLY_NOTE if _anchor == live_only else ".")
+                    ) if _anchor else "No archived week on or before that date.")
     return templates.TemplateResponse(request, "forecast.html", {
         "active": "Forecast", "engines": ENGINES, "status": _status,
         "ledger": ledger_rows, "all_locs": all_locs,
         "vintage_dates": vintage_dates, "anchor_note": anchor_note,
+        "live_only": live_only, "live_only_note": LIVE_ONLY_NOTE,
         "default_date": _default_forecast_date(),
         "locations_error": locations_error, "form": form,
         "us_choice": US_CHOICE, "us_checked": us_checked,
@@ -168,6 +176,9 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
 
 #: the national checkbox's value (the data panel's name for the series)
 US_CHOICE = "US (national)"
+
+#: the anchor line's ending for a week only the live target file holds
+LIVE_ONLY_NOTE = " (new data, not archived yet: read from target-data)."
 
 
 def _official_overlay(fc_date: str, locs: list) -> dict:
@@ -298,7 +309,7 @@ def run_page(request: Request, run_id: str):
         # gets no empty table
         "models": {m: v for m, v in (res.get("models") or {}).items()
                    if v and m not in _report_v2_retired()},
-        "settings": spec_settings(spec_json),
+        "settings": spec_settings(spec_json, o),
         "versions": version_pairs(row_sha, row_engine_versions),
         "can_rerun": (bool(spec_json) and status in RERUN_STATUSES
                       and not dsx),
@@ -457,8 +468,7 @@ def api_series(request: Request, locs: str = "", source: str = ""):
         _l = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
         n2f_ = dict(zip(_l.location_name, _l.location.str.zfill(2)))
         n2f_["US (national)"] = "US"
-        vs = state.data_mod.vintages()
-        tdf = pd.read_csv(state.data_mod.vintage_path(vs[-1]),
+        tdf = pd.read_csv(state.data_mod.newest_path(),
                           dtype={"location": str})
         tdf["location"] = tdf["location"].str.zfill(2)
         for loc in sel:
@@ -623,9 +633,30 @@ def run_models(request: Request,
             forecast_date = _pick or forecast_date
     except ValueError:
         pass
+    # the newest week any hub file holds: a run anchored there is real-time
+    # and may read the live target file (app.core.data.observed_source)
     try:
-        state.data_mod.vintage_path(forecast_date)
+        newest = state.data_mod.newest_week()
     except Exception:
+        newest = None
+    try:
+        state.data_mod.observed_source(
+            forecast_date,
+            "realtime" if forecast_date == newest else "vintage")
+    except Exception as _src_err:
+        live_wk = None
+        try:
+            live_wk = state.data_mod.live_newest_week()
+        except Exception:
+            pass
+        if live_wk and forecast_date > live_wk:
+            # the as-of is past every week the hub holds: no data yet
+            if _last_form:
+                _last_form["forecast_date"] = newest or live_wk
+            _flash(f"No data for {forecast_date} yet: the hub's target data "
+                   f"ends at {live_wk}. Update data on the Data tab, or "
+                   f"forecast from {live_wk}. Nothing was run.")
+            return _back(request, "/forecast")
         # archive gaps are real (holiday weeks): suggest the nearest EARLIER
         # vintage only; a later one would leak hindsight
         vs = state.data_mod.vintages()
@@ -737,16 +768,18 @@ def run_models(request: Request,
                                  if engine in ("all", "pf") else None)
     # particles, replicates and weeks to drop were range-checked as knobs
     # above (refused, never clamped: replicates = 0 once ran zero fits)
-    # mode follows the anchor: real-time means the newest archived vintage
-    try:
-        newest = state.data_mod.vintages()[-1]
-    except Exception:
-        newest = None
+    # mode follows the anchor: real-time means the newest week the hub
+    # holds (the live target file's, when the archive has not caught up)
     if newest and mode == "realtime" and forecast_date != newest:
         mode = "vintage"
         extra["mode"] = mode
         _flash(f"Anchored on the archived week {forecast_date}, not the "
-               f"newest vintage ({newest}): recorded as a vintage run.")
+               f"newest week ({newest}): recorded as a vintage run.")
+    elif newest and forecast_date == newest and mode != "realtime":
+        # the newest week IS real-time data whatever the pill said; recorded
+        # so, which lets the run read the live file when it is not archived
+        mode = "realtime"
+        extra["mode"] = mode
     spec = RunSpec(engine=engine, forecast_date=forecast_date,
                    locations=locs_list,
                    season_start=season_start,

@@ -24,7 +24,7 @@ sys.path.insert(0, str(REPO))
 
 from flubnf import analogue as AN                     # noqa: E402
 from flubnf.quantiles import FLUSIGHT_QUANTILES as QL # noqa: E402
-from app.core.data import LOCATIONS, vintage_path     # noqa: E402
+from app.core.data import LOCATIONS, spec_source, vintage_path  # noqa: E402
 
 
 def completeness_args(spec, fips: str, anchor_date, newest_date) -> tuple:
@@ -328,7 +328,9 @@ def _source(spec) -> tuple:
     from app.core import datasets as _ds
     ds = _ds.from_spec(spec)
     if ds is None:
-        return vintage_path(spec.forecast_date), LOCATIONS, {}
+        # the dated vintage, or the live target file for a real-time run
+        # (app.core.data.observed_source, the one resolver)
+        return spec_source(spec, archive=vintage_path)[0], LOCATIONS, {}
     extra = getattr(spec, "extra", None) or {}
     bad = [k for k in HUB_ONLY_KEYS if extra.get(k)]
     if bad:

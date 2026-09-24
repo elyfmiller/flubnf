@@ -76,12 +76,24 @@ def locations_phrase(locations) -> str:
     return f"{len(states)} {noun}{tail}"
 
 
-def spec_settings(spec) -> list:
+def _outcome_dict(outcome) -> dict:
+    if isinstance(outcome, str):
+        try:
+            outcome = json.loads(outcome or "{}")
+        except (ValueError, TypeError):
+            return {}
+    return outcome if isinstance(outcome, dict) else {}
+
+
+def spec_settings(spec, outcome=None) -> list:
     """The settings that produced a console run, as (label, value) pairs.
 
     One formatter for the progress card, the run page and the weekly report.
     `spec` may be a RunSpec, the ledger's dict, or its JSON text; an
-    unreadable spec yields [] rather than raising.
+    unreadable spec yields [] rather than raising. `outcome` (the ledger's
+    outcome, dict or JSON), when given, makes the list say what RAN rather
+    than what was asked: the data file read, and a PF member that did not
+    run (no engine on this machine) is not listed as run.
     """
     if isinstance(spec, RunSpec):
         d = asdict(spec)
@@ -100,14 +112,28 @@ def spec_settings(spec) -> list:
     if extra.get("dataset"):
         return dataset_settings(d)
     engine = str(d.get("engine", "") or "")
+    o = _outcome_dict(outcome)
+    # the PF member asked for but not run: this machine has no engine
+    pf_absent = (engine in ("all", "pf") and bool(o.get("pf_skipped"))
+                 and "analogue" not in str(o.get("pf_skipped")))
+    engine_label = ENGINE_LABELS.get(engine, engine or "unknown")
+    if pf_absent:
+        engine_label = (ENGINE_LABELS["analogue"]
+                        + " (no PF engine on this machine)")
     pairs = [("forecast date", str(d.get("forecast_date", "") or "unknown")),
              ("locations", locations_phrase(d.get("locations"))),
-             ("engine", ENGINE_LABELS.get(engine, engine or "unknown")),
-             ("replicates", str(d.get("replicates", "") or "")),
-             ("particles", f"{int(d.get('particles') or 0):,}")]
+             ("engine", engine_label)]
+    if not (pf_absent or engine == "analogue"):
+        pairs += [("replicates", str(d.get("replicates", "") or "")),
+                  ("particles", f"{int(d.get('particles') or 0):,}")]
     # season start beside the date: it fixes the first observed week and anchor
     if d.get("season_start"):
         pairs.insert(1, ("season start", str(d["season_start"])))
+    # the file the run read (app.core.data.source_record), after the date
+    from app.core.data import source_phrase
+    src = source_phrase(o.get("data_source"))
+    if src:
+        pairs.insert(1, ("data", src))
     pairs.append(("weeks dropped", str(int(d.get("weeks_to_drop") or 0))))
     # only when the spec records the choice (older rows would be misdescribed)
     if "drop_same_day" in d:
@@ -118,7 +144,10 @@ def spec_settings(spec) -> list:
         pairs.append(("research member", "two-strain SIHRS"))
     # older rows carry no aux key and ran the bare analogue, which this then says
     pairs.append(("Groundhog donors", analogue_donors_label(extra)))
-    pairs.append(("Oracle step", oracle_label(extra)))
+    if pf_absent or engine == "analogue":
+        pairs.append(("Oracle step", "not run (no PF member ran)"))
+    else:
+        pairs.append(("Oracle step", oracle_label(extra)))
     # only a spec with a knobs record: shipped and older rows are unchanged
     mk = model_settings_label(d)
     if mk:

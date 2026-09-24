@@ -6,7 +6,7 @@
 <div>
   <div class="card"><h2>Submission files{% if ref %}: {{ ref }}{% endif %}
    {{ tips.tip("out-files", "the submission files", "One file per model, named <reference date>-<team>-<model>.csv as the FluSight hub requires; the reference date is the Saturday one week after the newest data week. Every file is checked here against the hub's own rules (hub-config/tasks.json) before it is written: columns, locations, the 23 quantile levels, whole numbers, monotone quantiles, target end dates. The hub takes files from the Sunday through the Wednesday before the reference date, until 11 PM Eastern.") }}</h2>
-   <p class="hint"><a href="/runs/{{ rid }}">{{ label }}</a></p>
+   <p class="hint"><a href="/runs/{{ rid }}">{{ label }}</a>{% if data_src %} · <span class="datasrc">Data: {{ data_src }}</span>{% endif %}</p>
    {% set current = files | rejectattr("archived") | list %}
    {% set archived = files | selectattr("archived") | list %}
    {% for f in current %}

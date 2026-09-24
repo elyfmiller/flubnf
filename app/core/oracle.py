@@ -43,7 +43,7 @@ from pathlib import Path
 import numpy as np
 
 from app.core import horizons as hz
-from app.core.data import vintage_path
+from app.core.data import observed_source, vintage_path
 from flubnf import oracle as OR
 from flubnf import oracle_bank as OB
 from flubnf import oracle_mix as MX
@@ -138,7 +138,8 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
                populations: dict | None = None, vintage=None,
                locations_csv=None, w: float = OR.W_PRODUCTION,
                seeds=OR.SEEDS, submitted_seed: int = OR.SUBMITTED_SEED,
-               aux=None, shrink: float | None = None) -> tuple:
+               aux=None, shrink: float | None = None,
+               source_kind: str | None = None) -> tuple:
     """The member for one week. Returns (member, provenance).
 
     `pf_samples`: collect()'s canonical output, location -> {ORIGIN, "0".."3"}.
@@ -157,7 +158,14 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
     if "oracle.submitted_seed" in kn:
         submitted_seed = int(kn["oracle.submitted_seed"])
     T = date.fromisoformat(asof)
-    vf = Path(vintage) if vintage is not None else vintage_path(asof)
+    # the run's own observed file (the pipeline passes it with its kind);
+    # called without one (replays, backfill, sandbox), the one resolver in
+    # vintage mode: the dated archive only
+    if vintage is not None:
+        vf = Path(vintage)
+        kind = source_kind or "vintage"
+    else:
+        vf, kind = observed_source(asof, "vintage", archive=vintage_path)
     pops = populations if populations is not None else OB.load_populations(locations_csv or LOCATIONS)
     n2f = name_to_fips(locations_csv)
     built = OB.build_pool(asof, vf, pops, out_dir / BANK_DIRNAME, built_utc=_utc())
@@ -288,7 +296,8 @@ def apply_week(pf_samples: dict, asof: str, out_dir, *, extra=None,
                              "w_aux": w_aux,
                              "w_aux_nominal": float(kn.get("oracle.w_aux",
                                                            MX.W_AUX))}},
-        "vintage": {"file": str(vf), "sha256": man["source_sha256"],
+        "vintage": {"file": str(vf), "kind": kind,
+                    "sha256": man["source_sha256"],
                     "newest_row_date": vb.newest_row_date().isoformat()},
         "rule": man["rule"], "rule_flusurv": MX.rule_block(mix["bank_digest"]),
         "w": float(w), "w_secondary": float(OR.W_SECONDARY),
