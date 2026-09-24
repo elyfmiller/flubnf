@@ -32,7 +32,7 @@
    {% endfor %}
    {% set yb = 14 + 22 * vintage_rows | length %}
    {% for m, lab in ((0, "Aug"), (13, "Nov"), (26, "Feb"), (39, "May"), (52, "Aug")) %}
-   <text x="{{ 64 + m * 9.4 }}" y="{{ yb }}" font-size="9" fill="currentColor" fill-opacity=".7" text-anchor="middle">{{ lab }}</text>
+   <text x="{{ 64 + m * 9.4 }}" y="{{ yb + 2 }}" font-size="11" fill="currentColor" fill-opacity=".75" text-anchor="middle">{{ lab }}</text>
    {% endfor %}
   </svg>
   <p class="hint">{{ n_vintages }} archived vintages; each dot is one week's

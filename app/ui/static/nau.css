@@ -351,6 +351,8 @@ table{border-collapse:collapse;width:100%;font-size:var(--fs-table);
 td,th{padding:.38rem .6rem;border-bottom:1px solid var(--line);text-align:left}
 /* numeric columns right-align everywhere */
 td.num,th.num{text-align:right}
+/* a number and its unit never split across lines ("5.4" / "MB") */
+td.num,td.nowrap{white-space:nowrap}
 /* compact table: natural width, numbers beside their labels */
 table.compact{width:auto}
 /* Data page vintage browser: chart and table side by side, stacked narrow */
