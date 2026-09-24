@@ -154,6 +154,9 @@ def test_summary_rows_use_dates_when_known():
     assert [r[2] for r in rows] == ["2024-10-05", "2024-10-12", "2024-10-26",
                                     "2024-11-02", "2024-11-09"]
     assert [r[6] for r in rows] == ["5", "6", "8", "", ""]
+    # a missing week (negative, or NaN) is blank, not a count of -1
+    res["meta"]["observed"] = [5, -1, float("nan")]
+    assert [r[6] for r in sb.summary_rows(res)] == ["5", "", "", "", ""]
 
 
 def test_download_routes_serve_zips_to_localhost_only(two_runs):

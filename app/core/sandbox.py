@@ -38,6 +38,7 @@ its own folder (oracle_step: sandbox, never a submission).
 from __future__ import annotations
 
 import json
+import math
 import re
 import shutil
 import subprocess
@@ -2002,9 +2003,14 @@ def summary_rows(res: dict) -> list:
         if dates and len(dates) == len(times) and times:
             day = (dt.date.fromisoformat(dates[0])
                    + dt.timedelta(days=round(7 * (t - times[0])))).isoformat()
+        # a missing week (written negative or NaN, read_exp) is blank,
+        # never a count of -1
+        y = obs[i] if i < len(obs) else None
+        seen = (y is not None and math.isfinite(float(y))
+                and float(y) >= 0)
         rows.append([i, _fmt(t), day] + [f"{float(traj[q][i]):.6g}"
                                          for q in ("q10", "q50", "q90")]
-                    + [_fmt(obs[i]) if i < len(obs) else ""])
+                    + [_fmt(y) if seen else ""])
     return rows
 
 
