@@ -128,6 +128,15 @@ def test_warnings(box, tmp_path, monkeypatch):
     assert "one data row" in text
 
 
+def test_a_prior_on_a_fixed_parameter_is_named(box):
+    # N is defined, so no problem was raised, yet only __FREE is fitted
+    files = _files()
+    files["priors.conf"] += "uniform_var = N 1000 200000\n"
+    r = sb.check(files)
+    assert any(w.startswith("N has a prior line but its name does not end "
+                            "in __FREE") for w in r["warnings"]), r["warnings"]
+
+
 def test_parameters_read_continuations_and_whole_expressions():
     bngl = ("begin parameters\n"
             "N_y 120000\nN_o 80000\n"

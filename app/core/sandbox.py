@@ -828,6 +828,11 @@ def check(files: dict, *, work: Path | None = None) -> dict:
     for p in facts["free"]:
         if p not in named:
             warnings.append(f"{p} ends in __FREE but has no prior line")
+    for p in sorted(n for n in named if n in params
+                    and not n.endswith("__FREE")):
+        warnings.append(f"{p} has a prior line but its name does not end in "
+                        "__FREE: only a __FREE parameter is fitted, so "
+                        f"rename it {p}__FREE in both files")
     warnings += _prior_start_warnings(bngl, priors)
     cum = keys.get("pf_cumulative_observable", "")
     facts["cumulative"] = cum
