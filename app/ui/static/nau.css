@@ -1070,7 +1070,9 @@ pre.sberr{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);
 .sboracle form.row > span{display:flex;flex-direction:column}
 .sboracle form.row input{width:7rem}
 /* the gallery: each model's note on one line under its name */
-.sbmodels .sbnote{margin:.1rem 0 0;max-width:34rem;white-space:nowrap;overflow:hidden;
+.sbmodels .sbnote{margin:.1rem 0 0;width:0;min-width:100%;white-space:nowrap;overflow:hidden;
   text-overflow:ellipsis}
+.sbmodels td:first-child{width:55%}
+@media(max-width:900px){.sbmodels th:nth-child(2),.sbmodels td:nth-child(2){display:none}}
 .sbmodels td{vertical-align:top}
 .sbmodels td:nth-child(3),.sbmodels td:nth-child(4){white-space:nowrap}
