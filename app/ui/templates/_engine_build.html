@@ -1,0 +1,18 @@
+{# The engine build in one line, where a page reports engine readiness.
+   Another build than production: one warn line, the fix in its "?" tip
+   (`eb_short`: the build and "not the production build", the full
+   sentence joining the fix in the tip, for a form's narrow column).
+   Production: the build as a hint line when `eb_ok` is set (Home names it
+   in its versions line instead). Unknown (no engine, or not resolved
+   yet): nothing.
+   {% with eb_id = "fc", eb_ok = true, eb_short = true %}{% include "_engine_build.html" %}{% endwith %} #}
+{% import "_tips.html" as tips %}
+{% set eb = engine_build_view() %}
+{% if eb.warning and eb_short %}
+<p class="warn engine-build-warn" data-engine-build="other">PyBNF {{ eb.label }}: not the production build {{ tips.tip("eb-" ~ (eb_id or "x"), "switching to the production engine", eb.warning ~ " " ~ eb.fix) }}</p>
+{% elif eb.warning %}
+<p class="warn engine-build-warn" data-engine-build="other">{{ eb.warning }}
+ {{ tips.tip("eb-" ~ (eb_id or "x"), "switching to the production engine", eb.fix) }}</p>
+{% elif eb.production and eb_ok %}
+<p class="hint" data-engine-build="production">PyBNF {{ eb.label }}</p>
+{% endif %}

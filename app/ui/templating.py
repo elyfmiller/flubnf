@@ -65,6 +65,9 @@ templates.env.globals["engine_setup_hint"] = _engine_setup_hint
 # build SHA and restart banner (app/ui/versions.py)
 templates.env.globals["running_sha"] = lambda: versions.RUNNING_SHA
 templates.env.globals["restart_needed"] = versions._restart_needed
+# the engine checkout's branch and commit, and the non-production warning
+# (templates/_engine_build.html)
+templates.env.globals["engine_build_view"] = versions.engine_build_view
 # one settings/results renderer for progress cards, run page and both report
 # exports (app/core/runs.py), so their wording cannot diverge
 templates.env.globals["settings_html"] = settings_html

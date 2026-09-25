@@ -307,6 +307,28 @@ class LocationsMismatch(ResumeMismatch):
     with (a scope change, or the national row switched on or off)."""
 
 
+class EngineBuildMismatch(ResumeMismatch):
+    """A resume on another engine build (commit or local edits) than the
+    completed weeks were fitted by."""
+
+
+def engine_build_change(prior_settings, engine: str = "pf",
+                        build: dict | None = None) -> str | None:
+    """None when a resume may proceed on this machine's engine build: an
+    analogue-only replay (no engine), a record with no build (older
+    seasons resume as before), or the same commit and edited state.
+    Otherwise the difference in plain words. `build` defaults to this
+    machine's (app.core.engine_build)."""
+    from app.core import engine_build as _eb
+    if not pf_ran(engine):
+        return None
+    had = (prior_settings or {}).get("engine_build") \
+        if isinstance(prior_settings, dict) else None
+    if not isinstance(had, dict):
+        return None
+    return _eb.change(had, _eb.engine_build() if build is None else build)
+
+
 def location_scope(locations) -> set:
     """A location list as a comparable set, every national spelling one."""
     from app.core.us_national import is_us
@@ -501,6 +523,13 @@ SCOPE_LABELS = {"panel6": "6-state panel", "all": "all 52 jurisdictions",
                 "custom": "custom selection"}
 
 
+def _build_label(build) -> str:
+    """A recorded engine build as the settings list names it; "" when the
+    record has none (seasons from before builds were recorded)."""
+    from app.core import engine_build as _eb
+    return _eb.recorded_label(build)
+
+
 def settings_summary(meta: dict) -> list:
     """The settings that produced a replay, as (label, value) pairs, from
     its run record; [] when none were recorded (the sealed runs)."""
@@ -522,7 +551,8 @@ def settings_summary(meta: dict) -> list:
               if pf and s.get("particles") else ""),
              ("replicates", str(s.get("replicates") or "") if pf else ""),
              ("shard width", str(s.get("width") or "") if pf else ""),
-             ("engine", engine_label(s["engine"]) if s.get("engine") else "")]
+             ("engine", engine_label(s["engine"]) if s.get("engine") else ""),
+             ("PyBNF build", _build_label(s.get("engine_build")) if pf else "")]
     # only a record made through the knob channel says "model settings"
     if isinstance(s.get("knobs"), dict) and s["knobs"]:
         from app.core import knobs as _knobs
@@ -640,6 +670,17 @@ def _record_week(root: Path, asof: str, seconds: float) -> None:
         m["week_seconds"] = ws
         m["weeks_completed"] = _weeks_on_disk(root)
         m["heartbeat_utc"] = now
+        write_meta(root, m)
+
+
+def _record_week_build(root: Path, asof: str, build: dict) -> None:
+    """Record the engine build that fitted week `asof` (week_engine_builds;
+    a filter week only)."""
+    with _META_LOCK:
+        m = read_meta(root)
+        wb = dict(m.get("week_engine_builds") or {})
+        wb[asof] = dict(build)
+        m["week_engine_builds"] = wb
         write_meta(root, m)
 
 
@@ -1112,6 +1153,14 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
     else:
         rec.pop("knobs", None)
         rec.pop("knobs_digest", None)
+    # the engine build the filter weeks are fitted by: one per season (a
+    # resume on another commit, or with local edits made or undone, is
+    # refused below); none for a Groundhog-only replay or no engine
+    from app.core import engine_build as _eb
+    build = _eb.engine_build() if pf_ran(engine) else {}
+    rec.pop("engine_build", None)
+    if _eb.record(build):
+        rec["engine_build"] = _eb.record(build)
     if _weeks_on_disk(root):
         prior = (read_meta(root) or {}).get("settings") or {}
         had = _knobs.legacy_settings_knobs(prior)
@@ -1129,6 +1178,18 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
                 f"{season} at {root} has completed weeks {change}. "
                 "Resuming would mix two location scopes in one season. "
                 "Archive or discard the existing results to change it.")
+        # nor on another engine build: weeks fitted by two engines would
+        # be scored as one season. A record from before builds were
+        # recorded resumes as before (and is not stamped by the resume)
+        bchange = engine_build_change(prior, engine, build)
+        if bchange:
+            raise EngineBuildMismatch(
+                f"{season} at {root} has completed weeks that {bchange}. "
+                "Resuming would mix two engine builds in one season. "
+                "Switch the engine back, or archive or discard the existing "
+                "results to replay it on this one.")
+        if prior and "engine_build" not in prior:
+            rec.pop("engine_build", None)
         if prior and "knobs" not in prior:
             # a tree from before the registry resumed as it was: never
             # reclassified as modified by the resume
@@ -1162,6 +1223,8 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
                 done.append(asof)
                 # completed weeks only are timed
                 _record_week(root, asof, elapsed_now(read_meta(root)) - e0)
+                if _eb.record(build):
+                    _record_week_build(root, asof, _eb.record(build))
             except SeasonStopped:
                 # bank the segment's seconds; no entry for an incomplete week
                 _record_partial(root, asof, elapsed_now(read_meta(root)) - e0)

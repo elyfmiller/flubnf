@@ -82,3 +82,43 @@ browser that saved an error page under the name) is caught by
 accepts it and the clone then dies with `early EOF` or `index-pack died`.
 Setup names both cases; the first needs a different file, the second needs
 the same file copied again.
+
+## Which engine am I running?
+
+Production for the 2026-27 season is the fork's `feature/particle-filter`
+branch at commit `2fdadee0`, on bngsim 0.15.1 (docs/ORACLE-SIHRS.md,
+"Engine line-up"). The console reads the engine folder's branch and commit
+from git, or from the `VERSION` file an archive install carries, and says
+whether tracked files have local edits.
+
+* In the app: the Home page's Setup card names it ("PyBNF 2fdadee0
+  (feature/particle-filter)"). Any other build, or local edits, adds one
+  warning line there and under the Forecast tab's Engine row; its "?" says
+  how to switch. Every run records the build: the run page's "Produced by"
+  list and the weekly report's settings show it, and a retrospective
+  season records it for each week.
+* `flubnf doctor` prints it as "PyBNF engine build", with a warning and the
+  fix when it is not production. It stays a warning: research runs may use
+  another build on purpose.
+* By hand, in the engine folder (`FLUBNF_PYBNF`, else `PyBNF-pf` or
+  `PyBNF-Private` in the checkout folder):
+
+      git -C <engine folder> rev-parse --short=8 HEAD
+      git -C <engine folder> symbolic-ref --short HEAD
+      git -C <engine folder> status --porcelain --untracked-files=no
+
+  An empty status means no local edits. An archive install has no `.git`;
+  its first `VERSION` line is `<branch> <commit>`.
+
+To switch to production, stash any local edits first, then check out the
+branch and pull:
+
+    git -C <engine folder> stash
+    git -C <engine folder> checkout feature/particle-filter
+    git -C <engine folder> pull
+
+An archive install is replaced by saving `pybnf-pf-2fdadee0.tar.gz` in
+Downloads and running `./setup_engine.sh`. A retrospective season resumes
+only on the build its weeks were fitted by; after switching, archive or
+discard it to replay on the new one. Seasons from before builds were
+recorded resume as before.
