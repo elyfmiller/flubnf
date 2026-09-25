@@ -134,9 +134,10 @@ def test_the_warning_names_the_build_and_the_fix_names_the_path():
         "The engine is feature/bngsim at 4bbc4672, not the production build "
         "2fdadee0 on feature/particle-filter, and has local changes.")
     fix = EB.fix(OTHER)
-    assert "git -C /x/PyBNF-pf stash" in fix
-    assert "git -C /x/PyBNF-pf checkout feature/particle-filter" in fix
-    assert "pull" in fix
+    assert fix == ("To switch: stash the local edits first (git stash in "
+                   "that folder), then git -C /x/PyBNF-pf checkout "
+                   "feature/particle-filter, then git pull there. Research "
+                   "runs may use other builds on purpose.")
     assert "stash" not in EB.fix(dict(OTHER, dirty=False))
 
 

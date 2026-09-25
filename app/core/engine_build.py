@@ -148,12 +148,12 @@ def fix(build: dict | None) -> str:
         return (f"This engine was installed from an archive. Save "
                 f"pybnf-pf-{PRODUCTION_ENGINE_COMMIT}.tar.gz in Downloads and "
                 "run ./setup_engine.sh to replace it.")
-    s = (f"To switch: git -C {path} checkout {PRODUCTION_ENGINE_BRANCH}, "
-         f"then git -C {path} pull.")
-    if b.get("dirty"):
-        s = (f"Stash the local edits first (git -C {path} stash), then "
-             + s[len("To switch: "):])
-    return s + " Research runs may use other builds on purpose."
+    # the path once: in a tip it is the longest word by far
+    stash = ("stash the local edits first (git stash in that folder), then "
+             if b.get("dirty") else "")
+    return (f"To switch: {stash}git -C {path} checkout "
+            f"{PRODUCTION_ENGINE_BRANCH}, then git pull there. Research runs "
+            "may use other builds on purpose.")
 
 
 def record(build: dict | None) -> dict:
