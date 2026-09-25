@@ -55,9 +55,6 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
             return RedirectResponse(f"/forecast?source={first[0][0]}",
                                     status_code=303)
     if source:
-        refused = _dsu.local_only(request)
-        if refused:
-            return refused
         ds = _dsu.get_dataset(source)
         if ds is not None:
             return _dsu.forecast_page(request, ds)
@@ -312,11 +309,8 @@ def run_page(request: Request, run_id: str):
     dsx = {}
     if res.get("dataset"):
         # a run on a custom dataset: exports (never submissions) and fans;
-        # its data is the upload's, so localhost only (datasets_ui.local_only)
+        # (its data is the upload's; shared._same_host_guard keeps it local)
         from app.ui import datasets_ui as _dsu
-        refused = _dsu.local_only(request)
-        if refused:
-            return refused
         dsx = _dsu.run_page_extra(w, res)
     return templates.TemplateResponse(request, "run.html", {
         **dsx,
@@ -479,9 +473,6 @@ def api_series(request: Request, locs: str = "", source: str = ""):
     `source` = a custom dataset's id (its groups' newest data)."""
     if source:
         from app.ui import datasets_ui as _dsu
-        refused = _dsu.local_only(request)
-        if refused:
-            return refused
         ds = _dsu.get_dataset(source)
         return _dsu.api_series(ds, locs) if ds is not None else {}
     import pandas as pd

@@ -463,8 +463,8 @@ def build_outlook(seasons: dict, pin: tuple | None = None) -> dict:
                 if isinstance(c, dict) and c.get("fips") and c.get("probs")}
             for m, cards in (bundle.get("cards_by_model") or {}).items()}
         cards_by_model = {m: c for m, c in cards_by_model.items() if c}
-        asof = (results.get("forecast_date")
-                or bundle.get("reference_date") or "")
+        from app.core.report_v2 import bundle_asof
+        asof = results.get("forecast_date") or bundle_asof(bundle)
         ox = results.get("oracle")
         source = {"kind": "run", "run_id": rid, "asof": asof,
                   "season": None, "origin": "live run",
@@ -628,7 +628,8 @@ def _fans_from_results(results: dict, bundle: dict) -> dict:
     stored horizons ("1".."4") in every existing workroot, so its models are
     canonicalised before `_fan_entry` reads "0".."3".
     """
-    models = hz.models_to_canonical(results.get("models") or {})
+    models = hz.models_to_canonical(results.get("models") or {},
+                                    results.get(hz.CONVENTION_KEY))
     pf, an = models.get("pf") or {}, models.get("analogue") or {}
     observed = results.get("observed") or {}
     settled = {}

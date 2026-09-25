@@ -37,11 +37,53 @@ class ContactMapError(ValueError):
     """A model BNG2.pl could not draw, with its words."""
 
 
+_BEGIN = re.compile(r"^\s*begin\s+([A-Za-z][A-Za-z ]*?)\s*(?:#.*)?$")
+
+
+def _bare_model(bngl_text: str, what: str) -> str:
+    """A model written without begin model / end model, as BNG2.pl also
+    reads it: every block kept verbatim except an actions block, and the
+    top-level statements (the actions, continued lines included) dropped;
+    comments and blank lines outside blocks stay."""
+    kept, block, continued = [], None, False
+    for line in bngl_text.splitlines():
+        s = line.split("#", 1)[0].strip()
+        if block is not None:
+            if re.fullmatch(r"end\s+" + re.escape(block).replace(r"\ ", r"\s+"),
+                            s):
+                if block != "actions":
+                    kept.append(line)
+                block = None
+            elif block != "actions":
+                kept.append(line)
+            continue
+        if continued:                      # the rest of a dropped action
+            continued = s.endswith("\\")
+            continue
+        m = _BEGIN.match(line)
+        if m:
+            block = " ".join(m.group(1).split())
+            if block != "actions":
+                kept.append(line)
+            continue
+        if not s:
+            kept.append(line)              # blank or comment
+            continue
+        continued = s.endswith("\\")       # an action: dropped
+    if not any(_BEGIN.match(l) for l in kept):
+        raise ContactMapError(f"{what}: the model has no model blocks "
+                              "(begin parameters ... end parameters and "
+                              "the rest)")
+    return "\n".join(kept).rstrip() + "\n"
+
+
 def _with_actions(bngl_text: str, actions: str, what: str) -> str:
+    """The model with its actions replaced by `actions`. Both forms BNG2.pl
+    reads: blocks inside begin model / end model (the actions block after
+    it), or bare blocks with the actions at the top level."""
     m = re.search(r"^\s*end\s+model\s*(?:#.*)?$", bngl_text, flags=re.M)
     if not m:
-        raise ContactMapError(f"{what} needs a begin model / end model block "
-                              "around the model")
+        return _bare_model(bngl_text, what) + "\n" + actions + "\n"
     return (bngl_text[:m.end()].rstrip() + "\n\nbegin actions\n" + actions
             + "\nend actions\n")
 

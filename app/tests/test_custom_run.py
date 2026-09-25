@@ -281,3 +281,12 @@ def test_a_dataset_run_is_research_and_described_as_one():
     hub = RunSpec(engine="all", forecast_date=FD, locations=["Ohio", "US"])
     assert not R.is_research(hub)
     assert "FluSight baseline" in R.results_html({"pf_relwis": 0.9}, hub)
+
+
+def test_results_json_records_its_horizon_convention(tmp_path):
+    ds = D.ingest(grouped_bytes(), "wave", kind="count")
+    w = tmp_path / "w"
+    w.mkdir()
+    CR.run(spec_for(ds), ds, w)
+    res = json.loads((w / "results.json").read_text())
+    assert res[hz.CONVENTION_KEY] == hz.STORED

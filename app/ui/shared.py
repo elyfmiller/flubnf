@@ -67,11 +67,26 @@ async def _same_host_guard(request: Request, call_next):
 
 @ttlcache.ttl_cache()
 def _scan_results(workroots: Path) -> list:
-    """results.json paths under a workroots directory, newest run first."""
+    """results.json paths under a workroots directory, newest run first.
+    A run id carries only its start second, so ids sharing one are put in
+    the order the ledger beside the workroots opened them (created_utc,
+    then rowid), never by their random suffix."""
     try:
-        return sorted(Path(workroots).glob("*/results.json"), reverse=True)
+        paths = list(Path(workroots).glob("*/results.json"))
     except OSError:
         return []
+
+    def stamp(p):
+        return p.parent.name[:15]
+    seen: dict = {}
+    for p in paths:
+        seen[stamp(p)] = seen.get(stamp(p), 0) + 1
+    tied = [p.parent.name for p in paths if seen[stamp(p)] > 1]
+    order = (_runs.run_order(Path(workroots).parent / "ledger.sqlite", tied)
+             if tied else {})
+    return sorted(paths, key=lambda p: (stamp(p),
+                                        order.get(p.parent.name, (0.0, 0)),
+                                        p.parent.name), reverse=True)
 
 
 def _workroot_results() -> list:

@@ -106,14 +106,25 @@ def quantiles_to_stored(mq: dict) -> dict:
     return {m: _map_locations(locs, to_stored) for m, locs in mq.items()}
 
 
-#: Run artefacts (workroot results.json) carry no anchor, so legacy
-#: {"1".."4"} vs canonical {"0".."3"} is told apart by the presence of "4".
-#: Detected rather than migrated: old workroots are the user's record.
-def models_to_canonical(models) -> dict:
+#: A run artefact (workroot results.json) records the convention its
+#: "models" were written in under this key; the writers use STORED.
+CONVENTION_KEY = "horizon_convention"
+STORED = "stored"
+CANONICAL = "canonical"
+
+
+#: Run artefacts carry no anchor. When the file records its convention
+#: (CONVENTION_KEY) that is read; files written before the record are told
+#: apart by the presence of "4" (legacy {"1".."4"} vs canonical {"0".."3"}),
+#: a guess that misreads a location missing only its last horizon, so it
+#: serves old files only. Detected rather than migrated: old workroots are
+#: the user's record.
+def models_to_canonical(models, convention=None) -> dict:
     """``{model: {location: {horizon: ...}}}`` from a run artefact, in
-    canonical horizons whichever convention it was written in.
-    Detected per location map, not per file, so a partly rewritten
-    artefact is never half converted.
+    canonical horizons. `convention` is the file's CONVENTION_KEY value:
+    STORED converts every location, CANONICAL leaves them; None (an older
+    file, or an unknown value) detects per location map, not per file, so
+    a partly rewritten artefact is never half converted.
     """
     if not isinstance(models, dict):
         return models
@@ -124,9 +135,15 @@ def models_to_canonical(models) -> dict:
             continue
         fixed = {}
         for loc, hz in by_loc.items():
-            fixed[loc] = (to_canonical(hz)
-                          if isinstance(hz, dict) and STORED_HORIZONS[-1] in hz
-                          else hz)
+            if not isinstance(hz, dict):
+                fixed[loc] = hz
+            elif convention == STORED:
+                fixed[loc] = to_canonical(hz)
+            elif convention == CANONICAL:
+                fixed[loc] = hz
+            else:
+                fixed[loc] = (to_canonical(hz)
+                              if STORED_HORIZONS[-1] in hz else hz)
         out[model] = fixed
     return out
 

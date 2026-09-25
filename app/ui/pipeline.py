@@ -117,7 +117,9 @@ def _sleep_guard():
 def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
                          df, locs, n2f: dict, elapsed_s: float,
                          outcome: dict, an_q: dict | None = None,
-                         ens_q: dict | None = None) -> None:
+                         ens_q: dict | None = None,
+                         scores: dict | None = None,
+                         run_row: dict | None = None) -> None:
     """Step 5b of _run_all: build the report inputs bundle, save it as
     report_inputs.json, then render report.html FROM it (one render path,
     so _report_for_serving can rebuild after a design change).
@@ -125,8 +127,12 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
     Map cards for every model (pf reduced to the 23-level grid; an_q =
     Groundhog quantiles, loc -> horizon -> {level: value}) come from the
     one quantile-CDF path; the map renders PF-first and cards_model records
-    which. State drill-down fans are PF's. `ens_q` (retired blend) is
-    accepted and ignored. Mutates `outcome`; the caller contains failures."""
+    which. State drill-down fans are PF's, else the Groundhog's. `ens_q`
+    (retired blend) is accepted and ignored. `scores`: model -> its scored frame (`df` is the
+    PF's); the accuracy card covers each model that ran. `run_row`: the
+    run's ledger row, whose recorded build and engine versions the settings
+    block names (as the run page does); without one, this process's. Mutates
+    `outcome`; the caller contains failures."""
     import json as _json
     from datetime import date as _dd
     from datetime import timedelta as _tdd
@@ -140,6 +146,7 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
                                  categorical_probs_from_quantiles)
     from app.core.report_v2 import CATS
     from app.core.scoring import summary_table_html
+    from app.core.submit import hub_reference_date
     n2a = dict(zip(locs.location_name, locs.abbreviation))
     n2p = dict(zip(locs.location_name, locs.population.astype(float)))
     # the national population from the same table (the hub's "US" row)
@@ -230,9 +237,34 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
     for name, abbr in n2a.items():
         cards.setdefault(abbr, {"name": name, "abbr": abbr,
                                 "fips": n2f.get(name, "")})
+    # in-scope states without a card: a reporting gap only when the state
+    # has no reported data; otherwise the model made no forecast, and the
+    # run's own record says why (the Output page's words)
+    from app.core.coverage import missing_reason
+    _in_scope = [l for l in spec.locations
+                 if n2f.get(l) and n2f.get(l) != "US"]
+    gap_fips = sorted({n2f[l] for l in _in_scope if _last_obs(l) is None})
+    no_forecast = {}
+    for model in ("pf", "analogue"):
+        if model != cards_model and model not in cards_by_model:
+            continue
+        have = cards_by_model.get(model, {})
+        why = {n2f[l]: missing_reason(outcome, model, "", l)
+               for l in _in_scope
+               if n2f[l] not in gap_fips and n2a.get(l) not in have}
+        if why:
+            no_forecast[model] = why
+    # the accuracy card scores the model(s) that ran, each named: a
+    # Groundhog-only run is never shown the (empty) PF frame's placeholder
+    frames = {"pf": df, **(scores or {})}
+    ran = [m for m, q in (("pf", pf_samples), ("analogue", an_q)) if q]
+    if ran:
+        wis_body = "".join(summary_table_html(
+            frames.get(m, pd.DataFrame()), model=m) for m in ran)
+    else:
+        wis_body = summary_table_html(df)
     wis_html = ("<div class='card'><h2>forecast accuracy "
-                "(retrospective)</h2>" + summary_table_html(df)
-                + "</div>")
+                "(retrospective)</h2>" + wis_body + "</div>")
     # settled outcomes for backdated runs: the LATEST vintage's values
     # past the forecast origin, framed to the 4-week horizon
     settled_by_loc = {}
@@ -255,48 +287,71 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
                     settled_by_loc[loc] = pts
     except Exception:
         settled_by_loc = {}
-    # state pages as DATA; render_bundle draws the figures
+    # state pages as DATA; render_bundle draws the figures. The fan is the
+    # PF's where it has samples, else the Groundhog's quantiles (a
+    # Groundhog-only run, or a state the PF left out), labelled as such
     details = {}
-    for loc, s in pf_samples.items():
+    # canonical horizons are AS-OF relative: hub label h is h+1 weeks past
+    # the as-of week (the files' target_end_date), whatever the newest
+    # observed week (an unreported or trimmed week moves it back)
+    _base = _dd.fromisoformat(spec.forecast_date)
+    f_t = [(_base + _tdd(days=7 * (h + 1))).isoformat()
+           for h in (0, 1, 2, 3)]
+    fan_src = [(loc, "pf", s) for loc, s in pf_samples.items()]
+    fan_src += [(loc, "analogue", q) for loc, q in an_q.items()
+                if loc not in pf_samples]
+    for loc, model, src in fan_src:
         fips_l = n2f.get(loc, "")
         obs_pairs = (obs.get(loc) or [])[-12:]
         o_t = [d for d, _ in obs_pairs]
         o_v = [v for _, v in obs_pairs]
-        # canonical horizons are AS-OF relative: hub label h is h+1 weeks
-        # past the as-of week (the files' target_end_date), whatever the
-        # newest observed week (an unreported or trimmed week moves it back)
-        _base = _dd.fromisoformat(spec.forecast_date)
-        f_t = [(_base + _tdd(days=7 * (h + 1))).isoformat()
-               for h in (0, 1, 2, 3)]
-        samples_h = {f_t[h]: s[str(h)] for h in (0, 1, 2, 3)}
         try:
-            q_by_t = report_v2.fan_quantiles(f_t, samples_h)
             lo_l = o_v[-1] if o_v else 0.0
-            # one week ahead = canonical "0", matching the fan above
-            probs_l = categorical_probs(
-                _np.asarray(s["0"], float), lo_l,
-                us_pop if fips_l == "US" else int(n2p.get(loc, 1e6)), 0)
+            pop_l = us_pop if fips_l == "US" else int(n2p.get(loc, 1e6))
+            if model == "pf":
+                q_by_t = report_v2.fan_quantiles(
+                    f_t, {f_t[h]: src[str(h)] for h in (0, 1, 2, 3)})
+                # one week ahead = canonical "0", matching the fan above
+                probs_l = categorical_probs(
+                    _np.asarray(src["0"], float), lo_l, pop_l, 0)
+            else:
+                grid = {h: (src.get(str(h)) or src.get(h))
+                        for h in (0, 1, 2, 3)}
+                q_by_t = report_v2.fan_quantiles_from_grid(
+                    f_t, {f_t[h]: grid[h] for h in (0, 1, 2, 3)})
+                probs_l = categorical_probs_from_quantiles(
+                    grid[0], lo_l, pop_l, 0)
             key = "US" if fips_l == "US" else n2a.get(loc, loc)
             meds = [q_by_t[t]["0.5"] for t in f_t]
+            # the off-season reading is the mechanistic model's
             note = ("Off-season: the model finds no sustained "
                     "transmission. This forecast reflects the recent "
                     "reporting background, not epidemic growth."
-                    if max(meds) <= 2 else "")
+                    if model == "pf" and max(meds) <= 2 else "")
+            title = f"{loc}: weekly admissions"
+            if model != "pf":
+                title += f" ({report_v2.MODEL_SHORT.get(model, model)})"
             details[key] = {
                 "name": "United States" if fips_l == "US" else loc,
                 "note": note,
+                # v6: whose fan this is (absent: the PF's)
+                "model": model,
                 "fan": {"observed_times": o_t, "observed": o_v,
                         "forecast_times": f_t, "quantiles": q_by_t,
-                        "title": f"{loc}: weekly admissions",
+                        "title": title,
                         "settled": settled_by_loc.get(loc)},
-                "cat_probs": probs_l,
+                "cat_probs": probs_l or {},
                 "table_rows": [(d, v) for d, v in obs_pairs[-6:]]}
         except Exception:
             continue
     # national card from the same model as the rendered state cards
     nat_card = nat_cards.get(cards_model)
     bundle = {"version": report_v2.BUNDLE_VERSION,
-              "reference_date": spec.forecast_date,
+              # v7: the as-of, and the hub reference date under its own
+              # name (older bundles held the as-of in reference_date)
+              "asof": spec.forecast_date,
+              "reference_date": str(
+                  hub_reference_date(spec.forecast_date).date()),
               # v2: which model computed the map cards
               "cards_model": cards_model,
               "cards": cards, "details": details,
@@ -306,16 +361,19 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
               # v5: whether US was among the run's locations
               "national_in_run": any(n2f.get(l) == "US"
                                      for l in spec.locations),
+              # v6: the only reporting gaps (in scope, no reported data),
+              # and each model's reason for an in-scope state it left blank
+              "gap_fips": gap_fips, "no_forecast": no_forecast,
               # v3: every model's cards (the outlook toggle's data)
               "cards_by_model": cards_by_model,
               "national_map_cards": nat_cards,
               "national": {"summary_html": wis_html},
               "national_map_card": nat_card,
               "elapsed_s": elapsed_s,
-              # run settings, app build and engine versions
+              # run settings, app build and engine versions: the run's
+              # recorded ones (the run page's), never a later server's
               "settings_html": settings_html(
-                  spec_settings(spec, outcome)
-                  + version_pairs(RUNNING_SHA, VERSIONS))}
+                  spec_settings(spec, outcome) + _build_pairs(run_row))}
     try:
         bp = report_v2.save_bundle(bundle, workroot)
         outcome["report_inputs_bytes"] = bp.stat().st_size
@@ -323,6 +381,22 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
         outcome["report_inputs_error"] = str(e)[:200]
     report_v2.render_bundle(bundle, workroot / "report.html")
     outcome["report"] = str(workroot / "report.html")
+
+
+def _build_pairs(run_row: dict | None) -> list:
+    """The app build and engine versions a run recorded in its ledger row,
+    as the run page shows them (version_pairs); this process's when there
+    is no row. After an update without a restart the running server's
+    RUNNING_SHA is not the code the run recorded."""
+    if not run_row:
+        return version_pairs(RUNNING_SHA, VERSIONS)
+    import json
+    try:
+        ev = json.loads(run_row.get("engine_versions") or "{}")
+    except (TypeError, ValueError):
+        ev = {}
+    return version_pairs(run_row.get("flubnf_sha") or "",
+                         ev if isinstance(ev, dict) else {})
 
 
 def _pf_engine_state() -> str:
@@ -723,6 +797,7 @@ def _run_all(spec: RunSpec) -> None:
                                         if k in subs}
         # 5. retrospective scoring (once truth exists); contained, like 5b
         df = pd.DataFrame()
+        score_frames: dict = {}
         try:
             truth, name2fips = scoring.load_truth()
             df = scoring.score_samples(pf_samples, spec.forecast_date,
@@ -753,6 +828,8 @@ def _run_all(spec: RunSpec) -> None:
                                 float(mp["wis"].sum() / mp["base_wis"].sum()), 3)
                             outcome[f"{mname}_relwis_cells"] = int(len(mp))
                         mdf.to_json(workroot / f"scores_{mname}.json")
+                    mdf.attrs["truth_source"] = scoring.TRUTH_SOURCE
+                    score_frames[mname] = mdf
                 except Exception as e:
                     outcome[f"{mname}_score_error"] = str(e)[:200]
         except Exception as e:
@@ -761,7 +838,8 @@ def _run_all(spec: RunSpec) -> None:
         try:
             _write_weekly_report(spec, workroot, pf_samples, obs, df, locs,
                                  n2f, _time.time() - t_start, outcome,
-                                 an_q=an_q)
+                                 an_q=an_q, scores=score_frames,
+                                 run_row=ledger.row(run_id))
         except Exception as e:
             outcome["report_error"] = str(e)[:200]
         # 6. results index for the run page
@@ -792,8 +870,9 @@ def _run_all(spec: RunSpec) -> None:
             **({"knobs": outcome["knobs"]} if "knobs" in outcome else {}),
             "observed": obs,
             "params": params,
-            # STORED horizon convention (old workroots use it too); readers
-            # go through horizons.models_to_canonical
+            # STORED horizon convention (old workroots use it too), recorded
+            # so readers (horizons.models_to_canonical) never guess it
+            _hz.CONVENTION_KEY: _hz.STORED,
             "models": _hz_stored({
                 "pf": {loc: _qs_from_samples(s) for loc, s in pf_samples.items()},
                 "analogue": {loc: _qs_from_q(q) for loc, q in an_q.items()},

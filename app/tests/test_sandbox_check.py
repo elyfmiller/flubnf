@@ -200,3 +200,15 @@ def test_a_retired_key_says_so(box):
     text = " ".join(sb.check(files)["warnings"])
     assert "pf_observable_mode is retired" in text
     assert "not a setting the installed engine knows" not in text
+
+
+def test_a_model_without_begin_model_generates_its_network(box):
+    """BNG itself accepts BNGL with no begin model / end model lines; the
+    Check's network step must not report such a model as failing."""
+    files = _files()
+    files["model.bngl"] = (files["model.bngl"].replace("begin model\n", "")
+                           .replace("end model\n", ""))
+    assert "begin model" not in files["model.bngl"]
+    r = sb.check(files)
+    assert r["facts"]["network"] == "generates", r
+    assert r["ok"] and r["problems"] == []

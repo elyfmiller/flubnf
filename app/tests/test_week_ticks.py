@@ -204,3 +204,17 @@ def test_report_fan_bands_are_fills_without_markers():
          for t in ("2026-01-10", "2026-01-17")})
     bands = [t for t in fig.data if t.fill == "toself"]
     assert len(bands) == 3 and all(t.mode == "lines" for t in bands)
+
+
+def test_public_site_fan_ticks_on_saturdays():
+    """The public site's fan chart (app/core/site_page.py) draws through the
+    shared helper, inlined after plotly.js and before the page's script, so
+    its ticks land on the data's Saturdays instead of Plotly's Sundays."""
+    from app.core import site_page
+    js = site_page.JS
+    assert not re.search(r"(?<![\w.])Plotly\.(react|newPlot)\(", js)
+    assert "window.FluCharts || Plotly" in js and "PL.react('fan'" in js
+    tail = site_page.page_scripts()
+    src = CHARTS.read_text()
+    assert (tail.index('<script src="plotly.min.js"></script>')
+            < tail.index(src) < tail.index(js))

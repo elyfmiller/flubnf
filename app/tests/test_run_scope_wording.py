@@ -139,7 +139,7 @@ def test_national_detail_says_us_was_not_run(tmp_path):
 
 def test_groundhog_only_pipeline_run_records_scope_and_says_so(tmp_path):
     """The real build path for a Groundhog-only, states-only run: no PF
-    samples, so no detail sections and no national run."""
+    samples (the state sections are the Groundhog's) and no national run."""
     from flubnf.settings import load_locations
     from app.ui import pipeline as ui_pipeline
     locs = load_locations()
@@ -153,10 +153,11 @@ def test_groundhog_only_pipeline_run_records_scope_and_says_so(tmp_path):
     ui_pipeline._write_weekly_report(spec, tmp_path, {}, obs, pd.DataFrame(),
                                      locs, n2f, 1.0, outcome, an_q=an_q)
     bundle = json.loads((tmp_path / report_v2.BUNDLE_NAME).read_text())
-    assert bundle["version"] == report_v2.BUNDLE_VERSION == 5
+    assert bundle["version"] == report_v2.BUNDLE_VERSION >= 5
     assert bundle["national_in_run"] is False
     html = (tmp_path / "report.html").read_text()
-    assert "click it" not in html
+    # the Groundhog's fan gives Ohio a section, so the map invites a click
+    assert "click it" in html and 'id="st-OH"' in html
     assert "US (national) was not part of this run." in html
     assert "No scored weeks yet" not in html
     # a run that includes US records it

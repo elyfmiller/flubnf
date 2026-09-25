@@ -168,10 +168,8 @@ def data_page(request: Request, loc: str = "", vintage: str = "",
               source: str = ""):
     if source:
         # browse one custom dataset in the vintage browser's place
+        # (a foreign Host never gets here: shared._same_host_guard)
         from app.ui import datasets_ui as _dsu
-        refused = _dsu.local_only(request)
-        if refused:
-            return refused
         ds = _dsu.get_dataset(source)
         if ds is not None:
             ctx = _data_context()
