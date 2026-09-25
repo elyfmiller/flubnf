@@ -1,92 +1,54 @@
 {% extends "base.html" %}{% block title %}FluBNF · Output{% endblock %}
 {% block content %}{% import "_tips.html" as tips %}{% import "_coverage.html" as covm %}
 <h1>Output</h1>
-{% if not rid %}<div class="card"><p class="hint">Nothing here yet. Run a forecast first.</p></div>
+{% macro filerow(model, name, path, tag="", run_id="", run_when="", incomplete=False) -%}
+<div class="row subrow">
+ <span class="outname"><b>{{ model }}</b>{% if tag %} <span class="pill modtag">{{ tag }}</span>{% endif %}<br><code>{{ name }}</code>{% if run_id %} <a class="hint runref" href="/runs/{{ run_id }}">run {{ run_when }}{% if incomplete %} (incomplete){% endif %}</a>{% endif %}</span>
+ <span class="subacts">
+  <a class="btn" href="/output/download?path={{ path | urlencode }}" download>Download</a>
+  <form method="post" action="/output/reveal">
+   <input type="hidden" name="path" value="{{ path }}">
+   <button class="linkish" type="submit">Show in folder</button></form>
+ </span>
+</div>
+{%- endmacro %}
+{% if not dates and not own and not rid %}
+<div class="card"><p class="hint">Nothing here yet. Run a forecast first.</p></div>
 {% else %}
-<div>
-  <div class="card"><h2>Submission files{% if ref %}: {{ ref }}{% endif %}
-   {{ tips.tip("out-files", "the submission files", "One file per model, named <reference date>-<team>-<model>.csv as the FluSight hub requires; the reference date is the Saturday one week after the newest data week. Every file is checked here against the hub's own rules (hub-config/tasks.json) before it is written: columns, locations, the 23 quantile levels, whole numbers, monotone quantiles, target end dates. The hub takes files from the Sunday through the Wednesday before the reference date, until 11 PM Eastern.") }}</h2>
-   <p class="hint"><a href="/runs/{{ rid }}">{{ label }}</a>{% if data_src %} · <span class="datasrc">Data: {{ data_src }}</span>{% endif %}</p>
-   {% set current = files | rejectattr("archived") | list %}
-   {% set archived = files | selectattr("archived") | list %}
-   {% for f in current %}
-    <div class="subfile">
-     <div class="row subrow">
-      <span><b>{{ f.model }}</b><br><code>{{ f.name }}</code></span>
-      <span class="subacts">
-       {% if f.submittable or f.modified %}
-       <a class="btn" href="/output/download?path={{ f.path | urlencode }}" download>Download</a>
-       {% endif %}
-       <form method="post" action="/output/reveal" style="display:inline">
-        <input type="hidden" name="path" value="{{ f.path }}">
-        <button class="linkish" type="submit">Show in Finder</button></form>
-      </span>
-     </div>
-     {% if f.hub %}
-     <p class="hint">{% if not f.hub.ok %}<span class="bad">{{ f.hub.text }}</span>{% else %}{{ f.hub.text }}{% endif %}</p>
-     {% elif f.modified %}
-     <p class="hint">Non-hub name: this run's model settings differ from the defaults.</p>
-     {% endif %}
-     {{ covm.line(f.cov) }}
-     {% if f.cols %}
-     <details class="preview">
-      <summary class="hint">Preview: first {{ f.rows | length }} rows</summary>
-      <div style="overflow-x:auto;max-width:100%">
-       <table>
-        <tr>{% for c in f.cols %}<th>{{ c }}</th>{% endfor %}</tr>
-        {% for r in f.rows %}
-         <tr>{% for v in r %}<td>{{ v }}</td>{% endfor %}</tr>
-        {% endfor %}
-       </table>
-      </div>
-      {% if f.more %}<p class="hint">… {{ f.more }} more rows</p>{% endif %}
-     </details>
-     {% endif %}
-    </div>
-   {% else %}<p class="hint">{% if archived %}No current submission files in this run: run the models to write them under the registered names.{% else %}No submission files in the latest run.{% endif %}</p>{% endfor %}
-   {% if arch %}
-   {# the date's forecast archive (app/core/archive_record.py): which run
-      it holds, and the operator's "submitted" mark; FluBNF never uploads #}
-   <div class="archmark" id="archive-mark">
-    <p class="hint">
-     {% if arch.submitted %}<span class="pill ok subbadge">Submitted</span> {{ arch.submitted_at }}.
-     {% endif %}
-     {% if arch.this_run %}Archived as the forecast for {{ arch.date }}.
-     {% elif arch.kept %}{% if arch.kept_submitted %}The archive was marked submitted, so it kept run{% else %}This run is not complete, so the archive kept the earlier complete run{% endif %}{% if arch.run_id %} <a href="/runs/{{ arch.run_id }}">{{ arch.run_id }}</a>{% endif %}; this run's files stay in its own folder.
-     {% else %}The archive for {{ arch.date }} holds {% if arch.run_id %}run <a href="/runs/{{ arch.run_id }}">{{ arch.run_id }}</a>{% else %}an earlier run{% endif %}.
-     {% endif %}
-     {{ tips.tip("out-mark", "marking as submitted", "Mark the archive once you have uploaded its files to the FluSight hub yourself; FluBNF only writes them. A marked archive is never replaced by a later run and cannot be deleted from Storage until you unmark it. Without a mark, a later run replaces the archive only when it finished ok with every file written in full.") }}
-    </p>
-    {% if not arch.busy %}
-    <form method="post" action="/output/submitted" class="archform">
-     <input type="hidden" name="date" value="{{ arch.date }}">
-     <input type="hidden" name="run" value="{{ arch.run_id }}">
-     {% if arch.submitted %}
-     <input type="hidden" name="mark" value="0">
-     <button class="linkish" type="submit">Unmark</button>
-     {% else %}
-     <input type="hidden" name="mark" value="1">
-     <button class="quiet" type="submit">Mark as submitted</button>
-     {% endif %}
-    </form>
-    {% endif %}
-   </div>
-   {% endif %}
-   {% if archived %}
-   <details class="preview archived">
-    <summary class="hint">Archived files ({{ archived | length }})</summary>
-    <p class="hint">Written by an earlier version under a retired hub name; kept as a record, not for submission.</p>
-    {% for f in archived %}
-    <div class="row subrow">
-     <span>{{ f.model }} <span class="hint">(archived)</span><br><code>{{ f.name }}</code></span>
-     <form method="post" action="/output/reveal" style="display:inline">
-      <input type="hidden" name="path" value="{{ f.path }}">
-      <button class="linkish" type="submit">Show in Finder</button></form>
-    </div>
-    {% endfor %}
-   </details>
-   {% endif %}
-  </div>
+<p class="sub">Your forecasts by date, newest first, as hub-format CSV files.
+ {{ tips.tip("out-files", "these files", "One card per forecast date, headed by the hub's reference date (the Saturday one week after the newest data week), with the as-of date beside it. Each model's file is named <reference date>-<team>-<model>.csv as the FluSight hub requires and holds the hub's quantile output (23 levels, horizons 0 to 3). Every file is checked against the hub's own rules (hub-config/tasks.json) before it is written: columns, locations, the 23 quantile levels, whole numbers, monotone quantiles, target end dates. When a date was run more than once, it shows each model's file from the newest run that finished complete, else from the newest run that wrote one; the other runs' files stay in their run folders. A run with modified model settings writes <model>-modified files: a record under a non-hub name, not for the hub. Files an earlier version wrote under retired hub names are not listed; they stay on disk and in Storage. The hub takes files from the Sunday through the Wednesday before the reference date, until 11 PM Eastern. FluBNF only writes the files; you upload them to the hub yourself.") }}</p>
+{% for d in dates %}
+<div class="card fcday" id="fc-{{ d.asof }}">
+ <h2>Forecast {{ d.ref }}</h2>
+ <p class="hint fcmeta">as of {{ d.asof }}{% for s in d.data_src %} · <span class="datasrc">Data: {{ s }}</span>{% endfor %}{% if d.window %} · {{ d.window }}{% endif %}</p>
+ {% for f in d.files %}
+ <div class="fcfile">
+  {{ filerow(f.model, f.name, f.path, run_id=f.run_id, run_when=f.run_when, incomplete=not f.complete) }}
+  {{ covm.line(f.cov, f.check.text, not f.check.ok) }}
+ </div>
+ {% endfor %}
+ {% for f in d.modified %}
+ <div class="fcfile">
+  {{ filerow(f.model, f.name, f.path, tag="modified settings", run_id=f.run_id, run_when=f.run_when, incomplete=not f.complete) }}
+  {{ covm.line(f.cov, "Non-hub name") }}
+ </div>
+ {% endfor %}
+</div>
+{% endfor %}
+{% if own %}
+<div class="card" id="own-data"><h2>Your data
+ {{ tips.tip("out-own", "your data's files", "Forecasts on your own datasets, newest first: hubverse-format quantile CSVs (23 levels, horizons 0 to 3, reference date = forecast date + 7 days) keyed by your data's own groups. They carry non-hub names (FluBNF-Groundhog, FluBNF-SIHRS-PF) and are for your own use; downloads work on this computer only, since they carry your data.") }}</h2>
+ {% for r in own %}
+ {% for e in r.files %}
+ <div class="fcfile">
+  {{ filerow(e.model, e.name, e.path, run_id=r.run_id, run_when=r.run_when) }}
+  <p class="hint cov">{{ r.dataset }} · as of {{ r.asof }}</p>
+ </div>
+ {% endfor %}
+ {% endfor %}
+</div>
+{% endif %}
+{% if rid or archive_dates %}
   <div class="card"><h2>Weekly report</h2>
    {% if has_report %}
    <div class="row">
@@ -108,6 +70,6 @@
    </div>
    {% endif %}
   </div>
-</div>
+{% endif %}
 {% endif %}
 {% endblock %}

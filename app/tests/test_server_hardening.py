@@ -239,7 +239,26 @@ def test_data_pull_allowed_during_pure_fitting(monkeypatch):
                         "phase": "filtering 3 location(s) x 3 replicate(s)"})
     r = client.post("/data/pull", follow_redirects=False)
     assert r.status_code == 303
-    assert "Already up to date." in ui_state._status.get("flash", "")
+    flash = ui_state._status.get("flash", "")
+    # the pull went ahead (a refusal says "nothing was pulled"), and the
+    # message leads in plain words, never git's own transcript
+    assert "nothing was pulled" not in flash
+    assert flash.startswith(("Updated", "Already up to date", "New data"))
+    assert "Already up to date." not in flash
+
+
+def test_update_data_says_in_plain_words_whether_the_data_moved(monkeypatch):
+    from app.core import data as data_real
+    weeks = iter(["2026-09-26", "2026-10-03"])
+    monkeypatch.setattr(data_real, "newest_week", lambda: next(weeks))
+    monkeypatch.setattr(data_real, "pull_hub", lambda: (
+        True, "Updating 1a2b..3c4d\nFast-forward\n 2 files changed"))
+    monkeypatch.setattr(data_real, "vintages", lambda: [])
+    ui_state._status.update({"running": None, "phase": "", "run_label": ""})
+    client.post("/data/pull", follow_redirects=False)
+    flash = ui_state._status.get("flash", "")
+    assert flash.startswith("New data: through 2026-10-03 (was 2026-09-26)")
+    assert "Fast-forward" not in flash
 
 
 def test_data_pull_failure_is_flashed_as_a_failure(monkeypatch):

@@ -124,8 +124,11 @@ def test_a_shipped_console_run_writes_what_it_always_wrote(console):
     assert "knobs" not in out and out["archived"] == "archived"
     assert not (w / "knobs.json").exists()
     res = json.loads((w / "results.json").read_text())
+    # plus the recorded horizon convention (every run writes it, knobs or
+    # not): still no knobs key on a shipped run
     assert set(res) == {"spec", "forecast_date", "research", "oracle",
-                        "observed", "params", "models"}
+                        "observed", "params", "models",
+                        "horizon_convention"}
     prov = oracle_mod.read_provenance(w)
     assert "knobs" not in prov and "specification" not in prov
     assert prov["w"] == 0.5 and prov["bank"]["mixture"]["w_aux_nominal"] == 0.5

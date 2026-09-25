@@ -25,7 +25,7 @@ One line per module. "Imports" names the app/ui modules a module imports at top 
 | `routes/data.py` | Data: the TTL-cached vintage readers, `_data_context` (also `datasets_ui.py`'s), hub pull, freshness (`data.html`) | support modules |
 | `routes/storage.py` | Storage: the disk inventory, the ledger, delete, clear and reclaim (`runs.html`) | support modules |
 | `routes/forecast.py` | Forecast: POST `/run` and the builders of its spec, stop, the progress and series APIs, the run pages (`forecast.html`, `run.html`) | support modules, `routes/data.py`, `routes/output.py` |
-| `routes/output.py` | Output: the submission files and their download rules, the weekly report, served as stored or rebuilt (`output.html`) | support modules |
+| `routes/output.py` | Output: the forecasts by date with each model's file, the own-data exports, their download rules, the weekly report, served as stored or rebuilt (`output.html`) | support modules |
 | `routes/sandbox.py` | Sandbox (`sandbox.html`), with the sandbox engine guard (middleware) and the Storage panel's sandbox line (`sandbox_storage`) | support modules |
 | `routes/models.py` | Models (`model.html`) | support modules |
 | `routes/methods.py` | Methods (`methods.html`) | support modules |
@@ -76,7 +76,6 @@ One line per module. "Imports" names the app/ui modules a module imports at top 
 | GET | `/output` | `routes/output.py` | `output_page` | `output.html` | nav |
 | GET | `/output/download` | `routes/output.py` | `output_download` | file | `output.html`, `run.html` |
 | POST | `/output/reveal` | `routes/output.py` | `output_reveal` | redirect | `output.html` form, `retro_season.html` fetch |
-| POST | `/output/submitted` | `routes/output.py` | `output_submitted` | redirect | `output.html` form (mark or unmark the date's archive as submitted) |
 | GET | `/output/report` | `routes/output.py` | `output_report` | weekly report | `output.html` link and date picker |
 | GET | `/output/report/download` | `routes/output.py` | `output_report_download` | | `output.html` |
 | **Retrospective** | | | | | |

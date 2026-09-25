@@ -163,19 +163,29 @@ NO_SCORES_HTML = ("<p class='hint'>No scored weeks yet. relWIS appears once "
                   "truth for forecast weeks is published.</p>")
 
 
-def summary_table_html(df: pd.DataFrame) -> str:
-    """The report's WIS-breakdown card: the member named in the header,
-    ok/bad classes, each score with its cell count; a placeholder when empty.
-    The US row keeps its own (fitted) line but stays out of the pooled total
-    (us_national.POOLED_INCLUDES_US)."""
-    from app.core import us_national as usn
-    if df.empty:
-        return NO_SCORES_HTML
+def _member_name(model: str) -> str:
+    fallback = {"pf": "Oracle SIHRS", "analogue": "Groundhog"}
     try:                       # the shared name map, one source (no drift)
         from app.core.report_season import MODEL_NAMES
-        member = MODEL_NAMES.get("pf", "Oracle SIHRS")
+        return MODEL_NAMES.get(model, fallback.get(model, model))
     except Exception:
-        member = "Oracle SIHRS"
+        return fallback.get(model, model)
+
+
+def summary_table_html(df: pd.DataFrame, model: str | None = None) -> str:
+    """The report's WIS-breakdown card for one member (`model`, default the
+    Oracle SIHRS): the member named in the header, ok/bad classes, each
+    score with its cell count; a placeholder when empty, naming the member
+    when `model` is given. The US row keeps its own (fitted) line but stays
+    out of the pooled total (us_national.POOLED_INCLUDES_US)."""
+    from app.core import us_national as usn
+    if df.empty:
+        if model is None:
+            return NO_SCORES_HTML
+        return (f"<p class='hint'>{_member_name(model)}: no scored weeks "
+                "yet. relWIS appears once truth for forecast weeks is "
+                "published.</p>")
+    member = _member_name(model or "pf")
     per_loc = (df.groupby("location")
                  .apply(lambda g: g.wis.sum() / g.base_wis.sum(),
                         include_groups=False)

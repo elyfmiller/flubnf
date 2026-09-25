@@ -25,6 +25,10 @@ from app.core.engines import pf as PF                        # noqa: E402
 
 from app.core import horizons as HZ                            # noqa: E402
 
+# the console run on the synthetic vintage (PF faked, the rest real)
+from test_oracle_step import hubfiles                         # noqa: E402,F401
+from test_optional_outputs import _default_run, pipeline_env  # noqa: E402,F401
+
 #: a canonical member: four forecasts plus the anchor riding alongside
 FIVE = {h: [10.0 * (int(h) + 2), 11.0 * (int(h) + 2), 12.0 * (int(h) + 2)]
         for h in HZ.HORIZONS}
@@ -203,3 +207,52 @@ def test_live_run_fans_keep_all_four_weeks_from_a_legacy_results_json():
     assert q["0"]["0.5"] == pytest.approx(10.5)
     assert q["3"]["0.5"] == pytest.approx(40.5)
     assert fans["Ohio"]["an"] == {"0": 10.5, "1": 20.5, "2": 30.5, "3": 40.5}
+
+
+# ---------------------------------------------------------------------------
+# The convention is recorded where results.json is written and read back:
+# a stored location missing only its last horizon ("4") is not misread as
+# canonical (one week off). The "4" guess serves files without the record.
+# ---------------------------------------------------------------------------
+
+def _stored_missing_last():
+    return {"analogue": {"Ohio": {"1": {"0.5": 14.0}, "2": {"0.5": 15.0},
+                                  "3": {"0.5": 16.0}}}}
+
+
+def test_a_recorded_stored_convention_is_read_not_guessed():
+    out = HZ.models_to_canonical(_stored_missing_last(), HZ.STORED)
+    assert out["analogue"]["Ohio"] == {"0": {"0.5": 14.0},
+                                       "1": {"0.5": 15.0},
+                                       "2": {"0.5": 16.0}}
+    canon = {"pf": {"Ohio": {h: {"0.5": 1.0} for h in HZ.HORIZONS}}}
+    assert HZ.models_to_canonical(canon, HZ.CANONICAL) == canon
+    # no record (an older file): the guess, unchanged
+    assert HZ.models_to_canonical(_stored_missing_last()) == \
+        _stored_missing_last()
+
+
+def test_home_outlook_reads_the_recorded_convention():
+    """A stored results.json whose Ohio lacks "4": the one-week-ahead card
+    is stored "1" (canonical "0"), not missing."""
+    from app.ui.routes import home as ui_home
+    q = {str(lv): 100.0 + 50 * lv for lv in
+         (0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.975, 0.99)}
+    res = {"forecast_date": "2098-01-03",
+           "horizon_convention": "stored",
+           "observed": {"Ohio": [["2097-12-27", 120.0]]},
+           "models": {"analogue": {"Ohio": {"1": q, "2": q, "3": q}}}}
+    cards, _meta = ui_home._outlook_cards(res, None)
+    assert cards["39"].get("probs")
+    assert "1-wk median: 125" in cards["39"]["hover_html"]
+
+
+def test_a_console_run_records_its_convention(pipeline_env):
+    """The pipeline's results.json says which convention it holds."""
+    import json
+    from app.core import runs as R
+    _default_run(pipeline_env["names"])
+    res = json.loads(next((R.APP_STATE / "workroots").glob(
+        "*/results.json")).read_text())
+    assert res["horizon_convention"] == "stored"
+    assert "4" in res["models"]["analogue"]["Ohio"]

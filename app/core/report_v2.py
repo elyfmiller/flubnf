@@ -10,8 +10,10 @@ theme-aware HTML file per week (plotly.js embedded once, no network).
   * click a state -> its section (fan vs observed, categorical bar, recent
     data), each with a back-to-map button; a National section likewise
   * no-data states are explicit and claim only what was checked: in the
-    run's recorded scope = reporting gap, outside = 'not fitted in this
-    run', no scope record = 'no data'; fan gaps annotated, never smoothed
+    run's recorded scope with no reported data = reporting gap, in scope
+    with data = 'no forecast' (and why), outside = 'not fitted in this
+    run', no scope record = 'no data'; legend and hover say the same; fan
+    gaps annotated, never smoothed
   * nau.css token blocks embedded verbatim; a boot script resolves the
     theme at open (console localStorage same-origin, else OS preferences);
     print is always light
@@ -138,15 +140,26 @@ PLOTLY_CONFIG = {"scrollZoom": True, "doubleClick": "reset+autosize",
 # saved beside it. Fans are reduced to the 23-level grid (FAN_LEVELS), never
 # raw samples, keeping it ~100 KB.
 BUNDLE_NAME = "report_inputs.json"
-BUNDLE_VERSION = 5
+BUNDLE_VERSION = 7
 #: renderable bundle versions; each bump was ADDITIVE and older bundles
 #: render without it: v2 cards_model (else PF), v3 cards_by_model +
 #: national_map_cards (model toggle), v4 fitted_fips (gap vs not-fitted
-#: wording), v5 national_in_run (the national detail says US was not run)
-SUPPORTED_BUNDLE_VERSIONS = (1, 2, 3, 4, 5)
+#: wording), v5 national_in_run (the national detail says US was not run),
+#: v6 gap_fips + no_forecast (a reporting gap only where no data was
+#: reported; elsewhere "no forecast" with its reason) and a detail's
+#: "model" (a Groundhog fan where the state has no PF samples), v7 asof
+#: (before it, "reference_date" held the as-of; it now holds the hub's
+#: reference date, as-of + 7; read the as-of through bundle_asof)
+SUPPORTED_BUNDLE_VERSIONS = (1, 2, 3, 4, 5, 6, 7)
 FAN_LEVELS = (0.01, 0.025, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35,
               0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80,
               0.85, 0.90, 0.95, 0.975, 0.99)
+
+
+def bundle_asof(bundle: dict) -> str:
+    """A bundle's as-of date: v7 "asof"; older bundles stored the as-of
+    under "reference_date"."""
+    return str(bundle.get("asof") or bundle.get("reference_date") or "")
 
 
 def _fig_layout(fig, height=340, title="", legend=False):
@@ -185,6 +198,33 @@ def fan_quantiles(forecast_times, samples_by_h, levels=FAN_LEVELS) -> dict:
     return out
 
 
+def fan_quantiles_from_grid(forecast_times, grid_by_time,
+                            levels=FAN_LEVELS) -> dict:
+    """fan_quantiles for a member that arrives as quantiles (the
+    Groundhog): each time's {level: value} grid read on the bundle's
+    levels, linear between the stored ones (the FluSight grid IS
+    FAN_LEVELS, so normally a straight copy). Same return shape."""
+    out = {}
+    for t in forecast_times:
+        pairs = sorted((float(l), float(v))
+                       for l, v in grid_by_time[str(t)].items())
+        ls = [l for l, v in pairs if np.isfinite(v)]
+        vs = [v for l, v in pairs if np.isfinite(v)]
+        if not ls:
+            raise ValueError(f"no finite quantiles for {t}")
+        out[str(t)] = {str(lv): round(float(np.interp(lv, ls, vs)), 4)
+                       for lv in levels}
+    return out
+
+
+def _bands(color: str | None):
+    """QBANDS in another member's colour (None: the PF's)."""
+    if not color:
+        return QBANDS
+    return tuple((lo, hi, _rgba(color, a), name) for (lo, hi, _c, name), a
+                 in zip(QBANDS, (0.13, 0.20, 0.30)))
+
+
 def _q_at(qmap: dict, level: float) -> float:
     """One stored quantile, tolerating float-format drift in the keys."""
     key = str(level)
@@ -208,13 +248,14 @@ def fan_figure(observed_times, observed, forecast_times, samples_by_h,
 
 def fan_figure_from_quantiles(observed_times, observed, forecast_times,
                               quantiles_by_time, gaps=(), title="",
-                              settled=None):
+                              settled=None, band_color=None):
     """The same fan, drawn from a stored quantile grid (see fan_quantiles).
     This is the path render_bundle takes, so a rebuilt report draws its
-    fans with the current design code rather than replaying baked figures."""
+    fans with the current design code rather than replaying baked figures.
+    `band_color`: the member's colour for the bands (None: the PF's)."""
     import plotly.graph_objects as go
     fig = go.Figure()
-    for lo, hi, color, band_name in QBANDS:
+    for lo, hi, color, band_name in _bands(band_color):
         upper = [_q_at(quantiles_by_time[str(t)], hi)
                  for t in forecast_times]
         lower = [_q_at(quantiles_by_time[str(t)], lo)
@@ -489,15 +530,17 @@ def page_style() -> str:
 </style>"""
 
 
-def build_report(reference_date: str, state_cards: dict, state_details: dict,
+def build_report(asof: str, state_cards: dict, state_details: dict,
                  national: dict, out_path: Path,
                  national_map_html: str = "", elapsed_s=None,
                  settings_html: str = "", model_label: str = "",
                  cards_by_model: dict | None = None,
                  national_map_cards: dict | None = None,
                  cards_model: str = "",
-                 fitted_fips=None, national_in_run=None) -> Path:
-    """state_cards: abbr -> hover-card data (choropleth).
+                 fitted_fips=None, national_in_run=None,
+                 gap_fips=None, no_forecast=None) -> Path:
+    """asof: the run's as-of date (the page's "week of").
+    state_cards: abbr -> hover-card data (choropleth).
     state_details: abbr -> dict(name, fan=…, cat=…, acc=…, table_rows=[…]).
     national: dict(fan=…, acc=…, summary_html=str).
     national_map_html: usmap.national_svg output; adds the state/national view toggle.
@@ -510,7 +553,11 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
     (in scope = reporting gap, outside = not fitted, None = only 'no data').
     national_in_run: False when US was not among the run's locations (the
     national detail then says so instead of waiting on scores or a fan);
-    None = unknown (older bundles), the wording claims nothing."""
+    None = unknown (older bundles), the wording claims nothing.
+    gap_fips: in-scope fips with no reported data (the only reporting
+    gaps); None (older bundles): a card-less state in scope is the gap and
+    a bare card is "no forecast". no_forecast: model -> {fips: reason} for
+    in-scope states that have data but no forecast from that model."""
     # build-time SVG map: plotly geo fetches its geometry from a CDN
     from app.core import usmap
     from app.core.usmap import cat_fill, svg_map
@@ -523,12 +570,21 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
     # state was never run (the pipeline gives every state a bare card), so
     # it is 'not fitted', as its hover already says
     blank = {f for f, c in cards_by_fips.items() if not c.get("probs")}
-    gap_states = (no_card & scope) if scope is not None else set()
+    gaps = set(gap_fips) if gap_fips is not None else None
+    no_forecast = no_forecast or {}
+    if scope is None:
+        gap_states = set()
+    elif gaps is None:
+        gap_states = no_card & scope
+    else:
+        gap_states = (no_card | blank) & scope & gaps
     unfitted_states = ((no_card | blank) - scope) if scope is not None \
         else set()
-    # only states that actually have a detail section invite a click
+    # only states that actually have a detail section invite a click; the
+    # hovers read the same gap / no-forecast split as the legend below
     map_html = svg_map(cards_by_fips, clickable=set(state_details),
-                       scope_fips=scope)
+                       scope_fips=scope, gap_fips=gaps,
+                       reasons=no_forecast.get(cards_model or "pf"))
     # legend/caption: each no-data flavour only when some state wears it
     _sw = f'<i class="sw" style="background:{NO_DATA}"></i>'
     legend_bits, caption_bits = [], []
@@ -547,8 +603,13 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
             legend_bits.append(f"<span>{_sw}not fitted in this run</span>")
             caption_bits.append(
                 " Not-fitted states were outside this run's scope.")
-    # in-scope cards with no probabilities, filled like no data
-    unforecast = blank if scope is None else (blank & scope)
+    # in-scope states with data but no forecast, filled like no data
+    if scope is None:
+        unforecast = blank
+    elif gaps is None:
+        unforecast = blank & scope
+    else:
+        unforecast = ((no_card | blank) & scope) - gaps
     if unforecast:
         legend_bits.append(f"<span>{_sw}no forecast</span>")
         caption_bits.append(
@@ -572,7 +633,9 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
                    if isinstance(c, dict) and c.get("fips")}
             payload[m] = {
                 # scope rides along so swapped hovers match the rendered map
-                "states": usmap.state_swap_payload(byf, scope_fips=scope),
+                "states": usmap.state_swap_payload(
+                    byf, scope_fips=scope, gap_fips=gaps,
+                    reasons=no_forecast.get(m)),
                 "us": usmap.nat_swap_payload(
                     (national_map_cards or {}).get(m) or {})}
         model_toggle_html = usmap.model_toggle(
@@ -580,8 +643,7 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
             group_id="outlook-model", btn_class="", active_class="on",
             wrap_class="viewtoggle", short_labels=MODEL_SHORT)
 
-    # the click invitation only when some state has a section to open (a
-    # Groundhog-only run has none: its drill-down fans are PF's)
+    # the click invitation only when some state has a section to open
     click_hint = (", click it for detail"
                   if any(a != "US" for a in state_details) else "")
     sections = []
@@ -627,7 +689,10 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
                     'run.</p>')
         nat_body = ""
         from app.core.scoring import NO_SCORES_HTML
-        if NO_SCORES_HTML in nat_summary:
+        # only placeholders (the default one, or a model's named one)
+        if NO_SCORES_HTML in nat_summary or (
+                "no scored weeks yet" in nat_summary.lower()
+                and "<table" not in nat_summary):
             nat_summary = ""
     nat = f"""
 <section class="state" id="st-US" hidden>
@@ -668,13 +733,13 @@ def build_report(reference_date: str, state_cards: dict, state_details: dict,
 
     html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FluBNF weekly report · {reference_date}</title>
+<title>FluBNF weekly report · {asof}</title>
 {theme_boot_script()}
 {plotly_js}
 {page_style()}</head><body><main>
 {page_header()}
 <h1>US influenza forecast</h1>
-<p class="sub">week of {reference_date} ·
+<p class="sub">week of {asof} ·
  <button id="natbtn">national detail</button></p>
 {model_toggle_html}
 {view_toggle}
@@ -768,11 +833,15 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
         fan_in = d.get("fan") or {}
         try:
             settled = [tuple(p) for p in (fan_in.get("settled") or [])]
+            # v6 "model": a Groundhog fan wears the Groundhog's colour
+            model = d.get("model") or "pf"
             fan = fan_figure_from_quantiles(
                 fan_in.get("observed_times") or [],
                 fan_in.get("observed") or [],
                 fan_in["forecast_times"], fan_in["quantiles"],
-                title=fan_in.get("title", ""), settled=settled or None)
+                title=fan_in.get("title", ""), settled=settled or None,
+                band_color=(MEMBER_COLORS.get(model)
+                            if model != "pf" else None))
             details[key] = {
                 "name": d.get("name", key), "note": d.get("note", ""),
                 "fan": fan, "cat": cat_bar(d.get("cat_probs") or {}),
@@ -792,7 +861,7 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
     # v2 field; v1 bundles were PF
     cards_model = bundle.get("cards_model") or "pf"
     return build_report(
-        bundle["reference_date"], bundle.get("cards") or {}, details,
+        bundle_asof(bundle), bundle.get("cards") or {}, details,
         {"fan": us_d.get("fan"),
          "note": us_d.get("note", ""),
          "summary_html": national.get("summary_html", "")},
@@ -807,7 +876,10 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
         # v4 field (absent: None, the map claims only 'no data')
         fitted_fips=bundle.get("fitted_fips"),
         # v5 field (absent: None, the national detail claims nothing)
-        national_in_run=bundle.get("national_in_run"))
+        national_in_run=bundle.get("national_in_run"),
+        # v6 fields (absent: None, a card-less state in scope is the gap)
+        gap_fips=bundle.get("gap_fips"),
+        no_forecast=bundle.get("no_forecast"))
 
 
 def builder_sources_mtime() -> float:

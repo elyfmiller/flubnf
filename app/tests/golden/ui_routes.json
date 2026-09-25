@@ -33,7 +33,6 @@
   ["GET", "/output", "output_page", "APIRoute", "console"],
   ["GET", "/output/download", "output_download", "APIRoute", "console"],
   ["POST", "/output/reveal", "output_reveal", "APIRoute", "console"],
-  ["POST", "/output/submitted", "output_submitted", "APIRoute", "console"],
   ["GET", "/output/report", "output_report", "APIRoute", "console"],
   ["GET", "/output/report/download", "output_report_download", "APIRoute", "console"],
   ["GET", "/sandbox", "sandbox_page", "APIRoute", "console"],

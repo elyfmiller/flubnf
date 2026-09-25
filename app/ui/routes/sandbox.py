@@ -698,16 +698,14 @@ def api_sandbox_run(run_id: str):
     return _json_finite(res)
 
 
-def _sandbox_local_get(request: Request) -> bool:
-    """A download is served only to a localhost Host (and Origin, when
-    sent). The middleware checks Host on every request; this adds the
-    Origin check for GETs, since a model or a run is the user's
-    own files, not for a DNS-rebinding page to read."""
+def _sandbox_same_origin_get(request: Request) -> bool:
+    """A download GET whose Origin, when sent, names localhost. The
+    middleware (shared._same_host_guard) already refuses a foreign Host on
+    every request but checks Origin only on POST/PUT/DELETE; a model or a
+    run is the user's own files, so a download also refuses a foreign
+    Origin."""
     origin = request.headers.get("origin")
-    return (_authority_hostname(request.headers.get("host", ""))
-            in _LOCAL_HOSTNAMES
-            and (origin is None
-                 or _authority_hostname(origin) in _LOCAL_HOSTNAMES))
+    return origin is None or _authority_hostname(origin) in _LOCAL_HOSTNAMES
 
 
 def _sandbox_zip(data: bytes, filename: str):
@@ -720,7 +718,7 @@ def _sandbox_zip(data: bytes, filename: str):
 @router.get("/sandbox/models/{name}/download")
 def sandbox_model_download(request: Request, name: str):
     """The model's three files and sidecars as a zip."""
-    if not _sandbox_local_get(request):
+    if not _sandbox_same_origin_get(request):
         return PlainTextResponse("Refused: not a localhost request.\n",
                                  status_code=403)
     try:
@@ -732,7 +730,7 @@ def sandbox_model_download(request: Request, name: str):
 @router.get("/sandbox/runs/{run_id}/download")
 def sandbox_run_download(request: Request, run_id: str):
     """A run's inputs, engine outputs and summary.csv as a zip."""
-    if not _sandbox_local_get(request):
+    if not _sandbox_same_origin_get(request):
         return PlainTextResponse("Refused: not a localhost request.\n",
                                  status_code=403)
     try:

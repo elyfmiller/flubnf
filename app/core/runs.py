@@ -772,28 +772,9 @@ class Ledger:
             (status, json.dumps(outcome), now, now, run_id))
         self._db.commit()
 
-    def update_outcome(self, run_id: str, patch: dict, drop=()) -> bool:
-        """Merge `patch` into one closed row's outcome and remove the keys
-        in `drop` (status and times unchanged); False for an unknown row.
-        For marks made after the run (app/core/archive_record.py)."""
-        cur = self._db.execute(
-            "SELECT outcome_json FROM runs WHERE run_id=?", (str(run_id),))
-        r = cur.fetchone()
-        if r is None:
-            return False
-        try:
-            o = json.loads(r[0] or "{}")
-        except (ValueError, TypeError):
-            o = {}
-        if not isinstance(o, dict):
-            o = {}
-        for k in drop:
-            o.pop(k, None)
-        o.update(patch)
-        self._db.execute("UPDATE runs SET outcome_json=? WHERE run_id=?",
-                         (json.dumps(o), str(run_id)))
-        self._db.commit()
-        return True
+    #: newest first: created_utc (sub-second), then insertion order, so two
+    #: runs opened in the same instant still list in the order they opened
+    NEWEST_FIRST = "created_utc DESC, rowid DESC"
 
     #: how a dataset run's spec_json marks it (RunSpec.extra["dataset"])
     DATASET_MARK = '"dataset": {'
@@ -809,7 +790,7 @@ class Ledger:
         cur = self._db.execute(
             "SELECT run_id, created_utc, spec_json, status, outcome_json, "
             "finished_utc, elapsed_s, flubnf_sha, engine_versions "
-            f"FROM runs {where}ORDER BY created_utc DESC LIMIT ?", args)
+            f"FROM runs {where}ORDER BY {self.NEWEST_FIRST} LIMIT ?", args)
         return [dict(zip(("run_id", "created_utc", "spec", "status", "outcome",
                           "finished_utc", "elapsed_s", "flubnf_sha",
                           "engine_versions"), r))
@@ -823,7 +804,7 @@ class Ledger:
             "SELECT run_id, created_utc, spec_json, status, outcome_json, "
             "finished_utc, elapsed_s, flubnf_sha, engine_versions "
             "FROM runs WHERE instr(COALESCE(spec_json, ''), ?) > 0 "
-            "ORDER BY created_utc DESC LIMIT ?", (str(text), limit))
+            f"ORDER BY {self.NEWEST_FIRST} LIMIT ?", (str(text), limit))
         return [dict(zip(("run_id", "created_utc", "spec", "status", "outcome",
                           "finished_utc", "elapsed_s", "flubnf_sha",
                           "engine_versions"), r))
@@ -852,6 +833,29 @@ class Ledger:
             f"DELETE FROM runs WHERE run_id IN ({marks})", ids)
         self._db.commit()
         return cur.rowcount
+
+
+def run_order(ledger_path: Path, run_ids) -> dict:
+    """run_id -> (created_utc, rowid) from the ledger at `ledger_path`, read
+    only: the order runs started in, for ids that share a start second
+    (an id carries only the second). {} when the ledger is absent or
+    unreadable; ids it does not know are left out."""
+    ids = [str(r) for r in (run_ids or []) if r]
+    p = Path(ledger_path)
+    if not ids or not p.is_file():
+        return {}
+    try:
+        con = sqlite3.connect(p.resolve().as_uri() + "?mode=ro", uri=True)
+        try:
+            marks = ",".join("?" for _ in ids)
+            cur = con.execute(
+                "SELECT run_id, COALESCE(created_utc, 0), rowid FROM runs "
+                f"WHERE run_id IN ({marks})", ids)
+            return {r[0]: (float(r[1]), int(r[2])) for r in cur.fetchall()}
+        finally:
+            con.close()
+    except (sqlite3.Error, OSError, ValueError):
+        return {}
 
 
 def lease_workroot(run_id: str, base: Optional[Path] = None) -> Path:

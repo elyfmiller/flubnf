@@ -2,10 +2,11 @@
 submission.
 
 The hub identity is the DIRECTORY model-output/<team>-<model>/, registered
-in model-metadata/. Old runs left trees under retired names (submit.LEGACY_DIRS); they stay
-visible as archived files (a record of what ran), named by the model they
-are, never offered as a submission, enforced by the route as well as the
-template.
+in model-metadata/. Old runs left trees under retired names (submit.LEGACY_DIRS); the run
+page lists them as archived files (a record of what ran), named by the
+model they are; the Output page does not list them at all (round 8: they
+stay on disk and in Storage). Never offered as a submission, enforced by
+the route as well as the templates.
 """
 import json
 import sys
@@ -65,13 +66,14 @@ def _download_targets(html: str) -> list:
             re.findall(r"/output/download\?path=([^\"'&>\s]+)", html)]
 
 
-def test_output_page_offers_the_registered_file_and_withholds_the_other(run):
+def test_output_page_offers_the_registered_file_and_leaves_out_the_other(run):
     w, good, retired = run
     html = client.get("/output").text
-    assert good.name in html and retired.name in html      # both SEEN
+    assert good.name in html and retired.name not in html
+    assert RETIRED not in html
     assert _download_targets(html) == [str(good)]
-    assert "Archived files (1)" in html
-    assert "retired hub name" in html
+    assert "Archived files" not in html
+    assert retired.is_file()                               # kept on disk
 
 
 def test_run_page_shows_the_retired_file_without_a_link(run):
@@ -164,11 +166,11 @@ def _archived_block(html: str) -> tuple:
 ])
 def test_an_old_folder_is_named_by_its_model_and_archived(
         tmp_path, monkeypatch, old, applied, label):
-    """The Output page and the run page never show a retired hub name as a
-    model: the folder reads as the current model when the run is that
-    model (the Oracle step applied), else as what it was, inside the
-    closed Archived block; the file stays on disk, readable, and is not
-    offered for download."""
+    """The run page never shows a retired hub name as a model: the folder
+    reads as the current model when the run is that model (the Oracle step
+    applied), else as what it was, inside the closed Archived block; the
+    Output page does not list it. The file stays on disk, readable, and is
+    not offered for download."""
     from app.core import oracle
     monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
     w = tmp_path / "workroots" / RID
@@ -180,13 +182,15 @@ def test_an_old_folder_is_named_by_its_model_and_archived(
     f = _sub(w, old, "2098-01-10")
     ui_shared._invalidate_scans()
     try:
-        for url in ("/output", f"/runs/{RID}"):
-            html = client.get(url).text
-            rest, block = _archived_block(html)
-            assert label in block and "(archived)" in block
-            assert f.name in block                     # the record, readable
-            assert old not in rest                     # never as a model
-            assert _download_targets(html) == []
+        html = client.get(f"/runs/{RID}").text
+        rest, block = _archived_block(html)
+        assert label in block and "(archived)" in block
+        assert f.name in block                         # the record, readable
+        assert old not in rest                         # never as a model
+        assert _download_targets(html) == []
+        out = client.get("/output").text
+        assert old not in out and f.name not in out
+        assert _download_targets(out) == []
         assert f.is_file()
     finally:
         ui_shared._invalidate_scans()

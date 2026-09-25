@@ -55,9 +55,6 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
             return RedirectResponse(f"/forecast?source={first[0][0]}",
                                     status_code=303)
     if source:
-        refused = _dsu.local_only(request)
-        if refused:
-            return refused
         ds = _dsu.get_dataset(source)
         if ds is not None:
             return _dsu.forecast_page(request, ds)
@@ -73,10 +70,10 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
     except Exception as e:
         all_locs = []
         locations_error = (f"State list unavailable ({type(e).__name__}); "
-                           "runs will cover all 52 jurisdictions.")
-    # the default run is the full hub submission: the 52 jurisdictions AND
-    # US national, both ticked (US is a location of its own, never added
-    # behind the user's back)
+                           "runs will cover all 53 jurisdictions.")
+    # the default run is the full hub submission: "all" is the 53, the 52
+    # jurisdictions AND US national (US stays ticked with it, so a custom
+    # pick starts with US in; the user unticks it to leave it out)
     form = dict(_last_form) or {"forecast_date": _default_forecast_date(),
                                 "locations": ["all"],
                                 "engine": "all",
@@ -89,7 +86,8 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
     from app.core import us_national as _usn
     sel = [US_CHOICE] + [l for l in form["locations"]
                          if l != "all" and not _usn.is_us(l)]
-    us_checked = any(_usn.is_us(l) for l in form["locations"] or [])
+    us_checked = any(_usn.is_us(l) or str(l).lower() == "all"
+                     for l in form["locations"] or [])
     series = {}
     try:
         tdf = data_routes._vintage_frame(str(state.data_mod.newest_path()))
@@ -156,10 +154,15 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
     anchor_note = ((f"Anchor week: {_anchor}"
                     + (LIVE_ONLY_NOTE if _anchor == live_only else ".")
                     ) if _anchor else "No archived week on or before that date.")
+    # the newest week's reporting, under the anchor line while the anchor
+    # is that week (the Data tab's check, app/core/reported.py)
+    from app.ui.routes.data import _newest_report
+    newest_report = _newest_report()
     return templates.TemplateResponse(request, "forecast.html", {
         "active": "Forecast", "engines": ENGINES, "status": _status,
         "ledger": ledger_rows, "all_locs": all_locs,
         "vintage_dates": vintage_dates, "anchor_note": anchor_note,
+        "newest_report": newest_report, "anchor_week": _anchor or "",
         "live_only": live_only, "live_only_note": LIVE_ONLY_NOTE,
         "default_date": _default_forecast_date(),
         "locations_error": locations_error, "form": form,
@@ -306,11 +309,8 @@ def run_page(request: Request, run_id: str):
     dsx = {}
     if res.get("dataset"):
         # a run on a custom dataset: exports (never submissions) and fans;
-        # its data is the upload's, so localhost only (datasets_ui.local_only)
+        # (its data is the upload's; shared._same_host_guard keeps it local)
         from app.ui import datasets_ui as _dsu
-        refused = _dsu.local_only(request)
-        if refused:
-            return refused
         dsx = _dsu.run_page_extra(w, res)
     return templates.TemplateResponse(request, "run.html", {
         **dsx,
@@ -473,9 +473,6 @@ def api_series(request: Request, locs: str = "", source: str = ""):
     `source` = a custom dataset's id (its groups' newest data)."""
     if source:
         from app.ui import datasets_ui as _dsu
-        refused = _dsu.local_only(request)
-        if refused:
-            return refused
         ds = _dsu.get_dataset(source)
         return _dsu.api_series(ds, locs) if ds is not None else {}
     import pandas as pd
@@ -539,13 +536,16 @@ def api_progress():
 
 
 def _scope_label(locs) -> str:
-    """The progress label's scope: '3 state(s)', '52 state(s) + US' or
-    'US only' (pipeline._run_all words it the same way)."""
+    """The progress label's scope: '3 state(s)', '3 state(s) + US',
+    'all 53 jurisdictions' (the form's "all": the 52 and US) or
+    'US only'."""
     from app.core import us_national as _usn
     n = len(_usn.state_names(locs))
     us = len(locs) > n
     if not n:
         return "US only" if us else "0 state(s)"
+    if n == 52 and us:
+        return "all 53 jurisdictions"
     return f"{n} state(s)" + (" + US" if us else "")
 
 
@@ -765,8 +765,8 @@ def run_models(request: Request,
     locations = [x.strip() for l in locations
                  for x in str(l).split(",") if x.strip()]
     if not locations:
-        _flash("Select at least one location, all 52 jurisdictions or US "
-               "(national). Nothing was run.")
+        _flash("Select at least one location, or all 53 jurisdictions. "
+               "Nothing was run.")
         return _back(request, "/forecast")
     # busy check + claim under _engine_lock (see its comment)
     with _engine_lock:
@@ -794,11 +794,12 @@ def run_models(request: Request,
     queued = False
     try:
         from app.core import us_national as _usn
-        # "all" is the 52 jurisdictions; US national is its own choice (the
-        # form ticks both for a full hub submission) and is fitted directly
-        want_us = any(_usn.is_us(l) for l in locations)
+        # "all" is the hub's 53: the 52 jurisdictions and US national
+        # (fitted directly); a custom pick fits US only when it is ticked
         picked = _usn.state_names(locations)
-        if "all" in [l.lower() for l in picked]:
+        want_all = "all" in [l.lower() for l in picked]
+        want_us = want_all or any(_usn.is_us(l) for l in locations)
+        if want_all:
             _l = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
             locs_list = list(_l.location_name[(_l.location.str.len() == 2)
                                               & (_l.abbreviation != "US")])
@@ -806,7 +807,7 @@ def run_models(request: Request,
             locs_list = list(picked)
         if want_us:
             # a re-run keeps its recorded spelling; the form's box becomes "US"
-            spelled = [l for l in locations if _usn.is_us(l)][0]
+            spelled = ([l for l in locations if _usn.is_us(l)] or ["US"])[0]
             locs_list.append("US" if spelled == US_CHOICE else spelled)
         _status["run_label"] = f"{forecast_date} · {_scope_label(locs_list)} · queued"
         # progress denominator known now (shards grow toward it); clear the old

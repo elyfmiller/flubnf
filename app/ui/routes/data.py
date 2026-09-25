@@ -51,6 +51,18 @@ def _vintage_series(path: str, date: str, loc: str) -> dict:
     return state.data_mod.vintage_series(date, loc)
 
 
+def _newest_report():
+    """Did every jurisdiction report the newest week (app/core/reported.py),
+    judged with the "Newest weeks reading 0" setting the Forecast form last
+    held; None without hub data."""
+    from app.core import reported
+    from app.ui.state import _last_form
+    knobs = _last_form.get("knobs") or {}
+    rule = str(knobs.get("data.trailing_zero") or "") if isinstance(
+        knobs, dict) else ""
+    return reported.check(rule or reported.MS.TRAILING_ZERO)
+
+
 def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
     """Data page context: the latest vintage's freshness panel and the
     vintage browser's selection. Read-only; bad selections fall back to the
@@ -72,6 +84,8 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
         ctx["live_week"] = state.data_mod.live_newest_week()
     except Exception:
         ctx["live_week"] = None
+    # the newest week's reporting, from the file a real-time run reads
+    ctx["newest_report"] = _newest_report()
     # the "Your datasets" card (built here so /freshness keeps it)
     from app.ui import datasets_ui as _dsu
     ctx.update({"datasets": _dsu.dataset_rows(), "upload": None, "ds": None})
@@ -154,10 +168,8 @@ def data_page(request: Request, loc: str = "", vintage: str = "",
               source: str = ""):
     if source:
         # browse one custom dataset in the vintage browser's place
+        # (a foreign Host never gets here: shared._same_host_guard)
         from app.ui import datasets_ui as _dsu
-        refused = _dsu.local_only(request)
-        if refused:
-            return refused
         ds = _dsu.get_dataset(source)
         if ds is not None:
             ctx = _data_context()
@@ -214,8 +226,17 @@ def data_pull():
             + ("ok" if (_H / "model-output/FluSight-baseline").is_dir() else "missing")
             + ", official ensemble "
             + ("ok" if (_H / "model-output/FluSight-ensemble").is_dir() else "missing"))
-    _flash(f"{msg[:140]}"
-           + (f" · data through {after}" if after else "")
+    rep = _newest_report()
+    # a plain lead, never git's own transcript (fast-forward listings, file
+    # counts): whether the data moved is what the user needs
+    if after and before and after != before:
+        lead = f"New data: through {after} (was {before})"
+    elif after:
+        lead = f"Already up to date: data through {after}"
+    else:
+        lead = "Updated"
+    _flash(lead
+           + (f" · {rep.line()}" if rep else "")
            + (f" · latest vintage {vs[-1]}" if vs else "") + comp)
     return RedirectResponse("/data", status_code=303)
 

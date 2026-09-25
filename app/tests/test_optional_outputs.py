@@ -104,7 +104,7 @@ def pipeline_env(hubfiles, tmp_path, monkeypatch):
     monkeypatch.setattr(V, "_engine_versions_for_ledger", lambda e: {})
     monkeypatch.setattr(P, "_harvest_params", lambda w: {})
     monkeypatch.setattr(P, "_write_weekly_report", lambda *a, **k: None)
-    monkeypatch.setattr(P, "_archive_run", lambda w, d: "archived")
+    monkeypatch.setattr(P, "_archive_run", lambda w, d, **k: "archived")
     status_before = dict(ui_state._status)
     yield {"names": names, "raw": raw, "vintage": vf, "locations": loc}
     ui_state._status.clear()

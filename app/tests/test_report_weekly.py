@@ -197,6 +197,10 @@ def test_state_panel_and_national_card_use_the_hub_rate_change_rule():
     its map card, and the national card uses the hub's US population rather
     than a rounded constant."""
     src = (Path(__file__).resolve().parents[2] / "app/ui/pipeline.py").read_text()
-    assert 'us_pop if fips_l == "US" else int(n2p.get(loc, 1e6)), 0)' in src
+    assert 'pop_l = us_pop if fips_l == "US" else int(n2p.get(loc, 1e6))' \
+        in src
+    # both fan sources (PF samples, Groundhog grid) read horizon 0
+    assert 'src["0"], float), lo_l, pop_l, 0)' in src
+    assert "grid[0], lo_l, pop_l, 0)" in src
     assert "q1, lo_us, us_pop, 0)" in src
     assert "q1, lo_us, 340_000_000, 0)" not in src
