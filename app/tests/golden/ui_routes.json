@@ -85,6 +85,7 @@
  "middleware": ["_sandbox_engine_guard", "_same_host_guard"],
  "jinja_globals": {
   "dataset_upload_mb": "callable max_mb",
+  "engine_build_view": "callable engine_build_view",
   "engine_setup_hint": "callable _engine_setup_hint",
   "harmonic_fig": "callable _harmonic_fig",
   "model_name": "callable <lambda>",

@@ -159,6 +159,33 @@ def _check_pf_engine() -> "CheckResult":
     return CheckResult("PyBNF fork (fit_type=pf)", Status.OK, str(PYBNF))
 
 
+def _check_engine_build() -> "CheckResult":
+    """Which engine build the fork checkout is (branch and commit, from git
+    or an archive's VERSION stamp) and whether it is the production build.
+    Another build is a WARN, never a FAIL: research runs may use one."""
+    from app.core import engine_build as _eb
+    b = _eb.engine_build()
+    name = "PyBNF engine build"
+    where = b.get("path") or "the engine folder"
+    if not _eb.known(b):
+        if not Path(where).is_dir():
+            return CheckResult(name, Status.WARN, f"no engine at {where}",
+                               _ENGINE_ABSENT_HINT)
+        return CheckResult(name, Status.WARN,
+                           f"unknown: {where} has no .git and no VERSION "
+                           "stamp",
+                           "Re-install the engine from its archive "
+                           "(./setup_engine.sh), which carries the stamp.")
+    how = "git" if b["source"] == "git" else "the archive's VERSION file"
+    if _eb.is_production(b):
+        return CheckResult(name, Status.OK,
+                           f"{_eb.label(b)}, the production build "
+                           f"(read from {how})")
+    return CheckResult(name, Status.WARN,
+                       f"{_eb.warning(b).rstrip('.')} (read from {how}).",
+                       _eb.fix(b))
+
+
 #: what a usable hub clone must hold (a sparse checkout can lack either)
 HUB_DIRS = ("target-data", "auxiliary-data/target-data-archive")
 
@@ -372,6 +399,7 @@ def run_doctor(*, online: bool = False) -> DoctorReport:
     rep.add(_check_numpy2_pybnf())
     rep.add(_check_engine_venv())        # can the engine venv import at all
     rep.add(_check_pf_engine())          # and does the fork carry pf.py
+    rep.add(_check_engine_build())       # which build, and is it production
     rep.add(_check_hub())                # truth + vintages for scoring
     rep.add(_check_bng())
     rep.add(_check_disk_space(_disk_path()))

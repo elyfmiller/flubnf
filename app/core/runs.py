@@ -305,6 +305,12 @@ def version_pairs(build: str = "", versions: dict | None = None) -> list:
                        ("bionetgen", "BioNetGen")):
         if v.get(key):
             pairs.append((label, str(v[key])))
+    # the engine checkout's branch and commit (recorded since the build
+    # became known to the console; older rows have none)
+    from app.core import engine_build as _eb
+    lab = _eb.recorded_label(v.get("pybnf_build"))
+    if lab:
+        pairs.append(("PyBNF build", lab))
     return pairs
 
 

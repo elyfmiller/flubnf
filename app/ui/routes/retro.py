@@ -124,6 +124,11 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
                         # sealed records store the bare filter under pf
                         "pf_name": _pf_name(root),
                         "resume_fields": resume_fields,
+                        # why a season stopped on its own (an engine build
+                        # changed mid-replay); "" for a user's Stop
+                        "stop_reason": (str(_retro.read_meta(_live_root(s))
+                                            .get("stop_reason") or "")
+                                        if status == "stopped" else ""),
                         "settings": prog["settings"],
                         "archives": retro_seasons._archive_entries(s),
                         "status": status,
@@ -306,8 +311,10 @@ def _retro_bg(season: str, locations: list, width: int,
             _retro_status[season] = f"error: {job['error'][:150]}"
         else:
             _retro_status[season] = "done"
-    except (_RetroStopRequested, retro.SeasonStopped):
+    except (_RetroStopRequested, retro.SeasonStopped,
+            retro.EngineBuildChanged):
         # completed weeks stay; the results page scores whatever exists
+        # (an engine changed mid-replay records its reason in the run record)
         _retro_status[season] = "stopped"
     except Exception as e:
         _retro_status[season] = f"error: {str(e)[:150]}"
@@ -562,6 +569,18 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                        "Resuming would mix two location scopes in one "
                        "season. Archive or discard the existing results to "
                        "run it. Nothing was started.")
+                return RedirectResponse("/retro", status_code=303)
+            # nor on another engine build (the rule is retro.run_season's
+            # too): weeks fitted by two engines would be scored as one
+            bchange = retro.engine_build_change(
+                (retro.read_meta(live) or {}).get("settings"), engine)
+            if bchange:
+                _flash(f"{season} has {existing} completed week"
+                       f"{'' if existing == 1 else 's'} that {bchange}. "
+                       "Resuming would mix two engine builds in one "
+                       "season. Switch the engine back, or archive or "
+                       "discard the existing results to run it. Nothing "
+                       "was started.")
                 return RedirectResponse("/retro", status_code=303)
         if mode == "discard":
             if confirm != season:
