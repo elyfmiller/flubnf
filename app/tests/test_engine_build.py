@@ -28,12 +28,24 @@ OTHER = {"branch": "feature/bngsim", "commit": "4bbc4672", "dirty": True,
 
 
 @pytest.fixture(autouse=True)
-def _keep_the_cache():
-    """The cached build is module state: restored after each test."""
+def _isolated():
+    """The cached build, the flash/status and the retro claims are module
+    state: restored after each test."""
+    from app.ui import retro_seasons as RS
+    from app.ui import shared
+    from app.ui import state as S
     saved = dict(V.ENGINE_BUILD)
+    status = dict(S._status)
+    claims = (dict(RS._retro_status), dict(RS._retro_claim_at))
     yield
     V.ENGINE_BUILD.clear()
     V.ENGINE_BUILD.update(saved)
+    S._status.clear()
+    S._status.update(status)
+    for d, before in zip((RS._retro_status, RS._retro_claim_at), claims):
+        d.clear()
+        d.update(before)
+    shared._invalidate_scans()
 
 
 def _git(repo: Path, *args: str) -> str:
