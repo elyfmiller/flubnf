@@ -4,7 +4,8 @@ RUNNING_SHA is the commit this process runs (git rev-parse at import).
 VERSIONS starts as the last launch's snapshot (or pending markers) and is
 only ever updated in place, by _warm_versions on the startup warm thread;
 the templates, /api/versions, site_build and the ledger all hold that one
-dict. _engine_versions_for_ledger records the engine versions on a run.
+dict. ENGINE_BUILD (the engine's branch and commit) is cached the same
+way. _engine_versions_for_ledger records the engine versions on a run.
 """
 from __future__ import annotations
 
@@ -142,6 +143,45 @@ def _versions_initial() -> dict:
 VERSIONS = _versions_initial()
 
 
+# === Engine build (branch and commit of the PyBNF fork) ===
+def _build_initial() -> dict:
+    """ENGINE_BUILD at import: the persisted snapshot's, else {} (unknown
+    until the warm thread resolves it)."""
+    import json as _json
+    try:
+        snap = _json.loads(_VERSIONS_SNAPSHOT.read_text())
+        b = snap.get("engine_build") if isinstance(snap, dict) else None
+        return dict(b) if isinstance(b, dict) else {}
+    except Exception:
+        return {}
+
+
+#: app.core.engine_build.engine_build() of this machine, cached like
+#: VERSIONS (resolved on the warm thread, updated IN PLACE) and refreshed
+#: whenever a run records it, so a checkout switched while the console
+#: runs shows on the next page
+ENGINE_BUILD = _build_initial()
+
+
+def refresh_engine_build() -> dict:
+    """Resolve the engine build now (a few git calls), update ENGINE_BUILD
+    in place and return a copy. Never raises."""
+    from app.core import engine_build as _eb
+    b = _eb.engine_build()
+    ENGINE_BUILD.clear()
+    ENGINE_BUILD.update(b)
+    return dict(b)
+
+
+def engine_build_view() -> dict:
+    """What pages show: {label, warning, fix, production, known}."""
+    from app.core import engine_build as _eb
+    b = dict(ENGINE_BUILD)
+    return {"label": _eb.label(b), "warning": _eb.warning(b),
+            "fix": _eb.fix(b), "production": _eb.is_production(b),
+            "known": _eb.known(b)}
+
+
 def versions_resolved() -> bool:
     return VERSION_PENDING not in VERSIONS.values()
 
@@ -149,12 +189,18 @@ def versions_resolved() -> bool:
 def _engine_versions_for_ledger(engines: str) -> dict:
     """engine_versions for a new ledger row: {"engines": ...} (the key
     historical rows hold) plus each resolved engine component version.
-    Pending/'not installed' are probe states, never recorded as versions."""
+    Pending/'not installed' are probe states, never recorded as versions.
+    The engine build (pybnf_build: branch, commit, local edits) is read
+    fresh, so the row names the checkout the run actually used."""
+    from app.core import engine_build as _eb
     out = {"engines": engines}
     for key in ("pybnf", "bngsim", "bionetgen"):
         v = VERSIONS.get(key)
         if v and v not in (VERSION_PENDING, "not installed", "installed"):
             out[key] = str(v)
+    rec = _eb.record(refresh_engine_build())
+    if rec:
+        out["pybnf_build"] = rec
     return out
 
 
@@ -164,9 +210,11 @@ def _warm_versions() -> None:
     import json as _json
     try:
         VERSIONS.update(_component_versions())
+        refresh_engine_build()
         _VERSIONS_SNAPSHOT.parent.mkdir(parents=True, exist_ok=True)
         tmp = _VERSIONS_SNAPSHOT.with_suffix(".json.tmp")
-        tmp.write_text(_json.dumps(VERSIONS))
+        tmp.write_text(_json.dumps(dict(VERSIONS,
+                                        engine_build=dict(ENGINE_BUILD))))
         import os as _os
         _os.replace(tmp, _VERSIONS_SNAPSHOT)
     except Exception:
