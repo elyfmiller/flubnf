@@ -4,8 +4,8 @@ Server-rendered (locked decision: FastAPI + templates, no build chain).
 Run:  .venv/bin/uvicorn app.ui.server:app --port 8710
 
 This module only assembles the console, in this order: the app and its
-/static mount; the middleware (the CSRF guard, then the sandbox engine
-guard around it); the tab routers; the sandbox_storage Jinja global;
+/static mount; the middleware (the CSRF guard, the sandbox engine guard
+around it, and the slow-request log outermost); the tab routers; the sandbox_storage Jinja global;
 datasets_ui's router, last, and the dataset_upload_mb global; then the
 startup warm pass, started last. Its public names are app, templates,
 VERSIONS and RUNNING_SHA (app/core/site_build.py reads the last three
@@ -26,7 +26,7 @@ state._trace("import begin (fastapi + app.core next)")
 
 from fastapi import FastAPI                                     # noqa: E402
 
-from app.ui import shared, templating, versions                 # noqa: E402
+from app.ui import perflog, shared, templating, versions        # noqa: E402
 from app.ui.routes import data as data_routes                   # noqa: E402
 from app.ui.routes import forecast as forecast_routes           # noqa: E402
 from app.ui.routes import home as home_routes                   # noqa: E402
@@ -49,6 +49,8 @@ app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")
 # wraps it (Starlette puts the last-added middleware outermost)
 app.middleware("http")(shared._same_host_guard)
 app.middleware("http")(sandbox_routes._sandbox_engine_guard)
+# outermost: the slow-request log times everything, guards included
+app.middleware("http")(perflog.slow_request_log)
 # the tab routers. Order matters only where one path reaches two routes:
 # storage before forecast, so POST /runs/clear precedes GET /runs/{run_id}
 # (the first route a path matches names the Allow header of a wrong-method

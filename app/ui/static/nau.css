@@ -290,26 +290,38 @@ header.nav details.display[open] > summary{
 .displaypop .dlabel:first-child{margin-top:0}
 /* the three segmented groups: aria-pressed, persisted; the a11y buttons
    are independent toggles */
-.fontsize,.themepick,.a11ypick{display:inline-flex;
+.fontsize,.themepick,.a11ypick,.zoompick{display:inline-flex;
   border:1px solid color-mix(in srgb,var(--nav-ink) 35%,transparent);
   border-radius:7px;overflow:hidden}
-.fontsize button,.themepick button,.a11ypick button{margin:0;
+.fontsize button,.themepick button,.a11ypick button,.zoompick button{margin:0;
   padding:.35rem .6rem;border:0;border-radius:0;flex:1 1 auto;
   background:transparent;color:var(--nav-ink);font-size:.8rem;font-weight:600;
   cursor:pointer}
-.fontsize button+button,.themepick button+button,.a11ypick button+button{
+.fontsize button+button,.themepick button+button,.a11ypick button+button,
+.zoompick button+button{
   border-left:1px solid color-mix(in srgb,var(--nav-ink) 25%,transparent)}
-.fontsize button:hover,.themepick button:hover,.a11ypick button:hover{
+.fontsize button:hover,.themepick button:hover,.a11ypick button:hover,
+.zoompick button:hover{
   background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
 .fontsize button[aria-pressed="true"],.themepick button[aria-pressed="true"],
 .a11ypick button[aria-pressed="true"]{
   background:color-mix(in srgb,var(--accent) 25%,transparent)}
+.zoompick button[data-zoom="0"]{min-width:4.2em;font-variant-numeric:tabular-nums}
+/* at wide windows the fluid figures would outgrow the screen: the US map
+   (975x610) keeps to the window's height, centered; the cumulative chart
+   stops growing taller than 320px (its viewBox centers inside) */
+.usmap-wrap{max-width:min(100%,calc((100vh - 9rem) * 975 / 610));margin:0 auto}
+svg.cumchart{max-height:320px}
+/* .zoompick's display:inline-flex outranks the UA [hidden] rule */
+.zoomrow[hidden]{display:none}
 /* ---- layout: ONE SHELL for every page. Cards span the main column; card
    text is plain block flow at the card's width (no measure cap, no grid
    for prose: Chrome's ::details-content box breaks grid placement inside
    a details element). Figures and equation panels center; tables and wide
-   blocks scroll inside the card, never the page. */
-main{max-width:1500px;margin:0 auto;
+   blocks scroll inside the card, never the page. The shell fills the
+   window up to 2560px (a full-screen 5K display), so charts widen with
+   it instead of leaving white margins. */
+main{max-width:2560px;margin:0 auto;
      padding:clamp(.9rem,.5rem + .8vw,1.5rem) var(--page-x) 3rem}
 .cols{display:grid;grid-template-columns:minmax(260px,var(--side-col)) minmax(0,1fr);
       gap:var(--gap);align-items:start}

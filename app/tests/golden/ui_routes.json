@@ -22,6 +22,7 @@
   ["POST", "/storage/reclaim", "storage_reclaim", "APIRoute", "console"],
   ["POST", "/run/stop", "run_stop", "APIRoute", "console"],
   ["GET", "/api/busy", "api_busy", "APIRoute", "console"],
+  ["POST", "/api/perf", "api_perf", "APIRoute", "console"],
   ["POST", "/data/pull", "data_pull", "APIRoute", "console"],
   ["POST", "/freshness", "freshness", "APIRoute", "console"],
   ["GET", "/runs/{run_id}", "run_page", "APIRoute", "console"],
@@ -82,7 +83,7 @@
   ["POST", "/retro/dataset/{ds_id}/{stamp}/stop", "replay_stop", "APIRoute", "datasets_ui"],
   ["GET", "/retro/dataset/{ds_id}/{stamp}", "replay_page", "APIRoute", "datasets_ui"]
  ],
- "middleware": ["_sandbox_engine_guard", "_same_host_guard"],
+ "middleware": ["slow_request_log", "_sandbox_engine_guard", "_same_host_guard"],
  "jinja_globals": {
   "dataset_upload_mb": "callable max_mb",
   "engine_build_view": "callable engine_build_view",

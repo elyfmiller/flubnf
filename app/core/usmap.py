@@ -196,7 +196,7 @@ _JS = """
 def _shell(dom_id: str, inner: str, ink: str, paper: str, interactive=True) -> str:
     """Wrap SVG body in the fluid container + tooltip div + interaction JS."""
     return f"""
-<div id="{dom_id}-wrap" style="position:relative">
+<div id="{dom_id}-wrap" class="usmap-wrap" style="position:relative">
 <svg id="{dom_id}" viewBox="{VIEWBOX}" xmlns="http://www.w3.org/2000/svg"
      style="width:100%;height:auto;display:block;touch-action:none">
 <style>

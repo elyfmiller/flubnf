@@ -68,6 +68,14 @@
       <button type="button" data-th="dim" title="Dim theme: softened dark">Dim</button>
       <button type="button" data-th="dark" title="Dark theme">Dark</button>
     </div>
+    {# whole-page zoom: the native window only (a browser has its own);
+       shown once pywebview's bridge is up #}
+    <span class="dlabel zoomrow" aria-hidden="true" hidden>Zoom</span>
+    <div class="zoompick zoomrow" role="group" aria-label="Page zoom" hidden>
+      <button type="button" data-zoom="-1" title="Zoom out (Cmd -)">&minus;</button>
+      <button type="button" data-zoom="0" title="Actual size (Cmd 0)">100%</button>
+      <button type="button" data-zoom="1" title="Zoom in (Cmd +)">+</button>
+    </div>
     {# two independent a11y modifiers, composing with every theme #}
     <span class="dlabel" aria-hidden="true">Accessibility</span>
     <div class="a11ypick" role="group" aria-label="Accessibility modes">
@@ -226,6 +234,44 @@
     document.documentElement.style.fontSize=m[f];
     localStorage.setItem('fontsize',f);mark(f);
     dispatchEvent(new Event('fontsizechange'));};});})();
+ // page zoom in the native window: the Display menu's Zoom row, Cmd+= /
+ // Cmd+- / Cmd+0 (Ctrl on other systems), and trackpad pinch (native).
+ // The level is kept per machine and restored on every page.
+ (function(){
+  function api(){return window.pywebview&&window.pywebview.api&&window.pywebview.api.zoom
+    ? window.pywebview.api : null;}
+  var label=document.querySelector('.zoompick button[data-zoom="0"]');
+  function show(z){
+    if(typeof z!=='number')return;
+    if(label)label.textContent=Math.round(z*100)+'%';
+    try{localStorage.setItem('zoom',String(z));}catch(e){}}
+  function step(n){var a=api();if(a)a.zoom(n).then(show);}
+  function ready(){
+    var a=api();if(!a)return;
+    document.querySelectorAll('.zoomrow').forEach(function(el){el.hidden=false;});
+    var z=1;try{z=parseFloat(localStorage.getItem('zoom'))||1;}catch(e){}
+    if(z!==1)a.set_zoom(z).then(show);else show(1);}
+  document.querySelectorAll('.zoompick button').forEach(function(b){
+    b.onclick=function(){step(parseInt(b.dataset.zoom,10));};});
+  addEventListener('keydown',function(e){
+    if(!(e.metaKey||e.ctrlKey)||e.altKey||!api())return;
+    var n=(e.key==='='||e.key==='+')?1:e.key==='-'?-1:e.key==='0'?0:null;
+    if(n===null)return;
+    e.preventDefault();step(n);});
+  if(api())ready();else addEventListener('pywebviewready',ready);})();
+ // slow-page report: a page that took 800 ms or more from navigation to
+ // load end is logged (app/state/logs/slow_requests.log) with the server's
+ // share (Server-Timing) and the time spent running scripts
+ addEventListener('load',function(){setTimeout(function(){
+  try{
+   var n=performance.getEntriesByType('navigation')[0];
+   if(!n||n.loadEventEnd<800)return;
+   var app=(n.serverTiming||[]).filter(function(t){return t.name==='app';})[0];
+   fetch('/api/perf',{method:'POST',keepalive:true,
+     headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({path:location.pathname,total:n.loadEventEnd,
+       server:app?app.duration:0,scripts:Math.max(0,n.domContentLoadedEventEnd-n.responseEnd)})});
+  }catch(e){}},0);});
  // run-interference guards: a data-guard control checks /api/busy on
  // click; only a genuine conflict raises the modal. Kinds and conflicts:
  //   console-run: starting a console run while a retrospective or a
