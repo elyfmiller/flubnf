@@ -437,24 +437,6 @@ def output_page(request: Request):
         "has_report": bool(rid and (APP_STATE / "workroots" / rid / "report.html").is_file())})
 
 
-def _dataset_workroot(p: Path, app_state: Path) -> bool:
-    """Whether `p` lies in the workroot of a run on a custom dataset (its
-    results.json names one): such files carry the uploaded data."""
-    import json as _json
-    try:
-        rel = p.relative_to((app_state / "workroots").resolve())
-    except ValueError:
-        return False
-    if len(rel.parts) < 2:
-        return False
-    try:
-        res = _json.loads((app_state / "workroots" / rel.parts[0]
-                           / "results.json").read_text())
-    except Exception:
-        return False
-    return isinstance(res, dict) and bool(res.get("dataset"))
-
-
 @router.get("/output/download")
 def output_download(request: Request, path: str):
     """Download a submission CSV. The file must be inside app state, and a
@@ -472,13 +454,8 @@ def output_download(request: Request, path: str):
     if p.is_relative_to(Path(_datasets.ROOT).resolve()):
         # uploaded data is not served here (it may be private)
         return HTMLResponse("<p>file not found in app state</p>", status_code=404)
-    if _dataset_workroot(p, APP_STATE):
-        # a dataset run's exports carry the upload: localhost only, as the
-        # dataset's own pages (datasets_ui.local_only)
-        from app.ui import datasets_ui as _dsu
-        refused = _dsu.local_only(request)
-        if refused:
-            return refused
+    # a dataset run's exports carry the upload: the global middleware
+    # (shared._same_host_guard) already serves them to localhost only
     if p.parent.parent.name == "submission" \
             and p.parent.name not in _registered_model_ids() \
             and p.parent.name not in _modified_model_ids():

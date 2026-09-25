@@ -85,14 +85,8 @@ def _D():
     return datasets
 
 
-def local_only(request: Request):
-    """Always None. Uploaded data is never served to a foreign Host: the
-    global middleware (shared._same_host_guard) refuses one on every
-    request, GET included, before any route runs. Kept only for a caller
-    not yet updated (routes/output.py); new code needs no call."""
-    return None
-
-
+    # a dataset run's exports carry the upload: the global middleware
+    # (shared._same_host_guard) already serves them to localhost only
 def get_dataset(ds_id):
     """The stored dataset, or None for a malformed or unknown id."""
     D = _D()
