@@ -339,8 +339,7 @@ def test_api_retro_progress_shape_and_eta(tmp_path, monkeypatch):
     assert p["elapsed_s"] == pytest.approx(240.0)
     assert p["mean_s"] == pytest.approx(120.0)
     assert p["weeks_measured"] == 2
-    # the ETA is recency-weighted (half-life three weeks) and, with no season
-    # profile, priced by the recorded full-grid shape (later weeks cost
+    # two weeks in, the ETA leans on the recorded ramp (later weeks cost
     # more), so it sits above level x remaining; the API must agree with the
     # pure estimator (fake season: positions index over total_weeks)
     w = 0.5 ** (1 / 3)
@@ -353,8 +352,9 @@ def test_api_retro_progress_shape_and_eta(tmp_path, monkeypatch):
     # a RANGE: two measured weeks give the widest band (0.5x to 1.5x)
     assert p["eta_lo_s"] == pytest.approx(0.5 * p["eta_s"])
     assert p["eta_hi_s"] == pytest.approx(1.5 * p["eta_s"])
-    assert p["eta_basis"] == ("estimate from 2 completed weeks, shaped by "
-                              "the recorded full-grid week profile")
+    assert p["eta_basis"] == ("estimate from 2 completed weeks and the "
+                              "recorded season ramp, until this run's own "
+                              "climb takes over at 8 weeks")
     assert p["slowest_week"] == W2 and p["slowest_s"] == pytest.approx(140.0)
     # an unrecognized season name never reaches the filesystem
     assert client.get("/api/retro/progress?season=../etc").json() == {}
