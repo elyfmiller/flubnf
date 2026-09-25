@@ -117,6 +117,7 @@ had, then scores against settled truth.</p>
      {% elif s.status == 'stopping' %}<span class="warn">· stopping after the fits in flight</span>
      {% elif s.status == 'paused' %}<span class="warn">· paused</span>
      {% elif s.status == 'interrupted' %}<span class="bad">· interrupted; the application closed mid-replay</span>
+     {% elif s.status == 'stopped' and s.stop_reason %}<span class="warn">· {{ s.stop_reason }}</span>
      {% elif s.status == 'stopped' %}<span>· stopped; Run resumes it</span>
      {% elif s.status == 'done' %}<span class="ok">· complete</span>
      {% elif s.status and s.status.startswith('error') %}<span class="bad">· {{ s.status }}</span>

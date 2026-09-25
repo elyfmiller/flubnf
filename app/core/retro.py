@@ -312,6 +312,12 @@ class EngineBuildMismatch(ResumeMismatch):
     completed weeks were fitted by."""
 
 
+class EngineBuildChanged(EngineBuildMismatch):
+    """The engine build changed while a season was running (a branch
+    switched or a file edited mid-replay): the season stops before the next
+    week rather than fit it with another engine."""
+
+
 def engine_build_change(prior_settings, engine: str = "pf",
                         build: dict | None = None) -> str | None:
     """None when a resume may proceed on this machine's engine build: an
@@ -629,6 +635,7 @@ def _start_record(root: Path, season: str, total_weeks: int,
         now = _now()
         m["season"] = season
         m["status"] = "running"
+        m.pop("stop_reason", None)
         m["total_weeks"] = int(total_weeks)
         if settings:
             m["settings"] = dict(settings)
@@ -670,6 +677,15 @@ def _record_week(root: Path, asof: str, seconds: float) -> None:
         m["week_seconds"] = ws
         m["weeks_completed"] = _weeks_on_disk(root)
         m["heartbeat_utc"] = now
+        write_meta(root, m)
+
+
+def _record_stop_reason(root: Path, why: str) -> None:
+    """Why a season stopped on its own (stop_reason in the run record);
+    a later start or resume clears it."""
+    with _META_LOCK:
+        m = read_meta(root)
+        m["stop_reason"] = str(why)
         write_meta(root, m)
 
 
@@ -1207,6 +1223,17 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
                 if progress:
                     progress(asof)
                 continue          # never redone, never timed
+            # the engine is re-read before every filter week: a branch
+            # switched or a file edited mid-season stops the season here,
+            # so no week is fitted by another build than the record names
+            if _eb.record(build):
+                moved = _eb.change(_eb.record(build), _eb.engine_build())
+                if moved:
+                    why = (f"stopped before {asof}: the engine changed during "
+                           f"the replay (the completed weeks {moved}). "
+                           "Switch the engine back and resume.")
+                    _record_stop_reason(root, why)
+                    raise EngineBuildChanged(f"{season}: {why}")
             # time by active-seconds delta: a pause can hold inside the week
             e0 = elapsed_now(read_meta(root))
             try:
@@ -1233,7 +1260,7 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
                 (root / "failures.log").open("a").write(f"{asof}: {e}\n")
             if progress:
                 progress(asof)
-    except SeasonStopped:
+    except (SeasonStopped, EngineBuildChanged):
         _finish_record(root, "stopped")
         raise
     except BaseException:

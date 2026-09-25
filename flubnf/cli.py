@@ -1255,6 +1255,9 @@ def retro_cmd(
                                 width=width, week_extra=week_extra,
                                 progress=lambda a: print(f"  {a} done",
                                                          flush=True), **kx)
+    except retro.EngineBuildChanged as e:
+        typer.echo(f"stopped: {e}", err=True)
+        raise typer.Exit(2)
     except retro.ResumeMismatch as e:
         typer.echo(f"refused: {e}", err=True)
         raise typer.Exit(2)

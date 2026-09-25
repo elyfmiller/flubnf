@@ -313,6 +313,38 @@ def test_a_season_records_each_weeks_build_and_refuses_another(
     assert retro.read_meta(root)["week_engine_builds"] == {W1: rec, W2: rec}
 
 
+def test_an_engine_changed_mid_season_stops_it_before_the_next_week(
+        repo, tmp_path, monkeypatch):
+    """The build is re-read before every filter week: an edit (or a branch
+    switch) during an overnight replay stops the season before a week is
+    fitted by another engine, says why, and resumes once switched back."""
+    _fake_pf_season(monkeypatch)
+    monkeypatch.setattr(fs, "PYBNF", repo)
+    root = tmp_path / SEASON
+
+    def edit_after_first(asof):
+        if asof == W1:
+            (repo / "pybnf" / "parse.py").write_text("x = 2\n")
+    with pytest.raises(retro.EngineBuildChanged,
+                       match="engine changed during the replay"):
+        retro.run_season(root, SEASON, ["Ohio"], width=1,
+                         progress=edit_after_first)
+    meta = retro.read_meta(root)
+    assert meta["status"] == "stopped"
+    assert f"stopped before {W2}" in meta["stop_reason"]
+    assert retro.week_done(root, W1) and not retro.week_done(root, W2)
+    assert list(meta["week_engine_builds"]) == [W1]
+    # a resume on the edited engine is refused (the completed week's build)
+    with pytest.raises(retro.EngineBuildMismatch):
+        retro.run_season(root, SEASON, ["Ohio"], width=1)
+    # switched back: resumes, fits the second week, and clears the reason
+    _git(repo, "checkout", "--", "pybnf/parse.py")
+    retro.run_season(root, SEASON, ["Ohio"], width=1)
+    meta = retro.read_meta(root)
+    assert retro.week_done(root, W2) and "stop_reason" not in meta
+    assert meta["status"] == "done"
+
+
 def test_a_season_with_no_recorded_build_resumes_as_before(
         repo, tmp_path, monkeypatch):
     _fake_pf_season(monkeypatch)

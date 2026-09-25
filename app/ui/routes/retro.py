@@ -124,6 +124,11 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
                         # sealed records store the bare filter under pf
                         "pf_name": _pf_name(root),
                         "resume_fields": resume_fields,
+                        # why a season stopped on its own (an engine build
+                        # changed mid-replay); "" for a user's Stop
+                        "stop_reason": (str(_retro.read_meta(_live_root(s))
+                                            .get("stop_reason") or "")
+                                        if status == "stopped" else ""),
                         "settings": prog["settings"],
                         "archives": retro_seasons._archive_entries(s),
                         "status": status,
@@ -306,8 +311,10 @@ def _retro_bg(season: str, locations: list, width: int,
             _retro_status[season] = f"error: {job['error'][:150]}"
         else:
             _retro_status[season] = "done"
-    except (_RetroStopRequested, retro.SeasonStopped):
+    except (_RetroStopRequested, retro.SeasonStopped,
+            retro.EngineBuildChanged):
         # completed weeks stay; the results page scores whatever exists
+        # (an engine changed mid-replay records its reason in the run record)
         _retro_status[season] = "stopped"
     except Exception as e:
         _retro_status[season] = f"error: {str(e)[:150]}"
