@@ -230,74 +230,43 @@ def _season_status(season: str) -> str:
 
 
 # === Retrospective: remaining-time estimate for a live replay ===
-# Week cost climbs ~3x through a season, so a global mean freezes. Level =
-# recency-weighted measured weeks (half-life 3); shape = a completed
-# same-scope run's per-week profile; time spent in the in-flight week is
+# Each week refits from the season start, so a week costs more the more data
+# it covers: a near-straight line through the season (the recorded full-grid
+# seasons climb 200 s -> 607 s over 32 weeks, a few percent off the line).
+# The estimate fits that line to this run's own weeks and prices every week
+# still to run on it. Until enough weeks are in, it leans on the recorded
+# ramp scaled to this run. Time already spent in the week in flight is
 # credited. Reported as a range with its basis.
 
-def _scope_key(meta: dict):
-    """Hashable location-scope identity of a run record (None without
-    settings): panel6/all plus '+us' when the national row was fitted
-    (heavier weeks); a custom selection by its exact location list."""
-    s = (meta or {}).get("settings")
-    if not isinstance(s, dict) or not s:
-        return None
-    scope = str(s.get("scope") or "")
-    if scope in ("panel6", "all"):
-        from app.core import us_national as usn
-        locs = [str(l) for l in (s.get("locations") or [])]
-        nat = (any(usn.is_us(l) for l in locs) if locs
-               else bool(s.get("national")))
-        return scope + ("+us" if nat else "")
-    locs = tuple(sorted(str(l) for l in (s.get("locations") or [])))
-    return locs or None
+#: measured weeks by which this run's own line has replaced the prior
+_LINE_FULL_WEEKS = 8
 
 
-#: fewest measured weeks a completed run needs before its per-week seconds
-#: can serve as a season shape for another run's estimate
-_PROFILE_MIN_WEEKS = 8
+def _ramp(p: float) -> float:
+    """The prior's relative week cost at season position p (0..1): a linear
+    0.55x -> 1.40x ramp, the smallest worst-season error among linear ramps
+    replayed against the recorded full-grid seasons."""
+    return 0.55 + 0.85 * min(1.0, max(0.0, p))
 
 
-@ttlcache.ttl_cache()
-def _profile_scan(retro_root: Path, seal_root: Path, season: str,
-                  scope_key) -> tuple | None:
-    """The same-scope completed run (most measured weeks) whose per-week
-    seconds shape the estimate: other seasons' live and sealed trees and
-    every archived run, including this season's. Cached by both roots.
-
-    Returns (season_label, ((position 0..1, relative_cost), ...)) or None
-    (the estimate then uses its default shape)."""
-    if not scope_key:
-        return None
-    from app.core import retro
-    best = None
-    for s in retro.available_seasons():
-        roots = []
-        if s != season:
-            roots.append(Path(retro_root) / s)
-            roots.append(Path(seal_root) / s)
-        roots.extend(retro.list_archive_dirs(retro_root, s))
-        for r in roots:
-            m = retro.read_meta(r)
-            if not m or _scope_key(m) != scope_key:
-                continue
-            ws = {k: float(v)
-                  for k, v in (m.get("week_seconds") or {}).items()
-                  if isinstance(v, (int, float)) and float(v) > 0}
-            if len(ws) < _PROFILE_MIN_WEEKS:
-                continue          # too few weeks to carry a season's shape
-            if best is None or len(ws) > best[2]:
-                vals = [ws[k] for k in sorted(ws)]
-                mean = sum(vals) / len(vals)
-                n = len(vals)
-                pts = tuple((i / (n - 1) if n > 1 else 0.0, v / mean)
-                            for i, v in enumerate(vals))
-                best = (s, pts, n)
-    return (best[0], best[1]) if best else None
+def _line_fit(measured) -> tuple:
+    """Least-squares seconds = a + b * position over the measured weeks, the
+    slope held at zero or above (more data never makes a week cheaper).
+    Returns (a, b, residual_sd, mean_position, sxx)."""
+    n = len(measured)
+    xs = [p for p, _ in measured]
+    ys = [s for _, s in measured]
+    mx, my = sum(xs) / n, sum(ys) / n
+    sxx = sum((x - mx) ** 2 for x in xs)
+    b = (max(0.0, sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / sxx)
+         if sxx > 0 else 0.0)
+    a = my - b * mx
+    sd = ((sum((y - a - b * x) ** 2 for x, y in zip(xs, ys)) / (n - 2)) ** 0.5
+          if n > 2 else 0.0)
+    return a, b, sd, mx, sxx
 
 
-def _eta_estimate(measured, remaining, profile=None, spent_s=0.0,
-                  overhead_s=0.0):
+def _eta_estimate(measured, remaining, spent_s=0.0, overhead_s=0.0):
     """The remaining-time estimate itself; pure, so tests can replay
     recorded seasons week by week.
 
@@ -306,59 +275,50 @@ def _eta_estimate(measured, remaining, profile=None, spent_s=0.0,
                 in its season, 0..1.
     remaining   [position] for the weeks still to run, the week in flight
                 first.
-    profile     ((position, relative_cost), ...) from a completed
-                same-scope run, or None for a flat profile.
     spent_s     seconds already inside the week in flight.
     overhead_s  per-week seconds this run spends between weeks, measured
                 from its own record.
 
-    Returns (lo_s, mid_s, hi_s) or None when nothing is measured. The band
-    is the larger of the weighted spread and a schedule calibrated on the
-    recorded seasons (test_retro_eta.py), widened with no profile or few
-    weeks, and treated as correlated across weeks (never shrunk by count)."""
+    Returns (lo_s, mid_s, hi_s) or None when nothing is measured. Each
+    remaining week is priced on the line through the measured weeks,
+    blended with the prior (the recorded ramp at this run's recency-weighted
+    level) until _LINE_FULL_WEEKS are measured. The line's band is its
+    prediction error for the sum of the remaining weeks (two standard
+    errors, never under 8%); the prior's band is calibrated on the recorded
+    seasons (test_retro_eta.py) and never shrunk by week count."""
     if not measured or not remaining:
         return None
-    if not profile:
-        # No same-scope profile: assume a linear 0.55x -> 1.40x ramp (each
-        # week refits from season start, so cost grows). Chosen as the
-        # smallest worst-season error among linear ramps replayed against the
-        # recorded full-grid seasons (data: app/tests/test_retro_eta.py); a
-        # flat default biased the estimate ~40 min low.
-        profile = ((0.0, 0.55), (1.0, 1.40))
-        default_shape = True
-    else:
-        default_shape = False
-
-    def cost(p):
-        if not profile:
-            return 1.0
-        if p <= profile[0][0]:
-            return profile[0][1]
-        for (p0, c0), (p1, c1) in zip(profile, profile[1:]):
-            if p <= p1:
-                return c0 + ((c1 - c0) * (p - p0) / (p1 - p0)
-                             if p1 > p0 else 0.0)
-        return profile[-1][1]
-
-    n = len(measured)
-    half_life = 3.0               # weeks: the recent past predicts the next
-    wts = [0.5 ** ((n - 1 - j) / half_life) for j in range(n)]
-    ratios = [s / max(cost(p), 1e-9) for p, s in measured]
+    n, m = len(measured), len(remaining)
+    # the prior: the recorded ramp, scaled to the recent weeks (half-life 3)
+    wts = [0.5 ** ((n - 1 - j) / 3.0) for j in range(n)]
+    ratios = [s / _ramp(p) for p, s in measured]
     wsum = sum(wts)
     level = sum(w * r for w, r in zip(wts, ratios)) / wsum
     if level <= 0:
         return None
-    var = sum(w * (r - level) ** 2 for w, r in zip(wts, ratios)) / wsum
-    rel = (var ** 0.5) / level
-    preds = [level * cost(q) + max(0.0, float(overhead_s))
-             for q in remaining]
-    left = max(0.0, sum(preds) - min(max(0.0, float(spent_s)), preds[0]))
-    frac_rem = len(remaining) / (n + len(remaining))
-    u = max(rel, 0.10 + 0.20 * frac_rem + (0.15 if default_shape else 0.0))
+    rel = (sum(w * (r - level) ** 2 for w, r in zip(wts, ratios))
+           / wsum) ** 0.5 / level
+    prior = [level * _ramp(q) for q in remaining]
+    u_prior = max(rel, 0.25 + 0.20 * m / (n + m))
+    # this run's own line, weighted in as its weeks accumulate
+    w = min(1.0, (n - 1) / (_LINE_FULL_WEEKS - 1))
+    preds, u = prior, u_prior
+    if w > 0:
+        a, b, sd, mx, sxx = _line_fit(measured)
+        line = [a + b * q for q in remaining]
+        tot = sum(line)
+        tilt = sum(q - mx for q in remaining)
+        se = sd * (m + m * m / n + (tilt * tilt / sxx if sxx > 0 else 0.0)) ** 0.5
+        u_line = max(0.08, 2.0 * se / tot) if tot > 0 else u_prior
+        preds = [w * l + (1.0 - w) * p for l, p in zip(line, prior)]
+        u = w * u_line + (1.0 - w) * u_prior
     if n < 3:
         u = max(u, 0.50)          # one or two weeks cannot claim precision
     elif n < 6:
         u = max(u, 0.25)
+    u = min(u, 0.95)
+    preds = [max(0.0, p) + max(0.0, float(overhead_s)) for p in preds]
+    left = max(0.0, sum(preds) - min(max(0.0, float(spent_s)), preds[0]))
     return (left * (1.0 - u), left, left * (1.0 + u))
 
 
@@ -382,8 +342,7 @@ def _inflight_spent(root: Path, remaining: list, now: float) -> float:
 
 def _season_eta(meta: dict, season: str, root: Path, t: dict) -> tuple | None:
     """_eta_estimate for a live season: positions from the vintage calendar
-    (index fallback), same-scope profile, in-flight seconds, measured
-    between-week overhead. Returns (lo_s, mid_s, hi_s, basis) or None."""
+    (index fallback), in-flight seconds, measured between-week overhead. Returns (lo_s, mid_s, hi_s, basis) or None."""
     from app.core import retro
     ws = {k: float(v) for k, v in ((meta or {}).get("week_seconds") or {}).items()
           if isinstance(v, (int, float)) and float(v) > 0}
@@ -414,18 +373,17 @@ def _season_eta(meta: dict, season: str, root: Path, t: dict) -> tuple | None:
     elapsed = float(t.get("elapsed_s") or 0.0)
     overhead = min(120.0, max(0.0, elapsed - sum(ws.values()) - spent)
                    / max(1, len(ws)))
-    prof = _profile_scan(RETRO_ROOT, RETRO_SEAL, season, _scope_key(meta))
-    est = _eta_estimate(measured, remaining,
-                        profile=(prof[1] if prof else None),
-                        spent_s=spent, overhead_s=overhead)
+    est = _eta_estimate(measured, remaining, spent_s=spent, overhead_s=overhead)
     if est is None:
         return None
-    basis = "estimate from %d completed week%s" % (
-        len(ws), "" if len(ws) == 1 else "s")
-    if prof:
-        basis += ", weighted by the %s week profile" % prof[0]
+    n = len(ws)
+    if n >= _LINE_FULL_WEEKS:
+        basis = ("estimate from this run's %d completed weeks, priced on "
+                 "their week-by-week climb" % n)
     else:
-        basis += ", shaped by the recorded full-grid week profile"
+        basis = ("estimate from %d completed week%s and the recorded season "
+                 "ramp, until this run's own climb takes over at %d weeks"
+                 % (n, "" if n == 1 else "s", _LINE_FULL_WEEKS))
     return est[0], est[1], est[2], basis
 
 
