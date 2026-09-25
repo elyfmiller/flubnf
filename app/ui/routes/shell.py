@@ -2,12 +2,13 @@
 
 The versions poller (GET /api/versions, home and Methods poll it while a
 version is pending), the favicon, and the busy guard (GET /api/busy: what a
-click would interrupt now, for the guard modal). An APIRouter server.py
+click would interrupt now, for the guard modal), and the slow-page report
+(POST /api/perf, into app/ui/perflog.py's log). An APIRouter server.py
 includes.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request, Response
 
 from app.ui import retro_seasons, state
 from app.ui.retro_seasons import _RETRO_ACTIVE, _season_status
@@ -56,3 +57,25 @@ def api_busy():
         "phase": _status.get("phase", "") or "",
         "sandbox": _sandbox_live() or None,
     }
+
+
+# === Slow pages: the window's own timing of a slow page (base.html) ===
+@router.post("/api/perf", status_code=204)
+async def api_perf(request: Request):
+    """A page base.html found slow to show: its path and milliseconds
+    (navigation start to load end), with the server's share and the time
+    spent running scripts. Logged by app/ui/perflog.py; malformed reports
+    are dropped."""
+    from app.ui import perflog
+    try:
+        d = await request.json()
+        path = str(d.get("path") or "")[:200]
+        total = float(d["total"])
+        server = float(d.get("server") or 0.0)
+        scripts = float(d.get("scripts") or 0.0)
+    except Exception:
+        return Response(status_code=204)
+    if path.startswith("/") and perflog.SLOW_PAGE_MS <= total < 600000:
+        perflog.write("page", total, f"{path}  server {server:.0f} ms "
+                                     f"scripts {scripts:.0f} ms")
+    return Response(status_code=204)

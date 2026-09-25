@@ -35,10 +35,10 @@ EQ_RULE = '.eqpanel{margin-left:0'
 
 def test_the_reading_column_special_case_is_gone():
     """No main.reading rules survive: the reading pages ride the base
-    main shell (1500px cap, fluid padding, centered), the same shell as
+    main shell (2560px cap, fluid padding, centered), the same shell as
     every operational page."""
     assert "main.reading" not in NAU
-    assert "main{max-width:1500px;margin:0 auto;" in JOINED
+    assert "main{max-width:2560px;margin:0 auto;" in JOINED
     for page in READING_PAGES:
         html = client.get(page).text
         assert '<main id="main" class="">' in html, page

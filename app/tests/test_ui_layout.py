@@ -376,9 +376,10 @@ def test_the_favicon_is_served():
 # -------------------------------------------------------- 3. the middleware
 
 def test_the_middleware_order():
-    """The sandbox engine guard wraps the same-host (CSRF) guard."""
+    """The slow-request log times everything; inside it the sandbox engine
+    guard wraps the same-host (CSRF) guard."""
     assert middleware_names(srv.app) == golden()["middleware"] == [
-        "_sandbox_engine_guard", "_same_host_guard"]
+        "slow_request_log", "_sandbox_engine_guard", "_same_host_guard"]
 
 
 # ------------------------------------------------ 4. the Jinja environment
@@ -781,7 +782,7 @@ def test_the_server_only_assembles():
             if isinstance(v, types.ModuleType)
             and v.__name__.startswith("app.")}
     assert held == ({"app.ui.state", "app.ui.versions", "app.ui.templating",
-                     "app.ui.shared", "app.ui.datasets_ui"}
+                     "app.ui.shared", "app.ui.datasets_ui", "app.ui.perflog"}
                     | {f"app.ui.routes.{m}" for m in TAB_ORDER})
     order = []
     for rc in route_contexts(srv.app):

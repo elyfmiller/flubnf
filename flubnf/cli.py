@@ -831,6 +831,104 @@ def _activate_once(appkit) -> tuple:
     return bool(app.isActive()), app.keyWindow() is not None
 
 
+#: the name the Dock, the menu bar and Activity Monitor show for the window
+APP_NAME = "FluBNF"
+
+
+def _name_mac_process(name: str = APP_NAME) -> bool:
+    """Name this process for macOS before any window exists: a plain
+    interpreter otherwise shows as "Python" (or "Python 3.12") in the Dock
+    and the menu bar. Sets the main bundle's CFBundleName (the Dock and menu
+    bar read it when the app registers) and the process name. Returns True
+    when both took; never raises."""
+    import sys
+    if sys.platform != "darwin":
+        return False
+    try:
+        from Foundation import NSBundle, NSProcessInfo
+        ok = False
+        bundle = NSBundle.mainBundle()
+        for info in (bundle.localizedInfoDictionary(), bundle.infoDictionary()):
+            if info is not None:
+                info["CFBundleName"] = name
+                ok = True
+        NSProcessInfo.processInfo().setProcessName_(name)
+        return ok
+    except Exception:
+        return False
+
+
+#: page zoom steps, as browsers offer them (1.0 = 100%)
+ZOOM_STEPS = (0.5, 0.67, 0.75, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0,
+              2.5, 3.0)
+
+
+def _zoom_step(current: float, step: int) -> float:
+    """The next zoom level from `current`: step +1 / -1 moves one notch
+    (clamped to ZOOM_STEPS), 0 resets to 100%."""
+    if step == 0:
+        return 1.0
+    if step > 0:
+        return next((z for z in ZOOM_STEPS if z > current + 1e-6),
+                    ZOOM_STEPS[-1])
+    return next((z for z in reversed(ZOOM_STEPS) if z < current - 1e-6),
+                ZOOM_STEPS[0])
+
+
+class _WindowApi:
+    """Exposed to the page as window.pywebview.api: whole-page zoom for the
+    native macOS window (WKWebView has no zoom menu of its own). The page
+    calls zoom(+1 | -1 | 0) from Cmd+= / Cmd+- / Cmd+0 and the Display
+    menu, and set_zoom(level) to restore the stored level on load."""
+
+    def __init__(self):
+        self._window = None
+        self._level = 1.0
+
+    def _apply(self, level: float) -> float:
+        import sys
+        level = min(ZOOM_STEPS[-1], max(ZOOM_STEPS[0], float(level)))
+        if sys.platform != "darwin" or self._window is None:
+            return self._level
+        try:
+            from PyObjCTools import AppHelper
+            from webview.platforms.cocoa import BrowserView
+            view = BrowserView.instances[self._window.uid].webview
+
+            def _set():
+                try:
+                    view.setPageZoom_(level)            # macOS 11+
+                except Exception:
+                    try:
+                        view.setMagnification_(level)
+                    except Exception:
+                        pass
+            AppHelper.callAfter(_set)
+            self._level = level
+        except Exception:
+            pass
+        return self._level
+
+    def zoom(self, step: int = 0) -> float:
+        return self._apply(_zoom_step(self._level, int(step)))
+
+    def set_zoom(self, level: float = 1.0) -> float:
+        try:
+            return self._apply(float(level))
+        except (TypeError, ValueError):
+            return self._level
+
+
+def _allow_pinch_zoom(window) -> None:
+    """Trackpad pinch magnifies the native macOS window (WKWebView keeps it
+    off unless asked). Call on the Cocoa main thread."""
+    try:
+        from webview.platforms.cocoa import BrowserView
+        BrowserView.instances[window.uid].webview.setAllowsMagnification_(True)
+    except Exception:
+        pass
+
+
 def _bring_window_forward(appkit, call_after, delays=ACTIVATE_DELAYS,
                           watch=ACTIVATE_WATCH, sleep=None,
                           clock=None) -> bool:
@@ -1050,6 +1148,7 @@ def app_window(port: int = 8710):
               "native window back.")
         return app_serve(port=port)
     webview.settings['ALLOW_DOWNLOADS'] = True
+    _name_mac_process()
     _trace("window: webview imported, settings applied")
     # single instance: take over from a predecessor, then bind AND HOLD a
     # free port (otherwise the window can end up bound to nothing)
@@ -1070,9 +1169,13 @@ def app_window(port: int = 8710):
     # Open the window now: the held socket queues WKWebView's first request
     # until the server finishes importing, so it is never refused.
     _trace("window: creating window (server import in flight)")
-    window = webview.create_window("FluBNF", url,
+    api = _WindowApi()
+    # zoomable: pinch and Ctrl+wheel zoom (pywebview blocks both otherwise)
+    window = webview.create_window(APP_NAME, url,
                                    width=1120, height=800,
-                                   min_size=(760, 520))
+                                   min_size=(760, 520),
+                                   zoomable=True, js_api=api)
+    api._window = window
     def _activate():
         # Runs on a secondary thread: Cocoa calls go through callAfter to
         # the main loop. A non-bundled process may start deactivated, hence
@@ -1104,6 +1207,7 @@ def app_window(port: int = 8710):
                 except Exception:
                     pass
             AppHelper.callAfter(_icon)
+            AppHelper.callAfter(_allow_pinch_zoom, window)
             _bring_window_forward(AppKit, AppHelper.callAfter)
         except Exception:
             pass
