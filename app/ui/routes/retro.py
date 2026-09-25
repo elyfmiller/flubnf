@@ -563,6 +563,18 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                        "season. Archive or discard the existing results to "
                        "run it. Nothing was started.")
                 return RedirectResponse("/retro", status_code=303)
+            # nor on another engine build (the rule is retro.run_season's
+            # too): weeks fitted by two engines would be scored as one
+            bchange = retro.engine_build_change(
+                (retro.read_meta(live) or {}).get("settings"), engine)
+            if bchange:
+                _flash(f"{season} has {existing} completed week"
+                       f"{'' if existing == 1 else 's'} that {bchange}. "
+                       "Resuming would mix two engine builds in one "
+                       "season. Switch the engine back, or archive or "
+                       "discard the existing results to run it. Nothing "
+                       "was started.")
+                return RedirectResponse("/retro", status_code=303)
         if mode == "discard":
             if confirm != season:
                 _flash(f"Discarding {season} was not confirmed, so nothing "
