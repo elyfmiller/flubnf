@@ -478,7 +478,7 @@ def console(hubfiles, tmp_path, monkeypatch):
     monkeypatch.setattr(ui_versions, "_engine_versions_for_ledger", lambda e: {})
     monkeypatch.setattr(ui_pipeline, "_harvest_params", lambda w: {})
     monkeypatch.setattr(ui_pipeline, "_write_weekly_report", lambda *a, **k: None)
-    monkeypatch.setattr(ui_pipeline, "_archive_run", lambda w, d: "archived")
+    monkeypatch.setattr(ui_pipeline, "_archive_run", lambda w, d, **k: "archived")
     status_before = dict(ui_state._status)
     yield srv, raw
     ui_state._status.clear()

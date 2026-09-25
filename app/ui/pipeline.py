@@ -822,10 +822,15 @@ def _run_all(spec: RunSpec) -> None:
                          and {hub_model_id("pf"), hub_model_id("analogue")}
                          <= set(subs))
             from app.core.archive_record import full_scope as _full_scope
+            _full = _full_scope(spec.locations)
             try:
-                outcome["archived"] = _archive_run(
-                    workroot, spec.forecast_date, complete=_complete,
-                    full=_full_scope(spec.locations))
+                # the common case keeps the plain call; the rule's flags are
+                # passed only when they differ from the defaults
+                outcome["archived"] = (
+                    _archive_run(workroot, spec.forecast_date)
+                    if _complete and _full
+                    else _archive_run(workroot, spec.forecast_date,
+                                      complete=_complete, full=_full))
             except Exception as e:
                 outcome["archive_error"] = str(e)[:200]
         # the pipeline completed: fit failures make it "partial" (the chips
