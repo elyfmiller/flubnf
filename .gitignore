@@ -31,3 +31,9 @@ docs/figs/
 
 # the sandbox: a user's own models and runs, never the production path
 sandbox/
+
+# FluBNF.app's Python host: compiled per machine by scripts/macos/build_app_host.sh
+# against that machine's Python, so never committed (and never in the way of
+# FluBNF.command's fast-forward)
+FluBNF.app/Contents/MacOS/FluBNF
+FluBNF.app/Contents/MacOS/FluBNF.new

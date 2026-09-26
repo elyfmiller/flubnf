@@ -43,6 +43,18 @@ say "analysis venv (.venv) + package"
 "$HERE/.venv/bin/pip" install -q -e "$HERE[app,dev]" && ok "flubnf installed editable"
 "$HERE/.venv/bin/pip" install -q bionetgen && ok "bionetgen (BNG2.pl) installed"
 
+if [ "$(uname -s)" = Darwin ]; then
+  say "FluBNF.app (FluBNF in the Dock)"
+  # The host that runs the console window as FluBNF.app, not as "Python",
+  # built for this venv (scripts/macos/flubnf_host.c). Without it FluBNF.app
+  # still opens the console, through Terminal.
+  if /bin/bash "$HERE/scripts/macos/build_app_host.sh" --force; then
+    ok "to keep FluBNF in the Dock: open FluBNF.app, right-click its Dock icon, Options > Keep in Dock"
+  else
+    warn "FluBNF.app will open the console through Terminal (reason above)"
+  fi
+fi
+
 say "FluSight hub data"
 # The directories the app reads; both the repair and the fresh clone use this list.
 HUB_DIRS="auxiliary-data target-data model-output/FluSight-baseline model-output/FluSight-ensemble"

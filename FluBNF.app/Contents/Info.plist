@@ -2,9 +2,29 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>CFBundleName</key><string>FluBNF</string>
+  <key>CFBundleDisplayName</key><string>FluBNF</string>
   <key>CFBundleIdentifier</key><string>edu.nau.flubnf</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <!-- A script that always exists in a clone. It execs the compiled host
+       Contents/MacOS/FluBNF (built per machine by setup.sh, gitignored) or,
+       while there is none, opens FluBNF.command in Terminal. Not the host
+       itself: a fresh clone has no host yet and must still open. -->
   <key>CFBundleExecutable</key><string>flubnf-launch</string>
   <key>CFBundleIconFile</key><string>FluBNF</string>
   <key>CFBundleShortVersionString</key><string>1.1.0</string>
   <key>CFBundleVersion</key><string>1.1.0</string>
+  <!-- python.org 3.12 supports macOS 10.13 and later; asking for more would
+       stop the app opening where the Terminal launch works. -->
+  <key>LSMinimumSystemVersion</key><string>10.13</string>
+  <!-- Retina: the window is drawn at full resolution. -->
+  <key>NSHighResolutionCapable</key><true/>
+  <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
+  <key>NSRequiresAquaSystemAppearance</key><false/>
+  <!-- The window loads http://localhost:<port>. pywebview also sets this at
+       runtime; declaring it keeps the window working without that. -->
+  <key>NSAppTransportSecurity</key>
+  <dict><key>NSAllowsLocalNetworking</key><true/></dict>
+  <!-- No LSUIElement or LSBackgroundOnly: either would hide the Dock icon. -->
 </dict></plist>

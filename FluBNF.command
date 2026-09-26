@@ -2,6 +2,19 @@
 # Double-click me. Self-updates, sets up on first run, launches the console.
 cd "$(dirname "$0")"
 
+# FluBNF.app runs this file headless first (FLUBNF_PREPARE_ONLY=1, output in
+# app/state/logs/launch.log). The update and checks below run as usual;
+# anything slow or worth watching (local edits in the way of the update,
+# first-run setup, a dependency refresh, an engine install) exits 75
+# instead, and the app reopens this file in Terminal to do it in view. Exit
+# 0 means ready, and the app starts the console itself.
+PREPARE="${FLUBNF_PREPARE_ONLY:-}"
+needs_terminal() {
+  [ -n "$PREPARE" ] || return 0
+  echo "· $1: handing over to Terminal"
+  exit 75
+}
+
 # Stay current (lab-share mode). Fast-forward only, so a real edit is never
 # silently overwritten. Say which cause blocks an update: stray tracked edits
 # (usually accidents) are stashed (git stash list) and fast-forwarded over;
@@ -35,6 +48,11 @@ if [ -d .git ] && [ "${FLUBNF_UPDATE:-}" != "off" ]; then
     elif [ -n "$DIRTY" ]; then
       echo "· local edits are blocking the update:"
       printf '%s\n' "$DIRTY" | sed 's/^/    /'
+      # FluBNF.app's headless run: set them aside in view, not in a log
+      if [ -n "${FLUBNF_PREPARE_ONLY:-}" ]; then
+        echo "· local edits: handing over to Terminal"
+        exit 75
+      fi
       if git stash push -q -m "FluBNF update $(date '+%Y-%m-%d %H:%M')" 2>/dev/null \
          && git merge --ff-only -q "$UP" 2>/dev/null; then
         echo "· updated anyway; those edits were set aside, not lost. In this"
@@ -61,10 +79,12 @@ fi
 # keep errors visible and check the launcher exists before using it.
 STAMP=".venv/.pyproject.stamp"
 if [ ! -x .venv/bin/flubnf ]; then
+  needs_terminal "first run"
   echo "First run, setting up (a few minutes)..."
   ./setup.sh || { echo; echo "Setup hit a problem (see above). Press enter to close."; read -r; exit 1; }
   cp pyproject.toml "$STAMP" 2>/dev/null
 elif ! cmp -s pyproject.toml "$STAMP" 2>/dev/null; then
+  needs_terminal "project dependencies changed"
   echo "· project dependencies changed, refreshing (about a minute)"
   if .venv/bin/pip install -q -e ".[app,dev]"; then
     cp pyproject.toml "$STAMP" 2>/dev/null
@@ -118,6 +138,7 @@ if [ ! -x "${FLUBNF_PY_ENGINE:-/nonexistent}" ]; then
     echo "  Or double-click SetupEngine.command to try now and see what it finds."
     echo "  Analogue forecasts work in the meantime."
   else
+    needs_terminal "PF engine install"
     echo "· PF engine not installed yet, setting it up now (one time, a few minutes)"
     [ -n "$BUNDLE" ] && echo "  using the offline bundle $BUNDLE (no GitHub account needed)"
     if FLUBNF_PYBNF="$CHECKOUT" ./setup_engine.sh; then
@@ -135,9 +156,43 @@ if [ ! -x "${FLUBNF_PY_ENGINE:-/nonexistent}" ]; then
   fi
 fi
 
+if [ -n "$PREPARE" ]; then
+  echo "· ready"
+  exit 0
+fi
+
+# FluBNF.app's host (scripts/macos/flubnf_host.c) follows the venv: built or
+# rebuilt here, in view, after setup or a dependency refresh; quiet when it
+# is current. With a host the console runs under it, so this window too is
+# FluBNF in the Dock, and Keep in Dock pins FluBNF.app. Without one (no
+# Command Line Tools, a failed build) the console runs as before.
+HOST=""
+if [ "$(uname -s)" = Darwin ] && [ -f scripts/macos/build_app_host.sh ]; then
+  /bin/bash scripts/macos/build_app_host.sh && HOST="$PWD/FluBNF.app/Contents/MacOS/FluBNF"
+fi
+
 echo "FluBNF console starting. A window (or browser tab) will open. Ctrl-C here to stop."
-.venv/bin/flubnf app
-STATUS=$?
+if [ -n "$HOST" ]; then
+  T0=$SECONDS
+  "$HOST" "$PWD/.venv/bin/flubnf" app
+  STATUS=$?
+  # A start that fails under the host gets one run without it. 130, 137
+  # and 143 are Ctrl-C and a takeover by a newer launch, not failures.
+  case "$STATUS" in
+    0|130|137|143) ;;
+    *)
+      if [ $((SECONDS - T0)) -lt 30 ]; then
+        echo "· the console stopped at startup under FluBNF.app's host (code $STATUS);"
+        echo "  starting it without the host"
+        .venv/bin/flubnf app
+        STATUS=$?
+      fi
+      ;;
+  esac
+else
+  .venv/bin/flubnf app
+  STATUS=$?
+fi
 
 # Clean exit (incl. Ctrl-C): close only this tty's Terminal window, after the
 # shell exits (no "process still running" prompt). On error, keep it open.

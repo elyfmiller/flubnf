@@ -1,5 +1,133 @@
-#!/usr/bin/env bash
-# Resolve the repo root (the .app lives inside the clone) and hand off to the
-# terminal launcher so setup output is visible on first run.
-REPO="$(cd "$(dirname "$0")/../../.." && pwd)"
-open -a Terminal "$REPO/FluBNF.command"
+#!/bin/bash
+# FluBNF.app's executable. LaunchServices runs this when FluBNF opens from the
+# Dock, Finder or `open FluBNF.app`.
+#
+# Normal launch: run FluBNF.command's update and checks headless, then exec
+# the in-bundle host (Contents/MacOS/FluBNF, built from
+# scripts/macos/flubnf_host.c) as `flubnf window`. exec keeps this process,
+# the one LaunchServices started, and the host's executable lives in this
+# bundle, so the window shows as FluBNF in the Dock: one icon, and Keep in
+# Dock pins this app.
+#
+# Handover: the launch moves to Terminal (FluBNF.command, where every step
+# is shown) whenever a person should watch:
+#   - first run, or no venv;
+#   - local edits in the way of the update, a dependency refresh or an
+#     engine install;
+#   - no host for this Python (a fresh clone before setup, no Command Line
+#     Tools, a failed build);
+#   - pre-launch checks that fail, or take longer than `limit` below;
+#   - a console that stops at startup (the host reopens Terminal itself);
+#   - FLUBNF_LAUNCH=terminal.
+# A copy that cannot start at all (moved out of its clone, or an old clone
+# that reinstall.sh set aside) says so in an alert.
+# Output of a quiet launch goes to app/state/logs/launch.log.
+#
+# The body is one function, called on the last line. Bash has read the whole
+# function before any of it runs, so a self-update that replaces this file
+# cannot splice two versions.
+main() {
+  local open=/usr/bin/open      # tests replace this line with a recorder
+  local osascript=/usr/bin/osascript    # and this one
+  local limit=120               # seconds the headless checks may take
+  local here repo host log rc home prep started
+
+  # When not even Terminal can take over: say why in an alert rather than
+  # fail in silence.
+  alert() {
+    echo "flubnf-launch: $1"
+    "$osascript" -e 'on run argv' -e 'activate' \
+      -e 'display alert "FluBNF cannot start" message (item 1 of argv) as critical' \
+      -e 'end run' "$1"
+    exit 1
+  }
+
+  # `open` itself decides whether FluBNF.command is there: Terminal has its
+  # own permission for Documents, which this app may have been refused.
+  terminal() {
+    echo "flubnf-launch: $1; opening FluBNF.command in Terminal"
+    "$open" -a Terminal "$repo/FluBNF.command" && exit 0
+    alert "FluBNF.app could not open FluBNF.command in $repo. It works only inside its FluBNF folder, next to FluBNF.command: open FluBNF.app from that folder, and keep that one in the Dock."
+  }
+
+  here="$(cd "$(dirname "$0")" 2>/dev/null && pwd)" || here="$(dirname "$0")"
+  repo="${here%/*/*/*}"         # <repo>/<Name>.app/Contents/MacOS
+  host="$here/FluBNF"
+  cd "$repo" 2>/dev/null || terminal "cannot open the folder $repo"
+  # Only a clone gets a log: a copy moved out of it (to the Desktop, to
+  # Applications) must not leave app/state/logs in its new folder. Not
+  # finding FluBNF.command here is not proof it is absent (this app may be
+  # refused Documents), so `open` still decides, in terminal.
+  [ -f FluBNF.command ] || [ -d .git ] \
+    || terminal "no FluBNF.command beside FluBNF.app in $repo"
+
+  log="$repo/app/state/logs/launch.log"
+  mkdir -p "$(dirname "$log")" 2>/dev/null
+  if [ -f "$log" ] && [ "$(wc -c < "$log" | tr -d ' ')" -gt 1000000 ]; then
+    mv -f "$log" "$log.1"
+  fi
+  # no writable log (a read-only copy?): keep the visible launch
+  exec >>"$log" 2>&1 || terminal "cannot write $log"
+  echo "=== $(date '+%Y-%m-%d %H:%M:%S') launch from FluBNF.app (pid $$)"
+
+  # reinstall.sh clears the old copy's exec bits so it can never start
+  # again (its venv's scripts point into the new copy); the Dock icon
+  # follows the renamed folder, so honour that here as well
+  [ ! -f FluBNF.command ] || [ -x FluBNF.command ] \
+    || alert "This copy of FluBNF, in $repo, was set aside by a reinstall (its FluBNF.command is not executable) and no longer starts. Open FluBNF.app from the new FluBNF folder, and keep that one in the Dock."
+  [ "${FLUBNF_LAUNCH:-}" != terminal ] || terminal "FLUBNF_LAUNCH=terminal"
+  [ -x .venv/bin/flubnf ] || terminal "first run (no .venv/bin/flubnf yet)"
+  [ -f scripts/macos/build_app_host.sh ] || terminal "this copy has no host builder"
+
+  # The Terminal launch's update, dependency and engine checks, headless
+  # (FLUBNF_PREPARE_ONLY). Status 75 means one of them has work a person
+  # should watch. Git gets no prompt, so nothing can wait on an invisible
+  # question, and a stalled transfer gives up. A connect that hangs is cut
+  # off at `limit`, since git has no connect timeout of its own.
+  # The checks run in their own process group (set -m), so the cut-off
+  # stops the hung git with them: a killed bash leaves its running child
+  # behind, and that git would hold the repo's locks while Terminal's
+  # FluBNF.command runs its own fetch and merge.
+  set -m
+  GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/usr/bin/false SSH_ASKPASS=/usr/bin/false \
+  GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=8" \
+  GIT_HTTP_LOW_SPEED_LIMIT=1000 GIT_HTTP_LOW_SPEED_TIME=15 \
+  FLUBNF_PREPARE_ONLY=1 /bin/bash ./FluBNF.command </dev/null &
+  prep=$!
+  set +m
+  started=$SECONDS
+  while kill -0 "$prep" 2>/dev/null; do
+    if [ $((SECONDS - started)) -ge "$limit" ]; then
+      kill -TERM -- -"$prep" 2>/dev/null || kill "$prep" 2>/dev/null
+      wait "$prep" 2>/dev/null
+      terminal "the pre-launch checks took longer than ${limit}s"
+    fi
+    sleep 0.2 2>/dev/null || sleep 1
+  done
+  wait "$prep"
+  rc=$?
+  case "$rc" in
+    0) ;;
+    75) terminal "setup work to show" ;;
+    *) terminal "the pre-launch checks stopped (status $rc)" ;;
+  esac
+
+  # (Re)builds only when the C source or the venv changed, in a few seconds.
+  # A build known to fail keeps the Terminal launch without retrying.
+  /bin/bash scripts/macos/build_app_host.sh || terminal "no FluBNF host for this Python"
+
+  # What a Terminal launch gives the console. The engine and hub paths come
+  # from .flubnf.env. A LaunchServices launch has PATH=/usr/bin:/bin:
+  # /usr/sbin:/sbin, and may have no LANG.
+  [ -f .flubnf.env ] && . ./.flubnf.env
+  home="$(sed -n 's/^home *= *//p' .venv/pyvenv.cfg 2>/dev/null | head -1)"
+  PATH="$repo/.venv/bin${home:+:$home}:/opt/homebrew/bin:/usr/local/bin:$PATH"
+  export PATH LANG="${LANG:-en_US.UTF-8}" FLUBNF_HOST_FALLBACK=1
+  echo "flubnf-launch: starting the console in $host"
+  # The command line keeps ".venv/bin/flubnf window", so the pidfile
+  # takeover (_cmdline_has_marker) and reinstall.sh's pgrep still see it.
+  shopt -s execfail       # a failed exec returns here instead of exiting
+  exec "$host" "$repo/.venv/bin/flubnf" window
+  terminal "the FluBNF host would not start"
+}
+main "$@"
