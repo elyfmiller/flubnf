@@ -133,17 +133,24 @@ def quantile_rows(samples: dict, location_fips: str, asof: str,
         target_end = ref + pd.Timedelta(weeks=h)
         values = _hub_values(np.quantile(s, QUANTILES))
         for q, v in zip(QUANTILES, values):
-            rows.append({
-                "reference_date": reference_date,
-                "target": "wk inc flu hosp",
-                "horizon": h,
-                "target_end_date": str(target_end.date()),
-                "location": location_fips,
-                "output_type": "quantile",
-                "output_type_id": q,
-                "value": v,
-            })
+            rows.append(_quantile_row(reference_date, h, target_end,
+                                      location_fips, q, v))
     return rows
+
+
+def _quantile_row(reference_date: str, h, target_end, location_fips: str,
+                  level, value) -> dict:
+    """One hub quantile row (column order is the hub's)."""
+    return {
+        "reference_date": reference_date,
+        "target": "wk inc flu hosp",
+        "horizon": h,
+        "target_end_date": str(target_end.date()),
+        "location": location_fips,
+        "output_type": "quantile",
+        "output_type_id": level,
+        "value": value,
+    }
 
 
 def _level_report(levels: list) -> str:
@@ -362,16 +369,8 @@ def rows_from_quantiles(qs: dict, location_fips: str, asof: str,
         levels = [l for l in QUANTILES if float(l) in q]
         values = _hub_values([q[float(l)] for l in levels])
         for level, v in zip(levels, values):
-            rows.append({
-                "reference_date": reference_date,
-                "target": "wk inc flu hosp",
-                "horizon": h,
-                "target_end_date": str(target_end.date()),
-                "location": location_fips,
-                "output_type": "quantile",
-                "output_type_id": level,
-                "value": v,
-            })
+            rows.append(_quantile_row(reference_date, h, target_end,
+                                      location_fips, level, v))
     return rows
 
 

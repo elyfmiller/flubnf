@@ -113,7 +113,7 @@ def test_cli_retro_defaults_to_auto_width():
     default is now 0 (auto) and it resolves through the one shared rule.
     Source pin: the command body must call resolve_width before running."""
     from pathlib import Path as _P
-    src = (_P(__file__).resolve().parents[2] / "flubnf" / "cli.py").read_text(
+    src = (_P(__file__).resolve().parents[2] / "flubnf" / "cli_retro.py").read_text(
         encoding="utf-8")
     seg = src.split("def retro_cmd(")[1].split("\ndef ")[0]
     assert "width: int = 0" in "def retro_cmd(" + seg

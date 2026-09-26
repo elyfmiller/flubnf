@@ -10,6 +10,11 @@ resolved); svg_network() draws it. contact_graph()/network_graph() give the
 same parses as graph JSON for model-views.js (pan, zoom, drag, highlight).
 SVG colours are page tokens, so every theme works. The engine never runs:
 BNG2.pl is asked for the one file, on a copy whose actions block is replaced.
+
+  1. running BNG2.pl on a copy: _with_actions, _run_bng, *_from_bngl
+  2. the contact map: parse, svg
+  3. the reaction network: parse_net, svg_network
+  4. the graphs the page draws: network_graph, rule_flow, contact_graph
 """
 from __future__ import annotations
 
@@ -37,6 +42,7 @@ class ContactMapError(ValueError):
     """A model BNG2.pl could not draw, with its words."""
 
 
+# ------------------------------------------------ 1. running BNG2.pl on a copy
 _BEGIN = re.compile(r"^\s*begin\s+([A-Za-z][A-Za-z ]*?)\s*(?:#.*)?$")
 
 
@@ -163,6 +169,7 @@ def trajectory_from_bngl(bngl_text: str, workdir: Path, t_end: int,
     return out
 
 
+# ------------------------------------------------------------ 2. the contact map
 def _label(node) -> str:
     lab = node.find("./g:data//y:NodeLabel", NS)
     return (lab.text or "").strip() if lab is not None else ""
@@ -198,8 +205,6 @@ def parse(xml_text: str) -> dict:
             bonds.append([a, b])
     return {"molecules": molecules, "bonds": bonds}
 
-
-# ------------------------------------------------------------ the contact map
 
 CHAR = 7.2          # px per character at the 12 px label size
 PAD = 10
@@ -309,7 +314,7 @@ def svg(cm: dict) -> str:
     return "".join(parts)
 
 
-# ------------------------------------------------------- the reaction network
+# ------------------------------------------------------- 3. the reaction network
 
 MAX_SPECIES = 12    # past either count the network is reported, not drawn
 MAX_REACTIONS = 20
@@ -492,7 +497,7 @@ def svg_network(net: dict) -> str:
     return "".join(parts)
 
 
-# ------------------------------------------------- the graphs the page draws
+# ------------------------------------------------- 4. the graphs the page draws
 # (ids and labels only; model-views.js draws them)
 
 def _species_label(pattern: str) -> str:

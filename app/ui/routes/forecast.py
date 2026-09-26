@@ -35,6 +35,16 @@ from app.ui.templating import (_member_colors, _script_json, _season_colors,
 
 router = APIRouter()
 
+# Sections, in file order:
+#   /forecast           RERUN_STATUSES, forecast_page
+#   Data issues box     US_CHOICE, _source_sha, _data_issues_context,
+#                       _data_choices, _location_list, _official_overlay
+#   console controls    run_stop
+#   run pages           run_page, run_report, run_report_download, run_rerun
+#   forecast APIs       api_series, api_progress
+#   POST /run           _scope_label, _run_extra, _knob_run_parts, _spec_mode,
+#                       _report_v2_retired, run_models
+
 
 #: Statuses offered the one-click re-run. Console fits hold no checkpoint, so
 #: it is a FRESH run with the recorded settings (never worded "resume").
@@ -411,8 +421,6 @@ def run_page(request: Request, run_id: str):
     sub_errors: dict = {}
     pf_failures: dict = {}
     step_errors: dict = {}
-    ens_analogue_only: list = []
-    ens_withheld = ""
     row_sha, row_engine_versions = "", {}
     # the run's own row, however many runs came after it
     r = Ledger().row(run_id)

@@ -55,17 +55,6 @@ class WISResult:
     underprediction: float
     n_intervals: int
 
-    @property
-    def calibrated(self) -> bool:
-        """A purely informational signal — over- and under-prediction terms
-        should be roughly equal for a well-calibrated forecast."""
-        if self.overprediction + self.underprediction == 0:
-            return True
-        ratio = min(self.overprediction, self.underprediction) / max(
-            self.overprediction, self.underprediction
-        )
-        return ratio > 0.5
-
 
 def wis(
     quantiles: Mapping[float, float],

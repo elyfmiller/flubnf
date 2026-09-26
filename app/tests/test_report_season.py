@@ -436,7 +436,7 @@ def test_results_page_has_download_button():
         curve=[("2098-11-07", 0.95)], states=[],
         weeks=["2098-11-07"], week="2098-11-07",
         map_html="<div id='usmap-wrap'></div>", n_weeks=1, score_error="")
-    assert "Download season report" in html
+    assert "Download report" in html
     assert '/retro/2098-99/report' in html
 
 

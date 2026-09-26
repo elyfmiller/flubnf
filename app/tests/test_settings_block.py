@@ -89,7 +89,11 @@ def test_every_surface_renders_through_the_shared_renderer():
     assert 'settings_html(settings, title="Settings")' in RUN_T
     assert 'settings_html(versions, title="Produced by")' in RUN_T
     assert "settings_html(s.settings)" in RETRO_T
-    assert SEASON_T.count("settings_html(prog.settings)") == 2
+    # the live replay uses the shared renderer; the finished record shows a
+    # one-line summary with every pair, in the same kv markup, in its tip
+    assert SEASON_T.count("settings_html(prog.settings)") == 1
+    assert "settings_line(prog.settings)" in SEASON_T
+    assert '{% for k, v in prog.settings %}<span class="ncline kv">' in SEASON_T
 
 
 def test_forecast_poll_fallback_builds_the_same_markup():

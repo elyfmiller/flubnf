@@ -17,6 +17,12 @@ Two render modes:
     no-data states in --map-nodata
   * national_svg(us_card): one shared fill from the national card; hover
     shows it, click opens the st-US section
+
+  1. the category scale (CATS, CAT_COLOR, NO_DATA, cat_fill) and state_paths
+  2. the interaction script and _shell
+  3. hovers and fills: _no_card_hover, _state_view, svg_map, national_svg
+  4. the model toggle: state_swap_payload, nat_swap_payload, model_toggle
+  5. map_legend, _esc
 """
 from __future__ import annotations
 
@@ -251,6 +257,25 @@ def _no_card_hover(name: str, fips: str, scope_fips, card=None,
     return f"<b>{name}</b><br>no data in this view"
 
 
+def _state_view(fips: str, topo_name: str, card: dict, scope_fips,
+                gap_fips, reasons) -> tuple:
+    """(fill, opacity, hover) for one state: the ONE computation behind
+    svg_map's paths and state_swap_payload's swap data."""
+    fill, op = _card_fill(card)
+    hover = card.get("hover_html") or _no_card_hover(
+        card.get("name", topo_name), fips, scope_fips, card, gap_fips, reasons)
+    return fill, op, hover
+
+
+def _nat_view(us_card: dict) -> tuple:
+    """(fill, opacity, hover) for the national card (national_svg and
+    nat_swap_payload)."""
+    fill, op = _card_fill(us_card)
+    hover = us_card.get("hover_html") or (
+        f"<b>{us_card.get('name', 'United States')}</b>")
+    return fill, op, hover
+
+
 def svg_map(cards_by_fips: dict, ink="#e9ecf2",
             paper="var(--card, #0C0D17)",
             dom_id: str = "usmap", interactive=True, clickable=None,
@@ -265,10 +290,8 @@ def svg_map(cards_by_fips: dict, ink="#e9ecf2",
     paths = []
     for fips, (topo_name, d) in state_paths().items():
         card = cards_by_fips.get(fips, {})
-        fill, op = _card_fill(card)
-        hover = card.get("hover_html") or _no_card_hover(
-            card.get("name", topo_name), fips, scope_fips, card,
-            gap_fips, reasons)
+        fill, op, hover = _state_view(fips, topo_name, card, scope_fips,
+                                      gap_fips, reasons)
         abbr = card.get("abbr", "")
         can_click = bool(abbr) and (clickable is None or abbr in clickable)
         if can_click:
@@ -294,9 +317,7 @@ def national_svg(us_card: dict, ink="#e9ecf2",
     hover shows its card, click calls window.showState('st-US').
     """
     card = us_card or {}
-    fill, op = _card_fill(card)
-    hover = card.get("hover_html") or (
-        f"<b>{card.get('name', 'United States')}</b>")
+    fill, op, hover = _nat_view(card)
     abbr = card.get("abbr") or "US"
     body = "".join(f'<path d="{d}" stroke="{paper}" stroke-width="1"/>'
                    for _name, d in state_paths().values())
@@ -319,11 +340,8 @@ def state_swap_payload(cards_by_fips: dict, scope_fips=None,
     `reasons`), or swapped hovers tell a different story."""
     out = {}
     for fips, (topo_name, _d) in state_paths().items():
-        card = cards_by_fips.get(fips, {})
-        fill, op = _card_fill(card)
-        hover = card.get("hover_html") or _no_card_hover(
-            card.get("name", topo_name), fips, scope_fips, card,
-            gap_fips, reasons)
+        fill, op, hover = _state_view(fips, topo_name, cards_by_fips.get(fips, {}),
+                                      scope_fips, gap_fips, reasons)
         out[fips] = {"f": fill, "o": round(op, 2), "h": hover}
     return out
 
@@ -333,9 +351,7 @@ def nat_swap_payload(us_card: dict) -> dict:
     (the swap script then leaves the national group as rendered)."""
     if not us_card:
         return {}
-    fill, op = _card_fill(us_card)
-    hover = us_card.get("hover_html") or (
-        f"<b>{us_card.get('name', 'United States')}</b>")
+    fill, op, hover = _nat_view(us_card)
     return {"f": fill, "o": round(op, 2), "h": hover}
 
 

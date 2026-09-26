@@ -7,7 +7,6 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
-from app.core import oracle_text as _oracle_text
 from app.ui import shared, templating
 from app.ui.forms import _default_forecast_date
 from app.ui.shared import _run_label
@@ -27,8 +26,6 @@ def models_page(request: Request):
 
 @router.get("/model/{name}", response_class=HTMLResponse)
 def model_page(request: Request, name: str):
-    ot = _oracle_text
-    rec = ot.RECORD
     blurbs = {
         "pf": ("Oracle SIHRS",
                "The SIHRS compartment model (Susceptible, Infected, "

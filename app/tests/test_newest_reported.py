@@ -199,7 +199,7 @@ def test_the_box_rows_offer_each_state_its_choices(tmp_path, monkeypatch):
     assert [v for v, _ in ohio["options"]] == list(reported.MS.ZERO_CHOICES)
     labels = dict(ohio["options"])
     md = WEEKS[-2][5:]                              # MM-DD
-    assert labels == {"abstain": "No forecast", "level": "Level (mean of 4 wk)",
+    assert labels == {"abstain": "No forecast", "level": "Level",
                       "extend": f"Extend 40 from {md}", "blend": "Blend",
                       "set_aside": f"Both from {md}", "omit": "Leave out"}
     assert ohio["aside"] == [[NEW, 0.0]]

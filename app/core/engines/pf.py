@@ -6,8 +6,20 @@ the engine's numpy ceiling) via runner script FILES in the workroot, never
 stdin (macOS spawn kills stdin-launched pools, rule 4). The prepared cells
 are sharded across several runners, as the retrospective path does.
 
-Sections: constants | runner | preflight | research knobs | prepare |
-execution | collect.
+Sections, in file order:
+  constants       REPO, TEMPLATE / TEMPLATE_2S / TEMPLATE_NATG, DEFAULTS_BLOCK,
+                  VARS_1S, VARS_2S
+  runner          _RUNNER (the shard script), _publish
+  preflight       _short_path_win, conf_safe_path, perl_available,
+                  engine_available, engine_accepts, engine_current,
+                  engine_stale_message, read_anchor_notes, read_prepare_failures
+  research knobs  continuation_for, seed_date_for, PF_KEYS_ALLOWED,
+                  pf_key_lines, priors_for, initialization_for
+  prepare         DATASET_REFUSED, dataset_tag, prepare
+  execution       RunStopped, shard width and cost constants, resolve_width,
+                  runner_popen_kwargs, record_runner_pids, shard_cells,
+                  cell_seconds, budget_seconds, _stop_all, execute
+  collect         _cell_statuses, _record_collect_failure, _save_cloud, collect
 """
 from __future__ import annotations
 
@@ -289,22 +301,23 @@ PREPARE_FAILURES_NAME = "pf_prepare_failures.json"
 ANCHOR_NOTES_NAME = "pf_anchor_notes.json"
 
 
-def read_anchor_notes(workroot: Path) -> dict:
-    """prepare()'s anchor notes for a workroot; {} if absent/unreadable."""
+def _read_dict(path: Path) -> dict:
+    """A JSON object file; {} if absent, unreadable or not an object."""
     try:
-        d = json.loads((Path(workroot) / ANCHOR_NOTES_NAME).read_text())
+        d = json.loads(Path(path).read_text())
     except Exception:
         return {}
     return d if isinstance(d, dict) else {}
+
+
+def read_anchor_notes(workroot: Path) -> dict:
+    """prepare()'s anchor notes for a workroot; {} if absent/unreadable."""
+    return _read_dict(Path(workroot) / ANCHOR_NOTES_NAME)
 
 
 def read_prepare_failures(workroot: Path) -> dict:
     """The prepare-stage failures for a workroot; {} if absent/unreadable."""
-    try:
-        d = json.loads((Path(workroot) / PREPARE_FAILURES_NAME).read_text())
-    except Exception:
-        return {}
-    return d if isinstance(d, dict) else {}
+    return _read_dict(Path(workroot) / PREPARE_FAILURES_NAME)
 
 
 # --- research knobs (spec.extra; none set on the shipped path) ---------------
@@ -946,6 +959,12 @@ def runner_popen_kwargs(base: dict | None = None,
     return kw
 
 
+def _write_registry(path: Path, reg: dict) -> None:
+    tmp = path.parent / (path.name + ".tmp")
+    tmp.write_text(json.dumps(reg))
+    os.replace(tmp, path)
+
+
 def record_runner_pids(procs, path: Path | None = None) -> None:
     """Add runners to the takeover registry: pid, pgid (== pid on POSIX,
     None on Windows) and the runner script, which the sweep matches against
@@ -974,9 +993,7 @@ def record_runner_pids(procs, path: Path | None = None) -> None:
                 pass
             reg[str(pid)] = {"pgid": pid if os.name == "posix" else None,
                              "runner": runner}
-        tmp = path.parent / (path.name + ".tmp")
-        tmp.write_text(json.dumps(reg))
-        os.replace(tmp, path)
+        _write_registry(path, reg)
     except Exception:
         pass
 
@@ -991,9 +1008,7 @@ def unrecord_runner_pids(procs, path: Path | None = None) -> None:
             return
         for p in procs:
             reg.pop(str(getattr(p, "pid", "")), None)
-        tmp = path.parent / (path.name + ".tmp")
-        tmp.write_text(json.dumps(reg))
-        os.replace(tmp, path)
+        _write_registry(path, reg)
     except Exception:
         pass
 

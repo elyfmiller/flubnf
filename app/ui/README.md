@@ -32,6 +32,7 @@ One line per module. "Imports" names the app/ui modules a module imports at top 
 | `routes/retro.py` | Retrospective: the index and its APIs, the run controls and the season worker (`_retro_bg`), the season page with its playback, map swap and report APIs (`retro.html`, `retro_season.html`) | support modules |
 | **Custom datasets** | | |
 | `datasets_ui.py` | upload, browse, forecast and replay a dataset; an APIRouter included last. Data, Forecast and `/api/series` hand it `?source=<id>`, `/retro` `?dataset=<id>` | support modules, `routes/data.py`, `routes/storage.py` |
+| `dataset_upload.py` | the upload box: capped form reading, file picking, kind and column mapping, the result box | `datasets_ui.py` |
 
 ## Rules between the modules
 

@@ -21,6 +21,13 @@ the light theme. DM Sans with a system fallback, no webfont fetch.
 Cached at <season_root>/<season>-FluBNF-season-report.html while newer than
 every input (_newest_input) and carrying the current markers
 (build_season_report).
+
+  1. names and inputs: model_names, names_for_root, _newest_input
+  2. header lines: _timing_note, _settings_note, _archive_note
+  3. the coverage reading shared with the season page: cov_state, cov_text,
+     COV_LEGEND, PSTATES_COV_NOTE, METRICS_NOTE
+  4. the season verdict: _summary_block (and the test-only cumulative curve)
+  5. build_season_report, _compose and the _PAGE template
 """
 from __future__ import annotations
 
@@ -29,30 +36,24 @@ import math
 import os
 from pathlib import Path
 
-from app.core import playback, relwis, report_v2, retro
+from app.core import html_page, playback, relwis, report_v2, retro
 from app.core import us_national as usn
 from app.core.runs import fmt_hms, settings_html, version_pairs
 
+# ---------------------------------------------------- 1. names and inputs
 # the player's member colours (report_v2.model_colors); officials stay grey
 MODEL_COLORS = report_v2.model_colors()
 
 SIZE_WARN_BYTES = 25 * 1024 * 1024
 
 # the shared player, inlined verbatim so both hosts run identical code
-PLAYER_SRC = report_v2.PLAYER_SRC
+PLAYER_SRC = html_page.PLAYER_SRC
 
 
 def model_names() -> dict:
     """The one model-name map: player.js's marked JSON literal, parsed so
     every Python surface uses the player's names. {} (raw ids) on failure."""
-    import re
-    try:
-        src = PLAYER_SRC.read_text(encoding="utf-8")
-        m = re.search(r"/\*MODEL_NAMES_JSON\*/\s*(\{.*?\})"
-                      r"\s*/\*END_MODEL_NAMES_JSON\*/", src, re.S)
-        return json.loads(m.group(1)) if m else {}
-    except Exception:
-        return {}
+    return html_page.marked_json("MODEL_NAMES_JSON", {}, PLAYER_SRC)
 
 
 # display names for the static summary: the player's own map, one source
@@ -94,36 +95,30 @@ def report_path(root: Path, season: str) -> Path:
 
 
 def _plotlyjs() -> str:
-    from plotly.offline import get_plotlyjs
-    return get_plotlyjs()
+    return html_page.plotly_js()
 
 
 def _player_js() -> str:
     # FluCharts (charts.js) first: the player draws through it (Saturday
     # week ticks, the shared chart config), as on the console page
-    return (report_v2.charts_js() + "\n"
+    return (html_page.charts_js() + "\n"
             + PLAYER_SRC.read_text(encoding="utf-8"))
 
 
 def _newest_input(root: Path) -> float:
     """Newest mtime among the export's inputs: stored weeks, scores.json,
-    settled truth, player.js, charts.js, this builder, playback_cache/*.json,
-    the hub's official model-output dirs (new comparators land there before
-    any cache rebuild), run_meta.json (wall time) and nau.css (theme tokens).
+    settled truth, player.js, charts.js, this builder and html_page,
+    playback_cache/*.json, the hub's official model-output dirs (new
+    comparators land there before any cache rebuild), run_meta.json (wall
+    time) and nau.css (theme tokens).
     """
-    times = [p.stat().st_mtime for p in retro.season_sample_files(root)]
-    sf = root / "scores.json"
-    if sf.is_file():
-        times.append(sf.stat().st_mtime)
     from app.core.data import truth_mtime
+    times = [p.stat().st_mtime for p in retro.season_sample_files(root)]
     times.append(truth_mtime())          # the report scores against it
-    if PLAYER_SRC.is_file():
-        times.append(PLAYER_SRC.stat().st_mtime)
-    if report_v2.CHARTS_SRC.is_file():
-        times.append(report_v2.CHARTS_SRC.stat().st_mtime)
-    src = Path(__file__)
-    if src.is_file():
-        times.append(src.stat().st_mtime)
+    files = [root / "scores.json", PLAYER_SRC, html_page.CHARTS_SRC,
+             Path(__file__), Path(html_page.__file__), root / retro.META_NAME,
+             html_page.NAU_CSS]
+    times.extend(p.stat().st_mtime for p in files if p.is_file())
     pc = root / "playback_cache"
     if pc.is_dir():
         times.extend(f.stat().st_mtime for f in pc.glob("*.json"))
@@ -135,14 +130,10 @@ def _newest_input(root: Path) -> float:
                 times.append(d.stat().st_mtime)
     except Exception:
         pass
-    mp = root / retro.META_NAME
-    if mp.is_file():
-        times.append(mp.stat().st_mtime)
-    if report_v2.NAU_CSS.is_file():
-        times.append(report_v2.NAU_CSS.stat().st_mtime)
     return max(times)
 
 
+# ------------------------------------------------------- 2. header lines
 def _timing_note(root: Path) -> str:
     """Header line: total wall time, weeks, mean per week. Absent without a
     run record (the sealed runs predate it)."""
@@ -180,14 +171,7 @@ def _settings_note(root: Path, build: str = "",
 def player_us_labels() -> dict:
     """The player's US provenance labels (its marked JSON literal), so a
     test can hold them equal to us_national.LABELS. {} on failure."""
-    import re
-    try:
-        src = PLAYER_SRC.read_text(encoding="utf-8")
-        m = re.search(r"/\*US_LABELS_JSON\*/\s*(\{.*?\})"
-                      r"\s*/\*END_US_LABELS_JSON\*/", src, re.S)
-        return json.loads(m.group(1)) if m else {}
-    except Exception:
-        return {}
+    return html_page.marked_json("US_LABELS_JSON", {}, PLAYER_SRC)
 
 
 def _us_national(root: Path, df) -> tuple:
@@ -208,6 +192,7 @@ def _us_national(root: Path, df) -> tuple:
     return us, ""
 
 
+# ------------------------------------------------- 3. the coverage reading
 #: the season page's cumulative chart heading, verbatim (the parity test matches it)
 CURVE_HEADING = "Cumulative relWIS through the season"
 
@@ -313,6 +298,8 @@ def _metrics_html(log_rel, cov) -> str:
                                  for k, lv in COV_LEVELS) + "</dd>")
     return ('<dl class="tilekv">' + "".join(rows) + "</dl>") if rows else ""
 
+
+# ---------------------------------------------------- 4. the season verdict
 #: in order: the two shipped members, the research member. Older
 #: scores.json files also carry the retired blend's rows; they are not shown.
 SEASON_MODELS = ("pf", "analogue", "pf2s")
@@ -346,6 +333,15 @@ def _cumulative_curve(df) -> list:
     return curves.get("pf") or next(iter(curves.values()), [])
 
 
+def _tile(name: str, v: float, more: str, sub: str = "") -> str:
+    """One verdict tile: name, relWIS in the alert colour, the metrics line
+    and an optional provenance hint."""
+    return ('<div class="tile"><div class="tilename">' + name + '</div>'
+            + f'<div class="tileval {"ok" if v < 1 else "bad"}">{v:.3f}</div>'
+            + more + (f'<div class="hint">{sub}</div>' if sub else "")
+            + "</div>")
+
+
 def _oracle_named(names: dict) -> bool:
     """True while pf wears the Oracle SIHRS name on this tree (the fitted
     US note applies only then; a tree without the step names pf for the
@@ -374,13 +370,9 @@ def _summary_block(root: Path, weeks: list, payloads: dict,
         v = st.get("cum_rel")
         if v is None:
             continue
-        cls = "ok" if v < 1 else "bad"
         tile_cov = tile_cov or bool(st.get("cum_cov"))
         more.append(_metrics_html(st.get("cum_log_rel"), st.get("cum_cov")))
-        tiles.append('<div class="tile"><div class="tilename">'
-                     + names.get(m, m) + '</div>'
-                     + f'<div class="tileval {cls}">{v:.3f}</div>'
-                     + more[-1] + "</div>")
+        tiles.append(_tile(names.get(m, m), v, more[-1]))
     # the weeks covered and the wall time are in the report header
     # (_timing_note), so the verdict does not repeat them
     rows = []
@@ -399,8 +391,6 @@ def _summary_block(root: Path, weeks: list, payloads: dict,
         if not (us and us.get(m)):
             continue
         # always labelled fitted vs constructed: different model outputs
-        v = us[m]
-        cls = "ok" if v < 1 else "bad"
         sub = ("fitted at the national level, outside the pooled figures"
                if us.is_fitted else us.fallback_note
                + ", states treated as independent")
@@ -408,11 +398,8 @@ def _summary_block(root: Path, weeks: list, payloads: dict,
             sub = usn.PF_US_SHORT + ", " + sub
         tile_cov = tile_cov or bool(us.cov(m))
         more.append(_metrics_html(us.log_rel(m), us.cov(m)))
-        tiles.append('<div class="tile"><div class="tilename">'
-                     + us.short_label + ": " + names.get(m, m)
-                     + '</div>'
-                     + f'<div class="tileval {cls}">{v:.3f}</div>'
-                     + more[-1] + f'<div class="hint">{sub}</div></div>')
+        tiles.append(_tile(us.short_label + ": " + names.get(m, m), us[m],
+                           more[-1], sub))
     if have:
         # cell coverage when the scores file supplies it
         n = int((df.model == have[0]).sum())
@@ -509,6 +496,7 @@ def _summary_block(root: Path, weeks: list, payloads: dict,
             + states + "</div>")     # the cumulative chart stays on the season page
 
 
+# --------------------------------------------------------- 5. the export
 ARCHIVE_MARK = "Archived run"
 
 
@@ -603,25 +591,22 @@ def _compose(season: str, weeks: list, data_json: str, plotly_js: str,
              player_js: str, size_note: str, timing_note: str = "",
              summary: str = "", us_json: str = "{}",
              names_line: str = "") -> str:
-    return (_PAGE
-            .replace("@@USNAT@@", us_json)
-            .replace("@@NAMES@@", names_line)
-            .replace("@@BOOT@@", report_v2.theme_boot_script())
-            .replace("@@THEMETOKENS@@", report_v2.theme_token_css())
-            .replace("@@SEASON@@", season)
-            .replace("@@NWEEKS@@", str(len(weeks)))
-            .replace("@@FIRST@@", weeks[0])
-            .replace("@@LAST@@", weeks[-1])
-            # the scrubber's range is set by the embedded timeline at load
-            .replace("@@MAXIDX@@", str(len(weeks) - 1))
-            .replace("@@TIMING@@", timing_note)
-            .replace("@@SIZENOTE@@", size_note)
-            .replace("@@SUMMARY@@", summary)
-            .replace("@@LIVEHEAD@@", LIVE_HEADING)
-            .replace("@@LIVENOTE@@", LIVE_SCORES_NOTE)
-            .replace("@@PLOTLY@@", plotly_js)
-            .replace("@@PLAYERJS@@", player_js)
-            .replace("@@DATA@@", data_json))
+    # in this order (a value may itself carry a later token's text)
+    fills = {"@@USNAT@@": us_json, "@@NAMES@@": names_line,
+             "@@BOOT@@": html_page.theme_boot_script(),
+             "@@THEMETOKENS@@": html_page.theme_token_css(),
+             "@@SEASON@@": season, "@@NWEEKS@@": str(len(weeks)),
+             "@@FIRST@@": weeks[0], "@@LAST@@": weeks[-1],
+             # the scrubber's range is set by the embedded timeline at load
+             "@@MAXIDX@@": str(len(weeks) - 1),
+             "@@TIMING@@": timing_note, "@@SIZENOTE@@": size_note,
+             "@@SUMMARY@@": summary, "@@LIVEHEAD@@": LIVE_HEADING,
+             "@@LIVENOTE@@": LIVE_SCORES_NOTE, "@@PLOTLY@@": plotly_js,
+             "@@PLAYERJS@@": player_js, "@@DATA@@": data_json}
+    page = _PAGE
+    for token, text in fills.items():
+        page = page.replace(token, text)
+    return page
 
 
 # The page template. Plain token replacement, never str.format: the JS and

@@ -22,10 +22,13 @@ alarm, cross_check) and any placement columns (none since the 2026-08-24
 withdrawal, docs/archive/RELEASE-1.0.md); the BNGL source verbatim; the DOIs
 in flubnf/sihrs_priors.py. A cross-check mismatch is reported loudly in the
 payload's `consistency` block, never silently reconciled.
+
+Sections: discovery (seasons, pf's name), scoring, outlook, fans, harvest
+of the app (placement, Methods, bibliography, BNGL), consistency, payload,
+render (build).
 """
 from __future__ import annotations
 
-import html as _html
 import json
 import re
 import shutil
@@ -270,6 +273,15 @@ def _rel(acc) -> float | None:
     return (acc[0] / acc[1]) if acc and acc[1] else None
 
 
+def _accumulate(totals: dict, scored: dict) -> None:
+    """Add one week's (or season's) {model: [wis, base, cells]} into totals."""
+    for model, acc in scored.items():
+        t = totals.setdefault(model, [0.0, 0.0, 0])
+        t[0] += acc[0]
+        t[1] += acc[1]
+        t[2] += acc[2]
+
+
 def score_season(season: str, info: dict, truth, n2f,
                  bases_cache: dict | None = None) -> dict:
     """One season, week by week, from its stored playback payloads.
@@ -289,11 +301,7 @@ def score_season(season: str, info: dict, truth, n2f,
         except Exception:
             continue
         wk = _score_payload(payload, truth, n2f, bases_cache)
-        for model, acc in wk.items():
-            t = totals.setdefault(model, [0.0, 0.0, 0])
-            t[0] += acc[0]
-            t[1] += acc[1]
-            t[2] += acc[2]
+        _accumulate(totals, wk)
         weekly.append({
             "asof": asof,
             "week": {m: round(_rel(a), 4) for m, a in wk.items()
@@ -356,8 +364,9 @@ def _cards_from_quantiles(models: dict, truth_by_loc: dict, asof: str) -> dict:
     Every map surface uses report.categorical_probs_from_quantiles, so a
     category here matches the console's.
     """
+    from app.core.html_page import esc
     from app.core.report import categorical_probs_from_quantiles
-    from app.core.report_v2 import CATS
+    from app.core.usmap import CATS
 
     loc = _locations_frame()
     n2f = dict(zip(loc.location_name, loc.location.str.zfill(2)))
@@ -384,7 +393,7 @@ def _cards_from_quantiles(models: dict, truth_by_loc: dict, asof: str) -> dict:
             if not probs:
                 continue
             med = float(q1.get(0.5, 0.0))
-            hover = (f"<b>{_html.escape(name)}</b><br>current: {last:.0f}"
+            hover = (f"<b>{esc(name)}</b><br>current: {last:.0f}"
                      f"<br>1-wk median: {med:.0f}<br>" +
                      "<br>".join(
                          f"{c.replace('_', ' ')}: {probs.get(c, 0):.0%}"
@@ -397,6 +406,15 @@ def _cards_from_quantiles(models: dict, truth_by_loc: dict, asof: str) -> dict:
         if cards:
             out[model] = cards
     return out
+
+
+def _usable_cards(bundle: dict) -> dict:
+    """{model: {fips: card}} from a bundle's cards_by_model, keeping only
+    cards with a fips and probabilities, and only models with any."""
+    by_model = {m: {c["fips"]: c for c in (cards or {}).values()
+                    if isinstance(c, dict) and c.get("fips") and c.get("probs")}
+                for m, cards in (bundle.get("cards_by_model") or {}).items()}
+    return {m: c for m, c in by_model.items() if c}
 
 
 def _newest_run_source() -> tuple:
@@ -428,11 +446,7 @@ def _newest_run_source() -> tuple:
             continue
         if bundle.get("version") not in report_v2.SUPPORTED_BUNDLE_VERSIONS:
             continue
-        by_model = {m: {c["fips"]: c for c in (cards or {}).values()
-                        if isinstance(c, dict) and c.get("fips")
-                        and c.get("probs")}
-                    for m, cards in (bundle.get("cards_by_model") or {}).items()}
-        by_model = {m: c for m, c in by_model.items() if c}
+        by_model = _usable_cards(bundle)
         if not by_model:
             continue
         if max(len(c) for c in by_model.values()) < MIN_OUTLOOK_LOCATIONS:
@@ -457,11 +471,7 @@ def build_outlook(seasons: dict, pin: tuple | None = None) -> dict:
     rid, bundle, results = (None, None, None) if pin \
         else _newest_run_source()
     if bundle is not None:
-        cards_by_model = {
-            m: {c["fips"]: c for c in (cards or {}).values()
-                if isinstance(c, dict) and c.get("fips") and c.get("probs")}
-            for m, cards in (bundle.get("cards_by_model") or {}).items()}
-        cards_by_model = {m: c for m, c in cards_by_model.items() if c}
+        cards_by_model = _usable_cards(bundle)
         from app.core.report_v2 import bundle_asof
         asof = results.get("forecast_date") or bundle_asof(bundle)
         ox = results.get("oracle")
@@ -871,11 +881,7 @@ def build_payload(seasons: dict | None = None,
               for s, info in seasons.items()]
     pooled: dict = {}
     for s in scored:
-        for m, acc in s.pop("_totals").items():
-            p = pooled.setdefault(m, [0.0, 0.0, 0])
-            p[0] += acc[0]
-            p[1] += acc[1]
-            p[2] += acc[2]
+        _accumulate(pooled, s.pop("_totals"))
 
     placement = harvest_placement()
     for s in scored:

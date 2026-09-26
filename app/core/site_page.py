@@ -14,14 +14,22 @@ each tested:
     reason, never an empty cell, a dash, or an invented number.
   * THEME-AWARE AND ACCESSIBLE: light/dark tokens, high contrast, a
     CVD-safe map scale, persisted like the console's controls.
+
+  1. CSS, BOOT and JS (the page's stylesheet, theme boot and behaviour)
+  2. the brand mark and page_scripts
+  3. fragments: _season_table, _percentile_bars, _member_table,
+     _consistency_note, _bibliography
+  4. render_page (the whole page)
 """
 from __future__ import annotations
 
-import html as _html
 import json
 
 from app.core import horizons as hz, relwis
+from app.core.html_page import esc as _e
+from app.core.usmap import CATS  # the map's category scale, one source
 
+# ------------------------------------------------------ 1. CSS, BOOT, JS
 CSS = """
 :root{
   --bg:#F4F2FA; --card:#FFFFFF; --ink:#10122E; --mut:#5A5E7A;
@@ -419,8 +427,7 @@ JS = r"""
 """.replace("__HORIZONS__", json.dumps(list(hz.HORIZONS)))
 # the fan reads site_build's canonical keys; app.core.horizons owns them
 
-CATS = ("large_decrease", "decrease", "stable", "increase", "large_increase")
-
+# ------------------------------------------------ 2. the mark and scripts
 _MARK = (
     '<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" '
     'viewBox="0 0 100 100" aria-hidden="true">'
@@ -448,15 +455,12 @@ def page_scripts() -> str:
     """The page's scripts: plotly.js (the file beside the page), then the
     shared date-axis helper (charts.js, inlined as the reports inline it,
     so the fan ticks on the data's Saturdays), then the page's own."""
-    from app.core.report_v2 import charts_js
+    from app.core.html_page import charts_js
     return ('<script src="plotly.min.js"></script>\n'
             f'<script>{charts_js()}</script>\n<script>{JS}</script>')
 
 
-def _e(s) -> str:
-    return _html.escape(str(s))
-
-
+# ------------------------------------------------------------ 3. fragments
 def _score_td(v) -> str:
     """One relWIS cell under the app's one relWIS rule: tabular numerals and
     the below-1-beats-baseline colouring, members included. An absent score
@@ -633,6 +637,7 @@ def _bibliography(items) -> str:
     return f'<ul class="bib">{lis}</ul>'
 
 
+# ------------------------------------------------------------ 4. the page
 def render_page(payload: dict, map_svg: str, methods_html: str,
                 bibliography, bngl: dict) -> str:
     """Assemble the single page. `payload` is embedded verbatim as the same

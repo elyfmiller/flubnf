@@ -7,6 +7,14 @@ the results preparation (finalize jobs, score caches, week map cards) in
 app/ui/retro_prep.py. POST /retro/stop and POST /retro/run stay above GET
 /retro/{season}: the first route a path matches names the Allow header of
 a wrong-method request. An APIRouter server.py includes last of the tabs.
+
+Sections (in order): the index and its APIs (retro_index,
+api_retro_progress, api_retro_startover, retro_archive_delete) | results
+status (api_retro_results_status, _RESULTS_GRACE_S) | the season worker and
+run controls (_retro_bg, _refused, retro_stop, retro_season_stop/pause/
+resume, retro_run) | bundle import (retro_import) | the season page and its
+APIs (retro_results, api_retro_playback, api_retro_mapswap, _season_report)
+| bundle export (_export_bundle, retro_season_export).
 """
 from __future__ import annotations
 
@@ -14,7 +22,8 @@ import time
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import (FileResponse, HTMLResponse,
+                               PlainTextResponse, RedirectResponse)
 
 from app.core.runs import RunSpec, fmt_hms
 from app.ui import pipeline, retro_prep, retro_seasons, templating
@@ -45,38 +54,39 @@ class _RetroStopRequested(Exception):
 
 
 # === Retrospective index (/retro) and its APIs -> retro.html ===
+def _from_locations_table(pick, default):
+    """`pick(frame)` on the hub's locations table, then on the packaged copy
+    (for a hub not cloned yet); `default` when neither parses or yields."""
+    import pandas as pd
+    from flubnf.settings import LOCATIONS
+    for src in (LOCATIONS, REPO / "flubnf/data/locations.csv"):
+        try:
+            v = pick(pd.read_csv(src, dtype=str))
+            if v is not None:
+                return v
+        except Exception:
+            continue
+    return default
+
+
 def _retro_state_names() -> list:
     """State list for the retro form; packaged locations table when the hub
     is not cloned yet."""
-    import pandas as pd
-    from flubnf.settings import LOCATIONS
-    packaged = REPO / "flubnf/data/locations.csv"
-    for src in (LOCATIONS, packaged):
-        try:
-            locs = pd.read_csv(src, dtype=str)
-            return list(locs.location_name[(locs.location.str.len() == 2)
-                                           & (locs.abbreviation != "US")])
-        except Exception:
-            continue
-    return []
+    return _from_locations_table(
+        lambda locs: list(locs.location_name[(locs.location.str.len() == 2)
+                                             & (locs.abbreviation != "US")]),
+        [])
 
 
 def _retro_national_name() -> str:
     """The hub's location_name for the national row (as truth and the
     forecast path name it); falls back to the FIPS code."""
-    import pandas as pd
-    from flubnf.settings import LOCATIONS
     from app.core import us_national as usn
-    packaged = REPO / "flubnf/data/locations.csv"
-    for src in (LOCATIONS, packaged):
-        try:
-            locs = pd.read_csv(src, dtype=str)
-            hit = locs.location_name[locs.abbreviation == "US"]
-            if len(hit):
-                return str(hit.iloc[0])
-        except Exception:
-            continue
-    return usn.US_FIPS
+
+    def pick(locs):
+        hit = locs.location_name[locs.abbreviation == "US"]
+        return str(hit.iloc[0]) if len(hit) else None
+    return _from_locations_table(pick, usn.US_FIPS)
 
 
 @router.get("/retro", response_class=HTMLResponse)
@@ -341,6 +351,12 @@ def _retro_bg(season: str, locations: list, width: int,
                 pass
 
 
+def _refused(msg: str) -> RedirectResponse:
+    """Flash why a control request did nothing and go back to the index."""
+    _flash(msg)
+    return RedirectResponse("/retro", status_code=303)
+
+
 @router.post("/retro/stop")
 def retro_stop():
     """Stop every live replay after the fits in flight (polled between fits).
@@ -453,48 +469,48 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
     from app.core.retro import available_seasons
     _invalidate_scans()
     if not _valid_season(season):
-        _flash("Unrecognized season name. Nothing was started.")
-        return RedirectResponse("/retro", status_code=303)
+        return _refused(
+            "Unrecognized season name. Nothing was started.")
     # busy checks, the archive/discard move and the claim all run under
     # _engine_lock (the move is part of claiming the tree); the worker does not
     with _engine_lock:
         if _season_status(season) in _RETRO_ACTIVE:
-            _flash(f"{season} is already replaying (status: "
-                   f"{_season_status(season)}). One season worker runs at a "
-                   "time; stop it first if you want to start over.")
-            return RedirectResponse("/retro", status_code=303)
+            return _refused(
+                f"{season} is already replaying (status: "
+                f"{_season_status(season)}). One season worker runs at a "
+                "time; stop it first if you want to start over.")
         # server-side mirror of /api/busy (see _engine_lock)
         if _status.get("running"):
-            _flash("A console run holds the engine ("
-                   + (_status.get("run_label") or str(_status.get("running")))
-                   + "). Stop it from the Forecast tab first; nothing was "
-                   "started.")
-            return RedirectResponse("/retro", status_code=303)
+            return _refused(
+                "A console run holds the engine ("
+                + (_status.get("run_label") or str(_status.get("running")))
+                + "). Stop it from the Forecast tab first; nothing was "
+                "started.")
         sb = _sandbox_live_reason()
         if sb:
-            _flash(f"Not started: {sb}. Stop it from the Sandbox first.")
-            return RedirectResponse("/retro", status_code=303)
+            return _refused(
+                f"Not started: {sb}. Stop it from the Sandbox first.")
         other = sorted(x for x in retro_seasons._known_seasons()
                        if x != season and _season_status(x) in _RETRO_ACTIVE)
         if other:
-            _flash("Another season is already replaying ("
-                   + ", ".join(other) + "). One season worker runs at a time; "
-                   "stop it first. Nothing was started.")
-            return RedirectResponse("/retro", status_code=303)
+            return _refused(
+                "Another season is already replaying ("
+                + ", ".join(other) + "). One season worker runs at a time; "
+                "stop it first. Nothing was started.")
         if mode not in ("resume", "archive", "discard"):
-            _flash(f"'{mode}' is not one of resume, archive, or discard. "
-                   "Nothing was started and nothing was changed.")
-            return RedirectResponse("/retro", status_code=303)
+            return _refused(
+                f"'{mode}' is not one of resume, archive, or discard. "
+                "Nothing was started and nothing was changed.")
         if season not in available_seasons():
-            _flash(f"Season {season} is not available. A season appears once "
-                   "its vintage archive exists.")
-            return RedirectResponse("/retro", status_code=303)
+            return _refused(
+                f"Season {season} is not available. A season appears once "
+                "its vintage archive exists.")
         if engine not in retro.ENGINES:
             # a future pf2s preset: accept it here, pass {"variant": "2strain"}
             # through retro.run_week's RunSpec, collect it beside pf
-            _flash("The engine presets for a retrospective are the Oracle "
-                   "SIHRS and the Groundhog, or the Groundhog alone.")
-            return RedirectResponse("/retro", status_code=303)
+            return _refused(
+                "The engine presets for a retrospective are the Oracle "
+                "SIHRS and the Groundhog, or the Groundhog alone.")
         from app.core import us_national as usn
         all_states = _retro_state_names()
         if locations == "all":
@@ -504,9 +520,9 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
             names = [n for n in custom_locations
                      if n in set(all_states) or usn.is_us(n)]
             if not names:
-                _flash("Custom scope selected but no locations were checked. "
-                       "Check at least one state and try again.")
-                return RedirectResponse("/retro", status_code=303)
+                return _refused(
+                    "Custom scope selected but no locations were checked. "
+                    "Check at least one state and try again.")
         else:
             names = ["Alaska", "New York", "Wyoming", "Pennsylvania",
                      "Vermont", "California"]
@@ -530,8 +546,8 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                         **({"drop_same_day": drop_same_day}
                            if _str_field(drop_same_day).strip() else {})})
         except ValueError as e:              # KnobError is a ValueError
-            _flash(f"Model settings: {e}. Nothing was started.")
-            return RedirectResponse("/retro", status_code=303)
+            return _refused(
+                f"Model settings: {e}. Nothing was started.")
         particles = int(nd.get("pf.particles", RunSpec.particles))
         replicates = int(nd.get("pf.replicates", RunSpec.replicates))
         width = max(1, min(int(width), 16))
@@ -557,26 +573,26 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                 nd.pop(_missing.ZERO_ANCHOR_KEY, None)
             if (_knobs.settings_digest(had)
                     != _knobs.settings_digest(_knobs.jsonable(nd))):
-                _flash(f"{season} has {existing} completed week"
-                       f"{'' if existing == 1 else 's'} replayed with model "
-                       f"settings {_knobs.label(_knobs.from_record(had))}; "
-                       f"this run asks for {_knobs.label(nd)}. Resuming "
-                       "would mix two configurations in one season. Archive "
-                       "or discard the existing results to run it. Nothing "
-                       "was started.")
-                return RedirectResponse("/retro", status_code=303)
+                return _refused(
+                    f"{season} has {existing} completed week"
+                    f"{'' if existing == 1 else 's'} replayed with model "
+                    f"settings {_knobs.label(_knobs.from_record(had))}; "
+                    f"this run asks for {_knobs.label(nd)}. Resuming "
+                    "would mix two configurations in one season. Archive "
+                    "or discard the existing results to run it. Nothing "
+                    "was started.")
             # never resume a tree with the other engine preset (weeks would be
             # skipped as done or mislabeled); the record says what ran
             was = str((retro.read_meta(live) or {}).get("settings", {})
                       .get("engine") or "pf")
             if was != engine:
-                _flash(f"{season} has {existing} completed week"
-                       f"{'' if existing == 1 else 's'} replayed with the "
-                       f"{retro_engine_label(was)} preset; the "
-                       f"{retro_engine_label(engine)} preset cannot resume "
-                       "them. Archive or discard the existing results to "
-                       "run it. Nothing was started.")
-                return RedirectResponse("/retro", status_code=303)
+                return _refused(
+                    f"{season} has {existing} completed week"
+                    f"{'' if existing == 1 else 's'} replayed with the "
+                    f"{retro_engine_label(was)} preset; the "
+                    f"{retro_engine_label(engine)} preset cannot resume "
+                    "them. Archive or discard the existing results to "
+                    "run it. Nothing was started.")
             # nor with another location scope (the rule lives in
             # retro.run_season, so the CLI refuses it too; checked here
             # first so the refusal comes before anything is claimed)
@@ -584,46 +600,46 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                 (retro.read_meta(live) or {}).get("settings", {})
                 .get("locations"), names)
             if change:
-                _flash(f"{season} has {existing} completed week"
-                       f"{'' if existing == 1 else 's'} {change}. "
-                       "Resuming would mix two location scopes in one "
-                       "season. Archive or discard the existing results to "
-                       "run it. Nothing was started.")
-                return RedirectResponse("/retro", status_code=303)
+                return _refused(
+                    f"{season} has {existing} completed week"
+                    f"{'' if existing == 1 else 's'} {change}. "
+                    "Resuming would mix two location scopes in one "
+                    "season. Archive or discard the existing results to "
+                    "run it. Nothing was started.")
             # nor on another engine build (the rule is retro.run_season's
             # too): weeks fitted by two engines would be scored as one
             bchange = retro.engine_build_change(
                 (retro.read_meta(live) or {}).get("settings"), engine)
             if bchange:
-                _flash(f"{season} has {existing} completed week"
-                       f"{'' if existing == 1 else 's'} that {bchange}. "
-                       "Resuming would mix two engine builds in one "
-                       "season. Switch the engine back, or archive or "
-                       "discard the existing results to run it. Nothing "
-                       "was started.")
-                return RedirectResponse("/retro", status_code=303)
+                return _refused(
+                    f"{season} has {existing} completed week"
+                    f"{'' if existing == 1 else 's'} that {bchange}. "
+                    "Resuming would mix two engine builds in one "
+                    "season. Switch the engine back, or archive or "
+                    "discard the existing results to run it. Nothing "
+                    "was started.")
         if mode == "discard" and confirm != season:
-            _flash(f"Discarding {season} was not confirmed, so nothing "
-                   "was deleted and nothing was started.")
-            return RedirectResponse("/retro", status_code=303)
+            return _refused(
+                f"Discarding {season} was not confirmed, so nothing "
+                "was deleted and nothing was started.")
         if (not (mode == "resume" and existing)
                 and _missing.ZERO_ANCHOR_KEY not in nd):
             # a fresh replay (both presets run the Groundhog) must say what
             # it does when a state's newest week reads 0; no default.
             # Refused before anything is moved or deleted
-            _flash("Choose what the Groundhog does when a state's newest "
-                   "week reads 0 (Newest week reading 0: abstain, level, "
-                   "extend or blend). Nothing was started.")
-            return RedirectResponse("/retro", status_code=303)
+            return _refused(
+                "Choose what the Groundhog does when a state's newest "
+                "week reads 0 (Newest week reading 0: abstain, level, "
+                "extend or blend). Nothing was started.")
         if mode == "discard":
             if existing:
                 try:
                     retro.delete_tree(live)
                 except Exception as e:
-                    _flash(f"Could not delete the {season} results: "
-                           f"{type(e).__name__}: {str(e)[:160]}. Nothing was "
-                           "started; the existing results are intact.")
-                    return RedirectResponse("/retro", status_code=303)
+                    return _refused(
+                        f"Could not delete the {season} results: "
+                        f"{type(e).__name__}: {str(e)[:160]}. Nothing was "
+                        "started; the existing results are intact.")
                 _flash(f"Discarded {existing} completed week"
                        f"{'' if existing == 1 else 's'} of {season}. Starting "
                        "a fresh replay.")
@@ -632,10 +648,10 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                 dst = retro.archive_run(retro_seasons.RETRO_ROOT, season)
             except Exception as e:
                 # the move is atomic: a failure leaves the original whole
-                _flash(f"Could not archive {season}: {type(e).__name__}: "
-                       f"{str(e)[:160]}. Nothing was started; the existing "
-                       "results are intact.")
-                return RedirectResponse("/retro", status_code=303)
+                return _refused(
+                    f"Could not archive {season}: {type(e).__name__}: "
+                    f"{str(e)[:160]}. Nothing was started; the existing "
+                    "results are intact.")
             _flash(f"Archived {existing} completed week"
                    f"{'' if existing == 1 else 's'} of {season} as "
                    f"{dst.name}; it stays viewable from the season list. "
@@ -715,14 +731,14 @@ async def retro_import(request: Request):
     cap = replay_bundle.BUNDLE_MAX_BYTES
     cl = request.headers.get("content-length", "")
     if cl.strip().isdigit() and int(cl) > cap + _IMPORT_BODY_SLACK:
-        _flash(f"Not imported: the upload is larger than the "
-               f"{cap // 1024 ** 3} GB limit.")
-        return RedirectResponse("/retro", status_code=303)
+        return _refused(
+            f"Not imported: the upload is larger than the "
+            f"{cap // 1024 ** 3} GB limit.")
     try:
         form = await request.form(max_files=1, max_fields=10)
     except Exception as e:
-        _flash(f"Not imported: the upload could not be read ({e}).")
-        return RedirectResponse("/retro", status_code=303)
+        return _refused(
+            f"Not imported: the upload could not be read ({e}).")
     up = form.get("file")
     local = str(form.get("path") or "").strip()
     replace = str(form.get("replace") or "") == "1"
@@ -764,12 +780,6 @@ async def retro_import(request: Request):
     return RedirectResponse(target, status_code=303)
 
 
-def _playback_note() -> str:
-    """The player's placeholder text for a week with no published data."""
-    from app.core import playback
-    return playback.NO_DATA_NOTE
-
-
 def retro_engine_label(engine: str) -> str:
     """The preset's plain name: app.core.retro.ENGINE_LABELS, the one map
     (the Run settings blocks read it too)."""
@@ -786,11 +796,12 @@ def retro_results(request: Request, season: str, week: str = "",
     page: ratio of sums (default) or the CDC's pairwise figure, never mixed;
     panels it cannot express say so."""
     import pandas as pd
+    from app.core import playback as _playback
     from app.core import relwis
     from app.core import retro
     if archive and not (_valid_season(season) and _valid_archive(archive)):
-        _flash("Unrecognized archived run identifier.")
-        return RedirectResponse("/retro", status_code=303)
+        return _refused(
+            "Unrecognized archived run identifier.")
     root, _is_seal = retro_seasons._season_root(season, archive)
     # an archived entry imported from another machine says so in place of
     # the archived-run banner (app/core/replay_bundle)
@@ -805,11 +816,11 @@ def retro_results(request: Request, season: str, week: str = "",
     weeks = [p.parent.name for p in retro.season_sample_files(root)]
     if not weeks:
         # back to the season list, which shows a 0-weeks season
-        _flash(f"{season}: no completed weeks yet. Start the replay and "
-               "check back shortly." if not archive else
-               f"{season}: that archived run has no completed weeks, or it "
-               "has been deleted.")
-        return RedirectResponse("/retro", status_code=303)
+        return _refused(
+            f"{season}: no completed weeks yet. Start the replay and "
+            "check back shortly." if not archive else
+            f"{season}: that archived run has no completed weeks, or it "
+            "has been deleted.")
     score_error = ""
     # Heavy scoring never runs in-request: stale caches or ?rescore=1 start
     # the background finalize job and the page shows a polled preparing
@@ -836,7 +847,7 @@ def retro_results(request: Request, season: str, week: str = "",
                 "conv": relwis.DEFAULT_CONVENTION, "figs": None,
                 "weeks": weeks, "week": weeks[-1], "map_html": "",
                 "timeline": weeks, "notes": {},
-                "no_data_note": _playback_note(),
+                "no_data_note": _playback.NO_DATA_NOTE,
                 "official_catalog": [], "prog": None, "n_weeks": 0})
         if job["error"]:
             # show the failure, never pass it off as "truth not settled"
@@ -992,7 +1003,6 @@ def retro_results(request: Request, season: str, week: str = "",
                     "these forecast dates has not settled, so relWIS arrives "
                     "later; the weekly maps below are available now.</p>") + map_html
     # comparators that submitted at least once this season (player toggles)
-    from app.core import playback as _playback
     try:
         official_catalog = _playback.season_official_catalog(root)
     except Exception:
@@ -1036,7 +1046,6 @@ def api_retro_playback(season: str, asof: str, archive: str = ""):
     """One stored retro week as a playback payload (member fans, settled
     truth, CDC comparators, running relWIS), cached under
     <season_root>/playback_cache/. `archive` reads an archived run."""
-    from fastapi.responses import PlainTextResponse
     from app.core import playback
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         return PlainTextResponse("unrecognized archived run identifier",
@@ -1053,7 +1062,6 @@ def api_retro_mapswap(season: str, asof: str, archive: str = ""):
     """One stored week's map as a swap payload (fips -> fill, opacity,
     hover) from the cached cards: the player renders the SVG once and
     swaps fills per frame."""
-    from fastapi.responses import PlainTextResponse
     from app.core.usmap import state_swap_payload
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         return PlainTextResponse("unrecognized archived run identifier",
@@ -1076,22 +1084,29 @@ def api_retro_mapswap(season: str, asof: str, archive: str = ""):
                        else state_swap_payload({}))}
 
 
-@router.get("/retro/{season}/report")
-def retro_season_report(season: str, archive: str = ""):
-    """Build (cached by mtime) and download the self-contained season report
-    (player plus every week's data, one HTML file); `archive` = that run's."""
-    from fastapi.responses import FileResponse, PlainTextResponse
+def _season_report(season: str, archive: str):
+    """Build (cached by mtime) the self-contained season report (player
+    plus every week's data, one HTML file); `archive` = that run's. The
+    path, or the 404 response for an unknown identifier or week."""
     from app.core import playback, report_season
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         return PlainTextResponse("unrecognized archived run identifier",
                                  status_code=404)
     root, _is_seal = retro_seasons._season_root(season, archive)
     try:
-        p = report_season.build_season_report(
+        return report_season.build_season_report(
             root, season, archive=archive,
             build=RUNNING_SHA, versions=VERSIONS)
     except playback.UnknownWeek as e:
         return PlainTextResponse(str(e), status_code=404)
+
+
+@router.get("/retro/{season}/report")
+def retro_season_report(season: str, archive: str = ""):
+    """Download the season report (_season_report)."""
+    p = _season_report(season, archive)
+    if isinstance(p, PlainTextResponse):
+        return p
     return FileResponse(p, filename=p.name, media_type="text/html",
                         content_disposition_type="attachment")
 
@@ -1100,18 +1115,9 @@ def retro_season_report(season: str, archive: str = ""):
 def api_retro_report_path(season: str, archive: str = ""):
     """Build the season report if absent and return its path (the results
     page's Reveal button posts it to /output/reveal)."""
-    from fastapi.responses import PlainTextResponse
-    from app.core import playback, report_season
-    if archive and not (_valid_season(season) and _valid_archive(archive)):
-        return PlainTextResponse("unrecognized archived run identifier",
-                                 status_code=404)
-    root, _is_seal = retro_seasons._season_root(season, archive)
-    try:
-        p = report_season.build_season_report(
-            root, season, archive=archive,
-            build=RUNNING_SHA, versions=VERSIONS)
-    except playback.UnknownWeek as e:
-        return PlainTextResponse(str(e), status_code=404)
+    p = _season_report(season, archive)
+    if isinstance(p, PlainTextResponse):
+        return p
     return {"path": str(p)}
 
 
@@ -1135,7 +1141,6 @@ def retro_season_export(season: str, archive: str = ""):
     """Build and download the season's replay bundle (one zip: run record,
     scores and every stored week); `archive` = that run's. Import it on
     another machine from the Retrospective tab."""
-    from fastapi.responses import FileResponse, PlainTextResponse
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         return PlainTextResponse("unrecognized archived run identifier",
                                  status_code=404)
@@ -1150,7 +1155,6 @@ def retro_season_export(season: str, archive: str = ""):
 def api_retro_export_path(season: str, archive: str = ""):
     """Build the replay bundle if absent and return its path, name and
     size (the season page's Export button shows the size and reveals it)."""
-    from fastapi.responses import PlainTextResponse
     from app.core import retro
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         return PlainTextResponse("unrecognized archived run identifier",

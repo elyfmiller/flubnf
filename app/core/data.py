@@ -246,13 +246,7 @@ def spec_source(spec, asof: Optional[str] = None, *, archive=None) -> tuple:
                            archive=archive)
 
 
-def file_sha256(path) -> str:
-    import hashlib
-    h = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+file_sha256 = shipped_vintages.sha256_of
 
 
 def source_record(path, kind: str) -> dict:

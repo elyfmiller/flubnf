@@ -1,8 +1,9 @@
 {# The Forecast tab's Data issues box (app/core/reported.py box_rows): one
    row per state whose newest week reads 0, collapsed, or was not
    reported: the name, a short flag ("0 after 1, 4"), the select and a
-   "recommended" badge while the select holds the rule's choice
-   (reported.recommend; the reason is the row's hint). Each posts as
+   check that reads "recommended" while the select holds the rule's
+   choice (reported.recommend); the reason is the row's hover text and
+   a visually hidden line for assistive tech. Each posts as
    gap.<fips> (forms._gap_form) and is recorded with the run
    (extra["data_choices"], app/core/missing.py) with whether the
    recommendation was followed. Rendered inside #fcform under the anchor
@@ -35,8 +36,8 @@
  {% endif %}
  {% for r in issues.rows %}{% set sel = issues.prior.get(r.fips) or r.rec %}
  <div class="di-row di-state" data-issue="{{ r.issue }}">
-  <div class="di-head"><label for="gap-{{ r.fips }}">{{ r.name }}</label><span class="di-flag">{{ r.flag }}</span><span class="ms-badge ok di-rec"{% if sel != r.rec %} hidden{% endif %}>recommended</span></div>
-  <select name="gap.{{ r.fips }}" id="gap-{{ r.fips }}" data-issue="{{ r.issue }}" data-rec="{{ r.rec }}">
+  <div class="di-head" title="{{ r.why }}"><label for="gap-{{ r.fips }}">{{ r.name }}</label><span class="di-flag">{{ r.flag }}</span><span class="ms-badge ok di-rec"{% if sel != r.rec %} hidden{% endif %}>recommended</span></div>
+  <select name="gap.{{ r.fips }}" id="gap-{{ r.fips }}" data-issue="{{ r.issue }}" data-rec="{{ r.rec }}" title="{{ r.why }}">
    {% for v, t in r.options %}<option value="{{ v }}"{% if sel == v %} selected{% endif %}>{{ t }}</option>{% endfor %}
   </select>
   <span class="hint di-why">{{ r.why }}</span>

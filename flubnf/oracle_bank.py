@@ -53,6 +53,15 @@ from pathlib import Path
 import numpy as np
 
 from . import analogue as AN
+from .vintages import sha256_of as sha256_file
+
+# Sections, in file order: constants (STREAM, GAMMA, COUNT_FLOOR, PATH_WEEKS,
+# MIN_DONOR_SEASONS) | vintage helpers (epiweek, sha256_file, load_populations,
+# load_rows) | estimators (estimate_G, rho_path) | convention C (season_weeks,
+# convention_C) | one vintage (VintageBank, build_vintage) | donor selection
+# (_selected, DonorPaths, collect_paths) | the path table (PATH_COLUMNS,
+# path_rows, write_paths, read_path_rows, pool_from_rows) | manifest and
+# digest (digest_rows, rule_block, write_pool, read_pool, build_pool).
 
 # ---------------------------------------------------------------------------
 # CONSTANTS, frozen by the pre-registration (some after looks at the scored
@@ -112,14 +121,6 @@ def epiweek(d: date) -> int:
     if e is None:
         e = _EW_CACHE[d] = AN.epiweek(d)
     return e
-
-
-def sha256_file(p) -> str:
-    h = hashlib.sha256()
-    with open(p, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def load_populations(locations_csv) -> dict:

@@ -59,7 +59,7 @@ def _flash():
 
 
 def _files(root: Path) -> dict:
-    return {str(p.relative_to(root)): p.read_bytes()
+    return {p.relative_to(root).as_posix(): p.read_bytes()
             for p in sorted(Path(root).rglob("*")) if p.is_file()}
 
 
@@ -308,7 +308,7 @@ def test_the_export_button_and_routes_offer_the_bundle(tmp_path,
     html = client.get(f"/retro/{SEASON}").text
     assert 'id="exp-replay"' in html and "Export replay" in html
     assert f'data-href="/retro/{SEASON}/export"' in html
-    assert "Download season report" in html
+    assert "Download report" in html
 
     d = client.get(f"/retro/{SEASON}/export")
     assert d.status_code == 200

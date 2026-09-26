@@ -29,6 +29,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
+from flubnf.vintages import sha256_of as _sha256_file
+
 FORMAT_VERSION = 1
 SUFFIX = ".flubnf-replay.zip"
 MANIFEST = "manifest.json"
@@ -70,14 +72,6 @@ def _utc_iso(now: float | None = None) -> str:
     t = datetime.fromtimestamp(now if now is not None else time.time(),
                                tz=timezone.utc)
     return t.strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def _sha256_file(p: Path) -> str:
-    h = hashlib.sha256()
-    with open(p, "rb") as f:
-        for chunk in iter(lambda: f.read(_CHUNK), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def bundle_name(season: str, stamp: str) -> str:

@@ -419,7 +419,7 @@ def check(zero_rule: str = MS.TRAILING_ZERO,
 #: and {from} (MM-DD) are filled per state
 OPTION_TEXT = {
     "abstain": "No forecast",
-    "level": f"Level (mean of {MS.ZERO_ANCHOR_WEEKS} wk)",
+    "level": "Level",
     "extend": "Extend {value} from {from}",
     "blend": "Blend",
     "set_aside": "Both from {from}",

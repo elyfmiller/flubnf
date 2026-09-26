@@ -145,19 +145,6 @@ def load_populations(locations_csv: str | Path) -> dict:
             for r in df.itertuples() if r.abbreviation != "US"}
 
 
-def cumulative_reported_per_capita(truth_csv: str | Path, location_fips: str,
-                                   population: int, season_start: str,
-                                   as_of: str) -> float:
-    """Cumulative reported admissions per capita for one state, up to `as_of`."""
-    t = pd.read_csv(truth_csv, dtype={"location": str})
-    t["date"] = pd.to_datetime(t["date"])
-    t["location"] = t["location"].str.zfill(2)
-    m = ((t.location == str(location_fips).zfill(2))
-         & (t.date >= pd.Timestamp(season_start))
-         & (t.date <= pd.Timestamp(as_of)))
-    return float(t.loc[m, "value"].sum()) / float(population)
-
-
 def pin_rho_mult(cum_reported_per_capita: float,
                  attack_rate: float = float(np.mean(ATTACK_RATE_RANGE))) -> float:
     """Pin the product `rho*mult` -- the only combination that is identified.

@@ -1,4 +1,4 @@
-"""RESEARCH: forecasts on a user-supplied dataset (app/core/datasets.py).
+"""RESEARCH: forecasts on a user-supplied dataset (app/core/datasets/).
 
 One console run on a custom dataset: the Groundhog and, for counts with a
 population, the plain SIHRS particle filter, both through the SAME engines
@@ -47,9 +47,6 @@ MEMBER_LABELS = {"analogue": GROUNDHOG_OWN_DATA,
                  "pf": "plain SIHRS particle filter"}
 #: the baseline every custom relWIS is measured against, by name
 BASELINE = "in-house persistence baseline"
-BASELINE_NOTE = ("relWIS against the in-house persistence baseline "
-                 "(flubnf.baseline_forecast), not FluSight-baseline; it is "
-                 "not comparable with FluSight scores.")
 EXPORT_DIR = "export"
 #: quantile levels kept in results.json (the run page's fans)
 FIVE = ("0.1", "0.25", "0.5", "0.75", "0.9")

@@ -274,12 +274,10 @@ def _run_data_source(rid) -> str:
 
 
 def _read_json(p: Path):
-    import json as _json
-    try:
-        d = _json.loads(Path(p).read_text())
-    except (OSError, ValueError):
-        return None
-    return d if isinstance(d, dict) else None
+    """archive_record's JSON-object reader (imported lazily: the module is
+    not on the server's eager import list)."""
+    from app.core.archive_record import _read
+    return _read(p)
 
 
 def _file_complete(row, model_dir: str) -> bool:
@@ -533,16 +531,23 @@ def _report_for_serving(dirpath: Path) -> str:
         return text
 
 
+def _bad_date(date: str):
+    """The 400 for a malformed ?date=; None when it is YYYY-MM-DD."""
+    import re
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+        return None
+    return HTMLResponse("<p>Invalid date. Expected YYYY-MM-DD.</p>",
+                        status_code=400)
+
+
 @router.get("/output/report", response_class=HTMLResponse)
 def output_report(date: str = ""):
     """Latest run's report, or ?date=YYYY-MM-DD from the archive (both via
     _report_for_serving)."""
-    import re
     from app.core.runs import APP_STATE
     if date:
-        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
-            return HTMLResponse("<p>Invalid date. Expected YYYY-MM-DD.</p>",
-                                status_code=400)
+        if bad := _bad_date(date):
+            return bad
         d = APP_STATE / "archive" / date
         if not (d / "report.html").is_file():
             return HTMLResponse(f"<p>No archived report for {date}.</p>")
@@ -576,12 +581,10 @@ def _weekly_report_file(dirpath: Path, date: str):
 @router.get("/output/report/download")
 def output_report_download(date: str = ""):
     """/output/report's file, as a download."""
-    import re
     from app.core.runs import APP_STATE
     if date:
-        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
-            return HTMLResponse("<p>Invalid date. Expected YYYY-MM-DD.</p>",
-                                status_code=400)
+        if bad := _bad_date(date):
+            return bad
         return _weekly_report_file(APP_STATE / "archive" / date, date)
     rid, res = shared._latest_results()
     return _weekly_report_file(APP_STATE / "workroots" / (rid or ""),

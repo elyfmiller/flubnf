@@ -19,6 +19,25 @@
   {%- for b in ("50", "80", "95") %}{% set cs = cov_state(cov.get(b), b | int) %}<span class="{{ ('cov-' ~ cs) if cs else 'hint' }}">{{ cov_text(cov.get(b)) }}</span>{{ " · " if not loop.last }}{% endfor %}</dd>{% endif %}
 </dl>{% endif %}
 {%- endmacro %}
+{# the run settings as one line: values first, the long parentheticals
+   left to the tip (the shared renderer, settings_html, prints them) #}
+{% macro settings_line(pairs) -%}
+{%- set ns = namespace(items=[]) -%}
+{%- for k, v in pairs -%}
+ {%- set v0 = (v ~ '').split(' (')[0] -%}
+ {%- if k == 'season' %}{% set t = v0 %}
+ {%- elif k == 'locations' %}{% set t = v0.replace('all ', '').replace(' jurisdictions plus US national', ' jurisdictions + US').replace(' plus US national', ' + US') %}
+ {%- elif k == 'particles' %}{% set t = v0 ~ ' particles' %}
+ {%- elif k == 'replicates' %}{% set t = v0 ~ ' replicate' ~ ('' if v0 == '1' else 's') %}
+ {%- elif k == 'shard width' %}{% set t = 'shard ' ~ v0 %}
+ {%- elif k == 'engine' %}{% set t = v0.replace(' and the ', ' + ') if ' ' in v0 else 'engine ' ~ v0 %}
+ {%- elif k == 'zero-anchor rule' %}{% set t = 'zero-anchor ' ~ v0 %}
+ {%- elif k == 'output floor' %}{% set t = 'floor ' ~ v0 %}
+ {%- else %}{% set t = k ~ ' ' ~ v0 %}{% endif -%}
+ {%- set ns.items = ns.items + [t] -%}
+{%- endfor -%}
+{{ ns.items | join(' · ') }}
+{%- endmacro %}
 {# the per-state table's 95% coverage cell and its sort attribute #}
 {% macro cov95(cov) -%}
 {%- set c = (cov or {}).get('95') %}{% set cs = cov_state(c, 95) -%}
@@ -153,7 +172,10 @@
  FluBNFRetroTicker.init({busy: function(){return !!window.GUARD_BUSY;}});
 </script>
 {% elif prog and ((prog.elapsed_s and prog.elapsed_s >= 1) or prog.added_n) %}
-{# one facts line: wall time, pace, state pills; the details ride tips #}
+{# one band: the facts line (wall time, pace, state pills; details in
+   tips) and the report buttons; under it the settings as one muted line,
+   the full list (the shared renderer) in its tip #}
+<div class="rs-band">
 <p class="hint rs-facts">
  {%- if prog.elapsed_s and prog.elapsed_s >= 1 -%}
  Replay wall time {{ prog.elapsed_s | hms }} · {{ prog.done }} weeks
@@ -170,19 +192,12 @@
  {{ tips.tip("rs-added", "the added weeks", prog.added_n ~ " week" ~ ("" if prog.added_n == 1 else "s") ~ " added to the season since this replay finished: " ~ (prog.added | join(", ")) ~ ". " ~ ("This is a sealed record and cannot be resumed; a fresh replay from the Retrospective tab is needed to run " ~ ("it" if prog.added_n == 1 else "them") ~ "." if prog.sealed else "Run on the Retrospective tab resumes this season and runs only " ~ ("that week" if prog.added_n == 1 else "those weeks") ~ "; the completed weeks are kept.")) }}
  {%- endif %}
 </p>
-{% endif %}
-{# one band: the finished replay's settings as a chip row (the shared
-   renderer, restyled by .rs-chips) and the report buttons #}
-<div class="rs-band">
- {% if prog and not prog.active and prog.elapsed_s and prog.elapsed_s >= 1 %}
- <div class="rs-chips">{{ settings_html(prog.settings) | safe }}</div>
- {% endif %}
  <p class="row rs-acts">
   {# the download attribute makes WKWebView download rather than navigate
      (pywebview also needs ALLOW_DOWNLOADS, set in flubnf/cli.py); the
      button inside the anchor is the app's download idiom (see Output) #}
   <a href="/retro/{{ season }}/report{{ aq }}" download><button class="gold"
-    type="button" style="margin-top:0">Download season report</button></a>
+    type="button" style="margin-top:0">Download report</button></a>
   <button type="button" class="quiet" id="rev-report" style="margin-top:0"
     data-season="{{ season }}" data-archive="{{ archive }}">Reveal in Finder</button>
   {# the replay bundle (app/core/replay_bundle): one zip of this run's
@@ -191,11 +206,36 @@
      way as the report #}
   <button type="button" class="quiet" id="exp-replay" style="margin-top:0"
     data-season="{{ season }}" data-archive="{{ archive }}"
-    data-href="/retro/{{ season }}/export{{ aq }}">Export replay</button>
-  <span class="hint" id="exp-replay-hint">One zip to import on another
-   machine (Retrospective tab).</span>
+    data-href="/retro/{{ season }}/export{{ aq }}"
+    title="One zip of this replay to import on another machine (Retrospective tab)">Export replay</button>
+  <span class="hint" id="exp-replay-hint"></span>
  </p>
 </div>
+<p class="hint rs-settings">{{ settings_line(prog.settings) }}
+ {# the full list, one line per setting (a tooltip cannot hold a dl) #}
+ {% call tips.tip("rs-settings", "the run settings") %}{% for k, v in prog.settings %}<span class="ncline kv"><b>{{ k }}</b> {{ v }}</span>{% endfor %}{% endcall %}</p>
+{% else %}
+<div class="rs-band">
+ <p class="row rs-acts">
+  {# the download attribute makes WKWebView download rather than navigate
+     (pywebview also needs ALLOW_DOWNLOADS, set in flubnf/cli.py); the
+     button inside the anchor is the app's download idiom (see Output) #}
+  <a href="/retro/{{ season }}/report{{ aq }}" download><button class="gold"
+    type="button" style="margin-top:0">Download report</button></a>
+  <button type="button" class="quiet" id="rev-report" style="margin-top:0"
+    data-season="{{ season }}" data-archive="{{ archive }}">Reveal in Finder</button>
+  {# the replay bundle (app/core/replay_bundle): one zip of this run's
+     record, scores and weeks, for Import a replay on another machine.
+     Built first (the size goes into the hint), then downloaded the same
+     way as the report #}
+  <button type="button" class="quiet" id="exp-replay" style="margin-top:0"
+    data-season="{{ season }}" data-archive="{{ archive }}"
+    data-href="/retro/{{ season }}/export{{ aq }}"
+    title="One zip of this replay to import on another machine (Retrospective tab)">Export replay</button>
+  <span class="hint" id="exp-replay-hint"></span>
+ </p>
+</div>
+{% endif %}
 <script>
  // build the bundle (same builder as the download route), print its size,
  // then download it through an anchor with the download attribute

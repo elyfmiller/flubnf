@@ -5,11 +5,16 @@ which server.py registers as the outermost middleware) and the Storage
 panel's read-only sandbox line (_sandbox_storage_line, which server.py
 registers as the sandbox_storage Jinja global). app/core/sandbox.py does
 the work. An APIRouter server.py includes.
+
+Sections: the engine guard and busy reason; redirects and the posted
+editor; the page (GET /sandbox); models (new, save, delete, check);
+data.exp (fill, simulate, upload); runs (start, stop); the diagram API
+and the run poll; downloads; the Oracle step; the Storage line.
 """
 from __future__ import annotations
 
+import math
 import threading
-from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import (HTMLResponse, JSONResponse, PlainTextResponse,
@@ -26,8 +31,9 @@ from app.ui.templating import _script_json, templates
 router = APIRouter()
 
 
-# === Sandbox (/sandbox): user models on the same engine -> sandbox.html ===
-# app/core/sandbox.py; nothing here touches the ledger, Output, retro or seal.
+# ------------------------------------------ the engine guard and busy reason
+# Nothing here touches the ledger, Output, retro or seal.
+
 def _sandbox_busy_reason() -> str:
     """Why a sandbox fit may not start now ("" when the engine is free)."""
     if _status.get("running"):
@@ -62,6 +68,8 @@ async def _sandbox_engine_guard(request: Request, call_next):
     return await call_next(request)
 
 
+# ------------------------------------------ redirects and the posted editor
+
 def _sandbox_url(model: str = "", run: str = "") -> str:
     """The sandbox page with the model (and run) open."""
     from urllib.parse import quote
@@ -77,10 +85,6 @@ def _sandbox_redirect(model: str = "", run: str = "") -> RedirectResponse:
     return RedirectResponse(_sandbox_url(model, run), status_code=303)
 
 
-def _sandbox_run_dir(run_id: str) -> Path:
-    return sandbox_mod.run_dir(run_id)
-
-
 def _sandbox_save_posted(name: str, model_bngl: str, data_exp: str,
                          priors_conf: str) -> list:
     """Save the editor fields that were posted non-empty (a script or an
@@ -93,6 +97,8 @@ def _sandbox_save_posted(name: str, model_bngl: str, data_exp: str,
         sandbox_mod.save_model(name, files)
     return sorted(files)
 
+
+# ------------------------------------------------------ the page (GET)
 
 @router.get("/sandbox", response_class=HTMLResponse)
 def sandbox_page(request: Request, run: str = "", model: str = "",
@@ -118,7 +124,7 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
     res = None
     try:
         if run:
-            res = sandbox_mod.results(_sandbox_run_dir(run), live=live)
+            res = sandbox_mod.results(sandbox_mod.run_dir(run), live=live)
             if model and res["meta"].get("model") != model:
                 res = None
         elif runs:
@@ -131,7 +137,7 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
     cmp, diff = None, None
     if res and compare and compare != res["run_id"]:
         try:
-            cmp = sandbox_mod.results(_sandbox_run_dir(compare), live=live)
+            cmp = sandbox_mod.results(sandbox_mod.run_dir(compare), live=live)
             if cmp["meta"].get("model") != res["meta"].get("model"):
                 raise sandbox_mod.SandboxError(
                     f"{compare} is a run of another model")
@@ -207,6 +213,8 @@ def sandbox_page(request: Request, run: str = "", model: str = "",
             "upload_mb": sandbox_mod.UPLOAD_MAX_BYTES // (1024 * 1024)})
     return templates.TemplateResponse(request, "sandbox.html", ctx)
 
+
+# -------------------------------------------------------------- models
 
 @router.post("/sandbox/add-example")
 def sandbox_add_example(request: Request, name: str = Form(...)):
@@ -322,6 +330,8 @@ def api_sandbox_check(name: str, model_bngl: str = Form(""),
         return JSONResponse({"ok": False, "problems": [str(e)[:1500]],
                              "warnings": [], "facts": {}}, status_code=200)
 
+
+# ------------------------------------------------------------ data.exp
 
 def _sandbox_fill_flash(info: dict) -> None:
     if info["asof"] == "dataset":
@@ -499,6 +509,8 @@ async def sandbox_upload_data(request: Request, name: str):
                             status_code=303)
 
 
+# ---------------------------------------------------------------- runs
+
 def _sandbox_start(name: str, *, particles: int, jitter: float,
                    forecast_weeks: int, seed: int) -> RedirectResponse:
     """Claim the engine (under _engine_lock, before preparing), prepare the
@@ -584,7 +596,7 @@ def sandbox_run_stop(run_id: str):
     """Stop the live fit named here (the STOP flag execute polls)."""
     model = ""
     try:
-        d = _sandbox_run_dir(run_id)
+        d = sandbox_mod.run_dir(run_id)
         model = sandbox_mod.results(d)["meta"].get("model", "")
         with _engine_lock:
             live = _sandbox_status.get("running") == run_id
@@ -609,11 +621,13 @@ def sandbox_stop():
             _sandbox_status["cancel"] = True
     if running:
         try:
-            sandbox_mod.stop(_sandbox_run_dir(running))
+            sandbox_mod.stop(sandbox_mod.run_dir(running))
         except Exception:
             pass
     return _sandbox_redirect()
 
+
+# ------------------------------------- the diagram API and the run poll
 
 @router.get("/api/sandbox/models/{name}/contactmap")
 def api_sandbox_contactmap(name: str):
@@ -678,7 +692,6 @@ def _json_finite(obj):
     """obj with every NaN or infinite float as None: JSON has no NaN, and
     a data.exp row written NaN (a missing week) or an all-NaN trajectory
     column would otherwise fail the response."""
-    import math
     if isinstance(obj, float):
         return obj if math.isfinite(obj) else None
     if isinstance(obj, dict):
@@ -691,12 +704,14 @@ def _json_finite(obj):
 @router.get("/api/sandbox/runs/{run_id}")
 def api_sandbox_run(run_id: str):
     try:
-        res = sandbox_mod.results(_sandbox_run_dir(run_id),
+        res = sandbox_mod.results(sandbox_mod.run_dir(run_id),
                                   live=_sandbox_status.get("running"))
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=404)
     return _json_finite(res)
 
+
+# ----------------------------------------------------------- downloads
 
 def _sandbox_same_origin_get(request: Request) -> bool:
     """A download GET whose Origin, when sent, names localhost. The
@@ -739,6 +754,8 @@ def sandbox_run_download(request: Request, run_id: str):
         return PlainTextResponse(f"{e}\n", status_code=404)
 
 
+# ----------------------------------------------------- the Oracle step
+
 @router.post("/sandbox/runs/{run_id}/oracle")
 def sandbox_run_oracle(run_id: str, w: str = Form("")):
     """The production Oracle step on a finished run of an unedited Oracle
@@ -746,7 +763,7 @@ def sandbox_run_oracle(run_id: str, w: str = Form("")):
     nothing reaches the ledger, the site, the archive or model-output."""
     model = ""
     try:
-        model = str(sandbox_mod.results(_sandbox_run_dir(run_id))["meta"]
+        model = str(sandbox_mod.results(sandbox_mod.run_dir(run_id))["meta"]
                     .get("model", ""))
         try:
             wv = float(w) if str(w).strip() else None
@@ -759,6 +776,8 @@ def sandbox_run_oracle(run_id: str, w: str = Form("")):
         _flash(f"Oracle step not applied: {e}")
     return _sandbox_redirect(model, run_id if model else "")
 
+
+# ---------------------------------------------------- the Storage line
 
 def _sandbox_storage_line() -> dict:
     """The Storage panel's read-only sandbox line (kept out of its total:
