@@ -123,6 +123,11 @@ def _attach_coverage(files: list, outcome: dict, spec) -> None:
         requested = list((sp or {}).get("locations") or [])
     except (ValueError, TypeError):
         requested = []
+    # a state left out of both files on the Forecast tab was asked for and
+    # left out with a reason (coverage.missing_reason), not "not requested"
+    left = (outcome or {}).get("left_out") or {}
+    if isinstance(left, dict):
+        requested += [l for l in sorted(left) if l not in requested]
     if not requested:
         return
     try:

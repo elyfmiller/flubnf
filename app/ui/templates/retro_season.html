@@ -4,6 +4,11 @@
 <script src="/static/quips.js"></script>
 <script src="/static/retro_progress.js"></script>{% endblock %}
 {% block content %}{% import "_tips.html" as tips %}
+{# the player's timeline and captions (playback.week_notes); a context
+   without them (an older caller) plays the stored weeks alone #}
+{% set timeline = timeline if (timeline is defined and timeline) else weeks %}
+{% set notes = notes if notes is defined else {} %}
+{% set no_data_note = no_data_note if no_data_note is defined else "" %}
 {# a verdict tile's second line: log-scale relWIS and 50/80/95% coverage
    (the export prints the same, report_season._metrics_html); a figure the
    scores cannot give (a season scored before these metrics) is left out #}
@@ -147,6 +152,16 @@
  completed week.{% elif prog.status == 'interrupted' %}Interrupted when the
  app closed; Run resumes from the last completed week.{% endif %}</p>
 {{ settings_html(prog.settings) | safe }}
+{% endif %}
+{% if prog and prog.added_n and not prog.active %}
+{# the season's week list grew after this replay finished (the hub archive
+   or the shipped snapshots, data/vintages/): name the weeks, say what to do #}
+<p class="hint" id="weeks-added">{{ prog.added_n }} week{{ "" if prog.added_n == 1 else "s" }} added
+ to {{ season }} since this replay finished: {{ prog.added | join(", ") }}.
+ {% if prog.sealed %}This is a sealed record and cannot be resumed; a fresh
+ replay from the Retrospective tab is needed to run {{ "it" if prog.added_n == 1 else "them" }}.
+ {% else %}Run on the Retrospective tab resumes this season and runs only
+ {{ "that week" if prog.added_n == 1 else "those weeks" }}; the completed weeks are kept.{% endif %}</p>
 {% endif %}
 <p class="row" style="gap:.55rem">
  {# the download attribute makes WKWebView download rather than navigate
@@ -293,8 +308,10 @@
    <option value="1000" selected>1 s / week</option>
    <option value="2000">2 s / week</option>
   </select>
-  <input type="range" id="pb-scrub" min="0" max="{{ (weeks|length) - 1 }}" step="1"
-         value="{{ weeks.index(week) if week in weeks else 0 }}" aria-label="Week scrubber">
+  {# the scrubber walks the timeline: the stored weeks plus the season's
+     no-data weeks as placeholders (playback.week_notes) #}
+  <input type="range" id="pb-scrub" min="0" max="{{ (timeline|length) - 1 }}" step="1"
+         value="{{ timeline.index(week) if week in timeline else 0 }}" aria-label="Week scrubber">
   {# polite live regions announce the player advancing #}
   <span class="hint" id="pb-week" aria-live="polite"></span>
  </div>
@@ -501,7 +518,13 @@
  // shared name map first; everything reads it by reference.
  FluBNFPlayer.MODEL_NAMES.pf = {{ model_name('pf') | tojson }};
  const SEASON = {{ season | tojson }};
- const WEEKS = {{ weeks | tojson }};
+ const WEEKS = {{ timeline | tojson }};
+ // per-week captions: data provenance for a week read from a shipped
+ // snapshot, and the placeholder for a week with no published data (such a
+ // week has no stored samples, so nothing is fetched for it)
+ const NOTES = {{ notes | tojson }};
+ const NO_DATA_NOTE = {{ no_data_note | tojson }};
+ function noData(w){ return NOTES[w] === NO_DATA_NOTE; }
  // an archived run: the same routes plus one query parameter
  const ARCHIVE = {{ (archive or '') | tojson }};
  const AQ = ARCHIVE ? 'archive=' + encodeURIComponent(ARCHIVE) : '';
@@ -511,6 +534,7 @@
  // for the panel ----
  const PAY = {}, PPROM = {}, PERR = {};
  function ensurePayload(w){
+   if(noData(w)){ PAY[w] = null; PERR[w] = NOTES[w]; return Promise.resolve(null); }
    if(w in PAY) return Promise.resolve(PAY[w]);
    if(PPROM[w]) return PPROM[w];
    PPROM[w] = fetch('/api/retro/' + encodeURIComponent(SEASON)
@@ -549,6 +573,7 @@
    scheduleMap();
  });
  function fetchMap(w){
+   if(noData(w)){ SWAP[w] = null; return Promise.resolve(null); }
    if(w in SWAP) return Promise.resolve(SWAP[w]);
    if(SPROM[w]) return SPROM[w];
    SPROM[w] = fetch('/api/retro/' + encodeURIComponent(SEASON)
@@ -581,7 +606,9 @@
    }
    host.dataset.week = w;
    if(st === null){
-     if(note){note.textContent = 'map unavailable for ' + w; note.hidden = false;}
+     if(note){note.textContent = noData(w) ? NOTES[w] + ' (' + w + ')'
+                                          : 'map unavailable for ' + w;
+              note.hidden = false;}
      return;
    }
    // a week without the selected model says so (never another model's map
@@ -617,6 +644,7 @@
  const V = {view: 'map'};
  const player = FluBNFPlayer.init({
    weeks: WEEKS,
+   notes: NOTES,
    mode: 'live',
    // server-side, so the toggles are right before the first payload
    seasonOfficials: {{ (official_catalog or []) | tojson }},

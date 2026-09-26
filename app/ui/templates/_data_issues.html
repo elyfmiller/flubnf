@@ -1,0 +1,54 @@
+{# The Forecast tab's Data issues box (app/core/reported.py box_rows): one
+   select per state whose newest week reads 0, collapsed, or was not
+   reported. Each posts as gap.<fips> (forms._gap_form) and the choice is
+   recorded with the run (extra["data_choices"], app/core/missing.py); a
+   zero state has no preselection and must be answered (required, and the
+   server refuses the run without it). Rendered inside #fcform under the
+   anchor line, only when the week has such a state; forecast.html's
+   paint() hides and disables it when the chosen date leaves that week (a
+   disabled fieldset posts nothing).
+   {% import "_data_issues.html" as di %}{{ di.box(issues, sha) }} #}
+{% import "_tips.html" as tips %}
+{% macro box(issues, sha="", hidden=False) -%}
+{% set n = issues.rows|length %}
+{% set zeros = issues.rows|selectattr("issue", "equalto", "zero")|list %}
+<fieldset class="ms-group dataissues" id="data-issues" data-week="{{ issues.week }}"{% if hidden %} hidden disabled{% endif %}>
+ <legend>Data issues for {{ issues.week }}<span class="ms-badge warn">{{ n }} state{{ "s" if n != 1 }}</span>
+  {{ tips.tip("data-issues", "the data issues", "States whose newest week reads 0, fell under a fifth of a week of 20 or more, or was not reported. Your choice applies to this run only and is recorded with it. Forecasting from an earlier week counts every horizon from the forecast date, as Weeks to drop does; at most 2 weeks. " ~ issues.facts) }}</legend>
+ <input type="hidden" name="gap._sha" value="{{ sha }}">
+ {% if zeros|length > 1 %}
+ <div class="ms-row di-all">
+  {{ tips.label("Apply to all zero states", "di-all", "Sets every zero state's select below to this choice; change any of them afterwards. A choice a state cannot take (extend, blend or setting aside with 3 or more weeks of 0) is left as it was.", for_="di-all") }}
+  <select id="di-all" data-di-all="1">
+   <option value="">Choose…</option>
+   {% for v, t in issues.all_options %}<option value="{{ v }}">{{ t }}</option>{% endfor %}
+  </select>
+ </div>
+ {% endif %}
+ {% for r in issues.rows %}{% set sel = issues.prior.get(r.fips) or r.default %}
+ <div class="ms-row di-state" data-issue="{{ r.issue }}">
+  <div class="lblrow"><label for="gap-{{ r.fips }}">{{ r.name }}: <span class="hint">{{ r.hint }}</span></label></div>
+  <select name="gap.{{ r.fips }}" id="gap-{{ r.fips }}" data-issue="{{ r.issue }}"{% if r.issue == "zero" %} required{% endif %}>
+   {% if r.issue == "zero" %}<option value=""{% if not sel %} selected{% endif %}>Choose…</option>{% endif %}
+   {% for v, t in r.options %}<option value="{{ v }}"{% if sel == v %} selected{% endif %}>{{ t }}</option>{% endfor %}
+  </select>
+ </div>
+ {% endfor %}
+ <script>
+  (function () {
+    // "Apply to all zero states": set each zero state's select that offers
+    // the choice (a state with 3 or more weeks of 0 has no extend or blend)
+    var all = document.getElementById('di-all');
+    if (!all) return;
+    all.addEventListener('change', function () {
+      var v = all.value;
+      if (!v) return;
+      document.querySelectorAll('#data-issues select[data-issue=zero]').forEach(function (s) {
+        var has = Array.prototype.some.call(s.options, function (o) { return o.value === v; });
+        if (has) s.value = v;
+      });
+    });
+  })();
+ </script>
+</fieldset>
+{%- endmacro %}

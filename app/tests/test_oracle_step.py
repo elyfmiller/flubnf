@@ -397,14 +397,15 @@ def test_a_console_replay_is_the_oracle_sihrs_from_the_season_start(hubfiles, tm
     monkeypatch.setattr(ui_retro_prep, "_ensure_results_job",
                         lambda root, s, **k: {"done": _Done(), "error": ""})
     real_bg, calls = ui_retro._retro_bg, []
-    monkeypatch.setattr(ui_retro, "_retro_bg", lambda *a: calls.append(a))
+    monkeypatch.setattr(ui_retro, "_retro_bg", lambda *a, **k: calls.append(a))
     status_before = dict(ui_retro_seasons._retro_status)
     try:
         r = TestClient(srv.app).post("/retro/run", data={
             "season": season, "locations": "custom",
             "custom_locations": ["Ohio", "Utah"], "national": "0",
             "particles": "1000", "replicates": "1", "width": "1",
-            "engine": "pf", "mode": "resume"}, follow_redirects=False)
+            "engine": "pf", "mode": "resume",
+            "knob.groundhog.zero_anchor": "abstain"}, follow_redirects=False)
         assert r.status_code == 303 and len(calls) == 1
         # the form's arguments, run by the real season worker
         assert calls[0][-1] == "pf" and calls[0][1] == ["Ohio", "Utah"]

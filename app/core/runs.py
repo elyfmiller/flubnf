@@ -152,10 +152,33 @@ def spec_settings(spec, outcome=None) -> list:
     mk = model_settings_label(d)
     if mk:
         pairs.append(("model settings", mk))
+    # the per-state data choices and the zero-anchor rule (app/core/missing.py):
+    # recorded data decisions, never "modified"; absent on a plain run
+    pairs.append(("Data issues", data_issues_label(extra)))
     # the optional hub rows (knobs.OPTIONAL_KEYS): only when one is on
     from app.core import knobs as K
     pairs.append(("optional hub rows", K.optional_label(d)))
     return [(k, v) for k, v in pairs if v not in ("", None)]
+
+
+def data_issues_label(extra: dict) -> str:
+    """The settings value for a run's data decisions: the per-state choices
+    counted by choice ("Arkansas level, Utah set aside, Oregon left out")
+    and the run-wide zero-anchor rule when one was set; "" when neither."""
+    from app.core import missing as MS
+    bits = []
+    states = MS.choices_of(extra)
+    words = {"set_aside": "set aside", "omit": "left out"}
+    for loc in sorted(states):
+        c = str((states[loc] or {}).get("choice") or "")
+        if c:
+            bits.append(f"{loc} {words.get(c, c)}")
+    text = ", ".join(bits)
+    za = MS.zero_anchor_of(extra)
+    if za:
+        rule = f"zero-anchor rule {za}" + (" for the other states" if bits else "")
+        text = f"{text}; {rule}" if text else rule
+    return text
 
 
 #: the Groundhog wherever it runs on a custom dataset (its export file
@@ -358,8 +381,10 @@ def anchor_notes_row(o: dict, names: dict):
         if not isinstance(notes, dict) or not notes:
             continue
         # a newest week that reads 0 is not an unreported week: its own row
+        # (the zero-anchor row); a set-aside that did not apply is the
+        # Data issues row's
         notes = {k: v for k, v in notes.items()
-                 if not str(v).startswith(NO_FORECAST)}
+                 if not str(v).startswith(_OWN_ROW_PREFIXES)}
         if not notes:
             continue
         name = names.get(m, m)
@@ -387,33 +412,97 @@ def anchor_notes_row(o: dict, names: dict):
 #: the engine note of a location with no forecast from its newest week
 #: (the Groundhog: a newest count of 0 is a ratio of nothing)
 NO_FORECAST = "no forecast"
+#: notes with a Results row of their own (not "Unreported newest weeks")
+_OWN_ROW_PREFIXES = (NO_FORECAST, "zero-anchor", "set-aside not applied")
 
 
-def no_forecast_row(o: dict, names: dict):
-    """The Results table's row for locations an engine gave no forecast
-    from their newest week (engine notes starting NO_FORECAST), or None:
-    a count per member, each location's note in the "?" tip."""
+def zero_anchor_row(o: dict, names: dict):
+    """The Results table's row for the Groundhog's locations whose newest
+    week read 0 (engine notes "no forecast ..." = abstained, or
+    "zero-anchor <rule>: ..."), or None: a count per rule, each location's
+    note in the "?" tip."""
     import html as _html
+    from app.core import missing as MS
     parts, lines = [], []
     for m, key in ANCHOR_NOTE_KEYS:
         notes = o.get(key)
         if not isinstance(notes, dict):
             continue
-        hit = {k: v for k, v in notes.items()
-               if str(v).startswith(NO_FORECAST)}
-        if not hit:
+        by: dict = {}
+        for loc, v in sorted(notes.items()):
+            v = str(v)
+            if v.startswith(NO_FORECAST):
+                by.setdefault("abstain", []).append(loc)
+            elif v.startswith(MS.ZERO_ANCHOR_NOTE + " "):
+                rule = v[len(MS.ZERO_ANCHOR_NOTE) + 1:].split(":", 1)[0]
+                by.setdefault(rule, []).append(loc)
+            else:
+                continue
+            lines.append(f"{names.get(m, m)}, {loc}: {v}.")
+        if not by:
             continue
-        name = names.get(m, m)
-        parts.append(f"{name}: {len(hit)} location"
-                     f"{'s' if len(hit) != 1 else ''}")
-        lines += [f"{name}, {loc}: {v}." for loc, v in sorted(hit.items())]
+        bits = [f"{len(by[r])} {r}" for r in MS.ZERO_ANCHOR_RULES if r in by]
+        bits += [f"{len(v)} {r}" for r, v in sorted(by.items())
+                 if r not in MS.ZERO_ANCHOR_RULES]
+        parts.append(f"{names.get(m, m)}: {', '.join(bits)}")
     if not parts:
         return None
-    tip = _tip("no-forecast", "locations with no forecast",
+    tip = _tip("zero-anchor", "locations whose newest week read 0",
                "The Groundhog forecasts a ratio of the newest count, so a "
-               "newest week that reads 0 gives it nothing to scale and the "
-               "location is left out of its file. " + " ".join(lines))
-    return ("No forecast", _html.escape("; ".join(parts)) + tip)
+               "newest week that reads 0 gives it nothing to scale: it "
+               "abstains (no forecast, the location is left out of its "
+               "file) unless a zero-anchor rule was chosen for the state: "
+               "level (the mean of the last 4 weeks), extend (the last "
+               "positive week carried forward) or blend (the two averaged). "
+               + " ".join(lines))
+    return ("Newest week reading 0", _html.escape("; ".join(parts)) + tip)
+
+
+#: kept for callers that knew the row by its old name
+no_forecast_row = zero_anchor_row
+
+
+def data_issues_row(o: dict, spec_extra: dict, names: dict):
+    """The Results table's row for the per-state choices a run carried
+    (app/core/missing.py): "3 set aside, 1 left out, 2 zero-anchor level",
+    a set-aside that no longer matched the data counted too; every state's
+    outcome in the "?" tip. None when the run carried none."""
+    import html as _html
+    from app.core import missing as MS
+    flags = o.get("data_flags") if isinstance(o.get("data_flags"), dict) else {}
+    states = MS.choices_of(spec_extra)
+    if not states and not any(
+            str(r.get("rule", "")).startswith(MS.ZERO_ANCHOR_NOTE)
+            for rows in flags.values() for r in rows or ()):
+        return None
+    text = MS.choices_line(flags)
+    lines = []
+    not_applied = 0
+    for m, key in ANCHOR_NOTE_KEYS:
+        notes = o.get(key) if isinstance(o.get(key), dict) else {}
+        for loc, v in sorted(notes.items()):
+            if str(v).startswith(MS.NOT_APPLIED_NOTE):
+                not_applied += 1
+                lines.append(f"{names.get(m, m)}, {loc}: {v}.")
+    if not_applied:
+        bit = f"{not_applied} not applied (the data changed)"
+        text = f"{text}, {bit}" if text else bit
+    for loc in sorted(states):
+        st = states[loc] or {}
+        what = str(st.get("what") or st.get("issue") or "")
+        lines.append(f"{loc}: {what}; {st.get('choice', '')}.")
+    for rows in flags.values():
+        for r in rows or ():
+            if str(r.get("rule", "")).startswith(MS.ZERO_ANCHOR_NOTE):
+                lines.append(f"{r.get('location')}: {r.get('week')} reads "
+                             f"{float(r.get('value') or 0):g}; {r.get('rule')}.")
+    if not text:
+        return None
+    tip = _tip("data-issues", "the data issues",
+               "Per-state choices made in Data issues on the Forecast tab, "
+               "recorded with the run; they do not mark it modified. "
+               + " ".join(dict.fromkeys(lines)))
+    return ("Data issues", _html.escape(text) + tip)
 
 
 def _results_note(d: dict) -> str:
@@ -502,15 +591,19 @@ def results_html(outcome, spec, heading: bool = True) -> str:
     arow = anchor_notes_row(o, HUB_MEMBER_NAMES)
     if arow:
         rows.append(arow)
-    nrow = no_forecast_row(o, HUB_MEMBER_NAMES)
+    nrow = zero_anchor_row(o, HUB_MEMBER_NAMES)
     if nrow:
         rows.append(nrow)
-    if "data_flags" in o:
-        # only a run with a missing-data rule on carries the key
+    drow = data_issues_row(o, extra, HUB_MEMBER_NAMES)
+    if drow:
+        rows.append(drow)
+    from app.core import missing as _missing
+    if _missing.rules_of(extra) and "data_flags" in o:
+        # only a run with a missing-data rule on
         import html as _html_fl
-        from app.core import missing as _missing
         rows.append(("Missing-data rules", _html_fl.escape(
-            _missing.line(o["data_flags"]) or "on; no week flagged")))
+            _missing.line(_missing.unreported_flags(o["data_flags"]))
+            or "on; no week flagged")))
     if o.get("submission_withheld"):
         rows.append(("Submission",f'<span class="bad">withheld</span> '
                      f'<span class="hint">{o["submission_withheld"]}</span>'))
@@ -533,6 +626,7 @@ def dataset_results_html(o: dict, d: dict, heading: bool = True) -> str:
     phrases and numbers only, group names escaped."""
     import html as _html
     from app.core.custom_run import EXPORT_IDS, MEMBER_LABELS
+    extra = d.get("extra") if isinstance(d.get("extra"), dict) else {}
     rows = []
     scores = o.get("custom_scores") or {}
     for m in ("pf", "analogue"):
@@ -565,14 +659,15 @@ def dataset_results_html(o: dict, d: dict, heading: bool = True) -> str:
     arow = anchor_notes_row(o, MEMBER_LABELS)
     if arow:
         rows.append(arow)
-    nrow = no_forecast_row(o, MEMBER_LABELS)
+    nrow = zero_anchor_row(o, MEMBER_LABELS)
     if nrow:
         rows.append(nrow)
-    if "data_flags" in o:
-        # only a run with a missing-data rule on carries the key
-        from app.core import missing as _missing
+    from app.core import missing as _missing
+    if _missing.rules_of(extra) and "data_flags" in o:
+        # only a run with a missing-data rule on
         rows.append(("Missing-data rules", _html.escape(
-            _missing.line(o["data_flags"]) or "on; no week flagged")))
+            _missing.line(_missing.unreported_flags(o["data_flags"]))
+            or "on; no week flagged")))
     ex = o.get("exports") or {}
     rows.append(("Export files", f"{len(ex)} file{'s' if len(ex) != 1 else ''}"
                  if ex else "none"))

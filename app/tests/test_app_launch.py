@@ -5,6 +5,7 @@ predecessor and an unmarked bystander); the watchdog runs against a fake
 window that mimics the pywebview 6.2.1 semantics verified in cli.py
 (events.loaded supports +=, load_url clears the loaded event)."""
 import ctypes
+import inspect
 import os
 import socket
 import subprocess
@@ -1094,3 +1095,52 @@ def test_activation_without_the_macos_14_call(monkeypatch, tmp_path):
     assert cli._bring_window_forward(_fake_appkit(app), lambda f: f(),
                                      sleep=clock.sleep, clock=clock)
     assert app.modern == 0 and app.legacy == 1
+
+
+def test_a_closed_window_ends_the_activation_watch(monkeypatch, tmp_path):
+    # pywebview runs the start callback on a non-daemon thread; the watch
+    # runs on a daemon thread and stops when the window closes, so closing
+    # the app never waits on it (the spinning cursor after a close)
+    import threading
+    trace = tmp_path / "trace.txt"
+    monkeypatch.setenv("FLUBNF_STARTUP_TRACE", str(trace))
+    app, clock, stop = _FakeNSApp(grant_on=None), _Clock(), threading.Event()
+
+    def sleep(s):
+        clock.sleep(s)
+        if clock.t >= 30.0:         # the user closes the window
+            stop.set()
+    ok = cli._bring_window_forward(_fake_appkit(app), lambda f: f(),
+                                   sleep=sleep, clock=clock, stop=stop)
+    assert not ok
+    assert clock.t < cli.ACTIVATE_WATCH[0]
+    assert "activation watch ended" in trace.read_text()
+
+
+def test_the_start_callback_thread_is_a_daemon():
+    # the only wait in app_window's start callback is handed to a daemon
+    # thread with the close event as its stop
+    src = inspect.getsource(cli.app_window)
+    assert 'kwargs={"stop": closed}, daemon=True' in src
+    assert "_exit_now(drop_pidfile)" in src.split("webview.start(_activate)")[1]
+
+
+def test_exit_now_runs_cleanups_then_leaves(monkeypatch):
+    import os
+    calls = []
+    monkeypatch.setattr(os, "_exit", lambda code: calls.append(("exit", code)))
+    cli._exit_now(lambda: calls.append("pidfile"),
+                  lambda: (_ for _ in ()).throw(RuntimeError("ignored")))
+    assert calls == ["pidfile", ("exit", 0)]
+
+
+def test_a_dock_launch_traces_to_its_launch_log(monkeypatch, capsys):
+    # no FLUBNF_STARTUP_TRACE: silent, unless flubnf-launch started us
+    # (its stderr is app/state/logs/launch.log)
+    monkeypatch.delenv("FLUBNF_STARTUP_TRACE", raising=False)
+    monkeypatch.delenv("FLUBNF_HOST_FALLBACK", raising=False)
+    cli._trace("quiet")
+    assert capsys.readouterr().err == ""
+    monkeypatch.setenv("FLUBNF_HOST_FALLBACK", "1")
+    cli._trace("from the Dock")
+    assert "from the Dock" in capsys.readouterr().err

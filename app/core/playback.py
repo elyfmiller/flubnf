@@ -84,6 +84,42 @@ def season_weeks(root: Path) -> list:
     return [p.parent.name for p in retro_store.season_sample_files(root)]
 
 
+#: the timeline placeholder for a week with no published data (the player
+#: and the season report show it in place of a frame)
+NO_DATA_NOTE = "No data published; no FluSight round this week"
+
+
+def week_notes(season: str, weeks: list) -> tuple:
+    """(timeline, notes) for a season's player: the stored `weeks` with the
+    season's no-data weeks (data/vintages/manifest.json) inserted in date
+    order, and {asof: caption} for every week that needs one: NO_DATA_NOTE
+    for a placeholder, 'data: hub snapshot, commit 1c8e1141 (2024-11-27)'
+    for a week read from a shipped snapshot. A no-data week is inserted
+    only inside the stored span (or just after it, once the replay holds
+    the season's last vintage): a replay stopped early gets no trailing
+    placeholder. Payload shapes are untouched (THE STATS CONTRACT)."""
+    from app.core import data as _data
+    weeks = [str(w) for w in weeks]
+    notes = {}
+    for w in weeks:
+        src = _data.vintage_source(w)
+        if src["kind"] == "shipped":
+            notes[w] = f"data: {src['label']}"
+    timeline = list(weeks)
+    if weeks:
+        vints = retro_store.season_vintages(season)
+        complete = bool(vints) and weeks[-1] >= vints[-1]
+        for w in sorted(retro_store.season_no_data_weeks(season)):
+            if w in weeks or w < weeks[0]:
+                continue
+            if w > weeks[-1] and not complete:
+                continue
+            timeline.append(w)
+            notes[w] = NO_DATA_NOTE
+        timeline.sort()
+    return timeline, notes
+
+
 def _samples_path(root: Path, asof: str) -> Path | None:
     """The week's stored samples file, either form, or None."""
     return retro_store.week_samples_path(root, asof)

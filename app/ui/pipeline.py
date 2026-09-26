@@ -683,22 +683,26 @@ def _run_all(spec: RunSpec) -> None:
         from app.core.floor import floor_quantiles
         # anchors moved back by an unreported newest week, or abstentions,
         # are recorded per location (the engine's notes); the missing-data
-        # rules (app/core/missing.py) are recorded only when one is set, so
-        # a shipped run's outcome is unchanged
+        # rules (app/core/missing.py), the per-state choices from the
+        # Forecast tab and the zero-anchor rule are recorded (data_flags)
+        # only when one is set, so a shipped run's outcome is unchanged
         import inspect as _inspect
         from app.core import missing as _missing
         _rules = _missing.rules_of(spec.extra)
+        _choices = _missing.choices_of(spec.extra)
+        _record = bool(_rules or _choices
+                       or _missing.zero_anchor_of(spec.extra))
         _gh_flags: list = []
         an_notes: dict = {}
         _an_kw = ({"notes": an_notes} if "notes" in
                   _inspect.signature(an_engine.run).parameters else {})
-        if _rules:
+        if _record:
             _an_kw["flags"] = _gh_flags
         an_q = {loc: floor_quantiles(q, **_fkw)
                 for loc, q in an_engine.run(spec, **_an_kw).items()}
         if an_notes:
             outcome["analogue_anchor_notes"] = an_notes
-        if _rules:
+        if _record:
             _pf_flags = []
             try:
                 import json as _jfl
@@ -708,6 +712,24 @@ def _run_all(spec: RunSpec) -> None:
                                       for r in c.get("data_flags") or ()]
             except Exception:
                 pass
+            # a state left out of both files by choice: one row per member
+            # (missing.LEFT_OUT_RULE) and its reason for the coverage pages
+            _left = {}
+            for _loc, _st in sorted(_choices.items()):
+                if str((_st or {}).get("choice")) != "omit":
+                    continue
+                _what = str(_st.get("what") or _st.get("issue") or "")
+                _left[_loc] = ("left out on the Forecast tab"
+                               + (f": {_what}" if _what else ""))
+                for _rows in (_gh_flags, _pf_flags):
+                    _rows.append({"location": _loc,
+                                  "week": str(_st.get("week")
+                                              or spec.forecast_date),
+                                  "value": (float(_st["reported"][-1][1])
+                                            if _st.get("reported") else None),
+                                  "rule": _missing.LEFT_OUT_RULE})
+            if _left:
+                outcome["left_out"] = _left
             outcome["data_flags"] = {"analogue": _gh_flags, "pf": _pf_flags}
         outcome["analogue_aux"] = str(
             (spec.extra or {}).get("analogue_aux") or "")

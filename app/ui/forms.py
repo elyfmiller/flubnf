@@ -89,6 +89,27 @@ async def _knob_form(request: Request) -> dict:
     return out
 
 
+#: the Data issues box's field prefix (templates/_data_issues.html): one
+#: select per state, gap.<fips>; gap._sha is the data file the box was
+#: built from
+GAP_PREFIX = "gap."
+
+
+async def _gap_form(request: Request) -> dict:
+    """The Data issues box's `gap.<fips>` fields ({fips: raw}); blank
+    values kept (a zero state left at "Choose…" is what the route refuses).
+    {} when the fieldset was disabled (an older anchor week) or absent."""
+    try:
+        form = await request.form()
+    except Exception:
+        return {}
+    out = {}
+    for k, v in form.multi_items():
+        if k.startswith(GAP_PREFIX) and isinstance(v, str):
+            out[k[len(GAP_PREFIX):]] = v.strip()
+    return out
+
+
 class _KnobFields(dict):
     """_knob_form's result: {key: raw}, plus the field names the form sent
     more than once (refused by _knob_raw)."""

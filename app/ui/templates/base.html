@@ -440,7 +440,11 @@
         +'.';
       so.hint.textContent=(info.complete
         ? 'This season is complete, so there is nothing left to resume. '
-        : 'Resuming keeps those weeks and continues from there. ')
+        : (info.added
+           ? info.added+' week'+(info.added===1?' was':'s were')+' added to '
+             +'the season after this run finished; Resume keeps the '
+             +'completed weeks and runs only the added ones. '
+           : 'Resuming keeps those weeks and continues from there. '))
         +'Archiving moves them to a timestamped copy that stays viewable in '
         +'the season list, then runs a clean season from week one.'
         +(info.archives?' '+info.archives+' archived run'

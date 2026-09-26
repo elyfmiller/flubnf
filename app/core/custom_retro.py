@@ -230,7 +230,10 @@ def run(ds, weeks: list, groups: list, *, engine: str = "analogue",
         raise RuntimeError(pf_engine.engine_missing_message())
     x0 = dict(extra or {})
     record = K.record_of({"extra": x0})
-    rules = MS.rules_of(x0)
+    # the missing-data rules; the zero-anchor rule too when the replay's
+    # knobs set it (a dataset replay without it reads abstain, the
+    # engine's MS.ZERO_ANCHOR_LEGACY: no Data issues box on this path)
+    rules = bool(MS.rules_of(x0) or MS.zero_anchor_of(x0))
     lam = K.value_of(x0, "output.floor_lam")
     fkw = {} if lam is None else {"lam": float(lam)}
     meta = {

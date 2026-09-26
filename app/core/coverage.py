@@ -7,8 +7,10 @@ outcome: pf_failures (prepare, fit and collect), pf_anchor_notes and
 analogue_anchor_notes (a fit origin or anchor moved back by unreported
 newest weeks, an abstention, the Groundhog's "no forecast: newest week
 reads 0"), submission_dropped (a location whose rows failed the checks,
-app/core/submit.write_submission) and data_flags (newest weeks a
-missing-data rule set aside). Nothing is recomputed.
+app/core/submit.write_submission), data_flags (newest weeks a
+missing-data rule or a per-state choice set aside) and left_out (states
+left out of both files on the Forecast tab, with the reason). Nothing is
+recomputed.
 """
 from __future__ import annotations
 
@@ -37,6 +39,11 @@ def missing_reason(outcome: dict, member: str, model_id: str,
                or {})
     if loc in dropped:
         return f"left out of the file, its rows failed a check: {dropped[loc]}"
+    # a state left out of both files by choice (the Forecast tab's Data
+    # issues box; pipeline records the reason under left_out)
+    left = outcome.get("left_out") or {}
+    if isinstance(left, dict) and loc in left:
+        return str(left[loc])
     note = str(((outcome.get(_NOTE_KEY.get(member, "")) or {})
                 .get(loc)) or "")
     if note.startswith(("abstained", "no forecast")):
@@ -66,8 +73,13 @@ def moved_notes(outcome: dict, member: str) -> dict:
             loc, week, rule = r["location"], r["week"], r.get("rule", "")
         except (TypeError, KeyError):
             continue
-        bit = f"newest week {week} set aside ({rule})" if rule else \
-            f"newest week {week} set aside"
+        if str(rule).startswith("zero-anchor"):
+            bit = f"newest week {week} reads 0; {rule}"
+        elif rule == "left out (Forecast tab)":
+            continue                     # not in the file: missing_reason's
+        else:
+            bit = (f"newest week {week} set aside ({rule})" if rule else
+                   f"newest week {week} set aside")
         out[loc] = f"{out[loc]}; {bit}" if loc in out else bit
     return out
 

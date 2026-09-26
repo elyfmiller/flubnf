@@ -827,6 +827,11 @@ details.adv[open]>summary::before{content:"\25BE"}
   padding:.2rem .8rem .7rem;margin:.7rem 0 0;min-width:0}
 .ms-group legend{font-weight:650;font-size:.92rem;padding:0 .3rem}
 .ms-row input,.ms-row select{max-width:100%}
+/* the Forecast tab's Data issues box (templates/_data_issues.html): the
+   Model settings look, one stacked row per state */
+.dataissues .ms-row{margin:.3rem 0}
+.dataissues .ms-row select{width:100%}
+.dataissues[hidden]{display:none}
 .ms-later{opacity:.62}
 .ms-soon{margin-left:.3rem}
 .ms-override{margin-top:.8rem;padding:.5rem .8rem;border-left:3px solid var(--warn)}

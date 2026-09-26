@@ -20,9 +20,9 @@ from app.core import runs as _runs
 from app.core.runs import (Ledger, RunSpec, results_html, results_tip,
                            spec_settings, version_pairs)
 from app.ui import pipeline, retro_seasons, shared, state, templating
-from app.ui.forms import (_default_forecast_date, _int_field, _knob_form,
-                          _knob_panel, _knob_raw, _knobs, _str_field,
-                          resolve_anchor)
+from app.ui.forms import (_default_forecast_date, _gap_form, _int_field,
+                          _knob_form, _knob_panel, _knob_raw, _knobs,
+                          _str_field, resolve_anchor)
 from app.ui.retro_seasons import _RETRO_ACTIVE, _season_status
 from app.ui.routes import data as data_routes
 from app.ui.routes import output as output_routes
@@ -158,11 +158,14 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
     # is that week (the Data tab's check, app/core/reported.py)
     from app.ui.routes.data import _newest_report
     newest_report = _newest_report()
+    # the per-state choices for that week (the Data issues box)
+    data_issues, data_issues_sha = _data_issues_context(newest_report, form)
     return templates.TemplateResponse(request, "forecast.html", {
         "active": "Forecast", "engines": ENGINES, "status": _status,
         "ledger": ledger_rows, "all_locs": all_locs,
         "vintage_dates": vintage_dates, "anchor_note": anchor_note,
         "newest_report": newest_report, "anchor_week": _anchor or "",
+        "data_issues": data_issues, "data_issues_sha": data_issues_sha,
         "live_only": live_only, "live_only_note": LIVE_ONLY_NOTE,
         "default_date": _default_forecast_date(),
         "locations_error": locations_error, "form": form,
@@ -181,6 +184,150 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
 
 #: the national checkbox's value (the data panel's name for the series)
 US_CHOICE = "US (national)"
+
+
+# === The Data issues box (app/core/reported.py, app/core/missing.py) ===
+
+#: the "Apply to all zero states" select's labels, one per choice
+_ALL_TEXT = {"abstain": "Groundhog: no forecast",
+             "level": "Groundhog: level (mean of last 4 weeks)",
+             "extend": "Groundhog: extend the last positive week",
+             "blend": "Groundhog: blend of level and extend",
+             "set_aside": "Both models from the week before",
+             "omit": "Leave out of both files"}
+
+
+def _source_sha(week: str) -> str:
+    """The sha256 of the file a real-time run anchored on `week` reads;
+    "" when it cannot be read."""
+    try:
+        path, _kind = state.data_mod.observed_source(week, "realtime")
+        return state.data_mod.file_sha256(path)
+    except Exception:
+        return ""
+
+
+def _data_issues_context(rep, form) -> tuple:
+    """(the Data issues box's context, the data file's sha256) for the
+    Forecast form, or (None, "") when the newest week has no zero,
+    collapsed or unreported state (the green line stays). `form` (the last
+    form) may hold data_choices = {week: {fips: choice}} to preselect."""
+    if rep is None or rep.clean:
+        return None, ""
+    from app.core import missing as MS
+    from app.core import reported as _rep
+    rows = _rep.box_rows(rep)
+    prior = ((form or {}).get("data_choices") or {}).get(rep.week) or {}
+    facts = " ".join(f for f, on in ((_rep.ZERO_FACT, rep.zeros),
+                                     (_rep.COLLAPSED_FACT, rep.collapsed)) if on)
+    zero_opts = {v for r in rows if r["issue"] == "zero" for v, _ in r["options"]}
+    all_options = [(c, _ALL_TEXT[c]) for c in MS.ZERO_CHOICES if c in zero_opts]
+    return ({"week": rep.week, "rows": rows, "prior": prior, "facts": facts,
+             "all_options": all_options}, _source_sha(rep.week))
+
+
+def _data_choices(forecast_date: str, newest, engine: str, locs: list,
+                  gap_fields: dict, nd: dict, prior=None) -> tuple:
+    """The per-state choices of a run: (the data_choices record or None,
+    the location list with the states left out removed, a refusal or "").
+
+    `gap_fields` are the box's gap.<fips> values (gap._sha the file they
+    were made on); `prior` a recorded data_choices (a re-run) whose states
+    supply a choice where the form gives none. The real-time week only
+    (v1): on an older week a prior record for that week passes through
+    verbatim (the engines match its set-asides against the data) and the
+    form's fields are ignored. Refuses when the data changed since the box
+    was built, when a choice is not one the state was offered, and when a
+    zero state has no choice while the Groundhog runs without the
+    run-wide rule (groundhog.zero_anchor)."""
+    from app.core import missing as MS
+    from app.core import reported as _rep
+    locs = list(locs)
+    if not newest or forecast_date != newest:
+        if isinstance(prior, dict) and prior.get("week") == forecast_date \
+                and prior.get("states"):
+            omitted = {l for l, st in prior["states"].items()
+                       if str((st or {}).get("choice")) == "omit"}
+            return prior, [l for l in locs if l not in omitted], ""
+        return None, locs, ""
+    rep = data_routes._newest_report()
+    if rep is None or rep.clean:
+        return None, locs, ""
+    gap_fields = dict(gap_fields or {})
+    sha = _source_sha(rep.week)
+    posted = gap_fields.pop("_sha", "")
+    if posted and sha and posted != sha:
+        return None, locs, (
+            "The hub data changed since the Forecast tab was loaded, so the "
+            "choices in Data issues may no longer fit it. Reload the tab and "
+            "choose again.")
+    prior_states = (prior or {}).get("states") if isinstance(prior, dict) else {}
+    prior_states = prior_states if isinstance(prior_states, dict) else {}
+    rows = {r["fips"]: r for r in _rep.box_rows(rep)}
+    groundhog = engine in ("all", "analogue")
+    knob = MS.zero_anchor_of({"knobs": nd})
+    states, missing = {}, []
+    in_run = set(locs)
+    for g in rep.gaps:
+        if g.location not in in_run:
+            continue
+        r = rows[g.fips]
+        offered = dict(r["options"])
+        choice = gap_fields.get(g.fips)
+        if choice is None:
+            choice = str((prior_states.get(g.location) or {}).get("choice")
+                         or "")
+        if choice and choice not in offered:
+            return None, locs, (f"Data issues: {g.location}: '{choice}' is "
+                                f"not one of {', '.join(offered)}.")
+        if not choice:
+            if g.reason == "zero" and groundhog and not knob:
+                missing.append(g.location)
+            continue                 # the default (keep, carry) or the knob
+        if choice == r["default"]:
+            continue                 # a default choice is not recorded
+        entry = {"issue": g.reason, "what": g.what(), "choice": choice,
+                 "week": rep.week,
+                 "reported": (r["aside"] if choice == "set_aside"
+                              else r["reported"])}
+        if choice == "set_aside":
+            aside = {w for w, _ in r["aside"]}
+            before = [w for w, _ in r["reported"] if w not in aside]
+            entry["from_week"] = before[-1] if before else ""
+        elif choice in MS.ZERO_ANCHOR_RULES:
+            entry["from_week"] = rep.week
+        states[g.location] = entry
+    if missing:
+        n = len(missing)
+        return None, locs, (f"{n} state{'s' if n != 1 else ''} read 0 for "
+                            f"{rep.week}; choose what the Groundhog does "
+                            "with each in Data issues.")
+    omitted = {l for l, st in states.items() if st["choice"] == "omit"}
+    kept = [l for l in locs if l not in omitted]
+    if not states:
+        return None, kept, ""
+    return {"week": rep.week, "source_sha256": sha, "states": states}, kept, ""
+
+
+def _location_list(locations: list) -> list:
+    """The run's location names from the form's list: "all" is the hub's
+    53 (the 52 jurisdictions and US national, fitted directly); a custom
+    pick fits US only when it is ticked."""
+    from app.core import us_national as _usn
+    picked = _usn.state_names(locations)
+    want_all = "all" in [l.lower() for l in picked]
+    want_us = want_all or any(_usn.is_us(l) for l in locations)
+    if want_all:
+        _l = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
+        locs_list = list(_l.location_name[(_l.location.str.len() == 2)
+                                          & (_l.abbreviation != "US")])
+    else:
+        locs_list = list(picked)
+    if want_us:
+        # a re-run keeps its recorded spelling; the form's box becomes "US"
+        spelled = ([l for l in locations if _usn.is_us(l)] or ["US"])[0]
+        locs_list.append("US" if spelled == US_CHOICE else spelled)
+    return locs_list
 
 #: the anchor line's ending for a week only the live target file holds
 LIVE_ONLY_NOTE = " (new data, not archived yet: read from target-data)."
@@ -403,6 +550,11 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
                          _knobs.aux_choice(_nd, aux),
                          oracle)
         _knobs.write_extra(_nd, _cx)
+        # the per-state data choices (app/core/missing.py) re-run as
+        # recorded; the engines match each set-aside against the data
+        _dc = _x.get("data_choices")
+        if isinstance(_dc, dict) and _dc:
+            _cx["data_choices"] = _dc
     except ValueError:
         _flash("This run's recorded model settings are not readable, so it "
                "cannot be re-run from here. Nothing was started.")
@@ -463,7 +615,10 @@ def run_rerun(request: Request, background: BackgroundTasks, run_id: str):
                       aux=aux, oracle=oracle,
                       knob_fields={},
                       knobs=(_json.dumps(_rec) if _rec else ""),
-                      submit_modified="", modified_reason="")
+                      submit_modified="", modified_reason="",
+                      gap_fields={},
+                      data_choices=(_json.dumps(_cx["data_choices"])
+                                    if _cx.get("data_choices") else ""))
 
 
 # === Forecast APIs: /api/series, /api/progress ===
@@ -640,7 +795,11 @@ def run_models(request: Request,
                knob_fields: dict = Depends(_knob_form),
                knobs: str = Form(""),
                submit_modified: str = Form(""),
-               modified_reason: str = Form("")):
+               modified_reason: str = Form(""),
+               # the Data issues box (templates/_data_issues.html): gap.<fips>
+               # fields, or the recorded data_choices JSON (the re-run path)
+               gap_fields: dict = Depends(_gap_form),
+               data_choices: str = Form("")):
     # non-Saturdays snap via resolve_anchor; a typed Saturday is honoured or
     # refused below (never re-aimed)
     from datetime import date as _date
@@ -741,6 +900,11 @@ def run_models(request: Request,
                                  if isinstance(v, str)},
                        "submit_modified": override,
                        "modified_reason": reason})
+    # the Data issues choices come back on the form, keyed by their week
+    if isinstance(gap_fields, dict) and newest:
+        _last_form["data_choices"] = {
+            newest: {k: v for k, v in gap_fields.items()
+                     if k != "_sha" and isinstance(v, str) and v}}
     # model settings, validated BEFORE the engine is claimed: a refusal
     # starts nothing. The legacy fields (season start, weeks to drop,
     # replicates, particles, same-day week) set their knob; a value outside
@@ -768,6 +932,35 @@ def run_models(request: Request,
         _flash("Select at least one location, or all 53 jurisdictions. "
                "Nothing was run.")
         return _back(request, "/forecast")
+    try:
+        locs_list = _location_list(locations)
+    except Exception as e:
+        _flash(f"The state list could not be read ({type(e).__name__}). "
+               "Nothing was run.")
+        return _back(request, "/forecast")
+    # the per-state data choices (the Data issues box, or a re-run's
+    # record): refused BEFORE the engine is claimed when a zero state has no
+    # choice, when a choice is not one offered, or when the data changed
+    import json as _json
+    try:
+        _prior = (_json.loads(data_choices)
+                  if _str_field(data_choices).strip() else None)
+        if _prior is not None and not isinstance(_prior, dict):
+            raise ValueError("not a dictionary")
+    except ValueError:
+        _flash("The recorded data choices are not readable. Nothing was run.")
+        return _back(request, "/forecast")
+    _dc, locs_list, _why = _data_choices(forecast_date, newest, engine,
+                                         locs_list, gap_fields, nd, _prior)
+    if _why:
+        _flash(f"{_why} Nothing was run.")
+        return _back(request, "/forecast")
+    if _dc:
+        extra["data_choices"] = _dc
+    if not locs_list:
+        _flash("Every selected location was left out in Data issues. "
+               "Nothing was run.")
+        return _back(request, "/forecast")
     # busy check + claim under _engine_lock (see its comment)
     with _engine_lock:
         if _status.get("running"):
@@ -793,22 +986,6 @@ def run_models(request: Request,
         _status["run_label"] = f"{forecast_date} · queued"
     queued = False
     try:
-        from app.core import us_national as _usn
-        # "all" is the hub's 53: the 52 jurisdictions and US national
-        # (fitted directly); a custom pick fits US only when it is ticked
-        picked = _usn.state_names(locations)
-        want_all = "all" in [l.lower() for l in picked]
-        want_us = want_all or any(_usn.is_us(l) for l in locations)
-        if want_all:
-            _l = __import__("flubnf.settings", fromlist=["load_locations"]).load_locations()
-            locs_list = list(_l.location_name[(_l.location.str.len() == 2)
-                                              & (_l.abbreviation != "US")])
-        else:
-            locs_list = list(picked)
-        if want_us:
-            # a re-run keeps its recorded spelling; the form's box becomes "US"
-            spelled = ([l for l in locations if _usn.is_us(l)] or ["US"])[0]
-            locs_list.append("US" if spelled == US_CHOICE else spelled)
         _status["run_label"] = f"{forecast_date} · {_scope_label(locs_list)} · queued"
         # progress denominator known now (shards grow toward it); clear the old
         # workroot so its .prog files never show. The analogue alone gets none.

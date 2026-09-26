@@ -117,7 +117,12 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
         if status in ("stopped", "interrupted"):
             resume_fields = _retro.resume_form_fields(
                 _retro.read_meta(_live_root(s)))
-        seasons.append({"name": s, "total": total, "done": done,
+        # weeks the season gained after this replay finished (hub archive
+        # or shipped snapshots): Resume runs them (retro_seasons._retro_progress)
+        added = list(prog.get("added") or [])
+        seasons.append({"name": s, "total": max(total, int(prog.get("total") or 0)),
+                        "done": done,
+                        "added": added, "added_n": len(added),
                         "seal": is_seal,
                         "seal_label": _sealed_label(root) if is_seal else "",
                         "rel": rel, "rels": rels,
@@ -182,6 +187,7 @@ def api_retro_startover(season: str = ""):
     from app.core.retro import season_vintages
     if not _valid_season(season):
         return {"season": season, "weeks": 0, "total": 0, "complete": False,
+                "added": 0,
                 "elapsed_s": None, "elapsed_hms": "", "finished": "",
                 "status": "", "active": False, "archives": 0,
                 "sealed": False}
@@ -195,10 +201,14 @@ def api_retro_startover(season: str = ""):
         if is_seal and retro_seasons._weeks_done(shown_root):
             sealed = True
             s = retro.run_summary(shown_root)
+    # weeks the season's list gained after this run finished: a Resume
+    # runs only those (the prompt says so)
+    prog = retro_seasons._retro_progress(season)
     return {"season": season,
             "sealed": sealed,
             "weeks": s["weeks"],
             "total": total,
+            "added": len(prog.get("added") or []) if not sealed else 0,
             "complete": bool(total and s["weeks"] >= total),
             "elapsed_s": s["elapsed_s"],
             # blank rather than a fabricated 0:00:00
@@ -528,6 +538,7 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
         live = _live_root(season)
         existing = retro_seasons._weeks_done(live)
         legacy_resume = False
+        from app.core import missing as _missing
         if mode == "resume" and existing:
             # one configuration per tree: completed weeks were built with
             # the recorded model settings (a pre-registry record: its
@@ -536,7 +547,15 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
             had = _knobs.legacy_settings_knobs(prior)
             # a pre-registry tree resumes as it was, never re-recorded
             legacy_resume = bool(prior) and "knobs" not in prior
-            if _knobs.digest(had) != _knobs.digest(_knobs.jsonable(nd)):
+            # a tree replayed before the zero-anchor rule existed did what
+            # abstain does: it resumes so, and is not re-recorded with it
+            if (_missing.ZERO_ANCHOR_KEY not in had
+                    and nd.get(_missing.ZERO_ANCHOR_KEY,
+                               _missing.ZERO_ANCHOR_LEGACY)
+                    == _missing.ZERO_ANCHOR_LEGACY):
+                nd.pop(_missing.ZERO_ANCHOR_KEY, None)
+            if (_knobs.settings_digest(had)
+                    != _knobs.settings_digest(_knobs.jsonable(nd))):
                 _flash(f"{season} has {existing} completed week"
                        f"{'' if existing == 1 else 's'} replayed with model "
                        f"settings {_knobs.label(_knobs.from_record(had))}; "
@@ -582,11 +601,20 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                        "discard the existing results to run it. Nothing "
                        "was started.")
                 return RedirectResponse("/retro", status_code=303)
+        if mode == "discard" and confirm != season:
+            _flash(f"Discarding {season} was not confirmed, so nothing "
+                   "was deleted and nothing was started.")
+            return RedirectResponse("/retro", status_code=303)
+        if (not (mode == "resume" and existing)
+                and _missing.ZERO_ANCHOR_KEY not in nd):
+            # a fresh replay (both presets run the Groundhog) must say what
+            # it does when a state's newest week reads 0; no default.
+            # Refused before anything is moved or deleted
+            _flash("Choose what the Groundhog does when a state's newest "
+                   "week reads 0 (Newest week reading 0: abstain, level, "
+                   "extend or blend). Nothing was started.")
+            return RedirectResponse("/retro", status_code=303)
         if mode == "discard":
-            if confirm != season:
-                _flash(f"Discarding {season} was not confirmed, so nothing "
-                       "was deleted and nothing was started.")
-                return RedirectResponse("/retro", status_code=303)
             if existing:
                 try:
                     retro.delete_tree(live)
@@ -638,6 +666,12 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
     background.add_task(_retro_bg, season, names, width, replicates, particles,
                         rsettings, engine, **kx)
     return RedirectResponse("/retro", status_code=303)
+
+
+def _playback_note() -> str:
+    """The player's placeholder text for a week with no published data."""
+    from app.core import playback
+    return playback.NO_DATA_NOTE
 
 
 def retro_engine_label(engine: str) -> str:
@@ -700,6 +734,8 @@ def retro_results(request: Request, season: str, week: str = "",
                 "us": None, "pooled_note": "",
                 "conv": relwis.DEFAULT_CONVENTION, "figs": None,
                 "weeks": weeks, "week": weeks[-1], "map_html": "",
+                "timeline": weeks, "notes": {},
+                "no_data_note": _playback_note(),
                 "official_catalog": [], "prog": None, "n_weeks": 0})
         if job["error"]:
             # show the failure, never pass it off as "truth not settled"
@@ -860,6 +896,9 @@ def retro_results(request: Request, season: str, week: str = "",
         official_catalog = _playback.season_official_catalog(root)
     except Exception:
         official_catalog = []
+    # the player's timeline: the stored weeks plus the season's no-data
+    # weeks as placeholders, and the captions (data provenance) per week
+    timeline, notes = _playback.week_notes(season, weeks)
     return templates.TemplateResponse(request, "retro_season.html", {
         "active": "Retrospective", "season": season, "heads": heads,
         "model_name": _name_fn(names), "knobs_label": knobs_label,
@@ -880,6 +919,8 @@ def retro_results(request: Request, season: str, week: str = "",
         "rule_note": rule_note,
         "conv": convention, "figs": figs,
         "weeks": weeks, "week": wk, "map_html": map_html,
+        "timeline": timeline, "notes": notes,
+        "no_data_note": _playback.NO_DATA_NOTE,
         "official_catalog": official_catalog,
         "prog": (_archive_progress(root, season) if archive
                  else retro_seasons._retro_progress(season)),

@@ -1,10 +1,12 @@
 """Did every jurisdiction report the newest week? (app/core/reported.py)
 
 The check reads the file a real-time run reads (observed_source), sorts
-each gap as no row, blank value, or a 0 after a week of 10 or more, and
-says what a run does with it by running the Groundhog's own walk. Shown on
-the Data tab's hub card, in the Update data message, and under the Forecast
-tab's anchor line. Hub-free: each test builds a tiny hub in tmp_path.
+each gap as no row, blank value, a newest week reading 0 or a collapsed
+one, and says what a run does with an unreported week by running the
+Groundhog's own walk. Shown on the Data tab's hub card, in the Update data
+message, and under the Forecast tab's anchor line, where the zeros and
+collapses get the Data issues box. Hub-free: each test builds a tiny hub
+in tmp_path.
 """
 import sys
 from pathlib import Path
@@ -20,6 +22,7 @@ from app.core.engines import analogue as AE                  # noqa: E402
 from app.ui import server as srv                             # noqa: E402
 from app.ui import shared as ui_shared                       # noqa: E402
 from app.ui import state as ui_state                         # noqa: E402
+from app.ui.routes import data as ui_data                    # noqa: E402
 
 client = TestClient(srv.app)
 
@@ -119,28 +122,85 @@ def test_a_location_beyond_the_anchor_lag_is_skipped(tmp_path, monkeypatch):
                                        WEEKS[-(AE.MAX_ANCHOR_LAG + 1)])
 
 
-def test_a_zero_after_ten_or_more_is_flagged_and_follows_the_setting(
-        tmp_path, monkeypatch):
+def test_a_zero_is_flagged_and_worded_by_consequence(tmp_path, monkeypatch):
     _hub(tmp_path / "hub", monkeypatch, newest={"Ohio": "0"})
     r = reported.check()
     (g,) = r.gaps
     assert (g.location, g.reason, g.prev) == ("Ohio", "zero", 40.0)
     assert g.action == "no_groundhog"
-    assert r.line() == (f"1 jurisdiction reads 0 for {NEW}: Ohio "
-                        "(no Groundhog forecast)")
-    assert "Newest weeks reading 0" in r.details()[0]
+    # the week is complete (every jurisdiction has a value), not clean
+    assert r.complete and not r.clean
+    assert g.what() == "reads 0 after 40, 40, 40"
+    assert r.line() == (f"All {len(LOCS)} reported for {NEW}; 1 reads 0: "
+                        f"Ohio ({reported.CHOOSE_NOTE})")
+    assert r.short() == f"All {len(LOCS)} reported; 1 reads 0"
+    assert r.details()[0].startswith("Reads 0 after 40, 40, 40: Ohio. Choose")
+    assert reported.ZERO_FACT in r.details()
     # the setting treats it as missing: the run forecasts from the week before
     (g,) = reported.check("missing").gaps
     assert (g.action, g.from_week) == ("forecast", WEEKS[-2])
 
 
-def test_a_zero_after_a_small_week_is_a_real_count(tmp_path, monkeypatch):
+def test_a_zero_after_small_weeks_is_flagged_too_and_worded_so(
+        tmp_path, monkeypatch):
     root = _hub(tmp_path / "hub", monkeypatch, newest={"Ohio": "0"})
     live = root / data.LIVE_TARGET
-    small = str(reported.MS.ZERO_FLOOR - 1).rstrip("0").rstrip(".")
-    live.write_text(live.read_text().replace(
-        f"{WEEKS[-2]},39,Ohio,40", f"{WEEKS[-2]},39,Ohio,{small}"))
-    assert reported.check().complete
+    text = live.read_text()
+    for w, v in zip(WEEKS[-4:-1], ("1", "4", "2")):
+        text = text.replace(f"{w},39,Ohio,40", f"{w},39,Ohio,{v}")
+    live.write_text(text)
+    r = reported.check()
+    (g,) = r.gaps
+    assert g.reason == "zero" and g.what() == "reads 0, recent weeks 1-4"
+    assert g.zeros == 1 and g.can_set_aside
+    assert g.aside == [(NEW, 0.0)] and g.last_positive == (WEEKS[-2], 2.0)
+    # a longer run of zeros names the last positive week; no set-aside
+    text = text.replace(f"{WEEKS[-2]},39,Ohio,2", f"{WEEKS[-2]},39,Ohio,0")
+    text = text.replace(f"{WEEKS[-3]},39,Ohio,4", f"{WEEKS[-3]},39,Ohio,0")
+    live.write_text(text)
+    (g,) = reported.check().gaps
+    assert g.what() == f"reads 0 for 3 weeks (last 1 on {WEEKS[-4]})"
+    assert g.zeros == 3 and not g.can_set_aside
+
+
+def test_a_collapsed_week_is_flagged(tmp_path, monkeypatch):
+    _hub(tmp_path / "hub", monkeypatch, newest={"Ohio": "5"})
+    r = reported.check()
+    (g,) = r.gaps
+    assert (g.location, g.reason, g.prev) == ("Ohio", "collapsed", 40.0)
+    assert g.what() == "reads 5 after 40" and g.can_set_aside
+    assert r.complete and not r.clean
+    assert r.line() == (f"All {len(LOCS)} reported for {NEW}; 1 collapsed: "
+                        "Ohio (reads 5 after 40)")
+    assert r.short() == f"All {len(LOCS)} reported; 1 collapsed"
+    assert reported.COLLAPSED_FACT in r.details()
+    # a moderate drop is not a collapse (a fifth of the week before)
+    _hub(tmp_path / "hub2", monkeypatch, newest={"Ohio": "8"})
+    assert reported.check().clean
+
+
+def test_the_box_rows_offer_each_state_its_choices(tmp_path, monkeypatch):
+    _hub(tmp_path / "hub", monkeypatch,
+         newest={"Ohio": "0", "Utah": "5", "Nebraska": None})
+    rows = {r["name"]: r for r in reported.box_rows(reported.check())}
+    ohio = rows["Ohio"]
+    assert ohio["issue"] == "zero" and ohio["default"] == ""
+    assert [v for v, _ in ohio["options"]] == list(reported.MS.ZERO_CHOICES)
+    labels = dict(ohio["options"])
+    assert labels["extend"] == (f"Groundhog: extend 40 from {WEEKS[-2]}; "
+                                "Oracle SIHRS keeps the 0")
+    assert labels["set_aside"] == (f"Both models from {WEEKS[-2]} (40): "
+                                   "count the 0 as unreported")
+    assert labels["omit"] == "Leave Ohio out of both files"
+    assert ohio["aside"] == [[NEW, 0.0]]
+    utah = rows["Utah"]
+    assert utah["issue"] == "collapsed" and utah["default"] == "keep"
+    assert [v for v, _ in utah["options"]] == ["keep", "set_aside", "omit"]
+    assert dict(utah["options"])["keep"] == "Keep 5 as reported, both models"
+    neb = rows["Nebraska"]
+    assert neb["issue"] == "no row" and neb["default"] == "carry"
+    assert [v for v, _ in neb["options"]] == ["carry", "omit"]
+    assert neb["hint"] == f"no row; forecast from {WEEKS[-2]}"
 
 
 def test_the_check_reads_the_file_a_real_time_run_reads(tmp_path, monkeypatch):
@@ -199,6 +259,14 @@ def test_update_data_message_carries_the_check(tmp_path, monkeypatch):
     flash = ui_state._status.get("flash") or ""
     assert (f"1 jurisdiction not reported for {NEW}: Utah "
             f"(forecast from {WEEKS[-2]})") in flash
+    # a newest week reading 0 is in the message too, with the pointer
+    ui_state._status.pop("flash", None)
+    live = root / data.LIVE_TARGET
+    live.write_text(live.read_text().replace(f"{NEW},39,Ohio,40",
+                                             f"{NEW},39,Ohio,0"))
+    client.post("/data/pull", follow_redirects=False)
+    flash = ui_state._status.get("flash") or ""
+    assert f"1 reads 0: Ohio ({reported.CHOOSE_NOTE})" in flash
 
 
 def test_forecast_tab_line_under_the_anchor(tmp_path, monkeypatch):
@@ -212,7 +280,8 @@ def test_forecast_tab_line_under_the_anchor(tmp_path, monkeypatch):
     assert anchor < check and page.index('id="vintage-pick"') > check
     tag = page[page.rindex("<p", 0, check):page.index(">", check)]
     assert "hidden" not in tag and f'data-week="{NEW}"' in tag
-    assert f"1 jurisdiction not reported for {NEW}: Utah" in page
+    assert f"{len(LOCS) - 1} of {len(LOCS)} reported" in page
+    assert 'aria-label="Incomplete"' in page
     # an older anchor week: the line is there for the script, hidden
     ui_state._last_form.update({"forecast_date": WEEKS[-3]})
     page = client.get("/forecast").text
@@ -238,5 +307,8 @@ def test_forecast_setting_reaches_the_check(tmp_path, monkeypatch):
     ui_state._last_form.update({"forecast_date": NEW, "locations": ["all"],
                                 "engine": "all",
                                 "knobs": {"data.trailing_zero": "missing"}})
+    (g,) = ui_data._newest_report().gaps
+    assert (g.action, g.from_week) == ("forecast", WEEKS[-2])
     page = client.get("/forecast").text
-    assert f"(forecast from {WEEKS[-2]})" in page
+    assert f"All {len(LOCS)} reported; 1 reads 0" in page
+    assert 'aria-label="Complete, with issues"' in page

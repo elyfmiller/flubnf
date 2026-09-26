@@ -46,17 +46,17 @@ def test_params_harvest_without_cells_is_empty(tmp_path):
 # ------------------------------------------------------------- season derivation
 
 def test_available_seasons_derives_from_archive(tmp_path, monkeypatch):
-    from app.core import retro
+    from app.core import data, retro
     for v in ("2027-10-04", "2028-01-10", "2028-11-02", "2027-07-03"):
         (tmp_path / f"target-hospital-admissions_{v}.csv").write_text("x")
-    monkeypatch.setattr(retro, "ARCHIVE", tmp_path)
+    monkeypatch.setattr(data, "ARCHIVE", tmp_path)
     # 2027-07-03 sits outside every season window: no phantom season
     assert retro.available_seasons() == ["2027-28", "2028-29"]
 
 
 def test_available_seasons_falls_back_when_archive_empty(tmp_path, monkeypatch):
-    from app.core import retro
-    monkeypatch.setattr(retro, "ARCHIVE", tmp_path)
+    from app.core import data, retro
+    monkeypatch.setattr(data, "ARCHIVE", tmp_path)
     assert retro.available_seasons() == sorted(retro.SEASON_BOUNDS)
 
 

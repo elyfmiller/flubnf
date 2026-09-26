@@ -57,6 +57,7 @@ SOURCES = {
                                 for p in EA.AUX_PRESETS[EA.SHIPPED_AUX]),
     "groundhog.bandwidth": AN.DEFAULT_BANDWIDTH,
     "groundhog.min_donors": AN.MIN_DONORS,
+    "groundhog.zero_anchor": MS.ZERO_ANCHOR_DEFAULT,
     "output.floor_lam": FL.LAM,
     "output.horizon_minus1": SB.HORIZON_MINUS1,
     "output.rate_change_pmf": SB.RATE_CHANGE_PMF,
@@ -105,14 +106,14 @@ def test_registry_is_well_formed():
     assert not K.LOCKED_KEYS & set(K.BY_KEY)
     for k in K.REGISTRY:
         assert k.kind in K.KINDS and k.stage in K.STAGES, k.key
-        assert k.klass in ("run", "method", "optional"), k.key
+        assert k.klass in ("run", "method", "optional", "decision"), k.key
         assert k.affects and k.affects <= K.BOTH, k.key
         assert k.label and k.help and "\n" not in k.help, k.key
         assert len(k.help) <= 100, k.key
         assert k.overridable
         if k.kind in ("int", "float"):
             assert k.lo <= k.default <= k.hi, k.key
-        if k.kind == "choice":
+        if k.kind == "choice" and k.klass != "decision":
             assert k.default in k.choices, k.key
         if k.stage == "step":
             assert k.affects == K.PF_ONLY, k.key
@@ -128,11 +129,30 @@ def test_registry_is_well_formed():
         assert (k.kind, k.default, k.affects, k.stage) == (
             "bool", False, K.BOTH, "output"), key
         assert k.help.startswith("Optional;"), key
+    # the data decisions: no shipped default (None = ask), the Groundhog's
+    # zero-anchor rule alone, never marking a run modified
+    assert K.DECISION_KEYS == {MS.ZERO_ANCHOR_KEY}
+    za = K.BY_KEY[MS.ZERO_ANCHOR_KEY]
+    assert (za.kind, za.default, za.affects, za.choices) == (
+        "choice", None, K.GH_ONLY, MS.ZERO_ANCHOR_RULES)
+    for rule in MS.ZERO_ANCHOR_RULES:
+        spec = {"extra": {"knobs": {MS.ZERO_ANCHOR_KEY: rule}}}
+        assert not K.modified(spec) and K.record_of(spec) == {
+            MS.ZERO_ANCHOR_KEY: rule}
+    assert K.model_values({MS.ZERO_ANCHOR_KEY: "level", "oracle.w": 0.3}) == {
+        "oracle.w": 0.3}
+    # a record from before the rule compares as abstain
+    assert K.settings_digest({}) == K.settings_digest(
+        {MS.ZERO_ANCHOR_KEY: "abstain"})
+    assert K.settings_digest({}) != K.settings_digest(
+        {MS.ZERO_ANCHOR_KEY: "level"})
 
 
 def test_shipped_defaults_parse_back_to_themselves():
     form = {}
     for k in K.REGISTRY:
+        if k.key in K.DECISION_KEYS:
+            continue                     # no default to parse back
         d = k.default_for(FD)
         form[k.key] = ",".join(map(str, d)) if isinstance(d, tuple) else str(d)
     got = K.parse(form, "all", forecast_date=FD)

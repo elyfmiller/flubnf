@@ -157,6 +157,12 @@
 <div class="card"><h2>Measured performance</h2>
  <p>Three seasons replayed on the data each week had; relWIS vs the
  FluSight baseline, ratio of sums, below 1 beats it.</p>
+ <p class="hint">A replay's weeks are the hub's dated truth vintages inside
+ the season. Eight scored weeks the hub archive skipped (three in 2024-25,
+ five in 2025-26) ship with FluBNF as copies of the hub's own published
+ files (<code>data/vintages/</code>) and are replayed and scored like the
+ rest. Two weeks had no published data and no FluSight round (as of
+ 2024-05-04 and 2025-01-18); the player shows them as placeholders.</p>
  {# the one relWIS rule: every score wears ok/bad (below 1 beats the
     baseline), members included #}
  <div style="overflow-x:auto"><table>
@@ -216,6 +222,12 @@
  seeded and reproducible from its ledger entry, and never imputes a missing
  week; scoring is the weighted interval score against the FluSight
  baseline.</p>
+ <p class="hint">A newest week that reads 0, collapses, or was not reported
+ is the forecaster's decision, per state, made in Data issues on the
+ Forecast tab and recorded with the run: what the Groundhog forecasts from
+ when the week reads 0 (abstain, level, extend or blend), or setting the
+ newest one or two weeks aside for both models, or leaving the state out.
+ Such a choice never marks a run modified (docs/MISSING-DATA.md).</p>
  <p class="hint">Two measured caveats (docs/archive/RELEASE-1.0.md): seven
  of 76 sealed weeks' vintages differ from what was public at the deadline,
  and sealed scores use unrounded forecasts (a third-decimal difference).</p>

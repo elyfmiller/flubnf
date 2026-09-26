@@ -2,18 +2,21 @@
    One line: a mark with a text alternative, the words, and a "?" naming
    each missing location and what a run does with it.
    {% import "_newest.html" as newest %}{{ newest.check(r) }}
-   short=True is the Forecast tab's form: "All 53 reported" when complete. #}
+   short=True is the Forecast tab's form: "All 53 reported" when complete,
+   "All 53 reported; 5 read 0" with issues. The mark warns for any zero,
+   collapsed or unreported state; the per-state choice is made on the
+   Forecast tab (the Data issues box, _data_issues.html). #}
 {% import "_tips.html" as tips %}
 {% macro check(r, short=False, hidden=False) -%}
 <p class="newest-check{% if short %} hint{% if r.complete %} ok{% endif %}{% endif %}" id="newest-check" data-week="{{ r.week }}"
  data-complete="{{ 'yes' if r.complete else 'no' }}"{% if hidden %} hidden{% endif %}>
-{%- if r.complete -%}
+{%- if r.clean -%}
 <span class="ncmark ok" role="img" aria-label="Complete">&#10003;</span> {{ r.short() if short else r.line() }}
 {%- else -%}
-<span class="ncmark warn" role="img" aria-label="Incomplete">!</span> {{ r.line() }}
-{% call tips.tip("newest-gaps", "the jurisdictions missing for " ~ r.week) -%}
+<span class="ncmark warn" role="img" aria-label="{{ 'Complete, with issues' if r.complete else 'Incomplete' }}">!</span> {{ r.short() if short else r.line() }}
+{% call tips.tip("newest-gaps", "the jurisdictions to look at for " ~ r.week) -%}
 {% for d in r.details() %}<span class="ncline">{{ d }}</span>{% endfor %}
-<span class="ncline">Runs do this themselves: up to {{ r.max_lag }} unreported weeks, the forecast starts from the latest reported week and keeps the hub's horizons; beyond that the location is skipped.</span>
+{% if not r.complete %}<span class="ncline">Runs do this themselves: up to {{ r.max_lag }} unreported weeks, the forecast starts from the latest reported week and keeps the hub's horizons; beyond that the location is skipped.</span>{% endif %}
 {%- endcall %}
 {%- endif -%}
 </p>
