@@ -1233,6 +1233,9 @@ def test_windows_keeps_the_server_on_a_thread(monkeypatch):
     stop()                                   # a no-op, never raises
 
 
+@pytest.mark.skipif(os.name != "posix",
+                    reason="the server runs in its own process on POSIX only; "
+                           "Windows keeps it on a thread")
 def test_the_window_server_leaves_when_its_window_dies():
     """A window that crashes or is killed must not leave a server holding
     the port: the child watches its parent and exits with it."""
