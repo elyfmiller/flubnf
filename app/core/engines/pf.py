@@ -528,7 +528,6 @@ def prepare(spec, workroot: Path) -> list:
 
     from app.core import missing as _missing
     from datetime import date as _date_fl, timedelta as _td_fl
-    rules = _missing.rules_of(spec.extra)          # {} on a shipped run
     anchor_notes: dict = {}     # location -> why its origin is not the trims'
     _fd_fl = _date_fl.fromisoformat(spec.forecast_date)
     _asof_fl = (_fd_fl - _date_fl.fromisoformat(spec.season_start)).days // 7
@@ -566,13 +565,22 @@ def prepare(spec, workroot: Path) -> list:
             if int(s.times[-1]) == int(asof_off):
                 auto_drop = 1
         k_total = int(spec.weeks_to_drop or 0) + auto_drop
-        # optional missing-data rules (app/core/missing.py, off by default):
-        # flagged newest weeks are trimmed with the rest, labels as-of-relative
+        # optional missing-data rules (app/core/missing.py, off by default)
+        # and this state's own set-aside from the Forecast tab (rules_for):
+        # flagged newest weeks are trimmed with the rest, labels
+        # as-of-relative. A set-aside is matched by date and value against
+        # the data read; when the data moved since, nothing is trimmed and
+        # the anchor note says so
+        rules = _missing.rules_for(spec.extra, loc, "pf")   # {} shipped
         fl = []
         if rules:
-            kept = len(s.observed) - k_total
-            fl = [(int(s.times[i]), why, float(s.observed[i])) for i, why in
-                  _missing.tail_flags(s.observed[:max(kept, 0)], rules)]
+            kept = max(len(s.observed) - k_total, 0)
+            wk = [_week_of(t) for t in s.times[:kept]]
+            got, na = _missing.trim_flags(wk, s.observed[:kept], rules)
+            fl = [(int(s.times[i]), why, float(s.observed[i]))
+                  for i, why in got]
+            if na:
+                anchor_notes[loc] = na
             k_total += len(fl)
         _off = _asof_fl       # the as-of week: horizons are counted from it
         n_trim = k_total                  # reported rows trimmed on request
@@ -619,7 +627,9 @@ def prepare(spec, workroot: Path) -> list:
                     "not calendar-consecutive")
             anchor_note = (f"anchored on {_last}: {lag - n_trim} newer "
                            f"week(s) unreported")
-            anchor_notes[loc] = anchor_note
+            if not str(anchor_notes.get(loc, "")).startswith(
+                    _missing.NOT_APPLIED_NOTE):
+                anchor_notes[loc] = anchor_note
         k_total = lag
         if n_trim:
             # Re-derive rhomult/i0 from the trimmed series (resolve_state

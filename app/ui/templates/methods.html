@@ -222,6 +222,12 @@
  seeded and reproducible from its ledger entry, and never imputes a missing
  week; scoring is the weighted interval score against the FluSight
  baseline.</p>
+ <p class="hint">A newest week that reads 0, collapses, or was not reported
+ is the forecaster's decision, per state, made in Data issues on the
+ Forecast tab and recorded with the run: what the Groundhog forecasts from
+ when the week reads 0 (abstain, level, extend or blend), or setting the
+ newest one or two weeks aside for both models, or leaving the state out.
+ Such a choice never marks a run modified (docs/MISSING-DATA.md).</p>
  <p class="hint">Two measured caveats (docs/archive/RELEASE-1.0.md): seven
  of 76 sealed weeks' vintages differ from what was public at the deadline,
  and sealed scores use unrounded forecasts (a third-decimal difference).</p>

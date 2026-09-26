@@ -366,7 +366,8 @@ def test_archive_and_start_fresh_moves_the_tree_and_starts_clean(tmp_path,
     monkeypatch.setattr(ui_retro, "_retro_bg",
                         lambda *a, **k: started.append(a[0]))
 
-    r = client.post("/retro/run", data={"season": SEASON, "mode": "archive"},
+    r = client.post("/retro/run", data={"season": SEASON, "mode": "archive",
+                                        "knob.groundhog.zero_anchor": "abstain"},
                     follow_redirects=False)
     assert r.status_code == 303
     archives = retro.list_archive_dirs(rr, SEASON)
@@ -412,7 +413,8 @@ def test_discard_with_confirmation_removes_only_its_target(tmp_path,
     arch_before = _tree_snapshot(arch)
 
     r = client.post("/retro/run", data={"season": SEASON, "mode": "discard",
-                                        "confirm": SEASON},
+                                        "confirm": SEASON,
+                                        "knob.groundhog.zero_anchor": "abstain"},
                     follow_redirects=False)
     assert r.status_code == 303
     assert not (root / "weeks").exists()              # the target is gone

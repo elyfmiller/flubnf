@@ -538,6 +538,7 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
         live = _live_root(season)
         existing = retro_seasons._weeks_done(live)
         legacy_resume = False
+        from app.core import missing as _missing
         if mode == "resume" and existing:
             # one configuration per tree: completed weeks were built with
             # the recorded model settings (a pre-registry record: its
@@ -546,7 +547,15 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
             had = _knobs.legacy_settings_knobs(prior)
             # a pre-registry tree resumes as it was, never re-recorded
             legacy_resume = bool(prior) and "knobs" not in prior
-            if _knobs.digest(had) != _knobs.digest(_knobs.jsonable(nd)):
+            # a tree replayed before the zero-anchor rule existed did what
+            # abstain does: it resumes so, and is not re-recorded with it
+            if (_missing.ZERO_ANCHOR_KEY not in had
+                    and nd.get(_missing.ZERO_ANCHOR_KEY,
+                               _missing.ZERO_ANCHOR_LEGACY)
+                    == _missing.ZERO_ANCHOR_LEGACY):
+                nd.pop(_missing.ZERO_ANCHOR_KEY, None)
+            if (_knobs.settings_digest(had)
+                    != _knobs.settings_digest(_knobs.jsonable(nd))):
                 _flash(f"{season} has {existing} completed week"
                        f"{'' if existing == 1 else 's'} replayed with model "
                        f"settings {_knobs.label(_knobs.from_record(had))}; "
@@ -592,11 +601,20 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                        "discard the existing results to run it. Nothing "
                        "was started.")
                 return RedirectResponse("/retro", status_code=303)
+        if mode == "discard" and confirm != season:
+            _flash(f"Discarding {season} was not confirmed, so nothing "
+                   "was deleted and nothing was started.")
+            return RedirectResponse("/retro", status_code=303)
+        if (not (mode == "resume" and existing)
+                and _missing.ZERO_ANCHOR_KEY not in nd):
+            # a fresh replay (both presets run the Groundhog) must say what
+            # it does when a state's newest week reads 0; no default.
+            # Refused before anything is moved or deleted
+            _flash("Choose what the Groundhog does when a state's newest "
+                   "week reads 0 (Newest week reading 0: abstain, level, "
+                   "extend or blend). Nothing was started.")
+            return RedirectResponse("/retro", status_code=303)
         if mode == "discard":
-            if confirm != season:
-                _flash(f"Discarding {season} was not confirmed, so nothing "
-                       "was deleted and nothing was started.")
-                return RedirectResponse("/retro", status_code=303)
             if existing:
                 try:
                     retro.delete_tree(live)

@@ -349,19 +349,25 @@ def _source(spec) -> tuple:
 MAX_ANCHOR_LAG = 2
 
 
-def _walk(spec, notes: dict | None = None, flags: list | None = None):
+def _walk(spec, notes: dict | None = None, flags: list | None = None,
+          tails: dict | None = None):
     """Per location, what the Groundhog forecasts from: yields (loc,
     anchor, anchor_date, lag, forecast), where `lag` is the weeks between
     the anchor and the as-of week and `forecast(h)` is the quantile dict h
     PHYSICAL weeks past the as-of week (the donor ratio spans h + lag weeks
     from the anchor), or None when the donors abstain. One walk for run()
-    and nowcast().
+    and nowcast(). `forecast` takes `anchor`, `window_ref` (a date) and
+    `lag` as keywords too: the zero-anchor rules (run) forecast from
+    another week of the same series.
 
     `notes`, when given, receives location -> reason for every location
     whose anchor is not the week the trims ask for (a trailing unreported
-    week moved it back, or it abstained). `flags`, when given, receives
-    one row per newest week a missing-data rule treated as unreported
-    ({location, week, value, rule})."""
+    week moved it back, or it abstained), or whose set-aside from the
+    Forecast tab no longer matched the data. `flags`, when given, receives
+    one row per newest week a missing-data rule or a per-state choice
+    treated as unreported ({location, week, value, rule}). `tails`, when
+    given, receives location -> the newest kept weeks as (ISO date, value)
+    pairs, newest last (the zero-anchor rules read them)."""
     v, loc_csv, src_kw = _source(spec)
     t = pd.read_csv(v, dtype={"location": str})
     t["location"] = t["location"].str.zfill(2)
@@ -387,8 +393,11 @@ def _walk(spec, notes: dict | None = None, flags: list | None = None):
         "groundhog.bandwidth")
     bw_kw = {} if bw is None else {"bandwidth": int(bw)}
     bw_kw.update(src_kw)                     # empty on the hub path
-    rules = MS.rules_of(getattr(spec, "extra", None))   # {} when shipped
+    extra = getattr(spec, "extra", None)
     for loc in spec.locations:
+        # this location's rules: the run-wide ones, plus its own choice
+        # from the Forecast tab (app/core/missing.py rules_for); {} shipped
+        rules = MS.rules_for(extra, loc, "analogue")
         fips = name2fips.get(loc)
         if fips is None:
             continue
@@ -399,9 +408,17 @@ def _walk(spec, notes: dict | None = None, flags: list | None = None):
         k = k_user + auto
         if k:
             vals = vals.iloc[:-k] if len(vals) > k else vals.iloc[0:0]
-        # optional missing-data rules (app/core/missing.py, off by default):
-        # flagged newest weeks leave like weeks_to_drop, horizons as-of-aligned
-        fl = MS.tail_flags(vals.to_numpy(), rules) if rules else []
+        # optional missing-data rules (app/core/missing.py, off by default)
+        # and a state set aside on the Forecast tab: flagged newest weeks
+        # leave like weeks_to_drop, horizons as-of-aligned. A set-aside is
+        # matched by date and value against the data read; when the data
+        # moved since, nothing is trimmed and the note says so
+        fl, na = ([], "")
+        if rules:
+            wk = [str(d)[:10] for d in g.date.loc[vals.index]]
+            fl, na = MS.trim_flags(wk, vals.to_numpy(), rules)
+        if na and notes is not None:
+            notes[loc] = na
         if fl:
             if flags is not None:
                 flags.extend({"location": loc, "rule": why,
@@ -411,6 +428,10 @@ def _walk(spec, notes: dict | None = None, flags: list | None = None):
             k += len(fl)
         if not len(vals):
             continue                                       # gap: engine skips, report shows it
+        if tails is not None:
+            keep = vals.iloc[-MS.ZERO_ANCHOR_WEEKS:]
+            tails[loc] = [(str(g.date.loc[i])[:10], float(v))
+                          for i, v in zip(keep.index, keep)]
         anchor = float(vals.iloc[-1])
         anchor_date = g.date.loc[vals.index[-1]]
         # the ANCHOR's own date drives the donor window and the horizons: a
@@ -426,7 +447,8 @@ def _walk(spec, notes: dict | None = None, flags: list | None = None):
                                   f"{anchor_date.date()} is {lag} weeks "
                                   f"before the as-of")
                 continue
-            if notes is not None:
+            if notes is not None and not str(notes.get(loc, "")).startswith(
+                    MS.NOT_APPLIED_NOTE):
                 notes[loc] = (f"anchored on {anchor_date.date()}: "
                               f"{lag - k} newer week(s) unreported")
         window_ref = anchor_date.date()
@@ -441,27 +463,139 @@ def _walk(spec, notes: dict | None = None, flags: list | None = None):
         yield loc, anchor, anchor_date, lag, forecast
 
 
+def _poisson_quantiles(lam: float) -> dict:
+    """{level: Poisson(lam) quantile}: the zero-anchor rules' fallback when
+    there is no positive count to scale (app/core/floor.py's quantile)."""
+    from app.core.floor import _pois_ppf
+    return {float(L): float(_pois_ppf(float(L), lam)) for L in QL}
+
+
+def _zero_anchor_lam(tail: list) -> float:
+    """The Poisson rate over the newest weeks: clip(mean, ZERO_ANCHOR_LAM)."""
+    lo, hi = MS.ZERO_ANCHOR_LAM
+    vals = [v for _, v in tail] or [0.0]
+    return float(min(max(sum(vals) / len(vals), lo), hi))
+
+
+def zero_anchor(rule: str, tail: list, anchor_date, lag: int, forecast):
+    """The Groundhog's forecast for a location whose anchor reads 0, under
+    one zero-anchor rule (app/core/missing.py ZERO_ANCHOR_RULES): ({hub
+    horizon: {level: value}}, note), or ({}, "") when it abstains.
+
+    `tail`: the newest kept weeks as (ISO date, value), newest last, the
+    anchor week last; `forecast(h, anchor=, window_ref=, lag=)` is the
+    walk's closure for this location.
+
+      level   anchor = the mean of the tail (zeros included) at the anchor
+              week's own date; all zero: Poisson(clip(mean, 0.35, 5))
+      extend  anchor = the newest positive week at its own date, the ratio
+              spanning the zeros too, when 1 or 2 weeks read 0 (MAX_CARRY);
+              longer runs: the same Poisson quantiles
+      blend   level and extend averaged level by level
+    """
+    when = pd.Timestamp(anchor_date).date()
+    vals = [v for _, v in tail]
+    if rule == "abstain" or not vals:
+        return {}, ""
+    lam = _zero_anchor_lam(tail)
+    pois = {str(h - 1): _poisson_quantiles(lam) for h in (1, 2, 3, 4)}
+
+    def _level():
+        m = sum(vals) / len(vals)
+        if m <= 0:
+            return pois, (f"{MS.ZERO_ANCHOR_NOTE} level: newest week {when} "
+                          f"reads 0; all {len(vals)} newest weeks read 0, "
+                          f"Poisson({lam:g})")
+        qs = {}
+        for h in (1, 2, 3, 4):
+            q = forecast(h, anchor=m, window_ref=when, lag=lag)
+            if q:
+                qs[str(h - 1)] = {float(L): float(x) for L, x in q.items()}
+        return qs, (f"{MS.ZERO_ANCHOR_NOTE} level: newest week {when} reads "
+                    f"0; anchor mean {m:.2f} of {tail[0][0]}..{when}")
+
+    def _extend():
+        run = MS.zero_run(vals)
+        if run > MS.MAX_CARRY or run >= len(vals):
+            return pois, (f"{MS.ZERO_ANCHOR_NOTE} extend: newest week {when} "
+                          f"reads 0; {run} weeks read 0 (at most "
+                          f"{MS.MAX_CARRY} carried), Poisson({lam:g})")
+        d, v = tail[-1 - run]
+        ref = pd.Timestamp(d).date()
+        qs = {}
+        for h in (1, 2, 3, 4):
+            q = forecast(h, anchor=v, window_ref=ref, lag=lag + run)
+            if q:
+                qs[str(h - 1)] = {float(L): float(x) for L, x in q.items()}
+        return qs, (f"{MS.ZERO_ANCHOR_NOTE} extend: newest week {when} reads "
+                    f"0; {v:g} ({d}) carried {run} week"
+                    f"{'s' if run != 1 else ''}")
+
+    if rule == "level":
+        return _level()
+    if rule == "extend":
+        return _extend()
+    if rule == "blend":
+        ql, nl = _level()
+        qe, ne = _extend()
+        if not ql or not qe:
+            qs = ql or qe
+        else:
+            # the same vincentizing as the FluSurv pool: level by level
+            qs = {h: {L: 0.5 * ql[h][L] + 0.5 * qe[h][L] for L in ql[h]}
+                  for h in ql if h in qe}
+        return qs, (f"{MS.ZERO_ANCHOR_NOTE} blend: newest week {when} reads 0; "
+                    f"{nl.split('; ', 1)[-1]}; {ne.split('; ', 1)[-1]}")
+    raise ValueError(f"unknown zero-anchor rule {rule!r}; one of "
+                     f"{', '.join(MS.ZERO_ANCHOR_RULES)}")
+
+
 def run(spec, notes: dict | None = None, flags: list | None = None) -> dict:
     """location -> {horizon(str): {level(float): value}} quantiles; `notes`
-    and `flags` as in _walk."""
+    and `flags` as in _walk. A location whose anchor reads 0 follows its
+    zero-anchor rule (app/core/missing.py: the state's own choice, else the
+    run's knob, else ZERO_ANCHOR_LEGACY = abstain); a rule that forecasts
+    is noted ("zero-anchor <rule>: ...") and flagged ({location, week,
+    value 0, rule "zero-anchor <rule>"})."""
     out = {}
-    for loc, anchor, _date, _lag, forecast in _walk(spec, notes, flags):
+    tails: dict = {}
+    extra = getattr(spec, "extra", None)
+    for loc, anchor, _date, _lag, forecast in _walk(spec, notes, flags, tails):
         qs = {}
-        for h in (1, 2, 3, 4):     # PHYSICAL weeks ahead, the library's unit
-            q = forecast(h)
-            if q:
-                # canonical (hub) key: h weeks ahead is hub horizon h-1
-                qs[str(h - 1)] = {float(L): float(x) for L, x in q.items()}
+        if anchor > 0:
+            for h in (1, 2, 3, 4):     # PHYSICAL weeks ahead, the library's unit
+                q = forecast(h)
+                if q:
+                    # canonical (hub) key: h weeks ahead is hub horizon h-1
+                    qs[str(h - 1)] = {float(L): float(x) for L, x in q.items()}
+        else:
+            rule = (MS.rules_for(extra, loc, "analogue").get(MS.ZERO_ANCHOR_KEY)
+                    or MS.ZERO_ANCHOR_LEGACY)
+            qs, za_note = zero_anchor(rule, tails.get(loc, []), _date, _lag,
+                                      forecast)
+            if qs:
+                if flags is not None:
+                    flags.append({"location": loc,
+                                  "week": str(pd.Timestamp(_date).date()),
+                                  "value": float(anchor),
+                                  "rule": f"{MS.ZERO_ANCHOR_NOTE} {rule}"})
+                if notes is not None:
+                    prior = str(notes.get(loc) or "")
+                    unrep = (f" ({prior.split(': ', 1)[-1]})"
+                             if prior.startswith("anchored on") else "")
+                    notes[loc] = za_note + unrep
         if qs:
             out[loc] = qs
-        elif notes is not None and loc in notes:
+        elif notes is not None and str(notes.get(loc, "")).startswith(
+                "anchored on"):
             # the moved-back anchor gave no forecast (a count of 0 is a
             # ratio of nothing): the location abstained, and says so
             unrep = str(notes[loc]).split(": ", 1)[-1]
             notes[loc] = (f"abstained: newest reported week "
                           f"{pd.Timestamp(_date).date()} reads {anchor:g} "
                           f"({unrep})")
-        elif notes is not None:
+        elif notes is not None and not str(notes.get(loc, "")).startswith(
+                MS.NOT_APPLIED_NOTE):
             # no forecast from the newest week itself: a count of 0 is a
             # ratio of nothing (flubnf/analogue.py returns None for an
             # anchor <= 0); recorded so the location's absence is named

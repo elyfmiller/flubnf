@@ -89,6 +89,52 @@ date; the FluSight replay and the own-data replay alike) and shows a "flagged we
 hospital admission counts. The dataset panels hide it and a dataset run or replay refuses it
 (`missing.HUB_ONLY_KEYS`); `data.trailing_zero` stays available everywhere.
 
+## The Groundhog's zero-anchor rule
+
+The Groundhog is anchor x donor ratio, so a newest week reading 0 gives it nothing to scale and it abstained.
+In the 85 archived vintages of 2023-24 to 2025-26 that happened in 93 of 4,420 location-weeks; the runs of
+trailing zeros were 1 week in 63 of them, 2 in 19, 3 in 4, 4 in 4, 6 in 2 and 7 in 1. Donor depth is not
+the constraint. The particle filter is unaffected (a 0 is an observation).
+
+Four rules were scored on those 93 location-weeks (172 cells with a FluSight-baseline; WIS ratio to the
+baseline, 95% interval), `app/core/engines/analogue.py zero_anchor`:
+
+| Rule (`groundhog.zero_anchor`) | What it forecasts from | Rule / baseline |
+|---|---|---|
+| `abstain` | nothing: no forecast (what every run did before) | not scored |
+| `level` | the mean of the last 4 reported weeks, zeros included, at the 0 week; all 0: Poisson(clip(mean, 0.35, 5)) | 0.874 [0.72, 1.00] |
+| `extend` | the last positive week at its own date, the ratio spanning the 1 or 2 zeros; longer runs: the same Poisson | 1.007 [0.73, 1.33]; wins season onsets (0.61), loses on true low counts (1.62) |
+| `blend` | level and extend averaged level by level | 0.875 [0.72, 1.02] with a 3-week level arm (the shipped one uses 4); best at onsets (0.71) and in coverage |
+
+A Poisson floor alone scored 1.124. Widening the donor window (-2..+3 weeks) did not help (1.018) and hurt
+the low non-zero anchors (1.021 [1.010, 1.031]), so the window is unchanged. The rule has NO default: a
+live run asks per state (below), a replay asks on its form, and a season replayed before the rule existed
+is read as `abstain`. The choice is recorded with the run and never marks it modified: the model cards
+state that it is the forecaster's.
+
+## Per-state choices (the Data issues box)
+
+The Data tab flags every newest week that reads 0 (of the hub's newest-week zeros since 2023, about three
+quarters stayed 0 once settled and none rose above 5), every collapsed week (under a fifth of a week of 20
+or more; 9 of the 17 in the archive were later revised to at least twice the reported value) and every
+unreported one. Some collapses are partial reports (Alabama 8 after 194 on 2026-01-24, settled at 250) and
+some are real drops (2026-03-28: Delaware 4 after 24, Hawaii 1 after 21, Maryland 9 after 52, Utah 8 after
+49, all settled where they were), so no global rule fits: the forecaster decides per state, in the Data
+issues box under the Forecast tab's anchor line, for the real-time week.
+
+| Newest week | Choices |
+|---|---|
+| reads 0 | `abstain`, `level`, `extend`, `blend` (the Groundhog's rule for this state; the Oracle SIHRS keeps the 0); `set_aside` (both models from the week before, the 0 counted as unreported; offered for 1 or 2 trailing zeros after a positive week); `omit` (the state is left out of both files) |
+| collapsed | `keep` (as reported, the default), `set_aside` (both models from the week before), `omit` |
+| no row or blank | `carry` (the engines' own walk, the default), `omit` |
+
+The choices are recorded in the run's spec (`extra["data_choices"]`: the week, the data file's sha256 and
+each non-default state's issue, reported weeks and choice; `app/core/missing.py`), so a run with none has an
+unchanged spec. A set-aside is matched by date and value against the data the run reads: when the data
+changed since (Update data was pressed), nothing is trimmed and the run page says "not applied". A state
+left out is listed on the Output page as requested and left out, with the reason. None of this marks a
+run modified or changes its file names.
+
 ## An unreported newest week (own data)
 
 The hub never has one (the table above: no NA and no absent row at the newest week), but a user's dataset

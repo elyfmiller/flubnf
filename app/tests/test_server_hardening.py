@@ -120,8 +120,9 @@ def test_concurrent_retro_run_posts_claim_exactly_one_worker(tmp_path,
     ui_state._status.update({"running": None, "phase": "", "run_label": ""})
 
     def post():
-        return client.post("/retro/run", data={"season": SEASON},
-                           follow_redirects=False).status_code
+        return client.post("/retro/run", data={
+            "season": SEASON, "knob.groundhog.zero_anchor": "abstain"},
+            follow_redirects=False).status_code
 
     codes = _two_threads(post)
     assert codes == [303, 303]

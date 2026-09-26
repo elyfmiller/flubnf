@@ -98,6 +98,8 @@ def test_forecast_panel_renders_every_forecast_knob_with_a_tip():
     f = _panel_form(html)
     names = {n for n, _ in f.fields} | f.disabled
     for k in K.REGISTRY:
+        if k.key in K.DECISION_KEYS:
+            continue        # asked on the form itself (the Data issues box)
         name = K.FIELD_OF.get(k.key, "knob." + k.key)
         assert name in names, k.key
         tid = "tip-ks-" + k.key.replace(".", "-") + "-tip"
@@ -199,7 +201,7 @@ def test_the_shipped_page_reads_shipped():
 def test_panel_data_is_the_registry():
     p = K.panel("forecast")
     keys = [r["key"] for g in p["groups"] for r in g["rows"]]
-    assert sorted(keys) == sorted(K.BY_KEY)
+    assert sorted(keys) == sorted(set(K.BY_KEY) - K.DECISION_KEYS)
     assert not p["modified"]
     rp = K.panel("retro")
     assert not {r["key"] for g in rp["groups"] for r in g["rows"]} \

@@ -573,13 +573,25 @@ def settings_summary(meta: dict) -> list:
              ("engine", engine_label(s["engine"]) if s.get("engine") else ""),
              ("PyBNF build", _build_label(s.get("engine_build")) if pf else "")]
     # only a record made through the knob channel says "model settings"
-    if isinstance(s.get("knobs"), dict) and s["knobs"]:
-        from app.core import knobs as _knobs
+    # (the zero-anchor rule is a data decision, listed on its own line)
+    from app.core import knobs as _knobs
+    mk = _knobs.model_values(s.get("knobs") or {}) \
+        if isinstance(s.get("knobs"), dict) else {}
+    if mk:
         try:
             pairs.append(("model settings",
-                          _knobs.label(_knobs.from_record(s["knobs"]))))
+                          _knobs.label(_knobs.from_record(mk))))
         except Exception:
             pairs.append(("model settings", "modified (unreadable record)"))
+    # the Groundhog's zero-anchor rule: recorded with the replay; a season
+    # replayed before the rule existed did what abstain does
+    za = (s.get("knobs") or {}).get(MS.ZERO_ANCHOR_KEY) \
+        if isinstance(s.get("knobs"), dict) else None
+    pairs.append(("zero-anchor rule",
+                  str(za) if za in MS.ZERO_ANCHOR_RULES else
+                  f"{MS.ZERO_ANCHOR_LEGACY} (replayed before the rule existed)"))
+    pairs.append(("zero-anchor weeks", MS.replay_zero_anchor_count(
+        (meta or {}).get("data_flags"))))
     # whether the stored weeks went through the output floor (absent from
     # the record: stored before replays applied it)
     pairs.append(("output floor", str(s.get("output_floor")
@@ -592,11 +604,14 @@ def settings_summary(meta: dict) -> list:
 
 
 def season_knobs(meta: dict) -> dict:
-    """The knobs record of a replay's run record ({} when shipped or from
-    before the registry: an older tree is never marked modified)."""
+    """The model-knobs record of a replay's run record ({} when shipped or
+    from before the registry: an older tree is never marked modified). The
+    zero-anchor rule, a data decision, is left out: it never marks a
+    season modified (settings_summary lists it)."""
+    from app.core import knobs as _knobs
     s = (meta or {}).get("settings")
     k = s.get("knobs") if isinstance(s, dict) else None
-    return dict(k) if isinstance(k, dict) else {}
+    return _knobs.model_values(dict(k)) if isinstance(k, dict) else {}
 
 
 def resume_form_fields(meta: dict) -> dict | None:
@@ -1075,7 +1090,8 @@ def run_week(root: Path, season: str, asof: str, locations: list,
     hold_while_paused(root)
     # the missing-data rules (app/core/missing.py): each week's flagged
     # newest weeks go into the run record, only when a rule is on
-    rules = MS.rules_of(extra)
+    # ...and the Groundhog's zero-anchor location-weeks, when a rule is set
+    rules = bool(MS.rules_of(extra) or MS.zero_anchor_of(extra))
     gh_flags: list = []
     an_kw = {"flags": gh_flags} if rules else {}
     if engine == "analogue":
@@ -1235,7 +1251,8 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
     if _weeks_on_disk(root):
         prior = (read_meta(root) or {}).get("settings") or {}
         had = _knobs.legacy_settings_knobs(prior)
-        if _knobs.digest(had) != _knobs.digest(want):
+        # a record from before the zero-anchor rule replayed as abstain
+        if _knobs.settings_digest(had) != _knobs.settings_digest(want):
             raise KnobsMismatch(
                 f"{season} at {root} has completed weeks replayed with "
                 f"model settings {_knobs.label(_knobs.from_record(had))}; "

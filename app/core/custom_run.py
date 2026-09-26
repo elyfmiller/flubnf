@@ -346,8 +346,11 @@ def run(spec, ds, workroot: Path, *, phase=lambda msg: None,
     # 2. the Groundhog (instant)
     an_q: dict = {}
     # the missing-data rules (app/core/missing.py): the flagged weeks are
-    # recorded only when a rule is on, as the console's run records them
-    rules = MS.rules_of(extra)
+    # recorded only when a rule is on, as the console's run records them.
+    # The Groundhog's zero-anchor rule: a dataset run has no Data issues
+    # box, so without the knob in extra the engine reads abstain
+    # (MS.ZERO_ANCHOR_LEGACY), what every dataset run did before the rule
+    rules = bool(MS.rules_of(extra) or MS.zero_anchor_of(extra))
     gh_flags: list = []
     if spec.engine in ("all", "analogue"):
         phase("consulting the Groundhog")

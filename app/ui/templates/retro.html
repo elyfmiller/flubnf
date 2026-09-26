@@ -50,6 +50,16 @@ had, then scores against settled truth.</p>
    <select name="engine" id="retro-engine">
      <option value="pf">Oracle SIHRS + Groundhog (hours)</option>
      <option value="analogue">Groundhog only (minutes)</option></select>
+   {# the Groundhog's zero-anchor rule (app/core/missing.py): a data
+      decision with no default, asked here rather than in the panel; a
+      season replayed before the rule existed resumes as abstain #}
+   {{ tips.label("Newest week reading 0", "rt-zero", "What the Groundhog forecasts from when a state's newest week reads 0, for every such week of the replay. abstain: no forecast (what every replay did before this choice existed). level: the mean of the last 4 weeks. extend: the last positive week carried over 1 or 2 zeros. blend: level and extend averaged. Recorded with the season; it does not mark it modified.", for_="rt-zero-anchor") }}
+   <select name="knob.groundhog.zero_anchor" id="rt-zero-anchor" required>
+     <option value="">Choose…</option>
+     <option value="abstain">abstain: no Groundhog forecast for that state and week</option>
+     <option value="level">level: anchor on the mean of the last 4 weeks</option>
+     <option value="extend">extend: carry the last positive week over 1 or 2 zeros</option>
+     <option value="blend">blend: level and extend averaged</option></select>
    {# particles and replicates live in the panel, under their field names #}
    {% include "_model_settings.html" %}
    {# set by the start-over prompt; defaults to 'resume', so a keyboard submit

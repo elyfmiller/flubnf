@@ -527,5 +527,6 @@ def test_a_note_never_says_anchored_for_a_location_that_abstained(tmp_path, monk
     from app.core.runs import no_forecast_row
     nrow = no_forecast_row({"analogue_anchor_notes": notes},
                            {"analogue": "Groundhog"})
-    assert nrow[0] == "No forecast" and "Groundhog: 1 location" in nrow[1]
+    assert nrow[0] == "Newest week reading 0"
+    assert "Groundhog: 1 abstain" in nrow[1]
     assert "Utah: no forecast: newest week reads 0." in nrow[1]

@@ -21,7 +21,10 @@ shipped one marks a run as modified; LOCKED lists what is not settable.
 "optional" knobs (OPTIONAL_KEYS) add rows the hub accepts but never
 requires, and leave every required row as it was: they are recorded in
 the spec like any knob but do not mark a run modified, so its files keep
-the hub names.
+the hub names. "decision" knobs (DECISION_KEYS) are data decisions the
+model cards document as the forecaster's (the Groundhog's zero-anchor
+rule): they have no shipped default, are recorded like any knob, and
+never mark a run modified either.
 """
 from __future__ import annotations
 
@@ -255,6 +258,17 @@ REGISTRY: tuple = (
          "Total weight on the auxiliary pools; independent of the Oracle's share.",
          lo=0.0, hi=1.0,
          card=(GROUNDHOG_CARD, {0.5: "at fixed equal weight"})),
+    Knob(MS.ZERO_ANCHOR_KEY, "Newest week reading 0", GH_ONLY, "groundhog",
+         "decision", "choice", MS.ZERO_ANCHOR_DEFAULT,
+         "app.core.missing:ZERO_ANCHOR_DEFAULT",
+         "What the Groundhog forecasts from when a state's newest week reads 0; "
+         "no default, you choose.",
+         choices=MS.ZERO_ANCHOR_RULES,
+         note=("abstain: no forecast. level: the mean of the last 4 weeks. "
+               "extend: the last positive week carried over 1 or 2 zeros. "
+               "blend: level and extend averaged. A live run asks per state "
+               "in the Forecast tab's Data issues box; a replay asks on its "
+               "form. Recorded with the run; never marks it modified.")),
     Knob("groundhog.bandwidth", "Groundhog donor window", GH_ONLY, "groundhog",
          "method", "int", AN.DEFAULT_BANDWIDTH,
          "flubnf.analogue:DEFAULT_BANDWIDTH",
@@ -299,6 +313,10 @@ REGISTRY: tuple = (
 BY_KEY: dict = {k.key: k for k in REGISTRY}
 #: knobs that add optional hub rows and never mark a run modified
 OPTIONAL_KEYS = frozenset(k.key for k in REGISTRY if k.klass == "optional")
+#: data decisions with no shipped default (the forecaster chooses; the
+#: model cards say so); recorded, never marking a run modified, and asked
+#: on the forms themselves rather than in the Model settings panel
+DECISION_KEYS = frozenset(k.key for k in REGISTRY if k.klass == "decision")
 
 
 @dataclass(frozen=True)
@@ -473,9 +491,11 @@ def parse(form: Mapping, engine="all", *, forecast_date: Optional[str] = None,
 
 
 def defaults(forecast_date: Optional[str] = None) -> dict:
-    """{key: shipped value}; a date-dependent knob is left out without a date."""
+    """{key: shipped value}; a date-dependent knob is left out without a
+    date, and so is a decision knob (it has none)."""
     return {k.key: k.default_for(forecast_date) for k in REGISTRY
-            if forecast_date or not callable(k.default)}
+            if (forecast_date or not callable(k.default))
+            and k.key not in DECISION_KEYS}
 
 
 def non_default(values: Mapping, forecast_date: Optional[str] = None) -> dict:
@@ -804,10 +824,25 @@ def record_of(spec) -> dict:
 
 
 def model_record(spec) -> dict:
-    """record_of without the optional-output knobs: what changes the
-    models."""
+    """record_of without the optional-output and decision knobs: what
+    changes the models."""
     return {k: v for k, v in record_of(spec).items()
-            if k not in OPTIONAL_KEYS}
+            if k not in OPTIONAL_KEYS and k not in DECISION_KEYS}
+
+
+def model_values(values: Mapping) -> dict:
+    """A knobs dict without its decision knobs: what a "modified" label or
+    badge counts (the retrospective's season page, its resume message)."""
+    return {k: v for k, v in (values or {}).items() if k not in DECISION_KEYS}
+
+
+def settings_digest(values: Mapping) -> str:
+    """digest() for comparing two replays' recorded knobs: a record from
+    before the zero-anchor rule existed replayed as ZERO_ANCHOR_LEGACY, so
+    a resume asking for that rule matches it."""
+    v = dict(values or {})
+    v.setdefault(MS.ZERO_ANCHOR_KEY, MS.ZERO_ANCHOR_LEGACY)
+    return digest(jsonable(v))
 
 
 def modified(spec) -> bool:
@@ -1002,8 +1037,9 @@ def panel(scope: str, values: Optional[Mapping] = None,
     values = dict(values or {})
     groups = []
     for gid, title, tip in PANEL_GROUPS:
+        # decision knobs are asked on the form itself, not in the panel
         ks = [k for k in REGISTRY if _group_of(k) == gid
-              and in_scope(k.key, scope)]
+              and in_scope(k.key, scope) and k.key not in DECISION_KEYS]
         if gid == "fit":
             rank = {key: i for i, key in enumerate(_FIT_ORDER)}
             ks.sort(key=lambda k: rank.get(k.key, len(rank)))
