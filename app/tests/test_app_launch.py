@@ -1122,7 +1122,7 @@ def test_the_start_callback_thread_is_a_daemon():
     # thread with the close event as its stop
     src = inspect.getsource(cli.app_window)
     assert 'kwargs={"stop": closed}, daemon=True' in src
-    assert "_exit_now(drop_pidfile)" in src.split("webview.start(_activate)")[1]
+    assert "_exit_now(drop_pidfile, stop_server)" in src.split("webview.start(_activate)")[1]
 
 
 def test_exit_now_runs_cleanups_then_leaves(monkeypatch):
@@ -1144,3 +1144,180 @@ def test_a_dock_launch_traces_to_its_launch_log(monkeypatch, capsys):
     monkeypatch.setenv("FLUBNF_HOST_FALLBACK", "1")
     cli._trace("from the Dock")
     assert "from the Dock" in capsys.readouterr().err
+
+
+# ------------------------------------------- the server's own process
+
+class _FakeProc:
+    def __init__(self):
+        self.pid = 4242
+        self.calls = []
+
+    def terminate(self):
+        self.calls.append("terminate")
+
+    def wait(self, timeout=None):
+        self.calls.append(("wait", timeout))
+        return 0
+
+    def kill(self):
+        self.calls.append("kill")
+
+
+def test_the_window_server_runs_in_a_process_of_its_own():
+    """The window's main thread must never share an interpreter lock with
+    the server: a long forecast step froze hover and resizing. The child
+    gets the held socket (no refused first request) and this pid."""
+    import os
+    import socket
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    sock.listen(1)
+    fd = sock.fileno()
+    seen = {}
+    proc = _FakeProc()
+
+    def popen(cmd, **kw):
+        seen["cmd"], seen["kw"] = cmd, kw
+        return proc
+
+    try:
+        stop = cli._start_window_server(sock, 1234, popen=popen,
+                                        platform="posix")
+        cmd, kw = seen["cmd"], seen["kw"]
+        assert cmd[1:] == ["-m", "flubnf.window_server", str(fd),
+                           str(os.getpid())]
+        assert kw["pass_fds"] == (fd,)
+        repo = str(Path(cli.__file__).resolve().parents[1])
+        assert kw["cwd"] == repo
+        assert kw["env"]["PYTHONPATH"].split(os.pathsep)[0] == repo
+        assert sock.fileno() == -1          # the child holds the only copy
+        stop()
+        assert proc.calls[:2] == ["terminate", ("wait", 1.5)]
+    finally:
+        sock.close()
+
+
+def test_a_server_that_ignores_terminate_is_killed():
+    import socket
+    sock = socket.socket()
+    proc = _FakeProc()
+
+    def wait(timeout=None):
+        raise TimeoutError
+    proc.wait = wait
+    stop = cli._start_window_server(sock, 1, popen=lambda *a, **k: proc,
+                                    platform="posix")
+    stop()
+    assert proc.calls == ["terminate", "kill"]
+
+
+def test_windows_keeps_the_server_on_a_thread(monkeypatch):
+    """pass_fds is POSIX only; Windows serves from a thread as before."""
+    import threading
+    import uvicorn
+    ran = threading.Event()
+
+    class _Server:
+        def __init__(self, config):
+            pass
+
+        def run(self, sockets=None):
+            ran.set()
+    monkeypatch.setattr(uvicorn, "Server", _Server)
+
+    def popen(*a, **k):
+        raise AssertionError("no child process on Windows")
+    stop = cli._start_window_server(object(), 1, popen=popen, platform="nt")
+    assert ran.wait(5)
+    stop()                                   # a no-op, never raises
+
+
+def test_the_window_server_leaves_when_its_window_dies():
+    """A window that crashes or is killed must not leave a server holding
+    the port: the child watches its parent and exits with it."""
+    import os
+    import subprocess
+    import sys
+    import time
+    repo = str(Path(cli.__file__).resolve().parents[1])
+    grandchild = (
+        "import os, sys; sys.path.insert(0, %r); "
+        "from flubnf.window_server import watch_parent; "
+        "watch_parent(os.getppid(), poll=0.05)" % repo)
+    parent = (
+        "import os, subprocess, sys, time; "
+        "c = subprocess.Popen([sys.executable, '-c', %r]); "
+        "print(c.pid, flush=True); time.sleep(0.5); os._exit(0)" % grandchild)
+    out = subprocess.run([sys.executable, "-c", parent], capture_output=True,
+                         text=True, timeout=30)
+    pid = int(out.stdout.strip())
+
+    def alive(p):
+        try:
+            with open(f"/proc/{p}/status") as fh:
+                if "\nState:\tZ" in fh.read():
+                    return False
+        except OSError:
+            pass
+        try:
+            os.kill(p, 0)
+            return True
+        except OSError:
+            return False
+    t0 = time.time()
+    while alive(pid) and time.time() - t0 < 10:
+        time.sleep(0.05)
+    assert not alive(pid)
+
+
+def test_watch_parent_exits_only_once_the_parent_is_gone(monkeypatch):
+    from flubnf import window_server as ws
+    states = iter([False, False, True])
+    monkeypatch.setattr(ws, "_parent_gone", lambda parent: next(states))
+    exits, sleeps = [], []
+    ws.watch_parent(99, poll=0.2, exit_now=exits.append,
+                    sleep=sleeps.append)
+    assert exits == [0] and sleeps == [0.2, 0.2]
+
+
+def test_the_window_process_no_longer_imports_the_server_stack():
+    src = inspect.getsource(cli.app_window)
+    assert "_start_window_server(sock, port)" in src
+    assert "import uvicorn" not in src
+    assert "_exit_now(drop_pidfile, stop_server)" in src
+
+
+def test_a_relaunch_waits_for_its_predecessors_port():
+    """The predecessor's server process leaves up to a second after its
+    window: the relaunch keeps the same port (the page's saved theme and
+    font size live per origin) rather than moving to the next one."""
+    import socket
+    import threading
+    busy = socket.socket()
+    cli._set_port_reuse(busy)
+    busy.bind(("127.0.0.1", 0))
+    busy.listen(1)
+    port = busy.getsockname()[1]
+    threading.Timer(0.4, busy.close).start()
+    sock, got = cli._bind_app_socket(port, tries=3, settle=3.0)
+    try:
+        assert got == port
+    finally:
+        sock.close()
+
+
+def test_a_first_launch_does_not_wait_for_a_busy_port():
+    import socket
+    busy = socket.socket()
+    busy.bind(("127.0.0.1", 0))
+    busy.listen(1)
+    port = busy.getsockname()[1]
+    slept = []
+    try:
+        sock, got = cli._bind_app_socket(port, tries=3, sleep=slept.append)
+        if sock is not None:
+            sock.close()
+        assert got != port and slept == []
+    finally:
+        busy.close()
